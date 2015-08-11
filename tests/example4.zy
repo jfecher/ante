@@ -1,0 +1,13 @@
+`
+ printSomething:
+     A function which prints something out in stdout
+`
+-->printSomething: bool
+    if _params[0]
+        print "Hello World!\n"
+    else
+        print "Goodbye World D:\n"
+    /
+
+--printSomething: true
+--printSomething: false

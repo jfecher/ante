@@ -1,0 +1,269 @@
+`
+        Zy is an Object oriented language which allows both static and dynamic
+    type checking.  Each line of zy code is a statement ending in a newline
+    character.  Expressions such as 3 * (4 + 5) may be part of a statement,
+    but are not valid alone.
+`
+
+
+`
+    The following is an example of an import statement.  It is importing The
+    modules math, io, and str, which are the only currently planned modules.
+`
+import math, io, str
+
+~This is an example of a single line comment
+
+`
+        Variables
+
+    Below is the declaration of a variable, myVar, with a dynamic typing,
+    meaning it can be set to any value and its type will change accordingly.
+
+    Variables are declared with the > token seperating the variable's type
+    and identifier in the following syntax:
+    [modifiers] type [modifiers]> identifier
+`
+>myVar
+
+`
+    types can also be assigned to variables, below are the primitive types
+    initialized to their default values
+`
+
+int> myInt = 0
+num> myNum = 0
+string> myString = ""
+bool> myBool = false
+
+`
+    Any primitive value can also be typecasted to any other primitive type, or
+    even changed to that type completely.  The syntax for this is similar to
+    that of a declaration, but without the > token.
+`
+
+print int 4.99  ~output: 4
+num>n = 43.876
+int n
+print typeof(n), " ", n  ~output: int 43
+
+`
+        Arrays
+
+    The syntax for declaring arrays is type|size> identifier.  The array arr
+    declared below is an array of 30 integers, each initialized to 1
+`
+int|30> arr = 1
+
+~Each element of an array can also be initialized individually
+num|5> assortedNums = 9, -76, 3.14159265, 2^8, 1 + 2*(6-3)
+
+`
+    Each element of an array can be accessed individually by index.  Negative
+    indexes work backwards from the end of the array, so arr[-1] will always
+    yield the last element of arr.
+`
+assortedNums[0] += assortedNums[1]
+print assortedNums[0], ", ", assortedNums[-2]
+
+~output: -67, 256
+
+`
+    Note that the above expands arr enough to accomodate two more integers, it
+    does not add 2 to every value. To add a value to each element of the array,
+    the following syntax should be used.
+`
+arr += 2
+
+`
+        Functions
+
+    Functions in zy each have their own scope in addition to the scopes they
+    inherit (in this case, only the global scope).  Variables created in
+    functions are all local variables by default, however they can be changed
+    exported into the global scope with the export keyword.
+
+    Below is the declaration of a function, printMsg.  It takes no parameters
+    and returns no value.  It is important to note that unlike many c based
+    languages, blocks are denoted by changes in indentation rather than
+    opening and closing brackets.
+`
+-->printMsg:
+    print "Hello World!"
+
+`
+    This add function takes in two parameters, augend and addend, and returns
+    a num value.
+`
+--num> add: num augend, num addend
+    return augend + addend
+
+`
+    Zy also has several reserved variables.  Variables with identifiers starting
+    with an underscore are reserved and should not be manually assigned values.
+    The below function takes in a variable amount of parameters, as denoted by
+    the elipses.  Since _params always contains an array of each parameter of
+    a function, all the params are passed to the print keyword, with an
+    additional newline passed at the end.
+`
+-->println: ...
+    print _params, '\n'
+
+~declared functions can be called like in the next example
+println("Hello World #", add(3, 43.223))
+
+`
+        Loops
+
+    Zy has four kinds of loops: while, do while, for, and foreach.
+    The while loop runs while the following expression is true.  The do while
+    loop runs once then runs while its following expression is true.  The for
+    loop initializes a variable, runs while the expression surrounded by commas
+    is true, then assigns a new value to a variable.  The foreach loop loops
+    through each element of an array.
+`
+while true
+    print "I loop forever\n"
+
+
+do
+    print "I only loop once\n"
+while false
+
+~prints 1-10
+for int>i = 1, i <= 10, i += 1
+    print i, " "
+
+num> total
+foreach num n in arr
+    total += n
+
+
+`
+        Classes
+    Classes can be declared with the -> token.  They each have their own
+    namespace, and can have functions and variables declared within them.
+    By default, variables declared within classes are private.
+`
+
+->Animal
+    int> age
+    string> species
+    string> name
+`
+    The _init function is a function that is automatically called when a class
+    is initialized and the givin values match _init's parameters.
+`
+    -->_init: int, string, string
+        age = _params[0]
+        species = _params[1]
+        name = _params[2]
+
+    -->printInfo:
+        print name, " is a/an ", species, " and is ", age, " year(s) old.\n"
+
+`
+    To create an instance of the class, use the class name as the type of the
+    variable and it can be initialized with the parameters of the _init
+    function declared within the class.
+`
+Animal> clifford = 52, "magnum rubrum canis", "Clifford"
+
+`
+    Classes without any functions work similarly to structures in c or c++.
+    Variables within these classes are public by default since there is no other
+    way to access them.  The class can be initialized with a list of each value.
+`
+->Coord
+    num> x, y, z
+
+Coord> coord = 100, -50, 66.7
+print coord  ~output: 100, -50, 66.7
+
+`
+    Classes can also inherit from other classes with the : token.
+`
+->Person : Animal
+    string> job
+
+    -->_init: int age, string j, string name
+        job = j
+        super(age, "Homo sapien", name)
+
+`
+    This function obscures the printInfo declared in the Animal super class.
+`
+    -->printInfo:
+        print name, " is a ", age, "-year-old ", job
+
+
+Person> john = 44, "Electrician", "John"
+john.printInfo() ~output: John is a 44-year-old Electrician
+
+`
+        Enums
+    Declaring an enum declares a set of named constants.  They are declared
+    like normal variables with the type enum.  Unlike normal types, other
+    variables cannot be typecasted to an enum type, but enums can be
+    typecasted to any primitive type.  Typecasting them to a string
+    yields the name of the value.
+`
+enum> Suit = Diamonds, Hearts, Spades, Clubs
+
+Suit> spades = Suit.Spades
+print spades, " ", string spades  ~output: 2 Spades
+
+->Card
+    int> number
+    Suit> suit
+
+Card> fourOfSpades = 4, spades
+
+`
+        Keywords
+
+num
+int
+string
+bool
+
+primitive
+
+enum
+
+true
+false
+
+print
+typeof
+
+do
+while
+for
+foreach
+in
+
+delete
+export
+`
+
+`
+        Reserved Variables
+
+_args
+_argc
+_params
+_paramc
+_G
+
+
+        Reserved Functions
+_init
+_add
+_sub
+_mul
+_div
+_mod
+_pow
+_concat
+`

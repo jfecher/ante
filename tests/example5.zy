@@ -1,0 +1,25 @@
+`
+    example5.zy
+        Testfile used to test the parsing and evaluation of expressions.
+`
+
+int> const69 = 6+9*6+9                ~Answer should be 69
+int> answer  = const69 - 3 * (5 - 2)  ~Answer should be 60
+
+print const69
+print '\n'
+
+print answer
+print'\n'
+
+
+print const69, " - 9 = ", answer, "\n"
+
+`
+Output:
+
+69
+60
+69 - 9 = 60
+
+`
