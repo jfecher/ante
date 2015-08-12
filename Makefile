@@ -1,5 +1,5 @@
 WARNINGS := -Wall
-CFLAGS := -g $(WARNINGS)
+CFLAGS := -g -O3 $(WARNINGS)
 
 PROJDIRS := src include
 AUXFILES := Makefile README.md LICENSE
@@ -19,7 +19,7 @@ ALLFILES := $(SRCFILES) $(HDRFILES) $(AUXFILES)
 all: zy
 
 zy: $(OBJFILES)
-	@$(CC) $(CFLAGS) -o zy $?
+	$(CC) $(CFLAGS) -o zy $?
 	@mv $(OBJFILES) obj
 	-@$(RM) $(DEPFILES)
 

@@ -1,6 +1,6 @@
 `
- printSomething:
-     A function which prints something out in stdout
+    example4.zy
+        test function declarations and calls
 `
 -->printSomething: bool
     if _params[0]
@@ -9,5 +9,5 @@
         print "Goodbye World D:\n"
     /
 
---printSomething: true
---printSomething: false
+printSomething(true)
+printSomething(false)

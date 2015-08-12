@@ -7,8 +7,8 @@
 #include "bignum.h"
 #include "table.h"
 
-#define VERSION "v0.0.06"
-#define VERDATE "2015-8-11"
+#define VERSION "v0.0.07"
+#define VERDATE "2015-08-11"
 
 Token*toks;
 int tIndex;
@@ -25,7 +25,7 @@ int tIndex;
 #define INC_POS(x) (tIndex += x)
 #define IS_OPERATOR(t) (t==Tok_Plus||t==Tok_Minus||t==Tok_Multiply||t==Tok_Divide||t==Tok_Exponent||t==Tok_StrConcat)
 
-void interpret(FILE *src, int tty);
+void interpret(FILE *src, char isTty);
 Coords lookupVar(char *identifier);
 Variable initExpr(void);
 Variable expression(Variable v, uint8_t minP);

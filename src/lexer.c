@@ -4,11 +4,11 @@ char current, lookAhead; //The current and lookAhead chars from src
 TokenType prevType; //The previous TokenType found.  Initialized with Tok_Begin
 
 char*color = RESET_COLOR;
-//Level of spacing in the src.  Used to identify where to give Indent,
-//Unindent, or Newline tokens.
 char *srcLine;
 char *pos;
-char scope;
+//Level of spacing in the src.  Used to identify where to give Indent,
+//Unindent, or Newline tokens.
+int scope;
 
 Token genWhitespaceToken();
 Token genAlphaNumericalToken();
@@ -57,8 +57,11 @@ Token getNextToken(){
         while(lookAhead != '\n') incrementPos();
         return getNextToken();
     }else if(current == '`'){ //Multi line comment.  Skip until next `
+        do
+            incrementPos();
+        while(current != '`' && current != EOF && current != '\0');
+
         incrementPos();
-        while(current != '`' && current != EOF && current != '\0') incrementPos();
         return getNextToken();
     }
 
@@ -70,7 +73,7 @@ Token getNextToken(){
     else if(IS_NUMERIC(current))       return genNumericalToken();
     else if(IS_ALPHA_NUMERIC(current)) return genAlphaNumericalToken();
 
-    Token tok;
+    Token tok = {Tok_Invalid, NULL};
     tok.lexeme = calloc(sizeof(char), 3);
     tok.lexeme[0] = current;
     switch(current){ //Here at last: the glorified switch statement
@@ -230,10 +233,9 @@ Token getNextToken(){
 
 
 Token genWhitespaceToken(){
-    Token tok;
-
     //If the whitespace is a newline, then check to see if the scope has changed
     if(current == '\n' || current == 13){
+        Token tok = {Tok_Newline, NULL};
         int newScope = 0;
 
         while(1){
@@ -249,22 +251,13 @@ Token genWhitespaceToken(){
         if(lookAhead == '~' || lookAhead == '`') return getNextToken();
 
         //Compare the new scope with the old.  Assign TokenType as necessary
-        if(newScope > scope){
+        if(newScope > scope)
             tok.type = Tok_Indent;
-        }else if(newScope < scope){
+        else if(newScope < scope)
             tok.type = Tok_Unindent;
-        }else{/*newScope == scope*/
-            tok.type = Tok_Newline;
-        }
 
-        int i;
-        tok.lexeme = calloc(sizeof(char), 1);
-        for(i=1; i <= newScope; i++){
-            ralloc(&tok.lexeme, sizeof(char) * (i+2));
-            tok.lexeme[i] = ' ';
-            tok.lexeme[i+1] = '\0';
-        }
         scope = newScope;
+        incrementPos();
         return tok;
     }else{
         while(IS_WHITESPACE(current) && current != '\n' && current != 13) {
@@ -329,30 +322,53 @@ void incrementPos(){
 }
 
 void printTok(Token t){
-    if(t.type == Tok_String || t.type == Tok_Char || t.type == Tok_Num ||  t.type == Tok_For || t.type == Tok_If || t.type == Tok_While || t.type == Tok_Import || t.type == Tok_Break || t.type == Tok_Continue || t.type == Tok_Else || t.type == Tok_Return || t.type == Tok_Print)
+    switch(t.type){
+    case Tok_String: 
+    case Tok_Char:
+    case Tok_Num: 
+    case Tok_For: 
+    case Tok_If: 
+    case Tok_While: 
+    case Tok_Import: 
+    case Tok_Break: 
+    case Tok_Continue: 
+    case Tok_Else: 
+    case Tok_Return: 
+    case Tok_Print:
         printf(KEYWORD_COLOR "%s" RESET_COLOR, t.lexeme);
-    else if(t.type == Tok_StringLiteral)
+        break;
+    case Tok_StringLiteral:
         printf(STRINGL_COLOR "\"%s\"" RESET_COLOR, t.lexeme);
-    else if(t.type == Tok_IntegerLiteral || t.type == Tok_DoubleLiteral)
+        break;
+    case Tok_IntegerLiteral: 
+    case Tok_DoubleLiteral:
         printf(INTEGERL_COLOR "%s" RESET_COLOR, t.lexeme);
-    else if(t.type == Tok_MalformedString)
+        break;
+    case Tok_MalformedString:
         printf(STRINGL_COLOR "\"%s" RESET_COLOR, t.lexeme);
-    else if(t.type == Tok_CharLiteral)
+        break;
+    case Tok_CharLiteral:
         printf(STRINGL_COLOR "'%s'" RESET_COLOR, t.lexeme);
-    else if(t.type == Tok_MalformedChar)
+        break;
+    case Tok_MalformedChar:
         printf(STRINGL_COLOR "'%s" RESET_COLOR, t.lexeme);
-    else if(t.type == Tok_Function){
+        break;
+    case Tok_Function:
         printf(FUNCTION_COLOR "--");
         color = FUNCTION_COLOR;
-    }else if(t.type == Tok_Colon || t.type == Tok_Minus || t.type == Tok_ParenOpen){
+        break;
+    case Tok_Colon:
+    case Tok_Minus:
+    case Tok_ParenOpen:
         printf(RESET_COLOR "%s", t.lexeme);
         color = RESET_COLOR;
-    }else{
+        break;
+    default:
         printf("%s%s\033[1;m", color, t.lexeme);
     }
 }
 
-Token *lexer_next(char b){
+Token* lexer_next(char b){
     int i;
     printToks = b;
     Token *tok = malloc(sizeof(Token));
@@ -361,9 +377,9 @@ Token *lexer_next(char b){
     if(printToks)
         printf("\r" RESET_COLOR ": ");
 
-    for(i = 1; !IS_ENDING_TOKEN(tok[i-1].type); i++)
+    for(i = 1; tok[i-1].type != Tok_EndOfInput; i++)
     {
-        if(printToks)
+        if(printToks && !IS_WHITESPACE_TOKEN(tok[i-1]))
             printTok(tok[i-1]);
         
         tok = realloc(tok, sizeof(Token) * (i+1));
@@ -373,21 +389,42 @@ Token *lexer_next(char b){
     return tok;
 }
 
+void lexAndPrint(){
+    initialize_lexer(0);
+    Token *toks = lexer_next(0);
+    int i;
+    for(i = 0; toks[i].type != Tok_EndOfInput; i++){
+        switch(toks[i].type){
+        case Tok_Newline: 
+        case Tok_Indent: 
+        case Tok_Unindent:
+            printf("     \t%s\n", tokenDictionary[toks[i].type]);
+            break;
+        default:
+            printf("%s \t%s\n", toks[i].lexeme, tokenDictionary[toks[i].type]);
+            break;
+        }
+        free(toks[i].lexeme);
+    }
+    free(toks);
+}
+
 void freeToks(Token **t){
     int i;
     for(i = 0; (*t)[i].type != Tok_EndOfInput; i++)
-        free((*t)[i].lexeme);
+        if((*t)[i].lexeme != NULL)
+            free((*t)[i].lexeme);
     free(*t);
 }
 
-void initialize_lexer(int tty){ //Sets up the lookAhead character properly so that
+void initialize_lexer(char tty){ //Sets up the lookAhead character properly so that
     if(tty){
         isTty = 1;
         pos = srcLine;
         current = 0;
         lookAhead = 0;
     }else if(!src){
-        printf("ERROR: Lexer: source file not found.\n");
+        printf("ERROR: source file not found.\n");
         exit(7);
     }
 

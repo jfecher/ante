@@ -104,11 +104,12 @@ extern char*color;
 //Returns 1 if character is whitespace
 #define IS_WHITESPACE(c) (c==' ' || c=='\t' || c=='\n' || c==130 || c==13)
 
-#define IS_ENDING_TOKEN(t) (t==Tok_EndOfInput||t==Tok_Unindent||t==Tok_Indent||t==Tok_Newline)
+#define IS_WHITESPACE_TOKEN(t) (t.type==Tok_Newline||t.type==Tok_Indent||t.type==Tok_Unindent)
 
-void   initialize_lexer(int tty); //begins lexation of file
+void   initialize_lexer(char tty); //begins lexation of file
 Token* lexer_next(char b); //gets line of tokens.  if b is true, it prints them as well
 void   freeToks(Token **t);
+void   lexAndPrint(void);
 void   lexer_printWhitespace(char c);
 void   lexer_printTokens(char c);
 void   ralloc(char** ptr, size_t size);

@@ -21,16 +21,20 @@ funcPtr ops[] = {
 };
 
 Operator operators[] = {
-    {Tok_Comma,    0, 0},
-    {Tok_Plus,     1, 0},
-    {Tok_Minus,    1, 0},
-    {Tok_Multiply, 2, 0},
-    {Tok_Divide,   2, 0},
-    {Tok_Modulus,  2, 0},
-    {Tok_Exponent, 3, 1}
+    {Tok_Comma,     0, 0},
+    {Tok_StrConcat, 1, 0},
+    {Tok_Plus,      2, 0},
+    {Tok_Minus,     2, 0},
+    {Tok_Multiply,  3, 0},
+    {Tok_Divide,    3, 0},
+    {Tok_Modulus,   3, 0},
+    {Tok_Exponent,  4, 1}
 };
 
-/* returns the index of an identifier in the variable table.  Returns -1 if no matches are found */
+/*
+ *  Returns the index of an identifier in the variable table or -1 if no
+ *  matches are found
+ */
 Coords lookupVar(char* identifier){
     int i, j;
 
@@ -209,70 +213,6 @@ Variable expression(Variable l, uint8_t minPrecedence){
     INC_POS(1);
     return l;
 }
-/*
- *      expression()
- * Returns a variable containing the result of
- * any expression.  Utilizes stacks to maintain
- * order of operations.
- *
- *      9 * 6 + 2 * (3 + 7)^2 + 3
- *      9 * 6 + 2 * 10^2 + 3
- *      9 * 6 + 2 * 100 + 3
- *      54 + 2 * 100 + 3
- *      54 + 200 + 3
- *      254 + 3
- *      257
- *
- */
-/*Variable expression(Variable v, uint8_t minP){
-    ExprValue *t = NULL;
-    uint8_t scope = 0;
-    int start = tIndex;
-
-    for(; !IS_ENDING_TOKEN(toks[tIndex].type); tIndex++){
-        t = realloc(t, sizeof(ExprValue) * (tIndex-start+1));
-        t[tIndex-start].isOp = 0;
-
-        if(toks[tIndex].type == Tok_ParenOpen){
-            scope++;
-            tIndex++;
-            t[tIndex-start].v = expression();
-        }else if(toks[tIndex].type == Tok_ParenClose){
-            scope--;
-            if(scope < 0)
-                break;
-        }else if(IS_OPERATOR(toks[tIndex].type)){
-            t[tIndex-start].isOp = 1;
-            t[tIndex-start].t = toks[tIndex].type;
-        }else{
-            t[tIndex-start].v = getValue(toks[tIndex]);
-        }
-    }
-
-    int i;
-    int len = tIndex-start;
-
-    for(i=0; i < len; i++){
-        if(t[i].isOp && t[i].t == Tok_Multiply){
-            t[i-1].v.value = multiply(t[i-1].v.value, t[i+1].v.value);
-            removeEVPair(&t, i);
-            i--;
-            len -= 2;
-        }
-    }
-    for(i=0; i < len; i++){
-        if(t[i].isOp && t[i].t == Tok_Plus){
-            printf("i = %d, len = %d, t[%d].v->value = %s, t[%d].v->value = %s\n", i, ARR_SIZE(t), i-1, t[i-1].v.value, i+1, t[i+1].v.value);
-            t[i-1].v.value = add(t[i-1].v.value, t[i+1].v.value);
-            removeEVPair(&t, i);
-            printf("Size: %lu\n", ARR_SIZE(t));
-            len -= 2;
-            i--;
-        }
-    }
-
-    return t[0].v;
-}*/
 
 //char **history;
 void initializeInterpreter(){
@@ -321,12 +261,42 @@ void getln(){
     puts("");
 }
 
-void interpret(FILE *src, int tty){
+char exec(){
+    toks = lexer_next(0);
+    tIndex = 0;
+
+    if(parse(toks))
+        return 0;
+
+    uint8_t opcode = toks[tIndex].type;
+    if(opcode == Tok_Newline)
+        opcode = toks[++tIndex].type;
+
+    while(opcode < ARR_SIZE(ops)){
+        ops[opcode]();
+        
+        if(toks[tIndex].type == Tok_Newline)
+            tIndex++;
+
+        opcode = toks[tIndex].type;
+    }
+
+    if(srcLine){
+        free(srcLine);
+        freeToks(&toks);
+    }else{
+        free(toks); 
+    }
+        
+    return 1;
+}
+
+void interpret(FILE *src, char isTty){
     initializeInterpreter();
 
-    if(!tty){
-        parse(src);
-        puts("Running file...");
+    if(!isTty){
+        initialize_lexer(0);
+        exec();
     }else{
         setupTerm();
 
@@ -336,28 +306,12 @@ void interpret(FILE *src, int tty){
         for(;;){
             for(i=1; i < stack.size; i++){ printf(":"); }
 
-            getln();//Tokenizes the entire line, and prints it out on screen
-
+            getln();//Tokenizes the entire line, and print it out on screen
             initialize_lexer(1);
-            toks = lexer_next(0);
-            tIndex = 0;
+            exec();
 
             if(strcmp(srcLine, "exit") == 0)
                 break;
-
-            if(parse(toks)){
-                printf("Parser returned %d.\n", exitFlag);
-                continue;
-            }
-
-            uint8_t opcode = toks[tIndex].type;
-            while(opcode < ARR_SIZE(ops) && opcode >= 0){
-                ops[opcode]();
-                opcode = toks[tIndex].type;
-            }
-
-            free(srcLine);
-            freeToks(&toks);
         }
     }
 

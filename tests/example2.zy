@@ -1,5 +1,8 @@
-~A simple zy file aimed to be ready for interpretation early on
-int> i = 12
+`
+    example2.zy
+        Tests initializations, assignments, and print statements
+`
+num> i = 12
 print i
 i = 3
 print i
