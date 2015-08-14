@@ -6,7 +6,8 @@
 typedef unsigned char uint8_t;
 typedef enum{ Object, Num, String, Function, Invalid} Type;
 
-//typedef union{ long long i; double d; char c; char *s; } Value;
+#define ARR_SIZE(a) (sizeof(a) / sizeof(*a))
+
 #define NFREE(x) if(x!=NULL) free(x)
 
 typedef void* Value;
@@ -19,12 +20,6 @@ typedef struct{
     int x;
     int y;
 } Coords;
-
-typedef struct{
-    TokenType op;
-    uint8_t precedence;
-    uint8_t associativity;
-} Operator;
 
 typedef struct{
     Value value;

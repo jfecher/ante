@@ -47,8 +47,7 @@ inline void ralloc(char **ptr, size_t size){
 
 Token getNextToken(){
     if(current == EOF || current == '\0'){
-        Token tok;
-        tok.type = Tok_EndOfInput;
+        Token tok = {Tok_EndOfInput, NULL};
         return tok;
     }
 

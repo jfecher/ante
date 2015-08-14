@@ -1,5 +1,5 @@
 WARNINGS := -Wall
-CFLAGS := -g -O3 $(WARNINGS)
+CFLAGS := -g -O3 -std=c11 $(WARNINGS)
 
 PROJDIRS := src include
 AUXFILES := Makefile README.md LICENSE
@@ -16,15 +16,15 @@ ALLFILES := $(SRCFILES) $(HDRFILES) $(AUXFILES)
 
 .PHONY: all clean
 
-all: zy
+all: $(OBJFILES) zy
 
 zy: $(OBJFILES)
 	$(CC) $(CFLAGS) -o zy $?
 	@mv $(OBJFILES) obj
 	-@$(RM) $(DEPFILES)
-
+	
 %.o: %.c Makefile
-	@$(CC) $(CFLAGS) -MMD -MP -Iinclude -c $< -o $@
+	$(CC) $(CFLAGS) -MMD -MP -Iinclude -c $< -o $@
 
 clean:
 	-@$(RM) $(wildcard $(OBJFILES) $(DEPFILES) zy)

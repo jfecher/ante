@@ -6,6 +6,7 @@
 #include "stack.h"
 #include "bignum.h"
 #include "table.h"
+#include "expression.h"
 
 #define VERSION "v0.0.07"
 #define VERDATE "2015-08-11"
@@ -25,10 +26,9 @@ int tIndex;
 #define INC_POS(x) (tIndex += x)
 #define IS_OPERATOR(t) (t==Tok_Plus||t==Tok_Minus||t==Tok_Multiply||t==Tok_Divide||t==Tok_Exponent||t==Tok_StrConcat)
 
-void interpret(FILE *src, char isTty);
-Coords lookupVar(char *identifier);
-Variable initExpr(void);
-Variable expression(Variable v, uint8_t minP);
+void interpret(FILE*, char);
+Coords lookupVar(char*);
+Variable getValue(Token);
 
 void op_initObject();
 void op_assign();
@@ -36,5 +36,6 @@ void op_print();
 void op_function();
 void op_initNum();
 void op_initStr();
+void op_typeOf();
 
 #endif

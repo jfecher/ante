@@ -20,17 +20,6 @@ funcPtr ops[] = {
     &op_initStr
 };
 
-Operator operators[] = {
-    {Tok_Comma,     0, 0},
-    {Tok_StrConcat, 1, 0},
-    {Tok_Plus,      2, 0},
-    {Tok_Minus,     2, 0},
-    {Tok_Multiply,  3, 0},
-    {Tok_Divide,    3, 0},
-    {Tok_Modulus,   3, 0},
-    {Tok_Exponent,  4, 1}
-};
-
 /*
  *  Returns the index of an identifier in the variable table or -1 if no
  *  matches are found
@@ -110,12 +99,15 @@ Variable copyVar(Variable v){
 }
 
 void op_function(){
-    puts("function");
+    if(strcmp(toks[tIndex+1].lexeme, "typeof") == 0){
+        INC_POS(1);
+        op_typeOf();
+    }
 }
 
 void op_print(){
     INC_POS(1);
-    printf("%s\n", (char*)initExpr().value);
+    printf("%s\n", (char*)expression().value);
 }
 
 void op_initNum(){
@@ -151,7 +143,7 @@ Variable getValue(Token t){
         return copyVar(stack.items[c.x].table[c.y]);
     }else if(t.type == Tok_ParenOpen){
         INC_POS(1);
-        Variable v = initExpr();
+        Variable v = expression();
         return v;
     }else{
         return makeVarFromTok(t);
@@ -163,55 +155,14 @@ void op_assign(){
     CPY_TO_NEW_STR(name, toks[tIndex].lexeme);
     getCoords(c, name);
     INC_POS(2);
-    setVar(&stack.items[c.x].table[c.y], initExpr());
+    setVar(&stack.items[c.x].table[c.y], expression());
 }
 
-void lib_system(){
-
-}
-
-void lib_typeof(){
-    if(toks[3].type == Tok_Identifier){
-        getCoords(c, toks[3].lexeme);
-        if(stack.items[c.x].table[c.y].dynamic)
-            printf("dynamic ");
-        puts(typeDictionary[stack.items[c.x].table[c.y].type]);
-    }else{
-        puts(tokenDictionary[toks[3].type]);
-    }
-}
-
-Operator getOperator(TokenType t){
-    int i;
-    for(i = 0; i < ARR_SIZE(operators); i++){
-        if(operators[i].op == t){
-            return operators[i];
-        }
-    }
-    Operator invalid = {-1, 0, 0};
-    return invalid;
-}
-
-inline Variable initExpr(){
-    return expression(getValue(toks[tIndex]), 0);
-}
-
-Variable expression(Variable l, uint8_t minPrecedence){
-    Operator lookAhead = getOperator(toks[tIndex+1].type);
-    while(lookAhead.op != -1 && lookAhead.precedence >= minPrecedence){
-        //Operator op = lookAhead;
-        INC_POS(2);
-        Variable r = getValue(toks[tIndex]);
-        lookAhead = getOperator(toks[tIndex + 1].type);
-
-        while(lookAhead.op != -1 && (lookAhead.precedence > minPrecedence || (lookAhead.associativity && lookAhead.precedence >= minPrecedence))){
-            r = expression(r, lookAhead.precedence);
-            lookAhead = getOperator(toks[tIndex + 1].type);
-        }
-        l.value = add(l.value, r.value);
-    }
-    INC_POS(1);
-    return l;
+void op_typeOf(){
+    Variable v = expression();
+    if(v.dynamic)
+        printf("dynamic ");
+    printf("%s\n", typeDictionary[v.type]);
 }
 
 //char **history;
@@ -307,11 +258,11 @@ void interpret(FILE *src, char isTty){
             for(i=1; i < stack.size; i++){ printf(":"); }
 
             getln();//Tokenizes the entire line, and print it out on screen
+            if(strcmp(srcLine, "exit") == 0)
+                break;
             initialize_lexer(1);
             exec();
 
-            if(strcmp(srcLine, "exit") == 0)
-                break;
         }
     }
 

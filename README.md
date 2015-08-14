@@ -5,7 +5,7 @@ An interpreted, statically typed language
 * Zy can either interpret straight from the command line, or can be given a file
 * While by default variables are dynamic, they can optionally be given a type  
 ```go
-\>dyn = 32       ~create a dynamic variable dyn, and give it the value 32  
+>dyn = 32       ~create a dynamic variable dyn, and give it the value 32  
 dyn = "Test 1"  ~change dyn to a string.  
 int> i = 55     ~create i, an integer  
 i = "Test 2"    ~This line triggers a runtime error since i has a static typing  

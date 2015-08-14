@@ -4,8 +4,6 @@
 #include <stdlib.h>
 #include "types.h"
 
-#define ARR_SIZE(a) (sizeof(a) / sizeof(a[0]))
-
 typedef struct{
     Variable *table;
     unsigned int size;
