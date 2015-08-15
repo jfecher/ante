@@ -22,26 +22,33 @@ Operator getOperator(TokenType t){
     return invalid;
 }
 
-inline Variable expression(void){
-    return _expression(getValue(toks[tIndex]), 0);
+Variable expression(void){
+    Variable v = getValue(toks[tIndex]);
+    if(v.type == Invalid)
+        return v;
+
+    v = _expression(v, 0);
+    INC_POS(1);
+    return v;
 }
 
 Variable _expression(Variable l, uint8_t minPrecedence){
     Operator lookAhead = getOperator(toks[tIndex+1].type);
     while(lookAhead.op != -1 && lookAhead.prec >= minPrecedence){
-        //Operator op = lookAhead;
+        Operator op = lookAhead;
         INC_POS(2);
         Variable r = getValue(toks[tIndex]);
         lookAhead = getOperator(toks[tIndex + 1].type);
 
-        while(lookAhead.op != -1 && (lookAhead.prec > minPrecedence || (lookAhead.rAsso && lookAhead.prec >= minPrecedence))){
+        while(lookAhead.op != -1 && (lookAhead.prec > op.prec || (lookAhead.rAsso && lookAhead.prec >= op.prec))){
             r = _expression(r, lookAhead.prec);
             lookAhead = getOperator(toks[tIndex + 1].type);
         }
+        Value tmp = l.value;
         l.value = add(l.value, r.value);
+        free(tmp);
         free(r.value);
     }
-    INC_POS(1);
     return l;
 }
 

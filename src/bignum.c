@@ -1,7 +1,6 @@
 #include "bignum.h"
 
-BigNum bignum_new(char* val)
-{
+BigNum bignum_new(char* val){
     if(isnumeric(val)){
         return bignum_copy(val);
     }else{
@@ -10,15 +9,13 @@ BigNum bignum_new(char* val)
     }
 }
 
-BigNum bignum_copy(BigNum src)
-{
+BigNum bignum_copy(BigNum src){
     BigNum dest = malloc(sizeof(char) * strlen(src) + 1);
     strcpy(dest, src);
     return dest;
 }
 
-void shift(BigNum n)
-{
+void shift(BigNum n){
     char p,c;
     int i;
     for(i=0, p=48; i < strlen(n)+1; i++){
@@ -37,17 +34,17 @@ void fill(BigNum n, char c, size_t len){
     n[i] = '\0';
 }
 
-BigNum add(BigNum augend, BigNum addend)
-{
+BigNum add(BigNum augend, BigNum addend){
     size_t len1 = strlen(augend);
     size_t len2 = strlen(addend);
-
-    printf("Adding %s and %s.\n", augend, addend);
 
     //If len2 is larger, swap the values so that
     //the augend is larger
     if(len2 > len1){
-        swap((void**)&augend, (void**)&addend);
+        BigNum buf = augend;
+        augend = addend;
+        addend = buf;
+
         size_t buffer = len1;
         len1 = len2;
         len2 = buffer;
@@ -64,7 +61,7 @@ BigNum add(BigNum augend, BigNum addend)
             dsum = sum[len1 - i - 1]-48 + addend[len2 - i - 1]-48 + rem;
         }else{
             if(len1-i-1 == -1){
-                sum = realloc(sum, sizeof(char) * strlen(sum) + 1);
+                sum = realloc(sum, sizeof(char) * strlen(sum) + 2);
                 shift(sum);
                 sum[0] = '1';
                 break;
@@ -79,8 +76,7 @@ BigNum add(BigNum augend, BigNum addend)
     return sum;
 }
 
-BigNum multiply(BigNum multiplicand, BigNum multiplier)
-{
+BigNum multiply(BigNum multiplicand, BigNum multiplier){
     size_t len1 = strlen(multiplicand);
     size_t len2 = strlen(multiplier);
 
@@ -117,36 +113,20 @@ BigNum multiply(BigNum multiplicand, BigNum multiplier)
             free(addend);
         }
     }
-
     return product;
 }
 
-char
-isnumeric(char* str)
-{
+char isnumeric(char* str){
     size_t len = strlen(str);
     int i, decimal=0;
-    for(i = 0; i < len; i++)
-    {
-        if(str[i] < 48 || str[i] > 57)
-        {
-            if(str[i] == '.' && !decimal)
-            {
+    for(i = 0; i < len; i++){
+        if(str[i] < 48 || str[i] > 57){
+            if(str[i] == '.' && !decimal){
                 decimal = 1;
-            }
-            else if(!(i == 0 && str[0] == '-'))
-            {
+            }else if(!(i == 0 && str[0] == '-')){
                 return 0;
             }
         }
     }
     return 1;
-}
-
-void
-swap(void**p1, void**p2)
-{
-    void*buffer = *p1;
-    *p1 = *p2;
-    *p2 = buffer;
 }

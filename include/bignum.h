@@ -5,13 +5,11 @@
 
 typedef char* BigNum;
 
+BigNum bignum_new(char*);
+BigNum bignum_copy(BigNum);
 
-BigNum bignum_new(char* val);
-BigNum bignum_copy(BigNum n);
+BigNum add(BigNum, BigNum);
+BigNum multiply(BigNum, BigNum);
 
-BigNum add(BigNum addend1, BigNum addend2);
-BigNum multiply(BigNum a1, BigNum a2);
-
-char isnumeric(char*str);
-void swap(void**p1, void**p2);
+char isnumeric(char*);
 
