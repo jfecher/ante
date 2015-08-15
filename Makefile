@@ -1,32 +1,32 @@
+vpath %.c src
+vpath %.h include
+vpath %.d obj
+
 WARNINGS := -Wall
-CFLAGS := -g -O3 -std=c11 $(WARNINGS)
+CFLAGS   := -g -O3 -std=c99 $(WARNINGS)
 
 PROJDIRS := src include
-AUXFILES := Makefile README.md LICENSE
-
 SRCFILES := $(shell find $(PROJDIRS) -type f -name "*.c")
-HDRFILES := $(shell find $(PROJDIRS) -type f -name "*.h")
 
-OBJFILES := $(patsubst %.c,%.o,$(SRCFILES))
-DEPFILES := $(patsubst %.c,%.d,$(SRCFILES))
-
-ALLFILES := $(SRCFILES) $(HDRFILES) $(AUXFILES)
+OBJFILES := $(patsubst src/%.c,obj/%.o,$(SRCFILES))
+DEPFILES := $(SRCFILES:.c=.d)
 
 -include $(DEPFILES)
 
-.PHONY: all clean
+.PHONY: all obj clean
 
-all: $(OBJFILES) zy
+all: zy
 
 zy: $(OBJFILES)
-	$(CC) $(CFLAGS) -o zy $?
-	@mv $(OBJFILES) obj
-	-@$(RM) $(DEPFILES)
-	
-%.o: %.c Makefile
-	$(CC) $(CFLAGS) -MMD -MP -Iinclude -c $< -o $@
+	-$(CC) $(CFLAGS) -o zy $?
+
+$(OBJFILES): | obj
+
+obj: 
+	@mkdir -p $@
+
+obj/%.o: %.c Makefile
+	-$(CC) $(CFLAGS) -MMD -MP -Iinclude -c $< -o $@
 
 clean:
-	-@$(RM) $(wildcard $(OBJFILES) $(DEPFILES) zy)
-
-
+	-@$(RM) obj/*.o obj/*.d zy
