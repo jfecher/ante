@@ -1,6 +1,6 @@
 #include "bignum.h"
 
-BigNum bignum_new(char* val){
+BigNum bignum_new(BigNum val){
     if(isnumeric(val)){
         return bignum_copy(val);
     }else{
@@ -38,6 +38,10 @@ BigNum add(BigNum augend, BigNum addend){
     size_t len1 = strlen(augend);
     size_t len2 = strlen(addend);
 
+    bool b = true;
+    bool arb[10];
+    char arc[10];
+    printf("sizeof(arb) = %lu, sizeof(arc) = %lu\n", sizeof(arb), sizeof(arc));
     //If len2 is larger, swap the values so that
     //the augend is larger
     if(len2 > len1){
@@ -114,7 +118,7 @@ BigNum multiply(BigNum multiplicand, BigNum multiplier){
     return product;
 }
 
-char isnumeric(char* str){
+char isnumeric(BigNum str){
     size_t len = strlen(str);
     int i, decimal=0;
     for(i = 0; i < len; i++){
