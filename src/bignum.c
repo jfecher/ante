@@ -80,8 +80,6 @@ BigNum multiply(BigNum multiplicand, BigNum multiplier){
     size_t len1 = strlen(multiplicand);
     size_t len2 = strlen(multiplier);
 
-    printf("Multiplying %s and %s.\n", multiplicand, multiplier);
-
     //The maximum result when two integers are multiplied can have no more
     //digits than the multiplicand's digits + the multiplier's digits
     BigNum product = malloc(len1 + len2);
@@ -98,12 +96,12 @@ BigNum multiply(BigNum multiplicand, BigNum multiplier){
 
             if(dproduct > 9){
                 addend = malloc( 3 + base ); //2 extra chars for each digit of dproduct, 1 extra for \0
-                fill(addend, '0', 3 + base);
+                fill(addend, '0', 2 + base);
                 addend[0] = (dproduct / 10) + 48;
                 addend[1] = (dproduct % 10) + 48;
             }else{
                 addend = malloc( 2 + base );
-                fill(addend, '0', 2 +base);
+                fill(addend, '0', 1 +base);
                 addend[0] = (dproduct % 10) + 48;
             }
 

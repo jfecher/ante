@@ -13,12 +13,12 @@ DEPFILES := $(SRCFILES:.c=.d)
 
 -include $(DEPFILES)
 
-.PHONY: all obj clean
+.PHONY: all clean
 
 all: zy
 
 zy: $(OBJFILES)
-	-$(CC) $(CFLAGS) -o zy $?
+	-@$(CC) $(CFLAGS) -o zy $?
 
 $(OBJFILES): | obj
 
@@ -26,7 +26,7 @@ obj:
 	@mkdir -p $@
 
 obj/%.o: %.c Makefile
-	-$(CC) $(CFLAGS) -MMD -MP -Iinclude -c $< -o $@
+	-@$(CC) $(CFLAGS) -MMD -MP -Iinclude -c $< -o $@
 
 clean:
 	-@$(RM) obj/*.o obj/*.d zy

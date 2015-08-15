@@ -3,13 +3,23 @@
 Operator operators[] = {
     {Tok_Comma,     0, 0, NULL},
     {Tok_StrConcat, 1, 0, NULL},
-    {Tok_Plus,      2, 0, NULL},
+    {Tok_Plus,      2, 0, op_add},
     {Tok_Minus,     2, 0, NULL},
-    {Tok_Multiply,  3, 0, NULL},
+    {Tok_Multiply,  3, 0, op_mul},
     {Tok_Divide,    3, 0, NULL},
     {Tok_Modulus,   3, 0, NULL},
     {Tok_Exponent,  4, 1, NULL}
 };
+
+inline Variable op_add(Variable augend, Variable addend){
+    Variable ret = {add(augend.value, addend.value), Num, 0, NULL};
+    return ret;
+}
+
+inline Variable op_mul(Variable m1, Variable m2){
+    Variable ret = {multiply(m1.value, m2.value), Num, 0, NULL};
+    return ret;
+}
 
 Operator getOperator(TokenType t){
     int i;
@@ -45,7 +55,7 @@ Variable _expression(Variable l, uint8_t minPrecedence){
             lookAhead = getOperator(toks[tIndex + 1].type);
         }
         Value tmp = l.value;
-        l.value = add(l.value, r.value);
+        l = op.func(l, r);
         free(tmp);
         free(r.value);
     }

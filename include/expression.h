@@ -16,4 +16,7 @@ typedef struct{
 Variable expression(void);
 Variable _expression(Variable, uint8_t);
 
+Variable op_add(Variable, Variable);
+Variable op_mul(Variable, Variable);
+
 #endif
