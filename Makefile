@@ -3,7 +3,7 @@ vpath %.h include
 vpath %.d obj
 
 WARNINGS := -Wall
-CFLAGS   := -g -O3 -std=c11 $(WARNINGS)
+CFLAGS   := -g -O2 -lgmp -std=c11 $(WARNINGS)
 
 PROJDIRS := src include
 SRCFILES := $(shell find $(PROJDIRS) -type f -name "*.c")

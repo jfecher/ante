@@ -4,6 +4,8 @@
 #include "types.h"
 #include "interpreter.h"
 
+#define VAR(v, t) ((Variable){v, t, 0, NULL})
+
 typedef Variable (*opFunc)(Variable, Variable);
 
 typedef struct{

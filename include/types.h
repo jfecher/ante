@@ -4,7 +4,7 @@
 #include "lexer.h"
 
 typedef unsigned char uint8_t;
-typedef enum{ Object, Num, String, Function, Invalid} Type;
+typedef enum{ Object, Num, Int, String, Function, Invalid} Type;
 
 #define ARR_SIZE(a) (sizeof(a) / sizeof(*a))
 

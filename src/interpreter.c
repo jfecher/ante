@@ -6,6 +6,7 @@
 char *typeDictionary[] = {
     "Object",
     "Num",
+    "Int",
     "String",
     "Function",
     "Invalid"
@@ -17,7 +18,8 @@ funcPtr ops[] = {
     &op_print,
     &op_function,
     &op_initNum,
-    &op_initStr
+    &op_initStr,
+    &op_initInt,
 };
 
 /*
@@ -62,15 +64,22 @@ Coords lookupFunc(char* identifier){
  */
 void initVar(char *identifier, Type t){
     Coords c = lookupVar(identifier);
-    if(c.x != -1){
+    if(c.x != -1){ //lookupVar returns {-1, -1} if the var was not found
         runtimeError(ERR_ALREADY_INITIALIZED, identifier);
         free(identifier);
     }
 
+    //           value, type, dynamic, name
     Variable v = {NULL, t, t == Object, identifier};
-    if(t == Num){
-        CPY_TO_STR(v.value, "0");
-    }else{
+
+    switch(t){
+    case Num:
+        v.value = bignum_new("0");
+        break;
+    case Int:
+        v.value = bigint_new("0");
+        break;
+    default:
         CPY_TO_STR(v.value, "");
     }
     varTable_add(&stack_top(stack), v);
@@ -92,9 +101,19 @@ void setVar(Variable *v, Variable val){
     }
 }
 
+//TODO: expand with num types
 Variable copyVar(Variable v){
     Variable cpy = {NULL, v.type, v.dynamic, NULL};
-    CPY_TO_STR(cpy.value, v.value);
+    switch(v.type){
+    case Int:
+        cpy.value = bigint_copy(v.value);
+        break;
+    case Num:
+        cpy.value = bignum_copy(v.value);
+        break;
+    default: 
+        CPY_TO_STR(cpy.value, v.value);        
+    }
     return cpy;
 }
 
@@ -103,16 +122,35 @@ void op_function(){
         INC_POS(1);
         op_typeOf();
     }
+    INC_POS(1);
 }
 
 void op_print(){
     INC_POS(1);
-    printf("%s\n", (char*)expression().value);
+    Variable v = expression();
+
+    switch(v.type){
+        case Int:;
+            mpz_out_str(stdout, 10, *(BigInt)v.value);
+            break;
+        case Num:;
+            mpf_out_str(stdout, 10, 10, *(BigNum)v.value);
+            break;
+        default:
+            printf("%s", (char*)expression().value);
+    }
+    puts("");
 }
 
 void op_initNum(){
     CPY_TO_NEW_STR(id, toks[tIndex+2].lexeme);
     initVar(id, Num);
+    INC_POS(2);
+}
+
+void op_initInt(){
+    CPY_TO_NEW_STR(id, toks[tIndex+2].lexeme);
+    initVar(id, Int);
     INC_POS(2);
 }
 
@@ -123,8 +161,10 @@ void op_initStr(){
 }
 
 Type tokTypeToVarType(TokenType t){
-    if(t == Tok_IntegerLiteral || t == Tok_DoubleLiteral){
+    if(t == Tok_DoubleLiteral){
         return Num;
+    }else if(t == Tok_IntegerLiteral){
+        return Int;
     }else if(t == Tok_StringLiteral || t == Tok_CharLiteral){
         return String;
     }
@@ -133,7 +173,13 @@ Type tokTypeToVarType(TokenType t){
 
 Variable makeVarFromTok(Token t){
     Variable ret = {NULL, tokTypeToVarType(t.type), 0, NULL};
-    CPY_TO_STR(ret.value, t.lexeme);
+    if(ret.type == Int){
+        ret.value = bigint_new(t.lexeme);
+    }else if(ret.type == Num){
+        ret.value = bignum_new(t.lexeme);
+    }else{    
+        CPY_TO_STR(ret.value, t.lexeme);
+    }
     return ret;
 }
 
@@ -163,6 +209,7 @@ void op_typeOf(){
     if(v.dynamic)
         printf("dynamic ");
     printf("%s\n", typeDictionary[v.type]);
+    INC_POS(4);
 }
 
 //char **history;

@@ -136,7 +136,7 @@ int class_def(){
  */
 int type(){
     debugLog("Parser: Checking type.");
-    if(check(Tok_Num) || check(Tok_String) || check(Tok_Boolean) || check(Tok_Char) || check(Tok_Identifier)){
+    if(check(Tok_Num) || check(Tok_Int) || check(Tok_String) || check(Tok_Boolean) || check(Tok_Char) || check(Tok_Identifier)){
         return tokenizedInput[tokenIndex].type;
     }else{
         return Tok_Invalid;

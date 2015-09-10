@@ -30,12 +30,13 @@ void interpret(FILE*, char);
 Coords lookupVar(char*);
 Variable getValue(Token);
 
-void op_initObject();
-void op_assign();
-void op_print();
-void op_function();
-void op_initNum();
-void op_initStr();
-void op_typeOf();
+void op_initObject(void);
+void op_assign(void);
+void op_print(void);
+void op_function(void);
+void op_initNum(void);
+void op_initInt(void);
+void op_initStr(void);
+void op_typeOf(void);
 
 #endif

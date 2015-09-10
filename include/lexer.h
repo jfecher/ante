@@ -13,6 +13,7 @@ typedef enum TokenType{
     Tok_Function,
     Tok_Num,
     Tok_String,
+    Tok_Int,
 
     Tok_Invalid,
     Tok_Begin,

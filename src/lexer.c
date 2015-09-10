@@ -26,6 +26,7 @@ Token dictionary[] = {
     {Tok_While,        "while"},
     {Tok_String,       "string"},
     {Tok_Num,          "num"},
+    {Tok_Int,          "int"},
     {Tok_Continue,     "continue"},
     {Tok_Break,        "break"},
     {Tok_Boolean,      "bool"},
@@ -324,7 +325,8 @@ void printTok(Token t){
     switch(t.type){
     case Tok_String: 
     case Tok_Char:
-    case Tok_Num: 
+    case Tok_Num:
+    case Tok_Int:
     case Tok_For: 
     case Tok_If: 
     case Tok_While: 
