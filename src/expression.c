@@ -11,6 +11,7 @@ Operator operators[] = {
     {Tok_Exponent,  4, 1, NULL}
 };
 
+//TODO: move [op][type] style functions to new file along with their function tables
 Variable addNum(Variable n1, Variable n2)
 {
     return VAR(bignum_add(n1.value, n2.value), Num);
@@ -67,14 +68,18 @@ Variable convertType(Variable v, Type t)
     if(typeCompatible(v.type, t)){
         switch(t){
         case Num:
+            //mpz_clear(*(BigInt)v.value);
+            //v.value = bigint_new(v.value);
             break;
         case Int:
+            //mpf_get_str(v.value, v.value, 10, 1000, *(BigNum)v.value); 
+            //mpz_init_set(*(BigInt)v.value, v.value);
+            //v.value = bignum_new(v.value);
             break;
         case String:
             break;
         default: break;
         }
-
         return ret;
     }
    
@@ -82,23 +87,15 @@ Variable convertType(Variable v, Type t)
     return ret;
 }
 
-/*
- * Returns the required type
- * for a given operator
- */
-inline Type getReqType(TokenType op)
-{
-    return op == Tok_StrConcat ? String : Num;
-}
-
 inline Variable operate(Variable v1, Operator op, Variable v2)
 {
     //check for type mismatch
-    Type req = getReqType(op.op);
-    if(v1.type != req){
-        v1 = convertType(v1, req);
-    }else if(v2.type != req){
-        v2 = convertType(v2, req);
+    if(v1.type != v2.type){
+        if(v1.type > v2.type){
+            //TODO: v1 = convertType(v1, v2.type);
+        }else{
+            //TODO: v2 = convertType(v2, v2.type);
+        }
     }
     return op.func(v1, v2);
 }
@@ -128,7 +125,7 @@ Operator getOperator(TokenType t)
 Variable expression(void){
     Variable v = getValue(toks[tIndex]);
     if(v.type == Invalid){
-        fprintf(stderr, "Invalid Type in expression");
+        fprintf(stderr, "Invalid Type in expression\n");
         return v;
     }
 

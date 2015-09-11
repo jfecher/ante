@@ -7,6 +7,7 @@ char *tokenDictionary[] = {
     "Tok_Function",
     "Tok_Num",
     "Tok_String",
+    "Tok_Int",
 
     "Tok_Invalid",
     "Tok_Begin",
@@ -33,7 +34,6 @@ char *tokenDictionary[] = {
 	"Tok_Comma",
 	"Tok_Colon",
     "Tok_ListInitializer",
-    "Tok_Char",
     "Tok_BooleanOr",
     "Tok_Boolean",
     "Tok_BooleanTrue",
@@ -42,7 +42,6 @@ char *tokenDictionary[] = {
 	"Tok_IntegerLiteral",
 	"Tok_DoubleLiteral",
 	"Tok_StringLiteral",
-    "Tok_CharLiteral",
 	"Tok_MultiplyEquals",
     "Tok_DivideEquals",
 	"Tok_Return",
@@ -60,7 +59,6 @@ char *tokenDictionary[] = {
 	"Tok_EndOfInput",
     "Tok_StrConcat",
     "Tok_MalformedString",
-    "Tok_MalformedChar",
     "Tok_Exponent"
 };
 

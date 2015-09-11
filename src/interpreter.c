@@ -3,6 +3,13 @@
 #include <termios.h>
 #include <unistd.h>
 
+/*
+ *  TODO:
+ *    -Implement functions
+ *    -Implement more operators
+ *    -FIXME: makefile failing every other call
+ */
+
 char *typeDictionary[] = {
     "Object",
     "Num",
@@ -101,7 +108,6 @@ void setVar(Variable *v, Variable val){
     }
 }
 
-//TODO: expand with num types
 Variable copyVar(Variable v){
     Variable cpy = {NULL, v.type, v.dynamic, NULL};
     switch(v.type){
@@ -121,8 +127,9 @@ void op_function(){
     if(strcmp(toks[tIndex+1].lexeme, "typeof") == 0){
         INC_POS(1);
         op_typeOf();
+    }else{
+        INC_POS(1);
     }
-    INC_POS(1);
 }
 
 void op_print(){
@@ -130,16 +137,16 @@ void op_print(){
     Variable v = expression();
 
     switch(v.type){
-        case Int:;
-            mpz_out_str(stdout, 10, *(BigInt)v.value);
+        case Int:
+            gmp_printf("%Zd\n", *(BigInt)v.value);
             break;
         case Num:;
-            mpf_out_str(stdout, 10, 10, *(BigNum)v.value);
+            Coords c = lookupVar("_precision");
+            gmp_printf("%.*Ff\n", mpz_get_ui(*(BigInt)stack.items[c.x].table[c.y].value), *(BigNum)v.value);
             break;
         default:
-            printf("%s", (char*)expression().value);
+            printf("%s\n", (char*)v.value);
     }
-    puts("");
 }
 
 void op_initNum(){
@@ -165,7 +172,7 @@ Type tokTypeToVarType(TokenType t){
         return Num;
     }else if(t == Tok_IntegerLiteral){
         return Int;
-    }else if(t == Tok_StringLiteral || t == Tok_CharLiteral){
+    }else if(t == Tok_StringLiteral){
         return String;
     }
     return Invalid;
@@ -177,7 +184,7 @@ Variable makeVarFromTok(Token t){
         ret.value = bigint_new(t.lexeme);
     }else if(ret.type == Num){
         ret.value = bignum_new(t.lexeme);
-    }else{    
+    }else{
         CPY_TO_STR(ret.value, t.lexeme);
     }
     return ret;
@@ -190,6 +197,7 @@ Variable getValue(Token t){
     }else if(t.type == Tok_ParenOpen){
         INC_POS(1);
         Variable v = expression();
+        INC_POS(1);
         return v;
     }else{
         return makeVarFromTok(t);
@@ -198,6 +206,11 @@ Variable getValue(Token t){
 
 /* Sets a variable to value v of type t */
 void op_assign(){
+    if(toks[tIndex+1].type != Tok_Assign){
+        INC_POS(1);
+        return;
+    }
+
     CPY_TO_NEW_STR(name, toks[tIndex].lexeme);
     getCoords(c, name);
     INC_POS(2);
@@ -217,6 +230,11 @@ void initializeInterpreter(){
     VarTable global = {NULL, 0};
     stack.size = 0;
     stack_push(&stack, global);
+    
+    //builtin variables
+    initVar("_precision", Int);
+    Coords c = lookupVar("_precision");
+    setVar(&stack.items[c.x].table[c.y], (Variable){bigint_new("10"), Int, 0, 0});
 }
 
 void setupTerm(){

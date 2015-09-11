@@ -18,22 +18,21 @@ void incrementPos();
 //Dictionary used for checking if a string is a keyword, and if so,
 //associating it with the corresponding TokenType
 Token dictionary[] = {
-    {Tok_Print,        "print"},
-    {Tok_Return,       "return"},
-    {Tok_If,           "if"},
-    {Tok_Else,         "else"},
-    {Tok_For,          "for"},
-    {Tok_While,        "while"},
-    {Tok_String,       "string"},
-    {Tok_Num,          "num"},
-    {Tok_Int,          "int"},
-    {Tok_Continue,     "continue"},
-    {Tok_Break,        "break"},
-    {Tok_Boolean,      "bool"},
-    {Tok_Char,         "char"},
-    {Tok_BooleanTrue,  "true"},
-    {Tok_BooleanFalse, "false"},
-    {Tok_Import,       "import"}
+    {Tok_Print,        "print",   0,0},
+    {Tok_Return,       "return",  0,0},
+    {Tok_If,           "if",      0,0},
+    {Tok_Else,         "else",    0,0},
+    {Tok_For,          "for",     0,0},
+    {Tok_While,        "while",   0,0},
+    {Tok_String,       "string",  0,0},
+    {Tok_Num,          "num",     0,0},
+    {Tok_Int,          "int",     0,0},
+    {Tok_Continue,     "continue",0,0},
+    {Tok_Break,        "break",   0,0},
+    {Tok_Boolean,      "bool",    0,0},
+    {Tok_BooleanTrue,  "true",    0,0},
+    {Tok_BooleanFalse, "false",   0,0},
+    {Tok_Import,       "import",  0,0}
 };
 
 inline void ralloc(char **ptr, size_t size){
@@ -48,8 +47,7 @@ inline void ralloc(char **ptr, size_t size){
 
 Token getNextToken(){
     if(current == EOF || current == '\0'){
-        Token tok = {Tok_EndOfInput, NULL};
-        return tok;
+        return (Token) {Tok_EndOfInput, NULL, row, col};
     }
 
     //Skip comments
@@ -65,7 +63,6 @@ Token getNextToken(){
         return getNextToken();
     }
 
-
     //Check if char is numeric, alphanumeric, or whitespace, and return corresponding
     //TokenType with full lexeme.  Note that isNumeric is checked first,
     //This ensures identifiers/keywords cannot begin with a number
@@ -73,7 +70,7 @@ Token getNextToken(){
     else if(IS_NUMERIC(current))       return genNumericalToken();
     else if(IS_ALPHA_NUMERIC(current)) return genAlphaNumericalToken();
 
-    Token tok = {Tok_Invalid, NULL};
+    Token tok = {Tok_Invalid, NULL, row, col};
     tok.lexeme = calloc(sizeof(char), 3);
     tok.lexeme[0] = current;
     switch(current){ //Here at last: the glorified switch statement
@@ -141,37 +138,22 @@ Token getNextToken(){
         }
         else tok.type = Tok_Minus;
         break;
-    case '"':; // ; is not a typo, it allows i to be decalred by inserting an empty statement
-        int i;
+    case '"': // ; is not a typo, it allows i to be decalred by inserting an empty statement
+    case '\'':;
+        char c = current;
         incrementPos();
         tok.lexeme[0] = '\0';
-        for(i=0; current != '"' && current != '\0'; i++){
+        for(int i=0; current != c && current != '\0'; i++){
             ralloc(&tok.lexeme, sizeof(char) * (i+3));
             tok.lexeme[i] = current;
             tok.lexeme[i+1] = '\0';
             incrementPos();
         }
 
-        if(current == '"') 
+        if(current == c) 
             tok.type = Tok_StringLiteral;
         else 
             tok.type = Tok_MalformedString;
-        break;
-    case '\'':
-        incrementPos();
-
-        tok.lexeme[0] = '\0';
-        for(i=0; current != '\'' && current != '\0'; i++){
-            ralloc(&tok.lexeme, sizeof(char) * (i+3));
-            tok.lexeme[i] = current;
-            tok.lexeme[i+1] = '\0';
-            incrementPos();
-        }
-
-        if(current=='\'') 
-            tok.type = Tok_CharLiteral;
-        else 
-            tok.type = Tok_MalformedChar;
         break;
     case '*':
         if(lookAhead == '='){
@@ -235,7 +217,7 @@ Token getNextToken(){
 Token genWhitespaceToken(){
     //If the whitespace is a newline, then check to see if the scope has changed
     if(current == '\n' || current == 13){
-        Token tok = {Tok_Newline, NULL};
+        Token tok = {Tok_Newline, NULL, row, col};
         int newScope = 0;
 
         while(1){
@@ -257,6 +239,8 @@ Token genWhitespaceToken(){
             tok.type = Tok_Unindent;
 
         scope = newScope;
+        row++;
+        col = -1;
         incrementPos();
         return tok;
     }else{
@@ -270,7 +254,7 @@ Token genWhitespaceToken(){
 
 
 Token genAlphaNumericalToken(){ //fail at length =
-    Token tok;
+    Token tok = {0, NULL, row, col};
     tok.lexeme = calloc(sizeof(char), 1);
     int i;
 
@@ -292,8 +276,8 @@ Token genAlphaNumericalToken(){ //fail at length =
     return tok;
 }
 
-Token genNumericalToken(){ //fail at length = 126
-    Token tok;
+Token genNumericalToken(){
+    Token tok = {0, NULL, row, col};
     tok.lexeme = calloc(sizeof(char), 1);
     char isDouble = 0;
     int i;
@@ -302,7 +286,9 @@ Token genNumericalToken(){ //fail at length = 126
         ralloc(&tok.lexeme, sizeof(char) * (i+2));
         tok.lexeme[i] = current;
         tok.lexeme[i+1] = '\0';
-        if(current=='.') isDouble = 1;
+        if(current=='.'){
+            isDouble = 1;
+        }
         incrementPos();
     }
 
@@ -319,12 +305,12 @@ void incrementPos(){
     }else{
         lookAhead = fgetc(src);
     }
+    col++;
 }
 
 void printTok(Token t){
     switch(t.type){
     case Tok_String: 
-    case Tok_Char:
     case Tok_Num:
     case Tok_Int:
     case Tok_For: 
@@ -347,12 +333,6 @@ void printTok(Token t){
         break;
     case Tok_MalformedString:
         printf(STRINGL_COLOR "\"%s" RESET_COLOR, t.lexeme);
-        break;
-    case Tok_CharLiteral:
-        printf(STRINGL_COLOR "'%s'" RESET_COLOR, t.lexeme);
-        break;
-    case Tok_MalformedChar:
-        printf(STRINGL_COLOR "'%s" RESET_COLOR, t.lexeme);
         break;
     case Tok_Function:
         printf(FUNCTION_COLOR "--");
@@ -428,7 +408,9 @@ void initialize_lexer(char tty){ //Sets up the lookAhead character properly so t
         printf("ERROR: source file not found.\n");
         exit(7);
     }
-
+    
+    row = 1;
+    col = -1;
     incrementPos(); //The current character is not null
     incrementPos();
 }

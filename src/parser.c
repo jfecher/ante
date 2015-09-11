@@ -37,9 +37,9 @@ void debugLog(const char *s){
 }
 
 void syntaxError(const char* msg, int showErrTok){
-    printf("SYNTAX ERROR: %s", msg);
-    if(showErrTok) printf("%s (of type %s)\n", tokenizedInput[tokenIndex].lexeme, tokenDictionary[tokenizedInput[tokenIndex].type]);
-    else printf("\n");
+    fprintf(stderr, "Syntax Error: %s", msg);
+    if(showErrTok) fprintf(stderr, "%s (of type %s)", tokenizedInput[tokenIndex].lexeme, tokenDictionary[tokenizedInput[tokenIndex].type]);
+    fprintf(stderr, " at row %d, col %d.\n", tokenizedInput[tokenIndex].row, tokenizedInput[tokenIndex].col);
 
     exitFlag = 1;
 }
@@ -58,7 +58,7 @@ int _expect(TokenType type){
     if(accept(type)){
         return 1;
     }else{ //TODO: expand to include column and line number
-        printf("\nSyntax Error: Expected %s, but found %s.\n", tokenDictionary[type], tokenDictionary[tokenizedInput[tokenIndex].type]);
+        fprintf(stderr, "Syntax Error: Expected %s, but found %s at row %d, col %d.\n", tokenDictionary[type], tokenDictionary[tokenizedInput[tokenIndex].type], tokenizedInput[tokenIndex].row, tokenizedInput[tokenIndex].col);
         exitFlag = 2;
         return 0;
     }
@@ -103,10 +103,7 @@ int class_body(){ //May not work correctly for one-line classes
     debugLog("Parser: Entering class body.");
 
     while(!check(Tok_Unindent) && !check(Tok_EndOfInput) && !exitFlag){
-        if(!class_statement()){
-            syntaxError("class body returned an error.",0);
-            return 0;
-        }
+        if(!class_statement()) return 0;
     }
     return 1;
 }
@@ -136,7 +133,7 @@ int class_def(){
  */
 int type(){
     debugLog("Parser: Checking type.");
-    if(check(Tok_Num) || check(Tok_Int) || check(Tok_String) || check(Tok_Boolean) || check(Tok_Char) || check(Tok_Identifier)){
+    if(check(Tok_Num) || check(Tok_Int) || check(Tok_String) || check(Tok_Boolean) || check(Tok_Identifier)){
         return tokenizedInput[tokenIndex].type;
     }else{
         return Tok_Invalid;
@@ -461,7 +458,7 @@ int array_value(){
  */
 int literal_value(){
     debugLog("Parser: Checking for literal value.");
-    if(check(Tok_BooleanTrue) || check(Tok_BooleanFalse) || check(Tok_IntegerLiteral) || check(Tok_DoubleLiteral) || check(Tok_StringLiteral) || check(Tok_CharLiteral)){
+    if(check(Tok_BooleanTrue) || check(Tok_BooleanFalse) || check(Tok_IntegerLiteral) || check(Tok_DoubleLiteral) || check(Tok_StringLiteral)){
         tokenIndex++;
         return 1;//c->type;
     }else{

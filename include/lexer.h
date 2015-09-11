@@ -40,7 +40,6 @@ typedef enum TokenType{
 	Tok_Comma,
 	Tok_Colon,
     Tok_ListInitializer, // The | in the example list of strings: string|>myStringList = "This", "is", "an", "example"
-    Tok_Char,
     Tok_Boolean,
     Tok_BooleanOr,
     Tok_BooleanAnd,
@@ -49,7 +48,6 @@ typedef enum TokenType{
 	Tok_IntegerLiteral,
 	Tok_DoubleLiteral,
 	Tok_StringLiteral,
-    Tok_CharLiteral,
 	Tok_MultiplyEquals,
     Tok_DivideEquals,
 	Tok_Return,
@@ -67,23 +65,26 @@ typedef enum TokenType{
 	Tok_EndOfInput,
     Tok_StrConcat,
     Tok_MalformedString,
-    Tok_MalformedChar,
     Tok_Exponent
 } TokenType;
 
 char printToks;
 char isTty;
+unsigned short row;
+unsigned short col;
 
 //A dictionary used for getting the human readable string of a particular token type.  Only used in debugging
 extern char *tokenDictionary[];
 
 extern char *srcLine;
 extern char *pos;
+
 //The basic Token construct.
-//TODO: possibly expand to include row and column number for use in syntax errors.
 typedef struct Token{
     TokenType type;
     char *lexeme;
+    unsigned short row;
+    unsigned short col;
 } Token;
 
 //Source file
