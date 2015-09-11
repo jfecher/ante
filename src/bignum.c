@@ -28,12 +28,27 @@ inline BigNum bignum_add(BigNum n1, BigNum n2)
     return sum;
 }
 
+inline BigNum bignum_sub(BigNum n1, BigNum n2)
+{
+    BigNum dif = bignum_init();
+    mpf_sub(*dif, *n1, *n2);
+    return dif;
+}
+
 inline BigNum bignum_mul(BigNum n1, BigNum n2)
 {
     BigNum prod = bignum_init();
     mpf_mul(*prod, *n1, *n2);
     return prod;
 }
+
+inline BigNum bignum_div(BigNum n1, BigNum n2)
+{
+    BigNum quo = bignum_init();
+    mpf_div(*quo, *n1, *n2);
+    return quo;
+}
+//TODO: implement bignum_mod and bignum_pow
 
 
 /*
@@ -67,9 +82,51 @@ inline BigInt bigint_add(BigInt n1, BigInt n2)
     return sum;
 }
 
+inline BigInt bigint_sub(BigInt n1, BigInt n2)
+{
+    BigInt prod = bigint_init();
+    mpz_sub(*prod, *n1, *n2);
+    return prod;
+}
+
 inline BigInt bigint_mul(BigInt n1, BigInt n2)
 {
     BigInt prod = bigint_init();
     mpz_mul(*prod, *n1, *n2);
     return prod;
 }
+
+inline BigInt bigint_div(BigInt n1, BigInt n2)
+{
+    BigInt prod = bigint_init();
+    mpz_div(*prod, *n1, *n2);
+    return prod;
+}
+
+inline BigInt bigint_mod(BigInt n1, BigInt n2)
+{
+    BigInt prod = bigint_init();
+    mpz_mod(*prod, *n1, *n2);
+    return prod;
+}
+
+//TODO: implement for negative exponents
+inline BigInt bigint_pow(BigInt n1, BigInt n2)
+{
+    BigInt res = bigint_init();
+    BigInt mod = bigint_new("1000000000000007");
+    mpz_mul(*mod,*mod,*mod);
+    mpz_mul(*mod,*mod,*mod);
+    mpz_mul(*mod,*mod,*mod);
+    mpz_mul(*mod,*mod,*mod);
+    mpz_mul(*mod,*mod,*mod);
+    mpz_mul(*mod,*mod,*mod);
+    mpz_mul(*mod,*mod,*mod);
+    
+    mpz_powm(*res, *n1, *n2, *mod); //FIXME: I break when given a negative n2
+
+    mpz_clear(*mod);
+    free(mod);
+    return res;
+}
+

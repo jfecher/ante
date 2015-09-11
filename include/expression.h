@@ -3,10 +3,7 @@
 
 #include "types.h"
 #include "interpreter.h"
-
-#define VAR(v, t) ((Variable){v, t, 0, NULL})
-
-typedef Variable (*opFunc)(Variable, Variable);
+#include "operations.h"
 
 typedef struct{
     TokenType op;
@@ -17,8 +14,5 @@ typedef struct{
 
 Variable expression(void);
 Variable _expression(Variable, uint8_t);
-
-Variable op_add(Variable, Variable);
-Variable op_mul(Variable, Variable);
 
 #endif

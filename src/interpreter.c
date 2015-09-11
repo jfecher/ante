@@ -124,11 +124,18 @@ Variable copyVar(Variable v){
 }
 
 void op_function(){
-    if(strcmp(toks[tIndex+1].lexeme, "typeof") == 0){
-        INC_POS(1);
+    char *funcName = toks[tIndex+1].lexeme;
+    INC_POS(2);
+
+    if(strcmp(funcName, "typeof") == 0){
         op_typeOf();
-    }else{
-        INC_POS(1);
+    }else if(strcmp(funcName, "system") == 0){
+        Variable v = expression();
+        if(v.type == String){
+            system((char*)v.value);
+        }else{
+            runtimeError("Function parameter type mismatch.  Expected String but got %s.\n", typeDictionary[v.type]);
+        }
     }
 }
 
@@ -197,7 +204,6 @@ Variable getValue(Token t){
     }else if(t.type == Tok_ParenOpen){
         INC_POS(1);
         Variable v = expression();
-        INC_POS(1);
         return v;
     }else{
         return makeVarFromTok(t);
@@ -234,7 +240,8 @@ void initializeInterpreter(){
     //builtin variables
     initVar("_precision", Int);
     Coords c = lookupVar("_precision");
-    setVar(&stack.items[c.x].table[c.y], (Variable){bigint_new("10"), Int, 0, 0});
+    Variable v = {bigint_new("21"), Int, 0, 0};
+    setVar(&stack.items[c.x].table[c.y], v);
 }
 
 void setupTerm(){

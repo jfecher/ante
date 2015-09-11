@@ -29,6 +29,13 @@ typedef struct{
     char *name;
 } Variable;
 
+//creates a non-user var for intermediate values in expressions
+#define VAR(v, t) ((Variable){v, t, 0, NULL})
+
+//function pointer for an operator which takes two
+//variables and returns another
+typedef Variable (*opFunc)(Variable, Variable);
+
 typedef struct{
     unsigned char isOp;
     Variable v;

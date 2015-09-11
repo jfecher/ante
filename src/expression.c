@@ -2,43 +2,16 @@
 
 Operator operators[] = {
     {Tok_Comma,     0, 0, NULL},
-    {Tok_StrConcat, 1, 0, NULL},
+    {Tok_StrConcat, 1, 0, op_cnct},
     {Tok_Plus,      2, 0, op_add},
-    {Tok_Minus,     2, 0, NULL},
+    {Tok_Minus,     2, 0, op_sub},
     {Tok_Multiply,  3, 0, op_mul},
-    {Tok_Divide,    3, 0, NULL},
-    {Tok_Modulus,   3, 0, NULL},
-    {Tok_Exponent,  4, 1, NULL}
+    {Tok_Divide,    3, 0, op_div},
+    {Tok_Modulus,   3, 0, op_mod},
+    {Tok_Exponent,  4, 1, op_pow}
 };
 
 //TODO: move [op][type] style functions to new file along with their function tables
-Variable addNum(Variable n1, Variable n2)
-{
-    return VAR(bignum_add(n1.value, n2.value), Num);
-}
-
-Variable addInt(Variable n1, Variable n2)
-{
-    return VAR(bigint_add(n1.value, n2.value), Int);
-}
-
-opFunc addFuncTable[] = {
-    NULL, addNum, addInt, NULL, NULL, NULL
-};
-
-Variable mulNum(Variable n1, Variable n2)
-{
-    return VAR(bignum_mul(n1.value, n2.value), Num);
-}
-
-Variable mulInt(Variable n1, Variable n2)
-{
-    return VAR(bigint_mul(n1.value, n2.value), Int);
-}
-
-opFunc mulFuncTable[] = {
-    NULL, mulNum, mulInt, NULL, NULL, NULL
-};
 
 /*
  *  Returns true if the given type is able
@@ -98,16 +71,6 @@ inline Variable operate(Variable v1, Operator op, Variable v2)
         }
     }
     return op.func(v1, v2);
-}
-
-inline Variable op_add(Variable augend, Variable addend)
-{
-    return addFuncTable[augend.type](augend, addend);
-}
-
-inline Variable op_mul(Variable m1, Variable m2)
-{
-    return mulFuncTable[m1.type](m1, m2);
 }
 
 Operator getOperator(TokenType t)

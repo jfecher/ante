@@ -494,7 +494,9 @@ int math_expression(){
 int parse_expression(){
     debugLog("Parser: evaluating expression.");
 
-    if(accept(Tok_Plus) || accept(Tok_Minus) || accept(Tok_Greater) || accept(Tok_Lesser) || accept(Tok_StrConcat)){
+    if(accept(Tok_Plus) || accept(Tok_Minus) || accept(Tok_Greater) || 
+            accept(Tok_Lesser) || accept(Tok_StrConcat) || accept(Tok_EqualsEquals)){
+        
         if(!value()) return 0;
         if(!parse_expression()) return 0;
         return 1;
@@ -512,7 +514,9 @@ int parse_expression(){
 int term(){
     debugLog("Parser: evaluating term...");
 
-    if(accept(Tok_Multiply) || accept(Tok_Divide)){
+    if(accept(Tok_Multiply) || accept(Tok_Divide) || 
+            accept(Tok_Exponent) || accept(Tok_Modulus)){
+        
         if(!value()) return 0;
         if(!parse_expression()) return 0;
         return 1;
@@ -535,42 +539,6 @@ int paren_expression(){
     }
     return 1;
 }
-
-/*
-void drawParseTree(){
-    currentNode = root;
-    currentNode->index = 0;
-
-    int level = 0, count = 0, i;
-    while(currentNode->token != NULL){
-        for(i=0;i<level;i++){
-            printf("   ");
-        }
-
-        printf("(%s:%s)\n", tokenDictionary[currentNode->token->type], currentNode->token->lexeme);
-
-        if(currentNode->children && currentNode->children[currentNode->index]){
-            level++;
-            currentNode = currentNode->children[currentNode->index++];
-            currentNode->index = 0;
-        }else if(currentNode->parent){
-            while(currentNode->parent && currentNode->token->type != Tok_Begin){ //loop towards root of parse tree
-                node_climb(); //Climb one step
-
-                if(currentNode->children[currentNode->index]){ //Found parent with next child
-                    currentNode = currentNode->children[currentNode->index++];
-                    currentNode->index = 0;
-                    break;
-                }else{
-                    free(currentNode->children);
-                }
-                level--;
-            }
-
-            if(currentNode->token->type == Tok_Begin) break;
-        }else break;
-    }
-}*/
 
 int parse(Token *t){ //Parses file, returns error if one occured
     exitFlag = 0;
