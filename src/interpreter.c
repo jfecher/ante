@@ -6,7 +6,8 @@
 /*
  *  TODO:
  *    -Implement functions
- *    -Implement more operators
+ *    -FIXME: function parameters should be parsed as an expression
+ *    -FIXME: functions should be parsed as a value in an expression
  *    -FIXME: makefile failing every other call
  */
 
