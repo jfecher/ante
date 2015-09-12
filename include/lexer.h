@@ -4,69 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-//Enum containing every Token's Type
-typedef enum TokenType{
-    Tok_Greater, //Used to signal the initialization of variables as well as comparing values
-    Tok_Identifier,
-    Tok_Print,
-    Tok_Function,
-    Tok_Num,
-    Tok_String,
-    Tok_Int,
-
-    Tok_Invalid,
-    Tok_Begin,
-	Tok_Assign,
-	Tok_Multiply,
-	Tok_Divide,
-	Tok_Plus,
-	Tok_Minus,
-	Tok_PlusEquals,
-	Tok_MinusEquals,
-    Tok_EqualsEquals,
-	Tok_GreaterEquals,
-	Tok_Equals,
-	Tok_LesserEquals,
-	Tok_Lesser,
-    Tok_Modulus,
-	Tok_BraceOpen,
-	Tok_BraceClose,
-	Tok_ParenOpen,
-	Tok_ParenClose,
-	Tok_BracketOpen,
-	Tok_BracketClose,
-	Tok_Underscore,
-	Tok_Comma,
-	Tok_Colon,
-    Tok_ListInitializer, // The | in the example list of strings: string|>myStringList = "This", "is", "an", "example"
-    Tok_Boolean,
-    Tok_BooleanOr,
-    Tok_BooleanAnd,
-    Tok_BooleanTrue,
-    Tok_BooleanFalse,
-	Tok_IntegerLiteral,
-	Tok_DoubleLiteral,
-	Tok_StringLiteral,
-	Tok_MultiplyEquals,
-    Tok_DivideEquals,
-	Tok_Return,
-	Tok_If,
-	Tok_Else,
-	Tok_For,
-	Tok_While,
-	Tok_Continue,
-	Tok_Break,
-    Tok_Import,
-    Tok_Newline,
-    Tok_TypeDef,
-    Tok_Indent,
-    Tok_Unindent,
-	Tok_EndOfInput,
-    Tok_StrConcat,
-    Tok_MalformedString,
-    Tok_Exponent
-} TokenType;
+#include "types.h"
 
 char printToks;
 char isTty;
@@ -78,14 +16,6 @@ extern char *tokenDictionary[];
 
 extern char *srcLine;
 extern char *pos;
-
-//The basic Token construct.
-typedef struct Token{
-    TokenType type;
-    char *lexeme;
-    unsigned short row;
-    unsigned short col;
-} Token;
 
 //Source file
 FILE *src;
@@ -108,7 +38,7 @@ extern char*color;
 
 #define IS_WHITESPACE_TOKEN(t) (t.type==Tok_Newline||t.type==Tok_Indent||t.type==Tok_Unindent)
 
-void   initialize_lexer(char tty); //begins lexation of file
+void   init_lexer(char tty); //begins lexation of file
 Token* lexer_next(char b); //gets line of tokens.  if b is true, it prints them as well
 void   freeToks(Token **t);
 void   lexAndPrint(void);

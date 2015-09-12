@@ -5,7 +5,8 @@
 
 /*
  *  TODO:
- *    -Implement functions
+ *    -Implement declaration of functions
+ *    -FIXME: assorted memory leaks
  *    -FIXME: function parameters should be parsed as an expression
  *    -FIXME: functions should be parsed as a value in an expression
  *    -FIXME: makefile failing every other call
@@ -78,7 +79,9 @@ void initVar(char *identifier, Type t){
     }
 
     //           value, type, dynamic, name
-    Variable v = {NULL, t, t == Object, identifier};
+    Variable v = {NULL, t, t == Object, malloc(strlen(identifier)+1)};
+    strcpy(v.name, identifier);
+    v.name[strlen(identifier)] = '\0';
 
     switch(t){
     case Num:
@@ -204,8 +207,7 @@ Variable getValue(Token t){
         return copyVar(stack.items[c.x].table[c.y]);
     }else if(t.type == Tok_ParenOpen){
         INC_POS(1);
-        Variable v = expression();
-        return v;
+        return expression();
     }else{
         return makeVarFromTok(t);
     }
@@ -230,10 +232,11 @@ void op_typeOf(){
         printf("dynamic ");
     printf("%s\n", typeDictionary[v.type]);
     INC_POS(4);
+    free(v.value); //TODO: function to automatically clear values if var is a num or int
 }
 
 //char **history;
-void initializeInterpreter(){
+void init_interpreter(void){
     VarTable global = {NULL, 0};
     stack.size = 0;
     stack_push(&stack, global);
@@ -278,7 +281,7 @@ void getln(){
         }
 
         //seperate input by tokens for syntax highlighting
-        initialize_lexer(1);
+        init_lexer(1);
         toks = lexer_next(1);
         freeToks(&toks);
     }while(c != '\n');
@@ -309,17 +312,17 @@ char exec(){
         free(srcLine);
         freeToks(&toks);
     }else{
-        free(toks); 
+        freeToks(&toks); 
     }
         
     return 1;
 }
 
 void interpret(FILE *src, char isTty){
-    initializeInterpreter();
+    init_interpreter();
 
     if(!isTty){
-        initialize_lexer(0);
+        init_lexer(0);
         exec();
     }else{
         setupTerm();
@@ -333,7 +336,7 @@ void interpret(FILE *src, char isTty){
             getln();//Tokenizes the entire line, and print it out on screen
             if(strcmp(srcLine, "exit") == 0)
                 break;
-            initialize_lexer(1);
+            init_lexer(1);
             exec();
 
         }

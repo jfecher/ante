@@ -1,0 +1,38 @@
+`
+    math.zy
+        tests various operations on Num and Int vars
+`
+int>seven = 7
+int>two   = 2
+
+print seven + two
+print seven - two
+print seven * two
+print seven / two
+print seven % two
+print seven ^ two
+print two ^ 128
+
+num>one_half = 0.5
+num>test_num  = 0.75
+_precision = 3
+
+print one_half + test_num
+print one_half - test_num
+print one_half * test_num
+print one_half / test_num
+
+`
+    Expected output:
+9
+5
+14
+3
+1
+49
+34028236692093846343374607431768211456
+1.250
+-0.250
+0.375
+0.667
+`

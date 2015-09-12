@@ -52,14 +52,16 @@ Token getNextToken(){
 
     //Skip comments
     if(current == '~'){ //Single line comment.  Skip until newline
-        while(lookAhead != '\n') incrementPos();
+        while(lookAhead != '\n' && current != EOF) incrementPos();
         return getNextToken();
     }else if(current == '`'){ //Multi line comment.  Skip until next `
         do
             incrementPos();
         while(current != '`' && current != EOF && current != '\0');
 
-        incrementPos();
+        if(current == '`') 
+            incrementPos();
+
         return getNextToken();
     }
 
@@ -138,7 +140,7 @@ Token getNextToken(){
         }
         else tok.type = Tok_Minus;
         break;
-    case '"': // ; is not a typo, it allows i to be decalred by inserting an empty statement
+    case '"': // ; is not a typo, it allows c to be decalred by inserting an empty statement
     case '\'':;
         char c = current;
         incrementPos();
@@ -230,7 +232,10 @@ Token genWhitespaceToken(){
         }
 
         //Reset level if it stopped on a comment
-        if(lookAhead == '~' || lookAhead == '`') return getNextToken();
+        if(lookAhead == '~' || lookAhead == '`'){ 
+            incrementPos();
+            return getNextToken();
+        }
 
         //Compare the new scope with the old.  Assign TokenType as necessary
         if(newScope > scope)
@@ -371,7 +376,7 @@ Token* lexer_next(char b){
 }
 
 void lexAndPrint(){
-    initialize_lexer(0);
+    init_lexer(0);
     Token *toks = lexer_next(0);
     int i;
     for(i = 0; toks[i].type != Tok_EndOfInput; i++){
@@ -390,15 +395,13 @@ void lexAndPrint(){
     free(toks);
 }
 
-void freeToks(Token **t){
-    int i;
-    for(i = 0; (*t)[i].type != Tok_EndOfInput; i++)
-        if((*t)[i].lexeme != NULL)
-            free((*t)[i].lexeme);
-    free(*t);
+inline void freeToks(Token **t){
+    for(int i = 0; (*t)[i].type != Tok_EndOfInput; i++)
+        NFREE((*t)[i].lexeme);
+    NFREE(*t);
 }
 
-void initialize_lexer(char tty){ //Sets up the lookAhead character properly so that
+void init_lexer(char tty){ //Sets up the lookAhead character properly so that
     if(tty){
         isTty = 1;
         pos = srcLine;
