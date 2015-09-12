@@ -63,14 +63,14 @@ inline BigInt bigint_init()
 
 inline BigInt bigint_new(char *val)
 {
-    BigInt i = malloc(sizeof(_Int));
+    BigInt i = BI_ALLOC();
     mpz_init_set_str(*i, val, 0);
     return i;
 }
 
 inline BigInt bigint_copy(BigInt src)
 {
-    BigInt cpy = malloc(sizeof(_Int));
+    BigInt cpy = BI_ALLOC();
     mpz_init_set(*cpy, *src);
     return cpy;
 }

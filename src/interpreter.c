@@ -7,9 +7,6 @@
  *  TODO:
  *    -Implement declaration of functions
  *    -FIXME: assorted memory leaks
- *    -FIXME: function parameters should be parsed as an expression
- *    -FIXME: functions should be parsed as a value in an expression
- *    -FIXME: makefile failing every other call
  */
 
 char *typeDictionary[] = {
@@ -127,6 +124,17 @@ Variable copyVar(Variable v){
     return cpy;
 }
 
+//TODO: implement
+Variable exec_function(char *funcName){
+    Coords c = lookupFunc(funcName);
+    if(c.x == -1){
+        printf("Function '%s' not found\n", funcName);
+        return VAR(NULL, Invalid);
+    }
+
+    return VAR(NULL, Invalid);
+}
+
 void op_function(){
     char *funcName = toks[tIndex+1].lexeme;
     INC_POS(2);
@@ -205,6 +213,9 @@ Variable getValue(Token t){
     if(t.type == Tok_Identifier){
         Coords c = lookupVar(t.lexeme);
         return copyVar(stack.items[c.x].table[c.y]);
+    }else if(t.type == Tok_Function){
+        INC_POS(1);
+        return exec_function(toks[tIndex].lexeme);
     }else if(t.type == Tok_ParenOpen){
         INC_POS(1);
         return expression();
@@ -232,7 +243,12 @@ void op_typeOf(){
         printf("dynamic ");
     printf("%s\n", typeDictionary[v.type]);
     INC_POS(4);
-    free(v.value); //TODO: function to automatically clear values if var is a num or int
+    free_var(v); //TODO: function to automatically clear values if var is a num or int
+}
+
+void add_global_var(Variable v){
+    initVar(v.name, v.type);
+    setVar(&stack.items[0].table[stack.items[0].size-1], v);
 }
 
 //char **history;
@@ -242,10 +258,7 @@ void init_interpreter(void){
     stack_push(&stack, global);
     
     //builtin variables
-    initVar("_precision", Int);
-    Coords c = lookupVar("_precision");
-    Variable v = {bigint_new("21"), Int, 0, 0};
-    setVar(&stack.items[c.x].table[c.y], v);
+    add_global_var(VARIABLE(bigint_new("10"), Int, 0, "_precision"));
 }
 
 void setupTerm(){

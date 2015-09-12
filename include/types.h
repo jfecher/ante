@@ -100,6 +100,9 @@ typedef struct{
 //creates a non-user var for intermediate values in expressions
 #define VAR(v, t) ((Variable){v, t, 0, NULL})
 
+//creates a fully initialized Variable
+#define VARIABLE(v, t, d, n) ((Variable){v,t,d,n})
+
 //function pointer for an operator which takes two
 //variables and returns another
 typedef Variable (*opFunc)(Variable, Variable);

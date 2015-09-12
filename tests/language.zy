@@ -32,7 +32,7 @@ import math, io, str
 `
 
 int> myInt = 0
-num> myNum = 0
+num> myNum = 0.0
 string> myString = ""
 bool> myBool = false
 
@@ -69,11 +69,25 @@ print assortedNums[0], ", ", assortedNums[-2]
 ~output: -67, 256
 
 `
-    Note that the above expands arr enough to accomodate two more integers, it
-    does not add 2 to every value. To add a value to each element of the array,
-    the following syntax should be used.
+    The size of an array can also be dynamically edited.  The following syntax
+    should always be used when expanding or restricting an array.
 `
 arr += 2
+arr -= 3
+
+`
+        Tuples
+    In addition to arrays, there are also tuples.  Unlike arrays, tuples can
+    be mixed and matched with several types, but each must be stated beforehand.
+`
+int, num, string> tup = 44, 44.0, "Fourty-four"
+
+int|30, string|2> anotherTuple = arr, "This tuple contains", "two arrays"
+
+`
+    This restriction does not apply when making a dynamic variable of course
+`
+>dynTuple = 46, "Fourty-six", 46.0
 
 `
         Functions
@@ -109,8 +123,24 @@ arr += 2
 -->println: ...
     print _params, '\n'
 
-~declared functions can be called like in the next example
-println("Hello World #", add(3, 43.223))
+`
+    Here is the syntax for calling functions. You'll quickly notice that as in
+    their declaration, they must also be prefixed with -- when calling them.
+`
+--println("Hello World #", --add(3, 43.223))
+
+`
+    You may have noticed that the syntax for function parameters looks somewhat
+    familiar.  That is because all functions take a tuple as their input, where
+    each member is assigned a name (augend and addend in the add function's case).
+    
+    Because of this, we can instead pass a tuple containing several or all the
+    parameters to a function as with the following examples.
+`
+num, num> numbers = 4.3, 5.7
+num>sum = --add(numbers)
+print sum
+~output: 10.0
 
 `
         Loops
@@ -217,7 +247,7 @@ print spades, " ", string spades  ~output: 2 Spades
     int> number
     Suit> suit
 
-Card> fourOfSpades = 4, spades
+Card> fourOfHearts = 4, Suit.Hearts
 
 `
         Keywords
@@ -236,6 +266,7 @@ false
 
 print
 typeof
+type
 
 do
 while
@@ -251,19 +282,66 @@ export
         Reserved Variables
 
 _args
+    stores the command line arguments of the program
+
 _argc
+    contains the amount of command line arguments given
+
 _params
+    tuple containing each parameter of the current function
+
 _paramc
+    amount of parameters in the current function
+
+_precision
+    int containing the amount of decimal places to print 
+    when printing a num
+    
+    default: 10
+    min: 0
+    max: 21
+
 _G
+    The global variable/function table.  Could be used to
+    call a function name given the name as astring
+    
+    example:
+        _G["myFunc"](var1, var2, ...)
 
+`
 
+`
         Reserved Functions
 _init
+    Can be declared within a class to be automatically called
+    when creating a new instance of the class.
+
 _add
+    Can be declared within a class to be automatically called
+    when adding two instances of the class.
+
 _sub
+    Can be declared within a class to be automatically called
+    when subtracting two instances of the class.
+
 _mul
+    Can be declared within a class to be automatically called
+    when multiplying two instances of the class.
+
 _div
+    Can be declared within a class to be automatically called
+    when dividing two instances of the class.
+
 _mod
+    Can be declared within a class to be automatically called
+    when getting the remainder of two instances of the class.
+
 _pow
-_concat
+    Can be declared within a class to be automatically called
+    when getting the power of two instances of the class.
+
+_cnct
+    Can be declared within a class to be automatically called
+    when contatenating two instances of the class.
+
 `

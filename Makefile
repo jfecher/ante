@@ -13,7 +13,7 @@ DEPFILES := $(SRCFILES:.c=.d)
 
 -include $(DEPFILES)
 
-.PHONY: all clean
+.PHONY: all clean zy
 
 all: zy
 

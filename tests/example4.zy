@@ -9,5 +9,5 @@
         print "Goodbye World D:\n"
     /
 
-printSomething(true)
-printSomething(false)
+--printSomething(true)
+--printSomething(false)

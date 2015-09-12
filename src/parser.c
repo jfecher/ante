@@ -238,17 +238,14 @@ int function_body(){
 }
 
 /* function_call
- *     : FUNCTION IDENTIFIER : function_args
- *     | FUNCTION IDENTIFIER
+ *     : FUNCTION IDENTIFIER ( function_args )
+ *     | FUNCTION IDENTIFIER ( )
  *     ;
  */
 int function_call(){
     debugLog("Parser: Calling function.");
     expect(Tok_Identifier);
-    if(accept(Tok_Colon) || accept(Tok_ParenOpen)){
-        debugLog("Parser: getting value_list in function call.");
-        if(!value_list()) return 0;
-    }
+    if(!paren_expression()) return 0;
     return 1;
 }
 
@@ -474,7 +471,10 @@ int literal_value(){
  */
 int value(){
     debugLog("Parser: Checking for value.");
-    return literal_value() || variable() || paren_expression();
+    if(accept(Tok_Function))
+        return function_call();
+    else
+        return literal_value() || variable() || paren_expression();
 }
 
 

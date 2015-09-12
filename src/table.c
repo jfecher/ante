@@ -2,6 +2,22 @@
 
 #include "stdio.h"
 
+void free_var(Variable v)
+{
+    switch(v.type){
+    case Num:
+        mpf_clear(*(BigNum)v.value);
+        break;
+    case Int:
+        mpz_clear(*(BigInt)v.value);
+        break;
+    default:
+        NFREE(v.value);
+        break;
+    }
+    NFREE(v.name);
+}
+
 inline void varTable_add(VarTable *t, Variable v)
 {
     t->size++;
@@ -11,23 +27,17 @@ inline void varTable_add(VarTable *t, Variable v)
 
 void varTable_remove(VarTable *t, unsigned int i)
 {
-    Variable v = t->table[i];
-    NFREE(v.value);
-    NFREE(v.name);
+    free_var(t->table[i]);
 
-    for(i += 1; i < t->size; i++){
+    for(i += 1; i < t->size; i++)
         t->table[i-1] = t->table[i]; 
-    }
     
     t->table = realloc(t->table, t->size--);
 }
 
-void varTable_free(VarTable t)
+inline void varTable_free(VarTable t)
 {
-    int i;
-    for(i=0; i < t.size; i++){
-        NFREE(t.table[i].value);
-        NFREE(t.table[i].name);
-    }
+    for(int i=0; i < t.size; i++)
+        free_var(t.table[i]);
     free(t.table);
 }
