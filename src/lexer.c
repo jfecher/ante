@@ -52,7 +52,9 @@ Token getNextToken(){
 
     //Skip comments
     if(current == '~'){ //Single line comment.  Skip until newline
-        while(lookAhead != '\n' && current != EOF) incrementPos();
+        do 
+            incrementPos();
+        while(current != '\n' && current != EOF);
         return getNextToken();
     }else if(current == '`'){ //Multi line comment.  Skip until next `
         do

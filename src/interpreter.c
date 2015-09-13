@@ -1,11 +1,10 @@
 #include "interpreter.h"
-#include <stdio.h>
-#include <termios.h>
-#include <unistd.h>
 
 /*
  *  TODO:
  *    -Implement declaration of functions
+ *    -Stop interpretation on runtime error in files
+ *    -Fix crash when an undeclared variable is encountered in an expression
  */
 
 char *typeDictionary[] = {
@@ -102,6 +101,7 @@ void setVar(Variable *v, Variable val){
         v->value = val.value;
         v->type = val.type;
     }else{
+        free_var(val);
         runtimeError(ERR_TYPE_MISMATCH, v->name);
     }
 }
@@ -145,6 +145,7 @@ void op_function(){
         }else{
             runtimeError("Function parameter type mismatch.  Expected String but got %s.\n", typeDictionary[v.type]);
         }
+        free_value(v);
     }
 }
 
@@ -226,8 +227,11 @@ void op_assign(void){
         return;
     }
 
-    char* name = toks[tIndex].lexeme; //automatically copied in setVar
-    getCoords(c, name);
+    Coords c = lookupVar(toks[tIndex].lexeme);
+    if(c.x == -1){
+        INC_POS(1);
+        runtimeError(ERR_NOT_INITIALIZED, toks[tIndex-1].lexeme);
+    }
     INC_POS(2);
     setVar(&stack.items[c.x].table[c.y], expression());
 }

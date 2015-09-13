@@ -1,11 +1,11 @@
 #ifndef INTERPRETER_H
 #define INTERPRETER_H
 
+#include <stdio.h>
+#include <termios.h>
+#include <unistd.h>
 #include "parser.h"
-#include "types.h"
 #include "stack.h"
-#include "bignum.h"
-#include "table.h"
 #include "expression.h"
 
 #define VERSION "v0.0.10"
@@ -19,12 +19,10 @@ int tIndex;
 #define ERR_ALREADY_INITIALIZED "%s has already been initialized.\n"
 
 #define runtimeError(x,y) {fprintf(stderr,x,y); return;}
-#define getCoords(c,v) Coords c=lookupVar(v);if(c.x==-1){runtimeError(ERR_NOT_INITIALIZED,v);return;};
 
 #define CPY_TO_STR(newStr, cpyStr) { int len=strlen(cpyStr); newStr=realloc(newStr,len+1); strcpy(newStr, cpyStr);}
 #define CPY_TO_NEW_STR(newStr, cpyStr) char*newStr=NULL; CPY_TO_STR(newStr,cpyStr);
 #define INC_POS(x) (tIndex += x)
-#define IS_OPERATOR(t) (t==Tok_Plus||t==Tok_Minus||t==Tok_Multiply||t==Tok_Divide||t==Tok_Exponent||t==Tok_StrConcat)
 
 void interpret(FILE*, char);
 Coords lookupVar(char*);
