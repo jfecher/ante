@@ -6,7 +6,6 @@
 /*
  *  TODO:
  *    -Implement declaration of functions
- *    -FIXME: assorted memory leaks
  */
 
 char *typeDictionary[] = {
