@@ -110,10 +110,10 @@ Variable _expression(Variable l, uint8_t minPrecedence)
             r = _expression(r, lookAhead.prec);
             lookAhead = getOperator(toks[tIndex + 1].type);
         }
-        Value tmp = l.value;
+        Variable tmp = l;
         l = operate(l, op, r);
-        free(tmp);
-        free(r.value);
+        free_value(tmp);
+        free_value(r);
     }
     return l;
 }

@@ -93,8 +93,7 @@ void initVar(char *identifier, Type t){
 }
 
 void op_initObject(void){
-    CPY_TO_NEW_STR(id, toks[tIndex+1].lexeme);
-    initVar(id, Object);
+    initVar(toks[tIndex+1].lexeme, Object);
     INC_POS(1);
 }
 
@@ -168,21 +167,18 @@ void op_print(){
     free_var(v);
 }
 
-void op_initNum(){
-    CPY_TO_NEW_STR(id, toks[tIndex+2].lexeme);
-    initVar(id, Num);
+void op_initNum(void){
+    initVar(toks[tIndex+2].lexeme, Num);
     INC_POS(2);
 }
 
-void op_initInt(){
-    CPY_TO_NEW_STR(id, toks[tIndex+2].lexeme);
-    initVar(id, Int);
+void op_initInt(void){
+    initVar(toks[tIndex+2].lexeme, Int);
     INC_POS(2);
 }
 
-void op_initStr(){
-    CPY_TO_NEW_STR(id, toks[tIndex+2].lexeme);
-    initVar(id, String);
+void op_initStr(void){
+    initVar(toks[tIndex+2].lexeme, String);
     INC_POS(2);
 }
 
@@ -225,7 +221,7 @@ Variable getValue(Token t){
 }
 
 /* Sets a variable to value v of type t */
-void op_assign(){
+void op_assign(void){
     if(toks[tIndex+1].type != Tok_Assign){
         INC_POS(1);
         return;
