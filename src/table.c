@@ -2,19 +2,19 @@
 
 #include "stdio.h"
 
-void free_var(Variable v)
+void free_value(Variable v)
 {
     switch(v.type){
-    case Num:
-        mpf_clear(*(BigNum)v.value);
-        break;
-    case Int:
-        mpz_clear(*(BigInt)v.value);
-        break;
-    default:
-        NFREE(v.value);
-        break;
+    case Num: mpf_clear(*(BigNum)v.value); break;
+    case Int: mpz_clear(*(BigInt)v.value); break;
+    default:  break;
     }
+    NFREE(v.value);
+}
+
+inline void free_var(Variable v)
+{
+    free_value(v);
     NFREE(v.name);
 }
 

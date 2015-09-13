@@ -72,11 +72,10 @@ void initVar(char *identifier, Type t){
     Coords c = lookupVar(identifier);
     if(c.x != -1){ //lookupVar returns {-1, -1} if the var was not found
         runtimeError(ERR_ALREADY_INITIALIZED, identifier);
-        free(identifier);
     }
 
-    //           value, type, dynamic, name
-    Variable v = {NULL, t, t == Object, malloc(strlen(identifier)+1)};
+    //           value, type, dynamic,     name
+    Variable v = {NULL, t,    t == Object, malloc(strlen(identifier)+1)};
     strcpy(v.name, identifier);
     v.name[strlen(identifier)] = '\0';
 
@@ -93,7 +92,7 @@ void initVar(char *identifier, Type t){
     varTable_add(&stack_top(stack), v);
 }
 
-void op_initObject(){
+void op_initObject(void){
     CPY_TO_NEW_STR(id, toks[tIndex+1].lexeme);
     initVar(id, Object);
     INC_POS(1);
@@ -101,7 +100,7 @@ void op_initObject(){
 
 void setVar(Variable *v, Variable val){
     if(v->type == val.type || v->dynamic){
-        NFREE(v->value);
+        free_value(*v);
         v->value = val.value;
         v->type = val.type;
     }else{
@@ -166,6 +165,7 @@ void op_print(){
         default:
             printf("%s\n", (char*)v.value);
     }
+    free_var(v);
 }
 
 void op_initNum(){
@@ -231,7 +231,7 @@ void op_assign(){
         return;
     }
 
-    CPY_TO_NEW_STR(name, toks[tIndex].lexeme);
+    char* name = toks[tIndex].lexeme; //automatically copied in setVar
     getCoords(c, name);
     INC_POS(2);
     setVar(&stack.items[c.x].table[c.y], expression());
@@ -265,8 +265,8 @@ void setupTerm(){
     struct termios oldt, newt;
     tcgetattr(STDIN_FILENO, &oldt);
     newt = oldt;
-    newt.c_lflag &= ~( ICANON | ECHO );
-    tcsetattr( STDIN_FILENO, TCSANOW, &newt);
+    newt.c_lflag &= ~(ICANON | ECHO);
+    tcsetattr(STDIN_FILENO, TCSANOW, &newt);
 }
 
 void getln(){

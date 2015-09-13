@@ -18,7 +18,7 @@ int tIndex;
 #define ERR_TYPE_MISMATCH "Attempted to set %s to an incompatible type.\n"
 #define ERR_ALREADY_INITIALIZED "%s has already been initialized.\n"
 
-#define runtimeError(x,y) {printf(x,y); return;}
+#define runtimeError(x,y) {fprintf(stderr,x,y); return;}
 #define getCoords(c,v) Coords c=lookupVar(v);if(c.x==-1){runtimeError(ERR_NOT_INITIALIZED,v);return;};
 
 #define CPY_TO_STR(newStr, cpyStr) { int len=strlen(cpyStr); newStr=realloc(newStr,len+1); strcpy(newStr, cpyStr);}

@@ -10,10 +10,11 @@ typedef struct{
     unsigned int size;
 }VarTable;
 
-void varTable_add();
-void varTable_remove();
-void varTable_free();
+void varTable_add(VarTable*, Variable);
+void varTable_remove(VarTable*, unsigned int);
+void varTable_free(VarTable);
 
-void free_var();
+void free_var(Variable);
+void free_value(Variable);
 
 #endif
