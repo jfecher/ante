@@ -39,14 +39,14 @@ Variable convertType(Variable v, Type t)
     
     if(typeCompatible(v.type, t)){
         switch(t){
-        case Num:
-            //mpz_clear(*(BigInt)v.value);
-            //v.value = bigint_new(v.value);
+        case Num: //convert Int to Num
+            mpz_clear(*(BigInt)v.value);
+            v.value = bigint_new(v.value);
             break;
         case Int:
-            //mpf_get_str(v.value, v.value, 10, 1000, *(BigNum)v.value); 
-            //mpz_init_set(*(BigInt)v.value, v.value);
-            //v.value = bignum_new(v.value);
+            mpf_get_str(v.value, v.value, 10, 1000, *(BigNum)v.value); 
+            mpz_init_set(*(BigInt)v.value, v.value);
+            v.value = bignum_new(v.value);
             break;
         case String:
             break;
@@ -74,8 +74,7 @@ inline Variable operate(Variable v1, Operator op, Variable v2)
 
 Operator getOperator(TokenType t)
 {
-    int i;
-    for(i = 0; i < ARR_SIZE(operators); i++){
+    for(int i = 0; i < ARR_SIZE(operators); i++){
         if(operators[i].op == t){
             return operators[i];
         }

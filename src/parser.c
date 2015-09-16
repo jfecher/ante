@@ -57,7 +57,7 @@ int accept(TokenType type){
 int _expect(TokenType type){
     if(accept(type)){
         return 1;
-    }else{ //TODO: expand to include column and line number
+    }else{
         fprintf(stderr, "Syntax Error: Expected %s, but found %s at row %d, col %d.\n", tokenDictionary[type], tokenDictionary[tokenizedInput[tokenIndex].type], tokenizedInput[tokenIndex].row, tokenizedInput[tokenIndex].col);
         exitFlag = 2;
         return 0;
@@ -278,7 +278,7 @@ int statement(){
         tokenIndex++;
         return 1;
     default:
-        if(type() != Tok_Invalid) initialize_value();
+        if(type() != Tok_Invalid) return initialize_value();
         else syntaxError("Invalid Statement starting with ", 1);
     }
     return 1;
@@ -473,14 +473,17 @@ int value(){
     debugLog("Parser: Checking for value.");
     if(accept(Tok_Function))
         return function_call();
+    else if(check(Tok_ParenOpen))
+        return paren_expression();
     else
         return literal_value() || variable() || paren_expression();
 }
 
 
 int math_expression(){
-    paren_expression();
-
+    if(check(Tok_EndOfInput))
+        syntaxError("Invalid empty expression", 0);
+    
     if(!value()) return 0;
     if(!parse_expression()) return 0;
     return 1;
@@ -506,8 +509,8 @@ int parse_expression(){
 }
 
 /* term
- *     : value * expression
- *     | value / expression
+ *     : * expression
+ *     | / expression
  *     | paren_expression
  *     ;
  */
@@ -527,7 +530,6 @@ int term(){
 
 /*  paren_expression
  *      : ( expression )
- *      | value
  *      ;
  */
 int paren_expression(){
