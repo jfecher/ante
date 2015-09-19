@@ -12,21 +12,21 @@ Operator operators[] = {
 };
 
 
+Type conversion[4][4] = {
+//            Object,  Num,    Int,    String
+/* Object */  {Object, Object, Object, Object},
+/*  Num   */  {Object, Num,    Num,    String},
+/*  Int   */  {Object, Num,    Int,    String}, 
+/* String */  {Object, String, String, String},
+};
+
+
 /*
- *  Returns true if the given type is able
- *  to be converted to the other and vice-versa
+ *  Returns the type to convert to from any two types
  */
-inline char typeCompatible(Type t1, Type t2)
+inline Type getTypeConversion(Type t1, Type t2)
 {
-    switch(t1){
-        case Num:
-        case Int:
-            return t2 == Num || t2 == Int;
-        case String:
-            return t2 == Num || t2 == Int || t2 == String;
-        default:
-            return 0;
-    }
+    return (t1 > 3 || t2 > 3) ? Invalid : conversion[t1][t2];
 }
 
 /*
@@ -35,61 +35,48 @@ inline char typeCompatible(Type t1, Type t2)
  */
 void convertType(Variable *v, Type t)
 {
-        switch(t){
-        case Num:; //convert Int to Num
-            BigNum n = bignum_init();
-            mpf_set_z(*n, *(BigInt)v->value);
-            free_value(*v);
-            v->value = n;
-            v->type = Num;
-            break;
+    switch(t){
+    case Num:; //convert Int to Num
+        BigNum n = bignum_new("0");
+        mpf_set_z(*n, *(BigInt)v->value);
+        v->value = n;
+        v->type = Num;
+        break;
+    case Int:;
+        BigInt i = bigint_new("0");
+        mpz_set_f(*i, *(BigNum)v->value); 
+        v->value = i;
+        v->type = Int;
+        break;
+    case String:
+        switch(v->type){
         case Int:;
-            BigInt i = bigint_init();
-            mpz_set_f(*i, *(BigNum)v->value); 
-            free_value(*v);
-            v->value = i;
-            v->type = Int;
+            char *s = mpz_get_str(NULL, 10, *(BigInt)v->value);
+            v->value = s;
             break;
-        case String:
-            switch(v->type){
-                case Int:;
-                    char *s = mpz_get_str(NULL, 10, *(BigInt)v->value);
-                    free_value(*v);
-                    v->value = s;
-                    break;
-                case Num:;
-                    long int expptr[1];
-                    char *r = mpf_get_str(NULL, expptr, 10, 0, *(BigNum)v->value);
-                    free_value(*v);
-                    v->value = r;
-                    break;
-                default: break;
-            }
-            v->type = String;
+        case Num:;
+            long int expptr[1];
+            char *r = mpf_get_str(NULL, expptr, 10, 0, *(BigNum)v->value);
+            v->value = r;
             break;
         default: break;
         }
+        v->type = String;
+        break;
+    default: break;
+    }
 }
 
 inline Variable operate(Variable v1, Operator op, Variable v2)
 {
     //check for type mismatch
     if(v1.type != v2.type){
-        if(v1.type == Int){ //TODO: clean
-            if(v2.type == Num){
-                convertType(&v1, Int);
-            }else if(v2.type == String){
-                convertType(&v1, String);
-            }
-        }else if(v1.type == Num){
-            if(v2.type == Int){
-                convertType(&v2, Num);
-            }else if(v2.type == String){
-                convertType(&v1, String); 
-            }
-        }else if(v1.type == String){
-            convertType(&v2, String);
-        }
+        Type cType = getTypeConversion(v1.type, v2.type);
+        
+        if(v1.type == cType)
+            convertType(&v2, cType);
+        else
+            convertType(&v1, cType);
     }
     return op.func(v1, v2);
 }
@@ -101,8 +88,7 @@ Operator getOperator(TokenType t)
             return operators[i];
         }
     }
-    Operator invalid = {-1, 0, 0};
-    return invalid;
+    return (Operator) {-1, 0, 0};//return invalid
 }
 
 Variable expression(void)

@@ -4,9 +4,7 @@
  *  TODO:
  *    -Implement declaration of functions
  *    -Stop interpretation on runtime error in files
- *    -Fix crash when an undeclared variable is encountered in an expression
- *    -Fix conversions converting only to 0 or ""
- *
+ *    -Fix memory leaks when converting variables
  */
 
 char *typeDictionary[] = {
