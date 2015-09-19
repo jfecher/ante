@@ -5,6 +5,8 @@
  *    -Implement declaration of functions
  *    -Stop interpretation on runtime error in files
  *    -Fix crash when an undeclared variable is encountered in an expression
+ *    -Fix conversions converting only to 0 or ""
+ *
  */
 
 char *typeDictionary[] = {
@@ -161,8 +163,11 @@ void op_print(){
             Coords c = lookupVar("_precision");
             gmp_printf("%.*Ff\n", mpz_get_ui(*(BigInt)stack.items[c.x].table[c.y].value), *(BigNum)v.value);
             break;
-        default:
+        case String:
             printf("%s\n", (char*)v.value);
+            break;
+        default:
+            break;
     }
     free_var(v);
 }
@@ -208,6 +213,10 @@ Variable makeVarFromTok(Token t){
 Variable getValue(Token t){
     if(t.type == Tok_Identifier){
         Coords c = lookupVar(t.lexeme);
+        if(c.x == -1){
+            fprintf(stderr, ERR_UNINITIALIZED_VALUE_IN_EXPRESSION, t.lexeme);
+            return VAR(NULL, Invalid);
+        }
         return copyVar(stack.items[c.x].table[c.y]);
     }else if(t.type == Tok_Function){
         INC_POS(1);

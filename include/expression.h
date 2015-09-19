@@ -2,6 +2,7 @@
 #define EXPRESSION_H
 
 #include "types.h"
+#include "bignum.h"
 #include "interpreter.h"
 #include "operations.h"
 

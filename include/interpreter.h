@@ -8,15 +8,16 @@
 #include "stack.h"
 #include "expression.h"
 
-#define VERSION "v0.0.10"
-#define VERDATE "2015-09-13"
+#define VERSION "v0.0.11"
+#define VERDATE "2015-09-18"
 
 Token*toks;
 int tIndex;
 
-#define ERR_NOT_INITIALIZED "%s has not been initialized.\n"
 #define ERR_TYPE_MISMATCH "Attempted to set %s to an incompatible type.\n"
+#define ERR_NOT_INITIALIZED "%s has not been initialized.\n"
 #define ERR_ALREADY_INITIALIZED "%s has already been initialized.\n"
+#define ERR_UNINITIALIZED_VALUE_IN_EXPRESSION "Attempted to use uninitialized value %s in expression.\n"
 
 #define runtimeError(x,y) {fprintf(stderr,x,y); return;}
 

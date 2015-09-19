@@ -354,6 +354,13 @@ int initialize_value(){
         debugLog("Parser: found type initialization.");
         tokenIndex++;
     }
+
+    //array declaration
+    if(accept(Tok_ListInitializer)){
+        math_expression();
+        expect(Tok_ListInitializer);
+    }
+
     expect(Tok_Greater);
     if(tokenizedInput[tokenIndex + 1].type == Tok_Assign){
         debugLog("Parser: next token in initializion is an assignment.  Returning assign_value");

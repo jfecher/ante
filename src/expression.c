@@ -16,7 +16,7 @@ Operator operators[] = {
  *  Returns true if the given type is able
  *  to be converted to the other and vice-versa
  */
-inline bool typeCompatible(Type t1, Type t2)
+inline char typeCompatible(Type t1, Type t2)
 {
     switch(t1){
         case Num:
@@ -31,42 +31,64 @@ inline bool typeCompatible(Type t1, Type t2)
 
 /*
  *  Returns a new variable made from v with type t
- *  TODO: Not yet implemented
+ *  TODO: clean
  */
-Variable convertType(Variable v, Type t)
+void convertType(Variable *v, Type t)
 {
-    Variable ret = {NULL, t, NULL, NULL};
-    
-    if(typeCompatible(v.type, t)){
         switch(t){
-        case Num: //convert Int to Num
-            mpz_clear(*(BigInt)v.value);
-            v.value = bigint_new(v.value);
+        case Num:; //convert Int to Num
+            BigNum n = bignum_init();
+            mpf_set_z(*n, *(BigInt)v->value);
+            free_value(*v);
+            v->value = n;
+            v->type = Num;
             break;
-        case Int:
-            mpf_get_str(v.value, v.value, 10, 1000, *(BigNum)v.value); 
-            mpz_init_set(*(BigInt)v.value, v.value);
-            v.value = bignum_new(v.value);
+        case Int:;
+            BigInt i = bigint_init();
+            mpz_set_f(*i, *(BigNum)v->value); 
+            free_value(*v);
+            v->value = i;
+            v->type = Int;
             break;
         case String:
+            switch(v->type){
+                case Int:;
+                    char *s = mpz_get_str(NULL, 10, *(BigInt)v->value);
+                    free_value(*v);
+                    v->value = s;
+                    break;
+                case Num:;
+                    long int expptr[1];
+                    char *r = mpf_get_str(NULL, expptr, 10, 0, *(BigNum)v->value);
+                    free_value(*v);
+                    v->value = r;
+                    break;
+                default: break;
+            }
+            v->type = String;
             break;
         default: break;
         }
-        return ret;
-    }
-   
-    ret.type = Invalid;
-    return ret;
 }
 
 inline Variable operate(Variable v1, Operator op, Variable v2)
 {
     //check for type mismatch
     if(v1.type != v2.type){
-        if(v1.type > v2.type){
-            //TODO: v1 = convertType(v1, v2.type);
-        }else{
-            //TODO: v2 = convertType(v2, v2.type);
+        if(v1.type == Int){ //TODO: clean
+            if(v2.type == Num){
+                convertType(&v1, Int);
+            }else if(v2.type == String){
+                convertType(&v1, String);
+            }
+        }else if(v1.type == Num){
+            if(v2.type == Int){
+                convertType(&v2, Num);
+            }else if(v2.type == String){
+                convertType(&v1, String); 
+            }
+        }else if(v1.type == String){
+            convertType(&v2, String);
         }
     }
     return op.func(v1, v2);
@@ -103,6 +125,9 @@ Variable _expression(Variable l, uint8_t minPrecedence)
         Operator op = lookAhead;
         INC_POS(2);
         Variable r = getValue(toks[tIndex]);
+
+        if(r.type == Invalid) return r;
+
         lookAhead = getOperator(toks[tIndex + 1].type);
 
         while(lookAhead.op != -1 && (lookAhead.prec > op.prec || (lookAhead.rAsso && lookAhead.prec >= op.prec))){
