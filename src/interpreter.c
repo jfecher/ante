@@ -4,7 +4,6 @@
  *  TODO:
  *    -Implement declaration of functions
  *    -Stop interpretation on runtime error in files
- *    -Fix memory leaks when converting variables
  */
 
 char *typeDictionary[] = {
@@ -311,8 +310,11 @@ char exec(){
     toks = lexer_next(0);
     tIndex = 0;
 
-    if(parse(toks))
+    if(parse(toks)){
+        NFREE(srcLine);
+        freeToks(&toks);
         return 0;
+    }
 
     uint8_t opcode = toks[tIndex].type;
     if(opcode == Tok_Newline)
@@ -327,13 +329,8 @@ char exec(){
         opcode = toks[tIndex].type;
     }
 
-    if(srcLine){
-        free(srcLine);
-        freeToks(&toks);
-    }else{
-        freeToks(&toks); 
-    }
-        
+    NFREE(srcLine);
+    freeToks(&toks);    
     return 1;
 }
 

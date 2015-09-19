@@ -8,8 +8,8 @@
 #include "stack.h"
 #include "expression.h"
 
-#define VERSION "v0.0.11"
-#define VERDATE "2015-09-18"
+#define VERSION "v0.0.12"
+#define VERDATE "2015-09-19"
 
 Token*toks;
 int tIndex;

@@ -73,10 +73,17 @@ inline Variable operate(Variable v1, Operator op, Variable v2)
     if(v1.type != v2.type){
         Type cType = getTypeConversion(v1.type, v2.type);
         
-        if(v1.type == cType)
+        if(v1.type == cType){
             convertType(&v2, cType);
-        else
+            Variable ret = op.func(v1, v2);
+            free_value(v2);
+            return ret;
+        }else{
             convertType(&v1, cType);
+            Variable ret = op.func(v1, v2);
+            free_value(v1);
+            return ret;
+        }
     }
     return op.func(v1, v2);
 }
