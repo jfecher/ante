@@ -123,15 +123,28 @@ inline BigInt bigint_mod(BigInt n1, BigInt n2)
     return prod;
 }
 
-//TODO: implement for negative exponents
 inline BigInt bigint_pow(BigInt n1, BigInt n2)
 {
-    BigInt ret = bigint_new("1");
+    if(mpz_cmp_ui(*n2, 0) == -1)
+        return bigint_new("0");
+    else if(mpz_cmp_ui(*n2, 0) == 0)//temporary fix for n2 = 0
+        return bigint_new("1");
+
+    BigInt ret = bigint_copy(n1);
+    mpz_sub_ui(*n2, *n2, 1);
+    BigInt pow = bigint_new("1");
+
+    for(; mpz_cmp(*pow, *n2) == -1; mpz_mul_2exp(*pow, *pow, 1)){
+        mpz_sub(*n2, *n2, *pow);
+        mpz_mul(*ret, *ret, *ret);
+    }
 
     for(; mpz_cmp_d(*n2, 0) == 1; mpz_sub_ui(*n2, *n2, 1)){
         mpz_mul(*ret, *ret, *n1);
     }
 
+    mpz_clear(*pow);
+    free(pow);
     return ret;
 }
 
