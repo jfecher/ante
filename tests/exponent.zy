@@ -1,8 +1,8 @@
 `
-    exponent.py
+    exponent.zy
         A speedtest for pow operations
 `
-print 99999^99999
+print 999999^99999
 
 
 ~time: 2.41s
