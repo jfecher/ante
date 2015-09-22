@@ -92,9 +92,14 @@ Variable powInt(Variable n1, Variable n2)
     return VAR(bigint_pow(n1.value, n2.value), Int);
 }
 
+Variable powNum(Variable n1, Variable n2)
+{
+    return VAR(bignum_pow(n1.value, n2.value), Num);
+}
+
 opFunc powFuncTable[] = {
   //Object, Num,    Int,    String, Function, Invalid  
-    NULL,   NULL,   powInt, NULL,   NULL,     NULL
+    NULL,   powNum, powInt, NULL,   NULL,     NULL
 };
 
 

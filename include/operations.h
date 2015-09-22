@@ -1,6 +1,7 @@
 #ifndef OPERATIONS_H
 #define OPERATIONS_H
 
+#include <string.h>
 #include "types.h"
 #include "bignum.h"
 

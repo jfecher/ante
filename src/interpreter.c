@@ -142,7 +142,7 @@ void op_function(){
         if(v.type == String){
             system((char*)v.value);
         }else{
-            runtimeError("Function parameter type mismatch.  Expected String but got %s.\n", typeDictionary[v.type]);
+            fprintf(stderr, "Function parameter type mismatch.  Expected String but got %s.\n", typeDictionary[v.type]);
         }
         free_value(v);
     }

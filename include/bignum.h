@@ -17,6 +17,7 @@ BigNum bignum_add(BigNum, BigNum);
 BigNum bignum_sub(BigNum, BigNum);
 BigNum bignum_mul(BigNum, BigNum);
 BigNum bignum_div(BigNum, BigNum);
+BigNum bignum_pow(BigNum, BigNum);
 
 BigInt bigint_init(void);
 BigInt bigint_new(char*);

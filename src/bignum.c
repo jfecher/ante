@@ -48,7 +48,20 @@ inline BigNum bignum_div(BigNum n1, BigNum n2)
     mpf_div(*quo, *n1, *n2);
     return quo;
 }
-//TODO: implement bignum_mod and bignum_pow
+
+//TODO: implement for negative exponents
+inline BigNum bignum_pow(BigNum n1, BigNum n2)
+{
+    BigNum ret = bignum_new("1");
+
+    for(; mpf_cmp_d(*n2, 0) == 1; mpf_sub_ui(*n2, *n2, 1)){
+        mpf_mul(*ret, *ret, *n1);
+    }
+
+    return ret;
+}
+
+//TODO: implement bignum_mod
 
 
 /*
@@ -113,20 +126,12 @@ inline BigInt bigint_mod(BigInt n1, BigInt n2)
 //TODO: implement for negative exponents
 inline BigInt bigint_pow(BigInt n1, BigInt n2)
 {
-    BigInt res = bigint_init();
-    BigInt mod = bigint_new("1000000000000007");
-    mpz_mul(*mod,*mod,*mod);
-    mpz_mul(*mod,*mod,*mod);
-    mpz_mul(*mod,*mod,*mod);
-    mpz_mul(*mod,*mod,*mod);
-    mpz_mul(*mod,*mod,*mod);
-    mpz_mul(*mod,*mod,*mod);
-    mpz_mul(*mod,*mod,*mod);
-    
-    mpz_powm(*res, *n1, *n2, *mod); //FIXME: I break when given a negative n2
+    BigInt ret = bigint_new("1");
 
-    mpz_clear(*mod);
-    free(mod);
-    return res;
+    for(; mpz_cmp_d(*n2, 0) == 1; mpz_sub_ui(*n2, *n2, 1)){
+        mpz_mul(*ret, *ret, *n1);
+    }
+
+    return ret;
 }
 
