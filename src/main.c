@@ -48,6 +48,7 @@ char *tokenDictionary[] = {
 	"Tok_If",
 	"Tok_Else",
 	"Tok_For",
+	"Tok_ForEach",
 	"Tok_While",
 	"Tok_Continue",
 	"Tok_Break",

@@ -15,7 +15,6 @@ typedef enum TokenType{
     Tok_Int,
 
     Tok_Invalid,
-    Tok_Begin,
 	Tok_Assign,
 	Tok_Multiply,
 	Tok_Divide,
@@ -38,7 +37,7 @@ typedef enum TokenType{
 	Tok_Underscore,
 	Tok_Comma,
 	Tok_Colon,
-    Tok_ListInitializer, // The | in the example list of strings: string|>myStringList = "This", "is", "an", "example"
+    Tok_ListInitializer, // The | in the example list of strings: string|4|>myStringList = "This", "is", "an", "example"
     Tok_Boolean,
     Tok_BooleanOr,
     Tok_BooleanAnd,
@@ -53,6 +52,7 @@ typedef enum TokenType{
 	Tok_If,
 	Tok_Else,
 	Tok_For,
+	Tok_ForEach,
 	Tok_While,
 	Tok_Continue,
 	Tok_Break,

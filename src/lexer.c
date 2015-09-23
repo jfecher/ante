@@ -3,7 +3,7 @@
 char current, lookAhead; //The current and lookAhead chars from src
 TokenType prevType; //The previous TokenType found.  Initialized with Tok_Begin
 
-char*color = RESET_COLOR;
+char *color = RESET_COLOR;
 char *srcLine;
 char *pos;
 //Level of spacing in the src.  Used to identify where to give Indent,
@@ -23,6 +23,7 @@ Token dictionary[] = {
     {Tok_If,           "if",      0,0},
     {Tok_Else,         "else",    0,0},
     {Tok_For,          "for",     0,0},
+    {Tok_ForEach,      "foreach", 0,0},
     {Tok_While,        "while",   0,0},
     {Tok_String,       "string",  0,0},
     {Tok_Num,          "num",     0,0},
@@ -357,7 +358,6 @@ void printTok(Token t){
 }
 
 Token* lexer_next(char b){
-    int i;
     printToks = b;
     Token *tok = malloc(sizeof(Token));
     tok[0] = getNextToken();
@@ -365,13 +365,18 @@ Token* lexer_next(char b){
     if(printToks)
         printf("\r" RESET_COLOR ": ");
 
-    for(i = 1; tok[i-1].type != Tok_EndOfInput; i++)
+    for(int i = 1; tok[i-1].type != Tok_EndOfInput; i++)
     {
         if(printToks && !IS_WHITESPACE_TOKEN(tok[i-1]))
             printTok(tok[i-1]);
         
         tok = realloc(tok, sizeof(Token) * (i+1));
         tok[i] = getNextToken();
+
+        if(tok[i].type == Tok_ParenOpen && tok[i-1].type == Tok_Identifier)
+            tok[i-1].type = Tok_FuncCall;
+        else if(tok[i].type == Tok_Colon && tok[i-1].type == Tok_Identifier)
+            tok[i-1].type = Tok_FuncDef;
     }
     color = RESET_COLOR;
     return tok;

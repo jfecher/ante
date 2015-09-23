@@ -52,11 +52,20 @@ print typeof(n), " ", n  ~output: int 43
 
     The syntax for declaring arrays is type|size> identifier.  The array arr
     declared below is an array of 30 integers, each initialized to 1
+
+    The syntax for declaring an array is: 
+        
+        type|size|> name
+
+    Where size is an integer expression.
+    NOTE: if size does not evaluate to an integer, the program will halt
+          with a TypeMismatchError.  To avoid this, it is best to only use
+          integer variables and constants in this expression.
 `
-int|30> arr = 1
+int|30|> arr = 1
 
 ~Each element of an array can also be initialized individually
-num|5> assortedNums = 9, -76, 3.14159265, 2^8, 1 + 2*(6-3)
+num|5|> assortedNums = 9, -76, 3.14159265, 2^8, 1 + 2*(6-3)
 
 `
     Each element of an array can be accessed individually by index.  Negative
@@ -82,7 +91,7 @@ arr -= 3
 `
 int, num, string> tup = 44, 44.0, "Fourty-four"
 
-int|30, string|2> anotherTuple = arr, "This tuple contains", "two arrays"
+int|30|, string|2|> anotherTuple = arr, "This tuple contains", "two arrays"
 
 `
     This restriction does not apply when making a dynamic variable of course
@@ -102,32 +111,32 @@ int|30, string|2> anotherTuple = arr, "This tuple contains", "two arrays"
     languages, blocks are denoted by changes in indentation rather than
     opening and closing brackets.
 `
--->printMsg:
+void> printMsg:
     print "Hello World!"
 
 `
     This add function takes in two parameters, augend and addend, and returns
     a num value.
 `
---num> add: num augend, num addend
+num> add: num augend, num addend
     return augend + addend
 
 `
     Zy also has several reserved variables.  Variables with identifiers starting
     with an underscore are reserved and should not be manually assigned values.
     The below function takes in a variable amount of parameters, as denoted by
-    the elipses.  Since _params always contains an array of each parameter of
-    a function, all the params are passed to the print keyword, with an
+    the elipses.  Since _params always contains a tuple of each parameter of
+    the function, all the params are passed to the print keyword, with an
     additional newline passed at the end.
 `
--->println: ...
+
+void> println: ...
     print _params, '\n'
 
 `
-    Here is the syntax for calling functions. You'll quickly notice that as in
-    their declaration, they must also be prefixed with -- when calling them.
+    Here is the syntax for calling functions:
 `
---println("Hello World #", --add(3, 43.223))
+void> println("Test #", add(3, 43))
 
 `
     You may have noticed that the syntax for function parameters looks somewhat
@@ -135,12 +144,12 @@ int|30, string|2> anotherTuple = arr, "This tuple contains", "two arrays"
     each member is assigned a name (augend and addend in the add function's case).
     
     Because of this, we can instead pass a tuple containing several or all the
-    parameters to a function as with the following examples.
+    parameters to a function as is the case with the following examples.
 `
 num, num> numbers = 4.3, 5.7
-num>sum = --add(numbers)
+num>sum = add(numbers)
 print sum
-~output: 10.0
+~output: 10.0000000000
 
 `
         Loops
@@ -162,10 +171,10 @@ while false
 
 ~prints 1-10
 for int>i = 1, i <= 10, i += 1
-    print i, " "
+    print i .. " "
 
 num> total
-foreach num n in arr
+foreach num>n in arr
     total += n
 
 
@@ -184,13 +193,13 @@ foreach num n in arr
     The _init function is a function that is automatically called when a class
     is initialized and the givin values match _init's parameters.
 `
-    -->_init: int, string, string
+    void>_init: int, string, string
         age = _params[0]
         species = _params[1]
         name = _params[2]
 
-    -->printInfo:
-        print name, " is a/an ", species, " and is ", age, " year(s) old.\n"
+    void> printInfo:
+        print name .. " is a/an " .. species .. " and is " .. age .. " year(s) old.\n"
 
 `
     To create an instance of the class, use the class name as the type of the
@@ -216,19 +225,57 @@ print coord  ~output: 100, -50, 66.7
 ->Person : Animal
     string> job
 
-    -->_init: int age, string j, string name
+    void>_init: int age, string j, string name
         job = j
         super(age, "Homo sapien", name)
 
 `
     This function obscures the printInfo declared in the Animal super class.
 `
-    -->printInfo:
-        print name, " is a ", age, "-year-old ", job
+    void> printInfo:
+        print name .. " is " .. age .. " years old and is a(n) " .. job
 
 
 Person> john = 44, "Electrician", "John"
 john.printInfo() ~output: John is a 44-year-old Electrician
+
+`
+        Modifiers
+    With classes comes the necessity for modifiers, such as the visibility
+    modifiers pub, pro, and pri.  These are short for public, protected,
+    and private respectively.  Another common modifier is const to declare
+    a constant variable.
+
+    Modifiers can be placed before a variable or function, or alternatively
+    can be placed before a new block to modify everything within the block
+`
+->Statistics
+    ~declare secretData as a private variable, only able to be accessed
+    ~from within the class
+    pri int> secretData
+
+    pub int> varCount
+
+    ~Alternatively, you can also use modifiers before a block:
+    pub
+        int> getData:
+            return secretData ~not so secret anymore
+
+        ~This method is simplified for demonstration purposes
+        string> getStatus:
+            if secretData > 10
+                return "Good"
+            else
+                return "Not so good"
+
+    pri void> doCalculations: int data
+            return data * secretData
+
+    ~NOTE: reserved functions such as _init and _mul do not need to be public
+    ~      to be automatically called.
+    void>_init: int|data
+        secretData = data
+        varCount = 2
 
 `
         Enums
