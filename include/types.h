@@ -9,7 +9,6 @@ typedef enum TokenType{
     Tok_Greater, //Used to signal the initialization of variables as well as comparing values
     Tok_Identifier, //These first few double as opcodes
     Tok_Print,
-    Tok_Function,
     Tok_Num,
     Tok_String,
     Tok_Int,
@@ -64,7 +63,9 @@ typedef enum TokenType{
 	Tok_EndOfInput,
     Tok_StrConcat,
     Tok_MalformedString,
-    Tok_Exponent
+    Tok_Exponent,
+    Tok_FuncCall,
+    Tok_FuncDef,
 } TokenType;
 
 //The basic Token construct.

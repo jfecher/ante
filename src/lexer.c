@@ -3,7 +3,6 @@
 char current, lookAhead; //The current and lookAhead chars from src
 TokenType prevType; //The previous TokenType found.  Initialized with Tok_Begin
 
-char *color = RESET_COLOR;
 char *srcLine;
 char *pos;
 //Level of spacing in the src.  Used to identify where to give Indent,
@@ -132,10 +131,6 @@ Token getNextToken(){
             incrementPos();
             tok.lexeme[1] = '=';
             tok.type = Tok_MinusEquals;
-        }else if(lookAhead == '-'){
-            incrementPos();
-            tok.lexeme[1] = '-';
-            tok.type = Tok_Function;
         }else if(lookAhead == '>'){
             incrementPos();
             tok.lexeme[1] = '>';
@@ -342,18 +337,12 @@ void printTok(Token t){
     case Tok_MalformedString:
         printf(STRINGL_COLOR "\"%s" RESET_COLOR, t.lexeme);
         break;
-    case Tok_Function:
-        printf(FUNCTION_COLOR "--");
-        color = FUNCTION_COLOR;
-        break;
-    case Tok_Colon:
-    case Tok_Minus:
-    case Tok_ParenOpen:
-        printf(RESET_COLOR "%s", t.lexeme);
-        color = RESET_COLOR;
+    case Tok_FuncCall:
+    case Tok_FuncDef:
+        printf(FUNCTION_COLOR "%s", t.lexeme);
         break;
     default:
-        printf("%s%s\033[1;m", color, t.lexeme);
+        printf("%s" RESET_COLOR, t.lexeme);
     }
 }
 
@@ -366,7 +355,7 @@ Token* lexer_next(char b){
         printf("\r" RESET_COLOR ": ");
 
     for(int i = 1; tok[i-1].type != Tok_EndOfInput; i++)
-    {
+    { 
         if(printToks && !IS_WHITESPACE_TOKEN(tok[i-1]))
             printTok(tok[i-1]);
         
@@ -376,9 +365,8 @@ Token* lexer_next(char b){
         if(tok[i].type == Tok_ParenOpen && tok[i-1].type == Tok_Identifier)
             tok[i-1].type = Tok_FuncCall;
         else if(tok[i].type == Tok_Colon && tok[i-1].type == Tok_Identifier)
-            tok[i-1].type = Tok_FuncDef;
+            tok[i-1].type = Tok_FuncDef; 
     }
-    color = RESET_COLOR;
     return tok;
 }
 

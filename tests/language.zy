@@ -45,7 +45,9 @@ bool> myBool = false
 print int 4.99  ~output: 4
 num>n = 43.876
 int n
-print typeof(n), " ", n  ~output: int 43
+
+~NOTE: the .. below is the string concat operator
+print typeof(n) .. " " .. n  ~output: int 43
 
 `
         Arrays
@@ -136,7 +138,7 @@ void> println: ...
 `
     Here is the syntax for calling functions:
 `
-void> println("Test #", add(3, 43))
+println("Test #", add(3, 43))
 
 `
     You may have noticed that the syntax for function parameters looks somewhat
@@ -147,8 +149,7 @@ void> println("Test #", add(3, 43))
     parameters to a function as is the case with the following examples.
 `
 num, num> numbers = 4.3, 5.7
-num>sum = add(numbers)
-print sum
+print add(numbers)
 ~output: 10.0000000000
 
 `
@@ -252,30 +253,34 @@ john.printInfo() ~output: John is a 44-year-old Electrician
 ->Statistics
     ~declare secretData as a private variable, only able to be accessed
     ~from within the class
-    pri int> secretData
+    pri num> secretData
 
+    pri const num> pi = 3.14159265
+    
     pub int> varCount
 
     ~Alternatively, you can also use modifiers before a block:
     pub
-        int> getData:
+        num> getData:
             return secretData ~not so secret anymore
 
-        ~This method is simplified for demonstration purposes
         string> getStatus:
             if secretData > 10
                 return "Good"
             else
                 return "Not so good"
 
-    pri void> doCalculations: int data
-            return data * secretData
+    ~NOTE: by default, variables and methods are private so there is really 
+    ~      no need to declare this function private explicitly.
+    pri num> doCalculations: num data
+            return data * secretData / varCount
 
     ~NOTE: reserved functions such as _init and _mul do not need to be public
     ~      to be automatically called.
     void>_init: int|data
-        secretData = data
-        varCount = 2
+        foreach int>i in data
+            secretData += data / pi
+            varCount += 1
 
 `
         Enums

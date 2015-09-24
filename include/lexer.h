@@ -25,7 +25,6 @@ FILE *src;
 #define INTEGERL_COLOR "\033[0;36m"
 #define FUNCTION_COLOR "\033[0;32m"
 #define RESET_COLOR    "\033[0;m"
-extern char*color;
 
 //Returns 1 if character is an uppercase or lowercase letter, a number, or an underscore
 #define IS_ALPHA_NUMERIC(c) ((c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c == 95)

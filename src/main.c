@@ -4,13 +4,11 @@ char *tokenDictionary[] = {
     "Tok_Greater",
     "Tok_Identifier",
     "Tok_Print",
-    "Tok_Function",
     "Tok_Num",
     "Tok_String",
     "Tok_Int",
 
     "Tok_Invalid",
-    "Tok_Begin",
 	"Tok_Assign",
 	"Tok_Multiply",
 	"Tok_Divide",
@@ -34,10 +32,10 @@ char *tokenDictionary[] = {
 	"Tok_Comma",
 	"Tok_Colon",
     "Tok_ListInitializer",
-    "Tok_BooleanOr",
     "Tok_Boolean",
-    "Tok_BooleanTrue",
+    "Tok_BooleanOr",
     "Tok_BooleanAnd",
+    "Tok_BooleanTrue",
     "Tok_BooleanFalse",
 	"Tok_IntegerLiteral",
 	"Tok_DoubleLiteral",
@@ -60,7 +58,9 @@ char *tokenDictionary[] = {
 	"Tok_EndOfInput",
     "Tok_StrConcat",
     "Tok_MalformedString",
-    "Tok_Exponent"
+    "Tok_Exponent",
+    "Tok_FuncCall",
+    "Tok_FuncDef"
 };
 
 int main(int argc, const char *argv[]) //Main entry point
@@ -82,7 +82,6 @@ int main(int argc, const char *argv[]) //Main entry point
         }
 
         fclose(src);
-        puts("0");
     }else if(argc == 2){
         src = fopen(argv[1], "r");
 

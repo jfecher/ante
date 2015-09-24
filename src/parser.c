@@ -88,7 +88,7 @@ int class_statement(){
 
     switch(tokenizedInput[tokenIndex].type){
         case Tok_TypeDef:  return class_def();
-        case Tok_Function: return function_def_or_call();
+        case Tok_FuncDef:  return function_def();
         default:           return statement();
     }
     return 1;
@@ -141,26 +141,16 @@ int type(){
 }
 
 
-int function_def_or_call(){
-    expect(Tok_Function);
-    Token n = tokenizedInput[tokenIndex + 1];
-    if(n.type == Tok_Colon || n.type == Tok_ParenOpen) return function_call();
-    else return function_def();
-}
-
 /* function_def
- *     : FUNCTION type > IDENTIFIER : function_args INDENT function_body UNINDENT
- *     | FUNCTION > IDENTIFIER : function_args INDENT function_body UNINDENT
+ *     : FUNCDEF : function_args INDENT function_body UNINDENT
  *     ;
  */
 int function_def(){
     debugLog("Parser: defining function...");
 
-    if(type() != Tok_Invalid){
-        tokenIndex++;
-    }
+    //Assume the return value has already been parsed
     expect(Tok_Greater);
-    accept(Tok_Identifier);
+    accept(Tok_FuncDef);
     expect(Tok_Colon);
     if(!function_args()) return 0;
     if(!function_body()) return 0; //function_body checks within itself for an indent and unindent
@@ -182,6 +172,7 @@ int function_args(){
                 syntaxError("Expected Type in function arguments.  Got ", 1);
                 return 0;
             }
+            value();
 
             debugLog("Parser: got a function arg.");
             tokenIndex += 2;
@@ -244,7 +235,7 @@ int function_body(){
  */
 int function_call(){
     debugLog("Parser: Calling function.");
-    expect(Tok_Identifier);
+    expect(Tok_FuncCall);
     if(!paren_expression()) return 0;
     return 1;
 }
@@ -272,7 +263,7 @@ int statement(){
     case Tok_Identifier:  return assign_value();
     case Tok_Return:      return return_statement();
     case Tok_If:          return if_statement();
-    case Tok_Function:    return function_call();
+    case Tok_FuncCall:    return function_call();
     case Tok_Divide:
     case Tok_Newline:
         tokenIndex++;
@@ -367,7 +358,13 @@ int initialize_value(){
         if(!assign_value()) return 0;
         return 1;
     }else{
-        if(!variable()){ syntaxError("No variable found to initialize.", 0); return 0;}
+        if(check(Tok_FuncDef))
+            return function_def();
+
+        if(!variable()){ 
+            syntaxError("No variable found to initialize.", 0); 
+            return 0;
+        }
     }
 
     return 1; // >var   or   int>var    (No initialization of value)
@@ -478,7 +475,7 @@ int literal_value(){
  */
 int value(){
     debugLog("Parser: Checking for value.");
-    if(accept(Tok_Function))
+    if(check(Tok_FuncCall))
         return function_call();
     else if(check(Tok_ParenOpen))
         return paren_expression();

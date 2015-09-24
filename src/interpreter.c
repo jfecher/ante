@@ -19,7 +19,6 @@ funcPtr ops[] = {
     &op_initObject,
     &op_assign,
     &op_print,
-    &op_function,
     &op_initNum,
     &op_initStr,
     &op_initInt,
@@ -215,8 +214,7 @@ Variable getValue(Token t){
             return VAR(NULL, Invalid);
         }
         return copyVar(stack.items[c.x].table[c.y]);
-    }else if(t.type == Tok_Function){
-        INC_POS(1);
+    }else if(t.type == Tok_FuncCall){
         return exec_function(toks[tIndex].lexeme);
     }else if(t.type == Tok_ParenOpen){
         INC_POS(1);
