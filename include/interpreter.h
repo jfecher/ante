@@ -2,8 +2,8 @@
 #define INTERPRETER_H
 
 #include <stdio.h>
-#include <termios.h>
 #include <unistd.h>
+#include <termios.h>
 #include "parser.h"
 #include "stack.h"
 #include "expression.h"

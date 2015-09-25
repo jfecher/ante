@@ -292,8 +292,10 @@ void getln(){
                 srcLine[len-1] = '\0';
                 printf("\r: %s  ", srcLine); //screen must be manually cleared of deleted character
             }
-        }else if(c != '\n'){
-            printf("\rUnknown char %c of value %d\n", c, c);
+        }else if(c == 27){ //up: (91, 65), down, right, left
+            getchar(); //discard escape sequence
+            getchar();
+            continue;
         }
 
         //seperate input by tokens for syntax highlighting
