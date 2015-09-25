@@ -4,6 +4,8 @@
  *  TODO:
  *    -Implement declaration of functions
  *    -Stop interpretation on runtime error in files
+ *    -Scroll through history in interpreter
+ *    -Edit line in interpreter with arrow keys
  */
 
 char *typeDictionary[] = {
@@ -249,7 +251,7 @@ void op_typeOf(){
     free_var(v); //TODO: function to automatically clear values if var is a num or int
 }
 
-void add_global_var(Variable v){
+inline void add_global_var(Variable v){
     initVar(v.name, v.type);
     setVar(&stack.items[0].table[stack.items[0].size-1], v);
 }
@@ -262,48 +264,6 @@ void init_interpreter(void){
     
     //builtin variables
     add_global_var(VARIABLE(bigint_new("10"), Int, 0, "_precision"));
-}
-
-void setupTerm(){
-    struct termios oldt, newt;
-    tcgetattr(STDIN_FILENO, &oldt);
-    newt = oldt;
-    newt.c_lflag &= ~(ICANON | ECHO);
-    tcsetattr(STDIN_FILENO, TCSANOW, &newt);
-}
-
-void getln(){
-    char c = 0;
-    int len = 0;
-    srcLine = calloc(sizeof(char), 2);
-    printf(": ");
-
-    do{
-        c = getchar();
-        len = strlen(srcLine);
-
-        if(c == 9 || (c >= 32 && c <= 126)){
-            ralloc(&srcLine, sizeof(char)* (len+3));
-            srcLine[len] = c;
-            srcLine[len+1] = '\0';
-            srcLine[len+2] = '\0';
-        }else if(c == 8 || c == 127){ //backspace
-            if(len > 0){
-                srcLine[len-1] = '\0';
-                printf("\r: %s  ", srcLine); //screen must be manually cleared of deleted character
-            }
-        }else if(c == 27){ //up: (91, 65), down, right, left
-            getchar(); //discard escape sequence
-            getchar();
-            continue;
-        }
-
-        //seperate input by tokens for syntax highlighting
-        init_lexer(1);
-        toks = lexer_next(1);
-        freeToks(&toks);
-    }while(c != '\n');
-    puts("");
 }
 
 char exec(){
@@ -349,7 +309,7 @@ void interpret(FILE *src, char isTty){
         for(;;){
             for(i=1; i < stack.size; i++){ printf(":"); }
 
-            getln();//Tokenizes the entire line, and print it out on screen
+            scanLine();//Tokenizes the entire line, and print it out on screen
             if(strcmp(srcLine, "exit") == 0)
                 break;
             init_lexer(1);

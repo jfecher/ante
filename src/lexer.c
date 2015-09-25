@@ -140,20 +140,26 @@ Token getNextToken(){
         break;
     case '"': // ; is not a typo, it allows c to be decalred by inserting an empty statement
     case '\'':;
-        char c = current;
-        incrementPos();
+        char c = current; 
         tok.lexeme[0] = '\0';
-        for(int i=0; current != c && current != '\0'; i++){
-            ralloc(&tok.lexeme, sizeof(char) * (i+3));
-            tok.lexeme[i] = current;
-            tok.lexeme[i+1] = '\0';
+        
+        if(lookAhead != '\0' && lookAhead != EOF){
             incrementPos();
+        
+            for(int i=0; current != c && current != '\0'; i++, incrementPos()){
+                ralloc(&tok.lexeme, sizeof(char) * (i+3));
+                tok.lexeme[i] = current;
+                tok.lexeme[i+1] = '\0';
+            }
+            
+            if(current == c) 
+                tok.type = Tok_StringLiteral;
+            else 
+                tok.type = Tok_MalformedString;
+            break;
         }
 
-        if(current == c) 
-            tok.type = Tok_StringLiteral;
-        else 
-            tok.type = Tok_MalformedString;
+        tok.type = Tok_MalformedString;
         break;
     case '*':
         if(lookAhead == '='){
@@ -303,7 +309,7 @@ void incrementPos(){
     current = lookAhead;
 
     if(isTty){
-        lookAhead = pos[0];
+        lookAhead = *pos;
         pos++;
     }else{
         lookAhead = fgetc(src);

@@ -2,11 +2,10 @@
 #define INTERPRETER_H
 
 #include <stdio.h>
-#include <unistd.h>
-#include <termios.h>
 #include "parser.h"
 #include "stack.h"
 #include "expression.h"
+#include "scanline.h"
 
 #define VERSION "v0.0.13"
 #define VERDATE "2015-09-22"
