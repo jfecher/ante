@@ -2,6 +2,8 @@
 
 unsigned int sl_pos = 0;
 
+#define SET_TERM_X_POS(x) {printf("\r"); for(int i=0; i<x; i++) printf("\033[C");}
+
 #define APPEND_STR(dest, src, destLen, srcLen)           \
     for(int i = destLen; i < (destLen) + (srcLen); i++){ \
         (dest)[i] = (src)[i-(destLen)];                  \
@@ -17,16 +19,16 @@ void setupTerm(){
 
 void removeCharAt(char **str, unsigned int pos){
     size_t size = strlen(*str) + 2;
-    size_t endSize = size - pos + 1;
+    size_t endLen = size - pos;
     
-    char *end = malloc(endSize);
-    end[endSize-1] = '\0';
+    char *end = malloc(endLen+1);
+    end[endLen] = '\0';
     
     strcpy(end, *str + pos + 1);
-    *str = realloc(*str, size-1);
+    ralloc(str, size-1);
     (*str)[size-2] = '\0';
 
-    APPEND_STR(*str, end, pos, endSize-2);
+    APPEND_STR(*str, end, pos, endLen-1);
     free(end);
 }
 
@@ -46,7 +48,6 @@ void concatChar(char **str, char c, unsigned int pos){
     (*str)[len] = '\0'; //This additional null character is for the lookAhead char in the lexer
 
     APPEND_STR(*str, end, pos+1, endLen);
-
     free(end);
 }
 
@@ -74,7 +75,6 @@ void scanLine(){
                 if(escSeq == 68 && sl_pos > 0) sl_pos--;
                 else if(escSeq == 67 && sl_pos < strlen(srcLine)) sl_pos++;
             }
-            //continue;
         }
 
         //seperate input by tokens for syntax highlighting
@@ -83,11 +83,12 @@ void scanLine(){
         freeToks(&t);
 
         if(sl_pos != len){
-            printf("\r: ");
-            for(int i=0; i<sl_pos; i++) printf("%c", srcLine[i]);
+            SET_TERM_X_POS(sl_pos+2);
         }
     }while(c != '\n');
-    
+   
+    Token *t = lexer_next(1);
+    freeToks(&t);
     sl_pos = 0;
     puts("");
 }

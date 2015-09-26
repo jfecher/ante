@@ -6,6 +6,7 @@
  *    -Stop interpretation on runtime error in files
  *    -Scroll through history in interpreter
  *    -Edit line in interpreter with arrow keys
+ *    -Change _precision to a function
  */
 
 char *typeDictionary[] = {
@@ -155,11 +156,11 @@ void op_print(){
 
     switch(v.type){
         case Int:
-            gmp_printf("%Zd\n", *(BigInt)v.value);
+            mpz_out_str(stdout, 10, *(BigInt)v.value);
+            puts("");
             break;
         case Num:;
-            Coords c = lookupVar("_precision");
-            gmp_printf("%.*Ff\n", mpz_get_ui(*(BigInt)stack.items[c.x].table[c.y].value), *(BigNum)v.value);
+            gmp_printf("%.Ff\n", *(BigNum)v.value);
             break;
         case String:
             printf("%s\n", (char*)v.value);
