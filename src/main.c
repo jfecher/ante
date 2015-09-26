@@ -7,6 +7,7 @@ char *tokenDictionary[] = {
     "Tok_Num",
     "Tok_String",
     "Tok_Int",
+    "Tok_FuncCall",
 
     "Tok_Invalid",
 	"Tok_Assign",
@@ -59,11 +60,10 @@ char *tokenDictionary[] = {
     "Tok_StrConcat",
     "Tok_MalformedString",
     "Tok_Exponent",
-    "Tok_FuncCall",
     "Tok_FuncDef"
 };
 
-int main(int argc, const char *argv[]) //Main entry point
+int main(int argc, const char *argv[])
 {
     if(argc >= 3){
         src = fopen(argv[argc-1], "r");
@@ -82,11 +82,11 @@ int main(int argc, const char *argv[]) //Main entry point
         }
 
         fclose(src);
-    }else if(argc == 2){
+    }else if(argc == 2){ //if there is only one argument, assume it is a file to execute
         src = fopen(argv[1], "r");
 
         if(src == NULL){
-            printf("File %s not found.\n", argv[1]);
+            printf("File '%s' not found.\n", argv[1]);
             return 2; //File not found
         }
 

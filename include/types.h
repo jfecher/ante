@@ -12,6 +12,7 @@ typedef enum TokenType{
     Tok_Num,
     Tok_String,
     Tok_Int,
+    Tok_FuncCall,
 
     Tok_Invalid,
 	Tok_Assign,
@@ -64,7 +65,6 @@ typedef enum TokenType{
     Tok_StrConcat,
     Tok_MalformedString,
     Tok_Exponent,
-    Tok_FuncCall,
     Tok_FuncDef,
 } TokenType;
 

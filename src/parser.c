@@ -26,7 +26,6 @@ int array_value();
 int parse_expression();
 int term();
 int function_call();
-int function_def_or_call();
 int paren_expression();
 int math_expression();
 
@@ -149,7 +148,6 @@ int function_def(){
     debugLog("Parser: defining function...");
 
     //Assume the return value has already been parsed
-    expect(Tok_Greater);
     accept(Tok_FuncDef);
     expect(Tok_Colon);
     if(!function_args()) return 0;
@@ -165,27 +163,20 @@ int function_def(){
 int function_args(){
     debugLog("Parser: getting function args...");
 
-    if(tokenizedInput[tokenIndex].type != Tok_Indent){
-
-        while(tokenizedInput[tokenIndex + 1].type == Tok_Comma){
+    if(!check(Tok_Indent) && !check(Tok_EndOfInput)){
+        while(!check(Tok_EndOfInput) && !check(Tok_Indent) && !check(Tok_Unindent) && !check(Tok_Newline)){
             if(type() == Tok_Invalid){
                 syntaxError("Expected Type in function arguments.  Got ", 1);
                 return 0;
             }
-            value();
+            
+            tokenIndex++;
+            accept(Tok_Identifier);
 
             debugLog("Parser: got a function arg.");
-            tokenIndex += 2;
-        }
-
-        if(type() == Tok_Invalid){
-            syntaxError("Expected Type in function arguments.  Got ", 1);
-            return 0;
-        }
-
-        debugLog("Parser: got the final function arg.");
-
-        tokenIndex++;
+            if(!check(Tok_EndOfInput) && !check(Tok_Indent) && !check(Tok_Unindent) && !check(Tok_Newline))
+                expect(Tok_Comma);
+        }    
     }else{
         debugLog("Parser: no function args found.");
     }

@@ -25,6 +25,7 @@ funcPtr ops[] = {
     &op_initNum,
     &op_initStr,
     &op_initInt,
+    &op_callFunc,
 };
 
 /*
@@ -67,14 +68,14 @@ Coords lookupFunc(char* identifier){
  * Initializes the variable to 0 if it is numerical, or ""
  * if it is a string.
  */
-void initVar(char *identifier, Type t){
+void initVar(char *identifier, Type t, char isDynamic){
     Coords c = lookupVar(identifier);
     if(c.x != -1){ //lookupVar returns {-1, -1} if the var was not found
         runtimeError(ERR_ALREADY_INITIALIZED, identifier);
     }
 
-    //           value, type, dynamic,     name
-    Variable v = {NULL, t,    t == Object, malloc(strlen(identifier)+1)};
+    //           value, type, dynamic,   name
+    Variable v = {NULL, t,    isDynamic, malloc(strlen(identifier)+1)};
     strcpy(v.name, identifier);
     v.name[strlen(identifier)] = '\0';
 
@@ -92,7 +93,7 @@ void initVar(char *identifier, Type t){
 }
 
 void op_initObject(void){
-    initVar(toks[tIndex+1].lexeme, Object);
+    initVar(toks[tIndex+1].lexeme, Object, 1);
     INC_POS(1);
 }
 
@@ -133,7 +134,7 @@ Variable exec_function(char *funcName){
     return VAR(NULL, Invalid);
 }
 
-void op_function(){
+/*void op_function(){
     char *funcName = toks[tIndex+1].lexeme;
     INC_POS(2);
 
@@ -148,7 +149,7 @@ void op_function(){
         }
         free_value(v);
     }
-}
+}*/
 
 void op_print(){
     INC_POS(1);
@@ -171,18 +172,22 @@ void op_print(){
     free_var(v);
 }
 
+void op_callFunc(void){
+    
+}
+
 void op_initNum(void){
-    initVar(toks[tIndex+2].lexeme, Num);
+    initVar(toks[tIndex+2].lexeme, Num, 0);
     INC_POS(2);
 }
 
 void op_initInt(void){
-    initVar(toks[tIndex+2].lexeme, Int);
+    initVar(toks[tIndex+2].lexeme, Int, 0);
     INC_POS(2);
 }
 
 void op_initStr(void){
-    initVar(toks[tIndex+2].lexeme, String);
+    initVar(toks[tIndex+2].lexeme, String, 0);
     INC_POS(2);
 }
 
@@ -253,7 +258,7 @@ void op_typeOf(){
 }
 
 inline void add_global_var(Variable v){
-    initVar(v.name, v.type);
+    initVar(v.name, v.type, 0);
     setVar(&stack.items[0].table[stack.items[0].size-1], v);
 }
 
