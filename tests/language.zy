@@ -75,7 +75,7 @@ num|5|> assortedNums = 9, -76, 3.14159265, 2^8, 1 + 2*(6-3)
     yield the last element of arr.
 `
 assortedNums[0] += assortedNums[1]
-print assortedNums[0], ", ", assortedNums[-2]
+print assortedNums[0] .. ", " .. assortedNums[-2]
 
 ~output: -67, 256
 
@@ -228,7 +228,7 @@ print coord  ~output: 100, -50, 66.7
 
     void>_init: int age, string j, string name
         job = j
-        super(age, "Homo sapien", name)
+        super(age, "Homo sapien", name) ~super() calls the _init function from the parent class
 
 `
     This function obscures the printInfo declared in the Animal super class.
@@ -237,8 +237,8 @@ print coord  ~output: 100, -50, 66.7
         print name .. " is " .. age .. " years old and is a(n) " .. job
 
 
-Person> john = 44, "Electrician", "John"
-john.printInfo() ~output: John is a 44-year-old Electrician
+Person> john = 44, "electrician", "John"
+john.printInfo() ~output: John is 44 years old and is a(n) electrician
 
 `
         Modifiers
@@ -309,8 +309,6 @@ int
 string
 bool
 
-primitive
-
 enum
 
 true
@@ -318,7 +316,6 @@ false
 
 print
 typeof
-type
 
 do
 while

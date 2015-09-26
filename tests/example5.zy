@@ -3,23 +3,19 @@
         Testfile used to test the parsing and evaluation of expressions.
 `
 
-int> const69 = 6+9*6+9                ~Answer should be 69
-int> answer  = const69 - 3 * (5 - 2)  ~Answer should be 60
+int> fifty_nine = 5+9*5+9
+int> answer  = fifty_nine - 3 * (5 - 2)
 
-print const69
-print '\n'
-
+print fifty_nine
 print answer
-print'\n'
 
-
-print const69, " - 9 = ", answer, "\n"
+print fifty_nine .. " - 9 = " .. answer
 
 `
 Output:
 
-69
-60
-69 - 9 = 60
+59
+50
+59 - 9 = 50
 
 `
