@@ -134,23 +134,6 @@ Variable exec_function(char *funcName){
     return VAR(NULL, Invalid);
 }
 
-/*void op_function(){
-    char *funcName = toks[tIndex+1].lexeme;
-    INC_POS(2);
-
-    if(strcmp(funcName, "typeof") == 0){
-        op_typeOf();
-    }else if(strcmp(funcName, "system") == 0){
-        Variable v = expression();
-        if(v.type == String){
-            system((char*)v.value);
-        }else{
-            fprintf(stderr, "Function parameter type mismatch.  Expected String but got %s.\n", typeDictionary[v.type]);
-        }
-        free_value(v);
-    }
-}*/
-
 void op_print(){
     INC_POS(1);
     Variable v = expression();
@@ -173,7 +156,15 @@ void op_print(){
 }
 
 void op_callFunc(void){
-    
+    char *funcName = toks[tIndex].lexeme;
+    Coords c = lookupFunc(funcName);
+    if(c.x == -1){
+        INC_POS(1); //increment the pos to the ( token, since this is not the start of a valid statement, the interpreter will halt
+        runtimeError("Tried to call undeclared function '%s'\n", funcName);
+    }
+
+    INC_POS(1);
+    free_var(exec_function(funcName));
 }
 
 void op_initNum(void){

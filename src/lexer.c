@@ -145,17 +145,22 @@ Token getNextToken(){
         
         if(lookAhead != '\0' && lookAhead != EOF){
             incrementPos();
-        
-            for(int i=0; current != c && current != '\0'; i++, incrementPos()){
+       
+            int i = 0;
+            for(; current != c && lookAhead != '\0'; i++, incrementPos()){
                 ralloc(&tok.lexeme, sizeof(char) * (i+3));
                 tok.lexeme[i] = current;
                 tok.lexeme[i+1] = '\0';
             }
-            
-            if(current == c) 
+  
+            if(current == c){
                 tok.type = Tok_StringLiteral;
-            else 
+            }else{ 
                 tok.type = Tok_MalformedString;
+                ralloc(&tok.lexeme, sizeof(char) * (i+3)); //input did not end in ' or " so add the final char anyways
+                tok.lexeme[i] = current;
+                tok.lexeme[i+1] = '\0';
+            }
             break;
         }
 

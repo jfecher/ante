@@ -37,9 +37,11 @@ void debugLog(const char *s){
 
 void syntaxError(const char* msg, int showErrTok){
     fprintf(stderr, "Syntax Error: %s", msg);
-    if(showErrTok) fprintf(stderr, "%s (of type %s)", tokenizedInput[tokenIndex].lexeme, tokenDictionary[tokenizedInput[tokenIndex].type]);
+    
+    if(showErrTok) 
+        fprintf(stderr, "%s (of type %s)", tokenizedInput[tokenIndex].lexeme, tokenDictionary[tokenizedInput[tokenIndex].type]);
+    
     fprintf(stderr, " at row %d, col %d.\n", tokenizedInput[tokenIndex].row, tokenizedInput[tokenIndex].col);
-
     exitFlag = 1;
 }
 
@@ -466,7 +468,10 @@ int literal_value(){
  */
 int value(){
     debugLog("Parser: Checking for value.");
-    if(check(Tok_FuncCall))
+    if(check(Tok_EndOfInput)){
+        syntaxError("Expected value in expression, got ", 1);
+        return 0;
+    }else if(check(Tok_FuncCall))
         return function_call();
     else if(check(Tok_ParenOpen))
         return paren_expression();
@@ -494,7 +499,7 @@ int parse_expression(){
 
     if(accept(Tok_Plus) || accept(Tok_Minus) || accept(Tok_Greater) || 
             accept(Tok_Lesser) || accept(Tok_StrConcat) || accept(Tok_EqualsEquals)){
-        
+       
         if(!value()) return 0;
         if(!parse_expression()) return 0;
         return 1;
