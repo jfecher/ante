@@ -78,7 +78,7 @@ typedef struct Token{
 
 #define ARR_SIZE(a) (sizeof(a) / sizeof(*a))
 
-#define NFREE(x) if(x!=NULL) free(x)
+#define NFREE(x) {if(x!=NULL) free(x); x=NULL;}
 
 typedef void* Value;
 

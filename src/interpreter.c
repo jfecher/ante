@@ -248,19 +248,18 @@ void op_typeOf(){
     free_var(v); //TODO: function to automatically clear values if var is a num or int
 }
 
-inline void add_global_var(Variable v){
+inline void addGlobalVar(Variable v){
     initVar(v.name, v.type, 0);
     setVar(&stack.items[0].table[stack.items[0].size-1], v);
 }
 
-//char **history;
 void init_interpreter(void){
     VarTable global = {NULL, 0};
     stack.size = 0;
     stack_push(&stack, global);
     
     //builtin variables
-    add_global_var(VARIABLE(bigint_new("10"), Int, 0, "_precision"));
+    addGlobalVar(VARIABLE(bigint_new("10"), Int, 0, "_precision"));
 }
 
 char exec(){
@@ -286,8 +285,7 @@ char exec(){
         opcode = toks[tIndex].type;
     }
 
-    NFREE(srcLine);
-    freeToks(&toks);    
+    freeToks(&toks);
     return 1;
 }
 
@@ -299,6 +297,7 @@ void interpret(FILE *src, char isTty){
         exec();
     }else{
         setupTerm();
+        init_sl();
 
         puts(KEYWORD_COLOR "Zy " INTEGERL_COLOR  VERSION  RESET_COLOR " - " VERDATE "\nType 'exit' to exit the interpreter.");
         int i;
@@ -315,5 +314,6 @@ void interpret(FILE *src, char isTty){
         }
     }
 
+    freeHistory();
     stack_free(stack);
 }

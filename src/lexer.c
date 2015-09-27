@@ -5,6 +5,7 @@ TokenType prevType; //The previous TokenType found.  Initialized with Tok_Begin
 
 char *srcLine;
 char *pos;
+
 //Level of spacing in the src.  Used to identify where to give Indent,
 //Unindent, or Newline tokens.
 int scope;
@@ -68,7 +69,7 @@ Token getNextToken(){
     }
 
     //Check if char is numeric, alphanumeric, or whitespace, and return corresponding
-    //TokenType with full lexeme.  Note that isNumeric is checked first,
+    //TokenType with full lexeme.  Note that isNumeric is checked before isAlphaNumeric,
     //This ensures identifiers/keywords cannot begin with a number
     if(IS_WHITESPACE(current))         return genWhitespaceToken();
     else if(IS_NUMERIC(current))       return genNumericalToken();

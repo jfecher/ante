@@ -8,6 +8,11 @@
 #include <termios.h>
 #include <lexer.h>
 
+#define SL_HISTORY_LEN 15
+char **sl_history;
+
+void init_sl();
+void freeHistory();
 void setupTerm();
 void scanLine();
 
