@@ -2,7 +2,7 @@
     example4.zy
         test function declarations and calls
 `
-void> printSomething: bool
+>printSomething: bool
     if _params[0]
         print "Hello World!\n"
     else
