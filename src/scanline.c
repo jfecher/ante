@@ -108,7 +108,7 @@ void handleEsqSeq(){
         }else if(escSeq == 67 && sl_pos < sl_len){//right
             sl_pos++;
         }else if(escSeq == 65){//up
-            if(sl_hPos < SL_HISTORY_LEN-1 && sl_history[sl_hPos+1]){
+            if(sl_hPos < SL_HISTORY_LEN-1 && sl_history[sl_hPos]){
                 if(sl_hPos == 0){
                     if(sl_len > 0){
                         if(strcmp(srcLine, sl_history[0]) != 0){
@@ -119,8 +119,10 @@ void handleEsqSeq(){
                     }
                 }
 
-                sl_hPos++;
-                setSrcLineFromHistory();
+                if(sl_history[sl_hPos+1]){
+                    sl_hPos++;
+                    setSrcLineFromHistory();
+                }
             }
         }else if(escSeq == 66){//down
             if(sl_hPos > 0 && sl_history[sl_hPos-1]){

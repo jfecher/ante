@@ -312,8 +312,8 @@ void interpret(FILE *src, char isTty){
             exec();
 
         }
+        freeHistory();
     }
 
-    freeHistory();
     stack_free(stack);
 }
