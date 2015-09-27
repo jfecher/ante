@@ -2,6 +2,7 @@
 
 unsigned int sl_pos = 0;
 unsigned int sl_len = 0;
+unsigned int sl_hPos = 0;
 
 #define OS_UNIX defined(unix) || defined(__unix__) || defined(__unix) || (defined(__APPLE__) && defined(__MACH__))
 
@@ -24,7 +25,7 @@ void setupTerm(){
 #endif
 }
 
-void init_sl(){ 
+void init_sl(){
     sl_history = malloc(sizeof(char*) * SL_HISTORY_LEN);
     for(int i = 0; i < SL_HISTORY_LEN; i++)
         sl_history[i] = NULL;
@@ -86,33 +87,48 @@ void concatChar(char **str, char c, unsigned int pos){
     free(end);
 }
 
+void setSrcLineFromHistory(){
+    printf("\r: ");
+    for(int i=0;i<sl_len;i++)
+        printf(" ");
+ 
+    NFREE(srcLine);
+    sl_len = strlen(sl_history[sl_hPos]);
+    srcLine = malloc(sl_len+2);
+    STR_DUAL_TERMINATE(srcLine, sl_len+1);
+    strcpy(srcLine, sl_history[sl_hPos]);
+    sl_pos = sl_len; 
+}
+
 void handleEsqSeq(){
     if(getchar() == 91){ //discard escape sequence otherwise
         char escSeq = getchar();
         if(escSeq == 68 && sl_pos > 0){//left
             sl_pos--;
-        }else if(escSeq == 67 && sl_pos < strlen(srcLine)){//right
+        }else if(escSeq == 67 && sl_pos < sl_len){//right
             sl_pos++;
         }else if(escSeq == 65){//up
-            if(sl_history[0]){
-                NFREE(srcLine);
-                sl_len = strlen(sl_history[0]);
-                srcLine = malloc(sl_len+2);
-                STR_DUAL_TERMINATE(srcLine, sl_len+1);
-                strcpy(srcLine, sl_history[0]);
-                sl_pos = sl_len;
+            if(sl_hPos < SL_HISTORY_LEN-1 && sl_history[sl_hPos+1]){
+                if(sl_hPos == 0){
+                    if(sl_len > 0){
+                        if(strcmp(srcLine, sl_history[0]) != 0){
+                            appendHistory(srcLine, sl_len);
+                        }
+                    }else{
+                        sl_hPos--;
+                    }
+                }
+
+                sl_hPos++;
+                setSrcLineFromHistory();
             }
         }else if(escSeq == 66){//down
-            if(sl_history[0]){
-                NFREE(srcLine);
-                sl_len = strlen(sl_history[0]);
-                srcLine = malloc(sl_len+2);
-                STR_DUAL_TERMINATE(srcLine, sl_len+1);
-                strcpy(srcLine, sl_history[0]);
-                sl_pos = sl_len;
+            if(sl_hPos > 0 && sl_history[sl_hPos-1]){
+                sl_hPos--;
+                setSrcLineFromHistory();
             }
         }
-    } 
+    }
 }
 
 void scanLine(){
@@ -150,5 +166,8 @@ void scanLine(){
    
     puts("");
     sl_pos = 0;
-    appendHistory(srcLine, sl_len);
+    sl_hPos = 0;
+    
+    if(sl_len > 0)
+        appendHistory(srcLine, sl_len);
 }
