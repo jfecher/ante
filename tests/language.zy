@@ -57,17 +57,17 @@ print typeof(n) .. " " .. n  ~output: int 43
 
     The syntax for declaring an array is: 
         
-        type|size|> name
+        type[size]|> name
 
     Where size is an integer expression.
     NOTE: if size does not evaluate to an integer, the program will halt
           with a TypeMismatchError.  To avoid this, it is best to only use
           integer variables and constants in this expression.
 `
-int|30|> arr = 1
+int[30]> arr = 1
 
 ~Each element of an array can also be initialized individually
-num|5|> assortedNums = 9, -76, 3.14159265, 2^8, 1 + 2*(6-3)
+num[5]> assortedNums = 9, -76, 3.14159265, 2^8, 1 + 2*(6-3)
 
 `
     Each element of an array can be accessed individually by index.  Negative
@@ -93,7 +93,7 @@ arr -= 3
 `
 int, num, string> tup = 44, 44.0, "Fourty-four"
 
-int|30|, string|2|> anotherTuple = arr, "This tuple contains", "two arrays"
+int[30], string[2]> anotherTuple = arr, "This tuple contains", "two arrays"
 
 `
     This restriction does not apply when making a dynamic variable of course
@@ -277,7 +277,7 @@ john.printInfo() ~output: John is 44 years old and is a(n) electrician
 
     ~NOTE: reserved functions such as _init and _mul do not need to be public
     ~      to be automatically called.
-    void>_init: int|data
+    void>_init: int[] data
         foreach int>i in data
             secretData += data / pi
             varCount += 1

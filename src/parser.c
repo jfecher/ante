@@ -1,6 +1,8 @@
 #include "parser.h"
 
 //#define DEBUG
+#define PARSER_CUR_TOK  (tokenizedInput[tokenIndex])
+#define PARSER_NEXT_TOK (tokenizedInput[tokenIndex+1])
 
 Token *tokenizedInput;
 unsigned int tokenIndex;
@@ -13,6 +15,7 @@ int function_args();
 int function_body();
 int type();
 int for_loop();
+int foreach_loop();
 int while_loop();
 int print_statement();
 int if_statement();
@@ -24,24 +27,18 @@ int variable();
 int value();
 int array_value();
 int parse_expression();
-int term();
 int function_call();
 int paren_expression();
 int math_expression();
 
-void debugLog(const char *s){
-#ifdef DEBUG
-    puts(s);
-#endif
-}
 
 void syntaxError(const char* msg, int showErrTok){
     fprintf(stderr, "Syntax Error: %s", msg);
     
     if(showErrTok) 
-        fprintf(stderr, "%s (of type %s)", tokenizedInput[tokenIndex].lexeme, tokenDictionary[tokenizedInput[tokenIndex].type]);
+        fprintf(stderr, "%s (of type %s)", (PARSER_CUR_TOK).lexeme, tokenDictionary[(PARSER_CUR_TOK).type]);
     
-    fprintf(stderr, " at row %d, col %d.\n", tokenizedInput[tokenIndex].row, tokenizedInput[tokenIndex].col);
+    fprintf(stderr, " at row %d, col %d.\n", (PARSER_CUR_TOK).row, (PARSER_CUR_TOK).col);
     exitFlag = 1;
 }
 
@@ -59,7 +56,7 @@ int _expect(TokenType type){
     if(accept(type)){
         return 1;
     }else{
-        fprintf(stderr, "Syntax Error: Expected %s, but found %s at row %d, col %d.\n", tokenDictionary[type], tokenDictionary[tokenizedInput[tokenIndex].type], tokenizedInput[tokenIndex].row, tokenizedInput[tokenIndex].col);
+        fprintf(stderr, "Syntax Error: Expected %s, but found %s at row %d, col %d.\n", tokenDictionary[type], tokenDictionary[(PARSER_CUR_TOK).type], (PARSER_CUR_TOK).row, (PARSER_CUR_TOK).col);
         exitFlag = 2;
         return 0;
     }
@@ -74,7 +71,6 @@ int _expect(TokenType type){
 int namespace(){ //Start Point
     if(!class_body()) return 0;
     expect(Tok_EndOfInput);
-    debugLog("\nParser: Finished");
     return 1;
 }
 
@@ -85,9 +81,7 @@ int namespace(){ //Start Point
  *     ;
  */
 int class_statement(){
-    debugLog("Parser: Entering class statement.");
-
-    switch(tokenizedInput[tokenIndex].type){
+    switch((PARSER_CUR_TOK).type){
         case Tok_TypeDef:  return class_def();
         case Tok_FuncDef:  return function_def();
         default:           return statement();
@@ -101,8 +95,6 @@ int class_statement(){
  *     ;
  */
 int class_body(){ //May not work correctly for one-line classes
-    debugLog("Parser: Entering class body.");
-
     while(!check(Tok_Unindent) && !check(Tok_EndOfInput) && !exitFlag){
         if(!class_statement()) return 0;
     }
@@ -114,8 +106,6 @@ int class_body(){ //May not work correctly for one-line classes
  *     ;
  */
 int class_def(){
-    debugLog("Parser: Entering class definition.");
-
     expect(Tok_TypeDef);
     expect(Tok_Identifier);
     expect(Tok_Greater);
@@ -133,9 +123,8 @@ int class_def(){
  *     ;
  */
 int type(){
-    debugLog("Parser: Checking type.");
     if(check(Tok_Num) || check(Tok_Int) || check(Tok_String) || check(Tok_Boolean) || check(Tok_Identifier)){
-        return tokenizedInput[tokenIndex].type;
+        return (PARSER_CUR_TOK).type;
     }else{
         return Tok_Invalid;
     }
@@ -147,8 +136,6 @@ int type(){
  *     ;
  */
 int function_def(){
-    debugLog("Parser: defining function...");
-
     //Assume the return value has already been parsed
     accept(Tok_FuncDef);
     expect(Tok_Colon);
@@ -163,8 +150,6 @@ int function_def(){
  *     ;
  */
 int function_args(){
-    debugLog("Parser: getting function args...");
-
     if(!check(Tok_Indent) && !check(Tok_EndOfInput)){
         while(!check(Tok_EndOfInput) && !check(Tok_Indent) && !check(Tok_Unindent) && !check(Tok_Newline)){
             if(type() == Tok_Invalid){
@@ -174,13 +159,10 @@ int function_args(){
             
             tokenIndex++;
             accept(Tok_Identifier);
-
-            debugLog("Parser: got a function arg.");
+            
             if(!check(Tok_EndOfInput) && !check(Tok_Indent) && !check(Tok_Unindent) && !check(Tok_Newline))
                 expect(Tok_Comma);
         }    
-    }else{
-        debugLog("Parser: no function args found.");
     }
 
     return 1;
@@ -211,10 +193,8 @@ int value_list(){
  *     ;
  */
 int function_body(){
-    debugLog("Parser: entering function body.");
     expect(Tok_Indent);
     while(!(accept(Tok_Unindent) || check(Tok_EndOfInput))){
-        debugLog("Parser: now finding next function statement.");
         if(!statement()) return 0;
         accept(Tok_Newline);
     }
@@ -227,7 +207,6 @@ int function_body(){
  *     ;
  */
 int function_call(){
-    debugLog("Parser: Calling function.");
     expect(Tok_FuncCall);
     if(!paren_expression()) return 0;
     return 1;
@@ -246,10 +225,9 @@ int function_call(){
  *     ;
  */
 int statement(){
-    debugLog("Parser: entering statement.");
-
     switch(tokenizedInput[tokenIndex].type){
     case Tok_For:         return for_loop();
+    case Tok_ForEach:     return foreach_loop();
     case Tok_While:       return while_loop();
     case Tok_Print:       return print_statement();
     case Tok_Greater:     return initialize_value();
@@ -274,13 +252,11 @@ int statement(){
  *     ;
  */
 int for_loop(){
-    debugLog("Parser: Entering for loop.");
-
     expect(Tok_For);
-    if(check(Tok_Identifier) && tokenizedInput[tokenIndex + 1].type == Tok_Assign){
+    if(check(Tok_Identifier) && (PARSER_NEXT_TOK).type == Tok_Assign){
         tokenIndex++;
         if(!assign_value()) return 0;
-    }else if(type() && tokenizedInput[tokenIndex + 1].type == Tok_Greater){
+    }else if(type() && (PARSER_NEXT_TOK).type == Tok_Greater){
         tokenIndex++;
         if(!initialize_value()) return 0;
     }
@@ -290,18 +266,28 @@ int for_loop(){
     expect(Tok_Comma);
 
     if(!assign_value()) return 0;
+    if(!function_body()) return 0;
+    return 1;
+}
 
+/* foreach_loop
+ *     : FOREACH initialize_value IN variable function_body
+ *     ;
+ */
+int foreach_loop(){
+    expect(Tok_ForEach);
+    if(!initialize_value()) return 0;
+    expect(Tok_In);
+    if(!variable()) return 0;
     if(!function_body()) return 0;
     return 1;
 }
 
 /* while_loop
- *     : WHILE boolean_statement INDENT function_body UNINDENT
+ *     : WHILE expression function_body
  *     ;
  */
 int while_loop(){
-    debugLog("Parser: Entering while loop.");
-
     expect(Tok_While);
     if(math_expression()) return 0;
     if(function_body()) return 0;
@@ -313,14 +299,9 @@ int while_loop(){
  *     ;
  */
 int print_statement(){
-    debugLog("Parser: entering print statement.");
-
     expect(Tok_Print);
-
     if(!math_expression()) return 0;
-
     while(accept(Tok_Comma)) if(!math_expression()) return 0;
-
     return 1;
 }
 
@@ -332,22 +313,16 @@ int print_statement(){
  *     ;
  */
 int initialize_value(){
-    debugLog("Parser: initializing value...");
-
-    if(type() != Tok_Invalid){
-        debugLog("Parser: found type initialization.");
-        tokenIndex++;
-    }
+    if(type() != Tok_Invalid) tokenIndex++;
 
     //array declaration
-    if(accept(Tok_ListInitializer)){
+    if(accept(Tok_BracketOpen)){
         math_expression();
-        expect(Tok_ListInitializer);
+        expect(Tok_BracketClose);
     }
 
     expect(Tok_Greater);
-    if(tokenizedInput[tokenIndex + 1].type == Tok_Assign){
-        debugLog("Parser: next token in initializion is an assignment.  Returning assign_value");
+    if((PARSER_NEXT_TOK).type == Tok_Assign){
         if(!assign_value()) return 0;
         return 1;
     }else{
@@ -359,7 +334,6 @@ int initialize_value(){
             return 0;
         }
     }
-
     return 1; // >var   or   int>var    (No initialization of value)
 }
 
@@ -368,8 +342,6 @@ int initialize_value(){
  *     ;
  */
 int assign_value(){
-    debugLog("Parser: assigning value...");
-
     if(!variable()){ syntaxError("No variable found to assign to.",0); return 0; }
 
     if(!(accept(Tok_Assign) || accept(Tok_PlusEquals) || accept(Tok_MinusEquals) || accept(Tok_MultiplyEquals) || accept(Tok_DivideEquals))){
@@ -386,8 +358,6 @@ int assign_value(){
  *     ;
  */
 int return_statement(){
-    debugLog("Parser: Entering return statement.");
-
     expect(Tok_Return);
     if(!math_expression()) return 0;
     return 1;
@@ -399,15 +369,11 @@ int return_statement(){
  *     ;
  */
 int if_statement(){
-    debugLog("Parser: entering if statement.");
-
     expect(Tok_If);
     if(!math_expression()) return 0;
     if(!function_body()) return 0;
 
     if(accept(Tok_Else)){
-        debugLog("Parser: entering else statement.");
-
         if(!function_body()) return 0;
     }
     return 1;
@@ -418,15 +384,11 @@ int if_statement(){
  *     | IDENTIFIER
  *     ;
  */
-int variable(){
-    debugLog("Parser: Checking for variable.");
-
-    if(tokenizedInput[tokenIndex + 1].type == Tok_BracketOpen){
+inline int variable(){
+    if((PARSER_NEXT_TOK).type == Tok_BracketOpen)
         return array_value();
-    }else{
-        debugLog("Found Variable");
+    else
         return accept(Tok_Identifier);
-    }
 }
 
 /* array_value
@@ -434,7 +396,6 @@ int variable(){
  *     ;
  */
 int array_value(){
-    debugLog("Parser: Checking for array value.");
     expect(Tok_Identifier);
     expect(Tok_BracketOpen);
     if(!math_expression()) return 0;
@@ -451,7 +412,6 @@ int array_value(){
  *     ;
  */
 int literal_value(){
-    debugLog("Parser: Checking for literal value.");
     if(check(Tok_BooleanTrue) || check(Tok_BooleanFalse) || check(Tok_IntegerLiteral) || check(Tok_DoubleLiteral) || check(Tok_StringLiteral)){
         tokenIndex++;
         return 1;//c->type;
@@ -467,7 +427,6 @@ int literal_value(){
  *     ;
  */
 int value(){
-    debugLog("Parser: Checking for value.");
     if(check(Tok_EndOfInput)){
         syntaxError("Expected value in expression, got ", 1);
         return 0;
@@ -479,7 +438,6 @@ int value(){
         return literal_value() || variable() || paren_expression();
 }
 
-
 int math_expression(){
     if(check(Tok_EndOfInput))
         syntaxError("Invalid empty expression", 0);
@@ -488,38 +446,28 @@ int math_expression(){
     if(!parse_expression()) return 0;
     return 1;
 }
+
 /* expression
  *     : + expression
  *     | - expression
- *     | term
- *     ;
- */
-int parse_expression(){
-    debugLog("Parser: evaluating expression.");
-
-    if(accept(Tok_Plus) || accept(Tok_Minus) || accept(Tok_Greater) || 
-            accept(Tok_Lesser) || accept(Tok_StrConcat) || accept(Tok_EqualsEquals)){
-       
-        if(!value()) return 0;
-        if(!parse_expression()) return 0;
-        return 1;
-    }else{
-        return term();
-    }
-}
-
-/* term
- *     : * expression
+ *     | > expression
+ *     | < expression
+ *     | .. expression
+ *     | == expression
+ *     | , expression
+ *     | * expression
  *     | / expression
+ *     | ^ expression
+ *     | % expression
  *     | paren_expression
  *     ;
  */
-int term(){
-    debugLog("Parser: evaluating term...");
-
-    if(accept(Tok_Multiply) || accept(Tok_Divide) || 
+int parse_expression(){
+    if(accept(Tok_Plus) || accept(Tok_Minus) || accept(Tok_Greater) || 
+            accept(Tok_Lesser)   || accept(Tok_StrConcat) || accept(Tok_EqualsEquals) ||
+            accept(Tok_Comma)    || accept(Tok_Multiply)  || accept(Tok_Divide) ||
             accept(Tok_Exponent) || accept(Tok_Modulus)){
-        
+     
         if(!value()) return 0;
         if(!parse_expression()) return 0;
         return 1;
@@ -533,22 +481,20 @@ int term(){
  *      ;
  */
 int paren_expression(){
-    debugLog("Parser: evaluating paren_expression...");
     if(accept(Tok_ParenOpen)){
-        debugLog("Parser: paren_expression: found open parenthesi, finding expression...");
         if(!math_expression()) return 0;
         expect(Tok_ParenClose);
     }
     return 1;
 }
 
-int parse(Token *t){ //Parses file, returns error if one occured
+int parse(Token *t){ //Parses tokenstream, returns an error if one occured
     exitFlag = 0;
 
     tokenizedInput = t;
     tokenIndex = 0;
 
-    namespace(); //build parse tree
+    namespace(); //parse tree
 
     return exitFlag;
 }

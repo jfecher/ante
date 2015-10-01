@@ -32,7 +32,7 @@ char *tokenDictionary[] = {
 	"Underscore",
 	"Comma",
 	"Colon",
-    "ListInitializer",
+    "Bar",
     "Boolean",
     "BooleanOr",
     "BooleanAnd",
@@ -60,7 +60,8 @@ char *tokenDictionary[] = {
     "StrConcat",
     "MalformedString",
     "Exponent",
-    "FuncDef"
+    "FuncDef",
+    "In"
 };
 
 int main(int argc, const char *argv[])

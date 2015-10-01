@@ -4,8 +4,6 @@
  *  TODO:
  *    -Implement declaration of functions
  *    -Stop interpretation on runtime error in files
- *    -Scroll through history in interpreter
- *    -Edit line in interpreter with arrow keys
  *    -Change _precision to a function
  */
 
@@ -51,7 +49,7 @@ Coords lookupFunc(char* identifier){
     int i, j;
     for(i = 0; i < stack.size; i++){
         for(j = 0; j < stack.items[i].size; j++){
-            Variable v = stack.items[j].table[i];
+            Variable v = stack.items[i].table[j];
 
             if(v.type == Function && strcmp(identifier, v.name) == 0){
                 Coords c = {i, j};

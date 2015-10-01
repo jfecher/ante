@@ -15,7 +15,6 @@ print two ^ 128
 
 num>one_half = 0.5
 num>test_num  = 0.75
-_precision = 3
 
 print one_half + test_num
 print one_half - test_num
@@ -30,9 +29,9 @@ print one_half / test_num
 3
 1
 49
-34028236692093846343374607431768211456
-1.250
--0.250
+340282366920938463463374607431768211456
+1.25
+-0.25
 0.375
-0.667
+0.666666666666666666667
 `

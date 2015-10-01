@@ -3,7 +3,4 @@
         A speedtest for pow operations
 `
 
-~Note: as of v0.0.13, zy is fastest with exponents where e = 2^n + 1
 print 999999^131073
-
-~time: 0.11s

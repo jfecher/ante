@@ -24,6 +24,7 @@ Token dictionary[] = {
     {Tok_Else,         "else",    0,0},
     {Tok_For,          "for",     0,0},
     {Tok_ForEach,      "foreach", 0,0},
+    {Tok_In,           "in",      0,0},
     {Tok_While,        "while",   0,0},
     {Tok_String,       "string",  0,0},
     {Tok_Num,          "num",     0,0},
@@ -41,7 +42,7 @@ inline void ralloc(char **ptr, size_t size){
     if(tmp != NULL){
         *ptr = tmp;
     }else{
-        puts("ralloc: Memory Leak\n");
+        puts("ralloc: Could not allocate memory.\n");
         exit(11);
     }
 }
@@ -323,12 +324,17 @@ void incrementPos(){
     col++;
 }
 
+//TODO: Clean and trim, possibly create an isKeyword function/macro to do so.
 void printTok(Token t){
     switch(t.type){
     case Tok_String: 
     case Tok_Num:
     case Tok_Int:
-    case Tok_For: 
+        printf(TYPE_COLOR "%s" RESET_COLOR, t.lexeme);
+        break;
+    case Tok_For:
+    case Tok_ForEach:
+    case Tok_In:
     case Tok_If: 
     case Tok_While: 
     case Tok_Import: 

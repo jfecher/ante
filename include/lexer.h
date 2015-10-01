@@ -21,9 +21,10 @@ extern char *pos;
 FILE *src;
 
 #define KEYWORD_COLOR  "\033[0;31m"
-#define STRINGL_COLOR  "\033[0;33m"
-#define INTEGERL_COLOR "\033[0;36m"
 #define FUNCTION_COLOR "\033[0;32m"
+#define STRINGL_COLOR  "\033[0;33m"
+#define TYPE_COLOR     "\033[0;34m"
+#define INTEGERL_COLOR "\033[0;35m"
 #define RESET_COLOR    "\033[0;m"
 
 //Returns 1 if character is an uppercase or lowercase letter, a number, or an underscore
