@@ -44,6 +44,11 @@ inline BigNum bignum_mul(BigNum n1, BigNum n2)
 
 inline BigNum bignum_div(BigNum n1, BigNum n2)
 {
+    if(mpf_cmp_ui(*n2, 0) == 0){ //Illegal division by 0
+        fprintf(stderr, "Illegal division by 0.\n");
+        return NULL;
+    }
+
     BigNum quo = bignum_init();
     mpf_div(*quo, *n1, *n2);
     return quo;
@@ -111,6 +116,11 @@ inline BigInt bigint_mul(BigInt n1, BigInt n2)
 
 inline BigInt bigint_div(BigInt n1, BigInt n2)
 {
+    if(mpz_cmp_ui(*n2, 0) == 0){ //Illegal division by 0
+        fprintf(stderr, "Illegal division by 0.\n");
+        return NULL;
+    }
+
     BigInt prod = bigint_init();
     mpz_div(*prod, *n1, *n2);
     return prod;
@@ -118,6 +128,11 @@ inline BigInt bigint_div(BigInt n1, BigInt n2)
 
 inline BigInt bigint_mod(BigInt n1, BigInt n2)
 {
+    if(mpz_cmp_ui(*n2, 0) == 0){ //Illegal division by 0
+        fprintf(stderr, "Illegal division by 0.\n");
+        return NULL;
+    }
+
     BigInt prod = bigint_init();
     mpz_mod(*prod, *n1, *n2);
     return prod;

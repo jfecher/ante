@@ -98,13 +98,13 @@ Operator getOperator(TokenType t)
     return (Operator) {-1, 0, 0};//return invalid
 }
 
+#define INVALID_VAR_IN_EXPR(v) {/*fprintf(stderr, "Invalid value in expression.\n");*/ return v;}
+
 Variable expression(void)
 {
     Variable v = getValue(toks[tIndex]);
-    if(v.type == Invalid){
-        fprintf(stderr, "Invalid Type in expression\n");
-        return v;
-    }
+    if(v.type == Invalid)
+        INVALID_VAR_IN_EXPR(v);
 
     v = _expression(v, 0);
     INC_POS(1);
@@ -119,18 +119,25 @@ Variable _expression(Variable l, uint8_t minPrecedence)
         INC_POS(2);
         Variable r = getValue(toks[tIndex]);
 
-        if(r.type == Invalid) return r;
+        if(r.type == Invalid)
+            INVALID_VAR_IN_EXPR(r);
 
         lookAhead = getOperator(toks[tIndex + 1].type);
 
         while(lookAhead.op != -1 && (lookAhead.prec > op.prec || (lookAhead.rAsso && lookAhead.prec >= op.prec))){
             r = _expression(r, lookAhead.prec);
+            if(r.type == Invalid)
+                INVALID_VAR_IN_EXPR(r);
+            
             lookAhead = getOperator(toks[tIndex + 1].type);
         }
         Variable tmp = l;
         l = operate(l, op, r);
         free_value(tmp);
         free_value(r);
+        
+        if(l.type == Invalid)
+            INVALID_VAR_IN_EXPR(l);
     }
     return l;
 }

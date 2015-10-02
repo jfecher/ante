@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <stdio.h>
 #include <gmp.h>
 
 typedef mpf_t _Num;

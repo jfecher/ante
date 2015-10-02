@@ -58,12 +58,14 @@ opFunc mulFuncTable[] = {
  */
 Variable divNum(Variable n1, Variable n2)
 {
-    return VAR(bignum_div(n1.value, n2.value), Num);
+    Value v = bignum_div(n1.value, n2.value);
+    return VAR(v, v != NULL? Num : Invalid);
 }
 
 Variable divInt(Variable n1, Variable n2)
 {
-    return VAR(bigint_div(n1.value, n2.value), Int);
+    Value v = bigint_div(n1.value, n2.value);
+    return VAR(v, v != NULL? Int : Invalid);
 }
 
 opFunc divFuncTable[] = {
@@ -76,7 +78,8 @@ opFunc divFuncTable[] = {
  */
 Variable modInt(Variable n1, Variable n2)
 {
-    return VAR(bigint_mod(n1.value, n2.value), Int);
+    Value v = bigint_mod(n1.value, n2.value);
+    return VAR(v, v != NULL? Int : Invalid);
 }
 
 opFunc modFuncTable[] = {
