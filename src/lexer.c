@@ -261,7 +261,6 @@ Token genWhitespaceToken(){
         return tok;
     }else{
         while(IS_WHITESPACE(current) && current != '\n' && current != 13) {
-            if(printToks) printf(" ");
             incrementPos(); //Skip the whitespace, except for newlines
         }
         return getNextToken();
@@ -298,7 +297,7 @@ Token genNumericalToken(){
     char isDouble = 0;
     int i;
 
-    for(i=0; IS_NUMERIC(current) || current == '.'; i++){
+    for(i=0; IS_NUMERIC(current) || (current == '.' && !isDouble); i++){
         ralloc(&tok.lexeme, sizeof(char) * (i+2));
         tok.lexeme[i] = current;
         tok.lexeme[i+1] = '\0';
@@ -324,44 +323,34 @@ void incrementPos(){
     col++;
 }
 
-//TODO: Clean and trim, possibly create an isKeyword function/macro to do so.
-void printTok(Token t){
-    switch(t.type){
-    case Tok_String: 
-    case Tok_Num:
-    case Tok_Int:
-        printf(TYPE_COLOR "%s" RESET_COLOR, t.lexeme);
-        break;
-    case Tok_For:
-    case Tok_ForEach:
-    case Tok_In:
-    case Tok_If: 
-    case Tok_While: 
-    case Tok_Import: 
-    case Tok_Break: 
-    case Tok_Continue: 
-    case Tok_Else: 
-    case Tok_Return: 
-    case Tok_Print:
-        printf(KEYWORD_COLOR "%s" RESET_COLOR, t.lexeme);
-        break;
-    case Tok_StringLiteral:
-        printf(STRINGL_COLOR "\"%s\"" RESET_COLOR, t.lexeme);
-        break;
-    case Tok_IntegerLiteral: 
-    case Tok_DoubleLiteral:
-        printf(INTEGERL_COLOR "%s" RESET_COLOR, t.lexeme);
-        break;
-    case Tok_MalformedString:
-        printf(STRINGL_COLOR "\"%s" RESET_COLOR, t.lexeme);
-        break;
-    case Tok_FuncCall:
-    case Tok_FuncDef:
-        printf(FUNCTION_COLOR "%s", t.lexeme);
-        break;
+char* getTokColor(TokenType t){
+    switch(t){
+    case Tok_String: case Tok_Num: case Tok_Int:
+        return TYPE_COLOR;
+    case Tok_For: case Tok_ForEach: case Tok_In: case Tok_If: case Tok_While: case Tok_Import: case Tok_Break: case Tok_Continue: case Tok_Else: case Tok_Return: case Tok_Print:
+        return KEYWORD_COLOR;
+    case Tok_StringLiteral: case Tok_MalformedString:
+        return STRINGL_COLOR;
+    case Tok_IntegerLiteral: case Tok_DoubleLiteral:
+        return INTEGERL_COLOR;
+    case Tok_FuncCall: case Tok_FuncDef:
+        return FUNCTION_COLOR;
     default:
-        printf("%s" RESET_COLOR, t.lexeme);
+        return RESET_COLOR;
     }
+}
+
+void printSrcLine(Token *t){
+    unsigned int j = 0;
+    for(unsigned int i = 0; srcLine[i] != '\0'; i++){
+        if(t[j].type != Tok_EndOfInput && i + 1 == t[j].col){
+            printf(getTokColor(t[j].type));
+            j++;
+        }
+        
+        putchar(srcLine[i]);
+    }
+    printf(RESET_COLOR);
 }
 
 Token* lexer_next(char b){
@@ -374,9 +363,6 @@ Token* lexer_next(char b){
 
     for(int i = 1; tok[i-1].type != Tok_EndOfInput; i++)
     { 
-        if(printToks && !IS_WHITESPACE_TOKEN(tok[i-1]))
-            printTok(tok[i-1]);
-        
         tok = realloc(tok, sizeof(Token) * (i+1));
         tok[i] = getNextToken();
 
@@ -385,6 +371,8 @@ Token* lexer_next(char b){
         else if(tok[i].type == Tok_Colon && tok[i-1].type == Tok_Identifier)
             tok[i-1].type = Tok_FuncDef; 
     }
+
+    if(printToks) printSrcLine(tok);
     return tok;
 }
 
