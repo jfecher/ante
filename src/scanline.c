@@ -7,12 +7,22 @@ unsigned int sl_term_cols = 67;
 
 #define OS_UNIX defined(unix) || defined(__unix__) || defined(__unix) || (defined(__APPLE__) && defined(__MACH__))
 
-#define MOVE_UP() {printf("\033[A");}
-#define MOVE_DOWN() {printf("\033[B");}
-#define MOVE_RIGHT() {printf("\033[C");}
-#define MOVE_LEFT() {printf("\033[D");}
+//ANSI escape sequences
+#define MOVE_UP()    printf("\033[A")
+#define MOVE_DOWN()  printf("\033[B")
+#define MOVE_RIGHT() printf("\033[C")
+#define MOVE_LEFT()  printf("\033[D")
+#define CLEAR_LINE() printf("\033[K")
+#define SAVE_POS() printf("\033[s")
+#define LOAD_POS() printf("\033[u")
 
+#define MOVE_UP_N(y) printf("\033[%dA", y)
+#define MOVE_DOWN_N(y) printf("\033[%dB", y)
 #define SET_TERM_X_POS(x) {printf("\r"); for(int i=0; i<x; i++) MOVE_RIGHT();}
+
+//returns the amount of lines between current pos and the start of srcLine
+#define GET_LINES_ABOVE() ((sl_len+2)/sl_term_cols - (sl_pos+2)/sl_term_cols)
+#define GET_LINES_BELOW() ((sl_len+2)/sl_term_cols - (sl_len-sl_pos+2)/sl_term_cols)
 
 #define APPEND_STR(dest, src, destLen, srcLen)           \
     for(int i = destLen; i < (destLen) + (srcLen); i++){ \
@@ -146,6 +156,7 @@ void scanLine(){
     NFREE(srcLine);
     srcLine = calloc(sizeof(char), 2);
     printf(": ");
+    SAVE_POS();
 
     do{
         c = getchar();
@@ -160,29 +171,33 @@ void scanLine(){
             sl_len--;
             removeCharAt(&srcLine, sl_pos);
             MOVE_LEFT();
-            putchar(' ');
             
-            if((sl_pos+1) % sl_term_cols == 0 || (sl_pos+2) % sl_term_cols == 0){
+            int lines = GET_LINES_BELOW();
+            if(lines) MOVE_DOWN_N(lines);
+            for(int i = 0; i <= lines; i++){
+                printf("\033[2K");
                 MOVE_UP();
-            }else if((sl_pos+3) % sl_term_cols == 0){
-                putchar(' ');
             }
         }else if(c == 27){
             handleEsqSeq();
         }
 
-        if(sl_len > sl_term_cols-1){
-            for(unsigned int i = sl_term_cols-1; i < sl_len; i += sl_term_cols)
-                MOVE_UP();
-        }
+        //return to the : mark to print multiple lines
+        LOAD_POS();
+        
         //seperate input by tokens for syntax highlighting
         init_lexer(1);
         Token *t = lexer_next(1);
         freeToks(&t);
-
-
+       
+        //Cursor is now at the end of srcLine, move it to sl_pos
         if(sl_pos != sl_len){
-            SET_TERM_X_POS(sl_pos+2);
+            int lines = GET_LINES_ABOVE();
+            
+            if(lines > 0 && (sl_len+2) % sl_term_cols != 0)
+                MOVE_UP_N(lines);
+            
+            SET_TERM_X_POS((sl_pos+2) % sl_term_cols);
         }
     }while(c != '\n');
    
@@ -190,6 +205,6 @@ void scanLine(){
     sl_pos = 0;
     sl_hPos = 0;
     
-    if(sl_len > 0)
+    if(sl_len > 0 && (!sl_history[0] || (sl_history[0] && strcmp(sl_history[0], srcLine) != 0)))
         appendHistory(srcLine, sl_len);
 }
