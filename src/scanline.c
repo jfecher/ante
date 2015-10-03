@@ -3,10 +3,17 @@
 unsigned int sl_pos = 0;
 unsigned int sl_len = 0;
 unsigned int sl_hPos = 0;
+unsigned int sl_term_cols = 67;
 
 #define OS_UNIX defined(unix) || defined(__unix__) || defined(__unix) || (defined(__APPLE__) && defined(__MACH__))
 
-#define SET_TERM_X_POS(x) {printf("\r"); for(int i=0; i<x; i++) printf("\033[C");}
+#define MOVE_UP() {printf("\033[A");}
+#define MOVE_DOWN() {printf("\033[B");}
+#define MOVE_RIGHT() {printf("\033[C");}
+#define MOVE_LEFT() {printf("\033[D");}
+
+#define SET_TERM_X_POS(x) {printf("\r"); for(int i=0; i<x; i++) MOVE_RIGHT();}
+
 #define APPEND_STR(dest, src, destLen, srcLen)           \
     for(int i = destLen; i < (destLen) + (srcLen); i++){ \
         (dest)[i] = (src)[i-(destLen)];                  \
@@ -150,16 +157,26 @@ void scanLine(){
             sl_len++;
         }else if((c == 8 || c == 127) && sl_pos > 0){ //backspace
             sl_pos--;
+            sl_len--;
             removeCharAt(&srcLine, sl_pos);
-            printf("\r: %s  ", srcLine); //screen must be manually cleared of deleted character
+            MOVE_LEFT();
+            putchar(' ');
+            
+            if((sl_len+2) % sl_term_cols == 0)
+                MOVE_UP();
         }else if(c == 27){
             handleEsqSeq();
         }
 
+        if(sl_len > sl_term_cols-1){
+            for(unsigned int i = sl_term_cols-1; i < sl_len; i += sl_term_cols)
+                MOVE_UP();
+        }
         //seperate input by tokens for syntax highlighting
         init_lexer(1);
         Token *t = lexer_next(1);
         freeToks(&t);
+
 
         if(sl_pos != sl_len){
             SET_TERM_X_POS(sl_pos+2);
