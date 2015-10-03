@@ -162,8 +162,11 @@ void scanLine(){
             MOVE_LEFT();
             putchar(' ');
             
-            if((sl_len+2) % sl_term_cols == 0)
+            if((sl_pos+1) % sl_term_cols == 0 || (sl_pos+2) % sl_term_cols == 0){
                 MOVE_UP();
+            }else if((sl_pos+3) % sl_term_cols == 0){
+                putchar(' ');
+            }
         }else if(c == 27){
             handleEsqSeq();
         }
