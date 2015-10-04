@@ -149,7 +149,7 @@ void handleEsqSeq(){
         }
     }
 }
-j
+
 
 void scanLine(){
     char c = 0;
