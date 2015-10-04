@@ -10,21 +10,20 @@ struct winsize sl_termSize;
 #define OS_UNIX defined(unix) || defined(__unix__) || defined(__unix) || (defined(__APPLE__) && defined(__MACH__))
 
 //ANSI escape sequences
-#define MOVE_UP()      printf("\033[A")
-#define MOVE_DOWN()    printf("\033[B")
-#define MOVE_RIGHT()   printf("\033[C")
-#define MOVE_LEFT()    printf("\033[D")
-#define CLEAR_LINE()   printf("\033[K")
-#define SAVE_POS()     printf("\033[s")
-#define LOAD_POS()     printf("\033[u")
-#define MOVE_UP_N(y)   printf("\033[%dA", y)
-#define MOVE_DOWN_N(y) printf("\033[%dB", y)
-
-#define SET_TERM_X_POS(x) {printf("\r"); for(int i=0; i<x; i++) MOVE_RIGHT();}
+#define MOVE_UP()         printf("\033[A")
+#define MOVE_DOWN()       printf("\033[B")
+#define MOVE_RIGHT()      printf("\033[C")
+#define MOVE_LEFT()       printf("\033[D")
+#define CLEAR_LINE()      printf("\033[K")
+#define SAVE_POS()        printf("\033[s")
+#define LOAD_POS()        printf("\033[u")
+#define MOVE_UP_N(y)      printf("\033[%dA", y)
+#define MOVE_DOWN_N(y)    printf("\033[%dB", y)
+#define SET_TERM_X_POS(x) printf("\r\033[%dC", x)
+#define CLEAR_SCR()       printf("\033[J")
 
 //returns the amount of lines between current pos and the start of srcLine
 #define GET_LINES_ABOVE() ((sl_len+2)/sl_termSize.ws_col - (sl_pos+2)/sl_termSize.ws_col)
-#define GET_LINES_BELOW() ((sl_len+2)/sl_termSize.ws_col - (sl_len-sl_pos+2)/sl_termSize.ws_col)
 
 #define APPEND_STR(dest, src, destLen, srcLen)           \
     for(int i = destLen; i < (destLen) + (srcLen); i++){ \
@@ -34,6 +33,14 @@ struct winsize sl_termSize;
 #define STR_TERMINATE(s,x) {(s)[x] = '\0';}
 #define STR_DUAL_TERMINATE(s,x) {(s)[x] = '\0'; (s)[x-1] = '\0';}
 
+void updateTermSize(){
+    struct winsize w;
+    ioctl(0, TIOCGWINSZ, &w);
+    if(w.ws_col != sl_termSize.ws_col){
+        sl_termSize = w;
+        CLEAR_SCR();
+    }
+}
 
 void setupTerm(){
 #ifdef OS_UNIX
@@ -48,6 +55,7 @@ void setupTerm(){
 }
 
 void init_sl(){
+    setupTerm();
     sl_history = malloc(sizeof(char*) * SL_HISTORY_LEN);
     for(int i = 0; i < SL_HISTORY_LEN; i++)
         sl_history[i] = NULL;
@@ -110,10 +118,9 @@ void concatChar(char **str, char c, unsigned int pos){
 }
 
 void setSrcLineFromHistory(){
-    printf("\r: ");
-    for(int i=0;i<sl_len;i++)
-        printf(" ");
- 
+    LOAD_POS();
+    CLEAR_SCR();
+
     NFREE(srcLine);
     sl_len = strlen(sl_history[sl_hPos]);
     srcLine = malloc(sl_len+2);
@@ -155,7 +162,6 @@ void handleEsqSeq(){
     }
 }
 
-
 void scanLine(){
     char c = 0;
     sl_len = 0;
@@ -165,8 +171,20 @@ void scanLine(){
     SAVE_POS();
 
     do{
+        //Cursor is now at the end of srcLine, move it to sl_pos
+        if(sl_pos != sl_len){
+            int lines = GET_LINES_ABOVE();
+            
+            if(lines > 0 && (sl_len+2) % sl_termSize.ws_col != 0)
+                MOVE_UP_N(lines);
+            
+            SET_TERM_X_POS((sl_pos+2) % sl_termSize.ws_col);
+        }
+
         c = getchar();
         sl_len = strlen(srcLine);
+
+        updateTermSize();
 
         if(c == 9 || (c >= 32 && c <= 126)){
             concatChar(&srcLine, c, sl_pos);
@@ -177,12 +195,7 @@ void scanLine(){
             sl_len--;
             removeCharAt(&srcLine, sl_pos);
             MOVE_LEFT();
-            
-            int lines = GET_LINES_ABOVE();
-            for(int i = 0; i <= lines; i++){
-                printf("\033[2K");
-                MOVE_DOWN();
-            }
+            CLEAR_SCR();
         }else if(c == 27){
             handleEsqSeq();
         }
@@ -193,17 +206,7 @@ void scanLine(){
         //seperate input by tokens for syntax highlighting
         init_lexer(1);
         Token *t = lexer_next(1);
-        freeToks(&t);
-       
-        //Cursor is now at the end of srcLine, move it to sl_pos
-        if(sl_pos != sl_len){
-            int lines = GET_LINES_ABOVE();
-            
-            if(lines > 0 && (sl_len+2) % sl_termSize.ws_col != 0)
-                MOVE_UP_N(lines);
-            
-            SET_TERM_X_POS((sl_pos+2) % sl_termSize.ws_col);
-        }
+        freeToks(&t); 
     }while(c != '\n');
    
     puts("");

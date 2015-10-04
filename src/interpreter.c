@@ -257,7 +257,7 @@ void init_interpreter(void){
     stack_push(&stack, global);
     
     //builtin variables
-    addGlobalVar(VARIABLE(bigint_new("10"), Int, 0, "_precision"));
+    //addGlobalVar(VARIABLE(bigint_new("10"), Int, 0, "_precision"));
 }
 
 char exec(){
@@ -294,7 +294,6 @@ void interpret(FILE *src, char isTty){
         init_lexer(0);
         exec();
     }else{
-        setupTerm();
         init_sl();
 
         puts(KEYWORD_COLOR "Zy " INTEGERL_COLOR  VERSION  RESET_COLOR " - " VERDATE "\nType 'exit' to exit the interpreter.");
@@ -303,7 +302,7 @@ void interpret(FILE *src, char isTty){
         for(;;){
             for(i=1; i < stack.size; i++){ printf(":"); }
 
-            scanLine();//Tokenizes the entire line, and print it out on screen
+            scanLine();//Tokenizes the entire line, stores it in srcLine, and print it out on screen
             if(strcmp(srcLine, "exit") == 0)
                 break;
             init_lexer(1);
