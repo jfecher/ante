@@ -8,16 +8,16 @@ unsigned int sl_term_cols = 67;
 #define OS_UNIX defined(unix) || defined(__unix__) || defined(__unix) || (defined(__APPLE__) && defined(__MACH__))
 
 //ANSI escape sequences
-#define MOVE_UP()    printf("\033[A")
-#define MOVE_DOWN()  printf("\033[B")
-#define MOVE_RIGHT() printf("\033[C")
-#define MOVE_LEFT()  printf("\033[D")
-#define CLEAR_LINE() printf("\033[K")
-#define SAVE_POS() printf("\033[s")
-#define LOAD_POS() printf("\033[u")
-
-#define MOVE_UP_N(y) printf("\033[%dA", y)
+#define MOVE_UP()      printf("\033[A")
+#define MOVE_DOWN()    printf("\033[B")
+#define MOVE_RIGHT()   printf("\033[C")
+#define MOVE_LEFT()    printf("\033[D")
+#define CLEAR_LINE()   printf("\033[K")
+#define SAVE_POS()     printf("\033[s")
+#define LOAD_POS()     printf("\033[u")
+#define MOVE_UP_N(y)   printf("\033[%dA", y)
 #define MOVE_DOWN_N(y) printf("\033[%dB", y)
+
 #define SET_TERM_X_POS(x) {printf("\r"); for(int i=0; i<x; i++) MOVE_RIGHT();}
 
 //returns the amount of lines between current pos and the start of srcLine
@@ -149,6 +149,7 @@ void handleEsqSeq(){
         }
     }
 }
+j
 
 void scanLine(){
     char c = 0;
@@ -172,11 +173,10 @@ void scanLine(){
             removeCharAt(&srcLine, sl_pos);
             MOVE_LEFT();
             
-            int lines = GET_LINES_BELOW();
-            if(lines) MOVE_DOWN_N(lines);
+            int lines = GET_LINES_ABOVE();
             for(int i = 0; i <= lines; i++){
                 printf("\033[2K");
-                MOVE_UP();
+                MOVE_DOWN();
             }
         }else if(c == 27){
             handleEsqSeq();
