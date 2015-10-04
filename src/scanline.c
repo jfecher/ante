@@ -1,9 +1,11 @@
 #include "scanline.h"
 
+#define SL_HISTORY_LEN 15
+char **sl_history;
 unsigned int sl_pos = 0;
 unsigned int sl_len = 0;
 unsigned int sl_hPos = 0;
-unsigned int sl_term_cols = 67;
+struct winsize sl_termSize;
 
 #define OS_UNIX defined(unix) || defined(__unix__) || defined(__unix) || (defined(__APPLE__) && defined(__MACH__))
 
@@ -21,8 +23,8 @@ unsigned int sl_term_cols = 67;
 #define SET_TERM_X_POS(x) {printf("\r"); for(int i=0; i<x; i++) MOVE_RIGHT();}
 
 //returns the amount of lines between current pos and the start of srcLine
-#define GET_LINES_ABOVE() ((sl_len+2)/sl_term_cols - (sl_pos+2)/sl_term_cols)
-#define GET_LINES_BELOW() ((sl_len+2)/sl_term_cols - (sl_len-sl_pos+2)/sl_term_cols)
+#define GET_LINES_ABOVE() ((sl_len+2)/sl_termSize.ws_col - (sl_pos+2)/sl_termSize.ws_col)
+#define GET_LINES_BELOW() ((sl_len+2)/sl_termSize.ws_col - (sl_len-sl_pos+2)/sl_termSize.ws_col)
 
 #define APPEND_STR(dest, src, destLen, srcLen)           \
     for(int i = destLen; i < (destLen) + (srcLen); i++){ \
@@ -32,6 +34,7 @@ unsigned int sl_term_cols = 67;
 #define STR_TERMINATE(s,x) {(s)[x] = '\0';}
 #define STR_DUAL_TERMINATE(s,x) {(s)[x] = '\0'; (s)[x-1] = '\0';}
 
+
 void setupTerm(){
 #ifdef OS_UNIX
     struct termios oldt, newt;
@@ -39,6 +42,8 @@ void setupTerm(){
     newt = oldt;
     newt.c_lflag &= ~(ICANON | ECHO);
     tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+
+    ioctl(0, TIOCGWINSZ, &sl_termSize);
 #endif
 }
 
@@ -194,10 +199,10 @@ void scanLine(){
         if(sl_pos != sl_len){
             int lines = GET_LINES_ABOVE();
             
-            if(lines > 0 && (sl_len+2) % sl_term_cols != 0)
+            if(lines > 0 && (sl_len+2) % sl_termSize.ws_col != 0)
                 MOVE_UP_N(lines);
             
-            SET_TERM_X_POS((sl_pos+2) % sl_term_cols);
+            SET_TERM_X_POS((sl_pos+2) % sl_termSize.ws_col);
         }
     }while(c != '\n');
    

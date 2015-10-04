@@ -6,10 +6,9 @@
 #include <string.h>
 #include <unistd.h>
 #include <termios.h>
+#include <sys/ioctl.h>
 #include <lexer.h>
 
-#define SL_HISTORY_LEN 15
-char **sl_history;
 
 void init_sl();
 void freeHistory();
