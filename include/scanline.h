@@ -9,10 +9,9 @@
 #include <sys/ioctl.h>
 #include <lexer.h>
 
-
-void init_sl();
-void freeHistory();
-void setupTerm();
-void scanLine();
+void init_sl(void);
+void freeHistory(void);
+void scanBlock(char**);
+void scanLine(char**);
 
 #endif

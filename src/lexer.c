@@ -56,7 +56,7 @@ Token getNextToken(){
     if(current == '~'){ //Single line comment.  Skip until newline
         do 
             incrementPos();
-        while(current != '\n' && current != EOF);
+        while(current != '\n' && lookAhead != EOF);
         return getNextToken();
     }else if(current == '`'){ //Multi line comment.  Skip until next `
         do
@@ -358,9 +358,6 @@ Token* lexer_next(char b){
     Token *tok = malloc(sizeof(Token));
     tok[0] = getNextToken();
 
-    if(printToks)
-        printf("\r" RESET_COLOR ": ");
-
     for(int i = 1; tok[i-1].type != Tok_EndOfInput; i++)
     { 
         tok = realloc(tok, sizeof(Token) * (i+1));
@@ -402,10 +399,18 @@ inline void freeToks(Token **t){
     NFREE(*t);
 }
 
-void init_lexer(char tty){ //Sets up the lookAhead character properly so that
-    if(tty){
+inline void freeSrcLine(){
+    NFREE(srcLine);
+}
+
+//Initializes lexer.
+//str is NULL if reading from a file,
+//otherwise, tty mode is automatically set
+void init_lexer(char* str){
+    if(str){
         isTty = 1;
-        pos = srcLine;
+        srcLine = str;
+        pos = str;
         current = 0;
         lookAhead = 0;
     }else if(!src){

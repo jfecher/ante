@@ -31,7 +31,6 @@ int function_call();
 int paren_expression();
 int math_expression();
 
-
 void syntaxError(const char* msg, int showErrTok){
     fprintf(stderr, "Syntax Error: %s", msg);
     
@@ -56,8 +55,12 @@ int _expect(TokenType type){
     if(accept(type)){
         return 1;
     }else{
-        fprintf(stderr, "Syntax Error: Expected %s, but found %s at row %d, col %d.\n", tokenDictionary[type], tokenDictionary[(PARSER_CUR_TOK).type], (PARSER_CUR_TOK).row, (PARSER_CUR_TOK).col);
-        exitFlag = 2;
+        if(isTty && type == Tok_Indent){
+            exitFlag = NEW_BLOCK;
+        }else{
+            fprintf(stderr, "Syntax Error: Expected %s, but found %s at row %d, col %d.\n", tokenDictionary[type], tokenDictionary[(PARSER_CUR_TOK).type], (PARSER_CUR_TOK).row, (PARSER_CUR_TOK).col);
+            exitFlag = 2;
+        }
         return 0;
     }
 }

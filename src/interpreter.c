@@ -261,15 +261,6 @@ void init_interpreter(void){
 }
 
 char exec(){
-    toks = lexer_next(0);
-    tIndex = 0;
-
-    if(parse(toks)){
-        NFREE(srcLine);
-        freeToks(&toks);
-        return 0;
-    }
-
     uint8_t opcode = toks[tIndex].type;
     if(opcode == Tok_Newline)
         opcode = toks[++tIndex].type;
@@ -291,23 +282,49 @@ void interpret(FILE *src, char isTty){
     init_interpreter();
 
     if(!isTty){
-        init_lexer(0);
+        init_lexer(NULL);
+        toks = lexer_next(0);
+        tIndex = 0;
+
+        if(parse(toks)){
+            freeSrcLine();
+            freeToks(&toks);
+            return;
+        }
+
         exec();
     }else{
         init_sl();
 
         puts(KEYWORD_COLOR "Zy " INTEGERL_COLOR  VERSION  RESET_COLOR " - " VERDATE "\nType 'exit' to exit the interpreter.");
-        int i;
         fflush(stdout);
         for(;;){
-            for(i=1; i < stack.size; i++){ printf(":"); }
-
-            scanLine();//Tokenizes the entire line, stores it in srcLine, and print it out on screen
+            char *srcLine = NULL;
+            scanLine(&srcLine);//Tokenizes the entire line, stores it in srcLine, and print it out on screen
             if(strcmp(srcLine, "exit") == 0)
                 break;
-            init_lexer(1);
-            exec();
 
+            init_lexer(srcLine);
+            toks = lexer_next(0);
+            tIndex = 0;
+
+            int flag = parse(toks);
+            if(flag == NEW_BLOCK){
+                freeToks(&toks);
+                scanBlock(&srcLine);
+                init_lexer(srcLine);
+                toks = lexer_next(0);
+                flag = parse(toks);
+            }
+            
+            if(flag){
+                NFREE(srcLine);
+                freeToks(&toks);
+                continue; 
+            }
+
+            exec();
+            NFREE(srcLine);
         }
         freeHistory();
     }

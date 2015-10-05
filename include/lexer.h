@@ -14,7 +14,7 @@ unsigned short col;
 //A dictionary used for getting the human readable string of a particular token type.  Only used in debugging
 extern char *tokenDictionary[];
 
-extern char *srcLine;
+//extern char *srcLine;
 extern char *pos;
 
 //Source file
@@ -38,12 +38,13 @@ FILE *src;
 
 #define IS_WHITESPACE_TOKEN(t) (t.type==Tok_Newline||t.type==Tok_Indent||t.type==Tok_Unindent)
 
-void   init_lexer(char tty); //begins lexation of file
-Token* lexer_next(char b); //gets line of tokens.  if b is true, it prints them as well
-void   freeToks(Token **t);
+void   init_lexer(char*); //begins lexation of file
+Token* lexer_next(char); //gets line of tokens.  if passed true, it prints them as well
+void   freeToks(Token**);
+void   freeSrcLine(void);
 void   lexAndPrint(void);
-void   lexer_printWhitespace(char c);
-void   lexer_printTokens(char c);
-void   ralloc(char** ptr, size_t size);
+void   lexer_printWhitespace(char);
+void   lexer_printTokens(char);
+void   ralloc(char**, size_t);
 
 #endif // LEXER_H_INCLUDED

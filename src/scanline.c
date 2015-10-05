@@ -117,19 +117,19 @@ void concatChar(char **str, char c, unsigned int pos){
     free(end);
 }
 
-void setSrcLineFromHistory(){
+void setSrcLineFromHistory(char **srcLine){
     LOAD_POS();
     CLEAR_SCR();
 
-    NFREE(srcLine);
+    NFREE(*srcLine);
     sl_len = strlen(sl_history[sl_hPos]);
-    srcLine = malloc(sl_len+2);
-    STR_DUAL_TERMINATE(srcLine, sl_len+1);
-    strcpy(srcLine, sl_history[sl_hPos]);
+    *srcLine = malloc(sl_len+2);
+    STR_DUAL_TERMINATE(*srcLine, sl_len+1);
+    strcpy(*srcLine, sl_history[sl_hPos]);
     sl_pos = sl_len; 
 }
 
-void handleEsqSeq(){
+void handleEsqSeq(char **ln){
     if(getchar() == 91){ //discard escape sequence otherwise
         char escSeq = getchar();
         if(escSeq == 68 && sl_pos > 0){//left
@@ -140,8 +140,8 @@ void handleEsqSeq(){
             if(sl_hPos < SL_HISTORY_LEN-1 && sl_history[sl_hPos]){
                 if(sl_hPos == 0){
                     if(sl_len > 0){
-                        if(strcmp(srcLine, sl_history[0]) != 0){
-                            appendHistory(srcLine, sl_len);
+                        if(strcmp(*ln, sl_history[0]) != 0){
+                            appendHistory(*ln, sl_len);
                         }
                     }else{
                         sl_hPos--;
@@ -150,27 +150,23 @@ void handleEsqSeq(){
 
                 if(sl_history[sl_hPos+1]){
                     sl_hPos++;
-                    setSrcLineFromHistory();
+                    setSrcLineFromHistory(ln);
                 }
             }
         }else if(escSeq == 66){//down
             if(sl_hPos > 0 && sl_history[sl_hPos-1]){
                 sl_hPos--;
-                setSrcLineFromHistory();
+                setSrcLineFromHistory(ln);
             }
         }
     }
 }
 
-void scanLine(){
-    char c = 0;
-    sl_len = 0;
-    NFREE(srcLine);
-    srcLine = calloc(sizeof(char), 2);
-    printf(": ");
+void getLine(char **ln){
+    char c;
     SAVE_POS();
-
     do{
+        updateTermSize();
         //Cursor is now at the end of srcLine, move it to sl_pos
         if(sl_pos != sl_len){
             int lines = GET_LINES_ABOVE();
@@ -182,37 +178,68 @@ void scanLine(){
         }
 
         c = getchar();
-        sl_len = strlen(srcLine);
-
-        updateTermSize();
+        sl_len = strlen(*ln);
 
         if(c == 9 || (c >= 32 && c <= 126)){
-            concatChar(&srcLine, c, sl_pos);
+            concatChar(ln, c, sl_pos);
             sl_pos++;
             sl_len++;
         }else if((c == 8 || c == 127) && sl_pos > 0){ //backspace
             sl_pos--;
             sl_len--;
-            removeCharAt(&srcLine, sl_pos);
+            removeCharAt(ln, sl_pos);
             MOVE_LEFT();
             CLEAR_SCR();
         }else if(c == 27){
-            handleEsqSeq();
+            handleEsqSeq(ln);
         }
 
         //return to the : mark to print multiple lines
         LOAD_POS();
         
         //seperate input by tokens for syntax highlighting
-        init_lexer(1);
+        init_lexer(*ln);
         Token *t = lexer_next(1);
-        freeToks(&t); 
+        freeToks(&t);
     }while(c != '\n');
    
     puts("");
     sl_pos = 0;
     sl_hPos = 0;
     
-    if(sl_len > 0 && (!sl_history[0] || (sl_history[0] && strcmp(sl_history[0], srcLine) != 0)))
-        appendHistory(srcLine, sl_len);
+    if(sl_len > 0 && (!sl_history[0] || (sl_history[0] && strcmp(sl_history[0], *ln) != 0)))
+        appendHistory(*ln, sl_len); 
+}
+
+void scanBlock(char **srcLine){
+    sl_len = 0;
+    int scope = 2;
+
+    char *ln = NULL;
+    do{
+        for(int i = 0; i < scope; i++)
+            putchar(':');
+        putchar(' ');
+
+        NFREE(ln);
+        ln = calloc(sizeof(char), 2);
+        getLine(&ln);
+
+        size_t srcLen = strlen(*srcLine);
+        ralloc(srcLine, srcLen+sl_len+3);
+        
+        (*srcLine)[srcLen] = '\n';
+        strcpy(*srcLine + srcLen + 1, ln); 
+        (*srcLine)[srcLen + sl_len+1] = '\0';
+    }while(*ln && ln[0] != '\n');
+    NFREE(ln);
+    printf("%s", *srcLine);
+}
+
+void scanLine(char **srcLine){
+    sl_len = 0;
+    NFREE(*srcLine);
+    *srcLine = calloc(sizeof(char), 2);
+    printf(": ");
+    getLine(srcLine);
 }
