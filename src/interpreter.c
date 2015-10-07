@@ -301,9 +301,11 @@ void interpret(FILE *src, char isTty){
         for(;;){
             char *srcLine = NULL;
             scanLine(&srcLine);//Tokenizes the entire line, stores it in srcLine, and print it out on screen
-            if(strcmp(srcLine, "exit") == 0)
+            if(strcmp(srcLine, "exit") == 0){
+                NFREE(srcLine);
                 break;
-
+            }
+            
             init_lexer(srcLine);
             toks = lexer_next(0);
             tIndex = 0;
