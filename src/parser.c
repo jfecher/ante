@@ -292,8 +292,8 @@ int foreach_loop(){
  */
 int while_loop(){
     expect(Tok_While);
-    if(math_expression()) return 0;
-    if(function_body()) return 0;
+    if(!math_expression()) return 0;
+    if(!function_body()) return 0;
     return 1;
 }
 
@@ -438,7 +438,7 @@ int value(){
     else if(check(Tok_ParenOpen))
         return paren_expression();
     else
-        return literal_value() || variable() || paren_expression();
+        return literal_value() || variable();
 }
 
 int math_expression(){
