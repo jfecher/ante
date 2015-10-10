@@ -180,6 +180,53 @@ foreach num>n in arr
 
 
 `
+        Embedded Statements
+    Zy's normal syntax is <statement> [expression], but this can lead
+    to some needlessly long functions.  One way to condense these
+    functions is to use embedded statements.  Embedded statements are
+    named as such becuase they are statements embedded within an
+    expression.
+
+    An embedded statement is always preceeded with an open bracket and 
+    terminated with a matching closing bracket.  Unlike statements, 
+    embedded statements need to return a value to be used in the expression,
+    so the dynamic variable _ is used to modify this value.  If never
+    assigned to within the embedded statement, _ = 0 by default.
+`
+
+`
+    The following example uses an embedded statement to find the sum
+    of each element of data array, and divide it by the number of
+    elements in the array to find the mean on a single line.
+`
+num> mean1: num[] data
+    return {foreach num>n in data {_ += n}} / size(data)
+
+`
+    Without embedded statements, the above function would have
+    taken up 3 additional lines of code.
+`
+num> mean2: num[] data
+    num> sum
+    foreach num>n in data
+        sum += n
+    return sum / size(data)
+
+`
+    Embedded statements can also be used as a shortcut for
+    assigning variables within an expression.
+
+    In the following example, an integer i is incremented at
+    each iteration of the loop.
+
+    NOTE: because the conditional is evaluated before each
+    iteration of the loop, the numbers 1-100 are printed,
+    and the loop closes when i = 101
+`
+while {i += 1; _ = i} <= 100
+    print i
+
+`
         Classes
     Classes can be declared with the -> token.  They each have their own
     namespace, and can have functions and variables declared within them.

@@ -162,8 +162,10 @@ void handleEsqSeq(char **ln){
     }
 }
 
-void getLine(char **ln){
+void getLine(char **ln, const char *prompt){
     char c;
+    int promptLen = strlen(prompt);
+    fputs(prompt, stdout);
     SAVE_POS();
     do{
         updateTermSize();
@@ -171,10 +173,10 @@ void getLine(char **ln){
         if(sl_pos != sl_len){
             int lines = GET_LINES_ABOVE();
             
-            if(lines > 0 && (sl_len+2) % sl_termSize.ws_col != 0)
+            if(lines > 0 && (sl_len + promptLen) % sl_termSize.ws_col != 0)
                 MOVE_UP_N(lines);
             
-            SET_TERM_X_POS((sl_pos+2) % sl_termSize.ws_col);
+            SET_TERM_X_POS((sl_pos + promptLen) % sl_termSize.ws_col);
         }
 
         c = getchar();
@@ -203,7 +205,7 @@ void getLine(char **ln){
         freeToks(&t);
     }while(c != '\n');
    
-    puts("");
+    putchar('\n');
     sl_pos = 0;
     sl_hPos = 0;
     
@@ -213,19 +215,11 @@ void getLine(char **ln){
 
 void scanBlock(char **srcLine){
     sl_len = 0;
-    int scope = 2;
-
-    concatChar(srcLine, '\t', strlen(*srcLine));
-
     char *ln = NULL;
     do{
-        for(int i = 0; i < scope; i++)
-            putchar(':');
-        putchar(' ');
-
         NFREE(ln);
         ln = calloc(sizeof(char), 2);
-        getLine(&ln);
+        getLine(&ln, ":: ");
 
         size_t srcLen = strlen(*srcLine);
         ralloc(srcLine, srcLen+sl_len+3);
@@ -241,6 +235,5 @@ void scanLine(char **srcLine){
     sl_len = 0;
     NFREE(*srcLine);
     *srcLine = calloc(sizeof(char), 2);
-    printf(": ");
-    getLine(srcLine);
+    getLine(srcLine, ": ");
 }
