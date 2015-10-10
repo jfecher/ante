@@ -12,7 +12,6 @@ inline void free_value(Variable v)
 
 inline void free_var(Variable v)
 {
-    printf("Freeing %s\n", v.name);
     if(SHOULD_FREE(v))
         free_value(v);
     NFREE(v.name);
