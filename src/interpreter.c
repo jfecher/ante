@@ -74,10 +74,6 @@ void initVar(char *identifier, Type t, char isDynamic){
         runtimeError(ERR_ALREADY_INITIALIZED, identifier);
     }
 
-    //printf("\n\n\ntIndex now = %d\n", tIndex);
-    //printf("initVar: p = %s, c = %s, n = %s\n", tokenDictionary[toks[tIndex-1].type], tokenDictionary[toks[tIndex].type], tokenDictionary[toks[tIndex+1].type]);
-    //printf("initVar: identifier = %s\n", identifier);
-
     //           value, type, dynamic,   name
     Variable v = {NULL, t,    isDynamic, malloc(strlen(identifier)+1), 0};
     strcpy(v.name, identifier);
@@ -97,7 +93,7 @@ void initVar(char *identifier, Type t, char isDynamic){
 }
 
 //TODO: put functions in a seperate table
-void initFunc(char *identifier, Type retType, unsigned int start){
+void initFunc(char *identifier, Type retType, Token *start){
     Coords c = lookupFunc(identifier);
     if(c.x != -1){ //lookupVar returns {-1, -1} if the var was not found
         runtimeError(ERR_ALREADY_INITIALIZED, identifier);
@@ -106,15 +102,11 @@ void initFunc(char *identifier, Type retType, unsigned int start){
     size_t iLen = strlen(identifier);
 
     //           value, type, dynamic,   name
-    Variable v = {malloc(sizeof(int)), Function, 0, malloc(iLen+1), 1};
-    memcpy(v.value, &start, sizeof(int));
+    Variable v = {start, Function, 0, malloc(iLen+1), 1};
     strcpy(v.name, identifier);
     v.name[iLen] = '\0';
 
-    //puts("Initialized function");
-
     varTable_add(&stack_top(stack), v); 
-   // printf("Current tok = %s\n", tokenDictionary[toks[tIndex].type]);
 }
 
 void op_initObject(void){
@@ -156,8 +148,10 @@ Variable exec_function(char *funcName){
     }
     
     //TODO: parameters
-    unsigned int tmp = tIndex;
-    tIndex = *(unsigned int*)stack.items[c.x].table[c.y].value;
+    unsigned int pos = tIndex;
+    Token *tmp = toks;
+    tIndex = 0;
+    toks = stack.items[c.x].table[c.y].value;
 
 
     VarTable local = {NULL, 0};
@@ -166,7 +160,8 @@ Variable exec_function(char *funcName){
     varTable_free(stack_top(stack));
     stack_pop(&stack);
 
-    tIndex = tmp;
+    tIndex = pos;
+    toks = tmp;
     return VAR(NULL, Invalid);
 }
 
@@ -210,7 +205,7 @@ void op_initFunc(void){
         pos++;
     }
     
-    initFunc(identifier, Function, tIndex);
+    initFunc(identifier, Function, toks + tIndex);
     
     while(toks[tIndex].type != Tok_Unindent && toks[tIndex].type != Tok_EndOfInput){
         INC_POS(1);
