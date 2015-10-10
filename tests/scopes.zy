@@ -1,0 +1,29 @@
+`
+    scopes.zy
+        Tests ability to create scopes, and have variables stored
+        within which obscure global variables of the same name
+`
+
+int>i = 2
+int>j
+print i .. ", " .. j
+
+math:
+    int>i = 111111111
+    print "i   = " .. i
+    print "i^2 = " .. i^2
+
+    int>j = 1234
+    print j
+
+math()
+print i .. ", " .. j
+
+`
+    output:
+2, 0
+i   = 111111111
+i^2 = 12345678987654321
+1234
+2, 0
+`

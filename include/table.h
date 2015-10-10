@@ -3,6 +3,7 @@
 
 #include <stdlib.h>
 #include "types.h"
+#include "lexer.h"
 #include "bignum.h"
 
 typedef struct{

@@ -27,12 +27,13 @@ int tIndex;
 void interpret(FILE*, char);
 Coords lookupVar(char*);
 Variable getValue(Token);
+void exec(void);
 
 void op_initObject(void);
 void op_assign(void);
 void op_print(void);
 void op_callFunc(void);
-void op_declFunc(void);
+void op_initFunc(void);
 void op_function(void);
 void op_initNum(void);
 void op_initInt(void);

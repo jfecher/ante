@@ -24,7 +24,16 @@ funcPtr ops[] = {
     &op_initStr,
     &op_initInt,
     &op_callFunc,
+    &op_initFunc,
 };
+
+Coords shallowLookupVar(char *identifier){
+    for(int i = 0; i < stack_top(stack).size; i++){
+        if(strcmp(identifier, stack_top(stack).table[i].name) == 0)
+            return (Coords){stack.size-1, i};
+    }
+    return (Coords){-1, -1};
+}
 
 /*
  *  Returns the index of an identifier in the variable table or -1 if no
@@ -32,17 +41,13 @@ funcPtr ops[] = {
  */
 Coords lookupVar(char* identifier){
     int i, j;
-
-    for(j=0; j < stack.size; j++){
+    for(j=stack.size-1; j >= 0; j--){
         for(i=0; i < stack.items[j].size; i++){
-            if(strcmp(identifier, stack.items[j].table[i].name) == 0){
-                Coords c = {j, i};
-                return c;
-            }
+            if(strcmp(identifier, stack.items[j].table[i].name) == 0)
+                return (Coords){j, i};
         }
     }
-    Coords c = {-1, -1};
-    return c;
+    return (Coords){-1, -1};
 }
 
 Coords lookupFunc(char* identifier){
@@ -51,14 +56,11 @@ Coords lookupFunc(char* identifier){
         for(j = 0; j < stack.items[i].size; j++){
             Variable v = stack.items[i].table[j];
 
-            if(v.type == Function && strcmp(identifier, v.name) == 0){
-                Coords c = {i, j};
-                return c;
-            }
+            if(v.type == Function && strcmp(identifier, v.name) == 0)
+                return (Coords){i, j};
         }
     }
-    Coords c = {-1, -1};
-    return c;
+    return (Coords){-1, -1};
 }
 
 /*
@@ -67,13 +69,17 @@ Coords lookupFunc(char* identifier){
  * if it is a string.
  */
 void initVar(char *identifier, Type t, char isDynamic){
-    Coords c = lookupVar(identifier);
+    Coords c = shallowLookupVar(identifier);
     if(c.x != -1){ //lookupVar returns {-1, -1} if the var was not found
         runtimeError(ERR_ALREADY_INITIALIZED, identifier);
     }
 
+    //printf("\n\n\ntIndex now = %d\n", tIndex);
+    //printf("initVar: p = %s, c = %s, n = %s\n", tokenDictionary[toks[tIndex-1].type], tokenDictionary[toks[tIndex].type], tokenDictionary[toks[tIndex+1].type]);
+    //printf("initVar: identifier = %s\n", identifier);
+
     //           value, type, dynamic,   name
-    Variable v = {NULL, t,    isDynamic, malloc(strlen(identifier)+1)};
+    Variable v = {NULL, t,    isDynamic, malloc(strlen(identifier)+1), 0};
     strcpy(v.name, identifier);
     v.name[strlen(identifier)] = '\0';
 
@@ -88,6 +94,27 @@ void initVar(char *identifier, Type t, char isDynamic){
         CPY_TO_STR(v.value, "");
     }
     varTable_add(&stack_top(stack), v);
+}
+
+//TODO: put functions in a seperate table
+void initFunc(char *identifier, Type retType, unsigned int start){
+    Coords c = lookupFunc(identifier);
+    if(c.x != -1){ //lookupVar returns {-1, -1} if the var was not found
+        runtimeError(ERR_ALREADY_INITIALIZED, identifier);
+    }
+  
+    size_t iLen = strlen(identifier);
+
+    //           value, type, dynamic,   name
+    Variable v = {malloc(sizeof(int)), Function, 0, malloc(iLen+1), 1};
+    memcpy(v.value, &start, sizeof(int));
+    strcpy(v.name, identifier);
+    v.name[iLen] = '\0';
+
+    //puts("Initialized function");
+
+    varTable_add(&stack_top(stack), v); 
+   // printf("Current tok = %s\n", tokenDictionary[toks[tIndex].type]);
 }
 
 void op_initObject(void){
@@ -107,7 +134,7 @@ void setVar(Variable *v, Variable val){
 }
 
 Variable copyVar(Variable v){
-    Variable cpy = {NULL, v.type, v.dynamic, NULL};
+    Variable cpy = {NULL, v.type, v.dynamic, NULL, 0};
     switch(v.type){
     case Int:
         cpy.value = bigint_copy(v.value);
@@ -121,14 +148,25 @@ Variable copyVar(Variable v){
     return cpy;
 }
 
-//TODO: implement
 Variable exec_function(char *funcName){
     Coords c = lookupFunc(funcName);
     if(c.x == -1){
-        printf("Function '%s' not found\n", funcName);
+        printf("Function '%s' has not been declared.\n", funcName);
         return VAR(NULL, Invalid);
     }
+    
+    //TODO: parameters
+    unsigned int tmp = tIndex;
+    tIndex = *(unsigned int*)stack.items[c.x].table[c.y].value;
 
+
+    VarTable local = {NULL, 0};
+    stack_push(&stack, local);
+    exec();
+    varTable_free(stack_top(stack));
+    stack_pop(&stack);
+
+    tIndex = tmp;
     return VAR(NULL, Invalid);
 }
 
@@ -155,14 +193,29 @@ void op_print(){
 
 void op_callFunc(void){
     char *funcName = toks[tIndex].lexeme;
-    Coords c = lookupFunc(funcName);
-    if(c.x == -1){
-        INC_POS(1); //increment the pos to the ( token, since this is not the start of a valid statement, the interpreter will halt
-        runtimeError("Tried to call undeclared function '%s'\n", funcName);
-    }
-
     INC_POS(1);
     free_var(exec_function(funcName));
+    
+    //skip parameters for now
+    while(toks[tIndex].type != Tok_Newline && toks[tIndex].type != Tok_EndOfInput) 
+        INC_POS(1);
+}
+
+void op_initFunc(void){
+    char *identifier = toks[tIndex].lexeme;
+    unsigned char pos = 0;
+
+    while(toks[tIndex].type != Tok_Indent && toks[tIndex].type != Tok_EndOfInput){
+        INC_POS(1);
+        pos++;
+    }
+    
+    initFunc(identifier, Function, tIndex);
+    
+    while(toks[tIndex].type != Tok_Unindent && toks[tIndex].type != Tok_EndOfInput){
+        INC_POS(1);
+    }
+    if(toks[tIndex].type == Tok_Unindent) INC_POS(1);
 }
 
 void op_initNum(void){
@@ -260,22 +313,21 @@ void init_interpreter(void){
     //addGlobalVar(VARIABLE(bigint_new("10"), Int, 0, "_precision"));
 }
 
-char exec(){
+#define isWhitespaceTok(t) (t==Tok_Newline||t==Tok_Indent)
+void exec(void){
     uint8_t opcode = toks[tIndex].type;
-    if(opcode == Tok_Newline)
+    if(isWhitespaceTok(opcode))
         opcode = toks[++tIndex].type;
 
     while(opcode < ARR_SIZE(ops)){
         ops[opcode]();
         
-        if(toks[tIndex].type == Tok_Newline)
+        if(isWhitespaceTok(toks[tIndex].type))
             tIndex++;
 
         opcode = toks[tIndex].type;
     }
 
-    freeToks(&toks);
-    return 1;
 }
 
 void interpret(FILE *src, char isTty){
@@ -293,6 +345,7 @@ void interpret(FILE *src, char isTty){
         }
 
         exec();
+        freeToks(&toks);
     }else{
         init_sl();
 
@@ -316,16 +369,17 @@ void interpret(FILE *src, char isTty){
                 scanBlock(&srcLine);
                 init_lexer(srcLine);
                 toks = lexer_next(0);
-                flag = parse(toks);
+                
+                if(parse(*toks)){
+                    NFREE(srcLine);
+                    freeToks(&toks);
+                    continue;     
+                }
             }
             
-            if(flag){
-                NFREE(srcLine);
-                freeToks(&toks);
-                continue; 
-            }
-
             exec();
+            if(flag != NEW_BLOCK) 
+                freeToks(&toks);
             NFREE(srcLine);
         }
         freeHistory();

@@ -8,6 +8,7 @@ char *tokenDictionary[] = {
     "String",
     "Int",
     "FuncCall",
+    "FuncDef",
 
     "Invalid",
     "Assign",
@@ -60,7 +61,6 @@ char *tokenDictionary[] = {
     "StrConcat",
     "MalformedString",
     "Exponent",
-    "FuncDef",
     "In"
 };
 

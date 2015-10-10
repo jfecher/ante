@@ -33,9 +33,7 @@ stack_pop( Stack*s )
 
 void stack_free(Stack s)
 {
-    int i;
-    for(i = 0; i < s.size; i++){
+    for(int i = 0; i < s.size; i++)
         varTable_free(s.items[i]);
-    }
     free(s.items);
 }

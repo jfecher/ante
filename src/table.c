@@ -1,7 +1,5 @@
 #include "table.h"
 
-#include "stdio.h"
-
 void free_value(Variable v)
 {
     switch(v.type){

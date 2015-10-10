@@ -215,6 +215,8 @@ void scanBlock(char **srcLine){
     sl_len = 0;
     int scope = 2;
 
+    concatChar(srcLine, '\t', strlen(*srcLine));
+
     char *ln = NULL;
     do{
         for(int i = 0; i < scope; i++)
@@ -233,7 +235,6 @@ void scanBlock(char **srcLine){
         (*srcLine)[srcLen + sl_len+1] = '\0';
     }while(*ln && ln[0] != '\n');
     NFREE(ln);
-    printf("%s", *srcLine);
 }
 
 void scanLine(char **srcLine){

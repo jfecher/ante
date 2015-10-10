@@ -13,6 +13,7 @@ typedef enum TokenType{
     Tok_String,
     Tok_Int,
     Tok_FuncCall,
+    Tok_FuncDef,
 
     Tok_Invalid,
 	Tok_Assign,
@@ -65,7 +66,6 @@ typedef enum TokenType{
     Tok_StrConcat,
     Tok_MalformedString,
     Tok_Exponent,
-    Tok_FuncDef,
     Tok_In,
 } TokenType;
 
@@ -92,18 +92,18 @@ typedef struct{
     int y;
 } Coords;
 
+#define SET_NO_FREE(v) ((v).metadata &= (v).metadata | 1)
+#define SHOULD_FREE(v) !((v).metadata & 1)
 typedef struct{
     Value value;
     Type type;
     char dynamic;
     char *name;
+    unsigned char metadata;
 } Variable;
 
 //creates a non-user var for intermediate values in expressions
-#define VAR(v, t) ((Variable){v, t, 0, NULL})
-
-//creates a fully initialized Variable
-#define VARIABLE(v, t, d, n) ((Variable){v,t,d,n})
+#define VAR(v, t) ((Variable){v, t, 0, NULL, 0})
 
 //function pointer for an operator which takes two
 //variables and returns another
