@@ -13,6 +13,7 @@ char *typeDictionary[] = {
     "Int",
     "String",
     "Function",
+    "Tuple",
     "Invalid"
 };
 
@@ -28,10 +29,9 @@ funcPtr ops[] = {
 };
 
 Coords shallowLookupVar(char *identifier){
-    for(int i = 0; i < stack_top(stack).size; i++){
+    for(int i = 0; i < stack_top(stack).size; i++)
         if(strcmp(identifier, stack_top(stack).table[i].name) == 0)
             return (Coords){stack.size-1, i};
-    }
     return (Coords){-1, -1};
 }
 
@@ -134,6 +134,16 @@ Variable copyVar(Variable v){
     case Num:
         cpy.value = bignum_copy(v.value);
         break;
+    case Tuple:
+        cpy.value = malloc(sizeof(struct Tuple));
+        memcpy(cpy.value, v.value, sizeof(struct Tuple));
+        struct Tuple *tupC = (struct Tuple*)cpy.value;
+        struct Tuple *tupV = (struct Tuple*)v.value;
+        tupC->tup = malloc(sizeof(Variable) * tupV->size);
+        for(int i = 0; i < tupV->size; i++) //make a deep copy
+            tupC->tup[i] = copyVar(tupV->tup[i]);
+        tupC->size = tupV->size;
+        break;
     default: 
         CPY_TO_STR(cpy.value, v.value);        
     }
@@ -165,24 +175,36 @@ Variable exec_function(char *funcName){
     return VAR(NULL, Invalid);
 }
 
-void op_print(){
-    INC_POS(1);
-    Variable v = expression();
-
-    switch(v.type){
+void printValue(Value v, Type t){
+    switch(t){
         case Int:
-            mpz_out_str(stdout, 10, *(BigInt)v.value);
-            puts("");
+            mpz_out_str(stdout, 10, *(BigInt)v);
             break;
         case Num:;
-            gmp_printf("%.Ff\n", *(BigNum)v.value);
+            gmp_printf("%.Ff", *(BigNum)v);
             break;
         case String:
-            printf("%s\n", (char*)v.value);
+            fputs((char*)v, stdout);
+            break;
+        case Tuple:;
+            struct Tuple tup = *(struct Tuple*)v;
+            printf("Tuple of size %d: ", tup.size);
+            for(int i = 0; i < tup.size; i++){
+                printValue(tup.tup[i].value, tup.tup[i].type);
+                if(i + 1 < tup.size) 
+                    fputs(", ", stdout);
+            }
             break;
         default:
             break;
-    }
+    } 
+}
+
+void op_print(){
+    INC_POS(1);
+    Variable v = expression();
+    printValue(v.value, v.type);
+    putchar('\n');
     free_var(v);
 }
 
@@ -379,6 +401,5 @@ void interpret(FILE *src, char isTty){
         }
         freeHistory();
     }
-
     stack_free(stack);
 }

@@ -1,7 +1,7 @@
 #include "expression.h"
 
 Operator operators[] = {
-    {Tok_Comma,     0, 0, NULL}, // op_tup
+    {Tok_Comma,     0, 0, op_tup},
     {Tok_StrConcat, 1, 0, op_cnct},
     {Tok_Plus,      2, 0, op_add},
     {Tok_Minus,     2, 0, op_sub},

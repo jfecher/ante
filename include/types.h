@@ -1,9 +1,11 @@
 #ifndef TYPES_H
 #define TYPES_H
 
+#include "bignum.h"
+
 typedef unsigned char uint8_t;
 
-typedef enum{ Object, Num, Int, String, Function, Invalid} Type;
+typedef enum{ Object, Num, Int, String, Function, Tuple, Array, Enum, Invalid} Type;
 
 typedef enum TokenType{
     Tok_Greater, //Used to signal the initialization of variables as well as comparing values
@@ -81,8 +83,6 @@ typedef struct Token{
 
 #define NFREE(x) {if(x!=NULL) free(x); x=NULL;}
 
-typedef void* Value;
-
 typedef void (*funcPtr)();
 
 extern char *typeDictionary[];
@@ -92,8 +92,13 @@ typedef struct{
     int y;
 } Coords;
 
+
+
 #define SET_NO_FREE(v) ((v).metadata &= (v).metadata | 1)
-#define SHOULD_FREE(v) !((v).metadata & 1)
+#define SHOULD_FREE(v) !((v).metadata & 1) 
+
+typedef void* Value;
+
 typedef struct{
     Value value;
     Type type;
@@ -102,7 +107,11 @@ typedef struct{
     unsigned char metadata;
 } Variable;
 
-//creates a non-user var for intermediate values in expressions
+struct Tuple{
+    Variable *tup;
+    unsigned int size;
+};
+
 #define VAR(v, t) ((Variable){v, t, 0, NULL, 0})
 
 //function pointer for an operator which takes two

@@ -58,13 +58,13 @@ opFunc mulFuncTable[] = {
  */
 Variable divNum(Variable n1, Variable n2)
 {
-    Value v = bignum_div(n1.value, n2.value);
+    Value v = {bignum_div(n1.value, n2.value)};
     return VAR(v, v != NULL? Num : Invalid);
 }
 
 Variable divInt(Variable n1, Variable n2)
 {
-    Value v = bigint_div(n1.value, n2.value);
+    Value v = {bigint_div(n1.value, n2.value)};
     return VAR(v, v != NULL? Int : Invalid);
 }
 
@@ -78,7 +78,7 @@ opFunc divFuncTable[] = {
  */
 Variable modInt(Variable n1, Variable n2)
 {
-    Value v = bigint_mod(n1.value, n2.value);
+    Value v = {bigint_mod(n1.value, n2.value)};
     return VAR(v, v != NULL? Int : Invalid);
 }
 
@@ -145,9 +145,22 @@ inline Variable op_pow(Variable b, Variable e)
 inline Variable op_cnct(Variable m1, Variable m2)
 {
     size_t size = strlen(m1.value) + strlen(m2.value) + 1;
-    Variable v = {malloc(size), String, 0, 0};
+    Variable v = VAR(malloc(size), String);
     strcpy(v.value, m1.value);
     ((char*)v.value)[size-1] = '\0';
     strcat(v.value, m2.value);
+    return v;
+}
+
+//TODO: finish
+inline Variable op_tup(Variable v1, Variable v2)
+{
+    Variable v = VAR(malloc(sizeof(struct Tuple)), Tuple);
+    struct Tuple *tuple = (struct Tuple*)v.value;
+    tuple->size = 2;
+    tuple->tup = malloc(sizeof(Variable) * tuple->size);
+
+    tuple->tup[0] = copyVar(v1);
+    tuple->tup[1] = copyVar(v2);
     return v;
 }
