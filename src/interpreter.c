@@ -188,12 +188,13 @@ void printValue(Value v, Type t){
             break;
         case Tuple:;
             struct Tuple tup = *(struct Tuple*)v;
-            printf("Tuple of size %d: ", tup.size);
+            printf("Tuple(%d: ", tup.size);
             for(int i = 0; i < tup.size; i++){
                 printValue(tup.tup[i].value, tup.tup[i].type);
                 if(i + 1 < tup.size) 
                     fputs(", ", stdout);
             }
+            putchar(')');
             break;
         default:
             break;

@@ -5,6 +5,11 @@ inline void free_value(Variable v)
     switch(v.type){
     case Num: mpf_clear(*(BigNum)v.value); break;
     case Int: mpz_clear(*(BigInt)v.value); break;
+    case Tuple:;
+        struct Tuple *tup = v.value;
+        for(int i = 0; i < tup->size; i++)
+            free_value(tup->tup[i]);
+        NFREE(tup->tup);
     default:  break;
     }
     NFREE(v.value);
