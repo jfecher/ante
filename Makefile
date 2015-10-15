@@ -15,10 +15,10 @@ DEPFILES := $(SRCFILES:.c=.d)
 
 .PHONY: all clean zy
 
-all: zy
-
 zy: $(OBJFILES)
 	-@$(CC) $(CFLAGS) -o zy $?
+
+new: clean zy
 
 $(OBJFILES): | obj
 

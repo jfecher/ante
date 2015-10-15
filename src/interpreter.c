@@ -174,7 +174,6 @@ Variable exec_function(char *funcName){
     }
 
     if(IS_CFUNC(func)){
-        puts("CFUNC");
         Variable ret = ((c_ffi)func.value)(params);
         free_value(params);
         return ret;
@@ -188,7 +187,6 @@ Variable exec_function(char *funcName){
     strcpy(params.name, "_params");
     params.name[7] = '\0';
     varTable_add(&stack_top(stack), params); 
-    puts("executing function...");
     exec();
     tIndex = pos;
     toks = tmp;
