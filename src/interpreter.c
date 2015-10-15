@@ -93,7 +93,7 @@ void initVar(char *identifier, Type t, char isDynamic){
 }
 
 //TODO: put functions in a seperate table
-void initFunc(char *identifier, Type retType, Token *start){
+void initFunc(char *identifier, Type retType, void *start, char isCFunc){
     Coords c = lookupFunc(identifier);
     if(c.x != -1){ //lookupVar returns {-1, -1} if the var was not found
         runtimeError(ERR_ALREADY_INITIALIZED, identifier);
@@ -102,7 +102,7 @@ void initFunc(char *identifier, Type retType, Token *start){
     size_t iLen = strlen(identifier);
 
     //           value, type, dynamic,   name
-    Variable v = {start, Function, 0, malloc(iLen+1), 1};
+    Variable v = {start, Function, 0, malloc(iLen+1), isCFunc? VFIELD_CFUNC|VFIELD_NFREE : VFIELD_NFREE};
     strcpy(v.name, identifier);
     v.name[iLen] = '\0';
 
@@ -158,20 +158,41 @@ Variable exec_function(char *funcName){
     }
     
     //TODO: parameters
-    unsigned int pos = tIndex;
-    Token *tmp = toks;
-    tIndex = 0;
-    toks = stack.items[c.x].table[c.y].value;
-
 
     VarTable local = {NULL, 0};
     stack_push(&stack, local);
+    Variable func = stack.items[c.x].table[c.y];
+    Variable params = expression();
+
+    if(params.type != Tuple){
+        struct Tuple *tup = malloc(sizeof(struct Tuple));
+        tup->tup = malloc(sizeof(Variable));
+        tup->tup[0] = params;
+        tup->size = 1;
+        params.value = tup;
+        params.type = Tuple;
+    }
+
+    if(IS_CFUNC(func)){
+        Variable ret = ((c_ffi)func.value)(params);
+        free_value(params);
+        return ret;
+    }
+
+    unsigned int pos = tIndex;
+    Token *tmp = toks;
+    tIndex = 0;
+    toks = func.value;
+    params.name = "_params";
+    varTable_add(&stack_top(stack), params); 
     exec();
+    tIndex = pos;
+    toks = tmp;
+   
+    free_var(params);
     varTable_free(stack_top(stack));
     stack_pop(&stack);
 
-    tIndex = pos;
-    toks = tmp;
     return VAR(NULL, Invalid);
 }
 
@@ -211,7 +232,7 @@ void op_print(){
 
 void op_callFunc(void){
     char *funcName = toks[tIndex].lexeme;
-    INC_POS(1);
+    INC_POS(2);
     free_var(exec_function(funcName));
     
     //skip parameters for now
@@ -228,7 +249,7 @@ void op_initFunc(void){
         pos++;
     }
     
-    initFunc(identifier, Function, toks + tIndex);
+    initFunc(identifier, Function, toks + tIndex, 0);
     
     while(toks[tIndex].type != Tok_Unindent && toks[tIndex].type != Tok_EndOfInput){
         INC_POS(1);
@@ -308,15 +329,6 @@ void op_assign(void){
     setVar(&stack.items[c.x].table[c.y], expression());
 }
 
-void op_typeOf(){
-    Variable v = expression();
-    if(v.dynamic)
-        printf("dynamic ");
-    printf("%s\n", typeDictionary[v.type]);
-    INC_POS(4);
-    free_var(v); //TODO: function to automatically clear values if var is a num or int
-}
-
 inline void addGlobalVar(Variable v){
     initVar(v.name, v.type, 0);
     setVar(&stack.items[0].table[stack.items[0].size-1], v);
@@ -328,7 +340,8 @@ void init_interpreter(void){
     stack_push(&stack, global);
     
     //builtin variables
-    //addGlobalVar(VARIABLE(bigint_new("10"), Int, 0, "_precision"));
+    initFunc("system", Function, zy_system, 1);
+    initFunc("typeof", Function, zy_typeof, 1);
 }
 
 #define isWhitespaceTok(t) (t==Tok_Newline||t==Tok_Indent)

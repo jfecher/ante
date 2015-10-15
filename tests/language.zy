@@ -93,12 +93,19 @@ arr -= 3
 `
 int, num, string> tup = 44, 44.0, "Fourty-four"
 
-int[30], string[2]> anotherTuple = arr, "This tuple contains", "two arrays"
+int[30], string[2]> anotherTuple = arr, ["This tuple contains", "two arrays"]
 
 `
     This restriction does not apply when making a dynamic variable of course
 `
 >dynTuple = 46, "Fourty-six", 46.0
+
+`
+    When printed, tuples are by default printed with the following syntax:
+        Tuple([size]: [values])
+`
+print dynTuple
+~output: Tuple(3: 46, Fourty-six, 46)
 
 `
         Functions
@@ -219,11 +226,11 @@ num> mean2: num[] data
     In the following example, an integer i is incremented at
     each iteration of the loop.
 
-    NOTE: because the conditional is evaluated before each
+    NOTE: in this example the conditional is evaluated before each
     iteration of the loop, the numbers 1-100 are printed,
-    and the loop closes when i = 101
+    and the loop closes when i == 101
 `
-while {i += 1; _ = i} <= 100
+while { i += 1; _ = i} <= 100;
     print i
 
 `
@@ -332,10 +339,11 @@ john.printInfo() ~output: John is 44 years old and is a(n) electrician
 `
         Enums
     Declaring an enum declares a set of named constants.  They are declared
-    like normal variables with the type enum.  Unlike normal types, other
-    variables cannot be typecasted to an enum type, but enums can be
-    typecasted to any primitive type.  Typecasting them to a string
-    yields the name of the value.
+    like normal variables with the type enum.  Ints typecasted to an enum
+    will become the constant that corresponds to the n-1 index of the enum where
+    n is the value of the integer.  Conversely, typecasting an enum to an int
+    yields that enums placement in its declaration starting from 0.  Typecasting 
+    an enum to a string yields the name of the value.
 `
 enum> Suit = Diamonds, Hearts, Spades, Clubs
 
@@ -375,6 +383,17 @@ export
 `
 
 `
+        Unused Symbols
+@
+#
+$
+\
+|
+
+`
+
+
+`
         Reserved Variables
 
 _args
@@ -403,6 +422,14 @@ _G
     
     example:
         _G["myFunc"](var1, var2, ...)
+
+_
+    a dynamic variable that represents the return value of an
+    embedded statement.  Gets reset to 0 at the start of each
+    embedded statement.
+
+    default: 0
+    dynamic: true
 
 `
 

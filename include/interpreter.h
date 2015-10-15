@@ -6,6 +6,7 @@
 #include "stack.h"
 #include "expression.h"
 #include "scanline.h"
+#include "integralLib.h"
 
 #define VERSION "v0.0.14"
 #define VERDATE "2015-09-30"

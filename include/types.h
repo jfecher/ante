@@ -92,10 +92,14 @@ typedef struct{
     int y;
 } Coords;
 
+#define VFIELD_NFREE 1
+#define VFIELD_CFUNC 2
 
+#define SET_NO_FREE(v) ((v).metadata |= VFIELD_NFREE)
+#define SET_CFUNC(v) ((v).metadata |= VFIELD_CFUNC)
 
-#define SET_NO_FREE(v) ((v).metadata &= (v).metadata | 1)
-#define SHOULD_FREE(v) !((v).metadata & 1) 
+#define SHOULD_FREE(v) !((v).metadata & VFIELD_NFREE)
+#define IS_CFUNC(v) ((v).metadata & VFIELD_CFUNC)
 
 typedef void* Value;
 
@@ -106,6 +110,8 @@ typedef struct{
     char *name;
     unsigned char metadata;
 } Variable;
+
+typedef Variable (*c_ffi)(Variable);
 
 struct Tuple{
     Variable *tup;
