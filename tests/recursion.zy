@@ -1,0 +1,11 @@
+`
+    recursion.zy
+`
+int>x = 0
+
+f:
+    x = x + 1
+    print x
+    f()
+
+f()
