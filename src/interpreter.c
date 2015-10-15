@@ -165,6 +165,8 @@ Variable exec_function(char *funcName){
     Variable params = expression();
 
     if(params.type != Tuple){
+        if(params.type == Invalid) return params;
+
         struct Tuple *tup = malloc(sizeof(struct Tuple));
         tup->tup = malloc(sizeof(Variable));
         tup->tup[0] = params;

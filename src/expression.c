@@ -70,7 +70,7 @@ void convertType(Variable *v, Type t)
 inline Variable operate(Variable v1, Operator op, Variable v2)
 {
     //check for type mismatch
-    if(v1.type != v2.type){
+    if(v1.type != v2.type && op.op != Tok_Comma){
         Type cType = getTypeConversion(v1.type, v2.type);
         
         if(v1.type == cType){
