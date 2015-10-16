@@ -1,0 +1,18 @@
+`
+    stdlib.zy
+        tests functions in stdlib for expected output when given
+        a variety of types and number of variables.
+`
+
+int>i = 1234
+string>ls = 'ls '
+string>opt = ' --color=auto '
+
+system(ls .. opt .. "..")
+typeof(ls)
+
+system(ls, opt)
+typeof(ls, opt)
+
+typeof(5, 3.5, 'test')
+typeof()

@@ -159,8 +159,6 @@ Variable exec_function(char *funcName){
     
     //TODO: parameters
 
-    VarTable local = {NULL, 0};
-    stack_push(&stack, local);
     Variable func = stack.items[c.x].table[c.y];
     Variable params = expression();
 
@@ -175,23 +173,29 @@ Variable exec_function(char *funcName){
 
     if(IS_CFUNC(func)){
         Variable ret = ((c_ffi)func.value)(params);
-        free_value(params);
+        free_var(params);
         return ret;
     }
 
+    VarTable local = {NULL, 0};
+    stack_push(&stack, local);
+    
     unsigned int pos = tIndex;
     Token *tmp = toks;
+    
     tIndex = 0;
     toks = func.value;
+   
+    NFREE(params.name);
     params.name = malloc(8);
     strcpy(params.name, "_params");
     params.name[7] = '\0';
+    
     varTable_add(&stack_top(stack), params); 
     exec();
     tIndex = pos;
     toks = tmp;
  
-    free_var(params);
     varTable_free(stack_top(stack));
     stack_pop(&stack);
 
@@ -204,7 +208,7 @@ void printValue(Value v, Type t){
             mpz_out_str(stdout, 10, *(BigInt)v);
             break;
         case Num:;
-            gmp_printf("%.Ff", *(BigNum)v);
+            gmp_printf("%.Ff\n\n", *(BigNum)v);
             break;
         case String:
             fputs((char*)v, stdout);
@@ -228,7 +232,7 @@ void op_print(){
     INC_POS(1);
     Variable v = expression();
     printValue(v.value, v.type);
-    putchar('\n');
+    if(v.type != Invalid) putchar('\n');
     free_var(v);
 }
 
@@ -291,7 +295,7 @@ Variable makeVarFromTok(Token t){
         ret.value = bigint_new(t.lexeme);
     }else if(ret.type == Num){
         ret.value = bignum_new(t.lexeme);
-    }else{
+    }else if(ret.type == String){
         CPY_TO_STR(ret.value, t.lexeme);
     }
     return ret;

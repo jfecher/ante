@@ -23,6 +23,11 @@ Variable zy_system(Variable params)
 Variable zy_typeof(Variable params){
     struct Tuple *tup = params.value;
 
+    if(tup->size == 0){
+        puts("null");
+        return VAR(NULL, Invalid);
+    }
+
     for(int i = 0; i < tup->size; i++){
         if(tup->tup[i].dynamic)
             fputs("dynamic ", stdout);
