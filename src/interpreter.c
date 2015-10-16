@@ -40,12 +40,13 @@ Coords shallowLookupVar(char *identifier){
  *  matches are found
  */
 Coords lookupVar(char* identifier){
-    int i, j;
-    for(j=stack.size-1; j >= 0; j--){
-        for(i=0; i < stack.items[j].size; i++){
-            if(strcmp(identifier, stack.items[j].table[i].name) == 0)
-                return (Coords){j, i};
-        }
+    for(int i=0; i < stack.items[stack.size-1].size; i++){
+        if(strcmp(identifier, stack.items[stack.size-1].table[i].name) == 0)
+            return (Coords){stack.size-1, i};
+    }
+    for(int i=0; i < stack.items[0].size; i++){
+        if(strcmp(identifier, stack.items[0].table[i].name) == 0)
+            return (Coords){0, i};
     }
     return (Coords){-1, -1};
 }
@@ -208,7 +209,7 @@ void printValue(Value v, Type t){
             mpz_out_str(stdout, 10, *(BigInt)v);
             break;
         case Num:;
-            gmp_printf("%.Ff\n\n", *(BigNum)v);
+            gmp_printf("%.Ff", *(BigNum)v);
             break;
         case String:
             fputs((char*)v, stdout);
