@@ -155,12 +155,31 @@ inline Variable op_cnct(Variable m1, Variable m2)
 //TODO: finish
 inline Variable op_tup(Variable v1, Variable v2)
 {
-    Variable v = VAR(malloc(sizeof(struct Tuple)), Tuple);
-    struct Tuple *tuple = (struct Tuple*)v.value;
-    tuple->size = 2;
-    tuple->tup = malloc(sizeof(Variable) * tuple->size);
+    Variable v = VAR(NULL, Tuple);
+    struct Tuple *tuple;
 
-    tuple->tup[0] = copyVar(v1);
-    tuple->tup[1] = copyVar(v2);
+    if(v1.type == Tuple){
+        v = copyVar(v1);
+        tuple = (struct Tuple*)v.value;
+    }else{
+        v = VAR(malloc(sizeof(struct Tuple)), Tuple);
+        tuple = (struct Tuple*)v.value;
+        tuple->tup = malloc(sizeof(Variable));
+        tuple->tup[0] = copyVar(v1);
+        tuple->size = 1;
+    }
+    
+    if(v2.type == Tuple){
+        struct Tuple *tup2 = v2.value;
+        tuple->tup = realloc(tuple->tup, sizeof(Variable) * (tuple->size + tup2->size));
+        for(int i = tuple->size; i < tuple->size + tup2->size; i++){
+            tuple->tup[i] = copyVar(tup2->tup[i-tuple->size]);
+        }
+        tuple->size += tup2->size;
+    }else{
+        tuple->tup = realloc(tuple->tup, sizeof(Variable) * (tuple->size + 1));
+        tuple->tup[tuple->size] = copyVar(v2);
+        tuple->size += 1;
+    }
     return v;
 }

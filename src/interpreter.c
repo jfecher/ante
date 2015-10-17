@@ -2,7 +2,6 @@
 
 /*
  *  TODO:
- *    -Implement declaration of functions
  *    -Stop interpretation on runtime error in files
  *    -Change _precision to a function
  */
@@ -28,6 +27,11 @@ funcPtr ops[] = {
     &op_initFunc,
 };
 
+/*
+ *  Only searches for the specified variable on the top of the stack.
+ *  Useful for determining if a variable is defined yet in the current
+ *  scope.
+ */
 Coords shallowLookupVar(char *identifier){
     for(int i = 0; i < stack_top(stack).size; i++)
         if(strcmp(identifier, stack_top(stack).table[i].name) == 0)
