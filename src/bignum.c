@@ -86,6 +86,13 @@ inline BigInt bigint_new(char *val)
     return i;
 }
 
+inline BigInt bigint_new_ui(unsigned long val)
+{
+    BigInt i = BI_ALLOC();
+    mpz_init_set_ui(*i, val);
+    return i;
+}
+
 inline BigInt bigint_copy(BigInt src)
 {
     BigInt cpy = BI_ALLOC();
@@ -147,10 +154,9 @@ inline BigInt bigint_pow(BigInt n1, BigInt n2)
 
     BigInt ret = bigint_copy(n1);
     mpz_sub_ui(*n2, *n2, 1);
-    BigInt pow = bigint_new("1");
 
-    for(; mpz_cmp(*pow, *n2) == -1; mpz_mul_2exp(*pow, *pow, 1)){
-        mpz_sub(*n2, *n2, *pow);
+    for(unsigned long pow = 1; mpz_cmp_ui(*n2, pow) == 1; pow <<= 1){
+        mpz_sub_ui(*n2, *n2, pow);
         mpz_mul(*ret, *ret, *ret);
     }
 
@@ -158,8 +164,6 @@ inline BigInt bigint_pow(BigInt n1, BigInt n2)
         mpz_mul(*ret, *ret, *n1);
     }
 
-    mpz_clear(*pow);
-    free(pow);
     return ret;
 }
 

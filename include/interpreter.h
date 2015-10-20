@@ -8,8 +8,8 @@
 #include "scanline.h"
 #include "integralLib.h"
 
-#define VERSION "v0.0.14"
-#define VERDATE "2015-09-30"
+#define VERSION "v0.1.00"
+#define VERDATE "2015-10-20"
 
 Token*toks;
 int tIndex;

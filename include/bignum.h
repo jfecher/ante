@@ -22,6 +22,7 @@ BigNum bignum_pow(BigNum, BigNum);
 
 BigInt bigint_init(void);
 BigInt bigint_new(char*);
+BigInt bigint_new_ui(unsigned long);
 BigInt bigint_copy(BigInt);
 BigInt bigint_add(BigInt, BigInt);
 BigInt bigint_sub(BigInt, BigInt);

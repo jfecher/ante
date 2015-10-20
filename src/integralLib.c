@@ -40,3 +40,15 @@ Variable zy_typeof(Variable params){
     putchar('\n');
     return VAR(NULL, Invalid);
 }
+
+// int> size: tuple
+Variable zy_size(Variable params){
+    struct Tuple *tup = params.value;
+
+    if(tup->size == 0){
+        puts("size: invalid number of arguments.  Expected 1, got 0.");
+        return VAR(NULL, Invalid);
+    }
+
+    return VAR(bigint_new_ui(tup->size), Int);
+}

@@ -27,6 +27,16 @@ funcPtr ops[] = {
     &op_initFunc,
 };
 
+inline char streq(char *s1, char *s2){
+    size_t len1 = strlen(s1);
+    size_t len2 = strlen(s2);
+    if(len1 != len2) return 0;
+    for(int i = 0; i < len1; i++)
+        if(s1[i] != s2[i])
+            return 0;
+    return 1;
+}
+
 /*
  *  Only searches for the specified variable on the top of the stack.
  *  Useful for determining if a variable is defined yet in the current
@@ -34,7 +44,7 @@ funcPtr ops[] = {
  */
 Coords shallowLookupVar(char *identifier){
     for(int i = 0; i < stack_top(stack).size; i++)
-        if(strcmp(identifier, stack_top(stack).table[i].name) == 0)
+        if(streq(identifier, stack_top(stack).table[i].name))
             return (Coords){stack.size-1, i};
     return (Coords){-1, -1};
 }
@@ -45,11 +55,11 @@ Coords shallowLookupVar(char *identifier){
  */
 Coords lookupVar(char* identifier){
     for(int i=0; i < stack.items[stack.size-1].size; i++){
-        if(strcmp(identifier, stack.items[stack.size-1].table[i].name) == 0)
+        if(streq(identifier, stack.items[stack.size-1].table[i].name))
             return (Coords){stack.size-1, i};
     }
     for(int i=0; i < stack.items[0].size; i++){
-        if(strcmp(identifier, stack.items[0].table[i].name) == 0)
+        if(streq(identifier, stack.items[0].table[i].name))
             return (Coords){0, i};
     }
     return (Coords){-1, -1};
@@ -61,7 +71,7 @@ Coords lookupFunc(char* identifier){
         for(j = 0; j < stack.items[i].size; j++){
             Variable v = stack.items[i].table[j];
 
-            if(v.type == Function && strcmp(identifier, v.name) == 0)
+            if(v.type == Function && streq(identifier, v.name))
                 return (Coords){i, j};
         }
     }
@@ -125,7 +135,7 @@ void setVar(Variable *v, Variable val){
         v->value = val.value;
         v->type = val.type;
     }else{
-        free_var(val);
+        free_value(val);
         runtimeError(ERR_TYPE_MISMATCH, v->name);
     }
 }
@@ -178,7 +188,7 @@ Variable exec_function(char *funcName){
 
     if(IS_CFUNC(func)){
         Variable ret = ((c_ffi)func.value)(params);
-        free_var(params);
+        free_value(params);
         return ret;
     }
 
@@ -315,7 +325,8 @@ Variable getValue(Token t){
         }
         return copyVar(stack.items[c.x].table[c.y]);
     }else if(t.type == Tok_FuncCall){
-        return exec_function(toks[tIndex].lexeme);
+        INC_POS(2);
+        return exec_function(t.lexeme);
     }else if(t.type == Tok_ParenOpen){
         INC_POS(1);
         return expression();
@@ -353,6 +364,7 @@ void init_interpreter(void){
     //builtin variables
     initFunc("system", Function, zy_system, 1);
     initFunc("typeof", Function, zy_typeof, 1);
+    initFunc("size", Function, zy_size, 1);
 }
 
 #define isWhitespaceTok(t) (t==Tok_Newline||t==Tok_Indent)
@@ -396,7 +408,7 @@ void interpret(FILE *src, char isTty){
         for(;;){
             char *srcLine = NULL;
             scanLine(&srcLine);//Tokenizes the entire line, stores it in srcLine, and print it out on screen
-            if(strcmp(srcLine, "exit") == 0){
+            if(streq(srcLine, "exit")){
                 NFREE(srcLine);
                 break;
             }

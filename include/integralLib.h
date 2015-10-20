@@ -5,5 +5,6 @@
 
 Variable zy_system(Variable);
 Variable zy_typeof(Variable);
+Variable zy_size(Variable);
 
 #endif
