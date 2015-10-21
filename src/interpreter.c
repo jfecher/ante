@@ -27,16 +27,6 @@ funcPtr ops[] = {
     &op_initFunc,
 };
 
-inline char streq(char *s1, char *s2){
-    size_t len1 = strlen(s1);
-    size_t len2 = strlen(s2);
-    if(len1 != len2) return 0;
-    for(int i = 0; i < len1; i++)
-        if(s1[i] != s2[i])
-            return 0;
-    return 1;
-}
-
 /*
  *  Only searches for the specified variable on the top of the stack.
  *  Useful for determining if a variable is defined yet in the current
@@ -101,8 +91,10 @@ void initVar(char *identifier, Type t, char isDynamic){
     case Int:
         v.value = bigint_new("0");
         break;
-    default:
+    case String:
         CPY_TO_STR(v.value, "");
+    default:
+        break;
     }
     varTable_add(&stack_top(stack), v);
 }
@@ -177,7 +169,7 @@ Variable exec_function(char *funcName){
     Variable func = stack.items[c.x].table[c.y];
     Variable params = expression();
 
-    if(params.type != Tuple){
+    if(params.type != Tuple || ((struct Tuple*)params.value)->size == 1){
         struct Tuple *tup = malloc(sizeof(struct Tuple));
         tup->tup = malloc(sizeof(Variable));
         tup->tup[0] = params;
@@ -201,10 +193,8 @@ Variable exec_function(char *funcName){
     tIndex = 0;
     toks = func.value;
    
-    NFREE(params.name);
     params.name = malloc(8);
-    strcpy(params.name, "_params");
-    params.name[7] = '\0';
+    memcpy(params.name, "_params\0", 8);
     
     varTable_add(&stack_top(stack), params); 
     exec();

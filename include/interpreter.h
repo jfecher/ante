@@ -7,6 +7,7 @@
 #include "expression.h"
 #include "scanline.h"
 #include "integralLib.h"
+#include "util.h"
 
 #define VERSION "v0.1.00"
 #define VERDATE "2015-10-20"
@@ -29,6 +30,7 @@ void interpret(FILE*, char);
 Coords lookupVar(char*);
 Variable getValue(Token);
 void exec(void);
+char* str(char*);
 
 void op_initObject(void);
 void op_assign(void);

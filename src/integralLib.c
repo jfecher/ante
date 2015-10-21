@@ -3,7 +3,7 @@
  */
 #include "integralLib.h"
 
-//  void> system: string s
+// void> system: string s
 Variable zy_system(Variable params)
 {
     struct Tuple *tup = params.value;
@@ -19,26 +19,16 @@ Variable zy_system(Variable params)
     return VAR(NULL, Invalid);
 }
 
-// void> typeof: v
+//String> typeof: v
 Variable zy_typeof(Variable params){
     struct Tuple *tup = params.value;
 
-    if(tup->size == 0){
-        puts("null");
+    if(tup->size != 1){
+        printf("typeof: invalid number of arguments.  Expected 1, got %d.\n", tup->size);
         return VAR(NULL, Invalid);
     }
 
-    for(int i = 0; i < tup->size; i++){
-        if(tup->tup[i].dynamic)
-            fputs("dynamic ", stdout);
-        
-        fputs(typeDictionary[tup->tup[i].type], stdout);
-        
-        if(i + 1 < tup->size) 
-            fputs(", ", stdout);
-    }
-    putchar('\n');
-    return VAR(NULL, Invalid);
+    return VAR(newstr(typeDictionary[tup->tup[0].type]), String);
 }
 
 // int> size: tuple
