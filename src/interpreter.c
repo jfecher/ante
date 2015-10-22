@@ -56,9 +56,8 @@ Coords lookupVar(char* identifier){
 }
 
 Coords lookupFunc(char* identifier){
-    int i, j;
-    for(i = 0; i < stack.size; i++){
-        for(j = 0; j < stack.items[i].size; j++){
+    for(int i = 0; i < stack.size; i++){
+        for(int j = 0; j < stack.items[i].size; j++){
             Variable v = stack.items[i].table[j];
 
             if(v.type == Function && streq(identifier, v.name))
