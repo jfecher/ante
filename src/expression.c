@@ -1,21 +1,21 @@
 #include "expression.h"
 
 Operator operators[] = {
-    {Tok_Comma,         0, 0, op_tup},
-    {Tok_Lesser,        1, 0, op_les},
-    {Tok_Greater,       1, 0, op_grt},
-    {Tok_EqualsEquals,  1, 0, op_eq},
-    {Tok_NotEquals,     1, 0, op_neq},
-    {Tok_GreaterEquals, 1, 0, op_geq},
-    {Tok_LesserEquals,  1, 0, op_leq},
+    {Tok_Comma,         0, 0, op_tup,  tc_any},
+    {Tok_Lesser,        1, 0, op_les,  tc_num},
+    {Tok_Greater,       1, 0, op_grt,  tc_num},
+    {Tok_EqualsEquals,  1, 0, op_eq,   tc_num},
+    {Tok_NotEquals,     1, 0, op_neq,  tc_num},
+    {Tok_GreaterEquals, 1, 0, op_geq,  tc_num},
+    {Tok_LesserEquals,  1, 0, op_leq,  tc_num},
 
-    {Tok_StrConcat,     2, 0, op_cnct},
-    {Tok_Plus,          3, 0, op_add},
-    {Tok_Minus,         3, 0, op_sub},
-    {Tok_Multiply,      4, 0, op_mul},
-    {Tok_Divide,        4, 0, op_div},
-    {Tok_Modulus,       4, 0, op_mod},
-    {Tok_Exponent,      5, 1, op_pow}
+    {Tok_StrConcat,     2, 0, op_cnct, tc_str},
+    {Tok_Plus,          3, 0, op_add,  tc_num},
+    {Tok_Minus,         3, 0, op_sub,  tc_num},
+    {Tok_Multiply,      4, 0, op_mul,  tc_num},
+    {Tok_Divide,        4, 0, op_div,  tc_num},
+    {Tok_Modulus,       4, 0, op_mod,  tc_num},
+    {Tok_Exponent,      5, 1, op_pow,  tc_num}
 };
 
 
@@ -27,6 +27,46 @@ Type conversion[4][4] = {
 /* String */  {Object, String, String, String},
 };
 
+char tc_any(Type t1, Type t2){
+    return 0;
+}
+
+/*
+ * Checks if two types are numeric or able to be converted
+ * to matching numeric types.
+ *
+ * Returns 0 if nothing needs to be done, 1 if t1 needs
+ * to be converted, 2 if t2 needs to be converted, or 3
+ * if both types are incompatible
+ */
+char tc_num(Type t1, Type t2)
+{
+    if(t1 == Int || t1 == Num){
+        if(t1 == t2) return 0;
+        if(t1 == Int && t2 == Num) return 1;
+        if(t2 == Int && t1 == Num) return 2;
+    }
+    return 3;
+}
+
+/*
+ * Checks if two types are strings or able to be converted
+ * to strings.
+ *
+ * Returns 0 if nothing needs to be done, 1 if t1 needs
+ * to be converted, 2 if t2 needs to be converted, or 3
+ * if both types are incompatible
+ */
+char tc_str(Type t1, Type t2)
+{
+    if(t1 == String){
+        if(t2 == String) return 0;
+        if(t2 == Int || t2 == Num) return 2;
+    }else if(t2 == String && (t1 == Int || t1 == Num)){
+        return 1;
+    }
+    return 3;
+}
 
 /*
  *  Returns the type to convert to from any two types
@@ -77,20 +117,20 @@ void convertType(Variable *v, Type t)
 inline Variable operate(Variable v1, Operator op, Variable v2)
 {
     //check for type mismatch
-    if(v1.type != v2.type && op.op != Tok_Comma){
-        Type cType = getTypeConversion(v1.type, v2.type);
-        
-        if(v1.type == cType){
-            convertType(&v2, cType);
-            Variable ret = op.func(v1, v2);
-            free_value(v2);
-            return ret;
-        }else{
-            convertType(&v1, cType);
-            Variable ret = op.func(v1, v2);
-            free_value(v1);
-            return ret;
-        }
+    char c = op.typeImpl(v1.type, v2.type);
+    if(c == 1){
+        convertType(&v1, getTypeConversion(v1.type, v2.type));
+        Variable ret = op.func(v1, v2);
+        free_value(v1);
+        return ret;
+    }else if(c == 2){
+        convertType(&v2, getTypeConversion(v1.type, v2.type));
+        Variable ret = op.func(v1, v2);
+        free_value(v2);
+        return ret;
+    }else if(c == 3){
+        printf("%s operator is not implemented for types %s and %s.\n", tokenDictionary[op.op], typeDictionary[v1.type], typeDictionary[v2.type]);
+        return VAR(NULL, Invalid);
     }
     return op.func(v1, v2);
 }
