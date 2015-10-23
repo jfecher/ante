@@ -1,14 +1,21 @@
 #include "expression.h"
 
 Operator operators[] = {
-    {Tok_Comma,     0, 0, op_tup},
-    {Tok_StrConcat, 1, 0, op_cnct},
-    {Tok_Plus,      2, 0, op_add},
-    {Tok_Minus,     2, 0, op_sub},
-    {Tok_Multiply,  3, 0, op_mul},
-    {Tok_Divide,    3, 0, op_div},
-    {Tok_Modulus,   3, 0, op_mod},
-    {Tok_Exponent,  4, 1, op_pow}
+    {Tok_Comma,         0, 0, op_tup},
+    {Tok_Lesser,        1, 0, op_les},
+    {Tok_Greater,       1, 0, op_grt},
+    {Tok_EqualsEquals,  1, 0, op_eq},
+    {Tok_NotEquals,     1, 0, op_neq},
+    {Tok_GreaterEquals, 1, 0, op_geq},
+    {Tok_LesserEquals,  1, 0, op_leq},
+
+    {Tok_StrConcat,     2, 0, op_cnct},
+    {Tok_Plus,          3, 0, op_add},
+    {Tok_Minus,         3, 0, op_sub},
+    {Tok_Multiply,      4, 0, op_mul},
+    {Tok_Divide,        4, 0, op_div},
+    {Tok_Modulus,       4, 0, op_mod},
+    {Tok_Exponent,      5, 1, op_pow}
 };
 
 

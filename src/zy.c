@@ -61,7 +61,9 @@ char *tokenDictionary[] = {
     "StrConcat",
     "MalformedString",
     "Exponent",
-    "In"
+    "In",
+    "Not",
+    "NotEquals"
 };
 
 int main(int argc, const char *argv[])

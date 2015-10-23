@@ -137,6 +137,9 @@ Token getNextToken(){
             incrementPos();
             tok.lexeme[1] = '>';
             tok.type = Tok_TypeDef;
+        }else if(IS_NUMERIC(lookAhead)){
+            free(tok.lexeme);
+            return genNumericalToken(); 
         }
         else tok.type = Tok_Minus;
         break;
@@ -189,6 +192,13 @@ Token getNextToken(){
             tok.lexeme[1] = '.';
             tok.type = Tok_StrConcat;
         }else tok.type = Tok_Invalid;
+        break;
+    case '!':
+        if(lookAhead == '='){
+            incrementPos();
+            tok.lexeme[1] = '=';
+            tok.type = Tok_NotEquals;
+        }else tok.type = Tok_Not;
         break;
     case '%':
         tok.type = Tok_Modulus;
@@ -271,16 +281,15 @@ Token genWhitespaceToken(){
 Token genAlphaNumericalToken(){ //fail at length =
     Token tok = {0, NULL, row, col};
     tok.lexeme = calloc(sizeof(char), 1);
-    int i;
 
-    for(i=0; IS_ALPHA_NUMERIC(current); i++){
+    for(int i=0; IS_ALPHA_NUMERIC(current); i++){
         ralloc(&tok.lexeme, sizeof(char) * (i+2));
         tok.lexeme[i] = current;
         tok.lexeme[i+1] = '\0';
         incrementPos();
     }
 
-    for(i=0; i < sizeof(dictionary) / sizeof(dictionary[0]); i++){
+    for(int i=0; i < sizeof(dictionary) / sizeof(dictionary[0]); i++){
         if(strcmp(tok.lexeme, dictionary[i].lexeme) == 0){
             tok.type = dictionary[i].type;
             return tok;
@@ -295,9 +304,8 @@ Token genNumericalToken(){
     Token tok = {0, NULL, row, col};
     tok.lexeme = calloc(sizeof(char), 1);
     char isDouble = 0;
-    int i;
 
-    for(i=0; IS_NUMERIC(current) || (current == '.' && !isDouble); i++){
+    for(int i=0; IS_NUMERIC(current) || (current == '.' && !isDouble) || (i==0 && current=='-'); i++){
         ralloc(&tok.lexeme, sizeof(char) * (i+2));
         tok.lexeme[i] = current;
         tok.lexeme[i+1] = '\0';

@@ -69,6 +69,8 @@ typedef enum TokenType{
     Tok_MalformedString,
     Tok_Exponent,
     Tok_In,
+    Tok_Not,
+    Tok_NotEquals,
 } TokenType;
 
 //The basic Token construct.
