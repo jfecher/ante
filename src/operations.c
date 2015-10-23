@@ -183,3 +183,34 @@ inline Variable op_tup(Variable v1, Variable v2)
     }
     return v;
 }
+
+
+inline Variable op_les(Variable v1, Variable v2)
+{
+    return VAR(NULL, Invalid);
+}
+
+inline Variable op_grt(Variable v1, Variable v2)
+{
+    return VAR(NULL, Invalid);
+}
+
+inline Variable op_eq(Variable v1, Variable v2)
+{
+    return VAR(NULL, Invalid);
+}
+
+inline Variable op_neq(Variable v1, Variable v2)
+{
+    return VAR(NULL, Invalid);
+}
+
+inline Variable op_leq(Variable v1, Variable v2)
+{
+    return VAR(NULL, Invalid);
+}
+
+inline Variable op_geq(Variable v1, Variable v2)
+{
+    return VAR(NULL, Invalid);
+}
