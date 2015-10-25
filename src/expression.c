@@ -4,8 +4,8 @@ Operator operators[] = {
     {Tok_Comma,         0, 0, op_tup,  tc_any},
     {Tok_Lesser,        1, 0, op_les,  tc_num},
     {Tok_Greater,       1, 0, op_grt,  tc_num},
-    {Tok_EqualsEquals,  1, 0, op_eq,   tc_num},
-    {Tok_NotEquals,     1, 0, op_neq,  tc_num},
+    {Tok_EqualsEquals,  1, 0, op_eq,   tc_any},
+    {Tok_NotEquals,     1, 0, op_neq,  tc_any},
     {Tok_GreaterEquals, 1, 0, op_geq,  tc_num},
     {Tok_LesserEquals,  1, 0, op_leq,  tc_num},
 

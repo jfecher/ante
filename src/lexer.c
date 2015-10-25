@@ -339,7 +339,7 @@ char* getTokColor(TokenType t){
         return KEYWORD_COLOR;
     case Tok_StringLiteral: case Tok_MalformedString:
         return STRINGL_COLOR;
-    case Tok_IntegerLiteral: case Tok_DoubleLiteral:
+    case Tok_IntegerLiteral: case Tok_DoubleLiteral: case Tok_BooleanTrue: case Tok_BooleanFalse:
         return INTEGERL_COLOR;
     case Tok_FuncCall: case Tok_FuncDef:
         return FUNCTION_COLOR;

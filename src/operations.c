@@ -205,19 +205,31 @@ inline Variable op_grt(Variable v1, Variable v2)
 
 inline Variable op_eq(Variable v1, Variable v2)
 {
+    if(v1.type != v2.type) return VAR(bigint_new_ui(0), Int);
+
     if(v1.type == Int){
         return VAR(bigint_eq(v1.value, v2.value), Int);
-    }else{//Num
+    }else if(v1.type == Num){//Num
         return VAR(bignum_eq(v1.value, v2.value), Int);
+    }else if(v1.type == String){
+        return VAR(bigint_new_ui(streq(v1.value, v2.value)), Int);
+    }else{
+        return VAR(bigint_new_ui(v1.value == v2.value), Int);
     }
 }
 
 inline Variable op_neq(Variable v1, Variable v2)
 {
+    if(v1.type != v2.type) return VAR(bigint_new_ui(1), Int);
+
     if(v1.type == Int){
         return VAR(bigint_neq(v1.value, v2.value), Int);
-    }else{//Num
+    }else if(v1.type == Num){//Num
         return VAR(bignum_neq(v1.value, v2.value), Int);
+    }else if(v1.type == String){
+        return VAR(bigint_new_ui(streq(v1.value, v2.value) == 0), Int);
+    }else{
+        return VAR(bigint_new_ui(v1.value != v2.value), Int);
     }
 }
 
