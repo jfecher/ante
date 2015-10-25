@@ -187,30 +187,54 @@ inline Variable op_tup(Variable v1, Variable v2)
 
 inline Variable op_les(Variable v1, Variable v2)
 {
-    return VAR(NULL, Invalid);
+    if(v1.type == Int){
+        return VAR(bigint_les(v1.value, v2.value), Int);
+    }else{//Num
+        return VAR(bignum_les(v1.value, v2.value), Int);
+    }
 }
 
 inline Variable op_grt(Variable v1, Variable v2)
 {
-    return VAR(NULL, Invalid);
+    if(v1.type == Int){
+        return VAR(bigint_grt(v1.value, v2.value), Int);
+    }else{//Num
+        return VAR(bignum_grt(v1.value, v2.value), Int);
+    }
 }
 
 inline Variable op_eq(Variable v1, Variable v2)
 {
-    return VAR(NULL, Invalid);
+    if(v1.type == Int){
+        return VAR(bigint_eq(v1.value, v2.value), Int);
+    }else{//Num
+        return VAR(bignum_eq(v1.value, v2.value), Int);
+    }
 }
 
 inline Variable op_neq(Variable v1, Variable v2)
 {
-    return VAR(NULL, Invalid);
+    if(v1.type == Int){
+        return VAR(bigint_neq(v1.value, v2.value), Int);
+    }else{//Num
+        return VAR(bignum_neq(v1.value, v2.value), Int);
+    }
 }
 
 inline Variable op_leq(Variable v1, Variable v2)
 {
-    return VAR(NULL, Invalid);
+    if(v1.type == Int){
+        return VAR(bigint_leq(v1.value, v2.value), Int);
+    }else{//Num
+        return VAR(bignum_leq(v1.value, v2.value), Int);
+    }
 }
 
 inline Variable op_geq(Variable v1, Variable v2)
 {
-    return VAR(NULL, Invalid);
+    if(v1.type == Int){
+        return VAR(bigint_geq(v1.value, v2.value), Int);
+    }else{//Num
+        return VAR(bignum_geq(v1.value, v2.value), Int);
+    }
 }

@@ -66,6 +66,35 @@ inline BigNum bignum_pow(BigNum n1, BigNum n2)
     return ret;
 }
 
+inline BigInt bignum_les(BigNum n1, BigNum n2)
+{
+    return bigint_new_ui(mpf_cmp(*n1, *n2) == -1);
+}
+
+inline BigInt bignum_grt(BigNum n1, BigNum n2)
+{
+    return bigint_new_ui(mpf_cmp(*n1, *n2) == 1);
+}
+
+inline BigInt bignum_eq(BigNum n1, BigNum n2)
+{
+    return bigint_new_ui(mpf_eq(*n1, *n2, 64));
+}
+
+inline BigInt bignum_neq(BigNum n1, BigNum n2)
+{
+    return bigint_new_ui(!mpf_eq(*n1, *n2, 64));
+}
+
+inline BigInt bignum_leq(BigNum n1, BigNum n2)
+{
+    return bigint_new_ui(mpf_cmp(*n1, *n2) != 1);
+}
+
+inline BigInt bignum_geq(BigNum n1, BigNum n2)
+{
+    return bigint_new_ui(mpf_cmp(*n1, *n2) != -1);
+}
 //TODO: implement bignum_mod
 
 
@@ -167,3 +196,32 @@ inline BigInt bigint_pow(BigInt n1, BigInt n2)
     return ret;
 }
 
+inline BigInt bigint_les(BigInt n1, BigInt n2)
+{
+    return bigint_new_ui(mpz_cmp(*n1, *n2) == -1);
+}
+
+inline BigInt bigint_grt(BigInt n1, BigInt n2)
+{
+    return bigint_new_ui(mpz_cmp(*n1, *n2) == 1);
+}
+
+inline BigInt bigint_eq(BigInt n1, BigInt n2)
+{
+    return bigint_new_ui(!mpz_cmp(*n1, *n2));
+}
+
+inline BigInt bigint_neq(BigInt n1, BigInt n2)
+{
+    return bigint_new_ui(mpz_cmp(*n1, *n2) != 0);
+}
+
+inline BigInt bigint_leq(BigInt n1, BigInt n2)
+{
+    return bigint_new_ui(mpz_cmp(*n1, *n2) != 1);
+}
+
+inline BigInt bigint_geq(BigInt n1, BigInt n2)
+{
+    return bigint_new_ui(mpz_cmp(*n1, *n2) != -1);
+}

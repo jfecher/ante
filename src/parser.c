@@ -426,7 +426,6 @@ int literal_value(){
 
 /* value
  *     : literal_value
- *     | variable
  *     ;
  */
 int value(){
@@ -466,10 +465,11 @@ int math_expression(){
  *     ;
  */
 int parse_expression(){
-    if(accept(Tok_Plus) || accept(Tok_Minus) || accept(Tok_Greater) || 
-            accept(Tok_Lesser)   || accept(Tok_StrConcat) || accept(Tok_EqualsEquals) ||
-            accept(Tok_Comma)    || accept(Tok_Multiply)  || accept(Tok_Divide) ||
-            accept(Tok_Exponent) || accept(Tok_Modulus)){
+    if(accept(Tok_Plus)              || accept(Tok_Minus)     || accept(Tok_Greater) || 
+            accept(Tok_Lesser)       || accept(Tok_StrConcat) || accept(Tok_EqualsEquals) ||
+            accept(Tok_Comma)        || accept(Tok_Multiply)  || accept(Tok_Divide) ||
+            accept(Tok_Exponent)     || accept(Tok_Modulus)   || accept(Tok_NotEquals) ||
+            accept(Tok_LesserEquals) || accept(Tok_GreaterEquals)){
      
         if(!value()) return 0;
         if(!parse_expression()) return 0;
