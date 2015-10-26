@@ -305,12 +305,34 @@ Variable makeVarFromTok(Token t){
     return ret;
 }
 
+inline Variable getArrIndex(Coords c){
+    Variable index = expression();
+    if(index.type != Int){
+        free_value(index);
+        fprintf(stderr, "Index must be an Int, got %s.\n", typeDictionary[index.type]);
+        return VAR(NULL, Invalid);
+    }
+    struct Tuple *tup = (struct Tuple*)stack.items[c.x].table[c.y].value;
+    long i = mpz_get_si(*(BigInt)index.value);
+    if(i < 0 || i >= tup->size){
+        free_value(index);
+        fprintf(stderr, "Index %ld is out of bounds.\n", i);
+        return VAR(NULL, Invalid);
+    }
+    free_value(index);
+    return copyVar(tup->tup[i]); 
+}
+
 Variable getValue(Token t){
     if(t.type == Tok_Identifier){
         Coords c = lookupVar(t.lexeme);
         if(c.x == -1){
             fprintf(stderr, ERR_UNINITIALIZED_VALUE_IN_EXPRESSION, t.lexeme);
             return VAR(NULL, Invalid);
+        }
+        if(toks[tIndex+1].type == Tok_BracketOpen){
+            INC_POS(2);
+            return getArrIndex(c);
         }
         return copyVar(stack.items[c.x].table[c.y]);
     }else if(t.type == Tok_FuncCall){

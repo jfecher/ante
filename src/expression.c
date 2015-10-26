@@ -15,7 +15,7 @@ Operator operators[] = {
     {Tok_Multiply,      4, 0, op_mul,  tc_num},
     {Tok_Divide,        4, 0, op_div,  tc_num},
     {Tok_Modulus,       4, 0, op_mod,  tc_num},
-    {Tok_Exponent,      5, 1, op_pow,  tc_num}
+    {Tok_Exponent,      5, 1, op_pow,  tc_num},
 };
 
 

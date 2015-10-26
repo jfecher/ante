@@ -9,8 +9,8 @@
 #include "integralLib.h"
 #include "util.h"
 
-#define VERSION "v0.1.00"
-#define VERDATE "2015-10-20"
+#define VERSION "v0.1.01"
+#define VERDATE "2015-10-25"
 
 Token*toks;
 int tIndex;
