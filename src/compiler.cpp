@@ -10,17 +10,19 @@ Value compErr(const char *msg, const char *errSrc){
 }
 
 
-Value* comp_floatLit(Token val){
+Value* zyc_floatLit(Token val){
     return ConstantFP::get(getGlobalContext(), APFloat(val));
 }
 
-Value* comp_var(Token val){
+Value* zyc_var(Token val){
     Value *var = values[val.lexeme];
     if(!var)
         return compErr(COMP_NDEF_ERR, val.lexeme);
     return var;
 }
 
-extern "C" void* compile(Token *tok){
-    return tok;
+LLVMMemoryBufferRef compile(Token *tok){
+    LLVMModuleRef module;
+
+    return LLVMWriteBitcodeToMemoryBuffer(module);
 }

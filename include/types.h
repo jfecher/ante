@@ -103,10 +103,8 @@ typedef struct{
 #define SHOULD_FREE(v) !((v).metadata & VFIELD_NFREE)
 #define IS_CFUNC(v) ((v).metadata & VFIELD_CFUNC)
 
-typedef void* Value;
-
 typedef struct{
-    Value value;
+    void *value;
     Type type;
     char dynamic;
     char *name;
