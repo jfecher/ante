@@ -5,12 +5,11 @@
     but are not valid alone.
 `
 
-
 `
     The following is an example of an import statement.  It is importing The
-    modules math, io, and str, which are the only currently planned modules.
+    modules math, io, str, and op, which are some of the currently planned modules.
 `
-import math, io, str
+import math, io, string, op
 
 ~This is an example of a single line comment
 
@@ -22,28 +21,27 @@ import math, io, str
 
     Variables are declared with the > token seperating the variable's type
     and identifier in the following syntax:
-    [modifiers] type [modifiers]> identifier
+    [modifiers] [type] [identifier]
 `
->myVar
+dyn myVar
 
 `
     types can also be assigned to variables, below are the primitive types
     initialized to their default values
 `
 
-int> myInt = 0
-num> myNum = 0.0
-string> myString = ""
-bool> myBool = false
+int myInt = 0
+num myNum = 0.0
+str myString = ""
+bool myBool = false
 
 `
     Any primitive value can also be typecasted to any other primitive type, or
-    even changed to that type completely.  The syntax for this is similar to
-    that of a declaration, but without the > token.
+    even completely redefined to that type.
 `
 
 print int 4.99  ~output: 4
-num>n = 43.876
+num n = 43.876
 int n
 
 ~NOTE: the .. below is the string concat operator
@@ -57,17 +55,17 @@ print typeof(n) .. " " .. n  ~output: int 43
 
     The syntax for declaring an array is: 
         
-        type[size]|> name
+        [type]\[size\] name
 
     Where size is an integer expression.
     NOTE: if size does not evaluate to an integer, the program will halt
           with a TypeMismatchError.  To avoid this, it is best to only use
           integer variables and constants in this expression.
 `
-int[30]> arr = 1
+int[30] arr = 1
 
 ~Each element of an array can also be initialized individually
-num[5]> assortedNums = 9, -76, 3.14159265, 2^8, 1 + 2*(6-3)
+num[5] assortedNums = 9, -76, 3.14159265, 2^8, 1 + 2*(6-3)
 
 `
     Each element of an array can be accessed individually by index.  Negative
@@ -91,14 +89,14 @@ arr -= 3
     In addition to arrays, there are also tuples.  Unlike arrays, tuples can
     be mixed and matched with several types, but each must be stated beforehand.
 `
-int, num, string> tup = 44, 44.0, "Fourty-four"
+int, num, str tup = 44, 44.0, "Fourty-four"
 
-int[30], string[2]> anotherTuple = arr, ["This tuple contains", "two arrays"]
+int[30], str[2] anotherTuple = arr, ["This tuple contains", "two arrays"]
 
 `
     This restriction does not apply when making a dynamic variable of course
 `
->dynTuple = 46, "Fourty-six", 46.0
+dyn dynTuple = 46, "Fourty-six", 46.0
 
 `
     When printed, tuples are by default printed with the following syntax:
@@ -120,14 +118,14 @@ print dynTuple
     languages, blocks are denoted by changes in indentation rather than
     opening and closing brackets.
 `
-void> printMsg:
+void printMsg:
     print "Hello World!"
 
 `
     This add function takes in two parameters, augend and addend, and returns
     a num value.
 `
-num> add: num augend, num addend
+num add: num augend, num addend
     return augend + addend
 
 `
@@ -139,7 +137,7 @@ num> add: num augend, num addend
     additional newline passed at the end.
 `
 
-void> println: ...
+void println: ...
     print _params, '\n'
 
 `
@@ -155,9 +153,10 @@ println("Test #", add(3, 43))
     Because of this, we can instead pass a tuple containing several or all the
     parameters to a function as is the case with the following examples.
 `
-num, num> numbers = 4.3, 5.7
+num, num numbers = 4.3, 5.7
 print add(numbers)
 ~output: 10.0000000000
+
 
 `
         Loops
@@ -178,11 +177,11 @@ do
 while false
 
 ~prints 1-10
-for int>i = 1, i <= 10, i += 1
+for int i = 1, i <= 10, i += 1
     print i .. " "
 
-num> total
-foreach num>n in arr
+num total
+foreach num n in arr
     total += n
 
 
@@ -197,7 +196,8 @@ foreach num>n in arr
     An embedded statement is always preceeded with an open bracket and 
     terminated with a matching closing bracket.  Unlike statements, 
     embedded statements need to return a value to be used in the expression,
-    so the dynamic variable _ is used to modify this value.  If never
+    so the dynamic variable _ is used to modify this value.  If a return
+    statement is encountered, it returns that value instead.  If _ is never
     assigned to within the embedded statement, _ = 0 by default.
 `
 
@@ -206,16 +206,16 @@ foreach num>n in arr
     of each element of data array, and divide it by the number of
     elements in the array to find the mean on a single line.
 `
-num> mean1: num[] data
-    return {foreach num>n in data {_ += n}} / size(data)
+num mean1: num[] data
+    return {foreach num n in data {_ += n}} / size(data)
 
 `
     Without embedded statements, the above function would have
     taken up 3 additional lines of code.
 `
-num> mean2: num[] data
-    num> sum
-    foreach num>n in data
+num mean2: num[] data
+    num sum
+    foreach num n in data
         sum += n
     return sum / size(data)
 
@@ -224,36 +224,48 @@ num> mean2: num[] data
     assigning variables within an expression.
 
     In the following example, an integer i is incremented at
-    each iteration of the loop.
-
-    NOTE: in this example the conditional is evaluated before each
-    iteration of the loop, the numbers 1-100 are printed,
-    and the loop closes when i == 101
+    each iteration of the loop. The conditional is evaluated 
+    before each iteration of the loop, the numbers 1-100 are 
+    printed, and the loop closes when i == 101
 `
-while { i += 1; _ = i} <= 100;
+int i
+while {i += 1; return i} <= 100;
     print i
+
+
+`
+        Structs
+    Structs are a compound structure of data where a struct can contain multiple
+    variables including arrays or objects.
+`
+struct Coord
+    num x, y, z
+
+Coord coord = 100, -50, 66.7
+print coord  ~output: 100, -50, 66.7
+
 
 `
         Classes
-    Classes can be declared with the -> token.  They each have their own
+    Classes can be declared with the class keyword.  They each have their own
     namespace, and can have functions and variables declared within them.
     By default, variables declared within classes are private.
 `
 
-->Animal
-    int> age
-    string> species
-    string> name
+class Animal
+    int age
+    str species
+    str name
 `
     The _init function is a function that is automatically called when a class
     is initialized and the givin values match _init's parameters.
 `
-    void>_init: int, string, string
+    void _init: int, str, str
         age = _params[0]
         species = _params[1]
         name = _params[2]
 
-    void> printInfo:
+    void printInfo:
         print name .. " is a/an " .. species .. " and is " .. age .. " year(s) old.\n"
 
 `
@@ -261,37 +273,27 @@ while { i += 1; _ = i} <= 100;
     variable and it can be initialized with the parameters of the _init
     function declared within the class.
 `
-Animal> clifford = 52, "magnum rubrum canis", "Clifford"
+Animal clifford = 7, "magnum rubrum canis", "Clifford"
 
-`
-    Classes without any functions work similarly to structures in c or c++.
-    Variables within these classes are public by default since there is no other
-    way to access them.  The class can be initialized with a list of each value.
-`
-->Coord
-    num> x, y, z
-
-Coord> coord = 100, -50, 66.7
-print coord  ~output: 100, -50, 66.7
 
 `
     Classes can also inherit from other classes with the : token.
 `
-->Person : Animal
-    string> job
+class Person : Animal
+    str job
 
-    void>_init: int age, string j, string name
+    void _init: int age, str j, str name
         job = j
         super(age, "Homo sapien", name) ~super() calls the _init function from the parent class
 
 `
     This function obscures the printInfo declared in the Animal super class.
 `
-    void> printInfo:
+    void printInfo:
         print name .. " is " .. age .. " years old and is a(n) " .. job
 
 
-Person> john = 44, "electrician", "John"
+Person john = 44, "electrician", "John"
 john.printInfo() ~output: John is 44 years old and is a(n) electrician
 
 `
@@ -304,21 +306,21 @@ john.printInfo() ~output: John is 44 years old and is a(n) electrician
     Modifiers can be placed before a variable or function, or alternatively
     can be placed before a new block to modify everything within the block
 `
-->Statistics
+class Statistics
     ~declare secretData as a private variable, only able to be accessed
     ~from within the class
-    pri num> secretData
+    pri num secretData
 
-    pri const num> pi = 3.14159265
+    pri const num pi = 3.14159265
     
-    pub int> varCount
+    pub int varCount
 
     ~Alternatively, you can also use modifiers before a block:
     pub
-        num> getData:
+        num getData:
             return secretData ~not so secret anymore
 
-        string> getStatus:
+        str getStatus:
             if secretData > 10
                 return "Good"
             else
@@ -326,35 +328,103 @@ john.printInfo() ~output: John is 44 years old and is a(n) electrician
 
     ~NOTE: by default, variables and methods are private so there is really 
     ~      no need to declare this function private explicitly.
-    pri num> doCalculations: num data
+    pri num doCalculations: num data
             return data * secretData / varCount
 
     ~NOTE: reserved functions such as _init and _mul do not need to be public
     ~      to be automatically called.
-    void>_init: int[] data
-        foreach int>i in data
+    void _init: int[] data
+        foreach int i in data
             secretData += data / pi
             varCount += 1
 
 `
+        Type Requirements and Operator Overloading
+    Type requirements in zy are a powerful way to specialize a class or function
+    to a specific usage.  In its most general case, it can be used in much the same
+    way as generics or templates in other object oriented languages.  To declare a type
+    requirement for a class, parenthesis are used after the class name.  Within the
+    parenthesis a type is binded to a name, and an optional boolean expression which
+    must be able to be evaluated at compile time.  For functions, the keyword where is
+    used followed by the name of the type in question and a boolean statment validating
+    that the type is valid for the function.
+`
+~In this example, O is any type which has the operators > and < available or overloaded.
+~For functions, the where keyword always comes at the end of the list of parameters.
+pub int cmp: O o2 where O has_ops(O, ['>', '<'])
+    if self < o2
+        return -1
+    return self > o2
+
+~The syntax for type requirements in a class is very similar.
+~In the Angle class, each time it is initialized, a bool is specified as true if the
+~angle is in radians, false otherwise.  This determines how Angle is compiled and
+~cannot be changed after initialization.
+class Angle(bool isRadians)
+    num angle
+
+    void _init: num a
+        angle = a
+
+    if isRadians
+        int getQuadrant:
+            return angle / (3.14159265 / 4) % 4 + 1
+    else
+        int getQuadrant:
+            return angle / 90 % 4 + 1
+
+`
+    Note that the cmp example above requires that the operator < is implemented for
+    the two objects.  To do this we must implement operator overloading.  In the
+    following example, the class Point is created and overloads the > and < operators.
+`
+class Point
+    pub int x, y
+
+    void _init: int x, int y
+        self.x = x
+        self.y = y
+
+    `
+        Now to implement the < operator. Each operator is declared as a function 
+        with the name generated by the function op which is imported from the op
+        module. This function requires the operator in string form, 2 bools and 
+        an int. True and false are used to indicate the presence of an l or r 
+        value respectively, and the int represents the operator's precedence in 
+        an expression.
+    `
+    bool op('<', true, true, 2): Point rVal
+        if x < rVal.x
+            return 1
+        return y < rVal.y
+
+    ~Instead of guessing or having to lookup the desired precedence, the prec function from the
+    ~op module can be used to get the precedence of an existing non user-defined operator.
+    bool op('>', true, true, prec(">")): Point rVal
+        if x > rVal.x
+            return 1
+        return y > rVal.y
+
+`
         Enums
-    Declaring an enum declares a set of named constants.  They are declared
-    like normal variables with the type enum.  Ints typecasted to an enum
+    Declaring an enum declares a set of named constants. They are declared
+    like normal variables with the type enum. Ints typecasted to an enum
     will become the constant that corresponds to the n-1 index of the enum where
-    n is the value of the integer.  Conversely, typecasting an enum to an int
-    yields that enums placement in its declaration starting from 0.  Typecasting 
+    n is the value of the integer. Conversely, typecasting an enum to an int
+    yields that enums placement in its declaration starting from 0. Typecasting 
     an enum to a string yields the name of the value.
 `
-enum> Suit = Diamonds, Hearts, Spades, Clubs
+~NOTE: -> is used for single-line statements that would normally require an indent.
+enum Suit -> Diamonds, Hearts, Spades, Clubs
 
-Suit> spades = Suit.Spades
+Suit spades = Suit.Spades
 print spades, " ", string spades  ~output: 2 Spades
 
-->Card
-    int> number
-    Suit> suit
+struct Card
+    int number
+    Suit suit
 
-Card> fourOfHearts = 4, Suit.Hearts
+Card fourOfHearts = 4, Suit.Hearts
 
 `
         Keywords
@@ -378,6 +448,7 @@ for
 foreach
 in
 
+ext
 delete
 export
 `

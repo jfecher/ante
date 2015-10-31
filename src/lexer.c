@@ -26,7 +26,7 @@ Token dictionary[] = {
     {Tok_ForEach,      "foreach", 0,0},
     {Tok_In,           "in",      0,0},
     {Tok_While,        "while",   0,0},
-    {Tok_String,       "string",  0,0},
+    {Tok_String,       "str",  0,0},
     {Tok_Num,          "num",     0,0},
     {Tok_Int,          "int",     0,0},
     {Tok_Continue,     "continue",0,0},
