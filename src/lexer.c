@@ -136,7 +136,7 @@ Token getNextToken(){
         }else if(lookAhead == '>'){
             incrementPos();
             tok.lexeme[1] = '>';
-            tok.type = Tok_TypeDef;
+            tok.type = Tok_Indent;
         }else if(IS_NUMERIC(lookAhead)){
             free(tok.lexeme);
             return genNumericalToken(); 

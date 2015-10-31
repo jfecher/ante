@@ -7,23 +7,26 @@
 
 `
     The following is an example of an import statement.  It is importing The
-    modules math, io, str, and op, which are some of the currently planned modules.
+    modules math, io, str, op, and c_ffi which are some of the currently planned modules.
 `
-import math, io, string, op
+import "math", "io", "string", "op", "c_ffi"
 
 ~This is an example of a single line comment
 
 `
         Variables
-
+    Variables are declared with any modifiers (such as dyn to indicate a
+    dynamic typing) followed by the variable's type and identifier in the 
+    following syntax:
+    
+    [modifiers] [type] [identifier]
+    
     Below is the declaration of a variable, myVar, with a dynamic typing,
     meaning it can be set to any value and its type will change accordingly.
-
-    Variables are declared with the > token seperating the variable's type
-    and identifier in the following syntax:
-    [modifiers] [type] [identifier]
+    By default, dynamic variables are set to the int type.
 `
 dyn myVar
+print typeof(myVar) ~output: dynamic int
 
 `
     types can also be assigned to variables, below are the primitive types
@@ -82,7 +85,7 @@ print assortedNums[0] .. ", " .. assortedNums[-2]
     should always be used when expanding or restricting an array.
 `
 arr += 2
-arr -= 3
+arr -= 3 ~Note: this will throw an exception if the array's size becomes < 0
 
 `
         Tuples
@@ -110,7 +113,7 @@ print dynTuple
 
     Functions in zy each have their own scope in addition to the scopes they
     inherit (in this case, only the global scope).  Variables created in
-    functions are all local variables by default, however they can be changed
+    functions are all local variables by default, however they can be
     exported into the global scope with the export keyword.
 
     Below is the declaration of a function, printMsg.  It takes no parameters
@@ -131,7 +134,7 @@ num add: num augend, num addend
 `
     Zy also has several reserved variables.  Variables with identifiers starting
     with an underscore are reserved and should not be manually assigned values.
-    The below function takes in a variable amount of parameters, as denoted by
+    The function below takes in a variable amount of parameters, as denoted by
     the elipses.  Since _params always contains a tuple of each parameter of
     the function, all the params are passed to the print keyword, with an
     additional newline passed at the end.
@@ -144,19 +147,22 @@ void println: ...
     Here is the syntax for calling functions:
 `
 println("Test #", add(3, 43))
+~output: Tuple(2: Test #, 43)
 
 `
-    You may have noticed that the syntax for function parameters looks somewhat
-    familiar.  That is because all functions take a tuple as their input, where
-    each member is assigned a name (augend and addend in the add function's case).
-    
-    Because of this, we can instead pass a tuple containing several or all the
-    parameters to a function as is the case with the following examples.
+        C FFI
+    The c foreign function interface is implemented within the c_ffi module.
 `
-num, num numbers = 4.3, 5.7
-print add(numbers)
-~output: 10.0000000000
+import c_ffi("path/to/file.h", ["functions", "to", "import"])
 
+~Or, every function can be imported using * as the filename.
+import c_ffi("some/other/file.h", "*")
+
+import c_ffi("stdio.h", "putchar")
+putchar(90)
+putchar(121)
+putchar(10)
+~output: Zy
 
 `
         Loops
@@ -164,26 +170,48 @@ print add(numbers)
     Zy has four kinds of loops: while, do while, for, and foreach.
     The while loop runs while the following expression is true.  The do while
     loop runs once then runs while its following expression is true.  The for
-    loop initializes a variable, runs while the expression surrounded by commas
+    loop initializes a variable, runs while the expression surrounded by semicolons
     is true, then assigns a new value to a variable.  The foreach loop loops
     through each element of an array.
 `
 while true
-    print "I loop forever\n"
+    print "I loop forever"
 
 
 do
-    print "I only loop once\n"
+    print "I only loop once"
 while false
 
 ~prints 1-10
-for int i = 1, i <= 10, i += 1
+for int i = 1; i <= 10; i += 1
     print i .. " "
 
 num total
 foreach num n in arr
     total += n
 
+`
+        The -> Symbol
+    The -> symbol can be optionaly used at the end of statements expecting
+    an indent to be replaced with an indent.  This is useful for compressing
+    short statements into a single line.
+`
+if 5 > 2 -> print "5 is greater than 2"
+else     -> print "Invalid laws of mathematics, please try again in an alternate universe"
+
+foreach num n in arr -> print n
+
+int subtract: int a, int b -> return a - b
+
+~While these can be nested, too many on the same line can lead to clutter
+class Integer -> pub int i   void _init: int a -> i = a
+
+~compared to
+class Integer
+    pub int i
+
+    void _init: int a
+        i = a
 
 `
         Embedded Statements
@@ -207,7 +235,7 @@ foreach num n in arr
     elements in the array to find the mean on a single line.
 `
 num mean1: num[] data
-    return {foreach num n in data {_ += n}} / size(data)
+    return {foreach num n in data -> _ += n} / size(data)
 
 `
     Without embedded statements, the above function would have
@@ -229,7 +257,7 @@ num mean2: num[] data
     printed, and the loop closes when i == 101
 `
 int i
-while {i += 1; return i} <= 100;
+while {i += 1; return i} <= 100
     print i
 
 
@@ -241,7 +269,9 @@ while {i += 1; return i} <= 100;
 struct Coord
     num x, y, z
 
-Coord coord = 100, -50, 66.7
+~To create a struct, typecast a tuple containing the struct's members to the
+~corresponding struct type.
+Coord coord = Struct(100, -50, 66.7)
 print coord  ~output: 100, -50, 66.7
 
 
@@ -258,7 +288,8 @@ class Animal
     str name
 `
     The _init function is a function that is automatically called when a class
-    is initialized and the givin values match _init's parameters.
+    is initialized and the givin values match _init's parameters.  It can be
+    thought of as the constructor for the class.
 `
     void _init: int, str, str
         age = _params[0]
@@ -270,10 +301,10 @@ class Animal
 
 `
     To create an instance of the class, use the class name as the type of the
-    variable and it can be initialized with the parameters of the _init
-    function declared within the class.
+    variable, and the keyword new followed by the classname to be initialized 
+    with the parameters of the _init function declared within the class.
 `
-Animal clifford = 7, "magnum rubrum canis", "Clifford"
+Animal clifford = new Animal(7, "magnum rubrum canis", "Clifford")
 
 
 `
@@ -293,7 +324,7 @@ class Person : Animal
         print name .. " is " .. age .. " years old and is a(n) " .. job
 
 
-Person john = 44, "electrician", "John"
+Person john = new Person(44, "electrician", "John")
 john.printInfo() ~output: John is 44 years old and is a(n) electrician
 
 `
@@ -339,11 +370,11 @@ class Statistics
             varCount += 1
 
 `
-        Type Requirements and Operator Overloading
-    Type requirements in zy are a powerful way to specialize a class or function
+        Type Specifications and Operator Overloading
+    Type specifications in zy are a powerful way to specialize a class or function
     to a specific usage.  In its most general case, it can be used in much the same
     way as generics or templates in other object oriented languages.  To declare a type
-    requirement for a class, parenthesis are used after the class name.  Within the
+    specification for a class, parenthesis are used after the class name.  Within the
     parenthesis a type is binded to a name, and an optional boolean expression which
     must be able to be evaluated at compile time.  For functions, the keyword where is
     used followed by the name of the type in question and a boolean statment validating
@@ -351,12 +382,12 @@ class Statistics
 `
 ~In this example, O is any type which has the operators > and < available or overloaded.
 ~For functions, the where keyword always comes at the end of the list of parameters.
-pub int cmp: O o2 where O has_ops(O, ['>', '<'])
+pub int cmp: O o2  where O has_ops(O, ['>', '<'])
     if self < o2
         return -1
     return self > o2
 
-~The syntax for type requirements in a class is very similar.
+~The syntax for type specifications in a class is somewhat similar.
 ~In the Angle class, each time it is initialized, a bool is specified as true if the
 ~angle is in radians, false otherwise.  This determines how Angle is compiled and
 ~cannot be changed after initialization.
@@ -374,9 +405,11 @@ class Angle(bool isRadians)
             return angle / 90 % 4 + 1
 
 `
+        Operator Overloading
     Note that the cmp example above requires that the operator < is implemented for
     the two objects.  To do this we must implement operator overloading.  In the
-    following example, the class Point is created and overloads the > and < operators.
+    following example, the class Point is created and overloads the > and < operators,
+    and creates the new operator <=> for comparisons.
 `
 class Point
     pub int x, y
@@ -387,23 +420,89 @@ class Point
 
     `
         Now to implement the < operator. Each operator is declared as a function 
-        with the name generated by the function op which is imported from the op
-        module. This function requires the operator in string form, 2 bools and 
-        an int. True and false are used to indicate the presence of an l or r 
-        value respectively, and the int represents the operator's precedence in 
-        an expression.
+        with the name generated by the function op_overLoad which is imported from the 
+        op module. This function requires the operator in question in string form.  Invalid
+        operators will throw a compile-time error.
     `
-    bool op('<', true, true, 2): Point rVal
+    bool op_overLoad('<'): Point rVal
         if x < rVal.x
             return 1
         return y < rVal.y
 
-    ~Instead of guessing or having to lookup the desired precedence, the prec function from the
-    ~op module can be used to get the precedence of an existing non user-defined operator.
-    bool op('>', true, true, prec(">")): Point rVal
+    bool op_overLoad('>'): Point rVal
         if x > rVal.x
             return 1
         return y > rVal.y
+
+    `
+        It is also possible to create a completely new operator.  To do this, use 
+        the op_new function from the op module to register the operator.  This 
+        function takes 4 parameters, the first being the operator in string form 
+        (no longer than 3 characters). Next, two bools are used to indicate the 
+        presence of an lvalue and rvalue (ie the op ! would be false, true), if 
+        both of these are false, it will fail to compile. Lastly, an int specifies 
+        the precedence of the operator. To get the desired precedence, the function 
+        prec should be called which gets the precedence of an existing operator.
+
+        NOTE: There are certain operators which cannot be created such as ->, which is reserved as an
+              indent token.
+    `
+    int op_new('<=>', true, true, prec('>')): Point rVal
+        if this > rVal -> return 1
+        if this < rVal -> return -1
+        return 0
+
+Point origin = new Point(0, 0)
+Point topRight = new Point(5, 5)
+
+print origin < topRight
+print origin > topRight
+print origin <=> topRight
+`output:
+true
+false
+-1
+`
+
+`
+        Pattern Matching
+    Pattern matching can be accomplished with the match keyword
+`
+
+int testInt = 3
+match testInt
+    1 -> print "Yup, its one"
+    2 -> print "It's actually two"
+    3 -> print "Nope, it's three"
+    _ -> print "It's not one, two, or three"
+~output: Nope, it's three
+
+~In this example, match is used to determine Joe's class
+Person joe = new Person(32, "Programmer", "Joe")
+match joe
+    Point  -> print "Joe is a point"
+    Animal -> print "Joe is an Animal"
+    Person -> print "Joe is a Person"
+    _      -> print "I don't know what Joe is" 
+~output: Joe is an Animal
+~This is because the Person class inherits from the Animal
+~class, so the Animal cast to joe was the first valid cast
+
+struct String
+    str s
+    int len
+
+String testStr = "Test", 4
+
+match testStr
+    String("Test", 3)
+        print "This will not be matched"
+    String("Testing", 4)
+        print "This will not be matched either"
+    String("Test", 4")
+        print "This will be matched"
+
+
 
 `
         Enums
@@ -428,29 +527,49 @@ Card fourOfHearts = 4, Suit.Hearts
 
 `
         Keywords
+primitive datatypes:
+    num 
+    int 
+    str 
+    bool 
+    void
 
-num
-int
-string
-bool
+constants:
+    true 
+    false
 
-enum
+statements:
+    if 
+    elif 
+    else 
+    import 
+    print
+    match
+    
+loops: 
+    for
+    foreach 
+    in 
+    do 
+    while
+    continue 
+    break
 
-true
-false
+modifiers:
+    pub 
+    pri 
+    pro 
+    const 
+    ext
+    dyn
 
-print
-typeof
+datatypes:
+    class 
+    struct 
+    enum
 
-do
-while
-for
-foreach
-in
-
-ext
-delete
-export
+other:
+    where
 `
 
 `
