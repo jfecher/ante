@@ -33,9 +33,17 @@ print typeof(myVar) ~output: dynamic int
     initialized to their default values
 `
 
-int myInt = 0
-num myNum = 0.0
-str myString = ""
+i8  myI8  = 0
+i16 myI16 = 0
+i32 myI32 = 0
+i64 myI64 = 0
+u8  myU8  = 0
+u16 myU16 = 0
+u32 myU32 = 0
+u64 myU64 = 0
+f32 myF32 = 0.0
+f64 myF64 = 0.0
+str myStr = ""
 bool myBool = false
 
 `
@@ -43,32 +51,31 @@ bool myBool = false
     even completely redefined to that type.
 `
 
-print int 4.99  ~output: 4
-num n = 43.876
-int n
+print i32 4.99  ~output: 4
+f32 n = 43.876
+i32 n
 
 ~NOTE: the .. below is the string concat operator
-print typeof(n) .. " " .. n  ~output: int 43
+print typeof(n) .. " " .. n  ~output: i32 43
 
 `
         Arrays
 
-    The syntax for declaring arrays is type|size> identifier.  The array arr
+    The syntax for declaring arrays is shown below.  The array arr
     declared below is an array of 30 integers, each initialized to 1
 
     The syntax for declaring an array is: 
         
         [type]\[size\] name
 
-    Where size is an integer expression.
     NOTE: if size does not evaluate to an integer, the program will halt
           with a TypeMismatchError.  To avoid this, it is best to only use
           integer variables and constants in this expression.
 `
-int[30] arr = 1
+i32[30] arr = 1
 
 ~Each element of an array can also be initialized individually
-num[5] assortedNums = 9, -76, 3.14159265, 2^8, 1 + 2*(6-3)
+f32[5] assortedNums = 9, -76, 3.14159265, 2^8, 1 + 2*(6-3)
 
 `
     Each element of an array can be accessed individually by index.  Negative
@@ -92,9 +99,9 @@ arr -= 3 ~Note: this will throw an exception if the array's size becomes < 0
     In addition to arrays, there are also tuples.  Unlike arrays, tuples can
     be mixed and matched with several types, but each must be stated beforehand.
 `
-int, num, str tup = 44, 44.0, "Fourty-four"
+i8, f32, str tup = 44, 44.0, "Fourty-four"
 
-int[30], str[2] anotherTuple = arr, ["This tuple contains", "two arrays"]
+i8[30], str[2] anotherTuple = arr, ["This tuple contains", "two arrays"]
 
 `
     This restriction does not apply when making a dynamic variable of course
@@ -128,7 +135,7 @@ void printMsg:
     This add function takes in two parameters, augend and addend, and returns
     a num value.
 `
-num add: num augend, num addend
+f64 add: f64 augend, f64 addend
     return augend + addend
 
 `
@@ -147,7 +154,7 @@ void println: ...
     Here is the syntax for calling functions:
 `
 println("Test #", add(3, 43))
-~output: Tuple(2: Test #, 43)
+~output: Tuple(2: Test #, 46)
 
 `
         C FFI
@@ -183,11 +190,11 @@ do
 while false
 
 ~prints 1-10
-for int i = 1; i <= 10; i += 1
+for i8 i = 1; i <= 10; i += 1
     print i .. " "
 
-num total
-foreach num n in arr
+f32 total
+foreach f32 n in arr
     total += n
 
 `
@@ -199,18 +206,18 @@ foreach num n in arr
 if 5 > 2 -> print "5 is greater than 2"
 else     -> print "Invalid laws of mathematics, please try again in an alternate universe"
 
-foreach num n in arr -> print n
+foreach f32 f in arr -> print f
 
-int subtract: int a, int b -> return a - b
+f32 subtract: f32 a, f32 b -> return a - b
 
 ~While these can be nested, too many on the same line can lead to clutter
-class Integer -> pub int i   void _init: int a -> i = a
+class Integer -> pub i32 i   void _init: i32 a -> i = a
 
 ~compared to
 class Integer
-    pub int i
+    pub i32 i
 
-    void _init: int a
+    void _init: i32 a
         i = a
 
 `
@@ -234,16 +241,16 @@ class Integer
     of each element of data array, and divide it by the number of
     elements in the array to find the mean on a single line.
 `
-num mean1: num[] data
-    return {foreach num n in data -> _ += n} / size(data)
+f32 mean1: f32[] data
+    return {foreach f32 n in data -> _ += n} / size(data)
 
 `
     Without embedded statements, the above function would have
     taken up 3 additional lines of code.
 `
-num mean2: num[] data
-    num sum
-    foreach num n in data
+f32 mean2: f32[] data
+    f32 sum
+    foreach f32 n in data
         sum += n
     return sum / size(data)
 
@@ -256,7 +263,7 @@ num mean2: num[] data
     before each iteration of the loop, the numbers 1-100 are 
     printed, and the loop closes when i == 101
 `
-int i
+i8 i
 while {i += 1; return i} <= 100
     print i
 
@@ -267,11 +274,11 @@ while {i += 1; return i} <= 100
     variables including arrays or objects.
 `
 struct Coord
-    num x, y, z
+    f64 x, y, z
 
 ~To create a struct, typecast a tuple containing the struct's members to the
 ~corresponding struct type.
-Coord coord = Struct(100, -50, 66.7)
+Coord coord = Coord(100, -50, 66.7)
 print coord  ~output: 100, -50, 66.7
 
 
@@ -279,11 +286,12 @@ print coord  ~output: 100, -50, 66.7
         Classes
     Classes can be declared with the class keyword.  They each have their own
     namespace, and can have functions and variables declared within them.
-    By default, variables declared within classes are private.
+    By default, variables declared within classes are private, while functions
+    are public by default.
 `
 
 class Animal
-    int age
+    u16 age
     str species
     str name
 `
@@ -291,7 +299,7 @@ class Animal
     is initialized and the givin values match _init's parameters.  It can be
     thought of as the constructor for the class.
 `
-    void _init: int, str, str
+    void _init: u16, str, str
         age = _params[0]
         species = _params[1]
         name = _params[2]
@@ -313,7 +321,7 @@ Animal clifford = new Animal(7, "magnum rubrum canis", "Clifford")
 class Person : Animal
     str job
 
-    void _init: int age, str j, str name
+    void _init: u16 age, str j, str name
         job = j
         super(age, "Homo sapien", name) ~super() calls the _init function from the parent class
 
@@ -340,15 +348,15 @@ john.printInfo() ~output: John is 44 years old and is a(n) electrician
 class Statistics
     ~declare secretData as a private variable, only able to be accessed
     ~from within the class
-    pri num secretData
+    pri f64 secretData
 
     pri const num pi = 3.14159265
     
-    pub int varCount
+    pub i32 varCount
 
     ~Alternatively, you can also use modifiers before a block:
     pub
-        num getData:
+        f64 getData:
             return secretData ~not so secret anymore
 
         str getStatus:
@@ -359,13 +367,13 @@ class Statistics
 
     ~NOTE: by default, variables and methods are private so there is really 
     ~      no need to declare this function private explicitly.
-    pri num doCalculations: num data
+    pri f64 doCalculations: f64 data
             return data * secretData / varCount
 
     ~NOTE: reserved functions such as _init and _mul do not need to be public
     ~      to be automatically called.
-    void _init: int[] data
-        foreach int i in data
+    void _init: i32[] data
+        foreach i32 i in data
             secretData += data / pi
             varCount += 1
 
@@ -382,27 +390,40 @@ class Statistics
 `
 ~In this example, O is any type which has the operators > and < available or overloaded.
 ~For functions, the where keyword always comes at the end of the list of parameters.
-pub int cmp: O o2  where O has_ops(O, ['>', '<'])
-    if self < o2
+pub i32 cmp: T t2  where T has_ops(T, ['>', '<'])
+    if self < t2
         return -1
-    return self > o2
+    return self > t2
 
 ~The syntax for type specifications in a class is somewhat similar.
 ~In the Angle class, each time it is initialized, a bool is specified as true if the
 ~angle is in radians, false otherwise.  This determines how Angle is compiled and
 ~cannot be changed after initialization.
-class Angle(bool isRadians)
-    num angle
+class Angle<bool isRadians>
+    f32 angle
 
-    void _init: num a
+    void _init: f32 a
         angle = a
 
     if isRadians
-        int getQuadrant:
+        u8 getQuadrant:
             return angle / (3.14159265 / 4) % 4 + 1
     else
-        int getQuadrant:
+        u8 getQuadrant:
             return angle / 90 % 4 + 1
+~usage:
+Angle<true> a1 = Angle(3.14159265 * 2 / 3)
+Angle<false> a2 = Angle(120)
+print a1.getQuadrent() == a2.getQuadrent()
+
+`
+    The use of type specifications eliminates the need to store excess metadata about
+    the object to be checked each time a function runs as well as encouraging classes
+    to be more specialized without having several copies of otherwise very similar
+    classes, eg. having a AngleDegrees and AngleRadians class seperate then having
+    to worry about them interacting properly.
+`
+
 
 `
         Operator Overloading
@@ -412,9 +433,9 @@ class Angle(bool isRadians)
     and creates the new operator <=> for comparisons.
 `
 class Point
-    pub int x, y
+    pub i32 x, y
 
-    void _init: int x, int y
+    void _init: i32 x, i32 y
         self.x = x
         self.y = y
 
@@ -436,32 +457,43 @@ class Point
 
     `
         It is also possible to create a completely new operator.  To do this, use 
-        the op_new function from the op module to register the operator.  This 
-        function takes 4 parameters, the first being the operator in string form 
-        (no longer than 3 characters). Next, two bools are used to indicate the 
-        presence of an lvalue and rvalue (ie the op ! would be false, true), if 
-        both of these are false, it will fail to compile. Lastly, an int specifies 
+        the op_binary function or the op_unary function from the op module to 
+        register the operator.  The op_binary function takes 2 parameters, the first 
+        being the operator in string form, and the other being an int specifies 
         the precedence of the operator. To get the desired precedence, the function 
         prec should be called which gets the precedence of an existing operator.
+        
+        The op_unary function registers a unary operator.  This function takes only
+        one parameter, the operator as a string.  A unary operator has no precedence,
+        they are always executed in order left to right until a value is found to
+        modify.
 
         NOTE: There are certain operators which cannot be created such as ->, which is reserved as an
               indent token.
     `
-    int op_new('<=>', true, true, prec('>')): Point rVal
+
+    ~An example of a generic comparison operator
+    i8 op_binary('<=>', prec('>')): Point rVal
         if this > rVal -> return 1
         if this < rVal -> return -1
         return 0
 
+    ~Use unary @ operator to retrieve the distance from the origin
+    bool op_unary('@'):
+        return sqrt(pow(this.x, 2), pow(this.y, 2))
+
 Point origin = new Point(0, 0)
-Point topRight = new Point(5, 5)
+Point topRight = new Point(3, 4)
 
 print origin < topRight
 print origin > topRight
 print origin <=> topRight
+print @topRight
 `output:
 true
 false
 -1
+5
 `
 
 `
@@ -469,12 +501,13 @@ false
     Pattern matching can be accomplished with the match keyword
 `
 
-int testInt = 3
+i8 testInt = 3
 match testInt
     1 -> print "Yup, its one"
     2 -> print "It's actually two"
     3 -> print "Nope, it's three"
-    _ -> print "It's not one, two, or three"
+    4 .. 10 -> print "It's between 4 and 10 inclusive"
+    _ -> print "It's not one, two, or three, or in the range 4-10"
 ~output: Nope, it's three
 
 ~In this example, match is used to determine Joe's class
@@ -490,9 +523,9 @@ match joe
 
 struct String
     str s
-    int len
+    u32 len
 
-String testStr = "Test", 4
+String testStr = String("Test", 4)
 
 match testStr
     String("Test", 3)
@@ -520,16 +553,53 @@ Suit spades = Suit.Spades
 print spades, " ", string spades  ~output: 2 Spades
 
 struct Card
-    int number
+    u8 number
     Suit suit
 
-Card fourOfHearts = 4, Suit.Hearts
+Card fourOfHearts = Card(4, Suit.Hearts)
+
+
+`
+        Pointers
+`
+
+~Pointers are created by adding an * after the datatype.
+i32 five = 5
+i32* ptrToFive = &five
+~The unary & operator gets the location of the value 5
+
+~The new keyword automatically allocates data for a class or struct
+Card* tod = new Card(3, Suit.Diamonds)
+
+~Raw pointers must be manually freed with the free function
+free(ptrToFive)
+free(tod)
+
+~For this reason, it is reccomended to instead use the ptr class which
+~Has every relevant operator properly overloaded.
+u8 byte = 128
+
+~The ptr class is automatically freed when it goes out of scope, and
+~keeps track of the amount of referencesto the alias with little overhead.
+ptr<i32> pByte = ptr(byte)
+print *pByte
+ptr<i32> pByte2 = ptr(pByte)
+
+
 
 `
         Keywords
 primitive datatypes:
-    num 
-    int 
+    i8
+    i16
+    i32
+    i64
+    u8
+    u16
+    u32
+    u64
+    f32
+    f64
     str 
     bool 
     void

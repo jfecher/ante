@@ -1,50 +1,149 @@
-#ifndef LEXER_H_INCLUDED
-#define LEXER_H_INCLUDED
+#ifndef LEXER_H
+#define LEXER_H
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include "types.h"
+#include <string>
+#include <fstream>
+#include <set>
+#include <map>
+using namespace std;
 
-char printToks;
-char isTty;
-unsigned short row;
-unsigned short col;
+namespace zyl{
 
-//A dictionary used for getting the human readable string of a particular token type.  Only used in debugging
-extern char *tokenDictionary[];
+    #define IS_NUMERIC(c) (c >= 48 && c <= 57)
+    #define IS_ALPHA_NUMERIC(c) (IS_NUMERIC(c) || (c >= 65 && c <= 98) || (c >= 97 && c <= 122) || c == 95)
+    #define IS_WHITESPACE(c) (c == ' ' || c == '\t' || c == '\n' || c == 13)
+    #define IS_COMMENT(c) (c == '~' || c == '`')
+    #define SCOPE_STEP 4
 
-//extern char *srcLine;
-extern char *pos;
+    enum BinaryOps{
+        Eq,
+        NotEq,
+        Less,
+        Grtr,
+        LessEq,
+        GrtrEq,
+        Add,
+        Sub,
+        Mul,
+        Div,
+        Rem,
+        Comma,
+        Cat,
+        Period,
+    };
+    
+    enum UnaryOps{
+        Not,
+        Deref,
+        Address,
+        ParenOpen,
+        ParenClose,
+        BracketOpen,
+        BracketClose,
+        BraceOpen,
+        BraceClose,
+    };
 
-//Source file
-FILE *src;
+    enum DataTypes{
+        I8,
+        I16,
+        I32,
+        I64,
+        U8,
+        U16,
+        U32,
+        U64,
+        F32,
+        F64,
+        Str,
+        Bool,
+        Void
+    };
 
-#define KEYWORD_COLOR  "\033[0;31m"
-#define FUNCTION_COLOR "\033[0;32m"
-#define STRINGL_COLOR  "\033[0;33m"
-#define TYPE_COLOR     "\033[0;34m"
-#define INTEGERL_COLOR "\033[0;35m"
-#define RESET_COLOR    "\033[0;m"
 
-//Returns 1 if character is an uppercase or lowercase letter, a number, or an underscore
-#define IS_ALPHA_NUMERIC(c) ((c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c == 95)
+    enum Literals{
+        True,
+        False,
+        StrLit,
+        IntLit,
+        FloatLit,
+    };
 
-//Returns 1 if character is a number
-#define IS_NUMERIC(c) (c >= 48 && c <= 57)
+    enum Modifiers{
+        Pub,
+        Pri,
+        Pro,
+        Const,
+        Dyn, 
+    };
 
-//Returns 1 if character is whitespace
-#define IS_WHITESPACE(c) (c==' ' || c=='\t' || c=='\n' || c==130 || c==13)
+    enum TokenType{
+        Identifier,
+        FuncCall,
+        FuncDef,
+        Newline,
+        Indent,
+        Unindent,
+        
+        //keywords
+        If,
+        Elif,
+        Else,
+        Import,
+        Match,
+        For,
+        Foreach,
+        In,
+        Do,
+        While,
+        Continue,
+        Break,
+        Where,
 
-#define IS_WHITESPACE_TOKEN(t) (t.type==Tok_Newline||t.type==Tok_Indent||t.type==Tok_Unindent)
+        Assign,
+        Colon,
+        Struct,
+        Class,
+        Enum,
 
-void   init_lexer(char*); //begins lexation of file
-Token* lexer_next(char); //gets line of tokens.  if passed true, it prints them as well
-void   freeToks(Token**);
-void   freeSrcLine(void);
-void   lexAndPrint(void);
-void   lexer_printWhitespace(char);
-void   lexer_printTokens(char);
-void   ralloc(char**, size_t);
+        DataType,
+        Literal,
+        Modifier,
+        OpUnary,
+        OpBinary,
+        EndOfInput
+    };
 
-#endif // LEXER_H_INCLUDED
+    #define BOPTOK(d) (Token){TokenType::OpBinary, (int)(d)}
+    #define UOPTOK(d) (Token){TokenType::OpUnary,  (int)(d)}
+    #define MODTOK(d) (Token){TokenType::Modifier, (int)(d)}
+    #define LITTOK(d) (Token){TokenType::Literal,  (int)(d)}
+
+    struct Token{
+        TokenType type;
+        int data;
+        string lexeme;
+    };
+
+    class Lexer{
+        public:
+            Lexer(ifstream in);
+            Token getNextToken(void);
+        private:
+            unsigned char curScope;
+            unsigned char scope;
+            char c, n;
+            ifstream f;
+            string src;
+
+            void incPos(void);
+            void skipTo(char c);
+            Token skipComment(void);
+            Token genNumLit(void);
+            Token genStrLit(void);
+            Token genWhitespaceToken(void);
+            Token genAlphaNumericToken(void);
+    };
+};
+
+#endif

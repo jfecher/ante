@@ -3,30 +3,31 @@ vpath %.h include
 vpath %.d obj
 
 WARNINGS := -Wall
-CFLAGS   := -g -O2 -lgmp -std=c11 $(WARNINGS)
+CPPFLAGS := -g -O2 -std=c++11 $(WARNINGS)
 
 PROJDIRS := src include
-SRCFILES := $(shell find $(PROJDIRS) -type f -name "*.c")
 
-OBJFILES := $(patsubst src/%.c,obj/%.o,$(SRCFILES))
-DEPFILES := $(SRCFILES:.c=.d)
+SRCFILES := $(shell find $(PROJDIRS) -type f -name "*.cpp")
+
+OBJFILES := $(patsubst src/%.cpp,obj/%.o,$(SRCFILES))
+DEPFILES := $(SRCFILES:.cpp=.d)
 
 -include $(DEPFILES)
 
 .PHONY: all clean zy
 
 zy: $(OBJFILES)
-	-@$(CC) $(CFLAGS) -o zy $?
+	$(CXX) $(CPPFLAGS) -o zy $?
 
 new: clean zy
 
-$(OBJFILES): | obj
+#$(OBJFILES): | obj
 
 obj: 
 	@mkdir -p $@
 
-obj/%.o: %.c Makefile
-	-@$(CC) $(CFLAGS) -MMD -MP -Iinclude -c $< -o $@
+obj/%.o: src/%.cpp Makefile
+	$(CXX) $(CPPFLAGS) -MMD -MP -Iinclude -c $< -o $@
 
 clean:
 	-@$(RM) obj/*.o obj/*.d zy
