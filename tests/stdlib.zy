@@ -4,9 +4,9 @@
         a variety of types and number of variables.
 `
 
-int>i = 1234
-string>ls = 'ls '
-string>opt = ' --color=auto '
+i32 i = 1234
+str ls = 'ls '
+str opt = ' --color=auto '
 
 system(ls .. opt .. "..")
 typeof(ls)

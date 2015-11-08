@@ -166,6 +166,7 @@ import c_ffi("path/to/file.h", ["functions", "to", "import"])
 import c_ffi("some/other/file.h", "*")
 
 import c_ffi("stdio.h", "putchar")
+
 putchar(90)
 putchar(121)
 putchar(10)
@@ -332,7 +333,7 @@ class Person : Animal
         print name .. " is " .. age .. " years old and is a(n) " .. job
 
 
-Person john = new Person(44, "electrician", "John")
+Person john = Person(44, "electrician", "John")
 john.printInfo() ~output: John is 44 years old and is a(n) electrician
 
 `
@@ -350,7 +351,7 @@ class Statistics
     ~from within the class
     pri f64 secretData
 
-    pri const num pi = 3.14159265
+    pro const num pi = 3.14159265
     
     pub i32 varCount
 
@@ -480,10 +481,10 @@ class Point
 
     ~Use unary @ operator to retrieve the distance from the origin
     bool op_unary('@'):
-        return sqrt(pow(this.x, 2), pow(this.y, 2))
+        return sqrt(pow(this.x, 2) + pow(this.y, 2))
 
-Point origin = new Point(0, 0)
-Point topRight = new Point(3, 4)
+Point origin = Point(0, 0)
+Point topRight = Point(3, 4)
 
 print origin < topRight
 print origin > topRight
@@ -511,7 +512,7 @@ match testInt
 ~output: Nope, it's three
 
 ~In this example, match is used to determine Joe's class
-Person joe = new Person(32, "Programmer", "Joe")
+Person joe = Person(32, "Programmer", "Joe")
 match joe
     Point  -> print "Joe is a point"
     Animal -> print "Joe is an Animal"
@@ -534,8 +535,6 @@ match testStr
         print "This will not be matched either"
     String("Test", 4")
         print "This will be matched"
-
-
 
 `
         Enums
@@ -571,20 +570,42 @@ i32* ptrToFive = &five
 ~The new keyword automatically allocates data for a class or struct
 Card* tod = new Card(3, Suit.Diamonds)
 
+~alternatively, data can be manually allocated.  The following is equivilent
+~to the statement above
+Card* tod = alloc(sizeof(Card))
+*tod = Card(3, Suit.Diamonds)
+
 ~Raw pointers must be manually freed with the free function
 free(ptrToFive)
 free(tod)
 
 ~For this reason, it is reccomended to instead use the ptr class which
 ~Has every relevant operator properly overloaded.
-u8 byte = 128
+u8 byte = 255
 
 ~The ptr class is automatically freed when it goes out of scope, and
-~keeps track of the amount of referencesto the alias with little overhead.
+~keeps track of the amount of references with little overhead.
 ptr<i32> pByte = ptr(byte)
-print *pByte
-ptr<i32> pByte2 = ptr(pByte)
 
+ptr<i32> pByte2 = ptr(pByte)
+*pByte2 = &128
+
+print *pByte
+~output: 128
+
+
+
+`
+        Experimental
+`
+str fnptr(str, str) = add
+
+macro pstr: ident i
+    pub const str* i = "p"
+
+pstr(i)
+print *i
+~output: p
 
 
 `

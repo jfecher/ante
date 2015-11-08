@@ -1,7 +1,19 @@
 #include "lexer.h"
-using namespace zyl;
+#include <cstring>
+#include <iostream>
 
 int main(int argc, char *argv[]){
-    Lexer *lexer = new Lexer("");
+    if(argc == 2){
+        if(strcmp(argv[1], "-l") == 0){
+            istream *in = &cin;
+            Lexer *lexer = new Lexer(&in);
+            Token t = lexer->next();
+
+            while(t.type != Tok_EndOfInput){
+                std::cout << tokDictionary[t.type] << std::endl;
+                t = lexer->next();
+            }
+        }
+    }
     return 0;
 }

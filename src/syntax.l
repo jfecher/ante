@@ -1,4 +1,4 @@
-%Start cmt mlcmt countWs issueWs
+%Start cmt mlcmt countWs issueWs strLit
 
 %{
 #include "tokens.h"
@@ -6,7 +6,7 @@ unsigned int yyscope = 0;
 unsigned int yycscope = 0;
 char ignoreWs = 1;
 int analyzeScope();
-
+Token yylex();
 %}
 
 alpha    [a-zA-Z_]
@@ -29,52 +29,55 @@ fltlit   "-"?[0-9]+"."{digit}+
 <countWs>"\t"           yyscope++;
 <countWs>./[^ \t\n]     return analyzeScope();
 
-<INITIAL>"i8"           return Tok_I8;
-<INITIAL>"i16"          return Tok_I16;
-<INITIAL>"i32"          return Tok_I32;
-<INITIAL>"i64"          return Tok_I64;
-<INITIAL>"u8"           return Tok_U8;
-<INITIAL>"u16"          return Tok_U16;
-<INITIAL>"u32"          return Tok_U32;
-<INITIAL>"u64"          return Tok_U64;
-<INITIAL>"f32"          return Tok_F32;
-<INITIAL>"f64"          return Tok_F64;
-<INITIAL>"bool"         return Tok_Bool;
-<INITIAL>"void"         return Tok_Void;
+<strLit>[^\"]*          return TOKLEX(Tok_StrLit, yylineno, yytext);
+<strLit>"\""            BEGIN(INITIAL);
 
-<INITIAL>"=="           return Tok_Eq;
-<INITIAL>"!="           return Tok_NotEq;
-<INITIAL>"+="           return Tok_AddEq;
-<INITIAL>"-="           return Tok_SubEq;
-<INITIAL>"*="           return Tok_MulEq;
-<INITIAL>"/="           return Tok_DivEq;
-<INITIAL>">="           return Tok_GrtrEq;
-<INITIAL>"<="           return Tok_LesrEq;
-<INITIAL>"->"           return Tok_Indent;
-<INITIAL>".."           return Tok_StrCat;
-<INITIAL>"or"           return Tok_BoolOr;
-<INITIAL>"and"          return Tok_BoolAnd;
-<INITIAL>"true"         return Tok_TrueLit;
-<INITIAL>"false"        return Tok_FalseLit;
-<INITIAL>{intlit}       return Tok_IntLit;
-<INITIAL>{fltlit}       return Tok_FltLit;
-<INITIAL>\".*\"         return Tok_StrLit;
+<INITIAL>"\""           BEGIN(strLit);
+<INITIAL>"i8"           return TOK(Tok_I8, yylineno);
+<INITIAL>"i16"          return TOK(Tok_I16, yylineno);
+<INITIAL>"i32"          return TOK(Tok_I32, yylineno);
+<INITIAL>"i64"          return TOK(Tok_I64, yylineno);
+<INITIAL>"u8"           return TOK(Tok_U8, yylineno);
+<INITIAL>"u16"          return TOK(Tok_U16, yylineno);
+<INITIAL>"u32"          return TOK(Tok_U32, yylineno);
+<INITIAL>"u64"          return TOK(Tok_U64, yylineno);
+<INITIAL>"f32"          return TOK(Tok_F32, yylineno);
+<INITIAL>"f64"          return TOK(Tok_F64, yylineno);
+<INITIAL>"bool"         return TOK(Tok_Bool, yylineno);
+<INITIAL>"void"         return TOK(Tok_Void, yylineno);
 
-<INITIAL>"return"       return Tok_Return;
-<INITIAL>"if"           return Tok_If;
-<INITIAL>"elif"         return Tok_Elif;
-<INITIAL>"else"         return Tok_Else;
-<INITIAL>"for"          return Tok_For;
-<INITIAL>"foreach"      return Tok_ForEach;
-<INITIAL>"while"        return Tok_While;
-<INITIAL>"do"           return Tok_Do;
-<INITIAL>"in"           return Tok_In;
-<INITIAL>"continue"     return Tok_Continue;
-<INITIAL>"break"        return Tok_Break;
-<INITIAL>"import"       return Tok_Import;
-<INITIAL>"enum"         return Tok_Enum;
-<INITIAL>"struct"       return Tok_Struct;
-<INITIAL>"class"        return Tok_Class;
+<INITIAL>"=="           return TOK(Tok_Eq, yylineno);
+<INITIAL>"!="           return TOK(Tok_NotEq, yylineno);
+<INITIAL>"+="           return TOK(Tok_AddEq, yylineno);
+<INITIAL>"-="           return TOK(Tok_SubEq, yylineno);
+<INITIAL>"*="           return TOK(Tok_MulEq, yylineno);
+<INITIAL>"/="           return TOK(Tok_DivEq, yylineno);
+<INITIAL>">="           return TOK(Tok_GrtrEq, yylineno);
+<INITIAL>"<="           return TOK(Tok_LesrEq, yylineno);
+<INITIAL>"->"           return TOK(Tok_Indent, yylineno);
+<INITIAL>".."           return TOK(Tok_StrCat, yylineno);
+<INITIAL>"or"           return TOK(Tok_BoolOr, yylineno);
+<INITIAL>"and"          return TOK(Tok_BoolAnd, yylineno);
+<INITIAL>"true"         return TOK(Tok_TrueLit, yylineno);
+<INITIAL>"false"        return TOK(Tok_FalseLit, yylineno);
+<INITIAL>{intlit}       return TOKLEX(Tok_IntLit, yylineno, yytext);
+<INITIAL>{fltlit}       return TOKLEX(Tok_FltLit, yylineno, yytext);
+
+<INITIAL>"return"       return TOK(Tok_Return, yylineno);
+<INITIAL>"if"           return TOK(Tok_If, yylineno);
+<INITIAL>"elif"         return TOK(Tok_Elif, yylineno);
+<INITIAL>"else"         return TOK(Tok_Else, yylineno);
+<INITIAL>"for"          return TOK(Tok_For, yylineno);
+<INITIAL>"foreach"      return TOK(Tok_ForEach, yylineno);
+<INITIAL>"while"        return TOK(Tok_While, yylineno);
+<INITIAL>"do"           return TOK(Tok_Do, yylineno);
+<INITIAL>"in"           return TOK(Tok_In, yylineno);
+<INITIAL>"continue"     return TOK(Tok_Continue, yylineno);
+<INITIAL>"break"        return TOK(Tok_Break, yylineno);
+<INITIAL>"import"       return TOK(Tok_Import, yylineno);
+<INITIAL>"enum"         return TOK(Tok_Enum, yylineno);
+<INITIAL>"struct"       return TOK(Tok_Struct, yylineno);
+<INITIAL>"class"        return TOK(Tok_Class, yylineno);
 
 <INITIAL>"\n"           {BEGIN(countWs); unput('\n');}
 <INITIAL>[ \t]          ;
@@ -85,16 +88,16 @@ fltlit   "-"?[0-9]+"."{digit}+
 //#define ECHO fwrite(yytext, yyleng, 1, yyout)
 
 int analyzeScope(){
-    int tok; 
+    Token t;
 
     if(yycscope > yyscope){
-        tok = Tok_Unindent;
+        tok = TOK(Tok_Unindent, yylineno);
         yycscope -= 1;
     }else if(yycscope < yyscope){
-        tok = Tok_Indent;
+        tok = TOK(Tok_Indent, yylineno);
         yycscope += 1;
     }else{
-        tok = Tok_Newline;
+        tok = TOK(Tok_Newline, yylineno);
         BEGIN(INITIAL);
     }
  
@@ -109,13 +112,4 @@ int analyzeScope(){
 //Called when input is exhausted
 int yywrap(void){
     return 1;        
-}
-
-int main(int argc, char *argv[]){
-    int tok = yylex();
-    while(tok){
-        printf("tok: %s, %s\n", yytext, tokDictionary[tok]);
-        tok = yylex();
-    }
-    return 0;
 }

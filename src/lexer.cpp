@@ -1,230 +1,275 @@
 #include "lexer.h"
-using namespace zyl;
 
-map<string, TokenType> keywords = {
-    {"struct",   Struct},
-    {"class",    Class},
-    {"enum",     Enum},
-    {"if",       If},
-    {"elif",     Elif},
-    {"else",     Else},
-    {"import",   Import},
-    {"match",    Match},
-    {"for",      For},
-    {"foreach",  Foreach},
-    {"in",       In},
-    {"do",       Do},
-    {"while",    While},
-    {"continue", Continue},
-    {"break",    Break},
-    {"where",    Where},
+const char* tokDictionary[] = {
+    "Tok_EndOfInput",
+    "Tok_Ident",
+
+    //types
+    "Tok_I8",
+    "Tok_I16",
+    "Tok_I32",
+    "Tok_I64",
+    "Tok_U8",
+    "Tok_U16",
+    "Tok_U32",
+    "Tok_U64",
+    "Tok_F32",
+    "Tok_F64",
+    "Tok_Bool",
+    "Tok_Void",
+
+	"Tok_Eq",
+    "Tok_NotEq",
+	"Tok_AddEq",
+	"Tok_SubEq",
+    "Tok_MulEq",
+    "Tok_DivEq",
+	"Tok_GrtrEq",
+	"Tok_LesrEq",
+    "Tok_Add",
+    "Tok_Sub",
+    "Tok_Mul",
+    "Tok_Div",
+    "Tok_Or",
+    "Tok_And",
+    "Tok_True",
+    "Tok_False",
+	"Tok_IntLit",
+	"Tok_FltLit",
+	"Tok_StrLit",
+    "Tok_StrCat",
+
+    "Tok_ParenOpen",
+    "Tok_ParenClose",
+    "Tok_BraceOpen",
+    "Tok_BraceClose",
+    "Tok_BracketOpen",
+    "Tok_BracketClose",
+
+    //keywords
+    "Tok_Return",
+	"Tok_If",
+    "Tok_Elif",
+	"Tok_Else",
+	"Tok_For",
+	"Tok_ForEach",
+	"Tok_While",
+    "Tok_Do",
+    "Tok_In",
+	"Tok_Continue",
+	"Tok_Break",
+    "Tok_Import",
+    "Tok_Where",
+    "Tok_Enum",
+    "Tok_Struct",
+    "Tok_Class",
+
+    "Tok_Newline",
+    "Tok_Indent",
+    "Tok_Unindent",
 };
 
-map<string, Modifiers> modifiers = {
-    {"pub",      Pub},
-    {"pri",      Pri},
-    {"pro",      Pro},
-    {"const",    Const},
-    {"dyn",      Dyn},
+map<const char*, Token> keywords = {
+    {"i8",       {Tok_I8,       NULL, 0, 0}},
+    {"i16",      {Tok_I16,      NULL, 0, 0}},
+    {"i32",      {Tok_I32,      NULL, 0, 0}},
+    {"i64",      {Tok_I64,      NULL, 0, 0}},
+    {"u8",       {Tok_U8,       NULL, 0, 0}},
+    {"u16",      {Tok_U16,      NULL, 0, 0}},
+    {"u32",      {Tok_U32,      NULL, 0, 0}},
+    {"u64",      {Tok_U64,      NULL, 0, 0}},
+    {"f32",      {Tok_F32,      NULL, 0, 0}},
+    {"f64",      {Tok_F64,      NULL, 0, 0}},
+    {"bool",     {Tok_Bool,     NULL, 0, 0}},
+    {"void",     {Tok_Void,     NULL, 0, 0}},
+    
+    {"or",       {Tok_Or,       NULL, 0, 0}},
+    {"and",      {Tok_And,      NULL, 0, 0}},
+    {"true",     {Tok_True,     NULL, 0, 0}},
+    {"false",    {Tok_False,    NULL, 0, 0}},
+    
+    {"return",   {Tok_Return,   NULL, 0, 0}},
+    {"if",       {Tok_If,       NULL, 0, 0}},
+    {"elif",     {Tok_Elif,     NULL, 0, 0}},
+    {"else",     {Tok_Else,     NULL, 0, 0}},
+    {"for",      {Tok_For,      NULL, 0, 0}},
+    {"foreach",  {Tok_ForEach,  NULL, 0, 0}},
+    {"while",    {Tok_While,    NULL, 0, 0}},
+    {"do",       {Tok_Do,       NULL, 0, 0}},
+    {"in",       {Tok_In,       NULL, 0, 0}},
+    {"continue", {Tok_Continue, NULL, 0, 0}},
+    {"break",    {Tok_Break,    NULL, 0, 0}},
+    {"import",   {Tok_Import,   NULL, 0, 0}},
+    {"where",    {Tok_Where,    NULL, 0, 0}},
+    {"enum",     {Tok_Enum,     NULL, 0, 0}},
+    {"struct",   {Tok_Struct,   NULL, 0, 0}},
+    {"class",    {Tok_Class,    NULL, 0, 0}},
 };
 
-map<string, Literals> literals = {
-    {"true",     True},
-    {"false",    False}, 
+map<const char*, Token> operators = {
+    {"+", {Tok_Add, NULL, 0, 0}},
+    {"-", {Tok_Sub, NULL, 0, 0}},
+    {"*", {Tok_Mul, NULL, 0, 0}},
+    {"/", {Tok_Div, NULL, 0, 0}},
 };
 
-map<string, DataTypes> types = {
-    {"i8",       I8},
-    {"i16",      I16},
-    {"i32",      I32},
-    {"i64",      I64},
-    {"u8",       U8},
-    {"u16",      U16},
-    {"u32",      U32},
-    {"u64",      U64},
-    {"f32",      F32},
-    {"f64",      F64},
-    {"str",      Str},
-    {"bool",     Bool},
-    {"void",     Void}, 
-};
-
-Lexer::Lexer(ifstream in){
-    swap(in, f);
+Lexer::Lexer(istream **f)
+{
+    in = *f;
     incPos();
     incPos();
     scope = 0;
+    cscope = 0;
 }
 
-void Lexer::incPos(void){
+void Lexer::incPos()
+{
     c = n;
-    n = f.get();
+    *in >> n;
+
+    cout << c;
 }
 
-inline void Lexer::skipTo(char end){
-    do incPos();
-    while(c != end && c != '\0');
-    if(c == end) incPos();
+void Lexer::incPos(int end)
+{
+    for(int i = 0; i < end; i++){
+        c = n;
+        *in >> n;
+    }
 }
 
-inline Token Lexer::skipComment(void){
-    if(c == '~')
-        skipTo('\n');
-    else if(c == '`')
-        skipTo('`');
-    return getNextToken();
-}
-
-Token Lexer::genWhitespaceToken(void){
-    if(c == ' ' || c == '\t'){ //skip
-        do incPos();
-        while((c == ' ' || c == '\t') && c != '\0');
-        return getNextToken();
-    }else{ //Determine to issue indent/unindent token
+Token Lexer::handleComment()
+{
+    if(c == '`'){
+        do incPos(); while(c != '`' && c != EOF);
         incPos();
-        unsigned int newScope = 0;
+    }else{ // c == '~'
+        while(c != '\n' && c != EOF) incPos();
+    }
+    return next();
+}
+
+Token Lexer::genAlphaNumTok()
+{
+    string s = "";
+    while(IS_ALPHANUM(c)){
+        s += c;
+    }
+
+    auto key = keywords.find(s.c_str());
+    if(key != keywords.end()){
+        return key->second;
+    }else{
+        return {Tok_Ident, s.c_str()};
+    }
+}
+
+Token Lexer::genNumLitTok()
+{
+    string s = "";
+    bool flt = false;
+
+    while(IS_NUMERICAL(c) || (c == '.' && !flt)){
+        s += c;
+        if(c == '.') flt = true;
+    }
+    return {flt? Tok_FltLit : Tok_IntLit, s.c_str()};
+}
+
+Token Lexer::genWsTok()
+{
+    if(c == '\n'){
+        unsigned short newScope;
+        
         while(IS_WHITESPACE(c)){
             switch(c){
-                case ' ':  newScope++;
-                case '\t': newScope += SCOPE_STEP;
-                case '\n': newScope = 0;
-                default:
-                    break;
+                case ' ': newScope++; break;
+                case '\t': newScope += scStep; break;
+                case '\n': newScope = 0; break;
+                default: break;
             }
         }
+        newScope /= scStep;
 
-        if(IS_COMMENT(c)) return skipComment();
-
-        newScope = newScope / SCOPE_STEP;
-        if(newScope > scope){
-            curScope = scope + 1;
-            scope = newScope;
-            return {TokenType::Indent};
-        }else if(newScope < scope){
-            curScope = scope - 1;
-            scope = newScope;
-            return {TokenType::Unindent};
-        }else{
-            return {TokenType::Newline};
+        if(newScope == scope){
+            return {Tok_Newline};
         }
-    }
-}
-
-Token Lexer::genAlphaNumericToken(void){
-    string *s = new string();
-    while(IS_ALPHA_NUMERIC(c)){
-        s += c;
+        scope = newScope;
+        return next();
+    }else{
         incPos();
+        return next();
     }
-   
-    try{
-        TokenType t = keywords.at(*s);
-        return {t};
-    }catch(out_of_range e){
-        try{
-            DataTypes t = types.at(*s);
-            return {TokenType::DataType, t};
-        }catch(out_of_range e){
-            try{
-                Modifiers m = modifiers.at(*s);
-                return {TokenType::Modifier, m};
-            }catch(out_of_range e){
-                try{
-                    Literals l = literals.at(*s);
-                    return {TokenType::Literal, l};
-                }catch(out_of_range e){}
-            }
-        }
-    }
-    return {TokenType::Identifier, 0, *s};
 }
 
-Token Lexer::genNumLit(void){
-    string *s = new string();
-    Literals type = Literals::IntLit;
-    while(IS_NUMERIC(c)){
-        s += c;
-        incPos();
-    }
-    if(c == '.' && IS_NUMERIC(n)){
-        type = Literals::FloatLit;
-        do{
-            s += c;
-            incPos();
-        }while(IS_NUMERIC(c));
-    }
-        
-    return LITTOK(type);
-}
-
-Token Lexer::genStrLit(void){
-    string *s = new string();
+Token Lexer::genStrLitTok()
+{
     char delim = c;
+    string s = "";
     incPos();
-
-    while(c != delim && c != '\0'){
+    while(c != delim && c != EOF){
         s += c;
         incPos();
     }
-
-    return {TokenType::Literal, Literals::StrLit, *s}; 
+    incPos();
+    return {Tok_StrLit, s.c_str()};
 }
 
-int state[256] = {
-    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
-    17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32,
-    33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48,
-    49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64,
-    65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80,
-    81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96,
-    97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112,
-    113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128,
-    129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144,
-    145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160,
-    161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176,
-    177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192,
-    193, 194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208,
-    209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223, 224,
-    225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239, 240,
-    241, 242, 243, 244, 245, 246, 247, 248, 249, 250, 251, 252, 253, 254, 255, 256
-};
-
-Token Lexer::getNextToken(void){
-    //Check if an unindent/indent of multiple
-    //levels was encountered by genWhitespaceToken
-    if(curScope != scope){
-        if(curScope > scope){
-            curScope -= 1;
-            return {TokenType::Unindent};
+Token Lexer::next()
+{
+    cout << 1;
+    if(cscope != scope){
+        if(cscope > scope){
+            cscope++;
+            return {Tok_Indent};
         }else{
-            curScope += 1;
-            return {TokenType::Indent};
+            cscope--;
+            return {Tok_Unindent};
         }
     }
 
-    if(c == EOF || c == '\0')
-        return {TokenType::EndOfInput};
-
-    //skip comments
-    if(IS_COMMENT(c)) return skipComment();
-    if(IS_WHITESPACE(c)) return genWhitespaceToken();
-    if(IS_NUMERIC(c)) return genNumLit();
-    if(IS_ALPHA_NUMERIC(c)) return genAlphaNumericToken();
-    if(c == '\'' || c=='"') return genStrLit();
-
-    //operator
-    string *s = new string();
+    cout << 2;
+    if(IS_COMMENT(c))    return Lexer::handleComment();
+    cout << 3;
+    if(IS_NUMERICAL(c))  return Lexer::genNumLitTok();
+    cout << 4;
+    if(IS_ALPHANUM(c))   return Lexer::genAlphaNumTok();
+    cout << 5;
+    if(IS_WHITESPACE(c)) return Lexer::genWsTok();
+    cout << 6;
+    
     switch(c){
-        case '=':
-            incPos();
-            if(n == '='){
-                incPos();
-                return BOPTOK(BinaryOps::Eq);
+        case '"': return Lexer::genStrLitTok();
+        case '-':
+            if(n == '>'){
+                incPos(2);
+                scope++;
+                return next();
             }
-            return {TokenType::Assign};
-        case '(': return {TokenType::OpUnary, UnaryOps::ParenOpen};
-        case ')':
+            break;
+        case '(': return {Tok_ParenOpen};
+        case ')': return {Tok_ParenClose};
+        case '[': return {Tok_BraceOpen};
+        case ']': return {Tok_BraceClose};
+        case '{': return {Tok_BracketOpen};
+        case '}': return {Tok_BracketClose};
+        case EOF: case 0: return {Tok_EndOfInput};
         default: break;
     }
-    return {TokenType::EndOfInput};
+    
+    string s = "";
+    cout << 7;
+    while(!IS_COMMENT(c) && !(IS_ALPHANUM(c)) && !IS_WHITESPACE(c) && c != EOF && c != 0){
+        s += c;
+        incPos();
+    }
+
+    cout << 8;
+    auto op = operators.find(s.c_str());
+    if(op != operators.end()){
+        return op->second;
+    }else{
+        cout << "Unknown operator token '" << s << "'\n";
+        exit(1);
+    }
 }

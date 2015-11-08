@@ -4,16 +4,16 @@
         within which obscure global variables of the same name
 `
 
-int>i = 2
-int>j
+i32 i = 2
+i32 j
 print i .. ", " .. j
 
-math:
-    int>i = 111111111
+void math:
+    i32 i = 111111111
     print "i   = " .. i
     print "i^2 = " .. i^2
 
-    int>j = 1234
+    i32 j = 1234
     print j
 
 math()

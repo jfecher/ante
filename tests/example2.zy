@@ -2,7 +2,7 @@
     example2.zy
         Tests initializations, assignments, and print statements
 `
-int> i = 12
+i32 i = 12
 print i
 i = 3
 print i

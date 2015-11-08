@@ -1,9 +1,9 @@
 #ifndef TOKENS_H
 #define TOKENS_H
 
-enum Token{
+enum TokenType{
     Tok_EndOfInput,
-    Tok_Identifier,
+    Tok_Ident,
 
     //types
     Tok_I8,
@@ -16,7 +16,6 @@ enum Token{
     Tok_U64,
     Tok_F32,
     Tok_F64,
-    Tok_Str,
     Tok_Bool,
     Tok_Void,
 
@@ -28,15 +27,26 @@ enum Token{
     Tok_DivEq,
 	Tok_GrtrEq,
 	Tok_LesrEq,
-    Tok_BoolOr,
-    Tok_BoolAnd,
-    Tok_TrueLit,
-    Tok_FalseLit,
+    Tok_Add,
+    Tok_Sub,
+    Tok_Mul,
+    Tok_Div,
+    Tok_Or,
+    Tok_And,
+    Tok_True,
+    Tok_False,
 	Tok_IntLit,
 	Tok_FltLit,
 	Tok_StrLit,
     Tok_StrCat,
-	
+
+    Tok_ParenOpen,
+    Tok_ParenClose,
+    Tok_BraceOpen,
+    Tok_BraceClose,
+    Tok_BracketOpen,
+    Tok_BracketClose,
+
     //keywords
     Tok_Return,
 	Tok_If,
@@ -50,6 +60,7 @@ enum Token{
 	Tok_Continue,
 	Tok_Break,
     Tok_Import,
+    Tok_Where,
     Tok_Enum,
     Tok_Struct,
     Tok_Class,
@@ -59,59 +70,16 @@ enum Token{
     Tok_Unindent,
 };
 
-const char* tokDictionary[] = {
-  "EndOfInput",
-  "Identifier",
-             
-  "I8",
-  "I16",    
-  "I32",
-  "I64",    
-  "U8",    
-  "U16",    
-  "U32",    
-  "U64",    
-  "F32",   
-  "F64",   
-  "Str",  
-  "Bool",
-  "Void",     
-  
-  "Eq",     
-  "NotEq",     
-  "AddEq",     
-  "SubEq",     
-  "MulEq",     
-  "DivEq",     
-  "GrtrEq",     
-  "LesrEq",    
-  "BoolOr",   
-  "BoolAnd",  
-  "TrueLit", 
-  "FalseLit", 
-  "IntLit", 
-  "FltLit",  
-  "StrLit",
-  "StrCat",  
-  
-  "Return",   
-  "If",
-  "Elif", 
-  "Else",  
-  "For",     
-  "ForEach",
-  "While",
-  "Do",
-  "In",
-  "Continue",
-  "Break",
-  "Import",
-  "Enum",
-  "Struct",
-  "Class",
-  "Newline",
-  "Indent",
-  "Unindent",
-};
+extern const char* tokDictionary[];
+
+typedef struct{
+    TokenType type;
+    const char* lexeme;
+    unsigned int row;
+    unsigned int col;
+} Token;
+
+#define TOK(t, r, c) (Token){t, NULL, r, c}
+#define TOKL(t, r) (Token){t, l, r, c}
 
 #endif

@@ -3,8 +3,8 @@
         Testfile used to test the parsing and evaluation of expressions.
 `
 
-int> fifty_nine = 5+9*5+9
-int> answer  = fifty_nine - 3 * (5 - 2)
+i8 fifty_nine = 5+9*5+9
+i8 answer = fifty_nine - 3 * (5 - 2)
 
 print fifty_nine
 print answer

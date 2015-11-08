@@ -2,12 +2,11 @@
     example4.zy
         test function declarations and calls
 `
->printSomething: bool
-    if _params[0]
+i32 printSomething: bool b
+    if _b
         print "Hello World!\n"
     else
         print "Goodbye World D:\n"
-    /
 
 printSomething(true)
 printSomething(false)

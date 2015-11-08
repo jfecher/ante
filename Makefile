@@ -10,7 +10,8 @@ PROJDIRS := src include
 SRCFILES := $(shell find $(PROJDIRS) -type f -name "*.cpp")
 
 OBJFILES := $(patsubst src/%.cpp,obj/%.o,$(SRCFILES))
-DEPFILES := $(SRCFILES:.cpp=.d)
+
+DEPFILES := $(OBJFILES:.o=.d)
 
 -include $(DEPFILES)
 
