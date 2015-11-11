@@ -14,11 +14,13 @@ using namespace std;
 
 class Lexer{
     public:
-        Lexer(istream **file);
+        Lexer(void);
+        Lexer(const char* file);
+        Lexer(ifstream** file);
         Token next(void);
     private:
         char c, n;
-        istream *in;
+        ifstream *in;
         static const char scStep = 4;
         unsigned short scope;
         unsigned short cscope;

@@ -1,4 +1,5 @@
 #include "lexer.h"
+#include <cstring>
 
 const char* tokDictionary[] = {
     "Tok_EndOfInput",
@@ -18,6 +19,7 @@ const char* tokDictionary[] = {
     "Tok_Bool",
     "Tok_Void",
 
+    "Tok_Assign",
 	"Tok_Eq",
     "Tok_NotEq",
 	"Tok_AddEq",
@@ -69,7 +71,7 @@ const char* tokDictionary[] = {
     "Tok_Unindent",
 };
 
-map<const char*, Token> keywords = {
+map<string, Token> keywords = {
     {"i8",       {Tok_I8,       NULL, 0, 0}},
     {"i16",      {Tok_I16,      NULL, 0, 0}},
     {"i32",      {Tok_I32,      NULL, 0, 0}},
@@ -106,14 +108,32 @@ map<const char*, Token> keywords = {
     {"class",    {Tok_Class,    NULL, 0, 0}},
 };
 
-map<const char*, Token> operators = {
+map<string, Token> operators = {
     {"+", {Tok_Add, NULL, 0, 0}},
     {"-", {Tok_Sub, NULL, 0, 0}},
     {"*", {Tok_Mul, NULL, 0, 0}},
     {"/", {Tok_Div, NULL, 0, 0}},
+    {"..", {Tok_StrCat, NULL, 0, 0}},
 };
 
-Lexer::Lexer(istream **f)
+Lexer::Lexer(void) : c{0}, n{0}
+{
+    incPos();
+    incPos();
+    scope = 0;
+    cscope = 0;
+}
+
+Lexer::Lexer(const char* file): c{0}, n{0}
+{
+    in = new ifstream(file);
+    incPos();
+    incPos();
+    scope = 0;
+    cscope = 0;
+}
+
+Lexer::Lexer(ifstream **f): c{0}, n{0}
 {
     in = *f;
     incPos();
@@ -122,23 +142,27 @@ Lexer::Lexer(istream **f)
     cscope = 0;
 }
 
-void Lexer::incPos()
+void Lexer::incPos(void)
 {
     c = n;
-    *in >> n;
-
-    cout << c;
+    if(in->good())
+        in->get(n);
+    else
+        n = 0;
 }
 
 void Lexer::incPos(int end)
 {
     for(int i = 0; i < end; i++){
         c = n;
-        *in >> n;
+        if(in->good())
+            in->get(n);
+        else
+            n = 0;
     }
 }
 
-Token Lexer::handleComment()
+Token Lexer::handleComment(void)
 {
     if(c == '`'){
         do incPos(); while(c != '`' && c != EOF);
@@ -154,6 +178,7 @@ Token Lexer::genAlphaNumTok()
     string s = "";
     while(IS_ALPHANUM(c)){
         s += c;
+        incPos();
     }
 
     auto key = keywords.find(s.c_str());
@@ -169,9 +194,12 @@ Token Lexer::genNumLitTok()
     string s = "";
     bool flt = false;
 
-    while(IS_NUMERICAL(c) || (c == '.' && !flt)){
+    while(IS_NUMERICAL(c) || (c == '.' && !flt && IS_NUMERICAL(n))){
         s += c;
-        if(c == '.') flt = true;
+        if(c == '.'){ 
+            flt = true;
+        }
+        incPos();
     }
     return {flt? Tok_FltLit : Tok_IntLit, s.c_str()};
 }
@@ -179,15 +207,16 @@ Token Lexer::genNumLitTok()
 Token Lexer::genWsTok()
 {
     if(c == '\n'){
-        unsigned short newScope;
+        unsigned short newScope = 0;
         
-        while(IS_WHITESPACE(c)){
+        while(IS_WHITESPACE(c) && c != EOF){
             switch(c){
                 case ' ': newScope++; break;
                 case '\t': newScope += scStep; break;
                 case '\n': newScope = 0; break;
                 default: break;
             }
+            incPos();
         }
         newScope /= scStep;
 
@@ -217,7 +246,6 @@ Token Lexer::genStrLitTok()
 
 Token Lexer::next()
 {
-    cout << 1;
     if(cscope != scope){
         if(cscope > scope){
             cscope++;
@@ -228,15 +256,10 @@ Token Lexer::next()
         }
     }
 
-    cout << 2;
     if(IS_COMMENT(c))    return Lexer::handleComment();
-    cout << 3;
     if(IS_NUMERICAL(c))  return Lexer::genNumLitTok();
-    cout << 4;
     if(IS_ALPHANUM(c))   return Lexer::genAlphaNumTok();
-    cout << 5;
     if(IS_WHITESPACE(c)) return Lexer::genWsTok();
-    cout << 6;
     
     switch(c){
         case '"': return Lexer::genStrLitTok();
@@ -247,6 +270,11 @@ Token Lexer::next()
                 return next();
             }
             break;
+        case '=': 
+            if(n!='='){
+                incPos();
+                return {Tok_Assign};
+            }break;
         case '(': return {Tok_ParenOpen};
         case ')': return {Tok_ParenClose};
         case '[': return {Tok_BraceOpen};
@@ -258,13 +286,11 @@ Token Lexer::next()
     }
     
     string s = "";
-    cout << 7;
     while(!IS_COMMENT(c) && !(IS_ALPHANUM(c)) && !IS_WHITESPACE(c) && c != EOF && c != 0){
         s += c;
         incPos();
     }
 
-    cout << 8;
     auto op = operators.find(s.c_str());
     if(op != operators.end()){
         return op->second;

@@ -19,6 +19,7 @@ enum TokenType{
     Tok_Bool,
     Tok_Void,
 
+	Tok_Assign,
 	Tok_Eq,
     Tok_NotEq,
 	Tok_AddEq,
