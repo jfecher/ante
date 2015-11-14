@@ -12,6 +12,9 @@ using namespace std;
 #define IS_ALPHANUM(c)   (IS_NUMERICAL(c) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c == 95)
 #define IS_WHITESPACE(c) (c == ' ' || c == '\t' || c == '\n' || c == 13) // || c == 130
 
+#define PAIR(a, b) (c==a && n==b)
+#define RETURN_PAIR(t) {incPos(2); return (Token){t, NULL};}
+
 class Lexer{
     public:
         Lexer(void);

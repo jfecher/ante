@@ -6,10 +6,10 @@
 i8 fifty_nine = 5+9*5+9
 i8 answer = fifty_nine - 3 * (5 - 2)
 
-print fifty_nine
-print answer
+print(fifty_nine)
+print(answer)
 
-print fifty_nine .. " - 9 = " .. answer
+print(fifty_nine .. " - 9 = " .. answer)
 
 `
 Output:

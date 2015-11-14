@@ -250,7 +250,7 @@ f32 mean1: f32[] data
     taken up 3 additional lines of code.
 `
 f32 mean2: f32[] data
-    f32 sum
+    f32 sum = 0
     foreach f32 n in data
         sum += n
     return sum / size(data)
@@ -264,7 +264,7 @@ f32 mean2: f32[] data
     before each iteration of the loop, the numbers 1-100 are 
     printed, and the loop closes when i == 101
 `
-i8 i
+i8 i = 0
 while {i += 1; return i} <= 100
     print i
 

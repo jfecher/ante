@@ -1,0 +1,22 @@
+`
+    lexerUnindentStack.zy
+        Tests ability of lexer to
+        issue multiple unindent tokens without
+        advancing its current position.
+`
+
+class MyLand
+    class YourLand
+        class OurLand
+            class LandMadeForYouAndMe
+                i8 myInt
+                
+print("test") ~Should issue 4 unindent tokens before this statement
+
+
+i32 test1:
+    i32 test2:
+        i32 test3:
+            i32 test4:
+                i32 test5:
+                    print("Test")

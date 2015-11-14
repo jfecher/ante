@@ -1,2 +1,2 @@
-print 23
-print 41
+print(23)
+print(41)

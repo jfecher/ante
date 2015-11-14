@@ -3,10 +3,12 @@
         test function declarations and calls
 `
 i32 printSomething: bool b
-    if _b
-        print "Hello World!\n"
-    else
-        print "Goodbye World D:\n"
+    print("Hello World!\n")
+
+bool returnTrue: i32 i where i < 10
+    if i < 10
+        return true
+    return false
 
 printSomething(true)
 printSomething(false)

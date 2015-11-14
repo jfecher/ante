@@ -1,4 +1,5 @@
 #include "lexer.h"
+#include "parser.h"
 #include <cstring>
 #include <iostream>
 
@@ -20,9 +21,15 @@ int main(int argc, char *argv[]){
             Token t = lexer->next();
 
             while(t.type != Tok_EndOfInput){
-                std::cout << tokDictionary[t.type] << std::endl;
+                if(t.type == Tok_Operator)
+                    std::cout << tokDictionary[t.type] << " " << t.lexeme[0] << std::endl;
+                else
+                    std::cout << tokDictionary[t.type] << std::endl;
                 t = lexer->next();
             }
+        }else if(strcmp(argv[1], "-p") == 0){
+            Parser p = Parser(argv[2]);
+            cout << p.parse() << endl;
         }
     }
     return 0;

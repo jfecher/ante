@@ -19,7 +19,7 @@ enum TokenType{
     Tok_Bool,
     Tok_Void,
 
-	Tok_Assign,
+    Tok_Operator,
 	Tok_Eq,
     Tok_NotEq,
 	Tok_AddEq,
@@ -28,10 +28,6 @@ enum TokenType{
     Tok_DivEq,
 	Tok_GrtrEq,
 	Tok_LesrEq,
-    Tok_Add,
-    Tok_Sub,
-    Tok_Mul,
-    Tok_Div,
     Tok_Or,
     Tok_And,
     Tok_True,
@@ -40,13 +36,6 @@ enum TokenType{
 	Tok_FltLit,
 	Tok_StrLit,
     Tok_StrCat,
-
-    Tok_ParenOpen,
-    Tok_ParenClose,
-    Tok_BraceOpen,
-    Tok_BraceClose,
-    Tok_BracketOpen,
-    Tok_BracketClose,
 
     //keywords
     Tok_Return,
@@ -82,5 +71,7 @@ typedef struct{
 
 #define TOK(t, r, c) (Token){t, NULL, r, c}
 #define TOKL(t, r) (Token){t, l, r, c}
+
+#define IS_TERMINATING_OP(o) ((o)==']'||(o)=='}'||(o)==')')
 
 #endif

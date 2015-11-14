@@ -2,73 +2,62 @@
 #include <cstring>
 
 const char* tokDictionary[] = {
-    "Tok_EndOfInput",
-    "Tok_Ident",
+    "EndOfInput",
+    "Identifier",
 
     //types
-    "Tok_I8",
-    "Tok_I16",
-    "Tok_I32",
-    "Tok_I64",
-    "Tok_U8",
-    "Tok_U16",
-    "Tok_U32",
-    "Tok_U64",
-    "Tok_F32",
-    "Tok_F64",
-    "Tok_Bool",
-    "Tok_Void",
+    "I8",
+    "I16",
+    "I32",
+    "I64",
+    "U8",
+    "U16",
+    "U32",
+    "U64",
+    "F32",
+    "F64",
+    "Bool",
+    "Void",
 
-    "Tok_Assign",
-	"Tok_Eq",
-    "Tok_NotEq",
-	"Tok_AddEq",
-	"Tok_SubEq",
-    "Tok_MulEq",
-    "Tok_DivEq",
-	"Tok_GrtrEq",
-	"Tok_LesrEq",
-    "Tok_Add",
-    "Tok_Sub",
-    "Tok_Mul",
-    "Tok_Div",
-    "Tok_Or",
-    "Tok_And",
-    "Tok_True",
-    "Tok_False",
-	"Tok_IntLit",
-	"Tok_FltLit",
-	"Tok_StrLit",
-    "Tok_StrCat",
-
-    "Tok_ParenOpen",
-    "Tok_ParenClose",
-    "Tok_BraceOpen",
-    "Tok_BraceClose",
-    "Tok_BracketOpen",
-    "Tok_BracketClose",
+    "Operator",
+	"Eq",
+    "NotEq",
+	"AddEq",
+	"SubEq",
+    "MulEq",
+    "DivEq",
+	"GrtrEq",
+	"LesrEq",
+    "Or",
+    "And",
+    "True",
+    "False",
+	"IntLit",
+	"FltLit",
+	"StrLit",
+    "StrCat",
 
     //keywords
-    "Tok_Return",
-	"Tok_If",
-    "Tok_Elif",
-	"Tok_Else",
-	"Tok_For",
-	"Tok_ForEach",
-	"Tok_While",
-    "Tok_Do",
-    "Tok_In",
-	"Tok_Continue",
-	"Tok_Break",
-    "Tok_Import",
-    "Tok_Where",
-    "Tok_Enum",
-    "Tok_Struct",
-    "Tok_Class",
+    "Return",
+	"If",
+    "Elif",
+	"Else",
+	"For",
+	"ForEach",
+	"While",
+    "Do",
+    "In",
+	"Continue",
+	"Break",
+    "Import",
+    "Where",
+    "Enum",
+    "Struct",
+    "Class",
 
-    "Tok_Newline",
-    "Tok_Indent",
-    "Tok_Unindent",
+    "Newline",
+    "Indent",
+    "Unindent",
 };
 
 map<string, Token> keywords = {
@@ -106,14 +95,6 @@ map<string, Token> keywords = {
     {"enum",     {Tok_Enum,     NULL, 0, 0}},
     {"struct",   {Tok_Struct,   NULL, 0, 0}},
     {"class",    {Tok_Class,    NULL, 0, 0}},
-};
-
-map<string, Token> operators = {
-    {"+", {Tok_Add, NULL, 0, 0}},
-    {"-", {Tok_Sub, NULL, 0, 0}},
-    {"*", {Tok_Mul, NULL, 0, 0}},
-    {"/", {Tok_Div, NULL, 0, 0}},
-    {"..", {Tok_StrCat, NULL, 0, 0}},
 };
 
 Lexer::Lexer(void) : c{0}, n{0}
@@ -247,7 +228,7 @@ Token Lexer::genStrLitTok()
 Token Lexer::next()
 {
     if(cscope != scope){
-        if(cscope > scope){
+        if(scope > cscope){
             cscope++;
             return {Tok_Indent};
         }else{
@@ -260,42 +241,39 @@ Token Lexer::next()
     if(IS_NUMERICAL(c))  return Lexer::genNumLitTok();
     if(IS_ALPHANUM(c))   return Lexer::genAlphaNumTok();
     if(IS_WHITESPACE(c)) return Lexer::genWsTok();
-    
-    switch(c){
-        case '"': return Lexer::genStrLitTok();
-        case '-':
-            if(n == '>'){
-                incPos(2);
-                scope++;
-                return next();
-            }
-            break;
-        case '=': 
-            if(n!='='){
-                incPos();
-                return {Tok_Assign};
-            }break;
-        case '(': return {Tok_ParenOpen};
-        case ')': return {Tok_ParenClose};
-        case '[': return {Tok_BraceOpen};
-        case ']': return {Tok_BraceClose};
-        case '{': return {Tok_BracketOpen};
-        case '}': return {Tok_BracketClose};
-        case EOF: case 0: return {Tok_EndOfInput};
-        default: break;
-    }
-    
-    string s = "";
-    while(!IS_COMMENT(c) && !(IS_ALPHANUM(c)) && !IS_WHITESPACE(c) && c != EOF && c != 0){
-        s += c;
-        incPos();
+
+    if(c == '"' || c == '\'') return Lexer::genStrLitTok();
+
+    //substitute -> for an indent
+    if PAIR('-', '>'){
+        scope++;
+        incPos(2);
+        return next();
     }
 
-    auto op = operators.find(s.c_str());
-    if(op != operators.end()){
-        return op->second;
-    }else{
-        cout << "Unknown operator token '" << s << "'\n";
-        exit(1);
+    if(n == '='){
+        switch(c){
+            case '=': RETURN_PAIR(Tok_Eq);
+            case '+': RETURN_PAIR(Tok_AddEq);
+            case '-': RETURN_PAIR(Tok_SubEq);
+            case '*': RETURN_PAIR(Tok_MulEq);
+            case '/': RETURN_PAIR(Tok_DivEq);
+            case '!': RETURN_PAIR(Tok_NotEq);
+            case '>': RETURN_PAIR(Tok_GrtrEq);
+            case '<': RETURN_PAIR(Tok_LesrEq);
+        }
     }
+    
+    if PAIR('.', '.') RETURN_PAIR(Tok_StrCat);
+
+    if(c == 0 || c == EOF){
+        return {Tok_EndOfInput};
+    }
+
+    //If the character is nota, assume it is an operator and store
+    //the character in the string for identification
+    char *cPtr = new char(c);
+    Token op = {Tok_Operator, cPtr};
+    incPos();
+    return op;
 }
