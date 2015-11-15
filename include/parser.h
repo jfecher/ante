@@ -35,7 +35,7 @@ class Parser{
         Node *branch;
         Token c, n;
 
-        void parseErr(string s, bool showTok);
+        ParseErr parseErr(ParseErr e, string s, bool showTok);
         void incPos(void);
         bool accept(TokenType t);
         bool _expect(TokenType t);
@@ -49,6 +49,7 @@ class Parser{
         bool parseOp(void);
         
         ParseErr parseTopLevelStmt(void);
+        ParseErr parseTypeList(void);
         ParseErr parseStmt(void);
         ParseErr parseIfStmt(void);
         ParseErr parseBlock(void);

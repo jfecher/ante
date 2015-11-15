@@ -351,7 +351,7 @@ class Statistics
     ~from within the class
     pri f64 secretData
 
-    pro const num pi = 3.14159265
+    pro const f32 pi = 3.14159265
     
     pub i32 varCount
 
@@ -391,6 +391,8 @@ class Statistics
 `
 ~In this example, T is any type which has the operators > and < available or overloaded.
 ~For functions, the where keyword always comes at the end of the list of parameters.
+~where statements are evaluated at compile time whenever possible.  If the expression after
+~where evaluates to false, an error is thrown.
 ~NOTE: hasOps is an infix function, these will be shown later.
 pub i32 cmp: T t2  where T hasOps ['>', '<']
     if self < t2 -> return -1
@@ -472,6 +474,7 @@ class Point
     i8 infix('cmp', prec('>')): Point rVal
         if this < rVal -> return -1
         return this > rVal
+
 
 Point origin = Point(0, 0)
 Point topRight = Point(3, 4)
@@ -590,7 +593,7 @@ u8 byte = 255
 ptr<i32> pByte = ptr(byte)
 
 ptr<i32> pByte2 = ptr(pByte)
-*pByte2 = &128
+*pByte2 = 128
 
 print *pByte
 ~output: 128
@@ -600,14 +603,16 @@ print *pByte
 `
         Experimental
 `
-str fnptr(str, str) = add
+f32 fnptr(f32, f32) = add
 
 macro pstr: ident i
-    pub const str* i = "p"
+    pub const str i = "p"
 
 pstr(i)
-print *i
+print i
 ~output: p
+
+lambda: i32 x -> return x + 50
 
 
 `

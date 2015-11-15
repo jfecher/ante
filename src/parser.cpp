@@ -19,12 +19,17 @@ inline void Parser::incPos()
     n = lexer.next();
 }
 
-void Parser::parseErr(string msg, bool showTok = false)
+ParseErr Parser::parseErr(ParseErr e, string msg, bool showTok = true)
 {
     cerr << "Syntax Error: ";
     fprintf(stderr, msg.c_str());
-    if(showTok)
-        cerr << ", Got " << c.lexeme;
+    if(showTok){
+        if(c.type == Tok_Ident || c.type == Tok_StrLit || c.type == Tok_IntLit || c.type == Tok_FltLit)
+            cerr << ", got " << c.lexeme << " (" << tokDictionary[c.type] << ")\n";
+        else
+            cerr << ", got " << tokDictionary[c.type] << endl;
+    }
+    return e;
 }
 
 bool Parser::accept(TokenType t)
@@ -42,7 +47,7 @@ bool Parser::_expect(TokenType t)
     if(!accept(t)){
         string s = "Expected ";
         s += tokDictionary[t];
-        parseErr(s, true);
+        parseErr(PE_EXPECTED, s);
         return false;
     }
     return true;
@@ -60,7 +65,7 @@ bool Parser::expectOp(char op){
     if(!acceptOp(op)){
         string s = "Expected ";
         s += op;
-        parseErr(s, true);
+        parseErr(PE_EXPECTED, s);
         return false;
     }
     return true;
@@ -104,6 +109,7 @@ ParseErr Parser::parseStmt()
         case Tok_If: return parseIfStmt();
         case Tok_Newline: accept(Tok_Newline); return parseStmt();
         case Tok_Class: return parseClass();
+        case Tok_Return: accept(Tok_Return); return parseExpr();
         case Tok_Ident: return parseGenericVar();
         default: break;
     }
@@ -111,7 +117,8 @@ ParseErr Parser::parseStmt()
     if(isType(c.type)){
         return parseGenericDecl();
     }
-    return PE_VAL_NOT_FOUND; //end of file
+
+    return c.type == Tok_EndOfInput? PE_OK : parseErr(PE_VAL_NOT_FOUND, "Invalid statement"); //end of file
 }
 
 ParseErr Parser::parseGenericVar()
@@ -138,7 +145,8 @@ ParseErr Parser::parseGenericDecl()
     if(!parseVariable()) return PE_IDENT_NOT_FOUND ;
 
     if(acceptOp(':')){//funcDef
-        //TODO: parse parameters
+        ParseErr e = parseTypeList();
+        if(e!=PE_OK) return e;
         return parseBlock();
     }else if(acceptOp('=')){
         return parseExpr();
@@ -155,8 +163,18 @@ ParseErr Parser::parseClass()
 ParseErr Parser::parseIfStmt()
 {
     expect(Tok_If);
-    if(!parseExpr()) return PE_VAL_NOT_FOUND;
+    ParseErr e = parseExpr();
+    if(e != PE_OK) return e;
     return parseBlock();
+}
+
+ParseErr Parser::parseTypeList()
+{
+    while(isType(c.type)){
+        incPos();
+        expect(Tok_Ident);
+    }
+    return PE_OK;
 }
 
 bool Parser::parseVariable()
@@ -183,11 +201,19 @@ bool Parser::parseValue()
     switch(c.type){
         case Tok_IntLit:
         case Tok_FltLit:
-        case Tok_StrLit: 
+        case Tok_StrLit:
+        case Tok_True:
+        case Tok_False:
             incPos();
             return true;
         case Tok_Ident:
             return parseVariable();
+        case Tok_Operator:
+            if(*c.lexeme != '(') return false;
+            incPos();
+            parseExpr();
+            expectOp(')');
+            return true;
         default: return false;
     }
 }
@@ -206,6 +232,7 @@ bool Parser::parseOp()
         case Tok_NotEq:
         case Tok_GrtrEq:
         case Tok_LesrEq:
+        case Tok_StrCat:
             incPos();
             return true;
         default: return false;
@@ -214,14 +241,16 @@ bool Parser::parseOp()
 
 ParseErr Parser::parseExpr()
 {
-    if(!parseValue()) return PE_VAL_NOT_FOUND;
+    if(!parseValue()){
+        return parseErr(PE_VAL_NOT_FOUND, "Initial value not found in expression");
+    }
     return parseRExpr();
 }
 
 ParseErr Parser::parseRExpr()
 {
     if(parseOp()){
-        if(!parseValue()) return PE_VAL_NOT_FOUND;
+        if(!parseValue()) return parseErr(PE_VAL_NOT_FOUND, "Following value not found in expression");
         return parseRExpr();
     }
     return PE_OK;
