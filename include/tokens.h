@@ -60,6 +60,7 @@ enum TokenType{
     Tok_Unindent,
 };
 
+//defined in src/lexer.cpp
 extern const char* tokDictionary[];
 
 typedef struct{
