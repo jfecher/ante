@@ -1,8 +1,17 @@
 `
-        Zy is an Object oriented language which allows both static and dynamic
-    type checking.  Each line of zy code is a statement ending in a newline
-    character.  Expressions such as 3 * (4 + 5) may be part of a statement,
-    but are not valid alone.
+        Zy is an multi paradigm language which includes various elements from
+    functional, imperative, object oriented, and concurrent paradigms.  Each 
+    line of zy code is a statement ending in a newline character.  Expressions 
+    such as 3 * (4 + 5) may be part of a statement, but are not valid alone.
+    Whitespace is also significant if it is at the beginning of a line.  Blocks
+    are marked by an increase in indentation, and ended by an unindentation.
+    An indentation is always either four spaces, or a single tab.
+
+        Philosophy:
+    If something can be done compile time, then it should be.  In other words, 
+    constant folding should be employed whenever possible.  If a 1500 line 
+    program only produces the output "Hello World" then that will be the only 
+    thing compiled into the binary.
 `
 
 `
@@ -157,10 +166,78 @@ println("Test #", add(3, 43))
 ~output: Tuple(2: Test #, 46)
 
 `
+        Pathogen infections and Cleanse
+    Pathogen is a modifier given to a function which can never be evaluated
+    compile time.  Examples include io functions such as print and read.  When
+    called within another function, the pathogen function infects that function
+    as well, making it a pathogen function without the need to explicitely
+    declare it as such.  The implicit pathogen function is said to be infected.
+    The pathogen modifier is usually only used in rare cases such as defining your 
+    own print function without utilizing the std api, or using an external c api.  
+    While less common, the pathogen modifier may be used for variables, classes, enums, etc.
+`
+pathogen void myPrint: str msg
+    i32 i = 4 + 2
+    system("echo '" .. msg .. "'") ~note: system is already a pathogen function
+
+pathogen void c_ffi("putchar"): u8
+
+~Because the following function uses the pathogen myPrint, it cannot be
+~eliminated from the final binary, it is said to be infected.
+void printMsg:
+    myPrint("Hello World!")
+
+~To use a pathogen function without the host becoming infected, the keyword cleanse
+~is used when calling a pathogen or infected function.  This compile time evaluation
+~of pathogen functions can be useful in several applications, such as loading an image
+~into a variable or class representing it without the need to search for it during runtime.
+Image* compileTimeLoadImg:
+    File *f = new File("path/to/image.png")
+    u8[] data
+    cleanse f.readAll(data) ~Reads all of the image data into data at compile time
+    return new Image(data)
+
+~Conversely, to infect a non-pathogen function, the infect keyword may be used.
+~Note that only the infected instance of the function is evaluated during runtime.
+Image* runTimeLoadImg:
+    return infect compileTimeLoadImg()
+
+`
+        Ct
+    The keyword ct is used to indicate control flow which is only to be
+    evaluated at run time, and should never be compiled.  Ct can be used
+    for many things, including printing out a message during compile time,
+    assuring a function argument is valid, checking for possible integer
+    overflow, etc.  Additionaly, they have the power to throw a possible
+    exception, stopping compilation immediately.
+`
+
+`
+    The following function takes two parameters, and if m is negative, prints
+    a hint to the programmer using the api during compilation.
+    ~NOTE: a better method of ensuring m is positive is using the where
+           statement discussed later.
+`
+f64 calculateForce: f64 m, f64 a
+    ct
+        if m < 0
+            myPrint("calculateForce: mass cannot be negative!")
+    return m*a
+
+i8 add: i8 a, i8 b
+    ct ~Only check for a possible overflow during compilation, otherwise just run with it
+        i16 c = a
+        i16 d = b
+        if c + d > 255 or c + d < -256
+            print("Likely integer overflow in add function.")
+    return a + b
+
+`
         C FFI
     The c foreign function interface is implemented within the c_ffi module.
 `
 import c_ffi("path/to/file.h", ["functions", "to", "import"])
+
 
 ~Or, every function can be imported using * as the filename.
 import c_ffi("some/other/file.h", "*")
@@ -313,7 +390,7 @@ class Animal
     variable, and the keyword new followed by the classname to be initialized 
     with the parameters of the _init function declared within the class.
 `
-Animal clifford = new Animal(7, "magnum rubrum canis", "Clifford")
+Animal* clifford = new Animal(7, "magnum rubrum canis", "Clifford")
 
 
 `
@@ -394,9 +471,32 @@ class Statistics
 ~where statements are evaluated at compile time whenever possible.  If the expression after
 ~where evaluates to false, an error is thrown.
 ~NOTE: hasOps is an infix function, these will be shown later.
-pub i32 cmp: T t2  where T hasOps ['>', '<']
+pub i32 cmp: T t2  where t2 hasOps ['>', '<']
     if self < t2 -> return -1
     return self > t2
+
+
+~Here is the calculateForce function from earlier
+f64 calculateForce: f64 m, f64 a
+    ct
+        if m < 0
+            myPrint("calculateForce: mass cannot be negative!")
+
+    return m*a
+
+~and this is its equivilent using where
+f64 calculateForce: f64 m, f64 a  where m >= 0
+    return m*a
+
+calculateForce(-54)
+`
+Exception thrown when the where condition is not met:
+
+function calculateForce: f64 m, f64 a requires the condition
+m >= 0
+which was not met for input value -54
+
+`
 
 ~The syntax for type specifications in a class is somewhat similar.
 ~In the Angle class, each time it is initialized, a bool is specified as true if the
@@ -612,7 +712,14 @@ pstr(i)
 print i
 ~output: p
 
+~possible new c_ffi syntax
+pathogen void c_ffi("putchar"):
+
+~lambda functions
 lambda: i32 x -> return x + 50
+
+~alternate c_ffi declaration
+pathogen void* c_ffi("malloc"): u64 size
 
 
 `

@@ -15,14 +15,47 @@ enum ParseErr{
 
 class Node{
     public:
-        vector<Node> *children;
-        Node *next;
-        bool compile(void);
-        char* operator<<(ostream o);
-        ~Node(){
-            delete next;
-            delete children;
-        }
+        virtual ~Node(){}
+        virtual bool *compile(void) = 0;
+        virtual bool *exec(void) = 0;
+};
+
+class IntLitNode{
+    public:
+        string val;
+        virtual bool *compile(void);
+        virtual bool *exec(void);
+};
+
+class BinOpNode{
+    public:
+        string op;
+        Node *lval, *rval;
+        virtual bool *compile(void);
+        virtual bool *exec(void);
+};
+
+class VarNode{
+    public:
+        string name;
+        virtual bool *compile(void);
+        virtual bool *exec(void);
+};
+
+class StrLitNode{
+    public:
+        string val;
+        virtual bool *compile(void);
+        virtual bool *exec(void);
+};
+
+class VarDeclNode : Node{
+    public:
+        string type;
+        string name;
+        Node *expr;
+        virtual bool *compile(void);
+        virtual bool *exec(void);
 };
 
 class Parser{
