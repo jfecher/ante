@@ -19,6 +19,12 @@
     modules math, io, str, op, and c_ffi which are some of the currently planned modules.
 `
 import "math", "io", "string", "op", "c_ffi"
+`
+    Arbitrary strings or string arrays, or even functions returning these values can be 
+    imported as long as they can be resolved compile time.
+`
+import stuff()
+
 
 ~This is an example of a single line comment
 
@@ -35,7 +41,7 @@ import "math", "io", "string", "op", "c_ffi"
     By default, dynamic variables are set to the int type.
 `
 dyn myVar
-print typeof(myVar) ~output: dynamic i8
+print(typeof(myVar)) ~output: dynamic i8
 
 `
     types can also be assigned to variables, below are the primitive types
@@ -66,6 +72,33 @@ i32 n
 
 ~NOTE: the .. below is the string concat operator
 print(typeof(n) .. " " .. n)  ~output: i32 43
+
+`
+        Operators
+    Zy includes the following operators:
+
+    binary:
+        +  addition
+        -  subtraction
+        *  multiplication
+        /  division
+        %  remainder
+        <  less than
+        >  greater than
+        <= less than or equal to
+        >= greater than or equal to
+        == equal to 
+        != not equal to
+        && logical and
+        || logical or
+
+    unary:
+        -  negative
+        !  not
+        #  array length
+        *  pointer dereference
+        &  address of
+`
 
 `
         Arrays
@@ -118,11 +151,11 @@ i8[30], str[2] anotherTuple = arr, ["This tuple contains", "two arrays"]
 dyn dynTuple = 46, "Fourty-six", 46.0
 
 `
-    When printed, tuples are by default printed with the following syntax:
-        Tuple([size]: [values])
+    When a tuple is printed, each of its values are individually printed, with
+    parenthesis enclosing them all.
 `
 print(dynTuple)
-~output: Tuple(3: 46, Fourty-six, 46)
+~output: (46, Fourty-six, 46)
 
 `
         Functions
@@ -190,7 +223,8 @@ void printMsg:
 ~To use a pathogen function without the host becoming infected, the keyword cleanse
 ~is used when calling a pathogen or infected function.  This compile time evaluation
 ~of pathogen functions can be useful in several applications, such as loading an image
-~into a variable or class representing it without the need to search for it during runtime.
+~into a variable or class representing it without the need to search for it during runtime,
+~and eliminating the need to include the raw image as an asset in production.
 Image* compileTimeLoadImg:
     File *f = new File("path/to/image.png")
     u8[] data
@@ -205,7 +239,7 @@ Image* runTimeLoadImg:
 `
         Ct
     The keyword ct is used to indicate control flow which is only to be
-    evaluated at run time, and should never be compiled.  Ct can be used
+    evaluated at compile time, and should never be compiled.  Ct can be used
     for many things, including printing out a message during compile time,
     assuring a function argument is valid, checking for possible integer
     overflow, etc.  Additionaly, they have the power to throw a possible
