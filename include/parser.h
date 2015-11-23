@@ -15,38 +15,38 @@ enum ParseErr{
 
 class Node{
     public:
-        virtual ~Node(){}
+        ~Node(){}
         virtual bool *compile(void) = 0;
         virtual bool *exec(void) = 0;
 };
 
-class IntLitNode{
+class IntLitNode : Node{
     public:
         string val;
-        virtual bool *compile(void);
-        virtual bool *exec(void);
+        bool *compile(void);
+        bool *exec(void);
 };
 
-class BinOpNode{
+class BinOpNode : Node{
     public:
         string op;
         Node *lval, *rval;
-        virtual bool *compile(void);
-        virtual bool *exec(void);
+        bool *compile(void);
+        bool *exec(void);
 };
 
-class VarNode{
+class VarNode : Node{
     public:
         string name;
-        virtual bool *compile(void);
-        virtual bool *exec(void);
+        bool *compile(void);
+        bool *exec(void);
 };
 
-class StrLitNode{
+class StrLitNode : Node{
     public:
         string val;
-        virtual bool *compile(void);
-        virtual bool *exec(void);
+        bool *compile(void);
+        bool *exec(void);
 };
 
 class VarDeclNode : Node{
@@ -54,8 +54,8 @@ class VarDeclNode : Node{
         string type;
         string name;
         Node *expr;
-        virtual bool *compile(void);
-        virtual bool *exec(void);
+        bool *compile(void);
+        bool *exec(void);
 };
 
 class Parser{

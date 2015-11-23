@@ -3,11 +3,13 @@ vpath %.h include
 vpath %.d obj
 
 WARNINGS := -Wall
-CPPFLAGS := -g -O2 -std=c++11 $(WARNINGS)
+LLVMFLAGS := `llvm-config --cppflags --libs all --ldflags --system-libs`
 
-PROJDIRS := src include
+CPPFLAGS := -g -O2 -std=c++11 $(WARNINGS) $(LLVMFLAGS)
 
-SRCFILES := $(shell find $(PROJDIRS) -type f -name "*.cpp")
+SRCDIRS := src
+
+SRCFILES := $(shell find $(SRCDIRS) -type f -name "*.cpp")
 
 OBJFILES := $(patsubst src/%.cpp,obj/%.o,$(SRCFILES))
 
@@ -18,7 +20,7 @@ DEPFILES := $(OBJFILES:.o=.d)
 .PHONY: all clean zy
 
 zy: $(OBJFILES)
-	$(CXX) $(CPPFLAGS) -o zy $?
+	$(CXX) $? $(CPPFLAGS) -o zy
 
 new: clean zy
 

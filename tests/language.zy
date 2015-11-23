@@ -1,13 +1,13 @@
 `
         Zy is an multi paradigm language which includes various elements from
-    functional, imperative, object oriented, and concurrent paradigms.  Each 
+    functional, imperative, and object oriented paradigms.  Each 
     line of zy code is a statement ending in a newline character.  Expressions 
     such as 3 * (4 + 5) may be part of a statement, but are not valid alone.
     Whitespace is also significant if it is at the beginning of a line.  Blocks
     are marked by an increase in indentation, and ended by an unindentation.
     An indentation is always either four spaces, or a single tab.
 
-        Philosophy:
+        Philosophy
     If something can be done compile time, then it should be.  In other words, 
     constant folding should be employed whenever possible.  If a 1500 line 
     program only produces the output "Hello World" then that will be the only 
@@ -60,12 +60,12 @@ bool myBool = false
     even completely redefined to that type.
 `
 
-print i32 4.99  ~output: 4
+print(i32 4.99)  ~output: 4
 f32 n = 43.876
 i32 n
 
 ~NOTE: the .. below is the string concat operator
-print typeof(n) .. " " .. n  ~output: i32 43
+print(typeof(n) .. " " .. n)  ~output: i32 43
 
 `
         Arrays
@@ -92,7 +92,7 @@ f32[5] assortedNums = 9, -76, 3.14159265, 2^8, 1 + 2*(6-3)
     yield the last element of arr.
 `
 assortedNums[0] += assortedNums[1]
-print assortedNums[0] .. ", " .. assortedNums[-2]
+print(assortedNums[0] .. ", " .. assortedNums[-2])
 
 ~output: -67, 256
 
@@ -121,7 +121,7 @@ dyn dynTuple = 46, "Fourty-six", 46.0
     When printed, tuples are by default printed with the following syntax:
         Tuple([size]: [values])
 `
-print dynTuple
+print(dynTuple)
 ~output: Tuple(3: 46, Fourty-six, 46)
 
 `
@@ -138,7 +138,7 @@ print dynTuple
     opening and closing brackets.
 `
 void printMsg:
-    print "Hello World!"
+    print("Hello World!")
 
 `
     This add function takes in two parameters, augend and addend, and returns
@@ -157,7 +157,7 @@ f64 add: f64 augend, f64 addend
 `
 
 void println: ...
-    print _params, '\n'
+    print(params, '\n')
 
 `
     Here is the syntax for calling functions:
@@ -260,31 +260,45 @@ putchar(10)
     through each element of an array.
 `
 while true
-    print "I loop forever"
+    print("I loop forever")
 
 
 do
-    print "I only loop once"
+    print("I only loop once")
 while false
 
 ~prints 1-10
 for i8 i = 1; i <= 10; i += 1
-    print i .. " "
+    print(i .. " ")
 
 f32 total
 foreach f32 n in arr
     total += n
 
 `
+        Ranges
+    Ranges are created by the .. operator and are lazily evaluated by default.
+    Since they can be used in expressions, they are often very useful, especially
+    for foreach loops.
+`
+
+~Print 1 - 10 inclusive
+foreach i32 i in 1..10
+    print(i)
+
+~print all odd numbers in the range of 1-19
+foreach i32 i in 2*(1..10)-1
+    print(i)
+`
         The -> Symbol
     The -> symbol can be optionaly used at the end of statements expecting
     an indent to be replaced with an indent.  This is useful for compressing
     short statements into a single line.
 `
-if 5 > 2 -> print "5 is greater than 2"
-else     -> print "Invalid laws of mathematics, please try again in an alternate universe"
+if 5 > 2 -> print("5 is greater than 2")
+else     -> print("Invalid laws of mathematics, please try again in an alternate universe")
 
-foreach f32 f in arr -> print f
+foreach f32 f in arr -> print(f)
 
 f32 subtract: f32 a, f32 b -> return a - b
 
@@ -343,7 +357,7 @@ f32 mean2: f32[] data
 `
 i8 i = 0
 while {i += 1; return i} <= 100
-    print i
+    print(i)
 
 
 `
@@ -357,7 +371,7 @@ struct Coord
 ~To create a struct, typecast a tuple containing the struct's members to the
 ~corresponding struct type.
 Coord coord = Coord(100, -50, 66.7)
-print coord  ~output: 100, -50, 66.7
+print(coord)  ~output: 100, -50, 66.7
 
 
 `
@@ -383,7 +397,7 @@ class Animal
         name = _params[2]
 
     void printInfo:
-        print name .. " is a/an " .. species .. " and is " .. age .. " year(s) old.\n"
+        print(name .. " is a/an " .. species .. " and is " .. age .. " year(s) old.\n")
 
 `
     To create an instance of the class, use the class name as the type of the
@@ -407,7 +421,7 @@ class Person : Animal
     This function obscures the printInfo declared in the Animal super class.
 `
     void printInfo:
-        print name .. " is " .. age .. " years old and is a(n) " .. job
+        print(name .. " is " .. age .. " years old and is a(n) " .. job)
 
 
 Person john = Person(44, "electrician", "John")
@@ -456,7 +470,7 @@ class Statistics
             varCount += 1
 
 `
-        Type Specifications and Operator Overloading
+        Type Specifications, Where, and Operator Overloading
     Type specifications in zy are a powerful way to specialize a class or function
     to a specific usage.  In its most general case, it can be used in much the same
     way as generics or templates in other object oriented languages.  To declare a type
@@ -505,8 +519,12 @@ which was not met for input value -54
 class Angle<bool isRadians>
     f32 angle
 
-    void _init: f32 a
-        angle = a
+    `
+        If the _init function contains parameters with the same names as instance
+        data for the class, then the instance data is automatically set equal
+        to the parameter of the same name.
+    `
+    void _init: f32 angle
 
     if isRadians
         u8 getQuadrant:
@@ -517,23 +535,52 @@ class Angle<bool isRadians>
 ~usage:
 Angle<true> a1 = Angle(3.14159265 * 2 / 3)
 Angle<false> a2 = Angle(120)
-print a1.getQuadrent() == a2.getQuadrent()
+assert(a1.getQuadrent() == a2.getQuadrent())
+
+i32 Angle<false>.getQuadrant:
+    return angle / 90 % 4 + 1
 
 `
     The use of type specifications eliminates the need to store excess metadata about
     the object to be checked each time a function runs as well as encouraging classes
     to be more specialized without having several copies of otherwise very similar
     classes, eg. having a AngleDegrees and AngleRadians class seperate then having
-    to worry about them interacting properly.
+    to worry about them interacting properly.  In this usage, type specifications
+    act by creating a parent class Angle, and two child classes, Angle<true>, and
+    Angle<False>, which correspond to AngleRadians and AngleDegrees.
 `
 
+
+`
+    To use type specifications as generics, simply specify a type as a specification.
+`
+class MySmartPtr<type T>
+    T* rawPtr
+
+    void _init: T val
+        rawPtr = alloc(val)
+    
+    void _init: T* rawPtr
+    
+    void _deinit:
+        free(rawPtr)
+
+    ~Note that to avoid ambiguity when overloading the unary * operator,
+    ~deref can be used as the parameter for the op function.  If "*" is
+    ~used, the only factor differentiating it from the binary * is that
+    ~the unary * function does not take any parameters.
+    T op("deref"):
+        return *rawPtr
+
+    T** op("&"):
+        return &rawPtr
 
 `
         Operator Overloading and Infix Functions
     Note that the cmp example above requires that the operator < is implemented for
     the two objects.  To do this we must implement operator overloading.  In the
     following example, the class Point is created and overloads the > and < operators,
-    and creates the new operator <=> for comparisons.
+    and creates the new infix function cmp for comparisons.
 `
 class Point
     pub i32 x, y
@@ -546,7 +593,8 @@ class Point
         Now to implement the < operator. Each operator is declared as a function 
         with the name generated by the function op which is imported from the 
         op module. This function requires the operator in question in string form.  Invalid
-        operators will throw a compile-time error.
+        operators will throw a compile-time error.  Note that since operators are declared
+        within classes, operators for primitive datatypes cannot be redefined.
     `
     bool op('<'): Point rVal
         if x < rVal.x
@@ -579,16 +627,29 @@ class Point
 Point origin = Point(0, 0)
 Point topRight = Point(3, 4)
 
-print origin < topRight
-print origin > topRight
+print(origin < topRight)
+print(origin > topRight)
 
-print origin cmp topRight
+print(origin cmp topRight)
 `output
 true
 false
 -1
 5
 `
+
+`
+        Class Extensions
+    The ext keyword can be used to extend an already declared
+    class with new methods, but no new instance data can be
+    added.  A common usage of this would be extending an API
+    to implement a function or inherent from your own parent
+    class to better fit in with your class hierarchy.
+`
+ext Point : SomeAdditionalParentClass
+    ~implement new methods
+    bool op("=="): Point p2
+        return this.x == p2.x && this.y == p2.y
 
 `
         Pattern Matching
@@ -602,20 +663,20 @@ false
 
 i8 testInt = 3
 match testInt
-    1 -> print "Yup, its one"
-    2 -> print "It's actually two"
-    3 -> print "Nope, it's three"
-    4 .. 10 -> print "It's between 4 and 10 inclusive"
-    _ -> print "It's not one, two, or three, or in the range 4-10"
+    1 -> print("Yup, its one")
+    2 -> print("It's actually two")
+    3 -> print("Nope, it's three")
+    4 .. 10 -> print("It's between 4 and 10 inclusive")
+    _ -> print("It's not one, two, or three, or in the range 4-10")
 ~output: Nope, it's three
 
 ~In this example, match is used to determine Joe's class
 Person joe = Person(32, "Programmer", "Joe")
 match joe
-    Point  -> print "Joe is a point"
-    Animal -> print "Joe is an Animal"
-    Person -> print "Joe is a Person"
-    _      -> print "I don't know what Joe is" 
+    Point  -> print("Joe is a point")
+    Animal -> print("Joe is an Animal")
+    Person -> print("Joe is a Person")
+    _      -> print("I don't know what Joe is")
 ~output: Joe is an Animal
 ~This is because the Person class inherits from the Animal
 ~class, so the Animal cast to joe was the first valid cast
@@ -628,11 +689,11 @@ String testStr = String("Test", 4)
 
 match testStr
     String("Test", 3)
-        print "This will not be matched"
+        print("This will not be matched")
     String("Testing", 4)
-        print "This will not be matched either"
+        print("This will not be matched either")
     String("Test", 4")
-        print "This will be matched"
+        print("This will be matched")
 
 `
         Enums
@@ -647,13 +708,14 @@ match testStr
 enum Suit -> Diamonds, Hearts, Spades, Clubs
 
 Suit spades = Suit.Spades
-print spades, " ", string spades  ~output: 2 Spades
+print(spades, " ", str spades)  ~output: 2 Spades
 
 struct Card
     u8 number
     Suit suit
 
 Card fourOfHearts = Card(4, Suit.Hearts)
+
 
 
 `
@@ -677,8 +739,15 @@ Card* tod = new Card(3, Suit.Diamonds)
 
 ~alternatively, data can be manually allocated.  The following is equivilent
 ~to the statement above
-Card* tod = alloc(sizeof(Card))
+Card* tod = malloc(sizeof(Card))
 *tod = Card(3, Suit.Diamonds)
+
+~In addition to the malloc function from the c library, there is the alloc
+~function which can fully initialize a pointer.
+Card* foh = alloc(Card(5, Suit.Hearts))
+
+~Allocate example with size sizeof(5) and initialize it to the value 5
+u8* example = alloc(5)
 
 ~Raw pointers must be manually freed with the free function
 free(ptrToFive)
@@ -686,40 +755,123 @@ free(tod)
 
 ~For this reason, it is reccomended to instead use the ptr class which
 ~Has every relevant operator properly overloaded.
-u8 byte = 255
-
 ~The ptr class is automatically freed when it goes out of scope, and
 ~keeps track of the amount of references with little overhead.
+
+u8 byte = 255
 ptr<i32> pByte = ptr(byte)
 
 ptr<i32> pByte2 = ptr(pByte)
 *pByte2 = 128
 
-print *pByte
+print(*pByte)
+
+`
+        Automatic dereferencing.
+    When accessing a member function through a pointer to an object,
+    dereferences are automatically added, eliminating the need for a
+    seperate member accessor operator for pointers (-> in c like
+    languages).
+`
+class PtrExample
+    void printMsg:
+        print("Hello World!")
+
+PtrExample ex1 = PtrExample()
+PtrExample* ex2 = new PtrExample()
+PtrExample** ex3 = alloc(ex2)
+
+ex1.printMsg() ~No pointer, so no dereferencing is necessary
+ex2.printMsg() ~(*ex2).printMsg()
+ex3.printMsg() ~(**ex3).printMsg()
+
+
+
+
 ~output: 128
+
+`
+        Function pointers
+    To declare a function pointer, the following syntax is used:
+
+    returnType(paramType1, paramType2, ...) name
+
+    Notice the absence of the *, which is implied since it is not
+    possible to store a function without a pointer to it.
+`
+~Some functions to point to:
+f32 mul: f32 a, f32 b -> return a * b
+f32 div: f32 a, f32 b -> return a / b
+
+~This function takes one parameter, a function pointer 
+~that takes two f32s and returns one as well.
+f32 doOperation: f32 num, f32(f32, f32) opFunc
+    return opFunc(6, 4)
+
+~our function pointer
+f32(f32, f32) fnPtr = mul
+
+assert(doOperation(fnPtr) == 24)
+
+fnPtr = div
+assert(doOperation(fnPtr) == 1.5)
 
 
 
 `
         Experimental
 `
-f32 fnptr(f32, f32) = add
-
 macro pstr: ident i
     pub const str i = "p"
+    print(i)
 
-pstr(i)
-print i
+pstr(g)
 ~output: p
 
 ~possible new c_ffi syntax
-pathogen void c_ffi("putchar"):
+pathogen void c_ffi("putchar"): u8
 
 ~lambda functions
 lambda: i32 x -> return x + 50
 
 ~alternate c_ffi declaration
 pathogen void* c_ffi("malloc"): u64 size
+
+~possibly shorten pathogen to pgen
+pgen void* c_ffi("malloc"): u64 size
+
+~syntax change for type casts to distinguish them from declarations
+f32 f = 7 as f32
+f32 f = (f32)7
+f32 f = f32 cast 7
+f32 f = 7 cast f32
+
+~threading and concurrency support
+async void printMsg: str msg
+    print(msg)
+
+sync foreach i32 i in arr
+    print(i)
+
+f32 f = await someFunction()
+
+~expanded usage of where as ternary operator
+f32 f = x+2 where x > 0 else x-2
+
+~alternate, more python way
+f32 f = x+2 if x > 0 else x-2
+
+
+~Smart pointers by default, raw pointers made with raw keyword
+raw i32* rawPtr = &3
+
+~Is keyword/operator for matching types or values
+assert(3 is i32)
+assert(5 is 5)
+
+~Type system for creating new types as a combination
+~of others, as well as evaluating types as values.
+type Coord = Coord2D || Coord3D
 
 
 `
@@ -748,7 +900,6 @@ statements:
     elif 
     else 
     import 
-    print
     match
     
 loops: 
@@ -802,30 +953,6 @@ _params
 
 _paramc
     amount of parameters in the current function
-
-_precision
-    int containing the amount of decimal places to print 
-    when printing a num
-    
-    default: 10
-    min: 0
-    max: 21
-
-_G
-    The global variable/function table.  Could be used to
-    call a function name given the name as astring
-    
-    example:
-        _G["myFunc"](var1, var2, ...)
-
-_
-    a dynamic variable that represents the return value of an
-    embedded statement.  Gets reset to 0 at the start of each
-    embedded statement.
-
-    default: 0
-    dynamic: true
-
 `
 
 `
@@ -833,33 +960,4 @@ _
 _init
     Can be declared within a class to be automatically called
     when creating a new instance of the class.
-
-_add
-    Can be declared within a class to be automatically called
-    when adding two instances of the class.
-
-_sub
-    Can be declared within a class to be automatically called
-    when subtracting two instances of the class.
-
-_mul
-    Can be declared within a class to be automatically called
-    when multiplying two instances of the class.
-
-_div
-    Can be declared within a class to be automatically called
-    when dividing two instances of the class.
-
-_mod
-    Can be declared within a class to be automatically called
-    when getting the remainder of two instances of the class.
-
-_pow
-    Can be declared within a class to be automatically called
-    when getting the power of two instances of the class.
-
-_cnct
-    Can be declared within a class to be automatically called
-    when contatenating two instances of the class.
-
 `
