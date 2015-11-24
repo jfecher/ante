@@ -536,13 +536,13 @@ f64 calculateForce: f64 m, f64 a
 f64 calculateForce: f64 m, f64 a  where m >= 0
     return m*a
 
-calculateForce(-54)
+calculateForce(-54, 2)
 `
 Exception thrown when the where condition is not met:
 
 function calculateForce: f64 m, f64 a requires the condition
 m >= 0
-which was not met for input value -54
+which was not met for input value m = -54
 
 `
 
@@ -571,9 +571,6 @@ Angle<true> a1 = Angle(3.14159265 * 2 / 3)
 Angle<false> a2 = Angle(120)
 assert(a1.getQuadrent() == a2.getQuadrent())
 
-i32 Angle<false>.getQuadrant:
-    return angle / 90 % 4 + 1
-
 `
     The use of type specifications eliminates the need to store excess metadata about
     the object to be checked each time a function runs as well as encouraging classes
@@ -593,7 +590,7 @@ class MySmartPtr<type T>
 
     void _init: T val
         rawPtr = alloc(val)
-    
+   
     void _init: T* rawPtr
     
     void _deinit:
@@ -777,7 +774,7 @@ Card* tod = malloc(sizeof(Card))
 *tod = Card(3, Suit.Diamonds)
 
 ~In addition to the malloc function from the c library, there is the alloc
-~function which can fully initialize a pointer.
+~function which can fully allocate a pointer, and set it equal to a value.
 Card* foh = alloc(Card(5, Suit.Hearts))
 
 ~Allocate example with size sizeof(5) and initialize it to the value 5
@@ -786,6 +783,7 @@ u8* example = alloc(5)
 ~Raw pointers must be manually freed with the free function
 free(ptrToFive)
 free(tod)
+free(foh)
 
 ~For this reason, it is reccomended to instead use the ptr class which
 ~Has every relevant operator properly overloaded.
@@ -796,7 +794,7 @@ u8 byte = 255
 ptr<i32> pByte = ptr(byte)
 
 ptr<i32> pByte2 = ptr(pByte)
-*pByte2 = 128
+pByte2 = 128
 
 print(*pByte)
 
@@ -859,6 +857,9 @@ macro pstr: ident i
     pub const str i = "p"
     print(i)
 
+macro or:  -> ||
+macro and: -> &&
+
 pstr(g)
 ~output: p
 
@@ -892,11 +893,11 @@ f32 f = await someFunction()
 ~expanded usage of where as ternary operator
 f32 f = x+2 where x > 0 else x-2
 
-~alternate, more python way
+~alternate, more pythonic way
 f32 f = x+2 if x > 0 else x-2
 
 
-~Smart pointers by default, raw pointers made with raw keyword
+~Smart pointers by default, raw pointers made with raw modifier
 raw i32* rawPtr = &3
 
 ~Is keyword/operator for matching types or values
@@ -906,6 +907,7 @@ assert(5 is 5)
 ~Type system for creating new types as a combination
 ~of others, as well as evaluating types as values.
 type Coord = Coord2D || Coord3D
+type Coord = Coord2D or Coord3D
 
 
 `
@@ -969,6 +971,7 @@ other:
 $
 \
 |
+?
 
 `
 
@@ -994,4 +997,8 @@ _paramc
 _init
     Can be declared within a class to be automatically called
     when creating a new instance of the class.
+
+_deinit
+    Can be declared within a class to be automatically called
+    when the class goes out of scope.
 `

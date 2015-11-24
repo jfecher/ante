@@ -51,9 +51,18 @@ class StrLitNode : Node{
 
 class VarDeclNode : Node{
     public:
-        string type;
+        Token type;
         string name;
         Node *expr;
+        bool *compile(void);
+        bool *exec(void);
+};
+
+class FuncDeclNode : Node{
+    public:
+        Token type;
+        string name;
+        Node *body;
         bool *compile(void);
         bool *exec(void);
 };

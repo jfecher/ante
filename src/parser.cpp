@@ -141,6 +141,8 @@ ParseErr Parser::parseGenericVar()
 
 ParseErr Parser::parseGenericDecl()
 {
+    Token type = c;
+    
     incPos();//assume type is already found, and eat it
     if(!parseVariable()) return PE_IDENT_NOT_FOUND ;
 
