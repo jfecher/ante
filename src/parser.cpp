@@ -10,7 +10,8 @@ Parser::Parser(const char* file) : lexer(file)
 
 ParseErr Parser::parse()
 {
-    return parseTopLevelStmt();
+    buildParseTree();
+    return errFlag;
 }
 
 inline void Parser::incPos()
@@ -19,7 +20,7 @@ inline void Parser::incPos()
     n = lexer.next();
 }
 
-ParseErr Parser::parseErr(ParseErr e, string msg, bool showTok = true)
+void Parser::parseErr(ParseErr e, string msg, bool showTok = true)
 {
     cerr << "Syntax Error: ";
     fprintf(stderr, msg.c_str());
@@ -29,7 +30,7 @@ ParseErr Parser::parseErr(ParseErr e, string msg, bool showTok = true)
         else
             cerr << ", got " << tokDictionary[c.type] << endl;
     }
-    return e;
+    errFlag = e;
 }
 
 bool Parser::accept(TokenType t)
@@ -137,44 +138,50 @@ Node* Parser::parseStmt()
     }
 
     if(c.type != Tok_EndOfInput){
-        errFlag = parseErr(PE_INVALID_STMT, "Invalid statement starting with ");
+        parseErr(PE_INVALID_STMT, "Invalid statement starting with ");
     }
     return NULL;
 }
 
 Node* Parser::parseGenericVar()
 {
-    if(!parseVariable()) return PE_IDENT_NOT_FOUND;
+    string identifier = c.lexeme;
+    expect(Tok_Ident);
     
     if(acceptOp('(')){//funcCall
-        ParseErr e = parseExpr();
-        if(e != PE_OK) return e;
+        FuncCallNode *n = new FuncCallNode(identifier, parseExpr());
+        if(errFlag != PE_OK) return n;
         expectOp(')');
-        return PE_OK;
+        return n;
     }
 
     //TODO: expand to += -= *= etc
     if(acceptOp('=')){//assignment
         return parseExpr();
     }
-    return PE_OK;
+    return NULL;//TODO
 }
 
 Node* Parser::parseGenericDecl()
 {
     Token type = c;
-    
     incPos();//assume type is already found, and eat it
-    if(!parseVariable()) return PE_IDENT_NOT_FOUND ;
+    
+    string name = c.lexeme;
+    if(!parseVariable())
+        return NULL;
 
     if(acceptOp(':')){//funcDef
-        ParseErr e = parseTypeList();
-        if(e!=PE_OK) return e;
-        return parseBlock();
+        NamedValNode *params = parseTypeList();
+        if(errFlag != PE_OK) return NULL;
+        Node *body = parseBlock();
+        return new FuncDeclNode(name, type, params, body);
     }else if(acceptOp('=')){
-        return parseExpr();
+        return new VarDeclNode(name, type, parseExpr());
     }
-    return PE_OK;
+
+    //declaration without default value
+    return new VarDeclNode(name, type, NULL);
 }
 
 Node* Parser::parseClass()
@@ -186,20 +193,36 @@ Node* Parser::parseClass()
 Node* Parser::parseIfStmt()
 {
     expect(Tok_If);
-    ParseErr e = parseExpr();
-    if(e != PE_OK) return e;
-    return parseBlock();
+    Node *conditional = parseExpr();
+    if(errFlag != PE_OK) return NULL;
+    Node *body = parseBlock();
+    return new IfNode(conditional, body);
 }
 
-Node* Parser::parseTypeList()
+NamedValNode* Parser::parseTypeList()
 {
+    NamedValNode *tlRoot = NULL;
+    NamedValNode *tlBranch = NULL;
+
     while(isType(c.type)){
+        Token type = c;
         incPos();
+        string name = c.lexeme;
         expect(Tok_Ident);
+
+        if(tlRoot == NULL){
+            tlRoot = new NamedValNode(name, type);
+            tlBranch = tlRoot;
+        }else{
+            tlBranch->next = new NamedValNode(name, type);
+            tlBranch = (NamedValNode*)tlBranch->next;
+            tlBranch->next = NULL;
+        }
     }
-    return PE_OK;
+    return tlRoot;
 }
 
+//TODO: parseLExpr
 bool Parser::parseVariable()
 {
     if(!_expect(Tok_Ident)) return false;
@@ -265,7 +288,8 @@ bool Parser::parseOp()
 Node* Parser::parseExpr()
 {
     if(!parseValue()){
-        return parseErr(PE_VAL_NOT_FOUND, "Initial value not found in expression");
+        parseErr(PE_VAL_NOT_FOUND, "Initial value not found in expression");
+        return NULL;
     }
     return parseRExpr();
 }
@@ -273,8 +297,11 @@ Node* Parser::parseExpr()
 Node* Parser::parseRExpr()
 {
     if(parseOp()){
-        if(!parseValue()) return parseErr(PE_VAL_NOT_FOUND, "Following value not found in expression");
+        if(!parseValue()){
+            parseErr(PE_VAL_NOT_FOUND, "Following value not found in expression");
+            return NULL;
+        }
         return parseRExpr();
     }
-    return PE_OK;
+    return NULL;//PE_OKAY
 }

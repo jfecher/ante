@@ -39,10 +39,37 @@ class BinOpNode : public Node{
         bool *exec(void);
 };
 
+class IfNode : public Node{
+    public:
+        Node *condition;
+        Node *body;
+        IfNode(Node *n1, Node *n2) : condition(n1), body(n2){}
+        bool *compile(void);
+        bool *exec(void);
+};
+
+class NamedValNode : public Node{
+    public:
+        string name;
+        Token type;
+        NamedValNode(string s, Token t) : name(s), type(t){}
+        bool *compile(void);
+        bool *exec(void);
+};
+
 class VarNode : public Node{
     public:
         string name;
         VarNode(string s) : name(s){}
+        bool *compile(void);
+        bool *exec(void);
+};
+
+class FuncCallNode : public Node{
+    public:
+        string name;
+        Node *params;
+        FuncCallNode(string s, Node *p) : name(s), params(p){}
         bool *compile(void);
         bool *exec(void);
 };
@@ -67,10 +94,11 @@ class VarDeclNode : public Node{
 
 class FuncDeclNode : public Node{
     public:
-        Token type;
         string name;
+        Token type;
+        NamedValNode *params;
         Node *body;
-        FuncDeclNode(string s, Token t, Node *b) : name(s), type(t), body(b){}
+        FuncDeclNode(string s, Token t, NamedValNode *p, Node *b) : name(s), type(t), params(p), body(b){}
         bool *compile(void);
         bool *exec(void);
 };
@@ -94,9 +122,9 @@ class Parser{
         Node *root;
         Node *branch;
         Token c, n;
-        unsigned char errFlag;
+        ParseErr errFlag;
 
-        ParseErr parseErr(ParseErr e, string s, bool showTok);
+        void parseErr(ParseErr e, string s, bool showTok);
         void incPos(void);
         bool accept(TokenType t);
         bool _expect(TokenType t);
@@ -110,7 +138,7 @@ class Parser{
         bool parseOp(void);
         
         Node* buildParseTree(void);
-        Node* parseTypeList(void);
+        NamedValNode* parseTypeList(void);
         Node* parseStmt(void);
         Node* parseIfStmt(void);
         Node* parseBlock(void);
