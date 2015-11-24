@@ -41,7 +41,7 @@ bool Parser::accept(TokenType t)
     return false;
 }
 
-#define expect(t) if(!_expect(t)) return PE_EXPECTED
+#define expect(t) if(!_expect(t)) {errFlag = PE_EXPECTED; return NULL;}
 bool Parser::_expect(TokenType t)
 {
     if(!accept(t)){
@@ -71,28 +71,46 @@ bool Parser::expectOp(char op){
     return true;
 }
 
-ParseErr Parser::parseTopLevelStmt()
+Node* Parser::buildParseTree()
 {
+    root = new ClassDeclNode("__main__", NULL); //TODO: replace __main__ with file name
+    branch = root;
+
     while(c.type != Tok_EndOfInput){
-        ParseErr e = parseStmt();
-        if(e != PE_OK)
-            return e;
-        accept(Tok_Newline); //accept?
+        Node *n = parseStmt();
+        if(errFlag != PE_OK)
+            return NULL;
+        accept(Tok_Newline);
+
+        branch->next = n;
+        n->next = NULL;
+        branch = n;
     }
-    return PE_OK;
+    return root;
 }
 
-ParseErr Parser::parseBlock()
+Node* Parser::parseBlock()
 {
+    Node* bRoot = NULL;
+    Node* bBranch = NULL;
+
     expect(Tok_Indent);
     while(c.type != Tok_EndOfInput && c.type != Tok_Unindent){
-        ParseErr e = parseStmt();
-        if(e != PE_OK)
-            return e;
+        Node* n = parseStmt();
+        if(errFlag != PE_OK) return NULL;
         accept(Tok_Newline);
+
+        if(bRoot == NULL){
+            bRoot = n;
+            bBranch = n;
+        }else{
+            bBranch->next = n;
+            n->next = NULL;
+            bBranch = n;
+        }
     }
     expect(Tok_Unindent);
-    return PE_OK;
+    return bRoot;
 }
 
 //TODO: usertypes
@@ -103,13 +121,13 @@ bool Parser::isType(TokenType t)
         || t == Tok_F32 || t == Tok_F64 || t == Tok_Bool || t == Tok_Void;
 }//Tok_Ident?
 
-ParseErr Parser::parseStmt()
+Node* Parser::parseStmt()
 {
     switch(c.type){
         case Tok_If: return parseIfStmt();
         case Tok_Newline: accept(Tok_Newline); return parseStmt();
         case Tok_Class: return parseClass();
-        case Tok_Return: accept(Tok_Return); return parseExpr();
+        case Tok_Return: accept(Tok_Return); return parseExpr();//TODO: dedicated parseRetStmt
         case Tok_Ident: return parseGenericVar();
         default: break;
     }
@@ -118,10 +136,13 @@ ParseErr Parser::parseStmt()
         return parseGenericDecl();
     }
 
-    return c.type == Tok_EndOfInput? PE_OK : parseErr(PE_VAL_NOT_FOUND, "Invalid statement"); //end of file
+    if(c.type != Tok_EndOfInput){
+        errFlag = parseErr(PE_INVALID_STMT, "Invalid statement starting with ");
+    }
+    return NULL;
 }
 
-ParseErr Parser::parseGenericVar()
+Node* Parser::parseGenericVar()
 {
     if(!parseVariable()) return PE_IDENT_NOT_FOUND;
     
@@ -139,7 +160,7 @@ ParseErr Parser::parseGenericVar()
     return PE_OK;
 }
 
-ParseErr Parser::parseGenericDecl()
+Node* Parser::parseGenericDecl()
 {
     Token type = c;
     
@@ -156,13 +177,13 @@ ParseErr Parser::parseGenericDecl()
     return PE_OK;
 }
 
-ParseErr Parser::parseClass()
+Node* Parser::parseClass()
 {
     expect(Tok_Class);
     return parseBlock();
 }
 
-ParseErr Parser::parseIfStmt()
+Node* Parser::parseIfStmt()
 {
     expect(Tok_If);
     ParseErr e = parseExpr();
@@ -170,7 +191,7 @@ ParseErr Parser::parseIfStmt()
     return parseBlock();
 }
 
-ParseErr Parser::parseTypeList()
+Node* Parser::parseTypeList()
 {
     while(isType(c.type)){
         incPos();
@@ -241,7 +262,7 @@ bool Parser::parseOp()
     }
 }
 
-ParseErr Parser::parseExpr()
+Node* Parser::parseExpr()
 {
     if(!parseValue()){
         return parseErr(PE_VAL_NOT_FOUND, "Initial value not found in expression");
@@ -249,7 +270,7 @@ ParseErr Parser::parseExpr()
     return parseRExpr();
 }
 
-ParseErr Parser::parseRExpr()
+Node* Parser::parseRExpr()
 {
     if(parseOp()){
         if(!parseValue()) return parseErr(PE_VAL_NOT_FOUND, "Following value not found in expression");
