@@ -30,11 +30,27 @@ class IntLitNode : public Node{
         bool *exec(void);
 };
 
+class FltLitNode : public Node{
+    public:
+        string val;
+        FltLitNode(string s) : val(s){}
+        bool *compile(void);
+        bool *exec(void);
+};
+
+class BoolLitNode : public Node{
+    public:
+        bool val;
+        BoolLitNode(bool b) : val(b){}
+        bool *compile(void);
+        bool *exec(void);
+};
+
 class BinOpNode : public Node{
     public:
-        string op;
+        Token op;
         Node *lval, *rval;
-        BinOpNode(string s, Node *lv, Node *rv) : op(s), lval(lv), rval(rv){}
+        BinOpNode(Token s, Node *lv, Node *rv) : op(s), lval(lv), rval(rv){}
         bool *compile(void);
         bool *exec(void);
 };
@@ -133,9 +149,9 @@ class Parser{
 
         bool isType(TokenType t);
         
-        bool parseValue(void);
-        bool parseVariable(void);
-        bool parseOp(void);
+        Node* parseValue(void);
+        Node* parseVariable(void);
+        Node* parseOp(void);
         
         Node* buildParseTree(void);
         NamedValNode* parseTypeList(void);

@@ -223,53 +223,53 @@ NamedValNode* Parser::parseTypeList()
 }
 
 //TODO: parseLExpr
-bool Parser::parseVariable()
+Node* Parser::parseVariable()
 {
-    if(!_expect(Tok_Ident)) return false;
-
-    while(acceptOp('.')){
-        if(!_expect(Tok_Ident)) return false;
-        if(acceptOp('[')){
-            parseExpr();
-            expectOp(']');
-        }
-    }
-    if(acceptOp('[')){
-        parseExpr();
-        expectOp(']');
-    }
-
-    return true;
+    string s = c.lexeme;
+    if(!_expect(Tok_Ident)) return NULL;
+    return new VarNode(s);
 }
 
-bool Parser::parseValue()
+Node* Parser::parseValue()
 {
+    string s = c.lexeme;
+    Node* ret;
     switch(c.type){
-        case Tok_IntLit:
-        case Tok_FltLit:
-        case Tok_StrLit:
-        case Tok_True:
-        case Tok_False:
+        case Tok_IntLit: 
             incPos();
-            return true;
+            return new IntLitNode(s);
+        case Tok_FltLit: 
+            incPos();
+            return new FltLitNode(s);
+        case Tok_StrLit: 
+            incPos();
+            return new StrLitNode(s);
+        case Tok_True:   
+            incPos();
+            return new BoolLitNode(true);
+        case Tok_False:  
+            incPos();
+            return new BoolLitNode(false);
         case Tok_Ident:
             return parseVariable();
         case Tok_Operator:
-            if(*c.lexeme != '(') return false;
+            if(*c.lexeme != '(') return NULL;
             incPos();
-            parseExpr();
+            ret = parseExpr();
             expectOp(')');
-            return true;
-        default: return false;
+            return ret;
+        default: 
+            return NULL;
     }
 }
 
-bool Parser::parseOp()
+Node* Parser::parseOp()
 {
+    Token op = c;
     switch(c.type){
         case Tok_Operator:
             if(IS_TERMINATING_OP(*c.lexeme))
-                return false;
+                return NULL;
         case Tok_Eq:
         case Tok_AddEq:
         case Tok_SubEq:
@@ -280,14 +280,16 @@ bool Parser::parseOp()
         case Tok_LesrEq:
         case Tok_StrCat:
             incPos();
-            return true;
-        default: return false;
+            return new BinOpNode(c, NULL, NULL);
+        default: 
+            return NULL;
     }
 }
 
 Node* Parser::parseExpr()
 {
-    if(!parseValue()){
+    Node *val = parseValue();
+    if(val == NULL){
         parseErr(PE_VAL_NOT_FOUND, "Initial value not found in expression");
         return NULL;
     }
