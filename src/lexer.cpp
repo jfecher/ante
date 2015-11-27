@@ -122,6 +122,13 @@ Lexer::Lexer(ifstream **f): c{0}, n{0}
     scope = 0;
     cscope = 0;
 }
+    
+void Lexer::printTok(Token t){
+    if(t.type == Tok_Ident || t.type == Tok_StrLit || t.type == Tok_IntLit || t.type == Tok_FltLit || t.type == Tok_Operator)
+        cerr << t.lexeme << " (" << tokDictionary[t.type] << ")\n";
+    else
+        cerr << tokDictionary[t.type] << endl;
+}
 
 void Lexer::incPos(void)
 {
@@ -272,8 +279,10 @@ Token Lexer::next()
 
     //If the character is nota, assume it is an operator and store
     //the character in the string for identification
-    char *cPtr = new char(c);
-    Token op = {Tok_Operator, cPtr};
+    char* s = (char*)malloc(2);
+    s[0] = c;
+    s[1] = '\0';
+    Token op = {Tok_Operator, s};
     incPos();
     return op;
 }

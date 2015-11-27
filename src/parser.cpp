@@ -3,6 +3,7 @@
 
 Parser::Parser(const char* file) : lexer(file)
 {
+    errFlag = PE_OK;
     c = lexer.next();
     n = lexer.next();
 }
@@ -18,19 +19,20 @@ inline void Parser::incPos()
 {
     c = n;
     n = lexer.next();
+    lexer.printTok(n);
 }
 
 void Parser::parseErr(ParseErr e, string msg, bool showTok = true)
 {
-    cerr << "Syntax Error: ";
-    fprintf(stderr, msg.c_str());
-    if(showTok){
-        if(c.type == Tok_Ident || c.type == Tok_StrLit || c.type == Tok_IntLit || c.type == Tok_FltLit)
-            cerr << ", got " << c.lexeme << " (" << tokDictionary[c.type] << ")\n";
-        else
-            cerr << ", got " << tokDictionary[c.type] << endl;
-    }
-    errFlag = e;
+    cerr << "Syntax Error: " << msg;
+    if(showTok)
+        lexer.printTok(c);
+    else
+        cerr << endl;
+
+    if(errFlag != PE_OK) errFlag = e;
+    cout << "errFlag: " << e;
+    exit(5);
 }
 
 bool Parser::accept(TokenType t)
@@ -42,12 +44,12 @@ bool Parser::accept(TokenType t)
     return false;
 }
 
-#define expect(t) if(!_expect(t)) {errFlag = PE_EXPECTED; return NULL;}
-bool Parser::_expect(TokenType t)
+bool Parser::expect(TokenType t)
 {
     if(!accept(t)){
         string s = "Expected ";
         s += tokDictionary[t];
+        s += ", but got ";
         parseErr(PE_EXPECTED, s);
         return false;
     }
@@ -66,52 +68,42 @@ bool Parser::expectOp(char op){
     if(!acceptOp(op)){
         string s = "Expected ";
         s += op;
+        s += ", but got ";
         parseErr(PE_EXPECTED, s);
         return false;
     }
     return true;
 }
 
-Node* Parser::buildParseTree()
+void Parser::buildParseTree()
 {
-    root = new ClassDeclNode("__main__", NULL); //TODO: replace __main__ with file name
-    branch = root;
-
     while(c.type != Tok_EndOfInput){
-        Node *n = parseStmt();
-        if(errFlag != PE_OK)
-            return NULL;
+        Node* n = parseStmt();
         accept(Tok_Newline);
-
-        branch->next = n;
-        n->next = NULL;
-        branch = n;
+        parseTree.push_back(n);
+        cout << "\n\nerrFlag = " << errFlag << endl;
     }
-    return root;
 }
 
-Node* Parser::parseBlock()
+void Parser::printParseTree()
 {
-    Node* bRoot = NULL;
-    Node* bBranch = NULL;
+    for(vector<Node*>::iterator it = parseTree.begin(); it != parseTree.end(); ++it){
+        (*it)->print();
+        cout << " thus was node." << endl;
+    }
+}
 
+vector<Node*> Parser::parseBlock()
+{
+    vector<Node*> block;
     expect(Tok_Indent);
     while(c.type != Tok_EndOfInput && c.type != Tok_Unindent){
         Node* n = parseStmt();
-        if(errFlag != PE_OK) return NULL;
         accept(Tok_Newline);
-
-        if(bRoot == NULL){
-            bRoot = n;
-            bBranch = n;
-        }else{
-            bBranch->next = n;
-            n->next = NULL;
-            bBranch = n;
-        }
+        block.push_back(n);
     }
     expect(Tok_Unindent);
-    return bRoot;
+    return block;
 }
 
 //TODO: usertypes
@@ -150,14 +142,13 @@ Node* Parser::parseGenericVar()
     
     if(acceptOp('(')){//funcCall
         FuncCallNode *n = new FuncCallNode(identifier, parseExpr());
-        if(errFlag != PE_OK) return n;
         expectOp(')');
         return n;
     }
 
     //TODO: expand to += -= *= etc
     if(acceptOp('=')){//assignment
-        return parseExpr();
+        return new VarAssignNode(identifier, parseExpr());
     }
     return NULL;//TODO
 }
@@ -172,10 +163,8 @@ Node* Parser::parseGenericDecl()
         return NULL;
 
     if(acceptOp(':')){//funcDef
-        NamedValNode *params = parseTypeList();
-        if(errFlag != PE_OK) return NULL;
-        Node *body = parseBlock();
-        return new FuncDeclNode(name, type, params, body);
+        vector<NamedValNode*> params = parseTypeList();
+        return new FuncDeclNode(name, type, params, parseBlock());
     }else if(acceptOp('=')){
         return new VarDeclNode(name, type, parseExpr());
     }
@@ -184,49 +173,40 @@ Node* Parser::parseGenericDecl()
     return new VarDeclNode(name, type, NULL);
 }
 
-Node* Parser::parseClass()
+ClassDeclNode* Parser::parseClass()
 {
     expect(Tok_Class);
-    return parseBlock();
+    string identifier = c.lexeme;
+    expect(Tok_Ident);
+    return new ClassDeclNode(identifier, parseBlock());
 }
 
-Node* Parser::parseIfStmt()
+IfNode* Parser::parseIfStmt()
 {
     expect(Tok_If);
     Node *conditional = parseExpr();
-    if(errFlag != PE_OK) return NULL;
-    Node *body = parseBlock();
-    return new IfNode(conditional, body);
+    return new IfNode(conditional, parseBlock());
 }
 
-NamedValNode* Parser::parseTypeList()
+vector<NamedValNode*> Parser::parseTypeList()
 {
-    NamedValNode *tlRoot = NULL;
-    NamedValNode *tlBranch = NULL;
+    vector<NamedValNode*> typeList;
 
     while(isType(c.type)){
         Token type = c;
         incPos();
         string name = c.lexeme;
-        expect(Tok_Ident);
-
-        if(tlRoot == NULL){
-            tlRoot = new NamedValNode(name, type);
-            tlBranch = tlRoot;
-        }else{
-            tlBranch->next = new NamedValNode(name, type);
-            tlBranch = (NamedValNode*)tlBranch->next;
-            tlBranch->next = NULL;
-        }
+        if(!expect(Tok_Ident)) return typeList;
+        typeList.push_back(new NamedValNode(name, type));
     }
-    return tlRoot;
+    return typeList;
 }
 
 //TODO: parseLExpr
 Node* Parser::parseVariable()
 {
     string s = c.lexeme;
-    if(!_expect(Tok_Ident)) return NULL;
+    if(!expect(Tok_Ident)) return NULL;
     return new VarNode(s);
 }
 
@@ -280,7 +260,7 @@ Node* Parser::parseOp()
         case Tok_LesrEq:
         case Tok_StrCat:
             incPos();
-            return new BinOpNode(c, NULL, NULL);
+            return new BinOpNode(op, NULL, NULL);
         default: 
             return NULL;
     }

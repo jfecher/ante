@@ -21,6 +21,7 @@ class Lexer{
         Lexer(const char* file);
         Lexer(ifstream** file);
         Token next(void);
+        static void printTok(Token t);
     private:
         char c, n;
         ifstream *in;

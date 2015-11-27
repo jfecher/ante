@@ -23,7 +23,8 @@ int main(int argc, char *argv[]){
             }
         }else if(strcmp(argv[1], "-p") == 0){
             Parser p = Parser(argv[2]);
-            cout << p.parse() << endl;
+            p.parse();
+            p.printParseTree();
         }
     }
     return 0;
