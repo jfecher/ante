@@ -61,40 +61,40 @@ const char* tokDictionary[] = {
 };
 
 map<string, Token> keywords = {
-    {"i8",       {Tok_I8,       NULL, 0, 0}},
-    {"i16",      {Tok_I16,      NULL, 0, 0}},
-    {"i32",      {Tok_I32,      NULL, 0, 0}},
-    {"i64",      {Tok_I64,      NULL, 0, 0}},
-    {"u8",       {Tok_U8,       NULL, 0, 0}},
-    {"u16",      {Tok_U16,      NULL, 0, 0}},
-    {"u32",      {Tok_U32,      NULL, 0, 0}},
-    {"u64",      {Tok_U64,      NULL, 0, 0}},
-    {"f32",      {Tok_F32,      NULL, 0, 0}},
-    {"f64",      {Tok_F64,      NULL, 0, 0}},
-    {"bool",     {Tok_Bool,     NULL, 0, 0}},
-    {"void",     {Tok_Void,     NULL, 0, 0}},
+    {"i8",       {Tok_I8,       "", 0, 0}},
+    {"i16",      {Tok_I16,      "", 0, 0}},
+    {"i32",      {Tok_I32,      "", 0, 0}},
+    {"i64",      {Tok_I64,      "", 0, 0}},
+    {"u8",       {Tok_U8,       "", 0, 0}},
+    {"u16",      {Tok_U16,      "", 0, 0}},
+    {"u32",      {Tok_U32,      "", 0, 0}},
+    {"u64",      {Tok_U64,      "", 0, 0}},
+    {"f32",      {Tok_F32,      "", 0, 0}},
+    {"f64",      {Tok_F64,      "", 0, 0}},
+    {"bool",     {Tok_Bool,     "", 0, 0}},
+    {"void",     {Tok_Void,     "", 0, 0}},
     
-    {"or",       {Tok_Or,       NULL, 0, 0}},
-    {"and",      {Tok_And,      NULL, 0, 0}},
-    {"true",     {Tok_True,     NULL, 0, 0}},
-    {"false",    {Tok_False,    NULL, 0, 0}},
+    {"or",       {Tok_Or,       "", 0, 0}},
+    {"and",      {Tok_And,      "", 0, 0}},
+    {"true",     {Tok_True,     "", 0, 0}},
+    {"false",    {Tok_False,    "", 0, 0}},
     
-    {"return",   {Tok_Return,   NULL, 0, 0}},
-    {"if",       {Tok_If,       NULL, 0, 0}},
-    {"elif",     {Tok_Elif,     NULL, 0, 0}},
-    {"else",     {Tok_Else,     NULL, 0, 0}},
-    {"for",      {Tok_For,      NULL, 0, 0}},
-    {"foreach",  {Tok_ForEach,  NULL, 0, 0}},
-    {"while",    {Tok_While,    NULL, 0, 0}},
-    {"do",       {Tok_Do,       NULL, 0, 0}},
-    {"in",       {Tok_In,       NULL, 0, 0}},
-    {"continue", {Tok_Continue, NULL, 0, 0}},
-    {"break",    {Tok_Break,    NULL, 0, 0}},
-    {"import",   {Tok_Import,   NULL, 0, 0}},
-    {"where",    {Tok_Where,    NULL, 0, 0}},
-    {"enum",     {Tok_Enum,     NULL, 0, 0}},
-    {"struct",   {Tok_Struct,   NULL, 0, 0}},
-    {"class",    {Tok_Class,    NULL, 0, 0}},
+    {"return",   {Tok_Return,   "", 0, 0}},
+    {"if",       {Tok_If,       "", 0, 0}},
+    {"elif",     {Tok_Elif,     "", 0, 0}},
+    {"else",     {Tok_Else,     "", 0, 0}},
+    {"for",      {Tok_For,      "", 0, 0}},
+    {"foreach",  {Tok_ForEach,  "", 0, 0}},
+    {"while",    {Tok_While,    "", 0, 0}},
+    {"do",       {Tok_Do,       "", 0, 0}},
+    {"in",       {Tok_In,       "", 0, 0}},
+    {"continue", {Tok_Continue, "", 0, 0}},
+    {"break",    {Tok_Break,    "", 0, 0}},
+    {"import",   {Tok_Import,   "", 0, 0}},
+    {"where",    {Tok_Where,    "", 0, 0}},
+    {"enum",     {Tok_Enum,     "", 0, 0}},
+    {"struct",   {Tok_Struct,   "", 0, 0}},
+    {"class",    {Tok_Class,    "", 0, 0}},
 };
 
 Lexer::Lexer(void) : c{0}, n{0}
@@ -123,14 +123,15 @@ Lexer::Lexer(ifstream **f): c{0}, n{0}
     cscope = 0;
 }
     
-void Lexer::printTok(Token t){
+void Lexer::printTok(Token t)
+{
     if(t.type == Tok_Ident || t.type == Tok_StrLit || t.type == Tok_IntLit || t.type == Tok_FltLit || t.type == Tok_Operator)
         cerr << t.lexeme << " (" << tokDictionary[t.type] << ")\n";
     else
         cerr << tokDictionary[t.type] << endl;
 }
 
-void Lexer::incPos(void)
+inline void Lexer::incPos(void)
 {
     c = n;
     if(in->good())
@@ -209,7 +210,7 @@ Token Lexer::genWsTok()
         newScope /= scStep;
 
         if(newScope == scope){
-            return {Tok_Newline};
+            return {Tok_Newline, NULL};
         }
         scope = newScope;
         return next();
@@ -237,10 +238,10 @@ Token Lexer::next()
     if(cscope != scope){
         if(scope > cscope){
             cscope++;
-            return {Tok_Indent};
+            return {Tok_Indent, NULL};
         }else{
             cscope--;
-            return {Tok_Unindent};
+            return {Tok_Unindent, NULL};
         }
     }
 

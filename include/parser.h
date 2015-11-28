@@ -61,6 +61,15 @@ class BinOpNode : public Node{
         BinOpNode(Token s, Node *lv, Node *rv) : op(s), lval(lv), rval(rv){}
 };
 
+class RetNode : public Node{
+    public:
+        Node* expr;
+        void compile(void);
+        void exec(void);
+        void print(void);
+        RetNode(Node* e) : expr(e){}
+};
+
 class IfNode : public Node{
     public:
         Node* condition;
@@ -182,6 +191,7 @@ class Parser{
         vector<NamedValNode*> parseTypeList(void);
         Node* parseStmt(void);
         IfNode* parseIfStmt(void);
+        RetNode* parseRetStmt(void);
         vector<Node*> parseBlock(void);
         ClassDeclNode* parseClass(void);
         Node* parseGenericVar(void);

@@ -19,7 +19,6 @@ inline void Parser::incPos()
 {
     c = n;
     n = lexer.next();
-    lexer.printTok(n);
 }
 
 void Parser::parseErr(ParseErr e, string msg, bool showTok = true)
@@ -81,7 +80,6 @@ void Parser::buildParseTree()
         Node* n = parseStmt();
         accept(Tok_Newline);
         parseTree.push_back(n);
-        cout << "\n\nerrFlag = " << errFlag << endl;
     }
 }
 
@@ -89,7 +87,6 @@ void Parser::printParseTree()
 {
     for(vector<Node*>::iterator it = parseTree.begin(); it != parseTree.end(); ++it){
         (*it)->print();
-        cout << " thus was node." << endl;
     }
 }
 
@@ -120,7 +117,7 @@ Node* Parser::parseStmt()
         case Tok_If: return parseIfStmt();
         case Tok_Newline: accept(Tok_Newline); return parseStmt();
         case Tok_Class: return parseClass();
-        case Tok_Return: accept(Tok_Return); return parseExpr();//TODO: dedicated parseRetStmt
+        case Tok_Return: return parseRetStmt();//TODO: dedicated parseRetStmt
         case Tok_Ident: return parseGenericVar();
         default: break;
     }
@@ -133,6 +130,12 @@ Node* Parser::parseStmt()
         parseErr(PE_INVALID_STMT, "Invalid statement starting with ");
     }
     return NULL;
+}
+
+RetNode* Parser::parseRetStmt()
+{
+    expect(Tok_Return);
+    return new RetNode(parseExpr());
 }
 
 Node* Parser::parseGenericVar()

@@ -1,6 +1,7 @@
 #include "compiler.h"
 using namespace llvm;
 
+//perhaps this should be changed to a visitor pattern
 void IntLitNode::compile()
 {
 
@@ -22,6 +23,11 @@ void StrLitNode::compile()
 }
 
 void BinOpNode::compile()
+{
+
+}
+
+void RetNode::compile()
 {
 
 }
@@ -93,6 +99,11 @@ void BinOpNode::exec()
 
 }
 
+void RetNode::exec()
+{
+
+}
+
 void IfNode::exec()
 {
 
@@ -134,71 +145,98 @@ void ClassDeclNode::exec()
 }
 
 
+
 void IntLitNode::print()
 {
-
+    cout << val;
 }
 
 void FltLitNode::print()
 {
-
+    cout << val;
 }
 
 void BoolLitNode::print()
 {
-
+    if(val)
+        cout << "true";
+    else
+        cout << "false";
 }
 
 void StrLitNode::print()
 {
-
+    cout << val;
 }
 
 void BinOpNode::print()
 {
+    cout << '(';
+    if(lval) lval->print();
+    cout << "  ";
+    if(rval) rval->print();
+    cout << ')';
+}
 
+void RetNode::print()
+{
+    cout << "return ";
+    if(expr) expr->print();
 }
 
 void IfNode::print()
 {
-
+    cout << "if ";
+    if(condition) condition->print();
+    cout << "\nthen\n";
+    for(auto n : body){
+        if(n) n->print();
+        cout << endl;
+    }
+    cout << "end";
 }
 
 void NamedValNode::print()
 {
-
+    cout << type.type << ' ' << name;
 }
 
 void VarNode::print()
 {
-
+    cout << name;
 }
 
 void FuncCallNode::print()
 {
-
+    cout << "fnCall " << name << '(';
+    if(params) params->print();
+    cout << ')';
 }
 
 void VarDeclNode::print()
 {
-
+    cout << "varDecl " << type.type << ' ' << name << " = ";
+    if(expr) expr->print();
+    else cout << "(undef)";
 }
 
 void VarAssignNode::print()
 {
-    
+    cout << "varAssign " << name << " = ";
+    if(expr) expr->print();
+    else cout << "(undef)"; 
 }
 
 void FuncDeclNode::print()
 {
     cout << "function " << name << ": ";
     for(auto n : params){
-        n->print();
+        if(n) n->print();
         cout << ", ";
     }
     cout << "\n";
     for(auto n : body){
-        n->print();
+        if(n) n->print();
         cout << "\n";
     }
 }
