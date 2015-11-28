@@ -173,8 +173,13 @@ void BinOpNode::print()
 {
     cout << '(';
     if(lval) lval->print();
-    cout << "  ";
+    cout << " ";
     if(rval) rval->print();
+    cout << ' ';
+    if(op.type == Tok_Operator)
+        cout << op.lexeme;
+    else
+        cout << tokDictionary[op.type];
     cout << ')';
 }
 

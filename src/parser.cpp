@@ -79,7 +79,7 @@ void Parser::buildParseTree()
     while(c.type != Tok_EndOfInput){
         Node* n = parseStmt();
         accept(Tok_Newline);
-        parseTree.push_back(n);
+        if(n) parseTree.push_back(n);
     }
 }
 
@@ -87,6 +87,7 @@ void Parser::printParseTree()
 {
     for(vector<Node*>::iterator it = parseTree.begin(); it != parseTree.end(); ++it){
         (*it)->print();
+        cout << endl;
     }
 }
 
@@ -206,7 +207,7 @@ vector<NamedValNode*> Parser::parseTypeList()
 }
 
 //TODO: parseLExpr
-Node* Parser::parseVariable()
+VarNode* Parser::parseVariable()
 {
     string s = c.lexeme;
     if(!expect(Tok_Ident)) return NULL;
@@ -246,7 +247,7 @@ Node* Parser::parseValue()
     }
 }
 
-Node* Parser::parseOp()
+BinOpNode* Parser::parseOp()
 {
     Token op = c;
     switch(c.type){
@@ -276,17 +277,21 @@ Node* Parser::parseExpr()
         parseErr(PE_VAL_NOT_FOUND, "Initial value not found in expression");
         return NULL;
     }
-    return parseRExpr();
+    return parseRExpr(val);
 }
 
-Node* Parser::parseRExpr()
+Node* Parser::parseRExpr(Node *lval)
 {
-    if(parseOp()){
-        if(!parseValue()){
+    BinOpNode *op = parseOp();
+    if(op){
+        Node *val = parseValue();
+        if(!val){
             parseErr(PE_VAL_NOT_FOUND, "Following value not found in expression");
             return NULL;
         }
-        return parseRExpr();
+        op->lval = lval;
+        op->rval = val;
+        return parseRExpr(op);
     }
-    return NULL;//PE_OKAY
+    return lval;//PE_OKAY
 }

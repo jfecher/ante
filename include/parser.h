@@ -183,8 +183,8 @@ class Parser{
         bool isType(TokenType t);
         
         Node* parseValue(void);
-        Node* parseVariable(void);
-        Node* parseOp(void);
+        VarNode* parseVariable(void);
+        BinOpNode* parseOp(void);
         
         void buildParseTree(void);
         
@@ -196,7 +196,7 @@ class Parser{
         ClassDeclNode* parseClass(void);
         Node* parseGenericVar(void);
         Node* parseExpr(void);
-        Node* parseRExpr(void);
+        Node* parseRExpr(Node *lval);
         Node* parseGenericDecl(void);
 };
 

@@ -10,7 +10,6 @@ print(fifty_nine)
 print(answer)
 
 print(fifty_nine .. " - 9 = " .. answer)
-
 `
 Output:
 
