@@ -1,7 +1,7 @@
 `
-        Zy is an multi paradigm language which includes various elements from
+        Ante is an multi paradigm language which includes various elements from
     functional, imperative, and object oriented paradigms.  Each 
-    line of zy code is a statement ending in a newline character.  Expressions 
+    line of code is a statement ending in a newline character.  Expressions 
     such as 3 * (4 + 5) may be part of a statement, but are not valid alone.
     Whitespace is also significant if it is at the beginning of a line.  Blocks
     are marked by an increase in indentation, and ended by an unindentation.
@@ -20,7 +20,7 @@
 `
 import "math", "io", "string", "op", "c_ffi"
 `
-    Arbitrary strings or string arrays, or even functions returning these values can be 
+    Arbitrary strings, string arrays, or even functions returning these values can be 
     imported as long as they can be resolved compile time.
 `
 import stuff()
@@ -38,7 +38,7 @@ import stuff()
     
     Below is the declaration of a variable, myVar, with a dynamic typing,
     meaning it can be set to any value and its type will change accordingly.
-    By default, dynamic variables are set to the int type.
+    By default, dynamic variables are set to the i8 type.
 `
 dyn myVar
 print(typeof(myVar)) ~output: dynamic i8
@@ -75,7 +75,7 @@ print(typeof(n) .. " " .. n)  ~output: i32 43
 
 `
         Operators
-    Zy includes the following operators:
+    Ante includes the following operators:
 
     binary:
         +  addition
@@ -94,8 +94,7 @@ print(typeof(n) .. " " .. n)  ~output: i32 43
 
     unary:
         -  negative
-        !  not
-        #  array length
+        !  logical not
         *  pointer dereference
         &  address of
 `
@@ -130,6 +129,13 @@ print(assortedNums[0] .. ", " .. assortedNums[-2])
 ~output: -67, 256
 
 `
+    Array initializer lists can also be surrounded by [ and ].  This is preferable
+    when dealing with multidimensional arrays or tuples.
+`
+i32[2][2] box = [1, 2], [3, 4]
+
+
+`
     The size of an array can also be dynamically edited.  The following syntax
     should always be used when expanding or restricting an array.
 `
@@ -160,7 +166,7 @@ print(dynTuple)
 `
         Functions
 
-    Functions in zy each have their own scope in addition to the scopes they
+    Functions in ante each have their own scope in addition to the scopes they
     inherit (in this case, only the global scope).  Variables created in
     functions are all local variables by default, however they can be
     exported into the global scope with the export keyword.
@@ -181,7 +187,7 @@ f64 add: f64 augend, f64 addend
     return augend + addend
 
 `
-    Zy also has several reserved variables.  Variables with identifiers starting
+    Ante also has several reserved variables.  Variables with identifiers starting
     with an underscore are reserved and should not be manually assigned values.
     The function below takes in a variable amount of parameters, as denoted by
     the elipses.  Since _params always contains a tuple of each parameter of
@@ -213,10 +219,8 @@ pathogen void myPrint: str msg
     i32 i = 4 + 2
     system("echo '" .. msg .. "'") ~note: system is already a pathogen function
 
-pathogen void c_ffi("putchar"): u8
-
 ~Because the following function uses the pathogen myPrint, it cannot be
-~eliminated from the final binary, it is said to be infected.
+~eliminated from the final binary, and is said to be infected.
 void printMsg:
     myPrint("Hello World!")
 
@@ -236,6 +240,11 @@ Image* compileTimeLoadImg:
 Image* runTimeLoadImg:
     return infect compileTimeLoadImg()
 
+~Values can also be infected if set equal to the return value of a pathogen function
+Image* myImg = runTimeLoadImg()
+someFunction(myImg) ~This instance of someFunction is infected since an infected parameter is used.
+
+
 `
         Ct
     The keyword ct is used to indicate control flow which is only to be
@@ -248,7 +257,7 @@ Image* runTimeLoadImg:
 
 `
     The following function takes two parameters, and if m is negative, prints
-    a hint to the programmer using the api during compilation.
+    a hint to the programmer during compilation.
     ~NOTE: a better method of ensuring m is positive is using the where
            statement discussed later.
 `
@@ -278,15 +287,15 @@ import c_ffi("some/other/file.h", "*")
 
 import c_ffi("stdio.h", "putchar")
 
-putchar(90)
-putchar(121)
+putchar(72)
+putchar(105)
 putchar(10)
-~output: Zy
+~output: Hi
 
 `
         Loops
 
-    Zy has four kinds of loops: while, do while, for, and foreach.
+    Ante has four kinds of loops: while, do while, for, and foreach.
     The while loop runs while the following expression is true.  The do while
     loop runs once then runs while its following expression is true.  The for
     loop initializes a variable, runs while the expression surrounded by semicolons
@@ -312,11 +321,11 @@ foreach f32 n in arr
 `
         Ranges
     Ranges are created by the .. operator and are lazily evaluated by default.
-    Since they can be used in expressions, they are often very useful, especially
-    for foreach loops.
+    Since they can be used in expressions, they are often very useful, particularly
+    in foreach loops.
 `
 
-~Print 1 - 10 inclusive
+~Print 1 to 10 inclusive
 foreach i32 i in 1..10
     print(i)
 
@@ -348,7 +357,7 @@ class Integer
 
 `
         Embedded Statements
-    Zy's normal syntax is <statement> [expression], but this can lead
+    Ante's normal syntax is <statement> [expression], but this can lead
     to some needlessly long functions.  One way to condense these
     functions is to use embedded statements.  Embedded statements are
     named as such becuase they are statements embedded within an
@@ -505,7 +514,7 @@ class Statistics
 
 `
         Type Specifications, Where, and Operator Overloading
-    Type specifications in zy are a powerful way to specialize a class or function
+    Type specifications in ante are a powerful way to specialize a class or function
     to a specific usage.  In its most general case, it can be used in much the same
     way as generics or templates in other object oriented languages.  To declare a type
     specification for a class, parenthesis are used after the class name.  Within the

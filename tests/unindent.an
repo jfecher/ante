@@ -1,5 +1,5 @@
 `
-    lexerUnindentStack.zy
+    unindent.an
         Tests ability of lexer to
         issue multiple unindent tokens without
         advancing its current position.

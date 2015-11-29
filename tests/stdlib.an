@@ -1,0 +1,68 @@
+`
+    stdlib.an
+        tests functions in stdlib for expected output when given
+        a variety of types and number of variables.
+`
+
+~math module
+import "math"
+
+i32 testInt = 4
+f32 testFlt = 1/3.0
+
+assert(sqrt(testInt) == 2)
+assert(pow(testInt, 3) == 64)
+
+assert(floor(testFlt) == 0)
+assert(ceil(testFlt) == 1)
+
+
+~io module
+import "io"
+
+print("Hello World!", end: '')
+print(3)
+
+println("Test #")
+println(3)
+
+File* f = new File("out.txt", File.write)
+println(file: f, "2 + 3 = 5")
+
+~string module
+import "string"
+
+String msg = "Hello World!"
+
+msg = msg.repl("Hello", "Goodbye")
+msg.=repl("Goodbye", "Hello")
+
+assert(msg == "Hello World!")
+
+msg.=replRegex("[a-z]+", "ey")
+assert(msg == "Hey World!")
+
+
+~op module
+import "op"
+
+ext String
+ 
+    bool op('?'):
+        if this == "true"
+            return true
+        return false
+
+    String infix('pop', prec('..')):
+        return this[0 .. this.last-1]
+
+
+~c_ffi module
+import "c_ffi"
+
+Csrc csrc = c_ffi.getSrc("stdio")
+import csrc.getFn('putchar')
+
+putchar(65)
+
+

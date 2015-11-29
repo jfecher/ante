@@ -1,5 +1,5 @@
 `
-    scopes.zy
+    scopes.an
         Tests ability to create scopes, and have variables stored
         within which obscure global variables of the same name
 `

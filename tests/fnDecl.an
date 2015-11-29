@@ -1,5 +1,5 @@
 `
-    example4.zy
+    fnDecl.an
         test function declarations and calls
 `
 i32 printSomething: bool b
