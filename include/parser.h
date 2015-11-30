@@ -196,6 +196,7 @@ class Parser{
         ClassDeclNode* parseClass(void);
         Node* parseGenericVar(void);
         Node* parseExpr(void);
+        Node* parseOptExpr(void);
         Node* parseRExpr(Node *lval);
         Node* parseGenericDecl(void);
 };

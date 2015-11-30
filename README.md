@@ -1,5 +1,5 @@
 ﻿# Ante
-An interpreted, statically typed language
+A compiled, optionally typed language
 
 ## Features
 * Ante can either compile normally, or function as a JIT.
@@ -10,4 +10,4 @@ myVar = "Test 1"  ~set dyn to equal the string "Test 1"
 int i = 55        ~create i, an integer
 i = "Test 2"      ~This line triggers a compile-time error since i has a static typing  
 ```
-* For more information, check out tests/language.zy for all planned features.
+* For more information, check out tests/language.an for all planned features.

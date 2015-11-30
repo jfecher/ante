@@ -145,7 +145,7 @@ Node* Parser::parseGenericVar()
     expect(Tok_Ident);
     
     if(acceptOp('(')){//funcCall
-        FuncCallNode *n = new FuncCallNode(identifier, parseExpr());
+        FuncCallNode *n = new FuncCallNode(identifier, parseOptExpr());
         expectOp(')');
         return n;
     }
@@ -277,6 +277,13 @@ Node* Parser::parseExpr()
         parseErr(PE_VAL_NOT_FOUND, "Initial value not found in expression");
         return NULL;
     }
+    return parseRExpr(val);
+}
+
+Node* Parser::parseOptExpr()
+{
+    Node *val = parseValue();
+    if(val == NULL) return NULL;
     return parseRExpr(val);
 }
 
