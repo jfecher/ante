@@ -19,7 +19,7 @@ else
 ```
 * Code is evaluated, by default, at compile time.  Only functions producing output
 or user specified functions, and necessary constructs are compiled into the binary.
-```
+```go
 class Point
     i32 x
     i32 y
