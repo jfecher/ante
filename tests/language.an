@@ -332,6 +332,30 @@ foreach i32 i in 1..10
 ~print all odd numbers in the range of 1-19
 foreach i32 i in 2*(1..10)-1
     print(i)
+
+~To double the range without also doubling the step, just double the endpoint
+~print all numbers from 1-20 inclusive
+foreach i32 i in 1 .. 2*10 
+    print(i)
+
+~Loop through each index in the array
+foreach i32 i in 0 .^ size(array)
+    print(array[i])
+
+`
+    .. inclusive range
+    .^ exclusive endpoint
+    ^. exclusive startpoint
+    ^^ exclusive range
+`
+
+i32[10] naturalNums
+
+Range r = 0 .^ 10
+
+foreach i32 i in r
+    naturalNums[i] = i+1
+
 `
         The -> Symbol
     The -> symbol can be optionaly used at the end of statements expecting

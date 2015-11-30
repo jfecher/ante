@@ -61,6 +61,8 @@ ext String
 import "c_ffi"
 
 Csrc csrc = c_ffi.getSrc("stdio")
+File<csrc> src = File("stdio")
+
 import csrc.getFn('putchar')
 
 putchar(65)
