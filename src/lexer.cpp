@@ -174,7 +174,9 @@ Token Lexer::genAlphaNumTok()
     if(key != keywords.end()){
         return key->second;
     }else{
-        return {Tok_Ident, s.c_str()};
+        char *ident = (char*)malloc(s.length()+1);
+        memcpy(ident, s.c_str(), s.length()+1);
+        return {Tok_Ident, ident};
     }
 }
 
