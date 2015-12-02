@@ -351,10 +351,11 @@ foreach i32 i in 0 .^ size(array)
 
 i32[10] naturalNums
 
-Range r = 0 .^ 10
+range r = 0 .^ 10
 
 foreach i32 i in r
     naturalNums[i] = i+1
+
 
 `
         The -> Symbol
@@ -944,6 +945,47 @@ assert(5 is 5)
 ~of others, as well as evaluating types as values.
 type Coord = Coord2D || Coord3D
 type Coord = Coord2D or Coord3D
+type Coord = Coord2D | Coord3D
+
+~extensions / implementations for native types
+ext str
+    void swap: str swp
+        str tmp = this
+        this = swp
+        swp = tmp
+
+~maybe change ext to impl
+impl i32, i32
+    void swap:
+        i32 tmp = this[0]
+        this[0] = this[1]
+        this[1] = tmp
+
+i32, i32 point = (3, 4).swap()
+
+type coord = i32, i32
+
+~possibly change indentation system to allow
+~multi line expressions
+type num = i8  | i16 | i32 | i64 
+         | u8  | u16 | u32 | u64
+         | f32 | f64
+
+type num = i8  | i16 | i32 | i64 \
+         | u8  | u16 | u32 | u64 \
+         | f32 | f64
+
+type unsigned = u8 | u16 | u32 | u64
+
+
+~Allow match in expressions
+i32 i = 2
+
+str s = match i
+    0 -> "zero"
+    1 -> "one"
+    2 -> "two"
+    _ -> "other"
 
 
 `
