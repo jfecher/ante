@@ -13,30 +13,27 @@ using namespace std;
 #define IS_WHITESPACE(c) (c == ' ' || c == '\t' || c == '\n' || c == 13) // || c == 130
 
 #define PAIR(a, b) (c==a && n==b)
-#define RETURN_PAIR(t) {incPos(2); return (Token){t, NULL};}
+#define RETURN_PAIR(t) {incPos(2); return (t);}
 
-class Lexer{
-    public:
-        Lexer(void);
-        Lexer(const char* file);
-        Lexer(ifstream** file);
-        Token next(void);
-        static void printTok(Token t);
-    private:
-        char c, n;
-        ifstream *in;
-        static const char scStep = 4;
-        unsigned short scope;
-        unsigned short cscope;
-
+//Not a class because there will only ever be a single instance, which will need to be accessed
+//by yacc's parser in c.
+namespace ante{
+    namespace lexer{
+        void init(const char *file);
+        int next(void);
+        void printTok(int t);
+    
         void incPos(void);
         void incPos(int end);
-        Token handleComment(void);
-        Token genWsTok(void);
-        Token genNumLitTok(void);
-        Token genAlphaNumTok(void);
-        Token genStrLitTok(void);
-};
+        int handleComment(void);
+        int genWsTok(void);
+        int genNumLitTok(void);
+        int genAlphaNumTok(void);
+        int genStrLitTok(char delim);
+    }
+}
 
+//c api for yacc's parser
+extern "C" int yylex(...);
 
 #endif

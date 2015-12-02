@@ -60,78 +60,77 @@ const char* tokDictionary[] = {
     "Unindent",
 };
 
-map<string, Token> keywords = {
-    {"i8",       {Tok_I8,       "", 0, 0}},
-    {"i16",      {Tok_I16,      "", 0, 0}},
-    {"i32",      {Tok_I32,      "", 0, 0}},
-    {"i64",      {Tok_I64,      "", 0, 0}},
-    {"u8",       {Tok_U8,       "", 0, 0}},
-    {"u16",      {Tok_U16,      "", 0, 0}},
-    {"u32",      {Tok_U32,      "", 0, 0}},
-    {"u64",      {Tok_U64,      "", 0, 0}},
-    {"f32",      {Tok_F32,      "", 0, 0}},
-    {"f64",      {Tok_F64,      "", 0, 0}},
-    {"bool",     {Tok_Bool,     "", 0, 0}},
-    {"void",     {Tok_Void,     "", 0, 0}},
+map<string, int> keywords = {
+    {"i8",       Tok_I8},
+    {"i16",      Tok_I16},
+    {"i32",      Tok_I32},
+    {"i64",      Tok_I64},
+    {"u8",       Tok_U8},
+    {"u16",      Tok_U16},
+    {"u32",      Tok_U32},
+    {"u64",      Tok_U64},
+    {"f32",      Tok_F32},
+    {"f64",      Tok_F64},
+    {"bool",     Tok_Bool},
+    {"void",     Tok_Void},
     
-    {"or",       {Tok_Or,       "", 0, 0}},
-    {"and",      {Tok_And,      "", 0, 0}},
-    {"true",     {Tok_True,     "", 0, 0}},
-    {"false",    {Tok_False,    "", 0, 0}},
+    {"or",       Tok_Or},
+    {"and",      Tok_And},
+    {"true",     Tok_True},
+    {"false",    Tok_False},
     
-    {"return",   {Tok_Return,   "", 0, 0}},
-    {"if",       {Tok_If,       "", 0, 0}},
-    {"elif",     {Tok_Elif,     "", 0, 0}},
-    {"else",     {Tok_Else,     "", 0, 0}},
-    {"for",      {Tok_For,      "", 0, 0}},
-    {"foreach",  {Tok_ForEach,  "", 0, 0}},
-    {"while",    {Tok_While,    "", 0, 0}},
-    {"do",       {Tok_Do,       "", 0, 0}},
-    {"in",       {Tok_In,       "", 0, 0}},
-    {"continue", {Tok_Continue, "", 0, 0}},
-    {"break",    {Tok_Break,    "", 0, 0}},
-    {"import",   {Tok_Import,   "", 0, 0}},
-    {"where",    {Tok_Where,    "", 0, 0}},
-    {"enum",     {Tok_Enum,     "", 0, 0}},
-    {"struct",   {Tok_Struct,   "", 0, 0}},
-    {"class",    {Tok_Class,    "", 0, 0}},
+    {"return",   Tok_Return},
+    {"if",       Tok_If},
+    {"elif",     Tok_Elif},
+    {"else",     Tok_Else},
+    {"for",      Tok_For},
+    {"foreach",  Tok_ForEach},
+    {"while",    Tok_While},
+    {"do",       Tok_Do},
+    {"in",       Tok_In},
+    {"continue", Tok_Continue},
+    {"break",    Tok_Break},
+    {"import",   Tok_Import},
+    {"where",    Tok_Where},
+    {"enum",     Tok_Enum},
+    {"struct",   Tok_Struct},
+    {"class",    Tok_Class},
 };
 
-Lexer::Lexer(void) : c{0}, n{0}
-{
-    incPos();
-    incPos();
-    scope = 0;
-    cscope = 0;
-}
+char c = 0; 
+char n = 0;
+string yytext;
+ifstream *in;
+const char scStep = 4;
 
-Lexer::Lexer(const char* file): c{0}, n{0}
+unsigned short scope;
+unsigned short cscope;
+
+void ante::lexer::init(const char* file)
 {
     in = new ifstream(file);
+    c = 0;
+    n = 0;
     incPos();
     incPos();
     scope = 0;
     cscope = 0;
 }
 
-Lexer::Lexer(ifstream **f): c{0}, n{0}
+extern "C" int yylex(...)
 {
-    in = *f;
-    incPos();
-    incPos();
-    scope = 0;
-    cscope = 0;
+    return ante::lexer::next();
 }
-    
-void Lexer::printTok(Token t)
+
+void ante::lexer::printTok(int t)
 {
-    if(t.type == Tok_Ident || t.type == Tok_StrLit || t.type == Tok_IntLit || t.type == Tok_FltLit || t.type == Tok_Operator)
-        cerr << t.lexeme << " (" << tokDictionary[t.type] << ")\n";
+    if(IS_LITERAL(t))
+        cout << (char)t << endl;
     else
-        cerr << tokDictionary[t.type] << endl;
+        cout << TOK_TYPE_STR(t) << endl;
 }
 
-inline void Lexer::incPos(void)
+inline void ante::lexer::incPos(void)
 {
     c = n;
     if(in->good())
@@ -140,7 +139,7 @@ inline void Lexer::incPos(void)
         n = 0;
 }
 
-void Lexer::incPos(int end)
+void ante::lexer::incPos(int end)
 {
     for(int i = 0; i < end; i++){
         c = n;
@@ -151,7 +150,7 @@ void Lexer::incPos(int end)
     }
 }
 
-Token Lexer::handleComment(void)
+int ante::lexer::handleComment(void)
 {
     if(c == '`'){
         do incPos(); while(c != '`' && c != EOF);
@@ -162,7 +161,7 @@ Token Lexer::handleComment(void)
     return next();
 }
 
-Token Lexer::genAlphaNumTok()
+int ante::lexer::genAlphaNumTok()
 {
     string s = "";
     while(IS_ALPHANUM(c)){
@@ -174,11 +173,12 @@ Token Lexer::genAlphaNumTok()
     if(key != keywords.end()){
         return key->second;
     }else{
-        return {Tok_Ident, s.c_str()};
+        yytext = s;
+        return Tok_Ident;
     }
 }
 
-Token Lexer::genNumLitTok()
+int ante::lexer::genNumLitTok()
 {
     string s = "";
     bool flt = false;
@@ -190,10 +190,12 @@ Token Lexer::genNumLitTok()
         }
         incPos();
     }
-    return {flt? Tok_FltLit : Tok_IntLit, s.c_str()};
+
+    yytext = s;
+    return flt? Tok_FltLit : Tok_IntLit;
 }
 
-Token Lexer::genWsTok()
+int ante::lexer::genWsTok()
 {
     if(c == '\n'){
         unsigned short newScope = 0;
@@ -210,7 +212,7 @@ Token Lexer::genWsTok()
         newScope /= scStep;
 
         if(newScope == scope){
-            return {Tok_Newline, NULL};
+            return Tok_Newline;
         }
         scope = newScope;
         return next();
@@ -220,9 +222,8 @@ Token Lexer::genWsTok()
     }
 }
 
-Token Lexer::genStrLitTok()
+int ante::lexer::genStrLitTok(char delim)
 {
-    char delim = c;
     string s = "";
     incPos();
     while(c != delim && c != EOF){
@@ -230,27 +231,29 @@ Token Lexer::genStrLitTok()
         incPos();
     }
     incPos();
-    return {Tok_StrLit, s.c_str()};
+    yytext = s;
+    return Tok_StrLit;
 }
 
-Token Lexer::next()
+int ante::lexer::next()
 {
     if(cscope != scope){
         if(scope > cscope){
             cscope++;
-            return {Tok_Indent, NULL};
+            return Tok_Indent;
         }else{
             cscope--;
-            return {Tok_Unindent, NULL};
+            return Tok_Unindent;
         }
     }
 
-    if(IS_COMMENT(c))    return Lexer::handleComment();
-    if(IS_NUMERICAL(c))  return Lexer::genNumLitTok();
-    if(IS_ALPHANUM(c))   return Lexer::genAlphaNumTok();
-    if(IS_WHITESPACE(c)) return Lexer::genWsTok();
+    if(IS_COMMENT(c))    return ante::lexer::handleComment();
+    if(IS_NUMERICAL(c))  return ante::lexer::genNumLitTok();
+    if(IS_ALPHANUM(c))   return ante::lexer::genAlphaNumTok();
+    if(IS_WHITESPACE(c)) return ante::lexer::genWsTok();
 
-    if(c == '"' || c == '\'') return Lexer::genStrLitTok();
+    if(c == '"' || c == '\'') 
+        return ante::lexer::genStrLitTok(c);
 
     //substitute -> for an indent
     if PAIR('-', '>'){
@@ -275,15 +278,11 @@ Token Lexer::next()
     if PAIR('.', '.') RETURN_PAIR(Tok_StrCat);
 
     if(c == 0 || c == EOF){
-        return {Tok_EndOfInput};
+        return Tok_EndOfInput;
     }
 
     //If the character is nota, assume it is an operator and store
     //the character in the string for identification
-    char* s = (char*)malloc(2);
-    s[0] = c;
-    s[1] = '\0';
-    Token op = {Tok_Operator, s};
     incPos();
-    return op;
+    return c;
 }

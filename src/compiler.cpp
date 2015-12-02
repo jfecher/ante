@@ -176,10 +176,10 @@ void BinOpNode::print()
     cout << " ";
     if(rval) rval->print();
     cout << ' ';
-    if(op.type == Tok_Operator)
-        cout << op.lexeme;
+    if(IS_LITERAL(op))
+        cout << op;
     else
-        cout << tokDictionary[op.type];
+        cout << TOK_TYPE_STR(op);
     cout << ')';
 }
 
@@ -203,7 +203,7 @@ void IfNode::print()
 
 void NamedValNode::print()
 {
-    cout << type.type << ' ' << name;
+    cout << TOK_TYPE_STR(type) << ' ' << name;
 }
 
 void VarNode::print()
@@ -220,7 +220,7 @@ void FuncCallNode::print()
 
 void VarDeclNode::print()
 {
-    cout << "varDecl " << type.type << ' ' << name << " = ";
+    cout << "varDecl " << TOK_TYPE_STR(type) << ' ' << name << " = ";
     if(expr) expr->print();
     else cout << "(undef)";
 }

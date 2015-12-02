@@ -406,7 +406,9 @@ while {i += 1; return i} <= 100
 `
         Structs
     Structs are a compound structure of data where a struct can contain multiple
-    variables including arrays or objects.
+    variables including arrays or objects.  Each member inside a struct is stored
+    by value by default, including other structs.  Storing a member by reference
+    must be explicitely denoted by using a pointer.
 `
 struct Coord
     f64 x, y, z
@@ -414,7 +416,8 @@ struct Coord
 ~To create a struct, typecast a tuple containing the struct's members to the
 ~corresponding struct type.
 Coord coord = Coord(100, -50, 66.7)
-print(coord)  ~output: 100, -50, 66.7
+print(coord.y)  ~output: -50
+
 
 
 `
@@ -466,7 +469,7 @@ class Person : Animal
     void printInfo:
         print(name .. " is " .. age .. " years old and is a(n) " .. job)
 
-
+~Classes can also be stored by value.
 Person john = Person(44, "electrician", "John")
 john.printInfo() ~output: John is 44 years old and is a(n) electrician
 

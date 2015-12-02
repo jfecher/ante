@@ -1,8 +1,13 @@
 #ifndef TOKENS_H
 #define TOKENS_H
 
+#define IS_LITERAL(t) ((t) < 256)
+
+//TOK_TYPE_STR assumes t is not a literal token
+#define TOK_TYPE_STR(t) (tokDictionary[(t)-256])
+
 enum TokenType{
-    Tok_EndOfInput,
+    Tok_EndOfInput = 256,
     Tok_Ident,
 
     //types
@@ -62,13 +67,6 @@ enum TokenType{
 
 //defined in src/lexer.cpp
 extern const char* tokDictionary[];
-
-typedef struct{
-    TokenType type;
-    const char* lexeme;
-    unsigned int row;
-    unsigned int col;
-} Token;
 
 #define TOK(t, r, c) (Token){t, NULL, r, c}
 #define TOKL(t, r) (Token){t, l, r, c}

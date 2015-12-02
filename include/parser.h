@@ -52,13 +52,13 @@ class BoolLitNode : public Node{
 
 class BinOpNode : public Node{
     public:
-        Token op;
+        int op;
         Node *lval, *rval;
         ~BinOpNode(){ free(next); free(lval); free(rval); }
         void compile(void);
         void exec(void);
         void print(void);
-        BinOpNode(Token s, Node *lv, Node *rv) : op(s), lval(lv), rval(rv){}
+        BinOpNode(int s, Node *lv, Node *rv) : op(s), lval(lv), rval(rv){}
 };
 
 class RetNode : public Node{
@@ -83,11 +83,11 @@ class IfNode : public Node{
 class NamedValNode : public Node{
     public:
         string name;
-        Token type;
+        int type;
         void compile(void);
         void exec(void);
         void print(void);
-        NamedValNode(string s, Token t) : name(s), type(t){}
+        NamedValNode(string s, int t) : name(s), type(t){}
 };
 
 class VarNode : public Node{
@@ -121,12 +121,12 @@ class StrLitNode : public Node{
 class VarDeclNode : public Node{
     public:
         string name;
-        Token type;
+        int type;
         Node* expr;
         void compile(void);
         void exec(void);
         void print(void);
-        VarDeclNode(string s, Token t, Node* exp) : name(s), type(t), expr(exp){}
+        VarDeclNode(string s, int t, Node* exp) : name(s), type(t), expr(exp){}
 };
 
 class VarAssignNode : public Node{
@@ -142,13 +142,13 @@ class VarAssignNode : public Node{
 class FuncDeclNode : public Node{
     public:
         string name;
-        Token type;
+        int type;
         vector<NamedValNode*> params;
         vector<Node*> body;
         void compile(void);
         void exec(void);
         void print(void);
-        FuncDeclNode(string s, Token t, vector<NamedValNode*> p, vector<Node*> b) : name(s), type(t), params(p), body(b){}
+        FuncDeclNode(string s, int t, vector<NamedValNode*> p, vector<Node*> b) : name(s), type(t), params(p), body(b){}
 };
 
 class ClassDeclNode : public Node{
@@ -161,44 +161,14 @@ class ClassDeclNode : public Node{
         ClassDeclNode(string s, vector<Node*> b) : name(s), body(b){}
 };
 
-class Parser{
-    public:
-        Parser(const char* file);
-        ParseErr parse(void);
+
+namespace ante{
+    namespace Parser{
+        static vector<Node*> parseTree;
         void printParseTree(void);
-
-    private:
-        Lexer lexer;
-        vector<Node*> parseTree;
-        Token c, n;
-        ParseErr errFlag;
-
         void parseErr(ParseErr e, string s, bool showTok);
-        void incPos(void);
-        bool accept(TokenType t);
-        bool expect(TokenType t);
-        bool acceptOp(char op);
-        bool expectOp(char op);
+    }
+}
 
-        bool isType(TokenType t);
-        
-        Node* parseValue(void);
-        VarNode* parseVariable(void);
-        BinOpNode* parseOp(void);
-        
-        void buildParseTree(void);
-        
-        vector<NamedValNode*> parseTypeList(void);
-        Node* parseStmt(void);
-        IfNode* parseIfStmt(void);
-        RetNode* parseRetStmt(void);
-        vector<Node*> parseBlock(void);
-        ClassDeclNode* parseClass(void);
-        Node* parseGenericVar(void);
-        Node* parseExpr(void);
-        Node* parseOptExpr(void);
-        Node* parseRExpr(Node *lval);
-        Node* parseGenericDecl(void);
-};
-
+extern "C" int yyparse(void);
 #endif
