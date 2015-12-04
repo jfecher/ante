@@ -48,17 +48,27 @@ print(typeof(myVar)) ~output: dynamic i8
     initialized to their default values
 `
 
-i8  myI8  = 0
+i8  myI8  = 0    ~8bit integer
 i16 myI16 = 0
 i32 myI32 = 0
 i64 myI64 = 0
-u8  myU8  = 0
+
+u8  myU8  = 0    ~8bit unsigned integer
 u16 myU16 = 0
 u32 myU32 = 0
 u64 myU64 = 0
-f32 myF32 = 0.0
+
+isz myIsz = 0    ~Signed pointer size
+usz myUsz = 0    ~Unsigned pointer size
+
+f32 myF32 = 0.0  ~32bit float
 f64 myF64 = 0.0
-str myStr = ""
+
+c8  myC8  = ''   ~8bit UTF-8 char
+c16 myC16 = ''
+c32 myC32 = ''   ~32bit UTF-8 char
+c64 myC64 = ''
+
 bool myBool = false
 
 `
@@ -147,9 +157,10 @@ arr -= 3 ~Note: this will throw an exception if the array's size becomes < 0
     In addition to arrays, there are also tuples.  Unlike arrays, tuples can
     be mixed and matched with several types, but each must be stated beforehand.
 `
-i8, f32, str tup = 44, 44.0, "Fourty-four"
+i8, f32 tup = 44, 44.0
 
-i8[30], str[2] anotherTuple = arr, ["This tuple contains", "two arrays"]
+~NOTE: c32* is a pointer to a 32bit-per-char string
+i8[30], c32*[2] anotherTuple = arr, ["This tuple contains", "two arrays"]
 
 `
     This restriction does not apply when making a dynamic variable of course
@@ -215,7 +226,7 @@ println("Test #", add(3, 43))
     own print function without utilizing the std api, or using an external c api.  
     While less common, the pathogen modifier may be used for variables, classes, enums, etc.
 `
-pathogen void myPrint: str msg
+pathogen void myPrint: c32* msg
     i32 i = 4 + 2
     system("echo '" .. msg .. "'") ~note: system is already a pathogen function
 
@@ -431,7 +442,7 @@ while {i += 1; return i} <= 100
 `
         Structs
     Structs are a compound structure of data where a struct can contain multiple
-    variables including arrays or objects.  Each member inside a struct is stored
+    variables including arrays or objects.  Each member inside a /truct is stored
     by value by default, including other structs.  Storing a member by reference
     must be explicitely denoted by using a pointer.
 `
@@ -455,14 +466,14 @@ print(coord.y)  ~output: -50
 
 class Animal
     u16 age
-    str species
-    str name
+    c8* species
+    c8* name
 `
     The _init function is a function that is automatically called when a class
     is initialized and the givin values match _init's parameters.  It can be
     thought of as the constructor for the class.
 `
-    void _init: u16, str, str
+    void _init: u16, c8*, c8*
         age = _params[0]
         species = _params[1]
         name = _params[2]
@@ -482,9 +493,9 @@ Animal* clifford = new Animal(7, "magnum rubrum canis", "Clifford")
     Classes can also inherit from other classes with the : token.
 `
 class Person : Animal
-    str job
+    c8* job
 
-    void _init: u16 age, str j, str name
+    void _init: u16 age, c8* j, c8* name
         job = j
         super(age, "Homo sapien", name) ~super() calls the _init function from the parent class
 
@@ -522,7 +533,7 @@ class Statistics
         f64 getData:
             return secretData ~not so secret anymore
 
-        str getStatus:
+        c8* getStatus:
             if secretData > 10
                 return "Good"
             else
@@ -707,9 +718,9 @@ false
 `
 
 `
-        Class Extensions
+        Type Extensions
     The ext keyword can be used to extend an already declared
-    class with new methods, but no new instance data can be
+    class or type with new methods, but no new instance data can be
     added.  A common usage of this would be extending an API
     to implement a function or inherent from your own parent
     class to better fit in with your class hierarchy.
@@ -718,6 +729,18 @@ ext Point : SomeAdditionalParentClass
     ~implement new methods
     bool op("=="): Point p2
         return this.x == p2.x && this.y == p2.y
+
+
+~extensions can also be used for primitive types
+ext i32, i32
+    void swap:
+        i32 tmp = this[0]
+        this[0] = this[1]
+        this[1] = tmp
+
+i32, i32 point = (3, 4).swap()
+~point[0] = 4
+~point[1] = 3
 
 `
         Pattern Matching
@@ -750,7 +773,7 @@ match joe
 ~class, so the Animal cast to joe was the first valid cast
 
 struct String
-    str s
+    c32* s
     u32 len
 
 String testStr = String("Test", 4)
@@ -763,6 +786,13 @@ match testStr
     String("Test", 4")
         print("This will be matched")
 
+
+~Match can also be used in expressions
+c32* s = match 2
+    0 -> "zero"
+    1 -> "one"
+    2 -> "two"
+    _ -> "other"
 `
         Enums
     Declaring an enum declares a set of named constants. They are declared
@@ -776,7 +806,7 @@ match testStr
 enum Suit -> Diamonds, Hearts, Spades, Clubs
 
 Suit spades = Suit.Spades
-print(spades, " ", str spades)  ~output: 2 Spades
+print(spades .. " " .. c32* spades)  ~output: 2 Spades
 
 struct Card
     u8 number
@@ -835,6 +865,13 @@ pByte2 = 128
 
 print(*pByte)
 
+~Pointers are also used to create strings as char arrays
+~Since there are multiple sizes of chars, the dfeault
+~encoding (from single byte to 4 byte UTF-8) can be specified.
+~The default encoding for string literals is 4 byte UTF-8
+c32* str = "Hello World!"
+c8[] msg = "Condensed String"
+
 `
         Automatic dereferencing.
     When accessing a member function through a pointer to an object,
@@ -873,8 +910,8 @@ f32 mul: f32 a, f32 b -> return a * b
 f32 div: f32 a, f32 b -> return a / b
 
 ~This function takes one parameter, a function pointer 
-~that takes two f32s and returns one as well.
-f32 doOperation: f32 num, f32(f32, f32) opFunc
+~that takes two f32s as parameters and returns one as well.
+f32 doOperation: f32(f32, f32) opFunc
     return opFunc(6, 4)
 
 ~our function pointer
@@ -886,9 +923,43 @@ fnPtr = div
 assert(doOperation(fnPtr) == 1.5)
 
 
+`
+        Types as values
+    Types are values, and can be used as such in
+    expressions.  Types are of type type, and
+    new types can be created by combining other
+    types.  Declaring a type in this fashion differs from
+    a struct in that it does not have members.
+`
+
+~declare a type str that can be a char pointer of any size
+type str = c8* | c16* | c32* | c64*
+
+~declare a type coord that can be an integer or float tuple
+type coord = i32, i32 | f64, f64
+
+
+`
+        Multiline expressions
+    Expressions are normally terminated by a newline
+    character, but can be extended by adding a backslash
+    right before the newline as the final character
+`
+type num = i8  | i16 | i32 | i64 \
+         | u8  | u16 | u32 | u64 \
+         | f32 | f64
+
+
+type int = i8  \
+         | i16 \
+         | i32 \
+         | i64 \
 
 `
         Experimental
+    These features are being proposed or considered
+    but are not yet known to be of enough value to
+    include in the language.
 `
 macro pstr: ident i
     pub const str i = "p"
@@ -905,12 +976,10 @@ pathogen void c_ffi("putchar"): u8
 
 ~lambda functions
 lambda: i32 x -> return x + 50
+|i32 x| -> return x + 50
 
 ~alternate c_ffi declaration
-pathogen void* c_ffi("malloc"): u64 size
-
-~possibly shorten pathogen to pgen
-pgen void* c_ffi("malloc"): u64 size
+pathogen void* c_ffi("malloc"): u32 size
 
 ~syntax change for type casts to distinguish them from declarations
 f32 f = 7 as f32
@@ -927,32 +996,13 @@ sync foreach i32 i in arr
 
 f32 f = await someFunction()
 
-~expanded usage of where as ternary operator
-f32 f = x+2 where x > 0 else x-2
-
-~alternate, more pythonic way
+~pssible ternary operator
 f32 f = x+2 if x > 0 else x-2
 
-
-~Smart pointers by default, raw pointers made with raw modifier
-raw i32* rawPtr = &3
-
-~Is keyword/operator for matching types or values
-assert(3 is i32)
-assert(5 is 5)
-
-~Type system for creating new types as a combination
-~of others, as well as evaluating types as values.
-type Coord = Coord2D || Coord3D
-type Coord = Coord2D or Coord3D
-type Coord = Coord2D | Coord3D
-
-~extensions / implementations for native types
-ext str
-    void swap: str swp
-        str tmp = this
-        this = swp
-        swp = tmp
+f32 f = if x > 0
+    x + 2
+else
+    x - 2
 
 ~maybe change ext to impl
 impl i32, i32
@@ -961,31 +1011,20 @@ impl i32, i32
         this[0] = this[1]
         this[1] = tmp
 
-i32, i32 point = (3, 4).swap()
+~Smart pointers by default, raw pointers made with raw modifier
+raw i32* rawPtr = &3
 
-type coord = i32, i32
+~Is keyword/operator for matching types or values
+assert(3 is i32)
+assert(5 is 5)
+~Could be called as the comparison for match statements
 
-~possibly change indentation system to allow
-~multi line expressions
-type num = i8  | i16 | i32 | i64 
-         | u8  | u16 | u32 | u64
-         | f32 | f64
+~Maybe remove automatic dereferencing to avoid
+~ambiguity for type extensions of pointer types.
 
-type num = i8  | i16 | i32 | i64 \
-         | u8  | u16 | u32 | u64 \
-         | f32 | f64
-
-type unsigned = u8 | u16 | u32 | u64
-
-
-~Allow match in expressions
-i32 i = 2
-
-str s = match i
-    0 -> "zero"
-    1 -> "one"
-    2 -> "two"
-    _ -> "other"
+~Possible addition of deindent token
+i32 x = 2
+i32 y = if x > 2 -> 5 <-else-> 4
 
 
 `
@@ -999,9 +1038,14 @@ primitive datatypes:
     u16
     u32
     u64
+    isz
+    usz
     f32
     f64
-    str 
+    c8
+    c16
+    c32
+    c64
     bool 
     void
 
@@ -1032,6 +1076,7 @@ modifiers:
     const 
     ext
     dyn
+    pathogen
 
 datatypes:
     class 
@@ -1040,6 +1085,9 @@ datatypes:
 
 other:
     where
+    infect
+    cleanse
+    ct
 `
 
 `
