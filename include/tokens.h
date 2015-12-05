@@ -19,8 +19,14 @@ enum TokenType{
     Tok_U16,
     Tok_U32,
     Tok_U64,
+    Tok_Isz, //Signed integer with pointer size
+    Tok_Usz,
     Tok_F32,
     Tok_F64,
+    Tok_C8,
+    Tok_C16,
+    Tok_C32,
+    Tok_C64,
     Tok_Bool,
     Tok_Void,
 
@@ -55,10 +61,25 @@ enum TokenType{
 	Tok_Continue,
 	Tok_Break,
     Tok_Import,
-    Tok_Where,
+    Tok_Match,
     Tok_Enum,
     Tok_Struct,
     Tok_Class,
+
+    //modifiers
+    Tok_Pub,
+    Tok_Pri,
+    Tok_Pro,
+    Tok_Const,
+    Tok_Ext,
+    Tok_Dyn,
+    Tok_Pathogen,
+
+    //other
+    Tok_Where,
+    Tok_Infect,
+    Tok_Cleanse,
+    Tok_Ct,
 
     Tok_Newline,
     Tok_Indent,

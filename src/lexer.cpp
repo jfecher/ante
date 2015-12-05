@@ -14,8 +14,14 @@ const char* tokDictionary[] = {
     "U16",
     "U32",
     "U64",
+    "Isz",
+    "Usz",
     "F32",
     "F64",
+    "C8",
+    "C16",
+    "C32",
+    "C64",
     "Bool",
     "Void",
 
@@ -50,10 +56,25 @@ const char* tokDictionary[] = {
 	"Continue",
 	"Break",
     "Import",
-    "Where",
+    "Match",
     "Enum",
     "Struct",
     "Class",
+
+    //modifiers
+    "Pub",
+    "Pri",
+    "Pro",
+    "Const",
+    "Ext",
+    "Dyn",
+    "Pathogen",
+
+    //other
+    "Where",
+    "Infect",
+    "Cleanse",
+    "Ct",
 
     "Newline",
     "Indent",
@@ -69,8 +90,14 @@ map<string, int> keywords = {
     {"u16",      Tok_U16},
     {"u32",      Tok_U32},
     {"u64",      Tok_U64},
+    {"isz",      Tok_Isz},
+    {"usz",      Tok_Usz},
     {"f32",      Tok_F32},
     {"f64",      Tok_F64},
+    {"c8",       Tok_C8},
+    {"c16",      Tok_C16},
+    {"c32",      Tok_C32},
+    {"c64",      Tok_C64},
     {"bool",     Tok_Bool},
     {"void",     Tok_Void},
     
@@ -91,10 +118,23 @@ map<string, int> keywords = {
     {"continue", Tok_Continue},
     {"break",    Tok_Break},
     {"import",   Tok_Import},
-    {"where",    Tok_Where},
     {"enum",     Tok_Enum},
     {"struct",   Tok_Struct},
     {"class",    Tok_Class},
+    
+    {"Pub",      Tok_Pub},
+    {"Pri",      Tok_Pri},
+    {"Pro",      Tok_Pro},
+    {"Const",    Tok_Const},
+    {"Ext",      Tok_Ext},
+    {"Dyn",      Tok_Dyn},
+    {"Pathogen", Tok_Pathogen},
+
+    //other
+    {"Where",    Tok_Where},
+    {"Infect",   Tok_Infect},
+    {"Cleanse",  Tok_Cleanse},
+    {"Ct",       Tok_Ct},
 };
 
 char c = 0; 
@@ -276,6 +316,10 @@ int ante::lexer::next()
     }
     
     if PAIR('.', '.') RETURN_PAIR(Tok_StrCat);
+
+    //If a backslash is placed before a newline, skip
+    //the newline token
+    if PAIR('\\', '\n') RETURN_PAIR(ante::lexer::next());
 
     if(c == 0 || c == EOF){
         return Tok_EndOfInput;
