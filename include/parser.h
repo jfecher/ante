@@ -163,12 +163,13 @@ class ClassDeclNode : public Node{
 
 
 namespace ante{
-    namespace Parser{
+    namespace parser{
         static vector<Node*> parseTree;
         void printParseTree(void);
         void parseErr(ParseErr e, string s, bool showTok);
     }
 }
 
-extern "C" int yyparse(void);
+extern "C" int parse();
+
 #endif

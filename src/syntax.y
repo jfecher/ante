@@ -20,8 +20,14 @@ void yyerror(const char *msg);
 %token U16
 %token U32
 %token U64
+%token ISz
+%token Usz
 %token F32
 %token F64
+%token C8
+%token C16
+%token C32
+%token C64
 %token Bool
 %token Void
 
@@ -59,10 +65,24 @@ void yyerror(const char *msg);
 %token Continue
 %token Break
 %token Import
-%token Where
 %token Enum
 %token Struct
 %token Class
+
+//modifiers
+%token Pub
+%token Pri
+%token Pro
+%token Const
+%token Ext
+%token Dyn
+%token Pathogen
+
+//other
+%token Where
+%token Infect
+%token Cleanse
+%token Ct
 
 %token Newline
 %token Indent
@@ -88,8 +108,14 @@ type: I8
     | U16
     | U32
     | U64
+    | ISz
+    | Usz
     | F32
     | F64
+    | C8
+    | C16
+    | C32
+    | C64
     | Bool
     | Void
     ;

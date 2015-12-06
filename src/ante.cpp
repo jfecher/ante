@@ -5,6 +5,8 @@
 #include <iostream>
 using namespace ante;
 
+extern "C" int yyparse();
+
 int main(int argc, char *argv[]){
     if(argc == 2){
         //default = compile
