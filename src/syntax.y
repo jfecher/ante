@@ -93,7 +93,7 @@ void yyerror(const char *msg);
 %token Unindent
 %%
 
-module: statement_list
+module: statement_list EndOfInput
       ;
 
 statement_list: statement_list statement
@@ -101,32 +101,83 @@ statement_list: statement_list statement
               ;
 
 statement: var_decl
-         | '\n'
+         | var_assign
+         | fn_decl
+         | fn_call
+         | ret_stmt
+         | while_loop
+         | foreach_loop
+         | Newline
          ;
 
-type: I8
-    | I16
-    | I32
-    | I64
-    | U8
-    | U16
-    | U32
-    | U64
-    | ISz
-    | Usz
-    | F32
-    | F64
-    | C8
-    | C16
-    | C32
-    | C64
-    | Bool
-    | Void
+lit_type: I8
+        | I16
+        | I32
+        | I64
+        | U8
+        | U16
+        | U32
+        | U64
+        | ISz
+        | Usz
+        | F32
+        | F64
+        | C8
+        | C16
+        | C32
+        | C64
+        | Bool
+        | Void
+        ;
+
+type: type '*'
+    | type '[' empty_expr ']'
+    | type ',' type
+    | lit_type
     ;
 
-var_decl: type Ident '=' expr
-        | type Ident
+modifier: Pub
+        | Pri
+        | Pro
+        | Const
+        | Ext
+        | Dyn
+        | Pathogen
         ;
+
+modifier_list: modifier_list modifier
+             | modifier
+             | 
+             ;
+
+var_decl: modifier_list type Ident '=' expr
+        | modifier_list type Ident
+        ;
+
+var_assign: var '=' expr
+          ;
+
+block: Indent statement_list Unindent
+     ;
+
+params: params ',' type Ident
+      | type Ident
+      ;
+
+fn_decl: type Ident ':' params block
+       ;
+
+fn_call: Ident '(' empty_expr ')'
+       ;
+
+ret_stmt: Return expr
+        ;
+
+while_loop: While expr block
+          ;
+
+foreach_loop: ForEach var_decl In expr block
+            ;
 
 bin_op: '+'
       | '-'
@@ -138,6 +189,7 @@ bin_op: '+'
       | '&'
       | '<'
       | '>'
+      | '.'
       | Eq
       | NotEq
       | AddEq
@@ -151,7 +203,22 @@ bin_op: '+'
       | StrCat
       ;
 
-val: Ident
+var: Ident '[' expr ']'
+   | Ident
+   ;
+
+val: fn_call
+   | var
+   | IntLit
+   | FltLit
+   | StrLit
+   | True
+   | False
+   ;
+
+empty_expr: expr
+          | 
+          ;
 
 expr: l_expr val
     ;
@@ -165,7 +232,6 @@ l_expr: l_expr val bin_op
 
 void yyerror(const char *s){
     fprintf(stderr, "%s\n", s);
-    return;
 }
 
 #endif
