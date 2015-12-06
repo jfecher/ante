@@ -159,7 +159,7 @@ arr -= 3 ~Note: this will throw an exception if the array's size becomes < 0
 `
 i8, f32 tup = 44, 44.0
 
-~NOTE: c32* is a pointer to a 32bit-per-char string
+~NOTE: c32*[2] is an array of two strings, each having a char size of 32.
 i8[30], c32*[2] anotherTuple = arr, ["This tuple contains", "two arrays"]
 
 `
@@ -654,6 +654,31 @@ class MySmartPtr<type T>
     T** op("&"):
         return &rawPtr
 
+~where can also be used to check the type specification
+class ChessPiece<String piece> where searchFor(piece, ["pawn", "knight", "king"]) != -1
+    u8 x
+    u8 y
+    
+    void _init: u8 x, u8 y
+    
+    if piece == "pawn" 
+        bool validateMove: u8 x2, u8 y2
+            return x == x2 && abs(y - y2) == 1
+
+    elif piece == "knight"
+        bool validateMove: u8 x2, u8 y2
+            if abs(x - x2) == 1
+                return abs(y - y2) == 2
+            return abs(x - x2) == 2 && abs(y - y2) == 1
+    
+    elif piece == "king"
+        bool validateMove: u8 x2, u8 y2
+            return abs(x - x2) <= 1 && abs(y - y2) <= 1
+
+
+ChessPiece<"knight"> knight = ChessPiece(2, 3)
+assert(validateMove(3, 5))
+
 `
         Operator Overloading and Infix Functions
     Note that the cmp example above requires that the operator < is implemented for
@@ -739,8 +764,7 @@ ext i32, i32
         this[1] = tmp
 
 i32, i32 point = (3, 4).swap()
-~point[0] = 4
-~point[1] = 3
+assert(point[0] == 4 && point[1] == 3)
 
 `
         Pattern Matching
@@ -772,18 +796,18 @@ match joe
 ~This is because the Person class inherits from the Animal
 ~class, so the Animal cast to joe was the first valid cast
 
-struct String
+struct MyString
     c32* s
     u32 len
 
-String testStr = String("Test", 4)
+MyString testStr = MyString("Test", 4)
 
 match testStr
-    String("Test", 3)
+    MyString("Test", 3)
         print("This will not be matched")
-    String("Testing", 4)
+    MyString("Testing", 4)
         print("This will not be matched either")
-    String("Test", 4")
+    MyString("Test", 4")
         print("This will be matched")
 
 
@@ -820,11 +844,7 @@ Card fourOfHearts = Card(4, Suit.Hearts)
         Pointers
     Pointers are created by adding an * after the datatype.
     Since pointers are considered part of the datatype, the
-    syntax:
-    
-    type *name
-    
-    is not valid.
+    syntax [type] *[name] is not valid.
 `
 
 
@@ -832,7 +852,8 @@ i32 five = 5
 i32* ptrToFive = &five
 ~The unary & operator gets the location of the value 5
 
-~The new keyword automatically allocates data for a class or struct
+~The new keyword automatically allocates data for a class or struct and calls its
+~constructor if it has one.
 Card* tod = new Card(3, Suit.Diamonds)
 
 ~alternatively, data can be manually allocated.  The following is equivilent
@@ -929,7 +950,7 @@ assert(doOperation(fnPtr) == 1.5)
     expressions.  Types are of type type, and
     new types can be created by combining other
     types.  Declaring a type in this fashion differs from
-    a struct in that it does not have members.
+    a struct in that it does not have named members.
 `
 
 ~declare a type str that can be a char pointer of any size
@@ -971,6 +992,21 @@ macro pstr: ident i
 macro or:  -> ||
 macro and: -> &&
 
+~possible scopped macros
+c32* getTokenType: c32 t
+    macro isLetter: c32 i
+        (i >= 65 && i <= 90 || i >= 97 && i <= 122)
+
+    if isLetter(t)
+        return "ident"
+    else
+        return "not an ident"
+
+~the below would not be valid since isLetter would have gone out of scope.
+if isLetter('a')
+    print("a is a letter")
+
+
 pstr(g)
 ~output: p
 
@@ -1008,6 +1044,8 @@ f32 f = if x > 0
     x + 2
 else
     x - 2
+
+f32 f = x > 0 ? x + 2 : x - 2
 
 ~maybe change ext to impl
 impl i32, i32
