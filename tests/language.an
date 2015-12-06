@@ -953,7 +953,10 @@ type num = i8  | i16 | i32 | i64 \
 type int = i8  \
          | i16 \
          | i32 \
-         | i64 \
+         | i64
+
+
+
 
 `
         Experimental
@@ -977,6 +980,8 @@ pathogen void c_ffi("putchar"): u8
 ~lambda functions
 lambda: i32 x -> return x + 50
 |i32 x| -> return x + 50
+
+i32(i32, i32) addFn = |i32 x, i32 y| -> return x + y
 
 ~alternate c_ffi declaration
 pathogen void* c_ffi("malloc"): u32 size
@@ -1010,6 +1015,8 @@ impl i32, i32
         i32 tmp = this[0]
         this[0] = this[1]
         this[1] = tmp
+
+i32, i32 coord = (4, 2).swap()
 
 ~Smart pointers by default, raw pointers made with raw modifier
 raw i32* rawPtr = &3
