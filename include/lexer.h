@@ -34,6 +34,6 @@ namespace ante{
 }
 
 //c api for yacc's parser
-extern "C" int yylex(...);
+extern "C" int yyparse();
 
 #endif

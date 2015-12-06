@@ -7,7 +7,7 @@
 #define TOK_TYPE_STR(t) (tokDictionary[(t)-256])
 
 enum TokenType{
-    Tok_EndOfInput = 256,
+    Tok_EndOfInput = 258,
     Tok_Ident,
 
     //types
@@ -89,8 +89,8 @@ enum TokenType{
 //defined in src/lexer.cpp
 extern const char* tokDictionary[];
 
-#define TOK(t, r, c) (Token){t, NULL, r, c}
-#define TOKL(t, r) (Token){t, l, r, c}
+//#define TOK(t, r, c) (Token){t, NULL, r, c}
+//#define TOKL(t, r) (Token){t, l, r, c}
 
 #define IS_TERMINATING_OP(o) ((o)==']'||(o)=='}'||(o)==')')
 

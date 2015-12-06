@@ -5,7 +5,7 @@ vpath %.d obj
 WARNINGS := -Wall
 LLVMFLAGS := `llvm-config --cppflags --libs all --ldflags --system-libs`
 CPPFLAGS := -g -O2 -std=c++11 $(WARNINGS) $(LLVMFLAGS)
-YACCFLAGS := -Lc -osrc/parser.cpp
+YACCFLAGS := -Lc -osrc/parser.c
 
 SRCDIRS := src
 SRCFILES := $(shell find $(SRCDIRS) -type f -name "*.cpp")
@@ -32,7 +32,7 @@ obj/%.o: src/%.cpp Makefile | obj
 obj/parser.o: src/syntax.y
 	@echo Generating parser...
 	@$(YACC) $(YACCFLAGS) src/syntax.y
-	@$(CC) -g -O2 -MMD -MP -Iinclude -c src/parser.cpp -o $@
+	@$(CC) -g -O2 -MMD -MP -Iinclude -c src/parser.c -o $@
 
 clean:
 	-@$(RM) obj/*.o obj/*.d ante

@@ -170,6 +170,7 @@ namespace ante{
     }
 }
 
-extern "C" int parse();
+extern "C" int yylex(...);
+extern "C" int yyparse();
 
 #endif

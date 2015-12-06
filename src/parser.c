@@ -65,14 +65,18 @@
 #line 1 "src/syntax.y" /* yacc.c:339  */
 
 
+#ifndef PARSER_CPP
+#define PARSER_CPP
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <tokens.h>
-#include <lexer.h>
+
+int yylex();
 void yyerror(const char *msg);
 
 
-#line 76 "src/parser.cpp" /* yacc.c:339  */
+#line 80 "src/parser.c" /* yacc.c:339  */
 
 # ifndef YY_NULLPTR
 #  if defined __cplusplus && 201103L <= __cplusplus
@@ -256,7 +260,7 @@ int yyparse (void);
 
 /* Copy the second part of user declarations.  */
 
-#line 260 "src/parser.cpp" /* yacc.c:358  */
+#line 264 "src/parser.c" /* yacc.c:358  */
 
 #ifdef short
 # undef short
@@ -560,12 +564,12 @@ static const yytype_uint8 yytranslate[] =
   /* YYRLINE[YYN] -- Source line where rule number YYN was defined.  */
 static const yytype_uint8 yyrline[] =
 {
-       0,    92,    92,    95,    96,    99,   100,   103,   104,   105,
-     106,   107,   108,   109,   110,   111,   112,   113,   114,   115,
-     116,   117,   118,   119,   120,   123,   124,   127,   128,   129,
-     130,   131,   132,   133,   134,   135,   136,   137,   138,   139,
-     140,   141,   142,   143,   144,   145,   146,   147,   150,   152,
-     155,   156
+       0,    96,    96,    99,   100,   103,   104,   107,   108,   109,
+     110,   111,   112,   113,   114,   115,   116,   117,   118,   119,
+     120,   121,   122,   123,   124,   127,   128,   131,   132,   133,
+     134,   135,   136,   137,   138,   139,   140,   141,   142,   143,
+     144,   145,   146,   147,   148,   149,   150,   151,   154,   156,
+     159,   160
 };
 #endif
 
@@ -1388,7 +1392,7 @@ yyreduce:
   switch (yyn)
     {
       
-#line 1392 "src/parser.cpp" /* yacc.c:1646  */
+#line 1396 "src/parser.c" /* yacc.c:1646  */
       default: break;
     }
   /* User semantic actions sometimes alter yychar, and that requires
@@ -1616,10 +1620,12 @@ yyreturn:
 #endif
   return yyresult;
 }
-#line 160 "src/syntax.y" /* yacc.c:1906  */
+#line 164 "src/syntax.y" /* yacc.c:1906  */
 
 
 void yyerror(const char *s){
     fprintf(stderr, "%s\n", s);
     return;
 }
+
+#endif

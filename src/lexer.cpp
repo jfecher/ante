@@ -139,7 +139,7 @@ map<string, int> keywords = {
 
 char c = 0; 
 char n = 0;
-string yytext;
+static string yytext;
 ifstream *in;
 const char scStep = 4;
 
@@ -321,12 +321,11 @@ int ante::lexer::next()
     //the newline token
     if PAIR('\\', '\n') RETURN_PAIR(ante::lexer::next());
 
-    if(c == 0 || c == EOF){
-        return Tok_EndOfInput;
-    }
+    if(c == 0 || c == EOF) return Tok_EndOfInput;
 
     //If the character is nota, assume it is an operator and store
     //the character in the string for identification
     incPos();
+    yytext = c;
     return c;
 }

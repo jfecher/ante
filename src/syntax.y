@@ -1,9 +1,13 @@
 %{
 
+#ifndef PARSER_CPP
+#define PARSER_CPP
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <tokens.h>
-#include <lexer.h>
+
+int yylex();
 void yyerror(const char *msg);
 
 %}
@@ -163,3 +167,5 @@ void yyerror(const char *s){
     fprintf(stderr, "%s\n", s);
     return;
 }
+
+#endif
