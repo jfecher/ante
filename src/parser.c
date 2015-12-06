@@ -65,18 +65,15 @@
 #line 1 "src/syntax.y" /* yacc.c:339  */
 
 
-#ifndef PARSER_CPP
-#define PARSER_CPP
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <tokens.h>
 
 int yylex();
-void yyerror(const char *msg);
+void yyerror(char *msg);
 
 
-#line 80 "src/parser.c" /* yacc.c:339  */
+#line 77 "src/parser.c" /* yacc.c:339  */
 
 # ifndef YY_NULLPTR
 #  if defined __cplusplus && 201103L <= __cplusplus
@@ -260,7 +257,7 @@ int yyparse (void);
 
 /* Copy the second part of user declarations.  */
 
-#line 264 "src/parser.c" /* yacc.c:358  */
+#line 261 "src/parser.c" /* yacc.c:358  */
 
 #ifdef short
 # undef short
@@ -564,16 +561,16 @@ static const yytype_uint8 yytranslate[] =
   /* YYRLINE[YYN] -- Source line where rule number YYN was defined.  */
 static const yytype_uint8 yyrline[] =
 {
-       0,    96,    96,    99,   100,   103,   104,   105,   106,   107,
-     108,   109,   110,   113,   114,   115,   116,   117,   118,   119,
-     120,   121,   122,   123,   124,   125,   126,   127,   128,   129,
-     130,   133,   134,   135,   136,   139,   140,   141,   142,   143,
-     144,   145,   148,   149,   150,   153,   154,   157,   160,   163,
-     164,   167,   170,   173,   176,   179,   182,   183,   184,   185,
-     186,   187,   188,   189,   190,   191,   192,   193,   194,   195,
-     196,   197,   198,   199,   200,   201,   202,   203,   206,   207,
-     210,   211,   212,   213,   214,   215,   216,   219,   220,   223,
-     226,   227
+       0,    95,    95,    98,    99,   102,   103,   104,   105,   106,
+     107,   108,   109,   112,   113,   114,   115,   116,   117,   118,
+     119,   120,   121,   122,   123,   124,   125,   126,   127,   128,
+     129,   132,   133,   134,   135,   138,   139,   140,   141,   142,
+     143,   144,   147,   148,   149,   152,   153,   156,   159,   162,
+     163,   166,   169,   172,   175,   178,   181,   182,   183,   184,
+     185,   186,   187,   188,   189,   190,   191,   192,   193,   194,
+     195,   196,   197,   198,   199,   200,   201,   202,   205,   206,
+     209,   210,   211,   212,   213,   214,   215,   218,   219,   222,
+     225,   226
 };
 #endif
 
@@ -1492,7 +1489,7 @@ yyreduce:
   switch (yyn)
     {
       
-#line 1496 "src/parser.c" /* yacc.c:1646  */
+#line 1493 "src/parser.c" /* yacc.c:1646  */
       default: break;
     }
   /* User semantic actions sometimes alter yychar, and that requires
@@ -1720,11 +1717,10 @@ yyreturn:
 #endif
   return yyresult;
 }
-#line 231 "src/syntax.y" /* yacc.c:1906  */
+#line 230 "src/syntax.y" /* yacc.c:1906  */
 
 
-void yyerror(const char *s){
-    fprintf(stderr, "%s\n", s);
+void yyerror(char *s){
+    fprintf(stderr, "%s\nerrtok = %d\n", s, yychar);
 }
 
-#endif

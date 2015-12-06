@@ -1,14 +1,11 @@
 %{
 
-#ifndef PARSER_CPP
-#define PARSER_CPP
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <tokens.h>
 
 int yylex();
-void yyerror(const char *msg);
+void yyerror(char *msg);
 
 %}
 
@@ -91,6 +88,8 @@ void yyerror(const char *msg);
 %token Newline
 %token Indent
 %token Unindent
+
+%start module
 %%
 
 module: statement_list EndOfInput
@@ -147,7 +146,7 @@ modifier: Pub
 
 modifier_list: modifier_list modifier
              | modifier
-             | 
+             | %empty
              ;
 
 var_decl: modifier_list type Ident '=' expr
@@ -217,7 +216,7 @@ val: fn_call
    ;
 
 empty_expr: expr
-          | 
+          | %empty
           ;
 
 expr: l_expr val
@@ -230,8 +229,7 @@ l_expr: l_expr val bin_op
 
 %%
 
-void yyerror(const char *s){
-    fprintf(stderr, "%s\n", s);
+void yyerror(char *s){
+    fprintf(stderr, "%s\nerrtok = %d\n", s, yychar);
 }
 
-#endif
