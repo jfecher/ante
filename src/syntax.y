@@ -5,7 +5,9 @@
 #include <tokens.h>
 
 int yylex();
-void yyerror(char *msg);
+void yyerror(const char *msg);
+
+#define YYERROR_VERBOSE
 
 %}
 
@@ -99,10 +101,10 @@ statement_list: statement_list statement
               | statement
               ;
 
-statement: var_decl
+statement: fn_call
+         | var_decl
          | var_assign
          | fn_decl
-         | fn_call
          | ret_stmt
          | while_loop
          | foreach_loop
@@ -229,7 +231,7 @@ l_expr: l_expr val bin_op
 
 %%
 
-void yyerror(char *s){
+void yyerror(const char *s){
     fprintf(stderr, "%s\nerrtok = %d\n", s, yychar);
 }
 
