@@ -91,13 +91,18 @@ void yyerror(const char *msg);
 %token Indent
 %token Unindent
 
+
+%precedence Ident
+%precedence '['
+
+
 %start module
 %%
 
 module: statement_list EndOfInput
       ;
 
-statement_list: statement_list statement
+statement_list: statement_list Newline statement
               | statement
               ;
 
