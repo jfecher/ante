@@ -91,11 +91,46 @@ void yyerror(const char *msg);
 %token Indent
 %token Unindent
 
+/*
+State 0 conflicts: 25 shift/reduce
+State 21 conflicts: 7 shift/reduce
+State 62 conflicts: 25 shift/reduce
+State 98 conflicts: 25 shift/reduce
+State 103 conflicts: 3 shift/reduce
+*/
 
-%precedence Ident
+%precedence ','
+
+
+%precedence I8
+%precedence I16
+%precedence I32
+%precedence I64
+%precedence U8
+%precedence U16
+%precedence U32
+%precedence U64
+%precedence ISz
+%precedence Usz
+%precedence F32
+%precedence F64 
+%precedence C8
+%precedence C16
+%precedence C32
+%precedence C64
+%precedence Bool
+%precedence Void
+
+
+%precedence '*'
+
+
+
+%precedence '('
 %precedence '['
+%precedence '{'
 
-
+%expect 0
 %start module
 %%
 
@@ -136,10 +171,13 @@ lit_type: I8
         | Void
         ;
 
-type: type '*'
-    | type '[' empty_expr ']'
-    | type ',' type
-    | lit_type
+non_tuple_type: non_tuple_type '*'
+              | non_tuple_type '[' maybe_expr ']'
+              | lit_type
+              ;
+     
+type: type ',' non_tuple_type
+    | non_tuple_type
     ;
 
 modifier: Pub
@@ -151,13 +189,16 @@ modifier: Pub
         | Pathogen
         ;
 
+maybe_modifier_list: modifier_list
+                   | %empty
+                   ;
+
 modifier_list: modifier_list modifier
              | modifier
-             | %empty
              ;
 
-var_decl: modifier_list type Ident '=' expr
-        | modifier_list type Ident
+var_decl: maybe_modifier_list type Ident '=' expr
+        | maybe_modifier_list type Ident
         ;
 
 var_assign: var '=' expr
@@ -170,10 +211,10 @@ params: params ',' type Ident
       | type Ident
       ;
 
-fn_decl: type Ident ':' params block
+fn_decl: maybe_modifier_list type Ident ':' params block
        ;
 
-fn_call: Ident '(' empty_expr ')'
+fn_call: Ident '(' maybe_expr ')'
        ;
 
 ret_stmt: Return expr
@@ -222,7 +263,7 @@ val: fn_call
    | False
    ;
 
-empty_expr: expr
+maybe_expr: expr
           | %empty
           ;
 
