@@ -91,16 +91,7 @@ void yyerror(const char *msg);
 %token Indent
 %token Unindent
 
-/*
-State 0 conflicts: 25 shift/reduce
-State 21 conflicts: 7 shift/reduce
-State 62 conflicts: 25 shift/reduce
-State 98 conflicts: 25 shift/reduce
-State 103 conflicts: 3 shift/reduce
-*/
-
 %precedence ','
-
 
 %precedence I8
 %precedence I16
@@ -121,15 +112,15 @@ State 103 conflicts: 3 shift/reduce
 %precedence Bool
 %precedence Void
 
-
 %precedence '*'
-
-
 
 %precedence '('
 %precedence '['
 %precedence '{'
 
+/*
+    All shift/reduce conflicts should be manually dealt with.
+*/
 %expect 0
 %start module
 %%
@@ -141,10 +132,10 @@ statement_list: statement_list Newline statement
               | statement
               ;
 
-statement: fn_call
-         | var_decl
+statement: var_decl
          | var_assign
          | fn_decl
+         | fn_call
          | ret_stmt
          | while_loop
          | foreach_loop
@@ -175,7 +166,7 @@ non_tuple_type: non_tuple_type '*'
               | non_tuple_type '[' maybe_expr ']'
               | lit_type
               ;
-     
+
 type: type ',' non_tuple_type
     | non_tuple_type
     ;
@@ -255,6 +246,7 @@ var: Ident '[' expr ']'
    ;
 
 val: fn_call
+   | '(' expr ')'
    | var
    | IntLit
    | FltLit
@@ -268,6 +260,7 @@ maybe_expr: expr
           ;
 
 expr: l_expr val
+    | val
     ;
 
 l_expr: l_expr val bin_op

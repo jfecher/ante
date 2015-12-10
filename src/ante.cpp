@@ -13,6 +13,7 @@ int main(int argc, char *argv[]){
         Compiler zc = Compiler(0);
         zc.compile();
     }else if(argc == 3){
+        //lex and print tokens
         if(strcmp(argv[1], "-l") == 0){
             lexer::init(argv[2]);
             int t = lexer::next();
@@ -21,6 +22,8 @@ int main(int argc, char *argv[]){
                 lexer::printTok(t);
                 t = lexer::next();
             }
+
+        //parse and print parse tree
         }else if(strcmp(argv[1], "-p") == 0){
             //Parser p = Parser(argv[2]);
             //p.parse();

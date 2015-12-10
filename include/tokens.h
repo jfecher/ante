@@ -1,10 +1,10 @@
 #ifndef TOKENS_H
 #define TOKENS_H
 
-#define IS_LITERAL(t) ((t) < 256)
+#define IS_LITERAL(t) ((t) < 258)
 
 //TOK_TYPE_STR assumes t is not a literal token
-#define TOK_TYPE_STR(t) (tokDictionary[(t)-256])
+#define TOK_TYPE_STR(t) (tokDictionary[(t)-258])
 
 enum TokenType{
     Tok_EndOfInput = 258,

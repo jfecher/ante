@@ -165,7 +165,7 @@ extern "C" int yylex(...)
 void ante::lexer::printTok(int t)
 {
     if(IS_LITERAL(t))
-        cout << (char)t << endl;
+        cout << (char)t << "\t:" << t << endl;
     else
         cout << TOK_TYPE_STR(t) << endl;
 }
@@ -325,7 +325,8 @@ int ante::lexer::next()
 
     //If the character is nota, assume it is an operator and store
     //the character in the string for identification
+    char ret = c;
+    yytext = ret;
     incPos();
-    yytext = c;
-    return c;
+    return ret;
 }
