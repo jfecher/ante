@@ -64,9 +64,9 @@ usz myUsz = 0    ~Unsigned pointer size
 f32 myF32 = 0.0  ~32bit float
 f64 myF64 = 0.0
 
-c8  myC8  = ''   ~8bit UTF-8 char
+c8  myC8  = ''   ~8bit UTF-8 char \0
 c16 myC16 = ''
-c32 myC32 = ''   ~32bit UTF-8 char
+c32 myC32 = ''   ~32bit UTF-8 char \0
 c64 myC64 = ''
 
 bool myBool = false
@@ -93,6 +93,12 @@ print(typeof(n) .. " " .. n)  ~output: i32 43
         *  multiplication
         /  division
         %  remainder
+
+        .. inclusive range
+        ^. exclusive startpoint range
+        .^ exclusive endpoint range
+        ^^ exclusive range
+
         <  less than
         >  greater than
         <= less than or equal to
@@ -198,8 +204,6 @@ f64 add: f64 augend, f64 addend
     return augend + addend
 
 `
-    Ante also has several reserved variables.  Variables with identifiers starting
-    with an underscore are reserved and should not be manually assigned values.
     The function below takes in a variable amount of parameters, as denoted by
     the elipses.  Since _params always contains a tuple of each parameter of
     the function, all the params are passed to the print keyword, with an
@@ -207,7 +211,7 @@ f64 add: f64 augend, f64 addend
 `
 
 void println: ...
-    print(params, '\n')
+    print(_params, '\n')
 
 `
     Here is the syntax for calling functions:
@@ -381,63 +385,15 @@ foreach f32 f in arr -> print(f)
 
 f32 subtract: f32 a, f32 b -> return a - b
 
-~While these can be nested, too many on the same line can lead to clutter
-class Integer -> pub i32 i   void _init: i32 a -> i = a
+~While these can be nested, overnesting should be avoided as it leads to clutter.
+type Integer -> i32 i, void _init: i32 a -> i = a
 
 ~compared to
-class Integer
-    pub i32 i
+type Integer
+    i32 i
 
     void _init: i32 a
         i = a
-
-`
-        Embedded Statements
-    Ante's normal syntax is <statement> [expression], but this can lead
-    to some needlessly long functions.  One way to condense these
-    functions is to use embedded statements.  Embedded statements are
-    named as such becuase they are statements embedded within an
-    expression.
-
-    An embedded statement is always preceeded with an open bracket and 
-    terminated with a matching closing bracket.  Unlike statements, 
-    embedded statements need to return a value to be used in the expression,
-    so the dynamic variable _ is used to modify this value.  If a return
-    statement is encountered, it returns that value instead.  If _ is never
-    assigned to within the embedded statement, _ = 0 by default.
-`
-
-`
-    The following example uses an embedded statement to find the sum
-    of each element of data array, and divide it by the number of
-    elements in the array to find the mean on a single line.
-`
-f32 mean1: f32[] data
-    return {foreach f32 n in data -> _ += n} / size(data)
-
-`
-    Without embedded statements, the above function would have
-    taken up 3 additional lines of code.
-`
-f32 mean2: f32[] data
-    f32 sum = 0
-    foreach f32 n in data
-        sum += n
-    return sum / size(data)
-
-`
-    Embedded statements can also be used as a shortcut for
-    assigning variables within an expression.
-
-    In the following example, an integer i is incremented at
-    each iteration of the loop. The conditional is evaluated 
-    before each iteration of the loop, the numbers 1-100 are 
-    printed, and the loop closes when i == 101
-`
-i8 i = 0
-while {i += 1; return i} <= 100
-    print(i)
-
 
 `
         Structs
@@ -446,7 +402,7 @@ while {i += 1; return i} <= 100
     by value by default, including other structs.  Storing a member by reference
     must be explicitely denoted by using a pointer.
 `
-struct Coord
+type Coord
     f64 x, y, z
 
 ~To create a struct, typecast a tuple containing the struct's members to the
@@ -464,7 +420,7 @@ print(coord.y)  ~output: -50
     are public by default.
 `
 
-class Animal
+type Animal
     u16 age
     c8* species
     c8* name
@@ -490,14 +446,14 @@ Animal* clifford = new Animal(7, "magnum rubrum canis", "Clifford")
 
 
 `
-    Classes can also inherit from other classes with the : token.
+    Classes can also inherit from other classes with the : operator.
 `
-class Person : Animal
+type Person : Animal
     c8* job
 
     void _init: u16 age, c8* j, c8* name
-        job = j
         super(age, "Homo sapien", name) ~super() calls the _init function from the parent class
+        job = j
 
 `
     This function obscures the printInfo declared in the Animal super class.
@@ -519,7 +475,7 @@ john.printInfo() ~output: John is 44 years old and is a(n) electrician
     Modifiers can be placed before a variable or function, or alternatively
     can be placed before a new block to modify everything within the block
 `
-class Statistics
+type Statistics
     ~declare secretData as a private variable, only able to be accessed
     ~from within the class
     pri f64 secretData
@@ -552,7 +508,7 @@ class Statistics
             varCount += 1
 
 `
-        Type Specifications, Where, and Operator Overloading
+        Type Specifications, Generics, Where, and Operator Overloading
     Type specifications in ante are a powerful way to specialize a class or function
     to a specific usage.  In its most general case, it can be used in much the same
     way as generics or templates in other object oriented languages.  To declare a type
@@ -562,14 +518,13 @@ class Statistics
     used followed by the name of the type in question and a boolean statment validating
     that the type is valid for the function.
 `
-~In this example, T is any type which has the operators > and < available or overloaded.
 ~For functions, the where keyword always comes at the end of the list of parameters.
 ~where statements are evaluated at compile time whenever possible.  If the expression after
 ~where evaluates to false, an error is thrown.
-~NOTE: hasOps is an infix function, these will be shown later.
-pub i32 cmp: T t2  where t2 hasOps ['>', '<']
-    if self < t2 -> return -1
-    return self > t2
+c32[3][] actions = "walk", "talk", "stand"
+
+c32[] getAction: u8 action  where action <= 3
+    return actions[action]
 
 
 ~Here is the calculateForce function from earlier
@@ -591,14 +546,21 @@ Exception thrown when the where condition is not met:
 function calculateForce: f64 m, f64 a requires the condition
 m >= 0
 which was not met for input value m = -54
-
 `
+
+~Generic Functions
+bool cmp<T>: T t1, T t2
+    if t1 < t2 -> return -1
+    return t1 > t2
+
+
+
 
 ~The syntax for type specifications in a class is somewhat similar.
 ~In the Angle class, each time it is initialized, a bool is specified as true if the
 ~angle is in radians, false otherwise.  This determines how Angle is compiled and
 ~cannot be changed after initialization.
-class Angle<bool isRadians>
+type Angle<bool isRadians>
     f32 angle
 
     `
@@ -633,7 +595,7 @@ assert(a1.getQuadrent() == a2.getQuadrent())
 `
     To use type specifications as generics, simply specify a type as a specification.
 `
-class MySmartPtr<type T>
+type MySmartPtr<type T>
     T* rawPtr
 
     void _init: T val
@@ -655,7 +617,7 @@ class MySmartPtr<type T>
         return &rawPtr
 
 ~where can also be used to check the type specification
-class ChessPiece<String piece> where searchFor(piece, ["pawn", "knight", "king"]) != -1
+type ChessPiece<String piece> where searchFor(piece, ["pawn", "knight", "king"]) != -1
     u8 x
     u8 y
     
@@ -686,7 +648,7 @@ assert(validateMove(3, 5))
     following example, the class Point is created and overloads the > and < operators,
     and creates the new infix function cmp for comparisons.
 `
-class Point
+type Point
     pub i32 x, y
 
     void _init: i32 x, i32 y
@@ -783,7 +745,7 @@ c32* ptrQuote = "implementations cannot be used for pointer types"
 ~Compilation error since c32 has no function addInitials:
 ptrQuote = ptrQuote.addInitials()
 
-c32[] ptrQuote ~conver to array
+c32[] ptrQuote ~convert to array
 ptrQuote.addInitials() ~valid
 
 `
@@ -824,7 +786,7 @@ match joe
 ~This is because the Person class inherits from the Animal
 ~class, so the Animal cast to joe was the first valid cast
 
-struct MyString
+type MyString
     c32* s
     u32 len
 
@@ -854,13 +816,13 @@ c32* s = match 2
     yields that enums placement in its declaration starting from 0. Typecasting 
     an enum to a string yields the name of the value.
 `
-~NOTE: -> is used for single-line statements that would normally require an indent.
-enum Suit -> Diamonds, Hearts, Spades, Clubs
+~NOTE: = can be used for single-line type expressions.
+type Suit = enum -> Diamonds, Hearts, Spades, Clubs
 
 Suit spades = Suit.Spades
 print(spades .. " " .. c32* spades)  ~output: 2 Spades
 
-struct Card
+type Card
     u8 number
     Suit suit
 
@@ -928,7 +890,7 @@ c8[] msg = "Condensed String"
     seperate member accessor operator for pointers (-> in c like
     languages).
 `
-class PtrExample
+type PtrExample
     void printMsg:
         print("Hello World!")
 
@@ -957,7 +919,7 @@ c32[] arrStr = "str"
     
     Pointers:
         increments the address pointed to by b bytes, where b
-        is the integer resulr of the evaluated expression.  
+        is the integer result of the evaluated expression.  
     Arrays:
         expands the array by b additional indexes.  Each index is
         uninitialized and will contain garbage data.
@@ -983,9 +945,10 @@ assert(ptrStr[0] == arrStr[0])
         for arbitrary pointer types.
 
     Arrays:
-        Impls are perfectly valid for array types despite sharing the
-        same structure in memory.  To use array impls with a pointer,
-        the pointer should be casted to an array type.
+        Impls are perfectly valid for array types, including arrays of
+        pointer types, despite sharing the same structure in memory.  
+        To use array impls with a pointer, the pointer should be casted 
+        to an array type.
 `
 impl c32[]
     void reverse: u32 len
@@ -1011,7 +974,7 @@ ptrStr.reverse
     returnType(paramType1, paramType2, ...) name
 
     Notice the absence of the *, which is implied since it is not
-    possible to store a function without a pointer to it.
+    possible in ante to store a function on the stack.
 `
 ~Some functions to point to:
 f32 mul: f32 a, f32 b -> return a * b
@@ -1045,8 +1008,8 @@ assert(doOperation(fnPtr) == 1.5)
 type str = c8* | c16* | c32* | c64*
 
 ~declare a type coord that can be an integer or float tuple
-~NOTE: the precedence of , is greater than that of |
-type coord = i32, i32 | f64, f64
+~NOTE: the precedence of | is greater than that of ,
+type coord = (i32, i32) | (f64, f64)
 
 ~declare a list type that is a tuple with two indices, the first
 ~being the value type, and the second being the next List node.
@@ -1056,18 +1019,11 @@ type tList<type T> = val: T, next: List | void
 ~alternatively, type declarations can be declared on multiple lines
 ~each type on a newline in the block after the type declaration is
 ~added in a tuple.
-type tList<type T>
-    val: T
-    next: List | void
-
-tList nums1 = 1, (2, (3, void)))
-
-
-struct sList<type T>
+type List<type T>
     T val
-    sList<T>|void next 
+    List<T>|void next
 
-sList nums2 = sList(1, sList(2, sList(3, void)))
+List numsList = 1, (2, (3, void)))
 
 `
         Multiline expressions
