@@ -987,7 +987,7 @@ assert(ptrStr[0] == arrStr[0])
         same structure in memory.  To use array impls with a pointer,
         the pointer should be casted to an array type.
 `
-ext c32[]
+impl c32[]
     void reverse: u32 len
         c32[] rev = alloc(this)
         foreach u32 i in len ^. 0
@@ -1032,20 +1032,42 @@ assert(doOperation(fnPtr) == 1.5)
 
 
 `
-        Types as values
-    Types are values, and can be used as such in
-    expressions.  Types are of type type, and
-    new types can be created by combining other
-    types.  Declaring a type in this fashion differs from
-    a struct in that it does not have named members.
+        Algebraic datatypes
+    Algebraic datatypes can be declared with the type keyword.
+    Any other type can be combined to form an algebraic types.
+    The | operator indicates that the type can be either the
+    preceeding or the proceeding type.  To combine types in
+    an and fashion, tuples can be used.
+
 `
 
 ~declare a type str that can be a char pointer of any size
 type str = c8* | c16* | c32* | c64*
 
 ~declare a type coord that can be an integer or float tuple
+~NOTE: the precedence of , is greater than that of |
 type coord = i32, i32 | f64, f64
 
+~declare a list type that is a tuple with two indices, the first
+~being the value type, and the second being the next List node.
+~This list uses named indices in its tuple to mimic a struct.
+type tList<type T> = val: T, next: List | void
+
+~alternatively, type declarations can be declared on multiple lines
+~each type on a newline in the block after the type declaration is
+~added in a tuple.
+type tList<type T>
+    val: T
+    next: List | void
+
+tList nums1 = 1, (2, (3, void)))
+
+
+struct sList<type T>
+    T val
+    sList<T>|void next 
+
+sList nums2 = sList(1, sList(2, sList(3, void)))
 
 `
         Multiline expressions
@@ -1197,7 +1219,7 @@ modifiers:
     pri 
     pro 
     const 
-    ext
+    impl
     dyn
     pathogen
 
