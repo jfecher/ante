@@ -46,15 +46,14 @@ assert(msg == "Hey World!")
 ~op module
 import "op"
 
-ext String
- 
-    bool op('?'):
+impl String 
+    bool op('?'): ~Coerce to bool
         if this == "true"
             return true
         return false
 
     String infix('pop', prec('..')):
-        return this[0 .. this.last-1]
+        return this[0 .. this.length-2]
 
 
 ~c_ffi module

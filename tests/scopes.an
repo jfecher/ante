@@ -6,18 +6,18 @@
 
 i32 i = 2
 i32 j
-print i .. ", " .. j
+print(i .. ", " .. j)
 
 void math:
     i32 i = 111111111
-    print "i   = " .. i
-    print "i^2 = " .. i^2
+    print("i   = " .. i)
+    print("i^2 = " .. i^2)
 
     i32 j = 1234
-    print j
+    print(j)
 
 math()
-print i .. ", " .. j
+print(i .. ", " .. j)
 
 `
     output:

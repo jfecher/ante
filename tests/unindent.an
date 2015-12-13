@@ -5,10 +5,10 @@
         advancing its current position.
 `
 
-class MyLand
-    class YourLand
-        class OurLand
-            class LandMadeForYouAndMe
+data MyLand
+    data YourLand
+        data OurLand
+            data LandMadeForYouAndMe
                 i8 myInt
                 
 print("test") ~Should issue 4 unindent tokens before this statement

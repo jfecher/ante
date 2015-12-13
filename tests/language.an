@@ -64,10 +64,8 @@ usz myUsz = 0    ~Unsigned pointer size
 f32 myF32 = 0.0  ~32bit float
 f64 myF64 = 0.0
 
-c8  myC8  = ''   ~8bit UTF-8 char \0
-c16 myC16 = ''
-c32 myC32 = ''   ~32bit UTF-8 char \0
-c64 myC64 = ''
+c8  myC8  = ''   ~ASCII char \0
+c32 myC32 = ''   ~UTF-32 char \0
 
 bool myBool = false
 
@@ -246,9 +244,9 @@ void printMsg:
 ~and eliminating the need to include the raw image as an asset in production.
 Image* compileTimeLoadImg:
     File *f = new File("path/to/image.png")
-    u8[] data
-    cleanse f.readAll(data) ~Reads all of the image data into data at compile time
-    return new Image(data)
+    u8[] imgData
+    cleanse f.readAll(imgData) ~Reads all of the image data into data at compile time
+    return new Image(imgData)
 
 ~Conversely, to infect a non-pathogen function, the infect keyword may be used.
 ~Note that only the infected instance of the function is evaluated during runtime.
@@ -386,10 +384,10 @@ foreach f32 f in arr -> print(f)
 f32 subtract: f32 a, f32 b -> return a - b
 
 ~While these can be nested, overnesting should be avoided as it leads to clutter.
-type Integer -> i32 i, void _init: i32 a -> i = a
+data Integer -> i32 i, void _init: i32 a -> i = a
 
 ~compared to
-type Integer
+data Integer
     i32 i
 
     void _init: i32 a
@@ -402,7 +400,7 @@ type Integer
     by value by default, including other structs.  Storing a member by reference
     must be explicitely denoted by using a pointer.
 `
-type Coord
+data Coord
     f64 x, y, z
 
 ~To create a struct, typecast a tuple containing the struct's members to the
@@ -420,7 +418,7 @@ print(coord.y)  ~output: -50
     are public by default.
 `
 
-type Animal
+data Animal
     u16 age
     c8* species
     c8* name
@@ -448,7 +446,7 @@ Animal* clifford = new Animal(7, "magnum rubrum canis", "Clifford")
 `
     Classes can also inherit from other classes with the : operator.
 `
-type Person : Animal
+data Person : Animal
     c8* job
 
     void _init: u16 age, c8* j, c8* name
@@ -475,7 +473,7 @@ john.printInfo() ~output: John is 44 years old and is a(n) electrician
     Modifiers can be placed before a variable or function, or alternatively
     can be placed before a new block to modify everything within the block
 `
-type Statistics
+data Statistics
     ~declare secretData as a private variable, only able to be accessed
     ~from within the class
     pri f64 secretData
@@ -497,14 +495,14 @@ type Statistics
 
     ~NOTE: by default, variables and methods are private so there is really 
     ~      no need to declare this function private explicitly.
-    pri f64 doCalculations: f64 data
-            return data * secretData / varCount
+    pri f64 doCalculations: f64 mData
+            return mData * secretData / varCount
 
     ~NOTE: reserved functions such as _init and _mul do not need to be public
     ~      to be automatically called.
-    void _init: i32[] data
-        foreach i32 i in data
-            secretData += data / pi
+    void _init: i32[] mData
+        foreach i32 i in mData
+            secretData += mData / pi
             varCount += 1
 
 `
@@ -560,7 +558,7 @@ bool cmp<T>: T t1, T t2
 ~In the Angle class, each time it is initialized, a bool is specified as true if the
 ~angle is in radians, false otherwise.  This determines how Angle is compiled and
 ~cannot be changed after initialization.
-type Angle<bool isRadians>
+data Angle<bool isRadians>
     f32 angle
 
     `
@@ -595,7 +593,7 @@ assert(a1.getQuadrent() == a2.getQuadrent())
 `
     To use type specifications as generics, simply specify a type as a specification.
 `
-type MySmartPtr<type T>
+data MySmartPtr<type T>
     T* rawPtr
 
     void _init: T val
@@ -617,7 +615,7 @@ type MySmartPtr<type T>
         return &rawPtr
 
 ~where can also be used to check the type specification
-type ChessPiece<String piece> where searchFor(piece, ["pawn", "knight", "king"]) != -1
+data ChessPiece<String piece> where searchFor(piece, ["pawn", "knight", "king"]) != -1
     u8 x
     u8 y
     
@@ -648,7 +646,7 @@ assert(validateMove(3, 5))
     following example, the class Point is created and overloads the > and < operators,
     and creates the new infix function cmp for comparisons.
 `
-type Point
+data Point
     pub i32 x, y
 
     void _init: i32 x, i32 y
@@ -786,7 +784,7 @@ match joe
 ~This is because the Person class inherits from the Animal
 ~class, so the Animal cast to joe was the first valid cast
 
-type MyString
+data MyString
     c32* s
     u32 len
 
@@ -809,26 +807,62 @@ c32* s = match 2
     _ -> "other"
 `
         Enums
-    Declaring an enum declares a set of named constants. They are declared
-    like normal variables with the type enum. Ints typecasted to an enum
-    will become the constant that corresponds to the n-1 index of the enum where
-    n is the value of the integer. Conversely, typecasting an enum to an int
-    yields that enums placement in its declaration starting from 0. Typecasting 
-    an enum to a string yields the name of the value.
+    Where data declares a named type, enums declare named
+    values.  The values declared are represented by integers
+    internally.  The specific integer for each value can also
+    be manually set using the assignment operator.
+    
+    The values within an anonymous enum are exported into the global
+    namespace.  Values within a named enum are exported under
+    the namespace of the same name.
+
+    Note that since enums only declare named values, they do
+    not yet have an associated type, but can still be used
+    as integers.  To declare a type, use a data declaration
+    in combination with an enum.
+
+    Indentation is required after the enum keyword in an anonymous enum,
+    or after its name in a named enum.
 `
-~NOTE: = can be used for single-line type expressions.
-type Suit = enum -> Diamonds, Hearts, Spades, Clubs
 
-Suit spades = Suit.Spades
-print(spades .. " " .. c32* spades)  ~output: 2 Spades
+~Export each suit into the namespace Suit
+~NOTE: since Suit is not declared as data, it is not its own type.
+enum Suit -> Diamonds, Hearts, Spades, Clubs
 
-type Card
+print(Suit.Spades)  ~output: 2
+
+data Card
     u8 number
-    Suit suit
+    i32 suit
 
-Card fourOfHearts = Card(4, Suit.Hearts)
+Card fourOfHearts = 4, Suit.Hearts
+i32 suit = (Card(3, Suit.Hearts)).suit
+~Enums are automatically assigned values, but can also be manually assigned with the
+~ = operator after the first operand.  Each consecutive member will have a value equal
+~ to its distance from the fist + the first's value.
+enum Numbers
+    One   = 1
+    Two~  = 2 (inferred)
+    Three~= 3
+    Four~ = 4
+    Five~ = 5
 
+~   number = 3
+i32 number = Three
 
+~Alternatively, if the first and second's value are given then each consecutive member
+~Is incremented by their difference instead of 1.
+~Note the double indentation after enum.  The -> after EvenNumbers increments the
+~indentation level by 1, and enum requires another.
+data EvenNumbers -> enum
+        Two = 2
+        Four = 4
+        Six~ = 6
+        Eight~ = 8, and so on
+        Ten, Twelve, Fourteen
+
+~           evenNumber = 12
+EvenNumbers evenNumber = EvenNumbers.Twelve
 
 `
         Pointers
@@ -890,7 +924,7 @@ c8[] msg = "Condensed String"
     seperate member accessor operator for pointers (-> in c like
     languages).
 `
-type PtrExample
+data PtrExample
     void printMsg:
         print("Hello World!")
 
@@ -1005,43 +1039,49 @@ assert(doOperation(fnPtr) == 1.5)
 `
 
 ~declare a type str that can be a char pointer of any size
-type str = c8* | c16* | c32* | c64*
+data str -> c8* | c32*
 
 ~declare a type coord that can be an integer or float tuple
 ~NOTE: the precedence of | is greater than that of ,
-type coord = (i32, i32) | (f64, f64)
+data coord -> (i32, i32) | (f64, f64)
+
+data Maybe<T>
+    T | enum -> None
 
 ~declare a list type that is a tuple with two indices, the first
 ~being the value type, and the second being the next List node.
-~This list uses named indices in its tuple to mimic a struct.
-type tList<type T> = val: T, next: List | void
+data tList<type T> -> T, Maybe<List<T>*>
 
-~alternatively, type declarations can be declared on multiple lines
-~each type on a newline in the block after the type declaration is
-~added in a tuple.
-type List<type T>
+~alternatively, type declarations can name each member of the
+~tuple, mimicking a struct.
+data List<type T>
     T val
-    List<T>|void next
+    Maybe<List<T>*> next
 
-List numsList = 1, (2, (3, void)))
+data Vec<T>
+    T[] mem
+    u32 len
+    u32 cap
+
+List<u8> numsList = 1, alloc(2, alloc(3, None)))
 
 `
-        Multiline expressions
+        Multiline expressions/statements
     Expressions are normally terminated by a newline
     character, but can be extended by adding a backslash
-    right before the newline as the final character
+    right before the newline as the final character.  The
+    backslash can be used in any expression or statement
+    to tell the lexer to ignore the newline.
 `
-type num = i8  | i16 | i32 | i64 \
-         | u8  | u16 | u32 | u64 \
-         | f32 | f64
+data num -> i8  | i16 | i32 | i64 \
+          | u8  | u16 | u32 | u64 \
+          | f32 | f64
 
 
-type int = i8  \
-         | i16 \
-         | i32 \
-         | i64
-
-
+data int -> i8  \
+          | i16 \
+          | i32 \
+          | i64
 
 
 `
@@ -1057,7 +1097,7 @@ macro pstr: ident i
 macro or:  -> ||
 macro and: -> &&
 
-~possible scopped macros
+~possible scoped macros
 c32* getTokenType: c32 t
     macro isLetter: c32 i
         (i >= 65 && i <= 90 || i >= 97 && i <= 122)
@@ -1067,7 +1107,7 @@ c32* getTokenType: c32 t
     else
         return "not an ident"
 
-~the below would not be valid since isLetter would have gone out of scope.
+~the macro below would not be valid since isLetter would have gone out of scope.
 if isLetter('a')
     print("a is a letter")
 
@@ -1127,7 +1167,42 @@ assert(5 is 5)
 i32 x = 2
 i32 y = if x > 2 -> 5 <-else-> 4
 
+~Allow/force names in data declarations to precede types
+data Vec<T>
+    mem: T[]
+    len: u32
+    cap: u32
 
+data List<type T>
+    val: T
+    next: List<T> | enum -> end
+
+~vs
+data List<type T>
+    T val
+    List<T> | enum -> end
+    next
+
+~or this if ;; is implemented as an unindent token
+data List<type T>
+    T val
+    List<T> | enum -> end;; next
+
+~New enum syntax to simplify named enums in data
+data Numbers -> enum(One, Two, Three)
+
+data Numbers -> enum{One, Two, Three} num
+
+data Numbers -> enum -> One, Two, Three;; num
+
+
+~Possibly replace -> with { and have } as the unindent token.
+if condition { print(true) }
+
+~May be confusing since this would also be valid
+if condition { print(true)
+
+data Numbers { enum{One, Two, Three} num
 `
         Keywords
 primitive datatypes:
