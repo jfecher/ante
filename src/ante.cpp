@@ -29,7 +29,7 @@ int main(int argc, char *argv[]){
             yyparse();
         }
     }else if(argc == 1){
-        puts("Ante: no arguments give, exiting.");
+        puts("Ante: no arguments given, exiting.");
     }
     return 0;
 }
