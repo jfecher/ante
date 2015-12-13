@@ -395,27 +395,32 @@ data Integer
     u8 byte
 
 `
-        Structs
-    Structs are a compound structure of data where a struct can contain multiple
-    variables including arrays or objects.  Each member inside a /truct is stored
-    by value by default, including other structs.  Storing a member by reference
-    must be explicitely denoted by using a pointer.
+        Data declarations
+    In ante, all datatypes are declared through the data keyword by mixing and matching
+    previously declared types.  The data keyword expects the name of the datatype afterwards 
+    followed by a block of type expressions and an optional name for each field.  Without 
+    naming each field, that field can be indexed like a tuple.
 `
+
+~Declare coord, a datatype consisting of three f64s named x, y, and z.
 data Coord
     f64 x, y, z
 
-~To create a struct, typecast a tuple containing the struct's members to the
-~corresponding struct type.
-Coord coord = Coord(100, -50, 66.7)
+~Each datatype containing more than one field is internally represented by a tuple, so they
+~Can be created in a similar fashion.
+Coord coord = 100, -50, 66.7
 print(coord.y)  ~output: -50
 
+~To access a specific field of an anonymous datatype in an expression, it must be casted to
+~its corresponding type.
+f64 y = Coord(100, -50, 66.7).y
 
 
 `
         Classes
     Class-like data structures can be declared by simply including methods within the
     data declaration.  These methods are associated methods and do not add to the size of
-    the datatype, but are linked to it at compile-time.  These methods each within a namespace
+    the datatype, but are linked to it at compile-time.  These methods are each within a namespace
     that is the name of the datatype, but cannot be accessed without an initialization of the
     datatype if they take self as a parameter.
 `
@@ -423,25 +428,25 @@ data Animal
     u16 age
     c8* species
     c8* name
-`
-    The _init function is a function that is automatically called when a datatype
-    is initialized and the givin values match _init's parameters.  It can be
-    thought of as the constructor for the class.
-`
-    void _init: u16, c8*, c8*
-        age = _params[0]
-        species = _params[1]
-        name = _params[2]
-
-    void printInfo:
-        print(name .. " is a/an " .. species .. " and is " .. age .. " year(s) old.\n")
 
 `
-    To create an instance of the class, use the class name as the type of the
-    variable, and the keyword new followed by the classname to be initialized 
-    with the parameters of the _init function declared within the class.
+    Create a static function init that creates a new instance of an animal.
 `
-Animal* clifford = new Animal(7, "magnum rubrum canis", "Clifford")
+    Animal init: u16 age, c8* species, c8* name
+        return Animal(age, species, name)
+        
+`
+    Create a non-static method taking self as a parameter.  This function cannot be used as 
+    Animal.printInfo, it must be called on a previously initialized Animal.
+`
+    void printInfo: self
+        print(self.name .. " is a/an " .. self.species .. " and is " .. self.age .. " year(s) old.\n")
+
+`
+    The new keyword can be used to allocate and initialize memory to be stored in a
+    pointer type.
+`
+Animal* clifford = new Animal.init(7, "magnum rubrum canis", "Clifford")
 
 
 `
@@ -450,18 +455,29 @@ Animal* clifford = new Animal(7, "magnum rubrum canis", "Clifford")
 data Person : Animal
     c8* job
 
-    void _init: u16 age, c8* j, c8* name
-        super(age, "Homo sapien", name) ~super() calls the _init function from the parent class
-        job = j
+    Person init: u16 age, c8* j, c8* name
+        Person ret = Animal.init(age, "Homo sapien", name)
+        ret.job = j
+        return ret
 
 `
     This function obscures the printInfo declared in the Animal type.
 `
-    void printInfo:
+    void printInfo: self
         print(name .. " is " .. age .. " years old and is a(n) " .. job)
 
-~Like every other datatype, they can also be stored by value.
-Person john = Person(44, "electrician", "John")
+
+`
+    Methods of the same name can also be overloaded if they take different amounts or types of variables.
+`
+    void printInfo: self, bool showAge
+        if showAge
+            print(name .. " is " .. age .. " years old and is a(n) " .. job)
+        else
+            print(name .. " is a(n) " .. job)
+
+
+Person john = Person.init(44, "electrician", "John")
 john.printInfo() ~output: John is 44 years old and is a(n) electrician
 
 `
@@ -488,20 +504,19 @@ data Statistics
 
     ~Alternatively, you can also use modifiers before a block:
     pub
-        f64 getData:
+        f64 getData: self
             return secretData ~not so secret anymore
 
-        c8* getStatus:
+        c8* getStatus: self
             if secretData > 10
                 return "Good"
             else
                 return "Not so good"
 
-    pri f64 doCalculations: f64 mData
+    pri f64 doCalculations: self, f64 mData
             return mData * secretData / varCount
 
-    ~NOTE: reserved functions such as _init and _mul do not need to be public
-    ~      to be automatically called.
+    ~All members are public by default
     void _init: i32[] mData
         for i32 i in mData
             secretData += mData / pi
@@ -548,12 +563,24 @@ m >= 0
 which was not met for input value m = -54
 `
 
-~Generic Functions
+`
+        Generic Functions
+    Generic Functions can be a powerfull tool to recompile a function for a given
+    argument (usually a type) during compile time.  Generic parameters are specified
+    between < and > after the function's name.
+`
+~Generics can be explicit
+bool greater<type T>: T t1, T t2
+    return t1 > t2
+
+~Or implicit and raise an error if the given parameter is not valid.
 bool cmp<T>: T t1, T t2
     if t1 < t2 -> return -1
     return t1 > t2
 
-
+cmp(3, 4) ~valid
+cmp((1, 2, 3), (4, 5, 6)) ~invalid: tuple i32[3] type is not valid for operator <
+cmp(3, "three") ~invalid: types must be the same for function cmp
 
 
 ~The syntax for type specifications in a class is somewhat similar.
@@ -563,22 +590,15 @@ bool cmp<T>: T t1, T t2
 data Angle<bool isRadians>
     f32 angle
 
-    `
-        If the _init function contains parameters with the same names as instance
-        data for the class, then the instance data is automatically set equal
-        to the parameter of the same name.
-    `
-    void _init: f32 angle
-
     if isRadians
-        u8 getQuadrant:
+        u8 getQuadrant: self
             return angle / (3.14159265 / 4) % 4 + 1
     else
-        u8 getQuadrant:
+        u8 getQuadrant: self
             return angle / 90 % 4 + 1
 ~usage:
-Angle<true> a1 = Angle(3.14159265 * 2 / 3)
-Angle<false> a2 = Angle(120)
+Angle<true> a1 = 3.14159265 * 2 / 3
+Angle<false> a2 = 120
 assert(a1.getQuadrent() == a2.getQuadrent())
 
 `
@@ -597,14 +617,20 @@ assert(a1.getQuadrent() == a2.getQuadrent())
 `
 data MySmartPtr<type T>
     T* rawPtr
+    bool owner
 
-    void _init: T val
+    void op("new"): T val
         rawPtr = alloc(val)
-   
-    void _init: T* rawPtr
-    
-    void _deinit:
-        free(rawPtr)
+        owner = true
+
+    void op("drop"):
+        if owner
+            free(rawPtr)
+
+    MySmartPtr<T> trait("clone"): self
+        MySmartPtr<T> clone = self
+        clone.owner = false
+        return clone
 
     ~Note that to avoid ambiguity when overloading the unary * operator,
     ~deref can be used as the parameter for the op function.  If "*" is
@@ -621,7 +647,8 @@ data ChessPiece<String piece> where searchFor(piece, ["pawn", "knight", "king"])
     u8 x
     u8 y
     
-    void _init: u8 x, u8 y
+    ChessPiece<piece> init: u8 x, u8 y
+        return ChessPiece<piece>(x, y)
     
     if piece == "pawn" 
         bool validateMove: u8 x2, u8 y2
@@ -651,10 +678,6 @@ assert(validateMove(3, 5))
 data Point
     pub i32 x, y
 
-    void _init: i32 x, i32 y
-        self.x = x
-        self.y = y
-
     `
         Now to implement the < operator. Each operator is declared as a function 
         with the name generated by the function op which is imported from the 
@@ -662,12 +685,12 @@ data Point
         operators will throw a compile-time error.  Note that since operators are declared
         within classes, operators for primitive datatypes cannot be redefined.
     `
-    bool op('<'): Point rVal
-        if x < rVal.x
+    bool op('<'): self, Point rVal
+        if self.x < rVal.x
             return 1
-        return y < rVal.y
+        return self.y < rVal.y
 
-    bool op('>'): Point rVal
+    bool op('>'): self, Point rVal
         if x > rVal.x
             return 1
         return y > rVal.y
@@ -676,22 +699,21 @@ data Point
             Infix functions
     
         Infix functions are declared by calling the 'infix' function.  This
-        function takes two parameters, the name of your function, and the
-        precedence for use in expressions.  While precedence can be specified
-        manually, it may be best to use the prec function to get the precedence
-        of an existing operator to use.
+        function takes one parameter, the name of your function.  The precedence
+        of an infix function is extremely high, as if both parametrs were surrounded
+        by parenthesis.  The example  4^6 plus 3%9 would be parsed as (4^(6 plus 3))%9
     `
 
     ~An example of a generic comparison function
     ~Note that this function uses the > and < operators
     ~declared earlier in this class.
-    i8 infix('cmp', prec('>')): Point rVal
-        if this < rVal -> return -1
-        return this > rVal
+    i8 infix('cmp'): self, Point rVal
+        if self < rVal -> return -1
+        return self > rVal
 
 
-Point origin = Point(0, 0)
-Point topRight = Point(3, 4)
+Point origin = 0, 0
+Point topRight = 3, 4
 
 print(origin < topRight)
 print(origin > topRight)
@@ -713,16 +735,16 @@ false
 `
 impl Point : SomeAdditionalParentClass
     ~implement new methods
-    bool op("=="): Point p2
-        return this.x == p2.x && this.y == p2.y
+    bool op("=="): self, Point p2
+        return self.x == p2.x && self.y == p2.y
 
 
 ~Implementations can also be used for primitive types
 impl i32, i32
-    void swap:
-        i32 tmp = this[0]
-        this[0] = this[1]
-        this[1] = tmp
+    void swap: self
+        i32 tmp = self[0]
+        self[0] = self[1]
+        self[1] = tmp
 
 i32, i32 point = (3, 4).swap()
 assert(point[0] == 4 && point[1] == 3)
@@ -732,12 +754,12 @@ assert(point[0] == 4 && point[1] == 3)
 ~implementation, otherwise a compilation error will result.
 
 impl c32* ~invalid
-    c32* addInitials: c32* msg
-        return msg .. " -JF"
+    c32* addInitials: self
+        return self .. " -JF"
 
 impl c32[] ~valid
-    c32[] addInitials: c32[] msg
-        return msg .. " -JF"
+    c32[] addInitials: self
+        return self .. " -JF"
 
 
 c32* ptrQuote = "implementations cannot be used for pointer types"
@@ -749,8 +771,7 @@ c32[] ptrQuote ~convert to array
 ptrQuote.addInitials() ~valid
 
 `
-    NOTE: because string literals have the type c32[], the following
-          is valid:
+    NOTE: because string literals have the type c32[], the following is valid:
 
     c32* ptrQuote = "implementations cannot be used for pointer types".addInitials()
 `
@@ -790,7 +811,7 @@ data MyString
     c32* s
     u32 len
 
-MyString testStr = MyString("Test", 4)
+MyString testStr = "Test", 4
 
 match testStr
     MyString("Test", 3)
@@ -905,9 +926,9 @@ free(foh)
 ~keeps track of the amount of references with little overhead.
 
 u8 byte = 255
-ptr<i32> pByte = ptr(byte)
+ptr<i32> pByte = ptr(new byte)
 
-ptr<i32> pByte2 = ptr(pByte)
+ptr<i32> pByte2 = ptr(new pByte)
 pByte2 = 128
 
 print(*pByte)
@@ -927,12 +948,14 @@ c8[] msg = "Condensed String"
     languages).
 `
 data PtrExample
-    void printMsg:
-        print("Hello World!")
+    c8[] msg
 
-PtrExample ex1 = PtrExample()
-PtrExample* ex2 = new PtrExample()
-PtrExample** ex3 = alloc(ex2)
+    void printMsg:
+        print(msg)
+
+PtrExample ex1 = msg
+PtrExample* ex2 = new ex1
+PtrExample** ex3 = new ex2
 
 ex1.printMsg() ~No pointer, so no dereferencing is necessary
 ex2.printMsg() ~(*ex2).printMsg()
@@ -987,11 +1010,11 @@ assert(ptrStr[0] == arrStr[0])
         to an array type.
 `
 impl c32[]
-    void reverse: u32 len
-        c32[] rev = alloc(this)
+    void reverse: self, u32 len
+        c32[] rev = malloc((len+1) * 4)
         for u32 i in len ^. 0
             rev[i] = this[len-i-1]
-        this = rev
+        self = rev
 
 arrStr.reverse() ~valid
 
