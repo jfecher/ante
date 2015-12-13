@@ -2,7 +2,6 @@
 #include <cstring>
 
 const char* tokDictionary[] = {
-    "EndOfInput",
     "Identifier",
 
     //types
@@ -19,9 +18,7 @@ const char* tokDictionary[] = {
     "F32",
     "F64",
     "C8",
-    "C16",
     "C32",
-    "C64",
     "Bool",
     "Void",
 
@@ -36,12 +33,17 @@ const char* tokDictionary[] = {
 	"LesrEq",
     "Or",
     "And",
+    "Range",
+    "Beginning Exclusive Range", //TODO: find a better name
+    "Ending Exclusive Range",
+    "Exclusive Range",
+
+    //literals
     "True",
     "False",
 	"IntLit",
 	"FltLit",
 	"StrLit",
-    "StrCat",
 
     //keywords
     "Return",
@@ -49,7 +51,6 @@ const char* tokDictionary[] = {
     "Elif",
 	"Else",
 	"For",
-	"ForEach",
 	"While",
     "Do",
     "In",
@@ -58,8 +59,6 @@ const char* tokDictionary[] = {
     "Import",
     "Match",
     "Enum",
-    "Struct",
-    "Class",
 
     //modifiers
     "Pub",
@@ -95,9 +94,7 @@ map<string, int> keywords = {
     {"f32",      Tok_F32},
     {"f64",      Tok_F64},
     {"c8",       Tok_C8},
-    {"c16",      Tok_C16},
     {"c32",      Tok_C32},
-    {"c64",      Tok_C64},
     {"bool",     Tok_Bool},
     {"void",     Tok_Void},
     
@@ -111,7 +108,6 @@ map<string, int> keywords = {
     {"elif",     Tok_Elif},
     {"else",     Tok_Else},
     {"for",      Tok_For},
-    {"foreach",  Tok_ForEach},
     {"while",    Tok_While},
     {"do",       Tok_Do},
     {"in",       Tok_In},
@@ -119,8 +115,6 @@ map<string, int> keywords = {
     {"break",    Tok_Break},
     {"import",   Tok_Import},
     {"enum",     Tok_Enum},
-    {"struct",   Tok_Struct},
-    {"class",    Tok_Class},
     
     {"Pub",      Tok_Pub},
     {"Pri",      Tok_Pri},
@@ -165,9 +159,9 @@ extern "C" int yylex(...)
 void ante::lexer::printTok(int t)
 {
     if(IS_LITERAL(t))
-        cout << (char)t << "\t:" << t << endl;
+        cout << (char)t << "\t\t" << t << endl;
     else
-        cout << TOK_TYPE_STR(t) << endl;
+        cout << TOK_TYPE_STR(t) << "\t\t" << t << endl;
 }
 
 inline void ante::lexer::incPos(void)
@@ -248,6 +242,7 @@ int ante::lexer::genWsTok()
                 default: break;
             }
             incPos();
+            if(IS_COMMENT(c)) return ante::lexer::handleComment();
         }
         newScope /= scStep;
 
@@ -295,11 +290,11 @@ int ante::lexer::next()
     if(c == '"' || c == '\'') 
         return ante::lexer::genStrLitTok(c);
 
-    //substitute -> for an indent
-    if PAIR('-', '>'){
-        scope++;
-        incPos(2);
-        return next();
+    //substitute -> for an indent and ;; for an unindent
+    if(PAIR('-', '>')){
+        RETURN_PAIR(Tok_Indent);
+    }else if(PAIR(';', ';')){
+        RETURN_PAIR(Tok_Unindent);
     }
 
     if(n == '='){
@@ -315,13 +310,16 @@ int ante::lexer::next()
         }
     }
     
-    if PAIR('.', '.') RETURN_PAIR(Tok_StrCat);
+    if(PAIR('.', '.')) RETURN_PAIR(Tok_Range);
+    if(PAIR('^', '.')) RETURN_PAIR(Tok_RangeBX);
+    if(PAIR('.', '^')) RETURN_PAIR(Tok_RangeEX);
+    if(PAIR('^', '^')) RETURN_PAIR(Tok_RangeX);
 
     //If a backslash is placed before a newline, skip
     //the newline token
-    if PAIR('\\', '\n') RETURN_PAIR(ante::lexer::next());
+    if(PAIR('\\', '\n')) RETURN_PAIR(ante::lexer::next());
 
-    if(c == 0 || c == EOF) return Tok_EndOfInput;
+    if(c == 0 || c == EOF) return 0; //End of input
 
     //If the character is nota, assume it is an operator and store
     //the character in the string for identification

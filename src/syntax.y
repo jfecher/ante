@@ -11,10 +11,9 @@ void yyerror(const char *msg);
 
 %}
 
-%token EndOfInput
 %token Ident
 
-//types
+/*types*/
 %token I8
 %token I16
 %token I32
@@ -28,13 +27,11 @@ void yyerror(const char *msg);
 %token F32
 %token F64
 %token C8
-%token C16
 %token C32
-%token C64
 %token Bool
 %token Void
 
-//operators
+/*operators*/
 %token Operator
 %token Eq
 %token NotEq
@@ -46,33 +43,34 @@ void yyerror(const char *msg);
 %token LesrEq
 %token Or
 %token And
-%token StrCat
+%token Range
+%token RangeBX
+%token RangeEX
+%token RangeX
 
-//literals
+/*literals*/
 %token True
 %token False
 %token IntLit
 %token FltLit
 %token StrLit
 
-//keywords
+/*keywords*/
 %token Return
 %token If
 %token Elif
 %token Else
 %token For
-%token ForEach
 %token While
 %token Do
 %token In
 %token Continue
 %token Break
 %token Import
+%token Match
 %token Enum
-%token Struct
-%token Class
 
-//modifiers
+/*modifiers*/
 %token Pub
 %token Pri
 %token Pro
@@ -81,7 +79,7 @@ void yyerror(const char *msg);
 %token Dyn
 %token Pathogen
 
-//other
+/*other*/
 %token Where
 %token Infect
 %token Cleanse
@@ -91,8 +89,18 @@ void yyerror(const char *msg);
 %token Indent
 %token Unindent
 
+
+/*
+    Now to manually fix all shift/reduce conflicts
+*/
 %precedence ','
 
+%precedence '.'
+/*
+    Used in type casting, high precedence to operate
+    before . so that examples like Type(param, param).field
+    can be used.
+*/
 %precedence I8
 %precedence I16
 %precedence I32
@@ -116,30 +124,33 @@ void yyerror(const char *msg);
 
 %precedence '('
 %precedence '['
-%precedence '{'
 
 /*
     All shift/reduce conflicts should be manually dealt with.
 */
 %expect 0
-%start module
+%start maybe_statement_list
 %%
 
-module: statement_list EndOfInput
-      ;
+maybe_statement_list: statement_list
+                    | %empty
+                    ;
 
-statement_list: statement_list Newline statement
-              | statement
+maybe_statement: statement
+               | %empty
+               ;
+
+statement_list: statement_list Newline maybe_statement { puts("statement_list"); }
+              | statement { puts("statement_list: statement"); }
               ;
 
 statement: var_decl
          | var_assign
          | fn_decl
-         | fn_call
+         | fn_call { puts("statement: fn_call"); }
          | ret_stmt
          | while_loop
-         | foreach_loop
-         | Newline
+         | for_loop
          ;
 
 lit_type: I8
@@ -162,14 +173,15 @@ lit_type: I8
         | Void
         ;
 
-non_tuple_type: non_tuple_type '*'
-              | non_tuple_type '[' maybe_expr ']'
-              | lit_type
-              ;
-
-type: type ',' non_tuple_type
-    | non_tuple_type
+type: type '*'
+    | type '[' maybe_expr ']'
+    | lit_type
     ;
+
+type_expr: type_expr ',' type
+         | type_expr '|' type
+         | type
+         ;
 
 modifier: Pub
         | Pri
@@ -188,8 +200,10 @@ modifier_list: modifier_list modifier
              | modifier
              ;
 
-var_decl: maybe_modifier_list type Ident '=' expr
-        | maybe_modifier_list type Ident
+decl: maybe_modifier_list type_expr Ident
+
+var_decl: decl '=' expr
+        | decl { puts("decl"); }
         ;
 
 var_assign: var '=' expr
@@ -198,14 +212,15 @@ var_assign: var '=' expr
 block: Indent statement_list Unindent
      ;
 
-params: params ',' type Ident
-      | type Ident
+params: params ',' type_expr Ident
+      | type_expr Ident
       ;
 
-fn_decl: maybe_modifier_list type Ident ':' params block
+fn_decl: decl ':' params block { puts("fn_decl"); }
+       | decl '(' maybe_expr ')' ':' params block
        ;
 
-fn_call: Ident '(' maybe_expr ')'
+fn_call: Ident '(' maybe_expr ')' { puts("fn_call"); }
        ;
 
 ret_stmt: Return expr
@@ -214,7 +229,7 @@ ret_stmt: Return expr
 while_loop: While expr block
           ;
 
-foreach_loop: ForEach var_decl In expr block
+for_loop: For var_decl In expr block
             ;
 
 bin_op: '+'
@@ -238,11 +253,14 @@ bin_op: '+'
       | LesrEq
       | Or
       | And
-      | StrCat
+      | Range
+      | RangeEX
+      | RangeBX
+      | RangeX
       ;
 
 var: Ident '[' expr ']'
-   | Ident
+   | Ident { puts("var"); }
    ;
 
 val: fn_call
@@ -255,8 +273,8 @@ val: fn_call
    | False
    ;
 
-maybe_expr: expr
-          | %empty
+maybe_expr: expr { puts("maybe_expr: true"); }
+          | %empty { puts("maybe_expr: false"); }
           ;
 
 expr: l_expr val

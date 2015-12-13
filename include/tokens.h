@@ -7,8 +7,7 @@
 #define TOK_TYPE_STR(t) (tokDictionary[(t)-258])
 
 enum TokenType{
-    Tok_EndOfInput = 258,
-    Tok_Ident,
+    Tok_Ident = 258,
 
     //types
     Tok_I8,
@@ -24,12 +23,11 @@ enum TokenType{
     Tok_F32,
     Tok_F64,
     Tok_C8,
-    Tok_C16,
     Tok_C32,
-    Tok_C64,
     Tok_Bool,
     Tok_Void,
 
+    /*operators*/
     Tok_Operator,
 	Tok_Eq,
     Tok_NotEq,
@@ -41,12 +39,17 @@ enum TokenType{
 	Tok_LesrEq,
     Tok_Or,
     Tok_And,
+    Tok_Range,   //inclusive range
+    Tok_RangeBX, //beginning-exclusive range
+    Tok_RangeEX, //end exclusive range
+    Tok_RangeX,  //exclusive range
+    
+    //literals
     Tok_True,
     Tok_False,
 	Tok_IntLit,
 	Tok_FltLit,
 	Tok_StrLit,
-    Tok_StrCat,
 
     //keywords
     Tok_Return,
@@ -54,7 +57,6 @@ enum TokenType{
     Tok_Elif,
 	Tok_Else,
 	Tok_For,
-	Tok_ForEach,
 	Tok_While,
     Tok_Do,
     Tok_In,
@@ -63,8 +65,6 @@ enum TokenType{
     Tok_Import,
     Tok_Match,
     Tok_Enum,
-    Tok_Struct,
-    Tok_Class,
 
     //modifiers
     Tok_Pub,

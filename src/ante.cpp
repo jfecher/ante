@@ -18,19 +18,18 @@ int main(int argc, char *argv[]){
             lexer::init(argv[2]);
             int t = lexer::next();
 
-            while(t != Tok_EndOfInput){
+            while(t){
                 lexer::printTok(t);
                 t = lexer::next();
             }
 
         //parse and print parse tree
         }else if(strcmp(argv[1], "-p") == 0){
-            //Parser p = Parser(argv[2]);
-            //p.parse();
-            //p.printParseTree();
             lexer::init(argv[2]);
             yyparse();
         }
+    }else if(argc == 1){
+        puts("Ante: no arguments give, exiting.");
     }
     return 0;
 }

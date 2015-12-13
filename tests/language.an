@@ -308,12 +308,10 @@ putchar(10)
 `
         Loops
 
-    Ante has four kinds of loops: while, do while, for, and foreach.
+    Ante has three kinds of loops: while, do while, and for.
     The while loop runs while the following expression is true.  The do while
-    loop runs once then runs while its following expression is true.  The for
-    loop initializes a variable, runs while the expression surrounded by semicolons
-    is true, then assigns a new value to a variable.  The foreach loop loops
-    through each element of an array.
+    loop runs once then runs while its following expression is true.  The for 
+    loop loops through each element of an array or range.
 `
 while true
     print("I loop forever")
@@ -323,36 +321,32 @@ do
     print("I only loop once")
 while false
 
-~prints 1-10
-for i8 i = 1; i <= 10; i += 1
-    print(i .. " ")
-
 f32 total
-foreach f32 n in arr
+for f32 n in arr
     total += n
 
 `
         Ranges
     Ranges are created by the .. operator and are lazily evaluated by default.
     Since they can be used in expressions, they are often very useful, particularly
-    in foreach loops.
+    in for loops.
 `
 
 ~Print 1 to 10 inclusive
-foreach i32 i in 1..10
+for i32 i in 1..10
     print(i)
 
 ~print all odd numbers in the range of 1-19
-foreach i32 i in 2*(1..10)-1
+for i32 i in 2*(1..10)-1
     print(i)
 
 ~To double the range without also doubling the step, just double the endpoint
 ~print all numbers from 1-20 inclusive
-foreach i32 i in 1 .. 2*10 
+for i32 i in 1 .. 2*10 
     print(i)
 
 ~Loop through each index in the array
-foreach i32 i in 0 .^ size(array)
+for i32 i in 0 .^ size(array)
     print(array[i])
 
 `
@@ -366,7 +360,7 @@ i32[10] naturalNums
 
 range r = 0 .^ 10
 
-foreach i32 i in r
+for i32 i in r
     naturalNums[i] = i+1
 
 
@@ -379,7 +373,7 @@ foreach i32 i in r
 if 5 > 2 -> print("5 is greater than 2")
 else     -> print("Invalid laws of mathematics, please try again in an alternate universe")
 
-foreach f32 f in arr -> print(f)
+for f32 f in arr -> print(f)
 
 f32 subtract: f32 a, f32 b -> return a - b
 
@@ -412,18 +406,18 @@ print(coord.y)  ~output: -50
 
 `
         Classes
-    Classes can be declared with the class keyword.  They each have their own
-    namespace, and can have functions and variables declared within them.
-    By default, variables declared within classes are private, while functions
-    are public by default.
+    Class-like data structures can be declared by simply including methods within the
+    data declaration.  These methods are associated methods and do not add to the size of
+    the datatype, but are linked to it at compile-time.  These methods each within a namespace
+    that is the name of the datatype, but cannot be accessed without an initialization of the
+    datatype if they take self as a parameter.
 `
-
 data Animal
     u16 age
     c8* species
     c8* name
 `
-    The _init function is a function that is automatically called when a class
+    The _init function is a function that is automatically called when a datatype
     is initialized and the givin values match _init's parameters.  It can be
     thought of as the constructor for the class.
 `
@@ -444,7 +438,7 @@ Animal* clifford = new Animal(7, "magnum rubrum canis", "Clifford")
 
 
 `
-    Classes can also inherit from other classes with the : operator.
+    Datatypes can also inherit from other datatypes with the : operator.
 `
 data Person : Animal
     c8* job
@@ -454,28 +448,31 @@ data Person : Animal
         job = j
 
 `
-    This function obscures the printInfo declared in the Animal super class.
+    This function obscures the printInfo declared in the Animal type.
 `
     void printInfo:
         print(name .. " is " .. age .. " years old and is a(n) " .. job)
 
-~Classes can also be stored by value.
+~Like every other datatype, they can also be stored by value.
 Person john = Person(44, "electrician", "John")
 john.printInfo() ~output: John is 44 years old and is a(n) electrician
 
 `
         Modifiers
-    With classes comes the necessity for modifiers, such as the visibility
-    modifiers pub, pro, and pri.  These are short for public, protected,
-    and private respectively.  Another common modifier is const to declare
-    a constant variable.
+    Modifiers modify the behaviour of a particular instance of a variable, and 
+    are listed before its type.  The visibility modifiers pub, pro, and pri are 
+    short for public, protected, and private respectively.  Pri variables can only
+    be accessed by associated methods within the data declaration or impls.  Pub 
+    variables are the default and can be accessed from anywhere.  Pro variables can
+    be accessed by the datatype and any inheriting datatypes.  Another common modifier 
+    is const to declare a constant variable.
 
     Modifiers can be placed before a variable or function, or alternatively
     can be placed before a new block to modify everything within the block
 `
 data Statistics
     ~declare secretData as a private variable, only able to be accessed
-    ~from within the class
+    ~from within member functions (methods).
     pri f64 secretData
 
     pro const f32 pi = 3.14159265
@@ -493,15 +490,13 @@ data Statistics
             else
                 return "Not so good"
 
-    ~NOTE: by default, variables and methods are private so there is really 
-    ~      no need to declare this function private explicitly.
     pri f64 doCalculations: f64 mData
             return mData * secretData / varCount
 
     ~NOTE: reserved functions such as _init and _mul do not need to be public
     ~      to be automatically called.
     void _init: i32[] mData
-        foreach i32 i in mData
+        for i32 i in mData
             secretData += mData / pi
             varCount += 1
 
@@ -519,7 +514,7 @@ data Statistics
 ~For functions, the where keyword always comes at the end of the list of parameters.
 ~where statements are evaluated at compile time whenever possible.  If the expression after
 ~where evaluates to false, an error is thrown.
-c32[3][] actions = "walk", "talk", "stand"
+const c32[][] actions = "walk", "talk", "stand"
 
 c32[] getAction: u8 action  where action <= 3
     return actions[action]
@@ -987,7 +982,7 @@ assert(ptrStr[0] == arrStr[0])
 impl c32[]
     void reverse: u32 len
         c32[] rev = alloc(this)
-        foreach u32 i in len ^. 0
+        for u32 i in len ^. 0
             rev[i] = this[len-i-1]
         this = rev
 
@@ -1137,7 +1132,7 @@ f32 f = 7 cast f32
 async void printMsg: str msg
     print(msg)
 
-sync foreach i32 i in arr
+sync for i32 i in arr
     print(i)
 
 f32 f = await someFunction()
@@ -1238,7 +1233,6 @@ statements:
     
 loops: 
     for
-    foreach 
     in 
     do 
     while
@@ -1255,8 +1249,7 @@ modifiers:
     pathogen
 
 datatypes:
-    class 
-    struct 
+    data
     enum
 
 other:
