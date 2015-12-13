@@ -68,6 +68,7 @@ void yyerror(const char *msg);
 %token Break
 %token Import
 %token Match
+%token Data
 %token Enum
 
 /*modifiers*/
@@ -136,11 +137,7 @@ maybe_statement_list: statement_list
                     | %empty
                     ;
 
-maybe_statement: statement
-               | %empty
-               ;
-
-statement_list: statement_list Newline maybe_statement { puts("statement_list"); }
+statement_list: statement_list statement { puts("statement_list"); }
               | statement { puts("statement_list: statement"); }
               ;
 
@@ -151,6 +148,7 @@ statement: var_decl
          | ret_stmt
          | while_loop
          | for_loop
+         | Newline
          ;
 
 lit_type: I8
@@ -216,7 +214,11 @@ params: params ',' type_expr Ident
       | type_expr Ident
       ;
 
-fn_decl: decl ':' params block { puts("fn_decl"); }
+maybe_params: params
+            | %empty
+            ;
+
+fn_decl: decl ':' maybe_params block { puts("fn_decl"); }
        | decl '(' maybe_expr ')' ':' params block
        ;
 

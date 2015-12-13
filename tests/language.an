@@ -365,10 +365,15 @@ for i32 i in r
 
 
 `
-        The -> Symbol
-    The -> symbol can be optionaly used at the end of statements expecting
-    an indent to be replaced with an indent.  This is useful for compressing
-    short statements into a single line.
+        -> and ;;
+    -> and ;; can be used to manually insert indent and unindent tokens
+    respectively.  -> is commonly used in single line blocks, but ;; is much
+    more rare, being added to simplify the declaration of enums within a data
+    declaration with multiple fields.  Both -> and ;; change the indentation level
+    in addition to issuing the token.  Doing so with -> ensures an unindent token
+    is automatically issued once a statement is encountered on the same line as
+    the one containing the ->.  With a ;; an Unindent is introduced followed by
+    an Indent if the next statement returns to the normal level.
 `
 if 5 > 2 -> print("5 is greater than 2")
 else     -> print("Invalid laws of mathematics, please try again in an alternate universe")
@@ -378,7 +383,7 @@ for f32 f in arr -> print(f)
 f32 subtract: f32 a, f32 b -> return a - b
 
 ~While these can be nested, overnesting should be avoided as it leads to clutter.
-data Integer -> i32 i, void _init: i32 a -> i = a
+data Integer -> i32 i, void _init: i32 a -> i = a;; u8 byte
 
 ~compared to
 data Integer
@@ -386,6 +391,8 @@ data Integer
 
     void _init: i32 a
         i = a
+
+    u8 byte
 
 `
         Structs

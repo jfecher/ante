@@ -58,6 +58,7 @@ const char* tokDictionary[] = {
 	"Break",
     "Import",
     "Match",
+    "Data",
     "Enum",
 
     //modifiers
@@ -114,6 +115,8 @@ map<string, int> keywords = {
     {"continue", Tok_Continue},
     {"break",    Tok_Break},
     {"import",   Tok_Import},
+    {"match",    Tok_Match},
+    {"data",     Tok_Data},
     {"enum",     Tok_Enum},
     
     {"Pub",      Tok_Pub},
@@ -137,8 +140,8 @@ static string yytext;
 ifstream *in;
 const char scStep = 4;
 
-unsigned short scope;
-unsigned short cscope;
+int scope;
+int cscope;
 
 void ante::lexer::init(const char* file)
 {
@@ -292,8 +295,10 @@ int ante::lexer::next()
 
     //substitute -> for an indent and ;; for an unindent
     if(PAIR('-', '>')){
+        cscope++;
         RETURN_PAIR(Tok_Indent);
     }else if(PAIR(';', ';')){
+        cscope--;
         RETURN_PAIR(Tok_Unindent);
     }
 
