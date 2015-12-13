@@ -295,11 +295,11 @@ int ante::lexer::next()
 
     //substitute -> for an indent and ;; for an unindent
     if(PAIR('-', '>')){
-        cscope++;
-        RETURN_PAIR(Tok_Indent);
+        scope++;
+        RETURN_PAIR(next());
     }else if(PAIR(';', ';')){
-        cscope--;
-        RETURN_PAIR(Tok_Unindent);
+        scope--;
+        RETURN_PAIR(next());
     }
 
     if(n == '='){

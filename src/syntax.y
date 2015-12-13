@@ -144,9 +144,11 @@ statement_list: statement_list statement { puts("statement_list"); }
 statement: var_decl
          | var_assign
          | fn_decl
-         | fn_call { puts("statement: fn_call"); }
+         | fn_call
+         | data_decl
          | ret_stmt
          | while_loop
+         | do_while_loop
          | for_loop
          | if_stmt
          | Newline
@@ -208,6 +210,24 @@ var_decl: decl '=' expr
 var_assign: var '=' expr
           ;
 
+data_decl: Data Ident type_decl_block
+         ;
+
+maybe_ident: Ident
+           | %empty
+           ;
+
+type_decl: type_expr maybe_ident
+         | Newline
+         ;
+
+type_decl_list: type_decl_list type_decl
+              | type_decl
+              ;
+
+type_decl_block: Indent type_decl_list Unindent
+               ;
+
 block: Indent statement_list Unindent
      ;
 
@@ -226,26 +246,29 @@ fn_decl: decl ':' maybe_params block { puts("fn_decl"); }
 fn_call: Ident '(' maybe_expr ')' { puts("fn_call"); }
        ;
 
-ret_stmt: Return expr
+ret_stmt: Return expr { puts("ret_stmt"); }
         ;
 
-maybe_else: Else block
+maybe_else: Else block { puts("else"); }
           | %empty
           ;
 
 elif_list: elif_list Elif block
-         | Elif block
+         | Elif block { puts("elif_list"); }
          ;
 
 maybe_elif_list: elif_list
                | %empty
                ;
 
-if_stmt: If expr block maybe_elif_list maybe_else
+if_stmt: If expr block maybe_elif_list maybe_else { puts("if_stmt"); }
        ;
 
 while_loop: While expr block
           ;
+
+do_while_loop: Do block While expr
+             ;
 
 for_loop: For var_decl In expr block
         ;
