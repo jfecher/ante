@@ -148,6 +148,7 @@ statement: var_decl
          | ret_stmt
          | while_loop
          | for_loop
+         | if_stmt
          | Newline
          ;
 
@@ -228,11 +229,26 @@ fn_call: Ident '(' maybe_expr ')' { puts("fn_call"); }
 ret_stmt: Return expr
         ;
 
+maybe_else: Else block
+          | %empty
+          ;
+
+elif_list: elif_list Elif block
+         | Elif block
+         ;
+
+maybe_elif_list: elif_list
+               | %empty
+               ;
+
+if_stmt: If expr block maybe_elif_list maybe_else
+       ;
+
 while_loop: While expr block
           ;
 
 for_loop: For var_decl In expr block
-            ;
+        ;
 
 bin_op: '+'
       | '-'
