@@ -28,7 +28,6 @@ enum TokenType{
     Tok_Void,
 
     /*operators*/
-    Tok_Operator,
 	Tok_Eq,
     Tok_NotEq,
 	Tok_AddEq,
@@ -43,7 +42,8 @@ enum TokenType{
     Tok_RangeBX, //beginning-exclusive range
     Tok_RangeEX, //end exclusive range
     Tok_RangeX,  //exclusive range
-    
+    //All other operators are returned by ASCII value
+
     //literals
     Tok_True,
     Tok_False,

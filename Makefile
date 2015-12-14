@@ -25,6 +25,11 @@ new: clean ante
 obj: 
 	@mkdir -p obj
 
+debug_parser:
+	@echo Generating parser with debug file...
+	@$(YACC) $(YACCFLAGS) -v src/syntax.y
+
+
 obj/%.o: src/%.cpp Makefile | obj
 	@echo Compiling $@...
 	@$(CXX) $(CPPFLAGS) -MMD -MP -Iinclude -c $< -o $@

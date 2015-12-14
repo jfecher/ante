@@ -32,7 +32,6 @@ void yyerror(const char *msg);
 %token Void
 
 /*operators*/
-%token Operator
 %token Eq
 %token NotEq
 %token AddEq
@@ -94,13 +93,16 @@ void yyerror(const char *msg);
 /*
     Now to manually fix all shift/reduce conflicts
 */
+%precedence Ident
+
 %precedence ','
 
-%precedence '.'
+%left '+' '-'
+%left '*' '/' '%'
+
 /*
-    Used in type casting, high precedence to operate
-    before . so that examples like Type(param, param).field
-    can be used.
+    Used in type casting, high precedence to cast before
+    many common operators.
 */
 %precedence I8
 %precedence I16
@@ -121,10 +123,10 @@ void yyerror(const char *msg);
 %precedence Bool
 %precedence Void
 
-%precedence '*'
 
-%precedence '('
-%precedence '['
+%precedence '.'
+
+%precedence '(' '['
 
 /*
     All shift/reduce conflicts should be manually dealt with.
@@ -176,6 +178,7 @@ lit_type: I8
 
 type: type '*'
     | type '[' maybe_expr ']'
+    | '(' type_expr ')'
     | lit_type
     ;
 
@@ -201,10 +204,11 @@ modifier_list: modifier_list modifier
              | modifier
              ;
 
-decl: maybe_modifier_list type_expr Ident
+decl_prepend: maybe_modifier_list type_expr
+            ;
 
-var_decl: decl '=' expr
-        | decl { puts("decl"); }
+var_decl: decl_prepend Ident '=' expr
+        | decl_prepend Ident { puts("decl"); }
         ;
 
 var_assign: var '=' expr
@@ -213,11 +217,8 @@ var_assign: var '=' expr
 data_decl: Data Ident type_decl_block
          ;
 
-maybe_ident: Ident
-           | %empty
-           ;
-
-type_decl: type_expr maybe_ident
+type_decl: type_expr Ident
+         | type_expr
          | Newline
          ;
 
@@ -239,8 +240,8 @@ maybe_params: params
             | %empty
             ;
 
-fn_decl: decl ':' maybe_params block { puts("fn_decl"); }
-       | decl '(' maybe_expr ')' ':' params block
+fn_decl: decl_prepend Ident ':' maybe_params block { puts("fn_decl"); }
+       | decl_prepend Ident '(' maybe_expr ')' ':' maybe_params block
        ;
 
 fn_call: Ident '(' maybe_expr ')' { puts("fn_call"); }

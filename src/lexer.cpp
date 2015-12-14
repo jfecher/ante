@@ -22,7 +22,6 @@ const char* tokDictionary[] = {
     "Bool",
     "Void",
 
-    "Operator",
 	"Eq",
     "NotEq",
 	"AddEq",
