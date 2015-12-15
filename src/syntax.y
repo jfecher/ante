@@ -93,9 +93,20 @@ void yyerror(const char *msg);
 /*
     Now to manually fix all shift/reduce conflicts
 */
-%precedence Ident
+%right Pub
+%right Pri
+%right Pro
+%right Const
+%right Ext
+%right Dyn
+%right Pathogen
 
-%precedence ','
+%precedence ')'
+%precedence ']'
+
+%nonassoc Ident
+
+%left ','
 
 %left '+' '-'
 %left '*' '/' '%'
@@ -174,6 +185,7 @@ lit_type: I8
         | C64
         | Bool
         | Void
+        | Ident
         ;
 
 type: type '*'
@@ -196,15 +208,12 @@ modifier: Pub
         | Pathogen
         ;
 
-maybe_modifier_list: modifier_list
-                   | %empty
-                   ;
-
 modifier_list: modifier_list modifier
              | modifier
              ;
 
-decl_prepend: maybe_modifier_list type_expr
+decl_prepend: modifier_list type_expr
+            | type_expr
             ;
 
 var_decl: decl_prepend Ident '=' expr
@@ -219,10 +228,9 @@ data_decl: Data Ident type_decl_block
 
 type_decl: type_expr Ident
          | type_expr
-         | Newline
          ;
 
-type_decl_list: type_decl_list type_decl
+type_decl_list: type_decl_list Newline type_decl
               | type_decl
               ;
 
