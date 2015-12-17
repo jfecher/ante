@@ -989,7 +989,7 @@ arrStr += 1
 `
     [] operator
 
-    Same implementation in pointers and arrays.  Fetches the element 
+    Same behaviour in pointers and arrays.  Fetches the element 
     at address pointer + b*sizeof(element), where b is the integer
     expression evaluated between [ and ].  Bounds checking is
     not employed at runtime for either.
