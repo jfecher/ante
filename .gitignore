@@ -2,3 +2,4 @@
 *.d
 *.gch
 ante
+src/parser.output

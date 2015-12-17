@@ -26,7 +26,7 @@ obj:
 	@mkdir -p obj
 
 debug_parser:
-	@echo Generating parser with debug file...
+	@echo Generating parser.output file...
 	@$(YACC) $(YACCFLAGS) -v src/syntax.y
 
 

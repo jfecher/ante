@@ -288,6 +288,7 @@ i8 add: i8 a, i8 b
             print("Likely integer overflow in add function.")
     return a + b
 
+
 `
         C FFI
     The c foreign function interface is implemented within the c_ffi module.
@@ -1019,7 +1020,7 @@ impl c32[]
 arrStr.reverse() ~valid
 
 `
-ptrStr.reverse()  <- compilation error, to make this work, a cast should be added
+ptrStr.reverse()  <- compilation error.  To make this work, a cast should be added
 
 c32[] ptrStr
 ptrStr.reverse
