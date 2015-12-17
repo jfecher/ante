@@ -4,7 +4,9 @@
 #include <stdio.h>
 #include <tokens.h>
 
-int yylex();
+extern int yylex();
+extern char *yytext;
+
 void yyerror(const char *msg);
 
 #define YYERROR_VERBOSE
@@ -93,9 +95,9 @@ void yyerror(const char *msg);
 /*
     Now to manually fix all shift/reduce conflicts
 */
-%precedence Ident
+%nonassoc Ident
 
-%precedence ','
+%left ','
 
 %left '+' '-'
 %left '*' '/' '%'
@@ -103,7 +105,7 @@ void yyerror(const char *msg);
 /*
     Used in type casting, high precedence to cast before
     many common operators.
-*/
+*
 %precedence I8
 %precedence I16
 %precedence I32
@@ -117,12 +119,10 @@ void yyerror(const char *msg);
 %precedence F32
 %precedence F64 
 %precedence C8
-%precedence C16
 %precedence C32
-%precedence C64
 %precedence Bool
 %precedence Void
-
+*/
 
 %precedence '.'
 
@@ -153,6 +153,7 @@ statement: var_decl
          | do_while_loop
          | for_loop
          | if_stmt
+         | enum_decl
          | Newline
          ;
 
@@ -169,11 +170,10 @@ lit_type: I8
         | F32
         | F64
         | C8
-        | C16
         | C32
-        | C64
         | Bool
         | Void
+        | Ident
         ;
 
 type: type '*'
@@ -196,38 +196,62 @@ modifier: Pub
         | Pathogen
         ;
 
-maybe_modifier_list: modifier_list
-                   | %empty
-                   ;
-
 modifier_list: modifier_list modifier
              | modifier
              ;
 
-decl_prepend: maybe_modifier_list type_expr
+decl_prepend: modifier_list type_expr
+            | type_expr
             ;
 
 var_decl: decl_prepend Ident '=' expr
         | decl_prepend Ident { puts("decl"); }
         ;
 
-var_assign: var '=' expr
+var_assign: var '=' expr { puts("var_assign"); }
           ;
 
-data_decl: Data Ident type_decl_block
+ident_list: ident_list ',' Ident
+          | Ident
+          ;
+
+generic: '<' ident_list '>'
+       ;
+
+data_decl: modifier_list Data Ident type_decl_block
+         | modifier_list Data Ident generic type_decl_block
+         | Data Ident type_decl_block
+         | Data Ident generic type_decl_block
          ;
 
 type_decl: type_expr Ident
          | type_expr
-         | Newline
+         | enum_decl
          ;
 
-type_decl_list: type_decl_list type_decl
+type_decl_list: type_decl_list Newline type_decl
               | type_decl
               ;
 
 type_decl_block: Indent type_decl_list Unindent
                ;
+
+val_init_list: val_init_list ',' Ident
+             | val_init_list ',' Ident '=' expr
+             | val_init_list Newline Ident
+             | val_init_list Newline Ident '=' expr
+             | Ident '=' expr
+             | Ident
+             ;
+
+enum_block: Indent val_init_list Unindent
+          ;
+
+enum_decl: modifier_list Enum Ident enum_block
+         | Enum Ident enum_block
+         | modifier_list Enum enum_block
+         | Enum enum_block
+         ;
 
 block: Indent statement_list Unindent
      ;
