@@ -171,6 +171,9 @@ i8[30], c32*[2] anotherTuple = arr, ["This tuple contains", "two arrays"]
 `
 dyn dynTuple = 46, "Fourty-six", 46.0
 
+~A pointer to a tuple
+(i32, i32)* tupPtr = &(0, 0)
+
 `
     When a tuple is printed, each of its values are individually printed, with
     parenthesis enclosing them all.
@@ -405,7 +408,24 @@ data Integer
 
 ~Declare coord, a datatype consisting of three f64s named x, y, and z.
 data Coord
-    f64 x, y, z
+    f64 x y z
+
+~Declare char, a datatype that can contain an ASCII or UTF-32 char
+data char
+    c8|c32 c
+
+~Each newline is equivilent to a , and signals a tuple type.
+data Coord2D
+    f32 x
+    f32 y
+
+~Anonymous fields can be declared simply by neglecting to give each field a name.  Anonymous
+~fields can only be accessed with [], and are essentially aliased tuples.
+data Q1Coord
+    u32
+    u32
+
+Q1Coord myQ1C = 2, 3
 
 ~Each datatype containing more than one field is internally represented by a tuple, so they
 ~Can be created in a similar fashion.
@@ -413,9 +433,11 @@ Coord coord = 100, -50, 66.7
 print(coord.y)  ~output: -50
 
 ~To access a specific field of an anonymous datatype in an expression, it must be casted to
-~its corresponding type.
+~the desired type.
 f64 y = Coord(100, -50, 66.7).y
 
+~Set p1 p2 and p3 to 0, 0
+i32,i32 p1 p2 p3 = 0, 0
 
 `
         Classes
