@@ -170,7 +170,7 @@ namespace ante{
     }
 }
 
-extern "C" int yylex(...);
-extern "C" int yyparse();
+//extern "C" int yylex(...);
+//extern "C" int yyparse();
 
 #endif

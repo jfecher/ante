@@ -32,8 +32,21 @@ data Number
 data Maybe<T>
     T | enum -> None
 
+    T unwrap: self*
+        if *self is T
+            return T self
+        panic("Cannot unwrap None!")
+        return self
 
 
+void main:
+    Maybe<i32> i = 32
+
+    ~Known not to be T due to strict typing
+    Maybe<i32> j = None
+
+    ~Declare a Maybe<i32> with T set to 0
+    Maybe<i32> k = i32 None
 
 `
     Rust's Result datatype would be mostly useless in ante

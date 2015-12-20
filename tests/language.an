@@ -404,8 +404,10 @@ data Integer
 `
 
 ~Declare coord, a datatype consisting of three f64s named x, y, and z.
+~NOTE: multiple variables of the same type can be declared by seperating the names with spaces.
+~      if an = is encountered afterwards, each of the variables will be set to that value.
 data Coord
-    f64 x, y, z
+    f64 x y z
 
 ~Each datatype containing more than one field is internally represented by a tuple, so they
 ~Can be created in a similar fashion.
@@ -433,7 +435,7 @@ data Animal
 `
     Create a static function init that creates a new instance of an animal.
 `
-    Animal init: u16 age, c8* species, c8* name
+    Animal init: u16 age, c8* species name
         return Animal(age, species, name)
         
 `
@@ -456,26 +458,26 @@ Animal* clifford = new Animal.init(7, "magnum rubrum canis", "Clifford")
 data Person : Animal
     c8* job
 
-    Person init: u16 age, c8* j, c8* name
+    Person init: u16 age, c8* job name
         Person ret = Animal.init(age, "Homo sapien", name)
-        ret.job = j
+        ret.job = job
         return ret
 
 `
     This function obscures the printInfo declared in the Animal type.
 `
-    void printInfo: self
-        print(name .. " is " .. age .. " years old and is a(n) " .. job)
+    void printInfo: self*
+        print(self.name .. " is " .. self.age .. " years old and is a(n) " .. self.job)
 
 
 `
     Methods of the same name can also be overloaded if they take different amounts or types of variables.
 `
-    void printInfo: self, bool showAge
+    void printInfo: self*, bool showAge
         if showAge
-            print(name .. " is " .. age .. " years old and is a(n) " .. job)
+            print(self.name .. " is " .. self.age .. " years old and is a(n) " .. self.job)
         else
-            print(name .. " is a(n) " .. job)
+            print(self.name .. " is a(n) " .. self.job)
 
 
 Person john = Person.init(44, "electrician", "John")
@@ -505,23 +507,25 @@ data Statistics
 
     ~Alternatively, you can also use modifiers before a block:
     pub
-        f64 getData: self
-            return secretData ~not so secret anymore
+        f64 getData: self*
+            return self.secretData ~not so secret anymore
 
-        c8* getStatus: self
-            if secretData > 10
+        c8* getStatus: self*
+            if self.secretData > 10
                 return "Good"
             else
                 return "Not so good"
 
-    pri f64 doCalculations: self, f64 mData
-            return mData * secretData / varCount
+    pri f64 doCalculations: self*, f64 mData
+            return mData * self.secretData / self.varCount
 
-    ~All members are public by default
-    void _init: i32[] mData
+    ~Because the init function is declared within the datatype, it can access private members.
+    Statistics init: i32[] mData
+        Statistics ret = `secretData =`0, `varCount =`0
         for i32 i in mData
-            secretData += mData / pi
-            varCount += 1
+            ret.secretData += mData / ret.pi
+            ret.varCount += 1
+        return ret
 
 `
         Type Specifications, Generics, Where, and Operator Overloading
@@ -539,7 +543,7 @@ data Statistics
 ~where evaluates to false, an error is thrown.
 const c32[][] actions = "walk", "talk", "stand"
 
-c32[] getAction: u8 action  where action <= 3
+c32[] getAction: u8 action  where action >= 0 && action <= 3
     return actions[action]
 
 
@@ -734,11 +738,12 @@ false
     usage of this would be extending an API to implement a function or even inherit
     from an additional parent class as long as it has no instance data.
 `
-impl Point : SomeAdditionalParentClass
+impl Point : SomeAdditionalTrait
     ~implement new methods
     bool op("=="): self, Point p2
         return self.x == p2.x && self.y == p2.y
 
+impl thing : Drawable<S>
 
 ~Implementations can also be used for primitive types
 impl i32, i32
@@ -746,6 +751,19 @@ impl i32, i32
         i32 tmp = self[0]
         self[0] = self[1]
         self[1] = tmp
+
+trait Drawable<S>
+    void draw: self*, S surface
+    
+    void clear: self*
+
+    void useColor: u32 r g b
+
+    void useSurface: self*, S surface
+        self.surface = surface
+
+    S getSurface: self*
+        return self.surface
 
 i32, i32 point = (3, 4).swap()
 assert(point[0] == 4 && point[1] == 3)
@@ -1089,7 +1107,7 @@ data Vec<T>
     u32 len
     u32 cap
 
-List<u8> numsList = 1, alloc(2, alloc(3, None)))
+List<u8> numsList = 1, &(2, &(3, None)))
 
 `
         Multiline expressions/statements
@@ -1109,6 +1127,48 @@ data int -> i8  \
           | i32 \
           | i64
 
+`
+        Error Handling
+    Functions that can return an error can declare their
+    return type as the desired type | error type.  When
+    Checking for errors, the operator ? can be used.  This
+    operator checks if the value implements the Error trait.
+    If so, it returns from the method, otherwise, the value
+    is not changed.
+`
+data MyErr : Error<E>
+    c32* desc
+    c32* detail
+    E* cause
+
+    ~required by Error trait
+    MyErr<E> fromErr: E err
+        return err.desc, err.detail, err.cause
+
+    ~required by Error trait
+    c32* desc: self*
+        return msg
+
+    ~required by Error trait
+    E* cause: self*
+        return cause
+
+    ~required by Error trait
+    c32* detail: self*
+        return self.detail
+
+
+~This function takes three parameters: two i32s and
+~a function that can return a String or StrErr
+i32|MyErr errFunc: i32 a b, (String|StrErr)() fn
+    ~Try to open a file, and if no FileErr is found
+    ~Then write Just a test, otherwise wrap the error
+    ~In type MyErr (using fromErr()), and return it.
+    openFile("test")?.write("Just a test")
+
+    ~ ? can also be chained
+    Parser.init()?.parseInt("32")?.map(fn)?.show()
+
 
 `
         Experimental
@@ -1117,8 +1177,16 @@ data int -> i8  \
     include in the language.
 `
 macro pstr: ident i
-    pub const str i = "p"
-    print(i)
+    pub const c32* $i = "p"
+    print($i)
+
+pstr!(g)
+~output: p
+
+macro double: expr e
+    (($e) * 2)
+
+print(double!(2 + 3))
 
 macro or:  -> ||
 macro and: -> &&
@@ -1138,9 +1206,6 @@ if isLetter('a')
     print("a is a letter")
 
 
-pstr(g)
-~output: p
-
 ~possible new c_ffi syntax
 pathogen void c_ffi("putchar"): u8
 
@@ -1149,6 +1214,7 @@ lambda: i32 x -> return x + 50
 |i32 x| -> return x + 50
 
 i32(i32, i32) addFn = |i32 x, i32 y| -> return x + y
+i32(i32, i32) addFn = |x, y| -> return x + y
 
 ~alternate c_ffi declaration
 pathogen void* c_ffi("malloc"): u32 size
@@ -1186,13 +1252,6 @@ assert(3 is i32)
 assert(5 is 5)
 ~Could be called as the comparison for match statements
 
-~Maybe remove automatic dereferencing to avoid
-~ambiguity for type extensions of pointer types.
-
-~Possible addition of deindent token
-i32 x = 2
-i32 y = if x > 2 -> 5 <-else-> 4
-
 ~Allow/force names in data declarations to precede types
 data Vec<T>
     mem: T[]
@@ -1209,7 +1268,7 @@ data List<type T>
     List<T> | enum -> end
     next
 
-~or this if ;; is implemented as an unindent token
+~or
 data List<type T>
     T val
     List<T> | enum -> end;; next
@@ -1219,16 +1278,10 @@ data Numbers -> enum(One, Two, Three)
 
 data Numbers -> enum{One, Two, Three} num
 
+~Original for comparison:
 data Numbers -> enum -> One, Two, Three;; num
 
 
-~Possibly replace -> with { and have } as the unindent token.
-if condition { print(true) }
-
-~May be confusing since this would also be valid
-if condition { print(true)
-
-data Numbers { enum{One, Two, Three} num
 `
         Keywords
 primitive datatypes:
