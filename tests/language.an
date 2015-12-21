@@ -205,20 +205,30 @@ f64 add: f64 augend, f64 addend
     return augend + addend
 
 `
-    The function below takes in a variable amount of parameters, as denoted by
-    the elipses.  Since _params always contains a tuple of each parameter of
-    the function, all the params are passed to the print keyword, with an
-    additional newline passed at the end.
+    Ellipses can be used in place of or after a type to indicate that the
+    function takes a variable amount of arguments.  The variable it is assigned
+    to is a tuple by default, but if a type is specified before the ellipses, it
+    becomes an array of that type.  If a function takes a variable amount of
+    parameters, ... can only be the last parameter.  In the lnprint function below, 
+    params is passed to the print function, with an additional newline passed at 
+    the beginning.
 `
 
-void println: ...
-    print(_params, '\n')
+void lnprint: ... params
+    print('\n', params)
 
+
+i64 sum: i32... nums
+    i64 ret = 0
+    for i32 i in nums
+        ret += i
+    return ret
 `
     Here is the syntax for calling functions:
 `
-println("Test #", add(3, 43))
-~output: Tuple(2: Test #, 46)
+lnprint("Test #", add(3, 43), sum(3, 4, 5))
+~output: 
+~Tuple(2: Test #, 46, 12)
 
 `
         Pathogen infections and Cleanse
@@ -1307,6 +1317,30 @@ data Numbers -> enum{One, Two, Three} num
 ~Original for comparison:
 data Numbers -> enum -> One, Two, Three;; num
 
+
+~Possible syntax change for comments and multiline comments
+
+~ STYLE 1
+#single line comment or pre-proc statement
+
+#[
+    multi-line comment1
+]
+
+#[
+#   stylish multi-line comment
+#]
+ 
+~ STYLE 2
+{ comment }
+
+{
+    multi-line comment
+}
+
+{
+|   stylish multi-line comment    
+}
 
 `
         Keywords
