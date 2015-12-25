@@ -67,7 +67,7 @@ void FuncDeclNode::compile()
 
 }
 
-void ClassDeclNode::compile()
+void DataDeclNode::compile()
 {
 
 }
@@ -139,7 +139,7 @@ void FuncDeclNode::exec()
 
 }
 
-void ClassDeclNode::exec()
+void DataDeclNode::exec()
 {
 
 }
@@ -203,7 +203,7 @@ void IfNode::print()
 
 void NamedValNode::print()
 {
-    cout << TOK_TYPE_STR(type) << ' ' << name;
+    cout << "NVNode: " << name;
 }
 
 void VarNode::print()
@@ -220,7 +220,7 @@ void FuncCallNode::print()
 
 void VarDeclNode::print()
 {
-    cout << "varDecl " << TOK_TYPE_STR(type) << ' ' << name << " = ";
+    cout << "varDecl " << name << " = ";
     if(expr) expr->print();
     else cout << "(undef)";
 }
@@ -246,7 +246,7 @@ void FuncDeclNode::print()
     }
 }
 
-void ClassDeclNode::print()
+void DataDeclNode::print()
 {
     cout << "class " << name << "\n\t";
     for(auto n : body){

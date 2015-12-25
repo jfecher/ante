@@ -18,7 +18,7 @@ data Point3
     i32 y
 
 ~Test | for or-ing types
-data char
+data Char
     c8 | c32
 
 ~Test enum declaration within type declaration

@@ -5,7 +5,6 @@
    tuples to assign each index to a seperate
    variable.
 `
-
 void main:
     ~Declare 3 floats
     f64 a b c

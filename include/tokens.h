@@ -8,6 +8,7 @@
 
 enum TokenType{
     Tok_Ident = 258,
+    Tok_UserType,
 
     //types
     Tok_I8,

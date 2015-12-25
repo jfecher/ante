@@ -1,0 +1,22 @@
+`
+        closures.an
+    Experiments with the syntax of anonymous
+    functions, aka closures.
+`
+
+void() main = ||
+    print("Hello World!")
+
+
+i32(i32,i32) add = |a b|
+    return a + b
+
+
+i64(i32,i32) mul = |a b|
+    return a * b
+
+
+i32(i32)(i32(i32),i32(i32),i32) flip = |f g x|
+    return g(f(x))
+
+flip(sqrt, neg, 4)

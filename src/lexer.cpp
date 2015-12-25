@@ -3,6 +3,7 @@
 
 const char* tokDictionary[] = {
     "Identifier",
+    "UserType",
 
     //types
     "I8",
@@ -210,7 +211,7 @@ int ante::lexer::genAlphaNumTok()
         return key->second;
     }else{
         yytext = s;
-        return Tok_Ident;
+        return (s[0] >= 'A' && s[0] <= 'Z') ? Tok_UserType : Tok_Ident;
     }
 }
 
@@ -318,10 +319,6 @@ int ante::lexer::next()
     if(PAIR('^', '.')) RETURN_PAIR(Tok_RangeBX);
     if(PAIR('.', '^')) RETURN_PAIR(Tok_RangeEX);
     if(PAIR('^', '^')) RETURN_PAIR(Tok_RangeX);
-
-    //If a backslash is placed before a newline, skip
-    //the newline token
-    if(PAIR('\\', '\n')) RETURN_PAIR(ante::lexer::next());
 
     if(c == 0 || c == EOF) return 0; //End of input
 

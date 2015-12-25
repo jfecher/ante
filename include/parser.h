@@ -20,6 +20,7 @@ class Node{
         virtual void print(void) = 0;
         virtual void compile(void) = 0;
         virtual void exec(void) = 0;
+        Node() : next(0){}
         ~Node(){ free(next); }
 };
 
@@ -83,11 +84,11 @@ class IfNode : public Node{
 class NamedValNode : public Node{
     public:
         string name;
-        int type;
+        Node* typeExpr;
         void compile(void);
         void exec(void);
         void print(void);
-        NamedValNode(string s, int t) : name(s), type(t){}
+        NamedValNode(string s, Node* t) : name(s), typeExpr(t){}
 };
 
 class VarNode : public Node{
@@ -121,12 +122,12 @@ class StrLitNode : public Node{
 class VarDeclNode : public Node{
     public:
         string name;
-        int type;
+        Node* typeExpr;
         Node* expr;
         void compile(void);
         void exec(void);
         void print(void);
-        VarDeclNode(string s, int t, Node* exp) : name(s), type(t), expr(exp){}
+        VarDeclNode(string s, Node* t, Node* exp) : name(s), typeExpr(t), expr(exp){}
 };
 
 class VarAssignNode : public Node{
@@ -142,23 +143,23 @@ class VarAssignNode : public Node{
 class FuncDeclNode : public Node{
     public:
         string name;
-        int type;
+        Node* type;
         vector<NamedValNode*> params;
         vector<Node*> body;
         void compile(void);
         void exec(void);
         void print(void);
-        FuncDeclNode(string s, int t, vector<NamedValNode*> p, vector<Node*> b) : name(s), type(t), params(p), body(b){}
+        FuncDeclNode(string s, Node* t, vector<NamedValNode*> p, vector<Node*> b) : name(s), type(t), params(p), body(b){}
 };
 
-class ClassDeclNode : public Node{
+class DataDeclNode : public Node{
     public:
         string name;
         vector<Node*> body;
         void compile(void);
         void exec(void);
         void print(void);
-        ClassDeclNode(string s, vector<Node*> b) : name(s), body(b){}
+        DataDeclNode(string s, vector<Node*> b) : name(s), body(b){}
 };
 
 

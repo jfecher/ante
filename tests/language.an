@@ -426,8 +426,8 @@ data Coord
 data char
     c8|c32 c
 
-char c = 'a'
-assert(c.c is c32)
+char ch = 'a'
+assert(ch.c is c32)
 
 ~Each newline is equivilent to a , and signals a tuple type.
 data Coord2D
@@ -1183,11 +1183,11 @@ data MyErr : Error<E>
 
     ~required by Error trait
     c32* desc: self*
-        return msg
+        return self.desc
 
     ~required by Error trait
     E* cause: self*
-        return cause
+        return self.cause
 
     ~required by Error trait
     c32* detail: self*
@@ -1196,7 +1196,7 @@ data MyErr : Error<E>
 
 ~This function takes three parameters: two i32s and
 ~a function that can return a String or StrErr
-i32|MyErr errFunc: i32 a b, (String|StrErr)() fn
+i32|MyErr errFunc: i32 a b, (String|StrErr)(i32) fn
     ~Try to open a file, and if no FileErr is found
     ~Then write Just a test, otherwise wrap the error
     ~In type MyErr (using fromErr()), and return it.

@@ -14,6 +14,7 @@ void yyerror(const char *msg);
 %}
 
 %token Ident
+%token UserType
 
 /*types*/
 %token I8
@@ -173,12 +174,14 @@ lit_type: I8
         | C32
         | Bool
         | Void
-        | Ident
+        | UserType
         ;
 
 type: type '*'
     | type '[' maybe_expr ']'
     | '(' type_expr ')'
+    | type '(' type_expr ')' /* f-ptr w/ params*/
+    | type '(' ')' /* f-ptr w/out params*/
     | lit_type
     ;
 
@@ -211,17 +214,17 @@ var_decl: decl_prepend Ident '=' expr
 var_assign: var '=' expr { puts("var_assign"); }
           ;
 
-ident_list: ident_list ',' Ident
-          | Ident
-          ;
+usertype_list: usertype_list ',' UserType
+             | UserType
+             ;
 
-generic: '<' ident_list '>'
+generic: '<' usertype_list '>'
        ;
 
-data_decl: modifier_list Data Ident type_decl_block
-         | modifier_list Data Ident generic type_decl_block
-         | Data Ident type_decl_block
-         | Data Ident generic type_decl_block
+data_decl: modifier_list Data UserType type_decl_block
+         | modifier_list Data UserType generic type_decl_block
+         | Data UserType type_decl_block
+         | Data UserType generic type_decl_block
          ;
 
 type_decl: type_expr Ident
@@ -236,19 +239,19 @@ type_decl_list: type_decl_list Newline type_decl
 type_decl_block: Indent type_decl_list Unindent
                ;
 
-val_init_list: val_init_list ',' Ident
-             | val_init_list ',' Ident '=' expr
-             | val_init_list Newline Ident
-             | val_init_list Newline Ident '=' expr
-             | Ident '=' expr
-             | Ident
+val_init_list: val_init_list ',' UserType
+             | val_init_list ',' UserType '=' expr
+             | val_init_list Newline UserType
+             | val_init_list Newline UserType '=' expr
+             | UserType '=' expr
+             | UserType
              ;
 
 enum_block: Indent val_init_list Unindent
           ;
 
-enum_decl: modifier_list Enum Ident enum_block
-         | Enum Ident enum_block
+enum_decl: modifier_list Enum UserType enum_block
+         | Enum UserType enum_block
          | modifier_list Enum enum_block
          | Enum enum_block
          ;
