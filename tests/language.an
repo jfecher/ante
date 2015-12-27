@@ -79,7 +79,7 @@ f32 n = 43.876
 i32 n
 
 ~NOTE: the .. below is the string concat operator
-print(typeof(n) .. " " .. n)  ~output: i32 43
+print(typeof(n) ++ " " ++ n)  ~output: i32 43
 
 `
         Operators
@@ -97,6 +97,8 @@ print(typeof(n) .. " " .. n)  ~output: i32 43
         .^ exclusive endpoint range
         ^^ exclusive range
 
+        ++ append
+
         <  less than
         >  greater than
         <= less than or equal to
@@ -111,6 +113,7 @@ print(typeof(n) .. " " .. n)  ~output: i32 43
         !  logical not
         *  pointer dereference
         &  address of
+        $  type of
 `
 
 `
@@ -138,7 +141,9 @@ f32[5] assortedNums = 9, -76, 3.14159265, 2^8, 1 + 2*(6-3)
     yield the last element of arr.
 `
 assortedNums[0] += assortedNums[1]
-print(assortedNums[0] .. ", " .. assortedNums[-2])
+print(assortedNums[0] ++ ", " ++ assortedNums[-2])
+
+print([] ++ 1 ++ 2)
 
 ~output: -67, 256
 
@@ -201,7 +206,11 @@ void printMsg:
     This add function takes in two parameters, augend and addend, and returns
     a num value.
 `
-f64 add: f64 augend, f64 addend
+f64 add_floats: f64 augend, f64 addend
+    return augend + addend
+
+~Multiple variables of the same type can be declared by omitting the , and repeated type
+f64 add_floats_2: f64 augend addend
     return augend + addend
 
 `
@@ -213,22 +222,23 @@ f64 add: f64 augend, f64 addend
     params is passed to the print function, with an additional newline passed at 
     the beginning.
 `
-
 void lnprint: ... params
     print('\n', params)
 
 
+~In most cases, an array should be used if the specific type is known
 i64 sum: i32... nums
     i64 ret = 0
     for i32 i in nums
         ret += i
     return ret
+
 `
-    Here is the syntax for calling functions:
+    The syntax for calling functions is the same as in C based languages:
 `
 lnprint("Test #", add(3, 43), sum(3, 4, 5))
 ~output: 
-~Tuple(2: Test #, 46, 12)
+~Test #, 46, 12
 
 `
         Pathogen infections and Cleanse
@@ -243,7 +253,7 @@ lnprint("Test #", add(3, 43), sum(3, 4, 5))
 `
 pathogen void myPrint: c32* msg
     i32 i = 4 + 2
-    system("echo '" .. msg .. "'") ~note: system is already a pathogen function
+    system("echo '" ++ msg ++ "'") ~note: system is already a pathogen function
 
 ~Because the following function uses the pathogen myPrint, it cannot be
 ~eliminated from the final binary, and is said to be infected.
@@ -341,9 +351,9 @@ for f32 n in arr
 
 `
         Ranges
-    Ranges are created by the .. operator and are lazily evaluated by default.
-    Since they can be used in expressions, they are often very useful, particularly
-    in for loops.
+    Ranges are created by any of the four range operators: .. ^. .^ and ^^
+    Each of these operators differ in their exclusivity.  Since they can be 
+    used in expressions, they are often very useful, particularly in for loops.
 `
 
 ~Print 1 to 10 inclusive
@@ -1172,13 +1182,13 @@ data int -> i8  \
     If so, it returns from the method, otherwise, the value
     is not changed.
 `
-data MyErr : Error<E>
+data MyErr : Error
     c32* desc
     c32* detail
     E* cause
 
     ~required by Error trait
-    MyErr<E> fromErr: E err
+    MyErr fromErr: Error err
         return err.desc, err.detail, err.cause
 
     ~required by Error trait

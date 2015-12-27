@@ -1,0 +1,66 @@
+`
+        functional.an
+    Showcase various functional aspects of ante
+`
+
+~Example of a polymorphic add function.  Since types in ante
+~must start with a capital letter, gen is a type variable.
+gen add: a b
+    return a + b
+
+
+~The list data structure to iterate through
+data List<type t> : Iter
+    T val
+    List<T>* | None nextNode
+
+
+    ~Implement the next function from Iter
+    T|None next: List<T> l
+        return l.nextNode?.val
+
+    ~Required by Iter
+    T unwrap:
+        return t.val
+
+
+impl Iter
+    ~Example of a possible foldl implementation
+    t foldl: Iter l, f, init  where $l is None
+        return init
+
+    t foldl: Iter l, f, init  where !($l is None)
+        return foldl(l.next(), f, f(init, l.unwrap()))
+
+    ~Alternatively
+    t foldl_alt: Iter l, f, init
+        return match l
+            None -> init
+            _ -> fold_alt(l.next(), f, f(init, l.unwrap()))
+
+    ~foldl1 using foldl above
+    t foldl1: Iter l, f
+        return foldl(l.next(), f, l.unwrap())
+
+~Since this is a polymorphic function, the list member's type does
+~not have to be specified, and if one really wanted to, List could be 
+~omitted as well and would be assumed to be a type implementing Iter.  
+~If List<var> was specified then var could be used as a type variable 
+~within the function
+gen sum_of_list: List l
+    return l.foldl1(add)
+
+
+List l = 1, &(2, &(3, &(4, None))
+
+assert(sum_of_list(l) == 10)
+
+
+~Alternate, more imperative approach to sum_of_list
+gen sum_of_list: List<memberType> l
+    memberType acc = l.val
+
+    if !($l.next() is None)
+        for memberType x in l.next
+            acc += x
+    return acc

@@ -1,0 +1,47 @@
+`
+        polymorphism.an
+    Experiments with the syntax of  various polymorphic 
+    functions and datatypes.
+`
+
+~Since types in ante must start with a capital, gen is
+~assumed to be a type variable
+gen add: a b
+    return a + b
+
+gen sub: a b
+    return a - b
+
+data Op
+    enum
+        Add
+        Sub
+        Mul
+        Div
+
+gen performOperation: a b, Op op
+    match op
+        Add -> return a + b
+        Sub -> return a - b
+        Mul -> return a * b
+        Div -> return a / b
+
+
+assert(performOperation(1.0, 2.0, Op.Add) == 3.0)
+
+
+data Maybe<T>
+    T | enum -> None
+
+~Initialize i and n and autodetect their types
+i := Maybe 3
+n := Maybe None
+
+
+data Result T E
+    T | E
+
+~Return type is assumed to be Result<File, FileErr>
+Result writeFile: File f, String s
+    return f.write(s)
+

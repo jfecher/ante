@@ -20,9 +20,9 @@ Node *branch = 0;
     }
 
 
-extern "C" void makeNode()
+Node* getRootNode()
 {
-    
+    return root;
 }
 
 extern "C" Node* makeIntLitNode(string s)

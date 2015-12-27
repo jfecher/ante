@@ -4,19 +4,28 @@
     functions, aka closures.
 `
 
-void() main = ||
+~Declare a function pointer main and set it equal to
+~an anonymous function
+void() main = \
     print("Hello World!")
 
 
-i32(i32,i32) add = |a b|
+i32(i32,i32) add = \a b
     return a + b
 
 
-i64(i32,i32) mul = |a b|
+i64(i32,i32) mul = \a b
     return a * b
 
+~Unlike normal functions, function pointers can be changed
+add = mul
 
-i32(i32)(i32(i32),i32(i32),i32) flip = |f g x|
+
+i32(i32(i32),i32(i32),i32) flipPtr = \f g x
     return g(f(x))
 
-flip(sqrt, neg, 4)
+~vs
+i32 flipFn: i32(i32) f g, i32 x
+    return g(f(x))
+
+assert(flipPtr(sqrt, neg, 4) == -2)
