@@ -4,13 +4,13 @@
 `
 
 ~Example of a polymorphic add function.  Since types in ante
-~must start with a capital letter, gen is a type variable.
-gen add: a b
+~must start with a capital letter, gen and t are type variables.
+gen add: t a b
     return a + b
 
 
 ~The list data structure to iterate through
-data List<type t> : Iter
+data List<type T> : Iter
     T val
     List<T>* | None nextNode
 
@@ -19,27 +19,27 @@ data List<type t> : Iter
     T|None next: List<T> l
         return l.nextNode?.val
 
-    ~Required by Iter
+    ~Also required by Iter
     T unwrap:
         return t.val
 
 
 impl Iter
     ~Example of a possible foldl implementation
-    t foldl: Iter l, f, init  where $l is None
+    t foldl: None l, t(t,t) f, t init
         return init
 
-    t foldl: Iter l, f, init  where !($l is None)
+    t foldl: Iter l, t(t,t) f, t init  where !($l is None)
         return foldl(l.next(), f, f(init, l.unwrap()))
 
     ~Alternatively
-    t foldl_alt: Iter l, f, init
+    t foldl_alt: Iter l, t(t,t) f, t init
         return match l
             None -> init
             _ -> fold_alt(l.next(), f, f(init, l.unwrap()))
 
     ~foldl1 using foldl above
-    t foldl1: Iter l, f
+    t foldl1: Iter l, t(t,t) f
         return foldl(l.next(), f, l.unwrap())
 
 ~Since this is a polymorphic function, the list member's type does
@@ -57,10 +57,10 @@ assert(sum_of_list(l) == 10)
 
 
 ~Alternate, more imperative approach to sum_of_list
-gen sum_of_list: List<memberType> l
-    memberType acc = l.val
+~NOTE: this still requires next() to be implemented.
+gen sum_of_list: List<ty> l
+    ty acc = l.val
 
-    if !($l.next() is None)
-        for memberType x in l.next
-            acc += x
+    for ty x in l.next()
+        acc += x
     return acc

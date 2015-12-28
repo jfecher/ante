@@ -26,20 +26,20 @@ class Node{
 
 class IntLitNode : public Node{
     public:
-        string val;
+        char* val;
         void compile(void);
         void exec(void);
         void print(void);
-        IntLitNode(string s) : val(s){}
+        IntLitNode(char* s) : val(s){}
 };
 
 class FltLitNode : public Node{
     public:
-        string val;
+        char* val;
         void compile(void);
         void exec(void);
         void print(void);
-        FltLitNode(string s) : val(s){}
+        FltLitNode(char* s) : val(s){}
 };
 
 class BoolLitNode : public Node{
@@ -48,7 +48,7 @@ class BoolLitNode : public Node{
         void compile(void);
         void exec(void);
         void print(void);
-        BoolLitNode(bool b) : val(b){}
+        BoolLitNode(char b) : val(b){}
 };
 
 class BinOpNode : public Node{
@@ -74,92 +74,92 @@ class RetNode : public Node{
 class IfNode : public Node{
     public:
         Node* condition;
-        vector<Node*> body;
+        Node** body;
         void compile(void);
         void exec(void);
         void print(void);
-        IfNode(Node* n1, vector<Node*> n2) : condition(n1), body(n2){}
+        IfNode(Node* n1, Node** n2) : condition(n1), body(n2){}
 };
 
 class NamedValNode : public Node{
     public:
-        string name;
+        char* name;
         Node* typeExpr;
         void compile(void);
         void exec(void);
         void print(void);
-        NamedValNode(string s, Node* t) : name(s), typeExpr(t){}
+        NamedValNode(char* s, Node* t) : name(s), typeExpr(t){}
 };
 
 class VarNode : public Node{
     public:
-        string name;
+        char* name;
         void compile(void);
         void exec(void);
         void print(void);
-        VarNode(string s) : name(s){}
+        VarNode(char* s) : name(s){}
 };
 
 class FuncCallNode : public Node{
     public:
-        string name;
+        char* name;
         Node* params;
         void compile(void);
         void exec(void);
         void print(void);
-        FuncCallNode(string s, Node* p) : name(s), params(p){}
+        FuncCallNode(char* s, Node* p) : name(s), params(p){}
 };
 
 class StrLitNode : public Node{
     public:
-        string val;
+        char* val;
         void compile(void);
         void exec(void);
         void print(void);
-        StrLitNode(string s) : val(s){}
+        StrLitNode(char* s) : val(s){}
 };
 
 class VarDeclNode : public Node{
     public:
-        string name;
+        char* name;
         Node* typeExpr;
         Node* expr;
         void compile(void);
         void exec(void);
         void print(void);
-        VarDeclNode(string s, Node* t, Node* exp) : name(s), typeExpr(t), expr(exp){}
+        VarDeclNode(char* s, Node* t, Node* exp) : name(s), typeExpr(t), expr(exp){}
 };
 
 class VarAssignNode : public Node{
     public:
-        string name;
+        char* name;
         Node* expr;
         void compile(void);
         void exec(void);
         void print(void);
-        VarAssignNode(string s, Node* exp) : name(s), expr(exp){}
+        VarAssignNode(char* s, Node* exp) : name(s), expr(exp){}
 };
 
 class FuncDeclNode : public Node{
     public:
-        string name;
+        char* name;
         Node* type;
-        vector<NamedValNode*> params;
-        vector<Node*> body;
+        Node** params;
+        Node** body;
         void compile(void);
         void exec(void);
         void print(void);
-        FuncDeclNode(string s, Node* t, vector<NamedValNode*> p, vector<Node*> b) : name(s), type(t), params(p), body(b){}
+        FuncDeclNode(char* s, Node* t, Node** p, Node** b) : name(s), type(t), params(p), body(b){}
 };
 
 class DataDeclNode : public Node{
     public:
-        string name;
-        vector<Node*> body;
+        char* name;
+        Node** body;
         void compile(void);
         void exec(void);
         void print(void);
-        DataDeclNode(string s, vector<Node*> b) : name(s), body(b){}
+        DataDeclNode(char* s, Node** b) : name(s), body(b){}
 };
 
 

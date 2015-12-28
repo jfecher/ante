@@ -25,22 +25,22 @@ Node* getRootNode()
     return root;
 }
 
-extern "C" Node* makeIntLitNode(string s)
+extern "C" Node* makeIntLitNode(char* s)
 {
     return new IntLitNode(s);
 }
 
-extern "C" Node* makeFltLitNode(string s)
+extern "C" Node* makeFltLitNode(char* s)
 {
     return new FltLitNode(s);
 }
 
-extern "C" Node* makeStrLitNode(string s)
+extern "C" Node* makeStrLitNode(char* s)
 {
     return new StrLitNode(s);
 }
 
-extern "C" Node* makeBoolLitNode(bool b)
+extern "C" Node* makeBoolLitNode(char b)
 {
     return new BoolLitNode(b);
 }
@@ -55,42 +55,42 @@ extern "C" void attatchRetNode(Node* expr)
     attatchStmtNode(RetNode(expr));
 }
 
-extern "C" void attatchIfNode(Node* con, vector<Node*> body)
+extern "C" void attatchIfNode(Node* con, Node** body)
 {
     attatchStmtNode(IfNode(con, body));
 }
 
-extern "C" Node* makeNamedValNode(string s, Node* tExpr)
+extern "C" Node* makeNamedValNode(char* s, Node* tExpr)
 {
     return new NamedValNode(s, tExpr);
 }
 
-extern "C" Node* makeFuncCallNode(string s, Node* p)
+extern "C" Node* makeFuncCallNode(char* s, Node* p)
 {
     return new FuncCallNode(s, p);
 }
 
-extern "C" Node* makeVarNode(string s)
+extern "C" Node* makeVarNode(char* s)
 {
     return new VarNode(s);
 }
 
-extern "C" void attatchVarDeclNode(string s, Node* tExpr, Node* expr)
+extern "C" void attatchVarDeclNode(char* s, Node* tExpr, Node* expr)
 {
     attatchStmtNode(VarDeclNode(s, tExpr, expr));
 }
 
-extern "C" void attatchVarAssignNode(string s, Node* expr)
+extern "C" void attatchVarAssignNode(char* s, Node* expr)
 {
     attatchStmtNode(VarAssignNode(s, expr));
 }
 
-extern "C" void attatchFuncDeclNode(string s, Node* tExpr, vector<NamedValNode*> p, vector<Node*> b)
+extern "C" void attatchFuncDeclNode(char* s, Node* tExpr, Node** p, Node** b)
 {
     attatchStmtNode(FuncDeclNode(s, tExpr, p, b));
 }
 
-extern "C" void attatchDataDeclNode(string s, vector<Node*> b)
+extern "C" void attatchDataDeclNode(char* s, Node** b)
 {
     attatchStmtNode(DataDeclNode(s, b));
 }

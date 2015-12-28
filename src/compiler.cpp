@@ -194,10 +194,10 @@ void IfNode::print()
     cout << "if ";
     if(condition) condition->print();
     cout << "\nthen\n";
-    for(auto n : body){
+    /*for(auto n : body){
         if(n) n->print();
         cout << endl;
-    }
+    }*/
     cout << "end";
 }
 
@@ -235,7 +235,7 @@ void VarAssignNode::print()
 void FuncDeclNode::print()
 {
     cout << "function " << name << ": ";
-    for(auto n : params){
+    /*for(auto n : params){
         if(n) n->print();
         cout << ", ";
     }
@@ -243,16 +243,16 @@ void FuncDeclNode::print()
     for(auto n : body){
         if(n) n->print();
         cout << "\n";
-    }
+    }*/
 }
 
 void DataDeclNode::print()
 {
     cout << "class " << name << "\n\t";
-    for(auto n : body){
+    /*for(auto n : body){
         cout << endl;
         n->print();
-    }
+    }*/
     cout << endl;
 }
 

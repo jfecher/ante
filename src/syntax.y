@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <tokens.h>
+#include <ptree.h>
 
 extern int yylex();
 extern char *yytext;
@@ -175,6 +176,7 @@ lit_type: I8
         | Bool
         | Void
         | UserType
+        | Ident /* type var or generic */
         ;
 
 type: type '*'
@@ -207,11 +209,11 @@ decl_prepend: modifier_list type_expr
             | type_expr
             ;
 
-var_decl: decl_prepend Ident '=' expr
-        | decl_prepend Ident { puts("decl"); }
+var_decl: decl_prepend Ident '=' expr //{ attatchVarDeclNode($2, $1, $4); }
+        | decl_prepend Ident //{ attatchVarDeclNode($2, $1, 0); }
         ;
 
-var_assign: var '=' expr { puts("var_assign"); }
+var_assign: var '=' expr //{ attatchVarAssignNode($1, $3); }
           ;
 
 usertype_list: usertype_list ',' UserType
