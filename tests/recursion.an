@@ -4,7 +4,7 @@
 i32 x = 0
 
 void f:
-    x = x + 1
+    x += 1
     print(x)
     f()
 

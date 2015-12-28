@@ -26,17 +26,10 @@ data List<type T> : Iter
 
 impl Iter
     ~Example of a possible foldl implementation
-    t foldl: None l, t(t,t) f, t init
-        return init
-
-    t foldl: Iter l, t(t,t) f, t init  where !($l is None)
-        return foldl(l.next(), f, f(init, l.unwrap()))
-
-    ~Alternatively
-    t foldl_alt: Iter l, t(t,t) f, t init
+    t foldl: Iter l, t(t,t) f, t init
         return match l
             None -> init
-            _ -> fold_alt(l.next(), f, f(init, l.unwrap()))
+            _ -> foldl(l.next(), f, f(init, l.unwrap()))
 
     ~foldl1 using foldl above
     t foldl1: Iter l, t(t,t) f
