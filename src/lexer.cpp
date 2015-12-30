@@ -35,9 +35,9 @@ const char* tokDictionary[] = {
     "Or",
     "And",
     "Range",
-    "Beginning Exclusive Range", //TODO: find a better name
-    "Ending Exclusive Range",
-    "Exclusive Range",
+    "RangeBX",
+    "RangeEX",
+    "RangeX",
 
     //literals
     "True",

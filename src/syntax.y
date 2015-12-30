@@ -14,49 +14,40 @@ void yyerror(const char *msg);
 
 %}
 
-%token Ident
-%token UserType
+%token Ident UserType
 
-/*types*/
-%token I8 I16 I32 I64
+/* types */
+%token I8 I16 I32 I64 
 %token U8 U16 U32 U64
-%token ISz Usz F32 F64
+%token Isz Usz F32 F64
 %token C8 C32 Bool Void
 
-/*operators*/
+/* operators */
+%token Eq NotEq AddEq SubEq MulEq DivEq GrtrEq LesrEq
 %token Or And
-%token Eq NotEq GrtrEq LesrEq
-%token AddEq SubEq MulEq DivEq
 %token Range RangeBX RangeEX RangeX
 
-/*literals*/
+/* literals */
 %token True False
 %token IntLit FltLit StrLit
 
-/*keywords*/
-%token Match
+/* keywords */
 %token Return
-%token For In
-%token Import
-%token Do While
-%token Data Enum
-%token If Else Elif
+%token If Elif Else
+%token For While Do In
 %token Continue Break
+%token Import Match
+%token Data Enum
 
-/*modifiers*/
-%token Pathogen
+/* modifiers */
 %token Pub Pri Pro
-%token Const Ext Dyn
+%token Const Ext Dyn Pathogen
 
-/*other*/
-%token Ct
-%token Where
-%token Infect
-%token Cleanse
+/* other */
+%token Where Infect Cleanse Ct
 
-%token Indent
-%token Newline
-%token Unindent
+/* whitespace */
+%token Newline Indent Unindent
 
 
 /*
@@ -98,9 +89,13 @@ maybe_statement_list: statement_list
                     | %empty
                     ;
 
-statement_list: statement_list statement { puts("statement_list"); }
+statement_list: statement_list maybe_newline statement { puts("statement_list"); }
               | statement { puts("statement_list: statement"); }
               ;
+
+maybe_newline: Newline
+             | %empty
+             ;
 
 statement: var_decl
          | var_assign
@@ -113,7 +108,6 @@ statement: var_decl
          | for_loop
          | if_stmt
          | enum_decl
-         | Newline
          ;
 
 ident: Ident %prec Ident { $$ = (Node*)yytext; }
@@ -139,7 +133,7 @@ lit_type: I8       { $$ = makeTypeNode(Tok_I8,  0); }
         | U16      { $$ = makeTypeNode(Tok_U16, 0); }
         | U32      { $$ = makeTypeNode(Tok_U32, 0); }
         | U64      { $$ = makeTypeNode(Tok_U64, 0); }
-        | ISz      { $$ = makeTypeNode(Tok_Isz, 0); }
+        | Isz      { $$ = makeTypeNode(Tok_Isz, 0); }
         | Usz      { $$ = makeTypeNode(Tok_Usz, 0); }
         | F32      { $$ = makeTypeNode(Tok_F32, 0); }
         | F64      { $$ = makeTypeNode(Tok_F64, 0); }
