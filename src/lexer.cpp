@@ -1,4 +1,5 @@
 #include "lexer.h"
+#include <cstdlib>
 #include <cstring>
 
 const char* tokDictionary[] = {
@@ -136,7 +137,7 @@ map<string, int> keywords = {
 
 char c = 0; 
 char n = 0;
-static string yytext;
+char* yytext = 0;
 ifstream *in;
 const char scStep = 4;
 
@@ -198,6 +199,13 @@ int ante::lexer::handleComment(void)
     return next();
 }
 
+void ante::lexer::setyytext(string str)
+{
+    if(yytext) free(yytext);
+    yytext = (char*)malloc(str.size()+1);
+    strcpy(yytext, str.c_str());
+}
+
 int ante::lexer::genAlphaNumTok()
 {
     string s = "";
@@ -210,7 +218,7 @@ int ante::lexer::genAlphaNumTok()
     if(key != keywords.end()){
         return key->second;
     }else{
-        yytext = s;
+        setyytext(s);
         return (s[0] >= 'A' && s[0] <= 'Z') ? Tok_UserType : Tok_Ident;
     }
 }
@@ -228,7 +236,7 @@ int ante::lexer::genNumLitTok()
         incPos();
     }
 
-    yytext = s;
+    setyytext(s);
     return flt? Tok_FltLit : Tok_IntLit;
 }
 
@@ -269,7 +277,7 @@ int ante::lexer::genStrLitTok(char delim)
         incPos();
     }
     incPos();
-    yytext = s;
+    setyytext(s);
     return Tok_StrLit;
 }
 
@@ -325,7 +333,10 @@ int ante::lexer::next()
     //If the character is nota, assume it is an operator and store
     //the character in the string for identification
     char ret = c;
-    yytext = ret;
+    if(yytext) free(yytext);
+    yytext = (char*)malloc(2);
+    yytext[0] = ret;
+    yytext[1] = '\0';
     incPos();
     return ret;
 }

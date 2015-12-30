@@ -1,5 +1,4 @@
 %{
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <tokens.h>
@@ -10,6 +9,7 @@ extern char *yytext;
 
 void yyerror(const char *msg);
 
+#define YYSTYPE Node*
 #define YYERROR_VERBOSE
 
 %}
@@ -18,117 +18,74 @@ void yyerror(const char *msg);
 %token UserType
 
 /*types*/
-%token I8
-%token I16
-%token I32
-%token I64
-%token U8
-%token U16
-%token U32
-%token U64
-%token ISz
-%token Usz
-%token F32
-%token F64
-%token C8
-%token C32
-%token Bool
-%token Void
+%token I8 I16 I32 I64
+%token U8 U16 U32 U64
+%token ISz Usz F32 F64
+%token C8 C32 Bool Void
 
 /*operators*/
-%token Eq
-%token NotEq
-%token AddEq
-%token SubEq
-%token MulEq
-%token DivEq
-%token GrtrEq
-%token LesrEq
-%token Or
-%token And
-%token Range
-%token RangeBX
-%token RangeEX
-%token RangeX
+%token Or And
+%token Eq NotEq GrtrEq LesrEq
+%token AddEq SubEq MulEq DivEq
+%token Range RangeBX RangeEX RangeX
 
 /*literals*/
-%token True
-%token False
-%token IntLit
-%token FltLit
-%token StrLit
+%token True False
+%token IntLit FltLit StrLit
 
 /*keywords*/
-%token Return
-%token If
-%token Elif
-%token Else
-%token For
-%token While
-%token Do
-%token In
-%token Continue
-%token Break
-%token Import
 %token Match
-%token Data
-%token Enum
+%token Return
+%token For In
+%token Import
+%token Do While
+%token Data Enum
+%token If Else Elif
+%token Continue Break
 
 /*modifiers*/
-%token Pub
-%token Pri
-%token Pro
-%token Const
-%token Ext
-%token Dyn
 %token Pathogen
+%token Pub Pri Pro
+%token Const Ext Dyn
 
 /*other*/
+%token Ct
 %token Where
 %token Infect
 %token Cleanse
-%token Ct
 
-%token Newline
 %token Indent
+%token Newline
 %token Unindent
 
 
 /*
     Now to manually fix all shift/reduce conflicts
 */
-%nonassoc Ident
+
+/*
+    Fake precedence rule to allow for a lower precedence
+    than Ident in decl context
+*/
+%nonassoc LOW
+
+%left Ident
+
+%left IntLit FltLit StrLit True False
 
 %left ','
+
+%left Or
+%left And     
+%left Eq  NotEq GrtrEq LesrEq '<' '>'
+%left Range RangeBX RangeEX RangeX  
 
 %left '+' '-'
 %left '*' '/' '%'
 
-/*
-    Used in type casting, high precedence to cast before
-    many common operators.
-*
-%precedence I8
-%precedence I16
-%precedence I32
-%precedence I64
-%precedence U8
-%precedence U16
-%precedence U32
-%precedence U64
-%precedence ISz
-%precedence Usz
-%precedence F32
-%precedence F64 
-%precedence C8
-%precedence C32
-%precedence Bool
-%precedence Void
-*/
+%right '.'
 
-%precedence '.'
-
-%precedence '(' '['
+%nonassoc '(' '['
 
 /*
     All shift/reduce conflicts should be manually dealt with.
@@ -159,24 +116,39 @@ statement: var_decl
          | Newline
          ;
 
-lit_type: I8
-        | I16
-        | I32
-        | I64
-        | U8
-        | U16
-        | U32
-        | U64
-        | ISz
-        | Usz
-        | F32
-        | F64
-        | C8
-        | C32
-        | Bool
-        | Void
-        | UserType
-        | Ident /* type var or generic */
+ident: Ident %prec Ident { $$ = (Node*)yytext; }
+     ;
+
+usertype: UserType  %prec UserType
+        ;
+
+intlit: IntLit  %prec IntLit { $$ = makeIntLitNode(yytext); }
+      ;
+
+fltlit: FltLit  %prec FltLit { $$ = makeFltLitNode(yytext); }
+      ;
+
+strlit: StrLit  %prec StrLit { $$ = makeStrLitNode(yytext); }
+      ;
+
+lit_type: I8       { $$ = makeTypeNode(Tok_I8,  0); }
+        | I16      { $$ = makeTypeNode(Tok_I16, 0); }
+        | I32      { $$ = makeTypeNode(Tok_I32, 0); }
+        | I64      { $$ = makeTypeNode(Tok_I64, 0); }
+        | U8       { $$ = makeTypeNode(Tok_U8,  0); }
+        | U16      { $$ = makeTypeNode(Tok_U16, 0); }
+        | U32      { $$ = makeTypeNode(Tok_U32, 0); }
+        | U64      { $$ = makeTypeNode(Tok_U64, 0); }
+        | ISz      { $$ = makeTypeNode(Tok_Isz, 0); }
+        | Usz      { $$ = makeTypeNode(Tok_Usz, 0); }
+        | F32      { $$ = makeTypeNode(Tok_F32, 0); }
+        | F64      { $$ = makeTypeNode(Tok_F64, 0); }
+        | C8       { $$ = makeTypeNode(Tok_C8,  0); }
+        | C32      { $$ = makeTypeNode(Tok_C32, 0); }
+        | Bool     { $$ = makeTypeNode(Tok_Bool, 0); }
+        | Void     { $$ = makeTypeNode(Tok_Void, 0); }
+        | usertype { $$ = makeTypeNode(Tok_UserType, yytext); }
+        | ident    %prec Ident { $$ = makeTypeNode(Ident, (char*)$1); }
         ;
 
 type: type '*'
@@ -184,7 +156,7 @@ type: type '*'
     | '(' type_expr ')'
     | type '(' type_expr ')' /* f-ptr w/ params*/
     | type '(' ')' /* f-ptr w/out params*/
-    | lit_type
+    | lit_type   {$$ = $1;}
     ;
 
 type_expr: type_expr ',' type
@@ -205,31 +177,32 @@ modifier_list: modifier_list modifier
              | modifier
              ;
 
-decl_prepend: modifier_list type_expr
-            | type_expr
+decl_prepend: modifier_list type_expr {$$ = $2;} /*TODO: modifier list*/
+            | type_expr {$$ = $1;}
             ;
 
-var_decl: decl_prepend Ident '=' expr //{ attatchVarDeclNode($2, $1, $4); }
-        | decl_prepend Ident //{ attatchVarDeclNode($2, $1, 0); }
+var_decl: decl_prepend ident '=' expr %prec Ident { attatchVarDeclNode((char*)$2, $1, $4); }
+        | decl_prepend ident  %prec LOW { attatchVarDeclNode((char*)$2, $1, 0); }
         ;
 
-var_assign: var '=' expr //{ attatchVarAssignNode($1, $3); }
+/* TODO: change arg1 to require node* instead of char* */
+var_assign: var '=' expr { attatchVarAssignNode((char*)$1, $3); }
           ;
 
-usertype_list: usertype_list ',' UserType
-             | UserType
+usertype_list: usertype_list ',' usertype
+             | usertype {$$ = $1;}
              ;
 
 generic: '<' usertype_list '>'
        ;
 
-data_decl: modifier_list Data UserType type_decl_block
-         | modifier_list Data UserType generic type_decl_block
-         | Data UserType type_decl_block
-         | Data UserType generic type_decl_block
+data_decl: modifier_list Data usertype type_decl_block
+         | modifier_list Data usertype generic type_decl_block
+         | Data usertype type_decl_block
+         | Data usertype generic type_decl_block
          ;
 
-type_decl: type_expr Ident
+type_decl: type_expr ident
          | type_expr
          | enum_decl
          ;
@@ -241,39 +214,40 @@ type_decl_list: type_decl_list Newline type_decl
 type_decl_block: Indent type_decl_list Unindent
                ;
 
-val_init_list: val_init_list ',' UserType
-             | val_init_list ',' UserType '=' expr
-             | val_init_list Newline UserType
-             | val_init_list Newline UserType '=' expr
-             | UserType '=' expr
-             | UserType
+/* Specifying an enum member's value */
+val_init_list: val_init_list ',' usertype
+             | val_init_list ',' usertype '=' expr
+             | val_init_list Newline usertype
+             | val_init_list Newline usertype '=' expr
+             | usertype '=' expr
+             | usertype
              ;
 
 enum_block: Indent val_init_list Unindent
           ;
 
-enum_decl: modifier_list Enum UserType enum_block
-         | Enum UserType enum_block
+enum_decl: modifier_list Enum usertype enum_block
+         | Enum usertype enum_block
          | modifier_list Enum enum_block
          | Enum enum_block
          ;
 
-block: Indent statement_list Unindent
+block: Indent {newBlock();} statement_list Unindent {endBlock(); $$ = $2;}
      ;
 
-params: params ',' type_expr Ident
-      | type_expr Ident
+params: params ',' type_expr ident
+      | type_expr ident
       ;
 
 maybe_params: params
             | %empty
             ;
 
-fn_decl: decl_prepend Ident ':' maybe_params block { puts("fn_decl"); }
-       | decl_prepend Ident '(' maybe_expr ')' ':' maybe_params block
+fn_decl: decl_prepend ident ':' maybe_params block { puts("fn_decl"); }
+       | decl_prepend ident '(' maybe_expr ')' ':' maybe_params block
        ;
 
-fn_call: Ident '(' maybe_expr ')' { puts("fn_call"); }
+fn_call: ident '(' maybe_expr ')'  %prec '*' { puts("fn_call"); }
        ;
 
 ret_stmt: Return expr { puts("ret_stmt"); }
@@ -303,59 +277,44 @@ do_while_loop: Do block While expr
 for_loop: For var_decl In expr block
         ;
 
-bin_op: '+'
-      | '-'
-      | '*'
-      | '/'
-      | '%'
-      | '^'
-      | '|'
-      | '&'
-      | '<'
-      | '>'
-      | '.'
-      | Eq
-      | NotEq
-      | AddEq
-      | SubEq
-      | MulEq
-      | DivEq
-      | GrtrEq
-      | LesrEq
-      | Or
-      | And
-      | Range
-      | RangeEX
-      | RangeBX
-      | RangeX
-      ;
-
-var: Ident '[' expr ']'
-   | Ident { puts("var"); }
+var: ident '[' expr ']'
+   | ident               %prec Ident {$$ = $1;}
    ;
 
-val: fn_call
-   | '(' expr ')'
-   | var
-   | IntLit
-   | FltLit
-   | StrLit
-   | True
-   | False
+val: fn_call       {$$ = $1;}
+   | '(' expr ')'  {$$ = $2;}
+   | var           {$$ = $1;}
+   | intlit        {$$ = $1;}
+   | fltlit        {$$ = $1;}
+   | strlit        {$$ = $1;}
+   | True          {$$ = makeBoolLitNode(1);}
+   | False         {$$ = makeBoolLitNode(0);}
    ;
 
 maybe_expr: expr { puts("maybe_expr: true"); }
           | %empty { puts("maybe_expr: false"); }
           ;
 
-expr: l_expr val
+expr: expr '+' expr
+    | expr '-' expr 
+    | expr '*' expr
+    | expr '/' expr
+    | expr '%' expr 
+    | expr '<' expr 
+    | expr '>' expr 
+    | expr '.' expr
+    | expr Eq expr
+    | expr NotEq expr
+    | expr GrtrEq expr
+    | expr LesrEq expr
+    | expr Or expr
+    | expr And expr
+    | expr Range expr
+    | expr RangeEX expr
+    | expr RangeBX expr
+    | expr RangeX expr
     | val
     ;
-
-l_expr: l_expr val bin_op
-      | val bin_op
-      ;
-
 
 %%
 

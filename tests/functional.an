@@ -26,14 +26,19 @@ data List<type T> : Iter
 
 impl Iter
     ~Example of a possible foldl implementation
-    t foldl: Iter l, t(t,t) f, t init
-        return match l
+    t foldl: self*, t(t,t) f, t init
+        return match *self
             None -> init
             _ -> foldl(l.next(), f, f(init, l.unwrap()))
 
     ~foldl1 using foldl above
-    t foldl1: Iter l, t(t,t) f
-        return foldl(l.next(), f, l.unwrap())
+    t foldl1: self*, t(t,t) f
+        return foldl(self.next(), f, self.unwrap())
+
+    Iter* map: self*, r(t) f
+        for t elem in *self
+            f(elem)
+        return self
 
 ~Since this is a polymorphic function, the list member's type does
 ~not have to be specified, and if one really wanted to, List could be 

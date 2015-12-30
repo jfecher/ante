@@ -62,6 +62,16 @@ class BinOpNode : public Node{
         BinOpNode(int s, Node *lv, Node *rv) : op(s), lval(lv), rval(rv){}
 };
 
+class TypeNode : public Node{
+    public:
+        int type;
+        char* typeName; //used for usertypes
+        void compile(void);
+        void exec(void);
+        void print(void);
+        TypeNode(int ty, char* tName) : type(ty), typeName(tName){}
+};
+
 class RetNode : public Node{
     public:
         Node* expr;

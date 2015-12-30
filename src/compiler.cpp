@@ -1,148 +1,67 @@
 #include "compiler.h"
 using namespace llvm;
 
-//perhaps this should be changed to a visitor pattern
-void IntLitNode::compile()
-{
+void IntLitNode::compile(){}
 
-}
+void FltLitNode::compile(){}
 
-void FltLitNode::compile()
-{
+void BoolLitNode::compile(){}
 
-}
+void TypeNode::compile(){}
 
-void BoolLitNode::compile()
-{
+void StrLitNode::compile(){}
 
-}
+void BinOpNode::compile(){}
 
-void StrLitNode::compile()
-{
+void RetNode::compile(){}
 
-}
+void IfNode::compile(){}
 
-void BinOpNode::compile()
-{
+void NamedValNode::compile(){}
 
-}
+void VarNode::compile(){}
 
-void RetNode::compile()
-{
+void FuncCallNode::compile(){}
 
-}
+void VarDeclNode::compile(){}
 
-void IfNode::compile()
-{
+void VarAssignNode::compile(){}
 
-}
+void FuncDeclNode::compile(){}
 
-void NamedValNode::compile()
-{
-
-}
-
-void VarNode::compile()
-{
-
-}
-
-void FuncCallNode::compile()
-{
-
-}
-
-void VarDeclNode::compile()
-{
-
-}
-
-void VarAssignNode::compile()
-{
-    
-}
-
-void FuncDeclNode::compile()
-{
-
-}
-
-void DataDeclNode::compile()
-{
-
-}
+void DataDeclNode::compile(){}
 
 
 
-void IntLitNode::exec()
-{
+void IntLitNode::exec(){}
 
-}
+void FltLitNode::exec(){}
 
-void FltLitNode::exec()
-{
+void BoolLitNode::exec(){}
 
-}
+void TypeNode::exec(){}
 
-void BoolLitNode::exec()
-{
+void StrLitNode::exec(){}
 
-}
+void BinOpNode::exec(){}
 
-void StrLitNode::exec()
-{
+void RetNode::exec(){}
 
-}
+void IfNode::exec(){}
 
-void BinOpNode::exec()
-{
+void VarNode::exec(){}
 
-}
+void NamedValNode::exec(){}
 
-void RetNode::exec()
-{
+void FuncCallNode::exec(){}
 
-}
+void VarDeclNode::exec(){}
 
-void IfNode::exec()
-{
+void VarAssignNode::exec(){}
 
-}
+void FuncDeclNode::exec(){}
 
-void VarNode::exec()
-{
-
-}
-
-void NamedValNode::exec()
-{
-
-}
-
-void FuncCallNode::exec()
-{
-
-}
-
-void VarDeclNode::exec()
-{
-
-}
-
-void VarAssignNode::exec()
-{
-    
-}
-
-void FuncDeclNode::exec()
-{
-
-}
-
-void DataDeclNode::exec()
-{
-
-}
+void DataDeclNode::exec(){}
 
 
 
@@ -167,6 +86,15 @@ void BoolLitNode::print()
 void StrLitNode::print()
 {
     cout << val;
+}
+
+void TypeNode::print()
+{
+    if(type == Tok_Ident || type == Tok_UserType){
+        cout << "Type: " << typeName << endl;
+    }else{
+        cout << "Type: " << type;
+    }
 }
 
 void BinOpNode::print()

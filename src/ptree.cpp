@@ -4,25 +4,46 @@
  *  syntax.y which creates and links nodes to a parse tree.
  */
 #include "parser.h"
+#include <stack>
 
-Node *root = 0;
-Node *stmt = 0;
-Node *branch = 0;
+stack<Node*> root;
+stack<Node*> stmt;
+Node* branch;
 
+enum BlockState {
+    Pop, Good, Push
+} bState;
 
-#define attatchStmtNode(nodeDecl)    \
-    if(root){                        \
-        stmt->next = new nodeDecl;   \
-        stmt = stmt->next;           \
-    }else{                           \
-        root = new nodeDecl;         \
-        stmt = root;                 \
+#define attatchStmtNode(nodeDecl)        \
+    if(bState == Good){                  \
+        stmt.top()->next = new nodeDecl; \
+        stmt.top() = stmt.top()->next;   \
+    }else if(bState == Push){            \
+        root.push(new nodeDecl);         \
+        stmt.push(root.top());           \
+    }else if(bState == Pop){             \
+        stmt.pop();                      \
+        root.pop();                      \
+        stmt.top()->next = new nodeDecl; \
+        stmt.top() = stmt.top()->next;   \
     }
 
 
 Node* getRootNode()
 {
-    return root;
+    while(root.size() > 1)
+        root.pop();
+    return root.top();
+}
+
+extern "C" void newBlock()
+{
+    bState = Push;
+}
+
+extern "C" void endBlock()
+{
+    bState = Pop;
 }
 
 extern "C" Node* makeIntLitNode(char* s)
@@ -43,6 +64,11 @@ extern "C" Node* makeStrLitNode(char* s)
 extern "C" Node* makeBoolLitNode(char b)
 {
     return new BoolLitNode(b);
+}
+
+extern "C" Node* makeTypeNode(int type, char* typeName)
+{
+    return new TypeNode(type, typeName);
 }
 
 extern "C" Node* makeBinOpNode(int op, Node* l, Node* r)
