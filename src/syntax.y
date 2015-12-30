@@ -82,12 +82,12 @@ void yyerror(const char *msg);
     All shift/reduce conflicts should be manually dealt with.
 */
 %expect 0
-%start maybe_statement_list
+%start top_level_stmt_list
 %%
 
-maybe_statement_list: statement_list
-                    | %empty
-                    ;
+top_level_stmt_list: maybe_newline statement_list maybe_newline
+                   | %empty
+                   ;
 
 statement_list: statement_list maybe_newline statement { puts("statement_list"); }
               | statement { puts("statement_list: statement"); }
