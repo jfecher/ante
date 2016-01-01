@@ -7,23 +7,27 @@ typedef struct{} Node;
 char* yytext;
 
 Node* getRootNode(void);
-
-Node* makeIntLitNode(char* s);
-Node* makeFltLitNode(char* s);
-Node* makeStrLitNode(char* s);
-Node* makeBoolLitNode(char b);
-Node* makeTypeNode(int type, char* typeName);
-Node* makeBinOpNode(int op, Node* l, Node* r);
-Node* makeNamedValNode(char* s, Node* tExpr);
-Node* makeFuncCallNode(char* s, Node* p);
-Node* makeVarNode(char* s);
-void attatchRetNode(Node* expr);
-void attatchIfNode(Node* con, Node** body);
-void attatchVarDeclNode(char* s, Node* tExpr, Node* expr);
-void attatchVarAssignNode(char* s, Node* expr);
-void attatchFuncDeclNode(char* s, Node* tExpr, Node* p, Node** body);
-void attatchDataDeclNode(char* s, Node* b);
+void setRoot(Node* root);
+void setNext(Node* nxt);
 void newBlock(void);
 void endBlock(void);
+
+Node* mkIntLitNode(char* s);
+Node* mkFltLitNode(char* s);
+Node* mkStrLitNode(char* s);
+Node* mkBoolLitNode(char b);
+Node* mkTypeNode(int type, char* typeName);
+Node* mkBinOpNode(int op, Node* l, Node* r);
+Node* mkNamedValNode(char* s, Node* tExpr);
+Node* mkFuncCallNode(char* s, Node* p);
+Node* mkVarNode(char* s);
+Node* mkRetNode(Node* expr);
+Node* mkVarDeclNode(char* s, Node* tExpr, Node* expr);
+Node* mkVarAssignNode(char* s, Node* expr);
+
+//These 3 actually return a ParentNode* but C doesn't need to know that
+Node* mkIfNode(Node* con, Node* body);
+Node* mkFuncDeclNode(char* s, Node* tExpr, Node* p, Node* body);
+Node* mkDataDeclNode(char* s, Node* b);
 
 #endif

@@ -5,6 +5,7 @@
 #include "tokens.h"
 #include "cstdlib"
 #include <vector>
+#include <memory> //For unique_ptr
 
 enum ParseErr{
     PE_OK,
@@ -14,14 +15,30 @@ enum ParseErr{
     PE_INVALID_STMT,
 };
 
+/* Base class for all nodes */
 class Node{
     public:
-        Node *next;
+        std::unique_ptr<Node> prev, next, parent;
         virtual void print(void) = 0;
         virtual void compile(void) = 0;
         virtual void exec(void) = 0;
-        Node() : next(0){}
-        ~Node(){ free(next); }
+};
+
+/* 
+ * Class for all nodes that can contain child statement nodes, 
+ * if statements, function declarations, etc 
+ */
+class ParentNode{
+    public:
+        Node* child;
+
+        /*
+         * The body should always be known when a
+         * parent node is initialized, so it is required
+         * in the constructor (unlike next/prev/parent)
+         */
+        ParentNode(Node* c) : child(c){}
+        ~ParentNode(){if(child) free(child);}
 };
 
 class IntLitNode : public Node{
@@ -55,7 +72,7 @@ class BinOpNode : public Node{
     public:
         int op;
         Node *lval, *rval;
-        ~BinOpNode(){ free(next); free(lval); free(rval); }
+        ~BinOpNode(){ free(lval); free(rval); }
         void compile(void);
         void exec(void);
         void print(void);
@@ -81,14 +98,13 @@ class RetNode : public Node{
         RetNode(Node* e) : expr(e){}
 };
 
-class IfNode : public Node{
+class IfNode : public ParentNode{
     public:
         Node* condition;
-        Node** body;
         void compile(void);
         void exec(void);
         void print(void);
-        IfNode(Node* n1, Node** n2) : condition(n1), body(n2){}
+        IfNode(Node* n1, Node* body) : ParentNode(body), condition(n1){}
 };
 
 class NamedValNode : public Node{
@@ -150,32 +166,30 @@ class VarAssignNode : public Node{
         VarAssignNode(char* s, Node* exp) : name(s), expr(exp){}
 };
 
-class FuncDeclNode : public Node{
+class FuncDeclNode : public ParentNode{
     public:
         char* name;
         Node* type;
-        Node** params;
-        Node** body;
+        Node* params;
         void compile(void);
         void exec(void);
         void print(void);
-        FuncDeclNode(char* s, Node* t, Node** p, Node** b) : name(s), type(t), params(p), body(b){}
+        FuncDeclNode(char* s, Node* t, Node* p, Node* b) : ParentNode(b), name(s), type(t), params(p){}
 };
 
-class DataDeclNode : public Node{
+class DataDeclNode : public ParentNode{
     public:
         char* name;
-        Node** body;
         void compile(void);
         void exec(void);
         void print(void);
-        DataDeclNode(char* s, Node** b) : name(s), body(b){}
+        DataDeclNode(char* s, Node* b) : ParentNode(b), name(s){}
 };
 
 
 namespace ante{
     namespace parser{
-        static vector<Node*> parseTree;
+        Node* getRootNode(void);
         void printParseTree(void);
         void parseErr(ParseErr e, string s, bool showTok);
     }

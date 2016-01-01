@@ -2,12 +2,12 @@ vpath %.c src
 vpath %.h include
 vpath %.d obj
 
-WARNINGS := -Wall
+WARNINGS  := -Wall
 LLVMFLAGS := `llvm-config --cppflags --libs all --ldflags --system-libs`
-CPPFLAGS := -g -O2 -std=c++11 $(WARNINGS) $(LLVMFLAGS)
+CPPFLAGS  := -g -O2 -std=c++11 $(WARNINGS) $(LLVMFLAGS)
 YACCFLAGS := -Lc -osrc/parser.c
 
-SRCDIRS := src
+SRCDIRS  := src
 SRCFILES := $(shell find $(SRCDIRS) -type f -name "*.cpp")
 
 OBJFILES := $(patsubst src/%.cpp,obj/%.o,$(SRCFILES))
@@ -17,7 +17,10 @@ DEPFILES := $(OBJFILES:.o=.d)
 .DEFAULT: ante
 
 ante: $(OBJFILES) obj/parser.o
-	@echo Linking...
+	@echo Linking...                # | do not move!
+	@								# | for some reason llvm requires
+	@								# | its flags to be right before the -o
+	@								# V and after each object file
 	@$(CXX) $(OBJFILES) obj/parser.o $(CPPFLAGS) -o ante
 
 new: clean ante
@@ -34,7 +37,7 @@ obj/%.o: src/%.cpp Makefile | obj
 	@echo Compiling $@...
 	@$(CXX) $(CPPFLAGS) -MMD -MP -Iinclude -c $< -o $@
 
-obj/parser.o: src/syntax.y
+obj/parser.o: src/syntax.y Makefile
 	@echo Generating parser...
 	@$(YACC) $(YACCFLAGS) src/syntax.y
 	@$(CC) -g -O2 -MMD -MP -Iinclude -c src/parser.c -o $@

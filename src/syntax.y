@@ -85,29 +85,29 @@ void yyerror(const char *msg);
 %start top_level_stmt_list
 %%
 
-top_level_stmt_list: maybe_newline statement_list maybe_newline
+top_level_stmt_list: maybe_newline statement_list maybe_newline {setRoot($2);}
                    | %empty
                    ;
 
-statement_list: statement_list maybe_newline statement { puts("statement_list"); }
-              | statement { puts("statement_list: statement"); }
+statement_list: statement_list maybe_newline statement {setNext($3);}
+              | statement {$$ = $1;}
               ;
 
 maybe_newline: Newline
              | %empty
              ;
 
-statement: var_decl
-         | var_assign
-         | fn_decl
-         | fn_call
-         | data_decl
-         | ret_stmt
-         | while_loop
-         | do_while_loop
-         | for_loop
-         | if_stmt
-         | enum_decl
+statement: var_decl      {$$ = $1;}
+         | var_assign    {$$ = $1;}
+         | fn_decl       {$$ = $1;}
+         | fn_call       {$$ = $1;}
+         | data_decl     {$$ = $1;}
+         | ret_stmt      {$$ = $1;}
+         | while_loop    {$$ = $1;}
+         | do_while_loop {$$ = $1;}
+         | for_loop      {$$ = $1;}
+         | if_stmt       {$$ = $1;}
+         | enum_decl     {$$ = $1;}
          ;
 
 ident: Ident %prec Ident { $$ = (Node*)yytext; }
@@ -116,33 +116,33 @@ ident: Ident %prec Ident { $$ = (Node*)yytext; }
 usertype: UserType  %prec UserType
         ;
 
-intlit: IntLit  %prec IntLit { $$ = makeIntLitNode(yytext); }
+intlit: IntLit  %prec IntLit { $$ = mkIntLitNode(yytext); }
       ;
 
-fltlit: FltLit  %prec FltLit { $$ = makeFltLitNode(yytext); }
+fltlit: FltLit  %prec FltLit { $$ = mkFltLitNode(yytext); }
       ;
 
-strlit: StrLit  %prec StrLit { $$ = makeStrLitNode(yytext); }
+strlit: StrLit  %prec StrLit { $$ = mkStrLitNode(yytext); }
       ;
 
-lit_type: I8       { $$ = makeTypeNode(Tok_I8,  0); }
-        | I16      { $$ = makeTypeNode(Tok_I16, 0); }
-        | I32      { $$ = makeTypeNode(Tok_I32, 0); }
-        | I64      { $$ = makeTypeNode(Tok_I64, 0); }
-        | U8       { $$ = makeTypeNode(Tok_U8,  0); }
-        | U16      { $$ = makeTypeNode(Tok_U16, 0); }
-        | U32      { $$ = makeTypeNode(Tok_U32, 0); }
-        | U64      { $$ = makeTypeNode(Tok_U64, 0); }
-        | Isz      { $$ = makeTypeNode(Tok_Isz, 0); }
-        | Usz      { $$ = makeTypeNode(Tok_Usz, 0); }
-        | F32      { $$ = makeTypeNode(Tok_F32, 0); }
-        | F64      { $$ = makeTypeNode(Tok_F64, 0); }
-        | C8       { $$ = makeTypeNode(Tok_C8,  0); }
-        | C32      { $$ = makeTypeNode(Tok_C32, 0); }
-        | Bool     { $$ = makeTypeNode(Tok_Bool, 0); }
-        | Void     { $$ = makeTypeNode(Tok_Void, 0); }
-        | usertype { $$ = makeTypeNode(Tok_UserType, yytext); }
-        | ident    %prec Ident { $$ = makeTypeNode(Ident, (char*)$1); }
+lit_type: I8       { $$ = mkTypeNode(Tok_I8,  NULL); }
+        | I16      { $$ = mkTypeNode(Tok_I16, NULL); }
+        | I32      { $$ = mkTypeNode(Tok_I32, NULL); }
+        | I64      { $$ = mkTypeNode(Tok_I64, NULL); }
+        | U8       { $$ = mkTypeNode(Tok_U8,  NULL); }
+        | U16      { $$ = mkTypeNode(Tok_U16, NULL); }
+        | U32      { $$ = mkTypeNode(Tok_U32, NULL); }
+        | U64      { $$ = mkTypeNode(Tok_U64, NULL); }
+        | Isz      { $$ = mkTypeNode(Tok_Isz, NULL); }
+        | Usz      { $$ = mkTypeNode(Tok_Usz, NULL); }
+        | F32      { $$ = mkTypeNode(Tok_F32, NULL); }
+        | F64      { $$ = mkTypeNode(Tok_F64, NULL); }
+        | C8       { $$ = mkTypeNode(Tok_C8,  NULL); }
+        | C32      { $$ = mkTypeNode(Tok_C32, NULL); }
+        | Bool     { $$ = mkTypeNode(Tok_Bool, NULL); }
+        | Void     { $$ = mkTypeNode(Tok_Void, NULL); }
+        | usertype { $$ = mkTypeNode(Tok_UserType, yytext); }
+        | ident    %prec Ident { $$ = mkTypeNode(Ident, (char*)$1); }
         ;
 
 type: type '*'
@@ -175,12 +175,12 @@ decl_prepend: modifier_list type_expr {$$ = $2;} /*TODO: modifier list*/
             | type_expr {$$ = $1;}
             ;
 
-var_decl: decl_prepend ident '=' expr %prec Ident { attatchVarDeclNode((char*)$2, $1, $4); }
-        | decl_prepend ident  %prec LOW { attatchVarDeclNode((char*)$2, $1, 0); }
+var_decl: decl_prepend ident '=' expr %prec Ident {$$ = mkVarDeclNode((char*)$2, $1, $4);}
+        | decl_prepend ident  %prec LOW {$$ = mkVarDeclNode((char*)$2, $1, 0);}
         ;
 
 /* TODO: change arg1 to require node* instead of char* */
-var_assign: var '=' expr { attatchVarAssignNode((char*)$1, $3); }
+var_assign: var '=' expr {mkVarAssignNode((char*)$1, $3);}
           ;
 
 usertype_list: usertype_list ',' usertype
@@ -237,29 +237,29 @@ maybe_params: params
             | %empty
             ;
 
-fn_decl: decl_prepend ident ':' maybe_params block { puts("fn_decl"); }
+fn_decl: decl_prepend ident ':' maybe_params block {$$ = mkFuncDeclNode((char*)$2, $1, $4, $5);}
        | decl_prepend ident '(' maybe_expr ')' ':' maybe_params block
        ;
 
-fn_call: ident '(' maybe_expr ')'  %prec '*' { puts("fn_call"); }
+fn_call: ident '(' maybe_expr ')'  %prec '*' {$$ = mkFuncCallNode((char*)$1, $3);}
        ;
 
-ret_stmt: Return expr { puts("ret_stmt"); }
+ret_stmt: Return expr {$$ = mkRetNode($2);}
         ;
 
-maybe_else: Else block { puts("else"); }
+maybe_else: Else block { puts("TODO: else"); }
           | %empty
           ;
 
 elif_list: elif_list Elif block
-         | Elif block { puts("elif_list"); }
+         | Elif block { puts("TODO: elif"); }
          ;
 
 maybe_elif_list: elif_list
                | %empty
                ;
 
-if_stmt: If expr block maybe_elif_list maybe_else { puts("if_stmt"); }
+if_stmt: If expr block maybe_elif_list maybe_else {$$ = mkIfNode($2, $3);}
        ;
 
 while_loop: While expr block
@@ -281,8 +281,8 @@ val: fn_call       {$$ = $1;}
    | intlit        {$$ = $1;}
    | fltlit        {$$ = $1;}
    | strlit        {$$ = $1;}
-   | True          {$$ = makeBoolLitNode(1);}
-   | False         {$$ = makeBoolLitNode(0);}
+   | True          {$$ = mkBoolLitNode(1);}
+   | False         {$$ = mkBoolLitNode(0);}
    ;
 
 maybe_expr: expr { puts("maybe_expr: true"); }

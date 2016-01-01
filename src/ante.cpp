@@ -5,8 +5,6 @@
 #include <iostream>
 using namespace ante;
 
-extern "C" int yyparse();
-
 int main(int argc, char *argv[]){
     if(argc == 2){
         //default = compile
@@ -25,8 +23,12 @@ int main(int argc, char *argv[]){
 
         //parse and print parse tree
         }else if(strcmp(argv[1], "-p") == 0){
-            lexer::init(argv[2]);
             yyparse();
+            Node* n = parser::getRootNode();
+            while(n){
+                if(n) n->print();
+                n = n->next.get();
+            }
         }
     }else if(argc == 1){
         puts("Ante: no arguments given, exiting.");

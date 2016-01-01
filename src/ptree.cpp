@@ -6,131 +6,107 @@
 #include "parser.h"
 #include <stack>
 
-stack<Node*> root;
-stack<Node*> stmt;
-Node* branch;
+Node* root;
+Node* stmt;
 
-enum BlockState {
-    Pop, Good, Push
-} bState;
-
-#define attatchStmtNode(nodeDecl)        \
-    if(bState == Good){                  \
-        stmt.top()->next = new nodeDecl; \
-        stmt.top() = stmt.top()->next;   \
-    }else if(bState == Push){            \
-        root.push(new nodeDecl);         \
-        stmt.push(root.top());           \
-    }else if(bState == Pop){             \
-        stmt.pop();                      \
-        root.pop();                      \
-        stmt.top()->next = new nodeDecl; \
-        stmt.top() = stmt.top()->next;   \
-    }
-
-
-Node* getRootNode()
+Node* ante::parser::getRootNode()
 {
-    while(root.size() > 1)
-        root.pop();
-    return root.top();
+    return root;
+}
+
+extern "C" void setRoot(Node* node)
+{
+    root = node;
+}
+
+extern "C" void setNext(Node* nxt)
+{
+    stmt->next.reset(nxt);
+    nxt->prev.reset(stmt);
+    stmt = stmt->next.get();
 }
 
 extern "C" void newBlock()
-{
-    bState = Push;
+{   //TODO: this should crash
+    stmt = ((ParentNode*)stmt)->child;
 }
 
 extern "C" void endBlock()
 {
-    bState = Pop;
+    stmt = stmt->parent.get();
 }
 
-extern "C" Node* makeIntLitNode(char* s)
+extern "C" Node* mkIntLitNode(char* s)
 {
     return new IntLitNode(s);
 }
 
-extern "C" Node* makeFltLitNode(char* s)
+extern "C" Node* mkFltLitNode(char* s)
 {
     return new FltLitNode(s);
 }
 
-extern "C" Node* makeStrLitNode(char* s)
+extern "C" Node* mkStrLitNode(char* s)
 {
     return new StrLitNode(s);
 }
 
-extern "C" Node* makeBoolLitNode(char b)
+extern "C" Node* mkBoolLitNode(char b)
 {
     return new BoolLitNode(b);
 }
 
-extern "C" Node* makeTypeNode(int type, char* typeName)
+extern "C" Node* mkTypeNode(int type, char* typeName)
 {
     return new TypeNode(type, typeName);
 }
 
-extern "C" Node* makeBinOpNode(int op, Node* l, Node* r)
+extern "C" Node* mkBinOpNode(int op, Node* l, Node* r)
 {
     return new BinOpNode(op, l, r);
 }
 
-extern "C" void attatchRetNode(Node* expr)
+extern "C" Node* mkRetNode(Node* expr)
 {
-    attatchStmtNode(RetNode(expr));
+    return new RetNode(expr);
 }
 
-extern "C" void attatchIfNode(Node* con, Node** body)
-{
-    attatchStmtNode(IfNode(con, body));
-}
-
-extern "C" Node* makeNamedValNode(char* s, Node* tExpr)
+extern "C" Node* mkNamedValNode(char* s, Node* tExpr)
 {
     return new NamedValNode(s, tExpr);
 }
 
-extern "C" Node* makeFuncCallNode(char* s, Node* p)
+extern "C" Node* mkFuncCallNode(char* s, Node* p)
 {
     return new FuncCallNode(s, p);
 }
 
-extern "C" Node* makeVarNode(char* s)
+extern "C" Node* mkVarNode(char* s)
 {
     return new VarNode(s);
 }
 
-extern "C" void attatchVarDeclNode(char* s, Node* tExpr, Node* expr)
+extern "C" Node* mkVarDeclNode(char* s, Node* tExpr, Node* expr)
 {
-    attatchStmtNode(VarDeclNode(s, tExpr, expr));
+    return new VarDeclNode(s, tExpr, expr);
 }
 
-extern "C" void attatchVarAssignNode(char* s, Node* expr)
+extern "C" Node* mkVarAssignNode(char* s, Node* expr)
 {
-    attatchStmtNode(VarAssignNode(s, expr));
+    return new VarAssignNode(s, expr);
 }
 
-extern "C" void attatchFuncDeclNode(char* s, Node* tExpr, Node** p, Node** b)
+extern "C" ParentNode* mkIfNode(Node* con, Node* body)
 {
-    attatchStmtNode(FuncDeclNode(s, tExpr, p, b));
+    return new IfNode(con, body);
 }
 
-extern "C" void attatchDataDeclNode(char* s, Node** b)
+extern "C" ParentNode* mkFuncDeclNode(char* s, Node* tExpr, Node* p, Node* b)
 {
-    attatchStmtNode(DataDeclNode(s, b));
+    return new FuncDeclNode(s, tExpr, p, b);
 }
 
-/*
- *  makeBlock transforms a Node* into a vector of Node*
- *  to be used as a block.
- */
-vector<Node*> makeBlock(Node* nl)
+extern "C" ParentNode* mkDataDeclNode(char* s, Node* b)
 {
-    vector<Node*> body;
-    while(nl){
-        body.push_back(nl);
-        nl = nl->next;
-    }
-    return body;
+    return new DataDeclNode(s, b);
 }
