@@ -8,9 +8,7 @@ char* yytext;
 
 Node* getRootNode(void);
 void setRoot(Node* root);
-void setNext(Node* nxt);
-void newBlock(void);
-void endBlock(void);
+Node* setNext(Node* cur, Node* nxt);
 
 Node* mkIntLitNode(char* s);
 Node* mkFltLitNode(char* s);

@@ -23,15 +23,22 @@ int main(int argc, char *argv[]){
 
         //parse and print parse tree
         }else if(strcmp(argv[1], "-p") == 0){
-            yyparse();
+            lexer::init(argv[2]);
+            cout << "Parser returned " << yyparse() << endl;
             Node* n = parser::getRootNode();
+            int i = 0;
             while(n){
-                if(n) n->print();
+                cout << "Stmt #" << ++i << endl;
+                n->print();
                 n = n->next.get();
             }
+        }else{
+            cout << "Ante: argument '" << argv[1] << "' was not recognized.\n";
         }
     }else if(argc == 1){
         puts("Ante: no arguments given, exiting.");
+    }else{
+        puts("Ante: Invalid argument count.");
     }
     return 0;
 }

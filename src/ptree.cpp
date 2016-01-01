@@ -7,7 +7,6 @@
 #include <stack>
 
 Node* root;
-Node* stmt;
 
 Node* ante::parser::getRootNode()
 {
@@ -19,21 +18,11 @@ extern "C" void setRoot(Node* node)
     root = node;
 }
 
-extern "C" void setNext(Node* nxt)
+extern "C" Node* setNext(Node* cur, Node* nxt)
 {
-    stmt->next.reset(nxt);
-    nxt->prev.reset(stmt);
-    stmt = stmt->next.get();
-}
-
-extern "C" void newBlock()
-{   //TODO: this should crash
-    stmt = ((ParentNode*)stmt)->child;
-}
-
-extern "C" void endBlock()
-{
-    stmt = stmt->parent.get();
+    cur->next = unique_ptr<Node>(nxt);
+    nxt->prev = unique_ptr<Node>(cur);
+    return nxt;
 }
 
 extern "C" Node* mkIntLitNode(char* s)

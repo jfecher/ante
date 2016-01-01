@@ -86,28 +86,27 @@ void yyerror(const char *msg);
 %%
 
 top_level_stmt_list: maybe_newline statement_list maybe_newline {setRoot($2);}
-                   | %empty
                    ;
 
-statement_list: statement_list maybe_newline statement {setNext($3);}
+statement_list: statement_list maybe_newline statement {puts("stmt"); setNext($1, $3);}
               | statement {$$ = $1;}
               ;
 
-maybe_newline: Newline
-             | %empty
+maybe_newline: Newline {puts("Newline");}
+             | %empty  {puts("No Newline");}
              ;
 
-statement: var_decl      {$$ = $1;}
-         | var_assign    {$$ = $1;}
-         | fn_decl       {$$ = $1;}
-         | fn_call       {$$ = $1;}
-         | data_decl     {$$ = $1;}
-         | ret_stmt      {$$ = $1;}
-         | while_loop    {$$ = $1;}
-         | do_while_loop {$$ = $1;}
-         | for_loop      {$$ = $1;}
-         | if_stmt       {$$ = $1;}
-         | enum_decl     {$$ = $1;}
+statement: var_decl      {puts("var_decl"); $$ = $1;}
+         | var_assign    {puts("var_assign"); $$ = $1;}
+         | fn_decl       {puts("fn_decl"); $$ = $1;}
+         | fn_call       {puts("fn_call"); $$ = $1;}
+         | data_decl     {puts("data_decl"); $$ = $1;}
+         | ret_stmt      {puts("ret_stmt"); $$ = $1;}
+         | while_loop    {puts("while_loop"); $$ = $1;}
+         | do_while_loop {puts("do_while"); $$ = $1;}
+         | for_loop      {puts("for_loop"); $$ = $1;}
+         | if_stmt       {puts("if_stmt"); $$ = $1;}
+         | enum_decl     {puts("enum_decl"); $$ = $1;}
          ;
 
 ident: Ident %prec Ident { $$ = (Node*)yytext; }
@@ -226,7 +225,7 @@ enum_decl: modifier_list Enum usertype enum_block
          | Enum enum_block
          ;
 
-block: Indent {newBlock();} statement_list Unindent {endBlock(); $$ = $2;}
+block: Indent statement_list Unindent {$$ = $2;}
      ;
 
 params: params ',' type_expr ident

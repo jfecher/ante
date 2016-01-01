@@ -99,22 +99,23 @@ void TypeNode::print()
 
 void BinOpNode::print()
 {
-    cout << '(';
+    putchar('(');
     if(lval) lval->print();
-    cout << " ";
+    putchar(' ');
     if(rval) rval->print();
-    cout << ' ';
+    putchar(' ');
     if(IS_LITERAL(op))
         cout << op;
     else
         cout << TOK_TYPE_STR(op);
-    cout << ')';
+    puts(")");
 }
 
 void RetNode::print()
 {
     cout << "return ";
     if(expr) expr->print();
+    putchar('\n');
 }
 
 void IfNode::print()
@@ -122,11 +123,8 @@ void IfNode::print()
     cout << "if ";
     if(condition) condition->print();
     cout << "\nthen\n";
-    /*for(auto n : body){
-        if(n) n->print();
-        cout << endl;
-    }*/
-    cout << "end";
+    if(child) child->print();
+    cout << "end\n";
 }
 
 void NamedValNode::print()
@@ -143,26 +141,26 @@ void FuncCallNode::print()
 {
     cout << "fnCall " << name << '(';
     if(params) params->print();
-    cout << ')';
+    cout << ")\n";
 }
 
 void VarDeclNode::print()
 {
     cout << "varDecl " << name << " = ";
     if(expr) expr->print();
-    else cout << "(undef)";
+    else cout << "(undef)\n";
 }
 
 void VarAssignNode::print()
 {
     cout << "varAssign " << name << " = ";
     if(expr) expr->print();
-    else cout << "(undef)"; 
+    else cout << "(undef)\n"; 
 }
 
 void FuncDeclNode::print()
 {
-    cout << "function " << name << ": ";
+    cout << "function " << name << " declared\n";
     /*for(auto n : params){
         if(n) n->print();
         cout << ", ";
