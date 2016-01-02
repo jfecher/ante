@@ -21,7 +21,7 @@ extern "C" void setRoot(Node* node)
 extern "C" Node* setNext(Node* cur, Node* nxt)
 {
     cur->next = unique_ptr<Node>(nxt);
-    nxt->prev = unique_ptr<Node>(cur);
+    nxt->prev = cur;
     return nxt;
 }
 

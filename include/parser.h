@@ -18,7 +18,8 @@ enum ParseErr{
 /* Base class for all nodes */
 class Node{
     public:
-        std::unique_ptr<Node> prev, next, parent;
+        std::unique_ptr<Node> next;
+        Node *prev, *parent;
         virtual void print(void) = 0;
         virtual void compile(void) = 0;
         virtual void exec(void) = 0;
@@ -30,7 +31,7 @@ class Node{
  */
 class ParentNode{
     public:
-        Node* child;
+        std::unique_ptr<Node> child;
 
         /*
          * The body should always be known when a
@@ -38,7 +39,6 @@ class ParentNode{
          * in the constructor (unlike next/prev/parent)
          */
         ParentNode(Node* c) : child(c){}
-        ~ParentNode(){if(child) free(child);}
 };
 
 class IntLitNode : public Node{

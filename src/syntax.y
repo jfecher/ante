@@ -88,12 +88,12 @@ void yyerror(const char *msg);
 top_level_stmt_list: maybe_newline statement_list maybe_newline {setRoot($2);}
                    ;
 
-statement_list: statement_list maybe_newline statement {puts("stmt"); setNext($1, $3);}
+statement_list: statement_list maybe_newline statement {$$ = setNext($1, $3);}
               | statement {$$ = $1;}
               ;
 
-maybe_newline: Newline {puts("Newline");}
-             | %empty  {puts("No Newline");}
+maybe_newline: Newline
+             | %empty 
              ;
 
 statement: var_decl      {puts("var_decl"); $$ = $1;}
@@ -109,39 +109,39 @@ statement: var_decl      {puts("var_decl"); $$ = $1;}
          | enum_decl     {puts("enum_decl"); $$ = $1;}
          ;
 
-ident: Ident %prec Ident { $$ = (Node*)yytext; }
+ident: Ident %prec Ident {$$ = (Node*)yytext;}
      ;
 
 usertype: UserType  %prec UserType
         ;
 
-intlit: IntLit  %prec IntLit { $$ = mkIntLitNode(yytext); }
+intlit: IntLit  %prec IntLit {$$ = mkIntLitNode(yytext);}
       ;
 
-fltlit: FltLit  %prec FltLit { $$ = mkFltLitNode(yytext); }
+fltlit: FltLit  %prec FltLit {$$ = mkFltLitNode(yytext);}
       ;
 
-strlit: StrLit  %prec StrLit { $$ = mkStrLitNode(yytext); }
+strlit: StrLit  %prec StrLit {$$ = mkStrLitNode(yytext);}
       ;
 
-lit_type: I8       { $$ = mkTypeNode(Tok_I8,  NULL); }
-        | I16      { $$ = mkTypeNode(Tok_I16, NULL); }
-        | I32      { $$ = mkTypeNode(Tok_I32, NULL); }
-        | I64      { $$ = mkTypeNode(Tok_I64, NULL); }
-        | U8       { $$ = mkTypeNode(Tok_U8,  NULL); }
-        | U16      { $$ = mkTypeNode(Tok_U16, NULL); }
-        | U32      { $$ = mkTypeNode(Tok_U32, NULL); }
-        | U64      { $$ = mkTypeNode(Tok_U64, NULL); }
-        | Isz      { $$ = mkTypeNode(Tok_Isz, NULL); }
-        | Usz      { $$ = mkTypeNode(Tok_Usz, NULL); }
-        | F32      { $$ = mkTypeNode(Tok_F32, NULL); }
-        | F64      { $$ = mkTypeNode(Tok_F64, NULL); }
-        | C8       { $$ = mkTypeNode(Tok_C8,  NULL); }
-        | C32      { $$ = mkTypeNode(Tok_C32, NULL); }
-        | Bool     { $$ = mkTypeNode(Tok_Bool, NULL); }
-        | Void     { $$ = mkTypeNode(Tok_Void, NULL); }
-        | usertype { $$ = mkTypeNode(Tok_UserType, yytext); }
-        | ident    %prec Ident { $$ = mkTypeNode(Ident, (char*)$1); }
+lit_type: I8       {$$ = mkTypeNode(Tok_I8,  NULL);}
+        | I16      {$$ = mkTypeNode(Tok_I16, NULL);}
+        | I32      {$$ = mkTypeNode(Tok_I32, NULL);}
+        | I64      {$$ = mkTypeNode(Tok_I64, NULL);}
+        | U8       {$$ = mkTypeNode(Tok_U8,  NULL);}
+        | U16      {$$ = mkTypeNode(Tok_U16, NULL);}
+        | U32      {$$ = mkTypeNode(Tok_U32, NULL);}
+        | U64      {$$ = mkTypeNode(Tok_U64, NULL);}
+        | Isz      {$$ = mkTypeNode(Tok_Isz, NULL);}
+        | Usz      {$$ = mkTypeNode(Tok_Usz, NULL);}
+        | F32      {$$ = mkTypeNode(Tok_F32, NULL);}
+        | F64      {$$ = mkTypeNode(Tok_F64, NULL);}
+        | C8       {$$ = mkTypeNode(Tok_C8,  NULL);}
+        | C32      {$$ = mkTypeNode(Tok_C32, NULL);}
+        | Bool     {$$ = mkTypeNode(Tok_Bool, NULL);}
+        | Void     {$$ = mkTypeNode(Tok_Void, NULL);}
+        | usertype {$$ = mkTypeNode(Tok_UserType, yytext);}
+        | ident    %prec Ident { $$ = mkTypeNode(Ident, (char*)$1);}
         ;
 
 type: type '*'
@@ -179,7 +179,7 @@ var_decl: decl_prepend ident '=' expr %prec Ident {$$ = mkVarDeclNode((char*)$2,
         ;
 
 /* TODO: change arg1 to require node* instead of char* */
-var_assign: var '=' expr {mkVarAssignNode((char*)$1, $3);}
+var_assign: var '=' expr {$$ = mkVarAssignNode((char*)$1, $3);}
           ;
 
 usertype_list: usertype_list ',' usertype
@@ -189,10 +189,10 @@ usertype_list: usertype_list ',' usertype
 generic: '<' usertype_list '>'
        ;
 
-data_decl: modifier_list Data usertype type_decl_block
-         | modifier_list Data usertype generic type_decl_block
-         | Data usertype type_decl_block
-         | Data usertype generic type_decl_block
+data_decl: modifier_list Data usertype type_decl_block         {$$ = mkVarNode("TEMP");}
+         | modifier_list Data usertype generic type_decl_block {$$ = mkVarNode("TEMP");}
+         | Data usertype type_decl_block                       {$$ = mkVarNode("TEMP");}
+         | Data usertype generic type_decl_block               {$$ = mkVarNode("TEMP");}
          ;
 
 type_decl: type_expr ident
@@ -219,10 +219,10 @@ val_init_list: val_init_list ',' usertype
 enum_block: Indent val_init_list Unindent
           ;
 
-enum_decl: modifier_list Enum usertype enum_block
-         | Enum usertype enum_block
-         | modifier_list Enum enum_block
-         | Enum enum_block
+enum_decl: modifier_list Enum usertype enum_block  {$$ = mkVarNode("TODO: enum_decl node");}
+         | Enum usertype enum_block                {$$ = mkVarNode("TODO: enum_decl node");}
+         | modifier_list Enum enum_block           {$$ = mkVarNode("TODO: enum_decl node");}
+         | Enum enum_block                         {$$ = mkVarNode("TODO: enum_decl node");}
          ;
 
 block: Indent statement_list Unindent {$$ = $2;}
@@ -237,7 +237,7 @@ maybe_params: params
             ;
 
 fn_decl: decl_prepend ident ':' maybe_params block {$$ = mkFuncDeclNode((char*)$2, $1, $4, $5);}
-       | decl_prepend ident '(' maybe_expr ')' ':' maybe_params block
+       | decl_prepend ident '(' maybe_expr ')' ':' maybe_params block {$$ = mkFuncDeclNode((char*)$2, $1, $7, $8);}
        ;
 
 fn_call: ident '(' maybe_expr ')'  %prec '*' {$$ = mkFuncCallNode((char*)$1, $3);}
@@ -261,13 +261,13 @@ maybe_elif_list: elif_list
 if_stmt: If expr block maybe_elif_list maybe_else {$$ = mkIfNode($2, $3);}
        ;
 
-while_loop: While expr block
+while_loop: While expr block {$$ = mkVarNode("TODO: while_loop node");}
           ;
 
-do_while_loop: Do block While expr
+do_while_loop: Do block While expr {$$ = mkVarNode("TODO: do_while_loop node");}
              ;
 
-for_loop: For var_decl In expr block
+for_loop: For var_decl In expr block {$$ = mkVarNode("TODO: for_loop node");}
         ;
 
 var: ident '[' expr ']'
@@ -284,29 +284,29 @@ val: fn_call       {$$ = $1;}
    | False         {$$ = mkBoolLitNode(0);}
    ;
 
-maybe_expr: expr { puts("maybe_expr: true"); }
-          | %empty { puts("maybe_expr: false"); }
+maybe_expr: expr   {$$ = NULL;}
+          | %empty {$$ = NULL;}
           ;
 
-expr: expr '+' expr
-    | expr '-' expr 
-    | expr '*' expr
-    | expr '/' expr
-    | expr '%' expr 
-    | expr '<' expr 
-    | expr '>' expr 
-    | expr '.' expr
-    | expr Eq expr
-    | expr NotEq expr
-    | expr GrtrEq expr
-    | expr LesrEq expr
-    | expr Or expr
-    | expr And expr
-    | expr Range expr
-    | expr RangeEX expr
-    | expr RangeBX expr
-    | expr RangeX expr
-    | val
+expr: expr '+' expr     {$$ = NULL;}
+    | expr '-' expr     {$$ = NULL;}
+    | expr '*' expr     {$$ = NULL;}
+    | expr '/' expr     {$$ = NULL;}
+    | expr '%' expr     {$$ = NULL;}
+    | expr '<' expr     {$$ = NULL;}
+    | expr '>' expr     {$$ = NULL;}
+    | expr '.' expr     {$$ = NULL;}
+    | expr Eq expr      {$$ = NULL;}
+    | expr NotEq expr   {$$ = NULL;}
+    | expr GrtrEq expr  {$$ = NULL;}
+    | expr LesrEq expr  {$$ = NULL;}
+    | expr Or expr      {$$ = NULL;}
+    | expr And expr     {$$ = NULL;}
+    | expr Range expr   {$$ = NULL;}
+    | expr RangeEX expr {$$ = NULL;}
+    | expr RangeBX expr {$$ = NULL;}
+    | expr RangeX expr  {$$ = NULL;}
+    | val               {$$ = NULL;}
     ;
 
 %%
