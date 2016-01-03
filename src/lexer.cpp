@@ -199,9 +199,14 @@ int ante::lexer::handleComment(void)
     return next();
 }
 
+/*
+ *  Allocates a new string for yytext without
+ *  freeing its previous value.  The previous value
+ *  should always be stored in a node during parsing
+ *  and freed later.
+ */
 void ante::lexer::setyytext(string str)
 {
-    if(yytext) free(yytext);
     yytext = (char*)malloc(str.size()+1);
     strcpy(yytext, str.c_str());
 }

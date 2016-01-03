@@ -74,6 +74,7 @@ void yyerror(const char *msg);
 %left '+' '-'
 %left '*' '/' '%'
 
+%right '^'
 %right '.'
 
 %nonassoc '(' '['
@@ -86,6 +87,7 @@ void yyerror(const char *msg);
 %%
 
 top_level_stmt_list: maybe_newline statement_list maybe_newline {setRoot($2);}
+                   | %empty  %prec LOW
                    ;
 
 statement_list: statement_list maybe_newline statement {$$ = setNext($1, $3);}
@@ -228,12 +230,12 @@ enum_decl: modifier_list Enum usertype enum_block  {$$ = mkVarNode("TODO: enum_d
 block: Indent statement_list Unindent {$$ = $2;}
      ;
 
-params: params ',' type_expr ident
-      | type_expr ident
+params: params ',' type_expr ident {$$ = setNext($1, mkNamedValNode((char*)$4, $3));}
+      | type_expr ident            {$$ = mkNamedValNode((char*)$2, $1);}
       ;
 
-maybe_params: params
-            | %empty
+maybe_params: params {$$ = $1;}
+            | %empty {$$ = NULL;}
             ;
 
 fn_decl: decl_prepend ident ':' maybe_params block {$$ = mkFuncDeclNode((char*)$2, $1, $4, $5);}
@@ -246,12 +248,12 @@ fn_call: ident '(' maybe_expr ')'  %prec '*' {$$ = mkFuncCallNode((char*)$1, $3)
 ret_stmt: Return expr {$$ = mkRetNode($2);}
         ;
 
-maybe_else: Else block { puts("TODO: else"); }
+maybe_else: Else block {puts("TODO: else");}
           | %empty
           ;
 
 elif_list: elif_list Elif block
-         | Elif block { puts("TODO: elif"); }
+         | Elif block {puts("TODO: elif");}
          ;
 
 maybe_elif_list: elif_list
@@ -270,7 +272,7 @@ do_while_loop: Do block While expr {$$ = mkVarNode("TODO: do_while_loop node");}
 for_loop: For var_decl In expr block {$$ = mkVarNode("TODO: for_loop node");}
         ;
 
-var: ident '[' expr ']'
+var: ident '[' expr ']'  {$$ = $1;} /*TODO*/
    | ident               %prec Ident {$$ = $1;}
    ;
 
@@ -284,29 +286,30 @@ val: fn_call       {$$ = $1;}
    | False         {$$ = mkBoolLitNode(0);}
    ;
 
-maybe_expr: expr   {$$ = NULL;}
+maybe_expr: expr   {$$ = $1;}
           | %empty {$$ = NULL;}
           ;
 
-expr: expr '+' expr     {$$ = NULL;}
-    | expr '-' expr     {$$ = NULL;}
-    | expr '*' expr     {$$ = NULL;}
-    | expr '/' expr     {$$ = NULL;}
-    | expr '%' expr     {$$ = NULL;}
-    | expr '<' expr     {$$ = NULL;}
-    | expr '>' expr     {$$ = NULL;}
-    | expr '.' expr     {$$ = NULL;}
-    | expr Eq expr      {$$ = NULL;}
-    | expr NotEq expr   {$$ = NULL;}
-    | expr GrtrEq expr  {$$ = NULL;}
-    | expr LesrEq expr  {$$ = NULL;}
-    | expr Or expr      {$$ = NULL;}
-    | expr And expr     {$$ = NULL;}
-    | expr Range expr   {$$ = NULL;}
-    | expr RangeEX expr {$$ = NULL;}
-    | expr RangeBX expr {$$ = NULL;}
-    | expr RangeX expr  {$$ = NULL;}
-    | val               {$$ = NULL;}
+expr: expr '+' expr     {$$ = mkVarNode("TODO: expr node");}
+    | expr '-' expr     {$$ = mkVarNode("TODO: expr node");}
+    | expr '*' expr     {$$ = mkVarNode("TODO: expr node");}
+    | expr '/' expr     {$$ = mkVarNode("TODO: expr node");}
+    | expr '%' expr     {$$ = mkVarNode("TODO: expr node");}
+    | expr '<' expr     {$$ = mkVarNode("TODO: expr node");}
+    | expr '>' expr     {$$ = mkVarNode("TODO: expr node");}
+    | expr '^' expr     {$$ = mkVarNode("TODO: expr node");}
+    | expr '.' expr     {$$ = mkVarNode("TODO: expr node");}
+    | expr Eq expr      {$$ = mkVarNode("TODO: expr node");}
+    | expr NotEq expr   {$$ = mkVarNode("TODO: expr node");}
+    | expr GrtrEq expr  {$$ = mkVarNode("TODO: expr node");}
+    | expr LesrEq expr  {$$ = mkVarNode("TODO: expr node");}
+    | expr Or expr      {$$ = mkVarNode("TODO: expr node");}
+    | expr And expr     {$$ = mkVarNode("TODO: expr node");}
+    | expr Range expr   {$$ = mkVarNode("TODO: expr node");}
+    | expr RangeEX expr {$$ = mkVarNode("TODO: expr node");}
+    | expr RangeBX expr {$$ = mkVarNode("TODO: expr node");}
+    | expr RangeX expr  {$$ = mkVarNode("TODO: expr node");}
+    | val               {$$ = $1;}
     ;
 
 %%

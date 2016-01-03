@@ -1,2 +1,3 @@
-print(23)
-print(41)
+print(1)
+i32 var = 2
+u8 var2

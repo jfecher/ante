@@ -18,8 +18,7 @@ enum ParseErr{
 /* Base class for all nodes */
 class Node{
     public:
-        std::unique_ptr<Node> next;
-        Node *prev, *parent;
+        Node *next, *prev, *parent;
         virtual void print(void) = 0;
         virtual void compile(void) = 0;
         virtual void exec(void) = 0;
@@ -31,7 +30,7 @@ class Node{
  */
 class ParentNode{
     public:
-        std::unique_ptr<Node> child;
+        Node* child;
 
         /*
          * The body should always be known when a

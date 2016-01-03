@@ -91,9 +91,10 @@ void StrLitNode::print()
 void TypeNode::print()
 {
     if(type == Tok_Ident || type == Tok_UserType){
-        cout << "Type: " << typeName << endl;
+        cout << "Type: " << typeName;
     }else{
-        cout << "Type: " << type;
+        cout << "Type: ";
+        ante::lexer::printTok(type);
     }
 }
 
@@ -139,7 +140,7 @@ void VarNode::print()
 
 void FuncCallNode::print()
 {
-    cout << "fnCall " << name << '(';
+    cout << "fnCall " << name << " called with params (";
     if(params) params->print();
     cout << ")\n";
 }
@@ -148,19 +149,23 @@ void VarDeclNode::print()
 {
     cout << "varDecl " << name << " = ";
     if(expr) expr->print();
-    else cout << "(undef)\n";
+    else cout << "(undef)";
+    putchar('\n');
 }
 
 void VarAssignNode::print()
 {
     cout << "varAssign " << name << " = ";
     if(expr) expr->print();
-    else cout << "(undef)\n"; 
+    else cout << "(undef)"; 
+    putchar('\n');
 }
 
 void FuncDeclNode::print()
 {
     cout << "function " << name << " declared\n";
+    cout << "of type ";
+    type->print();
     /*for(auto n : params){
         if(n) n->print();
         cout << ", ";

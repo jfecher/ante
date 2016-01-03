@@ -15,12 +15,17 @@ Node* ante::parser::getRootNode()
 
 extern "C" void setRoot(Node* node)
 {
+    while(1){
+        Node* prev = node->prev;
+        if(!prev) break;
+        node = prev;
+    }
     root = node;
 }
 
 extern "C" Node* setNext(Node* cur, Node* nxt)
 {
-    cur->next = unique_ptr<Node>(nxt);
+    cur->next = nxt;
     nxt->prev = cur;
     return nxt;
 }
