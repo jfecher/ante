@@ -30,7 +30,7 @@ int main(int argc, char *argv[]){
             while(n){
                 cout << "Stmt #" << ++i << endl;
                 n->print();
-                n = n->parent;
+                n = n->next;
             }
         }else{
             cout << "Ante: argument '" << argv[1] << "' was not recognized.\n";

@@ -97,20 +97,20 @@ maybe_newline: Newline
              | %empty 
              ;
 
-statement: var_decl      {puts("var_decl");   $$ = $1;}
-         | var_assign    {puts("var_assign"); $$ = $1;}
-         | fn_decl       {puts("fn_decl");    $$ = $1;}
-         | fn_call       {puts("fn_call");    $$ = $1;}
-         | data_decl     {puts("data_decl");  $$ = $1;}
-         | ret_stmt      {puts("ret_stmt");   $$ = $1;}
-         | while_loop    {puts("while_loop"); $$ = $1;}
-         | do_while_loop {puts("do_while");   $$ = $1;}
-         | for_loop      {puts("for_loop");   $$ = $1;}
-         | if_stmt       {puts("if_stmt");    $$ = $1;}
-         | enum_decl     {puts("enum_decl");  $$ = $1;}
+statement: var_decl      {$$ = $1;}
+         | var_assign    {$$ = $1;}
+         | fn_decl       {$$ = $1;}
+         | fn_call       {$$ = $1;}
+         | data_decl     {$$ = $1;}
+         | ret_stmt      {$$ = $1;}
+         | while_loop    {$$ = $1;}
+         | do_while_loop {$$ = $1;}
+         | for_loop      {$$ = $1;}
+         | if_stmt       {$$ = $1;}
+         | enum_decl     {$$ = $1;}
          ;
 
-ident: Ident {printf("{Ident: %s}\n", lextxt); $$ = (Node*)lextxt;}
+ident: Ident {$$ = (Node*)lextxt;}
      ;
 
 usertype: UserType  %prec UserType {$$ = (Node*)lextxt;}

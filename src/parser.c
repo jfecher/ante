@@ -1621,73 +1621,73 @@ yyreduce:
 
   case 8:
 #line 100 "src/syntax.y" /* yacc.c:1646  */
-    {puts("var_decl");   (yyval) = (yyvsp[0]);}
+    {(yyval) = (yyvsp[0]);}
 #line 1626 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 9:
 #line 101 "src/syntax.y" /* yacc.c:1646  */
-    {puts("var_assign"); (yyval) = (yyvsp[0]);}
+    {(yyval) = (yyvsp[0]);}
 #line 1632 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 10:
 #line 102 "src/syntax.y" /* yacc.c:1646  */
-    {puts("fn_decl");    (yyval) = (yyvsp[0]);}
+    {(yyval) = (yyvsp[0]);}
 #line 1638 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 11:
 #line 103 "src/syntax.y" /* yacc.c:1646  */
-    {puts("fn_call");    (yyval) = (yyvsp[0]);}
+    {(yyval) = (yyvsp[0]);}
 #line 1644 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 12:
 #line 104 "src/syntax.y" /* yacc.c:1646  */
-    {puts("data_decl");  (yyval) = (yyvsp[0]);}
+    {(yyval) = (yyvsp[0]);}
 #line 1650 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 13:
 #line 105 "src/syntax.y" /* yacc.c:1646  */
-    {puts("ret_stmt");   (yyval) = (yyvsp[0]);}
+    {(yyval) = (yyvsp[0]);}
 #line 1656 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 14:
 #line 106 "src/syntax.y" /* yacc.c:1646  */
-    {puts("while_loop"); (yyval) = (yyvsp[0]);}
+    {(yyval) = (yyvsp[0]);}
 #line 1662 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 15:
 #line 107 "src/syntax.y" /* yacc.c:1646  */
-    {puts("do_while");   (yyval) = (yyvsp[0]);}
+    {(yyval) = (yyvsp[0]);}
 #line 1668 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 16:
 #line 108 "src/syntax.y" /* yacc.c:1646  */
-    {puts("for_loop");   (yyval) = (yyvsp[0]);}
+    {(yyval) = (yyvsp[0]);}
 #line 1674 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 17:
 #line 109 "src/syntax.y" /* yacc.c:1646  */
-    {puts("if_stmt");    (yyval) = (yyvsp[0]);}
+    {(yyval) = (yyvsp[0]);}
 #line 1680 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 18:
 #line 110 "src/syntax.y" /* yacc.c:1646  */
-    {puts("enum_decl");  (yyval) = (yyvsp[0]);}
+    {(yyval) = (yyvsp[0]);}
 #line 1686 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 19:
 #line 113 "src/syntax.y" /* yacc.c:1646  */
-    {printf("{Ident: %s}\n", lextxt); (yyval) = (Node*)lextxt;}
+    {(yyval) = (Node*)lextxt;}
 #line 1692 "src/parser.c" /* yacc.c:1646  */
     break;
 
