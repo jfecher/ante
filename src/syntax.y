@@ -5,7 +5,6 @@
 #include <ptree.h>
 
 extern int yylex();
-extern char *yytext;
 
 void yyerror(const char *msg);
 
@@ -98,32 +97,32 @@ maybe_newline: Newline
              | %empty 
              ;
 
-statement: var_decl      {puts("var_decl"); $$ = $1;}
+statement: var_decl      {puts("var_decl");   $$ = $1;}
          | var_assign    {puts("var_assign"); $$ = $1;}
-         | fn_decl       {puts("fn_decl"); $$ = $1;}
-         | fn_call       {puts("fn_call"); $$ = $1;}
-         | data_decl     {puts("data_decl"); $$ = $1;}
-         | ret_stmt      {puts("ret_stmt"); $$ = $1;}
+         | fn_decl       {puts("fn_decl");    $$ = $1;}
+         | fn_call       {puts("fn_call");    $$ = $1;}
+         | data_decl     {puts("data_decl");  $$ = $1;}
+         | ret_stmt      {puts("ret_stmt");   $$ = $1;}
          | while_loop    {puts("while_loop"); $$ = $1;}
-         | do_while_loop {puts("do_while"); $$ = $1;}
-         | for_loop      {puts("for_loop"); $$ = $1;}
-         | if_stmt       {puts("if_stmt"); $$ = $1;}
-         | enum_decl     {puts("enum_decl"); $$ = $1;}
+         | do_while_loop {puts("do_while");   $$ = $1;}
+         | for_loop      {puts("for_loop");   $$ = $1;}
+         | if_stmt       {puts("if_stmt");    $$ = $1;}
+         | enum_decl     {puts("enum_decl");  $$ = $1;}
          ;
 
-ident: Ident %prec Ident {$$ = (Node*)yytext;}
+ident: Ident {printf("{Ident: %s}\n", lextxt); $$ = (Node*)lextxt;}
      ;
 
-usertype: UserType  %prec UserType
+usertype: UserType  %prec UserType {$$ = (Node*)lextxt;}
         ;
 
-intlit: IntLit  %prec IntLit {$$ = mkIntLitNode(yytext);}
+intlit: IntLit  %prec IntLit {$$ = mkIntLitNode(lextxt);}
       ;
 
-fltlit: FltLit  %prec FltLit {$$ = mkFltLitNode(yytext);}
+fltlit: FltLit  %prec FltLit {$$ = mkFltLitNode(lextxt);}
       ;
 
-strlit: StrLit  %prec StrLit {$$ = mkStrLitNode(yytext);}
+strlit: StrLit  %prec StrLit {$$ = mkStrLitNode(lextxt);}
       ;
 
 lit_type: I8       {$$ = mkTypeNode(Tok_I8,  NULL);}
@@ -142,8 +141,8 @@ lit_type: I8       {$$ = mkTypeNode(Tok_I8,  NULL);}
         | C32      {$$ = mkTypeNode(Tok_C32, NULL);}
         | Bool     {$$ = mkTypeNode(Tok_Bool, NULL);}
         | Void     {$$ = mkTypeNode(Tok_Void, NULL);}
-        | usertype {$$ = mkTypeNode(Tok_UserType, yytext);}
-        | ident    %prec Ident { $$ = mkTypeNode(Ident, (char*)$1);}
+        | usertype %prec UserType {$$ = mkTypeNode(Tok_UserType, (char*)$1);}
+        | ident    %prec Ident {$$ = mkTypeNode(Ident, (char*)$1);}
         ;
 
 type: type '*'
@@ -156,7 +155,7 @@ type: type '*'
 
 type_expr: type_expr ',' type
          | type_expr '|' type
-         | type
+         | type {$$ = $1;}
          ;
 
 modifier: Pub
@@ -176,7 +175,7 @@ decl_prepend: modifier_list type_expr {$$ = $2;} /*TODO: modifier list*/
             | type_expr {$$ = $1;}
             ;
 
-var_decl: decl_prepend ident '=' expr %prec Ident {$$ = mkVarDeclNode((char*)$2, $1, $4);}
+var_decl: decl_prepend ident '=' expr  %prec Ident {$$ = mkVarDeclNode((char*)$2, $1, $4);}
         | decl_prepend ident  %prec LOW {$$ = mkVarDeclNode((char*)$2, $1, 0);}
         ;
 
@@ -238,7 +237,7 @@ maybe_params: params {$$ = $1;}
             | %empty {$$ = NULL;}
             ;
 
-fn_decl: decl_prepend ident ':' maybe_params block {$$ = mkFuncDeclNode((char*)$2, $1, $4, $5);}
+fn_decl: decl_prepend ident ':' maybe_params block {$$ = mkVarNode((char*)$2);/*mkFuncDeclNode((char*)$2, $1, $4, $5);*/}
        | decl_prepend ident '(' maybe_expr ')' ':' maybe_params block {$$ = mkFuncDeclNode((char*)$2, $1, $7, $8);}
        ;
 

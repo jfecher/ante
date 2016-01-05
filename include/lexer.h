@@ -25,7 +25,7 @@ namespace ante{
     
         void incPos(void);
         void incPos(int end);
-        void setyytext(string str);
+        void setlextxt(string *str);
         int handleComment(void);
         int genWsTok(void);
         int genNumLitTok(void);

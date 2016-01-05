@@ -130,12 +130,12 @@ void IfNode::print()
 
 void NamedValNode::print()
 {
-    cout << "NVNode: " << name;
+    cout << "{NamedValNode " << name << '}';
 }
 
 void VarNode::print()
 {
-    cout << name;
+    cout << "{VarNode " << name << '}';
 }
 
 void FuncCallNode::print()

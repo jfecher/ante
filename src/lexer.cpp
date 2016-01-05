@@ -137,7 +137,7 @@ map<string, int> keywords = {
 
 char c = 0; 
 char n = 0;
-char* yytext = 0;
+char* lextxt = 0;
 ifstream *in;
 const char scStep = 4;
 
@@ -200,15 +200,17 @@ int ante::lexer::handleComment(void)
 }
 
 /*
- *  Allocates a new string for yytext without
+ *  Allocates a new string for lextxt without
  *  freeing its previous value.  The previous value
  *  should always be stored in a node during parsing
  *  and freed later.
  */
-void ante::lexer::setyytext(string str)
+void ante::lexer::setlextxt(string *str)
 {
-    yytext = (char*)malloc(str.size()+1);
-    strcpy(yytext, str.c_str());
+    size_t size = str->size() + 1;
+    lextxt = (char*)malloc(size);
+    strcpy(lextxt, str->c_str());
+    lextxt[size-1] = '\0';
 }
 
 int ante::lexer::genAlphaNumTok()
@@ -223,7 +225,7 @@ int ante::lexer::genAlphaNumTok()
     if(key != keywords.end()){
         return key->second;
     }else{
-        setyytext(s);
+        setlextxt(&s);
         return (s[0] >= 'A' && s[0] <= 'Z') ? Tok_UserType : Tok_Ident;
     }
 }
@@ -241,7 +243,7 @@ int ante::lexer::genNumLitTok()
         incPos();
     }
 
-    setyytext(s);
+    setlextxt(&s);
     return flt? Tok_FltLit : Tok_IntLit;
 }
 
@@ -282,7 +284,7 @@ int ante::lexer::genStrLitTok(char delim)
         incPos();
     }
     incPos();
-    setyytext(s);
+    setlextxt(&s);
     return Tok_StrLit;
 }
 
@@ -338,10 +340,6 @@ int ante::lexer::next()
     //If the character is nota, assume it is an operator and store
     //the character in the string for identification
     char ret = c;
-    if(yytext) free(yytext);
-    yytext = (char*)malloc(2);
-    yytext[0] = ret;
-    yytext[1] = '\0';
     incPos();
     return ret;
 }

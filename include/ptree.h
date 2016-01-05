@@ -4,7 +4,7 @@
 typedef struct{} Node;
 
 //defined in lexer.cpp
-char* yytext;
+extern char* lextxt;
 
 Node* getRootNode(void);
 void setRoot(Node* root);
