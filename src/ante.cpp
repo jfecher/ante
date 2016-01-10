@@ -28,8 +28,9 @@ int main(int argc, char *argv[]){
             Node* n = parser::getRootNode();
             int i = 0;
             while(n){
-                cout << "Stmt #" << ++i << endl;
+                cout << "\nStmt #" << ++i << endl;
                 n->print();
+                printf("Addr = %p\n", n);
                 n = n->next;
             }
         }else{

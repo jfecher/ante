@@ -15,11 +15,13 @@ Node* ante::parser::getRootNode()
 
 extern "C" void setRoot(Node* node)
 {
-    while(1){
+    printf("Node %p\n", node);
+    /*while(1){
         Node* prev = node->prev;
         if(!prev) break;
+        printf("Grappled root to %p\n", prev);
         node = prev;
-    }
+    }*/
     root = node;
 }
 
@@ -27,7 +29,8 @@ extern "C" Node* setNext(Node* cur, Node* nxt)
 {
     cur->next = nxt;
     nxt->prev = cur;
-    return nxt;
+    printf("Setting %p's next to %p\n", cur, nxt);
+    return cur;
 }
 
 extern "C" Node* mkIntLitNode(char* s)

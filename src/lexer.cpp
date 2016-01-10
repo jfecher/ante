@@ -141,7 +141,22 @@ char* lextxt = 0;
 ifstream *in;
 const char scStep = 4;
 
+/*
+ *  Flag set to 1 when a change in indentation level has
+ *  been detected and one or more Indent or Unindent tokens should
+ *  be issued followed by a Newline
+ */
+char issueWsTok;
+
+/*
+ *  Current scope (indent level) of file
+ */
 int scope;
+
+/*
+ *  Used to remember a new indentation level to issue multiple Indent
+ *  or Unindent tokens when required.
+ */
 int cscope;
 
 void ante::lexer::init(const char* file)
@@ -153,6 +168,7 @@ void ante::lexer::init(const char* file)
     incPos();
     scope = 0;
     cscope = 0;
+    issueWsTok = 0;
 }
 
 extern "C" int yylex(...)
@@ -265,8 +281,9 @@ int ante::lexer::genWsTok()
         newScope /= scStep;
 
         if(newScope == scope){
-            return Tok_Newline;
+            return Tok_Newline; /* Scope did not change, just return a Newline */
         }
+        issueWsTok = 1;
         scope = newScope;
         return next();
     }else{
@@ -290,13 +307,16 @@ int ante::lexer::genStrLitTok(char delim)
 
 int ante::lexer::next()
 {
-    if(cscope != scope){
+    if(issueWsTok){
         if(scope > cscope){
             cscope++;
             return Tok_Indent;
-        }else{
+        }else if(scope < cscope){
             cscope--;
             return Tok_Unindent;
+        }else{
+            issueWsTok = 0;
+            return Tok_Newline; /* Newline issued after Indent and Unindent */
         }
     }
 
@@ -311,9 +331,11 @@ int ante::lexer::next()
     //substitute -> for an indent and ;; for an unindent
     if(PAIR('-', '>')){
         scope++;
+        issueWsTok = 1;
         RETURN_PAIR(next());
     }else if(PAIR(';', ';')){
         scope--;
+        issueWsTok = 1;
         RETURN_PAIR(next());
     }
 

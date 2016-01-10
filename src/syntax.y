@@ -85,30 +85,34 @@ void yyerror(const char *msg);
 %start top_level_stmt_list
 %%
 
-top_level_stmt_list: maybe_newline statement_list maybe_newline {setRoot($2);}
-                   | %empty  %prec LOW
+top_level_stmt_list: maybe_newline stmt_list maybe_newline {setRoot($2);}
                    ;
 
-statement_list: statement_list maybe_newline statement {$$ = setNext($1, $3);}
-              | statement {$$ = $1;}
-              ;
+stmt_list: stmt Newline r_stmt_list {setNext($1, $3); $$ = $1;}
+         | %empty {$$ = NULL;}
+         ;
 
-maybe_newline: Newline
-             | %empty 
+r_stmt_list: r_stmt_list Newline stmt {$$ = setNext($1, $3);}
+           | stmt   {$$ = $1;}
+           | %empty {$$ = NULL;}
+           ;
+
+maybe_newline: Newline  %prec Newline
+             | %empty   %prec LOW
              ;
 
-statement: var_decl      {$$ = $1;}
-         | var_assign    {$$ = $1;}
-         | fn_decl       {$$ = $1;}
-         | fn_call       {$$ = $1;}
-         | data_decl     {$$ = $1;}
-         | ret_stmt      {$$ = $1;}
-         | while_loop    {$$ = $1;}
-         | do_while_loop {$$ = $1;}
-         | for_loop      {$$ = $1;}
-         | if_stmt       {$$ = $1;}
-         | enum_decl     {$$ = $1;}
-         ;
+stmt: var_decl      {$$ = $1;}
+    | var_assign    {$$ = $1;}
+    | fn_decl       {$$ = $1;}
+    | fn_call       {$$ = $1;}
+    | data_decl     {$$ = $1;}
+    | ret_stmt      {$$ = $1;}
+    | while_loop    {$$ = $1;}
+    | do_while_loop {$$ = $1;}
+    | for_loop      {$$ = $1;}
+    | if_stmt       {$$ = $1;}
+    | enum_decl     {$$ = $1;}
+    ;
 
 ident: Ident {$$ = (Node*)lextxt;}
      ;
@@ -142,7 +146,7 @@ lit_type: I8       {$$ = mkTypeNode(Tok_I8,  NULL);}
         | Bool     {$$ = mkTypeNode(Tok_Bool, NULL);}
         | Void     {$$ = mkTypeNode(Tok_Void, NULL);}
         | usertype %prec UserType {$$ = mkTypeNode(Tok_UserType, (char*)$1);}
-        | ident    %prec Ident {$$ = mkTypeNode(Ident, (char*)$1);}
+        | ident    %prec Ident {$$ = mkTypeNode(Tok_Ident, (char*)$1);}
         ;
 
 type: type '*'
@@ -226,7 +230,7 @@ enum_decl: modifier_list Enum usertype enum_block  {$$ = mkVarNode("TODO: enum_d
          | Enum enum_block                         {$$ = mkVarNode("TODO: enum_decl node");}
          ;
 
-block: Indent statement_list Unindent {$$ = $2;}
+block: Indent maybe_newline stmt_list Unindent {$$ = $3;}
      ;
 
 params: params ',' type_expr ident {$$ = setNext($1, mkNamedValNode((char*)$4, $3));}
@@ -237,7 +241,7 @@ maybe_params: params {$$ = $1;}
             | %empty {$$ = NULL;}
             ;
 
-fn_decl: decl_prepend ident ':' maybe_params block {$$ = mkVarNode((char*)$2);/*mkFuncDeclNode((char*)$2, $1, $4, $5);*/}
+fn_decl: decl_prepend ident ':' maybe_params block {printf("1: %p\n2: %p\n\n", $1, $2); $$ = mkFuncDeclNode((char*)$2, $1, $4, $5);}
        | decl_prepend ident '(' maybe_expr ')' ':' maybe_params block {$$ = mkFuncDeclNode((char*)$2, $1, $7, $8);}
        ;
 

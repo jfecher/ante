@@ -31,21 +31,50 @@ import stuff()
 `
         Variables
     Variables are declared with any modifiers (such as dyn to indicate a
-    dynamic typing) followed by the variable's type and identifier in the 
-    following syntax:
-    
+    dynamic typing) followed by the keyword let and the variables name as
+    an identifier.  It is important to note that identifiers must begin
+    with a lowercase letter, but can contain any amount of capital and lowercase
+    letters or numbers afterwards.  The type is inferred from the expression in
+    most cases.  This form can be expressed as the following:
+
+    let [modifiers] [identifier] = [expr]
+
+    Alternatively, if the variable is mutable, the type must be specified.  Note
+    that since it is not immutable, its initial value does not have to be
+    specified.  All variables by default have their memory set to 0.  In
+    cases where speed is more of a concern, the modifier noinit may be
+    specified to avoid this.
+
     [modifiers] [type] [identifier]
-    
-    Below is the declaration of a variable, myVar, with a dynamic typing,
-    meaning it can be set to any value and its type will change accordingly.
-    By default, dynamic variables are set to the i8 type.
+
+    In the rare cases when a constant variable's type cannot be inferenced,
+    the following form is used:
+
+    let [modifiers] [type] [identifier] = [expr]
+
+    or:
+
+    const [modifiers] [type] [identifier] = [expr]
 `
-dyn myVar
-print(typeof(myVar)) ~output: dynamic i8
+
+~Declare i, an i8 since integer constants take the smallest type by default.
+let ex1 = 1
+
+~There are several ways to specify a type if it is needed
+~The type can be stated before the variables name:
+let i32 ex2 = 2
+
+~Or the type of the constant can be specified:
+let ex3 = 3i32
+
+~Or the constant can be typecasted to an i32:
+let ex4 = i32 4
 
 `
-    types can also be assigned to variables, below are the primitive types
-    initialized to their default values
+    Types can also be assigned to variables manually.  Variable's declared
+    without let are mutable by default and must have their type explicitely
+    stated.  Below are mutable variables of every primitive type initialized 
+    to their default values.
 `
 
 i8  myI8  = 0    ~8bit integer
@@ -58,14 +87,14 @@ u16 myU16 = 0
 u32 myU32 = 0
 u64 myU64 = 0
 
-isz myIsz = 0    ~Signed pointer size
-usz myUsz = 0    ~Unsigned pointer size
+isz myIsz = 0    ~Signed pointer size integer
+usz myUsz = 0    ~Unsigned pointer size integer
 
 f32 myF32 = 0.0  ~32bit float
 f64 myF64 = 0.0
 
-c8  myC8  = ''   ~ASCII char \0
-c32 myC32 = ''   ~UTF-32 char \0
+c8  myC8  = ''   ~ASCII char 0x00
+c32 myC32 = ''   ~UTF-32 char 0x00
 
 bool myBool = false
 
@@ -76,10 +105,60 @@ bool myBool = false
 
 print(i32 4.99)  ~output: 4
 f32 n = 43.876
-i32 n
+i32 n = i32 n
 
-~NOTE: the .. below is the string concat operator
 print(typeof(n) ++ " " ++ n)  ~output: i32 43
+
+`
+        Modifiers
+    Modifiers are optionally included in a variable or function
+    definition.  The available modifiers are:
+
+    pub        Most inclusive visibility modifier
+    
+    pro        Visibility modifier
+    
+    pri        Least inclusive visibility modifier
+    
+    const      Declares a constant variable.  Unlike
+               a let statement, this assures a space
+               is allocated in memory rather than
+               using expression substitution.
+    
+    pathogen   Specifies a variable or function can
+               never be evaluated at compile time.
+    
+    dyn        Specifies a variable which can change type.
+    
+    noinit     Specifies a variable should not have
+               its memory cleared.
+`
+noinit c32[13] myMsg
+myMsg = "Hello World!" ~Char 13 is \0
+
+dyn dynVar = "Test Number"
+dynVar = 32
+
+pub dyn noinit u8[] buf = 3, 4, 5
+
+
+`
+        Constants
+    Ante includes integer constants, float
+    constants, char constants and string
+    constants.  Integer and float constants
+    assume the type of the smallest type they
+    can fit in.  Integer and float constants
+    can alternatively have their type specified
+    with a suffix.
+`
+print(typeof(0))      ~output: i8
+print(typeof(0u8))    ~output: u8
+print(typeof(0i64))   ~output: i64
+print(typeof(255))    ~output: u8
+print(typeof("test")) ~output: c8[]
+print(typeof('A'))    ~output: c8
+
 
 `
         Operators
@@ -142,9 +221,6 @@ f32[5] assortedNums = 9, -76, 3.14159265, 2^8, 1 + 2*(6-3)
 `
 assortedNums[0] += assortedNums[1]
 print(assortedNums[0] ++ ", " ++ assortedNums[-2])
-
-print([] ++ 1 ++ 2)
-
 ~output: -67, 256
 
 `
