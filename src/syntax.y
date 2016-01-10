@@ -85,17 +85,12 @@ void yyerror(const char *msg);
 %start top_level_stmt_list
 %%
 
-top_level_stmt_list: maybe_newline stmt_list maybe_newline {setRoot($2);}
+top_level_stmt_list: maybe_newline stmt_list maybe_newline
                    ;
 
-stmt_list: stmt Newline r_stmt_list {setNext($1, $3); $$ = $1;}
-         | %empty {$$ = NULL;}
+stmt_list: stmt_list maybe_newline stmt {$$ = setNext($1, $3);}
+         | stmt   {$$ = setRoot($1);}
          ;
-
-r_stmt_list: r_stmt_list Newline stmt {$$ = setNext($1, $3);}
-           | stmt   {$$ = $1;}
-           | %empty {$$ = NULL;}
-           ;
 
 maybe_newline: Newline  %prec Newline
              | %empty   %prec LOW
@@ -230,7 +225,7 @@ enum_decl: modifier_list Enum usertype enum_block  {$$ = mkVarNode("TODO: enum_d
          | Enum enum_block                         {$$ = mkVarNode("TODO: enum_decl node");}
          ;
 
-block: Indent maybe_newline stmt_list Unindent {$$ = $3;}
+block: Indent stmt_list Unindent {$$ = getRoot();}
      ;
 
 params: params ',' type_expr ident {$$ = setNext($1, mkNamedValNode((char*)$4, $3));}

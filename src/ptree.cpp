@@ -6,23 +6,30 @@
 #include "parser.h"
 #include <stack>
 
-Node* root;
+stack<Node*> roots;
 
 Node* ante::parser::getRootNode()
 {
-    return root;
+    return roots.top();
 }
 
-extern "C" void setRoot(Node* node)
+/*
+ *  Saves the root of a new block and returns it.
+ */
+extern "C" Node* setRoot(Node* node)
 {
-    printf("Node %p\n", node);
-    /*while(1){
-        Node* prev = node->prev;
-        if(!prev) break;
-        printf("Grappled root to %p\n", prev);
-        node = prev;
-    }*/
-    root = node;
+    roots.push(node);
+    return node;
+}
+
+/*
+ *  Pops and returns the root of the current block
+ */
+extern "C" Node* getRoot()
+{
+    Node* ret = roots.top();
+    roots.pop();
+    return ret;
 }
 
 extern "C" Node* setNext(Node* cur, Node* nxt)
@@ -30,7 +37,7 @@ extern "C" Node* setNext(Node* cur, Node* nxt)
     cur->next = nxt;
     nxt->prev = cur;
     printf("Setting %p's next to %p\n", cur, nxt);
-    return cur;
+    return nxt;
 }
 
 extern "C" Node* mkIntLitNode(char* s)

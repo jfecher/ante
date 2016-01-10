@@ -7,7 +7,8 @@ typedef struct{} Node;
 extern char* lextxt;
 
 Node* getRootNode(void);
-void setRoot(Node* root);
+Node* setRoot(Node* root);
+Node* getRoot(void);
 Node* setNext(Node* cur, Node* nxt);
 
 Node* mkIntLitNode(char* s);
