@@ -30,8 +30,8 @@ import stuff()
 
 `
         Variables
-    Variables are declared with any modifiers (such as dyn to indicate a
-    dynamic typing) followed by the keyword let and the variables name as
+    Variables are declared with any modifiers (such as pub to indicate a
+    public visibility) followed by the keyword let and the variables name as
     an identifier.  It is important to note that identifiers must begin
     with a lowercase letter, but can contain any amount of capital and lowercase
     letters or numbers afterwards.  The type is inferred from the expression in
@@ -69,6 +69,12 @@ let ex3 = 3i32
 
 ~Or the constant can be typecasted to an i32:
 let ex4 = i32 4
+
+`
+        Literals
+    Ante includes literals of the following types: integer, float, string, and char.
+
+`
 
 `
     Types can also be assigned to variables manually.  Variable's declared
@@ -121,44 +127,60 @@ print(typeof(n) ++ " " ++ n)  ~output: i32 43
     pri        Least inclusive visibility modifier
     
     const      Declares a constant variable.  Unlike
-               a let statement, this assures a space
+               a let binding, this assures a space
                is allocated in memory rather than
                using expression substitution.
-    
+   
+    raw        Declares a pointer or array that is not
+               automatically freed by the compiler.
+
     pathogen   Specifies a variable or function can
                never be evaluated at compile time.
     
-    dyn        Specifies a variable which can change type.
-    
     noinit     Specifies a variable should not have
-               its memory cleared.
+               its memory cleared.  This modifier has
+               no function in a let binding.
 `
-noinit c32[13] myMsg
-myMsg = "Hello World!" ~Char 13 is \0
 
-dyn dynVar = "Test Number"
-dynVar = 32
+~Declare a public u8 array buf that is not automatically freed.
+pub raw u8[] buf = 3, 4, 5
 
-pub dyn noinit u8[] buf = 3, 4, 5
+
+~Declare an array of 100 integers called naturalNumbers and do not
+~initialize it since it is manually initialized in the following loop.
+noinit i32[100] naturalNumbers
+
+for i32 i in range(1, 100)
+    naturalNumbers[i-1] = i
+
+
+~Modifiers in let bindings are declared after the let keyword
+let raw mem = 0x23, 0x32, 0x00
 
 
 `
         Constants
-    Ante includes integer constants, float
-    constants, char constants and string
-    constants.  Integer and float constants
-    assume the type of the smallest type they
-    can fit in.  Integer and float constants
-    can alternatively have their type specified
-    with a suffix.
+    Ante includes integer constants, float constants, char constants
+    and string constants.  Integer and float constants can have their
+    types chosen by the compiler or alternatively can have their type 
+    specified with a suffix.
 `
-print(typeof(0))      ~output: i8
+print(typeof(0))      ~output: i32
 print(typeof(0u8))    ~output: u8
 print(typeof(0i64))   ~output: i64
 print(typeof(255))    ~output: u8
+
+print(typeof(3.2))    ~output: f32
+print(typeof(3.2f64)) ~output: f64
+
 print(typeof("test")) ~output: c8[]
 print(typeof('A'))    ~output: c8
 
+~Integer constants can also be expressed in different bases with the 
+~prefixes 0x 0o and 0b for hexadecimal, octal, and binary respectively.
+assert(0b110 == 9)
+assert(0xFFFF == 65535)
+assert(0o31 == 25)
 
 `
         Operators
@@ -248,19 +270,12 @@ i8, f32 tup = 44, 44.0
 i8[30], c32*[2] anotherTuple = arr, ["This tuple contains", "two arrays"]
 
 `
-    This restriction does not apply when making a dynamic variable of course
+    A tuple's type can still be inferred in a let binding:
 `
-dyn dynTuple = 46, "Fourty-six", 46.0
+let immutTuple = 46, "Fourty-six", 46.0
 
 ~A pointer to a tuple
 (i32, i32)* tupPtr = &(0, 0)
-
-`
-    When a tuple is printed, each of its values are individually printed, with
-    parenthesis enclosing them all.
-`
-print(dynTuple)
-~output: (46, Fourty-six, 46)
 
 `
         Functions
@@ -426,45 +441,6 @@ for f32 n in arr
     total += n
 
 `
-        Ranges
-    Ranges are created by any of the four range operators: .. ^. .^ and ^^
-    Each of these operators differ in their exclusivity.  Since they can be 
-    used in expressions, they are often very useful, particularly in for loops.
-`
-
-~Print 1 to 10 inclusive
-for i32 i in 1..10
-    print(i)
-
-~print all odd numbers in the range of 1-19
-for i32 i in 2*(1..10)-1
-    print(i)
-
-~To double the range without also doubling the step, just double the endpoint
-~print all numbers from 1-20 inclusive
-for i32 i in 1 .. 2*10 
-    print(i)
-
-~Loop through each index in the array
-for i32 i in 0 .^ size(array)
-    print(array[i])
-
-`
-    .. inclusive range
-    .^ exclusive endpoint
-    ^. exclusive startpoint
-    ^^ exclusive range
-`
-
-i32[10] naturalNums
-
-range r = 0 .^ 10
-
-for i32 i in r
-    naturalNums[i] = i+1
-
-
-`
         -> and ;;
     -> and ;; can be used to manually insert indent and unindent tokens
     respectively.  -> is commonly used in single line blocks, but ;; is much
@@ -606,7 +582,7 @@ Person john = Person.init(44, "electrician", "John")
 john.printInfo() ~output: John is 44 years old and is a(n) electrician
 
 `
-        Modifiers
+        Modifiers in data declarations
     Modifiers modify the behaviour of a particular instance of a variable, and 
     are listed before its type.  The visibility modifiers pub, pro, and pri are 
     short for public, protected, and private respectively.  Pri variables can only
@@ -663,7 +639,7 @@ data Statistics
 ~For functions, the where keyword always comes at the end of the list of parameters.
 ~where statements are evaluated at compile time whenever possible.  If the expression after
 ~where evaluates to false, an error is thrown.
-const c32[][] actions = "walk", "talk", "stand"
+let actions = "walk", "talk", "stand"
 
 c32[] getAction: u8 action  where action >= 0 && action <= 3
     return actions[action]
@@ -678,7 +654,7 @@ f64 calculateForce: f64 m, f64 a
     return m*a
 
 ~and this is its equivilent using where
-f64 calculateForce: f64 m, f64 a  where m >= 0
+f64 calculateForce: f64 m a  where m >= 0
     return m*a
 
 calculateForce(-54, 2)
@@ -693,24 +669,36 @@ which was not met for input value m = -54
 `
         Generic Functions
     Generic Functions can be a powerfull tool to recompile a function for a given
-    argument (usually a type) during compile time.  Generic parameters are specified
-    between < and > after the function's name.
+    argument (usually a type) during compile time.  These functions are expressed
+    with the use of type variables.  Unlike user types which must begin with an
+    uppercase letter, type variables are variables and thus must begin with a
+    lowercase letter.  Once declared, a type variable can be used until it
+    falls out of scope.
 `
-~Generics can be explicit
-bool greater<type T>: T t1, T t2
-    return t1 > t2
+~Create a function that takes in two variables, obj1 and obj2, of some type t
+~and returns true if the first is greater than the second.
+bool greater: t obj1 obj2
+    return obj1 > obj2
 
-~Or implicit and raise an error if the given parameter is not valid.
-bool cmp<T>: T t1, T t2
-    if t1 < t2 -> return -1
-    return t1 > t2
+~This function will fail to compile if they are called with variables of a type
+~That do not have < and > implemented.
+bool cmp: t v1 v2
+    if v1 < v2 -> return -1
+    return v1 > v2
 
 cmp(3, 4) ~valid
-cmp((1, 2, 3), (4, 5, 6)) ~invalid: tuple i32[3] type is not valid for operator <
-cmp(3, "three") ~invalid: types must be the same for function cmp
+~cmp(3, "three") ~invalid: types must be the same for function cmp
 
 
-~The syntax for type specifications in a class is somewhat similar.
+~Each of the above functions assert that the two variables passed have the same type,
+~and have > implemented to return a bool.  This may not always be the case if the user
+~defines the operator to return a different type or overloads the operator function for
+~two different types.  Here is a more general definition that takes this into account.
+gen add: t1 a, t2 b
+    return a + b
+
+
+~The syntax for type specifications in a class is to surround them in < and >.
 ~In the Angle class, each time it is initialized, a bool is specified as true if the
 ~angle is in radians, false otherwise.  This determines how Angle is compiled and
 ~cannot be changed after initialization.
@@ -719,10 +707,10 @@ data Angle<bool isRadians>
 
     if isRadians
         u8 getQuadrant: self
-            return angle / (3.14159265 / 4) % 4 + 1
+            return self.angle / (3.14159265 / 4) % 4 + 1
     else
         u8 getQuadrant: self
-            return angle / 90 % 4 + 1
+            return self.angle / 90 % 4 + 1
 ~usage:
 Angle<true> a1 = 3.14159265 * 2 / 3
 Angle<false> a2 = 120
@@ -740,37 +728,36 @@ assert(a1.getQuadrent() == a2.getQuadrent())
 
 
 `
-    To use type specifications as generics, simply specify a type as a specification.
+    To have a data structure with a member of variable type, type variables can also
+    be used.
+
+    NOTE: Ante implements smart pointers by default, so this class is meant to show
+          how one could be implemented without this feature (eg. if it disabled).
 `
-data MySmartPtr<type T>
-    T* rawPtr
-    bool owner
+data MySmartPtr : Clone
+    t* rawPtr
+    pri u16* refCount
 
     void op("new"): T val
         rawPtr = alloc(val)
-        owner = true
+        refCount = new 0u16
 
     void op("drop"):
-        if owner
+        if *refCount == 0
+            free(refCount)
             free(rawPtr)
+        else
+            *refCount -= 1
 
-    MySmartPtr<T> trait("clone"): self
-        MySmartPtr<T> clone = self
-        clone.owner = false
+    ~Required by Clone trait
+    MySmartPtr clone: self
+        let clone = MySmartPtr(rawPtr, refCount)
+        self.*rawPtr += 1
         return clone
 
-    ~Note that to avoid ambiguity when overloading the unary * operator,
-    ~deref can be used as the parameter for the op function.  If "*" is
-    ~used, the only factor differentiating it from the binary * is that
-    ~the unary * function does not take any parameters.
-    T op("deref"):
-        return *rawPtr
-
-    T** op("&"):
-        return &rawPtr
 
 ~where can also be used to check the type specification
-data ChessPiece<String piece> where searchFor(piece, ["pawn", "knight", "king"]) != -1
+data ChessPiece<String piece> where searchFor(piece, ["pawn", "knight", "king"]) != None
     u8 x
     u8 y
     
@@ -874,17 +861,17 @@ impl i32, i32
         self[0] = self[1]
         self[1] = tmp
 
-trait Drawable<S>
-    void draw: self*, S surface
+trait Drawable<type s>
+    void draw: self*, s surface
     
     void clear: self*
 
     void useColor: u32 r g b
 
-    void useSurface: self*, S surface
+    void useSurface: self*, s surface
         self.surface = surface
 
-    S getSurface: self*
+    s getSurface: self*
         return self.surface
 
 i32, i32 point = (3, 4).swap()
@@ -1030,15 +1017,16 @@ EvenNumbers evenNumber = EvenNumbers.Twelve
 
 `
         Pointers
-    Pointers are created by adding an * after the datatype.
-    Since pointers are considered part of the datatype, the
-    syntax [type] *[name] is not valid.
+    Pointers are created by adding an * directly after the datatype,
+    without any whitespace.  Pointers are smart pointers by default and
+    will be automatically freed.  If a raw pointer is wanted, it can be
+    created with the raw modifier.
 `
 
 
-i32 five = 5
-i32* ptrToFive = &five
-~The unary & operator gets the location of the value 5
+let five = 5
+let ptrToFive = &five
+~The unary & operator gets the location of the value 5, which is on the stack in this case.
 
 ~The new keyword automatically allocates data for a class or struct and calls its
 ~constructor if it has one.
@@ -1049,30 +1037,11 @@ Card* tod = new Card(3, Suit.Diamonds)
 Card* tod = malloc(sizeof(Card))
 *tod = Card(3, Suit.Diamonds)
 
-~In addition to the malloc function from the c library, there is the alloc
-~function which can fully allocate a pointer, and set it equal to a value.
-Card* foh = alloc(Card(5, Suit.Hearts))
-
-~Allocate example with size sizeof(5) and initialize it to the value 5
-u8* example = alloc(5)
+~Example of a raw pointer to the u8 value 5.
+raw u8* example = new 5u8
 
 ~Raw pointers must be manually freed with the free function
-free(ptrToFive)
-free(tod)
-free(foh)
-
-~For this reason, it is reccomended to instead use the ptr class which
-~Has every relevant operator properly overloaded.
-~The ptr class is automatically freed when it goes out of scope, and
-~keeps track of the amount of references with little overhead.
-
-u8 byte = 255
-ptr<i32> pByte = ptr(new byte)
-
-ptr<i32> pByte2 = ptr(new pByte)
-pByte2 = 128
-
-print(*pByte)
+free(example)
 
 ~Pointers are also used to create strings as char arrays
 ~Since there are multiple sizes of chars, the dfeault
@@ -1152,9 +1121,10 @@ assert(ptrStr[0] == arrStr[0])
 `
 impl c32[]
     void reverse: self, u32 len
-        c32[] rev = malloc((len+1) * 4)
-        for u32 i in len ^. 0
-            rev[i] = this[len-i-1]
+        raw c32[] rev = malloc((len+1) * sizeof(c32))
+        for u32 i in range(len-1, 0)
+            rev[i] = self[len-i-1]
+        rev[len] = '\0'
         self = rev
 
 arrStr.reverse() ~valid
@@ -1204,28 +1174,28 @@ assert(doOperation(fnPtr) == 1.5)
 
 `
 
-~declare a type str that can be a char pointer of any size
-data str -> c8* | c32*
+~declare a type str that can be a char array of any size
+data Str -> c8[] | c32[]
 
 ~declare a type coord that can be an integer or float tuple
 ~NOTE: the precedence of | is greater than that of ,
-data coord -> (i32, i32) | (f64, f64)
+data Coord -> (i32, i32) | (f64, f64)
 
-data Maybe<T>
-    T | enum -> None
+data Maybe<type t>
+    t | enum -> None
 
 ~declare a list type that is a tuple with two indices, the first
 ~being the value type, and the second being the next List node.
-data tList<type T> -> T, Maybe<List<T>*>
+data TList -> t, Maybe<List<T>*>
 
 ~alternatively, type declarations can name each member of the
 ~tuple, mimicking a struct.
-data List<type T>
-    T val
-    Maybe<List<T>*> next
+data List<type t>
+    t val
+    Maybe<List<t>*> next
 
-data Vec<T>
-    T[] mem
+data Vec<type T>
+    t[] mem
     u32 len
     u32 cap
 
@@ -1239,12 +1209,12 @@ List<u8> numsList = 1, &(2, &(3, None)))
     backslash can be used in any expression or statement
     to tell the lexer to ignore the newline.
 `
-data num -> i8  | i16 | i32 | i64 \
+data Num -> i8  | i16 | i32 | i64 \
           | u8  | u16 | u32 | u64 \
           | f32 | f64
 
 
-data int -> i8  \
+data Int -> i8  \
           | i16 \
           | i32 \
           | i64
@@ -1259,8 +1229,8 @@ data int -> i8  \
     is not changed.
 `
 data MyErr : Error
-    c32* desc
-    c32* detail
+    c32[] desc
+    c32[] detail
     E* cause
 
     ~required by Error trait
@@ -1268,7 +1238,7 @@ data MyErr : Error
         return err.desc, err.detail, err.cause
 
     ~required by Error trait
-    c32* desc: self*
+    c32[] desc: self*
         return self.desc
 
     ~required by Error trait
@@ -1276,7 +1246,7 @@ data MyErr : Error
         return self.cause
 
     ~required by Error trait
-    c32* detail: self*
+    c32[] detail: self*
         return self.detail
 
 
@@ -1289,7 +1259,7 @@ i32|MyErr errFunc: i32 a b, (String|StrErr)(i32) fn
     openFile("test")?.write("Just a test")
 
     ~ ? can also be chained
-    Parser.init()?.parseInt("32")?.map(fn)?.show()
+    Parser.init()?.parseI32("32")?.map(fn)?.show()
 
 
 `
