@@ -1,10 +1,13 @@
 %{
+#ifndef AN_PARSER
+#define AN_PARSER
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <tokens.h>
 #include <ptree.h>
 
-extern int yylex();
+extern int yylex(...);
 
 void yyerror(const char *msg);
 
@@ -12,6 +15,7 @@ void yyerror(const char *msg);
 #define YYERROR_VERBOSE
 
 %}
+
 
 %token Ident UserType
 
@@ -189,10 +193,10 @@ usertype_list: usertype_list ',' usertype
 generic: '<' usertype_list '>'
        ;
 
-data_decl: modifier_list Data usertype type_decl_block         {$$ = mkVarNode("TEMP");}
-         | modifier_list Data usertype generic type_decl_block {$$ = mkVarNode("TEMP");}
-         | Data usertype type_decl_block                       {$$ = mkVarNode("TEMP");}
-         | Data usertype generic type_decl_block               {$$ = mkVarNode("TEMP");}
+data_decl: modifier_list Data usertype type_decl_block         {$$ = mkVarNode((char*)"TEMP");}
+         | modifier_list Data usertype generic type_decl_block {$$ = mkVarNode((char*)"TEMP");}
+         | Data usertype type_decl_block                       {$$ = mkVarNode((char*)"TEMP");}
+         | Data usertype generic type_decl_block               {$$ = mkVarNode((char*)"TEMP");}
          ;
 
 type_decl: type_expr ident
@@ -219,10 +223,10 @@ val_init_list: val_init_list ',' usertype
 enum_block: Indent val_init_list Unindent
           ;
 
-enum_decl: modifier_list Enum usertype enum_block  {$$ = mkVarNode("TODO: enum_decl node");}
-         | Enum usertype enum_block                {$$ = mkVarNode("TODO: enum_decl node");}
-         | modifier_list Enum enum_block           {$$ = mkVarNode("TODO: enum_decl node");}
-         | Enum enum_block                         {$$ = mkVarNode("TODO: enum_decl node");}
+enum_decl: modifier_list Enum usertype enum_block  {$$ = mkVarNode((char*)"TODO: enum_decl node");}
+         | Enum usertype enum_block                {$$ = mkVarNode((char*)"TODO: enum_decl node");}
+         | modifier_list Enum enum_block           {$$ = mkVarNode((char*)"TODO: enum_decl node");}
+         | Enum enum_block                         {$$ = mkVarNode((char*)"TODO: enum_decl node");}
          ;
 
 block: Indent stmt_list Unindent {$$ = getRoot();}
@@ -236,11 +240,11 @@ maybe_params: params {$$ = $1;}
             | %empty {$$ = NULL;}
             ;
 
-fn_decl: decl_prepend ident ':' maybe_params block {printf("1: %p\n2: %p\n\n", $1, $2); $$ = mkFuncDeclNode((char*)$2, $1, $4, $5);}
+fn_decl: decl_prepend ident ':' maybe_params block {printf("1: %p\n2: %p\n\n", (void*)$1, (void*)$2); $$ = mkFuncDeclNode((char*)$2, $1, $4, $5);}
        | decl_prepend ident '(' maybe_expr ')' ':' maybe_params block {$$ = mkFuncDeclNode((char*)$2, $1, $7, $8);}
        ;
 
-fn_call: ident '(' maybe_expr ')'  %prec '*' {$$ = mkFuncCallNode((char*)$1, $3);}
+fn_call: ident '(' maybe_expr ')' {$$ = mkFuncCallNode((char*)$1, $3);}
        ;
 
 ret_stmt: Return expr {$$ = mkRetNode($2);}
@@ -261,13 +265,13 @@ maybe_elif_list: elif_list
 if_stmt: If expr block maybe_elif_list maybe_else {$$ = mkIfNode($2, $3);}
        ;
 
-while_loop: While expr block {$$ = mkVarNode("TODO: while_loop node");}
+while_loop: While expr block {$$ = mkVarNode((char*)"TODO: while_loop node");}
           ;
 
-do_while_loop: Do block While expr {$$ = mkVarNode("TODO: do_while_loop node");}
+do_while_loop: Do block While expr {$$ = mkVarNode((char*)"TODO: do_while_loop node");}
              ;
 
-for_loop: For var_decl In expr block {$$ = mkVarNode("TODO: for_loop node");}
+for_loop: For var_decl In expr block {$$ = mkVarNode((char*)"TODO: for_loop node");}
         ;
 
 var: ident '[' expr ']'  {$$ = $1;} /*TODO*/
@@ -288,31 +292,32 @@ maybe_expr: expr   {$$ = $1;}
           | %empty {$$ = NULL;}
           ;
 
-expr: expr '+' expr     {$$ = mkVarNode("TODO: expr node");}
-    | expr '-' expr     {$$ = mkVarNode("TODO: expr node");}
-    | expr '*' expr     {$$ = mkVarNode("TODO: expr node");}
-    | expr '/' expr     {$$ = mkVarNode("TODO: expr node");}
-    | expr '%' expr     {$$ = mkVarNode("TODO: expr node");}
-    | expr '<' expr     {$$ = mkVarNode("TODO: expr node");}
-    | expr '>' expr     {$$ = mkVarNode("TODO: expr node");}
-    | expr '^' expr     {$$ = mkVarNode("TODO: expr node");}
-    | expr '.' expr     {$$ = mkVarNode("TODO: expr node");}
-    | expr Eq expr      {$$ = mkVarNode("TODO: expr node");}
-    | expr NotEq expr   {$$ = mkVarNode("TODO: expr node");}
-    | expr GrtrEq expr  {$$ = mkVarNode("TODO: expr node");}
-    | expr LesrEq expr  {$$ = mkVarNode("TODO: expr node");}
-    | expr Or expr      {$$ = mkVarNode("TODO: expr node");}
-    | expr And expr     {$$ = mkVarNode("TODO: expr node");}
-    | expr Range expr   {$$ = mkVarNode("TODO: expr node");}
-    | expr RangeEX expr {$$ = mkVarNode("TODO: expr node");}
-    | expr RangeBX expr {$$ = mkVarNode("TODO: expr node");}
-    | expr RangeX expr  {$$ = mkVarNode("TODO: expr node");}
+expr: expr '+' expr     {$$ = mkVarNode((char*)"TODO: expr node");}
+    | expr '-' expr     {$$ = mkVarNode((char*)"TODO: expr node");}
+    | expr '*' expr     {$$ = mkVarNode((char*)"TODO: expr node");}
+    | expr '/' expr     {$$ = mkVarNode((char*)"TODO: expr node");}
+    | expr '%' expr     {$$ = mkVarNode((char*)"TODO: expr node");}
+    | expr '<' expr     {$$ = mkVarNode((char*)"TODO: expr node");}
+    | expr '>' expr     {$$ = mkVarNode((char*)"TODO: expr node");}
+    | expr '^' expr     {$$ = mkVarNode((char*)"TODO: expr node");}
+    | expr '.' expr     {$$ = mkVarNode((char*)"TODO: expr node");}
+    | expr Eq expr      {$$ = mkVarNode((char*)"TODO: expr node");}
+    | expr NotEq expr   {$$ = mkVarNode((char*)"TODO: expr node");}
+    | expr GrtrEq expr  {$$ = mkVarNode((char*)"TODO: expr node");}
+    | expr LesrEq expr  {$$ = mkVarNode((char*)"TODO: expr node");}
+    | expr Or expr      {$$ = mkVarNode((char*)"TODO: expr node");}
+    | expr And expr     {$$ = mkVarNode((char*)"TODO: expr node");}
+    | expr Range expr   {$$ = mkVarNode((char*)"TODO: expr node");}
+    | expr RangeEX expr {$$ = mkVarNode((char*)"TODO: expr node");}
+    | expr RangeBX expr {$$ = mkVarNode((char*)"TODO: expr node");}
+    | expr RangeX expr  {$$ = mkVarNode((char*)"TODO: expr node");}
     | val               {$$ = $1;}
     ;
 
 %%
 
 void yyerror(const char *s){
-    fprintf(stderr, "%s\nerrtok = %d\n", s, yychar);
+    fprintf(stderr, "%s\n", s);
 }
 
+#endif

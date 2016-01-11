@@ -1,7 +1,7 @@
 #ifndef PTREE_H
 #define PTREE_H
 
-typedef struct{} Node;
+#include "parser.h"
 
 //defined in lexer.cpp
 extern char* lextxt;

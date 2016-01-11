@@ -30,7 +30,7 @@ int main(int argc, char *argv[]){
             while(n){
                 cout << "\nStmt #" << ++i << endl;
                 n->print();
-                printf("Addr = %p\n", n);
+                printf("Addr = %p\n", (void*)n);
                 n = n->next;
             }
         }else{

@@ -163,7 +163,7 @@ void ante::lexer::init(const char* file)
     cscope = 0;
 }
 
-extern "C" int yylex(...)
+int yylex(...)
 {
     return ante::lexer::next();
 }

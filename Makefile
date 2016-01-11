@@ -2,7 +2,7 @@ vpath %.c src
 vpath %.h include
 vpath %.d obj
 
-WARNINGS  := -Wall
+WARNINGS  := -Wall -Wpedantic
 LLVMFLAGS := `llvm-config --cppflags --libs all --ldflags --system-libs`
 CPPFLAGS  := -g -O2 -std=c++11 $(WARNINGS) $(LLVMFLAGS)
 YACCFLAGS := -Lc -osrc/parser.c
@@ -16,11 +16,11 @@ DEPFILES := $(OBJFILES:.o=.d)
 .PHONY: ante new clean
 .DEFAULT: ante
 
-ante: $(OBJFILES) obj/parser.o
-	@echo Linking...                # | do not move!
-	@								# | for some reason llvm requires
-	@								# | its flags to be right before the -o
-	@								# V and after each object file
+ante: obj/parser.o $(OBJFILES)
+	@echo Linking...               # | do not move!
+	@							   # | for some reason llvm requires
+	@						       # | its flags to be right before the -o
+	@							   # V and after each object file
 	@$(CXX) $(OBJFILES) obj/parser.o $(CPPFLAGS) -o ante
 
 new: clean ante
@@ -40,7 +40,7 @@ obj/%.o: src/%.cpp Makefile | obj
 obj/parser.o: src/syntax.y Makefile
 	@echo Generating parser...
 	@$(YACC) $(YACCFLAGS) src/syntax.y
-	@$(CC) -g -O2 -MMD -MP -Iinclude -c src/parser.c -o $@
+	@$(CXX) $(CPPFLAGS) -MMD -MP -Iinclude -c src/parser.c -o $@
 
 clean:
 	-@$(RM) obj/*.o obj/*.d ante
