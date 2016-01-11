@@ -5,10 +5,19 @@ A compiled, optionally typed language
 * Ante can either compile normally, or function as a JIT.
 * Ante is optionally typed
 ```go
-dyn myVar = 32    ~create a dynamic variable myVar, and give it the value 32  
-myVar = "Test 1"  ~set myVar to equal the string "Test 1" 
+~Static typing:
 i32 i = 55        ~create i, an integer
 i = "Test 2"      ~This line triggers a compile-time error since i has a static typing
+
+~Let bindings:
+let t = 0
+~Note: t is immutable
+
+~Dynamic typing:
+dyn myVar = 32    ~create a dynamic variable myVar, and give it the value 32
+myVar = "Test 1"  ~set myVar to equal the string "Test 1"
+
+
 ```
 * Spaces are significant after newlines, and indentation is required
 ```go
@@ -23,13 +32,12 @@ or user specified functions, and necessary constructs are compiled into the bina
 data Point
     pri i32 x y
 
-    ~In the init function, instance data can be automatically set equal to
-    ~parameters sharing the same identifier
-    void _init: i32 x, i32 y
+    void new: i32 x, i32 y
+        return Point (x, y)
 
-    void scale: i32 sx, i32 sy
-        x *= sx
-        y *= sy
+    void scale: self*, i32 sx sy
+        self.x *= sx
+        self.y *= sy
 
     i32 getx:
         return x
