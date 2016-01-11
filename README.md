@@ -8,7 +8,7 @@ A compiled, optionally typed language
 dyn myVar = 32    ~create a dynamic variable myVar, and give it the value 32  
 myVar = "Test 1"  ~set myVar to equal the string "Test 1" 
 i32 i = 55        ~create i, an integer
-i = "Test 2"      ~This line triggers a compile-time error since i has a static typing  
+i = "Test 2"      ~This line triggers a compile-time error since i has a static typing
 ```
 * Spaces are significant after newlines, and indentation is required
 ```go
@@ -20,9 +20,8 @@ else
 * Code is evaluated, by default, at compile time.  Only functions producing output
 or user specified functions, and necessary constructs are compiled into the binary.
 ```go
-class Point
-    i32 x
-    i32 y
+data Point
+    pri i32 x y
 
     ~In the init function, instance data can be automatically set equal to
     ~parameters sharing the same identifier
