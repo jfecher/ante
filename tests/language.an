@@ -3,15 +3,18 @@
     functional, imperative, and object oriented paradigms.  Each 
     line of code is a statement ending in a newline character.  Expressions 
     such as 3 * (4 + 5) may be part of a statement, but are not valid alone.
-    Whitespace is also significant if it is at the beginning of a line.  Blocks
-    are marked by an increase in indentation, and ended by an unindentation.
-    An indentation is always either four spaces, or a single tab.
+    Whitespace is significant if and only if is at the beginning of a line and
+    precedes a statement.  Blocks are marked by an increase in indentation, 
+    and terminated by a return to the original level (unindent).  An indent is 
+    always four spaces more than the previous indentation level.  To avoid
+    confusion and misalignments in indentation for different tab sizes, tabs
+    are invalid, and cannot constitute any significant whitespace.
 
         Philosophy
     If something can be done compile time, then it should be.  In other words, 
     constant folding should be employed whenever possible.  If a 1500 line 
-    program only produces the output "Hello World" then that will be the only 
-    thing compiled into the binary.
+    program only produces the output "Hello World" every time then that should 
+    be the only thing compiled into the binary.
 `
 
 `
@@ -70,11 +73,6 @@ let ex3 = 3i32
 ~Or the constant can be typecasted to an i32:
 let ex4 = i32 4
 
-`
-        Literals
-    Ante includes literals of the following types: integer, float, string, and char.
-
-`
 
 `
     Types can also be assigned to variables manually.  Variable's declared
@@ -173,8 +171,13 @@ print(typeof(255))    ~output: u8
 print(typeof(3.2))    ~output: f32
 print(typeof(3.2f64)) ~output: f64
 
-print(typeof("test")) ~output: c8[]
-print(typeof('A'))    ~output: c8
+~Unlike integer literals which leave their type up to the compiler,
+~All char and string literals have the type c32 and c32[] by default.
+print(typeof("test")) ~output: c32[]
+print(typeof('A'))    ~output: c32
+
+~c8[] and c8 literals need to be explicitely casted.
+let myC8Str = c8[] "test"
 
 ~Integer constants can also be expressed in different bases with the 
 ~prefixes 0x 0o and 0b for hexadecimal, octal, and binary respectively.
