@@ -181,7 +181,7 @@ let myC8Str = c8[] "test"
 
 ~Integer constants can also be expressed in different bases with the 
 ~prefixes 0x 0o and 0b for hexadecimal, octal, and binary respectively.
-assert(0b110 == 9)
+assert(0b110 == 6)
 assert(0xFFFF == 65535)
 assert(0o31 == 25)
 
@@ -196,11 +196,6 @@ assert(0o31 == 25)
         /  division
         %  remainder
 
-        .. inclusive range
-        ^. exclusive startpoint range
-        .^ exclusive endpoint range
-        ^^ exclusive range
-
         ++ append
 
         <  less than
@@ -211,6 +206,11 @@ assert(0o31 == 25)
         != not equal to
         && logical and
         || logical or
+        &  bitwise and
+        |  bitwise or (or a type-expr or)
+        ^  bitwise xor
+        << bitwise left-shift
+        >> bitwise right-shift
 
     unary:
         -  negative
