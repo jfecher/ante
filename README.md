@@ -13,11 +13,6 @@ i = "Test 2"      ~This line triggers a compile-time error since i has a static 
 let t = 0
 ~Note: t is immutable
 
-~Dynamic typing:
-dyn myVar = 32    ~create a dynamic variable myVar, and give it the value 32
-myVar = "Test 1"  ~set myVar to equal the string "Test 1"
-
-
 ```
 * Spaces are significant after newlines, and indentation is required
 ```go
