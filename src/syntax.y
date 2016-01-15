@@ -116,16 +116,16 @@ stmt: var_decl      {$$ = $1;}
 ident: Ident {$$ = (Node*)lextxt;}
      ;
 
-usertype: UserType  %prec UserType {$$ = (Node*)lextxt;}
+usertype: UserType {$$ = (Node*)lextxt;}
         ;
 
-intlit: IntLit  %prec IntLit {$$ = mkIntLitNode(lextxt);}
+intlit: IntLit {$$ = mkIntLitNode(lextxt);}
       ;
 
-fltlit: FltLit  %prec FltLit {$$ = mkFltLitNode(lextxt);}
+fltlit: FltLit {$$ = mkFltLitNode(lextxt);}
       ;
 
-strlit: StrLit  %prec StrLit {$$ = mkStrLitNode(lextxt);}
+strlit: StrLit {$$ = mkStrLitNode(lextxt);}
       ;
 
 lit_type: I8       {$$ = mkTypeNode(Tok_I8,  NULL);}

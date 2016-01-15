@@ -18,7 +18,8 @@ enum ParseErr{
 /* Base class for all nodes */
 class Node{
     public:
-        Node *next, *prev, *parent;
+        unique_ptr<Node> next;
+        Node *prev;
         virtual void print(void) = 0;
         virtual void compile(void) = 0;
         virtual void exec(void) = 0;
@@ -30,7 +31,7 @@ class Node{
  */
 class ParentNode : public Node{
     public:
-        Node* child;
+        unique_ptr<Node> child;
 
         /*
          * The body should always be known when a
@@ -70,8 +71,7 @@ class BoolLitNode : public Node{
 class BinOpNode : public Node{
     public:
         int op;
-        Node *lval, *rval;
-        ~BinOpNode(){ free(lval); free(rval); }
+        unique_ptr<Node> lval, rval;
         void compile(void);
         void exec(void);
         void print(void);

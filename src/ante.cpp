@@ -31,7 +31,7 @@ int main(int argc, char *argv[]){
                 cout << "\nStmt #" << ++i << endl;
                 n->print();
                 printf("Addr = %p\n", (void*)n);
-                n = n->next;
+                n = n->next.get();
             }
         }else{
             cout << "Ante: argument '" << argv[1] << "' was not recognized.\n";

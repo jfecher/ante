@@ -13,8 +13,6 @@ Node* ante::parser::getRootNode()
     return roots.top();
 }
 
-#define RETURN_NODE(t, p) return new t p;
-
 /*
  *  Saves the root of a new block and returns it.
  */
@@ -36,83 +34,82 @@ Node* getRoot()
 
 Node* setNext(Node* cur, Node* nxt)
 {
-    cur->next = nxt;
+    cur->next.reset(nxt);
     nxt->prev = cur;
-    printf("Setting %p's next to %p\n", (void*)cur, (void*)nxt);
     return nxt;
 }
 
 Node* mkIntLitNode(char* s)
 {
-    RETURN_NODE(IntLitNode, (s));
+    return new IntLitNode(s);
 }
 
 Node* mkFltLitNode(char* s)
 {
-    RETURN_NODE(FltLitNode, (s));
+    return new FltLitNode(s);
 }
 
 Node* mkStrLitNode(char* s)
 {
-    RETURN_NODE(StrLitNode, (s));
+    return new StrLitNode(s);
 }
 
 Node* mkBoolLitNode(char b)
 {
-    RETURN_NODE(BoolLitNode, (b));
+    return new BoolLitNode(b);
 }
 
 Node* mkTypeNode(int type, char* typeName)
 {
-    RETURN_NODE(TypeNode, (type, typeName));
+    return new TypeNode(type, typeName);
 }
 
 Node* mkBinOpNode(int op, Node* l, Node* r)
 {
-    RETURN_NODE(BinOpNode, (op, l, r));
+    return new BinOpNode(op, l, r);
 }
 
 Node* mkRetNode(Node* expr)
 {
-    RETURN_NODE(RetNode, (expr));
+    return new RetNode(expr);
 }
 
 Node* mkNamedValNode(char* s, Node* tExpr)
 {
-    RETURN_NODE(NamedValNode, (s, tExpr));
+    return new NamedValNode(s, tExpr);
 }
 
 Node* mkFuncCallNode(char* s, Node* p)
 {
-    RETURN_NODE(FuncCallNode, (s, p));
+    return new FuncCallNode(s, p);
 }
 
 Node* mkVarNode(char* s)
 {
-    RETURN_NODE(VarNode, (s));
+    return new VarNode(s);
 }
 
 Node* mkVarDeclNode(char* s, Node* tExpr, Node* expr)
 {
-    RETURN_NODE(VarDeclNode, (s, tExpr, expr));
+    return new VarDeclNode(s, tExpr, expr);
 }
 
 Node* mkVarAssignNode(char* s, Node* expr)
 {
-    RETURN_NODE(VarAssignNode, (s, expr));
+    return new VarAssignNode(s, expr);
 }
 
 ParentNode* mkIfNode(Node* con, Node* body)
 {
-    RETURN_NODE(IfNode, (con, body));
+    return new IfNode(con, body);
 }
 
 ParentNode* mkFuncDeclNode(char* s, Node* tExpr, Node* p, Node* b)
 {
-    RETURN_NODE(FuncDeclNode, (s, tExpr, p, b));
+    return new FuncDeclNode(s, tExpr, p, b);
 }
 
 ParentNode* mkDataDeclNode(char* s, Node* b)
 {
-    RETURN_NODE(DataDeclNode, (s, b));
+    return new DataDeclNode(s, b);
 }
