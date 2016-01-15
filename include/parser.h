@@ -28,7 +28,7 @@ class Node{
  * Class for all nodes that can contain child statement nodes, 
  * if statements, function declarations, etc 
  */
-class ParentNode{
+class ParentNode : public Node{
     public:
         Node* child;
 
@@ -37,7 +37,7 @@ class ParentNode{
          * parent node is initialized, so it is required
          * in the constructor (unlike next/prev/parent)
          */
-        ParentNode(Node* c) : child(c){}
+        ParentNode(Node* c) : Node(), child(c){}
 };
 
 class IntLitNode : public Node{
@@ -46,7 +46,7 @@ class IntLitNode : public Node{
         void compile(void);
         void exec(void);
         void print(void);
-        IntLitNode(char* s) : val(s){}
+        IntLitNode(char* s) : Node(), val(s){}
 };
 
 class FltLitNode : public Node{
@@ -55,7 +55,7 @@ class FltLitNode : public Node{
         void compile(void);
         void exec(void);
         void print(void);
-        FltLitNode(char* s) : val(s){}
+        FltLitNode(char* s) : Node(), val(s){}
 };
 
 class BoolLitNode : public Node{
@@ -64,7 +64,7 @@ class BoolLitNode : public Node{
         void compile(void);
         void exec(void);
         void print(void);
-        BoolLitNode(char b) : val(b){}
+        BoolLitNode(char b) : Node(), val(b){}
 };
 
 class BinOpNode : public Node{
@@ -75,7 +75,7 @@ class BinOpNode : public Node{
         void compile(void);
         void exec(void);
         void print(void);
-        BinOpNode(int s, Node *lv, Node *rv) : op(s), lval(lv), rval(rv){}
+        BinOpNode(int s, Node *lv, Node *rv) : Node(), op(s), lval(lv), rval(rv){}
 };
 
 class TypeNode : public Node{
@@ -85,7 +85,7 @@ class TypeNode : public Node{
         void compile(void);
         void exec(void);
         void print(void);
-        TypeNode(int ty, char* tName) : type(ty), typeName(tName){}
+        TypeNode(int ty, char* tName) : Node(), type(ty), typeName(tName){}
 };
 
 class RetNode : public Node{
@@ -94,16 +94,7 @@ class RetNode : public Node{
         void compile(void);
         void exec(void);
         void print(void);
-        RetNode(Node* e) : expr(e){}
-};
-
-class IfNode : public ParentNode{
-    public:
-        Node* condition;
-        void compile(void);
-        void exec(void);
-        void print(void);
-        IfNode(Node* n1, Node* body) : ParentNode(body), condition(n1){}
+        RetNode(Node* e) : Node(), expr(e){}
 };
 
 class NamedValNode : public Node{
@@ -113,7 +104,7 @@ class NamedValNode : public Node{
         void compile(void);
         void exec(void);
         void print(void);
-        NamedValNode(char* s, Node* t) : name(s), typeExpr(t){}
+        NamedValNode(char* s, Node* t) : Node(), name(s), typeExpr(t){}
 };
 
 class VarNode : public Node{
@@ -122,7 +113,7 @@ class VarNode : public Node{
         void compile(void);
         void exec(void);
         void print(void);
-        VarNode(char* s) : name(s){}
+        VarNode(char* s) : Node(), name(s){}
 };
 
 class FuncCallNode : public Node{
@@ -132,7 +123,7 @@ class FuncCallNode : public Node{
         void compile(void);
         void exec(void);
         void print(void);
-        FuncCallNode(char* s, Node* p) : name(s), params(p){}
+        FuncCallNode(char* s, Node* p) : Node(), name(s), params(p){}
 };
 
 class StrLitNode : public Node{
@@ -141,7 +132,7 @@ class StrLitNode : public Node{
         void compile(void);
         void exec(void);
         void print(void);
-        StrLitNode(char* s) : val(s){}
+        StrLitNode(char* s) : Node(), val(s){}
 };
 
 class VarDeclNode : public Node{
@@ -152,7 +143,7 @@ class VarDeclNode : public Node{
         void compile(void);
         void exec(void);
         void print(void);
-        VarDeclNode(char* s, Node* t, Node* exp) : name(s), typeExpr(t), expr(exp){}
+        VarDeclNode(char* s, Node* t, Node* exp) : Node(), name(s), typeExpr(t), expr(exp){}
 };
 
 class VarAssignNode : public Node{
@@ -162,7 +153,16 @@ class VarAssignNode : public Node{
         void compile(void);
         void exec(void);
         void print(void);
-        VarAssignNode(char* s, Node* exp) : name(s), expr(exp){}
+        VarAssignNode(char* s, Node* exp) : Node(), name(s), expr(exp){}
+};
+
+class IfNode : public ParentNode{
+    public:
+        Node* condition;
+        void compile(void);
+        void exec(void);
+        void print(void);
+        IfNode(Node* n1, Node* body) : ParentNode(body), condition(n1){}
 };
 
 class FuncDeclNode : public ParentNode{

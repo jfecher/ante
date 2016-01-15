@@ -13,6 +13,8 @@ Node* ante::parser::getRootNode()
     return roots.top();
 }
 
+#define RETURN_NODE(t, p) return new t p;
+
 /*
  *  Saves the root of a new block and returns it.
  */
@@ -42,75 +44,75 @@ Node* setNext(Node* cur, Node* nxt)
 
 Node* mkIntLitNode(char* s)
 {
-    return new IntLitNode(s);
+    RETURN_NODE(IntLitNode, (s));
 }
 
 Node* mkFltLitNode(char* s)
 {
-    return new FltLitNode(s);
+    RETURN_NODE(FltLitNode, (s));
 }
 
 Node* mkStrLitNode(char* s)
 {
-    return new StrLitNode(s);
+    RETURN_NODE(StrLitNode, (s));
 }
 
 Node* mkBoolLitNode(char b)
 {
-    return new BoolLitNode(b);
+    RETURN_NODE(BoolLitNode, (b));
 }
 
 Node* mkTypeNode(int type, char* typeName)
 {
-    return new TypeNode(type, typeName);
+    RETURN_NODE(TypeNode, (type, typeName));
 }
 
 Node* mkBinOpNode(int op, Node* l, Node* r)
 {
-    return new BinOpNode(op, l, r);
+    RETURN_NODE(BinOpNode, (op, l, r));
 }
 
 Node* mkRetNode(Node* expr)
 {
-    return new RetNode(expr);
+    RETURN_NODE(RetNode, (expr));
 }
 
 Node* mkNamedValNode(char* s, Node* tExpr)
 {
-    return new NamedValNode(s, tExpr);
+    RETURN_NODE(NamedValNode, (s, tExpr));
 }
 
 Node* mkFuncCallNode(char* s, Node* p)
 {
-    return new FuncCallNode(s, p);
+    RETURN_NODE(FuncCallNode, (s, p));
 }
 
 Node* mkVarNode(char* s)
 {
-    return new VarNode(s);
+    RETURN_NODE(VarNode, (s));
 }
 
 Node* mkVarDeclNode(char* s, Node* tExpr, Node* expr)
 {
-    return new VarDeclNode(s, tExpr, expr);
+    RETURN_NODE(VarDeclNode, (s, tExpr, expr));
 }
 
 Node* mkVarAssignNode(char* s, Node* expr)
 {
-    return new VarAssignNode(s, expr);
+    RETURN_NODE(VarAssignNode, (s, expr));
 }
 
 ParentNode* mkIfNode(Node* con, Node* body)
 {
-    return new IfNode(con, body);
+    RETURN_NODE(IfNode, (con, body));
 }
 
 ParentNode* mkFuncDeclNode(char* s, Node* tExpr, Node* p, Node* b)
 {
-    return new FuncDeclNode(s, tExpr, p, b);
+    RETURN_NODE(FuncDeclNode, (s, tExpr, p, b));
 }
 
 ParentNode* mkDataDeclNode(char* s, Node* b)
 {
-    return new DataDeclNode(s, b);
+    RETURN_NODE(DataDeclNode, (s, b));
 }

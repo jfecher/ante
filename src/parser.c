@@ -1894,25 +1894,25 @@ yyreduce:
 
   case 84:
 #line 226 "src/syntax.y" /* yacc.c:1646  */
-    {(yyval) = mkVarNode((char*)"TODO: enum_decl node");}
+    {(yyval) = NULL;}
 #line 1899 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 85:
 #line 227 "src/syntax.y" /* yacc.c:1646  */
-    {(yyval) = mkVarNode((char*)"TODO: enum_decl node");}
+    {(yyval) = NULL;}
 #line 1905 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 86:
 #line 228 "src/syntax.y" /* yacc.c:1646  */
-    {(yyval) = mkVarNode((char*)"TODO: enum_decl node");}
+    {(yyval) = NULL;}
 #line 1911 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 87:
 #line 229 "src/syntax.y" /* yacc.c:1646  */
-    {(yyval) = mkVarNode((char*)"TODO: enum_decl node");}
+    {(yyval) = NULL;}
 #line 1917 "src/parser.c" /* yacc.c:1646  */
     break;
 
@@ -1972,234 +1972,258 @@ yyreduce:
 
   case 97:
 #line 253 "src/syntax.y" /* yacc.c:1646  */
-    {puts("TODO: else");}
+    {puts("TODO: else"); (yyval) = NULL;}
 #line 1977 "src/parser.c" /* yacc.c:1646  */
+    break;
+
+  case 98:
+#line 254 "src/syntax.y" /* yacc.c:1646  */
+    {(yyval) = NULL;}
+#line 1983 "src/parser.c" /* yacc.c:1646  */
+    break;
+
+  case 99:
+#line 257 "src/syntax.y" /* yacc.c:1646  */
+    {(yyval) = NULL;}
+#line 1989 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 100:
 #line 258 "src/syntax.y" /* yacc.c:1646  */
-    {puts("TODO: elif");}
-#line 1983 "src/parser.c" /* yacc.c:1646  */
+    {puts("TODO: elif"); (yyval) = NULL;}
+#line 1995 "src/parser.c" /* yacc.c:1646  */
+    break;
+
+  case 101:
+#line 261 "src/syntax.y" /* yacc.c:1646  */
+    {(yyval) = NULL;}
+#line 2001 "src/parser.c" /* yacc.c:1646  */
+    break;
+
+  case 102:
+#line 262 "src/syntax.y" /* yacc.c:1646  */
+    {(yyval) = NULL;}
+#line 2007 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 103:
 #line 265 "src/syntax.y" /* yacc.c:1646  */
     {(yyval) = mkIfNode((yyvsp[-3]), (yyvsp[-2]));}
-#line 1989 "src/parser.c" /* yacc.c:1646  */
+#line 2013 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 104:
 #line 268 "src/syntax.y" /* yacc.c:1646  */
-    {(yyval) = mkVarNode((char*)"TODO: while_loop node");}
-#line 1995 "src/parser.c" /* yacc.c:1646  */
+    {(yyval) = NULL;}
+#line 2019 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 105:
 #line 271 "src/syntax.y" /* yacc.c:1646  */
-    {(yyval) = mkVarNode((char*)"TODO: do_while_loop node");}
-#line 2001 "src/parser.c" /* yacc.c:1646  */
+    {(yyval) = NULL;}
+#line 2025 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 106:
 #line 274 "src/syntax.y" /* yacc.c:1646  */
-    {(yyval) = mkVarNode((char*)"TODO: for_loop node");}
-#line 2007 "src/parser.c" /* yacc.c:1646  */
+    {(yyval) = NULL;}
+#line 2031 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 107:
 #line 277 "src/syntax.y" /* yacc.c:1646  */
     {(yyval) = (yyvsp[-3]);}
-#line 2013 "src/parser.c" /* yacc.c:1646  */
+#line 2037 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 108:
 #line 278 "src/syntax.y" /* yacc.c:1646  */
     {(yyval) = (yyvsp[0]);}
-#line 2019 "src/parser.c" /* yacc.c:1646  */
+#line 2043 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 109:
 #line 281 "src/syntax.y" /* yacc.c:1646  */
     {(yyval) = (yyvsp[0]);}
-#line 2025 "src/parser.c" /* yacc.c:1646  */
+#line 2049 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 110:
 #line 282 "src/syntax.y" /* yacc.c:1646  */
     {(yyval) = (yyvsp[-1]);}
-#line 2031 "src/parser.c" /* yacc.c:1646  */
+#line 2055 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 111:
 #line 283 "src/syntax.y" /* yacc.c:1646  */
     {(yyval) = (yyvsp[0]);}
-#line 2037 "src/parser.c" /* yacc.c:1646  */
+#line 2061 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 112:
 #line 284 "src/syntax.y" /* yacc.c:1646  */
     {(yyval) = (yyvsp[0]);}
-#line 2043 "src/parser.c" /* yacc.c:1646  */
+#line 2067 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 113:
 #line 285 "src/syntax.y" /* yacc.c:1646  */
     {(yyval) = (yyvsp[0]);}
-#line 2049 "src/parser.c" /* yacc.c:1646  */
+#line 2073 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 114:
 #line 286 "src/syntax.y" /* yacc.c:1646  */
     {(yyval) = (yyvsp[0]);}
-#line 2055 "src/parser.c" /* yacc.c:1646  */
+#line 2079 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 115:
 #line 287 "src/syntax.y" /* yacc.c:1646  */
     {(yyval) = mkBoolLitNode(1);}
-#line 2061 "src/parser.c" /* yacc.c:1646  */
+#line 2085 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 116:
 #line 288 "src/syntax.y" /* yacc.c:1646  */
     {(yyval) = mkBoolLitNode(0);}
-#line 2067 "src/parser.c" /* yacc.c:1646  */
+#line 2091 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 117:
 #line 291 "src/syntax.y" /* yacc.c:1646  */
     {(yyval) = (yyvsp[0]);}
-#line 2073 "src/parser.c" /* yacc.c:1646  */
+#line 2097 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 118:
 #line 292 "src/syntax.y" /* yacc.c:1646  */
     {(yyval) = NULL;}
-#line 2079 "src/parser.c" /* yacc.c:1646  */
+#line 2103 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 119:
 #line 295 "src/syntax.y" /* yacc.c:1646  */
-    {(yyval) = mkVarNode((char*)"TODO: expr node");}
-#line 2085 "src/parser.c" /* yacc.c:1646  */
+    {(yyval) = NULL;}
+#line 2109 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 120:
 #line 296 "src/syntax.y" /* yacc.c:1646  */
-    {(yyval) = mkVarNode((char*)"TODO: expr node");}
-#line 2091 "src/parser.c" /* yacc.c:1646  */
+    {(yyval) = NULL;}
+#line 2115 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 121:
 #line 297 "src/syntax.y" /* yacc.c:1646  */
-    {(yyval) = mkVarNode((char*)"TODO: expr node");}
-#line 2097 "src/parser.c" /* yacc.c:1646  */
+    {(yyval) = NULL;}
+#line 2121 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 122:
 #line 298 "src/syntax.y" /* yacc.c:1646  */
-    {(yyval) = mkVarNode((char*)"TODO: expr node");}
-#line 2103 "src/parser.c" /* yacc.c:1646  */
+    {(yyval) = NULL;}
+#line 2127 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 123:
 #line 299 "src/syntax.y" /* yacc.c:1646  */
-    {(yyval) = mkVarNode((char*)"TODO: expr node");}
-#line 2109 "src/parser.c" /* yacc.c:1646  */
+    {(yyval) = NULL;}
+#line 2133 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 124:
 #line 300 "src/syntax.y" /* yacc.c:1646  */
-    {(yyval) = mkVarNode((char*)"TODO: expr node");}
-#line 2115 "src/parser.c" /* yacc.c:1646  */
+    {(yyval) = NULL;}
+#line 2139 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 125:
 #line 301 "src/syntax.y" /* yacc.c:1646  */
-    {(yyval) = mkVarNode((char*)"TODO: expr node");}
-#line 2121 "src/parser.c" /* yacc.c:1646  */
+    {(yyval) = NULL;}
+#line 2145 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 126:
 #line 302 "src/syntax.y" /* yacc.c:1646  */
-    {(yyval) = mkVarNode((char*)"TODO: expr node");}
-#line 2127 "src/parser.c" /* yacc.c:1646  */
+    {(yyval) = NULL;}
+#line 2151 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 127:
 #line 303 "src/syntax.y" /* yacc.c:1646  */
-    {(yyval) = mkVarNode((char*)"TODO: expr node");}
-#line 2133 "src/parser.c" /* yacc.c:1646  */
+    {(yyval) = NULL;}
+#line 2157 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 128:
 #line 304 "src/syntax.y" /* yacc.c:1646  */
-    {(yyval) = mkVarNode((char*)"TODO: expr node");}
-#line 2139 "src/parser.c" /* yacc.c:1646  */
+    {(yyval) = NULL;}
+#line 2163 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 129:
 #line 305 "src/syntax.y" /* yacc.c:1646  */
-    {(yyval) = mkVarNode((char*)"TODO: expr node");}
-#line 2145 "src/parser.c" /* yacc.c:1646  */
+    {(yyval) = NULL;}
+#line 2169 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 130:
 #line 306 "src/syntax.y" /* yacc.c:1646  */
-    {(yyval) = mkVarNode((char*)"TODO: expr node");}
-#line 2151 "src/parser.c" /* yacc.c:1646  */
+    {(yyval) = NULL;}
+#line 2175 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 131:
 #line 307 "src/syntax.y" /* yacc.c:1646  */
-    {(yyval) = mkVarNode((char*)"TODO: expr node");}
-#line 2157 "src/parser.c" /* yacc.c:1646  */
+    {(yyval) = NULL;}
+#line 2181 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 132:
 #line 308 "src/syntax.y" /* yacc.c:1646  */
-    {(yyval) = mkVarNode((char*)"TODO: expr node");}
-#line 2163 "src/parser.c" /* yacc.c:1646  */
+    {(yyval) = NULL;}
+#line 2187 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 133:
 #line 309 "src/syntax.y" /* yacc.c:1646  */
-    {(yyval) = mkVarNode((char*)"TODO: expr node");}
-#line 2169 "src/parser.c" /* yacc.c:1646  */
+    {(yyval) = NULL;}
+#line 2193 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 134:
 #line 310 "src/syntax.y" /* yacc.c:1646  */
-    {(yyval) = mkVarNode((char*)"TODO: expr node");}
-#line 2175 "src/parser.c" /* yacc.c:1646  */
+    {(yyval) = NULL;}
+#line 2199 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 135:
 #line 311 "src/syntax.y" /* yacc.c:1646  */
-    {(yyval) = mkVarNode((char*)"TODO: expr node");}
-#line 2181 "src/parser.c" /* yacc.c:1646  */
+    {(yyval) = NULL;}
+#line 2205 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 136:
 #line 312 "src/syntax.y" /* yacc.c:1646  */
-    {(yyval) = mkVarNode((char*)"TODO: expr node");}
-#line 2187 "src/parser.c" /* yacc.c:1646  */
+    {(yyval) = NULL;}
+#line 2211 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 137:
 #line 313 "src/syntax.y" /* yacc.c:1646  */
-    {(yyval) = mkVarNode((char*)"TODO: expr node");}
-#line 2193 "src/parser.c" /* yacc.c:1646  */
+    {(yyval) = NULL;}
+#line 2217 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 138:
 #line 314 "src/syntax.y" /* yacc.c:1646  */
     {(yyval) = (yyvsp[0]);}
-#line 2199 "src/parser.c" /* yacc.c:1646  */
+#line 2223 "src/parser.c" /* yacc.c:1646  */
     break;
 
 
-#line 2203 "src/parser.c" /* yacc.c:1646  */
+#line 2227 "src/parser.c" /* yacc.c:1646  */
       default: break;
     }
   /* User semantic actions sometimes alter yychar, and that requires

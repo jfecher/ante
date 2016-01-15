@@ -223,10 +223,10 @@ val_init_list: val_init_list ',' usertype
 enum_block: Indent val_init_list Unindent
           ;
 
-enum_decl: modifier_list Enum usertype enum_block  {$$ = mkVarNode((char*)"TODO: enum_decl node");}
-         | Enum usertype enum_block                {$$ = mkVarNode((char*)"TODO: enum_decl node");}
-         | modifier_list Enum enum_block           {$$ = mkVarNode((char*)"TODO: enum_decl node");}
-         | Enum enum_block                         {$$ = mkVarNode((char*)"TODO: enum_decl node");}
+enum_decl: modifier_list Enum usertype enum_block  {$$ = NULL;}
+         | Enum usertype enum_block                {$$ = NULL;}
+         | modifier_list Enum enum_block           {$$ = NULL;}
+         | Enum enum_block                         {$$ = NULL;}
          ;
 
 block: Indent stmt_list Unindent {$$ = getRoot();}
@@ -250,28 +250,28 @@ fn_call: ident '(' maybe_expr ')' {$$ = mkFuncCallNode((char*)$1, $3);}
 ret_stmt: Return expr {$$ = mkRetNode($2);}
         ;
 
-maybe_else: Else block {puts("TODO: else");}
-          | %empty
+maybe_else: Else block {puts("TODO: else"); $$ = NULL;}
+          | %empty {$$ = NULL;}
           ;
 
-elif_list: elif_list Elif block
-         | Elif block {puts("TODO: elif");}
+elif_list: elif_list Elif block {$$ = NULL;}
+         | Elif block {puts("TODO: elif"); $$ = NULL;}
          ;
 
-maybe_elif_list: elif_list
-               | %empty
+maybe_elif_list: elif_list {$$ = NULL;}
+               | %empty {$$ = NULL;}
                ;
 
 if_stmt: If expr block maybe_elif_list maybe_else {$$ = mkIfNode($2, $3);}
        ;
 
-while_loop: While expr block {$$ = mkVarNode((char*)"TODO: while_loop node");}
+while_loop: While expr block {$$ = NULL;}
           ;
 
-do_while_loop: Do block While expr {$$ = mkVarNode((char*)"TODO: do_while_loop node");}
+do_while_loop: Do block While expr {$$ = NULL;}
              ;
 
-for_loop: For var_decl In expr block {$$ = mkVarNode((char*)"TODO: for_loop node");}
+for_loop: For var_decl In expr block {$$ = NULL;}
         ;
 
 var: ident '[' expr ']'  {$$ = $1;} /*TODO*/
@@ -292,25 +292,25 @@ maybe_expr: expr   {$$ = $1;}
           | %empty {$$ = NULL;}
           ;
 
-expr: expr '+' expr     {$$ = mkVarNode((char*)"TODO: expr node");}
-    | expr '-' expr     {$$ = mkVarNode((char*)"TODO: expr node");}
-    | expr '*' expr     {$$ = mkVarNode((char*)"TODO: expr node");}
-    | expr '/' expr     {$$ = mkVarNode((char*)"TODO: expr node");}
-    | expr '%' expr     {$$ = mkVarNode((char*)"TODO: expr node");}
-    | expr '<' expr     {$$ = mkVarNode((char*)"TODO: expr node");}
-    | expr '>' expr     {$$ = mkVarNode((char*)"TODO: expr node");}
-    | expr '^' expr     {$$ = mkVarNode((char*)"TODO: expr node");}
-    | expr '.' expr     {$$ = mkVarNode((char*)"TODO: expr node");}
-    | expr Eq expr      {$$ = mkVarNode((char*)"TODO: expr node");}
-    | expr NotEq expr   {$$ = mkVarNode((char*)"TODO: expr node");}
-    | expr GrtrEq expr  {$$ = mkVarNode((char*)"TODO: expr node");}
-    | expr LesrEq expr  {$$ = mkVarNode((char*)"TODO: expr node");}
-    | expr Or expr      {$$ = mkVarNode((char*)"TODO: expr node");}
-    | expr And expr     {$$ = mkVarNode((char*)"TODO: expr node");}
-    | expr Range expr   {$$ = mkVarNode((char*)"TODO: expr node");}
-    | expr RangeEX expr {$$ = mkVarNode((char*)"TODO: expr node");}
-    | expr RangeBX expr {$$ = mkVarNode((char*)"TODO: expr node");}
-    | expr RangeX expr  {$$ = mkVarNode((char*)"TODO: expr node");}
+expr: expr '+' expr     {$$ = NULL;}
+    | expr '-' expr     {$$ = NULL;}
+    | expr '*' expr     {$$ = NULL;}
+    | expr '/' expr     {$$ = NULL;}
+    | expr '%' expr     {$$ = NULL;}
+    | expr '<' expr     {$$ = NULL;}
+    | expr '>' expr     {$$ = NULL;}
+    | expr '^' expr     {$$ = NULL;}
+    | expr '.' expr     {$$ = NULL;}
+    | expr Eq expr      {$$ = NULL;}
+    | expr NotEq expr   {$$ = NULL;}
+    | expr GrtrEq expr  {$$ = NULL;}
+    | expr LesrEq expr  {$$ = NULL;}
+    | expr Or expr      {$$ = NULL;}
+    | expr And expr     {$$ = NULL;}
+    | expr Range expr   {$$ = NULL;}
+    | expr RangeEX expr {$$ = NULL;}
+    | expr RangeBX expr {$$ = NULL;}
+    | expr RangeX expr  {$$ = NULL;}
     | val               {$$ = $1;}
     ;
 
