@@ -42,7 +42,7 @@ i32* intPtr = new 5
 let strPtr = new "msg"
 
 ~Declaration of raw pointers is accomplished with the 'raw' modifier:
-raw ptr = malloc(10)
+raw void* ptr = malloc(10)
 
 ~intPtr is automatically freed
 ~voidPtr is automatically freed
