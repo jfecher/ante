@@ -22,7 +22,7 @@ Node* mkFuncCallNode(char* s, Node* p);
 Node* mkVarNode(char* s);
 Node* mkRetNode(Node* expr);
 Node* mkVarDeclNode(char* s, Node* tExpr, Node* expr);
-Node* mkVarAssignNode(char* s, Node* expr);
+Node* mkVarAssignNode(Node* var, Node* expr);
 
 //These 3 actually return a ParentNode* but C doesn't need to know that
 Node* mkIfNode(Node* con, Node* body);

@@ -28,7 +28,6 @@ void yyerror(const char *msg);
 /* operators */
 %token Eq NotEq AddEq SubEq MulEq DivEq GrtrEq LesrEq
 %token Or And
-%token Range RangeBX RangeEX RangeX
 
 /* literals */
 %token True False
@@ -72,7 +71,6 @@ void yyerror(const char *msg);
 %left Or
 %left And     
 %left Eq  NotEq GrtrEq LesrEq '<' '>'
-%left Range RangeBX RangeEX RangeX  
 
 %left '+' '-'
 %left '*' '/' '%'
@@ -128,22 +126,22 @@ fltlit: FltLit {$$ = mkFltLitNode(lextxt);}
 strlit: StrLit {$$ = mkStrLitNode(lextxt);}
       ;
 
-lit_type: I8       {$$ = mkTypeNode(Tok_I8,  NULL);}
-        | I16      {$$ = mkTypeNode(Tok_I16, NULL);}
-        | I32      {$$ = mkTypeNode(Tok_I32, NULL);}
-        | I64      {$$ = mkTypeNode(Tok_I64, NULL);}
-        | U8       {$$ = mkTypeNode(Tok_U8,  NULL);}
-        | U16      {$$ = mkTypeNode(Tok_U16, NULL);}
-        | U32      {$$ = mkTypeNode(Tok_U32, NULL);}
-        | U64      {$$ = mkTypeNode(Tok_U64, NULL);}
-        | Isz      {$$ = mkTypeNode(Tok_Isz, NULL);}
-        | Usz      {$$ = mkTypeNode(Tok_Usz, NULL);}
-        | F32      {$$ = mkTypeNode(Tok_F32, NULL);}
-        | F64      {$$ = mkTypeNode(Tok_F64, NULL);}
-        | C8       {$$ = mkTypeNode(Tok_C8,  NULL);}
-        | C32      {$$ = mkTypeNode(Tok_C32, NULL);}
-        | Bool     {$$ = mkTypeNode(Tok_Bool, NULL);}
-        | Void     {$$ = mkTypeNode(Tok_Void, NULL);}
+lit_type: I8       {$$ = mkTypeNode(Tok_I8,  (char*)"");}
+        | I16      {$$ = mkTypeNode(Tok_I16, (char*)"");}
+        | I32      {$$ = mkTypeNode(Tok_I32, (char*)"");}
+        | I64      {$$ = mkTypeNode(Tok_I64, (char*)"");}
+        | U8       {$$ = mkTypeNode(Tok_U8,  (char*)"");}
+        | U16      {$$ = mkTypeNode(Tok_U16, (char*)"");}
+        | U32      {$$ = mkTypeNode(Tok_U32, (char*)"");}
+        | U64      {$$ = mkTypeNode(Tok_U64, (char*)"");}
+        | Isz      {$$ = mkTypeNode(Tok_Isz, (char*)"");}
+        | Usz      {$$ = mkTypeNode(Tok_Usz, (char*)"");}
+        | F32      {$$ = mkTypeNode(Tok_F32, (char*)"");}
+        | F64      {$$ = mkTypeNode(Tok_F64, (char*)"");}
+        | C8       {$$ = mkTypeNode(Tok_C8,  (char*)"");}
+        | C32      {$$ = mkTypeNode(Tok_C32, (char*)"");}
+        | Bool     {$$ = mkTypeNode(Tok_Bool, (char*)"");}
+        | Void     {$$ = mkTypeNode(Tok_Void, (char*)"");}
         | usertype %prec UserType {$$ = mkTypeNode(Tok_UserType, (char*)$1);}
         | ident    %prec Ident {$$ = mkTypeNode(Tok_Ident, (char*)$1);}
         ;
@@ -183,20 +181,20 @@ var_decl: decl_prepend ident '=' expr  %prec Ident {$$ = mkVarDeclNode((char*)$2
         ;
 
 /* TODO: change arg1 to require node* instead of char* */
-var_assign: var '=' expr {$$ = mkVarAssignNode((char*)$1, $3);}
+var_assign: var '=' expr {$$ = mkVarAssignNode($1, $3);}
           ;
 
-usertype_list: usertype_list ',' usertype
-             | usertype {$$ = $1;}
+usertype_list: usertype_list ',' usertype {$$ = setNext($1, $3);}
+             | usertype {$$ = setRoot($1);}
              ;
 
-generic: '<' usertype_list '>'
+generic: '<' usertype_list '>' {$$ = getRoot();}
        ;
 
-data_decl: modifier_list Data usertype type_decl_block         {$$ = mkVarNode((char*)"TEMP");}
-         | modifier_list Data usertype generic type_decl_block {$$ = mkVarNode((char*)"TEMP");}
-         | Data usertype type_decl_block                       {$$ = mkVarNode((char*)"TEMP");}
-         | Data usertype generic type_decl_block               {$$ = mkVarNode((char*)"TEMP");}
+data_decl: modifier_list Data usertype type_decl_block         {$$ = mkDataDeclNode((char*)$3, $4);}
+         | modifier_list Data usertype generic type_decl_block {$$ = mkDataDeclNode((char*)$3, $5);}
+         | Data usertype type_decl_block                       {$$ = mkDataDeclNode((char*)$2, $3);}
+         | Data usertype generic type_decl_block               {$$ = mkDataDeclNode((char*)$2, $4);}
          ;
 
 type_decl: type_expr ident
@@ -240,7 +238,7 @@ maybe_params: params {$$ = $1;}
             | %empty {$$ = NULL;}
             ;
 
-fn_decl: decl_prepend ident ':' maybe_params block {printf("1: %p\n2: %p\n\n", (void*)$1, (void*)$2); $$ = mkFuncDeclNode((char*)$2, $1, $4, $5);}
+fn_decl: decl_prepend ident ':' maybe_params block {$$ = mkFuncDeclNode((char*)$2, $1, $4, $5);}
        | decl_prepend ident '(' maybe_expr ')' ':' maybe_params block {$$ = mkFuncDeclNode((char*)$2, $1, $7, $8);}
        ;
 
@@ -250,12 +248,12 @@ fn_call: ident '(' maybe_expr ')' {$$ = mkFuncCallNode((char*)$1, $3);}
 ret_stmt: Return expr {$$ = mkRetNode($2);}
         ;
 
-maybe_else: Else block {puts("TODO: else"); $$ = NULL;}
+maybe_else: Else block {$$ = NULL;}
           | %empty {$$ = NULL;}
           ;
 
 elif_list: elif_list Elif block {$$ = NULL;}
-         | Elif block {puts("TODO: elif"); $$ = NULL;}
+         | Elif block {$$ = NULL;}
          ;
 
 maybe_elif_list: elif_list {$$ = NULL;}
@@ -274,8 +272,8 @@ do_while_loop: Do block While expr {$$ = NULL;}
 for_loop: For var_decl In expr block {$$ = NULL;}
         ;
 
-var: ident '[' expr ']'  {$$ = $1;} /*TODO*/
-   | ident               %prec Ident {$$ = $1;}
+var: ident '[' expr ']'  {$$ = mkVarNode((char*)$1);} /*TODO: arrays*/
+   | ident               %prec Ident {$$ = mkVarNode((char*)$1);}
    ;
 
 val: fn_call       {$$ = $1;}
@@ -292,25 +290,21 @@ maybe_expr: expr   {$$ = $1;}
           | %empty {$$ = NULL;}
           ;
 
-expr: expr '+' expr     {$$ = NULL;}
-    | expr '-' expr     {$$ = NULL;}
-    | expr '*' expr     {$$ = NULL;}
-    | expr '/' expr     {$$ = NULL;}
-    | expr '%' expr     {$$ = NULL;}
-    | expr '<' expr     {$$ = NULL;}
-    | expr '>' expr     {$$ = NULL;}
-    | expr '^' expr     {$$ = NULL;}
-    | expr '.' expr     {$$ = NULL;}
-    | expr Eq expr      {$$ = NULL;}
-    | expr NotEq expr   {$$ = NULL;}
-    | expr GrtrEq expr  {$$ = NULL;}
-    | expr LesrEq expr  {$$ = NULL;}
-    | expr Or expr      {$$ = NULL;}
-    | expr And expr     {$$ = NULL;}
-    | expr Range expr   {$$ = NULL;}
-    | expr RangeEX expr {$$ = NULL;}
-    | expr RangeBX expr {$$ = NULL;}
-    | expr RangeX expr  {$$ = NULL;}
+expr: expr '+' expr     {$$ = mkBinOpNode('+', $1, $3);}
+    | expr '-' expr     {$$ = mkBinOpNode('-', $1, $3);}
+    | expr '*' expr     {$$ = mkBinOpNode('*', $1, $3);}
+    | expr '/' expr     {$$ = mkBinOpNode('/', $1, $3);}
+    | expr '%' expr     {$$ = mkBinOpNode('%', $1, $3);}
+    | expr '<' expr     {$$ = mkBinOpNode('<', $1, $3);}
+    | expr '>' expr     {$$ = mkBinOpNode('>', $1, $3);}
+    | expr '^' expr     {$$ = mkBinOpNode('^', $1, $3);}
+    | expr '.' expr     {$$ = mkBinOpNode('.', $1, $3);}
+    | expr Eq expr      {$$ = mkBinOpNode(Tok_Eq, $1, $3);}
+    | expr NotEq expr   {$$ = mkBinOpNode(Tok_NotEq, $1, $3);}
+    | expr GrtrEq expr  {$$ = mkBinOpNode(Tok_GrtrEq, $1, $3);}
+    | expr LesrEq expr  {$$ = mkBinOpNode(Tok_LesrEq, $1, $3);}
+    | expr Or expr      {$$ = mkBinOpNode(Tok_Or, $1, $3);}
+    | expr And expr     {$$ = mkBinOpNode(Tok_And, $1, $3);}
     | val               {$$ = $1;}
     ;
 

@@ -25,12 +25,10 @@ int main(int argc, char *argv[]){
         }else if(strcmp(argv[1], "-p") == 0){
             lexer::init(argv[2]);
             cout << "Parser returned " << yyparse() << endl;
-            Node* n = parser::getRootNode();
-            int i = 0;
+            Node *n = parser::getRootNode();
             while(n){
-                cout << "\nStmt #" << ++i << endl;
                 n->print();
-                printf("Addr = %p\n", (void*)n);
+                putchar('\n');
                 n = n->next.get();
             }
         }else{

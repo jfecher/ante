@@ -85,7 +85,7 @@ void BoolLitNode::print()
 
 void StrLitNode::print()
 {
-    cout << val;
+    cout << '"' << val << '"';
 }
 
 void TypeNode::print()
@@ -103,12 +103,12 @@ void BinOpNode::print()
     putchar('(');
     if(lval) lval->print();
     putchar(' ');
-    if(rval) rval->print();
-    putchar(' ');
     if(IS_LITERAL(op))
-        cout << op;
+        cout << (char)op;
     else
         cout << TOK_TYPE_STR(op);
+    putchar(' ');
+    if(rval) rval->print();
     puts(")");
 }
 
@@ -125,7 +125,7 @@ void IfNode::print()
     if(condition) condition->print();
     cout << "\nthen\n";
     if(child) child->print();
-    cout << "end\n";
+    cout << "EndIf\n";
 }
 
 void NamedValNode::print()
@@ -135,7 +135,7 @@ void NamedValNode::print()
 
 void VarNode::print()
 {
-    cout << "{VarNode " << name << '}';
+    cout << name;
 }
 
 void FuncCallNode::print()
@@ -155,7 +155,9 @@ void VarDeclNode::print()
 
 void VarAssignNode::print()
 {
-    cout << "varAssign " << name << " = ";
+    cout << "varAssign ";
+    if(var) var->print(); 
+    cout << " = ";
     if(expr) expr->print();
     else cout << "(undef)"; 
     putchar('\n');
@@ -163,28 +165,20 @@ void VarAssignNode::print()
 
 void FuncDeclNode::print()
 {
-    cout << "function " << name << " declared\n";
-    cout << "of type ";
+    cout << "function " << name << " declared of ";
     type->print();
-    /*for(auto n : params){
-        if(n) n->print();
-        cout << ", ";
-    }
-    cout << "\n";
-    for(auto n : body){
-        if(n) n->print();
-        cout << "\n";
-    }*/
+    puts("With params: ");
+    if(params) params->print();
+    puts("FuncBody:");
+    if(child.get()) child.get()->print();
+    puts("EndFunc");
 }
 
 void DataDeclNode::print()
 {
-    cout << "class " << name << "\n\t";
-    /*for(auto n : body){
-        cout << endl;
-        n->print();
-    }*/
-    cout << endl;
+    cout << "Data " << name << "Declared\n";
+    if(child.get()) child.get()->print();
+    puts("");
 }
 
 void Compiler::compile()

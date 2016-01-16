@@ -23,6 +23,7 @@ class Node{
         virtual void print(void) = 0;
         virtual void compile(void) = 0;
         virtual void exec(void) = 0;
+        ~Node(){}
 };
 
 /* 
@@ -43,7 +44,7 @@ class ParentNode : public Node{
 
 class IntLitNode : public Node{
     public:
-        char* val;
+        string val;
         void compile(void);
         void exec(void);
         void print(void);
@@ -52,7 +53,7 @@ class IntLitNode : public Node{
 
 class FltLitNode : public Node{
     public:
-        char* val;
+        string val;
         void compile(void);
         void exec(void);
         void print(void);
@@ -81,7 +82,7 @@ class BinOpNode : public Node{
 class TypeNode : public Node{
     public:
         int type;
-        char* typeName; //used for usertypes
+        string typeName; //used for usertypes
         void compile(void);
         void exec(void);
         void print(void);
@@ -90,7 +91,7 @@ class TypeNode : public Node{
 
 class RetNode : public Node{
     public:
-        Node* expr;
+        unique_ptr<Node> expr;
         void compile(void);
         void exec(void);
         void print(void);
@@ -99,8 +100,8 @@ class RetNode : public Node{
 
 class NamedValNode : public Node{
     public:
-        char* name;
-        Node* typeExpr;
+        string name;
+        unique_ptr<Node> typeExpr;
         void compile(void);
         void exec(void);
         void print(void);
@@ -109,7 +110,7 @@ class NamedValNode : public Node{
 
 class VarNode : public Node{
     public:
-        char* name;
+        string name;
         void compile(void);
         void exec(void);
         void print(void);
@@ -118,8 +119,8 @@ class VarNode : public Node{
 
 class FuncCallNode : public Node{
     public:
-        char* name;
-        Node* params;
+        string name;
+        unique_ptr<Node> params;
         void compile(void);
         void exec(void);
         void print(void);
@@ -128,7 +129,7 @@ class FuncCallNode : public Node{
 
 class StrLitNode : public Node{
     public:
-        char* val;
+        string val;
         void compile(void);
         void exec(void);
         void print(void);
@@ -137,9 +138,8 @@ class StrLitNode : public Node{
 
 class VarDeclNode : public Node{
     public:
-        char* name;
-        Node* typeExpr;
-        Node* expr;
+        string name;
+        unique_ptr<Node> typeExpr, expr;
         void compile(void);
         void exec(void);
         void print(void);
@@ -148,17 +148,17 @@ class VarDeclNode : public Node{
 
 class VarAssignNode : public Node{
     public:
-        char* name;
-        Node* expr;
+        unique_ptr<VarNode> var;
+        unique_ptr<Node> expr;
         void compile(void);
         void exec(void);
         void print(void);
-        VarAssignNode(char* s, Node* exp) : Node(), name(s), expr(exp){}
+        VarAssignNode(Node* v, Node* exp) : Node(), var((VarNode*)v), expr(exp){}
 };
 
 class IfNode : public ParentNode{
     public:
-        Node* condition;
+        unique_ptr<Node> condition;
         void compile(void);
         void exec(void);
         void print(void);
@@ -167,18 +167,18 @@ class IfNode : public ParentNode{
 
 class FuncDeclNode : public ParentNode{
     public:
-        char* name;
-        Node* type;
-        Node* params;
+        string name;
+        unique_ptr<Node> type;
+        unique_ptr<NamedValNode> params;
         void compile(void);
         void exec(void);
         void print(void);
-        FuncDeclNode(char* s, Node* t, Node* p, Node* b) : ParentNode(b), name(s), type(t), params(p){}
+        FuncDeclNode(char* s, Node* t, Node* p, Node* b) : ParentNode(b), name(s), type(t), params((NamedValNode*)p){}
 };
 
 class DataDeclNode : public ParentNode{
     public:
-        char* name;
+        string name;
         void compile(void);
         void exec(void);
         void print(void);

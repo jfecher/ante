@@ -94,9 +94,9 @@ Node* mkVarDeclNode(char* s, Node* tExpr, Node* expr)
     return new VarDeclNode(s, tExpr, expr);
 }
 
-Node* mkVarAssignNode(char* s, Node* expr)
+Node* mkVarAssignNode(Node* var, Node* expr)
 {
-    return new VarAssignNode(s, expr);
+    return new VarAssignNode(var, expr);
 }
 
 ParentNode* mkIfNode(Node* con, Node* body)
