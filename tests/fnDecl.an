@@ -8,5 +8,5 @@ i32 printMsg: bool b
 bool divisibleByThree: i32 i
     return i % 3 == 0
 
-printSomething(true)
-assert(divisibleByThreeOrFive(25) == true)
+printMsg(true)
+assert(divisibleByThreeOrFive(24) == true)

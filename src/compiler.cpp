@@ -1,35 +1,52 @@
 #include "compiler.h"
+#include "parser.h"
+
 using namespace llvm;
 
-void IntLitNode::compile(){}
+void IntLitNode::compile(Compiler *c, Module *m){}
 
-void FltLitNode::compile(){}
+void FltLitNode::compile(Compiler *c, Module *m){}
 
-void BoolLitNode::compile(){}
+void BoolLitNode::compile(Compiler *c, Module *m){}
 
-void TypeNode::compile(){}
+void TypeNode::compile(Compiler *c, Module *m){}
 
-void StrLitNode::compile(){}
+void StrLitNode::compile(Compiler *c, Module *m){}
 
-void BinOpNode::compile(){}
+void BinOpNode::compile(Compiler *c, Module *m){}
 
-void RetNode::compile(){}
+void RetNode::compile(Compiler *c, Module *m){}
 
-void IfNode::compile(){}
+void IfNode::compile(Compiler *c, Module *m){}
 
-void NamedValNode::compile(){}
+void NamedValNode::compile(Compiler *c, Module *m){}
 
-void VarNode::compile(){}
+void VarNode::compile(Compiler *c, Module *m){}
 
-void FuncCallNode::compile(){}
+void FuncCallNode::compile(Compiler *c, Module *m){}
 
-void VarDeclNode::compile(){}
+void VarDeclNode::compile(Compiler *c, Module *m){}
 
-void VarAssignNode::compile(){}
+void VarAssignNode::compile(Compiler *c, Module *m){}
 
-void FuncDeclNode::compile(){}
+void FuncDeclNode::compile(Compiler *c, Module *m)
+{
+    vector<llvm::Type*> paramTypes{2, Type::getDoubleTy(getGlobalContext())};
+    auto retType = Type::getDoubleTy(getGlobalContext());
 
-void DataDeclNode::compile(){}
+    FunctionType *ft = FunctionType::get(retType, paramTypes, false);
+    Function *f = Function::Create(ft, Function::ExternalLinkage, "FuncDeclNode", m);
+
+    BasicBlock *bb = BasicBlock::Create(getGlobalContext(), "entry", f);
+    c->builder.SetInsertPoint(bb);
+
+    Value *ret = ConstantFP::get(getGlobalContext(), APFloat(0.5f));
+    c->builder.CreateRet(ret);
+
+    verifyFunction(*f);
+}
+
+void DataDeclNode::compile(Compiler *c, Module *m){}
 
 
 
@@ -156,10 +173,10 @@ void VarDeclNode::print()
 void VarAssignNode::print()
 {
     cout << "varAssign ";
-    if(var) var->print(); 
+    if(var) var->print();
     cout << " = ";
     if(expr) expr->print();
-    else cout << "(undef)"; 
+    else cout << "(undef)";
     putchar('\n');
 }
 
@@ -183,16 +200,10 @@ void DataDeclNode::print()
 
 void Compiler::compile()
 {
-    vector<llvm::Type*> doubles{2, Type::getDoubleTy(getGlobalContext())};
-    FunctionType *ft = FunctionType::get(Type::getDoubleTy(getGlobalContext()), doubles, false);
-    Function *f = Function::Create(ft, Function::ExternalLinkage, "", module);
-
-    BasicBlock *bb = BasicBlock::Create(getGlobalContext(), "entry", f);
-    builder.SetInsertPoint(bb);
-
-    Value *ret = ConstantFP::get(getGlobalContext(), APFloat(0.5f));
-    builder.CreateRet(ret);
-
-    verifyFunction(*f);
+    Node *n = ast.get();
+    while(n){
+        n->compile(this, module.get());
+        n = n->next.get();
+    }
     module->dump();
 }
