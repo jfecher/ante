@@ -3,6 +3,30 @@
 
 using namespace llvm;
 
+/*
+ *  Translates an individual type in token form to an llvm::Type
+ */
+Type* translateType(int tokTy, string typeName = "")
+{
+    switch(tokTy){
+        case Tok_UserType: //TODO: implement
+            return Type::getDoubleTy(getGlobalContext());
+        case Tok_I8:  case Tok_U8:  return Type::getInt8Ty(getGlobalContext());
+        case Tok_I16: case Tok_U16: return Type::getInt16Ty(getGlobalContext());
+        case Tok_I32: case Tok_U32: return Type::getInt32Ty(getGlobalContext());
+        case Tok_I64: case Tok_U64: return Type::getInt64Ty(getGlobalContext());
+        case Tok_Isz: return Type::getDoubleTy(getGlobalContext()); //TODO: implement
+        case Tok_Usz: return Type::getDoubleTy(getGlobalContext()); //TODO: implement
+        case Tok_F32: return Type::getFloatTy(getGlobalContext());
+        case Tok_F64: return Type::getDoubleTy(getGlobalContext());
+        case Tok_C8:  return Type::getDoubleTy(getGlobalContext()); //TODO: implement
+        case Tok_C32: return Type::getDoubleTy(getGlobalContext()); //TODO: implement
+        case Tok_Bool:return Type::getInt1Ty(getGlobalContext());
+        case Tok_Void:return Type::getVoidTy(getGlobalContext());
+    }
+    return nullptr;
+}
+
 void IntLitNode::compile(Compiler *c, Module *m){}
 
 void FltLitNode::compile(Compiler *c, Module *m){}
@@ -29,13 +53,18 @@ void VarDeclNode::compile(Compiler *c, Module *m){}
 
 void VarAssignNode::compile(Compiler *c, Module *m){}
 
+
 void FuncDeclNode::compile(Compiler *c, Module *m)
 {
-    vector<llvm::Type*> paramTypes{2, Type::getDoubleTy(getGlobalContext())};
-    auto retType = Type::getDoubleTy(getGlobalContext());
+    //vector<llvm::Type*> paramTypes{2, Type::getDoubleTy(getGlobalContext())};
+    TypeNode *retNode = (TypeNode*)type.get();
+    Type *retType = translateType(retNode->type, retNode->typeName);
 
-    FunctionType *ft = FunctionType::get(retType, paramTypes, false);
-    Function *f = Function::Create(ft, Function::ExternalLinkage, "FuncDeclNode", m);
+    TypeNode *paramTyNode = (TypeNode*)params.get()->typeExpr.get();
+    Type *paramsType = translateType(paramTyNode->type, paramTyNode->typeName);
+
+    FunctionType *ft = FunctionType::get(retType, paramsType, false);
+    Function *f = Function::Create(ft, Function::ExternalLinkage, name, m);
 
     BasicBlock *bb = BasicBlock::Create(getGlobalContext(), "entry", f);
     c->builder.SetInsertPoint(bb);
@@ -45,6 +74,7 @@ void FuncDeclNode::compile(Compiler *c, Module *m)
 
     verifyFunction(*f);
 }
+
 
 void DataDeclNode::compile(Compiler *c, Module *m){}
 

@@ -2,7 +2,7 @@
     fnDecl.an
         test function declarations and calls
 `
-i32 printMsg: bool b
+void printMsg: bool b
     if b -> print("Hello World!")
 
 bool divisibleByThree: i32 i
