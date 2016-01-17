@@ -24,12 +24,15 @@ int main(int argc, char *argv[]){
         //parse and print parse tree
         }else if(strcmp(argv[1], "-p") == 0){
             lexer::init(argv[2]);
-            cout << "Parser returned " << yyparse() << endl;
+            int flag = yyparse();
+            cout << "Parser returned " << flag << endl;
             Node *n = parser::getRootNode();
-            while(n){
-                n->print();
-                putchar('\n');
-                n = n->next.get();
+            if(!flag){
+                while(n){
+                    n->print();
+                    putchar('\n');
+                    n = n->next.get();
+                }
             }
         }else{
             cout << "Ante: argument '" << argv[1] << "' was not recognized.\n";
