@@ -7,6 +7,7 @@
 #include <llvm/IR/Verifier.h>
 #include <memory>
 #include <vector>
+#include <stack>
 
 using namespace llvm;
 
@@ -14,20 +15,19 @@ using namespace llvm;
 struct Node;
 
 namespace ante{
-    class Compiler{
-        public:
-            std::unique_ptr<Node> ast;
-            std::unique_ptr<Module> module;
-            IRBuilder<> builder;
+    struct Compiler{
+        std::unique_ptr<Node> ast;
+        std::unique_ptr<Module> module;
+        IRBuilder<> builder;
+        std::stack<std::map<std::string, Value*>> varTable;
+        
+        
+        Compiler(Node* _ast) : ast(_ast), builder(getGlobalContext()){
+            module = std::unique_ptr<Module>(new Module("ante_main_mod", getGlobalContext()));
+        }
+        ~Compiler(){}
 
-            Compiler(Node* _ast) : ast(_ast), builder(getGlobalContext()){
-                module = std::unique_ptr<Module>(new Module("ante_main_mod", getGlobalContext()));
-            }
-            ~Compiler(){}
-
-            Module* getMod(){ return module.get(); }
-
-            void compile(void);
+        void compile(void);
     };
 }
 

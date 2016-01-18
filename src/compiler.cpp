@@ -51,6 +51,7 @@ Value* StrLitNode::compile(Compiler *c, Module *m){}
  *
  *  TODO: type checking
  *  TODO: CreateExactUDiv for when it is known there is no remainder
+ *  TODO: CreateFcmpOEQ vs CreateFCmpUEQ
  */
 Value* BinOpNode::compile(Compiler *c, Module *m)
 {
@@ -58,25 +59,30 @@ Value* BinOpNode::compile(Compiler *c, Module *m)
     Value *rhs = rval->compile(c, m);
 
     switch(op){
-        case '+': return c->builder.CreateFAdd(lhs, rhs, "fAddTmp");
-        case '-': return c->builder.CreateFSub(lhs, rhs, "fSubTmp");
-        case '*': return c->builder.CreateFMul(lhs, rhs, "fMulTmp");
-        case '/': return c->builder.CreateFDiv(lhs, rhs, "fDivTmp");
-        case '%': return c->builder.CreateFRem(lhs, rhs, "fModTmp");
-        case '<': return c->builder.CreateFCmpULT(lhs, rhs, "fLtTmp");
-        case '>': return c->builder.CreateFCmpUGT(lhs, rhs, "fGtTmp");
+        case '+': return c->builder.CreateAdd(lhs, rhs, "fAddTmp");
+        case '-': return c->builder.CreateSub(lhs, rhs, "fSubTmp");
+        case '*': return c->builder.CreateMul(lhs, rhs, "fMulTmp");
+        case '/': return c->builder.CreateSDiv(lhs, rhs, "fDivTmp");
+        case '%': return c->builder.CreateSRem(lhs, rhs, "fModTmp");
+        case '<': return c->builder.CreateICmpULT(lhs, rhs, "fLtTmp");
+        case '>': return c->builder.CreateICmpUGT(lhs, rhs, "fGtTmp");
         case '^': return c->builder.CreateXor(lhs, rhs, "xorTmp");
         case '.': break;
-        case Tok_Eq: break;
-        case Tok_NotEq: break;
-        case Tok_LesrEq: return c->builder.CreateFCmpULE(lhs, rhs, "fLeTmp");
-        case Tok_GrtrEq: return c->builder.CreateFCmpUGE(lhs, rhs, "fGeTmp");
+        case Tok_Eq: return c->builder.CreateICmpEQ(lhs, rhs, "fCmpEqTmp");
+        case Tok_NotEq: return c->builder.CreateICmpNE(lhs, rhs, "fCmpNeTmp");
+        case Tok_LesrEq: return c->builder.CreateICmpULE(lhs, rhs, "fLeTmp");
+        case Tok_GrtrEq: return c->builder.CreateICmpUGE(lhs, rhs, "fGeTmp");
         case Tok_Or: break;
         case Tok_And: break;
     }
+    
+    return nullptr;
 }
 
-Value* RetNode::compile(Compiler *c, Module *m){}
+Value* RetNode::compile(Compiler *c, Module *m)
+{
+    return c->builder.CreateRet(expr->compile(c, m));
+}
 
 Value* IfNode::compile(Compiler *c, Module *m){}
 
@@ -106,9 +112,15 @@ Value* FuncDeclNode::compile(Compiler *c, Module *m)
     BasicBlock *bb = BasicBlock::Create(getGlobalContext(), "entry", f);
     c->builder.SetInsertPoint(bb);
 
+    if(child.get()) child->compile(c, m);
+
     if(retNode->type == Tok_Void){
         c->builder.CreateRetVoid();
     }
+    
+    puts("function: ");
+    m->dump();
+    puts("endFunction.");
 
     verifyFunction(*f);
     return f;
