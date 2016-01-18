@@ -35,41 +35,77 @@ void compileStmtList(Node *nList, Compiler *c, Module *m)
     }
 }
 
-void IntLitNode::compile(Compiler *c, Module *m){}
-
-void FltLitNode::compile(Compiler *c, Module *m){}
-
-void BoolLitNode::compile(Compiler *c, Module *m){}
-
-void TypeNode::compile(Compiler *c, Module *m){}
-
-void StrLitNode::compile(Compiler *c, Module *m){}
-
-void BinOpNode::compile(Compiler *c, Module *m){}
-
-void RetNode::compile(Compiler *c, Module *m)
-{
-    Value *ret = ConstantFP::get(getGlobalContext(), APFloat(0.5));
-    c->builder.CreateRet(ret);
+Value* IntLitNode::compile(Compiler *c, Module *m)
+{   //TODO: unsigned int with APUInt
+    return ConstantInt::get(getGlobalContext(), APInt(64, val, true));
 }
 
-void IfNode::compile(Compiler *c, Module *m)
+Value* FltLitNode::compile(Compiler *c, Module *m)
 {
+    return ConstantFP::get(getGlobalContext(), APFloat(APFloat::IEEEquad, val));
+}
+
+Value* BoolLitNode::compile(Compiler *c, Module *m)
+{
+    return ConstantInt::get(getGlobalContext(), APInt(1, val, true));
+}
+
+Value* TypeNode::compile(Compiler *c, Module *m){}
+
+Value* StrLitNode::compile(Compiler *c, Module *m){}
+
+/*
+ *  Compiles an operation along with its lhs and rhs
+ *
+ *  TODO: type checking
+ *  TODO: CreateExactUDiv for when it is known there is no remainder
+ *  TODO: CreateFcmpOEQ vs CreateFCmpUEQ
+ */
+Value* BinOpNode::compile(Compiler *c, Module *m)
+{
+    Value *lhs = lval->compile(c, m);
+    Value *rhs = rval->compile(c, m);
+
+    switch(op){
+        case '+': return c->builder.CreateAdd(lhs, rhs, "fAddTmp");
+        case '-': return c->builder.CreateSub(lhs, rhs, "fSubTmp");
+        case '*': return c->builder.CreateMul(lhs, rhs, "fMulTmp");
+        case '/': return c->builder.CreateSDiv(lhs, rhs, "fDivTmp");
+        case '%': return c->builder.CreateSRem(lhs, rhs, "fModTmp");
+        case '<': return c->builder.CreateICmpULT(lhs, rhs, "fLtTmp");
+        case '>': return c->builder.CreateICmpUGT(lhs, rhs, "fGtTmp");
+        case '^': return c->builder.CreateXor(lhs, rhs, "xorTmp");
+        case '.': break;
+        case Tok_Eq: return c->builder.CreateICmpEQ(lhs, rhs, "fCmpEqTmp");
+        case Tok_NotEq: return c->builder.CreateICmpNE(lhs, rhs, "fCmpNeTmp");
+        case Tok_LesrEq: return c->builder.CreateICmpULE(lhs, rhs, "fLeTmp");
+        case Tok_GrtrEq: return c->builder.CreateICmpUGE(lhs, rhs, "fGeTmp");
+        case Tok_Or: break;
+        case Tok_And: break;
+    }
     
+    return nullptr;
 }
 
-void NamedValNode::compile(Compiler *c, Module *m){}
+Value* RetNode::compile(Compiler *c, Module *m)
+{
+    return c->builder.CreateRet(expr->compile(c, m));
+}
 
-void VarNode::compile(Compiler *c, Module *m){}
+Value* IfNode::compile(Compiler *c, Module *m){}
 
-void FuncCallNode::compile(Compiler *c, Module *m){}
+Value* NamedValNode::compile(Compiler *c, Module *m){}
 
-void VarDeclNode::compile(Compiler *c, Module *m){}
+Value* VarNode::compile(Compiler *c, Module *m){}
 
-void VarAssignNode::compile(Compiler *c, Module *m){}
+Value* FuncCallNode::compile(Compiler *c, Module *m){}
+
+Value* VarDeclNode::compile(Compiler *c, Module *m){}
+
+Value* VarAssignNode::compile(Compiler *c, Module *m){}
 
 
-void FuncDeclNode::compile(Compiler *c, Module *m)
+Value* FuncDeclNode::compile(Compiler *c, Module *m)
 {
     //vector<llvm::Type*> paramTypes{2, Type::getDoubleTy(getGlobalContext())};
     TypeNode *retNode = (TypeNode*)type.get();
@@ -85,11 +121,21 @@ void FuncDeclNode::compile(Compiler *c, Module *m)
     c->builder.SetInsertPoint(bb);
 
     compileStmtList(child.get(), c, m);
+
+    if(retNode->type == Tok_Void){
+        c->builder.CreateRetVoid();
+    }
+    
+    puts("function: ");
+    m->dump();
+    puts("endFunction.");
+
     verifyFunction(*f);
+    return f;
 }
 
 
-void DataDeclNode::compile(Compiler *c, Module *m){}
+Value* DataDeclNode::compile(Compiler *c, Module *m){}
 
 
 
