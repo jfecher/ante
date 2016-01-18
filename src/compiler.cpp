@@ -27,34 +27,71 @@ Type* translateType(int tokTy, string typeName = "")
     return nullptr;
 }
 
-void IntLitNode::compile(Compiler *c, Module *m){}
+Value* IntLitNode::compile(Compiler *c, Module *m)
+{   //TODO: unsigned int with APUInt
+    return ConstantInt::get(getGlobalContext(), APInt(64, val, true));
+}
 
-void FltLitNode::compile(Compiler *c, Module *m){}
+Value* FltLitNode::compile(Compiler *c, Module *m)
+{
+    return ConstantFP::get(getGlobalContext(), APFloat(APFloat::IEEEquad, val));
+}
 
-void BoolLitNode::compile(Compiler *c, Module *m){}
+Value* BoolLitNode::compile(Compiler *c, Module *m)
+{
+    return ConstantInt::get(getGlobalContext(), APInt(1, val, true));
+}
 
-void TypeNode::compile(Compiler *c, Module *m){}
+Value* TypeNode::compile(Compiler *c, Module *m){}
 
-void StrLitNode::compile(Compiler *c, Module *m){}
+Value* StrLitNode::compile(Compiler *c, Module *m){}
 
-void BinOpNode::compile(Compiler *c, Module *m){}
+/*
+ *  Compiles an operation along with its lhs and rhs
+ *
+ *  TODO: type checking
+ *  TODO: CreateExactUDiv for when it is known there is no remainder
+ */
+Value* BinOpNode::compile(Compiler *c, Module *m)
+{
+    Value *lhs = lval->compile(c, m);
+    Value *rhs = rval->compile(c, m);
 
-void RetNode::compile(Compiler *c, Module *m){}
+    switch(op){
+        case '+': return c->builder.CreateFAdd(lhs, rhs, "fAddTmp");
+        case '-': return c->builder.CreateFSub(lhs, rhs, "fSubTmp");
+        case '*': return c->builder.CreateFMul(lhs, rhs, "fMulTmp");
+        case '/': return c->builder.CreateFDiv(lhs, rhs, "fDivTmp");
+        case '%': return c->builder.CreateFRem(lhs, rhs, "fModTmp");
+        case '<': return c->builder.CreateFCmpULT(lhs, rhs, "fLtTmp");
+        case '>': return c->builder.CreateFCmpUGT(lhs, rhs, "fGtTmp");
+        case '^': return c->builder.CreateXor(lhs, rhs, "xorTmp");
+        case '.': break;
+        case Tok_Eq: break;
+        case Tok_NotEq: break;
+        case Tok_LesrEq: return c->builder.CreateFCmpULE(lhs, rhs, "fLeTmp");
+        case Tok_GrtrEq: return c->builder.CreateFCmpUGE(lhs, rhs, "fGeTmp");
+        case Tok_Or: break;
+        case Tok_And: break;
+    }
+}
 
-void IfNode::compile(Compiler *c, Module *m){}
+Value* RetNode::compile(Compiler *c, Module *m){}
 
-void NamedValNode::compile(Compiler *c, Module *m){}
+Value* IfNode::compile(Compiler *c, Module *m){}
 
-void VarNode::compile(Compiler *c, Module *m){}
+Value* NamedValNode::compile(Compiler *c, Module *m){}
 
-void FuncCallNode::compile(Compiler *c, Module *m){}
+Value* VarNode::compile(Compiler *c, Module *m){}
 
-void VarDeclNode::compile(Compiler *c, Module *m){}
+Value* FuncCallNode::compile(Compiler *c, Module *m){}
 
-void VarAssignNode::compile(Compiler *c, Module *m){}
+Value* VarDeclNode::compile(Compiler *c, Module *m){}
+
+Value* VarAssignNode::compile(Compiler *c, Module *m){}
 
 
-void FuncDeclNode::compile(Compiler *c, Module *m)
+Value* FuncDeclNode::compile(Compiler *c, Module *m)
 {
     //vector<llvm::Type*> paramTypes{2, Type::getDoubleTy(getGlobalContext())};
     TypeNode *retNode = (TypeNode*)type.get();
@@ -69,14 +106,16 @@ void FuncDeclNode::compile(Compiler *c, Module *m)
     BasicBlock *bb = BasicBlock::Create(getGlobalContext(), "entry", f);
     c->builder.SetInsertPoint(bb);
 
-    Value *ret = ConstantFP::get(getGlobalContext(), APFloat(0.5f));
-    c->builder.CreateRet(ret);
+    if(retNode->type == Tok_Void){
+        c->builder.CreateRetVoid();
+    }
 
     verifyFunction(*f);
+    return f;
 }
 
 
-void DataDeclNode::compile(Compiler *c, Module *m){}
+Value* DataDeclNode::compile(Compiler *c, Module *m){}
 
 
 
