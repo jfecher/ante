@@ -143,8 +143,6 @@ print(typeof(n) ++ " " ++ n)  ~output: i32 43
 ~Declare a public u8 array buf that is not automatically freed.
 pub raw u8[] buf = [3, 4, 5]
 
-u8{} u8List = {0, 2}
-
 ~Declare an array of 100 integers called naturalNumbers and do not
 ~initialize it since it is manually initialized in the following loop.
 noinit i32[100] naturalNumbers

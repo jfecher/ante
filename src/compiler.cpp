@@ -10,21 +10,29 @@ Type* translateType(int tokTy, string typeName = "")
 {
     switch(tokTy){
         case Tok_UserType: //TODO: implement
-            return Type::getDoubleTy(getGlobalContext());
+            return Type::getVoidTy(getGlobalContext());
         case Tok_I8:  case Tok_U8:  return Type::getInt8Ty(getGlobalContext());
         case Tok_I16: case Tok_U16: return Type::getInt16Ty(getGlobalContext());
         case Tok_I32: case Tok_U32: return Type::getInt32Ty(getGlobalContext());
         case Tok_I64: case Tok_U64: return Type::getInt64Ty(getGlobalContext());
-        case Tok_Isz: return Type::getDoubleTy(getGlobalContext()); //TODO: implement
-        case Tok_Usz: return Type::getDoubleTy(getGlobalContext()); //TODO: implement
+        case Tok_Isz: return Type::getVoidTy(getGlobalContext()); //TODO: implement
+        case Tok_Usz: return Type::getVoidTy(getGlobalContext()); //TODO: implement
         case Tok_F32: return Type::getFloatTy(getGlobalContext());
         case Tok_F64: return Type::getDoubleTy(getGlobalContext());
-        case Tok_C8:  return Type::getDoubleTy(getGlobalContext()); //TODO: implement
-        case Tok_C32: return Type::getDoubleTy(getGlobalContext()); //TODO: implement
+        case Tok_C8:  return Type::getVoidTy(getGlobalContext()); //TODO: implement
+        case Tok_C32: return Type::getVoidTy(getGlobalContext()); //TODO: implement
         case Tok_Bool:return Type::getInt1Ty(getGlobalContext());
         case Tok_Void:return Type::getVoidTy(getGlobalContext());
     }
     return nullptr;
+}
+
+void compileStmtList(Node *nList, Compiler *c, Module *m)
+{
+    while(nList){
+        nList->compile(c, m);
+        nList = nList->next.get();
+    }
 }
 
 void IntLitNode::compile(Compiler *c, Module *m){}
@@ -39,9 +47,16 @@ void StrLitNode::compile(Compiler *c, Module *m){}
 
 void BinOpNode::compile(Compiler *c, Module *m){}
 
-void RetNode::compile(Compiler *c, Module *m){}
+void RetNode::compile(Compiler *c, Module *m)
+{
+    Value *ret = ConstantFP::get(getGlobalContext(), APFloat(0.5));
+    c->builder.CreateRet(ret);
+}
 
-void IfNode::compile(Compiler *c, Module *m){}
+void IfNode::compile(Compiler *c, Module *m)
+{
+    
+}
 
 void NamedValNode::compile(Compiler *c, Module *m){}
 
@@ -69,9 +84,7 @@ void FuncDeclNode::compile(Compiler *c, Module *m)
     BasicBlock *bb = BasicBlock::Create(getGlobalContext(), "entry", f);
     c->builder.SetInsertPoint(bb);
 
-    Value *ret = ConstantFP::get(getGlobalContext(), APFloat(0.5f));
-    c->builder.CreateRet(ret);
-
+    compileStmtList(child.get(), c, m);
     verifyFunction(*f);
 }
 
