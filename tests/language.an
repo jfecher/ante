@@ -73,7 +73,6 @@ let ex3 = 3i32
 ~Or the constant can be typecasted to an i32:
 let ex4 = i32 4
 
-
 `
     Types can also be assigned to variables manually.  Variable's declared
     without let are mutable by default and must have their type explicitly
@@ -184,6 +183,16 @@ let myC8Str = c8[] "test"
 assert(0b110 == 6)
 assert(0xFFFF == 65535)
 assert(0o31 == 25)
+
+~Integer and float constants in base 10 can also be expressed in
+~scientific notatation.
+assert(1e-3 == 0.001)
+assert(4.5e+2 == 450)
+assert(314159265E-8 == 3.14159265)
+assert(8.92e2 == 892)
+
+~Underscores are ignored within integer and float literals
+assert(1_000_000 == 1000000)
 
 `
         Operators
