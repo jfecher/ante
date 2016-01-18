@@ -29,14 +29,32 @@ data Number
         Three
 
 ~Test untyped generics
-data Maybe<T>
-    T | enum -> None
+data Maybe
+    Some: t
+    None
 
-    T unwrap: self*
-        if *self is T
-            return T self
-        panic("Cannot unwrap None!")
-        return self
+data Tree
+    None:
+    Leaf: t val
+    Node: Tree l r
+
+
+~Test type constructors
+data Shape
+    Circle: u32 radius
+    Square: u32 len
+    Rectangle: u32 len wid
+
+u32 area: Shape s
+| Circle r -> pi*r*r
+| Square l -> l*l
+| Rectangle l w -> l*w
+
+
+u32 depth: Tree t
+| None -> 0
+| Leaf -> 1
+| Node l r -> max(depth(l), depth(r)) + 1
 
 
 void main:

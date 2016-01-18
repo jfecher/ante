@@ -34,10 +34,6 @@ const char* tokDictionary[] = {
 	"LesrEq",
     "Or",
     "And",
-    "Range",
-    "RangeBX",
-    "RangeEX",
-    "RangeX",
 
     //literals
     "True",
@@ -170,10 +166,12 @@ int yylex(...)
 
 void ante::lexer::printTok(int t)
 {
-    if(IS_LITERAL(t))
-        cout << (char)t << "\t\t" << t << endl;
-    else
-        cout << TOK_TYPE_STR(t) << "\t\t" << t << endl;
+    if(IS_LITERAL(t)){
+        putchar(t);
+        putchar('\n');
+    }else{
+        puts(TOK_TYPE_STR(t));
+    }
 }
 
 inline void ante::lexer::incPos(void)
@@ -338,11 +336,6 @@ int ante::lexer::next()
         }
     }
     
-    if(PAIR('.', '.')) RETURN_PAIR(Tok_Range);
-    if(PAIR('^', '.')) RETURN_PAIR(Tok_RangeBX);
-    if(PAIR('.', '^')) RETURN_PAIR(Tok_RangeEX);
-    if(PAIR('^', '^')) RETURN_PAIR(Tok_RangeX);
-
     if(c == 0 || c == EOF) return 0; //End of input
 
     //If the character is nota, assume it is an operator and store

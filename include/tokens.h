@@ -39,10 +39,6 @@ enum TokenType{
 	Tok_LesrEq,
     Tok_Or,
     Tok_And,
-    Tok_Range,   //inclusive range
-    Tok_RangeBX, //beginning-exclusive range
-    Tok_RangeEX, //end exclusive range
-    Tok_RangeX,  //exclusive range
     //All other operators are returned by ASCII value
 
     //literals

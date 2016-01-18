@@ -5,27 +5,30 @@
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Verifier.h>
+#include <memory>
 #include <vector>
-#include "parser.h"
 
 using namespace llvm;
 
-class Compiler{
-    public:
-        Node* ast;
-        Module* module;
-        IRBuilder<> builder;
-        
-        Compiler(Node* _ast) : ast(_ast), builder(getGlobalContext()){
-            module = new Module("zy_mod", getGlobalContext());
-        }
-        ~Compiler(){ 
-            free(ast); 
-            delete module;
-        }
+/* Forward-declaration of Node defined in parser.h */
+struct Node;
 
-        void compile(void);
+namespace ante{
+    class Compiler{
+        public:
+            std::unique_ptr<Node> ast;
+            std::unique_ptr<Module> module;
+            IRBuilder<> builder;
 
-};
+            Compiler(Node* _ast) : ast(_ast), builder(getGlobalContext()){
+                module = std::unique_ptr<Module>(new Module("ante_main_mod", getGlobalContext()));
+            }
+            ~Compiler(){}
+
+            Module* getMod(){ return module.get(); }
+
+            void compile(void);
+    };
+}
 
 #endif

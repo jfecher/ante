@@ -1,35 +1,82 @@
 #include "compiler.h"
+#include "parser.h"
+
 using namespace llvm;
 
-void IntLitNode::compile(){}
+/*
+ *  Translates an individual type in token form to an llvm::Type
+ */
+Type* translateType(int tokTy, string typeName = "")
+{
+    switch(tokTy){
+        case Tok_UserType: //TODO: implement
+            return Type::getDoubleTy(getGlobalContext());
+        case Tok_I8:  case Tok_U8:  return Type::getInt8Ty(getGlobalContext());
+        case Tok_I16: case Tok_U16: return Type::getInt16Ty(getGlobalContext());
+        case Tok_I32: case Tok_U32: return Type::getInt32Ty(getGlobalContext());
+        case Tok_I64: case Tok_U64: return Type::getInt64Ty(getGlobalContext());
+        case Tok_Isz: return Type::getDoubleTy(getGlobalContext()); //TODO: implement
+        case Tok_Usz: return Type::getDoubleTy(getGlobalContext()); //TODO: implement
+        case Tok_F32: return Type::getFloatTy(getGlobalContext());
+        case Tok_F64: return Type::getDoubleTy(getGlobalContext());
+        case Tok_C8:  return Type::getDoubleTy(getGlobalContext()); //TODO: implement
+        case Tok_C32: return Type::getDoubleTy(getGlobalContext()); //TODO: implement
+        case Tok_Bool:return Type::getInt1Ty(getGlobalContext());
+        case Tok_Void:return Type::getVoidTy(getGlobalContext());
+    }
+    return nullptr;
+}
 
-void FltLitNode::compile(){}
+void IntLitNode::compile(Compiler *c, Module *m){}
 
-void BoolLitNode::compile(){}
+void FltLitNode::compile(Compiler *c, Module *m){}
 
-void TypeNode::compile(){}
+void BoolLitNode::compile(Compiler *c, Module *m){}
 
-void StrLitNode::compile(){}
+void TypeNode::compile(Compiler *c, Module *m){}
 
-void BinOpNode::compile(){}
+void StrLitNode::compile(Compiler *c, Module *m){}
 
-void RetNode::compile(){}
+void BinOpNode::compile(Compiler *c, Module *m){}
 
-void IfNode::compile(){}
+void RetNode::compile(Compiler *c, Module *m){}
 
-void NamedValNode::compile(){}
+void IfNode::compile(Compiler *c, Module *m){}
 
-void VarNode::compile(){}
+void NamedValNode::compile(Compiler *c, Module *m){}
 
-void FuncCallNode::compile(){}
+void VarNode::compile(Compiler *c, Module *m){}
 
-void VarDeclNode::compile(){}
+void FuncCallNode::compile(Compiler *c, Module *m){}
 
-void VarAssignNode::compile(){}
+void VarDeclNode::compile(Compiler *c, Module *m){}
 
-void FuncDeclNode::compile(){}
+void VarAssignNode::compile(Compiler *c, Module *m){}
 
-void DataDeclNode::compile(){}
+
+void FuncDeclNode::compile(Compiler *c, Module *m)
+{
+    //vector<llvm::Type*> paramTypes{2, Type::getDoubleTy(getGlobalContext())};
+    TypeNode *retNode = (TypeNode*)type.get();
+    Type *retType = translateType(retNode->type, retNode->typeName);
+
+    TypeNode *paramTyNode = (TypeNode*)params.get()->typeExpr.get();
+    Type *paramsType = translateType(paramTyNode->type, paramTyNode->typeName);
+
+    FunctionType *ft = FunctionType::get(retType, paramsType, false);
+    Function *f = Function::Create(ft, Function::ExternalLinkage, name, m);
+
+    BasicBlock *bb = BasicBlock::Create(getGlobalContext(), "entry", f);
+    c->builder.SetInsertPoint(bb);
+
+    Value *ret = ConstantFP::get(getGlobalContext(), APFloat(0.5f));
+    c->builder.CreateRet(ret);
+
+    verifyFunction(*f);
+}
+
+
+void DataDeclNode::compile(Compiler *c, Module *m){}
 
 
 
@@ -85,7 +132,7 @@ void BoolLitNode::print()
 
 void StrLitNode::print()
 {
-    cout << val;
+    cout << '"' << val << '"';
 }
 
 void TypeNode::print()
@@ -103,12 +150,12 @@ void BinOpNode::print()
     putchar('(');
     if(lval) lval->print();
     putchar(' ');
-    if(rval) rval->print();
-    putchar(' ');
     if(IS_LITERAL(op))
-        cout << op;
+        cout << (char)op;
     else
         cout << TOK_TYPE_STR(op);
+    putchar(' ');
+    if(rval) rval->print();
     puts(")");
 }
 
@@ -125,7 +172,7 @@ void IfNode::print()
     if(condition) condition->print();
     cout << "\nthen\n";
     if(child) child->print();
-    cout << "end\n";
+    cout << "EndIf\n";
 }
 
 void NamedValNode::print()
@@ -135,7 +182,7 @@ void NamedValNode::print()
 
 void VarNode::print()
 {
-    cout << "{VarNode " << name << '}';
+    cout << name;
 }
 
 void FuncCallNode::print()
@@ -155,50 +202,38 @@ void VarDeclNode::print()
 
 void VarAssignNode::print()
 {
-    cout << "varAssign " << name << " = ";
+    cout << "varAssign ";
+    if(var) var->print();
+    cout << " = ";
     if(expr) expr->print();
-    else cout << "(undef)"; 
+    else cout << "(undef)";
     putchar('\n');
 }
 
 void FuncDeclNode::print()
 {
-    cout << "function " << name << " declared\n";
-    cout << "of type ";
+    cout << "function " << name << " declared of ";
     type->print();
-    /*for(auto n : params){
-        if(n) n->print();
-        cout << ", ";
-    }
-    cout << "\n";
-    for(auto n : body){
-        if(n) n->print();
-        cout << "\n";
-    }*/
+    puts("With params: ");
+    if(params) params->print();
+    puts("FuncBody:");
+    if(child.get()) child.get()->print();
+    puts("EndFunc");
 }
 
 void DataDeclNode::print()
 {
-    cout << "class " << name << "\n\t";
-    /*for(auto n : body){
-        cout << endl;
-        n->print();
-    }*/
-    cout << endl;
+    cout << "Data " << name << "Declared\n";
+    if(child.get()) child.get()->print();
+    puts("");
 }
 
 void Compiler::compile()
 {
-    vector<llvm::Type*> doubles{2, Type::getDoubleTy(getGlobalContext())};
-    FunctionType *ft = FunctionType::get(Type::getDoubleTy(getGlobalContext()), doubles, false);
-    Function *f = Function::Create(ft, Function::ExternalLinkage, "", module);
-
-    BasicBlock *bb = BasicBlock::Create(getGlobalContext(), "entry", f);
-    builder.SetInsertPoint(bb);
-
-    Value *ret = ConstantFP::get(getGlobalContext(), APFloat(0.5f));
-    builder.CreateRet(ret);
-
-    verifyFunction(*f);
+    Node *n = ast.get();
+    while(n){
+        n->compile(this, module.get());
+        n = n->next.get();
+    }
     module->dump();
 }

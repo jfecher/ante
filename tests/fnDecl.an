@@ -2,11 +2,11 @@
     fnDecl.an
         test function declarations and calls
 `
-i32 printMsg: bool b
+void printMsg: bool b
     if b -> print("Hello World!")
 
 bool divisibleByThree: i32 i
     return i % 3 == 0
 
-printSomething(true)
-assert(divisibleByThreeOrFive(25) == true)
+printMsg(true)
+assert(divisibleByThreeOrFive(24) == true)

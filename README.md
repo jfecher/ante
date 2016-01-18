@@ -2,27 +2,54 @@
 A compiled, optionally typed language
 
 ## Features
-* Ante can either compile normally, or function as a JIT.
-* Ante is optionally typed
+* The compiler can either compile normally, or function as a JIT.
+* Support for imperative, functional, and object-oriented paradigms.
+* Strongly typed with a detailed algebraic type system
 ```go
-~Static typing:
-i32 i = 55        ~create i, an integer
-i = "Test 2"      ~This line triggers a compile-time error since i has a static typing
+i32 i = 55        ~create i, a mutable 32-bit integer
 
-~Let bindings:
-let t = 0
-~Note: t is immutable
+~Types can also be inferred through let bindings:
+~Create j, an immutable integer
+let j = 0
 
+let myTuple = 5, 5.0, "five"
+~The following is the mutable version of the above:
+i32,f32,c32[] myTuple = 5, 5.0, "five"
+
+~tuples can also be destructured and stored into multiple variables
+i32 x y = 4, 5
+
+~Arrays:
+u8[5] myArray = 0, 1, 2, 3, 4
+
+~Function pointers:
+i32(i32, i32) myFunctionPtr = lambda x y -> x * y
+
+~Or-ing types:
+File|None f = None
 ```
-* Spaces are significant after newlines, and indentation is required
+* Significant whitespace
 ```go
-if 3 > 2
-    print("3 is greater than 2")
-else
-    print("Invalid laws of mathematics, please try again in an alternate universe")
+void myFunction:
+    if 3 > 2
+        print("3 is greater than 2")
+    else
+        print("Invalid laws of mathematics, please try again in an alternate universe")
 ```
-* Code is evaluated, by default, at compile time.  Only functions producing output
-or user specified functions, and necessary constructs are compiled into the binary.
+* Reference counted smart pointers by default while keeping the ability to create raw pointers
+```go
+i32* intPtr = new 5
+let strPtr = new "msg"
+
+~Declaration of raw pointers is accomplished with the 'raw' modifier:
+raw void* ptr = malloc(10)
+
+~intPtr is automatically freed
+~voidPtr is automatically freed
+free(ptr) ~ptr must be manually freed
+```
+* Code is evaluated, by default, at compile time.  Only functions producing output,
+user specified functions or variables, and necessary constructs are compiled into the binary.
 ```go
 data Point
     pri i32 x y
@@ -45,6 +72,5 @@ if p.getx() == 6
 
 ~All of the above is compiled to
 print("Hello World!")
-
 ```
 * For more information, check out tests/language.an for all planned features.

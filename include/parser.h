@@ -1,11 +1,11 @@
 #ifndef PARSER_H
 #define PARSER_H
 
-#include "lexer.h"
-#include "tokens.h"
-#include "cstdlib"
 #include <vector>
 #include <memory> //For unique_ptr
+#include "lexer.h"
+#include "tokens.h"
+#include "compiler.h"
 
 enum ParseErr{
     PE_OK,
@@ -15,171 +15,174 @@ enum ParseErr{
     PE_INVALID_STMT,
 };
 
+using namespace llvm;
+using namespace ante;
+
 /* Base class for all nodes */
 class Node{
     public:
-        Node *next, *prev, *parent;
+        unique_ptr<Node> next;
+        Node *prev;
         virtual void print(void) = 0;
-        virtual void compile(void) = 0;
+        virtual void compile(Compiler*, Module*) = 0;
         virtual void exec(void) = 0;
+        ~Node(){}
 };
 
-/* 
- * Class for all nodes that can contain child statement nodes, 
- * if statements, function declarations, etc 
+/*
+ * Class for all nodes that can contain child statement nodes,
+ * if statements, function declarations, etc
  */
-class ParentNode{
+class ParentNode : public Node{
     public:
-        Node* child;
+        unique_ptr<Node> child;
 
         /*
          * The body should always be known when a
          * parent node is initialized, so it is required
-         * in the constructor (unlike next/prev/parent)
+         * in the constructor (unlike next and prev)
          */
-        ParentNode(Node* c) : child(c){}
+        ParentNode(Node* c) : Node(), child(c){}
 };
 
 class IntLitNode : public Node{
     public:
-        char* val;
-        void compile(void);
+        string val;
+        void compile(Compiler*, Module*);
         void exec(void);
         void print(void);
-        IntLitNode(char* s) : val(s){}
+        IntLitNode(char* s) : Node(), val(s){}
 };
 
 class FltLitNode : public Node{
     public:
-        char* val;
-        void compile(void);
+        string val;
+        void compile(Compiler*, Module*);
         void exec(void);
         void print(void);
-        FltLitNode(char* s) : val(s){}
+        FltLitNode(char* s) : Node(), val(s){}
 };
 
 class BoolLitNode : public Node{
     public:
         bool val;
-        void compile(void);
+        void compile(Compiler*, Module*);
         void exec(void);
         void print(void);
-        BoolLitNode(char b) : val(b){}
+        BoolLitNode(char b) : Node(), val(b){}
 };
 
 class BinOpNode : public Node{
     public:
         int op;
-        Node *lval, *rval;
-        ~BinOpNode(){ free(lval); free(rval); }
-        void compile(void);
+        unique_ptr<Node> lval, rval;
+        void compile(Compiler*, Module*);
         void exec(void);
         void print(void);
-        BinOpNode(int s, Node *lv, Node *rv) : op(s), lval(lv), rval(rv){}
+        BinOpNode(int s, Node *lv, Node *rv) : Node(), op(s), lval(lv), rval(rv){}
 };
 
 class TypeNode : public Node{
     public:
         int type;
-        char* typeName; //used for usertypes
-        void compile(void);
+        string typeName; //used for usertypes
+        void compile(Compiler*, Module*);
         void exec(void);
         void print(void);
-        TypeNode(int ty, char* tName) : type(ty), typeName(tName){}
+        TypeNode(int ty, char* tName) : Node(), type(ty), typeName(tName){}
 };
 
 class RetNode : public Node{
     public:
-        Node* expr;
-        void compile(void);
+        unique_ptr<Node> expr;
+        void compile(Compiler*, Module*);
         void exec(void);
         void print(void);
-        RetNode(Node* e) : expr(e){}
+        RetNode(Node* e) : Node(), expr(e){}
+};
+
+class NamedValNode : public Node{
+    public:
+        string name;
+        unique_ptr<Node> typeExpr;
+        void compile(Compiler*, Module*);
+        void exec(void);
+        void print(void);
+        NamedValNode(char* s, Node* t) : Node(), name(s), typeExpr(t){}
+};
+
+class VarNode : public Node{
+    public:
+        string name;
+        void compile(Compiler*, Module*);
+        void exec(void);
+        void print(void);
+        VarNode(char* s) : Node(), name(s){}
+};
+
+class FuncCallNode : public Node{
+    public:
+        string name;
+        unique_ptr<Node> params;
+        void compile(Compiler*, Module*);
+        void exec(void);
+        void print(void);
+        FuncCallNode(char* s, Node* p) : Node(), name(s), params(p){}
+};
+
+class StrLitNode : public Node{
+    public:
+        string val;
+        void compile(Compiler*, Module*);
+        void exec(void);
+        void print(void);
+        StrLitNode(char* s) : Node(), val(s){}
+};
+
+class VarDeclNode : public Node{
+    public:
+        string name;
+        unique_ptr<Node> typeExpr, expr;
+        void compile(Compiler*, Module*);
+        void exec(void);
+        void print(void);
+        VarDeclNode(char* s, Node* t, Node* exp) : Node(), name(s), typeExpr(t), expr(exp){}
+};
+
+class VarAssignNode : public Node{
+    public:
+        unique_ptr<VarNode> var;
+        unique_ptr<Node> expr;
+        void compile(Compiler*, Module*);
+        void exec(void);
+        void print(void);
+        VarAssignNode(Node* v, Node* exp) : Node(), var((VarNode*)v), expr(exp){}
 };
 
 class IfNode : public ParentNode{
     public:
-        Node* condition;
-        void compile(void);
+        unique_ptr<Node> condition;
+        void compile(Compiler*, Module*);
         void exec(void);
         void print(void);
         IfNode(Node* n1, Node* body) : ParentNode(body), condition(n1){}
 };
 
-class NamedValNode : public Node{
-    public:
-        char* name;
-        Node* typeExpr;
-        void compile(void);
-        void exec(void);
-        void print(void);
-        NamedValNode(char* s, Node* t) : name(s), typeExpr(t){}
-};
-
-class VarNode : public Node{
-    public:
-        char* name;
-        void compile(void);
-        void exec(void);
-        void print(void);
-        VarNode(char* s) : name(s){}
-};
-
-class FuncCallNode : public Node{
-    public:
-        char* name;
-        Node* params;
-        void compile(void);
-        void exec(void);
-        void print(void);
-        FuncCallNode(char* s, Node* p) : name(s), params(p){}
-};
-
-class StrLitNode : public Node{
-    public:
-        char* val;
-        void compile(void);
-        void exec(void);
-        void print(void);
-        StrLitNode(char* s) : val(s){}
-};
-
-class VarDeclNode : public Node{
-    public:
-        char* name;
-        Node* typeExpr;
-        Node* expr;
-        void compile(void);
-        void exec(void);
-        void print(void);
-        VarDeclNode(char* s, Node* t, Node* exp) : name(s), typeExpr(t), expr(exp){}
-};
-
-class VarAssignNode : public Node{
-    public:
-        char* name;
-        Node* expr;
-        void compile(void);
-        void exec(void);
-        void print(void);
-        VarAssignNode(char* s, Node* exp) : name(s), expr(exp){}
-};
-
 class FuncDeclNode : public ParentNode{
     public:
-        char* name;
-        Node* type;
-        Node* params;
-        void compile(void);
+        string name;
+        unique_ptr<Node> type;
+        unique_ptr<NamedValNode> params;
+        void compile(Compiler*, Module*);
         void exec(void);
         void print(void);
-        FuncDeclNode(char* s, Node* t, Node* p, Node* b) : ParentNode(b), name(s), type(t), params(p){}
+        FuncDeclNode(char* s, Node* t, Node* p, Node* b) : ParentNode(b), name(s), type(t), params((NamedValNode*)p){}
 };
 
 class DataDeclNode : public ParentNode{
     public:
-        char* name;
-        void compile(void);
+        string name;
+        void compile(Compiler*, Module*);
         void exec(void);
         void print(void);
         DataDeclNode(char* s, Node* b) : ParentNode(b), name(s){}

@@ -140,8 +140,9 @@ print(typeof(n) ++ " " ++ n)  ~output: i32 43
 `
 
 ~Declare a public u8 array buf that is not automatically freed.
-pub raw u8[] buf = 3, 4, 5
+pub raw u8[] buf = [3, 4, 5]
 
+u8{} u8List = {0, 2}
 
 ~Declare an array of 100 integers called naturalNumbers and do not
 ~initialize it since it is manually initialized in the following loop.
@@ -1211,16 +1212,23 @@ data Vec<type T>
     u32 len
     u32 cap
 
-List<u8> numsList = 1, &(2, &(3, None)))
+List<u8> numsList = 1u8, &(2u8, &(3u8, None)))
 
 `
         Multiline expressions/statements
-    Expressions are normally terminated by a newline
+    Statements are normally terminated by a newline
     character, but can be extended by adding a backslash
-    right before the newline as the final character.  The
-    backslash can be used in any expression or statement
-    to tell the lexer to ignore the newline.
+    right before the newline as the final character.  Expressions
+    on the other hand can also be extended with an indentation and
+    will contain every expression between that indent and the
+    following unindent.
 `
+
+let result = if someReallyLongFunctionNameThatShouldProbablyBeShorterInHindsight()
+    "branch " ++ 1
+else
+    "branch " ++ 2
+
 data Num -> i8  | i16 | i32 | i64 \
           | u8  | u16 | u32 | u64 \
           | f32 | f64
@@ -1243,7 +1251,7 @@ data Int -> i8  \
 data MyErr : Error
     c32[] desc
     c32[] detail
-    E* cause
+    Error* cause
 
     ~required by Error trait
     MyErr fromErr: Error err
