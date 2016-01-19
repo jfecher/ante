@@ -10,24 +10,32 @@
 #include <stack>
 
 using namespace llvm;
+using namespace std;
 
 /* Forward-declaration of Node defined in parser.h */
 struct Node;
 
 namespace ante{
     struct Compiler{
-        std::unique_ptr<Node> ast;
-        std::unique_ptr<Module> module;
+        unique_ptr<Node> ast;
+        unique_ptr<Module> module;
         IRBuilder<> builder;
-        std::stack<std::map<std::string, Value*>> varTable;
+        stack<std::map<string, AllocaInst*>> varTable;
         
         
         Compiler(Node* _ast) : ast(_ast), builder(getGlobalContext()){
-            module = std::unique_ptr<Module>(new Module("ante_main_mod", getGlobalContext()));
+            module = unique_ptr<Module>(new Module("ante_main_mod", getGlobalContext()));
+            varTable.push(map<string, AllocaInst*>());
         }
         ~Compiler(){}
 
-        void compile(void);
+        void compile();
+        void enterNewScope();
+        void exitScope();
+        
+        Value* lookup(string var);
+
+        static AllocaInst* createBlockAlloca(Function *f, string var, Type *varType);
     };
 }
 

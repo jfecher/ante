@@ -29,10 +29,13 @@ Type* translateType(int tokTy, string typeName = "")
 
 void compileStmtList(Node *nList, Compiler *c, Module *m)
 {
+    c->enterNewScope();
     while(nList){
+        puts("stmt");
         nList->compile(c, m);
         nList = nList->next.get();
     }
+    c->exitScope();
 }
 
 Value* IntLitNode::compile(Compiler *c, Module *m)
@@ -50,9 +53,11 @@ Value* BoolLitNode::compile(Compiler *c, Module *m)
     return ConstantInt::get(getGlobalContext(), APInt(1, val, true));
 }
 
-Value* TypeNode::compile(Compiler *c, Module *m){}
+Value* TypeNode::compile(Compiler *c, Module *m)
+{ return nullptr; }
 
-Value* StrLitNode::compile(Compiler *c, Module *m){}
+Value* StrLitNode::compile(Compiler *c, Module *m)
+{ return nullptr; }
 
 /*
  *  Compiles an operation along with its lhs and rhs
@@ -64,7 +69,9 @@ Value* StrLitNode::compile(Compiler *c, Module *m){}
 Value* BinOpNode::compile(Compiler *c, Module *m)
 {
     Value *lhs = lval->compile(c, m);
+    puts("lhs done");
     Value *rhs = rval->compile(c, m);
+    puts("rhs done");
 
     switch(op){
         case '+': return c->builder.CreateAdd(lhs, rhs, "fAddTmp");
@@ -83,7 +90,9 @@ Value* BinOpNode::compile(Compiler *c, Module *m)
         case Tok_Or: break;
         case Tok_And: break;
     }
-    
+   
+    cout << "Warning: unknown operator ";
+    lexer::printTok(op);
     return nullptr;
 }
 
@@ -92,17 +101,32 @@ Value* RetNode::compile(Compiler *c, Module *m)
     return c->builder.CreateRet(expr->compile(c, m));
 }
 
-Value* IfNode::compile(Compiler *c, Module *m){}
+Value* IfNode::compile(Compiler *c, Module *m)
+{ return nullptr; }
 
-Value* NamedValNode::compile(Compiler *c, Module *m){}
+Value* NamedValNode::compile(Compiler *c, Module *m)
+{ return nullptr; }
 
-Value* VarNode::compile(Compiler *c, Module *m){}
+/*
+ *  Loads a variable from the stack
+ */
+Value* VarNode::compile(Compiler *c, Module *m)
+{ //TODO: check for var not declared
+    //Value *v = c->lookup(name);
+    printf("%p\n", (void*)c->varTable.top()[name]);
+    //Value *r = c->builder.CreateLoad(v, name.c_str());
+    //return r;
+    return c->varTable.top()[name];
+}
 
-Value* FuncCallNode::compile(Compiler *c, Module *m){}
+Value* FuncCallNode::compile(Compiler *c, Module *m)
+{ return nullptr; }
 
-Value* VarDeclNode::compile(Compiler *c, Module *m){}
+Value* VarDeclNode::compile(Compiler *c, Module *m)
+{ return nullptr; }
 
-Value* VarAssignNode::compile(Compiler *c, Module *m){}
+Value* VarAssignNode::compile(Compiler *c, Module *m)
+{ return nullptr; }
 
 
 Value* FuncDeclNode::compile(Compiler *c, Module *m)
@@ -120,6 +144,11 @@ Value* FuncDeclNode::compile(Compiler *c, Module *m)
     BasicBlock *bb = BasicBlock::Create(getGlobalContext(), "entry", f);
     c->builder.SetInsertPoint(bb);
 
+    for(auto &arg : f->args()){
+        //AllocaInst *v = c->builder.CreateAlloca(translateType(((TypeNode*)param->typeExpr.get())->type), 0, param->name);
+        c->varTable.top()[name] = (AllocaInst*)&arg;
+    }
+
     compileStmtList(child.get(), c, m);
 
     if(retNode->type == Tok_Void){
@@ -135,7 +164,8 @@ Value* FuncDeclNode::compile(Compiler *c, Module *m)
 }
 
 
-Value* DataDeclNode::compile(Compiler *c, Module *m){}
+Value* DataDeclNode::compile(Compiler *c, Module *m)
+{ return nullptr; }
 
 
 
@@ -287,6 +317,8 @@ void DataDeclNode::print()
     puts("");
 }
 
+
+
 void Compiler::compile()
 {
     Node *n = ast.get();
@@ -296,3 +328,27 @@ void Compiler::compile()
     }
     module->dump();
 }
+
+void Compiler::enterNewScope()
+{
+    varTable.push(map<string, AllocaInst*>());
+}
+
+void Compiler::exitScope()
+{
+    varTable.pop();
+}
+
+Value* Compiler::lookup(string var)
+{
+    return varTable.top()[var];
+}
+
+/*
+ *  Allocates a value on the stack at the entry to a block
+ */
+/*static AllocaInst* createBlockAlloca(Function *f, string var, Type *varType)
+{
+    IRBuilder<> builder{&f->getEntryBlock(), f->getEntryBlock().begin()};
+    return builder.CreateAlloca(varType, 0, var);
+}*/
