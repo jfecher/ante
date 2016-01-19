@@ -22,6 +22,7 @@ namespace ante{
         void init(const char *file);
         int next(void);
         void printTok(int t);
+        string getTokStr(int t);
     
         void incPos(void);
         void incPos(int end);

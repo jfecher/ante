@@ -3,6 +3,25 @@
 
 using namespace llvm;
 
+
+/*
+ *  Inform the user of an error and return nullptr.
+ *  (perhaps this should throw an exception?)
+ */
+template<typename T>
+Value* compErr(T msg)
+{
+    cout << msg << endl << "Compilation aborted.\n\n";
+    return nullptr;
+}
+
+template<typename T, typename... Args>
+Value* compErr(T msg, Args... args)
+{
+    cout << msg;
+    return compErr(args...);
+}
+
 /*
  *  Translates an individual type in token form to an llvm::Type
  */
@@ -19,28 +38,34 @@ Type* translateType(int tokTy, string typeName = "")
         case Tok_Usz: return Type::getVoidTy(getGlobalContext()); //TODO: implement
         case Tok_F32: return Type::getFloatTy(getGlobalContext());
         case Tok_F64: return Type::getDoubleTy(getGlobalContext());
-        case Tok_C8:  return Type::getVoidTy(getGlobalContext()); //TODO: implement
-        case Tok_C32: return Type::getVoidTy(getGlobalContext()); //TODO: implement
+        case Tok_C8:  return Type::getInt8Ty(getGlobalContext()); //TODO: implement
+        case Tok_C32: return Type::getInt32Ty(getGlobalContext()); //TODO: implement
         case Tok_Bool:return Type::getInt1Ty(getGlobalContext());
         case Tok_Void:return Type::getVoidTy(getGlobalContext());
     }
     return nullptr;
 }
 
+/*
+ *  Returns amount of values in a tuple, from 0 to max uint.
+ *  Does not assume argument is a tuple.
+ */
+size_t getTupleSize(Node *tup)
+{
+    return 1;
+}
+
 void compileStmtList(Node *nList, Compiler *c, Module *m)
 {
-    c->enterNewScope();
     while(nList){
-        puts("stmt");
         nList->compile(c, m);
         nList = nList->next.get();
     }
-    c->exitScope();
 }
 
 Value* IntLitNode::compile(Compiler *c, Module *m)
 {   //TODO: unsigned int with APUInt
-    return ConstantInt::get(getGlobalContext(), APInt(64, val, true));
+    return ConstantInt::get(getGlobalContext(), APInt(32, val, true));
 }
 
 Value* FltLitNode::compile(Compiler *c, Module *m)
@@ -69,9 +94,7 @@ Value* StrLitNode::compile(Compiler *c, Module *m)
 Value* BinOpNode::compile(Compiler *c, Module *m)
 {
     Value *lhs = lval->compile(c, m);
-    puts("lhs done");
     Value *rhs = rval->compile(c, m);
-    puts("rhs done");
 
     switch(op){
         case '+': return c->builder.CreateAdd(lhs, rhs, "fAddTmp");
@@ -91,9 +114,7 @@ Value* BinOpNode::compile(Compiler *c, Module *m)
         case Tok_And: break;
     }
    
-    cout << "Warning: unknown operator ";
-    lexer::printTok(op);
-    return nullptr;
+    return compErr("Unknown operator ", lexer::getTokStr(op));
 }
 
 Value* RetNode::compile(Compiler *c, Module *m)
@@ -111,16 +132,38 @@ Value* NamedValNode::compile(Compiler *c, Module *m)
  *  Loads a variable from the stack
  */
 Value* VarNode::compile(Compiler *c, Module *m)
-{ //TODO: check for var not declared
-    //Value *v = c->lookup(name);
-    printf("%p\n", (void*)c->varTable.top()[name]);
-    //Value *r = c->builder.CreateLoad(v, name.c_str());
-    //return r;
-    return c->varTable.top()[name];
+{
+    Value *val = c->lookup(name);
+    if(!val){
+        return compErr("Variable ", name, " has not been declared.");
+    }
+    return val;
 }
 
 Value* FuncCallNode::compile(Compiler *c, Module *m)
-{ return nullptr; }
+{
+    Function *f = m->getFunction(name);
+    if(!f){
+        return compErr("Called function ", name, " has not been declared.");
+    }
+
+    size_t paramSize = getTupleSize(params.get());
+    if(f->arg_size() != paramSize){
+        if(paramSize == 1)
+            return compErr("Called function ", name, " was given 1 paramter but was declared to take ", f->arg_size());
+        else
+            return compErr("Called function ", name, " was given ", paramSize, " paramters but was declared to take ", f->arg_size());
+    }
+
+    std::vector<Value*> args;
+    for(unsigned i = 0; i < paramSize; i++){
+        args.push_back(params->compile(c, m));
+        if(!args.back())
+            compErr("Argument ", i, " of called function ", name, " evaluated to null.");
+    }
+
+    return c->builder.CreateCall(f, args, "callTmp");
+}
 
 Value* VarDeclNode::compile(Compiler *c, Module *m)
 { return nullptr; }
@@ -131,33 +174,46 @@ Value* VarAssignNode::compile(Compiler *c, Module *m)
 
 Value* FuncDeclNode::compile(Compiler *c, Module *m)
 {
-    //vector<llvm::Type*> paramTypes{2, Type::getDoubleTy(getGlobalContext())};
+    //Get and translate the function's return type to an llvm::Type*
     TypeNode *retNode = (TypeNode*)type.get();
     Type *retType = translateType(retNode->type, retNode->typeName);
 
-    TypeNode *paramTyNode = (TypeNode*)params.get()->typeExpr.get();
+    //Get and translate the function's parameter's type(s) to an llvm::Type*
+    NamedValNode *param = params.get();
+    TypeNode *paramTyNode = (TypeNode*)param->typeExpr.get();
     Type *paramsType = translateType(paramTyNode->type, paramTyNode->typeName);
 
+    //Get the corresponding function type for the above return type, parameter types,
+    //with no varargs
     FunctionType *ft = FunctionType::get(retType, paramsType, false);
+    
+    //Actually create the function in module m
     Function *f = Function::Create(ft, Function::ExternalLinkage, name, m);
 
+    //Create the entry point for the function
     BasicBlock *bb = BasicBlock::Create(getGlobalContext(), "entry", f);
     c->builder.SetInsertPoint(bb);
 
+    //tell the compiler to create a new scope on the stack.
+    c->enterNewScope();
+
+    //iterate through each parameter and add its value to the new scope.
     for(auto &arg : f->args()){
-        //AllocaInst *v = c->builder.CreateAlloca(translateType(((TypeNode*)param->typeExpr.get())->type), 0, param->name);
-        c->varTable.top()[name] = (AllocaInst*)&arg;
+        c->stoVar(param->name, &arg);
+        param = (NamedValNode*)param->next.get();
+        if(!param) break;
     }
 
     compileStmtList(child.get(), c, m);
 
+    //llvm requires explicit returns, so generate a void return even if
+    //the user created a void function.
     if(retNode->type == Tok_Void){
         c->builder.CreateRetVoid();
     }
+    c->exitScope();
     
-    puts("function: ");
-    m->dump();
-    puts("endFunction.");
+    c->builder.SetInsertPoint(&c->module->getFunction("main")->back());
 
     verifyFunction(*f);
     return f;
@@ -321,27 +377,42 @@ void DataDeclNode::print()
 
 void Compiler::compile()
 {
-    Node *n = ast.get();
-    while(n){
-        n->compile(this, module.get());
-        n = n->next.get();
-    }
-    module->dump();
+    //Get the corresponding function type for the above return type, parameter types,
+    //with no varargs
+    FunctionType *ft = FunctionType::get(Type::getVoidTy(getGlobalContext()), Type::getVoidTy(getGlobalContext()), false);
+    
+    //Actually create the function in module m
+    Function *f = Function::Create(ft, Function::ExternalLinkage, "main", module.get());
+    
+    //Create the entry point for the function
+    BasicBlock *bb = BasicBlock::Create(getGlobalContext(), "entry", f);
+    builder.SetInsertPoint(bb);
+
+    compileStmtList(ast.get(), this, module.get());
+    builder.CreateRetVoid();
+
+    verifyFunction(*f);
+    module->dump(); 
 }
 
-void Compiler::enterNewScope()
+inline void Compiler::enterNewScope()
 {
-    varTable.push(map<string, AllocaInst*>());
+    varTable.push(map<string, Value*>());
 }
 
-void Compiler::exitScope()
+inline void Compiler::exitScope()
 {
     varTable.pop();
 }
 
-Value* Compiler::lookup(string var)
+inline Value* Compiler::lookup(string var)
 {
     return varTable.top()[var];
+}
+
+inline void Compiler::stoVar(string var, Value *val)
+{
+    varTable.top()[var] = val;
 }
 
 /*

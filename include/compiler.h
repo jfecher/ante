@@ -20,12 +20,12 @@ namespace ante{
         unique_ptr<Node> ast;
         unique_ptr<Module> module;
         IRBuilder<> builder;
-        stack<std::map<string, AllocaInst*>> varTable;
+        stack<std::map<string, Value*>> varTable;
         
         
         Compiler(Node* _ast) : ast(_ast), builder(getGlobalContext()){
             module = unique_ptr<Module>(new Module("ante_main_mod", getGlobalContext()));
-            varTable.push(map<string, AllocaInst*>());
+            varTable.push(map<string, Value*>());
         }
         ~Compiler(){}
 
@@ -34,6 +34,7 @@ namespace ante{
         void exitScope();
         
         Value* lookup(string var);
+        void stoVar(string var, Value *val);
 
         static AllocaInst* createBlockAlloca(Function *f, string var, Type *varType);
     };

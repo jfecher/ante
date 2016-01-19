@@ -164,14 +164,26 @@ int yylex(...)
     return ante::lexer::next();
 }
 
+/*
+ *  Prints a token's type to stdout
+ */
 void ante::lexer::printTok(int t)
 {
+    puts(getTokStr(t).c_str());
+}
+
+/*
+ *  Translates a token's type to a string
+ */
+string ante::lexer::getTokStr(int t)
+{
+    string s = "";
     if(IS_LITERAL(t)){
-        putchar(t);
-        putchar('\n');
+        s += (char)t;
     }else{
-        puts(TOK_TYPE_STR(t));
+        s += TOK_TYPE_STR(t);
     }
+    return s;
 }
 
 inline void ante::lexer::incPos(void)
