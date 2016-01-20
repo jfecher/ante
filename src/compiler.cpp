@@ -154,7 +154,7 @@ Value* IfNode::compile(Compiler *c, Module *m)
     //f->getBasicBlockList().push_back(elsebb);
     
     f->getBasicBlockList().push_back(mergbb);
-    PHINode *pn = c->builder.CreatePHI(Type::getDoubleTy(getGlobalContext()), 2, "ifTmp");
+    PHINode *pn = c->builder.CreatePHI(Type::getVoidTy(getGlobalContext()), 2, "ifTmp");
     pn->addIncoming(then, thenbb);
     return pn;
 }
