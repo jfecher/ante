@@ -169,7 +169,7 @@ int yylex(...)
  */
 void ante::lexer::printTok(int t)
 {
-    puts(getTokStr(t).c_str());
+    cout << getTokStr(t).c_str();
 }
 
 /*

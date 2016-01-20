@@ -37,13 +37,8 @@ int main(int argc, char *argv[]){
             lexer::init(argv[2]);
             int flag = yyparse();
             cout << "Parser returned " << flag << endl;
-            Node *n = parser::getRootNode();
             if(flag == PE_OK){
-                while(n){
-                    n->print();
-                    putchar('\n');
-                    n = n->next.get();
-                }
+                parser::printBlock(parser::getRootNode());
             }
         //compile
         }else if(strcmp(argv[1], "-c") == 0){
