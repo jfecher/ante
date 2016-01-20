@@ -9,4 +9,5 @@ i32 fact: i32 x
         return 1
     return x * fact(x-1)
 
-fact(5)
+if isEven(4)
+    fact(5)

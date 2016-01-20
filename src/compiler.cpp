@@ -142,7 +142,10 @@ Value* IfNode::compile(Compiler *c, Module *m)
     //Compile the if statement's then body
     c->builder.SetInsertPoint(thenbb);
     Value *then = child->compile(c, m);
-    if(!then) return nullptr;
+    if(!then){
+        puts("Then condition could not be compiled.");
+        return nullptr;
+    }
 
     //create unconditional merge
     //c->builder.CreateBr(mergbb);
@@ -154,6 +157,8 @@ Value* IfNode::compile(Compiler *c, Module *m)
     //f->getBasicBlockList().push_back(elsebb);
     
     f->getBasicBlockList().push_back(mergbb);
+    c->builder.SetInsertPoint(mergbb);
+
     //PHINode *pn = c->builder.CreatePHI(Type::getVoidTy(getGlobalContext()), 1, "ifTmp");
     //pn->addIncoming(then, thenbb);
     return f;
@@ -293,19 +298,18 @@ void DataDeclNode::exec(){}
 
 void Compiler::compile()
 {
-    //Get the corresponding function type for the above return type, parameter types,
-    //with no varargs
-    FunctionType *ft = FunctionType::get(Type::getVoidTy(getGlobalContext()), Type::getVoidTy(getGlobalContext()), false);
+    //get or create the function type for the main method: void()
+    FunctionType *ft = FunctionType::get(Type::getInt8Ty(getGlobalContext()), false);
     
     //Actually create the function in module m
     Function *f = Function::Create(ft, Function::ExternalLinkage, "main", module.get());
-    
+   
     //Create the entry point for the function
     BasicBlock *bb = BasicBlock::Create(getGlobalContext(), "entry", f);
     builder.SetInsertPoint(bb);
 
     compileStmtList(ast.get(), this, module.get());
-    builder.CreateRetVoid();
+    builder.CreateRet(ConstantInt::get(getGlobalContext(), APInt(8, 0, true)));
 
     verifyFunction(*f);
     module->dump();
