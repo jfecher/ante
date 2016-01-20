@@ -1,0 +1,12 @@
+
+
+bool isEven: i32 x
+    return x % 2
+
+
+i32 fact: i32 x
+    if x <= 1
+        return 1
+    return x * fact(x-1)
+
+fact(5)

@@ -9,14 +9,15 @@ using namespace llvm;
  *  (perhaps this should throw an exception?)
  */
 template<typename T>
-Value* compErr(T msg)
+Value* Compiler::compErr(T msg)
 {
-    cout << msg << endl << "Compilation aborted.\n\n";
+    cout << msg << endl;
+    errFlag = true;
     return nullptr;
 }
 
 template<typename T, typename... Args>
-Value* compErr(T msg, Args... args)
+Value* Compiler::compErr(T msg, Args... args)
 {
     cout << msg;
     return compErr(args...);
@@ -97,24 +98,24 @@ Value* BinOpNode::compile(Compiler *c, Module *m)
     Value *rhs = rval->compile(c, m);
 
     switch(op){
-        case '+': return c->builder.CreateAdd(lhs, rhs, "fAddTmp");
-        case '-': return c->builder.CreateSub(lhs, rhs, "fSubTmp");
-        case '*': return c->builder.CreateMul(lhs, rhs, "fMulTmp");
-        case '/': return c->builder.CreateSDiv(lhs, rhs, "fDivTmp");
-        case '%': return c->builder.CreateSRem(lhs, rhs, "fModTmp");
-        case '<': return c->builder.CreateICmpULT(lhs, rhs, "fLtTmp");
-        case '>': return c->builder.CreateICmpUGT(lhs, rhs, "fGtTmp");
+        case '+': return c->builder.CreateAdd(lhs, rhs, "iAddTmp");
+        case '-': return c->builder.CreateSub(lhs, rhs, "iSubTmp");
+        case '*': return c->builder.CreateMul(lhs, rhs, "iMulTmp");
+        case '/': return c->builder.CreateSDiv(lhs, rhs, "iDivTmp");
+        case '%': return c->builder.CreateSRem(lhs, rhs, "iModTmp");
+        case '<': return c->builder.CreateICmpULT(lhs, rhs, "iLtTmp");
+        case '>': return c->builder.CreateICmpUGT(lhs, rhs, "iGtTmp");
         case '^': return c->builder.CreateXor(lhs, rhs, "xorTmp");
         case '.': break;
-        case Tok_Eq: return c->builder.CreateICmpEQ(lhs, rhs, "fCmpEqTmp");
-        case Tok_NotEq: return c->builder.CreateICmpNE(lhs, rhs, "fCmpNeTmp");
-        case Tok_LesrEq: return c->builder.CreateICmpULE(lhs, rhs, "fLeTmp");
-        case Tok_GrtrEq: return c->builder.CreateICmpUGE(lhs, rhs, "fGeTmp");
+        case Tok_Eq: return c->builder.CreateICmpEQ(lhs, rhs, "iCmpEqTmp");
+        case Tok_NotEq: return c->builder.CreateICmpNE(lhs, rhs, "iCmpNeTmp");
+        case Tok_LesrEq: return c->builder.CreateICmpULE(lhs, rhs, "iLeTmp");
+        case Tok_GrtrEq: return c->builder.CreateICmpUGE(lhs, rhs, "iGeTmp");
         case Tok_Or: break;
         case Tok_And: break;
     }
-   
-    return compErr("Unknown operator ", lexer::getTokStr(op));
+
+    return c->compErr("Unknown operator ", lexer::getTokStr(op));
 }
 
 Value* RetNode::compile(Compiler *c, Module *m)
@@ -123,7 +124,40 @@ Value* RetNode::compile(Compiler *c, Module *m)
 }
 
 Value* IfNode::compile(Compiler *c, Module *m)
-{ return nullptr; }
+{
+    //cond should always evaluate to a bool explicitely
+    Value* cond = condition->compile(c, m);
+    if(!cond) return nullptr;
+
+    Function *f = c->builder.GetInsertBlock()->getParent();
+    
+    //Create thenbb and forward declare the others but dont inser them
+    //into function f just yet.
+    BasicBlock *thenbb = BasicBlock::Create(getGlobalContext(), "then", f);
+    //BasicBlock *elsebb = BasicBlock::Create(getGlobalContext(), "else");
+    BasicBlock *mergbb = BasicBlock::Create(getGlobalContext(), "endif");
+
+    c->builder.CreateCondBr(cond, thenbb, mergbb);
+
+    //Compile the if statement's then body
+    c->builder.SetInsertPoint(thenbb);
+    Value *then = child->compile(c, m);
+    if(!then) return nullptr;
+
+    //create unconditional merge
+    c->builder.CreateBr(mergbb);
+
+    //then block must be updated in case it is changed by nested blocks.
+    thenbb = c->builder.GetInsertBlock();
+
+    //add the floating else to the function
+    //f->getBasicBlockList().push_back(elsebb);
+    
+    f->getBasicBlockList().push_back(mergbb);
+    PHINode *pn = c->builder.CreatePHI(Type::getDoubleTy(getGlobalContext()), 2, "ifTmp");
+    pn->addIncoming(then, thenbb);
+    return pn;
+}
 
 Value* NamedValNode::compile(Compiler *c, Module *m)
 { return nullptr; }
@@ -135,7 +169,7 @@ Value* VarNode::compile(Compiler *c, Module *m)
 {
     Value *val = c->lookup(name);
     if(!val){
-        return compErr("Variable ", name, " has not been declared.");
+        return c->compErr("Variable ", name, " has not been declared.");
     }
     return val;
 }
@@ -144,22 +178,22 @@ Value* FuncCallNode::compile(Compiler *c, Module *m)
 {
     Function *f = m->getFunction(name);
     if(!f){
-        return compErr("Called function ", name, " has not been declared.");
+        return c->compErr("Called function ", name, " has not been declared.");
     }
 
     size_t paramSize = getTupleSize(params.get());
     if(f->arg_size() != paramSize){
         if(paramSize == 1)
-            return compErr("Called function ", name, " was given 1 paramter but was declared to take ", f->arg_size());
+            return c->compErr("Called function ", name, " was given 1 paramter but was declared to take ", f->arg_size());
         else
-            return compErr("Called function ", name, " was given ", paramSize, " paramters but was declared to take ", f->arg_size());
+            return c->compErr("Called function ", name, " was given ", paramSize, " paramters but was declared to take ", f->arg_size());
     }
 
     std::vector<Value*> args;
     for(unsigned i = 0; i < paramSize; i++){
         args.push_back(params->compile(c, m));
         if(!args.back())
-            compErr("Argument ", i, " of called function ", name, " evaluated to null.");
+            c->compErr("Argument ", i, " of called function ", name, " evaluated to null.");
     }
 
     return c->builder.CreateCall(f, args, "callTmp");
@@ -392,7 +426,12 @@ void Compiler::compile()
     builder.CreateRetVoid();
 
     verifyFunction(*f);
-    module->dump(); 
+    module->dump();
+
+    if(errFlag){
+        puts("Compilation aborted.");
+        return;
+    }
 }
 
 inline void Compiler::enterNewScope()

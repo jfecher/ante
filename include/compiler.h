@@ -21,9 +21,9 @@ namespace ante{
         unique_ptr<Module> module;
         IRBuilder<> builder;
         stack<std::map<string, Value*>> varTable;
+        bool errFlag;
         
-        
-        Compiler(Node* _ast) : ast(_ast), builder(getGlobalContext()){
+        Compiler(Node* _ast) : ast(_ast), builder(getGlobalContext()), errFlag(false){
             module = unique_ptr<Module>(new Module("ante_main_mod", getGlobalContext()));
             varTable.push(map<string, Value*>());
         }
@@ -32,6 +32,12 @@ namespace ante{
         void compile();
         void enterNewScope();
         void exitScope();
+        
+        template<typename T>
+        Value* compErr(T msg);
+        
+        template<typename T, typename... Args>
+        Value* compErr(T msg, Args... args);
         
         Value* lookup(string var);
         void stoVar(string var, Value *val);
