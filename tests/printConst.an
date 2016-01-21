@@ -1,2 +1,1 @@
-print("Hello World!")
-print(32)
+puts("Hello World!")

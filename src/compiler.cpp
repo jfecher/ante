@@ -83,7 +83,9 @@ Value* TypeNode::compile(Compiler *c, Module *m)
 { return nullptr; }
 
 Value* StrLitNode::compile(Compiler *c, Module *m)
-{ return nullptr; }
+{
+    return c->builder.CreateGlobalStringPtr(val);
+}
 
 /*
  *  Compiles an operation along with its lhs and rhs
@@ -304,8 +306,8 @@ void Compiler::compilePrelude()
     FunctionType *i32RetI8pTy = FunctionType::get(Type::getInt8PtrTy(getGlobalContext()), Type::getInt32Ty(getGlobalContext()), false);
     Function::Create(i32RetI8pTy, Function::ExternalLinkage, "itoa", module.get());
 
-    FunctionType *i8pRetVoidTy = FunctionType::get(Type::getVoidTy(getGlobalContext()), Type::getInt8PtrTy(getGlobalContext()), false);
-    Function::Create(i8pRetVoidTy, Function::ExternalLinkage, "puts", module.get());
+    FunctionType *i8pRetI32Ty = FunctionType::get(Type::getInt32Ty(getGlobalContext()), Type::getInt8PtrTy(getGlobalContext()), false);
+    Function::Create(i8pRetI32Ty, Function::ExternalLinkage, "puts", module.get());
 
     FunctionType *i32RetI32Ty = FunctionType::get(Type::getInt32Ty(getGlobalContext()), Type::getInt32Ty(getGlobalContext()), false);
     Function::Create(i32RetI32Ty, Function::ExternalLinkage, "putchar", module.get());
