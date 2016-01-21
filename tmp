@@ -1,0 +1,49 @@
+; ModuleID = 'ante_main_mod'
+
+@0 = private unnamed_addr constant [13 x i8] c"Hello World!\00"
+@1 = private unnamed_addr constant [21 x i8] c"Goodbye Cruel World!\00"
+
+declare void @printf(i8*, ...)
+
+declare i32 @puts(i8*)
+
+declare void @putchar(i32)
+
+declare void @exit(i32)
+
+define i8 @main() {
+entry:
+  call void @printMsg(i1 true)
+  %callTmp = call i1 @divisibleByThree(i32 24)
+  %iCmpEqTmp = icmp eq i1 %callTmp, true
+  br i1 %iCmpEqTmp, label %then, label %endif
+
+then:                                             ; preds = %entry
+  call void @exit(i32 5)
+  br label %endif
+
+endif:                                            ; preds = %then, %entry
+  call void @printMsg(i1 true)
+  ret i8 0
+}
+
+define void @printMsg(i1) {
+entry:
+  br i1 %0, label %then, label %endif
+
+then:                                             ; preds = %entry
+  %callTmp = call i32 @puts(i8* getelementptr inbounds ([13 x i8], [13 x i8]* @0, i32 0, i32 0))
+  ret void
+  br label %endif
+
+endif:                                            ; preds = %then, %entry
+  %callTmp1 = call i32 @puts(i8* getelementptr inbounds ([21 x i8], [21 x i8]* @1, i32 0, i32 0))
+  ret void
+}
+
+define i1 @divisibleByThree(i32) {
+entry:
+  %iModTmp = srem i32 %0, 3
+  %iCmpEqTmp = icmp eq i32 %iModTmp, 0
+  ret i1 %iCmpEqTmp
+}

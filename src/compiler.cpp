@@ -200,7 +200,11 @@ Value* FuncCallNode::compile(Compiler *c, Module *m)
             c->compErr("Argument ", i, " of called function ", name, " evaluated to null.");
     }
 
-    return c->builder.CreateCall(f, args, "callTmp");
+    if(f->getReturnType() == Type::getVoidTy(getGlobalContext())){
+        return c->builder.CreateCall(f, args);
+    }else{
+        return c->builder.CreateCall(f, args, "callTmp");
+    }
 }
 
 Value* VarDeclNode::compile(Compiler *c, Module *m)
@@ -303,14 +307,12 @@ void Compiler::compilePrelude()
     FunctionType *i8pRetVoidVarargsTy = FunctionType::get(Type::getVoidTy(getGlobalContext()), Type::getInt8PtrTy(getGlobalContext()), true);
     Function::Create(i8pRetVoidVarargsTy, Function::ExternalLinkage, "printf", module.get());
 
-    FunctionType *i32RetI8pTy = FunctionType::get(Type::getInt8PtrTy(getGlobalContext()), Type::getInt32Ty(getGlobalContext()), false);
-    Function::Create(i32RetI8pTy, Function::ExternalLinkage, "itoa", module.get());
-
     FunctionType *i8pRetI32Ty = FunctionType::get(Type::getInt32Ty(getGlobalContext()), Type::getInt8PtrTy(getGlobalContext()), false);
     Function::Create(i8pRetI32Ty, Function::ExternalLinkage, "puts", module.get());
 
-    FunctionType *i32RetI32Ty = FunctionType::get(Type::getInt32Ty(getGlobalContext()), Type::getInt32Ty(getGlobalContext()), false);
-    Function::Create(i32RetI32Ty, Function::ExternalLinkage, "putchar", module.get());
+    FunctionType *i32RetVoidTy = FunctionType::get(Type::getVoidTy(getGlobalContext()), Type::getInt32Ty(getGlobalContext()), false);
+    Function::Create(i32RetVoidTy, Function::ExternalLinkage, "putchar", module.get());
+    Function::Create(i32RetVoidTy, Function::ExternalLinkage, "exit", module.get());
 }
 
 void Compiler::compile()
@@ -322,12 +324,13 @@ void Compiler::compile()
     
     //Actually create the function in module m
     Function *f = Function::Create(ft, Function::ExternalLinkage, "main", module.get());
-   
+
     //Create the entry point for the function
     BasicBlock *bb = BasicBlock::Create(getGlobalContext(), "entry", f);
     builder.SetInsertPoint(bb);
 
     compileStmtList(ast.get(), this, module.get());
+
     builder.CreateRet(ConstantInt::get(getGlobalContext(), APInt(8, 0, true)));
 
     verifyFunction(*f);
