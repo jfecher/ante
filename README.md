@@ -1,5 +1,5 @@
 ﻿# Ante
-A compiled, optionally typed language
+The compile-time language
 
 ## Features
 * The compiler can either compile normally, or function as a JIT.
