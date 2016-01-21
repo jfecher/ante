@@ -26,12 +26,11 @@ int main(int argc, char *argv[]){
         if(strcmp(argv[1], "-l") == 0){
             lexer::init(argv[2]);
             int t = lexer::next();
-
             while(t){
                 lexer::printTok(t);
+                putchar('\n');
                 t = lexer::next();
             }
-
         //parse and print parse tree
         }else if(strcmp(argv[1], "-p") == 0){
             lexer::init(argv[2]);

@@ -3,10 +3,8 @@
         test function declarations and calls
 `
 void printMsg: bool b
-    if b
-        puts("Hello World!")
-        return 0
-    puts("Goodbye Cruel World!")
+    if b -> puts("Hello World!")
+    puts("Goodbye World!")
 
 bool divisibleByThree: i32 i
     return i % 3 == 0
@@ -14,4 +12,4 @@ bool divisibleByThree: i32 i
 printMsg(true)
 if divisibleByThree(24) == false
     exit(5)
-printMsg(1 + 1 == 2)
+printMsg(1 + 1 != 2)

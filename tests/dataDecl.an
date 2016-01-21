@@ -30,13 +30,7 @@ data Number
 
 ~Test untyped generics
 data Maybe
-    Some: t
-    None
-
-data Tree
-    None:
-    Leaf: t val
-    Node: Tree l r
+    t | enum -> None
 
 
 ~Test type constructors
@@ -51,6 +45,11 @@ u32 area: Shape s
 | Rectangle l w -> l*w
 
 
+data Tree
+    None:
+    Leaf: t val
+    Node: Tree l r
+
 u32 depth: Tree t
 | None -> 0
 | Leaf -> 1
@@ -58,13 +57,13 @@ u32 depth: Tree t
 
 
 void main:
-    Maybe<i32> i = 32
+    Maybe i = 32
 
     ~Known not to be T due to strict typing
     Maybe<i32> j = None
 
     ~Declare a Maybe<i32> with T set to 0
-    Maybe<i32> k = i32 None
+    Maybe k = i32 None
 
 `
     Rust's Result datatype would be mostly useless in ante
