@@ -297,9 +297,26 @@ void FuncDeclNode::exec(){}
 void DataDeclNode::exec(){}
 */
 
+/*
+ *  Compiles function definitions found
+ *  in every program.
+ */
+void Compiler::compilePrelude()
+{
+    FunctionType *i8pRetVoidVarargsTy = FunctionType::get(Type::getVoidTy(getGlobalContext()), Type::getInt8PtrTy(getGlobalContext()), true);
+    Function *_printf = Function::Create(i8pRetVoidVarargsTy, Function::ExternalLinkage, "printf", module.get());
+
+    FunctionType *i32RetI8pTy = FunctionType::get(Type::getInt8PtrTy(getGlobalContext()), Type::getInt32Ty(getGlobalContext()), false);
+    Function *_itoa = Function::Create(i32RetI8pTy, Function::ExternalLinkage, "itoa", module.get());
+
+    FunctionType *i8pRetVoidTy = FunctionType::get(Type::getVoidTy(getGlobalContext()), Type::getInt8PtrTy(getGlobalContext()), false);
+    Function *_puts = Function::Create(i8pRetVoidTy, Function::ExternalLinkage, "puts", module.get());
+}
 
 void Compiler::compile()
 {
+    compilePrelude();
+
     //get or create the function type for the main method: void()
     FunctionType *ft = FunctionType::get(Type::getInt8Ty(getGlobalContext()), false);
     

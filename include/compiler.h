@@ -30,6 +30,7 @@ namespace ante{
         ~Compiler(){}
 
         void compile();
+        void compilePrelude();
         void enterNewScope();
         void exitScope();
         

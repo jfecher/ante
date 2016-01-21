@@ -21,7 +21,7 @@ int main(int argc, char *argv[]){
     if(argc == 2){
         //default = compile
         compile(argv[1]);
-    }else if(argc == 3){
+    }else if(argc >= 3){
         //lex and print tokens
         if(strcmp(argv[1], "-l") == 0){
             lexer::init(argv[2]);
