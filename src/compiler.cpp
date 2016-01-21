@@ -141,11 +141,9 @@ Value* IfNode::compile(Compiler *c, Module *m)
 
     //Compile the if statement's then body
     c->builder.SetInsertPoint(thenbb);
-    Value *then = child->compile(c, m);
-    if(!then){
-        puts("Then condition could not be compiled.");
-        return nullptr;
-    }
+    
+    //Compile the then block
+    compileStmtList(child.get(), c, m);
 
     c->builder.CreateBr(mergbb);
 
@@ -160,9 +158,6 @@ Value* IfNode::compile(Compiler *c, Module *m)
     
     f->getBasicBlockList().push_back(mergbb);
     c->builder.SetInsertPoint(mergbb);
-
-    //PHINode *pn = c->builder.CreatePHI(Type::getVoidTy(getGlobalContext()), 1, "ifTmp");
-    //pn->addIncoming(then, thenbb);
     return f;
 }
 
@@ -304,13 +299,16 @@ void DataDeclNode::exec(){}
 void Compiler::compilePrelude()
 {
     FunctionType *i8pRetVoidVarargsTy = FunctionType::get(Type::getVoidTy(getGlobalContext()), Type::getInt8PtrTy(getGlobalContext()), true);
-    Function *_printf = Function::Create(i8pRetVoidVarargsTy, Function::ExternalLinkage, "printf", module.get());
+    Function::Create(i8pRetVoidVarargsTy, Function::ExternalLinkage, "printf", module.get());
 
     FunctionType *i32RetI8pTy = FunctionType::get(Type::getInt8PtrTy(getGlobalContext()), Type::getInt32Ty(getGlobalContext()), false);
-    Function *_itoa = Function::Create(i32RetI8pTy, Function::ExternalLinkage, "itoa", module.get());
+    Function::Create(i32RetI8pTy, Function::ExternalLinkage, "itoa", module.get());
 
     FunctionType *i8pRetVoidTy = FunctionType::get(Type::getVoidTy(getGlobalContext()), Type::getInt8PtrTy(getGlobalContext()), false);
-    Function *_puts = Function::Create(i8pRetVoidTy, Function::ExternalLinkage, "puts", module.get());
+    Function::Create(i8pRetVoidTy, Function::ExternalLinkage, "puts", module.get());
+
+    FunctionType *i32RetI32Ty = FunctionType::get(Type::getInt32Ty(getGlobalContext()), Type::getInt32Ty(getGlobalContext()), false);
+    Function::Create(i32RetI32Ty, Function::ExternalLinkage, "putchar", module.get());
 }
 
 void Compiler::compile()

@@ -10,4 +10,5 @@ i32 fact: i32 x
     return x * fact(x-1)
 
 if isEven(4)
-    fact(5)
+    putchar(fact(5))
+    putchar(10)
