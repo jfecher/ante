@@ -147,6 +147,8 @@ Value* IfNode::compile(Compiler *c, Module *m)
         return nullptr;
     }
 
+    c->builder.CreateBr(mergbb);
+
     //create unconditional merge
     //c->builder.CreateBr(mergbb);
 

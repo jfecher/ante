@@ -1,7 +1,7 @@
 
 
 bool isEven: i32 x
-    return x % 2
+    return x % 2 == 0
 
 
 i32 fact: i32 x
