@@ -315,6 +315,21 @@ void Compiler::compilePrelude()
     Function::Create(i32RetVoidTy, Function::ExternalLinkage, "exit", module.get());
 }
 
+/*
+ *  Removes .an from a source file to get its module name
+ */
+string removeFileExt(string file)
+{
+    size_t len = file.length();
+    if(len >= 3 &&
+            file[len-3] == '.' &&
+            file[len-2] == 'a' &&
+            file[len-1] == 'n'){
+        return file.substr(0, len-3);
+    }
+    return file;
+}
+
 void Compiler::compile()
 {
     compilePrelude();
@@ -339,6 +354,10 @@ void Compiler::compile()
     if(errFlag){
         puts("Compilation aborted.");
         return;
+    }else{
+        std::error_code err;
+        raw_fd_ostream out{removeFileExt(fileName), err, (sys::fs::OpenFlags) 0};
+        WriteBitcodeToFile(module.get(), out);
     }
 }
 

@@ -5,6 +5,9 @@
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Verifier.h>
+#include <llvm/Bitcode/ReaderWriter.h>
+#include <llvm/Support/FileSystem.h>
+#include <llvm/Support/raw_ostream.h>
 #include <memory>
 #include <vector>
 #include <stack>
@@ -22,9 +25,14 @@ namespace ante{
         IRBuilder<> builder;
         stack<std::map<string, Value*>> varTable;
         bool errFlag;
+        string fileName;
         
-        Compiler(Node* _ast) : ast(_ast), builder(getGlobalContext()), errFlag(false){
-            module = unique_ptr<Module>(new Module("ante_main_mod", getGlobalContext()));
+        Compiler(Node *_ast, char *_fileName) : 
+                ast(_ast), 
+                builder(getGlobalContext()), 
+                errFlag(false),
+                fileName(_fileName){
+            module = unique_ptr<Module>(new Module(_fileName, getGlobalContext()));
             varTable.push(map<string, Value*>());
         }
         ~Compiler(){}

@@ -238,9 +238,7 @@ assert(1_000_000 == 1000000)
         
         [type]\[size\] name
 
-    NOTE: if size does not evaluate to an integer, the program will halt
-          with a TypeMismatchError.  To avoid this, it is best to only use
-          integer variables and constants in this expression.
+    NOTE: The size must be a non-pathogen integer expression.
 `
 i32[30] arr = 1
 

@@ -3,7 +3,7 @@ vpath %.h include
 vpath %.d obj
 
 WARNINGS  := -Wall -Wpedantic
-LLVMFLAGS := `llvm-config --cppflags --libs Core --ldflags --system-libs`
+LLVMFLAGS := `llvm-config --cppflags --libs Core BitWriter --ldflags --system-libs`
 CPPFLAGS  := -g -O2 -std=c++11 $(WARNINGS) $(LLVMFLAGS)
 YACCFLAGS := -Lc -osrc/parser.c
 

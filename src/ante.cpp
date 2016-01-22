@@ -10,7 +10,7 @@ void compile(char *fileName)
     lexer::init(fileName);
     int flag = yyparse();
     if(flag == PE_OK){
-        Compiler *ac = new Compiler(parser::getRootNode());
+        Compiler *ac = new Compiler(parser::getRootNode(), fileName);
         ac->compile();
     }else{ //parsing error, cannot compile
         puts("Compilation aborted.");
