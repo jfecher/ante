@@ -227,15 +227,20 @@ Value* FuncDeclNode::compile(Compiler *c, Module *m)
     TypeNode *retNode = (TypeNode*)type.get();
     Type *retType = translateType(retNode->type, retNode->typeName);
 
-    //Get and translate the function's parameter's type(s) to an llvm::Type*
+    //Count the number of parameters
     NamedValNode *param = params.get();
     size_t nParams = getTupleSize(param);
 
-    vector<Type*> paramTys{nParams};
-    for(size_t i = 0; i < nParams; i++){
-        TypeNode *paramTyNode = (TypeNode*)param->typeExpr.get();
+    //Get each and every parameter type and store them in paramTys
+    NamedValNode *cParam = params.get();
+    vector<Type*> paramTys;
+
+    //Tell the vector to reserve space equal to nParam parameters so it does not have to reallocate.
+    paramTys.reserve(nParams);
+    for(size_t i = 0; i < nParams && cParam; i++){
+        TypeNode *paramTyNode = (TypeNode*)cParam->typeExpr.get();
         paramTys.push_back(translateType(paramTyNode->type, paramTyNode->typeName));
-        param = (NamedValNode*)param->next.get();
+        cParam = (NamedValNode*)cParam->next.get();
     }
 
     //Get the corresponding function type for the above return type, parameter types,
@@ -255,8 +260,7 @@ Value* FuncDeclNode::compile(Compiler *c, Module *m)
     //iterate through each parameter and add its value to the new scope.
     for(auto &arg : f->args()){
         c->stoVar(param->name, &arg);
-        param = (NamedValNode*)param->next.get();
-        if(!param) break;
+        if(!(param = (NamedValNode*)param->next.get())) break;
     }
 
     compileStmtList(child.get(), c, m);
