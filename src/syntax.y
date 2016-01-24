@@ -210,9 +210,7 @@ type_decl_block: Indent type_decl_list Unindent
                ;
 
 /* Specifying an enum member's value */
-val_init_list: val_init_list ',' usertype
-             | val_init_list ',' usertype '=' expr
-             | val_init_list Newline usertype
+val_init_list: val_init_list Newline usertype
              | val_init_list Newline usertype '=' expr
              | usertype '=' expr
              | usertype
@@ -231,11 +229,11 @@ block: Indent stmt_list Unindent {$$ = getRoot();}
      ;
 
 params: params ',' type_expr ident {$$ = setNext($1, mkNamedValNode((char*)$4, $3));}
-      | type_expr ident            {$$ = mkNamedValNode((char*)$2, $1);}
+      | type_expr ident            {$$ = setRoot(mkNamedValNode((char*)$2, $1));}
       ;
 
 maybe_params: params {$$ = $1;}
-            | %empty {$$ = NULL;}
+            | %empty {$$ = getRoot();}
             ;
 
 fn_decl: decl_prepend ident ':' maybe_params block {$$ = mkFuncDeclNode((char*)$2, $1, $4, $5);}
@@ -290,23 +288,29 @@ maybe_expr: expr   {$$ = $1;}
           | %empty {$$ = NULL;}
           ;
 
-expr: expr '+' expr     {$$ = mkBinOpNode('+', $1, $3);}
-    | expr '-' expr     {$$ = mkBinOpNode('-', $1, $3);}
-    | expr '*' expr     {$$ = mkBinOpNode('*', $1, $3);}
-    | expr '/' expr     {$$ = mkBinOpNode('/', $1, $3);}
-    | expr '%' expr     {$$ = mkBinOpNode('%', $1, $3);}
-    | expr '<' expr     {$$ = mkBinOpNode('<', $1, $3);}
-    | expr '>' expr     {$$ = mkBinOpNode('>', $1, $3);}
-    | expr '^' expr     {$$ = mkBinOpNode('^', $1, $3);}
-    | expr '.' expr     {$$ = mkBinOpNode('.', $1, $3);}
-    | expr Eq expr      {$$ = mkBinOpNode(Tok_Eq, $1, $3);}
-    | expr NotEq expr   {$$ = mkBinOpNode(Tok_NotEq, $1, $3);}
-    | expr GrtrEq expr  {$$ = mkBinOpNode(Tok_GrtrEq, $1, $3);}
-    | expr LesrEq expr  {$$ = mkBinOpNode(Tok_LesrEq, $1, $3);}
-    | expr Or expr      {$$ = mkBinOpNode(Tok_Or, $1, $3);}
-    | expr And expr     {$$ = mkBinOpNode(Tok_And, $1, $3);}
-    | val               {$$ = $1;}
-    ;
+expr: expr_list {$$ = getRoot();}
+
+expr_list: expr_list ',' expr_p    {$$ = setNext($1, $3);}
+         | expr_p             {$$ = setRoot($1);}
+         ;
+
+expr_p: expr_p '+' expr_p     {$$ = mkBinOpNode('+', $1, $3);}
+      | expr_p '-' expr_p     {$$ = mkBinOpNode('-', $1, $3);}
+      | expr_p '*' expr_p     {$$ = mkBinOpNode('*', $1, $3);}
+      | expr_p '/' expr_p     {$$ = mkBinOpNode('/', $1, $3);}
+      | expr_p '%' expr_p     {$$ = mkBinOpNode('%', $1, $3);}
+      | expr_p '<' expr_p     {$$ = mkBinOpNode('<', $1, $3);}
+      | expr_p '>' expr_p     {$$ = mkBinOpNode('>', $1, $3);}
+      | expr_p '^' expr_p     {$$ = mkBinOpNode('^', $1, $3);}
+      | expr_p '.' expr_p     {$$ = mkBinOpNode('.', $1, $3);}
+      | expr_p Eq expr_p      {$$ = mkBinOpNode(Tok_Eq, $1, $3);}
+      | expr_p NotEq expr_p   {$$ = mkBinOpNode(Tok_NotEq, $1, $3);}
+      | expr_p GrtrEq expr_p  {$$ = mkBinOpNode(Tok_GrtrEq, $1, $3);}
+      | expr_p LesrEq expr_p  {$$ = mkBinOpNode(Tok_LesrEq, $1, $3);}
+      | expr_p Or expr_p      {$$ = mkBinOpNode(Tok_Or, $1, $3);}
+      | expr_p And expr_p     {$$ = mkBinOpNode(Tok_And, $1, $3);}
+      | val                   {$$ = $1;}
+      ;
 
 %%
 

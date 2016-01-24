@@ -2,6 +2,14 @@
 using namespace ante::parser;
 
 
+inline void maybePrintArr(Node *n)
+{
+    if(n){
+        cout << ", ";
+        n->print();
+    }
+}
+
 /*
  *  Prints a list of nodes, can print
  *  entire parse tree if passed the root.
@@ -18,11 +26,13 @@ void parser::printBlock(Node *block)
 void IntLitNode::print()
 {
     cout << val;
+    maybePrintArr(next.get());
 }
 
 void FltLitNode::print()
 {
     cout << val;
+    maybePrintArr(next.get());
 }
 
 void BoolLitNode::print()
@@ -31,11 +41,13 @@ void BoolLitNode::print()
         cout << "true";
     else
         cout << "false";
+    maybePrintArr(next.get());
 }
 
 void StrLitNode::print()
 {
     cout << '"' << val << '"';
+    maybePrintArr(next.get());
 }
 
 void TypeNode::print()
@@ -58,6 +70,8 @@ void BinOpNode::print()
     putchar(' ');
     if(rval) rval->print();
     putchar(')');
+
+    maybePrintArr(next.get());
 }
 
 void RetNode::print()
@@ -87,6 +101,7 @@ void NamedValNode::print()
 void VarNode::print()
 {
     cout << name;
+    maybePrintArr(next.get());
 }
 
 void FuncCallNode::print()

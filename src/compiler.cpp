@@ -53,7 +53,12 @@ Type* translateType(int tokTy, string typeName = "")
  */
 size_t getTupleSize(Node *tup)
 {
-    return 1;
+    size_t size = 0;
+    while(tup){
+        tup = tup->next.get();
+        size++;
+    }
+    return size;
 }
 
 Value* compileStmtList(Node *nList, Compiler *c, Module *m)
@@ -186,7 +191,7 @@ Value* FuncCallNode::compile(Compiler *c, Module *m)
     }
 
     size_t paramSize = getTupleSize(params.get());
-    if(f->arg_size() != paramSize){
+    if(f->arg_size() != paramSize && !f->isVarArg()){
         if(paramSize == 1)
             return c->compErr("Called function ", name, " was given 1 paramter but was declared to take ", f->arg_size());
         else
@@ -194,8 +199,10 @@ Value* FuncCallNode::compile(Compiler *c, Module *m)
     }
 
     std::vector<Value*> args;
+    Node *curParam = params.get();
     for(unsigned i = 0; i < paramSize; i++){
-        args.push_back(params->compile(c, m));
+        args.push_back(curParam->compile(c, m));
+        curParam = curParam->next.get();
         if(!args.back())
             c->compErr("Argument ", i, " of called function ", name, " evaluated to null.");
     }
@@ -222,12 +229,18 @@ Value* FuncDeclNode::compile(Compiler *c, Module *m)
 
     //Get and translate the function's parameter's type(s) to an llvm::Type*
     NamedValNode *param = params.get();
-    TypeNode *paramTyNode = (TypeNode*)param->typeExpr.get();
-    Type *paramsType = translateType(paramTyNode->type, paramTyNode->typeName);
+    size_t nParams = getTupleSize(param);
+
+    vector<Type*> paramTys{nParams};
+    for(size_t i = 0; i < nParams; i++){
+        TypeNode *paramTyNode = (TypeNode*)param->typeExpr.get();
+        paramTys.push_back(translateType(paramTyNode->type, paramTyNode->typeName));
+        param = (NamedValNode*)param->next.get();
+    }
 
     //Get the corresponding function type for the above return type, parameter types,
     //with no varargs
-    FunctionType *ft = FunctionType::get(retType, paramsType, false);
+    FunctionType *ft = FunctionType::get(retType, paramTys, false);
     
     //Actually create the function in module m
     Function *f = Function::Create(ft, Function::ExternalLinkage, name, m);

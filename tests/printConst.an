@@ -1,1 +1,2 @@
 puts("Hello World!")
+printf("%s #%d\n", "Hello Fren", 3)
