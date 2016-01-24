@@ -3,6 +3,6 @@
         Tests initializations, assignments, and print statements
 `
 i32 i = 12
-print(i)
+printf("%d\n", i)
 i = 3
-print(i)
+printf("%d\n", i)

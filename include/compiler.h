@@ -46,8 +46,8 @@ namespace ante{
         Value* lookup(string var);
         void stoVar(string var, Value *val);
 
-        static void compileIRtoObj(Module *m, string inFile, string outFile);
-        static void linkObj(string inFiles, string outFile);
+        static int compileIRtoObj(Module *m, string inFile, string outFile);
+        static int linkObj(string inFiles, string outFile);
     };
 }
 

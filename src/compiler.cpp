@@ -86,6 +86,8 @@ Value* BoolLitNode::compile(Compiler *c, Module *m)
     return ConstantInt::get(getGlobalContext(), APInt(1, (bool)val, true));
 }
 
+
+//TODO: implement as replacement for translateType
 Value* TypeNode::compile(Compiler *c, Module *m)
 { return nullptr; }
 
@@ -107,19 +109,19 @@ Value* BinOpNode::compile(Compiler *c, Module *m)
     Value *rhs = rval->compile(c, m);
 
     switch(op){
-        case '+': return c->builder.CreateAdd(lhs, rhs, "iAddTmp");
-        case '-': return c->builder.CreateSub(lhs, rhs, "iSubTmp");
-        case '*': return c->builder.CreateMul(lhs, rhs, "iMulTmp");
-        case '/': return c->builder.CreateSDiv(lhs, rhs, "iDivTmp");
-        case '%': return c->builder.CreateSRem(lhs, rhs, "iModTmp");
-        case '<': return c->builder.CreateICmpULT(lhs, rhs, "iLtTmp");
-        case '>': return c->builder.CreateICmpUGT(lhs, rhs, "iGtTmp");
-        case '^': return c->builder.CreateXor(lhs, rhs, "xorTmp");
+        case '+': return c->builder.CreateAdd(lhs, rhs, "tmp");
+        case '-': return c->builder.CreateSub(lhs, rhs, "tmp");
+        case '*': return c->builder.CreateMul(lhs, rhs, "tmp");
+        case '/': return c->builder.CreateSDiv(lhs, rhs, "tmp");
+        case '%': return c->builder.CreateSRem(lhs, rhs, "tmp");
+        case '<': return c->builder.CreateICmpULT(lhs, rhs, "tmp");
+        case '>': return c->builder.CreateICmpUGT(lhs, rhs, "tmp");
+        case '^': return c->builder.CreateXor(lhs, rhs, "tmp");
         case '.': break;
-        case Tok_Eq: return c->builder.CreateICmpEQ(lhs, rhs, "iCmpEqTmp");
-        case Tok_NotEq: return c->builder.CreateICmpNE(lhs, rhs, "iCmpNeTmp");
-        case Tok_LesrEq: return c->builder.CreateICmpULE(lhs, rhs, "iLeTmp");
-        case Tok_GrtrEq: return c->builder.CreateICmpUGE(lhs, rhs, "iGeTmp");
+        case Tok_Eq: return c->builder.CreateICmpEQ(lhs, rhs, "tmp");
+        case Tok_NotEq: return c->builder.CreateICmpNE(lhs, rhs, "tmp");
+        case Tok_LesrEq: return c->builder.CreateICmpULE(lhs, rhs, "tmp");
+        case Tok_GrtrEq: return c->builder.CreateICmpUGE(lhs, rhs, "tmp");
         case Tok_Or: break;
         case Tok_And: break;
     }
@@ -127,10 +129,15 @@ Value* BinOpNode::compile(Compiler *c, Module *m)
     return c->compErr("Unknown operator ", lexer::getTokStr(op));
 }
 
+/*
+ *  When a retnode is compiled within a block, care must be taken to not
+ *  forcibly insert the branch instruction afterwards as it leads to dead code.
+ */
 Value* RetNode::compile(Compiler *c, Module *m)
 {
     return c->builder.CreateRet(expr->compile(c, m));
 }
+
 
 Value* IfNode::compile(Compiler *c, Module *m)
 {
@@ -153,6 +160,9 @@ Value* IfNode::compile(Compiler *c, Module *m)
     
     //Compile the then block
     Value *v = compileStmtList(child.get(), c, m);
+
+    //If the user did not return from the function themselves, then
+    //merge to the endif.
     if(!dynamic_cast<ReturnInst*>(v)){
         c->builder.CreateBr(mergbb);
     }
@@ -160,14 +170,12 @@ Value* IfNode::compile(Compiler *c, Module *m)
     //then block must be updated in case it is changed by nested blocks.
     thenbb = c->builder.GetInsertBlock();
 
-    //add the floating else to the function
-    //f->getBasicBlockList().push_back(elsebb);
-    
     f->getBasicBlockList().push_back(mergbb);
     c->builder.SetInsertPoint(mergbb);
     return f;
 }
 
+//Since parameters are managed in FuncDeclNode::compile, this need not do anything
 Value* NamedValNode::compile(Compiler *c, Module *m)
 { return nullptr; }
 
@@ -180,7 +188,7 @@ Value* VarNode::compile(Compiler *c, Module *m)
     if(!val){
         return c->compErr("Variable ", name, " has not been declared.");
     }
-    return val;
+    return dynamic_cast<AllocaInst*>(val)? c->builder.CreateLoad(val, name) : val;
 }
 
 Value* FuncCallNode::compile(Compiler *c, Module *m)
@@ -210,15 +218,29 @@ Value* FuncCallNode::compile(Compiler *c, Module *m)
     if(f->getReturnType() == Type::getVoidTy(getGlobalContext())){
         return c->builder.CreateCall(f, args);
     }else{
-        return c->builder.CreateCall(f, args, "callTmp");
+        return c->builder.CreateCall(f, args, "tmp");
     }
 }
 
 Value* VarDeclNode::compile(Compiler *c, Module *m)
-{ return nullptr; }
+{
+    TypeNode *tyNode = (TypeNode*)typeExpr.get();
+    Type *ty = translateType(tyNode->type, tyNode->typeName);
+    Value *v = c->builder.CreateAlloca(ty, 0, name.c_str());
+    c->stoVar(name, v);
+    if(expr){
+        return c->builder.CreateStore(expr->compile(c, m), v);
+    }else{
+        return v;
+    }
+}
 
 Value* VarAssignNode::compile(Compiler *c, Module *m)
-{ return nullptr; }
+{
+    Value *v = c->lookup(var->name);
+    if(!v) return c->compErr("Use of undeclared variable ", var->name, " in assignment.");
+    return c->builder.CreateStore(expr->compile(c, m), v);
+}
 
 
 Value* FuncDeclNode::compile(Compiler *c, Module *m)
@@ -388,17 +410,18 @@ void Compiler::compileNative()
     string objFile = modName + ".o";
 
     cout << "Compiling " << modName << "...\n";
-    compileIRtoObj(module.get(), fileName, objFile);
-    cout << "Linking...\n";
-    linkObj(objFile, modName);
-    system(("rm " + objFile).c_str()); //you didn't see anything
+    if(!compileIRtoObj(module.get(), fileName, objFile)){
+        cout << "Linking...\n";
+        linkObj(objFile, modName);
+        system(("rm " + objFile).c_str()); //you didn't see anything
+    }
 }
 
 /*
  *  Compiles a module into a .o file to be used for linking.
  *  Invokes llc.
  */
-void Compiler::compileIRtoObj(Module *m, string inFile, string outFile)
+int Compiler::compileIRtoObj(Module *m, string inFile, string outFile)
 {
     string llbcName = removeFileExt(inFile) + ".bc";
 
@@ -411,18 +434,20 @@ void Compiler::compileIRtoObj(Module *m, string inFile, string outFile)
     out.close();
 
     //invoke llc and compile an object file of the module
-    system(cmd.c_str());
+    int res = system(cmd.c_str());
+    if(res) return res;
 
     //remove the temporary .bc file
     //TODO: make this system-independent
     system(("rm " + llbcName).c_str());
+    return 0;
 }
 
-void Compiler::linkObj(string inFiles, string outFile)
+int Compiler::linkObj(string inFiles, string outFile)
 {
     //invoke gcc to link the module.
     string cmd = "gcc " + inFiles + " -o " + outFile;
-    system(cmd.c_str());
+    return system(cmd.c_str());
 }
 
 /*
