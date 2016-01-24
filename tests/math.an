@@ -1,0 +1,10 @@
+`
+        math.an
+    Tests declaration of basic fucntions with
+    multiple parameters.
+`
+
+i32 add: i32 a, i32 b
+    return a + b
+
+printf("%d + %d = %d\n", 13, 17, add(13, 17))

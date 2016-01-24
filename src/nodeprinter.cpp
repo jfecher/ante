@@ -91,11 +91,11 @@ void IfNode::print()
 
 void NamedValNode::print()
 {
-    putchar('(');
     typeExpr->print();
     putchar(' ');
     cout << name;
-    putchar(')');
+
+    maybePrintArr(next.get());
 }
 
 void VarNode::print()

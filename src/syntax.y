@@ -232,8 +232,8 @@ params: params ',' type_expr ident {$$ = setNext($1, mkNamedValNode((char*)$4, $
       | type_expr ident            {$$ = setRoot(mkNamedValNode((char*)$2, $1));}
       ;
 
-maybe_params: params {$$ = $1;}
-            | %empty {$$ = getRoot();}
+maybe_params: params {$$ = getRoot();}
+            | %empty {$$ = NULL;}
             ;
 
 fn_decl: decl_prepend ident ':' maybe_params block {$$ = mkFuncDeclNode((char*)$2, $1, $4, $5);}

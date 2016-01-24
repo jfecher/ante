@@ -1907,13 +1907,13 @@ yyreduce:
 
   case 89:
 #line 235 "src/syntax.y" /* yacc.c:1646  */
-    {(yyval) = (yyvsp[0]);}
+    {(yyval) = getRoot();}
 #line 1912 "src/parser.c" /* yacc.c:1646  */
     break;
 
   case 90:
 #line 236 "src/syntax.y" /* yacc.c:1646  */
-    {(yyval) = getRoot();}
+    {(yyval) = NULL;}
 #line 1918 "src/parser.c" /* yacc.c:1646  */
     break;
 
