@@ -56,12 +56,14 @@ size_t getTupleSize(Node *tup)
     return 1;
 }
 
-void compileStmtList(Node *nList, Compiler *c, Module *m)
+Value* compileStmtList(Node *nList, Compiler *c, Module *m)
 {
+    Value *ret = nullptr;
     while(nList){
-        nList->compile(c, m);
+        ret = nList->compile(c, m);
         nList = nList->next.get();
     }
+    return ret;
 }
 
 Value* IntLitNode::compile(Compiler *c, Module *m)
@@ -145,12 +147,10 @@ Value* IfNode::compile(Compiler *c, Module *m)
     c->builder.SetInsertPoint(thenbb);
     
     //Compile the then block
-    compileStmtList(child.get(), c, m);
-
-    c->builder.CreateBr(mergbb);
-
-    //create unconditional merge
-    //c->builder.CreateBr(mergbb);
+    Value *v = compileStmtList(child.get(), c, m);
+    if(!dynamic_cast<ReturnInst*>(v)){
+        c->builder.CreateBr(mergbb);
+    }
 
     //then block must be updated in case it is changed by nested blocks.
     thenbb = c->builder.GetInsertBlock();
@@ -248,6 +248,8 @@ Value* FuncDeclNode::compile(Compiler *c, Module *m)
 
     compileStmtList(child.get(), c, m);
 
+    c->builder.SetInsertPoint(&c->module->getFunction("main")->back());
+    
     //llvm requires explicit returns, so generate a void return even if
     //the user created a void function.
     if(retNode->type == Tok_Void){
@@ -255,7 +257,6 @@ Value* FuncDeclNode::compile(Compiler *c, Module *m)
     }
     c->exitScope();
     
-    c->builder.SetInsertPoint(&c->module->getFunction("main")->back());
 
     verifyFunction(*f);
     return f;
@@ -338,27 +339,80 @@ void Compiler::compile()
     FunctionType *ft = FunctionType::get(Type::getInt8Ty(getGlobalContext()), false);
     
     //Actually create the function in module m
-    Function *f = Function::Create(ft, Function::ExternalLinkage, "main", module.get());
+    Function *main = Function::Create(ft, Function::ExternalLinkage, "main", module.get());
 
     //Create the entry point for the function
-    BasicBlock *bb = BasicBlock::Create(getGlobalContext(), "entry", f);
+    BasicBlock *bb = BasicBlock::Create(getGlobalContext(), "entry", main);
     builder.SetInsertPoint(bb);
 
+    //Compile the rest of the program
     compileStmtList(ast.get(), this, module.get());
 
     builder.CreateRet(ConstantInt::get(getGlobalContext(), APInt(8, 0, true)));
 
-    verifyFunction(*f);
-    module->dump();
+    verifyFunction(*main);
+
+    //flag this module as compiled.
+    compiled = true;
 
     if(errFlag){
         puts("Compilation aborted.");
         return;
-    }else{
-        std::error_code err;
-        raw_fd_ostream out{removeFileExt(fileName), err, (sys::fs::OpenFlags) 0};
-        WriteBitcodeToFile(module.get(), out);
     }
+}
+
+
+void Compiler::compileNative()
+{
+    if(!compiled) compile();
+
+    string modName = removeFileExt(fileName);
+    //this file will become the obj file before linking
+    string objFile = modName + ".o";
+
+    compileIRtoObj(module.get(), fileName, objFile);
+    linkObj(objFile, modName);
+    system(("rm " + objFile).c_str()); //you didn't see anything
+}
+
+/*
+ *  Compiles a module into a .o file to be used for linking.
+ *  Invokes llc.
+ */
+void Compiler::compileIRtoObj(Module *m, string inFile, string outFile)
+{
+    string llbcName = removeFileExt(inFile) + ".bc";
+
+    string cmd = "llc -filetype obj -o " + outFile + " " + llbcName;
+
+    //Write the temporary bitcode file
+    std::error_code err;
+    raw_fd_ostream out{llbcName, err, sys::fs::OpenFlags::F_RW};
+    WriteBitcodeToFile(m, out);
+    out.close();
+
+    //invoke llc and compile an object file of the module
+    system(cmd.c_str());
+
+    //remove the temporary .bc file
+    //TODO: make this system-independent
+    system(("rm " + llbcName).c_str());
+}
+
+void Compiler::linkObj(string inFiles, string outFile)
+{
+    //invoke gcc to link the module.
+    string cmd = "gcc " + inFiles + " -o " + outFile;
+    system(cmd.c_str());
+}
+
+/*
+ *  Dumps current contents of module to stdout
+ */
+void Compiler::emitIR()
+{
+    if(!compiled) compile();
+    module->dump();
 }
 
 inline void Compiler::enterNewScope()
@@ -389,3 +443,21 @@ inline void Compiler::stoVar(string var, Value *val)
     IRBuilder<> builder{&f->getEntryBlock(), f->getEntryBlock().begin()};
     return builder.CreateAlloca(varType, 0, var);
 }*/
+
+Compiler::Compiler(char *_fileName) : 
+        builder(getGlobalContext()), 
+        errFlag(false),
+        compiled(false),
+        fileName(_fileName){
+
+    lexer::init(_fileName);
+    int flag = yyparse();
+    if(flag != PE_OK){ //parsing error, cannot procede
+        fputs("Syntax error, aborting.", stderr);
+        exit(flag);
+    }
+
+    ast.reset(parser::getRootNode());
+    varTable.push(map<string, Value*>());
+    module = unique_ptr<Module>(new Module(removeFileExt(_fileName), getGlobalContext()));
+}

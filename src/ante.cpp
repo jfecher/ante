@@ -5,22 +5,11 @@
 #include <iostream>
 using namespace ante;
 
-void compile(char *fileName)
-{
-    lexer::init(fileName);
-    int flag = yyparse();
-    if(flag == PE_OK){
-        Compiler *ac = new Compiler(parser::getRootNode(), fileName);
-        ac->compile();
-    }else{ //parsing error, cannot compile
-        puts("Compilation aborted.");
-    }
-}
-
 int main(int argc, char *argv[]){
     if(argc == 2){
         //default = compile
-        compile(argv[1]);
+        Compiler ante{argv[1]};
+        ante.compileNative();
     }else if(argc >= 3){
         //lex and print tokens
         if(strcmp(argv[1], "-l") == 0){
@@ -41,7 +30,11 @@ int main(int argc, char *argv[]){
             }
         //compile
         }else if(strcmp(argv[1], "-c") == 0){
-            compile(argv[2]);
+            Compiler ante{argv[2]};
+            ante.compileNative();
+        }else if(strcmp(argv[1], "-emit-llvm") == 0){
+            Compiler ante{argv[2]};
+            ante.emitIR();
         }else{
             cout << "Ante: argument '" << argv[1] << "' was not recognized.\n";
         }

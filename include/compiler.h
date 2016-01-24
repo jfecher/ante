@@ -24,21 +24,16 @@ namespace ante{
         unique_ptr<Module> module;
         IRBuilder<> builder;
         stack<std::map<string, Value*>> varTable;
-        bool errFlag;
+        bool errFlag, compiled;
         string fileName;
         
-        Compiler(Node *_ast, char *_fileName) : 
-                ast(_ast), 
-                builder(getGlobalContext()), 
-                errFlag(false),
-                fileName(_fileName){
-            module = unique_ptr<Module>(new Module(_fileName, getGlobalContext()));
-            varTable.push(map<string, Value*>());
-        }
+        Compiler(char *fileName);
         ~Compiler(){}
 
         void compile();
+        void compileNative();
         void compilePrelude();
+        void emitIR();
         void enterNewScope();
         void exitScope();
         
@@ -51,7 +46,8 @@ namespace ante{
         Value* lookup(string var);
         void stoVar(string var, Value *val);
 
-        static AllocaInst* createBlockAlloca(Function *f, string var, Type *varType);
+        static void compileIRtoObj(Module *m, string inFile, string outFile);
+        static void linkObj(string inFiles, string outFile);
     };
 }
 
