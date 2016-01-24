@@ -383,7 +383,9 @@ void Compiler::compileNative()
     //this file will become the obj file before linking
     string objFile = modName + ".o";
 
+    cout << "Compiling " << modName << "...\n";
     compileIRtoObj(module.get(), fileName, objFile);
+    cout << "Linking...\n";
     linkObj(objFile, modName);
     system(("rm " + objFile).c_str()); //you didn't see anything
 }

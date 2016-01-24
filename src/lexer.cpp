@@ -298,7 +298,21 @@ int ante::lexer::genStrLitTok(char delim)
     string s = "";
     incPos();
     while(c != delim && c != EOF){
-        s += c;
+        if(c == '\\'){
+            switch(n){
+                case 'a': s += '\a'; break;
+                case 'b': s += '\b'; break;
+                case 'f': s += '\f'; break;
+                case 'n': s += '\n'; break;
+                case 'r': s += '\r'; break;
+                case 't': s += '\t'; break;
+                case 'v': s += '\v'; break;
+                default:  s += n; break;
+            }
+            incPos();
+        }else{
+            s += c;
+        }
         incPos();
     }
     incPos();
