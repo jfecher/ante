@@ -13,6 +13,6 @@ i32 fib: i32 n
 
 printf("fib(%d) = %d\n", 7,  fib(7))
 printf("fib(%d) = %d\n", 30, fib(30))
-printf("fib(%d) = %d\n", 46, fib(46))
-printf("fib(%d) = %d\n", 47, fib(47)) ~Integer overflow here!
-printf("fib(%d) = %d\n", 48, fib(48))
+~printf("fib(%d) = %d\n", 46, fib(46))
+~printf("fib(%d) = %d\n", 47, fib(47)) ~Integer overflow here!
+~printf("fib(%d) = %d\n", 48, fib(48))

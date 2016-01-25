@@ -10,6 +10,7 @@ Node* getRootNode(void);
 Node* setRoot(Node* root);
 Node* getRoot(void);
 Node* setNext(Node* cur, Node* nxt);
+Node* setElse(IfNode *c, IfNode *elif);
 
 Node* mkIntLitNode(char* s);
 Node* mkFltLitNode(char* s);
@@ -25,7 +26,7 @@ Node* mkVarDeclNode(char* s, Node* tExpr, Node* expr);
 Node* mkVarAssignNode(Node* var, Node* expr);
 
 //These 3 actually return a ParentNode* but C doesn't need to know that
-Node* mkIfNode(Node* con, Node* body);
+Node* mkIfNode(Node* con, Node* body, Node* els = nullptr);
 Node* mkFuncDeclNode(char* s, Node* tExpr, Node* p, Node* body);
 Node* mkDataDeclNode(char* s, Node* b);
 

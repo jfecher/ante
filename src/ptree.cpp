@@ -39,6 +39,16 @@ Node* setNext(Node* cur, Node* nxt)
     return nxt;
 }
 
+/*
+ *  Sets the else of an ifnode to a given ifnode representing
+ *  either an else or an elif.
+ */
+Node* setElse(IfNode *c, IfNode *elif)
+{
+    c->elseN.reset(elif);
+    return elif;
+}
+
 Node* mkIntLitNode(char* s)
 {
     return new IntLitNode(s);
@@ -99,9 +109,9 @@ Node* mkVarAssignNode(Node* var, Node* expr)
     return new VarAssignNode(var, expr);
 }
 
-ParentNode* mkIfNode(Node* con, Node* body)
+ParentNode* mkIfNode(Node* con, Node* body, Node* els = nullptr)
 {
-    return new IfNode(con, body);
+    return new IfNode(con, body, (IfNode*)els);
 }
 
 ParentNode* mkFuncDeclNode(char* s, Node* tExpr, Node* p, Node* b)

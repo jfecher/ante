@@ -82,11 +82,26 @@ void RetNode::print()
 
 void IfNode::print()
 {
-    cout << "if ";
-    if(condition) condition->print();
-    puts(" then");
-    printBlock(child.get());
-    cout << "endif";
+    if(condition.get()){
+        cout << "if ";
+        condition->print();
+        puts(" then");
+        printBlock(child.get());
+   
+        //If this if/elif has an else/elif, print it.
+        if(elseN.get()){
+            cout << "el";
+            elseN->print();
+        }else{
+            cout << "endif\n";
+        }
+    }else{
+        cout << "se\n"; //This ifnode is an elsenode
+        printBlock(child.get());
+        cout << "endif\n";
+        //else nodes should never have additional
+        //ifnodes in elseN, so dont bother checking.
+    }
 }
 
 void NamedValNode::print()

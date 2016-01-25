@@ -413,7 +413,7 @@ void Compiler::compileNative()
     if(!compileIRtoObj(module.get(), fileName, objFile)){
         cout << "Linking...\n";
         linkObj(objFile, modName);
-        system(("rm " + objFile).c_str()); //you didn't see anything
+        remove(objFile.c_str());
     }
 }
 
@@ -438,8 +438,7 @@ int Compiler::compileIRtoObj(Module *m, string inFile, string outFile)
     if(res) return res;
 
     //remove the temporary .bc file
-    //TODO: make this system-independent
-    system(("rm " + llbcName).c_str());
+    remove(llbcName.c_str());
     return 0;
 }
 

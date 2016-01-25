@@ -162,10 +162,11 @@ class VarAssignNode : public Node{
 class IfNode : public ParentNode{
     public:
         unique_ptr<Node> condition;
+        unique_ptr<IfNode> elseN;
         Value* compile(Compiler*, Module*);
         //void exec(void);
         void print(void);
-        IfNode(Node* n1, Node* body) : ParentNode(body), condition(n1){}
+        IfNode(Node* n1, Node* body, IfNode* els) : ParentNode(body), condition(n1), elseN(els){}
 };
 
 class FuncDeclNode : public ParentNode{

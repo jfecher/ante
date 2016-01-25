@@ -246,19 +246,17 @@ fn_call: ident '(' maybe_expr ')' {$$ = mkFuncCallNode((char*)$1, $3);}
 ret_stmt: Return expr {$$ = mkRetNode($2);}
         ;
 
-maybe_else: Else block {$$ = NULL;}
-          | %empty {$$ = NULL;}
-          ;
-
-elif_list: elif_list Elif block {$$ = NULL;}
-         | Elif block {$$ = NULL;}
+elif_list: elif_list Elif expr block {$$ = setElse((IfNode*)$1, (IfNode*)mkIfNode($3, $4));}
+         | Elif expr block {$$ = setRoot(mkIfNode($2, $3));}
          ;
 
-maybe_elif_list: elif_list {$$ = NULL;}
+maybe_elif_list: elif_list Else block {$$ = setElse((IfNode*)$1, (IfNode*)mkIfNode(NULL, $3));}
+               | elif_list {$$ = $1;}
+               | Else block {$$ = setRoot(mkIfNode(NULL, $2));}
                | %empty {$$ = NULL;}
                ;
 
-if_stmt: If expr block maybe_elif_list maybe_else {$$ = mkIfNode($2, $3);}
+if_stmt: If expr block maybe_elif_list {$$ = mkIfNode($2, $3, (IfNode*)getRoot());}
        ;
 
 while_loop: While expr block {$$ = NULL;}
