@@ -431,6 +431,7 @@ void Compiler::compile()
 void Compiler::compileNative()
 {
     if(!compiled) compile();
+    if(errFlag) return;
 
     string modName = removeFileExt(fileName);
     //this file will become the obj file before linking
@@ -482,6 +483,7 @@ int Compiler::linkObj(string inFiles, string outFile)
 void Compiler::emitIR()
 {
     if(!compiled) compile();
+    if(errFlag) puts("Partially compiled module: \n");
     module->dump();
 }
 
