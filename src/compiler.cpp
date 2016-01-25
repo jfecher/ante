@@ -138,37 +138,61 @@ Value* RetNode::compile(Compiler *c, Module *m)
     return c->builder.CreateRet(expr->compile(c, m));
 }
 
+void compileIfNodeHelper(IfNode *ifN, BasicBlock *mergebb, Function *f, Compiler *c, Module *m)
+{
+    //cond should always evaluate to a bool explicitely
+    Value* cond;
+    BasicBlock *thenbb = BasicBlock::Create(getGlobalContext(), "then", f);
+
+    if(ifN->elseN.get()){
+        cond = ifN->condition->compile(c, m);
+
+        BasicBlock *elsebb = BasicBlock::Create(getGlobalContext(), "else");
+        c->builder.CreateCondBr(cond, thenbb, elsebb);
+
+        //Compile the if statement's then body
+        c->builder.SetInsertPoint(thenbb);
+
+        //Compile the then block
+        Value *v = compileStmtList(ifN->child.get(), c, m);
+        
+        //If the user did not return from the function themselves, then
+        //merge to the endif.
+        if(!dynamic_cast<ReturnInst*>(v)){
+            c->builder.CreateBr(mergebb);
+        }
+
+        f->getBasicBlockList().push_back(elsebb);
+        c->builder.SetInsertPoint(elsebb);
+
+        //if elseN is else, and not elif, insert merge instruction.
+        if(ifN->elseN->condition.get()){
+            compileIfNodeHelper(ifN->elseN.get(), mergebb, f, c, m);
+        }else{
+            //compile the else node's body directly
+            Value *elseBody = ifN->elseN->child->compile(c, m);
+            if(!dynamic_cast<ReturnInst*>(elseBody)){
+                c->builder.CreateBr(mergebb);
+            }
+        }
+    }else{ //this must be an if or elif node with no proceeding elif or else nodes.
+        cond = ifN->condition->compile(c, m);
+        c->builder.CreateCondBr(cond, thenbb, mergebb);
+        c->builder.SetInsertPoint(thenbb);
+        Value *v = compileStmtList(ifN->child.get(), c, m);
+        if(!dynamic_cast<ReturnInst*>(v))
+            c->builder.CreateBr(mergebb);
+    }
+}
 
 Value* IfNode::compile(Compiler *c, Module *m)
 {
-    //cond should always evaluate to a bool explicitely
-    Value* cond = condition->compile(c, m);
-    if(!cond) return nullptr;
-
-    Function *f = c->builder.GetInsertBlock()->getParent();
-    
     //Create thenbb and forward declare the others but dont inser them
     //into function f just yet.
-    BasicBlock *thenbb = BasicBlock::Create(getGlobalContext(), "then", f);
-    //BasicBlock *elsebb = BasicBlock::Create(getGlobalContext(), "else");
     BasicBlock *mergbb = BasicBlock::Create(getGlobalContext(), "endif");
+    Function *f = c->builder.GetInsertBlock()->getParent();
 
-    c->builder.CreateCondBr(cond, thenbb, mergbb);
-
-    //Compile the if statement's then body
-    c->builder.SetInsertPoint(thenbb);
-    
-    //Compile the then block
-    Value *v = compileStmtList(child.get(), c, m);
-
-    //If the user did not return from the function themselves, then
-    //merge to the endif.
-    if(!dynamic_cast<ReturnInst*>(v)){
-        c->builder.CreateBr(mergbb);
-    }
-
-    //then block must be updated in case it is changed by nested blocks.
-    thenbb = c->builder.GetInsertBlock();
+    compileIfNodeHelper(this, mergbb, f, c, m);
 
     f->getBasicBlockList().push_back(mergbb);
     c->builder.SetInsertPoint(mergbb);
