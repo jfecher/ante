@@ -1973,7 +1973,7 @@ yyreduce:
 
   case 100:
 #line 256 "src/syntax.y" /* yacc.c:1646  */
-    {(yyval) = NULL;}
+    {(yyval) = setRoot(NULL);}
 #line 1978 "src/parser.c" /* yacc.c:1646  */
     break;
 

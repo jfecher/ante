@@ -180,8 +180,9 @@ void compileIfNodeHelper(IfNode *ifN, BasicBlock *mergebb, Function *f, Compiler
         c->builder.CreateCondBr(cond, thenbb, mergebb);
         c->builder.SetInsertPoint(thenbb);
         Value *v = compileStmtList(ifN->child.get(), c, m);
-        if(!dynamic_cast<ReturnInst*>(v))
+        if(!dynamic_cast<ReturnInst*>(v)){
             c->builder.CreateBr(mergebb);
+        }
     }
 }
 
@@ -309,19 +310,20 @@ Value* FuncDeclNode::compile(Compiler *c, Module *m)
         if(!(param = (NamedValNode*)param->next.get())) break;
     }
 
-    compileStmtList(child.get(), c, m);
+    Value *v = compileStmtList(child.get(), c, m);
 
-    c->builder.SetInsertPoint(&c->module->getFunction("main")->back());
+    c->builder.SetInsertPoint(&c->module->getFunction(name)->back());
     
     //llvm requires explicit returns, so generate a void return even if
     //the user created a void function.
-    if(retNode->type == Tok_Void){
+    if(retNode->type == Tok_Void && !dynamic_cast<ReturnInst*>(v)){
         c->builder.CreateRetVoid();
     }
     c->exitScope();
     
 
     verifyFunction(*f);
+    c->builder.SetInsertPoint(&c->module->getFunction("main")->back());
     return f;
 }
 
@@ -411,6 +413,7 @@ void Compiler::compile()
     //Compile the rest of the program
     compileStmtList(ast.get(), this, module.get());
 
+    //builder should already be at end of main function
     builder.CreateRet(ConstantInt::get(getGlobalContext(), APInt(8, 0, true)));
 
     verifyFunction(*main);

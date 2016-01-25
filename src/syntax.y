@@ -253,7 +253,7 @@ elif_list: elif_list Elif expr block {$$ = setElse((IfNode*)$1, (IfNode*)mkIfNod
 maybe_elif_list: elif_list Else block {$$ = setElse((IfNode*)$1, (IfNode*)mkIfNode(NULL, $3));}
                | elif_list {$$ = $1;}
                | Else block {$$ = setRoot(mkIfNode(NULL, $2));}
-               | %empty {$$ = NULL;}
+               | %empty {$$ = setRoot(NULL);}
                ;
 
 if_stmt: If expr block maybe_elif_list {$$ = mkIfNode($2, $3, (IfNode*)getRoot());}

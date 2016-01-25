@@ -4,12 +4,12 @@
 `
 void printMsg: bool b
     if b -> puts("Hello World!")
-    puts("Goodbye World!")
+    else -> puts("Goodbye World!")
 
 bool divisibleByThree: i32 i
     return i % 3 == 0
 
 printMsg(true)
-if divisibleByThree(24) == false
+if divisibleByThree(23)
     exit(5)
 printMsg(1 + 1 != 2)
