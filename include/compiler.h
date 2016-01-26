@@ -1,6 +1,7 @@
 #ifndef COMPILER_H
 #define COMPILER_H
 
+#include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Module.h>
 #include <memory>
@@ -15,8 +16,9 @@ struct Node;
 
 namespace ante{
     struct Compiler{
-        unique_ptr<Node> ast;
+        unique_ptr<legacy::FunctionPassManager> passManager;
         unique_ptr<Module> module;
+        unique_ptr<Node> ast;
         IRBuilder<> builder;
         stack<std::map<string, Value*>> varTable;
         bool errFlag, compiled;

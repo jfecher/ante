@@ -1,6 +1,5 @@
 #include "compiler.h"
 #include "parser.h"
-#include "llvm/IR/LegacyPassManager.h" //for legacy::FunctionPassManager for each function
 #include <llvm/IR/Verifier.h>          //for verifying basic structure of functions
 #include <llvm/Bitcode/ReaderWriter.h> //for r/w when outputting bitcode
 #include <llvm/Support/FileSystem.h>   //for r/w when outputting bitcode
@@ -30,18 +29,6 @@ Value* Compiler::compErr(T msg, Args... args)
     return compErr(args...);
 }
 
-unique_ptr<legacy::FunctionPassManager> getFPM(Module *m)
-{
-    auto pm = unique_ptr<legacy::FunctionPassManager>(new legacy::FunctionPassManager(m));
-    pm->add(createBasicAliasAnalysisPass());
-    pm->add(createInstructionCombiningPass());
-    pm->add(createReassociatePass());
-    pm->add(createGVNPass());
-    pm->add(createCFGSimplificationPass());
-    pm->add(createTailCallEliminationPass());
-    pm->doInitialization();
-    return pm;
-}
 /*
  *  Translates an individual type in token form to an llvm::Type
  */
@@ -340,7 +327,7 @@ Value* FuncDeclNode::compile(Compiler *c, Module *m)
     }
     c->exitScope();
 
-    getFPM(c->module.get())->run(*f);
+    c->passManager->run(*f);
 
     verifyFunction(*f);
     c->builder.SetInsertPoint(&c->module->getFunction("main")->back());
@@ -554,4 +541,14 @@ Compiler::Compiler(char *_fileName) :
     varTable.push(map<string, Value*>());
     module.reset(new Module(removeFileExt(_fileName), getGlobalContext()));
 
+    //add passes to passmanager.
+    //TODO: change passes based on -O0 through -O3 flags
+    passManager.reset(new legacy::FunctionPassManager(module.get()));
+    passManager->add(createBasicAliasAnalysisPass());
+    passManager->add(createInstructionCombiningPass());
+    passManager->add(createReassociatePass());
+    passManager->add(createGVNPass());
+    passManager->add(createCFGSimplificationPass());
+    passManager->add(createTailCallEliminationPass());
+    passManager->doInitialization();
 }
