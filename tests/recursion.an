@@ -1,11 +1,8 @@
 `
     recursion.an
 `
-i32 x = 0
+void f: i32 x
+    printf("%d\n", x)
+    f(x + 1)
 
-void f:
-    x = x + 1
-    print(x)
-    f()
-
-f()
+f(0)
