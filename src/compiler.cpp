@@ -545,10 +545,11 @@ Compiler::Compiler(char *_fileName) :
     //TODO: change passes based on -O0 through -O3 flags
     passManager.reset(new legacy::FunctionPassManager(module.get()));
     passManager->add(createBasicAliasAnalysisPass());
-    passManager->add(createInstructionCombiningPass());
-    passManager->add(createReassociatePass());
     passManager->add(createGVNPass());
     passManager->add(createCFGSimplificationPass());
     passManager->add(createTailCallEliminationPass());
+    passManager->add(createPromoteMemoryToRegisterPass());
+    passManager->add(createInstructionCombiningPass());
+    passManager->add(createReassociatePass());
     passManager->doInitialization();
 }

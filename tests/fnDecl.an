@@ -6,10 +6,33 @@ void printMsg: bool b
     if b -> puts("Hello World!")
     else -> puts("Goodbye World!")
 
+
 bool divisibleByThree: i32 i
     return i % 3 == 0
+
+
+bool isEven: i32 x
+    return x % 2 == 0
+
+
+i32 fact: i32 x
+    if x <= 1
+        return 1
+    return x * fact(x-1)
+
 
 printMsg(true)
 if divisibleByThree(23)
     exit(5)
+
+if isEven(4)
+    putchar(fact(5))
+    putchar(10)
+
 printMsg(1 + 1 != 2)
+
+`output:
+Hello World!
+x
+Goodbye World!
+`
