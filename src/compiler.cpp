@@ -553,3 +553,5 @@ Compiler::Compiler(char *_fileName) :
     passManager->add(createReassociatePass());
     passManager->doInitialization();
 }
+
+Compiler::~Compiler(){}

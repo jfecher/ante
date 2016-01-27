@@ -25,7 +25,7 @@ namespace ante{
         string fileName;
         
         Compiler(char *fileName);
-        ~Compiler(){}
+        ~Compiler();
 
         void compile();
         void compileNative();

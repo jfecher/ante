@@ -226,6 +226,7 @@ int ante::lexer::handleComment(void)
 void ante::lexer::setlextxt(string *str)
 {
     size_t size = str->size() + 1;
+    free(lextxt);
     lextxt = (char*)malloc(size);
     strcpy(lextxt, str->c_str());
     lextxt[size-1] = '\0';

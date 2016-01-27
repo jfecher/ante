@@ -14,6 +14,19 @@ Node* ante::parser::getRootNode()
 }
 
 /*
+ *  Define strdup for non-posix environments
+ */
+/*#ifndef POSIX
+char* strdup(char* src)
+{
+    size_t len = strlen(src);
+    char* dest = new char[len];
+    strncpy(dest, src, len);
+    return dest;
+}
+#endif
+*/
+/*
  *  Saves the root of a new block and returns it.
  */
 Node* setRoot(Node* node)
@@ -51,17 +64,17 @@ Node* setElse(IfNode *c, IfNode *elif)
 
 Node* mkIntLitNode(char* s)
 {
-    return new IntLitNode(s);
+    return new IntLitNode(strdup(s));
 }
 
 Node* mkFltLitNode(char* s)
 {
-    return new FltLitNode(s);
+    return new FltLitNode(strdup(s));
 }
 
 Node* mkStrLitNode(char* s)
 {
-    return new StrLitNode(s);
+    return new StrLitNode(strdup(s));
 }
 
 Node* mkBoolLitNode(char b)
@@ -71,7 +84,7 @@ Node* mkBoolLitNode(char b)
 
 Node* mkTypeNode(int type, char* typeName)
 {
-    return new TypeNode(type, typeName);
+    return new TypeNode(type, strdup(typeName));
 }
 
 Node* mkBinOpNode(int op, Node* l, Node* r)
@@ -86,22 +99,22 @@ Node* mkRetNode(Node* expr)
 
 Node* mkNamedValNode(char* s, Node* tExpr)
 {
-    return new NamedValNode(s, tExpr);
+    return new NamedValNode(strdup(s), tExpr);
 }
 
 Node* mkFuncCallNode(char* s, Node* p)
 {
-    return new FuncCallNode(s, p);
+    return new FuncCallNode(strdup(s), p);
 }
 
 Node* mkVarNode(char* s)
 {
-    return new VarNode(s);
+    return new VarNode(strdup(s));
 }
 
 Node* mkVarDeclNode(char* s, Node* tExpr, Node* expr)
 {
-    return new VarDeclNode(s, tExpr, expr);
+    return new VarDeclNode(strdup(s), tExpr, expr);
 }
 
 Node* mkVarAssignNode(Node* var, Node* expr)
@@ -116,10 +129,10 @@ ParentNode* mkIfNode(Node* con, Node* body, Node* els = nullptr)
 
 ParentNode* mkFuncDeclNode(char* s, Node* tExpr, Node* p, Node* b)
 {
-    return new FuncDeclNode(s, tExpr, p, b);
+    return new FuncDeclNode(strdup(s), tExpr, p, b);
 }
 
 ParentNode* mkDataDeclNode(char* s, Node* b)
 {
-    return new DataDeclNode(s, b);
+    return new DataDeclNode(strdup(s), b);
 }

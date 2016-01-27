@@ -1,17 +1,44 @@
 `
         fib.an
-    Designed to test the compiler's ability to
-    evaluate multi-parameter functions, especially in
-    a recursive context.
+    Compile and test an example fibbonacci function where the 
+    code closely reflects the mathematical definition of the function,
+    and is slow as a result.
 `
 
 ~n:      1, 2, 3, 4, 5, 6, 7...
 ~fib(n): 1, 1, 2, 3, 5, 8, 13...
+
+~The slow but theoretical function:
 i32 fib: i32 n
     if n <= 2 -> return 1
     return fib(n-2) + fib(n-1)
 
+`
+The function above should hopefully be compiled into something
+resembling the following function.  To do this, the main 
+transformation is the transformation of fib(n-1) into 
+fib(n-3) + x1 where x1 is the result of the previous fib(n-2)
+operation.  In order to do this, the compiler must know that
+the function is pure in that it would obtain the same result
+every time it is called with a given input.
+
+i32 fib: i32 n
+    if n <= 3 -> return (n+1)/2
+
+    i32 x1 = fib(n-2)
+    i32 x2 = x1 + fib(n-3)
+    return x1 + x2
+`
+
+
+~Show the beginning of the range just to check for correctness
+printf("fib(%d) = %d\n", 3,  fib(3))
+printf("fib(%d) = %d\n", 4,  fib(4))
+printf("fib(%d) = %d\n", 5,  fib(5))
+printf("fib(%d) = %d\n", 6,  fib(6))
 printf("fib(%d) = %d\n", 7,  fib(7))
+
+~Show the end of the range for speedtests
 printf("fib(%d) = %d\n", 30, fib(30))
 printf("fib(%d) = %d\n", 46, fib(46))
 printf("fib(%d) = %d\n", 47, fib(47)) ~Integer overflow here!
