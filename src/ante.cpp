@@ -25,9 +25,11 @@ int main(int argc, char *argv[]){
             lexer::init(argv[2]);
             int flag = yyparse();
             cout << "Parser returned " << flag << endl;
+            Node* root = parser::getRootNode();
             if(flag == PE_OK){
-                parser::printBlock(parser::getRootNode());
+                parser::printBlock(root);
             }
+            delete root;
         //compile
         }else if(strcmp(argv[1], "-c") == 0){
             Compiler ante{argv[2]};

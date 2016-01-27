@@ -25,7 +25,7 @@ struct Node{
     virtual void print(void) = 0;
     virtual Value* compile(Compiler*, Module*) = 0;
     //virtual void exec(void) = 0;
-    ~Node(){}
+    virtual ~Node(){}
 };
 
 /*
@@ -135,7 +135,7 @@ struct StrLitNode : public Node{
     //void exec(void);
     void print(void);
     StrLitNode(char* s) : Node(), val(s){}
-    ~StrLitNode(){puts("~StrLitNode;");}
+    ~StrLitNode(){}
 };
 
 struct VarDeclNode : public Node{
