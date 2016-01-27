@@ -3,9 +3,6 @@
 
 #define IS_LITERAL(t) ((t) < 258)
 
-//TOK_TYPE_STR assumes t is not a literal token
-#define TOK_TYPE_STR(t) (tokDictionary[(t)-258])
-
 enum TokenType{
     Tok_Ident = 258,
     Tok_UserType,
@@ -68,9 +65,9 @@ enum TokenType{
     Tok_Pub,
     Tok_Pri,
     Tok_Pro,
+    Tok_Raw,
     Tok_Const,
     Tok_Ext,
-    Tok_Dyn,
     Tok_Pathogen,
 
     //other
@@ -83,13 +80,5 @@ enum TokenType{
     Tok_Indent,
     Tok_Unindent,
 };
-
-//defined in src/lexer.cpp
-extern const char* tokDictionary[];
-
-//#define TOK(t, r, c) (Token){t, NULL, r, c}
-//#define TOKL(t, r) (Token){t, l, r, c}
-
-#define IS_TERMINATING_OP(o) ((o)==']'||(o)=='}'||(o)==')')
 
 #endif

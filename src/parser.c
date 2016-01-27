@@ -162,9 +162,9 @@ extern int yydebug;
     Pub = 305,
     Pri = 306,
     Pro = 307,
-    Const = 308,
-    Ext = 309,
-    Dyn = 310,
+    Raw = 308,
+    Const = 309,
+    Ext = 310,
     Pathogen = 311,
     Where = 312,
     Infect = 313,
@@ -227,9 +227,9 @@ extern int yydebug;
 #define Pub 305
 #define Pri 306
 #define Pro 307
-#define Const 308
-#define Ext 309
-#define Dyn 310
+#define Raw 308
+#define Const 309
+#define Ext 310
 #define Pathogen 311
 #define Where 312
 #define Infect 313
@@ -587,7 +587,7 @@ static const char *const yytname[] =
   "GrtrEq", "LesrEq", "Or", "And", "True", "False", "IntLit", "FltLit",
   "StrLit", "Return", "If", "Elif", "Else", "For", "While", "Do", "In",
   "Continue", "Break", "Import", "Match", "Data", "Enum", "Pub", "Pri",
-  "Pro", "Const", "Ext", "Dyn", "Pathogen", "Where", "Infect", "Cleanse",
+  "Pro", "Raw", "Const", "Ext", "Pathogen", "Where", "Infect", "Cleanse",
   "Ct", "Newline", "Indent", "Unindent", "LOW", "','", "'<'", "'>'", "'+'",
   "'-'", "'*'", "'/'", "'%'", "'^'", "'.'", "'('", "'['", "']'", "')'",
   "'|'", "'='", "':'", "$accept", "top_level_stmt_list", "stmt_list",

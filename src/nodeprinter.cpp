@@ -63,10 +63,7 @@ void BinOpNode::print()
     putchar('(');
     if(lval) lval->print();
     putchar(' ');
-    if(IS_LITERAL(op))
-        cout << (char)op;
-    else
-        cout << TOK_TYPE_STR(op);
+    lexer::printTok(op);
     putchar(' ');
     if(rval) rval->print();
     putchar(')');

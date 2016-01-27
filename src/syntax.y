@@ -43,7 +43,7 @@ void yyerror(const char *msg);
 
 /* modifiers */
 %token Pub Pri Pro
-%token Const Ext Dyn Pathogen
+%token Raw Const Ext Pathogen
 
 /* other */
 %token Where Infect Cleanse Ct
@@ -162,9 +162,9 @@ type_expr: type_expr ',' type
 modifier: Pub
         | Pri
         | Pro
+        | Raw
         | Const
         | Ext
-        | Dyn
         | Pathogen
         ;
 

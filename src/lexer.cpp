@@ -2,82 +2,89 @@
 #include <cstdlib>
 #include <cstring>
 
-const char* tokDictionary[] = {
-    "Identifier",
-    "UserType",
+/*
+ *  Maps each non-literal token to a string representing
+ *  its type.
+ */
+map<int, const char*> tokDict = {
+    {Tok_Ident, "Identifier"},
+    {Tok_UserType, "UserType"},
 
     //types
-    "I8",
-    "I16",
-    "I32",
-    "I64",
-    "U8",
-    "U16",
-    "U32",
-    "U64",
-    "Isz",
-    "Usz",
-    "F32",
-    "F64",
-    "C8",
-    "C32",
-    "Bool",
-    "Void",
+    {Tok_I8, "I8"},
+    {Tok_I16, "I16"},
+    {Tok_I32, "I32"},
+    {Tok_I64, "I64"},
+    {Tok_U8, "U8"},
+    {Tok_U16, "U16"},
+    {Tok_U32, "U32"},
+    {Tok_U64, "U64"},
+    {Tok_Isz, "Isz"},
+    {Tok_Usz, "Usz"},
+    {Tok_F32, "F32"},
+    {Tok_F64, "F64"},
+    {Tok_C8, "C8"},
+    {Tok_C32, "C32"},
+    {Tok_Bool, "Bool"},
+    {Tok_Void, "Void"},
 
-	"Eq",
-    "NotEq",
-	"AddEq",
-	"SubEq",
-    "MulEq",
-    "DivEq",
-	"GrtrEq",
-	"LesrEq",
-    "Or",
-    "And",
+    {Tok_Eq, "Eq"},
+    {Tok_NotEq, "NotEq"},
+    {Tok_AddEq, "AddEq"},
+    {Tok_SubEq, "SubEq"},
+    {Tok_MulEq, "MulEq"},
+    {Tok_DivEq, "DivEq"},
+    {Tok_GrtrEq, "GrtrEq"},
+    {Tok_LesrEq, "LesrEq"},
+    {Tok_Or, "Or"},
+    {Tok_And, "And"},
 
     //literals
-    "True",
-    "False",
-	"IntLit",
-	"FltLit",
-	"StrLit",
+    {Tok_True, "True"},
+    {Tok_False, "False"},
+    {Tok_IntLit, "IntLit"},
+    {Tok_FltLit, "FltLit"},
+    {Tok_StrLit, "StrLit"},
 
     //keywords
-    "Return",
-	"If",
-    "Elif",
-	"Else",
-	"For",
-	"While",
-    "Do",
-    "In",
-	"Continue",
-	"Break",
-    "Import",
-    "Match",
-    "Data",
-    "Enum",
+    {Tok_Return, "Return"},
+    {Tok_If, "If"},
+    {Tok_Elif, "Elif"},
+    {Tok_Else, "Else"},
+    {Tok_For, "For"},
+    {Tok_While, "While"},
+    {Tok_Do, "Do"},
+    {Tok_In, "In"},
+    {Tok_Continue, "Continue"},
+    {Tok_Break, "Break"},
+    {Tok_Import, "Import"},
+    {Tok_Match, "Match"},
+    {Tok_Data, "Data"},
+    {Tok_Enum, "Enum"},
 
     //modifiers
-    "Pub",
-    "Pri",
-    "Pro",
-    "Const",
-    "Ext",
-    "Dyn",
-    "Pathogen",
+    {Tok_Pub, "Pub"},
+    {Tok_Pri, "Pri"},
+    {Tok_Pro, "Pro"},
+    {Tok_Raw, "Raw"},
+    {Tok_Const, "Const"},
+    {Tok_Ext, "Ext"},
+    {Tok_Pathogen, "Pathogen"},
 
     //other
-    "Where",
-    "Infect",
-    "Cleanse",
-    "Ct",
+    {Tok_Where, "Where"},
+    {Tok_Infect, "Infect"},
+    {Tok_Cleanse, "Cleanse"},
+    {Tok_Ct, "Ct"},
 
-    "Newline",
-    "Indent",
-    "Unindent",
+    {Tok_Newline, "Newline"},
+    {Tok_Indent, "Indent"},
+    {Tok_Unindent, "Unindent"},
 };
 
+/*
+ *  Maps each keyword to its corresponding TokenType
+ */
 map<string, int> keywords = {
     {"i8",       Tok_I8},
     {"i16",      Tok_I16},
@@ -116,19 +123,19 @@ map<string, int> keywords = {
     {"data",     Tok_Data},
     {"enum",     Tok_Enum},
     
-    {"Pub",      Tok_Pub},
-    {"Pri",      Tok_Pri},
-    {"Pro",      Tok_Pro},
-    {"Const",    Tok_Const},
-    {"Ext",      Tok_Ext},
-    {"Dyn",      Tok_Dyn},
-    {"Pathogen", Tok_Pathogen},
+    {"pub",      Tok_Pub},
+    {"pri",      Tok_Pri},
+    {"pro",      Tok_Pro},
+    {"raw",      Tok_Raw},
+    {"const",    Tok_Const},
+    {"ext",      Tok_Ext},
+    {"pathogen", Tok_Pathogen},
 
     //other
-    {"Where",    Tok_Where},
-    {"Infect",   Tok_Infect},
-    {"Cleanse",  Tok_Cleanse},
-    {"Ct",       Tok_Ct},
+    {"where",    Tok_Where},
+    {"infect",   Tok_Infect},
+    {"cleanse",  Tok_Cleanse},
+    {"ct",       Tok_Ct},
 };
 
 char c = 0; 
@@ -181,7 +188,7 @@ string ante::lexer::getTokStr(int t)
     if(IS_LITERAL(t)){
         s += (char)t;
     }else{
-        s += TOK_TYPE_STR(t);
+        s += tokDict[t];
     }
     return s;
 }
@@ -226,7 +233,6 @@ int ante::lexer::handleComment(void)
 void ante::lexer::setlextxt(string *str)
 {
     size_t size = str->size() + 1;
-    free(lextxt);
     lextxt = (char*)malloc(size);
     strcpy(lextxt, str->c_str());
     lextxt[size-1] = '\0';
@@ -254,10 +260,12 @@ int ante::lexer::genNumLitTok()
     string s = "";
     bool flt = false;
 
-    while(IS_NUMERICAL(c) || (c == '.' && !flt && IS_NUMERICAL(n))){
-        s += c;
-        if(c == '.'){ 
-            flt = true;
+    while(IS_NUMERICAL(c) || (c == '.' && !flt && IS_NUMERICAL(n)) || c == '_'){
+        if(c != '_'){
+            s += c;
+            if(c == '.'){ 
+                flt = true;
+            }
         }
         incPos();
     }
