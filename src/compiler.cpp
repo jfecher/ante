@@ -327,6 +327,9 @@ Value* FuncDeclNode::compile(Compiler *c, Module *m)
     }
     c->exitScope();
 
+    Attribute attr = Attribute::get(getGlobalContext(), "nounwind");
+    f->addAttributes(0, AttributeSet::get(getGlobalContext(), AttributeSet::FunctionIndex, attr));
+
     c->passManager->run(*f);
 
     verifyFunction(*f);
