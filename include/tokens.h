@@ -18,6 +18,7 @@ enum TokenType{
     Tok_U64,
     Tok_Isz, //Signed integer with pointer size
     Tok_Usz,
+    Tok_F16,
     Tok_F32,
     Tok_F64,
     Tok_C8,

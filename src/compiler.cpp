@@ -103,39 +103,6 @@ Value* StrLitNode::compile(Compiler *c, Module *m)
 }
 
 /*
- *  Compiles an operation along with its lhs and rhs
- *
- *  TODO: type checking
- *  TODO: CreateExactUDiv for when it is known there is no remainder
- *  TODO: CreateFcmpOEQ vs CreateFCmpUEQ
- */
-Value* BinOpNode::compile(Compiler *c, Module *m)
-{
-    Value *lhs = lval->compile(c, m);
-    Value *rhs = rval->compile(c, m);
-
-    switch(op){
-        case '+': return c->builder.CreateAdd(lhs, rhs, "tmp");
-        case '-': return c->builder.CreateSub(lhs, rhs, "tmp");
-        case '*': return c->builder.CreateMul(lhs, rhs, "tmp");
-        case '/': return c->builder.CreateSDiv(lhs, rhs, "tmp");
-        case '%': return c->builder.CreateSRem(lhs, rhs, "tmp");
-        case '<': return c->builder.CreateICmpULT(lhs, rhs, "tmp");
-        case '>': return c->builder.CreateICmpUGT(lhs, rhs, "tmp");
-        case '^': return c->builder.CreateXor(lhs, rhs, "tmp");
-        case '.': break;
-        case Tok_Eq: return c->builder.CreateICmpEQ(lhs, rhs, "tmp");
-        case Tok_NotEq: return c->builder.CreateICmpNE(lhs, rhs, "tmp");
-        case Tok_LesrEq: return c->builder.CreateICmpULE(lhs, rhs, "tmp");
-        case Tok_GrtrEq: return c->builder.CreateICmpUGE(lhs, rhs, "tmp");
-        case Tok_Or: break;
-        case Tok_And: break;
-    }
-
-    return c->compErr("Unknown operator ", lexer::getTokStr(op));
-}
-
-/*
  *  When a retnode is compiled within a block, care must be taken to not
  *  forcibly insert the branch instruction afterwards as it leads to dead code.
  */

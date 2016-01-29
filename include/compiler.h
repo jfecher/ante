@@ -34,6 +34,12 @@ namespace ante{
         void enterNewScope();
         void exitScope();
         
+        Value* compAdd(Type *t, Value *l, Value *r);
+        Value* compSub(Type *t, Value *l, Value *r);
+        Value* compMul(Type *t, Value *l, Value *r);
+        Value* compDiv(Type *t, Value *l, Value *r);
+        Value* compRem(Type *t, Value *l, Value *r);
+        
         template<typename T>
         Value* compErr(T msg);
         

@@ -93,7 +93,8 @@ u64 myU64 = 0
 isz myIsz = 0    ~Signed pointer size integer
 usz myUsz = 0    ~Unsigned pointer size integer
 
-f32 myF32 = 0.0  ~32bit float
+f16 myF16 = 0.0
+f32 myF32 = 0.0  ~32bit IEEE floating point
 f64 myF64 = 0.0
 
 c8  myC8  = ''   ~ASCII char 0x00
