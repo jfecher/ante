@@ -22,7 +22,7 @@ void yyerror(const char *msg);
 /* types */
 %token I8 I16 I32 I64 
 %token U8 U16 U32 U64
-%token Isz Usz F32 F64
+%token Isz Usz F16 F32 F64
 %token C8 C32 Bool Void
 
 /* operators */

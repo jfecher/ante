@@ -1,7 +1,8 @@
-#include <llvm/IR/Verifier.h>
-#include "compiler.h"
 #include "parser.h"
+//#include "compiler.h"
 #include "tokens.h"
+
+using namespace ante;
 
 int type2TokType(Type *t)
 {
@@ -38,6 +39,7 @@ string opType2Str(int opTy)
 Value* Compiler::compAdd(Type *t, Value *l, Value *r)
 {
     int tt = type2TokType(t);
+
     switch(tt){
         case Tok_I8:
         case Tok_I16:
@@ -50,7 +52,8 @@ Value* Compiler::compAdd(Type *t, Value *l, Value *r)
             return builder.CreateFAdd(l, r);
 
         default:
-            return compErr("binary operator + is undefined for the type ", opType2Str(tt));
+            break;
+            //return compErr("binary operator + is undefined for the type ", opType2Str(tt));
     }
 }
 
@@ -69,7 +72,8 @@ Value* Compiler::compSub(Type *t, Value *l, Value *r)
             return builder.CreateFSub(l, r);
 
         default:
-            return compErr("binary operator - is undefined for the type ", opType2Str(tt));
+            break;
+            //return compErr("binary operator - is undefined for the type ", opType2Str(tt));
     }
 }
 
@@ -88,7 +92,8 @@ Value* Compiler::compMul(Type *t, Value *l, Value *r)
             return builder.CreateFMul(l, r);
 
         default:
-            return compErr("binary operator * is undefined for the type ", opType2Str(tt));
+            break;
+        //      return compErr("binary operator * is undefined for the type ", opType2Str(tt));
     }
 }
 
@@ -106,8 +111,9 @@ Value* Compiler::compDiv(Type *t, Value *l, Value *r)
         case Tok_F64:
             return builder.CreateFDiv(l, r);
 
-        default:
-            return compErr("binary operator / is undefined for the type ", opType2Str(tt));
+        default: 
+            break;
+      //      return compErr("binary operator / is undefined for the type ", opType2Str(tt));
     }
 }
 
@@ -126,7 +132,8 @@ Value* Compiler::compRem(Type *t, Value *l, Value *r)
             return builder.CreateFRem(l, r);
 
         default:
-            return compErr("binary operator % is undefined for the type ", opType2Str(tt));
+            break;
+     //       return compErr("binary operator % is undefined for the type ", opType2Str(tt));
     }
 }
 
@@ -146,7 +153,7 @@ Value* BinOpNode::compile(Compiler *c, Module *m)
     //Type *rt = lhs->getType();
 
     switch(op){
-        case '+': return c->compRem(lt, lhs, rhs);
+        case '+': return c->compAdd(lt, lhs, rhs);
         case '-': return c->compSub(lt, lhs, rhs);
         case '*': return c->compMul(lt, lhs, rhs);
         case '/': return c->compDiv(lt, lhs, rhs);
@@ -163,5 +170,5 @@ Value* BinOpNode::compile(Compiler *c, Module *m)
         case Tok_And: break;
     }
 
-    return c->compErr("Unknown operator ", lexer::getTokStr(op));
+    //return c->compErr("Unknown operator ", lexer::getTokStr(op));
 }

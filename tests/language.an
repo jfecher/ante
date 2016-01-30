@@ -484,8 +484,8 @@ data Integer
         Data declarations
     In ante, all datatypes are declared through the data keyword by mixing and matching
     previously declared types.  The data keyword expects the name of the datatype afterwards 
-    followed by a block of type expressions and an optional name for each field.  Without 
-    naming each field, that field can be indexed like a tuple.
+    followed by a block of type expressions and an optional name for each field.  If a field
+    is left unnamed, then it can only be indexed like a tuple.
 `
 
 ~Declare coord, a datatype consisting of three f64s named x, y, and z.
@@ -495,10 +495,10 @@ data Coord
     f64 x y z
 
 ~Declare char, a datatype that can contain an ASCII or UTF-32 char
-data char
+data Char
     c8|c32 c
 
-char ch = 'a'
+Char ch = 'a'
 assert(ch.c is c32)
 
 ~Each newline is equivilent to a , and signals a tuple type.
@@ -526,6 +526,56 @@ f64 y = Coord(100, -50, 66.7).y
 
 ~Set p1 p2 and p3 to 0, 0
 i32,i32 p1 p2 p3 = 0, 0
+
+
+`
+        Ranges and Type Conditions
+    Ranges are denoted by start and end values surrounded by the .. operator.  Their beggining and
+    end are immutable once the range is created, but the step can be modified via multiplication of
+    the range.
+`
+
+~Print 1 to 100 inclusive
+for i32 i in 1 .. 100
+    print(i)
+
+
+~Create a datatype TwoDigits that represents a number that is between
+~10 and 99 inclusive.
+data TwoDigits
+    u8 in 10..99
+
+
+let td1 = TwoDigits(32) ~Good!
+let td2 = TwoDigits(100) ~RangeErr
+
+
+`
+    Type Conditions are signified with the where keyword and provide a concise way to
+    verify the value of a variable.  Where is always followed by the boolean expression
+    to be checked.
+`
+data Teen
+    u8 age  in 10 .. 19
+    String name  where name.length > 0
+
+let john = Teen(15, "John Brown")
+
+~TypeConditionErr
+let sara = Teen(18, "")
+
+
+~Type conditions with anonymous fields:
+data LongStr
+    String where this.length > 10
+
+~Type conditions are evaluated whenever the corresponding field is changed.
+data Q2Coord
+    i32 where this[0] < 0
+    i32 where this[1] > 0
+
+Q2Coord q = -4, 5
+q[0] = 2 ~where this[0] < 0 is evaluated, and a TypeConditionErr is thrown.
 
 `
         Classes
@@ -1191,25 +1241,25 @@ data Str -> c8[] | c32[]
 ~NOTE: the precedence of | is greater than that of ,
 data Coord -> (i32, i32) | (f64, f64)
 
-data Maybe<type t>
+data Maybe
     t | enum -> None
 
 ~declare a list type that is a tuple with two indices, the first
 ~being the value type, and the second being the next List node.
-data TList -> t, Maybe<List<T>*>
+data TList -> t, Maybe<List<t>*>
 
 ~alternatively, type declarations can name each member of the
 ~tuple, mimicking a struct.
-data List<type t>
+data List
     t val
     Maybe<List<t>*> next
 
-data Vec<type T>
+data Vec
     t[] mem
     u32 len
     u32 cap
 
-List<u8> numsList = 1u8, &(2u8, &(3u8, None)))
+let numsList = List(1u8, &(2u8, &(3u8, None)))
 
 `
         Multiline expressions/statements
