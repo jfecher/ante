@@ -35,6 +35,7 @@ Type* translateType(int tokTy, string typeName = "")
         case Tok_I64: case Tok_U64: return Type::getInt64Ty(getGlobalContext());
         case Tok_Isz: return Type::getVoidTy(getGlobalContext()); //TODO: implement
         case Tok_Usz: return Type::getVoidTy(getGlobalContext()); //TODO: implement
+        case Tok_F16: return Type::getHalfTy(getGlobalContext());
         case Tok_F32: return Type::getFloatTy(getGlobalContext());
         case Tok_F64: return Type::getDoubleTy(getGlobalContext());
         case Tok_C8:  return Type::getInt8Ty(getGlobalContext()); //TODO: implement
@@ -215,10 +216,17 @@ Value* FuncCallNode::compile(Compiler *c, Module *m)
 Value* VarDeclNode::compile(Compiler *c, Module *m)
 {
     TypeNode *tyNode = (TypeNode*)typeExpr.get();
+
     Type *ty = translateType(tyNode->type, tyNode->typeName);
     Value *v = c->builder.CreateAlloca(ty, 0, name.c_str());
     c->stoVar(name, v);
     if(expr){
+        Value *val = expr->compile(c, m);
+        if(val->getType() != ty){
+            if(val->getType()->isDoubleTy()){
+                val = c->builder.CreateFPTrunc(val, ty);
+            }
+        }
         return c->builder.CreateStore(expr->compile(c, m), v);
     }else{
         return v;
@@ -385,6 +393,7 @@ void Compiler::compile()
     //builder should already be at end of main function
     builder.CreateRet(ConstantInt::get(getGlobalContext(), APInt(8, 0, true)));
 
+    passManager->run(*main);
     verifyFunction(*main);
 
     //flag this module as compiled.

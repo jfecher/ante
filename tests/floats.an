@@ -1,0 +1,23 @@
+`
+        floats.an
+    Tests compilation of various sized floats as well as
+    floating point operations.
+`
+
+~IEEE double
+f64 f1 = 0.125
+f64 f2 = 1.0 / 8.0 * 6.0
+
+printf("%.3f + %.3f = %.3f\n", f1, f2, f1 + f2)
+
+~IEEE single
+f32 s1 = 0.6
+f32 s2 = 0.2 * 2.0
+printf("%.2f * %.2f = %.2f\n", s1, s2, s1*s2)
+
+~IEEE half
+f16 h1 = 0.5
+f16 h2 = 1.5
+
+printf("%.1f + %.1f = %.1f\n", h1, h2, h1 + h2)
+

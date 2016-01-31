@@ -145,6 +145,9 @@ Value* BinOpNode::compile(Compiler *c, Module *m)
     Type *lt = lhs->getType();
     //Type *rt = lhs->getType();
 
+    //int ltt = type2TokType(lt);
+    //int rtt = type2TokType(rt);
+
     switch(op){
         case '+': return c->compAdd(lt, lhs, rhs);
         case '-': return c->compSub(lt, lhs, rhs);

@@ -136,6 +136,7 @@ lit_type: I8       {$$ = mkTypeNode(Tok_I8,  (char*)"");}
         | U64      {$$ = mkTypeNode(Tok_U64, (char*)"");}
         | Isz      {$$ = mkTypeNode(Tok_Isz, (char*)"");}
         | Usz      {$$ = mkTypeNode(Tok_Usz, (char*)"");}
+        | F16      {$$ = mkTypeNode(Tok_F16, (char*)"");}
         | F32      {$$ = mkTypeNode(Tok_F32, (char*)"");}
         | F64      {$$ = mkTypeNode(Tok_F64, (char*)"");}
         | C8       {$$ = mkTypeNode(Tok_C8,  (char*)"");}
