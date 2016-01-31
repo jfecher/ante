@@ -1,7 +1,6 @@
 `
     stdlib.an
-        tests functions in stdlib for expected output when given
-        a variety of types and number of variables.
+        Experimental stdlib functions and tests
 `
 
 ~math module
@@ -20,50 +19,58 @@ assert(ceil(testFlt) == 1)
 ~io module
 import "io"
 
-print("Hello World!", end: '')
+print("Hello World!\n")
 print(3)
 
-println("Test #")
-println(3)
+print("Test #", 1, '\n')
+print("Test #" ++ 2 ++ '\n')
 
 File* f = new File("out.txt", File.write)
-println(file: f, "2 + 3 = 5")
+f.print("2 + 3 = 5")
 
 ~string module
 import "string"
 
+
+~Example declaration of String
+data String
+    const u32 len
+    const c32[] rawStr
+
+
+impl String
+    String op("cast"): c32[] str
+        return String(str.length(), str)
+
+    String op("cast"): i32 int
+        return String(stoi(int))
+
+    String op("cast"): c32 c
+        return String(1, [c])
+
+
 String msg = "Hello World!"
 
 msg = msg.repl("Hello", "Goodbye")
-msg.=repl("Goodbye", "Hello")
-
-assert(msg == "Hello World!")
-
-msg.=replRegex("[a-z]+", "ey")
-assert(msg == "Hey World!")
-
+assert(msg == "Goodbye World!")
 
 ~op module
 import "op"
 
 impl String 
-    bool op('?'): ~Coerce to bool
-        if this == "true"
-            return true
-        return false
+    bool op('!'): self*
+        return self.len == 0
 
-    String infix('pop', prec('..')):
-        return this[0 .. this.length-2]
+    String pop: self*
+        return self[0 .. this.length-2]
 
 
 ~c_ffi module
 import "c_ffi"
 
-Csrc csrc = c_ffi.getSrc("stdio")
-File<csrc> src = File("stdio")
-
-import csrc.getFn('putchar')
+~Create a C file object, defined in c_ffi, holding cstdio and cstdlib to import.
+import C("cstdio", "cstdlib")
 
 putchar(65)
-
-
+putchar(110)
+~output: an

@@ -215,6 +215,7 @@ assert(1_000_000 == 1000000)
         != not equal to
         && logical and
         || logical or
+        .. range
         &  bitwise and
         |  bitwise or (or a type-expr or)
         ^  bitwise xor
@@ -226,7 +227,6 @@ assert(1_000_000 == 1000000)
         !  logical not
         *  pointer dereference
         &  address of
-        $  type of
 `
 
 `

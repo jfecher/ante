@@ -14,19 +14,11 @@ using namespace llvm;
  *  Inform the user of an error and return nullptr.
  *  (perhaps this should throw an exception?)
  */
-template<typename T>
-Value* Compiler::compErr(T msg)
+Value* Compiler::compErr(string msg)
 {
     cout << msg << endl;
     errFlag = true;
     return nullptr;
-}
-
-template<typename T, typename... Args>
-Value* Compiler::compErr(T msg, Args... args)
-{
-    cout << msg;
-    return compErr(args...);
 }
 
 /*
@@ -184,7 +176,7 @@ Value* VarNode::compile(Compiler *c, Module *m)
 {
     Value *val = c->lookup(name);
     if(!val){
-        return c->compErr("Variable ", name, " has not been declared.");
+        return c->compErr("Variable " + name + " has not been declared.");
     }
     return dynamic_cast<AllocaInst*>(val)? c->builder.CreateLoad(val, name) : val;
 }
@@ -193,15 +185,15 @@ Value* FuncCallNode::compile(Compiler *c, Module *m)
 {
     Function *f = m->getFunction(name);
     if(!f){
-        return c->compErr("Called function ", name, " has not been declared.");
+        return c->compErr("Called function " + name + " has not been declared.");
     }
 
     size_t paramSize = getTupleSize(params.get());
     if(f->arg_size() != paramSize && !f->isVarArg()){
         if(paramSize == 1)
-            return c->compErr("Called function ", name, " was given 1 paramter but was declared to take ", f->arg_size());
+            return c->compErr("Called function " + name + " was given 1 paramter but was declared to take " + to_string(f->arg_size()));
         else
-            return c->compErr("Called function ", name, " was given ", paramSize, " paramters but was declared to take ", f->arg_size());
+            return c->compErr("Called function " + name + " was given " + to_string(paramSize) + " paramters but was declared to take " + to_string(f->arg_size()));
     }
 
     std::vector<Value*> args;
@@ -210,7 +202,7 @@ Value* FuncCallNode::compile(Compiler *c, Module *m)
         args.push_back(curParam->compile(c, m));
         curParam = curParam->next.get();
         if(!args.back())
-            c->compErr("Argument ", i, " of called function ", name, " evaluated to null.");
+            c->compErr("Argument " + to_string(i) + " of called function " + name + " evaluated to null.");
     }
 
     if(f->getReturnType() == Type::getVoidTy(getGlobalContext())){
@@ -236,7 +228,7 @@ Value* VarDeclNode::compile(Compiler *c, Module *m)
 Value* VarAssignNode::compile(Compiler *c, Module *m)
 {
     Value *v = c->lookup(var->name);
-    if(!v) return c->compErr("Use of undeclared variable ", var->name, " in assignment.");
+    if(!v) return c->compErr("Use of undeclared variable " + var->name + " in assignment.");
     return c->builder.CreateStore(expr->compile(c, m), v);
 }
 

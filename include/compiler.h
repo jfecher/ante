@@ -40,11 +40,7 @@ namespace ante{
         Value* compDiv(Type *t, Value *l, Value *r);
         Value* compRem(Type *t, Value *l, Value *r);
         
-        template<typename T>
-        Value* compErr(T msg);
-        
-        template<typename T, typename... Args>
-        Value* compErr(T msg, Args... args);
+        Value* compErr(string msg);
         
         Value* lookup(string var);
         void stoVar(string var, Value *val);

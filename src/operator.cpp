@@ -1,8 +1,6 @@
 #include "parser.h"
-//#include "compiler.h"
+#include "compiler.h"
 #include "tokens.h"
-
-using namespace ante;
 
 int type2TokType(Type *t)
 {
@@ -52,8 +50,7 @@ Value* Compiler::compAdd(Type *t, Value *l, Value *r)
             return builder.CreateFAdd(l, r);
 
         default:
-            break;
-            //return compErr("binary operator + is undefined for the type ", opType2Str(tt));
+            return compErr("binary operator + is undefined for the type " + opType2Str(tt));
     }
 }
 
@@ -72,8 +69,7 @@ Value* Compiler::compSub(Type *t, Value *l, Value *r)
             return builder.CreateFSub(l, r);
 
         default:
-            break;
-            //return compErr("binary operator - is undefined for the type ", opType2Str(tt));
+            return compErr("binary operator - is undefined for the type " + opType2Str(tt));
     }
 }
 
@@ -92,8 +88,7 @@ Value* Compiler::compMul(Type *t, Value *l, Value *r)
             return builder.CreateFMul(l, r);
 
         default:
-            break;
-        //      return compErr("binary operator * is undefined for the type ", opType2Str(tt));
+            return compErr("binary operator * is undefined for the type " + opType2Str(tt));
     }
 }
 
@@ -112,8 +107,7 @@ Value* Compiler::compDiv(Type *t, Value *l, Value *r)
             return builder.CreateFDiv(l, r);
 
         default: 
-            break;
-      //      return compErr("binary operator / is undefined for the type ", opType2Str(tt));
+            return compErr("binary operator / is undefined for the type " + opType2Str(tt));
     }
 }
 
@@ -132,8 +126,7 @@ Value* Compiler::compRem(Type *t, Value *l, Value *r)
             return builder.CreateFRem(l, r);
 
         default:
-            break;
-     //       return compErr("binary operator % is undefined for the type ", opType2Str(tt));
+            return compErr("binary operator % is undefined for the type " + opType2Str(tt));
     }
 }
 
@@ -170,5 +163,5 @@ Value* BinOpNode::compile(Compiler *c, Module *m)
         case Tok_And: break;
     }
 
-    //return c->compErr("Unknown operator ", lexer::getTokStr(op));
+    return c->compErr("Unknown operator " + lexer::getTokStr(op));
 }
