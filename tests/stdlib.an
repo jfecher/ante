@@ -49,6 +49,12 @@ impl String
         return String(1, [c])
 
 
+void print(ParamCount count): String... s
+    for u32 i in 0..count
+        for c32 c in s[i]
+            putchar(c)
+
+
 String msg = "Hello World!"
 
 msg = msg.repl("Hello", "Goodbye")
