@@ -4,8 +4,12 @@ vpath %.d obj
 
 WARNINGS  := -Wall -Wpedantic
 LLVMFLAGS := `llvm-config --cppflags --libs Core BitWriter Passes --ldflags --system-libs`
-CPPFLAGS  := -g -O2 -std=c++11 $(WARNINGS) $(LLVMFLAGS)
-YACCFLAGS := -Lc -osrc/parser.c
+
+#                              v These macros are required when compiling with clang
+CPPFLAGS  := -g -O2 -std=c++11 -D__STDC_CONSTANT_MACROS -D__STDC_LIMIT_MACROS $(WARNINGS)
+
+PARSERSRC := src/parser.cpp
+YACCFLAGS := -Lc++ -o$(PARSERSRC) --defines=include/yyparser.h
 
 SRCDIRS  := src
 SRCFILES := $(shell find $(SRCDIRS) -type f -name "*.cpp")
@@ -17,11 +21,8 @@ DEPFILES := $(OBJFILES:.o=.d)
 .DEFAULT: ante
 
 ante: obj/parser.o $(OBJFILES)
-	@echo Linking...               # | do not move!
-	@							   # | for some reason llvm requires
-	@						       # | its flags to be right before the -o
-	@							   # V and after each object file
-	@$(CXX) $(OBJFILES) obj/parser.o $(CPPFLAGS) -o ante
+	@echo Linking...
+	@$(CXX) $(OBJFILES) $(CPPFLAGS) $(LLVMFLAGS) -o ante
 
 new: clean ante
 
@@ -40,7 +41,8 @@ obj/%.o: src/%.cpp Makefile | obj
 obj/parser.o: src/syntax.y Makefile
 	@echo Generating parser...
 	@$(YACC) $(YACCFLAGS) src/syntax.y
-	@$(CXX) $(CPPFLAGS) -MMD -MP -Iinclude -c src/parser.c -o $@
+	@mv src/stack.hh include/stack.hh
+	@$(CXX) $(CPPFLAGS) -MMD -MP -Iinclude -c $(PARSERSRC) -o $@
 
 clean:
 	-@$(RM) obj/*.o obj/*.d ante

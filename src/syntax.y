@@ -7,11 +7,15 @@
 #include <tokens.h>
 #include <ptree.h>
 
+#ifndef YYSTYPE
+#define YYSTYPE Node*
+#endif
+#include "yyparser.h"
+
 extern int yylex(...);
 
 void yyerror(const char *msg);
 
-#define YYSTYPE Node*
 #define YYERROR_VERBOSE
 
 %}
@@ -313,8 +317,8 @@ expr_p: expr_p '+' expr_p     {$$ = mkBinOpNode('+', $1, $3);}
 
 %%
 
-void yyerror(const char *s){
-    fprintf(stderr, "%s\n", s);
+void yy::parser::error(const string& msg){
+    cerr << msg << endl;
 }
 
 #endif

@@ -23,7 +23,8 @@ int main(int argc, char *argv[]){
         //parse and print parse tree
         }else if(strcmp(argv[1], "-p") == 0){
             lexer::init(argv[2]);
-            int flag = yyparse();
+            yy::parser p{};
+            int flag = p.parse();
             cout << "Parser returned " << flag << endl;
             Node* root = parser::getRootNode();
             if(flag == PE_OK){

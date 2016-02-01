@@ -29,6 +29,16 @@ struct Node{
 };
 
 /*
+ *  Define Node* as the intermediate type for parsing functions and include
+ *  the actual parser header.
+ */
+#ifndef YYSTYPE
+#define YYSTYPE Node*
+#endif
+
+#include "yyparser.h"
+
+/*
  * Class for all nodes that can contain child statement nodes,
  * if statements, function declarations, etc
  */
