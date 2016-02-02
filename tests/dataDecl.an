@@ -55,10 +55,12 @@ u32 depth: Tree t
 | Leaf -> 1
 | Node l r -> max(depth(l), depth(r)) + 1
 
+
 ~Scalar ranges and conditions
 data Person
     u8 age in 0..120
     c32[] age where age.length > 0
+
 
 void main:
     Maybe i = 32

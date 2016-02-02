@@ -1,0 +1,26 @@
+`
+        exprblock.an
+    Tests a primitive form of an expression block, an expression
+    that can span multiple lines preceeded by an indent and followed
+    by an unindent.
+`
+
+i32 addThree: i32 a, i32 b, i32 c
+    return a + b + c
+
+
+~Test single-line expr blocks
+printf("1 + 2 + 3 = %d\n",
+    addThree(
+        1, 2, 3
+    )
+)
+
+
+~Multi-line expr block
+printf(
+    "0.5 * 0.25 = %f\n3 / 2 = %d\n25^2 = %d\n",
+    0.5 * 0.25,
+    3 / 2,
+    25 * 25
+)

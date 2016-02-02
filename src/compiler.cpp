@@ -77,7 +77,7 @@ Value* IntLitNode::compile(Compiler *c, Module *m)
 
 Value* FltLitNode::compile(Compiler *c, Module *m)
 {
-    return ConstantFP::get(getGlobalContext(), APFloat(APFloat::IEEEsingle, val.c_str()));
+    return ConstantFP::get(getGlobalContext(), APFloat(APFloat::IEEEdouble, val.c_str()));
 }
 
 Value* BoolLitNode::compile(Compiler *c, Module *m)

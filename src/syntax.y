@@ -277,14 +277,15 @@ var: ident '[' expr ']'  {$$ = mkVarNode((char*)$1);} /*TODO: arrays*/
    | ident               %prec Ident {$$ = mkVarNode((char*)$1);}
    ;
 
-val: fn_call       {$$ = $1;}
-   | '(' expr ')'  {$$ = $2;}
-   | var           {$$ = $1;}
-   | intlit        {$$ = $1;}
-   | fltlit        {$$ = $1;}
-   | strlit        {$$ = $1;}
-   | True          {$$ = mkBoolLitNode(1);}
-   | False         {$$ = mkBoolLitNode(0);}
+val: fn_call                  {$$ = $1;}
+   | '(' expr ')'             {$$ = $2;}
+   | Indent nl_expr Unindent  {$$ = $2;}
+   | var                      {$$ = $1;}
+   | intlit                   {$$ = $1;}
+   | fltlit                   {$$ = $1;}
+   | strlit                   {$$ = $1;}
+   | True                     {$$ = mkBoolLitNode(1);}
+   | False                    {$$ = mkBoolLitNode(0);}
    ;
 
 maybe_expr: expr   {$$ = $1;}
@@ -294,8 +295,9 @@ maybe_expr: expr   {$$ = $1;}
 expr: expr_list {$$ = getRoot();}
 
 expr_list: expr_list ',' expr_p    {$$ = setNext($1, $3);}
-         | expr_p             {$$ = setRoot($1);}
+         | expr_p                  {$$ = setRoot($1);}
          ;
+
 
 expr_p: expr_p '+' expr_p     {$$ = mkBinOpNode('+', $1, $3);}
       | expr_p '-' expr_p     {$$ = mkBinOpNode('-', $1, $3);}
@@ -314,6 +316,33 @@ expr_p: expr_p '+' expr_p     {$$ = mkBinOpNode('+', $1, $3);}
       | expr_p And expr_p     {$$ = mkBinOpNode(Tok_And, $1, $3);}
       | val                   {$$ = $1;}
       ;
+
+/* nl_expr is used in expression blocks and can span multiple lines */
+nl_expr: nl_expr_list {$$ = getRoot();}
+       ;
+
+nl_expr_list: nl_expr_list ',' maybe_newline expr_p {$$ = setNext($1, $4);}
+            | nl_expr_p                             {$$ = setRoot($1);}
+            | nl_expr_list Newline                  {$$ = $1;}
+            ;
+
+nl_expr_p: nl_expr_p '+' maybe_newline nl_expr_p     {$$ = mkBinOpNode('+', $1, $4);}
+         | nl_expr_p '-' maybe_newline nl_expr_p     {$$ = mkBinOpNode('-', $1, $4);}
+         | nl_expr_p '*' maybe_newline nl_expr_p     {$$ = mkBinOpNode('*', $1, $4);}
+         | nl_expr_p '/' maybe_newline nl_expr_p     {$$ = mkBinOpNode('/', $1, $4);}
+         | nl_expr_p '%' maybe_newline nl_expr_p     {$$ = mkBinOpNode('%', $1, $4);}
+         | nl_expr_p '<' maybe_newline nl_expr_p     {$$ = mkBinOpNode('<', $1, $4);}
+         | nl_expr_p '>' maybe_newline nl_expr_p     {$$ = mkBinOpNode('>', $1, $4);}
+         | nl_expr_p '^' maybe_newline nl_expr_p     {$$ = mkBinOpNode('^', $1, $4);}
+         | nl_expr_p '.' maybe_newline nl_expr_p     {$$ = mkBinOpNode('.', $1, $4);}
+         | nl_expr_p Eq maybe_newline  nl_expr_p     {$$ = mkBinOpNode(Tok_Eq, $1, $4);}
+         | nl_expr_p NotEq maybe_newline nl_expr_p   {$$ = mkBinOpNode(Tok_NotEq, $1, $4);}
+         | nl_expr_p GrtrEq maybe_newline nl_expr_p  {$$ = mkBinOpNode(Tok_GrtrEq, $1, $4);}
+         | nl_expr_p LesrEq maybe_newline nl_expr_p  {$$ = mkBinOpNode(Tok_LesrEq, $1, $4);}
+         | nl_expr_p Or maybe_newline nl_expr_p      {$$ = mkBinOpNode(Tok_Or, $1, $4);}
+         | nl_expr_p And maybe_newline nl_expr_p     {$$ = mkBinOpNode(Tok_And, $1, $4);}
+         | val                                       {$$ = $1;}
+         ;
 
 %%
 
