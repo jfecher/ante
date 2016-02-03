@@ -3,8 +3,8 @@
         test function declarations and calls
 `
 void printMsg: bool b
-    if b -> puts("Hello World!")
-    else -> puts("Goodbye World!")
+    if b -> printf("Hello World!\n")
+    else -> printf("Goodbye World!\n")
 
 
 bool divisibleByThree: i32 i
@@ -23,11 +23,10 @@ i32 fact: i32 x
 
 printMsg(true)
 if divisibleByThree(23)
-    exit(5)
+    printf("23 is divisible by 3\n")
 
 if isEven(4)
-    putchar(fact(5))
-    putchar(10)
+    printf("fact(5) = %d\n", fact(5))
 
 printMsg(1 + 1 != 2)
 

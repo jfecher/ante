@@ -94,7 +94,7 @@ isz myIsz = 0    ~Signed pointer size integer
 usz myUsz = 0    ~Unsigned pointer size integer
 
 f16 myF16 = 0.0
-f32 myF32 = 0.0  ~32bit IEEE floating point
+f32 myF32 = 0.0  ~32bit IEEE single precision floating point
 f64 myF64 = 0.0
 
 c8  myC8  = ''   ~ASCII char 0x00
@@ -1287,6 +1287,31 @@ data Int -> i8  \
           | i64
 
 `
+        Expression blocks.
+    In addition to the above, an expression ending in a binary operator
+    (without its right operand) may be continued with an Indent.  After
+    this Indent is an expression block where newlines are ignored until
+    the terminating Unindent.  These expression blocks may also be
+    nested.
+`
+print(
+    "Hello ",
+    "World!"
+)
+
+
+let result = 2 *
+    3 *
+    4 *
+        1+2+3+4+5
+    * 5
+
+~Since nested expression blocks are parsed similarly to parenthesis,
+~The resulting order of operations would look like the following:
+~ 2 * 3 * 4 * (1+2+3+4+5) * 5
+
+
+`
         Error Handling
     Functions that can return an error can declare their
     return type as the desired type | error type.  When
@@ -1371,9 +1396,11 @@ pathogen void c_ffi("putchar"): u8
 ~lambda functions
 lambda: i32 x -> return x + 50
 |i32 x| -> return x + 50
+\x -> x + 50
 
 i32(i32, i32) addFn = |i32 x, i32 y| -> return x + y
 i32(i32, i32) addFn = |x, y| -> return x + y
+i32(i32, i32) addFn = \x y -> x + y
 
 ~alternate c_ffi declaration
 pathogen void* c_ffi("malloc"): u32 size
@@ -1403,9 +1430,6 @@ else
 
 f32 f = x > 0 ? x + 2 : x - 2
 
-~Smart pointers by default, raw pointers made with raw modifier
-raw i32* rawPtr = &3
-
 ~Is keyword/operator for matching types or values
 assert(3 is i32)
 assert(5 is 5)
@@ -1413,7 +1437,7 @@ assert(5 is 5)
 
 ~Allow/force names in data declarations to precede types
 data Vec<T>
-    mem: T[]
+    mem: t[]
     len: u32
     cap: u32
 
@@ -1431,6 +1455,27 @@ data List<type T>
 data List<type T>
     T val
     List<T> | enum -> end;; next
+
+~WIth type constructors:
+data List
+    List: t val, List<t> l
+    End: None
+
+~Possible alternate enum syntax
+data None = enum Empty
+
+~Possibly allow (force?) = for single-line declarations
+data MyEnum = enum
+    One = 1, 
+    Two = 2,
+    Three,
+    Four,
+    Five
+
+i32 add: i32 a b = return a + b
+
+i32 add: i32 a b =
+    return a + b
 
 ~New enum syntax to simplify named enums in data
 data Numbers -> enum(One, Two, Three)

@@ -93,6 +93,7 @@ Value* TypeNode::compile(Compiler *c, Module *m)
 Value* StrLitNode::compile(Compiler *c, Module *m)
 {
     return c->builder.CreateGlobalStringPtr(val);
+    //ConstantDataArray::getString(getGlobalContext(), val);
 }
 
 /*
@@ -353,9 +354,9 @@ void Compiler::compilePrelude()
     FunctionType *i8pRetI32Ty = FunctionType::get(Type::getInt32Ty(getGlobalContext()), Type::getInt8PtrTy(getGlobalContext()), false);
     Function::Create(i8pRetI32Ty, Function::ExternalLinkage, "puts", module.get());
 
-    FunctionType *i32RetVoidTy = FunctionType::get(Type::getVoidTy(getGlobalContext()), Type::getInt32Ty(getGlobalContext()), false);
-    Function::Create(i32RetVoidTy, Function::ExternalLinkage, "putchar", module.get());
-    Function::Create(i32RetVoidTy, Function::ExternalLinkage, "exit", module.get());
+    //FunctionType *i32RetVoidTy = FunctionType::get(Type::getVoidTy(getGlobalContext()), Type::getInt32Ty(getGlobalContext()), false);
+    //Function::Create(i32RetVoidTy, Function::ExternalLinkage, "putchar", module.get());
+    //Function::Create(i32RetVoidTy, Function::ExternalLinkage, "exit", module.get());
 }
 
 /*

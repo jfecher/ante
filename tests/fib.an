@@ -13,6 +13,7 @@ i32 fib: i32 n
     if n <= 2 -> return 1
     return fib(n-2) + fib(n-1)
 
+
 `
 The function above should hopefully be compiled into something
 resembling the following function.  To do this, the main 
@@ -21,7 +22,8 @@ fib(n-3) + x1 where x1 is the result of the previous fib(n-2)
 operation.  In order to do this, the compiler must know that
 the function is pure in that it would obtain the same result
 every time it is called with a given input.
-
+`
+`
 i32 fib: i32 n
     if n <= 3 -> return (n+1)/2
 
@@ -29,7 +31,6 @@ i32 fib: i32 n
     i32 x2 = x1 + fib(n-3)
     return x1 + x2
 `
-
 
 ~Show the beginning of the range just to check for correctness
 printf("fib(%d) = %d\n", 3,  fib(3))
