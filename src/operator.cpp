@@ -2,8 +2,7 @@
 #include "compiler.h"
 #include "tokens.h"
 
-int type2TokType(Type *t)
-{
+int type2TokType(Type *t){
     if(t->isIntegerTy(8)) return Tok_I8;
     if(t->isIntegerTy(16)) return Tok_I16;
     if(t->isIntegerTy(32)) return Tok_I32;
@@ -24,8 +23,7 @@ int type2TokType(Type *t)
  *  Converts an operation type to its string equivalent for
  *  helpful error messages.
  */
-string opType2Str(int opTy)
-{
+string opType2Str(int opTy){
     switch(opTy){
         case '[': return "Array";
         case '(': return "Function";
@@ -34,8 +32,7 @@ string opType2Str(int opTy)
     }
 }
 
-Value* Compiler::compAdd(Type *t, Value *l, Value *r)
-{
+Value* Compiler::compAdd(Type *t, Value *l, Value *r){
     int tt = type2TokType(t);
 
     switch(tt){
@@ -54,8 +51,7 @@ Value* Compiler::compAdd(Type *t, Value *l, Value *r)
     }
 }
 
-Value* Compiler::compSub(Type *t, Value *l, Value *r)
-{
+Value* Compiler::compSub(Type *t, Value *l, Value *r){
     int tt = type2TokType(t);
     switch(tt){
         case Tok_I8:
@@ -73,8 +69,7 @@ Value* Compiler::compSub(Type *t, Value *l, Value *r)
     }
 }
 
-Value* Compiler::compMul(Type *t, Value *l, Value *r)
-{
+Value* Compiler::compMul(Type *t, Value *l, Value *r){
     int tt = type2TokType(t);
     switch(tt){
         case Tok_I8:
@@ -92,8 +87,7 @@ Value* Compiler::compMul(Type *t, Value *l, Value *r)
     }
 }
 
-Value* Compiler::compDiv(Type *t, Value *l, Value *r)
-{
+Value* Compiler::compDiv(Type *t, Value *l, Value *r){
     int tt = type2TokType(t);
     switch(tt){
         case Tok_I8:
@@ -111,8 +105,7 @@ Value* Compiler::compDiv(Type *t, Value *l, Value *r)
     }
 }
 
-Value* Compiler::compRem(Type *t, Value *l, Value *r)
-{
+Value* Compiler::compRem(Type *t, Value *l, Value *r){
     int tt = type2TokType(t);
     switch(tt){
         case Tok_I8:
@@ -137,8 +130,7 @@ Value* Compiler::compRem(Type *t, Value *l, Value *r)
  *  TODO: CreateExactUDiv for when it is known there is no remainder
  *  TODO: CreateFcmpOEQ vs CreateFCmpUEQ
  */
-Value* BinOpNode::compile(Compiler *c, Module *m)
-{
+Value* BinOpNode::compile(Compiler *c, Module *m){
     Value *lhs = lval->compile(c, m);
     Value *rhs = rval->compile(c, m);
 

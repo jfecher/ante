@@ -21,7 +21,14 @@ namespace ante{
         unique_ptr<Module> module;
         unique_ptr<Node> ast;
         IRBuilder<> builder;
+
+        //Stack of maps of variables mapped to their identifier.
+        //Maps are seperated according to their scope.
         stack<std::map<string, Value*>> varTable;
+
+        //Map of declared, but non-defined functions
+        map<string, FuncDeclNode*> fnDecls;
+
         bool errFlag, compiled;
         string fileName;
         
@@ -42,7 +49,9 @@ namespace ante{
         Value* compRem(Type *t, Value *l, Value *r);
         
         Value* compErr(string msg);
-        
+
+        void registerFunction(FuncDeclNode *func);
+
         Value* lookup(string var);
         void stoVar(string var, Value *val);
 

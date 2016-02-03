@@ -14,8 +14,7 @@ using namespace llvm;
  *  Inform the user of an error and return nullptr.
  *  (perhaps this should throw an exception?)
  */
-Value* Compiler::compErr(string msg)
-{
+Value* Compiler::compErr(string msg){
     cout << msg << endl;
     errFlag = true;
     return nullptr;
@@ -24,8 +23,7 @@ Value* Compiler::compErr(string msg)
 /*
  *  Translates an individual type in token form to an llvm::Type
  */
-Type* translateType(int tokTy, string typeName = "")
-{
+Type* translateType(int tokTy, string typeName = ""){
     switch(tokTy){
         case Tok_UserType: //TODO: implement
             return Type::getVoidTy(getGlobalContext());
@@ -48,10 +46,12 @@ Type* translateType(int tokTy, string typeName = "")
 
 /*
  *  Returns amount of values in a tuple, from 0 to max uint.
- *  Does not assume argument is a tuple.
+ *  Assumes argument is a tuple.
+ *  
+ *  Doubles as a getNodesInBlock function, but does not
+ *  count child nodes.
  */
-size_t getTupleSize(Node *tup)
-{
+size_t getTupleSize(Node *tup){
     size_t size = 0;
     while(tup){
         tup = tup->next.get();
@@ -60,8 +60,7 @@ size_t getTupleSize(Node *tup)
     return size;
 }
 
-Value* compileStmtList(Node *nList, Compiler *c, Module *m)
-{
+Value* compileStmtList(Node *nList, Compiler *c, Module *m){
     Value *ret = nullptr;
     while(nList){
         ret = nList->compile(c, m);
@@ -70,18 +69,15 @@ Value* compileStmtList(Node *nList, Compiler *c, Module *m)
     return ret;
 }
 
-Value* IntLitNode::compile(Compiler *c, Module *m)
-{   //TODO: unsigned int with APUInt
+Value* IntLitNode::compile(Compiler *c, Module *m){
     return ConstantInt::get(Type::getInt32Ty(getGlobalContext()), val, 10);
 }
 
-Value* FltLitNode::compile(Compiler *c, Module *m)
-{
+Value* FltLitNode::compile(Compiler *c, Module *m){
     return ConstantFP::get(getGlobalContext(), APFloat(APFloat::IEEEdouble, val.c_str()));
 }
 
-Value* BoolLitNode::compile(Compiler *c, Module *m)
-{
+Value* BoolLitNode::compile(Compiler *c, Module *m){
     return ConstantInt::get(getGlobalContext(), APInt(1, (bool)val, true));
 }
 
@@ -90,8 +86,7 @@ Value* BoolLitNode::compile(Compiler *c, Module *m)
 Value* TypeNode::compile(Compiler *c, Module *m)
 { return nullptr; }
 
-Value* StrLitNode::compile(Compiler *c, Module *m)
-{
+Value* StrLitNode::compile(Compiler *c, Module *m){
     return c->builder.CreateGlobalStringPtr(val);
     //ConstantDataArray::getString(getGlobalContext(), val);
 }
@@ -100,13 +95,11 @@ Value* StrLitNode::compile(Compiler *c, Module *m)
  *  When a retnode is compiled within a block, care must be taken to not
  *  forcibly insert the branch instruction afterwards as it leads to dead code.
  */
-Value* RetNode::compile(Compiler *c, Module *m)
-{
+Value* RetNode::compile(Compiler *c, Module *m){
     return c->builder.CreateRet(expr->compile(c, m));
 }
 
-void compileIfNodeHelper(IfNode *ifN, BasicBlock *mergebb, Function *f, Compiler *c, Module *m)
-{
+void compileIfNodeHelper(IfNode *ifN, BasicBlock *mergebb, Function *f, Compiler *c, Module *m){
     //cond should always evaluate to a bool explicitely
     Value* cond;
     BasicBlock *thenbb = BasicBlock::Create(getGlobalContext(), "then", f);
@@ -153,8 +146,7 @@ void compileIfNodeHelper(IfNode *ifN, BasicBlock *mergebb, Function *f, Compiler
     }
 }
 
-Value* IfNode::compile(Compiler *c, Module *m)
-{
+Value* IfNode::compile(Compiler *c, Module *m){
     //Create thenbb and forward declare the others but dont inser them
     //into function f just yet.
     BasicBlock *mergbb = BasicBlock::Create(getGlobalContext(), "endif");
@@ -174,8 +166,7 @@ Value* NamedValNode::compile(Compiler *c, Module *m)
 /*
  *  Loads a variable from the stack
  */
-Value* VarNode::compile(Compiler *c, Module *m)
-{
+Value* VarNode::compile(Compiler *c, Module *m){
     Value *val = c->lookup(name);
     if(!val){
         return c->compErr("Variable " + name + " has not been declared.");
@@ -183,8 +174,7 @@ Value* VarNode::compile(Compiler *c, Module *m)
     return dynamic_cast<AllocaInst*>(val)? c->builder.CreateLoad(val, name) : val;
 }
 
-Value* FuncCallNode::compile(Compiler *c, Module *m)
-{
+Value* FuncCallNode::compile(Compiler *c, Module *m){
     Function *f = m->getFunction(name);
     if(!f){
         return c->compErr("Called function " + name + " has not been declared.");
@@ -214,8 +204,7 @@ Value* FuncCallNode::compile(Compiler *c, Module *m)
     }
 }
 
-Value* VarDeclNode::compile(Compiler *c, Module *m)
-{
+Value* VarDeclNode::compile(Compiler *c, Module *m){
     TypeNode *tyNode = (TypeNode*)typeExpr.get();
 
     Type *ty = translateType(tyNode->type, tyNode->typeName);
@@ -234,16 +223,14 @@ Value* VarDeclNode::compile(Compiler *c, Module *m)
     }
 }
 
-Value* VarAssignNode::compile(Compiler *c, Module *m)
-{
+Value* VarAssignNode::compile(Compiler *c, Module *m){
     Value *v = c->lookup(var->name);
     if(!v) return c->compErr("Use of undeclared variable " + var->name + " in assignment.");
     return c->builder.CreateStore(expr->compile(c, m), v);
 }
 
 
-Value* FuncDeclNode::compile(Compiler *c, Module *m)
-{
+Value* FuncDeclNode::compile(Compiler *c, Module *m){
     //Get and translate the function's return type to an llvm::Type*
     TypeNode *retNode = (TypeNode*)type.get();
     Type *retType = translateType(retNode->type, retNode->typeName);
@@ -346,8 +333,7 @@ void DataDeclNode::exec(){}
  *  Compiles function definitions found
  *  in every program.
  */
-void Compiler::compilePrelude()
-{
+void Compiler::compilePrelude(){
     FunctionType *i8pRetVoidVarargsTy = FunctionType::get(Type::getVoidTy(getGlobalContext()), Type::getInt8PtrTy(getGlobalContext()), true);
     Function::Create(i8pRetVoidVarargsTy, Function::ExternalLinkage, "printf", module.get());
 
@@ -362,8 +348,7 @@ void Compiler::compilePrelude()
 /*
  *  Removes .an from a source file to get its module name
  */
-string removeFileExt(string file)
-{
+string removeFileExt(string file){
     size_t len = file.length();
     if(len >= 3 &&
             file[len-3] == '.' &&
@@ -374,8 +359,11 @@ string removeFileExt(string file)
     return file;
 }
 
-void Compiler::compile()
-{
+void Compiler::registerFunction(FuncDeclNode *fn){
+    
+}
+
+void Compiler::compile(){
     compilePrelude();
 
     //get or create the function type for the main method: void()

@@ -8,16 +8,14 @@
 
 stack<Node*> roots;
 
-Node* ante::parser::getRootNode()
-{
+Node* ante::parser::getRootNode(){
     return roots.top();
 }
 
 /*
  *  Saves the root of a new block and returns it.
  */
-Node* setRoot(Node* node)
-{
+Node* setRoot(Node* node){
     roots.push(node);
     return node;
 }
@@ -25,15 +23,13 @@ Node* setRoot(Node* node)
 /*
  *  Pops and returns the root of the current block
  */
-Node* getRoot()
-{
+Node* getRoot(){
     Node* ret = roots.top();
     roots.pop();
     return ret;
 }
 
-Node* setNext(Node* cur, Node* nxt)
-{
+Node* setNext(Node* cur, Node* nxt){
     cur->next.reset(nxt);
     nxt->prev = cur;
     return nxt;
@@ -43,83 +39,67 @@ Node* setNext(Node* cur, Node* nxt)
  *  Sets the else of an ifnode to a given ifnode representing
  *  either an else or an elif.
  */
-Node* setElse(IfNode *c, IfNode *elif)
-{
+Node* setElse(IfNode *c, IfNode *elif){
     c->elseN.reset(elif);
     return elif;
 }
 
-Node* mkIntLitNode(char* s)
-{
+Node* mkIntLitNode(char* s){
     return new IntLitNode(s);
 }
 
-Node* mkFltLitNode(char* s)
-{
+Node* mkFltLitNode(char* s){
     return new FltLitNode(s);
 }
 
-Node* mkStrLitNode(char* s)
-{
+Node* mkStrLitNode(char* s){
     return new StrLitNode(s);
 }
 
-Node* mkBoolLitNode(char b)
-{
+Node* mkBoolLitNode(char b){
     return new BoolLitNode(b);
 }
 
-Node* mkTypeNode(int type, char* typeName)
-{
+Node* mkTypeNode(int type, char* typeName){
     return new TypeNode(type, typeName);
 }
 
-Node* mkBinOpNode(int op, Node* l, Node* r)
-{
+Node* mkBinOpNode(int op, Node* l, Node* r){
     return new BinOpNode(op, l, r);
 }
 
-Node* mkRetNode(Node* expr)
-{
+Node* mkRetNode(Node* expr){
     return new RetNode(expr);
 }
 
-Node* mkNamedValNode(char* s, Node* tExpr)
-{
+Node* mkNamedValNode(char* s, Node* tExpr){
     return new NamedValNode(s, tExpr);
 }
 
-Node* mkFuncCallNode(char* s, Node* p)
-{
+Node* mkFuncCallNode(char* s, Node* p){
     return new FuncCallNode(s, p);
 }
 
-Node* mkVarNode(char* s)
-{
+Node* mkVarNode(char* s){
     return new VarNode(s);
 }
 
-Node* mkVarDeclNode(char* s, Node* tExpr, Node* expr)
-{
+Node* mkVarDeclNode(char* s, Node* tExpr, Node* expr){
     return new VarDeclNode(s, tExpr, expr);
 }
 
-Node* mkVarAssignNode(Node* var, Node* expr)
-{
+Node* mkVarAssignNode(Node* var, Node* expr){
     return new VarAssignNode(var, expr);
 }
 
-ParentNode* mkIfNode(Node* con, Node* body, Node* els = nullptr)
-{
+ParentNode* mkIfNode(Node* con, Node* body, Node* els = nullptr){
     return new IfNode(con, body, (IfNode*)els);
 }
 
-ParentNode* mkFuncDeclNode(char* s, Node* tExpr, Node* p, Node* b)
-{
+ParentNode* mkFuncDeclNode(char* s, Node* tExpr, Node* p, Node* b){
     return new FuncDeclNode(s, tExpr, p, b);
 }
 
-ParentNode* mkDataDeclNode(char* s, Node* b)
-{
+ParentNode* mkDataDeclNode(char* s, Node* b){
     return new DataDeclNode(s, b);
 }

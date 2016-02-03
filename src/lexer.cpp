@@ -157,8 +157,7 @@ int scope;
  */
 int cscope;
 
-void ante::lexer::init(const char* file)
-{
+void ante::lexer::init(const char* file){
     in = new ifstream(file);
     c = 0;
     n = 0;
@@ -168,24 +167,21 @@ void ante::lexer::init(const char* file)
     cscope = 0;
 }
 
-int yylex(...)
-{
+int yylex(...){
     return ante::lexer::next();
 }
 
 /*
  *  Prints a token's type to stdout
  */
-void ante::lexer::printTok(int t)
-{
+void ante::lexer::printTok(int t){
     cout << getTokStr(t).c_str();
 }
 
 /*
  *  Translates a token's type to a string
  */
-string ante::lexer::getTokStr(int t)
-{
+string ante::lexer::getTokStr(int t){
     string s = "";
     if(IS_LITERAL(t)){
         s += (char)t;
@@ -195,8 +191,7 @@ string ante::lexer::getTokStr(int t)
     return s;
 }
 
-inline void ante::lexer::incPos(void)
-{
+inline void ante::lexer::incPos(void){
     c = n;
     if(in->good())
         in->get(n);
@@ -204,8 +199,7 @@ inline void ante::lexer::incPos(void)
         n = 0;
 }
 
-void ante::lexer::incPos(int end)
-{
+void ante::lexer::incPos(int end){
     for(int i = 0; i < end; i++){
         c = n;
         if(in->good())
@@ -215,8 +209,7 @@ void ante::lexer::incPos(int end)
     }
 }
 
-int ante::lexer::handleComment(void)
-{
+int ante::lexer::handleComment(void){
     if(c == '`'){
         do incPos(); while(c != '`' && c != EOF);
         incPos();
@@ -232,16 +225,14 @@ int ante::lexer::handleComment(void)
  *  should always be stored in a node during parsing
  *  and freed later.
  */
-void ante::lexer::setlextxt(string *str)
-{
+void ante::lexer::setlextxt(string *str){
     size_t size = str->size() + 1;
     lextxt = (char*)malloc(size);
     strcpy(lextxt, str->c_str());
     lextxt[size-1] = '\0';
 }
 
-int ante::lexer::genAlphaNumTok()
-{
+int ante::lexer::genAlphaNumTok(){
     string s = "";
     while(IS_ALPHANUM(c)){
         s += c;
@@ -257,8 +248,7 @@ int ante::lexer::genAlphaNumTok()
     }
 }
 
-int ante::lexer::genNumLitTok()
-{
+int ante::lexer::genNumLitTok(){
     string s = "";
     bool flt = false;
 
@@ -276,8 +266,7 @@ int ante::lexer::genNumLitTok()
     return flt? Tok_FltLit : Tok_IntLit;
 }
 
-int ante::lexer::genWsTok()
-{
+int ante::lexer::genWsTok(){
     if(c == '\n'){
         unsigned short newScope = 0;
         
@@ -304,8 +293,7 @@ int ante::lexer::genWsTok()
     }
 }
 
-int ante::lexer::genStrLitTok(char delim)
-{
+int ante::lexer::genStrLitTok(char delim){
     string s = "";
     incPos();
     while(c != delim && c != EOF){
@@ -331,8 +319,7 @@ int ante::lexer::genStrLitTok(char delim)
     return Tok_StrLit;
 }
 
-int ante::lexer::next()
-{
+int ante::lexer::next(){
     if(scope != cscope){
         if(scope > cscope){
             cscope++;

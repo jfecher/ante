@@ -2,8 +2,7 @@
 using namespace ante::parser;
 
 
-inline void maybePrintArr(Node *n)
-{
+inline void maybePrintArr(Node *n){
     if(n){
         cout << ", ";
         n->print();
@@ -14,8 +13,7 @@ inline void maybePrintArr(Node *n)
  *  Prints a list of nodes, can print
  *  entire parse tree if passed the root.
  */
-void parser::printBlock(Node *block)
-{
+void parser::printBlock(Node *block){
     while(block){
         block->print();
         block = block->next.get();
@@ -23,20 +21,17 @@ void parser::printBlock(Node *block)
     }
 }
 
-void IntLitNode::print()
-{
+void IntLitNode::print(){
     cout << val;
     maybePrintArr(next.get());
 }
 
-void FltLitNode::print()
-{
+void FltLitNode::print(){
     cout << val;
     maybePrintArr(next.get());
 }
 
-void BoolLitNode::print()
-{
+void BoolLitNode::print(){
     if(val)
         cout << "true";
     else
@@ -44,22 +39,19 @@ void BoolLitNode::print()
     maybePrintArr(next.get());
 }
 
-void StrLitNode::print()
-{
+void StrLitNode::print(){
     cout << '"' << val << '"';
     maybePrintArr(next.get());
 }
 
-void TypeNode::print()
-{
+void TypeNode::print(){
     if(type == Tok_Ident || type == Tok_UserType)
         cout << typeName;
     else
         ante::lexer::printTok(type);
 }
 
-void BinOpNode::print()
-{
+void BinOpNode::print(){
     putchar('(');
     if(lval) lval->print();
     putchar(' ');
@@ -71,14 +63,12 @@ void BinOpNode::print()
     maybePrintArr(next.get());
 }
 
-void RetNode::print()
-{
+void RetNode::print(){
     cout << "return ";
     if(expr) expr->print();
 }
 
-void IfNode::print()
-{
+void IfNode::print(){
     if(condition.get()){
         cout << "if ";
         condition->print();
@@ -101,8 +91,7 @@ void IfNode::print()
     }
 }
 
-void NamedValNode::print()
-{
+void NamedValNode::print(){
     typeExpr->print();
     putchar(' ');
     cout << name;
@@ -110,21 +99,18 @@ void NamedValNode::print()
     maybePrintArr(next.get());
 }
 
-void VarNode::print()
-{
+void VarNode::print(){
     cout << name;
     maybePrintArr(next.get());
 }
 
-void FuncCallNode::print()
-{
+void FuncCallNode::print(){
     cout << "fnCall " << name << '(';
     if(params) params->print();
     putchar(')');
 }
 
-void VarDeclNode::print()
-{
+void VarDeclNode::print(){
     cout << "varDecl ";
     if(typeExpr) typeExpr->print();
     cout << ' ' << name << " = ";
@@ -132,8 +118,7 @@ void VarDeclNode::print()
     else cout << "(undef)";
 }
 
-void VarAssignNode::print()
-{
+void VarAssignNode::print(){
     cout << "varAssign ";
     if(var) var->print();
     cout << " = ";
@@ -141,8 +126,7 @@ void VarAssignNode::print()
     else cout << "(undef)";
 }
 
-void FuncDeclNode::print()
-{
+void FuncDeclNode::print(){
     cout << "fnDecl ";
     type->print();
     cout << ' ' << name << ": ";
@@ -152,8 +136,7 @@ void FuncDeclNode::print()
     puts("endfn");
 }
 
-void DataDeclNode::print()
-{
+void DataDeclNode::print(){
     cout << "data " << name << "declared\n";
     printBlock(child.get());
 }
