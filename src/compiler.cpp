@@ -1,5 +1,5 @@
-#include "compiler.h"
 #include "parser.h"
+#include "compiler.h"
 #include <llvm/IR/Verifier.h>          //for verifying basic structure of functions
 #include <llvm/Bitcode/ReaderWriter.h> //for r/w when outputting bitcode
 #include <llvm/Support/FileSystem.h>   //for r/w when outputting bitcode
@@ -31,15 +31,16 @@ Type* translateType(int tokTy, string typeName = ""){
         case Tok_I16: case Tok_U16: return Type::getInt16Ty(getGlobalContext());
         case Tok_I32: case Tok_U32: return Type::getInt32Ty(getGlobalContext());
         case Tok_I64: case Tok_U64: return Type::getInt64Ty(getGlobalContext());
-        case Tok_Isz: return Type::getVoidTy(getGlobalContext()); //TODO: implement
-        case Tok_Usz: return Type::getVoidTy(getGlobalContext()); //TODO: implement
-        case Tok_F16: return Type::getHalfTy(getGlobalContext());
-        case Tok_F32: return Type::getFloatTy(getGlobalContext());
-        case Tok_F64: return Type::getDoubleTy(getGlobalContext());
-        case Tok_C8:  return Type::getInt8Ty(getGlobalContext()); //TODO: implement
-        case Tok_C32: return Type::getInt32Ty(getGlobalContext()); //TODO: implement
-        case Tok_Bool:return Type::getInt1Ty(getGlobalContext());
-        case Tok_Void:return Type::getVoidTy(getGlobalContext());
+        case Tok_Isz:    return Type::getVoidTy(getGlobalContext()); //TODO: implement
+        case Tok_Usz:    return Type::getVoidTy(getGlobalContext()); //TODO: implement
+        case Tok_F16:    return Type::getHalfTy(getGlobalContext());
+        case Tok_F32:    return Type::getFloatTy(getGlobalContext());
+        case Tok_F64:    return Type::getDoubleTy(getGlobalContext());
+        case Tok_C8:     return Type::getInt8Ty(getGlobalContext()); //TODO: implement
+        case Tok_C32:    return Type::getInt32Ty(getGlobalContext()); //TODO: implement
+        case Tok_Bool:   return Type::getInt1Ty(getGlobalContext());
+        case Tok_StrLit: return Type::getInt8PtrTy(getGlobalContext());
+        case Tok_Void:   return Type::getVoidTy(getGlobalContext());
     }
     return nullptr;
 }
@@ -159,7 +160,7 @@ Value* IfNode::compile(Compiler *c, Module *m){
     return f;
 }
 
-//Since parameters are managed in FuncDeclNode::compile, this need not do anything
+//Since parameters are managed in Compiler::compfn, this need not do anything
 Value* NamedValNode::compile(Compiler *c, Module *m)
 { return nullptr; }
 
@@ -177,7 +178,15 @@ Value* VarNode::compile(Compiler *c, Module *m){
 Value* FuncCallNode::compile(Compiler *c, Module *m){
     Function *f = m->getFunction(name);
     if(!f){
-        return c->compErr("Called function " + name + " has not been declared.");
+        if(auto *fdNode = c->fnDecls[name]){
+            //Function has been declared but not defined, so define it.
+            BasicBlock *caller = c->builder.GetInsertBlock();
+            f = c->compFn(fdNode);
+            c->fnDecls.erase(name);
+            c->builder.SetInsertPoint(caller);
+        }else{
+            return c->compErr("Called function " + name + " has not been declared.");
+        }
     }
 
     size_t paramSize = getTupleSize(params.get());
@@ -230,17 +239,17 @@ Value* VarAssignNode::compile(Compiler *c, Module *m){
 }
 
 
-Value* FuncDeclNode::compile(Compiler *c, Module *m){
+Function* Compiler::compFn(FuncDeclNode *fdn){
     //Get and translate the function's return type to an llvm::Type*
-    TypeNode *retNode = (TypeNode*)type.get();
+    TypeNode *retNode = (TypeNode*)fdn->type.get();
     Type *retType = translateType(retNode->type, retNode->typeName);
 
     //Count the number of parameters
-    NamedValNode *param = params.get();
+    NamedValNode *param = fdn->params.get();
     size_t nParams = getTupleSize(param);
 
     //Get each and every parameter type and store them in paramTys
-    NamedValNode *cParam = params.get();
+    NamedValNode *cParam = fdn->params.get();
     vector<Type*> paramTys;
 
     //Tell the vector to reserve space equal to nParam parameters so it does not have to reallocate.
@@ -253,43 +262,57 @@ Value* FuncDeclNode::compile(Compiler *c, Module *m){
 
     //Get the corresponding function type for the above return type, parameter types,
     //with no varargs
-    FunctionType *ft = FunctionType::get(retType, paramTys, false);
-    
-    //Actually create the function in module m
-    Function *f = Function::Create(ft, Function::ExternalLinkage, name, m);
+    FunctionType *ft = FunctionType::get(retType, paramTys, fdn->varargs);
+    Function *f = Function::Create(ft, Function::ExternalLinkage, fdn->name, module.get());
 
-    //Create the entry point for the function
-    BasicBlock *bb = BasicBlock::Create(getGlobalContext(), "entry", f);
-    c->builder.SetInsertPoint(bb);
+    //The above handles everything for a function declaration
+    //If the function is a definition, then the body will be compiled here.
+    if(fdn->child){
+        //Create the entry point for the function
+        BasicBlock *bb = BasicBlock::Create(getGlobalContext(), "entry", f);
+        builder.SetInsertPoint(bb);
 
-    //tell the compiler to create a new scope on the stack.
-    c->enterNewScope();
+        //tell the compiler to create a new scope on the stack.
+        enterNewScope();
 
-    //iterate through each parameter and add its value to the new scope.
-    for(auto &arg : f->args()){
-        c->stoVar(param->name, &arg);
-        if(!(param = (NamedValNode*)param->next.get())) break;
+        //iterate through each parameter and add its value to the new scope.
+        for(auto &arg : f->args()){
+            stoVar(param->name, &arg);
+            if(!(param = (NamedValNode*)param->next.get())) break;
+        }
+
+        Value *v = compileStmtList(fdn->child.get(), this, module.get());
+
+        builder.SetInsertPoint(&module->getFunction(fdn->name)->back());
+        
+        //llvm requires explicit returns, so generate a void return even if
+        //the user did not in their void function.
+        if(retNode->type == Tok_Void && !dynamic_cast<ReturnInst*>(v)){
+            builder.CreateRetVoid();
+        }
+
+        //End of the function, discard the function's scope.
+        exitScope();
+
+        //Attribute attr = Attribute::get(getGlobalContext(), "nounwind");
+        //f->addAttributes(0, AttributeSet::get(getGlobalContext(), AttributeSet::FunctionIndex, attr));
+
+        //apply function-level optimizations
+        passManager->run(*f);
+
+        //Verify the function is syntactically correct, and return to compiling main.
+        verifyFunction(*f);
+        //c->builder.SetInsertPoint(&c->module->getFunction("main")->back());
     }
-
-    Value *v = compileStmtList(child.get(), c, m);
-
-    c->builder.SetInsertPoint(&c->module->getFunction(name)->back());
-    
-    //llvm requires explicit returns, so generate a void return even if
-    //the user created a void function.
-    if(retNode->type == Tok_Void && !dynamic_cast<ReturnInst*>(v)){
-        c->builder.CreateRetVoid();
-    }
-    c->exitScope();
-
-    Attribute attr = Attribute::get(getGlobalContext(), "nounwind");
-    f->addAttributes(0, AttributeSet::get(getGlobalContext(), AttributeSet::FunctionIndex, attr));
-
-    c->passManager->run(*f);
-
-    verifyFunction(*f);
-    c->builder.SetInsertPoint(&c->module->getFunction("main")->back());
     return f;
+}
+
+/*
+ *  Registers a function for later compilation
+ */
+Value* FuncDeclNode::compile(Compiler *c, Module *m){
+    c->registerFunction(this);
+    return nullptr;
 }
 
 
@@ -330,19 +353,29 @@ void DataDeclNode::exec(){}
 */
 
 /*
- *  Compiles function definitions found
- *  in every program.
+ *  Creates an anonymous NamedValNode for use in function declarations.
+ */
+NamedValNode* mkAnonNVNode(int type){
+    return new NamedValNode("", new TypeNode(type, ""));
+}
+
+/*
+ *  Declares functions to be included in every module without need of an import.
+ *  These are registered but not compiled until they are called so that they
+ *  do not pollute the module with unused definitions.
  */
 void Compiler::compilePrelude(){
-    FunctionType *i8pRetVoidVarargsTy = FunctionType::get(Type::getVoidTy(getGlobalContext()), Type::getInt8PtrTy(getGlobalContext()), true);
-    Function::Create(i8pRetVoidVarargsTy, Function::ExternalLinkage, "printf", module.get());
+    // void printf: c8* str, ... va
+    registerFunction(new FuncDeclNode("printf", new TypeNode(Tok_Void, ""), mkAnonNVNode(Tok_StrLit), nullptr, true));
 
-    FunctionType *i8pRetI32Ty = FunctionType::get(Type::getInt32Ty(getGlobalContext()), Type::getInt8PtrTy(getGlobalContext()), false);
-    Function::Create(i8pRetI32Ty, Function::ExternalLinkage, "puts", module.get());
+    // void puts: c8* str
+    registerFunction(new FuncDeclNode("puts", new TypeNode(Tok_Void, ""), mkAnonNVNode(Tok_StrLit), nullptr));
 
-    //FunctionType *i32RetVoidTy = FunctionType::get(Type::getVoidTy(getGlobalContext()), Type::getInt32Ty(getGlobalContext()), false);
-    //Function::Create(i32RetVoidTy, Function::ExternalLinkage, "putchar", module.get());
-    //Function::Create(i32RetVoidTy, Function::ExternalLinkage, "exit", module.get());
+    // void putchar: c8 c
+    registerFunction(new FuncDeclNode("putchar", new TypeNode(Tok_Void, ""), mkAnonNVNode(Tok_C8), nullptr));
+
+    // void exit: u8 status
+    registerFunction(new FuncDeclNode("exit", new TypeNode(Tok_Void, ""), mkAnonNVNode(Tok_U8), nullptr));
 }
 
 /*
@@ -350,17 +383,20 @@ void Compiler::compilePrelude(){
  */
 string removeFileExt(string file){
     size_t len = file.length();
-    if(len >= 3 &&
-            file[len-3] == '.' &&
-            file[len-2] == 'a' &&
-            file[len-1] == 'n'){
-        return file.substr(0, len-3);
-    }
+    if(len >= 4 && file[len-4] == '.') return file.substr(0, len-4);
+    if(len >= 3 && file[len-3] == '.') return file.substr(0, len-3);
+    if(len >= 2 && file[len-2] == '.') return file.substr(0, len-2);
+    if(len >= 1 && file[len-1] == '.') return file.substr(0, len-1);
     return file;
 }
 
-void Compiler::registerFunction(FuncDeclNode *fn){
-    
+/*
+ *  Adds a function to the list of declared, but not defined functions.  A declared function's
+ *  FuncDeclNode can be added to be compiled only when it is later called.  Useful to prevent pollution
+ *  of a module with unneeded library functions.
+ */
+inline void Compiler::registerFunction(FuncDeclNode *fn){
+    fnDecls[fn->name] = fn;
 }
 
 void Compiler::compile(){
@@ -395,8 +431,7 @@ void Compiler::compile(){
 }
 
 
-void Compiler::compileNative()
-{
+void Compiler::compileNative(){
     if(!compiled) compile();
     if(errFlag) return;
 

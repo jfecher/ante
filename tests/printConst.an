@@ -1,2 +1,2 @@
 puts("Hello World!")
-printf("%s #%d\n", "Hello Fren", 3)
+printf("%s #%d\n", "Hello Friend", 3)

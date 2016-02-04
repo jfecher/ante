@@ -1,7 +1,7 @@
 #ifndef COMPILER_H
 #define COMPILER_H
 
-#include <climits> //required by llvm
+#include <climits> //required by llvm is using clang
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Module.h>
@@ -14,6 +14,7 @@ using namespace std;
 
 /* Forward-declaration of Node defined in parser.h */
 struct Node;
+struct FuncDeclNode;
 
 namespace ante{
     struct Compiler{
@@ -50,6 +51,7 @@ namespace ante{
         
         Value* compErr(string msg);
 
+        Function* compFn(FuncDeclNode *fn);
         void registerFunction(FuncDeclNode *func);
 
         Value* lookup(string var);

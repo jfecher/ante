@@ -59,7 +59,7 @@ struct IntLitNode : public Node{
     Value* compile(Compiler*, Module*);
     //void exec(void);
     void print(void);
-    IntLitNode(char* s) : Node(), val(s){}
+    IntLitNode(string s) : Node(), val(s){}
     ~IntLitNode(){}
 };
 
@@ -68,7 +68,7 @@ struct FltLitNode : public Node{
     Value* compile(Compiler*, Module*);
     //void exec(void);
     void print(void);
-    FltLitNode(char* s) : Node(), val(s){}
+    FltLitNode(string s) : Node(), val(s){}
     ~FltLitNode(){}
 };
 
@@ -97,7 +97,7 @@ struct TypeNode : public Node{
     Value* compile(Compiler*, Module*);
     //void exec(void);
     void print(void);
-    TypeNode(int ty, char* tName) : Node(), type(ty), typeName(tName){}
+    TypeNode(int ty, string tName) : Node(), type(ty), typeName(tName){}
     ~TypeNode(){}
 };
 
@@ -116,7 +116,7 @@ struct NamedValNode : public Node{
     Value* compile(Compiler*, Module*);
     //void exec(void);
     void print(void);
-    NamedValNode(char* s, Node* t) : Node(), name(s), typeExpr(t){}
+    NamedValNode(string s, Node* t) : Node(), name(s), typeExpr(t){}
     ~NamedValNode(){}
 };
 
@@ -125,7 +125,7 @@ struct VarNode : public Node{
     Value* compile(Compiler*, Module*);
     //void exec(void);
     void print(void);
-    VarNode(char* s) : Node(), name(s){}
+    VarNode(string s) : Node(), name(s){}
     ~VarNode(){}
 };
 
@@ -135,7 +135,7 @@ struct FuncCallNode : public Node{
     Value* compile(Compiler*, Module*);
     //void exec(void);
     void print(void);
-    FuncCallNode(char* s, Node* p) : Node(), name(s), params(p){}
+    FuncCallNode(string s, Node* p) : Node(), name(s), params(p){}
     ~FuncCallNode(){}
 };
 
@@ -144,7 +144,7 @@ struct StrLitNode : public Node{
     Value* compile(Compiler*, Module*);
     //void exec(void);
     void print(void);
-    StrLitNode(char* s) : Node(), val(s){}
+    StrLitNode(string s) : Node(), val(s){}
     ~StrLitNode(){}
 };
 
@@ -154,7 +154,7 @@ struct VarDeclNode : public Node{
     Value* compile(Compiler*, Module*);
     //void exec(void);
     void print(void);
-    VarDeclNode(char* s, Node* t, Node* exp) : Node(), name(s), typeExpr(t), expr(exp){}
+    VarDeclNode(string s, Node* t, Node* exp) : Node(), name(s), typeExpr(t), expr(exp){}
     ~VarDeclNode(){}
 };
 
@@ -182,10 +182,12 @@ struct FuncDeclNode : public ParentNode{
     string name;
     unique_ptr<Node> type;
     unique_ptr<NamedValNode> params;
+    bool varargs;
+
     Value* compile(Compiler*, Module*);
     //void exec(void);
     void print(void);
-    FuncDeclNode(char* s, Node* t, Node* p, Node* b) : ParentNode(b), name(s), type(t), params((NamedValNode*)p){}
+    FuncDeclNode(string s, Node* t, Node* p, Node* b, bool va=false) : ParentNode(b), name(s), type(t), params((NamedValNode*)p), varargs(va){}
     ~FuncDeclNode(){}
 };
 
@@ -194,7 +196,7 @@ struct DataDeclNode : public ParentNode{
     Value* compile(Compiler*, Module*);
     //void exec(void);
     void print(void);
-    DataDeclNode(char* s, Node* b) : ParentNode(b), name(s){}
+    DataDeclNode(string s, Node* b) : ParentNode(b), name(s){}
     ~DataDeclNode(){}
 };
 
