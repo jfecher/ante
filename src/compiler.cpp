@@ -14,8 +14,8 @@ using namespace llvm;
  *  Inform the user of an error and return nullptr.
  *  (perhaps this should throw an exception?)
  */
-Value* Compiler::compErr(string msg){
-    cout << msg << endl;
+Value* Compiler::compErr(string msg, unsigned int row, unsigned int col){
+    cout << "On row " << row << ", column " << col << ": " <<  msg << endl << endl;
     errFlag = true;
     return nullptr;
 }
@@ -170,7 +170,7 @@ Value* NamedValNode::compile(Compiler *c, Module *m)
 Value* VarNode::compile(Compiler *c, Module *m){
     Value *val = c->lookup(name);
     if(!val){
-        return c->compErr("Variable " + name + " has not been declared.");
+        return c->compErr("Variable " + name + " has not been declared.", this->row, this->col);
     }
     return dynamic_cast<AllocaInst*>(val)? c->builder.CreateLoad(val, name) : val;
 }
@@ -185,16 +185,16 @@ Value* FuncCallNode::compile(Compiler *c, Module *m){
             c->fnDecls.erase(name);
             c->builder.SetInsertPoint(caller);
         }else{
-            return c->compErr("Called function " + name + " has not been declared.");
+            return c->compErr("Called function " + name + " has not been declared.", this->row, this->col);
         }
     }
 
     size_t paramSize = getTupleSize(params.get());
     if(f->arg_size() != paramSize && !f->isVarArg()){
         if(paramSize == 1)
-            return c->compErr("Called function " + name + " was given 1 paramter but was declared to take " + to_string(f->arg_size()));
+            return c->compErr("Called function " + name + " was given 1 paramter but was declared to take " + to_string(f->arg_size()), this->row, this->col);
         else
-            return c->compErr("Called function " + name + " was given " + to_string(paramSize) + " paramters but was declared to take " + to_string(f->arg_size()));
+            return c->compErr("Called function " + name + " was given " + to_string(paramSize) + " paramters but was declared to take " + to_string(f->arg_size()), this->row, this->col);
     }
 
     std::vector<Value*> args;
@@ -203,7 +203,7 @@ Value* FuncCallNode::compile(Compiler *c, Module *m){
         args.push_back(curParam->compile(c, m));
         curParam = curParam->next.get();
         if(!args.back())
-            c->compErr("Argument " + to_string(i) + " of called function " + name + " evaluated to null.");
+            c->compErr("Argument " + to_string(i) + " of called function " + name + " evaluated to null.", this->row, this->col);
     }
 
     if(f->getReturnType() == Type::getVoidTy(getGlobalContext())){
@@ -234,7 +234,7 @@ Value* VarDeclNode::compile(Compiler *c, Module *m){
 
 Value* VarAssignNode::compile(Compiler *c, Module *m){
     Value *v = c->lookup(var->name);
-    if(!v) return c->compErr("Use of undeclared variable " + var->name + " in assignment.");
+    if(!v) return c->compErr("Use of undeclared variable " + var->name + " in assignment.", this->row, this->col);
     return c->builder.CreateStore(expr->compile(c, m), v);
 }
 
@@ -356,7 +356,11 @@ void DataDeclNode::exec(){}
  *  Creates an anonymous NamedValNode for use in function declarations.
  */
 NamedValNode* mkAnonNVNode(int type){
-    return new NamedValNode("", new TypeNode(type, ""));
+    return new NamedValNode("", new TypeNode(type, "", nullptr));
+}
+
+TypeNode* mkAnonTypeNode(int type){
+    return new TypeNode(type, "", nullptr);
 }
 
 /*
@@ -366,16 +370,16 @@ NamedValNode* mkAnonNVNode(int type){
  */
 void Compiler::compilePrelude(){
     // void printf: c8* str, ... va
-    registerFunction(new FuncDeclNode("printf", new TypeNode(Tok_Void, ""), mkAnonNVNode(Tok_StrLit), nullptr, true));
+    registerFunction(new FuncDeclNode("printf", mkAnonTypeNode(Tok_Void), mkAnonNVNode(Tok_StrLit), nullptr, true));
 
     // void puts: c8* str
-    registerFunction(new FuncDeclNode("puts", new TypeNode(Tok_Void, ""), mkAnonNVNode(Tok_StrLit), nullptr));
+    registerFunction(new FuncDeclNode("puts", mkAnonTypeNode(Tok_Void), mkAnonNVNode(Tok_StrLit), nullptr));
 
     // void putchar: c8 c
-    registerFunction(new FuncDeclNode("putchar", new TypeNode(Tok_Void, ""), mkAnonNVNode(Tok_I32), nullptr));
+    registerFunction(new FuncDeclNode("putchar", mkAnonTypeNode(Tok_Void), mkAnonNVNode(Tok_I32), nullptr));
 
     // void exit: u8 status
-    registerFunction(new FuncDeclNode("exit", new TypeNode(Tok_Void, ""), mkAnonNVNode(Tok_I32), nullptr));
+    registerFunction(new FuncDeclNode("exit", mkAnonTypeNode(Tok_Void), mkAnonNVNode(Tok_I32), nullptr));
 }
 
 /*
@@ -525,7 +529,7 @@ Compiler::Compiler(char *_fileName) :
         compiled(false),
         fileName(_fileName){
 
-    lexer::init(_fileName);
+    setLexer(new Lexer(_fileName));
     yy::parser p{};
     int flag = p.parse();
     if(flag != PE_OK){ //parsing error, cannot procede

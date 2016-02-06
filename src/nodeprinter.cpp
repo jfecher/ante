@@ -48,14 +48,14 @@ void TypeNode::print(){
     if(type == Tok_Ident || type == Tok_UserType)
         cout << typeName;
     else
-        ante::lexer::printTok(type);
+        Lexer::printTok(type);
 }
 
 void BinOpNode::print(){
     putchar('(');
     if(lval) lval->print();
     putchar(' ');
-    lexer::printTok(op);
+    Lexer::printTok(op);
     putchar(' ');
     if(rval) rval->print();
     putchar(')');

@@ -10,16 +10,20 @@
 #ifndef YYSTYPE
 #define YYSTYPE Node*
 #endif
+
+/* This has no effect when generating a c++ parser */
+/* Setting verbose for a c++ parser requires %error-verbose, set in the next section */
+#define YYERROR_VERBOSE
+
 #include "yyparser.h"
 
 extern int yylex(...);
 
 void yyerror(const char *msg);
 
-#define YYERROR_VERBOSE
-
 %}
 
+%error-verbose
 
 %token Ident UserType
 
@@ -151,17 +155,17 @@ lit_type: I8       {$$ = mkTypeNode(Tok_I8,  (char*)"");}
         | ident    %prec Ident {$$ = mkTypeNode(Tok_Ident, (char*)$1);}
         ;
 
-type: type '*'
-    | type '[' maybe_expr ']'
-    | '(' type_expr ')'
-    | type '(' type_expr ')' /* f-ptr w/ params*/
-    | type '(' ')' /* f-ptr w/out params*/
-    | lit_type   {$$ = $1;}
+type: type '*'                {$$ = mkTypeNode('*', (char*)"", $1);}
+    | type '[' maybe_expr ']' {$$ = mkTypeNode('[', (char*)"", $1);}
+    | type '(' type_expr ')'  {$$ = mkTypeNode('(', (char*)"", $1);}  /* f-ptr w/ params*/
+    | type '(' ')'            {$$ = mkTypeNode('(', (char*)"", $1);}  /* f-ptr w/out params*/
+    | '(' type_expr ')'       {$$ = $1;}
+    | lit_type                {$$ = $1;}
     ;
 
-type_expr: type_expr ',' type
+type_expr: type_expr ',' type {$$ = setNext($1, $3);}
          | type_expr '|' type
-         | type {$$ = $1;}
+         | type               {$$ = setRoot($1);}
          ;
 
 modifier: Pub
@@ -173,12 +177,12 @@ modifier: Pub
         | Pathogen
         ;
 
-modifier_list: modifier_list modifier
-             | modifier
+modifier_list: modifier_list modifier {$$ = setNext($1, $2);}
+             | modifier {$$ = setRoot($1);}
              ;
 
-decl_prepend: modifier_list type_expr {$$ = $2;} /*TODO: modifier list*/
-            | type_expr {$$ = $1;}
+decl_prepend: modifier_list type_expr {$$ = getRoot();} /*TODO: modifier list*/
+            | type_expr {$$ = getRoot();}
             ;
 
 var_decl: decl_prepend ident '=' expr  %prec Ident {$$ = mkVarDeclNode((char*)$2, $1, $4);}
@@ -347,7 +351,7 @@ nl_expr_p: nl_expr_p '+' maybe_newline nl_expr_p     {$$ = mkBinOpNode('+', $1, 
 %%
 
 void yy::parser::error(const string& msg){
-    cerr << msg << endl;
+    cerr << "On row " << yylexer->getRow() << ", column " << yylexer->getCol() << ": " <<  msg << endl << endl;
 }
 
 #endif

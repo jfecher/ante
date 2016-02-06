@@ -1,0 +1,8 @@
+`
+        syntaxerr.an
+    Test formatting of syntax error messages.
+`
+
+i32 thirty_two = 32
+
+i32 res = 4 + (4 * 5

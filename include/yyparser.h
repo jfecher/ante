@@ -395,10 +395,13 @@ namespace yy {
   static const unsigned char yyr2_[];
 
 
-#if YYDEBUG
+    /// Convert the symbol name \a n to a form suitable for a diagnostic.
+    static std::string yytnamerr_ (const char *n);
+
+
     /// For a symbol, its name in clear.
     static const char* const yytname_[];
-
+#if YYDEBUG
   // YYRLINE[YYN] -- Source line where rule number YYN was defined.
   static const unsigned short int yyrline_[];
     /// Report on the debug stream that the rule \a r is going to be reduced.
@@ -513,7 +516,7 @@ namespace yy {
 
 
 } // yy
-#line 517 "include/yyparser.h" // lalr1.cc:377
+#line 520 "include/yyparser.h" // lalr1.cc:377
 
 
 

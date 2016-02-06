@@ -45,61 +45,106 @@ Node* setElse(IfNode *c, IfNode *elif){
 }
 
 Node* mkIntLitNode(char* s){
-    return new IntLitNode(s);
+    auto* ret = new IntLitNode(s);
+    ret->col = yylexer->getCol();
+    ret->row = yylexer->getRow();
+    return ret;
 }
 
 Node* mkFltLitNode(char* s){
-    return new FltLitNode(s);
+    auto *ret = new FltLitNode(s);
+    ret->col = yylexer->getCol();
+    ret->row = yylexer->getRow();
+    return ret;
 }
 
 Node* mkStrLitNode(char* s){
-    return new StrLitNode(s);
+    auto *ret = new StrLitNode(s);
+    ret->col = yylexer->getCol();
+    ret->row = yylexer->getRow();
+    return ret;
 }
 
 Node* mkBoolLitNode(char b){
-    return new BoolLitNode(b);
+    auto *ret = new BoolLitNode(b);
+    ret->col = yylexer->getCol();
+    ret->row = yylexer->getRow();
+    return ret;
 }
 
-Node* mkTypeNode(int type, char* typeName){
-    return new TypeNode(type, typeName);
+Node* mkTypeNode(int type, char* typeName, Node* extTy = nullptr){
+    auto *ret = new TypeNode(type, typeName, static_cast<TypeNode*>(extTy));
+    ret->col = yylexer->getCol();
+    ret->row = yylexer->getRow();
+    return ret;
 }
 
 Node* mkBinOpNode(int op, Node* l, Node* r){
-    return new BinOpNode(op, l, r);
+    auto *ret = new BinOpNode(op, l, r);
+    ret->col = yylexer->getCol();
+    ret->row = yylexer->getRow();
+    return ret;
 }
 
 Node* mkRetNode(Node* expr){
-    return new RetNode(expr);
+    auto *ret = new RetNode(expr);
+    ret->col = yylexer->getCol();
+    ret->row = yylexer->getRow();
+    return ret;
 }
 
 Node* mkNamedValNode(char* s, Node* tExpr){
-    return new NamedValNode(s, tExpr);
+    auto *ret = new NamedValNode(s, tExpr);
+    ret->col = yylexer->getCol();
+    ret->row = yylexer->getRow();
+    return ret;
 }
 
 Node* mkFuncCallNode(char* s, Node* p){
-    return new FuncCallNode(s, p);
+    auto *ret = new FuncCallNode(s, p);
+    ret->col = yylexer->getCol();
+    ret->row = yylexer->getRow();
+    return ret;
 }
 
 Node* mkVarNode(char* s){
-    return new VarNode(s);
+    auto *ret = new VarNode(s);
+    ret->col = yylexer->getCol();
+    ret->row = yylexer->getRow();
+    return ret;
 }
 
 Node* mkVarDeclNode(char* s, Node* tExpr, Node* expr){
-    return new VarDeclNode(s, tExpr, expr);
+    auto *ret = new VarDeclNode(s, tExpr, expr);
+    ret->col = yylexer->getCol();
+    ret->row = yylexer->getRow();
+    return ret;
 }
 
 Node* mkVarAssignNode(Node* var, Node* expr){
-    return new VarAssignNode(var, expr);
+    auto *ret = new VarAssignNode(var, expr);
+    ret->col = yylexer->getCol();
+    ret->row = yylexer->getRow();
+    return ret;
 }
 
 ParentNode* mkIfNode(Node* con, Node* body, Node* els = nullptr){
-    return new IfNode(con, body, (IfNode*)els);
+    auto *ret = new IfNode(con, body, (IfNode*)els);
+    ret->col = yylexer->getCol();
+    ret->row = yylexer->getRow();
+    return ret;
 }
 
 ParentNode* mkFuncDeclNode(char* s, Node* tExpr, Node* p, Node* b){
-    return new FuncDeclNode(s, tExpr, p, b);
+    auto *ret = new FuncDeclNode(s, tExpr, p, b);
+    ret->col = yylexer->getCol();
+    ret->row = yylexer->getRow();
+    return ret;
 }
 
 ParentNode* mkDataDeclNode(char* s, Node* b){
-    return new DataDeclNode(s, b);
+    auto *ret = new DataDeclNode(s, b);
+    ret->col = yylexer->getCol();
+    ret->row = yylexer->getRow();
+    return ret;
 }

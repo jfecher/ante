@@ -12,8 +12,9 @@
 using namespace llvm;
 using namespace std;
 
-/* Forward-declaration of Node defined in parser.h */
+/* Forward-declarations of Nodes defined in parser.h */
 struct Node;
+struct BinOpNode;
 struct FuncDeclNode;
 
 namespace ante{
@@ -43,13 +44,13 @@ namespace ante{
         void enterNewScope();
         void exitScope();
         
-        Value* compAdd(Type *t, Value *l, Value *r);
-        Value* compSub(Type *t, Value *l, Value *r);
-        Value* compMul(Type *t, Value *l, Value *r);
-        Value* compDiv(Type *t, Value *l, Value *r);
-        Value* compRem(Type *t, Value *l, Value *r);
+        Value* compAdd(Type *t, Value *l, Value *r, BinOpNode *op);
+        Value* compSub(Type *t, Value *l, Value *r, BinOpNode *op);
+        Value* compMul(Type *t, Value *l, Value *r, BinOpNode *op);
+        Value* compDiv(Type *t, Value *l, Value *r, BinOpNode *op);
+        Value* compRem(Type *t, Value *l, Value *r, BinOpNode *op);
         
-        Value* compErr(string msg);
+        Value* compErr(string msg, unsigned int row, unsigned int col);
 
         Function* compFn(FuncDeclNode *fn);
         void registerFunction(FuncDeclNode *func);

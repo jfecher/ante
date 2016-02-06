@@ -28,11 +28,11 @@ string opType2Str(int opTy){
         case '[': return "Array";
         case '(': return "Function";
         case '*': return "Pointer";
-        default:  return lexer::getTokStr(opTy);
+        default:  return Lexer::getTokStr(opTy);
     }
 }
 
-Value* Compiler::compAdd(Type *t, Value *l, Value *r){
+Value* Compiler::compAdd(Type *t, Value *l, Value *r, BinOpNode *op){
     int tt = type2TokType(t);
 
     switch(tt){
@@ -47,11 +47,11 @@ Value* Compiler::compAdd(Type *t, Value *l, Value *r){
             return builder.CreateFAdd(l, r);
 
         default:
-            return compErr("binary operator + is undefined for the type " + opType2Str(tt));
+            return compErr("binary operator + is undefined for the type " + opType2Str(tt), op->row, op->col);
     }
 }
 
-Value* Compiler::compSub(Type *t, Value *l, Value *r){
+Value* Compiler::compSub(Type *t, Value *l, Value *r, BinOpNode *op){
     int tt = type2TokType(t);
     switch(tt){
         case Tok_I8:
@@ -65,11 +65,11 @@ Value* Compiler::compSub(Type *t, Value *l, Value *r){
             return builder.CreateFSub(l, r);
 
         default:
-            return compErr("binary operator - is undefined for the type " + opType2Str(tt));
+            return compErr("binary operator - is undefined for the type " + opType2Str(tt), op->row, op->col);
     }
 }
 
-Value* Compiler::compMul(Type *t, Value *l, Value *r){
+Value* Compiler::compMul(Type *t, Value *l, Value *r, BinOpNode *op){
     int tt = type2TokType(t);
     switch(tt){
         case Tok_I8:
@@ -83,11 +83,11 @@ Value* Compiler::compMul(Type *t, Value *l, Value *r){
             return builder.CreateFMul(l, r);
 
         default:
-            return compErr("binary operator * is undefined for the type " + opType2Str(tt));
+            return compErr("binary operator * is undefined for the type " + opType2Str(tt), op->row, op->col);
     }
 }
 
-Value* Compiler::compDiv(Type *t, Value *l, Value *r){
+Value* Compiler::compDiv(Type *t, Value *l, Value *r, BinOpNode *op){
     int tt = type2TokType(t);
     switch(tt){
         case Tok_I8:
@@ -101,11 +101,11 @@ Value* Compiler::compDiv(Type *t, Value *l, Value *r){
             return builder.CreateFDiv(l, r);
 
         default: 
-            return compErr("binary operator / is undefined for the type " + opType2Str(tt));
+            return compErr("binary operator / is undefined for the type " + opType2Str(tt), op->row, op->col);
     }
 }
 
-Value* Compiler::compRem(Type *t, Value *l, Value *r){
+Value* Compiler::compRem(Type *t, Value *l, Value *r, BinOpNode *op){
     int tt = type2TokType(t);
     switch(tt){
         case Tok_I8:
@@ -119,7 +119,7 @@ Value* Compiler::compRem(Type *t, Value *l, Value *r){
             return builder.CreateFRem(l, r);
 
         default:
-            return compErr("binary operator % is undefined for the type " + opType2Str(tt));
+            return compErr("binary operator % is undefined for the type " + opType2Str(tt), op->row, op->col);
     }
 }
 
@@ -141,11 +141,11 @@ Value* BinOpNode::compile(Compiler *c, Module *m){
     //int rtt = type2TokType(rt);
 
     switch(op){
-        case '+': return c->compAdd(lt, lhs, rhs);
-        case '-': return c->compSub(lt, lhs, rhs);
-        case '*': return c->compMul(lt, lhs, rhs);
-        case '/': return c->compDiv(lt, lhs, rhs);
-        case '%': return c->compRem(lt, lhs, rhs);
+        case '+': return c->compAdd(lt, lhs, rhs, this);
+        case '-': return c->compSub(lt, lhs, rhs, this);
+        case '*': return c->compMul(lt, lhs, rhs, this);
+        case '/': return c->compDiv(lt, lhs, rhs, this);
+        case '%': return c->compRem(lt, lhs, rhs, this);
         case '<': return c->builder.CreateICmpULT(lhs, rhs);
         case '>': return c->builder.CreateICmpUGT(lhs, rhs);
         case '^': return c->builder.CreateXor(lhs, rhs);
@@ -158,5 +158,5 @@ Value* BinOpNode::compile(Compiler *c, Module *m){
         case Tok_And: break;
     }
 
-    return c->compErr("Unknown operator " + lexer::getTokStr(op));
+    return c->compErr("Unknown operator " + Lexer::getTokStr(op), this->row, this->col);
 }

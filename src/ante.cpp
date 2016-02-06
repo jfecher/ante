@@ -13,24 +13,24 @@ int main(int argc, char *argv[]){
     }else if(argc >= 3){
         //lex and print tokens
         if(strcmp(argv[1], "-l") == 0){
-            lexer::init(argv[2]);
-            int t = lexer::next();
+            Lexer lexer = Lexer(argv[2]);
+            int t = lexer.next();
             while(t){
-                lexer::printTok(t);
+                lexer.printTok(t);
                 putchar('\n');
-                t = lexer::next();
+                t = lexer.next();
             }
         //parse and print parse tree
         }else if(strcmp(argv[1], "-p") == 0){
-            lexer::init(argv[2]);
+            setLexer(new Lexer(argv[2]));
             yy::parser p{};
             int flag = p.parse();
             cout << "Parser returned " << flag << endl;
-            Node* root = parser::getRootNode();
             if(flag == PE_OK){
+                Node* root = parser::getRootNode();
                 parser::printBlock(root);
+                delete root;
             }
-            delete root;
         //compile
         }else if(strcmp(argv[1], "-c") == 0){
             Compiler ante{argv[2]};

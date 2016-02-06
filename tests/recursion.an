@@ -8,7 +8,7 @@ void f: i32 x
     printf("%d\n", x)
 
     ~Loop to 1 million
-    if x < 1000000
+    if x < 1_000_000
         f(x + 1)
 
 f(0)

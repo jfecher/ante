@@ -22,6 +22,8 @@ using namespace ante;
 struct Node{
     unique_ptr<Node> next;
     Node *prev;
+    unsigned int row, col;
+
     virtual void print(void) = 0;
     virtual Value* compile(Compiler*, Module*) = 0;
     //virtual void exec(void) = 0;
@@ -94,17 +96,25 @@ struct BinOpNode : public Node{
 struct TypeNode : public Node{
     int type;
     string typeName; //used for usertypes
+    unique_ptr<TypeNode> extTy; //Used for pointers and non-single anonymous types.
+
     Value* compile(Compiler*, Module*);
-    //void exec(void);
     void print(void);
-    TypeNode(int ty, string tName) : Node(), type(ty), typeName(tName){}
+    TypeNode(int ty, string tName, TypeNode* eTy) : Node(), type(ty), typeName(tName), extTy(eTy){}
     ~TypeNode(){}
+};
+
+struct ModNode : public Node{
+    int modifier;
+    Value* compile(Compiler*, Module*);
+    void print(void);
+    ModNode(int m) : Node(), modifier(m){}
+    ~ModNode(){}
 };
 
 struct RetNode : public Node{
     unique_ptr<Node> expr;
     Value* compile(Compiler*, Module*);
-    //void exec(void);
     void print(void);
     RetNode(Node* e) : Node(), expr(e){}
     ~RetNode(){}
