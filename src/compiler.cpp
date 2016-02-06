@@ -372,10 +372,10 @@ void Compiler::compilePrelude(){
     registerFunction(new FuncDeclNode("puts", new TypeNode(Tok_Void, ""), mkAnonNVNode(Tok_StrLit), nullptr));
 
     // void putchar: c8 c
-    registerFunction(new FuncDeclNode("putchar", new TypeNode(Tok_Void, ""), mkAnonNVNode(Tok_C8), nullptr));
+    registerFunction(new FuncDeclNode("putchar", new TypeNode(Tok_Void, ""), mkAnonNVNode(Tok_I32), nullptr));
 
     // void exit: u8 status
-    registerFunction(new FuncDeclNode("exit", new TypeNode(Tok_Void, ""), mkAnonNVNode(Tok_U8), nullptr));
+    registerFunction(new FuncDeclNode("exit", new TypeNode(Tok_Void, ""), mkAnonNVNode(Tok_I32), nullptr));
 }
 
 /*
