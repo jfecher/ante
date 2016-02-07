@@ -2118,7 +2118,7 @@ namespace yy {
 void yy::parser::error(const string& msg){
     unsigned int row = yylexer->getRow();
     unsigned int col = yylexer->getCol();
-    cerr << "At line " << row << ", col " << col << ": " <<  msg << endl;
+    cerr << yylexer->fileName << ':' << row << "," << col << ": " <<  msg << endl;
     printErrLine(yylexer->fileName, row, col);
     cout << endl << endl;
 }

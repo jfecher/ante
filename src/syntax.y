@@ -354,7 +354,7 @@ nl_expr_p: nl_expr_p '+' maybe_newline nl_expr_p     {$$ = mkBinOpNode('+', $1, 
 void yy::parser::error(const string& msg){
     unsigned int row = yylexer->getRow();
     unsigned int col = yylexer->getCol();
-    cerr << "At line " << row << ", col " << col << ": " <<  msg << endl;
+    cerr << yylexer->fileName << ':' << row << "," << col << ": " <<  msg << endl;
     printErrLine(yylexer->fileName, row, col);
     cout << endl << endl;
 }

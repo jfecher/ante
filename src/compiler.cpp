@@ -58,8 +58,9 @@ void printErrLine(const char* fileName, unsigned int row, unsigned int col){
  *  (perhaps this should throw an exception?)
  */
 Value* Compiler::compErr(string msg, unsigned int row, unsigned int col){
-    cout << row << ", " << col << ": " <<  msg << endl;
+    cout << fileName << ':' << row << "," << col << ": " <<  msg << endl;
     printErrLine(fileName.c_str(), row, col);
+    cout << endl << endl;
     errFlag = true;
     return nullptr;
 }
@@ -278,7 +279,7 @@ Value* VarDeclNode::compile(Compiler *c, Module *m){
 
 Value* VarAssignNode::compile(Compiler *c, Module *m){
     Value *v = c->lookup(var->name);
-    if(!v) return c->compErr("Use of undeclared variable " + var->name + " in assignment.", this->row, this->col);
+    if(!v) return c->compErr("Use of undeclared variable " + var->name + " in assignment.", var->row, var->col);
     return c->builder.CreateStore(expr->compile(c, m), v);
 }
 
