@@ -162,18 +162,24 @@ int yylex(...){
 /*
  * Initializes lexer
  */
-Lexer::Lexer(const char* file){
-    in = new ifstream(file);
-    cur = 0;
-    nxt = 0;
-    row = 1;
-    col = 1;
-    tokRow = 1;
-    tokCol = 1;
-    scope = 0;
-    cscope = 0;
+Lexer::Lexer(const char* file) : 
+    fileName{file},
+    in{new ifstream(file)},
+    row{1},
+    col{1},
+    tokRow{1},
+    tokCol{1},
+    cur{0},
+    nxt{0},
+    scope{0},
+    cscope{0}
+{
     incPos();
     incPos();
+}
+
+Lexer::~Lexer(){
+    delete in;
 }
 
 int Lexer::peek(){

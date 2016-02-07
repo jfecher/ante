@@ -11,11 +11,55 @@ using namespace llvm;
 
 
 /*
+ *  Prints a given line (row) of a file, along with an arrow pointing to
+ *  the specified column.
+ */
+void printErrLine(const char* fileName, unsigned int row, unsigned int col){
+    ifstream f{fileName};
+    unsigned int line = 1;
+
+    //Premature newline error, show previous line as error instead
+    if(col == 0) row--;
+
+    //skip to line in question
+    int c;
+    if(line != row){
+        while(true){
+            c = f.get();
+            if(c == '\n'){
+                line++;
+                if(line >= row){
+                    c = 0;
+                    break;
+                }
+            }else if(c == EOF){
+                break;
+            }
+        }
+    }
+
+    //print line
+    string s;
+    getline(f, s);
+    if(col == 0) col = s.length() + 1;
+    cout << s;
+
+    //draw arrow
+    putchar('\n');
+    for(unsigned int i = 1; i <= col; i++){
+        if(i < col) putchar('.');
+        else putchar('^');
+    }
+}
+
+
+/*
  *  Inform the user of an error and return nullptr.
  *  (perhaps this should throw an exception?)
  */
 Value* Compiler::compErr(string msg, unsigned int row, unsigned int col){
-    cout << row << ", " << col << ": " <<  msg << endl << endl;
+    cout << row << ", " << col << ": " <<  msg << endl;
+    printErrLine(fileName.c_str(), row, col);
     errFlag = true;
     return nullptr;
 }

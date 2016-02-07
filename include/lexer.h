@@ -17,7 +17,10 @@ using namespace std;
 namespace ante{
     class Lexer{
     public:
+        const char* fileName; 
+        
         Lexer(const char *file);
+        ~Lexer();
         int next();
         int peek();
         unsigned int getRow();
@@ -27,6 +30,9 @@ namespace ante{
         static string getTokStr(int t);
    
     private:
+        /* the ifstream to take from */
+        ifstream *in;
+        
         /* Row and column number */
         unsigned int row, col;
         
@@ -35,10 +41,8 @@ namespace ante{
         
         /* Current and next characters */
         char cur, nxt;
-        
 
-        /* the ifstream to take from */
-        ifstream *in;
+
 
         /* Amount of spaces per indent */
         #define scStep 4

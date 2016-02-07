@@ -219,7 +219,6 @@ namespace ante{
     }
 }
 
-//extern "C" int yylex(...);
-//extern "C" int yyparse();
+void printErrLine(const char* fileName, unsigned int row, unsigned int col);
 
 #endif
