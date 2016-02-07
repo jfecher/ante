@@ -583,7 +583,7 @@ Compiler::Compiler(char *_fileName) :
         while((tok = yylexer->next()) != Tok_Newline && tok != 0);
         while(p.parse() != PE_OK && yylexer->peek() != 0);
         
-        fputs("Syntax error, aborting.", stderr);
+        fputs("Syntax error, aborting.\n", stderr);
         exit(flag);
     }
 
