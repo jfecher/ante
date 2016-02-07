@@ -15,7 +15,7 @@ using namespace llvm;
  *  (perhaps this should throw an exception?)
  */
 Value* Compiler::compErr(string msg, unsigned int row, unsigned int col){
-    cout << "On row " << row << ", column " << col << ": " <<  msg << endl << endl;
+    cout << row << ", " << col << ": " <<  msg << endl << endl;
     errFlag = true;
     return nullptr;
 }
@@ -533,6 +533,11 @@ Compiler::Compiler(char *_fileName) :
     yy::parser p{};
     int flag = p.parse();
     if(flag != PE_OK){ //parsing error, cannot procede
+        //print out remaining errors
+        int tok;
+        while((tok = yylexer->next()) != Tok_Newline && tok != 0);
+        while(p.parse() != PE_OK && yylexer->peek() != 0);
+        
         fputs("Syntax error, aborting.", stderr);
         exit(flag);
     }

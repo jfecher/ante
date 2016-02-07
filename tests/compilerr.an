@@ -1,0 +1,12 @@
+`
+        compilerr.an
+    Test detection and formatting of various compile-time errors.
+    Currently, this file contains two undeclared variables, a and aa,
+    located on row 8 and 12 respectively.
+`
+
+a = 3
+
+i32 a = 3
+
+aa = 4

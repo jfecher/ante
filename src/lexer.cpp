@@ -176,6 +176,9 @@ Lexer::Lexer(const char* file){
     incPos();
 }
 
+int Lexer::peek(){
+    return cur;
+}
 
 unsigned int Lexer::getRow(){
     return tokRow;

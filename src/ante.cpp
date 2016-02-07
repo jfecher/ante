@@ -25,11 +25,15 @@ int main(int argc, char *argv[]){
             setLexer(new Lexer(argv[2]));
             yy::parser p{};
             int flag = p.parse();
-            cout << "Parser returned " << flag << endl;
             if(flag == PE_OK){
                 Node* root = parser::getRootNode();
                 parser::printBlock(root);
                 delete root;
+            }else{
+                //print out remaining errors
+                int tok;
+                while((tok = yylexer->next()) != Tok_Newline && tok != 0);
+                while(p.parse() != PE_OK && yylexer->peek() != 0);
             }
         //compile
         }else if(strcmp(argv[1], "-c") == 0){

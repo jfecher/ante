@@ -18,7 +18,8 @@ namespace ante{
     class Lexer{
     public:
         Lexer(const char *file);
-        int next(void);
+        int next();
+        int peek();
         unsigned int getRow();
         unsigned int getCol();
         

@@ -17,6 +17,7 @@
 
 #include "yyparser.h"
 
+/* Defined in lexer.cpp */
 extern int yylex(...);
 
 void yyerror(const char *msg);
@@ -351,7 +352,7 @@ nl_expr_p: nl_expr_p '+' maybe_newline nl_expr_p     {$$ = mkBinOpNode('+', $1, 
 %%
 
 void yy::parser::error(const string& msg){
-    cerr << "On row " << yylexer->getRow() << ", column " << yylexer->getCol() << ": " <<  msg << endl << endl;
+    cerr << "At line " << yylexer->getRow() << ", col " << yylexer->getCol() << ": " <<  msg << endl << endl;
 }
 
 #endif
