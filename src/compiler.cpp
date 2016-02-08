@@ -221,9 +221,8 @@ Value* NamedValNode::compile(Compiler *c, Module *m)
  */
 Value* VarNode::compile(Compiler *c, Module *m){
     Value *val = c->lookup(name);
-    if(!val){
+    if(!val)
         return c->compErr("Variable " + name + " has not been declared.", this->row, this->col);
-    }
     return dynamic_cast<AllocaInst*>(val)? c->builder.CreateLoad(val, name) : val;
 }
 
@@ -270,17 +269,24 @@ Value* VarDeclNode::compile(Compiler *c, Module *m){
 
     Type *ty = translateType(tyNode->type, tyNode->typeName);
     Value *v = c->builder.CreateAlloca(ty, 0, name.c_str());
-    c->stoVar(name, v);
-    if(expr){
-        Value *val = expr->compile(c, m);
-        if(val->getType() != ty){
-            if(val->getType()->isDoubleTy()){
-                val = c->builder.CreateFPTrunc(val, ty);
+
+    if(!c->lookup(name)){
+        c->stoVar(name, v);
+        if(expr){
+            Value *val = expr->compile(c, m);
+            if(!val) return nullptr;
+
+            if(val->getType() != ty){
+                if(val->getType()->isDoubleTy()){
+                    val = c->builder.CreateFPTrunc(val, ty);
+                }
             }
+            return c->builder.CreateStore(expr->compile(c, m), v);
+        }else{
+            return v;
         }
-        return c->builder.CreateStore(expr->compile(c, m), v);
-    }else{
-        return v;
+    }else{ //variable was already defined
+        return c->compErr("Variable " + name + " was redeclared.", row, col);
     }
 }
 
@@ -557,7 +563,11 @@ inline void Compiler::exitScope()
 
 inline Value* Compiler::lookup(string var)
 {
-    return varTable.top()[var];
+    try{
+        return varTable.top().at(var);
+    }catch(out_of_range r){
+        return nullptr;
+    }
 }
 
 inline void Compiler::stoVar(string var, Value *val)
