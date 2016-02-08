@@ -15,6 +15,10 @@ using namespace std;
 #define RETURN_PAIR(t) {incPos(2); return (t);}
 
 namespace ante{
+    /* Defined in src/compiler.cpp */
+    /* General error function */
+    void error(const char* msg, const char* fileName, unsigned int row, unsigned int col);
+    
     class Lexer{
     public:
         const char* fileName; 
@@ -70,6 +74,7 @@ namespace ante{
         int genStrLitTok(char delim);
     };
 }
+
 
 extern ante::Lexer *yylexer;
 void setLexer(ante::Lexer *l);

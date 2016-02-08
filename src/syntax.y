@@ -20,6 +20,10 @@
 /* Defined in lexer.cpp */
 extern int yylex(...);
 
+namespace ante{
+    extern void error(string& msg, const char *fileName, unsigned int row, unsigned int col);
+}
+
 void yyerror(const char *msg);
 
 %}
@@ -352,11 +356,7 @@ nl_expr_p: nl_expr_p '+' maybe_newline nl_expr_p     {$$ = mkBinOpNode('+', $1, 
 %%
 
 void yy::parser::error(const string& msg){
-    unsigned int row = yylexer->getRow();
-    unsigned int col = yylexer->getCol();
-    cerr << yylexer->fileName << ':' << row << "," << col << ": " <<  msg << endl;
-    printErrLine(yylexer->fileName, row, col);
-    cout << endl << endl;
+    ante::error(msg.c_str(), yylexer->fileName, yylexer->getRow(), yylexer->getCol());
 }
 
 #endif

@@ -46,21 +46,28 @@ void printErrLine(const char* fileName, unsigned int row, unsigned int col){
 
     //draw arrow
     putchar('\n');
+    cout << "\033[;31m";
     for(unsigned int i = 1; i <= col; i++){
-        if(i < col) putchar('.');
+        if(i < col) putchar(' ');
         else putchar('^');
     }
+    cout << "\033[;m";
 }
 
+void ante::error(const char* msg, const char* fileName, unsigned int row, unsigned int col){
+    cout << "\033[;3m" << fileName << "\033[;m: ";
+    cout << "\033[;1m" << row << "," << col << "\033[;0m";
+    cout << ": " <<  msg << endl;
+    printErrLine(fileName, row, col);
+    cout << endl << endl;
+}
 
 /*
  *  Inform the user of an error and return nullptr.
  *  (perhaps this should throw an exception?)
  */
 Value* Compiler::compErr(string msg, unsigned int row, unsigned int col){
-    cout << fileName << ':' << row << "," << col << ": " <<  msg << endl;
-    printErrLine(fileName.c_str(), row, col);
-    cout << endl << endl;
+    error(msg.c_str(), fileName.c_str(), row, col);
     errFlag = true;
     return nullptr;
 }

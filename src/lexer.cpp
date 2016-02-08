@@ -308,8 +308,10 @@ int Lexer::genWsTok(){
         while(IS_WHITESPACE(cur) && cur != EOF){
             switch(cur){
                 case ' ': newScope++; break;
-                case '\t': newScope += scStep; break;
                 case '\n': newScope = 0; row++; col = 0; break;
+                case '\t':
+                    error("error: tab characters are invalid whitespace.", fileName, row, col*8);
+                    exit(1);
                 default: break;
             }
             incPos();
