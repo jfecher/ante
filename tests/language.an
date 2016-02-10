@@ -416,14 +416,25 @@ i8 add: i8 a, i8 b
 `
         C FFI
     The c foreign function interface is implemented within the c_ffi module.
+    Once this module is imported, objects can be created of the C class.
+    This class contains the header(s) to parse, and possibly specific
+    functions from that header.  Since the object is primarily used for
+    its overloading of import, its contents must be known at compile-time.
 `
-import c_ffi("path/to/file.h", ["functions", "to", "import"])
 
+~By default, the file is parsed and every function is added.
+import C("path/to/file.h")
 
-~Or, every function can be imported using * as the filename.
-import c_ffi("some/other/file.h", "*")
+~Alternatively, specific functions can be added with .fn
+import C("some/other/file.h").fn("func1", "func2", "func3")
 
-import c_ffi("stdio.h", "putchar")
+~Multiple files can also stored in one C object
+import C("stdio.h", "stdlib.h")
+
+~Like functions, files can also be added after initialization
+import C("stdio.h").addSrc("stdlib.h")
+
+import C("stdio.h").addSrc(["stdlib.h", "limits.h", "math.h"])
 
 putchar(72)
 putchar(105)

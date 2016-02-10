@@ -46,12 +46,12 @@ void printErrLine(const char* fileName, unsigned int row, unsigned int col){
 
     //draw arrow
     putchar('\n');
-    cout << "\033[;31m";
+    cout << "\033[;31m"; //red
     for(unsigned int i = 1; i <= col; i++){
         if(i < col) putchar(' ');
         else putchar('^');
     }
-    cout << "\033[;m";
+    cout << "\033[;m"; //reset color
 }
 
 void ante::error(const char* msg, const char* fileName, unsigned int row, unsigned int col){

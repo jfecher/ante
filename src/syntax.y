@@ -28,6 +28,7 @@ void yyerror(const char *msg);
 
 %}
 
+%locations
 %error-verbose
 
 %token Ident UserType
@@ -355,7 +356,7 @@ nl_expr_p: nl_expr_p '+' maybe_newline nl_expr_p     {$$ = mkBinOpNode('+', $1, 
 
 %%
 
-void yy::parser::error(const string& msg){
+void yy::parser::error(const location& loc, const string& msg){
     ante::error(msg.c_str(), yylexer->fileName, yylexer->getRow(), yylexer->getCol());
 }
 
