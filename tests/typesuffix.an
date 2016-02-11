@@ -4,12 +4,15 @@
     literals.
 `
 
-i64 long = 12345678987654321_i64
+~The _ before i64 is optional
+i64 long = 1234567_i64
 
 u8 byte = 255_u8
 
-u16 uint16 = 1234u16
+u16 uint16 = 1234_u16
 
-printf("%d + %d = %d\n", byte, uint16, byte + uint16)
+printf("%u + %u = %u\n", uint16, uint16, uint16 + uint16)
 
-printf("%d + %d = %d\n", uint16, long, uint16 + long)
+printf("%u + %u = %u\n", byte, uint16, byte + uint16)
+
+printf("%u + %d = %u\n", uint16, long, uint16 + long)
