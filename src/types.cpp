@@ -4,34 +4,45 @@
  *  Returns the type of a node in an expression.  Node must be
  *  valid in an expression context, ie no statement-only nodes.
  */
-Type* Compiler::getNodeType(VarNode *v){
-    if(Value *val = lookup(v->name)){
+Type* VarNode::getType(Compiler *c){
+    if(Value *val = c->lookup(name)){
+        cout << "Var type = " << val->getType()->isIntegerTy() << endl;
         return val->getType();
     }
-    return (Type*)compErr("Use of undeclared variable " + v->name + " in expression", v->row, v->col);
+    return (Type*)c->compErr("Use of undeclared variable " + name + " in expression", row, col);
 }
 
-Type* Compiler::getNodeType(StrLitNode *v){
+Type* StrLitNode::getType(Compiler *c){
     return Type::getInt8PtrTy(getGlobalContext()); 
 }
 
-Type* Compiler::getNodeType(IntLitNode *v){
-    return translateType(v->type, ""); 
+Type* IntLitNode::getType(Compiler *c){
+    cout << "Type: " << Lexer::getTokStr(type) << endl;
+    return Compiler::translateType(type, ""); 
 }
 
-Type* Compiler::getNodeType(FuncCallNode *v){
-    if(auto* fn = module->getFunction(v->name)){
+//TODO: give floats a type field like integers
+Type* FltLitNode::getType(Compiler *c){
+    return Type::getDoubleTy(getGlobalContext());
+}
+
+Type* BoolLitNode::getType(Compiler *c){
+    return Type::getInt1Ty(getGlobalContext());
+}
+
+Type* FuncCallNode::getType(Compiler *c){
+    if(auto* fn = c->module->getFunction(name)){
         return fn->getReturnType();
     }
-    return (Type*)compErr("Undeclared function " + v->name + " called", v->row, v->col);
+    return (Type*)c->compErr("Undeclared function " + name + " called", row, col);
 }
 
-Type* Compiler::getNodeType(BinOpNode *v){
-    return getNodeType(v->lval.get());
+Type* BinOpNode::getType(Compiler *c){
+    return lval->getType(c);
 }
 
-Type* Compiler::getNodeType(Node *n){
-    return (Type*)compErr("Cannot get type of Node", n->row, n->col);
+Type* Node::getType(Compiler *c){
+    return (Type*)c->compErr("Void type used in expression", row, col);
 }
 
 /*

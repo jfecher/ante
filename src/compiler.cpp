@@ -99,7 +99,7 @@ Value* compileStmtList(Node *nList, Compiler *c, Module *m){
 }
 
 Value* IntLitNode::compile(Compiler *c, Module *m){
-    return ConstantInt::get((IntegerType*)c->getNodeType(this), val, 10);
+    return ConstantInt::get((IntegerType*)getType(c), val, 10);
 }
 
 Value* FltLitNode::compile(Compiler *c, Module *m){
@@ -230,7 +230,7 @@ Value* FuncCallNode::compile(Compiler *c, Module *m){
         args.push_back(curParam->compile(c, m));
         curParam = curParam->next.get();
         if(!args.back())
-            c->compErr("Argument " + to_string(i) + " of called function " + name + " evaluated to null.", this->row, this->col);
+            c->compErr("Argument " + to_string(i+1) + " of called function " + name + " evaluated to null.", this->row, this->col);
     }
 
     if(f->getReturnType() == Type::getVoidTy(getGlobalContext())){

@@ -40,6 +40,7 @@ Value* Compiler::compAdd(Type *t, Value *l, Value *r, BinOpNode *op){
         case Tok_I16:
         case Tok_I32:
         case Tok_I64:
+        case '*':
             return builder.CreateAdd(l, r);
         case Tok_F16:
         case Tok_F32:
@@ -134,11 +135,7 @@ Value* BinOpNode::compile(Compiler *c, Module *m){
     Value *lhs = lval->compile(c, m);
     Value *rhs = rval->compile(c, m);
 
-    Type *lt = c->getNodeType(this);
-    //Type *rt = lhs->getType();
-
-    //int ltt = type2TokType(lt);
-    //int rtt = type2TokType(rt);
+    Type *lt = getType(c);
 
     switch(op){
         case '+': return c->compAdd(lt, lhs, rhs, this);

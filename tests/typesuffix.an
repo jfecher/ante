@@ -1,0 +1,15 @@
+`
+        typesuffix.an
+    Test type suffixes for integer and float
+    literals.
+`
+
+i64 long = 12345678987654321_i64
+
+u8 byte = 255_u8
+
+u16 uint16 = 1234u16
+
+printf("%d + %d = %d\n", byte, uint16, byte + uint16)
+
+printf("%d + %d = %d\n", uint16, long, uint16 + long)

@@ -53,7 +53,7 @@ Node* mkIntLitNode(char* s){
     if(len > 3){
         char sign = str[len - 3];
         if(sign == 'u' || sign == 'i'){
-            switch(str[len - 3]){
+            switch(str[len - 2]){
                 case '1':
                     type = sign == 'i'? Tok_I16 : Tok_U16;
                     str = str.substr(0, len-3);
