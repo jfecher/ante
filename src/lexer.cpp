@@ -61,6 +61,7 @@ map<int, const char*> tokDict = {
     {Tok_Continue, "Continue"},
     {Tok_Break, "Break"},
     {Tok_Import, "Import"},
+    {Tok_Let, "Let"},
     {Tok_Match, "Match"},
     {Tok_Data, "Data"},
     {Tok_Enum, "Enum"},
@@ -72,6 +73,7 @@ map<int, const char*> tokDict = {
     {Tok_Raw, "Raw"},
     {Tok_Const, "Const"},
     {Tok_Ext, "Ext"},
+    {Tok_Noinit, "Noinit"},
     {Tok_Pathogen, "Pathogen"},
 
     //other
@@ -123,6 +125,7 @@ map<string, int> keywords = {
     {"continue", Tok_Continue},
     {"break",    Tok_Break},
     {"import",   Tok_Import},
+    {"let",      Tok_Let},
     {"match",    Tok_Match},
     {"data",     Tok_Data},
     {"enum",     Tok_Enum},
@@ -133,6 +136,7 @@ map<string, int> keywords = {
     {"raw",      Tok_Raw},
     {"const",    Tok_Const},
     {"ext",      Tok_Ext},
+    {"noinit",   Tok_Noinit},
     {"pathogen", Tok_Pathogen},
 
     //other

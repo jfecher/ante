@@ -52,12 +52,12 @@ void yyerror(const char *msg);
 %token If Elif Else
 %token For While Do In
 %token Continue Break
-%token Import Match
+%token Import Let Match
 %token Data Enum
 
 /* modifiers */
-%token Pub Pri Pro
-%token Raw Const Ext Pathogen
+%token Pub Pri Pro Raw
+%token Const Ext Noinit Pathogen
 
 /* other */
 %token Where Infect Cleanse Ct
@@ -180,6 +180,7 @@ modifier: Pub
         | Raw
         | Const
         | Ext
+        | Noinit
         | Pathogen
         ;
 

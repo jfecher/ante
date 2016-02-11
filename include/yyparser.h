@@ -186,24 +186,26 @@ namespace yy {
         Continue = 300,
         Break = 301,
         Import = 302,
-        Match = 303,
-        Data = 304,
-        Enum = 305,
-        Pub = 306,
-        Pri = 307,
-        Pro = 308,
-        Raw = 309,
-        Const = 310,
-        Ext = 311,
-        Pathogen = 312,
-        Where = 313,
-        Infect = 314,
-        Cleanse = 315,
-        Ct = 316,
-        Newline = 317,
-        Indent = 318,
-        Unindent = 319,
-        LOW = 320
+        Let = 303,
+        Match = 304,
+        Data = 305,
+        Enum = 306,
+        Pub = 307,
+        Pri = 308,
+        Pro = 309,
+        Raw = 310,
+        Const = 311,
+        Ext = 312,
+        Noinit = 313,
+        Pathogen = 314,
+        Where = 315,
+        Infect = 316,
+        Cleanse = 317,
+        Ct = 318,
+        Newline = 319,
+        Indent = 320,
+        Unindent = 321,
+        LOW = 322
       };
     };
 
@@ -364,7 +366,7 @@ namespace yy {
     /// \param yyvalue   the value to check
     static bool yy_table_value_is_error_ (int yyvalue);
 
-    static const short int yypact_ninf_;
+    static const signed char yypact_ninf_;
     static const signed char yytable_ninf_;
 
     /// Convert a scanner token number \a t to a symbol number.
@@ -511,12 +513,12 @@ namespace yy {
     enum
     {
       yyeof_ = 0,
-      yylast_ = 718,     ///< Last index in yytable_.
+      yylast_ = 637,     ///< Last index in yytable_.
       yynnts_ = 48,  ///< Number of nonterminal symbols.
       yyfinal_ = 4, ///< Termination state number.
       yyterror_ = 1,
       yyerrcode_ = 256,
-      yyntokens_ = 83  ///< Number of tokens.
+      yyntokens_ = 85  ///< Number of tokens.
     };
 
 
@@ -525,7 +527,7 @@ namespace yy {
 
 
 } // yy
-#line 529 "include/yyparser.h" // lalr1.cc:377
+#line 531 "include/yyparser.h" // lalr1.cc:377
 
 
 

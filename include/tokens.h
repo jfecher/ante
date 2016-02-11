@@ -58,6 +58,7 @@ enum TokenType{
     Tok_Continue,
     Tok_Break,
     Tok_Import,
+    Tok_Let,
     Tok_Match,
     Tok_Data,
     Tok_Enum,
@@ -69,6 +70,7 @@ enum TokenType{
     Tok_Raw,
     Tok_Const,
     Tok_Ext,
+    Tok_Noinit,
     Tok_Pathogen,
 
     //other
