@@ -72,30 +72,6 @@ Value* Compiler::compErr(string msg, unsigned int row, unsigned int col){
     return nullptr;
 }
 
-/*
- *  Translates an individual type in token form to an llvm::Type
- */
-Type* translateType(int tokTy, string typeName = ""){
-    switch(tokTy){
-        case Tok_UserType: //TODO: implement
-            return Type::getVoidTy(getGlobalContext());
-        case Tok_I8:  case Tok_U8:  return Type::getInt8Ty(getGlobalContext());
-        case Tok_I16: case Tok_U16: return Type::getInt16Ty(getGlobalContext());
-        case Tok_I32: case Tok_U32: return Type::getInt32Ty(getGlobalContext());
-        case Tok_I64: case Tok_U64: return Type::getInt64Ty(getGlobalContext());
-        case Tok_Isz:    return Type::getVoidTy(getGlobalContext()); //TODO: implement
-        case Tok_Usz:    return Type::getVoidTy(getGlobalContext()); //TODO: implement
-        case Tok_F16:    return Type::getHalfTy(getGlobalContext());
-        case Tok_F32:    return Type::getFloatTy(getGlobalContext());
-        case Tok_F64:    return Type::getDoubleTy(getGlobalContext());
-        case Tok_C8:     return Type::getInt8Ty(getGlobalContext()); //TODO: implement
-        case Tok_C32:    return Type::getInt32Ty(getGlobalContext()); //TODO: implement
-        case Tok_Bool:   return Type::getInt1Ty(getGlobalContext());
-        case Tok_StrLit: return Type::getInt8PtrTy(getGlobalContext());
-        case Tok_Void:   return Type::getVoidTy(getGlobalContext());
-    }
-    return nullptr;
-}
 
 /*
  *  Returns amount of values in a tuple, from 0 to max uint.
@@ -123,7 +99,7 @@ Value* compileStmtList(Node *nList, Compiler *c, Module *m){
 }
 
 Value* IntLitNode::compile(Compiler *c, Module *m){
-    return ConstantInt::get(Type::getInt32Ty(getGlobalContext()), val, 10);
+    return ConstantInt::get((IntegerType*)c->getNodeType(this), val, 10);
 }
 
 Value* FltLitNode::compile(Compiler *c, Module *m){
@@ -267,7 +243,7 @@ Value* FuncCallNode::compile(Compiler *c, Module *m){
 Value* VarDeclNode::compile(Compiler *c, Module *m){
     TypeNode *tyNode = (TypeNode*)typeExpr.get();
 
-    Type *ty = translateType(tyNode->type, tyNode->typeName);
+    Type *ty = Compiler::translateType(tyNode->type, tyNode->typeName);
     Value *v = c->builder.CreateAlloca(ty, 0, name.c_str());
 
     if(!c->lookup(name)){

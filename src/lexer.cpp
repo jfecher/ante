@@ -301,6 +301,28 @@ int Lexer::genNumLitTok(){
         incPos();
     }
 
+    //check for type suffix
+    if(cur == 'i' || cur == 'u'){
+        s += cur;
+        incPos();
+        if(cur == '8'){
+            s += '8';
+            incPos();
+        }else if(cur == '1' && nxt == '6'){
+            s += "16";
+            incPos();
+            incPos();
+        }else if(cur == '3' && nxt == '2'){
+            s += "32";
+            incPos();
+            incPos();
+        }else if(cur == '6' && nxt == '4'){
+            s += "64";
+            incPos();
+            incPos();
+        }
+    }
+
     setlextxt(&s);
     return flt? Tok_FltLit : Tok_IntLit;
 }

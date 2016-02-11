@@ -14,8 +14,12 @@ using namespace std;
 
 /* Forward-declarations of Nodes defined in parser.h */
 struct Node;
+struct VarNode;
 struct BinOpNode;
 struct FuncDeclNode;
+struct FuncCallNode;
+struct StrLitNode;
+struct IntLitNode;
 
 namespace ante{
     struct Compiler{
@@ -54,6 +58,14 @@ namespace ante{
 
         Function* compFn(FuncDeclNode *fn);
         void registerFunction(FuncDeclNode *func);
+
+        static Type* translateType(int tokTy, string typeName);
+        Type* getNodeType(VarNode *v);
+        Type* getNodeType(StrLitNode *v);
+        Type* getNodeType(IntLitNode *v);
+        Type* getNodeType(FuncCallNode *v);
+        Type* getNodeType(BinOpNode *v);
+        Type* getNodeType(Node *n);
 
         Value* lookup(string var);
         void stoVar(string var, Value *val);

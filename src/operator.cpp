@@ -134,7 +134,7 @@ Value* BinOpNode::compile(Compiler *c, Module *m){
     Value *lhs = lval->compile(c, m);
     Value *rhs = rval->compile(c, m);
 
-    Type *lt = lhs->getType();
+    Type *lt = c->getNodeType(this);
     //Type *rt = lhs->getType();
 
     //int ltt = type2TokType(lt);

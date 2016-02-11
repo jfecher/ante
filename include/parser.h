@@ -58,10 +58,11 @@ struct ParentNode : public Node{
 
 struct IntLitNode : public Node{
     string val;
+    int type;
     Value* compile(Compiler*, Module*);
     //void exec(void);
     void print(void);
-    IntLitNode(string s) : Node(), val(s){}
+    IntLitNode(string s, int ty) : Node(), val(s), type(ty){}
     ~IntLitNode(){}
 };
 

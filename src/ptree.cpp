@@ -45,7 +45,40 @@ Node* setElse(IfNode *c, IfNode *elif){
 }
 
 Node* mkIntLitNode(char* s){
-    auto* ret = new IntLitNode(s);
+    string str = s;
+    int type = Tok_I32;
+
+    //check for type suffix
+    int len = str.length();
+    if(len > 3){
+        char sign = str[len - 3];
+        if(sign == 'u' || sign == 'i'){
+            switch(str[len - 3]){
+                case '1':
+                    type = sign == 'i'? Tok_I16 : Tok_U16;
+                    str = str.substr(0, len-3);
+                    break;
+                case '3':
+                    type = sign == 'i'? Tok_I32 : Tok_U32;
+                    str = str.substr(0, len-3);
+                    break;
+                case '6':
+                    type = sign == 'i'? Tok_I64 : Tok_U64;
+                    str = str.substr(0, len-3);
+                    break;
+                default:
+                    break;
+            }
+        }
+    }else if(len > 2){
+        char sign = str[len - 2];
+        if(sign == 'u' || sign == 'i'){
+            str = str.substr(0, len-2);
+            type = sign == 'i'? Tok_I8 : Tok_U8;
+        }
+    }
+
+    auto* ret = new IntLitNode(s, type);
     ret->col = yylexer->getCol();
     ret->row = yylexer->getRow();
     return ret;
