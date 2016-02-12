@@ -50,9 +50,9 @@ Node* mkIntLitNode(char* s){
 
     //check for type suffix
     int len = str.length();
-    if(len > 3){
-        char sign = str[len - 3];
-        if(sign == 'u' || sign == 'i'){
+    if(len > 2){
+        if(len > 3 && (str[len -3] == 'u' || str[len - 3] == 'i')){
+            char sign = str[len - 3];
             switch(str[len - 2]){
                 case '1':
                     type = sign == 'i'? Tok_I16 : Tok_U16;
@@ -69,16 +69,17 @@ Node* mkIntLitNode(char* s){
                 default:
                     break;
             }
-        }
-    }else if(len > 2){
-        char sign = str[len - 2];
-        if(sign == 'u' || sign == 'i'){
-            str = str.substr(0, len-2);
-            type = sign == 'i'? Tok_I8 : Tok_U8;
+        }else{
+            char sign = str[len - 2];
+            if(sign == 'u' || sign == 'i'){
+                str = str.substr(0, len-2);
+                type = sign == 'i'? Tok_I8 : Tok_U8;
+            }
         }
     }
+    
 
-    auto* ret = new IntLitNode(s, type);
+    auto* ret = new IntLitNode(str, type);
     ret->col = yylexer->getCol();
     ret->row = yylexer->getRow();
     return ret;

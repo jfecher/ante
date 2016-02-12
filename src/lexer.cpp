@@ -321,6 +321,10 @@ int Lexer::genNumLitTok(){
             incPos();
             incPos();
         }
+
+        if(IS_NUMERICAL(cur)){
+            error("Extraneous numbers after type suffix.", fileName, row, col);
+        }
     }
 
     setlextxt(&s);

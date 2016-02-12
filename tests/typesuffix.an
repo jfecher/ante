@@ -11,8 +11,8 @@ u8 byte = 255_u8
 
 u16 uint16 = 1234_u16
 
+printf("%d + %d = %d\n", 16, 34, 16 + 34)
+printf("%d + %d = %d\n", 16i8, 34i8, 16_i8 + 34_i8)
 printf("%u + %u = %u\n", uint16, uint16, uint16 + uint16)
-
 printf("%u + %u = %u\n", byte, uint16, byte + uint16)
-
 printf("%u + %d = %u\n", uint16, long, uint16 + long)
