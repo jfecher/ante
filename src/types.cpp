@@ -6,7 +6,6 @@
  */
 Type* VarNode::getType(Compiler *c){
     if(Value *val = c->lookup(name)){
-        cout << "Var type = " << val->getType()->isIntegerTy() << endl;
         return val->getType();
     }
     return (Type*)c->compErr("Use of undeclared variable " + name + " in expression", row, col);
@@ -17,7 +16,6 @@ Type* StrLitNode::getType(Compiler *c){
 }
 
 Type* IntLitNode::getType(Compiler *c){
-    cout << "Type: " << Lexer::getTokStr(type) << endl;
     return Compiler::translateType(type, ""); 
 }
 
