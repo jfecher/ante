@@ -59,11 +59,14 @@ namespace ante{
         Function* compFn(FuncDeclNode *fn);
         void registerFunction(FuncDeclNode *func);
 
-        static Type* translateType(int tokTy, string typeName);
+        static Type* tokTypeToLlvmType(int tokTy, string typeName);
+        static int llvmTypeToTokType(Type *t);
 
         Value* lookup(string var);
         void stoVar(string var, Value *val);
 
+        void checkIntSize(Value **lhs, Value **rhs);
+        
         static int compileIRtoObj(Module *m, string inFile, string outFile);
         static int linkObj(string inFiles, string outFile);
     };

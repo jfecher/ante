@@ -2,23 +2,6 @@
 #include "compiler.h"
 #include "tokens.h"
 
-int type2TokType(Type *t){
-    if(t->isIntegerTy(8)) return Tok_I8;
-    if(t->isIntegerTy(16)) return Tok_I16;
-    if(t->isIntegerTy(32)) return Tok_I32;
-    if(t->isIntegerTy(64)) return Tok_I64;
-    if(t->isHalfTy()) return Tok_F16;
-    if(t->isFloatTy()) return Tok_F32;
-    if(t->isDoubleTy()) return Tok_F64;
-    
-    if(t->isArrayTy()) return '[';
-    if(t->isStructTy()) return Tok_Data;
-    if(t->isPointerTy()) return '*';
-    if(t->isFunctionTy()) return '(';
-
-    return Tok_Void;
-}
-
 /*
  *  Converts an operation type to its string equivalent for
  *  helpful error messages.
@@ -33,7 +16,7 @@ string opType2Str(int opTy){
 }
 
 Value* Compiler::compAdd(Type *t, Value *l, Value *r, BinOpNode *op){
-    int tt = type2TokType(t);
+    int tt = llvmTypeToTokType(t);
 
     switch(tt){
         case Tok_I8:
@@ -53,7 +36,7 @@ Value* Compiler::compAdd(Type *t, Value *l, Value *r, BinOpNode *op){
 }
 
 Value* Compiler::compSub(Type *t, Value *l, Value *r, BinOpNode *op){
-    int tt = type2TokType(t);
+    int tt = llvmTypeToTokType(t);
     switch(tt){
         case Tok_I8:
         case Tok_I16:
@@ -71,7 +54,7 @@ Value* Compiler::compSub(Type *t, Value *l, Value *r, BinOpNode *op){
 }
 
 Value* Compiler::compMul(Type *t, Value *l, Value *r, BinOpNode *op){
-    int tt = type2TokType(t);
+    int tt = llvmTypeToTokType(t);
     switch(tt){
         case Tok_I8:
         case Tok_I16:
@@ -89,7 +72,7 @@ Value* Compiler::compMul(Type *t, Value *l, Value *r, BinOpNode *op){
 }
 
 Value* Compiler::compDiv(Type *t, Value *l, Value *r, BinOpNode *op){
-    int tt = type2TokType(t);
+    int tt = llvmTypeToTokType(t);
     switch(tt){
         case Tok_I8:
         case Tok_I16:
@@ -107,7 +90,7 @@ Value* Compiler::compDiv(Type *t, Value *l, Value *r, BinOpNode *op){
 }
 
 Value* Compiler::compRem(Type *t, Value *l, Value *r, BinOpNode *op){
-    int tt = type2TokType(t);
+    int tt = llvmTypeToTokType(t);
     switch(tt){
         case Tok_I8:
         case Tok_I16:
@@ -136,6 +119,10 @@ Value* BinOpNode::compile(Compiler *c, Module *m){
     Value *rhs = rval->compile(c, m);
 
     Type *lt = getType(c);
+
+    //Check if both Values are integers, and if so, check if their bit width's match.
+    //If not, the smaller is set to the larger's type.
+    c->checkIntSize(&lhs, &rhs);
 
     switch(op){
         case '+': return c->compAdd(lt, lhs, rhs, this);
