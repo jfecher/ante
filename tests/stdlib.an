@@ -22,40 +22,62 @@ import "io"
 print("Hello World!\n")
 print(3)
 
+~print as varargs function
 print("Test #", 1, '\n')
+
+~Or concatenate everything to one string
 print("Test #" ++ 2 ++ '\n')
 
 File* f = new File("out.txt", File.write)
 f.print("2 + 3 = 5")
 
+~Errors return as seperate values
+File|Err findFile: Str dir
+    if os.fileSearch(dir)
+        return File(os.read(dir), File.read)
+    return Err("File " ++ dir ++ " not found.")
+
+~Set file to findFile, unless findFile returns an Err,
+~In which case stop function execution and return the Err
+let file = findFile("test.txt", File.read)?
+
+~Try to write to the file, but if write returns an Err,
+~print it
+file.write("I only have read permissions")
+    @Err e -> println(e)
+
+
+~Execute void function in expression
+i32 i = print("hi"); 4
+
 ~string module
 import "string"
 
 
-~Example declaration of String
-data String
-    const u32 len
-    const c32[] rawStr
+~Example declaration of Str
+const data Str
+    u32 len
+    c32[] rawStr
 
 
-impl String
-    String op("cast"): c32[] str
+impl Str
+    Str op("cast"): c32[] str
         return String(str.length(), str)
 
-    String op("cast"): i32 int
+    Str op("cast"): i32 int
         return String(stoi(int))
 
-    String op("cast"): c32 c
+    Str op("cast"): c32 c
         return String(1, [c])
 
 
-void print(ParamCount count): String... s
-    for u32 i in 0..count
-        for c32 c in s[i]
+void print: Str... strs
+    for Str s in strs
+        for c32 c in s
             putchar(c)
 
 
-String msg = "Hello World!"
+Str msg = "Hello World!"
 
 msg = msg.repl("Hello", "Goodbye")
 assert(msg == "Goodbye World!")
@@ -63,12 +85,13 @@ assert(msg == "Goodbye World!")
 ~op module
 import "op"
 
-impl String 
+impl Str
+    ~Set ! to function as an isEmpty method
     bool op('!'): self*
         return self.len == 0
 
-    String pop: self*
-        return self[0 .. this.length-2]
+    Str pop: self* where self.length > 0
+        return self[0 .. this.length-1]
 
 
 ~c_ffi module
