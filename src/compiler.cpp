@@ -98,6 +98,10 @@ Value* compileStmtList(Node *nList, Compiler *c, Module *m){
     return ret;
 }
 
+inline bool isUnsignedTokTy(int tt){
+    return tt==Tok_U8||tt==Tok_U16||tt==Tok_U32||tt==Tok_U64||tt==Tok_Usz;
+}
+
 Value* IntLitNode::compile(Compiler *c, Module *m){
     return ConstantInt::get((IntegerType*)getType(c), val, 10);
 }
