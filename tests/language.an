@@ -175,7 +175,7 @@ print(typeof(3.2f64)) ~output: f64
 print(typeof("test")) ~output: c32[]
 print(typeof('A'))    ~output: c32
 
-~c8[] and c8 literals need to be explicitely casted.
+~c8[] and c8 literals need to be explicitly casted.
 let myC8Str = c8[] "test"
 
 ~Integer constants can also be expressed in different bases with the 
@@ -346,7 +346,7 @@ lnprint("Test #", add(3, 43), sum(3, 4, 5))
     Pathogen is a modifier given to a function which can never be evaluated
     compile time.  Examples include io functions such as print and read.  When
     called within another function, the pathogen function infects that function
-    as well, making it a pathogen function without the need to explicitely
+    as well, making it a pathogen function without the need to explicitly
     declare it as such.  The implicit pathogen function is said to be infected.
     The pathogen modifier is usually only used in rare cases such as defining your 
     own print function without utilizing the std api, or using an external c api.  
