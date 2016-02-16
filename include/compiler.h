@@ -21,6 +21,18 @@ struct FuncCallNode;
 struct StrLitNode;
 struct IntLitNode;
 
+
+/*
+ *  Used for storage of additional information, such as signedness,
+ *  not represented by llvm::Type
+ */
+struct TypedValue {
+    Value *val;
+    int type;
+
+    TypedValue(Value *v, int ty) : val(v), type(ty){}
+};
+
 namespace ante{
     struct Compiler{
         unique_ptr<legacy::FunctionPassManager> passManager;
@@ -30,7 +42,7 @@ namespace ante{
 
         //Stack of maps of variables mapped to their identifier.
         //Maps are seperated according to their scope.
-        stack<std::map<string, Value*>> varTable;
+        stack<std::map<string, TypedValue*>> varTable;
 
         //Map of declared, but non-defined functions
         map<string, FuncDeclNode*> fnDecls;
@@ -48,28 +60,33 @@ namespace ante{
         void enterNewScope();
         void exitScope();
         
-        Value* compAdd(Type *t, Value *l, Value *r, BinOpNode *op);
-        Value* compSub(Type *t, Value *l, Value *r, BinOpNode *op);
-        Value* compMul(Type *t, Value *l, Value *r, BinOpNode *op);
-        Value* compDiv(Type *t, Value *l, Value *r, BinOpNode *op);
-        Value* compRem(Type *t, Value *l, Value *r, BinOpNode *op);
+        TypedValue* compAdd(TypedValue *l, TypedValue *r, BinOpNode *op);
+        TypedValue* compSub(TypedValue *l, TypedValue *r, BinOpNode *op);
+        TypedValue* compMul(TypedValue *l, TypedValue *r, BinOpNode *op);
+        TypedValue* compDiv(TypedValue *l, TypedValue *r, BinOpNode *op);
+        TypedValue* compRem(TypedValue *l, TypedValue *r, BinOpNode *op);
         
-        Value* compErr(string msg, unsigned int row, unsigned int col);
+        TypedValue* compErr(string msg, unsigned int row, unsigned int col);
 
         Function* compFn(FuncDeclNode *fn);
         void registerFunction(FuncDeclNode *func);
 
+        TypedValue* lookup(string var);
+        void stoVar(string var, TypedValue *val);
+
+        bool isSigned(Node *n);
+        void checkIntSize(TypedValue **lhs, TypedValue **rhs);
+        
         static Type* tokTypeToLlvmType(int tokTy, string typeName);
         static int llvmTypeToTokType(Type *t);
 
-        Value* lookup(string var);
-        void stoVar(string var, Value *val);
-
-        void checkIntSize(Value **lhs, Value **rhs);
+        static char getBitWidthOfTokTy(int tokTy);
+        static bool isUnsignedTokTy(int tokTy);
         
         static int compileIRtoObj(Module *m, string inFile, string outFile);
         static int linkObj(string inFiles, string outFile);
     };
 }
+
 
 #endif

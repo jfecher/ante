@@ -568,7 +568,7 @@ let td2 = TwoDigits(100) ~RangeErr
 `
 data Teen
     u8 age  in 10 .. 19
-    String name  where name.length > 0
+    Str name  where name.length > 0
 
 let john = Teen(15, "John Brown")
 
@@ -578,7 +578,7 @@ let sara = Teen(18, "")
 
 ~Type conditions with anonymous fields:
 data LongStr
-    String where this.length > 10
+    Str where this.length > 10
 
 ~Type conditions are evaluated whenever the corresponding field is changed.
 data Q2Coord
@@ -828,7 +828,7 @@ data MySmartPtr : Clone
 
 
 ~where can also be used to check the type specification
-data ChessPiece<String piece> where searchFor(piece, ["pawn", "knight", "king"]) != None
+data ChessPiece<Str piece> where searchFor(piece, ["pawn", "knight", "king"]) != None
     u8 x
     u8 y
     
@@ -1006,18 +1006,18 @@ match joe
 ~This is because the Person class inherits from the Animal
 ~class, so the Animal cast to joe was the first valid cast
 
-data MyString
+data MyStr
     c32* s
     u32 len
 
-MyString testStr = "Test", 4
+MyStr testStr = "Test", 4
 
 match testStr
-    MyString("Test", 3)
+    MyStr("Test", 3)
         print("This will not be matched")
-    MyString("Testing", 4)
+    MyStr("Testing", 4)
         print("This will not be matched either")
-    MyString("Test", 4")
+    MyStr("Test", 4")
         print("This will be matched")
 
 
@@ -1331,31 +1331,22 @@ let result = 2 *
     If so, it returns from the method, otherwise, the value
     is not changed.
 `
-data MyErr : Error
-    c32[] desc
-    c32[] detail
-    Error* cause
+data MyErr : Err
+    const Str msg
 
-    ~required by Error trait
-    MyErr fromErr: Error err
-        return err.desc, err.detail, err.cause
+    MyErr op("cast"): Err e
+        return MyErr(e.desc())
 
-    ~required by Error trait
-    c32[] desc: self*
-        return self.desc
+    MyErr op("cast"): Str msg
+        return MyErr{msg}
 
-    ~required by Error trait
-    E* cause: self*
-        return self.cause
-
-    ~required by Error trait
-    c32[] detail: self*
-        return self.detail
+    Str Err.desc: self*
+        return "MyErr: " ++ self.msg
 
 
 ~This function takes three parameters: two i32s and
-~a function that can return a String or StrErr
-i32|MyErr errFunc: i32 a b, (String|StrErr)(i32) fn
+~a function that can return a Str or StrErr
+i32|MyErr errFunc: i32 a b, (Str|Err)(i32) fn
     ~Try to open a file, and if no FileErr is found
     ~Then write Just a test, otherwise wrap the error
     ~In type MyErr (using fromErr()), and return it.

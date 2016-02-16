@@ -1,7 +1,7 @@
 #include <parser.h>
 
 
-char getBitWidthOfTokTy(int tokTy){
+char Compiler::getBitWidthOfTokTy(int tokTy){
     switch(tokTy){
         case Tok_I8: case Tok_U8: return 8;
         case Tok_I16: case Tok_U16: case Tok_F16: return 16;
@@ -19,8 +19,8 @@ char getBitWidthOfTokTy(int tokTy){
  *  valid in an expression context, ie no statement-only nodes.
  */
 Type* VarNode::getType(Compiler *c){
-    if(Value *val = c->lookup(name)){
-        return val->getType();
+    if(TypedValue *val = c->lookup(name)){
+        return val->val->getType();
     }
     return (Type*)c->compErr("Use of undeclared variable " + name + " in expression", row, col);
 }
@@ -52,22 +52,28 @@ Type* FuncCallNode::getType(Compiler *c){
 Type* BinOpNode::getType(Compiler *c){
     return lval->getType(c);
 }
-    
-void Compiler::checkIntSize(Value **lhs, Value **rhs){
-    Type *lty = (*lhs)->getType();
-    Type *rty = (*rhs)->getType();
 
-    if(lty->isIntegerTy() && rty->isIntegerTy()){
-        int lbw = ((IntegerType*)lty)->getBitWidth();
-        int rbw = ((IntegerType*)rty)->getBitWidth();
 
-        if(lbw != rbw){
-            //Cast the value with the smaller bitwidth to the type with the larger bitwidth
-            if(lbw < rbw){
-                *lhs = builder.CreateIntCast(*lhs, rty, true);
-            }else{//lbw > rbw
-                *rhs = builder.CreateIntCast(*rhs, lty, true);
-            }
+/*
+ *  Assures two IntegerType'd Values have the same bitwidth.
+ *  If not, one is casted to the larger bitwidth and mutated.
+ *  Assumes the Type of both values to be IntegerType.
+ *  lSigned and rSigned are set to true if the left and right
+ *  Values are both signed, this determines if they are zero
+ *  extended or sign extended.
+ */
+void Compiler::checkIntSize(TypedValue **lhs, TypedValue **rhs){
+    int lbw = getBitWidthOfTokTy((*lhs)->type);
+    int rbw = getBitWidthOfTokTy((*rhs)->type);
+
+    if(lbw != rbw){
+        //Cast the value with the smaller bitwidth to the type with the larger bitwidth
+        if(lbw < rbw){
+            (*lhs)->val = builder.CreateIntCast((*lhs)->val, (*rhs)->val->getType(), !isUnsignedTokTy((*lhs)->type));
+            (*lhs)->type = (*rhs)->type;
+        }else{//lbw > rbw
+            (*rhs)->val = builder.CreateIntCast((*rhs)->val, (*lhs)->val->getType(), !isUnsignedTokTy((*rhs)->type));
+            (*rhs)->type = (*lhs)->type;
         }
     }
 }

@@ -15,97 +15,99 @@ string opType2Str(int opTy){
     }
 }
 
-Value* Compiler::compAdd(Type *t, Value *l, Value *r, BinOpNode *op){
-    int tt = llvmTypeToTokType(t);
-
-    switch(tt){
-        case Tok_I8:
-        case Tok_I16:
-        case Tok_I32:
-        case Tok_I64:
+TypedValue* Compiler::compAdd(TypedValue *l, TypedValue *r, BinOpNode *op){
+    switch(l->type){
+        case Tok_I8:  case Tok_U8:
+        case Tok_I16: case Tok_U16:
+        case Tok_I32: case Tok_U32:
+        case Tok_I64: case Tok_U64:
         case '*':
-            return builder.CreateAdd(l, r);
+            return new TypedValue(builder.CreateAdd(l->val, r->val), l->type);
         case Tok_F16:
         case Tok_F32:
         case Tok_F64:
-            return builder.CreateFAdd(l, r);
+            return new TypedValue(builder.CreateFAdd(l->val, r->val), l->type);
 
         default:
-            return compErr("binary operator + is undefined for the type " + opType2Str(tt), op->row, op->col);
+            return compErr("binary operator + is undefined for the type " + opType2Str(l->type), op->row, op->col);
     }
 }
 
-Value* Compiler::compSub(Type *t, Value *l, Value *r, BinOpNode *op){
-    int tt = llvmTypeToTokType(t);
-    switch(tt){
-        case Tok_I8:
-        case Tok_I16:
-        case Tok_I32:
-        case Tok_I64:
-            return builder.CreateSub(l, r);
+TypedValue* Compiler::compSub(TypedValue *l, TypedValue *r, BinOpNode *op){
+    switch(l->type){
+        case Tok_I8:  case Tok_U8:
+        case Tok_I16: case Tok_U16:
+        case Tok_I32: case Tok_U32:
+        case Tok_I64: case Tok_U64:
+            return new TypedValue(builder.CreateSub(l->val, r->val), l->type);
         case Tok_F16:
         case Tok_F32:
         case Tok_F64:
-            return builder.CreateFSub(l, r);
+            return new TypedValue(builder.CreateFSub(l->val, r->val), l->type);
 
         default:
-            return compErr("binary operator - is undefined for the type " + opType2Str(tt), op->row, op->col);
+            return compErr("binary operator - is undefined for the type " + opType2Str(l->type), op->row, op->col);
     }
 }
 
-Value* Compiler::compMul(Type *t, Value *l, Value *r, BinOpNode *op){
-    int tt = llvmTypeToTokType(t);
-    switch(tt){
-        case Tok_I8:
-        case Tok_I16:
-        case Tok_I32:
-        case Tok_I64:
-            return builder.CreateMul(l, r);
+TypedValue* Compiler::compMul(TypedValue *l, TypedValue *r, BinOpNode *op){
+    switch(l->type){
+        case Tok_I8:  case Tok_U8:
+        case Tok_I16: case Tok_U16:
+        case Tok_I32: case Tok_U32:
+        case Tok_I64: case Tok_U64:
+            return new TypedValue(builder.CreateMul(l->val, r->val), l->type);
         case Tok_F16:
         case Tok_F32:
         case Tok_F64:
-            return builder.CreateFMul(l, r);
+            return new TypedValue(builder.CreateFMul(l->val, r->val), l->type);
 
         default:
-            return compErr("binary operator * is undefined for the type " + opType2Str(tt), op->row, op->col);
+            return compErr("binary operator * is undefined for the type " + opType2Str(l->type), op->row, op->col);
     }
 }
 
-Value* Compiler::compDiv(Type *t, Value *l, Value *r, BinOpNode *op){
-    int tt = llvmTypeToTokType(t);
-    switch(tt){
-        case Tok_I8:
-        case Tok_I16:
-        case Tok_I32:
-        case Tok_I64:
-            return builder.CreateSDiv(l, r);
+TypedValue* Compiler::compDiv(TypedValue *l, TypedValue *r, BinOpNode *op){
+    switch(l->type){
+        case Tok_I8:  case Tok_U8:
+        case Tok_I16: case Tok_U16:
+        case Tok_I32: case Tok_U32:
+        case Tok_I64: case Tok_U64:
+            return new TypedValue(builder.CreateSDiv(l->val, r->val), l->type);
         case Tok_F16:
         case Tok_F32:
         case Tok_F64:
-            return builder.CreateFDiv(l, r);
+            return new TypedValue(builder.CreateFDiv(l->val, r->val), l->type);
 
         default: 
-            return compErr("binary operator / is undefined for the type " + opType2Str(tt), op->row, op->col);
+            return compErr("binary operator / is undefined for the type " + opType2Str(l->type), op->row, op->col);
     }
 }
 
-Value* Compiler::compRem(Type *t, Value *l, Value *r, BinOpNode *op){
-    int tt = llvmTypeToTokType(t);
-    switch(tt){
-        case Tok_I8:
-        case Tok_I16:
-        case Tok_I32:
-        case Tok_I64:
-            return builder.CreateSRem(l, r);
+TypedValue* Compiler::compRem(TypedValue *l, TypedValue *r, BinOpNode *op){
+    switch(l->type){
+        case Tok_I8:  case Tok_U8:
+        case Tok_I16: case Tok_U16:
+        case Tok_I32: case Tok_U32:
+        case Tok_I64: case Tok_U64:
+            return new TypedValue(builder.CreateSRem(l->val, r->val), l->type);
         case Tok_F16:
         case Tok_F32:
         case Tok_F64:
-            return builder.CreateFRem(l, r);
+            return new TypedValue(builder.CreateFRem(l->val, r->val), l->type);
 
         default:
-            return compErr("binary operator % is undefined for the type " + opType2Str(tt), op->row, op->col);
+            return compErr("binary operator % is undefined for the type " + opType2Str(l->type), op->row, op->col);
     }
 }
+
+
+inline bool isIntTokTy(int ty){
+    return ty==Tok_I8||ty==Tok_I16||ty==Tok_I32||ty==Tok_I64||
+           ty==Tok_U8||ty==Tok_U16||ty==Tok_U32||ty==Tok_U64||
+           ty==Tok_Isz||ty==Tok_Usz;
+}
+
 
 /*
  *  Compiles an operation along with its lhs and rhs
@@ -114,30 +116,30 @@ Value* Compiler::compRem(Type *t, Value *l, Value *r, BinOpNode *op){
  *  TODO: CreateExactUDiv for when it is known there is no remainder
  *  TODO: CreateFcmpOEQ vs CreateFCmpUEQ
  */
-Value* BinOpNode::compile(Compiler *c, Module *m){
-    Value *lhs = lval->compile(c, m);
-    Value *rhs = rval->compile(c, m);
-
-    Type *lt = getType(c);
+TypedValue* BinOpNode::compile(Compiler *c, Module *m){
+    TypedValue *lhs = lval->compile(c, m);
+    TypedValue *rhs = rval->compile(c, m);
 
     //Check if both Values are integers, and if so, check if their bit width's match.
     //If not, the smaller is set to the larger's type.
-    c->checkIntSize(&lhs, &rhs);
+    if(isIntTokTy(lhs->type) && isIntTokTy(rhs->type)){
+        c->checkIntSize(&lhs, &rhs);
+    }
 
     switch(op){
-        case '+': return c->compAdd(lt, lhs, rhs, this);
-        case '-': return c->compSub(lt, lhs, rhs, this);
-        case '*': return c->compMul(lt, lhs, rhs, this);
-        case '/': return c->compDiv(lt, lhs, rhs, this);
-        case '%': return c->compRem(lt, lhs, rhs, this);
-        case '<': return c->builder.CreateICmpULT(lhs, rhs);
-        case '>': return c->builder.CreateICmpUGT(lhs, rhs);
-        case '^': return c->builder.CreateXor(lhs, rhs);
+        case '+': return c->compAdd(lhs, rhs, this);
+        case '-': return c->compSub(lhs, rhs, this);
+        case '*': return c->compMul(lhs, rhs, this);
+        case '/': return c->compDiv(lhs, rhs, this);
+        case '%': return c->compRem(lhs, rhs, this);
+        case '<': return new TypedValue(c->builder.CreateICmpULT(lhs->val, rhs->val), lhs->type);
+        case '>': return new TypedValue(c->builder.CreateICmpUGT(lhs->val, rhs->val), lhs->type);
+        case '^': return new TypedValue(c->builder.CreateXor(lhs->val, rhs->val), lhs->type);
         case '.': break;
-        case Tok_Eq: return c->builder.CreateICmpEQ(lhs, rhs);
-        case Tok_NotEq: return c->builder.CreateICmpNE(lhs, rhs);
-        case Tok_LesrEq: return c->builder.CreateICmpULE(lhs, rhs);
-        case Tok_GrtrEq: return c->builder.CreateICmpUGE(lhs, rhs);
+        case Tok_Eq: return new TypedValue(c->builder.CreateICmpEQ(lhs->val, rhs->val), lhs->type);
+        case Tok_NotEq: return new TypedValue(c->builder.CreateICmpNE(lhs->val, rhs->val), lhs->type);
+        case Tok_LesrEq: return new TypedValue(c->builder.CreateICmpULE(lhs->val, rhs->val), lhs->type);
+        case Tok_GrtrEq: return new TypedValue(c->builder.CreateICmpUGE(lhs->val, rhs->val), lhs->type);
         case Tok_Or: break;
         case Tok_And: break;
     }

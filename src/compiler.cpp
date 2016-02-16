@@ -66,7 +66,7 @@ void ante::error(const char* msg, const char* fileName, unsigned int row, unsign
  *  Inform the user of an error and return nullptr.
  *  (perhaps this should throw an exception?)
  */
-Value* Compiler::compErr(string msg, unsigned int row, unsigned int col){
+TypedValue* Compiler::compErr(string msg, unsigned int row, unsigned int col){
     error(msg.c_str(), fileName.c_str(), row, col);
     errFlag = true;
     return nullptr;
@@ -89,8 +89,11 @@ size_t getTupleSize(Node *tup){
     return size;
 }
 
-Value* compileStmtList(Node *nList, Compiler *c, Module *m){
-    Value *ret = nullptr;
+/*
+ *  Compiles a statement list and returns its last statement.
+ */
+TypedValue* compileStmtList(Node *nList, Compiler *c, Module *m){
+    TypedValue *ret = nullptr;
     while(nList){
         ret = nList->compile(c, m);
         nList = nList->next.get();
@@ -98,29 +101,34 @@ Value* compileStmtList(Node *nList, Compiler *c, Module *m){
     return ret;
 }
 
-inline bool isUnsignedTokTy(int tt){
+inline bool Compiler::isUnsignedTokTy(int tt){
     return tt==Tok_U8||tt==Tok_U16||tt==Tok_U32||tt==Tok_U64||tt==Tok_Usz;
 }
 
-Value* IntLitNode::compile(Compiler *c, Module *m){
-    return ConstantInt::get((IntegerType*)getType(c), val, 10);
+TypedValue* IntLitNode::compile(Compiler *c, Module *m){
+    return new TypedValue(ConstantInt::get(getGlobalContext(),
+                            APInt(Compiler::getBitWidthOfTokTy(type), 
+                            atol(val.c_str()), Compiler::isUnsignedTokTy(type))), type);
 }
 
-Value* FltLitNode::compile(Compiler *c, Module *m){
-    return ConstantFP::get(getGlobalContext(), APFloat(APFloat::IEEEdouble, val.c_str()));
+/*
+ *  TODO: type field for float literals
+ */
+TypedValue* FltLitNode::compile(Compiler *c, Module *m){
+    return new TypedValue(ConstantFP::get(getGlobalContext(), APFloat(APFloat::IEEEdouble, val.c_str())), Tok_F32);
 }
 
-Value* BoolLitNode::compile(Compiler *c, Module *m){
-    return ConstantInt::get(getGlobalContext(), APInt(1, (bool)val, true));
+TypedValue* BoolLitNode::compile(Compiler *c, Module *m){
+    return new TypedValue(ConstantInt::get(getGlobalContext(), APInt(1, (bool)val, true)), Tok_Bool);
 }
 
 
 //TODO: implement as replacement for tokTypeToLlvmType
-Value* TypeNode::compile(Compiler *c, Module *m)
+TypedValue* TypeNode::compile(Compiler *c, Module *m)
 { return nullptr; }
 
-Value* StrLitNode::compile(Compiler *c, Module *m){
-    return c->builder.CreateGlobalStringPtr(val);
+TypedValue* StrLitNode::compile(Compiler *c, Module *m){
+    return new TypedValue(c->builder.CreateGlobalStringPtr(val), '*');
     //ConstantDataArray::getString(getGlobalContext(), val);
 }
 
@@ -128,30 +136,28 @@ Value* StrLitNode::compile(Compiler *c, Module *m){
  *  When a retnode is compiled within a block, care must be taken to not
  *  forcibly insert the branch instruction afterwards as it leads to dead code.
  */
-Value* RetNode::compile(Compiler *c, Module *m){
-    return c->builder.CreateRet(expr->compile(c, m));
+TypedValue* RetNode::compile(Compiler *c, Module *m){
+    return new TypedValue(c->builder.CreateRet(expr->compile(c, m)->val), Tok_Void);
 }
 
 void compileIfNodeHelper(IfNode *ifN, BasicBlock *mergebb, Function *f, Compiler *c, Module *m){
-    //cond should always evaluate to a bool explicitely
-    Value* cond;
     BasicBlock *thenbb = BasicBlock::Create(getGlobalContext(), "then", f);
 
     if(ifN->elseN.get()){
-        cond = ifN->condition->compile(c, m);
+        TypedValue *cond = ifN->condition->compile(c, m);
 
         BasicBlock *elsebb = BasicBlock::Create(getGlobalContext(), "else");
-        c->builder.CreateCondBr(cond, thenbb, elsebb);
+        c->builder.CreateCondBr(cond->val, thenbb, elsebb);
 
         //Compile the if statement's then body
         c->builder.SetInsertPoint(thenbb);
 
         //Compile the then block
-        Value *v = compileStmtList(ifN->child.get(), c, m);
+        TypedValue *v = compileStmtList(ifN->child.get(), c, m);
         
         //If the user did not return from the function themselves, then
         //merge to the endif.
-        if(!dynamic_cast<ReturnInst*>(v)){
+        if(!dynamic_cast<ReturnInst*>(v->val)){
             c->builder.CreateBr(mergebb);
         }
 
@@ -163,23 +169,23 @@ void compileIfNodeHelper(IfNode *ifN, BasicBlock *mergebb, Function *f, Compiler
             compileIfNodeHelper(ifN->elseN.get(), mergebb, f, c, m);
         }else{
             //compile the else node's body directly
-            Value *elseBody = ifN->elseN->child->compile(c, m);
-            if(!dynamic_cast<ReturnInst*>(elseBody)){
+            TypedValue *elseBody = ifN->elseN->child->compile(c, m);
+            if(!dynamic_cast<ReturnInst*>(elseBody->val)){
                 c->builder.CreateBr(mergebb);
             }
         }
     }else{ //this must be an if or elif node with no proceeding elif or else nodes.
-        cond = ifN->condition->compile(c, m);
-        c->builder.CreateCondBr(cond, thenbb, mergebb);
+        TypedValue *cond = ifN->condition->compile(c, m);
+        c->builder.CreateCondBr(cond->val, thenbb, mergebb);
         c->builder.SetInsertPoint(thenbb);
-        Value *v = compileStmtList(ifN->child.get(), c, m);
-        if(!dynamic_cast<ReturnInst*>(v)){
+        TypedValue *v = compileStmtList(ifN->child.get(), c, m);
+        if(!dynamic_cast<ReturnInst*>(v->val)){
             c->builder.CreateBr(mergebb);
         }
     }
 }
 
-Value* IfNode::compile(Compiler *c, Module *m){
+TypedValue* IfNode::compile(Compiler *c, Module *m){
     //Create thenbb and forward declare the others but dont inser them
     //into function f just yet.
     BasicBlock *mergbb = BasicBlock::Create(getGlobalContext(), "endif");
@@ -189,24 +195,24 @@ Value* IfNode::compile(Compiler *c, Module *m){
 
     f->getBasicBlockList().push_back(mergbb);
     c->builder.SetInsertPoint(mergbb);
-    return f;
+    return new TypedValue(f, Tok_Void);
 }
 
 //Since parameters are managed in Compiler::compfn, this need not do anything
-Value* NamedValNode::compile(Compiler *c, Module *m)
+TypedValue* NamedValNode::compile(Compiler *c, Module *m)
 { return nullptr; }
 
 /*
  *  Loads a variable from the stack
  */
-Value* VarNode::compile(Compiler *c, Module *m){
-    Value *val = c->lookup(name);
+TypedValue* VarNode::compile(Compiler *c, Module *m){
+    TypedValue *val = c->lookup(name);
     if(!val)
         return c->compErr("Variable " + name + " has not been declared.", this->row, this->col);
-    return dynamic_cast<AllocaInst*>(val)? c->builder.CreateLoad(val, name) : val;
+    return dynamic_cast<AllocaInst*>(val->val)? new TypedValue(c->builder.CreateLoad(val->val, name), val->type) : val;
 }
 
-Value* FuncCallNode::compile(Compiler *c, Module *m){
+TypedValue* FuncCallNode::compile(Compiler *c, Module *m){
     Function *f = m->getFunction(name);
     if(!f){
         if(auto *fdNode = c->fnDecls[name]){
@@ -231,37 +237,32 @@ Value* FuncCallNode::compile(Compiler *c, Module *m){
     std::vector<Value*> args;
     Node *curParam = params.get();
     for(unsigned i = 0; i < paramSize; i++){
-        args.push_back(curParam->compile(c, m));
+        args.push_back(curParam->compile(c, m)->val);
         curParam = curParam->next.get();
         if(!args.back())
             c->compErr("Argument " + to_string(i+1) + " of called function " + name + " evaluated to null.", this->row, this->col);
     }
 
     if(f->getReturnType() == Type::getVoidTy(getGlobalContext())){
-        return c->builder.CreateCall(f, args);
+        return new TypedValue(c->builder.CreateCall(f, args), Tok_Void);
     }else{
-        return c->builder.CreateCall(f, args, "tmp");
+        return new TypedValue(c->builder.CreateCall(f, args, "tmp"), Compiler::llvmTypeToTokType(f->getReturnType()));
     }
 }
 
-Value* VarDeclNode::compile(Compiler *c, Module *m){
+TypedValue* VarDeclNode::compile(Compiler *c, Module *m){
     TypeNode *tyNode = (TypeNode*)typeExpr.get();
 
     Type *ty = Compiler::tokTypeToLlvmType(tyNode->type, tyNode->typeName);
-    Value *v = c->builder.CreateAlloca(ty, 0, name.c_str());
+    TypedValue *v = new TypedValue(c->builder.CreateAlloca(ty, 0, name.c_str()), tyNode->type);
 
     if(!c->lookup(name)){
         c->stoVar(name, v);
         if(expr){
-            Value *val = expr->compile(c, m);
+            TypedValue *val = expr->compile(c, m);
             if(!val) return nullptr;
 
-            if(val->getType() != ty){
-                if(val->getType()->isDoubleTy()){
-                    val = c->builder.CreateFPTrunc(val, ty);
-                }
-            }
-            return c->builder.CreateStore(expr->compile(c, m), v);
+            return new TypedValue(c->builder.CreateStore(expr->compile(c, m)->val, v->val), tyNode->type);
         }else{
             return v;
         }
@@ -270,10 +271,10 @@ Value* VarDeclNode::compile(Compiler *c, Module *m){
     }
 }
 
-Value* VarAssignNode::compile(Compiler *c, Module *m){
-    Value *v = c->lookup(var->name);
+TypedValue* VarAssignNode::compile(Compiler *c, Module *m){
+    TypedValue *v = c->lookup(var->name);
     if(!v) return c->compErr("Use of undeclared variable " + var->name + " in assignment.", var->row, var->col);
-    return c->builder.CreateStore(expr->compile(c, m), v);
+    return new TypedValue(c->builder.CreateStore(expr->compile(c, m)->val, v->val), Tok_Void);
 }
 
 
@@ -315,17 +316,17 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
 
         //iterate through each parameter and add its value to the new scope.
         for(auto &arg : f->args()){
-            stoVar(param->name, &arg);
+            stoVar(param->name, new TypedValue(&arg, Tok_Void));//TODO: store type of parameters
             if(!(param = (NamedValNode*)param->next.get())) break;
         }
 
-        Value *v = compileStmtList(fdn->child.get(), this, module.get());
+        TypedValue *v = compileStmtList(fdn->child.get(), this, module.get());
 
         builder.SetInsertPoint(&module->getFunction(fdn->name)->back());
         
         //llvm requires explicit returns, so generate a void return even if
         //the user did not in their void function.
-        if(retNode->type == Tok_Void && !dynamic_cast<ReturnInst*>(v)){
+        if(retNode->type == Tok_Void && !dynamic_cast<ReturnInst*>(v->val)){
             builder.CreateRetVoid();
         }
 
@@ -348,47 +349,15 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
 /*
  *  Registers a function for later compilation
  */
-Value* FuncDeclNode::compile(Compiler *c, Module *m){
+TypedValue* FuncDeclNode::compile(Compiler *c, Module *m){
     c->registerFunction(this);
     return nullptr;
 }
 
 
-Value* DataDeclNode::compile(Compiler *c, Module *m)
+TypedValue* DataDeclNode::compile(Compiler *c, Module *m)
 { return nullptr; }
 
-
-/*
-void IntLitNode::exec(){}
-
-void FltLitNode::exec(){}
-
-void BoolLitNode::exec(){}
-
-void TypeNode::exec(){}
-
-void StrLitNode::exec(){}
-
-void BinOpNode::exec(){}
-
-void RetNode::exec(){}
-
-void IfNode::exec(){}
-
-void VarNode::exec(){}
-
-void NamedValNode::exec(){}
-
-void FuncCallNode::exec(){}
-
-void VarDeclNode::exec(){}
-
-void VarAssignNode::exec(){}
-
-void FuncDeclNode::exec(){}
-
-void DataDeclNode::exec(){}
-*/
 
 /*
  *  Creates an anonymous NamedValNode for use in function declarations.
@@ -533,7 +502,7 @@ void Compiler::emitIR()
 
 inline void Compiler::enterNewScope()
 {
-    varTable.push(map<string, Value*>());
+    varTable.push(map<string, TypedValue*>());
 }
 
 inline void Compiler::exitScope()
@@ -541,7 +510,7 @@ inline void Compiler::exitScope()
     varTable.pop();
 }
 
-inline Value* Compiler::lookup(string var)
+inline TypedValue* Compiler::lookup(string var)
 {
     try{
         return varTable.top().at(var);
@@ -550,7 +519,7 @@ inline Value* Compiler::lookup(string var)
     }
 }
 
-inline void Compiler::stoVar(string var, Value *val)
+inline void Compiler::stoVar(string var, TypedValue *val)
 {
     varTable.top()[var] = val;
 }
@@ -585,7 +554,7 @@ Compiler::Compiler(char *_fileName) :
     }
 
     ast.reset(parser::getRootNode());
-    varTable.push(map<string, Value*>());
+    varTable.push(map<string, TypedValue*>());
     module.reset(new Module(removeFileExt(_fileName), getGlobalContext()));
 
     //add passes to passmanager.
