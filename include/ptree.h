@@ -16,17 +16,19 @@ Node* mkIntLitNode(char* s);
 Node* mkFltLitNode(char* s);
 Node* mkStrLitNode(char* s);
 Node* mkBoolLitNode(char b);
+Node* mkModNode(TokenType mod);
 Node* mkTypeNode(int type, char* typeName, Node *extTy = nullptr);
 Node* mkBinOpNode(int op, Node* l, Node* r);
 Node* mkNamedValNode(char* s, Node* tExpr);
 Node* mkFuncCallNode(char* s, Node* p);
 Node* mkVarNode(char* s);
 Node* mkRetNode(Node* expr);
-Node* mkVarDeclNode(char* s, Node* tExpr, Node* expr);
+Node* mkLetBindingNode(char* s, Node* mods, Node* tExpr, Node* expr);
+Node* mkVarDeclNode(char* s, Node* mods, Node* tExpr, Node* expr);
 Node* mkVarAssignNode(Node* var, Node* expr);
 
 Node* mkIfNode(Node* con, Node* body, Node* els = nullptr);
-Node* mkFuncDeclNode(char* s, Node* tExpr, Node* p, Node* body);
+Node* mkFuncDeclNode(char* s, Node* mods, Node* tExpr, Node* p, Node* body);
 Node* mkDataDeclNode(char* s, Node* b);
 
 #endif

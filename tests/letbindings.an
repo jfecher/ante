@@ -1,0 +1,20 @@
+`
+        letbindings.an
+    Test creation of implicitly and explicitely typed
+    let bindings.
+`
+
+let five = 5
+
+let five_i32 = 5_i32
+
+let five_point_zero = 5.0
+
+
+let i32 four = 4
+
+let u8 four_u8 = 4_u8
+
+printf("four + five = %d\n", four + five)
+
+printf("four_u8 + five_i32 = %d\n", four_u8 + five_i32)

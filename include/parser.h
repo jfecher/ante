@@ -111,10 +111,10 @@ struct TypeNode : public Node{
 };
 
 struct ModNode : public Node{
-    int modifier;
+    int mod;
     TypedValue* compile(Compiler*, Module*);
     void print(void);
-    ModNode(int m) : Node(), modifier(m){}
+    ModNode(int m) : Node(), mod(m){}
     ~ModNode(){}
 };
 
@@ -163,12 +163,23 @@ struct StrLitNode : public Node{
     ~StrLitNode(){}
 };
 
-struct VarDeclNode : public Node{
+struct LetBindingNode : public Node{
     string name;
-    unique_ptr<Node> typeExpr, expr;
+    unique_ptr<Node> modifiers, typeExpr, expr;
+
     TypedValue* compile(Compiler*, Module*);
     void print(void);
-    VarDeclNode(string s, Node* t, Node* exp) : Node(), name(s), typeExpr(t), expr(exp){}
+    LetBindingNode(string s, Node *mods, Node* t, Node* exp) : Node(), name(s), modifiers(mods), typeExpr(t), expr(exp){}
+    ~LetBindingNode(){}
+};
+
+struct VarDeclNode : public Node{
+    string name;
+    unique_ptr<Node> modifiers, typeExpr, expr;
+
+    TypedValue* compile(Compiler*, Module*);
+    void print(void);
+    VarDeclNode(string s, Node *mods, Node* t, Node* exp) : Node(), name(s), modifiers(mods), typeExpr(t), expr(exp){}
     ~VarDeclNode(){}
 };
 
@@ -192,13 +203,13 @@ struct IfNode : public ParentNode{
 
 struct FuncDeclNode : public ParentNode{
     string name;
-    unique_ptr<Node> type;
+    unique_ptr<Node> modifiers, type;
     unique_ptr<NamedValNode> params;
     bool varargs;
 
     TypedValue* compile(Compiler*, Module*);
     void print(void);
-    FuncDeclNode(string s, Node* t, Node* p, Node* b, bool va=false) : ParentNode(b), name(s), type(t), params((NamedValNode*)p), varargs(va){}
+    FuncDeclNode(string s, Node *mods, Node *t, Node *p, Node* b, bool va=false) : ParentNode(b), name(s), modifiers(mods), type(t), params((NamedValNode*)p), varargs(va){}
     ~FuncDeclNode(){}
 };
 

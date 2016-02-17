@@ -77,7 +77,6 @@ Node* mkIntLitNode(char* s){
             }
         }
     }
-    
 
     auto* ret = new IntLitNode(str, type);
     ret->col = yylexer->getCol();
@@ -101,6 +100,13 @@ Node* mkStrLitNode(char* s){
 
 Node* mkBoolLitNode(char b){
     auto *ret = new BoolLitNode(b);
+    ret->col = yylexer->getCol();
+    ret->row = yylexer->getRow();
+    return ret;
+}
+
+Node* mkModNode(TokenType mod){
+    auto *ret = new ModNode(mod);
     ret->col = yylexer->getCol();
     ret->row = yylexer->getRow();
     return ret;
@@ -148,8 +154,15 @@ Node* mkVarNode(char* s){
     return ret;
 }
 
-Node* mkVarDeclNode(char* s, Node* tExpr, Node* expr){
-    auto *ret = new VarDeclNode(s, tExpr, expr);
+Node* mkLetBindingNode(char* s, Node* mods, Node* tExpr, Node* expr){
+    auto *ret = new LetBindingNode(s, mods, tExpr, expr);
+    ret->col = yylexer->getCol();
+    ret->row = yylexer->getRow();
+    return ret;
+}
+
+Node* mkVarDeclNode(char* s, Node* mods, Node* tExpr, Node* expr){
+    auto *ret = new VarDeclNode(s, mods, tExpr, expr);
     ret->col = yylexer->getCol();
     ret->row = yylexer->getRow();
     return ret;
@@ -169,8 +182,8 @@ ParentNode* mkIfNode(Node* con, Node* body, Node* els = nullptr){
     return ret;
 }
 
-ParentNode* mkFuncDeclNode(char* s, Node* tExpr, Node* p, Node* b){
-    auto *ret = new FuncDeclNode(s, tExpr, p, b);
+ParentNode* mkFuncDeclNode(char* s, Node* mods, Node* tExpr, Node* p, Node* b){
+    auto *ret = new FuncDeclNode(s, mods, tExpr, p, b);
     ret->col = yylexer->getCol();
     ret->row = yylexer->getRow();
     return ret;

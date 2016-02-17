@@ -44,6 +44,10 @@ void StrLitNode::print(){
     maybePrintArr(next.get());
 }
 
+void ModNode::print(){
+    Lexer::printTok(mod);
+}
+
 void TypeNode::print(){
     if(type == Tok_Ident || type == Tok_UserType)
         cout << typeName;
@@ -108,6 +112,16 @@ void FuncCallNode::print(){
     cout << "fnCall " << name << '(';
     if(params) params->print();
     putchar(')');
+}
+
+void LetBindingNode::print(){
+    cout << "let ";
+    if(typeExpr.get()){
+        typeExpr->print();
+    }
+    cout << ' ' << name << " = ";
+    expr->print(); //expr is not null-checked since it is required to be non-null
+    putchar('\n');
 }
 
 void VarDeclNode::print(){

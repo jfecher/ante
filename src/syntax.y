@@ -26,6 +26,8 @@ namespace ante{
 
 void yyerror(const char *msg);
 
+struct ModTyPair{ Node *mod, *ty; };
+
 %}
 
 %locations
@@ -123,6 +125,7 @@ stmt: var_decl      {$$ = $1;}
     | for_loop      {$$ = $1;}
     | if_stmt       {$$ = $1;}
     | enum_decl     {$$ = $1;}
+    | let_binding   {$$ = $1;}
     ;
 
 ident: Ident {$$ = (Node*)lextxt;}
@@ -169,32 +172,44 @@ type: type '*'                {$$ = mkTypeNode('*', (char*)"", $1);}
     | lit_type                {$$ = $1;}
     ;
 
-type_expr: type_expr ',' type {$$ = setNext($1, $3);}
-         | type_expr '|' type
-         | type               {$$ = setRoot($1);}
-         ;
+type_expr_: type_expr_ ',' type {$$ = setNext($1, $3);}
+          | type_expr_ '|' type
+          | type                {$$ = setRoot($1);}
+          ;
 
-modifier: Pub
-        | Pri
-        | Pro
-        | Raw
-        | Const
-        | Ext
-        | Noinit
-        | Pathogen
+type_expr: type_expr_ {$$ = getRoot();}
+
+
+modifier: Pub      {$$ = mkModNode(Tok_Pub);} 
+        | Pri      {$$ = mkModNode(Tok_Pri);}
+        | Pro      {$$ = mkModNode(Tok_Pro);}
+        | Raw      {$$ = mkModNode(Tok_Raw);}
+        | Const    {$$ = mkModNode(Tok_Const);}
+        | Ext      {$$ = mkModNode(Tok_Ext);}
+        | Noinit   {$$ = mkModNode(Tok_Noinit);}
+        | Pathogen {$$ = mkModNode(Tok_Pathogen);}
         ;
 
-modifier_list: modifier_list modifier {$$ = setNext($1, $2);}
-             | modifier {$$ = setRoot($1);}
+modifier_list_: modifier_list_ modifier {$$ = setNext($1, $2);}
+              | modifier {$$ = setRoot($1);}
+              ;
+
+modifier_list: modifier_list_ {$$ = getRoot();}
              ;
 
-decl_prepend: modifier_list type_expr {$$ = getRoot();} /*TODO: modifier list*/
-            | type_expr {$$ = getRoot();}
-            ;
 
-var_decl: decl_prepend ident '=' expr  %prec Ident {$$ = mkVarDeclNode((char*)$2, $1, $4);}
-        | decl_prepend ident  %prec LOW {$$ = mkVarDeclNode((char*)$2, $1, 0);}
+var_decl: modifier_list type_expr ident '=' expr  %prec Ident {$$ = mkVarDeclNode((char*)$3, $1, $2, $5);}
+        | modifier_list type_expr ident           %prec LOW   {$$ = mkVarDeclNode((char*)$3, $1, $2,  0);}
+        | type_expr ident '=' expr                %prec Ident {$$ = mkVarDeclNode((char*)$2, 0,  $1, $4);}
+        | type_expr ident                         %prec LOW   {$$ = mkVarDeclNode((char*)$2, 0,  $1,  0);}
         ;
+
+let_binding: Let modifier_list type_expr ident '=' expr  {$$ = mkLetBindingNode((char*)$3, $2, $3, $6);}
+           | Let modifier_list ident '=' expr            {$$ = mkLetBindingNode((char*)$2, $2, 0,  $5);}
+           | Let type_expr ident '=' expr                {$$ = mkLetBindingNode((char*)$3, 0,  $2, $5);}
+           | Let ident '=' expr                          {$$ = mkLetBindingNode((char*)$2, 0,  0,  $4);}
+           ;
+
 
 /* TODO: change arg1 to require node* instead of char* */
 var_assign: var '=' expr {$$ = mkVarAssignNode($1, $3);}
@@ -252,8 +267,10 @@ maybe_params: params {$$ = getRoot();}
             | %empty {$$ = NULL;}
             ;
 
-fn_decl: decl_prepend ident ':' maybe_params block {$$ = mkFuncDeclNode((char*)$2, $1, $4, $5);}
-       | decl_prepend ident '(' maybe_expr ')' ':' maybe_params block {$$ = mkFuncDeclNode((char*)$2, $1, $7, $8);}
+fn_decl: modifier_list type_expr ident ':' maybe_params block                    {$$ = mkFuncDeclNode((char*)$3, $1, $2, $5, $6);}
+       | modifier_list type_expr ident '(' maybe_expr ')' ':' maybe_params block {$$ = mkFuncDeclNode((char*)$3, $1, $2, $8, $9);}
+       | type_expr ident ':' maybe_params block                                  {$$ = mkFuncDeclNode((char*)$2, 0,  $1, $4, $5);}
+       | type_expr ident '(' maybe_expr ')' ':' maybe_params block               {$$ = mkFuncDeclNode((char*)$2, 0,  $1, $7, $8);}
        ;
 
 fn_call: ident '(' maybe_expr ')' {$$ = mkFuncCallNode((char*)$1, $3);}

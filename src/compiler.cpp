@@ -123,9 +123,14 @@ TypedValue* BoolLitNode::compile(Compiler *c, Module *m){
 }
 
 
-//TODO: implement as replacement for tokTypeToLlvmType
-TypedValue* TypeNode::compile(Compiler *c, Module *m)
-{ return nullptr; }
+TypedValue* ModNode::compile(Compiler *c, Module *m){
+    return nullptr;
+}
+
+//TODO: possibly implement as replacement for tokTypeToLlvmType
+TypedValue* TypeNode::compile(Compiler *c, Module *m){
+    return nullptr;
+}
 
 TypedValue* StrLitNode::compile(Compiler *c, Module *m){
     return new TypedValue(c->builder.CreateGlobalStringPtr(val), '*');
@@ -209,6 +214,7 @@ TypedValue* VarNode::compile(Compiler *c, Module *m){
     TypedValue *val = c->lookup(name);
     if(!val)
         return c->compErr("Variable " + name + " has not been declared.", this->row, this->col);
+
     return dynamic_cast<AllocaInst*>(val->val)? new TypedValue(c->builder.CreateLoad(val->val, name), val->type) : val;
 }
 
@@ -250,24 +256,44 @@ TypedValue* FuncCallNode::compile(Compiler *c, Module *m){
     }
 }
 
-TypedValue* VarDeclNode::compile(Compiler *c, Module *m){
-    TypeNode *tyNode = (TypeNode*)typeExpr.get();
 
-    Type *ty = Compiler::tokTypeToLlvmType(tyNode->type, tyNode->typeName);
-    TypedValue *v = new TypedValue(c->builder.CreateAlloca(ty, 0, name.c_str()), tyNode->type);
-
-    if(!c->lookup(name)){
-        c->stoVar(name, v);
-        if(expr){
-            TypedValue *val = expr->compile(c, m);
-            if(!val) return nullptr;
-
-            return new TypedValue(c->builder.CreateStore(expr->compile(c, m)->val, v->val), tyNode->type);
-        }else{
-            return v;
-        }
-    }else{ //variable was already defined
+TypedValue* LetBindingNode::compile(Compiler *c, Module *m){
+    if(c->lookup(name)){ //check for redeclaration
         return c->compErr("Variable " + name + " was redeclared.", row, col);
+    }
+    
+    TypedValue *val = expr->compile(c, m);
+    if(!val) return nullptr;
+
+    TypeNode *tyNode;
+    if((tyNode = (TypeNode*)typeExpr.get())){
+        if(val->type != tyNode->type){
+            return c->compErr("Incompatible types in explicit binding.", row, col);
+        }
+    }
+
+    c->stoVar(name, val);
+    return val;
+}
+
+
+TypedValue* VarDeclNode::compile(Compiler *c, Module *m){
+    if(c->lookup(name)){ //check for redeclaration
+        return c->compErr("Variable " + name + " was redeclared.", row, col);
+    }
+
+    TypeNode *tyNode = (TypeNode*)typeExpr.get();
+    Type *ty = Compiler::tokTypeToLlvmType(tyNode->type, tyNode->typeName);
+    TypedValue *alloca = new TypedValue(c->builder.CreateAlloca(ty, 0, name.c_str()), tyNode->type);
+
+    c->stoVar(name, alloca);
+    if(expr.get()){
+        TypedValue *val = expr->compile(c, m);
+        if(!val) return nullptr;
+
+        return new TypedValue(c->builder.CreateStore(val->val, alloca->val), tyNode->type);
+    }else{
+        return alloca;
     }
 }
 
@@ -288,7 +314,7 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
     size_t nParams = getTupleSize(param);
 
     //Get each and every parameter type and store them in paramTys
-    NamedValNode *cParam = fdn->params.get();
+    NamedValNode *cParam = param;
     vector<Type*> paramTys;
 
     //Tell the vector to reserve space equal to nParam parameters so it does not have to reallocate.
@@ -315,8 +341,10 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
         enterNewScope();
 
         //iterate through each parameter and add its value to the new scope.
+        cParam = param;
         for(auto &arg : f->args()){
-            stoVar(param->name, new TypedValue(&arg, Tok_Void));//TODO: store type of parameters
+            TypeNode *paramTyNode = (TypeNode*)cParam->typeExpr.get();
+            stoVar(param->name, new TypedValue(&arg, paramTyNode->type));//TODO: store type of parameters
             if(!(param = (NamedValNode*)param->next.get())) break;
         }
 
@@ -377,16 +405,16 @@ TypeNode* mkAnonTypeNode(int type){
  */
 void Compiler::compilePrelude(){
     // void printf: c8* str, ... va
-    registerFunction(new FuncDeclNode("printf", mkAnonTypeNode(Tok_Void), mkAnonNVNode(Tok_StrLit), nullptr, true));
+    registerFunction(new FuncDeclNode("printf", 0, mkAnonTypeNode(Tok_Void), mkAnonNVNode(Tok_StrLit), nullptr, true));
 
     // void puts: c8* str
-    registerFunction(new FuncDeclNode("puts", mkAnonTypeNode(Tok_Void), mkAnonNVNode(Tok_StrLit), nullptr));
+    registerFunction(new FuncDeclNode("puts", 0, mkAnonTypeNode(Tok_Void), mkAnonNVNode(Tok_StrLit), nullptr));
 
     // void putchar: c8 c
-    registerFunction(new FuncDeclNode("putchar", mkAnonTypeNode(Tok_Void), mkAnonNVNode(Tok_I32), nullptr));
+    registerFunction(new FuncDeclNode("putchar", 0, mkAnonTypeNode(Tok_Void), mkAnonNVNode(Tok_I32), nullptr));
 
     // void exit: u8 status
-    registerFunction(new FuncDeclNode("exit", mkAnonTypeNode(Tok_Void), mkAnonNVNode(Tok_I32), nullptr));
+    registerFunction(new FuncDeclNode("exit", 0, mkAnonTypeNode(Tok_Void), mkAnonNVNode(Tok_I32), nullptr));
 }
 
 /*

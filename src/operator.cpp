@@ -29,7 +29,7 @@ TypedValue* Compiler::compAdd(TypedValue *l, TypedValue *r, BinOpNode *op){
             return new TypedValue(builder.CreateFAdd(l->val, r->val), l->type);
 
         default:
-            return compErr("binary operator + is undefined for the type " + opType2Str(l->type), op->row, op->col);
+            return compErr("binary operator + is undefined for the type " + opType2Str(l->type) + " and " + opType2Str(r->type), op->row, op->col);
     }
 }
 
@@ -46,7 +46,7 @@ TypedValue* Compiler::compSub(TypedValue *l, TypedValue *r, BinOpNode *op){
             return new TypedValue(builder.CreateFSub(l->val, r->val), l->type);
 
         default:
-            return compErr("binary operator - is undefined for the type " + opType2Str(l->type), op->row, op->col);
+            return compErr("binary operator - is undefined for the type " + opType2Str(l->type) + " and " + opType2Str(r->type), op->row, op->col);
     }
 }
 
@@ -63,41 +63,51 @@ TypedValue* Compiler::compMul(TypedValue *l, TypedValue *r, BinOpNode *op){
             return new TypedValue(builder.CreateFMul(l->val, r->val), l->type);
 
         default:
-            return compErr("binary operator * is undefined for the type " + opType2Str(l->type), op->row, op->col);
+            return compErr("binary operator * is undefined for the type " + opType2Str(l->type) + " and " + opType2Str(r->type), op->row, op->col);
     }
 }
 
 TypedValue* Compiler::compDiv(TypedValue *l, TypedValue *r, BinOpNode *op){
     switch(l->type){
-        case Tok_I8:  case Tok_U8:
-        case Tok_I16: case Tok_U16:
-        case Tok_I32: case Tok_U32:
-        case Tok_I64: case Tok_U64:
+        case Tok_I8:  
+        case Tok_I16: 
+        case Tok_I32: 
+        case Tok_I64: 
             return new TypedValue(builder.CreateSDiv(l->val, r->val), l->type);
+        case Tok_U8:
+        case Tok_U16:
+        case Tok_U32:
+        case Tok_U64:
+            return new TypedValue(builder.CreateUDiv(l->val, r->val), l->type);
         case Tok_F16:
         case Tok_F32:
         case Tok_F64:
             return new TypedValue(builder.CreateFDiv(l->val, r->val), l->type);
 
         default: 
-            return compErr("binary operator / is undefined for the type " + opType2Str(l->type), op->row, op->col);
+            return compErr("binary operator / is undefined for the type " + opType2Str(l->type) + " and " + opType2Str(r->type), op->row, op->col);
     }
 }
 
 TypedValue* Compiler::compRem(TypedValue *l, TypedValue *r, BinOpNode *op){
     switch(l->type){
-        case Tok_I8:  case Tok_U8:
-        case Tok_I16: case Tok_U16:
-        case Tok_I32: case Tok_U32:
-        case Tok_I64: case Tok_U64:
+        case Tok_I8: 
+        case Tok_I16:
+        case Tok_I32:
+        case Tok_I64:
             return new TypedValue(builder.CreateSRem(l->val, r->val), l->type);
+        case Tok_U8:
+        case Tok_U16:
+        case Tok_U32:
+        case Tok_U64:
+            return new TypedValue(builder.CreateURem(l->val, r->val), l->type);
         case Tok_F16:
         case Tok_F32:
         case Tok_F64:
             return new TypedValue(builder.CreateFRem(l->val, r->val), l->type);
 
         default:
-            return compErr("binary operator % is undefined for the type " + opType2Str(l->type), op->row, op->col);
+            return compErr("binary operator % is undefined for the types " + opType2Str(l->type) + " and " + opType2Str(r->type), op->row, op->col);
     }
 }
 
