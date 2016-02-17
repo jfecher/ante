@@ -1,16 +1,26 @@
 `
         compilerr.an
     Test detection and formatting of various compile-time errors.
-    Currently, this file contains two undeclared variables, a and aa,
-    used on lines 8, 10, and 12.
+    Currently, this file contains three undeclared variables, a, aa, and c,
+    as well as a redefinition of a, and the attempted mutation of an immutable
+    variable.
 `
 
+~a never declared
 a = 3
 
 i32 a = 3
 
+~c never declared
 i32 b = c
 
+~a redeclared
 i32 a = 5
 
+~aa never declared
 aa = 4
+
+let five = 6
+
+~mutated immutable variable
+five = 5

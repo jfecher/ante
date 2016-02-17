@@ -299,7 +299,10 @@ TypedValue* VarDeclNode::compile(Compiler *c, Module *m){
 
 TypedValue* VarAssignNode::compile(Compiler *c, Module *m){
     TypedValue *v = c->lookup(var->name);
-    if(!v) return c->compErr("Use of undeclared variable " + var->name + " in assignment.", var->row, var->col);
+    if(!v)
+        return c->compErr("Use of undeclared variable " + var->name + " in assignment.", var->row, var->col);
+    if(!dynamic_cast<AllocaInst*>(v->val))
+        return c->compErr("Cannot mutate immutable variable " + var->name, var->row, var->col);
     return new TypedValue(c->builder.CreateStore(expr->compile(c, m)->val, v->val), Tok_Void);
 }
 
