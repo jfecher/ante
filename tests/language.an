@@ -342,14 +342,14 @@ lnprint("Test #", add(3, 43), sum(3, 4, 5))
 ~Test #, 46, 12
 
 `
-        Pathogen infections and Cleanse
+        Pathogen infections
     Pathogen is a modifier given to a function which can never be evaluated
     compile time.  Examples include io functions such as print and read.  When
     called within another function, the pathogen function infects that function
     as well, making it a pathogen function without the need to explicitly
     declare it as such.  The implicit pathogen function is said to be infected.
     The pathogen modifier is usually only used in rare cases such as defining your 
-    own print function without utilizing the std api, or using an external c api.  
+    own print function without utilizing the standard api, or using an external c api.  
     While less common, the pathogen modifier may be used for variables, classes, enums, etc.
 `
 pathogen void myPrint: c32* msg
@@ -357,11 +357,12 @@ pathogen void myPrint: c32* msg
     system("echo '" ++ msg ++ "'") ~note: system is already a pathogen function
 
 ~Because the following function uses the pathogen myPrint, it cannot be
-~eliminated from the final binary, and is said to be infected.
+~evaluated compile-time, so the system call to echo 'Hello World' will
+~occur during run-time.
 void printMsg:
     myPrint("Hello World!")
 
-~To use a pathogen function without the host becoming infected, the keyword cleanse
+~To use a pathogen function without the host becoming infected, the keyword do
 ~is used when calling a pathogen or infected function.  This compile time evaluation
 ~of pathogen functions can be useful in several applications, such as loading an image
 ~into a variable or class representing it without the need to search for it during runtime,
@@ -369,7 +370,7 @@ void printMsg:
 Image* compileTimeLoadImg:
     File *f = new File("path/to/image.png")
     u8[] imgData
-    cleanse f.readAll(imgData) ~Reads all of the image data into data at compile time
+    do f.readAll(imgData) ~Reads all of the image data into data at compile time
     return new Image(imgData)
 
 ~Conversely, to infect a non-pathogen function, the infect keyword may be used.
@@ -378,38 +379,39 @@ Image* runTimeLoadImg:
     return infect compileTimeLoadImg()
 
 ~Values can also be infected if set equal to the return value of a pathogen function
-Image* myImg = runTimeLoadImg()
+let myImg = runTimeLoadImg()
 someFunction(myImg) ~This instance of someFunction is infected since an infected parameter is used.
 
 
 `
-        Ct
-    The keyword ct is used to indicate control flow which is only to be
-    evaluated at compile time, and should never be compiled.  Ct can be used
-    for many things, including printing out a message during compile time,
-    assuring a function argument is valid, checking for possible integer
-    overflow, etc.  Additionaly, they have the power to throw a possible
-    exception, stopping compilation immediately.
+        Compile-Time only statements
+    There are some scenarios where it is desirable for certain statements
+    to only be evaluated during compile-time, without being compiled into
+    the final binary.  This is accomplished with the when keyword.  When is
+    syntactically similar to if, but with the key difference that it must
+    be able to be evaluated compile-time (ie no pathogens).
 `
 
 `
-    The following function takes two parameters, and if m is negative, prints
-    a hint to the programmer during compilation.
+    The following function takes two parameters, and if m is negative, panics
+    with the message "calculateForce: mass cannot be negative!", and fails to
+    compile.
+
     ~NOTE: a better method of ensuring m is positive is using the where
            statement discussed later.
 `
-f64 calculateForce: f64 m, f64 a
-    ct
-        if m < 0
-            myPrint("calculateForce: mass cannot be negative!")
+f64 calculateForce: f64 m a
+    when m < 0
+        panic("calculateForce: mass cannot be negative!\nError value: " ++ m)
     return m*a
 
-i8 add: i8 a, i8 b
-    ct ~Only check for a possible overflow during compilation, otherwise just run with it
+~when true  can be used to perform a generic check during compile time
+i8 add: i8 a b
+    when true
         i16 c = a
         i16 d = b
         if c + d > 255 or c + d < -256
-            print("Likely integer overflow in add function.")
+            panic("Likely integer overflow in add function.")
     return a + b
 
 
@@ -434,7 +436,7 @@ import C("stdio.h", "stdlib.h")
 ~Like functions, files can also be added after initialization
 import C("stdio.h").addSrc("stdlib.h")
 
-import C("stdio.h").addSrc(["stdlib.h", "limits.h", "math.h"])
+import C("stdio.h").addSrc("stdlib.h", "limits.h", "math.h")
 
 putchar(72)
 putchar(105)
@@ -1438,19 +1440,19 @@ assert(5 is 5)
 ~Could be called as the comparison for match statements
 
 ~Allow/force names in data declarations to precede types
-data Vec<T>
-    mem: t[]
+data Vec
+    mem: t
     len: u32
     cap: u32
 
-data List<type T>
-    val: T
-    next: List<T> | enum -> end
+data List
+    val: t
+    next: List<t> | enum -> end
 
 ~vs
-data List<type T>
-    T val
-    List<T> | enum -> end
+data List
+    t val
+    List<t> | enum -> end
     next
 
 ~or
@@ -1528,9 +1530,7 @@ primitive datatypes:
     f32
     f64
     c8
-    c16
     c32
-    c64
     bool 
     void
 
@@ -1544,6 +1544,7 @@ statements:
     else 
     import 
     match
+    impl
     
 loops: 
     for
@@ -1557,9 +1558,8 @@ modifiers:
     pub 
     pri 
     pro 
-    const 
-    impl
-    dyn
+    const
+    noinit
     pathogen
 
 datatypes:
@@ -1567,10 +1567,9 @@ datatypes:
     enum
 
 other:
+    when
     where
     infect
-    cleanse
-    ct
 `
 
 `
@@ -1578,36 +1577,7 @@ other:
 @
 #
 $
-\
 |
 ?
 
-`
-
-
-`
-        Reserved Variables
-
-_args
-    stores the command line arguments of the program
-
-_argc
-    contains the amount of command line arguments given
-
-_params
-    tuple containing each parameter of the current function
-
-_paramc
-    amount of parameters in the current function
-`
-
-`
-        Reserved Functions
-_init
-    Can be declared within a class to be automatically called
-    when creating a new instance of the class.
-
-_deinit
-    Can be declared within a class to be automatically called
-    when the class goes out of scope.
 `
