@@ -259,8 +259,17 @@ enum_decl: modifier_list Enum usertype enum_block  {$$ = NULL;}
 block: Indent stmt_list Unindent {$$ = getRoot();}
      ;
 
-params: params ',' type_expr ident {$$ = setNext($1, mkNamedValNode((char*)$4, $3));}
-      | type_expr ident            {$$ = setRoot(mkNamedValNode((char*)$2, $1));}
+ident_list: ident_list ident  {$$ = setNext($1, mkVarNode((char*)$2));}
+          | ident             {$$ = setRoot(mkVarNode((char*)$1));}
+          ;
+
+/* 
+ * In case of multiple parameters declared with a single type, eg i32 a b c
+ * The next parameter should be set to the first in the list, (the one returned by getRoot()),
+ * but the variable returned must be the last in the last, in this case $4
+ */
+params: params ',' type_expr ident_list {setNext($1, mkNamedValNode(getRoot(), $3)); $$ = $4;}
+      | type_expr ident_list            {setRoot(mkNamedValNode(getRoot(), $1)); $$ = $2;}
       ;
 
 maybe_params: params {$$ = getRoot();}

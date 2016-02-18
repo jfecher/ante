@@ -19,7 +19,7 @@ Node* mkBoolLitNode(char b);
 Node* mkModNode(TokenType mod);
 Node* mkTypeNode(int type, char* typeName, Node *extTy = nullptr);
 Node* mkBinOpNode(int op, Node* l, Node* r);
-Node* mkNamedValNode(char* s, Node* tExpr);
+Node* mkNamedValNode(Node* nodes, Node* tExpr);
 Node* mkFuncCallNode(char* s, Node* p);
 Node* mkVarNode(char* s);
 Node* mkRetNode(Node* expr);

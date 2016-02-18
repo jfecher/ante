@@ -133,10 +133,27 @@ Node* mkRetNode(Node* expr){
     return ret;
 }
 
-Node* mkNamedValNode(char* s, Node* tExpr){
-    auto *ret = new NamedValNode(s, tExpr);
-    ret->col = yylexer->getCol();
-    ret->row = yylexer->getRow();
+/*
+ *  This may create several NamedVal nodes depending on the
+ *  number of VarNodes contained within varNodes.
+ *  This is used for the shortcut when declaring multiple
+ *  variables of the same type, e.g. i32 a b c
+ */
+Node* mkNamedValNode(Node* varNodes, Node* tExpr){
+    //Note: there will always be at least one varNode
+    VarNode* vn = (VarNode*)varNodes;
+    Node *ret = new NamedValNode(vn->name, tExpr);
+    Node *nxt = ret;
+
+    while((vn = (VarNode*)vn->next.get())){
+        //FIXME: tExpr must be deep-copied
+        nxt->next.reset(new NamedValNode(vn->name, tExpr));
+        nxt->next->prev = nxt;
+        nxt = nxt->next.get();
+        nxt->col = yylexer->getCol();
+        nxt->row = yylexer->getRow();
+    }
+    delete varNodes;
     return ret;
 }
 
