@@ -28,6 +28,25 @@ data Number
         Two
         Three
 
+data Number = enum
+    One
+    Two
+    Three
+    Four
+ 
+data Flags = set
+    Pathogen
+    Public
+    Private
+    Const
+
+data VarDeclNode
+    Flags modifiers
+    Str type where type.isAnyOf("i32", "u8", "void")
+    Str name
+
+const VarDeclNode x = (Public|Pathogen), "i32", "x"
+
 ~Test untyped generics
 data Maybe
     t | enum -> None
@@ -59,22 +78,22 @@ u32 depth: Tree t
 ~Scalar ranges and conditions
 data Person
     u8 age in 0..120
-    c32[] age where age.length > 0
+    Str name where name.length > 0
 
+Person kyle = 24, "Kyle"
 
-void main:
-    Maybe i = 32
+Maybe i = 32
 
-    ~Known not to be T due to strict typing
-    Maybe<i32> j = None
+~Known not to be t due to strict typing
+Maybe<i32> j = None
 
-    ~Declare a Maybe<i32> with T set to 0
-    Maybe k = i32 None
+~Declare a Maybe<i32> with t set to 0
+Maybe k = i32 None
 
 `
     Rust's Result datatype would be mostly useless in ante
     since it boils down to a single or:
 
-data Result<T, E>
-    T | E
+data Result
+    t | e
 `

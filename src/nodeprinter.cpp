@@ -109,7 +109,7 @@ void VarNode::print(){
 }
 
 void FuncCallNode::print(){
-    cout << "fnCall " << name << '(';
+    cout << name << '(';
     if(params) params->print();
     putchar(')');
 }

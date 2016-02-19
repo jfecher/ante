@@ -141,13 +141,15 @@ Node* mkRetNode(Node* expr){
  */
 Node* mkNamedValNode(Node* varNodes, Node* tExpr){
     //Note: there will always be at least one varNode
+    const TypeNode* ty = (TypeNode*)tExpr;
     VarNode* vn = (VarNode*)varNodes;
     Node *ret = new NamedValNode(vn->name, tExpr);
     Node *nxt = ret;
 
     while((vn = (VarNode*)vn->next.get())){
         //FIXME: tExpr must be deep-copied
-        nxt->next.reset(new NamedValNode(vn->name, tExpr));
+        TypeNode *tyNode = new TypeNode(ty->type, ty->typeName, nullptr);
+        nxt->next.reset(new NamedValNode(vn->name, tyNode));
         nxt->next->prev = nxt;
         nxt = nxt->next.get();
         nxt->col = yylexer->getCol();
