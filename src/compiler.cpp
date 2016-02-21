@@ -111,11 +111,22 @@ TypedValue* IntLitNode::compile(Compiler *c, Module *m){
                             atol(val.c_str()), Compiler::isUnsignedTokTy(type))), type);
 }
 
+const fltSemantics& tokTyToFltSemantics(int tokTy){
+    switch(tokTy){
+        case Tok_F16: return APFloat::IEEEhalf;
+        case Tok_F32: return APFloat::IEEEsingle;
+        case Tok_F64: return APFloat::IEEEdouble;
+    }
+    return APFloat::IEEEdouble;
+}
+
 /*
  *  TODO: type field for float literals
  */
 TypedValue* FltLitNode::compile(Compiler *c, Module *m){
-    return new TypedValue(ConstantFP::get(getGlobalContext(), APFloat(APFloat::IEEEdouble, val.c_str())), Tok_F32);
+    auto *tv = new TypedValue(ConstantFP::get(getGlobalContext(), APFloat(tokTyToFltSemantics(type), val.c_str())), type);
+    tv->val->dump();
+    return tv;
 }
 
 TypedValue* BoolLitNode::compile(Compiler *c, Module *m){

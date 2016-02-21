@@ -85,7 +85,25 @@ Node* mkIntLitNode(char* s){
 }
 
 Node* mkFltLitNode(char* s){
-    auto *ret = new FltLitNode(s);
+    string str = s;
+    int len = str.length();
+    int type = Tok_F64;
+
+    if(len > 3 && str[len - 3] == 'f'){
+        char fltSize = str[len - 2];
+        if(fltSize == '1'){ //16 bit IEEE half
+            type = Tok_F16;
+            str = str.substr(0, len-3);
+        }else if(fltSize == '3'){ //32 bit IEEE single
+            type = Tok_F32;
+            str = str.substr(0, len-3);
+        }else if(fltSize == '6'){ //64 bit IEEE double
+            type = Tok_F64;
+            str = str.substr(0, len-3);
+        }
+    }
+
+    auto *ret = new FltLitNode(str, type);
     ret->col = yylexer->getCol();
     ret->row = yylexer->getRow();
     return ret;

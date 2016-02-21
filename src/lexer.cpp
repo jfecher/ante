@@ -150,7 +150,6 @@ map<string, int> keywords = {
 /* Raw text to store identifiers and usertypes in */
 char *lextxt;
 
-
 Lexer *yylexer;
 
 /* Sets lexer instance for yylex to use */
@@ -175,18 +174,19 @@ Lexer::Lexer(const char* file) :
     tokCol{1},
     cur{0},
     nxt{0},
-    scope{0},
+    scopes{new stack<unsigned int>()},
     cscope{0}
 {
     incPos();
     incPos();
+    scopes->push(0);
 }
 
 Lexer::~Lexer(){
     delete in;
 }
 
-int Lexer::peek(){
+char Lexer::peek(){
     return cur;
 }
 
@@ -203,7 +203,7 @@ unsigned int Lexer::getCol(){
 *  Prints a token's type to stdout
 */
 void Lexer::printTok(int t){
-    cout << getTokStr(t).c_str();
+    cout << getTokStr(t);
 }
 
 /*
@@ -239,7 +239,7 @@ void Lexer::incPos(int end){
     }
 }
 
-int Lexer::handleComment(void){
+int Lexer::handleComment(){
     if(cur == '`'){
         do{
             incPos();
@@ -302,28 +302,52 @@ int Lexer::genNumLitTok(){
     }
 
     //check for type suffix
-    if(cur == 'i' || cur == 'u'){
-        s += cur;
-        incPos();
-        if(cur == '8'){
-            s += '8';
+    if(flt){
+        if(cur == 'f'){
+            s += 'f';
             incPos();
-        }else if(cur == '1' && nxt == '6'){
-            s += "16";
-            incPos();
-            incPos();
-        }else if(cur == '3' && nxt == '2'){
-            s += "32";
-            incPos();
-            incPos();
-        }else if(cur == '6' && nxt == '4'){
-            s += "64";
-            incPos();
-            incPos();
+            if(cur == '1' && nxt == '6'){
+                s += "16";
+                incPos();
+                incPos();
+            }else if(cur == '3' && nxt == '2'){
+                s += "32";
+                incPos();
+                incPos();
+            }else if(cur == '6' && nxt == '4'){
+                s += "64";
+                incPos();
+                incPos();
+            }
+            
+            if(IS_NUMERICAL(cur)){
+                error("Extraneous numbers after type suffix.", fileName, row, col);
+            }
         }
+    }else{
+        if(cur == 'i' || cur == 'u'){
+            s += cur;
+            incPos();
+            if(cur == '8'){
+                s += '8';
+                incPos();
+            }else if(cur == '1' && nxt == '6'){
+                s += "16";
+                incPos();
+                incPos();
+            }else if(cur == '3' && nxt == '2'){
+                s += "32";
+                incPos();
+                incPos();
+            }else if(cur == '6' && nxt == '4'){
+                s += "64";
+                incPos();
+                incPos();
+            }
 
-        if(IS_NUMERICAL(cur)){
-            error("Extraneous numbers after type suffix.", fileName, row, col);
+            if(IS_NUMERICAL(cur)){
+                error("Extraneous numbers after type suffix.", fileName, row, col);
+            }
         }
     }
 
@@ -333,7 +357,7 @@ int Lexer::genNumLitTok(){
 
 int Lexer::genWsTok(){
     if(cur == '\n'){
-        unsigned short newScope = 0;
+        unsigned int newScope = 0;
 
         while(IS_WHITESPACE(cur) && cur != EOF){
             switch(cur){
@@ -347,9 +371,8 @@ int Lexer::genWsTok(){
             incPos();
             if(IS_COMMENT(cur)) return handleComment();
         }
-        newScope /= scStep;
 
-        if(newScope == scope){
+        if(newScope == scopes->top()){
             //tokRow is not set to row for newline tokens in case there are several newlines.
             //In this case, if set to row, it would become the row of the last newline.
             //Incrementing it from its previous token (guarenteed to be non-newline) fixes this.
@@ -357,7 +380,7 @@ int Lexer::genWsTok(){
             tokCol = 0;
             return Tok_Newline; /* Scope did not change, just return a Newline */
         }
-        scope = newScope;
+        cscope = newScope;
         return next();
     }else{
         incPos();
@@ -394,12 +417,12 @@ int Lexer::genStrLitTok(char delim){
 }
 
 int Lexer::next(){
-    if(scope != cscope){
-        if(scope > cscope){
-            cscope++;
+    if(scopes->top() != cscope){
+        if(cscope > scopes->top()){
+            scopes->push(cscope);
             return Tok_Indent;
         }else{
-            cscope--;
+            scopes->pop();
             return Tok_Unindent;
         }
     }
@@ -419,10 +442,13 @@ int Lexer::next(){
 
     //substitute -> for an indent and ;; for an unindent
     if(cur == '-' && nxt == '>'){
-        scope++;
+        cscope++;
         RETURN_PAIR(next());
     }else if(cur == ';' && nxt == ';'){
-        scope--;
+        unsigned int curScope = scopes->top();
+        scopes->pop();
+        cscope = scopes->top();
+        scopes->push(curScope);
         RETURN_PAIR(next());
     }
 

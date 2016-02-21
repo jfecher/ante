@@ -6,7 +6,7 @@
     Whitespace is significant if and only if is at the beginning of a line and
     precedes a statement.  Blocks are marked by an increase in indentation, 
     and terminated by a return to the original level (unindent).  An indent is 
-    always four spaces more than the previous indentation level.  To avoid
+    always at least one space more than the previous indentation level.  To avoid
     confusion and misalignments in indentation for different tab sizes, tabs
     are invalid, and cannot constitute any significant whitespace.
 

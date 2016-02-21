@@ -3,16 +3,16 @@
         test function declarations and calls
 `
 void printMsg: bool b
-    if b -> puts("Hello World!")
-    else -> puts("Goodbye World!")
+     if b -> puts("Hello World!")
+     else -> puts("Goodbye World!")
 
 
 bool divisibleByThree: i32 i
-    return i % 3 == 0
+     return i % 3 == 0
 
 
 bool isEven: i32 x
-    return x % 2 == 0
+     return x % 2 == 0
 
 
 i32 fact: i32 x
@@ -23,10 +23,10 @@ i32 fact: i32 x
 
 printMsg(true)
 if divisibleByThree(23)
-    printf("23 is divisible by 3\n")
+   printf("23 is divisible by 3\n")
 
 if isEven(4)
-    printf("fact(5) = %d\n", fact(5))
+   printf("fact(5) = %d\n", fact(5))
 
 printMsg(1 + 1 != 2)
 

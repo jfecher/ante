@@ -73,10 +73,11 @@ struct IntLitNode : public Node{
 
 struct FltLitNode : public Node{
     string val;
+    int type;
     TypedValue* compile(Compiler*, Module*);
     void print(void);
     Type* getType(Compiler*);
-    FltLitNode(string s) : Node(), val(s){}
+    FltLitNode(string s, int ty) : Node(), val(s), type(ty){}
     ~FltLitNode(){}
 };
 

@@ -5,9 +5,9 @@
     the Str datatype once it is implemented.
 `
 
-c8[] str = "Hello World!"
+c8[] openingMsg = "Hello World!\n"
 
-c8* getMsg:
-    return "Message"
+c8* getClosingMsg:
+    return "Goodbye World!\n"
 
-printf("%s\n%s\n", str, getMsg())
+printf("%s%s", openingMsg, getClosingMsg())

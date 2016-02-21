@@ -4,6 +4,7 @@
 #include "tokens.h"
 #include <iostream>
 #include <fstream>
+#include <stack>
 #include <map>
 using namespace std;
 
@@ -26,7 +27,7 @@ namespace ante{
         Lexer(const char *file);
         ~Lexer();
         int next();
-        int peek();
+        char peek();
         unsigned int getRow();
         unsigned int getCol();
         
@@ -46,21 +47,16 @@ namespace ante{
         /* Current and next characters */
         char cur, nxt;
 
-
-
-        /* Amount of spaces per indent */
-        #define scStep 4
-
         /*
         *  Current scope (indent level) of file
         */
-        int scope;
+        stack<unsigned int> *scopes;
 
         /*
         *  Used to remember a new indentation level to issue multiple Indent
         *  or Unindent tokens when required.
         */
-        int cscope;
+        unsigned int cscope;
         
         
         void incPos(void);
