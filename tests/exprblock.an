@@ -40,10 +40,10 @@ printf("(3 + 3 + 4) + (4 + 5 + 6) = %d\n", ten + fifteen)
 ~expressions with a higher indentation are treated as if
 ~they're surrounded by parenthesis, thus
 let result = 2 *
-    3 *
-    4 *
-        1+2+3+4+5
-    * 5
+             3 *
+             4 *
+                 1+2+3+4+5
+             * 5
 
 `is parsed as
 

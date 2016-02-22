@@ -124,9 +124,7 @@ const fltSemantics& tokTyToFltSemantics(int tokTy){
  *  TODO: type field for float literals
  */
 TypedValue* FltLitNode::compile(Compiler *c, Module *m){
-    auto *tv = new TypedValue(ConstantFP::get(getGlobalContext(), APFloat(tokTyToFltSemantics(type), val.c_str())), type);
-    tv->val->dump();
-    return tv;
+    return new TypedValue(ConstantFP::get(getGlobalContext(), APFloat(tokTyToFltSemantics(type), val.c_str())), type);
 }
 
 TypedValue* BoolLitNode::compile(Compiler *c, Module *m){
