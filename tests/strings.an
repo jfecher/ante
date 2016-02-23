@@ -5,7 +5,7 @@
     the Str datatype once it is implemented.
 `
 
-c8[] openingMsg = "Hello World!\n"
+c8* openingMsg = "Hello World!\n"
 
 c8* getClosingMsg:
     return "Goodbye World!\n"

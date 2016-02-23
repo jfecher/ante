@@ -13,7 +13,6 @@ char Compiler::getBitWidthOfTokTy(int tokTy){
     }
 }
 
-
 /*
  *  Returns the type of a node in an expression.  Node must be
  *  valid in an expression context, ie no statement-only nodes.
@@ -132,3 +131,16 @@ int Compiler::llvmTypeToTokType(Type *t){
     return Tok_Void;
 }
 
+
+Type* Compiler::typeNodeToLlvmType(TypeNode *tyNode){
+    switch(tyNode->type){
+        case '*':
+            return PointerType::get(typeNodeToLlvmType(tyNode->extTy.get()), 0);
+        case Tok_UserType: //TODO usertype
+        case '[': //TODO array type
+        case '(': //TODO function pointer type
+            return Type::getVoidTy(getGlobalContext());
+        default:
+            return tokTypeToLlvmType(tyNode->type);
+    }
+}

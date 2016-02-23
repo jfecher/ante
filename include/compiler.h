@@ -15,6 +15,7 @@ using namespace std;
 /* Forward-declarations of Nodes defined in parser.h */
 struct Node;
 struct VarNode;
+struct TypeNode;
 struct BinOpNode;
 struct FuncDeclNode;
 struct FuncCallNode;
@@ -77,6 +78,7 @@ namespace ante{
         bool isSigned(Node *n);
         void checkIntSize(TypedValue **lhs, TypedValue **rhs);
         
+        static Type* typeNodeToLlvmType(TypeNode *tyNode);
         static Type* tokTypeToLlvmType(int tokTy, string typeName);
         static int llvmTypeToTokType(Type *t);
 

@@ -292,7 +292,7 @@ TypedValue* VarDeclNode::compile(Compiler *c, Module *m){
     }
 
     TypeNode *tyNode = (TypeNode*)typeExpr.get();
-    Type *ty = Compiler::tokTypeToLlvmType(tyNode->type, tyNode->typeName);
+    Type *ty = Compiler::typeNodeToLlvmType(tyNode);
     TypedValue *alloca = new TypedValue(c->builder.CreateAlloca(ty, 0, name.c_str()), tyNode->type);
 
     c->stoVar(name, alloca);
@@ -319,7 +319,7 @@ TypedValue* VarAssignNode::compile(Compiler *c, Module *m){
 Function* Compiler::compFn(FuncDeclNode *fdn){
     //Get and translate the function's return type to an llvm::Type*
     TypeNode *retNode = (TypeNode*)fdn->type.get();
-    Type *retType = tokTypeToLlvmType(retNode->type, retNode->typeName);
+    Type *retType = typeNodeToLlvmType(retNode);
 
     //Count the number of parameters
     NamedValNode *param = fdn->params.get();
@@ -333,7 +333,7 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
     paramTys.reserve(nParams);
     for(size_t i = 0; i < nParams && cParam; i++){
         TypeNode *paramTyNode = (TypeNode*)cParam->typeExpr.get();
-        paramTys.push_back(tokTypeToLlvmType(paramTyNode->type, paramTyNode->typeName));
+        paramTys.push_back(typeNodeToLlvmType(paramTyNode));
         cParam = (NamedValNode*)cParam->next.get();
     }
 

@@ -11,18 +11,22 @@ void() main = \
 
 
 i32(i32,i32) add = \a b
-    return a + b
+    a + b
 
 
 i64(i32,i32) mul = \a b
-    return a * b
+    a * b
+
+let mul2 = \a b -> a*b
 
 ~Unlike normal functions, function pointers can be changed
 add = mul
 
 
 i32(i32(i32),i32(i32),i32) flipPtr = \f g x
-    return g(f(x))
+    g(f(x))
+
+let flip = \f g x -> g(f(x))
 
 ~vs
 i32 flipFn: i32(i32) f g, i32 x

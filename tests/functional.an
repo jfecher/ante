@@ -10,17 +10,18 @@ gen add: t a b
 
 
 ~The list data structure to iterate through
-data List<type T> : Iter
-    T val
-    List<T>* | None nextNode
+data List : Iter
+    t val
+    List<t>*|None nextNode
 
 
+impl List
     ~Implement the next function from Iter
-    T|None next: List<T> l
+    t|None next: List<t> l
         return l.nextNode?.val
 
     ~Also required by Iter
-    T unwrap:
+    t unwrap: self
         return t.val
 
 
@@ -36,7 +37,7 @@ impl Iter
         return foldl(self.next(), f, self.unwrap())
 
     Iter* map: self*, r(t) f
-        for t elem in *self
+        for t elem in self
             f(elem)
         return self
 
