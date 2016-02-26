@@ -127,6 +127,7 @@ inline bool isIntTokTy(int ty){
 TypedValue* BinOpNode::compile(Compiler *c, Module *m){
     TypedValue *lhs = lval->compile(c, m);
     TypedValue *rhs = rval->compile(c, m);
+    if(!lhs || !rhs) return 0;
 
     //Check if both Values are integers, and if so, check if their bit width's match.
     //If not, the smaller is set to the larger's type.
@@ -158,6 +159,7 @@ TypedValue* BinOpNode::compile(Compiler *c, Module *m){
 
 TypedValue* UnOpNode::compile(Compiler *c, Module *m){
     TypedValue *rhs = rval->compile(c, m);
+    if(!rhs) return 0;
 
     switch(op){
         case '*': //pointer dereference

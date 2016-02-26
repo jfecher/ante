@@ -233,6 +233,9 @@ TypedValue* RefVarNode::compile(Compiler *c, Module *m){
     if(!val)
         return c->compErr("Variable " + name + " has not been declared.", this->row, this->col);
 
+    if(!dynamic_cast<AllocaInst*>(val->val))
+        return c->compErr("Cannot assign to immutable variable " + name, this->row, this->col);
+
     return val;
 }
 
@@ -317,7 +320,9 @@ TypedValue* VarDeclNode::compile(Compiler *c, Module *m){
 
 TypedValue* VarAssignNode::compile(Compiler *c, Module *m){
     TypedValue *v = ref_expr->compile(c, m);
-    if(v && v->type == '*'){
+    if(!v) return 0;
+    
+    if(v->type == '*'){
         return new TypedValue(c->builder.CreateStore(expr->compile(c, m)->val, v->val), Tok_Void);
     }else{
         return c->compErr("Attempted assign without a memory address, with type " + Lexer::getTokStr(v->type), this->row, this->col);
@@ -443,7 +448,8 @@ void Compiler::compilePrelude(){
     registerFunction(new FuncDeclNode("malloc", 0, voidPtr, mkAnonNVNode(Tok_I32), nullptr));
     
     // void free: void* ptr
-    registerFunction(new FuncDeclNode("free", 0, mkAnonTypeNode(Tok_Void), mkAnonNVNode('*'), nullptr));
+    NamedValNode *voidPtrNVN = new NamedValNode("", voidPtr);
+    registerFunction(new FuncDeclNode("free", 0, mkAnonTypeNode(Tok_Void), voidPtrNVN, nullptr));
 }
 
 /*

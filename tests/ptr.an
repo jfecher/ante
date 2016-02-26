@@ -1,8 +1,9 @@
-
-c8* cstr = "I'm a c-string"
+let cstr = "I'm a c-string"
 
 i32* ptrToThree = malloc(4)
 *ptrToThree = 3
 
 printf("%p -> %s\n", cstr, cstr)
 printf("%p -> %d\n", ptrToThree, *ptrToThree)
+
+free(ptrToThree)
