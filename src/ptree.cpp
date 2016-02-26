@@ -137,6 +137,13 @@ Node* mkTypeNode(int type, char* typeName, Node* extTy = nullptr){
     return ret;
 }
 
+Node* mkUnOpNode(int op, Node* r){
+    auto *ret = new UnOpNode(op, r);
+    ret->col = yylexer->getCol();
+    ret->row = yylexer->getRow();
+    return ret;
+}
+
 Node* mkBinOpNode(int op, Node* l, Node* r){
     auto *ret = new BinOpNode(op, l, r);
     ret->col = yylexer->getCol();
@@ -186,6 +193,13 @@ Node* mkFuncCallNode(char* s, Node* p){
 
 Node* mkVarNode(char* s){
     auto *ret = new VarNode(s);
+    ret->col = yylexer->getCol();
+    ret->row = yylexer->getRow();
+    return ret;
+}
+
+Node* mkRefVarNode(char* s){
+    auto *ret = new RefVarNode(s);
     ret->col = yylexer->getCol();
     ret->row = yylexer->getRow();
     return ret;

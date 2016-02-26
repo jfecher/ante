@@ -227,6 +227,15 @@ TypedValue* VarNode::compile(Compiler *c, Module *m){
     return dynamic_cast<AllocaInst*>(val->val)? new TypedValue(c->builder.CreateLoad(val->val, name), val->type) : val;
 }
 
+TypedValue* RefVarNode::compile(Compiler *c, Module *m){
+    TypedValue *val = c->lookup(name);
+    
+    if(!val)
+        return c->compErr("Variable " + name + " has not been declared.", this->row, this->col);
+
+    return val;
+}
+
 TypedValue* FuncCallNode::compile(Compiler *c, Module *m){
     Function *f = m->getFunction(name);
     if(!f){
@@ -307,12 +316,12 @@ TypedValue* VarDeclNode::compile(Compiler *c, Module *m){
 }
 
 TypedValue* VarAssignNode::compile(Compiler *c, Module *m){
-    TypedValue *v = c->lookup(var->name);
-    if(!v)
-        return c->compErr("Use of undeclared variable " + var->name + " in assignment.", var->row, var->col);
-    if(!dynamic_cast<AllocaInst*>(v->val))
-        return c->compErr("Cannot mutate immutable variable " + var->name, var->row, var->col);
-    return new TypedValue(c->builder.CreateStore(expr->compile(c, m)->val, v->val), Tok_Void);
+    TypedValue *v = ref_expr->compile(c, m);
+    if(v && v->type == '*'){
+        return new TypedValue(c->builder.CreateStore(expr->compile(c, m)->val, v->val), Tok_Void);
+    }else{
+        return c->compErr("Attempted assign without a memory address, with type " + Lexer::getTokStr(v->type), this->row, this->col);
+    }
 }
 
 
@@ -427,6 +436,14 @@ void Compiler::compilePrelude(){
 
     // void exit: u8 status
     registerFunction(new FuncDeclNode("exit", 0, mkAnonTypeNode(Tok_Void), mkAnonNVNode(Tok_I32), nullptr));
+    
+    // void* malloc: u32 size
+    TypeNode *voidPtr = mkAnonTypeNode('*');
+    voidPtr->extTy.reset(mkAnonTypeNode(Tok_I32));
+    registerFunction(new FuncDeclNode("malloc", 0, voidPtr, mkAnonNVNode(Tok_I32), nullptr));
+    
+    // void free: void* ptr
+    registerFunction(new FuncDeclNode("free", 0, mkAnonTypeNode(Tok_Void), mkAnonNVNode('*'), nullptr));
 }
 
 /*

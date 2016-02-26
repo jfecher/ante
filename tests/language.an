@@ -546,25 +546,32 @@ i32,i32 p1 p2 p3 = 0, 0
 
 `
         Ranges and Type Conditions
-    Ranges are denoted by start and end values surrounded by the .. operator.  Their beggining and
-    end are immutable once the range is created, but the step can be modified via multiplication of
-    the range.
+    Ranges are denoted by start and end values surrounded by the .. operator.
+    Ranges declared in this fashion have an inclusive startpoint and exclusive
+    endpoint.
 `
 
-~Print 1 to 100 inclusive
-for i32 i in 1 .. 100
+~Print 0 to 99 inclusive
+for i32 i in 0 .. 100
     print(i)
 
 
-~Create a datatype TwoDigits that represents a number that is between
-~10 and 99 inclusive.
-data TwoDigits
-    u8 in 10..99
+~Iterate through indexes of an array:
+let testArr = [0, 3, 5, 6]
+
+for u32 u in 0 .. testArr.len()
+    print(testArr[u])
 
 
-let td1 = TwoDigits(32) ~Good!
-let td2 = TwoDigits(100) ~RangeErr
+~Ranges can also be used in combination with the in keyword to test if a given value
+~is within the range
+if 3 in 1..10
+    print("3 is a single-digit positive number")
 
+
+~in can also test if a value is in an array or tuple
+if "two" in ["one", "two", "three"]
+    print("Found it!")
 
 `
     Type Conditions are signified with the where keyword and provide a concise way to
@@ -579,6 +586,15 @@ let john = Teen(15, "John Brown")
 
 ~TypeConditionErr
 let sara = Teen(18, "")
+
+
+~Create a datatype TwoDigits that represents a number that is between
+~10 and 99 inclusive.
+data TwoDigits
+    u8 in 10..99
+
+let td1 = TwoDigits(32) ~Good!
+let td2 = TwoDigits(100) ~RangeErr
 
 
 ~Type conditions with anonymous fields:
@@ -977,7 +993,7 @@ ptrQuote.addInitials() ~valid
 `
     NOTE: because string literals have the type c32[], the following is valid:
 
-    c32* ptrQuote = "implementations cannot be used for pointer types".addInitials()
+    c32* ptrQuote = c32* "implementations cannot be used for pointer types".addInitials()
 `
 
 
@@ -1106,15 +1122,15 @@ let ptrToFive = &five
 
 ~The new keyword automatically allocates data for a class or struct and calls its
 ~constructor if it has one.
-Card* tod = new Card(3, Suit.Diamonds)
+let tod1 = new Card(3, Suit.Diamonds)
 
 ~alternatively, data can be manually allocated.  The following is equivilent
 ~to the statement above
-Card* tod = malloc(sizeof(Card))
-*tod = Card(3, Suit.Diamonds)
+let tod2 = malloc(sizeof(Card))
+*tod2 = Card(3, Suit.Diamonds)
 
 ~Example of a raw pointer to the u8 value 5.
-raw u8* example = new 5u8
+let raw example = new 5u8
 
 ~Raw pointers must be manually freed with the free function
 free(example)
@@ -1123,8 +1139,8 @@ free(example)
 ~Since there are multiple sizes of chars, the dfeault
 ~encoding (from single byte to 4 byte UTF-8) can be specified.
 ~The default encoding for string literals is 4 byte UTF-8
-c32* str = "Hello World!"
-c8[] msg = "Condensed String"
+let c32[] str = "Hello World!"
+let c8[] msg = c8[] "Condensed String"
 
 `
         Automatic dereferencing.
@@ -1156,8 +1172,8 @@ ex3.printMsg() ~(**ex3).printMsg()
 `
 
 ~Both of these strings are stored as pointers to the first c32.
-c32*  ptrStr = "str"
 c32[] arrStr = "str"
+c32*  ptrStr = c32* "str"
 
 `
     += operator
@@ -1212,6 +1228,26 @@ c32[] ptrStr
 ptrStr.reverse
 
 `
+
+`
+    Comparisons
+
+    Pointers:
+        When pointers are checked for equality, their addresses are checked
+        for equality.
+
+    Arrays:
+        Arrays (unless overloaded) define equality as checking each corresopnding
+        element for equality.  Since string literals are character arrays by
+        default, the following is always true: "five" == "five"
+`
+let c32[] strlit = "test"
+
+assert(strlit == "test")
+
+
+assert("two" in ["one", "two", "three"])
+
 
 `
         Function pointers

@@ -122,9 +122,7 @@ inline bool isIntTokTy(int ty){
 /*
  *  Compiles an operation along with its lhs and rhs
  *
- *  TODO: type checking
- *  TODO: CreateExactUDiv for when it is known there is no remainder
- *  TODO: CreateFcmpOEQ vs CreateFCmpUEQ
+ *  TODO: more type checking
  */
 TypedValue* BinOpNode::compile(Compiler *c, Module *m){
     TypedValue *lhs = lval->compile(c, m);
@@ -155,4 +153,24 @@ TypedValue* BinOpNode::compile(Compiler *c, Module *m){
     }
 
     return c->compErr("Unknown operator " + Lexer::getTokStr(op), this->row, this->col);
+}
+
+
+TypedValue* UnOpNode::compile(Compiler *c, Module *m){
+    TypedValue *rhs = rval->compile(c, m);
+
+    switch(op){
+        case '*': //pointer dereference
+            if(rhs->type != '*'){
+                return c->compErr("Cannot dereference non-pointer type " + Lexer::getTokStr(rhs->type), this->row, this->col);
+            }
+            
+            return new TypedValue(c->builder.CreateLoad(rhs->val), Compiler::llvmTypeToTokType(rhs->val->getType()->getPointerElementType()));
+        case '&': //address-of
+            break; //TODO
+        case '-': //negation
+            break;
+    }
+    
+    return c->compErr("Unknown unary operator " + Lexer::getTokStr(op), this->row, this->col);
 }

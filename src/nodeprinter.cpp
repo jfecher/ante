@@ -55,6 +55,16 @@ void TypeNode::print(){
         Lexer::printTok(type);
 }
 
+void UnOpNode::print(){
+    putchar('(');
+    Lexer::printTok(op);
+    putchar(' ');
+    if(rval) rval->print();
+    putchar(')');
+
+    maybePrintArr(next.get());
+}
+
 void BinOpNode::print(){
     putchar('(');
     if(lval) lval->print();
@@ -108,6 +118,11 @@ void VarNode::print(){
     maybePrintArr(next.get());
 }
 
+void RefVarNode::print(){
+    cout << name;
+    maybePrintArr(next.get());
+}
+
 void FuncCallNode::print(){
     cout << name << '(';
     if(params) params->print();
@@ -134,7 +149,7 @@ void VarDeclNode::print(){
 
 void VarAssignNode::print(){
     cout << "varAssign ";
-    if(var) var->print();
+    if(ref_expr) ref_expr->print();
     cout << " = ";
     if(expr) expr->print();
     else cout << "(undef)";

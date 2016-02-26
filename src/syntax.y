@@ -106,27 +106,31 @@ struct ModTyPair{ Node *mod, *ty; };
 top_level_stmt_list: maybe_newline stmt_list maybe_newline
                    ;
 
-stmt_list: stmt_list maybe_newline stmt {$$ = setNext($1, $3);}
-         | stmt   {$$ = setRoot($1);}
+stmt_list: stmt_list newline_stmt Newline {$$ = setNext($1, $2);}
+         | stmt_list block_stmt           {$$ = setNext($1, $2);}
+         | newline_stmt Newline           {$$ = setRoot($1);}
+         | block_stmt                     {$$ = setRoot($1);}
          ;
 
 maybe_newline: Newline  %prec Newline
              | %empty   %prec LOW
              ;
 
-stmt: var_decl      {$$ = $1;}
-    | var_assign    {$$ = $1;}
-    | fn_decl       {$$ = $1;}
-    | fn_call       {$$ = $1;}
-    | data_decl     {$$ = $1;}
-    | ret_stmt      {$$ = $1;}
-    | while_loop    {$$ = $1;}
-    | do_while_loop {$$ = $1;}
-    | for_loop      {$$ = $1;}
-    | if_stmt       {$$ = $1;}
-    | enum_decl     {$$ = $1;}
-    | let_binding   {$$ = $1;}
-    ;
+block_stmt: fn_decl    {$$ = $1;}
+          | data_decl  {$$ = $1;}
+          | while_loop {$$ = $1;}
+          | for_loop   {$$ = $1;}
+          | if_stmt    {$$ = $1;}
+          | enum_decl  {$$ = $1;}
+          ;
+
+newline_stmt: var_decl      {$$ = $1;}
+            | var_assign    {$$ = $1;}
+            | fn_call       {$$ = $1;}
+            | ret_stmt      {$$ = $1;}
+            | do_while_loop {$$ = $1;}
+            | let_binding   {$$ = $1;}
+            ;
 
 ident: Ident {$$ = (Node*)lextxt;}
      ;
@@ -212,7 +216,7 @@ let_binding: Let modifier_list type_expr ident '=' expr  {$$ = mkLetBindingNode(
 
 
 /* TODO: change arg1 to require node* instead of char* */
-var_assign: var '=' expr {$$ = mkVarAssignNode($1, $3);}
+var_assign: ref_val '=' expr {$$ = mkVarAssignNode($1, $3);}
           ;
 
 usertype_list: usertype_list ',' usertype {$$ = setNext($1, $3);}
@@ -310,13 +314,20 @@ do_while_loop: Do block While expr {$$ = NULL;}
 for_loop: For var_decl In expr block {$$ = NULL;}
         ;
 
-var: ident '[' expr ']'  {$$ = mkVarNode((char*)$1);} /*TODO: arrays*/
+var: ident '[' expr ']'  /*TODO: arrays*/
    | ident               %prec Ident {$$ = mkVarNode((char*)$1);}
    ;
+
+ref_val: '&' ref_val         {$$ = mkUnOpNode('&', $2);}
+       | '*' ref_val         {$$ = mkUnOpNode('*', $2);}
+       | ident '[' expr ']'  
+       | ident  %prec Ident  {$$ = mkRefVarNode((char*)$1);}
+       ;
 
 val: fn_call                  {$$ = $1;}
    | '(' expr ')'             {$$ = $2;}
    | Indent nl_expr Unindent  {$$ = $2;}
+   | unary_op                 {$$ = $1;}
    | var                      {$$ = $1;}
    | intlit                   {$$ = $1;}
    | fltlit                   {$$ = $1;}
@@ -335,6 +346,10 @@ expr_list: expr_list ',' expr_p    {$$ = setNext($1, $3);}
          | expr_p                  {$$ = setRoot($1);}
          ;
 
+unary_op: '*' val  {$$ = mkUnOpNode('*', $2);}
+        | '&' val  {$$ = mkUnOpNode('&', $2);}
+        | '-' val  {$$ = mkUnOpNode('-', $2);}
+        ;
 
 expr_p: expr_p '+' expr_p     {$$ = mkBinOpNode('+', $1, $3);}
       | expr_p '-' expr_p     {$$ = mkBinOpNode('-', $1, $3);}

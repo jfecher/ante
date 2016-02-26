@@ -90,6 +90,16 @@ struct BoolLitNode : public Node{
     ~BoolLitNode(){}
 };
 
+struct UnOpNode : public Node{
+    int op;
+    unique_ptr<Node> rval;
+    TypedValue* compile(Compiler*, Module*);
+    Type* getType(Compiler*);
+    void print(void);
+    UnOpNode(int s, Node *rv) : Node(), op(s), rval(rv){}
+    ~UnOpNode(){}
+};
+
 struct BinOpNode : public Node{
     int op;
     unique_ptr<Node> lval, rval;
@@ -145,6 +155,15 @@ struct VarNode : public Node{
     ~VarNode(){}
 };
 
+struct RefVarNode : public Node{
+    string name;
+    TypedValue* compile(Compiler*, Module*);
+    void print(void);
+    Type* getType(Compiler*);
+    RefVarNode(string s) : Node(), name(s){}
+    ~RefVarNode(){}
+};
+
 struct FuncCallNode : public Node{
     string name;
     unique_ptr<Node> params;
@@ -185,11 +204,11 @@ struct VarDeclNode : public Node{
 };
 
 struct VarAssignNode : public Node{
-    unique_ptr<VarNode> var;
+    unique_ptr<Node> ref_expr;
     unique_ptr<Node> expr;
     TypedValue* compile(Compiler*, Module*);
     void print(void);
-    VarAssignNode(Node* v, Node* exp) : Node(), var((VarNode*)v), expr(exp){}
+    VarAssignNode(Node* v, Node* exp) : Node(), ref_expr(v), expr(exp){}
     ~VarAssignNode(){}
 };
 

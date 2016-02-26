@@ -24,6 +24,13 @@ Type* VarNode::getType(Compiler *c){
     return (Type*)c->compErr("Use of undeclared variable " + name + " in expression", row, col);
 }
 
+Type* RefVarNode::getType(Compiler *c){
+    if(TypedValue *val = c->lookup(name)){
+        return val->val->getType();
+    }
+    return (Type*)c->compErr("Use of undeclared variable " + name + " in expression", row, col);
+}
+
 Type* StrLitNode::getType(Compiler *c){
     return Type::getInt8PtrTy(getGlobalContext()); 
 }
@@ -52,6 +59,21 @@ Type* BinOpNode::getType(Compiler *c){
     return lval->getType(c);
 }
 
+Type* UnOpNode::getType(Compiler *c){
+    Type* rty = rval->getType(c);
+    int tokTy;
+    switch(op){
+        case '*':
+            tokTy = Compiler::llvmTypeToTokType(rty);
+            if(tokTy != '*')
+                return (Type*)c->compErr("Cannot dereference non-pointer type " + Lexer::getTokStr(tokTy), this->row, this->col);
+            else
+                return rty->getPointerElementType();
+        case '&': 
+            return PointerType::get(rty, 0);
+    }
+    return rty;
+}
 
 /*
  *  Assures two IntegerType'd Values have the same bitwidth.
@@ -78,7 +100,7 @@ void Compiler::checkIntSize(TypedValue **lhs, TypedValue **rhs){
 }
 
 Type* Node::getType(Compiler *c){
-    return (Type*)c->compErr("Void type used in expression", row, col);
+    return (Type*)c->compErr("Unable to discern type of generic Node.", row, col);
 }
 
 /*
@@ -107,12 +129,11 @@ Type* Compiler::tokTypeToLlvmType(int tokTy, string typeName = ""){
 }
 
 /*
- *  Translates a llvm::Type to a TokenType
- *  Not intended for in-depth analysis as it loses
- *  specificity, specifically it loses data about the type,
- *  and name of UserData.  As such, this should mainly be
- *  used for comparing primitive datatypes, or just to detect
- *  if something is a UserType.
+ *  Translates a llvm::Type to a TokenType. Not intended for in-depth analysis
+ *  as it loses data about the type and name of UserData, and cannot distinguish 
+ *  between signed and unsigned integer types.  As such, this should mainly be 
+ *  used for comparing primitive datatypes, or just to detect if something is a
+ *  primitive.
  */
 int Compiler::llvmTypeToTokType(Type *t){
     if(t->isIntegerTy(8)) return Tok_I8;
@@ -139,6 +160,7 @@ Type* Compiler::typeNodeToLlvmType(TypeNode *tyNode){
         case Tok_UserType: //TODO usertype
         case '[': //TODO array type
         case '(': //TODO function pointer type
+            cout << "typeNodeToLlvmType: UserTypes, Array types, and function pointer types are currently unimplemented.  A void type will be returned instead.\n";
             return Type::getVoidTy(getGlobalContext());
         default:
             return tokTypeToLlvmType(tyNode->type);
