@@ -152,7 +152,11 @@ int Compiler::llvmTypeToTokType(Type *t){
     return Tok_Void;
 }
 
-
+/*
+ *  Converts a TypeNode to an llvm::Type.  While much lses information is lost than
+ *  llvmTypeToTokType, information on signedness of integers is still lost, causing the
+ *  unfortunate necessity for the use of a TypedValue for the storage of this information.
+ */
 Type* Compiler::typeNodeToLlvmType(TypeNode *tyNode){
     switch(tyNode->type){
         case '*':
@@ -164,5 +168,39 @@ Type* Compiler::typeNodeToLlvmType(TypeNode *tyNode){
             return Type::getVoidTy(getGlobalContext());
         default:
             return tokTypeToLlvmType(tyNode->type);
+    }
+}
+
+/*
+ *  Returns true if two given types are approximately equal.  This will return
+ *  true if they are the same primitive datatype, or are both pointers pointing
+ *  to the same elementtype, or are both arrays of the same element type, even
+ *  if the arrays differ in size.  If two types are needed to be exactly equal, 
+ *  pointer comparison can be used instead since llvm::Types are uniqued.
+ */
+bool Compiler::llvmTypeEq(Type *l, Type *r){
+    int ltt = llvmTypeToTokType(l);
+    int rtt = llvmTypeToTokType(r);
+
+    if(ltt != rtt) return false;
+
+    if(ltt == '*'){
+        return llvmTypeEq(l->getPointerElementType(), r->getPointerElementType());
+    }else if(ltt == '['){
+        return llvmTypeEq(l->getArrayElementType(), r->getArrayElementType());
+    }else if(ltt == '('){
+        int lParamCount = l->getFunctionNumParams();
+        int rParamCount = r->getFunctionNumParams();
+        
+        if(lParamCount != rParamCount)
+            return false;
+
+        for(int i = 0; i < lParamCount; i++){
+            if(!llvmTypeEq(l->getFunctionParamType(i), r->getFunctionParamType(i)))
+                return false;
+        } 
+        return true;
+    }else{ //primitive type
+        return ltt == rtt;
     }
 }

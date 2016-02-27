@@ -1113,13 +1113,13 @@ namespace yy {
 
   case 103:
 #line 281 "src/syntax.y" // lalr1.cc:859
-    {setNext((yystack_[3].value), mkNamedValNode(getRoot(), (yystack_[1].value))); (yylhs.value) = (yystack_[0].value);}
+    {(yylhs.value) = setNext((yystack_[3].value), mkNamedValNode(getRoot(), (yystack_[1].value)));}
 #line 1118 "src/parser.cpp" // lalr1.cc:859
     break;
 
   case 104:
 #line 282 "src/syntax.y" // lalr1.cc:859
-    {setRoot(mkNamedValNode(getRoot(), (yystack_[1].value))); (yylhs.value) = (yystack_[0].value);}
+    {(yylhs.value) = setRoot(mkNamedValNode(getRoot(), (yystack_[1].value)));}
 #line 1124 "src/parser.cpp" // lalr1.cc:859
     break;
 

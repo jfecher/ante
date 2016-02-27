@@ -1,10 +1,21 @@
 `
         math.an
-    Tests declaration of basic fucntions with
-    multiple parameters.
+    Tests declaration of basic functions with multiple parameters,
+    as well as some basic binary operators.
 `
 
-i32 add: i32 a b
+~explicit list of parameters
+i32 add: i32 a, i32 b
     return a + b
 
-printf("%d + %d = %d\n", 13, 17, add(13, 17))
+~shorthand for list of parameters of the same type:
+i64 mulThree: i32 a b c
+    return a * b * c
+
+
+let n1 = 3
+let n2 = 4
+let n3 = 5
+
+printf("%d + %d = %d\n", n1, n2, add(n1, n2))
+printf("%d * %d * %d = %d\n", n1, n2, n3, mulThree(n1, n2, n3))

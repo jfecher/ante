@@ -81,6 +81,7 @@ namespace ante{
         static Type* typeNodeToLlvmType(TypeNode *tyNode);
         static Type* tokTypeToLlvmType(int tokTy, string typeName);
         static int llvmTypeToTokType(Type *t);
+        static bool llvmTypeEq(Type *l, Type *r);
 
         static char getBitWidthOfTokTy(int tokTy);
         static bool isUnsignedTokTy(int tokTy);

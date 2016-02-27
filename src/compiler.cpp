@@ -151,7 +151,17 @@ TypedValue* StrLitNode::compile(Compiler *c, Module *m){
  *  forcibly insert the branch instruction afterwards as it leads to dead code.
  */
 TypedValue* RetNode::compile(Compiler *c, Module *m){
-    return new TypedValue(c->builder.CreateRet(expr->compile(c, m)->val), Tok_Void);
+    TypedValue *ret = expr->compile(c, m);
+    
+    Function *f = c->builder.GetInsertBlock()->getParent();
+
+    if(!Compiler::llvmTypeEq(ret->val->getType(), f->getReturnType())){
+        return c->compErr("return expression of type " + Lexer::getTokStr(ret->type) +
+               " does not match function return type " + Lexer::getTokStr(Compiler::llvmTypeToTokType(f->getReturnType())), 
+               this->row, this->col);
+    }
+
+    return new TypedValue(c->builder.CreateRet(ret->val), ret->type);
 }
 
 void compileIfNodeHelper(IfNode *ifN, BasicBlock *mergebb, Function *f, Compiler *c, Module *m){
@@ -322,7 +332,7 @@ TypedValue* VarAssignNode::compile(Compiler *c, Module *m){
     TypedValue *v = ref_expr->compile(c, m);
     if(!v) return 0;
     
-    if(v->type == '*'){
+    if(Compiler::llvmTypeToTokType(v->val->getType()) == '*'){
         return new TypedValue(c->builder.CreateStore(expr->compile(c, m)->val, v->val), Tok_Void);
     }else{
         return c->compErr("Attempted assign without a memory address, with type " + Lexer::getTokStr(v->type), this->row, this->col);
@@ -374,7 +384,10 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
             if(!(param = (NamedValNode*)param->next.get())) break;
         }
 
+        //actually compile the function, and hold onto the last value
         TypedValue *v = compileStmtList(fdn->child.get(), this, module.get());
+        //End of the function, discard the function's scope.
+        exitScope();
 
         builder.SetInsertPoint(&module->getFunction(fdn->name)->back());
         
@@ -384,17 +397,12 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
             builder.CreateRetVoid();
         }
 
-        //End of the function, discard the function's scope.
-        exitScope();
 
         //Attribute attr = Attribute::get(getGlobalContext(), "nounwind");
         //f->addAttributes(0, AttributeSet::get(getGlobalContext(), AttributeSet::FunctionIndex, attr));
 
         //apply function-level optimizations
         passManager->run(*f);
-
-        //Verify the function is syntactically correct, and return to compiling main.
-        verifyFunction(*f);
         //c->builder.SetInsertPoint(&c->module->getFunction("main")->back());
     }
     return f;
@@ -493,21 +501,19 @@ void Compiler::compile(){
     builder.CreateRet(ConstantInt::get(getGlobalContext(), APInt(8, 0, true)));
 
     passManager->run(*main);
-    verifyFunction(*main);
 
     //flag this module as compiled.
     compiled = true;
 
     if(errFlag){
         puts("Compilation aborted.");
-        return;
+        exit(1);
     }
 }
 
 
 void Compiler::compileNative(){
     if(!compiled) compile();
-    if(errFlag) return;
 
     string modName = removeFileExt(fileName);
     //this file will become the obj file before linking
@@ -539,11 +545,10 @@ int Compiler::compileIRtoObj(Module *m, string inFile, string outFile)
 
     //invoke llc and compile an object file of the module
     int res = system(cmd.c_str());
-    if(res) return res;
 
     //remove the temporary .bc file
     remove(llbcName.c_str());
-    return 0;
+    return res;
 }
 
 int Compiler::linkObj(string inFiles, string outFile)

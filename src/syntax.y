@@ -278,8 +278,8 @@ ident_list: ident_list ident  {$$ = setNext($1, mkVarNode((char*)$2));}
  * The next parameter should be set to the first in the list, (the one returned by getRoot()),
  * but the variable returned must be the last in the last, in this case $4
  */
-params: params ',' type_expr ident_list {setNext($1, mkNamedValNode(getRoot(), $3)); $$ = $4;}
-      | type_expr ident_list            {setRoot(mkNamedValNode(getRoot(), $1)); $$ = $2;}
+params: params ',' type_expr ident_list {$$ = setNext($1, mkNamedValNode(getRoot(), $3));}
+      | type_expr ident_list            {$$ = setRoot(mkNamedValNode(getRoot(), $1));}
       ;
 
 maybe_params: params {$$ = getRoot();}
