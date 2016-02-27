@@ -6,7 +6,6 @@
 //defined in lexer.cpp
 extern char* lextxt;
 
-Node* getRootNode(void);
 Node* setRoot(Node* root);
 Node* getRoot(void);
 Node* setNext(Node* cur, Node* nxt);

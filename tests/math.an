@@ -4,7 +4,7 @@
     multiple parameters.
 `
 
-i32 add: i32 a, i32 b
+i32 add: i32 a b
     return a + b
 
 printf("%d + %d = %d\n", 13, 17, add(13, 17))

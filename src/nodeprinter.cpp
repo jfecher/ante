@@ -119,7 +119,7 @@ void VarNode::print(){
 }
 
 void RefVarNode::print(){
-    cout << name;
+    cout << "(ref " << name << ")";
     maybePrintArr(next.get());
 }
 

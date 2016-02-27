@@ -162,7 +162,7 @@ TypedValue* UnOpNode::compile(Compiler *c, Module *m){
     if(!rhs) return 0;
 
     switch(op){
-        case '*': //pointer dereference
+        case '@': //pointer dereference
             if(rhs->type != '*'){
                 return c->compErr("Cannot dereference non-pointer type " + Lexer::getTokStr(rhs->type), this->row, this->col);
             }

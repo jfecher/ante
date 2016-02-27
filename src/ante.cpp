@@ -1,6 +1,7 @@
 #include "lexer.h"
 #include "parser.h"
 #include "compiler.h"
+#include "ptree.h"
 #include <cstring>
 #include <iostream>
 using namespace ante;

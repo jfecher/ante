@@ -228,7 +228,7 @@ let double = 25.0_f64
         
         -    negative
         not  logical not
-        *    pointer dereference
+        @    pointer dereference
         &    address of
 `
 
@@ -1127,7 +1127,7 @@ let tod1 = new Card(3, Suit.Diamonds)
 ~alternatively, data can be manually allocated.  The following is equivilent
 ~to the statement above
 let tod2 = malloc(sizeof(Card))
-*tod2 = Card(3, Suit.Diamonds)
+@tod2 = Card(3, Suit.Diamonds)
 
 ~Example of a raw pointer to the u8 value 5.
 let raw example = new 5u8

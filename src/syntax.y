@@ -26,8 +26,6 @@ namespace ante{
 
 void yyerror(const char *msg);
 
-struct ModTyPair{ Node *mod, *ty; };
-
 %}
 
 %locations
@@ -92,7 +90,7 @@ struct ModTyPair{ Node *mod, *ty; };
 %left '*' '/' '%'
 
 %right '^'
-%right '.'
+%left '.'
 
 %nonassoc '(' '['
 
@@ -106,31 +104,27 @@ struct ModTyPair{ Node *mod, *ty; };
 top_level_stmt_list: maybe_newline stmt_list maybe_newline
                    ;
 
-stmt_list: stmt_list newline_stmt Newline {$$ = setNext($1, $2);}
-         | stmt_list block_stmt           {$$ = setNext($1, $2);}
-         | newline_stmt Newline           {$$ = setRoot($1);}
-         | block_stmt                     {$$ = setRoot($1);}
+stmt_list: stmt_list maybe_newline stmt {$$ = setNext($1, $3);}
+         | stmt                         {$$ = setRoot($1);}
          ;
 
 maybe_newline: Newline  %prec Newline
              | %empty   %prec LOW
              ;
 
-block_stmt: fn_decl    {$$ = $1;}
-          | data_decl  {$$ = $1;}
-          | while_loop {$$ = $1;}
-          | for_loop   {$$ = $1;}
-          | if_stmt    {$$ = $1;}
-          | enum_decl  {$$ = $1;}
-          ;
-
-newline_stmt: var_decl      {$$ = $1;}
-            | var_assign    {$$ = $1;}
-            | fn_call       {$$ = $1;}
-            | ret_stmt      {$$ = $1;}
-            | do_while_loop {$$ = $1;}
-            | let_binding   {$$ = $1;}
-            ;
+stmt: var_decl      {$$ = $1;}
+    | var_assign    {$$ = $1;}
+    | fn_decl       {$$ = $1;}
+    | fn_call       {$$ = $1;}
+    | ret_stmt      {$$ = $1;}
+    | data_decl     {$$ = $1;}
+    | while_loop    {$$ = $1;}
+    | for_loop      {$$ = $1;}
+    | if_stmt       {$$ = $1;}
+    | enum_decl     {$$ = $1;}
+    | do_while_loop {$$ = $1;}
+    | let_binding   {$$ = $1;}
+    ;
 
 ident: Ident {$$ = (Node*)lextxt;}
      ;
@@ -308,7 +302,7 @@ if_stmt: If expr block maybe_elif_list {$$ = mkIfNode($2, $3, (IfNode*)getRoot()
 while_loop: While expr block {$$ = NULL;}
           ;
 
-do_while_loop: Do block While expr {$$ = NULL;}
+do_while_loop: Do While expr block {$$ = NULL;}
              ;
 
 for_loop: For var_decl In expr block {$$ = NULL;}
@@ -319,7 +313,7 @@ var: ident '[' expr ']'  /*TODO: arrays*/
    ;
 
 ref_val: '&' ref_val         {$$ = mkUnOpNode('&', $2);}
-       | '*' ref_val         {$$ = mkUnOpNode('*', $2);}
+       | '@' ref_val         {$$ = mkUnOpNode('@', $2);}
        | ident '[' expr ']'  
        | ident  %prec Ident  {$$ = mkRefVarNode((char*)$1);}
        ;
@@ -346,7 +340,7 @@ expr_list: expr_list ',' expr_p    {$$ = setNext($1, $3);}
          | expr_p                  {$$ = setRoot($1);}
          ;
 
-unary_op: '*' val  {$$ = mkUnOpNode('*', $2);}
+unary_op: '@' val  {$$ = mkUnOpNode('@', $2);}
         | '&' val  {$$ = mkUnOpNode('&', $2);}
         | '-' val  {$$ = mkUnOpNode('-', $2);}
         ;
