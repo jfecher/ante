@@ -246,7 +246,7 @@ TypedValue* RefVarNode::compile(Compiler *c){
     if(!dynamic_cast<AllocaInst*>(val->val))
         return c->compErr("Cannot assign to immutable variable " + name, this->row, this->col);
 
-    return val;
+    return new TypedValue(val->val, '*');
 }
 
 TypedValue* FuncCallNode::compile(Compiler *c){

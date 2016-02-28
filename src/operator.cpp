@@ -171,7 +171,7 @@ TypedValue* UnOpNode::compile(Compiler *c){
         case '&': //address-of
             break; //TODO
         case '-': //negation
-            break;
+            return new TypedValue(c->builder.CreateNeg(rhs->val), rhs->type);
     }
     
     return c->compErr("Unknown unary operator " + Lexer::getTokStr(op), this->row, this->col);
