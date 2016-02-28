@@ -92,20 +92,20 @@ size_t getTupleSize(Node *tup){
 /*
  *  Compiles a statement list and returns its last statement.
  */
-TypedValue* compileStmtList(Node *nList, Compiler *c, Module *m){
+TypedValue* compileStmtList(Node *nList, Compiler *c){
     TypedValue *ret = nullptr;
     while(nList){
-        ret = nList->compile(c, m);
+        ret = nList->compile(c);
         nList = nList->next.get();
     }
     return ret;
 }
 
-inline bool Compiler::isUnsignedTokTy(int tt){
+bool Compiler::isUnsignedTokTy(int tt){
     return tt==Tok_U8||tt==Tok_U16||tt==Tok_U32||tt==Tok_U64||tt==Tok_Usz;
 }
 
-TypedValue* IntLitNode::compile(Compiler *c, Module *m){
+TypedValue* IntLitNode::compile(Compiler *c){
     return new TypedValue(ConstantInt::get(getGlobalContext(),
                             APInt(Compiler::getBitWidthOfTokTy(type), 
                             atol(val.c_str()), Compiler::isUnsignedTokTy(type))), type);
@@ -123,25 +123,25 @@ const fltSemantics& tokTyToFltSemantics(int tokTy){
 /*
  *  TODO: type field for float literals
  */
-TypedValue* FltLitNode::compile(Compiler *c, Module *m){
+TypedValue* FltLitNode::compile(Compiler *c){
     return new TypedValue(ConstantFP::get(getGlobalContext(), APFloat(tokTyToFltSemantics(type), val.c_str())), type);
 }
 
-TypedValue* BoolLitNode::compile(Compiler *c, Module *m){
+TypedValue* BoolLitNode::compile(Compiler *c){
     return new TypedValue(ConstantInt::get(getGlobalContext(), APInt(1, (bool)val, true)), Tok_Bool);
 }
 
 
-TypedValue* ModNode::compile(Compiler *c, Module *m){
+TypedValue* ModNode::compile(Compiler *c){
     return nullptr;
 }
 
 //TODO: possibly implement as replacement for tokTypeToLlvmType
-TypedValue* TypeNode::compile(Compiler *c, Module *m){
+TypedValue* TypeNode::compile(Compiler *c){
     return nullptr;
 }
 
-TypedValue* StrLitNode::compile(Compiler *c, Module *m){
+TypedValue* StrLitNode::compile(Compiler *c){
     return new TypedValue(c->builder.CreateGlobalStringPtr(val), '*');
     //ConstantDataArray::getString(getGlobalContext(), val);
 }
@@ -150,8 +150,8 @@ TypedValue* StrLitNode::compile(Compiler *c, Module *m){
  *  When a retnode is compiled within a block, care must be taken to not
  *  forcibly insert the branch instruction afterwards as it leads to dead code.
  */
-TypedValue* RetNode::compile(Compiler *c, Module *m){
-    TypedValue *ret = expr->compile(c, m);
+TypedValue* RetNode::compile(Compiler *c){
+    TypedValue *ret = expr->compile(c);
     
     Function *f = c->builder.GetInsertBlock()->getParent();
 
@@ -164,11 +164,11 @@ TypedValue* RetNode::compile(Compiler *c, Module *m){
     return new TypedValue(c->builder.CreateRet(ret->val), ret->type);
 }
 
-void compileIfNodeHelper(IfNode *ifN, BasicBlock *mergebb, Function *f, Compiler *c, Module *m){
+void compileIfNodeHelper(IfNode *ifN, BasicBlock *mergebb, Function *f, Compiler *c){
     BasicBlock *thenbb = BasicBlock::Create(getGlobalContext(), "then", f);
 
     if(ifN->elseN.get()){
-        TypedValue *cond = ifN->condition->compile(c, m);
+        TypedValue *cond = ifN->condition->compile(c);
 
         BasicBlock *elsebb = BasicBlock::Create(getGlobalContext(), "else");
         c->builder.CreateCondBr(cond->val, thenbb, elsebb);
@@ -177,7 +177,7 @@ void compileIfNodeHelper(IfNode *ifN, BasicBlock *mergebb, Function *f, Compiler
         c->builder.SetInsertPoint(thenbb);
 
         //Compile the then block
-        TypedValue *v = compileStmtList(ifN->child.get(), c, m);
+        TypedValue *v = compileStmtList(ifN->child.get(), c);
         
         //If the user did not return from the function themselves, then
         //merge to the endif.
@@ -190,32 +190,32 @@ void compileIfNodeHelper(IfNode *ifN, BasicBlock *mergebb, Function *f, Compiler
 
         //if elseN is else, and not elif, insert merge instruction.
         if(ifN->elseN->condition.get()){
-            compileIfNodeHelper(ifN->elseN.get(), mergebb, f, c, m);
+            compileIfNodeHelper(ifN->elseN.get(), mergebb, f, c);
         }else{
             //compile the else node's body directly
-            TypedValue *elseBody = ifN->elseN->child->compile(c, m);
+            TypedValue *elseBody = ifN->elseN->child->compile(c);
             if(!dynamic_cast<ReturnInst*>(elseBody->val)){
                 c->builder.CreateBr(mergebb);
             }
         }
     }else{ //this must be an if or elif node with no proceeding elif or else nodes.
-        TypedValue *cond = ifN->condition->compile(c, m);
+        TypedValue *cond = ifN->condition->compile(c);
         c->builder.CreateCondBr(cond->val, thenbb, mergebb);
         c->builder.SetInsertPoint(thenbb);
-        TypedValue *v = compileStmtList(ifN->child.get(), c, m);
+        TypedValue *v = compileStmtList(ifN->child.get(), c);
         if(!dynamic_cast<ReturnInst*>(v->val)){
             c->builder.CreateBr(mergebb);
         }
     }
 }
 
-TypedValue* IfNode::compile(Compiler *c, Module *m){
+TypedValue* IfNode::compile(Compiler *c){
     //Create thenbb and forward declare the others but dont inser them
     //into function f just yet.
     BasicBlock *mergbb = BasicBlock::Create(getGlobalContext(), "endif");
     Function *f = c->builder.GetInsertBlock()->getParent();
 
-    compileIfNodeHelper(this, mergbb, f, c, m);
+    compileIfNodeHelper(this, mergbb, f, c);
 
     f->getBasicBlockList().push_back(mergbb);
     c->builder.SetInsertPoint(mergbb);
@@ -223,13 +223,13 @@ TypedValue* IfNode::compile(Compiler *c, Module *m){
 }
 
 //Since parameters are managed in Compiler::compfn, this need not do anything
-TypedValue* NamedValNode::compile(Compiler *c, Module *m)
+TypedValue* NamedValNode::compile(Compiler *c)
 { return nullptr; }
 
 /*
  *  Loads a variable from the stack
  */
-TypedValue* VarNode::compile(Compiler *c, Module *m){
+TypedValue* VarNode::compile(Compiler *c){
     TypedValue *val = c->lookup(name);
     if(!val)
         return c->compErr("Variable " + name + " has not been declared.", this->row, this->col);
@@ -237,7 +237,7 @@ TypedValue* VarNode::compile(Compiler *c, Module *m){
     return dynamic_cast<AllocaInst*>(val->val)? new TypedValue(c->builder.CreateLoad(val->val, name), val->type) : val;
 }
 
-TypedValue* RefVarNode::compile(Compiler *c, Module *m){
+TypedValue* RefVarNode::compile(Compiler *c){
     TypedValue *val = c->lookup(name);
     
     if(!val)
@@ -249,8 +249,8 @@ TypedValue* RefVarNode::compile(Compiler *c, Module *m){
     return val;
 }
 
-TypedValue* FuncCallNode::compile(Compiler *c, Module *m){
-    Function *f = m->getFunction(name);
+TypedValue* FuncCallNode::compile(Compiler *c){
+    Function *f = c->module->getFunction(name);
     if(!f){
         if(auto *fdNode = c->fnDecls[name]){
             //Function has been declared but not defined, so define it.
@@ -274,7 +274,7 @@ TypedValue* FuncCallNode::compile(Compiler *c, Module *m){
     std::vector<Value*> args;
     Node *curParam = params.get();
     for(unsigned i = 0; i < paramSize; i++){
-        args.push_back(curParam->compile(c, m)->val);
+        args.push_back(curParam->compile(c)->val);
         curParam = curParam->next.get();
         if(!args.back())
             c->compErr("Argument " + to_string(i+1) + " of called function " + name + " evaluated to null.", this->row, this->col);
@@ -288,12 +288,12 @@ TypedValue* FuncCallNode::compile(Compiler *c, Module *m){
 }
 
 
-TypedValue* LetBindingNode::compile(Compiler *c, Module *m){
+TypedValue* LetBindingNode::compile(Compiler *c){
     if(c->lookup(name)){ //check for redeclaration
         return c->compErr("Variable " + name + " was redeclared.", row, col);
     }
     
-    TypedValue *val = expr->compile(c, m);
+    TypedValue *val = expr->compile(c);
     if(!val) return nullptr;
 
     TypeNode *tyNode;
@@ -308,7 +308,7 @@ TypedValue* LetBindingNode::compile(Compiler *c, Module *m){
 }
 
 
-TypedValue* VarDeclNode::compile(Compiler *c, Module *m){
+TypedValue* VarDeclNode::compile(Compiler *c){
     if(c->lookup(name)){ //check for redeclaration
         return c->compErr("Variable " + name + " was redeclared.", row, col);
     }
@@ -319,7 +319,7 @@ TypedValue* VarDeclNode::compile(Compiler *c, Module *m){
 
     c->stoVar(name, alloca);
     if(expr.get()){
-        TypedValue *val = expr->compile(c, m);
+        TypedValue *val = expr->compile(c);
         if(!val) return nullptr;
 
         return new TypedValue(c->builder.CreateStore(val->val, alloca->val), tyNode->type);
@@ -328,12 +328,12 @@ TypedValue* VarDeclNode::compile(Compiler *c, Module *m){
     }
 }
 
-TypedValue* VarAssignNode::compile(Compiler *c, Module *m){
-    TypedValue *v = ref_expr->compile(c, m);
+TypedValue* VarAssignNode::compile(Compiler *c){
+    TypedValue *v = ref_expr->compile(c);
     if(!v) return 0;
     
     if(Compiler::llvmTypeToTokType(v->val->getType()) == '*'){
-        return new TypedValue(c->builder.CreateStore(expr->compile(c, m)->val, v->val), Tok_Void);
+        return new TypedValue(c->builder.CreateStore(expr->compile(c)->val, v->val), Tok_Void);
     }else{
         return c->compErr("Attempted assign without a memory address, with type " + Lexer::getTokStr(v->type), this->row, this->col);
     }
@@ -385,7 +385,7 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
         }
 
         //actually compile the function, and hold onto the last value
-        TypedValue *v = compileStmtList(fdn->child.get(), this, module.get());
+        TypedValue *v = compileStmtList(fdn->child.get(), this);
         //End of the function, discard the function's scope.
         exitScope();
 
@@ -411,13 +411,13 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
 /*
  *  Registers a function for later compilation
  */
-TypedValue* FuncDeclNode::compile(Compiler *c, Module *m){
+TypedValue* FuncDeclNode::compile(Compiler *c){
     c->registerFunction(this);
     return nullptr;
 }
 
 
-TypedValue* DataDeclNode::compile(Compiler *c, Module *m)
+TypedValue* DataDeclNode::compile(Compiler *c)
 { return nullptr; }
 
 
@@ -495,7 +495,7 @@ void Compiler::compile(){
     builder.SetInsertPoint(bb);
 
     //Compile the rest of the program
-    compileStmtList(ast.get(), this, module.get());
+    compileStmtList(ast.get(), this);
 
     //builder should already be at end of main function
     builder.CreateRet(ConstantInt::get(getGlobalContext(), APInt(8, 0, true)));
@@ -578,7 +578,7 @@ inline void Compiler::exitScope()
     varTable.pop();
 }
 
-inline TypedValue* Compiler::lookup(string var)
+TypedValue* Compiler::lookup(string var)
 {
     try{
         return varTable.top().at(var);

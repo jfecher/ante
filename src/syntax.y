@@ -93,11 +93,12 @@ void yyerror(const char *msg);
 %left '.'
 
 %nonassoc '(' '['
+%nonassoc HIGH
 
 /*
     All shift/reduce conflicts should be manually dealt with.
 */
-%expect 0
+//%expect 0
 %start top_level_stmt_list
 %%
 
@@ -128,11 +129,11 @@ no_nl_stmt: fn_decl
           ;
 
 /* Statements that can possibly end in an newline */
-nl_stmt: var_decl      {$$ = $1;}
-       | var_assign    {$$ = $1;}
-       | fn_call       {$$ = $1;}
-       | ret_stmt      {$$ = $1;}
-       | let_binding   {$$ = $1;}
+nl_stmt: var_decl
+       | var_assign
+       | fn_call
+       | ret_stmt
+       | let_binding
        ;
 
 ident: Ident {$$ = (Node*)lextxt;}
@@ -216,7 +217,6 @@ let_binding: Let modifier_list type_expr ident '=' expr  {$$ = mkLetBindingNode(
            | Let type_expr ident '=' expr                {$$ = mkLetBindingNode((char*)$3, 0,  $2, $5);}
            | Let ident '=' expr                          {$$ = mkLetBindingNode((char*)$2, 0,  0,  $4);}
            ;
-
 
 /* TODO: change arg1 to require node* instead of char* */
 var_assign: ref_val '=' expr {$$ = mkVarAssignNode($1, $3);}
@@ -342,14 +342,15 @@ val: fn_call                  {$$ = $1;}
    | False                    {$$ = mkBoolLitNode(0);}
    ;
 
-maybe_expr: expr   {$$ = $1;}
-          | %empty {$$ = NULL;}
+
+maybe_expr: expr    {$$ = $1;}
+          | %empty  {$$ = NULL;}
           ;
 
 expr: expr_list {$$ = getRoot();}
 
 expr_list: expr_list ',' expr_p    {$$ = setNext($1, $3);}
-         | expr_p                  {$$ = setRoot($1);}
+         | expr_p  %prec HIGH      {$$ = setRoot($1);}
          ;
 
 unary_op: '*' val  {$$ = mkUnOpNode('*', $2);}
@@ -375,33 +376,32 @@ expr_p: expr_p '+' expr_p     {$$ = mkBinOpNode('+', $1, $3);}
       | val                   {$$ = $1;}
       ;
 
+
 /* nl_expr is used in expression blocks and can span multiple lines */
 nl_expr: nl_expr_list {$$ = getRoot();}
        ;
 
-nl_expr_list: nl_expr_list ',' maybe_newline expr_p {$$ = setNext($1, $4);}
-            | nl_expr_p                             {$$ = setRoot($1);}
-            | nl_expr_list Newline                  {$$ = $1;}
+nl_expr_list: nl_expr_list ',' maybe_newline expr_block_p {$$ = setNext($1, $4);}
+            | expr_block_p                                {$$ = setRoot($1);}
             ;
 
-nl_expr_p: nl_expr_p '+' maybe_newline nl_expr_p     {$$ = mkBinOpNode('+', $1, $4);}
-         | nl_expr_p '-' maybe_newline nl_expr_p     {$$ = mkBinOpNode('-', $1, $4);}
-         | nl_expr_p '*' maybe_newline nl_expr_p     {$$ = mkBinOpNode('*', $1, $4);}
-         | nl_expr_p '/' maybe_newline nl_expr_p     {$$ = mkBinOpNode('/', $1, $4);}
-         | nl_expr_p '%' maybe_newline nl_expr_p     {$$ = mkBinOpNode('%', $1, $4);}
-         | nl_expr_p '<' maybe_newline nl_expr_p     {$$ = mkBinOpNode('<', $1, $4);}
-         | nl_expr_p '>' maybe_newline nl_expr_p     {$$ = mkBinOpNode('>', $1, $4);}
-         | nl_expr_p '^' maybe_newline nl_expr_p     {$$ = mkBinOpNode('^', $1, $4);}
-         | nl_expr_p '.' maybe_newline nl_expr_p     {$$ = mkBinOpNode('.', $1, $4);}
-         | nl_expr_p Eq maybe_newline  nl_expr_p     {$$ = mkBinOpNode(Tok_Eq, $1, $4);}
-         | nl_expr_p NotEq maybe_newline nl_expr_p   {$$ = mkBinOpNode(Tok_NotEq, $1, $4);}
-         | nl_expr_p GrtrEq maybe_newline nl_expr_p  {$$ = mkBinOpNode(Tok_GrtrEq, $1, $4);}
-         | nl_expr_p LesrEq maybe_newline nl_expr_p  {$$ = mkBinOpNode(Tok_LesrEq, $1, $4);}
-         | nl_expr_p Or maybe_newline nl_expr_p      {$$ = mkBinOpNode(Tok_Or, $1, $4);}
-         | nl_expr_p And maybe_newline nl_expr_p     {$$ = mkBinOpNode(Tok_And, $1, $4);}
-         | val                                       {$$ = $1;}
+expr_block_p: expr_block_p '+' maybe_newline expr_block_p     {$$ = mkBinOpNode('+', $1, $4);}
+         | expr_block_p '-' maybe_newline expr_block_p     {$$ = mkBinOpNode('-', $1, $4);}
+         | expr_block_p '*' maybe_newline expr_block_p     {$$ = mkBinOpNode('*', $1, $4);}
+         | expr_block_p '/' maybe_newline expr_block_p     {$$ = mkBinOpNode('/', $1, $4);}
+         | expr_block_p '%' maybe_newline expr_block_p     {$$ = mkBinOpNode('%', $1, $4);}
+         | expr_block_p '<' maybe_newline expr_block_p     {$$ = mkBinOpNode('<', $1, $4);}
+         | expr_block_p '>' maybe_newline expr_block_p     {$$ = mkBinOpNode('>', $1, $4);}
+         | expr_block_p '^' maybe_newline expr_block_p     {$$ = mkBinOpNode('^', $1, $4);}
+         | expr_block_p '.' maybe_newline expr_block_p     {$$ = mkBinOpNode('.', $1, $4);}
+         | expr_block_p Eq maybe_newline  expr_block_p     {$$ = mkBinOpNode(Tok_Eq, $1, $4);}
+         | expr_block_p NotEq maybe_newline expr_block_p   {$$ = mkBinOpNode(Tok_NotEq, $1, $4);}
+         | expr_block_p GrtrEq maybe_newline expr_block_p  {$$ = mkBinOpNode(Tok_GrtrEq, $1, $4);}
+         | expr_block_p LesrEq maybe_newline expr_block_p  {$$ = mkBinOpNode(Tok_LesrEq, $1, $4);}
+         | expr_block_p Or maybe_newline expr_block_p      {$$ = mkBinOpNode(Tok_Or, $1, $4);}
+         | expr_block_p And maybe_newline expr_block_p     {$$ = mkBinOpNode(Tok_And, $1, $4);}
+         | val                                             {$$ = $1;}
          ;
-
 %%
 
 void yy::parser::error(const location& loc, const string& msg){

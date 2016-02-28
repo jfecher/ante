@@ -177,12 +177,18 @@ Lexer::Lexer(const char* file) :
     scopes{new stack<unsigned int>()},
     cscope{0}
 {
+    if(!*in){
+        cerr << "Error: Unable to open file '" << file << "'\n";
+        exit(EXIT_FAILURE);
+    }
+
     incPos();
     incPos();
     scopes->push(0);
 }
 
 Lexer::~Lexer(){
+    delete scopes;
     delete in;
 }
 
@@ -321,7 +327,7 @@ int Lexer::genNumLitTok(){
             }
             
             if(IS_NUMERICAL(cur)){
-                error("Extraneous numbers after type suffix.", fileName, row, col);
+                lexErr("Extraneous numbers after type suffix.");
             }
         }
     }else{
@@ -346,7 +352,7 @@ int Lexer::genNumLitTok(){
             }
 
             if(IS_NUMERICAL(cur)){
-                error("Extraneous numbers after type suffix.", fileName, row, col);
+                lexErr("Extraneous numbers after type suffix.");
             }
         }
     }
@@ -364,15 +370,14 @@ int Lexer::genWsTok(){
                 case ' ': newScope++; break;
                 case '\n': newScope = 0; row++; col = 0; break;
                 case '\t':
-                    error("error: tab characters are invalid whitespace.", fileName, row, col*8);
-                    exit(1);
+                    lexErr("Tab characters are invalid whitespace.");
                 default: break;
             }
             incPos();
             if(IS_COMMENT(cur)) return handleComment();
         }
 
-        if(newScope == scopes->top()){
+        if(!scopes->empty() && newScope == scopes->top()){
             //tokRow is not set to row for newline tokens in case there are several newlines.
             //In this case, if set to row, it would become the row of the last newline.
             //Incrementing it from its previous token (guarenteed to be non-newline) fixes this.
@@ -446,9 +451,15 @@ int Lexer::next(){
         RETURN_PAIR(next());
     }else if(cur == ';' && nxt == ';'){
         unsigned int curScope = scopes->top();
-        scopes->pop();
-        cscope = scopes->top();
-        scopes->push(curScope);
+        if(curScope != 0){
+            scopes->pop();
+            cscope = scopes->top();
+            scopes->push(curScope);
+        }else{
+            lexErr("Extraneous ;; leads to scope underflow.");
+        }
+        RETURN_PAIR(next());
+    }else if(cur == '\\' && nxt == '\n'){ //ignore newline
         RETURN_PAIR(next());
     }
 
@@ -472,4 +483,10 @@ int Lexer::next(){
     char ret = cur;
     incPos();
     return ret;
+}
+
+
+void Lexer::lexErr(const char *msg){
+    error(msg, fileName, row, col);
+    exit(EXIT_FAILURE);//lexing errors are always fatal
 }

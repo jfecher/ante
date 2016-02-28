@@ -205,7 +205,8 @@ namespace yy {
         Newline = 319,
         Indent = 320,
         Unindent = 321,
-        LOW = 322
+        LOW = 322,
+        HIGH = 323
       };
     };
 
@@ -513,12 +514,12 @@ namespace yy {
     enum
     {
       yyeof_ = 0,
-      yylast_ = 795,     ///< Last index in yytable_.
+      yylast_ = 817,     ///< Last index in yytable_.
       yynnts_ = 54,  ///< Number of nonterminal symbols.
       yyfinal_ = 4, ///< Termination state number.
       yyterror_ = 1,
       yyerrcode_ = 256,
-      yyntokens_ = 86  ///< Number of tokens.
+      yyntokens_ = 87  ///< Number of tokens.
     };
 
 
@@ -527,7 +528,7 @@ namespace yy {
 
 
 } // yy
-#line 531 "include/yyparser.h" // lalr1.cc:377
+#line 532 "include/yyparser.h" // lalr1.cc:377
 
 
 

@@ -19,7 +19,7 @@ namespace ante{
     /* Defined in src/compiler.cpp */
     /* General error function */
     void error(const char* msg, const char* fileName, unsigned int row, unsigned int col);
-    
+
     class Lexer{
     public:
         const char* fileName; 
@@ -58,6 +58,7 @@ namespace ante{
         */
         unsigned int cscope;
         
+        void lexErr(const char *msg);
         
         void incPos(void);
         void incPos(int end);

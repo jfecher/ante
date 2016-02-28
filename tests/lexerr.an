@@ -1,0 +1,16 @@
+`
+        lexerr.an
+    shows possible types of errors caught during the lexing
+    phase.  Since lexing errors are almost always fatal, compilation
+    is usually halted after the first incidence.
+`
+
+~Extraneous numbers after type suffix
+let i = 5_i321
+
+~Scope underflow caused by unindent literal
+let ans = 5;;
+
+~And worst of all, use of the tab character in significant whitespace
+if ans == i
+	puts("ans == i")

@@ -28,7 +28,7 @@ struct Node{
     virtual void print(void) = 0;
 
     //compile node to a given module
-    virtual TypedValue* compile(Compiler*, Module*) = 0;
+    virtual TypedValue* compile(Compiler*) = 0;
 
     //get value type of node.  Only used for nodes usable in expressions.
     virtual Type* getType(Compiler*);
@@ -64,7 +64,7 @@ struct ParentNode : public Node{
 struct IntLitNode : public Node{
     string val;
     int type;
-    TypedValue* compile(Compiler*, Module*);
+    TypedValue* compile(Compiler*);
     void print();
     Type* getType(Compiler *c);
     IntLitNode(string s, int ty) : Node(), val(s), type(ty){}
@@ -74,7 +74,7 @@ struct IntLitNode : public Node{
 struct FltLitNode : public Node{
     string val;
     int type;
-    TypedValue* compile(Compiler*, Module*);
+    TypedValue* compile(Compiler*);
     void print(void);
     Type* getType(Compiler*);
     FltLitNode(string s, int ty) : Node(), val(s), type(ty){}
@@ -83,7 +83,7 @@ struct FltLitNode : public Node{
 
 struct BoolLitNode : public Node{
     bool val;
-    TypedValue* compile(Compiler*, Module*);
+    TypedValue* compile(Compiler*);
     void print(void);
     Type* getType(Compiler*);
     BoolLitNode(char b) : Node(), val(b){}
@@ -93,7 +93,7 @@ struct BoolLitNode : public Node{
 struct UnOpNode : public Node{
     int op;
     unique_ptr<Node> rval;
-    TypedValue* compile(Compiler*, Module*);
+    TypedValue* compile(Compiler*);
     Type* getType(Compiler*);
     void print(void);
     UnOpNode(int s, Node *rv) : Node(), op(s), rval(rv){}
@@ -103,7 +103,7 @@ struct UnOpNode : public Node{
 struct BinOpNode : public Node{
     int op;
     unique_ptr<Node> lval, rval;
-    TypedValue* compile(Compiler*, Module*);
+    TypedValue* compile(Compiler*);
     Type* getType(Compiler*);
     void print(void);
     BinOpNode(int s, Node *lv, Node *rv) : Node(), op(s), lval(lv), rval(rv){}
@@ -115,7 +115,7 @@ struct TypeNode : public Node{
     string typeName; //used for usertypes
     unique_ptr<TypeNode> extTy; //Used for pointers and non-single anonymous types.
 
-    TypedValue* compile(Compiler*, Module*);
+    TypedValue* compile(Compiler*);
     void print(void);
     TypeNode(int ty, string tName, TypeNode* eTy) : Node(), type(ty), typeName(tName), extTy(eTy){}
     ~TypeNode(){}
@@ -123,7 +123,7 @@ struct TypeNode : public Node{
 
 struct ModNode : public Node{
     int mod;
-    TypedValue* compile(Compiler*, Module*);
+    TypedValue* compile(Compiler*);
     void print(void);
     ModNode(int m) : Node(), mod(m){}
     ~ModNode(){}
@@ -131,7 +131,7 @@ struct ModNode : public Node{
 
 struct RetNode : public Node{
     unique_ptr<Node> expr;
-    TypedValue* compile(Compiler*, Module*);
+    TypedValue* compile(Compiler*);
     void print(void);
     RetNode(Node* e) : Node(), expr(e){}
     ~RetNode(){}
@@ -140,7 +140,7 @@ struct RetNode : public Node{
 struct NamedValNode : public Node{
     string name;
     unique_ptr<Node> typeExpr;
-    TypedValue* compile(Compiler*, Module*);
+    TypedValue* compile(Compiler*);
     void print(void);
     NamedValNode(string s, Node* t) : Node(), name(s), typeExpr(t){}
     ~NamedValNode(){}
@@ -148,7 +148,7 @@ struct NamedValNode : public Node{
 
 struct VarNode : public Node{
     string name;
-    TypedValue* compile(Compiler*, Module*);
+    TypedValue* compile(Compiler*);
     void print(void);
     Type* getType(Compiler*);
     VarNode(string s) : Node(), name(s){}
@@ -157,7 +157,7 @@ struct VarNode : public Node{
 
 struct RefVarNode : public Node{
     string name;
-    TypedValue* compile(Compiler*, Module*);
+    TypedValue* compile(Compiler*);
     void print(void);
     Type* getType(Compiler*);
     RefVarNode(string s) : Node(), name(s){}
@@ -167,7 +167,7 @@ struct RefVarNode : public Node{
 struct FuncCallNode : public Node{
     string name;
     unique_ptr<Node> params;
-    TypedValue* compile(Compiler*, Module*);
+    TypedValue* compile(Compiler*);
     Type* getType(Compiler*);
     void print(void);
     FuncCallNode(string s, Node* p) : Node(), name(s), params(p){}
@@ -176,7 +176,7 @@ struct FuncCallNode : public Node{
 
 struct StrLitNode : public Node{
     string val;
-    TypedValue* compile(Compiler*, Module*);
+    TypedValue* compile(Compiler*);
     Type* getType(Compiler*);
     void print(void);
     StrLitNode(string s) : Node(), val(s){}
@@ -187,7 +187,7 @@ struct LetBindingNode : public Node{
     string name;
     unique_ptr<Node> modifiers, typeExpr, expr;
 
-    TypedValue* compile(Compiler*, Module*);
+    TypedValue* compile(Compiler*);
     void print(void);
     LetBindingNode(string s, Node *mods, Node* t, Node* exp) : Node(), name(s), modifiers(mods), typeExpr(t), expr(exp){}
     ~LetBindingNode(){}
@@ -197,7 +197,7 @@ struct VarDeclNode : public Node{
     string name;
     unique_ptr<Node> modifiers, typeExpr, expr;
 
-    TypedValue* compile(Compiler*, Module*);
+    TypedValue* compile(Compiler*);
     void print(void);
     VarDeclNode(string s, Node *mods, Node* t, Node* exp) : Node(), name(s), modifiers(mods), typeExpr(t), expr(exp){}
     ~VarDeclNode(){}
@@ -206,7 +206,7 @@ struct VarDeclNode : public Node{
 struct VarAssignNode : public Node{
     unique_ptr<Node> ref_expr;
     unique_ptr<Node> expr;
-    TypedValue* compile(Compiler*, Module*);
+    TypedValue* compile(Compiler*);
     void print(void);
     VarAssignNode(Node* v, Node* exp) : Node(), ref_expr(v), expr(exp){}
     ~VarAssignNode(){}
@@ -215,7 +215,7 @@ struct VarAssignNode : public Node{
 struct IfNode : public ParentNode{
     unique_ptr<Node> condition;
     unique_ptr<IfNode> elseN;
-    TypedValue* compile(Compiler*, Module*);
+    TypedValue* compile(Compiler*);
     void print(void);
     IfNode(Node* n1, Node* body, IfNode* els) : ParentNode(body), condition(n1), elseN(els){}
     ~IfNode(){}
@@ -227,7 +227,7 @@ struct FuncDeclNode : public ParentNode{
     unique_ptr<NamedValNode> params;
     bool varargs;
 
-    TypedValue* compile(Compiler*, Module*);
+    TypedValue* compile(Compiler*);
     void print(void);
     FuncDeclNode(string s, Node *mods, Node *t, Node *p, Node* b, bool va=false) : ParentNode(b), name(s), modifiers(mods), type(t), params((NamedValNode*)p), varargs(va){}
     ~FuncDeclNode(){}
@@ -235,7 +235,7 @@ struct FuncDeclNode : public ParentNode{
 
 struct DataDeclNode : public ParentNode{
     string name;
-    TypedValue* compile(Compiler*, Module*);
+    TypedValue* compile(Compiler*);
     void print(void);
     DataDeclNode(string s, Node* b) : ParentNode(b), name(s){}
     ~DataDeclNode(){}

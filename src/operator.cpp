@@ -124,9 +124,9 @@ inline bool isIntTokTy(int ty){
  *
  *  TODO: more type checking
  */
-TypedValue* BinOpNode::compile(Compiler *c, Module *m){
-    TypedValue *lhs = lval->compile(c, m);
-    TypedValue *rhs = rval->compile(c, m);
+TypedValue* BinOpNode::compile(Compiler *c){
+    TypedValue *lhs = lval->compile(c);
+    TypedValue *rhs = rval->compile(c);
     if(!lhs || !rhs) return 0;
 
     //Check if both Values are integers, and if so, check if their bit width's match.
@@ -157,8 +157,8 @@ TypedValue* BinOpNode::compile(Compiler *c, Module *m){
 }
 
 
-TypedValue* UnOpNode::compile(Compiler *c, Module *m){
-    TypedValue *rhs = rval->compile(c, m);
+TypedValue* UnOpNode::compile(Compiler *c){
+    TypedValue *rhs = rval->compile(c);
     if(!rhs) return 0;
 
     switch(op){
