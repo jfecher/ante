@@ -18,15 +18,15 @@ char Compiler::getBitWidthOfTokTy(int tokTy){
  *  valid in an expression context, ie no statement-only nodes.
  */
 Type* VarNode::getType(Compiler *c){
-    if(TypedValue *val = c->lookup(name)){
-        return val->val->getType();
+    if(Variable *var = c->lookup(name)){
+        return var->getVal()->getType();
     }
     return (Type*)c->compErr("Use of undeclared variable " + name + " in expression", row, col);
 }
 
 Type* RefVarNode::getType(Compiler *c){
-    if(TypedValue *val = c->lookup(name)){
-        return val->val->getType();
+    if(Variable *var = c->lookup(name)){
+        return var->getVal()->getType();
     }
     return (Type*)c->compErr("Use of undeclared variable " + name + " in expression", row, col);
 }

@@ -6,12 +6,15 @@
 
 ~Declare a function pointer main and set it equal to
 ~an anonymous function
-void() main = \
+void() main = \_
     print("Hello World!")
 
 
 i32(i32,i32) add = \a b
     a + b
+
+
+let add = (a, b) in a + b
 
 
 i64(i32,i32) mul = \a b

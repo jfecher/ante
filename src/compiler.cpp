@@ -142,7 +142,7 @@ TypedValue* TypeNode::compile(Compiler *c){
 }
 
 TypedValue* StrLitNode::compile(Compiler *c){
-    return new TypedValue(c->builder.CreateGlobalStringPtr(val), '*');
+    return new TypedValue(c->builder.CreateGlobalStringPtr(val), '[');
     //ConstantDataArray::getString(getGlobalContext(), val);
 }
 
@@ -230,38 +230,29 @@ TypedValue* NamedValNode::compile(Compiler *c)
  *  Loads a variable from the stack
  */
 TypedValue* VarNode::compile(Compiler *c){
-    TypedValue *val = c->lookup(name);
-    if(!val)
+    auto *var = c->lookup(name);
+    if(!var)
         return c->compErr("Variable " + name + " has not been declared.", this->row, this->col);
 
-    return dynamic_cast<AllocaInst*>(val->val)? new TypedValue(c->builder.CreateLoad(val->val, name), val->type) : val;
+    return dynamic_cast<AllocaInst*>(var->getVal())? new TypedValue(c->builder.CreateLoad(var->getVal(), name), var->getType()) : var->tval;
 }
 
 TypedValue* RefVarNode::compile(Compiler *c){
-    TypedValue *val = c->lookup(name);
+    Variable *var = c->lookup(name);
     
-    if(!val)
+    if(!var)
         return c->compErr("Variable " + name + " has not been declared.", this->row, this->col);
 
-    if(!dynamic_cast<AllocaInst*>(val->val))
+    if(!dynamic_cast<AllocaInst*>(var->getVal()))
         return c->compErr("Cannot assign to immutable variable " + name, this->row, this->col);
 
-    return new TypedValue(val->val, '*');
+    return new TypedValue(var->getVal(), '*');
 }
 
 TypedValue* FuncCallNode::compile(Compiler *c){
-    Function *f = c->module->getFunction(name);
-    if(!f){
-        if(auto *fdNode = c->fnDecls[name]){
-            //Function has been declared but not defined, so define it.
-            BasicBlock *caller = c->builder.GetInsertBlock();
-            f = c->compFn(fdNode);
-            c->fnDecls.erase(name);
-            c->builder.SetInsertPoint(caller);
-        }else{
-            return c->compErr("Called function " + name + " has not been declared.", this->row, this->col);
-        }
-    }
+    Function *f = c->getFunction(name);
+    if(!f)
+        return c->compErr("Called function " + name + " has not been declared.", this->row, this->col);
 
     size_t paramSize = getTupleSize(params.get());
     if(f->arg_size() != paramSize && !f->isVarArg()){
@@ -303,7 +294,7 @@ TypedValue* LetBindingNode::compile(Compiler *c){
         }
     }
 
-    c->stoVar(name, val);
+    c->stoVar(name, new Variable(name, val, c->getScope()));
     return val;
 }
 
@@ -317,7 +308,7 @@ TypedValue* VarDeclNode::compile(Compiler *c){
     Type *ty = Compiler::typeNodeToLlvmType(tyNode);
     TypedValue *alloca = new TypedValue(c->builder.CreateAlloca(ty, 0, name.c_str()), tyNode->type);
 
-    c->stoVar(name, alloca);
+    c->stoVar(name, new Variable(name, alloca, c->getScope()));
     if(expr.get()){
         TypedValue *val = expr->compile(c);
         if(!val) return nullptr;
@@ -380,7 +371,7 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
         cParam = param;
         for(auto &arg : f->args()){
             TypeNode *paramTyNode = (TypeNode*)cParam->typeExpr.get();
-            stoVar(param->name, new TypedValue(&arg, paramTyNode->type));//TODO: store type of parameters
+            stoVar(param->name, new Variable(param->name, new TypedValue(&arg, paramTyNode->type), scope));
             if(!(param = (NamedValNode*)param->next.get())) break;
         }
 
@@ -421,6 +412,21 @@ TypedValue* DataDeclNode::compile(Compiler *c)
 { return nullptr; }
 
 
+Function* Compiler::getFunction(string& name){
+    Function *f = module->getFunction(name);
+    if(!f){
+        if(auto *fdNode = fnDecls[name]){
+            //Function has been declared but not defined, so define it.
+            BasicBlock *caller = builder.GetInsertBlock();
+            f = compFn(fdNode);
+            fnDecls.erase(name);
+            builder.SetInsertPoint(caller);
+        }
+    }
+    return f;
+}
+
+
 /*
  *  Creates an anonymous NamedValNode for use in function declarations.
  */
@@ -430,6 +436,10 @@ NamedValNode* mkAnonNVNode(int type){
 
 TypeNode* mkAnonTypeNode(int type){
     return new TypeNode(type, "", nullptr);
+}
+        
+unsigned int Compiler::getScope() const{
+    return scope;
 }
 
 /*
@@ -496,6 +506,7 @@ void Compiler::compile(){
 
     //Compile the rest of the program
     compileStmtList(ast.get(), this);
+    exitScope();
 
     //builder should already be at end of main function
     builder.CreateRet(ConstantInt::get(getGlobalContext(), APInt(8, 0, true)));
@@ -531,8 +542,7 @@ void Compiler::compileNative(){
  *  Compiles a module into a .o file to be used for linking.
  *  Invokes llc.
  */
-int Compiler::compileIRtoObj(Module *m, string inFile, string outFile)
-{
+int Compiler::compileIRtoObj(Module *m, string inFile, string outFile){
     string llbcName = removeFileExt(inFile) + ".bc";
 
     string cmd = "llc -filetype obj -o " + outFile + " " + llbcName;
@@ -551,8 +561,7 @@ int Compiler::compileIRtoObj(Module *m, string inFile, string outFile)
     return res;
 }
 
-int Compiler::linkObj(string inFiles, string outFile)
-{
+int Compiler::linkObj(string inFiles, string outFile){
     //invoke gcc to link the module.
     string cmd = "gcc " + inFiles + " -o " + outFile;
     return system(cmd.c_str());
@@ -561,25 +570,37 @@ int Compiler::linkObj(string inFiles, string outFile)
 /*
  *  Dumps current contents of module to stdout
  */
-void Compiler::emitIR()
-{
+void Compiler::emitIR(){
     if(!compiled) compile();
     if(errFlag) puts("Partially compiled module: \n");
     module->dump();
 }
 
-inline void Compiler::enterNewScope()
-{
-    varTable.push(map<string, TypedValue*>());
+inline void Compiler::enterNewScope(){
+    scope++;
+    varTable.push(map<string, Variable*>());
 }
 
-inline void Compiler::exitScope()
-{
+inline void Compiler::exitScope(){
+    //iterate through all known variables, check for pointers at the end of
+    //their lifetime, and insert calls to free for any that are found
+    for(auto it = varTable.top().cbegin(); it != varTable.top().cend(); it++){
+        if(it->second->getType() == '*' && it->second->scope == scope){
+            string freeFnName = "free";
+            Function* freeFn = getFunction(freeFnName);
+            if(auto *inst = dynamic_cast<AllocaInst*>(it->second->getVal())){
+                builder.CreateCall(freeFn, builder.CreateLoad(inst));
+            }else{
+                builder.CreateCall(freeFn, it->second->getVal());
+            }
+        }
+    }
+
+    scope--;
     varTable.pop();
 }
 
-TypedValue* Compiler::lookup(string var)
-{
+Variable* Compiler::lookup(string var) const{
     try{
         return varTable.top().at(var);
     }catch(out_of_range r){
@@ -587,8 +608,7 @@ TypedValue* Compiler::lookup(string var)
     }
 }
 
-inline void Compiler::stoVar(string var, TypedValue *val)
-{
+inline void Compiler::stoVar(string var, Variable *val){
     varTable.top()[var] = val;
 }
 
@@ -621,8 +641,8 @@ Compiler::Compiler(char *_fileName) :
         exit(flag);
     }
 
+    enterNewScope();
     ast.reset(parser::getRootNode());
-    varTable.push(map<string, TypedValue*>());
     module.reset(new Module(removeFileExt(_fileName), getGlobalContext()));
 
     //add passes to passmanager.
@@ -638,4 +658,7 @@ Compiler::Compiler(char *_fileName) :
     passManager->doInitialization();
 }
 
-Compiler::~Compiler(){}
+Compiler::~Compiler(){
+    fnDecls.clear();
+    delete yylexer;
+}

@@ -34,6 +34,29 @@ struct TypedValue {
     TypedValue(Value *v, int ty) : val(v), type(ty){}
 };
 
+
+struct Variable {
+    string name;
+    TypedValue *tval;
+    unsigned int scope;
+
+
+    Value* getVal() const{
+        return tval->val;
+    }
+   
+    int getType() const{
+        return tval->type;
+    }
+
+    bool isPtr() const{
+        return tval->type == '*';
+    }
+
+    Variable(string n, TypedValue *tv, unsigned int s) : name(n), tval(tv), scope(s){}
+};
+
+
 namespace ante{
     struct Compiler{
         unique_ptr<legacy::FunctionPassManager> passManager;
@@ -43,13 +66,14 @@ namespace ante{
 
         //Stack of maps of variables mapped to their identifier.
         //Maps are seperated according to their scope.
-        stack<std::map<string, TypedValue*>> varTable;
+        stack<std::map<string, Variable*>> varTable;
 
         //Map of declared, but non-defined functions
         map<string, FuncDeclNode*> fnDecls;
 
         bool errFlag, compiled;
         string fileName;
+        unsigned int scope;
         
         Compiler(char *fileName);
         ~Compiler();
@@ -69,13 +93,15 @@ namespace ante{
         
         TypedValue* compErr(string msg, unsigned int row, unsigned int col);
 
+        Function* getFunction(string& name);
         Function* compFn(FuncDeclNode *fn);
         void registerFunction(FuncDeclNode *func);
 
-        TypedValue* lookup(string var);
-        void stoVar(string var, TypedValue *val);
+        unsigned int getScope() const;
+        Variable* lookup(string var) const;
+        void stoVar(string var, Variable *val);
 
-        bool isSigned(Node *n);
+        static bool isSigned(Node *n);
         void checkIntSize(TypedValue **lhs, TypedValue **rhs);
         
         static Type* typeNodeToLlvmType(TypeNode *tyNode);

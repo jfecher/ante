@@ -1,6 +1,6 @@
 `
         dataDecl.an
-    General test for various data structure declarations.
+    Experimental syntax for various data structure declarations.
 `
 
 ~Test , for and-ing types
@@ -28,7 +28,7 @@ data Number
         Two
         Three
 
-data Number = enum
+enum Number = enum
     One
     Two
     Three
@@ -42,10 +42,12 @@ data Flags = set
 
 data VarDeclNode
     Flags modifiers
-    Str type where type.isAnyOf("i32", "u8", "void")
+    Str type where type in ["i32", "u8", "void"]
     Str name
 
-const VarDeclNode x = (Public|Pathogen), "i32", "x"
+let VarDeclNode x = (Public|Pathogen), "i32", "x"
+
+
 
 ~Test untyped generics
 data Maybe
@@ -95,5 +97,5 @@ Maybe k = i32 None
     since it boils down to a single or:
 
 data Result
-    t | e
+    t | Err
 `
