@@ -233,14 +233,32 @@ let double = 25.0_f64
 `
 
 `
+        Casting
+    Casts are accomplished by preceeding a value with a type, similar
+    to a variable declaration.  When casting a value, the value is directly
+    changed to the corresponding type unless the type specified is a
+    userdata type which overloads the op("cast") function with the same
+    parameters.  Casts are never performed implicitly.
+`
+
+~When casting integer types to one of a larger size, the value is sign
+~extended unless it is an unsigned integer, in which case it is zero extended.
+let five = i32 5.0
+
+let thirteen = i16(7i8 + 6i8)
+
+i32 add: i32 x y
+    return x + y
+
+~thirteen must be explicitely casted to an i32, no automatic widenin is performed.
+add(five, i32 thirteen)
+
+
+`
         Arrays
 
     The syntax for declaring arrays is shown below.  The array arr
     declared below is an array of 30 integers, each initialized to 1
-
-    The syntax for declaring an array is: 
-        
-        [type]\[size\] name
 
     NOTE: The size must be a non-pathogen integer expression.
 `
@@ -295,8 +313,7 @@ let immutTuple = 46, "Fourty-six", 46.0
 
     Functions in ante each have their own scope in addition to the scopes they
     inherit (in this case, only the global scope).  Variables created in
-    functions are all local variables by default, however they can be
-    exported into the global scope with the export keyword.
+    functions are all local variables.
 
     Below is the declaration of a function, printMsg.  It takes no parameters
     and returns no value.  It is important to note that unlike many c based
@@ -321,21 +338,28 @@ f64 add_floats_2: f64 augend addend
     Ellipses can be used in place of or after a type to indicate that the
     function takes a variable amount of arguments.  The variable it is assigned
     to is a tuple by default, but if a type is specified before the ellipses, it
-    becomes an array of that type.  If a function takes a variable amount of
-    parameters, ... can only be the last parameter.  In the lnprint function below, 
-    params is passed to the print function, with an additional newline passed at 
-    the beginning.
+    becomes an array of that type.  In either case, the number of arguments is always
+    known at compile time, and can be accessed via .count.  If a function takes 
+    a variable amount of parameters, ... can only be the last parameter.  In the
+    lnprint function below, params is passed to the print function, with an additional
+    newline passed at the beginning.  Note that the print function itself is a varargs
+    function, and when printing an array or tuple it will by default print each value
+    without a seperator.
 `
 void lnprint: ... params
     print('\n', params)
 
 
-~In most cases, an array should be used if the specific type is known
 i64 sum: i32... nums
     i64 ret = 0
     for i32 i in nums
         ret += i
     return ret
+
+
+~or alternatively a more functional approach using foldl can be taken.
+i64 sum: i32... nums
+    return foldl(nums, \x y => x+y, 0)
 
 `
     The syntax for calling functions is the same as in C based languages:
@@ -343,6 +367,10 @@ i64 sum: i32... nums
 lnprint("Test #", add(3, 43), sum(3, 4, 5))
 ~output: 
 ~Test #, 46, 12
+
+~Functions can also take named parameters
+add_floats(addend = 2.5, augend = 5.0)
+
 
 `
         Pathogen infections
@@ -1318,15 +1346,18 @@ let numsList = List(1u8, &(2u8, &(3u8, None)))
     Statements are normally terminated by a newline
     character, but can be extended by adding a backslash
     right before the newline as the final character.  Expressions
-    on the other hand can also be extended with an indentation and
-    will contain every expression between that indent and the
-    following unindent.
+    on the other hand can also be extended with an expression block,
+    an indentation and expression with a terminating unindent in
+    place of a value.  Because the expression is seperated by the
+    Indent and Unindent tokens, there is an implicit () grouping around
+    the expression.
 `
 
-let result = if someReallyLongFunctionNameThatShouldProbablyBeShorterInHindsight()
-    "branch " ++ 1
-else
-    "branch " ++ 2
+~Functions can be declared this way using lambda syntax
+let square = lambda x
+    x*x
+
+
 
 data Num -> i8  | i16 | i32 | i64 \
           | u8  | u16 | u32 | u64 \
@@ -1350,6 +1381,12 @@ print(
     "Hello ",
     "World!"
 )
+
+let result = 
+    if someReallyLongFunctionNameThatShouldProbablyBeShorterInHindsight()
+        "branch " ++ 1
+    else
+        "branch " ++ 2
 
 
 let result = 2 *
@@ -1394,7 +1431,7 @@ i32|MyErr errFunc: i32 a b, (Str|Err)(i32) fn
     openFile("test")?.write("Just a test")
 
     ~ ? can also be chained
-    Parser.init()?.parseI32("32")?.map(fn)?.show()
+    Parser()?.parseI32("32")?.map(fn)?.show()
 
 
 `
@@ -1404,14 +1441,14 @@ i32|MyErr errFunc: i32 a b, (Str|Err)(i32) fn
     include in the language.
 `
 macro pstr: ident i
-    pub const c32* $i = "p"
-    print($i)
+    pub const c32* i = "p"
+    print(i)
 
 pstr!(g)
 ~output: p
 
 macro double: expr e
-    (($e) * 2)
+    ((e) * 2)
 
 print(double!(2 + 3))
 
