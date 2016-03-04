@@ -92,13 +92,13 @@ void yyerror(const char *msg);
 %right '^'
 %left '.'
 
-%nonassoc '(' '['
+%nonassoc '(' '[' Indent
 %nonassoc HIGH
 
 /*
     All shift/reduce conflicts should be manually dealt with.
 */
-//%expect 0
+%expect 0
 %start top_level_stmt_list
 %%
 
@@ -324,7 +324,7 @@ do_while_loop: Do While expr block {$$ = NULL;}
 for_loop: For var_decl In expr block {$$ = NULL;}
         ;
 
-var: ident '[' expr ']'  /*TODO: arrays*/
+var: ident '[' expr ']'              {$$ = 0;}/*TODO: arrays*/
    | ident               %prec Ident {$$ = mkVarNode((char*)$1);}
    ;
 
@@ -334,16 +334,17 @@ ref_val: '&' ref_val         {$$ = mkUnOpNode('&', $2);}
        | ident  %prec Ident  {$$ = mkRefVarNode((char*)$1);}
        ;
 
-val: fn_call                  {$$ = $1;}
-   | '(' expr ')'             {$$ = $2;}
-   | Indent nl_expr Unindent  {$$ = $2;}
-   | unary_op                 {$$ = $1;}
-   | var                      {$$ = $1;}
-   | intlit                   {$$ = $1;}
-   | fltlit                   {$$ = $1;}
-   | strlit                   {$$ = $1;}
-   | True                     {$$ = mkBoolLitNode(1);}
-   | False                    {$$ = mkBoolLitNode(0);}
+val: fn_call                 {$$ = $1;}
+   | '(' expr ')'            {$$ = $2;}
+   | '(' ')'                 {$$ = 0;}  /* Void value */
+   | Indent nl_expr Unindent {$$ = $2;}
+   | unary_op                {$$ = $1;}
+   | var                     {$$ = $1;}
+   | intlit                  {$$ = $1;}
+   | fltlit                  {$$ = $1;}
+   | strlit                  {$$ = $1;}
+   | True                    {$$ = mkBoolLitNode(1);}
+   | False                   {$$ = mkBoolLitNode(0);}
    ;
 
 

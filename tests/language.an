@@ -321,7 +321,7 @@ let immutTuple = 46, "Fourty-six", 46.0
     opening and closing brackets.
 `
 void printMsg:
-    print("Hello World!")
+    print "Hello World!"
 
 `
     This add function takes in two parameters, augend and addend, and returns
@@ -362,11 +362,16 @@ i64 sum: i32... nums
     return foldl(nums, \x y => x+y, 0)
 
 `
-    The syntax for calling functions is the same as in C based languages:
+    Calling functions is accomplished by specifying the function's name, followed
+    by a tuple of its parameter(s).  Function's taking no parameter's need to
+    be called with an empty tuple ().
 `
 lnprint("Test #", add(3, 43), sum(3, 4, 5))
 ~output: 
 ~Test #, 46, 12
+
+~Zero-parameter functions need to be called with ()
+do_something()
 
 ~Functions can also take named parameters
 add_floats(addend = 2.5, augend = 5.0)
@@ -399,7 +404,7 @@ void printMsg:
 ~into a variable or class representing it without the need to search for it during runtime,
 ~and eliminating the need to include the raw image as an asset in production.
 Image* compileTimeLoadImg:
-    File *f = new File("path/to/image.png")
+    File f = File("path/to/image.png")
     u8[] imgData
     do f.readAll(imgData) ~Reads all of the image data into data at compile time
     return new Image(imgData)
@@ -972,29 +977,63 @@ impl Point : SomeAdditionalTrait
     bool op("=="): self, Point p2
         return self.x == p2.x and self.y == p2.y
 
-impl thing : Drawable<S>
+trait Drawable
+    void draw: self
+
+    ~Default definitions for traits can also be created.
+    ~NOTE: because self.surface is accessed, this requires the implementing object
+    ~      to either have a 'surface' field, or override this function.
+    s getSurface: self
+        return self.surface
+
+data Rectangle
+    u32 height
+    Surface surface
+
+impl Rectangle : Drawable
+    ~Now Rectangle must implement the methods of Drawable
+    void draw: self
+         self.surf.print("___")
+         for u32 i in 0 .. height
+            self.surf.print("| |")
+         self.surf.print("|_|")
+
+    void mut("setHeight"): u32 newHeight
+        height = newHeight
+
+    Rectangle cast(): u32 height
+        return Rectangle
+            height = height,
+            surface = Surface()
+
+Rectangle r = Rectangle(4)
+
+~Mutator functions are differentiated from accessors
+r:setHeight(5)
+
+~Mutator functions cannot be used with constant variables
+let immutRect = Rectangle(3)
+
+~Error here!
+immutRect:setHeight(5)
+
 
 ~Implementations can also be used for primitive types
 impl i32, i32
     void swap: self
-        i32 tmp = self[0]
-        self[0] = self[1]
-        self[1] = tmp
+        print("Swapped i32!")
+        return self[1], self[0]
 
-trait Drawable<type s>
-    void draw: self*, s surface
-    
-    void clear: self*
+impl e, e
+    void swap: self
+        print("Swapped pair!")
+        return self[1], self[0]
 
-    void useColor: u32 r g b
+~In the case multiple impls apply, the most specific is always chosen
+~If there are multiple equally specific impls, a compile-time error is thrown.
+let point = (3,4).swap()
+~output: Swapped i32!
 
-    void useSurface: self*, s surface
-        self.surface = surface
-
-    s getSurface: self*
-        return self.surface
-
-i32, i32 point = (3, 4).swap()
 assert(point[0] == 4 and point[1] == 3)
 
 ~The only limitation on implementations is that it cannot be used for pointer types.
