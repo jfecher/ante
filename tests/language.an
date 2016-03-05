@@ -376,6 +376,71 @@ do_something()
 ~Functions can also take named parameters
 add_floats(addend = 2.5, augend = 5.0)
 
+`
+        Control-Flow
+    Control-Flow can be altered with the keywords if, elif, else, match, while,
+    do while, and for.
+`
+~If statements come in the form of if <expr> Indent <statement list> Unindent
+if 4 > 3
+    print("4 is indeed greater than 3")
+
+`
+    Multiple elifs can optionally follow an if after the Unindent.  Their syntax is
+    the same as an if, except with the keyword elif.  An elif will only be evaluated
+    if and only if the first if, and all elifs preceeding the desired case, conditions
+    evaluate to false
+`
+if 3 > 5
+    print("3 > 5, what??")
+elif 3 > 4
+    print("3 > 4, how??")
+elif 3 > 3
+    print("3 > 3, huh??")
+elif 3 > 2
+    print("3 > 2, yup.")
+
+`
+    In addition to elif lists, a single else may optionally terminate the test cases.
+    The else clause always follows either the first if clause or an elif clause, and
+    like the elif clause, it may not be used on its own without a preceeding if.  Else
+    clauses are executed if and only if non of the above test conditions evaluated to
+    true.
+`
+if 3 > 2
+    print("Hello World!")
+else
+    print("Invalid laws of mathematics, please try again in an alternate universe.")
+
+
+if 4 > 5
+    print("Something is seriously wrong if this prints")
+else
+    print("Phew, dodged a bullet there")
+
+
+`
+        Loops
+
+    Ante has three kinds of loops: while, do while, and for.
+    The while loop runs while the following expression is true.  The do while
+    loop runs once then runs while its following expression is true.  The for 
+    loop loops through each element of an array or range.
+`
+while true
+    print("I loop forever")
+
+
+do while false
+    print("I only loop once")
+
+f32 total
+for f32 n in arr
+    total += n
+
+for i32 count in 0..100
+    print(count)
+
 
 `
         Pathogen infections
@@ -480,26 +545,6 @@ putchar(10)
 ~output: Hi
 
 `
-        Loops
-
-    Ante has three kinds of loops: while, do while, and for.
-    The while loop runs while the following expression is true.  The do while
-    loop runs once then runs while its following expression is true.  The for 
-    loop loops through each element of an array or range.
-`
-while true
-    print("I loop forever")
-
-
-do
-    print("I only loop once")
-while false
-
-f32 total
-for f32 n in arr
-    total += n
-
-`
         -> and ;;
     -> and ;; can be used to manually insert indent and unindent tokens
     respectively.  -> is commonly used in single line blocks, but ;; is much
@@ -518,13 +563,13 @@ for f32 f in arr -> print(f)
 f32 subtract: f32 a, f32 b -> return a - b
 
 ~While these can be nested, overnesting should be avoided as it leads to clutter.
-data Integer -> i32 i, void _init: i32 a -> i = a;; u8 byte
+data Integer -> i32 i, void init(): i32 a -> i = a;; u8 byte
 
 ~compared to
 data Integer
     i32 i
 
-    void _init: i32 a
+    void init(): i32 a
         i = a
 
     u8 byte
@@ -543,7 +588,7 @@ data Integer
 data Coord
     f64 x y z
 
-~Declare char, a datatype that can contain an ASCII or UTF-32 char
+~Declare char, a datatype that can contain an c8 or c32 char
 data Char
     c8|c32 c
 
@@ -1011,6 +1056,7 @@ Rectangle r = Rectangle(4)
 ~Mutator functions are differentiated from accessors
 r:setHeight(5)
 
+
 ~Mutator functions cannot be used with constant variables
 let immutRect = Rectangle(3)
 
@@ -1249,11 +1295,11 @@ c32*  ptrStr = c32* "str"
         increments the address pointed to by b bytes, where b
         is the integer result of the evaluated expression.  
     Arrays:
-        expands the array by b additional indexes.  Each index is
-        uninitialized and will contain garbage data.
+        Allocates additional capacity for one element to the end
+        of the array, and inserts the rvalue into that slot.
 `
 ptrStr += 1
-arrStr += 1
+arrStr += "element 2"
 
 `
     [] operator

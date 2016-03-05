@@ -55,6 +55,34 @@ Type* FuncCallNode::getType(Compiler *c){
     return (Type*)c->compErr("Undeclared function " + name + " called", row, col);
 }
 
+Type* ArrayNode::getType(Compiler *c){
+    if(exprs.size() > 0){
+        Type *elemTy = exprs[0]->getType(c);
+
+        //check each element's type against the first
+        for(size_t i = 1; i < exprs.size(); i++){
+            if(!Compiler::llvmTypeEq(elemTy, exprs[i]->getType(c))){
+                return (Type*)c->compErr("Array index " + to_string(i) + " does not match the other array element's types", row, col);
+            }
+        }
+        return ArrayType::get(elemTy, exprs.size());
+    }
+    return ArrayType::get(Type::getVoidTy(getGlobalContext()), 0);
+}
+
+Type* TupleNode::getType(Compiler *c){
+    if(exprs.size() > 0){
+        vector<Type*> elemTys;
+
+        for(Node *n : exprs){
+            elemTys.push_back(n->getType(c));
+        }
+        return StructType::get(getGlobalContext(), elemTys, "Tuple");
+    }
+    //return empty struct
+    return StructType::get(getGlobalContext());
+}
+
 Type* BinOpNode::getType(Compiler *c){
     return lval->getType(c);
 }

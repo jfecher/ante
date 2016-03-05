@@ -44,6 +44,28 @@ void StrLitNode::print(){
     maybePrintArr(next.get());
 }
 
+void ArrayNode::print(){
+    putchar('[');
+    for(size_t i = 0; i < exprs.size(); i++){
+        exprs[i]->print();
+        if(i != exprs.size() - 1){
+            cout << ", ";
+        }
+    }
+    putchar(']');
+}
+
+void TupleNode::print(){
+    putchar('(');
+    for(size_t i = 0; i < exprs.size(); i++){
+        exprs[i]->print();
+        if(i != exprs.size() - 1){
+            cout << ", ";
+        }
+    }
+    putchar(')');
+}
+
 void ModNode::print(){
     Lexer::printTok(mod);
 }
@@ -124,9 +146,8 @@ void RefVarNode::print(){
 }
 
 void FuncCallNode::print(){
-    cout << name << '(';
-    if(params) params->print();
-    putchar(')');
+    cout << name;
+    params->print();
 }
 
 void LetBindingNode::print(){
@@ -166,6 +187,6 @@ void FuncDeclNode::print(){
 }
 
 void DataDeclNode::print(){
-    cout << "data " << name << "declared\n";
+    cout << "data " << name << endl;
     printBlock(child.get());
 }

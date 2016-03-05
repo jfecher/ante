@@ -90,6 +90,24 @@ struct BoolLitNode : public Node{
     ~BoolLitNode(){}
 };
 
+struct ArrayNode : public Node{
+    vector<Node*> exprs;
+    TypedValue* compile(Compiler*);
+    void print(void);
+    Type* getType(Compiler*);
+    ArrayNode(vector<Node*>& e) : Node(), exprs(e){}
+    ~ArrayNode(){}
+};
+
+struct TupleNode : public Node{
+    vector<Node*> exprs;
+    TypedValue* compile(Compiler*);
+    void print(void);
+    Type* getType(Compiler*);
+    TupleNode(vector<Node*>& e) : Node(), exprs(e){}
+    ~TupleNode(){}
+};
+
 struct UnOpNode : public Node{
     int op;
     unique_ptr<Node> rval;
@@ -166,11 +184,11 @@ struct RefVarNode : public Node{
 
 struct FuncCallNode : public Node{
     string name;
-    unique_ptr<Node> params;
+    unique_ptr<TupleNode*> params;
     TypedValue* compile(Compiler*);
     Type* getType(Compiler*);
     void print(void);
-    FuncCallNode(string s, Node* p) : Node(), name(s), params(p){}
+    FuncCallNode(string s, TupleNode* p) : Node(), name(s), params(p){}
     ~FuncCallNode(){}
 };
 
@@ -235,9 +253,11 @@ struct FuncDeclNode : public ParentNode{
 
 struct DataDeclNode : public ParentNode{
     string name;
+    size_t fields;
+
     TypedValue* compile(Compiler*);
     void print(void);
-    DataDeclNode(string s, Node* b) : ParentNode(b), name(s){}
+    DataDeclNode(string s, Node* b, size_t f) : ParentNode(b), name(s), fields(f){}
     ~DataDeclNode(){}
 };
 

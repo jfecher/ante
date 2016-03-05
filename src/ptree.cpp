@@ -123,6 +123,30 @@ Node* mkBoolLitNode(char b){
     return ret;
 }
 
+Node* mkArrayNode(Node *expr){
+    vector<Node*> exprs;
+    while(expr){
+        exprs.push_back(expr);
+        expr = expr->next.get();
+    }
+    auto *ret = new ArrayNode(exprs);
+    ret->col = yylexer->getCol();
+    ret->row = yylexer->getRow();
+    return ret;
+}
+
+Node* mkTupleNode(Node *expr){
+    vector<Node*> exprs;
+    while(expr){
+        exprs.push_back(expr);
+        expr = expr->next.get();
+    }
+    auto *ret = new TupleNode(exprs);
+    ret->col = yylexer->getCol();
+    ret->row = yylexer->getRow();
+    return ret;
+}
+
 Node* mkModNode(TokenType mod){
     auto *ret = new ModNode(mod);
     ret->col = yylexer->getCol();
@@ -185,7 +209,7 @@ Node* mkNamedValNode(Node* varNodes, Node* tExpr){
 }
 
 Node* mkFuncCallNode(char* s, Node* p){
-    auto *ret = new FuncCallNode(s, p);
+    auto *ret = new FuncCallNode(s, (TupleNode*)p);
     ret->col = yylexer->getCol();
     ret->row = yylexer->getRow();
     return ret;
@@ -241,7 +265,7 @@ ParentNode* mkFuncDeclNode(char* s, Node* mods, Node* tExpr, Node* p, Node* b){
 }
 
 ParentNode* mkDataDeclNode(char* s, Node* b){
-    auto *ret = new DataDeclNode(s, b);
+    auto *ret = new DataDeclNode(s, b, Compiler::getTupleSize(b));
     ret->col = yylexer->getCol();
     ret->row = yylexer->getRow();
     return ret;

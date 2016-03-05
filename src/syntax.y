@@ -239,16 +239,16 @@ data_decl: modifier_list Data usertype type_decl_block         {$$ = mkDataDeclN
          | Data usertype generic type_decl_block               {$$ = mkDataDeclNode((char*)$2, $4);}
          ;
 
-type_decl: type_expr ident
-         | type_expr
-         | enum_decl
+type_decl: type_expr ident {$$ = mkNamedValNode(mkVarNode((char*)$2), $1);}
+         | type_expr       {$$ = mkNamedValNode(0, $1);}
+         | enum_decl /* TODO */
          ;
 
-type_decl_list: type_decl_list Newline type_decl
-              | type_decl
+type_decl_list: type_decl_list Newline type_decl  {$$ = setNext($1, $3);}
+              | type_decl                         {$$ = setRoot($1);}
               ;
 
-type_decl_block: Indent type_decl_list Unindent
+type_decl_block: Indent type_decl_list Unindent  {$$ = getRoot();}
                ;
 
 /* Specifying an enum member's value */
@@ -296,7 +296,7 @@ fn_decl: modifier_list type_expr ident ':' maybe_params block                   
        | type_expr ident '(' maybe_expr ')' ':' maybe_params block               {$$ = mkFuncDeclNode((char*)$2, 0,  $1, $7, $8);}
        ;
 
-fn_call: ident '(' maybe_expr ')' {$$ = mkFuncCallNode((char*)$1, $3);}
+fn_call: ident tuple {$$ = mkFuncCallNode((char*)$1, $2);}
        ;
 
 ret_stmt: Return expr {$$ = mkRetNode($2);}
@@ -335,8 +335,8 @@ ref_val: '&' ref_val         {$$ = mkUnOpNode('&', $2);}
        ;
 
 val: fn_call                 {$$ = $1;}
-   | '(' expr ')'            {$$ = $2;}
-   | '(' ')'                 {$$ = 0;}  /* Void value */
+   | tuple                   {$$ = $1;}
+   | array                   {$$ = $1;}
    | Indent nl_expr Unindent {$$ = $2;}
    | unary_op                {$$ = $1;}
    | var                     {$$ = $1;}
@@ -347,39 +347,47 @@ val: fn_call                 {$$ = $1;}
    | False                   {$$ = mkBoolLitNode(0);}
    ;
 
+tuple: '(' expr_list ')'  {$$ = mkTupleNode($2);}
+     | '(' ')'            {$$ = mkTupleNode(0);}
+     ;
+
+array: '[' expr_list ']' {$$ = mkArrayNode($2);}
+     | '[' ']'           {$$ = mkArrayNode(0);}
+     ;
 
 maybe_expr: expr    {$$ = $1;}
           | %empty  {$$ = NULL;}
           ;
 
-expr: expr_list {$$ = getRoot();}
-
-expr_list: expr_list ',' expr_p    {$$ = setNext($1, $3);}
-         | expr_p  %prec HIGH      {$$ = setRoot($1);}
+expr_list: expr_list_p {$$ = getRoot();}
          ;
+
+expr_list_p: expr_list ',' expr    {$$ = setNext($1, $3);}
+           | expr                  {$$ = setRoot($1);}
+           ;
 
 unary_op: '*' val  {$$ = mkUnOpNode('*', $2);}
         | '&' val  {$$ = mkUnOpNode('&', $2);}
         | '-' val  {$$ = mkUnOpNode('-', $2);}
         ;
 
-expr_p: expr_p '+' expr_p     {$$ = mkBinOpNode('+', $1, $3);}
-      | expr_p '-' expr_p     {$$ = mkBinOpNode('-', $1, $3);}
-      | expr_p '*' expr_p     {$$ = mkBinOpNode('*', $1, $3);}
-      | expr_p '/' expr_p     {$$ = mkBinOpNode('/', $1, $3);}
-      | expr_p '%' expr_p     {$$ = mkBinOpNode('%', $1, $3);}
-      | expr_p '<' expr_p     {$$ = mkBinOpNode('<', $1, $3);}
-      | expr_p '>' expr_p     {$$ = mkBinOpNode('>', $1, $3);}
-      | expr_p '^' expr_p     {$$ = mkBinOpNode('^', $1, $3);}
-      | expr_p '.' expr_p     {$$ = mkBinOpNode('.', $1, $3);}
-      | expr_p Eq expr_p      {$$ = mkBinOpNode(Tok_Eq, $1, $3);}
-      | expr_p NotEq expr_p   {$$ = mkBinOpNode(Tok_NotEq, $1, $3);}
-      | expr_p GrtrEq expr_p  {$$ = mkBinOpNode(Tok_GrtrEq, $1, $3);}
-      | expr_p LesrEq expr_p  {$$ = mkBinOpNode(Tok_LesrEq, $1, $3);}
-      | expr_p Or expr_p      {$$ = mkBinOpNode(Tok_Or, $1, $3);}
-      | expr_p And expr_p     {$$ = mkBinOpNode(Tok_And, $1, $3);}
-      | val                   {$$ = $1;}
-      ;
+expr: expr '+' expr     {$$ = mkBinOpNode('+', $1, $3);}
+    | expr '-' expr     {$$ = mkBinOpNode('-', $1, $3);}
+    | expr '*' expr     {$$ = mkBinOpNode('*', $1, $3);}
+    | expr '/' expr     {$$ = mkBinOpNode('/', $1, $3);}
+    | expr '%' expr     {$$ = mkBinOpNode('%', $1, $3);}
+    | expr '<' expr     {$$ = mkBinOpNode('<', $1, $3);}
+    | expr '>' expr     {$$ = mkBinOpNode('>', $1, $3);}
+    | expr '^' expr     {$$ = mkBinOpNode('^', $1, $3);}
+    | expr '.' expr     {$$ = mkBinOpNode('.', $1, $3);}
+    | expr Eq expr      {$$ = mkBinOpNode(Tok_Eq, $1, $3);}
+    | expr NotEq expr   {$$ = mkBinOpNode(Tok_NotEq, $1, $3);}
+    | expr GrtrEq expr  {$$ = mkBinOpNode(Tok_GrtrEq, $1, $3);}
+    | expr LesrEq expr  {$$ = mkBinOpNode(Tok_LesrEq, $1, $3);}
+    | expr Or expr      {$$ = mkBinOpNode(Tok_Or, $1, $3);}
+    | expr And expr     {$$ = mkBinOpNode(Tok_And, $1, $3);}
+    | val               {$$ = $1;}
+    ;
 
 
 /* nl_expr is used in expression blocks and can span multiple lines */

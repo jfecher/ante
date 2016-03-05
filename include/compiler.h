@@ -17,10 +17,11 @@ struct Node;
 struct VarNode;
 struct TypeNode;
 struct BinOpNode;
-struct FuncDeclNode;
-struct FuncCallNode;
 struct StrLitNode;
 struct IntLitNode;
+struct FuncDeclNode;
+struct FuncCallNode;
+struct DataDeclNode;
 
 
 /*
@@ -71,6 +72,9 @@ namespace ante{
         //Map of declared, but non-defined functions
         map<string, FuncDeclNode*> fnDecls;
 
+        //Map of declared usertypes
+        map<string, DataDeclNode*> userTypes;
+
         bool errFlag, compiled;
         string fileName;
         unsigned int scope;
@@ -100,6 +104,8 @@ namespace ante{
         unsigned int getScope() const;
         Variable* lookup(string var) const;
         void stoVar(string var, Variable *val);
+        DataDeclNode* lookupType(string tyname) const;
+        void stoType(DataDeclNode *ty);
 
         static bool isSigned(Node *n);
         void checkIntSize(TypedValue **lhs, TypedValue **rhs);
@@ -109,6 +115,7 @@ namespace ante{
         static int llvmTypeToTokType(Type *t);
         static bool llvmTypeEq(Type *l, Type *r);
 
+        static size_t getTupleSize(Node *tup);
         static char getBitWidthOfTokTy(int tokTy);
         static bool isUnsignedTokTy(int tokTy);
         

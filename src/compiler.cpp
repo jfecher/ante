@@ -80,7 +80,7 @@ TypedValue* Compiler::compErr(string msg, unsigned int row, unsigned int col){
  *  Doubles as a getNodesInBlock function, but does not
  *  count child nodes.
  */
-size_t getTupleSize(Node *tup){
+size_t Compiler::getTupleSize(Node *tup){
     size_t size = 0;
     while(tup){
         tup = tup->next.get();
@@ -144,6 +144,28 @@ TypedValue* TypeNode::compile(Compiler *c){
 TypedValue* StrLitNode::compile(Compiler *c){
     return new TypedValue(c->builder.CreateGlobalStringPtr(val), '[');
     //ConstantDataArray::getString(getGlobalContext(), val);
+}
+
+TypedValue* ArrayNode::compile(Compiler *c){
+    vector<Constant*> arr;
+    for(Node *n : exprs){
+       auto *tval = n->compile(c);
+       arr.push_back((Constant*)tval->val);
+    }
+    
+    auto* ty = ArrayType::get(arr[0]->getType(), arr.size());
+    return new TypedValue(ConstantArray::get(ty, arr), '[');
+}
+
+
+TypedValue* TupleNode::compile(Compiler *c){
+    vector<Constant*> tup;
+    for(Node *n : exprs){
+       auto *tval = n->compile(c);
+       tup.push_back((Constant*)tval->val);
+    }
+
+    return new TypedValue(ConstantStruct::get((StructType*)this->getType(c), tup), Tok_UserType);
 }
 
 /*
@@ -254,27 +276,20 @@ TypedValue* FuncCallNode::compile(Compiler *c){
     if(!f)
         return c->compErr("Called function " + name + " has not been declared.", this->row, this->col);
 
-    size_t paramSize = getTupleSize(params.get());
-    if(f->arg_size() != paramSize && !f->isVarArg()){
+    if(f->arg_size() != params->size() && !f->isVarArg()){
         if(paramSize == 1)
             return c->compErr("Called function " + name + " was given 1 paramter but was declared to take " + to_string(f->arg_size()), this->row, this->col);
         else
             return c->compErr("Called function " + name + " was given " + to_string(paramSize) + " paramters but was declared to take " + to_string(f->arg_size()), this->row, this->col);
     }
 
-    std::vector<Value*> args;
-    Node *curParam = params.get();
-    for(unsigned i = 0; i < paramSize; i++){
-        args.push_back(curParam->compile(c)->val);
-        curParam = curParam->next.get();
-        if(!args.back())
-            c->compErr("Argument " + to_string(i+1) + " of called function " + name + " evaluated to null.", this->row, this->col);
-    }
+    const Value *args = params->compile(c)->val;
+    if(!args) return nullptr;
 
     if(f->getReturnType() == Type::getVoidTy(getGlobalContext())){
         return new TypedValue(c->builder.CreateCall(f, args), Tok_Void);
     }else{
-        return new TypedValue(c->builder.CreateCall(f, args, "tmp"), Compiler::llvmTypeToTokType(f->getReturnType()));
+        return new TypedValue(c->builder.CreateCall(f, args), "tmp"), Compiler::llvmTypeToTokType(f->getReturnType()));
     }
 }
 
@@ -408,9 +423,10 @@ TypedValue* FuncDeclNode::compile(Compiler *c){
 }
 
 
-TypedValue* DataDeclNode::compile(Compiler *c)
-{ return nullptr; }
-
+TypedValue* DataDeclNode::compile(Compiler *c){
+    c->stoType(this);
+    return nullptr;
+}
 
 Function* Compiler::getFunction(string& name){
     Function *f = module->getFunction(name);
@@ -610,6 +626,18 @@ Variable* Compiler::lookup(string var) const{
 
 inline void Compiler::stoVar(string var, Variable *val){
     varTable.top()[var] = val;
+}
+
+DataDeclNode* Compiler::lookupType(string tyname) const{
+    try{
+        return userTypes.at(tyname);
+    }catch(out_of_range r){
+        return nullptr;
+    }
+}
+
+inline void Compiler::stoType(DataDeclNode *ty){
+    userTypes[ty->name] = ty;
 }
 
 /*
