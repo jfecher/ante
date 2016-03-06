@@ -168,6 +168,15 @@ TypedValue* TupleNode::compile(Compiler *c){
     return new TypedValue(ConstantStruct::get((StructType*)this->getType(c), tup), Tok_UserType);
 }
 
+vector<Value*> TupleNode::unpack(Compiler *c){
+    vector<Value*> ret;
+    for(Node *n : exprs){
+       auto *tval = n->compile(c);
+       ret.push_back(tval->val);
+    }
+    return ret;
+}
+
 /*
  *  When a retnode is compiled within a block, care must be taken to not
  *  forcibly insert the branch instruction afterwards as it leads to dead code.
@@ -276,21 +285,17 @@ TypedValue* FuncCallNode::compile(Compiler *c){
     if(!f)
         return c->compErr("Called function " + name + " has not been declared.", this->row, this->col);
 
-    if(f->arg_size() != params->size() && !f->isVarArg()){
-        if(paramSize == 1)
-            return c->compErr("Called function " + name + " was given 1 paramter but was declared to take " + to_string(f->arg_size()), this->row, this->col);
+    /* Check given argument count matches declared argument count. */
+    if(f->arg_size() != params->exprs.size() && !f->isVarArg()){
+        if(params->exprs.size() == 1)
+            return c->compErr("Called function " + name + " was given 1 argument but was declared to take " + to_string(f->arg_size()), this->row, this->col);
         else
-            return c->compErr("Called function " + name + " was given " + to_string(paramSize) + " paramters but was declared to take " + to_string(f->arg_size()), this->row, this->col);
+            return c->compErr("Called function " + name + " was given " + to_string(params->exprs.size()) + " arguments but was declared to take " + to_string(f->arg_size()), this->row, this->col);
     }
 
-    const Value *args = params->compile(c)->val;
-    if(!args) return nullptr;
-
-    if(f->getReturnType() == Type::getVoidTy(getGlobalContext())){
-        return new TypedValue(c->builder.CreateCall(f, args), Tok_Void);
-    }else{
-        return new TypedValue(c->builder.CreateCall(f, args), "tmp"), Compiler::llvmTypeToTokType(f->getReturnType()));
-    }
+    /* unpack the tuple of arguments into a vector containing each value */
+    vector<Value*> args = params->unpack(c);
+    return new TypedValue(c->builder.CreateCall(f, args), Compiler::llvmTypeToTokType(f->getReturnType()));
 }
 
 

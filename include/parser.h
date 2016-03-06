@@ -102,6 +102,7 @@ struct ArrayNode : public Node{
 struct TupleNode : public Node{
     vector<Node*> exprs;
     TypedValue* compile(Compiler*);
+    vector<Value*> unpack(Compiler*);
     void print(void);
     Type* getType(Compiler*);
     TupleNode(vector<Node*>& e) : Node(), exprs(e){}
@@ -184,7 +185,7 @@ struct RefVarNode : public Node{
 
 struct FuncCallNode : public Node{
     string name;
-    unique_ptr<TupleNode*> params;
+    unique_ptr<TupleNode> params;
     TypedValue* compile(Compiler*);
     Type* getType(Compiler*);
     void print(void);

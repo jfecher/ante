@@ -362,8 +362,8 @@ maybe_expr: expr    {$$ = $1;}
 expr_list: expr_list_p {$$ = getRoot();}
          ;
 
-expr_list_p: expr_list ',' expr    {$$ = setNext($1, $3);}
-           | expr                  {$$ = setRoot($1);}
+expr_list_p: expr_list_p ',' expr    {$$ = setNext($1, $3);}
+           | expr                    {$$ = setRoot($1);}
            ;
 
 unary_op: '*' val  {$$ = mkUnOpNode('*', $2);}
