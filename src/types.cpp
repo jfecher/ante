@@ -133,11 +133,13 @@ Type* Node::getType(Compiler *c){
 
 /*
  *  Translates an individual type in token form to an llvm::Type
+ *  Only works for primitive, non-tuple types.
  */
 Type* Compiler::tokTypeToLlvmType(int tokTy, string typeName = ""){
     switch(tokTy){
-        case Tok_UserType: //TODO: implement
-            return Type::getVoidTy(getGlobalContext());
+        case Tok_UserType:
+            cerr << "tokTypeToLlvmType cannot be used with a UserType.\n";
+            return nullptr;
         case Tok_I8:  case Tok_U8:  return Type::getInt8Ty(getGlobalContext());
         case Tok_I16: case Tok_U16: return Type::getInt16Ty(getGlobalContext());
         case Tok_I32: case Tok_U32: return Type::getInt32Ty(getGlobalContext());
@@ -173,7 +175,7 @@ int Compiler::llvmTypeToTokType(Type *t){
     if(t->isDoubleTy()) return Tok_F64;
     
     if(t->isArrayTy()) return '[';
-    if(t->isStructTy()) return Tok_Data;
+    if(t->isStructTy()) return Tok_UserType;
     if(t->isPointerTy()) return '*';
     if(t->isFunctionTy()) return '(';
 
@@ -186,10 +188,17 @@ int Compiler::llvmTypeToTokType(Type *t){
  *  unfortunate necessity for the use of a TypedValue for the storage of this information.
  */
 Type* Compiler::typeNodeToLlvmType(TypeNode *tyNode){
+    vector<Type*> tys;
+    TypeNode *tyn = tyNode->extTy.get();
     switch(tyNode->type){
         case '*':
             return PointerType::get(typeNodeToLlvmType(tyNode->extTy.get()), 0);
-        case Tok_UserType: //TODO usertype
+        case Tok_UserType: //tuple/usertype
+            while(tyn){
+                tys.push_back(typeNodeToLlvmType(tyn));
+                tyn = (TypeNode*)tyn->next.get();
+            }
+            return StructType::get(getGlobalContext(), tys, "Tuple");
         case '[': //TODO array type
         case '(': //TODO function pointer type
             cout << "typeNodeToLlvmType: UserTypes, Array types, and function pointer types are currently unimplemented.  A void type will be returned instead.\n";
@@ -212,11 +221,11 @@ bool Compiler::llvmTypeEq(Type *l, Type *r){
 
     if(ltt != rtt) return false;
 
-    if(ltt == '*'){
+    if(ltt == '*'){ //pointer
         return llvmTypeEq(l->getPointerElementType(), r->getPointerElementType());
-    }else if(ltt == '['){
+    }else if(ltt == '['){ //array
         return llvmTypeEq(l->getArrayElementType(), r->getArrayElementType());
-    }else if(ltt == '('){
+    }else if(ltt == '('){ //function pointer
         int lParamCount = l->getFunctionNumParams();
         int rParamCount = r->getFunctionNumParams();
         
@@ -228,6 +237,8 @@ bool Compiler::llvmTypeEq(Type *l, Type *r){
                 return false;
         } 
         return true;
+    }else if(ltt == Tok_UserType){ //struct/tuple
+        return l == r;
     }else{ //primitive type
         return ltt == rtt;
     }

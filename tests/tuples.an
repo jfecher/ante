@@ -1,0 +1,15 @@
+`
+        tuples.an
+`
+
+let tup = (1, 2, "three")
+
+i32,i32 getCoords:
+    return (2, 3)
+
+printf("tup: %d, %d, %s\n", tup[0], tup[1], tup[2])
+
+let testTup = (2, 3)
+
+~let coords = getCoords()
+~printf("coords: %d, %d\n", coords[0], coords[1])

@@ -309,11 +309,12 @@ TypedValue* LetBindingNode::compile(Compiler *c){
 
     TypeNode *tyNode;
     if((tyNode = (TypeNode*)typeExpr.get())){
-        if(val->type != tyNode->type){
+        if(!Compiler::llvmTypeEq(val->val->getType(), Compiler::typeNodeToLlvmType(tyNode))){
             return c->compErr("Incompatible types in explicit binding.", row, col);
         }
     }
 
+    val->val->dump();
     c->stoVar(name, new Variable(name, val, c->getScope()));
     return val;
 }

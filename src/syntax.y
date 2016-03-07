@@ -176,7 +176,7 @@ type: type '*'                {$$ = mkTypeNode('*', (char*)"", $1);}
     | type '[' maybe_expr ']' {$$ = mkTypeNode('[', (char*)"", $1);}
     | type '(' type_expr ')'  {$$ = mkTypeNode('(', (char*)"", $1);}  /* f-ptr w/ params*/
     | type '(' ')'            {$$ = mkTypeNode('(', (char*)"", $1);}  /* f-ptr w/out params*/
-    | '(' type_expr ')'       {$$ = $1;}
+    | '(' type_expr ')'       {$$ = mkTypeNode(Tok_UserType, (char*)"", $2);}
     | lit_type                {$$ = $1;}
     ;
 
@@ -185,7 +185,13 @@ type_expr_: type_expr_ ',' type {$$ = setNext($1, $3);}
           | type                {$$ = setRoot($1);}
           ;
 
-type_expr: type_expr_ {$$ = getRoot();}
+type_expr: type_expr_  {Node* tmp = getRoot(); 
+                        if(tmp == $1){//singular type, first type in list equals the last
+                            $$ = tmp;
+                        }else{ //tuple type
+                            $$ = mkTypeNode(Tok_UserType, (char*)"", tmp);
+                        }
+                       }
 
 
 modifier: Pub      {$$ = mkModNode(Tok_Pub);} 
@@ -324,7 +330,7 @@ do_while_loop: Do While expr block {$$ = NULL;}
 for_loop: For var_decl In expr block {$$ = NULL;}
         ;
 
-var: ident '[' expr ']'              {$$ = 0;}/*TODO: arrays*/
+var: ident '[' expr ']'              {$$ = mkBinOpNode('[', mkVarNode((char*)$1), $3);}
    | ident               %prec Ident {$$ = mkVarNode((char*)$1);}
    ;
 

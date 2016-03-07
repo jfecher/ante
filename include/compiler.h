@@ -94,6 +94,7 @@ namespace ante{
         TypedValue* compMul(TypedValue *l, TypedValue *r, BinOpNode *op);
         TypedValue* compDiv(TypedValue *l, TypedValue *r, BinOpNode *op);
         TypedValue* compRem(TypedValue *l, TypedValue *r, BinOpNode *op);
+        TypedValue* compGEP(TypedValue *l, TypedValue *r, BinOpNode *op);
         
         TypedValue* compErr(string msg, unsigned int row, unsigned int col);
 

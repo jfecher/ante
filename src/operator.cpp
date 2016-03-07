@@ -111,11 +111,39 @@ TypedValue* Compiler::compRem(TypedValue *l, TypedValue *r, BinOpNode *op){
     }
 }
 
-
 inline bool isIntTokTy(int ty){
     return ty==Tok_I8||ty==Tok_I16||ty==Tok_I32||ty==Tok_I64||
            ty==Tok_U8||ty==Tok_U16||ty==Tok_U32||ty==Tok_U64||
            ty==Tok_Isz||ty==Tok_Usz;
+}
+
+#include <llvm/Support/raw_os_ostream.h>
+
+TypedValue* Compiler::compGEP(TypedValue *l, TypedValue *r, BinOpNode *op){
+    if(!isIntTokTy(r->type)){
+        return compErr("Index of operator '[' must be an integer expression, got expression of type " + Lexer::getTokStr(r->type), op->row, op->col);
+    }
+
+    if(l->type == '['){
+        Constant *lc = (Constant*)l->val;
+        Constant *rc = (Constant*)r->val;
+        return new TypedValue(lc->getAggregateElement(rc), llvmTypeToTokType(l->val->getType()->getArrayElementType()));
+    }else if(l->type == Tok_UserType){ //tuple
+        if(dynamic_cast<Constant*>(l->val)){
+            Constant *lc = (Constant*)l->val;
+
+            if(!dynamic_cast<Constant*>(r->val))
+                return compErr("Pathogen values cannot be used as tuple indices.", op->row, op->col);
+
+            Constant *rc = (Constant*)r->val;
+            auto index = ((ConstantInt*)r->val)->getZExtValue();
+            return new TypedValue(lc->getAggregateElement(rc), llvmTypeToTokType(l->val->getType()->getStructElementType(index)));
+        }else{
+            return compErr("Tuple must be Constant to be indexed.", op->row, op->col);
+        }
+    }else{
+        return compErr("Type " + Lexer::getTokStr(r->type) + " does not have elements to access", op->row, op->col);
+    }
 }
 
 
@@ -141,6 +169,7 @@ TypedValue* BinOpNode::compile(Compiler *c){
         case '*': return c->compMul(lhs, rhs, this);
         case '/': return c->compDiv(lhs, rhs, this);
         case '%': return c->compRem(lhs, rhs, this);
+        case '[': return c->compGEP(lhs, rhs, this);
         case '<': return new TypedValue(c->builder.CreateICmpULT(lhs->val, rhs->val), lhs->type);
         case '>': return new TypedValue(c->builder.CreateICmpUGT(lhs->val, rhs->val), lhs->type);
         case '^': return new TypedValue(c->builder.CreateXor(lhs->val, rhs->val), lhs->type);
