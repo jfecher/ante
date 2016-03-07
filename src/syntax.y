@@ -80,6 +80,7 @@ void yyerror(const char *msg);
 
 %left IntLit FltLit StrLit True False
 
+%right Where
 %left ','
 
 %left Or
@@ -377,23 +378,27 @@ unary_op: '*' val  {$$ = mkUnOpNode('*', $2);}
         | '-' val  {$$ = mkUnOpNode('-', $2);}
         ;
 
-expr: expr '+' expr     {$$ = mkBinOpNode('+', $1, $3);}
-    | expr '-' expr     {$$ = mkBinOpNode('-', $1, $3);}
-    | expr '*' expr     {$$ = mkBinOpNode('*', $1, $3);}
-    | expr '/' expr     {$$ = mkBinOpNode('/', $1, $3);}
-    | expr '%' expr     {$$ = mkBinOpNode('%', $1, $3);}
-    | expr '<' expr     {$$ = mkBinOpNode('<', $1, $3);}
-    | expr '>' expr     {$$ = mkBinOpNode('>', $1, $3);}
-    | expr '^' expr     {$$ = mkBinOpNode('^', $1, $3);}
-    | expr '.' expr     {$$ = mkBinOpNode('.', $1, $3);}
-    | expr Eq expr      {$$ = mkBinOpNode(Tok_Eq, $1, $3);}
-    | expr NotEq expr   {$$ = mkBinOpNode(Tok_NotEq, $1, $3);}
-    | expr GrtrEq expr  {$$ = mkBinOpNode(Tok_GrtrEq, $1, $3);}
-    | expr LesrEq expr  {$$ = mkBinOpNode(Tok_LesrEq, $1, $3);}
-    | expr Or expr      {$$ = mkBinOpNode(Tok_Or, $1, $3);}
-    | expr And expr     {$$ = mkBinOpNode(Tok_And, $1, $3);}
-    | val               {$$ = $1;}
+expr: expr Where ident '=' binop  {$$ = mkBinOpNode(Tok_Where, $1, mkLetBindingNode((char*)$3, 0, 0, $5));}
+    | binop {$$ = $1;}
     ;
+
+binop: binop '+' binop             {$$ = mkBinOpNode('+', $1, $3);}
+     | binop '-' binop             {$$ = mkBinOpNode('-', $1, $3);}
+     | binop '*' binop             {$$ = mkBinOpNode('*', $1, $3);}
+     | binop '/' binop             {$$ = mkBinOpNode('/', $1, $3);}
+     | binop '%' binop             {$$ = mkBinOpNode('%', $1, $3);}
+     | binop '<' binop             {$$ = mkBinOpNode('<', $1, $3);}
+     | binop '>' binop             {$$ = mkBinOpNode('>', $1, $3);}
+     | binop '^' binop             {$$ = mkBinOpNode('^', $1, $3);}
+     | binop '.' binop             {$$ = mkBinOpNode('.', $1, $3);}
+     | binop Eq binop              {$$ = mkBinOpNode(Tok_Eq, $1, $3);}
+     | binop NotEq binop           {$$ = mkBinOpNode(Tok_NotEq, $1, $3);}
+     | binop GrtrEq binop          {$$ = mkBinOpNode(Tok_GrtrEq, $1, $3);}
+     | binop LesrEq binop          {$$ = mkBinOpNode(Tok_LesrEq, $1, $3);}
+     | binop Or binop              {$$ = mkBinOpNode(Tok_Or, $1, $3);}
+     | binop And binop             {$$ = mkBinOpNode(Tok_And, $1, $3);}
+     | val                         {$$ = $1;}
+     ;
 
 
 /* nl_expr is used in expression blocks and can span multiple lines */

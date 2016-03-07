@@ -300,9 +300,9 @@ TypedValue* FuncCallNode::compile(Compiler *c){
 
 
 TypedValue* LetBindingNode::compile(Compiler *c){
-    if(c->lookup(name)){ //check for redeclaration
+    /*if(c->lookup(name)){ //check for redeclaration
         return c->compErr("Variable " + name + " was redeclared.", row, col);
-    }
+    }*/
     
     TypedValue *val = expr->compile(c);
     if(!val) return nullptr;
@@ -314,7 +314,6 @@ TypedValue* LetBindingNode::compile(Compiler *c){
         }
     }
 
-    val->val->dump();
     c->stoVar(name, new Variable(name, val, c->getScope()));
     return val;
 }

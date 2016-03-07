@@ -1,0 +1,22 @@
+`
+        where.an
+`
+
+
+~Constants declared with where after an expression are equivalent 
+~to let bindings declared beforehand.
+let str = hello where hello = "Hello World!"
+
+~Where clauses are right associative and may only be used at the
+~end of an expression.
+let five = three + two where three = 3 where two = 2
+
+printf("%s\nthree = %d\n", str, five - two where two = 2)
+
+
+~Returns the positive root of a quadratic equation.
+~Assumes the equation has real roots.
+i32 quadratic: i32 a b c
+    return (-b + discrim)/(2*a) where discrim = sqrt(b*b - 4*a*c)
+
+printf("The positive root of x^2 - 4x + 5 is %d\n", quadratic(1, -4, 5))

@@ -153,6 +153,11 @@ TypedValue* Compiler::compGEP(TypedValue *l, TypedValue *r, BinOpNode *op){
  *  TODO: more type checking
  */
 TypedValue* BinOpNode::compile(Compiler *c){
+    if(op == Tok_Where){
+        rval->compile(c);
+        return lval->compile(c);
+    }
+
     TypedValue *lhs = lval->compile(c);
     TypedValue *rhs = rval->compile(c);
     if(!lhs || !rhs) return 0;
