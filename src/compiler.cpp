@@ -294,7 +294,15 @@ TypedValue* FuncCallNode::compile(Compiler *c){
     }
 
     /* unpack the tuple of arguments into a vector containing each value */
-    vector<Value*> args = params->unpack(c);
+    auto args = params->unpack(c);
+    int i = 0;
+    for(auto &param : f->args()){//type check each parameter
+        if(!Compiler::llvmTypeEq(args[i++]->getType(), param.getType())){
+            return c->compErr("Argument " + to_string(i) + " of function " + name + " is a(n) " + Lexer::getTokStr(Compiler::llvmTypeToTokType(args[i-1]->getType()))
+                    + " but was declared to be a(n) " + Lexer::getTokStr(Compiler::llvmTypeToTokType(param.getType())), this->row, this->col);
+        }
+    }
+
     return new TypedValue(c->builder.CreateCall(f, args), Compiler::llvmTypeToTokType(f->getReturnType()));
 }
 
@@ -480,6 +488,8 @@ void Compiler::compilePrelude(){
 
     // void exit: u8 status
     registerFunction(new FuncDeclNode("exit", 0, mkAnonTypeNode(Tok_Void), mkAnonNVNode(Tok_I32), nullptr));
+    
+    registerFunction(new FuncDeclNode("sqrt", 0, mkAnonTypeNode(Tok_F64), mkAnonNVNode(Tok_F64), nullptr));
     
     // void* malloc: u32 size
     TypeNode *voidPtr = mkAnonTypeNode('*');

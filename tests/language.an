@@ -216,7 +216,6 @@ let double = 25.0_f64
         and  logical and
         or   logical or
         ..   range
-        &    bitwise and
         |    bitwise or (or a type-expr or)
         ^    bitwise xor
         <<   bitwise left-shift
@@ -441,6 +440,29 @@ for f32 n in arr
 for i32 count in 0..100
     print(count)
 
+
+`
+        Expressions
+    Expressions are pieces of code that return a value, as opposed to statements
+    which return no value.  Expressions can be any length from a single value to
+    a complex expression containing many operations.  Expressions are expected
+    inside several statements, namely variable declarations/assignments, let
+    bindings, if conditions, and loop conditions.  Expressions are usually
+    terminated with a Newline or an Unindent token, although they may be extended
+    by ignoring a newline with \, or with an Indent and matching Unindent token.
+`
+
+~A simple expression consisting of only the I32 0
+let zero = 0
+
+~If statements can be used within expressions, albeit with a slightly altered syntax
+let stoplight = "go" if light == "green" else "stop"
+
+~Expressions can also be more complex
+~Here is an example of a function declaration with a let binding.
+let takeWhile = \f l
+    [] if !f(l[0]) else
+    l[0] ++ takeWhile(f, l[1..])
 
 `
         Pathogen infections

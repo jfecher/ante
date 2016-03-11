@@ -93,6 +93,12 @@ void yyerror(const char *msg);
 %right '^'
 %left '.'
 
+/* 
+    Being below HIGH, this ensures parenthetical expressions will be parsed
+    as just order-of operations parenthesis, instead of a single-value tuple.
+*/
+%nonassoc ')'
+
 %nonassoc '(' '[' Indent
 %nonassoc HIGH
 
@@ -342,6 +348,7 @@ ref_val: '&' ref_val         {$$ = mkUnOpNode('&', $2);}
        ;
 
 val: fn_call                 {$$ = $1;}
+   | '(' expr ')'            {$$ = $2;}
    | tuple                   {$$ = $1;}
    | array                   {$$ = $1;}
    | Indent nl_expr Unindent {$$ = $2;}
@@ -369,8 +376,10 @@ maybe_expr: expr    {$$ = $1;}
 expr_list: expr_list_p {$$ = getRoot();}
          ;
 
-expr_list_p: expr_list_p ',' expr    {$$ = setNext($1, $3);}
-           | expr                    {$$ = setRoot($1);}
+expr_list_p: expr_list_p ',' expr  {$$ = setNext($1, $3);}
+           | expr       %prec LOW  {$$ = setRoot($1);} 
+           /* Low precedence here to favor parenthesis as grouping when possible 
+              instead of being parsed as a single-value tuple.*/
            ;
 
 unary_op: '*' val  {$$ = mkUnOpNode('*', $2);}

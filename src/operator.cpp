@@ -139,7 +139,12 @@ TypedValue* Compiler::compGEP(TypedValue *l, TypedValue *r, BinOpNode *op){
             auto index = ((ConstantInt*)r->val)->getZExtValue();
             return new TypedValue(lc->getAggregateElement(rc), llvmTypeToTokType(l->val->getType()->getStructElementType(index)));
         }else{
-            return compErr("Tuple must be Constant to be indexed.", op->row, op->col);
+            if(!dynamic_cast<Constant*>(r->val))
+                return compErr("Pathogen values cannot be used as tuple indices.", op->row, op->col);
+
+            auto index = ((ConstantInt*)r->val)->getZExtValue();
+            return new TypedValue(builder.CreateExtractValue(l->val, index), llvmTypeToTokType(l->val->getType()->getStructElementType(index)));
+            //return compErr("Tuple must be Constant to be indexed.", op->row, op->col);
         }
     }else{
         return compErr("Type " + Lexer::getTokStr(r->type) + " does not have elements to access", op->row, op->col);
