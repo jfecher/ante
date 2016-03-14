@@ -3,13 +3,21 @@
 `
 
 let tup = (1, 2, "three")
+printf("tup: %d, %d, %s\n", tup[0], tup[1], tup[2])
+
 
 i32,i32 getCoords:
     return (2, 3)
 
-printf("tup: %d, %d, %s\n", tup[0], tup[1], tup[2])
+~Pack two i32 params into a tuple
+i32,i32 toTuple: i32 a b
+    return (a, b)
 
-let testTup = (2, 3)
+void printTuple: c8* name, i32,i32 tup
+    printf("%s = (%d, %d)\n", name, tup[0], tup[1])
+
 
 let coords = getCoords()
-printf("coords: %d, %d\n", coords[0], coords[1])
+printTuple("coords", coords)
+
+printTuple("getTuple(3, 2)", toTuple(3, 2))

@@ -159,13 +159,32 @@ TypedValue* ArrayNode::compile(Compiler *c){
 
 
 TypedValue* TupleNode::compile(Compiler *c){
-    vector<Constant*> tup;
-    for(Node *n : exprs){
-       auto *tval = n->compile(c);
-       tup.push_back((Constant*)tval->val);
+    vector<Constant*> elems;
+    elems.reserve(exprs.size());
+
+    map<unsigned, Value*> pathogenVals;
+
+    //Compile every value in the tuple, and if it is not constant,
+    //add it to pathogenVals
+    for(unsigned i = 0; i < exprs.size(); i++){
+        auto *tval = exprs[i]->compile(c);
+        if(dynamic_cast<Constant*>(tval->val)){
+            elems.push_back((Constant*)tval->val);
+        }else{
+            pathogenVals[i] = tval->val;
+            elems.push_back(UndefValue::get(tval->val->getType()));
+        }
     }
 
-    return new TypedValue(ConstantStruct::get((StructType*)this->getType(c), tup), Tok_UserType);
+    //Create the constant tuple with undef values in place for the non-constant values
+    Value* tuple = ConstantStruct::get((StructType*)this->getType(c), elems);
+
+    //Insert each pathogen value into the tuple individually
+    for(auto it = pathogenVals.cbegin(); it != pathogenVals.cend(); it++){
+        tuple = c->builder.CreateInsertValue(tuple, it->second, it->first);
+    }
+
+    return new TypedValue(tuple, Tok_UserType);
 }
 
 vector<Value*> TupleNode::unpack(Compiler *c){
@@ -322,7 +341,8 @@ TypedValue* LetBindingNode::compile(Compiler *c){
         }
     }
 
-    c->stoVar(name, new Variable(name, val, c->getScope()));
+    bool nofree = val->type != '*' || dynamic_cast<Constant*>(val->val);
+    c->stoVar(name, new Variable(name, val, c->getScope(), nofree));
     return val;
 }
 
@@ -336,10 +356,12 @@ TypedValue* VarDeclNode::compile(Compiler *c){
     Type *ty = Compiler::typeNodeToLlvmType(tyNode);
     TypedValue *alloca = new TypedValue(c->builder.CreateAlloca(ty, 0, name.c_str()), tyNode->type);
 
-    c->stoVar(name, new Variable(name, alloca, c->getScope()));
+    Variable *var = new Variable(name, alloca, c->getScope());
+    c->stoVar(name, var);
     if(expr.get()){
         TypedValue *val = expr->compile(c);
         if(!val) return nullptr;
+        var->noFree = var->getType() != '*' || dynamic_cast<Constant*>(val->val);
 
         return new TypedValue(c->builder.CreateStore(val->val, alloca->val), tyNode->type);
     }else{
@@ -365,11 +387,11 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
     Type *retType = typeNodeToLlvmType(retNode);
 
     //Count the number of parameters
-    NamedValNode *param = fdn->params.get();
-    size_t nParams = getTupleSize(param);
+    NamedValNode *paramsBegin = fdn->params.get();
+    size_t nParams = getTupleSize(paramsBegin);
 
     //Get each and every parameter type and store them in paramTys
-    NamedValNode *cParam = param;
+    NamedValNode *cParam = paramsBegin;
     vector<Type*> paramTys;
 
     //Tell the vector to reserve space equal to nParam parameters so it does not have to reallocate.
@@ -396,11 +418,11 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
         enterNewScope();
 
         //iterate through each parameter and add its value to the new scope.
-        cParam = param;
+        cParam = paramsBegin;
         for(auto &arg : f->args()){
             TypeNode *paramTyNode = (TypeNode*)cParam->typeExpr.get();
-            stoVar(param->name, new Variable(param->name, new TypedValue(&arg, paramTyNode->type), scope));
-            if(!(param = (NamedValNode*)param->next.get())) break;
+            stoVar(cParam->name, new Variable(cParam->name, new TypedValue(&arg, paramTyNode->type), scope));
+            if(!(cParam = (NamedValNode*)cParam->next.get())) break;
         }
 
         //actually compile the function, and hold onto the last value
@@ -616,7 +638,7 @@ inline void Compiler::exitScope(){
     //iterate through all known variables, check for pointers at the end of
     //their lifetime, and insert calls to free for any that are found
     for(auto it = varTable.top().cbegin(); it != varTable.top().cend(); it++){
-        if(it->second->getType() == '*' && it->second->scope == scope){
+        if(it->second->isFreeable() && it->second->scope == scope){
             string freeFnName = "free";
             Function* freeFn = getFunction(freeFnName);
             if(auto *inst = dynamic_cast<AllocaInst*>(it->second->getVal())){

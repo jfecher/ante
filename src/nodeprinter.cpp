@@ -46,12 +46,13 @@ void StrLitNode::print(){
 
 void ArrayNode::print(){
     putchar('[');
-    for(size_t i = 0; i < exprs.size(); i++){
+    /*for(size_t i = 0; i < exprs.size(); i++){
         exprs[i]->print();
         if(i != exprs.size() - 1){
             cout << ", ";
         }
-    }
+    }*/
+    exprs[0]->print();
     putchar(']');
 }
 
@@ -67,9 +68,14 @@ void ModNode::print(){
 }
 
 void TypeNode::print(){
-    if(type == Tok_Ident || type == Tok_UserType)
+    if(type == Tok_Ident)
         cout << typeName;
-    else
+    else if(type == Tok_UserType){
+        cout << "tup(";
+        extTy->print();
+        maybePrintArr(extTy->next.get());
+        cout << ")";
+    }else
         Lexer::printTok(type);
 }
 

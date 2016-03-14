@@ -514,7 +514,7 @@ namespace yy {
     enum
     {
       yyeof_ = 0,
-      yylast_ = 904,     ///< Last index in yytable_.
+      yylast_ = 892,     ///< Last index in yytable_.
       yynnts_ = 57,  ///< Number of nonterminal symbols.
       yyfinal_ = 4, ///< Termination state number.
       yyterror_ = 1,

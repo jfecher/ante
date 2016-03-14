@@ -337,8 +337,7 @@ do_while_loop: Do While expr block {$$ = NULL;}
 for_loop: For var_decl In expr block {$$ = NULL;}
         ;
 
-var: ident '[' expr ']'              {$$ = mkBinOpNode('[', mkVarNode((char*)$1), $3);}
-   | ident               %prec Ident {$$ = mkVarNode((char*)$1);}
+var: ident  %prec Ident {$$ = mkVarNode((char*)$1);}
    ;
 
 ref_val: '&' ref_val         {$$ = mkUnOpNode('&', $2);}
@@ -400,6 +399,7 @@ binop: binop '+' binop             {$$ = mkBinOpNode('+', $1, $3);}
      | binop '>' binop             {$$ = mkBinOpNode('>', $1, $3);}
      | binop '^' binop             {$$ = mkBinOpNode('^', $1, $3);}
      | binop '.' binop             {$$ = mkBinOpNode('.', $1, $3);}
+     | binop '[' expr ']'          {$$ = mkBinOpNode('[', $1, $3);}
      | binop Eq binop              {$$ = mkBinOpNode(Tok_Eq, $1, $3);}
      | binop NotEq binop           {$$ = mkBinOpNode(Tok_NotEq, $1, $3);}
      | binop GrtrEq binop          {$$ = mkBinOpNode(Tok_GrtrEq, $1, $3);}

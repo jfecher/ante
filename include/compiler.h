@@ -40,7 +40,7 @@ struct Variable {
     string name;
     TypedValue *tval;
     unsigned int scope;
-
+    bool noFree;
 
     Value* getVal() const{
         return tval->val;
@@ -50,11 +50,11 @@ struct Variable {
         return tval->type;
     }
 
-    bool isPtr() const{
-        return tval->type == '*';
+    bool isFreeable() const{
+        return tval->type == '*' && !noFree;
     }
 
-    Variable(string n, TypedValue *tv, unsigned int s) : name(n), tval(tv), scope(s){}
+    Variable(string n, TypedValue *tv, unsigned int s, bool nofr=true) : name(n), tval(tv), scope(s), noFree(nofr){}
 };
 
 
