@@ -342,7 +342,7 @@ var: ident  %prec Ident {$$ = mkVarNode((char*)$1);}
 
 ref_val: '&' ref_val         {$$ = mkUnOpNode('&', $2);}
        | '*' ref_val         {$$ = mkUnOpNode('*', $2);}
-       | ident '[' expr ']'  
+       | ident '[' expr ']'  {$$ = mkBinOpNode('[', mkVarNode((char*)$1), $3);}
        | ident  %prec Ident  {$$ = mkRefVarNode((char*)$1);}
        ;
 
