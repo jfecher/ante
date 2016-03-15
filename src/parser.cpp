@@ -1281,7 +1281,7 @@ namespace yy {
 
   case 130:
 #line 345 "src/syntax.y" // lalr1.cc:859
-    {(yylhs.value) = mkBinOpNode('[', mkVarNode((char*)(yystack_[3].value)), (yystack_[1].value));}
+    {(yylhs.value) = mkBinOpNode('[', mkRefVarNode((char*)(yystack_[3].value)), (yystack_[1].value));}
 #line 1286 "src/parser.cpp" // lalr1.cc:859
     break;
 

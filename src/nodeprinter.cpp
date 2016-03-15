@@ -68,15 +68,21 @@ void ModNode::print(){
 }
 
 void TypeNode::print(){
-    if(type == Tok_Ident)
+    if(type == Tok_Ident){
         cout << typeName;
-    else if(type == Tok_UserType){
+    }else if(type == Tok_UserType){
         cout << "tup(";
-        extTy->print();
-        maybePrintArr(extTy->next.get());
-        cout << ")";
-    }else
+        TypeNode *fieldTy = extTy.get();
+        while(true){
+            fieldTy->print();
+            if((fieldTy = (TypeNode*)fieldTy->next.get()))
+                putchar(',');
+            else break;
+        }
+        putchar(')');
+    }else{
         Lexer::printTok(type);
+    }
 }
 
 void UnOpNode::print(){

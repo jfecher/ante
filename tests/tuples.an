@@ -21,3 +21,9 @@ let coords = getCoords()
 printTuple("coords", coords)
 
 printTuple("getTuple(3, 2)", toTuple(3, 2))
+
+
+u8,i32,i64 mutTup = (5_u8, 66, 7_i64)
+mutTup[1] = 6
+
+printf("mutTup = %d, %d, %d\n", mutTup[0], mutTup[1], mutTup[2])
