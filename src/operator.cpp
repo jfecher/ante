@@ -146,7 +146,7 @@ TypedValue* Compiler::compGEP(TypedValue *l, TypedValue *r, BinOpNode *op){
         return compErr("Index of operator '[' must be an integer expression, got expression of type " + Lexer::getTokStr(r->type), op->row, op->col);
     }
 
-    if(l->type == '['){
+    if(l->type == TT_Array){
         Constant *lc = (Constant*)l->val;
         Constant *rc = (Constant*)r->val;
         return new TypedValue(lc->getAggregateElement(rc), llvmTypeToTypeTag(l->val->getType()->getArrayElementType()));
@@ -163,7 +163,7 @@ TypedValue* Compiler::compGEP(TypedValue *l, TypedValue *r, BinOpNode *op){
         }else{
             return new TypedValue(builder.CreateExtractValue(l->val, index), llvmTypeToTypeTag(l->val->getType()->getStructElementType(index)));
         }
-    }else if(l->type == '*'){ //assume RefVal
+    }else if(l->type == TT_Ptr){ //assume RefVal
         Value *v = builder.CreateLoad(l->val);
         if(llvmTypeToTypeTag(v->getType()) == TT_Tuple){
             if(!dynamic_cast<ConstantInt*>(r->val))
@@ -228,8 +228,8 @@ TypedValue* UnOpNode::compile(Compiler *c){
 
     switch(op){
         case '*': //pointer dereference
-            if(rhs->type != '*'){
-                return c->compErr("Cannot dereference non-pointer type " + Lexer::getTokStr(rhs->type), this->row, this->col);
+            if(rhs->type != TT_Ptr){
+                return c->compErr("Cannot dereference non-pointer type " + typeTagToStr(rhs->type), this->row, this->col);
             }
             
             return new TypedValue(c->builder.CreateLoad(rhs->val), llvmTypeToTypeTag(rhs->val->getType()->getPointerElementType()));
