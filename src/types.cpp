@@ -1,14 +1,14 @@
 #include <parser.h>
 
 
-char Compiler::getBitWidthOfTokTy(int tokTy){
-    switch(tokTy){
-        case Tok_I8: case Tok_U8: return 8;
-        case Tok_I16: case Tok_U16: case Tok_F16: return 16;
-        case Tok_I32: case Tok_U32: case Tok_F32: return 32;
-        case Tok_I64: case Tok_U64: case Tok_F64: return 64;
-        case Tok_Isz: case Tok_Usz: return 64; //TODO: detect 32-bit platform
-        case Tok_Bool: return 1;
+char Compiler::getBitWidthOfTypeTag(TypeTag ty){
+    switch(ty){
+        case TT_I8:  case TT_U8:  return 8;
+        case TT_I16: case TT_U16: case TT_F16: return 16;
+        case TT_I32: case TT_U32: case TT_F32: return 32;
+        case TT_I64: case TT_U64: case TT_F64: return 64;
+        case TT_Isz: case TT_Usz: return 64; //TODO: detect 32-bit platform
+        case TT_Bool: return 1;
         default: return 0;
     }
 }
@@ -36,7 +36,7 @@ Type* StrLitNode::getType(Compiler *c){
 }
 
 Type* IntLitNode::getType(Compiler *c){
-    return Compiler::tokTypeToLlvmType(type, ""); 
+    return typeTagToLlvmType(type, ""); 
 }
 
 //TODO: give floats a type field like integers
@@ -61,7 +61,7 @@ Type* ArrayNode::getType(Compiler *c){
 
         //check each element's type against the first
         for(size_t i = 1; i < exprs.size(); i++){
-            if(!Compiler::llvmTypeEq(elemTy, exprs[i]->getType(c))){
+            if(!llvmTypeEq(elemTy, exprs[i]->getType(c))){
                 return (Type*)c->compErr("Array index " + to_string(i) + " does not match the other array element's types", row, col);
             }
         }
@@ -92,7 +92,7 @@ Type* UnOpNode::getType(Compiler *c){
     int tokTy;
     switch(op){
         case '*':
-            tokTy = Compiler::llvmTypeToTokType(rty);
+            tokTy = llvmTypeToTypeTag(rty);
             if(tokTy != '*')
                 return (Type*)c->compErr("Cannot dereference non-pointer type " + Lexer::getTokStr(tokTy), this->row, this->col);
             else
@@ -105,23 +105,22 @@ Type* UnOpNode::getType(Compiler *c){
 
 /*
  *  Assures two IntegerType'd Values have the same bitwidth.
- *  If not, one is casted to the larger bitwidth and mutated.
- *  Assumes the Type of both values to be IntegerType.
- *  lSigned and rSigned are set to true if the left and right
- *  Values are both signed, this determines if they are zero
- *  extended or sign extended.
+ *  If not, one is extended to the larger bitwidth and mutated appropriately.
+ *  If the extended integer value is unsigned, it is zero extended, otherwise
+ *  it is sign extended.
+ *  Assumes the llvm::Type of both values to be an instance of IntegerType.
  */
 void Compiler::checkIntSize(TypedValue **lhs, TypedValue **rhs){
-    int lbw = getBitWidthOfTokTy((*lhs)->type);
-    int rbw = getBitWidthOfTokTy((*rhs)->type);
+    int lbw = getBitWidthOfTypeTag((*lhs)->type);
+    int rbw = getBitWidthOfTypeTag((*rhs)->type);
 
     if(lbw != rbw){
         //Cast the value with the smaller bitwidth to the type with the larger bitwidth
         if(lbw < rbw){
-            (*lhs)->val = builder.CreateIntCast((*lhs)->val, (*rhs)->val->getType(), !isUnsignedTokTy((*lhs)->type));
+            (*lhs)->val = builder.CreateIntCast((*lhs)->val, (*rhs)->val->getType(), !isUnsignedTypeTag((*lhs)->type));
             (*lhs)->type = (*rhs)->type;
         }else{//lbw > rbw
-            (*rhs)->val = builder.CreateIntCast((*rhs)->val, (*lhs)->val->getType(), !isUnsignedTokTy((*rhs)->type));
+            (*rhs)->val = builder.CreateIntCast((*rhs)->val, (*lhs)->val->getType(), !isUnsignedTypeTag((*rhs)->type));
             (*rhs)->type = (*lhs)->type;
         }
     }
@@ -132,79 +131,84 @@ Type* Node::getType(Compiler *c){
 }
 
 /*
- *  Translates an individual type in token form to an llvm::Type
- *  Only works for primitive, non-tuple types.
+ *  Translates an individual TypeTag to an llvm::Type.
+ *  Only intended for primitive types, as there is not enough
+ *  information stored in a TypeTag to convert to array, tuple,
+ *  or function types.
  */
-Type* Compiler::tokTypeToLlvmType(int tokTy, string typeName = ""){
-    switch(tokTy){
-        case Tok_UserType:
-            cerr << "tokTypeToLlvmType cannot be used with a UserType.\n";
+Type* typeTagToLlvmType(TypeTag ty, string typeName = ""){
+    switch(ty){
+        case TT_Data:
+            cerr << "tokTypeToLlvmType cannot be used with UserTypes.\n";
             return nullptr;
-        case Tok_I8:  case Tok_U8:  return Type::getInt8Ty(getGlobalContext());
-        case Tok_I16: case Tok_U16: return Type::getInt16Ty(getGlobalContext());
-        case Tok_I32: case Tok_U32: return Type::getInt32Ty(getGlobalContext());
-        case Tok_I64: case Tok_U64: return Type::getInt64Ty(getGlobalContext());
-        case Tok_Isz:    return Type::getVoidTy(getGlobalContext()); //TODO: implement
-        case Tok_Usz:    return Type::getVoidTy(getGlobalContext()); //TODO: implement
-        case Tok_F16:    return Type::getHalfTy(getGlobalContext());
-        case Tok_F32:    return Type::getFloatTy(getGlobalContext());
-        case Tok_F64:    return Type::getDoubleTy(getGlobalContext());
-        case Tok_C8:     return Type::getInt8Ty(getGlobalContext()); //TODO: implement
-        case Tok_C32:    return Type::getInt32Ty(getGlobalContext()); //TODO: implement
-        case Tok_Bool:   return Type::getInt1Ty(getGlobalContext());
-        case Tok_StrLit: return Type::getInt8PtrTy(getGlobalContext());
-        case Tok_Void:   return Type::getVoidTy(getGlobalContext());
+        case TT_I8:  case TT_U8:  return Type::getInt8Ty(getGlobalContext());
+        case TT_I16: case TT_U16: return Type::getInt16Ty(getGlobalContext());
+        case TT_I32: case TT_U32: return Type::getInt32Ty(getGlobalContext());
+        case TT_I64: case TT_U64: return Type::getInt64Ty(getGlobalContext());
+        case TT_Isz:    return Type::getVoidTy(getGlobalContext()); //TODO: implement
+        case TT_Usz:    return Type::getVoidTy(getGlobalContext()); //TODO: implement
+        case TT_F16:    return Type::getHalfTy(getGlobalContext());
+        case TT_F32:    return Type::getFloatTy(getGlobalContext());
+        case TT_F64:    return Type::getDoubleTy(getGlobalContext());
+        case TT_C8:     return Type::getInt8Ty(getGlobalContext());
+        case TT_C32:    return Type::getInt32Ty(getGlobalContext());
+        case TT_Bool:   return Type::getInt1Ty(getGlobalContext());
+        case TT_StrLit: return Type::getInt8PtrTy(getGlobalContext());
+        case TT_Void:   return Type::getVoidTy(getGlobalContext());
+        default:
+            cerr << "typeTagToLlvmType: Unknown TypeTag " << ty << ", returning nullptr.\n";
+            return nullptr;
     }
-    return nullptr;
 }
 
 /*
- *  Translates a llvm::Type to a TokenType. Not intended for in-depth analysis
- *  as it loses data about the type and name of UserData, and cannot distinguish 
+ *  Translates a llvm::Type to a TypeTag. Not intended for in-depth analysis
+ *  as it loses data about the type and name of UserTypes, and cannot distinguish 
  *  between signed and unsigned integer types.  As such, this should mainly be 
  *  used for comparing primitive datatypes, or just to detect if something is a
  *  primitive.
  */
-int Compiler::llvmTypeToTokType(Type *t){
-    if(t->isIntegerTy(8)) return Tok_I8;
-    if(t->isIntegerTy(16)) return Tok_I16;
-    if(t->isIntegerTy(32)) return Tok_I32;
-    if(t->isIntegerTy(64)) return Tok_I64;
-    if(t->isHalfTy()) return Tok_F16;
-    if(t->isFloatTy()) return Tok_F32;
-    if(t->isDoubleTy()) return Tok_F64;
+TypeTag llvmTypeToTypeTag(Type *t){
+    if(t->isIntegerTy(8)) return TT_I8;
+    if(t->isIntegerTy(16)) return TT_I16;
+    if(t->isIntegerTy(32)) return TT_I32;
+    if(t->isIntegerTy(64)) return TT_I64;
+    if(t->isHalfTy()) return TT_F16;
+    if(t->isFloatTy()) return TT_F32;
+    if(t->isDoubleTy()) return TT_F64;
     
-    if(t->isArrayTy()) return '[';
-    if(t->isStructTy()) return Tok_UserType;
-    if(t->isPointerTy()) return '*';
-    if(t->isFunctionTy()) return '(';
+    if(t->isArrayTy()) return TT_Array;
+    if(t->isStructTy()) return TT_Tuple; /* Could also be a TT_Data! */
+    if(t->isPointerTy()) return TT_Ptr;
+    if(t->isFunctionTy()) return TT_Func;
 
-    return Tok_Void;
+    return TT_Void;
 }
 
 /*
- *  Converts a TypeNode to an llvm::Type.  While much lses information is lost than
+ *  Converts a TypeNode to an llvm::Type.  While much less information is lost than
  *  llvmTypeToTokType, information on signedness of integers is still lost, causing the
  *  unfortunate necessity for the use of a TypedValue for the storage of this information.
  */
-Type* Compiler::typeNodeToLlvmType(TypeNode *tyNode){
+Type* typeNodeToLlvmType(TypeNode *tyNode){
     vector<Type*> tys;
     TypeNode *tyn = tyNode->extTy.get();
     switch(tyNode->type){
-        case '*':
+        case TT_Ptr:
             return PointerType::get(typeNodeToLlvmType(tyNode->extTy.get()), 0);
-        case Tok_UserType: //tuple/usertype
+        case TT_Tuple:
             while(tyn){
                 tys.push_back(typeNodeToLlvmType(tyn));
                 tyn = (TypeNode*)tyn->next.get();
             }
             return StructType::get(getGlobalContext(), tys, "Tuple");
-        case '[': //TODO array type
-        case '(': //TODO function pointer type
-            cout << "typeNodeToLlvmType: UserTypes, Array types, and function pointer types are currently unimplemented.  A void type will be returned instead.\n";
+        case TT_Array: //TODO array type
+        case TT_Data:
+        case TT_Func: //TODO function pointer type
+            cout << "typeNodeToLlvmType: Array types, and function pointer types are currently unimplemented.  A void type will be returned instead.\n";
             return Type::getVoidTy(getGlobalContext());
         default:
-            return tokTypeToLlvmType(tyNode->type);
+            return typeTagToLlvmType(tyNode->type);
     }
 }
 
@@ -215,17 +219,17 @@ Type* Compiler::typeNodeToLlvmType(TypeNode *tyNode){
  *  if the arrays differ in size.  If two types are needed to be exactly equal, 
  *  pointer comparison can be used instead since llvm::Types are uniqued.
  */
-bool Compiler::llvmTypeEq(Type *l, Type *r){
-    int ltt = llvmTypeToTokType(l);
-    int rtt = llvmTypeToTokType(r);
+bool llvmTypeEq(Type *l, Type *r){
+    TypeTag ltt = llvmTypeToTypeTag(l);
+    TypeTag rtt = llvmTypeToTypeTag(r);
 
     if(ltt != rtt) return false;
 
-    if(ltt == '*'){ //pointer
+    if(ltt == TT_Ptr){
         return llvmTypeEq(l->getPointerElementType(), r->getPointerElementType());
-    }else if(ltt == '['){ //array
+    }else if(ltt == TT_Array){
         return llvmTypeEq(l->getArrayElementType(), r->getArrayElementType());
-    }else if(ltt == '('){ //function pointer
+    }else if(ltt == TT_Func){
         int lParamCount = l->getFunctionNumParams();
         int rParamCount = r->getFunctionNumParams();
         
@@ -237,7 +241,7 @@ bool Compiler::llvmTypeEq(Type *l, Type *r){
                 return false;
         } 
         return true;
-    }else if(ltt == Tok_UserType){ //struct/tuple
+    }else if(ltt == TT_Tuple || ltt == TT_Data){
         return l == r;
     }else{ //primitive type
         return ltt == rtt;

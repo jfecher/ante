@@ -68,10 +68,10 @@ void ModNode::print(){
 }
 
 void TypeNode::print(){
-    if(type == Tok_Ident){
+    if(type == TT_TypeVar || type == TT_Data){
         cout << typeName;
-    }else if(type == Tok_UserType){
-        cout << "tup(";
+    }else if(type == TT_Tuple){
+        putchar('(');
         TypeNode *fieldTy = extTy.get();
         while(true){
             fieldTy->print();

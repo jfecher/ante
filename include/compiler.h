@@ -30,9 +30,9 @@ struct DataDeclNode;
  */
 struct TypedValue {
     Value *val;
-    int type;
+    TypeTag type;
 
-    TypedValue(Value *v, int ty) : val(v), type(ty){}
+    TypedValue(Value *v, TypeTag ty) : val(v), type(ty){}
 };
 
 
@@ -46,7 +46,7 @@ struct Variable {
         return tval->val;
     }
    
-    int getType() const{
+    TypeTag getType() const{
         return tval->type;
     }
 
@@ -110,20 +110,23 @@ namespace ante{
 
         static bool isSigned(Node *n);
         void checkIntSize(TypedValue **lhs, TypedValue **rhs);
-        
-        static Type* typeNodeToLlvmType(TypeNode *tyNode);
-        static Type* tokTypeToLlvmType(int tokTy, string typeName);
-        static int llvmTypeToTokType(Type *t);
-        static bool llvmTypeEq(Type *l, Type *r);
+
+
 
         static size_t getTupleSize(Node *tup);
-        static char getBitWidthOfTokTy(int tokTy);
-        static bool isUnsignedTokTy(int tokTy);
+        static char getBitWidthOfTypeTag(TypeTag tagTy);
+        static bool isUnsignedTypeTag(TypeTag tagTy);
         
         static int compileIRtoObj(Module *m, string inFile, string outFile);
         static int linkObj(string inFiles, string outFile);
     };
 }
 
+//conversions
+Type* typeNodeToLlvmType(TypeNode *tyNode);
+Type* typeTagToLlvmType(TypeTag tagTy, string typeName);
+TypeTag llvmTypeToTypeTag(Type *t);
+string typeTagToStr(TypeTag ty);
+bool llvmTypeEq(Type *l, Type *r);
 
 #endif

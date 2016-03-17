@@ -46,7 +46,7 @@ Node* setElse(IfNode *c, IfNode *elif){
 
 Node* mkIntLitNode(char* s){
     string str = s;
-    int type = Tok_I32;
+    TypeTag type = TT_I32;
 
     //check for type suffix
     int len = str.length();
@@ -55,15 +55,15 @@ Node* mkIntLitNode(char* s){
             char sign = str[len - 3];
             switch(str[len - 2]){
                 case '1':
-                    type = sign == 'i'? Tok_I16 : Tok_U16;
+                    type = sign == 'i'? TT_I16 : TT_U16;
                     str = str.substr(0, len-3);
                     break;
                 case '3':
-                    type = sign == 'i'? Tok_I32 : Tok_U32;
+                    type = sign == 'i'? TT_I32 : TT_U32;
                     str = str.substr(0, len-3);
                     break;
                 case '6':
-                    type = sign == 'i'? Tok_I64 : Tok_U64;
+                    type = sign == 'i'? TT_I64 : TT_U64;
                     str = str.substr(0, len-3);
                     break;
                 default:
@@ -73,7 +73,7 @@ Node* mkIntLitNode(char* s){
             char sign = str[len - 2];
             if(sign == 'u' || sign == 'i'){
                 str = str.substr(0, len-2);
-                type = sign == 'i'? Tok_I8 : Tok_U8;
+                type = sign == 'i'? TT_I8 : TT_U8;
             }
         }
     }
@@ -87,18 +87,18 @@ Node* mkIntLitNode(char* s){
 Node* mkFltLitNode(char* s){
     string str = s;
     int len = str.length();
-    int type = Tok_F64;
+    TypeTag type = TT_F64;
 
     if(len > 3 && str[len - 3] == 'f'){
         char fltSize = str[len - 2];
         if(fltSize == '1'){ //16 bit IEEE half
-            type = Tok_F16;
+            type = TT_F16;
             str = str.substr(0, len-3);
         }else if(fltSize == '3'){ //32 bit IEEE single
-            type = Tok_F32;
+            type = TT_F32;
             str = str.substr(0, len-3);
         }else if(fltSize == '6'){ //64 bit IEEE double
-            type = Tok_F64;
+            type = TT_F64;
             str = str.substr(0, len-3);
         }
     }
@@ -154,7 +154,7 @@ Node* mkModNode(TokenType mod){
     return ret;
 }
 
-Node* mkTypeNode(int type, char* typeName, Node* extTy = nullptr){
+Node* mkTypeNode(TypeTag type, char* typeName, Node* extTy = nullptr){
     auto *ret = new TypeNode(type, typeName, static_cast<TypeNode*>(extTy));
     ret->col = yylexer->getCol();
     ret->row = yylexer->getRow();

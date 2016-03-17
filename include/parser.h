@@ -63,21 +63,21 @@ struct ParentNode : public Node{
 
 struct IntLitNode : public Node{
     string val;
-    int type;
+    TypeTag type;
     TypedValue* compile(Compiler*);
     void print();
     Type* getType(Compiler *c);
-    IntLitNode(string s, int ty) : Node(), val(s), type(ty){}
+    IntLitNode(string s, TypeTag ty) : Node(), val(s), type(ty){}
     ~IntLitNode(){}
 };
 
 struct FltLitNode : public Node{
     string val;
-    int type;
+    TypeTag type;
     TypedValue* compile(Compiler*);
     void print(void);
     Type* getType(Compiler*);
-    FltLitNode(string s, int ty) : Node(), val(s), type(ty){}
+    FltLitNode(string s, TypeTag ty) : Node(), val(s), type(ty){}
     ~FltLitNode(){}
 };
 
@@ -130,13 +130,13 @@ struct BinOpNode : public Node{
 };
 
 struct TypeNode : public Node{
-    int type;
+    TypeTag type;
     string typeName; //used for usertypes
     unique_ptr<TypeNode> extTy; //Used for pointers and non-single anonymous types.
 
     TypedValue* compile(Compiler*);
     void print(void);
-    TypeNode(int ty, string tName, TypeNode* eTy) : Node(), type(ty), typeName(tName), extTy(eTy){}
+    TypeNode(TypeTag ty, string tName, TypeNode* eTy) : Node(), type(ty), typeName(tName), extTy(eTy){}
     ~TypeNode(){}
 };
 

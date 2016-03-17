@@ -101,34 +101,34 @@ TypedValue* compileStmtList(Node *nList, Compiler *c){
     return ret;
 }
 
-bool Compiler::isUnsignedTokTy(int tt){
-    return tt==Tok_U8||tt==Tok_U16||tt==Tok_U32||tt==Tok_U64||tt==Tok_Usz;
+bool Compiler::isUnsignedTypeTag(TypeTag tt){
+    return tt==TT_U8||tt==TT_U16||tt==TT_U32||tt==TT_U64||tt==TT_Usz;
 }
 
 TypedValue* IntLitNode::compile(Compiler *c){
     return new TypedValue(ConstantInt::get(getGlobalContext(),
-                            APInt(Compiler::getBitWidthOfTokTy(type), 
-                            atol(val.c_str()), Compiler::isUnsignedTokTy(type))), type);
+                            APInt(Compiler::getBitWidthOfTypeTag(type), 
+                            atol(val.c_str()), Compiler::isUnsignedTypeTag(type))), type);
 }
 
-const fltSemantics& tokTyToFltSemantics(int tokTy){
+const fltSemantics& typeTagToFltSemantics(TypeTag tokTy){
     switch(tokTy){
-        case Tok_F16: return APFloat::IEEEhalf;
-        case Tok_F32: return APFloat::IEEEsingle;
-        case Tok_F64: return APFloat::IEEEdouble;
+        case TT_F16: return APFloat::IEEEhalf;
+        case TT_F32: return APFloat::IEEEsingle;
+        case TT_F64: return APFloat::IEEEdouble;
+        default:     return APFloat::IEEEdouble;
     }
-    return APFloat::IEEEdouble;
 }
 
 /*
  *  TODO: type field for float literals
  */
 TypedValue* FltLitNode::compile(Compiler *c){
-    return new TypedValue(ConstantFP::get(getGlobalContext(), APFloat(tokTyToFltSemantics(type), val.c_str())), type);
+    return new TypedValue(ConstantFP::get(getGlobalContext(), APFloat(typeTagToFltSemantics(type), val.c_str())), type);
 }
 
 TypedValue* BoolLitNode::compile(Compiler *c){
-    return new TypedValue(ConstantInt::get(getGlobalContext(), APInt(1, (bool)val, true)), Tok_Bool);
+    return new TypedValue(ConstantInt::get(getGlobalContext(), APInt(1, (bool)val, true)), TT_Bool);
 }
 
 
@@ -142,7 +142,7 @@ TypedValue* TypeNode::compile(Compiler *c){
 }
 
 TypedValue* StrLitNode::compile(Compiler *c){
-    return new TypedValue(c->builder.CreateGlobalStringPtr(val), '[');
+    return new TypedValue(c->builder.CreateGlobalStringPtr(val), TT_StrLit);
     //ConstantDataArray::getString(getGlobalContext(), val);
 }
 
@@ -154,7 +154,7 @@ TypedValue* ArrayNode::compile(Compiler *c){
     }
     
     auto* ty = ArrayType::get(arr[0]->getType(), arr.size());
-    return new TypedValue(ConstantArray::get(ty, arr), '[');
+    return new TypedValue(ConstantArray::get(ty, arr), TT_Array);
 }
 
 
@@ -184,7 +184,7 @@ TypedValue* TupleNode::compile(Compiler *c){
         tuple = c->builder.CreateInsertValue(tuple, it->second, it->first);
     }
 
-    return new TypedValue(tuple, Tok_UserType);
+    return new TypedValue(tuple, TT_Tuple);
 }
 
 vector<Value*> TupleNode::unpack(Compiler *c){
@@ -205,9 +205,9 @@ TypedValue* RetNode::compile(Compiler *c){
     
     Function *f = c->builder.GetInsertBlock()->getParent();
 
-    if(!Compiler::llvmTypeEq(ret->val->getType(), f->getReturnType())){
-        return c->compErr("return expression of type " + Lexer::getTokStr(ret->type) +
-               " does not match function return type " + Lexer::getTokStr(Compiler::llvmTypeToTokType(f->getReturnType())), 
+    if(!llvmTypeEq(ret->val->getType(), f->getReturnType())){
+        return c->compErr("return expression of type " + typeTagToStr(ret->type) +
+               " does not match function return type " + typeTagToStr(llvmTypeToTypeTag(f->getReturnType())), 
                this->row, this->col);
     }
 
@@ -269,7 +269,7 @@ TypedValue* IfNode::compile(Compiler *c){
 
     f->getBasicBlockList().push_back(mergbb);
     c->builder.SetInsertPoint(mergbb);
-    return new TypedValue(f, Tok_Void);
+    return new TypedValue(f, TT_Void);
 }
 
 //Since parameters are managed in Compiler::compfn, this need not do anything
@@ -296,7 +296,7 @@ TypedValue* RefVarNode::compile(Compiler *c){
     if(!dynamic_cast<AllocaInst*>(var->getVal()))
         return c->compErr("Cannot assign to immutable variable " + name, this->row, this->col);
 
-    return new TypedValue(var->getVal(), '*');
+    return new TypedValue(var->getVal(), TT_Ptr);
 }
 
 TypedValue* FuncCallNode::compile(Compiler *c){
@@ -316,13 +316,13 @@ TypedValue* FuncCallNode::compile(Compiler *c){
     auto args = params->unpack(c);
     int i = 0;
     for(auto &param : f->args()){//type check each parameter
-        if(!Compiler::llvmTypeEq(args[i++]->getType(), param.getType())){
-            return c->compErr("Argument " + to_string(i) + " of function " + name + " is a(n) " + Lexer::getTokStr(Compiler::llvmTypeToTokType(args[i-1]->getType()))
-                    + " but was declared to be a(n) " + Lexer::getTokStr(Compiler::llvmTypeToTokType(param.getType())), this->row, this->col);
+        if(!llvmTypeEq(args[i++]->getType(), param.getType())){
+            return c->compErr("Argument " + to_string(i) + " of function " + name + " is a(n) " + typeTagToStr(llvmTypeToTypeTag(args[i-1]->getType()))
+                    + " but was declared to be a(n) " + typeTagToStr(llvmTypeToTypeTag(param.getType())), this->row, this->col);
         }
     }
 
-    return new TypedValue(c->builder.CreateCall(f, args), Compiler::llvmTypeToTokType(f->getReturnType()));
+    return new TypedValue(c->builder.CreateCall(f, args), llvmTypeToTypeTag(f->getReturnType()));
 }
 
 
@@ -336,12 +336,12 @@ TypedValue* LetBindingNode::compile(Compiler *c){
 
     TypeNode *tyNode;
     if((tyNode = (TypeNode*)typeExpr.get())){
-        if(!Compiler::llvmTypeEq(val->val->getType(), Compiler::typeNodeToLlvmType(tyNode))){
+        if(!llvmTypeEq(val->val->getType(), typeNodeToLlvmType(tyNode))){
             return c->compErr("Incompatible types in explicit binding.", row, col);
         }
     }
 
-    bool nofree = val->type != '*' || dynamic_cast<Constant*>(val->val);
+    bool nofree = val->type != TT_Ptr || dynamic_cast<Constant*>(val->val);
     c->stoVar(name, new Variable(name, val, c->getScope(), nofree));
     return val;
 }
@@ -353,7 +353,7 @@ TypedValue* VarDeclNode::compile(Compiler *c){
     }
 
     TypeNode *tyNode = (TypeNode*)typeExpr.get();
-    Type *ty = Compiler::typeNodeToLlvmType(tyNode);
+    Type *ty = typeNodeToLlvmType(tyNode);
     TypedValue *alloca = new TypedValue(c->builder.CreateAlloca(ty, 0, name.c_str()), tyNode->type);
 
     Variable *var = new Variable(name, alloca, c->getScope());
@@ -361,7 +361,7 @@ TypedValue* VarDeclNode::compile(Compiler *c){
     if(expr.get()){
         TypedValue *val = expr->compile(c);
         if(!val) return nullptr;
-        var->noFree = var->getType() != '*' || dynamic_cast<Constant*>(val->val);
+        var->noFree = var->getType() != TT_Ptr || dynamic_cast<Constant*>(val->val);
 
         return new TypedValue(c->builder.CreateStore(val->val, alloca->val), tyNode->type);
     }else{
@@ -373,10 +373,10 @@ TypedValue* VarAssignNode::compile(Compiler *c){
     TypedValue *v = ref_expr->compile(c);
     if(!v) return 0;
     
-    if(Compiler::llvmTypeToTokType(v->val->getType()) == '*'){
-        return new TypedValue(c->builder.CreateStore(expr->compile(c)->val, v->val), Tok_Void);
+    if(llvmTypeToTypeTag(v->val->getType()) == TT_Ptr){
+        return new TypedValue(c->builder.CreateStore(expr->compile(c)->val, v->val), TT_Void);
     }else{
-        return c->compErr("Attempted assign without a memory address, with type " + Lexer::getTokStr(v->type), this->row, this->col);
+        return c->compErr("Attempted assign without a memory address, with type " + typeTagToStr(v->type), this->row, this->col);
     }
 }
 
@@ -434,7 +434,7 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
         
         //llvm requires explicit returns, so generate a void return even if
         //the user did not in their void function.
-        if(retNode->type == Tok_Void && !dynamic_cast<ReturnInst*>(v->val)){
+        if(retNode->type == TT_Void && !dynamic_cast<ReturnInst*>(v->val)){
             builder.CreateRetVoid();
         }
 
@@ -481,14 +481,15 @@ Function* Compiler::getFunction(string& name){
 /*
  *  Creates an anonymous NamedValNode for use in function declarations.
  */
-NamedValNode* mkAnonNVNode(int type){
+NamedValNode* mkAnonNVNode(TypeTag type){
     return new NamedValNode("", new TypeNode(type, "", nullptr));
 }
 
-TypeNode* mkAnonTypeNode(int type){
+TypeNode* mkAnonTypeNode(TypeTag type){
     return new TypeNode(type, "", nullptr);
 }
-        
+
+
 unsigned int Compiler::getScope() const{
     return scope;
 }
@@ -500,27 +501,28 @@ unsigned int Compiler::getScope() const{
  */
 void Compiler::compilePrelude(){
     // void printf: c8* str, ... va
-    registerFunction(new FuncDeclNode("printf", 0, mkAnonTypeNode(Tok_Void), mkAnonNVNode(Tok_StrLit), nullptr, true));
+    registerFunction(new FuncDeclNode("printf", 0, mkAnonTypeNode(TT_Void), mkAnonNVNode(TT_StrLit), nullptr, true));
 
     // void puts: c8* str
-    registerFunction(new FuncDeclNode("puts", 0, mkAnonTypeNode(Tok_Void), mkAnonNVNode(Tok_StrLit), nullptr));
+    registerFunction(new FuncDeclNode("puts", 0, mkAnonTypeNode(TT_Void), mkAnonNVNode(TT_StrLit), nullptr));
 
     // void putchar: c8 c
-    registerFunction(new FuncDeclNode("putchar", 0, mkAnonTypeNode(Tok_Void), mkAnonNVNode(Tok_I32), nullptr));
+    registerFunction(new FuncDeclNode("putchar", 0, mkAnonTypeNode(TT_Void), mkAnonNVNode(TT_I32), nullptr));
 
-    // void exit: u8 status
-    registerFunction(new FuncDeclNode("exit", 0, mkAnonTypeNode(Tok_Void), mkAnonNVNode(Tok_I32), nullptr));
-    
-    registerFunction(new FuncDeclNode("sqrt", 0, mkAnonTypeNode(Tok_F64), mkAnonNVNode(Tok_F64), nullptr));
+    // void exit: u32 status
+    registerFunction(new FuncDeclNode("exit", 0, mkAnonTypeNode(TT_Void), mkAnonNVNode(TT_U32), nullptr));
+   
+    // f64 sqrt: f64 val
+    registerFunction(new FuncDeclNode("sqrt", 0, mkAnonTypeNode(TT_F64), mkAnonNVNode(TT_F64), nullptr));
     
     // void* malloc: u32 size
-    TypeNode *voidPtr = mkAnonTypeNode('*');
-    voidPtr->extTy.reset(mkAnonTypeNode(Tok_I32));
-    registerFunction(new FuncDeclNode("malloc", 0, voidPtr, mkAnonNVNode(Tok_I32), nullptr));
+    TypeNode *voidPtr = mkAnonTypeNode(TT_Ptr);
+    voidPtr->extTy.reset(mkAnonTypeNode(TT_I32));
+    registerFunction(new FuncDeclNode("malloc", 0, voidPtr, mkAnonNVNode(TT_I32), nullptr));
     
     // void free: void* ptr
     NamedValNode *voidPtrNVN = new NamedValNode("", voidPtr);
-    registerFunction(new FuncDeclNode("free", 0, mkAnonTypeNode(Tok_Void), voidPtrNVN, nullptr));
+    registerFunction(new FuncDeclNode("free", 0, mkAnonTypeNode(TT_Void), voidPtrNVN, nullptr));
 }
 
 /*

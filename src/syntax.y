@@ -158,32 +158,32 @@ fltlit: FltLit {$$ = mkFltLitNode(lextxt);}
 strlit: StrLit {$$ = mkStrLitNode(lextxt);}
       ;
 
-lit_type: I8       {$$ = mkTypeNode(Tok_I8,  (char*)"");}
-        | I16      {$$ = mkTypeNode(Tok_I16, (char*)"");}
-        | I32      {$$ = mkTypeNode(Tok_I32, (char*)"");}
-        | I64      {$$ = mkTypeNode(Tok_I64, (char*)"");}
-        | U8       {$$ = mkTypeNode(Tok_U8,  (char*)"");}
-        | U16      {$$ = mkTypeNode(Tok_U16, (char*)"");}
-        | U32      {$$ = mkTypeNode(Tok_U32, (char*)"");}
-        | U64      {$$ = mkTypeNode(Tok_U64, (char*)"");}
-        | Isz      {$$ = mkTypeNode(Tok_Isz, (char*)"");}
-        | Usz      {$$ = mkTypeNode(Tok_Usz, (char*)"");}
-        | F16      {$$ = mkTypeNode(Tok_F16, (char*)"");}
-        | F32      {$$ = mkTypeNode(Tok_F32, (char*)"");}
-        | F64      {$$ = mkTypeNode(Tok_F64, (char*)"");}
-        | C8       {$$ = mkTypeNode(Tok_C8,  (char*)"");}
-        | C32      {$$ = mkTypeNode(Tok_C32, (char*)"");}
-        | Bool     {$$ = mkTypeNode(Tok_Bool, (char*)"");}
-        | Void     {$$ = mkTypeNode(Tok_Void, (char*)"");}
-        | usertype %prec UserType {$$ = mkTypeNode(Tok_UserType, (char*)$1);}
-        | ident    %prec Ident {$$ = mkTypeNode(Tok_Ident, (char*)$1);}
+lit_type: I8       {$$ = mkTypeNode(TT_I8,  (char*)"");}
+        | I16      {$$ = mkTypeNode(TT_I16, (char*)"");}
+        | I32      {$$ = mkTypeNode(TT_I32, (char*)"");}
+        | I64      {$$ = mkTypeNode(TT_I64, (char*)"");}
+        | U8       {$$ = mkTypeNode(TT_U8,  (char*)"");}
+        | U16      {$$ = mkTypeNode(TT_U16, (char*)"");}
+        | U32      {$$ = mkTypeNode(TT_U32, (char*)"");}
+        | U64      {$$ = mkTypeNode(TT_U64, (char*)"");}
+        | Isz      {$$ = mkTypeNode(TT_Isz, (char*)"");}
+        | Usz      {$$ = mkTypeNode(TT_Usz, (char*)"");}
+        | F16      {$$ = mkTypeNode(TT_F16, (char*)"");}
+        | F32      {$$ = mkTypeNode(TT_F32, (char*)"");}
+        | F64      {$$ = mkTypeNode(TT_F64, (char*)"");}
+        | C8       {$$ = mkTypeNode(TT_C8,  (char*)"");}
+        | C32      {$$ = mkTypeNode(TT_C32, (char*)"");}
+        | Bool     {$$ = mkTypeNode(TT_Bool, (char*)"");}
+        | Void     {$$ = mkTypeNode(TT_Void, (char*)"");}
+        | usertype %prec UserType {$$ = mkTypeNode(TT_Data, (char*)$1);}
+        | ident    %prec Ident {$$ = mkTypeNode(TT_TypeVar, (char*)$1);}
         ;
 
-type: type '*'                {$$ = mkTypeNode('*', (char*)"", $1);}
-    | type '[' maybe_expr ']' {$$ = mkTypeNode('[', (char*)"", $1);}
-    | type '(' type_expr ')'  {$$ = mkTypeNode('(', (char*)"", $1);}  /* f-ptr w/ params*/
-    | type '(' ')'            {$$ = mkTypeNode('(', (char*)"", $1);}  /* f-ptr w/out params*/
-    | '(' type_expr ')'       {$$ = mkTypeNode(Tok_UserType, (char*)"", $2);}
+type: type '*'                {$$ = mkTypeNode(TT_Ptr,  (char*)"", $1);}
+    | type '[' maybe_expr ']' {$$ = mkTypeNode(TT_Array,(char*)"", $1);}
+    | type '(' type_expr ')'  {$$ = mkTypeNode(TT_Func, (char*)"", $1);}  /* f-ptr w/ params*/
+    | type '(' ')'            {$$ = mkTypeNode(TT_Func, (char*)"", $1);}  /* f-ptr w/out params*/
+    | '(' type_expr ')'       {$$ = $2;}
     | lit_type                {$$ = $1;}
     ;
 
@@ -196,7 +196,7 @@ type_expr: type_expr_  {Node* tmp = getRoot();
                         if(tmp == $1){//singular type, first type in list equals the last
                             $$ = tmp;
                         }else{ //tuple type
-                            $$ = mkTypeNode(Tok_UserType, (char*)"", tmp);
+                            $$ = mkTypeNode(TT_Tuple, (char*)"", tmp);
                         }
                        }
 

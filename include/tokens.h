@@ -3,6 +3,28 @@
 
 #define IS_LITERAL(t) ((t) < 258)
 
+/* 
+ *  Basic enum containing all primitive types as well
+ *  as the basic classification of some others.  Intended for
+ *  quick reference rather than in-depth analysis.
+ */
+enum TypeTag{
+    TT_I8,  TT_I16, TT_I32, TT_I64, //signed integer types
+    TT_U8,  TT_U16, TT_U32, TT_U64, //unsigned integer types
+    TT_F16, TT_F32, TT_F64, //float types
+    TT_Isz, TT_Usz, //pointer-sized integer types
+    TT_C8,  TT_C32, //char types
+    TT_Bool,
+    TT_Tuple, //anonymous tuples
+    TT_Array,
+    TT_Ptr,
+    TT_Data, //all previously declared UserTypes
+    TT_Func,
+    TT_TypeVar,
+    TT_StrLit,
+    TT_Void
+};
+
 enum TokenType{
     Tok_Ident = 258,
     Tok_UserType,

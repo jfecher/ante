@@ -693,145 +693,145 @@ namespace yy {
 
   case 26:
 #line 161 "src/syntax.y" // lalr1.cc:859
-    {(yylhs.value) = mkTypeNode(Tok_I8,  (char*)"");}
+    {(yylhs.value) = mkTypeNode(TT_I8,  (char*)"");}
 #line 698 "src/parser.cpp" // lalr1.cc:859
     break;
 
   case 27:
 #line 162 "src/syntax.y" // lalr1.cc:859
-    {(yylhs.value) = mkTypeNode(Tok_I16, (char*)"");}
+    {(yylhs.value) = mkTypeNode(TT_I16, (char*)"");}
 #line 704 "src/parser.cpp" // lalr1.cc:859
     break;
 
   case 28:
 #line 163 "src/syntax.y" // lalr1.cc:859
-    {(yylhs.value) = mkTypeNode(Tok_I32, (char*)"");}
+    {(yylhs.value) = mkTypeNode(TT_I32, (char*)"");}
 #line 710 "src/parser.cpp" // lalr1.cc:859
     break;
 
   case 29:
 #line 164 "src/syntax.y" // lalr1.cc:859
-    {(yylhs.value) = mkTypeNode(Tok_I64, (char*)"");}
+    {(yylhs.value) = mkTypeNode(TT_I64, (char*)"");}
 #line 716 "src/parser.cpp" // lalr1.cc:859
     break;
 
   case 30:
 #line 165 "src/syntax.y" // lalr1.cc:859
-    {(yylhs.value) = mkTypeNode(Tok_U8,  (char*)"");}
+    {(yylhs.value) = mkTypeNode(TT_U8,  (char*)"");}
 #line 722 "src/parser.cpp" // lalr1.cc:859
     break;
 
   case 31:
 #line 166 "src/syntax.y" // lalr1.cc:859
-    {(yylhs.value) = mkTypeNode(Tok_U16, (char*)"");}
+    {(yylhs.value) = mkTypeNode(TT_U16, (char*)"");}
 #line 728 "src/parser.cpp" // lalr1.cc:859
     break;
 
   case 32:
 #line 167 "src/syntax.y" // lalr1.cc:859
-    {(yylhs.value) = mkTypeNode(Tok_U32, (char*)"");}
+    {(yylhs.value) = mkTypeNode(TT_U32, (char*)"");}
 #line 734 "src/parser.cpp" // lalr1.cc:859
     break;
 
   case 33:
 #line 168 "src/syntax.y" // lalr1.cc:859
-    {(yylhs.value) = mkTypeNode(Tok_U64, (char*)"");}
+    {(yylhs.value) = mkTypeNode(TT_U64, (char*)"");}
 #line 740 "src/parser.cpp" // lalr1.cc:859
     break;
 
   case 34:
 #line 169 "src/syntax.y" // lalr1.cc:859
-    {(yylhs.value) = mkTypeNode(Tok_Isz, (char*)"");}
+    {(yylhs.value) = mkTypeNode(TT_Isz, (char*)"");}
 #line 746 "src/parser.cpp" // lalr1.cc:859
     break;
 
   case 35:
 #line 170 "src/syntax.y" // lalr1.cc:859
-    {(yylhs.value) = mkTypeNode(Tok_Usz, (char*)"");}
+    {(yylhs.value) = mkTypeNode(TT_Usz, (char*)"");}
 #line 752 "src/parser.cpp" // lalr1.cc:859
     break;
 
   case 36:
 #line 171 "src/syntax.y" // lalr1.cc:859
-    {(yylhs.value) = mkTypeNode(Tok_F16, (char*)"");}
+    {(yylhs.value) = mkTypeNode(TT_F16, (char*)"");}
 #line 758 "src/parser.cpp" // lalr1.cc:859
     break;
 
   case 37:
 #line 172 "src/syntax.y" // lalr1.cc:859
-    {(yylhs.value) = mkTypeNode(Tok_F32, (char*)"");}
+    {(yylhs.value) = mkTypeNode(TT_F32, (char*)"");}
 #line 764 "src/parser.cpp" // lalr1.cc:859
     break;
 
   case 38:
 #line 173 "src/syntax.y" // lalr1.cc:859
-    {(yylhs.value) = mkTypeNode(Tok_F64, (char*)"");}
+    {(yylhs.value) = mkTypeNode(TT_F64, (char*)"");}
 #line 770 "src/parser.cpp" // lalr1.cc:859
     break;
 
   case 39:
 #line 174 "src/syntax.y" // lalr1.cc:859
-    {(yylhs.value) = mkTypeNode(Tok_C8,  (char*)"");}
+    {(yylhs.value) = mkTypeNode(TT_C8,  (char*)"");}
 #line 776 "src/parser.cpp" // lalr1.cc:859
     break;
 
   case 40:
 #line 175 "src/syntax.y" // lalr1.cc:859
-    {(yylhs.value) = mkTypeNode(Tok_C32, (char*)"");}
+    {(yylhs.value) = mkTypeNode(TT_C32, (char*)"");}
 #line 782 "src/parser.cpp" // lalr1.cc:859
     break;
 
   case 41:
 #line 176 "src/syntax.y" // lalr1.cc:859
-    {(yylhs.value) = mkTypeNode(Tok_Bool, (char*)"");}
+    {(yylhs.value) = mkTypeNode(TT_Bool, (char*)"");}
 #line 788 "src/parser.cpp" // lalr1.cc:859
     break;
 
   case 42:
 #line 177 "src/syntax.y" // lalr1.cc:859
-    {(yylhs.value) = mkTypeNode(Tok_Void, (char*)"");}
+    {(yylhs.value) = mkTypeNode(TT_Void, (char*)"");}
 #line 794 "src/parser.cpp" // lalr1.cc:859
     break;
 
   case 43:
 #line 178 "src/syntax.y" // lalr1.cc:859
-    {(yylhs.value) = mkTypeNode(Tok_UserType, (char*)(yystack_[0].value));}
+    {(yylhs.value) = mkTypeNode(TT_Data, (char*)(yystack_[0].value));}
 #line 800 "src/parser.cpp" // lalr1.cc:859
     break;
 
   case 44:
 #line 179 "src/syntax.y" // lalr1.cc:859
-    {(yylhs.value) = mkTypeNode(Tok_Ident, (char*)(yystack_[0].value));}
+    {(yylhs.value) = mkTypeNode(TT_TypeVar, (char*)(yystack_[0].value));}
 #line 806 "src/parser.cpp" // lalr1.cc:859
     break;
 
   case 45:
 #line 182 "src/syntax.y" // lalr1.cc:859
-    {(yylhs.value) = mkTypeNode('*', (char*)"", (yystack_[1].value));}
+    {(yylhs.value) = mkTypeNode(TT_Ptr,  (char*)"", (yystack_[1].value));}
 #line 812 "src/parser.cpp" // lalr1.cc:859
     break;
 
   case 46:
 #line 183 "src/syntax.y" // lalr1.cc:859
-    {(yylhs.value) = mkTypeNode('[', (char*)"", (yystack_[3].value));}
+    {(yylhs.value) = mkTypeNode(TT_Array,(char*)"", (yystack_[3].value));}
 #line 818 "src/parser.cpp" // lalr1.cc:859
     break;
 
   case 47:
 #line 184 "src/syntax.y" // lalr1.cc:859
-    {(yylhs.value) = mkTypeNode('(', (char*)"", (yystack_[3].value));}
+    {(yylhs.value) = mkTypeNode(TT_Func, (char*)"", (yystack_[3].value));}
 #line 824 "src/parser.cpp" // lalr1.cc:859
     break;
 
   case 48:
 #line 185 "src/syntax.y" // lalr1.cc:859
-    {(yylhs.value) = mkTypeNode('(', (char*)"", (yystack_[2].value));}
+    {(yylhs.value) = mkTypeNode(TT_Func, (char*)"", (yystack_[2].value));}
 #line 830 "src/parser.cpp" // lalr1.cc:859
     break;
 
   case 49:
 #line 186 "src/syntax.y" // lalr1.cc:859
-    {(yylhs.value) = mkTypeNode(Tok_UserType, (char*)"", (yystack_[1].value));}
+    {(yylhs.value) = (yystack_[1].value);}
 #line 836 "src/parser.cpp" // lalr1.cc:859
     break;
 
@@ -859,7 +859,7 @@ namespace yy {
                         if(tmp == (yystack_[0].value)){//singular type, first type in list equals the last
                             (yylhs.value) = tmp;
                         }else{ //tuple type
-                            (yylhs.value) = mkTypeNode(Tok_UserType, (char*)"", tmp);
+                            (yylhs.value) = mkTypeNode(TT_Tuple, (char*)"", tmp);
                         }
                        }
 #line 866 "src/parser.cpp" // lalr1.cc:859
