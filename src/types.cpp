@@ -247,3 +247,94 @@ bool llvmTypeEq(Type *l, Type *r){
         return ltt == rtt;
     }
 }
+
+/*
+ *  Returns true if the given typetag is a primitive type, and thus
+ *  accurately represents the entire type without information loss.
+ *  NOTE: this function relies on the fact all primitive types are
+ *        declared before non-primitive types in the TypeTag definition.
+ */
+bool isPrimitiveTypeTag(TypeTag ty){
+    return ty >= TT_I8 && ty <= TT_StrLit;
+}
+
+/*
+ *  Converts a TypeTag to its string equivalent for
+ *  helpful error messages.  For most cases, llvmTypeToStr
+ *  should be used instead to provide the full type.
+ */
+string typeTagToStr(TypeTag ty){
+    switch(ty){
+        case TT_I8:    return "i8";
+        case TT_I16:   return "i16";
+        case TT_I32:   return "i32";
+        case TT_I64:   return "i64";
+        case TT_U8:    return "u8";
+        case TT_U16:   return "u16";
+        case TT_U32:   return "u32";
+        case TT_U64:   return "u64";
+        case TT_F16:   return "f16";
+        case TT_F32:   return "f32";
+        case TT_F64:   return "f64";
+        case TT_Isz:   return "isz";
+        case TT_Usz:   return "usz";
+        case TT_C8:    return "c8";
+        case TT_C32:   return "c32";
+        case TT_Bool:  return "bool";
+        case TT_Void:  return "void";
+
+        /* 
+         * Because of the loss of specificity for these last four types, 
+         * these strings are most likely insufficient.  The llvm::Type
+         * should instead be printed for these types
+         */
+        case TT_Tuple: return "Tuple";
+        case TT_Array: return "Array";
+        case TT_Ptr:   return "Ptr";
+        case TT_Data:  return "Data";
+        default:       return "Unknown TypeTag " + to_string(ty);
+    }
+}
+
+/*
+ *  Returns a string representing the full type of ty.  Since it is converting
+ *  from a llvm::Type, this will never return an unsigned integer type.
+ */
+string llvmTypeToStr(Type *ty){
+    TypeTag tt = llvmTypeToTypeTag(ty);
+    if(isPrimitiveTypeTag(tt)){
+        return typeTagToStr(tt);
+    }else if(tt == TT_Tuple){
+        string ret = "(";
+        const unsigned size = ty->getStructNumElements();
+
+        for(unsigned i = 0; i < size; i++){
+            if(i == size-1){
+                ret += llvmTypeToStr(ty->getStructElementType(i)) + ")";
+            }else{
+                ret += llvmTypeToStr(ty->getStructElementType(i)) + ", ";
+            }
+        }
+        return ret;
+    }else if(tt == TT_Array){
+        return llvmTypeToStr(ty->getArrayElementType()) + "[]";
+    }else if(tt == TT_Ptr){
+        return llvmTypeToStr(ty->getPointerElementType()) + "*";
+    }else if(tt == TT_Func){
+        string ret = "func("; //TODO: get function return type
+        const unsigned paramCount = ty->getFunctionNumParams();
+
+        for(unsigned i = 0; i < paramCount; i++){
+            if(i == paramCount-1)
+                ret += llvmTypeToStr(ty->getFunctionParamType(i)) + ")";
+            else
+                ret += llvmTypeToStr(ty->getFunctionParamType(i)) + ", ";
+        }
+        return ret;
+    }else if(tt == TT_TypeVar){
+        return "typevar";
+    }else if(tt == TT_Void){
+        return "void";
+    }
+    return "(Unknown type)";
+}

@@ -206,8 +206,8 @@ TypedValue* RetNode::compile(Compiler *c){
     Function *f = c->builder.GetInsertBlock()->getParent();
 
     if(!llvmTypeEq(ret->val->getType(), f->getReturnType())){
-        return c->compErr("return expression of type " + typeTagToStr(ret->type) +
-               " does not match function return type " + typeTagToStr(llvmTypeToTypeTag(f->getReturnType())), 
+        return c->compErr("return expression of type " + llvmTypeToStr(ret->getType()) +
+               " does not match function return type " + llvmTypeToStr(f->getReturnType()), 
                this->row, this->col);
     }
 
@@ -317,8 +317,8 @@ TypedValue* FuncCallNode::compile(Compiler *c){
     int i = 0;
     for(auto &param : f->args()){//type check each parameter
         if(!llvmTypeEq(args[i++]->getType(), param.getType())){
-            return c->compErr("Argument " + to_string(i) + " of function " + name + " is a(n) " + typeTagToStr(llvmTypeToTypeTag(args[i-1]->getType()))
-                    + " but was declared to be a(n) " + typeTagToStr(llvmTypeToTypeTag(param.getType())), this->row, this->col);
+            return c->compErr("Argument " + to_string(i) + " of function " + name + " is a(n) " + llvmTypeToStr(args[i-1]->getType())
+                    + " but was declared to be a(n) " + llvmTypeToStr(param.getType()), this->row, this->col);
         }
     }
 
@@ -376,7 +376,7 @@ TypedValue* VarAssignNode::compile(Compiler *c){
     if(llvmTypeToTypeTag(v->val->getType()) == TT_Ptr){
         return new TypedValue(c->builder.CreateStore(expr->compile(c)->val, v->val), TT_Void);
     }else{
-        return c->compErr("Attempted assign without a memory address, with type " + typeTagToStr(v->type), this->row, this->col);
+        return c->compErr("Attempted assign without a memory address, with type " + llvmTypeToStr(v->getType()), this->row, this->col);
     }
 }
 

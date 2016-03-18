@@ -33,6 +33,7 @@ struct TypedValue {
     TypeTag type;
 
     TypedValue(Value *v, TypeTag ty) : val(v), type(ty){}
+    Type* getType() const{ return val->getType(); }
 };
 
 
@@ -126,7 +127,7 @@ namespace ante{
 Type* typeNodeToLlvmType(TypeNode *tyNode);
 Type* typeTagToLlvmType(TypeTag tagTy, string typeName);
 TypeTag llvmTypeToTypeTag(Type *t);
-string typeTagToStr(TypeTag ty);
+string llvmTypeToStr(Type *ty);
 bool llvmTypeEq(Type *l, Type *r);
 
 #endif

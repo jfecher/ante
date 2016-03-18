@@ -68,21 +68,7 @@ void ModNode::print(){
 }
 
 void TypeNode::print(){
-    if(type == TT_TypeVar || type == TT_Data){
-        cout << typeName;
-    }else if(type == TT_Tuple){
-        putchar('(');
-        TypeNode *fieldTy = extTy.get();
-        while(true){
-            fieldTy->print();
-            if((fieldTy = (TypeNode*)fieldTy->next.get()))
-                putchar(',');
-            else break;
-        }
-        putchar(')');
-    }else{
-        Lexer::printTok(type);
-    }
+    cout << llvmTypeToStr(typeNodeToLlvmType(this));
 }
 
 void UnOpNode::print(){

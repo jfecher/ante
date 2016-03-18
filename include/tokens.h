@@ -15,13 +15,13 @@ enum TypeTag{
     TT_Isz, TT_Usz, //pointer-sized integer types
     TT_C8,  TT_C32, //char types
     TT_Bool,
+    TT_StrLit,
     TT_Tuple, //anonymous tuples
     TT_Array,
     TT_Ptr,
     TT_Data, //all previously declared UserTypes
     TT_Func,
     TT_TypeVar,
-    TT_StrLit,
     TT_Void
 };
 

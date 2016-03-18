@@ -2,42 +2,6 @@
 #include "compiler.h"
 #include "tokens.h"
 
-/*
- *  Converts a TypeTag to its string equivalent for
- *  helpful error messages.
- */
-string typeTagToStr(TypeTag ty){
-    switch(ty){
-        case TT_I8:    return "I8";
-        case TT_I16:   return "I16";
-        case TT_I32:   return "I32";
-        case TT_I64:   return "I64";
-        case TT_U8:    return "U8";
-        case TT_U16:   return "U16";
-        case TT_U32:   return "U32";
-        case TT_U64:   return "U64";
-        case TT_F16:   return "F16";
-        case TT_F32:   return "F32";
-        case TT_F64:   return "F64";
-        case TT_Isz:   return "Isz";
-        case TT_Usz:   return "Usz";
-        case TT_C8:    return "C8";
-        case TT_C32:   return "C32";
-        case TT_Bool:  return "Bool";
-        case TT_Void:  return "Void";
-
-        /* 
-         * Because of the loss of specificity for these last four types, 
-         * these strings are most likely insufficient.  The llvm::Type
-         * should instead be printed for these types
-         */
-        case TT_Tuple: return "Tuple";
-        case TT_Array: return "Array";
-        case TT_Ptr:   return "Ptr";
-        case TT_Data:  return "Data";
-        default:       return "Unknown TypeTag " + to_string(ty);
-    }
-}
 
 TypedValue* Compiler::compAdd(TypedValue *l, TypedValue *r, BinOpNode *op){
     switch(l->type){
@@ -53,7 +17,7 @@ TypedValue* Compiler::compAdd(TypedValue *l, TypedValue *r, BinOpNode *op){
             return new TypedValue(builder.CreateFAdd(l->val, r->val), l->type);
 
         default:
-            return compErr("binary operator + is undefined for the type " + typeTagToStr(l->type) + " and " + typeTagToStr(r->type), op->row, op->col);
+            return compErr("binary operator + is undefined for the type " + llvmTypeToStr(l->getType()) + " and " + llvmTypeToStr(r->getType()), op->row, op->col);
     }
 }
 
@@ -70,7 +34,7 @@ TypedValue* Compiler::compSub(TypedValue *l, TypedValue *r, BinOpNode *op){
             return new TypedValue(builder.CreateFSub(l->val, r->val), l->type);
 
         default:
-            return compErr("binary operator - is undefined for the type " + typeTagToStr(l->type) + " and " + typeTagToStr(r->type), op->row, op->col);
+            return compErr("binary operator - is undefined for the type " + llvmTypeToStr(l->getType()) + " and " + llvmTypeToStr(r->getType()), op->row, op->col);
     }
 }
 
@@ -87,7 +51,7 @@ TypedValue* Compiler::compMul(TypedValue *l, TypedValue *r, BinOpNode *op){
             return new TypedValue(builder.CreateFMul(l->val, r->val), l->type);
 
         default:
-            return compErr("binary operator * is undefined for the type " + typeTagToStr(l->type) + " and " + typeTagToStr(r->type), op->row, op->col);
+            return compErr("binary operator * is undefined for the type " + llvmTypeToStr(l->getType()) + " and " + llvmTypeToStr(r->getType()), op->row, op->col);
     }
 }
 
@@ -109,7 +73,7 @@ TypedValue* Compiler::compDiv(TypedValue *l, TypedValue *r, BinOpNode *op){
             return new TypedValue(builder.CreateFDiv(l->val, r->val), l->type);
 
         default: 
-            return compErr("binary operator / is undefined for the type " + typeTagToStr(l->type) + " and " + typeTagToStr(r->type), op->row, op->col);
+            return compErr("binary operator / is undefined for the type " + llvmTypeToStr(l->getType()) + " and " + llvmTypeToStr(r->getType()), op->row, op->col);
     }
 }
 
@@ -131,7 +95,7 @@ TypedValue* Compiler::compRem(TypedValue *l, TypedValue *r, BinOpNode *op){
             return new TypedValue(builder.CreateFRem(l->val, r->val), l->type);
 
         default:
-            return compErr("binary operator % is undefined for the types " + typeTagToStr(l->type) + " and " + typeTagToStr(r->type), op->row, op->col);
+            return compErr("binary operator % is undefined for the types " + llvmTypeToStr(l->getType()) + " and " + llvmTypeToStr(r->getType()), op->row, op->col);
     }
 }
 
@@ -232,7 +196,7 @@ TypedValue* UnOpNode::compile(Compiler *c){
                 return c->compErr("Cannot dereference non-pointer type " + Lexer::getTokStr(rhs->type), this->row, this->col);
             }
             
-            return new TypedValue(c->builder.CreateLoad(rhs->val), llvmTypeToTypeTag(rhs->val->getType()->getPointerElementType()));
+            return new TypedValue(c->builder.CreateLoad(rhs->val), llvmTypeToTypeTag(rhs->getType()->getPointerElementType()));
         case '&': //address-of
             break; //TODO
         case '-': //negation
