@@ -105,7 +105,10 @@ inline bool isIntTokTy(int ty){
            ty==TT_Isz||ty==TT_Usz;
 }
 
-TypedValue* Compiler::compGEP(TypedValue *l, TypedValue *r, BinOpNode *op){
+/*'
+ *  Compiles the extract operator, [
+ */
+TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
     if(!isIntTokTy(r->type)){
         return compErr("Index of operator '[' must be an integer expression, got expression of type " + Lexer::getTokStr(r->type), op->row, op->col);
     }
@@ -113,17 +116,16 @@ TypedValue* Compiler::compGEP(TypedValue *l, TypedValue *r, BinOpNode *op){
     if(l->type == TT_Array){
         Constant *lc = (Constant*)l->val;
         Constant *rc = (Constant*)r->val;
-        return new TypedValue(lc->getAggregateElement(rc), llvmTypeToTypeTag(l->val->getType()->getArrayElementType()));
+        return new TypedValue(lc->getAggregateElement(rc), llvmTypeToTypeTag(l->getType()->getArrayElementType()));
     }else if(l->type == TT_Tuple){
-        //Tuple indices must always be known at compile time.
         if(!dynamic_cast<ConstantInt*>(r->val))
-            return compErr("Pathogen values cannot be used as tuple indices.", op->row, op->col);
+            return compErr("Tuple indices must always be known at compile time.", op->row, op->col) - 1;
 
         auto index = ((ConstantInt*)r->val)->getZExtValue();
 
-        if(auto *rc = dynamic_cast<Constant*>(l->val)){
-            Constant *lc = (Constant*)l->val;
-            return new TypedValue(lc->getAggregateElement(rc), llvmTypeToTypeTag(l->val->getType()->getStructElementType(index)));
+        //if the entire tuple is known at compile-time, then the element can be directly retrieved.
+        if(auto *lc = dynamic_cast<Constant*>(l->val)){
+            return new TypedValue(lc->getAggregateElement(index), llvmTypeToTypeTag(l->getType()->getStructElementType(index)));
         }else{
             return new TypedValue(builder.CreateExtractValue(l->val, index), llvmTypeToTypeTag(l->getType()->getStructElementType(index)));
         }
@@ -141,6 +143,50 @@ TypedValue* Compiler::compGEP(TypedValue *l, TypedValue *r, BinOpNode *op){
     }else{
         return compErr("Type " + Lexer::getTokStr(l->type) + " does not have elements to access", op->row, op->col);
     }
+}
+
+
+/*
+ *  Compiles an insert statement for arrays or tuples.
+ *  An insert statement would look similar to the following (in ante syntax):
+ *
+ *  i32,i32,i32 tuple = (1, 2, 4)
+ *  tuple[2] = 3
+ *
+ *  This method Works on lvals and returns the new array/tuple with
+ *  the inserted element for storage by VarAssignNode::compile.
+ */
+TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
+    //currently, the parser only accepts a single RefVarNode as the lval.
+    //this line will have to be changed if it were to become more lenient.
+    auto *vn = (RefVarNode*)op->lval.get();
+
+    /* AllocaInst of var for storage*/
+    auto *var = vn->compile(this);
+
+    /* Load the Value from the AllocaInst of var */
+    auto *loadVal = builder.CreateLoad(var->val);
+
+    auto *index = op->rval->compile(this);
+    auto *newVal = assignExpr->compile(this);
+    if(!var || !index || !newVal) return 0;
+
+    switch(llvmTypeToTypeTag(loadVal->getType())){
+        case TT_Array:
+            return compErr("Array insert element is not yet implemented!", op->row, op->col);
+        case TT_Tuple:
+            if(!dynamic_cast<ConstantInt*>(index->val)){
+                return compErr("Tuple indices must always be known at compile time.", op->row, op->col) - 1;
+            }else{
+                auto tupIndex = ((ConstantInt*)index->val)->getZExtValue();
+                newVal->val = builder.CreateInsertValue(loadVal, newVal->val, tupIndex);
+            }
+            break;
+        default:
+            return compErr("Variable being indexed must be an Array or Tuple, but instead is a(n) " +
+                    llvmTypeToStr(loadVal->getType()), op->row, op->col);
+    }
+    return new TypedValue(builder.CreateStore(newVal->val, var->val), TT_Void);
 }
 
 
@@ -169,7 +215,7 @@ TypedValue* BinOpNode::compile(Compiler *c){
         case '*': return c->compMul(lhs, rhs, this);
         case '/': return c->compDiv(lhs, rhs, this);
         case '%': return c->compRem(lhs, rhs, this);
-        case '[': return c->compGEP(lhs, rhs, this);
+        case '[': return c->compExtract(lhs, rhs, this);
         case '<': return new TypedValue(c->builder.CreateICmpULT(lhs->val, rhs->val), lhs->type);
         case '>': return new TypedValue(c->builder.CreateICmpUGT(lhs->val, rhs->val), lhs->type);
         case '^': return new TypedValue(c->builder.CreateXor(lhs->val, rhs->val), lhs->type);

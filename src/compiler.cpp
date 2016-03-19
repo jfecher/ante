@@ -183,7 +183,6 @@ TypedValue* TupleNode::compile(Compiler *c){
     //Create the constant tuple with undef values in place for the non-constant values
     Value* tuple = ConstantStruct::get(StructType::get(getGlobalContext(), elemTys), elems);
     
-
     //Insert each pathogen value into the tuple individually
     for(auto it = pathogenVals.cbegin(); it != pathogenVals.cend(); it++){
         tuple = c->builder.CreateInsertValue(tuple, it->second, it->first);
@@ -365,7 +364,7 @@ TypedValue* VarDeclNode::compile(Compiler *c){
     c->stoVar(name, var);
     if(expr.get()){
         TypedValue *val = expr->compile(c);
-        if(!val) return nullptr;
+        if(!val) return 0;
         var->noFree = var->getType() != TT_Ptr || dynamic_cast<Constant*>(val->val);
 
         return new TypedValue(c->builder.CreateStore(val->val, alloca->val), tyNode->type);
@@ -375,13 +374,27 @@ TypedValue* VarDeclNode::compile(Compiler *c){
 }
 
 TypedValue* VarAssignNode::compile(Compiler *c){
+
+    //If this is an insert value (where the lval resembles var[index] = ...)
+    //then this must be instead compiled with compInsert, otherwise the [ operator
+    //would retrieve the value at the index instead of the reference for storage.
+    if(dynamic_cast<BinOpNode*>(ref_expr.get()))
+        return c->compInsert((BinOpNode*)ref_expr.get(), expr.get());
+
+    //otherwise, this is just a normal assign to a variable
     TypedValue *v = ref_expr->compile(c);
-    if(!v) return 0;
     
+    //compile the expression to store
+    TypedValue *assignExpr = expr->compile(c);
+    
+    //Check for errors before continuing
+    if(!v || !assignExpr) return 0;
+
     if(llvmTypeToTypeTag(v->val->getType()) == TT_Ptr){
         return new TypedValue(c->builder.CreateStore(expr->compile(c)->val, v->val), TT_Void);
     }else{
-        return c->compErr("Attempted assign without a memory address, with type " + llvmTypeToStr(v->getType()), this->row, this->col);
+        return c->compErr("Attempted assign without a memory address, with type "
+                + llvmTypeToStr(v->getType()), ref_expr->row, ref_expr->col);
     }
 }
 

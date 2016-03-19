@@ -89,13 +89,15 @@ namespace ante{
         void emitIR();
         void enterNewScope();
         void exitScope();
-        
+
+        //binop functions
         TypedValue* compAdd(TypedValue *l, TypedValue *r, BinOpNode *op);
         TypedValue* compSub(TypedValue *l, TypedValue *r, BinOpNode *op);
         TypedValue* compMul(TypedValue *l, TypedValue *r, BinOpNode *op);
         TypedValue* compDiv(TypedValue *l, TypedValue *r, BinOpNode *op);
         TypedValue* compRem(TypedValue *l, TypedValue *r, BinOpNode *op);
-        TypedValue* compGEP(TypedValue *l, TypedValue *r, BinOpNode *op);
+        TypedValue* compExtract(TypedValue *l, TypedValue *r, BinOpNode *op);
+        TypedValue* compInsert(BinOpNode *insertOp, Node *assignExpr);
         
         TypedValue* compErr(string msg, unsigned int row, unsigned int col);
 
@@ -128,6 +130,7 @@ Type* typeNodeToLlvmType(TypeNode *tyNode);
 Type* typeTagToLlvmType(TypeTag tagTy, string typeName);
 TypeTag llvmTypeToTypeTag(Type *t);
 string llvmTypeToStr(Type *ty);
+string typeTagToStr(TypeTag ty);
 bool llvmTypeEq(Type *l, Type *r);
 
 #endif
