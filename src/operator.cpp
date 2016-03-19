@@ -179,14 +179,24 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
                 return compErr("Tuple indices must always be known at compile time.", op->row, op->col) - 1;
             }else{
                 auto tupIndex = ((ConstantInt*)index->val)->getZExtValue();
-                newVal->val = builder.CreateInsertValue(loadVal, newVal->val, tupIndex);
+
+                //Type of element at tuple index tupIndex, for type checking
+                Type* tupIndexTy = loadVal->getType()->getStructElementType(tupIndex);
+                Type* exprTy = newVal->getType();
+
+                if(!llvmTypeEq(tupIndexTy, exprTy)){
+                    return compErr("Cannot assign expression of type " + llvmTypeToStr(exprTy)
+                                + " to tuple index " + to_string(tupIndex) + " of type " + llvmTypeToStr(tupIndexTy),
+                                assignExpr->row, assignExpr->col);
+                }
+
+                Value *insertedTup = builder.CreateInsertValue(loadVal, newVal->val, tupIndex);
+                return new TypedValue(builder.CreateStore(insertedTup, var->val), TT_Void);
             }
-            break;
         default:
             return compErr("Variable being indexed must be an Array or Tuple, but instead is a(n) " +
                     llvmTypeToStr(loadVal->getType()), op->row, op->col);
     }
-    return new TypedValue(builder.CreateStore(newVal->val, var->val), TT_Void);
 }
 
 
