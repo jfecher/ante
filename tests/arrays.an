@@ -1,0 +1,8 @@
+
+
+let ints = [0, 1, 2, 3, 4]
+
+let msgs = ["Hello", "Greetings", "Hi"]
+
+puts(msgs[2])
+printf("ints[3] = %d\n", ints[3])
