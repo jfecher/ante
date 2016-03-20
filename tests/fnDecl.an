@@ -21,21 +21,6 @@ i32 fact: i32 x
     return x * fact(x-1)
 
 
-i32,i32 sort: i32,i32 tup
-    if tup[0] > tup[1]
-        return tup
-    else
-        return (tup[1], tup[0])
-
-
-void printTup: i32,i32 tup
-    printf("%d, %d\n", tup[0], tup[1])
-
-printTup(sort((5, 3)))
-printTup(sort((8, 10)))
-printTup(sort((23, 54)))
-
-
 printMsg(true)
 if divisibleByThree(23)
    printf("23 is divisible by 3\n")

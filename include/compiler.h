@@ -52,7 +52,7 @@ struct Variable {
     }
 
     bool isFreeable() const{
-        return tval->type == '*' && !noFree;
+        return tval->type == TT_Ptr && !noFree;
     }
 
     Variable(string n, TypedValue *tv, unsigned int s, bool nofr=true) : name(n), tval(tv), scope(s), noFree(nofr){}

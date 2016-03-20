@@ -162,6 +162,9 @@ TypedValue* TupleNode::compile(Compiler *c){
     vector<Constant*> elems;
     elems.reserve(exprs.size());
 
+    vector<Type*> elemTys;
+    elemTys.reserve(exprs.size());
+
     map<unsigned, Value*> pathogenVals;
 
     //Compile every value in the tuple, and if it is not constant,
@@ -172,12 +175,14 @@ TypedValue* TupleNode::compile(Compiler *c){
             elems.push_back((Constant*)tval->val);
         }else{
             pathogenVals[i] = tval->val;
-            elems.push_back(UndefValue::get(tval->val->getType()));
+            elems.push_back(UndefValue::get(tval->getType()));
         }
+        elemTys.push_back(tval->getType());
     }
 
     //Create the constant tuple with undef values in place for the non-constant values
-    Value* tuple = ConstantStruct::get((StructType*)this->getType(c), elems);
+    Value* tuple = ConstantStruct::get(StructType::get(getGlobalContext(), elemTys), elems);
+    
 
     //Insert each pathogen value into the tuple individually
     for(auto it = pathogenVals.cbegin(); it != pathogenVals.cend(); it++){
@@ -205,7 +210,7 @@ TypedValue* RetNode::compile(Compiler *c){
     
     Function *f = c->builder.GetInsertBlock()->getParent();
 
-    if(!llvmTypeEq(ret->val->getType(), f->getReturnType())){
+    if(!llvmTypeEq(ret->getType(), f->getReturnType())){
         return c->compErr("return expression of type " + llvmTypeToStr(ret->getType()) +
                " does not match function return type " + llvmTypeToStr(f->getReturnType()), 
                this->row, this->col);

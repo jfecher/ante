@@ -30,8 +30,6 @@ struct Node{
     //compile node to a given module
     virtual TypedValue* compile(Compiler*) = 0;
 
-    //get value type of node.  Only used for nodes usable in expressions.
-    virtual Type* getType(Compiler*);
     virtual ~Node(){}
 };
 
@@ -66,7 +64,6 @@ struct IntLitNode : public Node{
     TypeTag type;
     TypedValue* compile(Compiler*);
     void print();
-    Type* getType(Compiler *c);
     IntLitNode(string s, TypeTag ty) : Node(), val(s), type(ty){}
     ~IntLitNode(){}
 };
@@ -76,7 +73,6 @@ struct FltLitNode : public Node{
     TypeTag type;
     TypedValue* compile(Compiler*);
     void print(void);
-    Type* getType(Compiler*);
     FltLitNode(string s, TypeTag ty) : Node(), val(s), type(ty){}
     ~FltLitNode(){}
 };
@@ -85,7 +81,6 @@ struct BoolLitNode : public Node{
     bool val;
     TypedValue* compile(Compiler*);
     void print(void);
-    Type* getType(Compiler*);
     BoolLitNode(char b) : Node(), val(b){}
     ~BoolLitNode(){}
 };
@@ -94,7 +89,6 @@ struct ArrayNode : public Node{
     vector<Node*> exprs;
     TypedValue* compile(Compiler*);
     void print(void);
-    Type* getType(Compiler*);
     ArrayNode(vector<Node*>& e) : Node(), exprs(e){}
     ~ArrayNode(){}
 };
@@ -104,7 +98,6 @@ struct TupleNode : public Node{
     TypedValue* compile(Compiler*);
     vector<Value*> unpack(Compiler*);
     void print(void);
-    Type* getType(Compiler*);
     TupleNode(vector<Node*>& e) : Node(), exprs(e){}
     ~TupleNode(){}
 };
@@ -113,7 +106,6 @@ struct UnOpNode : public Node{
     int op;
     unique_ptr<Node> rval;
     TypedValue* compile(Compiler*);
-    Type* getType(Compiler*);
     void print(void);
     UnOpNode(int s, Node *rv) : Node(), op(s), rval(rv){}
     ~UnOpNode(){}
@@ -123,7 +115,6 @@ struct BinOpNode : public Node{
     int op;
     unique_ptr<Node> lval, rval;
     TypedValue* compile(Compiler*);
-    Type* getType(Compiler*);
     void print(void);
     BinOpNode(int s, Node *lv, Node *rv) : Node(), op(s), lval(lv), rval(rv){}
     ~BinOpNode(){}
@@ -169,7 +160,6 @@ struct VarNode : public Node{
     string name;
     TypedValue* compile(Compiler*);
     void print(void);
-    Type* getType(Compiler*);
     VarNode(string s) : Node(), name(s){}
     ~VarNode(){}
 };
@@ -178,7 +168,6 @@ struct RefVarNode : public Node{
     string name;
     TypedValue* compile(Compiler*);
     void print(void);
-    Type* getType(Compiler*);
     RefVarNode(string s) : Node(), name(s){}
     ~RefVarNode(){}
 };
@@ -187,7 +176,6 @@ struct FuncCallNode : public Node{
     string name;
     unique_ptr<TupleNode> params;
     TypedValue* compile(Compiler*);
-    Type* getType(Compiler*);
     void print(void);
     FuncCallNode(string s, TupleNode* p) : Node(), name(s), params(p){}
     ~FuncCallNode(){}
@@ -196,7 +184,6 @@ struct FuncCallNode : public Node{
 struct StrLitNode : public Node{
     string val;
     TypedValue* compile(Compiler*);
-    Type* getType(Compiler*);
     void print(void);
     StrLitNode(string s) : Node(), val(s){}
     ~StrLitNode(){}

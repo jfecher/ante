@@ -13,95 +13,6 @@ char Compiler::getBitWidthOfTypeTag(TypeTag ty){
     }
 }
 
-/*
- *  Returns the type of a node in an expression.  Node must be
- *  valid in an expression context, ie no statement-only nodes.
- */
-Type* VarNode::getType(Compiler *c){
-    if(Variable *var = c->lookup(name)){
-        return var->getVal()->getType();
-    }
-    return (Type*)c->compErr("Use of undeclared variable " + name + " in expression", row, col);
-}
-
-Type* RefVarNode::getType(Compiler *c){
-    if(Variable *var = c->lookup(name)){
-        return var->getVal()->getType();
-    }
-    return (Type*)c->compErr("Use of undeclared variable " + name + " in expression", row, col);
-}
-
-Type* StrLitNode::getType(Compiler *c){
-    return Type::getInt8PtrTy(getGlobalContext()); 
-}
-
-Type* IntLitNode::getType(Compiler *c){
-    return typeTagToLlvmType(type, ""); 
-}
-
-//TODO: give floats a type field like integers
-Type* FltLitNode::getType(Compiler *c){
-    return Type::getDoubleTy(getGlobalContext());
-}
-
-Type* BoolLitNode::getType(Compiler *c){
-    return Type::getInt1Ty(getGlobalContext());
-}
-
-Type* FuncCallNode::getType(Compiler *c){
-    if(auto* fn = c->module->getFunction(name)){
-        return fn->getReturnType();
-    }
-    return (Type*)c->compErr("Undeclared function " + name + " called", row, col);
-}
-
-Type* ArrayNode::getType(Compiler *c){
-    if(exprs.size() > 0){
-        Type *elemTy = exprs[0]->getType(c);
-
-        //check each element's type against the first
-        for(size_t i = 1; i < exprs.size(); i++){
-            if(!llvmTypeEq(elemTy, exprs[i]->getType(c))){
-                return (Type*)c->compErr("Array index " + to_string(i) + " does not match the other array element's types", row, col);
-            }
-        }
-        return ArrayType::get(elemTy, exprs.size());
-    }
-    return ArrayType::get(Type::getVoidTy(getGlobalContext()), 0);
-}
-
-Type* TupleNode::getType(Compiler *c){
-    if(exprs.size() > 0){
-        vector<Type*> elemTys;
-
-        for(Node *n : exprs){
-            elemTys.push_back(n->getType(c));
-        }
-        return StructType::get(getGlobalContext(), elemTys, "Tuple");
-    }
-    //return empty struct
-    return StructType::get(getGlobalContext());
-}
-
-Type* BinOpNode::getType(Compiler *c){
-    return lval->getType(c);
-}
-
-Type* UnOpNode::getType(Compiler *c){
-    Type* rty = rval->getType(c);
-    int tokTy;
-    switch(op){
-        case '*':
-            tokTy = llvmTypeToTypeTag(rty);
-            if(tokTy != '*')
-                return (Type*)c->compErr("Cannot dereference non-pointer type " + Lexer::getTokStr(tokTy), this->row, this->col);
-            else
-                return rty->getPointerElementType();
-        case '&': 
-            return PointerType::get(rty, 0);
-    }
-    return rty;
-}
 
 /*
  *  Assures two IntegerType'd Values have the same bitwidth.
@@ -126,9 +37,6 @@ void Compiler::checkIntSize(TypedValue **lhs, TypedValue **rhs){
     }
 }
 
-Type* Node::getType(Compiler *c){
-    return (Type*)c->compErr("Unable to discern type of generic Node.", row, col);
-}
 
 /*
  *  Translates an individual TypeTag to an llvm::Type.
@@ -201,7 +109,7 @@ Type* typeNodeToLlvmType(TypeNode *tyNode){
                 tys.push_back(typeNodeToLlvmType(tyn));
                 tyn = (TypeNode*)tyn->next.get();
             }
-            return StructType::get(getGlobalContext(), tys, "Tuple");
+            return StructType::get(getGlobalContext(), tys);
         case TT_Array: //TODO array type
         case TT_Data:
         case TT_Func: //TODO function pointer type
@@ -242,7 +150,18 @@ bool llvmTypeEq(Type *l, Type *r){
         } 
         return true;
     }else if(ltt == TT_Tuple || ltt == TT_Data){
-        return l == r;
+        int lElemCount = l->getStructNumElements();
+        int rElemCount = r->getStructNumElements();
+        
+        if(lElemCount != rElemCount)
+            return false;
+
+        for(int i = 0; i < lElemCount; i++){
+            if(!llvmTypeEq(l->getStructElementType(i), r->getStructElementType(i)))
+                return false;
+        } 
+
+        return true;
     }else{ //primitive type
         return ltt == rtt;
     }
