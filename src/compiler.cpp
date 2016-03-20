@@ -366,6 +366,13 @@ TypedValue* VarDeclNode::compile(Compiler *c){
         TypedValue *val = expr->compile(c);
         if(!val) return 0;
         var->noFree = var->getType() != TT_Ptr || dynamic_cast<Constant*>(val->val);
+        
+        //Make sure the assigned value matches the variable's type
+        if(!llvmTypeEq(alloca->getType()->getPointerElementType(), val->getType())){
+            return c->compErr("Cannot assign expression of type " + llvmTypeToStr(val->getType())
+                        + " to a variable of type " + llvmTypeToStr(alloca->getType()->getPointerElementType()),
+                        expr->row, expr->col);
+        }
 
         return new TypedValue(c->builder.CreateStore(val->val, alloca->val), tyNode->type);
     }else{
@@ -374,7 +381,6 @@ TypedValue* VarDeclNode::compile(Compiler *c){
 }
 
 TypedValue* VarAssignNode::compile(Compiler *c){
-
     //If this is an insert value (where the lval resembles var[index] = ...)
     //then this must be instead compiled with compInsert, otherwise the [ operator
     //would retrieve the value at the index instead of the reference for storage.
@@ -390,12 +396,21 @@ TypedValue* VarAssignNode::compile(Compiler *c){
     //Check for errors before continuing
     if(!v || !assignExpr) return 0;
 
-    if(llvmTypeToTypeTag(v->val->getType()) == TT_Ptr){
-        return new TypedValue(c->builder.CreateStore(expr->compile(c)->val, v->val), TT_Void);
-    }else{
+    //lvalue must compile to a pointer for storage, usually an allca value
+    if(llvmTypeToTypeTag(v->getType()) != TT_Ptr){
         return c->compErr("Attempted assign without a memory address, with type "
                 + llvmTypeToStr(v->getType()), ref_expr->row, ref_expr->col);
     }
+
+    //and finally, make sure the assigned value matches the variable's type
+    if(!llvmTypeEq(v->getType()->getPointerElementType(), assignExpr->getType())){
+        return c->compErr("Cannot assign expression of type " + llvmTypeToStr(assignExpr->getType())
+                    + " to a variable of type " + llvmTypeToStr(v->getType()->getPointerElementType()),
+                    expr->row, expr->col);
+    }
+    
+    //now actually create the store
+    return new TypedValue(c->builder.CreateStore(expr->compile(c)->val, v->val), TT_Void);
 }
 
 
