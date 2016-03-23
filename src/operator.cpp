@@ -226,6 +226,7 @@ TypedValue* BinOpNode::compile(Compiler *c){
         case '/': return c->compDiv(lhs, rhs, this);
         case '%': return c->compRem(lhs, rhs, this);
         case '[': return c->compExtract(lhs, rhs, this);
+        case ';': return rhs;
         case '<': return new TypedValue(c->builder.CreateICmpULT(lhs->val, rhs->val), lhs->type);
         case '>': return new TypedValue(c->builder.CreateICmpUGT(lhs->val, rhs->val), lhs->type);
         case '^': return new TypedValue(c->builder.CreateXor(lhs->val, rhs->val), lhs->type);

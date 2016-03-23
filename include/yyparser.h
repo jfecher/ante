@@ -514,12 +514,12 @@ namespace yy {
     enum
     {
       yyeof_ = 0,
-      yylast_ = 892,     ///< Last index in yytable_.
+      yylast_ = 1035,     ///< Last index in yytable_.
       yynnts_ = 57,  ///< Number of nonterminal symbols.
       yyfinal_ = 4, ///< Termination state number.
       yyterror_ = 1,
       yyerrcode_ = 256,
-      yyntokens_ = 87  ///< Number of tokens.
+      yyntokens_ = 88  ///< Number of tokens.
     };
 
 
