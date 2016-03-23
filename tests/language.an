@@ -205,8 +205,6 @@ let double = 25.0_f64
         /    division
         %    remainder
 
-        ++   append
-
         <    less than
         >    greater than
         <=   less than or equal to
@@ -215,15 +213,19 @@ let double = 25.0_f64
         !=   not equal to
         and  logical and
         or   logical or
+
+        ++   append
         ..   range
+        ;    sequencing operator
+
         |    bitwise or (or a type-expr or)
         ^    bitwise xor
         <<   bitwise left-shift
         >>   bitwise right-shift
 
     In addition to binary operators, Ante also defines the following
-    unary operators.  Note that every unary operator comes before the
-    value it acts upon, otherwise the syntax would be ambiguous.
+    unary operators.  Note that to avoid ambiguities in parsing, every 
+    unary operator is a prefix to the value it acts upon.
         
         -    negative
         not  logical not
