@@ -552,21 +552,17 @@ i8 add: i8 a b
 ~By default, the file is parsed and every function is added.
 import C("path/to/file.h")
 
-~Alternatively, specific functions can be added with .fn
+~Alternatively, specific functions can be whitelisted with .fn
 import C("some/other/file.h").fn("func1", "func2", "func3")
 
 ~Multiple files can also stored in one C object
 import C("stdio.h", "stdlib.h")
 
-~Like functions, files can also be added after initialization
-import C("stdio.h").addSrc("stdlib.h")
-
-import C("stdio.h").addSrc("stdlib.h", "limits.h", "math.h")
-
 putchar(72)
 putchar(105)
 putchar(10)
 ~output: Hi
+
 
 `
         -> and ;;
