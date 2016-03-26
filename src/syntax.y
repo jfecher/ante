@@ -78,11 +78,10 @@ void yyerror(const char *msg);
 
 %left Ident
 
-%left IntLit FltLit StrLit True False
-
+%left ';'
 %right Where
 %left ','
-
+    
 %left Or
 %left And     
 %left Eq  NotEq GrtrEq LesrEq '<' '>'
@@ -386,27 +385,28 @@ unary_op: '*' val  {$$ = mkUnOpNode('*', $2);}
         | '-' val  {$$ = mkUnOpNode('-', $2);}
         ;
 
-expr: expr Where ident '=' binop  {$$ = mkBinOpNode(Tok_Where, $1, mkLetBindingNode((char*)$3, 0, 0, $5));}
-    | binop {$$ = $1;}
+expr: binop {$$ = $1;}
     ;
 
-binop: binop '+' binop             {$$ = mkBinOpNode('+', $1, $3);}
-     | binop '-' binop             {$$ = mkBinOpNode('-', $1, $3);}
-     | binop '*' binop             {$$ = mkBinOpNode('*', $1, $3);}
-     | binop '/' binop             {$$ = mkBinOpNode('/', $1, $3);}
-     | binop '%' binop             {$$ = mkBinOpNode('%', $1, $3);}
-     | binop '<' binop             {$$ = mkBinOpNode('<', $1, $3);}
-     | binop '>' binop             {$$ = mkBinOpNode('>', $1, $3);}
-     | binop '^' binop             {$$ = mkBinOpNode('^', $1, $3);}
-     | binop '.' binop             {$$ = mkBinOpNode('.', $1, $3);}
-     | binop '[' expr ']'          {$$ = mkBinOpNode('[', $1, $3);}
-     | binop Eq binop              {$$ = mkBinOpNode(Tok_Eq, $1, $3);}
-     | binop NotEq binop           {$$ = mkBinOpNode(Tok_NotEq, $1, $3);}
-     | binop GrtrEq binop          {$$ = mkBinOpNode(Tok_GrtrEq, $1, $3);}
-     | binop LesrEq binop          {$$ = mkBinOpNode(Tok_LesrEq, $1, $3);}
-     | binop Or binop              {$$ = mkBinOpNode(Tok_Or, $1, $3);}
-     | binop And binop             {$$ = mkBinOpNode(Tok_And, $1, $3);}
-     | val                         {$$ = $1;}
+binop: binop '+' binop                          {$$ = mkBinOpNode('+', $1, $3);}
+     | binop '-' binop                          {$$ = mkBinOpNode('-', $1, $3);}
+     | binop '*' binop                          {$$ = mkBinOpNode('*', $1, $3);}
+     | binop '/' binop                          {$$ = mkBinOpNode('/', $1, $3);}
+     | binop '%' binop                          {$$ = mkBinOpNode('%', $1, $3);}
+     | binop '<' binop                          {$$ = mkBinOpNode('<', $1, $3);}
+     | binop '>' binop                          {$$ = mkBinOpNode('>', $1, $3);}
+     | binop '^' binop                          {$$ = mkBinOpNode('^', $1, $3);}
+     | binop '.' binop                          {$$ = mkBinOpNode('.', $1, $3);}
+     | binop ';' maybe_newline binop            {$$ = mkBinOpNode(';', $1, $4);}
+     | binop '[' expr ']'                       {$$ = mkBinOpNode('[', $1, $3);}
+     | binop Where ident '=' binop %prec Where  {$$ = mkBinOpNode(Tok_Where, $1, mkLetBindingNode((char*)$3, 0, 0, $5));}
+     | binop Eq binop                           {$$ = mkBinOpNode(Tok_Eq, $1, $3);}
+     | binop NotEq binop                        {$$ = mkBinOpNode(Tok_NotEq, $1, $3);}
+     | binop GrtrEq binop                       {$$ = mkBinOpNode(Tok_GrtrEq, $1, $3);}
+     | binop LesrEq binop                       {$$ = mkBinOpNode(Tok_LesrEq, $1, $3);}
+     | binop Or binop                           {$$ = mkBinOpNode(Tok_Or, $1, $3);}
+     | binop And binop                          {$$ = mkBinOpNode(Tok_And, $1, $3);}
+     | val                                      {$$ = $1;}
      ;
 
 
@@ -418,23 +418,26 @@ nl_expr_list: nl_expr_list ',' maybe_newline expr_block_p {$$ = setNext($1, $4);
             | expr_block_p                                {$$ = setRoot($1);}
             ;
 
-expr_block_p: expr_block_p '+' maybe_newline expr_block_p     {$$ = mkBinOpNode('+', $1, $4);}
-         | expr_block_p '-' maybe_newline expr_block_p     {$$ = mkBinOpNode('-', $1, $4);}
-         | expr_block_p '*' maybe_newline expr_block_p     {$$ = mkBinOpNode('*', $1, $4);}
-         | expr_block_p '/' maybe_newline expr_block_p     {$$ = mkBinOpNode('/', $1, $4);}
-         | expr_block_p '%' maybe_newline expr_block_p     {$$ = mkBinOpNode('%', $1, $4);}
-         | expr_block_p '<' maybe_newline expr_block_p     {$$ = mkBinOpNode('<', $1, $4);}
-         | expr_block_p '>' maybe_newline expr_block_p     {$$ = mkBinOpNode('>', $1, $4);}
-         | expr_block_p '^' maybe_newline expr_block_p     {$$ = mkBinOpNode('^', $1, $4);}
-         | expr_block_p '.' maybe_newline expr_block_p     {$$ = mkBinOpNode('.', $1, $4);}
-         | expr_block_p Eq maybe_newline  expr_block_p     {$$ = mkBinOpNode(Tok_Eq, $1, $4);}
-         | expr_block_p NotEq maybe_newline expr_block_p   {$$ = mkBinOpNode(Tok_NotEq, $1, $4);}
-         | expr_block_p GrtrEq maybe_newline expr_block_p  {$$ = mkBinOpNode(Tok_GrtrEq, $1, $4);}
-         | expr_block_p LesrEq maybe_newline expr_block_p  {$$ = mkBinOpNode(Tok_LesrEq, $1, $4);}
-         | expr_block_p Or maybe_newline expr_block_p      {$$ = mkBinOpNode(Tok_Or, $1, $4);}
-         | expr_block_p And maybe_newline expr_block_p     {$$ = mkBinOpNode(Tok_And, $1, $4);}
-         | val                                             {$$ = $1;}
-         ;
+expr_block_p: expr_block_p '+' maybe_newline expr_block_p            {$$ = mkBinOpNode('+', $1, $4);}
+            | expr_block_p '-' maybe_newline expr_block_p            {$$ = mkBinOpNode('-', $1, $4);}
+            | expr_block_p '*' maybe_newline expr_block_p            {$$ = mkBinOpNode('*', $1, $4);}
+            | expr_block_p '/' maybe_newline expr_block_p            {$$ = mkBinOpNode('/', $1, $4);}
+            | expr_block_p '%' maybe_newline expr_block_p            {$$ = mkBinOpNode('%', $1, $4);}
+            | expr_block_p '<' maybe_newline expr_block_p            {$$ = mkBinOpNode('<', $1, $4);}
+            | expr_block_p '>' maybe_newline expr_block_p            {$$ = mkBinOpNode('>', $1, $4);}
+            | expr_block_p '^' maybe_newline expr_block_p            {$$ = mkBinOpNode('^', $1, $4);}
+            | expr_block_p '.' maybe_newline expr_block_p            {$$ = mkBinOpNode('.', $1, $4);}
+            | expr_block_p ';' maybe_newline expr_block_p            {$$ = mkBinOpNode(';', $1, $4);}
+            | expr_block_p '[' expr_block_p ']' maybe_newline        {$$ = mkBinOpNode('[', $1, $3);}
+            | expr_block_p Where ident '=' expr_block_p %prec Where  {$$ = mkBinOpNode(Tok_Where, $1, mkLetBindingNode((char*)$3, 0, 0, $5));}
+            | expr_block_p Eq maybe_newline  expr_block_p            {$$ = mkBinOpNode(Tok_Eq, $1, $4);}
+            | expr_block_p NotEq maybe_newline expr_block_p          {$$ = mkBinOpNode(Tok_NotEq, $1, $4);}
+            | expr_block_p GrtrEq maybe_newline expr_block_p         {$$ = mkBinOpNode(Tok_GrtrEq, $1, $4);}
+            | expr_block_p LesrEq maybe_newline expr_block_p         {$$ = mkBinOpNode(Tok_LesrEq, $1, $4);}
+            | expr_block_p Or maybe_newline expr_block_p             {$$ = mkBinOpNode(Tok_Or, $1, $4);}
+            | expr_block_p And maybe_newline expr_block_p            {$$ = mkBinOpNode(Tok_And, $1, $4);}
+            | val                                                    {$$ = $1;}
+            ;
 %%
 
 void yy::parser::error(const location& loc, const string& msg){

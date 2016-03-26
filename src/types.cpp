@@ -111,9 +111,10 @@ Type* typeNodeToLlvmType(TypeNode *tyNode){
             }
             return StructType::get(getGlobalContext(), tys);
         case TT_Array: //TODO array type
+            return ArrayType::get(typeNodeToLlvmType(tyn), 0/*num elements*/);
         case TT_Data:
         case TT_Func: //TODO function pointer type
-            cout << "typeNodeToLlvmType: Array types, and function pointer types are currently unimplemented.  A void type will be returned instead.\n";
+            cout << "typeNodeToLlvmType: UserTypes and Function pointer types are currently unimplemented.  A void type will be returned instead.\n";
             return Type::getVoidTy(getGlobalContext());
         default:
             return typeTagToLlvmType(tyNode->type);

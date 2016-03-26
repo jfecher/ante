@@ -205,8 +205,6 @@ let double = 25.0_f64
         /    division
         %    remainder
 
-        ++   append
-
         <    less than
         >    greater than
         <=   less than or equal to
@@ -215,15 +213,19 @@ let double = 25.0_f64
         !=   not equal to
         and  logical and
         or   logical or
+
+        ++   append
         ..   range
+        ;    sequencing operator
+
         |    bitwise or (or a type-expr or)
         ^    bitwise xor
         <<   bitwise left-shift
         >>   bitwise right-shift
 
     In addition to binary operators, Ante also defines the following
-    unary operators.  Note that every unary operator comes before the
-    value it acts upon, otherwise the syntax would be ambiguous.
+    unary operators.  Note that to avoid ambiguities in parsing, every 
+    unary operator is a prefix to the value it acts upon.
         
         -    negative
         not  logical not
@@ -552,21 +554,17 @@ i8 add: i8 a b
 ~By default, the file is parsed and every function is added.
 import C("path/to/file.h")
 
-~Alternatively, specific functions can be added with .fn
+~Alternatively, specific functions can be whitelisted with .fn
 import C("some/other/file.h").fn("func1", "func2", "func3")
 
 ~Multiple files can also stored in one C object
 import C("stdio.h", "stdlib.h")
 
-~Like functions, files can also be added after initialization
-import C("stdio.h").addSrc("stdlib.h")
-
-import C("stdio.h").addSrc("stdlib.h", "limits.h", "math.h")
-
 putchar(72)
 putchar(105)
 putchar(10)
 ~output: Hi
+
 
 `
         -> and ;;
@@ -600,42 +598,43 @@ data Integer
 
 `
         Data declarations
-    In ante, all datatypes are declared through the data keyword by mixing and matching
-    previously declared types.  The data keyword expects the name of the datatype afterwards 
-    followed by a block of type expressions and an optional name for each field.  If a field
-    is left unnamed, then it can only be indexed like a tuple.
+    In ante, all datatypes are declared through the data keyword which binds a 
+    name to a type expression.  This binding must begin with a capital letter 
+    and be succeeded by zero or more alphanumeric characters or underscores.
+    A data declaration consists of one or more type expressions seperated by 
+    the field names for those expressions.
 `
 
 ~Declare coord, a datatype consisting of three f64s named x, y, and z.
-~NOTE: multiple variables of the same type can be declared by seperating the names with spaces.
-~      if an = is encountered afterwards, each of the variables will be set to that value.
+~NOTE: just as in functions, multiple variables of the same type can be declared
+~      by seperating the field name with spaces. if an = is encountered 
+~      afterwards, each of the variables will be set to that default value.
 data Coord
     f64 x y z
 
-~Declare char, a datatype that can contain an c8 or c32 char
+~Declare Char, a datatype that can contain a c8 or c32 char
 data Char
     c8|c32 c
 
-Char ch = 'a'
-assert(ch.c is c32)
+let ch = 'a'
 
-~Each newline is equivilent to a , and signals a tuple type.
+
 data Coord2D
     f32 x
     f32 y
 
 ~Anonymous fields can be declared simply by neglecting to give each field a name.  Anonymous
-~fields can only be accessed with [], and are essentially aliased tuples.
+~fields can only be accessed with [] as tuple indices.
 data Q1Coord
     u32
     u32
 
-Q1Coord myQ1C = 2, 3
+let myQ1C = (2, 3)
 print(myQ1C[1]) ~output: 3
 
 ~Each datatype containing more than one field is internally represented by a tuple, so they
 ~Can be created in a similar fashion.
-Coord coord = 100, -50, 66.7
+Coord coord = (100.0, -50.0, 66.7)
 print(coord.y)  ~output: -50
 
 ~To access a specific field of an anonymous datatype in an expression, it must be casted to
@@ -643,7 +642,7 @@ print(coord.y)  ~output: -50
 let y = Coord(100, -50, 66.7).y
 
 ~Set p1 p2 and p3 to 0, 0
-i32,i32 p1 p2 p3 = 0, 0
+i32,i32 p1 p2 p3 = (0, 0)
 
 
 `
