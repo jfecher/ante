@@ -28,7 +28,7 @@ void yyerror(const char *msg);
 
 %}
 
-%locations
+/*%locations*/
 %error-verbose
 
 %token Ident UserType
@@ -440,7 +440,12 @@ expr_block_p: expr_block_p '+' maybe_newline expr_block_p            {$$ = mkBin
             ;
 %%
 
+/* location parser error
 void yy::parser::error(const location& loc, const string& msg){
+    ante::error(msg.c_str(), yylexer->fileName, yylexer->getRow(), yylexer->getCol());
+} */
+
+void yy::parser::error(const string& msg){
     ante::error(msg.c_str(), yylexer->fileName, yylexer->getRow(), yylexer->getCol());
 }
 

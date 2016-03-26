@@ -5,7 +5,8 @@
 
 ~Constants declared with where after an expression are equivalent 
 ~to let bindings declared beforehand.
-let str = hello where hello = "Hello World!"
+let str = hello \
+    where hello = "Hello World!"
 
 ~Where clauses are right associative and may only be used at the
 ~end of an expression.

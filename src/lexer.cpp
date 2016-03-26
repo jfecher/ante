@@ -460,7 +460,10 @@ int Lexer::next(){
         }
         RETURN_PAIR(next());
     }else if(cur == '\\' && nxt == '\n'){ //ignore newline
-        RETURN_PAIR(next());
+        incPos(2);
+        col = 1;
+        row++;
+        return next();
     }
 
     if(nxt == '='){

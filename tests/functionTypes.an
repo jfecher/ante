@@ -11,6 +11,8 @@ i32 addS: i32 a b
 let addL = \a b
     a + b
 
+~or
+let addL2 = \a b -> a + b
 
 ~possible new function declaration syntaxes:
 
@@ -46,7 +48,33 @@ impl Str
         
         return None
 
+    ~meta function, immutable self
+    Str op("++"): self, Str end
+        let len = self.length + end.length
+        c8* cstr = c8* malloc(len)
+        memcpy(cstr, self.cstr, self.length)
+        strcat(cstr, end.cstr)
+
+        return String(cstr, len)
+
+    ~Mutable self
+    void trim: mut self
+        while self.length > 0 and self[0] == ' '
+            self.cstr = (c8* self.cstr) + 1
+            self.length -= 1
+
+
+~Alternative method syntax 1
+impl Str
     ~immutable self
+    Opt<u32> indexOf: self, c32 target
+        for u32 i in 0 .^ self.length
+            if self[i] == target
+                return Some(i)
+
+        return None
+
+    ~meta function, immutable self
     Str op("++"): self, Str end
         let len = self.length + end.length
         c8* cstr = c8* malloc(len)
@@ -57,4 +85,6 @@ impl Str
 
     ~Mutable self
     void trim: mut self
-        
+        while self.length > 0 and self[0] == ' '
+            self.cstr = (c8* self.cstr) + 1
+            self.length -= 1
