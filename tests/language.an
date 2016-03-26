@@ -320,7 +320,7 @@ let immutTuple = 46, "Fourty-six", 46.0
     opening and closing brackets.
 `
 void printMsg:
-    print "Hello World!"
+    print("Hello World!")
 
 `
     This add function takes in two parameters, augend and addend, and returns
@@ -412,10 +412,12 @@ else
     print("Invalid laws of mathematics, please try again in an alternate universe.")
 
 
-if 4 > 5
-    print("Something is seriously wrong if this prints")
+if 3 > 5
+    print("Something is seriously wrong if this prints.")
+elif 4 > 5
+    print("This shouldn't print either.")
 else
-    print("Phew, dodged a bullet there")
+    print("Phew, dodged a bullet there.")
 
 
 `
@@ -638,7 +640,7 @@ print(coord.y)  ~output: -50
 
 ~To access a specific field of an anonymous datatype in an expression, it must be casted to
 ~the desired type.
-f64 y = Coord(100, -50, 66.7).y
+let y = Coord(100, -50, 66.7).y
 
 ~Set p1 p2 and p3 to 0, 0
 i32,i32 p1 p2 p3 = 0, 0
