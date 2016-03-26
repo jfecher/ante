@@ -73,11 +73,19 @@ void TypeNode::print(){
 
 void UnOpNode::print(){
     putchar('(');
+    typeExpr->print();
+    putchar(' ');
+    rval->print();
+    putchar(')');
+    maybePrintArr(next.get());
+}
+
+void UnOpNode::print(){
+    putchar('(');
     Lexer::printTok(op);
     putchar(' ');
-    if(rval) rval->print();
+    rval->print();
     putchar(')');
-
     maybePrintArr(next.get());
 }
 

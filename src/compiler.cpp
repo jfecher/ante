@@ -101,14 +101,14 @@ TypedValue* compileStmtList(Node *nList, Compiler *c){
     return ret;
 }
 
-bool Compiler::isUnsignedTypeTag(TypeTag tt){
+bool isUnsignedTypeTag(const TypeTag tt){
     return tt==TT_U8||tt==TT_U16||tt==TT_U32||tt==TT_U64||tt==TT_Usz;
 }
 
 TypedValue* IntLitNode::compile(Compiler *c){
     return new TypedValue(ConstantInt::get(getGlobalContext(),
                             APInt(Compiler::getBitWidthOfTypeTag(type), 
-                            atol(val.c_str()), Compiler::isUnsignedTypeTag(type))), type);
+                            atol(val.c_str()), isUnsignedTypeTag(type))), type);
 }
 
 const fltSemantics& typeTagToFltSemantics(TypeTag tokTy){

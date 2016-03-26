@@ -102,6 +102,15 @@ struct TupleNode : public Node{
     ~TupleNode(){}
 };
 
+struct TypeCastNode : public Node{
+    unique_ptr<TypeNode*> typeExpr;
+    unique_ptr<Node> rval;
+    TypedValue* compile(Compiler*);
+    void print(void);
+    TypeCastNode(TypeNode *ty, Node *rv) : Node(), typeExpr(ty), rval(rv){}
+    ~TypeCastNode(){}
+};
+
 struct UnOpNode : public Node{
     int op;
     unique_ptr<Node> rval;

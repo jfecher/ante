@@ -380,9 +380,10 @@ expr_list_p: expr_list_p ',' expr  {$$ = setNext($1, $3);}
               instead of being parsed as a single-value tuple.*/
            ;
 
-unary_op: '*' val  {$$ = mkUnOpNode('*', $2);}
-        | '&' val  {$$ = mkUnOpNode('&', $2);}
-        | '-' val  {$$ = mkUnOpNode('-', $2);}
+unary_op: '*' val       {$$ = mkUnOpNode('*', $2);}
+        | '&' val       {$$ = mkUnOpNode('&', $2);}
+        | '-' val       {$$ = mkUnOpNode('-', $2);}
+        | type_expr val {$$ = mkTypeCastNode($1, $2);}
         ;
 
 expr: binop {$$ = $1;}

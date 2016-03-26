@@ -161,6 +161,13 @@ Node* mkTypeNode(TypeTag type, char* typeName, Node* extTy = nullptr){
     return ret;
 }
 
+Node* mkTypeCastNode(Node *l, Node *r){
+    auto *ret = new TypeCastNode(static_cast<TypeNode*>(l), r);
+    ret->col = yylexer->getCol();
+    ret->row = yylexer->getRow();
+    return ret;
+}
+
 Node* mkUnOpNode(int op, Node* r){
     auto *ret = new UnOpNode(op, r);
     ret->col = yylexer->getCol();

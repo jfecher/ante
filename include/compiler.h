@@ -111,14 +111,10 @@ namespace ante{
         DataDeclNode* lookupType(string tyname) const;
         void stoType(DataDeclNode *ty);
 
-        static bool isSigned(Node *n);
         void checkIntSize(TypedValue **lhs, TypedValue **rhs);
 
 
-
         static size_t getTupleSize(Node *tup);
-        static char getBitWidthOfTypeTag(TypeTag tagTy);
-        static bool isUnsignedTypeTag(TypeTag tagTy);
         
         static int compileIRtoObj(Module *m, string inFile, string outFile);
         static int linkObj(string inFiles, string outFile);
@@ -133,4 +129,6 @@ string llvmTypeToStr(Type *ty);
 string typeTagToStr(TypeTag ty);
 bool llvmTypeEq(Type *l, Type *r);
 
+char getBitWidthOfTypeTag(const TypeTag tagTy);
+bool isUnsignedTypeTag(const TypeTag tagTy);
 #endif

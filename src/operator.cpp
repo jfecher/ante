@@ -99,17 +99,21 @@ TypedValue* Compiler::compRem(TypedValue *l, TypedValue *r, BinOpNode *op){
     }
 }
 
-inline bool isIntTokTy(int ty){
+inline bool isIntTypeTag(const int ty){
     return ty==TT_I8||ty==TT_I16||ty==TT_I32||ty==TT_I64||
            ty==TT_U8||ty==TT_U16||ty==TT_U32||ty==TT_U64||
            ty==TT_Isz||ty==TT_Usz;
+}
+
+inline bool isFPTypeTag(const TypeTag tt){
+    return tt==TT_F16||tt==TT_F32||tt==TT_F64;
 }
 
 /*'
  *  Compiles the extract operator, [
  */
 TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
-    if(!isIntTokTy(r->type)){
+    if(!isIntTypeTag(r->type)){
         return compErr("Index of operator '[' must be an integer expression, got expression of type " + Lexer::getTokStr(r->type), op->row, op->col);
     }
 
@@ -153,8 +157,8 @@ TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
  *  i32,i32,i32 tuple = (1, 2, 4)
  *  tuple[2] = 3
  *
- *  This method Works on lvals and returns the new array/tuple with
- *  the inserted element for storage by VarAssignNode::compile.
+ *  This method Works on lvals and returns the value of the the CreateStore
+ *  method when storing the newly inserted tuple.
  */
 TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
     //currently, the parser only accepts a single RefVarNode as the lval.
@@ -199,6 +203,63 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
     }
 }
 
+/*
+ *  Creates a cast instruction appropriate for valToCast's type to castTy.
+ */
+Value* createCast(Compiler *c, Type *castTy, TypeTag castTyTag, TypedValue *valToCast){
+    if(isIntTypeTag(valToCast->type)){
+        // int -> int  (maybe unsigned)
+        if(isIntTypeTag(castTyTag)){
+            return c->builder.CreateIntCast(valToCast->val, castTy, isUnsignedTypeTag(castTyTag));
+
+        // int -> float
+        }else if(isFPTypeTag(castTyTag)){
+            if(isUnsignedTypeTag(castTyTag)){
+                return c->builder.CreateUIToFP(valToCast->val, castTy);
+            }else{
+                return c->builder.CreateSIToFP(valToCast->val, castTy);
+            }
+        
+        // int -> ptr
+        }else if(castTyTag == TT_Ptr){
+            return c->builder.CreatePtrToInt(valToCast->val, castTy);
+        }
+    }else if(isFPTypeTag(valToCast->type)){
+        // float -> int  (maybe unsigned)
+        if(isIntTypeTag(castTyTag)){
+            if(isUnsignedTypeTag(castTyTag)){
+                return c->builder.CreateFPToUI(valToCast->val, castTy);
+            }else{
+                return c->builder.CreateFPtoSI(valToCast->val, castTy);
+            }
+
+        // float -> float
+        }else if(isFPTypeTag(castTyTag)){
+            return c->builder.CreateFPCast(valToCast->val, castTy);
+        }
+
+    }else if(valToCast->type == TT_Ptr){
+        // ptr -> ptr
+        if(castTyTag == TT_Ptr){
+            return c->builder.CreatePointerCast(valToCast->val, castTy);
+        
+        // ptr -> int
+        }else if(isIntTypeTag(castTyTag)){
+            return c->builder.CreatePtrToInt(valToCast->val, castTy);
+        }
+    }
+    
+    return c->compErr("Invalid type cast " + llvmTypeToStr(valToCasat->getType())
+                                  + " -> " + llvmTypeToStr(castTy));
+}
+
+TypedValue* TypeCastNode::compile(Compiler *c){
+    Type *castTy = typeNodeToLlvmType(typeExpr.get());
+    auto *rtval = rval->compile(c);
+    if(!castTy || !rtval) return 0;
+
+    return new TypedValue(createCast(c, castTy, typeExpr->type, rtval), typeExpr->type);
+}
 
 /*
  *  Compiles an operation along with its lhs and rhs
@@ -215,7 +276,7 @@ TypedValue* BinOpNode::compile(Compiler *c){
 
     //Check if both Values are integers, and if so, check if their bit width's match.
     //If not, the smaller is extended to the larger's type.
-    if(isIntTokTy(lhs->type) && isIntTokTy(rhs->type)){
+    if(isIntTypeTag(lhs->type) && isIntTypeTag(rhs->type)){
         c->checkIntSize(&lhs, &rhs);
     }
 

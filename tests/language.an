@@ -1066,7 +1066,7 @@ impl Rectangle : Drawable
             self.surf.print("| |")
          self.surf.print("|_|")
 
-    void mut("setHeight"): u32 newHeight
+    void setHeight: mut self, u32 newHeight
         height = newHeight
 
     Rectangle cast(): u32 height
@@ -1111,11 +1111,11 @@ assert(point[0] == 4 and point[1] == 3)
 
 impl c32* ~invalid
     c32* addInitials: self
-        return self .. " -JF"
+        return self ++ " -JF"
 
 impl c32[] ~valid
     c32[] addInitials: self
-        return self .. " -JF"
+        return self ++ " -JF"
 
 
 c32* ptrQuote = "implementations cannot be used for pointer types"
@@ -1172,14 +1172,14 @@ MyStr testStr = "Test", 4
 match testStr
     MyStr("Test", 3)
         print("This will not be matched")
-    MyStr("Testing", 4)
+    MyStr("Testing", _)
         print("This will not be matched either")
     MyStr("Test", 4")
         print("This will be matched")
 
 
 ~Match can also be used in expressions
-c32* s = match 2
+let s = match 2
     0 -> "zero"
     1 -> "one"
     2 -> "two"
@@ -1593,8 +1593,6 @@ pathogen void* c_ffi("malloc"): u32 size
 ~syntax change for type casts to distinguish them from declarations
 f32 f = 7 as f32
 f32 f = (f32)7
-f32 f = f32 cast 7
-f32 f = 7 cast f32
 
 ~threading and concurrency support
 async void printMsg: str msg
