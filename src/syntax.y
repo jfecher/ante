@@ -102,7 +102,7 @@ void yyerror(const char *msg);
 %nonassoc HIGH
 
 /*
-    All shift/reduce conflicts should be manually dealt with.
+    Expect all shift/reduce conflicts should be manually dealt with.
 */
 %expect 0
 %start top_level_stmt_list
@@ -175,11 +175,13 @@ lit_type: I8       {$$ = mkTypeNode(TT_I8,  (char*)"");}
         | Bool     {$$ = mkTypeNode(TT_Bool, (char*)"");}
         | Void     {$$ = mkTypeNode(TT_Void, (char*)"");}
         | usertype %prec UserType {$$ = mkTypeNode(TT_Data, (char*)$1);}
-        | ident    %prec Ident {$$ = mkTypeNode(TT_TypeVar, (char*)$1);}
+        | ident '\'' %prec LOW {$$ = mkTypeNode(TT_TypeVar, (char*)$1);}
+        /* Low precedence on type vars to prefer idents as normal vars when possible */
+        /* Also means type vars will occasionaly be parsed as function calls */
         ;
 
 type: type '*'                {$$ = mkTypeNode(TT_Ptr,  (char*)"", $1);}
-    | type '[' maybe_expr ']' {$$ = mkTypeNode(TT_Array,(char*)"", $1);}
+    | type '[' ']'            {$$ = mkTypeNode(TT_Array,(char*)"", $1);}
     | type '(' type_expr ')'  {$$ = mkTypeNode(TT_Func, (char*)"", $1);}  /* f-ptr w/ params*/
     | type '(' ')'            {$$ = mkTypeNode(TT_Func, (char*)"", $1);}  /* f-ptr w/out params*/
     | '(' type_expr ')'       {$$ = $2;}
@@ -380,10 +382,10 @@ expr_list_p: expr_list_p ',' expr  {$$ = setNext($1, $3);}
               instead of being parsed as a single-value tuple.*/
            ;
 
-unary_op: '*' val       {$$ = mkUnOpNode('*', $2);}
-        | '&' val       {$$ = mkUnOpNode('&', $2);}
-        | '-' val       {$$ = mkUnOpNode('-', $2);}
-        | type_expr val {$$ = mkTypeCastNode($1, $2);}
+unary_op: '*' val           {$$ = mkUnOpNode('*', $2);}
+        | '&' val           {$$ = mkUnOpNode('&', $2);}
+        | '-' val           {$$ = mkUnOpNode('-', $2);}
+        | type_expr ':' val {$$ = mkTypeCastNode($1, $3);}
         ;
 
 expr: binop {$$ = $1;}

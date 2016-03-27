@@ -12,12 +12,12 @@ i32 add: i32 a, i32 b
 i32 mul: i32 a b
     return a * b
 
+
 let n1 = 3
 let n2 = 4
 
 printf("%d + %d = %d\n", n1, n2, add(n1, n2))
 printf("%d * %d = %d\n", n1, n2, mul(n1, n2))
-
 
 void printInt: i32 x
      printf("printInt: %d\n", x)

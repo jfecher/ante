@@ -71,9 +71,10 @@ void TypeNode::print(){
     cout << llvmTypeToStr(typeNodeToLlvmType(this));
 }
 
-void UnOpNode::print(){
+void TypeCastNode::print(){
     putchar('(');
     typeExpr->print();
+    putchar(':');
     putchar(' ');
     rval->print();
     putchar(')');

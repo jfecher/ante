@@ -99,7 +99,7 @@ TypedValue* Compiler::compRem(TypedValue *l, TypedValue *r, BinOpNode *op){
     }
 }
 
-inline bool isIntTypeTag(const int ty){
+inline bool isIntTypeTag(const TypeTag ty){
     return ty==TT_I8||ty==TT_I16||ty==TT_I32||ty==TT_I64||
            ty==TT_U8||ty==TT_U16||ty==TT_U32||ty==TT_U64||
            ty==TT_Isz||ty==TT_Usz;
@@ -230,7 +230,7 @@ Value* createCast(Compiler *c, Type *castTy, TypeTag castTyTag, TypedValue *valT
             if(isUnsignedTypeTag(castTyTag)){
                 return c->builder.CreateFPToUI(valToCast->val, castTy);
             }else{
-                return c->builder.CreateFPtoSI(valToCast->val, castTy);
+                return c->builder.CreateFPToSI(valToCast->val, castTy);
             }
 
         // float -> float
@@ -238,19 +238,19 @@ Value* createCast(Compiler *c, Type *castTy, TypeTag castTyTag, TypedValue *valT
             return c->builder.CreateFPCast(valToCast->val, castTy);
         }
 
-    }else if(valToCast->type == TT_Ptr){
+    }else if(valToCast->type == TT_Ptr || valToCast->type == TT_StrLit){
         // ptr -> ptr
         if(castTyTag == TT_Ptr){
             return c->builder.CreatePointerCast(valToCast->val, castTy);
         
         // ptr -> int
+        cout << "is pointer ";
         }else if(isIntTypeTag(castTyTag)){
+            cout << "to int cast\n";
             return c->builder.CreatePtrToInt(valToCast->val, castTy);
         }
     }
-    
-    return c->compErr("Invalid type cast " + llvmTypeToStr(valToCasat->getType())
-                                  + " -> " + llvmTypeToStr(castTy));
+    return nullptr;
 }
 
 TypedValue* TypeCastNode::compile(Compiler *c){
@@ -258,7 +258,13 @@ TypedValue* TypeCastNode::compile(Compiler *c){
     auto *rtval = rval->compile(c);
     if(!castTy || !rtval) return 0;
 
-    return new TypedValue(createCast(c, castTy, typeExpr->type, rtval), typeExpr->type);
+    auto* val = createCast(c, castTy, typeExpr->type, rtval);
+    
+    if(!val){
+        return c->compErr("Invalid type cast " + llvmTypeToStr(rtval->getType()) + " -> " + llvmTypeToStr(castTy), row, col);
+    }else{
+        return new TypedValue(val, typeExpr->type);
+    }
 }
 
 /*

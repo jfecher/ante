@@ -107,7 +107,7 @@ bool isUnsignedTypeTag(const TypeTag tt){
 
 TypedValue* IntLitNode::compile(Compiler *c){
     return new TypedValue(ConstantInt::get(getGlobalContext(),
-                            APInt(Compiler::getBitWidthOfTypeTag(type), 
+                            APInt(getBitWidthOfTypeTag(type), 
                             atol(val.c_str()), isUnsignedTypeTag(type))), type);
 }
 

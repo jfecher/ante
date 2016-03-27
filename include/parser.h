@@ -103,7 +103,7 @@ struct TupleNode : public Node{
 };
 
 struct TypeCastNode : public Node{
-    unique_ptr<TypeNode*> typeExpr;
+    unique_ptr<TypeNode> typeExpr;
     unique_ptr<Node> rval;
     TypedValue* compile(Compiler*);
     void print(void);

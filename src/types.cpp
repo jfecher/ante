@@ -1,7 +1,7 @@
 #include <parser.h>
 
 
-char Compiler::getBitWidthOfTypeTag(TypeTag ty){
+char getBitWidthOfTypeTag(const TypeTag ty){
     switch(ty){
         case TT_I8:  case TT_U8:  return 8;
         case TT_I16: case TT_U16: case TT_F16: return 16;

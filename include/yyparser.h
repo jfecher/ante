@@ -383,7 +383,7 @@ namespace yy {
   // YYTABLE[YYPACT[STATE-NUM]] -- What to do in state STATE-NUM.  If
   // positive, shift that token.  If negative, reduce the rule whose
   // number is the opposite.  If YYTABLE_NINF, syntax error.
-  static const short int yytable_[];
+  static const unsigned short int yytable_[];
 
   static const short int yycheck_[];
 
@@ -505,12 +505,12 @@ namespace yy {
     enum
     {
       yyeof_ = 0,
-      yylast_ = 1035,     ///< Last index in yytable_.
+      yylast_ = 1189,     ///< Last index in yytable_.
       yynnts_ = 57,  ///< Number of nonterminal symbols.
       yyfinal_ = 4, ///< Termination state number.
       yyterror_ = 1,
       yyerrcode_ = 256,
-      yyntokens_ = 88  ///< Number of tokens.
+      yyntokens_ = 89  ///< Number of tokens.
     };
 
 

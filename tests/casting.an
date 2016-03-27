@@ -1,0 +1,23 @@
+`
+        casting.an
+`
+
+let a = 32_u64
+let b = 33_i8 
+let c = 4 ~i32 by default
+
+i32 mul: u16 a b
+    return i32: a * b
+
+printf("%d\n",
+~All casts must be explicit
+    mul(u16: a, u16: b)
+)
+
+
+let msg = "Hello World!"
+
+let world = c8*:(u64:msg + 6)
+
+puts(msg)
+puts(world)
