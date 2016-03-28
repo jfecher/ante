@@ -242,11 +242,9 @@ Value* createCast(Compiler *c, Type *castTy, TypeTag castTyTag, TypedValue *valT
         // ptr -> ptr
         if(castTyTag == TT_Ptr){
             return c->builder.CreatePointerCast(valToCast->val, castTy);
-        
+
         // ptr -> int
-        cout << "is pointer ";
         }else if(isIntTypeTag(castTyTag)){
-            cout << "to int cast\n";
             return c->builder.CreatePtrToInt(valToCast->val, castTy);
         }
     }
