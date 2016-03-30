@@ -102,9 +102,11 @@ void yyerror(const char *msg);
 %nonassoc HIGH
 
 /*
-    Expect all shift/reduce conflicts should be manually dealt with.
+    Expect 6 shift/reduce warnings, all from type casting.  Using a glr-parser
+    resolves this ambiguity.
 */
-%expect 0
+%glr-parser
+%expect 6
 %start top_level_stmt_list
 %%
 
@@ -175,12 +177,12 @@ lit_type: I8       {$$ = mkTypeNode(TT_I8,  (char*)"");}
         | Bool     {$$ = mkTypeNode(TT_Bool, (char*)"");}
         | Void     {$$ = mkTypeNode(TT_Void, (char*)"");}
         | usertype %prec UserType {$$ = mkTypeNode(TT_Data, (char*)$1);}
-        | ident '\'' %prec LOW {$$ = mkTypeNode(TT_TypeVar, (char*)$1);}
+        | '\'' ident %prec LOW {$$ = mkTypeNode(TT_TypeVar, (char*)$1);}
         /* Low precedence on type vars to prefer idents as normal vars when possible */
         /* Also means type vars will occasionaly be parsed as function calls */
         ;
 
-type: type '*'                {$$ = mkTypeNode(TT_Ptr,  (char*)"", $1);}
+type: type '*'      %dprec 2  {$$ = mkTypeNode(TT_Ptr,  (char*)"", $1);}
     | type '[' ']'            {$$ = mkTypeNode(TT_Array,(char*)"", $1);}
     | type '(' type_expr ')'  {$$ = mkTypeNode(TT_Func, (char*)"", $1);}  /* f-ptr w/ params*/
     | type '(' ')'            {$$ = mkTypeNode(TT_Func, (char*)"", $1);}  /* f-ptr w/out params*/
@@ -382,10 +384,10 @@ expr_list_p: expr_list_p ',' expr  {$$ = setNext($1, $3);}
               instead of being parsed as a single-value tuple.*/
            ;
 
-unary_op: '*' val           {$$ = mkUnOpNode('*', $2);}
-        | '&' val           {$$ = mkUnOpNode('&', $2);}
-        | '-' val           {$$ = mkUnOpNode('-', $2);}
-        | type_expr ':' val {$$ = mkTypeCastNode($1, $3);}
+unary_op: '*' val       %dprec 1  {$$ = mkUnOpNode('*', $2);}
+        | '&' val                 {$$ = mkUnOpNode('&', $2);}
+        | '-' val                 {$$ = mkUnOpNode('-', $2);}
+        | type_expr val %dprec 2  {$$ = mkTypeCastNode($1, $2);}
         ;
 
 expr: binop {$$ = $1;}
