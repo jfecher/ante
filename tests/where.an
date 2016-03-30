@@ -8,16 +8,19 @@
 let str = hello \
     where hello = "Hello World!"
 
-~Where clauses are right associative and may only be used at the
-~end of an expression.
+~Where clauses are right associative and have very low priority
 let five = three + two where three = 3 where two = 2
 
 printf("%s\nthree = %d\n", str, five - two where two = 2)
 
 
-~Returns the positive root of a quadratic equation.
-~Assumes the equation has real roots.
-i32 quadratic: i32 a b c
-    return (-b + discrim)/(2*a) where discrim = sqrt(b*b - 4*a*c)
+~Returns the sum of an infinite series such as 1 + 1/2 + 1/4 + ...
+~Parameters:
+~   a: the first value of the series
+~   r: the common ratio
+~Prereqs: Assumes r is a valid ration between 0 and 1 exclusive.
+f64 sumOfSeries: f64 a r
+    return a / (1.0 - r)
 
-printf("The positive root of x^2 - 4x + 5 is %d\n", quadratic(1, -4, 5))
+
+printf("The sum of the series 1 + 1/2 + 1/4 + 1/8 + ... + 1/2^(n-1) is %d\n", sumOfSeries(1.0, 1.0/2.0))

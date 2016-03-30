@@ -313,7 +313,7 @@ TypedValue* UnOpNode::compile(Compiler *c){
     if(!rhs) return 0;
 
     switch(op){
-        case '*': //pointer dereference
+        case '@': //pointer dereference
             if(rhs->type != TT_Ptr){
                 return c->compErr("Cannot dereference non-pointer type " + llvmTypeToStr(rhs->getType()), this->row, this->col);
             }

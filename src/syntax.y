@@ -102,11 +102,11 @@ void yyerror(const char *msg);
 %nonassoc HIGH
 
 /*
-    Expect 6 shift/reduce warnings, all from type casting.  Using a glr-parser
+    Expect 4 shift/reduce warnings, all from type casting.  Using a glr-parser
     resolves this ambiguity.
 */
 %glr-parser
-%expect 6
+%expect 4
 %start top_level_stmt_list
 %%
 
@@ -236,10 +236,10 @@ let_binding: Let modifier_list type_expr ident '=' expr  {$$ = mkLetBindingNode(
 
 /* TODO: change arg1 to require node* instead of char* */
 var_assign: ref_val '=' expr {$$ = mkVarAssignNode($1, $3);}
-          | ref_val AddEq expr {$$ = mkVarAssignNode($1, mkBinOpNode('+', mkUnOpNode('*', $1), $3));}
-          | ref_val SubEq expr {$$ = mkVarAssignNode($1, mkBinOpNode('-', mkUnOpNode('*', $1), $3));}
-          | ref_val MulEq expr {$$ = mkVarAssignNode($1, mkBinOpNode('*', mkUnOpNode('*', $1), $3));}
-          | ref_val DivEq expr {$$ = mkVarAssignNode($1, mkBinOpNode('/', mkUnOpNode('*', $1), $3));}
+          | ref_val AddEq expr {$$ = mkVarAssignNode($1, mkBinOpNode('+', mkUnOpNode('@', $1), $3));}
+          | ref_val SubEq expr {$$ = mkVarAssignNode($1, mkBinOpNode('-', mkUnOpNode('@', $1), $3));}
+          | ref_val MulEq expr {$$ = mkVarAssignNode($1, mkBinOpNode('*', mkUnOpNode('@', $1), $3));}
+          | ref_val DivEq expr {$$ = mkVarAssignNode($1, mkBinOpNode('/', mkUnOpNode('@', $1), $3));}
           ;
 
 usertype_list: usertype_list ',' usertype {$$ = setNext($1, $3);}
@@ -344,7 +344,7 @@ var: ident  %prec Ident {$$ = mkVarNode((char*)$1);}
    ;
 
 ref_val: '&' ref_val         {$$ = mkUnOpNode('&', $2);}
-       | '*' ref_val         {$$ = mkUnOpNode('*', $2);}
+       | '@' ref_val         {$$ = mkUnOpNode('@', $2);}
        | ident '[' expr ']'  {$$ = mkBinOpNode('[', mkRefVarNode((char*)$1), $3);}
        | ident  %prec Ident  {$$ = mkRefVarNode((char*)$1);}
        ;
@@ -384,7 +384,7 @@ expr_list_p: expr_list_p ',' expr  {$$ = setNext($1, $3);}
               instead of being parsed as a single-value tuple.*/
            ;
 
-unary_op: '*' val       %dprec 1  {$$ = mkUnOpNode('*', $2);}
+unary_op: '@' val       %dprec 1  {$$ = mkUnOpNode('@', $2);}
         | '&' val                 {$$ = mkUnOpNode('&', $2);}
         | '-' val                 {$$ = mkUnOpNode('-', $2);}
         | type_expr val %dprec 2  {$$ = mkTypeCastNode($1, $2);}
