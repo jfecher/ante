@@ -278,11 +278,9 @@ TypedValue* BinOpNode::compile(Compiler *c){
     TypedValue *rhs = rval->compile(c);
     if(!lhs || !rhs) return 0;
 
-    //Check if both Values are integers, and if so, check if their bit width's match.
-    //If not, the smaller is extended to the larger's type.
-    if(isIntTypeTag(lhs->type) && isIntTypeTag(rhs->type)){
-        c->checkIntSize(&lhs, &rhs);
-    }
+    //Check if both Values are numeric, and if so, check if their types match.
+    //If not, do an implicit conversion (usually a widening) to match them.
+    c->handleImplicitConversion(&lhs, &rhs);
 
     switch(op){
         case '+': return c->compAdd(lhs, rhs, this);

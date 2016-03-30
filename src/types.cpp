@@ -21,22 +21,89 @@ char getBitWidthOfTypeTag(const TypeTag ty){
  *  it is sign extended.
  *  Assumes the llvm::Type of both values to be an instance of IntegerType.
  */
-void Compiler::checkIntSize(TypedValue **lhs, TypedValue **rhs){
+void Compiler::implicitlyCastIntToInt(TypedValue **lhs, TypedValue **rhs){
     int lbw = getBitWidthOfTypeTag((*lhs)->type);
     int rbw = getBitWidthOfTypeTag((*rhs)->type);
 
     if(lbw != rbw){
         //Cast the value with the smaller bitwidth to the type with the larger bitwidth
         if(lbw < rbw){
-            (*lhs)->val = builder.CreateIntCast((*lhs)->val, (*rhs)->val->getType(), !isUnsignedTypeTag((*lhs)->type));
+            (*lhs)->val = builder.CreateIntCast((*lhs)->val, (*rhs)->getType(), !isUnsignedTypeTag((*lhs)->type));
             (*lhs)->type = (*rhs)->type;
         }else{//lbw > rbw
-            (*rhs)->val = builder.CreateIntCast((*rhs)->val, (*lhs)->val->getType(), !isUnsignedTypeTag((*rhs)->type));
+            (*rhs)->val = builder.CreateIntCast((*rhs)->val, (*lhs)->getType(), !isUnsignedTypeTag((*rhs)->type));
             (*rhs)->type = (*lhs)->type;
         }
     }
 }
 
+inline bool isIntTypeTag(const TypeTag ty){
+    return ty==TT_I8||ty==TT_I16||ty==TT_I32||ty==TT_I64||
+           ty==TT_U8||ty==TT_U16||ty==TT_U32||ty==TT_U64||
+           ty==TT_Isz||ty==TT_Usz;
+}
+
+inline bool isFPTypeTag(const TypeTag tt){
+    return tt==TT_F16||tt==TT_F32||tt==TT_F64;
+}
+
+/*
+ *  Performs an implicit cast from a float to int.  Called in any operation
+ *  involving an integer, a float, and a binop.  No matter the ints size,
+ *  it is always casted to the (possibly smaller) float value.
+ */
+void Compiler::implicitlyCastIntToFlt(TypedValue **lhs, Type *ty){
+    if(isUnsignedTypeTag((*lhs)->type)){
+        (*lhs)->val = builder.CreateUIToFP((*lhs)->val, ty);
+    }else{
+        (*lhs)->val = builder.CreateSIToFP((*lhs)->val, ty);
+    }
+    (*lhs)->type = llvmTypeToTypeTag(ty);
+}
+
+
+/*
+ *  Performs an implicit cast from a float to float.
+ */
+void Compiler::implicitlyCastFltToFlt(TypedValue **lhs, TypedValue **rhs){
+    int lbw = getBitWidthOfTypeTag((*lhs)->type);
+    int rbw = getBitWidthOfTypeTag((*rhs)->type);
+
+    if(lbw != rbw){
+        if(lbw < rbw){
+            (*lhs)->val = builder.CreateFPExt((*lhs)->val, (*rhs)->getType());
+            (*lhs)->type = (*rhs)->type;
+        }else{//lbw > rbw
+            (*rhs)->val = builder.CreateFPExt((*rhs)->val, (*lhs)->getType());
+            (*rhs)->type = (*lhs)->type;
+        }
+    }
+}
+
+
+/*
+ *  Detects, and creates an implicit type conversion when necessary.
+ */
+void Compiler::handleImplicitConversion(TypedValue **lhs, TypedValue **rhs){
+    bool lIsInt = isIntTypeTag((*lhs)->type);
+    bool lIsFlt = isFPTypeTag((*lhs)->type);
+    if(!lIsInt && !lIsFlt) return;
+
+    bool rIsInt = isIntTypeTag((*rhs)->type);
+    bool rIsFlt = isFPTypeTag((*rhs)->type);
+    if(!rIsInt && !rIsFlt) return;
+
+    //both values are numeric, so forward them to the relevant casting method
+    if(lIsInt && rIsInt){
+        implicitlyCastIntToInt(lhs, rhs);  //implicit int -> int (widening)
+    }else if(lIsInt && rIsFlt){
+        implicitlyCastIntToFlt(lhs, (*rhs)->getType()); //implicit int -> flt
+    }else if(lIsFlt && rIsInt){
+        implicitlyCastIntToFlt(rhs, (*lhs)->getType()); //implicit int -> flt
+    }else if(lIsFlt && rIsFlt){
+        implicitlyCastFltToFlt(lhs, rhs); //implicit int -> flt
+    }
+}
 
 /*
  *  Translates an individual TypeTag to an llvm::Type.

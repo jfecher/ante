@@ -10,7 +10,7 @@ i32 mul: u16 a b
     return i32 a * b
 
 printf("%d\n",
-~All casts must be explicit
+~Casts must be explicit in function arguments
     mul(u16 a, u16 b)
 )
 
@@ -21,3 +21,7 @@ let world = c8* (u64 msg + 6)
 
 puts(msg)
 puts(world)
+
+~Casts can be implicit if and only if both operands are numeric
+let float = 5 * 2.5
+printf("float = %f\n", float)

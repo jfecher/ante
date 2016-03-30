@@ -111,7 +111,10 @@ namespace ante{
         DataDeclNode* lookupType(string tyname) const;
         void stoType(DataDeclNode *ty);
 
-        void checkIntSize(TypedValue **lhs, TypedValue **rhs);
+        void handleImplicitConversion(TypedValue **lhs, TypedValue **rhs);
+        void implicitlyCastIntToInt(TypedValue **lhs, TypedValue **rhs);
+        void implicitlyCastFltToFlt(TypedValue **lhs, TypedValue **rhs);
+        void implicitlyCastIntToFlt(TypedValue **tval, Type *ty);
 
 
         static size_t getTupleSize(Node *tup);
