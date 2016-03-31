@@ -229,7 +229,7 @@ let double = 25.0_f64
         
         -    negative
         not  logical not
-        *    pointer dereference
+        @    pointer dereference
         &    address of
 `
 
@@ -936,16 +936,16 @@ data MySmartPtr : Clone
         refCount = new 0u16
 
     void op("drop"):
-        if *refCount == 0
+        if @refCount == 0
             free(refCount)
             free(rawPtr)
         else
-            *refCount -= 1
+            @refCount -= 1
 
     ~Required by Clone trait
     MySmartPtr clone: self
         let clone = MySmartPtr(rawPtr, refCount)
-        self.*rawPtr += 1
+        self.@rawPtr += 1
         return clone
 
 
@@ -1263,7 +1263,7 @@ let tod1 = new Card(3, Suit.Diamonds)
 ~alternatively, data can be manually allocated.  The following is equivilent
 ~to the statement above
 let tod2 = malloc(sizeof(Card))
-*tod2 = Card(3, Suit.Diamonds)
+@tod2 = Card(3, Suit.Diamonds)
 
 ~Example of a raw pointer to the u8 value 5.
 let raw example = new 5u8
@@ -1296,8 +1296,8 @@ PtrExample* ex2 = new ex1
 PtrExample** ex3 = new ex2
 
 ex1.printMsg() ~No pointer, so no dereferencing is necessary
-ex2.printMsg() ~(*ex2).printMsg()
-ex3.printMsg() ~(**ex3).printMsg()
+ex2.printMsg() ~(@ex2).printMsg()
+ex3.printMsg() ~(@@ex3).printMsg()
 
 `
         Pointers and Arrays
