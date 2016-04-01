@@ -251,7 +251,7 @@ let thirteen = i16(7i8 + 6i8)
 i32 add: i32 x y
     return x + y
 
-~thirteen must be explicitely casted to an i32, no automatic widenin is performed.
+~thirteen must be explicitely casted to an i32, no automatic widening is performed.
 add(five, i32 thirteen)
 
 
@@ -359,8 +359,11 @@ i64 sum: i32... nums
 
 
 ~or alternatively a more functional approach using foldl can be taken.
-i64 sum: i32... nums
-    return foldl(nums, \x y => x+y, 0)
+let sum: nums =
+    foldl(nums, (+), 0)
+
+~or even
+let sum = reduce(_, (+))
 
 `
     Calling functions is accomplished by specifying the function's name, followed
