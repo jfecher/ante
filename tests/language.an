@@ -251,7 +251,7 @@ let thirteen = i16(7i8 + 6i8)
 i32 add: i32 x y
     return x + y
 
-~thirteen must be explicitely casted to an i32, no automatic widenin is performed.
+~thirteen must be explicitely casted to an i32, no automatic widening is performed.
 add(five, i32 thirteen)
 
 
@@ -360,10 +360,31 @@ i64 sum: i32... nums
 
 ~Functions can alternatively be declared with a let binding and
 ~some syntactic sugar for a closure
-let sum: nums = reduce(nums, (+))
+let sum2: nums =
+    reduce(nums, (+))
 
-~Without the syntax sugar, the above definition of sum would look like this
-let sum = fun nums -> reduce(nums, (+))
+
+~Without the syntactic sugar, the above definition of sum would look like this
+let sum3 = fun nums
+    reduce(nums, (+))
+
+
+`
+        Currying
+    In Ante, currying is always explicit, which leads to better error messages rather
+    Than an ubiquitous type mismatch error.  To curry a function, specify _ as the desired
+    argument to be curried.
+`
+
+~With some currying, we can reduce the definition of sum even further
+let sum4 =
+    reduce(_, (+))
+
+
+~A nice side effect of using _ for currying means any argument can be curried, rather
+~than just the last one.
+
+
 
 `
     Calling functions is accomplished by specifying the function's name, followed
@@ -502,6 +523,7 @@ Image* compileTimeLoadImg:
     u8[] imgData
     do f.readAll(imgData) ~Reads all of the image data into data at compile time
     return new Image(imgData)
+
 
 ~Conversely, to infect a non-pathogen function, the infect keyword may be used.
 ~Note that only the infected instance of the function is evaluated during runtime.
