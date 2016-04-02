@@ -358,9 +358,12 @@ i64 sum: i32... nums
     return ret
 
 
-~or alternatively a more functional approach using foldl can be taken.
-i64 sum: i32... nums
-    return foldl(nums, \x y => x+y, 0)
+~Functions can alternatively be declared with a let binding and
+~some syntactic sugar for a closure
+let sum: nums = reduce(nums, (+))
+
+~Without the syntax sugar, the above definition of sum would look like this
+let sum = fun nums -> reduce(nums, (+))
 
 `
     Calling functions is accomplished by specifying the function's name, followed
