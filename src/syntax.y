@@ -79,9 +79,10 @@ void yyerror(const char *msg);
 %left Ident
 
 %left ';'
+%left Let In
 %right Where
 %left ','
-    
+
 %left Or
 %left And     
 %left Eq  NotEq GrtrEq LesrEq '<' '>'
@@ -405,6 +406,7 @@ binop: binop '+' binop                          {$$ = mkBinOpNode('+', $1, $3);}
      | binop ';' maybe_newline binop            {$$ = mkBinOpNode(';', $1, $4);}
      | binop '[' expr ']'                       {$$ = mkBinOpNode('[', $1, $3);}
      | binop Where ident '=' binop %prec Where  {$$ = mkBinOpNode(Tok_Where, $1, mkLetBindingNode((char*)$3, 0, 0, $5));}
+     | Let ident '=' expr In binop  %prec Let   {$$ = mkBinOpNode(Tok_Let, mkLetBindingNode((char*)$2, 0, 0, $4), $6);}
      | binop Eq binop                           {$$ = mkBinOpNode(Tok_Eq, $1, $3);}
      | binop NotEq binop                        {$$ = mkBinOpNode(Tok_NotEq, $1, $3);}
      | binop GrtrEq binop                       {$$ = mkBinOpNode(Tok_GrtrEq, $1, $3);}
@@ -434,7 +436,8 @@ expr_block_p: expr_block_p '+' maybe_newline expr_block_p            {$$ = mkBin
             | expr_block_p '.' maybe_newline expr_block_p            {$$ = mkBinOpNode('.', $1, $4);}
             | expr_block_p ';' maybe_newline expr_block_p            {$$ = mkBinOpNode(';', $1, $4);}
             | expr_block_p '[' expr_block_p ']' maybe_newline        {$$ = mkBinOpNode('[', $1, $3);}
-            | expr_block_p Where ident '=' expr_block_p %prec Where  {$$ = mkBinOpNode(Tok_Where, $1, mkLetBindingNode((char*)$3, 0, 0, $5));}
+            | expr_block_p Where ident '=' maybe_newline expr_block_p %prec Where  {$$ = mkBinOpNode(Tok_Where, $1, mkLetBindingNode((char*)$3, 0, 0, $6));}
+            | Let ident '=' expr_block_p In maybe_newline expr_block_p  %prec Let  {$$ = mkBinOpNode(Tok_Let, mkLetBindingNode((char*)$2, 0, 0, $4), $7);}
             | expr_block_p Eq maybe_newline  expr_block_p            {$$ = mkBinOpNode(Tok_Eq, $1, $4);}
             | expr_block_p NotEq maybe_newline expr_block_p          {$$ = mkBinOpNode(Tok_NotEq, $1, $4);}
             | expr_block_p GrtrEq maybe_newline expr_block_p         {$$ = mkBinOpNode(Tok_GrtrEq, $1, $4);}

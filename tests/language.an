@@ -488,7 +488,7 @@ let stoplight = "go" if light == "green" else "stop"
 
 ~Expressions can also be more complex
 ~Here is an example of a function declaration with a let binding.
-let takeWhile = \f l
+let takeWhile: f l =
     [] if !f(l[0]) else
     l[0] ++ takeWhile(f, l[1..])
 
@@ -1600,25 +1600,6 @@ if isLetter('a')
     print("a is a letter")
 
 
-~possible new c_ffi syntax
-pathogen void c_ffi("putchar"): u8
-
-~lambda functions
-lambda: i32 x -> return x + 50
-|i32 x| -> return x + 50
-\x -> x + 50
-
-i32(i32, i32) addFn = |i32 x, i32 y| -> return x + y
-i32(i32, i32) addFn = |x, y| -> return x + y
-i32(i32, i32) addFn = \x y -> x + y
-
-~alternate c_ffi declaration
-pathogen void* c_ffi("malloc"): u32 size
-
-~syntax change for type casts to distinguish them from declarations
-f32 f = 7 as f32
-f32 f = (f32)7
-
 ~threading and concurrency support
 async void printMsg: str msg
     print(msg)
@@ -1628,20 +1609,9 @@ sync for i32 i in arr
 
 f32 f = await someFunction()
 
-~pssible ternary operator
-f32 f = x+2 if x > 0 else x-2
 
-f32 f = if x > 0
-    x + 2
-else
-    x - 2
-
-f32 f = x > 0 ? x + 2 : x - 2
-
-~Is keyword/operator for matching types or values
+~Is keyword/operator for matching types
 assert(3 is i32)
-assert(5 is 5)
-~Could be called as the comparison for match statements
 
 ~Allow/force names in data declarations to precede types
 data Vec
@@ -1651,72 +1621,8 @@ data Vec
 
 data List
     val: t
-    next: List<t> | enum -> end
+    next: List<t> | End
 
-~vs
-data List
-    t val
-    List<t> | enum -> end
-    next
-
-~or
-data List<type T>
-    T val
-    List<T> | enum -> end;; next
-
-~WIth type constructors:
-data List
-    List: t val, List<t> l
-    End: None
-
-~Possible alternate enum syntax
-data None = enum Empty
-
-~Possibly allow (force?) = for single-line declarations
-data MyEnum = enum
-    One = 1, 
-    Two = 2,
-    Three,
-    Four,
-    Five
-
-i32 add: i32 a b = return a + b
-
-i32 add: i32 a b =
-    return a + b
-
-~New enum syntax to simplify named enums in data
-data Numbers -> enum(One, Two, Three)
-
-data Numbers -> enum{One, Two, Three} num
-
-~Original for comparison:
-data Numbers -> enum -> One, Two, Three;; num
-
-
-~Possible syntax change for comments and multiline comments
-
-~ STYLE 1
-#single line comment or pre-proc statement
-
-#[
-    multi-line comment1
-]
-
-#[
-#   stylish multi-line comment
-#]
- 
-~ STYLE 2
-{ comment }
-
-{
-    multi-line comment
-}
-
-{
-|   stylish multi-line comment    
-}
 
 `
         Keywords
