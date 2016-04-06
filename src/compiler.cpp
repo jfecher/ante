@@ -413,28 +413,88 @@ TypedValue* VarAssignNode::compile(Compiler *c){
     return new TypedValue(c->builder.CreateStore(expr->compile(c)->val, v->val), TT_Void);
 }
 
+vector<Type*> getParamTypes(NamedValNode *nvn, size_t paramCount){
+    vector<Type*> paramTys;
+    paramTys.reserve(paramCount);
+
+    for(size_t i = 0; i < paramCount && nvn; i++){
+        TypeNode *paramTyNode = (TypeNode*)nvn->typeExpr.get();
+        paramTys.push_back(typeNodeToLlvmType(paramTyNode));
+        nvn = (NamedValNode*)nvn->next.get();
+    }
+    return paramTys;
+}
+
+
+TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector<Type*> &paramTys, Type *retTy = 0){
+    FunctionType *ft;
+    
+    if(retTy)
+        ft = FunctionType::get(retTy, paramTys, fdn->varargs);
+    else
+        ft = FunctionType::get(Type::getVoidTy(getGlobalContext()), paramTys, fdn->varargs);
+
+    Function *f = Function::Create(ft, Function::ExternalLinkage, fdn->name, module.get());
+    
+    //Create the entry point for the function
+    BasicBlock *bb = BasicBlock::Create(getGlobalContext(), "entry", f);
+    builder.SetInsertPoint(bb);
+
+    //tell the compiler to create a new scope on the stack.
+    enterNewScope();
+
+    //iterate through each parameter and add its value to the new scope.
+    NamedValNode *cParam = fdn->params.get();
+    for(auto &arg : f->args()){
+        TypeNode *paramTyNode = (TypeNode*)cParam->typeExpr.get();
+        stoVar(cParam->name, new Variable(cParam->name, new TypedValue(&arg, paramTyNode->type), scope));
+        if(!(cParam = (NamedValNode*)cParam->next.get())) break;
+    }
+
+    //actually compile the function, and hold onto the last value
+    TypedValue *v = fdn->child->compile(this);
+    //End of the function, discard the function's scope.
+    exitScope();
+    return v;
+}
+
 
 Function* Compiler::compFn(FuncDeclNode *fdn){
     //Get and translate the function's return type to an llvm::Type*
     TypeNode *retNode = (TypeNode*)fdn->type.get();
-    Type *retType = typeNodeToLlvmType(retNode);
 
     //Count the number of parameters
     NamedValNode *paramsBegin = fdn->params.get();
     size_t nParams = getTupleSize(paramsBegin);
 
-    //Get each and every parameter type and store them in paramTys
-    NamedValNode *cParam = paramsBegin;
-    vector<Type*> paramTys;
+    vector<Type*> paramTys = getParamTypes(paramsBegin, nParams);
 
-    //Tell the vector to reserve space equal to nParam parameters so it does not have to reallocate.
-    paramTys.reserve(nParams);
-    for(size_t i = 0; i < nParams && cParam; i++){
-        TypeNode *paramTyNode = (TypeNode*)cParam->typeExpr.get();
-        paramTys.push_back(typeNodeToLlvmType(paramTyNode));
-        cParam = (NamedValNode*)cParam->next.get();
+    //If there is no return type, this function was created through a let binding,
+    //and its type should be inferred.
+    if(!retNode){
+        TypedValue *retVal = compLetBindingFn(fdn, nParams, paramTys);
+        if(!retVal) return 0;
+
+        Function *f = module->getFunction(fdn->name);
+        f->removeFromParent();
+
+        retVal = compLetBindingFn(fdn, nParams, paramTys, retVal->getType());
+        Function *f2 = module->getFunction(fdn->name);
+
+        builder.SetInsertPoint(&module->getFunction(fdn->name)->back());
+
+        //llvm requires explicit returns, so generate a void return even if
+        //the user did not in their void function.
+        if(retVal->type != TT_Void){
+            builder.CreateRet(retVal->val);
+        }else{
+            builder.CreateRetVoid();
+        }
+        f->deleteBody();
+        return f2;
     }
 
+    Type *retType = typeNodeToLlvmType(retNode);
     //Get the corresponding function type for the above return type, parameter types,
     //with no varargs
     FunctionType *ft = FunctionType::get(retType, paramTys, fdn->varargs);
@@ -451,7 +511,7 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
         enterNewScope();
 
         //iterate through each parameter and add its value to the new scope.
-        cParam = paramsBegin;
+        NamedValNode *cParam = paramsBegin;
         for(auto &arg : f->args()){
             TypeNode *paramTyNode = (TypeNode*)cParam->typeExpr.get();
             stoVar(cParam->name, new Variable(cParam->name, new TypedValue(&arg, paramTyNode->type), scope));

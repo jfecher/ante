@@ -290,17 +290,19 @@ block: Indent stmt_list no_nl_stmt Unindent {setNext($2, $3); $$ = getRoot();}
      | Indent nl_stmt Unindent              {$$ = $2;}
      ;
 
-ident_list: ident_list ident  {$$ = setNext($1, mkVarNode((char*)$2));}
-          | ident             {$$ = setRoot(mkVarNode((char*)$1));}
-          ;
+raw_ident_list: raw_ident_list ident  {$$ = setNext($1, mkVarNode((char*)$2));}
+              | ident             {$$ = setRoot(mkVarNode((char*)$1));}
+              ;
+
+ident_list: raw_ident_list {$$ = getRoot();}
 
 /* 
  * In case of multiple parameters declared with a single type, eg i32 a b c
  * The next parameter should be set to the first in the list, (the one returned by getRoot()),
  * but the variable returned must be the last in the last, in this case $4
  */
-params: params ',' type_expr ident_list {$$ = setNext($1, mkNamedValNode(getRoot(), $3));}
-      | type_expr ident_list            {$$ = setRoot(mkNamedValNode(getRoot(), $1));}
+params: params ',' type_expr ident_list {$$ = setNext($1, mkNamedValNode($4, $3));}
+      | type_expr ident_list            {$$ = setRoot(mkNamedValNode($2, $1));}
       ;
 
 maybe_params: params {$$ = getRoot();}
@@ -311,6 +313,7 @@ fn_decl: modifier_list type_expr ident ':' maybe_params block                   
        | modifier_list type_expr ident '(' maybe_expr ')' ':' maybe_params block {$$ = mkFuncDeclNode((char*)$3, $1, $2, $8, $9);}
        | type_expr ident ':' maybe_params block                                  {$$ = mkFuncDeclNode((char*)$2, 0,  $1, $4, $5);}
        | type_expr ident '(' maybe_expr ')' ':' maybe_params block               {$$ = mkFuncDeclNode((char*)$2, 0,  $1, $7, $8);}
+       | Let ident ':' maybe_params '=' expr                                       {$$ = mkFuncDeclNode((char*)$2, 0,  0,  $4, $6);}
        ;
 
 fn_call: ident tuple {$$ = mkFuncCallNode((char*)$1, $2);}

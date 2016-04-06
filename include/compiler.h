@@ -102,6 +102,7 @@ namespace ante{
         TypedValue* compErr(string msg, unsigned int row, unsigned int col);
 
         Function* getFunction(string& name);
+        TypedValue* compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector<Type*> &paramTys, Type *retTy);
         Function* compFn(FuncDeclNode *fn);
         void registerFunction(FuncDeclNode *func);
 
