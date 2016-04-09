@@ -818,7 +818,7 @@ data Statistics
     pri f64 secretData
 
     pro const f32 pi = 3.14159265
-    
+
     pub i32 varCount
 
     ~Alternatively, you can also use modifiers before a block:

@@ -341,7 +341,7 @@ while_loop: While expr block {$$ = NULL;}
 do_while_loop: Do While expr block {$$ = NULL;}
              ;
 
-for_loop: For var_decl In expr block {$$ = NULL;}
+for_loop: For ident In expr block {$$ = NULL;}
         ;
 
 var: ident  %prec Ident {$$ = mkVarNode((char*)$1);}
