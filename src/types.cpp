@@ -165,9 +165,11 @@ TypeTag llvmTypeToTypeTag(Type *t){
  *  llvmTypeToTokType, information on signedness of integers is still lost, causing the
  *  unfortunate necessity for the use of a TypedValue for the storage of this information.
  */
-Type* typeNodeToLlvmType(TypeNode *tyNode){
+Type* Compiler::typeNodeToLlvmType(TypeNode *tyNode){
     vector<Type*> tys;
     TypeNode *tyn = tyNode->extTy.get();
+    DataType *userType;
+
     switch(tyNode->type){
         case TT_Ptr:
             return PointerType::get(typeNodeToLlvmType(tyNode->extTy.get()), 0);
@@ -180,8 +182,13 @@ Type* typeNodeToLlvmType(TypeNode *tyNode){
         case TT_Array: //TODO array type
             return ArrayType::get(typeNodeToLlvmType(tyn), 0/*num elements*/);
         case TT_Data:
+            userType = lookupType(tyNode->typeName);
+            if(!userType)
+                return (Type*)compErr("Use of undeclared type " + tyNode->typeName, tyNode->row, tyNode->col);
+            
+            return userType->type;
         case TT_Func: //TODO function pointer type
-            cout << "typeNodeToLlvmType: UserTypes and Function pointer types are currently unimplemented.  A void type will be returned instead.\n";
+            cout << "typeNodeToLlvmType: Function pointer types are currently unimplemented.  A void type will be returned instead.\n";
             return Type::getVoidTy(getGlobalContext());
         default:
             return typeTagToLlvmType(tyNode->type);

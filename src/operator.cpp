@@ -252,10 +252,11 @@ Value* createCast(Compiler *c, Type *castTy, TypeTag castTyTag, TypedValue *valT
 }
 
 TypedValue* TypeCastNode::compile(Compiler *c){
-    Type *castTy = typeNodeToLlvmType(typeExpr.get());
+    Type *castTy = c->typeNodeToLlvmType(typeExpr.get());
     auto *rtval = rval->compile(c);
     if(!castTy || !rtval) return 0;
 
+    if(llvmTypeEq(castTy, rtval->getType())) return rtval;
     auto* val = createCast(c, castTy, typeExpr->type, rtval);
     
     if(!val){

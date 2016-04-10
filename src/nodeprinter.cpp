@@ -68,7 +68,7 @@ void ModNode::print(){
 }
 
 void TypeNode::print(){
-    cout << llvmTypeToStr(typeNodeToLlvmType(this));
+    cout << typeTagToStr(type);
 }
 
 void TypeCastNode::print(){

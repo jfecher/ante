@@ -1,0 +1,11 @@
+
+data Str
+    c8* rawStr
+    u32 length
+
+Str getMsg:
+    return Str("Hello!", 6)
+
+let msg = getMsg()
+
+let s = Str("", 0)

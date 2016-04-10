@@ -37,6 +37,14 @@ struct TypedValue {
 };
 
 
+struct DataType {
+    vector<string> fields;
+    Type* type;
+
+    DataType(vector<string> &f, Type *ty) : fields(f), type(ty){}
+};
+
+
 struct Variable {
     string name;
     TypedValue *tval;
@@ -74,7 +82,7 @@ namespace ante{
         map<string, FuncDeclNode*> fnDecls;
 
         //Map of declared usertypes
-        map<string, DataDeclNode*> userTypes;
+        map<string, DataType*> userTypes;
 
         bool errFlag, compiled;
         string fileName;
@@ -109,9 +117,11 @@ namespace ante{
         unsigned int getScope() const;
         Variable* lookup(string var) const;
         void stoVar(string var, Variable *val);
-        DataDeclNode* lookupType(string tyname) const;
-        void stoType(DataDeclNode *ty);
+        DataType* lookupType(string tyname) const;
+        void stoType(DataType *ty, string &typeName);
 
+        Type* typeNodeToLlvmType(TypeNode *tyNode);
+        
         void handleImplicitConversion(TypedValue **lhs, TypedValue **rhs);
         void implicitlyCastIntToInt(TypedValue **lhs, TypedValue **rhs);
         void implicitlyCastFltToFlt(TypedValue **lhs, TypedValue **rhs);
@@ -126,7 +136,6 @@ namespace ante{
 }
 
 //conversions
-Type* typeNodeToLlvmType(TypeNode *tyNode);
 Type* typeTagToLlvmType(TypeTag tagTy, string typeName);
 TypeTag llvmTypeToTypeTag(Type *t);
 string llvmTypeToStr(Type *ty);

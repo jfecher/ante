@@ -340,7 +340,7 @@ TypedValue* LetBindingNode::compile(Compiler *c){
 
     TypeNode *tyNode;
     if((tyNode = (TypeNode*)typeExpr.get())){
-        if(!llvmTypeEq(val->val->getType(), typeNodeToLlvmType(tyNode))){
+        if(!llvmTypeEq(val->val->getType(), c->typeNodeToLlvmType(tyNode))){
             return c->compErr("Incompatible types in explicit binding.", row, col);
         }
     }
@@ -357,7 +357,7 @@ TypedValue* VarDeclNode::compile(Compiler *c){
     }
 
     TypeNode *tyNode = (TypeNode*)typeExpr.get();
-    Type *ty = typeNodeToLlvmType(tyNode);
+    Type *ty = c->typeNodeToLlvmType(tyNode);
     TypedValue *alloca = new TypedValue(c->builder.CreateAlloca(ty, 0, name.c_str()), tyNode->type);
 
     Variable *var = new Variable(name, alloca, c->getScope());
@@ -413,13 +413,13 @@ TypedValue* VarAssignNode::compile(Compiler *c){
     return new TypedValue(c->builder.CreateStore(expr->compile(c)->val, v->val), TT_Void);
 }
 
-vector<Type*> getParamTypes(NamedValNode *nvn, size_t paramCount){
+vector<Type*> getParamTypes(Compiler *c, NamedValNode *nvn, size_t paramCount){
     vector<Type*> paramTys;
     paramTys.reserve(paramCount);
 
     for(size_t i = 0; i < paramCount && nvn; i++){
         TypeNode *paramTyNode = (TypeNode*)nvn->typeExpr.get();
-        paramTys.push_back(typeNodeToLlvmType(paramTyNode));
+        paramTys.push_back(c->typeNodeToLlvmType(paramTyNode));
         nvn = (NamedValNode*)nvn->next.get();
     }
     return paramTys;
@@ -467,7 +467,7 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
     NamedValNode *paramsBegin = fdn->params.get();
     size_t nParams = getTupleSize(paramsBegin);
 
-    vector<Type*> paramTys = getParamTypes(paramsBegin, nParams);
+    vector<Type*> paramTys = getParamTypes(this, paramsBegin, nParams);
 
     //If there is no return type, this function was created through a let binding,
     //and its type should be inferred.
@@ -552,7 +552,24 @@ TypedValue* FuncDeclNode::compile(Compiler *c){
 
 
 TypedValue* DataDeclNode::compile(Compiler *c){
-    c->stoType(this);
+    vector<Type*> tys;
+    tys.reserve(fields);
+    
+    vector<string> fieldNames;
+    fieldNames.reserve(fields);
+
+    auto *nvn = (NamedValNode*)child.get();
+    while(nvn){
+        TypeNode *tyn = (TypeNode*)nvn->typeExpr.get();
+        tys.push_back(c->typeNodeToLlvmType(tyn));
+        fieldNames.push_back(nvn->name);
+        nvn = (NamedValNode*)nvn->next.get();
+    }
+
+    auto *structTy = StructType::create(tys);
+    auto *data = new DataType(fieldNames, structTy);
+
+    c->stoType(data, name);
     return nullptr;
 }
 
@@ -760,7 +777,7 @@ inline void Compiler::stoVar(string var, Variable *val){
     varTable.top()[var] = val;
 }
 
-DataDeclNode* Compiler::lookupType(string tyname) const{
+DataType* Compiler::lookupType(string tyname) const{
     try{
         return userTypes.at(tyname);
     }catch(out_of_range r){
@@ -768,8 +785,8 @@ DataDeclNode* Compiler::lookupType(string tyname) const{
     }
 }
 
-inline void Compiler::stoType(DataDeclNode *ty){
-    userTypes[ty->name] = ty;
+inline void Compiler::stoType(DataType *ty, string &typeName){
+    userTypes[typeName] = ty;
 }
 
 /*
