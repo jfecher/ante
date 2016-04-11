@@ -44,7 +44,7 @@ struct DataType {
     DataType(vector<string> &f, Type *ty) : fields(f), type(ty){}
 
     int getFieldIndex(string &field){
-        for(int i = 0; i < fields.length(); i++)
+        for(int i = 0; i < fields.size(); i++)
             if(field == fields[i])
                 return i;
         return -1;

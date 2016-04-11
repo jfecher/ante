@@ -566,6 +566,8 @@ TypedValue* DataDeclNode::compile(Compiler *c){
     }
 
     auto *structTy = StructType::get(getGlobalContext(), tys);
+    structTy->setName(name);
+
     auto *data = new DataType(fieldNames, structTy);
 
     c->stoType(data, name);

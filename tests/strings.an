@@ -11,3 +11,18 @@ c8* getClosingMsg:
     return "Goodbye World!\n"
 
 printf("%s%s", openingMsg, getClosingMsg())
+
+
+data Str
+    c8* cStr
+    u32 length
+
+void print: Str s
+    puts(s.cStr)
+
+
+let str = Str("test", 4)
+print(str)
+
+print(str where str = ("str", 3) )
+
