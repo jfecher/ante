@@ -6,6 +6,9 @@ data Str
 Str getMsg:
     return Str("Hello!", 6)
 
+void print: Str s
+    puts(s.rawStr)
+
 let msg = getMsg()
 
 let s = Str("", 0)

@@ -266,6 +266,21 @@ TypedValue* TypeCastNode::compile(Compiler *c){
     }
 }
 
+TypedValue* compMemberAccess(Compiler *c, TypedValue *l, VarNode *field, BinOpNode *binop){
+    if(!l) return 0;
+
+    if(l->type != TT_Data)
+        return c->compErr("Value of type " + llvmTypeToStr(l->getType()) + " does not have any members to access.", binop->row, binop->col);
+
+    auto dataTy = c->lookupType(l->getType()->getStructName());
+    auto index = dataTy->getFieldIndex(field->name);
+
+    if(index == -1)
+        return c->compErr("Field '" + field->name + "' is not present within the " + llvmTypeToStr(l->getType()) + " datatype.", field->row, field->col);
+
+    return new TypedValue(c->builder.CreateExtractValue(l->val, index), llvmTypeToTypeTag(l->getType()->getStructElementType(index)));
+}
+
 /*
  *  Compiles an operation along with its lhs and rhs
  */
@@ -273,6 +288,8 @@ TypedValue* BinOpNode::compile(Compiler *c){
     if(op == Tok_Where){
         rval->compile(c); //rval should always be a LetBindingNode
         return lval->compile(c);
+    }else if(op == '.'){
+        return compMemberAccess(c, lval->compile(c), (VarNode*)rval.get(), this);
     }
 
     TypedValue *lhs = lval->compile(c);
@@ -295,7 +312,6 @@ TypedValue* BinOpNode::compile(Compiler *c){
         case '<': return new TypedValue(c->builder.CreateICmpULT(lhs->val, rhs->val), lhs->type);
         case '>': return new TypedValue(c->builder.CreateICmpUGT(lhs->val, rhs->val), lhs->type);
         case '^': return new TypedValue(c->builder.CreateXor(lhs->val, rhs->val), lhs->type);
-        case '.': break;
         case Tok_Eq: return new TypedValue(c->builder.CreateICmpEQ(lhs->val, rhs->val), lhs->type);
         case Tok_NotEq: return new TypedValue(c->builder.CreateICmpNE(lhs->val, rhs->val), lhs->type);
         case Tok_LesrEq: return new TypedValue(c->builder.CreateICmpULE(lhs->val, rhs->val), lhs->type);

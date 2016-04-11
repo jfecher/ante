@@ -136,7 +136,6 @@ TypedValue* ModNode::compile(Compiler *c){
     return nullptr;
 }
 
-//TODO: possibly implement as replacement for tokTypeToLlvmType
 TypedValue* TypeNode::compile(Compiler *c){
     return nullptr;
 }
@@ -566,7 +565,7 @@ TypedValue* DataDeclNode::compile(Compiler *c){
         nvn = (NamedValNode*)nvn->next.get();
     }
 
-    auto *structTy = StructType::create(tys);
+    auto *structTy = StructType::get(getGlobalContext(), tys);
     auto *data = new DataType(fieldNames, structTy);
 
     c->stoType(data, name);

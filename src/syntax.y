@@ -405,7 +405,7 @@ binop: binop '+' binop                          {$$ = mkBinOpNode('+', $1, $3);}
      | binop '<' binop                          {$$ = mkBinOpNode('<', $1, $3);}
      | binop '>' binop                          {$$ = mkBinOpNode('>', $1, $3);}
      | binop '^' binop                          {$$ = mkBinOpNode('^', $1, $3);}
-     | binop '.' binop                          {$$ = mkBinOpNode('.', $1, $3);}
+     | binop '.' var                            {$$ = mkBinOpNode('.', $1, $3);}
      | binop ';' maybe_newline binop            {$$ = mkBinOpNode(';', $1, $4);}
      | binop '[' expr ']'                       {$$ = mkBinOpNode('[', $1, $3);}
      | binop Where ident '=' binop %prec Where  {$$ = mkBinOpNode(Tok_Where, $1, mkLetBindingNode((char*)$3, 0, 0, $5));}
