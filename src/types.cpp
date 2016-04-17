@@ -299,6 +299,9 @@ string llvmTypeToStr(Type *ty){
     if(isPrimitiveTypeTag(tt)){
         return typeTagToStr(tt);
     }else if(tt == TT_Tuple){
+        if(!ty->getStructName().empty())
+            return ty->getStructName();
+
         string ret = "(";
         const unsigned size = ty->getStructNumElements();
 
