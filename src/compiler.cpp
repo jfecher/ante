@@ -54,6 +54,7 @@ void printErrLine(const char* fileName, unsigned int row, unsigned int col){
     cout << "\033[;m"; //reset color
 }
 
+
 void ante::error(const char* msg, const char* fileName, unsigned int row, unsigned int col){
     cout << "\033[;3m" << fileName << "\033[;m: ";
     cout << "\033[;1m" << row << "," << col << "\033[;0m";
@@ -61,6 +62,7 @@ void ante::error(const char* msg, const char* fileName, unsigned int row, unsign
     printErrLine(fileName, row, col);
     cout << endl << endl;
 }
+
 
 /*
  *  Inform the user of an error and return nullptr.
@@ -89,6 +91,7 @@ size_t Compiler::getTupleSize(Node *tup){
     return size;
 }
 
+
 /*
  *  Compiles a statement list and returns its last statement.
  */
@@ -101,15 +104,18 @@ TypedValue* compileStmtList(Node *nList, Compiler *c){
     return ret;
 }
 
+
 bool isUnsignedTypeTag(const TypeTag tt){
     return tt==TT_U8||tt==TT_U16||tt==TT_U32||tt==TT_U64||tt==TT_Usz;
 }
+
 
 TypedValue* IntLitNode::compile(Compiler *c){
     return new TypedValue(ConstantInt::get(getGlobalContext(),
                             APInt(getBitWidthOfTypeTag(type), 
                             atol(val.c_str()), isUnsignedTypeTag(type))), type);
 }
+
 
 const fltSemantics& typeTagToFltSemantics(TypeTag tokTy){
     switch(tokTy){
@@ -127,6 +133,7 @@ TypedValue* FltLitNode::compile(Compiler *c){
     return new TypedValue(ConstantFP::get(getGlobalContext(), APFloat(typeTagToFltSemantics(type), val.c_str())), type);
 }
 
+
 TypedValue* BoolLitNode::compile(Compiler *c){
     return new TypedValue(ConstantInt::get(getGlobalContext(), APInt(1, (bool)val, true)), TT_Bool);
 }
@@ -136,14 +143,17 @@ TypedValue* ModNode::compile(Compiler *c){
     return nullptr;
 }
 
+
 TypedValue* TypeNode::compile(Compiler *c){
     return nullptr;
 }
+
 
 TypedValue* StrLitNode::compile(Compiler *c){
     return new TypedValue(c->builder.CreateGlobalStringPtr(val), TT_StrLit);
     //ConstantDataArray::getString(getGlobalContext(), val);
 }
+
 
 TypedValue* ArrayNode::compile(Compiler *c){
     vector<Constant*> arr;
@@ -190,6 +200,7 @@ TypedValue* TupleNode::compile(Compiler *c){
     return new TypedValue(tuple, TT_Tuple);
 }
 
+
 vector<Value*> TupleNode::unpack(Compiler *c){
     vector<Value*> ret;
     for(Node *n : exprs){
@@ -198,6 +209,7 @@ vector<Value*> TupleNode::unpack(Compiler *c){
     }
     return ret;
 }
+
 
 /*
  *  When a retnode is compiled within a block, care must be taken to not
@@ -216,6 +228,7 @@ TypedValue* RetNode::compile(Compiler *c){
 
     return new TypedValue(c->builder.CreateRet(ret->val), ret->type);
 }
+
 
 void compileIfNodeHelper(IfNode *ifN, BasicBlock *mergebb, Function *f, Compiler *c){
     BasicBlock *thenbb = BasicBlock::Create(getGlobalContext(), "then", f);
@@ -262,6 +275,7 @@ void compileIfNodeHelper(IfNode *ifN, BasicBlock *mergebb, Function *f, Compiler
     }
 }
 
+
 TypedValue* IfNode::compile(Compiler *c){
     //Create thenbb and forward declare the others but dont inser them
     //into function f just yet.
@@ -275,9 +289,11 @@ TypedValue* IfNode::compile(Compiler *c){
     return new TypedValue(f, TT_Void);
 }
 
+
 //Since parameters are managed in Compiler::compfn, this need not do anything
 TypedValue* NamedValNode::compile(Compiler *c)
 { return nullptr; }
+
 
 /*
  *  Loads a variable from the stack
@@ -290,6 +306,7 @@ TypedValue* VarNode::compile(Compiler *c){
     return dynamic_cast<AllocaInst*>(var->getVal())? new TypedValue(c->builder.CreateLoad(var->getVal(), name), var->getType()) : var->tval;
 }
 
+
 TypedValue* RefVarNode::compile(Compiler *c){
     Variable *var = c->lookup(name);
     
@@ -301,6 +318,7 @@ TypedValue* RefVarNode::compile(Compiler *c){
 
     return new TypedValue(var->getVal(), TT_Ptr);
 }
+
 
 TypedValue* FuncCallNode::compile(Compiler *c){
     Function *f = c->getFunction(name);
@@ -379,6 +397,7 @@ TypedValue* VarDeclNode::compile(Compiler *c){
     }
 }
 
+
 TypedValue* VarAssignNode::compile(Compiler *c){
     //If this is an insert value (where the lval resembles var[index] = ...)
     //then this must be instead compiled with compInsert, otherwise the [ operator
@@ -411,6 +430,7 @@ TypedValue* VarAssignNode::compile(Compiler *c){
     //now actually create the store
     return new TypedValue(c->builder.CreateStore(expr->compile(c)->val, v->val), TT_Void);
 }
+
 
 vector<Type*> getParamTypes(Compiler *c, NamedValNode *nvn, size_t paramCount){
     vector<Type*> paramTys;
@@ -541,6 +561,7 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
     return f;
 }
 
+
 /*
  *  Registers a function for later compilation
  */
@@ -574,6 +595,7 @@ TypedValue* DataDeclNode::compile(Compiler *c){
     return nullptr;
 }
 
+
 Function* Compiler::getFunction(string& name){
     Function *f = module->getFunction(name);
     if(!f){
@@ -596,6 +618,7 @@ NamedValNode* mkAnonNVNode(TypeTag type){
     return new NamedValNode("", new TypeNode(type, "", nullptr));
 }
 
+
 TypeNode* mkAnonTypeNode(TypeTag type){
     return new TypeNode(type, "", nullptr);
 }
@@ -604,6 +627,7 @@ TypeNode* mkAnonTypeNode(TypeTag type){
 unsigned int Compiler::getScope() const{
     return scope;
 }
+
 
 /*
  *  Declares functions to be included in every module without need of an import.
@@ -636,6 +660,7 @@ void Compiler::compilePrelude(){
     registerFunction(new FuncDeclNode("free", 0, mkAnonTypeNode(TT_Void), voidPtrNVN, nullptr));
 }
 
+
 /*
  *  Removes .an from a source file to get its module name
  */
@@ -648,6 +673,7 @@ string removeFileExt(string file){
     return file;
 }
 
+
 /*
  *  Adds a function to the list of declared, but not defined functions.  A declared function's
  *  FuncDeclNode can be added to be compiled only when it is later called.  Useful to prevent pollution
@@ -656,6 +682,7 @@ string removeFileExt(string file){
 inline void Compiler::registerFunction(FuncDeclNode *fn){
     fnDecls[fn->name] = fn;
 }
+
 
 void Compiler::compile(){
     compilePrelude();
@@ -704,6 +731,7 @@ void Compiler::compileNative(){
     }
 }
 
+
 /*
  *  Compiles a module into a .o file to be used for linking.
  *  Invokes llc.
@@ -727,11 +755,13 @@ int Compiler::compileIRtoObj(Module *m, string inFile, string outFile){
     return res;
 }
 
+
 int Compiler::linkObj(string inFiles, string outFile){
     //invoke gcc to link the module.
     string cmd = "gcc " + inFiles + " -o " + outFile;
     return system(cmd.c_str());
 }
+
 
 /*
  *  Dumps current contents of module to stdout
@@ -742,10 +772,12 @@ void Compiler::emitIR(){
     module->dump();
 }
 
+
 inline void Compiler::enterNewScope(){
     scope++;
     varTable.push(map<string, Variable*>());
 }
+
 
 inline void Compiler::exitScope(){
     //iterate through all known variables, check for pointers at the end of
@@ -766,6 +798,7 @@ inline void Compiler::exitScope(){
     varTable.pop();
 }
 
+
 Variable* Compiler::lookup(string var) const{
     try{
         return varTable.top().at(var);
@@ -774,9 +807,11 @@ Variable* Compiler::lookup(string var) const{
     }
 }
 
+
 inline void Compiler::stoVar(string var, Variable *val){
     varTable.top()[var] = val;
 }
+
 
 DataType* Compiler::lookupType(string tyname) const{
     try{
@@ -786,18 +821,10 @@ DataType* Compiler::lookupType(string tyname) const{
     }
 }
 
+
 inline void Compiler::stoType(DataType *ty, string &typeName){
     userTypes[typeName] = ty;
 }
-
-/*
- *  Allocates a value on the stack at the entry to a block
- */
-/*static AllocaInst* createBlockAlloca(Function *f, string var, Type *varType)
-{
-    IRBuilder<> builder{&f->getEntryBlock(), f->getEntryBlock().begin()};
-    return builder.CreateAlloca(varType, 0, var);
-}*/
 
 
 Compiler::Compiler(char *_fileName) : 

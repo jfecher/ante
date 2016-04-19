@@ -691,12 +691,12 @@ for u in 0 .. testArr.len()
 
 ~Ranges can also be used in combination with the in keyword to test if a given value
 ~is within the range
-if 3 in 1..10
+if 3 is in 1..10
     print("3 is a single-digit positive number")
 
 
 ~in can also test if a value is in an array or tuple
-if "two" in ["one", "two", "three"]
+if "two" is in ["one", "two", "three"]
     print("Found it!")
 
 `
@@ -1407,7 +1407,7 @@ let c32[] strlit = "test"
 assert(strlit == "test")
 
 
-assert("two" in ["one", "two", "three"])
+assert("two" is in ["one", "two", "three"])
 
 
 `
