@@ -41,6 +41,7 @@ map<int, const char*> tokDict = {
     {Tok_LesrEq, "LesrEq"},
     {Tok_Or, "Or"},
     {Tok_And, "And"},
+    {Tok_Range, "Range"},
 
     //literals
     {Tok_True, "True"},
@@ -466,6 +467,8 @@ int Lexer::next(){
         return next();
     }
 
+    if(cur == '.' && nxt == '.') RETURN_PAIR(Tok_Range);
+
     if(nxt == '='){
         switch(cur){
             case '=': RETURN_PAIR(Tok_Eq);
@@ -481,8 +484,7 @@ int Lexer::next(){
     
     if(cur == 0 || cur == EOF) return 0; //End of input
 
-    //If the character is nota, assume it is an operator and store
-    //the character in the string for identification
+    //If the character is nota, assume it is an operator and return it by value.
     char ret = cur;
     incPos();
     return ret;

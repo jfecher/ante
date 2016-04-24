@@ -41,7 +41,7 @@ void yyerror(const char *msg);
 
 /* operators */
 %token Eq NotEq AddEq SubEq MulEq DivEq GrtrEq LesrEq
-%token Or And
+%token Or And Range
 
 /* literals */
 %token True False
@@ -87,6 +87,7 @@ void yyerror(const char *msg);
 %left And     
 %left Eq  NotEq GrtrEq LesrEq '<' '>'
 
+%left Range
 %left '+' '-'
 %left '*' '/' '%'
 
@@ -416,6 +417,7 @@ binop: binop '+' binop                          {$$ = mkBinOpNode('+', $1, $3);}
      | binop LesrEq binop                       {$$ = mkBinOpNode(Tok_LesrEq, $1, $3);}
      | binop Or binop                           {$$ = mkBinOpNode(Tok_Or, $1, $3);}
      | binop And binop                          {$$ = mkBinOpNode(Tok_And, $1, $3);}
+     | binop Range binop                        {$$ = mkBinOpNode(Tok_Range, $1, $3);}
      | val                                      {$$ = $1;}
      ;
 

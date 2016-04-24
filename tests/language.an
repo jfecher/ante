@@ -358,6 +358,23 @@ i64 sum: i32... nums
     return ret
 
 
+`
+    Calling functions is accomplished by specifying the function's name, followed
+    by a tuple of its parameter(s).  Function's taking no parameter's need to
+    be called with an empty tuple ().
+`
+lnprint("Test #", add(3, 43), sum(3, 4, 5))
+~output: 
+~Test #, 46, 12
+
+~Zero-parameter functions need to be called with ()
+do_something()
+
+~Functions can also take named parameters
+add_floats(addend = 2.5, augend = 5.0)
+
+
+
 ~Functions can alternatively be declared with a let binding and
 ~some syntactic sugar for a closure
 let sum2: nums =
@@ -376,30 +393,32 @@ let sum3 = fun nums
     argument to be curried.
 `
 
+~As a simple example, an increment function can be created by currying a general add function
+
+~The general add function:
+let add: i32 a b = a + b
+
+~And the increment function created with currying:
+let increment = add(_, 1)
+
+~In this way, currying reduces the need to declare some parameters in certain situations.
+
+~The above definition is equivalent to all of the following functions:
+let increment: i32 x = add(x, 1)
+
+let increment = fun x -> add(x, 1)
+
+i32 increment: i32 x
+    return add(x, 1)
+
+
 ~With some currying, we can reduce the definition of sum even further
 let sum4 =
     reduce(_, (+))
 
 
 ~A nice side effect of using _ for currying means any argument can be curried, rather
-~than just the last one.
-
-
-
-`
-    Calling functions is accomplished by specifying the function's name, followed
-    by a tuple of its parameter(s).  Function's taking no parameter's need to
-    be called with an empty tuple ().
-`
-lnprint("Test #", add(3, 43), sum(3, 4, 5))
-~output: 
-~Test #, 46, 12
-
-~Zero-parameter functions need to be called with ()
-do_something()
-
-~Functions can also take named parameters
-add_floats(addend = 2.5, augend = 5.0)
+~than just the first one.
 
 `
         Control-Flow

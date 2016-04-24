@@ -59,6 +59,7 @@ enum TokenType{
     Tok_LesrEq,
     Tok_Or,
     Tok_And,
+    Tok_Range,
     //All other operators are returned by ASCII value
 
     //literals

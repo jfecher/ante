@@ -172,7 +172,7 @@ Type* Compiler::typeNodeToLlvmType(TypeNode *tyNode){
 
     switch(tyNode->type){
         case TT_Ptr:
-            return PointerType::get(typeNodeToLlvmType(tyNode->extTy.get()), 0);
+            return PointerType::get(typeNodeToLlvmType(tyn), 0);
         case TT_Tuple:
             while(tyn){
                 tys.push_back(typeNodeToLlvmType(tyn));
@@ -180,7 +180,7 @@ Type* Compiler::typeNodeToLlvmType(TypeNode *tyNode){
             }
             return StructType::get(getGlobalContext(), tys);
         case TT_Array: //TODO array type
-            return ArrayType::get(typeNodeToLlvmType(tyn), 0/*num elements*/);
+            return PointerType::get(typeNodeToLlvmType(tyn), 0); //ArrayType::get(typeNodeToLlvmType(tyn), 1/*num elements*/);
         case TT_Data:
             userType = lookupType(tyNode->typeName);
             if(!userType)
@@ -238,7 +238,7 @@ bool llvmTypeEq(Type *l, Type *r){
 
         return true;
     }else{ //primitive type
-        return ltt == rtt;
+        return true; /* true since ltt != rtt check above is false */
     }
 }
 
