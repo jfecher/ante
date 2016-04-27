@@ -1036,12 +1036,12 @@ data Point
         operators will throw a compile-time error.  Note that since operators are declared
         within classes, operators for primitive datatypes cannot be redefined.
     `
-    bool op('<'): self, Point rVal
+    bool op("<"): self, Point rVal
         if self.x < rVal.x
             return 1
         return self.y < rVal.y
 
-    bool op('>'): self, Point rVal
+    bool op(">"): self, Point rVal
         if x > rVal.x
             return 1
         return y > rVal.y
@@ -1058,7 +1058,7 @@ data Point
     ~An example of a generic comparison function
     ~Note that this function uses the > and < operators
     ~declared earlier in this class.
-    i8 infix('cmp'): self, Point rVal
+    i8 infix("cmp"): self, Point rVal
         if self < rVal -> return -1
         return self > rVal
 
@@ -1133,12 +1133,13 @@ immutRect:setHeight(5)
 
 ~Implementations can also be used for primitive types
 impl i32, i32
-    void swap: self
+    i32,i32 swap: self
         print("Swapped i32!")
         return self[1], self[0]
 
+
 impl e, e
-    void swap: self
+    e,e swap: self
         print("Swapped pair!")
         return self[1], self[0]
 
