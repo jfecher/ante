@@ -52,8 +52,8 @@ void yyerror(const char *msg);
 %token If Elif Else
 %token For While Do In
 %token Continue Break
-%token Import Let Match
-%token Data Enum
+%token Import Let Var
+%token Match Data Enum
 
 /* modifiers */
 %token Pub Pri Pro Raw
@@ -227,6 +227,8 @@ var_decl: modifier_list type_expr ident '=' expr  %prec Ident {$$ = mkVarDeclNod
         | modifier_list type_expr ident           %prec LOW   {$$ = mkVarDeclNode((char*)$3, $1, $2,  0);}
         | type_expr ident '=' expr                %prec Ident {$$ = mkVarDeclNode((char*)$2, 0,  $1, $4);}
         | type_expr ident                         %prec LOW   {$$ = mkVarDeclNode((char*)$2, 0,  $1,  0);}
+        | modifier_list Var ident '=' expr                    {$$ = mkVarDeclNode((char*)$2, $1,  0, $5);}
+        | Var ident '=' expr                                  {$$ = mkVarDeclNode((char*)$2, 0,   0, $4);}
         ;
 
 let_binding: Let modifier_list type_expr ident '=' expr  {$$ = mkLetBindingNode((char*)$3, $2, $3, $6);}

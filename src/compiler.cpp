@@ -367,6 +367,21 @@ TypedValue* LetBindingNode::compile(Compiler *c){
     return val;
 }
 
+TypedValue* compVarDeclWithInferredType(VarDeclNode *node, Compiler *c){
+    if(c->lookup(node->name)){ //check for redeclaration
+        return c->compErr("Variable " + node->name + " was redeclared.", node->row, node->col);
+    }
+    
+    TypedValue *val = node->expr->compile(c);
+    if(!val) return nullptr;
+
+    TypedValue *alloca = new TypedValue(c->builder.CreateAlloca(val->getType(), 0, node->name.c_str()), val->type);
+    val = new TypedValue(c->builder.CreateStore(val->val, alloca->val), val->type);
+    
+    bool nofree = val->type != TT_Ptr || dynamic_cast<Constant*>(val->val);
+    c->stoVar(node->name, new Variable(node->name, alloca, c->getScope(), nofree));
+    return val;
+}
 
 TypedValue* VarDeclNode::compile(Compiler *c){
     if(c->lookup(name)){ //check for redeclaration
@@ -374,6 +389,8 @@ TypedValue* VarDeclNode::compile(Compiler *c){
     }
 
     TypeNode *tyNode = (TypeNode*)typeExpr.get();
+    if(!tyNode) return compVarDeclWithInferredType(this, c);
+
     Type *ty = c->typeNodeToLlvmType(tyNode);
     TypedValue *alloca = new TypedValue(c->builder.CreateAlloca(ty, 0, name.c_str()), tyNode->type);
 

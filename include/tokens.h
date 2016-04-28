@@ -81,6 +81,7 @@ enum TokenType{
     Tok_Break,
     Tok_Import,
     Tok_Let,
+    Tok_Var,
     Tok_Match,
     Tok_Data,
     Tok_Enum,

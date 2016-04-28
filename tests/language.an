@@ -310,6 +310,26 @@ let immutTuple = 46, "Fourty-six", 46.0
 (i32, i32)* tupPtr = &(0, 0)
 
 `
+        Strings
+    Strings in Ante have a len field, and are null terminated.  This can often
+    simplify code by removing the need to check if the next character is out of bounds.
+`
+~A simple declaration of a string datatype
+data Str
+    c8* cStr
+    u32 len
+
+let Str: c8* str =
+    Str{cStr = cStr, len = cStr.len()}
+
+let msg = Str("Hello World!")
+
+let Str.len: self = 
+    self.len
+
+let mat = Mat<i32, 5, 4> ()
+
+`
         Functions
 
     Functions in ante each have their own scope in addition to the scopes they
@@ -484,13 +504,14 @@ for count in 0..100
 let zero = 0
 
 ~If statements can be used within expressions, albeit with a slightly altered syntax
-let stoplight = "go" if light == "green" else "stop"
+let stoplight = if light == "green" then "go" else "stop"
 
 ~Expressions can also be more complex
 ~Here is an example of a function declaration with a let binding.
 let takeWhile: f l =
-    [] if !f(l[0]) else
-    l[0] ++ takeWhile(f, l[1..])
+    if f(l[0]) then
+        l[0] ++ takeWhile(f, l[1..])
+    else []
 
 `
         Pathogen infections
