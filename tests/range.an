@@ -1,0 +1,26 @@
+
+data Range is Iterable
+    i32 start end step
+
+
+
+let op(".."): i32 s e = Range
+    start = s, 
+    end = e,
+    step = 1
+
+impl Range
+    ~Required by Iterable, returns true if loop should end
+    bool done:
+        return start > end
+
+    ~Required by Iterable, called at end of each iteration
+    void iter:
+        start += step
+
+    ~Required by Iterable, returns the current element
+    i32 unpack:
+        return start
+
+for i in 1 .. 10
+    printf("Loop iteration %d\n", i)
