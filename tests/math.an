@@ -13,18 +13,6 @@ i32 mul: i32 a b
     return a * b
 
 
-let div: i32 a b = a / b
-
-let rem: i32 a b =
-    a - b
-
-let printAdd: i32 a b =
-    let ans = a + b in
-    printf("printAdd: %d + %d = %d\n", a, b, ans);
-    ans
-
-printAdd(10, 15)
-
 let n1 = 3
 let n2 = 4
 

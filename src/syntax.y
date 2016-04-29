@@ -316,7 +316,7 @@ fn_decl: modifier_list type_expr ident ':' maybe_params block                   
        | modifier_list type_expr ident '(' maybe_expr ')' ':' maybe_params block {$$ = mkFuncDeclNode((char*)$3, $1, $2, $8, $9);}
        | type_expr ident ':' maybe_params block                                  {$$ = mkFuncDeclNode((char*)$2, 0,  $1, $4, $5);}
        | type_expr ident '(' maybe_expr ')' ':' maybe_params block               {$$ = mkFuncDeclNode((char*)$2, 0,  $1, $7, $8);}
-       | Let ident ':' maybe_params '=' expr                                       {$$ = mkFuncDeclNode((char*)$2, 0,  0,  $4, $6);}
+       | Let ident ':' maybe_params '=' expr                                     {$$ = mkFuncDeclNode((char*)$2, 0,  0,  $4, $6);}
        ;
 
 fn_call: ident tuple {$$ = mkFuncCallNode((char*)$1, $2);}
