@@ -37,16 +37,16 @@ import stuff()
     public visibility) followed by the keyword let and the variables name as
     an identifier.  It is important to note that identifiers must begin
     with a lowercase letter, but can contain any amount of capital and lowercase
-    letters or numbers afterwards.  The type is inferred from the expression in
-    most cases.  This form can be expressed as the following:
+    letters, underscores, or numbers afterwards.  The type is inferred from the 
+    expression in all cases.  This form can be expressed as the following:
 
     let [modifiers] [identifier] = [expr]
 
-    Alternatively, if the variable is mutable, the type must be specified.  Note
-    that since it is not immutable, its initial value does not have to be
-    specified.  All variables by default have their memory set to 0.  In
-    cases where speed is more of a concern, the modifier noinit may be
-    specified to avoid this.
+    Alternatively, if the variable is mutable, the type must be specified, or the
+    keyword var must be used in place of let.  Note that since it is not immutable,
+    its initial value does not have to be specified (Unless it was declared with var).
+    All variables by default have their memory set to 0.  In cases where speed is 
+    more of a concern, the modifier noinit may be specified to avoid this.
 
     [modifiers] [type] [identifier]
 
@@ -291,6 +291,11 @@ i32[2][2] box = [1, 2], [3, 4]
 arr += 2
 arr -= 3 ~Note: this will throw an exception if the array's size becomes < 0
 
+~The append operator can also add a single element to an array or list
+arr = arr ++ 5
+
+box ++= [5, 6]
+
 `
         Tuples
     In addition to arrays, there are also tuples.  Unlike arrays, tuples can
@@ -308,6 +313,40 @@ let immutTuple = 46, "Fourty-six", 46.0
 
 ~A pointer to a tuple
 (i32, i32)* tupPtr = &(0, 0)
+
+`
+        Strings
+    Strings in Ante have a len field, and are null terminated.  This can often
+    simplify code by removing the need to check if the next character is out of bounds.
+`
+~A simple declaration of a string datatype
+data Str
+    c8* cStr
+    u32 len
+
+let Str: c8* str =
+    Str{cStr = cStr, len = cStr.len()}
+
+let msg = Str "Hello World!"
+
+
+i32 longestStreak: Str s
+    var maxStreak = 0
+    var curStreak = 0
+
+    ~No need to check if i+1 >= s.len since Strings are both null terminated and have a length field
+    for i in 0 ..^ msg.len
+        if s[i] == s[i+1]
+            curStreak += 1
+        else
+            if curStreak > maxStreak
+                maxStreak = curStreak
+
+            curStreak = 0
+
+    return maxStreak
+
+print(longestStreak(msg))
 
 `
         Functions
@@ -420,6 +459,31 @@ let sum4 =
 ~A nice side effect of using _ for currying means any argument can be curried, rather
 ~than just the first one.
 
+
+`
+        Calling Conventions
+    Regular functions use the C calling convention, and as such are compiled without
+    any name mangling.  Methods are compiled under the name [datatype]_[method name].
+    Since datatypes are always capitalized, and identifiers cannot start with a capital,
+    there is no possibility for a name-collision.
+`
+
+~Compiled as "printStuff"
+void printStuff:
+    print("Stuff")
+
+
+impl Str
+    
+    ~Compiled as "Str_reverse"
+    Str reverse: Str s
+        var rev = ""
+
+        for i in s.len ^.. 0
+            rev += s[i]
+
+        return rev
+
 `
         Control-Flow
     Control-Flow can be altered with the keywords if, elif, else, match, while,
@@ -503,13 +567,14 @@ for count in 0..100
 let zero = 0
 
 ~If statements can be used within expressions, albeit with a slightly altered syntax
-let stoplight = "go" if light == "green" else "stop"
+let stoplight = if light == "green" then "go" else "stop"
 
 ~Expressions can also be more complex
 ~Here is an example of a function declaration with a let binding.
 let takeWhile: f l =
-    [] if !f(l[0]) else
-    l[0] ++ takeWhile(f, l[1..])
+    if f(l[0]) then
+        l[0] ++ takeWhile(f, l[1..])
+    else []
 
 `
         Pathogen infections
@@ -523,8 +588,8 @@ let takeWhile: f l =
     While less common, the pathogen modifier may be used for variables, classes, enums, etc.
 `
 pathogen void myPrint: c32* msg
-    i32 i = 4 + 2
-    system("echo '" ++ msg ++ "'") ~note: system is already a pathogen function
+    let i = 4 + 2
+    system("echo '" ++ msg ++ i ++ "'") ~note: system is already a pathogen function
 
 ~Because the following function uses the pathogen myPrint, it cannot be
 ~evaluated compile-time, so the system call to echo 'Hello World' will
@@ -693,30 +758,51 @@ i32,i32 p1 p2 p3 = (0, 0)
         Ranges and Type Conditions
     Ranges are denoted by start and end values surrounded by the .. operator.
     Ranges declared in this fashion have an inclusive startpoint and exclusive
-    endpoint.
+    endpoint.  To declare ranges with an exclusive startpoint, use ^.. likewise,
+    use ..^ to declare ranges with an exclusive endpoint, or ^..^ to declare an
+    exclusive range.
 `
 
-~Print 0 to 99 inclusive
-for i in 0 .. 100
+~Print 1 to 100 inclusive
+for i in 1 .. 100
     print(i)
 
 
 ~Iterate through indexes of an array:
 let testArr = [0, 3, 5, 6]
 
-for u in 0 .. testArr.len()
+~To make a range exclusive, add a ^ to the exclusive end (or ends)
+for u in 0 ..^ testArr.len()
     print(testArr[u])
 
+~To change the step value of ranges, have the first end of the range be an array
+~or tuple of two elements.  Their difference will be the step.
+for i in [10, 20] .. 100
+    print(i)
+
+for i in [0, -5] .. -100
+    print(i)
+
+
+~To convert ranges into an array or list, surround them with square brackets
+let digits = [0..9]
+
+~Create an array of odd numbers from 1 to 19
+var nums = [(1,3)..19]
 
 ~Ranges can also be used in combination with the in keyword to test if a given value
 ~is within the range
-if 3 is in 1..10
+if 3 is in 1..9
     print("3 is a single-digit positive number")
 
 
 ~in can also test if a value is in an array or tuple
 if "two" is in ["one", "two", "three"]
     print("Found it!")
+
+~The default action for tuples is to check fields with matching datatypes only
+if "test" is in (5, 6.5, "test")
+    print("Got it!")
 
 `
     Type Conditions are signified with the where keyword and provide a concise way to

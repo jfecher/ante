@@ -5,11 +5,11 @@
 `
 
 ~The _ before i64 is optional
-i64 long = 1234567_i64
+let long = 1234567_i64
 
-u8 byte = 255_u8
+let byte = 255_u8
 
-u16 uint16 = 1234_u16
+let uint16 = 1234_u16
 
 printf("Constants:\n")
 printf("I32 + I32:  %d + %d = %d\n", 16, 34, 16 + 34)

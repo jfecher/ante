@@ -120,26 +120,27 @@ namespace yy {
         Break = 302,
         Import = 303,
         Let = 304,
-        Match = 305,
-        Data = 306,
-        Enum = 307,
-        Pub = 308,
-        Pri = 309,
-        Pro = 310,
-        Raw = 311,
-        Const = 312,
-        Ext = 313,
-        Noinit = 314,
-        Pathogen = 315,
-        Where = 316,
-        Infect = 317,
-        Cleanse = 318,
-        Ct = 319,
-        Newline = 320,
-        Indent = 321,
-        Unindent = 322,
-        LOW = 323,
-        HIGH = 324
+        Var = 305,
+        Match = 306,
+        Data = 307,
+        Enum = 308,
+        Pub = 309,
+        Pri = 310,
+        Pro = 311,
+        Raw = 312,
+        Const = 313,
+        Ext = 314,
+        Noinit = 315,
+        Pathogen = 316,
+        Where = 317,
+        Infect = 318,
+        Cleanse = 319,
+        Ct = 320,
+        Newline = 321,
+        Indent = 322,
+        Unindent = 323,
+        LOW = 324,
+        HIGH = 325
       };
     };
 
@@ -295,7 +296,7 @@ namespace yy {
 
 
 } // yy
-#line 299 "include/yyparser.h" // glr.cc:329
+#line 300 "include/yyparser.h" // glr.cc:329
 
 
 #endif // !YY_YY_INCLUDE_YYPARSER_H_INCLUDED

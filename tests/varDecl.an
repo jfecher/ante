@@ -6,3 +6,9 @@ i32 i = 12
 printf("%d\n", i)
 i = 3
 printf("%d\n", i)
+
+
+var s = "Hello "
+printf("%s", s)
+s = "World!"
+puts(s)

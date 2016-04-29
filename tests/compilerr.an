@@ -11,8 +11,8 @@ a = 3
 
 i32 a = 3
 
-~c never declared
-i32 b = c
+~type mismatch
+i32 b = 4.3
 
 ~a redeclared
 i32 a = 5
