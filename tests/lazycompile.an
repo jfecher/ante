@@ -15,8 +15,8 @@ i32 mul: i32 a b
     return a * b
 
 
-i32 x = 8
-i32 y = 7
+let x = 8
+let y = 7
 printf("mul(%d, %d) = %d\n", x, y, mul(x, y))
 
 if x + y == mul(x, y)
