@@ -31,6 +31,6 @@ let n3 = printInt(5); 5
 ~The ; operator has even lower precedence than where clauses
 let n4 = printInt(a) where a = 1;
          printInt(b) where b = 2;
-         (printInt(c); c) where c = 3;;
+         (printInt(c); c) where c = 3
 
 let n5 = "test"

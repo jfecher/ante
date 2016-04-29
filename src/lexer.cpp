@@ -425,12 +425,18 @@ int Lexer::genStrLitTok(char delim){
 }
 
 int Lexer::next(){
+    if(shouldReturnNewline){
+        shouldReturnNewline = false;
+        return Tok_Newline;
+    }
+
     if(scopes->top() != cscope){
         if(cscope > scopes->top()){
             scopes->push(cscope);
             return Tok_Indent;
         }else{
             scopes->pop();
+            shouldReturnNewline = true;
             return Tok_Unindent;
         }
     }

@@ -115,10 +115,8 @@ void yyerror(const char *msg);
 top_level_stmt_list: maybe_newline stmt_list maybe_newline
                    ;
 
-stmt_list: stmt_list nl_stmt Newline {$$ = setNext($1, $2);}
-         | stmt_list no_nl_stmt      {$$ = setNext($1, $2);}
-         | nl_stmt Newline           {$$ = setRoot($1);}
-         | no_nl_stmt                {$$ = setRoot($1);}
+stmt_list: stmt_list stmt {$$ = setNext($1, $2);}
+         | stmt           {$$ = setRoot($1);}
          ;
 
 maybe_newline: Newline  %prec Newline
@@ -129,22 +127,34 @@ maybe_newline: Newline  %prec Newline
  * Statements that will never end with a newline token.
  * Usually statements that require blocks, such as function declarations.
  */
-no_nl_stmt: fn_decl
-          | data_decl
-          | enum_decl
-          | while_loop
+stmt: fn_decl       Newline
+    | data_decl     Newline
+    | enum_decl     Newline
+    | while_loop    Newline
+    | do_while_loop Newline
+    | for_loop      Newline
+    | if_stmt /* NO Newline */
+    | var_decl      Newline
+    | var_assign    Newline
+    | fn_call       Newline
+    | ret_stmt      Newline
+    | let_binding   Newline
+    ;
+
+stmt_no_nl: fn_decl      
+          | data_decl    
+          | enum_decl    
+          | while_loop   
           | do_while_loop
-          | for_loop
+          | for_loop     
           | if_stmt
+          | var_decl     
+          | var_assign   
+          | fn_call      
+          | ret_stmt     
+          | let_binding  
           ;
 
-/* Statements that can possibly end in an newline */
-nl_stmt: var_decl
-       | var_assign
-       | fn_call
-       | ret_stmt
-       | let_binding
-       ;
 
 ident: Ident {$$ = (Node*)lextxt;}
      ;
@@ -287,10 +297,8 @@ enum_decl: modifier_list Enum usertype enum_block  {$$ = NULL;}
          | Enum enum_block                         {$$ = NULL;}
          ;
 
-block: Indent stmt_list no_nl_stmt Unindent {setNext($2, $3); $$ = getRoot();}
-     | Indent stmt_list nl_stmt Unindent    {setNext($2, $3); $$ = getRoot();}
-     | Indent no_nl_stmt Unindent           {$$ = $2;}
-     | Indent nl_stmt Unindent              {$$ = $2;}
+block: Indent stmt_list stmt_no_nl Unindent {setNext($2, $3); $$ = getRoot();}
+     | Indent stmt_no_nl Unindent {$$ = $2;}
      ;
 
 raw_ident_list: raw_ident_list ident  {$$ = setNext($1, mkVarNode((char*)$2));}
@@ -325,17 +333,22 @@ fn_call: ident tuple {$$ = mkFuncCallNode((char*)$1, $2);}
 ret_stmt: Return expr {$$ = mkRetNode($2);}
         ;
 
-elif_list: elif_list Elif expr block {$$ = setElse((IfNode*)$1, (IfNode*)mkIfNode($3, $4));}
-         | Elif expr block {$$ = setRoot(mkIfNode($2, $3));}
+/*
+ * Due to parsing ambiguities with elif_lists, elif_list, maybe_elif_list, and if_stmt
+ * must all manually deal with Newlines seperating the statements, and must have a following
+ * Newline under their declaration under 'stmt' like the other statements do
+ */
+elif_list: elif_list Newline Elif expr block {$$ = setElse((IfNode*)$1, (IfNode*)mkIfNode($3, $4));}
+         | Elif expr block                   {$$ = setRoot(mkIfNode($2, $3));}
          ;
 
-maybe_elif_list: elif_list Else block {$$ = setElse((IfNode*)$1, (IfNode*)mkIfNode(NULL, $3));}
-               | elif_list {$$ = $1;}
-               | Else block {$$ = setRoot(mkIfNode(NULL, $2));}
-               | %empty {$$ = setRoot(NULL);}
+maybe_elif_list: elif_list Newline Else block Newline {$$ = setElse((IfNode*)$1, (IfNode*)mkIfNode(NULL, $3));}
+               | elif_list Newline                    {$$ = $1;}
+               | Else block Newline                   {$$ = setRoot(mkIfNode(NULL, $2));}
+               | %empty                               {$$ = setRoot(NULL);}
                ;
 
-if_stmt: If expr block maybe_elif_list {$$ = mkIfNode($2, $3, (IfNode*)getRoot());}
+if_stmt: If expr block Newline maybe_elif_list {$$ = mkIfNode($2, $3, (IfNode*)getRoot());}
        ;
 
 while_loop: While expr block {$$ = NULL;}
@@ -356,40 +369,39 @@ ref_val: '&' ref_val         {$$ = mkUnOpNode('&', $2);}
        | ident  %prec Ident  {$$ = mkRefVarNode((char*)$1);}
        ;
 
-val: fn_call                 {$$ = $1;}
-   | '(' expr ')'            {$$ = $2;}
-   | tuple                   {$$ = $1;}
-   | array                   {$$ = $1;}
-   | Indent nl_expr Unindent {$$ = $2;}
-   | unary_op                {$$ = $1;}
-   | var                     {$$ = $1;}
-   | intlit                  {$$ = $1;}
-   | fltlit                  {$$ = $1;}
-   | strlit                  {$$ = $1;}
-   | True                    {$$ = mkBoolLitNode(1);}
-   | False                   {$$ = mkBoolLitNode(0);}
+val: fn_call                               {$$ = $1;}
+   | '(' expr ')'       %prec HIGH         {$$ = $2;}
+   | tuple                                 {$$ = $1;}
+   | array                                 {$$ = $1;}
+   | unary_op                              {$$ = $1;}
+   | var                                   {$$ = $1;}
+   | intlit                                {$$ = $1;}
+   | fltlit                                {$$ = $1;}
+   | strlit                                {$$ = $1;}
+   | True                                  {$$ = mkBoolLitNode(1);}
+   | False                                 {$$ = mkBoolLitNode(0);}
    ;
 
-tuple: '(' expr_list ')'  {$$ = mkTupleNode($2);}
-     | '(' ')'            {$$ = mkTupleNode(0);}
+tuple: '(' nl_expr ')'  %prec LOW  {$$ = mkTupleNode($2);}
+     | '(' ')'                     {$$ = mkTupleNode(0);}
      ;
 
-array: '[' expr_list ']' {$$ = mkArrayNode($2);}
+array: '[' nl_expr ']' {$$ = mkArrayNode($2);}
      | '[' ']'           {$$ = mkArrayNode(0);}
      ;
 
 maybe_expr: expr    {$$ = $1;}
           | %empty  {$$ = NULL;}
           ;
-
+/*
 expr_list: expr_list_p {$$ = getRoot();}
          ;
 
 expr_list_p: expr_list_p ',' expr  {$$ = setNext($1, $3);}
            | expr       %prec LOW  {$$ = setRoot($1);} 
            /* Low precedence here to favor parenthesis as grouping when possible 
-              instead of being parsed as a single-value tuple.*/
-           ;
+              instead of being parsed as a single-value tuple.
+*/
 
 unary_op: '@' val       %dprec 1  {$$ = mkUnOpNode('@', $2);}
         | '&' val                 {$$ = mkUnOpNode('&', $2);}
@@ -421,6 +433,7 @@ binop: binop '+' binop                          {$$ = mkBinOpNode('+', $1, $3);}
      | binop And binop                          {$$ = mkBinOpNode(Tok_And, $1, $3);}
      | binop Range binop                        {$$ = mkBinOpNode(Tok_Range, $1, $3);}
      | val                                      {$$ = $1;}
+     | Indent nl_expr Unindent                  {$$ = $2;}
      ;
 
 
@@ -429,7 +442,7 @@ nl_expr: nl_expr_list {$$ = getRoot();}
        ;
 
 nl_expr_list: nl_expr_list ',' maybe_newline expr_block_p {$$ = setNext($1, $4);}
-            | expr_block_p                                {$$ = setRoot($1);}
+            | expr_block_p         %prec LOW              {$$ = setRoot($1);}
             ;
 
 expr_block_p: expr_block_p '+' maybe_newline expr_block_p            {$$ = mkBinOpNode('+', $1, $4);}
@@ -452,6 +465,7 @@ expr_block_p: expr_block_p '+' maybe_newline expr_block_p            {$$ = mkBin
             | expr_block_p Or maybe_newline expr_block_p             {$$ = mkBinOpNode(Tok_Or, $1, $4);}
             | expr_block_p And maybe_newline expr_block_p            {$$ = mkBinOpNode(Tok_And, $1, $4);}
             | val                                                    {$$ = $1;}
+            | Indent nl_expr Unindent Newline                        {$$ = $2;}
             ;
 %%
 

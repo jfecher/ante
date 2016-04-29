@@ -58,6 +58,8 @@ namespace ante{
         */
         unsigned int cscope;
         
+        bool shouldReturnNewline;
+        
         void lexErr(const char *msg);
         
         void incPos(void);
