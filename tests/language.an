@@ -775,6 +775,9 @@ let testArr = [0, 3, 5, 6]
 for u in 0 ..^ testArr.len()
     print(testArr[u])
 
+
+
+
 ~To change the step value of ranges, have the first end of the range be an array
 ~or tuple of two elements.  Their difference will be the step.
 for i in [10, 20] .. 100
@@ -783,12 +786,25 @@ for i in [10, 20] .. 100
 for i in [0, -5] .. -100
     print(i)
 
+~Alternatively, the step function can be called to return a new range
+~With the specified step
+var evens = (0..10).step(2)
+
+~or the step can be changed in place with :
+evens = evens:step(4)
+
+for e in evens -> print(e)
+
+
+
 
 ~To convert ranges into an array or list, surround them with square brackets
 let digits = [0..9]
 
 ~Create an array of odd numbers from 1 to 19
-var nums = [(1,3)..19]
+let odds = [(1,3)..19]
+
+
 
 ~Ranges can also be used in combination with the in keyword to test if a given value
 ~is within the range
