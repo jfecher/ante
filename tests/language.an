@@ -37,16 +37,16 @@ import stuff()
     public visibility) followed by the keyword let and the variables name as
     an identifier.  It is important to note that identifiers must begin
     with a lowercase letter, but can contain any amount of capital and lowercase
-    letters or numbers afterwards.  The type is inferred from the expression in
-    most cases.  This form can be expressed as the following:
+    letters, underscores, or numbers afterwards.  The type is inferred from the 
+    expression in all cases.  This form can be expressed as the following:
 
     let [modifiers] [identifier] = [expr]
 
-    Alternatively, if the variable is mutable, the type must be specified.  Note
-    that since it is not immutable, its initial value does not have to be
-    specified.  All variables by default have their memory set to 0.  In
-    cases where speed is more of a concern, the modifier noinit may be
-    specified to avoid this.
+    Alternatively, if the variable is mutable, the type must be specified, or the
+    keyword var must be used in place of let.  Note that since it is not immutable,
+    its initial value does not have to be specified (Unless it was declared with var).
+    All variables by default have their memory set to 0.  In cases where speed is 
+    more of a concern, the modifier noinit may be specified to avoid this.
 
     [modifiers] [type] [identifier]
 
@@ -291,6 +291,11 @@ i32[2][2] box = [1, 2], [3, 4]
 arr += 2
 arr -= 3 ~Note: this will throw an exception if the array's size becomes < 0
 
+~The append operator can also add a single element to an array or list
+arr = arr ++ 5
+
+box ++= [5, 6]
+
 `
         Tuples
     In addition to arrays, there are also tuples.  Unlike arrays, tuples can
@@ -322,12 +327,26 @@ data Str
 let Str: c8* str =
     Str{cStr = cStr, len = cStr.len()}
 
-let msg = Str("Hello World!")
+let msg = Str "Hello World!"
 
-let Str.len: self = 
-    self.len
 
-let mat = Mat<i32, 5, 4> ()
+i32 longestStreak: Str s
+    var maxStreak = 0
+    var curStreak = 0
+
+    ~No need to check if i+1 >= s.len since Strings are both null terminated and have a length field
+    for i in 0 ..^ msg.len
+        if s[i] == s[i+1]
+            curStreak += 1
+        else
+            if curStreak > maxStreak
+                maxStreak = curStreak
+
+            curStreak = 0
+
+    return maxStreak
+
+print(longestStreak(msg))
 
 `
         Functions
@@ -440,6 +459,31 @@ let sum4 =
 ~A nice side effect of using _ for currying means any argument can be curried, rather
 ~than just the first one.
 
+
+`
+        Calling Conventions
+    Regular functions use the C calling convention, and as such are compiled without
+    any name mangling.  Methods are compiled under the name [datatype]_[method name].
+    Since datatypes are always capitalized, and identifiers cannot start with a capital,
+    there is no possibility for a name-collision.
+`
+
+~Compiled as "printStuff"
+void printStuff:
+    print("Stuff")
+
+
+impl Str
+    
+    ~Compiled as "Str_reverse"
+    Str reverse: Str s
+        var rev = ""
+
+        for i in s.len ^.. 0
+            rev += s[i]
+
+        return rev
+
 `
         Control-Flow
     Control-Flow can be altered with the keywords if, elif, else, match, while,
@@ -544,8 +588,8 @@ let takeWhile: f l =
     While less common, the pathogen modifier may be used for variables, classes, enums, etc.
 `
 pathogen void myPrint: c32* msg
-    i32 i = 4 + 2
-    system("echo '" ++ msg ++ "'") ~note: system is already a pathogen function
+    let i = 4 + 2
+    system("echo '" ++ msg ++ i ++ "'") ~note: system is already a pathogen function
 
 ~Because the following function uses the pathogen myPrint, it cannot be
 ~evaluated compile-time, so the system call to echo 'Hello World' will

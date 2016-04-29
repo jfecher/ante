@@ -18,8 +18,7 @@ printf("1 + 2 + 3 = %d\n",
 
 
 ~Multi-line expr block
-printf(
-    "0.5 * 0.25 = %.3f\n3 / 2 = %d\n25^2 = %d\n",
+printf("0.5 * 0.25 = %.3f\n3 / 2 = %d\n25^2 = %d\n",
     0.5 * 0.25,
     3 / 2,
     25 * 25
