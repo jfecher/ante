@@ -758,24 +758,27 @@ i32,i32 p1 p2 p3 = (0, 0)
         Ranges and Type Conditions
     Ranges are denoted by start and end values surrounded by the .. operator.
     Ranges declared in this fashion have an inclusive startpoint and exclusive
-    endpoint.
+    endpoint.  To declare ranges with an exclusive startpoint, use ^.. likewise,
+    use ..^ to declare ranges with an exclusive endpoint, or ^..^ to declare an
+    exclusive range.
 `
 
-~Print 0 to 99 inclusive
-for i in 0 .. 100
+~Print 1 to 100 inclusive
+for i in 1 .. 100
     print(i)
 
 
 ~Iterate through indexes of an array:
 let testArr = [0, 3, 5, 6]
 
-for u in 0 .. testArr.len()
+~To make a range exclusive, add a ^ to the exclusive end (or ends)
+for u in 0 ..^ testArr.len()
     print(testArr[u])
 
 
 ~Ranges can also be used in combination with the in keyword to test if a given value
 ~is within the range
-if 3 is in 1..10
+if 3 is in 1..9
     print("3 is a single-digit positive number")
 
 

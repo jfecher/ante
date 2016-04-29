@@ -803,11 +803,14 @@ inline void Compiler::exitScope(){
         if(it->second->isFreeable() && it->second->scope == scope){
             string freeFnName = "free";
             Function* freeFn = getFunction(freeFnName);
-            if(auto *inst = dynamic_cast<AllocaInst*>(it->second->getVal())){
-                builder.CreateCall(freeFn, builder.CreateLoad(inst));
-            }else{
-                builder.CreateCall(freeFn, it->second->getVal());
-            }
+            
+            auto *inst = dynamic_cast<AllocaInst*>(it->second->getVal());
+            auto *val = inst? builder.CreateLoad(inst) : it->second->getVal();
+
+            //cast the freed value to i32* as that is what free accepts
+            Type *vPtr = freeFn->getFunctionType()->getFunctionParamType(0);
+            val = builder.CreatePointerCast(val, vPtr);
+            builder.CreateCall(freeFn, val);
         }
     }
 
