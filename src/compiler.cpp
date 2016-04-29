@@ -414,7 +414,7 @@ TypedValue* VarAssignNode::compile(Compiler *c){
     //Check for errors before continuing
     if(!v || !assignExpr) return 0;
 
-    //lvalue must compile to a pointer for storage, usually an allca value
+    //lvalue must compile to a pointer for storage, usually an alloca value
     if(llvmTypeToTypeTag(v->getType()) != TT_Ptr){
         return c->compErr("Attempted assign without a memory address, with type "
                 + llvmTypeToStr(v->getType()), ref_expr->row, ref_expr->col);
