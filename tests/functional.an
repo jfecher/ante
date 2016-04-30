@@ -62,8 +62,8 @@ assert(sum_of_list(l) == 10)
 ~Alternate, more imperative approach to sum_of_list
 ~NOTE: this still requires next() to be implemented.
 'fn sum_of_list: List<'t> l
-    't acc = l.val
+    var acc = l.val
 
-    for 't x in l.next()
+    for x in l.next()
         acc += x
     return acc

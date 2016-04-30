@@ -1,0 +1,23 @@
+
+
+fun hello
+    puts("Hello World!")
+
+
+fun printMsg: bool greeting
+    if greeting
+        hello()
+    else
+        puts("Goodbye World!")
+
+
+fun three => i32
+    return 3
+
+
+fun mulThree: i32 x => i32
+    return x * three()
+
+
+mulThree(4)
+printMsg(true)

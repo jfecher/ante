@@ -60,6 +60,7 @@ enum TokenType{
     Tok_Or,
     Tok_And,
     Tok_Range,
+    Tok_Returns,
     //All other operators are returned by ASCII value
 
     //literals
@@ -86,6 +87,7 @@ enum TokenType{
     Tok_Match,
     Tok_Data,
     Tok_Enum,
+    Tok_Fun,
 
     //modifiers
     Tok_Pub,

@@ -42,6 +42,7 @@ map<int, const char*> tokDict = {
     {Tok_Or, "Or"},
     {Tok_And, "And"},
     {Tok_Range, "Range"},
+    {Tok_Returns, "Returns"},
 
     //literals
     {Tok_True, "True"},
@@ -67,6 +68,7 @@ map<int, const char*> tokDict = {
     {Tok_Match, "Match"},
     {Tok_Data, "Data"},
     {Tok_Enum, "Enum"},
+    {Tok_Fun, "Fun"},
 
     //modifiers
     {Tok_Pub, "Pub"},
@@ -132,6 +134,7 @@ map<string, int> keywords = {
     {"match",    Tok_Match},
     {"data",     Tok_Data},
     {"enum",     Tok_Enum},
+    {"fun",      Tok_Fun},
     
     {"pub",      Tok_Pub},
     {"pri",      Tok_Pri},
@@ -476,6 +479,7 @@ int Lexer::next(){
     }
 
     if(cur == '.' && nxt == '.') RETURN_PAIR(Tok_Range);
+    if(cur == '=' && nxt == '>') RETURN_PAIR(Tok_Returns);
 
     if(nxt == '='){
         switch(cur){

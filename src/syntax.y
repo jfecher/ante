@@ -41,7 +41,7 @@ void yyerror(const char *msg);
 
 /* operators */
 %token Eq NotEq AddEq SubEq MulEq DivEq GrtrEq LesrEq
-%token Or And Range
+%token Or And Range Returns
 
 /* literals */
 %token True False
@@ -53,7 +53,7 @@ void yyerror(const char *msg);
 %token For While Do In
 %token Continue Break
 %token Import Let Var
-%token Match Data Enum
+%token Match Data Enum Fun
 
 /* modifiers */
 %token Pub Pri Pro Raw
@@ -108,7 +108,7 @@ void yyerror(const char *msg);
     resolves this ambiguity.
 */
 %glr-parser
-%expect 4
+//%expect 20
 %start top_level_stmt_list
 %%
 
@@ -312,20 +312,36 @@ ident_list: raw_ident_list {$$ = getRoot();}
  * The next parameter should be set to the first in the list, (the one returned by getRoot()),
  * but the variable returned must be the last in the last, in this case $4
  */
-params: params ',' type_expr ident_list {$$ = setNext($1, mkNamedValNode($4, $3));}
+_params: _params ',' type_expr ident_list {$$ = setNext($1, mkNamedValNode($4, $3));}
       | type_expr ident_list            {$$ = setRoot(mkNamedValNode($2, $1));}
       ;
 
+params: _params {$$ = getRoot();}
+
+/*
 maybe_params: params {$$ = getRoot();}
             | %empty {$$ = NULL;}
             ;
-
+*/
+/*
 fn_decl: modifier_list type_expr ident ':' maybe_params block                    {$$ = mkFuncDeclNode((char*)$3, $1, $2, $5, $6);}
        | modifier_list type_expr ident '(' maybe_expr ')' ':' maybe_params block {$$ = mkFuncDeclNode((char*)$3, $1, $2, $8, $9);}
        | type_expr ident ':' maybe_params block                                  {$$ = mkFuncDeclNode((char*)$2, 0,  $1, $4, $5);}
        | type_expr ident '(' maybe_expr ')' ':' maybe_params block               {$$ = mkFuncDeclNode((char*)$2, 0,  $1, $7, $8);}
        | Let ident ':' maybe_params '=' expr                                     {$$ = mkFuncDeclNode((char*)$2, 0,  0,  $4, $6);}
        ;
+*/
+
+fn_decl: modifier_list Fun ident ':' params Returns type_expr block {$$ = mkFuncDeclNode((char*)$3, $1, $7,                             $5, $8);}
+       | modifier_list Fun ident ':' params block                   {$$ = mkFuncDeclNode((char*)$3, $1, mkTypeNode(TT_Void, (char*)""), $5, $6);}
+       | modifier_list Fun ident Returns type_expr block            {$$ = mkFuncDeclNode((char*)$3, $1, $5,                              0, $6);}
+       | modifier_list Fun ident block                              {$$ = mkFuncDeclNode((char*)$3, $1, mkTypeNode(TT_Void, (char*)""),  0, $4);}
+       | Fun ident ':' params Returns type_expr block               {$$ = mkFuncDeclNode((char*)$2,  0, $6,                             $4, $7);}
+       | Fun ident ':' params block                                 {$$ = mkFuncDeclNode((char*)$2,  0, mkTypeNode(TT_Void, (char*)""), $4, $5);}
+       | Fun ident Returns type_expr block                          {$$ = mkFuncDeclNode((char*)$2,  0, $4,                              0, $5);}
+       | Fun ident block                                            {$$ = mkFuncDeclNode((char*)$2,  0, mkTypeNode(TT_Void, (char*)""),  0, $3);}
+       ;
+
 
 fn_call: ident tuple {$$ = mkFuncCallNode((char*)$1, $2);}
        ;
@@ -390,9 +406,12 @@ array: '[' nl_expr ']' {$$ = mkArrayNode($2);}
      | '[' ']'           {$$ = mkArrayNode(0);}
      ;
 
+/*
 maybe_expr: expr    {$$ = $1;}
           | %empty  {$$ = NULL;}
           ;
+*/
+
 /*
 expr_list: expr_list_p {$$ = getRoot();}
          ;
@@ -432,7 +451,7 @@ binop: binop '+' binop                          {$$ = mkBinOpNode('+', $1, $3);}
      | binop Or binop                           {$$ = mkBinOpNode(Tok_Or, $1, $3);}
      | binop And binop                          {$$ = mkBinOpNode(Tok_And, $1, $3);}
      | binop Range binop                        {$$ = mkBinOpNode(Tok_Range, $1, $3);}
-     | val                                      {$$ = $1;}
+     | val                  %prec HIGH %dprec 2 {$$ = $1;}
      | Indent nl_expr Unindent                  {$$ = $2;}
      ;
 
@@ -464,7 +483,7 @@ expr_block_p: expr_block_p '+' maybe_newline expr_block_p            {$$ = mkBin
             | expr_block_p LesrEq maybe_newline expr_block_p         {$$ = mkBinOpNode(Tok_LesrEq, $1, $4);}
             | expr_block_p Or maybe_newline expr_block_p             {$$ = mkBinOpNode(Tok_Or, $1, $4);}
             | expr_block_p And maybe_newline expr_block_p            {$$ = mkBinOpNode(Tok_And, $1, $4);}
-            | val                                                    {$$ = $1;}
+            | val                      %prec HIGH %dprec 1           {$$ = $1;}
             | Indent nl_expr Unindent Newline                        {$$ = $2;}
             ;
 %%
