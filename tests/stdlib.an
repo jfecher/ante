@@ -32,7 +32,7 @@ File* f = new File("out.txt", File.write)
 f.print("2 + 3 = 5")
 
 ~Errors return as seperate values
-File|Err findFile: Str dir
+fun findFile: Str dir => File|Err
     if os.fileSearch(dir)
         return File(os.read(dir), File.read)
     return Err("File " ++ dir ++ " not found.")
@@ -61,17 +61,17 @@ const data Str
 
 
 impl Str
-    Str op("cast"): c32[] str
+    fun cast(): c32[] str => Str
         return String(str.length(), str)
 
-    Str op("cast"): i32 int
+    fun cast(): i32 int => Str
         return String(stoi(int))
 
-    Str op("cast"): c32 c
-        return String(1, [c])
+    fun cast(): c32 c => Str
+        return String(1, [c,0])
 
 
-void print: Str... strs
+fun print: Str... strs
     for Str s in strs
         for c32 c in s
             putchar(c)
@@ -87,10 +87,10 @@ import "op"
 
 impl Str
     ~Set ! to function as an isEmpty method
-    bool op('!'): self*
+    fun op("!"): self* => bool
         return self.len == 0
 
-    Str pop: self* where self.length > 0
+    fun pop: self* => Str  where self.length > 0
         return self[0 .. this.length-1]
 
 

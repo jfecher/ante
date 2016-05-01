@@ -7,7 +7,7 @@
 
 let openingMsg = "Hello World!\n"
 
-c8* getClosingMsg:
+fun getClosingMsg => c8*
     return "Goodbye World!\n"
 
 printf("%s%s", openingMsg, getClosingMsg())

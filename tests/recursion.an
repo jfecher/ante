@@ -4,7 +4,7 @@
     tail recursion.
 `
 
-void f: i32 x
+fun f: i32 x
     printf("%d\n", x)
 
     ~Loop to 1 million

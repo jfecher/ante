@@ -6,14 +6,14 @@ let tup = (1, 2, "three")
 printf("tup: %d, %d, %s\n", tup[0], tup[1], tup[2])
 
 
-i32,i32 getCoords:
+fun getCoords => i32,i32
     return (2, 3)
 
 ~Pack two i32 params into a tuple
-i32,i32 toTuple: i32 a b
+fun toTuple: i32 a b => i32,i32
     return (a, b)
 
-void printTuple: c8* name, i32,i32 tup
+fun printTuple: c8* name, i32,i32 tup
     printf("%s = (%d, %d)\n", name, tup[0], tup[1])
 
 

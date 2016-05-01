@@ -7,29 +7,22 @@ data Range is Iterable
 
 impl Range
     ~Required by Iterable, returns true if loop should end
-    bool done:
+    fun done => bool
         return start > end
 
     ~Required by Iterable, called at end of each iteration
-    void iter:
+    fun iter
         start += step
 
     ~Required by Iterable, returns the current element
-    i32 unpack:
+    fun unpack => i32
         return start
 
-
-    let op(".."): i32 s e = 
-        let r = Range{
-            start = s, 
-            end = e,
+    fun init(): i32 s e => Range
+        return Range 
+            start = s
+            end = e
             step = 1
-        }.done = fun -> start >= end
-
-    let init(): i32 s e =
-        start = s
-        end = e
-        step = 1
 
 
 for i in 1 .. 10

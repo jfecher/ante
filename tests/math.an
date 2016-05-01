@@ -5,11 +5,11 @@
 `
 
 ~explicit list of parameters
-i32 add: i32 a, i32 b
+fun add: i32 a, i32 b => i32
     return a + b
 
 ~shorthand parameter list
-i32 mul: i32 a b
+fun mul: i32 a b => i32
     return a * b
 
 
@@ -19,8 +19,8 @@ let n2 = 4
 printf("%d + %d = %d\n", n1, n2, add(n1, n2))
 printf("%d * %d = %d\n", n1, n2, mul(n1, n2))
 
-void printInt: i32 x
-     printf("printInt: %d\n", x)
+fun printInt: i32 x
+    printf("printInt: %d\n", x)
 
 ~Void values can be used in expressions if they are followed by
 ~the sequencing operator ;

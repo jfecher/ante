@@ -3,9 +3,9 @@
     Showcase various functional aspects of ante
 `
 
-~Example of a polymorphic add function.  Uses the type variables
-~fn and t.  Type variables can be any type, and are denoted with '
-'fn add: 't a b
+~Example of a polymorphic add function.  Uses the type variable t.
+~Type variables can be any type, and are denoted with '
+fun add: 't a b => 't
     return a + b
 
 
@@ -17,27 +17,27 @@ data List : Iter
 
 impl List
     ~Implement the next function from Iter
-    't|None next: List<t> l
+    fun next: List<t> l => 't|None
         return l.nextNode?.val
 
     ~Also required by Iter
-    't unwrap: self*
+    fun unwrap: self* => 't
         return self.val
 
 
 impl Iter
     ~Example of a possible foldl implementation
-    't foldl: self*, t(t,t) f, t init
+    fun foldl: self*, 't('t,'t) f, 't init => 't
         return match @self
             None -> init
             _ -> foldl(l.next(), f, f(init, l.unwrap()))
 
     ~foldl1 using foldl above
-    't foldl1: self*, 't('t,'t) f
+    fun foldl1: self*, 't('t,'t) f => 't
         return foldl(self.next(), f, self.unwrap())
 
-    Iter* map: self*, 'r('t) f
-        for 't elem in self
+    fun map: self*, 'r('t) f => Iter*
+        for elem in self
             f(elem)
         return self
 
@@ -46,12 +46,8 @@ impl Iter
 ~omitted as well and would be assumed to be a type implementing Iter.  
 ~If List<var> was specified then var could be used as a type variable 
 ~within the function
-'fn sum_of_list: List l
+fun sum_of_list: List l => 't
     return l.reduce(add)
-
-~or alternatively
-let sum_of_list: l =
-    l.reduce(add)
 
 
 let l = List(1, &(2, &(3, &(4, None))))
@@ -61,7 +57,7 @@ assert(sum_of_list(l) == 10)
 
 ~Alternate, more imperative approach to sum_of_list
 ~NOTE: this still requires next() to be implemented.
-'fn sum_of_list: List<'t> l
+fun sum_of_list: List<'t> l => 't
     var acc = l.val
 
     for x in l.next()

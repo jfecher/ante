@@ -19,7 +19,7 @@ printf("%s\nthree = %d\n", str, five - two where two = 2)
 ~   a: the first value of the series
 ~   r: the common ratio
 ~Prereqs: Assumes r is a valid ration between 0 and 1 exclusive.
-f64 sumOfSeries: f64 a r
+fun sumOfSeries: f64 a r => f64
     return a / (1.0 - r)
 
 

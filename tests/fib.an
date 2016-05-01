@@ -9,7 +9,7 @@
 ~fib(n): 1, 1, 2, 3, 5, 8, 13...
 
 ~The slow but theoretical function:
-i32 fib: i32 n
+fun fib: i32 n => i32
     if n <= 2 -> return 1
     return fib(n-2) + fib(n-1)
 
@@ -24,7 +24,7 @@ the function is pure in that it would obtain the same result
 every time it is called with a given input.
 `
 `
-i32 fib: i32 n
+fun fib: i32 n => i32
     if n <= 3 -> return (n+1)/2
 
     i32 x1 = fib(n-2)

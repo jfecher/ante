@@ -5,13 +5,13 @@
     the compiled module is not a library (ie it contains main)
 `
 
-void unusedFn:
+fun unusedFn
     ~Since unusedFn should not be compiled, puts will not
     ~end up in the binary either.
     puts("unusedFn")
 
 
-i32 mul: i32 a b
+fun mul: i32 a b => i32
     return a * b
 
 

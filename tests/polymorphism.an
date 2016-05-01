@@ -6,10 +6,10 @@
 
 ~Since types in ante must start with a capital, gen is
 ~assumed to be a type variable
-gen add: a b
+fun add: 't a b => 't
     return a + b
 
-gen sub: a b
+fun sub: 't a b => 't
     return a - b
 
 data Op
@@ -19,7 +19,7 @@ data Op
         Mul
         Div
 
-gen performOperation: a b, Op op
+fun performOperation: 't a b, Op op => 't
     match op
         Add -> return a + b
         Sub -> return a - b
@@ -34,14 +34,14 @@ data Maybe<T>
     T | enum -> None
 
 ~Initialize i and n and autodetect their types
-i := Maybe 3
-n := Maybe None
+var i = Maybe 3
+var n = Maybe None
 
 
 data Result T E
     T | E
 
 ~Return type is assumed to be Result<File, FileErr>
-Result writeFile: File f, String s
+fun writeFile: File f, String s => Result
     return f.write(s)
 

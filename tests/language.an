@@ -248,7 +248,7 @@ let five = i32 5.0
 
 let thirteen = i16(7i8 + 6i8)
 
-i32 add: i32 x y
+fun add: i32 x y => i32
     return x + y
 
 ~thirteen must be explicitely casted to an i32, no automatic widening is performed.
@@ -306,6 +306,9 @@ i8, f32 tup = 44, 44.0
 ~NOTE: c32*[2] is an array of two strings, each having a char size of 32.
 i8[30], c32*[2] anotherTuple = arr, ["This tuple contains", "two arrays"]
 
+var yetAnoterTuple = (1, "two", 3.0)
+yetAnotherTuple[1] = "Two"
+
 `
     A tuple's type can still be inferred in a let binding:
 `
@@ -330,7 +333,7 @@ let Str: c8* str =
 let msg = Str "Hello World!"
 
 
-i32 longestStreak: Str s
+fun longestStreak: Str s => i32
     var maxStreak = 0
     var curStreak = 0
 
@@ -347,7 +350,7 @@ i32 longestStreak: Str s
     return maxStreak
 
 print(longestStreak(msg))
-
+~output: 2
 `
         Functions
 
@@ -360,18 +363,18 @@ print(longestStreak(msg))
     languages, blocks are denoted by changes in indentation rather than
     opening and closing brackets.
 `
-void printMsg:
+fun printMsg
     print("Hello World!")
 
 `
     This add function takes in two parameters, augend and addend, and returns
     a num value.
 `
-f64 add_floats: f64 augend, f64 addend
+fun add_floats: f64 augend, f64 addend => f64
     return augend + addend
 
 ~Multiple variables of the same type can be declared by omitting the , and repeated type
-f64 add_floats_2: f64 augend addend
+fun add_floats_2: f64 augend addend => f64
     return augend + addend
 
 `
@@ -386,11 +389,11 @@ f64 add_floats_2: f64 augend addend
     function, and when printing an array or tuple it will by default print each value
     without a seperator.
 `
-void lnprint: ... params
+fun lnprint: ... params
     print('\n', params)
 
 
-i64 sum: i32... nums
+fun sum: i32... nums => i64
     i64 ret = 0
     for i in nums
         ret += i
@@ -413,18 +416,6 @@ do_something()
 add_floats(addend = 2.5, augend = 5.0)
 
 
-
-~Functions can alternatively be declared with a let binding and
-~some syntactic sugar for a closure
-let sum2: nums =
-    reduce(nums, (+))
-
-
-~Without the syntactic sugar, the above definition of sum would look like this
-let sum3 = fun nums
-    reduce(nums, (+))
-
-
 `
         Currying
     In Ante, currying is always explicit, which leads to better error messages rather
@@ -435,24 +426,24 @@ let sum3 = fun nums
 ~As a simple example, an increment function can be created by currying a general add function
 
 ~The general add function:
-let add: i32 a b = a + b
+fun add: i32 a b => i32
+    return a + b
 
 ~And the increment function created with currying:
 let increment = add(_, 1)
 
 ~In this way, currying reduces the need to declare some parameters in certain situations.
 
-~The above definition is equivalent to all of the following functions:
-let increment: i32 x = add(x, 1)
+~The above definition is equivalent to both of the following functions:
+fun increment: i32 x => i32
+    return add(x, 1)
 
 let increment = fun x -> add(x, 1)
 
-i32 increment: i32 x
-    return add(x, 1)
 
 
 ~With some currying, we can reduce the definition of sum even further
-let sum4 =
+let sum2 =
     reduce(_, (+))
 
 
@@ -469,14 +460,14 @@ let sum4 =
 `
 
 ~Compiled as "printStuff"
-void printStuff:
+fun printStuff
     print("Stuff")
 
 
 impl Str
     
     ~Compiled as "Str_reverse"
-    Str reverse: Str s
+    fun reverse: Str s => Str
         var rev = ""
 
         for i in s.len ^.. 0
@@ -569,13 +560,6 @@ let zero = 0
 ~If statements can be used within expressions, albeit with a slightly altered syntax
 let stoplight = if light == "green" then "go" else "stop"
 
-~Expressions can also be more complex
-~Here is an example of a function declaration with a let binding.
-let takeWhile: f l =
-    if f(l[0]) then
-        l[0] ++ takeWhile(f, l[1..])
-    else []
-
 `
         Pathogen infections
     Pathogen is a modifier given to a function which can never be evaluated
@@ -587,14 +571,14 @@ let takeWhile: f l =
     own print function without utilizing the standard api, or using an external c api.  
     While less common, the pathogen modifier may be used for variables, classes, enums, etc.
 `
-pathogen void myPrint: c32* msg
+pathogen fun myPrint: c32* msg
     let i = 4 + 2
     system("echo '" ++ msg ++ i ++ "'") ~note: system is already a pathogen function
 
 ~Because the following function uses the pathogen myPrint, it cannot be
 ~evaluated compile-time, so the system call to echo 'Hello World' will
 ~occur during run-time.
-void printMsg:
+fun printMsg:
     myPrint("Hello World!")
 
 ~To use a pathogen function without the host becoming infected, the keyword do
@@ -602,7 +586,7 @@ void printMsg:
 ~of pathogen functions can be useful in several applications, such as loading an image
 ~into a variable or class representing it without the need to search for it during runtime,
 ~and eliminating the need to include the raw image as an asset in production.
-Image* compileTimeLoadImg:
+fun compileTimeLoadImg => Image*
     File f = File("path/to/image.png")
     u8[] imgData
     do f.readAll(imgData) ~Reads all of the image data into data at compile time
@@ -611,7 +595,7 @@ Image* compileTimeLoadImg:
 
 ~Conversely, to infect a non-pathogen function, the infect keyword may be used.
 ~Note that only the infected instance of the function is evaluated during runtime.
-Image* runTimeLoadImg:
+fun runTimeLoadImg => Image*
     return infect compileTimeLoadImg()
 
 ~Values can also be infected if set equal to the return value of a pathogen function
@@ -636,13 +620,13 @@ someFunction(myImg) ~This instance of someFunction is infected since an infected
     ~NOTE: a better method of ensuring m is positive is using the where
            statement discussed later.
 `
-f64 calculateForce: f64 m a
+fun calculateForce: f64 m a => f64
     when m < 0
-        panic("calculateForce: mass cannot be negative!\nError value: " ++ m)
+        panic("calculateForce: mass cannot be negative!\nInputted mass: " ++ m)
     return m*a
 
 ~when true  can be used to perform a generic check during compile time
-i8 add: i8 a b
+fun add: i8 a b => i8
     when true
         i16 c = a
         i16 d = b
@@ -691,16 +675,16 @@ else     -> print("Invalid laws of mathematics, please try again in an alternate
 
 for f in arr -> print(f)
 
-f32 subtract: f32 a, f32 b -> return a - b
+fun subtract: f32 a b => f32 -> return a - b
 
 ~While these can be nested, overnesting should be avoided as it leads to clutter.
-data Integer -> i32 i, void init(): i32 a -> i = a;; u8 byte
+data Integer -> i32 i, fun init(): i32 a -> i = a;; u8 byte
 
 ~compared to
 data Integer
     i32 i
 
-    void init(): i32 a
+    fun init(): i32 a
         i = a
 
     u8 byte
@@ -791,7 +775,7 @@ for i in [0, -5] .. -100
 var evens = (0..10).step(2)
 
 ~or the step can be changed in place with :
-evens = evens:step(4)
+evens:step(4)
 
 for e in evens -> print(e)
 
@@ -816,7 +800,8 @@ if 3 is in 1..9
 if "two" is in ["one", "two", "three"]
     print("Found it!")
 
-~The default action for tuples is to check fields with matching datatypes only
+~The default action for tuples is to check fields with matching datatypes only, or any
+~with op == implemented for the element and target type.
 if "test" is in (5, 6.5, "test")
     print("Got it!")
 
@@ -872,14 +857,14 @@ data Animal
 `
     Create a static function init that creates a new instance of an animal.
 `
-    Animal init: u16 age, c8* species name
+    fun init: u16 age, c8* species name => Animal
         return Animal(age, species, name)
         
 `
     Create a non-static method taking self as a parameter.  This function cannot be used as 
     Animal.printInfo, it must be called on a previously initialized Animal.
 `
-    void printInfo: self
+    fun printInfo: self
         print(self.name .. " is a/an " .. self.species .. " and is " .. self.age .. " year(s) old.\n")
 
 `
@@ -895,7 +880,7 @@ Animal* clifford = new Animal.init(7, "magnum rubrum canis", "Clifford")
 data Person : Animal
     c8* job
 
-    Person init: u16 age, c8* job name
+    fun init: u16 age, c8* job name => Person
         Person ret = Animal.init(age, "Homo sapien", name)
         ret.job = job
         return ret
@@ -903,22 +888,28 @@ data Person : Animal
 `
     This function obscures the printInfo declared in the Animal type.
 `
-    void printInfo: self*
+    fun printInfo: self*
         print(self.name .. " is " .. self.age .. " years old and is a(n) " .. self.job)
 
 
 `
     Methods of the same name can also be overloaded if they take different amounts or types of variables.
 `
-    void printInfo: self*, bool showAge
+    fun printInfo: self*, bool showAge
         if showAge
             print(self.name .. " is " .. self.age .. " years old and is a(n) " .. self.job)
         else
             print(self.name .. " is a(n) " .. self.job)
 
 
-Person john = Person.init(44, "electrician", "John")
+let john = Person.init(44, "electrician", "John")
 john.printInfo() ~output: John is 44 years old and is a(n) electrician
+
+var sara = Person.init(27, "Dentist assistant", "Sara")
+sara.age = 37
+sara.job = "Dentist"
+sara.printInfo()
+
 
 `
         Modifiers in data declarations
@@ -944,21 +935,21 @@ data Statistics
 
     ~Alternatively, you can also use modifiers before a block:
     pub
-        f64 getData: self*
+        fun getData: self* => f64
             return self.secretData ~not so secret anymore
 
-        c8* getStatus: self*
+        fun getStatus: self* => c8*
             if self.secretData > 10
                 return "Good"
             else
                 return "Not so good"
 
-    pri f64 doCalculations: self*, f64 mData
+    pri fun doCalculations: self*, f64 mData => f64
             return mData * self.secretData / self.varCount
 
     ~Because the init function is declared within the datatype, it can access private members.
-    Statistics init: i32[] mData
-        Statistics ret = `secretData =`0, `varCount =`0
+    fun init: i32[] mData => Statistics
+        Statistics ret = (0, 0) ~Ante uses Structural equivalence!
         for i in mData
             ret.secretData += mData / ret.pi
             ret.varCount += 1
@@ -980,20 +971,19 @@ data Statistics
 ~where evaluates to false, an error is thrown.
 let actions = "walk", "talk", "stand"
 
-c32[] getAction: u8 action  where action >= 0 and action <= 3
+fun getAction: u8 action => c32[]  where action is in 0 ..^ 3
     return actions[action]
 
 
 ~Here is the calculateForce function from earlier
-f64 calculateForce: f64 m, f64 a
-    ct
-        if m < 0
-            myPrint("calculateForce: mass cannot be negative!")
+fun calculateForce: f64 m a => f64
+    when m < 0
+        myPrint("calculateForce: mass cannot be negative!")
 
     return m*a
 
 ~and this is its equivilent using where
-f64 calculateForce: f64 m a  where m >= 0
+fun calculateForce: f64 m a => f64  where m >= 0
     return m*a
 
 calculateForce(-54, 2)
@@ -1016,14 +1006,14 @@ which was not met for input value m = -54
 `
 ~Create a function that takes in two variables, obj1 and obj2, of some type t
 ~and returns true if the first is greater than the second.
-bool greater: t obj1 obj2
+fun greater: 't obj1 obj2 => bool
     return obj1 > obj2
 
 ~This function will fail to compile if they are called with variables of a type
 ~That do not have < and > implemented.
-bool cmp: t v1 v2
+fun cmp: 't v1 v2 => i32
     if v1 < v2 -> return -1
-    return v1 > v2
+    return i32(v1 > v2)
 
 cmp(3, 4) ~valid
 ~cmp(3, "three") ~invalid: types must be the same for function cmp
@@ -1033,7 +1023,7 @@ cmp(3, 4) ~valid
 ~and have > implemented to return a bool.  This may not always be the case if the user
 ~defines the operator to return a different type or overloads the operator function for
 ~two different types.  Here is a more general definition that takes this into account.
-gen add: t1 a, t2 b
+fun add: 't1 a, 't2 b => 'r
     return a + b
 
 
@@ -1045,10 +1035,10 @@ data Angle<bool isRadians>
     f32 angle
 
     if isRadians
-        u8 getQuadrant: self
+        fun getQuadrant: self* => u8
             return self.angle / (3.14159265 / 4) % 4 + 1
     else
-        u8 getQuadrant: self
+        fun getQuadrant: self* => u8
             return self.angle / 90 % 4 + 1
 ~usage:
 Angle<true> a1 = 3.14159265 * 2 / 3
@@ -1074,14 +1064,14 @@ assert(a1.getQuadrent() == a2.getQuadrent())
           how one could be implemented without this feature (eg. if it disabled).
 `
 data MySmartPtr : Clone
-    t* rawPtr
+    't* rawPtr
     pri u16* refCount
 
-    void op("new"): T val
-        rawPtr = alloc(val)
+    fun op("new"): 't val
+        rawPtr = new val
         refCount = new 0u16
 
-    void op("drop"):
+    fun op("drop"):
         if @refCount == 0
             free(refCount)
             free(rawPtr)
@@ -1089,7 +1079,7 @@ data MySmartPtr : Clone
             @refCount -= 1
 
     ~Required by Clone trait
-    MySmartPtr clone: self
+    fun clone: self => MySmartPtr
         let clone = MySmartPtr(rawPtr, refCount)
         self.@rawPtr += 1
         return clone
@@ -1100,26 +1090,26 @@ data ChessPiece<Str piece> where searchFor(piece, ["pawn", "knight", "king"]) !=
     u8 x
     u8 y
     
-    ChessPiece<piece> init: u8 x, u8 y
+    fun init: u8 x, u8 y => ChessPiece
         return ChessPiece<piece>(x, y)
     
     if piece == "pawn" 
-        bool validateMove: u8 x2, u8 y2
+        fun validateMove: u8 x2, u8 y2 => bool
             return x == x2 and abs(y - y2) == 1
 
     elif piece == "knight"
-        bool validateMove: u8 x2, u8 y2
+        fun validateMove: u8 x2, u8 y2 => bool
             if abs(x - x2) == 1
                 return abs(y - y2) == 2
             return abs(x - x2) == 2 and abs(y - y2) == 1
     
     elif piece == "king"
-        bool validateMove: u8 x2, u8 y2
+        fun validateMove: u8 x2, u8 y2 => bool
             return abs(x - x2) <= 1 and abs(y - y2) <= 1
 
 
-ChessPiece<"knight"> knight = ChessPiece(2, 3)
-assert(validateMove(3, 5))
+let knight = ChessPiece<"knight">(2, 3)
+assert(knight.validateMove(3, 5))
 
 `
         Operator Overloading and Infix Functions
@@ -1138,15 +1128,11 @@ data Point
         operators will throw a compile-time error.  Note that since operators are declared
         within classes, operators for primitive datatypes cannot be redefined.
     `
-    bool op("<"): self, Point rVal
-        if self.x < rVal.x
-            return 1
-        return self.y < rVal.y
+    fun op("<"): self, Point rVal => bool
+        return self.x < rVal.x and self.y < rVal.y
 
-    bool op(">"): self, Point rVal
-        if x > rVal.x
-            return 1
-        return y > rVal.y
+    fun op(">"): self, Point rVal => bool
+        return self.x > rVal.x and self.y > rVal.y
 
     `
             Infix functions
@@ -1160,13 +1146,13 @@ data Point
     ~An example of a generic comparison function
     ~Note that this function uses the > and < operators
     ~declared earlier in this class.
-    i8 infix("cmp"): self, Point rVal
+    fun infix("cmp"): self, Point rVal => i8
         if self < rVal -> return -1
-        return self > rVal
+        return i8(self > rVal)
 
 
-Point origin = 0, 0
-Point topRight = 3, 4
+let origin = Point(0, 0)
+let topRight = Point(3, 4)
 
 print(origin < topRight)
 print(origin > topRight)
@@ -1188,16 +1174,16 @@ false
 `
 impl Point : SomeAdditionalTrait
     ~implement new methods
-    bool op("=="): self, Point p2
+    fun op("=="): self, Point p2 => bool
         return self.x == p2.x and self.y == p2.y
 
 trait Drawable
-    void draw: self
+    fun draw: self
 
     ~Default definitions for traits can also be created.
     ~NOTE: because self.surface is accessed, this requires the implementing object
     ~      to either have a 'surface' field, or override this function.
-    s getSurface: self
+    fun getSurface: self => 's
         return self.surface
 
 data Rectangle
@@ -1206,21 +1192,21 @@ data Rectangle
 
 impl Rectangle : Drawable
     ~Now Rectangle must implement the methods of Drawable
-    void draw: self
-         self.surf.print("___")
-         for i in 0 .. height
+    fun draw: self
+        self.surf.print("___")
+        for i in 1 ..^ self.height
             self.surf.print("| |")
-         self.surf.print("|_|")
+        self.surf.print("|_|")
 
-    void setHeight: mut self, u32 newHeight
+    fun setHeight: mut self, u32 newHeight
         height = newHeight
 
-    Rectangle cast(): u32 height
+    fun cast(): u32 height => Rectangle
         return Rectangle
             height = height,
             surface = Surface()
 
-Rectangle r = Rectangle(4)
+var r = Rectangle(4)
 
 ~Mutator functions are differentiated from accessors
 r:setHeight(5)
@@ -1235,13 +1221,13 @@ immutRect:setHeight(5)
 
 ~Implementations can also be used for primitive types
 impl i32, i32
-    i32,i32 swap: self
+    fun swap: self => i32,i32
         print("Swapped i32!")
         return self[1], self[0]
 
 
-impl e, e
-    e,e swap: self
+impl 't, 't
+    fun swap: self => 't,'t
         print("Swapped pair!")
         return self[1], self[0]
 
@@ -1257,21 +1243,21 @@ assert(point[0] == 4 and point[1] == 3)
 ~implementation, otherwise a compilation error will result.
 
 impl c32* ~invalid
-    c32* addInitials: self
+    fun addInitials: self => c32*
         return self ++ " -JF"
 
 impl c32[] ~valid
-    c32[] addInitials: self
+    fun addInitials: self => c32[]
         return self ++ " -JF"
 
 
-c32* ptrQuote = "implementations cannot be used for pointer types"
+var ptrQuote = c32* "implementations cannot be used for pointer types"
  
-~Compilation error since c32 has no function addInitials:
+~Compilation error since c32* has no function addInitials:
 ptrQuote = ptrQuote.addInitials()
 
 c32[] ptrQuote ~convert to array
-ptrQuote.addInitials() ~valid
+ptrQuote = ptrQuote.addInitials() ~valid
 
 `
     NOTE: because string literals have the type c32[], the following is valid:
@@ -1290,7 +1276,7 @@ ptrQuote.addInitials() ~valid
     statements, it is reccomended to use the -> token.
 `
 
-i8 testInt = 3
+let testInt = 3
 match testInt
     1 -> print("Yup, its one")
     2 -> print("It's actually two")
@@ -1300,7 +1286,7 @@ match testInt
 ~output: Nope, it's three
 
 ~In this example, match is used to determine Joe's class
-Person joe = Person(32, "Programmer", "Joe")
+let joe = Person(32, "Programmer", "Joe")
 match joe
     Point  -> print("Joe is a point")
     Animal -> print("Joe is an Animal")
@@ -1310,19 +1296,15 @@ match joe
 ~This is because the Person class inherits from the Animal
 ~class, so the Animal cast to joe was the first valid cast
 
-data MyStr
-    c32* s
-    u32 len
-
-MyStr testStr = "Test", 4
+let testStr = "Test", 4
 
 match testStr
-    MyStr("Test", 3)
-        print("This will not be matched")
-    MyStr("Testing", _)
-        print("This will not be matched either")
-    MyStr("Test", 4")
-        print("This will be matched")
+    ("Test", x) where x != 4
+        print("Found a Test Str with the wrong length!")
+    (_, 3)
+        print("Found a Str of length 3!")
+    ("Test", _)
+        print("Found a Test Str!") ~ this will be printed
 
 
 ~Match can also be used in expressions
@@ -1388,7 +1370,7 @@ data EvenNumbers -> enum
         Ten, Twelve, Fourteen
 
 ~           evenNumber = 12
-EvenNumbers evenNumber = EvenNumbers.Twelve
+let evenNumber = EvenNumbers.Twelve
 
 `
         Pointers
@@ -1418,12 +1400,9 @@ let raw example = new 5u8
 ~Raw pointers must be manually freed with the free function
 free(example)
 
-~Pointers are also used to create strings as char arrays
-~Since there are multiple sizes of chars, the dfeault
-~encoding (from single byte to 4 byte UTF-8) can be specified.
-~The default encoding for string literals is 4 byte UTF-8
-let c32[] str = "Hello World!"
-let c8[] msg = c8[] "Condensed String"
+~Pointers can also be used to create strings from char arrays
+let str = "Hello World!"
+let msg = c8* "Pointer String"
 
 `
         Automatic dereferencing.
@@ -1435,12 +1414,12 @@ let c8[] msg = c8[] "Condensed String"
 data PtrExample
     c8[] msg
 
-    void printMsg:
+    fun printMsg
         print(msg)
 
-PtrExample ex1 = msg
-PtrExample* ex2 = new ex1
-PtrExample** ex3 = new ex2
+let ex1 = PtrExample "" ~typeof ex1 = PtrExample
+let ex2 = new ex1       ~typeof ex2 = PtrExample*
+let ex3 = new ex2       ~Typeof ex3 = PtrExample**
 
 ex1.printMsg() ~No pointer, so no dereferencing is necessary
 ex2.printMsg() ~(@ex2).printMsg()
@@ -1495,7 +1474,7 @@ assert(ptrStr[0] == arrStr[0])
         to an array type.
 `
 impl c32[]
-    void reverse: self, u32 len
+    fun reverse: self*, u32 len
         raw c32[] rev = malloc((len+1) * sizeof(c32))
         for i in range(len-1, 0)
             rev[i] = self[len-i-1]
@@ -1542,16 +1521,16 @@ assert("two" is in ["one", "two", "three"])
     possible in ante to store a function on the stack.
 `
 ~Some functions to point to:
-f32 mul: f32 a, f32 b -> return a * b
-f32 div: f32 a, f32 b -> return a / b
+fun mul: f32 a b => f32 -> return a * b
+fun div: f32 a b => f32 -> return a / b
 
 ~This function takes one parameter, a function pointer 
 ~that takes two f32s as parameters and returns one as well.
-f32 doOperation: f32(f32, f32) opFunc
+fun doOperation: f32(f32, f32) opFunc => f32
     return opFunc(6, 4)
 
 ~our function pointer
-f32(f32, f32) fnPtr = mul
+var fnPtr = mul
 
 assert(doOperation(fnPtr) == 24)
 
@@ -1577,20 +1556,20 @@ data Str -> c8[] | c32[]
 data Coord -> (i32, i32) | (f64, f64)
 
 data Maybe
-    t | enum -> None
+    't | enum -> None
 
 ~declare a list type that is a tuple with two indices, the first
 ~being the value type, and the second being the next List node.
-data TList -> t, Maybe<List<t>*>
+data TList -> 't, Maybe<List<'t>*>
 
 ~alternatively, type declarations can name each member of the
 ~tuple, mimicking a struct.
 data List
-    t val
-    Maybe<List<t>*> next
+    't val
+    Maybe<List<'t>*> next
 
 data Vec
-    t[] mem
+    't[] mem
     u32 len
     u32 cap
 
@@ -1609,7 +1588,7 @@ let numsList = List(1u8, &(2u8, &(3u8, None)))
 `
 
 ~Functions can be declared this way using lambda syntax
-let square = lambda x
+let square = fun x
     x*x
 
 
@@ -1667,19 +1646,19 @@ let result = 2 *
 data MyErr : Err
     const Str msg
 
-    MyErr op("cast"): Err e
+    fun op("cast"): Err e => MyErr
         return MyErr(e.desc())
 
-    MyErr op("cast"): Str msg
+    fun op("cast"): Str msg => MyErr
         return MyErr{msg}
 
-    Str Err.desc: self*
+    fun desc: self* => Str
         return "MyErr: " ++ self.msg
 
 
 ~This function takes three parameters: two i32s and
 ~a function that can return a Str or StrErr
-i32|MyErr errFunc: i32 a b, (Str|Err)(i32) fn
+fun errFunc: i32 a b, (Str|Err)(i32) fn => i32|MyErr
     ~Try to open a file, and if no FileErr is found
     ~Then write Just a test, otherwise wrap the error
     ~In type MyErr (using fromErr()), and return it.
@@ -1687,6 +1666,7 @@ i32|MyErr errFunc: i32 a b, (Str|Err)(i32) fn
 
     ~ ? can also be chained
     Parser()?.parseI32("32")?.map(fn)?.show()
+    return 1
 
 
 `
@@ -1708,7 +1688,7 @@ macro double: expr e
 print(double!(2 + 3))
 
 ~possible scoped macros
-c32* getTokenType: c32 t
+fun getTokenType: c32 t => Str
     macro isLetter: c32 i
         (i >= 65 and i <= 90 or i >= 97 and i <= 122)
 
@@ -1723,13 +1703,13 @@ if isLetter('a')
 
 
 ~threading and concurrency support
-async void printMsg: str msg
+async fun printMsg: Str msg
     print(msg)
 
 sync for i in arr
     print(i)
 
-f32 f = await someFunction()
+let f = await someFunction()
 
 
 ~Is keyword/operator for matching types

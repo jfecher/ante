@@ -6,33 +6,24 @@
 
 ~Declare a function pointer main and set it equal to
 ~an anonymous function
-void() main = fun
+var printMsg = fun
     print("Hello World!")
 
 
-i32(i32,i32) add = fun a b
+~typeof add is:
+~ 't('t,'t)
+var add = fun a b
     a + b
 
 
-let add2: a b = a + b
-
-
-i32(i32,i32) mul = fun a b
+var mul = fun a b
     a * b
-
-let mul2: a b = a * b
 
 ~Unlike normal functions, function pointers can be changed
 add = mul
 
 
-i32(i32(i32),i32(i32),i32) flipPtr = fun f g x
+var flip = fun f g x
     g(f(x))
 
-let flipFn1: f g x = g(f(x))
-
-~vs
-i32 flipFn2: i32(i32) f g, i32 x
-    return g(f(x))
-
-assert(flipPtr(sqrt, neg, 4) == -2)
+assert(flip(sqrt, neg, 4) == -2)

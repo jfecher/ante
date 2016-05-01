@@ -2,20 +2,20 @@
     fnDecl.an
         test function declarations and calls
 `
-void printMsg: bool b
-     if b -> puts("Hello World!")
-     else -> puts("Goodbye World!")
+fun printMsg: bool b
+    if b -> puts("Hello World!")
+    else -> puts("Goodbye World!")
 
 
-bool divisibleByThree: i32 i
-     return i % 3 == 0
+fun divisibleByThree: i32 i => bool
+    return i % 3 == 0
 
 
-bool isEven: i32 x
-     return x % 2 == 0
+fun isEven: i32 x => bool
+    return x % 2 == 0
 
 
-i32 fact: i32 x
+fun fact: i32 x => i32
     if x <= 1
         return 1
     return x * fact(x-1)

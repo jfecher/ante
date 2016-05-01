@@ -15,7 +15,7 @@ let u8 four_u8 = 4_u8
 let five =
     let four = 4 in
     let one = 1 in
-    four + one;;
+    four + one
 
 printf("four + five = %d\n", four + five)
 
