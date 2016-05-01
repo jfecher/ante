@@ -117,7 +117,7 @@ TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
         return compErr("Index of operator '[' must be an integer expression, got expression of type " + Lexer::getTokStr(r->type), op->row, op->col);
     }
 
-    if(l->type == TT_Array){
+    if(l->type == TT_Array || l->type == TT_Ptr){
         //check for alloca
         Value *arr = l->val;
         if(dynamic_cast<AllocaInst*>(l->val)){
@@ -145,11 +145,11 @@ TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
             auto index = ((ConstantInt*)r->val)->getZExtValue();
             
             Value *field = builder.CreateExtractValue(v, index);
-            return new TypedValue(field, TT_Ptr);
+            return new TypedValue(field, llvmTypeToTypeTag(field->getType()));
         }
-        return compErr("Type " + Lexer::getTokStr(l->type) + " does not have elements to access", op->row, op->col);
+        return compErr("Type " + llvmTypeToStr(l->getType()) + " does not have elements to access", op->row, op->col);
     }else{
-        return compErr("Type " + Lexer::getTokStr(l->type) + " does not have elements to access", op->row, op->col);
+        return compErr("Type " + llvmTypeToStr(l->getType()) + " does not have elements to access", op->row, op->col);
     }
 }
 
@@ -274,7 +274,7 @@ TypedValue* compMemberAccess(Compiler *c, TypedValue *l, VarNode *field, BinOpNo
     if(!l) return 0;
 
     if(l->type != TT_Data)
-        return c->compErr("Value of type " + llvmTypeToStr(l->getType()) + " does not have any members to access.", binop->row, binop->col);
+        return c->compErr("Value of type " + llvmTypeToStr(l->getType()) + " does not have any fields to access.", binop->row, binop->col);
 
     auto dataTy = c->lookupType(l->getType()->getStructName());
     auto index = dataTy->getFieldIndex(field->name);

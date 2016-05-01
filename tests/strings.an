@@ -6,7 +6,7 @@
 `
 
 let openingMsg = "Hello World!\n"
-
+`
 fun getClosingMsg => c8*
     return "Goodbye World!\n"
 
@@ -17,7 +17,7 @@ data Str
     c8* cStr
     u32 length
 
-void print: Str s
+fun print: Str s
     puts(s.cStr)
 
 
@@ -26,3 +26,19 @@ print(str)
 
 print(str where str = ("str", 3) )
 
+`
+fun len_rec: c8[] s, i32 i l => i32
+    if s[i] == 0u8
+        return l
+    return len_rec(s, i+1, l+1)
+
+fun len: c8[] s => i32
+    return len_rec(s, 0, 0)
+
+
+
+fun makeStr: c8[] rawStr => Str
+    return (rawStr, len(rawStr))
+
+
+printf("len of %s = %d\n", openingMsg, len(openingMsg))
