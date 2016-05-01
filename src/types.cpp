@@ -152,7 +152,7 @@ TypeTag llvmTypeToTypeTag(Type *t){
     if(t->isFloatTy()) return TT_F32;
     if(t->isDoubleTy()) return TT_F64;
     
-    if(t->isArrayTy()) return TT_Array;
+    if(t->isVectorTy()) return TT_Array;
     if(t->isStructTy()) return TT_Tuple; /* Could also be a TT_Data! */
     if(t->isPointerTy()) return TT_Ptr;
     if(t->isFunctionTy()) return TT_Func;
@@ -211,7 +211,7 @@ bool llvmTypeEq(Type *l, Type *r){
     if(ltt == TT_Ptr){
         return llvmTypeEq(l->getPointerElementType(), r->getPointerElementType());
     }else if(ltt == TT_Array){
-        return llvmTypeEq(l->getArrayElementType(), r->getArrayElementType());
+        return llvmTypeEq(l->getVectorElementType(), r->getVectorElementType());
     }else if(ltt == TT_Func){
         int lParamCount = l->getFunctionNumParams();
         int rParamCount = r->getFunctionNumParams();

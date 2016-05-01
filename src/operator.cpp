@@ -118,9 +118,13 @@ TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
     }
 
     if(l->type == TT_Array){
-        Constant *lc = (Constant*)l->val;
-        Constant *rc = (Constant*)r->val;
-        return new TypedValue(lc->getAggregateElement(rc), llvmTypeToTypeTag(l->getType()->getArrayElementType()));
+        //check for alloca
+        Value *arr = l->val;
+        if(dynamic_cast<AllocaInst*>(l->val)){
+            arr = builder.CreateLoad(l->val);
+        }
+        Type *elemTy = arr->getType()->getVectorElementType();
+        return new TypedValue(builder.CreateExtractElement(l->val, r->val), llvmTypeToTypeTag(elemTy));
     }else if(l->type == TT_Tuple){
         if(!dynamic_cast<ConstantInt*>(r->val))
             return compErr("Tuple indices must always be known at compile time.", op->row, op->col) - 1;
@@ -177,7 +181,7 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
 
     switch(llvmTypeToTypeTag(loadVal->getType())){
         case TT_Array:
-            return compErr("Array insert element is not yet implemented!", op->row, op->col);
+            return new TypedValue(builder.CreateInsertElement(loadVal, newVal->val, index->val), TT_Void);
         case TT_Tuple:
             if(!dynamic_cast<ConstantInt*>(index->val)){
                 return compErr("Tuple indices must always be known at compile time.", op->row, op->col) - 1;

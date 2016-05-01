@@ -162,8 +162,7 @@ TypedValue* ArrayNode::compile(Compiler *c){
        arr.push_back((Constant*)tval->val);
     }
     
-    auto* ty = ArrayType::get(arr[0]->getType(), arr.size());
-    return new TypedValue(ConstantArray::get(ty, arr), TT_Array);
+    return new TypedValue(ConstantVector::get(arr), TT_Array);
 }
 
 
