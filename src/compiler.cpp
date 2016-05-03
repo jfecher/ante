@@ -301,7 +301,7 @@ TypedValue* WhileNode::compile(Compiler *c){
     c->enterNewScope();
     //f->getBasicBlockList().push_back(begin);
     c->builder.SetInsertPoint(begin);
-    child->compile(c); //compile the while loop's body
+    compileStmtList(child.get(), c); //compile the while loop's body
 
     auto *reCond = condition->compile(c);
     c->builder.CreateCondBr(reCond->val, begin, end);
