@@ -6,7 +6,7 @@
 `
 
 let openingMsg = "Hello World!\n"
-`
+
 fun getClosingMsg => c8*
     return "Goodbye World!\n"
 
@@ -26,19 +26,15 @@ print(str)
 
 print(str where str = ("str", 3) )
 
-`
+
 
 ~Gets the length of null-terminated strings.
 ~Same as strlen from the c library.
-fun len_rec: c8[] s, i32 i l => i32
-    if s[i] == 0u8
-        return l
-    return len_rec(s, i+1, l+1)
-
-
 fun len: c8[] s => i32
-    return len_rec(s, 0, 0)
-
+    var acc = 0
+    while s[acc] != 0u8
+        acc = acc + 1
+    return acc
 
 
 fun makeStr: c8[] rawStr => Str
