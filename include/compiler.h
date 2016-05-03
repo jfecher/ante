@@ -83,7 +83,7 @@ namespace ante{
 
         //Stack of maps of variables mapped to their identifier.
         //Maps are seperated according to their scope.
-        stack<std::map<string, Variable*>> varTable;
+        vector<unique_ptr<std::map<string, Variable*>>> varTable;
 
         //Map of declared, but non-defined functions
         map<string, FuncDeclNode*> fnDecls;

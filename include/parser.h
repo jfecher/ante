@@ -227,6 +227,14 @@ struct VarAssignNode : public Node{
     ~VarAssignNode(){}
 };
 
+struct WhileNode : public ParentNode{
+    unique_ptr<Node> condition;
+    TypedValue* compile(Compiler*);
+    void print(void);
+    WhileNode(Node *cond, Node *body) : ParentNode(body), condition(cond){}
+    ~WhileNode(){}
+};
+
 struct IfNode : public ParentNode{
     unique_ptr<Node> condition;
     unique_ptr<IfNode> elseN;

@@ -354,12 +354,12 @@ ret_stmt: Return expr {$$ = mkRetNode($2);}
  * must all manually deal with Newlines seperating the statements, and must have a following
  * Newline under their declaration under 'stmt' like the other statements do
  */
-elif_list: elif_list Newline Elif expr block {$$ = setElse((IfNode*)$1, (IfNode*)mkIfNode($3, $4));}
+elif_list: elif_list Newline Elif expr block {$$ = setElse((IfNode*)$1, (IfNode*)mkIfNode($4, $5));}
          | Elif expr block                   {$$ = setRoot(mkIfNode($2, $3));}
          ;
 
-maybe_elif_list: elif_list Newline Else block Newline {$$ = setElse((IfNode*)$1, (IfNode*)mkIfNode(NULL, $3));}
-               | elif_list Newline                    {$$ = $1;}
+maybe_elif_list: elif_list Newline Else block Newline {setElse((IfNode*)$1, (IfNode*)mkIfNode(NULL, $4));}
+               | elif_list Newline                    {$$ = setRoot($1);}
                | Else block Newline                   {$$ = setRoot(mkIfNode(NULL, $2));}
                | %empty                               {$$ = setRoot(NULL);}
                ;
@@ -367,7 +367,7 @@ maybe_elif_list: elif_list Newline Else block Newline {$$ = setElse((IfNode*)$1,
 if_stmt: If expr block Newline maybe_elif_list {$$ = mkIfNode($2, $3, (IfNode*)getRoot());}
        ;
 
-while_loop: While expr block {$$ = NULL;}
+while_loop: While expr block {$$ = mkWhileNode($2, $3);}
           ;
 
 do_while_loop: Do While expr block {$$ = NULL;}

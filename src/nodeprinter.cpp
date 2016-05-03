@@ -179,6 +179,14 @@ void VarAssignNode::print(){
     else cout << "(undef)";
 }
 
+void WhileNode::print(){
+    cout << "while ";
+    condition->print();
+    puts(" do");
+    printBlock(child.get());
+    puts("end while");
+}
+
 void FuncDeclNode::print(){
     cout << "fnDecl ";
     type->print();

@@ -367,8 +367,8 @@ fun printMsg
     print("Hello World!")
 
 `
-    This add function takes in two parameters, augend and addend, and returns
-    a num value.
+    This add function takes in two parameters, augend and addend both with type f64, 
+    and returns a f64 value.
 `
 fun add_floats: f64 augend, f64 addend => f64
     return augend + addend

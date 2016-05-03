@@ -264,6 +264,13 @@ ParentNode* mkIfNode(Node* con, Node* body, Node* els = nullptr){
     return ret;
 }
 
+ParentNode* mkWhileNode(Node* con, Node* body){
+    auto *ret = new WhileNode(con, body);
+    ret->col = yylexer->getCol();
+    ret->row = yylexer->getRow();
+    return ret;
+}
+
 ParentNode* mkFuncDeclNode(char* s, Node* mods, Node* tExpr, Node* p, Node* b){
     auto *ret = new FuncDeclNode(s, mods, tExpr, p, b);
     ret->col = yylexer->getCol();

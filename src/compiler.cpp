@@ -69,6 +69,7 @@ void ante::error(const char* msg, const char* fileName, unsigned int row, unsign
  *  (perhaps this should throw an exception?)
  */
 TypedValue* Compiler::compErr(string msg, unsigned int row, unsigned int col){
+    module->dump();
     error(msg.c_str(), fileName.c_str(), row, col);
     errFlag = true;
     return nullptr;
@@ -286,6 +287,34 @@ TypedValue* IfNode::compile(Compiler *c){
     f->getBasicBlockList().push_back(mergbb);
     c->builder.SetInsertPoint(mergbb);
     return new TypedValue(f, TT_Void);
+}
+
+
+TypedValue* WhileNode::compile(Compiler *c){
+    Function *f = c->builder.GetInsertBlock()->getParent();
+    BasicBlock *begin = BasicBlock::Create(getGlobalContext(), "while", f);
+    BasicBlock *end   = BasicBlock::Create(getGlobalContext(), "end_while", f);
+
+    auto *cond = condition->compile(c);
+    c->builder.CreateCondBr(cond->val, begin, end);
+
+    c->enterNewScope();
+    //f->getBasicBlockList().push_back(begin);
+    c->builder.SetInsertPoint(begin);
+    child->compile(c); //compile the while loop's body
+
+    auto *reCond = condition->compile(c);
+    c->builder.CreateCondBr(reCond->val, begin, end);
+
+    //exit scope before the end block is reached to make sure to free
+    //allocated pointers after each iteration to avoid memory leaks.
+    c->exitScope();
+
+    //f->getBasicBlockList().push_back(end);
+
+    c->builder.SetInsertPoint(end);
+
+    return 0;
 }
 
 
@@ -791,18 +820,21 @@ void Compiler::emitIR(){
 
 inline void Compiler::enterNewScope(){
     scope++;
-    varTable.push(map<string, Variable*>());
+    auto *vtable = new map<string, Variable*>();
+    varTable.push_back(unique_ptr<map<string, Variable*>>(vtable));
 }
 
 
 inline void Compiler::exitScope(){
     //iterate through all known variables, check for pointers at the end of
     //their lifetime, and insert calls to free for any that are found
-    for(auto it = varTable.top().cbegin(); it != varTable.top().cend(); it++){
+    auto vtable = varTable.back().get();
+
+    for(auto it = vtable->cbegin(); it != vtable->cend(); it++){
         if(it->second->isFreeable() && it->second->scope == scope){
             string freeFnName = "free";
             Function* freeFn = getFunction(freeFnName);
-            
+
             auto *inst = dynamic_cast<AllocaInst*>(it->second->getVal());
             auto *val = inst? builder.CreateLoad(inst) : it->second->getVal();
 
@@ -814,21 +846,23 @@ inline void Compiler::exitScope(){
     }
 
     scope--;
-    varTable.pop();
+    varTable.pop_back();
 }
 
 
 Variable* Compiler::lookup(string var) const{
-    try{
-        return varTable.top().at(var);
-    }catch(out_of_range r){
-        return nullptr;
+    for(auto &vtable : varTable){
+        try{
+            auto *ret = vtable->at(var);
+            return ret;
+        }catch(out_of_range r){}
     }
+    return nullptr;
 }
 
 
 inline void Compiler::stoVar(string var, Variable *val){
-    varTable.top()[var] = val;
+    (*varTable.back())[var] = val;
 }
 
 

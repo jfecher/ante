@@ -32,6 +32,7 @@ Node* mkVarDeclNode(char* s, Node* mods, Node* tExpr, Node* expr);
 Node* mkVarAssignNode(Node* var, Node* expr);
 
 Node* mkIfNode(Node* con, Node* body, Node* els = nullptr);
+Node* mkWhileNode(Node* con, Node* body);
 Node* mkFuncDeclNode(char* s, Node* mods, Node* tExpr, Node* p, Node* body);
 Node* mkDataDeclNode(char* s, Node* b);
 
