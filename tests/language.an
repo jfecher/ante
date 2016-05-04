@@ -730,6 +730,14 @@ print(myQ1C[1]) ~output: 3
 Coord coord = (100.0, -50.0, 66.7)
 print(coord.y)  ~output: -50
 
+
+let coord2 = (100.0, -50.0, 66.7)
+
+~Data structures are compared with structural equivalence by default, so the following two
+~Coords are equivalent.
+assert(coord == coord2)
+
+
 ~To access a specific field of an anonymous datatype in an expression, it must be casted to
 ~the desired type.
 let y = Coord(100, -50, 66.7).y
