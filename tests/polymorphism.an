@@ -13,35 +13,35 @@ fun sub: 't a b => 't
     return a - b
 
 data Op
-    enum Op
-        Add
-        Sub
-        Mul
-        Div
+  enum
+    Add
+    Sub
+    Mul
+    Div
 
 fun performOperation: 't a b, Op op => 't
-    match op
-        Add -> return a + b
-        Sub -> return a - b
-        Mul -> return a * b
-        Div -> return a / b
+    return match op
+        Add -> a + b
+        Sub -> a - b
+        Mul -> a * b
+        Div -> a / b
 
 
 assert(performOperation(1.0, 2.0, Op.Add) == 3.0)
 
 
-data Maybe<T>
-    T | enum -> None
+data Maybe
+    't | enum -> None
 
 ~Initialize i and n and autodetect their types
 var i = Maybe 3
-var n = Maybe None
+var n = None
 
 
-data Result T E
-    T | E
+data Result
+    't | 'e
 
 ~Return type is assumed to be Result<File, FileErr>
-fun writeFile: File f, String s => Result
-    return f.write(s)
+fun writeFile: File& f, String s => Result
+    return f:write(s)
 
