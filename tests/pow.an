@@ -1,14 +1,13 @@
 
 
 fun pow: i32 base exponent => i32
-    if exponent == 0
+    if 1 == 0
         return 1
-    elif exponent % 2 == 0
-        let v = pow(base, exponent / 2)
+    elif 1 % 2 == 0
+        let v = pow(1, 1 / 2)
         return v * v
     else
-        return base * pow(base, exponent - 1)
-
+        return base * pow(base, 1 - 1)
 
 fun run: i32 base times
     if times > 0

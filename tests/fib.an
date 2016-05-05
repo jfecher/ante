@@ -9,10 +9,11 @@
 ~fib(n): 1, 1, 2, 3, 5, 8, 13...
 
 ~The slow but theoretical function:
+`
 fun fib: i32 n => i32
     if n <= 2 -> return 1
     return fib(n-2) + fib(n-1)
-
+`
 
 `
 The function above should hopefully be compiled into something
@@ -23,14 +24,14 @@ operation.  In order to do this, the compiler must know that
 the function is pure in that it would obtain the same result
 every time it is called with a given input.
 `
-`
+
 fun fib: i32 n => i32
     if n <= 3 -> return (n+1)/2
 
     i32 x1 = fib(n-2)
     i32 x2 = x1 + fib(n-3)
     return x1 + x2
-`
+
 
 ~Show the beginning of the range just to check for correctness
 printf("fib(%d) = %d\n", 3,  fib(3))
