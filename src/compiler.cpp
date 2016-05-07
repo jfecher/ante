@@ -851,9 +851,9 @@ inline void Compiler::exitScope(){
 
 
 Variable* Compiler::lookup(string var) const{
-    for(auto &vtable : varTable){
+    for(auto it = varTable.crbegin(); it != varTable.crend(); it++){
         try{
-            auto *ret = vtable->at(var);
+            auto *ret = (*it)->at(var);
             return ret;
         }catch(out_of_range r){}
     }

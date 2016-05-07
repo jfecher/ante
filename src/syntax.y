@@ -417,7 +417,7 @@ unary_op: '@' val                 {$$ = mkUnOpNode('@', $2);}
         | type_expr val           {$$ = mkTypeCastNode($1, $2);}
         ;
 
-expr: no_nl_expr {$$ = $1;}
+expr: basic_expr {$$ = $1;}
 
 basic_expr: basic_expr '+' maybe_newline basic_expr            %dprec 2 {$$ = mkBinOpNode('+', $1, $4);}
           | basic_expr '-' maybe_newline basic_expr            %dprec 2 {$$ = mkBinOpNode('-', $1, $4);}
@@ -440,12 +440,8 @@ basic_expr: basic_expr '+' maybe_newline basic_expr            %dprec 2 {$$ = mk
           | basic_expr And maybe_newline basic_expr            %dprec 2 {$$ = mkBinOpNode(Tok_And, $1, $4);}
           | basic_expr Range maybe_newline basic_expr          %dprec 2 {$$ = mkBinOpNode(Tok_Range, $1, $4);}
           | val                                     %prec LOW  %dprec 2 {$$ = $1;}
-          | Indent nl_expr Unindent   {$$ = $2;}
+          | Indent expr_list Unindent                                 {$$ = $2;}
           ;
-
-
-no_nl_expr: basic_expr                {$$ = $1;}
-          ; 
 
 
 /* nl_expr is used in expression blocks and can span multiple lines */
@@ -456,32 +452,29 @@ expr_list_p: expr_list_p ',' maybe_newline nl_expr  %prec ',' {$$ = setNext($1, 
            | nl_expr                                %prec LOW {$$ = setRoot($1);}
            ;
 
-nl_expr: expr_block_p                      {$$ = $1;}
+
+nl_expr: nl_expr '+' maybe_newline nl_expr               %dprec 1 {$$ = mkBinOpNode('+', $1, $4);}
+       | nl_expr '-' maybe_newline nl_expr               %dprec 1 {$$ = mkBinOpNode('-', $1, $4);}
+       | nl_expr '*' maybe_newline nl_expr               %dprec 1 {$$ = mkBinOpNode('*', $1, $4);}
+       | nl_expr '/' maybe_newline nl_expr               %dprec 1 {$$ = mkBinOpNode('/', $1, $4);}
+       | nl_expr '%' maybe_newline nl_expr               %dprec 1 {$$ = mkBinOpNode('%', $1, $4);}
+       | nl_expr '<' maybe_newline nl_expr               %dprec 1 {$$ = mkBinOpNode('<', $1, $4);}
+       | nl_expr '>' maybe_newline nl_expr               %dprec 1 {$$ = mkBinOpNode('>', $1, $4);}
+       | nl_expr '^' maybe_newline nl_expr               %dprec 1 {$$ = mkBinOpNode('^', $1, $4);}
+       | nl_expr '.' maybe_newline nl_expr               %dprec 1 {$$ = mkBinOpNode('.', $1, $4);}
+       | nl_expr ';' maybe_newline nl_expr               %dprec 1 {$$ = mkBinOpNode(';', $1, $4);}
+       | nl_expr '[' nl_expr ']' maybe_newline           %dprec 1 {$$ = mkBinOpNode('[', $1, $3);}
+       | nl_expr Where ident '=' maybe_newline nl_expr   %prec Where  %dprec 3 {$$ = mkBinOpNode(Tok_Where, $1, mkLetBindingNode((char*)$3, 0, 0, $6));}
+       | Let ident '=' nl_expr In maybe_newline nl_expr  %prec Let  %dprec 3 {$$ = mkBinOpNode(Tok_Let, mkLetBindingNode((char*)$2, 0, 0, $4), $7);}
+       | nl_expr Eq maybe_newline  nl_expr               %dprec 1 {$$ = mkBinOpNode(Tok_Eq, $1, $4);}
+       | nl_expr NotEq maybe_newline nl_expr             %dprec 1 {$$ = mkBinOpNode(Tok_NotEq, $1, $4);}
+       | nl_expr GrtrEq maybe_newline nl_expr            %dprec 1 {$$ = mkBinOpNode(Tok_GrtrEq, $1, $4);}
+       | nl_expr LesrEq maybe_newline nl_expr            %dprec 1 {$$ = mkBinOpNode(Tok_LesrEq, $1, $4);}
+       | nl_expr Or maybe_newline nl_expr                %dprec 1 {$$ = mkBinOpNode(Tok_Or, $1, $4);}
+       | nl_expr And maybe_newline nl_expr               %dprec 1 {$$ = mkBinOpNode(Tok_And, $1, $4);}
+       | val                                 %prec LOW   %dprec 1 {$$ = $1;}
+       | Indent expr_list Unindent Newline     %prec HIGH  %dprec 1 {$$ = $2;}
        ;
-
-
-expr_block_p: expr_block_p '+' maybe_newline expr_block_p               %dprec 1 {$$ = mkBinOpNode('+', $1, $4);}
-            | expr_block_p '-' maybe_newline expr_block_p               %dprec 1 {$$ = mkBinOpNode('-', $1, $4);}
-            | expr_block_p '*' maybe_newline expr_block_p               %dprec 1 {$$ = mkBinOpNode('*', $1, $4);}
-            | expr_block_p '/' maybe_newline expr_block_p               %dprec 1 {$$ = mkBinOpNode('/', $1, $4);}
-            | expr_block_p '%' maybe_newline expr_block_p               %dprec 1 {$$ = mkBinOpNode('%', $1, $4);}
-            | expr_block_p '<' maybe_newline expr_block_p               %dprec 1 {$$ = mkBinOpNode('<', $1, $4);}
-            | expr_block_p '>' maybe_newline expr_block_p               %dprec 1 {$$ = mkBinOpNode('>', $1, $4);}
-            | expr_block_p '^' maybe_newline expr_block_p               %dprec 1 {$$ = mkBinOpNode('^', $1, $4);}
-            | expr_block_p '.' maybe_newline expr_block_p               %dprec 1 {$$ = mkBinOpNode('.', $1, $4);}
-            | expr_block_p ';' maybe_newline expr_block_p               %dprec 1 {$$ = mkBinOpNode(';', $1, $4);}
-            | expr_block_p '[' expr_block_p ']' maybe_newline           %dprec 1 {$$ = mkBinOpNode('[', $1, $3);}
-            | expr_block_p Where ident '=' maybe_newline expr_block_p   %prec Where  %dprec 3 {$$ = mkBinOpNode(Tok_Where, $1, mkLetBindingNode((char*)$3, 0, 0, $6));}
-            | Let ident '=' expr_block_p In maybe_newline expr_block_p  %prec Let  %dprec 3 {$$ = mkBinOpNode(Tok_Let, mkLetBindingNode((char*)$2, 0, 0, $4), $7);}
-            | expr_block_p Eq maybe_newline  expr_block_p               %dprec 1 {$$ = mkBinOpNode(Tok_Eq, $1, $4);}
-            | expr_block_p NotEq maybe_newline expr_block_p             %dprec 1 {$$ = mkBinOpNode(Tok_NotEq, $1, $4);}
-            | expr_block_p GrtrEq maybe_newline expr_block_p            %dprec 1 {$$ = mkBinOpNode(Tok_GrtrEq, $1, $4);}
-            | expr_block_p LesrEq maybe_newline expr_block_p            %dprec 1 {$$ = mkBinOpNode(Tok_LesrEq, $1, $4);}
-            | expr_block_p Or maybe_newline expr_block_p                %dprec 1 {$$ = mkBinOpNode(Tok_Or, $1, $4);}
-            | expr_block_p And maybe_newline expr_block_p               %dprec 1 {$$ = mkBinOpNode(Tok_And, $1, $4);}
-            | val                                           %prec LOW   %dprec 1 {$$ = $1;}
-            | Indent expr_list Unindent Newline             %prec HIGH  %dprec 1 {$$ = $2;}
-            ;
 
 %%
 
