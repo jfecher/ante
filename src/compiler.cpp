@@ -152,7 +152,6 @@ TypedValue* TypeNode::compile(Compiler *c){
 
 TypedValue* StrLitNode::compile(Compiler *c){
     return new TypedValue(c->builder.CreateGlobalStringPtr(val), TT_StrLit);
-    //ConstantDataArray::getString(getGlobalContext(), val);
 }
 
 
@@ -162,8 +161,14 @@ TypedValue* ArrayNode::compile(Compiler *c){
        auto *tval = n->compile(c);
        arr.push_back((Constant*)tval->val);
     }
-    
-    return new TypedValue(ConstantVector::get(arr), TT_Array);
+   
+    string fn = "malloc";
+    Function *alloc = c->getFunction(fn);
+
+    auto* arrTy = ArrayType::get(arr[0]->getType(), arr.size());
+    Value *ptrToArr = c->builder.CreateCall(alloc, ConstantArray::get(arrTy, arr));
+
+    return new TypedValue(ptrToArr, TT_Ptr);
 }
 
 

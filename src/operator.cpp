@@ -123,8 +123,12 @@ TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
         if(dynamic_cast<AllocaInst*>(l->val)){
             arr = builder.CreateLoad(l->val);
         }
-        Type *elemTy = arr->getType()->getVectorElementType();
-        return new TypedValue(builder.CreateExtractElement(l->val, r->val), llvmTypeToTypeTag(elemTy));
+        Type *elemTy = arr->getType()->getPointerElementType();
+        vector<Value*> indices;
+        indices.push_back(0);
+        indices.push_back(r->val);
+        Value *loc = builder.CreateGEP(arr->getType(), arr, indices);
+        return new TypedValue(builder.CreateLoad(loc), llvmTypeToTypeTag(elemTy));
     }else if(l->type == TT_Tuple){
         if(!dynamic_cast<ConstantInt*>(r->val))
             return compErr("Tuple indices must always be known at compile time.", op->row, op->col) - 1;
@@ -180,8 +184,9 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
     if(!var || !index || !newVal) return 0;
 
     switch(llvmTypeToTypeTag(loadVal->getType())){
-        case TT_Array:
-            return new TypedValue(builder.CreateInsertElement(loadVal, newVal->val, index->val), TT_Void);
+        case TT_Array: case TT_Ptr:
+            return new TypedValue(builder.CreateStore(builder.CreateGEP(loadVal, index->val), newVal->val), TT_Void);
+            //return new TypedValue(builder.CreateInsertElement(loadVal, newVal->val, index->val), TT_Void);
         case TT_Tuple:
             if(!dynamic_cast<ConstantInt*>(index->val)){
                 return compErr("Tuple indices must always be known at compile time.", op->row, op->col) - 1;

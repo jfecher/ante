@@ -128,7 +128,7 @@ Type* typeTagToLlvmType(TypeTag ty, string typeName = ""){
         case TT_C8:     return Type::getInt8Ty(getGlobalContext());
         case TT_C32:    return Type::getInt32Ty(getGlobalContext());
         case TT_Bool:   return Type::getInt1Ty(getGlobalContext());
-        case TT_StrLit: return Type::getInt8PtrTy(getGlobalContext());
+        case TT_StrLit: return PointerType::get(Type::getInt8Ty(getGlobalContext()), 0);
         case TT_Void:   return Type::getVoidTy(getGlobalContext());
         default:
             cerr << "typeTagToLlvmType: Unknown TypeTag " << ty << ", returning nullptr.\n";
@@ -152,7 +152,7 @@ TypeTag llvmTypeToTypeTag(Type *t){
     if(t->isFloatTy()) return TT_F32;
     if(t->isDoubleTy()) return TT_F64;
     
-    if(t->isVectorTy()) return TT_Array;
+    if(t->isArrayTy()) return TT_Array;
     if(t->isStructTy()) return TT_Tuple; /* Could also be a TT_Data! */
     if(t->isPointerTy()) return TT_Ptr;
     if(t->isFunctionTy()) return TT_Func;
@@ -180,7 +180,7 @@ Type* Compiler::typeNodeToLlvmType(TypeNode *tyNode){
             }
             return StructType::get(getGlobalContext(), tys);
         case TT_Array: //TODO array type
-            return PointerType::get(typeNodeToLlvmType(tyn), 0); //ArrayType::get(typeNodeToLlvmType(tyn), 1/*num elements*/);
+            return PointerType::get(typeNodeToLlvmType(tyn), 0);
         case TT_Data:
             userType = lookupType(tyNode->typeName);
             if(!userType)
@@ -190,6 +190,8 @@ Type* Compiler::typeNodeToLlvmType(TypeNode *tyNode){
         case TT_Func: //TODO function pointer type
             cout << "typeNodeToLlvmType: Function pointer types are currently unimplemented.  A void type will be returned instead.\n";
             return Type::getVoidTy(getGlobalContext());
+        case TT_StrLit:
+            return PointerType::get(Type::getInt8Ty(getGlobalContext()), 0);
         default:
             return typeTagToLlvmType(tyNode->type);
     }
@@ -208,10 +210,8 @@ bool llvmTypeEq(Type *l, Type *r){
 
     if(ltt != rtt) return false;
 
-    if(ltt == TT_Ptr){
+    if(ltt == TT_Ptr || ltt == TT_Array){
         return llvmTypeEq(l->getPointerElementType(), r->getPointerElementType());
-    }else if(ltt == TT_Array){
-        return llvmTypeEq(l->getVectorElementType(), r->getVectorElementType());
     }else if(ltt == TT_Func){
         int lParamCount = l->getFunctionNumParams();
         int rParamCount = r->getFunctionNumParams();

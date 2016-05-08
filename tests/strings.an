@@ -7,14 +7,14 @@
 
 let openingMsg = "Hello World!\n"
 
-fun getClosingMsg => c8*
+fun getClosingMsg => c8[]
     return "Goodbye World!\n"
 
 printf("%s%s", openingMsg, getClosingMsg())
 
 
 data Str
-    c8* cStr
+    c8[] cStr
     u32 length
 
 fun print: Str s
