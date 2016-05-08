@@ -162,13 +162,8 @@ TypedValue* ArrayNode::compile(Compiler *c){
        arr.push_back((Constant*)tval->val);
     }
    
-    string fn = "malloc";
-    Function *alloc = c->getFunction(fn);
-
     auto* arrTy = ArrayType::get(arr[0]->getType(), arr.size());
-    Value *ptrToArr = c->builder.CreateCall(alloc, ConstantArray::get(arrTy, arr));
-
-    return new TypedValue(ptrToArr, TT_Ptr);
+    return new TypedValue(ConstantArray::get(arrTy, arr), TT_Array);
 }
 
 

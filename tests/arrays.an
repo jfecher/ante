@@ -9,7 +9,7 @@ printf("ints[3] = %d\n", ints[3])
 
 
 var arr = [5, 4, 3, 2]
-printf("arr[2] = %d\n", arr[2])
+printf("arr[2] = %d\n", arr[1])
 
-arr[2] = 6
+arr[2] = 5
 printf("arr[2] = %d\n", arr[2])

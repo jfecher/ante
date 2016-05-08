@@ -180,7 +180,7 @@ Type* Compiler::typeNodeToLlvmType(TypeNode *tyNode){
             }
             return StructType::get(getGlobalContext(), tys);
         case TT_Array: //TODO array type
-            return PointerType::get(typeNodeToLlvmType(tyn), 0);
+            return ArrayType::get(typeNodeToLlvmType(tyn), 1);
         case TT_Data:
             userType = lookupType(tyNode->typeName);
             if(!userType)
@@ -210,8 +210,10 @@ bool llvmTypeEq(Type *l, Type *r){
 
     if(ltt != rtt) return false;
 
-    if(ltt == TT_Ptr || ltt == TT_Array){
+    if(ltt == TT_Ptr){
         return llvmTypeEq(l->getPointerElementType(), r->getPointerElementType());
+    }else if(ltt == TT_Array){
+        return llvmTypeEq(l->getArrayElementType(), r->getArrayElementType());
     }else if(ltt == TT_Func){
         int lParamCount = l->getFunctionNumParams();
         int rParamCount = r->getFunctionNumParams();
