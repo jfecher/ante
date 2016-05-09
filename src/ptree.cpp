@@ -250,8 +250,8 @@ Node* mkVarDeclNode(char* s, Node* mods, Node* tExpr, Node* expr){
     return ret;
 }
 
-Node* mkVarAssignNode(Node* var, Node* expr){
-    auto *ret = new VarAssignNode(var, expr);
+Node* mkVarAssignNode(Node* var, Node* expr, bool freeLval = true){
+    auto *ret = new VarAssignNode(var, expr, freeLval);
     ret->col = yylexer->getCol();
     ret->row = yylexer->getRow();
     return ret;

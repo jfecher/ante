@@ -219,12 +219,13 @@ struct VarDeclNode : public Node{
 };
 
 struct VarAssignNode : public Node{
-    unique_ptr<Node> ref_expr;
+    Node* ref_expr;
     unique_ptr<Node> expr;
+    bool freeLval;
     TypedValue* compile(Compiler*);
     void print(void);
-    VarAssignNode(Node* v, Node* exp) : Node(), ref_expr(v), expr(exp){}
-    ~VarAssignNode(){}
+    VarAssignNode(Node* v, Node* exp, bool b) : Node(), ref_expr(v), expr(exp), freeLval(b){}
+    ~VarAssignNode(){ if(freeLval) delete ref_expr; }
 };
 
 struct WhileNode : public ParentNode{

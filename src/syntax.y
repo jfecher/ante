@@ -251,11 +251,11 @@ let_binding: Let modifier_list type_expr ident '=' expr  {$$ = mkLetBindingNode(
            ;
 
 /* TODO: change arg1 to require node* instead of char* */
-var_assign: ref_val '=' expr {$$ = mkVarAssignNode($1, $3);}
-          | ref_val AddEq expr {$$ = mkVarAssignNode($1, mkBinOpNode('+', mkUnOpNode('@', $1), $3));}
-          | ref_val SubEq expr {$$ = mkVarAssignNode($1, mkBinOpNode('-', mkUnOpNode('@', $1), $3));}
-          | ref_val MulEq expr {$$ = mkVarAssignNode($1, mkBinOpNode('*', mkUnOpNode('@', $1), $3));}
-          | ref_val DivEq expr {$$ = mkVarAssignNode($1, mkBinOpNode('/', mkUnOpNode('@', $1), $3));}
+var_assign: ref_val '=' expr   {$$ = mkVarAssignNode($1, $3);}
+          | ref_val AddEq expr {$$ = mkVarAssignNode($1, mkBinOpNode('+', mkUnOpNode('@', $1), $3), false);}
+          | ref_val SubEq expr {$$ = mkVarAssignNode($1, mkBinOpNode('-', mkUnOpNode('@', $1), $3), false);}
+          | ref_val MulEq expr {$$ = mkVarAssignNode($1, mkBinOpNode('*', mkUnOpNode('@', $1), $3), false);}
+          | ref_val DivEq expr {$$ = mkVarAssignNode($1, mkBinOpNode('/', mkUnOpNode('@', $1), $3), false);}
           ;
 
 usertype_list: usertype_list ',' usertype {$$ = setNext($1, $3);}

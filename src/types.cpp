@@ -113,9 +113,6 @@ void Compiler::handleImplicitConversion(TypedValue **lhs, TypedValue **rhs){
  */
 Type* typeTagToLlvmType(TypeTag ty, string typeName = ""){
     switch(ty){
-        case TT_Data:
-            cerr << "tokTypeToLlvmType cannot be used with UserTypes.\n";
-            return nullptr;
         case TT_I8:  case TT_U8:  return Type::getInt8Ty(getGlobalContext());
         case TT_I16: case TT_U16: return Type::getInt16Ty(getGlobalContext());
         case TT_I32: case TT_U32: return Type::getInt32Ty(getGlobalContext());
@@ -131,7 +128,7 @@ Type* typeTagToLlvmType(TypeTag ty, string typeName = ""){
         case TT_StrLit: return PointerType::get(Type::getInt8Ty(getGlobalContext()), 0);
         case TT_Void:   return Type::getVoidTy(getGlobalContext());
         default:
-            cerr << "typeTagToLlvmType: Unknown TypeTag " << ty << ", returning nullptr.\n";
+            cerr << "typeTagToLlvmType: Unknown/Unsupported TypeTag " << ty << ", returning nullptr.\n";
             return nullptr;
     }
 }
@@ -190,8 +187,6 @@ Type* Compiler::typeNodeToLlvmType(TypeNode *tyNode){
         case TT_Func: //TODO function pointer type
             cout << "typeNodeToLlvmType: Function pointer types are currently unimplemented.  A void type will be returned instead.\n";
             return Type::getVoidTy(getGlobalContext());
-        case TT_StrLit:
-            return PointerType::get(Type::getInt8Ty(getGlobalContext()), 0);
         default:
             return typeTagToLlvmType(tyNode->type);
     }

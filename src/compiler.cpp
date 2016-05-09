@@ -447,8 +447,8 @@ TypedValue* VarAssignNode::compile(Compiler *c){
     //If this is an insert value (where the lval resembles var[index] = ...)
     //then this must be instead compiled with compInsert, otherwise the [ operator
     //would retrieve the value at the index instead of the reference for storage.
-    if(dynamic_cast<BinOpNode*>(ref_expr.get()))
-        return c->compInsert((BinOpNode*)ref_expr.get(), expr.get());
+    if(dynamic_cast<BinOpNode*>(ref_expr))
+        return c->compInsert((BinOpNode*)ref_expr, expr.get());
 
     //otherwise, this is just a normal assign to a variable
     TypedValue *v = ref_expr->compile(c);

@@ -33,7 +33,7 @@ print(str where str = ("str", 3) )
 fun len: c8[] s => i32
     var acc = 0
     while s[acc] != 0u8
-        acc = acc + 1
+        acc += 1
     return acc
 
 
