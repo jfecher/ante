@@ -289,7 +289,7 @@ TypedValue* compMemberAccess(Compiler *c, TypedValue *l, VarNode *field, BinOpNo
     if(auto *f = c->getFunction(funcName))
         return new TypedValue(f, TT_Function);
 
-    return c->compErr("Method/Field " + field->name + " not found in type " + llvmTypeToStr(l->getType()), binop->row, binop->col);
+    return c->compErr("Method/Field " + funcName + " not found in type " + llvmTypeToStr(l->getType()), binop->row, binop->col);
 }
 
 

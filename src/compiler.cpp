@@ -586,6 +586,7 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
  *  Registers a function for later compilation
  */
 TypedValue* FuncDeclNode::compile(Compiler *c){
+    name = c->funcPrefix + name;
     c->registerFunction(this);
     return nullptr;
 }
@@ -708,7 +709,7 @@ string removeFileExt(string file){
  *  of a module with unneeded library functions.
  */
 inline void Compiler::registerFunction(FuncDeclNode *fn){
-    fnDecls[funcPrefix + fn->name] = fn;
+    fnDecls[fn->name] = fn;
 }
 
 
