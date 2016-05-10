@@ -30,6 +30,7 @@ Node* mkRetNode(Node* expr);
 Node* mkLetBindingNode(char* s, Node* mods, Node* tExpr, Node* expr);
 Node* mkVarDeclNode(char* s, Node* mods, Node* tExpr, Node* expr);
 Node* mkVarAssignNode(Node* var, Node* expr, bool shouldFreeLval = true);
+Node* mkExtNode(Node* typeExpr, Node* methods);
 
 Node* mkIfNode(Node* con, Node* body, Node* els = nullptr);
 Node* mkWhileNode(Node* con, Node* body);

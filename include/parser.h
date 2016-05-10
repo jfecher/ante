@@ -228,6 +228,15 @@ struct VarAssignNode : public Node{
     ~VarAssignNode(){ if(freeLval) delete ref_expr; }
 };
 
+struct ExtNode : public Node{
+    unique_ptr<Node> typeExpr;
+    unique_ptr<Node> methods;
+    TypedValue* compile(Compiler*);
+    void print(void);
+    ExtNode(Node *t, Node *m) : typeExpr(t), methods(m){}
+    ~ExtNode(){}
+};
+
 struct WhileNode : public ParentNode{
     unique_ptr<Node> condition;
     TypedValue* compile(Compiler*);

@@ -54,12 +54,12 @@ bool is_expr_block = false;
 %token If Elif Else
 %token For While Do In
 %token Continue Break
-%token Import Let Var
-%token Match Data Enum Fun
+%token Import Let Var Match
+%token Data Enum Fun Ext
 
 /* modifiers */
 %token Pub Pri Pro Raw
-%token Const Ext Noinit Pathogen
+%token Const Noinit Pathogen
 
 /* other */
 %token Where Infect Cleanse Ct
@@ -141,6 +141,7 @@ stmt: fn_decl       Newline
     | fn_call       Newline
     | ret_stmt      Newline
     | let_binding   Newline
+    | extension     Newline
     ;
 
 stmt_no_nl: fn_decl      
@@ -337,6 +338,18 @@ fn_call: ident tuple {$$ = mkFuncCallNode((char*)$1, $2);}
 
 ret_stmt: Return expr {$$ = mkRetNode($2);}
         ;
+
+
+extension: Ext type_expr Indent fn_list Unindent {$$ = mkExtNode($2, $4);}
+         ;
+
+
+fn_list: fn_list_ {$$ = getRoot();}
+
+fn_list_: fn_list_ fn_decl maybe_newline  {$$ = setNext($1, $2);} 
+        | fn_decl maybe_newline           {$$ = setRoot($1);}
+        ;
+
 
 /*
  * Due to parsing ambiguities with elif_lists, elif_list, maybe_elif_list, and if_stmt

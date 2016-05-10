@@ -69,6 +69,7 @@ map<int, const char*> tokDict = {
     {Tok_Data, "Data"},
     {Tok_Enum, "Enum"},
     {Tok_Fun, "Fun"},
+    {Tok_Ext, "Ext"},
 
     //modifiers
     {Tok_Pub, "Pub"},
@@ -76,7 +77,6 @@ map<int, const char*> tokDict = {
     {Tok_Pro, "Pro"},
     {Tok_Raw, "Raw"},
     {Tok_Const, "Const"},
-    {Tok_Ext, "Ext"},
     {Tok_Noinit, "Noinit"},
     {Tok_Pathogen, "Pathogen"},
 
@@ -135,13 +135,13 @@ map<string, int> keywords = {
     {"data",     Tok_Data},
     {"enum",     Tok_Enum},
     {"fun",      Tok_Fun},
+    {"ext",      Tok_Ext},
     
     {"pub",      Tok_Pub},
     {"pri",      Tok_Pri},
     {"pro",      Tok_Pro},
     {"raw",      Tok_Raw},
     {"const",    Tok_Const},
-    {"ext",      Tok_Ext},
     {"noinit",   Tok_Noinit},
     {"pathogen", Tok_Pathogen},
 

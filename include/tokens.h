@@ -88,6 +88,7 @@ enum TokenType{
     Tok_Data,
     Tok_Enum,
     Tok_Fun,
+    Tok_Ext,
 
     //modifiers
     Tok_Pub,
@@ -95,7 +96,6 @@ enum TokenType{
     Tok_Pro,
     Tok_Raw,
     Tok_Const,
-    Tok_Ext,
     Tok_Noinit,
     Tok_Pathogen,
 
