@@ -229,11 +229,11 @@ struct VarAssignNode : public Node{
 };
 
 struct ExtNode : public Node{
-    unique_ptr<Node> typeExpr;
+    unique_ptr<TypeNode> typeExpr;
     unique_ptr<Node> methods;
     TypedValue* compile(Compiler*);
     void print(void);
-    ExtNode(Node *t, Node *m) : typeExpr(t), methods(m){}
+    ExtNode(TypeNode *t, Node *m) : typeExpr(t), methods(m){}
     ~ExtNode(){}
 };
 

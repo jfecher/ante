@@ -99,6 +99,7 @@ size_t Compiler::getTupleSize(Node *tup){
 TypedValue* compileStmtList(Node *nList, Compiler *c){
     TypedValue *ret = nullptr;
     while(nList){
+        cout << "running...\n";
         ret = nList->compile(c);
         nList = nList->next.get();
     }
@@ -533,36 +534,11 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
 
     vector<Type*> paramTys = getParamTypes(this, paramsBegin, nParams);
 
-    //If there is no return type, this function was created through a let binding,
-    //and its type should be inferred.
-    if(!retNode){
-        TypedValue *retVal = compLetBindingFn(fdn, nParams, paramTys);
-        if(!retVal) return 0;
-
-        Function *f = module->getFunction(fdn->name);
-        f->removeFromParent();
-
-        retVal = compLetBindingFn(fdn, nParams, paramTys, retVal->getType());
-        Function *f2 = module->getFunction(fdn->name);
-
-        builder.SetInsertPoint(&module->getFunction(fdn->name)->back());
-
-        //llvm requires explicit returns, so generate a void return even if
-        //the user did not in their void function.
-        if(retVal->type != TT_Void){
-            builder.CreateRet(retVal->val);
-        }else{
-            builder.CreateRetVoid();
-        }
-        f->deleteBody();
-        return f2;
-    }
-
     Type *retType = typeNodeToLlvmType(retNode);
     //Get the corresponding function type for the above return type, parameter types,
     //with no varargs
     FunctionType *ft = FunctionType::get(retType, paramTys, fdn->varargs);
-    Function *f = Function::Create(ft, Function::ExternalLinkage, fdn->name, module.get());
+    Function *f = Function::Create(ft, Function::ExternalLinkage, funcPrefix + fdn->name, module.get());
 
     //The above handles everything for a function declaration
     //If the function is a definition, then the body will be compiled here.
@@ -613,6 +589,15 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
 TypedValue* FuncDeclNode::compile(Compiler *c){
     c->registerFunction(this);
     return nullptr;
+}
+
+
+TypedValue* ExtNode::compile(Compiler *c){
+    c->funcPrefix = llvmTypeToStr(c->typeNodeToLlvmType(typeExpr.get())) + "_";
+    cout << c->funcPrefix << endl;
+    compileStmtList(methods.get(), c);
+    c->funcPrefix = "";
+    return 0;
 }
 
 
@@ -725,7 +710,7 @@ string removeFileExt(string file){
  *  of a module with unneeded library functions.
  */
 inline void Compiler::registerFunction(FuncDeclNode *fn){
-    fnDecls[fn->name] = fn;
+    fnDecls[funcPrefix + fn->name] = fn;
 }
 
 
@@ -884,7 +869,8 @@ Compiler::Compiler(char *_fileName) :
         builder(getGlobalContext()), 
         errFlag(false),
         compiled(false),
-        fileName(_fileName){
+        fileName(_fileName),
+        funcPrefix(""){
 
     setLexer(new Lexer(_fileName));
     yy::parser p{};

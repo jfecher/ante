@@ -258,7 +258,7 @@ Node* mkVarAssignNode(Node* var, Node* expr, bool freeLval = true){
 }
 
 Node* mkExtNode(Node* ty, Node* methods){
-    auto *ret = new ExtNode(ty, methods);
+    auto *ret = new ExtNode((TypeNode*)ty, methods);
     ret->col = yylexer->getCol();
     ret->row = yylexer->getRow();
     return ret;

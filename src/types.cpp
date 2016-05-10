@@ -288,6 +288,33 @@ string typeTagToStr(TypeTag ty){
 }
 
 /*
+ *  Converts a typeNode directly to a string with no information loss.
+ *  Used in ExtNode::compile
+ */
+string typeNodeToStr(TypeNode *t){
+    if(t->type == TT_Tuple){
+        string ret = "(";
+        TypeNode *elem = t->extTy.get();
+        while(elem){
+            if(elem->next.get())
+                ret += typeNodeToStr(elem) + ", ";
+            else
+                ret += typeNodeToStr(elem) + ")";
+            elem = (TypeNode*)elem->next.get();
+        }
+        return ret;
+    }else if(t->type == TT_Data){
+        return t->typeName;
+    }else if(t->type == TT_Array){
+        return typeNodeToStr(t->extTy.get()) + "[]";
+    }else if(t->type == TT_Ptr){
+        return typeNodeToStr(t->extTy.get()) + "*";
+    }else{
+        return typeTagToStr(t->type);
+    }
+}
+
+/*
  *  Returns a string representing the full type of ty.  Since it is converting
  *  from a llvm::Type, this will never return an unsigned integer type.
  */

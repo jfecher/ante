@@ -1,0 +1,9 @@
+
+
+ext i32
+
+    fun nxt: i32 a => i32
+        return a + 1
+
+
+let a = 2.nxt()

@@ -92,7 +92,7 @@ namespace ante{
         map<string, DataType*> userTypes;
 
         bool errFlag, compiled;
-        string fileName;
+        string fileName, funcPrefix;
         unsigned int scope;
         
         Compiler(char *fileName);
@@ -104,7 +104,7 @@ namespace ante{
         void emitIR();
         void enterNewScope();
         void exitScope();
-
+        
         //binop functions
         TypedValue* compAdd(TypedValue *l, TypedValue *r, BinOpNode *op);
         TypedValue* compSub(TypedValue *l, TypedValue *r, BinOpNode *op);
@@ -147,6 +147,7 @@ Type* typeTagToLlvmType(TypeTag tagTy, string typeName);
 TypeTag llvmTypeToTypeTag(Type *t);
 string llvmTypeToStr(Type *ty);
 string typeTagToStr(TypeTag ty);
+string typeNodeToStr(TypeNode *t);
 bool llvmTypeEq(Type *l, Type *r);
 
 char getBitWidthOfTypeTag(const TypeTag tagTy);

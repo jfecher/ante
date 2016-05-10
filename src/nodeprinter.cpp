@@ -179,6 +179,14 @@ void VarAssignNode::print(){
     else cout << "(undef)";
 }
 
+void ExtNode::print(){
+    cout << "ext ";
+    typeExpr->print();
+    cout << "\n";
+    printBlock(methods.get());
+    puts("end ext");
+}
+
 void WhileNode::print(){
     cout << "while ";
     condition->print();

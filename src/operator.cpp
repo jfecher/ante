@@ -274,16 +274,23 @@ TypedValue* TypeCastNode::compile(Compiler *c){
 TypedValue* compMemberAccess(Compiler *c, TypedValue *l, VarNode *field, BinOpNode *binop){
     if(!l) return 0;
 
-    if(l->type != TT_Data)
-        return c->compErr("Value of type " + llvmTypeToStr(l->getType()) + " does not have any fields to access.", binop->row, binop->col);
+    if(l->type == TT_Data){
+        auto dataTy = c->lookupType(l->getType()->getStructName());
+        auto index = dataTy->getFieldIndex(field->name);
 
-    auto dataTy = c->lookupType(l->getType()->getStructName());
-    auto index = dataTy->getFieldIndex(field->name);
+        if(index != -1)
+            return c->compErr("Method/Field '" + field->name + "' is not present within the " + llvmTypeToStr(l->getType()) + " datatype.", field->row, field->col);
 
-    if(index == -1)
-        return c->compErr("Field '" + field->name + "' is not present within the " + llvmTypeToStr(l->getType()) + " datatype.", field->row, field->col);
+        return new TypedValue(c->builder.CreateExtractValue(l->val, index), llvmTypeToTypeTag(l->getType()->getStructElementType(index)));
+    }
+    //not a field, so look for a method.
+    string funcName = llvmTypeToStr(l->getType()) + "_" + field->name;
 
-    return new TypedValue(c->builder.CreateExtractValue(l->val, index), llvmTypeToTypeTag(l->getType()->getStructElementType(index)));
+    if(c->getFunction(funcName))
+        return new TypedValue(c->getFunction(funcName), TT_Function);
+
+    cout << funcName << endl;
+    return c->compErr("Method/Field " + field->name + " not found in type " + llvmTypeToStr(l->getType()), binop->row, binop->col);
 }
 
 /*
