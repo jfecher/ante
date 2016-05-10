@@ -451,8 +451,7 @@ basic_expr: basic_expr '+' maybe_newline basic_expr            %dprec 2 {$$ = mk
           | basic_expr Or maybe_newline basic_expr             %dprec 2 {$$ = mkBinOpNode(Tok_Or, $1, $4);}
           | basic_expr And maybe_newline basic_expr            %dprec 2 {$$ = mkBinOpNode(Tok_And, $1, $4);}
           | basic_expr Range maybe_newline basic_expr          %dprec 2 {$$ = mkBinOpNode(Tok_Range, $1, $4);}
-          | basic_expr '(' expr ')'                                     {$$ = mkBinOpNode('(', $1, $3);}
-          | basic_expr '(' ')'                                          {$$ = mkBinOpNode('(', $1, $3);}
+          | basic_expr tuple                                            {$$ = mkBinOpNode('(', $1, $2);}
           | val                                     %prec LOW  %dprec 2 {$$ = $1;}
           | Indent expr_list Unindent                                   {$$ = $2;}
           ;
@@ -486,8 +485,7 @@ nl_expr: nl_expr '+' maybe_newline nl_expr               %dprec 1 {$$ = mkBinOpN
        | nl_expr LesrEq maybe_newline nl_expr            %dprec 1 {$$ = mkBinOpNode(Tok_LesrEq, $1, $4);}
        | nl_expr Or maybe_newline nl_expr                %dprec 1 {$$ = mkBinOpNode(Tok_Or, $1, $4);}
        | nl_expr And maybe_newline nl_expr               %dprec 1 {$$ = mkBinOpNode(Tok_And, $1, $4);}
-       | nl_expr '(' expr ')'                                     {$$ = mkBinOpNode('(', $1, $3);}
-       | nl_expr '(' ')'                                          {$$ = mkBinOpNode('(', $1, $3);}
+       | nl_expr tuple                                            {$$ = mkBinOpNode('(', $1, $2);}
        | val                                 %prec LOW   %dprec 1 {$$ = $1;}
        | Indent expr_list Unindent Newline   %prec HIGH  %dprec 1 {$$ = $2;}
        ;

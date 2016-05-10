@@ -464,7 +464,7 @@ fun printStuff
     print("Stuff")
 
 
-impl Str
+ext Str
     
     ~Compiled as "Str_reverse"
     fun reverse: Str s => Str
@@ -924,7 +924,7 @@ sara.printInfo()
     Modifiers modify the behaviour of a particular instance of a variable, and 
     are listed before its type.  The visibility modifiers pub, pro, and pri are 
     short for public, protected, and private respectively.  Pri variables can only
-    be accessed by associated methods within the data declaration or impls.  Pub 
+    be accessed by associated methods within the data declaration or extensions.  Pub 
     variables are the default and can be accessed from anywhere.  Pro variables can
     be accessed by the datatype and any inheriting datatypes.  Another common modifier 
     is const to declare a constant variable.
@@ -1174,18 +1174,18 @@ false
 `
 
 `
-        Implementations
-    The impl keyword can be used to extend any type with additional methods, 
+        Type Extensions
+    The ext keyword can be used to extend any type with additional methods, 
     but no new instance data can be added for congregate datatypes.  A common 
     usage of this would be extending an API to implement a function or even inherit
     from an additional parent class as long as it has no instance data.
 `
-impl Point : SomeAdditionalTrait
+ext Point : SomeAdditionalTrait
     ~implement new methods
     fun op("=="): self, Point p2 => bool
         return self.x == p2.x and self.y == p2.y
 
-trait Drawable
+ext Drawable
     fun draw: self
 
     ~Default definitions for traits can also be created.
@@ -1198,7 +1198,7 @@ data Rectangle
     u32 height
     Surface surface
 
-impl Rectangle : Drawable
+ext Rectangle : Drawable
     ~Now Rectangle must implement the methods of Drawable
     fun draw: self
         self.surf.print("___")
@@ -1214,27 +1214,27 @@ impl Rectangle : Drawable
             height = height,
             surface = Surface()
 
-var r = Rectangle(4)
+var r = Rectangle 4
 
 ~Mutator functions are differentiated from accessors
 r:setHeight(5)
 
 
 ~Mutator functions cannot be used with constant variables
-let immutRect = Rectangle(3)
+let immutRect = Rectangle 3
 
 ~Error here!
 immutRect:setHeight(5)
 
 
-~Implementations can also be used for primitive types
-impl i32, i32
+~Extensions can also be used for primitive types
+ext i32, i32
     fun swap: self => i32,i32
         print("Swapped i32!")
         return self[1], self[0]
 
 
-impl 't, 't
+ext't, 't
     fun swap: self => 't,'t
         print("Swapped pair!")
         return self[1], self[0]
@@ -1250,11 +1250,11 @@ assert(point[0] == 4 and point[1] == 3)
 ~Pointers will be automatically dereferenced if their dereferenced type has a valid
 ~implementation, otherwise a compilation error will result.
 
-impl c32* ~invalid
+ext c32* ~invalid
     fun addInitials: self => c32*
         return self ++ " -JF"
 
-impl c32[] ~valid
+ext c32[] ~valid
     fun addInitials: self => c32[]
         return self ++ " -JF"
 
@@ -1469,19 +1469,19 @@ arrStr += "element 2"
 assert(ptrStr[0] == arrStr[0])
 
 `
-    Implementations
+    Extensions
 
     Pointers:
-        In order to preserve auto dereferencing, impls cannot be declared
+        In order to preserve auto dereferencing, extensions cannot be declared
         for arbitrary pointer types.
 
     Arrays:
-        Impls are perfectly valid for array types, including arrays of
+        Extensions are perfectly valid for array types, including arrays of
         pointer types, despite sharing the same structure in memory.  
-        To use array impls with a pointer, the pointer should be casted 
+        To use array exts with a pointer, the pointer should be casted 
         to an array type.
 `
-impl c32[]
+ext c32[]
     fun reverse: self*, u32 len
         raw c32[] rev = malloc((len+1) * sizeof(c32))
         for i in range(len-1, 0)
@@ -1764,7 +1764,7 @@ statements:
     else 
     import 
     match
-    impl
+    ext
     
 loops: 
     for

@@ -286,12 +286,45 @@ TypedValue* compMemberAccess(Compiler *c, TypedValue *l, VarNode *field, BinOpNo
     //not a field, so look for a method.
     string funcName = llvmTypeToStr(l->getType()) + "_" + field->name;
 
-    if(c->getFunction(funcName))
-        return new TypedValue(c->getFunction(funcName), TT_Function);
+    if(auto *f = c->getFunction(funcName))
+        return new TypedValue(f, TT_Function);
 
-    cout << funcName << endl;
     return c->compErr("Method/Field " + field->name + " not found in type " + llvmTypeToStr(l->getType()), binop->row, binop->col);
 }
+
+
+TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
+    /* Check given argument count matches declared argument count. */
+    TypedValue *tvf = l->compile(c);
+    if(!tvf || !tvf->val) return 0;
+    if(tvf->type != TT_Function)
+        return c->compErr("Called value is not a function or method.", l->row, l->col);
+
+    //now that we assured it is a function, unwrap it
+    Function *f = (Function*) tvf->val;
+
+    auto args = ((TupleNode*)r)->unpack(c);
+
+    if(f->arg_size() != args.size() && !f->isVarArg()){
+        if(args.size() == 1)
+            return c->compErr("Called method was given 1 argument but was declared to take " + to_string(f->arg_size()), r->row, r->col);
+        else
+            return c->compErr("Called method was given " + to_string(args.size()) + " arguments but was declared to take " + to_string(f->arg_size()), r->row, r->col);
+    }
+
+    /* unpack the tuple of arguments into a vector containing each value */
+    int i = 0;
+    for(auto &param : f->args()){//type check each parameter
+        if(!llvmTypeEq(args[i++]->getType(), param.getType())){
+            return c->compErr("Argument " + to_string(i) + " of method is a(n) " + llvmTypeToStr(args[i-1]->getType())
+                    + " but was declared to be a(n) " + llvmTypeToStr(param.getType()), r->row, r->col);
+        }
+    }
+
+    return new TypedValue(c->builder.CreateCall(f, args), llvmTypeToTypeTag(f->getReturnType()));
+    
+}
+
 
 /*
  *  Compiles an operation along with its lhs and rhs
@@ -302,6 +335,8 @@ TypedValue* BinOpNode::compile(Compiler *c){
         return lval->compile(c);
     }else if(op == '.'){
         return compMemberAccess(c, lval->compile(c), (VarNode*)rval.get(), this);
+    }else if(op == '('){
+        return compFnCall(c, lval.get(), rval.get());
     }
 
     TypedValue *lhs = lval->compile(c);

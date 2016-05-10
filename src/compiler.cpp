@@ -99,7 +99,6 @@ size_t Compiler::getTupleSize(Node *tup){
 TypedValue* compileStmtList(Node *nList, Compiler *c){
     TypedValue *ret = nullptr;
     while(nList){
-        cout << "running...\n";
         ret = nList->compile(c);
         nList = nList->next.get();
     }
@@ -594,7 +593,6 @@ TypedValue* FuncDeclNode::compile(Compiler *c){
 
 TypedValue* ExtNode::compile(Compiler *c){
     c->funcPrefix = llvmTypeToStr(c->typeNodeToLlvmType(typeExpr.get())) + "_";
-    cout << c->funcPrefix << endl;
     compileStmtList(methods.get(), c);
     c->funcPrefix = "";
     return 0;
