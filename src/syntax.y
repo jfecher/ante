@@ -387,7 +387,7 @@ ref_val: '&' ref_val            {$$ = mkUnOpNode('&', $2);}
        ;
 
 val: fn_call                               {$$ = $1;}
-   | '(' nl_expr ')'                          {$$ = $2;}
+   | '(' nl_expr ')'                       {$$ = $2;}
    | tuple                                 {$$ = $1;}
    | array                                 {$$ = $1;}
    | unary_op                              {$$ = $1;}
@@ -407,21 +407,6 @@ array: '[' expr_list ']' {$$ = mkArrayNode($2);}
      | '[' ']'           {$$ = mkArrayNode(0);}
      ;
 
-/*
-maybe_expr: expr    {$$ = $1;}
-          | %empty  {$$ = NULL;}
-          ;
-*/
-
-/*
-expr_list: expr_list_p {$$ = getRoot();}
-         ;
-
-expr_list_p: expr_list_p ',' expr  {$$ = setNext($1, $3);}
-           | expr       %prec LOW  {$$ = setRoot($1);} 
-           /* Low precedence here to favor parenthesis as grouping when possible 
-              instead of being parsed as a single-value tuple. */
-
 
 unary_op: '@' val                 {$$ = mkUnOpNode('@', $2);}
         | '&' val                 {$$ = mkUnOpNode('&', $2);}
@@ -440,6 +425,7 @@ basic_expr: basic_expr '+' maybe_newline basic_expr            %dprec 2 {$$ = mk
           | basic_expr '>' maybe_newline basic_expr            %dprec 2 {$$ = mkBinOpNode('>', $1, $4);}
           | basic_expr '^' maybe_newline basic_expr            %dprec 2 {$$ = mkBinOpNode('^', $1, $4);}
           | basic_expr '.' maybe_newline var                   %dprec 2 {$$ = mkBinOpNode('.', $1, $4);}
+          | type_expr  '.' maybe_newline var                   %dprec 2 {$$ = mkBinOpNode('.', $1, $4);}
           | basic_expr ';' maybe_newline basic_expr            %dprec 2 {$$ = mkBinOpNode(';', $1, $4);}
           | basic_expr '[' nl_expr ']'                         %dprec 2 {$$ = mkBinOpNode('[', $1, $3);}
           | basic_expr Where ident '=' basic_expr %prec Where  %dprec 2 {$$ = mkBinOpNode(Tok_Where, $1, mkLetBindingNode((char*)$3, 0, 0, $5));}
