@@ -285,17 +285,33 @@ int Lexer::genAlphaNumTok(){
     tokRow = row;
     tokCol = col;
 
-    while(IS_ALPHANUM(cur)){
-        s += cur;
-        incPos();
+    bool isUsertype = cur >= 'A' && cur <= 'Z';
+    if(isUsertype){
+        while(IS_ALPHANUM(cur)){
+            if(cur == '_')
+                lexErr("Usertypes cannot contain an underscore.");
+
+            s += cur;
+            incPos();
+        }
+    }else{
+        while(IS_ALPHANUM(cur)){
+            s += cur;
+            incPos();
+        }
     }
 
-    auto key = keywords.find(s.c_str());
-    if(key != keywords.end()){
-        return key->second;
-    }else{
+    if(isUsertype){
         setlextxt(&s);
-        return (s[0] >= 'A' && s[0] <= 'Z') ? Tok_UserType : Tok_Ident;
+        return Tok_UserType;
+    }else{ //ident or keyword
+        auto key = keywords.find(s.c_str());
+        if(key != keywords.end()){
+            return key->second;
+        }else{//ident
+            setlextxt(&s);
+            return Tok_Ident;
+        }
     }
 }
 

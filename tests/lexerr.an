@@ -11,6 +11,9 @@ let i = 5_i321
 ~Scope underflow caused by unindent literal
 let ans = 5;;
 
+~Types must not contain an _ character
+let v = My_Str "hi"
+
 ~And worst of all, use of the tab character in significant whitespace
 if ans == i
 	puts("ans == i")

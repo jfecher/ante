@@ -271,25 +271,40 @@ TypedValue* TypeCastNode::compile(Compiler *c){
     }
 }
 
-TypedValue* compMemberAccess(Compiler *c, TypedValue *l, VarNode *field, BinOpNode *binop){
-    if(!l) return 0;
+TypedValue* compMemberAccess(Compiler *c, Node *ln, VarNode *field, BinOpNode *binop){
+    if(!ln) return 0;
 
-    if(l->type == TT_Data){
-        auto dataTy = c->lookupType(l->getType()->getStructName());
-        auto index = dataTy->getFieldIndex(field->name);
+    if(dynamic_cast<TypeNode*>(ln)){
+        //since ln is a typenode, this is a static field/method access, eg Math.rand
+        Type* lty = c->typeNodeToLlvmType((TypeNode*)ln);
 
-        if(index != -1)
-            return c->compErr("Method/Field '" + field->name + "' is not present within the " + llvmTypeToStr(l->getType()) + " datatype.", field->row, field->col);
+        string valName = llvmTypeToStr(lty) + "_" + field->name;
 
-        return new TypedValue(c->builder.CreateExtractValue(l->val, index), llvmTypeToTypeTag(l->getType()->getStructElementType(index)));
+        if(auto *f = c->getFunction(valName))
+            return new TypedValue(f, TT_Function);
+
+        return c->compErr("No static method or field called " + field->name + " was found in type " + llvmTypeToStr(lty), binop->row, binop->col);
+    }else{
+        //ln is not a typenode, this is not a static method call, eg "hello".reverse()
+        auto *l = ln->compile(c);
+
+        if(l->type == TT_Data){
+            auto dataTy = c->lookupType(l->getType()->getStructName());
+            auto index = dataTy->getFieldIndex(field->name);
+
+            if(index != -1)
+                return c->compErr("Method/Field '" + field->name + "' is not present within the " + llvmTypeToStr(l->getType()) + " datatype.", field->row, field->col);
+
+            return new TypedValue(c->builder.CreateExtractValue(l->val, index), llvmTypeToTypeTag(l->getType()->getStructElementType(index)));
+        }
+        //not a field, so look for a method.
+        string funcName = llvmTypeToStr(l->getType()) + "_" + field->name;
+
+        if(auto *f = c->getFunction(funcName))
+            return new TypedValue(f, TT_Function);
+
+        return c->compErr("Method/Field " + field->name + " not found in type " + llvmTypeToStr(l->getType()), binop->row, binop->col);
     }
-    //not a field, so look for a method.
-    string funcName = llvmTypeToStr(l->getType()) + "_" + field->name;
-
-    if(auto *f = c->getFunction(funcName))
-        return new TypedValue(f, TT_Function);
-
-    return c->compErr("Method/Field " + funcName + " not found in type " + llvmTypeToStr(l->getType()), binop->row, binop->col);
 }
 
 
@@ -334,7 +349,7 @@ TypedValue* BinOpNode::compile(Compiler *c){
         rval->compile(c); //rval should always be a LetBindingNode
         return lval->compile(c);
     }else if(op == '.'){
-        return compMemberAccess(c, lval->compile(c), (VarNode*)rval.get(), this);
+        return compMemberAccess(c, lval.get(), (VarNode*)rval.get(), this);
     }else if(op == '('){
         return compFnCall(c, lval.get(), rval.get());
     }

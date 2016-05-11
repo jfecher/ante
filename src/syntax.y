@@ -460,7 +460,8 @@ nl_expr: nl_expr '+' maybe_newline nl_expr               %dprec 1 {$$ = mkBinOpN
        | nl_expr '<' maybe_newline nl_expr               %dprec 1 {$$ = mkBinOpNode('<', $1, $4);}
        | nl_expr '>' maybe_newline nl_expr               %dprec 1 {$$ = mkBinOpNode('>', $1, $4);}
        | nl_expr '^' maybe_newline nl_expr               %dprec 1 {$$ = mkBinOpNode('^', $1, $4);}
-       | nl_expr '.' maybe_newline nl_expr               %dprec 1 {$$ = mkBinOpNode('.', $1, $4);}
+       | nl_expr '.' maybe_newline var                   %dprec 1 {$$ = mkBinOpNode('.', $1, $4);}
+       | type_expr '.' maybe_newline var                 %dprec 2 {$$ = mkBinOpNode('.', $1, $4);}
        | nl_expr ';' maybe_newline nl_expr               %dprec 1 {$$ = mkBinOpNode(';', $1, $4);}
        | nl_expr '[' nl_expr ']' maybe_newline           %dprec 1 {$$ = mkBinOpNode('[', $1, $3);}
        | nl_expr Where ident '=' maybe_newline nl_expr   %prec Where  %dprec 3 {$$ = mkBinOpNode(Tok_Where, $1, mkLetBindingNode((char*)$3, 0, 0, $6));}
