@@ -265,7 +265,8 @@ TypedValue* TypeCastNode::compile(Compiler *c){
     auto* val = createCast(c, castTy, typeExpr->type, rtval);
     
     if(!val){
-        return c->compErr("Invalid type cast " + llvmTypeToStr(rtval->getType()) + " -> " + llvmTypeToStr(castTy), row, col);
+        return c->compErr("Invalid type cast " + llvmTypeToStr(rtval->getType()) + 
+                " -> " + llvmTypeToStr(castTy), row, col);
     }else{
         return new TypedValue(val, typeExpr->type);
     }
@@ -283,7 +284,8 @@ TypedValue* compMemberAccess(Compiler *c, Node *ln, VarNode *field, BinOpNode *b
         if(auto *f = c->getFunction(valName))
             return new TypedValue(f, TT_Function);
 
-        return c->compErr("No static method or field called " + field->name + " was found in type " + llvmTypeToStr(lty), binop->row, binop->col);
+        return c->compErr("No static method or field called " + field->name + " was found in type " + 
+                llvmTypeToStr(lty), binop->row, binop->col);
     }else{
         //ln is not a typenode, this is not a static method call, eg "hello".reverse()
         auto *l = ln->compile(c);
@@ -293,17 +295,18 @@ TypedValue* compMemberAccess(Compiler *c, Node *ln, VarNode *field, BinOpNode *b
             auto index = dataTy->getFieldIndex(field->name);
 
             if(index != -1)
-                return c->compErr("Method/Field '" + field->name + "' is not present within the " + llvmTypeToStr(l->getType()) + " datatype.", field->row, field->col);
-
-            return new TypedValue(c->builder.CreateExtractValue(l->val, index), llvmTypeToTypeTag(l->getType()->getStructElementType(index)));
+                return new TypedValue(c->builder.CreateExtractValue(l->val, index), 
+                        llvmTypeToTypeTag(l->getType()->getStructElementType(index)));
         }
         //not a field, so look for a method.
+        //TODO: perhaps create a calling convention function
         string funcName = llvmTypeToStr(l->getType()) + "_" + field->name;
 
         if(auto *f = c->getFunction(funcName))
-            return new TypedValue(f, TT_Function);
+            return new MethodVal(l->val, f);
 
-        return c->compErr("Method/Field " + field->name + " not found in type " + llvmTypeToStr(l->getType()), binop->row, binop->col);
+        return c->compErr("Method/Field " + field->name + " not found in type " + 
+                llvmTypeToStr(l->getType()), binop->row, binop->col);
     }
 }
 
@@ -312,26 +315,38 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
     /* Check given argument count matches declared argument count. */
     TypedValue *tvf = l->compile(c);
     if(!tvf || !tvf->val) return 0;
-    if(tvf->type != TT_Function)
+    if(tvf->type != TT_Function && tvf->type != TT_Method)
         return c->compErr("Called value is not a function or method.", l->row, l->col);
 
     //now that we assured it is a function, unwrap it
     Function *f = (Function*) tvf->val;
 
-    auto args = ((TupleNode*)r)->unpack(c);
+    //if tvf is a method, add its host object as the first argument
+    vector<Value*> args;
+    if(tvf->type == TT_Method){
+        Value *obj = ((MethodVal*) tvf)->obj;
+        args.push_back(obj);
+    }
+
+    //add all remaining arguments
+    for(Value *v : ((TupleNode*)r)->unpack(c))
+        args.push_back(v);
+
 
     if(f->arg_size() != args.size() && !f->isVarArg()){
         if(args.size() == 1)
-            return c->compErr("Called method was given 1 argument but was declared to take " + to_string(f->arg_size()), r->row, r->col);
+            return c->compErr("Called function was given 1 argument but was declared to take " 
+                    + to_string(f->arg_size()), r->row, r->col);
         else
-            return c->compErr("Called method was given " + to_string(args.size()) + " arguments but was declared to take " + to_string(f->arg_size()), r->row, r->col);
+            return c->compErr("Called function was given " + to_string(args.size()) + 
+                    " arguments but was declared to take " + to_string(f->arg_size()), r->row, r->col);
     }
 
     /* unpack the tuple of arguments into a vector containing each value */
     int i = 0;
     for(auto &param : f->args()){//type check each parameter
         if(!llvmTypeEq(args[i++]->getType(), param.getType())){
-            return c->compErr("Argument " + to_string(i) + " of method is a(n) " + llvmTypeToStr(args[i-1]->getType())
+            return c->compErr("Argument " + to_string(i) + " of function is a(n) " + llvmTypeToStr(args[i-1]->getType())
                     + " but was declared to be a(n) " + llvmTypeToStr(param.getType()), r->row, r->col);
         }
     }

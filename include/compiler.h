@@ -37,7 +37,13 @@ struct TypedValue {
 };
 
 
-struct 
+struct MethodVal : public TypedValue {
+    Value *obj;
+
+    MethodVal(Value *o, Value *f) : TypedValue(f, TT_Method) {
+        obj = o;
+    }
+};
 
 
 struct DataType {

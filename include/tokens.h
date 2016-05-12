@@ -23,6 +23,7 @@ enum TypeTag{
     TT_Func,
     TT_TypeVar,
     TT_Function,
+    TT_Method,
     TT_Void
 };
 
