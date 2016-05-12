@@ -1,0 +1,21 @@
+`
+        prelude.an
+    Standard functions and datatypes pre-imported 
+    into every Ante source file.
+`
+
+
+
+data Str
+    c8[] cStr
+    u32 len
+
+
+data Range
+    i32 start
+    i32 end
+    i32 step
+
+
+fun printd: i32 x
+    printf("%d\n", x)
