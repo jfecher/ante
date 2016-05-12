@@ -1,7 +1,7 @@
 #ifndef COMPILER_H
 #define COMPILER_H
 
-#include <climits> //required by llvm is using clang
+#include <climits> //required by llvm when using clang
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Module.h>
@@ -35,6 +35,9 @@ struct TypedValue {
     TypedValue(Value *v, TypeTag ty) : val(v), type(ty){}
     Type* getType() const{ return val->getType(); }
 };
+
+
+struct 
 
 
 struct DataType {
