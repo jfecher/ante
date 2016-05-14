@@ -760,6 +760,17 @@ void Compiler::compileNative(){
     }
 }
 
+//returns 0 on success
+int Compiler::compileObj(){
+    if(!compiled) compile();
+
+    string modName = removeFileExt(fileName);
+    string objFile = modName + ".o";
+
+    cout << "Compiling " << modName << " to .o file...\n";
+    return compileIRtoObj(module.get(), fileName, objFile);
+}
+
 
 /*
  *  Compiles a module into a .o file to be used for linking.

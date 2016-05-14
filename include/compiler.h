@@ -109,6 +109,7 @@ namespace ante{
 
         void compile();
         void compileNative();
+        int  compileObj();
         void compilePrelude();
         void emitIR();
         void enterNewScope();
@@ -137,15 +138,14 @@ namespace ante{
         void stoType(DataType *ty, string &typeName);
 
         Type* typeNodeToLlvmType(TypeNode *tyNode);
-        
+    
         void handleImplicitConversion(TypedValue **lhs, TypedValue **rhs);
         void implicitlyCastIntToInt(TypedValue **lhs, TypedValue **rhs);
         void implicitlyCastFltToFlt(TypedValue **lhs, TypedValue **rhs);
         void implicitlyCastIntToFlt(TypedValue **tval, Type *ty);
 
-
         static size_t getTupleSize(Node *tup);
-        
+
         static int compileIRtoObj(Module *m, string inFile, string outFile);
         static int linkObj(string inFiles, string outFile);
     };

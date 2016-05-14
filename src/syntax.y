@@ -301,6 +301,7 @@ enum_decl: modifier_list Enum usertype enum_block  {$$ = NULL;}
 
 block: Indent stmt_list stmt_no_nl Unindent {setNext($2, $3); $$ = getRoot();}
      | Indent stmt_no_nl Unindent {$$ = $2;}
+     | %empty {$$ = 0;}
      ;
 
 raw_ident_list: raw_ident_list ident  {$$ = setNext($1, mkVarNode((char*)$2));}

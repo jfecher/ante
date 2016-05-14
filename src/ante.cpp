@@ -43,6 +43,9 @@ int main(int argc, char *argv[]){
         }else if(strcmp(argv[1], "-emit-llvm") == 0){
             Compiler ante{argv[2]};
             ante.emitIR();
+        }else if(strcmp(argv[1], "-o") == 0){
+            Compiler ante{argv[2]};
+            ante.compileObj();
         }else{
             cout << "Ante: argument '" << argv[1] << "' was not recognized.\n";
         }
