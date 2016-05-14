@@ -301,7 +301,6 @@ enum_decl: modifier_list Enum usertype enum_block  {$$ = NULL;}
 
 block: Indent stmt_list stmt_no_nl Unindent {setNext($2, $3); $$ = getRoot();}
      | Indent stmt_no_nl Unindent {$$ = $2;}
-     | %empty {$$ = 0;}
      ;
 
 raw_ident_list: raw_ident_list ident  {$$ = setNext($1, mkVarNode((char*)$2));}
@@ -322,14 +321,18 @@ _params: _params ',' type_expr ident_list {$$ = setNext($1, mkNamedValNode($4, $
 params: _params {$$ = getRoot();}
 
 
-fn_decl: modifier_list Fun ident ':' params Returns type_expr block {$$ = mkFuncDeclNode((char*)$3, $1, $7,                             $5, $8);}
-       | modifier_list Fun ident ':' params block                   {$$ = mkFuncDeclNode((char*)$3, $1, mkTypeNode(TT_Void, (char*)""), $5, $6);}
-       | modifier_list Fun ident Returns type_expr block            {$$ = mkFuncDeclNode((char*)$3, $1, $5,                              0, $6);}
-       | modifier_list Fun ident block                              {$$ = mkFuncDeclNode((char*)$3, $1, mkTypeNode(TT_Void, (char*)""),  0, $4);}
-       | Fun ident ':' params Returns type_expr block               {$$ = mkFuncDeclNode((char*)$2,  0, $6,                             $4, $7);}
-       | Fun ident ':' params block                                 {$$ = mkFuncDeclNode((char*)$2,  0, mkTypeNode(TT_Void, (char*)""), $4, $5);}
-       | Fun ident Returns type_expr block                          {$$ = mkFuncDeclNode((char*)$2,  0, $4,                              0, $5);}
-       | Fun ident block                                            {$$ = mkFuncDeclNode((char*)$2,  0, mkTypeNode(TT_Void, (char*)""),  0, $3);}
+maybe_block: block  {$$ = $1;}
+           | %empty {$$ = 0;}
+
+
+fn_decl: modifier_list Fun ident ':' params Returns type_expr maybe_block {$$ = mkFuncDeclNode((char*)$3, $1, $7,                             $5, $8);}
+       | modifier_list Fun ident ':' params maybe_block                   {$$ = mkFuncDeclNode((char*)$3, $1, mkTypeNode(TT_Void, (char*)""), $5, $6);}
+       | modifier_list Fun ident Returns type_expr maybe_block            {$$ = mkFuncDeclNode((char*)$3, $1, $5,                              0, $6);}
+       | modifier_list Fun ident maybe_block                              {$$ = mkFuncDeclNode((char*)$3, $1, mkTypeNode(TT_Void, (char*)""),  0, $4);}
+       | Fun ident ':' params Returns type_expr maybe_block               {$$ = mkFuncDeclNode((char*)$2,  0, $6,                             $4, $7);}
+       | Fun ident ':' params maybe_block                                 {$$ = mkFuncDeclNode((char*)$2,  0, mkTypeNode(TT_Void, (char*)""), $4, $5);}
+       | Fun ident Returns type_expr maybe_block                          {$$ = mkFuncDeclNode((char*)$2,  0, $4,                              0, $5);}
+       | Fun ident maybe_block                                            {$$ = mkFuncDeclNode((char*)$2,  0, mkTypeNode(TT_Void, (char*)""),  0, $3);}
        ;
 
 
