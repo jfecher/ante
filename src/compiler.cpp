@@ -902,7 +902,7 @@ Compiler::Compiler(char *_fileName) :
     //add passes to passmanager.
     //TODO: change passes based on -O0 through -O3 flags
     passManager.reset(new legacy::FunctionPassManager(module.get()));
-    passManager->add(createBasicAliasAnalysisPass());
+    //passManager->add(createBasicAliasAnalysisPass());
     passManager->add(createGVNPass());
     passManager->add(createCFGSimplificationPass());
     passManager->add(createTailCallEliminationPass());
