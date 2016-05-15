@@ -3,7 +3,8 @@ vpath %.h include
 vpath %.d obj
 
 WARNINGS  := -Wall -Wpedantic
-LLVMFLAGS := `llvm-config --cppflags --libs Core BitWriter Passes --ldflags --system-libs`
+# LLVMFLAGS := `llvm-config --cppflags --libs Core BitWriter Passes Support Linker --ldflags --system-libs`
+LLVMFLAGS := `llvm-config --cppflags --libs All --ldflags --system-libs`
 
 #                              v These macros are required when compiling with clang
 CPPFLAGS  := -g -O0 -std=c++11 -D__STDC_CONSTANT_MACROS -D__STDC_LIMIT_MACROS $(WARNINGS)

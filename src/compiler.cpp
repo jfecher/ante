@@ -5,7 +5,8 @@
 #include <llvm/Support/FileSystem.h>   //for r/w when outputting bitcode
 #include <llvm/Support/raw_ostream.h>  //for ostream when outputting bitcode
 #include "llvm/Transforms/Scalar.h"    //for most passes
-#include "llvm/Analysis/Passes.h"      //for createBasicAliasAnalysisPass()
+#include "llvm/Support/TargetRegistry.h"
+#include "llvm/Target/TargetMachine.h"
 
 using namespace llvm;
 
@@ -753,7 +754,7 @@ void Compiler::compileNative(){
     string objFile = modName + ".o";
 
     cout << "Compiling " << modName << "...\n";
-    if(!compileIRtoObj(module.get(), fileName, objFile)){
+    if(!compileIRtoObj(objFile)){
         cout << "Linking...\n";
         linkObj(objFile, modName);
         remove(objFile.c_str());
@@ -768,7 +769,7 @@ int Compiler::compileObj(){
     string objFile = modName + ".o";
 
     cout << "Compiling " << modName << " to .o file...\n";
-    return compileIRtoObj(module.get(), fileName, objFile);
+    return compileIRtoObj(objFile);
 }
 
 
@@ -776,8 +777,31 @@ int Compiler::compileObj(){
  *  Compiles a module into a .o file to be used for linking.
  *  Invokes llc.
  */
-int Compiler::compileIRtoObj(Module *m, string inFile, string outFile){
-    string llbcName = removeFileExt(inFile) + ".bc";
+int Compiler::compileIRtoObj(string outFile){
+    LLVMInitializeAllTargets();
+    string err = "";
+    
+    Target target;// = TargetRegistry::lookupTarget(triple, err);
+
+    if(!err.empty()){
+        cout << err << endl;
+        return 1;
+    }
+
+    string cpu = "";
+    string features = "";
+    string triple = "x86";
+    TargetOptions op;
+    TargetMachine *tm = target.createTargetMachine(triple, cpu, features, op, Reloc::Model::Default, 
+            CodeModel::Default, CodeGenOpt::Level::Aggressive);
+
+
+    std::error_code errCode;
+    raw_fd_ostream out{outFile, errCode, sys::fs::OpenFlags::F_RW};
+    
+    return tm->addPassesToEmitFile(*passManager, out, llvm::TargetMachine::CGFT_ObjectFile);
+
+    /*string llbcName = removeFileExt(inFile) + ".bc";
 
     string cmd = "llc -filetype obj -o " + outFile + " " + llbcName;
 
@@ -792,7 +816,7 @@ int Compiler::compileIRtoObj(Module *m, string inFile, string outFile){
 
     //remove the temporary .bc file
     remove(llbcName.c_str());
-    return res;
+    return res;*/
 }
 
 

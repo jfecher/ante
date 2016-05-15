@@ -143,10 +143,10 @@ namespace ante{
         void implicitlyCastIntToInt(TypedValue **lhs, TypedValue **rhs);
         void implicitlyCastFltToFlt(TypedValue **lhs, TypedValue **rhs);
         void implicitlyCastIntToFlt(TypedValue **tval, Type *ty);
+        
+        int compileIRtoObj(string outFile);
 
         static size_t getTupleSize(Node *tup);
-
-        static int compileIRtoObj(Module *m, string inFile, string outFile);
         static int linkObj(string inFiles, string outFile);
     };
 }
