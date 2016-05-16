@@ -44,8 +44,14 @@ int main(int argc, char *argv[]){
             Compiler ante{argv[2]};
             ante.emitIR();
         }else if(strcmp(argv[1], "-o") == 0){
-            Compiler ante{argv[2]};
-            ante.compileObj();
+            if(strcmp(argv[2], "-lib") == 0){
+                Compiler ante{argv[3]};
+                ante.isLib = true;
+                ante.compileObj();
+            }else{
+                Compiler ante{argv[2]};
+                ante.compileObj();
+            }
         }else{
             cout << "Ante: argument '" << argv[1] << "' was not recognized.\n";
         }

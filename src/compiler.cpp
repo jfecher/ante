@@ -571,13 +571,8 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
             builder.CreateRetVoid();
         }
 
-
-        //Attribute attr = Attribute::get(getGlobalContext(), "nounwind");
-        //f->addAttributes(0, AttributeSet::get(getGlobalContext(), AttributeSet::FunctionIndex, attr));
-
         //apply function-level optimizations
         passManager->run(*f);
-        //c->builder.SetInsertPoint(&c->module->getFunction("main")->back());
     }
     return f;
 }
@@ -721,7 +716,8 @@ void Compiler::compile(){
     FunctionType *ft = FunctionType::get(Type::getInt8Ty(getGlobalContext()), false);
     
     //Actually create the function in module m
-    Function *main = Function::Create(ft, Function::ExternalLinkage, "main", module.get());
+    string fnName = isLib ? "init_" + removeFileExt(fileName) : "main";
+    Function *main = Function::Create(ft, Function::ExternalLinkage, fnName, module.get());
 
     //Create the entry point for the function
     BasicBlock *bb = BasicBlock::Create(getGlobalContext(), "entry", main);
@@ -772,7 +768,6 @@ int Compiler::compileObj(){
     return compileIRtoObj(objFile);
 }
 
-#include <cstdio>
 /*
  *  Compiles a module into a .o file to be used for linking.
  *  Invokes llc.
@@ -896,6 +891,7 @@ Compiler::Compiler(char *_fileName) :
         builder(getGlobalContext()), 
         errFlag(false),
         compiled(false),
+        isLib(false),
         fileName(_fileName),
         funcPrefix(""){
 

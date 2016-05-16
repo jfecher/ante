@@ -100,10 +100,10 @@ namespace ante{
         //Map of declared usertypes
         map<string, DataType*> userTypes;
 
-        bool errFlag, compiled;
+        bool errFlag, compiled, isLib;
         string fileName, funcPrefix;
         unsigned int scope;
-        
+
         Compiler(char *fileName);
         ~Compiler();
 
