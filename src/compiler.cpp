@@ -772,22 +772,30 @@ int Compiler::compileObj(){
     return compileIRtoObj(objFile);
 }
 
-
+#include <cstdio>
 /*
  *  Compiles a module into a .o file to be used for linking.
  *  Invokes llc.
  */
 int Compiler::compileIRtoObj(string outFile){
+    LLVMInitializeAllTargetInfos();
     LLVMInitializeAllTargets();
+    LLVMInitializeAllTargetMCs();
+    LLVMInitializeAllAsmPrinters();
     string err = "";
-    
-    Target target;// = TargetRegistry::lookupTarget(triple, err);
 
-    string cpu = "";
+    string triple = "x86_64-unknown-linux-gpu";
+    const Target* target = TargetRegistry::lookupTarget(triple, err);
+
+    if(!err.empty()){
+        cerr << err << endl;
+        return 1;
+    }
+
+    string cpu = "haswell";
     string features = "";
-    string triple = "x86";
     TargetOptions op;
-    TargetMachine *tm = target.createTargetMachine(triple, cpu, features, op, Reloc::Model::Default, 
+    TargetMachine *tm = target->createTargetMachine(triple, cpu, features, op, Reloc::Model::Default, 
             CodeModel::Default, CodeGenOpt::Level::Aggressive);
 
     if(!tm){
@@ -797,25 +805,11 @@ int Compiler::compileIRtoObj(string outFile){
 
     std::error_code errCode;
     raw_fd_ostream out{outFile, errCode, sys::fs::OpenFlags::F_RW};
-    
-    return tm->addPassesToEmitFile(*passManager, out, llvm::TargetMachine::CGFT_ObjectFile);
 
-    /*string llbcName = removeFileExt(inFile) + ".bc";
-
-    string cmd = "llc -filetype obj -o " + outFile + " " + llbcName;
-
-    //Write the temporary bitcode file
-    std::error_code err;
-    raw_fd_ostream out{llbcName, err, sys::fs::OpenFlags::F_RW};
-    WriteBitcodeToFile(m, out);
-    out.close();
-
-    //invoke llc and compile an object file of the module
-    int res = system(cmd.c_str());
-
-    //remove the temporary .bc file
-    remove(llbcName.c_str());
-    return res;*/
+    legacy::PassManager pm;
+    int res = tm->addPassesToEmitFile(pm, out, llvm::TargetMachine::CGFT_ObjectFile);
+    pm.run(*module);
+    return res;
 }
 
 
