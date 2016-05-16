@@ -271,6 +271,13 @@ ParentNode* mkIfNode(Node* con, Node* body, Node* els = nullptr){
     return ret;
 }
 
+Node* mkExprIfNode(Node* con, Node* then, Node* els){
+    auto *ret = new ExprIfNode(con, then, els);
+    ret->col = yylexer->getCol();
+    ret->row = yylexer->getRow();
+    return ret;
+}
+
 ParentNode* mkWhileNode(Node* con, Node* body){
     auto *ret = new WhileNode(con, body);
     ret->col = yylexer->getCol();

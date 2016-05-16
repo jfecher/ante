@@ -272,6 +272,43 @@ TypedValue* TypeCastNode::compile(Compiler *c){
     }
 }
 
+TypedValue* ExprIfNode::compile(Compiler *c){
+    auto *thenbb = BasicBlock::Create(getGlobalContext(), "then");
+    auto *elsebb = BasicBlock::Create(getGlobalContext(), "else");
+    auto *mergbb = BasicBlock::Create(getGlobalContext(), "endif");
+
+    auto *cond = condition->compile(c);
+    if(!cond) return 0;
+
+    c->builder.CreateCondBr(cond->val, thenbb, elsebb);
+    
+    c->builder.SetInsertPoint(thenbb);
+    auto *thenVal = thenN->compile(c);
+    c->builder.CreateBr(mergbb);
+
+
+    c->builder.SetInsertPoint(elsebb);
+    auto *elseVal = elseN->compile(c);
+    c->builder.CreateBr(mergbb);
+    
+
+    if(!thenVal || !elseVal) return 0;
+
+    if(!llvmTypeEq(thenVal->getType(), elseVal->getType())){
+        return c->compErr("If condition's then expr's type " + llvmTypeToStr(thenVal->getType()) +
+                        " does not match the else expr's type " + llvmTypeToStr(elseVal->getType()),
+                        this->row, this->col);
+    }
+
+
+    c->builder.SetInsertPoint(mergbb);
+    auto *phi = c->builder.CreatePHI(thenVal->getType(), 2);
+    phi->addIncoming(thenVal->val, thenbb);
+    phi->addIncoming(elseVal->val, elsebb);
+
+    return new TypedValue(phi, thenVal->type);
+}
+
 TypedValue* compMemberAccess(Compiler *c, Node *ln, VarNode *field, BinOpNode *binop){
     if(!ln) return 0;
 

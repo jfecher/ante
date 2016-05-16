@@ -254,6 +254,17 @@ struct IfNode : public ParentNode{
     ~IfNode(){}
 };
 
+//if node used in expressions
+//requires elseN to be initialized, and
+//typechecks thenN and elseN to be matching types.
+struct ExprIfNode : public Node{
+    unique_ptr<Node> condition, thenN, elseN;
+    TypedValue* compile(Compiler*);
+    void print(void);
+    ExprIfNode(Node* c, Node* then, Node* els) : condition(c), thenN(then), elseN(els){}
+    ~ExprIfNode(){}
+};
+
 struct FuncDeclNode : public ParentNode{
     string name;
     unique_ptr<Node> modifiers, type;

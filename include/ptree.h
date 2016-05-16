@@ -33,6 +33,7 @@ Node* mkVarAssignNode(Node* var, Node* expr, bool shouldFreeLval = true);
 Node* mkExtNode(Node* typeExpr, Node* methods);
 
 Node* mkIfNode(Node* con, Node* body, Node* els = nullptr);
+Node* mkExprIfNode(Node* con, Node* body, Node* els);
 Node* mkWhileNode(Node* con, Node* body);
 Node* mkFuncDeclNode(char* s, Node* mods, Node* tExpr, Node* p, Node* body);
 Node* mkDataDeclNode(char* s, Node* b);
