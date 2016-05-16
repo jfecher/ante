@@ -138,10 +138,10 @@ stmt: fn_decl       Newline
     | if_stmt /* NO Newline */
     | var_decl      Newline
     | var_assign    Newline
-    | fn_call       Newline
     | ret_stmt      Newline
     | let_binding   Newline
     | extension     Newline
+    | expr          Newline
     ;
 
 stmt_no_nl: fn_decl      
@@ -153,9 +153,10 @@ stmt_no_nl: fn_decl
           | if_stmt
           | var_decl     
           | var_assign   
-          | fn_call      
           | ret_stmt     
           | let_binding  
+          | extension
+          | expr
           ;
 
 
@@ -239,7 +240,7 @@ modifier_list: modifier_list_ {$$ = getRoot();}
 var_decl: modifier_list type_expr ident '=' expr  %prec Ident {$$ = mkVarDeclNode((char*)$3, $1, $2, $5);}
         | modifier_list type_expr ident           %prec LOW   {$$ = mkVarDeclNode((char*)$3, $1, $2,  0);}
         | type_expr ident '=' expr                %prec Ident {$$ = mkVarDeclNode((char*)$2, 0,  $1, $4);}
-        | type_expr ident                         %prec LOW   {$$ = mkVarDeclNode((char*)$2, 0,  $1,  0);}
+//      | type_expr ident                         %prec LOW   {$$ = mkVarDeclNode((char*)$2, 0,  $1,  0);}
         | modifier_list Var ident '=' expr                    {$$ = mkVarDeclNode((char*)$2, $1,  0, $5);}
         | Var ident '=' expr                                  {$$ = mkVarDeclNode((char*)$2, 0,   0, $4);}
         ;
