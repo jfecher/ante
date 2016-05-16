@@ -783,11 +783,6 @@ int Compiler::compileIRtoObj(string outFile){
     
     Target target;// = TargetRegistry::lookupTarget(triple, err);
 
-    if(!err.empty()){
-        cout << err << endl;
-        return 1;
-    }
-
     string cpu = "";
     string features = "";
     string triple = "x86";
@@ -795,6 +790,10 @@ int Compiler::compileIRtoObj(string outFile){
     TargetMachine *tm = target.createTargetMachine(triple, cpu, features, op, Reloc::Model::Default, 
             CodeModel::Default, CodeGenOpt::Level::Aggressive);
 
+    if(!tm){
+        cerr << "Error when initializing TargetMachine.\n";
+        return 1;
+    }
 
     std::error_code errCode;
     raw_fd_ostream out{outFile, errCode, sys::fs::OpenFlags::F_RW};
