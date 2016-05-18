@@ -11,22 +11,17 @@
 using namespace llvm;
 
 
-/*
- *  Prints a given line (row) of a file, along with an arrow pointing to
- *  the specified column.
+/* 
+ * Skips input in a given istream until it encounters the given coordinates,
+ * with each newline signalling the end of a row.
+ *
+ * precondition: coordinates must be valid
  */
-void printErrLine(const char* fileName, unsigned int row, unsigned int col){
-    ifstream f{fileName};
+void skipToCoords(istream& ifs, unsigned int row, unsigned int col){
     unsigned int line = 1;
-
-    //Premature newline error, show previous line as error instead
-    if(col == 0) row--;
-
-    //skip to line in question
-    int c;
     if(line != row){
         while(true){
-            c = f.get();
+            char c = ifs.get();
             if(c == '\n'){
                 line++;
                 if(line >= row){
@@ -38,6 +33,20 @@ void printErrLine(const char* fileName, unsigned int row, unsigned int col){
             }
         }
     }
+}
+
+/*
+ *  Prints a given line (row) of a file, along with an arrow pointing to
+ *  the specified column.
+ */
+void printErrLine(const char* fileName, unsigned int row, unsigned int col){
+    ifstream f{fileName};
+
+    //Premature newline error, show previous line as error instead
+    if(col == 0) row--;
+
+    //skip to line in question
+    skipToCoords(f, row, col);
 
     //print line
     string s;
@@ -228,6 +237,19 @@ TypedValue* RetNode::compile(Compiler *c){
     }
 
     return new TypedValue(c->builder.CreateRet(ret->val), ret->type);
+}
+
+
+TypedValue* ImportNode::compile(Compiler *c){
+    TypedValue *imports = expr->compile(c);
+    if(!imports) return 0;
+
+    if(imports->type != TT_StrLit){
+        return c->compErr("Cannot import value of type " + llvmTypeToStr(imports->getType()) +
+                " (imports must be Str type)", row, col);
+    }
+
+    return 0;
 }
 
 

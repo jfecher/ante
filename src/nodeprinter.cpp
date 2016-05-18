@@ -107,6 +107,11 @@ void RetNode::print(){
     if(expr) expr->print();
 }
 
+void ImportNode::print(){
+    cout << "import ";
+    expr->print();
+}
+
 void IfNode::print(){
     if(condition.get()){
         cout << "if ";

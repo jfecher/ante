@@ -143,6 +143,7 @@ stmt: fn_decl       Newline
     | let_binding   Newline
     | extension     Newline
     | expr          Newline
+    | import_stmt   Newline
     ;
 
 stmt_no_nl: fn_decl      
@@ -158,8 +159,10 @@ stmt_no_nl: fn_decl
           | let_binding  
           | extension
           | expr
+          | import_stmt
           ;
 
+import_stmt: Import expr {$$ = mkImportNode($2);}
 
 ident: Ident {$$ = (Node*)lextxt;}
      ;

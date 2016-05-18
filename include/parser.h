@@ -237,6 +237,14 @@ struct ExtNode : public Node{
     ~ExtNode(){}
 };
 
+struct ImportNode : public Node{
+    unique_ptr<Node> expr;
+    TypedValue* compile(Compiler*);
+    void print();
+    ImportNode(Node* e) : expr(e){}
+    ~ImportNode(){}
+};
+
 struct WhileNode : public ParentNode{
     unique_ptr<Node> condition;
     TypedValue* compile(Compiler*);

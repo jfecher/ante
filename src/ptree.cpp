@@ -236,6 +236,13 @@ Node* mkRefVarNode(char* s){
     return ret;
 }
 
+Node* mkImportNode(Node* expr){
+    auto *ret = new ImportNode(expr);
+    ret->col = yylexer->getCol();
+    ret->row = yylexer->getRow();
+    return ret;
+}
+
 Node* mkLetBindingNode(char* s, Node* mods, Node* tExpr, Node* expr){
     auto *ret = new LetBindingNode(s, mods, tExpr, expr);
     ret->col = yylexer->getCol();

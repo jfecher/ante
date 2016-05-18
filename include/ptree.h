@@ -27,6 +27,7 @@ Node* mkFuncCallNode(char* s, Node* p);
 Node* mkVarNode(char* s);
 Node* mkRefVarNode(char* s);
 Node* mkRetNode(Node* expr);
+Node* mkImportNode(Node* expr);
 Node* mkLetBindingNode(char* s, Node* mods, Node* tExpr, Node* expr);
 Node* mkVarDeclNode(char* s, Node* mods, Node* tExpr, Node* expr);
 Node* mkVarAssignNode(Node* var, Node* expr, bool shouldFreeLval = true);
