@@ -4,8 +4,6 @@
     into every Ante source file.
 `
 
-
-
 data Str
     c8[] cStr
     u32 len
@@ -16,6 +14,22 @@ data Range
     i32 end
     i32 step
 
+ext i32
+    fun print: i32 x
+        printf("%d\n", x)
 
 fun printd: i32 x
     printf("%d\n", x)
+
+~C functions
+fun printf: c8* fmt, ...
+
+fun puts: c8* str
+
+fun putchar: c8
+
+fun exit: u32 status
+
+fun malloc: u32 size => void*
+
+fun free: void* mem

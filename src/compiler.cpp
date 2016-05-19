@@ -657,6 +657,14 @@ Function* Compiler::getFunction(string& name){
     return f;
 }
 
+/*
+ * imports a given ante file to the current module
+ * inputted file must exist and be a valid ante source file.
+ */
+void Compiler::importFile(char *fName){
+    Compiler *c = new Compiler(fName);
+    c->compile();
+}
 
 /*
  *  Creates an anonymous NamedValNode for use in function declarations.
@@ -693,9 +701,6 @@ void Compiler::compilePrelude(){
 
     // void exit: u32 status
     registerFunction(new FuncDeclNode("exit", 0, mkAnonTypeNode(TT_Void), mkAnonNVNode(TT_U32), nullptr));
-   
-    // f64 sqrt: f64 val
-    registerFunction(new FuncDeclNode("sqrt", 0, mkAnonTypeNode(TT_F64), mkAnonNVNode(TT_F64), nullptr));
     
     // void* malloc: u32 size
     TypeNode *voidPtr = mkAnonTypeNode(TT_Ptr);
