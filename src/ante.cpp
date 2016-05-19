@@ -57,8 +57,6 @@ int main(int argc, char *argv[]){
         }
     }else if(argc == 1){
         puts("Ante: no arguments given, exiting.");
-    }else{
-        puts("Ante: Invalid argument count.");
     }
     return 0;
 }

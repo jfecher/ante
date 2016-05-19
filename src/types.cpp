@@ -206,7 +206,13 @@ bool llvmTypeEq(Type *l, Type *r){
     if(ltt != rtt) return false;
 
     if(ltt == TT_Ptr){
-        return llvmTypeEq(l->getPointerElementType(), r->getPointerElementType());
+        Type *lty = l->getPointerElementType();
+        Type *rty = r->getPointerElementType();
+        Type *vty = Type::getVoidTy(getGlobalContext());
+
+        if(lty == vty || rty == vty) return true;
+
+        return llvmTypeEq(lty, rty);
     }else if(ltt == TT_Array){
         return llvmTypeEq(l->getArrayElementType(), r->getArrayElementType());
     }else if(ltt == TT_Func){

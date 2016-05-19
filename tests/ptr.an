@@ -6,10 +6,10 @@ i32* ptrToThree = malloc(4)
 i32* ptrToFour = malloc(4)
 @ptrToFour = 4
 
-var ptr = f64* malloc(4)
-@ptr = 5.9
+var flt = f64* malloc(4)
+@flt = 5.9
 
 printf("%p -> %s\n", cstr, cstr)
 printf("%p -> %d\n", ptrToThree, @ptrToThree)
 printf("%p -> %d\n", ptrToFour, @ptrToFour)
-printf("ptr: %p -> %f\n", ptr, @ptr)
+printf("%p -> %f\n", flt, @flt)
