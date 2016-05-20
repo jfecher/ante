@@ -7,6 +7,7 @@
 #include "llvm/Transforms/Scalar.h"    //for most passes
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/Linker/Linker.h"
 
 using namespace llvm;
 
@@ -79,7 +80,6 @@ void ante::error(const char* msg, const char* fileName, unsigned int row, unsign
  *  (perhaps this should throw an exception?)
  */
 TypedValue* Compiler::compErr(string msg, unsigned int row, unsigned int col){
-    module->dump();
     error(msg.c_str(), fileName.c_str(), row, col);
     errFlag = true;
     return nullptr;
@@ -500,13 +500,22 @@ TypedValue* VarAssignNode::compile(Compiler *c){
 }
 
 
+/*
+ * Translates a NamedValNode list to a vector
+ * of the types it contains.  If the list contains
+ * a varargs type (represented by the absence of a type)
+ * then a nullptr is inserted for that parameter.
+ */
 vector<Type*> getParamTypes(Compiler *c, NamedValNode *nvn, size_t paramCount){
     vector<Type*> paramTys;
     paramTys.reserve(paramCount);
 
     for(size_t i = 0; i < paramCount && nvn; i++){
         TypeNode *paramTyNode = (TypeNode*)nvn->typeExpr.get();
-        paramTys.push_back(c->typeNodeToLlvmType(paramTyNode));
+        if(paramTyNode)
+            paramTys.push_back(c->typeNodeToLlvmType(paramTyNode));
+        else
+            paramTys.push_back(nullptr); //terminating null = varargs function
         nvn = (NamedValNode*)nvn->next.get();
     }
     return paramTys;
@@ -555,6 +564,10 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
     size_t nParams = getTupleSize(paramsBegin);
 
     vector<Type*> paramTys = getParamTypes(this, paramsBegin, nParams);
+    if(!paramTys.back()){ //varargs fn
+        fdn->varargs = true;
+        paramTys.pop_back();
+    }
 
     Type *retType = typeNodeToLlvmType(retNode);
     //Get the corresponding function type for the above return type, parameter types,
@@ -605,7 +618,12 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
  */
 TypedValue* FuncDeclNode::compile(Compiler *c){
     name = c->funcPrefix + name;
-    c->registerFunction(this);
+
+    if(c->isLib)
+        c->compFn(this);
+    else
+        c->registerFunction(this);
+
     return nullptr;
 }
 
@@ -661,9 +679,29 @@ Function* Compiler::getFunction(string& name){
  * imports a given ante file to the current module
  * inputted file must exist and be a valid ante source file.
  */
-void Compiler::importFile(char *fName){
-    Compiler *c = new Compiler(fName);
+void Compiler::importFile(const char *fName){
+    Compiler *c = new Compiler(fName, true);
     c->compile();
+
+    if(c->errFlag) return;
+
+    module->dump();
+    puts("~~~~~~~~~~~~~~~~~~~~~~~~~~");
+    c->module->dump();
+    puts("~~~~~~~~~~~~~~~~~~~~~~~~~~");
+
+    //link functions from both files
+    Module *m2 = c->module.get();
+    c->module.release();
+    Linker::linkModules(*module.get(), unique_ptr<Module>(m2));
+
+    //copy import's userTypes into importer
+    for(const auto& it : c->userTypes){
+        userTypes[it.first] = it.second;
+    }
+    module->dump();
+
+    delete c;
 }
 
 /*
@@ -690,6 +728,9 @@ unsigned int Compiler::getScope() const{
  *  do not pollute the module with unused definitions.
  */
 void Compiler::compilePrelude(){
+    if(fileName != "src/prelude.an")
+        importFile("src/prelude.an");
+    /*
     // void printf: c8* str, ... va
     registerFunction(new FuncDeclNode("printf", 0, mkAnonTypeNode(TT_Void), mkAnonNVNode(TT_StrLit), nullptr, true));
 
@@ -709,7 +750,7 @@ void Compiler::compilePrelude(){
     
     // void free: void* ptr
     NamedValNode *voidPtrNVN = new NamedValNode("", voidPtr);
-    registerFunction(new FuncDeclNode("free", 0, mkAnonTypeNode(TT_Void), voidPtrNVN, nullptr));
+    registerFunction(new FuncDeclNode("free", 0, mkAnonTypeNode(TT_Void), voidPtrNVN, nullptr)); */
 }
 
 
@@ -914,11 +955,11 @@ inline void Compiler::stoType(DataType *ty, string &typeName){
 }
 
 
-Compiler::Compiler(char *_fileName) : 
+Compiler::Compiler(const char *_fileName, bool lib) : 
         builder(getGlobalContext()), 
         errFlag(false),
         compiled(false),
-        isLib(false),
+        isLib(lib),
         fileName(_fileName),
         funcPrefix(""){
 

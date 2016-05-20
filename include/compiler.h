@@ -104,7 +104,7 @@ namespace ante{
         string fileName, funcPrefix;
         unsigned int scope;
 
-        Compiler(char *fileName);
+        Compiler(const char *fileName, bool lib=false);
         ~Compiler();
 
         void compile();
@@ -126,7 +126,7 @@ namespace ante{
         
         TypedValue* compErr(string msg, unsigned int row, unsigned int col);
 
-        void importFile(char *name);
+        void importFile(const char *name);
         Function* getFunction(string& name);
         TypedValue* compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector<Type*> &paramTys, Type *retTy);
         Function* compFn(FuncDeclNode *fn);

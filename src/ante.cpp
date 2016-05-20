@@ -45,8 +45,7 @@ int main(int argc, char *argv[]){
             ante.emitIR();
         }else if(strcmp(argv[1], "-o") == 0){
             if(strcmp(argv[2], "-lib") == 0){
-                Compiler ante{argv[3]};
-                ante.isLib = true;
+                Compiler ante{argv[3], true};
                 ante.compileObj();
             }else{
                 Compiler ante{argv[2]};

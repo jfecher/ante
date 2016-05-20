@@ -323,7 +323,10 @@ _params: _params ',' type_expr ident_list {$$ = setNext($1, mkNamedValNode($4, $
       | type_expr ident_list            {$$ = setRoot(mkNamedValNode($2, $1));}
       ;
 
-params: _params {$$ = getRoot();}
+                          /* varargs function .. (Range) followed by . */
+params: _params ',' Range '.' {setNext($1, mkNamedValNode(mkVarNode((char*)""), 0)); $$ = getRoot();}
+      | _params               {$$ = getRoot();}
+      ;
 
 
 maybe_block: block  {$$ = $1;}
