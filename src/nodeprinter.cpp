@@ -68,13 +68,12 @@ void ModNode::print(){
 }
 
 void TypeNode::print(){
-    cout << typeTagToStr(type);
+    cout << typeNodeToStr(this);
 }
 
 void TypeCastNode::print(){
     putchar('(');
     typeExpr->print();
-    putchar(':');
     putchar(' ');
     rval->print();
     putchar(')');
@@ -148,7 +147,11 @@ void ExprIfNode::print(){
 }
 
 void NamedValNode::print(){
-    typeExpr->print();
+    if(typeExpr.get())
+        typeExpr->print();
+    else
+        cout << "..."; //varargs
+
     putchar(' ');
     cout << name;
 

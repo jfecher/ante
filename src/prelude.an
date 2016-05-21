@@ -11,9 +11,9 @@ fun puts: c8* str
 
 fun putchar: c8 char
 
-fun exit: u32 status
+fun exit: i32 status
 
-fun malloc: u32 size => void*
+fun malloc: i32 size => void*
 
 fun free: void* mem
 

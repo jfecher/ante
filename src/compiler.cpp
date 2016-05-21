@@ -81,6 +81,7 @@ void ante::error(const char* msg, const char* fileName, unsigned int row, unsign
  */
 TypedValue* Compiler::compErr(string msg, unsigned int row, unsigned int col){
     error(msg.c_str(), fileName.c_str(), row, col);
+    module->dump();
     errFlag = true;
     return nullptr;
 }
@@ -214,8 +215,11 @@ TypedValue* TupleNode::compile(Compiler *c){
 vector<Value*> TupleNode::unpack(Compiler *c){
     vector<Value*> ret;
     for(Node *n : exprs){
-       auto *tval = n->compile(c);
-       ret.push_back(tval->val);
+        auto *tval = n->compile(c);
+        if(tval)
+            ret.push_back(tval->val);
+        else
+            ret.push_back(nullptr); //compile error
     }
     return ret;
 }
@@ -388,6 +392,8 @@ TypedValue* FuncCallNode::compile(Compiler *c){
     auto args = params->unpack(c);
     int i = 0;
     for(auto &param : f->args()){//type check each parameter
+        if(!args[i]) return 0; //compile error
+
         if(!llvmTypeEq(args[i++]->getType(), param.getType())){
             return c->compErr("Argument " + to_string(i) + " of function " + name + " is a(n) " + llvmTypeToStr(args[i-1]->getType())
                     + " but was declared to be a(n) " + llvmTypeToStr(param.getType()), this->row, this->col);
