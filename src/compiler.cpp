@@ -573,7 +573,7 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
     //Get the corresponding function type for the above return type, parameter types,
     //with no varargs
     FunctionType *ft = FunctionType::get(retType, paramTys, fdn->varargs);
-    Function *f = Function::Create(ft, Function::ExternalLinkage, funcPrefix + fdn->name, module.get());
+    Function *f = Function::Create(ft, Function::ExternalLinkage, fdn->name, module.get());
 
     //The above handles everything for a function declaration
     //If the function is a definition, then the body will be compiled here.
@@ -598,7 +598,7 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
         //End of the function, discard the function's scope.
         exitScope();
 
-        builder.SetInsertPoint(&module->getFunction(fdn->name)->back());
+        builder.SetInsertPoint(&f->back());
         
         //llvm requires explicit returns, so generate a void return even if
         //the user did not in their void function.
@@ -685,11 +685,6 @@ void Compiler::importFile(const char *fName){
 
     if(c->errFlag) return;
 
-    module->dump();
-    puts("~~~~~~~~~~~~~~~~~~~~~~~~~~");
-    c->module->dump();
-    puts("~~~~~~~~~~~~~~~~~~~~~~~~~~");
-
     //link functions from both files
     Module *m2 = c->module.get();
     c->module.release();
@@ -699,7 +694,6 @@ void Compiler::importFile(const char *fName){
     for(const auto& it : c->userTypes){
         userTypes[it.first] = it.second;
     }
-    module->dump();
 
     delete c;
 }
@@ -730,27 +724,6 @@ unsigned int Compiler::getScope() const{
 void Compiler::compilePrelude(){
     if(fileName != "src/prelude.an")
         importFile("src/prelude.an");
-    /*
-    // void printf: c8* str, ... va
-    registerFunction(new FuncDeclNode("printf", 0, mkAnonTypeNode(TT_Void), mkAnonNVNode(TT_StrLit), nullptr, true));
-
-    // void puts: c8* str
-    registerFunction(new FuncDeclNode("puts", 0, mkAnonTypeNode(TT_Void), mkAnonNVNode(TT_StrLit), nullptr));
-
-    // void putchar: c8 c
-    registerFunction(new FuncDeclNode("putchar", 0, mkAnonTypeNode(TT_Void), mkAnonNVNode(TT_I32), nullptr));
-
-    // void exit: u32 status
-    registerFunction(new FuncDeclNode("exit", 0, mkAnonTypeNode(TT_Void), mkAnonNVNode(TT_U32), nullptr));
-    
-    // void* malloc: u32 size
-    TypeNode *voidPtr = mkAnonTypeNode(TT_Ptr);
-    voidPtr->extTy.reset(mkAnonTypeNode(TT_I32));
-    registerFunction(new FuncDeclNode("malloc", 0, voidPtr, mkAnonNVNode(TT_I32), nullptr));
-    
-    // void free: void* ptr
-    NamedValNode *voidPtrNVN = new NamedValNode("", voidPtr);
-    registerFunction(new FuncDeclNode("free", 0, mkAnonTypeNode(TT_Void), voidPtrNVN, nullptr)); */
 }
 
 
@@ -780,25 +753,29 @@ inline void Compiler::registerFunction(FuncDeclNode *fn){
 void Compiler::compile(){
     compilePrelude();
 
-    //get or create the function type for the main method: void()
-    FunctionType *ft = FunctionType::get(Type::getInt8Ty(getGlobalContext()), false);
-    
-    //Actually create the function in module m
-    string fnName = isLib ? "init_" + removeFileExt(fileName) : "main";
-    Function *main = Function::Create(ft, Function::ExternalLinkage, fnName, module.get());
+    Function *main;
+    if(fileName != "src/prelude.an"){
+        //get or create the function type for the main method: void()
+        FunctionType *ft = FunctionType::get(Type::getInt8Ty(getGlobalContext()), false);
+        
+        //Actually create the function in module m
+        string fnName = isLib ? "init_" + removeFileExt(fileName) : "main";
+        main = Function::Create(ft, Function::ExternalLinkage, fnName, module.get());
 
-    //Create the entry point for the function
-    BasicBlock *bb = BasicBlock::Create(getGlobalContext(), "entry", main);
-    builder.SetInsertPoint(bb);
+        //Create the entry point for the function
+        BasicBlock *bb = BasicBlock::Create(getGlobalContext(), "entry", main);
+        builder.SetInsertPoint(bb);
+    }
 
     //Compile the rest of the program
     compileStmtList(ast.get(), this);
     exitScope();
 
     //builder should already be at end of main function
-    builder.CreateRet(ConstantInt::get(getGlobalContext(), APInt(8, 0, true)));
-
-    passManager->run(*main);
+    if(fileName != "src/prelude.an"){
+        builder.CreateRet(ConstantInt::get(getGlobalContext(), APInt(8, 0, true)));
+        passManager->run(*main);
+    }
 
     //flag this module as compiled.
     compiled = true;
@@ -995,5 +972,8 @@ Compiler::Compiler(const char *_fileName, bool lib) :
 
 Compiler::~Compiler(){
     fnDecls.clear();
-    delete yylexer;
+    if(yylexer){
+        delete yylexer;
+        yylexer = nullptr;
+    }
 }
