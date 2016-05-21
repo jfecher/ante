@@ -1,12 +1,16 @@
 let cstr = "I'm a c-string"
 
+
+fun malloc: i32 sz => i32*
+fun free: i32* ptr
+
 i32* ptrToThree = malloc(4)
 @ptrToThree = 3
 
 i32* ptrToFour = malloc(4)
 @ptrToFour = 4
 
-var flt = f64* malloc(4)
+var flt = f64* malloc(8)
 @flt = 5.9
 
 printf("%p -> %s\n", cstr, cstr)

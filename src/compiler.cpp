@@ -81,7 +81,6 @@ void ante::error(const char* msg, const char* fileName, unsigned int row, unsign
  */
 TypedValue* Compiler::compErr(string msg, unsigned int row, unsigned int col){
     error(msg.c_str(), fileName.c_str(), row, col);
-    module->dump();
     errFlag = true;
     return nullptr;
 }
@@ -689,12 +688,17 @@ void Compiler::importFile(const char *fName){
     Compiler *c = new Compiler(fName, true);
     c->compile();
 
-    if(c->errFlag) return;
+    if(c->errFlag){
+        cout << "Error when importing " << fName << endl;
+        return;
+    }
 
     //link functions from both files
     Module *m2 = c->module.get();
     c->module.release();
     Linker::linkModules(*module.get(), unique_ptr<Module>(m2));
+
+    module->dump();
 
     //copy import's userTypes into importer
     for(const auto& it : c->userTypes){

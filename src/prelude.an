@@ -13,10 +13,9 @@ fun putchar: c8 char
 
 fun exit: i32 status
 
-fun malloc: i32 size => void*
+fun malloc: i32 size => i32*
 
-fun free: void* mem
-
+fun free: i32* mem
 
 ~datatypes
 data Str
