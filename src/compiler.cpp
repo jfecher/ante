@@ -516,6 +516,7 @@ vector<Type*> getParamTypes(Compiler *c, NamedValNode *nvn, size_t paramCount){
     paramTys.reserve(paramCount);
 
     for(size_t i = 0; i < paramCount && nvn; i++){
+
         TypeNode *paramTyNode = (TypeNode*)nvn->typeExpr.get();
         if(paramTyNode)
             paramTys.push_back(c->typeNodeToLlvmType(paramTyNode));
@@ -569,7 +570,10 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
     size_t nParams = getTupleSize(paramsBegin);
 
     vector<Type*> paramTys = getParamTypes(this, paramsBegin, nParams);
-    if(!paramTys.back()){ //varargs fn
+
+    if(paramTys.size() <= 0){
+        cout << "Function " << fdn->name << " takes 0 params.\n";
+    }else if(!paramTys.back()){ //varargs fn
         fdn->varargs = true;
         paramTys.pop_back();
     }
@@ -623,11 +627,7 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
  */
 TypedValue* FuncDeclNode::compile(Compiler *c){
     name = c->funcPrefix + name;
-
-    if(c->isLib)
-        c->compFn(this);
-    else
-        c->registerFunction(this);
+    c->registerFunction(this);
 
     return nullptr;
 }
@@ -686,7 +686,7 @@ Function* Compiler::getFunction(string& name){
  */
 void Compiler::importFile(const char *fName){
     Compiler *c = new Compiler(fName, true);
-    c->compile();
+    c->scanAllDecls();
 
     if(c->errFlag){
         cout << "Error when importing " << fName << endl;
@@ -696,13 +696,20 @@ void Compiler::importFile(const char *fName){
     //link functions from both files
     Module *m2 = c->module.get();
     c->module.release();
-    Linker::linkModules(*module.get(), unique_ptr<Module>(m2));
-
-    module->dump();
+    //Linker::linkModules is currently bugged
+    Linker *ln = new Linker(*module.get());
+    if(ln->linkInModuleForCAPI(*m2)){
+        cout << "Linking error\n";
+        errFlag = true;
+    }
 
     //copy import's userTypes into importer
     for(const auto& it : c->userTypes){
         userTypes[it.first] = it.second;
+    }
+
+    for(const auto& it : c->fnDecls){
+        fnDecls[it.first] = it.second;
     }
 
     delete c;
@@ -759,33 +766,58 @@ inline void Compiler::registerFunction(FuncDeclNode *fn){
     fnDecls[fn->name] = fn;
 }
 
+/*
+ *  Sweeps through entire parse tree registering all function and data
+ *  declarations.  Removes compiled functions.
+ */
+void Compiler::scanAllDecls(){
+    Node *n = ast.get();
+    while(n){
+        if(dynamic_cast<FuncDeclNode*>(n) || dynamic_cast<ExtNode*>(n) || dynamic_cast<DataDeclNode*>(n)){
+            n->compile(this); //register the function
+
+            if(n->prev){
+                n->prev->next.release();
+                n->prev->next.reset(n->next.get());
+            }else{
+                ast.release();
+                ast.reset(n->next.get());
+
+                if(n->next)
+                    n->next->prev = 0;
+                else
+                    ast.release();
+            }
+        }
+        n = n->next.get();
+    }
+}
+
 
 void Compiler::compile(){
-    compilePrelude();
-
     Function *main;
-    if(fileName != "src/prelude.an"){
-        //get or create the function type for the main method: void()
-        FunctionType *ft = FunctionType::get(Type::getInt8Ty(getGlobalContext()), false);
-        
-        //Actually create the function in module m
-        string fnName = isLib ? "init_" + removeFileExt(fileName) : "main";
-        main = Function::Create(ft, Function::ExternalLinkage, fnName, module.get());
 
-        //Create the entry point for the function
-        BasicBlock *bb = BasicBlock::Create(getGlobalContext(), "entry", main);
-        builder.SetInsertPoint(bb);
-    }
+    //get or create the function type for the main method: void()
+    FunctionType *ft = FunctionType::get(Type::getInt8Ty(getGlobalContext()), false);
+    
+    //Actually create the function in module m
+    string fnName = isLib ? "init_" + removeFileExt(fileName) : "main";
+    main = Function::Create(ft, Function::ExternalLinkage, fnName, module.get());
+
+    //Create the entry point for the function
+    BasicBlock *bb = BasicBlock::Create(getGlobalContext(), "entry", main);
+    builder.SetInsertPoint(bb);
+    
+    compilePrelude();
 
     //Compile the rest of the program
     compileStmtList(ast.get(), this);
     exitScope();
 
     //builder should already be at end of main function
-    if(fileName != "src/prelude.an"){
-        builder.CreateRet(ConstantInt::get(getGlobalContext(), APInt(8, 0, true)));
-        passManager->run(*main);
-    }
+    builder.CreateRet(ConstantInt::get(getGlobalContext(), APInt(8, 0, true)));
+    passManager->run(*main);
+
 
     //flag this module as compiled.
     compiled = true;
@@ -834,7 +866,7 @@ int Compiler::compileIRtoObj(string outFile){
     LLVMInitializeAllAsmPrinters();
     string err = "";
 
-    string triple = "x86_64-unknown-linux-gpu";
+    string triple = "x86_64-unknown-linux-gnu";
     const Target* target = TargetRegistry::lookupTarget(triple, err);
 
     if(!err.empty()){

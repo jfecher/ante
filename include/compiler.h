@@ -114,6 +114,7 @@ namespace ante{
         void emitIR();
         void enterNewScope();
         void exitScope();
+        void scanAllDecls();
         
         //binop functions
         TypedValue* compAdd(TypedValue *l, TypedValue *r, BinOpNode *op);

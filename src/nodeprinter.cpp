@@ -216,13 +216,21 @@ void WhileNode::print(){
 }
 
 void FuncDeclNode::print(){
-    cout << "fnDecl ";
-    type->print();
-    cout << ' ' << name << ": ";
-    if(params) params->print();
-    puts("\nfnbody:");
-    printBlock(child.get());
-    puts("endfn");
+    cout << "fun ";
+    cout << name;
+    if(params){
+        cout << ": ";
+        params->print();
+    }
+    if(type){
+        cout << " => ";
+        type->print();
+    }
+    if(child.get()){
+        puts("\nfnbody:");
+        printBlock(child.get());
+        puts("endfn");
+    }
 }
 
 void DataDeclNode::print(){

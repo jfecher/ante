@@ -39,3 +39,4 @@ ext Str
 
 fun printd: i32 x
     printf("%d\n", x)
+
