@@ -694,14 +694,14 @@ void Compiler::importFile(const char *fName){
     }
 
     //link functions from both files
-    Module *m2 = c->module.get();
+    /*Module *m2 = c->module.get();
     c->module.release();
     //Linker::linkModules is currently bugged
     Linker *ln = new Linker(*module.get());
     if(ln->linkInModuleForCAPI(*m2)){
         cout << "Linking error\n";
         errFlag = true;
-    }
+    } */
 
     //copy import's userTypes into importer
     for(const auto& it : c->userTypes){
@@ -796,6 +796,7 @@ void Compiler::scanAllDecls(){
 
 void Compiler::compile(){
     Function *main;
+    scanAllDecls();
 
     //get or create the function type for the main method: void()
     FunctionType *ft = FunctionType::get(Type::getInt8Ty(getGlobalContext()), false);
