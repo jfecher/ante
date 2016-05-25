@@ -244,13 +244,9 @@ TypedValue* RetNode::compile(Compiler *c){
 
 
 TypedValue* ImportNode::compile(Compiler *c){
-    TypedValue *imports = expr->compile(c);
-    if(!imports) return 0;
+    if(!dynamic_cast<StrLitNode*>(expr.get())) return 0;
 
-    if(imports->type != TT_StrLit){
-        return c->compErr("Cannot import value of type " + llvmTypeToStr(imports->getType()) +
-                " (imports must be Str type)", row, col);
-    }
+    c->importFile(((StrLitNode*)expr.get())->val.c_str());
 
     return 0;
 }
@@ -571,9 +567,7 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
 
     vector<Type*> paramTys = getParamTypes(this, paramsBegin, nParams);
 
-    if(paramTys.size() <= 0){
-        cout << "Function " << fdn->name << " takes 0 params.\n";
-    }else if(!paramTys.back()){ //varargs fn
+    if(paramTys.size() > 0 && !paramTys.back()){ //varargs fn
         fdn->varargs = true;
         paramTys.pop_back();
     }
