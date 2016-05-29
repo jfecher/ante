@@ -21,12 +21,13 @@ DEPFILES := $(OBJFILES:.o=.d)
 .PHONY: ante new clean
 .DEFAULT: ante
 
-ante: obj/parser.o $(OBJFILES)
+ante: obj obj/parser.o $(OBJFILES)
 	@echo Linking...
 	@$(CXX) $(OBJFILES) $(CPPFLAGS) $(LLVMFLAGS) -o ante
 
 new: clean ante
 
+#create the obj folder if it is not present
 obj: 
 	@mkdir -p obj
 
@@ -45,5 +46,6 @@ obj/parser.o: src/syntax.y Makefile
 #	@-mv src/*.hh include
 	@$(CXX) $(CPPFLAGS) -MMD -MP -Iinclude -c $(PARSERSRC) -o $@
 
+#remove all intermediate files
 clean:
-	-@$(RM) obj/*.o obj/*.d ante
+	-@$(RM) obj/*.o obj/*.d
