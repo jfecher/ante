@@ -3,9 +3,9 @@
         Tests initializations, assignments, and print statements
 `
 i32 i = 12
-printf("%d\n", i)
+printd(i)
 i = 3
-printf("%d\n", i)
+printd(i)
 
 
 var s = "Hello "

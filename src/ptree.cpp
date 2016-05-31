@@ -189,6 +189,26 @@ Node* mkRetNode(Node* expr){
     return ret;
 }
 
+//helper function to deep-copy TypeNodes.  Used in mkNamedValNode
+TypeNode* deepCopyTypeNode(const TypeNode *n){
+    TypeNode *cpy = new TypeNode(n->type, n->typeName, nullptr);
+
+    if(n->type == TT_Tuple){
+        TypeNode *nxt = n->extTy.get();
+        TypeNode *ext = nxt? deepCopyTypeNode(nxt) : 0;
+        cpy->extTy.reset(ext);
+
+        while((nxt = static_cast<TypeNode*>(nxt->next.get()))){
+            ext->next.reset(deepCopyTypeNode(nxt));
+            ext = static_cast<TypeNode*>(ext->next.get());
+        }
+    }else if(n->type == TT_Array || n->type == TT_Ptr){
+        cpy->extTy.reset(deepCopyTypeNode(n->extTy.get()));
+    }
+    return cpy;
+}
+
+
 /*
  *  This may create several NamedVal nodes depending on the
  *  number of VarNodes contained within varNodes.
@@ -203,8 +223,7 @@ Node* mkNamedValNode(Node* varNodes, Node* tExpr){
     Node *nxt = ret;
 
     while((vn = (VarNode*)vn->next.get())){
-        //FIXME: tExpr must be deep-copied
-        TypeNode *tyNode = new TypeNode(ty->type, ty->typeName, nullptr);
+        TypeNode *tyNode = deepCopyTypeNode(ty);
         nxt->next.reset(new NamedValNode(vn->name, tyNode));
         nxt->next->prev = nxt;
         nxt = nxt->next.get();
