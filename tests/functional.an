@@ -15,7 +15,7 @@ data List : Iter
     List<t>*|None nextNode
 
 
-impl List
+ext List
     ~Implement the next function from Iter
     fun next: List<t> l => 't|None
         return l.nextNode?.val
@@ -25,7 +25,7 @@ impl List
         return self.val
 
 
-impl Iter
+ext Iter
     ~Example of a possible foldl implementation
     fun foldl: self*, 't('t,'t) f, 't init => 't
         return match @self
@@ -46,7 +46,7 @@ impl Iter
 ~omitted as well and would be assumed to be a type implementing Iter.  
 ~If List<var> was specified then var could be used as a type variable 
 ~within the function
-fun sum_of_list: List l => 't
+fun sum_of_list: List<'t> l => 't
     return l.reduce(add)
 
 

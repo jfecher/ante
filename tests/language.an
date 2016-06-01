@@ -417,6 +417,25 @@ add_floats(addend = 2.5, augend = 5.0)
 
 
 `
+        Expr-functions
+    Expr-functions are functions that evaluate a single expression, and return
+    the result.  They are denoted with an = sign after the parameter list.  As
+    always, the : is only used if there are parameters.  In these functions,
+    the type of each parameter can usually be inferred, so the type annotations
+    are not necessary, but are still encouraged.
+`
+
+~Simple function that returns one.
+~Note the absence of : since there are no parameters.
+fun returnOne = 1
+
+~Function that takes the dot product of two vectors represented as arrays
+~Although this function was originally written with the intention arrays would
+~be used, any type for l and r may be used as long as it implements join and reduce
+fun dotProduct: l r =
+    (l,r).join(*).reduce(+)
+
+`
         Currying
     In Ante, currying is always explicit, which leads to better error messages rather
     Than an ubiquitous type mismatch error.  To curry a function, specify _ as the desired

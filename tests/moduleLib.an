@@ -1,23 +1,23 @@
 `
-    Lib file for tests/module_driver.an
+    Lib file for tests/moduleDriver.an
 
-    To compile, compile module_driver with
+    To compile, compile moduleDriver with
     
-  $ ante tests/module_driver.an
+  $ ante tests/moduleDriver.an
 
     Alternatively, to compile as a stand-alone
     object file, compile with the -lib flag:
 
-  $ ante -o -lib tests/module_lib.an
+  $ ante -o -lib tests/moduleLib.an
 `
 
 
 ext i32,i32
 
     ~Return the dotproduct of two double-length 'vectors'
-    fun dotProduct: i32,i32 l r => i32
+    fun dotProduct i32,i32 l r => i32
         return l[0] * r[0] + l[1] * r[1]
-
     
+
     fun print: i32,i32 tup
         printf("(%d, %d)\n", tup[0], tup[1])
