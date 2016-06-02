@@ -2,7 +2,7 @@ vpath %.c src
 vpath %.h include
 vpath %.d obj
 
-WARNINGS  := -Wall -Wpedantic
+WARNINGS  := -Wall -Wpedantic -Wsign-compare
 #LLVMFLAGS := `llvm-config --cppflags --libs Core BitWriter Passes Target --ldflags --system-libs`
 LLVMFLAGS := `llvm-config --cppflags --libs All --ldflags --system-libs`
 
