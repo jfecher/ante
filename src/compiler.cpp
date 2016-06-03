@@ -1,5 +1,6 @@
 #include "parser.h"
 #include "compiler.h"
+#include "target.h"
 #include <llvm/IR/Verifier.h>          //for verifying basic structure of functions
 #include <llvm/Bitcode/ReaderWriter.h> //for r/w when outputting bitcode
 #include <llvm/Support/FileSystem.h>   //for r/w when outputting bitcode
@@ -861,7 +862,7 @@ int Compiler::compileIRtoObj(string outFile){
     LLVMInitializeAllAsmPrinters();
     string err = "";
 
-    string triple = "x86_64-unknown-linux-gnu";
+    string triple = Triple(AN_NATIVE_ARCH, AN_NATIVE_VENDOR, AN_NATIVE_OS).getTriple();
     const Target* target = TargetRegistry::lookupTarget(triple, err);
 
     if(!err.empty()){
