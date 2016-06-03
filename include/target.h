@@ -39,11 +39,9 @@
 #endif
 
 
+
 //Determine Vendor
-
-
-
-
+//TODO: implement
 
 //Determine Arch
 #if defined __amd64__ || defined __amd64 || defined __x86_64__ || \

@@ -870,7 +870,7 @@ int Compiler::compileIRtoObj(string outFile){
         return 1;
     }
 
-    string cpu = "haswell";
+    string cpu = "";
     string features = "";
     TargetOptions op;
     TargetMachine *tm = target->createTargetMachine(triple, cpu, features, op, Reloc::Model::Default, 
