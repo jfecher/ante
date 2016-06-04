@@ -40,3 +40,5 @@ ext Str
 fun printd: i32 x
     printf("%d\n", x)
 
+fun print: Str s
+    puts(s.cStr)

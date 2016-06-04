@@ -44,7 +44,7 @@ Node* setElse(IfNode *c, IfNode *elif){
     return elif;
 }
 
-Node* mkIntLitNode(char* s){
+Node* mkIntLitNode(yy::parser::location_type loc, char* s){
     string str = s;
     TypeTag type = TT_I32;
 
@@ -84,7 +84,7 @@ Node* mkIntLitNode(char* s){
     return ret;
 }
 
-Node* mkFltLitNode(char* s){
+Node* mkFltLitNode(yy::parser::location_type loc, char* s){
     string str = s;
     int len = str.length();
     TypeTag type = TT_F64;
@@ -109,21 +109,21 @@ Node* mkFltLitNode(char* s){
     return ret;
 }
 
-Node* mkStrLitNode(char* s){
+Node* mkStrLitNode(yy::parser::location_type loc, char* s){
     auto *ret = new StrLitNode(s);
     ret->col = yylexer->getCol();
     ret->row = yylexer->getRow();
     return ret;
 }
 
-Node* mkBoolLitNode(char b){
+Node* mkBoolLitNode(yy::parser::location_type loc, char b){
     auto *ret = new BoolLitNode(b);
     ret->col = yylexer->getCol();
     ret->row = yylexer->getRow();
     return ret;
 }
 
-Node* mkArrayNode(Node *expr){
+Node* mkArrayNode(yy::parser::location_type loc, Node *expr){
     vector<Node*> exprs;
     while(expr){
         exprs.push_back(expr);
@@ -135,7 +135,7 @@ Node* mkArrayNode(Node *expr){
     return ret;
 }
 
-Node* mkTupleNode(Node *expr){
+Node* mkTupleNode(yy::parser::location_type loc, Node *expr){
     vector<Node*> exprs;
     while(expr){
         exprs.push_back(expr);
@@ -147,42 +147,42 @@ Node* mkTupleNode(Node *expr){
     return ret;
 }
 
-Node* mkModNode(TokenType mod){
+Node* mkModNode(yy::parser::location_type loc, TokenType mod){
     auto *ret = new ModNode(mod);
     ret->col = yylexer->getCol();
     ret->row = yylexer->getRow();
     return ret;
 }
 
-Node* mkTypeNode(TypeTag type, char* typeName, Node* extTy = nullptr){
+Node* mkTypeNode(yy::parser::location_type loc, TypeTag type, char* typeName, Node* extTy = nullptr){
     auto *ret = new TypeNode(type, typeName, static_cast<TypeNode*>(extTy));
     ret->col = yylexer->getCol();
     ret->row = yylexer->getRow();
     return ret;
 }
 
-Node* mkTypeCastNode(Node *l, Node *r){
+Node* mkTypeCastNode(yy::parser::location_type loc, Node *l, Node *r){
     auto *ret = new TypeCastNode(static_cast<TypeNode*>(l), r);
     ret->col = yylexer->getCol();
     ret->row = yylexer->getRow();
     return ret;
 }
 
-Node* mkUnOpNode(int op, Node* r){
+Node* mkUnOpNode(yy::parser::location_type loc, int op, Node* r){
     auto *ret = new UnOpNode(op, r);
     ret->col = yylexer->getCol();
     ret->row = yylexer->getRow();
     return ret;
 }
 
-Node* mkBinOpNode(int op, Node* l, Node* r){
+Node* mkBinOpNode(yy::parser::location_type loc, int op, Node* l, Node* r){
     auto *ret = new BinOpNode(op, l, r);
     ret->col = yylexer->getCol();
     ret->row = yylexer->getRow();
     return ret;
 }
 
-Node* mkRetNode(Node* expr){
+Node* mkRetNode(yy::parser::location_type loc, Node* expr){
     auto *ret = new RetNode(expr);
     ret->col = yylexer->getCol();
     ret->row = yylexer->getRow();
@@ -215,7 +215,7 @@ TypeNode* deepCopyTypeNode(const TypeNode *n){
  *  This is used for the shortcut when declaring multiple
  *  variables of the same type, e.g. i32 a b c
  */
-Node* mkNamedValNode(Node* varNodes, Node* tExpr){
+Node* mkNamedValNode(yy::parser::location_type loc, Node* varNodes, Node* tExpr){
     //Note: there will always be at least one varNode
     const TypeNode* ty = (TypeNode*)tExpr;
     VarNode* vn = (VarNode*)varNodes;
@@ -234,93 +234,90 @@ Node* mkNamedValNode(Node* varNodes, Node* tExpr){
     return ret;
 }
 
-Node* mkFuncCallNode(char* s, Node* p){
+Node* mkFuncCallNode(yy::parser::location_type loc, char* s, Node* p){
     auto *ret = new FuncCallNode(s, (TupleNode*)p);
     ret->col = yylexer->getCol();
     ret->row = yylexer->getRow();
     return ret;
 }
 
-Node* mkVarNode(char* s){
+Node* mkVarNode(yy::parser::location_type loc, char* s){
     auto *ret = new VarNode(s);
     ret->col = yylexer->getCol();
     ret->row = yylexer->getRow();
     return ret;
 }
 
-Node* mkRefVarNode(char* s){
+Node* mkRefVarNode(yy::parser::location_type loc, char* s){
     auto *ret = new RefVarNode(s);
     ret->col = yylexer->getCol();
     ret->row = yylexer->getRow();
     return ret;
 }
 
-Node* mkImportNode(Node* expr){
+Node* mkImportNode(yy::parser::location_type loc, Node* expr){
     auto *ret = new ImportNode(expr);
     ret->col = yylexer->getCol();
     ret->row = yylexer->getRow();
     return ret;
 }
 
-Node* mkLetBindingNode(char* s, Node* mods, Node* tExpr, Node* expr){
+Node* mkLetBindingNode(yy::parser::location_type loc, char* s, Node* mods, Node* tExpr, Node* expr){
     auto *ret = new LetBindingNode(s, mods, tExpr, expr);
     ret->col = yylexer->getCol();
     ret->row = yylexer->getRow();
     return ret;
 }
 
-Node* mkVarDeclNode(char* s, Node* mods, Node* tExpr, Node* expr){
+Node* mkVarDeclNode(yy::parser::location_type loc, char* s, Node* mods, Node* tExpr, Node* expr){
     auto *ret = new VarDeclNode(s, mods, tExpr, expr);
     ret->col = yylexer->getCol();
     ret->row = yylexer->getRow();
     return ret;
 }
 
-Node* mkVarAssignNode(Node* var, Node* expr, bool freeLval = true){
+Node* mkVarAssignNode(yy::parser::location_type loc, Node* var, Node* expr, bool freeLval = true){
     auto *ret = new VarAssignNode(var, expr, freeLval);
     ret->col = yylexer->getCol();
     ret->row = yylexer->getRow();
     return ret;
 }
 
-Node* mkExtNode(Node* ty, Node* methods){
+Node* mkExtNode(yy::parser::location_type loc, Node* ty, Node* methods){
     auto *ret = new ExtNode((TypeNode*)ty, methods);
     ret->col = yylexer->getCol();
     ret->row = yylexer->getRow();
     return ret;
 }
 
-ParentNode* mkIfNode(Node* con, Node* body, Node* els = nullptr){
+ParentNode* mkIfNode(yy::parser::location_type loc, Node* con, Node* body, Node* els = nullptr){
     auto *ret = new IfNode(con, body, (IfNode*)els);
     ret->col = yylexer->getCol();
     ret->row = yylexer->getRow();
     return ret;
 }
 
-Node* mkExprIfNode(Node* con, Node* then, Node* els){
+Node* mkExprIfNode(yy::parser::location_type loc, Node* con, Node* then, Node* els){
     auto *ret = new ExprIfNode(con, then, els);
     ret->col = yylexer->getCol();
     ret->row = yylexer->getRow();
     return ret;
 }
 
-ParentNode* mkWhileNode(Node* con, Node* body){
+ParentNode* mkWhileNode(yy::parser::location_type loc, Node* con, Node* body){
     auto *ret = new WhileNode(con, body);
     ret->col = yylexer->getCol();
     ret->row = yylexer->getRow();
     return ret;
 }
 
-ParentNode* mkFuncDeclNode(char* s, Node* mods, Node* tExpr, Node* p, Node* b){
+ParentNode* mkFuncDeclNode(yy::parser::location_type loc, char* s, Node* mods, Node* tExpr, Node* p, Node* b){
     auto *ret = new FuncDeclNode(s, mods, tExpr, p, b);
     ret->col = yylexer->getCol();
     ret->row = yylexer->getRow();
     return ret;
 }
 
-ParentNode* mkDataDeclNode(char* s, Node* b){
-    auto *ret = new DataDeclNode(s, b, Compiler::getTupleSize(b));
-    ret->col = yylexer->getCol();
-    ret->row = yylexer->getRow();
-    return ret;
+ParentNode* mkDataDeclNode(yy::parser::location_type loc, char* s, Node* b){
+    return new DataDeclNode(s, b, Compiler::getTupleSize(b));
 }

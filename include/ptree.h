@@ -11,32 +11,34 @@ Node* getRoot(void);
 Node* setNext(Node* cur, Node* nxt);
 Node* setElse(IfNode *c, IfNode *elif);
 
-Node* mkIntLitNode(char* s);
-Node* mkFltLitNode(char* s);
-Node* mkStrLitNode(char* s);
-Node* mkBoolLitNode(char b);
-Node* mkArrayNode(Node *expr);
-Node* mkTupleNode(Node *expr);
-Node* mkModNode(TokenType mod);
-Node* mkTypeNode(TypeTag type, char* typeName, Node *extTy = nullptr);
-Node* mkTypeCastNode(Node *l, Node *r);
-Node* mkUnOpNode(int op, Node *r);
-Node* mkBinOpNode(int op, Node* l, Node* r);
-Node* mkNamedValNode(Node* nodes, Node* tExpr);
-Node* mkFuncCallNode(char* s, Node* p);
-Node* mkVarNode(char* s);
-Node* mkRefVarNode(char* s);
-Node* mkRetNode(Node* expr);
-Node* mkImportNode(Node* expr);
-Node* mkLetBindingNode(char* s, Node* mods, Node* tExpr, Node* expr);
-Node* mkVarDeclNode(char* s, Node* mods, Node* tExpr, Node* expr);
-Node* mkVarAssignNode(Node* var, Node* expr, bool shouldFreeLval = true);
-Node* mkExtNode(Node* typeExpr, Node* methods);
+#define LOC_TY yy::parser::location_type
 
-Node* mkIfNode(Node* con, Node* body, Node* els = nullptr);
-Node* mkExprIfNode(Node* con, Node* body, Node* els);
-Node* mkWhileNode(Node* con, Node* body);
-Node* mkFuncDeclNode(char* s, Node* mods, Node* tExpr, Node* p, Node* body);
-Node* mkDataDeclNode(char* s, Node* b);
+Node* mkIntLitNode(LOC_TY loc, char* s);
+Node* mkFltLitNode(LOC_TY loc, char* s);
+Node* mkStrLitNode(LOC_TY loc, char* s);
+Node* mkBoolLitNode(LOC_TY loc, char b);
+Node* mkArrayNode(LOC_TY loc, Node *expr);
+Node* mkTupleNode(LOC_TY loc, Node *expr);
+Node* mkModNode(LOC_TY loc, TokenType mod);
+Node* mkTypeNode(LOC_TY loc, TypeTag type, char* typeName, Node *extTy = nullptr);
+Node* mkTypeCastNode(LOC_TY loc, Node *l, Node *r);
+Node* mkUnOpNode(LOC_TY loc, int op, Node *r);
+Node* mkBinOpNode(LOC_TY loc, int op, Node* l, Node* r);
+Node* mkNamedValNode(LOC_TY loc, Node* nodes, Node* tExpr);
+Node* mkFuncCallNode(LOC_TY loc, char* s, Node* p);
+Node* mkVarNode(LOC_TY loc, char* s);
+Node* mkRefVarNode(LOC_TY loc, char* s);
+Node* mkRetNode(LOC_TY loc, Node* expr);
+Node* mkImportNode(LOC_TY loc, Node* expr);
+Node* mkLetBindingNode(LOC_TY loc, char* s, Node* mods, Node* tExpr, Node* expr);
+Node* mkVarDeclNode(LOC_TY loc, char* s, Node* mods, Node* tExpr, Node* expr);
+Node* mkVarAssignNode(LOC_TY loc, Node* var, Node* expr, bool shouldFreeLval = true);
+Node* mkExtNode(LOC_TY loc, Node* typeExpr, Node* methods);
+
+Node* mkIfNode(LOC_TY loc, Node* con, Node* body, Node* els = nullptr);
+Node* mkExprIfNode(LOC_TY loc, Node* con, Node* body, Node* els);
+Node* mkWhileNode(LOC_TY loc, Node* con, Node* body);
+Node* mkFuncDeclNode(LOC_TY loc, char* s, Node* mods, Node* tExpr, Node* p, Node* body);
+Node* mkDataDeclNode(LOC_TY loc, char* s, Node* b);
 
 #endif

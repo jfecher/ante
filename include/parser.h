@@ -5,6 +5,7 @@
 #include <memory> //For unique_ptr
 #include "lexer.h"
 #include "tokens.h"
+#include "ptree.h"
 #include "compiler.h"
 
 enum ParseErr{
@@ -22,7 +23,7 @@ using namespace ante;
 struct Node{
     unique_ptr<Node> next;
     Node *prev;
-    unsigned int row, col;
+    LOC_TY loc;
 
     //print representation of node
     virtual void print(void) = 0;

@@ -43,7 +43,7 @@ obj/%.o: src/%.cpp Makefile | obj
 obj/parser.o: src/syntax.y Makefile
 	@echo Generating parser...
 	@$(YACC) $(YACCFLAGS) src/syntax.y
-#	@-mv src/*.hh include
+	@-mv src/*.hh include
 	@$(CXX) $(CPPFLAGS) -MMD -MP -Iinclude -c $(PARSERSRC) -o $@
 
 #remove all intermediate files

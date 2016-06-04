@@ -2,6 +2,7 @@
 #define LEXER_H
 
 #include "tokens.h"
+#include "parser.h"
 #include <iostream>
 #include <fstream>
 #include <stack>
@@ -13,7 +14,7 @@ using namespace std;
 #define IS_ALPHANUM(c)   (IS_NUMERICAL(c) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c == 95)
 #define IS_WHITESPACE(c) (c == ' ' || c == '\t' || c == '\n' || c == 13) // || c == 130
 
-#define RETURN_PAIR(t) {incPos(2); return (t);}
+#define RETURN_PAIR(t) {incPos(2); yyloc_default.end = {fName, row, col}; return (t);}
 
 namespace ante{
     /* Defined in src/compiler.cpp */
@@ -37,12 +38,9 @@ namespace ante{
     private:
         /* the ifstream to take from */
         ifstream *in;
-        
+
         /* Row and column number */
         unsigned int row, col;
-        
-        /* Row and column number of beginning of last token */
-        unsigned int tokRow, tokCol;
         
         /* Current and next characters */
         char cur, nxt;

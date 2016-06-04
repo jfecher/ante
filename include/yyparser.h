@@ -39,7 +39,7 @@
 #include <stdexcept>
 #include <string>
 #include <iostream>
-
+#include "location.hh"
 
 /* Debug traces.  */
 #ifndef YYDEBUG
@@ -61,11 +61,14 @@ namespace yy {
 #else
     typedef YYSTYPE semantic_type;
 #endif
+    /// Symbol locations.
+    typedef location location_type;
 
     /// Syntax errors thrown from user actions.
     struct syntax_error : std::runtime_error
     {
-      syntax_error (const std::string& m);
+      syntax_error (const location_type& l, const std::string& m);
+      location_type location;
     };
 
     /// Tokens.
@@ -163,7 +166,7 @@ namespace yy {
     /// Expects its Base type to provide access to the symbol type
     /// via type_get().
     ///
-    /// Provide access to semantic value.
+    /// Provide access to semantic value and location.
     template <typename Base>
     struct basic_symbol : Base
     {
@@ -177,11 +180,13 @@ namespace yy {
       basic_symbol (const basic_symbol& other);
 
       /// Constructor for valueless symbols.
-      basic_symbol (typename Base::kind_type t);
+      basic_symbol (typename Base::kind_type t,
+                    const location_type& l);
 
       /// Constructor for symbols with semantic value.
       basic_symbol (typename Base::kind_type t,
-                    const semantic_type& v);
+                    const semantic_type& v,
+                    const location_type& l);
 
       /// Destroy the symbol.
       ~basic_symbol ();
@@ -197,6 +202,9 @@ namespace yy {
 
       /// The semantic value.
       semantic_type value;
+
+      /// The location.
+      location_type location;
 
     private:
       /// Assignment operator.
@@ -264,21 +272,26 @@ namespace yy {
 
   public:
     /// Report a syntax error.
+    /// \param loc    where the syntax error is found.
     /// \param msg    a description of the syntax error.
-    virtual void error (const std::string& msg);
+    virtual void error (const location_type& loc, const std::string& msg);
 
 # if YYDEBUG
   public:
     /// \brief Report a symbol value on the debug stream.
     /// \param yytype       The token type.
     /// \param yyvaluep     Its semantic value.
+    /// \param yylocationp  Its location.
     virtual void yy_symbol_value_print_ (int yytype,
-                                         const semantic_type* yyvaluep);
+                                         const semantic_type* yyvaluep,
+                                         const location_type* yylocationp);
     /// \brief Report a symbol on the debug stream.
     /// \param yytype       The token type.
     /// \param yyvaluep     Its semantic value.
+    /// \param yylocationp  Its location.
     virtual void yy_symbol_print_ (int yytype,
-                                   const semantic_type* yyvaluep);
+                                   const semantic_type* yyvaluep,
+                                   const location_type* yylocationp);
   private:
     // Debugging.
     std::ostream* yycdebug_;
@@ -298,7 +311,7 @@ namespace yy {
 
 
 } // yy
-#line 302 "include/yyparser.h" // glr.cc:329
+#line 315 "include/yyparser.h" // glr.cc:329
 
 
 #endif // !YY_YY_INCLUDE_YYPARSER_H_INCLUDED

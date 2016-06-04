@@ -158,6 +158,8 @@ char *lextxt;
 
 Lexer *yylexer;
 
+extern yy::parser::location_type yyloc_default;
+
 /* Sets lexer instance for yylex to use */
 void setLexer(Lexer *l){
     yylexer = l;
@@ -176,8 +178,6 @@ Lexer::Lexer(const char* file) :
     in{new ifstream(file)},
     row{1},
     col{1},
-    tokRow{1},
-    tokCol{1},
     cur{0},
     nxt{0},
     scopes{new stack<unsigned int>()},
@@ -201,15 +201,6 @@ Lexer::~Lexer(){
 char Lexer::peek(){
     return cur;
 }
-
-unsigned int Lexer::getRow(){
-    return tokRow;
-}
-
-unsigned int Lexer::getCol(){
-    return tokCol;
-}
-
 
 /*
 *  Prints a token's type to stdout
@@ -282,8 +273,8 @@ void Lexer::setlextxt(string *str){
 
 int Lexer::genAlphaNumTok(){
     string s = "";
-    tokRow = row;
-    tokCol = col;
+    string* fName = new string(fileName);
+    yyloc_default.begin = {fName, row, col};
 
     bool isUsertype = cur >= 'A' && cur <= 'Z';
     if(isUsertype){
@@ -300,6 +291,8 @@ int Lexer::genAlphaNumTok(){
             incPos();
         }
     }
+    
+    yyloc_default.end = {fName, row, col};
 
     if(isUsertype){
         setlextxt(&s);
@@ -318,8 +311,8 @@ int Lexer::genAlphaNumTok(){
 int Lexer::genNumLitTok(){
     string s = "";
     bool flt = false;
-    tokRow = row;
-    tokCol = col;
+    string* fName = new string(fileName);
+    yyloc_default.begin = {fName, row, col};
 
     while(IS_NUMERICAL(cur) || (cur == '.' && !flt && IS_NUMERICAL(nxt)) || cur == '_'){
         if(cur != '_'){
@@ -378,6 +371,8 @@ int Lexer::genNumLitTok(){
             }
         }
     }
+    
+    yyloc_default.end = {fName, row, col};
 
     setlextxt(&s);
     return flt? Tok_FltLit : Tok_IntLit;
@@ -385,12 +380,20 @@ int Lexer::genNumLitTok(){
 
 int Lexer::genWsTok(){
     if(cur == '\n'){
+        string* fName = new string(fileName);
+        yyloc_default.begin = {fName, row, col};
+        
         unsigned int newScope = 0;
 
         while(IS_WHITESPACE(cur) && cur != EOF){
             switch(cur){
                 case ' ': newScope++; break;
-                case '\n': newScope = 0; row++; col = 0; break;
+                case '\n': 
+                    newScope = 0; 
+                    row++; 
+                    col = 0; 
+                    yyloc_default.begin = {fName, row, col};
+                    break;
                 case '\t':
                     lexErr("Tab characters are invalid whitespace.");
                 default: break;
@@ -400,13 +403,13 @@ int Lexer::genWsTok(){
         }
 
         if(!scopes->empty() && newScope == scopes->top()){
-            //tokRow is not set to row for newline tokens in case there are several newlines.
+            //the row is not set to row for newline tokens in case there are several newlines.
             //In this case, if set to row, it would become the row of the last newline.
             //Incrementing it from its previous token (guarenteed to be non-newline) fixes this.
-            tokRow++;
-            tokCol = 0;
+            yyloc_default.end = {fName, row+1, 0};
             return Tok_Newline; /* Scope did not change, just return a Newline */
         }
+        yyloc_default.end = {fName, row, col};
         cscope = newScope;
         return next();
     }else{
@@ -417,8 +420,8 @@ int Lexer::genWsTok(){
 
 int Lexer::genStrLitTok(char delim){
     string s = "";
-    tokRow = row;
-    tokCol = col;
+    string* fName = new string(fileName);
+    yyloc_default.begin = {fName, row, col};
     incPos();
     while(cur != delim && cur != EOF){
         if(cur == '\\'){
@@ -438,7 +441,9 @@ int Lexer::genStrLitTok(char delim){
         }
         incPos();
     }
-    incPos();
+    incPos(); //consume ending delim
+    
+    yyloc_default.end = {fName, row, col};
     setlextxt(&s);
     return Tok_StrLit;
 }
@@ -470,8 +475,8 @@ int Lexer::next(){
    
     //If the token is none of the above, it must be a symbol, or a pair of symbols.
     //Set the beginning of the token about to be created here.
-    tokRow = row;
-    tokCol = col;
+    string* fName = new string(fileName);
+    yyloc_default.begin = {fName, row, col};
 
     //substitute -> for an indent and ;; for an unindent
     if(cur == '-' && nxt == '>'){
@@ -509,6 +514,8 @@ int Lexer::next(){
             case '<': RETURN_PAIR(Tok_LesrEq);
         }
     }
+    
+    yyloc_default.end = {fName, row, col};
     
     if(cur == 0 || cur == EOF) return 0; //End of input
 
