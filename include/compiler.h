@@ -82,6 +82,8 @@ struct Variable {
     Variable(string n, TypedValue *tv, unsigned int s, bool nofr=true) : name(n), tval(tv), scope(s), noFree(nofr){}
 };
 
+//forward-declare location for compErr and ante::err
+namespace yy{ struct location; };
 
 namespace ante{
     struct Compiler{
@@ -124,8 +126,8 @@ namespace ante{
         TypedValue* compRem(TypedValue *l, TypedValue *r, BinOpNode *op);
         TypedValue* compExtract(TypedValue *l, TypedValue *r, BinOpNode *op);
         TypedValue* compInsert(BinOpNode *insertOp, Node *assignExpr);
-        
-        TypedValue* compErr(string msg, unsigned int row, unsigned int col);
+       
+        TypedValue* compErr(string msg, yy::location& loc);
 
         void importFile(const char *name);
         Function* getFunction(string& name);

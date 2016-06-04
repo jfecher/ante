@@ -41,37 +41,46 @@ void skipToCoords(istream& ifs, unsigned int row, unsigned int col){
  *  Prints a given line (row) of a file, along with an arrow pointing to
  *  the specified column.
  */
-void printErrLine(const char* fileName, unsigned int row, unsigned int col){
-    ifstream f{fileName};
+void printErrLine(yy::location& loc){
+    ifstream f{*loc.begin.filename};
 
     //Premature newline error, show previous line as error instead
-    if(col == 0) row--;
+    if(loc.begin.column == 0) loc.begin.line--;
 
     //skip to line in question
-    skipToCoords(f, row, col);
+    skipToCoords(f, loc.begin.line, loc.begin.column);
 
     //print line
     string s;
     getline(f, s);
-    if(col == 0) col = s.length() + 1;
+    if(loc.begin.column == 0) loc.begin.column = s.length() + 1;
     cout << s;
 
     //draw arrow
     putchar('\n');
     cout << "\033[;31m"; //red
-    for(unsigned int i = 1; i <= col; i++){
-        if(i < col) putchar(' ');
-        else putchar('^');
-    }
+    unsigned int i = 1;
+
+    //skip to begin pos
+    for(; i < loc.begin.column; i++) putchar(' ');
+
+    //draw arrow until end pos
+    for(; i <= loc.end.column; i++) putchar('^');
+
     cout << "\033[;m"; //reset color
 }
 
 
-void ante::error(const char* msg, const char* fileName, unsigned int row, unsigned int col){
-    cout << "\033[;3m" << fileName << "\033[;m: ";
-    cout << "\033[;1m" << row << "," << col << "\033[;0m";
+void ante::error(const char* msg, yy::location& loc){
+    cout << "\033[;3m" << loc.begin.filename << "\033[;m: ";
+    cout << "\033[;1m" << loc.begin.line << ",";
+    if(loc.begin.column == loc.end.column)
+        cout << loc.begin.column << "\033[;0m";
+    else
+        cout << loc.begin.column << '-' << loc.end.column << "\033[;0m";
+
     cout << ": " <<  msg << endl;
-    printErrLine(fileName, row, col);
+    printErrLine(loc);
     cout << endl << endl;
 }
 
@@ -80,8 +89,8 @@ void ante::error(const char* msg, const char* fileName, unsigned int row, unsign
  *  Inform the user of an error and return nullptr.
  *  (perhaps this should throw an exception?)
  */
-TypedValue* Compiler::compErr(string msg, unsigned int row, unsigned int col){
-    error(msg.c_str(), fileName.c_str(), row, col);
+TypedValue* Compiler::compErr(string msg, yy::location& loc){
+    error(msg.c_str(), loc);
     errFlag = true;
     return nullptr;
 }
@@ -236,8 +245,7 @@ TypedValue* RetNode::compile(Compiler *c){
 
     if(!llvmTypeEq(ret->getType(), f->getReturnType())){
         return c->compErr("return expression of type " + llvmTypeToStr(ret->getType()) +
-               " does not match function return type " + llvmTypeToStr(f->getReturnType()), 
-               this->row, this->col);
+               " does not match function return type " + llvmTypeToStr(f->getReturnType()), this->loc);
     }
 
     return new TypedValue(c->builder.CreateRet(ret->val), ret->type);
@@ -352,7 +360,7 @@ TypedValue* NamedValNode::compile(Compiler *c)
 TypedValue* VarNode::compile(Compiler *c){
     auto *var = c->lookup(name);
     if(!var)
-        return c->compErr("Variable " + name + " has not been declared.", this->row, this->col);
+        return c->compErr("Variable " + name + " has not been declared.", this->loc);
 
     return dynamic_cast<AllocaInst*>(var->getVal())? new TypedValue(c->builder.CreateLoad(var->getVal(), name), var->getType()) : var->tval;
 }
@@ -362,10 +370,10 @@ TypedValue* RefVarNode::compile(Compiler *c){
     Variable *var = c->lookup(name);
     
     if(!var)
-        return c->compErr("Variable " + name + " has not been declared.", this->row, this->col);
+        return c->compErr("Variable " + name + " has not been declared.", this->loc);
 
     if(!dynamic_cast<AllocaInst*>(var->getVal()))
-        return c->compErr("Cannot assign to immutable variable " + name, this->row, this->col);
+        return c->compErr("Cannot assign to immutable variable " + name, this->loc);
 
     return new TypedValue(var->getVal(), TT_Ptr);
 }
@@ -374,14 +382,16 @@ TypedValue* RefVarNode::compile(Compiler *c){
 TypedValue* FuncCallNode::compile(Compiler *c){
     Function *f = c->getFunction(name);
     if(!f)
-        return c->compErr("Called function " + name + " has not been declared.", this->row, this->col);
+        return c->compErr("Called function " + name + " has not been declared.", this->loc);
 
     /* Check given argument count matches declared argument count. */
     if(f->arg_size() != params->exprs.size() && !f->isVarArg()){
         if(params->exprs.size() == 1)
-            return c->compErr("Called function " + name + " was given 1 argument but was declared to take " + to_string(f->arg_size()), this->row, this->col);
+            return c->compErr("Called function " + name + " was given 1 argument but was declared to take "
+                    + to_string(f->arg_size()), this->loc);
         else
-            return c->compErr("Called function " + name + " was given " + to_string(params->exprs.size()) + " arguments but was declared to take " + to_string(f->arg_size()), this->row, this->col);
+            return c->compErr("Called function " + name + " was given " + to_string(params->exprs.size()) 
+                    + " arguments but was declared to take " + to_string(f->arg_size()), this->loc);
     }
 
     /* unpack the tuple of arguments into a vector containing each value */
@@ -392,7 +402,7 @@ TypedValue* FuncCallNode::compile(Compiler *c){
 
         if(!llvmTypeEq(args[i++]->getType(), param.getType())){
             return c->compErr("Argument " + to_string(i) + " of function " + name + " is a(n) " + llvmTypeToStr(args[i-1]->getType())
-                    + " but was declared to be a(n) " + llvmTypeToStr(param.getType()), this->row, this->col);
+                    + " but was declared to be a(n) " + llvmTypeToStr(param.getType()), this->loc);
         }
     }
 
@@ -411,7 +421,7 @@ TypedValue* LetBindingNode::compile(Compiler *c){
     TypeNode *tyNode;
     if((tyNode = (TypeNode*)typeExpr.get())){
         if(!llvmTypeEq(val->val->getType(), c->typeNodeToLlvmType(tyNode))){
-            return c->compErr("Incompatible types in explicit binding.", row, col);
+            return c->compErr("Incompatible types in explicit binding.", loc);
         }
     }
 
@@ -422,7 +432,7 @@ TypedValue* LetBindingNode::compile(Compiler *c){
 
 TypedValue* compVarDeclWithInferredType(VarDeclNode *node, Compiler *c){
     if(c->lookup(node->name)){ //check for redeclaration
-        return c->compErr("Variable " + node->name + " was redeclared.", node->row, node->col);
+        return c->compErr("Variable " + node->name + " was redeclared.", node->loc);
     }
     
     TypedValue *val = node->expr->compile(c);
@@ -438,7 +448,7 @@ TypedValue* compVarDeclWithInferredType(VarDeclNode *node, Compiler *c){
 
 TypedValue* VarDeclNode::compile(Compiler *c){
     if(c->lookup(name)){ //check for redeclaration
-        return c->compErr("Variable " + name + " was redeclared.", row, col);
+        return c->compErr("Variable " + name + " was redeclared.", this->loc);
     }
 
     TypeNode *tyNode = (TypeNode*)typeExpr.get();
@@ -458,7 +468,7 @@ TypedValue* VarDeclNode::compile(Compiler *c){
         if(!llvmTypeEq(alloca->getType()->getPointerElementType(), val->getType())){
             return c->compErr("Cannot assign expression of type " + llvmTypeToStr(val->getType())
                         + " to a variable of type " + llvmTypeToStr(alloca->getType()->getPointerElementType()),
-                        expr->row, expr->col);
+                        expr->loc);
         }
 
         return new TypedValue(c->builder.CreateStore(val->val, alloca->val), tyNode->type);
@@ -487,14 +497,14 @@ TypedValue* VarAssignNode::compile(Compiler *c){
     //lvalue must compile to a pointer for storage, usually an alloca value
     if(llvmTypeToTypeTag(v->getType()) != TT_Ptr){
         return c->compErr("Attempted assign without a memory address, with type "
-                + llvmTypeToStr(v->getType()), ref_expr->row, ref_expr->col);
+                + llvmTypeToStr(v->getType()), ref_expr->loc);
     }
 
     //and finally, make sure the assigned value matches the variable's type
     if(!llvmTypeEq(v->getType()->getPointerElementType(), assignExpr->getType())){
         return c->compErr("Cannot assign expression of type " + llvmTypeToStr(assignExpr->getType())
                     + " to a variable of type " + llvmTypeToStr(v->getType()->getPointerElementType()),
-                    expr->row, expr->col);
+                    expr->loc);
     }
     
     //now actually create the store
@@ -708,18 +718,6 @@ void Compiler::importFile(const char *fName){
     }
 
     delete c;
-}
-
-/*
- *  Creates an anonymous NamedValNode for use in function declarations.
- */
-NamedValNode* mkAnonNVNode(TypeTag type){
-    return new NamedValNode("", new TypeNode(type, "", nullptr));
-}
-
-
-TypeNode* mkAnonTypeNode(TypeTag type){
-    return new TypeNode(type, "", nullptr);
 }
 
 

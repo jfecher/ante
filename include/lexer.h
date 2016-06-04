@@ -3,6 +3,7 @@
 
 #include "tokens.h"
 #include "parser.h"
+#include "location.hh"
 #include <iostream>
 #include <fstream>
 #include <stack>
@@ -19,7 +20,7 @@ using namespace std;
 namespace ante{
     /* Defined in src/compiler.cpp */
     /* General error function */
-    void error(const char* msg, const char* fileName, unsigned int row, unsigned int col);
+    void error(const char* msg, yy::location& loc);
 
     class Lexer{
     public:

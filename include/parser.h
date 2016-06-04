@@ -7,7 +7,7 @@
 #include "tokens.h"
 #include "compiler.h"
 
-struct Node;
+#define YYSTYPE Node*
 #include "yyparser.h"
 
 enum ParseErr{

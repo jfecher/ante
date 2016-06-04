@@ -365,8 +365,8 @@ fn_list_: fn_list_ fn_decl maybe_newline  {$$ = setNext($1, $2);}
  * must all manually deal with Newlines seperating the statements, and must have a following
  * Newline under their declaration under 'stmt' like the other statements do
  */
-elif_list: elif_list Newline Elif expr block {$$ = setElse((IfNode*)$1, (IfNode*)mkIfNode($4, $5));}
-         | Elif expr block                   {$$ = setRoot(mkIfNode($2, $3));}
+elif_list: elif_list Newline Elif expr block {$$ = setElse((IfNode*)$1, (IfNode*)mkIfNode(@$, $4, $5));}
+         | Elif expr block                   {$$ = setRoot(mkIfNode(@$, $2, $3));}
          ;
 
 maybe_elif_list: elif_list Newline Else block Newline {setElse((IfNode*)$1, (IfNode*)mkIfNode(@$, NULL, $4));}
@@ -392,7 +392,7 @@ var: ident  %prec Ident {$$ = mkVarNode(@$, (char*)$1);}
 
 ref_val: '&' ref_val            {$$ = mkUnOpNode(@$, '&', $2);}
        | '@' ref_val            {$$ = mkUnOpNode(@$, '@', $2);}
-       | ident '[' nl_expr ']'  {$$ = mkBinOpNode(@$, '[', mkRefVarNode((char*)$1), $3);}
+       | ident '[' nl_expr ']'  {$$ = mkBinOpNode(@$, '[', mkRefVarNode(@$, (char*)$1), $3);}
        | ident  %prec Ident     {$$ = mkRefVarNode(@$, (char*)$1);}
        ;
 
@@ -474,7 +474,7 @@ nl_expr: nl_expr '+' maybe_newline nl_expr               %dprec 1 {$$ = mkBinOpN
        | type_expr '.' maybe_newline var                 %dprec 2 {$$ = mkBinOpNode(@$, '.', $1, $4);}
        | nl_expr ';' maybe_newline nl_expr               %dprec 1 {$$ = mkBinOpNode(@$, ';', $1, $4);}
        | nl_expr '[' nl_expr ']' maybe_newline           %dprec 1 {$$ = mkBinOpNode(@$, '[', $1, $3);}
-       | Let ident '=' nl_expr In maybe_newline nl_expr  %prec Let  %dprec 3 {$$ = mkBinOpNode(@$, Tok_Let, mkLetBindingNode((char*)$2, 0, 0, $4), $7);}
+       | Let ident '=' nl_expr In maybe_newline nl_expr  %prec Let  %dprec 3 {$$ = mkBinOpNode(@$, Tok_Let, mkLetBindingNode(@$, (char*)$2, 0, 0, $4), $7);}
        | nl_expr Eq maybe_newline  nl_expr               %dprec 1 {$$ = mkBinOpNode(@$, Tok_Eq, $1, $4);}
        | nl_expr NotEq maybe_newline nl_expr             %dprec 1 {$$ = mkBinOpNode(@$, Tok_NotEq, $1, $4);}
        | nl_expr GrtrEq maybe_newline nl_expr            %dprec 1 {$$ = mkBinOpNode(@$, Tok_GrtrEq, $1, $4);}
@@ -491,7 +491,7 @@ nl_expr: nl_expr '+' maybe_newline nl_expr               %dprec 1 {$$ = mkBinOpN
 
 /* location parser error */
 void yy::parser::error(const location& loc, const string& msg){
-    ante::error(msg.c_str(), yylexer->fileName, loc.begin.line, loc.begin.col);
+    ante::error(msg.c_str(), yylexer->fileName, loc.begin.line, loc.begin.column);
 } 
 
 /*
