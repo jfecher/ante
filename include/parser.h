@@ -5,7 +5,7 @@
 #include <memory> //For unique_ptr
 #include "lexer.h"
 #include "tokens.h"
-#include "ptree.h"
+#include "yyparser.h"
 #include "compiler.h"
 
 enum ParseErr{
@@ -23,7 +23,7 @@ using namespace ante;
 struct Node{
     unique_ptr<Node> next;
     Node *prev;
-    LOC_TY loc;
+    yy::parser::location_type loc;
 
     //print representation of node
     virtual void print(void) = 0;
