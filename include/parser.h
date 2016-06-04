@@ -5,8 +5,10 @@
 #include <memory> //For unique_ptr
 #include "lexer.h"
 #include "tokens.h"
-#include "yyparser.h"
 #include "compiler.h"
+
+struct Node;
+#include "yyparser.h"
 
 enum ParseErr{
     PE_OK,
@@ -19,11 +21,15 @@ enum ParseErr{
 using namespace llvm;
 using namespace ante;
 
+#ifndef LOC_TY
+#  define LOC_TY yy::parser::location_type
+#endif
+
 /* Base class for all nodes */
 struct Node{
     unique_ptr<Node> next;
     Node *prev;
-    yy::parser::location_type loc;
+    LOC_TY loc;
 
     //print representation of node
     virtual void print(void) = 0;
@@ -31,18 +37,9 @@ struct Node{
     //compile node to a given module
     virtual TypedValue* compile(Compiler*) = 0;
 
-    virtual ~Node(){}
+    Node(LOC_TY& l) : loc(l){}
+    virtual ~Node();
 };
-
-/*
- *  Define Node* as the intermediate type for parsing functions and include
- *  the actual parser header.
- */
-#ifndef YYSTYPE
-#define YYSTYPE Node*
-#endif
-
-#include "yyparser.h"
 
 /*
  * Class for all nodes that can contain child statement nodes,
@@ -56,7 +53,7 @@ struct ParentNode : public Node{
         * parent node is initialized, so it is required
         * in the constructor (unlike next and prev)
         */
-    ParentNode(Node* c) : Node(), child(c){}
+    ParentNode(LOC_TY& loc, Node* c) : Node(loc), child(c){}
     ~ParentNode(){}
 };
 
@@ -65,7 +62,7 @@ struct IntLitNode : public Node{
     TypeTag type;
     TypedValue* compile(Compiler*);
     void print();
-    IntLitNode(string s, TypeTag ty) : Node(), val(s), type(ty){}
+    IntLitNode(LOC_TY& loc, string s, TypeTag ty) : Node(loc), val(s), type(ty){}
     ~IntLitNode(){}
 };
 
@@ -74,7 +71,7 @@ struct FltLitNode : public Node{
     TypeTag type;
     TypedValue* compile(Compiler*);
     void print(void);
-    FltLitNode(string s, TypeTag ty) : Node(), val(s), type(ty){}
+    FltLitNode(LOC_TY& loc, string s, TypeTag ty) : Node(loc), val(s), type(ty){}
     ~FltLitNode(){}
 };
 
@@ -82,7 +79,7 @@ struct BoolLitNode : public Node{
     bool val;
     TypedValue* compile(Compiler*);
     void print(void);
-    BoolLitNode(char b) : Node(), val(b){}
+    BoolLitNode(LOC_TY& loc, char b) : Node(loc), val(b){}
     ~BoolLitNode(){}
 };
 
@@ -90,7 +87,7 @@ struct ArrayNode : public Node{
     vector<Node*> exprs;
     TypedValue* compile(Compiler*);
     void print(void);
-    ArrayNode(vector<Node*>& e) : Node(), exprs(e){}
+    ArrayNode(LOC_TY& loc, vector<Node*>& e) : Node(loc), exprs(e){}
     ~ArrayNode(){}
 };
 
@@ -99,7 +96,7 @@ struct TupleNode : public Node{
     TypedValue* compile(Compiler*);
     vector<Value*> unpack(Compiler*);
     void print(void);
-    TupleNode(vector<Node*>& e) : Node(), exprs(e){}
+    TupleNode(LOC_TY& loc, vector<Node*>& e) : Node(loc), exprs(e){}
     ~TupleNode(){}
 };
 
@@ -108,7 +105,7 @@ struct TypeCastNode : public Node{
     unique_ptr<Node> rval;
     TypedValue* compile(Compiler*);
     void print(void);
-    TypeCastNode(TypeNode *ty, Node *rv) : Node(), typeExpr(ty), rval(rv){}
+    TypeCastNode(LOC_TY& loc, TypeNode *ty, Node *rv) : Node(loc), typeExpr(ty), rval(rv){}
     ~TypeCastNode(){}
 };
 
@@ -117,7 +114,7 @@ struct UnOpNode : public Node{
     unique_ptr<Node> rval;
     TypedValue* compile(Compiler*);
     void print(void);
-    UnOpNode(int s, Node *rv) : Node(), op(s), rval(rv){}
+    UnOpNode(LOC_TY& loc, int s, Node *rv) : Node(loc), op(s), rval(rv){}
     ~UnOpNode(){}
 };
 
@@ -126,7 +123,7 @@ struct BinOpNode : public Node{
     unique_ptr<Node> lval, rval;
     TypedValue* compile(Compiler*);
     void print(void);
-    BinOpNode(int s, Node *lv, Node *rv) : Node(), op(s), lval(lv), rval(rv){}
+    BinOpNode(LOC_TY& loc, int s, Node *lv, Node *rv) : Node(loc), op(s), lval(lv), rval(rv){}
     ~BinOpNode(){}
 };
 
@@ -137,7 +134,7 @@ struct TypeNode : public Node{
 
     TypedValue* compile(Compiler*);
     void print(void);
-    TypeNode(TypeTag ty, string tName, TypeNode* eTy) : Node(), type(ty), typeName(tName), extTy(eTy){}
+    TypeNode(LOC_TY& loc, TypeTag ty, string tName, TypeNode* eTy) : Node(loc), type(ty), typeName(tName), extTy(eTy){}
     ~TypeNode(){}
 };
 
@@ -145,7 +142,7 @@ struct ModNode : public Node{
     int mod;
     TypedValue* compile(Compiler*);
     void print(void);
-    ModNode(int m) : Node(), mod(m){}
+    ModNode(LOC_TY& loc, int m) : Node(loc), mod(m){}
     ~ModNode(){}
 };
 
@@ -153,7 +150,7 @@ struct RetNode : public Node{
     unique_ptr<Node> expr;
     TypedValue* compile(Compiler*);
     void print(void);
-    RetNode(Node* e) : Node(), expr(e){}
+    RetNode(LOC_TY& loc, Node* e) : Node(loc), expr(e){}
     ~RetNode(){}
 };
 
@@ -162,7 +159,7 @@ struct NamedValNode : public Node{
     unique_ptr<Node> typeExpr;
     TypedValue* compile(Compiler*);
     void print(void);
-    NamedValNode(string s, Node* t) : Node(), name(s), typeExpr(t){}
+    NamedValNode(LOC_TY& loc, string s, Node* t) : Node(loc), name(s), typeExpr(t){}
     ~NamedValNode(){}
 };
 
@@ -170,7 +167,7 @@ struct VarNode : public Node{
     string name;
     TypedValue* compile(Compiler*);
     void print(void);
-    VarNode(string s) : Node(), name(s){}
+    VarNode(LOC_TY& loc, string s) : Node(loc), name(s){}
     ~VarNode(){}
 };
 
@@ -178,7 +175,7 @@ struct RefVarNode : public Node{
     string name;
     TypedValue* compile(Compiler*);
     void print(void);
-    RefVarNode(string s) : Node(), name(s){}
+    RefVarNode(LOC_TY& loc, string s) : Node(loc), name(s){}
     ~RefVarNode(){}
 };
 
@@ -187,7 +184,7 @@ struct FuncCallNode : public Node{
     unique_ptr<TupleNode> params;
     TypedValue* compile(Compiler*);
     void print(void);
-    FuncCallNode(string s, TupleNode* p) : Node(), name(s), params(p){}
+    FuncCallNode(LOC_TY& loc, string s, TupleNode* p) : Node(loc), name(s), params(p){}
     ~FuncCallNode(){}
 };
 
@@ -195,7 +192,7 @@ struct StrLitNode : public Node{
     string val;
     TypedValue* compile(Compiler*);
     void print(void);
-    StrLitNode(string s) : Node(), val(s){}
+    StrLitNode(LOC_TY& loc, string s) : Node(loc), val(s){}
     ~StrLitNode(){}
 };
 
@@ -205,7 +202,7 @@ struct LetBindingNode : public Node{
 
     TypedValue* compile(Compiler*);
     void print(void);
-    LetBindingNode(string s, Node *mods, Node* t, Node* exp) : Node(), name(s), modifiers(mods), typeExpr(t), expr(exp){}
+    LetBindingNode(LOC_TY& loc, string s, Node *mods, Node* t, Node* exp) : Node(loc), name(s), modifiers(mods), typeExpr(t), expr(exp){}
     ~LetBindingNode(){}
 };
 
@@ -215,7 +212,7 @@ struct VarDeclNode : public Node{
 
     TypedValue* compile(Compiler*);
     void print(void);
-    VarDeclNode(string s, Node *mods, Node* t, Node* exp) : Node(), name(s), modifiers(mods), typeExpr(t), expr(exp){}
+    VarDeclNode(LOC_TY& loc, string s, Node *mods, Node* t, Node* exp) : Node(loc), name(s), modifiers(mods), typeExpr(t), expr(exp){}
     ~VarDeclNode(){}
 };
 
@@ -225,7 +222,7 @@ struct VarAssignNode : public Node{
     bool freeLval;
     TypedValue* compile(Compiler*);
     void print(void);
-    VarAssignNode(Node* v, Node* exp, bool b) : Node(), ref_expr(v), expr(exp), freeLval(b){}
+    VarAssignNode(LOC_TY& loc, Node* v, Node* exp, bool b) : Node(loc), ref_expr(v), expr(exp), freeLval(b){}
     ~VarAssignNode(){ if(freeLval) delete ref_expr; }
 };
 
@@ -234,7 +231,7 @@ struct ExtNode : public Node{
     unique_ptr<Node> methods;
     TypedValue* compile(Compiler*);
     void print(void);
-    ExtNode(TypeNode *t, Node *m) : typeExpr(t), methods(m){}
+    ExtNode(LOC_TY& loc, TypeNode *t, Node *m) : Node(loc), typeExpr(t), methods(m){}
     ~ExtNode(){}
 };
 
@@ -242,7 +239,7 @@ struct ImportNode : public Node{
     unique_ptr<Node> expr;
     TypedValue* compile(Compiler*);
     void print();
-    ImportNode(Node* e) : expr(e){}
+    ImportNode(LOC_TY& loc, Node* e) : Node(loc), expr(e){}
     ~ImportNode(){}
 };
 
@@ -250,7 +247,7 @@ struct WhileNode : public ParentNode{
     unique_ptr<Node> condition;
     TypedValue* compile(Compiler*);
     void print(void);
-    WhileNode(Node *cond, Node *body) : ParentNode(body), condition(cond){}
+    WhileNode(LOC_TY& loc, Node *cond, Node *body) : ParentNode(loc, body), condition(cond){}
     ~WhileNode(){}
 };
 
@@ -259,7 +256,7 @@ struct IfNode : public ParentNode{
     unique_ptr<IfNode> elseN;
     TypedValue* compile(Compiler*);
     void print(void);
-    IfNode(Node* n1, Node* body, IfNode* els) : ParentNode(body), condition(n1), elseN(els){}
+    IfNode(LOC_TY& loc, Node* n1, Node* body, IfNode* els) : ParentNode(loc, body), condition(n1), elseN(els){}
     ~IfNode(){}
 };
 
@@ -270,7 +267,7 @@ struct ExprIfNode : public Node{
     unique_ptr<Node> condition, thenN, elseN;
     TypedValue* compile(Compiler*);
     void print(void);
-    ExprIfNode(Node* c, Node* then, Node* els) : condition(c), thenN(then), elseN(els){}
+    ExprIfNode(LOC_TY& loc, Node* c, Node* then, Node* els) : Node(loc), condition(c), thenN(then), elseN(els){}
     ~ExprIfNode(){}
 };
 
@@ -282,7 +279,7 @@ struct FuncDeclNode : public ParentNode{
 
     TypedValue* compile(Compiler*);
     void print(void);
-    FuncDeclNode(string s, Node *mods, Node *t, Node *p, Node* b, bool va=false) : ParentNode(b), name(s), modifiers(mods), type(t), params((NamedValNode*)p), varargs(va){}
+    FuncDeclNode(LOC_TY& loc, string s, Node *mods, Node *t, Node *p, Node* b, bool va=false) : ParentNode(loc, b), name(s), modifiers(mods), type(t), params((NamedValNode*)p), varargs(va){}
     ~FuncDeclNode(){}
 };
 
@@ -292,7 +289,7 @@ struct DataDeclNode : public ParentNode{
 
     TypedValue* compile(Compiler*);
     void print(void);
-    DataDeclNode(string s, Node* b, size_t f) : ParentNode(b), name(s), fields(f){}
+    DataDeclNode(LOC_TY& loc, string s, Node* b, size_t f) : ParentNode(loc, b), name(s), fields(f){}
     ~DataDeclNode(){}
 };
 

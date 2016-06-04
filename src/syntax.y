@@ -26,8 +26,6 @@ namespace ante{
 
 void yyerror(const char *msg);
 
-bool is_expr_block = false;
-
 %}
 
 %locations
