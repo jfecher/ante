@@ -6,9 +6,7 @@
 #include "lexer.h"
 #include "tokens.h"
 #include "compiler.h"
-
-#define YYSTYPE Node*
-#include "yyparser.h"
+#include "location.hh"
 
 enum ParseErr{
     PE_OK,
@@ -22,7 +20,7 @@ using namespace llvm;
 using namespace ante;
 
 #ifndef LOC_TY
-#  define LOC_TY yy::parser::location_type
+#  define LOC_TY yy::location
 #endif
 
 /* Base class for all nodes */

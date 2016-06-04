@@ -30,8 +30,6 @@ namespace ante{
         ~Lexer();
         int next();
         char peek();
-        unsigned int getRow();
-        unsigned int getCol();
         
         static void printTok(int t);
         static string getTokStr(int t);

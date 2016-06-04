@@ -527,6 +527,9 @@ int Lexer::next(){
 
 
 void Lexer::lexErr(const char *msg){
-    error(msg, fileName, row, col);
+    string *fName = new string(fileName);
+    yy::location loc = {{fName, row, col}, {fName, row, col}};
+    error(msg, loc);
+    free(fName);
     exit(EXIT_FAILURE);//lexing errors are always fatal
 }

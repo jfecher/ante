@@ -17,7 +17,7 @@ TypedValue* Compiler::compAdd(TypedValue *l, TypedValue *r, BinOpNode *op){
             return new TypedValue(builder.CreateFAdd(l->val, r->val), l->type);
 
         default:
-            return compErr("binary operator + is undefined for the type " + llvmTypeToStr(l->getType()) + " and " + llvmTypeToStr(r->getType()), op->row, op->col);
+            return compErr("binary operator + is undefined for the type " + llvmTypeToStr(l->getType()) + " and " + llvmTypeToStr(r->getType()), op->loc);
     }
 }
 
@@ -34,7 +34,7 @@ TypedValue* Compiler::compSub(TypedValue *l, TypedValue *r, BinOpNode *op){
             return new TypedValue(builder.CreateFSub(l->val, r->val), l->type);
 
         default:
-            return compErr("binary operator - is undefined for the type " + llvmTypeToStr(l->getType()) + " and " + llvmTypeToStr(r->getType()), op->row, op->col);
+            return compErr("binary operator - is undefined for the type " + llvmTypeToStr(l->getType()) + " and " + llvmTypeToStr(r->getType()), op->loc);
     }
 }
 
@@ -51,7 +51,7 @@ TypedValue* Compiler::compMul(TypedValue *l, TypedValue *r, BinOpNode *op){
             return new TypedValue(builder.CreateFMul(l->val, r->val), l->type);
 
         default:
-            return compErr("binary operator * is undefined for the type " + llvmTypeToStr(l->getType()) + " and " + llvmTypeToStr(r->getType()), op->row, op->col);
+            return compErr("binary operator * is undefined for the type " + llvmTypeToStr(l->getType()) + " and " + llvmTypeToStr(r->getType()), op->loc);
     }
 }
 
@@ -73,7 +73,7 @@ TypedValue* Compiler::compDiv(TypedValue *l, TypedValue *r, BinOpNode *op){
             return new TypedValue(builder.CreateFDiv(l->val, r->val), l->type);
 
         default: 
-            return compErr("binary operator / is undefined for the type " + llvmTypeToStr(l->getType()) + " and " + llvmTypeToStr(r->getType()), op->row, op->col);
+            return compErr("binary operator / is undefined for the type " + llvmTypeToStr(l->getType()) + " and " + llvmTypeToStr(r->getType()), op->loc);
     }
 }
 
@@ -95,7 +95,7 @@ TypedValue* Compiler::compRem(TypedValue *l, TypedValue *r, BinOpNode *op){
             return new TypedValue(builder.CreateFRem(l->val, r->val), l->type);
 
         default:
-            return compErr("binary operator % is undefined for the types " + llvmTypeToStr(l->getType()) + " and " + llvmTypeToStr(r->getType()), op->row, op->col);
+            return compErr("binary operator % is undefined for the types " + llvmTypeToStr(l->getType()) + " and " + llvmTypeToStr(r->getType()), op->loc);
     }
 }
 
@@ -114,7 +114,7 @@ inline bool isFPTypeTag(const TypeTag tt){
  */
 TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
     if(!isIntTypeTag(r->type)){
-        return compErr("Index of operator '[' must be an integer expression, got expression of type " + Lexer::getTokStr(r->type), op->row, op->col);
+        return compErr("Index of operator '[' must be an integer expression, got expression of type " + Lexer::getTokStr(r->type), op->loc);
     }
 
     if(l->type == TT_Array){
@@ -127,7 +127,7 @@ TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
         return new TypedValue(builder.CreateExtractElement(arr, r->val), llvmTypeToTypeTag(elemTy));
     }else if(l->type == TT_Tuple){
         if(!dynamic_cast<ConstantInt*>(r->val))
-            return compErr("Tuple indices must always be known at compile time.", op->row, op->col) - 1;
+            return compErr("Tuple indices must always be known at compile time.", op->loc);
 
         auto index = ((ConstantInt*)r->val)->getZExtValue();
 
@@ -141,15 +141,15 @@ TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
         Value *v = builder.CreateLoad(l->val);
         if(llvmTypeToTypeTag(v->getType()) == TT_Tuple){
             if(!dynamic_cast<ConstantInt*>(r->val))
-                return compErr("Pathogen values cannot be used as tuple indices.", op->row, op->col);
+                return compErr("Pathogen values cannot be used as tuple indices.", op->loc);
             auto index = ((ConstantInt*)r->val)->getZExtValue();
             
             Value *field = builder.CreateExtractValue(v, index);
             return new TypedValue(field, llvmTypeToTypeTag(field->getType()));
         }
-        return compErr("Type " + llvmTypeToStr(l->getType()) + " does not have elements to access", op->row, op->col);
+        return compErr("Type " + llvmTypeToStr(l->getType()) + " does not have elements to access", op->loc);
     }else{
-        return compErr("Type " + llvmTypeToStr(l->getType()) + " does not have elements to access", op->row, op->col);
+        return compErr("Type " + llvmTypeToStr(l->getType()) + " does not have elements to access", op->loc);
     }
 }
 
@@ -185,7 +185,7 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
             //return new TypedValue(builder.CreateInsertElement(loadVal, newVal->val, index->val), TT_Void);
         case TT_Tuple:
             if(!dynamic_cast<ConstantInt*>(index->val)){
-                return compErr("Tuple indices must always be known at compile time.", op->row, op->col) - 1;
+                return compErr("Tuple indices must always be known at compile time.", op->loc);
             }else{
                 auto tupIndex = ((ConstantInt*)index->val)->getZExtValue();
 
@@ -196,7 +196,7 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
                 if(!llvmTypeEq(tupIndexTy, exprTy)){
                     return compErr("Cannot assign expression of type " + llvmTypeToStr(exprTy)
                                 + " to tuple index " + to_string(tupIndex) + " of type " + llvmTypeToStr(tupIndexTy),
-                                assignExpr->row, assignExpr->col);
+                                assignExpr->loc);
                 }
 
                 Value *insertedTup = builder.CreateInsertValue(loadVal, newVal->val, tupIndex);
@@ -204,7 +204,7 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
             }
         default:
             return compErr("Variable being indexed must be an Array or Tuple, but instead is a(n) " +
-                    llvmTypeToStr(loadVal->getType()), op->row, op->col);
+                    llvmTypeToStr(loadVal->getType()), op->loc);
     }
 }
 
@@ -266,7 +266,7 @@ TypedValue* TypeCastNode::compile(Compiler *c){
     
     if(!val){
         return c->compErr("Invalid type cast " + llvmTypeToStr(rtval->getType()) + 
-                " -> " + llvmTypeToStr(castTy), row, col);
+                " -> " + llvmTypeToStr(castTy), loc);
     }else{
         return new TypedValue(val, typeExpr->type);
     }
@@ -296,8 +296,7 @@ TypedValue* ExprIfNode::compile(Compiler *c){
 
     if(!llvmTypeEq(thenVal->getType(), elseVal->getType())){
         return c->compErr("If condition's then expr's type " + llvmTypeToStr(thenVal->getType()) +
-                        " does not match the else expr's type " + llvmTypeToStr(elseVal->getType()),
-                        this->row, this->col);
+                        " does not match the else expr's type " + llvmTypeToStr(elseVal->getType()), loc);
     }
 
 
@@ -322,7 +321,7 @@ TypedValue* compMemberAccess(Compiler *c, Node *ln, VarNode *field, BinOpNode *b
             return new TypedValue(f, TT_Function);
 
         return c->compErr("No static method or field called " + field->name + " was found in type " + 
-                llvmTypeToStr(lty), binop->row, binop->col);
+                llvmTypeToStr(lty), binop->loc);
     }else{
         //ln is not a typenode, this is not a static method call, eg "hello".reverse()
         auto *l = ln->compile(c);
@@ -343,7 +342,7 @@ TypedValue* compMemberAccess(Compiler *c, Node *ln, VarNode *field, BinOpNode *b
             return new MethodVal(l->val, f);
 
         return c->compErr("Method/Field " + field->name + " not found in type " + 
-                llvmTypeToStr(l->getType()), binop->row, binop->col);
+                llvmTypeToStr(l->getType()), binop->loc);
     }
 }
 
@@ -353,7 +352,7 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
     TypedValue *tvf = l->compile(c);
     if(!tvf || !tvf->val) return 0;
     if(tvf->type != TT_Function && tvf->type != TT_Method)
-        return c->compErr("Called value is not a function or method.", l->row, l->col);
+        return c->compErr("Called value is not a function or method.", l->loc);
 
     //now that we assured it is a function, unwrap it
     Function *f = (Function*) tvf->val;
@@ -373,10 +372,10 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
     if(f->arg_size() != args.size() && !f->isVarArg()){
         if(args.size() == 1)
             return c->compErr("Called function was given 1 argument but was declared to take " 
-                    + to_string(f->arg_size()), r->row, r->col);
+                    + to_string(f->arg_size()), r->loc);
         else
             return c->compErr("Called function was given " + to_string(args.size()) + 
-                    " arguments but was declared to take " + to_string(f->arg_size()), r->row, r->col);
+                    " arguments but was declared to take " + to_string(f->arg_size()), r->loc);
     }
 
     /* unpack the tuple of arguments into a vector containing each value */
@@ -384,7 +383,7 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
     for(auto &param : f->args()){//type check each parameter
         if(!llvmTypeEq(args[i++]->getType(), param.getType())){
             return c->compErr("Argument " + to_string(i) + " of function is a(n) " + llvmTypeToStr(args[i-1]->getType())
-                    + " but was declared to be a(n) " + llvmTypeToStr(param.getType()), r->row, r->col);
+                    + " but was declared to be a(n) " + llvmTypeToStr(param.getType()), r->loc);
         }
     }
 
@@ -434,7 +433,7 @@ TypedValue* BinOpNode::compile(Compiler *c){
         case Tok_And: break;
     }
 
-    return c->compErr("Unknown operator " + Lexer::getTokStr(op), this->row, this->col);
+    return c->compErr("Unknown operator " + Lexer::getTokStr(op), loc);
 }
 
 
@@ -445,7 +444,7 @@ TypedValue* UnOpNode::compile(Compiler *c){
     switch(op){
         case '@': //pointer dereference
             if(rhs->type != TT_Ptr){
-                return c->compErr("Cannot dereference non-pointer type " + llvmTypeToStr(rhs->getType()), this->row, this->col);
+                return c->compErr("Cannot dereference non-pointer type " + llvmTypeToStr(rhs->getType()), loc);
             }
             
             return new TypedValue(c->builder.CreateLoad(rhs->val), llvmTypeToTypeTag(rhs->getType()->getPointerElementType()));
@@ -455,5 +454,5 @@ TypedValue* UnOpNode::compile(Compiler *c){
             return new TypedValue(c->builder.CreateNeg(rhs->val), rhs->type);
     }
     
-    return c->compErr("Unknown unary operator " + Lexer::getTokStr(op), this->row, this->col);
+    return c->compErr("Unknown unary operator " + Lexer::getTokStr(op), loc);
 }

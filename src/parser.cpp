@@ -73,9 +73,9 @@
 /* Defined in lexer.cpp */
 extern int yylex(...);
 
-namespace ante{
+/*namespace ante{
     extern void error(string& msg, const char *fileName, unsigned int row, unsigned int col);
-}
+}*/
 
 void yyerror(const char *msg);
 
@@ -4735,7 +4735,8 @@ yypdumpstack (yyGLRStack* yystackp)
 
 /* location parser error */
 void yy::parser::error(const location& loc, const string& msg){
-    ante::error(msg.c_str(), yylexer->fileName, loc.begin.line, loc.begin.column);
+    location l = loc;
+    ante::error(msg.c_str(), l);
 } 
 
 /*
@@ -4744,7 +4745,7 @@ void yy::parser::error(const string& msg){
 }*/
 
 #endif
-#line 4748 "src/parser.cpp" // glr.c:2584
+#line 4749 "src/parser.cpp" // glr.c:2584
 
 /*------------------.
 | Report an error.  |
@@ -4760,7 +4761,7 @@ yyerror (const yy::parser::location_type *yylocationp, yy::parser& yyparser, con
 
 
 namespace yy {
-#line 4764 "src/parser.cpp" // glr.c:2584
+#line 4765 "src/parser.cpp" // glr.c:2584
   /// Build a parser object.
   parser::parser ()
 #if YYDEBUG
@@ -4839,4 +4840,4 @@ namespace yy {
 #endif
 
 } // yy
-#line 4843 "src/parser.cpp" // glr.c:2584
+#line 4844 "src/parser.cpp" // glr.c:2584

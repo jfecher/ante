@@ -20,9 +20,9 @@
 /* Defined in lexer.cpp */
 extern int yylex(...);
 
-namespace ante{
+/*namespace ante{
     extern void error(string& msg, const char *fileName, unsigned int row, unsigned int col);
-}
+}*/
 
 void yyerror(const char *msg);
 
@@ -491,7 +491,8 @@ nl_expr: nl_expr '+' maybe_newline nl_expr               %dprec 1 {$$ = mkBinOpN
 
 /* location parser error */
 void yy::parser::error(const location& loc, const string& msg){
-    ante::error(msg.c_str(), yylexer->fileName, loc.begin.line, loc.begin.column);
+    location l = loc;
+    ante::error(msg.c_str(), l);
 } 
 
 /*

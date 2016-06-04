@@ -181,7 +181,7 @@ Type* Compiler::typeNodeToLlvmType(TypeNode *tyNode){
         case TT_Data:
             userType = lookupType(tyNode->typeName);
             if(!userType)
-                return (Type*)compErr("Use of undeclared type " + tyNode->typeName, tyNode->row, tyNode->col);
+                return (Type*)compErr("Use of undeclared type " + tyNode->typeName, tyNode->loc);
             
             return userType->type;
         case TT_Func: //TODO function pointer type

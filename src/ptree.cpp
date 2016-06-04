@@ -78,10 +78,7 @@ Node* mkIntLitNode(yy::parser::location_type loc, char* s){
         }
     }
 
-    auto* ret = new IntLitNode(str, type);
-    ret->col = yylexer->getCol();
-    ret->row = yylexer->getRow();
-    return ret;
+    return new IntLitNode(loc, str, type);
 }
 
 Node* mkFltLitNode(yy::parser::location_type loc, char* s){
@@ -103,24 +100,15 @@ Node* mkFltLitNode(yy::parser::location_type loc, char* s){
         }
     }
 
-    auto *ret = new FltLitNode(str, type);
-    ret->col = yylexer->getCol();
-    ret->row = yylexer->getRow();
-    return ret;
+    return new FltLitNode(loc, str, type);
 }
 
 Node* mkStrLitNode(yy::parser::location_type loc, char* s){
-    auto *ret = new StrLitNode(s);
-    ret->col = yylexer->getCol();
-    ret->row = yylexer->getRow();
-    return ret;
+    return new StrLitNode(loc, s);
 }
 
 Node* mkBoolLitNode(yy::parser::location_type loc, char b){
-    auto *ret = new BoolLitNode(b);
-    ret->col = yylexer->getCol();
-    ret->row = yylexer->getRow();
-    return ret;
+    return new BoolLitNode(loc, b);
 }
 
 Node* mkArrayNode(yy::parser::location_type loc, Node *expr){
@@ -129,10 +117,7 @@ Node* mkArrayNode(yy::parser::location_type loc, Node *expr){
         exprs.push_back(expr);
         expr = expr->next.get();
     }
-    auto *ret = new ArrayNode(exprs);
-    ret->col = yylexer->getCol();
-    ret->row = yylexer->getRow();
-    return ret;
+    return new ArrayNode(loc, exprs);
 }
 
 Node* mkTupleNode(yy::parser::location_type loc, Node *expr){
@@ -141,57 +126,38 @@ Node* mkTupleNode(yy::parser::location_type loc, Node *expr){
         exprs.push_back(expr);
         expr = expr->next.get();
     }
-    auto *ret = new TupleNode(exprs);
-    ret->col = yylexer->getCol();
-    ret->row = yylexer->getRow();
-    return ret;
+    return new TupleNode(loc, exprs);
 }
 
 Node* mkModNode(yy::parser::location_type loc, TokenType mod){
-    auto *ret = new ModNode(mod);
-    ret->col = yylexer->getCol();
-    ret->row = yylexer->getRow();
-    return ret;
+    return new ModNode(loc, mod);
 }
 
 Node* mkTypeNode(yy::parser::location_type loc, TypeTag type, char* typeName, Node* extTy = nullptr){
-    auto *ret = new TypeNode(type, typeName, static_cast<TypeNode*>(extTy));
-    ret->col = yylexer->getCol();
-    ret->row = yylexer->getRow();
-    return ret;
+    return new TypeNode(loc, type, typeName, static_cast<TypeNode*>(extTy));
 }
 
 Node* mkTypeCastNode(yy::parser::location_type loc, Node *l, Node *r){
-    auto *ret = new TypeCastNode(static_cast<TypeNode*>(l), r);
-    ret->col = yylexer->getCol();
-    ret->row = yylexer->getRow();
-    return ret;
+    return new TypeCastNode(loc, static_cast<TypeNode*>(l), r);
 }
 
 Node* mkUnOpNode(yy::parser::location_type loc, int op, Node* r){
-    auto *ret = new UnOpNode(op, r);
-    ret->col = yylexer->getCol();
-    ret->row = yylexer->getRow();
-    return ret;
+    return new UnOpNode(loc, op, r);
 }
 
 Node* mkBinOpNode(yy::parser::location_type loc, int op, Node* l, Node* r){
-    auto *ret = new BinOpNode(op, l, r);
-    ret->col = yylexer->getCol();
-    ret->row = yylexer->getRow();
-    return ret;
+    return new BinOpNode(loc, op, l, r);
 }
 
 Node* mkRetNode(yy::parser::location_type loc, Node* expr){
-    auto *ret = new RetNode(expr);
-    ret->col = yylexer->getCol();
-    ret->row = yylexer->getRow();
-    return ret;
+    return new RetNode(loc, expr);
 }
 
 //helper function to deep-copy TypeNodes.  Used in mkNamedValNode
 TypeNode* deepCopyTypeNode(const TypeNode *n){
-    TypeNode *cpy = new TypeNode(n->type, n->typeName, nullptr);
+    yy::location loc = {{n->loc.begin.filename, n->loc.begin.line, n->loc.begin.column}, 
+                        {n->loc.end.filename, n->loc.end.line, n->loc.end.column}};
+    TypeNode *cpy = new TypeNode(loc, n->type, n->typeName, nullptr);
 
     if(n->type == TT_Tuple){
         TypeNode *nxt = n->extTy.get();
@@ -219,105 +185,67 @@ Node* mkNamedValNode(yy::parser::location_type loc, Node* varNodes, Node* tExpr)
     //Note: there will always be at least one varNode
     const TypeNode* ty = (TypeNode*)tExpr;
     VarNode* vn = (VarNode*)varNodes;
-    Node *ret = new NamedValNode(vn->name, tExpr);
+    Node *ret = new NamedValNode(loc, vn->name, tExpr);
     Node *nxt = ret;
 
     while((vn = (VarNode*)vn->next.get())){
         TypeNode *tyNode = deepCopyTypeNode(ty);
-        nxt->next.reset(new NamedValNode(vn->name, tyNode));
+        nxt->next.reset(new NamedValNode(vn->loc, vn->name, tyNode));
         nxt->next->prev = nxt;
         nxt = nxt->next.get();
-        nxt->col = yylexer->getCol();
-        nxt->row = yylexer->getRow();
     }
     delete varNodes;
     return ret;
 }
 
 Node* mkFuncCallNode(yy::parser::location_type loc, char* s, Node* p){
-    auto *ret = new FuncCallNode(s, (TupleNode*)p);
-    ret->col = yylexer->getCol();
-    ret->row = yylexer->getRow();
-    return ret;
+    return new FuncCallNode(loc, s, (TupleNode*)p);
 }
 
 Node* mkVarNode(yy::parser::location_type loc, char* s){
-    auto *ret = new VarNode(s);
-    ret->col = yylexer->getCol();
-    ret->row = yylexer->getRow();
-    return ret;
+    return new VarNode(loc, s);
 }
 
 Node* mkRefVarNode(yy::parser::location_type loc, char* s){
-    auto *ret = new RefVarNode(s);
-    ret->col = yylexer->getCol();
-    ret->row = yylexer->getRow();
-    return ret;
+    return new RefVarNode(loc, s);
 }
 
 Node* mkImportNode(yy::parser::location_type loc, Node* expr){
-    auto *ret = new ImportNode(expr);
-    ret->col = yylexer->getCol();
-    ret->row = yylexer->getRow();
-    return ret;
+    return new ImportNode(loc, expr);
 }
 
 Node* mkLetBindingNode(yy::parser::location_type loc, char* s, Node* mods, Node* tExpr, Node* expr){
-    auto *ret = new LetBindingNode(s, mods, tExpr, expr);
-    ret->col = yylexer->getCol();
-    ret->row = yylexer->getRow();
-    return ret;
+    return new LetBindingNode(loc, s, mods, tExpr, expr);
 }
 
 Node* mkVarDeclNode(yy::parser::location_type loc, char* s, Node* mods, Node* tExpr, Node* expr){
-    auto *ret = new VarDeclNode(s, mods, tExpr, expr);
-    ret->col = yylexer->getCol();
-    ret->row = yylexer->getRow();
-    return ret;
+    return new VarDeclNode(loc, s, mods, tExpr, expr);
 }
 
 Node* mkVarAssignNode(yy::parser::location_type loc, Node* var, Node* expr, bool freeLval = true){
-    auto *ret = new VarAssignNode(var, expr, freeLval);
-    ret->col = yylexer->getCol();
-    ret->row = yylexer->getRow();
-    return ret;
+    return new VarAssignNode(loc, var, expr, freeLval);
 }
 
 Node* mkExtNode(yy::parser::location_type loc, Node* ty, Node* methods){
-    auto *ret = new ExtNode((TypeNode*)ty, methods);
-    ret->col = yylexer->getCol();
-    ret->row = yylexer->getRow();
-    return ret;
+    return new ExtNode(loc, (TypeNode*)ty, methods);
 }
 
 ParentNode* mkIfNode(yy::parser::location_type loc, Node* con, Node* body, Node* els = nullptr){
-    auto *ret = new IfNode(con, body, (IfNode*)els);
-    ret->col = yylexer->getCol();
-    ret->row = yylexer->getRow();
-    return ret;
+    return new IfNode(loc, con, body, (IfNode*)els);
 }
 
 Node* mkExprIfNode(yy::parser::location_type loc, Node* con, Node* then, Node* els){
-    auto *ret = new ExprIfNode(con, then, els);
-    ret->col = yylexer->getCol();
-    ret->row = yylexer->getRow();
-    return ret;
+    return new ExprIfNode(loc, con, then, els);
 }
 
 ParentNode* mkWhileNode(yy::parser::location_type loc, Node* con, Node* body){
-    auto *ret = new WhileNode(con, body);
-    ret->col = yylexer->getCol();
-    ret->row = yylexer->getRow();
-    return ret;
+    return new WhileNode(loc, con, body);
 }
 
 ParentNode* mkFuncDeclNode(yy::parser::location_type loc, char* s, Node* mods, Node* tExpr, Node* p, Node* b){
-    auto *ret = new FuncDeclNode(s, mods, tExpr, p, b);
-    ret->col = yylexer->getCol();
-    ret->row = yylexer->getRow();
-    return ret;
+    return new FuncDeclNode(loc, s, mods, tExpr, p, b);
 }
 
 ParentNode* mkDataDeclNode(yy::parser::location_type loc, char* s, Node* b){
-    return new DataDeclNode(s, b, Compiler::getTupleSize(b));
+    return new DataDeclNode(loc, s, b, Compiler::getTupleSize(b));
 }
