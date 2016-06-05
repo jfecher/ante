@@ -11,7 +11,9 @@ Node* getRoot(void);
 Node* setNext(Node* cur, Node* nxt);
 Node* setElse(IfNode *c, IfNode *elif);
 
-#define LOC_TY yy::parser::location_type
+#ifndef LOC_TY
+#define LOC_TY yy::location
+#endif
 
 Node* mkIntLitNode(LOC_TY loc, char* s);
 Node* mkFltLitNode(LOC_TY loc, char* s);

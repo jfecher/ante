@@ -1,6 +1,7 @@
 #include "parser.h"
 #include "compiler.h"
 #include "target.h"
+#include "yyparser.h"
 #include <llvm/IR/Verifier.h>          //for verifying basic structure of functions
 #include <llvm/Bitcode/ReaderWriter.h> //for r/w when outputting bitcode
 #include <llvm/Support/FileSystem.h>   //for r/w when outputting bitcode

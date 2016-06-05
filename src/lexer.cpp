@@ -158,7 +158,7 @@ char *lextxt;
 
 Lexer *yylexer;
 
-extern yy::parser::location_type yyloc_default;
+extern yy::location yyloc_default;
 
 /* Sets lexer instance for yylex to use */
 void setLexer(Lexer *l){

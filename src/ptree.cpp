@@ -4,6 +4,7 @@
  *  syntax.y which creates and links nodes to a parse tree.
  */
 #include "parser.h"
+#include "yyparser.h"
 #include <stack>
 
 stack<Node*> roots;

@@ -2,6 +2,7 @@
 #include "parser.h"
 #include "compiler.h"
 #include "ptree.h"
+#include "yyparser.h"
 #include <cstring>
 #include <iostream>
 using namespace ante;
