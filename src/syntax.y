@@ -438,7 +438,7 @@ basic_expr: basic_expr '+' basic_expr            %dprec 2 {$$ = mkBinOpNode(@$, 
           | type_expr  '.' var                   %dprec 2 {$$ = mkBinOpNode(@$, '.', $1, $3);}
           | basic_expr ';' basic_expr            %dprec 2 {$$ = mkBinOpNode(@$, ';', $1, $3);}
           | basic_expr '[' nl_expr ']'           %dprec 2 {$$ = mkBinOpNode(@$, '[', $1, $3);}
-          | Let ident '=' basic_expr In basic_expr  %prec Let  %dprec 2 {$$ = mkBinOpNode(@$, Tok_Let, mkLetBindingNode(@$, (char*)$2, 0, 0, $4), $6);}
+          | Let ident '=' basic_expr In basic_expr  %prec Let  %dprec 2 {$$ = mkBinOpNode(@$, Tok_Let, mkLetBindingNode(@2, (char*)$2, 0, 0, $4), $6);}
           | basic_expr Eq basic_expr             %dprec 2 {$$ = mkBinOpNode(@$, Tok_Eq, $1, $3);}
           | basic_expr NotEq basic_expr          %dprec 2 {$$ = mkBinOpNode(@$, Tok_NotEq, $1, $3);}
           | basic_expr GrtrEq basic_expr         %dprec 2 {$$ = mkBinOpNode(@$, Tok_GrtrEq, $1, $3);}
@@ -454,13 +454,14 @@ basic_expr: basic_expr '+' basic_expr            %dprec 2 {$$ = mkBinOpNode(@$, 
 
 
 /* nl_expr is used in expression blocks and can span multiple lines */
-expr_list: expr_list_p {$$ = getRoot();}
+expr_list: nl_expr /*expr_list_p {$$ = getRoot();}*/
          ;
 
+/*
 expr_list_p: expr_list_p ',' maybe_newline nl_expr  %prec ',' {$$ = setNext($1, $4);}
            | nl_expr                                %prec LOW {$$ = setRoot($1);}
            ;
-
+*/
 
 nl_expr: nl_expr '+' maybe_newline nl_expr               %dprec 1 {$$ = mkBinOpNode(@$, '+', $1, $4);}
        | nl_expr '-' maybe_newline nl_expr               %dprec 1 {$$ = mkBinOpNode(@$, '-', $1, $4);}
@@ -474,7 +475,7 @@ nl_expr: nl_expr '+' maybe_newline nl_expr               %dprec 1 {$$ = mkBinOpN
        | type_expr '.' maybe_newline var                 %dprec 2 {$$ = mkBinOpNode(@$, '.', $1, $4);}
        | nl_expr ';' maybe_newline nl_expr               %dprec 1 {$$ = mkBinOpNode(@$, ';', $1, $4);}
        | nl_expr '[' nl_expr ']' maybe_newline           %dprec 1 {$$ = mkBinOpNode(@$, '[', $1, $3);}
-       | Let ident '=' nl_expr In maybe_newline nl_expr  %prec Let  %dprec 3 {$$ = mkBinOpNode(@$, Tok_Let, mkLetBindingNode(@$, (char*)$2, 0, 0, $4), $7);}
+       | Let ident '=' nl_expr In maybe_newline nl_expr  %prec Let  %dprec 3 {$$ = mkBinOpNode(@$, Tok_Let, mkLetBindingNode(@2, (char*)$2, 0, 0, $4), $7);}
        | nl_expr Eq maybe_newline  nl_expr               %dprec 1 {$$ = mkBinOpNode(@$, Tok_Eq, $1, $4);}
        | nl_expr NotEq maybe_newline nl_expr             %dprec 1 {$$ = mkBinOpNode(@$, Tok_NotEq, $1, $4);}
        | nl_expr GrtrEq maybe_newline nl_expr            %dprec 1 {$$ = mkBinOpNode(@$, Tok_GrtrEq, $1, $4);}
