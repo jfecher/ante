@@ -66,7 +66,7 @@ void printErrLine(yy::location& loc){
     for(; i < loc.begin.column; i++) putchar(' ');
 
     //draw arrow until end pos
-    for(; i <= loc.end.column; i++) putchar('^');
+    for(; i < loc.end.column; i++) putchar('^');
 
     cout << "\033[;m"; //reset color
 }

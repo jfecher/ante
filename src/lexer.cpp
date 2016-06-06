@@ -158,17 +158,17 @@ char *lextxt;
 
 Lexer *yylexer;
 
-yy::location yyloc_default;
 
 /* Sets lexer instance for yylex to use */
 void setLexer(Lexer *l){
     yylexer = l;
 }
 
-int yylex(...){
-    return yylexer->next();
+int yylex(yy::parser::semantic_type* st, yy::location* yyloc){
+    return yylexer->next(st, yyloc);
 }
-    
+
+
 
 /*
  * Initializes lexer
@@ -180,6 +180,7 @@ Lexer::Lexer(const char* file) :
     col{1},
     cur{0},
     nxt{0},
+    yylloc{new yy::location()},
     scopes{new stack<unsigned int>()},
     cscope{0}
 {
@@ -187,6 +188,11 @@ Lexer::Lexer(const char* file) :
         cerr << "Error: Unable to open file '" << file << "'\n";
         exit(EXIT_FAILURE);
     }
+
+    yylloc->begin.initialize();
+    yylloc->begin.filename = new string(fileName);
+    yylloc->end.initialize();
+    yylloc->end.filename = new string(fileName);
 
     incPos();
     incPos();
@@ -274,7 +280,7 @@ void Lexer::setlextxt(string *str){
 int Lexer::genAlphaNumTok(){
     string s = "";
     string* fName = new string(fileName);
-    yyloc_default.begin = {fName, row, col};
+    yylloc->begin = {fName, row, col};
 
     bool isUsertype = cur >= 'A' && cur <= 'Z';
     if(isUsertype){
@@ -292,7 +298,7 @@ int Lexer::genAlphaNumTok(){
         }
     }
     
-    yyloc_default.end = {fName, row, col};
+    yylloc->end = {fName, row, col};
 
     if(isUsertype){
         setlextxt(&s);
@@ -312,7 +318,7 @@ int Lexer::genNumLitTok(){
     string s = "";
     bool flt = false;
     string* fName = new string(fileName);
-    yyloc_default.begin = {fName, row, col};
+    yylloc->begin = {fName, row, col};
 
     while(IS_NUMERICAL(cur) || (cur == '.' && !flt && IS_NUMERICAL(nxt)) || cur == '_'){
         if(cur != '_'){
@@ -372,7 +378,7 @@ int Lexer::genNumLitTok(){
         }
     }
     
-    yyloc_default.end = {fName, row, col};
+    yylloc->end = {fName, row, col};
 
     setlextxt(&s);
     return flt? Tok_FltLit : Tok_IntLit;
@@ -381,7 +387,7 @@ int Lexer::genNumLitTok(){
 int Lexer::genWsTok(){
     if(cur == '\n'){
         string* fName = new string(fileName);
-        yyloc_default.begin = {fName, row, col};
+        yylloc->begin = {fName, row, col};
         
         unsigned int newScope = 0;
 
@@ -392,7 +398,7 @@ int Lexer::genWsTok(){
                     newScope = 0; 
                     row++; 
                     col = 0; 
-                    yyloc_default.begin = {fName, row, col};
+                    yylloc->begin = {fName, row, col};
                     break;
                 case '\t':
                     lexErr("Tab characters are invalid whitespace.");
@@ -406,10 +412,10 @@ int Lexer::genWsTok(){
             //the row is not set to row for newline tokens in case there are several newlines.
             //In this case, if set to row, it would become the row of the last newline.
             //Incrementing it from its previous token (guarenteed to be non-newline) fixes this.
-            yyloc_default.end = {fName, row+1, 0};
+            yylloc->end = {fName, row+1, 0};
             return Tok_Newline; /* Scope did not change, just return a Newline */
         }
-        yyloc_default.end = {fName, row, col};
+        yylloc->end = {fName, row, col};
         cscope = newScope;
         return next();
     }else{
@@ -421,7 +427,7 @@ int Lexer::genWsTok(){
 int Lexer::genStrLitTok(char delim){
     string s = "";
     string* fName = new string(fileName);
-    yyloc_default.begin = {fName, row, col};
+    yylloc->begin = {fName, row, col};
     incPos();
     while(cur != delim && cur != EOF){
         if(cur == '\\'){
@@ -443,12 +449,15 @@ int Lexer::genStrLitTok(char delim){
     }
     incPos(); //consume ending delim
     
-    yyloc_default.end = {fName, row, col};
+    yylloc->end = {fName, row, col};
     setlextxt(&s);
     return Tok_StrLit;
 }
 
-int Lexer::next(){
+int Lexer::next(yy::parser::semantic_type* st, yy::parser::location_type* loc){
+    if(loc)
+        yylloc = loc;
+
     if(shouldReturnNewline){
         shouldReturnNewline = false;
         return Tok_Newline;
@@ -476,7 +485,7 @@ int Lexer::next(){
     //If the token is none of the above, it must be a symbol, or a pair of symbols.
     //Set the beginning of the token about to be created here.
     string* fName = new string(fileName);
-    yyloc_default.begin = {fName, row, col};
+    yylloc->begin = {fName, row, col};
 
     //substitute -> for an indent and ;; for an unindent
     if(cur == '-' && nxt == '>'){
@@ -515,7 +524,7 @@ int Lexer::next(){
         }
     }
     
-    yyloc_default.end = {fName, row, col};
+    yylloc->end = {fName, row, col};
     
     if(cur == 0 || cur == EOF) return 0; //End of input
 

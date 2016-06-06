@@ -2,19 +2,24 @@
 #define LEXER_H
 
 #include "tokens.h"
-#include "location.hh"
 #include <iostream>
 #include <fstream>
 #include <stack>
 #include <map>
 using namespace std;
 
+struct Node;
+#ifndef YYSTYPE
+#  define YYSTYPE Node*
+#endif
+#include "yyparser.h"
+
 #define IS_COMMENT(c)    (c == '`' || c == '~')
 #define IS_NUMERICAL(c)  (c >= 48  && c <= 57)
 #define IS_ALPHANUM(c)   (IS_NUMERICAL(c) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c == 95)
 #define IS_WHITESPACE(c) (c == ' ' || c == '\t' || c == '\n' || c == 13) // || c == 130
 
-#define RETURN_PAIR(t) {incPos(2); yyloc_default.end = {fName, row, col}; return (t);}
+#define RETURN_PAIR(t) {incPos(2); yylloc->end = {fName, row, col}; return (t);}
 
 namespace ante{
     /* Defined in src/compiler.cpp */
@@ -27,7 +32,7 @@ namespace ante{
         
         Lexer(const char *file);
         ~Lexer();
-        int next();
+        int next(yy::parser::semantic_type* st = 0, yy::location* yyloc = 0);
         char peek();
         
         static void printTok(int t);
@@ -42,6 +47,8 @@ namespace ante{
         
         /* Current and next characters */
         char cur, nxt;
+
+        yy::parser::location_type* yylloc;
 
         /*
         *  Current scope (indent level) of file
