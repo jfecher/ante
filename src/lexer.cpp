@@ -449,9 +449,6 @@ int Lexer::genStrLitTok(char delim, yy::parser::location_type* loc){
 }
 
 int Lexer::next(yy::parser::location_type* loc){
-    if(loc)
-        loc = loc;
-
     if(shouldReturnNewline){
         shouldReturnNewline = false;
         return Tok_Newline;

@@ -73,7 +73,11 @@ void printErrLine(yy::location& loc){
 
 
 void ante::error(const char* msg, yy::location& loc){
-    cout << "\033[;3m" << loc.begin.filename << "\033[;m: ";
+    if(loc.begin.filename)
+        cout << "\033[;3m" << *loc.begin.filename << "\033[;m: ";
+    else
+        cout << "\033[;3m(unknown file)\033[;m: ";
+
     cout << "\033[;1m" << loc.begin.line << ",";
     if(loc.begin.column == loc.end.column)
         cout << loc.begin.column << "\033[;0m";
@@ -983,7 +987,9 @@ Compiler::Compiler(const char *_fileName, bool lib) :
     if(flag != PE_OK){ //parsing error, cannot procede
         //print out remaining errors
         int tok;
-        while((tok = yylexer->next()) != Tok_Newline && tok != 0);
+        yy::location loc;
+        loc.initialize();
+        while((tok = yylexer->next(&loc)) != Tok_Newline && tok != 0);
         while(p.parse() != PE_OK && yylexer->peek() != 0);
         
         fputs("Syntax error, aborting.\n", stderr);

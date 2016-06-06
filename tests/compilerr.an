@@ -6,9 +6,6 @@
     variable.
 `
 
-~a never declared
-a = 3
-
 i32 a = 3
 
 ~type mismatch
@@ -24,3 +21,9 @@ let five = 6
 
 ~mutated immutable variable
 five = 5
+
+~Invalid type cast
+let typecasterr = i32 "test"
+
+~Function not declared
+let res = someFunc()
