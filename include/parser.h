@@ -36,7 +36,7 @@ struct Node{
     virtual TypedValue* compile(Compiler*) = 0;
 
     Node(LOC_TY& l) : loc(l){}
-    virtual ~Node();
+    virtual ~Node(){}
 };
 
 /*

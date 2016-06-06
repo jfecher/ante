@@ -2,7 +2,6 @@
 #define LEXER_H
 
 #include "tokens.h"
-#include "parser.h"
 #include "location.hh"
 #include <iostream>
 #include <fstream>
