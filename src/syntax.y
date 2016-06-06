@@ -19,7 +19,6 @@
 
 /* Defined in lexer.cpp */
 extern int yylex(yy::parser::semantic_type*, yy::location*);
-//extern int yylex(...);
 
 /*namespace ante{
     extern void error(string& msg, const char *fileName, unsigned int row, unsigned int col);
@@ -240,12 +239,12 @@ modifier_list: modifier_list_ {$$ = getRoot();}
              ;
 
 
-var_decl: modifier_list type_expr ident '=' expr  %prec Ident {$$ = mkVarDeclNode(@$, (char*)$3, $1, $2, $5);}
-        | modifier_list type_expr ident           %prec LOW   {$$ = mkVarDeclNode(@$, (char*)$3, $1, $2,  0);}
-        | type_expr ident '=' expr                %prec Ident {$$ = mkVarDeclNode(@$, (char*)$2, 0,  $1, $4);}
-//      | type_expr ident                         %prec LOW   {$$ = mkVarDeclNode(@$, (char*)$2, 0,  $1,  0);}
-        | modifier_list Var ident '=' expr                    {$$ = mkVarDeclNode(@$, (char*)$2, $1,  0, $5);}
-        | Var ident '=' expr                                  {$$ = mkVarDeclNode(@$, (char*)$2, 0,   0, $4);}
+var_decl: modifier_list type_expr ident '=' expr  %prec Ident {@$ = @3; $$ = mkVarDeclNode(@$, (char*)$3, $1, $2, $5);}
+        | modifier_list type_expr ident           %prec LOW   {@$ = @3; $$ = mkVarDeclNode(@$, (char*)$3, $1, $2,  0);}
+        | type_expr ident '=' expr                %prec Ident {@$ = @2; $$ = mkVarDeclNode(@$, (char*)$2, 0,  $1, $4);}
+//      | type_expr ident                         %prec LOW   {@$ = @2; $$ = mkVarDeclNode(@$, (char*)$2, 0,  $1,  0);}
+        | modifier_list Var ident '=' expr                    {@$ = @3; $$ = mkVarDeclNode(@$, (char*)$2, $1,  0, $5);}
+        | Var ident '=' expr                                  {@$ = @3; $$ = mkVarDeclNode(@$, (char*)$2, 0,   0, $4);}
         ;
 
 let_binding: Let modifier_list type_expr ident '=' expr  {$$ = mkLetBindingNode(@$, (char*)$3, $2, $3, $6);}
