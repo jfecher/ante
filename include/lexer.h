@@ -19,7 +19,7 @@ struct Node;
 #define IS_ALPHANUM(c)   (IS_NUMERICAL(c) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c == 95)
 #define IS_WHITESPACE(c) (c == ' ' || c == '\t' || c == '\n' || c == 13) // || c == 130
 
-#define RETURN_PAIR(t) {incPos(2); yylloc->end = {fName, row, col}; return (t);}
+#define RETURN_PAIR(t) {incPos(2); loc->end = {fName, row, col}; return (t);}
 
 namespace ante{
     /* Defined in src/compiler.cpp */
@@ -32,9 +32,9 @@ namespace ante{
         
         Lexer(const char *file);
         ~Lexer();
-        int next(yy::parser::semantic_type* st = 0, yy::location* yyloc = 0);
-        char peek();
-        
+        int next(yy::parser::location_type* yyloc);
+        char peek() const;
+
         static void printTok(int t);
         static string getTokStr(int t);
    
@@ -47,8 +47,6 @@ namespace ante{
         
         /* Current and next characters */
         char cur, nxt;
-
-        yy::parser::location_type* yylloc;
 
         /*
         *  Current scope (indent level) of file
@@ -63,17 +61,17 @@ namespace ante{
         
         bool shouldReturnNewline;
         
-        void lexErr(const char *msg);
+        void lexErr(const char *msg, yy::parser::location_type* loc);
         
         void incPos(void);
         void incPos(int end);
         
         void setlextxt(string *str);
-        int handleComment(void);
-        int genWsTok(void);
-        int genNumLitTok(void);
-        int genAlphaNumTok(void);
-        int genStrLitTok(char delim);
+        int handleComment(yy::parser::location_type* loc);
+        int genWsTok(yy::parser::location_type* loc);
+        int genNumLitTok(yy::parser::location_type* loc);
+        int genAlphaNumTok(yy::parser::location_type* loc);
+        int genStrLitTok(char delim, yy::parser::location_type* loc);
     };
 }
 

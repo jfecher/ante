@@ -16,11 +16,13 @@ int main(int argc, char *argv[]){
         //lex and print tokens
         if(strcmp(argv[1], "-l") == 0){
             Lexer lexer = Lexer(argv[2]);
-            int t = lexer.next();
+            yy::location loc;
+            loc.initialize();
+            int t = lexer.next(&loc);
             while(t){
                 lexer.printTok(t);
                 putchar('\n');
-                t = lexer.next();
+                t = lexer.next(&loc);
             }
         //parse and print parse tree
         }else if(strcmp(argv[1], "-p") == 0){
@@ -34,7 +36,9 @@ int main(int argc, char *argv[]){
             }else{
                 //print out remaining errors
                 int tok;
-                while((tok = yylexer->next()) != Tok_Newline && tok != 0);
+                yy::location loc;
+                loc.initialize();
+                while((tok = yylexer->next(&loc)) != Tok_Newline && tok != 0);
                 while(p.parse() != PE_OK && yylexer->peek() != 0);
             }
         //compile

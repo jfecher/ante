@@ -165,7 +165,7 @@ void setLexer(Lexer *l){
 }
 
 int yylex(yy::parser::semantic_type* st, yy::location* yyloc){
-    return yylexer->next(st, yyloc);
+    return yylexer->next(yyloc);
 }
 
 
@@ -180,7 +180,6 @@ Lexer::Lexer(const char* file) :
     col{1},
     cur{0},
     nxt{0},
-    yylloc{new yy::location()},
     scopes{new stack<unsigned int>()},
     cscope{0}
 {
@@ -188,11 +187,6 @@ Lexer::Lexer(const char* file) :
         cerr << "Error: Unable to open file '" << file << "'\n";
         exit(EXIT_FAILURE);
     }
-
-    yylloc->begin.initialize();
-    yylloc->begin.filename = new string(fileName);
-    yylloc->end.initialize();
-    yylloc->end.filename = new string(fileName);
 
     incPos();
     incPos();
@@ -204,7 +198,7 @@ Lexer::~Lexer(){
     delete in;
 }
 
-char Lexer::peek(){
+char Lexer::peek() const{
     return cur;
 }
 
@@ -248,7 +242,7 @@ void Lexer::incPos(int end){
     }
 }
 
-int Lexer::handleComment(){
+int Lexer::handleComment(yy::parser::location_type* loc){
     if(cur == '`'){
         do{
             incPos();
@@ -261,7 +255,7 @@ int Lexer::handleComment(){
     }else{ // c == '~'
         while(cur != '\n' && cur != EOF) incPos();
     }
-    return next();
+    return next(loc);
 }
 
 /*
@@ -277,16 +271,16 @@ void Lexer::setlextxt(string *str){
     lextxt[size-1] = '\0';
 }
 
-int Lexer::genAlphaNumTok(){
+int Lexer::genAlphaNumTok(yy::parser::location_type* loc){
     string s = "";
     string* fName = new string(fileName);
-    yylloc->begin = {fName, row, col};
+    loc->begin = {fName, row, col};
 
     bool isUsertype = cur >= 'A' && cur <= 'Z';
     if(isUsertype){
         while(IS_ALPHANUM(cur)){
             if(cur == '_')
-                lexErr("Usertypes cannot contain an underscore.");
+                lexErr("Usertypes cannot contain an underscore.", loc);
 
             s += cur;
             incPos();
@@ -298,7 +292,7 @@ int Lexer::genAlphaNumTok(){
         }
     }
     
-    yylloc->end = {fName, row, col};
+    loc->end = {fName, row, col};
 
     if(isUsertype){
         setlextxt(&s);
@@ -314,11 +308,11 @@ int Lexer::genAlphaNumTok(){
     }
 }
 
-int Lexer::genNumLitTok(){
+int Lexer::genNumLitTok(yy::parser::location_type* loc){
     string s = "";
     bool flt = false;
     string* fName = new string(fileName);
-    yylloc->begin = {fName, row, col};
+    loc->begin = {fName, row, col};
 
     while(IS_NUMERICAL(cur) || (cur == '.' && !flt && IS_NUMERICAL(nxt)) || cur == '_'){
         if(cur != '_'){
@@ -348,7 +342,7 @@ int Lexer::genNumLitTok(){
             }
             
             if(IS_NUMERICAL(cur)){
-                lexErr("Extraneous numbers after type suffix.");
+                lexErr("Extraneous numbers after type suffix.", loc);
             }
         }
     }else{
@@ -373,21 +367,21 @@ int Lexer::genNumLitTok(){
             }
 
             if(IS_NUMERICAL(cur)){
-                lexErr("Extraneous numbers after type suffix.");
+                lexErr("Extraneous numbers after type suffix.", loc);
             }
         }
     }
     
-    yylloc->end = {fName, row, col};
+    loc->end = {fName, row, col};
 
     setlextxt(&s);
     return flt? Tok_FltLit : Tok_IntLit;
 }
 
-int Lexer::genWsTok(){
+int Lexer::genWsTok(yy::parser::location_type* loc){
     if(cur == '\n'){
         string* fName = new string(fileName);
-        yylloc->begin = {fName, row, col};
+        loc->begin = {fName, row, col};
         
         unsigned int newScope = 0;
 
@@ -398,36 +392,36 @@ int Lexer::genWsTok(){
                     newScope = 0; 
                     row++; 
                     col = 0; 
-                    yylloc->begin = {fName, row, col};
+                    loc->begin = {fName, row, col};
                     break;
                 case '\t':
-                    lexErr("Tab characters are invalid whitespace.");
+                    lexErr("Tab characters are invalid whitespace.", loc);
                 default: break;
             }
             incPos();
-            if(IS_COMMENT(cur)) return handleComment();
+            if(IS_COMMENT(cur)) return handleComment(loc);
         }
 
         if(!scopes->empty() && newScope == scopes->top()){
             //the row is not set to row for newline tokens in case there are several newlines.
             //In this case, if set to row, it would become the row of the last newline.
             //Incrementing it from its previous token (guarenteed to be non-newline) fixes this.
-            yylloc->end = {fName, row+1, 0};
+            loc->end = {fName, row+1, 0};
             return Tok_Newline; /* Scope did not change, just return a Newline */
         }
-        yylloc->end = {fName, row, col};
+        loc->end = {fName, row, col};
         cscope = newScope;
-        return next();
+        return next(loc);
     }else{
         incPos();
-        return next();
+        return next(loc);
     }
 }
 
-int Lexer::genStrLitTok(char delim){
+int Lexer::genStrLitTok(char delim, yy::parser::location_type* loc){
     string s = "";
     string* fName = new string(fileName);
-    yylloc->begin = {fName, row, col};
+    loc->begin = {fName, row, col};
     incPos();
     while(cur != delim && cur != EOF){
         if(cur == '\\'){
@@ -449,14 +443,14 @@ int Lexer::genStrLitTok(char delim){
     }
     incPos(); //consume ending delim
     
-    yylloc->end = {fName, row, col};
+    loc->end = {fName, row, col};
     setlextxt(&s);
     return Tok_StrLit;
 }
 
-int Lexer::next(yy::parser::semantic_type* st, yy::parser::location_type* loc){
+int Lexer::next(yy::parser::location_type* loc){
     if(loc)
-        yylloc = loc;
+        loc = loc;
 
     if(shouldReturnNewline){
         shouldReturnNewline = false;
@@ -474,23 +468,23 @@ int Lexer::next(yy::parser::semantic_type* st, yy::parser::location_type* loc){
         }
     }
 
-    if(IS_COMMENT(cur))    return handleComment();
-    if(IS_NUMERICAL(cur))  return genNumLitTok();
-    if(IS_ALPHANUM(cur))   return genAlphaNumTok();
-    if(IS_WHITESPACE(cur)) return genWsTok();
+    if(IS_COMMENT(cur))    return handleComment(loc);
+    if(IS_NUMERICAL(cur))  return genNumLitTok(loc);
+    if(IS_ALPHANUM(cur))   return genAlphaNumTok(loc);
+    if(IS_WHITESPACE(cur)) return genWsTok(loc);
 
     if(cur == '"' || cur == '\'') 
-        return genStrLitTok(cur);
+        return genStrLitTok(cur, loc);
    
     //If the token is none of the above, it must be a symbol, or a pair of symbols.
     //Set the beginning of the token about to be created here.
     string* fName = new string(fileName);
-    yylloc->begin = {fName, row, col};
+    loc->begin = {fName, row, col};
 
     //substitute -> for an indent and ;; for an unindent
     if(cur == '-' && nxt == '>'){
         cscope++;
-        RETURN_PAIR(next());
+        RETURN_PAIR(next(loc));
     }else if(cur == ';' && nxt == ';'){
         unsigned int curScope = scopes->top();
         if(curScope != 0){
@@ -498,14 +492,14 @@ int Lexer::next(yy::parser::semantic_type* st, yy::parser::location_type* loc){
             cscope = scopes->top();
             scopes->push(curScope);
         }else{
-            lexErr("Extraneous ;; leads to scope underflow.");
+            lexErr("Extraneous ;; leads to scope underflow.", loc);
         }
-        RETURN_PAIR(next());
+        RETURN_PAIR(next(loc));
     }else if(cur == '\\' && nxt == '\n'){ //ignore newline
         incPos(2);
         col = 1;
         row++;
-        return next();
+        return next(loc);
     }
 
     if(cur == '.' && nxt == '.') RETURN_PAIR(Tok_Range);
@@ -524,7 +518,7 @@ int Lexer::next(yy::parser::semantic_type* st, yy::parser::location_type* loc){
         }
     }
     
-    yylloc->end = {fName, row, col};
+    loc->end = {fName, row, col};
     
     if(cur == 0 || cur == EOF) return 0; //End of input
 
@@ -535,10 +529,9 @@ int Lexer::next(yy::parser::semantic_type* st, yy::parser::location_type* loc){
 }
 
 
-void Lexer::lexErr(const char *msg){
+void Lexer::lexErr(const char *msg, yy::parser::location_type* loc){
     string *fName = new string(fileName);
-    yy::location loc = {{fName, row, col}, {fName, row, col}};
-    error(msg, loc);
+    error(msg, *loc);
     free(fName);
     exit(EXIT_FAILURE);//lexing errors are always fatal
 }
