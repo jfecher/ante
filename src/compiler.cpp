@@ -84,7 +84,7 @@ void ante::error(const char* msg, yy::location& loc){
     else
         cout << loc.begin.column << '-' << loc.end.column << "\033[;0m";
 
-    cout << ": " <<  msg << endl;
+    cout << "\t\033[;31merror: \033[;m" <<  msg << endl;
     printErrLine(loc);
     cout << endl << endl;
 }
