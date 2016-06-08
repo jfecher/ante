@@ -16,6 +16,8 @@ SRCDIRS  := src
 SRCFILES := $(shell find $(SRCDIRS) -type f -name "*.cpp")
 
 OBJFILES := $(patsubst src/%.cpp,obj/%.o,$(SRCFILES))
+
+#If src/parser.cpp is still present, remove it from objfiles so as to not double-compile it
 OBJFILES := $(patsubst obj/parser.o,,$(OBJFILES))
 
 DEPFILES := $(OBJFILES:.o=.d)
@@ -50,4 +52,4 @@ obj/parser.o: src/syntax.y Makefile
 
 #remove all intermediate files
 clean:
-	-@$(RM) obj/*.o obj/*.d
+	-@$(RM) obj/*.o obj/*.d include/*.hh include/yyparser.h src/parser.cpp
