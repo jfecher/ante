@@ -326,9 +326,9 @@ static const unsigned short int yyrline[] =
      417,   421,   422,   423,   424,   427,   429,   430,   431,   432,
      433,   434,   435,   436,   437,   438,   439,   440,   441,   442,
      443,   444,   445,   446,   447,   448,   449,   450,   451,   452,
-     457,   460,   461,   465,   466,   467,   468,   469,   470,   471,
-     472,   473,   474,   475,   476,   477,   478,   479,   480,   481,
-     482,   483,   484,   485,   486,   487
+     457,   461,   462,   466,   467,   468,   469,   470,   471,   472,
+     473,   474,   475,   476,   477,   478,   479,   480,   481,   482,
+     483,   484,   485,   486,   487,   488
 };
 #endif
 
@@ -2728,7 +2728,7 @@ yyuserAction (yyRuleNum yyn, size_t yyrhslen, yyGLRStackItem* yyvsp,
 
   case 188:
 #line 441 "src/syntax.y" // glr.c:816
-    {((*yyvalp)) = mkBinOpNode((*yylocp), Tok_Let, mkLetBindingNode((*yylocp), (char*)(((yyGLRStackItem const *)yyvsp)[YYFILL (-4)].yystate.yysemantics.yysval), 0, 0, (((yyGLRStackItem const *)yyvsp)[YYFILL (-2)].yystate.yysemantics.yysval)), (((yyGLRStackItem const *)yyvsp)[YYFILL (0)].yystate.yysemantics.yysval));}
+    {((*yyvalp)) = mkBinOpNode((*yylocp), Tok_Let, mkLetBindingNode((((yyGLRStackItem const *)yyvsp)[YYFILL (-4)].yystate.yyloc), (char*)(((yyGLRStackItem const *)yyvsp)[YYFILL (-4)].yystate.yysemantics.yysval), 0, 0, (((yyGLRStackItem const *)yyvsp)[YYFILL (-2)].yystate.yysemantics.yysval)), (((yyGLRStackItem const *)yyvsp)[YYFILL (0)].yystate.yysemantics.yysval));}
 #line 2733 "src/parser.cpp" // glr.c:816
     break;
 
@@ -2805,151 +2805,151 @@ yyuserAction (yyRuleNum yyn, size_t yyrhslen, yyGLRStackItem* yyvsp,
     break;
 
   case 201:
-#line 460 "src/syntax.y" // glr.c:816
+#line 461 "src/syntax.y" // glr.c:816
     {((*yyvalp)) = setNext((((yyGLRStackItem const *)yyvsp)[YYFILL (-3)].yystate.yysemantics.yysval), (((yyGLRStackItem const *)yyvsp)[YYFILL (0)].yystate.yysemantics.yysval));}
 #line 2811 "src/parser.cpp" // glr.c:816
     break;
 
   case 202:
-#line 461 "src/syntax.y" // glr.c:816
+#line 462 "src/syntax.y" // glr.c:816
     {((*yyvalp)) = setRoot((((yyGLRStackItem const *)yyvsp)[YYFILL (0)].yystate.yysemantics.yysval));}
 #line 2817 "src/parser.cpp" // glr.c:816
     break;
 
   case 203:
-#line 465 "src/syntax.y" // glr.c:816
+#line 466 "src/syntax.y" // glr.c:816
     {((*yyvalp)) = mkBinOpNode((*yylocp), '+', (((yyGLRStackItem const *)yyvsp)[YYFILL (-3)].yystate.yysemantics.yysval), (((yyGLRStackItem const *)yyvsp)[YYFILL (0)].yystate.yysemantics.yysval));}
 #line 2823 "src/parser.cpp" // glr.c:816
     break;
 
   case 204:
-#line 466 "src/syntax.y" // glr.c:816
+#line 467 "src/syntax.y" // glr.c:816
     {((*yyvalp)) = mkBinOpNode((*yylocp), '-', (((yyGLRStackItem const *)yyvsp)[YYFILL (-3)].yystate.yysemantics.yysval), (((yyGLRStackItem const *)yyvsp)[YYFILL (0)].yystate.yysemantics.yysval));}
 #line 2829 "src/parser.cpp" // glr.c:816
     break;
 
   case 205:
-#line 467 "src/syntax.y" // glr.c:816
+#line 468 "src/syntax.y" // glr.c:816
     {((*yyvalp)) = mkBinOpNode((*yylocp), '*', (((yyGLRStackItem const *)yyvsp)[YYFILL (-3)].yystate.yysemantics.yysval), (((yyGLRStackItem const *)yyvsp)[YYFILL (0)].yystate.yysemantics.yysval));}
 #line 2835 "src/parser.cpp" // glr.c:816
     break;
 
   case 206:
-#line 468 "src/syntax.y" // glr.c:816
+#line 469 "src/syntax.y" // glr.c:816
     {((*yyvalp)) = mkBinOpNode((*yylocp), '/', (((yyGLRStackItem const *)yyvsp)[YYFILL (-3)].yystate.yysemantics.yysval), (((yyGLRStackItem const *)yyvsp)[YYFILL (0)].yystate.yysemantics.yysval));}
 #line 2841 "src/parser.cpp" // glr.c:816
     break;
 
   case 207:
-#line 469 "src/syntax.y" // glr.c:816
+#line 470 "src/syntax.y" // glr.c:816
     {((*yyvalp)) = mkBinOpNode((*yylocp), '%', (((yyGLRStackItem const *)yyvsp)[YYFILL (-3)].yystate.yysemantics.yysval), (((yyGLRStackItem const *)yyvsp)[YYFILL (0)].yystate.yysemantics.yysval));}
 #line 2847 "src/parser.cpp" // glr.c:816
     break;
 
   case 208:
-#line 470 "src/syntax.y" // glr.c:816
+#line 471 "src/syntax.y" // glr.c:816
     {((*yyvalp)) = mkBinOpNode((*yylocp), '<', (((yyGLRStackItem const *)yyvsp)[YYFILL (-3)].yystate.yysemantics.yysval), (((yyGLRStackItem const *)yyvsp)[YYFILL (0)].yystate.yysemantics.yysval));}
 #line 2853 "src/parser.cpp" // glr.c:816
     break;
 
   case 209:
-#line 471 "src/syntax.y" // glr.c:816
+#line 472 "src/syntax.y" // glr.c:816
     {((*yyvalp)) = mkBinOpNode((*yylocp), '>', (((yyGLRStackItem const *)yyvsp)[YYFILL (-3)].yystate.yysemantics.yysval), (((yyGLRStackItem const *)yyvsp)[YYFILL (0)].yystate.yysemantics.yysval));}
 #line 2859 "src/parser.cpp" // glr.c:816
     break;
 
   case 210:
-#line 472 "src/syntax.y" // glr.c:816
+#line 473 "src/syntax.y" // glr.c:816
     {((*yyvalp)) = mkBinOpNode((*yylocp), '^', (((yyGLRStackItem const *)yyvsp)[YYFILL (-3)].yystate.yysemantics.yysval), (((yyGLRStackItem const *)yyvsp)[YYFILL (0)].yystate.yysemantics.yysval));}
 #line 2865 "src/parser.cpp" // glr.c:816
     break;
 
   case 211:
-#line 473 "src/syntax.y" // glr.c:816
+#line 474 "src/syntax.y" // glr.c:816
     {((*yyvalp)) = mkBinOpNode((*yylocp), '.', (((yyGLRStackItem const *)yyvsp)[YYFILL (-3)].yystate.yysemantics.yysval), (((yyGLRStackItem const *)yyvsp)[YYFILL (0)].yystate.yysemantics.yysval));}
 #line 2871 "src/parser.cpp" // glr.c:816
     break;
 
   case 212:
-#line 474 "src/syntax.y" // glr.c:816
+#line 475 "src/syntax.y" // glr.c:816
     {((*yyvalp)) = mkBinOpNode((*yylocp), '.', (((yyGLRStackItem const *)yyvsp)[YYFILL (-3)].yystate.yysemantics.yysval), (((yyGLRStackItem const *)yyvsp)[YYFILL (0)].yystate.yysemantics.yysval));}
 #line 2877 "src/parser.cpp" // glr.c:816
     break;
 
   case 213:
-#line 475 "src/syntax.y" // glr.c:816
+#line 476 "src/syntax.y" // glr.c:816
     {((*yyvalp)) = mkBinOpNode((*yylocp), ';', (((yyGLRStackItem const *)yyvsp)[YYFILL (-3)].yystate.yysemantics.yysval), (((yyGLRStackItem const *)yyvsp)[YYFILL (0)].yystate.yysemantics.yysval));}
 #line 2883 "src/parser.cpp" // glr.c:816
     break;
 
   case 214:
-#line 476 "src/syntax.y" // glr.c:816
+#line 477 "src/syntax.y" // glr.c:816
     {((*yyvalp)) = mkBinOpNode((*yylocp), '[', (((yyGLRStackItem const *)yyvsp)[YYFILL (-4)].yystate.yysemantics.yysval), (((yyGLRStackItem const *)yyvsp)[YYFILL (-2)].yystate.yysemantics.yysval));}
 #line 2889 "src/parser.cpp" // glr.c:816
     break;
 
   case 215:
-#line 477 "src/syntax.y" // glr.c:816
-    {((*yyvalp)) = mkBinOpNode((*yylocp), Tok_Let, mkLetBindingNode((*yylocp), (char*)(((yyGLRStackItem const *)yyvsp)[YYFILL (-5)].yystate.yysemantics.yysval), 0, 0, (((yyGLRStackItem const *)yyvsp)[YYFILL (-3)].yystate.yysemantics.yysval)), (((yyGLRStackItem const *)yyvsp)[YYFILL (0)].yystate.yysemantics.yysval));}
+#line 478 "src/syntax.y" // glr.c:816
+    {((*yyvalp)) = mkBinOpNode((*yylocp), Tok_Let, mkLetBindingNode((((yyGLRStackItem const *)yyvsp)[YYFILL (-5)].yystate.yyloc), (char*)(((yyGLRStackItem const *)yyvsp)[YYFILL (-5)].yystate.yysemantics.yysval), 0, 0, (((yyGLRStackItem const *)yyvsp)[YYFILL (-3)].yystate.yysemantics.yysval)), (((yyGLRStackItem const *)yyvsp)[YYFILL (0)].yystate.yysemantics.yysval));}
 #line 2895 "src/parser.cpp" // glr.c:816
     break;
 
   case 216:
-#line 478 "src/syntax.y" // glr.c:816
+#line 479 "src/syntax.y" // glr.c:816
     {((*yyvalp)) = mkBinOpNode((*yylocp), Tok_Eq, (((yyGLRStackItem const *)yyvsp)[YYFILL (-3)].yystate.yysemantics.yysval), (((yyGLRStackItem const *)yyvsp)[YYFILL (0)].yystate.yysemantics.yysval));}
 #line 2901 "src/parser.cpp" // glr.c:816
     break;
 
   case 217:
-#line 479 "src/syntax.y" // glr.c:816
+#line 480 "src/syntax.y" // glr.c:816
     {((*yyvalp)) = mkBinOpNode((*yylocp), Tok_NotEq, (((yyGLRStackItem const *)yyvsp)[YYFILL (-3)].yystate.yysemantics.yysval), (((yyGLRStackItem const *)yyvsp)[YYFILL (0)].yystate.yysemantics.yysval));}
 #line 2907 "src/parser.cpp" // glr.c:816
     break;
 
   case 218:
-#line 480 "src/syntax.y" // glr.c:816
+#line 481 "src/syntax.y" // glr.c:816
     {((*yyvalp)) = mkBinOpNode((*yylocp), Tok_GrtrEq, (((yyGLRStackItem const *)yyvsp)[YYFILL (-3)].yystate.yysemantics.yysval), (((yyGLRStackItem const *)yyvsp)[YYFILL (0)].yystate.yysemantics.yysval));}
 #line 2913 "src/parser.cpp" // glr.c:816
     break;
 
   case 219:
-#line 481 "src/syntax.y" // glr.c:816
+#line 482 "src/syntax.y" // glr.c:816
     {((*yyvalp)) = mkBinOpNode((*yylocp), Tok_LesrEq, (((yyGLRStackItem const *)yyvsp)[YYFILL (-3)].yystate.yysemantics.yysval), (((yyGLRStackItem const *)yyvsp)[YYFILL (0)].yystate.yysemantics.yysval));}
 #line 2919 "src/parser.cpp" // glr.c:816
     break;
 
   case 220:
-#line 482 "src/syntax.y" // glr.c:816
+#line 483 "src/syntax.y" // glr.c:816
     {((*yyvalp)) = mkBinOpNode((*yylocp), Tok_Or, (((yyGLRStackItem const *)yyvsp)[YYFILL (-3)].yystate.yysemantics.yysval), (((yyGLRStackItem const *)yyvsp)[YYFILL (0)].yystate.yysemantics.yysval));}
 #line 2925 "src/parser.cpp" // glr.c:816
     break;
 
   case 221:
-#line 483 "src/syntax.y" // glr.c:816
+#line 484 "src/syntax.y" // glr.c:816
     {((*yyvalp)) = mkBinOpNode((*yylocp), Tok_And, (((yyGLRStackItem const *)yyvsp)[YYFILL (-3)].yystate.yysemantics.yysval), (((yyGLRStackItem const *)yyvsp)[YYFILL (0)].yystate.yysemantics.yysval));}
 #line 2931 "src/parser.cpp" // glr.c:816
     break;
 
   case 222:
-#line 484 "src/syntax.y" // glr.c:816
+#line 485 "src/syntax.y" // glr.c:816
     {((*yyvalp)) = mkBinOpNode((*yylocp), '(', (((yyGLRStackItem const *)yyvsp)[YYFILL (-1)].yystate.yysemantics.yysval), (((yyGLRStackItem const *)yyvsp)[YYFILL (0)].yystate.yysemantics.yysval));}
 #line 2937 "src/parser.cpp" // glr.c:816
     break;
 
   case 223:
-#line 485 "src/syntax.y" // glr.c:816
+#line 486 "src/syntax.y" // glr.c:816
     {((*yyvalp)) = mkExprIfNode((*yylocp), (((yyGLRStackItem const *)yyvsp)[YYFILL (-4)].yystate.yysemantics.yysval), (((yyGLRStackItem const *)yyvsp)[YYFILL (-2)].yystate.yysemantics.yysval), (((yyGLRStackItem const *)yyvsp)[YYFILL (0)].yystate.yysemantics.yysval));}
 #line 2943 "src/parser.cpp" // glr.c:816
     break;
 
   case 224:
-#line 486 "src/syntax.y" // glr.c:816
+#line 487 "src/syntax.y" // glr.c:816
     {((*yyvalp)) = (((yyGLRStackItem const *)yyvsp)[YYFILL (0)].yystate.yysemantics.yysval);}
 #line 2949 "src/parser.cpp" // glr.c:816
     break;
 
   case 225:
-#line 487 "src/syntax.y" // glr.c:816
+#line 488 "src/syntax.y" // glr.c:816
     {((*yyvalp)) = (((yyGLRStackItem const *)yyvsp)[YYFILL (-2)].yystate.yysemantics.yysval);}
 #line 2955 "src/parser.cpp" // glr.c:816
     break;
@@ -4730,7 +4730,7 @@ yypdumpstack (yyGLRStack* yystackp)
 
 
 
-#line 490 "src/syntax.y" // glr.c:2584
+#line 491 "src/syntax.y" // glr.c:2584
 
 
 /* location parser error */

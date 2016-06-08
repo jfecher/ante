@@ -454,14 +454,14 @@ basic_expr: basic_expr '+' basic_expr            %dprec 2 {$$ = mkBinOpNode(@$, 
 
 
 /* nl_expr is used in expression blocks and can span multiple lines */
-expr_list: nl_expr /*expr_list_p {$$ = getRoot();}*/
+expr_list: expr_list_p {$$ = getRoot();}
          ;
 
-/*
+
 expr_list_p: expr_list_p ',' maybe_newline nl_expr  %prec ',' {$$ = setNext($1, $4);}
            | nl_expr                                %prec LOW {$$ = setRoot($1);}
            ;
-*/
+
 
 nl_expr: nl_expr '+' maybe_newline nl_expr               %dprec 1 {$$ = mkBinOpNode(@$, '+', $1, $4);}
        | nl_expr '-' maybe_newline nl_expr               %dprec 1 {$$ = mkBinOpNode(@$, '-', $1, $4);}
