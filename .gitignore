@@ -3,3 +3,6 @@
 *.gch
 ante
 src/parser.output
+src/parser.cpp
+include/*.hh
+include/yyparser.h

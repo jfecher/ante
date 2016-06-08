@@ -16,6 +16,8 @@ SRCDIRS  := src
 SRCFILES := $(shell find $(SRCDIRS) -type f -name "*.cpp")
 
 OBJFILES := $(patsubst src/%.cpp,obj/%.o,$(SRCFILES))
+OBJFILES := $(patsubst obj/parser.o,,$(OBJFILES))
+
 DEPFILES := $(OBJFILES:.o=.d)
 
 .PHONY: ante new clean
@@ -23,7 +25,7 @@ DEPFILES := $(OBJFILES:.o=.d)
 
 ante: obj obj/parser.o $(OBJFILES)
 	@echo Linking...
-	@$(CXX) $(OBJFILES) $(CPPFLAGS) $(LLVMFLAGS) -o ante
+	@$(CXX) obj/parser.o $(OBJFILES) $(CPPFLAGS) $(LLVMFLAGS) -o ante
 
 new: clean ante
 
