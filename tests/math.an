@@ -19,18 +19,8 @@ let n2 = 4
 printf("%d + %d = %d\n", n1, n2, add(n1, n2))
 printf("%d * %d = %d\n", n1, n2, mul(n1, n2))
 
-fun printInt: i32 x
-    printf("printInt: %d\n", x)
-
 ~Void values can be used in expressions if they are followed by
 ~the sequencing operator ;
 
 ~print out 5 and set n3 to 5
-let n3 = printInt(5); 5
-
-~The ; operator has even lower precedence than where clauses
-let n4 = printInt(a) where a = 1;
-         printInt(b) where b = 2;
-         (printInt(c); c) where c = 3
-
-let n5 = "test"
+let n3 = printd(5); 5

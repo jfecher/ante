@@ -54,6 +54,13 @@ namespace ante{
         stack<unsigned int> *scopes;
 
         /*
+         *  Current and previous tokens to match;
+         *  All whitespace is insensitive while this is matching.
+         *  Used with toks such as (), {}, and []
+         */
+        stack<char> matchingToks;
+
+        /*
         *  Used to remember a new indentation level to issue multiple Indent
         *  or Unindent tokens when required.
         */
@@ -72,6 +79,8 @@ namespace ante{
         int genNumLitTok(yy::parser::location_type* loc);
         int genAlphaNumTok(yy::parser::location_type* loc);
         int genStrLitTok(char delim, yy::parser::location_type* loc);
+        int genOpTok(yy::parser::location_type* loc);
+        int skipWsAndReturnNext(yy::parser::location_type* loc);
     };
 }
 

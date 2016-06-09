@@ -413,9 +413,15 @@ int Lexer::genWsTok(yy::parser::location_type* loc){
         cscope = newScope;
         return next(loc);
     }else{
-        incPos();
-        return next(loc);
+        return skipWsAndReturnNext(loc);
     }
+}
+
+int Lexer::skipWsAndReturnNext(yy::location* loc){
+    do{
+        incPos();
+    }while(IS_WHITESPACE(cur));
+    return next(loc);
 }
 
 int Lexer::genStrLitTok(char delim, yy::parser::location_type* loc){
@@ -448,28 +454,12 @@ int Lexer::genStrLitTok(char delim, yy::parser::location_type* loc){
     return Tok_StrLit;
 }
 
-int Lexer::next(yy::parser::location_type* loc){
-    if(shouldReturnNewline){
-        shouldReturnNewline = false;
-        return Tok_Newline;
-    }
-
-    if(scopes->top() != cscope){
-        if(cscope > scopes->top()){
-            scopes->push(cscope);
-            return Tok_Indent;
-        }else{
-            scopes->pop();
-            shouldReturnNewline = true;
-            return Tok_Unindent;
-        }
-    }
-
-    if(IS_COMMENT(cur))    return handleComment(loc);
-    if(IS_NUMERICAL(cur))  return genNumLitTok(loc);
-    if(IS_ALPHANUM(cur))   return genAlphaNumTok(loc);
-    if(IS_WHITESPACE(cur)) return genWsTok(loc);
-
+/*
+ *  Returns an operator token from the lexer's current position.
+ *  Checks for possible multi-char operators, and if none are found,
+ *  returns the token by its value.
+ */
+int Lexer::genOpTok(yy::parser::location_type* loc){
     if(cur == '"' || cur == '\'') 
         return genStrLitTok(cur, loc);
    
@@ -523,6 +513,76 @@ int Lexer::next(yy::parser::location_type* loc){
     char ret = cur;
     incPos();
     return ret;
+}
+
+
+/*
+ *  Psuedo-function macro to check for () [] and {} tokens and
+ *  match them when necessary.  Only used in next() function.
+ */
+#define CHECK_FOR_MATCHING_TOKS() {                             \
+    if(cur == '{'){                                             \
+        matchingToks.push('}');                                 \
+        incPos();                                               \
+        return Tok_Indent;                                      \
+    }                                                           \
+                                                                \
+    if(cur == '('){                                             \
+        matchingToks.push(')');                                 \
+        incPos();                                               \
+        return '(';                                             \
+    }                                                           \
+                                                                \
+    if(cur == '['){                                             \
+        matchingToks.push(']');                                 \
+        incPos();                                               \
+        return '[';                                             \
+    }                                                           \
+                                                                \
+                                                                \
+    if(matchingToks.size() > 0 && cur == matchingToks.top()){   \
+        int top = matchingToks.top();                           \
+        matchingToks.pop();                                     \
+        incPos();                                               \
+        return top == '}' ? Tok_Unindent : top;                 \
+    }                                                           \
+}
+
+
+int Lexer::next(yy::parser::location_type* loc){
+    if(shouldReturnNewline){
+        shouldReturnNewline = false;
+        return Tok_Newline;
+    }
+
+    if(scopes->top() != cscope){
+        if(cscope > scopes->top()){
+            scopes->push(cscope);
+            return Tok_Indent;
+        }else{
+            scopes->pop();
+            shouldReturnNewline = true;
+            return Tok_Unindent;
+        }
+    }
+
+    if(IS_COMMENT(cur))    return handleComment(loc);
+    if(IS_NUMERICAL(cur))  return genNumLitTok(loc);
+    if(IS_ALPHANUM(cur))   return genAlphaNumTok(loc);
+    
+    //only check for significant whitespace if the lexer is not trying to match brackets.
+    if(IS_WHITESPACE(cur)){
+        if(matchingToks.size() > 0)
+            return skipWsAndReturnNext(loc);
+        else
+            return genWsTok(loc);
+    }
+
+    CHECK_FOR_MATCHING_TOKS();
+
+    //IF NOTA, then the token must be an operator.
+    //if not, return it by value anyway.
+    return genOpTok(loc);
 }
 
 

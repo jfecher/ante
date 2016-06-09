@@ -327,8 +327,8 @@ data Str
     c8* cStr
     u32 len
 
-let Str: c8* str =
-    Str{cStr = cStr, len = cStr.len()}
+fun Str.cast(): c8* str => Str
+    return (cStr, cStr.len())
 
 let msg = Str "Hello World!"
 

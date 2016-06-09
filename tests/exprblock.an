@@ -31,7 +31,7 @@ let ten = addThree(
 )
 
 let fifteen = addThree(
-    4, 5, 6;;)
+    4, 5, 6)
 
 printf("(3 + 3 + 4) + (4 + 5 + 6) = %d\n", ten + fifteen)
 
@@ -47,6 +47,8 @@ let result = 2 *
 `is parsed as
 
 let result = 2 * 3 * 4 * (1+2+3+4+5) * 5
+
+which should evaluate to 1800
 `
 
 printf("result = %d\n", result)
