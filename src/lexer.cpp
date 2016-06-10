@@ -54,6 +54,7 @@ map<int, const char*> tokDict = {
     //keywords
     {Tok_Return, "Return"},
     {Tok_If, "If"},
+    {Tok_Then, "Then"},
     {Tok_Elif, "Elif"},
     {Tok_Else, "Else"},
     {Tok_For, "For"},
@@ -66,6 +67,7 @@ map<int, const char*> tokDict = {
     {Tok_Let, "Let"},
     {Tok_Var, "Var"},
     {Tok_Match, "Match"},
+    {Tok_With, "With"},
     {Tok_Data, "Data"},
     {Tok_Enum, "Enum"},
     {Tok_Fun, "Fun"},
@@ -120,6 +122,7 @@ map<string, int> keywords = {
     
     {"return",   Tok_Return},
     {"if",       Tok_If},
+    {"then",     Tok_Then},
     {"elif",     Tok_Elif},
     {"else",     Tok_Else},
     {"for",      Tok_For},
@@ -132,6 +135,7 @@ map<string, int> keywords = {
     {"let",      Tok_Let},
     {"var",      Tok_Var},
     {"match",    Tok_Match},
+    {"with",     Tok_With},
     {"data",     Tok_Data},
     {"enum",     Tok_Enum},
     {"fun",      Tok_Fun},

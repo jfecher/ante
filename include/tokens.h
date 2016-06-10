@@ -75,6 +75,7 @@ enum TokenType{
     //keywords
     Tok_Return,
     Tok_If,
+    Tok_Then,
     Tok_Elif,
     Tok_Else,
     Tok_For,
@@ -87,6 +88,7 @@ enum TokenType{
     Tok_Let,
     Tok_Var,
     Tok_Match,
+    Tok_With,
     Tok_Data,
     Tok_Enum,
     Tok_Fun,

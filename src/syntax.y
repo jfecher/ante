@@ -49,10 +49,10 @@ void yyerror(const char *msg);
 
 /* keywords */
 %token Return
-%token If Elif Else
+%token If Then Elif Else
 %token For While Do In
 %token Continue Break
-%token Import Let Var Match
+%token Import Let Var Match With
 %token Data Enum Fun Ext
 
 /* modifiers */
@@ -396,17 +396,19 @@ ref_val: '&' ref_val            {$$ = mkUnOpNode(@$, '&', $2);}
        | ident  %prec Ident     {$$ = mkRefVarNode(@$, (char*)$1);}
        ;
 
-val: fn_call                               {$$ = $1;}
-   | '(' nl_expr ')'                       {$$ = $2;}
-   | tuple                                 {$$ = $1;}
-   | array                                 {$$ = $1;}
-   | unary_op                              {$$ = $1;}
-   | var                                   {$$ = $1;}
-   | intlit                                {$$ = $1;}
-   | fltlit                                {$$ = $1;}
-   | strlit                                {$$ = $1;}
-   | True                                  {$$ = mkBoolLitNode(@$, 1);}
-   | False                                 {$$ = mkBoolLitNode(@$, 0);}
+val: fn_call                                             {$$ = $1;}
+   | '(' nl_expr ')'                                     {$$ = $2;}
+   | tuple                                               {$$ = $1;}
+   | array                                               {$$ = $1;}
+   | unary_op                                            {$$ = $1;}
+   | var                                                 {$$ = $1;}
+   | intlit                                              {$$ = $1;}
+   | fltlit                                              {$$ = $1;}
+   | strlit                                              {$$ = $1;}
+   | True                                                {$$ = mkBoolLitNode(@$, 1);}
+   | False                                               {$$ = mkBoolLitNode(@$, 0);}
+   | Indent expr_list Unindent                           {$$ = $2;}
+   | If nl_expr Then nl_expr Else basic_expr  %prec LOW  {$$ = mkExprIfNode(@$, $2, $4, $6);}
    ;
 
 tuple: '(' expr_list ')'             {$$ = mkTupleNode(@$, $2);}
@@ -447,9 +449,7 @@ basic_expr: basic_expr '+' basic_expr            %dprec 2 {$$ = mkBinOpNode(@$, 
           | basic_expr And basic_expr            %dprec 2 {$$ = mkBinOpNode(@$, Tok_And, $1, $3);}
           | basic_expr Range basic_expr          %dprec 2 {$$ = mkBinOpNode(@$, Tok_Range, $1, $3);}
           | basic_expr tuple                              {$$ = mkBinOpNode(@$, '(', $1, $2);}
-          | basic_expr If nl_expr Else basic_expr %prec If{$$ = mkExprIfNode(@$, $3, $1, $5);}
-          | val                      %prec HIGH  %dprec 2 {$$ = $1;}
-          | Indent expr_list Unindent                     {$$ = $2;}
+          | val                                  %dprec 2 {$$ = $1;}
           ;
 
 
@@ -483,9 +483,7 @@ nl_expr: nl_expr '+' maybe_newline nl_expr               %dprec 1 {$$ = mkBinOpN
        | nl_expr Or maybe_newline nl_expr                %dprec 1 {$$ = mkBinOpNode(@$, Tok_Or, $1, $4);}
        | nl_expr And maybe_newline nl_expr               %dprec 1 {$$ = mkBinOpNode(@$, Tok_And, $1, $4);}
        | nl_expr tuple                                            {$$ = mkBinOpNode(@$, '(', $1, $2);}
-       | nl_expr If nl_expr Else nl_expr     %prec If   {$$ = mkExprIfNode(@$, $3, $1, $5);}
-       | val                                 %prec LOW   %dprec 1 {$$ = $1;}
-       | Indent expr_list Unindent Newline   %prec HIGH  %dprec 1 {$$ = $2;}
+       | val maybe_newline                               %dprec 1 {$$ = $1;}
        ;
 
 %%
