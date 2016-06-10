@@ -1,0 +1,18 @@
+`
+        exprif.an
+    tests ifs inside expressions.
+
+    Currently, these use the python style,
+    although this is subject to change.
+
+    Unlike regular if statements, the else
+    is mandatory, and both branches must match
+    in type.
+`
+
+let n = 2 if true else 3
+
+n.print()
+
+
+(5 if 2 < 1 else 19).print()

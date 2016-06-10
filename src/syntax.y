@@ -447,7 +447,7 @@ basic_expr: basic_expr '+' basic_expr            %dprec 2 {$$ = mkBinOpNode(@$, 
           | basic_expr And basic_expr            %dprec 2 {$$ = mkBinOpNode(@$, Tok_And, $1, $3);}
           | basic_expr Range basic_expr          %dprec 2 {$$ = mkBinOpNode(@$, Tok_Range, $1, $3);}
           | basic_expr tuple                              {$$ = mkBinOpNode(@$, '(', $1, $2);}
-          | basic_expr If nl_expr Else basic_expr %prec If{$$ = mkExprIfNode(@$, $1, $3, $5);}
+          | basic_expr If nl_expr Else basic_expr %prec If{$$ = mkExprIfNode(@$, $3, $1, $5);}
           | val                      %prec HIGH  %dprec 2 {$$ = $1;}
           | Indent expr_list Unindent                     {$$ = $2;}
           ;
@@ -483,7 +483,7 @@ nl_expr: nl_expr '+' maybe_newline nl_expr               %dprec 1 {$$ = mkBinOpN
        | nl_expr Or maybe_newline nl_expr                %dprec 1 {$$ = mkBinOpNode(@$, Tok_Or, $1, $4);}
        | nl_expr And maybe_newline nl_expr               %dprec 1 {$$ = mkBinOpNode(@$, Tok_And, $1, $4);}
        | nl_expr tuple                                            {$$ = mkBinOpNode(@$, '(', $1, $2);}
-       | nl_expr If nl_expr Else nl_expr     %prec If   {$$ = mkExprIfNode(@$, $1, $3, $5);}
+       | nl_expr If nl_expr Else nl_expr     %prec If   {$$ = mkExprIfNode(@$, $3, $1, $5);}
        | val                                 %prec LOW   %dprec 1 {$$ = $1;}
        | Indent expr_list Unindent Newline   %prec HIGH  %dprec 1 {$$ = $2;}
        ;

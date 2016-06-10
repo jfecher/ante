@@ -141,6 +141,8 @@ Type* typeTagToLlvmType(TypeTag ty, string typeName = ""){
  *  primitive.
  */
 TypeTag llvmTypeToTypeTag(Type *t){
+    if(t->isIntegerTy(1)) return TT_Bool;
+
     if(t->isIntegerTy(8)) return TT_I8;
     if(t->isIntegerTy(16)) return TT_I16;
     if(t->isIntegerTy(32)) return TT_I32;

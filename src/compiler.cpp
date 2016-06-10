@@ -313,13 +313,13 @@ void compileIfNodeHelper(IfNode *ifN, BasicBlock *mergebb, Function *f, Compiler
 
 
 TypedValue* IfNode::compile(Compiler *c){
-    //Create thenbb and forward declare the others but dont inser them
-    //into function f just yet.
+    //Create mergbb and send it to compileIfNodeHelper to do the dirty work
     BasicBlock *mergbb = BasicBlock::Create(getGlobalContext(), "endif");
     Function *f = c->builder.GetInsertBlock()->getParent();
 
     compileIfNodeHelper(this, mergbb, f, c);
 
+    //append mergbb to the function when done.
     f->getBasicBlockList().push_back(mergbb);
     c->builder.SetInsertPoint(mergbb);
     return new TypedValue(f, TT_Void);

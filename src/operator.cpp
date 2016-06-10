@@ -276,10 +276,17 @@ TypedValue* ExprIfNode::compile(Compiler *c){
     auto *thenbb = BasicBlock::Create(getGlobalContext(), "then");
     auto *elsebb = BasicBlock::Create(getGlobalContext(), "else");
     auto *mergbb = BasicBlock::Create(getGlobalContext(), "endif");
-
+    
     auto *cond = condition->compile(c);
     if(!cond) return 0;
-
+    
+    //add the floating blocks to the function
+    Function *f = c->builder.GetInsertBlock()->getParent();
+    auto &fnBlocks = f->getBasicBlockList();
+    fnBlocks.push_back(thenbb);
+    fnBlocks.push_back(elsebb);
+    fnBlocks.push_back(mergbb);
+    
     c->builder.CreateCondBr(cond->val, thenbb, elsebb);
     
     c->builder.SetInsertPoint(thenbb);
@@ -293,6 +300,7 @@ TypedValue* ExprIfNode::compile(Compiler *c){
     
 
     if(!thenVal || !elseVal) return 0;
+
 
     if(!llvmTypeEq(thenVal->getType(), elseVal->getType())){
         return c->compErr("If condition's then expr's type " + llvmTypeToStr(thenVal->getType()) +
@@ -325,6 +333,7 @@ TypedValue* compMemberAccess(Compiler *c, Node *ln, VarNode *field, BinOpNode *b
     }else{
         //ln is not a typenode, this is not a static method call, eg "hello".reverse()
         auto *l = ln->compile(c);
+        if(!l) return 0;
 
         if(l->type == TT_Data){
             auto dataTy = c->lookupType(l->getType()->getStructName());
