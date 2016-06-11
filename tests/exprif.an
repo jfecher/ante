@@ -10,9 +10,9 @@
     in type.
 `
 
-let n = 2 if true else 3
+let n = if true then 2 else 3
 
 n.print()
 
 
-(5 if 2 < 1 else 19).print()
+(if 2 < 1 then 5 else 19).print()

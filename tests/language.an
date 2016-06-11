@@ -338,7 +338,7 @@ fun longestStreak: Str s => i32
     var curStreak = 0
 
     ~No need to check if i+1 >= s.len since Strings are both null terminated and have a length field
-    for i in 0 ..^ msg.len
+    for i in s.indices()
         if s[i] == s[i+1]
             curStreak += 1
         else
