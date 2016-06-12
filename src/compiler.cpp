@@ -573,6 +573,16 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
 }
 
 
+vector<Argument*> buildArguments(FunctionType *ft){
+    vector<Argument*> args;
+    for(unsigned i = 0, e = ft->getNumParams(); i != e; i++){
+        assert(!ft->getParamType(i)->isVoidTy() && "Cannot have void typed arguments!");
+        args.push_back(new Argument(ft->getParamType(i)));
+    }
+    return args;
+}
+
+
 Function* Compiler::compFn(FuncDeclNode *fdn){
     //Get and translate the function's return type to an llvm::Type*
     TypeNode *retNode = (TypeNode*)fdn->type.get();
@@ -588,27 +598,31 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
         paramTys.pop_back();
     }
 
-    Type *retType = typeNodeToLlvmType(retNode);
-    //Get the corresponding function type for the above return type, parameter types,
-    //with no varargs
-    FunctionType *ft = FunctionType::get(retType, paramTys, fdn->varargs);
-    Function *f = Function::Create(ft, Function::ExternalLinkage, fdn->name, module.get());
+    Function *f = 0;
 
     //The above handles everything for a function declaration
     //If the function is a definition, then the body will be compiled here.
     if(fdn->child){
         //Create the entry point for the function
-        BasicBlock *bb = BasicBlock::Create(getGlobalContext(), "entry", f);
+        //This is created TEMPORARILY in main, until it is later
+        //pulled out and put into the function created after its return
+        //value is known.
+        BasicBlock *bb = BasicBlock::Create(getGlobalContext(), "entry", module->getFunction("main"));
         builder.SetInsertPoint(bb);
 
         //tell the compiler to create a new scope on the stack.
         enterNewScope();
 
-        //iterate through each parameter and add its value to the new scope.
         NamedValNode *cParam = paramsBegin;
-        for(auto &arg : f->args()){
+
+        //fake functiontype to create arguments vector; return type may not be correct.
+        FunctionType *fakeTy = FunctionType::get(Type::getVoidTy(getGlobalContext()), paramTys, fdn->varargs);
+        
+        //iterate through each parameter and add its value to the new scope.
+        auto fakeArgs = buildArguments(fakeTy);
+        for(auto &arg : fakeArgs){
             TypeNode *paramTyNode = (TypeNode*)cParam->typeExpr.get();
-            stoVar(cParam->name, new Variable(cParam->name, new TypedValue(&arg, paramTyNode->type), scope));
+            stoVar(cParam->name, new Variable(cParam->name, new TypedValue(arg, paramTyNode->type), scope));
             if(!(cParam = (NamedValNode*)cParam->next.get())) break;
         }
 
@@ -616,17 +630,41 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
         TypedValue *v = compileStmtList(fdn->child.get(), this);
         //End of the function, discard the function's scope.
         exitScope();
+    
+        Type *retType = retNode ? typeNodeToLlvmType(retNode) : v->getType();
 
+        //Get the real function type for the above return type, parameter types, and possibly varargs
+        FunctionType *ft = FunctionType::get(retType, paramTys, fdn->varargs);
+        f = Function::Create(ft, Function::ExternalLinkage, fdn->name, module.get());
+
+        bb->removeFromParent();
+        bb->insertInto(f);
         builder.SetInsertPoint(&f->back());
-        
+
         //llvm requires explicit returns, so generate a void return even if
         //the user did not in their void function.
-        if(retNode->type == TT_Void && !dynamic_cast<ReturnInst*>(v->val)){
-            builder.CreateRetVoid();
+        if(!dynamic_cast<ReturnInst*>(v->val)){
+            if(retNode && retNode->type == TT_Void){
+                builder.CreateRetVoid();
+            }else{
+                builder.CreateRet(v->val);
+            }
         }
 
-        //apply function-level optimizations
-        passManager->run(*f);
+        //construct the real arguments
+        auto realArgs = f->arg_begin();
+
+        //swap out each 'fake' arg with the real ones now that the correct function is created
+        for(auto* fakeArg : fakeArgs){
+            fakeArg->replaceAllUsesWith(&(*realArgs));
+            realArgs++;
+        }
+
+
+    }else{ //function has no body, it is an external function declaration
+        Type *retType = fdn->type ? typeNodeToLlvmType((TypeNode*)fdn->type.get()) : Type::getVoidTy(getGlobalContext());
+        FunctionType *ft = FunctionType::get(retType, paramTys, fdn->varargs);
+        f = Function::Create(ft, Function::ExternalLinkage, fdn->name, module.get());
     }
     return f;
 }
@@ -702,16 +740,6 @@ void Compiler::importFile(const char *fName){
         cout << "Error when importing " << fName << endl;
         return;
     }
-
-    //link functions from both files
-    /*Module *m2 = c->module.get();
-    c->module.release();
-    //Linker::linkModules is currently bugged
-    Linker *ln = new Linker(*module.get());
-    if(ln->linkInModuleForCAPI(*m2)){
-        cout << "Linking error\n";
-        errFlag = true;
-    } */
 
     //copy import's userTypes into importer
     for(const auto& it : c->userTypes){
@@ -812,6 +840,8 @@ void Compiler::compile(){
     //Compile the rest of the program
     compileStmtList(ast.get(), this);
     exitScope();
+
+    module->dump();
 
     //builder should already be at end of main function
     builder.CreateRet(ConstantInt::get(getGlobalContext(), APInt(8, 0, true)));

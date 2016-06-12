@@ -77,12 +77,11 @@ void yyerror(const char *msg);
 %nonassoc LOW
 
 %left Ident
-%left If
 
-%left ';'
+%left ';' Newline
 %left Let In
 %left ','
-%left '='
+%left '=' AddEq SubEq MulEq DivEq
 
 %left Or
 %left And     
@@ -93,7 +92,7 @@ void yyerror(const char *msg);
 %left '*' '/' '%'
 
 %left '.'
-%right '@' '&'
+%left '@' '&'
 
 /* 
     Being below HIGH, this ensures parenthetical expressions will be parsed
@@ -113,12 +112,14 @@ void yyerror(const char *msg);
 %start top_level_stmt_list
 %%
 
-top_level_stmt_list: maybe_newline stmt_list maybe_newline
+top_level_stmt_list:  maybe_newline stmt_list maybe_newline
                    ;
 
-stmt_list: stmt_list Newline expr  %prec LOW {$$ = setNext($1, $2);}
-         | expr           {$$ = setRoot($1);}
+
+stmt_list: stmt_list Newline expr  %prec HIGH {$$ = setNext($1, $3);}
+         | expr                    %prec HIGH {$$ = setRoot($1);}
          ;
+
 
 maybe_newline: Newline  %prec Newline
              | %empty   %prec LOW
@@ -234,29 +235,24 @@ modifier_list: modifier_list_ {$$ = getRoot();}
              ;
 
 
-var_decl: modifier_list type_expr ident '=' expr  %prec Ident {@$ = @3; $$ = mkVarDeclNode(@$, (char*)$3, $1, $2, $5);}
-        | modifier_list type_expr ident           %prec LOW   {@$ = @3; $$ = mkVarDeclNode(@$, (char*)$3, $1, $2,  0);}
-        | type_expr ident '=' expr                %prec Ident {@$ = @2; $$ = mkVarDeclNode(@$, (char*)$2, 0,  $1, $4);}
-//      | type_expr ident                         %prec LOW   {@$ = @2; $$ = mkVarDeclNode(@$, (char*)$2, 0,  $1,  0);}
-        | modifier_list Var ident '=' expr                    {@$ = @3; $$ = mkVarDeclNode(@$, (char*)$2, $1,  0, $5);}
-        | Var ident '=' expr                                  {@$ = @3; $$ = mkVarDeclNode(@$, (char*)$2, 0,   0, $4);}
+var_decl: maybe_mod_list Var ident '=' expr  {@$ = @3; $$ = mkVarDeclNode(@$, (char*)$3, $1,  0, $5);}
         ;
 
-let_binding: Let modifier_list type_expr ident '=' expr In expr {$$ = mkBinOpNode(@$, Tok_Let, mkLetBindingNode(@$, (char*)$3, $2, $3, $6);}
-           | Let modifier_list ident '=' expr In expr           {$$ = mkBinOpNode(@$, Tok_Let, mkLetBindingNode(@$, (char*)$2, $2, 0,  $5);}
-           | Let type_expr ident '=' expr In expr               {$$ = mkBinOpNode(@$, Tok_Let, mkLetBindingNode(@$, (char*)$3, 0,  $2, $5);}
-           | Let ident '=' expr In expr                         {$$ = mkBinOpNode(@$, Tok_Let, mkLetBindingNode(@$, (char*)$2, 0,  0,  $4);}
+let_binding: Let modifier_list type_expr ident '=' expr In expr {$$ = mkBinOpNode(@$, Tok_Let, mkLetBindingNode(@$, (char*)$3, $2, $3, $6), $8);}
+           | Let modifier_list ident '=' expr In expr           {$$ = mkBinOpNode(@$, Tok_Let, mkLetBindingNode(@$, (char*)$2, $2, 0,  $5), $7);}
+           | Let type_expr ident '=' expr In expr               {$$ = mkBinOpNode(@$, Tok_Let, mkLetBindingNode(@$, (char*)$3, 0,  $2, $5), $7);}
+           | Let ident '=' expr In expr                         {$$ = mkBinOpNode(@$, Tok_Let, mkLetBindingNode(@$, (char*)$2, 0,  0,  $4), $6);}
            ;
 
 /* TODO: change arg1 to require node* instead of char* */
-var_assign: ref_val '=' expr    %prec '='  {$$ = mkVarAssignNode(@$, $1, $3);}
-          | ref_val AddEq expr  %prec '='  {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '+', mkUnOpNode(@$, '@', $1), $3), false);}
-          | ref_val SubEq expr  %prec '='  {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '-', mkUnOpNode(@$, '@', $1), $3), false);}
-          | ref_val MulEq expr  %prec '='  {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '*', mkUnOpNode(@$, '@', $1), $3), false);}
-          | ref_val DivEq expr  %prec '='  {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '/', mkUnOpNode(@$, '@', $1), $3), false);}
+var_assign: ref_val '=' expr    {$$ = mkVarAssignNode(@$, $1, $3);}
+          | ref_val AddEq expr  {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '+', mkUnOpNode(@$, '@', $1), $3), false);}
+          | ref_val SubEq expr  {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '-', mkUnOpNode(@$, '@', $1), $3), false);}
+          | ref_val MulEq expr  {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '*', mkUnOpNode(@$, '@', $1), $3), false);}
+          | ref_val DivEq expr  {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '/', mkUnOpNode(@$, '@', $1), $3), false);}
           ;
 
-/*
+
 usertype_list: usertype_list ',' usertype {$$ = setNext($1, $3);}
              | usertype {$$ = setRoot($1);}
              ;
@@ -281,10 +277,10 @@ type_decl_list: type_decl_list Newline type_decl  {$$ = setNext($1, $3);}
 
 type_decl_block: Indent type_decl_list Unindent  {$$ = getRoot();}
                ;
-*/
+
 
 /* Specifying an enum member's value */
-/*val_init_list: val_init_list Newline usertype
+val_init_list: val_init_list Newline usertype
              | val_init_list Newline usertype '=' expr
              | usertype '=' expr
              | usertype
@@ -330,19 +326,24 @@ params: _params ',' Range '.' {setNext($1, mkNamedValNode(@$, mkVarNode(@$, (cha
       | _params               {$$ = getRoot();}
       ;
 
+maybe_mod_list: modifier_list  {$$ = $1;}
+              | %empty         {$$ = 0;}
+              ;
 
-maybe_block: '=' expr   {$$ = $2;}
-           | %empty {$$ = 0;}
+maybe_fn_name: ident ':' {$$ = $1;}
+             | %empty
+             ;
 
+maybe_params: params  {$$ = $1;}
+            | %empty  {$$ = 0;}
+            ;
 
-fn_decl: modifier_list Fun ident ':' params Returns type_expr maybe_block {$$ = mkFuncDeclNode(@$, (char*)$3, $1, $7,                             $5, $8);}
-       | modifier_list Fun ident ':' params maybe_block                   {$$ = mkFuncDeclNode(@$, (char*)$3, $1, mkTypeNode(@$, TT_Void, (char*)""), $5, $6);}
-       | modifier_list Fun ident Returns type_expr maybe_block            {$$ = mkFuncDeclNode(@$, (char*)$3, $1, $5,                              0, $6);}
-       | modifier_list Fun ident maybe_block                              {$$ = mkFuncDeclNode(@$, (char*)$3, $1, mkTypeNode(@$, TT_Void, (char*)""),  0, $4);}
-       | Fun ident ':' params Returns type_expr maybe_block               {$$ = mkFuncDeclNode(@$, (char*)$2,  0, $6,                             $4, $7);}
-       | Fun ident ':' params maybe_block                                 {$$ = mkFuncDeclNode(@$, (char*)$2,  0, mkTypeNode(@$, TT_Void, (char*)""), $4, $5);}
-       | Fun ident Returns type_expr maybe_block                          {$$ = mkFuncDeclNode(@$, (char*)$2,  0, $4,                              0, $5);}
-       | Fun ident maybe_block                                            {$$ = mkFuncDeclNode(@$, (char*)$2,  0, mkTypeNode(@$, TT_Void, (char*)""),  0, $3);}
+maybe_ret: Returns type_expr  {$$ = $2;}
+         | %empty             {$$ = 0;}
+         ;
+
+fn_decl: maybe_mod_list Fun maybe_fn_name maybe_params '=' expr  {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/0, /*params*/$4, /*body*/$6);}
+       | Ext Fun ident ':' maybe_params maybe_ret Ext {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/0, /*ret_ty*/$6, /*params*/$5, /*body*/0);}
        ;
 
 
@@ -352,7 +353,7 @@ fn_call: ident tuple {$$ = mkFuncCallNode(@$, (char*)$1, $2);}
 /*
 ret_stmt: Return expr {$$ = mkRetNode(@$, $2);}
         ;
-
+*/
 
 extension: Ext type_expr Indent fn_list Unindent {$$ = mkExtNode(@$, $2, $4);}
          ;
@@ -363,7 +364,7 @@ fn_list: fn_list_ {$$ = getRoot();}
 fn_list_: fn_list_ fn_decl maybe_newline  {$$ = setNext($1, $2);} 
         | fn_decl maybe_newline           {$$ = setRoot($1);}
         ;
-*/
+
 
 if_stmt: If expr Then expr Else expr  %prec LOW {$$ = mkIfNode(@$, $2, $4, $6);}
        ;
@@ -407,6 +408,8 @@ val: fn_call                 {$$ = $1;}
    | if_stmt                 {$$ = $1;}
    | while_loop              {$$ = $1;}
    | fn_decl                 {$$ = $1;}
+   | data_decl               {$$ = $1;}
+   | extension               {$$ = $1;}
    ;
 
 tuple: '(' expr_list ')' {$$ = mkTupleNode(@$, $2);}
@@ -424,7 +427,7 @@ unary_op: '@' val                 {$$ = mkUnOpNode(@$, '@', $2);}
         | type_expr val           {$$ = mkTypeCastNode(@$, $1, $2);}
         ;
 
-expr: expr '+' expr                 {$$ = mkBinOpNode(@$, '+', $1, $3);}
+expr: expr '+' expr              {$$ = mkBinOpNode(@$, '+', $1, $3);}
     | expr '-' expr              {$$ = mkBinOpNode(@$, '-', $1, $3);}
     | expr '*' expr              {$$ = mkBinOpNode(@$, '*', $1, $3);}
     | expr '/' expr              {$$ = mkBinOpNode(@$, '/', $1, $3);}
@@ -434,6 +437,7 @@ expr: expr '+' expr                 {$$ = mkBinOpNode(@$, '+', $1, $3);}
     | expr '.' var               {$$ = mkBinOpNode(@$, '.', $1, $3);}
     | type_expr  '.' var         {$$ = mkBinOpNode(@$, '.', $1, $3);}
     | expr ';' expr              {$$ = mkBinOpNode(@$, ';', $1, $3);}
+    | expr Newline expr          {$$ = mkBinOpNode(@$, ';', $1, $3);}
     | expr '[' nl_expr ']'       {$$ = mkBinOpNode(@$, '[', $1, $3);}
     | expr Eq expr               {$$ = mkBinOpNode(@$, Tok_Eq, $1, $3);}
     | expr NotEq expr            {$$ = mkBinOpNode(@$, Tok_NotEq, $1, $3);}
@@ -468,6 +472,7 @@ nl_expr: nl_expr '+' maybe_newline nl_expr                {$$ = mkBinOpNode(@$, 
        | nl_expr '.' maybe_newline var                    {$$ = mkBinOpNode(@$, '.', $1, $4);}
        | type_expr '.' maybe_newline var                  {$$ = mkBinOpNode(@$, '.', $1, $4);}
        | nl_expr ';' maybe_newline nl_expr                {$$ = mkBinOpNode(@$, ';', $1, $4);}
+       | nl_expr Newline nl_expr                          {$$ = mkBinOpNode(@$, ';', $1, $3);}
        | nl_expr '[' nl_expr ']'                          {$$ = mkBinOpNode(@$, '[', $1, $3);}
        | nl_expr Eq maybe_newline  nl_expr                {$$ = mkBinOpNode(@$, Tok_Eq, $1, $4);}
        | nl_expr NotEq maybe_newline nl_expr              {$$ = mkBinOpNode(@$, Tok_NotEq, $1, $4);}

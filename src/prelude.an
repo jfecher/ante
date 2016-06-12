@@ -5,17 +5,17 @@
 `
 
 ~C functions
-fun printf: c8* fmt, ...
+ext fun printf: c8* fmt, ... ext
 
-fun puts: c8* str
+ext fun puts: c8* str ext
 
-fun putchar: c8 char
+ext fun putchar: c8 char ext
 
-fun exit: i32 status
+ext fun exit: i32 status ext
 
-fun malloc: i32 size => i32*
+ext fun malloc: i32 size => i32* ext
 
-fun free: i32* mem
+ext fun free: i32* mem ext
 
 ~datatypes
 data Str
@@ -30,15 +30,15 @@ data Range
 
 ~functions and methods
 ext i32
-    fun print: i32 x
+    fun print: i32 x =
         printf("%d\n", x)
 
 ext Str
-    fun print: Str s
+    fun print: Str s =
         puts(s.cStr)
 
-fun printd: i32 x
+fun printd: i32 x =
     printf("%d\n", x)
 
-fun print: Str s
+fun print: Str s =
     puts(s.cStr)

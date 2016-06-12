@@ -2,7 +2,7 @@
     varDecl.an
         Tests initializations, assignments, and print statements
 `
-i32 i = 12
+var i = 12
 printd(i)
 i = 3
 printd(i)
