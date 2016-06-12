@@ -82,7 +82,7 @@ if p.getx() == 6
 print("Hello World!")
 ```
 * Explicit yet concise currying support
-```
+```go
 let increment = _ + 1
 
 print(increment(4)) ~prints 5

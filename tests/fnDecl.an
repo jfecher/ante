@@ -2,31 +2,34 @@
     fnDecl.an
         test function declarations and calls
 `
-fun printMsg: bool b
-    if b -> puts("Hello World!")
-    else -> puts("Goodbye World!")
+fun printMsg: bool b =
+    if b then
+        puts("Hello World!")
+    else
+        puts("Goodbye World!")
 
 
-fun divisibleByThree: i32 i => bool
-    return i % 3 == 0
+fun divisibleByThree: i32 i =
+    i % 3 == 0
 
 
-fun isEven: i32 x => bool
-    return x % 2 == 0
+fun isEven: i32 x =
+    x % 2 == 0
 
 
-fun fact: i32 x => i32
-    if x <= 1
-        return 1
-    return x * fact(x-1)
+fun fact: i32 x =
+    if x <= 1 then 1
+    else x * fact(x-1)
 
 
 printMsg(true)
-if divisibleByThree(23)
+if divisibleByThree(23) then
    printf("23 is divisible by 3\n")
+else puts("")
 
-if isEven(4)
+if isEven(4) then
    printf("fact(5) = %d\n", fact(5))
+else puts("")
 
 printMsg(1 + 1 != 2)
 

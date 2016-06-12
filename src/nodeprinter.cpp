@@ -142,7 +142,7 @@ void ExprIfNode::print(){
     condition->print();
     puts(" then");
     thenN->print();
-    puts("else");
+    puts("\nelse");
     elseN->print();
 }
 
