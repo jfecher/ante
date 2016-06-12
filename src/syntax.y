@@ -80,6 +80,8 @@ void yyerror(const char *msg);
 %left Import Return
 
 %left ';' Newline
+%left MED
+
 %left Let In
 %left ','
 %left '=' AddEq SubEq MulEq DivEq
@@ -117,8 +119,8 @@ top_level_stmt_list:  maybe_newline stmt_list maybe_newline
                    ;
 
 
-stmt_list: stmt_list Newline expr  %prec HIGH {$$ = setNext($1, $3);}
-         | expr                    %prec HIGH {$$ = setRoot($1);}
+stmt_list: stmt_list Newline expr  %prec MED {$$ = setNext($1, $3);}
+         | expr                    %prec MED {$$ = setRoot($1);}
          ;
 
 
@@ -240,10 +242,10 @@ modifier_list: modifier_list_ {$$ = getRoot();}
 var_decl: maybe_mod_list Var ident '=' expr  {@$ = @3; $$ = mkVarDeclNode(@$, (char*)$3, $1,  0, $5);}
         ;
 
-let_binding: Let modifier_list type_expr ident '=' expr In expr {$$ = mkBinOpNode(@$, Tok_Let, mkLetBindingNode(@$, (char*)$3, $2, $3, $6), $8);}
-           | Let modifier_list ident '=' expr In expr           {$$ = mkBinOpNode(@$, Tok_Let, mkLetBindingNode(@$, (char*)$2, $2, 0,  $5), $7);}
-           | Let type_expr ident '=' expr In expr               {$$ = mkBinOpNode(@$, Tok_Let, mkLetBindingNode(@$, (char*)$3, 0,  $2, $5), $7);}
-           | Let ident '=' expr In expr                         {$$ = mkBinOpNode(@$, Tok_Let, mkLetBindingNode(@$, (char*)$2, 0,  0,  $4), $6);}
+let_binding: Let modifier_list type_expr ident '=' expr {$$ = mkLetBindingNode(@$, (char*)$3, $2, $3, $6);}
+           | Let modifier_list ident '=' expr           {$$ = mkLetBindingNode(@$, (char*)$2, $2, 0,  $5);}
+           | Let type_expr ident '=' expr               {$$ = mkLetBindingNode(@$, (char*)$3, 0,  $2, $5);}
+           | Let ident '=' expr                         {$$ = mkLetBindingNode(@$, (char*)$2, 0,  0,  $4);}
            ;
 
 /* TODO: change arg1 to require node* instead of char* */
@@ -367,7 +369,7 @@ fn_list_: fn_list_ fn_decl maybe_newline  {$$ = setNext($1, $2);}
         ;
 
 
-if_stmt: If expr Then expr maybe_newline Else expr  %prec LOW {$$ = mkIfNode(@$, $2, $4, $6);}
+if_stmt: If expr Then expr maybe_newline Else expr  %prec LOW {$$ = mkExprIfNode(@$, $2, $4, $7);}
        ;
 
 while_loop: While expr Do expr  %prec LOW {$$ = mkWhileNode(@$, $2, $4);}
@@ -429,6 +431,7 @@ unary_op: '@' val                 {$$ = mkUnOpNode(@$, '@', $2);}
         | '-' val                 {$$ = mkUnOpNode(@$, '-', $2);}
         | type_expr val           {$$ = mkTypeCastNode(@$, $1, $2);}
         ;
+
 
 expr: expr '+' expr              {$$ = mkBinOpNode(@$, '+', $1, $3);}
     | expr '-' expr              {$$ = mkBinOpNode(@$, '-', $1, $3);}
