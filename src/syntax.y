@@ -77,6 +77,7 @@ void yyerror(const char *msg);
 %nonassoc LOW
 
 %left Ident
+%left Import Return
 
 %left ';' Newline
 %left Let In
@@ -154,9 +155,10 @@ stmt_no_nl: fn_decl
           | expr
           | import_stmt
           ;
+*/
 
 import_stmt: Import expr {$$ = mkImportNode(@$, $2);}
-*/
+
 
 ident: Ident {$$ = (Node*)lextxt;}
      ;
@@ -296,11 +298,9 @@ enum_decl: modifier_list Enum usertype enum_block  {$$ = NULL;}
          ;
 
 
-/*
-block: Indent stmt_list stmt_no_nl Unindent {setNext($2, $3); $$ = getRoot();}
-     | Indent stmt_no_nl Unindent {$$ = $2;}
+block: Indent nl_expr Unindent {$$ = $2;}
      ;
-*/
+
 
 
 raw_ident_list: raw_ident_list ident  {$$ = setNext($1, mkVarNode(@$, (char*)$2));}
@@ -342,18 +342,19 @@ maybe_ret: Returns type_expr  {$$ = $2;}
          | %empty             {$$ = 0;}
          ;
 
-fn_decl: maybe_mod_list Fun maybe_fn_name maybe_params '=' expr  {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/0, /*params*/$4, /*body*/$6);}
-       | Ext Fun ident ':' maybe_params maybe_ret Ext {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/0, /*ret_ty*/$6, /*params*/$5, /*body*/0);}
+fn_decl: maybe_mod_list Fun maybe_fn_name maybe_params '=' expr                 {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/0, /*params*/$4, /*body*/$6);}
+       | maybe_mod_list Fun maybe_fn_name maybe_params Returns type_expr block  {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/$6, /*params*/$4, /*body*/$7);}
+       | Ext Fun ident ':' maybe_params maybe_ret Ext                           {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/0, /*ret_ty*/$6, /*params*/$5, /*body*/0);}
        ;
 
 
 fn_call: ident tuple {$$ = mkFuncCallNode(@$, (char*)$1, $2);}
        ;
 
-/*
+
 ret_stmt: Return expr {$$ = mkRetNode(@$, $2);}
         ;
-*/
+
 
 extension: Ext type_expr Indent fn_list Unindent {$$ = mkExtNode(@$, $2, $4);}
          ;
@@ -366,7 +367,7 @@ fn_list_: fn_list_ fn_decl maybe_newline  {$$ = setNext($1, $2);}
         ;
 
 
-if_stmt: If expr Then expr Else expr  %prec LOW {$$ = mkIfNode(@$, $2, $4, $6);}
+if_stmt: If expr Then expr maybe_newline Else expr  %prec LOW {$$ = mkIfNode(@$, $2, $4, $6);}
        ;
 
 while_loop: While expr Do expr  %prec LOW {$$ = mkWhileNode(@$, $2, $4);}
@@ -410,6 +411,8 @@ val: fn_call                 {$$ = $1;}
    | fn_decl                 {$$ = $1;}
    | data_decl               {$$ = $1;}
    | extension               {$$ = $1;}
+   | ret_stmt                {$$ = $1;}
+   | import_stmt             {$$ = $1;}
    ;
 
 tuple: '(' expr_list ')' {$$ = mkTupleNode(@$, $2);}
@@ -448,7 +451,7 @@ expr: expr '+' expr              {$$ = mkBinOpNode(@$, '+', $1, $3);}
     | expr Range expr            {$$ = mkBinOpNode(@$, Tok_Range, $1, $3);}
     | expr tuple                 {$$ = mkBinOpNode(@$, '(', $1, $2);}
     | val                        {$$ = $1;}
-    | Indent nl_expr Unindent    {$$ = $2;}
+    | block                      {$$ = $1;}
     ;
 
 
@@ -482,7 +485,7 @@ nl_expr: nl_expr '+' maybe_newline nl_expr                {$$ = mkBinOpNode(@$, 
        | nl_expr And maybe_newline nl_expr                {$$ = mkBinOpNode(@$, Tok_And, $1, $4);}
        | nl_expr tuple                                    {$$ = mkBinOpNode(@$, '(', $1, $2);}
        | val                                              {$$ = $1;}
-       | Indent expr_list Unindent Newline                {$$ = $2;}
+       | block Newline                                    {$$ = $1;}
        ;
 
 %%

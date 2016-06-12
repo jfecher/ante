@@ -1,6 +1,7 @@
 *.o
 *.d
 *.gch
+t.an
 ante
 src/parser.output
 src/parser.cpp
