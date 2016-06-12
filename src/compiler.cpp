@@ -416,10 +416,6 @@ TypedValue* FuncCallNode::compile(Compiler *c){
 
 
 TypedValue* LetBindingNode::compile(Compiler *c){
-    /*if(c->lookup(name)){ //check for redeclaration
-        return c->compErr("Variable " + name + " was redeclared.", row, col);
-    }*/
-    
     TypedValue *val = expr->compile(c);
     if(!val) return nullptr;
 
@@ -659,7 +655,9 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
             fakeArg->replaceAllUsesWith(&(*realArgs));
             realArgs++;
         }
-
+       
+        //optimize!
+        passManager->run(*f);
 
     }else{ //function has no body, it is an external function declaration
         Type *retType = fdn->type ? typeNodeToLlvmType((TypeNode*)fdn->type.get()) : Type::getVoidTy(getGlobalContext());
@@ -840,8 +838,6 @@ void Compiler::compile(){
     //Compile the rest of the program
     compileStmtList(ast.get(), this);
     exitScope();
-
-    module->dump();
 
     //builder should already be at end of main function
     builder.CreateRet(ConstantInt::get(getGlobalContext(), APInt(8, 0, true)));

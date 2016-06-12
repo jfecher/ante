@@ -179,6 +179,7 @@ void LetBindingNode::print(){
         typeExpr->print();
     }
     cout << ' ' << name << " = ";
+    
     expr->print(); //expr is not null-checked since it is required to be non-null
     putchar('\n');
 }

@@ -1,7 +1,4 @@
 %{
-#ifndef AN_PARSER
-#define AN_PARSER
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <tokens.h>
@@ -177,27 +174,25 @@ fltlit: FltLit {$$ = mkFltLitNode(@$, lextxt);}
 strlit: StrLit {$$ = mkStrLitNode(@$, lextxt);}
       ;
 
-lit_type: I8       {$$ = mkTypeNode(@$, TT_I8,  (char*)"");}
-        | I16      {$$ = mkTypeNode(@$, TT_I16, (char*)"");}
-        | I32      {$$ = mkTypeNode(@$, TT_I32, (char*)"");}
-        | I64      {$$ = mkTypeNode(@$, TT_I64, (char*)"");}
-        | U8       {$$ = mkTypeNode(@$, TT_U8,  (char*)"");}
-        | U16      {$$ = mkTypeNode(@$, TT_U16, (char*)"");}
-        | U32      {$$ = mkTypeNode(@$, TT_U32, (char*)"");}
-        | U64      {$$ = mkTypeNode(@$, TT_U64, (char*)"");}
-        | Isz      {$$ = mkTypeNode(@$, TT_Isz, (char*)"");}
-        | Usz      {$$ = mkTypeNode(@$, TT_Usz, (char*)"");}
-        | F16      {$$ = mkTypeNode(@$, TT_F16, (char*)"");}
-        | F32      {$$ = mkTypeNode(@$, TT_F32, (char*)"");}
-        | F64      {$$ = mkTypeNode(@$, TT_F64, (char*)"");}
-        | C8       {$$ = mkTypeNode(@$, TT_C8,  (char*)"");}
-        | C32      {$$ = mkTypeNode(@$, TT_C32, (char*)"");}
-        | Bool     {$$ = mkTypeNode(@$, TT_Bool, (char*)"");}
-        | Void     {$$ = mkTypeNode(@$, TT_Void, (char*)"");}
-        | usertype %prec UserType {$$ = mkTypeNode(@$, TT_Data, (char*)$1);}
-        | '\'' ident %prec LOW {$$ = mkTypeNode(@$, TT_TypeVar, (char*)$1);}
-        /* Low precedence on type vars to prefer idents as normal vars when possible */
-        /* Also means type vars will occasionaly be parsed as function calls */
+lit_type: I8                        {$$ = mkTypeNode(@$, TT_I8,  (char*)"");}
+        | I16                       {$$ = mkTypeNode(@$, TT_I16, (char*)"");}
+        | I32                       {$$ = mkTypeNode(@$, TT_I32, (char*)"");}
+        | I64                       {$$ = mkTypeNode(@$, TT_I64, (char*)"");}
+        | U8                        {$$ = mkTypeNode(@$, TT_U8,  (char*)"");}
+        | U16                       {$$ = mkTypeNode(@$, TT_U16, (char*)"");}
+        | U32                       {$$ = mkTypeNode(@$, TT_U32, (char*)"");}
+        | U64                       {$$ = mkTypeNode(@$, TT_U64, (char*)"");}
+        | Isz                       {$$ = mkTypeNode(@$, TT_Isz, (char*)"");}
+        | Usz                       {$$ = mkTypeNode(@$, TT_Usz, (char*)"");}
+        | F16                       {$$ = mkTypeNode(@$, TT_F16, (char*)"");}
+        | F32                       {$$ = mkTypeNode(@$, TT_F32, (char*)"");}
+        | F64                       {$$ = mkTypeNode(@$, TT_F64, (char*)"");}
+        | C8                        {$$ = mkTypeNode(@$, TT_C8,  (char*)"");}
+        | C32                       {$$ = mkTypeNode(@$, TT_C32, (char*)"");}
+        | Bool                      {$$ = mkTypeNode(@$, TT_Bool, (char*)"");}
+        | Void                      {$$ = mkTypeNode(@$, TT_Void, (char*)"");}
+        | usertype  %prec UserType  {$$ = mkTypeNode(@$, TT_Data, (char*)$1);}
+        | '\'' ident                {$$ = mkTypeNode(@$, TT_TypeVar, (char*)$1);}
         ;
 
 type: type '*'      %dprec 2  {$$ = mkTypeNode(@$, TT_Ptr,  (char*)"", $1);}
@@ -242,8 +237,8 @@ modifier_list: modifier_list_ {$$ = getRoot();}
 var_decl: maybe_mod_list Var ident '=' expr  {@$ = @3; $$ = mkVarDeclNode(@$, (char*)$3, $1,  0, $5);}
         ;
 
-let_binding: Let modifier_list type_expr ident '=' expr {$$ = mkLetBindingNode(@$, (char*)$3, $2, $3, $6);}
-           | Let modifier_list ident '=' expr           {$$ = mkLetBindingNode(@$, (char*)$2, $2, 0,  $5);}
+let_binding: Let modifier_list type_expr ident '=' expr {$$ = mkLetBindingNode(@$, (char*)$4, $2, $3, $6);}
+           | Let modifier_list ident '=' expr           {$$ = mkLetBindingNode(@$, (char*)$3, $2, 0,  $5);}
            | Let type_expr ident '=' expr               {$$ = mkLetBindingNode(@$, (char*)$3, 0,  $2, $5);}
            | Let ident '=' expr                         {$$ = mkLetBindingNode(@$, (char*)$2, 0,  0,  $4);}
            ;
@@ -300,7 +295,7 @@ enum_decl: modifier_list Enum usertype enum_block  {$$ = NULL;}
          ;
 
 
-block: Indent {puts("begin bloq");} nl_expr {puts("mid bloq");} Unindent {puts("finished bloq"); $$ = $2;}
+block: Indent nl_expr Unindent {$$ = $2;}
      ;
 
 
@@ -446,7 +441,7 @@ basic_expr: basic_expr '+' basic_expr              {$$ = mkBinOpNode(@$, '+', $1
           | basic_expr '.' var                     {$$ = mkBinOpNode(@$, '.', $1, $3);}
           | type_expr  '.' var                     {$$ = mkBinOpNode(@$, '.', $1, $3);}
           | basic_expr ';' basic_expr              {$$ = mkBinOpNode(@$, ';', $1, $3);}
-          | basic_expr Newline basic_expr          {$$ = mkBinOpNode(@$, ';', $1, $3);}
+//        | basic_expr Newline basic_expr          {$$ = mkBinOpNode(@$, ';', $1, $3);}
           | basic_expr '[' nl_expr ']'             {$$ = mkBinOpNode(@$, '[', $1, $3);}
           | basic_expr Eq basic_expr               {$$ = mkBinOpNode(@$, Tok_Eq, $1, $3);}
           | basic_expr NotEq basic_expr            {$$ = mkBinOpNode(@$, Tok_NotEq, $1, $3);}
@@ -505,5 +500,3 @@ void yy::parser::error(const location& loc, const string& msg){
 void yy::parser::error(const string& msg){
     ante::error(msg.c_str(), yylexer->fileName, yylexer->getRow(), yylexer->getCol());
 }*/
-
-#endif
