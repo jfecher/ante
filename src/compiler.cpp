@@ -595,16 +595,14 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
         paramTys.pop_back();
     }
 
-    FunctionType *ft = FunctionType::get(typeNodeToLlvmType(retNode), paramTys, fdn->varargs);
+    Type *retTy = retNode ? typeNodeToLlvmType(retNode) : Type::getVoidTy(getGlobalContext());
+    FunctionType *ft = FunctionType::get(retTy, paramTys, fdn->varargs);
     Function *f = Function::Create(ft, Function::ExternalLinkage, fdn->name, module.get());
 
     //The above handles everything for a function declaration
     //If the function is a definition, then the body will be compiled here.
     if(fdn->child){
         //Create the entry point for the function
-        //This is created TEMPORARILY in main, until it is later
-        //pulled out and put into the function created after its return
-        //value is known.
         BasicBlock *bb = BasicBlock::Create(getGlobalContext(), "entry", f);
         builder.SetInsertPoint(bb);
 

@@ -25,7 +25,7 @@ fun fact: i32 x => i32
 printMsg(true)
 if divisibleByThree(23) then
    printf("23 is divisible by 3\n")
-else puts("")
+else printf("")
 
 if isEven(4) then
    printf("fact(5) = %d\n", fact(5))
