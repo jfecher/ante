@@ -245,6 +245,7 @@ vector<Value*> TupleNode::unpack(Compiler *c){
  */
 TypedValue* RetNode::compile(Compiler *c){
     TypedValue *ret = expr->compile(c);
+    if(!ret) return 0;
     
     Function *f = c->builder.GetInsertBlock()->getParent();
 
@@ -594,7 +595,8 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
         paramTys.pop_back();
     }
 
-    Function *f = 0;
+    FunctionType *ft = FunctionType::get(typeNodeToLlvmType(retNode), paramTys, fdn->varargs);
+    Function *f = Function::Create(ft, Function::ExternalLinkage, fdn->name, module.get());
 
     //The above handles everything for a function declaration
     //If the function is a definition, then the body will be compiled here.
@@ -603,22 +605,18 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
         //This is created TEMPORARILY in main, until it is later
         //pulled out and put into the function created after its return
         //value is known.
-        BasicBlock *bb = BasicBlock::Create(getGlobalContext(), "entry", module->getFunction("main"));
+        BasicBlock *bb = BasicBlock::Create(getGlobalContext(), "entry", f);
         builder.SetInsertPoint(bb);
 
         //tell the compiler to create a new scope on the stack.
         enterNewScope();
 
         NamedValNode *cParam = paramsBegin;
-
-        //fake functiontype to create arguments vector; return type may not be correct.
-        FunctionType *fakeTy = FunctionType::get(Type::getVoidTy(getGlobalContext()), paramTys, fdn->varargs);
         
         //iterate through each parameter and add its value to the new scope.
-        auto fakeArgs = buildArguments(fakeTy);
-        for(auto &arg : fakeArgs){
+        for(auto &arg : f->args()){
             TypeNode *paramTyNode = (TypeNode*)cParam->typeExpr.get();
-            stoVar(cParam->name, new Variable(cParam->name, new TypedValue(arg, paramTyNode->type), scope));
+            stoVar(cParam->name, new Variable(cParam->name, new TypedValue(&arg, paramTyNode->type), scope));
             if(!(cParam = (NamedValNode*)cParam->next.get())) break;
         }
 
@@ -627,14 +625,6 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
         //End of the function, discard the function's scope.
         exitScope();
     
-        Type *retType = retNode ? typeNodeToLlvmType(retNode) : v->getType();
-
-        //Get the real function type for the above return type, parameter types, and possibly varargs
-        FunctionType *ft = FunctionType::get(retType, paramTys, fdn->varargs);
-        f = Function::Create(ft, Function::ExternalLinkage, fdn->name, module.get());
-
-        bb->removeFromParent();
-        bb->insertInto(f);
         builder.SetInsertPoint(&f->back());
 
         //llvm requires explicit returns, so generate a void return even if
@@ -646,23 +636,8 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
                 builder.CreateRet(v->val);
             }
         }
-
-        //construct the real arguments
-        auto realArgs = f->arg_begin();
-
-        //swap out each 'fake' arg with the real ones now that the correct function is created
-        for(auto* fakeArg : fakeArgs){
-            fakeArg->replaceAllUsesWith(&(*realArgs));
-            realArgs++;
-        }
-       
         //optimize!
         passManager->run(*f);
-
-    }else{ //function has no body, it is an external function declaration
-        Type *retType = fdn->type ? typeNodeToLlvmType((TypeNode*)fdn->type.get()) : Type::getVoidTy(getGlobalContext());
-        FunctionType *ft = FunctionType::get(retType, paramTys, fdn->varargs);
-        f = Function::Create(ft, Function::ExternalLinkage, fdn->name, module.get());
     }
     return f;
 }
