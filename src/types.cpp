@@ -257,41 +257,47 @@ bool isPrimitiveTypeTag(TypeTag ty){
     return ty >= TT_I8 && ty <= TT_StrLit;
 }
 
+
+//unix term colors
+static const string blue = "\033[;34m";
+static const string norm = "\033[;m";
+
 /*
  *  Converts a TypeTag to its string equivalent for
  *  helpful error messages.  For most cases, llvmTypeToStr
  *  should be used instead to provide the full type.
  */
 string typeTagToStr(TypeTag ty){
+    
     switch(ty){
-        case TT_I8:    return "i8";
-        case TT_I16:   return "i16";
-        case TT_I32:   return "i32";
-        case TT_I64:   return "i64";
-        case TT_U8:    return "u8";
-        case TT_U16:   return "u16";
-        case TT_U32:   return "u32";
-        case TT_U64:   return "u64";
-        case TT_F16:   return "f16";
-        case TT_F32:   return "f32";
-        case TT_F64:   return "f64";
-        case TT_Isz:   return "isz";
-        case TT_Usz:   return "usz";
-        case TT_C8:    return "c8";
-        case TT_C32:   return "c32";
-        case TT_Bool:  return "bool";
-        case TT_Void:  return "void";
+        case TT_I8:    return blue + "i8"   + norm;
+        case TT_I16:   return blue + "i16"  + norm;
+        case TT_I32:   return blue + "i32"  + norm;
+        case TT_I64:   return blue + "i64"  + norm;
+        case TT_U8:    return blue + "u8"   + norm;
+        case TT_U16:   return blue + "u16"  + norm;
+        case TT_U32:   return blue + "u32"  + norm;
+        case TT_U64:   return blue + "u64"  + norm;
+        case TT_F16:   return blue + "f16"  + norm;
+        case TT_F32:   return blue + "f32"  + norm;
+        case TT_F64:   return blue + "f64"  + norm;
+        case TT_Isz:   return blue + "isz"  + norm;
+        case TT_Usz:   return blue + "usz"  + norm;
+        case TT_C8:    return blue + "c8"   + norm;
+        case TT_C32:   return blue + "c32"  + norm;
+        case TT_Bool:  return blue + "bool" + norm;
+        case TT_Void:  return blue + "void" + norm;
 
         /* 
          * Because of the loss of specificity for these last four types, 
          * these strings are most likely insufficient.  The llvm::Type
          * should instead be printed for these types
          */
-        case TT_Tuple: return "Tuple";
-        case TT_Array: return "Array";
-        case TT_Ptr:   return "Ptr";
-        case TT_Data:  return "Data";
-        default:       return "Unknown TypeTag " + to_string(ty);
+        case TT_Tuple: return blue + "Tuple" + norm;
+        case TT_Array: return blue + "Array" + norm;
+        case TT_Ptr:   return blue + "Ptr"   + norm;
+        case TT_Data:  return blue + "Data"  + norm;
+        default:       return "(Unknown TypeTag " + to_string(ty) + ")";
     }
 }
 
@@ -312,7 +318,7 @@ string typeNodeToStr(TypeNode *t){
         }
         return ret;
     }else if(t->type == TT_Data){
-        return t->typeName;
+        return blue + t->typeName + norm;
     }else if(t->type == TT_Array){
         return typeNodeToStr(t->extTy.get()) + "[]";
     }else if(t->type == TT_Ptr){
@@ -332,7 +338,7 @@ string llvmTypeToStr(Type *ty){
         return typeTagToStr(tt);
     }else if(tt == TT_Tuple){
         if(!ty->getStructName().empty())
-            return ty->getStructName();
+            return blue + string(ty->getStructName()) + norm;
 
         string ret = "(";
         const unsigned size = ty->getStructNumElements();
@@ -359,11 +365,11 @@ string llvmTypeToStr(Type *ty){
             else
                 ret += llvmTypeToStr(ty->getFunctionParamType(i)) + ", ";
         }
-        return ret;
+        return blue + ret + norm;
     }else if(tt == TT_TypeVar){
-        return "typevar";
+        return blue + "(typevar)" + norm;
     }else if(tt == TT_Void){
-        return "void";
+        return blue + "void" + norm;
     }
-    return "(Unknown type)";
+    return blue + "(Unknown type)" + norm;
 }

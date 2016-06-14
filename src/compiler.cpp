@@ -628,10 +628,16 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
 
         //llvm requires explicit returns, so generate a void return even if
         //the user did not in their void function.
-        if(!dynamic_cast<ReturnInst*>(v->val)){
-            if(retNode && retNode->type == TT_Void){
+        if(retNode && !dynamic_cast<ReturnInst*>(v->val)){
+            if(retNode->type == TT_Void){
                 builder.CreateRetVoid();
             }else{
+                if(!llvmTypeEq(v->getType(), retTy)){
+                    return (Function*) compErr("Function " + fdn->name + " returned value of type " + 
+                            llvmTypeToStr(v->getType()) + " but was declared to return value of type " +
+                            llvmTypeToStr(retTy), fdn->loc);
+                }
+
                 builder.CreateRet(v->val);
             }
         }

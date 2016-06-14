@@ -361,7 +361,8 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
     TypedValue *tvf = l->compile(c);
     if(!tvf || !tvf->val) return 0;
     if(tvf->type != TT_Function && tvf->type != TT_Method)
-        return c->compErr("Called value is not a function or method.", l->loc);
+        return c->compErr("Called value is not a function or method, it is a(n) " + 
+                llvmTypeToStr(tvf->getType()), l->loc);
 
     //now that we assured it is a function, unwrap it
     Function *f = (Function*) tvf->val;
