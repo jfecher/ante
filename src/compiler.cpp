@@ -222,7 +222,8 @@ TypedValue* TupleNode::compile(Compiler *c){
         tuple = c->builder.CreateInsertValue(tuple, it->second, it->first);
     }
 
-    return new TypedValue(tuple, TT_Tuple);
+    //A void value is represented by the empty tuple, ()
+    return new TypedValue(tuple, exprs.size() == 0 ? TT_Void : TT_Tuple);
 }
 
 
@@ -647,8 +648,7 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
 TypedValue* FuncDeclNode::compile(Compiler *c){
     name = c->funcPrefix + name;
     c->registerFunction(this);
-
-    return nullptr;
+    return new TypedValue(nullptr, TT_Void);
 }
 
 

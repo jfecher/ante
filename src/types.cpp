@@ -152,7 +152,7 @@ TypeTag llvmTypeToTypeTag(Type *t){
     if(t->isDoubleTy()) return TT_F64;
     
     if(t->isArrayTy()) return TT_Array;
-    if(t->isStructTy()) return TT_Tuple; /* Could also be a TT_Data! */
+    if(t->isStructTy() && !t->isEmptyTy()) return TT_Tuple; /* Could also be a TT_Data! */
     if(t->isPointerTy()) return TT_Ptr;
     if(t->isFunctionTy()) return TT_Func;
 
