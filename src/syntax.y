@@ -195,12 +195,12 @@ lit_type: I8                        {$$ = mkTypeNode(@$, TT_I8,  (char*)"");}
         | '\'' ident                {$$ = mkTypeNode(@$, TT_TypeVar, (char*)$1);}
         ;
 
-type: type '*'      %dprec 2  {$$ = mkTypeNode(@$, TT_Ptr,  (char*)"", $1);}
-    | type '[' ']'            {$$ = mkTypeNode(@$, TT_Array,(char*)"", $1);}
-    | type '(' type_expr ')'  {$$ = mkTypeNode(@$, TT_Func, (char*)"", $1);}  /* f-ptr w/ params*/
-    | type '(' ')'            {$$ = mkTypeNode(@$, TT_Func, (char*)"", $1);}  /* f-ptr w/out params*/
-    | '(' type_expr ')'       {$$ = $2;}
-    | lit_type                {$$ = $1;}
+type: type '*'      %dprec 2             {$$ = mkTypeNode(@$, TT_Ptr,  (char*)"", $1);}
+    | type '[' ']'                       {$$ = mkTypeNode(@$, TT_Array,(char*)"", $1);}
+    | type '(' type_expr ')'             {$$ = mkTypeNode(@$, TT_Func, (char*)"", $1);}  /* f-ptr w/ params*/
+    | type '(' ')'                       {$$ = mkTypeNode(@$, TT_Func, (char*)"", $1);}  /* f-ptr w/out params*/
+    | '(' type_expr ')'       %prec MED  {$$ = $2;}
+    | lit_type                           {$$ = $1;}
     ;
 
 type_expr_: type_expr_ ',' type {$$ = setNext($1, $3);}
@@ -327,22 +327,28 @@ maybe_mod_list: modifier_list  {$$ = $1;}
               | %empty         {$$ = 0;}
               ;
 
-maybe_fn_name: ident ':' {$$ = $1;}
-             | %empty
-             ;
+function: fn_def   {$$ = $1;}
+        | fn_decl  {$$ = $1;}
+        ;
 
-maybe_params: params  {$$ = $1;}
-            | %empty  {$$ = 0;}
-            ;
+fn_def: maybe_mod_list Fun ident ':' params Returns type_expr block  {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/$7, /*params*/$5, /*body*/$8);}
+      | maybe_mod_list Fun params Returns type_expr block            {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)0,  /*mods*/$1, /*ret_ty*/$5, /*params*/$3, /*body*/$6);}
+      | maybe_mod_list Fun ident ':' Returns type_expr block         {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/$6, /*params*/0,  /*body*/$7);}
+      | maybe_mod_list Fun Returns type_expr block                   {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)0,  /*mods*/$1, /*ret_ty*/$4, /*params*/0,  /*body*/$5);}
+      | maybe_mod_list Fun ident ':' params block                    {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/0,  /*params*/$5, /*body*/$6);}
+      | maybe_mod_list Fun params block                              {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)0,  /*mods*/$1, /*ret_ty*/0,  /*params*/$3, /*body*/$4);}
+      | maybe_mod_list Fun ident ':' block                           {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/0,  /*params*/0,  /*body*/$5);}
+      | maybe_mod_list Fun block                                     {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)0,  /*mods*/$1, /*ret_ty*/0,  /*params*/0,  /*body*/$3);}
+      ;
 
-maybe_ret: Returns type_expr  {$$ = $2;}
-         | %empty             {$$ = 0;}
-         ;
-
-fn_decl: maybe_mod_list Fun maybe_fn_name maybe_params '=' expr                 {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/0, /*params*/$4, /*body*/$6);}
-       | maybe_mod_list Fun maybe_fn_name maybe_params Returns type_expr block  {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/$6, /*params*/$4, /*body*/$7);}
-       | Ext Fun ident ':' maybe_params maybe_ret Ext                           {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/0, /*ret_ty*/$6, /*params*/$5, /*body*/0);}
+fn_decl: maybe_mod_list Fun ident ':' params Returns type_expr ';'       {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/$7, /*params*/$5, /*body*/0);}
+       | maybe_mod_list Fun ident ':' Returns type_expr        ';'       {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/$6, /*params*/0,  /*body*/0);}
+       | maybe_mod_list Fun ident ':' params                   ';'       {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/0,  /*params*/$5, /*body*/0);}
+       | maybe_mod_list Fun ident ':'                          ';'       {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/0,  /*params*/0,  /*body*/0);}
        ;
+
+
+
 
 
 fn_call: ident tuple {$$ = mkFuncCallNode(@$, (char*)$1, $2);}
@@ -359,8 +365,8 @@ extension: Ext type_expr Indent fn_list Unindent {$$ = mkExtNode(@$, $2, $4);}
 
 fn_list: fn_list_ {$$ = getRoot();}
 
-fn_list_: fn_list_ fn_decl maybe_newline  {$$ = setNext($1, $2);} 
-        | fn_decl maybe_newline           {$$ = setRoot($1);}
+fn_list_: fn_list_ function maybe_newline  {$$ = setNext($1, $2);} 
+        | function maybe_newline           {$$ = setRoot($1);}
         ;
 
 
@@ -406,7 +412,7 @@ val: fn_call                 {$$ = $1;}
    | var_assign              {$$ = $1;}
    | if_stmt                 {$$ = $1;}
    | while_loop              {$$ = $1;}
-   | fn_decl                 {$$ = $1;}
+   | function                {$$ = $1;}
    | data_decl               {$$ = $1;}
    | extension               {$$ = $1;}
    | ret_stmt                {$$ = $1;}

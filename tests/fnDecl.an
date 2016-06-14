@@ -2,22 +2,22 @@
     fnDecl.an
         test function declarations and calls
 `
-fun printMsg: bool b =
+fun printMsg: bool b
     if b then
         puts("Hello World!")
     else
         puts("Goodbye World!")
 
 
-fun divisibleByThree: i32 i =
+fun divisibleByThree: i32 i => bool
     i % 3 == 0
 
 
-fun isEven: i32 x =
+fun isEven: i32 x => bool
     x % 2 == 0
 
 
-fun fact: i32 x =
+fun fact: i32 x => i32
     if x <= 1 then 1
     else x * fact(x-1)
 
