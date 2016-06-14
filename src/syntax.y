@@ -108,7 +108,7 @@ void yyerror(const char *msg);
     resolves this ambiguity.
 */
 %glr-parser
-%expect 4
+//%expect 4
 %start top_level_stmt_list
 %%
 
@@ -382,10 +382,11 @@ var: ident  %prec Ident {$$ = mkVarNode(@$, (char*)$1);}
    ;
 
 
+
 ref_val: '&' ref_val            %prec '&'  {$$ = mkUnOpNode(@$, '&', $2);}
        | '@' ref_val            %prec '@'  {$$ = mkUnOpNode(@$, '@', $2);}
-       | ident '[' nl_expr ']'             {$$ = mkBinOpNode(@$, '[', mkRefVarNode(@$, (char*)$1), $3);}
-       | ident  %prec Ident                {$$ = mkRefVarNode(@$, (char*)$1);}
+       | ref_val '[' nl_expr ']'  %dprec 1   {$$ = mkBinOpNode(@$, '[', mkRefVarNode(@$, (char*)$1), $3);}
+       | ident  %prec Ident     %dprec 1   {$$ = mkRefVarNode(@$, (char*)$1);}
        ;
 
 
