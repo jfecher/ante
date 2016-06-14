@@ -113,6 +113,7 @@ namespace ante{
         void compileNative();
         int  compileObj();
         void compilePrelude();
+        void eval();
         void emitIR();
         void enterNewScope();
         void exitScope();

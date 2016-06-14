@@ -178,8 +178,6 @@ int yylex(yy::parser::semantic_type* st, yy::location* yyloc){
  * Initializes lexer
  */
 Lexer::Lexer(const char* file) : 
-    fileName{file},
-    in{new ifstream(file)},
     row{1},
     col{1},
     cur{0},
@@ -187,6 +185,14 @@ Lexer::Lexer(const char* file) :
     scopes{new stack<unsigned int>()},
     cscope{0}
 {
+    if(file){
+        in = new ifstream(file);
+        fileName = file;
+    }else{
+        in = (ifstream*) &cin;
+        fileName = "stdin";
+    }
+
     if(!*in){
         cerr << "Error: Unable to open file '" << file << "'\n";
         exit(EXIT_FAILURE);
@@ -199,7 +205,8 @@ Lexer::Lexer(const char* file) :
 
 Lexer::~Lexer(){
     delete scopes;
-    delete in;
+    if(in != &cin)
+        delete in;
 }
 
 char Lexer::peek() const{

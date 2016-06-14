@@ -9,9 +9,15 @@ using namespace ante;
 
 int main(int argc, char *argv[]){
     if(argc == 2){
-        //default = compile
-        Compiler ante{argv[1]};
-        ante.compileNative();
+        //eval
+        if(strcmp(argv[1], "-e") == 0){
+            Compiler ante{0};
+            ante.eval();
+        }else{
+            //default = compile
+            Compiler ante{argv[1]};
+            ante.compileNative();
+        }
     }else if(argc >= 3){
         //lex and print tokens
         if(strcmp(argv[1], "-l") == 0){
@@ -44,7 +50,7 @@ int main(int argc, char *argv[]){
         //compile
         }else if(strcmp(argv[1], "-c") == 0){
             Compiler ante{argv[2]};
-            ante.compileNative();
+            ante.compile();
         }else if(strcmp(argv[1], "-emit-llvm") == 0){
             Compiler ante{argv[2]};
             ante.emitIR();

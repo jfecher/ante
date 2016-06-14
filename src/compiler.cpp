@@ -790,9 +790,14 @@ void Compiler::scanAllDecls(){
     }
 }
 
+//evaluates and prints a single-expression module
+//Used in REPL
+void Compiler::eval(){
+    auto *tval = ast->compile(this);
+    tval->val->dump();
+}
 
 void Compiler::compile(){
-    Function *main;
     scanAllDecls();
 
     //get or create the function type for the main method: void()
@@ -800,7 +805,7 @@ void Compiler::compile(){
     
     //Actually create the function in module m
     string fnName = isLib ? "init_" + removeFileExt(fileName) : "main";
-    main = Function::Create(ft, Function::ExternalLinkage, fnName, module.get());
+    Function *main = Function::Create(ft, Function::ExternalLinkage, fnName, module.get());
 
     //Create the entry point for the function
     BasicBlock *bb = BasicBlock::Create(getGlobalContext(), "entry", main);
@@ -977,7 +982,7 @@ Compiler::Compiler(const char *_fileName, bool lib) :
         errFlag(false),
         compiled(false),
         isLib(lib),
-        fileName(_fileName),
+        fileName(_fileName? _fileName : "(stdin)"),
         funcPrefix(""){
 
     setLexer(new Lexer(_fileName));
@@ -997,7 +1002,7 @@ Compiler::Compiler(const char *_fileName, bool lib) :
 
     enterNewScope();
     ast.reset(parser::getRootNode());
-    module.reset(new Module(removeFileExt(_fileName), getGlobalContext()));
+    module.reset(new Module(removeFileExt(fileName.c_str()), getGlobalContext()));
 
     //add passes to passmanager.
     //TODO: change passes based on -O0 through -O3 flags
