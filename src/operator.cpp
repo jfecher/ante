@@ -169,11 +169,15 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
     //this line will have to be changed if it were to become more lenient.
     auto *vn = (RefVarNode*)op->lval.get();
 
-    /* AllocaInst of var for storage*/
-    auto *var = vn->compile(this);
+    /* Value of var for storage*/
+    auto *loadVal = vn->compile(this);
 
-    /* Load the Value from the AllocaInst of var */
-    auto *loadVal = builder.CreateLoad(var->val);
+    if(!dynamic_cast<LoadInst*>(loadVal->val))
+        return compErr("Variable must be mutable to insert values, but instead is an immutable " +
+                llvmTypeToStr(loadVal->getType()), op->lval->loc);
+
+    /* Storage ptr for val */
+    auto *var = ((LoadInst*) loadVal->val)->getPointerOperand();
 
     auto *index = op->rval->compile(this);
     auto *newVal = assignExpr->compile(this);
@@ -181,7 +185,7 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
 
     switch(llvmTypeToTypeTag(loadVal->getType())){
         case TT_Array:
-            return new TypedValue(builder.CreateStore(builder.CreateInsertElement(loadVal, newVal->val, index->val), var->val), TT_Void);
+            return new TypedValue(builder.CreateStore(builder.CreateInsertElement(loadVal->val, newVal->val, index->val), var), TT_Void);
             //return new TypedValue(builder.CreateInsertElement(loadVal, newVal->val, index->val), TT_Void);
         case TT_Tuple:
             if(!dynamic_cast<ConstantInt*>(index->val)){
@@ -199,8 +203,8 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
                                 assignExpr->loc);
                 }
 
-                Value *insertedTup = builder.CreateInsertValue(loadVal, newVal->val, tupIndex);
-                return new TypedValue(builder.CreateStore(insertedTup, var->val), TT_Void);
+                Value *insertedTup = builder.CreateInsertValue(loadVal->val, newVal->val, tupIndex);
+                return new TypedValue(builder.CreateStore(insertedTup, var), TT_Void);
             }
         default:
             return compErr("Variable being indexed must be an Array or Tuple, but instead is a(n) " +

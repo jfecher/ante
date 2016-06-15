@@ -108,7 +108,7 @@ void yyerror(const char *msg);
     resolves this ambiguity.
 */
 %glr-parser
-//%expect 4
+%expect 4
 %start top_level_stmt_list
 %%
 
@@ -243,13 +243,14 @@ let_binding: Let modifier_list type_expr ident '=' expr {$$ = mkLetBindingNode(@
            | Let ident '=' expr                         {$$ = mkLetBindingNode(@$, (char*)$2, 0,  0,  $4);}
            ;
 
-/* TODO: change arg1 to require node* instead of char* */
-var_assign: ref_val '=' expr    {$$ = mkVarAssignNode(@$, $1, $3);}
-          | ref_val AddEq expr  {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '+', mkUnOpNode(@$, '@', $1), $3), false);}
-          | ref_val SubEq expr  {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '-', mkUnOpNode(@$, '@', $1), $3), false);}
-          | ref_val MulEq expr  {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '*', mkUnOpNode(@$, '@', $1), $3), false);}
-          | ref_val DivEq expr  {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '/', mkUnOpNode(@$, '@', $1), $3), false);}
+/* TODO: change arg1 to require node* instead of char* 
+var_assign: expr '=' expr    {$$ = mkVarAssignNode(@$, $1, $3);}
+          | expr AddEq expr  {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '+', $1, $3), false);}
+          | expr SubEq expr  {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '-', $1, $3), false);}
+          | expr MulEq expr  {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '*', $1, $3), false);}
+          | expr DivEq expr  {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '/', $1, $3), false);}
           ;
+*/
 
 
 usertype_list: usertype_list ',' usertype {$$ = setNext($1, $3);}
@@ -331,14 +332,14 @@ function: fn_def   {$$ = $1;}
         | fn_decl  {$$ = $1;}
         ;
 
-fn_def: maybe_mod_list Fun ident ':' params Returns type_expr block  {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/$7, /*params*/$5, /*body*/$8);}
-      | maybe_mod_list Fun params Returns type_expr block            {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)0,  /*mods*/$1, /*ret_ty*/$5, /*params*/$3, /*body*/$6);}
-      | maybe_mod_list Fun ident ':' Returns type_expr block         {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/$6, /*params*/0,  /*body*/$7);}
-      | maybe_mod_list Fun Returns type_expr block                   {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)0,  /*mods*/$1, /*ret_ty*/$4, /*params*/0,  /*body*/$5);}
-      | maybe_mod_list Fun ident ':' params block                    {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/0,  /*params*/$5, /*body*/$6);}
-      | maybe_mod_list Fun params block                              {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)0,  /*mods*/$1, /*ret_ty*/0,  /*params*/$3, /*body*/$4);}
-      | maybe_mod_list Fun ident ':' block                           {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/0,  /*params*/0,  /*body*/$5);}
-      | maybe_mod_list Fun block                                     {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)0,  /*mods*/$1, /*ret_ty*/0,  /*params*/0,  /*body*/$3);}
+fn_def: maybe_mod_list Fun ident ':' params Returns type_expr block  {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/$7,                                  /*params*/$5, /*body*/$8);}
+      | maybe_mod_list Fun params Returns type_expr block            {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)0,  /*mods*/$1, /*ret_ty*/$5,                                  /*params*/$3, /*body*/$6);}
+      | maybe_mod_list Fun ident ':' Returns type_expr block         {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/$6,                                  /*params*/0,  /*body*/$7);}
+      | maybe_mod_list Fun Returns type_expr block                   {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)0,  /*mods*/$1, /*ret_ty*/$4,                                  /*params*/0,  /*body*/$5);}
+      | maybe_mod_list Fun ident ':' params block                    {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/$5, /*body*/$6);}
+      | maybe_mod_list Fun params block                              {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)0,  /*mods*/$1, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/$3, /*body*/$4);}
+      | maybe_mod_list Fun ident ':' block                           {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/0,  /*body*/$5);}
+      | maybe_mod_list Fun block                                     {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)0,  /*mods*/$1, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/0,  /*body*/$3);}
       ;
 
 fn_decl: maybe_mod_list Fun ident ':' params Returns type_expr ';'       {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/$7, /*params*/$5, /*body*/0);}
@@ -387,14 +388,13 @@ for_loop: For ident In expr expr {$$ = NULL;}
 var: ident  %prec Ident {$$ = mkVarNode(@$, (char*)$1);}
    ;
 
-
-
+/*
 ref_val: '&' ref_val            %prec '&'  {$$ = mkUnOpNode(@$, '&', $2);}
        | '@' ref_val            %prec '@'  {$$ = mkUnOpNode(@$, '@', $2);}
        | ref_val '[' nl_expr ']'  %dprec 1   {$$ = mkBinOpNode(@$, '[', mkRefVarNode(@$, (char*)$1), $3);}
        | ident  %prec Ident     %dprec 1   {$$ = mkRefVarNode(@$, (char*)$1);}
        ;
-
+*/
 
 val: fn_call                 {$$ = $1;}
    | '(' nl_expr ')'         {$$ = $2;}
@@ -409,7 +409,6 @@ val: fn_call                 {$$ = $1;}
    | False                   {$$ = mkBoolLitNode(@$, 0);}
    | let_binding             {$$ = $1;}
    | var_decl                {$$ = $1;}
-   | var_assign              {$$ = $1;}
    | if_stmt                 {$$ = $1;}
    | while_loop              {$$ = $1;}
    | function                {$$ = $1;}
@@ -458,6 +457,11 @@ basic_expr: basic_expr '+' basic_expr              {$$ = mkBinOpNode(@$, '+', $1
           | basic_expr And basic_expr              {$$ = mkBinOpNode(@$, Tok_And, $1, $3);}
           | basic_expr Range basic_expr            {$$ = mkBinOpNode(@$, Tok_Range, $1, $3);}
           | basic_expr tuple                       {$$ = mkBinOpNode(@$, '(', $1, $2);}
+          | basic_expr '=' basic_expr              {$$ = mkVarAssignNode(@$, $1, $3);} /* All VarAssignNodes return void values */
+          | basic_expr AddEq basic_expr            {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '+', $1, $3), false);}
+          | basic_expr SubEq basic_expr            {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '-', $1, $3), false);}
+          | basic_expr MulEq basic_expr            {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '*', $1, $3), false);}
+          | basic_expr DivEq basic_expr            {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '/', $1, $3), false);}
           | val                                    {$$ = $1;}
           ;
 
@@ -491,6 +495,11 @@ nl_expr: nl_expr '+' maybe_newline nl_expr                {$$ = mkBinOpNode(@$, 
        | nl_expr Or maybe_newline nl_expr                 {$$ = mkBinOpNode(@$, Tok_Or, $1, $4);}
        | nl_expr And maybe_newline nl_expr                {$$ = mkBinOpNode(@$, Tok_And, $1, $4);}
        | nl_expr tuple                                    {$$ = mkBinOpNode(@$, '(', $1, $2);}
+       | nl_expr '=' maybe_newline nl_expr                {$$ = mkVarAssignNode(@$, $1, $3);} /* All VarAssignNodes return void values */
+       | nl_expr AddEq maybe_newline nl_expr              {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '+', $1, $3), false);}
+       | nl_expr SubEq maybe_newline nl_expr              {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '-', $1, $3), false);}
+       | nl_expr MulEq maybe_newline nl_expr              {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '*', $1, $3), false);}
+       | nl_expr DivEq maybe_newline nl_expr              {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '/', $1, $3), false);}
        | val maybe_newline                                {$$ = $1;}
        | block maybe_newline                              {$$ = $1;}
        ;

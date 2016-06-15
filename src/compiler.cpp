@@ -489,29 +489,35 @@ TypedValue* VarAssignNode::compile(Compiler *c){
         return c->compInsert((BinOpNode*)ref_expr, expr.get());
 
     //otherwise, this is just a normal assign to a variable
-    TypedValue *v = ref_expr->compile(c);
+    TypedValue *tmp = ref_expr->compile(c);
+    
+    if(!dynamic_cast<LoadInst*>(tmp->val))
+        return c->compErr("Variable must be mutable to be assigned to, but instead is an immutable " +
+                llvmTypeToStr(tmp->getType()), ref_expr->loc);
+    
+    Value *dest = ((LoadInst*)tmp->val)->getPointerOperand();
     
     //compile the expression to store
     TypedValue *assignExpr = expr->compile(c);
     
     //Check for errors before continuing
-    if(!v || !assignExpr) return 0;
+    if(!assignExpr) return 0;
 
     //lvalue must compile to a pointer for storage, usually an alloca value
-    if(llvmTypeToTypeTag(v->getType()) != TT_Ptr){
+    if(!PointerType::isLoadableOrStorableType(tmp->getType())){
         return c->compErr("Attempted assign without a memory address, with type "
-                + llvmTypeToStr(v->getType()), ref_expr->loc);
+                + llvmTypeToStr(tmp->getType()), ref_expr->loc);
     }
 
     //and finally, make sure the assigned value matches the variable's type
-    if(!llvmTypeEq(v->getType()->getPointerElementType(), assignExpr->getType())){
+    if(!llvmTypeEq(tmp->getType(), assignExpr->getType())){
         return c->compErr("Cannot assign expression of type " + llvmTypeToStr(assignExpr->getType())
-                    + " to a variable of type " + llvmTypeToStr(v->getType()->getPointerElementType()),
+                    + " to a variable of type " + llvmTypeToStr(tmp->getType()),
                     expr->loc);
     }
-    
+
     //now actually create the store
-    return new TypedValue(c->builder.CreateStore(expr->compile(c)->val, v->val), TT_Void);
+    return new TypedValue(c->builder.CreateStore(assignExpr->val, dest), TT_Void);
 }
 
 
@@ -642,7 +648,7 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
             }
         }
         //optimize!
-        passManager->run(*f);
+        //passManager->run(*f);
     }
     return f;
 }
@@ -825,7 +831,7 @@ void Compiler::compile(){
 
     //builder should already be at end of main function
     builder.CreateRet(ConstantInt::get(getGlobalContext(), APInt(8, 0, true)));
-    passManager->run(*main);
+    //passManager->run(*main);
 
 
     //flag this module as compiled.
