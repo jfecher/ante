@@ -1,7 +1,7 @@
 
 let str = "Hello, pointer to world!"
 
-i32* intPtr = malloc(4)
+var intPtr = malloc(4)
 @intPtr = 27
 
 var longPtr = i64* malloc(8)
