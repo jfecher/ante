@@ -313,11 +313,16 @@ TypedValue* ExprIfNode::compile(Compiler *c){
 
 
     c->builder.SetInsertPoint(mergbb);
-    auto *phi = c->builder.CreatePHI(thenVal->getType(), 2);
-    phi->addIncoming(thenVal->val, thenbb);
-    phi->addIncoming(elseVal->val, elsebb);
 
-    return new TypedValue(phi, thenVal->type);
+    if(thenVal->type != TT_Void){
+        auto *phi = c->builder.CreatePHI(thenVal->getType(), 2);
+        phi->addIncoming(thenVal->val, thenbb);
+        phi->addIncoming(elseVal->val, elsebb);
+
+        return new TypedValue(phi, thenVal->type);
+    }else{
+        return c->getVoidLiteral();
+    }
 }
 
 TypedValue* compMemberAccess(Compiler *c, Node *ln, VarNode *field, BinOpNode *binop){

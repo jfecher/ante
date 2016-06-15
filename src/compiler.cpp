@@ -191,6 +191,12 @@ TypedValue* ArrayNode::compile(Compiler *c){
     return new TypedValue(ConstantArray::get(arrTy, arr), TT_Array);
 }
 
+TypedValue* Compiler::getVoidLiteral(){
+    vector<Constant*> elems;
+    vector<Type*> elemTys;
+    Value* tuple = ConstantStruct::get(StructType::get(getGlobalContext(), elemTys), elems);
+    return new TypedValue(tuple, TT_Void);
+}
 
 TypedValue* TupleNode::compile(Compiler *c){
     vector<Constant*> elems;
