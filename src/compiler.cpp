@@ -496,7 +496,8 @@ TypedValue* VarAssignNode::compile(Compiler *c){
 
     //otherwise, this is just a normal assign to a variable
     TypedValue *tmp = ref_expr->compile(c);
-    
+    if(!tmp) return 0;
+
     if(!dynamic_cast<LoadInst*>(tmp->val))
         return c->compErr("Variable must be mutable to be assigned to, but instead is an immutable " +
                 llvmTypeToStr(tmp->getType()), ref_expr->loc);
@@ -523,7 +524,10 @@ TypedValue* VarAssignNode::compile(Compiler *c){
     }
 
     //now actually create the store
-    return new TypedValue(c->builder.CreateStore(assignExpr->val, dest), TT_Void);
+    c->builder.CreateStore(assignExpr->val, dest);
+
+    //all assignments return a void value
+    return c->getVoidLiteral();
 }
 
 
