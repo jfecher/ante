@@ -3,9 +3,10 @@ The compile-time language
 
 ## Features
 * Compile time execution by default, no more constexpr
-* Entire program dead code elimation as a result of compile time execution.
-* Systems language that feels like an interpreted language.
-* Support for imperative, functional, and object-oriented paradigms.
+* Entire program dead code elimation as a result of compile time execution
+* Systems language that feels like an interpreted language
+* Expression-based syntax, no statements
+* Support for imperative, functional, and object-oriented paradigms
 * Strongly typed with a detailed algebraic type system and type inferencing
 ```go
 var i = 55        ~create i, a mutable 32-bit integer
@@ -22,18 +23,18 @@ i32 x y = (4, 5)
 var myArray = [0, 1, 2, 3, 4]
 
 ~Function pointers:
-let myFunctionPtr = lambda x y -> x * y
+let myFunctionPtr = fun x y -> x * y
 
 ~Sum types:
 data Maybe
-    Some('t) | None
+    Some 't | None
 
 var f = Some 4
 ```
 * Significant whitespace after newlines; no tabs allowed in significant whitespace.
 ```go
-fun myFunction
-    if 3 > 2
+fun myFunction:
+    if 3 > 2 then
         print("3 is greater than 2")
     else
         print("Invalid laws of mathematics, please try again in an alternate universe")
@@ -61,20 +62,20 @@ data Point
 
 ext Point
     fun cast(): i32 x, i32 y => Point
-        return Point (x, y)
+        Point (x, y)
 
     fun scale: self*, i32 sx sy
         self.x *= sx
         self.y *= sy
 
-    fun getx => i32
-        return x
+    fun getx: => i32
+        x
 
 var p = Point(2, 3)
 
 ~mutator functions are accessed with ':' instead of '.'
 p:scale(3, 4)
-if p.getx() == 6
+if p.getx() == 6 then
     print("Hello World!")
 
 

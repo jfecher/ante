@@ -74,42 +74,42 @@ let ex3 = 3i32
 let ex4 = i32 4
 
 `
-    Types can also be assigned to variables manually.  Variable's declared
-    without let are mutable by default and must have their type explicitly
-    stated.  Below are mutable variables of every primitive type initialized 
-    to their default values.
+    Mutable variables can be declared with the var keyword.  Like
+    immutable variables, these are implicitly typed by default, but
+    can be optionally given a type before the identifier.  All variables
+    must be given an initial value, as they are not initialized by default.
 `
 
-i8  myI8  = 0    ~8bit integer
-i16 myI16 = 0
-i32 myI32 = 0
-i64 myI64 = 0
+var myI8  = 0i8    ~8bit integer
+var myI16 = 0i16
+var myI32 = 0i32
+var myI64 = 0i64
 
-u8  myU8  = 0    ~8bit unsigned integer
-u16 myU16 = 0
-u32 myU32 = 0
-u64 myU64 = 0
+var myU8  = 0u8    ~8bit unsigned integer
+var myU16 = 0u16
+var myU32 = 0u32
+var myU64 = 0u64
 
-isz myIsz = 0    ~Signed pointer size integer
-usz myUsz = 0    ~Unsigned pointer size integer
+var myIsz = 0isz    ~Signed pointer size integer
+var myUsz = 0usz    ~Unsigned pointer size integer
 
-f16 myF16 = 0.0
-f32 myF32 = 0.0  ~32bit IEEE single precision floating point
-f64 myF64 = 0.0
+var myF16 = 0.0f16
+var myF32 = 0.0f32  ~32bit IEEE single precision floating point
+var myF64 = 0.0f64
 
-c8  myC8  = ''   ~ASCII char 0x00
-c32 myC32 = ''   ~UTF-32 char 0x00
+var myC8  = ''   ~ASCII char 0x00
 
-bool myBool = false
+var myBool = false
 
 `
-    Any primitive value can also be typecasted to any other primitive type, or
-    even completely redefined to that type.
+    Any primitive value can also be typecasted to any other primitive type, and
+    immutable variables may also be shadowed by another immutable variable of 
+    the same name, but with an optionally different type.
 `
 
 print(i32 4.99)  ~output: 4
-f32 n = 43.876
-i32 n = i32 n
+let n = 43.876
+let n = i32 n
 
 print(typeof(n) ++ " " ++ n)  ~output: i32 43
 
@@ -141,18 +141,33 @@ print(typeof(n) ++ " " ++ n)  ~output: i32 43
 `
 
 ~Declare a public u8 array buf that is not automatically freed.
-pub raw u8[] buf = [3, 4, 5]
+let pub raw buf = [3, 4, 5]
 
 ~Declare an array of 100 integers called naturalNumbers and do not
 ~initialize it since it is manually initialized in the following loop.
-noinit i32[100] naturalNumbers
+noinit var i32[100] naturalNumbers
 
 for i in 1 .. 100
     naturalNumbers[i-1] = i
 
 
+~The preferred way of doing the above is either using an expression block,
+~Or using a range inside [] to expand it into an array, as shown below.
+let naturalNums = [1..100]
+
+
 ~Modifiers in let bindings are declared after the let keyword
 let raw mem = 0x23, 0x32, 0x00
+
+
+~Modifiers can also apply to a block of variables or functions:
+pub
+    let globalConst = 3
+
+    let sum = reduce(+)
+
+    fun printMsg:
+        print("Msg")
 
 
 `
@@ -175,8 +190,8 @@ print(typeof(3.2f64)) ~output: f64
 print(typeof("test")) ~output: c32[]
 print(typeof('A'))    ~output: c32
 
-~c8[] and c8 literals need to be explicitly casted.
-let myC8Str = c8[] "test"
+~c32[] and c32 literals need to be explicitly casted.
+let myC8Str = c32[] "test"
 
 ~Integer constants can also be expressed in different bases with the 
 ~prefixes 0x 0o and 0b for hexadecimal, octal, and binary respectively.
@@ -249,7 +264,7 @@ let five = i32 5.0
 let thirteen = i16(7i8 + 6i8)
 
 fun add: i32 x y => i32
-    return x + y
+    x + y
 
 ~thirteen must be explicitely casted to an i32, no automatic widening is performed.
 add(five, i32 thirteen)
@@ -263,10 +278,10 @@ add(five, i32 thirteen)
 
     NOTE: The size must be a non-pathogen integer expression.
 `
-i32[30] arr = 1
+var i32[30] arr = 1
 
 ~Each element of an array can also be initialized individually
-f32[5] assortedNums = 9, -76, 3.14159265, 2^8, 1 + 2*(6-3)
+var assortedNums = [9, -76, 3.14159265, 2^8, 1 + 2*(6-3)]
 
 `
     Each element of an array can be accessed individually by index.  Negative
@@ -278,10 +293,11 @@ print(assortedNums[0] ++ ", " ++ assortedNums[-2])
 ~output: -67, 256
 
 `
-    Array initializer lists can also be surrounded by [ and ].  This is preferable
-    when dealing with multidimensional arrays or tuples.
+    Multidimensional arrays have n pairs of square brackets in their type where
+    n is the number of dimensions they contain.  For example, the array below
+    has type i32[1][2], or more generally, i32[][]
 `
-i32[2][2] box = [1, 2], [3, 4]
+let box = [[1, 2], [3, 4]]
 
 
 `
@@ -300,22 +316,24 @@ box ++= [5, 6]
         Tuples
     In addition to arrays, there are also tuples.  Unlike arrays, tuples can
     be mixed and matched with several types, but each must be stated beforehand.
+    A tuples type is each constituent type seperated by a comma.
 `
-i8, f32 tup = 44, 44.0
+~This tuples type is i32,f64
+let tup = (44, 44.0) 
 
-~NOTE: c32*[2] is an array of two strings, each having a char size of 32.
-i8[30], c32*[2] anotherTuple = arr, ["This tuple contains", "two arrays"]
+~A tuple literal must be surrounded with parenthesis.
+let anotherTuple = (arr, ["This tuple contains", "two arrays"])
 
+~Like any other value, tuples can be mutated if declared as such.
 var yetAnoterTuple = (1, "two", 3.0)
 yetAnotherTuple[1] = "Two"
 
-`
-    A tuple's type can still be inferred in a let binding:
-`
-let immutTuple = 46, "Fourty-six", 46.0
+
+~In Ante, tuples are essentially anonymous structs
+let immutTuple = (46, "Fourty-six", 46.0)
 
 ~A pointer to a tuple
-(i32, i32)* tupPtr = &(0, 0)
+let tupPtr = &(0, 0)
 
 `
         Strings
@@ -324,11 +342,11 @@ let immutTuple = 46, "Fourty-six", 46.0
 `
 ~A simple declaration of a string datatype
 data Str
-    c8* cStr
+    c8[] cStr
     u32 len
 
-fun Str.cast(): c8* str => Str
-    return (cStr, cStr.len())
+fun Str.cast(): c8[] str => Str
+    (cStr, cStr.len())
 
 let msg = Str "Hello World!"
 
@@ -349,6 +367,23 @@ fun longestStreak: Str s => i32
 
     return maxStreak
 
+
+~Alternatively, one can rewrite the above method using a more functional approach
+~With the functions map and reduce.
+fun longestStreak_alt: Str s => i32
+    s.indices().map(
+    ~In Ante, even function declarations are expressions, so we can pass this
+    ~Recursive function to map to return a list of each letter's streak.
+    ~Also note that this function, while named, has both an inferred return type
+    ~And inferred parameter types.
+        fun streak: i, curStreak=0
+            if s[i] == s[i+1] then streak(i+1, curStreak+1)
+            else curStreak
+
+    ~Finally, return the largest streak.
+    ).reduce(max)
+
+
 print(longestStreak(msg))
 ~output: 2
 `
@@ -360,22 +395,29 @@ print(longestStreak(msg))
 
     Below is the declaration of a function, printMsg.  It takes no parameters
     and returns no value.  It is important to note that unlike many c based
-    languages, blocks are denoted by changes in indentation rather than
-    opening and closing brackets.
+    languages, functions take a single block-expression as their body.  Blocks 
+    are denoted by an Indent and a terminating Unindent (or Dedent).  Since Ante
+    is only optionally whitespace-sensitive, these Indents and Unindents may be
+    replaced with { and } respectively, and all whitespace is ignored inside these
+    curly brackets, meaning all declarations requiring block-exprs inside brackets
+    must also use brackets.  For this reason, most code uses the more intuitive
+    whitespace-sensitive style, although curly brackets may be usefull for those
+    easing into the language.
 `
-fun printMsg
+fun printMsg:
     print("Hello World!")
 
 `
     This add function takes in two parameters, augend and addend both with type f64, 
-    and returns a f64 value.
+    and returns a f64 value.  Since functions take a single block-expression as their
+    body, the return type must match the type of this block-expression.
 `
 fun add_floats: f64 augend, f64 addend => f64
-    return augend + addend
+    augend + addend
 
 ~Multiple variables of the same type can be declared by omitting the , and repeated type
 fun add_floats_2: f64 augend addend => f64
-    return augend + addend
+    augend + addend
 
 `
     Ellipses can be used in place of or after a type to indicate that the
@@ -392,9 +434,9 @@ fun add_floats_2: f64 augend addend => f64
 fun lnprint: ... params
     print('\n', params)
 
-
+~Ante still provides the return keyword for early returns, or code clarity.
 fun sum: i32... nums => i64
-    i64 ret = 0
+    var ret = 0_i64
     for i in nums
         ret += i
     return ret
@@ -417,17 +459,24 @@ add_floats(addend = 2.5, augend = 5.0)
 
 
 `
-        Expr-functions
-    Expr-functions are functions that evaluate a single expression, and return
-    the result.  They are denoted with an = sign after the parameter list.  As
-    always, the : is only used if there are parameters.  In these functions,
-    the type of each parameter can usually be inferred, so the type annotations
-    are not necessary, but are still encouraged.
-`
+        Type inference
+    Type inferencing in functions can be used in both the return type, and the
+    parameter types.  Functions with inferred return types replace the => type
+    syntax with just an =.  Without the =, the function would be assumed to
+    return a void value, as is the case with some functions above.  Parameters
+    with inferred types are simply denoted by the absence of a specified type
+    for that parameter.
 
-~Simple function that returns one.
-~Note the absence of : since there are no parameters.
-fun returnOne = 1
+    In general, type inference in functions is only used in either local functions
+    which are not to be exported to an API, or general functions where it is
+    already obvious what it does and needs to accomplish this.
+
+    Type inference is usually discouraged in cases other than the above because
+    if, for instance, a user uses one of these functions with an unintended type and 
+    it fails, they will get an odd error such as 'join' is not implemented for 
+    types 't and 'b, instead of the more descriptive type-mismatch error the compiler 
+    would generate otherwise.
+`
 
 ~Function that takes the dot product of two vectors represented as arrays
 ~Although this function was originally written with the intention arrays would
@@ -446,7 +495,7 @@ fun dotProduct: l r =
 
 ~The general add function:
 fun add: i32 a b => i32
-    return a + b
+    a + b
 
 ~And the increment function created with currying:
 let increment = add(_, 1)
@@ -455,7 +504,7 @@ let increment = add(_, 1)
 
 ~The above definition is equivalent to both of the following functions:
 fun increment: i32 x => i32
-    return add(x, 1)
+    add(x, 1)
 
 let increment = fun x -> add(x, 1)
 
@@ -479,7 +528,7 @@ let sum2 =
 `
 
 ~Compiled as "printStuff"
-fun printStuff
+fun printStuff:
     print("Stuff")
 
 
@@ -499,8 +548,8 @@ ext Str
     Control-Flow can be altered with the keywords if, elif, else, match, while,
     do while, and for.
 `
-~If statements come in the form of if <expr> Indent <statement list> Unindent
-if 4 > 3
+~If statements come in the form of if <expr> then <expr>
+if 4 > 3 then
     print("4 is indeed greater than 3")
 
 `
@@ -509,13 +558,13 @@ if 4 > 3
     if and only if the first if, and all elifs preceeding the desired case, conditions
     evaluate to false
 `
-if 3 > 5
+if 3 > 5 then
     print("3 > 5, what??")
-elif 3 > 4
+elif 3 > 4 then
     print("3 > 4, how??")
-elif 3 > 3
+elif 3 > 3 then
     print("3 > 3, huh??")
-elif 3 > 2
+elif 3 > 2 then
     print("3 > 2, yup.")
 
 `
@@ -525,15 +574,15 @@ elif 3 > 2
     clauses are executed if and only if non of the above test conditions evaluated to
     true.
 `
-if 3 > 2
+if 3 > 2 then
     print("Hello World!")
 else
     print("Invalid laws of mathematics, please try again in an alternate universe.")
 
 
-if 3 > 5
+if 3 > 5 then
     print("Something is seriously wrong if this prints.")
-elif 4 > 5
+elif 4 > 5 then
     print("This shouldn't print either.")
 else
     print("Phew, dodged a bullet there.")
@@ -542,42 +591,53 @@ else
 `
         Loops
 
-    Ante has three kinds of loops: while, do while, and for.
-    The while loop runs while the following expression is true.  The do while
-    loop runs once then runs while its following expression is true.  The for 
+    Ante has two kinds of loops: while, and for.
+    The while loop runs while the following expression is true, and the for 
     loop loops through each element of an array or range.
 `
-while true
+while true do
     print("I loop forever")
 
 
-do while false
-    print("I only loop once")
-
-f32 total
-for n in arr
+var total = 0
+for n in arr do
     total += n
 
-for count in 0..100
+for count in 0..100 do
     print(count)
 
 
 `
         Expressions
-    Expressions are pieces of code that return a value, as opposed to statements
-    which return no value.  Expressions can be any length from a single value to
+    Expressions are pieces of code that return a value, and in Ante, every
+    construct is an expression.  Expressions can be any length from a single value to
     a complex expression containing many operations.  Expressions are expected
-    inside several statements, namely variable declarations/assignments, let
-    bindings, if conditions, and loop conditions.  Expressions are usually
-    terminated with a Newline or an Unindent token, although they may be extended
-    by ignoring a newline with \, or with an Indent and matching Unindent token.
+    inside several other expressions, namely variable declarations/assignments, let
+    bindings, if conditions, and loop conditions.  Expressions are acted upon by operators,
+    including the ubiquitous sequencing operator, <Newline>, as well as ;.  Inside
+    block-expressions (expressions starting with an Indent and ending with an Unindent), Newlines
+    act as a sequencing operator, ignoring the first value and returning the second.  In this
+    way, code may be written quite naturally in either a functional, or imperative style.
+    If this is not wanted, newlines can instead be ignored with \ before one.
 `
 
 ~A simple expression consisting of only the I32 0
 let zero = 0
 
-~If statements can be used within expressions, albeit with a slightly altered syntax
+~If statements can be used within expressions, along with every other construct.
 let stoplight = if light == "green" then "go" else "stop"
+
+
+~Declare a function inside this expression, and call it.
+~Note how in the expression below the function definition is sequenced by the Newline and
+~following expression containing getThree().  If the expr-block were to end at line 637,
+~then three would be instead set to the value of the function definition (being the function itself)
+~Note2: The example below sequences with 2 newlines, any number of newlines will suffice.
+let three =
+    fun getThree: => i32
+        3
+
+    getThree()
 
 `
         Pathogen infections
@@ -606,10 +666,13 @@ fun printMsg:
 ~into a variable or class representing it without the need to search for it during runtime,
 ~and eliminating the need to include the raw image as an asset in production.
 fun compileTimeLoadImg => Image*
-    File f = File("path/to/image.png")
-    u8[] imgData
-    do f.readAll(imgData) ~Reads all of the image data into data at compile time
-    return new Image(imgData)
+    let = File("path/to/image.png")
+
+    ~Read all of the image data into imgData at compile time.
+    let imgData = do f.readAll(imgData)
+    
+    ~Then return the image
+    new Image(imgData)
 
 
 ~Conversely, to infect a non-pathogen function, the infect keyword may be used.
@@ -620,38 +683,6 @@ fun runTimeLoadImg => Image*
 ~Values can also be infected if set equal to the return value of a pathogen function
 let myImg = runTimeLoadImg()
 someFunction(myImg) ~This instance of someFunction is infected since an infected parameter is used.
-
-
-`
-        Compile-Time only statements
-    There are some scenarios where it is desirable for certain statements
-    to only be evaluated during compile-time, without being compiled into
-    the final binary.  This is accomplished with the when keyword.  When is
-    syntactically similar to if, but with the key difference that it must
-    be able to be evaluated compile-time (ie no pathogens).
-`
-
-`
-    The following function takes two parameters, and if m is negative, panics
-    with the message "calculateForce: mass cannot be negative!", and fails to
-    compile.
-
-    ~NOTE: a better method of ensuring m is positive is using the where
-           statement discussed later.
-`
-fun calculateForce: f64 m a => f64
-    when m < 0
-        panic("calculateForce: mass cannot be negative!\nInputted mass: " ++ m)
-    return m*a
-
-~when true  can be used to perform a generic check during compile time
-fun add: i8 a b => i8
-    when true
-        i16 c = a
-        i16 d = b
-        if c + d > 255 or c + d < -256
-            panic("Likely integer overflow in add function.")
-    return a + b
 
 
 `
@@ -679,7 +710,7 @@ putchar(10)
 
 
 `
-        -> and ;;
+        ->, ;;, {, and }.
     -> and ;; can be used to manually insert indent and unindent tokens
     respectively.  -> is commonly used in single line blocks, but ;; is much
     more rare, being added to simplify the declaration of enums within a data
@@ -687,14 +718,20 @@ putchar(10)
     in addition to issuing the token.  Doing so with -> ensures an unindent token
     is automatically issued once a statement is encountered on the same line as
     the one containing the ->.  With a ;; an Unindent is introduced followed by
-    an Indent if the next statement returns to the normal level.
+    an Indent if the next statement returns to the normal level.  Both of these 
+    constructs are never required, and used only for brevity.
+
+    Unlike -> and ;;, { and } are somewhat more usefull, functioning as complete
+    replacements for the whitespace sensitive syntax.  Unlike -> and ;;, curly brackets
+    are automatically matched like indentation levels are, but also contain no
+    significant whitespace inside them, meaning if any code were to be used with
+    { and } that requires indented blocks, like functions, { and } must be
+    recursively used.  In this way, { and } closely match their usage in C-like
+    languages, and are intended for those who cannot use significant whitespace
+    for some reason or another.
 `
-if 5 > 2 -> print("5 is greater than 2")
-else     -> print("Invalid laws of mathematics, please try again in an alternate universe")
 
-for f in arr -> print(f)
-
-fun subtract: f32 a b => f32 -> return a - b
+fun subtract: f32 a b => f32 -> a - b
 
 ~While these can be nested, overnesting should be avoided as it leads to clutter.
 data Integer -> i32 i, fun init(): i32 a -> i = a;; u8 byte
@@ -707,6 +744,18 @@ data Integer
         i = a
 
     u8 byte
+
+
+~NOTE: curly braces are heresy
+fun inefficientAdd: i32 a b => i32 {
+    if b == 0 then {
+        a
+    }else if b < 0 then {
+        inefficientAdd(a-1, b+1)
+    }else if b > 0 then {
+        inefficientAdd(a+1, b-1)
+    }
+}
 
 `
         Data declarations
@@ -775,7 +824,7 @@ i32,i32 p1 p2 p3 = (0, 0)
 `
 
 ~Print 1 to 100 inclusive
-for i in 1 .. 100
+for i in 1 .. 100 do
     print(i)
 
 
@@ -783,7 +832,7 @@ for i in 1 .. 100
 let testArr = [0, 3, 5, 6]
 
 ~To make a range exclusive, add a ^ to the exclusive end (or ends)
-for u in 0 ..^ testArr.len()
+for u in 0 ..^ testArr.len() do
     print(testArr[u])
 
 
@@ -791,10 +840,10 @@ for u in 0 ..^ testArr.len()
 
 ~To change the step value of ranges, have the first end of the range be an array
 ~or tuple of two elements.  Their difference will be the step.
-for i in [10, 20] .. 100
+for i in [10, 20] .. 100 do
     print(i)
 
-for i in [0, -5] .. -100
+for i in [0, -5] .. -100 do
     print(i)
 
 ~Alternatively, the step function can be called to return a new range
@@ -804,7 +853,7 @@ var evens = (0..10).step(2)
 ~or the step can be changed in place with :
 evens:step(4)
 
-for e in evens -> print(e)
+for e in evens do print(e)
 
 
 
@@ -812,24 +861,24 @@ for e in evens -> print(e)
 ~To convert ranges into an array or list, surround them with square brackets
 let digits = [0..9]
 
-~Create an array of odd numbers from 1 to 19
+~Create an array of odd numbers from 1 to 19 without using .step
 let odds = [(1,3)..19]
 
 
 
 ~Ranges can also be used in combination with the in keyword to test if a given value
 ~is within the range
-if 3 is in 1..9
+if 3 is in 1..9 then
     print("3 is a single-digit positive number")
 
 
 ~in can also test if a value is in an array or tuple
-if "two" is in ["one", "two", "three"]
+if "two" is in ["one", "two", "three"] then
     print("Found it!")
 
 ~The default action for tuples is to check fields with matching datatypes only, or any
 ~with op == implemented for the element and target type.
-if "test" is in (5, 6.5, "test")
+if "test" is in (5, 6.5, "test") then
     print("Got it!")
 
 `
@@ -865,7 +914,7 @@ data Q2Coord
     i32 where this[0] < 0
     i32 where this[1] > 0
 
-Q2Coord q = -4, 5
+var q = Q2Coord(-4, 5)
 q[0] = 2 ~where this[0] < 0 is evaluated, and a TypeConditionErr is thrown.
 
 `
@@ -898,7 +947,7 @@ data Animal
     The new keyword can be used to allocate and initialize memory to be stored in a
     pointer type.
 `
-Animal* clifford = new Animal.init(7, "magnum rubrum canis", "Clifford")
+let clifford = new Animal.init(7, "magnum rubrum canis", "Clifford")
 
 
 `
@@ -923,7 +972,7 @@ data Person : Animal
     Methods of the same name can also be overloaded if they take different amounts or types of variables.
 `
     fun printInfo: self*, bool showAge
-        if showAge
+        if showAge then
             print(self.name .. " is " .. self.age .. " years old and is a(n) " .. self.job)
         else
             print(self.name .. " is a(n) " .. self.job)
@@ -966,7 +1015,7 @@ data Statistics
             return self.secretData ~not so secret anymore
 
         fun getStatus: self* => c8*
-            if self.secretData > 10
+            if self.secretData > 10 then
                 return "Good"
             else
                 return "Not so good"
@@ -976,8 +1025,8 @@ data Statistics
 
     ~Because the init function is declared within the datatype, it can access private members.
     fun init: i32[] mData => Statistics
-        Statistics ret = (0, 0) ~Ante uses Structural equivalence!
-        for i in mData
+        var ret = Statistics(0, 0)
+        for i in mData do
             ret.secretData += mData / ret.pi
             ret.varCount += 1
         return ret
@@ -1002,14 +1051,6 @@ fun getAction: u8 action => c32[]  where action is in 0 ..^ 3
     return actions[action]
 
 
-~Here is the calculateForce function from earlier
-fun calculateForce: f64 m a => f64
-    when m < 0
-        myPrint("calculateForce: mass cannot be negative!")
-
-    return m*a
-
-~and this is its equivilent using where
 fun calculateForce: f64 m a => f64  where m >= 0
     return m*a
 
@@ -1034,13 +1075,13 @@ which was not met for input value m = -54
 ~Create a function that takes in two variables, obj1 and obj2, of some type t
 ~and returns true if the first is greater than the second.
 fun greater: 't obj1 obj2 => bool
-    return obj1 > obj2
+    obj1 > obj2
 
 ~This function will fail to compile if they are called with variables of a type
 ~That do not have < and > implemented.
 fun cmp: 't v1 v2 => i32
-    if v1 < v2 -> return -1
-    return i32(v1 > v2)
+    if v1 < v2 then -1
+    else i32(v1 > v2)
 
 cmp(3, 4) ~valid
 ~cmp(3, "three") ~invalid: types must be the same for function cmp
@@ -1050,8 +1091,8 @@ cmp(3, 4) ~valid
 ~and have > implemented to return a bool.  This may not always be the case if the user
 ~defines the operator to return a different type or overloads the operator function for
 ~two different types.  Here is a more general definition that takes this into account.
-fun add: 't1 a, 't2 b => 'r
-    return a + b
+fun add: 't a, 'u b => 'r
+    a + b
 
 
 ~The syntax for type specifications in a class is to surround them in < and >.
@@ -1061,15 +1102,15 @@ fun add: 't1 a, 't2 b => 'r
 data Angle<bool isRadians>
     f32 angle
 
-    if isRadians
+    if isRadians then
         fun getQuadrant: self* => u8
             return self.angle / (3.14159265 / 4) % 4 + 1
     else
         fun getQuadrant: self* => u8
             return self.angle / 90 % 4 + 1
 ~usage:
-Angle<true> a1 = 3.14159265 * 2 / 3
-Angle<false> a2 = 120
+let a1 = Angle<true>  (3.14159265 * 2 / 3)
+let a2 = Angle<false> 120
 assert(a1.getQuadrent() == a2.getQuadrent())
 
 `
@@ -1099,7 +1140,7 @@ data MySmartPtr : Clone
         refCount = new 0u16
 
     fun op("drop"):
-        if @refCount == 0
+        if @refCount == 0 then
             free(refCount)
             free(rawPtr)
         else
@@ -1107,8 +1148,11 @@ data MySmartPtr : Clone
 
     ~Required by Clone trait
     fun clone: self => MySmartPtr
-        let clone = MySmartPtr(rawPtr, refCount)
+        let clone = (rawPtr, refCount)
         self.@rawPtr += 1
+
+        ~Although clone is an anonymous tuple-type, since Ante uses structural
+        ~equivalence, and MySmartPtr can be comprised of the same types, it is accepted.
         return clone
 
 
@@ -1120,19 +1164,20 @@ data ChessPiece<Str piece> where searchFor(piece, ["pawn", "knight", "king"]) !=
     fun init: u8 x, u8 y => ChessPiece
         return ChessPiece<piece>(x, y)
     
-    if piece == "pawn" 
+    if piece == "pawn" then
         fun validateMove: u8 x2, u8 y2 => bool
-            return x == x2 and abs(y - y2) == 1
+            x == x2 and abs(y - y2) == 1
 
-    elif piece == "knight"
+    elif piece == "knight" then
         fun validateMove: u8 x2, u8 y2 => bool
-            if abs(x - x2) == 1
-                return abs(y - y2) == 2
-            return abs(x - x2) == 2 and abs(y - y2) == 1
+            if abs(x - x2) == 1 then
+                abs(y - y2) == 2
+            else
+                abs(x - x2) == 2 and abs(y - y2) == 1
     
-    elif piece == "king"
+    elif piece == "king" then
         fun validateMove: u8 x2, u8 y2 => bool
-            return abs(x - x2) <= 1 and abs(y - y2) <= 1
+            abs(x - x2) <= 1 and abs(y - y2) <= 1
 
 
 let knight = ChessPiece<"knight">(2, 3)
@@ -1156,10 +1201,10 @@ data Point
         within classes, operators for primitive datatypes cannot be redefined.
     `
     fun op("<"): self, Point rVal => bool
-        return self.x < rVal.x and self.y < rVal.y
+        self.x < rVal.x and self.y < rVal.y
 
     fun op(">"): self, Point rVal => bool
-        return self.x > rVal.x and self.y > rVal.y
+        self.x > rVal.x and self.y > rVal.y
 
     `
             Infix functions
@@ -1174,8 +1219,8 @@ data Point
     ~Note that this function uses the > and < operators
     ~declared earlier in this class.
     fun infix("cmp"): self, Point rVal => i8
-        if self < rVal -> return -1
-        return i8(self > rVal)
+        if self < rVal then -1
+        else i8(self > rVal)
 
 
 let origin = Point(0, 0)
@@ -1221,7 +1266,7 @@ ext Rectangle : Drawable
     ~Now Rectangle must implement the methods of Drawable
     fun draw: self
         self.surf.print("___")
-        for i in 1 ..^ self.height
+        for i in 1 ..^ self.height do
             self.surf.print("| |")
         self.surf.print("|_|")
 
@@ -1250,13 +1295,13 @@ immutRect:setHeight(5)
 ext i32, i32
     fun swap: self => i32,i32
         print("Swapped i32!")
-        return self[1], self[0]
+        (self[1], self[0])
 
 
 ext't, 't
     fun swap: self => 't,'t
         print("Swapped pair!")
-        return self[1], self[0]
+        (self[1], self[0])
 
 ~In the case multiple impls apply, the most specific is always chosen
 ~If there are multiple equally specific impls, a compile-time error is thrown.
@@ -1271,20 +1316,20 @@ assert(point[0] == 4 and point[1] == 3)
 
 ext c32* ~invalid
     fun addInitials: self => c32*
-        return self ++ " -JF"
+        self ++ " -JF"
 
 ext c32[] ~valid
     fun addInitials: self => c32[]
-        return self ++ " -JF"
+        self ++ " -JF"
 
 
-var ptrQuote = c32* "implementations cannot be used for pointer types"
+var ptrQuote = c8* "implementations cannot be used for pointer types"
  
 ~Compilation error since c32* has no function addInitials:
 ptrQuote = ptrQuote.addInitials()
 
-c32[] ptrQuote ~convert to array
-ptrQuote = ptrQuote.addInitials() ~valid
+let ptrQuote2 = c8[] ptrQuote ~convert to array
+ptrQuote2 = ptrQuote2.addInitials() ~valid
 
 `
     NOTE: because string literals have the type c32[], the following is valid:
@@ -1370,8 +1415,8 @@ data Card
     u8 number
     i32 suit
 
-Card fourOfHearts = 4, Suit.Hearts
-i32 suit = (Card(3, Suit.Hearts)).suit
+let fourOfHearts = Card(4, Suit.Hearts)
+let suit = (Card(3, Suit.Hearts)).suit
 ~Enums are automatically assigned values, but can also be manually assigned with the
 ~ = operator after the first operand.  Each consecutive member will have a value equal
 ~ to its distance from the fist + the first's value.
@@ -1383,7 +1428,7 @@ enum Numbers
     Five~ = 5
 
 ~   number = 3
-i32 number = Three
+let number = i32 Three
 
 ~Alternatively, if the first and second's value are given then each consecutive member
 ~Is incremented by their difference instead of 1.
@@ -1461,18 +1506,22 @@ ex3.printMsg() ~(@@ex3).printMsg()
 `
 
 ~Both of these strings are stored as pointers to the first c32.
-c32[] arrStr = "str"
-c32*  ptrStr = c32* "str"
+var arrStr = c8[] "str"
+var ptrStr = c8*  "str"
 
 `
     += operator
-    
+
     Pointers:
-        increments the address pointed to by b bytes, where b
-        is the integer result of the evaluated expression.  
+        increments the address pointed to by b * e units, where b
+        is the size of the value pointed to, and e is the result of
+        the evaluated expression.  
     Arrays:
-        Allocates additional capacity for one element to the end
-        of the array, and inserts the rvalue into that slot.
+        Allocates additional capacity for e elements to the end
+        of the array, and does NOT initialize these elements.
+
+        NOTE: to add a value (or values) to the end of an array,
+        ++ or the corresponding ++= are used.
 `
 ptrStr += 1
 arrStr += "element 2"
@@ -1502,16 +1551,16 @@ assert(ptrStr[0] == arrStr[0])
 `
 ext c32[]
     fun reverse: self*, u32 len
-        raw c32[] rev = malloc((len+1) * sizeof(c32))
-        for i in range(len-1, 0)
+        var rev = Str.ofLen(len).cStr
+        for i in range(len-1, 0) do
             rev[i] = self[len-i-1]
         rev[len] = '\0'
         self = rev
 
-arrStr.reverse() ~valid
+arrStr:reverse() ~valid
 
 `
-ptrStr.reverse()  <- compilation error.  To make this work, a cast should be added
+ptrStr:reverse()  <- compilation error.  To make this work, a cast should be added
 
 c32[] ptrStr
 ptrStr.reverse
@@ -1539,24 +1588,23 @@ assert("two" is in ["one", "two", "three"])
 
 
 `
-        Function pointers
-    To declare a function pointer, the following syntax is used:
+        Function values
+    To declare a function pointer, the same syntax as a function
+    definition is used, but without the name of the function and
+    the : denoting the name.  A function has the type:
 
-    returnType(paramType1, paramType2, ...) name
-
-    Notice the absence of the *, which is implied since it is not
-    possible in ante to store a function on the stack.
+    returnType(paramType1, paramType2, ...)
 `
 ~Some functions to point to:
-fun mul: f32 a b => f32 -> return a * b
-fun div: f32 a b => f32 -> return a / b
+fun mul: f32 a b => f32 -> a * b
+fun div: f32 a b => f32 -> a / b
 
-~This function takes one parameter, a function pointer 
+~This function takes one parameter, a function
 ~that takes two f32s as parameters and returns one as well.
 fun doOperation: f32(f32, f32) opFunc => f32
-    return opFunc(6, 4)
+    opFunc(6, 4)
 
-~our function pointer
+~our function variable
 var fnPtr = mul
 
 assert(doOperation(fnPtr) == 24)
@@ -1602,63 +1650,6 @@ data Vec
 
 let numsList = List(1u8, &(2u8, &(3u8, None)))
 
-`
-        Multiline expressions/statements
-    Statements are normally terminated by a newline
-    character, but can be extended by adding a backslash
-    right before the newline as the final character.  Expressions
-    on the other hand can also be extended with an expression block,
-    an indentation and expression with a terminating unindent in
-    place of a value.  Because the expression is seperated by the
-    Indent and Unindent tokens, there is an implicit () grouping around
-    the expression.
-`
-
-~Functions can be declared this way using lambda syntax
-let square = fun x
-    x*x
-
-
-
-data Num -> i8  | i16 | i32 | i64 \
-          | u8  | u16 | u32 | u64 \
-          | f32 | f64
-
-
-data Int -> i8  \
-          | i16 \
-          | i32 \
-          | i64
-
-`
-        Expression blocks.
-    In addition to the above, an expression ending in a binary operator
-    (without its right operand) may be continued with an Indent.  After
-    this Indent is an expression block where newlines are ignored until
-    the terminating Unindent.  These expression blocks may also be
-    nested.
-`
-print(
-    "Hello ",
-    "World!"
-)
-
-let result = 
-    if someReallyLongFunctionNameThatShouldProbablyBeShorterInHindsight()
-        "branch " ++ 1
-    else
-        "branch " ++ 2
-
-
-let result = 2 *
-    3 *
-    4 *
-        1+2+3+4+5
-    * 5
-
-~Since nested expression blocks are parsed similarly to parenthesis,
-~The resulting order of operations would look like the following:
-~ 2 * 3 * 4 * (1+2+3+4+5) * 5
 
 
 `
@@ -1696,6 +1687,18 @@ fun errFunc: i32 a b, (Str|Err)(i32) fn => i32|MyErr
     return 1
 
 
+~Matches can also be used for error handling in expressions
+~In this function, a 0 is returned if a value is divided by 0
+fun div: a b =
+    a / b with DivideByZeroErr -> 0
+
+
+
+
+
+
+
+
 `
         Experimental
     These features are being proposed or considered
@@ -1725,7 +1728,7 @@ fun getTokenType: c32 t => Str
         return "not an ident"
 
 ~the macro below would not be valid since isLetter would have gone out of scope.
-if isLetter('a')
+if isLetter('a') then
     print("a is a letter")
 
 
