@@ -358,7 +358,7 @@ TypedValue* WhileNode::compile(Compiler *c){
 
     c->builder.SetInsertPoint(end);
 
-    return 0;
+    return c->getVoidLiteral();
 }
 
 
