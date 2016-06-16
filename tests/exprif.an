@@ -2,11 +2,11 @@
         exprif.an
     tests ifs inside expressions.
 
-    Currently, these use the python style,
-    although this is subject to change.
-
-    Unlike regular if statements, the else
-    is mandatory, and both branches must match
+    All if statements return a value,
+    although if statements without an
+    else return a void value, and if
+    statements with an else type-check
+    both branches to ensure they match
     in type.
 `
 

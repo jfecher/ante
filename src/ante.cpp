@@ -50,7 +50,14 @@ int main(int argc, char *argv[]){
         //compile
         }else if(strcmp(argv[1], "-c") == 0){
             Compiler ante{argv[2]};
-            ante.compile();
+            ante.compileNative();
+        }else if(strcmp(argv[1], "-r") == 0){ //compile and run
+            Compiler ante{argv[2]};
+            ante.compileNative();
+            if(!ante.errFlag){
+                //puts("__________");
+                system(("./" + ante.module->getName()).str().c_str());
+            }
         }else if(strcmp(argv[1], "-emit-llvm") == 0){
             Compiler ante{argv[2]};
             ante.emitIR();
