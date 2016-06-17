@@ -675,7 +675,7 @@ TypedValue* FuncDeclNode::compile(Compiler *c){
 
 
 TypedValue* ExtNode::compile(Compiler *c){
-    c->funcPrefix = llvmTypeToStr(c->typeNodeToLlvmType(typeExpr.get())) + "_";
+    c->funcPrefix = typeNodeToStr(typeExpr.get()) + "_";
     compileStmtList(methods.get(), c);
     c->funcPrefix = "";
     return 0;
@@ -802,7 +802,7 @@ void Compiler::scanAllDecls(){
                 ast.release();
                 ast.reset(n->next.get());
 
-                if(n->next)
+                if(n->next.get())
                     n->next->prev = 0;
                 else
                     ast.release();

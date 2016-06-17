@@ -414,6 +414,9 @@ int Lexer::genWsTok(yy::parser::location_type* loc){
         }
 
         if(!scopes->empty() && newScope == scopes->top()){
+            //do not return an end-of-file Newline
+            if(!nxt) return 0;
+            
             //the row is not set to row for newline tokens in case there are several newlines.
             //In this case, if set to row, it would become the row of the last newline.
             //Incrementing it from its previous token (guarenteed to be non-newline) fixes this.
@@ -572,7 +575,9 @@ int Lexer::next(yy::parser::location_type* loc){
             return Tok_Indent;
         }else{
             scopes->pop();
-            shouldReturnNewline = true;
+
+            //do not return an end-of-file newline
+            shouldReturnNewline = nxt;
             return Tok_Unindent;
         }
     }
