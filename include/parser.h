@@ -169,14 +169,6 @@ struct VarNode : public Node{
     ~VarNode(){}
 };
 
-struct RefVarNode : public Node{
-    string name;
-    TypedValue* compile(Compiler*);
-    void print(void);
-    RefVarNode(LOC_TY& loc, string s) : Node(loc), name(s){}
-    ~RefVarNode(){}
-};
-
 struct FuncCallNode : public Node{
     string name;
     unique_ptr<TupleNode> params;
@@ -249,14 +241,6 @@ struct WhileNode : public ParentNode{
     ~WhileNode(){}
 };
 
-struct IfNode : public ParentNode{
-    unique_ptr<Node> condition;
-    unique_ptr<IfNode> elseN;
-    TypedValue* compile(Compiler*);
-    void print(void);
-    IfNode(LOC_TY& loc, Node* n1, Node* body, IfNode* els) : ParentNode(loc, body), condition(n1), elseN(els){}
-    ~IfNode(){}
-};
 
 //if node used in expressions
 //requires elseN to be initialized, and

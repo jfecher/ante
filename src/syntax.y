@@ -77,9 +77,10 @@ void yyerror(const char *msg);
 %left Import Return
 
 %left ';' Newline
+%left Else
 %left MED
 
-%left Let In
+%left Let
 %left ','
 %left '=' AddEq SubEq MulEq DivEq
 
@@ -109,16 +110,16 @@ void yyerror(const char *msg);
 */
 %glr-parser
 %expect 4
-%start top_level_stmt_list
+%start top_level_expr_list
 %%
 
-top_level_stmt_list:  maybe_newline stmt_list maybe_newline
+top_level_expr_list:  maybe_newline top_level_expr_list_p maybe_newline
                    ;
 
 
-stmt_list: stmt_list Newline expr  %prec HIGH {$$ = setNext($1, $3);}
-         | expr                    %prec HIGH {$$ = setRoot($1);}
-         ;
+top_level_expr_list_p: top_level_expr_list_p Newline expr  %prec HIGH {$$ = setNext($1, $3);}
+                     | expr                                %prec HIGH {$$ = setRoot($1);}
+                     ;
 
 
 maybe_newline: Newline  %prec Newline
@@ -126,7 +127,7 @@ maybe_newline: Newline  %prec Newline
              ;
 
 
-import_stmt: Import expr {$$ = mkImportNode(@$, $2);}
+import_expr: Import expr {$$ = mkImportNode(@$, $2);}
 
 
 ident: Ident {$$ = (Node*)lextxt;}
@@ -290,18 +291,15 @@ maybe_mod_list: modifier_list  {$$ = $1;}
               | %empty         {$$ = 0;}
               ;
 
-function: fn_def   {$$ = $1;}
-        | fn_decl  {$$ = $1;}
+function: fn_def
+        | fn_decl
+//        | fn_lambda
         ;
 
 fn_def: maybe_mod_list Fun ident ':' params Returns type_expr block  {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/$7,                                  /*params*/$5, /*body*/$8);}
-      | maybe_mod_list Fun params Returns type_expr block            {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)0,  /*mods*/$1, /*ret_ty*/$5,                                  /*params*/$3, /*body*/$6);}
       | maybe_mod_list Fun ident ':' Returns type_expr block         {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/$6,                                  /*params*/0,  /*body*/$7);}
-      | maybe_mod_list Fun Returns type_expr block                   {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)0,  /*mods*/$1, /*ret_ty*/$4,                                  /*params*/0,  /*body*/$5);}
       | maybe_mod_list Fun ident ':' params block                    {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/$5, /*body*/$6);}
-      | maybe_mod_list Fun params block                              {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)0,  /*mods*/$1, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/$3, /*body*/$4);}
       | maybe_mod_list Fun ident ':' block                           {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/0,  /*body*/$5);}
-      | maybe_mod_list Fun block                                     {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)0,  /*mods*/$1, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/0,  /*body*/$3);}
       ;
 
 fn_decl: maybe_mod_list Fun ident ':' params Returns type_expr ';'       {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/$7, /*params*/$5, /*body*/0);}
@@ -309,6 +307,10 @@ fn_decl: maybe_mod_list Fun ident ':' params Returns type_expr ';'       {$$ = m
        | maybe_mod_list Fun ident ':' params                   ';'       {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/0,  /*params*/$5, /*body*/0);}
        | maybe_mod_list Fun ident ':'                          ';'       {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/0,  /*params*/0,  /*body*/0);}
        ;
+
+//fn_lambda: maybe_mod_list Fun params '=' expr            {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)0,  /*mods*/$1, /*ret_ty*/0, /*params*/$3, /*body*/$5);}
+//         | maybe_mod_list Fun '=' expr                   {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)0,  /*mods*/$1, /*ret_ty*/0, /*params*/0,  /*body*/$4);}
+//         ;
 
 
 
@@ -318,7 +320,7 @@ fn_call: ident tuple {$$ = mkFuncCallNode(@$, (char*)$1, $2);}
        ;
 
 
-ret_stmt: Return expr {$$ = mkRetNode(@$, $2);}
+ret_expr: Return expr {$$ = mkRetNode(@$, $2);}
         ;
 
 
@@ -333,7 +335,8 @@ fn_list_: fn_list_ function maybe_newline  {$$ = setNext($1, $2);}
         ;
 
 
-if_stmt: If expr Then expr Else expr  %prec LOW {$$ = mkExprIfNode(@$, $2, $4, $6);}
+if_expr: If expr Then expr Else expr   {$$ = mkExprIfNode(@$, $2, $4, $6);}
+       | If expr Then expr  %prec LOW  {$$ = mkExprIfNode(@$, $2, $4,  0);}
        ;
 
 while_loop: While expr Do expr  %prec LOW {$$ = mkWhileNode(@$, $2, $4);}
@@ -364,13 +367,13 @@ val: fn_call                 {$$ = $1;}
    | False                   {$$ = mkBoolLitNode(@$, 0);}
    | let_binding             {$$ = $1;}
    | var_decl                {$$ = $1;}
-   | if_stmt                 {$$ = $1;}
+   | if_expr                 {$$ = $1;}
    | while_loop              {$$ = $1;}
    | function                {$$ = $1;}
    | data_decl               {$$ = $1;}
    | extension               {$$ = $1;}
-   | ret_stmt                {$$ = $1;}
-   | import_stmt             {$$ = $1;}
+   | ret_expr                {$$ = $1;}
+   | import_expr             {$$ = $1;}
    | block                   {$$ = $1;}
    ;
 

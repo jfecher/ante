@@ -167,25 +167,23 @@ TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
 TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
     //currently, the parser only accepts a single RefVarNode as the lval.
     //this line will have to be changed if it were to become more lenient.
-    auto *vn = (RefVarNode*)op->lval.get();
+    auto *tmp = op->lval->compile(this);
 
-    /* Value of var for storage*/
-    auto *loadVal = vn->compile(this);
-
-    if(!dynamic_cast<LoadInst*>(loadVal->val))
+    if(!dynamic_cast<LoadInst*>(tmp->val))
         return compErr("Variable must be mutable to insert values, but instead is an immutable " +
-                llvmTypeToStr(loadVal->getType()), op->lval->loc);
+                llvmTypeToStr(tmp->getType()), op->lval->loc);
 
-    /* Storage ptr for val */
-    auto *var = ((LoadInst*) loadVal->val)->getPointerOperand();
+    Value *var = static_cast<LoadInst*>(tmp->val)->getPointerOperand();
+    if(!var) return 0;
+
 
     auto *index = op->rval->compile(this);
     auto *newVal = assignExpr->compile(this);
     if(!var || !index || !newVal) return 0;
 
-    switch(llvmTypeToTypeTag(loadVal->getType())){
+    switch(llvmTypeToTypeTag(tmp->getType())){
         case TT_Array:
-            return new TypedValue(builder.CreateStore(builder.CreateInsertElement(loadVal->val, newVal->val, index->val), var), TT_Void);
+            return new TypedValue(builder.CreateStore(builder.CreateInsertElement(tmp->val, newVal->val, index->val), var), TT_Void);
             //return new TypedValue(builder.CreateInsertElement(loadVal, newVal->val, index->val), TT_Void);
         case TT_Tuple:
             if(!dynamic_cast<ConstantInt*>(index->val)){
@@ -194,7 +192,7 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
                 auto tupIndex = ((ConstantInt*)index->val)->getZExtValue();
 
                 //Type of element at tuple index tupIndex, for type checking
-                Type* tupIndexTy = loadVal->getType()->getStructElementType(tupIndex);
+                Type* tupIndexTy = tmp->val->getType()->getStructElementType(tupIndex);
                 Type* exprTy = newVal->getType();
 
                 if(!llvmTypeEq(tupIndexTy, exprTy)){
@@ -203,12 +201,12 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
                                 assignExpr->loc);
                 }
 
-                Value *insertedTup = builder.CreateInsertValue(loadVal->val, newVal->val, tupIndex);
+                Value *insertedTup = builder.CreateInsertValue(tmp->val, newVal->val, tupIndex);
                 return new TypedValue(builder.CreateStore(insertedTup, var), TT_Void);
             }
         default:
             return compErr("Variable being indexed must be an Array or Tuple, but instead is a(n) " +
-                    llvmTypeToStr(loadVal->getType()), op->loc);
+                    llvmTypeToStr(tmp->val->getType()), op->loc);
     }
 }
 
@@ -415,14 +413,11 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
  *  Compiles an operation along with its lhs and rhs
  */
 TypedValue* BinOpNode::compile(Compiler *c){
-    if(op == Tok_Where){
-        rval->compile(c); //rval should always be a LetBindingNode
-        return lval->compile(c);
-    }else if(op == '.'){
+    if(op == '.')
         return compMemberAccess(c, lval.get(), (VarNode*)rval.get(), this);
-    }else if(op == '('){
+    else if(op == '(')
         return compFnCall(c, lval.get(), rval.get());
-    }
+
 
     TypedValue *lhs = lval->compile(c);
     TypedValue *rhs = rval->compile(c);

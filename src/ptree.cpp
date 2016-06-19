@@ -39,11 +39,11 @@ Node* setNext(Node* cur, Node* nxt){
 /*
  *  Sets the else of an ifnode to a given ifnode representing
  *  either an else or an elif.
- */
+
 Node* setElse(IfNode *c, IfNode *elif){
     c->elseN.reset(elif);
     return elif;
-}
+}*/
 
 Node* mkIntLitNode(yy::parser::location_type loc, char* s){
     string str = s;
@@ -207,9 +207,9 @@ Node* mkVarNode(yy::parser::location_type loc, char* s){
     return new VarNode(loc, s);
 }
 
-Node* mkRefVarNode(yy::parser::location_type loc, char* s){
+/*Node* mkRefVarNode(yy::parser::location_type loc, char* s){
     return new RefVarNode(loc, s);
-}
+}*/
 
 Node* mkImportNode(yy::parser::location_type loc, Node* expr){
     return new ImportNode(loc, expr);
@@ -231,9 +231,10 @@ Node* mkExtNode(yy::parser::location_type loc, Node* ty, Node* methods){
     return new ExtNode(loc, (TypeNode*)ty, methods);
 }
 
+/*
 ParentNode* mkIfNode(yy::parser::location_type loc, Node* con, Node* body, Node* els = nullptr){
     return new IfNode(loc, con, body, (IfNode*)els);
-}
+}*/
 
 Node* mkExprIfNode(yy::parser::location_type loc, Node* con, Node* then, Node* els){
     return new ExprIfNode(loc, con, then, els);

@@ -111,28 +111,6 @@ void ImportNode::print(){
     expr->print();
 }
 
-void IfNode::print(){
-    if(condition.get()){
-        cout << "if ";
-        condition->print();
-        puts(" then");
-        printBlock(child.get());
-   
-        //If this if/elif has an else/elif, print it.
-        if(elseN.get()){
-            cout << "el";
-            elseN->print();
-        }else{
-            cout << "endif\n";
-        }
-    }else{
-        cout << "se\n"; //This ifnode is an elsenode
-        printBlock(child.get());
-        cout << "endif\n";
-        //else nodes should never have additional
-        //ifnodes in elseN, so dont bother checking.
-    }
-}
 
 //unlike IfNodes, an ExprIfNode's
 //condition, thenN, and elseN are all
@@ -160,11 +138,6 @@ void NamedValNode::print(){
 
 void VarNode::print(){
     cout << name;
-    maybePrintArr(next.get());
-}
-
-void RefVarNode::print(){
-    cout << "(ref " << name << ")";
     maybePrintArr(next.get());
 }
 

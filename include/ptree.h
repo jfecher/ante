@@ -9,7 +9,6 @@ extern char* lextxt;
 Node* setRoot(Node* root);
 Node* getRoot(void);
 Node* setNext(Node* cur, Node* nxt);
-Node* setElse(IfNode *c, IfNode *elif);
 
 #ifndef LOC_TY
 #define LOC_TY yy::location
@@ -29,7 +28,7 @@ Node* mkBinOpNode(LOC_TY loc, int op, Node* l, Node* r);
 Node* mkNamedValNode(LOC_TY loc, Node* nodes, Node* tExpr);
 Node* mkFuncCallNode(LOC_TY loc, char* s, Node* p);
 Node* mkVarNode(LOC_TY loc, char* s);
-Node* mkRefVarNode(LOC_TY loc, char* s);
+//Node* mkRefVarNode(LOC_TY loc, char* s);
 Node* mkRetNode(LOC_TY loc, Node* expr);
 Node* mkImportNode(LOC_TY loc, Node* expr);
 Node* mkLetBindingNode(LOC_TY loc, char* s, Node* mods, Node* tExpr, Node* expr);
@@ -37,7 +36,7 @@ Node* mkVarDeclNode(LOC_TY loc, char* s, Node* mods, Node* tExpr, Node* expr);
 Node* mkVarAssignNode(LOC_TY loc, Node* var, Node* expr, bool shouldFreeLval = true);
 Node* mkExtNode(LOC_TY loc, Node* typeExpr, Node* methods);
 
-Node* mkIfNode(LOC_TY loc, Node* con, Node* body, Node* els = nullptr);
+//Node* mkIfNode(LOC_TY loc, Node* con, Node* body, Node* els = nullptr);
 Node* mkExprIfNode(LOC_TY loc, Node* con, Node* body, Node* els);
 Node* mkWhileNode(LOC_TY loc, Node* con, Node* body);
 Node* mkFuncDeclNode(LOC_TY loc, char* s, Node* mods, Node* tExpr, Node* p, Node* body);

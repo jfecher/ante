@@ -274,66 +274,6 @@ TypedValue* ImportNode::compile(Compiler *c){
 }
 
 
-void compileIfNodeHelper(IfNode *ifN, BasicBlock *mergebb, Function *f, Compiler *c){
-    BasicBlock *thenbb = BasicBlock::Create(getGlobalContext(), "then", f);
-
-    if(ifN->elseN.get()){
-        TypedValue *cond = ifN->condition->compile(c);
-
-        BasicBlock *elsebb = BasicBlock::Create(getGlobalContext(), "else");
-        c->builder.CreateCondBr(cond->val, thenbb, elsebb);
-
-        //Compile the if statement's then body
-        c->builder.SetInsertPoint(thenbb);
-
-        //Compile the then block
-        TypedValue *v = compileStmtList(ifN->child.get(), c);
-        
-        //If the user did not return from the function themselves, then
-        //merge to the endif.
-        if(!dynamic_cast<ReturnInst*>(v->val)){
-            c->builder.CreateBr(mergebb);
-        }
-
-        f->getBasicBlockList().push_back(elsebb);
-        c->builder.SetInsertPoint(elsebb);
-
-        //if elseN is else, and not elif, insert merge instruction.
-        if(ifN->elseN->condition.get()){
-            compileIfNodeHelper(ifN->elseN.get(), mergebb, f, c);
-        }else{
-            //compile the else node's body directly
-            TypedValue *elseBody = ifN->elseN->child->compile(c);
-            if(!dynamic_cast<ReturnInst*>(elseBody->val)){
-                c->builder.CreateBr(mergebb);
-            }
-        }
-    }else{ //this must be an if or elif node with no proceeding elif or else nodes.
-        TypedValue *cond = ifN->condition->compile(c);
-        c->builder.CreateCondBr(cond->val, thenbb, mergebb);
-        c->builder.SetInsertPoint(thenbb);
-        TypedValue *v = compileStmtList(ifN->child.get(), c);
-        if(!dynamic_cast<ReturnInst*>(v->val)){
-            c->builder.CreateBr(mergebb);
-        }
-    }
-}
-
-
-TypedValue* IfNode::compile(Compiler *c){
-    //Create mergbb and send it to compileIfNodeHelper to do the dirty work
-    BasicBlock *mergbb = BasicBlock::Create(getGlobalContext(), "endif");
-    Function *f = c->builder.GetInsertBlock()->getParent();
-
-    compileIfNodeHelper(this, mergbb, f, c);
-
-    //append mergbb to the function when done.
-    f->getBasicBlockList().push_back(mergbb);
-    c->builder.SetInsertPoint(mergbb);
-    return new TypedValue(f, TT_Void);
-}
-
-
 TypedValue* WhileNode::compile(Compiler *c){
     Function *f = c->builder.GetInsertBlock()->getParent();
     BasicBlock *begin = BasicBlock::Create(getGlobalContext(), "while", f);
@@ -376,19 +316,6 @@ TypedValue* VarNode::compile(Compiler *c){
         return c->compErr("Variable " + name + " has not been declared.", this->loc);
 
     return dynamic_cast<AllocaInst*>(var->getVal())? new TypedValue(c->builder.CreateLoad(var->getVal(), name), var->getType()) : var->tval;
-}
-
-
-TypedValue* RefVarNode::compile(Compiler *c){
-    Variable *var = c->lookup(name);
-    
-    if(!var)
-        return c->compErr("Variable " + name + " has not been declared.", this->loc);
-
-    if(!dynamic_cast<AllocaInst*>(var->getVal()))
-        return c->compErr("Cannot assign to immutable variable " + name, this->loc);
-
-    return new TypedValue(var->getVal(), TT_Ptr);
 }
 
 
