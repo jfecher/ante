@@ -11,8 +11,8 @@
 ~The slow but theoretical function:
 `
 fun fib: i32 n => i32
-    if n <= 2 -> return 1
-    return fib(n-2) + fib(n-1)
+    if n <= 2 then 1
+    else fib(n-2) + fib(n-1)
 `
 
 `
@@ -26,11 +26,12 @@ every time it is called with a given input.
 `
 
 fun fib: i32 n => i32
-    if n <= 3 -> return (n+1)/2
-
-    i32 x1 = fib(n-2)
-    i32 x2 = x1 + fib(n-3)
-    return x1 + x2
+    if n <= 3 then 
+        (n+1)/2
+    else
+        let x1 = fib(n-2)
+        let x2 = x1 + fib(n-3)
+        x1 + x2
 
 
 ~Show the beginning of the range just to check for correctness

@@ -5,22 +5,23 @@
     the compiled module is not a library (ie it contains main)
 `
 
-fun unusedFn
+fun unusedFn:
     ~Since unusedFn should not be compiled, puts will not
     ~end up in the binary either.
     puts("unusedFn")
 
 
 fun mul: i32 a b => i32
-    return a * b
+    a * b
 
 
 let x = 8
 let y = 7
 printf("mul(%d, %d) = %d\n", x, y, mul(x, y))
 
-if x + y == mul(x, y)
+if x + y == mul(x, y) then
     exit(5)
+else ()
 
 `Compiled functions:
 printf

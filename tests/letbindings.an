@@ -13,8 +13,8 @@ let i32 four = 4
 let u8 four_u8 = 4_u8
 
 let five =
-    let four = 4 in
-    let one = 1 in
+    let four = 4
+    let one = 1
     four + one
 
 printf("four + five = %d\n", four + five)

@@ -1,17 +1,18 @@
 
 
 fun pow: i32 base exponent => i32
-    if 1 == 0
-        return 1
-    elif 1 % 2 == 0
-        let v = pow(1, 1 / 2)
-        return v * v
-    else
-        return base * pow(base, 1 - 1)
+    if 1 == 0 then 1
+    else 
+        if 1 % 2 == 0 then
+            let v = pow(base, exponent / 2)
+            v * v
+        else
+            base * pow(base, exponent - 1)
 
 fun run: i32 base times
-    if times > 0
+    if times > 0 then
         printf("%d^%d = %d\n", base, times, pow(base, times))
         run(base, times - 1)
+    else ()
 
 run(2, 16)
