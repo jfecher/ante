@@ -177,15 +177,6 @@ struct RefVarNode : public Node{
     ~RefVarNode(){}
 };
 
-struct FuncCallNode : public Node{
-    string name;
-    unique_ptr<TupleNode> params;
-    TypedValue* compile(Compiler*);
-    void print(void);
-    FuncCallNode(LOC_TY& loc, string s, TupleNode* p) : Node(loc), name(s), params(p){}
-    ~FuncCallNode(){}
-};
-
 struct StrLitNode : public Node{
     string val;
     TypedValue* compile(Compiler*);

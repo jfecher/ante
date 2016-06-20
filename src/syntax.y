@@ -311,13 +311,6 @@ fn_decl: maybe_mod_list Fun ident ':' params Returns type_expr ';'       {$$ = m
        ;
 
 
-
-
-
-fn_call: ident tuple {$$ = mkFuncCallNode(@$, (char*)$1, $2);}
-       ;
-
-
 ret_stmt: Return expr {$$ = mkRetNode(@$, $2);}
         ;
 
@@ -351,8 +344,7 @@ var: ident  %prec Ident {$$ = mkVarNode(@$, (char*)$1);}
    ;
 
 
-val: fn_call                 {$$ = $1;}
-   | '(' expr ')'            {$$ = $2;}
+val: '(' expr ')'            {$$ = $2;}
    | tuple                   {$$ = $1;}
    | array                   {$$ = $1;}
    | unary_op                {$$ = $1;}

@@ -27,7 +27,6 @@ Node* mkTypeCastNode(LOC_TY loc, Node *l, Node *r);
 Node* mkUnOpNode(LOC_TY loc, int op, Node *r);
 Node* mkBinOpNode(LOC_TY loc, int op, Node* l, Node* r);
 Node* mkNamedValNode(LOC_TY loc, Node* nodes, Node* tExpr);
-Node* mkFuncCallNode(LOC_TY loc, char* s, Node* p);
 Node* mkVarNode(LOC_TY loc, char* s);
 Node* mkRefVarNode(LOC_TY loc, char* s);
 Node* mkRetNode(LOC_TY loc, Node* expr);

@@ -372,10 +372,18 @@ TypedValue* NamedValNode::compile(Compiler *c)
  */
 TypedValue* VarNode::compile(Compiler *c){
     auto *var = c->lookup(name);
-    if(!var)
-        return c->compErr("Variable " + name + " has not been declared.", this->loc);
+    
+    if(var){
+        return dynamic_cast<AllocaInst*>(var->getVal()) ?
+            new TypedValue(c->builder.CreateLoad(var->getVal(), name), var->getType())
+            : var->tval;
+    }else{
+        auto *fn = c->getFunction(name);
 
-    return dynamic_cast<AllocaInst*>(var->getVal())? new TypedValue(c->builder.CreateLoad(var->getVal(), name), var->getType()) : var->tval;
+        return fn ?
+            new TypedValue(fn, TT_Function)
+            : c->compErr("Variable or function '" + name + "' has not been declared.", this->loc);
+    }
 }
 
 
@@ -389,37 +397,6 @@ TypedValue* RefVarNode::compile(Compiler *c){
         return c->compErr("Cannot assign to immutable variable " + name, this->loc);
 
     return new TypedValue(var->getVal(), TT_Ptr);
-}
-
-
-TypedValue* FuncCallNode::compile(Compiler *c){
-    Function *f = c->getFunction(name);
-    if(!f)
-        return c->compErr("Called function " + name + " has not been declared.", this->loc);
-
-    /* Check given argument count matches declared argument count. */
-    if(f->arg_size() != params->exprs.size() && !f->isVarArg()){
-        if(params->exprs.size() == 1)
-            return c->compErr("Called function " + name + " was given 1 argument but was declared to take "
-                    + to_string(f->arg_size()), this->loc);
-        else
-            return c->compErr("Called function " + name + " was given " + to_string(params->exprs.size()) 
-                    + " arguments but was declared to take " + to_string(f->arg_size()), this->loc);
-    }
-
-    /* unpack the tuple of arguments into a vector containing each value */
-    auto args = params->unpack(c);
-    int i = 0;
-    for(auto &param : f->args()){//type check each parameter
-        if(!args[i]) return 0; //compile error
-
-        if(!llvmTypeEq(args[i++]->getType(), param.getType())){
-            return c->compErr("Argument " + to_string(i) + " of function " + name + " is a(n) " + llvmTypeToStr(args[i-1]->getType())
-                    + " but was declared to be a(n) " + llvmTypeToStr(param.getType()), this->loc);
-        }
-    }
-
-    return new TypedValue(c->builder.CreateCall(f, args), llvmTypeToTypeTag(f->getReturnType()));
 }
 
 

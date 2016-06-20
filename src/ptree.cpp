@@ -199,10 +199,6 @@ Node* mkNamedValNode(yy::parser::location_type loc, Node* varNodes, Node* tExpr)
     return ret;
 }
 
-Node* mkFuncCallNode(yy::parser::location_type loc, char* s, Node* p){
-    return new FuncCallNode(loc, s, (TupleNode*)p);
-}
-
 Node* mkVarNode(yy::parser::location_type loc, char* s){
     return new VarNode(loc, s);
 }

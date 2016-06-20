@@ -90,15 +90,18 @@ void UnOpNode::print(){
 }
 
 void BinOpNode::print(){
-    putchar('(');
-    if(lval) lval->print();
-    putchar(' ');
-    Lexer::printTok(op);
-    putchar(' ');
-    if(rval) rval->print();
-    putchar(')');
-
-    maybePrintArr(next.get());
+    if(op == '('){
+        lval->print();
+        rval->print();
+    }else{
+        putchar('(');
+        if(lval) lval->print();
+        putchar(' ');
+        Lexer::printTok(op);
+        putchar(' ');
+        if(rval) rval->print();
+        putchar(')');
+    }
 }
 
 void RetNode::print(){
@@ -166,11 +169,6 @@ void VarNode::print(){
 void RefVarNode::print(){
     cout << "(ref " << name << ")";
     maybePrintArr(next.get());
-}
-
-void FuncCallNode::print(){
-    cout << name;
-    params->print();
 }
 
 void LetBindingNode::print(){
