@@ -74,12 +74,12 @@ void yyerror(const char *msg);
 %nonassoc LOW
 
 %left Ident
-%left Import Return
 
 %left ';' Newline
+%left If
+%left Let In Else Import Return
 %left MED
 
-%left Let In
 %left ','
 %left '=' AddEq SubEq MulEq DivEq
 
@@ -326,7 +326,8 @@ fn_list_: fn_list_ function maybe_newline  {$$ = setNext($1, $2);}
         ;
 
 
-if_stmt: If expr Then expr Else expr  %prec LOW {$$ = mkExprIfNode(@$, $2, $4, $6);}
+if_stmt: If expr Then expr Else expr  {$$ = mkExprIfNode(@$, $2, $4, $6);}
+       | If expr Then expr   %prec If {$$ = mkExprIfNode(@$, $2, $4,  0);}
        ;
 
 while_loop: While expr Do expr  %prec LOW {$$ = mkWhileNode(@$, $2, $4);}

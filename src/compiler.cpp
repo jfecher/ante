@@ -707,7 +707,9 @@ void Compiler::importFile(const char *fName){
     c->scanAllDecls();
 
     if(c->errFlag){
-        cout << "Error when importing " << fName << endl;
+        cout << "Error when importing " << fName << endl ;
+        errFlag = true;
+        delete c;
         return;
     }
 

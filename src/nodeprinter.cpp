@@ -145,8 +145,10 @@ void ExprIfNode::print(){
     condition->print();
     puts(" then");
     thenN->print();
-    puts("\nelse");
-    elseN->print();
+    if(elseN){
+        puts("\nelse");
+        elseN->print();
+    }
 }
 
 void NamedValNode::print(){
