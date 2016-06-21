@@ -5,35 +5,15 @@
  */
 #include "parser.h"
 #include "yyparser.h"
-#include <stack>
 
-stack<Node*> roots;
 
-Node* ante::parser::getRootNode(){
-    return roots.top();
-}
+Node *rootNode = 0;
 
-/*
- *  Saves the root of a new block and returns it.
- */
-Node* setRoot(Node* node){
-    roots.push(node);
-    return node;
-}
 
-/*
- *  Pops and returns the root of the current block
- */
-Node* getRoot(){
-    Node* ret = roots.top();
-    roots.pop();
+ArrayNode* setNext(Node *an, Node *nxt){
+    auto *ret = static_cast<ArrayNode*>(an);
+    ret->exprs.push_back(nxt);
     return ret;
-}
-
-Node* setNext(Node* cur, Node* nxt){
-    cur->next.reset(nxt);
-    nxt->prev = cur;
-    return nxt;
 }
 
 
@@ -106,28 +86,44 @@ Node* mkBoolLitNode(yy::parser::location_type loc, char b){
 
 Node* mkArrayNode(yy::parser::location_type loc, Node *expr){
     vector<Node*> exprs;
-    while(expr){
-        exprs.push_back(expr);
-        expr = expr->next.get();
+    if(!expr) return new ArrayNode(loc, exprs);
+
+    while(true){
+        auto *seqNode = dynamic_cast<BinOpNode*>(expr);
+
+        if(seqNode && seqNode->op == ';'){
+            exprs.push_back(seqNode->lval.get());
+            expr = seqNode->rval.get();
+        }else{
+            exprs.push_back(expr);
+            return new ArrayNode(loc, exprs);
+        }
     }
-    return new ArrayNode(loc, exprs);
 }
 
 Node* mkTupleNode(yy::parser::location_type loc, Node *expr){
     vector<Node*> exprs;
-    while(expr){
-        exprs.push_back(expr);
-        expr = expr->next.get();
+    if(!expr) return new TupleNode(loc, exprs);
+    
+    while(true){
+        auto *seqNode = dynamic_cast<BinOpNode*>(expr);
+
+        if(seqNode && seqNode->op == ';'){
+            exprs.push_back(seqNode->lval.get());
+            expr = seqNode->rval.get();
+        }else{
+            exprs.push_back(expr);
+            return new TupleNode(loc, exprs);
+        }
     }
-    return new TupleNode(loc, exprs);
 }
 
 Node* mkModNode(yy::parser::location_type loc, TokenType mod){
     return new ModNode(loc, mod);
 }
 
-Node* mkTypeNode(yy::parser::location_type loc, TypeTag type, char* typeName, Node* extTy = nullptr){
-    return new TypeNode(loc, type, typeName, static_cast<TypeNode*>(extTy));
+Node* mkTypeNode(yy::parser::location_type loc, TypeTag type, char* typeName, ArrayNode* extTy = nullptr){
+    return new TypeNode(loc, type, typeName, extTy);
 }
 
 Node* mkTypeCastNode(yy::parser::location_type loc, Node *l, Node *r){
@@ -150,19 +146,16 @@ Node* mkRetNode(yy::parser::location_type loc, Node* expr){
 TypeNode* deepCopyTypeNode(const TypeNode *n){
     yy::location loc = {{n->loc.begin.filename, n->loc.begin.line, n->loc.begin.column}, 
                         {n->loc.end.filename, n->loc.end.line, n->loc.end.column}};
-    TypeNode *cpy = new TypeNode(loc, n->type, n->typeName, nullptr);
+
+    auto *cpyExts = new ArrayNode(loc);
+    TypeNode *cpy = new TypeNode(loc, n->type, n->typeName, cpyExts);
 
     if(n->type == TT_Tuple){
-        TypeNode *nxt = n->extTy.get();
-        TypeNode *ext = nxt? deepCopyTypeNode(nxt) : 0;
-        cpy->extTy.reset(ext);
-
-        while((nxt = static_cast<TypeNode*>(nxt->next.get()))){
-            ext->next.reset(deepCopyTypeNode(nxt));
-            ext = static_cast<TypeNode*>(ext->next.get());
+        for(auto *extTy : n->extTys->exprs){
+            cpy->getExts().push_back(deepCopyTypeNode(static_cast<TypeNode*>(extTy)));
         }
     }else if(n->type == TT_Array || n->type == TT_Ptr){
-        cpy->extTy.reset(deepCopyTypeNode(n->extTy.get()));
+        cpy->getExts().push_back(deepCopyTypeNode(static_cast<TypeNode*>(n->getExts()[0])));
     }
     return cpy;
 }
@@ -174,21 +167,16 @@ TypeNode* deepCopyTypeNode(const TypeNode *n){
  *  This is used for the shortcut when declaring multiple
  *  variables of the same type, e.g. i32 a b c
  */
-Node* mkNamedValNode(yy::parser::location_type loc, Node* varNodes, Node* tExpr){
+ArrayNode* addNamedValNode(yy::parser::location_type loc, ArrayNode* params, ArrayNode* varNodes, Node* tExpr){
     //Note: there will always be at least one varNode
-    const TypeNode* ty = (TypeNode*)tExpr;
-    VarNode* vn = (VarNode*)varNodes;
-    Node *ret = new NamedValNode(loc, vn->name, tExpr);
-    Node *nxt = ret;
+    const auto* ty = static_cast<TypeNode*>(tExpr);
 
-    while((vn = (VarNode*)vn->next.get())){
-        TypeNode *tyNode = deepCopyTypeNode(ty);
-        nxt->next.reset(new NamedValNode(vn->loc, vn->name, tyNode));
-        nxt->next->prev = nxt;
-        nxt = nxt->next.get();
+    for(Node* e : varNodes->exprs){
+        auto* vn = static_cast<VarNode*>(e);
+        params->exprs.push_back(new NamedValNode(vn->loc, vn->name, deepCopyTypeNode(ty)));
     }
     delete varNodes;
-    return ret;
+    return params;
 }
 
 Node* mkVarNode(yy::parser::location_type loc, char* s){
@@ -215,18 +203,18 @@ Node* mkExtNode(yy::parser::location_type loc, Node* ty, Node* methods){
     return new ExtNode(loc, (TypeNode*)ty, methods);
 }
 
-Node* mkExprIfNode(yy::parser::location_type loc, Node* con, Node* then, Node* els){
-    return new ExprIfNode(loc, con, then, els);
+Node* mkIfNode(yy::parser::location_type loc, Node* con, Node* then, Node* els){
+    return new IfNode(loc, con, then, els);
 }
 
-ParentNode* mkWhileNode(yy::parser::location_type loc, Node* con, Node* body){
+Node* mkWhileNode(yy::parser::location_type loc, Node* con, Node* body){
     return new WhileNode(loc, con, body);
 }
 
-ParentNode* mkFuncDeclNode(yy::parser::location_type loc, char* s, Node* mods, Node* tExpr, Node* p, Node* b){
+Node* mkFuncDeclNode(yy::parser::location_type loc, char* s, Node* mods, Node* tExpr, ArrayNode* p, Node* b){
     return new FuncDeclNode(loc, s, mods, tExpr, p, b);
 }
 
-ParentNode* mkDataDeclNode(yy::parser::location_type loc, char* s, Node* b){
+Node* mkDataDeclNode(yy::parser::location_type loc, char* s, Node* b){
     return new DataDeclNode(loc, s, b, Compiler::getTupleSize(b));
 }

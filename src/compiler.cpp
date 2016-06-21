@@ -101,36 +101,6 @@ TypedValue* Compiler::compErr(string msg, yy::location& loc){
 }
 
 
-/*
- *  Returns amount of values in a tuple, from 0 to max uint.
- *  Assumes argument is a tuple.
- *  
- *  Doubles as a getNodesInBlock function, but does not
- *  count child nodes.
- */
-size_t Compiler::getTupleSize(Node *tup){
-    size_t size = 0;
-    while(tup){
-        tup = tup->next.get();
-        size++;
-    }
-    return size;
-}
-
-
-/*
- *  Compiles a statement list and returns its last statement.
- */
-TypedValue* compileStmtList(Node *nList, Compiler *c){
-    TypedValue *ret = nullptr;
-    while(nList){
-        ret = nList->compile(c);
-        nList = nList->next.get();
-    }
-    return ret;
-}
-
-
 bool isUnsignedTypeTag(const TypeTag tt){
     return tt==TT_U8||tt==TT_U16||tt==TT_U32||tt==TT_U64||tt==TT_Usz;
 }
@@ -285,7 +255,7 @@ TypedValue* WhileNode::compile(Compiler *c){
     c->enterNewScope();
     //f->getBasicBlockList().push_back(begin);
     c->builder.SetInsertPoint(begin);
-    compileStmtList(child.get(), c); //compile the while loop's body
+    body->compile(c); //compile the while loop's body
 
     auto *reCond = condition->compile(c);
     c->builder.CreateCondBr(reCond->val, begin, end);
@@ -441,9 +411,9 @@ TypedValue* VarAssignNode::compile(Compiler *c){
  * a varargs type (represented by the absence of a type)
  * then a nullptr is inserted for that parameter.
  */
-vector<Type*> getParamTypes(Compiler *c, NamedValNode *nvn, size_t paramCount){
+vector<Type*> getParamTypes(Compiler *c, ArrayNode *namedValNodes, size_t paramCount){
     vector<Type*> paramTys;
-    paramTys.reserve(paramCount);
+    paramTys.reserve(namedValNodes->exprs.size());
 
     for(size_t i = 0; i < paramCount && nvn; i++){
 

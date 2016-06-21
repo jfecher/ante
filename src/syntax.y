@@ -112,13 +112,9 @@ void yyerror(const char *msg);
 %start top_level_expr_list
 %%
 
-top_level_expr_list:  maybe_newline top_level_expr_list_p maybe_newline
+top_level_expr_list:  maybe_newline expr {rootNode = $2;}
                    ;
 
-
-top_level_expr_list_p: top_level_expr_list_p Newline expr  %prec HIGH {$$ = setNext($1, $3);}
-                     | expr                                %prec HIGH {$$ = setRoot($1);}
-                     ;
 
 
 maybe_newline: Newline  %prec Newline
@@ -175,14 +171,14 @@ type: type '*'      %dprec 2             {$$ = mkTypeNode(@$, TT_Ptr,  (char*)""
 
 type_expr_: type_expr_ ',' type {$$ = setNext($1, $3);}
           | type_expr_ '|' type
-          | type                {$$ = setRoot($1);}
+          | type                {$$ = new ArrayNode($1);}
           ;
 
-type_expr: type_expr_  {Node* tmp = getRoot(); 
-                        if(tmp == $1){//singular type, first type in list equals the last
-                            $$ = tmp;
+type_expr: type_expr_  {//Check if it is a tuple by checking the amount of types found
+                        if(((ArrayNode*)$1)->exprs.size() > 1){
+                            $$ = $1;
                         }else{ //tuple type
-                            $$ = mkTypeNode(@$, TT_Tuple, (char*)"", tmp);
+                            $$ = mkTypeNode(@$, TT_Tuple, (char*)"", $1);
                         }
                        }
 
@@ -196,11 +192,8 @@ modifier: Pub      {$$ = mkModNode(@$, Tok_Pub);}
         | Pathogen {$$ = mkModNode(@$, Tok_Pathogen);}
         ;
 
-modifier_list_: modifier_list_ modifier {$$ = setNext($1, $2);}
-              | modifier {$$ = setRoot($1);}
-              ;
-
-modifier_list: modifier_list_ {$$ = getRoot();}
+modifier_list: modifier_list modifier {$$ = setNext($1, $2);}
+             | modifier               {$$ = new ArrayNode($1);}
              ;
 
 
@@ -214,30 +207,19 @@ let_binding: Let modifier_list type_expr ident '=' expr {$$ = mkLetBindingNode(@
            ;
 
 
-
-usertype_list: usertype_list ',' usertype {$$ = setNext($1, $3);}
-             | usertype {$$ = setRoot($1);}
-             ;
-
-generic: '<' usertype_list '>' {$$ = getRoot();}
-       ;
-
 data_decl: modifier_list Data usertype type_decl_block         {$$ = mkDataDeclNode(@$, (char*)$3, $4);}
-         | modifier_list Data usertype generic type_decl_block {$$ = mkDataDeclNode(@$, (char*)$3, $5);}
          | Data usertype type_decl_block                       {$$ = mkDataDeclNode(@$, (char*)$2, $3);}
-         | Data usertype generic type_decl_block               {$$ = mkDataDeclNode(@$, (char*)$2, $4);}
          ;
 
-type_decl: type_expr ident {$$ = mkNamedValNode(@$, mkVarNode(@$, (char*)$2), $1);}
-         | type_expr       {$$ = mkNamedValNode(@$, 0, $1);}
+type_decl: params
          | enum_decl
          ;
 
 type_decl_list: type_decl_list Newline type_decl  {$$ = setNext($1, $3);}
-              | type_decl                         {$$ = setRoot($1);}
+              | type_decl                         {$$ = new ArrayNode($1);}
               ;
 
-type_decl_block: Indent type_decl_list Unindent  {$$ = getRoot();}
+type_decl_block: Indent type_decl_list Unindent  {$$ = $2;}
                ;
 
 
@@ -263,11 +245,9 @@ block: Indent expr Unindent  {$$ = $2;}
 
 
 
-raw_ident_list: raw_ident_list ident  {$$ = setNext($1, mkVarNode(@$, (char*)$2));}
-              | ident                 {$$ = setRoot(mkVarNode(@$, (char*)$1));}
-              ;
-
-ident_list: raw_ident_list {$$ = getRoot();}
+ident_list: ident_list var  {$$ = setNext($1, $2);}
+          | var             {$$ = new ArrayNode($1);}
+          ;
 
 
 /* 
@@ -277,13 +257,13 @@ ident_list: raw_ident_list {$$ = getRoot();}
  */
 
 
-_params: _params ',' type_expr ident_list {$$ = setNext($1, mkNamedValNode(@$, $4, $3));}
-      | type_expr ident_list            {$$ = setRoot(mkNamedValNode(@$, $2, $1));}
-      ;
+params_p: params_p ',' type_expr ident_list {$$ = addNamedValNode(@4, $1, $4, $3);}
+        | type_expr ident_list              {$$ = addNamedValNode(@$, new ArrayNode(@$), $2, $1);}
+        ;
 
                           /* varargs function .. (Range) followed by . */
-params: _params ',' Range '.' {setNext($1, mkNamedValNode(@$, mkVarNode(@$, (char*)""), 0)); $$ = getRoot();}
-      | _params               {$$ = getRoot();}
+params: params_p ',' Range '.' {$$ = addNamedValNode(@3, $1, new ArrayNode(mkVarNode(@$, (char*)"")), 0);}
+      | params_p               {$$ = $1;}
       ;
 
 maybe_mod_list: modifier_list  {$$ = $1;}
@@ -316,15 +296,13 @@ extension: Ext type_expr Indent fn_list Unindent {$$ = mkExtNode(@$, $2, $4);}
          ;
 
 
-fn_list: fn_list_ {$$ = getRoot();}
-
-fn_list_: fn_list_ function maybe_newline  {$$ = setNext($1, $2);} 
-        | function maybe_newline           {$$ = setRoot($1);}
-        ;
+fn_list: fn_list function maybe_newline  {$$ = mkBinOpNode(@2, ';', $1, $2);} 
+       | function maybe_newline          {$$ = $1;}
+       ;
 
 
-if_expr: If expr Then expr Else expr   {$$ = mkExprIfNode(@$, $2, $4, $6);}
-       | If expr Then expr  %prec LOW  {$$ = mkExprIfNode(@$, $2, $4,  0);}
+if_expr: If expr Then expr Else expr   %prec Else {$$ = mkIfNode(@$, $2, $4, $6);}
+       | If expr Then expr             %prec LOW  {$$ = mkIfNode(@$, $2, $4,  0);}
        ;
 
 while_loop: While expr Do expr  %prec LOW {$$ = mkWhileNode(@$, $2, $4);}
@@ -381,13 +359,9 @@ unary_op: '@' val                 {$$ = mkUnOpNode(@$, '@', $2);}
 
 
 /* expr is used in expression blocks and can span multiple lines */
-expr_list: expr_list_p {$$ = getRoot();}
+expr_list: expr_list ',' maybe_newline expr  %prec ',' {$$ = mkBinOpNode(@$, ';', $1, $4);}
+         | expr                                %prec LOW {$$ = $1;}
          ;
-
-
-expr_list_p: expr_list_p ',' maybe_newline expr  %prec ',' {$$ = setNext($1, $4);}
-           | expr                                %prec LOW {$$ = setRoot($1);}
-           ;
 
 expr: expr '+' maybe_newline expr                {$$ = mkBinOpNode(@$, '+', $1, $4);}
     | expr '-' maybe_newline expr                {$$ = mkBinOpNode(@$, '-', $1, $4);}

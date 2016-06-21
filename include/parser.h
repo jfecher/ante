@@ -25,8 +25,6 @@ using namespace ante;
 
 /* Base class for all nodes */
 struct Node{
-    unique_ptr<Node> next;
-    Node *prev;
     LOC_TY loc;
 
     //print representation of node
@@ -37,22 +35,6 @@ struct Node{
 
     Node(LOC_TY& l) : loc(l){}
     virtual ~Node(){}
-};
-
-/*
- * Class for all nodes that can contain child statement nodes,
- * if statements, function declarations, etc
- */
-struct ParentNode : public Node{
-    unique_ptr<Node> child;
-
-    /*
-        * The body should always be known when a
-        * parent node is initialized, so it is required
-        * in the constructor (unlike next and prev)
-        */
-    ParentNode(LOC_TY& loc, Node* c) : Node(loc), child(c){}
-    ~ParentNode(){}
 };
 
 struct IntLitNode : public Node{
@@ -86,6 +68,8 @@ struct ArrayNode : public Node{
     TypedValue* compile(Compiler*);
     void print(void);
     ArrayNode(LOC_TY& loc, vector<Node*>& e) : Node(loc), exprs(e){}
+    ArrayNode(LOC_TY& loc) : Node(loc), exprs(){}
+    ArrayNode(Node *n) : Node(n->loc), exprs(1, n){}
     ~ArrayNode(){}
 };
 
@@ -128,11 +112,12 @@ struct BinOpNode : public Node{
 struct TypeNode : public Node{
     TypeTag type;
     string typeName; //used for usertypes
-    unique_ptr<TypeNode> extTy; //Used for pointers and non-single anonymous types.
+    unique_ptr<ArrayNode> extTys; //Used for pointers and non-single anonymous types.
 
+    vector<Node*> getExts() const { return extTys->exprs; }
     TypedValue* compile(Compiler*);
     void print(void);
-    TypeNode(LOC_TY& loc, TypeTag ty, string tName, TypeNode* eTy) : Node(loc), type(ty), typeName(tName), extTy(eTy){}
+    TypeNode(LOC_TY& loc, TypeTag ty, string tName, ArrayNode* eTy) : Node(loc), type(ty), typeName(tName), extTys(eTy){}
     ~TypeNode(){}
 };
 
@@ -224,11 +209,11 @@ struct ImportNode : public Node{
     ~ImportNode(){}
 };
 
-struct WhileNode : public ParentNode{
-    unique_ptr<Node> condition;
+struct WhileNode : public Node{
+    unique_ptr<Node> condition, body;
     TypedValue* compile(Compiler*);
     void print(void);
-    WhileNode(LOC_TY& loc, Node *cond, Node *body) : ParentNode(loc, body), condition(cond){}
+    WhileNode(LOC_TY& loc, Node *cond, Node *b) : Node(loc), condition(cond), body(b){}
     ~WhileNode(){}
 };
 
@@ -236,33 +221,34 @@ struct WhileNode : public ParentNode{
 //if node used in expressions
 //requires elseN to be initialized, and
 //typechecks thenN and elseN to be matching types.
-struct ExprIfNode : public Node{
+struct IfNode : public Node{
     unique_ptr<Node> condition, thenN, elseN;
     TypedValue* compile(Compiler*);
     void print(void);
-    ExprIfNode(LOC_TY& loc, Node* c, Node* then, Node* els) : Node(loc), condition(c), thenN(then), elseN(els){}
-    ~ExprIfNode(){}
+    IfNode(LOC_TY& loc, Node* c, Node* then, Node* els) : Node(loc), condition(c), thenN(then), elseN(els){}
+    ~IfNode(){}
 };
 
-struct FuncDeclNode : public ParentNode{
+struct FuncDeclNode : public Node{
     string name;
-    unique_ptr<Node> modifiers, type;
-    unique_ptr<NamedValNode> params;
+    unique_ptr<Node> modifiers, type, body;
+    unique_ptr<ArrayNode> params;
     bool varargs;
 
     TypedValue* compile(Compiler*);
     void print(void);
-    FuncDeclNode(LOC_TY& loc, string s, Node *mods, Node *t, Node *p, Node* b, bool va=false) : ParentNode(loc, b), name(s), modifiers(mods), type(t), params((NamedValNode*)p), varargs(va){}
+    FuncDeclNode(LOC_TY& loc, string s, Node *mods, Node *t, ArrayNode* p, Node* b, bool va=false) : Node(loc), name(s), modifiers(mods), type(t), body(b), params(p), varargs(va){}
     ~FuncDeclNode(){}
 };
 
-struct DataDeclNode : public ParentNode{
+struct DataDeclNode : public Node{
     string name;
     size_t fields;
+    unique_ptr<Node> body;
 
     TypedValue* compile(Compiler*);
     void print(void);
-    DataDeclNode(LOC_TY& loc, string s, Node* b, size_t f) : ParentNode(loc, b), name(s), fields(f){}
+    DataDeclNode(LOC_TY& loc, string s, Node* b, size_t f) : Node(loc), name(s), fields(f), body(b){}
     ~DataDeclNode(){}
 };
 
