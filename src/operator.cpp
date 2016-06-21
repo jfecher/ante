@@ -165,8 +165,6 @@ TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
  *  method when storing the newly inserted tuple.
  */
 TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
-    //currently, the parser only accepts a single RefVarNode as the lval.
-    //this line will have to be changed if it were to become more lenient.
     auto *tmp = op->lval->compile(this);
 
     if(!dynamic_cast<LoadInst*>(tmp->val))
@@ -275,50 +273,63 @@ TypedValue* TypeCastNode::compile(Compiler *c){
 }
 
 TypedValue* ExprIfNode::compile(Compiler *c){
-    auto *thenbb = BasicBlock::Create(getGlobalContext(), "then");
-    auto *elsebb = BasicBlock::Create(getGlobalContext(), "else");
-    auto *mergbb = BasicBlock::Create(getGlobalContext(), "endif");
     
     auto *cond = condition->compile(c);
     if(!cond) return 0;
     
-    //add the floating blocks to the function
     Function *f = c->builder.GetInsertBlock()->getParent();
-    auto &fnBlocks = f->getBasicBlockList();
-    fnBlocks.push_back(thenbb);
-    fnBlocks.push_back(elsebb);
-    fnBlocks.push_back(mergbb);
+    auto &blocks = f->getBasicBlockList();
+
+    auto *thenbb = BasicBlock::Create(getGlobalContext(), "then");
+    auto *mergbb = BasicBlock::Create(getGlobalContext(), "endif");
+   
+    //only create the else block if this ifNode actually has an else clause
+    BasicBlock *elsebb;
     
-    c->builder.CreateCondBr(cond->val, thenbb, elsebb);
-    
+    if(elseN){
+        elsebb = BasicBlock::Create(getGlobalContext(), "else");
+        c->builder.CreateCondBr(cond->val, thenbb, elsebb);
+   
+        blocks.push_back(thenbb);
+        blocks.push_back(elsebb);
+        blocks.push_back(mergbb);
+    }else{
+        c->builder.CreateCondBr(cond->val, thenbb, mergbb);
+        blocks.push_back(thenbb);
+        blocks.push_back(mergbb);
+    }
+
     c->builder.SetInsertPoint(thenbb);
     auto *thenVal = thenN->compile(c);
     c->builder.CreateBr(mergbb);
 
+    if(elseN){
+        c->builder.SetInsertPoint(elsebb);
+        auto *elseVal = elseN->compile(c);
+        c->builder.CreateBr(mergbb);
 
-    c->builder.SetInsertPoint(elsebb);
-    auto *elseVal = elseN->compile(c);
-    c->builder.CreateBr(mergbb);
-    
-
-    if(!thenVal || !elseVal) return 0;
-
-
-    if(!llvmTypeEq(thenVal->getType(), elseVal->getType())){
-        return c->compErr("If condition's then expr's type " + llvmTypeToStr(thenVal->getType()) +
-                        " does not match the else expr's type " + llvmTypeToStr(elseVal->getType()), loc);
-    }
+        if(!thenVal || !elseVal) return 0;
 
 
-    c->builder.SetInsertPoint(mergbb);
+        if(!llvmTypeEq(thenVal->getType(), elseVal->getType())){
+            return c->compErr("If condition's then expr's type " + llvmTypeToStr(thenVal->getType()) +
+                            " does not match the else expr's type " + llvmTypeToStr(elseVal->getType()), loc);
+        }
 
-    if(thenVal->type != TT_Void){
-        auto *phi = c->builder.CreatePHI(thenVal->getType(), 2);
-        phi->addIncoming(thenVal->val, thenbb);
-        phi->addIncoming(elseVal->val, elsebb);
 
-        return new TypedValue(phi, thenVal->type);
+        c->builder.SetInsertPoint(mergbb);
+
+        if(thenVal->type != TT_Void){
+            auto *phi = c->builder.CreatePHI(thenVal->getType(), 2);
+            phi->addIncoming(thenVal->val, thenbb);
+            phi->addIncoming(elseVal->val, elsebb);
+
+            return new TypedValue(phi, thenVal->type);
+        }else{
+            return c->getVoidLiteral();
+        }
     }else{
+        c->builder.SetInsertPoint(mergbb);
         return c->getVoidLiteral();
     }
 }

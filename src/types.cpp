@@ -258,9 +258,6 @@ bool isPrimitiveTypeTag(TypeTag ty){
 }
 
 
-//unix term colors
-static const string blue = "\033[;34m";
-static const string norm = "\033[;m";
 
 /*
  *  Converts a TypeTag to its string equivalent for
@@ -338,10 +335,10 @@ string typeNodeToStr(TypeNode *t){
 string llvmTypeToStr(Type *ty){
     TypeTag tt = llvmTypeToTypeTag(ty);
     if(isPrimitiveTypeTag(tt)){
-        return blue + typeTagToStr(tt) + norm;
+        return typeTagToStr(tt);
     }else if(tt == TT_Tuple){
         if(!ty->getStructName().empty())
-            return blue + string(ty->getStructName()) + norm;
+            return string(ty->getStructName());
 
         string ret = "(";
         const unsigned size = ty->getStructNumElements();
@@ -368,11 +365,11 @@ string llvmTypeToStr(Type *ty){
             else
                 ret += llvmTypeToStr(ty->getFunctionParamType(i)) + ", ";
         }
-        return blue + ret + norm;
+        return ret;
     }else if(tt == TT_TypeVar){
-        return blue + "(typevar)" + norm;
+        return "(typevar)";
     }else if(tt == TT_Void){
-        return blue + "void" + norm;
+        return "void";
     }
-    return blue + "(Unknown type)" + norm;
+    return "(Unknown type)";
 }

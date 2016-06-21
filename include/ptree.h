@@ -26,9 +26,7 @@ Node* mkTypeCastNode(LOC_TY loc, Node *l, Node *r);
 Node* mkUnOpNode(LOC_TY loc, int op, Node *r);
 Node* mkBinOpNode(LOC_TY loc, int op, Node* l, Node* r);
 Node* mkNamedValNode(LOC_TY loc, Node* nodes, Node* tExpr);
-Node* mkFuncCallNode(LOC_TY loc, char* s, Node* p);
 Node* mkVarNode(LOC_TY loc, char* s);
-//Node* mkRefVarNode(LOC_TY loc, char* s);
 Node* mkRetNode(LOC_TY loc, Node* expr);
 Node* mkImportNode(LOC_TY loc, Node* expr);
 Node* mkLetBindingNode(LOC_TY loc, char* s, Node* mods, Node* tExpr, Node* expr);
@@ -36,7 +34,6 @@ Node* mkVarDeclNode(LOC_TY loc, char* s, Node* mods, Node* tExpr, Node* expr);
 Node* mkVarAssignNode(LOC_TY loc, Node* var, Node* expr, bool shouldFreeLval = true);
 Node* mkExtNode(LOC_TY loc, Node* typeExpr, Node* methods);
 
-//Node* mkIfNode(LOC_TY loc, Node* con, Node* body, Node* els = nullptr);
 Node* mkExprIfNode(LOC_TY loc, Node* con, Node* body, Node* els);
 Node* mkWhileNode(LOC_TY loc, Node* con, Node* body);
 Node* mkFuncDeclNode(LOC_TY loc, char* s, Node* mods, Node* tExpr, Node* p, Node* body);

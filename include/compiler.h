@@ -20,7 +20,6 @@ struct BinOpNode;
 struct StrLitNode;
 struct IntLitNode;
 struct FuncDeclNode;
-struct FuncCallNode;
 struct DataDeclNode;
 
 

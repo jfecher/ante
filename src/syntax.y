@@ -74,13 +74,12 @@ void yyerror(const char *msg);
 %nonassoc LOW
 
 %left Ident
-%left Import Return
 
 %left ';' Newline
-%left Else
+%left If
+%left Let In Else Import Return
 %left MED
 
-%left Let
 %left ','
 %left '=' AddEq SubEq MulEq DivEq
 
@@ -293,7 +292,6 @@ maybe_mod_list: modifier_list  {$$ = $1;}
 
 function: fn_def
         | fn_decl
-//        | fn_lambda
         ;
 
 fn_def: maybe_mod_list Fun ident ':' params Returns type_expr block  {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/$7,                                  /*params*/$5, /*body*/$8);}
@@ -308,16 +306,6 @@ fn_decl: maybe_mod_list Fun ident ':' params Returns type_expr ';'       {$$ = m
        | maybe_mod_list Fun ident ':'                          ';'       {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/0,  /*params*/0,  /*body*/0);}
        ;
 
-//fn_lambda: maybe_mod_list Fun params '=' expr            {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)0,  /*mods*/$1, /*ret_ty*/0, /*params*/$3, /*body*/$5);}
-//         | maybe_mod_list Fun '=' expr                   {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)0,  /*mods*/$1, /*ret_ty*/0, /*params*/0,  /*body*/$4);}
-//         ;
-
-
-
-
-
-fn_call: ident tuple {$$ = mkFuncCallNode(@$, (char*)$1, $2);}
-       ;
 
 
 ret_expr: Return expr {$$ = mkRetNode(@$, $2);}
@@ -354,8 +342,7 @@ var: ident  %prec Ident {$$ = mkVarNode(@$, (char*)$1);}
    ;
 
 
-val: fn_call                 {$$ = $1;}
-   | '(' expr ')'            {$$ = $2;}
+val: '(' expr ')'            {$$ = $2;}
    | tuple                   {$$ = $1;}
    | array                   {$$ = $1;}
    | unary_op                {$$ = $1;}
@@ -426,7 +413,7 @@ expr: expr '+' maybe_newline expr                {$$ = mkBinOpNode(@$, '+', $1, 
     | expr SubEq maybe_newline expr              {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '-', $1, $4), false);}
     | expr MulEq maybe_newline expr              {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '*', $1, $4), false);}
     | expr DivEq maybe_newline expr              {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '/', $1, $4), false);}
-    | expr Newline                    %prec LOW  {$$ = $1;}
+    | expr Newline                               {$$ = $1;}
     | val                                        {$$ = $1;}
     ;
 

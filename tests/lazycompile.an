@@ -21,7 +21,6 @@ printf("mul(%d, %d) = %d\n", x, y, mul(x, y))
 
 if x + y == mul(x, y) then
     exit(5)
-else ()
 
 `Compiled functions:
 printf
