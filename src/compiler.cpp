@@ -413,6 +413,7 @@ TypedValue* VarAssignNode::compile(Compiler *c){
  */
 vector<Type*> getParamTypes(Compiler *c, ArrayNode *namedValNodes){
     vector<Type*> paramTys;
+
     paramTys.reserve(namedValNodes->exprs.size());
 
     for(auto *e : namedValNodes->exprs){
@@ -506,6 +507,7 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
  */
 TypedValue* FuncDeclNode::compile(Compiler *c){
     name = c->funcPrefix + name;
+    cout << "\n" << name << "\n\n";
     c->registerFunction(this);
     return new TypedValue(nullptr, TT_Void);
 }
@@ -526,11 +528,14 @@ TypedValue* DataDeclNode::compile(Compiler *c){
     vector<string> fieldNames;
     fieldNames.reserve(fields);
 
-    for(auto *e : body->exprs){
-        const auto* nvn = static_cast<NamedValNode*>(e);
-        TypeNode *tyn = (TypeNode*)nvn->typeExpr.get();
-        tys.push_back(c->typeNodeToLlvmType(tyn));
-        fieldNames.push_back(nvn->name);
+    for(auto *e1 : body->exprs){
+        const auto* nvnArr = static_cast<ArrayNode*>(e1);
+        for(auto *e2 : nvnArr->exprs){
+            const auto* nvn = static_cast<NamedValNode*>(e2);
+            TypeNode *tyn = (TypeNode*)nvn->typeExpr.get();
+            tys.push_back(c->typeNodeToLlvmType(tyn));
+            fieldNames.push_back(nvn->name);
+        }
     }
 
     auto *structTy = StructType::get(getGlobalContext(), tys);
@@ -630,12 +635,18 @@ inline void Compiler::registerFunction(FuncDeclNode *fn){
 void Compiler::scanAllDecls(){
     Node *n = ast.get();
     while(n){
-        if(dynamic_cast<FuncDeclNode*>(n) || dynamic_cast<ExtNode*>(n) || dynamic_cast<DataDeclNode*>(n))
+        if(dynamic_cast<FuncDeclNode*>(n) || dynamic_cast<ExtNode*>(n) || dynamic_cast<DataDeclNode*>(n)){
             n->compile(this); //register the function
-        else if(dynamic_cast<BinOpNode*>(n) && ((BinOpNode*)n)->op == ';')
-            n = ((BinOpNode*)n)->rval.get();
-        else
             break;
+        }else if(dynamic_cast<BinOpNode*>(n) && ((BinOpNode*)n)->op == ';'){
+            Node *l = ((BinOpNode*)n)->rval.get();
+            if(dynamic_cast<FuncDeclNode*>(l) || dynamic_cast<ExtNode*>(l) || dynamic_cast<DataDeclNode*>(l)){
+                l->compile(this);
+            }
+            n = ((BinOpNode*)n)->lval.get();
+        }else{
+            break;
+        }
     }
 }
 

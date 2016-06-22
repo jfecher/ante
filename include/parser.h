@@ -114,7 +114,7 @@ struct TypeNode : public Node{
     string typeName; //used for usertypes
     unique_ptr<ArrayNode> extTys; //Used for pointers and non-single anonymous types.
 
-    vector<Node*> getExts() const { return extTys->exprs; }
+    vector<Node*>& getExts() const { return extTys->exprs; }
     TypedValue* compile(Compiler*);
     void print(void);
     TypeNode(LOC_TY& loc, TypeTag ty, string tName, ArrayNode* eTy) : Node(loc), type(ty), typeName(tName), extTys(eTy){}

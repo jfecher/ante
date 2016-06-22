@@ -127,7 +127,8 @@ Node* mkModNode(yy::parser::location_type loc, TokenType mod){
 }
 
 Node* mkTypeNode(yy::parser::location_type loc, TypeTag type, char* typeName, Node* extTy = nullptr){
-    return new TypeNode(loc, type, typeName, (ArrayNode*)extTy);
+    ArrayNode *exts = extTy? (ArrayNode*)extTy : new ArrayNode(loc);
+    return new TypeNode(loc, type, typeName, exts);
 }
 
 Node* mkTypeCastNode(yy::parser::location_type loc, Node *l, Node *r){
@@ -179,7 +180,7 @@ ArrayNode* addNamedValNode(yy::parser::location_type loc, Node* p, Node* vn, Nod
 
     for(Node* e : varNodes->exprs){
         auto* vn = static_cast<VarNode*>(e);
-        params->exprs.push_back(new NamedValNode(vn->loc, vn->name, deepCopyTypeNode(ty)));
+        params->exprs.push_back(new NamedValNode(vn->loc, vn->name, ty? deepCopyTypeNode(ty) : 0));
     }
     delete varNodes;
     return params;

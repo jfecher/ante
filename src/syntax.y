@@ -161,10 +161,10 @@ lit_type: I8                        {$$ = mkTypeNode(@$, TT_I8,  (char*)"");}
         | '\'' ident                {$$ = mkTypeNode(@$, TT_TypeVar, (char*)$1);}
         ;
 
-type: type '*'      %dprec 2             {$$ = mkTypeNode(@$, TT_Ptr,  (char*)"", $1);}
-    | type '[' ']'                       {$$ = mkTypeNode(@$, TT_Array,(char*)"", $1);}
-    | type '(' type_expr ')'             {$$ = mkTypeNode(@$, TT_Func, (char*)"", $1);}  /* f-ptr w/ params*/
-    | type '(' ')'                       {$$ = mkTypeNode(@$, TT_Func, (char*)"", $1);}  /* f-ptr w/out params*/
+type: type '*'      %dprec 2             {$$ = mkTypeNode(@$, TT_Ptr,  (char*)"", new ArrayNode($1));}
+    | type '[' ']'                       {$$ = mkTypeNode(@$, TT_Array,(char*)"", new ArrayNode($1));}
+    | type '(' type_expr ')'             {$$ = mkTypeNode(@$, TT_Func, (char*)"", new ArrayNode($1));}  /* f-ptr w/ params*/
+    | type '(' ')'                       {$$ = mkTypeNode(@$, TT_Func, (char*)"", new ArrayNode($1));}  /* f-ptr w/out params*/
     | '(' type_expr ')'       %prec MED  {$$ = $2;}
     | lit_type                           {$$ = $1;}
     ;
