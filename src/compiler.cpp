@@ -43,6 +43,7 @@ void skipToCoords(istream& ifs, unsigned int row, unsigned int col){
  *  the specified column.
  */
 void printErrLine(yy::location& loc){
+    if(!loc.begin.filename) return;
     ifstream f{*loc.begin.filename};
 
     //Premature newline error, show previous line as error instead

@@ -15,5 +15,5 @@ let ans = 5;;
 let v = My_Str "hi"
 
 ~And worst of all, use of the tab character in significant whitespace
-if ans == i
+if ans == i then
 	puts("ans == i")
