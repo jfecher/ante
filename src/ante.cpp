@@ -36,8 +36,8 @@ int main(int argc, char *argv[]){
             yy::parser p{};
             int flag = p.parse();
             if(flag == PE_OK){
-                Node* root = parser::getRootNode();
-                parser::printBlock(root);
+                Node *root = parser::getRootNode();
+                root->print();
                 delete root;
             }else{
                 //print out remaining errors

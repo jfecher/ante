@@ -8,6 +8,10 @@
 
 
 Node *rootNode = 0;
+        
+Node* parser::getRootNode(){
+    return rootNode;
+}
 
 
 ArrayNode* setNext(Node *an, Node *nxt){
@@ -122,8 +126,8 @@ Node* mkModNode(yy::parser::location_type loc, TokenType mod){
     return new ModNode(loc, mod);
 }
 
-Node* mkTypeNode(yy::parser::location_type loc, TypeTag type, char* typeName, ArrayNode* extTy = nullptr){
-    return new TypeNode(loc, type, typeName, extTy);
+Node* mkTypeNode(yy::parser::location_type loc, TypeTag type, char* typeName, Node* extTy = nullptr){
+    return new TypeNode(loc, type, typeName, (ArrayNode*)extTy);
 }
 
 Node* mkTypeCastNode(yy::parser::location_type loc, Node *l, Node *r){
@@ -167,9 +171,11 @@ TypeNode* deepCopyTypeNode(const TypeNode *n){
  *  This is used for the shortcut when declaring multiple
  *  variables of the same type, e.g. i32 a b c
  */
-ArrayNode* addNamedValNode(yy::parser::location_type loc, ArrayNode* params, ArrayNode* varNodes, Node* tExpr){
+ArrayNode* addNamedValNode(yy::parser::location_type loc, Node* p, Node* vn, Node* tExpr){
     //Note: there will always be at least one varNode
     const auto* ty = static_cast<TypeNode*>(tExpr);
+    auto* params = static_cast<ArrayNode*>(p);
+    auto* varNodes = static_cast<ArrayNode*>(vn);
 
     for(Node* e : varNodes->exprs){
         auto* vn = static_cast<VarNode*>(e);
@@ -211,10 +217,10 @@ Node* mkWhileNode(yy::parser::location_type loc, Node* con, Node* body){
     return new WhileNode(loc, con, body);
 }
 
-Node* mkFuncDeclNode(yy::parser::location_type loc, char* s, Node* mods, Node* tExpr, ArrayNode* p, Node* b){
-    return new FuncDeclNode(loc, s, mods, tExpr, p, b);
+Node* mkFuncDeclNode(yy::parser::location_type loc, char* s, Node* mods, Node* tExpr, Node* p, Node* b){
+    return new FuncDeclNode(loc, s, mods, tExpr, (ArrayNode*)p, b);
 }
 
 Node* mkDataDeclNode(yy::parser::location_type loc, char* s, Node* b){
-    return new DataDeclNode(loc, s, b, Compiler::getTupleSize(b));
+    return new DataDeclNode(loc, s, (ArrayNode*)b, ((ArrayNode*)b)->exprs.size());
 }

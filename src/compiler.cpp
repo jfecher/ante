@@ -411,53 +411,19 @@ TypedValue* VarAssignNode::compile(Compiler *c){
  * a varargs type (represented by the absence of a type)
  * then a nullptr is inserted for that parameter.
  */
-vector<Type*> getParamTypes(Compiler *c, ArrayNode *namedValNodes, size_t paramCount){
+vector<Type*> getParamTypes(Compiler *c, ArrayNode *namedValNodes){
     vector<Type*> paramTys;
     paramTys.reserve(namedValNodes->exprs.size());
 
-    for(size_t i = 0; i < paramCount && nvn; i++){
-
+    for(auto *e : namedValNodes->exprs){
+        const auto* nvn = static_cast<NamedValNode*>(e);
         TypeNode *paramTyNode = (TypeNode*)nvn->typeExpr.get();
         if(paramTyNode)
             paramTys.push_back(c->typeNodeToLlvmType(paramTyNode));
         else
             paramTys.push_back(nullptr); //terminating null = varargs function
-        nvn = (NamedValNode*)nvn->next.get();
     }
     return paramTys;
-}
-
-
-TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector<Type*> &paramTys, Type *retTy = 0){
-    FunctionType *ft;
-    
-    if(retTy)
-        ft = FunctionType::get(retTy, paramTys, fdn->varargs);
-    else
-        ft = FunctionType::get(Type::getVoidTy(getGlobalContext()), paramTys, fdn->varargs);
-
-    Function *f = Function::Create(ft, Function::ExternalLinkage, fdn->name, module.get());
-    
-    //Create the entry point for the function
-    BasicBlock *bb = BasicBlock::Create(getGlobalContext(), "entry", f);
-    builder.SetInsertPoint(bb);
-
-    //tell the compiler to create a new scope on the stack.
-    enterNewScope();
-
-    //iterate through each parameter and add its value to the new scope.
-    NamedValNode *cParam = fdn->params.get();
-    for(auto &arg : f->args()){
-        TypeNode *paramTyNode = (TypeNode*)cParam->typeExpr.get();
-        stoVar(cParam->name, new Variable(cParam->name, new TypedValue(&arg, paramTyNode->type), scope));
-        if(!(cParam = (NamedValNode*)cParam->next.get())) break;
-    }
-
-    //actually compile the function, and hold onto the last value
-    TypedValue *v = fdn->child->compile(this);
-    //End of the function, discard the function's scope.
-    exitScope();
-    return v;
 }
 
 
@@ -476,10 +442,7 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
     TypeNode *retNode = (TypeNode*)fdn->type.get();
 
     //Count the number of parameters
-    NamedValNode *paramsBegin = fdn->params.get();
-    size_t nParams = getTupleSize(paramsBegin);
-
-    vector<Type*> paramTys = getParamTypes(this, paramsBegin, nParams);
+    vector<Type*> paramTys = getParamTypes(this, fdn->params.get());
 
     if(paramTys.size() > 0 && !paramTys.back()){ //varargs fn
         fdn->varargs = true;
@@ -492,7 +455,7 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
 
     //The above handles everything for a function declaration
     //If the function is a definition, then the body will be compiled here.
-    if(fdn->child){
+    if(fdn->body){
         //Create the entry point for the function
         BasicBlock *bb = BasicBlock::Create(getGlobalContext(), "entry", f);
         builder.SetInsertPoint(bb);
@@ -500,17 +463,17 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
         //tell the compiler to create a new scope on the stack.
         enterNewScope();
 
-        NamedValNode *cParam = paramsBegin;
-        
+       
+        int i = 0;
         //iterate through each parameter and add its value to the new scope.
         for(auto &arg : f->args()){
-            TypeNode *paramTyNode = (TypeNode*)cParam->typeExpr.get();
-            stoVar(cParam->name, new Variable(cParam->name, new TypedValue(&arg, paramTyNode->type), scope));
-            if(!(cParam = (NamedValNode*)cParam->next.get())) break;
+            const auto *nvn = static_cast<NamedValNode*>(fdn->params->exprs[i++]);
+            TypeNode *paramTyNode = (TypeNode*)nvn->typeExpr.get();
+            stoVar(nvn->name, new Variable(nvn->name, new TypedValue(&arg, paramTyNode->type), scope));
         }
 
         //actually compile the function, and hold onto the last value
-        TypedValue *v = compileStmtList(fdn->child.get(), this);
+        TypedValue *v = fdn->compile(this);
         //End of the function, discard the function's scope.
         exitScope();
     
@@ -550,7 +513,7 @@ TypedValue* FuncDeclNode::compile(Compiler *c){
 
 TypedValue* ExtNode::compile(Compiler *c){
     c->funcPrefix = typeNodeToStr(typeExpr.get()) + "_";
-    compileStmtList(methods.get(), c);
+    methods->compile(c);
     c->funcPrefix = "";
     return 0;
 }
@@ -563,12 +526,11 @@ TypedValue* DataDeclNode::compile(Compiler *c){
     vector<string> fieldNames;
     fieldNames.reserve(fields);
 
-    auto *nvn = (NamedValNode*)child.get();
-    while(nvn){
+    for(auto *e : body->exprs){
+        const auto* nvn = static_cast<NamedValNode*>(e);
         TypeNode *tyn = (TypeNode*)nvn->typeExpr.get();
         tys.push_back(c->typeNodeToLlvmType(tyn));
         fieldNames.push_back(nvn->name);
-        nvn = (NamedValNode*)nvn->next.get();
     }
 
     auto *structTy = StructType::get(getGlobalContext(), tys);
@@ -577,7 +539,7 @@ TypedValue* DataDeclNode::compile(Compiler *c){
     auto *data = new DataType(fieldNames, structTy);
 
     c->stoType(data, name);
-    return nullptr;
+    return c->getVoidLiteral();
 }
 
 
@@ -668,23 +630,12 @@ inline void Compiler::registerFunction(FuncDeclNode *fn){
 void Compiler::scanAllDecls(){
     Node *n = ast.get();
     while(n){
-        if(dynamic_cast<FuncDeclNode*>(n) || dynamic_cast<ExtNode*>(n) || dynamic_cast<DataDeclNode*>(n)){
+        if(dynamic_cast<FuncDeclNode*>(n) || dynamic_cast<ExtNode*>(n) || dynamic_cast<DataDeclNode*>(n))
             n->compile(this); //register the function
-
-            if(n->prev){
-                n->prev->next.release();
-                n->prev->next.reset(n->next.get());
-            }else{
-                ast.release();
-                ast.reset(n->next.get());
-
-                if(n->next.get())
-                    n->next->prev = 0;
-                else
-                    ast.release();
-            }
-        }
-        n = n->next.get();
+        else if(dynamic_cast<BinOpNode*>(n) && ((BinOpNode*)n)->op == ';')
+            n = ((BinOpNode*)n)->rval.get();
+        else
+            break;
     }
 }
 
@@ -712,7 +663,9 @@ void Compiler::compile(){
     compilePrelude();
 
     //Compile the rest of the program
-    compileStmtList(ast.get(), this);
+    ast->compile(this);
+
+    //exit the outtermost scope (entered in the constructor)
     exitScope();
 
     //builder should already be at end of main function

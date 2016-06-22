@@ -272,7 +272,7 @@ TypedValue* TypeCastNode::compile(Compiler *c){
     }
 }
 
-TypedValue* ExprIfNode::compile(Compiler *c){
+TypedValue* IfNode::compile(Compiler *c){
     
     auto *cond = condition->compile(c);
     if(!cond) return 0;

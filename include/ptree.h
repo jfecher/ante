@@ -6,8 +6,6 @@
 //defined in lexer.cpp
 extern char* lextxt;
 
-extern Node* rootNode;
-
 #ifndef LOC_TY
 #define LOC_TY yy::location
 #endif

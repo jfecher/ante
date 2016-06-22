@@ -166,20 +166,19 @@ TypeTag llvmTypeToTypeTag(Type *t){
  */
 Type* Compiler::typeNodeToLlvmType(TypeNode *tyNode){
     vector<Type*> tys;
-    TypeNode *tyn = tyNode->extTy.get();
+    ArrayNode *tyn = tyNode->extTys.get();
     DataType *userType;
 
     switch(tyNode->type){
         case TT_Ptr:
-            return PointerType::get(typeNodeToLlvmType(tyn), 0);
+            return PointerType::get(typeNodeToLlvmType((TypeNode*)tyn->exprs[0]), 0);
         case TT_Tuple:
-            while(tyn){
-                tys.push_back(typeNodeToLlvmType(tyn));
-                tyn = (TypeNode*)tyn->next.get();
+            for(auto *e : tyn->exprs){
+                tys.push_back(typeNodeToLlvmType((TypeNode*) e));
             }
             return StructType::get(getGlobalContext(), tys);
         case TT_Array: //TODO array type
-            return ArrayType::get(typeNodeToLlvmType(tyn), 1);
+            return ArrayType::get(typeNodeToLlvmType((TypeNode*) tyn->exprs[0]), 1);
         case TT_Data:
             userType = lookupType(tyNode->typeName);
             if(!userType)
@@ -305,21 +304,21 @@ string typeTagToStr(TypeTag ty){
 string typeNodeToStr(TypeNode *t){
     if(t->type == TT_Tuple){
         string ret = "(";
-        TypeNode *elem = t->extTy.get();
-        while(elem){
-            if(elem->next.get())
+        for(size_t i = 0, sz = t->extTys->exprs.size(); i != sz; i++){
+            auto* elem = (TypeNode*) t->extTys->exprs[i];
+
+            if(i - 1 != sz)
                 ret += typeNodeToStr(elem) + ", ";
             else
                 ret += typeNodeToStr(elem) + ")";
-            elem = (TypeNode*)elem->next.get();
         }
         return ret;
     }else if(t->type == TT_Data){
         return t->typeName;
     }else if(t->type == TT_Array){
-        return typeNodeToStr(t->extTy.get()) + "[]";
+        return typeNodeToStr((TypeNode*)t->extTys->exprs[0]) + "[]";
     }else if(t->type == TT_Ptr){
-        return typeNodeToStr(t->extTy.get()) + "*";
+        return typeNodeToStr((TypeNode*)t->extTys->exprs[0]) + "*";
     }else{
         return typeTagToStr(t->type);
     }

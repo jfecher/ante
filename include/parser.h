@@ -244,11 +244,11 @@ struct FuncDeclNode : public Node{
 struct DataDeclNode : public Node{
     string name;
     size_t fields;
-    unique_ptr<Node> body;
+    unique_ptr<ArrayNode> body;
 
     TypedValue* compile(Compiler*);
     void print(void);
-    DataDeclNode(LOC_TY& loc, string s, Node* b, size_t f) : Node(loc), name(s), fields(f), body(b){}
+    DataDeclNode(LOC_TY& loc, string s, ArrayNode* b, size_t f) : Node(loc), name(s), fields(f), body(b){}
     ~DataDeclNode(){}
 };
 
@@ -256,7 +256,6 @@ struct DataDeclNode : public Node{
 namespace ante{
     namespace parser{
         Node* getRootNode();
-        void printBlock(Node *block);
         void parseErr(ParseErr e, string s, bool showTok);
     }
 }

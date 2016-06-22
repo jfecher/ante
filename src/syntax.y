@@ -16,7 +16,7 @@
 
 /* Defined in lexer.cpp */
 extern int yylex(yy::parser::semantic_type*, yy::location*);
-
+extern Node* rootNode;
 /*namespace ante{
     extern void error(string& msg, const char *fileName, unsigned int row, unsigned int col);
 }*/

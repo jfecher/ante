@@ -9,26 +9,12 @@ inline void maybePrintArr(Node *n){
     }
 }
 
-/*
- *  Prints a list of nodes, can print
- *  entire parse tree if passed the root.
- */
-void parser::printBlock(Node *block){
-    while(block){
-        block->print();
-        block = block->next.get();
-        cout << endl;
-    }
-}
-
 void IntLitNode::print(){
     cout << val;
-    maybePrintArr(next.get());
 }
 
 void FltLitNode::print(){
     cout << val;
-    maybePrintArr(next.get());
 }
 
 void BoolLitNode::print(){
@@ -36,12 +22,10 @@ void BoolLitNode::print(){
         cout << "true";
     else
         cout << "false";
-    maybePrintArr(next.get());
 }
 
 void StrLitNode::print(){
     cout << '"' << val << '"';
-    maybePrintArr(next.get());
 }
 
 void ArrayNode::print(){
@@ -77,7 +61,6 @@ void TypeCastNode::print(){
     putchar(' ');
     rval->print();
     putchar(')');
-    maybePrintArr(next.get());
 }
 
 void UnOpNode::print(){
@@ -86,7 +69,6 @@ void UnOpNode::print(){
     putchar(' ');
     rval->print();
     putchar(')');
-    maybePrintArr(next.get());
 }
 
 void BinOpNode::print(){
@@ -118,7 +100,7 @@ void ImportNode::print(){
 //unlike IfNodes, an ExprIfNode's
 //condition, thenN, and elseN are all
 //guarenteed to be initialized
-void ExprIfNode::print(){
+void IfNode::print(){
     cout << "if ";
     condition->print();
     puts(" then");
@@ -137,13 +119,10 @@ void NamedValNode::print(){
 
     putchar(' ');
     cout << name;
-
-    maybePrintArr(next.get());
 }
 
 void VarNode::print(){
     cout << name;
-    maybePrintArr(next.get());
 }
 
 
@@ -177,8 +156,8 @@ void VarAssignNode::print(){
 void ExtNode::print(){
     cout << "ext ";
     typeExpr->print();
-    cout << "\n";
-    printBlock(methods.get());
+    puts("");
+    methods->print();
     puts("end ext");
 }
 
@@ -186,7 +165,7 @@ void WhileNode::print(){
     cout << "while ";
     condition->print();
     puts(" do");
-    printBlock(child.get());
+    body->print();
     puts("end while");
 }
 
@@ -201,14 +180,14 @@ void FuncDeclNode::print(){
         cout << " => ";
         type->print();
     }
-    if(child.get()){
+    if(body.get()){
         puts("\nfnbody:");
-        printBlock(child.get());
-        puts("endfn");
+        body->print();
+        puts("\nendfn");
     }
 }
 
 void DataDeclNode::print(){
     cout << "data " << name << endl;
-    printBlock(child.get());
+    body->print();
 }
