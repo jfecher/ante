@@ -434,7 +434,7 @@ int Lexer::genWsTok(yy::parser::location_type* loc){
 int Lexer::skipWsAndReturnNext(yy::location* loc){
     do{
         incPos();
-    }while(IS_WHITESPACE(cur));
+    }while(cur == ' ');
     return next(loc);
 }
 
