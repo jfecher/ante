@@ -215,8 +215,8 @@ Node* mkExtNode(yy::parser::location_type loc, Node* ty, Node* methods){
     return new ExtNode(loc, (TypeNode*)ty, methods);
 }
 
-Node* mkExprIfNode(yy::parser::location_type loc, Node* con, Node* then, Node* els){
-    return new ExprIfNode(loc, con, then, els);
+Node* mkIfNode(yy::parser::location_type loc, Node* con, Node* then, Node* els){
+    return new IfNode(loc, con, then, els);
 }
 
 ParentNode* mkWhileNode(yy::parser::location_type loc, Node* con, Node* body){

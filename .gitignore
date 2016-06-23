@@ -2,6 +2,7 @@
 *.d
 *.gch
 t.an
+u.an
 ante
 src/parser.output
 src/parser.cpp

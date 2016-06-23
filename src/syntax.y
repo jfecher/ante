@@ -323,8 +323,8 @@ fn_list_: fn_list_ function maybe_newline  {$$ = setNext($1, $2);}
         ;
 
 
-if_expr: If expr Then expr Else expr   {$$ = mkExprIfNode(@$, $2, $4, $6);}
-       | If expr Then expr  %prec LOW  {$$ = mkExprIfNode(@$, $2, $4,  0);}
+if_expr: If expr Then expr Else expr   {$$ = mkIfNode(@$, $2, $4, $6);}
+       | If expr Then expr  %prec LOW  {$$ = mkIfNode(@$, $2, $4,  0);}
        ;
 
 while_loop: While expr Do expr  %prec LOW {$$ = mkWhileNode(@$, $2, $4);}
@@ -413,7 +413,7 @@ expr: expr '+' maybe_newline expr                {$$ = mkBinOpNode(@$, '+', $1, 
     | expr SubEq maybe_newline expr              {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '-', $1, $4), false);}
     | expr MulEq maybe_newline expr              {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '*', $1, $4), false);}
     | expr DivEq maybe_newline expr              {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '/', $1, $4), false);}
-    | expr Newline                               {$$ = $1;}
+    | expr Newline                   %prec HIGH  {$$ = $1;}
     | val                                        {$$ = $1;}
     ;
 

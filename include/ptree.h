@@ -34,7 +34,7 @@ Node* mkVarDeclNode(LOC_TY loc, char* s, Node* mods, Node* tExpr, Node* expr);
 Node* mkVarAssignNode(LOC_TY loc, Node* var, Node* expr, bool shouldFreeLval = true);
 Node* mkExtNode(LOC_TY loc, Node* typeExpr, Node* methods);
 
-Node* mkExprIfNode(LOC_TY loc, Node* con, Node* body, Node* els);
+Node* mkIfNode(LOC_TY loc, Node* con, Node* body, Node* els);
 Node* mkWhileNode(LOC_TY loc, Node* con, Node* body);
 Node* mkFuncDeclNode(LOC_TY loc, char* s, Node* mods, Node* tExpr, Node* p, Node* body);
 Node* mkDataDeclNode(LOC_TY loc, char* s, Node* b);

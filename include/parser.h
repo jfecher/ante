@@ -236,12 +236,12 @@ struct WhileNode : public ParentNode{
 //if node used in expressions
 //requires elseN to be initialized, and
 //typechecks thenN and elseN to be matching types.
-struct ExprIfNode : public Node{
+struct IfNode : public Node{
     unique_ptr<Node> condition, thenN, elseN;
     TypedValue* compile(Compiler*);
     void print(void);
-    ExprIfNode(LOC_TY& loc, Node* c, Node* then, Node* els) : Node(loc), condition(c), thenN(then), elseN(els){}
-    ~ExprIfNode(){}
+    IfNode(LOC_TY& loc, Node* c, Node* then, Node* els) : Node(loc), condition(c), thenN(then), elseN(els){}
+    ~IfNode(){}
 };
 
 struct FuncDeclNode : public ParentNode{

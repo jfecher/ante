@@ -118,7 +118,7 @@ void ImportNode::print(){
 //unlike IfNodes, an ExprIfNode's
 //condition, thenN, and elseN are all
 //guarenteed to be initialized
-void ExprIfNode::print(){
+void IfNode::print(){
     cout << "if ";
     condition->print();
     puts(" then");
