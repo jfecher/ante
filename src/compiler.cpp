@@ -575,7 +575,7 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
 TypedValue* FuncDeclNode::compile(Compiler *c){
     name = c->funcPrefix + name;
     c->registerFunction(this);
-    return new TypedValue(nullptr, TT_Void);
+    return c->getVoidLiteral();
 }
 
 
