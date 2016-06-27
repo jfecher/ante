@@ -183,7 +183,8 @@ Lexer::Lexer(const char* file) :
     cur{0},
     nxt{0},
     scopes{new stack<unsigned int>()},
-    cscope{0}
+    cscope{0},
+    shouldReturnNewline(false)
 {
     if(file){
         in = new ifstream(file);

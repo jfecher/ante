@@ -321,10 +321,28 @@ fn_list: fn_list_ {$$ = getRoot();}
 fn_list_: fn_list_ function maybe_newline  {$$ = setNext($1, $2);} 
         | function maybe_newline           {$$ = setRoot($1);}
         ;
+/*
+if_pre: If expr Then expr  %prec If  {$$ = mkIfNode(@$, $2, $4, 0);}
+      ;
+*/
+/* 
+ *  Two stage rule needed (if_pre and if_expr) to properly handle all
+ *  Instances of Newline-sequencing with if-exprs, particularly when the
+ *  else clause is not present, the LOW precedence needed to 'absorb' the final
+ *  Newline from the Then (if an expr-block was found) would also incorrectly cause
+ *  all following expressions to be within the If's body.  This is possible for all
+ *  statement-like expressions that terminate in an expr and have a LOW precedence.
+ */
+/*
+if_expr: if_pre Else expr                      {((IfNode*)$1)->elseN.reset($3); $$ = $1;}
+       | if_pre Newline Else expr  %prec Else  {((IfNode*)$1)->elseN.reset($4); $$ = $1;}
+       | if_pre                    %prec LOW   {$$ = $1;}
+       ;
+*/
 
-
-if_expr: If expr Then expr Else expr   {$$ = mkIfNode(@$, $2, $4, $6);}
-       | If expr Then expr  %prec LOW  {$$ = mkIfNode(@$, $2, $4,  0);}
+if_expr: If expr Then expr Else expr          %prec Else {$$ = mkIfNode($2, $4, $6);}
+       | If expr Then expr Newline Else expr  %prec Else {$$ = mkIfNode($2, $4, $7);}
+       | If expr Then block                   %prec If   {$$ = mkIfNode($2, $4,  0);}
        ;
 
 while_loop: While expr Do expr  %prec LOW {$$ = mkWhileNode(@$, $2, $4);}
