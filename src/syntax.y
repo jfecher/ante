@@ -437,6 +437,7 @@ expr: expr '+' maybe_newline expr                {$$ = mkBinOpNode(@$, '+', $1, 
     | expr Newline expr                          {$$ = mkBinOpNode(@$, ';', $1, $3);}
 
     | if_pre Newline Else expr                   {((IfNode*)$1)->elseN.reset($4); $$ = $1;} 
+    | if_pre Newline expr                        {$$ = mkBinOpNode(@$, ';', $1, $3);} 
     ;
 
 %%
