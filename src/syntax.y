@@ -76,8 +76,9 @@ void yyerror(const char *msg);
 %left Ident
 
 %left ';' Newline
+%left Else
 %left If
-%left Let In Else Import Return
+%left Let In Import Return
 %left MED
 
 %left ','
@@ -116,8 +117,8 @@ top_level_expr_list:  maybe_newline top_level_expr_list_p maybe_newline
                    ;
 
 
-top_level_expr_list_p: top_level_expr_list_p Newline expr  %prec HIGH {$$ = setNext($1, $3);}
-                     | expr                                %prec HIGH {$$ = setRoot($1);}
+top_level_expr_list_p: top_level_expr_list_p Newline expr  %prec Newline {$$ = setNext($1, $3);}
+                     | expr                                %prec Newline {$$ = setRoot($1);}
                      ;
 
 
@@ -340,12 +341,13 @@ if_expr: if_pre Else expr                      {((IfNode*)$1)->elseN.reset($3); 
        ;
 */
 
-if_expr: If expr Then expr Else expr          %prec Else {$$ = mkIfNode($2, $4, $6);}
-       | If expr Then expr Newline Else expr  %prec Else {$$ = mkIfNode($2, $4, $7);}
-       | If expr Then block                   %prec If   {$$ = mkIfNode($2, $4,  0);}
-       ;
+/* if with no else clause */
+if_pre: If expr Then expr                    %prec If {$$ = mkIfNode(@$, $2, $4,  0);}
+      ;
 
-while_loop: While expr Do expr  %prec LOW {$$ = mkWhileNode(@$, $2, $4);}
+if_expr: if_pre Else expr  %prec If {((IfNode*)$1)->elseN.reset($3); $$ = $1;}
+
+while_loop: While expr Do expr  %prec Newline {$$ = mkWhileNode(@$, $2, $4);}
           ;
 
 /*
@@ -417,7 +419,6 @@ expr: expr '+' maybe_newline expr                {$$ = mkBinOpNode(@$, '+', $1, 
     | expr '.' maybe_newline var                 {$$ = mkBinOpNode(@$, '.', $1, $4);}
     | type_expr '.' maybe_newline var            {$$ = mkBinOpNode(@$, '.', $1, $4);}
     | expr ';' maybe_newline expr                {$$ = mkBinOpNode(@$, ';', $1, $4);}
-    | expr Newline expr                          {$$ = mkBinOpNode(@$, ';', $1, $3);}
     | expr '[' expr ']'                          {$$ = mkBinOpNode(@$, '[', $1, $3);}
     | expr Eq maybe_newline expr                 {$$ = mkBinOpNode(@$, Tok_Eq, $1, $4);}
     | expr NotEq maybe_newline expr              {$$ = mkBinOpNode(@$, Tok_NotEq, $1, $4);}
@@ -431,8 +432,11 @@ expr: expr '+' maybe_newline expr                {$$ = mkBinOpNode(@$, '+', $1, 
     | expr SubEq maybe_newline expr              {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '-', $1, $4), false);}
     | expr MulEq maybe_newline expr              {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '*', $1, $4), false);}
     | expr DivEq maybe_newline expr              {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '/', $1, $4), false);}
-    | expr Newline                   %prec HIGH  {$$ = $1;}
     | val                                        {$$ = $1;}
+    | expr Newline                    %prec HIGH {$$ = $1;}
+    | expr Newline expr                          {$$ = mkBinOpNode(@$, ';', $1, $3);}
+
+    | if_pre Newline Else expr                   {((IfNode*)$1)->elseN.reset($4); $$ = $1;} 
     ;
 
 %%
