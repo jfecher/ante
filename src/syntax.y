@@ -117,8 +117,8 @@ top_level_expr_list:  maybe_newline top_level_expr_list_p maybe_newline
                    ;
 
 
-top_level_expr_list_p: top_level_expr_list_p Newline expr  %prec Newline {$$ = setNext($1, $3);}
-                     | expr                                %prec Newline {$$ = setRoot($1);}
+top_level_expr_list_p: top_level_expr_list_p Newline expr       %prec Newline {$$ = setNext($1, $3);}
+                     | expr                                     %prec Newline {$$ = setRoot($1);}
                      ;
 
 
@@ -323,8 +323,6 @@ fn_list_: fn_list_ function maybe_newline  {$$ = setNext($1, $2);}
         | function maybe_newline           {$$ = setRoot($1);}
         ;
 /*
-if_pre: If expr Then expr  %prec If  {$$ = mkIfNode(@$, $2, $4, 0);}
-      ;
 */
 /* 
  *  Two stage rule needed (if_pre and if_expr) to properly handle all
@@ -345,7 +343,7 @@ if_expr: if_pre Else expr                      {((IfNode*)$1)->elseN.reset($3); 
 if_pre: If expr Then expr                    %prec If {$$ = mkIfNode(@$, $2, $4,  0);}
       ;
 
-if_expr: if_pre Else expr  %prec If {((IfNode*)$1)->elseN.reset($3); $$ = $1;}
+if_expr: if_pre Else expr  %prec If {$$ = setElse($1, $3);}
 
 while_loop: While expr Do expr  %prec Newline {$$ = mkWhileNode(@$, $2, $4);}
           ;
@@ -436,7 +434,8 @@ expr: expr '+' maybe_newline expr                {$$ = mkBinOpNode(@$, '+', $1, 
     | expr Newline                    %prec HIGH {$$ = $1;}
     | expr Newline expr                          {$$ = mkBinOpNode(@$, ';', $1, $3);}
 
-    | if_pre Newline Else expr                   {((IfNode*)$1)->elseN.reset($4); $$ = $1;} 
+    | if_pre Newline Else expr                   {$$ = setElse($1, $4);} 
+    | if_pre Newline expr                        {$$ = mkBinOpNode(@$, ';', $1, $3);} 
     ;
 
 %%

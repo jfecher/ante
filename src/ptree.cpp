@@ -21,6 +21,15 @@ Node* setRoot(Node* node){
     return node;
 }
 
+Node* setElse(Node *ifn, Node *elseN){
+    if(auto *n = dynamic_cast<IfNode*>(ifn)){
+        n->elseN.reset(elseN);
+    }else{
+        fprintf(stderr, "Syntax error: cannot add an else clause without a matching if then clause.");
+    }
+    return ifn;
+}
+
 /*
  *  Pops and returns the root of the current block
  */

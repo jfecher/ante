@@ -7,8 +7,9 @@
 extern char* lextxt;
 
 Node* setRoot(Node* root);
-Node* getRoot(void);
+Node* getRoot();
 Node* setNext(Node* cur, Node* nxt);
+Node* setElse(Node *ifn, Node *elseN);
 
 #ifndef LOC_TY
 #define LOC_TY yy::location
