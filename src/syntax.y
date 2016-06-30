@@ -260,6 +260,7 @@ enum_decl: modifier_list Enum usertype enum_block  {$$ = NULL;}
 
 
 block: Indent expr Unindent  {$$ = $2;}
+     | Indent if_pre Newline Unindent  {$$ = $2;}
      ;
 
 
@@ -373,8 +374,7 @@ val: '(' expr ')'            {$$ = $2;}
    | let_binding             {$$ = $1;}
    | var_decl                {$$ = $1;}
    | if_expr                 {$$ = $1;}
-   | if_pre Newline %prec LOW {$$ = $1;}
-   | if_pre         %prec LOW {$$ = $1;}
+   | if_pre   %prec Newline  {$$ = $1;}
    | while_loop              {$$ = $1;}
    | function                {$$ = $1;}
    | data_decl               {$$ = $1;}
