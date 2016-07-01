@@ -131,7 +131,7 @@ namespace ante{
 
         void importFile(const char *name);
         Function* getFunction(string& name);
-        TypedValue* compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector<Type*> &paramTys, Type *retTy);
+        TypedValue* compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector<Type*> &paramTys);
         Function* compFn(FuncDeclNode *fn);
         void registerFunction(FuncDeclNode *func);
 

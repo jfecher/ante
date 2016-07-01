@@ -459,18 +459,16 @@ vector<Type*> getParamTypes(Compiler *c, NamedValNode *nvn, size_t paramCount){
 }
 
 
-TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector<Type*> &paramTys, Type *retTy = 0){
-    FunctionType *ft;
-    
-    if(retTy)
-        ft = FunctionType::get(retTy, paramTys, fdn->varargs);
-    else
-        ft = FunctionType::get(Type::getVoidTy(getGlobalContext()), paramTys, fdn->varargs);
+TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector<Type*> &paramTys){
+    FunctionType *preFnTy = FunctionType::get(Type::getVoidTy(getGlobalContext()), paramTys, fdn->varargs);
 
-    Function *f = Function::Create(ft, Function::ExternalLinkage, fdn->name, module.get());
+    //preFn is the predecessor to fn because we do not yet know its return type, so its body must be compiled,
+    //then the type must be checked and the new function with correct return type created, and their bodies swapped.
+    Function *preFn = Function::Create(preFnTy, Function::ExternalLinkage, "__lambda_pre__", module.get());
     
     //Create the entry point for the function
-    BasicBlock *bb = BasicBlock::Create(getGlobalContext(), "entry", f);
+    BasicBlock *caller = builder.GetInsertBlock();
+    BasicBlock *bb = BasicBlock::Create(getGlobalContext(), "entry", preFn);
     builder.SetInsertPoint(bb);
 
     //tell the compiler to create a new scope on the stack.
@@ -478,7 +476,7 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
 
     //iterate through each parameter and add its value to the new scope.
     NamedValNode *cParam = fdn->params.get();
-    for(auto &arg : f->args()){
+    for(auto &arg : preFn->args()){
         TypeNode *paramTyNode = (TypeNode*)cParam->typeExpr.get();
         stoVar(cParam->name, new Variable(cParam->name, new TypedValue(&arg, paramTyNode->type), scope));
         if(!(cParam = (NamedValNode*)cParam->next.get())) break;
@@ -488,7 +486,27 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
     TypedValue *v = fdn->child->compile(this);
     //End of the function, discard the function's scope.
     exitScope();
-    return v;
+        
+    //llvm requires explicit returns, so generate a void return even if
+    //the user did not in their void function.
+    if(!dynamic_cast<ReturnInst*>(v->val)){
+        if(v->type == TT_Void)
+            builder.CreateRetVoid();
+        else
+            builder.CreateRet(v->val);
+    }
+
+    //create the actual function's type, along with the function itself.
+    FunctionType *ft = FunctionType::get(v->getType(), paramTys, fdn->varargs);
+    Function *f = Function::Create(ft, Function::ExternalLinkage, "__lambda__", module.get());
+
+    //finally, swap the bodies of the two functions and delete the former.
+    f->getBasicBlockList().push_back(&preFn->front());
+    preFn->removeFromParent();
+    
+    builder.SetInsertPoint(caller);
+
+    return new TypedValue(f, TT_Function);
 }
 
 
@@ -541,7 +559,7 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
         }
 
         //actually compile the function, and hold onto the last value
-        TypedValue *v = compileStmtList(fdn->child.get(), this);
+        TypedValue *v = fdn->child->compile(this);
         //End of the function, discard the function's scope.
         exitScope();
     
@@ -573,9 +591,20 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
  *  Registers a function for later compilation
  */
 TypedValue* FuncDeclNode::compile(Compiler *c){
-    name = c->funcPrefix + name;
-    c->registerFunction(this);
-    return c->getVoidLiteral();
+    //check if the function is an anonymous lambda function.
+    if(name.length() > 0){
+        //if it is not, register it to be lazily compiled later (when it is called)
+        name = c->funcPrefix + name;
+        c->registerFunction(this);
+        //and return a void value
+        return c->getVoidLiteral();
+    }else{
+        //Otherwise, if it is a lambda function, compile it now and return it.
+        NamedValNode *paramsBegin = this->params.get();
+        size_t nParams = Compiler::getTupleSize(paramsBegin);
+        vector<Type*> paramTys = getParamTypes(c, paramsBegin, nParams);
+        return c->compLetBindingFn(this, nParams, paramTys);
+    }
 }
 
 
@@ -748,6 +777,7 @@ void Compiler::compile(){
 
     //builder should already be at end of main function
     builder.CreateRet(ConstantInt::get(getGlobalContext(), APInt(8, 0, true)));
+    module->dump();
     passManager->run(*main);
 
 
