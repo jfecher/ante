@@ -393,8 +393,14 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
     }
 
     //add all remaining arguments
-    for(Value *v : ((TupleNode*)r)->unpack(c))
-        args.push_back(v);
+    if(auto *tup = dynamic_cast<TupleNode*>(r)){
+        for(Value *v : tup->unpack(c))
+            args.push_back(v);
+    }else{ //single parameter being applied
+        auto *param = r->compile(c);
+        if(!param) return 0;
+        args.push_back(param->val);
+    }
 
 
     if(f->arg_size() != args.size() && !f->isVarArg()){

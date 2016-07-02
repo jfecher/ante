@@ -38,7 +38,7 @@ void yyerror(const char *msg);
 
 /* operators */
 %token Eq NotEq AddEq SubEq MulEq DivEq GrtrEq LesrEq
-%token Or And Range Returns
+%token Or And Range Returns ApplyL ApplyR
 
 /* literals */
 %token True False
@@ -82,6 +82,9 @@ void yyerror(const char *msg);
 %left MED
 
 %left MODIFIER Pub Pri Pro Raw Const Noinit Pathogen
+
+%right ApplyL
+%left ApplyR
 
 %left ','
 %left '=' AddEq SubEq MulEq DivEq
@@ -170,7 +173,7 @@ lit_type: I8                        {$$ = mkTypeNode(@$, TT_I8,  (char*)"");}
 
 type: type '*'      %dprec 2             {$$ = mkTypeNode(@$, TT_Ptr,  (char*)"", $1);}
     | type '[' ']'                       {$$ = mkTypeNode(@$, TT_Array,(char*)"", $1);}
-    | type '(' type_expr ')'             {$$ = mkTypeNode(@$, TT_Func, (char*)"", $1);}  /* f-ptr w/ params*/
+    | type '(' type_expr ')'             {setNext($1, $3); $$ = mkTypeNode(@$, TT_Func, (char*)"", $1);}  /* f-ptr w/ params*/
     | type '(' ')'                       {$$ = mkTypeNode(@$, TT_Func, (char*)"", $1);}  /* f-ptr w/out params*/
     | '(' type_expr ')'       %prec MED  {$$ = $2;}
     | lit_type                           {$$ = $1;}
@@ -448,6 +451,10 @@ expr: expr '+' maybe_newline expr                {$$ = mkBinOpNode(@$, '+', $1, 
     | expr MulEq maybe_newline expr              {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '*', $1, $4), false);}
     | expr DivEq maybe_newline expr              {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '/', $1, $4), false);}
     | val                                        {$$ = $1;}
+
+    | expr ApplyR maybe_newline expr   {$$ = mkBinOpNode(@$, '(', $4, $1);}
+    | expr ApplyL maybe_newline expr   {$$ = mkBinOpNode(@$, '(', $1, $4);}
+
     | expr Newline                    %prec HIGH {$$ = $1;}
     | expr Newline expr                          {$$ = mkBinOpNode(@$, ';', $1, $3);}
 

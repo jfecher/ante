@@ -43,6 +43,8 @@ map<int, const char*> tokDict = {
     {Tok_And, "And"},
     {Tok_Range, "Range"},
     {Tok_Returns, "Returns"},
+    {Tok_ApplyL, "ApplyL"},
+    {Tok_ApplyR, "ApplyR"},
 
     //literals
     {Tok_True, "True"},
@@ -506,6 +508,9 @@ int Lexer::genOpTok(yy::parser::location_type* loc){
 
     if(cur == '.' && nxt == '.') RETURN_PAIR(Tok_Range);
     if(cur == '=' && nxt == '>') RETURN_PAIR(Tok_Returns);
+    
+    if(cur == '<' && nxt == '|') RETURN_PAIR(Tok_ApplyL);
+    if(cur == '|' && nxt == '>') RETURN_PAIR(Tok_ApplyR);
 
     if(nxt == '='){
         switch(cur){
