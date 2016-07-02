@@ -476,9 +476,11 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
 
     //iterate through each parameter and add its value to the new scope.
     NamedValNode *cParam = fdn->params.get();
+    vector<Value*> preArgs;
     for(auto &arg : preFn->args()){
         TypeNode *paramTyNode = (TypeNode*)cParam->typeExpr.get();
         stoVar(cParam->name, new Variable(cParam->name, new TypedValue(&arg, paramTyNode->type), scope));
+        preArgs.push_back(&arg);
         if(!(cParam = (NamedValNode*)cParam->next.get())) break;
     }
 
@@ -503,6 +505,12 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
     //finally, swap the bodies of the two functions and delete the former.
     f->getBasicBlockList().push_back(&preFn->front());
     preFn->removeFromParent();
+    
+    //swap all instances of preFn's parameters with f's parameters
+    int i = 0;
+    for(auto &arg : f->args()){
+        preArgs[i++]->replaceAllUsesWith(&arg);
+    }
     
     builder.SetInsertPoint(caller);
 
@@ -777,7 +785,6 @@ void Compiler::compile(){
 
     //builder should already be at end of main function
     builder.CreateRet(ConstantInt::get(getGlobalContext(), APInt(8, 0, true)));
-    module->dump();
     passManager->run(*main);
 
 
