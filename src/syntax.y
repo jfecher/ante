@@ -83,11 +83,12 @@ void yyerror(const char *msg);
 
 %left MODIFIER Pub Pri Pro Raw Const Noinit Pathogen
 
-%right ApplyL
-%left ApplyR
 
 %left ','
 %left '=' AddEq SubEq MulEq DivEq
+
+%right ApplyL
+%left ApplyR
 
 %left Or
 %left And     
