@@ -38,7 +38,7 @@ void yyerror(const char *msg);
 
 /* operators */
 %token Eq NotEq AddEq SubEq MulEq DivEq GrtrEq LesrEq
-%token Or And Range Returns ApplyL ApplyR
+%token Or And Range Returns ApplyL ApplyR New
 
 /* literals */
 %token True False
@@ -415,6 +415,7 @@ array: '[' expr_list ']' {$$ = mkArrayNode(@$, $2);}
 unary_op: '@' val                 {$$ = mkUnOpNode(@$, '@', $2);}
         | '&' val                 {$$ = mkUnOpNode(@$, '&', $2);}
         | '-' val                 {$$ = mkUnOpNode(@$, '-', $2);}
+        | New val                 {$$ = mkUnOpNode(@$, Tok_New, $2);}
         | type_expr val           {$$ = mkTypeCastNode(@$, $1, $2);}
         ;
 

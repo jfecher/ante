@@ -45,6 +45,7 @@ map<int, const char*> tokDict = {
     {Tok_Returns, "Returns"},
     {Tok_ApplyL, "ApplyL"},
     {Tok_ApplyR, "ApplyR"},
+    {Tok_New, "New"},
 
     //literals
     {Tok_True, "True"},
@@ -121,6 +122,7 @@ map<string, int> keywords = {
     {"and",      Tok_And},
     {"true",     Tok_True},
     {"false",    Tok_False},
+    {"new",      Tok_New},
     
     {"return",   Tok_Return},
     {"if",       Tok_If},
