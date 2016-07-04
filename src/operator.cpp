@@ -483,6 +483,23 @@ TypedValue* UnOpNode::compile(Compiler *c){
             break; //TODO
         case '-': //negation
             return new TypedValue(c->builder.CreateNeg(rhs->val), rhs->type);
+        case Tok_New:
+            if(rhs->getType()->isSized()){
+                string mallocFnName = "malloc";
+                Function* mallocFn = c->getFunction(mallocFnName);
+
+                auto size = rhs->getType()->getPrimitiveSizeInBits();
+                Value *sizeVal = ConstantInt::get(getGlobalContext(), APInt(32, size, true));
+                
+                Value *voidPtr = c->builder.CreateCall(mallocFn, sizeVal);
+                Type *ptrTy = rhs->getType()->getPointerTo();
+                Value *typedPtr = c->builder.CreatePointerCast(voidPtr, ptrTy);
+
+                //finally store rhs into the malloc'd slot
+                c->builder.CreateStore(rhs->val, typedPtr);
+
+                return new TypedValue(typedPtr, llvmTypeToTypeTag(ptrTy));
+            }
     }
     
     return c->compErr("Unknown unary operator " + Lexer::getTokStr(op), loc);
