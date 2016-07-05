@@ -157,8 +157,8 @@ Node* mkRetNode(yy::parser::location_type loc, Node* expr){
 
 //helper function to deep-copy TypeNodes.  Used in mkNamedValNode
 TypeNode* deepCopyTypeNode(const TypeNode *n){
-    yy::location loc = {{n->loc.begin.filename, n->loc.begin.line, n->loc.begin.column}, 
-                        {n->loc.end.filename, n->loc.end.line, n->loc.end.column}};
+    yy::location loc = {yy::position(n->loc.begin.filename, n->loc.begin.line, n->loc.begin.column), 
+                        yy::position(n->loc.end.filename,   n->loc.end.line,   n->loc.end.column)};
     TypeNode *cpy = new TypeNode(loc, n->type, n->typeName, nullptr);
 
     if(n->type == TT_Tuple){

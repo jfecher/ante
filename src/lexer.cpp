@@ -290,7 +290,7 @@ void Lexer::setlextxt(string *str){
 int Lexer::genAlphaNumTok(yy::parser::location_type* loc){
     string s = "";
     string* fName = new string(fileName);
-    loc->begin = {fName, row, col};
+    loc->begin = yy::position(fName, row, col);
 
     bool isUsertype = cur >= 'A' && cur <= 'Z';
     if(isUsertype){
@@ -308,7 +308,7 @@ int Lexer::genAlphaNumTok(yy::parser::location_type* loc){
         }
     }
     
-    loc->end = {fName, row, col};
+    loc->end = yy::position(fName, row, col);
 
     if(isUsertype){
         setlextxt(&s);
@@ -328,7 +328,7 @@ int Lexer::genNumLitTok(yy::parser::location_type* loc){
     string s = "";
     bool flt = false;
     string* fName = new string(fileName);
-    loc->begin = {fName, row, col};
+    loc->begin = yy::position(fName, row, col);
 
     while(IS_NUMERICAL(cur) || (cur == '.' && !flt && IS_NUMERICAL(nxt)) || cur == '_'){
         if(cur != '_'){
@@ -388,7 +388,7 @@ int Lexer::genNumLitTok(yy::parser::location_type* loc){
         }
     }
     
-    loc->end = {fName, row, col};
+    loc->end = yy::position(fName, row, col);
 
     setlextxt(&s);
     return flt? Tok_FltLit : Tok_IntLit;
@@ -397,7 +397,7 @@ int Lexer::genNumLitTok(yy::parser::location_type* loc){
 int Lexer::genWsTok(yy::parser::location_type* loc){
     if(cur == '\n'){
         string* fName = new string(fileName);
-        loc->begin = {fName, row, col};
+        loc->begin = yy::position(fName, row, col);
         
         unsigned int newScope = 0;
 
@@ -408,7 +408,7 @@ int Lexer::genWsTok(yy::parser::location_type* loc){
                     newScope = 0; 
                     row++; 
                     col = 0; 
-                    loc->begin = {fName, row, col};
+                    loc->begin = yy::position(fName, row, col);
                     break;
                 case '\t':
                     lexErr("Tab characters are invalid whitespace.", loc);
@@ -425,10 +425,10 @@ int Lexer::genWsTok(yy::parser::location_type* loc){
             //the row is not set to row for newline tokens in case there are several newlines.
             //In this case, if set to row, it would become the row of the last newline.
             //Incrementing it from its previous token (guarenteed to be non-newline) fixes this.
-            loc->end = {fName, row+1, 0};
+            loc->end = yy::position(fName, row+1, 0);
             return Tok_Newline; /* Scope did not change, just return a Newline */
         }
-        loc->end = {fName, row, col};
+        loc->end = yy::position(fName, row, col);
         cscope = newScope;
         return next(loc);
     }else{
@@ -446,7 +446,7 @@ int Lexer::skipWsAndReturnNext(yy::location* loc){
 int Lexer::genStrLitTok(char delim, yy::parser::location_type* loc){
     string s = "";
     string* fName = new string(fileName);
-    loc->begin = {fName, row, col};
+    loc->begin = yy::position(fName, row, col);
     incPos();
     while(cur != delim && cur != EOF){
         if(cur == '\\'){
@@ -468,7 +468,7 @@ int Lexer::genStrLitTok(char delim, yy::parser::location_type* loc){
     }
     incPos(); //consume ending delim
     
-    loc->end = {fName, row, col};
+    loc->end = yy::position(fName, row, col);
     setlextxt(&s);
     return Tok_StrLit;
 }
@@ -485,7 +485,7 @@ int Lexer::genOpTok(yy::parser::location_type* loc){
     //If the token is none of the above, it must be a symbol, or a pair of symbols.
     //Set the beginning of the token about to be created here.
     string* fName = new string(fileName);
-    loc->begin = {fName, row, col};
+    loc->begin = yy::position(fName, row, col);
 
     //substitute -> for an indent and ;; for an unindent
     if(cur == '-' && nxt == '>'){
@@ -527,7 +527,7 @@ int Lexer::genOpTok(yy::parser::location_type* loc){
         }
     }
     
-    loc->end = {fName, row, col};
+    loc->end = yy::position(fName, row, col);
     
     if(cur == 0 || cur == EOF) return 0; //End of input
 

@@ -19,7 +19,7 @@ struct Node;
 #define IS_ALPHANUM(c)   (IS_NUMERICAL(c) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c == 95)
 #define IS_WHITESPACE(c) (c == ' ' || c == '\t' || c == '\n' || c == 13) // || c == 130
 
-#define RETURN_PAIR(t) {incPos(2); loc->end = {fName, row, col}; return (t);}
+#define RETURN_PAIR(t) {incPos(2); loc->end = yy::position(fName, row, col); return (t);}
 
 namespace ante{
     /* Defined in src/compiler.cpp */
