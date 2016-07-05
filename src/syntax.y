@@ -82,6 +82,7 @@ void yyerror(const char *msg);
 %left MED
 
 %left MODIFIER Pub Pri Pro Raw Const Noinit Pathogen
+%left Returns
 
 
 %left ','
@@ -120,7 +121,7 @@ void yyerror(const char *msg);
     resolves this ambiguity.
 */
 %glr-parser
-%expect 4
+%expect 2
 %start top_level_expr_list
 %%
 
@@ -179,8 +180,8 @@ lit_type: I8                        {$$ = mkTypeNode(@$, TT_I8,  (char*)"");}
 
 type: type '*'      %dprec 2             {$$ = mkTypeNode(@$, TT_Ptr,  (char*)"", $1);}
     | type '[' ']'                       {$$ = mkTypeNode(@$, TT_Array,(char*)"", $1);}
-    | type '(' type_expr ')'             {setNext($1, $3); $$ = mkTypeNode(@$, TT_Func, (char*)"", $1);}  /* f-ptr w/ params*/
-    | type '(' ')'                       {$$ = mkTypeNode(@$, TT_Func, (char*)"", $1);}  /* f-ptr w/out params*/
+    | type Returns type                  {setNext($3, $1); $$ = mkTypeNode(@$, TT_Func, (char*)"", $3);}  /* f-ptr w/ params*/
+    | '(' ')' Returns type               {$$ = mkTypeNode(@$, TT_Func, (char*)"", $4);}  /* f-ptr w/out params*/
     | '(' type_expr ')'       %prec MED  {$$ = $2;}
     | lit_type                           {$$ = $1;}
     ;
