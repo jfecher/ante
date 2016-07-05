@@ -90,6 +90,8 @@ void yyerror(const char *msg);
 %right ApplyL
 %left ApplyR
 
+%left '@' New
+
 %left Or
 %left And     
 %left Eq  NotEq GrtrEq LesrEq '<' '>'
@@ -99,13 +101,16 @@ void yyerror(const char *msg);
 %left '*' '/' '%'
 
 %left '.'
-%left '@' '&'
+%left '&'
 
 /* 
     Being below HIGH, this ensures parenthetical expressions will be parsed
     as just order-of operations parenthesis, instead of a single-value tuple.
 */
 %nonassoc ')'
+
+/* Type-casting has a very high precedence, one that is just below function calling */
+%left TYPE
 
 %nonassoc '(' '[' Indent Unindent
 %nonassoc HIGH
@@ -419,11 +424,11 @@ array: '[' expr_list ']' {$$ = mkArrayNode(@$, $2);}
      ;
 
 
-unary_op: '@' val                 {$$ = mkUnOpNode(@$, '@', $2);}
-        | '&' val                 {$$ = mkUnOpNode(@$, '&', $2);}
-        | '-' val                 {$$ = mkUnOpNode(@$, '-', $2);}
-        | New val                 {$$ = mkUnOpNode(@$, Tok_New, $2);}
-        | type_expr val           {$$ = mkTypeCastNode(@$, $1, $2);}
+unary_op: '@' expr                    {$$ = mkUnOpNode(@$, '@', $2);}
+        | '&' expr                    {$$ = mkUnOpNode(@$, '&', $2);}
+        | '-' expr                    {$$ = mkUnOpNode(@$, '-', $2);}
+        | New expr                    {$$ = mkUnOpNode(@$, Tok_New, $2);}
+        | type_expr expr  %prec TYPE  {$$ = mkTypeCastNode(@$, $1, $2);}
         ;
 
 
