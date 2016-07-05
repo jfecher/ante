@@ -500,7 +500,7 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
 
     //create the actual function's type, along with the function itself.
     FunctionType *ft = FunctionType::get(v->getType(), paramTys, fdn->varargs);
-    Function *f = Function::Create(ft, Function::ExternalLinkage, "__lambda__", module.get());
+    Function *f = Function::Create(ft, Function::ExternalLinkage, fdn->name.length() > 0 ? fdn->name : "__lambda__", module.get());
 
     //finally, swap the bodies of the two functions and delete the former.
     f->getBasicBlockList().push_back(&preFn->front());
@@ -532,6 +532,7 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
     //Get and translate the function's return type to an llvm::Type*
     TypeNode *retNode = (TypeNode*)fdn->type.get();
 
+
     //Count the number of parameters
     NamedValNode *paramsBegin = fdn->params.get();
     size_t nParams = getTupleSize(paramsBegin);
@@ -542,8 +543,12 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
         fdn->varargs = true;
         paramTys.pop_back();
     }
+    
+    if(!retNode){
+        return (Function*) compLetBindingFn(fdn, nParams, paramTys)->val;
+    }
 
-    Type *retTy = retNode ? typeNodeToLlvmType(retNode) : Type::getVoidTy(getGlobalContext());
+    Type *retTy = typeNodeToLlvmType(retNode);
     FunctionType *ft = FunctionType::get(retTy, paramTys, fdn->varargs);
     Function *f = Function::Create(ft, Function::ExternalLinkage, fdn->name, module.get());
 

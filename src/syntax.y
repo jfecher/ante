@@ -299,6 +299,7 @@ maybe_mod_list: modifier_list  {$$ = $1;}
 
 function: fn_def
         | fn_decl
+        | fn_inferredRet
         | fn_lambda
         ;
 
@@ -312,14 +313,20 @@ fn_def: modifier_list Fun ident ':' params Returns type_expr block  {$$ = mkFunc
       | Fun ident ':' block                                         {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$2, /*mods*/ 0, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/0,  /*body*/$4);}
       ;
 
-fn_decl: modifier_list Fun ident ':' params Returns type_expr ';'       {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/$7, /*params*/$5, /*body*/0);}
-       | modifier_list Fun ident ':' Returns type_expr        ';'       {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/$6, /*params*/0,  /*body*/0);}
-       | modifier_list Fun ident ':' params                   ';'       {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/0,  /*params*/$5, /*body*/0);}
-       | modifier_list Fun ident ':'                          ';'       {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/0,  /*params*/0,  /*body*/0);}
-       | Fun ident ':' params Returns type_expr               ';'       {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$2, /*mods*/ 0, /*ret_ty*/$6, /*params*/$4, /*body*/0);}
-       | Fun ident ':' Returns type_expr                      ';'       {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$2, /*mods*/ 0, /*ret_ty*/$5, /*params*/0,  /*body*/0);}
-       | Fun ident ':' params                                 ';'       {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$2, /*mods*/ 0, /*ret_ty*/0,  /*params*/$4, /*body*/0);}
-       | Fun ident ':'                                        ';'       {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$2, /*mods*/ 0, /*ret_ty*/0,  /*params*/0,  /*body*/0);}
+fn_inferredRet: modifier_list Fun ident ':' params '=' expr   {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/0, /*params*/$5, /*body*/$7);}
+              | modifier_list Fun ident ':' '=' expr          {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/0, /*params*/0,  /*body*/$6);}
+              | Fun ident ':' params '=' expr                 {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$2, /*mods*/ 0, /*ret_ty*/0, /*params*/$4, /*body*/$6);}
+              | Fun ident ':' '=' expr                        {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$2, /*mods*/ 0, /*ret_ty*/0, /*params*/0,  /*body*/$5);}
+              ;
+
+fn_decl: modifier_list Fun ident ':' params Returns type_expr ';'       {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/$7,                                  /*params*/$5, /*body*/0);}
+       | modifier_list Fun ident ':' Returns type_expr        ';'       {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/$6,                                  /*params*/0,  /*body*/0);}
+       | modifier_list Fun ident ':' params                   ';'       {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/$5, /*body*/0);}
+       | modifier_list Fun ident ':'                          ';'       {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/0,  /*body*/0);}
+       | Fun ident ':' params Returns type_expr               ';'       {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$2, /*mods*/ 0, /*ret_ty*/$6,                                  /*params*/$4, /*body*/0);}
+       | Fun ident ':' Returns type_expr                      ';'       {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$2, /*mods*/ 0, /*ret_ty*/$5,                                  /*params*/0,  /*body*/0);}
+       | Fun ident ':' params                                 ';'       {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$2, /*mods*/ 0, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/$4, /*body*/0);}
+       | Fun ident ':'                                        ';'       {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$2, /*mods*/ 0, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/0,  /*body*/0);}
        ;
 
 fn_lambda: modifier_list Fun params '=' expr  %prec Fun  {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)"", /*mods*/$1, /*ret_ty*/0,  /*params*/$3, /*body*/$5);}
