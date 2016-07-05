@@ -116,12 +116,7 @@ void yyerror(const char *msg);
 %nonassoc '(' '[' Indent Unindent
 %nonassoc HIGH
 
-/*
-    Expect 4 shift/reduce warnings, all from type casting.  Using a glr-parser
-    resolves this ambiguity.
-*/
-%glr-parser
-%expect 2
+
 %start top_level_expr_list
 %%
 
@@ -178,12 +173,12 @@ lit_type: I8                        {$$ = mkTypeNode(@$, TT_I8,  (char*)"");}
         | '\'' ident                {$$ = mkTypeNode(@$, TT_TypeVar, (char*)$1);}
         ;
 
-type: type '*'      %dprec 2             {$$ = mkTypeNode(@$, TT_Ptr,  (char*)"", $1);}
-    | type '[' ']'                       {$$ = mkTypeNode(@$, TT_Array,(char*)"", $1);}
-    | type Returns type                  {setNext($3, $1); $$ = mkTypeNode(@$, TT_Func, (char*)"", $3);}  /* f-ptr w/ params*/
-    | '(' ')' Returns type               {$$ = mkTypeNode(@$, TT_Func, (char*)"", $4);}  /* f-ptr w/out params*/
-    | '(' type_expr ')'       %prec MED  {$$ = $2;}
-    | lit_type                           {$$ = $1;}
+type: type '*'              {$$ = mkTypeNode(@$, TT_Ptr,  (char*)"", $1);}
+    | '[' type_expr ']'     {$$ = mkTypeNode(@$, TT_Array,(char*)"", $2);}
+    | type Returns type     {setNext($3, $1); $$ = mkTypeNode(@$, TT_Func, (char*)"", $3);}  /* f-ptr w/ params*/
+    | '(' ')' Returns type  {$$ = mkTypeNode(@$, TT_Func, (char*)"", $4);}  /* f-ptr w/out params*/
+    | '(' type_expr ')'     {$$ = $2;}
+    | lit_type              {$$ = $1;}
     ;
 
 type_expr_: type_expr_ ',' type {$$ = setNext($1, $3);}

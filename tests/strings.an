@@ -14,7 +14,7 @@ printf("%s%s", openingMsg, getClosingMsg())
 
 
 data Str
-    c8[] cStr
+    [c8] cStr
     u32 length
 
 fun print: Str s
@@ -24,20 +24,20 @@ fun print: Str s
 let str = Str("test", 4)
 print(str)
 
-print(str where str = ("str", 3) )
+print( Str("str", 3) )
 
 
 
 ~Gets the length of null-terminated strings.
 ~Same as strlen from the c library.
-fun len: c8[] s => i32
+fun len: [c8] s => i32
     var acc = 0
     while s[acc] != 0u8
         acc += 1
     return acc
 
 
-fun makeStr: c8[] rawStr => Str
+fun makeStr: [c8] rawStr => Str
     return (rawStr, len(rawStr))
 
 
