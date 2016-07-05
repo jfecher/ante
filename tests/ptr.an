@@ -1,14 +1,13 @@
 
 let str = "Hello, pointer to world!"
 
-var intPtr = malloc(4)
-@intPtr = 27
+let intPtr = new 27
 
-var longPtr = i64* malloc(8)
+var longPtr = i64* (malloc(8))
 @longPtr = 5_i64
 
-var fltPtr = f64* malloc(8)
-@fltPtr = 5.9
+let fltPtr = new 5.9
+
 
 printf("%p -> %s\n", str, str)
 printf("%p -> %d\n", intPtr, @intPtr)
