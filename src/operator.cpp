@@ -252,6 +252,12 @@ Value* createCast(Compiler *c, Type *castTy, TypeTag castTyTag, TypedValue *valT
         }else if(isIntTypeTag(castTyTag)){
             return c->builder.CreatePtrToInt(valToCast->val, castTy);
         }
+    }else if(castTyTag == TT_Data && valToCast->type == TT_Tuple){
+        if(llvmTypeEq(castTy, valToCast->getType())){
+            StructType *dataTy = (StructType*)castTy;
+            StructType *tuplTy = (StructType*)valToCast->getType();
+            tuplTy->setName(dataTy->getName());
+        }
     }
     return nullptr;
 }
@@ -353,7 +359,12 @@ TypedValue* compMemberAccess(Compiler *c, Node *ln, VarNode *field, BinOpNode *b
         auto *l = ln->compile(c);
         if(!l) return 0;
 
-        if(l->type == TT_Data){
+        while(l->type == TT_Ptr){
+            l->val = c->builder.CreateLoad(l->val);
+            l->type = llvmTypeToTypeTag(l->getType());
+        }
+
+        if(l->type == TT_Data || l->type == TT_Tuple){
             auto dataTy = c->lookupType(l->getType()->getStructName());
             auto index = dataTy->getFieldIndex(field->name);
 

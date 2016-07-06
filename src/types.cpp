@@ -352,7 +352,7 @@ string llvmTypeToStr(Type *ty){
         }
         return ret;
     }else if(tt == TT_Array){
-        return llvmTypeToStr(ty->getArrayElementType()) + "[]";
+        return "[" + llvmTypeToStr(ty->getArrayElementType()) + "]";
     }else if(tt == TT_Ptr){
         return llvmTypeToStr(ty->getPointerElementType()) + "*";
     }else if(tt == TT_Func){
