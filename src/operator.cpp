@@ -125,7 +125,7 @@ TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
         }
         Type *elemTy = arr->getType()->getPointerElementType();
         return new TypedValue(builder.CreateExtractElement(arr, r->val), llvmTypeToTypeTag(elemTy));
-    }else if(l->type == TT_Tuple){
+    }else if(l->type == TT_Tuple || l->type == TT_Data){
         if(!dynamic_cast<ConstantInt*>(r->val))
             return compErr("Tuple indices must always be known at compile time.", op->loc);
 
