@@ -255,9 +255,8 @@ Value* createCast(Compiler *c, Type *castTy, TypeTag castTyTag, TypedValue *valT
     }else if(castTyTag == TT_Data && valToCast->type == TT_Tuple){
         if(llvmTypeEq(castTy, valToCast->getType())){
             StructType *dataTy = (StructType*)castTy;
-            StructType *tuplTy = (StructType*)valToCast->getType();
 
-            tuplTy->setName(dataTy->getName());
+            valToCast->val->setValueName(ValueName::Create(dataTy->getName()));
             return valToCast->val;
         }
     }
@@ -366,12 +365,17 @@ TypedValue* compMemberAccess(Compiler *c, Node *ln, VarNode *field, BinOpNode *b
         }
 
         if(l->type == TT_Data || l->type == TT_Tuple){
-            auto dataTy = c->lookupType(l->getType()->getStructName());
+            auto dataTy = c->lookupType(l->val->getName());
+
+            cout << l->val->getName().str() << endl;
+
+            if(dataTy){
             auto index = dataTy->getFieldIndex(field->name);
-            
+
             if(index != -1)
                 return new TypedValue(c->builder.CreateExtractValue(l->val, index), 
                         llvmTypeToTypeTag(l->getType()->getStructElementType(index)));
+            }
         }
         //not a field, so look for a method.
         //TODO: perhaps create a calling convention function
@@ -381,7 +385,9 @@ TypedValue* compMemberAccess(Compiler *c, Node *ln, VarNode *field, BinOpNode *b
             return new MethodVal(l->val, f);
 
         return c->compErr("Method/Field " + field->name + " not found in type " + 
-                llvmTypeToStr(l->getType()), binop->loc);
+                llvmTypeToStr(l->getType()) + 
+                (l->val->getName().empty()? 
+                    "" : " (" + l->val->getName().str() + ")"), binop->loc);
     }
 }
 
