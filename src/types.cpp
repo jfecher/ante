@@ -184,7 +184,8 @@ Type* Compiler::typeNodeToLlvmType(TypeNode *tyNode){
             userType = lookupType(tyNode->typeName);
             if(!userType)
                 return (Type*)compErr("Use of undeclared type " + tyNode->typeName, tyNode->loc);
-            
+
+            ((StructType*)userType->type)->setName(tyNode->typeName);
             return userType->type;
         case TT_Func: //TODO function pointer type
             cout << "typeNodeToLlvmType: Function pointer types are currently unimplemented.  A void type will be returned instead.\n";

@@ -236,8 +236,7 @@ data_decl: modifier_list Data usertype type_decl_block         {$$ = mkDataDeclN
          | Data usertype generic type_decl_block               {$$ = mkDataDeclNode(@$, (char*)$2, $4);}
          ;
 
-type_decl: type_expr ident {$$ = mkNamedValNode(@$, mkVarNode(@$, (char*)$2), $1);}
-         | type_expr       {$$ = mkNamedValNode(@$, 0, $1);}
+type_decl: params          {$$ = $1;}
          | enum_decl
          ;
 

@@ -32,9 +32,9 @@ print( Str("str", 3) )
 ~Same as strlen from the c library.
 fun len: [c8] s => i32
     var acc = 0
-    while s[acc] != 0u8 do acc += 1
-    
-    acc
+    while s[acc] != 0u8 do
+        acc += 1
+    return acc
 
 
 fun makeStr: [c8] rawStr => Str

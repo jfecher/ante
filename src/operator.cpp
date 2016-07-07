@@ -256,7 +256,9 @@ Value* createCast(Compiler *c, Type *castTy, TypeTag castTyTag, TypedValue *valT
         if(llvmTypeEq(castTy, valToCast->getType())){
             StructType *dataTy = (StructType*)castTy;
             StructType *tuplTy = (StructType*)valToCast->getType();
+
             tuplTy->setName(dataTy->getName());
+            return valToCast->val;
         }
     }
     return nullptr;
@@ -267,7 +269,6 @@ TypedValue* TypeCastNode::compile(Compiler *c){
     auto *rtval = rval->compile(c);
     if(!castTy || !rtval) return 0;
 
-    if(llvmTypeEq(castTy, rtval->getType())) return rtval;
     auto* val = createCast(c, castTy, typeExpr->type, rtval);
     
     if(!val){
@@ -355,7 +356,7 @@ TypedValue* compMemberAccess(Compiler *c, Node *ln, VarNode *field, BinOpNode *b
         return c->compErr("No static method or field called " + field->name + " was found in type " + 
                 llvmTypeToStr(lty), binop->loc);
     }else{
-        //ln is not a typenode, this is not a static method call, eg "hello".reverse()
+        //ln is not a typenode, this is not a static method call
         auto *l = ln->compile(c);
         if(!l) return 0;
 
@@ -367,7 +368,7 @@ TypedValue* compMemberAccess(Compiler *c, Node *ln, VarNode *field, BinOpNode *b
         if(l->type == TT_Data || l->type == TT_Tuple){
             auto dataTy = c->lookupType(l->getType()->getStructName());
             auto index = dataTy->getFieldIndex(field->name);
-
+            
             if(index != -1)
                 return new TypedValue(c->builder.CreateExtractValue(l->val, index), 
                         llvmTypeToTypeTag(l->getType()->getStructElementType(index)));
