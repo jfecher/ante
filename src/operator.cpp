@@ -367,8 +367,6 @@ TypedValue* compMemberAccess(Compiler *c, Node *ln, VarNode *field, BinOpNode *b
         if(l->type == TT_Data || l->type == TT_Tuple){
             auto dataTy = c->lookupType(l->val->getName());
 
-            cout << l->val->getName().str() << endl;
-
             if(dataTy){
             auto index = dataTy->getFieldIndex(field->name);
 
