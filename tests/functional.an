@@ -10,7 +10,7 @@ fun add: 't a b => 't
 
 
 ~The list data structure to iterate through
-data List : Iter
+type List is Iter =
     't val
     List<t>*|None nextNode
 

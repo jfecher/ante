@@ -383,9 +383,7 @@ TypedValue* compMemberAccess(Compiler *c, Node *ln, VarNode *field, BinOpNode *b
             return new MethodVal(l->val, f);
 
         return c->compErr("Method/Field " + field->name + " not found in type " + 
-                llvmTypeToStr(l->getType()) + 
-                (l->val->getName().empty()? 
-                    "" : " (" + l->val->getName().str() + ")"), binop->loc);
+                llvmTypeToStr(l->getType()), binop->loc);
     }
 }
 

@@ -92,7 +92,7 @@ enum TokenType{
     Tok_Var,
     Tok_Match,
     Tok_With,
-    Tok_Data,
+    Tok_Type,
     Tok_Enum,
     Tok_Fun,
     Tok_Ext,

@@ -6,13 +6,13 @@
     variable.
 `
 
-i32 a = 3
 
 ~type mismatch
-i32 b = 4.3
+let i32 b = 4.3
 
+var a = 3
 ~a redeclared
-i32 a = 5
+var a = 5
 
 ~aa never declared
 aa = 4

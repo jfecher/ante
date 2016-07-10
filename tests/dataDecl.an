@@ -4,45 +4,32 @@
 `
 
 ~Test , for and-ing types
-data Point1
-    i32, i32
+type Point1 = i32, i32
 
-~Test Newline for and-ing types
-data Point2
-    i32
-    i32
-
-~Test named fields
-data Point3
+~Test named fields and Newline sequencing
+type Point2
     i32 x
     i32 y
 
 ~Test | for or-ing types
-data Char
-    c8 | c32
+type Char = c8 | c32
 
 ~Test enum declaration within type declaration
-data Number
-    enum Number ~declare One, Two, and Three under namespace Number
-        One
-        Two
-        Three
-
-enum Number = enum
+type Number = enum
     One
     Two
     Three
     Four
  
-data Flags = set
+type Flags = set
     Pathogen
     Public
     Private
     Const
 
-data VarDeclNode
+type VarDeclNode =
     Flags modifiers
-    Str type where type in ["i32", "u8", "void"]
+    Str typ where typ in ["i32", "u8", "void"]
     Str name
 
 let VarDeclNode x = (Public|Pathogen), "i32", "x"
@@ -50,47 +37,43 @@ let VarDeclNode x = (Public|Pathogen), "i32", "x"
 
 
 ~Test untyped generics
-data Maybe
-    t | enum -> None
+type Maybe = 't | enum -> None
 
 
 ~Test type constructors
-data Shape
-    Circle: u32 radius
-    Square: u32 len
-    Rectangle: u32 len wid
+type Shape =
+   | Circle: u32 radius
+   | Square: u32 len
+   | Rectangle: u32 len wid
 
-fun area: Shape s => u32
-| Circle r -> pi*r*r
-| Square l -> l*l
-| Rectangle l w -> l*w
+fun area: Shape s =
+    | Circle r -> pi*r*r
+    | Square l -> l*l
+    | Rectangle l w -> l*w
 
 
-data Tree
+type Tree =
     None:
-    Leaf: t val
+    Leaf: 't val
     Node: Tree l r
 
-fun depth: Tree t => u32
-| None -> 0
-| Leaf -> 1
-| Node l r -> max(depth(l), depth(r)) + 1
+fun depth: Tree t =
+    | None -> 0
+    | Leaf -> 1
+    | Node l r -> max(depth(l), depth(r)) + 1
 
 
 ~Scalar ranges and conditions
-data Person
+type Person =
     u8 age in 0..120
     Str name where name.length > 0
 
-Person kyle = 24, "Kyle"
+let kyle = Person(24, "Kyle")
 
-Maybe i = 32
+let i = Maybe 32
 
-~Known not to be t due to strict typing
-Maybe<i32> j = None
-
-~Declare a Maybe<i32> with t set to 0
-Maybe k = i32 None
+~Known not to be 't due to strict typing
+let j = None
 
 `
     Rust's Result datatype would be mostly useless in ante

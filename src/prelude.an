@@ -18,15 +18,10 @@ fun malloc: i32 size => i32*;
 fun free: i32* mem;
 
 ~datatypes
-data Str
-    c8* cStr
-    u32 len
+type Str = c8* cStr, u32 len
 
+type Range = i32 start end step
 
-data Range
-    i32 start
-    i32 end
-    i32 step
 
 ~functions and methods
 ext i32

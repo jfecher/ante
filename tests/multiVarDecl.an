@@ -5,21 +5,18 @@
    tuples to assign each index to a seperate
    variable.
 `
-~Declare 3 floats
-f64 a b c
+~Declare 2 i32s
+let (a,b) = (3,4)
 
-a = 3
-b = 4
-
-c = sqrt(a*a + b*b)
+let c = sqrt(f64 a*a + b*b)
 
 ~Declare and set x, y, and z to 0
-u32 x y z = 0
+var x y z = 0
 
 ~y and z are constituent types of the tuple
 ~1, 2 so the tuple is destructured and y and z
 ~are set to each index.
-y z = 1, 2
+(y, z) = (1, 2)
 
 print(a, b, c, x, y, z)
 ~output:  3, 4, 5, 0, 1, 2

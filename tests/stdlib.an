@@ -55,20 +55,17 @@ import "string"
 
 
 ~Example declaration of Str
-const data Str
+type Str =
     u32 len
     c32[] rawStr
 
 
-impl Str
-    fun cast(): c32[] str => Str
-        return String(str.length(), str)
+ext Str
+    fun cast(): c32[] str = String(str.length(), str)
 
-    fun cast(): i32 int => Str
-        return String(stoi(int))
+    fun cast(): i32 int = String(stoi(int))
 
-    fun cast(): c32 c => Str
-        return String(1, [c,0])
+    fun cast(): c32 c = String(1, [c,0])
 
 
 fun print: Str... strs
@@ -77,18 +74,18 @@ fun print: Str... strs
             putchar(c)
 
 
-Str msg = "Hello World!"
+var msg = Str "Hello World!"
 
-msg = msg.repl("Hello", "Goodbye")
+msg:repl("Hello", "Goodbye")
 assert(msg == "Goodbye World!")
 
 ~op module
 import "op"
 
-impl Str
-    ~Set ! to function as an isEmpty method
-    fun op("!"): self* => bool
-        return self.len == 0
+ext Str
+    ~Set 'not' operator to an isEmpty method
+    fun op("not"): self* =
+        self.len == 0
 
     fun pop: self* => Str  where self.length > 0
         return self[0 .. this.length-1]

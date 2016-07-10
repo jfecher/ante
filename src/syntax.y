@@ -50,7 +50,7 @@ void yyerror(const char *msg);
 %token For While Do In
 %token Continue Break
 %token Import Let Var Match With
-%token Data Enum Fun Ext
+%token Type Enum Fun Ext
 
 /* modifiers */
 %token Pub Pri Pro Raw
@@ -116,7 +116,7 @@ void yyerror(const char *msg);
 %nonassoc '(' '[' Indent Unindent
 %nonassoc HIGH
 
-
+%expect 0
 %start top_level_expr_list
 %%
 
@@ -173,7 +173,7 @@ lit_type: I8                        {$$ = mkTypeNode(@$, TT_I8,  (char*)"");}
         | '\'' ident                {$$ = mkTypeNode(@$, TT_TypeVar, (char*)$1);}
         ;
 
-type: type '*'              {$$ = mkTypeNode(@$, TT_Ptr,  (char*)"", $1);}
+type: type '*'              %prec HIGH {$$ = mkTypeNode(@$, TT_Ptr,  (char*)"", $1);}
     | '[' type_expr ']'     {$$ = mkTypeNode(@$, TT_Array,(char*)"", $2);}
     | type Returns type     {setNext($3, $1); $$ = mkTypeNode(@$, TT_Func, (char*)"", $3);}  /* f-ptr w/ params*/
     | '(' ')' Returns type  {$$ = mkTypeNode(@$, TT_Func, (char*)"", $4);}  /* f-ptr w/out params*/
@@ -181,12 +181,12 @@ type: type '*'              {$$ = mkTypeNode(@$, TT_Ptr,  (char*)"", $1);}
     | lit_type              {$$ = $1;}
     ;
 
-type_expr_: type_expr_ ',' type {$$ = setNext($1, $3);}
-          | type_expr_ '|' type
-          | type                {$$ = setRoot($1);}
+type_expr_: type_expr_ ',' type %prec LOW {$$ = setNext($1, $3);}
+          | type_expr_ '|' type %prec LOW
+          | type                %prec LOW  {$$ = setRoot($1);}
           ;
 
-type_expr: type_expr_  {Node* tmp = getRoot(); 
+type_expr: type_expr_  %prec LOW {Node* tmp = getRoot(); 
                         if(tmp == $1){//singular type, first type in list equals the last
                             $$ = tmp;
                         }else{ //tuple type
@@ -222,18 +222,8 @@ let_binding: Let modifier_list type_expr ident '=' expr {$$ = mkLetBindingNode(@
            ;
 
 
-
-usertype_list: usertype_list ',' usertype {$$ = setNext($1, $3);}
-             | usertype {$$ = setRoot($1);}
-             ;
-
-generic: '<' usertype_list '>' {$$ = getRoot();}
-       ;
-
-data_decl: modifier_list Data usertype type_decl_block         {$$ = mkDataDeclNode(@$, (char*)$3, $4);}
-         | modifier_list Data usertype generic type_decl_block {$$ = mkDataDeclNode(@$, (char*)$3, $5);}
-         | Data usertype type_decl_block                       {$$ = mkDataDeclNode(@$, (char*)$2, $3);}
-         | Data usertype generic type_decl_block               {$$ = mkDataDeclNode(@$, (char*)$2, $4);}
+data_decl: modifier_list Type usertype '=' type_decl_block         {$$ = mkDataDeclNode(@$, (char*)$3, $5);}
+         | Type usertype '=' type_decl_block                       {$$ = mkDataDeclNode(@$, (char*)$2, $4);}
          ;
 
 type_decl: params          {$$ = $1;}
@@ -245,6 +235,8 @@ type_decl_list: type_decl_list Newline type_decl  {$$ = setNext($1, $3);}
               ;
 
 type_decl_block: Indent type_decl_list Unindent  {$$ = getRoot();}
+               | params               %prec LOW  {$$ = $1;}
+               | type_expr            %prec LOW  {$$ = mkNamedValNode(@$, mkVarNode(@$, (char*)""), $1);}
                ;
 
 
@@ -290,7 +282,7 @@ _params: _params ',' type_expr ident_list {$$ = setNext($1, mkNamedValNode(@$, $
 
                           /* varargs function .. (Range) followed by . */
 params: _params ',' Range '.' {setNext($1, mkNamedValNode(@$, mkVarNode(@$, (char*)""), 0)); $$ = getRoot();}
-      | _params               {$$ = getRoot();}
+      | _params               %prec LOW {$$ = getRoot();}
       ;
 
 maybe_mod_list: modifier_list  {$$ = $1;}

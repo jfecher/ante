@@ -13,9 +13,7 @@ fun getClosingMsg: => [c8]
 printf("%s%s", openingMsg, getClosingMsg())
 
 
-data Str
-    [c8] cStr
-    u32 length
+type Str = [c8] cStr, u32 length
 
 fun print: Str s
     puts(s.cStr)

@@ -6,20 +6,17 @@
 
 ~Declare a function pointer main and set it equal to
 ~an anonymous function
-var printMsg = fun
-    print("Hello World!")
+var printMsg = 
+    fun = print("Hello World!")
 
 
 ~typeof add is:
 ~ 't('t,'t)
-var add = fun a b
-    a + b
+var add = (fun a b = a + b)
 
 
-var mul = fun a b
-    a * b
+var mul = (*)
 
-~Unlike normal functions, function pointers can be changed
 add = mul
 
 

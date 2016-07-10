@@ -1,28 +1,22 @@
 
-data Range is Iterable
-    i32 start end step
+type Range is Iterable = i32 start end step
 
 
-
-
-impl Range
+ext Range
     ~Required by Iterable, returns true if loop should end
-    fun done => bool
-        return start > end
+    fun done = start > end
 
     ~Required by Iterable, called at end of each iteration
-    fun iter
-        start += step
+    fun iter = start += step
 
     ~Required by Iterable, returns the current element
-    fun unpack => i32
-        return start
+    fun unpack = start
 
-    fun init(): i32 s e => Range
-        return Range 
-            start = s
-            end = e
-            step = 1
+    fun cast(): i32 s e =
+        Range(
+            start = s,
+            end = e,
+            step = 1)
 
 
 for i in 1 .. 10

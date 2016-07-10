@@ -747,14 +747,17 @@ void Compiler::scanAllDecls(){
             if(n->prev){
                 n->prev->next.release();
                 n->prev->next.reset(n->next.get());
-            }else{
-                ast.release();
-                ast.reset(n->next.get());
 
                 if(n->next.get())
+                    n->next->prev = n->prev;
+            }else{
+                ast.release();
+                if(n->next.get()){
+                    ast.reset(n->next.get());
                     n->next->prev = 0;
-                else
-                    ast.release();
+                }else{
+                    ast.reset(0);
+                }
             }
         }
         n = n->next.get();

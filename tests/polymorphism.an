@@ -12,8 +12,7 @@ fun add: 't a b => 't
 fun sub: 't a b => 't
     return a - b
 
-data Op
-  enum
+type Op = enum
     Add
     Sub
     Mul
@@ -30,15 +29,14 @@ fun performOperation: 't a b, Op op => 't
 assert(performOperation(1.0, 2.0, Op.Add) == 3.0)
 
 
-data Maybe
-    't | enum -> None
+type Maybe = Some 't | None
 
 ~Initialize i and n and autodetect their types
 var i = Maybe 3
 var n = None
 
 
-data Result
+type Result =
     't | 'e
 
 ~Return type is assumed to be Result<File, FileErr>

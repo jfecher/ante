@@ -341,9 +341,7 @@ let tupPtr = &(0, 0)
     simplify code by removing the need to check if the next character is out of bounds.
 `
 ~A simple declaration of a string datatype
-data Str
-    c8[] cStr
-    u32 len
+type Str = [c8] cStr, u32 len
 
 fun Str.cast(): c8[] str => Str
     (cStr, cStr.len())
@@ -734,10 +732,10 @@ putchar(10)
 fun subtract: f32 a b => f32 -> a - b
 
 ~While these can be nested, overnesting should be avoided as it leads to clutter.
-data Integer -> i32 i, fun init(): i32 a -> i = a;; u8 byte
+type Integer = i32 i, fun init(): i32 a -> i = a;; u8 byte
 
 ~compared to
-data Integer
+type Integer =
     i32 i
 
     fun init(): i32 a
@@ -759,7 +757,7 @@ fun inefficientAdd: i32 a b => i32 {
 
 `
         Data declarations
-    In ante, all datatypes are declared through the data keyword which binds a 
+    In ante, all datatypes are declared through the 'type' keyword which binds a 
     name to a type expression.  This binding must begin with a capital letter 
     and be succeeded by zero or more alphanumeric characters or underscores.
     A data declaration consists of one or more type expressions seperated by 
@@ -770,25 +768,20 @@ fun inefficientAdd: i32 a b => i32 {
 ~NOTE: just as in functions, multiple variables of the same type can be declared
 ~      by seperating the field name with spaces. if an = is encountered 
 ~      afterwards, each of the variables will be set to that default value.
-data Coord
-    f64 x y z
+type Coord = f64 x y z
 
 ~Declare Char, a datatype that can contain a c8 or c32 char
-data Char
+type Char =
     c8|c32 c
 
-let ch = 'a'
+let ch = Char 'a'
 
 
-data Coord2D
-    f32 x
-    f32 y
+type Coord2D = f32 x y
 
-~Anonymous fields can be declared simply by neglecting to give each field a name.  Anonymous
-~fields can only be accessed with [] as tuple indices.
-data Q1Coord
-    u32
-    u32
+~Anonymous types can be declared simply by neglecting to give each field a name, making the entire
+~type a single type expression.  Anonymous fields of these types can only be accessed with [] as tuple indices.
+type Q1Coord = u32,u32
 
 let myQ1C = (2, 3)
 print(myQ1C[1]) ~output: 3
@@ -886,7 +879,7 @@ if "test" is in (5, 6.5, "test") then
     verify the value of a variable.  Where is always followed by the boolean expression
     to be checked.
 `
-data Teen
+type Teen =
     u8 age  in 10 .. 19
     Str name  where name.length > 0
 
@@ -898,7 +891,7 @@ let sara = Teen(18, "")
 
 ~Create a datatype TwoDigits that represents a number that is between
 ~10 and 99 inclusive.
-data TwoDigits
+type TwoDigits =
     u8 in 10..99
 
 let td1 = TwoDigits(32) ~Good!
@@ -906,11 +899,11 @@ let td2 = TwoDigits(100) ~RangeErr
 
 
 ~Type conditions with anonymous fields:
-data LongStr
+type LongStr =
     Str where this.length > 10
 
 ~Type conditions are evaluated whenever the corresponding field is changed.
-data Q2Coord
+type Q2Coord =
     i32 where this[0] < 0
     i32 where this[1] > 0
 
@@ -925,7 +918,7 @@ q[0] = 2 ~where this[0] < 0 is evaluated, and a TypeConditionErr is thrown.
     that is the name of the datatype, but cannot be accessed without an initialization of the
     datatype if they take self as a parameter.
 `
-data Animal
+type Animal =
     u16 age
     c8* species
     c8* name
@@ -953,7 +946,7 @@ let clifford = new Animal.init(7, "magnum rubrum canis", "Clifford")
 `
     Datatypes can also inherit from other datatypes with the : operator.
 `
-data Person : Animal
+type Person : Animal = 
     c8* job
 
     fun init: u16 age, c8* job name => Person
@@ -1000,7 +993,7 @@ sara.printInfo()
     Modifiers can be placed before a variable or function, or alternatively
     can be placed before a new block to modify everything within the block
 `
-data Statistics
+type Statistics = 
     ~declare secretData as a private variable, only able to be accessed
     ~from within member functions (methods).
     pri f64 secretData
@@ -1099,7 +1092,7 @@ fun add: 't a, 'u b => 'r
 ~In the Angle class, each time it is initialized, a bool is specified as true if the
 ~angle is in radians, false otherwise.  This determines how Angle is compiled and
 ~cannot be changed after initialization.
-data Angle<bool isRadians>
+type Angle<bool isRadians> =
     f32 angle
 
     if isRadians then
@@ -1131,7 +1124,7 @@ assert(a1.getQuadrent() == a2.getQuadrent())
     NOTE: Ante implements smart pointers by default, so this class is meant to show
           how one could be implemented without this feature (eg. if it disabled).
 `
-data MySmartPtr : Clone
+type MySmartPtr : Clone =
     't* rawPtr
     pri u16* refCount
 
@@ -1157,7 +1150,7 @@ data MySmartPtr : Clone
 
 
 ~where can also be used to check the type specification
-data ChessPiece<Str piece> where searchFor(piece, ["pawn", "knight", "king"]) != None
+type ChessPiece<Str piece> where searchFor(piece, ["pawn", "knight", "king"]) != None
     u8 x
     u8 y
     
@@ -1190,7 +1183,7 @@ assert(knight.validateMove(3, 5))
     following example, the class Point is created and overloads the > and < operators,
     and creates the new infix function cmp for comparisons.
 `
-data Point
+type Point
     pub i32 x, y
 
     `
@@ -1258,7 +1251,7 @@ ext Drawable
     fun getSurface: self => 's
         return self.surface
 
-data Rectangle
+type Rectangle =
     u32 height
     Surface surface
 
@@ -1411,7 +1404,7 @@ enum Suit -> Diamonds, Hearts, Spades, Clubs
 
 print(Suit.Spades)  ~output: 2
 
-data Card
+type Card =
     u8 number
     i32 suit
 
@@ -1432,14 +1425,12 @@ let number = i32 Three
 
 ~Alternatively, if the first and second's value are given then each consecutive member
 ~Is incremented by their difference instead of 1.
-~Note the double indentation after enum.  The -> after EvenNumbers increments the
-~indentation level by 1, and enum requires another.
-data EvenNumbers -> enum
-        Two = 2
-        Four = 4
-        Six~ = 6
-        Eight~ = 8, and so on
-        Ten, Twelve, Fourteen
+type EvenNumbers = enum
+    Two = 2
+    Four = 4
+    Six~ = 6
+    Eight~ = 8, and so on
+    Ten, Twelve, Fourteen
 
 ~           evenNumber = 12
 let evenNumber = EvenNumbers.Twelve
@@ -1483,8 +1474,8 @@ let msg = c8* "Pointer String"
     seperate member accessor operator for pointers (-> in c like
     languages).
 `
-data PtrExample
-    c8[] msg
+type PtrExample =
+    [c8] msg
 
     fun printMsg
         print(msg)
@@ -1624,26 +1615,26 @@ assert(doOperation(fnPtr) == 1.5)
 `
 
 ~declare a type str that can be a char array of any size
-data Str -> c8[] | c32[]
+type Str = c8[] | c32[]
 
 ~declare a type coord that can be an integer or float tuple
 ~NOTE: the precedence of | is greater than that of ,
-data Coord -> (i32, i32) | (f64, f64)
+type Coord = (i32, i32) | (f64, f64)
 
-data Maybe
+type Maybe =
     't | enum -> None
 
 ~declare a list type that is a tuple with two indices, the first
 ~being the value type, and the second being the next List node.
-data TList -> 't, Maybe<List<'t>*>
+type TList = 't, Maybe<List<'t>*>
 
 ~alternatively, type declarations can name each member of the
 ~tuple, mimicking a struct.
-data List
+type List =
     't val
     Maybe<List<'t>*> next
 
-data Vec
+type Vec =
     't[] mem
     u32 len
     u32 cap
@@ -1661,7 +1652,7 @@ let numsList = List(1u8, &(2u8, &(3u8, None)))
     If so, it returns from the method, otherwise, the value
     is not changed.
 `
-data MyErr : Err
+type MyErr : Err =
     const Str msg
 
     fun op("cast"): Err e => MyErr
@@ -1746,12 +1737,12 @@ let f = await someFunction()
 assert(3 is i32)
 
 ~Allow/force names in data declarations to precede types
-data Vec
+type Vec =
     mem: t
     len: u32
     cap: u32
 
-data List
+type List =
     val: t
     next: List<t> | End
 
@@ -1805,7 +1796,7 @@ modifiers:
     pathogen
 
 datatypes:
-    data
+    type
     enum
 
 other:
@@ -1816,10 +1807,7 @@ other:
 
 `
         Unused Symbols
-@
 #
 $
-|
-?
 
 `
