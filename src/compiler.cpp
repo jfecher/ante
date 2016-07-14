@@ -141,7 +141,7 @@ bool isUnsignedTypeTag(const TypeTag tt){
 TypedValue* IntLitNode::compile(Compiler *c){
     return new TypedValue(ConstantInt::get(getGlobalContext(),
                             APInt(getBitWidthOfTypeTag(type), 
-                            atol(val.c_str()), isUnsignedTypeTag(type))), type);
+                            atol(val.c_str()), isUnsignedTypeTag(type))), mkAnonTypeNode(type));
 }
 
 
@@ -154,16 +154,13 @@ const fltSemantics& typeTagToFltSemantics(TypeTag tokTy){
     }
 }
 
-/*
- *  TODO: type field for float literals
- */
 TypedValue* FltLitNode::compile(Compiler *c){
-    return new TypedValue(ConstantFP::get(getGlobalContext(), APFloat(typeTagToFltSemantics(type), val.c_str())), type);
+    return new TypedValue(ConstantFP::get(getGlobalContext(), APFloat(typeTagToFltSemantics(type), val.c_str())), mkAnonTypeNode(type));
 }
 
 
 TypedValue* BoolLitNode::compile(Compiler *c){
-    return new TypedValue(ConstantInt::get(getGlobalContext(), APInt(1, (bool)val, true)), TT_Bool);
+    return new TypedValue(ConstantInt::get(getGlobalContext(), APInt(1, (bool)val, true)), mkAnonTypeNode(TT_Bool));
 }
 
 
@@ -178,26 +175,31 @@ TypedValue* TypeNode::compile(Compiler *c){
 
 
 TypedValue* StrLitNode::compile(Compiler *c){
-    return new TypedValue(c->builder.CreateGlobalStringPtr(val), TT_StrLit);
+    return new TypedValue(c->builder.CreateGlobalStringPtr(val), mkAnonTypeNode(TT_StrLit));
 }
 
 
 TypedValue* ArrayNode::compile(Compiler *c){
     vector<Constant*> arr;
+    TypeNode *tyn = mkAnonTypeNode(TT_Array);
+
     for(Node *n : exprs){
-       auto *tval = n->compile(c);
-       arr.push_back((Constant*)tval->val);
+        auto *tval = n->compile(c);
+        arr.push_back((Constant*)tval->val);
+
+        if(!tyn->extTy.get())
+            tyn->extTy.reset(tval->type.get());
     }
    
     auto* arrTy = ArrayType::get(arr[0]->getType(), arr.size());
-    return new TypedValue(ConstantArray::get(arrTy, arr), TT_Array);
+    return new TypedValue(ConstantArray::get(arrTy, arr), tyn);
 }
 
 TypedValue* Compiler::getVoidLiteral(){
     vector<Constant*> elems;
     vector<Type*> elemTys;
     Value* tuple = ConstantStruct::get(StructType::get(getGlobalContext(), elemTys), elems);
-    return new TypedValue(tuple, TT_Void);
+    return new TypedValue(tuple, mkAnonTypeNode(TT_Void));
 }
 
 TypedValue* TupleNode::compile(Compiler *c){
@@ -208,6 +210,9 @@ TypedValue* TupleNode::compile(Compiler *c){
     elemTys.reserve(exprs.size());
 
     map<unsigned, Value*> pathogenVals;
+    TypeNode *tyn = mkAnonTypeNode(TT_Tuple);
+
+    TypeNode *cur = (TypeNode*)tyn->extTy.get();
 
     //Compile every value in the tuple, and if it is not constant,
     //add it to pathogenVals
@@ -220,6 +225,8 @@ TypedValue* TupleNode::compile(Compiler *c){
             elems.push_back(UndefValue::get(tval->getType()));
         }
         elemTys.push_back(tval->getType());
+        cur = tval->type.get();
+        cur = (TypeNode*)cur->next.get();
     }
 
     //Create the constant tuple with undef values in place for the non-constant values
@@ -231,7 +238,11 @@ TypedValue* TupleNode::compile(Compiler *c){
     }
 
     //A void value is represented by the empty tuple, ()
-    return new TypedValue(tuple, exprs.size() == 0 ? TT_Void : TT_Tuple);
+    if(exprs.size() == 0){
+        tyn->type = TT_Void;
+    }
+
+    return new TypedValue(tuple, tyn);
 }
 
 
@@ -317,14 +328,12 @@ TypedValue* VarNode::compile(Compiler *c){
     
     if(var){
         return dynamic_cast<AllocaInst*>(var->getVal()) ?
-            new TypedValue(c->builder.CreateLoad(var->getVal(), name), var->getType())
+            new TypedValue(c->builder.CreateLoad(var->getVal(), name), var->tval->type)
             : var->tval;
     }else{
         auto *fn = c->getFunction(name);
 
-        return fn ?
-            new TypedValue(fn, TT_Function)
-            : c->compErr("Variable or function '" + name + "' has not been declared.", this->loc);
+        return fn? fn : c->compErr("Variable or function '" + name + "' has not been declared.", this->loc);
     }
 }
 
@@ -370,7 +379,7 @@ TypedValue* VarDeclNode::compile(Compiler *c){
     if(!tyNode) return compVarDeclWithInferredType(this, c);
 
     Type *ty = c->typeNodeToLlvmType(tyNode);
-    TypedValue *alloca = new TypedValue(c->builder.CreateAlloca(ty, 0, name.c_str()), tyNode->type);
+    TypedValue *alloca = new TypedValue(c->builder.CreateAlloca(ty, 0, name.c_str()), tyNode);
 
     Variable *var = new Variable(name, alloca, c->scope);
     c->stoVar(name, var);
@@ -386,7 +395,7 @@ TypedValue* VarDeclNode::compile(Compiler *c){
                         expr->loc);
         }
 
-        return new TypedValue(c->builder.CreateStore(val->val, alloca->val), tyNode->type);
+        return new TypedValue(c->builder.CreateStore(val->val, alloca->val), tyNode);
     }else{
         return alloca;
     }
@@ -471,6 +480,9 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
     BasicBlock *caller = builder.GetInsertBlock();
     BasicBlock *bb = BasicBlock::Create(getGlobalContext(), "entry", preFn);
     builder.SetInsertPoint(bb);
+ 
+    TypeNode *fnTyn = mkAnonTypeNode(TT_Function);
+    TypeNode *curTyn = fnTyn->extTy.get();
 
     //tell the compiler to create a new scope on the stack.
     enterNewScope();
@@ -480,8 +492,10 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
     vector<Value*> preArgs;
     for(auto &arg : preFn->args()){
         TypeNode *paramTyNode = (TypeNode*)cParam->typeExpr.get();
-        stoVar(cParam->name, new Variable(cParam->name, new TypedValue(&arg, paramTyNode->type), scope));
+        stoVar(cParam->name, new Variable(cParam->name, new TypedValue(&arg, paramTyNode), scope));
         preArgs.push_back(&arg);
+        curTyn = paramTyNode;
+        curTyn = (TypeNode*)curTyn->next.get();
         if(!(cParam = (NamedValNode*)cParam->next.get())) break;
     }
 
@@ -502,6 +516,14 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
     //create the actual function's type, along with the function itself.
     FunctionType *ft = FunctionType::get(v->getType(), paramTys, fdn->varargs);
     Function *f = Function::Create(ft, Function::ExternalLinkage, fdn->name.length() > 0 ? fdn->name : "__lambda__", module.get());
+   
+    //prepend the ret type to the function's type node node extension list.
+    //(A typenode represents functions by having the first extTy as the ret type,
+    //and the (optional) next types in the list as the parameter types)
+    curTyn = fnTyn->extTy.get();
+    TypeNode *retTy = v->type.get();
+    retTy->next.reset(curTyn);
+    fnTyn->extTy.reset(retTy);
 
     //finally, swap the bodies of the two functions and delete the former.
     f->getBasicBlockList().push_back(&preFn->front());
@@ -515,7 +537,7 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
     
     builder.SetInsertPoint(caller);
 
-    return new TypedValue(f, TT_Function);
+    return new TypedValue(f, fnTyn);
 }
 
 
@@ -529,7 +551,7 @@ vector<Argument*> buildArguments(FunctionType *ft){
 }
 
 
-Function* Compiler::compFn(FuncDeclNode *fdn){
+TypedValue* Compiler::compFn(FuncDeclNode *fdn){
     //Get and translate the function's return type to an llvm::Type*
     TypeNode *retNode = (TypeNode*)fdn->type.get();
 
@@ -545,9 +567,17 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
         paramTys.pop_back();
     }
     
-    if(!retNode){
-        return (Function*) compLetBindingFn(fdn, nParams, paramTys)->val;
-    }
+    if(!retNode)
+        return compLetBindingFn(fdn, nParams, paramTys);
+
+    //create the function's actual type node for the tval later
+    TypeNode *fnTy = mkAnonTypeNode(TT_Function);
+    TypeNode *curTyn = fnTy->extTy.get();
+    curTyn = retNode;
+
+    //set the proceeding node's to the parameter types
+    curTyn->next.reset((TypeNode*)paramsBegin->typeExpr.get());
+
 
     Type *retTy = typeNodeToLlvmType(retNode);
     FunctionType *ft = FunctionType::get(retTy, paramTys, fdn->varargs);
@@ -568,7 +598,7 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
         //iterate through each parameter and add its value to the new scope.
         for(auto &arg : f->args()){
             TypeNode *paramTyNode = (TypeNode*)cParam->typeExpr.get();
-            stoVar(cParam->name, new Variable(cParam->name, new TypedValue(&arg, paramTyNode->type), scope));
+            stoVar(cParam->name, new Variable(cParam->name, new TypedValue(&arg, paramTyNode), scope));
             if(!(cParam = (NamedValNode*)cParam->next.get())) break;
         }
 
@@ -586,7 +616,7 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
                 builder.CreateRetVoid();
             }else{
                 if(!llvmTypeEq(v->getType(), retTy)){
-                    return (Function*) compErr("Function " + fdn->name + " returned value of type " + 
+                    return compErr("Function " + fdn->name + " returned value of type " + 
                             llvmTypeToStr(v->getType()) + " but was declared to return value of type " +
                             llvmTypeToStr(retTy), fdn->loc);
                 }
@@ -597,7 +627,7 @@ Function* Compiler::compFn(FuncDeclNode *fdn){
         //optimize!
         passManager->run(*f);
     }
-    return f;
+    return new TypedValue(f, fnTy);
 }
 
 
@@ -655,18 +685,22 @@ TypedValue* DataDeclNode::compile(Compiler *c){
 }
 
 
-Function* Compiler::getFunction(string& name){
-    Function *f = module->getFunction(name);
+TypedValue* Compiler::getFunction(string& name){
+    auto *f = lookup(name);
     if(!f){
         if(auto *fdNode = fnDecls[name]){
             //Function has been declared but not defined, so define it.
             BasicBlock *caller = builder.GetInsertBlock();
-            f = compFn(fdNode);
+            auto *fn = compFn(fdNode);
+            stoVar(name, new Variable(name, fn, 0));
             fnDecls.erase(name);
             builder.SetInsertPoint(caller);
+            return fn;
         }
+        return 0;
+    }else{
+        return f->tval;
     }
-    return f;
 }
 
 /*
@@ -706,11 +740,6 @@ TypeNode* mkAnonTypeNode(TypeTag t){
     return new TypeNode(fakeLoc, t, "", nullptr);
 }
 
-
-TypedValue::TypedValue(Value *v, TypeTag ty) : val(v){
-    assert(isPrimitiveTypeTag(ty) && "TypeTag must be a primitive tag for this constructor!");
-    type.reset(mkAnonTypeNode(ty));
-}
 
 /*
  *  Declares functions to be included in every module without need of an import.
@@ -915,7 +944,7 @@ inline void Compiler::exitScope(){
     for(auto it = vtable->cbegin(); it != vtable->cend(); it++){
         if(it->second->isFreeable() && it->second->scope == scope){
             string freeFnName = "free";
-            Function* freeFn = getFunction(freeFnName);
+            Function* freeFn = (Function*)getFunction(freeFnName)->val;
 
             auto *inst = dynamic_cast<AllocaInst*>(it->second->getVal());
             auto *val = inst? builder.CreateLoad(inst) : it->second->getVal();
@@ -935,8 +964,7 @@ inline void Compiler::exitScope(){
 Variable* Compiler::lookup(string var) const{
     for(auto it = varTable.crbegin(); it != varTable.crend(); it++){
         try{
-            auto *ret = (*it)->at(var);
-            return ret;
+            return (*it)->at(var);
         }catch(out_of_range r){}
     }
     return nullptr;

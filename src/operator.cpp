@@ -16,7 +16,7 @@ TypedValue* Compiler::compAdd(TypedValue *l, TypedValue *r, BinOpNode *op){
             return new TypedValue(builder.CreateFAdd(l->val, r->val), l->type);
 
         default:
-            return compErr("binary operator + is undefined for the type " + llvmTypeToStr(l->getType()) + " and " + llvmTypeToStr(r->getType()), op->loc);
+            return compErr("binary operator + is undefined for the type " + typeNodeToStr(l->type.get()) + " and " + typeNodeToStr(r->type.get()), op->loc);
     }
 }
 
@@ -122,19 +122,26 @@ TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
         if(dynamic_cast<AllocaInst*>(l->val)){
             arr = builder.CreateLoad(l->val);
         }
-        Type *elemTy = arr->getType()->getPointerElementType();
-        return new TypedValue(builder.CreateExtractElement(arr, r->val), llvmTypeToTypeTag(elemTy));
+        return new TypedValue(builder.CreateExtractElement(arr, r->val), l->type->extTy.get());
     }else if(l->type->type == TT_Tuple || l->type->type == TT_Data){
         if(!dynamic_cast<ConstantInt*>(r->val))
             return compErr("Tuple indices must always be known at compile time.", op->loc);
 
         auto index = ((ConstantInt*)r->val)->getZExtValue();
 
+        //get the type from the index in question
+        cout << typeNodeToStr(l->type.get()) << endl;
+        TypeNode* indexTyn = l->type->extTy.get();
+        for(unsigned i = 0; i < index; i++)
+            indexTyn = (TypeNode*)indexTyn->next.get();
+
         //if the entire tuple is known at compile-time, then the element can be directly retrieved.
+        //
+        //TODO: possibly remove this check, an extract should be optimized away if it is a constant anyway
         if(auto *lc = dynamic_cast<Constant*>(l->val)){
-            return new TypedValue(lc->getAggregateElement(index), llvmTypeToTypeTag(l->getType()->getStructElementType(index)));
+            return new TypedValue(lc->getAggregateElement(index), indexTyn);
         }else{
-            return new TypedValue(builder.CreateExtractValue(l->val, index), llvmTypeToTypeTag(l->getType()->getStructElementType(index)));
+            return new TypedValue(builder.CreateExtractValue(l->val, index), indexTyn);
         }
     }else if(l->type->type == TT_Ptr){ //assume RefVal
         Value *v = builder.CreateLoad(l->val);
@@ -142,9 +149,14 @@ TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
             if(!dynamic_cast<ConstantInt*>(r->val))
                 return compErr("Pathogen values cannot be used as tuple indices.", op->loc);
             auto index = ((ConstantInt*)r->val)->getZExtValue();
+       
+            //get the type of the index in question
+            TypeNode* indexTyn = l->type->extTy.get();
+            for(unsigned i = 0; i < index; i++)
+                indexTyn = (TypeNode*)indexTyn->next.get();
             
             Value *field = builder.CreateExtractValue(v, index);
-            return new TypedValue(field, llvmTypeToTypeTag(field->getType()));
+            return new TypedValue(field, indexTyn);
         }
         return compErr("Type " + llvmTypeToStr(l->getType()) + " does not have elements to access", op->loc);
     }else{
@@ -180,7 +192,7 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
 
     switch(llvmTypeToTypeTag(tmp->getType())){
         case TT_Array:
-            return new TypedValue(builder.CreateStore(builder.CreateInsertElement(tmp->val, newVal->val, index->val), var), TT_Void);
+            return new TypedValue(builder.CreateStore(builder.CreateInsertElement(tmp->val, newVal->val, index->val), var), mkAnonTypeNode(TT_Void));
             //return new TypedValue(builder.CreateInsertElement(loadVal, newVal->val, index->val), TT_Void);
         case TT_Tuple:
             if(!dynamic_cast<ConstantInt*>(index->val)){
@@ -199,7 +211,7 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
                 }
 
                 Value *insertedTup = builder.CreateInsertValue(tmp->val, newVal->val, tupIndex);
-                return new TypedValue(builder.CreateStore(insertedTup, var), TT_Void);
+                return new TypedValue(builder.CreateStore(insertedTup, var), mkAnonTypeNode(TT_Void));
             }
         default:
             return compErr("Variable being indexed must be an Array or Tuple, but instead is a(n) " +
@@ -253,9 +265,6 @@ Value* createCast(Compiler *c, Type *castTy, TypeTag castTyTag, TypedValue *valT
         }
     }else if(castTyTag == TT_Data && valToCast->type->type == TT_Tuple){
         if(llvmTypeEq(castTy, valToCast->getType())){
-            StructType *dataTy = (StructType*)castTy;
-
-            valToCast->val->setValueName(ValueName::Create(dataTy->getName()));
             return valToCast->val;
         }
     }
@@ -268,12 +277,12 @@ TypedValue* TypeCastNode::compile(Compiler *c){
     if(!castTy || !rtval) return 0;
 
     auto* val = createCast(c, castTy, typeExpr->type, rtval);
-    
+
     if(!val){
         return c->compErr("Invalid type cast " + llvmTypeToStr(rtval->getType()) + 
                 " -> " + llvmTypeToStr(castTy), loc);
     }else{
-        return new TypedValue(val, typeExpr->type);
+        return new TypedValue(val, typeExpr.get());
     }
 }
 
@@ -349,7 +358,7 @@ TypedValue* compMemberAccess(Compiler *c, Node *ln, VarNode *field, BinOpNode *b
         string valName = llvmTypeToStr(lty) + "_" + field->name;
 
         if(auto *f = c->getFunction(valName))
-            return new TypedValue(f, TT_Function);
+            return f;
 
         return c->compErr("No static method or field called " + field->name + " was found in type " + 
                 llvmTypeToStr(lty), binop->loc);
@@ -364,20 +373,26 @@ TypedValue* compMemberAccess(Compiler *c, Node *ln, VarNode *field, BinOpNode *b
         }
 
         if(l->type->type == TT_Data || l->type->type == TT_Tuple){
-            auto dataTy = c->lookupType(llvmTypeToStr(l->getType()));
+            auto dataTy = c->lookupType(typeNodeToStr(l->type.get()));
 
             if(dataTy){
                 auto index = dataTy->getFieldIndex(field->name);
 
-                if(index != -1)
-                    return new TypedValue(c->builder.CreateExtractValue(l->val, index), 
-                            llvmTypeToTypeTag(l->getType()->getStructElementType(index)));
+                if(index != -1){
+                    TypeNode *indexTy = l->type->extTy.get();
+
+                    for(int i = 0; i < index; i++){
+                        indexTy = (TypeNode*)indexTy->next.get();
+                    }
+
+                    return new TypedValue(c->builder.CreateExtractValue(l->val, index), indexTy);
+                }
             }
         }
 
         //not a field, so look for a method.
         //TODO: perhaps create a calling convention function
-        string funcName = llvmTypeToStr(l->getType()) + "_" + field->name;
+        string funcName = typeNodeToStr(l->type.get()) + "_" + field->name;
 
         if(auto *f = c->getFunction(funcName))
             return new MethodVal(l->val, f);
@@ -435,8 +450,8 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
         }
     }
 
-    return new TypedValue(c->builder.CreateCall(f, args), llvmTypeToTypeTag(f->getReturnType()));
     
+    return new TypedValue(c->builder.CreateCall(f, args), tvf->type->extTy.get());
 }
 
 
@@ -492,7 +507,7 @@ TypedValue* UnOpNode::compile(Compiler *c){
                 return c->compErr("Cannot dereference non-pointer type " + llvmTypeToStr(rhs->getType()), loc);
             }
             
-            return new TypedValue(c->builder.CreateLoad(rhs->val), llvmTypeToTypeTag(rhs->getType()->getPointerElementType()));
+            return new TypedValue(c->builder.CreateLoad(rhs->val), rhs->type->extTy.get());
         case '&': //address-of
             break; //TODO
         case '-': //negation
@@ -500,7 +515,7 @@ TypedValue* UnOpNode::compile(Compiler *c){
         case Tok_New:
             if(rhs->getType()->isSized()){
                 string mallocFnName = "malloc";
-                Function* mallocFn = c->getFunction(mallocFnName);
+                Function* mallocFn = (Function*)c->getFunction(mallocFnName)->val;
 
                 auto size = rhs->getType()->getPrimitiveSizeInBits();
                 Value *sizeVal = ConstantInt::get(getGlobalContext(), APInt(32, size, true));
@@ -512,7 +527,9 @@ TypedValue* UnOpNode::compile(Compiler *c){
                 //finally store rhs into the malloc'd slot
                 c->builder.CreateStore(rhs->val, typedPtr);
 
-                return new TypedValue(typedPtr, llvmTypeToTypeTag(ptrTy));
+                TypeNode *tyn = mkAnonTypeNode(TT_Ptr);
+                tyn->extTy.reset(rhs->type.get());
+                return new TypedValue(typedPtr, tyn);
             }
     }
     

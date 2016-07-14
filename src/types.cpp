@@ -29,10 +29,10 @@ void Compiler::implicitlyCastIntToInt(TypedValue **lhs, TypedValue **rhs){
         //Cast the value with the smaller bitwidth to the type with the larger bitwidth
         if(lbw < rbw){
             (*lhs)->val = builder.CreateIntCast((*lhs)->val, (*rhs)->getType(), !isUnsignedTypeTag((*lhs)->type->type));
-            (*lhs)->type = (*rhs)->type;
+            (*lhs)->type.reset(deepCopyTypeNode((*rhs)->type.get()));
         }else{//lbw > rbw
             (*rhs)->val = builder.CreateIntCast((*rhs)->val, (*lhs)->getType(), !isUnsignedTypeTag((*rhs)->type->type));
-            (*rhs)->type = (*lhs)->type;
+            (*rhs)->type.reset(deepCopyTypeNode((*lhs)->type.get()));
         }
     }
 }
@@ -72,10 +72,10 @@ void Compiler::implicitlyCastFltToFlt(TypedValue **lhs, TypedValue **rhs){
     if(lbw != rbw){
         if(lbw < rbw){
             (*lhs)->val = builder.CreateFPExt((*lhs)->val, (*rhs)->getType());
-            (*lhs)->type = (*rhs)->type;
+            (*lhs)->type.reset((*rhs)->type.get());
         }else{//lbw > rbw
             (*rhs)->val = builder.CreateFPExt((*rhs)->val, (*lhs)->getType());
-            (*rhs)->type = (*lhs)->type;
+            (*rhs)->type.reset((*lhs)->type.get());
         }
     }
 }

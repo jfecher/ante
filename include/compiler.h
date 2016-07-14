@@ -14,17 +14,17 @@ using namespace llvm;
 using namespace std;
 
 
+TypeNode* deepCopyTypeNode(const TypeNode *n);
 /*
  *  Used for storage of additional information, such as signedness,
  *  not represented by llvm::Type
  */
 struct TypedValue {
     Value *val;
-    shared_ptr<TypeNode> type;
+    unique_ptr<TypeNode> type;
 
     TypedValue(Value *v, TypeNode *ty) : val(v), type(ty){}
-    TypedValue(Value *v, shared_ptr<TypeNode> ty) : val(v), type(ty){}
-    TypedValue(Value *v, TypeTag ty);
+    TypedValue(Value *v, unique_ptr<TypeNode> &ty) : val(v), type(deepCopyTypeNode(ty.get())){}
     
     Type* getType() const{ return val->getType(); }
 };
@@ -36,7 +36,7 @@ TypeNode* mkAnonTypeNode(TypeTag);
 struct MethodVal : public TypedValue {
     Value *obj;
 
-    MethodVal(Value *o, Value *f) : TypedValue(f, TT_Method), obj(o) {}
+    MethodVal(Value *o, TypedValue *f) : TypedValue(f->val, (f->type->type = TT_Method, f->type.get())), obj(o) {}
 };
 
 
@@ -125,9 +125,9 @@ namespace ante{
         TypedValue* compErr(string msg, yy::location& loc);
 
         void importFile(const char *name);
-        Function* getFunction(string& name);
+        TypedValue* getFunction(string& name);
         TypedValue* compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector<Type*> &paramTys);
-        Function* compFn(FuncDeclNode *fn);
+        TypedValue* compFn(FuncDeclNode *fn);
         void registerFunction(FuncDeclNode *func);
 
         unsigned int getScope() const;
