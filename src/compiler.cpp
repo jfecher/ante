@@ -119,6 +119,7 @@ size_t Compiler::getTupleSize(Node *tup){
 }
 
 
+
 /*
  *  Compiles a statement list and returns its last statement.
  */
@@ -339,8 +340,8 @@ TypedValue* LetBindingNode::compile(Compiler *c){
         }
     }
 
-    bool nofree = val->type != TT_Ptr || dynamic_cast<Constant*>(val->val);
-    c->stoVar(name, new Variable(name, val, c->getScope(), nofree));
+    bool nofree = val->type->type != TT_Ptr || dynamic_cast<Constant*>(val->val);
+    c->stoVar(name, new Variable(name, val, c->scope, nofree));
     return val;
 }
 
@@ -355,8 +356,8 @@ TypedValue* compVarDeclWithInferredType(VarDeclNode *node, Compiler *c){
     TypedValue *alloca = new TypedValue(c->builder.CreateAlloca(val->getType(), 0, node->name.c_str()), val->type);
     val = new TypedValue(c->builder.CreateStore(val->val, alloca->val), val->type);
     
-    bool nofree = val->type != TT_Ptr || dynamic_cast<Constant*>(val->val);
-    c->stoVar(node->name, new Variable(node->name, alloca, c->getScope(), nofree));
+    bool nofree = val->type->type != TT_Ptr || dynamic_cast<Constant*>(val->val);
+    c->stoVar(node->name, new Variable(node->name, alloca, c->scope, nofree));
     return val;
 }
 
@@ -371,7 +372,7 @@ TypedValue* VarDeclNode::compile(Compiler *c){
     Type *ty = c->typeNodeToLlvmType(tyNode);
     TypedValue *alloca = new TypedValue(c->builder.CreateAlloca(ty, 0, name.c_str()), tyNode->type);
 
-    Variable *var = new Variable(name, alloca, c->getScope());
+    Variable *var = new Variable(name, alloca, c->scope);
     c->stoVar(name, var);
     if(expr.get()){
         TypedValue *val = expr->compile(c);
@@ -492,7 +493,7 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
     //llvm requires explicit returns, so generate a void return even if
     //the user did not in their void function.
     if(!dynamic_cast<ReturnInst*>(v->val)){
-        if(v->type == TT_Void)
+        if(v->type->type == TT_Void)
             builder.CreateRetVoid();
         else
             builder.CreateRet(v->val);
@@ -696,10 +697,20 @@ void Compiler::importFile(const char *fName){
 }
 
 
-unsigned int Compiler::getScope() const{
-    return scope;
+TypeNode* mkAnonTypeNode(TypeTag t){
+    auto* empty = new string("");
+    
+    auto fakeLoc = yy::location(yy::position(empty, 0, 0),
+                                yy::position(empty, 0, 0));
+    
+    return new TypeNode(fakeLoc, t, "", nullptr);
 }
 
+
+TypedValue::TypedValue(Value *v, TypeTag ty) : val(v){
+    assert(isPrimitiveTypeTag(ty) && "TypeTag must be a primitive tag for this constructor!");
+    type.reset(mkAnonTypeNode(ty));
+}
 
 /*
  *  Declares functions to be included in every module without need of an import.

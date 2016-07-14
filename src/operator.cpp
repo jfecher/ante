@@ -1,10 +1,9 @@
-#include "parser.h"
 #include "compiler.h"
 #include "tokens.h"
 
 
 TypedValue* Compiler::compAdd(TypedValue *l, TypedValue *r, BinOpNode *op){
-    switch(l->type){
+    switch(l->type->type){
         case TT_I8:  case TT_U8:
         case TT_I16: case TT_U16:
         case TT_I32: case TT_U32:
@@ -22,7 +21,7 @@ TypedValue* Compiler::compAdd(TypedValue *l, TypedValue *r, BinOpNode *op){
 }
 
 TypedValue* Compiler::compSub(TypedValue *l, TypedValue *r, BinOpNode *op){
-    switch(l->type){
+    switch(l->type->type){
         case TT_I8:  case TT_U8:
         case TT_I16: case TT_U16:
         case TT_I32: case TT_U32:
@@ -39,7 +38,7 @@ TypedValue* Compiler::compSub(TypedValue *l, TypedValue *r, BinOpNode *op){
 }
 
 TypedValue* Compiler::compMul(TypedValue *l, TypedValue *r, BinOpNode *op){
-    switch(l->type){
+    switch(l->type->type){
         case TT_I8:  case TT_U8:
         case TT_I16: case TT_U16:
         case TT_I32: case TT_U32:
@@ -56,7 +55,7 @@ TypedValue* Compiler::compMul(TypedValue *l, TypedValue *r, BinOpNode *op){
 }
 
 TypedValue* Compiler::compDiv(TypedValue *l, TypedValue *r, BinOpNode *op){
-    switch(l->type){
+    switch(l->type->type){
         case TT_I8:  
         case TT_I16: 
         case TT_I32: 
@@ -78,7 +77,7 @@ TypedValue* Compiler::compDiv(TypedValue *l, TypedValue *r, BinOpNode *op){
 }
 
 TypedValue* Compiler::compRem(TypedValue *l, TypedValue *r, BinOpNode *op){
-    switch(l->type){
+    switch(l->type->type){
         case TT_I8: 
         case TT_I16:
         case TT_I32:
@@ -113,11 +112,11 @@ inline bool isFPTypeTag(const TypeTag tt){
  *  Compiles the extract operator, [
  */
 TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
-    if(!isIntTypeTag(r->type)){
-        return compErr("Index of operator '[' must be an integer expression, got expression of type " + Lexer::getTokStr(r->type), op->loc);
+    if(!isIntTypeTag(r->type->type)){
+        return compErr("Index of operator '[' must be an integer expression, got expression of type " + typeNodeToStr(r->type.get()), op->loc);
     }
 
-    if(l->type == TT_Array){
+    if(l->type->type == TT_Array){
         //check for alloca
         Value *arr = l->val;
         if(dynamic_cast<AllocaInst*>(l->val)){
@@ -125,7 +124,7 @@ TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
         }
         Type *elemTy = arr->getType()->getPointerElementType();
         return new TypedValue(builder.CreateExtractElement(arr, r->val), llvmTypeToTypeTag(elemTy));
-    }else if(l->type == TT_Tuple || l->type == TT_Data){
+    }else if(l->type->type == TT_Tuple || l->type->type == TT_Data){
         if(!dynamic_cast<ConstantInt*>(r->val))
             return compErr("Tuple indices must always be known at compile time.", op->loc);
 
@@ -137,7 +136,7 @@ TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
         }else{
             return new TypedValue(builder.CreateExtractValue(l->val, index), llvmTypeToTypeTag(l->getType()->getStructElementType(index)));
         }
-    }else if(l->type == TT_Ptr){ //assume RefVal
+    }else if(l->type->type == TT_Ptr){ //assume RefVal
         Value *v = builder.CreateLoad(l->val);
         if(llvmTypeToTypeTag(v->getType()) == TT_Tuple){
             if(!dynamic_cast<ConstantInt*>(r->val))
@@ -212,7 +211,7 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
  *  Creates a cast instruction appropriate for valToCast's type to castTy.
  */
 Value* createCast(Compiler *c, Type *castTy, TypeTag castTyTag, TypedValue *valToCast){
-    if(isIntTypeTag(valToCast->type)){
+    if(isIntTypeTag(valToCast->type->type)){
         // int -> int  (maybe unsigned)
         if(isIntTypeTag(castTyTag)){
             return c->builder.CreateIntCast(valToCast->val, castTy, isUnsignedTypeTag(castTyTag));
@@ -229,7 +228,7 @@ Value* createCast(Compiler *c, Type *castTy, TypeTag castTyTag, TypedValue *valT
         }else if(castTyTag == TT_Ptr){
             return c->builder.CreatePtrToInt(valToCast->val, castTy);
         }
-    }else if(isFPTypeTag(valToCast->type)){
+    }else if(isFPTypeTag(valToCast->type->type)){
         // float -> int  (maybe unsigned)
         if(isIntTypeTag(castTyTag)){
             if(isUnsignedTypeTag(castTyTag)){
@@ -243,7 +242,7 @@ Value* createCast(Compiler *c, Type *castTy, TypeTag castTyTag, TypedValue *valT
             return c->builder.CreateFPCast(valToCast->val, castTy);
         }
 
-    }else if(valToCast->type == TT_Ptr || valToCast->type == TT_StrLit){
+    }else if(valToCast->type->type == TT_Ptr || valToCast->type->type == TT_StrLit){
         // ptr -> ptr
         if(castTyTag == TT_Ptr){
             return c->builder.CreatePointerCast(valToCast->val, castTy);
@@ -252,7 +251,7 @@ Value* createCast(Compiler *c, Type *castTy, TypeTag castTyTag, TypedValue *valT
         }else if(isIntTypeTag(castTyTag)){
             return c->builder.CreatePtrToInt(valToCast->val, castTy);
         }
-    }else if(castTyTag == TT_Data && valToCast->type == TT_Tuple){
+    }else if(castTyTag == TT_Data && valToCast->type->type == TT_Tuple){
         if(llvmTypeEq(castTy, valToCast->getType())){
             StructType *dataTy = (StructType*)castTy;
 
@@ -325,7 +324,7 @@ TypedValue* IfNode::compile(Compiler *c){
 
         c->builder.SetInsertPoint(mergbb);
 
-        if(thenVal->type != TT_Void){
+        if(thenVal->type->type != TT_Void){
             auto *phi = c->builder.CreatePHI(thenVal->getType(), 2);
             phi->addIncoming(thenVal->val, thenbb);
             phi->addIncoming(elseVal->val, elsebb);
@@ -359,22 +358,23 @@ TypedValue* compMemberAccess(Compiler *c, Node *ln, VarNode *field, BinOpNode *b
         auto *l = ln->compile(c);
         if(!l) return 0;
 
-        while(l->type == TT_Ptr){
+        while(l->type->type == TT_Ptr){
             l->val = c->builder.CreateLoad(l->val);
-            l->type = llvmTypeToTypeTag(l->getType());
+            l->type.reset(l->type->extTy.get());
         }
 
-        if(l->type == TT_Data || l->type == TT_Tuple){
-            auto dataTy = c->lookupType(l->val->getName());
+        if(l->type->type == TT_Data || l->type->type == TT_Tuple){
+            auto dataTy = c->lookupType(llvmTypeToStr(l->getType()));
 
             if(dataTy){
-            auto index = dataTy->getFieldIndex(field->name);
+                auto index = dataTy->getFieldIndex(field->name);
 
-            if(index != -1)
-                return new TypedValue(c->builder.CreateExtractValue(l->val, index), 
-                        llvmTypeToTypeTag(l->getType()->getStructElementType(index)));
+                if(index != -1)
+                    return new TypedValue(c->builder.CreateExtractValue(l->val, index), 
+                            llvmTypeToTypeTag(l->getType()->getStructElementType(index)));
             }
         }
+
         //not a field, so look for a method.
         //TODO: perhaps create a calling convention function
         string funcName = llvmTypeToStr(l->getType()) + "_" + field->name;
@@ -392,7 +392,7 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
     /* Check given argument count matches declared argument count. */
     TypedValue *tvf = l->compile(c);
     if(!tvf || !tvf->val) return 0;
-    if(tvf->type != TT_Function && tvf->type != TT_Method)
+    if(tvf->type->type != TT_Function && tvf->type->type != TT_Method)
         return c->compErr("Called value is not a function or method, it is a(n) " + 
                 llvmTypeToStr(tvf->getType()), l->loc);
 
@@ -401,7 +401,7 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
 
     //if tvf is a method, add its host object as the first argument
     vector<Value*> args;
-    if(tvf->type == TT_Method){
+    if(tvf->type->type == TT_Method){
         Value *obj = ((MethodVal*) tvf)->obj;
         args.push_back(obj);
     }
@@ -488,7 +488,7 @@ TypedValue* UnOpNode::compile(Compiler *c){
 
     switch(op){
         case '@': //pointer dereference
-            if(rhs->type != TT_Ptr){
+            if(rhs->type->type != TT_Ptr){
                 return c->compErr("Cannot dereference non-pointer type " + llvmTypeToStr(rhs->getType()), loc);
             }
             

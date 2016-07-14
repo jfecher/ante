@@ -67,6 +67,15 @@ void ModNode::print(){
     Lexer::printTok(mod);
 }
 
+
+/* 
+ * defined in types.cpp.
+ *
+ * could also just #include "compiler.h",
+ * but that's a bit overkill for one function
+ */
+string typeNodeToStr(TypeNode*);
+
 void TypeNode::print(){
     cout << typeNodeToStr(this);
 }

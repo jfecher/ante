@@ -8,19 +8,10 @@
 #include <memory>
 #include <stack>
 #include <map>
+#include "parser.h"
 
 using namespace llvm;
 using namespace std;
-
-/* Forward-declarations of Nodes defined in parser.h */
-struct Node;
-struct VarNode;
-struct TypeNode;
-struct BinOpNode;
-struct StrLitNode;
-struct IntLitNode;
-struct FuncDeclNode;
-struct DataDeclNode;
 
 
 /*
@@ -29,19 +20,23 @@ struct DataDeclNode;
  */
 struct TypedValue {
     Value *val;
-    TypeTag type;
+    shared_ptr<TypeNode> type;
 
-    TypedValue(Value *v, TypeTag ty) : val(v), type(ty){}
+    TypedValue(Value *v, TypeNode *ty) : val(v), type(ty){}
+    TypedValue(Value *v, shared_ptr<TypeNode> ty) : val(v), type(ty){}
+    TypedValue(Value *v, TypeTag ty);
+    
     Type* getType() const{ return val->getType(); }
 };
+
+bool isPrimitiveTypeTag(TypeTag ty);
+TypeNode* mkAnonTypeNode(TypeTag);
 
 
 struct MethodVal : public TypedValue {
     Value *obj;
 
-    MethodVal(Value *o, Value *f) : TypedValue(f, TT_Method) {
-        obj = o;
-    }
+    MethodVal(Value *o, Value *f) : TypedValue(f, TT_Method), obj(o) {}
 };
 
 
@@ -71,11 +66,11 @@ struct Variable {
     }
    
     TypeTag getType() const{
-        return tval->type;
+        return tval->type->type;
     }
 
     bool isFreeable() const{
-        return tval->type == TT_Ptr && !noFree;
+        return tval->type->type == TT_Ptr && !noFree;
     }
 
     Variable(string n, TypedValue *tv, unsigned int s, bool nofr=true) : name(n), tval(tv), scope(s), noFree(nofr){}

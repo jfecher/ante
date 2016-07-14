@@ -3,7 +3,7 @@
  *  Provide a C API to be used in parser.c generated from
  *  syntax.y which creates and links nodes to a parse tree.
  */
-#include "parser.h"
+#include "compiler.h"
 #include "yyparser.h"
 #include <stack>
 

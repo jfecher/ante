@@ -1,4 +1,4 @@
-#include <parser.h>
+#include <compiler.h>
 
 
 char getBitWidthOfTypeTag(const TypeTag ty){
@@ -22,16 +22,16 @@ char getBitWidthOfTypeTag(const TypeTag ty){
  *  Assumes the llvm::Type of both values to be an instance of IntegerType.
  */
 void Compiler::implicitlyCastIntToInt(TypedValue **lhs, TypedValue **rhs){
-    int lbw = getBitWidthOfTypeTag((*lhs)->type);
-    int rbw = getBitWidthOfTypeTag((*rhs)->type);
+    int lbw = getBitWidthOfTypeTag((*lhs)->type->type);
+    int rbw = getBitWidthOfTypeTag((*rhs)->type->type);
 
     if(lbw != rbw){
         //Cast the value with the smaller bitwidth to the type with the larger bitwidth
         if(lbw < rbw){
-            (*lhs)->val = builder.CreateIntCast((*lhs)->val, (*rhs)->getType(), !isUnsignedTypeTag((*lhs)->type));
+            (*lhs)->val = builder.CreateIntCast((*lhs)->val, (*rhs)->getType(), !isUnsignedTypeTag((*lhs)->type->type));
             (*lhs)->type = (*rhs)->type;
         }else{//lbw > rbw
-            (*rhs)->val = builder.CreateIntCast((*rhs)->val, (*lhs)->getType(), !isUnsignedTypeTag((*rhs)->type));
+            (*rhs)->val = builder.CreateIntCast((*rhs)->val, (*lhs)->getType(), !isUnsignedTypeTag((*rhs)->type->type));
             (*rhs)->type = (*lhs)->type;
         }
     }
@@ -53,12 +53,12 @@ inline bool isFPTypeTag(const TypeTag tt){
  *  it is always casted to the (possibly smaller) float value.
  */
 void Compiler::implicitlyCastIntToFlt(TypedValue **lhs, Type *ty){
-    if(isUnsignedTypeTag((*lhs)->type)){
+    if(isUnsignedTypeTag((*lhs)->type->type)){
         (*lhs)->val = builder.CreateUIToFP((*lhs)->val, ty);
     }else{
         (*lhs)->val = builder.CreateSIToFP((*lhs)->val, ty);
     }
-    (*lhs)->type = llvmTypeToTypeTag(ty);
+    (*lhs)->type.reset(mkAnonTypeNode(llvmTypeToTypeTag(ty)));
 }
 
 
@@ -66,8 +66,8 @@ void Compiler::implicitlyCastIntToFlt(TypedValue **lhs, Type *ty){
  *  Performs an implicit cast from a float to float.
  */
 void Compiler::implicitlyCastFltToFlt(TypedValue **lhs, TypedValue **rhs){
-    int lbw = getBitWidthOfTypeTag((*lhs)->type);
-    int rbw = getBitWidthOfTypeTag((*rhs)->type);
+    int lbw = getBitWidthOfTypeTag((*lhs)->type->type);
+    int rbw = getBitWidthOfTypeTag((*rhs)->type->type);
 
     if(lbw != rbw){
         if(lbw < rbw){
@@ -85,12 +85,12 @@ void Compiler::implicitlyCastFltToFlt(TypedValue **lhs, TypedValue **rhs){
  *  Detects, and creates an implicit type conversion when necessary.
  */
 void Compiler::handleImplicitConversion(TypedValue **lhs, TypedValue **rhs){
-    bool lIsInt = isIntTypeTag((*lhs)->type);
-    bool lIsFlt = isFPTypeTag((*lhs)->type);
+    bool lIsInt = isIntTypeTag((*lhs)->type->type);
+    bool lIsFlt = isFPTypeTag((*lhs)->type->type);
     if(!lIsInt && !lIsFlt) return;
 
-    bool rIsInt = isIntTypeTag((*rhs)->type);
-    bool rIsFlt = isFPTypeTag((*rhs)->type);
+    bool rIsInt = isIntTypeTag((*rhs)->type->type);
+    bool rIsFlt = isFPTypeTag((*rhs)->type->type);
     if(!rIsInt && !rIsFlt) return;
 
     //both values are numeric, so forward them to the relevant casting method
@@ -257,7 +257,6 @@ bool llvmTypeEq(Type *l, Type *r){
 bool isPrimitiveTypeTag(TypeTag ty){
     return ty >= TT_I8 && ty <= TT_StrLit;
 }
-
 
 
 /*

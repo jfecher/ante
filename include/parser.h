@@ -5,7 +5,6 @@
 #include <memory> //For unique_ptr
 #include "lexer.h"
 #include "tokens.h"
-#include "compiler.h"
 #include "location.hh"
 
 enum ParseErr{
@@ -16,12 +15,17 @@ enum ParseErr{
     PE_INVALID_STMT,
 };
 
-using namespace llvm;
 using namespace ante;
 
 #ifndef LOC_TY
 #  define LOC_TY yy::location
 #endif
+
+
+/* forward-decls from compiler.h */
+struct TypedValue;
+namespace ante { struct Compiler; }
+namespace llvm { class Value; }
 
 /* Base class for all nodes */
 struct Node{
@@ -92,19 +96,11 @@ struct ArrayNode : public Node{
 struct TupleNode : public Node{
     vector<Node*> exprs;
     TypedValue* compile(Compiler*);
-    vector<Value*> unpack(Compiler*);
+
+    vector<llvm::Value*> unpack(Compiler*);
     void print(void);
     TupleNode(LOC_TY& loc, vector<Node*>& e) : Node(loc), exprs(e){}
     ~TupleNode(){}
-};
-
-struct TypeCastNode : public Node{
-    unique_ptr<TypeNode> typeExpr;
-    unique_ptr<Node> rval;
-    TypedValue* compile(Compiler*);
-    void print(void);
-    TypeCastNode(LOC_TY& loc, TypeNode *ty, Node *rv) : Node(loc), typeExpr(ty), rval(rv){}
-    ~TypeCastNode(){}
 };
 
 struct UnOpNode : public Node{
@@ -134,6 +130,15 @@ struct TypeNode : public Node{
     void print(void);
     TypeNode(LOC_TY& loc, TypeTag ty, string tName, TypeNode* eTy) : Node(loc), type(ty), typeName(tName), extTy(eTy){}
     ~TypeNode(){}
+};
+
+struct TypeCastNode : public Node{
+    unique_ptr<TypeNode> typeExpr;
+    unique_ptr<Node> rval;
+    TypedValue* compile(Compiler*);
+    void print(void);
+    TypeCastNode(LOC_TY& loc, TypeNode *ty, Node *rv) : Node(loc), typeExpr(ty), rval(rv){}
+    ~TypeCastNode(){}
 };
 
 struct ModNode : public Node{
