@@ -581,6 +581,8 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn){
     
     if(!retNode)
         return compLetBindingFn(fdn, nParams, paramTys);
+            
+    
 
     //create the function's actual type node for the tval later
     TypeNode *fnTy = mkAnonTypeNode(TT_Function);
@@ -594,6 +596,9 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn){
     Type *retTy = typeNodeToLlvmType(retNode);
     FunctionType *ft = FunctionType::get(retTy, paramTys, fdn->varargs);
     Function *f = Function::Create(ft, Function::ExternalLinkage, fdn->name, module.get());
+   
+    auto* ret = new TypedValue(f, fnTy);
+    stoVar(fdn->name, new Variable(fdn->name, ret, 0));
 
     //The above handles everything for a function declaration
     //If the function is a definition, then the body will be compiled here.
@@ -639,7 +644,7 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn){
         //optimize!
         passManager->run(*f);
     }
-    return new TypedValue(f, fnTy);
+    return ret;
 }
 
 
@@ -704,7 +709,6 @@ TypedValue* Compiler::getFunction(string& name){
             //Function has been declared but not defined, so define it.
             BasicBlock *caller = builder.GetInsertBlock();
             auto *fn = compFn(fdNode);
-            stoVar(name, new Variable(name, fn, 0));
             fnDecls.erase(name);
             builder.SetInsertPoint(caller);
             return fn;
