@@ -130,7 +130,6 @@ TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
         auto index = ((ConstantInt*)r->val)->getZExtValue();
 
         //get the type from the index in question
-        cout << typeNodeToStr(l->type.get()) << endl;
         TypeNode* indexTyn = l->type->extTy.get();
         for(unsigned i = 0; i < index; i++)
             indexTyn = (TypeNode*)indexTyn->next.get();
@@ -423,8 +422,10 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
 
     //add all remaining arguments
     if(auto *tup = dynamic_cast<TupleNode*>(r)){
-        for(Value *v : tup->unpack(c))
-            args.push_back(v);
+        for(TypedValue *v : tup->unpack(c)){
+            if(!v) return 0;
+            args.push_back(v->val);
+        }
     }else{ //single parameter being applied
         auto *param = r->compile(c);
         if(!param) return 0;

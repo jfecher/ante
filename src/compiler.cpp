@@ -175,7 +175,9 @@ TypedValue* TypeNode::compile(Compiler *c){
 
 
 TypedValue* StrLitNode::compile(Compiler *c){
-    return new TypedValue(c->builder.CreateGlobalStringPtr(val), mkAnonTypeNode(TT_StrLit));
+    TypeNode *strty = mkAnonTypeNode(TT_Ptr);
+    strty->extTy.reset(mkAnonTypeNode(TT_C8));
+    return new TypedValue(c->builder.CreateGlobalStringPtr(val), strty);
 }
 
 
@@ -212,7 +214,7 @@ TypedValue* TupleNode::compile(Compiler *c){
     map<unsigned, Value*> pathogenVals;
     TypeNode *tyn = mkAnonTypeNode(TT_Tuple);
 
-    TypeNode *cur = (TypeNode*)tyn->extTy.get();
+    TypeNode *cur = 0;
 
     //Compile every value in the tuple, and if it is not constant,
     //add it to pathogenVals
@@ -225,8 +227,17 @@ TypedValue* TupleNode::compile(Compiler *c){
             elems.push_back(UndefValue::get(tval->getType()));
         }
         elemTys.push_back(tval->getType());
-        cur = tval->type.get();
-        cur = (TypeNode*)cur->next.get();
+
+        if(cur){
+            //cannot just do a swap here because unique_ptr<TypeNode> 
+            //cannot swap with a unique_ptr<Node>
+            cur->next.reset(tval->type.get());
+            tval->type.release();
+            cur = (TypeNode*)cur->next.get();
+        }else{
+            tyn->extTy.swap(tval->type);
+            cur = tyn->extTy.get();
+        }
     }
 
     //Create the constant tuple with undef values in place for the non-constant values
@@ -246,15 +257,10 @@ TypedValue* TupleNode::compile(Compiler *c){
 }
 
 
-vector<Value*> TupleNode::unpack(Compiler *c){
-    vector<Value*> ret;
-    for(Node *n : exprs){
-        auto *tval = n->compile(c);
-        if(tval)
-            ret.push_back(tval->val);
-        else
-            ret.push_back(nullptr); //compile error
-    }
+vector<TypedValue*> TupleNode::unpack(Compiler *c){
+    vector<TypedValue*> ret;
+    for(Node *n : exprs)
+        ret.push_back(n->compile(c));
     return ret;
 }
 
@@ -482,7 +488,7 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
     builder.SetInsertPoint(bb);
  
     TypeNode *fnTyn = mkAnonTypeNode(TT_Function);
-    TypeNode *curTyn = fnTyn->extTy.get();
+    TypeNode *curTyn = 0;
 
     //tell the compiler to create a new scope on the stack.
     enterNewScope();
@@ -494,8 +500,14 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
         TypeNode *paramTyNode = (TypeNode*)cParam->typeExpr.get();
         stoVar(cParam->name, new Variable(cParam->name, new TypedValue(&arg, paramTyNode), scope));
         preArgs.push_back(&arg);
-        curTyn = paramTyNode;
-        curTyn = (TypeNode*)curTyn->next.get();
+
+        if(curTyn){
+            curTyn->next.reset(paramTyNode);
+            curTyn = (TypeNode*)curTyn->next.get();
+        }else{
+            fnTyn->extTy.reset(paramTyNode);
+            curTyn = fnTyn->extTy.get();
+        }
         if(!(cParam = (NamedValNode*)cParam->next.get())) break;
     }
 
@@ -572,11 +584,11 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn){
 
     //create the function's actual type node for the tval later
     TypeNode *fnTy = mkAnonTypeNode(TT_Function);
-    TypeNode *curTyn = fnTy->extTy.get();
-    curTyn = retNode;
+    fnTy->extTy.reset(deepCopyTypeNode(retNode));
 
     //set the proceeding node's to the parameter types
-    curTyn->next.reset((TypeNode*)paramsBegin->typeExpr.get());
+    if(paramsBegin)
+        fnTy->extTy->next.reset(paramsBegin->typeExpr.get());
 
 
     Type *retTy = typeNodeToLlvmType(retNode);

@@ -25,7 +25,6 @@ using namespace ante;
 /* forward-decls from compiler.h */
 struct TypedValue;
 namespace ante { struct Compiler; }
-namespace llvm { class Value; }
 
 /* Base class for all nodes */
 struct Node{
@@ -97,7 +96,7 @@ struct TupleNode : public Node{
     vector<Node*> exprs;
     TypedValue* compile(Compiler*);
 
-    vector<llvm::Value*> unpack(Compiler*);
+    vector<TypedValue*> unpack(Compiler*);
     void print(void);
     TupleNode(LOC_TY& loc, vector<Node*>& e) : Node(loc), exprs(e){}
     ~TupleNode(){}
