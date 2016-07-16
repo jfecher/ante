@@ -32,6 +32,16 @@ struct TypedValue {
 bool isPrimitiveTypeTag(TypeTag ty);
 TypeNode* mkAnonTypeNode(TypeTag);
 
+/*
+ * FuncDeclNode and int pair to retain a function's
+ * scope after it is imported and lazily compiled later
+ * in a seperate scope.
+ */
+struct FuncDecl {
+    FuncDeclNode *fdn;
+    unsigned int scope;
+    FuncDecl(FuncDeclNode *fn, unsigned int s) : fdn(fn), scope(s){}
+};
 
 struct MethodVal : public TypedValue {
     Value *obj;
@@ -91,7 +101,7 @@ namespace ante{
         vector<unique_ptr<std::map<string, Variable*>>> varTable;
 
         //Map of declared, but non-defined functions
-        map<string, FuncDeclNode*> fnDecls;
+        map<string, FuncDecl*> fnDecls;
 
         //Map of declared usertypes
         map<string, DataType*> userTypes;
@@ -127,7 +137,7 @@ namespace ante{
         void importFile(const char *name);
         TypedValue* getFunction(string& name);
         TypedValue* compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector<Type*> &paramTys);
-        TypedValue* compFn(FuncDeclNode *fn);
+        TypedValue* compFn(FuncDeclNode *fn, unsigned int scope);
         void registerFunction(FuncDeclNode *func);
 
         unsigned int getScope() const;

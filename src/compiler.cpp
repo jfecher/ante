@@ -563,7 +563,7 @@ vector<Argument*> buildArguments(FunctionType *ft){
 }
 
 
-TypedValue* Compiler::compFn(FuncDeclNode *fdn){
+TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
     //Get and translate the function's return type to an llvm::Type*
     TypeNode *retNode = (TypeNode*)fdn->type.get();
 
@@ -598,7 +598,7 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn){
     Function *f = Function::Create(ft, Function::ExternalLinkage, fdn->name, module.get());
    
     auto* ret = new TypedValue(f, fnTy);
-    stoVar(fdn->name, new Variable(fdn->name, ret, 0));
+    stoVar(fdn->name, new Variable(fdn->name, ret, scope));
 
     //The above handles everything for a function declaration
     //If the function is a definition, then the body will be compiled here.
@@ -705,10 +705,10 @@ TypedValue* DataDeclNode::compile(Compiler *c){
 TypedValue* Compiler::getFunction(string& name){
     auto *f = lookup(name);
     if(!f){
-        if(auto *fdNode = fnDecls[name]){
+        if(auto *pair = fnDecls[name]){
             //Function has been declared but not defined, so define it.
             BasicBlock *caller = builder.GetInsertBlock();
-            auto *fn = compFn(fdNode);
+            auto *fn = compFn(pair->fdn, pair->scope);
             fnDecls.erase(name);
             builder.SetInsertPoint(caller);
             return fn;
@@ -739,7 +739,9 @@ void Compiler::importFile(const char *fName){
         userTypes[it.first] = it.second;
     }
 
+    //copy functions, but change their scope first
     for(const auto& it : c->fnDecls){
+        it.second->scope = this->scope;
         fnDecls[it.first] = it.second;
     }
 
@@ -787,7 +789,7 @@ string removeFileExt(string file){
  *  of a module with unneeded library functions.
  */
 inline void Compiler::registerFunction(FuncDeclNode *fn){
-    fnDecls[fn->name] = fn;
+    fnDecls[fn->name] = new FuncDecl(fn, this->scope);
 }
 
 /*
@@ -988,7 +990,7 @@ Variable* Compiler::lookup(string var) const{
 
 
 inline void Compiler::stoVar(string var, Variable *val){
-    (*varTable.back())[var] = val;
+    (*varTable[val->scope])[var] = val;
 }
 
 
@@ -1030,6 +1032,7 @@ Compiler::Compiler(const char *_fileName, bool lib) :
     }
 
     enterNewScope();
+    scope = 0;
     ast.reset(parser::getRootNode());
     module.reset(new Module(removeFileExt(fileName.c_str()), getGlobalContext()));
 
