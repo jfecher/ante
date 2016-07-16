@@ -221,50 +221,52 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
 /*
  *  Creates a cast instruction appropriate for valToCast's type to castTy.
  */
-Value* createCast(Compiler *c, Type *castTy, TypeTag castTyTag, TypedValue *valToCast){
+TypedValue* createCast(Compiler *c, Type *castTy, TypeNode *tyn, TypedValue *valToCast){
     if(isIntTypeTag(valToCast->type->type)){
         // int -> int  (maybe unsigned)
-        if(isIntTypeTag(castTyTag)){
-            return c->builder.CreateIntCast(valToCast->val, castTy, isUnsignedTypeTag(castTyTag));
+        if(isIntTypeTag(tyn->type)){
+            return new TypedValue(c->builder.CreateIntCast(valToCast->val, castTy, isUnsignedTypeTag(tyn->type)), tyn);
 
         // int -> float
-        }else if(isFPTypeTag(castTyTag)){
-            if(isUnsignedTypeTag(castTyTag)){
-                return c->builder.CreateUIToFP(valToCast->val, castTy);
+        }else if(isFPTypeTag(tyn->type)){
+            if(isUnsignedTypeTag(valToCast->type->type)){
+                return new TypedValue(c->builder.CreateUIToFP(valToCast->val, castTy), tyn);
             }else{
-                return c->builder.CreateSIToFP(valToCast->val, castTy);
+                return new TypedValue(c->builder.CreateSIToFP(valToCast->val, castTy), tyn);
             }
         
         // int -> ptr
-        }else if(castTyTag == TT_Ptr){
-            return c->builder.CreatePtrToInt(valToCast->val, castTy);
+        }else if(tyn->type == TT_Ptr){
+            return new TypedValue(c->builder.CreatePtrToInt(valToCast->val, castTy), tyn);
         }
     }else if(isFPTypeTag(valToCast->type->type)){
         // float -> int  (maybe unsigned)
-        if(isIntTypeTag(castTyTag)){
-            if(isUnsignedTypeTag(castTyTag)){
-                return c->builder.CreateFPToUI(valToCast->val, castTy);
+        if(isIntTypeTag(tyn->type)){
+            if(isUnsignedTypeTag(tyn->type)){
+                return new TypedValue(c->builder.CreateFPToUI(valToCast->val, castTy), tyn);
             }else{
-                return c->builder.CreateFPToSI(valToCast->val, castTy);
+                return new TypedValue(c->builder.CreateFPToSI(valToCast->val, castTy), tyn);
             }
 
         // float -> float
-        }else if(isFPTypeTag(castTyTag)){
-            return c->builder.CreateFPCast(valToCast->val, castTy);
+        }else if(isFPTypeTag(tyn->type)){
+            return new TypedValue(c->builder.CreateFPCast(valToCast->val, castTy), tyn);
         }
 
     }else if(valToCast->type->type == TT_Ptr || valToCast->type->type == TT_StrLit){
         // ptr -> ptr
-        if(castTyTag == TT_Ptr){
-            return c->builder.CreatePointerCast(valToCast->val, castTy);
+        if(tyn->type == TT_Ptr){
+            return new TypedValue(c->builder.CreatePointerCast(valToCast->val, castTy), tyn);
 
         // ptr -> int
-        }else if(isIntTypeTag(castTyTag)){
-            return c->builder.CreatePtrToInt(valToCast->val, castTy);
+        }else if(isIntTypeTag(tyn->type)){
+            return new TypedValue(c->builder.CreatePtrToInt(valToCast->val, castTy), tyn);
         }
-    }else if(castTyTag == TT_Data && valToCast->type->type == TT_Tuple){
+    }else if(tyn->type == TT_Data && valToCast->type->type == TT_Tuple){
         if(llvmTypeEq(castTy, valToCast->getType())){
-            return valToCast->val;
+            valToCast->type->typeName = tyn->typeName;
+            valToCast->type->type = TT_Data;
+            return valToCast;
         }
     }
     return nullptr;
@@ -275,13 +277,13 @@ TypedValue* TypeCastNode::compile(Compiler *c){
     auto *rtval = rval->compile(c);
     if(!castTy || !rtval) return 0;
 
-    auto* val = createCast(c, castTy, typeExpr->type, rtval);
+    auto* tval = createCast(c, castTy, typeExpr.get(), rtval);
 
-    if(!val){
-        return c->compErr("Invalid type cast " + llvmTypeToStr(rtval->getType()) + 
-                " -> " + llvmTypeToStr(castTy), loc);
+    if(!tval){
+        return c->compErr("Invalid type cast " + typeNodeToStr(rtval->type.get()) + 
+                " -> " + typeNodeToStr(typeExpr.get()), loc);
     }else{
-        return new TypedValue(val, typeExpr.get());
+        return tval;
     }
 }
 
@@ -366,6 +368,7 @@ TypedValue* compMemberAccess(Compiler *c, Node *ln, VarNode *field, BinOpNode *b
         auto *l = ln->compile(c);
         if(!l) return 0;
 
+        //the . operator should automatically dereference pointers
         while(l->type->type == TT_Ptr){
             l->val = c->builder.CreateLoad(l->val);
             l->type.reset(l->type->extTy.get());
@@ -384,7 +387,7 @@ TypedValue* compMemberAccess(Compiler *c, Node *ln, VarNode *field, BinOpNode *b
                         indexTy = (TypeNode*)indexTy->next.get();
                     }
 
-                    return new TypedValue(c->builder.CreateExtractValue(l->val, index), indexTy);
+                    return new TypedValue(c->builder.CreateExtractValue(l->val, index), deepCopyTypeNode(indexTy));
                 }
             }
         }
