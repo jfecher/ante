@@ -154,7 +154,7 @@ TypeTag llvmTypeToTypeTag(Type *t){
     if(t->isArrayTy()) return TT_Array;
     if(t->isStructTy() && !t->isEmptyTy()) return TT_Tuple; /* Could also be a TT_Data! */
     if(t->isPointerTy()) return TT_Ptr;
-    if(t->isFunctionTy()) return TT_Func;
+    if(t->isFunctionTy()) return TT_Function;
 
     return TT_Void;
 }
@@ -187,7 +187,7 @@ Type* Compiler::typeNodeToLlvmType(TypeNode *tyNode){
 
             ((StructType*)userType->type)->setName(tyNode->typeName);
             return userType->type;
-        case TT_Func: //TODO function pointer type
+        case TT_Function: //TODO function pointer type
             cout << "typeNodeToLlvmType: Function pointer types are currently unimplemented.  A void type will be returned instead.\n";
             return Type::getVoidTy(getGlobalContext());
         default:
@@ -218,7 +218,7 @@ bool llvmTypeEq(Type *l, Type *r){
         return llvmTypeEq(lty, rty);
     }else if(ltt == TT_Array){
         return llvmTypeEq(l->getArrayElementType(), r->getArrayElementType());
-    }else if(ltt == TT_Func){
+    }else if(ltt == TT_Function){
         int lParamCount = l->getFunctionNumParams();
         int rParamCount = r->getFunctionNumParams();
         
@@ -290,11 +290,13 @@ string typeTagToStr(TypeTag ty){
          * these strings are most likely insufficient.  The llvm::Type
          * should instead be printed for these types
          */
-        case TT_Tuple: return "Tuple";
-        case TT_Array: return "Array";
-        case TT_Ptr:   return "Ptr"  ;
-        case TT_Data:  return "Data" ;
-        default:       return "(Unknown TypeTag " + to_string(ty) + ")";
+        case TT_Tuple:    return "Tuple";
+        case TT_Array:    return "Array";
+        case TT_Ptr:      return "Ptr"  ;
+        case TT_Data:     return "Data" ;
+        case TT_Function: return "Function";
+        case TT_Method:   return "Method";
+        default:          return "(Unknown TypeTag " + to_string(ty) + ")";
     }
 }
 
@@ -320,6 +322,16 @@ string typeNodeToStr(TypeNode *t){
         return typeNodeToStr(t->extTy.get()) + "[]";
     }else if(t->type == TT_Ptr){
         return typeNodeToStr(t->extTy.get()) + "*";
+    }else if(t->type == TT_Function || t->type == TT_Method){
+        string ret = "(";
+        string retTy = typeNodeToStr(t->extTy.get());
+        TypeNode *cur = (TypeNode*)t->extTy->next.get();
+        while(cur){
+            ret += typeNodeToStr(cur);
+            cur = (TypeNode*)cur->next.get();
+            if(cur) ret += ",";
+        }
+        return ret + ")=>" + retTy;
     }else{
         return typeTagToStr(t->type);
     }
@@ -355,7 +367,7 @@ string llvmTypeToStr(Type *ty){
         return "[" + llvmTypeToStr(ty->getArrayElementType()) + "]";
     }else if(tt == TT_Ptr){
         return llvmTypeToStr(ty->getPointerElementType()) + "*";
-    }else if(tt == TT_Func){
+    }else if(tt == TT_Function){
         string ret = "func("; //TODO: get function return type
         const unsigned paramCount = ty->getFunctionNumParams();
 

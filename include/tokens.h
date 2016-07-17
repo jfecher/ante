@@ -20,7 +20,6 @@ enum TypeTag{
     TT_Array,
     TT_Ptr,
     TT_Data, //all previously declared UserTypes
-    TT_Func,
     TT_TypeVar,
     TT_Function,
     TT_Method,

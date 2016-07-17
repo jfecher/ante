@@ -175,8 +175,8 @@ lit_type: I8                        {$$ = mkTypeNode(@$, TT_I8,  (char*)"");}
 
 type: type '*'              %prec HIGH {$$ = mkTypeNode(@$, TT_Ptr,  (char*)"", $1);}
     | '[' type_expr ']'     {$$ = mkTypeNode(@$, TT_Array,(char*)"", $2);}
-    | type Returns type     {setNext($3, $1); $$ = mkTypeNode(@$, TT_Func, (char*)"", $3);}  /* f-ptr w/ params*/
-    | '(' ')' Returns type  {$$ = mkTypeNode(@$, TT_Func, (char*)"", $4);}  /* f-ptr w/out params*/
+    | type Returns type     {setNext($3, $1); $$ = mkTypeNode(@$, TT_Function, (char*)"", $3);}  /* f-ptr w/ params*/
+    | '(' ')' Returns type  {$$ = mkTypeNode(@$, TT_Function, (char*)"", $4);}  /* f-ptr w/out params*/
     | '(' type_expr ')'     {$$ = $2;}
     | lit_type              {$$ = $1;}
     ;
