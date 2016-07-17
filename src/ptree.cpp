@@ -161,7 +161,7 @@ TypeNode* deepCopyTypeNode(const TypeNode *n){
                         yy::position(n->loc.end.filename,   n->loc.end.line,   n->loc.end.column)};
     TypeNode *cpy = new TypeNode(loc, n->type, n->typeName, nullptr);
 
-    if(n->type == TT_Tuple){
+    if(n->type == TT_Tuple || n->type == TT_Data){
         TypeNode *nxt = n->extTy.get();
         TypeNode *ext = nxt? deepCopyTypeNode(nxt) : 0;
         cpy->extTy.reset(ext);

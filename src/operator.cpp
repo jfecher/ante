@@ -371,7 +371,11 @@ TypedValue* compMemberAccess(Compiler *c, Node *ln, VarNode *field, BinOpNode *b
         //the . operator should automatically dereference pointers
         while(l->type->type == TT_Ptr){
             l->val = c->builder.CreateLoad(l->val);
-            l->type.reset(l->type->extTy.get());
+
+            //set the type to the extTy that it was pointing to, but release it so that it is not freed first
+            TypeNode *ty = l->type->extTy.get();
+            l->type.release();
+            l->type.reset(ty);
         }
 
         if(l->type->type == TT_Data || l->type->type == TT_Tuple){
@@ -384,9 +388,9 @@ TypedValue* compMemberAccess(Compiler *c, Node *ln, VarNode *field, BinOpNode *b
                     TypeNode *indexTy = l->type->extTy.get();
 
                     for(int i = 0; i < index; i++){
-                        indexTy = (TypeNode*)indexTy->next.get();
+                        indexTy = static_cast<TypeNode*>(indexTy->next.get());
                     }
-
+                        
                     return new TypedValue(c->builder.CreateExtractValue(l->val, index), deepCopyTypeNode(indexTy));
                 }
             }
@@ -523,7 +527,7 @@ TypedValue* UnOpNode::compile(Compiler *c){
 
                 auto size = rhs->getType()->getPrimitiveSizeInBits();
                 Value *sizeVal = ConstantInt::get(getGlobalContext(), APInt(32, size, true));
-                
+
                 Value *voidPtr = c->builder.CreateCall(mallocFn, sizeVal);
                 Type *ptrTy = rhs->getType()->getPointerTo();
                 Value *typedPtr = c->builder.CreatePointerCast(voidPtr, ptrTy);
