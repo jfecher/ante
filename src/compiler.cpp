@@ -607,15 +607,23 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
         BasicBlock *bb = BasicBlock::Create(getGlobalContext(), "entry", f);
         builder.SetInsertPoint(bb);
 
+        //save the old scope, we will enter the new one provided by the scope param
+        unsigned int oldScope = this->scope;
+
+        //set the scope from the callee's scope to the function's scope, variables
+        //declared within the function will actually be in one scope higher becuase
+        //of the upcoming call to enterNewScope()
+        this->scope = scope;
+
         //tell the compiler to create a new scope on the stack.
         enterNewScope();
 
         NamedValNode *cParam = paramsBegin;
-        
+
         //iterate through each parameter and add its value to the new scope.
         for(auto &arg : f->args()){
             TypeNode *paramTyNode = (TypeNode*)cParam->typeExpr.get();
-            stoVar(cParam->name, new Variable(cParam->name, new TypedValue(&arg, paramTyNode), scope));
+            stoVar(cParam->name, new Variable(cParam->name, new TypedValue(&arg, paramTyNode), this->scope));
             if(!(cParam = (NamedValNode*)cParam->next.get())) break;
         }
 
@@ -623,7 +631,8 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
         TypedValue *v = fdn->child->compile(this);
         //End of the function, discard the function's scope.
         exitScope();
-    
+   
+        this->scope = oldScope;
         builder.SetInsertPoint(&f->back());
 
         //llvm requires explicit returns, so generate a void return even if
@@ -652,7 +661,7 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
  *  Registers a function for later compilation
  */
 TypedValue* FuncDeclNode::compile(Compiler *c){
-    //check if the function is an anonymous lambda function.
+    //check if the function is a named function.
     if(name.length() > 0){
         //if it is not, register it to be lazily compiled later (when it is called)
         name = c->funcPrefix + name;
