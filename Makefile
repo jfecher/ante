@@ -6,7 +6,7 @@ WARNINGS  := -Wall -Wpedantic -Wsign-compare
 #LLVMFLAGS := `llvm-config --cppflags --libs Core BitWriter Passes Target --ldflags --system-libs`
 LLVMFLAGS := `llvm-config --cppflags --libs All --ldflags --system-libs`
 
-LIBDIR := /usr/share/Ante
+LIBDIR := /usr/include/ante
 LIBFILES := $(shell find stdlib -type f -name "*.an")
 
 #                              v These macros are required when compiling with clang
