@@ -102,4 +102,8 @@ var l = List(0..100).filter(_ % 7 == 0)
 
 2. Run `$ git clone https://github.com/jfecher/ante.git`
 
-3. Run `$ cd ante && make`
+3. Run `$ cd ante && sudo make`
+
+    - NOTE: root permissions are only needed to export the standard library.  To export it manually, execute the following command as root:
+    
+        `# mkdir -p /usr/lib/Ante && cp stdlib/*.an /usr/lib/Ante`
