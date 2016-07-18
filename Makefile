@@ -6,6 +6,9 @@ WARNINGS  := -Wall -Wpedantic -Wsign-compare
 #LLVMFLAGS := `llvm-config --cppflags --libs Core BitWriter Passes Target --ldflags --system-libs`
 LLVMFLAGS := `llvm-config --cppflags --libs All --ldflags --system-libs`
 
+LIBDIR := /usr/share/Ante
+LIBFILES := $(shell find stdlib -type f -name "*.an")
+
 #                              v These macros are required when compiling with clang
 CPPFLAGS  := -g -O2 -std=c++11 -D__STDC_CONSTANT_MACROS -D__STDC_LIMIT_MACROS $(WARNINGS)
 
@@ -22,12 +25,27 @@ OBJFILES := $(patsubst obj/parser.o,,$(OBJFILES))
 
 DEPFILES := $(OBJFILES:.o=.d)
 
-.PHONY: ante new clean
+.PHONY: ante new clean stdlib
 .DEFAULT: ante
 
-ante: obj obj/parser.o $(OBJFILES)
+ante: stdlib obj obj/parser.o $(OBJFILES)
 	@echo Linking...
 	@$(CXX) obj/parser.o $(OBJFILES) $(CPPFLAGS) $(LLVMFLAGS) -o ante
+
+#export the stdlib to /usr/share/Ante
+#this is the only part that requires root permissions
+stdlib: $(LIBFILES) Makefile
+	@if [ `id -u` -eq 0 ]; then                                  \
+	    echo 'Exporting stdlib to $(LIBDIR)...';                 \
+	    mkdir -p $(LIBDIR);                                      \
+	    cp stdlib/*.an $(LIBDIR);                                \
+	 else                                                        \
+	    echo 'Must run with root permissions to export stdlib!'; \
+		echo 'To export stdlib run:';                            \
+		echo '';                                                 \
+		echo '$$ sudo make stdlib';                               \
+		echo '';                                                 \
+	 fi
 
 new: clean ante
 

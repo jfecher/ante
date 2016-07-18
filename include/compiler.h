@@ -87,7 +87,7 @@ struct Variable {
 };
 
 //forward-declare location for compErr and ante::err
-namespace yy{ class location; };
+namespace yy{ class location; }
 
 namespace ante{
     struct Compiler{
