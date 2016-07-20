@@ -249,6 +249,51 @@ bool llvmTypeEq(Type *l, Type *r){
 }
 
 /*
+ *  Helper function to check if each type's list of extension
+ *  types are all approximately equal.  Used when checking the
+ *  equality of TypeNodes of type Tuple, Data, Function, or any
+ *  type with multiple extTys.
+ */
+bool extTysEq(const TypeNode *l, const TypeNode *r){
+    TypeNode *lExt = l->extTy.get();
+    TypeNode *rExt = r->extTy.get();
+
+    while(lExt && rExt){
+        if(*lExt != *rExt) return false;
+        lExt = (TypeNode*)lExt->next.get();
+        rExt = (TypeNode*)rExt->next.get();
+        if((lExt && !rExt) || (rExt && !lExt)) return false;
+    }
+    return true;
+ }
+
+/*
+ *  Return true if both typenodes are approximately equal
+ */
+bool TypeNode::operator==(TypeNode &r) const {
+    if(this->type != r.type) return false;
+
+    if(r.type == TT_Ptr){
+        return *this->extTy.get() == *r.extTy.get();
+    }else if(r.type == TT_Array){
+        return *this->extTy.get() == *r.extTy.get();
+    }else if(r.type == TT_Function || r.type == TT_Method){
+        return extTysEq(this, &r);
+    }else if(r.type == TT_Tuple || r.type == TT_Data){
+        return extTysEq(this, &r);
+    }else{ //primitive type
+        return true;
+    }
+}
+
+bool TypeNode::operator!=(TypeNode &r) const {
+    return !(*this == r);
+}
+
+
+
+
+/*
  *  Returns true if the given typetag is a primitive type, and thus
  *  accurately represents the entire type without information loss.
  *  NOTE: this function relies on the fact all primitive types are

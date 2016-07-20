@@ -124,7 +124,9 @@ struct TypeNode : public Node{
     TypeTag type;
     string typeName; //used for usertypes
     unique_ptr<TypeNode> extTy; //Used for pointers and non-single anonymous types.
-
+    
+    bool operator==(TypeNode &r) const;
+    bool operator!=(TypeNode &r) const;
     TypedValue* compile(Compiler*);
     void print(void);
     TypeNode(LOC_TY& loc, TypeTag ty, string tName, TypeNode* eTy) : Node(loc), type(ty), typeName(tName), extTy(eTy){}

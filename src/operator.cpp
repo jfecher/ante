@@ -525,7 +525,10 @@ TypedValue* UnOpNode::compile(Compiler *c){
                 string mallocFnName = "malloc";
                 Function* mallocFn = (Function*)c->getFunction(mallocFnName)->val;
 
-                auto size = rhs->getType()->getPrimitiveSizeInBits();
+                unsigned size = rhs->getType()->getPrimitiveSizeInBits() / 8;
+                if(!size)
+                    size = getBitWidthOfTypeTag(rhs->type->type) / 8;
+
                 Value *sizeVal = ConstantInt::get(getGlobalContext(), APInt(32, size, true));
 
                 Value *voidPtr = c->builder.CreateCall(mallocFn, sizeVal);
