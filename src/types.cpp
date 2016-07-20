@@ -3,12 +3,15 @@
 
 char getBitWidthOfTypeTag(const TypeTag ty){
     switch(ty){
-        case TT_I8:  case TT_U8:  return 8;
+        case TT_I8:  case TT_U8: case TT_C8:  return 8;
         case TT_I16: case TT_U16: case TT_F16: return 16;
-        case TT_I32: case TT_U32: case TT_F32: return 32;
+        case TT_I32: case TT_U32: case TT_F32: case TT_C32: return 32;
         case TT_I64: case TT_U64: case TT_F64: return 64;
         case TT_Isz: case TT_Usz: return 64; //TODO: detect 32-bit platform
         case TT_Bool: return 1;
+   
+        case TT_Ptr: case TT_StrLit: case TT_Array: return 64;
+        case TT_Function: case TT_Method: return 64;
         default: return 0;
     }
 }

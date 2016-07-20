@@ -526,8 +526,9 @@ TypedValue* UnOpNode::compile(Compiler *c){
                 Function* mallocFn = (Function*)c->getFunction(mallocFnName)->val;
 
                 unsigned size = rhs->getType()->getPrimitiveSizeInBits() / 8;
-                if(!size)
+                if(!size){
                     size = getBitWidthOfTypeTag(rhs->type->type) / 8;
+                }
 
                 Value *sizeVal = ConstantInt::get(getGlobalContext(), APInt(32, size, true));
 
