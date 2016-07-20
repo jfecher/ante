@@ -7,8 +7,8 @@
 fun f: i32 x
     printf("%d\n", x)
 
-    ~Loop to one hundred thousand
-    if x < 100_00 then
+    ~Loop to ten thousand
+    if x < 10_000 then
         f(x + 1)
 
 f(0)

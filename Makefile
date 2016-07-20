@@ -25,29 +25,29 @@ OBJFILES := $(patsubst obj/parser.o,,$(OBJFILES))
 
 DEPFILES := $(OBJFILES:.o=.d)
 
-.PHONY: ante new clean stdlib
+.PHONY: new clean
 .DEFAULT: ante
 
-ante: stdlib obj obj/parser.o $(OBJFILES)
+ante: obj obj/parser.o $(OBJFILES)
 	@echo Linking...
 	@$(CXX) obj/parser.o $(OBJFILES) $(CPPFLAGS) $(LLVMFLAGS) -o ante
 
-#export the stdlib to /usr/share/Ante
+#export the stdlib to /usr/include/ante
 #this is the only part that requires root permissions
 stdlib: $(LIBFILES) Makefile
 	@if [ `id -u` -eq 0 ]; then                                  \
-	    echo 'Exporting stdlib to $(LIBDIR)...';                 \
+	    echo 'Exporting $< to $(LIBDIR)...';                     \
 	    mkdir -p $(LIBDIR);                                      \
 	    cp stdlib/*.an $(LIBDIR);                                \
 	 else                                                        \
 	    echo 'Must run with root permissions to export stdlib!'; \
 		echo 'To export stdlib run:';                            \
-		echo '';                                                 \
-		echo '$$ sudo make stdlib';                               \
-		echo '';                                                 \
+		echo -e '\n$$ sudo make $@\n';                           \
 	 fi
 
 new: clean ante
+
+stdlib/%.an: stdlib/%.an
 
 #create the obj folder if it is not present
 obj: 
