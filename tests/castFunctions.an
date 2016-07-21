@@ -1,0 +1,14 @@
+
+ext bool
+
+    ~handles conversion of i32 -> bool
+    fun cast: i32 x =
+        x != 0
+
+
+fun printb: bool b
+    if b then puts("true")
+    else puts("false")
+
+~test cast of i32 -> bool
+printb(bool 0)
