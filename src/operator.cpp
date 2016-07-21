@@ -222,6 +222,21 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
  *  Creates a cast instruction appropriate for valToCast's type to castTy.
  */
 TypedValue* createCast(Compiler *c, Type *castTy, TypeNode *tyn, TypedValue *valToCast){
+    //first, see if the user created their own cast function
+    string castFn = typeNodeToStr(tyn) + "_cast";
+    if(auto *fn = c->getFunction(castFn)){
+
+        //first, assure the function has only one parameter
+        //the return type is guarenteed to be initialized, so it is not checked
+        if(fn->type->extTy->next.get() && !fn->type->extTy->next->next.get()){
+            //type check the only parameter
+            if(*valToCast->type == *(TypeNode*)fn->type->extTy->next.get()){
+                return new TypedValue(c->builder.CreateCall(fn->val, valToCast->val), deepCopyTypeNode(fn->type->extTy.get()));
+            }
+        }
+    }
+
+    //otherwise, fallback on known conversions
     if(isIntTypeTag(valToCast->type->type)){
         // int -> int  (maybe unsigned)
         if(isIntTypeTag(tyn->type)){
@@ -489,14 +504,13 @@ TypedValue* BinOpNode::compile(Compiler *c){
         case '%': return c->compRem(lhs, rhs, this);
         case '[': return c->compExtract(lhs, rhs, this);
         case ';': return rhs;
-        case Tok_Let: return rhs;
         case '<': return new TypedValue(c->builder.CreateICmpULT(lhs->val, rhs->val), lhs->type);
         case '>': return new TypedValue(c->builder.CreateICmpUGT(lhs->val, rhs->val), lhs->type);
         case '^': return new TypedValue(c->builder.CreateXor(lhs->val, rhs->val), lhs->type);
-        case Tok_Eq: return new TypedValue(c->builder.CreateICmpEQ(lhs->val, rhs->val), lhs->type);
-        case Tok_NotEq: return new TypedValue(c->builder.CreateICmpNE(lhs->val, rhs->val), lhs->type);
-        case Tok_LesrEq: return new TypedValue(c->builder.CreateICmpULE(lhs->val, rhs->val), lhs->type);
-        case Tok_GrtrEq: return new TypedValue(c->builder.CreateICmpUGE(lhs->val, rhs->val), lhs->type);
+        case Tok_Eq: return new TypedValue(c->builder.CreateICmpEQ(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
+        case Tok_NotEq: return new TypedValue(c->builder.CreateICmpNE(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
+        case Tok_LesrEq: return new TypedValue(c->builder.CreateICmpULE(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
+        case Tok_GrtrEq: return new TypedValue(c->builder.CreateICmpUGE(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
         case Tok_Or: break;
         case Tok_And: break;
     }

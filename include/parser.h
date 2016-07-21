@@ -38,7 +38,7 @@ struct Node{
     //compile node to a given module
     virtual TypedValue* compile(Compiler*) = 0;
 
-    Node(LOC_TY& l) : prev(0), loc(l){}
+    Node(LOC_TY& l) : next(nullptr), prev(nullptr), loc(l){}
     virtual ~Node(){}
 };
 

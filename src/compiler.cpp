@@ -533,7 +533,8 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
     //(A typenode represents functions by having the first extTy as the ret type,
     //and the (optional) next types in the list as the parameter types)
     curTyn = fnTyn->extTy.get();
-    TypeNode *retTy = v->type.get();
+    fnTyn->extTy.release();
+    TypeNode *retTy = deepCopyTypeNode(v->type.get());
     retTy->next.reset(curTyn);
     fnTyn->extTy.reset(retTy);
 
@@ -581,7 +582,7 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
     
     if(!retNode)
         return compLetBindingFn(fdn, nParams, paramTys);
-            
+
     
 
     //create the function's actual type node for the tval later
@@ -589,8 +590,13 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
     fnTy->extTy.reset(deepCopyTypeNode(retNode));
 
     //set the proceeding node's to the parameter types
-    if(paramsBegin)
-        fnTy->extTy->next.reset(paramsBegin->typeExpr.get());
+    NamedValNode *curParam = paramsBegin;
+    TypeNode *curTyn = fnTy->extTy.get();
+    while(curParam && curParam->typeExpr.get()){
+        curTyn->next.reset(deepCopyTypeNode((TypeNode*)curParam->typeExpr.get()));
+        curTyn = (TypeNode*)curTyn->next.get();
+        curParam = (NamedValNode*)curParam->next.get();
+    }
 
 
     Type *retTy = typeNodeToLlvmType(retNode);
@@ -653,6 +659,7 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
         //optimize!
         passManager->run(*f);
     }
+
     return ret;
 }
 
