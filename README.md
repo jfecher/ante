@@ -17,16 +17,17 @@ let j = 0
 let myTuple = (5, 5.0, "five")
 
 ~tuples can also be destructured and stored into multiple variables
-i32 x y = (4, 5)
+let (x, y) = (4, 5)
 
 ~Arrays:
 var myArray = [0, 1, 2, 3, 4]
 
 ~Function pointers:
-let myFunctionPtr = fun x y -> x * y
+let myFunctionPtr =
+    fun x y = x * y
 
 ~Sum types:
-data Maybe
+type Maybe =
     Some 't | None
 
 var f = Some 4
@@ -57,19 +58,18 @@ free(myPtr) ~myPtr must be manually freed
 * Code is evaluated, by default, at compile time.  Only functions producing output,
 user specified functions or variables, and necessary constructs are compiled into the binary.
 ```go
-data Point
-    pri i32 x y
+type Point = i32 x y
 
 ext Point
-    fun cast(): i32 x, i32 y => Point
+    fun cast(): i32 x y => Point
         Point (x, y)
 
     fun scale: self*, i32 sx sy
         self.x *= sx
         self.y *= sy
 
-    fun getx: => i32
-        x
+    ~Return type inference with = 
+    fun getx: = x
 
 var p = Point(2, 3)
 
@@ -90,7 +90,7 @@ print(increment(4)) ~prints 5
 
 
 ~filter out all numbers that aren't divisible by 7
-var l = List(0..100).filter(_ % 7 == 0)
+let l = List(0..100).filter(_ % 7 == 0)
 
 ```
 
@@ -102,8 +102,8 @@ var l = List(0..100).filter(_ % 7 == 0)
 
 2. Run `$ git clone https://github.com/jfecher/ante.git`
 
-3. Run `$ cd ante && sudo make`
+3. Run `$ cd ante && make && sudo make stdlib`
 
     - NOTE: root permissions are only needed to export the standard library.  To export it manually, execute the following command as root:
-    
-        `# mkdir -p /usr/lib/Ante && cp stdlib/*.an /usr/lib/Ante`
+
+        `# mkdir -p /usr/include/ante && cp stdlib/*.an /usr/include/ante`
