@@ -61,15 +61,13 @@ user specified functions or variables, and necessary constructs are compiled int
 type Point = i32 x y
 
 ext Point
-    fun cast(): i32 x y => Point
-        Point (x, y)
-
     fun scale: self*, i32 sx sy
         self.x *= sx
         self.y *= sy
 
     ~Return type inference with = 
     fun getx: = x
+
 
 var p = Point(2, 3)
 
