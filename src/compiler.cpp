@@ -175,7 +175,7 @@ TypedValue* TypeNode::compile(Compiler *c){
 
 
 TypedValue* StrLitNode::compile(Compiler *c){
-    TypeNode *strty = mkAnonTypeNode(TT_Ptr);
+    TypeNode *strty = mkAnonTypeNode(TT_Array);
     strty->extTy.reset(mkAnonTypeNode(TT_C8));
     return new TypedValue(c->builder.CreateGlobalStringPtr(val), strty);
 }
@@ -288,8 +288,7 @@ TypedValue* ImportNode::compile(Compiler *c){
     if(!dynamic_cast<StrLitNode*>(expr.get())) return 0;
 
     c->importFile(((StrLitNode*)expr.get())->val.c_str());
-
-    return 0;
+    return c->getVoidLiteral();
 }
 
 
