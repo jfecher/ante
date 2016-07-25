@@ -1,0 +1,13 @@
+`
+    Test auto-free of intermediate pointers as well as
+    pointer-aliases
+`
+
+
+let t = new new new new new new new 2
+
+let c = t
+
+t.print()
+
+c.print()

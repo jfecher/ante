@@ -356,6 +356,7 @@ TypedValue* LetBindingNode::compile(Compiler *c){
 
     bool nofree = val->type->type != TT_Ptr || dynamic_cast<Constant*>(val->val);
     c->stoVar(name, new Variable(name, val, c->scope, nofree));
+    
     return val;
 }
 
@@ -975,22 +976,20 @@ inline void Compiler::exitScope(){
     auto vtable = varTable.back().get();
 
     for(auto it = vtable->cbegin(); it != vtable->cend(); it++){
-        cout << "Scanning " << it->first << "...";
-
         if(it->second->isFreeable() && it->second->scope == this->scope){
-            cout << "Freeing " << it->first << "...\n";
             string freeFnName = "free";
             Function* freeFn = (Function*)getFunction(freeFnName)->val;
 
             auto *inst = dynamic_cast<AllocaInst*>(it->second->getVal());
             auto *val = inst? builder.CreateLoad(inst) : it->second->getVal();
 
+            //change the pointer's type to void so it is not freed again
+            it->second->tval->type->type = TT_Void;
+
             //cast the freed value to i32* as that is what free accepts
             Type *vPtr = freeFn->getFunctionType()->getFunctionParamType(0);
             val = builder.CreatePointerCast(val, vPtr);
             builder.CreateCall(freeFn, val);
-        }else{
-            cout << " Could not free " << it->first << ", " << it->second->scope << " != " << this->scope << ", type = " << typeNodeToStr(it->second->tval->type.get()) << endl;
         }
     }
 

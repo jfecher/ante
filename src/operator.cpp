@@ -379,47 +379,53 @@ TypedValue* compMemberAccess(Compiler *c, Node *ln, VarNode *field, BinOpNode *b
         return c->compErr("No static method or field called " + field->name + " was found in type " + 
                 llvmTypeToStr(lty), binop->loc);
     }else{
-        //ln is not a typenode, this is not a static method call
-        auto *l = ln->compile(c);
-        if(!l) return 0;
+        //ln is not a typenode, so this is not a static method call
+        Value *val;
+        TypeNode *tyn;
+       
+        //prevent l from being used after this scope; only val and tyn should be used as only they
+        //are updated with the automatic pointer dereferences.
+        { 
+            auto *l = ln->compile(c);
+            if(!l) return 0;
 
-        //the . operator should automatically dereference pointers
-        while(l->type->type == TT_Ptr){
-            l->val = c->builder.CreateLoad(l->val);
-
-            //set the type to the extTy that it was pointing to, but release it so that it is not freed first
-            TypeNode *ty = l->type->extTy.get();
-            l->type.release();
-            l->type.reset(ty);
+            val = l->val;
+            tyn = l->type.get();
         }
 
-        if(l->type->type == TT_Data || l->type->type == TT_Tuple){
-            auto dataTy = c->lookupType(typeNodeToStr(l->type.get()));
+        //the . operator automatically dereferences pointers, so update val and tyn accordingly.
+        while(tyn->type == TT_Ptr){
+            val = c->builder.CreateLoad(val);
+            tyn = tyn->extTy.get();
+        }
+
+        //check to see if this is a field index
+        if(tyn->type == TT_Data || tyn->type == TT_Tuple){
+            auto dataTy = c->lookupType(typeNodeToStr(tyn));
 
             if(dataTy){
                 auto index = dataTy->getFieldIndex(field->name);
 
                 if(index != -1){
-                    TypeNode *indexTy = l->type->extTy.get();
+                    TypeNode *indexTy = tyn->extTy.get();
 
                     for(int i = 0; i < index; i++){
                         indexTy = static_cast<TypeNode*>(indexTy->next.get());
                     }
                         
-                    return new TypedValue(c->builder.CreateExtractValue(l->val, index), deepCopyTypeNode(indexTy));
+                    return new TypedValue(c->builder.CreateExtractValue(val, index), deepCopyTypeNode(indexTy));
                 }
             }
         }
 
         //not a field, so look for a method.
         //TODO: perhaps create a calling convention function
-        string funcName = typeNodeToStr(l->type.get()) + "_" + field->name;
+        string funcName = typeNodeToStr(tyn) + "_" + field->name;
 
         if(auto *f = c->getFunction(funcName))
-            return new MethodVal(l->val, f);
+            return new MethodVal(val, f);
 
-        return c->compErr("Method/Field " + field->name + " not found in type " + 
-                llvmTypeToStr(l->getType()), binop->loc);
+        return c->compErr("Method/Field " + field->name + " not found in type " + typeNodeToStr(tyn), binop->loc);
     }
 }
 
@@ -556,14 +562,13 @@ TypedValue* UnOpNode::compile(Compiler *c){
                 c->builder.CreateStore(rhs->val, typedPtr);
 
                 TypeNode *tyn = mkAnonTypeNode(TT_Ptr);
-                tyn->extTy.reset(rhs->type.get());
+                tyn->extTy.reset(deepCopyTypeNode(rhs->type.get()));
 
                 auto *ret = new TypedValue(typedPtr, tyn);
 
 
                 //Create an upper-case name so it cannot be referenced normally
                 string tmpAllocName = "_New" + to_string((unsigned long)ret);
-                cout << tmpAllocName << "'s type is " << typeNodeToStr(ret->type.get()) << ", its llvm type is " << llvmTypeToStr(ret->getType()) << endl;
                 c->stoVar(tmpAllocName, new Variable(tmpAllocName, ret, c->scope, false /*always free*/));
 
                 return ret;
