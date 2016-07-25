@@ -6,7 +6,7 @@
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Module.h>
 #include <memory>
-#include <stack>
+#include <list>
 #include <map>
 #include "parser.h"
 
@@ -63,7 +63,6 @@ struct DataType {
         return -1;
     }
 };
-
 
 struct Variable {
     string name;

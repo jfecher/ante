@@ -535,6 +535,8 @@ TypedValue* UnOpNode::compile(Compiler *c){
         case '-': //negation
             return new TypedValue(c->builder.CreateNeg(rhs->val), rhs->type);
         case Tok_New:
+            //the 'new' keyword in ante creates a reference to any existing value
+
             if(rhs->getType()->isSized()){
                 string mallocFnName = "malloc";
                 Function* mallocFn = (Function*)c->getFunction(mallocFnName)->val;
@@ -555,7 +557,16 @@ TypedValue* UnOpNode::compile(Compiler *c){
 
                 TypeNode *tyn = mkAnonTypeNode(TT_Ptr);
                 tyn->extTy.reset(rhs->type.get());
-                return new TypedValue(typedPtr, tyn);
+
+                auto *ret = new TypedValue(typedPtr, tyn);
+
+
+                //Create an upper-case name so it cannot be referenced normally
+                string tmpAllocName = "_New" + to_string((unsigned long)ret);
+                cout << tmpAllocName << "'s type is " << typeNodeToStr(ret->type.get()) << ", its llvm type is " << llvmTypeToStr(ret->getType()) << endl;
+                c->stoVar(tmpAllocName, new Variable(tmpAllocName, ret, c->scope, false /*always free*/));
+
+                return ret;
             }
     }
     

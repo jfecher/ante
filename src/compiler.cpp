@@ -975,7 +975,10 @@ inline void Compiler::exitScope(){
     auto vtable = varTable.back().get();
 
     for(auto it = vtable->cbegin(); it != vtable->cend(); it++){
-        if(it->second->isFreeable() && it->second->scope == scope){
+        cout << "Scanning " << it->first << "...";
+
+        if(it->second->isFreeable() && it->second->scope == this->scope){
+            cout << "Freeing " << it->first << "...\n";
             string freeFnName = "free";
             Function* freeFn = (Function*)getFunction(freeFnName)->val;
 
@@ -986,6 +989,8 @@ inline void Compiler::exitScope(){
             Type *vPtr = freeFn->getFunctionType()->getFunctionParamType(0);
             val = builder.CreatePointerCast(val, vPtr);
             builder.CreateCall(freeFn, val);
+        }else{
+            cout << " Could not free " << it->first << ", " << it->second->scope << " != " << this->scope << ", type = " << typeNodeToStr(it->second->tval->type.get()) << endl;
         }
     }
 
@@ -1004,7 +1009,7 @@ Variable* Compiler::lookup(string var) const{
 }
 
 
-inline void Compiler::stoVar(string var, Variable *val){
+void Compiler::stoVar(string var, Variable *val){
     (*varTable[val->scope])[var] = val;
 }
 
