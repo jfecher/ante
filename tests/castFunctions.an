@@ -1,9 +1,19 @@
+`
+    Cast functions are are a type of operator overload that
+    overloads the typecast operator for a given type.
+`
+
 
 ext bool
-
     ~handles conversion of i32 -> bool
     fun cast: i32 x =
         x != 0
+
+
+ext Str
+    fun cast: c8* cStr => Str
+        Str(cStr, 0)
+
 
 
 fun printb: bool b
@@ -11,4 +21,7 @@ fun printb: bool b
     else puts("false")
 
 ~test cast of i32 -> bool
-printb(bool 0)
+printb(bool 2)
+
+
+Str "c8* -> Str works!".print()
