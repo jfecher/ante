@@ -163,7 +163,9 @@ TypeNode* deepCopyTypeNode(const TypeNode *n){
 
     if(n->type == TT_Tuple || n->type == TT_Data || n->type == TT_Function || n->type == TT_Method){
         TypeNode *nxt = n->extTy.get();
-        TypeNode *ext = nxt? deepCopyTypeNode(nxt) : 0;
+        if(!nxt) return cpy;
+
+        TypeNode *ext = deepCopyTypeNode(nxt);
         cpy->extTy.reset(ext);
 
         while((nxt = static_cast<TypeNode*>(nxt->next.get()))){
