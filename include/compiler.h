@@ -52,9 +52,10 @@ struct MethodVal : public TypedValue {
 
 struct DataType {
     vector<string> fields;
-    Type* type;
+    unique_ptr<TypeNode> tyn;
 
-    DataType(vector<string> &f, Type *ty) : fields(f), type(ty){}
+    DataType(vector<string> &f, TypeNode *ty) : fields(f), tyn(ty){}
+    ~DataType(){}
 
     int getFieldIndex(string &field){
         for(unsigned int i = 0; i < fields.size(); i++)
