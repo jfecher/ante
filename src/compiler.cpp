@@ -175,7 +175,7 @@ TypedValue* TypeNode::compile(Compiler *c){
 
 
 TypedValue* StrLitNode::compile(Compiler *c){
-    TypeNode *strty = mkAnonTypeNode(TT_Ptr);
+    TypeNode *strty = mkAnonTypeNode(TT_Array);
     strty->extTy.reset(mkAnonTypeNode(TT_C8));
     return new TypedValue(c->builder.CreateGlobalStringPtr(val), strty);
 }
@@ -192,7 +192,7 @@ TypedValue* ArrayNode::compile(Compiler *c){
         if(!tyn->extTy.get())
             tyn->extTy.reset(tval->type.get());
     }
-   
+
     auto* arrTy = ArrayType::get(arr[0]->getType(), arr.size());
     return new TypedValue(ConstantArray::get(arrTy, arr), tyn);
 }
@@ -647,10 +647,10 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
             if(retNode->type == TT_Void){
                 builder.CreateRetVoid();
             }else{
-                if(!llvmTypeEq(v->getType(), retTy)){
+                if(*v->type.get() != *retNode){
                     return compErr("Function " + fdn->name + " returned value of type " + 
-                            llvmTypeToStr(v->getType()) + " but was declared to return value of type " +
-                            llvmTypeToStr(retTy), fdn->loc);
+                            typeNodeToStr(v->type.get()) + " but was declared to return value of type " +
+                            typeNodeToStr(retNode), fdn->loc);
                 }
 
                 builder.CreateRet(v->val);

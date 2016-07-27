@@ -154,7 +154,7 @@ TypeTag llvmTypeToTypeTag(Type *t){
     if(t->isFloatTy()) return TT_F32;
     if(t->isDoubleTy()) return TT_F64;
     
-    //if(t->isArrayTy()) return TT_Array;
+    if(t->isArrayTy()) return TT_Array;
     if(t->isStructTy() && !t->isEmptyTy()) return TT_Tuple; /* Could also be a TT_Data! */
     if(t->isPointerTy()) return TT_Ptr;
     if(t->isFunctionTy()) return TT_Function;
@@ -173,8 +173,10 @@ Type* Compiler::typeNodeToLlvmType(TypeNode *tyNode){
     DataType *userType;
 
     switch(tyNode->type){
-        case TT_Ptr: case TT_Array:
+        case TT_Ptr:
             return PointerType::get(typeNodeToLlvmType(tyn), 0);
+        case TT_Array:
+            return ArrayType::get(typeNodeToLlvmType(tyn), 0);
         case TT_Tuple:
             while(tyn){
                 tys.push_back(typeNodeToLlvmType(tyn));
@@ -209,7 +211,7 @@ bool llvmTypeEq(Type *l, Type *r){
 
     if(ltt != rtt) return false;
 
-    if(ltt == TT_Ptr || ltt == TT_Array){
+    if(ltt == TT_Ptr){
         Type *lty = l->getPointerElementType();
         Type *rty = r->getPointerElementType();
         Type *vty = Type::getVoidTy(getGlobalContext());
@@ -217,6 +219,8 @@ bool llvmTypeEq(Type *l, Type *r){
         if(lty == vty || rty == vty) return true;
 
         return llvmTypeEq(lty, rty);
+    }else if(ltt == TT_Array){
+        return llvmTypeEq(l->getArrayElementType(), r->getArrayElementType());
     }else if(ltt == TT_Function){
         int lParamCount = l->getFunctionNumParams();
         int rParamCount = r->getFunctionNumParams();

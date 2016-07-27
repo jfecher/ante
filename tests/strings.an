@@ -8,7 +8,7 @@
 let openingMsg = "Hello World!\n"
 
 fun getClosingMsg: => [c8]
-    return "Goodbye World!\n"
+    "Goodbye World!\n"
 
 printf("%s%s", openingMsg, getClosingMsg())
 
@@ -33,10 +33,5 @@ fun len: [c8] s => i32
     while s[acc] != 0u8 do
         acc += 1
     return acc
-
-
-fun makeStr: [c8] rawStr => Str
-    return (rawStr, len(rawStr))
-
 
 printf("len of %s = %d\n", openingMsg, len(openingMsg))

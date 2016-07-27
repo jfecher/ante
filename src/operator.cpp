@@ -447,15 +447,20 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
         args.push_back(obj);
     }
 
+    //used to type-check each parameter later
+    vector<TypedValue*> typedArgs;
+
     //add all remaining arguments
     if(auto *tup = dynamic_cast<TupleNode*>(r)){
-        for(TypedValue *v : tup->unpack(c)){
+        typedArgs = tup->unpack(c);
+        for(TypedValue *v : typedArgs){
             if(!v) return 0;
             args.push_back(v->val);
         }
     }else{ //single parameter being applied
         auto *param = r->compile(c);
         if(!param) return 0;
+        typedArgs.push_back(param);
         args.push_back(param->val);
     }
 
@@ -470,12 +475,16 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
     }
 
     /* unpack the tuple of arguments into a vector containing each value */
-    int i = 0;
-    for(auto &param : f->args()){//type check each parameter
-        if(!llvmTypeEq(args[i++]->getType(), param.getType())){
-            return c->compErr("Argument " + to_string(i) + " of function is a(n) " + llvmTypeToStr(args[i-1]->getType())
-                    + " but was declared to be a(n) " + llvmTypeToStr(param.getType()), r->loc);
+    int i = 1;
+    TypeNode *paramTy = (TypeNode*)tvf->type->extTy->next.get();
+    for(auto tArg : typedArgs){//type check each parameter
+        if(!paramTy) break;
+        if(*tArg->type.get() != *paramTy){
+            return c->compErr("Argument " + to_string(i) + " of function is a(n) " + typeNodeToStr(tArg->type.get())
+                    + " but was declared to be a(n) " + typeNodeToStr(paramTy), r->loc);
         }
+        paramTy = (TypeNode*)paramTy->next.get();
+        i++;
     }
 
     

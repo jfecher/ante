@@ -13,7 +13,7 @@ fun getCoords: => i32,i32
 fun toTuple: i32 a b => i32,i32
     return (a, b)
 
-fun printTuple: c8* name, i32,i32 t
+fun printTuple: [c8] name, i32,i32 t
     printf("%s = (%d, %d)\n", name, t[0], t[1])
 
 
