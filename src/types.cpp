@@ -154,7 +154,7 @@ TypeTag llvmTypeToTypeTag(Type *t){
     if(t->isFloatTy()) return TT_F32;
     if(t->isDoubleTy()) return TT_F64;
     
-    if(t->isArrayTy()) return TT_Array;
+    //if(t->isArrayTy()) return TT_Array;
     if(t->isStructTy() && !t->isEmptyTy()) return TT_Tuple; /* Could also be a TT_Data! */
     if(t->isPointerTy()) return TT_Ptr;
     if(t->isFunctionTy()) return TT_Function;
@@ -173,7 +173,7 @@ Type* Compiler::typeNodeToLlvmType(TypeNode *tyNode){
     DataType *userType;
 
     switch(tyNode->type){
-        case TT_Ptr:
+        case TT_Ptr: case TT_Array:
             return PointerType::get(typeNodeToLlvmType(tyn), 0);
         case TT_Tuple:
             while(tyn){
@@ -181,8 +181,6 @@ Type* Compiler::typeNodeToLlvmType(TypeNode *tyNode){
                 tyn = (TypeNode*)tyn->next.get();
             }
             return StructType::get(getGlobalContext(), tys);
-        case TT_Array: //TODO array type
-            return ArrayType::get(typeNodeToLlvmType(tyn), 1);
         case TT_Data:
             userType = lookupType(tyNode->typeName);
             if(!userType)
@@ -211,7 +209,7 @@ bool llvmTypeEq(Type *l, Type *r){
 
     if(ltt != rtt) return false;
 
-    if(ltt == TT_Ptr){
+    if(ltt == TT_Ptr || ltt == TT_Array){
         Type *lty = l->getPointerElementType();
         Type *rty = r->getPointerElementType();
         Type *vty = Type::getVoidTy(getGlobalContext());
@@ -219,8 +217,6 @@ bool llvmTypeEq(Type *l, Type *r){
         if(lty == vty || rty == vty) return true;
 
         return llvmTypeEq(lty, rty);
-    }else if(ltt == TT_Array){
-        return llvmTypeEq(l->getArrayElementType(), r->getArrayElementType());
     }else if(ltt == TT_Function){
         int lParamCount = l->getFunctionNumParams();
         int rParamCount = r->getFunctionNumParams();
@@ -276,17 +272,13 @@ bool extTysEq(const TypeNode *l, const TypeNode *r){
 bool TypeNode::operator==(TypeNode &r) const {
     if(this->type != r.type) return false;
 
-    if(r.type == TT_Ptr){
+    if(r.type == TT_Ptr or r.type == TT_Array){
         return *this->extTy.get() == *r.extTy.get();
-    }else if(r.type == TT_Array){
-        return *this->extTy.get() == *r.extTy.get();
-    }else if(r.type == TT_Function || r.type == TT_Method){
+    }else if(r.type == TT_Function || r.type == TT_Method || r.type == TT_Tuple || r.type == TT_Data){
         return extTysEq(this, &r);
-    }else if(r.type == TT_Tuple || r.type == TT_Data){
-        return extTysEq(this, &r);
-    }else{ //primitive type
-        return true;
     }
+    //primitive type
+    return true;
 }
 
 bool TypeNode::operator!=(TypeNode &r) const {
@@ -397,8 +389,8 @@ string llvmTypeToStr(Type *ty){
     if(isPrimitiveTypeTag(tt)){
         return typeTagToStr(tt);
     }else if(tt == TT_Tuple){
-        if(!ty->getStructName().empty())
-            return string(ty->getStructName());
+        //if(!ty->getStructName().empty())
+        //    return string(ty->getStructName());
 
         string ret = "(";
         const unsigned size = ty->getStructNumElements();
@@ -412,7 +404,7 @@ string llvmTypeToStr(Type *ty){
         }
         return ret;
     }else if(tt == TT_Array){
-        return "[" + llvmTypeToStr(ty->getArrayElementType()) + "]";
+        return "[" + llvmTypeToStr(ty->getPointerElementType()) + "]";
     }else if(tt == TT_Ptr){
         return llvmTypeToStr(ty->getPointerElementType()) + "*";
     }else if(tt == TT_Function){

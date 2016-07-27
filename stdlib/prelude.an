@@ -5,9 +5,9 @@
 `
 
 ~C functions
-fun printf: c8* fmt, ...;
+fun printf: [c8] fmt, ...;
 
-fun puts: c8* str;
+fun puts: [c8] str;
 
 fun putchar: c8 char;
 
@@ -18,7 +18,7 @@ fun malloc: i32 size => i32*;
 fun free: i32* mem;
 
 ~datatypes
-type Str = c8* cStr, u32 len
+type Str = [c8] cStr, u32 len
 
 type Range = i32 start end step
 
