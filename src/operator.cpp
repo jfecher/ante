@@ -382,7 +382,7 @@ TypedValue* compMemberAccess(Compiler *c, Node *ln, VarNode *field, BinOpNode *b
         //ln is not a typenode, so this is not a static method call
         Value *val;
         TypeNode *tyn;
-       
+
         //prevent l from being used after this scope; only val and tyn should be used as only they
         //are updated with the automatic pointer dereferences.
         { 
@@ -407,11 +407,10 @@ TypedValue* compMemberAccess(Compiler *c, Node *ln, VarNode *field, BinOpNode *b
                 auto index = dataTy->getFieldIndex(field->name);
 
                 if(index != -1){
-                    TypeNode *indexTy = tyn->extTy.get();
+                    TypeNode *indexTy = dataTy->tyn->extTy.get();
 
-                    for(int i = 0; i < index; i++){
-                        indexTy = static_cast<TypeNode*>(indexTy->next.get());
-                    }
+                    for(int i = 0; i < index; i++)
+                        indexTy = (TypeNode*)indexTy->next.get();
                         
                     return new TypedValue(c->builder.CreateExtractValue(val, index), deepCopyTypeNode(indexTy));
                 }

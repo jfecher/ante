@@ -175,7 +175,7 @@ TypedValue* TypeNode::compile(Compiler *c){
 
 
 TypedValue* StrLitNode::compile(Compiler *c){
-    TypeNode *strty = mkAnonTypeNode(TT_Array);
+    TypeNode *strty = mkAnonTypeNode(TT_Ptr);
     strty->extTy.reset(mkAnonTypeNode(TT_C8));
     return new TypedValue(c->builder.CreateGlobalStringPtr(val), strty);
 }
@@ -694,27 +694,32 @@ TypedValue* ExtNode::compile(Compiler *c){
 
 
 TypedValue* DataDeclNode::compile(Compiler *c){
-    vector<Type*> tys;
-    tys.reserve(fields);
-    
     vector<string> fieldNames;
     fieldNames.reserve(fields);
+
+    TypeNode *dataTyn = mkAnonTypeNode(TT_Tuple);
+    TypeNode *nxt = 0;
 
     auto *nvn = (NamedValNode*)child.get();
     while(nvn){
         TypeNode *tyn = (TypeNode*)nvn->typeExpr.get();
-        tys.push_back(c->typeNodeToLlvmType(tyn));
+
+        if(nxt){
+            nxt->next.reset(deepCopyTypeNode(tyn));
+            nxt = (TypeNode*)nxt->next.get();
+        }else{
+            dataTyn->extTy.reset(deepCopyTypeNode(tyn));
+            nxt = dataTyn->extTy.get();
+        }
+
         fieldNames.push_back(nvn->name);
         nvn = (NamedValNode*)nvn->next.get();
     }
 
-    auto *structTy = StructType::get(getGlobalContext(), tys);
-    structTy->setName(name);
-
-    auto *data = new DataType(fieldNames, structTy);
+    auto *data = new DataType(fieldNames, dataTyn);
 
     c->stoType(data, name);
-    return nullptr;
+    return c->getVoidLiteral();
 }
 
 
