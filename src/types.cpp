@@ -367,7 +367,7 @@ string typeNodeToStr(TypeNode *t){
     }else if(t->type == TT_Data){
         return t->typeName;
     }else if(t->type == TT_Array){
-        return typeNodeToStr(t->extTy.get()) + "[]";
+        return '[' + typeNodeToStr(t->extTy.get()) + ']';
     }else if(t->type == TT_Ptr){
         return typeNodeToStr(t->extTy.get()) + "*";
     }else if(t->type == TT_Function || t->type == TT_Method){
