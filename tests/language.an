@@ -1,20 +1,25 @@
 `
         Ante is an multi paradigm language which includes various elements from
     functional, imperative, and object oriented paradigms.  Each 
-    line of code is a statement ending in a newline character.  Expressions 
-    such as 3 * (4 + 5) may be part of a statement, but are not valid alone.
-    Whitespace is significant if and only if is at the beginning of a line and
-    precedes a statement.  Blocks are marked by an increase in indentation, 
-    and terminated by a return to the original level (unindent).  An indent is 
-    always at least one space more than the previous indentation level.  To avoid
-    confusion and misalignments in indentation for different tab sizes, tabs
-    are invalid, and cannot constitute any significant whitespace.
+    line of code is an expression sequenced by a newline character.
+    Whitespace is significant if and only if it is at the beginning of a line
+    Blocks are marked by an increase in indentation, and terminated by a return 
+    to the original level (unindent).  An indent is always at least one space more
+    than the previous indentation level.  To avoid confusion and misalignments
+    in indentation for different tab sizes, tabs are invalid, and cannot 
+    constitute any significant whitespace.
 
         Philosophy
-    If something can be done compile time, then it should be.  In other words, 
-    constant folding should be employed whenever possible.  If a 1500 line 
-    program only produces the output "Hello World" every time then that should 
-    be the only thing compiled into the binary.
+    Ante aims to be extremely extensible by providing almost full access to the
+    compiler to users to decide how their program can be compiled and how each
+    part may interact with another.  For example, if creating an iterator datatype,
+    api designer may detect if it is used within a for loop, and if so, invalidate its
+    use afterwards.  In this way, datatypes in Ante have access not only to themselves,
+    but also to an immutable copy of where it is used.  Another more complicated example
+    may be tracking variables through threads, and ensuring it can only be accessed by
+    a single thread at a time, mimicking Rust's ownership system.  To do this, compile-time
+    variables may even be declared to keep track of inputs to be later used to either issue
+    an appropriate error, or to be discarded before the binary is compiled.
 `
 
 `
@@ -40,7 +45,7 @@ import stuff()
     letters, underscores, or numbers afterwards.  The type is inferred from the 
     expression in all cases.  This form can be expressed as the following:
 
-    let [modifiers] [identifier] = [expr]
+    let [modifiers] [type] <identifier> = <expr>
 
     Alternatively, if the variable is mutable, the type must be specified, or the
     keyword var must be used in place of let.  Note that since it is not immutable,
@@ -48,19 +53,10 @@ import stuff()
     All variables by default have their memory set to 0.  In cases where speed is 
     more of a concern, the modifier noinit may be specified to avoid this.
 
-    [modifiers] [type] [identifier]
-
-    In the rare cases when a constant variable's type cannot be inferenced,
-    the following form is used:
-
-    let [modifiers] [type] [identifier] = [expr]
-
-    or:
-
-    const [modifiers] [type] [identifier] = [expr]
+    var [modifiers] [type] <identifier> = <expr>
 `
 
-~Declare i, an i8 since integer constants take the smallest type by default.
+~Declare i, a signed 32 bit integer, an i32
 let ex1 = 1
 
 ~There are several ways to specify a type if it is needed
@@ -111,6 +107,8 @@ print(i32 4.99)  ~output: 4
 let n = 43.876
 let n = i32 n
 
+~typeof is a generic function that asks the compiler for the input's type
+~and converts it into a string!
 print(typeof(n) ++ " " ++ n)  ~output: i32 43
 
 `
@@ -145,7 +143,7 @@ let pub raw buf = [3, 4, 5]
 
 ~Declare an array of 100 integers called naturalNumbers and do not
 ~initialize it since it is manually initialized in the following loop.
-noinit var i32[100] naturalNumbers
+var naturalNumbers = [i32].ofSize(100)
 
 for i in 1 .. 100
     naturalNumbers[i-1] = i
@@ -157,14 +155,14 @@ let naturalNums = [1..100]
 
 
 ~Modifiers in let bindings are declared after the let keyword
-let raw mem = 0x23, 0x32, 0x00
+let raw mem = [0x23, 0x32, 0x00]
 
 
 ~Modifiers can also apply to a block of variables or functions:
 pub
     let globalConst = 3
 
-    let sum = reduce(+)
+    let sum = reduce(_, +)
 
     fun printMsg:
         print("Msg")
@@ -185,13 +183,9 @@ print(typeof(255))    ~output: u8
 print(typeof(3.2))    ~output: f32
 print(typeof(3.2f64)) ~output: f64
 
-~Unlike integer literals which leave their type up to the compiler,
-~All char and string literals have the type c32 and c32[] by default.
-print(typeof("test")) ~output: c32[]
-print(typeof('A'))    ~output: c32
+print(typeof("test")) ~output: [c8]
+print(typeof('A'))    ~output: c8
 
-~c32[] and c32 literals need to be explicitly casted.
-let myC8Str = c32[] "test"
 
 ~Integer constants can also be expressed in different bases with the 
 ~prefixes 0x 0o and 0b for hexadecimal, octal, and binary respectively.
@@ -208,7 +202,7 @@ assert(8.92e2 == 892)
 
 ~Underscores are ignored within integer and float literals
 assert(1_000_000 == 1000000)
-let double = 25.0_f64
+let half = 25.0_f16
 
 `
         Operators
@@ -263,8 +257,7 @@ let five = i32 5.0
 
 let thirteen = i16(7i8 + 6i8)
 
-fun add: i32 x y => i32
-    x + y
+fun add: i32 x y = x + y
 
 ~thirteen must be explicitely casted to an i32, no automatic widening is performed.
 add(five, i32 thirteen)
@@ -648,7 +641,7 @@ let three =
     own print function without utilizing the standard api, or using an external c api.  
     While less common, the pathogen modifier may be used for variables, classes, enums, etc.
 `
-pathogen fun myPrint: c32* msg
+pathogen fun myPrint: [c8] msg
     let i = 4 + 2
     system("echo '" ++ msg ++ i ++ "'") ~note: system is already a pathogen function
 
@@ -1038,9 +1031,9 @@ type Statistics =
 ~For functions, the where keyword always comes at the end of the list of parameters.
 ~where statements are evaluated at compile time whenever possible.  If the expression after
 ~where evaluates to false, an error is thrown.
-let actions = "walk", "talk", "stand"
+let actions = ["walk", "talk", "stand"]
 
-fun getAction: u8 action => c32[]  where action is in 0 ..^ 3
+fun getAction: u8 action => [c8]  where action is in 0 ..^ 3
     return actions[action]
 
 
@@ -1307,27 +1300,27 @@ assert(point[0] == 4 and point[1] == 3)
 ~Pointers will be automatically dereferenced if their dereferenced type has a valid
 ~implementation, otherwise a compilation error will result.
 
-ext c32* ~invalid
-    fun addInitials: self => c32*
+ext c8* ~invalid
+    fun addInitials: self => c8*
         self ++ " -JF"
 
-ext c32[] ~valid
-    fun addInitials: self => c32[]
+ext [c8] ~valid
+    fun addInitials: self => [c8]
         self ++ " -JF"
 
 
 var ptrQuote = c8* "implementations cannot be used for pointer types"
  
-~Compilation error since c32* has no function addInitials:
+~Compilation error since c8* has no function addInitials:
 ptrQuote = ptrQuote.addInitials()
 
-let ptrQuote2 = c8[] ptrQuote ~convert to array
+let ptrQuote2 = [c8] ptrQuote ~convert to array
 ptrQuote2 = ptrQuote2.addInitials() ~valid
 
 `
-    NOTE: because string literals have the type c32[], the following is valid:
+    NOTE: because string literals have the type [c8], the following is valid:
 
-    c32* ptrQuote = c32* "implementations cannot be used for pointer types".addInitials()
+    let ptrQuote = c8* ("implementations cannot be used for pointer types".addInitials())
 `
 
 
@@ -1496,7 +1489,7 @@ ex3.printMsg() ~(@@ex3).printMsg()
     interact with operators or impls.
 `
 
-~Both of these strings are stored as pointers to the first c32.
+~Both of these strings are internally stored as pointers to the first char.
 var arrStr = c8[] "str"
 var ptrStr = c8*  "str"
 
@@ -1540,7 +1533,7 @@ assert(ptrStr[0] == arrStr[0])
         To use array exts with a pointer, the pointer should be casted 
         to an array type.
 `
-ext c32[]
+ext [c8]
     fun reverse: self*, u32 len
         var rev = Str.ofLen(len).cStr
         for i in range(len-1, 0) do
@@ -1552,10 +1545,6 @@ arrStr:reverse() ~valid
 
 `
 ptrStr:reverse()  <- compilation error.  To make this work, a cast should be added
-
-c32[] ptrStr
-ptrStr.reverse
-
 `
 
 `
@@ -1570,7 +1559,7 @@ ptrStr.reverse
         element for equality.  Since string literals are character arrays by
         default, the following is always true: "five" == "five"
 `
-let c32[] strlit = "test"
+let strlit = "test"
 
 assert(strlit == "test")
 
@@ -1615,7 +1604,7 @@ assert(doOperation(fnPtr) == 1.5)
 `
 
 ~declare a type str that can be a char array of any size
-type Str = c8[] | c32[]
+type Str = [c8] | [c32]
 
 ~declare a type coord that can be an integer or float tuple
 ~NOTE: the precedence of | is greater than that of ,
