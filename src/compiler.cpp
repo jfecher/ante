@@ -193,8 +193,10 @@ TypedValue* ArrayNode::compile(Compiler *c){
             tyn->extTy.reset(tval->type.get());
     }
 
-    auto* arrTy = ArrayType::get(arr[0]->getType(), arr.size());
-    return new TypedValue(ConstantArray::get(arrTy, arr), tyn);
+    auto *ty = ArrayType::get(arr[0]->getType(), exprs.size());
+    auto *val = ConstantArray::get(ty, arr);
+    vector<Value*> zero;
+    return new TypedValue(c->builder.CreateGEP(val, zero), tyn);
 }
 
 TypedValue* Compiler::getVoidLiteral(){
@@ -370,7 +372,7 @@ TypedValue* compVarDeclWithInferredType(VarDeclNode *node, Compiler *c){
 
     TypedValue *alloca = new TypedValue(c->builder.CreateAlloca(val->getType(), 0, node->name.c_str()), val->type);
     val = new TypedValue(c->builder.CreateStore(val->val, alloca->val), val->type);
-    
+
     bool nofree = val->type->type != TT_Ptr || dynamic_cast<Constant*>(val->val);
     c->stoVar(node->name, new Variable(node->name, alloca, c->scope, nofree));
     return val;

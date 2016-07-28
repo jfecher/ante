@@ -19,10 +19,10 @@ fun print: Str s
     puts(s.cStr)
 
 
-let str = Str("test", 4)
+let str = Str("test", 4u32)
 print(str)
 
-print( Str("str", 3) )
+print( Str("str", 3u32) )
 
 
 

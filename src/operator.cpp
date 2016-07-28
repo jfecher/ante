@@ -116,13 +116,14 @@ TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
         return compErr("Index of operator '[' must be an integer expression, got expression of type " + typeNodeToStr(r->type.get()), op->loc);
     }
 
-    if(l->type->type == TT_Array){
+    if(l->type->type == TT_Array || l->type->type == TT_Ptr){
         //check for alloca
         Value *arr = l->val;
-        if(dynamic_cast<AllocaInst*>(l->val)){
-            arr = builder.CreateLoad(l->val);
+        if(dynamic_cast<LoadInst*>(arr)){
+            arr = static_cast<LoadInst*>(arr)->getPointerOperand();
         }
-        return new TypedValue(builder.CreateExtractElement(arr, r->val), l->type->extTy.get());
+
+        return new TypedValue(builder.CreateLoad(builder.CreateGEP(arr, r->val)), l->type->extTy.get());
     }else if(l->type->type == TT_Tuple || l->type->type == TT_Data){
         if(!dynamic_cast<ConstantInt*>(r->val))
             return compErr("Tuple indices must always be known at compile time.", op->loc);
@@ -142,8 +143,8 @@ TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
         }else{
             return new TypedValue(builder.CreateExtractValue(l->val, index), indexTyn);
         }
-    }else if(l->type->type == TT_Ptr){ //assume RefVal
-        Value *v = builder.CreateLoad(l->val);
+    //}else if(l->type->type == TT_Ptr){ //assume RefVal
+        /*Value *v = builder.CreateLoad(l->val);
         if(llvmTypeToTypeTag(v->getType()) == TT_Tuple){
             if(!dynamic_cast<ConstantInt*>(r->val))
                 return compErr("Pathogen values cannot be used as tuple indices.", op->loc);
@@ -156,11 +157,10 @@ TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
             
             Value *field = builder.CreateExtractValue(v, index);
             return new TypedValue(field, indexTyn);
-        }
-        return compErr("Type " + llvmTypeToStr(l->getType()) + " does not have elements to access", op->loc);
-    }else{
-        return compErr("Type " + llvmTypeToStr(l->getType()) + " does not have elements to access", op->loc);
+        }*/
+        //return compErr("Type " + llvmTypeToStr(l->getType()) + " does not have elements to access", op->loc);
     }
+    return compErr("Type " + llvmTypeToStr(l->getType()) + " does not have elements to access", op->loc);
 }
 
 
@@ -189,10 +189,9 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
     auto *newVal = assignExpr->compile(this);
     if(!var || !index || !newVal) return 0;
 
-    switch(llvmTypeToTypeTag(tmp->getType())){
+    switch(tmp->type->type){
         case TT_Array:
-            return new TypedValue(builder.CreateStore(builder.CreateInsertElement(tmp->val, newVal->val, index->val), var), mkAnonTypeNode(TT_Void));
-            //return new TypedValue(builder.CreateInsertElement(loadVal, newVal->val, index->val), TT_Void);
+            return new TypedValue(builder.CreateStore(newVal->val, compExtract(tmp, index, op)->val), mkAnonTypeNode(TT_Void));
         case TT_Tuple:
             if(!dynamic_cast<ConstantInt*>(index->val)){
                 return compErr("Tuple indices must always be known at compile time.", op->loc);
@@ -214,8 +213,7 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
             }
         default:
             return compErr("Variable being indexed must be an Array or Tuple, but instead is a(n) " +
-                    llvmTypeToStr(tmp->val->getType()), op->loc);
-    }
+                    typeNodeToStr(tmp->type.get()), op->loc); }
 }
 
 /*
@@ -278,7 +276,9 @@ TypedValue* createCast(Compiler *c, Type *castTy, TypeNode *tyn, TypedValue *val
             return new TypedValue(c->builder.CreatePtrToInt(valToCast->val, castTy), tyn);
         }
     }else if(tyn->type == TT_Data && valToCast->type->type == TT_Tuple){
-        if(llvmTypeEq(castTy, valToCast->getType())){
+        auto *dataTy = c->lookupType(tyn->typeName);
+
+        if(dataTy && *valToCast->type.get() == *dataTy->tyn.get()){
             valToCast->type->typeName = tyn->typeName;
             valToCast->type->type = TT_Data;
             return valToCast;

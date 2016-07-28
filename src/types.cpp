@@ -154,7 +154,7 @@ TypeTag llvmTypeToTypeTag(Type *t){
     if(t->isFloatTy()) return TT_F32;
     if(t->isDoubleTy()) return TT_F64;
     
-    if(t->isArrayTy()) return TT_Array;
+    //if(t->isVectorTy()) return TT_Array;
     if(t->isStructTy() && !t->isEmptyTy()) return TT_Tuple; /* Could also be a TT_Data! */
     if(t->isPointerTy()) return TT_Ptr;
     if(t->isFunctionTy()) return TT_Function;
@@ -176,7 +176,7 @@ Type* Compiler::typeNodeToLlvmType(TypeNode *tyNode){
         case TT_Ptr:
             return PointerType::get(typeNodeToLlvmType(tyn), 0);
         case TT_Array:
-            return ArrayType::get(typeNodeToLlvmType(tyn), 0);
+            return PointerType::get(typeNodeToLlvmType(tyn), 0);
         case TT_Tuple:
             while(tyn){
                 tys.push_back(typeNodeToLlvmType(tyn));
@@ -220,7 +220,7 @@ bool llvmTypeEq(Type *l, Type *r){
 
         return llvmTypeEq(lty, rty);
     }else if(ltt == TT_Array){
-        return llvmTypeEq(l->getArrayElementType(), r->getArrayElementType());
+        return llvmTypeEq(l->getPointerElementType(), r->getPointerElementType());
     }else if(ltt == TT_Function){
         int lParamCount = l->getFunctionNumParams();
         int rParamCount = r->getFunctionNumParams();
