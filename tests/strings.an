@@ -34,4 +34,4 @@ fun len: [c8] s => i32
         acc += 1
     return acc
 
-printf("len of '%s' = %d\n", openingMsg, len(openingMsg))
+printf("len(\"%s\") = %d\n", openingMsg, len(openingMsg))
