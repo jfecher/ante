@@ -195,8 +195,7 @@ TypedValue* ArrayNode::compile(Compiler *c){
 
     auto *ty = ArrayType::get(arr[0]->getType(), exprs.size());
     auto *val = ConstantArray::get(ty, arr);
-    vector<Value*> zero;
-    return new TypedValue(c->builder.CreateGEP(val, zero), tyn);
+    return new TypedValue(c->builder.CreateConstGEP1_32(val, 0), tyn);
 }
 
 TypedValue* Compiler::getVoidLiteral(){
@@ -659,7 +658,7 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
             }
         }
         //optimize!
-        passManager->run(*f);
+       // passManager->run(*f);
     }
 
     return ret;
@@ -874,7 +873,7 @@ void Compiler::compile(){
 
     //builder should already be at end of main function
     builder.CreateRet(ConstantInt::get(getGlobalContext(), APInt(8, 0, true)));
-    passManager->run(*main);
+    //passManager->run(*main);
 
 
     //flag this module as compiled.

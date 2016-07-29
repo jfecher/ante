@@ -108,7 +108,7 @@ inline bool isFPTypeTag(const TypeTag tt){
     return tt==TT_F16||tt==TT_F32||tt==TT_F64;
 }
 
-/*'
+/*
  *  Compiles the extract operator, [
  */
 TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
@@ -118,12 +118,16 @@ TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
 
     if(l->type->type == TT_Array || l->type->type == TT_Ptr){
         //check for alloca
-        Value *arr = l->val;
-        if(dynamic_cast<LoadInst*>(arr)){
-            arr = static_cast<LoadInst*>(arr)->getPointerOperand();
+        if(dynamic_cast<LoadInst*>(l->val)){
+            Value *arr = static_cast<LoadInst*>(l->val)->getPointerOperand();
+            vector<Value*> indices;
+            indices.push_back(ConstantInt::get(getGlobalContext(), APInt(64, 0, true)));
+            indices.push_back(r->val);
+            return new TypedValue(builder.CreateLoad(builder.CreateGEP(arr, indices)), l->type->extTy.get());
+        }else{
+            Value *arr = l->val;
+            return new TypedValue(builder.CreateExtractElement(arr, r->val), l->type->extTy.get());
         }
-
-        return new TypedValue(builder.CreateLoad(builder.CreateGEP(arr, r->val)), l->type->extTy.get());
     }else if(l->type->type == TT_Tuple || l->type->type == TT_Data){
         if(!dynamic_cast<ConstantInt*>(r->val))
             return compErr("Tuple indices must always be known at compile time.", op->loc);
@@ -190,8 +194,13 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
     if(!var || !index || !newVal) return 0;
 
     switch(tmp->type->type){
-        case TT_Array:
-            return new TypedValue(builder.CreateStore(newVal->val, compExtract(tmp, index, op)->val), mkAnonTypeNode(TT_Void));
+        case TT_Array: {
+            vector<Value*> indices;
+            indices.push_back(ConstantInt::get(getGlobalContext(), APInt(64, 0, true)));
+            indices.push_back(index->val);
+
+            return new TypedValue(builder.CreateStore(newVal->val, builder.CreateGEP(var, indices)), mkAnonTypeNode(TT_Void));
+        }
         case TT_Tuple:
             if(!dynamic_cast<ConstantInt*>(index->val)){
                 return compErr("Tuple indices must always be known at compile time.", op->loc);
