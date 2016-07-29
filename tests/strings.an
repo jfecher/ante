@@ -5,12 +5,12 @@
     the Str datatype once it is implemented.
 `
 
-let openingMsg = "Hello World!\n"
+let openingMsg = "Hello World!"
 
 fun getClosingMsg: => [c8]
     "Goodbye World!\n"
 
-printf("%s%s", openingMsg, getClosingMsg())
+printf("%s\n%s", openingMsg, getClosingMsg())
 
 
 type Str = [c8] cStr, u32 length
@@ -34,4 +34,4 @@ fun len: [c8] s => i32
         acc += 1
     return acc
 
-printf("len of %s = %d\n", openingMsg, len(openingMsg))
+printf("len of '%s' = %d\n", openingMsg, len(openingMsg))
