@@ -83,7 +83,7 @@ fun iteratorTest: 't iter
 ```
 
 * Here is an example implementation of a thread that 'owns' the objects inside its function
-```
+```rust
 type MyThread = 'f fn, Pid pid
 
 ext MyThread
