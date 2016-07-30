@@ -125,8 +125,10 @@ TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
             indices.push_back(r->val);
             return new TypedValue(builder.CreateLoad(builder.CreateGEP(arr, indices)), l->type->extTy.get());
         }else{
-            Value *arr = l->val;
-            return new TypedValue(builder.CreateLoad(builder.CreateGEP(arr, r->val)), l->type->extTy.get());
+            if(llvmTypeToTypeTag(l->getType()) == TT_Ptr)
+                return new TypedValue(builder.CreateLoad(builder.CreateGEP(l->val, r->val)), l->type->extTy.get());
+            else
+                return new TypedValue(builder.CreateExtractElement(l->val, r->val), l->type->extTy.get());
         }
     }else if(l->type->type == TT_Tuple || l->type->type == TT_Data){
         if(!dynamic_cast<ConstantInt*>(r->val))
