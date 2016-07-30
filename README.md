@@ -34,6 +34,7 @@ type Maybe =
     Some 't | None
 
 var f = Some 4
+f = None
 ```
 * Significant whitespace after newlines; no tabs allowed in significant whitespace.
 ```go
@@ -81,8 +82,8 @@ fun iteratorTest: 't iter
         fun = for j in iter do print(j))
 ```
 
-    - Here is an example implementation of a thread that 'owns' the objects inside its function
-```go
+* Here is an example implementation of a thread that 'owns' the objects inside its function
+```
 type MyThread = 'f fn, Pid pid
 
 ext MyThread
@@ -118,6 +119,10 @@ let increment = _ + 1
 
 print(increment(4)) ~prints 5
 
+let f = _ + increment(_)
+
+f(3) |> print
+~output: 7
 
 ~filter out all numbers that aren't divisible by 7
 let l = List(0..100):filter(_ % 7 == 0)
