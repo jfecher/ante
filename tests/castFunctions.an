@@ -11,8 +11,8 @@ ext bool
 
 
 ext Str
-    fun cast: c8* cStr => Str
-        Str(cStr, 0)
+    fun cast: [c8] cStr => Str
+        Str(cStr, 0u32)
 
 
 
@@ -24,4 +24,4 @@ fun printb: bool b
 printb(bool 2)
 
 
-Str "c8* -> Str works!".print()
+Str "[c8] -> Str works!".print()
