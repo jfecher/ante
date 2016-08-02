@@ -88,29 +88,24 @@ type MyThread = 'f fn, Pid pid
 
 ext MyThread
     fun run: self*
-        self.pid = Threads.exec(self.fn)
+        self.pid = Thread.exec(self.fn)
 
-    
+
     ~Compile time function that runs whenever MyThread is created
     pri fun handleInputs(onCreation): self
-        
-        let params = Ante.requestParamsOf(self.fn).unwrap()
+        ~get a list of all mutable variables used
+        let vars = 
+            Ante.getVarsInFn(self.fn)
+            .unwrap()
+            .filter(_.isMutable())
 
-        ~The ':' operator denotes a method where the object is mutated.
-        let vars = Ante.getVarsInFn(self.fn).unwrap():remove(params)
+        ~Store them compile-time for later use in the cleanup function
+        Ante.ctStore(vars)
+        vars.iter( Ante.invalidate(_) )
 
-        ~Store these vars for later use in compile-time
-        ~NOTE: this is a local store where 'vars' may only be used by functions of MyThread,
-        ~      for global stores, more unique names should be used
-        Ante.store(vars)
-
-        ~finally, invalidate the variables for any use whatsoever while this thread 'owns' them
-        vars.iter( Ante.tmpInvalidate(_) )
 
     pri fun cleanup(onDeletion): self
-        let vars = Ante.lookup("vars").unwrap()
-
-        ~revalidate all the variables used
+        let vars = Ante.ctLookup("vars").unwrap()
         vars.iter( Ante.revalidate(_) )
 ```
 * Explicit yet concise currying support
