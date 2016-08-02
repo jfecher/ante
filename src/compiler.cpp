@@ -698,26 +698,35 @@ TypedValue* DataDeclNode::compile(Compiler *c){
     vector<string> fieldNames;
     fieldNames.reserve(fields);
 
-    TypeNode *dataTyn = mkAnonTypeNode(TT_Tuple);
+    
+    TypeNode *first = 0;
     TypeNode *nxt = 0;
 
     auto *nvn = (NamedValNode*)child.get();
     while(nvn){
         TypeNode *tyn = (TypeNode*)nvn->typeExpr.get();
 
-        if(nxt){
+        if(first){
             nxt->next.reset(deepCopyTypeNode(tyn));
             nxt = (TypeNode*)nxt->next.get();
         }else{
-            dataTyn->extTy.reset(deepCopyTypeNode(tyn));
-            nxt = dataTyn->extTy.get();
+            first = deepCopyTypeNode(tyn);
+            nxt = first;
         }
 
         fieldNames.push_back(nvn->name);
         nvn = (NamedValNode*)nvn->next.get();
     }
 
-    auto *data = new DataType(fieldNames, dataTyn);
+    DataType *data;
+    //check if this is a tuple/function type or a singular type
+    if(first->next.get()){
+        TypeNode *dataTyn = mkAnonTypeNode(TT_Tuple);
+        dataTyn->extTy.reset(first);
+        data = new DataType(fieldNames, dataTyn);
+    }else{
+        data = new DataType(fieldNames, first);
+    }
 
     c->stoType(data, name);
     return c->getVoidLiteral();

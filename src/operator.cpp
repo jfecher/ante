@@ -286,15 +286,21 @@ TypedValue* createCast(Compiler *c, Type *castTy, TypeNode *tyn, TypedValue *val
         }else if(isIntTypeTag(tyn->type)){
             return new TypedValue(c->builder.CreatePtrToInt(valToCast->val, castTy), tyn);
         }
-    }else if(tyn->type == TT_Data && valToCast->type->type == TT_Tuple){
-        auto *dataTy = c->lookupType(tyn->typeName);
-
-        if(dataTy && *valToCast->type.get() == *dataTy->tyn.get()){
-            valToCast->type->typeName = tyn->typeName;
-            valToCast->type->type = TT_Data;
-            return valToCast;
-        }
     }
+
+    //if all automatic checks fail, test for structural equality in a datatype cast!
+    //This would apply for the following scenario (and all structurally equivalent types)
+    //
+    //type Int = i32
+    //let example = Int 3
+    //              ^^^^^
+    auto *dataTy = c->lookupType(tyn->typeName);
+    if(dataTy && *valToCast->type.get() == *dataTy->tyn.get()){
+        valToCast->type->typeName = tyn->typeName;
+        valToCast->type->type = TT_Data;
+        return valToCast;
+    }
+    
     return nullptr;
 }
 
