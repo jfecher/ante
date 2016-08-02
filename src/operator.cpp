@@ -299,8 +299,17 @@ TypedValue* createCast(Compiler *c, Type *castTy, TypeNode *tyn, TypedValue *val
         valToCast->type->typeName = tyn->typeName;
         valToCast->type->type = TT_Data;
         return valToCast;
+    //test for the reverse case, something like:  i32 example
+    //where example is of type Int
+    }else if(valToCast->type->typeName.size() > 0 && (dataTy = c->lookupType(valToCast->type->typeName))){
+        if(dataTy && *dataTy->tyn.get() == *tyn){
+            valToCast->type->typeName = "";
+            valToCast->type->type = tyn->type;
+            return valToCast;
+        }
     }
-    
+
+
     return nullptr;
 }
 
