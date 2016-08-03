@@ -6,22 +6,34 @@
 
 ~C functions
 fun printf: [c8] fmt, ...;
-
 fun puts: [c8] str;
-
 fun putchar: c8 char;
-
 fun exit: i32 status;
-
 fun malloc: i32 size => void*;
-
 fun free: void* mem;
+fun system: [c8] cmd => i32;
 
-~datatypes
+~C stdio
+type File = void*
+type FilePos = void*
+
+fun fopen: [c8] fName, [c8] mode => File;
+fun fclose: File file;
+fun fputs: [c8] str, File file;
+fun fgetc: File file;
+
+fun fgetpos: File f, FilePos fp;
+fun ftell: File f => i64;
+fun fsetpos: File f, FilePos fp;
+fun fseek: File f, i64 offset, i32 origin;
+
+fun feof: File f => bool;
+fun ferror: File f => bool;
+
+
+
+~Ante datatypes
 type Str = [c8] cStr, u32 len
-
-type Range = i32 start end step
-
 
 ~functions and methods
 ext i32
