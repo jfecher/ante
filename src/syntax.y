@@ -38,7 +38,7 @@ void yyerror(const char *msg);
 
 /* operators */
 %token Eq NotEq AddEq SubEq MulEq DivEq GrtrEq LesrEq
-%token Or And Range Returns ApplyL ApplyR New
+%token Or And Range Returns ApplyL ApplyR New Not
 
 /* literals */
 %token True False
@@ -91,13 +91,14 @@ void yyerror(const char *msg);
 %right ApplyL
 %left ApplyR
 
-%left '@' New
-
 %left Or
 %left And     
 %left Eq  NotEq GrtrEq LesrEq '<' '>'
 
 %left Range
+
+%left '@' New Not
+
 %left '+' '-'
 %left '*' '/' '%'
 
@@ -415,6 +416,7 @@ unary_op: '@' expr                    {$$ = mkUnOpNode(@$, '@', $2);}
         | '&' expr                    {$$ = mkUnOpNode(@$, '&', $2);}
         | '-' expr                    {$$ = mkUnOpNode(@$, '-', $2);}
         | New expr                    {$$ = mkUnOpNode(@$, Tok_New, $2);}
+        | Not expr                    {$$ = mkUnOpNode(@$, Tok_Not, $2);}
         | type_expr expr  %prec TYPE  {$$ = mkTypeCastNode(@$, $1, $2);}
         ;
 

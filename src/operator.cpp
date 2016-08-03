@@ -574,6 +574,8 @@ TypedValue* UnOpNode::compile(Compiler *c){
             break; //TODO
         case '-': //negation
             return new TypedValue(c->builder.CreateNeg(rhs->val), rhs->type);
+        case Tok_Not:
+            return new TypedValue(c->builder.CreateNot(rhs->val), rhs->type);
         case Tok_New:
             //the 'new' keyword in ante creates a reference to any existing value
 

@@ -65,6 +65,7 @@ enum TokenType{
     Tok_ApplyL,
     Tok_ApplyR,
     Tok_New,
+    Tok_Not,
     //All other operators are returned by ASCII value
 
     //literals
