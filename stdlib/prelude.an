@@ -13,9 +13,9 @@ fun putchar: c8 char;
 
 fun exit: i32 status;
 
-fun malloc: i32 size => i32*;
+fun malloc: i32 size => void*;
 
-fun free: i32* mem;
+fun free: void* mem;
 
 ~datatypes
 type Str = [c8] cStr, u32 len

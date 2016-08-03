@@ -276,7 +276,12 @@ bool extTysEq(const TypeNode *l, const TypeNode *r){
 bool TypeNode::operator==(TypeNode &r) const {
     if(this->type != r.type) return false;
 
-    if(r.type == TT_Ptr or r.type == TT_Array){
+    if(r.type == TT_Ptr){
+        if(extTy->type == TT_Void || r.extTy->type == TT_Void)
+            return true;
+
+        return *this->extTy.get() == *r.extTy.get();
+    }else if(r.type == TT_Array){
         return *this->extTy.get() == *r.extTy.get();
     }else if(r.type == TT_Function || r.type == TT_Method || r.type == TT_Tuple || r.type == TT_Data){
         return extTysEq(this, &r);
