@@ -458,7 +458,7 @@ expr: expr '+' maybe_newline expr                {$$ = mkBinOpNode(@$, '+', $1, 
     | expr ApplyR maybe_newline expr   {$$ = mkBinOpNode(@$, '(', $4, $1);}
     | expr ApplyL maybe_newline expr   {$$ = mkBinOpNode(@$, '(', $1, $4);}
 
-    | expr Newline                    %prec HIGH {$$ = $1;}
+    | expr Newline                               {$$ = $1;}
     | expr Newline expr                          {$$ = mkBinOpNode(@$, ';', $1, $3);}
 
     | if_pre Newline Else expr                   {$$ = setElse($1, $4);} 
