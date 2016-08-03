@@ -296,16 +296,18 @@ TypedValue* createCast(Compiler *c, Type *castTy, TypeNode *tyn, TypedValue *val
     //              ^^^^^
     auto *dataTy = c->lookupType(tyn->typeName);
     if(dataTy && *valToCast->type.get() == *dataTy->tyn.get()){
-        valToCast->type->typeName = tyn->typeName;
-        valToCast->type->type = TT_Data;
-        return valToCast;
+        auto *tycpy = deepCopyTypeNode(valToCast->type.get());
+        tycpy->typeName = tyn->typeName;
+        tycpy->type = TT_Data;
+        return new TypedValue(valToCast->val, tycpy);
     //test for the reverse case, something like:  i32 example
     //where example is of type Int
     }else if(valToCast->type->typeName.size() > 0 && (dataTy = c->lookupType(valToCast->type->typeName))){
         if(dataTy && *dataTy->tyn.get() == *tyn){
-            valToCast->type->typeName = "";
-            valToCast->type->type = tyn->type;
-            return valToCast;
+            auto *tycpy = deepCopyTypeNode(valToCast->type.get());
+            tycpy->typeName = "";
+            tycpy->type = tyn->type;
+            return new TypedValue(valToCast->val, tycpy);
         }
     }
 
