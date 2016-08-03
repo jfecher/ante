@@ -355,7 +355,7 @@ TypedValue* LetBindingNode::compile(Compiler *c){
         }
     }
 
-    bool nofree = val->type->type != TT_Ptr || dynamic_cast<Constant*>(val->val);
+    bool nofree = true;//val->type->type != TT_Ptr || dynamic_cast<Constant*>(val->val);
     c->stoVar(name, new Variable(name, val, c->scope, nofree));
     
     return val;
@@ -372,7 +372,7 @@ TypedValue* compVarDeclWithInferredType(VarDeclNode *node, Compiler *c){
     TypedValue *alloca = new TypedValue(c->builder.CreateAlloca(val->getType(), 0, node->name.c_str()), val->type);
     val = new TypedValue(c->builder.CreateStore(val->val, alloca->val), val->type);
 
-    bool nofree = val->type->type != TT_Ptr || dynamic_cast<Constant*>(val->val);
+    bool nofree = true;//val->type->type != TT_Ptr || dynamic_cast<Constant*>(val->val);
     c->stoVar(node->name, new Variable(node->name, alloca, c->scope, nofree));
     return val;
 }
@@ -393,7 +393,7 @@ TypedValue* VarDeclNode::compile(Compiler *c){
     if(expr.get()){
         TypedValue *val = expr->compile(c);
         if(!val) return 0;
-        var->noFree = var->getType() != TT_Ptr || dynamic_cast<Constant*>(val->val);
+        var->noFree = true;//var->getType() != TT_Ptr || dynamic_cast<Constant*>(val->val);
         
         //Make sure the assigned value matches the variable's type
         if(!llvmTypeEq(alloca->getType()->getPointerElementType(), val->getType())){
