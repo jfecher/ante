@@ -35,14 +35,15 @@ ante: obj obj/parser.o $(OBJFILES)
 #export the stdlib to /usr/include/ante
 #this is the only part that requires root permissions
 stdlib: $(LIBFILES) Makefile
-	@if [ `id -u` -eq 0 ]; then                                  \
-	    echo 'Exporting $< to $(LIBDIR)...';                     \
-	    mkdir -p $(LIBDIR);                                      \
-	    cp stdlib/*.an $(LIBDIR);                                \
-	 else                                                        \
-	    echo 'Must run with root permissions to export stdlib!'; \
-		echo 'To export stdlib run:';                            \
-		echo -e '\n$$ sudo make $@\n';                           \
+	@if [ `id -u` -eq 0 ]; then                                                      \
+	    echo 'Exporting $< to $(LIBDIR)...';                                         \
+	    mkdir -p $(LIBDIR);                                                          \
+	    cp stdlib/*.an $(LIBDIR);                                                    \
+	 else                                                                            \
+	    printf '\033[;31mMust run with root permissions to export stdlib!\033[;m\n'; \
+		echo 'To export stdlib run:';                                                \
+		echo -e '\n$$ sudo make stdlib\n';                                           \
+		exit 1;                                                                      \
 	 fi
 
 new: clean ante
