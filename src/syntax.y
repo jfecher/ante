@@ -42,7 +42,7 @@ void yyerror(const char *msg);
 
 /* literals */
 %token True False
-%token IntLit FltLit StrLit
+%token IntLit FltLit StrLit CharLit
 
 /* keywords */
 %token Return
@@ -151,6 +151,9 @@ fltlit: FltLit {$$ = mkFltLitNode(@$, lextxt);}
       ;
 
 strlit: StrLit {$$ = mkStrLitNode(@$, lextxt);}
+      ;
+
+charlit: CharLit {$$ = mkCharLitNode(@$, lextxt);}
       ;
 
 lit_type: I8                        {$$ = mkTypeNode(@$, TT_I8,  (char*)"");}
@@ -389,6 +392,7 @@ val: '(' expr ')'            {$$ = $2;}
    | intlit                  {$$ = $1;}
    | fltlit                  {$$ = $1;}
    | strlit                  {$$ = $1;}
+   | charlit                 {$$ = $1;}
    | True                    {$$ = mkBoolLitNode(@$, 1);}
    | False                   {$$ = mkBoolLitNode(@$, 0);}
    | let_binding             {$$ = $1;}

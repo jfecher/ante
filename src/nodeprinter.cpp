@@ -44,6 +44,11 @@ void StrLitNode::print(){
     maybePrintArr(next.get());
 }
 
+void CharLitNode::print(){
+    cout << '\'' << val << '\'';
+    maybePrintArr(next.get());
+}
+
 void ArrayNode::print(){
     putchar('[');
     /*for(size_t i = 0; i < exprs.size(); i++){

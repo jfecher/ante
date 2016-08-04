@@ -20,6 +20,7 @@ type FilePos = void*
 fun fopen: [c8] fName, [c8] mode => File;
 fun fclose: File file;
 fun fputs: [c8] str, File file;
+fun fputc: c8 char, File file;
 fun fgetc: File file => i32;
 
 fun fgetpos: File f, FilePos fp;

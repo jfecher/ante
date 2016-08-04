@@ -84,6 +84,14 @@ struct BoolLitNode : public Node{
     ~BoolLitNode(){}
 };
 
+struct CharLitNode : public Node{
+    char val;
+    TypedValue* compile(Compiler*);
+    void print(void);
+    CharLitNode(LOC_TY& loc, char c) : Node(loc), val(c){}
+    ~CharLitNode(){}
+};
+
 struct ArrayNode : public Node{
     vector<Node*> exprs;
     TypedValue* compile(Compiler*);

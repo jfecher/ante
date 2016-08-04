@@ -74,6 +74,7 @@ enum TokenType{
     Tok_IntLit,
     Tok_FltLit,
     Tok_StrLit,
+    Tok_CharLit,
 
     //keywords
     Tok_Return,

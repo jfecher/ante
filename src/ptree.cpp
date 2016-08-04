@@ -109,6 +109,10 @@ Node* mkStrLitNode(yy::parser::location_type loc, char* s){
     return new StrLitNode(loc, s);
 }
 
+Node* mkCharLitNode(yy::parser::location_type loc, char* s){
+    return new CharLitNode(loc, s[0]);
+}
+
 Node* mkBoolLitNode(yy::parser::location_type loc, char b){
     return new BoolLitNode(loc, b);
 }

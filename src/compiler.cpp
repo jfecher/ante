@@ -180,6 +180,10 @@ TypedValue* StrLitNode::compile(Compiler *c){
     return new TypedValue(c->builder.CreateGlobalStringPtr(val), strty);
 }
 
+TypedValue* CharLitNode::compile(Compiler *c){
+    return new TypedValue(ConstantInt::get(getGlobalContext(), APInt(8, val, true)), mkAnonTypeNode(TT_C8));
+}
+
 
 TypedValue* ArrayNode::compile(Compiler *c){
     vector<Constant*> arr;

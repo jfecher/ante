@@ -78,7 +78,8 @@ namespace ante{
         int genWsTok(yy::parser::location_type* loc);
         int genNumLitTok(yy::parser::location_type* loc);
         int genAlphaNumTok(yy::parser::location_type* loc);
-        int genStrLitTok(char delim, yy::parser::location_type* loc);
+        int genStrLitTok(yy::parser::location_type* loc);
+        int genCharLitTok(yy::parser::location_type* loc);
         int genOpTok(yy::parser::location_type* loc);
         int skipWsAndReturnNext(yy::parser::location_type* loc);
     };

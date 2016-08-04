@@ -445,12 +445,12 @@ int Lexer::skipWsAndReturnNext(yy::location* loc){
     return next(loc);
 }
 
-int Lexer::genStrLitTok(char delim, yy::parser::location_type* loc){
+int Lexer::genStrLitTok(yy::parser::location_type* loc){
     string s = "";
     string* fName = new string(fileName);
     loc->begin = yy::position(fName, row, col);
     incPos();
-    while(cur != delim && cur != EOF){
+    while(cur != '"' && cur != EOF){
         if(cur == '\\'){
             switch(nxt){
                 case 'a': s += '\a'; break;
@@ -468,11 +468,41 @@ int Lexer::genStrLitTok(char delim, yy::parser::location_type* loc){
         }
         incPos();
     }
-    incPos(); //consume ending delim
     
     loc->end = yy::position(fName, row, col);
+    incPos(); //consume ending delim
     setlextxt(&s);
     return Tok_StrLit;
+}
+
+int Lexer::genCharLitTok(yy::parser::location_type* loc){
+    string s = "";
+    string* fName = new string(fileName);
+    loc->begin = yy::position(fName, row, col);
+    incPos();
+    if(cur == '\\'){
+        switch(nxt){
+            case 'a': s += '\a'; break;
+            case 'b': s += '\b'; break;
+            case 'f': s += '\f'; break;
+            case 'n': s += '\n'; break;
+            case 'r': s += '\r'; break;
+            case 't': s += '\t'; break;
+            case 'v': s += '\v'; break;
+            default:  s += nxt; break;
+        }
+        incPos();
+    }else{
+        s += cur;
+    }
+
+    incPos();
+    loc->end = yy::position(fName, row, col);
+    setlextxt(&s);
+
+    if(cur != '\'') lexErr("Char literal is missing a closing apostrophe", loc);
+    incPos();
+    return Tok_CharLit;
 }
 
 /*
@@ -481,8 +511,10 @@ int Lexer::genStrLitTok(char delim, yy::parser::location_type* loc){
  *  returns the token by its value.
  */
 int Lexer::genOpTok(yy::parser::location_type* loc){
-    if(cur == '"' || cur == '\'') 
-        return genStrLitTok(cur, loc);
+    if(cur == '"') 
+        return genStrLitTok(loc);
+    if(cur == '\'')
+        return genCharLitTok(loc);
    
     //If the token is none of the above, it must be a symbol, or a pair of symbols.
     //Set the beginning of the token about to be created here.

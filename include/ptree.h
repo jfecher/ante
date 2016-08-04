@@ -18,6 +18,7 @@ Node* setElse(Node *ifn, Node *elseN);
 Node* mkIntLitNode(LOC_TY loc, char* s);
 Node* mkFltLitNode(LOC_TY loc, char* s);
 Node* mkStrLitNode(LOC_TY loc, char* s);
+Node* mkCharLitNode(LOC_TY loc, char* s);
 Node* mkBoolLitNode(LOC_TY loc, char b);
 Node* mkArrayNode(LOC_TY loc, Node *expr);
 Node* mkTupleNode(LOC_TY loc, Node *expr);
