@@ -460,6 +460,7 @@ int Lexer::genStrLitTok(yy::parser::location_type* loc){
                 case 'r': s += '\r'; break;
                 case 't': s += '\t'; break;
                 case 'v': s += '\v'; break;
+                case '0': s += '\0'; break;
                 default:  s += nxt; break;
             }
             incPos();
@@ -489,6 +490,7 @@ int Lexer::genCharLitTok(yy::parser::location_type* loc){
             case 'r': s += '\r'; break;
             case 't': s += '\t'; break;
             case 'v': s += '\v'; break;
+            case '0': s += '\0'; break;
             default:  s += nxt; break;
         }
         incPos();

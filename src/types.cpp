@@ -174,7 +174,9 @@ Type* Compiler::typeNodeToLlvmType(TypeNode *tyNode){
 
     switch(tyNode->type){
         case TT_Ptr:
-            return PointerType::get(typeNodeToLlvmType(tyn), 0);
+            return tyn->type != TT_Void ?
+                PointerType::get(typeNodeToLlvmType(tyn), 0)
+                : Type::getInt8Ty(getGlobalContext())->getPointerTo();
         case TT_Array:
             return PointerType::get(typeNodeToLlvmType(tyn), 0);
         case TT_Tuple:
@@ -276,12 +278,10 @@ bool extTysEq(const TypeNode *l, const TypeNode *r){
 bool TypeNode::operator==(TypeNode &r) const {
     if(this->type != r.type) return false;
 
-    if(r.type == TT_Ptr){
+    if(r.type == TT_Ptr || r.type == TT_Array){
         if(extTy->type == TT_Void || r.extTy->type == TT_Void)
             return true;
 
-        return *this->extTy.get() == *r.extTy.get();
-    }else if(r.type == TT_Array){
         return *this->extTy.get() == *r.extTy.get();
     }else if(r.type == TT_Function || r.type == TT_Method || r.type == TT_Tuple || r.type == TT_Data){
         return extTysEq(this, &r);

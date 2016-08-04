@@ -22,6 +22,7 @@ fun fclose: File file;
 fun fputs: [c8] str, File file;
 fun fputc: c8 char, File file;
 fun fgetc: File file => i32;
+fun fgets: [c8] str, i32 num, File file => [c8];
 
 fun fgetpos: File f, FilePos fp;
 fun ftell: File f => i64;

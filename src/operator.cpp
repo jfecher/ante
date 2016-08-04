@@ -26,6 +26,7 @@ TypedValue* Compiler::compSub(TypedValue *l, TypedValue *r, BinOpNode *op){
         case TT_I16: case TT_U16:
         case TT_I32: case TT_U32:
         case TT_I64: case TT_U64:
+        case TT_Ptr:
             return new TypedValue(builder.CreateSub(l->val, r->val), l->type);
         case TT_F16:
         case TT_F32:
@@ -203,7 +204,7 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
 
             return new TypedValue(builder.CreateStore(newVal->val, builder.CreateGEP(var, indices)), mkAnonTypeNode(TT_Void));
         }
-        case TT_Tuple:
+        case TT_Tuple: case TT_Data:
             if(!dynamic_cast<ConstantInt*>(index->val)){
                 return compErr("Tuple indices must always be known at compile time.", op->loc);
             }else{
@@ -277,9 +278,9 @@ TypedValue* createCast(Compiler *c, Type *castTy, TypeNode *tyn, TypedValue *val
             return new TypedValue(c->builder.CreateFPCast(valToCast->val, castTy), tyn);
         }
 
-    }else if(valToCast->type->type == TT_Ptr || valToCast->type->type == TT_StrLit){
+    }else if(valToCast->type->type == TT_Ptr || valToCast->type->type == TT_Array){
         // ptr -> ptr
-        if(tyn->type == TT_Ptr){
+        if(tyn->type == TT_Ptr || tyn->type == TT_Array){
             return new TypedValue(c->builder.CreatePointerCast(valToCast->val, castTy), tyn);
 
         // ptr -> int
