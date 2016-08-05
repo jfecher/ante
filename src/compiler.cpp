@@ -661,7 +661,6 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
             }
         }
         //optimize!
-        module->dump();
         passManager->run(*f);
     }
 
