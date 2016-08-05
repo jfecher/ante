@@ -644,7 +644,6 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
         exitScope();
    
         this->scope = oldScope;
-        builder.SetInsertPoint(&f->back());
 
         //llvm requires explicit returns, so generate a void return even if
         //the user did not in their void function.
@@ -662,6 +661,7 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
             }
         }
         //optimize!
+        module->dump();
         passManager->run(*f);
     }
 

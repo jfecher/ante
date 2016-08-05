@@ -120,11 +120,17 @@ TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
     if(l->type->type == TT_Array || l->type->type == TT_Ptr){
         //check for alloca
         if(dynamic_cast<LoadInst*>(l->val)){
-            Value *arr = static_cast<LoadInst*>(l->val)->getPointerOperand();
-            vector<Value*> indices;
-            indices.push_back(ConstantInt::get(getGlobalContext(), APInt(64, 0, true)));
-            indices.push_back(r->val);
-            return new TypedValue(builder.CreateLoad(builder.CreateGEP(arr, indices)), l->type->extTy.get());
+
+            if(llvmTypeToTypeTag(l->val->getType()) == TT_Ptr){
+                return new TypedValue(builder.CreateLoad(builder.CreateGEP(l->val, r->val)), l->type->extTy.get());
+            }else{
+                Value *arr = static_cast<LoadInst*>(l->val)->getPointerOperand();
+            
+                vector<Value*> indices;
+                indices.push_back(ConstantInt::get(getGlobalContext(), APInt(64, 0, true)));
+                indices.push_back(r->val);
+                return new TypedValue(builder.CreateLoad(builder.CreateGEP(arr, indices)), l->type->extTy.get());
+            }
         }else{
             if(llvmTypeToTypeTag(l->getType()) == TT_Ptr)
                 return new TypedValue(builder.CreateLoad(builder.CreateGEP(l->val, r->val)), l->type->extTy.get());
@@ -186,7 +192,7 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
 
     if(!dynamic_cast<LoadInst*>(tmp->val))
         return compErr("Variable must be mutable to insert values, but instead is an immutable " +
-                llvmTypeToStr(tmp->getType()), op->lval->loc);
+                typeNodeToStr(tmp->type.get()), op->lval->loc);
 
     Value *var = static_cast<LoadInst*>(tmp->val)->getPointerOperand();
     if(!var) return 0;
@@ -197,12 +203,23 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
     if(!var || !index || !newVal) return 0;
 
     switch(tmp->type->type){
-        case TT_Array: {
-            vector<Value*> indices;
-            indices.push_back(ConstantInt::get(getGlobalContext(), APInt(64, 0, true)));
-            indices.push_back(index->val);
+        case TT_Array: case TT_Ptr: {
 
-            return new TypedValue(builder.CreateStore(newVal->val, builder.CreateGEP(var, indices)), mkAnonTypeNode(TT_Void));
+            if(*tmp->type->extTy.get() != *newVal->type.get())
+                return compErr("Cannot create store of types: "+typeNodeToStr(tmp->type.get())+" <- "
+                        +typeNodeToStr(newVal->type.get()), assignExpr->loc);
+
+            Value *dest;
+            if(tmp->getType()->isPointerTy()){
+                dest = builder.CreateInBoundsGEP(tmp->getType()->getPointerElementType(), tmp->val, index->val);
+            }else{
+                vector<Value*> indices;
+                indices.push_back(ConstantInt::get(getGlobalContext(), APInt(64, 0, true)));
+                indices.push_back(index->val);
+                dest = builder.CreateGEP(var, indices);
+            }
+
+            return new TypedValue(builder.CreateStore(newVal->val, dest), mkAnonTypeNode(TT_Void));
         }
         case TT_Tuple: case TT_Data:
             if(!dynamic_cast<ConstantInt*>(index->val)){
@@ -340,19 +357,24 @@ TypedValue* IfNode::compile(Compiler *c){
     auto &blocks = f->getBasicBlockList();
 
     auto *thenbb = BasicBlock::Create(getGlobalContext(), "then");
-    auto *mergbb = BasicBlock::Create(getGlobalContext(), "endif");
+
+    //wait to create the endif label until after the else is created,
+    //just to make the output look better
+    BasicBlock *mergbb;
    
     //only create the else block if this ifNode actually has an else clause
     BasicBlock *elsebb;
     
     if(elseN){
         elsebb = BasicBlock::Create(getGlobalContext(), "else");
+        mergbb = BasicBlock::Create(getGlobalContext(), "endif");
         c->builder.CreateCondBr(cond->val, thenbb, elsebb);
    
         blocks.push_back(thenbb);
         blocks.push_back(elsebb);
         blocks.push_back(mergbb);
     }else{
+        mergbb = BasicBlock::Create(getGlobalContext(), "endif");
         c->builder.CreateCondBr(cond->val, thenbb, mergbb);
         blocks.push_back(thenbb);
         blocks.push_back(mergbb);
