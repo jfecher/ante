@@ -321,7 +321,7 @@ TypedValue* createCast(Compiler *c, Type *castTy, TypeNode *tyn, TypedValue *val
     //test for the reverse case, something like:  i32 example
     //where example is of type Int
     }else if(valToCast->type->typeName.size() > 0 && (dataTy = c->lookupType(valToCast->type->typeName))){
-        if(dataTy && *dataTy->tyn.get() == *tyn){
+        if(*dataTy->tyn.get() == *tyn){
             auto *tycpy = deepCopyTypeNode(valToCast->type.get());
             tycpy->typeName = "";
             tycpy->type = tyn->type;
@@ -392,10 +392,9 @@ TypedValue* IfNode::compile(Compiler *c){
         if(!thenVal || !elseVal) return 0;
 
 
-        if(!llvmTypeEq(thenVal->getType(), elseVal->getType())){
-            return c->compErr("If condition's then expr's type " + llvmTypeToStr(thenVal->getType()) +
-                            " does not match the else expr's type " + llvmTypeToStr(elseVal->getType()), loc);
-        }
+        if(*thenVal->type.get() != *elseVal->type.get())
+            return c->compErr("If condition's then expr's type " + typeNodeToStr(thenVal->type.get()) +
+                            " does not match the else expr's type " + typeNodeToStr(elseVal->type.get()), loc);
 
 
         c->builder.SetInsertPoint(mergbb);
