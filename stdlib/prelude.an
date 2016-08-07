@@ -38,13 +38,11 @@ fun ferror: File f => bool;
 type Str = [c8] cStr, u32 len
 
 ~functions and methods
-ext i32
-    fun print: i32 x
-        printf("%d\n", x)
+fun i32.print: i32 x
+    printf("%d\n", x)
 
-ext Str
-    fun print: Str s
-        puts(s.cStr)
+fun Str.print: Str s
+    puts(s.cStr)
 
 fun printd: i32 x
     printf("%d\n", x)

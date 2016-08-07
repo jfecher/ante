@@ -13,12 +13,6 @@ fun getClosingMsg: => [c8]
 printf("%s\n%s", openingMsg, getClosingMsg())
 
 
-type Str = [c8] cStr, u32 length
-
-fun print: Str s
-    puts(s.cStr)
-
-
 let str = Str("test", 4u32)
 print(str)
 
@@ -28,10 +22,10 @@ print( Str("str", 3u32) )
 
 ~Gets the length of null-terminated strings.
 ~Same as strlen from the c library.
-fun len: [c8] s => i32
+fun [c8].len: [c8] s => i32
     var acc = 0
     while s[acc] != 0u8 do
         acc += 1
     return acc
 
-printf("len(\"%s\") = %d\n", openingMsg, len(openingMsg))
+printf("len(\"%s\") = %d\n", openingMsg, openingMsg.len())
