@@ -130,9 +130,6 @@ print(typeof(n) ++ " " ++ n)  ~output: i32 43
     raw        Declares a pointer or array that is not
                automatically freed by the compiler.
 
-    pathogen   Specifies a variable or function can
-               never be evaluated at compile time.
-    
     noinit     Specifies a variable should not have
                its memory cleared.  This modifier has
                no function in a let binding.
@@ -268,10 +265,8 @@ add(five, i32 thirteen)
 
     The syntax for declaring arrays is shown below.  The array arr
     declared below is an array of 30 integers, each initialized to 1
-
-    NOTE: The size must be a non-pathogen integer expression.
 `
-var i32[30] arr = 1
+var arr = i32[30].init(fun = 1)
 
 ~Each element of an array can also be initialized individually
 var assortedNums = [9, -76, 3.14159265, 2^8, 1 + 2*(6-3)]
@@ -623,81 +618,48 @@ let stoplight = if light == "green" then "go" else "stop"
 ~Note how in the expression below the function definition is sequenced by the Newline and
 ~following expression containing getThree().  If the expr-block were to end at line 637,
 ~then three would be instead set to the value of the function definition (being the function itself)
-~Note2: The example below sequences with 2 newlines, any number of newlines will suffice.
+~The example below sequences with 2 newlines, any number of newlines will suffice.
 let three =
-    fun getThree: => i32
-        3
+    fun getThree: = 3
 
     getThree()
-
-`
-        Pathogen infections
-    Pathogen is a modifier given to a function which can never be evaluated
-    compile time.  Examples include io functions such as print and read.  When
-    called within another function, the pathogen function infects that function
-    as well, making it a pathogen function without the need to explicitly
-    declare it as such.  The implicit pathogen function is said to be infected.
-    The pathogen modifier is usually only used in rare cases such as defining your 
-    own print function without utilizing the standard api, or using an external c api.  
-    While less common, the pathogen modifier may be used for variables, classes, enums, etc.
-`
-pathogen fun myPrint: [c8] msg
-    let i = 4 + 2
-    system("echo '" ++ msg ++ i ++ "'") ~note: system is already a pathogen function
-
-~Because the following function uses the pathogen myPrint, it cannot be
-~evaluated compile-time, so the system call to echo 'Hello World' will
-~occur during run-time.
-fun printMsg:
-    myPrint("Hello World!")
-
-~To use a pathogen function without the host becoming infected, the keyword do
-~is used when calling a pathogen or infected function.  This compile time evaluation
-~of pathogen functions can be useful in several applications, such as loading an image
-~into a variable or class representing it without the need to search for it during runtime,
-~and eliminating the need to include the raw image as an asset in production.
-fun compileTimeLoadImg => Image*
-    let = File("path/to/image.png")
-
-    ~Read all of the image data into imgData at compile time.
-    let imgData = do f.readAll(imgData)
-    
-    ~Then return the image
-    new Image(imgData)
-
-
-~Conversely, to infect a non-pathogen function, the infect keyword may be used.
-~Note that only the infected instance of the function is evaluated during runtime.
-fun runTimeLoadImg => Image*
-    return infect compileTimeLoadImg()
-
-~Values can also be infected if set equal to the return value of a pathogen function
-let myImg = runTimeLoadImg()
-someFunction(myImg) ~This instance of someFunction is infected since an infected parameter is used.
 
 
 `
         C FFI
-    The c foreign function interface is implemented within the c_ffi module.
-    Once this module is imported, objects can be created of the C class.
-    This class contains the header(s) to parse, and possibly specific
-    functions from that header.  Since the object is primarily used for
-    its overloading of import, its contents must be known at compile-time.
+    Ante is fully compatible with C, and uses the C calling convention by default.
+
+    To use C functions, the function declarations may either be manually specified,
+    or an entire C header can be parsed automatically with the C datatype.  The
+    C datatype, from c_ffi.an, overloads the import operator to parse through a
+    specified c file at compile time to dynamically translate it into external
+    function declarations.
 `
 
 ~By default, the file is parsed and every function is added.
-import C("path/to/file.h")
+import C "path/to/file.h"
 
 ~Alternatively, specific functions can be whitelisted with .fn
-import C("some/other/file.h").fn("func1", "func2", "func3")
+import (C"some/other/file.h").fn("func1", "func2", "func3")
 
-~Multiple files can also stored in one C object
+~Multiple files can also stored in one C object via
+~a tuple-cast:
 import C("stdio.h", "stdlib.h")
+
+~or a list cast
+import C["stdio.h", "stdlib.h"]
 
 putchar(72)
 putchar(105)
 putchar(10)
 ~output: Hi
+
+
+~or just manually specify the function's signature
+fun malloc: u32 size => void*;
+
+var ptr = i32* malloc(4)
+@ptr = 3
 
 
 `
@@ -1782,7 +1744,6 @@ modifiers:
     pro 
     const
     noinit
-    pathogen
 
 datatypes:
     type
