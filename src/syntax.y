@@ -54,7 +54,7 @@ void yyerror(const char *msg);
 
 /* modifiers */
 %token Pub Pri Pro Raw
-%token Const Noinit Pathogen
+%token Const Noinit
 
 /* other */
 %token Where Infect Cleanse Ct
@@ -81,7 +81,7 @@ void yyerror(const char *msg);
 %left STMT Fun Let In Import Return
 %left MED
 
-%left MODIFIER Pub Pri Pro Raw Const Noinit Pathogen
+%left MODIFIER Pub Pri Pro Raw Const Noinit
 %left Returns
 
 
@@ -202,7 +202,6 @@ modifier: Pub      {$$ = mkModNode(@$, Tok_Pub);}
         | Raw      {$$ = mkModNode(@$, Tok_Raw);}
         | Const    {$$ = mkModNode(@$, Tok_Const);}
         | Noinit   {$$ = mkModNode(@$, Tok_Noinit);}
-        | Pathogen {$$ = mkModNode(@$, Tok_Pathogen);}
         ;
 
 modifier_list_: modifier_list_ modifier {$$ = setNext($1, $2);}

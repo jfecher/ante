@@ -105,7 +105,6 @@ enum TokenType{
     Tok_Raw,
     Tok_Const,
     Tok_Noinit,
-    Tok_Pathogen,
 
     //other
     Tok_Where,

@@ -84,7 +84,6 @@ map<int, const char*> tokDict = {
     {Tok_Raw, "Raw"},
     {Tok_Const, "Const"},
     {Tok_Noinit, "Noinit"},
-    {Tok_Pathogen, "Pathogen"},
 
     //other
     {Tok_Where, "Where"},
@@ -153,7 +152,6 @@ map<string, int> keywords = {
     {"raw",      Tok_Raw},
     {"const",    Tok_Const},
     {"noinit",   Tok_Noinit},
-    {"pathogen", Tok_Pathogen},
 
     //other
     {"where",    Tok_Where},
