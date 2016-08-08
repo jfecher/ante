@@ -102,17 +102,14 @@ void yyerror(const char *msg);
 %left '+' '-'
 %left '*' '/' '%'
 
+%left TYPE '&'
 %left '.'
-%left '&'
 
 /* 
     Being below HIGH, this ensures parenthetical expressions will be parsed
     as just order-of operations parenthesis, instead of a single-value tuple.
 */
 %nonassoc ')'
-
-/* Type-casting has a very high precedence, one that is just below function calling */
-%left TYPE
 
 %nonassoc '(' '[' Indent Unindent
 %nonassoc HIGH
