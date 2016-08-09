@@ -417,17 +417,15 @@ TypedValue* IfNode::compile(Compiler *c){
 TypedValue* compMemberAccess(Compiler *c, Node *ln, VarNode *field, BinOpNode *binop){
     if(!ln) return 0;
 
-    if(dynamic_cast<TypeNode*>(ln)){
+    if(auto *tn = dynamic_cast<TypeNode*>(ln)){
         //since ln is a typenode, this is a static field/method access, eg Math.rand
-        Type* lty = c->typeNodeToLlvmType((TypeNode*)ln);
-
-        string valName = llvmTypeToStr(lty) + "_" + field->name;
+        string valName = typeNodeToStr(tn) + "_" + field->name;
 
         if(auto *f = c->getFunction(valName))
             return f;
 
-        return c->compErr("No static method or field called " + field->name + " was found in type " + 
-                llvmTypeToStr(lty), binop->loc);
+        return c->compErr("No static method called '" + field->name + "' was found in type " + 
+                typeNodeToStr(tn), binop->loc);
     }else{
         //ln is not a typenode, so this is not a static method call
         Value *val;
