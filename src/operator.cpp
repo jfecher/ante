@@ -539,6 +539,65 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
     return new TypedValue(c->builder.CreateCall(f, args), tvf->type->extTy.get());
 }
 
+TypedValue* Compiler::compLogicalOr(Node *lexpr, Node *rexpr, BinOpNode *op){
+    Function *f = builder.GetInsertBlock()->getParent();
+    auto &blocks = f->getBasicBlockList();
+
+    auto *lhs = lexpr->compile(this);
+
+    auto *curbb = builder.GetInsertBlock();
+    auto *orbb = BasicBlock::Create(getGlobalContext(), "or");
+    auto *mergebb = BasicBlock::Create(getGlobalContext(), "merge");
+
+    builder.CreateCondBr(lhs->val, mergebb, orbb);
+    blocks.push_back(orbb);
+    blocks.push_back(mergebb);
+
+
+    builder.SetInsertPoint(orbb);
+    auto *rhs = rexpr->compile(this);
+    builder.CreateBr(mergebb);
+
+    builder.SetInsertPoint(mergebb);
+    auto *phi = builder.CreatePHI(rhs->getType(), 2);
+   
+    //short circuit, returning true if return from the first label
+    phi->addIncoming(ConstantInt::get(getGlobalContext(), APInt(1, true, true)), curbb);
+    phi->addIncoming(rhs->val, orbb);
+
+    return new TypedValue(phi, rhs->type);
+    
+}
+
+TypedValue* Compiler::compLogicalAnd(Node *lexpr, Node *rexpr, BinOpNode *op){
+    Function *f = builder.GetInsertBlock()->getParent();
+    auto &blocks = f->getBasicBlockList();
+
+    auto *lhs = lexpr->compile(this);
+
+    auto *curbb = builder.GetInsertBlock();
+    auto *andbb = BasicBlock::Create(getGlobalContext(), "and");
+    auto *mergebb = BasicBlock::Create(getGlobalContext(), "merge");
+
+    builder.CreateCondBr(lhs->val, andbb, mergebb);
+    blocks.push_back(andbb);
+    blocks.push_back(mergebb);
+
+
+    builder.SetInsertPoint(andbb);
+    auto *rhs = rexpr->compile(this);
+    builder.CreateBr(mergebb);
+
+
+    builder.SetInsertPoint(mergebb);
+    auto *phi = builder.CreatePHI(rhs->getType(), 2);
+   
+    //short circuit, returning false if return from the first label
+    phi->addIncoming(ConstantInt::get(getGlobalContext(), APInt(1, false, true)), curbb);
+    phi->addIncoming(rhs->val, andbb);
+
+    return new TypedValue(phi, rhs->type);
+}
 
 /*
  *  Compiles an operation along with its lhs and rhs
@@ -548,6 +607,10 @@ TypedValue* BinOpNode::compile(Compiler *c){
         return compMemberAccess(c, lval.get(), (VarNode*)rval.get(), this);
     else if(op == '(')
         return compFnCall(c, lval.get(), rval.get());
+    else if(op == Tok_And)
+        return c->compLogicalAnd(lval.get(), rval.get(), this);
+    else if(op == Tok_Or)
+        return c->compLogicalOr(lval.get(), rval.get(), this);
 
 
     TypedValue *lhs = lval->compile(c);
@@ -573,8 +636,6 @@ TypedValue* BinOpNode::compile(Compiler *c){
         case Tok_NotEq: return new TypedValue(c->builder.CreateICmpNE(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
         case Tok_LesrEq: return new TypedValue(c->builder.CreateICmpULE(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
         case Tok_GrtrEq: return new TypedValue(c->builder.CreateICmpUGE(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
-        case Tok_Or: break;
-        case Tok_And: break;
     }
 
     return c->compErr("Unknown operator " + Lexer::getTokStr(op), loc);
