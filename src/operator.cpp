@@ -328,8 +328,7 @@ TypedValue* createCast(Compiler *c, Type *castTy, TypeNode *tyn, TypedValue *val
             return new TypedValue(valToCast->val, tycpy);
         }
     }
-
-
+    
     return nullptr;
 }
 
@@ -535,8 +534,7 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
         i++;
     }
 
-    
-    return new TypedValue(c->builder.CreateCall(f, args), tvf->type->extTy.get());
+    return new TypedValue(c->builder.CreateCall(f, args), deepCopyTypeNode(tvf->type->extTy.get()));
 }
 
 TypedValue* Compiler::compLogicalOr(Node *lexpr, Node *rexpr, BinOpNode *op){

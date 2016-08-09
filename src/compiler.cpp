@@ -257,7 +257,7 @@ TypedValue* TupleNode::compile(Compiler *c){
     if(exprs.size() == 0){
         tyn->type = TT_Void;
     }
-
+   
     return new TypedValue(tuple, tyn);
 }
 
@@ -905,9 +905,7 @@ void Compiler::compileNative(){
     //this file will become the obj file before linking
     string objFile = modName + ".o";
 
-    //cout << "Compiling " << modName << "...\n";
     if(!compileIRtoObj(objFile)){
-        //cout << "Linking...\n";
         linkObj(objFile, modName);
         remove(objFile.c_str());
     }
@@ -920,7 +918,6 @@ int Compiler::compileObj(){
     string modName = removeFileExt(fileName);
     string objFile = modName + ".o";
 
-    cout << "Compiling " << modName << " to .o file...\n";
     return compileIRtoObj(objFile);
 }
 
