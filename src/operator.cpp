@@ -557,6 +557,9 @@ TypedValue* Compiler::compLogicalOr(Node *lexpr, Node *rexpr, BinOpNode *op){
     builder.SetInsertPoint(orbb);
     auto *rhs = rexpr->compile(this);
     builder.CreateBr(mergebb);
+    
+    if(rhs->type->type != TT_Bool)
+        return compErr("The 'or' operator's rval must be of type bool, but instead is of type "+typeNodeToStr(rhs->type.get()), op->rval->loc);
 
     builder.SetInsertPoint(mergebb);
     auto *phi = builder.CreatePHI(rhs->getType(), 2);
@@ -588,6 +591,8 @@ TypedValue* Compiler::compLogicalAnd(Node *lexpr, Node *rexpr, BinOpNode *op){
     auto *rhs = rexpr->compile(this);
     builder.CreateBr(mergebb);
 
+    if(rhs->type->type != TT_Bool)
+        return compErr("The 'and' operator's rval must be of type bool, but instead is of type "+typeNodeToStr(rhs->type.get()), op->rval->loc);
 
     builder.SetInsertPoint(mergebb);
     auto *phi = builder.CreatePHI(rhs->getType(), 2);

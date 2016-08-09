@@ -468,8 +468,8 @@ int Lexer::genStrLitTok(yy::parser::location_type* loc){
         incPos();
     }
     
-    loc->end = yy::position(fName, row, col);
     incPos(); //consume ending delim
+    loc->end = yy::position(fName, row, col);
     setlextxt(&s);
     return Tok_StrLit;
 }

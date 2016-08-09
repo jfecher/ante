@@ -355,7 +355,7 @@ TypedValue* LetBindingNode::compile(Compiler *c){
     TypeNode *tyNode;
     if((tyNode = (TypeNode*)typeExpr.get())){
         if(!llvmTypeEq(val->val->getType(), c->typeNodeToLlvmType(tyNode))){
-            return c->compErr("Incompatible types in explicit binding.", loc);
+            return c->compErr("Incompatible types in explicit binding.", expr->loc);
         }
     }
 
