@@ -3,7 +3,7 @@
 `
 
 let tup = (1, 2, "three")
-printf("tup: %d, %d, %s\n", tup[0], tup[1], tup[2])
+printf "tup: %d, %d, %s\n" (tup#0) (tup#1) (tup#2)
 
 
 fun getCoords: => i32,i32
@@ -14,19 +14,19 @@ fun toTuple: i32 a b => i32,i32
     return (a, b)
 
 fun printTuple: [c8] name, i32,i32 t
-    printf("%s = (%d, %d)\n", name, t[0], t[1])
+    printf "%s = (%d, %d)\n" name (t#0) (t#1)
 
 
 let coords = getCoords()
-printTuple("coords", coords)
+printTuple "coords" coords
 
-printTuple("toTuple(3, 2)", toTuple(3, 2))
+printTuple "toTuple(3, 2)" (toTuple 3 2)
 
 
 var mutTup = (5_u8, 66, 7_i64)
-mutTup[1] = 6
+mutTup#1 = 6
 
-printf("mutTup = %d, %d, %d\n", mutTup[0], mutTup[1], mutTup[2])
+printf "mutTup = %d, %d, %d\n" (mutTup#0) (mutTup#1) (mutTup#2)
 
 
 let test = (
@@ -34,4 +34,4 @@ let test = (
     43214312
 )
 
-printTuple("test", test)
+printTuple "test" test

@@ -3,12 +3,12 @@
         Tests initializations, assignments, and print statements
 `
 var i = 12
-printd(i)
+printd i
 i = 3
-printd(i)
+printd i
 
 
 var s = "Hello "
-printf("%s", s)
+printf "%s" s
 s = "World!"
-puts(s)
+puts s

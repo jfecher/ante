@@ -513,12 +513,16 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
 
 
     if(f->arg_size() != args.size() && !f->isVarArg()){
-        if(args.size() == 1)
-            return c->compErr("Called function was given 1 argument but was declared to take " 
-                    + to_string(f->arg_size()), r->loc);
-        else
-            return c->compErr("Called function was given " + to_string(args.size()) + 
-                    " arguments but was declared to take " + to_string(f->arg_size()), r->loc);
+        //check if an empty tuple is being applied to a zero argument function before continuing
+        //if not checked, it will count it as an argument instead of the absence of any
+        if(f->arg_size() != 0 || typedArgs[0]->type->type != TT_Void){
+            if(args.size() == 1)
+                return c->compErr("Called function was given 1 argument but was declared to take " 
+                        + to_string(f->arg_size()), r->loc);
+            else
+                return c->compErr("Called function was given " + to_string(args.size()) + 
+                        " arguments but was declared to take " + to_string(f->arg_size()), r->loc);
+        }
     }
 
     /* unpack the tuple of arguments into a vector containing each value */

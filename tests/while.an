@@ -2,7 +2,7 @@
 var i = 0
 
 while i < 10_000 do
-    printf("%d\n", i)
-    i = i + 1
+    printf "%d\n" i
+    i += 1
 
 

@@ -7,13 +7,17 @@
 
 var i = 5
 
-if i == 3
-    puts("3")
-elif i == 4
-    puts("4")
-elif i == 5
-    puts("5")
-elif i == 6
-    puts("6")
+if i == 3 then
+    puts "3"
+
+elif i == 4 then
+    puts "4"
+
+elif i == 5 then
+    puts "5"
+
+elif i == 6 then
+    puts "6"
+
 else
-    puts("i is outside the range 3-6 inclusive!")
+    puts "i is outside the range 3-6 inclusive!"

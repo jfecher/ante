@@ -7,7 +7,7 @@
 ~Declare a function pointer main and set it equal to
 ~an anonymous function
 var printMsg = 
-    fun = print("Hello World!")
+    fun = print "Hello World!"
 
 
 ~typeof add is:
@@ -21,6 +21,6 @@ add = mul
 
 
 var flip = fun f g x
-    g(f(x))
+    g (f x)
 
-assert(flip(sqrt, neg, 4) == -2)
+assert(flip sqrt neg 4 == -2)

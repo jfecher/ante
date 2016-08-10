@@ -478,6 +478,7 @@ int Lexer::genCharLitTok(yy::parser::location_type* loc){
     string s = "";
     string* fName = new string(fileName);
     loc->begin = yy::position(fName, row, col);
+
     incPos();
     if(cur == '\\'){
         switch(nxt){

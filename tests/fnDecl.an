@@ -4,9 +4,9 @@
 `
 fun printMsg: bool b
     if b then
-        puts("Hello World!")
+        puts "Hello World!"
     else
-        puts("Goodbye World!")
+        puts "Goodbye World!"
 
 
 fun divisibleByThree: i32 i => bool
@@ -22,12 +22,12 @@ fun fact: i32 x => i32
     else x * fact(x-1)
 
 
-printMsg(true)
-if divisibleByThree(23) then
-   printf("23 is divisible by 3\n")
+printMsg true
+if divisibleByThree 23 then
+   puts "23 is divisible by 3"
 
-if isEven(4) then
-   printf("fact(5) = %d\n", fact(5))
+if isEven 4 then
+   puts "fact(5) = %d\n" (fact 5)
 
 printMsg(1 + 1 != 2)
 

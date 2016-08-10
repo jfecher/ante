@@ -35,14 +35,14 @@ fun fib: i32 n => i32
 
 
 ~Show the beginning of the range just to check for correctness
-printf("fib(%d) = %d\n", 3,  fib(3))
-printf("fib(%d) = %d\n", 4,  fib(4))
-printf("fib(%d) = %d\n", 5,  fib(5))
-printf("fib(%d) = %d\n", 6,  fib(6))
-printf("fib(%d) = %d\n", 7,  fib(7))
+printf "fib(%d) = %d\n" 3 (fib 3)
+printf "fib(%d) = %d\n" 4 (fib 4)
+printf "fib(%d) = %d\n" 5 (fib 5)
+printf "fib(%d) = %d\n" 6 (fib 6)
+printf "fib(%d) = %d\n" 7 (fib 7)
 
 ~Show the end of the range for speedtests
-printf("fib(%d) = %d\n", 30, fib(30))
-printf("fib(%d) = %d\n", 46, fib(46))
-printf("fib(%d) = %d\n", 47, fib(47)) ~Integer overflow here!
-printf("fib(%d) = %d\n", 48, fib(48))
+printf "fib(%d) = %d\n" 30 (fib 30)
+printf "fib(%d) = %d\n" 46 (fib 46)
+printf "fib(%d) = %d\n" 47 (fib 47) ~Integer overflow here!
+printf "fib(%d) = %d\n" 48 (fib 48)

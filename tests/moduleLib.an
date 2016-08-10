@@ -15,9 +15,9 @@
 ext i32,i32
 
     ~Return the dotproduct of two double-length 'vectors'
-    fun dotProduct: i32,i32 l r => i32
-        return l[0] * r[0] + l[1] * r[1]
+    fun dotProduct: i32,i32 l r =
+        l#0 * r#0 + l#1 * r#1
     
 
     fun print: i32,i32 tup
-        printf("(%d, %d)\n", tup[0], tup[1])
+        printf "(%d, %d)\n" (tup#0) (tup#1)

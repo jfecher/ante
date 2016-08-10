@@ -10,11 +10,8 @@ fun addThree: i32 a b c => i32
 
 
 ~Test single-line expr blocks
-printf("1 + 2 + 3 = %d\n",
-    addThree(
-        1, 2, 3
-    )
-)
+printf "1 + 2 + 3 = %d\n"
+    addThree 1 2 3
 
 
 ~Multi-line expr block

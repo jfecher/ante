@@ -3,16 +3,16 @@ let str = "Hello, pointer to world!"
 
 let intPtr = new 27
 
-raw var longPtr = i64* malloc(8)
+raw var longPtr = i64* malloc 8
 @longPtr = 5_i64
 
 let fltPtr = new 5.9
 
 
-printf("%p -> %s\n", str, str)
-printf("%p -> %d\n", intPtr, @intPtr)
-printf("%p -> %d\n", longPtr, @longPtr)
-printf("%p -> %f\n", fltPtr, @fltPtr)
+printf "%p -> %s\n" str str
+printf "%p -> %d\n" intPtr @intPtr
+printf "%p -> %d\n" longPtr @longPtr
+printf "%p -> %f\n" fltPtr @fltPtr
 
 
-free(longPtr)
+free longPtr

@@ -4,24 +4,21 @@
 `
 
 
-ext bool
-    ~handles conversion of i32 -> bool
-    fun cast: i32 x =
-        x != 0
+~handles conversion of i32 -> bool
+fun bool.cast: i32 x =
+    x != 0
 
 
-ext Str
-    fun cast: [c8] cStr => Str
-        Str(cStr, 0u32)
-
+fun Str.cast: [c8] cStr => Str
+    Str(cStr, 0u32)
 
 
 fun printb: bool b
-    if b then puts("true")
-    else puts("false")
+    if b then puts "true"
+    else puts "false"
 
 ~test cast of i32 -> bool
-printb(bool 2)
+printb bool 2
 
 
-Str "[c8] -> Str works!".print()
+(Str "[c8] -> Str works!").print()

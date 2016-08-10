@@ -17,6 +17,6 @@ let five =
     let one = 1
     four + one
 
-printf("four + five = %d\n", four + five)
+printf "four + five = %d\n" (four + five)
 
-printf("four_u8 + five_i32 = %d\n", four_u8 + five_i32)
+printf "four_u8 + five_i32 = %d\n" (four_u8 + five_i32)

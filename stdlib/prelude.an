@@ -39,13 +39,13 @@ type Str = [c8] cStr, u32 len
 
 ~functions and methods
 fun i32.print: i32 x
-    printf("%d\n", x)
+    printf "%d\n" x
 
 fun Str.print: Str s
-    puts(s.cStr)
+    puts s.cStr
 
 fun printd: i32 x
-    printf("%d\n", x)
+    printf "%d\n" x
 
 fun print: Str s
-    puts(s.cStr)
+    puts s.cStr
