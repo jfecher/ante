@@ -507,8 +507,10 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
     }else{ //single parameter being applied
         auto *param = r->compile(c);
         if(!param) return 0;
-        typedArgs.push_back(param);
-        args.push_back(param->val);
+        if(param->type->type != TT_Void){
+            typedArgs.push_back(param);
+            args.push_back(param->val);
+        }
     }
 
 

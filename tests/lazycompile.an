@@ -22,6 +22,9 @@ printf "mul(%d, %d) = %d\n" x y (mul x y)
 if x + y == mul x y then
     exit 5
 
+
+()
+
 `Compiled functions:
 printf
 exit
