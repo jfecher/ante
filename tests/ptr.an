@@ -10,9 +10,9 @@ let fltPtr = new 5.9
 
 
 printf "%p -> %s\n" str str
-printf "%p -> %d\n" intPtr @intPtr
-printf "%p -> %d\n" longPtr @longPtr
-printf "%p -> %f\n" fltPtr @fltPtr
+printf "%p -> %d\n" intPtr (@intPtr)
+printf "%p -> %d\n" longPtr (@longPtr)
+printf "%p -> %f\n" fltPtr (@fltPtr)
 
 
 free longPtr

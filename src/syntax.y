@@ -96,15 +96,16 @@ void yyerror(const char *msg);
 
 %left Range
 
-%left '@' New Not
 
 %left '+' '-'
 %left '*' '/' '%'
 
+
+%left '@' New Not
+%left '&' TYPE UserType I8 I16 I32 I64 U8 U16 U32 U64 Isz Usz F16 F32 F64 C8 C32 Bool Void Type '\''
 %nonassoc FUNC
 
 %nonassoc LITERALS StrLit IntLit FltLit CharLit True False Ident
-%left '&' TYPE UserType I8 I16 I32 I64 U8 U16 U32 U64 Isz Usz F16 F32 F64 C8 C32 Bool Void Type '\''
 
 %left '#'
 %left '.'
@@ -433,7 +434,6 @@ array: '[' expr_list ']' {$$ = mkArrayNode(@$, $2);}
 
 unary_op: '@' expr                    {$$ = mkUnOpNode(@$, '@', $2);}
         | '&' expr                    {$$ = mkUnOpNode(@$, '&', $2);}
-        | '-' expr                    {$$ = mkUnOpNode(@$, '-', $2);}
         | New expr                    {$$ = mkUnOpNode(@$, Tok_New, $2);}
         | Not expr                    {$$ = mkUnOpNode(@$, Tok_Not, $2);}
         | type_expr expr  %prec TYPE  {$$ = mkTypeCastNode(@$, $1, $2);}
@@ -463,6 +463,7 @@ expr_list_p: expr_list_p ',' maybe_newline expr  %prec ',' {$$ = setNext($1, $4)
 
 expr: expr '+' maybe_newline expr                {$$ = mkBinOpNode(@$, '+', $1, $4);}
     | expr '-' expr                              {$$ = mkBinOpNode(@$, '-', $1, $3);}
+    | '-' expr                                   {$$ = mkUnOpNode(@$, '-', $2);}
     | expr '-' Newline expr                      {$$ = mkBinOpNode(@$, '-', $1, $4);}
     | expr '*' maybe_newline expr                {$$ = mkBinOpNode(@$, '*', $1, $4);}
     | expr '/' maybe_newline expr                {$$ = mkBinOpNode(@$, '/', $1, $4);}
@@ -484,7 +485,7 @@ expr: expr '+' maybe_newline expr                {$$ = mkBinOpNode(@$, '+', $1, 
     | expr SubEq maybe_newline expr              {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '-', $1, $4), false);}
     | expr MulEq maybe_newline expr              {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '*', $1, $4), false);}
     | expr DivEq maybe_newline expr              {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '/', $1, $4), false);}
-    | val arg_list     {$$ = mkBinOpNode(@$, '(', $1, $2);}
+    | expr arg_list     {$$ = mkBinOpNode(@$, '(', $1, $2);}
     | val                            %prec MED   {$$ = $1;}
 
     | expr ApplyR maybe_newline expr   {$$ = mkBinOpNode(@$, '(', $4, $1);}
