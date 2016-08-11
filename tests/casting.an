@@ -16,7 +16,7 @@ printf "%d\n"
 
 let msg = "Hello World!"
 
-let world = c8[] (u64 msg + 6)
+let world = [c8] c8* (u64 msg + 6)
 
 puts msg
 puts world

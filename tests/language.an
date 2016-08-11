@@ -103,13 +103,13 @@ var myBool = false
     the same name, but with an optionally different type.
 `
 
-print(i32 4.99)  ~output: 4
+print i32 4.99  ~output: 4
 let n = 43.876
 let n = i32 n
 
 ~typeof is a generic function that asks the compiler for the input's type
 ~and converts it into a string!
-print(typeof(n) ++ " " ++ n)  ~output: i32 43
+print(typeof n ++ " " ++ n)  ~output: i32 43
 
 `
         Modifiers
@@ -140,10 +140,10 @@ let pub raw buf = [3, 4, 5]
 
 ~Declare an array of 100 integers called naturalNumbers and do not
 ~initialize it since it is manually initialized in the following loop.
-var naturalNumbers = [i32].ofSize(100)
+var naturalNumbers = [i32].ofSize 100
 
 for i in 1 .. 100
-    naturalNumbers[i-1] = i
+    naturalNumbers#(i-1) = i
 
 
 ~The preferred way of doing the above is either using an expression block,
@@ -159,10 +159,10 @@ let raw mem = [0x23, 0x32, 0x00]
 pub
     let globalConst = 3
 
-    let sum = reduce(_, +)
+    let sum = reduce _ (+)
 
     fun printMsg:
-        print("Msg")
+        print "Msg"
 
 
 `
@@ -172,16 +172,16 @@ pub
     types chosen by the compiler or alternatively can have their type 
     specified with a suffix.
 `
-print(typeof(0))      ~output: i32
-print(typeof(0u8))    ~output: u8
-print(typeof(0i64))   ~output: i64
-print(typeof(255))    ~output: u8
+print(typeof 0)      ~output: i32
+print(typeof 0u8)    ~output: u8
+print(typeof 0i64)   ~output: i64
+print(typeof 255)    ~output: u8
 
-print(typeof(3.2))    ~output: f32
-print(typeof(3.2f64)) ~output: f64
+print(typeof 3.2))    ~output: f32
+print(typeof 3.2f64)) ~output: f64
 
-print(typeof("test")) ~output: [c8]
-print(typeof('A'))    ~output: c8
+print(typeof "test") ~output: [c8]
+print(typeof 'A')    ~output: c8
 
 
 ~Integer constants can also be expressed in different bases with the 
@@ -222,6 +222,7 @@ let half = 25.0_f16
 
         ++   append
         ..   range
+        #    array indexing/subscript operator
         ;    sequencing operator
 
         |    bitwise or (or a type-expr or)
@@ -257,7 +258,7 @@ let thirteen = i16(7i8 + 6i8)
 fun add: i32 x y = x + y
 
 ~thirteen must be explicitely casted to an i32, no automatic widening is performed.
-add(five, i32 thirteen)
+add five (i32 thirteen)
 
 
 `
@@ -266,24 +267,23 @@ add(five, i32 thirteen)
     The syntax for declaring arrays is shown below.  The array arr
     declared below is an array of 30 integers, each initialized to 1
 `
-var arr = i32[30].init(fun = 1)
+var arr = [i32].init 30 (fun = 1)
 
 ~Each element of an array can also be initialized individually
 var assortedNums = [9, -76, 3.14159265, 2^8, 1 + 2*(6-3)]
 
 `
-    Each element of an array can be accessed individually by index.  Negative
-    indexes work backwards from the end of the array, so arr[-1] will always
-    yield the last element of arr.
+    Arrays are zero-indexed, and their elements can be accessed with the
+    # operator, which functions as the [] operator in c-based languages.
 `
-assortedNums[0] += assortedNums[1]
-print(assortedNums[0] ++ ", " ++ assortedNums[-2])
+assortedNums#0 += assortedNums#1
+print(assortedNums#0 ++ ", " ++ assortedNums#3)
 ~output: -67, 256
 
 `
     Multidimensional arrays have n pairs of square brackets in their type where
     n is the number of dimensions they contain.  For example, the array below
-    has type i32[1][2], or more generally, i32[][]
+    has type [[i32]]
 `
 let box = [[1, 2], [3, 4]]
 
@@ -314,7 +314,7 @@ let anotherTuple = (arr, ["This tuple contains", "two arrays"])
 
 ~Like any other value, tuples can be mutated if declared as such.
 var yetAnoterTuple = (1, "two", 3.0)
-yetAnotherTuple[1] = "Two"
+yetAnotherTuple#1 = "Two"
 
 
 ~In Ante, tuples are essentially anonymous structs
@@ -331,8 +331,8 @@ let tupPtr = &(0, 0)
 ~A simple declaration of a string datatype
 type Str = [c8] cStr, u32 len
 
-fun Str.cast(): c8[] str => Str
-    (cStr, cStr.len())
+fun Str.cast: [c8] cStr =
+    Str(cStr, len cStr)
 
 let msg = Str "Hello World!"
 
@@ -343,10 +343,10 @@ fun longestStreak: Str s => i32
 
     ~No need to check if i+1 >= s.len since Strings are both null terminated and have a length field
     for i in s.indices()
-        if s[i] == s[i+1]
+        if s#i == s#(i+1) then
             curStreak += 1
         else
-            if curStreak > maxStreak
+            if curStreak > maxStreak then
                 maxStreak = curStreak
 
             curStreak = 0
@@ -362,15 +362,15 @@ fun longestStreak_alt: Str s => i32
     ~Recursive function to map to return a list of each letter's streak.
     ~Also note that this function, while named, has both an inferred return type
     ~And inferred parameter types.
-        fun streak: i, curStreak=0
+        fun streak: i, (curStreak=0)
             if s[i] == s[i+1] then streak(i+1, curStreak+1)
             else curStreak
 
     ~Finally, return the largest streak.
-    ).reduce(max)
+    ).reduce max
 
 
-print(longestStreak(msg))
+print(longestStreak msg)
 ~output: 2
 `
         Functions
@@ -391,7 +391,7 @@ print(longestStreak(msg))
     easing into the language.
 `
 fun printMsg:
-    print("Hello World!")
+    print "Hello World!"
 
 `
     This add function takes in two parameters, augend and addend both with type f64, 
@@ -410,17 +410,16 @@ fun add_floats_2: f64 augend addend => f64
     function takes a variable amount of arguments.  The variable it is assigned
     to is a tuple by default, but if a type is specified before the ellipses, it
     becomes an array of that type.  In either case, the number of arguments is always
-    known at compile time, and can be accessed via .count.  If a function takes 
-    a variable amount of parameters, ... can only be the last parameter.  In the
-    lnprint function below, params is passed to the print function, with an additional
-    newline passed at the beginning.  Note that the print function itself is a varargs
-    function, and when printing an array or tuple it will by default print each value
-    without a seperator.
+    known at compile time.  If a function takes a variable amount of parameters, ... 
+    can only be the last parameter.  In the lnprint function below, params is passed 
+    to the print function, with an additional newline passed at the beginning.  Note 
+    that the print function itself is a varargs function, and when printing an array
+    or tuple it will by default print each value with a default seperator.
 `
 fun lnprint: ... params
-    print('\n', params)
+    print '\n' params
 
-~Ante still provides the return keyword for early returns, or code clarity.
+~Ante still provides the return keyword for early returns, or for code clarity.
 fun sum: i32... nums => i64
     var ret = 0_i64
     for i in nums
@@ -430,10 +429,11 @@ fun sum: i32... nums => i64
 
 `
     Calling functions is accomplished by specifying the function's name, followed
-    by a tuple of its parameter(s).  Function's taking no parameter's need to
+    by each of its parameters space delimited.  Function calls have the second highest
+    priority, just before the '.' operator.  Function's taking no parameter's need to
     be called with an empty tuple ().
 `
-lnprint("Test #", add(3, 43), sum(3, 4, 5))
+lnprint "Test #" (sum 3 43) (sum 3 4 5)
 ~output: 
 ~Test #, 46, 12
 
@@ -441,7 +441,7 @@ lnprint("Test #", add(3, 43), sum(3, 4, 5))
 do_something()
 
 ~Functions can also take named parameters
-add_floats(addend = 2.5, augend = 5.0)
+add_floats (addend = 2.5) (augend = 5.0)
 
 
 `
@@ -473,36 +473,32 @@ fun dotProduct: l r =
 `
         Currying
     In Ante, currying is always explicit, which leads to better error messages rather
-    Than an ubiquitous type mismatch error.  To curry a function, specify _ as the desired
-    argument to be curried.
+    Than an ubiquitous type mismatch error if a function is unintentionally given an incorrect
+    number of arguments.  To curry a function, specify _ as the desired argument to be curried.
+    A usefull side effect of this is that any argument may be curried, not just the first/last.
 `
 
 ~As a simple example, an increment function can be created by currying a general add function
 
 ~The general add function:
-fun add: i32 a b => i32
+fun add: i32 a b =
     a + b
 
 ~And the increment function created with currying:
-let increment = add(_, 1)
+let increment = add _ 1
 
-~In this way, currying reduces the need to declare some parameters in certain situations.
 
 ~The above definition is equivalent to both of the following functions:
-fun increment: i32 x => i32
-    add(x, 1)
+fun increment: i32 x =
+    add x 1
 
-let increment = fun x -> add(x, 1)
+let increment = 
+    fun x = add x 1
 
 
 
 ~With some currying, we can reduce the definition of sum even further
-let sum2 =
-    reduce(_, (+))
-
-
-~A nice side effect of using _ for currying means any argument can be curried, rather
-~than just the first one.
+let sum2 = reduce _ (+)
 
 
 `
@@ -515,7 +511,7 @@ let sum2 =
 
 ~Compiled as "printStuff"
 fun printStuff:
-    print("Stuff")
+    print "Stuff"
 
 
 ext Str
@@ -525,7 +521,7 @@ ext Str
         var rev = ""
 
         for i in s.len ^.. 0
-            rev += s[i]
+            rev ++= s#i
 
         return rev
 
@@ -535,8 +531,9 @@ ext Str
     do while, and for.
 `
 ~If statements come in the form of if <expr> then <expr>
+~If statements always return a void value, unless they have an else clause.
 if 4 > 3 then
-    print("4 is indeed greater than 3")
+    print "4 is indeed greater than 3"
 
 `
     Multiple elifs can optionally follow an if after the Unindent.  Their syntax is
@@ -545,33 +542,34 @@ if 4 > 3 then
     evaluate to false
 `
 if 3 > 5 then
-    print("3 > 5, what??")
+    print "3 > 5, what??"
 elif 3 > 4 then
-    print("3 > 4, how??")
+    print "3 > 4, how??"
 elif 3 > 3 then
-    print("3 > 3, huh??")
+    print "3 > 3, huh??"
 elif 3 > 2 then
-    print("3 > 2, yup.")
+    print "3 > 2, yup."
 
 `
     In addition to elif lists, a single else may optionally terminate the test cases.
     The else clause always follows either the first if clause or an elif clause, and
     like the elif clause, it may not be used on its own without a preceeding if.  Else
     clauses are executed if and only if non of the above test conditions evaluated to
-    true.
+    true.  If-exprs with else clauses must have then-clauses and else-clauses with
+    equivalent types, this type will be the type of the expression.
 `
 if 3 > 2 then
-    print("Hello World!")
+    print "Hello World!"
 else
-    print("Invalid laws of mathematics, please try again in an alternate universe.")
+    print "Invalid laws of mathematics, please try again in an alternate universe."
 
 
 if 3 > 5 then
-    print("Something is seriously wrong if this prints.")
+    print "Something is seriously wrong if this prints."
 elif 4 > 5 then
-    print("This shouldn't print either.")
+    print "This shouldn't print either."
 else
-    print("Phew, dodged a bullet there.")
+    print "Phew, dodged a bullet there."
 
 
 `
@@ -582,7 +580,7 @@ else
     loop loops through each element of an array or range.
 `
 while true do
-    print("I loop forever")
+    print "I loop forever"
 
 
 var total = 0
@@ -590,7 +588,7 @@ for n in arr do
     total += n
 
 for count in 0..100 do
-    print(count)
+    print count
 
 
 `
@@ -616,11 +614,11 @@ let stoplight = if light == "green" then "go" else "stop"
 
 ~Declare a function inside this expression, and call it.
 ~Note how in the expression below the function definition is sequenced by the Newline and
-~following expression containing getThree().  If the expr-block were to end at line 637,
+~following expression containing getThree().  If the expr-block were to end at line 621,
 ~then three would be instead set to the value of the function definition (being the function itself)
 ~The example below sequences with 2 newlines, any number of newlines will suffice.
 let three =
-    fun getThree: = 3
+    fun getThree := 3
 
     getThree()
 
@@ -640,7 +638,7 @@ let three =
 import C "path/to/file.h"
 
 ~Alternatively, specific functions can be whitelisted with .fn
-import (C"some/other/file.h").fn("func1", "func2", "func3")
+import (C"some/other/file.h").fn "func1" "func2" "func3"
 
 ~Multiple files can also stored in one C object via
 ~a tuple-cast:
@@ -649,16 +647,18 @@ import C("stdio.h", "stdlib.h")
 ~or a list cast
 import C["stdio.h", "stdlib.h"]
 
-putchar(72)
-putchar(105)
-putchar(10)
+putchar 72_u8
+putchar 105_u8
+putchar 10_u8
 ~output: Hi
 
 
 ~or just manually specify the function's signature
 fun malloc: u32 size => void*;
 
-var ptr = i32* malloc(4)
+var ptr = i32* malloc 4
+
+~'@' is the pointer-dereference operator
 @ptr = 3
 
 
@@ -704,9 +704,9 @@ fun inefficientAdd: i32 a b => i32 {
     if b == 0 then {
         a
     }else if b < 0 then {
-        inefficientAdd(a-1, b+1)
+        inefficientAdd (a-1) (b+1)
     }else if b > 0 then {
-        inefficientAdd(a+1, b-1)
+        inefficientAdd (a+1) (b-1)
     }
 }
 
@@ -739,12 +739,12 @@ type Coord2D = f32 x y
 type Q1Coord = u32,u32
 
 let myQ1C = (2, 3)
-print(myQ1C[1]) ~output: 3
+print(myQ1C#1) ~output: 3
 
 ~Each datatype containing more than one field is internally represented by a tuple, so they
 ~Can be created in a similar fashion.
 Coord coord = (100.0, -50.0, 66.7)
-print(coord.y)  ~output: -50
+print coord.y  ~output: -50
 
 
 let coord2 = (100.0, -50.0, 66.7)
@@ -759,7 +759,7 @@ assert(coord == coord2)
 let y = Coord(100, -50, 66.7).y
 
 ~Set p1 p2 and p3 to 0, 0
-i32,i32 p1 p2 p3 = (0, 0)
+let i32,i32 p1 p2 p3 = (0, 0)
 
 
 `
@@ -773,7 +773,7 @@ i32,i32 p1 p2 p3 = (0, 0)
 
 ~Print 1 to 100 inclusive
 for i in 1 .. 100 do
-    print(i)
+    print i
 
 
 ~Iterate through indexes of an array:
@@ -781,7 +781,7 @@ let testArr = [0, 3, 5, 6]
 
 ~To make a range exclusive, add a ^ to the exclusive end (or ends)
 for u in 0 ..^ testArr.len() do
-    print(testArr[u])
+    print(testArr#u)
 
 
 
@@ -789,19 +789,19 @@ for u in 0 ..^ testArr.len() do
 ~To change the step value of ranges, have the first end of the range be an array
 ~or tuple of two elements.  Their difference will be the step.
 for i in [10, 20] .. 100 do
-    print(i)
+    print i
 
 for i in [0, -5] .. -100 do
-    print(i)
+    print i
 
 ~Alternatively, the step function can be called to return a new range
 ~With the specified step
-var evens = (0..10).step(2)
+var evens = (0..10).step 2
 
 ~or the step can be changed in place with :
-evens:step(4)
+evens:step 4
 
-for e in evens do print(e)
+for e in evens do print e
 
 
 
@@ -816,18 +816,18 @@ let odds = [(1,3)..19]
 
 ~Ranges can also be used in combination with the in keyword to test if a given value
 ~is within the range
-if 3 is in 1..9 then
-    print("3 is a single-digit positive number")
+if 3 in 1..9 then
+    print "3 is a single-digit positive number"
 
 
 ~in can also test if a value is in an array or tuple
-if "two" is in ["one", "two", "three"] then
-    print("Found it!")
+if "two" in ["one", "two", "three"] then
+    print "Found it!"
 
 ~The default action for tuples is to check fields with matching datatypes only, or any
 ~with op == implemented for the element and target type.
-if "test" is in (5, 6.5, "test") then
-    print("Got it!")
+if "test" in (5, 6.5, "test") then
+    print "Got it!"
 
 `
     Type Conditions are signified with the where keyword and provide a concise way to
@@ -849,8 +849,8 @@ let sara = Teen(18, "")
 type TwoDigits =
     u8 in 10..99
 
-let td1 = TwoDigits(32) ~Good!
-let td2 = TwoDigits(100) ~RangeErr
+let td1 = TwoDigits 32 ~Good!
+let td2 = TwoDigits 100 ~RangeErr
 
 
 ~Type conditions with anonymous fields:
@@ -859,11 +859,11 @@ type LongStr =
 
 ~Type conditions are evaluated whenever the corresponding field is changed.
 type Q2Coord =
-    i32 where this[0] < 0
-    i32 where this[1] > 0
+    i32 where this#0 < 0
+    i32 where this#1 > 0
 
 var q = Q2Coord(-4, 5)
-q[0] = 2 ~where this[0] < 0 is evaluated, and a TypeConditionErr is thrown.
+q#0 = 2 ~where this[0] < 0 is evaluated, and a TypeConditionErr is thrown.
 
 `
         Classes
@@ -879,57 +879,38 @@ type Animal =
     c8* name
 
 `
-    Create a static function init that creates a new instance of an animal.
-`
-    fun init: u16 age, c8* species name => Animal
-        return Animal(age, species, name)
-        
-`
     Create a non-static method taking self as a parameter.  This function cannot be used as 
     Animal.printInfo, it must be called on a previously initialized Animal.
 `
     fun printInfo: self
-        print(self.name .. " is a/an " .. self.species .. " and is " .. self.age .. " year(s) old.\n")
+        print(self.name ++ " is a/an " ++ self.species ++ " and is " ++ self.age ++ " year(s) old.\n")
 
 `
     The new keyword can be used to allocate and initialize memory to be stored in a
     pointer type.
 `
-let clifford = new Animal.init(7, "magnum rubrum canis", "Clifford")
+let clifford = new Animal(7, "magnum rubrum canis", "Clifford")
 
 
 `
-    Datatypes can also inherit from other datatypes with the : operator.
+    Datatypes can also be composed with other datatypes and inherit their methods if a field name is omitted.
 `
-type Person : Animal = 
+type Person =
+    Animal
     c8* job
-
-    fun init: u16 age, c8* job name => Person
-        Person ret = Animal.init(age, "Homo sapien", name)
-        ret.job = job
-        return ret
 
 `
     This function obscures the printInfo declared in the Animal type.
 `
     fun printInfo: self*
-        print(self.name .. " is " .. self.age .. " years old and is a(n) " .. self.job)
+        print(self.name ++ " is " ++ self.age ++ " years old and is a(n) " ++ self.job)
 
 
-`
-    Methods of the same name can also be overloaded if they take different amounts or types of variables.
-`
-    fun printInfo: self*, bool showAge
-        if showAge then
-            print(self.name .. " is " .. self.age .. " years old and is a(n) " .. self.job)
-        else
-            print(self.name .. " is a(n) " .. self.job)
 
-
-let john = Person.init(44, "electrician", "John")
+let john = Person(44, "electrician", "John")
 john.printInfo() ~output: John is 44 years old and is a(n) electrician
 
-var sara = Person.init(27, "Dentist assistant", "Sara")
+var sara = Person(27, "Dentist assistant", "Sara")
 sara.age = 37
 sara.job = "Dentist"
 sara.printInfo()
@@ -962,67 +943,34 @@ type Statistics =
         fun getData: self* => f64
             return self.secretData ~not so secret anymore
 
-        fun getStatus: self* => c8*
+        fun getStatus: self* => Str
             if self.secretData > 10 then
-                return "Good"
+                "Good"
             else
-                return "Not so good"
+                "Not so good"
 
     pri fun doCalculations: self*, f64 mData => f64
             return mData * self.secretData / self.varCount
 
     ~Because the init function is declared within the datatype, it can access private members.
-    fun init: i32[] mData => Statistics
+    fun init: [i32] mData => Statistics
         var ret = Statistics(0, 0)
         for i in mData do
             ret.secretData += mData / ret.pi
             ret.varCount += 1
         return ret
 
-`
-        Type Specifications, Generics, Where, and Operator Overloading
-    Type specifications in ante are a powerful way to specialize a class or function
-    to a specific usage.  In its most general case, it can be used in much the same
-    way as generics or templates in other object oriented languages.  To declare a type
-    specification for a class, parenthesis are used after the class name.  Within the
-    parenthesis a type is binded to a name, and an optional boolean expression which
-    must be able to be evaluated at compile time.  For functions, the keyword where is
-    used followed by the name of the type in question and a boolean statment validating
-    that the type is valid for the function.
-`
-~For functions, the where keyword always comes at the end of the list of parameters.
-~where statements are evaluated at compile time whenever possible.  If the expression after
-~where evaluates to false, an error is thrown.
-let actions = ["walk", "talk", "stand"]
-
-fun getAction: u8 action => [c8]  where action is in 0 ..^ 3
-    return actions[action]
-
-
-fun calculateForce: f64 m a => f64  where m >= 0
-    return m*a
-
-calculateForce(-54, 2)
-`
-Exception thrown when the where condition is not met:
-
-function calculateForce: f64 m, f64 a requires the condition
-m >= 0
-which was not met for input value m = -54
-`
 
 `
         Generic Functions
     Generic Functions can be a powerfull tool to recompile a function for a given
     argument (usually a type) during compile time.  These functions are expressed
     with the use of type variables.  Unlike user types which must begin with an
-    uppercase letter, type variables are variables and thus must begin with a
-    lowercase letter.  Once declared, a type variable can be used until it
-    falls out of scope.
+    uppercase letter, type variables begin with ' and are normal identifiers.
 `
 ~Create a function that takes in two variables, obj1 and obj2, of some type t
 ~and returns true if the first is greater than the second.
-fun greater: 't obj1 obj2 => bool
+fun greater: 't obj1 obj2 =
     obj1 > obj2
 
 ~This function will fail to compile if they are called with variables of a type
@@ -1031,15 +979,16 @@ fun cmp: 't v1 v2 => i32
     if v1 < v2 then -1
     else i32(v1 > v2)
 
-cmp(3, 4) ~valid
-~cmp(3, "three") ~invalid: types must be the same for function cmp
+cmp 3 4 ~valid
+
+cmp 3 "three" ~invalid: types must be the same for function cmp
 
 
 ~Each of the above functions assert that the two variables passed have the same type,
 ~and have > implemented to return a bool.  This may not always be the case if the user
 ~defines the operator to return a different type or overloads the operator function for
 ~two different types.  Here is a more general definition that takes this into account.
-fun add: 't a, 'u b => 'r
+fun add: 't a, 'u b =
     a + b
 
 
@@ -1048,14 +997,14 @@ fun add: 't a, 'u b => 'r
 ~angle is in radians, false otherwise.  This determines how Angle is compiled and
 ~cannot be changed after initialization.
 type Angle<bool isRadians> =
-    f32 angle
+    f64 angle
 
     if isRadians then
         fun getQuadrant: self* => u8
-            return self.angle / (3.14159265 / 4) % 4 + 1
+            u8(self.angle / (3.14159265 / 4) % 4 + 1)
     else
         fun getQuadrant: self* => u8
-            return self.angle / 90 % 4 + 1
+            u8(self.angle / 90 % 4 + 1)
 ~usage:
 let a1 = Angle<true>  (3.14159265 * 2 / 3)
 let a2 = Angle<false> 120
@@ -1089,15 +1038,15 @@ type MySmartPtr : Clone =
 
     fun op("drop"):
         if @refCount == 0 then
-            free(refCount)
-            free(rawPtr)
+            free refCount
+            free rawPtr
         else
             @refCount -= 1
 
     ~Required by Clone trait
     fun clone: self => MySmartPtr
         let clone = (rawPtr, refCount)
-        self.@rawPtr += 1
+        @self.rawPtr += 1
 
         ~Although clone is an anonymous tuple-type, since Ante uses structural
         ~equivalence, and MySmartPtr can be comprised of the same types, it is accepted.
@@ -1105,70 +1054,49 @@ type MySmartPtr : Clone =
 
 
 ~where can also be used to check the type specification
-type ChessPiece<Str piece> where searchFor(piece, ["pawn", "knight", "king"]) != None
-    u8 x
-    u8 y
-    
-    fun init: u8 x, u8 y => ChessPiece
-        return ChessPiece<piece>(x, y)
-    
+type ChessPiece<Str piece> where searchFor piece ["pawn", "knight", "king"] != None
+    u8 x y
+
     if piece == "pawn" then
-        fun validateMove: u8 x2, u8 y2 => bool
+        fun validateMove: u8 x2 y2 => bool
             x == x2 and abs(y - y2) == 1
 
     elif piece == "knight" then
-        fun validateMove: u8 x2, u8 y2 => bool
+        fun validateMove: u8 x2 y2 => bool
             if abs(x - x2) == 1 then
                 abs(y - y2) == 2
             else
                 abs(x - x2) == 2 and abs(y - y2) == 1
     
     elif piece == "king" then
-        fun validateMove: u8 x2, u8 y2 => bool
+        fun validateMove: u8 x2 y2 => bool
             abs(x - x2) <= 1 and abs(y - y2) <= 1
 
 
 let knight = ChessPiece<"knight">(2, 3)
-assert(knight.validateMove(3, 5))
+assert(knight.validateMove 3 5)
 
 `
-        Operator Overloading and Infix Functions
+        Operator Overloading
     Note that the cmp example above requires that the operator < is implemented for
     the two objects.  To do this we must implement operator overloading.  In the
-    following example, the class Point is created and overloads the > and < operators,
-    and creates the new infix function cmp for comparisons.
+    following example, the class Point is created and overloads the > and < operators.
 `
 type Point
-    pub i32 x, y
+    pub i32 x y
 
     `
         Now to implement the < operator. Each operator is declared as a function 
         with the name generated by the function op which is imported from the 
         op module. This function requires the operator in question in string form.  Invalid
-        operators will throw a compile-time error.  Note that since operators are declared
-        within classes, operators for primitive datatypes cannot be redefined.
+        operators will throw a compile-time error.
     `
-    fun op("<"): self, Point rVal => bool
+    fun op("<"): self, Point rVal =
         self.x < rVal.x and self.y < rVal.y
 
-    fun op(">"): self, Point rVal => bool
+    fun op(">"): self, Point rVal =
         self.x > rVal.x and self.y > rVal.y
 
-    `
-            Infix functions
-    
-        Infix functions are declared by calling the 'infix' function.  This
-        function takes one parameter, the name of your function.  The precedence
-        of an infix function is extremely high, as if both parametrs were surrounded
-        by parenthesis.  The example  4^6 plus 3%9 would be parsed as (4^(6 plus 3))%9
-    `
-
-    ~An example of a generic comparison function
-    ~Note that this function uses the > and < operators
-    ~declared earlier in this class.
-    fun infix("cmp"): self, Point rVal => i8
-        if self < rVal then -1
-        else i8(self > rVal)
 
 
 let origin = Point(0, 0)
@@ -1177,12 +1105,9 @@ let topRight = Point(3, 4)
 print(origin < topRight)
 print(origin > topRight)
 
-print(origin cmp topRight)
 `output
 true
 false
--1
-5
 `
 
 `
@@ -1190,21 +1115,21 @@ false
     The ext keyword can be used to extend any type with additional methods, 
     but no new instance data can be added for congregate datatypes.  A common 
     usage of this would be extending an API to implement a function or even inherit
-    from an additional parent class as long as it has no instance data.
+    from an additional trait containing static methods.
 `
 ext Point : SomeAdditionalTrait
     ~implement new methods
-    fun op("=="): self, Point p2 => bool
-        return self.x == p2.x and self.y == p2.y
+    fun op("=="): self, Point p2 =
+        self.x == p2.x and self.y == p2.y
 
-ext Drawable
-    fun draw: self
+trait Drawable
+    fun draw: self;
 
     ~Default definitions for traits can also be created.
     ~NOTE: because self.surface is accessed, this requires the implementing object
     ~      to either have a 'surface' field, or override this function.
-    fun getSurface: self => 's
-        return self.surface
+    fun getSurface: self = self.surface
+
 
 type Rectangle =
     u32 height
@@ -1213,52 +1138,53 @@ type Rectangle =
 ext Rectangle : Drawable
     ~Now Rectangle must implement the methods of Drawable
     fun draw: self
-        self.surf.print("___")
+        self.surf.print "___"
         for i in 1 ..^ self.height do
-            self.surf.print("| |")
-        self.surf.print("|_|")
+            self.surf.print "| |"
+        self.surf.print "|_|"
 
-    fun setHeight: mut self, u32 newHeight
-        height = newHeight
+    fun setHeight: self*, u32 newHeight
+        self.height = newHeight
 
-    fun cast(): u32 height => Rectangle
-        return Rectangle
+    fun cast(): u32 height =
+        Rectangle(
             height = height,
-            surface = Surface()
+            surface = Surface())
 
 var r = Rectangle 4
 
 ~Mutator functions are differentiated from accessors
-r:setHeight(5)
+r:setHeight 5
 
 
 ~Mutator functions cannot be used with constant variables
 let immutRect = Rectangle 3
 
 ~Error here!
-immutRect:setHeight(5)
+immutRect:setHeight 5
 
 
 ~Extensions can also be used for primitive types
 ext i32, i32
     fun swap: self => i32,i32
-        print("Swapped i32!")
-        (self[1], self[0])
+        print "Swapped i32!"
+        (self#1, self#0)
 
 
-ext't, 't
+ext 't, 't
     fun swap: self => 't,'t
-        print("Swapped pair!")
-        (self[1], self[0])
+        print "Swapped pair!"
+        (self#1, self#0)
 
 ~In the case multiple impls apply, the most specific is always chosen
-~If there are multiple equally specific impls, a compile-time error is thrown.
+~If there are multiple equally specific impls, such as 't,i32 and i32,'t
+~then a compile-time error is thrown.
 let point = (3,4).swap()
 ~output: Swapped i32!
 
-assert(point[0] == 4 and point[1] == 3)
+assert(point#0 == 4 and point#1 == 3)
 
-~The only limitation on implementations is that it cannot be used for pointer types.
+~The only limitation on implementations is that they cannot be used for pointer types.
 ~Pointers will be automatically dereferenced if their dereferenced type has a valid
 ~implementation, otherwise a compilation error will result.
 
@@ -1273,7 +1199,7 @@ ext [c8] ~valid
 
 var ptrQuote = c8* "implementations cannot be used for pointer types"
  
-~Compilation error since c8* has no function addInitials:
+~Compilation error since c8* is dereferenced to c8, and c8 has no function addInitials:
 ptrQuote = ptrQuote.addInitials()
 
 let ptrQuote2 = [c8] ptrQuote ~convert to array
@@ -1282,7 +1208,7 @@ ptrQuote2 = ptrQuote2.addInitials() ~valid
 `
     NOTE: because string literals have the type [c8], the following is valid:
 
-    let ptrQuote = c8* ("implementations cannot be used for pointer types".addInitials())
+    let ptrQuote = c8* "implementations cannot be used for pointer types".addInitials()
 `
 
 
@@ -1298,36 +1224,36 @@ ptrQuote2 = ptrQuote2.addInitials() ~valid
 
 let testInt = 3
 match testInt
-    1 -> print("Yup, its one")
-    2 -> print("It's actually two")
-    3 -> print("Nope, it's three")
-    4 .. 10 -> print("It's between 4 and 10 inclusive")
-    _ -> print("It's not one, two, or three, or in the range 4-10")
+    1 -> print "Yup, its one"
+    2 -> print "It's actually two")
+    3 -> print "Nope, it's three"
+    4 .. 10 -> print "It's between 4 and 10 inclusive"
+    _ -> print "It's not one, two, or three, or in the range 4-10"
 ~output: Nope, it's three
 
 ~In this example, match is used to determine Joe's class
 let joe = Person(32, "Programmer", "Joe")
 match joe
-    Point  -> print("Joe is a point")
-    Animal -> print("Joe is an Animal")
-    Person -> print("Joe is a Person")
-    _      -> print("I don't know what Joe is")
+    Point  -> print "Joe is a point"
+    Animal -> print "Joe is an Animal"
+    Person -> print "Joe is a Person"
+    _      -> print "I don't know what Joe is"
 ~output: Joe is an Animal
 ~This is because the Person class inherits from the Animal
 ~class, so the Animal cast to joe was the first valid cast
 
-let testStr = "Test", 4
+let testStr = ("Test", 4)
 
 match testStr
     ("Test", x) where x != 4
-        print("Found a Test Str with the wrong length!")
+        print "Found a Test Str with the wrong length!"
     (_, 3)
-        print("Found a Str of length 3!")
+        print "Found a Str of length 3!"
     ("Test", _)
-        print("Found a Test Str!") ~ this will be printed
+        print "Found a Test Str!" ~ this will be printed
 
 
-~Match can also be used in expressions
+~like any other feature, match can also be used in expressions (each branch must match in type)
 let s = match 2
     0 -> "zero"
     1 -> "one"
@@ -1357,14 +1283,14 @@ let s = match 2
 ~NOTE: since Suit is not declared as data, it is not its own type.
 enum Suit -> Diamonds, Hearts, Spades, Clubs
 
-print(Suit.Spades)  ~output: 2
+print Suit.Spades  ~output: 2
 
 type Card =
     u8 number
     i32 suit
 
 let fourOfHearts = Card(4, Suit.Hearts)
-let suit = (Card(3, Suit.Hearts)).suit
+let suit = Card(3, Suit.Hearts).suit
 ~Enums are automatically assigned values, but can also be manually assigned with the
 ~ = operator after the first operand.  Each consecutive member will have a value equal
 ~ to its distance from the fist + the first's value.
@@ -1409,14 +1335,14 @@ let tod1 = new Card(3, Suit.Diamonds)
 
 ~alternatively, data can be manually allocated.  The following is equivilent
 ~to the statement above
-let tod2 = malloc(sizeof(Card))
+let tod2 = malloc(sizeof Card)
 @tod2 = Card(3, Suit.Diamonds)
 
 ~Example of a raw pointer to the u8 value 5.
 let raw example = new 5u8
 
 ~Raw pointers must be manually freed with the free function
-free(example)
+free example
 
 ~Pointers can also be used to create strings from char arrays
 let str = "Hello World!"
@@ -1432,8 +1358,8 @@ let msg = c8* "Pointer String"
 type PtrExample =
     [c8] msg
 
-    fun printMsg
-        print(msg)
+    fun printMsg: self
+        print self.msg
 
 let ex1 = PtrExample "" ~typeof ex1 = PtrExample
 let ex2 = new ex1       ~typeof ex2 = PtrExample*
@@ -1463,24 +1389,26 @@ var ptrStr = c8*  "str"
         is the size of the value pointed to, and e is the result of
         the evaluated expression.  
     Arrays:
-        Allocates additional capacity for e elements to the end
-        of the array, and does NOT initialize these elements.
+        Arrays do not have + or += implemented by default.
 
         NOTE: to add a value (or values) to the end of an array,
         ++ or the corresponding ++= are used.
 `
 ptrStr += 1
-arrStr += "element 2"
+arrStr += assert false
 
 `
-    [] operator
+    # operator
 
     Same behaviour in pointers and arrays.  Fetches the element 
     at address pointer + b*sizeof(element), where b is the integer
-    expression evaluated between [ and ].  Bounds checking is
-    not employed at runtime for either.
+    expression that is the rvalue of the # operator.
+
+    For arrays, indexes are bounds-checked if the module is not
+    being compiled in release mode, (modules are compiled in
+    debug mode by default).  Pointers are never bounds-checked.
 `
-assert(ptrStr[0] == arrStr[0])
+assert(ptrStr#0 == arrStr#0)
 
 `
     Extensions
@@ -1491,7 +1419,7 @@ assert(ptrStr[0] == arrStr[0])
 
     Arrays:
         Extensions are perfectly valid for array types, including arrays of
-        pointer types, despite sharing the same structure in memory.  
+        pointer types, despite sharing the same structure with pointers in memory.  
         To use array exts with a pointer, the pointer should be casted 
         to an array type.
 `
@@ -1505,9 +1433,9 @@ ext [c8]
 
 arrStr:reverse() ~valid
 
-`
-ptrStr:reverse()  <- compilation error.  To make this work, a cast should be added
-`
+ptrStr:reverse() ~<- compilation error.  To make this work, a cast should be added
+
+([c8] ptrStr):reverse() ~valid
 
 `
     Comparisons
@@ -1526,7 +1454,7 @@ let strlit = "test"
 assert(strlit == "test")
 
 
-assert("two" is in ["one", "two", "three"])
+assert("two" in ["one", "two", "three"])
 
 
 `
@@ -1538,21 +1466,21 @@ assert("two" is in ["one", "two", "three"])
     returnType(paramType1, paramType2, ...)
 `
 ~Some functions to point to:
-fun mul: f32 a b => f32 -> a * b
-fun div: f32 a b => f32 -> a / b
+fun mul: f32 a b = a * b
+fun div: f32 a b = a / b
 
 ~This function takes one parameter, a function
 ~that takes two f32s as parameters and returns one as well.
 fun doOperation: f32(f32, f32) opFunc => f32
-    opFunc(6, 4)
+    opFunc 6 4
 
 ~our function variable
 var fnPtr = mul
 
-assert(doOperation(fnPtr) == 24)
+assert(doOperation fnPtr == 24)
 
 fnPtr = div
-assert(doOperation(fnPtr) == 1.5)
+assert(doOperation fnPtr == 1.5)
 
 
 `
@@ -1605,13 +1533,7 @@ let numsList = List(1u8, &(2u8, &(3u8, None)))
 `
 type MyErr : Err =
     const Str msg
-
-    fun op("cast"): Err e => MyErr
-        return MyErr(e.desc())
-
-    fun op("cast"): Str msg => MyErr
-        return MyErr{msg}
-
+    
     fun desc: self* => Str
         return "MyErr: " ++ self.msg
 
@@ -1622,17 +1544,19 @@ fun errFunc: i32 a b, (Str|Err)(i32) fn => i32|MyErr
     ~Try to open a file, and if no FileErr is found
     ~Then write Just a test, otherwise wrap the error
     ~In type MyErr (using fromErr()), and return it.
-    openFile("test")?.write("Just a test")
+    openFile "test"?.write "Just a test"
 
     ~ ? can also be chained
-    Parser()?.parseI32("32")?.map(fn)?.show()
+    Parser.parseI32 "32"?.map fn?.show()
     return 1
 
 
 ~Matches can also be used for error handling in expressions
 ~In this function, a 0 is returned if a value is divided by 0
 fun div: a b =
-    a / b with DivideByZeroErr -> 0
+    match SafeInt a / b
+        Some x -> x
+        DivideByZeroErr -> 0
 
 
 
@@ -1649,9 +1573,9 @@ fun div: a b =
 `
 macro pstr: ident i
     pub const c32* i = "p"
-    print(i)
+    print i
 
-pstr!(g)
+pstr! g
 ~output: p
 
 macro double: expr e
@@ -1664,22 +1588,22 @@ fun getTokenType: c32 t => Str
     macro isLetter: c32 i
         (i >= 65 and i <= 90 or i >= 97 and i <= 122)
 
-    if isLetter(t)
+    if isLetter! t
         return "ident"
     else
         return "not an ident"
 
 ~the macro below would not be valid since isLetter would have gone out of scope.
-if isLetter('a') then
-    print("a is a letter")
+if isLetter 'a' then
+    print "a is a letter"
 
 
 ~threading and concurrency support
 async fun printMsg: Str msg
-    print(msg)
+    print msg
 
 sync for i in arr
-    print(i)
+    print i
 
 let f = await someFunction()
 
@@ -1750,14 +1674,12 @@ datatypes:
     enum
 
 other:
-    when
     where
     infect
 `
 
 `
         Unused Symbols
-#
 $
 
 `
