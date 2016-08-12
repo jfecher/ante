@@ -363,7 +363,7 @@ fun longestStreak_alt: Str s => i32
     ~Also note that this function, while named, has both an inferred return type
     ~And inferred parameter types.
         fun streak: i, (curStreak=0)
-            if s[i] == s[i+1] then streak(i+1, curStreak+1)
+            if s#i == s#(i+1) then streak(i+1, curStreak+1)
             else curStreak
 
     ~Finally, return the largest streak.
@@ -863,7 +863,7 @@ type Q2Coord =
     i32 where this#1 > 0
 
 var q = Q2Coord(-4, 5)
-q#0 = 2 ~where this[0] < 0 is evaluated, and a TypeConditionErr is thrown.
+q#0 = 2 ~where this#0 < 0 is evaluated, and a TypeConditionErr is thrown.
 
 `
         Classes
@@ -1427,8 +1427,8 @@ ext [c8]
     fun reverse: self*, u32 len
         var rev = Str.ofLen(len).cStr
         for i in range(len-1, 0) do
-            rev[i] = self[len-i-1]
-        rev[len] = '\0'
+            rev#i = self#(len-i-1)
+        rev#len = '\0'
         self = rev
 
 arrStr:reverse() ~valid
