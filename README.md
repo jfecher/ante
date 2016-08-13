@@ -13,7 +13,8 @@ any datatype creating eg. iterator invalidation, pointer-autofree, or even an ow
     - These compile-time functions are checked at compile-time and not compiled into the binary.
 * Module system allowing the setting of compiler flags on a per-module basis.
 ```go
-var i = 55        ~create i, a mutable 32-bit integer
+~create i, a mutable integer
+var i = 55
 
 ~Create j, an immutable integer
 let j = 0
@@ -40,17 +41,17 @@ f = None
 ```go
 fun myFunction:
     if 3 > 2 then
-        print("3 is greater than 2")
+        print "3 is greater than 2"
     else
-        print("Invalid laws of mathematics, please try again in an alternate universe")
+        print "Invalid laws of mathematics, please try again in an alternate universe"
 
 
 ~Significant whitespace is purely optional, though recommended
 fun myFunction: {
     if 3 > 2 then {
-        print("3 is greater than 2")
+        print "3 is greater than 2"
     }else{
-        print("Invalid laws of mathematics, please try again in an alternate universe")
+        print "Invalid laws of mathematics, please try again in an alternate universe"
     }
 }
 ```
@@ -63,23 +64,23 @@ let intPtr = new 5
 let strPtr = new "msg"
 
 ~Declaration of raw pointers is accomplished with the 'raw' modifier:
-let raw myPtr = malloc(10)
+let raw myPtr = malloc 10
 
 ~intPtr is automatically freed
 ~strPtr is automatically freed
-free(myPtr) ~myPtr must be manually freed
+free myPtr ~myPtr must be manually freed
 ```
 * API designers given full reign to implement custom rules for their types, full access to the (immutable)
 parse tree is provided, along with a quick list of the uses of the variable in question.
 ```go
-~Generic types are implemented with type variables, to specify a type variable, identified by a '
+~Generic types are implemented with type variables, identified by a '
 fun iteratorTest: 't iter
     ~ok!
-    for i in iter do print(i)
+    for i in iter do print i
 
     ~assert the presence of a compile-time error generated from iterator invalidation
-    assertErr(
-        fun = for j in iter do print(j))
+    Ante.assertErr
+        fun = for j in iter do print j
 ```
 
 * Here is an example implementation of a thread that 'owns' the objects inside its function
@@ -88,35 +89,37 @@ type MyThread = 'f fn, Pid pid
 
 ext MyThread
     fun run: self*
-        self.pid = Thread.exec(self.fn)
+        self.pid = Thread.exec self.fn
 
 
     ~Compile time function that runs whenever MyThread is created
     pri fun handleInputs(onCreation): self
         ~get a list of all mutable variables used
         let vars = 
-            Ante.getVarsInFn(self.fn)
+            Ante.getVarsInFn self.fn 
             .unwrap()
-            .filter(_.isMutable())
+            .filter _.isMutable
 
         ~Store them compile-time for later use in the cleanup function
-        Ante.ctStore(vars)
-        vars.iter( Ante.invalidate(_) )
+        Ante.ctStore vars
+        
+        ~Iterate through each variable and invalidate them
+        vars.iter Ante.invalidate
 
 
     pri fun cleanup(onDeletion): self
-        let vars = Ante.ctLookup("vars").unwrap()
-        vars.iter( Ante.revalidate(_) )
+        let vars = (Ante.ctLookup "vars").unwrap()
+        vars.iter Ante.revalidate
 ```
 * Explicit yet concise currying support
 ```go
 let increment = _ + 1
 
-print(increment(4)) ~prints 5
+print(increment 4) ~prints 5
 
-let f = _ + increment(_)
+let f = _ + increment _
 
-f(3) |> print
+f 3 |> print
 ~output: 7
 
 ~filter out all numbers that aren't divisible by 7
