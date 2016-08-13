@@ -9,9 +9,10 @@ fun pow: i32 base exponent => i32
     else
         base * pow base (exponent - 1)
 
-fun run: i32 base times
-    if times > 0 then
-        printf "%d^%d = %d\n" base times (pow base times)
-        run base (times - 1)
 
-run 2 16
+var i = 0
+let base = 2
+
+while i < 16 do
+    printf "%d^%d = %d\n" base i (pow base i)
+    i += 1

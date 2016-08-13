@@ -347,70 +347,93 @@ TypedValue* TypeCastNode::compile(Compiler *c){
     }
 }
 
-TypedValue* IfNode::compile(Compiler *c){
-    
-    auto *cond = condition->compile(c);
+TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<TypedValue*,BasicBlock*>> &branches){
+    auto *cond = ifn->condition->compile(c);
     if(!cond) return 0;
     
     Function *f = c->builder.GetInsertBlock()->getParent();
     auto &blocks = f->getBasicBlockList();
 
     auto *thenbb = BasicBlock::Create(getGlobalContext(), "then");
-
-    //wait to create the endif label until after the else is created,
-    //just to make the output look better
-    BasicBlock *mergbb;
    
     //only create the else block if this ifNode actually has an else clause
     BasicBlock *elsebb;
     
-    if(elseN){
-        elsebb = BasicBlock::Create(getGlobalContext(), "else");
-        mergbb = BasicBlock::Create(getGlobalContext(), "endif");
-        c->builder.CreateCondBr(cond->val, thenbb, elsebb);
-   
-        blocks.push_back(thenbb);
-        blocks.push_back(elsebb);
-        blocks.push_back(mergbb);
+    if(ifn->elseN){
+        if(dynamic_cast<IfNode*>(ifn->elseN.get())){
+            elsebb = BasicBlock::Create(getGlobalContext(), "else");
+            c->builder.CreateCondBr(cond->val, thenbb, elsebb);
+    
+            blocks.push_back(thenbb);
+    
+            c->builder.SetInsertPoint(thenbb);
+            auto *thenVal = ifn->thenN->compile(c);
+            c->builder.CreateBr(mergebb);
+           
+            //save the 'then' value for the PhiNode after all the elifs
+            branches.push_back({thenVal, thenbb});
+
+            blocks.push_back(elsebb);
+            c->builder.SetInsertPoint(elsebb);
+            return compIf(c, (IfNode*)ifn->elseN.get(), mergebb, branches);
+        }else{
+            elsebb = BasicBlock::Create(getGlobalContext(), "else");
+            c->builder.CreateCondBr(cond->val, thenbb, elsebb);
+
+            blocks.push_back(thenbb);
+            blocks.push_back(elsebb);
+            blocks.push_back(mergebb);
+        }
     }else{
-        mergbb = BasicBlock::Create(getGlobalContext(), "endif");
-        c->builder.CreateCondBr(cond->val, thenbb, mergbb);
+        c->builder.CreateCondBr(cond->val, thenbb, mergebb);
         blocks.push_back(thenbb);
-        blocks.push_back(mergbb);
+        blocks.push_back(mergebb);
     }
 
     c->builder.SetInsertPoint(thenbb);
-    auto *thenVal = thenN->compile(c);
-    c->builder.CreateBr(mergbb);
+    auto *thenVal = ifn->thenN->compile(c);
+    c->builder.CreateBr(mergebb);
 
-    if(elseN){
+    if(ifn->elseN){
+        //save the final 'then' value for the upcoming PhiNode
+        branches.push_back({thenVal, thenbb});
+
         c->builder.SetInsertPoint(elsebb);
-        auto *elseVal = elseN->compile(c);
-        c->builder.CreateBr(mergbb);
+        auto *elseVal = ifn->elseN->compile(c);
+        c->builder.CreateBr(mergebb);
+        
+        //save the final else
+        branches.push_back({elseVal, elsebb});
 
         if(!thenVal || !elseVal) return 0;
 
 
         if(*thenVal->type.get() != *elseVal->type.get())
             return c->compErr("If condition's then expr's type " + typeNodeToStr(thenVal->type.get()) +
-                            " does not match the else expr's type " + typeNodeToStr(elseVal->type.get()), loc);
+                            " does not match the else expr's type " + typeNodeToStr(elseVal->type.get()), ifn->loc);
 
 
-        c->builder.SetInsertPoint(mergbb);
+        c->builder.SetInsertPoint(mergebb);
 
         if(thenVal->type->type != TT_Void){
-            auto *phi = c->builder.CreatePHI(thenVal->getType(), 2);
-            phi->addIncoming(thenVal->val, thenbb);
-            phi->addIncoming(elseVal->val, elsebb);
+            auto *phi = c->builder.CreatePHI(thenVal->getType(), branches.size());
+            for(auto &pair : branches)
+                phi->addIncoming(pair.first->val, pair.second);
 
             return new TypedValue(phi, thenVal->type);
         }else{
             return c->getVoidLiteral();
         }
     }else{
-        c->builder.SetInsertPoint(mergbb);
+        c->builder.SetInsertPoint(mergebb);
         return c->getVoidLiteral();
     }
+}
+
+TypedValue* IfNode::compile(Compiler *c){
+    auto branches = vector<pair<TypedValue*,BasicBlock*>>();
+    auto *mergebb = BasicBlock::Create(getGlobalContext(), "endif");
+    return compIf(c, this, mergebb, branches);
 }
 
 TypedValue* compMemberAccess(Compiler *c, Node *ln, VarNode *field, BinOpNode *binop){
