@@ -627,7 +627,7 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
         //set the scope from the callee's scope to the function's scope, variables
         //declared within the function will actually be in one scope higher becuase
         //of the upcoming call to enterNewScope()
-        this->scope = scope;
+        this->scope = varTable.size();
 
         //tell the compiler to create a new scope on the stack.
         enterNewScope();
@@ -1027,7 +1027,7 @@ Variable* Compiler::lookup(string var) const{
 
 
 void Compiler::stoVar(string var, Variable *val){
-    (*varTable[val->scope])[var] = val;
+    (*varTable[val->scope-1])[var] = val;
 }
 
 
@@ -1068,8 +1068,9 @@ Compiler::Compiler(const char *_fileName, bool lib) :
         exit(flag);
     }
 
-    enterNewScope();
     scope = 0;
+    enterNewScope();
+
     ast.reset(parser::getRootNode());
     module.reset(new Module(removeFileExt(fileName.c_str()), getGlobalContext()));
 
