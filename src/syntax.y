@@ -74,9 +74,10 @@ void yyerror(const char *msg);
 %nonassoc LOW
 
 
-%left ';' Newline
-%left Else
+%left Newline
+%left ';'
 %left If
+%left Else Elif
 %left STMT Fun Let In Import Return Ext Var While
 %left MED
 
@@ -123,14 +124,16 @@ void yyerror(const char *msg);
 %start top_level_expr_list
 %%
 
-top_level_expr_list:  maybe_newline top_level_expr_list_p maybe_newline
+top_level_expr_list:  maybe_newline expr {$$ = setRoot($2);}
                    ;
 
-
-top_level_expr_list_p: top_level_expr_list_p Newline expr       %prec Newline {$$ = setNext($1, $3);}
-                     | expr                                     %prec Newline {$$ = setRoot($1);}
+/*
+top_level_expr_list_p: top_level_expr_list_p Newline expr                  %prec Newline {$$ = setNext($1, $3);}
+                     | top_level_expr_list_p Newline if_expr Newline expr  %prec Newline {$$ = mkBinOpNode(@$, ';', getRoot(), $5);}
+                     | expr                                                %prec Newline {$$ = setRoot($1);}
+                     | if_expr Newline expr                                %prec Newline {$$ = setRoot(mkBinOpNode(@$, ';', getRoot()), $3);}
                      ;
-
+*/
 
 maybe_newline: Newline  %prec Newline
              | %empty
@@ -379,11 +382,13 @@ if_expr: if_pre Else expr                      {((IfNode*)$1)->elseN.reset($3); 
        ;
 */
 
-/* if with no else clause */
-if_pre: If expr Then expr                    %prec If {$$ = mkIfNode(@$, $2, $4,  0);}
-      ;
+if_expr: If expr Then expr                     %prec If {$$ = setRoot(mkIfNode(@$, $2, $4, 0));}
+       | if_expr Elif expr Then expr           %prec If {auto*elif = mkIfNode(@$, $3, $5, 0); setElse($1, elif); $$ = elif;}
+       | if_expr Else expr                     %prec If {$$ = setElse($1, $3);}
+       | if_expr Newline Elif expr Then expr   %prec If {auto*elif = mkIfNode(@$, $4, $6, 0); setElse($1, elif); $$ = elif;}
+       | if_expr Newline Else expr             %prec If {$$ = setElse($1, $4);}
+       ;
 
-if_expr: if_pre Else expr  %prec If {$$ = setElse($1, $3);}
 
 while_loop: While expr Do expr  %prec Newline {$$ = mkWhileNode(@$, $2, $4);}
           ;
@@ -413,8 +418,8 @@ val: '(' expr ')'            {$$ = $2;}
    | False                   {$$ = mkBoolLitNode(@$, 0);}
    | let_binding             {$$ = $1;}
    | var_decl                {$$ = $1;}
-   | if_expr                 {$$ = $1;}
    | while_loop              {$$ = $1;}
+   | if_expr       %prec LOW {$$ = getRoot();}
    | function                {$$ = $1;}
    | data_decl               {$$ = $1;}
    | extension               {$$ = $1;}
@@ -473,7 +478,7 @@ expr: expr '+' maybe_newline expr                {$$ = mkBinOpNode(@$, '+', $1, 
     | expr '.' maybe_newline var                 {$$ = mkBinOpNode(@$, '.', $1, $4);}
     | type_expr '.' maybe_newline var            {$$ = mkBinOpNode(@$, '.', $1, $4);}
     | expr ';' maybe_newline expr                {$$ = mkBinOpNode(@$, ';', $1, $4);}
-    | expr '#' maybe_newline expr                {$$ = mkBinOpNode(@$, '[', $1, $4);}
+    | expr '#' maybe_newline expr                {$$ = mkBinOpNode(@$, '#', $1, $4);}
     | expr Eq maybe_newline expr                 {$$ = mkBinOpNode(@$, Tok_Eq, $1, $4);}
     | expr NotEq maybe_newline expr              {$$ = mkBinOpNode(@$, Tok_NotEq, $1, $4);}
     | expr GrtrEq maybe_newline expr             {$$ = mkBinOpNode(@$, Tok_GrtrEq, $1, $4);}
@@ -485,18 +490,18 @@ expr: expr '+' maybe_newline expr                {$$ = mkBinOpNode(@$, '+', $1, 
     | expr SubEq maybe_newline expr              {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '-', $1, $4), false);}
     | expr MulEq maybe_newline expr              {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '*', $1, $4), false);}
     | expr DivEq maybe_newline expr              {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '/', $1, $4), false);}
-    | expr arg_list     {$$ = mkBinOpNode(@$, '(', $1, $2);}
+    | expr ApplyR maybe_newline expr             {$$ = mkBinOpNode(@$, '(', $4, $1);}
+    | expr ApplyL maybe_newline expr             {$$ = mkBinOpNode(@$, '(', $1, $4);}
+    | expr arg_list                              {$$ = mkBinOpNode(@$, '(', $1, $2);}
     | val                            %prec MED   {$$ = $1;}
 
-    | expr ApplyR maybe_newline expr   {$$ = mkBinOpNode(@$, '(', $4, $1);}
-    | expr ApplyL maybe_newline expr   {$$ = mkBinOpNode(@$, '(', $1, $4);}
-
+    /* 
+        if_expr prec must be low to absorb the newlines before Else / Elif tokens, so 
+       This rule is needed to properly sequence them
+    */
+    | if_expr Newline expr            %prec If   {$$ = mkBinOpNode(@$, ';', getRoot(), $3);}
     | expr Newline                               {$$ = $1;}
     | expr Newline expr                          {$$ = mkBinOpNode(@$, ';', $1, $3);}
-
-    | if_pre Newline Else expr                   {$$ = setElse($1, $4);} 
-    | if_pre Newline expr                        {$$ = mkBinOpNode(@$, ';', $1, $3);} 
-    | if_pre Newline                             {$$ = $1;} 
     ;
 
 %%

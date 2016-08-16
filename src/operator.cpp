@@ -635,14 +635,12 @@ TypedValue* Compiler::compLogicalAnd(Node *lexpr, Node *rexpr, BinOpNode *op){
  *  Compiles an operation along with its lhs and rhs
  */
 TypedValue* BinOpNode::compile(Compiler *c){
-    if(op == '.')
-        return compMemberAccess(c, lval.get(), (VarNode*)rval.get(), this);
-    else if(op == '(')
-        return compFnCall(c, lval.get(), rval.get());
-    else if(op == Tok_And)
-        return c->compLogicalAnd(lval.get(), rval.get(), this);
-    else if(op == Tok_Or)
-        return c->compLogicalOr(lval.get(), rval.get(), this);
+    switch(op){
+        case '.': return compMemberAccess(c, lval.get(), (VarNode*)rval.get(), this);
+        case '(': return compFnCall(c, lval.get(), rval.get());
+        case Tok_And: return c->compLogicalAnd(lval.get(), rval.get(), this);
+        case Tok_Or: return c->compLogicalOr(lval.get(), rval.get(), this);
+    }
 
 
     TypedValue *lhs = lval->compile(c);
@@ -659,7 +657,7 @@ TypedValue* BinOpNode::compile(Compiler *c){
         case '*': return c->compMul(lhs, rhs, this);
         case '/': return c->compDiv(lhs, rhs, this);
         case '%': return c->compRem(lhs, rhs, this);
-        case '[': return c->compExtract(lhs, rhs, this);
+        case '#': return c->compExtract(lhs, rhs, this);
         case ';': return rhs;
         case '<': return new TypedValue(c->builder.CreateICmpULT(lhs->val, rhs->val), lhs->type);
         case '>': return new TypedValue(c->builder.CreateICmpUGT(lhs->val, rhs->val), lhs->type);

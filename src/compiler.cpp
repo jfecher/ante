@@ -311,7 +311,7 @@ TypedValue* WhileNode::compile(Compiler *c){
     c->enterNewScope();
     //f->getBasicBlockList().push_back(begin);
     c->builder.SetInsertPoint(begin);
-    compileStmtList(child.get(), c); //compile the while loop's body
+    child->compile(c); //compile the while loop's body
 
     auto *reCond = condition->compile(c);
     c->builder.CreateCondBr(reCond->val, begin, end);
@@ -834,28 +834,42 @@ inline void Compiler::registerFunction(FuncDeclNode *fn){
  *  declarations.  Removes compiled functions.
  */
 void Compiler::scanAllDecls(){
-    Node *n = ast.get();
-    while(n){
-        if(dynamic_cast<FuncDeclNode*>(n) || dynamic_cast<ExtNode*>(n) || dynamic_cast<DataDeclNode*>(n)){
-            n->compile(this); //register the function
+    Node *op = ast.get();
+    BinOpNode *prev = 0;
+    BinOpNode *bop;
 
-            if(n->prev){
-                n->prev->next.release();
-                n->prev->next.reset(n->next.get());
+    while((bop = dynamic_cast<BinOpNode*>(op)) && bop->op == ';'){
+        auto *rv = bop->rval.get();
 
-                if(n->next.get())
-                    n->next->prev = n->prev;
+        if(dynamic_cast<FuncDeclNode*>(rv) || dynamic_cast<ExtNode*>(rv) || dynamic_cast<DataDeclNode*>(rv)){
+            rv->compile(this); //register the function
+            if(prev){
+                prev->lval.release();
+                prev->lval.reset(bop->lval.get()); //free the node
             }else{
                 ast.release();
-                if(n->next.get()){
-                    ast.reset(n->next.get());
-                    n->next->prev = 0;
-                }else{
-                    ast.reset(0);
-                }
+                ast.reset(bop->lval.get()); //free the node
             }
+            op = bop->lval.get();
+            bop->rval.release();
+            bop->lval.release();
+            delete bop;
+        }else{
+            prev = bop;
+            op = bop->lval.get();
         }
-        n = n->next.get();
+    }
+
+    //check the final node
+    if(dynamic_cast<FuncDeclNode*>(op) || dynamic_cast<ExtNode*>(op) || dynamic_cast<DataDeclNode*>(op)){
+        op->compile(this); //register the function`
+        if(prev){
+            prev->lval.release();
+            prev->lval.reset(mkAnonTypeNode(TT_Void)); //TODO: replace this node with one that does not rely on the ::compile function being empty
+        }else{
+            ast.release();
+            ast.reset(mkAnonTypeNode(TT_Void)); //TODO: replace this node with one that does not rely on the ::compile function being empty
+        }
     }
 }
 
@@ -883,7 +897,7 @@ void Compiler::compile(){
     compilePrelude();
 
     //Compile the rest of the program
-    compileStmtList(ast.get(), this);
+    ast->compile(this);
     exitScope();
 
     //builder should already be at end of main function

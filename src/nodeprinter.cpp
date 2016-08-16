@@ -107,13 +107,19 @@ void BinOpNode::print(){
     if(op == '('){
         lval->print();
         rval->print();
+    }else if(op == ';'){
+        putchar('{');
+        if(lval) lval->print();
+        puts(";");
+        if(rval) rval->print();
+        putchar('}');
     }else{
         putchar('(');
-        if(lval) lval->print();
+        lval->print();
         putchar(' ');
         Lexer::printTok(op);
         putchar(' ');
-        if(rval) rval->print();
+        rval->print();
         putchar(')');
     }
 }

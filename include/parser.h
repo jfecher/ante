@@ -125,7 +125,7 @@ struct BinOpNode : public Node{
     TypedValue* compile(Compiler*);
     void print(void);
     BinOpNode(LOC_TY& loc, int s, Node *lv, Node *rv) : Node(loc), op(s), lval(lv), rval(rv){}
-    ~BinOpNode(){}
+    ~BinOpNode(){/*cout << "freeing (" << lval.get() << ")-> " << this << " <- (" << rval.get() << ")\n";*/}
 };
 
 struct TypeNode : public Node{
