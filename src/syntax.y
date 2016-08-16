@@ -500,6 +500,7 @@ expr: expr '+' maybe_newline expr                {$$ = mkBinOpNode(@$, '+', $1, 
        This rule is needed to properly sequence them
     */
     | if_expr Newline expr            %prec If   {$$ = mkBinOpNode(@$, ';', getRoot(), $3);}
+    | if_expr Newline                 %prec LOW  {$$ = getRoot();}
     | expr Newline                               {$$ = $1;}
     | expr Newline expr                          {$$ = mkBinOpNode(@$, ';', $1, $3);}
     ;
