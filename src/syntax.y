@@ -96,20 +96,18 @@ void yyerror(const char *msg);
 %left Eq  NotEq GrtrEq LesrEq '<' '>'
 
 %left Range
-
+%left '#'
 
 %left '+' '-'
 %left '*' '/' '%'
-
 
 %left '@' New Not
 %left '&' TYPE UserType I8 I16 I32 I64 U8 U16 U32 U64 Isz Usz F16 F32 F64 C8 C32 Bool Void Type '\''
 %nonassoc FUNC
 
 %nonassoc LITERALS StrLit IntLit FltLit CharLit True False Ident
-
-%left '#'
 %left '.'
+
 
 /* 
     Being below HIGH, this ensures parenthetical expressions will be parsed
