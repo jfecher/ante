@@ -240,7 +240,7 @@ TypedValue* TupleNode::compile(Compiler *c){
             tval->type.release();
             cur = (TypeNode*)cur->next.get();
         }else{
-            tyn->extTy.swap(tval->type);
+            tyn->extTy.reset(tval->type.get());
             cur = tyn->extTy.get();
         }
     }
