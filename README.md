@@ -1,5 +1,8 @@
-﻿# Ante
+# Ante
 The compile-time language
+
+## Community
+- Join the official subreddit at [/r/ante](https://www.reddit.com/r/ante) for any and all discussion.  Everyone is welcome!
 
 ## Features
 * Systems language that feels like an interpreted language
@@ -70,7 +73,7 @@ let raw myPtr = malloc 10
 ~strPtr is automatically freed
 free myPtr ~myPtr must be manually freed
 ```
-* API designers given full reign to implement custom rules for their types, full access to the (immutable)
+* API designers given full reign to implement custom rules for their types, full access to the
 parse tree is provided, along with a quick list of the uses of the variable in question.
 ```go
 ~Generic types are implemented with type variables, identified by a '
@@ -84,7 +87,7 @@ fun iteratorTest: 't iter
 ```
 
 * Here is an example implementation of a thread that 'owns' the objects inside its function
-```rust
+```Rust
 type MyThread = 'f fn, Pid pid
 
 ext MyThread
