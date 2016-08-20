@@ -264,7 +264,7 @@ enum_decl: modifier_list Enum usertype enum_block  {$$ = NULL;}
          ;
 
 
-block: Indent expr Unindent  {$$ = $2;}
+block: Indent expr Unindent  {$$ = mkBlockNode(@$, $2);}
      ;
 
 

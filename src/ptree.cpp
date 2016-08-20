@@ -155,6 +155,10 @@ Node* mkBinOpNode(yy::parser::location_type loc, int op, Node* l, Node* r){
     return new BinOpNode(loc, op, l, r);
 }
 
+Node* mkBlockNode(yy::parser::location_type loc, Node *b){
+    return new BlockNode(loc, b);
+}
+
 Node* mkRetNode(yy::parser::location_type loc, Node* expr){
     return new RetNode(loc, expr);
 }

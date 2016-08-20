@@ -125,7 +125,15 @@ struct BinOpNode : public Node{
     TypedValue* compile(Compiler*);
     void print(void);
     BinOpNode(LOC_TY& loc, int s, Node *lv, Node *rv) : Node(loc), op(s), lval(lv), rval(rv){}
-    ~BinOpNode(){/*cout << "freeing (" << lval.get() << ")-> " << this << " <- (" << rval.get() << ")\n";*/}
+    ~BinOpNode(){}
+};
+
+struct BlockNode : public Node{
+    unique_ptr<Node> block;
+    TypedValue* compile(Compiler*);
+    void print(void);
+    BlockNode(LOC_TY& loc, Node *b) : Node(loc), block(b){}
+    ~BlockNode(){}
 };
 
 struct TypeNode : public Node{

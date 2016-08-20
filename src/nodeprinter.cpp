@@ -108,11 +108,9 @@ void BinOpNode::print(){
         lval->print();
         rval->print();
     }else if(op == ';'){
-        putchar('{');
-        if(lval) lval->print();
+        lval->print();
         puts(";");
-        if(rval) rval->print();
-        putchar('}');
+        rval->print();
     }else{
         putchar('(');
         lval->print();
@@ -122,6 +120,12 @@ void BinOpNode::print(){
         rval->print();
         putchar(')');
     }
+}
+
+void BlockNode::print(){
+    puts("{");
+    block->print();
+    cout << "\n}";
 }
 
 void RetNode::print(){
@@ -175,7 +179,6 @@ void LetBindingNode::print(){
     cout << ' ' << name << " = ";
     
     expr->print(); //expr is not null-checked since it is required to be non-null
-    putchar('\n');
 }
 
 void VarDeclNode::print(){
@@ -199,15 +202,14 @@ void ExtNode::print(){
     typeExpr->print();
     cout << "\n";
     printBlock(methods.get());
-    puts("end ext");
+    cout << "end ext";
 }
 
 void WhileNode::print(){
     cout << "while ";
     condition->print();
     puts(" do");
-    printBlock(child.get());
-    puts("end while");
+    child->print();
 }
 
 void FuncDeclNode::print(){
@@ -222,9 +224,7 @@ void FuncDeclNode::print(){
         type->print();
     }
     if(child.get()){
-        puts("\nfnbody:");
-        printBlock(child.get());
-        puts("endfn");
+        child->print();
     }
 }
 

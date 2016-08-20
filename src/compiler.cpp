@@ -308,23 +308,22 @@ TypedValue* WhileNode::compile(Compiler *c){
     auto *cond = condition->compile(c);
     c->builder.CreateCondBr(cond->val, begin, end);
 
-    c->enterNewScope();
-    //f->getBasicBlockList().push_back(begin);
     c->builder.SetInsertPoint(begin);
     child->compile(c); //compile the while loop's body
 
     auto *reCond = condition->compile(c);
     c->builder.CreateCondBr(reCond->val, begin, end);
 
-    //exit scope before the end block is reached to make sure to free
-    //allocated pointers after each iteration to avoid memory leaks.
-    c->exitScope();
-
-    //f->getBasicBlockList().push_back(end);
-
     c->builder.SetInsertPoint(end);
-
     return c->getVoidLiteral();
+}
+
+//create a new scope if the user indents
+TypedValue* BlockNode::compile(Compiler *c){
+    c->enterNewScope();
+    TypedValue *ret = block->compile(c);
+    c->exitScope();
+    return ret;
 }
 
 
