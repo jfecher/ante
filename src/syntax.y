@@ -491,7 +491,7 @@ expr: expr '+' maybe_newline expr                {$$ = mkBinOpNode(@$, '+', $1, 
     | expr ApplyR maybe_newline expr             {$$ = mkBinOpNode(@$, '(', $4, $1);}
     | expr ApplyL maybe_newline expr             {$$ = mkBinOpNode(@$, '(', $1, $4);}
     | expr arg_list                              {$$ = mkBinOpNode(@$, '(', $1, $2);}
-    | val                            %prec MED   {$$ = $1;}
+    | val                             %prec MED  {$$ = $1;}
 
     /* 
         if_expr prec must be low to absorb the newlines before Else / Elif tokens, so 

@@ -369,10 +369,6 @@ TypedValue* LetBindingNode::compile(Compiler *c){
 }
 
 TypedValue* compVarDeclWithInferredType(VarDeclNode *node, Compiler *c){
-    if(c->lookup(node->name)){ //check for redeclaration
-        return c->compErr("Variable " + node->name + " was redeclared.", node->loc);
-    }
-    
     TypedValue *val = node->expr->compile(c);
     if(!val) return nullptr;
 
@@ -385,10 +381,18 @@ TypedValue* compVarDeclWithInferredType(VarDeclNode *node, Compiler *c){
 }
 
 TypedValue* VarDeclNode::compile(Compiler *c){
-    if(c->lookup(name)){ //check for redeclaration
-        return c->compErr("Variable " + name + " was redeclared.", this->loc);
+    //check for redeclaration, but only on topmost scope
+    Variable *redeclare;
+    try{
+        redeclare = c->varTable.back()->at(this->name);
+    }catch(out_of_range r){
+        redeclare = 0;
     }
 
+    if(redeclare)
+        return c->compErr("Variable " + name + " was redeclared.", this->loc);
+
+    //check for an inferred type
     TypeNode *tyNode = (TypeNode*)typeExpr.get();
     if(!tyNode) return compVarDeclWithInferredType(this, c);
 
@@ -643,6 +647,7 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
 
         //actually compile the function, and hold onto the last value
         TypedValue *v = fdn->child->compile(this);
+        
         //End of the function, discard the function's scope.
         exitScope();
    
