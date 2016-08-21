@@ -76,4 +76,5 @@ fun InFile.nextLine: InFile f => Str
         cstr#len = c
         len += 1
 
+    cstr#len = '\0'
     Str(cstr, len)

@@ -266,7 +266,7 @@ vector<TypedValue*> TupleNode::unpack(Compiler *c){
     vector<TypedValue*> ret;
     for(Node *n : exprs){
         auto *tv = n->compile(c);
-        if(tv->type->type != TT_Void)
+        if(tv && tv->type->type != TT_Void)
             ret.push_back(tv);
     }
     return ret;
