@@ -57,11 +57,11 @@ fun print: Str s
     puts s.cStr
 
 
-fun InFile.open: [c8] fName => InFile
+fun InFile.cast: [c8] fName => InFile
     let f = InFile fopen fName "r"
     fgetc f; f
 
-fun OutFile.open: [c8] fName => OutFile
+fun OutFile.cast: [c8] fName => OutFile
     let f = OutFile fopen fName "w"
     fgetc f; f
 
