@@ -9,7 +9,8 @@ fun printf: [c8] fmt, ...;
 fun puts: [c8] str;
 fun putchar: c8 char;
 fun exit: i32 status;
-fun malloc: i32 size => void*;
+fun malloc: u32 size => void*;
+fun realloc: void* ptr, u32 size => void*;
 fun free: void* mem;
 fun system: [c8] cmd => i32;
 
@@ -17,12 +18,16 @@ fun system: [c8] cmd => i32;
 type File = void*
 type FilePos = void*
 
+type InFile = File
+type OutFile = File
+
 fun fopen: [c8] fName, [c8] mode => File;
 fun fclose: File file;
-fun fputs: [c8] str, File file;
-fun fputc: c8 char, File file;
-fun fgetc: File file => c8;
-fun fgets: [c8] str, i32 num, File file => [c8];
+
+fun fputs: [c8] str, OutFile file;
+fun fputc: c8 char, OutFile file;
+fun fgetc: InFile file => c8;
+fun fgets: [c8] str, i32 numBytes, InFile file => [c8];
 
 fun fgetpos: File f, FilePos fp;
 fun ftell: File f => i64;
@@ -37,6 +42,7 @@ fun ferror: File f => bool;
 ~Ante datatypes
 type Str = [c8] cStr, u32 len
 
+
 ~functions and methods
 fun i32.print: i32 x
     printf "%d\n" x
@@ -49,3 +55,25 @@ fun printd: i32 x
 
 fun print: Str s
     puts s.cStr
+
+
+fun InFile.open: [c8] fName => InFile
+    let f = InFile fopen fName "r"
+    fgetc f; f
+
+fun OutFile.open: [c8] fName => OutFile
+    let f = OutFile fopen fName "w"
+    fgetc f; f
+
+fun InFile.nextLine: InFile f => Str
+    var len = 0u32
+    var cstr = [c8] c8* 0
+
+    while not feof File f and ((let c = fgetc f) != '\n' or len == 0) do
+        if len % 10 == 0 then
+            cstr = realloc (c8* cstr) (len+10)
+
+        cstr#len = c
+        len += 1
+
+    Str(cstr, len)
