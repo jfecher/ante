@@ -69,7 +69,7 @@ fun InFile.nextLine: InFile f => Str
     var len = 0u32
     var cstr = [c8] c8* 0
 
-    while not feof File f and ((let c = fgetc f) != '\n' or len == 0) do
+    while not feof f and ((let c = fgetc f) != '\n' or len == 0) do
         if len % 10 == 0 then
             cstr = realloc (c8* cstr) (len+10)
 
