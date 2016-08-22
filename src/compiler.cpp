@@ -302,8 +302,8 @@ TypedValue* ImportNode::compile(Compiler *c){
 
 TypedValue* WhileNode::compile(Compiler *c){
     Function *f = c->builder.GetInsertBlock()->getParent();
-    BasicBlock *begin = BasicBlock::Create(getGlobalContext(), "while", f);
     BasicBlock *cond  = BasicBlock::Create(getGlobalContext(), "while_cond", f);
+    BasicBlock *begin = BasicBlock::Create(getGlobalContext(), "while", f);
     BasicBlock *end   = BasicBlock::Create(getGlobalContext(), "end_while", f);
 
     c->builder.CreateBr(cond);
