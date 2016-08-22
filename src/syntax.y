@@ -388,7 +388,7 @@ if_expr: If expr Then expr                     %prec If {$$ = setRoot(mkIfNode(@
        ;
 
 
-while_loop: While expr Do expr  %prec Newline {$$ = mkWhileNode(@$, $2, $4);}
+while_loop: While expr Do expr  %prec While  {$$ = mkWhileNode(@$, $2, $4);}
           ;
 
 /*

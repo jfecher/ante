@@ -77,13 +77,19 @@ fun OutFile.cast: [c8] fName => OutFile
 fun InFile.nextLine: InFile f => Str
     var len = 0u32
     var cstr = [c8] c8* 0
+    
+    if feof f then
+        return Str("", 0u32)
 
-    while not feof f and ((let c = fgetc f) != '\n' or len == 0) do
-        if len % 10 == 0 then
-            cstr = realloc (c8* cstr) (len+10)
+    while not feof f and
+        let c = fgetc f
+        if len % 32 == 0 then
+            cstr = realloc (c8* cstr) (len+32)
 
         cstr#len = c
         len += 1
+        c != '\n'
+    do ()
 
-    cstr#len = '\0'
+    cstr#len-1 = '\0'
     Str(cstr, len)

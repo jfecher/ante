@@ -572,7 +572,7 @@ TypedValue* Compiler::compLogicalOr(Node *lexpr, Node *rexpr, BinOpNode *op){
 
     auto *lhs = lexpr->compile(this);
 
-    auto *curbb = builder.GetInsertBlock();
+    auto *curbbl = builder.GetInsertBlock();
     auto *orbb = BasicBlock::Create(getGlobalContext(), "or");
     auto *mergebb = BasicBlock::Create(getGlobalContext(), "merge");
 
@@ -583,6 +583,10 @@ TypedValue* Compiler::compLogicalOr(Node *lexpr, Node *rexpr, BinOpNode *op){
 
     builder.SetInsertPoint(orbb);
     auto *rhs = rexpr->compile(this);
+    
+    //the block must be re-gotten in case the expression contains if-exprs, while nodes,
+    //or other exprs that change the current block
+    auto *curbbr = builder.GetInsertBlock();
     builder.CreateBr(mergebb);
     
     if(rhs->type->type != TT_Bool)
@@ -592,8 +596,8 @@ TypedValue* Compiler::compLogicalOr(Node *lexpr, Node *rexpr, BinOpNode *op){
     auto *phi = builder.CreatePHI(rhs->getType(), 2);
    
     //short circuit, returning true if return from the first label
-    phi->addIncoming(ConstantInt::get(getGlobalContext(), APInt(1, true, true)), curbb);
-    phi->addIncoming(rhs->val, orbb);
+    phi->addIncoming(ConstantInt::get(getGlobalContext(), APInt(1, true, true)), curbbl);
+    phi->addIncoming(rhs->val, curbbr);
 
     return new TypedValue(phi, rhs->type);
     
@@ -605,7 +609,7 @@ TypedValue* Compiler::compLogicalAnd(Node *lexpr, Node *rexpr, BinOpNode *op){
 
     auto *lhs = lexpr->compile(this);
 
-    auto *curbb = builder.GetInsertBlock();
+    auto *curbbl = builder.GetInsertBlock();
     auto *andbb = BasicBlock::Create(getGlobalContext(), "and");
     auto *mergebb = BasicBlock::Create(getGlobalContext(), "merge");
 
@@ -616,6 +620,10 @@ TypedValue* Compiler::compLogicalAnd(Node *lexpr, Node *rexpr, BinOpNode *op){
 
     builder.SetInsertPoint(andbb);
     auto *rhs = rexpr->compile(this);
+
+    //the block must be re-gotten in case the expression contains if-exprs, while nodes,
+    //or other exprs that change the current block
+    auto *curbbr = builder.GetInsertBlock();
     builder.CreateBr(mergebb);
 
     if(rhs->type->type != TT_Bool)
@@ -625,8 +633,8 @@ TypedValue* Compiler::compLogicalAnd(Node *lexpr, Node *rexpr, BinOpNode *op){
     auto *phi = builder.CreatePHI(rhs->getType(), 2);
    
     //short circuit, returning false if return from the first label
-    phi->addIncoming(ConstantInt::get(getGlobalContext(), APInt(1, false, true)), curbb);
-    phi->addIncoming(rhs->val, andbb);
+    phi->addIncoming(ConstantInt::get(getGlobalContext(), APInt(1, false, true)), curbbl);
+    phi->addIncoming(rhs->val, curbbr);
 
     return new TypedValue(phi, rhs->type);
 }
