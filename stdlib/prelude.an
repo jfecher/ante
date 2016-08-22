@@ -13,6 +13,7 @@ fun malloc: u32 size => void*;
 fun realloc: void* ptr, u32 size => void*;
 fun free: void* mem;
 fun system: [c8] cmd => i32;
+fun strlen: [c8] str => u32;
 
 ~C stdio
 type File = void*
@@ -47,16 +48,24 @@ type Str = [c8] cStr, u32 len
 fun i32.print: i32 x
     printf "%d\n" x
 
-fun Str.print: Str s
-    puts s.cStr
 
 fun printd: i32 x
     printf "%d\n" x
 
+
+~ Str functions
 fun print: Str s
     puts s.cStr
 
 
+fun Str.print: Str s
+    puts s.cStr
+
+fun Str.cast: [c8] cStr => Str
+    Str(cStr, strlen cStr)
+
+
+~ IO
 fun InFile.cast: [c8] fName => InFile
     let f = InFile fopen fName "r"
     fgetc f; f
