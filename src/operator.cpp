@@ -513,12 +513,6 @@ void push_front(vector<Value*> *vec, Value *val){
         (*vec)[0] = val;
     else
         vec->push_back(val);
-
-
-    for(auto *v : *vec){
-        v->dump();
-    }
-    cout << "(end)\n\n";
 }
 
 
