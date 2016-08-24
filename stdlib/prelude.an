@@ -49,17 +49,10 @@ fun i32.print: i32 x
     printf "%d\n" x
 
 
-fun printd: i32 x
-    printf "%d\n" x
-
-
 ~ Str functions
-fun print: Str s
-    puts s.cStr
-
-
 fun Str.print: Str s
     puts s.cStr
+
 
 fun Str.cast: [c8] cStr => Str
     Str(cStr, strlen cStr)
@@ -70,9 +63,11 @@ fun InFile.cast: [c8] fName => InFile
     let f = InFile fopen fName "r"
     fgetc f; f
 
+
 fun OutFile.cast: [c8] fName => OutFile
     let f = OutFile fopen fName "w"
     fgetc f; f
+
 
 fun InFile.nextLine: InFile f => Str
     var len = 0u32

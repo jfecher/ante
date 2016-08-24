@@ -499,26 +499,33 @@ TypedValue* compMemberAccess(Compiler *c, Node *ln, VarNode *field, BinOpNode *b
 }
 
 
-TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
-    /* Check given argument count matches declared argument count. */
-    TypedValue *tvf = l->compile(c);
-    if(!tvf || !tvf->val) return 0;
-    if(tvf->type->type != TT_Function && tvf->type->type != TT_Method)
-        return c->compErr("Called value is not a function or method, it is a(n) " + 
-                llvmTypeToStr(tvf->getType()), l->loc);
+void push_front(vector<Value*> *vec, Value *val){
+    auto size = vec->size();
+    if(size != 0)
+        vec->push_back((*vec)[size-1]);
 
-    //now that we assured it is a function, unwrap it
-    Function *f = (Function*) tvf->val;
-
-    //if tvf is a method, add its host object as the first argument
-    vector<Value*> args;
-    if(tvf->type->type == TT_Method){
-        Value *obj = ((MethodVal*) tvf)->obj;
-        args.push_back(obj);
+    auto it = vec->rbegin();
+    for(; it != vec->rend();){
+        *it = *(++it);
     }
 
+    if(size != 0)
+        (*vec)[0] = val;
+    else
+        vec->push_back(val);
+
+
+    for(auto *v : *vec){
+        v->dump();
+    }
+    cout << "(end)\n\n";
+}
+
+
+TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
     //used to type-check each parameter later
     vector<TypedValue*> typedArgs;
+    vector<Value*> args;
 
     //add all remaining arguments
     if(auto *tup = dynamic_cast<TupleNode*>(r)){
@@ -534,6 +541,43 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
             typedArgs.push_back(param);
             args.push_back(param->val);
         }
+    }
+    
+   
+    //try to compile the function now that the parameters are compiled.
+    TypedValue *tvf = 0;
+
+    //First, check if the lval is a symple VarNode (identifier) and then attempt to
+    //inference a method call for it (inference as in if the <type>. syntax is omitted)
+    if(VarNode *vn = dynamic_cast<VarNode*>(l)){
+        if(typedArgs.size() != 0){
+            //try to see if arg 1's type contains a method of the same name
+            string fnName = typeNodeToStr(typedArgs[0]->type.get()) + "_" + vn->name;
+            if(TypedValue *fn = c->getFunction(fnName)){
+                cout << "found " << fnName << endl;
+                tvf = fn;
+            }
+        }
+    }
+
+    //if it is not a varnode/no method is found, then compile it normally
+    if(!tvf) tvf = l->compile(c);
+
+    //if there was an error, return
+    if(!tvf || !tvf->val) return 0;
+
+    //make sure the l val compiles to a function
+    if(tvf->type->type != TT_Function && tvf->type->type != TT_Method)
+        return c->compErr("Called value is not a function or method, it is a(n) " + 
+                llvmTypeToStr(tvf->getType()), l->loc);
+    
+    //now that we assured it is a function, unwrap it
+    Function *f = (Function*) tvf->val;
+    
+    //if tvf is a method, add its host object as the first argument
+    if(tvf->type->type == TT_Method){
+        Value *obj = ((MethodVal*) tvf)->obj;
+        push_front(&args, obj);
     }
 
 
