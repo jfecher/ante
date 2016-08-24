@@ -4,6 +4,6 @@ import "tests/moduleLib.an"
 let vec1 = (2, 3)
 let vec2 = (4, 2)
 
-(vec1.dotProduct vec2).print()
+print (vec1.dotProduct vec2)
 
 

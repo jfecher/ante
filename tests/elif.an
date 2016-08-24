@@ -8,16 +8,16 @@
 var i = 5
 
 if i == 3 then
-    puts "3"
+    print "3"
 
 elif i == 4 then
-    puts "4"
+    print "4"
 
 elif i == 5 then
-    puts "5"
+    print "5"
 
 elif i == 6 then
-    puts "6"
+    print "6"
 
 else
-    puts "i is outside the range 3-6 inclusive!"
+    print "i is outside the range 3-6 inclusive!"

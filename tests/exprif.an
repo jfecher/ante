@@ -12,7 +12,6 @@
 
 let n = if true then 2 else 3
 
-n.print()
+print n
 
-
-(if 2 < 1 then 5 else 19).print()
+print (if 2 < 1 then 5 else 19)

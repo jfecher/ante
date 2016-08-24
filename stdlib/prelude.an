@@ -49,6 +49,10 @@ fun i32.print: i32 x
     printf "%d\n" x
 
 
+fun [c8].print: [c8] s
+    puts s
+
+
 ~ Str functions
 fun Str.print: Str s
     puts s.cStr

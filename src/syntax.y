@@ -76,9 +76,9 @@ void yyerror(const char *msg);
 
 %left Newline
 %left ';'
+%left STMT Fun Let In Import Return Ext Var While
 %left If
 %left Else Elif
-%left STMT Fun Let In Import Return Ext Var While
 %left MED
 
 %left MODIFIER Pub Pri Pro Raw Const Noinit

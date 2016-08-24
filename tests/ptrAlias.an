@@ -8,6 +8,6 @@ let t = new new new new new new new 2
 
 let c = t
 
-t.print()
+t.print ()
 
-c.print()
+c.print ()

@@ -15,21 +15,19 @@ printf "1 + 2 + 3 = %d\n"
 
 
 ~Multi-line expr block
-printf("0.5 * 0.25 = %.3f\n3 / 2 = %d\n25^2 = %d\n",
-    0.5 * 0.25,
-    3 / 2,
+printf "0.5 * 0.25 = %.3f\n3 / 2 = %d\n25^2 = %d\n"
+    0.5 * 0.25
+    3 / 2
     25 * 25
-)
 
-let ten = addThree(3, 
-    3, 
+let ten = addThree 3 
+    3
     4
-)
 
-let fifteen = addThree(4, 
-    5, 6)
+let fifteen = addThree 4
+    5 6
 
-printf("(3 + 3 + 4) + (4 + 5 + 6) = %d\n", ten + fifteen)
+printf "(3 + 3 + 4) + (4 + 5 + 6) = %d\n" (ten + fifteen)
 
 
 ~expressions with a higher indentation are treated as if
@@ -48,4 +46,4 @@ let result = 2 * 3 * 4 * (1+2+3+4+5) * 5
 which should evaluate to 1800
 `
 
-printf("result = %d\n", result)
+printf "result = %d\n" result

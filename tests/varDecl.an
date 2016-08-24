@@ -3,9 +3,9 @@
         Tests initializations, assignments, and print statements
 `
 var i = 12
-printd i
+print i
 i = 3
-printd i
+print i
 
 
 var s = "Hello "

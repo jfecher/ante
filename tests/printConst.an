@@ -3,5 +3,5 @@
     A basic test file for calling print functions.
 `
 
-puts "Hello World!"
+print "Hello World!"
 printf "%s #%d\n" "Hello Friend" (3 + 4)

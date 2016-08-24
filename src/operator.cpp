@@ -554,7 +554,6 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
             //try to see if arg 1's type contains a method of the same name
             string fnName = typeNodeToStr(typedArgs[0]->type.get()) + "_" + vn->name;
             if(TypedValue *fn = c->getFunction(fnName)){
-                cout << "found " << fnName << endl;
                 tvf = fn;
             }
         }
