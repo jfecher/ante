@@ -44,9 +44,9 @@ struct FuncDecl {
 };
 
 struct MethodVal : public TypedValue {
-    Value *obj;
+    TypedValue *obj;
 
-    MethodVal(Value *o, TypedValue *f) : TypedValue(f->val, (f->type->type = TT_Method, f->type.get())), obj(o) {}
+    MethodVal(TypedValue *o, TypedValue *f) : TypedValue(f->val, (f->type->type = TT_Method, f->type.get())), obj(o) {}
 };
 
 
