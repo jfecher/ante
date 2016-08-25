@@ -491,15 +491,18 @@ TypedValue* compMemberAccess(Compiler *c, Node *ln, VarNode *field, BinOpNode *b
         //TODO: perhaps create a calling convention function
         string funcName = typeNodeToStr(tyn) + "_" + field->name;
 
-        if(auto *f = c->getFunction(funcName))
-            return new MethodVal(val, f);
+        if(auto *f = c->getFunction(funcName)){
+            TypedValue *obj = new TypedValue(val, tyn);
+            return new MethodVal(obj, f);
+        }
 
         return c->compErr("Method/Field " + field->name + " not found in type " + typeNodeToStr(tyn), binop->loc);
     }
 }
 
 
-void push_front(vector<Value*> *vec, Value *val){
+template<typename T>
+void push_front(vector<T*> *vec, T *val){
     auto size = vec->size();
     if(size != 0)
         vec->push_back((*vec)[size-1]);
@@ -513,12 +516,6 @@ void push_front(vector<Value*> *vec, Value *val){
         (*vec)[0] = val;
     else
         vec->push_back(val);
-
-
-    for(auto *v : *vec){
-        v->dump();
-    }
-    cout << "(end)\n\n";
 }
 
 
@@ -575,8 +572,9 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
     
     //if tvf is a method, add its host object as the first argument
     if(tvf->type->type == TT_Method){
-        Value *obj = ((MethodVal*) tvf)->obj;
-        push_front(&args, obj);
+        TypedValue *obj = ((MethodVal*) tvf)->obj;
+        push_front(&args, obj->val);
+        push_front(&typedArgs, obj);
     }
 
 
