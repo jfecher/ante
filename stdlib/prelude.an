@@ -64,13 +64,11 @@ fun Str.cast: [c8] cStr => Str
 
 ~ IO
 fun InFile.cast: [c8] fName => InFile
-    let f = InFile fopen fName "r"
-    fgetc f; f
+    InFile fopen fName "r"
 
 
 fun OutFile.cast: [c8] fName => OutFile
-    let f = OutFile fopen fName "w"
-    fgetc f; f
+    OutFile fopen fName "w"
 
 
 fun InFile.nextLine: InFile f => Str

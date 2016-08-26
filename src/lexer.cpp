@@ -11,6 +11,7 @@ using namespace ante;
 map<int, const char*> tokDict = {
     {Tok_Ident, "Identifier"},
     {Tok_UserType, "UserType"},
+    {Tok_TypeVar, "TypeVar"},
 
     //types
     {Tok_I8, "I8"},
@@ -87,10 +88,7 @@ map<int, const char*> tokDict = {
 
     //other
     {Tok_Where, "Where"},
-    {Tok_Infect, "Infect"},
-    {Tok_Cleanse, "Cleanse"},
-    {Tok_Ct, "Ct"},
-
+    
     {Tok_Newline, "Newline"},
     {Tok_Indent, "Indent"},
     {Tok_Unindent, "Unindent"},
@@ -155,9 +153,6 @@ map<string, int> keywords = {
 
     //other
     {"where",    Tok_Where},
-    {"infect",   Tok_Infect},
-    {"cleanse",  Tok_Cleanse},
-    {"ct",       Tok_Ct},
 };
 
         
@@ -498,10 +493,19 @@ int Lexer::genCharLitTok(yy::parser::location_type* loc){
     }
 
     incPos();
+
+    if(cur != '\''){ //typevar
+        while(IS_ALPHANUM(cur)){
+            s += cur;
+            incPos();
+        }
+        loc->end = yy::position(fName, row, col-1);
+        setlextxt(&s);
+        return Tok_TypeVar;
+    }
+
     loc->end = yy::position(fName, row, col);
     setlextxt(&s);
-
-    if(cur != '\'') lexErr("Char literal is missing a closing apostrophe", loc);
     incPos();
     return Tok_CharLit;
 }

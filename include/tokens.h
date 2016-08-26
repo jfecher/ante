@@ -23,12 +23,14 @@ enum TypeTag{
     TT_TypeVar,
     TT_Function,
     TT_Method,
+    TT_TaggedEnum,
     TT_Void
 };
 
 enum TokenType{
     Tok_Ident = 258,
     Tok_UserType,
+    Tok_TypeVar,
 
     //types
     Tok_I8,
@@ -108,9 +110,6 @@ enum TokenType{
 
     //other
     Tok_Where,
-    Tok_Infect,
-    Tok_Cleanse,
-    Tok_Ct,
 
     Tok_Newline,
     Tok_Indent,

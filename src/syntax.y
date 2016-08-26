@@ -28,7 +28,7 @@ void yyerror(const char *msg);
 %locations
 %error-verbose
 
-%token Ident UserType
+%token Ident UserType TypeVar
 
 /* types */
 %token I8 I16 I32 I64 
@@ -57,7 +57,7 @@ void yyerror(const char *msg);
 %token Const Noinit
 
 /* other */
-%token Where Infect Cleanse Ct
+%token Where
 
 /* whitespace */
 %token Newline Indent Unindent
@@ -102,7 +102,7 @@ void yyerror(const char *msg);
 %left '*' '/' '%'
 
 %left '@' New Not
-%left '&' TYPE UserType I8 I16 I32 I64 U8 U16 U32 U64 Isz Usz F16 F32 F64 C8 C32 Bool Void Type '\''
+%left '&' TYPE UserType TypeVar I8 I16 I32 I64 U8 U16 U32 U64 Isz Usz F16 F32 F64 C8 C32 Bool Void Type '\''
 %nonassoc FUNC
 
 %nonassoc LITERALS StrLit IntLit FltLit CharLit True False Ident
@@ -147,6 +147,9 @@ ident: Ident {$$ = (Node*)lextxt;}
 usertype: UserType {$$ = (Node*)lextxt;}
         ;
 
+typevar: TypeVar {$$ = (Node*)lextxt;}
+       ;
+
 intlit: IntLit {$$ = mkIntLitNode(@$, lextxt);}
       ;
 
@@ -159,25 +162,25 @@ strlit: StrLit {$$ = mkStrLitNode(@$, lextxt);}
 charlit: CharLit {$$ = mkCharLitNode(@$, lextxt);}
       ;
 
-lit_type: I8                        {$$ = mkTypeNode(@$, TT_I8,  (char*)"");}
-        | I16                       {$$ = mkTypeNode(@$, TT_I16, (char*)"");}
-        | I32                       {$$ = mkTypeNode(@$, TT_I32, (char*)"");}
-        | I64                       {$$ = mkTypeNode(@$, TT_I64, (char*)"");}
-        | U8                        {$$ = mkTypeNode(@$, TT_U8,  (char*)"");}
-        | U16                       {$$ = mkTypeNode(@$, TT_U16, (char*)"");}
-        | U32                       {$$ = mkTypeNode(@$, TT_U32, (char*)"");}
-        | U64                       {$$ = mkTypeNode(@$, TT_U64, (char*)"");}
-        | Isz                       {$$ = mkTypeNode(@$, TT_Isz, (char*)"");}
-        | Usz                       {$$ = mkTypeNode(@$, TT_Usz, (char*)"");}
-        | F16                       {$$ = mkTypeNode(@$, TT_F16, (char*)"");}
-        | F32                       {$$ = mkTypeNode(@$, TT_F32, (char*)"");}
-        | F64                       {$$ = mkTypeNode(@$, TT_F64, (char*)"");}
-        | C8                        {$$ = mkTypeNode(@$, TT_C8,  (char*)"");}
-        | C32                       {$$ = mkTypeNode(@$, TT_C32, (char*)"");}
-        | Bool                      {$$ = mkTypeNode(@$, TT_Bool, (char*)"");}
-        | Void                      {$$ = mkTypeNode(@$, TT_Void, (char*)"");}
-        | usertype  %prec UserType  {$$ = mkTypeNode(@$, TT_Data, (char*)$1);}
-        | '\'' ident                {$$ = mkTypeNode(@$, TT_TypeVar, (char*)$1);}
+lit_type: I8        {$$ = mkTypeNode(@$, TT_I8,  (char*)"");}
+        | I16       {$$ = mkTypeNode(@$, TT_I16, (char*)"");}
+        | I32       {$$ = mkTypeNode(@$, TT_I32, (char*)"");}
+        | I64       {$$ = mkTypeNode(@$, TT_I64, (char*)"");}
+        | U8        {$$ = mkTypeNode(@$, TT_U8,  (char*)"");}
+        | U16       {$$ = mkTypeNode(@$, TT_U16, (char*)"");}
+        | U32       {$$ = mkTypeNode(@$, TT_U32, (char*)"");}
+        | U64       {$$ = mkTypeNode(@$, TT_U64, (char*)"");}
+        | Isz       {$$ = mkTypeNode(@$, TT_Isz, (char*)"");}
+        | Usz       {$$ = mkTypeNode(@$, TT_Usz, (char*)"");}
+        | F16       {$$ = mkTypeNode(@$, TT_F16, (char*)"");}
+        | F32       {$$ = mkTypeNode(@$, TT_F32, (char*)"");}
+        | F64       {$$ = mkTypeNode(@$, TT_F64, (char*)"");}
+        | C8        {$$ = mkTypeNode(@$, TT_C8,  (char*)"");}
+        | C32       {$$ = mkTypeNode(@$, TT_C32, (char*)"");}
+        | Bool      {$$ = mkTypeNode(@$, TT_Bool, (char*)"");}
+        | Void      {$$ = mkTypeNode(@$, TT_Void, (char*)"");}
+        | usertype  {$$ = mkTypeNode(@$, TT_Data, (char*)$1);}
+        | typevar   {$$ = mkTypeNode(@$, TT_TypeVar, (char*)$1);}
         ;
 
 type: type '*'              %prec HIGH {$$ = mkTypeNode(@$, TT_Ptr,  (char*)"", $1);}
@@ -189,7 +192,6 @@ type: type '*'              %prec HIGH {$$ = mkTypeNode(@$, TT_Ptr,  (char*)"", 
     ;
 
 type_expr_: type_expr_ ',' type %prec LOW {$$ = setNext($1, $3);}
-          | type_expr_ '|' type %prec LOW
           | type                %prec LOW  {$$ = setRoot($1);}
           ;
 
@@ -233,8 +235,14 @@ data_decl: modifier_list Type usertype '=' type_decl_block         {$$ = mkDataD
          | Type usertype '=' type_decl_block                       {$$ = mkDataDeclNode(@$, (char*)$2, $4);}
          ;
 
+type_expr_list: type_expr_list type_expr  {$$ = setNext($1, $2);}
+              | type_expr                 {$$ = setRoot($1);}
+              ;
+
 type_decl: params          {$$ = $1;}
          | enum_decl
+         | '|' UserType type_expr_list  {$$ = mkNamedValNode(@$, mkVarNode(@2, (char*)$2), mkTypeNode(@$, TT_TaggedEnum, (char*)"", getRoot()));}
+         | '|' UserType                 {$$ = mkNamedValNode(@$, mkVarNode(@2, (char*)$2), 0);}
          ;
 
 type_decl_list: type_decl_list Newline type_decl  {$$ = setNext($1, $3);}
