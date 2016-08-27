@@ -49,19 +49,44 @@ struct MethodVal : public TypedValue {
     MethodVal(TypedValue *o, TypedValue *f) : TypedValue(f->val, (f->type->type = TT_Method, f->type.get())), obj(o) {}
 };
 
+struct UnionTag {
+    string name;
+    unique_ptr<TypeNode> tyn;
+    unsigned short tag;
+    
+    UnionTag(string &n, TypeNode *ty, unsigned short t) : name(n), tyn(ty), tag(t){}
+};
 
 struct DataType {
     vector<string> fields;
+    vector<UnionTag*> tags;
     unique_ptr<TypeNode> tyn;
 
     DataType(vector<string> &f, TypeNode *ty) : fields(f), tyn(ty){}
     ~DataType(){}
 
-    int getFieldIndex(string &field){
+    int getFieldIndex(string &field) const {
         for(unsigned int i = 0; i < fields.size(); i++)
             if(field == fields[i])
                 return i;
         return -1;
+    }
+
+    bool isUnionTag() const {
+        return fields[0][0] >= 'A' && fields[0][0] <= 'Z';
+    }
+
+    string getParentUnionName() const {
+        return fields[0];
+    }
+
+    unsigned short getTagVal(string &name){
+        for(auto *tag : tags){
+            if(tag->name == name){
+                return tag->tag;
+            }
+        }
+        return 0;
     }
 };
 

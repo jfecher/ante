@@ -709,36 +709,27 @@ TypedValue* compTaggedUnion(Compiler *c, DataDeclNode *n){
     vector<string> fieldNames;
     fieldNames.reserve(n->fields);
 
-    TypeNode *first = 0;
-    TypeNode *nxt = 0;
-
     auto *nvn = (NamedValNode*)n->child.get();
+    vector<string> union_name;
+    union_name.push_back(n->name);
+
+    vector<UnionTag*> tags;
 
     while(nvn){
         TypeNode *tyn = (TypeNode*)nvn->typeExpr.get();
+        UnionTag *tag = new UnionTag(nvn->name, deepCopyTypeNode(tyn->extTy.get()), tags.size());
 
-        if(first){
-            nxt->next.reset(deepCopyTypeNode(tyn));
-            nxt = (TypeNode*)nxt->next.get();
-        }else{
-            first = deepCopyTypeNode(tyn);
-            nxt = first;
-        }
+        tags.push_back(tag);
 
-        fieldNames.push_back(nvn->name);
+        //FIXME: 'data' will always be treated as a single (non-tuple) type
+        DataType *data = new DataType(union_name, deepCopyTypeNode(tyn->extTy.get()));
+        c->stoType(data, n->name);
         nvn = (NamedValNode*)nvn->next.get();
     }
 
-    DataType *data;
-    //check if this is a tuple/function type or a singular type
-    if(first->next.get()){
-        TypeNode *dataTyn = mkAnonTypeNode(TT_Tuple);
-        dataTyn->extTy.reset(first);
-        data = new DataType(fieldNames, dataTyn);
-    }else{
-        data = new DataType(fieldNames, first);
-    }
+    DataType *data = new DataType(fieldNames, mkAnonTypeNode(TT_TaggedUnion));
 
+    data->tags.swap(tags);
     c->stoType(data, n->name);
     return c->getVoidLiteral();
 }

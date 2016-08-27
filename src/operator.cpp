@@ -315,6 +315,20 @@ TypedValue* createCast(Compiler *c, Type *castTy, TypeNode *tyn, TypedValue *val
     auto *dataTy = c->lookupType(tyn->typeName);
     if(dataTy && *valToCast->type.get() == *dataTy->tyn.get()){
         auto *tycpy = deepCopyTypeNode(valToCast->type.get());
+
+        //check if this is a tagged union (sum type)
+        if(dataTy->isUnionTag()){
+            auto *unionTy = c->lookupType(dataTy->getParentUnionName());
+            tycpy->typeName = dataTy->getParentUnionName();
+            tycpy->type = TT_TaggedUnion;
+
+            auto t = unionTy->getTagVal(tyn->typeName);
+            Value *tag = ConstantInt::get(getGlobalContext(), APInt(8, t, true));
+            
+            
+            return new TypedValue(valToCast->val, tycpy);
+        }
+
         tycpy->typeName = tyn->typeName;
         tycpy->type = TT_Data;
         return new TypedValue(valToCast->val, tycpy);
