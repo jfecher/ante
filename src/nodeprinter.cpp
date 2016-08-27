@@ -229,6 +229,6 @@ void FuncDeclNode::print(){
 }
 
 void DataDeclNode::print(){
-    cout << "data " << name << endl;
-    printBlock(child.get());
+    cout << "type " << name << " = ";
+    child->print();
 }

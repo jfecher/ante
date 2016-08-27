@@ -339,13 +339,14 @@ string typeTagToStr(TypeTag ty){
          * these strings are most likely insufficient.  The llvm::Type
          * should instead be printed for these types
          */
-        case TT_Tuple:    return "Tuple";
-        case TT_Array:    return "Array";
-        case TT_Ptr:      return "Ptr"  ;
-        case TT_Data:     return "Data" ;
-        case TT_Function: return "Function";
-        case TT_Method:   return "Method";
-        default:          return "(Unknown TypeTag " + to_string(ty) + ")";
+        case TT_Tuple:       return "Tuple";
+        case TT_Array:       return "Array";
+        case TT_Ptr:         return "Ptr"  ;
+        case TT_Data:        return "Data" ;
+        case TT_Function:    return "Function";
+        case TT_Method:      return "Method";
+        case TT_TaggedUnion: return "|";
+        default:             return "(Unknown TypeTag " + to_string(ty) + ")";
     }
 }
 

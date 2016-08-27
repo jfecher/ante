@@ -723,7 +723,7 @@ TypedValue* compTaggedUnion(Compiler *c, DataDeclNode *n){
 
         //FIXME: 'data' will always be treated as a single (non-tuple) type
         DataType *data = new DataType(union_name, deepCopyTypeNode(tyn->extTy.get()));
-        c->stoType(data, n->name);
+        c->stoType(data, nvn->name);
         nvn = (NamedValNode*)nvn->next.get();
     }
 

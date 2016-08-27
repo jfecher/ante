@@ -318,15 +318,26 @@ TypedValue* createCast(Compiler *c, Type *castTy, TypeNode *tyn, TypedValue *val
 
         //check if this is a tagged union (sum type)
         if(dataTy->isUnionTag()){
-            auto *unionTy = c->lookupType(dataTy->getParentUnionName());
+            auto *unionDataTy = c->lookupType(dataTy->getParentUnionName());
             tycpy->typeName = dataTy->getParentUnionName();
             tycpy->type = TT_TaggedUnion;
 
-            auto t = unionTy->getTagVal(tyn->typeName);
-            Value *tag = ConstantInt::get(getGlobalContext(), APInt(8, t, true));
+            auto t = unionDataTy->getTagVal(tyn->typeName);
+            Type *variantTy = c->typeNodeToLlvmType(valToCast->type.get());
+
+            vector<Type*> unionTys;
+            unionTys.push_back(Type::getInt8Ty(getGlobalContext()));
+            unionTys.push_back(variantTy);
+
+            vector<Constant*> unionVals;
+            unionVals.push_back(ConstantInt::get(getGlobalContext(), APInt(8, t, true))); //tag
+            unionVals.push_back(UndefValue::get(variantTy));
             
+   
+            Value* uninitUnion = ConstantStruct::get(StructType::get(getGlobalContext(), unionTys), unionVals);
+            Value* taggedUnion = c->builder.CreateInsertValue(uninitUnion, valToCast->val, t);
             
-            return new TypedValue(valToCast->val, tycpy);
+            return new TypedValue(taggedUnion, tycpy);
         }
 
         tycpy->typeName = tyn->typeName;
