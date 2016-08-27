@@ -9,11 +9,11 @@ fun printf: [c8] fmt, ...;
 fun puts: [c8] str;
 fun putchar: c8 char;
 fun exit: i32 status;
-fun malloc: u32 size => void*;
-fun realloc: void* ptr, u32 size => void*;
+fun malloc: u32 size -> void*;
+fun realloc: void* ptr, u32 size -> void*;
 fun free: void* mem;
-fun system: [c8] cmd => i32;
-fun strlen: [c8] str => u32;
+fun system: [c8] cmd -> i32;
+fun strlen: [c8] str -> u32;
 
 ~C stdio
 type File = void*
@@ -22,21 +22,21 @@ type FilePos = void*
 type InFile = File
 type OutFile = File
 
-fun fopen: [c8] fName, [c8] mode => File;
+fun fopen: [c8] fName, [c8] mode -> File;
 fun fclose: File file;
 
 fun fputs: [c8] str, OutFile file;
 fun fputc: c8 char, OutFile file;
-fun fgetc: InFile file => c8;
-fun fgets: [c8] str, i32 numBytes, InFile file => [c8];
+fun fgetc: InFile file -> c8;
+fun fgets: [c8] str, i32 numBytes, InFile file -> [c8];
 
 fun fgetpos: File f, FilePos fp;
-fun ftell: File f => i64;
+fun ftell: File f -> i64;
 fun fsetpos: File f, FilePos fp;
 fun fseek: File f, i64 offset, i32 origin;
 
-fun feof: File f => bool;
-fun ferror: File f => bool;
+fun feof: File f -> bool;
+fun ferror: File f -> bool;
 
 
 
@@ -58,20 +58,20 @@ fun Str.print: Str s
     puts s.cStr
 
 
-fun Str.cast: [c8] cStr => Str
+fun Str.cast: [c8] cStr -> Str
     Str(cStr, strlen cStr)
 
 
 ~ IO
-fun InFile.cast: [c8] fName => InFile
+fun InFile.cast: [c8] fName -> InFile
     InFile fopen fName "r"
 
 
-fun OutFile.cast: [c8] fName => OutFile
+fun OutFile.cast: [c8] fName -> OutFile
     OutFile fopen fName "w"
 
 
-fun InFile.nextLine: InFile f => Str
+fun InFile.nextLine: InFile f -> Str
     var len = 0u32
     var cstr = [c8] c8* 0
     

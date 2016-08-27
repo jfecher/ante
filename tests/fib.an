@@ -10,7 +10,7 @@
 
 ~The slow but theoretical function:
 `
-fun fib: i32 n => i32
+fun fib: i32 n -> i32
     if n <= 2 then 1
     else fib(n-2) + fib(n-1)
 `
@@ -25,7 +25,7 @@ the function is pure in that it would obtain the same result
 every time it is called with a given input.
 `
 
-fun fib: i32 n => i32
+fun fib: i32 n -> i32
     if n <= 3 then 
         (n+1)/2
     else

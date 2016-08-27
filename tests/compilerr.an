@@ -27,7 +27,7 @@ let typecasterr = i32 "test"
 
 
 ~Wrong return type:
-fun someFunc: => i32,i32
+fun someFunc: -> i32,i32
     ()
 
 ~Function not declared

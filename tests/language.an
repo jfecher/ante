@@ -337,7 +337,7 @@ fun Str.cast: [c8] cStr =
 let msg = Str "Hello World!"
 
 
-fun longestStreak: Str s => i32
+fun longestStreak: Str s -> i32
     var maxStreak = 0
     var curStreak = 0
 
@@ -356,7 +356,7 @@ fun longestStreak: Str s => i32
 
 ~Alternatively, one can rewrite the above method using a more functional approach
 ~With the functions map and reduce.
-fun longestStreak_alt: Str s => i32
+fun longestStreak_alt: Str s -> i32
     s.indices().map(
     ~In Ante, even function declarations are expressions, so we can pass this
     ~Recursive function to map to return a list of each letter's streak.
@@ -398,11 +398,11 @@ fun printMsg:
     and returns a f64 value.  Since functions take a single block-expression as their
     body, the return type must match the type of this block-expression.
 `
-fun add_floats: f64 augend, f64 addend => f64
+fun add_floats: f64 augend, f64 addend -> f64
     augend + addend
 
 ~Multiple variables of the same type can be declared by omitting the , and repeated type
-fun add_floats_2: f64 augend addend => f64
+fun add_floats_2: f64 augend addend -> f64
     augend + addend
 
 `
@@ -420,7 +420,7 @@ fun lnprint: ... params
     print '\n' params
 
 ~Ante still provides the return keyword for early returns, or for code clarity.
-fun sum: i32... nums => i64
+fun sum: i32... nums -> i64
     var ret = 0_i64
     for i in nums
         ret += i
@@ -447,7 +447,7 @@ add_floats (addend = 2.5) (augend = 5.0)
 `
         Type inference
     Type inferencing in functions can be used in both the return type, and the
-    parameter types.  Functions with inferred return types replace the => type
+    parameter types.  Functions with inferred return types replace the -> type
     syntax with just an =.  Without the =, the function would be assumed to
     return a void value, as is the case with some functions above.  Parameters
     with inferred types are simply denoted by the absence of a specified type
@@ -517,7 +517,7 @@ fun printStuff:
 ext Str
     
     ~Compiled as "Str_reverse"
-    fun reverse: Str s => Str
+    fun reverse: Str s -> Str
         var rev = ""
 
         for i in s.len ^.. 0
@@ -654,7 +654,7 @@ putchar 10_u8
 
 
 ~or just manually specify the function's signature
-fun malloc: u32 size => void*;
+fun malloc: u32 size -> void*;
 
 var ptr = i32* malloc 4
 
@@ -663,52 +663,26 @@ var ptr = i32* malloc 4
 
 
 `
-        ->, ;;, {, and }.
-    -> and ;; can be used to manually insert indent and unindent tokens
-    respectively.  -> is commonly used in single line blocks, but ;; is much
-    more rare, being added to simplify the declaration of enums within a data
-    declaration with multiple fields.  Both -> and ;; change the indentation level
-    in addition to issuing the token.  Doing so with -> ensures an unindent token
-    is automatically issued once a statement is encountered on the same line as
-    the one containing the ->.  With a ;; an Unindent is introduced followed by
-    an Indent if the next statement returns to the normal level.  Both of these 
-    constructs are never required, and used only for brevity.
-
-    Unlike -> and ;;, { and } are somewhat more usefull, functioning as complete
-    replacements for the whitespace sensitive syntax.  Unlike -> and ;;, curly brackets
-    are automatically matched like indentation levels are, but also contain no
-    significant whitespace inside them, meaning if any code were to be used with
-    { and } that requires indented blocks, like functions, { and } must be
-    recursively used.  In this way, { and } closely match their usage in C-like
-    languages, and are intended for those who cannot use significant whitespace
-    for some reason or another.
+        { and }
+        The curly brackets function as complete replacements for the whitespace
+    sensitive syntax.  Curly brackets are automatically matched like indentation
+    levels are, but also contain no significant whitespace inside them, meaning 
+    if any code were to be used with { and } that requires indented blocks, like 
+    functions, { and } must be recursively used.  In this way, { and } closely 
+    match their usage in C-like languages, and are intended for those who cannot 
+    use significant whitespace for some reason or another.
 `
 
-fun subtract: f32 a b => f32 -> a - b
-
-~While these can be nested, overnesting should be avoided as it leads to clutter.
-type Integer = i32 i, fun init(): i32 a -> i = a;; u8 byte
-
-~compared to
-type Integer =
-    i32 i
-
-    fun init(): i32 a
-        i = a
-
-    u8 byte
-
-
-~NOTE: curly braces are heresy
-fun inefficientAdd: i32 a b => i32 {
+fun inefficientAdd: i32 a b -> i32 {
     if b == 0 then {
         a
-    }else if b < 0 then {
+    }elif b < 0 then {
         inefficientAdd (a-1) (b+1)
-    }else if b > 0 then {
+    }elif b > 0 then {
         inefficientAdd (a+1) (b-1)
     }
 }
+
 
 `
         Data declarations
@@ -940,20 +914,20 @@ type Statistics =
 
     ~Alternatively, you can also use modifiers before a block:
     pub
-        fun getData: self* => f64
+        fun getData: self* -> f64
             return self.secretData ~not so secret anymore
 
-        fun getStatus: self* => Str
+        fun getStatus: self* -> Str
             if self.secretData > 10 then
                 "Good"
             else
                 "Not so good"
 
-    pri fun doCalculations: self*, f64 mData => f64
+    pri fun doCalculations: self*, f64 mData -> f64
             return mData * self.secretData / self.varCount
 
     ~Because the init function is declared within the datatype, it can access private members.
-    fun init: [i32] mData => Statistics
+    fun init: [i32] mData -> Statistics
         var ret = Statistics(0, 0)
         for i in mData do
             ret.secretData += mData / ret.pi
@@ -975,7 +949,7 @@ fun greater: 't obj1 obj2 =
 
 ~This function will fail to compile if they are called with variables of a type
 ~That do not have < and > implemented.
-fun cmp: 't v1 v2 => i32
+fun cmp: 't v1 v2 -> i32
     if v1 < v2 then -1
     else i32(v1 > v2)
 
@@ -1000,10 +974,10 @@ type Angle<bool isRadians> =
     f64 angle
 
     if isRadians then
-        fun getQuadrant: self* => u8
+        fun getQuadrant: self* -> u8
             u8(self.angle / (3.14159265 / 4) % 4 + 1)
     else
-        fun getQuadrant: self* => u8
+        fun getQuadrant: self* -> u8
             u8(self.angle / 90 % 4 + 1)
 ~usage:
 let a1 = Angle<true>  (3.14159265 * 2 / 3)
@@ -1044,7 +1018,7 @@ type MySmartPtr : Clone =
             @refCount -= 1
 
     ~Required by Clone trait
-    fun clone: self => MySmartPtr
+    fun clone: self -> MySmartPtr
         let clone = (rawPtr, refCount)
         @self.rawPtr += 1
 
@@ -1058,18 +1032,18 @@ type ChessPiece<Str piece> where searchFor piece ["pawn", "knight", "king"] != N
     u8 x y
 
     if piece == "pawn" then
-        fun validateMove: u8 x2 y2 => bool
+        fun validateMove: u8 x2 y2 -> bool
             x == x2 and abs(y - y2) == 1
 
     elif piece == "knight" then
-        fun validateMove: u8 x2 y2 => bool
+        fun validateMove: u8 x2 y2 -> bool
             if abs(x - x2) == 1 then
                 abs(y - y2) == 2
             else
                 abs(x - x2) == 2 and abs(y - y2) == 1
     
     elif piece == "king" then
-        fun validateMove: u8 x2 y2 => bool
+        fun validateMove: u8 x2 y2 -> bool
             abs(x - x2) <= 1 and abs(y - y2) <= 1
 
 
@@ -1166,13 +1140,13 @@ immutRect:setHeight 5
 
 ~Extensions can also be used for primitive types
 ext i32, i32
-    fun swap: self => i32,i32
+    fun swap: self -> i32,i32
         print "Swapped i32!"
         (self#1, self#0)
 
 
 ext 't, 't
-    fun swap: self => 't,'t
+    fun swap: self -> 't,'t
         print "Swapped pair!"
         (self#1, self#0)
 
@@ -1189,11 +1163,11 @@ assert(point#0 == 4 and point#1 == 3)
 ~implementation, otherwise a compilation error will result.
 
 ext c8* ~invalid
-    fun addInitials: self => c8*
+    fun addInitials: self -> c8*
         self ++ " -JF"
 
 ext [c8] ~valid
-    fun addInitials: self => [c8]
+    fun addInitials: self -> [c8]
         self ++ " -JF"
 
 
@@ -1471,7 +1445,7 @@ fun div: f32 a b = a / b
 
 ~This function takes one parameter, a function
 ~that takes two f32s as parameters and returns one as well.
-fun doOperation: f32(f32, f32) opFunc => f32
+fun doOperation: f32(f32, f32) opFunc -> f32
     opFunc 6 4
 
 ~our function variable
@@ -1534,13 +1508,13 @@ let numsList = List(1u8, &(2u8, &(3u8, None)))
 type MyErr : Err =
     const Str msg
     
-    fun desc: self* => Str
+    fun desc: self* -> Str
         return "MyErr: " ++ self.msg
 
 
 ~This function takes three parameters: two i32s and
 ~a function that can return a Str or StrErr
-fun errFunc: i32 a b, (Str|Err)(i32) fn => i32|MyErr
+fun errFunc: i32 a b, (Str|Err)(i32) fn -> i32|MyErr
     ~Try to open a file, and if no FileErr is found
     ~Then write Just a test, otherwise wrap the error
     ~In type MyErr (using fromErr()), and return it.
@@ -1584,7 +1558,7 @@ macro double: expr e
 print(double!(2 + 3))
 
 ~possible scoped macros
-fun getTokenType: c32 t => Str
+fun getTokenType: c32 t -> Str
     macro isLetter: c32 i
         (i >= 65 and i <= 90 or i >= 97 and i <= 122)
 

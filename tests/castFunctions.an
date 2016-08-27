@@ -9,7 +9,7 @@ fun bool.cast: i32 x =
     x != 0
 
 
-fun Str.cast: [c8] cStr => Str
+fun Str.cast: [c8] cStr -> Str
     Str(cStr, 0u32)
 
 

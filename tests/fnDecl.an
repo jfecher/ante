@@ -9,15 +9,15 @@ fun printMsg: bool b
         puts "Goodbye World!"
 
 
-fun divisibleByThree: i32 i => bool
+fun divisibleByThree: i32 i -> bool
     i % 3 == 0
 
 
-fun isEven: i32 x => bool
+fun isEven: i32 x -> bool
     x % 2 == 0
 
 
-fun fact: i32 x => i32
+fun fact: i32 x -> i32
     if x <= 1 then 1
     else x * fact(x-1)
 
@@ -29,7 +29,7 @@ if divisibleByThree 23 then
 if isEven 4 then
    printf "fact(5) = %d\n" (fact 5)
 
-printMsg(1 + 1 != 2)
+printMsg (1 + 1 != 2)
 
 `output:
 Hello World!

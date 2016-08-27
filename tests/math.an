@@ -5,11 +5,11 @@
 `
 
 ~explicit list of parameters
-fun add: i32 a, i32 b => i32
+fun add: i32 a, i32 b -> i32
     return a + b
 
 ~shorthand parameter list
-fun mul: i32 a b => i32
+fun mul: i32 a b -> i32
     return a * b
 
 

@@ -32,22 +32,22 @@ map<int, const char*> tokDict = {
     {Tok_Bool, "Bool"},
     {Tok_Void, "Void"},
 
-    {Tok_Eq, "Eq"},
-    {Tok_NotEq, "NotEq"},
-    {Tok_AddEq, "AddEq"},
-    {Tok_SubEq, "SubEq"},
-    {Tok_MulEq, "MulEq"},
-    {Tok_DivEq, "DivEq"},
-    {Tok_GrtrEq, "GrtrEq"},
-    {Tok_LesrEq, "LesrEq"},
-    {Tok_Or, "Or"},
-    {Tok_And, "And"},
-    {Tok_Range, "Range"},
-    {Tok_Returns, "Returns"},
-    {Tok_ApplyL, "ApplyL"},
-    {Tok_ApplyR, "ApplyR"},
-    {Tok_New, "New"},
-    {Tok_Not, "Not"},
+    {Tok_Eq, "=="},
+    {Tok_NotEq, "!="},
+    {Tok_AddEq, "+="},
+    {Tok_SubEq, "-="},
+    {Tok_MulEq, "*="},
+    {Tok_DivEq, "/="},
+    {Tok_GrtrEq, ">="},
+    {Tok_LesrEq, "<="},
+    {Tok_Or, "or"},
+    {Tok_And, "and"},
+    {Tok_Range, ".."},
+    {Tok_RArrow, "->"},
+    {Tok_ApplyL, "<|"},
+    {Tok_ApplyR, "|>"},
+    {Tok_New, "new"},
+    {Tok_Not, "not"},
 
     //literals
     {Tok_True, "True"},
@@ -526,21 +526,7 @@ int Lexer::genOpTok(yy::parser::location_type* loc){
     string* fName = new string(fileName);
     loc->begin = yy::position(fName, row, col);
 
-    //substitute -> for an indent and ;; for an unindent
-    if(cur == '-' && nxt == '>'){
-        cscope++;
-        RETURN_PAIR(next(loc));
-    }else if(cur == ';' && nxt == ';'){
-        unsigned int curScope = scopes->top();
-        if(curScope != 0){
-            scopes->pop();
-            cscope = scopes->top();
-            scopes->push(curScope);
-        }else{
-            lexErr("Extraneous ;; leads to scope underflow.", loc);
-        }
-        RETURN_PAIR(next(loc));
-    }else if(cur == '\\' && nxt == '\n'){ //ignore newline
+    if(cur == '\\' && nxt == '\n'){ //ignore newline
         incPos(2);
         col = 1;
         row++;
@@ -548,7 +534,7 @@ int Lexer::genOpTok(yy::parser::location_type* loc){
     }
 
     if(cur == '.' && nxt == '.') RETURN_PAIR(Tok_Range);
-    if(cur == '=' && nxt == '>') RETURN_PAIR(Tok_Returns);
+    if(cur == '-' && nxt == '>') RETURN_PAIR(Tok_RArrow);
     
     if(cur == '<' && nxt == '|') RETURN_PAIR(Tok_ApplyL);
     if(cur == '|' && nxt == '>') RETURN_PAIR(Tok_ApplyR);

@@ -63,7 +63,7 @@ enum TokenType{
     Tok_Or,
     Tok_And,
     Tok_Range,
-    Tok_Returns,
+    Tok_RArrow,
     Tok_ApplyL,
     Tok_ApplyR,
     Tok_New,

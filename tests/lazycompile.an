@@ -11,7 +11,7 @@ fun unusedFn:
     puts "unusedFn"
 
 
-fun mul: i32 a b => i32
+fun mul: i32 a b -> i32
     a * b
 
 

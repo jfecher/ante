@@ -5,7 +5,7 @@
     by an unindent.
 `
 
-fun addThree: i32 a b c => i32
+fun addThree: i32 a b c -> i32
     return a + b + c
 
 

@@ -22,7 +22,7 @@ print Str("str", 3u32)
 
 ~Gets the length of null-terminated strings.
 ~Same as strlen from the c library.
-fun len: [c8] s => i32
+fun len: [c8] s -> i32
     var acc = 0
     while s#acc != 0u8 do
         acc += 1

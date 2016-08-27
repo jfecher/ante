@@ -8,9 +8,6 @@
 ~Extraneous numbers after type suffix
 let i = 5_i321
 
-~Scope underflow caused by unindent literal
-let ans = 5;;
-
 ~Types must not contain an _ character
 let v = My_Str "hi"
 
