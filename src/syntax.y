@@ -241,8 +241,8 @@ type_expr_list: type_expr_list type_expr  {$$ = setNext($1, $2);}
 
 type_decl: params          {$$ = $1;}
          | enum_decl
-         | '|' UserType type_expr_list  {$$ = mkNamedValNode(@$, mkVarNode(@2, (char*)$2), mkTypeNode(@$, TT_TaggedEnum, (char*)"", getRoot()));}
-         | '|' UserType                 {$$ = mkNamedValNode(@$, mkVarNode(@2, (char*)$2), 0);}
+         | '|' usertype type_expr_list  {$$ = mkNamedValNode(@$, mkVarNode(@2, (char*)$2), mkTypeNode(@$, TT_TaggedUnion, (char*)"", getRoot()));}
+         | '|' usertype                 {$$ = mkNamedValNode(@$, mkVarNode(@2, (char*)$2), mkTypeNode(@$, TT_TaggedUnion, (char*)"", 0));}
          ;
 
 type_decl_list: type_decl_list Newline type_decl  {$$ = setNext($1, $3);}

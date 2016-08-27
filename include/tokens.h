@@ -23,7 +23,7 @@ enum TypeTag{
     TT_TypeVar,
     TT_Function,
     TT_Method,
-    TT_TaggedEnum,
+    TT_TaggedUnion,
     TT_Void
 };
 

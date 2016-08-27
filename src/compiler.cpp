@@ -705,6 +705,45 @@ TypedValue* ExtNode::compile(Compiler *c){
 }
 
 
+TypedValue* compTaggedUnion(Compiler *c, DataDeclNode *n){
+    vector<string> fieldNames;
+    fieldNames.reserve(n->fields);
+
+    TypeNode *first = 0;
+    TypeNode *nxt = 0;
+
+    auto *nvn = (NamedValNode*)n->child.get();
+
+    while(nvn){
+        TypeNode *tyn = (TypeNode*)nvn->typeExpr.get();
+
+        if(first){
+            nxt->next.reset(deepCopyTypeNode(tyn));
+            nxt = (TypeNode*)nxt->next.get();
+        }else{
+            first = deepCopyTypeNode(tyn);
+            nxt = first;
+        }
+
+        fieldNames.push_back(nvn->name);
+        nvn = (NamedValNode*)nvn->next.get();
+    }
+
+    DataType *data;
+    //check if this is a tuple/function type or a singular type
+    if(first->next.get()){
+        TypeNode *dataTyn = mkAnonTypeNode(TT_Tuple);
+        dataTyn->extTy.reset(first);
+        data = new DataType(fieldNames, dataTyn);
+    }else{
+        data = new DataType(fieldNames, first);
+    }
+
+    c->stoType(data, n->name);
+    return c->getVoidLiteral();
+}
+
+
 TypedValue* DataDeclNode::compile(Compiler *c){
     vector<string> fieldNames;
     fieldNames.reserve(fields);
@@ -714,6 +753,10 @@ TypedValue* DataDeclNode::compile(Compiler *c){
     TypeNode *nxt = 0;
 
     auto *nvn = (NamedValNode*)child.get();
+    if(((TypeNode*) nvn->typeExpr.get())->type == TT_TaggedUnion){
+        return compTaggedUnion(c, this);
+    }
+
     while(nvn){
         TypeNode *tyn = (TypeNode*)nvn->typeExpr.get();
 
