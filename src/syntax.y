@@ -113,7 +113,7 @@ void yyerror(const char *msg);
     Being below HIGH, this ensures parenthetical expressions will be parsed
     as just order-of operations parenthesis, instead of a single-value tuple.
 */
-%nonassoc ')'
+%nonassoc ')' ']'
 
 %nonassoc '(' '[' Indent Unindent
 %nonassoc HIGH
@@ -185,7 +185,7 @@ lit_type: I8        {$$ = mkTypeNode(@$, TT_I8,  (char*)"");}
 
 type: type '*'              %prec HIGH {$$ = mkTypeNode(@$, TT_Ptr,  (char*)"", $1);}
     | '[' type_expr ']'     {$$ = mkTypeNode(@$, TT_Array,(char*)"", $2);}
-    | type RArrow type      {setNext($3, $1); $$ = mkTypeNode(@$, TT_Function, (char*)"", $3);}  /* f-ptr w/ params*/
+    | type '>' type         {setNext($3, $1); $$ = mkTypeNode(@$, TT_Function, (char*)"", $3);}  /* f-ptr w/ params*/
     | '(' ')' RArrow type   {$$ = mkTypeNode(@$, TT_Function, (char*)"", $4);}  /* f-ptr w/out params*/
     | '(' type_expr ')'     {$$ = $2;}
     | lit_type              {$$ = $1;}
@@ -436,6 +436,7 @@ val: '(' expr ')'            {$$ = $2;}
    | import_expr             {$$ = $1;}
    | match_expr    %prec LOW {$$ = $1;}
    | block                   {$$ = $1;}
+   | type_expr      %prec LOW
    ;
 
 tuple: '(' expr_list ')' {$$ = mkTupleNode(@$, $2);}

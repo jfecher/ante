@@ -215,7 +215,7 @@ void WhileNode::print(){
 void MatchNode::print(){
     cout << "match ";
     expr->print();
-    puts(" with\n");
+    puts(" with");
     for(auto *b : branches)
         b->print();
     puts("end match");
