@@ -779,7 +779,6 @@ TypedValue* DataDeclNode::compile(Compiler *c){
 
 TypedValue* MatchNode::compile(Compiler *c){
     auto *lval = expr->compile(c);
-    lval->val->dump();
 
     if(!lval) return 0;
 
@@ -847,7 +846,6 @@ TypedValue* MatchNode::compile(Compiler *c){
     for(auto &pair : merges)
         phi->addIncoming(pair.second->val, pair.first);
 
-    c->module->dump();
     return new TypedValue(phi, deepCopyTypeNode(merges[0].second->type.get()));
 }
 
@@ -1019,6 +1017,8 @@ void Compiler::compile(){
 
     //builder should already be at end of main function
     builder.CreateRet(ConstantInt::get(getGlobalContext(), APInt(8, 0, true)));
+    
+    module->dump();
     passManager->run(*main);
 
 
