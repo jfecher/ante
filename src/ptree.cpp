@@ -45,6 +45,11 @@ Node* setNext(Node* cur, Node* nxt){
     return nxt;
 }
 
+Node* addMatch(Node *matchExpr, Node *newMatch){
+    ((MatchNode*)matchExpr)->branches.push_back((MatchBranchNode*)newMatch);
+    return matchExpr;
+}
+
 
 Node* mkIntLitNode(yy::parser::location_type loc, char* s){
     string str = s;
@@ -250,4 +255,14 @@ ParentNode* mkFuncDeclNode(yy::parser::location_type loc, char* s, Node* mods, N
 
 ParentNode* mkDataDeclNode(yy::parser::location_type loc, char* s, Node* b){
     return new DataDeclNode(loc, s, b, Compiler::getTupleSize(b));
+}
+
+Node* mkMatchNode(LOC_TY loc, Node* expr, Node* branch){
+    vector<MatchBranchNode*> branches;
+    branches.push_back((MatchBranchNode*)branch);
+    return new MatchNode(loc, expr, branches);
+}
+
+Node* mkMatchBranchNode(LOC_TY loc, Node* pattern, Node* branch){
+    return new MatchBranchNode(loc, pattern, branch);
 }

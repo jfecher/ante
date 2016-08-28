@@ -399,15 +399,15 @@ if_expr: If expr Then expr                     %prec If {$$ = setRoot(mkIfNode(@
 while_loop: While expr Do expr  %prec While  {$$ = mkWhileNode(@$, $2, $4);}
           ;
 
-pattern: expr
 
-match: '|' pattern RArrow expr {/*$$ = mkMatchBranchNode(@$, $2, $4);*/}
+match: '|' expr RArrow expr {$$ = mkMatchBranchNode(@$, $2, $4);}
      ;
 
 
-matches: match
+match_expr: Match expr With Newline match  {$$ = mkMatchNode(@$, $2, $5);}
+          | match_expr Newline match       {$$ = addMatch($1, $3);}
+          ;
 
-match_expr: Match expr With maybe_newline matches  {/*$$ = mkMatchNode(@$, $2, $5);*/}
 
 
 var: ident  %prec Ident {$$ = mkVarNode(@$, (char*)$1);}
@@ -434,7 +434,7 @@ val: '(' expr ')'            {$$ = $2;}
    | extension               {$$ = $1;}
    | ret_expr                {$$ = $1;}
    | import_expr             {$$ = $1;}
-   | match_expr              {$$ = $1;}
+   | match_expr    %prec LOW {$$ = $1;}
    | block                   {$$ = $1;}
    ;
 

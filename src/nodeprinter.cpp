@@ -212,6 +212,23 @@ void WhileNode::print(){
     child->print();
 }
 
+void MatchNode::print(){
+    cout << "match ";
+    expr->print();
+    puts(" with\n");
+    for(auto *b : branches)
+        b->print();
+    puts("end match");
+}
+
+void MatchBranchNode::print(){
+    cout << "| ";
+    pattern->print();
+    cout << " -> ";
+    branch->print();
+    putchar('\n');
+}
+
 void FuncDeclNode::print(){
     cout << "fun ";
     cout << name;

@@ -10,6 +10,7 @@ Node* setRoot(Node* root);
 Node* getRoot();
 Node* setNext(Node* cur, Node* nxt);
 Node* setElse(Node *ifn, Node *elseN);
+Node* addMatch(Node *matchExpr, Node *newMatch);
 
 #ifndef LOC_TY
 #define LOC_TY yy::location
@@ -36,6 +37,8 @@ Node* mkLetBindingNode(LOC_TY loc, char* s, Node* mods, Node* tExpr, Node* expr)
 Node* mkVarDeclNode(LOC_TY loc, char* s, Node* mods, Node* tExpr, Node* expr);
 Node* mkVarAssignNode(LOC_TY loc, Node* var, Node* expr, bool shouldFreeLval = true);
 Node* mkExtNode(LOC_TY loc, Node* typeExpr, Node* methods);
+Node* mkMatchNode(LOC_TY loc, Node* expr, Node* branch);
+Node* mkMatchBranchNode(LOC_TY loc, Node* pattern, Node* branch);
 
 Node* mkIfNode(LOC_TY loc, Node* con, Node* body, Node* els);
 Node* mkWhileNode(LOC_TY loc, Node* con, Node* body);

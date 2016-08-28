@@ -777,6 +777,14 @@ TypedValue* DataDeclNode::compile(Compiler *c){
     return c->getVoidLiteral();
 }
 
+TypedValue* MatchNode::compile(Compiler *c){
+    return c->getVoidLiteral();
+}
+
+TypedValue* MatchBranchNode::compile(Compiler *c){
+    return c->getVoidLiteral();
+}
+
 
 TypedValue* Compiler::getFunction(string& name){
     auto *f = lookup(name);

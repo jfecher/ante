@@ -254,10 +254,24 @@ struct WhileNode : public ParentNode{
     ~WhileNode(){}
 };
 
+struct MatchBranchNode : public Node{
+    unique_ptr<Node> pattern, branch;
+    TypedValue* compile(Compiler*);
+    void print(void);
+    MatchBranchNode(LOC_TY& loc, Node *p, Node *b) : Node(loc), pattern(p), branch(b){}
+    ~MatchBranchNode(){}
+};
 
-//if node used in expressions
-//requires elseN to be initialized, and
-//typechecks thenN and elseN to be matching types.
+struct MatchNode : public Node{
+    unique_ptr<Node> expr;
+    vector<MatchBranchNode*> branches;
+
+    TypedValue* compile(Compiler*);
+    void print(void);
+    MatchNode(LOC_TY& loc, Node *e, vector<MatchBranchNode*> &b) : Node(loc), expr(e), branches(b){}
+    ~MatchNode(){}
+};
+
 struct IfNode : public Node{
     unique_ptr<Node> condition, thenN, elseN;
     TypedValue* compile(Compiler*);
