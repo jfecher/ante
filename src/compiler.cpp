@@ -788,10 +788,10 @@ TypedValue* MatchNode::compile(Compiler *c){
 
     //the tag is always the zero-th index except for in certain optimization cases
     Value *switchVal = c->builder.CreateExtractValue(lval->val, 0);
+    Function *f = c->builder.GetInsertBlock()->getParent();
 
-    auto *bb = BasicBlock::Create(getGlobalContext(), "match");
-    auto *end = BasicBlock::Create(getGlobalContext(), "end_match");
-    auto *match = c->builder.CreateSwitch(switchVal, bb, branches.size());
+    auto *end = BasicBlock::Create(getGlobalContext(), "end_match", f);
+    auto *match = c->builder.CreateSwitch(switchVal, end, branches.size());
     vector<pair<BasicBlock*,TypedValue*>> merges;
 
     for(auto *mbn : branches){
@@ -832,7 +832,7 @@ TypedValue* MatchNode::compile(Compiler *c){
             return c->compErr("Pattern matching non-tagged union types is not yet implemented", mbn->pattern->loc);
         }
 
-        auto *br = BasicBlock::Create(getGlobalContext(), "br");
+        auto *br = BasicBlock::Create(getGlobalContext(), "br", f);
         c->builder.SetInsertPoint(br);
         auto *then = mbn->branch->compile(c);
         c->builder.CreateBr(end);
