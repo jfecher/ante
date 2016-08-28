@@ -335,7 +335,7 @@ TypedValue* createCast(Compiler *c, Type *castTy, TypeNode *tyn, TypedValue *val
             
    
             Value* uninitUnion = ConstantStruct::get(StructType::get(getGlobalContext(), unionTys), unionVals);
-            Value* taggedUnion = c->builder.CreateInsertValue(uninitUnion, valToCast->val, t);
+            Value* taggedUnion = c->builder.CreateInsertValue(uninitUnion, valToCast->val, 1);
             
             return new TypedValue(taggedUnion, tycpy);
         }

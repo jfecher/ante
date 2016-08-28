@@ -778,7 +778,77 @@ TypedValue* DataDeclNode::compile(Compiler *c){
 }
 
 TypedValue* MatchNode::compile(Compiler *c){
-    return c->getVoidLiteral();
+    auto *lval = expr->compile(c);
+    lval->val->dump();
+
+    if(!lval) return 0;
+
+    if(lval->type->type != TT_TaggedUnion)
+        return c->compErr("Match expression must be a tagged union type", expr->loc);
+
+    //the tag is always the zero-th index except for in certain optimization cases
+    Value *switchVal = c->builder.CreateExtractValue(lval->val, 0);
+
+    auto *bb = BasicBlock::Create(getGlobalContext(), "match");
+    auto *end = BasicBlock::Create(getGlobalContext(), "end_match");
+    auto *match = c->builder.CreateSwitch(switchVal, bb, branches.size());
+    vector<pair<BasicBlock*,TypedValue*>> merges;
+
+    for(auto *mbn : branches){
+        ConstantInt *ci;
+
+        //TypeCast-esque pattern:  Maybe n
+        if(TypeCastNode *tn = dynamic_cast<TypeCastNode*>(mbn->pattern.get())){
+            auto *tagTy = c->lookupType(tn->typeExpr->typeName);
+            if(!tagTy)
+                return c->compErr("Union tag " + typeNodeToStr(tn->typeExpr.get()) + " was not yet declared.", tn->typeExpr->loc);
+       
+            if(!tagTy->isUnionTag())
+                return c->compErr(typeNodeToStr(tn->typeExpr.get()) + " must be a union tag to be used in a pattern", tn->typeExpr->loc);
+
+            auto *parentTy = c->lookupType(tagTy->getParentUnionName());
+            ci = ConstantInt::get(getGlobalContext(), APInt(8, parentTy->getTagVal(tn->typeExpr->typeName), true));
+
+            
+            if(VarNode *v = dynamic_cast<VarNode*>(tn->rval.get())){
+                auto *extract = new TypedValue(c->builder.CreateExtractValue(lval->val, 1), deepCopyTypeNode(tagTy->tyn.get()));
+                c->stoVar(v->name, new Variable(v->name, extract, c->scope, true));
+            }else{
+                return c->compErr("pattern typecast's rval is not a ident", tn->rval->loc);
+            }
+
+        //single type pattern:  None
+        }else if(TypeNode *tn = dynamic_cast<TypeNode*>(mbn->pattern.get())){
+            auto *tagTy = c->lookupType(tn->typeName);
+            if(!tagTy)
+                return c->compErr("Union tag " + typeNodeToStr(tn) + " was not yet declared.", tn->loc);
+       
+            if(!tagTy->isUnionTag())
+                return c->compErr(typeNodeToStr(tn) + " must be a union tag to be used in a pattern", tn->loc);
+
+            auto *parentTy = c->lookupType(tagTy->getParentUnionName());
+            ci = ConstantInt::get(getGlobalContext(), APInt(8, parentTy->getTagVal(tn->typeName), true));
+        }else{
+            return c->compErr("Pattern matching non-tagged union types is not yet implemented", mbn->pattern->loc);
+        }
+
+        auto *br = BasicBlock::Create(getGlobalContext(), "br");
+        c->builder.SetInsertPoint(br);
+        auto *then = mbn->branch->compile(c);
+        c->builder.CreateBr(end);
+        merges.push_back(pair<BasicBlock*,TypedValue*>(c->builder.GetInsertBlock(), then));
+        
+        match->addCase(ci, br);
+    }
+
+    c->builder.SetInsertPoint(end);
+
+    auto *phi = c->builder.CreatePHI(merges[0].second->getType(), branches.size());
+    for(auto &pair : merges)
+        phi->addIncoming(pair.second->val, pair.first);
+
+    c->module->dump();
+    return new TypedValue(phi, deepCopyTypeNode(merges[0].second->type.get()));
 }
 
 TypedValue* MatchBranchNode::compile(Compiler *c){
