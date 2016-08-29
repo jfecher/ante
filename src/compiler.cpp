@@ -788,6 +788,7 @@ TypedValue* MatchNode::compile(Compiler *c){
     //the tag is always the zero-th index except for in certain optimization cases
     Value *switchVal = c->builder.CreateExtractValue(lval->val, 0);
     Function *f = c->builder.GetInsertBlock()->getParent();
+    auto *matchbb = c->builder.GetInsertBlock();
 
     auto *end = BasicBlock::Create(getGlobalContext(), "end_match", f);
     auto *match = c->builder.CreateSwitch(switchVal, end, branches.size());
@@ -846,6 +847,7 @@ TypedValue* MatchNode::compile(Compiler *c){
     for(auto &pair : merges)
         phi->addIncoming(pair.second->val, pair.first);
 
+    phi->addIncoming(UndefValue::get(merges[0].second->getType()), matchbb);
     return new TypedValue(phi, deepCopyTypeNode(merges[0].second->type.get()));
 }
 
@@ -1018,7 +1020,6 @@ void Compiler::compile(){
     //builder should already be at end of main function
     builder.CreateRet(ConstantInt::get(getGlobalContext(), APInt(8, 0, true)));
     
-    module->dump();
     passManager->run(*main);
 
 
