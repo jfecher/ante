@@ -128,7 +128,6 @@ Type* typeTagToLlvmType(TypeTag ty, string typeName = ""){
         case TT_C8:     return Type::getInt8Ty(getGlobalContext());
         case TT_C32:    return Type::getInt32Ty(getGlobalContext());
         case TT_Bool:   return Type::getInt1Ty(getGlobalContext());
-        case TT_StrLit: return PointerType::get(Type::getInt8Ty(getGlobalContext()), 0);
         case TT_Void:   return Type::getVoidTy(getGlobalContext());
         default:
             cerr << "typeTagToLlvmType: Unknown/Unsupported TypeTag " << ty << ", returning nullptr.\n";
@@ -195,6 +194,13 @@ Type* Compiler::typeNodeToLlvmType(TypeNode *tyNode){
         case TT_Function: //TODO function pointer type
             cout << "typeNodeToLlvmType: Function pointer types are currently unimplemented.  A void type will be returned instead.\n";
             return Type::getVoidTy(getGlobalContext());
+        case TT_TaggedUnion:
+            userType = lookupType(tyNode->typeName);
+            while(tyn){
+                tys.push_back(typeNodeToLlvmType(tyn));
+                tyn = (TypeNode*)tyn->next.get();
+            }
+            return StructType::get(getGlobalContext(), tys);
         default:
             return typeTagToLlvmType(tyNode->type);
     }

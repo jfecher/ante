@@ -170,6 +170,17 @@ TypedValue* ModNode::compile(Compiler *c){
 
 
 TypedValue* TypeNode::compile(Compiler *c){
+    //check for enum value
+    if(type == TT_Data){
+        auto *dataTy = c->lookupType(typeName);
+        if(!dataTy) return 0;
+
+        auto *unionTy = c->lookupType(dataTy->getParentUnionName());
+        Value *tag = ConstantInt::get(getGlobalContext(), APInt(8, unionTy->getTagVal(typeName), true));
+        auto *ty = mkAnonTypeNode(TT_TaggedUnion);
+        ty->typeName = dataTy->getParentUnionName();
+        return new TypedValue(tag, ty);
+    }
     return nullptr;
 }
 
@@ -843,12 +854,16 @@ TypedValue* MatchNode::compile(Compiler *c){
 
     c->builder.SetInsertPoint(end);
 
-    auto *phi = c->builder.CreatePHI(merges[0].second->getType(), branches.size());
-    for(auto &pair : merges)
-        phi->addIncoming(pair.second->val, pair.first);
+    if(merges[0].second->type->type != TT_Void){
+        auto *phi = c->builder.CreatePHI(merges[0].second->getType(), branches.size());
+        for(auto &pair : merges)
+            phi->addIncoming(pair.second->val, pair.first);
 
-    phi->addIncoming(UndefValue::get(merges[0].second->getType()), matchbb);
-    return new TypedValue(phi, deepCopyTypeNode(merges[0].second->type.get()));
+        phi->addIncoming(UndefValue::get(merges[0].second->getType()), matchbb);
+        return new TypedValue(phi, deepCopyTypeNode(merges[0].second->type.get()));
+    }else{
+        return c->getVoidLiteral();
+    }
 }
 
 TypedValue* MatchBranchNode::compile(Compiler *c){

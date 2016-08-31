@@ -4,7 +4,7 @@
 
 TypedValue* Compiler::compAdd(TypedValue *l, TypedValue *r, BinOpNode *op){
     switch(l->type->type){
-        case TT_I8:  case TT_U8:
+        case TT_I8:  case TT_U8:  case TT_C8:
         case TT_I16: case TT_U16:
         case TT_I32: case TT_U32:
         case TT_I64: case TT_U64:
@@ -22,7 +22,7 @@ TypedValue* Compiler::compAdd(TypedValue *l, TypedValue *r, BinOpNode *op){
 
 TypedValue* Compiler::compSub(TypedValue *l, TypedValue *r, BinOpNode *op){
     switch(l->type->type){
-        case TT_I8:  case TT_U8:
+        case TT_I8:  case TT_U8:  case TT_C8:
         case TT_I16: case TT_U16:
         case TT_I32: case TT_U32:
         case TT_I64: case TT_U64:
@@ -40,7 +40,7 @@ TypedValue* Compiler::compSub(TypedValue *l, TypedValue *r, BinOpNode *op){
 
 TypedValue* Compiler::compMul(TypedValue *l, TypedValue *r, BinOpNode *op){
     switch(l->type->type){
-        case TT_I8:  case TT_U8:
+        case TT_I8:  case TT_U8:  case TT_C8:
         case TT_I16: case TT_U16:
         case TT_I32: case TT_U32:
         case TT_I64: case TT_U64:
@@ -62,7 +62,7 @@ TypedValue* Compiler::compDiv(TypedValue *l, TypedValue *r, BinOpNode *op){
         case TT_I32: 
         case TT_I64: 
             return new TypedValue(builder.CreateSDiv(l->val, r->val), l->type);
-        case TT_U8:
+        case TT_U8: case TT_C8:
         case TT_U16:
         case TT_U32:
         case TT_U64:
@@ -84,7 +84,7 @@ TypedValue* Compiler::compRem(TypedValue *l, TypedValue *r, BinOpNode *op){
         case TT_I32:
         case TT_I64:
             return new TypedValue(builder.CreateSRem(l->val, r->val), l->type);
-        case TT_U8:
+        case TT_U8: case TT_C8:
         case TT_U16:
         case TT_U32:
         case TT_U64:

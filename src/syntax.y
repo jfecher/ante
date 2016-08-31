@@ -510,8 +510,10 @@ expr: expr '+' maybe_newline expr                {$$ = mkBinOpNode(@$, '+', $1, 
         if_expr prec must be low to absorb the newlines before Else / Elif tokens, so 
        This rule is needed to properly sequence them
     */
-    | if_expr Newline expr            %prec If   {$$ = mkBinOpNode(@$, ';', getRoot(), $3);}
-    | if_expr Newline                 %prec LOW  {$$ = getRoot();}
+    | if_expr Newline expr          %prec If     {$$ = mkBinOpNode(@$, ';', getRoot(), $3);}
+    | if_expr Newline               %prec LOW    {$$ = getRoot();}
+    | match_expr Newline expr       %prec Match  {$$ = mkBinOpNode(@$, ';', $1, $3);}
+    | match_expr Newline            %prec LOW    {$$ = $1;}
     | expr Newline                               {$$ = $1;}
     | expr Newline expr                          {$$ = mkBinOpNode(@$, ';', $1, $3);}
     ;
