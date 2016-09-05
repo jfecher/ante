@@ -1475,7 +1475,8 @@ type Str = [c8] | [c32]
 type Coord = (i32, i32) | (f64, f64)
 
 type Maybe =
-    't | enum -> None
+   | Some 't
+   | None
 
 ~declare a list type that is a tuple with two indices, the first
 ~being the value type, and the second being the next List node.
@@ -1488,11 +1489,11 @@ type List =
     Maybe<List<'t>*> next
 
 type Vec =
-    't[] mem
+    ['t] mem
     u32 len
     u32 cap
 
-let numsList = List(1u8, &(2u8, &(3u8, None)))
+let numsList = List(Some 1, &(Some 2, &(Some 3, None)))
 
 
 

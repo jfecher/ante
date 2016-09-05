@@ -176,6 +176,8 @@ TypedValue* TypeNode::compile(Compiler *c){
         if(!dataTy) return 0;
 
         auto *unionTy = c->lookupType(dataTy->getParentUnionName());
+        if(!unionTy) return 0;
+
         Value *tag = ConstantInt::get(getGlobalContext(), APInt(8, unionTy->getTagVal(typeName), true));
         auto *ty = mkAnonTypeNode(TT_TaggedUnion);
         ty->typeName = dataTy->getParentUnionName();
@@ -257,19 +259,21 @@ TypedValue* TupleNode::compile(Compiler *c){
     }
 
     //Create the constant tuple with undef values in place for the non-constant values
-    Value* tuple = ConstantStruct::get(StructType::get(getGlobalContext(), elemTys), elems);
+    Constant* tuple = ConstantStruct::get(StructType::get(getGlobalContext(), elemTys), elems);
     
     //Insert each pathogen value into the tuple individually
     for(auto it = pathogenVals.cbegin(); it != pathogenVals.cend(); it++){
-        tuple = c->builder.CreateInsertValue(tuple, it->second, it->first);
+        c->builder.CreateInsertValue(tuple, it->second, it->first);
     }
+
+    Value *global = new GlobalVariable(*c->module, tuple->getType(), true, GlobalValue::PrivateLinkage, tuple);
 
     //A void value is represented by the empty tuple, ()
     if(exprs.size() == 0){
         tyn->type = TT_Void;
     }
    
-    return new TypedValue(tuple, tyn);
+    return new TypedValue(global, tyn);
 }
 
 
@@ -349,7 +353,7 @@ TypedValue* NamedValNode::compile(Compiler *c)
  */
 TypedValue* VarNode::compile(Compiler *c){
     auto *var = c->lookup(name);
-    
+
     if(var){
         return dynamic_cast<AllocaInst*>(var->getVal()) ?
             new TypedValue(c->builder.CreateLoad(var->getVal(), name), var->tval->type)
@@ -382,6 +386,11 @@ TypedValue* LetBindingNode::compile(Compiler *c){
 TypedValue* compVarDeclWithInferredType(VarDeclNode *node, Compiler *c){
     TypedValue *val = node->expr->compile(c);
     if(!val) return nullptr;
+        
+    if((val->type->type == TT_Tuple || val->type->type == TT_Data) &&
+            dynamic_cast<GlobalVariable*>(val->val)){
+        val->val = c->builder.CreateLoad(val->val);
+    }
 
     TypedValue *alloca = new TypedValue(c->builder.CreateAlloca(val->getType(), 0, node->name.c_str()), val->type);
     val = new TypedValue(c->builder.CreateStore(val->val, alloca->val), val->type);
@@ -415,6 +424,11 @@ TypedValue* VarDeclNode::compile(Compiler *c){
     if(expr.get()){
         TypedValue *val = expr->compile(c);
         if(!val) return 0;
+
+        if((val->type->type == TT_Tuple || val->type->type == TT_Data) &&
+                dynamic_cast<GlobalVariable*>(val->val)){
+            val->val = c->builder.CreateLoad(val->val);
+        }
         var->noFree = true;//var->getType() != TT_Ptr || dynamic_cast<Constant*>(val->val);
         
         //Make sure the assigned value matches the variable's type
@@ -725,6 +739,9 @@ TypedValue* compTaggedUnion(Compiler *c, DataDeclNode *n){
     union_name.push_back(n->name);
 
     vector<UnionTag*> tags;
+    unsigned int largestTyIdx = 0;
+    unsigned int largestTySz = 0;
+    int i = 0;
 
     while(nvn){
         TypeNode *tyn = (TypeNode*)nvn->typeExpr.get();
@@ -732,13 +749,26 @@ TypedValue* compTaggedUnion(Compiler *c, DataDeclNode *n){
 
         tags.push_back(tag);
 
-        //FIXME: 'data' will always be treated as a single (non-tuple) type
-        DataType *data = new DataType(union_name, deepCopyTypeNode(tyn->extTy.get()));
+        //Each union member's type is a tuple of the tag, a u8 value, and the user-defined value
+        TypeNode *tagTy = deepCopyTypeNode(tyn->extTy.get());
+
+        auto size = tagTy->getSizeInBits(c);
+        if(size > largestTySz){
+            largestTySz = size;
+            largestTyIdx = i;
+        }
+
+        DataType *data = new DataType(union_name, tagTy);
         c->stoType(data, nvn->name);
+
         nvn = (NamedValNode*)nvn->next.get();
+        i += 1;
     }
 
-    DataType *data = new DataType(fieldNames, mkAnonTypeNode(TT_TaggedUnion));
+    //use the largest union member's type as the union's type as a whole
+    auto *largestTyn = deepCopyTypeNode(tags[largestTyIdx]->tyn.get());
+    largestTyn->type = TT_TaggedUnion;
+    DataType *data = new DataType(fieldNames, largestTyn);
 
     data->tags.swap(tags);
     c->stoType(data, n->name);

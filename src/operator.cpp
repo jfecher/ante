@@ -148,30 +148,8 @@ TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
         for(unsigned i = 0; i < index; i++)
             indexTyn = (TypeNode*)indexTyn->next.get();
 
-        //if the entire tuple is known at compile-time, then the element can be directly retrieved.
-        //
-        //TODO: possibly remove this check, an extract should be optimized away if it is a constant anyway
-        if(auto *lc = dynamic_cast<Constant*>(l->val)){
-            return new TypedValue(lc->getAggregateElement(index), indexTyn);
-        }else{
-            return new TypedValue(builder.CreateExtractValue(l->val, index), indexTyn);
-        }
-    //}else if(l->type->type == TT_Ptr){ //assume RefVal
-        /*Value *v = builder.CreateLoad(l->val);
-        if(llvmTypeToTypeTag(v->getType()) == TT_Tuple){
-            if(!dynamic_cast<ConstantInt*>(r->val))
-                return compErr("Pathogen values cannot be used as tuple indices.", op->loc);
-            auto index = ((ConstantInt*)r->val)->getZExtValue();
-       
-            //get the type of the index in question
-            TypeNode* indexTyn = l->type->extTy.get();
-            for(unsigned i = 0; i < index; i++)
-                indexTyn = (TypeNode*)indexTyn->next.get();
-            
-            Value *field = builder.CreateExtractValue(v, index);
-            return new TypedValue(field, indexTyn);
-        }*/
-        //return compErr("Type " + llvmTypeToStr(l->getType()) + " does not have elements to access", op->loc);
+        Value *tup = llvmTypeToTypeTag(l->getType()) == TT_Ptr ? builder.CreateLoad(l->val) : l->val;
+        return new TypedValue(builder.CreateExtractValue(tup, index), indexTyn);
     }
     return compErr("Type " + llvmTypeToStr(l->getType()) + " does not have elements to access", op->loc);
 }
@@ -353,7 +331,7 @@ TypedValue* createCast(Compiler *c, Type *castTy, TypeNode *tyn, TypedValue *val
             return new TypedValue(valToCast->val, tycpy);
         }
     }
-    
+
     return nullptr;
 }
 
@@ -506,8 +484,9 @@ TypedValue* compMemberAccess(Compiler *c, Node *ln, VarNode *field, BinOpNode *b
 
                     for(int i = 0; i < index; i++)
                         indexTy = (TypeNode*)indexTy->next.get();
-                        
-                    return new TypedValue(c->builder.CreateExtractValue(val, index), deepCopyTypeNode(indexTy));
+                    
+                    Value *tup = c->builder.CreateLoad(val);
+                    return new TypedValue(c->builder.CreateExtractValue(tup, index), deepCopyTypeNode(indexTy));
                 }
             }
         }

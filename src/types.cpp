@@ -17,6 +17,31 @@ char getBitWidthOfTypeTag(const TypeTag ty){
 }
 
 
+unsigned int TypeNode::getSizeInBits(Compiler *c){
+    int total = 0;
+    TypeNode *ext = this->extTy.get();
+
+    if(isPrimitiveTypeTag(this->type))
+        return getBitWidthOfTypeTag(this->type);
+   
+    if(type == TT_Data){
+        auto *dataTy = c->lookupType(typeName);
+        return dataTy->tyn->getSizeInBits(c);
+    }
+
+    if(type == TT_Tuple || type == TT_TaggedUnion){
+        while(ext){
+            total += ext->getSizeInBits(c);
+            ext = (TypeNode*)ext->next.get();
+        }
+    }else if(type == TT_Array || type == TT_Ptr || type == TT_Function || type == TT_Method){
+        return 64;
+    }
+    
+    return total;
+}
+
+
 /*
  *  Assures two IntegerType'd Values have the same bitwidth.
  *  If not, one is extended to the larger bitwidth and mutated appropriately.
@@ -183,7 +208,7 @@ Type* Compiler::typeNodeToLlvmType(TypeNode *tyNode){
                 tys.push_back(typeNodeToLlvmType(tyn));
                 tyn = (TypeNode*)tyn->next.get();
             }
-            return StructType::get(getGlobalContext(), tys);
+            return PointerType::get(StructType::get(getGlobalContext(), tys), 0);
         case TT_Data:
             userType = lookupType(tyNode->typeName);
             if(!userType)
