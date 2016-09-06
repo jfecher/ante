@@ -260,13 +260,16 @@ TypedValue* TupleNode::compile(Compiler *c){
 
     //Create the constant tuple with undef values in place for the non-constant values
     Constant* tuple = ConstantStruct::get(StructType::get(getGlobalContext(), elemTys), elems);
-    
+   
+    Value *updatedTup = tuple;
+
     //Insert each pathogen value into the tuple individually
     for(auto it = pathogenVals.cbegin(); it != pathogenVals.cend(); it++){
-        c->builder.CreateInsertValue(tuple, it->second, it->first);
+        updatedTup = c->builder.CreateInsertValue(updatedTup, it->second, it->first);
     }
 
-    Value *global = new GlobalVariable(*c->module, tuple->getType(), true, GlobalValue::PrivateLinkage, tuple);
+    Value *global = new GlobalVariable(*c->module, tuple->getType(), false, GlobalValue::PrivateLinkage, tuple);
+    c->builder.CreateStore(updatedTup, global);
 
     //A void value is represented by the empty tuple, ()
     if(exprs.size() == 0){
@@ -387,11 +390,6 @@ TypedValue* compVarDeclWithInferredType(VarDeclNode *node, Compiler *c){
     TypedValue *val = node->expr->compile(c);
     if(!val) return nullptr;
         
-    if((val->type->type == TT_Tuple || val->type->type == TT_Data) &&
-            dynamic_cast<GlobalVariable*>(val->val)){
-        val->val = c->builder.CreateLoad(val->val);
-    }
-
     TypedValue *alloca = new TypedValue(c->builder.CreateAlloca(val->getType(), 0, node->name.c_str()), val->type);
     val = new TypedValue(c->builder.CreateStore(val->val, alloca->val), val->type);
 
@@ -425,10 +423,6 @@ TypedValue* VarDeclNode::compile(Compiler *c){
         TypedValue *val = expr->compile(c);
         if(!val) return 0;
 
-        if((val->type->type == TT_Tuple || val->type->type == TT_Data) &&
-                dynamic_cast<GlobalVariable*>(val->val)){
-            val->val = c->builder.CreateLoad(val->val);
-        }
         var->noFree = true;//var->getType() != TT_Ptr || dynamic_cast<Constant*>(val->val);
         
         //Make sure the assigned value matches the variable's type

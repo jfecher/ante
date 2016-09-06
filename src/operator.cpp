@@ -206,7 +206,7 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
                 auto tupIndex = ((ConstantInt*)index->val)->getZExtValue();
 
                 //Type of element at tuple index tupIndex, for type checking
-                Type* tupIndexTy = tmp->val->getType()->getStructElementType(tupIndex);
+                Type* tupIndexTy = tmp->val->getType()->getPointerElementType()->getStructElementType(tupIndex);
                 Type* exprTy = newVal->getType();
 
                 if(!llvmTypeEq(tupIndexTy, exprTy)){
@@ -215,8 +215,9 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
                                 assignExpr->loc);
                 }
 
-                Value *insertedTup = builder.CreateInsertValue(tmp->val, newVal->val, tupIndex);
-                return new TypedValue(builder.CreateStore(insertedTup, var), mkAnonTypeNode(TT_Void));
+                Value *tup = builder.CreateLoad(tmp->val);
+                Value *insertedTup = builder.CreateInsertValue(tup, newVal->val, tupIndex);
+                return getVoidLiteral();//new TypedValue(builder.CreateStore(insertedTup, var), mkAnonTypeNode(TT_Void));
             }
         default:
             return compErr("Variable being indexed must be an Array or Tuple, but instead is a(n) " +
