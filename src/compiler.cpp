@@ -171,7 +171,7 @@ TypedValue* ModNode::compile(Compiler *c){
 
 TypedValue* TypeNode::compile(Compiler *c){
     //check for enum value
-    if(type == TT_Data){
+    if(type == TT_Data || type == TT_TaggedUnion){
         auto *dataTy = c->lookupType(typeName);
         if(!dataTy) return 0;
 
@@ -299,12 +299,13 @@ TypedValue* RetNode::compile(Compiler *c){
     TypedValue *ret = expr->compile(c);
     if(!ret) return 0;
     
-    Function *f = c->builder.GetInsertBlock()->getParent();
+    /*Function *f =*/ c->builder.GetInsertBlock()->getParent();
 
+    /*
     if(!llvmTypeEq(ret->getType(), f->getReturnType())){
         return c->compErr("return expression of type " + llvmTypeToStr(ret->getType()) +
                " does not match function return type " + llvmTypeToStr(f->getReturnType()), this->loc);
-    }
+    }*/
 
     return new TypedValue(c->builder.CreateRet(ret->val), ret->type);
 }
@@ -683,6 +684,9 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
                             typeNodeToStr(v->type.get()) + " but was declared to return value of type " +
                             typeNodeToStr(retNode), fdn->loc);
                 }
+                
+                if(v->type->type == TT_TaggedUnion)
+                    fnTy->extTy->type = TT_TaggedUnion;
 
                 builder.CreateRet(v->val);
             }
@@ -746,13 +750,14 @@ TypedValue* compTaggedUnion(Compiler *c, DataDeclNode *n){
         //Each union member's type is a tuple of the tag, a u8 value, and the user-defined value
         TypeNode *tagTy = deepCopyTypeNode(tyn->extTy.get());
 
-        auto size = tagTy->getSizeInBits(c);
+        auto size = tagTy ? tagTy->getSizeInBits(c) : 0;
         if(size > largestTySz){
             largestTySz = size;
             largestTyIdx = i;
         }
 
         DataType *data = new DataType(union_name, tagTy);
+       
         c->stoType(data, nvn->name);
 
         nvn = (NamedValNode*)nvn->next.get();
@@ -760,11 +765,21 @@ TypedValue* compTaggedUnion(Compiler *c, DataDeclNode *n){
     }
 
     //use the largest union member's type as the union's type as a whole
-    auto *largestTyn = deepCopyTypeNode(tags[largestTyIdx]->tyn.get());
-    largestTyn->type = TT_TaggedUnion;
-    DataType *data = new DataType(fieldNames, largestTyn);
+    TypeNode *unionTy;
 
-    data->tags.swap(tags);
+    //check if this is a tagged union, or just a normal enum where the largest contained type is 0 bits
+    if(largestTySz == 0){
+        unionTy = mkAnonTypeNode(TT_U8);
+    }else{
+        auto *largestTyn = largestTySz == 0 ? 0 : deepCopyTypeNode(tags[largestTyIdx]->tyn.get());
+        unionTy = mkAnonTypeNode(TT_TaggedUnion);
+        unionTy->extTy.reset(mkAnonTypeNode(TT_U8));
+        unionTy->extTy->next.reset(largestTyn);
+    }
+
+    DataType *data = new DataType(fieldNames, unionTy);
+
+    data->tags.swap(tags); 
     c->stoType(data, n->name);
     return c->getVoidLiteral();
 }
@@ -817,8 +832,12 @@ TypedValue* MatchNode::compile(Compiler *c){
 
     if(!lval) return 0;
 
-    if(lval->type->type != TT_TaggedUnion)
+    if(lval->type->type != TT_TaggedUnion){
+        cout << "wrong type: " << typeNodeToStr(lval->type.get()) << " (" << typeTagToStr(lval->type->type) << ")\n";
         return c->compErr("Match expression must be a tagged union type", expr->loc);
+    }
+
+    c->module->dump();
 
     //the tag is always the zero-th index except for in certain optimization cases
     Value *switchVal = c->builder.CreateExtractValue(lval->val, 0);
@@ -846,7 +865,8 @@ TypedValue* MatchNode::compile(Compiler *c){
 
             
             if(VarNode *v = dynamic_cast<VarNode*>(tn->rval.get())){
-                auto *extract = new TypedValue(c->builder.CreateExtractValue(lval->val, 1), deepCopyTypeNode(tagTy->tyn.get()));
+                auto *cast = c->builder.CreateBitCast(lval->val, c->typeNodeToLlvmType(tagTy->tyn.get()));
+                auto *extract = new TypedValue(c->builder.CreateExtractValue(cast, 1), deepCopyTypeNode(tagTy->tyn.get()));
                 c->stoVar(v->name, new Variable(v->name, extract, c->scope, true));
             }else{
                 return c->compErr("pattern typecast's rval is not a ident", tn->rval->loc);

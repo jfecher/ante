@@ -216,7 +216,7 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
                 }
 
                 Value *tup = builder.CreateLoad(tmp->val);
-                Value *insertedTup = builder.CreateInsertValue(tup, newVal->val, tupIndex);
+                builder.CreateInsertValue(tup, newVal->val, tupIndex);
                 return getVoidLiteral();//new TypedValue(builder.CreateStore(insertedTup, var), mkAnonTypeNode(TT_Void));
             }
         default:
@@ -311,12 +311,20 @@ TypedValue* createCast(Compiler *c, Type *castTy, TypeNode *tyn, TypedValue *val
             vector<Constant*> unionVals;
             unionVals.push_back(ConstantInt::get(getGlobalContext(), APInt(8, t, true))); //tag
             unionVals.push_back(UndefValue::get(variantTy));
-            
-   
-            Value* uninitUnion = ConstantStruct::get(StructType::get(getGlobalContext(), unionTys), unionVals);
+
+
+            Type *unionTy = c->typeNodeToLlvmType(unionDataTy->tyn.get());
+            cout << "unionTy = " << typeNodeToStr(unionDataTy->tyn.get()) << ", parent of variant " << tyn->typeName << endl;
+            cout << "        = " << llvmTypeToStr(castTy) << endl;
+
+            auto *uninitUnion = ConstantStruct::get(StructType::get(getGlobalContext(), unionTys), unionVals);
+            auto *global = new GlobalVariable(*c->module, unionTy, false, GlobalValue::PrivateLinkage, uninitUnion);
+
             Value* taggedUnion = c->builder.CreateInsertValue(uninitUnion, valToCast->val, 1);
-            
-            return new TypedValue(taggedUnion, tycpy);
+            c->builder.CreateStore(taggedUnion, global);
+
+            Value *cast = c->builder.CreateBitCast(taggedUnion, unionTy);
+            return new TypedValue(cast, tycpy);
         }
 
         tycpy->typeName = tyn->typeName;

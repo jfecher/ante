@@ -221,6 +221,10 @@ Type* Compiler::typeNodeToLlvmType(TypeNode *tyNode){
             return Type::getVoidTy(getGlobalContext());
         case TT_TaggedUnion:
             userType = lookupType(tyNode->typeName);
+            if(!userType)
+                return (Type*)compErr("Use of undeclared type " + tyNode->typeName, tyNode->loc);
+
+            tyn = userType->tyn->extTy.get();
             while(tyn){
                 tys.push_back(typeNodeToLlvmType(tyn));
                 tyn = (TypeNode*)tyn->next.get();
@@ -307,6 +311,9 @@ bool extTysEq(const TypeNode *l, const TypeNode *r){
  *  Return true if both typenodes are approximately equal
  */
 bool TypeNode::operator==(TypeNode &r) const {
+    if(this->type == TT_TaggedUnion and r.type == TT_Data) return typeName == r.typeName;
+    if(this->type == TT_Data and r.type == TT_TaggedUnion) return typeName == r.typeName;
+    
     if(this->type != r.type) return false;
 
     if(r.type == TT_Ptr || r.type == TT_Array){
@@ -314,7 +321,9 @@ bool TypeNode::operator==(TypeNode &r) const {
             return true;
 
         return *this->extTy.get() == *r.extTy.get();
-    }else if(r.type == TT_Function || r.type == TT_Method || r.type == TT_Tuple || r.type == TT_Data){
+    }else if(r.type == TT_Data || r.type == TT_TaggedUnion){
+        return typeName == r.typeName;
+    }else if(r.type == TT_Function || r.type == TT_Method || r.type == TT_Tuple){
         return extTysEq(this, &r);
     }
     //primitive type
@@ -397,7 +406,7 @@ string typeNodeToStr(TypeNode *t){
             elem = (TypeNode*)elem->next.get();
         }
         return ret;
-    }else if(t->type == TT_Data){
+    }else if(t->type == TT_Data || t->type == TT_TaggedUnion){
         return t->typeName;
     }else if(t->type == TT_Array){
         return '[' + typeNodeToStr(t->extTy.get()) + ']';
