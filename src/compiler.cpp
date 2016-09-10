@@ -175,17 +175,24 @@ TypedValue* TypeNode::compile(Compiler *c){
         auto *dataTy = c->lookupType(typeName);
         if(!dataTy) return 0;
 
-        auto *unionTy = c->lookupType(dataTy->getParentUnionName());
-        if(!unionTy) return 0;
+        auto *unionDataTy = c->lookupType(dataTy->getParentUnionName());
+        if(!unionDataTy) return 0;
 
-        Value *tag = ConstantInt::get(getGlobalContext(), APInt(8, unionTy->getTagVal(typeName), true));
-        auto *ty = deepCopyTypeNode(unionTy->tyn.get());
+        Value *tag = ConstantInt::get(getGlobalContext(), APInt(8, unionDataTy->getTagVal(typeName), true));
+        auto *ty = deepCopyTypeNode(unionDataTy->tyn.get());
 
-        auto *alloca = c->builder.CreateAlloca(tag->getType());
-        c->builder.CreateStore(tag, alloca);
-        Value *cast = c->builder.CreateBitCast(alloca, c->typeNodeToLlvmType(ty)->getPointerTo());
-        Value *unionVal = c->builder.CreateLoad(cast);
+        Type *unionTy = c->typeNodeToLlvmType(ty);
+        Type *curTy = tag->getType();
 
+        //allocate for the largest possible union member
+        auto *alloca = c->builder.CreateAlloca(unionTy);
+
+        //but make sure to bitcast it to the current member before storing an incorrect type
+        Value *castTo = c->builder.CreateBitCast(alloca, curTy->getPointerTo());
+        c->builder.CreateStore(tag, castTo);
+
+        //load the initial alloca, not the bitcasted one
+        Value *unionVal = c->builder.CreateLoad(alloca);
         return new TypedValue(unionVal, ty);
     }
     return nullptr;
@@ -833,17 +840,18 @@ TypedValue* MatchNode::compile(Compiler *c){
 
     if(!lval) return 0;
 
-    if(lval->type->type != TT_TaggedUnion){
-        cout << "wrong type: " << typeNodeToStr(lval->type.get()) << " (" << typeTagToStr(lval->type->type) << ")\n";
-        return c->compErr("Match expression must be a tagged union type", expr->loc);
+
+    if(lval->type->type != TT_TaggedUnion && lval->type->type != TT_Tuple){
+        return c->compErr("Cannot match expression of type " + typeNodeToStr(lval->type.get()) + ".  Match expressions must be a tagged union type", expr->loc);
     }
+
 
     //the tag is always the zero-th index except for in certain optimization cases
     Value *switchVal = c->builder.CreateExtractValue(lval->val, 0);
     Function *f = c->builder.GetInsertBlock()->getParent();
     auto *matchbb = c->builder.GetInsertBlock();
 
-    auto *end = BasicBlock::Create(getGlobalContext(), "end_match", f);
+    auto *end = BasicBlock::Create(getGlobalContext(), "end_match");
     auto *match = c->builder.CreateSwitch(switchVal, end, branches.size());
     vector<pair<BasicBlock*,TypedValue*>> merges;
 
@@ -868,8 +876,10 @@ TypedValue* MatchNode::compile(Compiler *c){
             if(VarNode *v = dynamic_cast<VarNode*>(tn->rval.get())){
                 auto *alloca = c->builder.CreateAlloca(lval->getType());
                 c->builder.CreateStore(lval->val, alloca);
+
+                //cast it from (<tag type>, <largest union member type>) to (<tag type>, <this union member's type>)
                 auto *tupTy = StructType::get(getGlobalContext(), {Type::getInt8Ty(getGlobalContext()), c->typeNodeToLlvmType(tagTy->tyn.get())});
-            
+
                 auto *cast = c->builder.CreateBitCast(alloca, tupTy->getPointerTo());
                 auto *tup = c->builder.CreateLoad(cast);
                 auto *extract = new TypedValue(c->builder.CreateExtractValue(tup, 1), deepCopyTypeNode(tagTy->tyn.get()));
@@ -900,6 +910,7 @@ TypedValue* MatchNode::compile(Compiler *c){
         match->addCase(ci, br);
     }
 
+    f->getBasicBlockList().push_back(end);
     c->builder.SetInsertPoint(end);
 
     if(merges[0].second->type->type != TT_Void){

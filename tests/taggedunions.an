@@ -4,10 +4,6 @@ type Maybe =
    | None
 
 
-let t = Some 3
-
-
-
 fun parse_int: [c8] str -> Maybe
     var i = 0
     var sum = 0
@@ -26,5 +22,10 @@ fun parse_int: [c8] str -> Maybe
 
 
 match parse_int "32" with
-| Some n -> print n
+| Some n ->
+    print n
+    match parse_int "test" with
+    | Some l -> print l
+    | None -> print "None"
+
 | None -> ()

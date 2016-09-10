@@ -315,15 +315,19 @@ TypedValue* createCast(Compiler *c, Type *castTy, TypeNode *tyn, TypedValue *val
 
             Type *unionTy = c->typeNodeToLlvmType(unionDataTy->tyn.get());
 
+            //create a struct of (u8 tag, <union member type>)
             auto *uninitUnion = ConstantStruct::get(StructType::get(getGlobalContext(), unionTys), unionVals);
             auto* taggedUnion = c->builder.CreateInsertValue(uninitUnion, valToCast->val, 1);
 
-            auto *alloca = c->builder.CreateAlloca(taggedUnion->getType());
-            c->builder.CreateStore(taggedUnion, alloca);
+            //allocate for the largest possible union member
+            auto *alloca = c->builder.CreateAlloca(unionTy);
 
-            Value *cast = c->builder.CreateBitCast(alloca, unionTy->getPointerTo());
-            Value *unionVal = c->builder.CreateLoad(cast);
+            //but bitcast it the the current member
+            auto *castTo = c->builder.CreateBitCast(alloca, taggedUnion->getType()->getPointerTo());
+            c->builder.CreateStore(taggedUnion, castTo);
 
+            //load the original alloca, not the bitcasted one
+            Value *unionVal = c->builder.CreateLoad(alloca);
             return new TypedValue(unionVal, tycpy);
         }
 
