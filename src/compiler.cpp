@@ -179,9 +179,14 @@ TypedValue* TypeNode::compile(Compiler *c){
         if(!unionTy) return 0;
 
         Value *tag = ConstantInt::get(getGlobalContext(), APInt(8, unionTy->getTagVal(typeName), true));
-        auto *ty = mkAnonTypeNode(TT_TaggedUnion);
-        ty->typeName = dataTy->getParentUnionName();
-        return new TypedValue(tag, ty);
+        auto *ty = deepCopyTypeNode(unionTy->tyn.get());
+
+        auto *alloca = c->builder.CreateAlloca(tag->getType());
+        c->builder.CreateStore(tag, alloca);
+        Value *cast = c->builder.CreateBitCast(alloca, c->typeNodeToLlvmType(ty)->getPointerTo());
+        Value *unionVal = c->builder.CreateLoad(cast);
+
+        return new TypedValue(unionVal, ty);
     }
     return nullptr;
 }
@@ -259,24 +264,19 @@ TypedValue* TupleNode::compile(Compiler *c){
     }
 
     //Create the constant tuple with undef values in place for the non-constant values
-    Constant* tuple = ConstantStruct::get(StructType::get(getGlobalContext(), elemTys), elems);
-   
-    Value *updatedTup = tuple;
+    Value* tuple = ConstantStruct::get(StructType::get(getGlobalContext(), elemTys), elems);
 
     //Insert each pathogen value into the tuple individually
     for(auto it = pathogenVals.cbegin(); it != pathogenVals.cend(); it++){
-        updatedTup = c->builder.CreateInsertValue(updatedTup, it->second, it->first);
+        tuple = c->builder.CreateInsertValue(tuple, it->second, it->first);
     }
-
-    Value *global = new GlobalVariable(*c->module, tuple->getType(), false, GlobalValue::PrivateLinkage, tuple);
-    c->builder.CreateStore(updatedTup, global);
 
     //A void value is represented by the empty tuple, ()
     if(exprs.size() == 0){
         tyn->type = TT_Void;
     }
    
-    return new TypedValue(global, tyn);
+    return new TypedValue(tuple, tyn);
 }
 
 
@@ -772,7 +772,8 @@ TypedValue* compTaggedUnion(Compiler *c, DataDeclNode *n){
         unionTy = mkAnonTypeNode(TT_U8);
     }else{
         auto *largestTyn = largestTySz == 0 ? 0 : deepCopyTypeNode(tags[largestTyIdx]->tyn.get());
-        unionTy = mkAnonTypeNode(TT_TaggedUnion);
+        unionTy = mkAnonTypeNode(TT_Tuple);
+
         unionTy->extTy.reset(mkAnonTypeNode(TT_U8));
         unionTy->extTy->next.reset(largestTyn);
     }
@@ -837,8 +838,6 @@ TypedValue* MatchNode::compile(Compiler *c){
         return c->compErr("Match expression must be a tagged union type", expr->loc);
     }
 
-    c->module->dump();
-
     //the tag is always the zero-th index except for in certain optimization cases
     Value *switchVal = c->builder.CreateExtractValue(lval->val, 0);
     Function *f = c->builder.GetInsertBlock()->getParent();
@@ -850,6 +849,8 @@ TypedValue* MatchNode::compile(Compiler *c){
 
     for(auto *mbn : branches){
         ConstantInt *ci;
+        auto *br = BasicBlock::Create(getGlobalContext(), "br", f);
+        c->builder.SetInsertPoint(br);
 
         //TypeCast-esque pattern:  Maybe n
         if(TypeCastNode *tn = dynamic_cast<TypeCastNode*>(mbn->pattern.get())){
@@ -865,8 +866,13 @@ TypedValue* MatchNode::compile(Compiler *c){
 
             
             if(VarNode *v = dynamic_cast<VarNode*>(tn->rval.get())){
-                auto *cast = c->builder.CreateBitCast(lval->val, c->typeNodeToLlvmType(tagTy->tyn.get()));
-                auto *extract = new TypedValue(c->builder.CreateExtractValue(cast, 1), deepCopyTypeNode(tagTy->tyn.get()));
+                auto *alloca = c->builder.CreateAlloca(lval->getType());
+                c->builder.CreateStore(lval->val, alloca);
+                auto *tupTy = StructType::get(getGlobalContext(), {Type::getInt8Ty(getGlobalContext()), c->typeNodeToLlvmType(tagTy->tyn.get())});
+            
+                auto *cast = c->builder.CreateBitCast(alloca, tupTy->getPointerTo());
+                auto *tup = c->builder.CreateLoad(cast);
+                auto *extract = new TypedValue(c->builder.CreateExtractValue(tup, 1), deepCopyTypeNode(tagTy->tyn.get()));
                 c->stoVar(v->name, new Variable(v->name, extract, c->scope, true));
             }else{
                 return c->compErr("pattern typecast's rval is not a ident", tn->rval->loc);
@@ -887,8 +893,6 @@ TypedValue* MatchNode::compile(Compiler *c){
             return c->compErr("Pattern matching non-tagged union types is not yet implemented", mbn->pattern->loc);
         }
 
-        auto *br = BasicBlock::Create(getGlobalContext(), "br", f);
-        c->builder.SetInsertPoint(br);
         auto *then = mbn->branch->compile(c);
         c->builder.CreateBr(end);
         merges.push_back(pair<BasicBlock*,TypedValue*>(c->builder.GetInsertBlock(), then));

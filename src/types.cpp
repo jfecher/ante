@@ -208,7 +208,7 @@ Type* Compiler::typeNodeToLlvmType(TypeNode *tyNode){
                 tys.push_back(typeNodeToLlvmType(tyn));
                 tyn = (TypeNode*)tyn->next.get();
             }
-            return PointerType::get(StructType::get(getGlobalContext(), tys), 0);
+            return StructType::get(getGlobalContext(), tys);
         case TT_Data:
             userType = lookupType(tyNode->typeName);
             if(!userType)

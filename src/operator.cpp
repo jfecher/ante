@@ -314,17 +314,17 @@ TypedValue* createCast(Compiler *c, Type *castTy, TypeNode *tyn, TypedValue *val
 
 
             Type *unionTy = c->typeNodeToLlvmType(unionDataTy->tyn.get());
-            cout << "unionTy = " << typeNodeToStr(unionDataTy->tyn.get()) << ", parent of variant " << tyn->typeName << endl;
-            cout << "        = " << llvmTypeToStr(castTy) << endl;
 
             auto *uninitUnion = ConstantStruct::get(StructType::get(getGlobalContext(), unionTys), unionVals);
-            auto *global = new GlobalVariable(*c->module, unionTy, false, GlobalValue::PrivateLinkage, uninitUnion);
+            auto* taggedUnion = c->builder.CreateInsertValue(uninitUnion, valToCast->val, 1);
 
-            Value* taggedUnion = c->builder.CreateInsertValue(uninitUnion, valToCast->val, 1);
-            c->builder.CreateStore(taggedUnion, global);
+            auto *alloca = c->builder.CreateAlloca(taggedUnion->getType());
+            c->builder.CreateStore(taggedUnion, alloca);
 
-            Value *cast = c->builder.CreateBitCast(taggedUnion, unionTy);
-            return new TypedValue(cast, tycpy);
+            Value *cast = c->builder.CreateBitCast(alloca, unionTy->getPointerTo());
+            Value *unionVal = c->builder.CreateLoad(cast);
+
+            return new TypedValue(unionVal, tycpy);
         }
 
         tycpy->typeName = tyn->typeName;
