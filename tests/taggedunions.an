@@ -1,0 +1,30 @@
+
+type Maybe =
+   | Some i32
+   | None
+
+
+let t = Some 3
+
+
+
+fun parse_int: [c8] str -> Maybe
+    var i = 0
+    var sum = 0
+
+    while str#i != '\0' do
+        let c = str#i
+        if c >= '0' and c <= '9' then
+            sum *= 10
+            sum += (str#i) - 48_u8
+            i += 1
+        else
+            return None
+            ()
+
+    Some sum
+
+
+match parse_int "32" with
+| Some n -> print n
+| None -> ()
