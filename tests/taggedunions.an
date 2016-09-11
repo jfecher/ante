@@ -12,7 +12,7 @@ fun parse_int: [c8] str -> Maybe
         let c = str#i
         if c >= '0' and c <= '9' then
             sum *= 10
-            sum += (str#i) - 48_u8
+            sum += c - '0'
             i += 1
         else
             return None

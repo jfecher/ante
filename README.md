@@ -13,7 +13,10 @@ The compile-time language
 type and issue a compile-time error if it is invalidated
     -  Extremely diverse and powerful compile-time analysis that can be custom programmed into
 any datatype creating eg. iterator invalidation, pointer-autofree, or even an ownership system.
+The implementation of these features resembles that of a compiler plugin, except that it is written
+into the compiled module itself.
     - These compile-time functions are checked at compile-time and not compiled into the binary.
+    - Ability to write compiler plugins within the compiled program itself
 * Module system allowing the setting of compiler flags on a per-module basis.
 ```go
 ~create i, a mutable integer
@@ -35,7 +38,8 @@ fun add: i32 x y = x + y
 
 ~Sum types:
 type Maybe =
-    Some 't | None
+   | Some 't
+   | None
 
 var f = Some 4
 f = None
