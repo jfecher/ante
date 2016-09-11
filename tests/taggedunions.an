@@ -16,7 +16,6 @@ fun parse_int: [c8] str -> Maybe
             i += 1
         else
             return None
-            ()
 
     Some sum
 
@@ -26,6 +25,6 @@ match parse_int "32" with
     print n
     match parse_int "test" with
     | Some l -> print l
-    | None -> print "None"
+    | None -> print "None 2"
 
-| None -> ()
+| None -> print "None 1"

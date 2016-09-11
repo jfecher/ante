@@ -338,9 +338,11 @@ TypedValue* WhileNode::compile(Compiler *c){
     c->builder.CreateCondBr(condval->val, begin, end);
 
     c->builder.SetInsertPoint(begin);
-    child->compile(c); //compile the while loop's body
+    auto *val = child->compile(c); //compile the while loop's body
 
-    c->builder.CreateBr(cond);
+    if(!dynamic_cast<ReturnInst*>(val->val))
+        c->builder.CreateBr(cond);
+    
     c->builder.SetInsertPoint(end);
     return c->getVoidLiteral();
 }
@@ -916,7 +918,8 @@ TypedValue* MatchNode::compile(Compiler *c){
     if(merges[0].second->type->type != TT_Void){
         auto *phi = c->builder.CreatePHI(merges[0].second->getType(), branches.size());
         for(auto &pair : merges)
-            phi->addIncoming(pair.second->val, pair.first);
+            if(!dynamic_cast<ReturnInst*>(pair.second->val))
+                phi->addIncoming(pair.second->val, pair.first);
 
         phi->addIncoming(UndefValue::get(merges[0].second->getType()), matchbb);
         return new TypedValue(phi, deepCopyTypeNode(merges[0].second->type.get()));

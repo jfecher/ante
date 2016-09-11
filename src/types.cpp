@@ -68,7 +68,7 @@ void Compiler::implicitlyCastIntToInt(TypedValue **lhs, TypedValue **rhs){
 inline bool isIntTypeTag(const TypeTag ty){
     return ty==TT_I8||ty==TT_I16||ty==TT_I32||ty==TT_I64||
            ty==TT_U8||ty==TT_U16||ty==TT_U32||ty==TT_U64||
-           ty==TT_Isz||ty==TT_Usz;
+           ty==TT_Isz||ty==TT_Usz||ty==TT_C8;
 }
 
 inline bool isFPTypeTag(const TypeTag tt){

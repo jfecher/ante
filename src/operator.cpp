@@ -408,7 +408,9 @@ TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Ty
 
     c->builder.SetInsertPoint(thenbb);
     auto *thenVal = ifn->thenN->compile(c);
-    c->builder.CreateBr(mergebb);
+
+    if(!dynamic_cast<ReturnInst*>(thenVal->val))
+        c->builder.CreateBr(mergebb);
 
     if(ifn->elseN){
         //save the final 'then' value for the upcoming PhiNode
@@ -416,7 +418,8 @@ TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Ty
 
         c->builder.SetInsertPoint(elsebb);
         auto *elseVal = ifn->elseN->compile(c);
-        c->builder.CreateBr(mergebb);
+        if(!dynamic_cast<ReturnInst*>(elseVal->val))
+            c->builder.CreateBr(mergebb);
         
         //save the final else
         branches.push_back({elseVal, elsebb});
@@ -424,7 +427,7 @@ TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Ty
         if(!thenVal || !elseVal) return 0;
 
 
-        if(*thenVal->type.get() != *elseVal->type.get())
+        if(*thenVal->type.get() != *elseVal->type.get() && !dynamic_cast<ReturnInst*>(thenVal->val) && !dynamic_cast<ReturnInst*>(elseVal->val))
             return c->compErr("If condition's then expr's type " + typeNodeToStr(thenVal->type.get()) +
                             " does not match the else expr's type " + typeNodeToStr(elseVal->type.get()), ifn->loc);
 
@@ -434,7 +437,8 @@ TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Ty
         if(thenVal->type->type != TT_Void){
             auto *phi = c->builder.CreatePHI(thenVal->getType(), branches.size());
             for(auto &pair : branches)
-                phi->addIncoming(pair.first->val, pair.second);
+                if(!dynamic_cast<ReturnInst*>(pair.first->val))
+                    phi->addIncoming(pair.first->val, pair.second);
 
             return new TypedValue(phi, thenVal->type);
         }else{
