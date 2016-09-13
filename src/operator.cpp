@@ -502,8 +502,7 @@ TypedValue* compMemberAccess(Compiler *c, Node *ln, VarNode *field, BinOpNode *b
                     for(int i = 0; i < index; i++)
                         indexTy = (TypeNode*)indexTy->next.get();
                     
-                    Value *tup = c->builder.CreateLoad(val);
-                    return new TypedValue(c->builder.CreateExtractValue(tup, index), deepCopyTypeNode(indexTy));
+                    return new TypedValue(c->builder.CreateExtractValue(val, index), deepCopyTypeNode(indexTy));
                 }
             }
         }

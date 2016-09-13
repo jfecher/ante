@@ -261,10 +261,10 @@ int Lexer::handleComment(yy::parser::location_type* loc){
                 row++;
                 col = 0;
             }
-        }while(cur != '`' && cur != EOF);
+        }while(cur != '`' && cur != '\0');
         incPos();
     }else{ // c == '~'
-        while(cur != '\n' && cur != EOF) incPos();
+        while(cur != '\n' && cur != '\0') incPos();
     }
     return next(loc);
 }
@@ -396,7 +396,7 @@ int Lexer::genWsTok(yy::parser::location_type* loc){
         
         unsigned int newScope = 0;
 
-        while(IS_WHITESPACE(cur) && cur != EOF){
+        while(IS_WHITESPACE(cur) && cur != '\0'){
             switch(cur){
                 case ' ': newScope++; break;
                 case '\n': 
@@ -443,7 +443,7 @@ int Lexer::genStrLitTok(yy::parser::location_type* loc){
     string* fName = new string(fileName);
     loc->begin = yy::position(fName, row, col);
     incPos();
-    while(cur != '"' && cur != EOF){
+    while(cur != '"' && cur != '\0'){
         if(cur == '\\'){
             switch(nxt){
                 case 'a': s += '\a'; break;
@@ -554,7 +554,7 @@ int Lexer::genOpTok(yy::parser::location_type* loc){
     
     loc->end = yy::position(fName, row, col);
     
-    if(cur == 0 || cur == EOF) return 0; //End of input
+    if(cur == 0) return 0; //End of input
 
     //If the character is nota, assume it is an operator and return it by value.
     char ret = cur;

@@ -8,6 +8,7 @@
 fun printf: [c8] fmt, ...;
 fun puts: [c8] str;
 fun putchar: c8 char;
+fun getchar: -> c8;
 fun exit: i32 status;
 fun malloc: u32 size -> void*;
 fun realloc: void* ptr, u32 size -> void*;
@@ -88,5 +89,36 @@ fun InFile.nextLine: InFile f -> Str
         c != '\n'
     do ()
 
-    cstr#len-1 = '\0'
+    len -= 1
+    cstr#len = '\0'
+    Str(cstr, len)
+
+
+
+~print string without endline
+fun print_no_endl: [c8] str
+    var i = 0
+    while str#i != '\0' do
+        putchar (str#i)
+        i += 1
+
+~print a message then return user input
+fun input: [c8] msg -> Str
+    var len = 0u32
+    var cstr = [c8] c8* 0
+
+    print_no_endl msg
+
+    while
+        let c = getchar ()
+        if len % 32 == 0 then
+            cstr = realloc (c8* cstr) (len+32)
+
+        cstr#len = c
+        len += 1
+        c != '\n'
+    do ()
+
+    len -= 1
+    cstr#len = '\0'
     Str(cstr, len)
