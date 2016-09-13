@@ -193,6 +193,7 @@ TypedValue* TypeNode::compile(Compiler *c){
 
         //load the initial alloca, not the bitcasted one
         Value *unionVal = c->builder.CreateLoad(alloca);
+        ty->type = TT_TaggedUnion;
         return new TypedValue(unionVal, ty);
     }
     return nullptr;
@@ -848,8 +849,12 @@ TypedValue* MatchNode::compile(Compiler *c){
     }
 
 
-    //the tag is always the zero-th index except for in certain optimization cases
-    Value *switchVal = c->builder.CreateExtractValue(lval->val, 0);
+    //the tag is always the zero-th index except for in certain optimization cases and if
+    //the tagged union has no tagged values and is equivalent to an enum in C-like languages.
+    Value *switchVal = llvmTypeToTypeTag(lval->getType()) == TT_Tuple ?
+            c->builder.CreateExtractValue(lval->val, 0)
+            : lval->val;
+
     Function *f = c->builder.GetInsertBlock()->getParent();
     auto *matchbb = c->builder.GetInsertBlock();
 
