@@ -788,6 +788,7 @@ TypedValue* compTaggedUnion(Compiler *c, DataDeclNode *n){
         unionTy->extTy->next.reset(largestTyn);
     }
 
+    unionTy->typeName = n->name;
     DataType *data = new DataType(fieldNames, unionTy);
 
     data->tags.swap(tags); 
