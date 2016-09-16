@@ -25,7 +25,7 @@ OBJFILES := $(patsubst obj/parser.o,,$(OBJFILES))
 
 DEPFILES := $(OBJFILES:.o=.d)
 
-.PHONY: new clean
+.PHONY: new clean stdlib
 .DEFAULT: ante
 
 ante: obj obj/parser.o $(OBJFILES)
@@ -47,8 +47,6 @@ stdlib: $(LIBFILES) Makefile
 	 fi
 
 new: clean ante
-
-stdlib/%.an: stdlib/%.an
 
 #create the obj folder if it is not present
 obj: 
