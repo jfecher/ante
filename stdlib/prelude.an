@@ -75,7 +75,7 @@ fun OutFile.cast: [c8] fName -> OutFile
 fun InFile.nextLine: InFile f -> Str
     var len = 0u32
     var cstr = [c8] c8* 0
-    
+
     if feof f then
         return Str("", 0u32)
 

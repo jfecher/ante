@@ -26,6 +26,10 @@ unsigned int TypeNode::getSizeInBits(Compiler *c){
    
     if(type == TT_Data){
         auto *dataTy = c->lookupType(typeName);
+        if(!dataTy){
+            c->compErr("Type "+typeName+" has not been declared", loc);
+            return 0;
+        }
         return dataTy->tyn->getSizeInBits(c);
     }
 
