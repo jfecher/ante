@@ -599,8 +599,10 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
 
 
     if(f->arg_size() != args.size() && !f->isVarArg()){
-        //check if an empty tuple is being applied to a zero argument function before continuing
+        //check if an empty tuple (a void value) is being applied to a zero argument function before continuing
         //if not checked, it will count it as an argument instead of the absence of any
+        //NOTE: this has the possibly unwanted side effect of allowing 't->void function applications to be used
+        //      as parameters for functions requiring 0 parameters, although this does not affect the behaviour of either.
         if(f->arg_size() != 0 || typedArgs[0]->type->type != TT_Void){
             if(args.size() == 1)
                 return c->compErr("Called function was given 1 argument but was declared to take " 
@@ -614,7 +616,9 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
     /* unpack the tuple of arguments into a vector containing each value */
     int i = 1;
     TypeNode *paramTy = (TypeNode*)tvf->type->extTy->next.get();
-    for(auto tArg : typedArgs){//type check each parameter
+
+    //type check each parameter
+    for(auto tArg : typedArgs){
         if(!paramTy) break;
         if(*tArg->type.get() != *paramTy){
             return c->compErr("Argument " + to_string(i) + " of function is a(n) " + typeNodeToStr(tArg->type.get())

@@ -56,11 +56,20 @@ void Compiler::implicitlyCastIntToInt(TypedValue **lhs, TypedValue **rhs){
     if(lbw != rbw){
         //Cast the value with the smaller bitwidth to the type with the larger bitwidth
         if(lbw < rbw){
-            (*lhs)->val = builder.CreateIntCast((*lhs)->val, (*rhs)->getType(), !isUnsignedTypeTag((*lhs)->type->type));
-            (*lhs)->type.reset(deepCopyTypeNode((*rhs)->type.get()));
+            auto *ret = new TypedValue(
+                builder.CreateIntCast((*lhs)->val, (*rhs)->getType(), !isUnsignedTypeTag((*lhs)->type->type)),
+                deepCopyTypeNode((*rhs)->type.get())
+            );
+            
+            *lhs = ret;
+
         }else{//lbw > rbw
-            (*rhs)->val = builder.CreateIntCast((*rhs)->val, (*lhs)->getType(), !isUnsignedTypeTag((*rhs)->type->type));
-            (*rhs)->type.reset(deepCopyTypeNode((*lhs)->type.get()));
+            auto *ret = new TypedValue(
+                builder.CreateIntCast((*rhs)->val, (*lhs)->getType(), !isUnsignedTypeTag((*rhs)->type->type)),
+                deepCopyTypeNode((*lhs)->type.get())
+            );
+
+            *rhs = ret;
         }
     }
 }
@@ -81,12 +90,14 @@ inline bool isFPTypeTag(const TypeTag tt){
  *  it is always casted to the (possibly smaller) float value.
  */
 void Compiler::implicitlyCastIntToFlt(TypedValue **lhs, Type *ty){
-    if(isUnsignedTypeTag((*lhs)->type->type)){
-        (*lhs)->val = builder.CreateUIToFP((*lhs)->val, ty);
-    }else{
-        (*lhs)->val = builder.CreateSIToFP((*lhs)->val, ty);
-    }
-    (*lhs)->type.reset(mkAnonTypeNode(llvmTypeToTypeTag(ty)));
+    auto *ret = new TypedValue(
+        isUnsignedTypeTag((*lhs)->type->type)
+            ? builder.CreateUIToFP((*lhs)->val, ty)
+            : builder.CreateSIToFP((*lhs)->val, ty),
+
+        mkAnonTypeNode(llvmTypeToTypeTag(ty))
+    );
+    *lhs = ret;
 }
 
 
@@ -99,11 +110,17 @@ void Compiler::implicitlyCastFltToFlt(TypedValue **lhs, TypedValue **rhs){
 
     if(lbw != rbw){
         if(lbw < rbw){
-            (*lhs)->val = builder.CreateFPExt((*lhs)->val, (*rhs)->getType());
-            (*lhs)->type.reset((*rhs)->type.get());
+            auto *ret = new TypedValue(
+                builder.CreateFPExt((*lhs)->val, (*rhs)->getType()),
+                deepCopyTypeNode((*rhs)->type.get())
+            );
+            *lhs = ret;
         }else{//lbw > rbw
-            (*rhs)->val = builder.CreateFPExt((*rhs)->val, (*lhs)->getType());
-            (*rhs)->type.reset((*lhs)->type.get());
+            auto *ret = new TypedValue(
+                builder.CreateFPExt((*rhs)->val, (*lhs)->getType()),
+                deepCopyTypeNode((*lhs)->type.get())
+            );
+            *rhs = ret;
         }
     }
 }

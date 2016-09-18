@@ -62,6 +62,8 @@ fun Str.print: Str s
 fun Str.cast: [c8] cStr -> Str
     Str(cStr, strlen cStr)
 
+fun [c8].cast: Str s = s.cStr
+
 
 ~ IO
 fun InFile.cast: [c8] fName -> InFile
