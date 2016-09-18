@@ -47,6 +47,60 @@ unsigned int TypeNode::getSizeInBits(Compiler *c){
 
 
 /*
+ *  Checks for, and implicitly widens an integer or float type.
+ *  The original value of num is returned if no widening can be performed.
+ */
+TypedValue* Compiler::implicitlyWidenNum(TypedValue *num, TypeTag castTy){
+    bool lIsInt = isIntTypeTag(num->type->type);
+    bool lIsFlt = isFPTypeTag(num->type->type);
+
+    if(lIsInt || lIsFlt){
+        bool rIsInt = isIntTypeTag(castTy);
+        bool rIsFlt = isFPTypeTag(castTy);
+        if(!rIsInt && !rIsFlt){
+            cerr << "castTy argument of implicitlyWidenNum must be a numeric primitive type\n";
+            exit(1);
+        }
+
+        int lbw = getBitWidthOfTypeTag(num->type->type);
+        int rbw = getBitWidthOfTypeTag(castTy);
+        Type *ty = typeTagToLlvmType(castTy, "");
+
+        //integer widening
+        if(lIsInt && rIsInt){
+            if(lbw < rbw){
+                return new TypedValue(
+                    builder.CreateIntCast(num->val, ty, !isUnsignedTypeTag(num->type->type)),
+                    mkAnonTypeNode(castTy)
+                );
+            }
+
+        //int -> flt, flt -> int is never implicit
+        }else if(lIsInt && rIsFlt){
+            return new TypedValue(
+                isUnsignedTypeTag(num->type->type)
+                    ? builder.CreateUIToFP(num->val, ty)
+                    : builder.CreateSIToFP(num->val, ty),
+
+                mkAnonTypeNode(castTy)
+            );
+
+        //float widening
+        }else if(lIsFlt && rIsFlt){
+            if(lbw < rbw){
+                return new TypedValue(
+                    builder.CreateFPExt(num->val, ty),
+                    mkAnonTypeNode(castTy)
+                );
+            }
+        }
+    }
+
+    return num;
+}
+
+
+/*
  *  Assures two IntegerType'd Values have the same bitwidth.
  *  If not, one is extended to the larger bitwidth and mutated appropriately.
  *  If the extended integer value is unsigned, it is zero extended, otherwise
@@ -78,14 +132,18 @@ void Compiler::implicitlyCastIntToInt(TypedValue **lhs, TypedValue **rhs){
     }
 }
 
-inline bool isIntTypeTag(const TypeTag ty){
+bool isIntTypeTag(const TypeTag ty){
     return ty==TT_I8||ty==TT_I16||ty==TT_I32||ty==TT_I64||
            ty==TT_U8||ty==TT_U16||ty==TT_U32||ty==TT_U64||
            ty==TT_Isz||ty==TT_Usz||ty==TT_C8;
 }
 
-inline bool isFPTypeTag(const TypeTag tt){
+bool isFPTypeTag(const TypeTag tt){
     return tt==TT_F16||tt==TT_F32||tt==TT_F64;
+}
+
+bool isNumericTypeTag(const TypeTag ty){
+    return isIntTypeTag(ty) || isFPTypeTag(ty);
 }
 
 /*

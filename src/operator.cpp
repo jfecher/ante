@@ -620,7 +620,21 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
     //type check each parameter
     for(auto tArg : typedArgs){
         if(!paramTy) break;
+
+        //NOTE: llvmTypeEq tests by structural equality, TypeNode::operator== checks nominal equality
         if(!llvmTypeEq(tArg->getType(), c->typeNodeToLlvmType(paramTy))){
+            //param types not equal; check for implicit conversion
+            if(isNumericTypeTag(tArg->type->type) && isNumericTypeTag(paramTy->type)){
+                auto *widen = c->implicitlyWidenNum(tArg, paramTy->type);
+                if(widen != tArg){
+                    typedArgs[i-1] = widen;
+                    paramTy = (TypeNode*)paramTy->next.get();
+                    i++;
+                    continue;
+                }
+            }
+
+
             return c->compErr("Argument " + to_string(i) + " of function is a(n) " + typeNodeToStr(tArg->type.get())
                     + " but was declared to be a(n) " + typeNodeToStr(paramTy), r->loc);
         }

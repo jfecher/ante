@@ -175,6 +175,7 @@ namespace ante{
 
         Type* typeNodeToLlvmType(TypeNode *tyNode);
     
+        TypedValue* implicitlyWidenNum(TypedValue *num, TypeTag castTy);
         void handleImplicitConversion(TypedValue **lhs, TypedValue **rhs);
         void implicitlyCastIntToInt(TypedValue **lhs, TypedValue **rhs);
         void implicitlyCastFltToFlt(TypedValue **lhs, TypedValue **rhs);
@@ -197,5 +198,8 @@ string typeNodeToStr(TypeNode *t);
 bool llvmTypeEq(Type *l, Type *r);
 
 char getBitWidthOfTypeTag(const TypeTag tagTy);
+bool isNumericTypeTag(const TypeTag ty);
+bool isIntTypeTag(const TypeTag ty);
+bool isFPTypeTag(const TypeTag tt);
 bool isUnsignedTypeTag(const TypeTag tagTy);
 #endif

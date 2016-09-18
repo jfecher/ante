@@ -7,7 +7,7 @@ let b = 33_i8
 let c = 4 ~i32 by default
 
 fun mul: u16 a b -> i32
-    return i32 a * b
+    i32 a * b
 
 printf "%d\n"
     ~Casts must be explicit in function arguments
