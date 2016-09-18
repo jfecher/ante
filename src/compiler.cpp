@@ -788,6 +788,7 @@ TypedValue* compTaggedUnion(Compiler *c, DataDeclNode *n){
         unionTy->extTy->next.reset(largestTyn);
     }
 
+    unionTy->typeName = n->name;
     DataType *data = new DataType(fieldNames, unionTy);
 
     data->tags.swap(tags); 
@@ -800,7 +801,6 @@ TypedValue* DataDeclNode::compile(Compiler *c){
     vector<string> fieldNames;
     fieldNames.reserve(fields);
 
-    
     TypeNode *first = 0;
     TypeNode *nxt = 0;
 
@@ -1080,8 +1080,6 @@ void Compiler::eval(){
 }
 
 void Compiler::compile(){
-    scanAllDecls();
-
     //get or create the function type for the main method: void()
     FunctionType *ft = FunctionType::get(Type::getInt8Ty(getGlobalContext()), false);
     
@@ -1094,6 +1092,7 @@ void Compiler::compile(){
     builder.SetInsertPoint(bb);
     
     compilePrelude();
+    scanAllDecls();
 
     //Compile the rest of the program
     ast->compile(this);

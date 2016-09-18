@@ -620,7 +620,7 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
     //type check each parameter
     for(auto tArg : typedArgs){
         if(!paramTy) break;
-        if(*tArg->type.get() != *paramTy){
+        if(!llvmTypeEq(tArg->getType(), c->typeNodeToLlvmType(paramTy))){
             return c->compErr("Argument " + to_string(i) + " of function is a(n) " + typeNodeToStr(tArg->type.get())
                     + " but was declared to be a(n) " + typeNodeToStr(paramTy), r->loc);
         }

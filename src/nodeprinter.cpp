@@ -237,7 +237,7 @@ void FuncDeclNode::print(){
         params->print();
     }
     if(type){
-        cout << " => ";
+        cout << " -> ";
         type->print();
     }
     if(child.get()){
@@ -247,5 +247,17 @@ void FuncDeclNode::print(){
 
 void DataDeclNode::print(){
     cout << "type " << name << " = ";
-    child->print();
+    auto *nvn = (NamedValNode*)child.get();
+
+    if(((TypeNode*)nvn->typeExpr.get())->type == TT_TaggedUnion){
+        cout << endl;
+        while(nvn && ((TypeNode*)nvn->typeExpr.get())->type == TT_TaggedUnion){
+            auto *ty = (TypeNode*)nvn->typeExpr.get();
+
+            cout << "| " << nvn->name << " " << (ty->extTy.get() ? typeNodeToStr(ty->extTy.get()) : "") << endl;
+            nvn = (NamedValNode*)nvn->next.get();
+        }
+    }else{
+        child->print();
+    }
 }
