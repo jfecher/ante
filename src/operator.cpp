@@ -627,28 +627,23 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
             if(isNumericTypeTag(tArg->type->type) && isNumericTypeTag(paramTy->type)){
                 auto *widen = c->implicitlyWidenNum(tArg, paramTy->type);
                 if(widen != tArg){
-                    typedArgs[i-1] = widen;
+                    args[i-1] = widen->val;
                     paramTy = (TypeNode*)paramTy->next.get();
                     i++;
+                    delete widen;
                     continue;
                 }
             }
            
             //check for an implicitCast function
-            string castFn = typeNodeToStr(tArg->type.get()) + "_cast";
-            cout << "looking for " << castFn << endl;
-
+            string castFn = typeNodeToStr(paramTy) + "_cast";
             if(auto *fn = c->getFunction(castFn)){
-                cout << "found " << castFn << endl;
-
                 //first, assure the function has only one parameter
                 //the return type is guarenteed to be initialized, so it is not checked
                 if(fn->type->extTy->next.get() && !fn->type->extTy->next->next.get()){
-                    cout << "fn takes one argument" << endl;
                     //type check the only parameter
                     if(*tArg->type == *(TypeNode*)fn->type->extTy->next.get()){
-                        cout << "fn arg type matches " << typeNodeToStr(tArg->type.get()) << endl;
-                        typedArgs[i-1] = new TypedValue(c->builder.CreateCall(fn->val, tArg->val), deepCopyTypeNode(fn->type->extTy.get()));
+                        args[i-1] = c->builder.CreateCall(fn->val, tArg->val);
                         paramTy = (TypeNode*)paramTy->next.get();
                         i++;
                         continue;

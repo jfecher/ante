@@ -201,9 +201,17 @@ TypedValue* TypeNode::compile(Compiler *c){
 
 
 TypedValue* StrLitNode::compile(Compiler *c){
-    TypeNode *strty = mkAnonTypeNode(TT_Array);
-    strty->extTy.reset(mkAnonTypeNode(TT_C8));
-    return new TypedValue(c->builder.CreateGlobalStringPtr(val), strty);
+    TypeNode *strty = mkAnonTypeNode(TT_Data);
+    strty->typeName = "Str";
+    auto *ptr = c->builder.CreateGlobalStringPtr(val);
+
+    auto* tupleTy = StructType::get(getGlobalContext(), {Type::getInt8PtrTy(getGlobalContext()), Type::getInt32Ty(getGlobalContext())});
+    Constant* strarr[] = {UndefValue::get(Type::getInt8PtrTy(getGlobalContext())), ConstantInt::get(getGlobalContext(), APInt(8, val.length(), true))};
+
+    auto *uninitStr = ConstantStruct::get(tupleTy, strarr);
+    auto *str = c->builder.CreateInsertValue(uninitStr, ptr, 0);
+
+    return new TypedValue(str, strty);
 }
 
 TypedValue* CharLitNode::compile(Compiler *c){
