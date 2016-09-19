@@ -20,11 +20,13 @@ fun parse_int: [c8] str -> Maybe
     Some sum
 
 
-match parse_int "32" with
-| Some n ->
-    print n
-    match parse_int "test" with
-    | Some l -> print l
-    | None -> print "None 2"
+fun parse_int_str: Str s
+    match parse_int s with
+    | Some n -> print n
+    | None ->
+        parse_int_str <| input "Please enter a positive integer: "
 
-| None -> print "None 1"
+
+parse_int_str "32"
+parse_int_str "3243214321"
+parse_int_str "32432143a3"

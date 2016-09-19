@@ -677,6 +677,7 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
 
         //actually compile the function, and hold onto the last value
         TypedValue *v = fdn->child->compile(this);
+        if(!v) return 0;
         
         //End of the function, discard the function's scope.
         exitScope();
