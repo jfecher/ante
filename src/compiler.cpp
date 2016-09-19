@@ -597,10 +597,13 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
     for(auto &arg : f->args()){
         preArgs[i++]->replaceAllUsesWith(&arg);
     }
-    
-    builder.SetInsertPoint(caller);
 
-    return new TypedValue(f, fnTyn);
+    auto *ret = new TypedValue(f, fnTyn);
+    if(fdn->name.length() > 0)
+        stoVar(fdn->name, new Variable(fdn->name, ret, scope));
+
+    builder.SetInsertPoint(caller);
+    return ret;
 }
 
 
@@ -929,6 +932,8 @@ TypedValue* MatchNode::compile(Compiler *c){
     f->getBasicBlockList().push_back(end);
     c->builder.SetInsertPoint(end);
 
+    if(!merges[0].second) return 0;
+
     if(merges[0].second->type->type != TT_Void){
         auto *phi = c->builder.CreatePHI(merges[0].second->getType(), branches.size());
         for(auto &pair : merges)
@@ -973,7 +978,7 @@ void Compiler::importFile(const char *fName){
     c->scanAllDecls();
 
     if(c->errFlag){
-        cout << "Error when importing " << fName << endl ;
+        cout << "Error when importing " << fName << endl;
         errFlag = true;
         delete c;
         return;
@@ -1239,7 +1244,7 @@ inline void Compiler::exitScope(){
 
 
 Variable* Compiler::lookup(string var) const{
-    for(auto it = varTable.crbegin(); it != varTable.crend(); it++){
+    for(auto it = varTable.crbegin(); it != varTable.crend(); ++it){
         try{
             return (*it)->at(var);
         }catch(out_of_range r){}
