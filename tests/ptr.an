@@ -1,5 +1,5 @@
 
-let str = "Hello, pointer to world!"
+let str = "Hello, pointer to world!".cStr
 
 let intPtr = new 27
 
