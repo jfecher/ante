@@ -53,25 +53,34 @@ fun i32.print: i32 x
 fun [c8].print: [c8] s
     puts s
 
+fun [c8].cast: Str s = s.cStr
+
+fun [c8].write: [c8] cStr, OutFile f, [c8] str
+    fputs cStr f
+
+fun c8.write: c8 c, OutFile f
+    fputc c f
 
 ~ Str functions
 fun Str.print: Str s
     puts s.cStr
 
+fun Str.write: Str s, OutFile f
+    fputs (s.cStr) f
+
 
 fun Str.cast: [c8] cStr -> Str
     Str(cStr, strlen cStr)
 
-fun [c8].cast: Str s = s.cStr
 
 
 ~ IO
-fun InFile.cast: [c8] fName -> InFile
-    InFile fopen fName "r"
+fun InFile.cast: Str fName -> InFile
+    InFile fopen (fName.cStr) "r"
 
 
-fun OutFile.cast: [c8] fName -> OutFile
-    OutFile fopen fName "w"
+fun OutFile.cast: Str fName -> OutFile
+    OutFile fopen (fName.cStr) "w"
 
 
 fun InFile.nextLine: InFile f -> Str
