@@ -643,7 +643,13 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
                 if(fn->type->extTy->next.get() && !fn->type->extTy->next->next.get()){
                     //type check the only parameter
                     if(*tArg->type == *(TypeNode*)fn->type->extTy->next.get()){
-                        args[i-1] = c->builder.CreateCall(fn->val, tArg->val);
+                        
+                        //optimize case of Str -> [c8] implicit cast
+                        if(tArg->type->typeName == "Str" && castFn == "[c8]_cast")
+                            args[i-1] = c->builder.CreateExtractValue(args[i-1], 0);
+                        else
+                            args[i-1] = c->builder.CreateCall(fn->val, tArg->val);
+
                         paramTy = (TypeNode*)paramTy->next.get();
                         i++;
                         continue;
