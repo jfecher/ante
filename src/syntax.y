@@ -241,18 +241,26 @@ type_expr_list: type_expr_list type_expr  {$$ = setNext($1, $2);}
 
 type_decl: params          {$$ = $1;}
          | enum_decl
-         | '|' usertype type_expr_list  {$$ = mkNamedValNode(@$, mkVarNode(@2, (char*)$2), mkTypeNode(@$, TT_TaggedUnion, (char*)"", getRoot()));}
+       /*  | '|' usertype type_expr_list  {$$ = mkNamedValNode(@$, mkVarNode(@2, (char*)$2), mkTypeNode(@$, TT_TaggedUnion, (char*)"", getRoot()));}
          | '|' usertype                 {$$ = mkNamedValNode(@$, mkVarNode(@2, (char*)$2), mkTypeNode(@$, TT_TaggedUnion, (char*)"", 0));}
-         ;
+       */  ;
 
-type_decl_list: type_decl_list Newline type_decl  {$$ = setNext($1, $3);}
-              | type_decl                         {$$ = setRoot($1);}
+type_decl_list: type_decl_list Newline type_decl           {$$ = setNext($1, $3);}
+              | type_decl_list Newline tagged_union_list   {setNext($1, getRoot()); $$ = $3;}
+              | type_decl                                  {$$ = setRoot($1);}
+              | tagged_union_list                          {$$ = $1;}
               ;
 
 type_decl_block: Indent type_decl_list Unindent  {$$ = getRoot();}
                | params               %prec LOW  {$$ = $1;}
                | type_expr            %prec LOW  {$$ = mkNamedValNode(@$, mkVarNode(@$, (char*)""), $1);}
+               | tagged_union_list    %prec LOW  {$$ = getRoot();}
                ;
+
+tagged_union_list: tagged_union_list '|' usertype type_expr_list  %prec LOW  {$$ = setNext($1, mkNamedValNode(@$, mkVarNode(@3, (char*)$3), mkTypeNode(@$, TT_TaggedUnion, (char*)"", getRoot())));}
+                 | tagged_union_list '|' usertype                 %prec LOW  {$$ = setNext($1, mkNamedValNode(@$, mkVarNode(@3, (char*)$3), mkTypeNode(@$, TT_TaggedUnion, (char*)"", 0)));}
+                 | '|' usertype type_expr_list                    %prec LOW  {$$ = setRoot(mkNamedValNode(@$, mkVarNode(@2, (char*)$2), mkTypeNode(@$, TT_TaggedUnion, (char*)"", getRoot())));}
+                 | '|' usertype                                   %prec LOW  {$$ = setRoot(mkNamedValNode(@$, mkVarNode(@2, (char*)$2), mkTypeNode(@$, TT_TaggedUnion, (char*)"", 0)));}
 
 
 /* Specifying an enum member's value */
