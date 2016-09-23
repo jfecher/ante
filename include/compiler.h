@@ -163,7 +163,7 @@ namespace ante{
 
         void importFile(const char *name);
         TypedValue* getFunction(string& name);
-        TypedValue* compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector<Type*> &paramTys);
+        TypedValue* compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector<Type*> &paramTys, unsigned int scope);
         TypedValue* compFn(FuncDeclNode *fn, unsigned int scope);
         void registerFunction(FuncDeclNode *func);
 

@@ -349,6 +349,7 @@ TypedValue* WhileNode::compile(Compiler *c){
     c->builder.SetInsertPoint(begin);
     auto *val = child->compile(c); //compile the while loop's body
 
+    if(!val) return 0;
     if(!dynamic_cast<ReturnInst*>(val->val))
         c->builder.CreateBr(cond);
     
@@ -525,7 +526,7 @@ vector<Type*> getParamTypes(Compiler *c, NamedValNode *nvn, size_t paramCount){
 }
 
 
-TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector<Type*> &paramTys){
+TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector<Type*> &paramTys, unsigned int scope){
     FunctionType *preFnTy = FunctionType::get(Type::getVoidTy(getGlobalContext()), paramTys, fdn->varargs);
 
     //preFn is the predecessor to fn because we do not yet know its return type, so its body must be compiled,
@@ -634,7 +635,7 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
     }
     
     if(!retNode)
-        return compLetBindingFn(fdn, nParams, paramTys);
+        return compLetBindingFn(fdn, nParams, paramTys, scope);
 
     
 
@@ -737,7 +738,7 @@ TypedValue* FuncDeclNode::compile(Compiler *c){
         NamedValNode *paramsBegin = this->params.get();
         size_t nParams = Compiler::getTupleSize(paramsBegin);
         vector<Type*> paramTys = getParamTypes(c, paramsBegin, nParams);
-        return c->compLetBindingFn(this, nParams, paramTys);
+        return c->compLetBindingFn(this, nParams, paramTys, c->scope);
     }
 }
 
@@ -918,6 +919,13 @@ TypedValue* MatchNode::compile(Compiler *c){
 
             auto *parentTy = c->lookupType(tagTy->getParentUnionName());
             ci = ConstantInt::get(getGlobalContext(), APInt(8, parentTy->getTagVal(tn->typeName), true));
+
+        //variable/match-all pattern: _
+        }else if(VarNode *vn = dynamic_cast<VarNode*>(mbn->pattern.get())){
+            auto *tn = new TypedValue(lval->val, deepCopyTypeNode(lval->type.get()));
+            match->setDefaultDest(br);
+            c->stoVar(vn->name, new Variable(vn->name, tn, c->scope, true));
+            continue;
         }else{
             return c->compErr("Pattern matching non-tagged union types is not yet implemented", mbn->pattern->loc);
         }

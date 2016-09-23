@@ -657,7 +657,6 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
                 }
             }
 
-
             return c->compErr("Argument " + to_string(i) + " of function is a(n) " + typeNodeToStr(tArg->type.get())
                     + " but was declared to be a(n) " + typeNodeToStr(paramTy), r->loc);
         }
