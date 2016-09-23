@@ -453,16 +453,36 @@ int Lexer::genStrLitTok(yy::parser::location_type* loc){
                 case 'r': s += '\r'; break;
                 case 't': s += '\t'; break;
                 case 'v': s += '\v'; break;
-                case '0': s += '\0'; break;
-                default:  s += nxt; break;
+                default: 
+                    if(!IS_NUMERICAL(nxt)) s += nxt;
+                    else{
+                        int cha = 0;
+                        incPos();
+                        while(IS_NUMERICAL(cur) && IS_NUMERICAL(nxt)){
+                            cha *= 8;
+                            cha += cur - '0';
+                            incPos();
+                        }
+                        //the final char must be added here becuase cur and nxt
+                        //must not be consumed until after the switch
+                        cha *= 8;
+                        cha += cur - '0';
+
+                        s += cha;
+                        in->putback(nxt);
+                        nxt = cur;
+                    }
+                    break;
             }
+
+
             incPos();
         }else{
             s += cur;
         }
         incPos();
     }
-    
+
     incPos(); //consume ending delim
     loc->end = yy::position(fName, row, col);
     setlextxt(&s);
@@ -485,7 +505,26 @@ int Lexer::genCharLitTok(yy::parser::location_type* loc){
             case 't': s += '\t'; break;
             case 'v': s += '\v'; break;
             case '0': s += '\0'; break;
-            default:  s += nxt; break;
+            default:
+                if(!IS_NUMERICAL(nxt)) s += nxt;
+                else{
+                    int cha = 0;
+                    incPos();
+                    while(IS_NUMERICAL(cur) && IS_NUMERICAL(nxt)){
+                        cha *= 8;
+                        cha += cur - '0';
+                        incPos();
+                    }
+                    //the final char must be added here becuase cur and nxt
+                    //must not be consumed until after the switch
+                    cha *= 8;
+                    cha += cur - '0';
+
+                    s += cha;
+                    in->putback(nxt);
+                    nxt = cur;
+                }
+                break;
         }
         incPos();
     }else{
