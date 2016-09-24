@@ -876,7 +876,7 @@ TypedValue* MatchNode::compile(Compiler *c){
     vector<pair<BasicBlock*,TypedValue*>> merges;
 
     for(auto *mbn : branches){
-        ConstantInt *ci;
+        ConstantInt *ci = nullptr;
         auto *br = BasicBlock::Create(getGlobalContext(), "br", f);
         c->builder.SetInsertPoint(br);
 
@@ -925,7 +925,6 @@ TypedValue* MatchNode::compile(Compiler *c){
             auto *tn = new TypedValue(lval->val, deepCopyTypeNode(lval->type.get()));
             match->setDefaultDest(br);
             c->stoVar(vn->name, new Variable(vn->name, tn, c->scope, true));
-            continue;
         }else{
             return c->compErr("Pattern matching non-tagged union types is not yet implemented", mbn->pattern->loc);
         }
@@ -933,8 +932,10 @@ TypedValue* MatchNode::compile(Compiler *c){
         auto *then = mbn->branch->compile(c);
         c->builder.CreateBr(end);
         merges.push_back(pair<BasicBlock*,TypedValue*>(c->builder.GetInsertBlock(), then));
-        
-        match->addCase(ci, br);
+      
+        //if ci is still null, then the else-like branch was just compiled, and does not correlate to a singular tag
+        if(ci)
+            match->addCase(ci, br);
     }
 
     f->getBasicBlockList().push_back(end);
