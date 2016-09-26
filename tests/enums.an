@@ -1,0 +1,14 @@
+
+type Day = | Mon | Tue | Wed | Thu | Fri | Sat | Sun
+
+
+fun getDay := Sat
+
+
+match getDay () with
+| Mon -> print "Monday"
+| Tue -> print "Tuesday"
+| Wed -> print "Wednesday"
+| Thu -> print "Thursday"
+| Fri -> print "Friday"
+| _   -> print "Weekend"
