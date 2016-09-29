@@ -624,8 +624,8 @@ vector<Argument*> buildArguments(FunctionType *ft){
  */
 TypeNode* createFnTyNode(NamedValNode *params, TypeNode *retTy){
     TypeNode *fnTy = mkAnonTypeNode(TT_Function);
-    fnTy->extTy.reset(deepCopyTypeNode(retTy));
-    
+    fnTy->extTy.reset(retTy ? deepCopyTypeNode(retTy) : mkAnonTypeNode(TT_Void));
+
     TypeNode *curTyn = fnTy->extTy.get();
     while(params && params->typeExpr.get()){
         curTyn->next.reset(deepCopyTypeNode((TypeNode*)params->typeExpr.get()));
@@ -729,7 +729,7 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
 }
 
 
-string mangle(string base, TypeNode *paramTys){
+string mangle(string& base, TypeNode *paramTys){
     while(paramTys){
         base += "_" + typeNodeToStr(paramTys);
         paramTys = (TypeNode*)paramTys->next.get();
@@ -745,7 +745,7 @@ TypedValue* FuncDeclNode::compile(Compiler *c){
     //check if the function is a named function.
     if(name.length() > 0){
         //if it is not, register it to be lazily compiled later (when it is called)
-        if(IS_ALPHANUM(name[0])){
+        if((name[0] >= 'a' || name[0] <= 'z') || name[0] == '_'){
             name = c->funcPrefix + name;
         }else{
             auto *fnTy = createFnTyNode(this->params.get(), (TypeNode*)this->type.get());
@@ -1005,11 +1005,7 @@ TypedValue* Compiler::getFunction(string& name){
 }
     
 TypedValue* Compiler::getMangledFunction(string name, TypeNode *params){
-    string fnName = name;
-    while(params){
-        fnName += "_" + typeNodeToStr(params);
-        params = (TypeNode*)params->next.get();
-    }
+    string fnName = mangle(name, params);
     return getFunction(fnName);
 }
 
@@ -1083,6 +1079,7 @@ string removeFileExt(string file){
  *  of a module with unneeded library functions.
  */
 inline void Compiler::registerFunction(FuncDeclNode *fn){
+    cout << "registering " << fn->name << endl;
     fnDecls[fn->name] = new FuncDecl(fn, this->scope);
 }
 

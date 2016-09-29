@@ -229,7 +229,8 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
  */
 TypedValue* createCast(Compiler *c, Type *castTy, TypeNode *tyn, TypedValue *valToCast){
     //first, see if the user created their own cast function
-    if(auto *fn = c->getMangledFunction(typeNodeToStr(tyn) + "_Cast", valToCast->type.get())){
+    string fnBaseName = typeNodeToStr(tyn) + "_Cast";
+    if(auto *fn = c->getMangledFunction(fnBaseName, valToCast->type.get())){
 
         //first, assure the function has only one parameter
         //the return type is guarenteed to be initialized, so it is not checked
@@ -239,7 +240,7 @@ TypedValue* createCast(Compiler *c, Type *castTy, TypeNode *tyn, TypedValue *val
                 return new TypedValue(c->builder.CreateCall(fn->val, valToCast->val), deepCopyTypeNode(fn->type->extTy.get()));
             }
         }
-    }
+    }else cout << fnBaseName << " not found\n";
 
     //otherwise, fallback on known conversions
     if(isIntTypeTag(valToCast->type->type)){
