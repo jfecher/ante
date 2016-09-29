@@ -29,7 +29,7 @@ Node* mkTypeCastNode(LOC_TY loc, Node *l, Node *r);
 Node* mkUnOpNode(LOC_TY loc, int op, Node *r);
 Node* mkBinOpNode(LOC_TY loc, int op, Node* l, Node* r);
 Node* mkBlockNode(LOC_TY loc, Node* b);
-Node* mkNamedValNode(LOC_TY loc, Node* nodes, Node* tExpr);
+Node* mkNamedValNode(LOC_TY loc, Node* nodes, Node* tExpr, bool setRoot = false);
 Node* mkVarNode(LOC_TY loc, char* s);
 Node* mkRetNode(LOC_TY loc, Node* expr);
 Node* mkImportNode(LOC_TY loc, Node* expr);

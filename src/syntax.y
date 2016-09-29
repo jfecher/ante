@@ -302,7 +302,7 @@ ident_list: raw_ident_list  %prec MED {$$ = getRoot();}
 
 
 _params: _params ',' type_expr ident_list {$$ = setNext($1, mkNamedValNode(@$, $4, $3));}
-      | type_expr ident_list            {$$ = setRoot(mkNamedValNode(@$, $2, $1));}
+      | type_expr ident_list              {$$ = mkNamedValNode(@$, $2, $1, true);}
       ;
 
                           /* varargs function .. (Range) followed by . */
