@@ -19,4 +19,5 @@ elif i == 5 then
 elif i == 6 then
     print "6"
 
-print "i is outside the range 3-6 inclusive!"
+else
+    print "i is outside the range 3-6 inclusive!"
