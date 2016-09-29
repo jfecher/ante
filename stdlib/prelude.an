@@ -73,6 +73,24 @@ fun Str.cast: [c8] cStr -> Str
     Str(cStr, strlen cStr)
 
 
+~overload [c8] equality operator
+fun (==): [c8] l r -> bool
+    var i = 0
+    while l#i != '\0' do
+        if l#i != r#i then
+            return false
+
+        i += 1
+
+    l#i == r#i
+
+~overload Str equality operator
+fun (==): Str l r -> bool
+    if l.len != r.len then
+        false
+    else
+        l.cStr == r.cStr
+
 
 ~ IO
 fun InFile.cast: Str fName -> InFile

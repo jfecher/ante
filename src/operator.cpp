@@ -229,8 +229,7 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
  */
 TypedValue* createCast(Compiler *c, Type *castTy, TypeNode *tyn, TypedValue *valToCast){
     //first, see if the user created their own cast function
-    string castFn = typeNodeToStr(tyn) + "_cast";
-    if(auto *fn = c->getFunction(castFn)){
+    if(auto *fn = c->getMangledFunction(typeNodeToStr(tyn) + "_Cast", valToCast->type.get())){
 
         //first, assure the function has only one parameter
         //the return type is guarenteed to be initialized, so it is not checked
@@ -740,6 +739,21 @@ TypedValue* Compiler::compLogicalAnd(Node *lexpr, Node *rexpr, BinOpNode *op){
     return new TypedValue(phi, rhs->type);
 }
 
+
+TypedValue* Compiler::opImplementedForTypes(int op, TypeNode *l, TypeNode *r){
+    if(isNumericTypeTag(l->type) && isNumericTypeTag(r->type)){
+        switch(op){
+            case '+': case '-': case '*': case '/': case '%': return (TypedValue*)1;
+        }
+    }
+
+    string ls = typeNodeToStr(l);
+    string rs = typeNodeToStr(r);
+    string fns = Lexer::getTokStr(op) + "_" + ls + "_" + rs;
+    return getFunction(fns);
+}
+
+
 /*
  *  Compiles an operation along with its lhs and rhs
  */
@@ -755,29 +769,66 @@ TypedValue* BinOpNode::compile(Compiler *c){
     TypedValue *lhs = lval->compile(c);
     TypedValue *rhs = rval->compile(c);
     if(!lhs || !rhs) return 0;
+    
+    if(op == ';') return rhs;
+    if(op == '#') return c->compExtract(lhs, rhs, this);
+
 
     //Check if both Values are numeric, and if so, check if their types match.
     //If not, do an implicit conversion (usually a widening) to match them.
     c->handleImplicitConversion(&lhs, &rhs);
+            
 
-    switch(op){
-        case '+': return c->compAdd(lhs, rhs, this);
-        case '-': return c->compSub(lhs, rhs, this);
-        case '*': return c->compMul(lhs, rhs, this);
-        case '/': return c->compDiv(lhs, rhs, this);
-        case '%': return c->compRem(lhs, rhs, this);
-        case '#': return c->compExtract(lhs, rhs, this);
-        case ';': return rhs;
-        case '<': return new TypedValue(c->builder.CreateICmpULT(lhs->val, rhs->val), lhs->type);
-        case '>': return new TypedValue(c->builder.CreateICmpUGT(lhs->val, rhs->val), lhs->type);
-        case '^': return new TypedValue(c->builder.CreateXor(lhs->val, rhs->val), lhs->type);
-        case Tok_Eq: return new TypedValue(c->builder.CreateICmpEQ(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
-        case Tok_NotEq: return new TypedValue(c->builder.CreateICmpNE(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
-        case Tok_LesrEq: return new TypedValue(c->builder.CreateICmpULE(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
-        case Tok_GrtrEq: return new TypedValue(c->builder.CreateICmpUGE(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
+    //first, if both operands are primitive numeric types, use the default ops
+    if(isNumericTypeTag(lhs->type->type) && isNumericTypeTag(rhs->type->type)){
+        switch(op){
+            case '+': return c->compAdd(lhs, rhs, this);
+            case '-': return c->compSub(lhs, rhs, this);
+            case '*': return c->compMul(lhs, rhs, this);
+            case '/': return c->compDiv(lhs, rhs, this);
+            case '%': return c->compRem(lhs, rhs, this);
+            case '<': return new TypedValue(c->builder.CreateICmpULT(lhs->val, rhs->val), lhs->type);
+            case '>': return new TypedValue(c->builder.CreateICmpUGT(lhs->val, rhs->val), lhs->type);
+            case '^': return new TypedValue(c->builder.CreateXor(lhs->val, rhs->val), lhs->type);
+            case Tok_Eq: return new TypedValue(c->builder.CreateICmpEQ(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
+            case Tok_NotEq: return new TypedValue(c->builder.CreateICmpNE(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
+            case Tok_LesrEq: return new TypedValue(c->builder.CreateICmpULE(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
+            case Tok_GrtrEq: return new TypedValue(c->builder.CreateICmpUGE(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
+        }
+
+    //and bools are only compatible with == and !=
+    }else if(lhs->type->type == TT_Bool && rhs->type->type == TT_Bool){
+        switch(op){
+            case Tok_Eq: return new TypedValue(c->builder.CreateICmpEQ(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
+            case Tok_NotEq: return new TypedValue(c->builder.CreateICmpNE(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
+        }
     }
 
-    return c->compErr("Unknown operator " + Lexer::getTokStr(op), loc);
+    //otherwise check if the operator is overloaded
+    //
+    //first create the parameter tuple by setting lty.next = rty
+    auto *lNxtTy = lhs->type->next.get();
+    lhs->type->next.release();
+    lhs->type->next.reset(rhs->type.get());
+
+    //now look for the function
+    auto *fn = c->getMangledFunction(Lexer::getTokStr(op), lhs->type.get());
+
+    //and make swap lTys old next value back
+    lhs->type->next.release();
+    lhs->type->next.reset(lNxtTy);
+
+    //operator function found
+    if(fn){
+        //dont even bother type checking, assume the name mangling was performed correctly
+        return new TypedValue(
+                c->builder.CreateCall(fn->val, {lhs->val, rhs->val}),
+                deepCopyTypeNode(fn->type->extTy.get())
+        );
+    }
+
+    return c->compErr("Operator " + Lexer::getTokStr(op) + " is not overloaded for types "
+            + typeNodeToStr(lhs->type.get()) + " and " + typeNodeToStr(rhs->type.get()), loc);
 }
 
 

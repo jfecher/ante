@@ -618,6 +618,24 @@ vector<Argument*> buildArguments(FunctionType *ft){
 }
 
 
+/*
+ *  Translates a list of NamedValNodes to a list of TypeNodes
+ *  that are deep copies of each named val node's type
+ */
+TypeNode* createFnTyNode(NamedValNode *params, TypeNode *retTy){
+    TypeNode *fnTy = mkAnonTypeNode(TT_Function);
+    fnTy->extTy.reset(deepCopyTypeNode(retTy));
+    
+    TypeNode *curTyn = fnTy->extTy.get();
+    while(params && params->typeExpr.get()){
+        curTyn->next.reset(deepCopyTypeNode((TypeNode*)params->typeExpr.get()));
+        curTyn = (TypeNode*)curTyn->next.get();
+        params = (NamedValNode*)params->next.get();
+    }
+    return fnTy;
+}
+
+
 TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
     //Get and translate the function's return type to an llvm::Type*
     TypeNode *retNode = (TypeNode*)fdn->type.get();
@@ -638,19 +656,8 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
         return compLetBindingFn(fdn, nParams, paramTys, scope);
 
     
-
     //create the function's actual type node for the tval later
-    TypeNode *fnTy = mkAnonTypeNode(TT_Function);
-    fnTy->extTy.reset(deepCopyTypeNode(retNode));
-
-    //set the proceeding node's to the parameter types
-    NamedValNode *curParam = paramsBegin;
-    TypeNode *curTyn = fnTy->extTy.get();
-    while(curParam && curParam->typeExpr.get()){
-        curTyn->next.reset(deepCopyTypeNode((TypeNode*)curParam->typeExpr.get()));
-        curTyn = (TypeNode*)curTyn->next.get();
-        curParam = (NamedValNode*)curParam->next.get();
-    }
+    TypeNode *fnTy = createFnTyNode(fdn->params.get(), (TypeNode*)fdn->type.get());
 
 
     Type *retTy = typeNodeToLlvmType(retNode);
@@ -722,6 +729,15 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
 }
 
 
+string mangle(string base, TypeNode *paramTys){
+    while(paramTys){
+        base += "_" + typeNodeToStr(paramTys);
+        paramTys = (TypeNode*)paramTys->next.get();
+    }
+    return base;
+}
+
+
 /*
  *  Registers a function for later compilation
  */
@@ -729,7 +745,17 @@ TypedValue* FuncDeclNode::compile(Compiler *c){
     //check if the function is a named function.
     if(name.length() > 0){
         //if it is not, register it to be lazily compiled later (when it is called)
-        name = c->funcPrefix + name;
+        if(IS_ALPHANUM(name[0])){
+            name = c->funcPrefix + name;
+        }else{
+            auto *fnTy = createFnTyNode(this->params.get(), (TypeNode*)this->type.get());
+
+            //sidenote: extTy for function types is guarenteed to be initialized with the return type of
+            //the function, so this is not null checked before next is accessed.
+            auto *paramTys = (TypeNode*)fnTy->extTy->next.get();
+            name = c->funcPrefix + mangle(name, paramTys);
+        }
+
         c->registerFunction(this);
         //and return a void value
         return c->getVoidLiteral();
@@ -976,6 +1002,15 @@ TypedValue* Compiler::getFunction(string& name){
     }else{
         return f->tval;
     }
+}
+    
+TypedValue* Compiler::getMangledFunction(string name, TypeNode *params){
+    string fnName = name;
+    while(params){
+        fnName += "_" + typeNodeToStr(params);
+        params = (TypeNode*)params->next.get();
+    }
+    return getFunction(fnName);
 }
 
 /*

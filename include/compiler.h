@@ -163,6 +163,8 @@ namespace ante{
 
         void importFile(const char *name);
         TypedValue* getFunction(string& name);
+        TypedValue* getMangledFunction(string nonMangledName, TypeNode *params);
+        
         TypedValue* compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector<Type*> &paramTys, unsigned int scope);
         TypedValue* compFn(FuncDeclNode *fn, unsigned int scope);
         void registerFunction(FuncDeclNode *func);
@@ -175,6 +177,7 @@ namespace ante{
 
         Type* typeNodeToLlvmType(TypeNode *tyNode);
     
+        TypedValue* opImplementedForTypes(int op, TypeNode *l, TypeNode *r);
         TypedValue* implicitlyWidenNum(TypedValue *num, TypeTag castTy);
         void handleImplicitConversion(TypedValue **lhs, TypedValue **rhs);
         void implicitlyCastIntToInt(TypedValue **lhs, TypedValue **rhs);
