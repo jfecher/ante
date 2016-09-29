@@ -240,7 +240,7 @@ TypedValue* createCast(Compiler *c, Type *castTy, TypeNode *tyn, TypedValue *val
                 return new TypedValue(c->builder.CreateCall(fn->val, valToCast->val), deepCopyTypeNode(fn->type->extTy.get()));
             }
         }
-    }else cout << fnBaseName << " not found\n";
+    }
 
     //otherwise, fallback on known conversions
     if(isIntTypeTag(valToCast->type->type)){
@@ -634,10 +634,10 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
                     continue;
                 }
             }
-           
-            //check for an implicitCast function
-            string castFn = typeNodeToStr(paramTy) + "_cast";
-            if(auto *fn = c->getFunction(castFn)){
+
+            //check for an implicit Cast function
+            string castFn = typeNodeToStr(paramTy) + "_Cast";
+            if(auto *fn = c->getMangledFunction(castFn, tArg->type.get())){
                 //first, assure the function has only one parameter
                 //the return type is guarenteed to be initialized, so it is not checked
                 if(fn->type->extTy->next.get() && !fn->type->extTy->next->next.get()){

@@ -745,7 +745,7 @@ TypedValue* FuncDeclNode::compile(Compiler *c){
     //check if the function is a named function.
     if(name.length() > 0){
         //if it is not, register it to be lazily compiled later (when it is called)
-        if((name[0] >= 'a' || name[0] <= 'z') || name[0] == '_'){
+        if((name[0] >= 'a' && name[0] <= 'z') || name[0] == '_'){
             name = c->funcPrefix + name;
         }else{
             auto *fnTy = createFnTyNode(this->params.get(), (TypeNode*)this->type.get());
@@ -1079,7 +1079,6 @@ string removeFileExt(string file){
  *  of a module with unneeded library functions.
  */
 inline void Compiler::registerFunction(FuncDeclNode *fn){
-    cout << "registering " << fn->name << endl;
     fnDecls[fn->name] = new FuncDecl(fn, this->scope);
 }
 

@@ -314,13 +314,13 @@ function: fn_def
         | fn_decl
         | fn_inferredRet
         | fn_lambda
+        | fn_ext_def
+        | fn_ext_inferredRet
         ;
 
-fn_name: type_expr '.' ident       {$$ = (Node*)(typeNodeToStr((TypeNode*)$1) + "_" + (char*)$3).c_str();}
-       | type_expr '.' '(' op ')'  {$$ = (Node*)(typeNodeToStr((TypeNode*)$1) + " " + (char*)$4).c_str();}
-       | type_expr                 {$$ = (Node*)(typeNodeToStr((TypeNode*)$1) + "_Cast").c_str();}
-       | ident                     {$$ = $1;}
-       | '(' op ')'                {$$ = $2;}
+fn_name: type_expr   /* cast/init function */  {$$ = (Node*)(typeNodeToStr((TypeNode*)$1) + "_Cast").c_str();}
+       | ident       /* most functions */      {$$ = $1;}
+       | '(' op ')'  /* operator overloads */  {$$ = $2;}
        ;
 
 op: '+'    {$$ = (Node*)"+";} 
@@ -348,6 +348,21 @@ op: '+'    {$$ = (Node*)"+";}
   | ApplyL {$$ = (Node*)"<|";}
   ;
 
+fn_ext_def: modifier_list Fun type_expr '.' fn_name ':' params RArrow type_expr block  {$$ = mkExtNode(@$, $3, mkFuncDeclNode(@$, /*fn_name*/(char*)$5, /*mods*/$1, /*ret_ty*/$9,                                  /*params*/$7, /*body*/$10));}
+          | modifier_list Fun type_expr '.' fn_name ':' RArrow type_expr block         {$$ = mkExtNode(@$, $3, mkFuncDeclNode(@$, /*fn_name*/(char*)$5, /*mods*/$1, /*ret_ty*/$8,                                  /*params*/0,  /*body*/$9));}
+          | modifier_list Fun type_expr '.' fn_name ':' params block                   {$$ = mkExtNode(@$, $3, mkFuncDeclNode(@$, /*fn_name*/(char*)$5, /*mods*/$1, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/$7, /*body*/$8));}
+          | modifier_list Fun type_expr '.' fn_name ':' block                          {$$ = mkExtNode(@$, $3, mkFuncDeclNode(@$, /*fn_name*/(char*)$5, /*mods*/$1, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/0,  /*body*/$7));}
+          | Fun type_expr '.' fn_name ':' params RArrow type_expr block                {$$ = mkExtNode(@$, $2, mkFuncDeclNode(@$, /*fn_name*/(char*)$4, /*mods*/ 0, /*ret_ty*/$8,                                  /*params*/$6, /*body*/$9));}
+          | Fun type_expr '.' fn_name ':' RArrow type_expr block                       {$$ = mkExtNode(@$, $2, mkFuncDeclNode(@$, /*fn_name*/(char*)$4, /*mods*/ 0, /*ret_ty*/$7,                                  /*params*/0,  /*body*/$8));}
+          | Fun type_expr '.' fn_name ':' params block                                 {$$ = mkExtNode(@$, $2, mkFuncDeclNode(@$, /*fn_name*/(char*)$4, /*mods*/ 0, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/$6, /*body*/$7));}
+          | Fun type_expr '.' fn_name ':' block                                        {$$ = mkExtNode(@$, $2, mkFuncDeclNode(@$, /*fn_name*/(char*)$4, /*mods*/ 0, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/0,  /*body*/$6));}
+          ;
+
+fn_ext_inferredRet: modifier_list Fun type_expr '.' fn_name ':' params '=' expr   {$$ = mkExtNode(@$, $3, mkFuncDeclNode(@$, /*fn_name*/(char*)$5, /*mods*/$1, /*ret_ty*/0, /*params*/$7, /*body*/$9));}
+                  | modifier_list Fun type_expr '.' fn_name ':' '=' expr          {$$ = mkExtNode(@$, $3, mkFuncDeclNode(@$, /*fn_name*/(char*)$5, /*mods*/$1, /*ret_ty*/0, /*params*/0,  /*body*/$8));}
+                  | Fun type_expr '.' fn_name ':' params '=' expr                 {$$ = mkExtNode(@$, $2, mkFuncDeclNode(@$, /*fn_name*/(char*)$4, /*mods*/ 0, /*ret_ty*/0, /*params*/$6, /*body*/$8));}
+                  | Fun type_expr '.' fn_name ':' '=' expr                        {$$ = mkExtNode(@$, $2, mkFuncDeclNode(@$, /*fn_name*/(char*)$4, /*mods*/ 0, /*ret_ty*/0, /*params*/0,  /*body*/$7));}
+                  ;
 
 fn_def: modifier_list Fun fn_name ':' params RArrow type_expr block  {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/$7,                                  /*params*/$5, /*body*/$8);}
       | modifier_list Fun fn_name ':' RArrow type_expr block         {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/$6,                                  /*params*/0,  /*body*/$7);}
