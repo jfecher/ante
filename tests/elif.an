@@ -1,23 +1,22 @@
 `
         elif.an
     Test parser and compiler's ability to recognize
-    and parse/compiler multiple elifs and elses
-    correctly.
+    and parse/compile multiple elifs and elses correctly
 `
 
-var i = (fun = 4) ()
+var i = (fun = 4)()
 
 if i == 3 then
-    print "3"
+    print "three"
 
 elif i == 4 then
-    print "4"
+    print "four"
 
 elif i == 5 then
-    print "5"
+    print "five"
 
 elif i == 6 then
-    print "6"
+    print "six"
 
 else
-    print "i is outside the range 3-6 inclusive!"
+    print "i is outside the range of 3 to 6 inclusive!"

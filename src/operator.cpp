@@ -638,26 +638,15 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
             //check for an implicit Cast function
             string castFn = typeNodeToStr(paramTy) + "_Cast";
             if(auto *fn = c->getMangledFunction(castFn, tArg->type.get())){
-                //first, assure the function has only one parameter
-                //the return type is guarenteed to be initialized, so it is not checked
-                if(fn->type->extTy->next.get() && !fn->type->extTy->next->next.get()){
-                    //type check the only parameter
-                    if(*tArg->type == *(TypeNode*)fn->type->extTy->next.get()){
-                        
-                        //optimize case of Str -> [c8] implicit cast
-                        if(tArg->type->typeName == "Str" && castFn == "[c8]_cast")
-                            args[i-1] = c->builder.CreateExtractValue(args[i-1], 0);
-                        else
-                            args[i-1] = c->builder.CreateCall(fn->val, tArg->val);
+                //the function's parameter is not type checked as it is assumed it was mangled correctly.
+                
+                //optimize case of Str -> [c8] implicit cast
+                if(tArg->type->typeName == "Str" && castFn == "[c8]_Cast")
+                    args[i-1] = c->builder.CreateExtractValue(args[i-1], 0);
+                else
+                    args[i-1] = c->builder.CreateCall(fn->val, tArg->val);
 
-                        paramTy = (TypeNode*)paramTy->next.get();
-                        i++;
-                        continue;
-                    }
-                }
-            }
-
-            return c->compErr("Argument " + to_string(i) + " of function is a(n) " + typeNodeToStr(tArg->type.get())
+            }else return c->compErr("Argument " + to_string(i) + " of function is a(n) " + typeNodeToStr(tArg->type.get())
                     + " but was declared to be a(n) " + typeNodeToStr(paramTy), r->loc);
         }
         paramTy = (TypeNode*)paramTy->next.get();
