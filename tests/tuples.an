@@ -6,15 +6,15 @@ let tup = (1, 2, "three")
 printf "tup: %d, %d, %s\n" (tup#0) (tup#1) (tup#2)
 
 
-fun getCoords: -> i32,i32
-    return (2, 3)
+fun getCoords := (2, 3)
 
 ~Pack two i32 params into a tuple
 fun toTuple: i32 a b -> i32,i32
-    return (a, b)
+    (a, b)
 
-fun printTuple: [c8] name, i32,i32 t
-    printf "%s = (%d, %d)\n" name (t#0) (t#1)
+
+fun printTuple: Str name, i32,i32 t
+    printf "%s = (%d, %d)\n" (name.cStr) (t#0) (t#1)
 
 
 let coords = getCoords()

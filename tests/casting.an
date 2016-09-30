@@ -14,7 +14,7 @@ printf "%d\n"
     mul (u16 a) (u16 b)
 
 
-let msg = "Hello World!"
+let msg = "Hello World!".cStr
 
 let world = [c8] c8* (u64 msg + 6)
 

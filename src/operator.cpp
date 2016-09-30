@@ -203,10 +203,10 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
             if(!dynamic_cast<ConstantInt*>(index->val)){
                 return compErr("Tuple indices must always be known at compile time.", op->loc);
             }else{
-                auto tupIndex = ((ConstantInt*)index->val)->getZExtValue();
+                auto tupIndex = static_cast<ConstantInt*>(index->val)->getZExtValue();
 
                 //Type of element at tuple index tupIndex, for type checking
-                Type* tupIndexTy = tmp->val->getType()->getPointerElementType()->getStructElementType(tupIndex);
+                Type* tupIndexTy = tmp->val->getType()->getStructElementType(tupIndex);
                 Type* exprTy = newVal->getType();
 
                 if(!llvmTypeEq(tupIndexTy, exprTy)){
@@ -215,8 +215,7 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
                                 assignExpr->loc);
                 }
 
-                Value *tup = builder.CreateLoad(tmp->val);
-                builder.CreateInsertValue(tup, newVal->val, tupIndex);
+                builder.CreateInsertValue(tmp->val, newVal->val, tupIndex);
                 return getVoidLiteral();//new TypedValue(builder.CreateStore(insertedTup, var), mkAnonTypeNode(TT_Void));
             }
         default:

@@ -1,0 +1,27 @@
+
+
+fun (+): Str l r -> Str
+    let len = l.len + r.len
+    var buf = malloc len
+
+    fun memcpy: void* dest src, u32 bytes -> void* `dest`;
+
+    memcpy buf l.cStr l.len
+    memcpy (void*(u64 buf + l.len)) r.cStr r.len
+
+    Str([c8] buf, len)
+
+
+print <| "test" + "ing"
+
+print <| "Hello " + "W" + "orld" + "!"
+
+
+
+let s1 = "hello"
+let s2 = "hello"
+
+if s1 == s2 then
+    print "Strings are equal!"
+else
+    print "Strings are not equal."
