@@ -270,6 +270,7 @@ TypedValue* TupleNode::compile(Compiler *c){
         if(cur){
             //cannot just do a swap here because unique_ptr<TypeNode> 
             //cannot swap with a unique_ptr<Node>
+            cur->next.release();
             cur->next.reset(tval->type.get());
             tval->type.release();
             cur = (TypeNode*)cur->next.get();
@@ -549,6 +550,7 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
     vector<Value*> preArgs;
     for(auto &arg : preFn->args()){
         TypeNode *paramTyNode = (TypeNode*)cParam->typeExpr.get();
+
         stoVar(cParam->name, new Variable(cParam->name, new TypedValue(&arg, paramTyNode), scope));
         preArgs.push_back(&arg);
 
@@ -566,9 +568,9 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
     TypedValue *v = fdn->child->compile(this);
     //End of the function, discard the function's scope.
     exitScope();
-        
-    //llvm requires explicit returns, so generate a void return even if
-    //the user did not in their void function.
+
+    //llvm requires explicit returns, so generate a return even if
+    //the user did not in their function.
     if(!dynamic_cast<ReturnInst*>(v->val)){
         if(v->type->type == TT_Void)
             builder.CreateRetVoid();
@@ -600,6 +602,8 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
     }
 
     auto *ret = new TypedValue(f, fnTyn);
+
+    //only store the function if it has a name (and thus is not a lambda function)
     if(fdn->name.length() > 0)
         stoVar(fdn->name, new Variable(fdn->name, ret, scope));
 

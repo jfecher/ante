@@ -175,16 +175,20 @@ void LetBindingNode::print(){
     cout << "let ";
     if(typeExpr.get()){
         typeExpr->print();
+        putchar(' ');
     }
-    cout << ' ' << name << " = ";
+    cout << name << " = ";
     
     expr->print(); //expr is not null-checked since it is required to be non-null
 }
 
 void VarDeclNode::print(){
     cout << "varDecl ";
-    if(typeExpr) typeExpr->print();
-    cout << ' ' << name << " = ";
+    if(typeExpr){
+        typeExpr->print();
+        putchar(' ');
+    }
+    cout << name << " = ";
     if(expr) expr->print();
     else cout << "(undef)";
 }
@@ -241,6 +245,7 @@ void FuncDeclNode::print(){
         type->print();
     }
     if(child.get()){
+        cout << " = ";
         child->print();
     }
 }
