@@ -1,0 +1,53 @@
+
+
+`Append a string to another`
+fun (++): Str s1 s2 -> Str
+    let len = s1.len + s2.len
+    var buf = malloc len
+
+    fun memcpy: void* dest src, u32 bytes -> void* `dest`;
+    memcpy buf s1.cStr s1.len
+    memcpy (void*(u32 buf + s1.len)) s2.cStr s2.len
+
+    Str([c8] buf, len)
+
+~Reverse a string
+fun reverse: Str s -> Str
+    var buf = [c8] malloc s.len
+
+    var i = 0_u32
+    while i < s.len do
+        buf#i = s.cStr#s.len-i-1
+        i += 1
+
+    buf#i = '\0'
+    Str([c8] buf, i)
+
+
+~append an integer to a string
+fun (++): Str l, i32 r -> Str
+  
+    ~get the string form of an integer, but in reverse
+    fun rev_str: i32 x -> Str
+        var buf = [c8] malloc 12
+        var i = 0_u32
+        var n = x
+
+        while n > 0 do
+            buf#i = c8(n %10) + '0'
+            i += 1
+            n /= 10
+
+        buf#i = '\0'
+        Str(buf, i)
+
+
+    l ++ reverse (rev_str r)
+
+
+let s1 = "Hello "
+let s2 = "World"
+
+print (s1 ++ s2)
+
+print (s1 ++ 32)

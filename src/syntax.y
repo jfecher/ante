@@ -40,7 +40,7 @@ void yyerror(const char *msg);
 
 /* operators */
 %token Eq NotEq AddEq SubEq MulEq DivEq GrtrEq LesrEq
-%token Or And Range RArrow ApplyL ApplyR New Not
+%token Or And Range RArrow ApplyL ApplyR Append New Not
 
 /* literals */
 %token True False
@@ -97,6 +97,7 @@ void yyerror(const char *msg);
 %left And     
 %left Eq  NotEq GrtrEq LesrEq '<' '>'
 
+%left Append
 %left Range
 %left '#'
 
@@ -346,6 +347,7 @@ op: '+'    {$$ = (Node*)"+";}
   | DivEq  {$$ = (Node*)"/=";}
   | ApplyR {$$ = (Node*)"|>";}
   | ApplyL {$$ = (Node*)"<|";}
+  | Append {$$ = (Node*)"++";}
   ;
 
 fn_ext_def: modifier_list Fun type_expr '.' fn_name ':' params RArrow type_expr block  {$$ = mkExtNode(@$, $3, mkFuncDeclNode(@$, /*fn_name*/(char*)$5, /*mods*/$1, /*ret_ty*/$9,                                  /*params*/$7, /*body*/$10));}
@@ -543,6 +545,7 @@ expr: expr '+' maybe_newline expr                {$$ = mkBinOpNode(@$, '+', $1, 
     | expr DivEq maybe_newline expr              {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '/', $1, $4), false);}
     | expr ApplyR maybe_newline expr             {$$ = mkBinOpNode(@$, '(', $4, $1);}
     | expr ApplyL maybe_newline expr             {$$ = mkBinOpNode(@$, '(', $1, $4);}
+    | expr Append maybe_newline expr             {$$ = mkBinOpNode(@$, Tok_Append, $1, $4);}
     | expr arg_list                              {$$ = mkBinOpNode(@$, '(', $1, $2);}
     | val                             %prec MED  {$$ = $1;}
 
