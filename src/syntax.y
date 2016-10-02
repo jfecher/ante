@@ -78,7 +78,7 @@ void yyerror(const char *msg);
 
 %left Newline
 %left ';'
-%left STMT Fun Let In Import Return Ext Var While Match
+%left STMT Fun Let Import Return Ext Var While For Match
 %left If
 %left Else Elif
 %left MED
@@ -97,6 +97,7 @@ void yyerror(const char *msg);
 %left And     
 %left Eq  NotEq GrtrEq LesrEq '<' '>'
 
+%left In
 %left Range
 %left '#'
 
@@ -439,6 +440,9 @@ if_expr: If expr Then expr                     %prec If {$$ = setRoot(mkIfNode(@
 while_loop: While expr Do expr  %prec While  {$$ = mkWhileNode(@$, $2, $4);}
           ;
 
+/*            vvvvv this will be later changed to pattern  */
+for_loop: For ident In expr Do expr  %prec For  {$$ = mkForNode(@$, $2, $4, $6);}
+
 
 match: '|' expr RArrow expr {$$ = mkMatchBranchNode(@$, $2, $4);}
      ;
@@ -468,6 +472,7 @@ val: '(' expr ')'            {$$ = $2;}
    | let_binding             {$$ = $1;}
    | var_decl                {$$ = $1;}
    | while_loop              {$$ = $1;}
+   | for_loop                {$$ = $1;}
    | if_expr       %prec LOW {$$ = getRoot();}
    | function                {$$ = $1;}
    | data_decl               {$$ = $1;}

@@ -255,6 +255,15 @@ struct WhileNode : public ParentNode{
     ~WhileNode(){}
 };
 
+struct ForNode : public ParentNode{
+    string var;
+    unique_ptr<Node> range;
+    TypedValue* compile(Compiler*);
+    void print(void);
+    ForNode(LOC_TY& loc, string v, Node *r, Node *body) : ParentNode(loc, body), var(v), range(r){}
+    ~ForNode(){}
+};
+
 struct MatchBranchNode : public Node{
     unique_ptr<Node> pattern, branch;
     TypedValue* compile(Compiler*);

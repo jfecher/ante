@@ -251,6 +251,10 @@ ParentNode* mkWhileNode(yy::parser::location_type loc, Node* con, Node* body){
     return new WhileNode(loc, con, body);
 }
 
+ParentNode* mkForNode(yy::parser::location_type loc, Node* var, Node* range, Node* body){
+    return new ForNode(loc, (char*)var, range, body);
+}
+
 ParentNode* mkFuncDeclNode(yy::parser::location_type loc, char* s, Node* mods, Node* tExpr, Node* p, Node* b){
     return new FuncDeclNode(loc, s, mods, tExpr, p, b);
 }
