@@ -52,7 +52,7 @@ void yyerror(const char *msg);
 %token For While Do In
 %token Continue Break
 %token Import Let Var Match With
-%token Type Enum Fun Ext
+%token Type Trait Fun Ext
 
 /* modifiers */
 %token Pub Pri Pro Raw
@@ -78,7 +78,7 @@ void yyerror(const char *msg);
 
 %left Newline
 %left ';'
-%left STMT Fun Let In Import Return Ext Var While Match
+%left STMT Fun Let In Import Return Ext Var While Match Trait
 %left If
 %left Else Elif
 %left MED
@@ -234,6 +234,10 @@ let_binding: Let modifier_list type_expr ident '=' expr {$$ = mkLetBindingNode(@
            ;
 
 
+trait_decl: Trait usertype Indent fn_list Unindent  {$$ = mkTraitNode(@$, (char*)$2, $3);}
+          ;
+
+
 data_decl: modifier_list Type usertype '=' type_decl_block         {$$ = mkDataDeclNode(@$, (char*)$3, $5);}
          | Type usertype '=' type_decl_block                       {$$ = mkDataDeclNode(@$, (char*)$2, $4);}
          ;
@@ -243,7 +247,6 @@ type_expr_list: type_expr_list type_expr  {$$ = setNext($1, $2);}
               ;
 
 type_decl: params          {$$ = $1;}
-         | enum_decl
        /*  | '|' usertype type_expr_list  {$$ = mkNamedValNode(@$, mkVarNode(@2, (char*)$2), mkTypeNode(@$, TT_TaggedUnion, (char*)"", getRoot()));}
          | '|' usertype                 {$$ = mkNamedValNode(@$, mkVarNode(@2, (char*)$2), mkTypeNode(@$, TT_TaggedUnion, (char*)"", 0));}
        */  ;
@@ -265,22 +268,6 @@ tagged_union_list: tagged_union_list '|' usertype type_expr_list  %prec LOW  {$$
                  | '|' usertype type_expr_list                    %prec LOW  {$$ = setRoot(mkNamedValNode(@$, mkVarNode(@2, (char*)$2), mkTypeNode(@$, TT_TaggedUnion, (char*)"", getRoot())));}
                  | '|' usertype                                   %prec LOW  {$$ = setRoot(mkNamedValNode(@$, mkVarNode(@2, (char*)$2), mkTypeNode(@$, TT_TaggedUnion, (char*)"", 0)));}
 
-
-/* Specifying an enum member's value */
-val_init_list: val_init_list Newline usertype
-             | val_init_list Newline usertype '=' expr
-             | usertype '=' expr
-             | usertype
-             ;
-
-enum_block: Indent val_init_list Unindent
-          ;
-
-enum_decl: modifier_list Enum usertype enum_block  {$$ = NULL;}
-         | Enum usertype enum_block                {$$ = NULL;}
-         | modifier_list Enum enum_block           {$$ = NULL;}
-         | Enum enum_block                         {$$ = NULL;}
-         ;
 
 
 block: Indent expr Unindent  {$$ = mkBlockNode(@$, $2);}
@@ -474,6 +461,7 @@ val: '(' expr ')'            {$$ = $2;}
    | function                {$$ = $1;}
    | data_decl               {$$ = $1;}
    | extension               {$$ = $1;}
+   | trait_decl              {$$ = $1;}
    | ret_expr                {$$ = $1;}
    | import_expr             {$$ = $1;}
    | match_expr    %prec LOW {$$ = $1;}

@@ -303,6 +303,15 @@ struct DataDeclNode : public ParentNode{
     ~DataDeclNode(){}
 };
 
+struct TraitNode : public ParentNode{
+    string name;
+
+    TypedValue* compile(Compiler*);
+    void print(void);
+    TraitNode(LOC_TY& loc, string s, Node* b) : ParentNode(loc, b), name(s){}
+    ~TraitNode(){}
+};
+
 
 namespace ante{
     namespace parser{

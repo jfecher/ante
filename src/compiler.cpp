@@ -881,6 +881,12 @@ TypedValue* DataDeclNode::compile(Compiler *c){
     return c->getVoidLiteral();
 }
 
+
+TypedValue* TraitNode::compile(Compiler *c){
+    
+}
+
+
 TypedValue* MatchNode::compile(Compiler *c){
     auto *lval = expr->compile(c);
 

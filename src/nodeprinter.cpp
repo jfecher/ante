@@ -266,3 +266,9 @@ void DataDeclNode::print(){
         child->print();
     }
 }
+
+void TraitNode::print(){
+    cout << "trait " << name << endl;
+    printBlock(child.get());
+    cout << "end of trait " << name << endl;
+}

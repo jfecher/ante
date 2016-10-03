@@ -268,3 +268,7 @@ Node* mkMatchNode(LOC_TY loc, Node* expr, Node* branch){
 Node* mkMatchBranchNode(LOC_TY loc, Node* pattern, Node* branch){
     return new MatchBranchNode(loc, pattern, branch);
 }
+
+ParentNode* mkTraitNode(LOC_TY loc, char* s, Node* fns){
+    return new TraitNode(loc, s, fns);
+}
