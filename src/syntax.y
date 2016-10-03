@@ -234,8 +234,25 @@ let_binding: Let modifier_list type_expr ident '=' expr {$$ = mkLetBindingNode(@
            ;
 
 
-trait_decl: Trait usertype Indent fn_list Unindent  {$$ = mkTraitNode(@$, (char*)$2, $3);}
+trait_decl: Trait usertype Indent trait_fn_list Unindent  {$$ = mkTraitNode(@$, (char*)$2, $4);}
           ;
+
+trait_fn_list: _trait_fn_list maybe_newline {$$ = getRoot();}
+
+_trait_fn_list: _trait_fn_list Newline trait_fn  {$$ = setNext($1, $3);}
+              | trait_fn                         {$$ = setRoot($1);}
+              ;
+
+
+trait_fn: modifier_list Fun fn_name ':' params RArrow type_expr   {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/$7,                                  /*params*/$5, /*body*/0);}
+        | modifier_list Fun fn_name ':' RArrow type_expr          {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/$6,                                  /*params*/0,  /*body*/0);}
+        | modifier_list Fun fn_name ':' params                    {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/$5, /*body*/0);}
+        | modifier_list Fun fn_name ':'                           {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/0,  /*body*/0);}
+        | Fun fn_name ':' params RArrow type_expr                 {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$2, /*mods*/ 0, /*ret_ty*/$6,                                  /*params*/$4, /*body*/0);}
+        | Fun fn_name ':' RArrow type_expr                        {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$2, /*mods*/ 0, /*ret_ty*/$5,                                  /*params*/0,  /*body*/0);}
+        | Fun fn_name ':' params                                  {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$2, /*mods*/ 0, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/$4, /*body*/0);}
+        | Fun fn_name ':'                                         {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$2, /*mods*/ 0, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/0,  /*body*/0);}
+        ;
 
 
 data_decl: modifier_list Type usertype '=' type_decl_block         {$$ = mkDataDeclNode(@$, (char*)$3, $5);}
@@ -392,7 +409,16 @@ ret_expr: Return expr {$$ = mkRetNode(@$, $2);}
 
 
 extension: Ext type_expr Indent fn_list Unindent {$$ = mkExtNode(@$, $2, $4);}
+
+         /* TODO: add traits field to ExtNode to store this usertype_list of traits */
+         | Ext type_expr ':' usertype_list Indent fn_list Unindent {$$ = mkExtNode(@$, $2, $6);}
          ;
+ 
+usertype_list: usertype_list_  {$$ = getRoot();}
+
+usertype_list_: usertype_list_ ',' usertype {$$ = setNext($1, $3);}
+              | usertype                    {$$ = setRoot($1);}
+              ;
 
 
 fn_list: fn_list_ {$$ = getRoot();}
