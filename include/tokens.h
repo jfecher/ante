@@ -66,6 +66,7 @@ enum TokenType{
     Tok_RArrow,
     Tok_ApplyL,
     Tok_ApplyR,
+    Tok_Append,
     Tok_New,
     Tok_Not,
     //All other operators are returned by ASCII value

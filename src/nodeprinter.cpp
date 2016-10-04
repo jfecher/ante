@@ -212,7 +212,14 @@ void ExtNode::print(){
 void WhileNode::print(){
     cout << "while ";
     condition->print();
-    puts(" do");
+    puts(" do ");
+    child->print();
+}
+
+void ForNode::print(){
+    cout << "for " << var << " in ";
+    range->print();
+    puts(" do ");
     child->print();
 }
 

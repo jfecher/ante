@@ -358,6 +358,31 @@ TypedValue* WhileNode::compile(Compiler *c){
     return c->getVoidLiteral();
 }
 
+
+TypedValue* ForNode::compile(Compiler *c){
+    assert(false && "For loops are still unimplemented.");
+
+    Function *f = c->builder.GetInsertBlock()->getParent();
+    BasicBlock *cond  = BasicBlock::Create(getGlobalContext(), "for_cond", f);
+    BasicBlock *begin = BasicBlock::Create(getGlobalContext(), "for", f);
+    BasicBlock *end   = BasicBlock::Create(getGlobalContext(), "end_for", f);
+
+    c->builder.CreateBr(cond);
+    c->builder.SetInsertPoint(cond);
+    auto *condval = range->compile(c);
+    c->builder.CreateCondBr(condval->val, begin, end);
+
+    c->builder.SetInsertPoint(begin);
+    auto *val = child->compile(c); //compile the while loop's body
+
+    if(!val) return 0;
+    if(!dynamic_cast<ReturnInst*>(val->val))
+        c->builder.CreateBr(cond);
+    
+    c->builder.SetInsertPoint(end);
+    return c->getVoidLiteral();
+}
+
 //create a new scope if the user indents
 TypedValue* BlockNode::compile(Compiler *c){
     c->enterNewScope();
