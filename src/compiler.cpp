@@ -802,7 +802,7 @@ TypedValue* ExtNode::compile(Compiler *c){
     c->funcPrefix = typeNodeToStr(typeExpr.get()) + "_";
     compileStmtList(methods.get(), c);
     c->funcPrefix = "";
-    return 0;
+    return c->getVoidLiteral();
 }
 
 
@@ -905,6 +905,22 @@ TypedValue* DataDeclNode::compile(Compiler *c){
     c->stoType(data, name);
     return c->getVoidLiteral();
 }
+
+
+TypedValue* TraitNode::compile(Compiler *c){
+    vector<string> nofields;
+    TypeNode *ty = mkAnonTypeNode(TT_Ptr);
+    ty->extTy.reset(mkAnonTypeNode(TT_Void));
+
+    DataType *data = new DataType(nofields, ty);
+    c->stoType(data, name);
+
+    c->funcPrefix = name + "_";
+    compileStmtList(child.get(), c);
+    c->funcPrefix = "";
+    return c->getVoidLiteral();
+}
+
 
 TypedValue* MatchNode::compile(Compiler *c){
     auto *lval = expr->compile(c);

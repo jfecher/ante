@@ -97,7 +97,7 @@ enum TokenType{
     Tok_Match,
     Tok_With,
     Tok_Type,
-    Tok_Enum,
+    Tok_Trait,
     Tok_Fun,
     Tok_Ext,
 
