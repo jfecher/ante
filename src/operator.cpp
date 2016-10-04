@@ -167,6 +167,7 @@ TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
  */
 TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
     auto *tmp = op->lval->compile(this);
+    if(!tmp) return 0;
 
     if(!dynamic_cast<LoadInst*>(tmp->val))
         return compErr("Variable must be mutable to insert values, but instead is an immutable " +
@@ -215,7 +216,8 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
                                 assignExpr->loc);
                 }
 
-                builder.CreateInsertValue(tmp->val, newVal->val, tupIndex);
+                auto *ins = builder.CreateInsertValue(tmp->val, newVal->val, tupIndex);
+                builder.CreateStore(ins, var);
                 return getVoidLiteral();//new TypedValue(builder.CreateStore(insertedTup, var), mkAnonTypeNode(TT_Void));
             }
         default:

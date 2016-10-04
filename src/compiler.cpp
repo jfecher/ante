@@ -496,6 +496,7 @@ TypedValue* compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
     if(auto *tn = dynamic_cast<TypeNode*>(bop->lval.get()))
         return c->compErr("Cannot insert value into static module '" + typeNodeToStr(tn), tn->loc);
 
+   
     //ln is not a typenode, so this is not a static method call
     Value *val;
     TypeNode *tyn;
@@ -515,6 +516,12 @@ TypedValue* compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
         val = c->builder.CreateLoad(val);
         tyn = tyn->extTy.get();
     }
+                
+    if(!dynamic_cast<LoadInst*>(val))
+        return c->compErr("Cannot insert value into non-pointer type " +
+                typeNodeToStr(tyn), bop->loc);
+
+    Value *var = static_cast<LoadInst*>(val)->getPointerOperand();
 
     //check to see if this is a field index
     if(tyn->type == TT_Data || tyn->type == TT_Tuple){
@@ -534,7 +541,9 @@ TypedValue* compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
                            " to a variable of type " + typeNodeToStr(indexTy), expr->loc);
 
 
-                c->builder.CreateInsertValue(val, newval->val, index);
+                auto *ins = c->builder.CreateInsertValue(val, newval->val, index);
+                
+                c->builder.CreateStore(ins, var);
                 return c->getVoidLiteral();
             }
         }
@@ -813,7 +822,7 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
             }
         }
         //optimize!
-        //passManager->run(*f);
+        passManager->run(*f);
     }
 
     return ret;
@@ -1262,7 +1271,7 @@ void Compiler::compile(){
     //builder should already be at end of main function
     builder.CreateRet(ConstantInt::get(getGlobalContext(), APInt(8, 0, true)));
     
-    //passManager->run(*main);
+    passManager->run(*main);
 
 
     //flag this module as compiled.
