@@ -45,5 +45,6 @@ Node* mkWhileNode(LOC_TY loc, Node* con, Node* body);
 Node* mkForNode(LOC_TY loc, Node* var, Node* range, Node* body);
 Node* mkFuncDeclNode(LOC_TY loc, char* s, Node* mods, Node* tExpr, Node* p, Node* body);
 Node* mkDataDeclNode(LOC_TY loc, char* s, Node* b);
+Node* mkTraitNode(LOC_TY loc, char* s, Node* fns);
 
 #endif
