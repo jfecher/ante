@@ -497,7 +497,6 @@ TypedValue* compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
         return c->compErr("Cannot insert value into static module '" + typeNodeToStr(tn), tn->loc);
 
    
-    //ln is not a typenode, so this is not a static method call
     Value *val;
     TypeNode *tyn;
 
@@ -506,9 +505,13 @@ TypedValue* compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
     { 
         auto *l = bop->lval->compile(c);
         if(!l) return 0;
-
+    
         val = l->val;
         tyn = l->type.get();
+        
+        if(!dynamic_cast<LoadInst*>(l->val))
+            return c->compErr("Variable must be mutable to be assigned to, but instead is an immutable " +
+                    typeNodeToStr(tyn), bop->loc);
     }
 
     //the . operator automatically dereferences pointers, so update val and tyn accordingly.
@@ -516,11 +519,8 @@ TypedValue* compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
         val = c->builder.CreateLoad(val);
         tyn = tyn->extTy.get();
     }
-                
-    if(!dynamic_cast<LoadInst*>(val))
-        return c->compErr("Cannot insert value into non-pointer type " +
-                typeNodeToStr(tyn), bop->loc);
 
+    //this is the variable that will store the changes after the later insertion
     Value *var = static_cast<LoadInst*>(val)->getPointerOperand();
 
     //check to see if this is a field index
