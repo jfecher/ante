@@ -623,7 +623,7 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
         if(!paramTy) break;
 
         //NOTE: llvmTypeEq tests by structural equality, TypeNode::operator== checks nominal equality
-        if(!llvmTypeEq(tArg->getType(), c->typeNodeToLlvmType(paramTy))){
+        if(*tArg->type != *paramTy){
             //param types not equal; check for implicit conversion
             if(isNumericTypeTag(tArg->type->type) && isNumericTypeTag(paramTy->type)){
                 auto *widen = c->implicitlyWidenNum(tArg, paramTy->type);

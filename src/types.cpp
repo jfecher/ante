@@ -68,7 +68,7 @@ TypedValue* Compiler::implicitlyWidenNum(TypedValue *num, TypeTag castTy){
 
         //integer widening
         if(lIsInt && rIsInt){
-            if(lbw < rbw){
+            if(lbw <= rbw){
                 return new TypedValue(
                     builder.CreateIntCast(num->val, ty, !isUnsignedTypeTag(num->type->type)),
                     mkAnonTypeNode(castTy)
