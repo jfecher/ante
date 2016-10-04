@@ -484,13 +484,75 @@ TypedValue* VarDeclNode::compile(Compiler *c){
     }
 }
 
+/*
+ *  Simple wrapper function for compInsert to insert into a named field
+ *  instead of an index
+ */
+TypedValue* compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
+    VarNode *field = static_cast<VarNode*>(bop->rval.get());
+
+    //A . operator can also have a type/module as its lval, but its
+    //impossible to insert into a non-value so fail if the lvalue is one
+    if(auto *tn = dynamic_cast<TypeNode*>(bop->lval.get()))
+        return c->compErr("Cannot insert value into static module '" + typeNodeToStr(tn), tn->loc);
+
+    //ln is not a typenode, so this is not a static method call
+    Value *val;
+    TypeNode *tyn;
+
+    //prevent l from being used after this scope; only val and tyn should be used as only they
+    //are updated with the automatic pointer dereferences.
+    { 
+        auto *l = bop->lval->compile(c);
+        if(!l) return 0;
+
+        val = l->val;
+        tyn = l->type.get();
+    }
+
+    //the . operator automatically dereferences pointers, so update val and tyn accordingly.
+    while(tyn->type == TT_Ptr){
+        val = c->builder.CreateLoad(val);
+        tyn = tyn->extTy.get();
+    }
+
+    //check to see if this is a field index
+    if(tyn->type == TT_Data || tyn->type == TT_Tuple){
+        auto dataTy = c->lookupType(typeNodeToStr(tyn));
+
+        if(dataTy){
+            auto index = dataTy->getFieldIndex(field->name);
+
+            if(index != -1){
+                TypeNode *indexTy = dataTy->tyn->extTy.get();
+
+                auto *newval = expr->compile(c);
+                if(!newval) return 0;
+
+                if(*indexTy != *newval->type)
+                    return c->compErr("Cannot assign expression of type " + typeNodeToStr(newval->type.get()) +
+                           " to a variable of type " + typeNodeToStr(indexTy), expr->loc);
+
+
+                c->builder.CreateInsertValue(val, newval->val, index);
+                return c->getVoidLiteral();
+            }
+        }
+    }
+
+    return c->compErr("Method/Field " + field->name + " not found in type " + typeNodeToStr(tyn), bop->loc);
+}
 
 TypedValue* VarAssignNode::compile(Compiler *c){
     //If this is an insert value (where the lval resembles var[index] = ...)
     //then this must be instead compiled with compInsert, otherwise the [ operator
     //would retrieve the value at the index instead of the reference for storage.
-    if(dynamic_cast<BinOpNode*>(ref_expr))
-        return c->compInsert((BinOpNode*)ref_expr, expr.get());
+    if(BinOpNode *bop = dynamic_cast<BinOpNode*>(ref_expr)){
+        if(bop->op == '#')
+            return c->compInsert(bop, expr.get());
+        else if(bop->op == '.')
+            return compFieldInsert(c, bop, expr.get());
+    }
 
     //otherwise, this is just a normal assign to a variable
     TypedValue *tmp = ref_expr->compile(c);
@@ -751,7 +813,7 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
             }
         }
         //optimize!
-        passManager->run(*f);
+        //passManager->run(*f);
     }
 
     return ret;
@@ -1200,7 +1262,7 @@ void Compiler::compile(){
     //builder should already be at end of main function
     builder.CreateRet(ConstantInt::get(getGlobalContext(), APInt(8, 0, true)));
     
-    passManager->run(*main);
+    //passManager->run(*main);
 
 
     //flag this module as compiled.

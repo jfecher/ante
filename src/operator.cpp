@@ -455,17 +455,17 @@ TypedValue* IfNode::compile(Compiler *c){
     return compIf(c, this, mergebb, branches);
 }
 
-TypedValue* compMemberAccess(Compiler *c, Node *ln, VarNode *field, BinOpNode *binop){
+TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *binop){
     if(!ln) return 0;
 
     if(auto *tn = dynamic_cast<TypeNode*>(ln)){
         //since ln is a typenode, this is a static field/method access, eg Math.rand
         string valName = typeNodeToStr(tn) + "_" + field->name;
 
-        if(auto *f = c->getFunction(valName))
+        if(auto *f = getFunction(valName))
             return f;
 
-        return c->compErr("No static method called '" + field->name + "' was found in type " + 
+        return compErr("No static method called '" + field->name + "' was found in type " + 
                 typeNodeToStr(tn), binop->loc);
     }else{
         //ln is not a typenode, so this is not a static method call
@@ -475,7 +475,7 @@ TypedValue* compMemberAccess(Compiler *c, Node *ln, VarNode *field, BinOpNode *b
         //prevent l from being used after this scope; only val and tyn should be used as only they
         //are updated with the automatic pointer dereferences.
         { 
-            auto *l = ln->compile(c);
+            auto *l = ln->compile(this);
             if(!l) return 0;
 
             val = l->val;
@@ -484,13 +484,13 @@ TypedValue* compMemberAccess(Compiler *c, Node *ln, VarNode *field, BinOpNode *b
 
         //the . operator automatically dereferences pointers, so update val and tyn accordingly.
         while(tyn->type == TT_Ptr){
-            val = c->builder.CreateLoad(val);
+            val = builder.CreateLoad(val);
             tyn = tyn->extTy.get();
         }
 
         //check to see if this is a field index
         if(tyn->type == TT_Data || tyn->type == TT_Tuple){
-            auto dataTy = c->lookupType(typeNodeToStr(tyn));
+            auto dataTy = lookupType(typeNodeToStr(tyn));
 
             if(dataTy){
                 auto index = dataTy->getFieldIndex(field->name);
@@ -501,7 +501,7 @@ TypedValue* compMemberAccess(Compiler *c, Node *ln, VarNode *field, BinOpNode *b
                     for(int i = 0; i < index; i++)
                         indexTy = (TypeNode*)indexTy->next.get();
                     
-                    return new TypedValue(c->builder.CreateExtractValue(val, index), deepCopyTypeNode(indexTy));
+                    return new TypedValue(builder.CreateExtractValue(val, index), deepCopyTypeNode(indexTy));
                 }
             }
         }
@@ -510,12 +510,12 @@ TypedValue* compMemberAccess(Compiler *c, Node *ln, VarNode *field, BinOpNode *b
         //TODO: perhaps create a calling convention function
         string funcName = typeNodeToStr(tyn) + "_" + field->name;
 
-        if(auto *f = c->getFunction(funcName)){
+        if(auto *f = getFunction(funcName)){
             TypedValue *obj = new TypedValue(val, tyn);
             return new MethodVal(obj, f);
         }
 
-        return c->compErr("Method/Field " + field->name + " not found in type " + typeNodeToStr(tyn), binop->loc);
+        return compErr("Method/Field " + field->name + " not found in type " + typeNodeToStr(tyn), binop->loc);
     }
 }
 
@@ -748,7 +748,7 @@ TypedValue* Compiler::opImplementedForTypes(int op, TypeNode *l, TypeNode *r){
  */
 TypedValue* BinOpNode::compile(Compiler *c){
     switch(op){
-        case '.': return compMemberAccess(c, lval.get(), (VarNode*)rval.get(), this);
+        case '.': return c->compMemberAccess(lval.get(), (VarNode*)rval.get(), this);
         case '(': return compFnCall(c, lval.get(), rval.get());
         case Tok_And: return c->compLogicalAnd(lval.get(), rval.get(), this);
         case Tok_Or: return c->compLogicalOr(lval.get(), rval.get(), this);

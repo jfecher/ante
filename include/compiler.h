@@ -156,6 +156,7 @@ namespace ante{
         TypedValue* compRem(TypedValue *l, TypedValue *r, BinOpNode *op);
         TypedValue* compExtract(TypedValue *l, TypedValue *r, BinOpNode *op);
         TypedValue* compInsert(BinOpNode *insertOp, Node *assignExpr);
+        TypedValue* compMemberAccess(Node *ln, VarNode *field, BinOpNode *binop);
         TypedValue* compLogicalOr(Node *l, Node *r, BinOpNode *op);
         TypedValue* compLogicalAnd(Node *l, Node *r, BinOpNode *op);
        
