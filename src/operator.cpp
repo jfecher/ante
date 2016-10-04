@@ -823,6 +823,37 @@ TypedValue* BinOpNode::compile(Compiler *c){
 }
 
 
+unsigned long getSizeInBits(Compiler *c, TypeNode *t){
+    switch(t->type){
+        case TT_Ptr: case TT_Array: case TT_Function: case TT_Method:
+            return 64;
+        case TT_Tuple:{
+            TypeNode *ext = t->extTy.get();
+            unsigned long sum = 0;
+
+            while(ext){
+                sum += getSizeInBits(c, ext);
+                ext = (TypeNode*)ext->next.get();
+            }
+            return sum;
+        }
+        case TT_Data: case TT_TaggedUnion: {
+            auto *ty = c->lookupType(t->typeName);
+            if(!ty) return (long) c->compErr("Use of undeclared type " + typeNodeToStr(t), t->loc);
+            TypeNode *ext = ty->tyn->extTy.get();
+            unsigned long sum = 0;
+
+            while(ext){
+                sum += getSizeInBits(c, ext);
+                ext = (TypeNode*)ext->next.get();
+            }
+            return sum;
+        }
+        default:
+            return getBitWidthOfTypeTag(t->type);
+    }
+}
+
 TypedValue* UnOpNode::compile(Compiler *c){
     TypedValue *rhs = rval->compile(c);
     if(!rhs) return 0;
@@ -847,10 +878,7 @@ TypedValue* UnOpNode::compile(Compiler *c){
                 string mallocFnName = "malloc";
                 Function* mallocFn = (Function*)c->getFunction(mallocFnName)->val;
 
-                unsigned size = rhs->getType()->getPrimitiveSizeInBits() / 8;
-                if(!size){
-                    size = getBitWidthOfTypeTag(rhs->type->type) / 8;
-                }
+                unsigned size = getSizeInBits(c, rhs->type.get()) / 8;
 
                 Value *sizeVal = ConstantInt::get(getGlobalContext(), APInt(32, size, true));
 

@@ -7,7 +7,7 @@ fun (++): Str s1 s2 -> Str
 
     fun memcpy: void* dest src, u32 bytes -> void* `dest`;
     memcpy buf s1.cStr s1.len
-    memcpy (void*(u32 buf + s1.len)) s2.cStr s2.len
+    memcpy (void*(u64 buf + s1.len)) s2.cStr s2.len
 
     Str([c8] buf, len)
 
