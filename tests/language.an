@@ -331,7 +331,7 @@ let tupPtr = &(0, 0)
 ~A simple declaration of a string datatype
 type Str = [c8] cStr, u32 len
 
-fun Str.cast: [c8] cStr =
+fun Str: [c8] cStr =
     Str(cStr, len cStr)
 
 let msg = Str "Hello World!"
@@ -1002,10 +1002,12 @@ assert(a1.getQuadrent() == a2.getQuadrent())
     NOTE: Ante implements smart pointers by default, so this class is meant to show
           how one could be implemented without this feature (eg. if it disabled).
 `
-type MySmartPtr : Clone =
+type MySmartPtr =
     't* rawPtr
     pri u16* refCount
 
+
+ext MySmartPtr: Clone
     fun op("new"): 't val
         rawPtr = new val
         refCount = new 0u16
@@ -1091,13 +1093,13 @@ false
     usage of this would be extending an API to implement a function or even inherit
     from an additional trait containing static methods.
 `
-ext Point : SomeAdditionalTrait
+ext Point: SomeAdditionalTrait
     ~implement new methods
-    fun op("=="): self, Point p2 =
-        self.x == p2.x and self.y == p2.y
+    fun (==): Point l r =
+        l.x == r.x and l.y == r.y
 
 trait Drawable
-    fun draw: self;
+    fun draw: self
 
     ~Default definitions for traits can also be created.
     ~NOTE: because self.surface is accessed, this requires the implementing object
@@ -1109,7 +1111,7 @@ type Rectangle =
     u32 height
     Surface surface
 
-ext Rectangle : Drawable
+ext Rectangle: Drawable
     ~Now Rectangle must implement the methods of Drawable
     fun draw: self
         self.surf.print "___"
@@ -1120,10 +1122,9 @@ ext Rectangle : Drawable
     fun setHeight: self*, u32 newHeight
         self.height = newHeight
 
-    fun cast(): u32 height =
-        Rectangle(
-            height = height,
-            surface = Surface())
+    fun Rectangle: u32 height =
+        Rectangle(height, Surface())
+
 
 var r = Rectangle 4
 
@@ -1506,11 +1507,12 @@ let numsList = List(Some 1, &(Some 2, &(Some 3, None)))
     If so, it returns from the method, otherwise, the value
     is not changed.
 `
-type MyErr : Err =
+type MyErr =
     const Str msg
     
-    fun desc: self* -> Str
-        return "MyErr: " ++ self.msg
+ext MyErr: Err
+    fun desc: self =
+        "MyErr: " ++ self.msg
 
 
 ~This function takes three parameters: two i32s and
@@ -1527,11 +1529,11 @@ fun errFunc: i32 a b, (Str|Err)(i32) fn -> i32|MyErr
 
 
 ~Matches can also be used for error handling in expressions
-~In this function, a 0 is returned if a value is divided by 0
+~In this function, None is returned if a value is divided by 0
 fun div: a b =
-    match SafeInt a / b
-        Some x -> x
-        DivideByZeroErr -> 0
+    match b with
+    | 0 -> None
+    | _ -> Some (a / b)
 
 
 
