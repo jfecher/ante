@@ -208,4 +208,6 @@ bool isNumericTypeTag(const TypeTag ty);
 bool isIntTypeTag(const TypeTag ty);
 bool isFPTypeTag(const TypeTag tt);
 bool isUnsignedTypeTag(const TypeTag tagTy);
+
+string removeFileExt(string file);
 #endif

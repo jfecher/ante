@@ -1186,12 +1186,8 @@ void Compiler::compilePrelude(){
  *  Removes .an from a source file to get its module name
  */
 string removeFileExt(string file){
-    size_t len = file.length();
-    if(len >= 4 && file[len-4] == '.') return file.substr(0, len-4);
-    if(len >= 3 && file[len-3] == '.') return file.substr(0, len-3);
-    if(len >= 2 && file[len-2] == '.') return file.substr(0, len-2);
-    if(len >= 1 && file[len-1] == '.') return file.substr(0, len-1);
-    return file;
+    auto index = file.find('.');
+    return index == string::npos ? file : file.substr(0, index);
 }
 
 
@@ -1483,7 +1479,7 @@ Compiler::Compiler(const char *_fileName, bool lib) :
         loc.initialize();
         while((tok = yylexer->next(&loc)) != Tok_Newline && tok != 0);
         while(p.parse() != PE_OK && yylexer->peek() != 0);
-        
+
         fputs("Syntax error, aborting.\n", stderr);
         exit(flag);
     }

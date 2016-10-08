@@ -55,8 +55,7 @@ int main(int argc, char *argv[]){
             Compiler ante{argv[2]};
             ante.compileNative();
             if(!ante.errFlag){
-                //puts("__________");
-                system(("./" + ante.module->getName()).str().c_str());
+                system(("./" + removeFileExt(ante.fileName)).c_str());
             }
         }else if(strcmp(argv[1], "-emit-llvm") == 0){
             Compiler ante{argv[2]};
