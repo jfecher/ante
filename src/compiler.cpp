@@ -1369,7 +1369,7 @@ int Compiler::compileIRtoObj(string outFile){
 
     string err;
 
-    jit.reset(eBuilder->setErrorStr(&err).setEngineKind(EngineKind::JIT).create(tm));
+    jit.reset(eBuilder->setErrorStr(&err).setEngineKind(EngineKind::JIT).create());
     if(err.length() > 0) cerr << err << endl;
 
     jit->addModule(move(module));

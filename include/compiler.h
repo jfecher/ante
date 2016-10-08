@@ -8,7 +8,6 @@
 #include <llvm/ExecutionEngine/MCJIT.h>
 #include <llvm/ExecutionEngine/ExecutionEngine.h>
 #include <memory>
-#include <list>
 #include <map>
 #include "parser.h"
 
