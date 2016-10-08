@@ -5,6 +5,8 @@
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Module.h>
+#include <llvm/ExecutionEngine/MCJIT.h>
+#include <llvm/ExecutionEngine/ExecutionEngine.h>
 #include <memory>
 #include <list>
 #include <map>
@@ -115,7 +117,8 @@ struct Variable {
 namespace yy{ class location; }
 
 namespace ante{
-    struct Compiler{
+    struct Compiler {
+        unique_ptr<ExecutionEngine> jit;
         unique_ptr<legacy::FunctionPassManager> passManager;
         unique_ptr<Module> module;
         unique_ptr<Node> ast;

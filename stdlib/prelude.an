@@ -6,7 +6,7 @@
 
 ~C functions
 fun printf: [c8] fmt, ...;
-fun puts: [c8] str;
+fun puts: [c8] str -> i32;
 fun putchar: c8 char;
 fun getchar: -> c8;
 fun exit: i32 status;
@@ -14,7 +14,7 @@ fun malloc: u32 size -> void*;
 fun realloc: void* ptr, u32 size -> void*;
 fun free: void* mem;
 fun system: [c8] cmd -> i32;
-fun strlen: [c8] str -> u32;
+fun strlen: [c8] str -> u64;
 
 ~C stdio
 type File = void*

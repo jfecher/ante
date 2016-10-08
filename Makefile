@@ -3,8 +3,8 @@ vpath %.h include
 vpath %.d obj
 
 WARNINGS  := -Wall -Wpedantic -Wsign-compare
-#LLVMFLAGS := `llvm-config --cppflags --libs Core BitWriter Passes Target --ldflags --system-libs`
-LLVMFLAGS := `llvm-config --cppflags --libs All --ldflags --system-libs`
+LLVMFLAGS := `llvm-config --cppflags --libs Core mcjit native BitWriter Passes Target --ldflags --system-libs`
+#LLVMFLAGS := `llvm-config --cppflags --libs All --ldflags --system-libs`
 
 LIBDIR := /usr/include/ante
 LIBFILES := $(shell find stdlib -type f -name "*.an")

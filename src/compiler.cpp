@@ -10,6 +10,12 @@
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Linker/Linker.h"
+#include "llvm/ExecutionEngine/SectionMemoryManager.h"
+#include "llvm/ExecutionEngine/GenericValue.h"
+
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 
 using namespace llvm;
 
@@ -735,11 +741,11 @@ TypeNode* createFnTyNode(NamedValNode *params, TypeNode *retTy){
     return fnTy;
 }
 
+TargetMachine* getTargetMachine();
 
 TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
     //Get and translate the function's return type to an llvm::Type*
     TypeNode *retNode = (TypeNode*)fdn->type.get();
-
 
     //Count the number of parameters
     NamedValNode *paramsBegin = fdn->params.get();
@@ -1307,15 +1313,10 @@ int Compiler::compileObj(){
     return compileIRtoObj(objFile);
 }
 
-/*
- *  Compiles a module into a .o file to be used for linking.
- *  Invokes llc.
- */
-int Compiler::compileIRtoObj(string outFile){
-    LLVMInitializeAllTargetInfos();
-    LLVMInitializeAllTargets();
-    LLVMInitializeAllTargetMCs();
-    LLVMInitializeAllAsmPrinters();
+
+const Target* getTarget(){
+    LLVMInitializeNativeTarget();
+    LLVMInitializeNativeAsmPrinter();
     string err = "";
 
     string triple = Triple(AN_NATIVE_ARCH, AN_NATIVE_VENDOR, AN_NATIVE_OS).getTriple();
@@ -1323,19 +1324,38 @@ int Compiler::compileIRtoObj(string outFile){
 
     if(!err.empty()){
         cerr << err << endl;
-        return 1;
+        exit(1);
     }
+
+    return target;
+}
+
+TargetMachine* getTargetMachine(){
+    auto *target = getTarget();
 
     string cpu = "";
     string features = "";
+    string triple = Triple(AN_NATIVE_ARCH, AN_NATIVE_VENDOR, AN_NATIVE_OS).getTriple();
     TargetOptions op;
+    
     TargetMachine *tm = target->createTargetMachine(triple, cpu, features, op, Reloc::Model::Default, 
             CodeModel::Default, CodeGenOpt::Level::Aggressive);
 
     if(!tm){
         cerr << "Error when initializing TargetMachine.\n";
-        return 1;
+        exit(1);
     }
+    
+    return tm;
+}
+
+
+/*
+ *  Compiles a module into a .o file to be used for linking.
+ *  Invokes llc.
+ */
+int Compiler::compileIRtoObj(string outFile){
+    auto *tm = getTargetMachine();
 
     std::error_code errCode;
     raw_fd_ostream out{outFile, errCode, sys::fs::OpenFlags::F_RW};
@@ -1343,6 +1363,24 @@ int Compiler::compileIRtoObj(string outFile){
     legacy::PassManager pm;
     int res = tm->addPassesToEmitFile(pm, out, llvm::TargetMachine::CGFT_ObjectFile);
     pm.run(*module);
+
+
+    auto* eBuilder = new EngineBuilder(unique_ptr<Module>(module.get()));
+
+    string err;
+
+    jit.reset(eBuilder->setErrorStr(&err).setEngineKind(EngineKind::JIT).create(tm));
+    if(err.length() > 0) cerr << err << endl;
+
+    jit->addModule(move(module));
+
+    jit->finalizeObject();
+    
+    auto* fn = jit->getPointerToNamedFunction("testfn");
+
+    if(fn)
+        reinterpret_cast<void(*)()>(fn)();
+
     return res;
 }
 
@@ -1427,8 +1465,7 @@ inline void Compiler::stoType(DataType *ty, string &typeName){
     userTypes[typeName] = ty;
 }
 
-
-Compiler::Compiler(const char *_fileName, bool lib) : 
+Compiler::Compiler(const char *_fileName, bool lib) :
         builder(getGlobalContext()), 
         errFlag(false),
         compiled(false),
