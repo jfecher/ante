@@ -1,8 +1,8 @@
-`
+/*
         elif.an
     Test parser and compiler's ability to recognize
     and parse/compile multiple elifs and elses correctly
-`
+*/
 
 var i = (fun = 4)()
 

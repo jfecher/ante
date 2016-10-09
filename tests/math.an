@@ -1,14 +1,14 @@
-`
+/*
         math.an
     Tests declaration of basic functions with multiple parameters,
     as well as some basic binary operators.
-`
+*/
 
-~explicit list of parameters
+//explicit list of parameters
 fun add: i32 a, i32 b -> i32
     return a + b
 
-~shorthand parameter list
+//shorthand parameter list
 fun mul: i32 a b -> i32
     return a * b
 
@@ -19,8 +19,8 @@ let n2 = 4
 printf "%d + %d = %d\n" n1 n2 (add n1 n2)
 printf "%d * %d = %d\n" n1 n2 (mul n1 n2)
 
-~Void values can be used in expressions if they are followed by
-~the sequencing operator ;
+//Void values can be used in expressions if they are followed by
+//the sequencing operator ;
 
-~print out 5 and set n3 to 5
+//print out 5 and set n3 to 5
 let n3 = print 5; 5

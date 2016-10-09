@@ -1,10 +1,10 @@
-`
+/*
         typesuffix.an
     Test type suffixes for integer and float
     literals.
-`
+*/
 
-~The _ before i64 is optional
+//The _ before i64 is optional
 let long = 1234567_i64
 
 let byte = 255_u8

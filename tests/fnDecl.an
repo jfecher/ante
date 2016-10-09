@@ -1,7 +1,7 @@
-`
+/*
     fnDecl.an
         test function declarations and calls
-`
+*/
 fun printMsg: bool b
     if b then
         puts "Hello World!"
@@ -31,8 +31,8 @@ if isEven 4 then
 
 printMsg (1 + 1 != 2)
 
-`output:
+/*output:
 Hello World!
 fact(5) = 120
 Goodbye World!
-`
+*/

@@ -1,21 +1,21 @@
-`
+/*
         fib.an
     Compile and test an example fibbonacci function where the 
     code closely reflects the mathematical definition of the function,
     and is slow as a result.
-`
+*/
 
-~n:      1, 2, 3, 4, 5, 6, 7...
-~fib(n): 1, 1, 2, 3, 5, 8, 13...
+//n:      1, 2, 3, 4, 5, 6, 7...
+//fib(n): 1, 1, 2, 3, 5, 8, 13...
 
-~The slow but theoretical function:
-`
+//The slow but theoretical function:
+/*
 fun fib: i32 n -> i32
     if n <= 2 then 1
     else fib(n-2) + fib(n-1)
-`
+*/
 
-`
+/*
 The function above should hopefully be compiled into something
 resembling the following function.  To do this, the main 
 transformation is the transformation of fib(n-1) into 
@@ -23,7 +23,7 @@ fib(n-3) + x1 where x1 is the result of the previous fib(n-2)
 operation.  In order to do this, the compiler must know that
 the function is pure in that it would obtain the same result
 every time it is called with a given input.
-`
+*/
 
 fun fib: i32 n -> i32
     if n <= 3 then 
@@ -34,15 +34,15 @@ fun fib: i32 n -> i32
         x1 + x2
 
 
-~Show the beginning of the range just to check for correctness
+//Show the beginning of the range just to check for correctness
 printf "fib(%d) = %d\n" 3 (fib 3)
 printf "fib(%d) = %d\n" 4 (fib 4)
 printf "fib(%d) = %d\n" 5 (fib 5)
 printf "fib(%d) = %d\n" 6 (fib 6)
 printf "fib(%d) = %d\n" 7 (fib 7)
 
-~Show the end of the range for speedtests
+//Show the end of the range for speedtests
 printf "fib(%d) = %d\n" 30 (fib 30)
 printf "fib(%d) = %d\n" 46 (fib 46)
-printf "fib(%d) = %d\n" 47 (fib 47) ~Integer overflow here!
+printf "fib(%d) = %d\n" 47 (fib 47) //Integer overflow here!
 printf "fib(%d) = %d\n" 48 (fib 48)

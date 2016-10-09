@@ -1,21 +1,21 @@
-`
+/*
         floats.an
     Tests compilation of various sized floats as well as
     floating point operations.
-`
+*/
 
-~IEEE double
+//IEEE double
 let f1 = 0.125
 let f2 = 1.0 / 8.0 * 6.0
 
 printf "%.3f + %.3f = %.3f\n" f1 f2 (f1 + f2)
 
-~IEEE single
+//IEEE single
 let s1 = 0.6f32
 let s2 = 0.2f32 * 2.0f32
 printf "%.2f * %.2f = %.2f\n" (f64 s1) (f64 s2) (f64 s1 * f64 s2)
 
-~IEEE half
+//IEEE half
 let h1 = 0.5f16
 let h2 = 1.5f16
 

@@ -1,14 +1,13 @@
-`
+/*
         lazycompile.an
     Demonstrate idea that function's are compiled on-demand.
     Unused functions should not end up in the final binary if
     the compiled module is not a library (ie it contains main)
-`
+*/
 
-fun unusedFn:
-    ~Since unusedFn should not be compiled, puts will not
-    ~end up in the binary either.
-    puts "unusedFn"
+//Since unusedFn should not be compiled, puts will not
+//end up in the binary either.
+fun unusedFn := puts "unusedFn"
 
 
 fun mul: i32 a b -> i32
@@ -23,10 +22,8 @@ if x + y == mul x y then
     exit 5
 
 
-()
-
-`Compiled functions:
+/*Compiled functions:
 printf
 exit
 mul
-`
+*/

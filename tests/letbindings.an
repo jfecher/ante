@@ -1,8 +1,8 @@
-`
+/*
         letbindings.an
     Test creation of implicitly and explicitely typed
     let bindings.
-`
+*/
 
 let five_i32 = 5_i32
 

@@ -1,4 +1,4 @@
-`
+/*
         exprif.an
     tests ifs inside expressions.
 
@@ -8,7 +8,7 @@
     statements with an else type-check
     both branches to ensure they match
     in type.
-`
+*/
 
 let n = if true then 2 else 3
 

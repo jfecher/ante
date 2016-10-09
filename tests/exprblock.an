@@ -1,20 +1,20 @@
-`
+/*
         exprblock.an
     Tests a primitive form of an expression block, an expression
     that can span multiple lines preceeded by an indent and followed
     by an unindent.
-`
+*/
 
 fun addThree: i32 a b c -> i32
     return a + b + c
 
 
-~Test single-line expr blocks
+//Test single-line expr blocks
 printf "1 + 2 + 3 = %d\n"
     addThree 1 2 3
 
 
-~Multi-line expr block
+//Multi-line expr block
 printf "0.5 * 0.25 = %.3f\n3 / 2 = %d\n25^2 = %d\n"
     0.5 * 0.25
     3 / 2
@@ -30,8 +30,8 @@ let fifteen = addThree 4
 printf "(3 + 3 + 4) + (4 + 5 + 6) = %d\n" (ten + fifteen)
 
 
-~expressions with a higher indentation are treated as if
-~they're surrounded by parenthesis, thus
+//expressions with a higher indentation are treated as if
+//they're surrounded by parenthesis, thus
 let result = 
     2 *
     3 *
@@ -39,11 +39,11 @@ let result =
     1+2+3+4+5
     * 5
 
-`is parsed as
+/*is parsed as
 
 let result = 2 * 3 * 4 * (1+2+3+4+5) * 5
 
 which should evaluate to 1800
-`
+*/
 
 printf "result = %d\n" result

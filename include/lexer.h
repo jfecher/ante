@@ -14,7 +14,7 @@ struct Node;
 #endif
 #include "yyparser.h"
 
-#define IS_COMMENT(c)    (c == '`' || c == '~')
+#define IS_COMMENT(c, n)    ((c) == '/' && ((n) == '/' || (n) == '*'))
 #define IS_NUMERICAL(c)  (c >= 48  && c <= 57)
 #define IS_ALPHANUM(c)   (IS_NUMERICAL(c) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c == 95)
 #define IS_WHITESPACE(c) (c == ' ' || c == '\t' || c == '\n' || c == 13) // || c == 130

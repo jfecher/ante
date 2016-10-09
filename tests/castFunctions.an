@@ -1,10 +1,10 @@
-`
+/*
     Cast functions are are a type of operator overload that
     overloads the typecast operator for a given type.
-`
+*/
 
 
-~handles conversion of i32 -> bool
+//handles conversion of i32 -> bool
 fun bool.cast: i32 x =
     x != 0
 
@@ -13,8 +13,8 @@ fun bool.print: bool b
     if b then puts "true"
     else puts "false"
 
-~test cast of i32 -> bool
+//test cast of i32 -> bool
 print bool 2
 
-~ [c8] -> Str is defined in the prelude
+// [c8] -> Str is defined in the prelude
 print Str "[c8] -> Str works!"

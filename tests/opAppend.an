@@ -1,17 +1,17 @@
 
 
-`Append a string to another`
+//Append a string to another
 fun (++): Str s1 s2 -> Str
     let len = s1.len + s2.len
     var buf = malloc len
 
-    fun memcpy: void* dest src, u32 bytes -> void* `dest`;
+    fun memcpy: void* dest src, u32 bytes -> void* /*dest*/;
     memcpy buf s1.cStr s1.len
     memcpy (void*(u64 buf + s1.len)) s2.cStr s2.len
 
     Str([c8] buf, len)
 
-~Reverse a string
+//Reverse a string
 fun reverse: Str s -> Str
     var buf = [c8] malloc s.len
 
@@ -24,10 +24,10 @@ fun reverse: Str s -> Str
     Str([c8] buf, i)
 
 
-~append an integer to a string
+//append an integer to a string
 fun (++): Str l, i32 r -> Str
   
-    ~get the string form of an integer, but in reverse
+    //get the string form of an integer, but in reverse
     fun rev_str: i32 x -> Str
         var buf = [c8] malloc 12
         var i = 0_u32

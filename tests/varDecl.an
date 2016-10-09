@@ -1,7 +1,7 @@
-`
+/*
     varDecl.an
         Tests initializations, assignments, and print statements
-`
+*/
 var i = 12
 print i
 i = 3

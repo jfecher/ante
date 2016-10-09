@@ -1345,6 +1345,24 @@ TargetMachine* getTargetMachine(){
     return tm;
 }
 
+void Compiler::jitFunction(string& fnName){
+    if(!jit.get()){
+        auto* eBuilder = new EngineBuilder(unique_ptr<Module>(module.get()));
+
+        string err;
+
+        jit.reset(eBuilder->setErrorStr(&err).setEngineKind(EngineKind::JIT).create());
+        if(err.length() > 0) cerr << err << endl;
+    }
+
+    jit->addModule(move(module));
+    jit->finalizeObject();
+    
+    auto* fn = jit->getPointerToNamedFunction("testfn");
+
+    if(fn)
+        reinterpret_cast<void(*)()>(fn)();
+}
 
 /*
  *  Compiles a module into a .o file to be used for linking.
@@ -1361,21 +1379,6 @@ int Compiler::compileIRtoObj(string outFile){
     pm.run(*module);
 
 
-    auto* eBuilder = new EngineBuilder(unique_ptr<Module>(module.get()));
-
-    string err;
-
-    jit.reset(eBuilder->setErrorStr(&err).setEngineKind(EngineKind::JIT).create());
-    if(err.length() > 0) cerr << err << endl;
-
-    jit->addModule(move(module));
-
-    jit->finalizeObject();
-    
-    auto* fn = jit->getPointerToNamedFunction("testfn");
-
-    if(fn)
-        reinterpret_cast<void(*)()>(fn)();
 
     return res;
 }

@@ -1,4 +1,4 @@
-`
+/*
     Lib file for tests/moduleDriver.an
 
     To compile, compile moduleDriver with
@@ -9,12 +9,12 @@
     object file, compile with the -lib flag:
 
   $ ante -o -lib tests/moduleLib.an
-`
+*/
 
 
 ext i32,i32
 
-    ~Return the dotproduct of two double-length 'vectors'
+    //Return the dotproduct of two double-length 'vectors'
     fun dotProduct: i32,i32 l r =
         (l#0) * (r#0) + (l#1) * (r#1)
     

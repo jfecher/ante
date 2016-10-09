@@ -254,17 +254,30 @@ void Lexer::incPos(int end){
     }
 }
 
+
 int Lexer::handleComment(yy::parser::location_type* loc){
-    if(cur == '`'){
+    if(nxt == '*'){
+        int level = 1;
+
         do{
             incPos();
             if(cur == '\n'){
                 row++;
                 col = 0;
+
+            //handle nested comments
+            }else if(cur == '/' && nxt == '*'){
+                level += 1;
+            }else if(cur == '*' && nxt == '/'){
+                if(level != 0)
+                    level -= 1;
+                else
+                    lexErr("Extraneous closing comment", loc);
             }
-        }while(cur != '`' && cur != '\0');
+        }while(level && cur != '\0');
         incPos();
-    }else{ // c == '~'
+        incPos();
+    }else{ //single line comment
         while(cur != '\n' && cur != '\0') incPos();
     }
     return next(loc);
@@ -411,7 +424,7 @@ int Lexer::genWsTok(yy::parser::location_type* loc){
                 default: break;
             }
             incPos();
-            if(IS_COMMENT(cur)) return handleComment(loc);
+            if(IS_COMMENT(cur, nxt)) return handleComment(loc);
         }
 
         if(!scopes->empty() && newScope == scopes->top()){
@@ -657,9 +670,9 @@ int Lexer::next(yy::parser::location_type* loc){
         }
     }
 
-    if(IS_COMMENT(cur))    return handleComment(loc);
-    if(IS_NUMERICAL(cur))  return genNumLitTok(loc);
-    if(IS_ALPHANUM(cur))   return genAlphaNumTok(loc);
+    if(IS_COMMENT(cur, nxt)) return handleComment(loc);
+    if(IS_NUMERICAL(cur))    return genNumLitTok(loc);
+    if(IS_ALPHANUM(cur))     return genAlphaNumTok(loc);
     
     //only check for significant whitespace if the lexer is not trying to match brackets.
     if(IS_WHITESPACE(cur)){

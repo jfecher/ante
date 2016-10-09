@@ -164,6 +164,7 @@ namespace ante{
        
         TypedValue* compErr(string msg, yy::location& loc);
 
+        void jitFunction(string& fnName);
         void importFile(const char *name);
         TypedValue* getFunction(string& name);
         TypedValue* getMangledFunction(string nonMangledName, TypeNode *params);

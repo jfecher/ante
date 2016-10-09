@@ -1,10 +1,10 @@
-`
+/*
         prelude.an
     Standard functions and datatypes pre-imported 
     into every Ante source file.
-`
+*/
 
-~C functions
+//C functions
 fun printf: [c8] fmt, ...;
 fun puts: [c8] str -> i32;
 fun putchar: c8 char;
@@ -16,7 +16,7 @@ fun free: void* mem;
 fun system: [c8] cmd -> i32;
 fun strlen: [c8] str -> u64;
 
-~C stdio
+//C stdio
 type File = void*
 type FilePos = void*
 
@@ -41,11 +41,11 @@ fun ferror: File f -> bool;
 
 
 
-~Ante datatypes
+//Ante datatypes
 type Str = [c8] cStr, u32 len
 
 
-~functions and methods
+//functions and methods
 fun i32.print: i32 x
     printf "%d\n" x
 
@@ -61,7 +61,7 @@ fun [c8].write: [c8] cStr, OutFile f
 fun c8.write: c8 c, OutFile f
     fputc c f
 
-~ Str functions
+//Str functions
 fun Str.print: Str s
     puts s.cStr
 
@@ -73,7 +73,7 @@ fun Str: [c8] cStr -> Str
     Str(cStr, strlen cStr)
 
 
-~overload [c8] equality operator
+//overload [c8] equality operator
 fun (==): [c8] l r -> bool
     var i = 0
     while l#i != '\0' do
@@ -84,7 +84,7 @@ fun (==): [c8] l r -> bool
 
     l#i == r#i
 
-~overload Str equality operator
+//overload Str equality operator
 fun (==): Str l r -> bool
     if l.len != r.len then
         false
@@ -92,7 +92,7 @@ fun (==): Str l r -> bool
         l.cStr == r.cStr
 
 
-~ IO
+//IO
 fun InFile: Str fName -> InFile
     InFile fopen (fName.cStr) "r"
 
@@ -124,14 +124,14 @@ fun InFile.nextLine: InFile f -> Str
 
 
 
-~print string without endline
+//print string without endline
 fun print_no_endl: [c8] str
     var i = 0
     while str#i != '\0' do
         putchar (str#i)
         i += 1
 
-~print a message then return user input
+//print a message then return user input
 fun input: [c8] msg -> Str
     var len = 0u32
     var cstr = [c8] c8* 0
