@@ -835,6 +835,11 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
 }
 
 
+TypedValue* PreProcNode::compile(Compiler *c){
+    return c->getVoidLiteral();
+}
+
+
 string mangle(string& base, TypeNode *paramTys){
     while(paramTys){
         base += "_" + typeNodeToStr(paramTys);

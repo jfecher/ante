@@ -72,6 +72,12 @@ void ModNode::print(){
     Lexer::printTok(mod);
 }
 
+void PreProcNode::print(){
+    cout << "![";
+    expr->print();
+    puts("]");
+}
+
 
 /* 
  * defined in types.cpp.

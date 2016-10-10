@@ -105,6 +105,7 @@ void yyerror(const char *msg);
 %left '+' '-'
 %left '*' '/' '%'
 
+%nonassoc '!'
 %left '@' New Not
 %left '&' TYPE UserType TypeVar I8 I16 I32 I64 U8 U16 U32 U64 Isz Usz F16 F32 F64 C8 C32 Bool Void Type '\''
 %nonassoc FUNC
@@ -358,50 +359,50 @@ op: '+'    {$$ = (Node*)"+";}
   | In     {$$ = (Node*)"in";}
   ;
 
-fn_ext_def: modifier_list Fun type_expr '.' fn_name ':' params RArrow type_expr block  {$$ = mkExtNode(@$, $3, mkFuncDeclNode(@$, /*fn_name*/(char*)$5, /*mods*/$1, /*ret_ty*/$9,                                  /*params*/$7, /*body*/$10));}
-          | modifier_list Fun type_expr '.' fn_name ':' RArrow type_expr block         {$$ = mkExtNode(@$, $3, mkFuncDeclNode(@$, /*fn_name*/(char*)$5, /*mods*/$1, /*ret_ty*/$8,                                  /*params*/0,  /*body*/$9));}
-          | modifier_list Fun type_expr '.' fn_name ':' params block                   {$$ = mkExtNode(@$, $3, mkFuncDeclNode(@$, /*fn_name*/(char*)$5, /*mods*/$1, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/$7, /*body*/$8));}
-          | modifier_list Fun type_expr '.' fn_name ':' block                          {$$ = mkExtNode(@$, $3, mkFuncDeclNode(@$, /*fn_name*/(char*)$5, /*mods*/$1, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/0,  /*body*/$7));}
+fn_ext_def: modifier_list maybe_newline Fun type_expr '.' fn_name ':' params RArrow type_expr block  {$$ = mkExtNode(@$, $4, mkFuncDeclNode(@$, /*fn_name*/(char*)$6, /*mods*/$1, /*ret_ty*/$10,                                  /*params*/$8, /*body*/$11));}
+          | modifier_list maybe_newline Fun type_expr '.' fn_name ':' RArrow type_expr block         {$$ = mkExtNode(@$, $4, mkFuncDeclNode(@$, /*fn_name*/(char*)$6, /*mods*/$1, /*ret_ty*/$9,                                  /*params*/0,  /*body*/$10));}
+          | modifier_list maybe_newline Fun type_expr '.' fn_name ':' params block                   {$$ = mkExtNode(@$, $4, mkFuncDeclNode(@$, /*fn_name*/(char*)$6, /*mods*/$1, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/$8, /*body*/$9));}
+          | modifier_list maybe_newline Fun type_expr '.' fn_name ':' block                          {$$ = mkExtNode(@$, $4, mkFuncDeclNode(@$, /*fn_name*/(char*)$6, /*mods*/$1, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/0,  /*body*/$8));}
           | Fun type_expr '.' fn_name ':' params RArrow type_expr block                {$$ = mkExtNode(@$, $2, mkFuncDeclNode(@$, /*fn_name*/(char*)$4, /*mods*/ 0, /*ret_ty*/$8,                                  /*params*/$6, /*body*/$9));}
           | Fun type_expr '.' fn_name ':' RArrow type_expr block                       {$$ = mkExtNode(@$, $2, mkFuncDeclNode(@$, /*fn_name*/(char*)$4, /*mods*/ 0, /*ret_ty*/$7,                                  /*params*/0,  /*body*/$8));}
           | Fun type_expr '.' fn_name ':' params block                                 {$$ = mkExtNode(@$, $2, mkFuncDeclNode(@$, /*fn_name*/(char*)$4, /*mods*/ 0, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/$6, /*body*/$7));}
           | Fun type_expr '.' fn_name ':' block                                        {$$ = mkExtNode(@$, $2, mkFuncDeclNode(@$, /*fn_name*/(char*)$4, /*mods*/ 0, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/0,  /*body*/$6));}
           ;
 
-fn_ext_inferredRet: modifier_list Fun type_expr '.' fn_name ':' params '=' expr   {$$ = mkExtNode(@$, $3, mkFuncDeclNode(@$, /*fn_name*/(char*)$5, /*mods*/$1, /*ret_ty*/0, /*params*/$7, /*body*/$9));}
-                  | modifier_list Fun type_expr '.' fn_name ':' '=' expr          {$$ = mkExtNode(@$, $3, mkFuncDeclNode(@$, /*fn_name*/(char*)$5, /*mods*/$1, /*ret_ty*/0, /*params*/0,  /*body*/$8));}
+fn_ext_inferredRet: modifier_list maybe_newline Fun type_expr '.' fn_name ':' params '=' expr   {$$ = mkExtNode(@$, $4, mkFuncDeclNode(@$, /*fn_name*/(char*)$6, /*mods*/$1, /*ret_ty*/0, /*params*/$8, /*body*/$10));}
+                  | modifier_list maybe_newline Fun type_expr '.' fn_name ':' '=' expr          {$$ = mkExtNode(@$, $4, mkFuncDeclNode(@$, /*fn_name*/(char*)$6, /*mods*/$1, /*ret_ty*/0, /*params*/0,  /*body*/$9));}
                   | Fun type_expr '.' fn_name ':' params '=' expr                 {$$ = mkExtNode(@$, $2, mkFuncDeclNode(@$, /*fn_name*/(char*)$4, /*mods*/ 0, /*ret_ty*/0, /*params*/$6, /*body*/$8));}
                   | Fun type_expr '.' fn_name ':' '=' expr                        {$$ = mkExtNode(@$, $2, mkFuncDeclNode(@$, /*fn_name*/(char*)$4, /*mods*/ 0, /*ret_ty*/0, /*params*/0,  /*body*/$7));}
                   ;
 
-fn_def: modifier_list Fun fn_name ':' params RArrow type_expr block  {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/$7,                                  /*params*/$5, /*body*/$8);}
-      | modifier_list Fun fn_name ':' RArrow type_expr block         {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/$6,                                  /*params*/0,  /*body*/$7);}
-      | modifier_list Fun fn_name ':' params block                   {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/$5, /*body*/$6);}
-      | modifier_list Fun fn_name ':' block                          {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/0,  /*body*/$5);}
+fn_def: modifier_list maybe_newline Fun fn_name ':' params RArrow type_expr block  {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$4, /*mods*/$1, /*ret_ty*/$8,                                  /*params*/$6, /*body*/$9);}
+      | modifier_list maybe_newline Fun fn_name ':' RArrow type_expr block         {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$4, /*mods*/$1, /*ret_ty*/$7,                                  /*params*/0,  /*body*/$8);}
+      | modifier_list maybe_newline Fun fn_name ':' params block                   {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$4, /*mods*/$1, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/$6, /*body*/$7);}
+      | modifier_list maybe_newline Fun fn_name ':' block                          {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$4, /*mods*/$1, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/0,  /*body*/$6);}
       | Fun fn_name ':' params RArrow type_expr block                {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$2, /*mods*/ 0, /*ret_ty*/$6,                                  /*params*/$4, /*body*/$7);}
       | Fun fn_name ':' RArrow type_expr block                       {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$2, /*mods*/ 0, /*ret_ty*/$5,                                  /*params*/0,  /*body*/$6);}
       | Fun fn_name ':' params block                                 {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$2, /*mods*/ 0, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/$4, /*body*/$5);}
       | Fun fn_name ':' block                                        {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$2, /*mods*/ 0, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/0,  /*body*/$4);}
       ;
 
-fn_inferredRet: modifier_list Fun fn_name ':' params '=' expr   {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/0, /*params*/$5, /*body*/$7);}
-              | modifier_list Fun fn_name ':' '=' expr          {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/0, /*params*/0,  /*body*/$6);}
+fn_inferredRet: modifier_list maybe_newline Fun fn_name ':' params '=' expr   {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$4, /*mods*/$1, /*ret_ty*/0, /*params*/$6, /*body*/$8);}
+              | modifier_list maybe_newline Fun fn_name ':' '=' expr          {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$4, /*mods*/$1, /*ret_ty*/0, /*params*/0,  /*body*/$7);}
               | Fun fn_name ':' params '=' expr                 {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$2, /*mods*/ 0, /*ret_ty*/0, /*params*/$4, /*body*/$6);}
               | Fun fn_name ':' '=' expr                        {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$2, /*mods*/ 0, /*ret_ty*/0, /*params*/0,  /*body*/$5);}
               ;
 
-fn_decl: modifier_list Fun fn_name ':' params RArrow type_expr ';'       {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/$7,                                  /*params*/$5, /*body*/0);}
-       | modifier_list Fun fn_name ':' RArrow type_expr        ';'       {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/$6,                                  /*params*/0,  /*body*/0);}
-       | modifier_list Fun fn_name ':' params                  ';'       {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/$5, /*body*/0);}
-       | modifier_list Fun fn_name ':'                         ';'       {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$3, /*mods*/$1, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/0,  /*body*/0);}
+fn_decl: modifier_list maybe_newline Fun fn_name ':' params RArrow type_expr ';'       {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$4, /*mods*/$1, /*ret_ty*/$8,                                  /*params*/$6, /*body*/0);}
+       | modifier_list maybe_newline Fun fn_name ':' RArrow type_expr        ';'       {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$4, /*mods*/$1, /*ret_ty*/$7,                                  /*params*/0,  /*body*/0);}
+       | modifier_list maybe_newline Fun fn_name ':' params                  ';'       {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$4, /*mods*/$1, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/$6, /*body*/0);}
+       | modifier_list maybe_newline Fun fn_name ':'                         ';'       {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$4, /*mods*/$1, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/0,  /*body*/0);}
        | Fun fn_name ':' params RArrow type_expr               ';'       {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$2, /*mods*/ 0, /*ret_ty*/$6,                                  /*params*/$4, /*body*/0);}
        | Fun fn_name ':' RArrow type_expr                      ';'       {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$2, /*mods*/ 0, /*ret_ty*/$5,                                  /*params*/0,  /*body*/0);}
        | Fun fn_name ':' params                                ';'       {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$2, /*mods*/ 0, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/$4, /*body*/0);}
        | Fun fn_name ':'                                       ';'       {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)$2, /*mods*/ 0, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/0,  /*body*/0);}
        ;
 
-fn_lambda: modifier_list Fun params '=' expr  %prec Fun  {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)"", /*mods*/$1, /*ret_ty*/0,  /*params*/$3, /*body*/$5);}
-         | modifier_list Fun '=' expr         %prec Fun  {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)"", /*mods*/$1, /*ret_ty*/0,  /*params*/0,  /*body*/$4);}
+fn_lambda: modifier_list maybe_newline Fun params '=' expr  %prec Fun  {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)"", /*mods*/$1, /*ret_ty*/0,  /*params*/$4, /*body*/$6);}
+         | modifier_list maybe_newline Fun '=' expr         %prec Fun  {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)"", /*mods*/$1, /*ret_ty*/0,  /*params*/0,  /*body*/$5);}
          | Fun params '=' expr                %prec Fun  {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)"", /*mods*/ 0, /*ret_ty*/0,  /*params*/$2, /*body*/$4);}
          | Fun '=' expr                       %prec Fun  {$$ = mkFuncDeclNode(@$, /*fn_name*/(char*)"", /*mods*/ 0, /*ret_ty*/0,  /*params*/0,  /*body*/$3);}
          ;

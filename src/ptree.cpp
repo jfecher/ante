@@ -144,6 +144,10 @@ Node* mkModNode(yy::parser::location_type loc, TokenType mod){
     return new ModNode(loc, mod);
 }
 
+Node* mkPreProcNode(LOC_TY loc, Node* expr){
+    return new PreProcNode(loc, expr);
+}
+
 Node* mkTypeNode(yy::parser::location_type loc, TypeTag type, char* typeName, Node* extTy = nullptr){
     return new TypeNode(loc, type, typeName, static_cast<TypeNode*>(extTy));
 }
