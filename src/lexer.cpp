@@ -317,7 +317,7 @@ int Lexer::genAlphaNumTok(yy::parser::location_type* loc){
         }
     }
     
-    loc->end = yy::position(fName, row, col);
+    loc->end = yy::position(fName, row, col-1);
 
     if(isUsertype){
         setlextxt(&s);
@@ -397,8 +397,7 @@ int Lexer::genNumLitTok(yy::parser::location_type* loc){
         }
     }
     
-    loc->end = yy::position(fName, row, col);
-
+    loc->end = yy::position(fName, row, col-1);
     setlextxt(&s);
     return flt? Tok_FltLit : Tok_IntLit;
 }
@@ -497,8 +496,8 @@ int Lexer::genStrLitTok(yy::parser::location_type* loc){
         incPos();
     }
 
-    incPos(); //consume ending delim
     loc->end = yy::position(fName, row, col);
+    incPos(); //consume ending delim
     setlextxt(&s);
     return Tok_StrLit;
 }
