@@ -753,7 +753,16 @@ TypedValue* compPreProcFn(Compiler *c, FuncDeclNode *fdn, unsigned int scope, Pr
 
     if(VarNode *vn = dynamic_cast<VarNode*>(ppn->expr.get())){
         if(vn->name == "inline"){
-            ((Function*)fn->val)->addFnAttr("inline");
+            //((Function*)fn->val)->addFnAttr("inline");
+        }else if(vn->name == "ct"){
+            auto *mod = c->module.get();
+            c->module.release();
+
+            c->module.reset(new Module(fdn->name, getGlobalContext()));
+            auto *recomp = c->compFn(fdn, scope);
+
+            c->jitFunction((Function*)recomp->val);
+            c->module.reset(mod);
         }
         return fn;
     }else{
@@ -1373,9 +1382,10 @@ TargetMachine* getTargetMachine(){
     
     return tm;
 }
-
-void Compiler::jitFunction(string& fnName){
+void Compiler::jitFunction(Function *f){
     if(!jit.get()){
+        LLVMInitializeNativeTarget();
+        LLVMInitializeNativeAsmPrinter();
         auto* eBuilder = new EngineBuilder(unique_ptr<Module>(module.get()));
 
         string err;
@@ -1384,8 +1394,33 @@ void Compiler::jitFunction(string& fnName){
         if(err.length() > 0) cerr << err << endl;
     }
 
+    compileIRtoObj((".tmp_" + f->getName()).str());
     jit->addModule(move(module));
     jit->finalizeObject();
+    remove((".tmp_" + f->getName()).str().c_str());
+    
+    auto* fn = jit->getPointerToFunction(f);
+
+    if(fn)
+        reinterpret_cast<void(*)()>(fn)();
+}
+
+void Compiler::jitFunction(string& fnName){
+    if(!jit.get()){
+        LLVMInitializeNativeTarget();
+        LLVMInitializeNativeAsmPrinter();
+        auto* eBuilder = new EngineBuilder(unique_ptr<Module>(module.get()));
+
+        string err;
+
+        jit.reset(eBuilder->setErrorStr(&err).setEngineKind(EngineKind::JIT).create());
+        if(err.length() > 0) cerr << err << endl;
+    }
+
+    compileIRtoObj(".tmp_" + fnName);
+    jit->addModule(move(module));
+    jit->finalizeObject();
+    remove((".tmp_" + fnName).c_str());
     
     auto* fn = jit->getPointerToNamedFunction("testfn");
 
@@ -1406,8 +1441,6 @@ int Compiler::compileIRtoObj(string outFile){
     legacy::PassManager pm;
     int res = tm->addPassesToEmitFile(pm, out, llvm::TargetMachine::CGFT_ObjectFile);
     pm.run(*module);
-
-
 
     return res;
 }
