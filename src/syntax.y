@@ -214,6 +214,7 @@ modifier: Pub      {$$ = mkModNode(@$, Tok_Pub);}
         | Raw      {$$ = mkModNode(@$, Tok_Raw);}
         | Const    {$$ = mkModNode(@$, Tok_Const);}
         | Noinit   {$$ = mkModNode(@$, Tok_Noinit);}
+        | preproc  {$$ = $1;}
         ;
 
 modifier_list_: modifier_list_ modifier {$$ = setNext($1, $2);}
@@ -518,6 +519,8 @@ unary_op: '@' expr                    {$$ = mkUnOpNode(@$, '@', $2);}
         | type_expr expr  %prec TYPE  {$$ = mkTypeCastNode(@$, $1, $2);}
         ;
 
+preproc: '!' '[' expr ']'  {$$ = mkPreProcNode(@$, $3);}
+       ;
 
 arg_list: arg_list_p  %prec FUNC {$$ = mkTupleNode(@$, getRoot());}
         ;

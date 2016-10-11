@@ -167,6 +167,14 @@ struct ModNode : public Node{
     ~ModNode(){}
 };
 
+struct PreProcNode : public Node{
+    unique_ptr<Node> expr;
+    TypedValue* compile(Compiler*);
+    void print(void);
+    PreProcNode(LOC_TY& loc, Node* e) : Node(loc), expr(e){}
+    ~PreProcNode(){}
+};
+
 struct RetNode : public Node{
     unique_ptr<Node> expr;
     TypedValue* compile(Compiler*);
