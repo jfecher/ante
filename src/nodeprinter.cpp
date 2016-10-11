@@ -9,6 +9,15 @@ inline void maybePrintArr(Node *n){
     }
 }
 
+inline void printSpaceDelimitedList(Node *n){
+    Node *nxt = n;
+    while(nxt){
+        nxt->print();
+        nxt = nxt->next.get();
+        if(nxt) putchar(' ');
+    }
+}
+
 /*
  *  Prints a list of nodes, can print
  *  entire parse tree if passed the root.
@@ -247,6 +256,10 @@ void MatchBranchNode::print(){
 }
 
 void FuncDeclNode::print(){
+    if(modifiers.get()){
+        printSpaceDelimitedList(modifiers.get());
+    }
+
     cout << "fun ";
     cout << name;
     if(params){

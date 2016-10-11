@@ -46,29 +46,37 @@ type Str = [c8] cStr, u32 len
 
 
 //functions and methods
+![inline]
 fun i32.print: i32 x
     printf "%d\n" x
 
 
+![inline]
 fun [c8].print: [c8] s
     puts s
 
+![inline]
 fun [c8]: Str s = s.cStr
 
+![inline]
 fun [c8].write: [c8] cStr, OutFile f
     fputs cStr f
 
+![inline]
 fun c8.write: c8 c, OutFile f
     fputc c f
 
 //Str functions
+![inline]
 fun Str.print: Str s
     puts s.cStr
 
+![inline]
 fun Str.write: Str s, OutFile f
     fputs (s.cStr) f
 
 
+![inline]
 fun Str: [c8] cStr -> Str
     Str(cStr, strlen cStr)
 
@@ -93,10 +101,12 @@ fun (==): Str l r -> bool
 
 
 //IO
+![inline]
 fun InFile: Str fName -> InFile
     InFile fopen (fName.cStr) "r"
 
 
+![inline]
 fun OutFile: Str fName -> OutFile
     OutFile fopen (fName.cStr) "w"
 

@@ -741,9 +741,32 @@ TypeNode* createFnTyNode(NamedValNode *params, TypeNode *retTy){
     return fnTy;
 }
 
-TargetMachine* getTargetMachine();
+/*
+ *  Handles a compiler directive (eg. ![inline]) then compiles the function fdn
+ *  with either compFn or compLetBindingFn.
+ */
+TypedValue* compPreProcFn(Compiler *c, FuncDeclNode *fdn, unsigned int scope, PreProcNode *ppn){
+    fdn->modifiers.release();
+    fdn->modifiers.reset(ppn->next.get());
+    auto *fn = c->compFn(fdn, scope);
+    if(!fn) return 0;
+
+    if(VarNode *vn = dynamic_cast<VarNode*>(ppn->expr.get())){
+        if(vn->name == "inline"){
+            ((Function*)fn->val)->addFnAttr("inline");
+        }
+        return fn;
+    }else{
+        return c->compErr("Unrecognized compiler directive", ppn->loc);
+    }
+}
 
 TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
+    if(PreProcNode *ppn = dynamic_cast<PreProcNode*>(fdn->modifiers.get())){
+        return compPreProcFn(this, fdn, scope, ppn);
+    }
+
+
     //Get and translate the function's return type to an llvm::Type*
     TypeNode *retNode = (TypeNode*)fdn->type.get();
 
@@ -769,6 +792,7 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
     Type *retTy = typeNodeToLlvmType(retNode);
     FunctionType *ft = FunctionType::get(retTy, paramTys, fdn->varargs);
     Function *f = Function::Create(ft, Function::ExternalLinkage, fdn->name, module.get());
+    f->addFnAttr("nounwind");
    
     auto* ret = new TypedValue(f, fnTy);
     stoVar(fdn->name, new Variable(fdn->name, ret, scope));
