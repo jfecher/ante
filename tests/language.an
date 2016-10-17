@@ -1536,9 +1536,94 @@ fun div: a b =
     | _ -> Some (a / b)
 
 
+/*
+ *      Compiler Directives
+ *  Compiler Directives function similarly to function attributes in other languages.
+ *  They appear before a function definition and are annoted with an opening ![ and closing ]
+ *  Inside these brackets any expression may be used as long as it is meaningful in the context
+ *  of the function's compilation.  Currently, there are only a few compiler directives, although
+ *  it is also possible to define more yourself.  The currently existing directives are:
+ */
+    ![inline]  //inlines a function
+
+    ![run]     //runs a function during compile-time once.  Does not prevent the function from
+               //being executed normally at runtime.
+
+    ![macro]   //Imports the Ante module, prevents the function from being run at runtime.
+               //It is expected that ![macro] functions will always expand into more code
+               //either at the callsite or somewhere else.
+
+
+/*
+ *      Meta Programming
+ *  Ante has near unlimited capabilities in regards to meta programming, it is the
+ *  language's key feature after all.  All pre-defined meta-functions are available
+ *  within the 'Ante' module.  This module contains not only these functions but also
+ *  the compiler's source code, thus it is the standardized way to interact with the
+ *  compiler and dictate how code is to be compiled.  Meta functions can be easily
+ *  defined by users without any need for a special syntax.  Their only difference
+ *  with regular functions are that they utilize the compiler's API from the Ante
+ *  module.  To prevent meta functions from running at runtime, the ![macro] compiler
+ *  directive is usually used.  This is not the default behaviour to allow hybrid
+ *  functions exist that both expand into code at the callsite and call a normal
+ *  routine using this expansion.  An example of such a function may be putting
+ *  a parameter into a CPU register and using that register inside the generated
+ *  function, which is normally prevented to maintain compatibility with C's calling
+ *  conventions.
+ */
+
+//lets say we have a Car type defined as following:
+type Car = f64 wheels axles engine hood lights doors
+
+
+//Normally, if we want to define get and set methods for it, we would
+//have to type up each individually:
+ext Car
+
+    fun get_wheels := wheels
+
+    fun set_wheels: f64 v -> wheels = v
+    
+    fun get_axles := axles
+
+    fun set_axles: f64 v -> axles = v
+    
+    fun get_engine := engine
+
+    fun set_engine: f64 v -> engine = v
+    
+    fun get_hood := hood
+
+    fun set_hood: f64 v -> hood = v
+    
+    fun get_lights := lights
+
+    fun set_lights: f64 v -> lights = v
+    
+    fun get_doors := doors
+
+    fun set_doors: f64 v -> doors = v
 
 
 
+//Luckily, there is a better way of doing this: metaprogramming
+
+//Here is a function that defines get and set functions for every field a type has
+//In Ante, these meta functions can be written as normal functions with no need to learn a new syntax
+
+//The 'macro' compiler directive is not necessary to write meta functions but it does a few useful things:
+//  1. It imports the 'Ante' module, so that it is not necessary to write Ante.Type or Ante.define
+//  2. It lets the compiler know that this function always expands into more code
+//  3. It enforces that this function is never delegated to run at runtime, it may only execute during compile-time
+![macro]
+fun defGetAndSetFor: Type t
+    for v in fieldsOf t do
+        define "{t.typeName}_get_{v.name}" (fun = v.val)
+        define "{t.typeName}_set_{v.name}" (fun nv = v.val = nv)
+
+//with this function defined, we can just write the following
+defGetAndSetFor Car
+//and have it expand into the 12 get/set functions above
 
 
 

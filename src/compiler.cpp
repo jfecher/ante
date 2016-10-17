@@ -753,7 +753,7 @@ TypedValue* compPreProcFn(Compiler *c, FuncDeclNode *fdn, unsigned int scope, Pr
 
     if(VarNode *vn = dynamic_cast<VarNode*>(ppn->expr.get())){
         if(vn->name == "inline"){
-            //((Function*)fn->val)->addFnAttr("inline");
+            ((Function*)fn->val)->addFnAttr("always_inline");
         }else if(vn->name == "ct"){
             auto *mod = c->module.get();
             c->module.release();
@@ -763,7 +763,10 @@ TypedValue* compPreProcFn(Compiler *c, FuncDeclNode *fdn, unsigned int scope, Pr
 
             c->jitFunction((Function*)recomp->val);
             c->module.reset(mod);
+        }else{
+            return c->compErr("Unrecognized compiler directive", vn->loc);
         }
+
         return fn;
     }else{
         return c->compErr("Unrecognized compiler directive", ppn->loc);

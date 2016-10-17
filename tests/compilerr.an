@@ -34,3 +34,10 @@ fun someFunc: -> i32,i32
 //Function not declared
 let res = someFnc()
 someFunc()
+
+
+//unrecognized compiler directive
+![whoami]
+fun f := 0
+
+f()
