@@ -293,7 +293,11 @@ let box = [[1, 2], [3, 4]]
     should always be used when expanding or restricting an array.
 */
 arr += 2
-arr -= 3 //Note: this will throw an exception if the array's size becomes < 0
+
+//If the array's size becomes < 0 when the array's size is reduced, it is caught
+//during bounds-checking in debug mode.  In release mode, the program will most
+//likely crash
+arr -= 3
 
 //The append operator can also add a single element to an array or list
 arr = arr ++ 5
@@ -331,10 +335,18 @@ let tupPtr = &(0, 0)
 //A simple declaration of a string datatype
 type Str = [c8] cStr, u32 len
 
+
+//Functions declared as fun <type_expr>: <params...> are type cast functions.
+//They are called when a type is casted from one type to another, but there is no known
+//type cast that is already found.  The following example casts a C char array to a Str
 fun Str: [c8] cStr =
     Str(cStr, len cStr)
 
-let msg = Str "Hello World!"
+
+let cast = Str ['h', 'e', 'l', 'l', 'o', '\0']
+
+//string literals have the Str type by default
+let msg = "Hello World!"
 
 
 fun longestStreak: Str s -> i32
@@ -362,7 +374,7 @@ fun longestStreak_alt: Str s -> i32
     //Recursive function to map to return a list of each letter's streak.
     //Also note that this function, while named, has both an inferred return type
     //And inferred parameter types.
-        fun streak: i, (curStreak=0)
+        fun streak: i, (curStreak=0) =
             if s#i == s#(i+1) then streak(i+1, curStreak+1)
             else curStreak
 
