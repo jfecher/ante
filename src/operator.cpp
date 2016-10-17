@@ -409,6 +409,7 @@ TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Ty
 
     c->builder.SetInsertPoint(thenbb);
     auto *thenVal = ifn->thenN->compile(c);
+    if(!thenVal) return 0;
 
     if(!dynamic_cast<ReturnInst*>(thenVal->val))
         c->builder.CreateBr(mergebb);
@@ -744,6 +745,57 @@ TypedValue* Compiler::opImplementedForTypes(int op, TypeNode *l, TypeNode *r){
     return getFunction(fns);
 }
 
+TypedValue* handlePrimitiveNumericOp(BinOpNode *bop, Compiler *c, TypedValue *lhs, TypedValue *rhs){
+    switch(bop->op){
+        case '+': return c->compAdd(lhs, rhs, bop);
+        case '-': return c->compSub(lhs, rhs, bop);
+        case '*': return c->compMul(lhs, rhs, bop);
+        case '/': return c->compDiv(lhs, rhs, bop);
+        case '%': return c->compRem(lhs, rhs, bop);
+        case '<':
+                    if(isFPTypeTag(lhs->type->type))
+                        return new TypedValue(c->builder.CreateFCmpOLT(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
+                    else if(isUnsignedTypeTag(lhs->type->type))
+                        return new TypedValue(c->builder.CreateICmpULT(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
+                    else
+                        return new TypedValue(c->builder.CreateICmpSLT(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
+        case '>':
+                    if(isFPTypeTag(lhs->type->type))
+                        return new TypedValue(c->builder.CreateFCmpOGT(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
+                    else if(isUnsignedTypeTag(lhs->type->type))
+                        return new TypedValue(c->builder.CreateICmpUGT(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
+                    else
+                        return new TypedValue(c->builder.CreateICmpSGT(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
+        case '^': return new TypedValue(c->builder.CreateXor(lhs->val, rhs->val), lhs->type);
+        case Tok_Eq:
+                    if(isFPTypeTag(lhs->type->type))
+                        return new TypedValue(c->builder.CreateFCmpOEQ(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
+                    else
+                        return new TypedValue(c->builder.CreateICmpEQ(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
+        case Tok_NotEq:
+                    if(isFPTypeTag(lhs->type->type))
+                        return new TypedValue(c->builder.CreateFCmpONE(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
+                    else
+                        return new TypedValue(c->builder.CreateICmpNE(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
+        case Tok_LesrEq:
+                    if(isFPTypeTag(lhs->type->type))
+                        return new TypedValue(c->builder.CreateFCmpOLE(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
+                    else if(isUnsignedTypeTag(lhs->type->type))
+                        return new TypedValue(c->builder.CreateICmpULE(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
+                    else
+                        return new TypedValue(c->builder.CreateICmpSLE(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
+        case Tok_GrtrEq:
+                    if(isFPTypeTag(lhs->type->type))
+                        return new TypedValue(c->builder.CreateFCmpOGE(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
+                    else if(isUnsignedTypeTag(lhs->type->type))
+                        return new TypedValue(c->builder.CreateICmpUGE(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
+                    else
+                        return new TypedValue(c->builder.CreateICmpSGE(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
+        default:
+            return c->compErr("Operator " + Lexer::getTokStr(bop->op) + " is not overloaded for types "
+                   + typeNodeToStr(lhs->type.get()) + " and " + typeNodeToStr(rhs->type.get()), bop->loc);
+    }
+}
 
 /*
  *  Compiles an operation along with its lhs and rhs
@@ -772,21 +824,8 @@ TypedValue* BinOpNode::compile(Compiler *c){
 
     //first, if both operands are primitive numeric types, use the default ops
     if(isNumericTypeTag(lhs->type->type) && isNumericTypeTag(rhs->type->type)){
-        switch(op){
-            case '+': return c->compAdd(lhs, rhs, this);
-            case '-': return c->compSub(lhs, rhs, this);
-            case '*': return c->compMul(lhs, rhs, this);
-            case '/': return c->compDiv(lhs, rhs, this);
-            case '%': return c->compRem(lhs, rhs, this);
-            case '<': return new TypedValue(c->builder.CreateICmpULT(lhs->val, rhs->val), lhs->type);
-            case '>': return new TypedValue(c->builder.CreateICmpUGT(lhs->val, rhs->val), lhs->type);
-            case '^': return new TypedValue(c->builder.CreateXor(lhs->val, rhs->val), lhs->type);
-            case Tok_Eq: return new TypedValue(c->builder.CreateICmpEQ(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
-            case Tok_NotEq: return new TypedValue(c->builder.CreateICmpNE(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
-            case Tok_LesrEq: return new TypedValue(c->builder.CreateICmpULE(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
-            case Tok_GrtrEq: return new TypedValue(c->builder.CreateICmpUGE(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
-        }
-
+        return handlePrimitiveNumericOp(this, c, lhs, rhs);
+    
     //and bools are only compatible with == and !=
     }else if(lhs->type->type == TT_Bool && rhs->type->type == TT_Bool){
         switch(op){
