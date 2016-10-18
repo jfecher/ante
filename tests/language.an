@@ -1231,13 +1231,14 @@ match joe with
 
 let testStr = ("Test", 4)
 
-match testStr
+match testStr with
     ("Test", x) where x != 4
         print "Found a Test Str with the wrong length!"
     (_, 3)
         print "Found a Str of length 3!"
     ("Test", _)
         print "Found a Test Str!" // this will be printed
+    _ -> ()
 
 
 //like any other feature, match can also be used in expressions (each branch must match in type)
@@ -1245,7 +1246,9 @@ let s = match 2 with
     0 -> "zero"
     1 -> "one"
     2 -> "two"
-    _ -> "other"
+    _ < 0 -> "negative number"
+    3..9 -> "some other single digit number"
+    _ -> "two or more digit positive number"
 /*
         Enums
     Where data declares a named type, enums declare named
@@ -1256,51 +1259,48 @@ let s = match 2 with
     The values within an anonymous enum are exported into the global
     namespace.  Values within a named enum are exported under
     the namespace of the same name.
-
-    Note that since enums only declare named values, they do
-    not yet have an associated type, but can still be used
-    as integers.  To declare a type, use a data declaration
-    in combination with an enum.
-
-    Indentation is required after the enum keyword in an anonymous enum,
-    or after its name in a named enum.
 */
 
 //Export each suit into the namespace Suit
 //NOTE: since Suit is not declared as data, it is not its own type.
-enum Suit -> Diamonds, Hearts, Spades, Clubs
+type Suit = Diamonds | Hearts | Spades | Clubs
 
 print Suit.Spades  //output: 2
 
+import Suit
+print Spades //output: 2
+
+
 type Card =
     u8 number
-    i32 suit
+    Suit suit
 
-let fourOfHearts = Card(4, Suit.Hearts)
-let suit = Card(3, Suit.Hearts).suit
+let fourOfHearts = Card(4, Hearts)
+let suit = Card(3, Hearts).suit
+
 //Enums are automatically assigned values, but can also be manually assigned with the
 // = operator after the first operand.  Each consecutive member will have a value equal
 // to its distance from the fist + the first's value.
-enum Numbers
-    One   = 1
-    Two//  = 2 (inferred)
-    Three//= 3
-    Four// = 4
-    Five// = 5
+type Numbers = 
+|    One   = 1
+|    Two//  = 2 (inferred)
+|    Three//= 3
+|    Four// = 4
+|    Five// = 5
 
-//   number = 3
+//  number = 3
 let number = i32 Three
 
 //Alternatively, if the first and second's value are given then each consecutive member
 //Is incremented by their difference instead of 1.
-type EvenNumbers = enum
-    Two = 2
-    Four = 4
-    Six// = 6
-    Eight// = 8, and so on
-    Ten, Twelve, Fourteen
+type EvenNumbers =
+   | Two = 2
+   | Four = 4
+   | Six// = 6
+   | Eight// = 8, and so on
+   | Ten | Twelve | Fourteen
 
-//           evenNumber = 12
+//  evenNumber = 12
 let evenNumber = EvenNumbers.Twelve
 
 /*
@@ -1316,13 +1316,13 @@ let five = 5
 let ptrToFive = &five
 //The unary & operator gets the location of the value 5, which is on the stack in this case.
 
-//The new keyword automatically allocates data for a class or struct and calls its
+//The new keyword automatically allocates data for any datatype and calls its
 //constructor if it has one.
 let tod1 = new Card(3, Suit.Diamonds)
 
-//alternatively, data can be manually allocated.  The following is equivilent
+//alternatively, data can be manually allocated.  The following is equivalent
 //to the statement above
-let tod2 = malloc(sizeof Card)
+let tod2 = malloc <| Ante.sizeof Card
 @tod2 = Card(3, Suit.Diamonds)
 
 //Example of a raw pointer to the u8 value 5.
@@ -1331,9 +1331,9 @@ let raw example = new 5u8
 //Raw pointers must be manually freed with the free function
 free example
 
-//Pointers can also be used to create strings from char arrays
-let str = "Hello World!"
-let msg = c8* "Pointer String"
+//C style char pointers can be accessed from Str types with the following method:
+let str = "Hello World!"  //Str type
+let msg = c8* str // Str -> c8* cast yields the underlying C-string (as does Str -> [c8])
 
 /*
         Automatic dereferencing.
@@ -1342,15 +1342,15 @@ let msg = c8* "Pointer String"
     seperate member accessor operator for pointers (-> in c like
     languages).
 */
-type PtrExample =
-    [c8] msg
+type PtrExample = [c8] msg
 
-    fun printMsg: self
-        print self.msg
+fun PtrExample.printMsg: self
+    print self.msg
 
-let ex1 = PtrExample "" //typeof ex1 = PtrExample
-let ex2 = new ex1       //typeof ex2 = PtrExample*
-let ex3 = new ex2       //Typeof ex3 = PtrExample**
+
+let ex1 = PtrExample "" //typeof ex1 is PtrExample
+let ex2 = new ex1       //typeof ex2 is PtrExample*
+let ex3 = new ex2       //Typeof ex3 is PtrExample**
 
 ex1.printMsg() //No pointer, so no dereferencing is necessary
 ex2.printMsg() //(@ex2).printMsg()
@@ -1361,11 +1361,11 @@ ex3.printMsg() //(@@ex3).printMsg()
     Internally, pointers are stored the same way as arrays.
     They only differ based on the operators used on them.  Conversions
     between array and pointer are zero cost, they simply change how they
-    interact with operators or impls.
+    interact with operators or type extensions.
 */
 
 //Both of these strings are internally stored as pointers to the first char.
-var arrStr = c8[] "str"
+var arrStr = [c8] "str"
 var ptrStr = c8*  "str"
 
 /*
@@ -1382,7 +1382,8 @@ var ptrStr = c8*  "str"
         ++ or the corresponding ++= are used.
 */
 ptrStr += 1
-arrStr += assert false
+
+Ante.assertErr(arrStr += 2)
 
 /*
     # operator
@@ -1433,8 +1434,9 @@ ptrStr:reverse() //<- compilation error.  To make this work, a cast should be ad
 
     Arrays:
         Arrays (unless overloaded) define equality as checking each corresopnding
-        element for equality.  Since string literals are character arrays by
-        default, the following is always true: "five" == "five"
+        element for equality.  Since string literals are Str types by default and
+        contain character arrays, they define equality the same way.  Thus, the
+        following is always true: "five" == "five"
 */
 let strlit = "test"
 
@@ -1446,11 +1448,9 @@ assert("two" in ["one", "two", "three"])
 
 /*
         Function values
-    To declare a function pointer, the same syntax as a function
-    definition is used, but without the name of the function and
-    the : denoting the name.  A function has the type:
+    Functions in Ante are first-class values and can be passed around as such.
 
-    returnType(paramType1, paramType2, ...)
+    (paramType1, paramType2, ...)returnType
 */
 //Some functions to point to:
 fun mul: f32 a b = a * b
@@ -1458,7 +1458,7 @@ fun div: f32 a b = a / b
 
 //This function takes one parameter, a function
 //that takes two f32s as parameters and returns one as well.
-fun doOperation: f32(f32, f32) opFunc -> f32
+fun doOperation: (f32, f32)f32 opFunc =
     opFunc 6 4
 
 //our function variable
@@ -1516,33 +1516,33 @@ let numsList = List(Some 1, &(Some 2, &(Some 3, None)))
     return type as the desired type | error type.  When
     Checking for errors, the operator ? can be used.  This
     operator checks if the value implements the Error trait.
-    If so, it returns from the method, otherwise, the value
-    is not changed.
+    If so, it exits from the method and returns the Error.
+    Otherwise, the value is not changed.
 */
 type MyErr =
     const Str msg
     
-ext MyErr: Err
+ext MyErr: Error
     fun desc: self =
         "MyErr: " ++ self.msg
 
 
 //This function takes three parameters: two i32s and
 //a function that can return a Str or StrErr
-fun errFunc: i32 a b, (Str|Err)(i32) fn -> i32|MyErr
+fun errFunc: i32 a b, (i32)(Str|Err) fn -> i32|MyErr
     //Try to open a file, and if no FileErr is found
     //Then write Just a test, otherwise wrap the error
-    //In type MyErr (using fromErr()), and return it.
+    //In type MyErr (using Error -> MyErr), and return it.
     openFile "test"?.write "Just a test"
 
     // ? can also be chained
     Parser.parseI32 "32"?.map fn?.show()
-    return 1
+    1
 
 
-//Matches can also be used for error handling in expressions
+//At the callsite, matches are used for error handling in expressions
 //In this function, None is returned if a value is divided by 0
-fun div: a b =
+fun div: i32 a b =
     match b with
     | 0 -> None
     | _ -> Some (a / b)
@@ -1687,13 +1687,13 @@ assert(3 is i32)
 
 //Allow/force names in data declarations to precede types
 type Vec =
-    mem: t
+    mem: 't
     len: u32
     cap: u32
 
 type List =
-    val: t
-    next: List<t> | End
+    val: 't
+    next: List<'t> | End
 
 
 /*
@@ -1745,11 +1745,9 @@ modifiers:
 
 datatypes:
     type
-    enum
 
 other:
     where
-    infect
 */
 
 /*
