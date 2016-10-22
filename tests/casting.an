@@ -4,7 +4,7 @@
 
 let a = 32_u64
 let b = 33_i8 
-let c = 4 ~i32 by default
+let c = 4 //i32 by default
 
 fun mul: u16 a b -> i32
     i32 a * b

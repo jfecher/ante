@@ -11,4 +11,4 @@ print i
 var s = "Hello "
 printf "%s" s
 s = "World!"
-puts s
+print s

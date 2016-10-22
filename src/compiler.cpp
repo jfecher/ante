@@ -643,7 +643,7 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
  
     TypeNode *fnTyn = mkAnonTypeNode(TT_Function);
     TypeNode *curTyn = 0;
-
+        
     //tell the compiler to create a new scope on the stack.
     enterNewScope();
 
@@ -653,7 +653,8 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
     for(auto &arg : preFn->args()){
         TypeNode *paramTyNode = (TypeNode*)cParam->typeExpr.get();
 
-        stoVar(cParam->name, new Variable(cParam->name, new TypedValue(&arg, paramTyNode), scope));
+        stoVar(cParam->name, new Variable(cParam->name, new TypedValue(&arg, paramTyNode), this->scope));
+        
         preArgs.push_back(&arg);
 
         if(curTyn){
@@ -816,14 +817,6 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
         BasicBlock *bb = BasicBlock::Create(getGlobalContext(), "entry", f);
         builder.SetInsertPoint(bb);
 
-        //save the old scope, we will enter the new one provided by the scope param
-        unsigned int oldScope = this->scope;
-
-        //set the scope from the callee's scope to the function's scope, variables
-        //declared within the function will actually be in one scope higher becuase
-        //of the upcoming call to enterNewScope()
-        this->scope = varTable.size();
-
         //tell the compiler to create a new scope on the stack.
         enterNewScope();
 
@@ -833,6 +826,7 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
         for(auto &arg : f->args()){
             TypeNode *paramTyNode = (TypeNode*)cParam->typeExpr.get();
             stoVar(cParam->name, new Variable(cParam->name, new TypedValue(&arg, paramTyNode), this->scope));
+
             if(!(cParam = (NamedValNode*)cParam->next.get())) break;
         }
 
@@ -843,8 +837,6 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
         //End of the function, discard the function's scope.
         exitScope();
    
-        this->scope = oldScope;
-
         //llvm requires explicit returns, so generate a void return even if
         //the user did not in their void function.
         if(retNode && !dynamic_cast<ReturnInst*>(v->val)){
