@@ -299,14 +299,14 @@ struct IfNode : public Node{
 };
 
 struct FuncDeclNode : public ParentNode{
-    string name;
+    string name, basename;
     unique_ptr<Node> modifiers, type;
     unique_ptr<NamedValNode> params;
     bool varargs;
 
     TypedValue* compile(Compiler*);
     void print(void);
-    FuncDeclNode(LOC_TY& loc, string s, Node *mods, Node *t, Node *p, Node* b, bool va=false) : ParentNode(loc, b), name(s), modifiers(mods), type(t), params((NamedValNode*)p), varargs(va){}
+    FuncDeclNode(LOC_TY& loc, string s, string bn, Node *mods, Node *t, Node *p, Node* b, bool va=false) : ParentNode(loc, b), name(s), basename(bn), modifiers(mods), type(t), params((NamedValNode*)p), varargs(va){}
     ~FuncDeclNode(){}
 };
 

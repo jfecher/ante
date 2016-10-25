@@ -259,8 +259,8 @@ ParentNode* mkForNode(yy::parser::location_type loc, Node* var, Node* range, Nod
     return new ForNode(loc, (char*)var, range, body);
 }
 
-ParentNode* mkFuncDeclNode(yy::parser::location_type loc, char* s, Node* mods, Node* tExpr, Node* p, Node* b){
-    return new FuncDeclNode(loc, s, mods, tExpr, p, b);
+ParentNode* mkFuncDeclNode(yy::parser::location_type loc, Node* s, Node *bn, Node* mods, Node* tExpr, Node* p, Node* b){
+    return new FuncDeclNode(loc, (char*)s, (char*)bn, mods, tExpr, p, b);
 }
 
 ParentNode* mkDataDeclNode(yy::parser::location_type loc, char* s, Node* b){

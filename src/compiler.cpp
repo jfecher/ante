@@ -414,7 +414,7 @@ TypedValue* VarNode::compile(Compiler *c){
             new TypedValue(c->builder.CreateLoad(var->getVal(), name), var->tval->type)
             : var->tval;
     }else{
-        auto *fn = c->getFunction(name);
+        auto *fn = c->getFunction(name, name);
 
         return fn? fn : c->compErr("Variable or function '" + name + "' has not been declared.", this->loc);
     }
@@ -665,6 +665,10 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
         }
         if(!(cParam = (NamedValNode*)cParam->next.get())) break;
     }
+    
+    //store a fake function var, in case this function is recursive
+    auto *fakeFnTv = new TypedValue(preFn, fnTyn);
+    updateFn(fakeFnTv, fdn->basename, fdn->name);
 
     //actually compile the function, and hold onto the last value
     TypedValue *v = fdn->child->compile(this);
@@ -683,6 +687,9 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
     //create the actual function's type, along with the function itself.
     FunctionType *ft = FunctionType::get(v->getType(), paramTys, fdn->varargs);
     Function *f = Function::Create(ft, Function::ExternalLinkage, fdn->name.length() > 0 ? fdn->name : "__lambda__", module.get());
+  
+    //now that we have the real function, replace the old one with it
+    preFn->replaceAllUsesWith(f);
    
     //prepend the ret type to the function's type node node extension list.
     //(A typenode represents functions by having the first extTy as the ret type,
@@ -707,7 +714,8 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
 
     //only store the function if it has a name (and thus is not a lambda function)
     if(fdn->name.length() > 0)
-        stoVar(fdn->name, new Variable(fdn->name, ret, scope));
+        updateFn(ret, fdn->basename, fdn->name);
+        //stoVar(fdn->name, new Variable(fdn->name, ret, scope));
 
     builder.SetInsertPoint(caller);
     return ret;
@@ -807,7 +815,8 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
     f->addFnAttr("nounwind");
    
     auto* ret = new TypedValue(f, fnTy);
-    stoVar(fdn->name, new Variable(fdn->name, ret, scope));
+    //stoVar(fdn->name, new Variable(fdn->name, ret, scope));
+    updateFn(ret, fdn->basename, fdn->name);
 
     //The above handles everything for a function declaration
     //If the function is a definition, then the body will be compiled here.
@@ -876,12 +885,13 @@ TypedValue* PreProcNode::compile(Compiler *c){
 }
 
 
-string mangle(string& base, TypeNode *paramTys){
+string mangle(string &base, TypeNode *paramTys){
+    string name = base;
     while(paramTys){
-        base += "_" + typeNodeToStr(paramTys);
+        name += "_" + typeNodeToStr(paramTys);
         paramTys = (TypeNode*)paramTys->next.get();
     }
-    return base;
+    return name;
 }
 
 
@@ -892,17 +902,8 @@ TypedValue* FuncDeclNode::compile(Compiler *c){
     //check if the function is a named function.
     if(name.length() > 0){
         //if it is not, register it to be lazily compiled later (when it is called)
-        if((name[0] >= 'a' && name[0] <= 'z') || name[0] == '_'){
-            name = c->funcPrefix + name;
-        }else{
-            auto *fnTy = createFnTyNode(this->params.get(), (TypeNode*)this->type.get());
-
-            //sidenote: extTy for function types is guarenteed to be initialized with the return type of
-            //the function, so this is not null checked before next is accessed.
-            auto *paramTys = (TypeNode*)fnTy->extTy->next.get();
-            name = c->funcPrefix + mangle(name, paramTys);
-        }
-
+        name = c->funcPrefix + name;
+        basename = c->funcPrefix + basename;
         c->registerFunction(this);
         //and return a void value
         return c->getVoidLiteral();
@@ -1145,31 +1146,56 @@ TypedValue* MatchNode::compile(Compiler *c){
     }
 }
 
+
 TypedValue* MatchBranchNode::compile(Compiler *c){
     return c->getVoidLiteral();
 }
 
 
-TypedValue* Compiler::getFunction(string& name){
-    auto *f = lookup(name);
-    if(!f){
-        if(auto *pair = fnDecls[name]){
-            //Function has been declared but not defined, so define it.
-            BasicBlock *caller = builder.GetInsertBlock();
-            auto *fn = compFn(pair->fdn, pair->scope);
-            fnDecls.erase(name);
-            builder.SetInsertPoint(caller);
-            return fn;
-        }
-        return 0;
-    }else{
-        return f->tval;
-    }
+FuncDecl* getFuncDeclFromList(list<FuncDecl*> &l, string &mangledName){
+    for(FuncDecl *fd : l)
+        if(fd->fdn->name == mangledName)
+            return fd;
+
+    return 0;
 }
-    
+
+
+void Compiler::updateFn(TypedValue *f, string &name, string &mangledName){
+    auto list = fnDecls[name];
+    auto *fd = getFuncDeclFromList(list, mangledName);
+    fd->tv = f;
+}
+
+
+TypedValue* Compiler::getFunction(string& name, string& mangledName){
+    auto list = getFunctionList(name);
+    if(list.empty()) return 0;
+
+    auto *fd = getFuncDeclFromList(list, mangledName);
+    if(!fd) return 0;
+
+    if(fd->tv) return fd->tv;
+
+    //Function has been declared but not defined, so define it.
+    BasicBlock *caller = builder.GetInsertBlock();
+    auto *fn = compFn(fd->fdn, fd->scope);
+    //fnDecls.erase(name);
+    builder.SetInsertPoint(caller);
+
+    fd->tv = fn;
+    return fn;
+}
+
+
 TypedValue* Compiler::getMangledFunction(string name, TypeNode *params){
     string fnName = mangle(name, params);
-    return getFunction(fnName);
+    return getFunction(name, fnName);
+}
+
+
+list<FuncDecl*> Compiler::getFunctionList(string& name){
+    return fnDecls[name];
 }
 
 /*
@@ -1194,8 +1220,10 @@ void Compiler::importFile(const char *fName){
 
     //copy functions, but change their scope first
     for(const auto& it : c->fnDecls){
-        it.second->scope = this->scope;
-        fnDecls[it.first] = it.second;
+        for(auto *fd : it.second)
+            fd->scope = this->scope;
+
+        fnDecls[it.first] = move(it.second);
     }
 
     delete c;
@@ -1238,7 +1266,7 @@ string removeFileExt(string file){
  *  of a module with unneeded library functions.
  */
 inline void Compiler::registerFunction(FuncDeclNode *fn){
-    fnDecls[fn->name] = new FuncDecl(fn, this->scope);
+    fnDecls[fn->basename].push_front(new FuncDecl(fn, this->scope));
 }
 
 /*
@@ -1481,7 +1509,7 @@ inline void Compiler::exitScope(){
     for(auto it = vtable->cbegin(); it != vtable->cend(); it++){
         if(it->second->isFreeable() && it->second->scope == this->scope){
             string freeFnName = "free";
-            Function* freeFn = (Function*)getFunction(freeFnName)->val;
+            Function* freeFn = (Function*)getFunction(freeFnName, freeFnName)->val;
 
             auto *inst = dynamic_cast<AllocaInst*>(it->second->getVal());
             auto *val = inst? builder.CreateLoad(inst) : it->second->getVal();

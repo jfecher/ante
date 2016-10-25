@@ -486,7 +486,7 @@ string typeNodeToStr(TypeNode *t){
         }
         return ret;
     }else if(t->type == TT_Data || t->type == TT_TaggedUnion){
-        return t->typeName;
+        return string(t->typeName.c_str()); //make a copy of the typename
     }else if(t->type == TT_Array){
         return '[' + typeNodeToStr(t->extTy.get()) + ']';
     }else if(t->type == TT_Ptr){

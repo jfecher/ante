@@ -230,7 +230,7 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
  */
 TypedValue* createCast(Compiler *c, Type *castTy, TypeNode *tyn, TypedValue *valToCast){
     //first, see if the user created their own cast function
-    string fnBaseName = typeNodeToStr(tyn) + "_Cast";
+    string fnBaseName = typeNodeToStr(tyn);
     if(auto *fn = c->getMangledFunction(fnBaseName, valToCast->type.get())){
 
         //first, assure the function has only one parameter
@@ -465,8 +465,16 @@ TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *bino
         //since ln is a typenode, this is a static field/method access, eg Math.rand
         string valName = typeNodeToStr(tn) + "_" + field->name;
 
-        if(auto *f = getFunction(valName))
-            return f;
+        auto l = getFunctionList(valName);
+
+        if(l.size() == 1){
+            auto *fd = l.front();
+            if(!fd->tv)
+                fd->tv = compFn(fd->fdn, fd->scope);
+
+            return fd->tv;
+        }else
+            return compErr("Multiple static methods of the same name with different parameters are currently unimplemented.  In the mean time, you can use global functions.", field->loc);
 
         return compErr("No static method called '" + field->name + "' was found in type " + 
                 typeNodeToStr(tn), binop->loc);
@@ -512,11 +520,17 @@ TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *bino
         //not a field, so look for a method.
         //TODO: perhaps create a calling convention function
         string funcName = typeNodeToStr(tyn) + "_" + field->name;
+        auto l = getFunctionList(funcName);
 
-        if(auto *f = getFunction(funcName)){
+        if(l.size() == 1){
+            auto *fd = l.front();
+            if(!fd->tv)
+                fd->tv = compFn(fd->fdn, fd->scope);
+
             TypedValue *obj = new TypedValue(val, tyn);
-            return new MethodVal(obj, f);
-        }
+            return new MethodVal(obj, fd->tv);
+        }else
+            return compErr("Multiple methods of the same name with different parameters are currently unimplemented.  In the mean time, you can use global functions.", field->loc);
 
         return compErr("Method/Field " + field->name + " not found in type " + typeNodeToStr(tyn), binop->loc);
     }
@@ -541,6 +555,28 @@ void push_front(vector<T*> *vec, T *val){
 }
 
 
+TypeNode* typedValsToTypeNodes(vector<TypedValue*> &tvs){
+    if(tvs.empty())
+        return 0;
+
+    TypeNode *first = 0;
+    TypeNode *cur = 0;
+
+    for(auto *tv : tvs){
+        if(!first){
+            first = deepCopyTypeNode(tv->type.get());
+            cur = first;
+        }else{
+            cur->next.release();
+            cur->next.reset(deepCopyTypeNode(tv->type.get()));
+            cur = (TypeNode*)cur->next.get();
+        }
+    }
+
+    return first;
+}
+
+
 TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
     //used to type-check each parameter later
     vector<TypedValue*> typedArgs;
@@ -561,20 +597,28 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
             args.push_back(param->val);
         }
     }
-    
-   
+
+
     //try to compile the function now that the parameters are compiled.
     TypedValue *tvf = 0;
 
     //First, check if the lval is a symple VarNode (identifier) and then attempt to
     //inference a method call for it (inference as in if the <type>. syntax is omitted)
     if(VarNode *vn = dynamic_cast<VarNode*>(l)){
-        if(typedArgs.size() != 0){
-            //try to see if arg 1's type contains a method of the same name
+        //try to see if arg 1's type contains a method of the same name
+        auto *params = typedValsToTypeNodes(typedArgs);
+        TypedValue *fn = 0;
+        
+        if(!typedArgs.empty()){
             string fnName = typeNodeToStr(typedArgs[0]->type.get()) + "_" + vn->name;
-            if(TypedValue *fn = c->getFunction(fnName)){
-                tvf = fn;
-            }
+            c->getMangledFunction(fnName, params);
+        }
+        
+        if(!fn) fn = c->getMangledFunction(vn->name, params);
+
+        if(fn){
+            tvf = fn;
+            delete params;
         }
     }
 
@@ -588,7 +632,7 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
     if(tvf->type->type != TT_Function && tvf->type->type != TT_Method)
         return c->compErr("Called value is not a function or method, it is a(n) " + 
                 llvmTypeToStr(tvf->getType()), l->loc);
-    
+
     //now that we assured it is a function, unwrap it
     Function *f = (Function*) tvf->val;
     
@@ -638,12 +682,13 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
             }
 
             //check for an implicit Cast function
-            string castFn = typeNodeToStr(paramTy) + "_Cast";
+            string castFn = typeNodeToStr(paramTy);
+
             if(auto *fn = c->getMangledFunction(castFn, tArg->type.get())){
                 //the function's parameter is not type checked as it is assumed it was mangled correctly.
                 
                 //optimize case of Str -> [c8] implicit cast
-                if(tArg->type->typeName == "Str" && castFn == "[c8]_Cast")
+                if(tArg->type->typeName == "Str" && castFn == "[c8]")
                     args[i-1] = c->builder.CreateExtractValue(args[i-1], 0);
                 else
                     args[i-1] = c->builder.CreateCall(fn->val, tArg->val);
@@ -741,8 +786,10 @@ TypedValue* Compiler::opImplementedForTypes(int op, TypeNode *l, TypeNode *r){
 
     string ls = typeNodeToStr(l);
     string rs = typeNodeToStr(r);
-    string fns = Lexer::getTokStr(op) + "_" + ls + "_" + rs;
-    return getFunction(fns);
+    string baseName = Lexer::getTokStr(op);
+    string fullName = baseName + "_" + ls + "_" + rs;
+    
+    return getFunction(baseName, fullName);
 }
 
 TypedValue* handlePrimitiveNumericOp(BinOpNode *bop, Compiler *c, TypedValue *lhs, TypedValue *rhs){
@@ -915,7 +962,7 @@ TypedValue* UnOpNode::compile(Compiler *c){
 
             if(rhs->getType()->isSized()){
                 string mallocFnName = "malloc";
-                Function* mallocFn = (Function*)c->getFunction(mallocFnName)->val;
+                Function* mallocFn = (Function*)c->getFunction(mallocFnName, mallocFnName)->val;
 
                 unsigned size = getSizeInBits(c, rhs->type.get()) / 8;
 

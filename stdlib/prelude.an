@@ -101,12 +101,10 @@ fun (==): Str l r -> bool
 
 
 //IO
-![inline]
 fun InFile: Str fName -> InFile
     InFile fopen (fName.cStr) "r"
 
 
-![inline]
 fun OutFile: Str fName -> OutFile
     OutFile fopen (fName.cStr) "w"
 

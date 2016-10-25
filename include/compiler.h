@@ -9,6 +9,7 @@
 #include <llvm/ExecutionEngine/ExecutionEngine.h>
 #include <memory>
 #include <map>
+#include <list>
 #include "parser.h"
 
 using namespace llvm;
@@ -41,7 +42,8 @@ TypeNode* mkAnonTypeNode(TypeTag);
 struct FuncDecl {
     FuncDeclNode *fdn;
     unsigned int scope;
-    FuncDecl(FuncDeclNode *fn, unsigned int s) : fdn(fn), scope(s){}
+    TypedValue *tv;
+    FuncDecl(FuncDeclNode *fn, unsigned int s, TypedValue *f=0) : fdn(fn), scope(s), tv(f){}
 };
 
 struct MethodVal : public TypedValue {
@@ -128,7 +130,7 @@ namespace ante{
         vector<unique_ptr<std::map<string, Variable*>>> varTable;
 
         //Map of declared, but non-defined functions
-        map<string, FuncDecl*> fnDecls;
+        map<string, list<FuncDecl*>> fnDecls;
 
         //Map of declared usertypes
         map<string, DataType*> userTypes;
@@ -167,7 +169,9 @@ namespace ante{
         void jitFunction(string& fnName);
         void jitFunction(Function *fnName);
         void importFile(const char *name);
-        TypedValue* getFunction(string& name);
+        void updateFn(TypedValue *f, string &name, string &mangledName);
+        TypedValue* getFunction(string& name, string& mangledName);
+        list<FuncDecl*> getFunctionList(string& name);
         TypedValue* getMangledFunction(string nonMangledName, TypeNode *params);
         
         TypedValue* compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector<Type*> &paramTys, unsigned int scope);
