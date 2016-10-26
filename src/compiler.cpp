@@ -115,7 +115,7 @@ TypedValue* Compiler::compErr(string msg, yy::location& loc){
  *  Doubles as a getNodesInBlock function, but does not
  *  count child nodes.
  */
-size_t Compiler::getTupleSize(Node *tup){
+size_t getTupleSize(Node *tup){
     size_t size = 0;
     while(tup){
         tup = tup->next.get();
@@ -873,6 +873,7 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
             }
         }
         //optimize!
+        f->dump();
         passManager->run(*f);
     }
 
@@ -910,7 +911,7 @@ TypedValue* FuncDeclNode::compile(Compiler *c){
     }else{
         //Otherwise, if it is a lambda function, compile it now and return it.
         NamedValNode *paramsBegin = this->params.get();
-        size_t nParams = Compiler::getTupleSize(paramsBegin);
+        size_t nParams = getTupleSize(paramsBegin);
         vector<Type*> paramTys = getParamTypes(c, paramsBegin, nParams);
         return c->compLetBindingFn(this, nParams, paramTys, c->scope);
     }
@@ -1187,10 +1188,48 @@ TypedValue* Compiler::getFunction(string& name, string& mangledName){
     return fn;
 }
 
+/*
+ * Returns all FuncDecls from a list that have argc number of parameters
+ * and can be accessed in the current scope.
+ */
+list<FuncDecl*> filterByArgcAndScope(list<FuncDecl*> l, size_t argc, unsigned int scope){
+    list<FuncDecl*> ret;
+    for(auto *fd : l){
+        if(fd->scope <= scope && getTupleSize(fd->fdn->params.get()) == argc){
+            ret.push_back(fd);
+        }
+    }
+    return ret;
+}
+
 
 TypedValue* Compiler::getMangledFunction(string name, TypeNode *params){
+    auto candidates = getFunctionList(name);
+    if(candidates.empty()) return 0;
+
+    auto argc = getTupleSize(params);
+    candidates = filterByArgcAndScope(candidates, argc, this->scope);
+
+    //if there is only one function now, return it.  It will be typechecked later
+    if(candidates.size() == 1){
+        auto *fd = candidates.front();
+        if(!fd->tv) fd->tv = compFn(fd->fdn, fd->scope);
+        return fd->tv;
+    }
+
+    //check for an exact match on the remaining candidates.
     string fnName = mangle(name, params);
-    return getFunction(name, fnName);
+    auto *fd = getFuncDeclFromList(candidates, fnName);
+    if(fd){ //exact match
+        if(!fd->tv) fd->tv = compFn(fd->fdn, fd->scope);
+        return fd->tv;
+    }
+
+    //Otherwise, determine which function to use by which needs the least
+    //amount of implicit conversions.
+    //TODO
+
+    return 0;
 }
 
 

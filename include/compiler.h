@@ -196,10 +196,12 @@ namespace ante{
         int compileIRtoObj(string outFile);
 
         static TypedValue* getVoidLiteral();
-        static size_t getTupleSize(Node *tup);
         static int linkObj(string inFiles, string outFile);
     };
 }
+        
+size_t getTupleSize(Node *tup);
+string mangle(string &base, TypeNode *paramTys);
 
 //conversions
 Type* typeTagToLlvmType(TypeTag tagTy, string typeName);

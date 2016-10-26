@@ -264,7 +264,7 @@ ParentNode* mkFuncDeclNode(yy::parser::location_type loc, Node* s, Node *bn, Nod
 }
 
 ParentNode* mkDataDeclNode(yy::parser::location_type loc, char* s, Node* b){
-    return new DataDeclNode(loc, s, b, Compiler::getTupleSize(b));
+    return new DataDeclNode(loc, s, b, getTupleSize(b));
 }
 
 Node* mkMatchNode(LOC_TY loc, Node* expr, Node* branch){

@@ -231,7 +231,10 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
 TypedValue* createCast(Compiler *c, Type *castTy, TypeNode *tyn, TypedValue *valToCast){
     //first, see if the user created their own cast function
     string fnBaseName = typeNodeToStr(tyn);
-    if(auto *fn = c->getMangledFunction(fnBaseName, valToCast->type.get())){
+    string mangledName = mangle(fnBaseName, valToCast->type.get());
+
+    //Search for the exact function, otherwise there would be implicit casts calling several implicit casts on a single parameter
+    if(auto *fn = c->getFunction(fnBaseName, mangledName)){
 
         //first, assure the function has only one parameter
         //the return type is guarenteed to be initialized, so it is not checked
