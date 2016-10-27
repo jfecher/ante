@@ -783,8 +783,11 @@ TypedValue* compPreProcFn(Compiler *c, FuncDeclNode *fdn, unsigned int scope, Pr
 }
 
 TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
+    BasicBlock *caller = builder.GetInsertBlock();
     if(PreProcNode *ppn = dynamic_cast<PreProcNode*>(fdn->modifiers.get())){
-        return compPreProcFn(this, fdn, scope, ppn);
+        auto *ret = compPreProcFn(this, fdn, scope, ppn);
+        builder.SetInsertPoint(caller);
+        return ret;
     }
 
 
@@ -802,8 +805,11 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
         paramTys.pop_back();
     }
     
-    if(!retNode)
-        return compLetBindingFn(fdn, nParams, paramTys, scope);
+    if(!retNode){
+        auto *ret = compLetBindingFn(fdn, nParams, paramTys, scope);
+        builder.SetInsertPoint(caller);
+        return ret;
+    }
 
     
     //create the function's actual type node for the tval later
@@ -841,7 +847,10 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
 
         //actually compile the function, and hold onto the last value
         TypedValue *v = fdn->child->compile(this);
-        if(!v) return 0;
+        if(!v){
+            builder.SetInsertPoint(caller);
+            return 0;
+        }
         
         //End of the function, discard the function's scope.
         exitScope();
@@ -853,6 +862,7 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
                 builder.CreateRetVoid();
             }else{
                 if(*v->type.get() != *retNode){
+                    builder.SetInsertPoint(caller);
                     return compErr("Function " + fdn->name + " returned value of type " + 
                             typeNodeToStr(v->type.get()) + " but was declared to return value of type " +
                             typeNodeToStr(retNode), fdn->loc);
@@ -865,10 +875,10 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
             }
         }
         //optimize!
-        f->dump();
         passManager->run(*f);
     }
 
+    builder.SetInsertPoint(caller);
     return ret;
 }
 
@@ -1157,7 +1167,7 @@ FuncDecl* getFuncDeclFromList(list<FuncDecl*> &l, string &mangledName){
 void Compiler::updateFn(TypedValue *f, string &name, string &mangledName){
     auto list = fnDecls[name];
     auto *fd = getFuncDeclFromList(list, mangledName);
-    fd->tv = f;
+    if(fd) fd->tv = f;
 }
 
 
@@ -1171,10 +1181,7 @@ TypedValue* Compiler::getFunction(string& name, string& mangledName){
     if(fd->tv) return fd->tv;
 
     //Function has been declared but not defined, so define it.
-    BasicBlock *caller = builder.GetInsertBlock();
     auto *fn = compFn(fd->fdn, fd->scope);
-    //fnDecls.erase(name);
-    builder.SetInsertPoint(caller);
 
     fd->tv = fn;
     return fn;
@@ -1220,7 +1227,7 @@ TypedValue* Compiler::getMangledFunction(string name, TypeNode *params){
     //Otherwise, determine which function to use by which needs the least
     //amount of implicit conversions.
     //TODO
-
+    cout << "No candidates found for function " << name << endl;
     return 0;
 }
 

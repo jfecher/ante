@@ -235,7 +235,6 @@ TypedValue* createCast(Compiler *c, Type *castTy, TypeNode *tyn, TypedValue *val
 
     //Search for the exact function, otherwise there would be implicit casts calling several implicit casts on a single parameter
     if(auto *fn = c->getFunction(fnBaseName, mangledName)){
-
         //first, assure the function has only one parameter
         //the return type is guarenteed to be initialized, so it is not checked
         if(fn->type->extTy->next.get() && !fn->type->extTy->next->next.get()){
@@ -610,19 +609,14 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
     if(VarNode *vn = dynamic_cast<VarNode*>(l)){
         //try to see if arg 1's type contains a method of the same name
         auto *params = typedValsToTypeNodes(typedArgs);
-        TypedValue *fn = 0;
         
         if(!typedArgs.empty()){
             string fnName = typeNodeToStr(typedArgs[0]->type.get()) + "_" + vn->name;
-            c->getMangledFunction(fnName, params);
+            tvf = c->getMangledFunction(fnName, params);
         }
         
-        if(!fn) fn = c->getMangledFunction(vn->name, params);
-
-        if(fn){
-            tvf = fn;
-            delete params;
-        }
+        if(!tvf) tvf = c->getMangledFunction(vn->name, params);
+        delete params;
     }
 
     //if it is not a varnode/no method is found, then compile it normally
