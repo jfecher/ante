@@ -1227,7 +1227,6 @@ TypedValue* Compiler::getMangledFunction(string name, TypeNode *params){
     //Otherwise, determine which function to use by which needs the least
     //amount of implicit conversions.
     //TODO
-    cout << "No candidates found for function " << name << endl;
     return 0;
 }
 
