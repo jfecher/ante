@@ -876,7 +876,7 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
             }
         }
         //optimize!
-        //passManager->run(*f);
+        passManager->run(*f);
     }
 
     builder.SetInsertPoint(caller);
@@ -1377,7 +1377,7 @@ void Compiler::compile(){
     //builder should already be at end of main function
     builder.CreateRet(ConstantInt::get(getGlobalContext(), APInt(8, 0, true)));
     
-    //passManager->run(*main);
+    passManager->run(*main);
 
 
     //flag this module as compiled.
