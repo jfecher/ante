@@ -387,10 +387,11 @@ TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Ty
     
             c->builder.SetInsertPoint(thenbb);
             auto *thenVal = ifn->thenN->compile(c);
+            auto *thenretbb = c->builder.GetInsertBlock();
             c->builder.CreateBr(mergebb);
            
             //save the 'then' value for the PhiNode after all the elifs
-            branches.push_back({thenVal, thenbb});
+            branches.push_back({thenVal, thenretbb});
 
             blocks.push_back(elsebb);
             c->builder.SetInsertPoint(elsebb);
@@ -412,21 +413,25 @@ TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Ty
     c->builder.SetInsertPoint(thenbb);
     auto *thenVal = ifn->thenN->compile(c);
     if(!thenVal) return 0;
+    auto *thenretbb = c->builder.GetInsertBlock(); //bb containing final ret of then branch.
+
 
     if(!dynamic_cast<ReturnInst*>(thenVal->val))
         c->builder.CreateBr(mergebb);
 
     if(ifn->elseN){
         //save the final 'then' value for the upcoming PhiNode
-        branches.push_back({thenVal, thenbb});
+        branches.push_back({thenVal, thenretbb});
 
         c->builder.SetInsertPoint(elsebb);
         auto *elseVal = ifn->elseN->compile(c);
+        auto *elseretbb = c->builder.GetInsertBlock();
+
         if(!dynamic_cast<ReturnInst*>(elseVal->val))
             c->builder.CreateBr(mergebb);
         
         //save the final else
-        branches.push_back({elseVal, elsebb});
+        branches.push_back({elseVal, elseretbb});
 
         if(!thenVal || !elseVal) return 0;
 
@@ -438,6 +443,7 @@ TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Ty
 
         c->builder.SetInsertPoint(mergebb);
 
+        //finally, create the ret value of this if expr, unless it is of void type
         if(thenVal->type->type != TT_Void){
             auto *phi = c->builder.CreatePHI(thenVal->getType(), branches.size());
             for(auto &pair : branches)
