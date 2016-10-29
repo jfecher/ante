@@ -635,11 +635,10 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
     //preFn is the predecessor to fn because we do not yet know its return type, so its body must be compiled,
     //then the type must be checked and the new function with correct return type created, and their bodies swapped.
     Function *preFn = Function::Create(preFnTy, Function::ExternalLinkage, "__lambda_pre__", module.get());
-    
+
     //Create the entry point for the function
-    BasicBlock *caller = builder.GetInsertBlock();
-    BasicBlock *bb = BasicBlock::Create(getGlobalContext(), "entry", preFn);
-    builder.SetInsertPoint(bb);
+    BasicBlock *entry = BasicBlock::Create(getGlobalContext(), "entry", preFn);
+    builder.SetInsertPoint(entry);
  
     TypeNode *fnTyn = mkAnonTypeNode(TT_Function);
     TypeNode *curTyn = 0;
@@ -690,7 +689,6 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
     Function *f = Function::Create(ft, Function::ExternalLinkage, fdn->name.length() > 0 ? fdn->name : "__lambda__", module.get());
   
     //now that we have the real function, replace the old one with it
-    preFn->replaceAllUsesWith(f);
    
     //prepend the ret type to the function's type node node extension list.
     //(A typenode represents functions by having the first extTy as the ret type,
@@ -701,24 +699,27 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
     retTy->next.reset(curTyn);
     fnTyn->extTy.reset(retTy);
 
+
     //finally, swap the bodies of the two functions and delete the former.
-    f->getBasicBlockList().push_back(&preFn->front());
-    preFn->removeFromParent();
+    //f->getBasicBlockList().push_back(&preFn->getBasicBlockList().front());
+    f->getBasicBlockList().splice(f->begin(), preFn->getBasicBlockList());
+    preFn->getBasicBlockList().clearAndLeakNodesUnsafely();
     
     //swap all instances of preFn's parameters with f's parameters
     int i = 0;
     for(auto &arg : f->args()){
         preArgs[i++]->replaceAllUsesWith(&arg);
     }
+    
+    preFn->replaceAllUsesWith(f);
+    preFn->removeFromParent();
 
     auto *ret = new TypedValue(f, fnTyn);
 
     //only store the function if it has a name (and thus is not a lambda function)
     if(fdn->name.length() > 0)
         updateFn(ret, fdn->basename, fdn->name);
-        //stoVar(fdn->name, new Variable(fdn->name, ret, scope));
 
-    builder.SetInsertPoint(caller);
     return ret;
 }
 
@@ -763,7 +764,7 @@ TypedValue* compPreProcFn(Compiler *c, FuncDeclNode *fdn, unsigned int scope, Pr
     if(VarNode *vn = dynamic_cast<VarNode*>(ppn->expr.get())){
         if(vn->name == "inline"){
             ((Function*)fn->val)->addFnAttr("always_inline");
-        }else if(vn->name == "ct"){
+        }else if(vn->name == "run"){
             auto *mod = c->module.get();
             c->module.release();
 
@@ -875,7 +876,7 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
             }
         }
         //optimize!
-        passManager->run(*f);
+        //passManager->run(*f);
     }
 
     builder.SetInsertPoint(caller);
@@ -912,10 +913,7 @@ TypedValue* FuncDeclNode::compile(Compiler *c){
         return c->getVoidLiteral();
     }else{
         //Otherwise, if it is a lambda function, compile it now and return it.
-        NamedValNode *paramsBegin = this->params.get();
-        size_t nParams = getTupleSize(paramsBegin);
-        vector<Type*> paramTys = getParamTypes(c, paramsBegin, nParams);
-        return c->compLetBindingFn(this, nParams, paramTys, c->scope);
+        return c->compFn(this, c->scope);
     }
 }
 
@@ -1379,7 +1377,7 @@ void Compiler::compile(){
     //builder should already be at end of main function
     builder.CreateRet(ConstantInt::get(getGlobalContext(), APInt(8, 0, true)));
     
-    passManager->run(*main);
+    //passManager->run(*main);
 
 
     //flag this module as compiled.
