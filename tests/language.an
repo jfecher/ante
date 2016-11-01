@@ -245,7 +245,7 @@ let half = 25.0_f16
     Casts are accomplished by preceeding a value with a type, similar
     to a variable declaration.  When casting a value, the value is directly
     changed to the corresponding type unless the type specified is a
-    userdata type which overloads the op("cast") function with the same
+    userdata type which overloads the cast function with the same
     parameters.  Casts are never performed implicitly.
 */
 
@@ -853,11 +853,11 @@ q#0 = 2 //where this#0 < 0 is evaluated, and a TypeConditionErr is thrown.
 
 /*
         Classes
-    Class-like data structures can be declared by simply including methods within the
-    data declaration.  These methods are associated methods and do not add to the size of
-    the datatype, but are linked to it at compile-time.  These methods are each within a namespace
-    that is the name of the datatype, but cannot be accessed without an initialization of the
-    datatype if they take self as a parameter.
+    Class-like data structures can be declared by simply adding methods to the type's namespace.
+    These methods are associated methods and do not add to the size of the datatype, but are
+    linked to it at compile-time.  These methods are each within a namespace that is the name
+    of the datatype, but cannot be accessed without an initialization of the datatype if they
+    take self or self* as a parameter.
 */
 type Animal =
     u16 age
@@ -868,8 +868,8 @@ type Animal =
     Create a non-static method taking self as a parameter.  This function cannot be used as 
     Animal.printInfo, it must be called on a previously initialized Animal.
 */
-    fun printInfo: self
-        print(self.name ++ " is a/an " ++ self.species ++ " and is " ++ self.age ++ " year(s) old.\n")
+fun Animal.printInfo: self
+    print(self.name ++ " is a/an " ++ self.species ++ " and is " ++ self.age ++ " year(s) old.\n")
 
 /*
     The new keyword can be used to allocate and initialize memory to be stored in a
@@ -888,8 +888,8 @@ type Person =
 /*
     This function obscures the printInfo declared in the Animal type.
 */
-    fun printInfo: self*
-        print(self.name ++ " is " ++ self.age ++ " years old and is a(n) " ++ self.job)
+fun Person.printInfo: self
+    print(self.name ++ " is " ++ self.age ++ " years old and is a(n) " ++ self.job)
 
 
 
@@ -924,7 +924,9 @@ type Statistics =
 
     pub i32 varCount
 
-    //Alternatively, you can also use modifiers before a block:
+
+//Alternatively, you can also use modifiers before a block:
+ext Statistics
     pub
         fun getData: self* -> f64
             return self.secretData //not so secret anymore
@@ -938,13 +940,13 @@ type Statistics =
     pri fun doCalculations: self*, f64 mData -> f64
             return mData * self.secretData / self.varCount
 
-    //Because the init function is declared within the datatype, it can access private members.
-    fun init: [i32] mData -> Statistics
+    //Because the cast function is declared within the datatype, it can access private members.
+    fun Statistics: [i32] mData -> Statistics
         var ret = Statistics(0, 0)
         for i in mData do
             ret.secretData += mData / ret.pi
             ret.varCount += 1
-        return ret
+        ret
 
 
 /*
@@ -958,6 +960,18 @@ type Statistics =
 //and returns true if the first is greater than the second.
 fun greater: 't obj1 obj2 =
     obj1 > obj2
+
+//a function is also generic if a type is omitted
+//There is one difference from this function and the above.
+//If the type is omitted completely, each parameter may be any generic type,
+//so in the function below typeof obj1 may not equal typeof obj2, where in
+//the function above they are always the same type 't
+fun greater: obj1 obj2 =
+    obj1 > obj2
+
+//sidenote: both of the above functions are equivalent to the operator function below
+let greater = (>)
+
 
 //This function will fail to compile if they are called with variables of a type
 //That do not have < and > implemented.
@@ -1020,11 +1034,11 @@ type MySmartPtr =
 
 
 ext MySmartPtr: Clone
-    fun op("new"): 't val
+    fun (new): 't val
         rawPtr = new val
         refCount = new 0u16
 
-    fun op("drop"):
+    fun (del):
         if @refCount == 0 then
             free refCount
             free rawPtr
@@ -1042,7 +1056,7 @@ ext MySmartPtr: Clone
 
 
 //where can also be used to check the type specification
-type ChessPiece<Str piece> where searchFor piece ["pawn", "knight", "king"] != None
+type ChessPiece<Str piece> where piece in ["pawn", "knight", "king"]
     u8 x y
 
     if piece == "pawn" then
@@ -1079,10 +1093,10 @@ type Point
         op module. This function requires the operator in question in string form.  Invalid
         operators will throw a compile-time error.
     */
-    fun op("<"): self, Point rVal =
+    fun (<): self, Point rVal =
         self.x < rVal.x and self.y < rVal.y
 
-    fun op(">"): self, Point rVal =
+    fun (>): self, Point rVal =
         self.x > rVal.x and self.y > rVal.y
 
 
@@ -1187,10 +1201,10 @@ ext [c8] //valid
 var ptrQuote = c8* "implementations cannot be used for pointer types"
  
 //Compilation error since c8* is dereferenced to c8, and c8 has no function addInitials:
-ptrQuote = ptrQuote.addInitials()
+ptrQuote.addInitials()
 
 let ptrQuote2 = [c8] ptrQuote //convert to array
-ptrQuote2 = ptrQuote2.addInitials() //valid
+ptrQuote2.addInitials() //valid
 
 /*
     NOTE: because string literals have the type [c8], the following is valid:
@@ -1211,20 +1225,20 @@ ptrQuote2 = ptrQuote2.addInitials() //valid
 
 let testInt = 3
 match testInt with
-    1 -> print "Yup, its one"
-    2 -> print "It's actually two")
-    3 -> print "Nope, it's three"
-    4 .. 10 -> print "It's between 4 and 10 inclusive"
-    _ -> print "It's not one, two, or three, or in the range 4-10"
+|   1 -> print "Yup, its one"
+|   2 -> print "It's actually two"
+|   3 -> print "Nope, it's three"
+|   4 .. 10 -> print "It's between 4 and 10 inclusive"
+|   _ -> print "It's not one, two, or three, or in the range 4-10"
 //output: Nope, it's three
 
 //In this example, match is used to determine Joe's class
 let joe = Person(32, "Programmer", "Joe")
 match joe with
-    Point  -> print "Joe is a point"
-    Animal -> print "Joe is an Animal"
-    Person -> print "Joe is a Person"
-    _      -> print "I don't know what Joe is"
+| Point  -> print "Joe is a point"
+| Animal -> print "Joe is an Animal"
+| Person -> print "Joe is a Person"
+| _      -> print "I don't know what Joe is"
 //output: Joe is an Animal
 //This is because the Person class inherits from the Animal
 //class, so the Animal cast to joe was the first valid cast
@@ -1232,23 +1246,25 @@ match joe with
 let testStr = ("Test", 4)
 
 match testStr with
-    ("Test", x) where x != 4
+| ("Test", x) where x != 4
         print "Found a Test Str with the wrong length!"
-    (_, 3)
+| (_, 3)
         print "Found a Str of length 3!"
-    ("Test", _)
+| ("Test", _)
         print "Found a Test Str!" // this will be printed
-    _ -> ()
+| _ -> ()
 
 
 //like any other feature, match can also be used in expressions (each branch must match in type)
 let s = match 2 with
-    0 -> "zero"
-    1 -> "one"
-    2 -> "two"
-    _ < 0 -> "negative number"
-    3..9 -> "some other single digit number"
-    _ -> "two or more digit positive number"
+|   0 -> "zero"
+|   1 -> "one"
+|   2 -> "two"
+|   _ < 0 -> "negative number"
+|   3..9 -> "some other single digit number"
+|   _ -> "two or more digit positive number"
+
+
 /*
         Enums
     Where data declares a named type, enums declare named
@@ -1381,7 +1397,7 @@ var ptrStr = c8*  "str"
         NOTE: to add a value (or values) to the end of an array,
         ++ or the corresponding ++= are used.
 */
-ptrStr += 1
+let tr = ptrStr + 1
 
 Ante.assertErr(arrStr += 2)
 
@@ -1630,8 +1646,8 @@ ext Car
 ![macro]
 fun defGetAndSetFor: Type t
     for v in fieldsOf t do
-        define "{t.typeName}_get_{v.name}" (fun = v.val)
-        define "{t.typeName}_set_{v.name}" (fun nv = v.val = nv)
+        define "get_{v.name}" ~obj:t (fun = v.val)
+        define "set_{v.name}" ~obj:t (fun nv = v.val = nv)
 
 //with this function defined, we can just write the following
 defGetAndSetFor Car
@@ -1645,32 +1661,6 @@ defGetAndSetFor Car
     but are not yet known to be of enough value to
     include in the language.
 */
-macro pstr: ident i
-    pub const c32* i = "p"
-    print i
-
-pstr! g
-//output: p
-
-macro double: expr e
-    ((e) * 2)
-
-print(double!(2 + 3))
-
-//possible scoped macros
-fun getTokenType: c32 t -> Str
-    macro isLetter: c32 i
-        (i >= 65 and i <= 90 or i >= 97 and i <= 122)
-
-    if isLetter! t
-        return "ident"
-    else
-        return "not an ident"
-
-//the macro below would not be valid since isLetter would have gone out of scope.
-if isLetter 'a' then
-    print "a is a letter"
-
 
 //threading and concurrency support
 async fun printMsg: Str msg
