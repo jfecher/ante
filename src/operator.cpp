@@ -954,8 +954,18 @@ TypedValue* UnOpNode::compile(Compiler *c){
             }
             
             return new TypedValue(c->builder.CreateLoad(rhs->val), rhs->type->extTy.get());
-        case '&': //address-of
-            break; //TODO
+        case '&': {//address-of
+            auto *oldTy = deepCopyTypeNode(rhs->type.get());
+            auto *ptrTy = mkAnonTypeNode(TT_Ptr);
+            ptrTy->extTy.reset(oldTy);
+
+            if(dynamic_cast<LoadInst*>(rhs->val)){
+                auto *li = static_cast<LoadInst*>(rhs->val);
+                return new TypedValue(li->getPointerOperand(), ptrTy);
+            }else{
+                //if it is not stack-allocated already, allocate it on the stack
+                return new TypedValue(c->builder.CreateAlloca(rhs->getType(), rhs->val), ptrTy);
+            }}
         case '-': //negation
             return new TypedValue(c->builder.CreateNeg(rhs->val), rhs->type);
         case Tok_Not:
