@@ -964,7 +964,9 @@ TypedValue* UnOpNode::compile(Compiler *c){
                 return new TypedValue(li->getPointerOperand(), ptrTy);
             }else{
                 //if it is not stack-allocated already, allocate it on the stack
-                return new TypedValue(c->builder.CreateAlloca(rhs->getType(), rhs->val), ptrTy);
+                auto *alloca = c->builder.CreateAlloca(rhs->getType());
+                c->builder.CreateStore(rhs->val, alloca);
+                return new TypedValue(alloca, ptrTy);
             }}
         case '-': //negation
             return new TypedValue(c->builder.CreateNeg(rhs->val), rhs->type);
