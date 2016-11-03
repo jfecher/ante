@@ -1,0 +1,21 @@
+
+
+fun modify: i32* x
+    @x = @x * 2
+
+var t = 32
+print t
+modify(&t)
+print t
+
+let t = 3
+print t
+modify(&t)
+print t
+
+/* Expected Output:
+32
+64
+3
+3
+*/
