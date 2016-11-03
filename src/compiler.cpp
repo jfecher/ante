@@ -1135,11 +1135,22 @@ TypedValue* MatchNode::compile(Compiler *c){
     if(!merges[0].second) return 0;
 
     if(merges[0].second->type->type != TT_Void){
+        int i = 1;
         auto *phi = c->builder.CreatePHI(merges[0].second->getType(), branches.size());
-        for(auto &pair : merges)
-            if(!dynamic_cast<ReturnInst*>(pair.second->val))
-                phi->addIncoming(pair.second->val, pair.first);
+        for(auto &pair : merges){
 
+            //add each branch to the phi node if it does not return early
+            if(!dynamic_cast<ReturnInst*>(pair.second->val)){
+
+                //match the types of those branches that will merge
+                if(*pair.second->type != *merges[0].second->type)
+                    return c->compErr("Branch "+to_string(i)+"'s return type " + typeNodeToStr(pair.second->type.get()) +
+                              " != " + typeNodeToStr(merges[0].second->type.get()) + ", the first branch's return type", this->loc);
+                else
+                    phi->addIncoming(pair.second->val, pair.first);
+            }
+            i++;
+        }
         phi->addIncoming(UndefValue::get(merges[0].second->getType()), matchbb);
         return new TypedValue(phi, deepCopyTypeNode(merges[0].second->type.get()));
     }else{
