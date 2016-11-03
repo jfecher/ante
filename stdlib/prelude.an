@@ -59,11 +59,11 @@ fun [c8].print: [c8] s
 fun [c8]: Str s = s.cStr
 
 ![inline]
-fun [c8].write: [c8] cStr, OutFile f
+fun OutFile.write: OutFile f, [c8] cStr
     fputs cStr f
 
 ![inline]
-fun c8.write: c8 c, OutFile f
+fun OutFile.write: OutFile f, c8 c
     fputc c f
 
 //Str functions
