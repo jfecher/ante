@@ -79,7 +79,7 @@ parse tree is provided, along with a quick list of the uses of the variable in q
 * Programmers have just as much power over their program as the compiler does.  As an example,
 here is an implementation of the goto construct in Ante
 ```go
-#![macro]
+![macro]
 fun goto: VarNode vn
     let label = ctLookup vn ?
         None -> compErr "Cannot goto undefined label {vn.name}"
@@ -87,7 +87,7 @@ fun goto: VarNode vn
     LLVM.builder.SetInsertPoint <| getCallSiteBlock()
     LLVM.builder.CreateBr label
 
-#![macro]
+![macro]
 fun label: VarNode vn
     let ctxt = LLVM.getGlobalContext()
     let callingFn = getCallSiteBlock().getParentFn()
