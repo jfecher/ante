@@ -19,30 +19,37 @@ into the compiled module itself.
     - Ability to write compiler plugins within the compiled program itself
 * Module system allowing the setting of compiler flags on a per-module basis.
 ```go
-~create i, a mutable integer
+//create i, a mutable integer
 var i = 55
 
-~Create j, an immutable integer
+//Create j, an immutable integer
 let j = 0
 
 let myTuple = (5, 5.0, "five")
 
-~tuples can also be destructured and stored into multiple variables
+//tuples can also be destructured and stored into multiple variables
 let (x, y) = (4, 5)
 
-~Arrays:
+//Arrays:
 var myArray = [0, 1, 2, 3, 4]
 
-~Return type inference:
+//Return type inference:
 fun add: i32 x y = x + y
 
-~Sum types:
+//Sum types:
 type Maybe =
    | Some 't
    | None
 
 var f = Some 4
 f = None
+
+
+//pattern matching
+match parse_int "0g" with
+| Some n -> print n
+| None -> ()
+
 ```
 * Significant whitespace after newlines; no tabs allowed in significant whitespace.
 ```go
@@ -51,16 +58,6 @@ fun myFunction:
         print "3 is greater than 2"
     else
         print "Invalid laws of mathematics, please try again in an alternate universe"
-
-
-~Significant whitespace is purely optional, though recommended
-fun myFunction: {
-    if 3 > 2 then {
-        print "3 is greater than 2"
-    }else{
-        print "Invalid laws of mathematics, please try again in an alternate universe"
-    }
-}
 ```
 * Reference counted smart pointers by default while keeping the ability to create raw pointers
 * Unique pointers used whenever possible automatically
@@ -70,22 +67,22 @@ fun myFunction: {
 let intPtr = new 5
 let strPtr = new "msg"
 
-~Declaration of raw pointers is accomplished with the 'raw' modifier:
+//Declaration of raw pointers is accomplished with the 'raw' modifier:
 let raw myPtr = malloc 10
 
-~intPtr is automatically freed
-~strPtr is automatically freed
-free myPtr ~myPtr must be manually freed
+//intPtr is automatically freed
+//strPtr is automatically freed
+free myPtr //myPtr must be manually freed
 ```
 * API designers given full reign to implement custom rules for their types, full access to the
 parse tree is provided, along with a quick list of the uses of the variable in question.
 ```go
-~Generic types are implemented with type variables, identified by a '
+//Generic types are implemented with type variables, identified by a '
 fun iteratorTest: 't iter
-    ~ok!
+    //ok!
     for i in iter do print i
 
-    ~assert the presence of a compile-time error generated from iterator invalidation
+    //assert the presence of a compile-time error generated from iterator invalidation
     Ante.assertErr
         fun = for j in iter do print j
 ```
@@ -99,18 +96,18 @@ ext MyThread
         self.pid = Thread.exec self.fn
 
 
-    ~Compile time function that runs whenever MyThread is created
+    //Compile time function that runs whenever MyThread is created
     pri fun handleInputs(onCreation): self
-        ~get a list of all mutable variables used
+        //get a list of all mutable variables used
         let vars = 
             Ante.getVarsInFn self.fn 
             .unwrap()
             .filter _.isMutable
 
-        ~Store them compile-time for later use in the cleanup function
+        //Store them compile-time for later use in the cleanup function
         Ante.ctStore vars
         
-        ~Iterate through each variable and invalidate them
+        //Iterate through each variable and invalidate them
         vars.iter Ante.invalidate
 
 
@@ -122,14 +119,14 @@ ext MyThread
 ```go
 let increment = _ + 1
 
-print(increment 4) ~prints 5
+print(increment 4) //prints 5
 
 let f = _ + increment _
 
 f 3 |> print
-~output: 7
+//output: 7
 
-~filter out all numbers that aren't divisible by 7
+//filter out all numbers that aren't divisible by 7
 let l = List(0..100):filter(_ % 7 == 0)
 
 ```

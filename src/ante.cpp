@@ -45,7 +45,7 @@ int main(int argc, const char **argv){
     }
     
     if(args->hasArg(Args::Eval))
-        Compiler("").eval();
+        Compiler(0).eval();
 
     delete args;
     return 0;
