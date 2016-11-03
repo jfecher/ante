@@ -76,15 +76,30 @@ free myPtr //myPtr must be manually freed
 ```
 * API designers given full reign to implement custom rules for their types, full access to the
 parse tree is provided, along with a quick list of the uses of the variable in question.
+* Programmers have just as much power over their program as the compiler does.  As an example,
+here is an implementation of the goto construct in Ante
 ```go
-//Generic types are implemented with type variables, identified by a '
-fun iteratorTest: 't iter
-    //ok!
-    for i in iter do print i
+#![macro]
+fun goto: VarNode vn
+    let label = ctLookup vn ?
+        None -> compErr "Cannot goto undefined label {vn.name}"
 
-    //assert the presence of a compile-time error generated from iterator invalidation
-    Ante.assertErr
-        fun = for j in iter do print j
+    LLVM.builder.SetInsertPoint <| getCallSiteBlock()
+    LLVM.builder.CreateBr label
+
+#![macro]
+fun label: VarNode vn
+    let ctxt = LLVM.getGlobalContext()
+    let callingFn = getCallSiteBlock().getParentFn()
+    let lbl = LLVM.BasicBlock ctxt callingFn
+    ctStore vn lbl
+
+
+
+//test it out
+label begin
+print "hello!"
+goto begin
 ```
 
 * Here is an example implementation of a thread that 'owns' the objects inside its function
