@@ -1,16 +1,4 @@
 
-
-//Append a string to another
-fun (++): Str s1 s2 -> Str
-    let len = s1.len + s2.len
-    var buf = malloc len
-
-    fun memcpy: void* dest src, u32 bytes -> void* /*dest*/;
-    memcpy buf s1.cStr s1.len
-    memcpy (void*(u64 buf + s1.len)) s2.cStr s2.len
-
-    Str([c8] buf, len)
-
 //Reverse a string
 fun reverse: Str s -> Str
     var buf = [c8] malloc s.len

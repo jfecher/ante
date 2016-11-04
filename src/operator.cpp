@@ -230,20 +230,8 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
  */
 TypedValue* createCast(Compiler *c, Type *castTy, TypeNode *tyn, TypedValue *valToCast){
     //first, see if the user created their own cast function
-    string fnBaseName = typeNodeToStr(tyn);
-    string mangledName = mangle(fnBaseName, valToCast->type.get());
-
-    //Search for the exact function, otherwise there would be implicit casts calling several implicit casts on a single parameter
-    if(auto *fn = c->getFunction(fnBaseName, mangledName)){
-        //first, assure the function has only one parameter
-        //the return type is guarenteed to be initialized, so it is not checked
-        if(fn->type->extTy->next.get() && !fn->type->extTy->next->next.get()){
-            //type check the only parameter
-            if(*valToCast->type == *(TypeNode*)fn->type->extTy->next.get()){
-                return new TypedValue(c->builder.CreateCall(fn->val, valToCast->val), deepCopyTypeNode(fn->type->extTy.get()));
-            }
-        }
-    }
+    if(TypedValue *fn = c->getCastFn(valToCast->type.get(), tyn))
+        return new TypedValue(c->builder.CreateCall(fn->val, valToCast->val), deepCopyTypeNode(fn->type->extTy.get()));
 
     //otherwise, fallback on known conversions
     if(isIntTypeTag(valToCast->type->type)){

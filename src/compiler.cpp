@@ -206,9 +206,96 @@ TypedValue* TypeNode::compile(Compiler *c){
 }
 
 
+TypedValue* Compiler::getCastFn(TypeNode *from_ty, TypeNode *to_ty){
+    string fnBaseName = typeNodeToStr(to_ty);
+    string mangledName = mangle(fnBaseName, from_ty);
+
+    //Search for the exact function, otherwise there would be implicit casts calling several implicit casts on a single parameter
+    if(auto *fn = getFunction(fnBaseName, mangledName)){
+        //first, assure the function has only one parameter
+        //the return type is guarenteed to be initialized, so it is not checked
+        if(fn->type->extTy->next.get() && !fn->type->extTy->next->next.get()){
+            //type check the only parameter
+            if(*from_ty == *(TypeNode*)fn->type->extTy->next.get()){
+                return fn;
+            }
+        }
+    }
+    return 0;
+}
+
+
+TypedValue* compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
+    //get the left part of the string
+    string l = sln->val.substr(0, pos);
+
+    //make a new sub-location for it
+    yy::location lloc = {yy::position(sln->loc.begin.filename, sln->loc.begin.line, sln->loc.begin.column), 
+                         yy::position(sln->loc.end.filename,   sln->loc.end.line,   sln->loc.begin.column + pos-1)};
+    auto *ls = new StrLitNode(lloc, l);
+
+
+    auto posEnd = sln->val.find("}", pos);
+    if(posEnd == string::npos)
+        return c->compErr("Interpolated string must have a closing bracket", sln->loc);
+
+    //this is the ${...} part of the string without the ${ and }
+    string m = sln->val.substr(pos+2, posEnd - (pos+2));
+    
+    string r = sln->val.substr(posEnd+1);
+    yy::location rloc = {yy::position(sln->loc.begin.filename, sln->loc.begin.line, sln->loc.begin.column + posEnd + 1), 
+                         yy::position(sln->loc.end.filename,   sln->loc.end.line,   sln->loc.end.column)};
+    auto *rs = new StrLitNode(rloc, r);
+
+    //now that the string is separated, begin interpolation preparation
+    
+    //lex and parse
+    setLexer(new Lexer(m, sln->loc.begin.filename->c_str()));
+    yy::parser p{};
+    int flag = p.parse();
+    if(flag != PE_OK){ //parsing error, cannot procede
+        fputs("Syntax error in string interpolation, aborting.\n", stderr);
+        exit(flag);
+    }
+
+    //and compile
+    Node *expr = parser::getRootNode();
+    auto *val = expr->compile(c);
+
+    //if the expr is not already a string type, cast it to one
+    if(val->type->typeName != "Str"){
+        auto *str_ty = mkAnonTypeNode(TT_Data);
+        str_ty->typeName = "Str";
+        auto *fn = c->getCastFn(val->type.get(), str_ty);
+
+        if(!fn) return c->compErr("Cannot cast " + typeNodeToStr(val->type.get())
+                + " to Str for string interpolation.", sln->loc);
+
+        val = new TypedValue(c->builder.CreateCall(fn->val, val->val), str_ty);
+    }
+
+    //Finally, the interpolation is done.  Now just combine the three strings
+    //get the ++_Str_Str function
+    string appendFn = "++";
+    string mangledAppendFn = "++_Str_Str";
+    auto *fn = c->getFunction(appendFn, mangledAppendFn);
+    if(!fn) return c->compErr("++ overload for Str and Str not found while performing Str interpolation.  The prelude may not be imported correctly.", sln->loc);
+
+    //call the ++ function to combine the three strings
+    auto *appendL = c->builder.CreateCall(fn->val, {ls->compile(c)->val, val->val});
+    auto *appendR = c->builder.CreateCall(fn->val, {appendL, rs->compile(c)->val});
+    return new TypedValue(appendR, deepCopyTypeNode(val->type.get()));
+}
+
+
 TypedValue* StrLitNode::compile(Compiler *c){
+    auto idx = val.find("${");
+    if(idx != string::npos && val.find("\\${") != idx - 1)
+        return compStrInterpolation(c, this, idx);
+
     TypeNode *strty = mkAnonTypeNode(TT_Data);
     strty->typeName = "Str";
+
     auto *ptr = c->builder.CreateGlobalStringPtr(val);
 
     auto* tupleTy = StructType::get(getGlobalContext(), {Type::getInt8PtrTy(getGlobalContext()), Type::getInt32Ty(getGlobalContext())});

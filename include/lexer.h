@@ -28,9 +28,10 @@ namespace ante{
 
     class Lexer{
     public:
-        const char* fileName; 
+        const char* fileName;
         
-        Lexer(const char *file);
+        Lexer(const char *fileName);
+        Lexer(string& pseudoFile, const char *fileName);
         ~Lexer();
         int next(yy::parser::location_type* yyloc);
         char peek() const;
@@ -41,6 +42,11 @@ namespace ante{
     private:
         /* the ifstream to take from */
         ifstream *in;
+        
+        /* If this is set to true then the psuedoFile string should be parsed
+         * as a string containing ante src code.  Used for Str interpolation */
+        bool isPseudoFile;
+        char* pseudoFile;
 
         /* Row and column number */
         unsigned int row, col;

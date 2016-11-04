@@ -173,6 +173,7 @@ namespace ante{
         TypedValue* getFunction(string& name, string& mangledName);
         list<FuncDecl*> getFunctionList(string& name);
         TypedValue* getMangledFunction(string nonMangledName, TypeNode *params);
+        TypedValue* getCastFn(TypeNode *from_ty, TypeNode *to_ty);
         
         TypedValue* compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector<Type*> &paramTys, unsigned int scope);
         TypedValue* compFn(FuncDeclNode *fn, unsigned int scope);

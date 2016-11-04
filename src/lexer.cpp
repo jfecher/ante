@@ -177,7 +177,8 @@ int yylex(yy::parser::semantic_type* st, yy::location* yyloc){
 /*
  * Initializes lexer
  */
-Lexer::Lexer(const char* file) : 
+Lexer::Lexer(const char* file) :
+    isPseudoFile(false),
     row{1},
     col{1},
     cur{0},
@@ -204,9 +205,29 @@ Lexer::Lexer(const char* file) :
     scopes->push(0);
 }
 
+
+Lexer::Lexer(string& pFile, const char* fName) :
+    isPseudoFile(true),
+    row{1},
+    col{1},
+    cur{0},
+    nxt{0},
+    scopes{new stack<unsigned int>()},
+    cscope{0},
+    shouldReturnNewline(false)
+{
+    fileName = fName;
+    pseudoFile = (char*)pFile.c_str();
+
+    incPos();
+    incPos();
+
+    scopes->push(0);
+}
+
 Lexer::~Lexer(){
     delete scopes;
-    if(in != &cin)
+    if(!isPseudoFile && in != &cin)
         delete in;
 }
 
@@ -234,23 +255,23 @@ string Lexer::getTokStr(int t){
     return s;
 }
 
-inline void Lexer::incPos(void){
+inline void Lexer::incPos(){
     cur = nxt;
     col++;
-    if(in->good())
-        in->get(nxt);
-    else
-        nxt = 0;
-}
 
-void Lexer::incPos(int end){
-    for(int i = 0; i < end; i++){
-        cur = nxt;
-        col++;
+    if(isPseudoFile){
+        nxt = *(pseudoFile++);
+    }else{
         if(in->good())
             in->get(nxt);
         else
             nxt = 0;
+    }
+}
+
+void Lexer::incPos(int end){
+    for(int i = 0; i < end; i++){
+        incPos();
     }
 }
 

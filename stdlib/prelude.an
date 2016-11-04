@@ -100,6 +100,18 @@ fun (==): Str l r -> bool
         l.cStr == r.cStr
 
 
+//append two strings
+fun (++): Str s1 s2 -> Str
+    let len = s1.len + s2.len
+    var buf = malloc len
+
+    fun memcpy: void* dest src, u32 bytes -> void* /*dest*/;
+    memcpy buf (c8* s1.cStr) s1.len
+    memcpy (void*(u64 buf + s1.len)) (c8* s2.cStr) s2.len
+
+    Str([c8] buf, len)
+
+
 //IO
 fun InFile: Str fName -> InFile
     InFile fopen (fName.cStr) "r"
