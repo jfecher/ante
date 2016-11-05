@@ -145,7 +145,7 @@ bool isUnsignedTypeTag(const TypeTag tt){
 
 
 TypedValue* IntLitNode::compile(Compiler *c){
-    return new TypedValue(ConstantInt::get(getGlobalContext(),
+    return new TypedValue(ConstantInt::get(c->ctxt,
                             APInt(getBitWidthOfTypeTag(type), 
                             atol(val.c_str()), isUnsignedTypeTag(type))), mkAnonTypeNode(type));
 }
@@ -161,12 +161,12 @@ const fltSemantics& typeTagToFltSemantics(TypeTag tokTy){
 }
 
 TypedValue* FltLitNode::compile(Compiler *c){
-    return new TypedValue(ConstantFP::get(getGlobalContext(), APFloat(typeTagToFltSemantics(type), val.c_str())), mkAnonTypeNode(type));
+    return new TypedValue(ConstantFP::get(c->ctxt, APFloat(typeTagToFltSemantics(type), val.c_str())), mkAnonTypeNode(type));
 }
 
 
 TypedValue* BoolLitNode::compile(Compiler *c){
-    return new TypedValue(ConstantInt::get(getGlobalContext(), APInt(1, (bool)val, true)), mkAnonTypeNode(TT_Bool));
+    return new TypedValue(ConstantInt::get(c->ctxt, APInt(1, (bool)val, true)), mkAnonTypeNode(TT_Bool));
 }
 
 
@@ -184,7 +184,7 @@ TypedValue* TypeNode::compile(Compiler *c){
         auto *unionDataTy = c->lookupType(dataTy->getParentUnionName());
         if(!unionDataTy) return 0;
 
-        Value *tag = ConstantInt::get(getGlobalContext(), APInt(8, unionDataTy->getTagVal(typeName), true));
+        Value *tag = ConstantInt::get(c->ctxt, APInt(8, unionDataTy->getTagVal(typeName), true));
         auto *ty = deepCopyTypeNode(unionDataTy->tyn.get());
 
         Type *unionTy = c->typeNodeToLlvmType(ty);
@@ -298,8 +298,8 @@ TypedValue* StrLitNode::compile(Compiler *c){
 
     auto *ptr = c->builder.CreateGlobalStringPtr(val);
 
-    auto* tupleTy = StructType::get(getGlobalContext(), {Type::getInt8PtrTy(getGlobalContext()), Type::getInt32Ty(getGlobalContext())});
-    Constant* strarr[] = {UndefValue::get(Type::getInt8PtrTy(getGlobalContext())), ConstantInt::get(getGlobalContext(), APInt(8, val.length(), true))};
+    auto* tupleTy = StructType::get(c->ctxt, {Type::getInt8PtrTy(c->ctxt), Type::getInt32Ty(c->ctxt)});
+    Constant* strarr[] = {UndefValue::get(Type::getInt8PtrTy(c->ctxt)), ConstantInt::get(c->ctxt, APInt(8, val.length(), true))};
 
     auto *uninitStr = ConstantStruct::get(tupleTy, strarr);
     auto *str = c->builder.CreateInsertValue(uninitStr, ptr, 0);
@@ -308,7 +308,7 @@ TypedValue* StrLitNode::compile(Compiler *c){
 }
 
 TypedValue* CharLitNode::compile(Compiler *c){
-    return new TypedValue(ConstantInt::get(getGlobalContext(), APInt(8, val, true)), mkAnonTypeNode(TT_C8));
+    return new TypedValue(ConstantInt::get(c->ctxt, APInt(8, val, true)), mkAnonTypeNode(TT_C8));
 }
 
 
@@ -332,7 +332,7 @@ TypedValue* ArrayNode::compile(Compiler *c){
 TypedValue* Compiler::getVoidLiteral(){
     vector<Constant*> elems;
     vector<Type*> elemTys;
-    Value* tuple = ConstantStruct::get(StructType::get(getGlobalContext(), elemTys), elems);
+    Value* tuple = ConstantStruct::get(StructType::get(ctxt, elemTys), elems);
     return new TypedValue(tuple, mkAnonTypeNode(TT_Void));
 }
 
@@ -374,7 +374,7 @@ TypedValue* TupleNode::compile(Compiler *c){
     }
 
     //Create the constant tuple with undef values in place for the non-constant values
-    Value* tuple = ConstantStruct::get(StructType::get(getGlobalContext(), elemTys), elems);
+    Value* tuple = ConstantStruct::get(StructType::get(c->ctxt, elemTys), elems);
 
     //Insert each pathogen value into the tuple individually
     for(auto it = pathogenVals.cbegin(); it != pathogenVals.cend(); it++){
@@ -431,9 +431,9 @@ TypedValue* ImportNode::compile(Compiler *c){
 
 TypedValue* WhileNode::compile(Compiler *c){
     Function *f = c->builder.GetInsertBlock()->getParent();
-    BasicBlock *cond  = BasicBlock::Create(getGlobalContext(), "while_cond", f);
-    BasicBlock *begin = BasicBlock::Create(getGlobalContext(), "while", f);
-    BasicBlock *end   = BasicBlock::Create(getGlobalContext(), "end_while", f);
+    BasicBlock *cond  = BasicBlock::Create(c->ctxt, "while_cond", f);
+    BasicBlock *begin = BasicBlock::Create(c->ctxt, "while", f);
+    BasicBlock *end   = BasicBlock::Create(c->ctxt, "end_while", f);
 
     c->builder.CreateBr(cond);
     c->builder.SetInsertPoint(cond);
@@ -456,9 +456,9 @@ TypedValue* ForNode::compile(Compiler *c){
     assert(false && "For loops are still unimplemented.");
 
     Function *f = c->builder.GetInsertBlock()->getParent();
-    BasicBlock *cond  = BasicBlock::Create(getGlobalContext(), "for_cond", f);
-    BasicBlock *begin = BasicBlock::Create(getGlobalContext(), "for", f);
-    BasicBlock *end   = BasicBlock::Create(getGlobalContext(), "end_for", f);
+    BasicBlock *cond  = BasicBlock::Create(c->ctxt, "for_cond", f);
+    BasicBlock *begin = BasicBlock::Create(c->ctxt, "for", f);
+    BasicBlock *end   = BasicBlock::Create(c->ctxt, "end_for", f);
 
     c->builder.CreateBr(cond);
     c->builder.SetInsertPoint(cond);
@@ -717,14 +717,14 @@ vector<Type*> getParamTypes(Compiler *c, NamedValNode *nvn, size_t paramCount){
 
 
 TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector<Type*> &paramTys, unsigned int scope){
-    FunctionType *preFnTy = FunctionType::get(Type::getVoidTy(getGlobalContext()), paramTys, fdn->varargs);
+    FunctionType *preFnTy = FunctionType::get(Type::getVoidTy(ctxt), paramTys, fdn->varargs);
 
     //preFn is the predecessor to fn because we do not yet know its return type, so its body must be compiled,
     //then the type must be checked and the new function with correct return type created, and their bodies swapped.
     Function *preFn = Function::Create(preFnTy, Function::ExternalLinkage, "__lambda_pre__", module.get());
 
     //Create the entry point for the function
-    BasicBlock *entry = BasicBlock::Create(getGlobalContext(), "entry", preFn);
+    BasicBlock *entry = BasicBlock::Create(ctxt, "entry", preFn);
     builder.SetInsertPoint(entry);
  
     TypeNode *fnTyn = mkAnonTypeNode(TT_Function);
@@ -855,7 +855,7 @@ TypedValue* compPreProcFn(Compiler *c, FuncDeclNode *fdn, unsigned int scope, Pr
             auto *mod = c->module.get();
             c->module.release();
 
-            c->module.reset(new Module(fdn->name, getGlobalContext()));
+            c->module.reset(new Module(fdn->name, c->ctxt));
             auto *recomp = c->compFn(fdn, scope);
 
             c->jitFunction((Function*)recomp->val);
@@ -917,7 +917,7 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
     //If the function is a definition, then the body will be compiled here.
     if(fdn->child){
         //Create the entry point for the function
-        BasicBlock *bb = BasicBlock::Create(getGlobalContext(), "entry", f);
+        BasicBlock *bb = BasicBlock::Create(ctxt, "entry", f);
         builder.SetInsertPoint(bb);
 
         //tell the compiler to create a new scope on the stack.
@@ -1149,13 +1149,13 @@ TypedValue* MatchNode::compile(Compiler *c){
     Function *f = c->builder.GetInsertBlock()->getParent();
     auto *matchbb = c->builder.GetInsertBlock();
 
-    auto *end = BasicBlock::Create(getGlobalContext(), "end_match");
+    auto *end = BasicBlock::Create(c->ctxt, "end_match");
     auto *match = c->builder.CreateSwitch(switchVal, end, branches.size());
     vector<pair<BasicBlock*,TypedValue*>> merges;
 
     for(auto *mbn : branches){
         ConstantInt *ci = nullptr;
-        auto *br = BasicBlock::Create(getGlobalContext(), "br", f);
+        auto *br = BasicBlock::Create(c->ctxt, "br", f);
         c->builder.SetInsertPoint(br);
 
         //TypeCast-esque pattern:  Maybe n
@@ -1168,7 +1168,7 @@ TypedValue* MatchNode::compile(Compiler *c){
                 return c->compErr(typeNodeToStr(tn->typeExpr.get()) + " must be a union tag to be used in a pattern", tn->typeExpr->loc);
 
             auto *parentTy = c->lookupType(tagTy->getParentUnionName());
-            ci = ConstantInt::get(getGlobalContext(), APInt(8, parentTy->getTagVal(tn->typeExpr->typeName), true));
+            ci = ConstantInt::get(c->ctxt, APInt(8, parentTy->getTagVal(tn->typeExpr->typeName), true));
 
             
             if(VarNode *v = dynamic_cast<VarNode*>(tn->rval.get())){
@@ -1176,7 +1176,7 @@ TypedValue* MatchNode::compile(Compiler *c){
                 c->builder.CreateStore(lval->val, alloca);
 
                 //cast it from (<tag type>, <largest union member type>) to (<tag type>, <this union member's type>)
-                auto *tupTy = StructType::get(getGlobalContext(), {Type::getInt8Ty(getGlobalContext()), c->typeNodeToLlvmType(tagTy->tyn.get())});
+                auto *tupTy = StructType::get(c->ctxt, {Type::getInt8Ty(c->ctxt), c->typeNodeToLlvmType(tagTy->tyn.get())});
 
                 auto *cast = c->builder.CreateBitCast(alloca, tupTy->getPointerTo());
                 auto *tup = c->builder.CreateLoad(cast);
@@ -1196,7 +1196,7 @@ TypedValue* MatchNode::compile(Compiler *c){
                 return c->compErr(typeNodeToStr(tn) + " must be a union tag to be used in a pattern", tn->loc);
 
             auto *parentTy = c->lookupType(tagTy->getParentUnionName());
-            ci = ConstantInt::get(getGlobalContext(), APInt(8, parentTy->getTagVal(tn->typeName), true));
+            ci = ConstantInt::get(c->ctxt, APInt(8, parentTy->getTagVal(tn->typeName), true));
 
         //variable/match-all pattern: _
         }else if(VarNode *vn = dynamic_cast<VarNode*>(mbn->pattern.get())){
@@ -1455,14 +1455,14 @@ void Compiler::eval(){
 
 void Compiler::compile(){
     //get or create the function type for the main method: void()
-    FunctionType *ft = FunctionType::get(Type::getInt8Ty(getGlobalContext()), false);
+    FunctionType *ft = FunctionType::get(Type::getInt8Ty(ctxt), false);
     
     //Actually create the function in module m
     string fnName = isLib ? "init_" + removeFileExt(fileName) : "main";
     Function *main = Function::Create(ft, Function::ExternalLinkage, fnName, module.get());
 
     //Create the entry point for the function
-    BasicBlock *bb = BasicBlock::Create(getGlobalContext(), "entry", main);
+    BasicBlock *bb = BasicBlock::Create(ctxt, "entry", main);
     builder.SetInsertPoint(bb);
     
     compilePrelude();
@@ -1473,7 +1473,7 @@ void Compiler::compile(){
     exitScope();
 
     //builder should already be at end of main function
-    builder.CreateRet(ConstantInt::get(getGlobalContext(), APInt(8, 0, true)));
+    builder.CreateRet(ConstantInt::get(ctxt, APInt(8, 0, true)));
     
     passManager->run(*main);
 
@@ -1536,7 +1536,7 @@ TargetMachine* getTargetMachine(){
     string triple = Triple(AN_NATIVE_ARCH, AN_NATIVE_VENDOR, AN_NATIVE_OS).getTriple();
     TargetOptions op;
     
-    TargetMachine *tm = target->createTargetMachine(triple, cpu, features, op, Reloc::Model::Default, 
+    TargetMachine *tm = target->createTargetMachine(triple, cpu, features, op, Reloc::Model::Static, 
             CodeModel::Default, CodeGenOpt::Level::Aggressive);
 
     if(!tm){
@@ -1691,7 +1691,8 @@ inline void Compiler::stoType(DataType *ty, string &typeName){
 }
 
 Compiler::Compiler(const char *_fileName, bool lib) :
-        builder(getGlobalContext()), 
+        ctxt(),
+        builder(ctxt), 
         errFlag(false),
         compiled(false),
         isLib(lib),
@@ -1717,13 +1718,13 @@ Compiler::Compiler(const char *_fileName, bool lib) :
     enterNewScope();
 
     ast.reset(parser::getRootNode());
-    module.reset(new Module(removeFileExt(fileName.c_str()), getGlobalContext()));
+    module.reset(new Module(removeFileExt(fileName.c_str()), ctxt));
 
     //add passes to passmanager.
     //TODO: change passes based on -O0 through -O3 flags
     passManager.reset(new legacy::FunctionPassManager(module.get()));
     //passManager->add(createBasicAliasAnalysisPass());
-    passManager->add(createGVNPass());
+    //passManager->add(createGVNPass());
     passManager->add(createCFGSimplificationPass());
     passManager->add(createTailCallEliminationPass());
     passManager->add(createPromoteMemoryToRegisterPass());

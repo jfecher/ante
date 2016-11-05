@@ -64,7 +64,7 @@ TypedValue* Compiler::implicitlyWidenNum(TypedValue *num, TypeTag castTy){
 
         int lbw = getBitWidthOfTypeTag(num->type->type);
         int rbw = getBitWidthOfTypeTag(castTy);
-        Type *ty = typeTagToLlvmType(castTy, "");
+        Type *ty = typeTagToLlvmType(castTy, ctxt);
 
         //integer widening
         if(lIsInt && rIsInt){
@@ -218,21 +218,21 @@ void Compiler::handleImplicitConversion(TypedValue **lhs, TypedValue **rhs){
  *  information stored in a TypeTag to convert to array, tuple,
  *  or function types.
  */
-Type* typeTagToLlvmType(TypeTag ty, string typeName = ""){
+Type* typeTagToLlvmType(TypeTag ty, LLVMContext &ctxt, string typeName){
     switch(ty){
-        case TT_I8:  case TT_U8:  return Type::getInt8Ty(getGlobalContext());
-        case TT_I16: case TT_U16: return Type::getInt16Ty(getGlobalContext());
-        case TT_I32: case TT_U32: return Type::getInt32Ty(getGlobalContext());
-        case TT_I64: case TT_U64: return Type::getInt64Ty(getGlobalContext());
-        case TT_Isz:    return Type::getVoidTy(getGlobalContext()); //TODO: implement
-        case TT_Usz:    return Type::getVoidTy(getGlobalContext()); //TODO: implement
-        case TT_F16:    return Type::getHalfTy(getGlobalContext());
-        case TT_F32:    return Type::getFloatTy(getGlobalContext());
-        case TT_F64:    return Type::getDoubleTy(getGlobalContext());
-        case TT_C8:     return Type::getInt8Ty(getGlobalContext());
-        case TT_C32:    return Type::getInt32Ty(getGlobalContext());
-        case TT_Bool:   return Type::getInt1Ty(getGlobalContext());
-        case TT_Void:   return Type::getVoidTy(getGlobalContext());
+        case TT_I8:  case TT_U8:  return Type::getInt8Ty(ctxt);
+        case TT_I16: case TT_U16: return Type::getInt16Ty(ctxt);
+        case TT_I32: case TT_U32: return Type::getInt32Ty(ctxt);
+        case TT_I64: case TT_U64: return Type::getInt64Ty(ctxt);
+        case TT_Isz:    return Type::getVoidTy(ctxt); //TODO: implement
+        case TT_Usz:    return Type::getVoidTy(ctxt); //TODO: implement
+        case TT_F16:    return Type::getHalfTy(ctxt);
+        case TT_F32:    return Type::getFloatTy(ctxt);
+        case TT_F64:    return Type::getDoubleTy(ctxt);
+        case TT_C8:     return Type::getInt8Ty(ctxt);
+        case TT_C32:    return Type::getInt32Ty(ctxt);
+        case TT_Bool:   return Type::getInt1Ty(ctxt);
+        case TT_Void:   return Type::getVoidTy(ctxt);
         default:
             cerr << "typeTagToLlvmType: Unknown/Unsupported TypeTag " << ty << ", returning nullptr.\n";
             return nullptr;
@@ -279,7 +279,7 @@ Type* Compiler::typeNodeToLlvmType(TypeNode *tyNode){
         case TT_Ptr:
             return tyn->type != TT_Void ?
                 PointerType::get(typeNodeToLlvmType(tyn), 0)
-                : Type::getInt8Ty(getGlobalContext())->getPointerTo();
+                : Type::getInt8Ty(ctxt)->getPointerTo();
         case TT_Array:
             return PointerType::get(typeNodeToLlvmType(tyn), 0);
         case TT_Tuple:
@@ -287,7 +287,7 @@ Type* Compiler::typeNodeToLlvmType(TypeNode *tyNode){
                 tys.push_back(typeNodeToLlvmType(tyn));
                 tyn = (TypeNode*)tyn->next.get();
             }
-            return StructType::get(getGlobalContext(), tys);
+            return StructType::get(ctxt, tys);
         case TT_Data:
             userType = lookupType(tyNode->typeName);
             if(!userType)
@@ -297,7 +297,7 @@ Type* Compiler::typeNodeToLlvmType(TypeNode *tyNode){
             return typeNodeToLlvmType(userType->tyn.get());
         case TT_Function: //TODO function pointer type
             cout << "typeNodeToLlvmType: Function pointer types are currently unimplemented.  A void type will be returned instead.\n";
-            return Type::getVoidTy(getGlobalContext());
+            return Type::getVoidTy(ctxt);
         case TT_TaggedUnion:
             userType = lookupType(tyNode->typeName);
             if(!userType)
@@ -308,9 +308,9 @@ Type* Compiler::typeNodeToLlvmType(TypeNode *tyNode){
                 tys.push_back(typeNodeToLlvmType(tyn));
                 tyn = (TypeNode*)tyn->next.get();
             }
-            return StructType::get(getGlobalContext(), tys);
+            return StructType::get(ctxt, tys);
         default:
-            return typeTagToLlvmType(tyNode->type);
+            return typeTagToLlvmType(tyNode->type, ctxt);
     }
 }
 
@@ -330,9 +330,8 @@ bool llvmTypeEq(Type *l, Type *r){
     if(ltt == TT_Ptr){
         Type *lty = l->getPointerElementType();
         Type *rty = r->getPointerElementType();
-        Type *vty = Type::getVoidTy(getGlobalContext());
 
-        if(lty == vty || rty == vty) return true;
+        if(lty->isVoidTy() || rty->isVoidTy()) return true;
 
         return llvmTypeEq(lty, rty);
     }else if(ltt == TT_Array){

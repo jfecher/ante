@@ -127,7 +127,7 @@ TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
                 Value *arr = static_cast<LoadInst*>(l->val)->getPointerOperand();
             
                 vector<Value*> indices;
-                indices.push_back(ConstantInt::get(getGlobalContext(), APInt(64, 0, true)));
+                indices.push_back(ConstantInt::get(ctxt, APInt(64, 0, true)));
                 indices.push_back(r->val);
                 return new TypedValue(builder.CreateLoad(builder.CreateGEP(arr, indices)), l->type->extTy.get());
             }
@@ -193,7 +193,7 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
                 dest = builder.CreateInBoundsGEP(tmp->getType()->getPointerElementType(), tmp->val, index->val);
             }else{
                 vector<Value*> indices;
-                indices.push_back(ConstantInt::get(getGlobalContext(), APInt(64, 0, true)));
+                indices.push_back(ConstantInt::get(ctxt, APInt(64, 0, true)));
                 indices.push_back(index->val);
                 dest = builder.CreateGEP(var, indices);
             }
@@ -296,18 +296,18 @@ TypedValue* createCast(Compiler *c, Type *castTy, TypeNode *tyn, TypedValue *val
             Type *variantTy = c->typeNodeToLlvmType(valToCast->type.get());
 
             vector<Type*> unionTys;
-            unionTys.push_back(Type::getInt8Ty(getGlobalContext()));
+            unionTys.push_back(Type::getInt8Ty(c->ctxt));
             unionTys.push_back(variantTy);
 
             vector<Constant*> unionVals;
-            unionVals.push_back(ConstantInt::get(getGlobalContext(), APInt(8, t, true))); //tag
+            unionVals.push_back(ConstantInt::get(c->ctxt, APInt(8, t, true))); //tag
             unionVals.push_back(UndefValue::get(variantTy));
 
 
             Type *unionTy = c->typeNodeToLlvmType(unionDataTy->tyn.get());
 
             //create a struct of (u8 tag, <union member type>)
-            auto *uninitUnion = ConstantStruct::get(StructType::get(getGlobalContext(), unionTys), unionVals);
+            auto *uninitUnion = ConstantStruct::get(StructType::get(c->ctxt, unionTys), unionVals);
             auto* taggedUnion = c->builder.CreateInsertValue(uninitUnion, valToCast->val, 1);
 
             //allocate for the largest possible union member
@@ -361,14 +361,14 @@ TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Ty
     Function *f = c->builder.GetInsertBlock()->getParent();
     auto &blocks = f->getBasicBlockList();
 
-    auto *thenbb = BasicBlock::Create(getGlobalContext(), "then");
+    auto *thenbb = BasicBlock::Create(c->ctxt, "then");
    
     //only create the else block if this ifNode actually has an else clause
     BasicBlock *elsebb;
     
     if(ifn->elseN){
         if(dynamic_cast<IfNode*>(ifn->elseN.get())){
-            elsebb = BasicBlock::Create(getGlobalContext(), "else");
+            elsebb = BasicBlock::Create(c->ctxt, "else");
             c->builder.CreateCondBr(cond->val, thenbb, elsebb);
     
             blocks.push_back(thenbb);
@@ -385,7 +385,7 @@ TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Ty
             c->builder.SetInsertPoint(elsebb);
             return compIf(c, (IfNode*)ifn->elseN.get(), mergebb, branches);
         }else{
-            elsebb = BasicBlock::Create(getGlobalContext(), "else");
+            elsebb = BasicBlock::Create(c->ctxt, "else");
             c->builder.CreateCondBr(cond->val, thenbb, elsebb);
 
             blocks.push_back(thenbb);
@@ -450,7 +450,7 @@ TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Ty
 
 TypedValue* IfNode::compile(Compiler *c){
     auto branches = vector<pair<TypedValue*,BasicBlock*>>();
-    auto *mergebb = BasicBlock::Create(getGlobalContext(), "endif");
+    auto *mergebb = BasicBlock::Create(c->ctxt, "endif");
     return compIf(c, this, mergebb, branches);
 }
 
@@ -701,8 +701,8 @@ TypedValue* Compiler::compLogicalOr(Node *lexpr, Node *rexpr, BinOpNode *op){
     auto *lhs = lexpr->compile(this);
 
     auto *curbbl = builder.GetInsertBlock();
-    auto *orbb = BasicBlock::Create(getGlobalContext(), "or");
-    auto *mergebb = BasicBlock::Create(getGlobalContext(), "merge");
+    auto *orbb = BasicBlock::Create(ctxt, "or");
+    auto *mergebb = BasicBlock::Create(ctxt, "merge");
 
     builder.CreateCondBr(lhs->val, mergebb, orbb);
     blocks.push_back(orbb);
@@ -724,7 +724,7 @@ TypedValue* Compiler::compLogicalOr(Node *lexpr, Node *rexpr, BinOpNode *op){
     auto *phi = builder.CreatePHI(rhs->getType(), 2);
    
     //short circuit, returning true if return from the first label
-    phi->addIncoming(ConstantInt::get(getGlobalContext(), APInt(1, true, true)), curbbl);
+    phi->addIncoming(ConstantInt::get(ctxt, APInt(1, true, true)), curbbl);
     phi->addIncoming(rhs->val, curbbr);
 
     return new TypedValue(phi, rhs->type);
@@ -738,8 +738,8 @@ TypedValue* Compiler::compLogicalAnd(Node *lexpr, Node *rexpr, BinOpNode *op){
     auto *lhs = lexpr->compile(this);
 
     auto *curbbl = builder.GetInsertBlock();
-    auto *andbb = BasicBlock::Create(getGlobalContext(), "and");
-    auto *mergebb = BasicBlock::Create(getGlobalContext(), "merge");
+    auto *andbb = BasicBlock::Create(ctxt, "and");
+    auto *mergebb = BasicBlock::Create(ctxt, "merge");
 
     builder.CreateCondBr(lhs->val, andbb, mergebb);
     blocks.push_back(andbb);
@@ -761,7 +761,7 @@ TypedValue* Compiler::compLogicalAnd(Node *lexpr, Node *rexpr, BinOpNode *op){
     auto *phi = builder.CreatePHI(rhs->getType(), 2);
    
     //short circuit, returning false if return from the first label
-    phi->addIncoming(ConstantInt::get(getGlobalContext(), APInt(1, false, true)), curbbl);
+    phi->addIncoming(ConstantInt::get(ctxt, APInt(1, false, true)), curbbl);
     phi->addIncoming(rhs->val, curbbr);
 
     return new TypedValue(phi, rhs->type);
@@ -969,7 +969,7 @@ TypedValue* UnOpNode::compile(Compiler *c){
 
                 unsigned size = getSizeInBits(c, rhs->type.get()) / 8;
 
-                Value *sizeVal = ConstantInt::get(getGlobalContext(), APInt(32, size, true));
+                Value *sizeVal = ConstantInt::get(c->ctxt, APInt(32, size, true));
 
                 Value *voidPtr = c->builder.CreateCall(mallocFn, sizeVal);
                 Type *ptrTy = rhs->getType()->getPointerTo();

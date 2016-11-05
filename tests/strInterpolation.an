@@ -2,3 +2,10 @@
 let f = "friend"
 
 print "Hello, ${f}!"
+
+
+fun getMyString := "my string"
+
+print "Hello, ${getMyString()}!"
+
+print( "Hello, " ++ getMyString() ++ "!")

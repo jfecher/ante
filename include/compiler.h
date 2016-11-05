@@ -5,6 +5,7 @@
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Module.h>
+#include <llvm/IR/LLVMContext.h>
 #include <llvm/ExecutionEngine/MCJIT.h>
 #include <llvm/ExecutionEngine/ExecutionEngine.h>
 #include <memory>
@@ -119,6 +120,7 @@ namespace yy{ class location; }
 
 namespace ante{
     struct Compiler {
+        LLVMContext ctxt;
         unique_ptr<ExecutionEngine> jit;
         unique_ptr<legacy::FunctionPassManager> passManager;
         unique_ptr<Module> module;
@@ -196,7 +198,7 @@ namespace ante{
         
         int compileIRtoObj(string outFile);
 
-        static TypedValue* getVoidLiteral();
+        TypedValue* getVoidLiteral();
         static int linkObj(string inFiles, string outFile);
     };
 }
@@ -205,7 +207,7 @@ size_t getTupleSize(Node *tup);
 string mangle(string &base, TypeNode *paramTys);
 
 //conversions
-Type* typeTagToLlvmType(TypeTag tagTy, string typeName);
+Type* typeTagToLlvmType(TypeTag tagTy, LLVMContext &c, string typeName = "");
 TypeTag llvmTypeToTypeTag(Type *t);
 string llvmTypeToStr(Type *ty);
 string typeTagToStr(TypeTag ty);
