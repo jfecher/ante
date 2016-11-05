@@ -150,7 +150,7 @@ let l = List(0..100):filter(_ % 7 == 0)
 
 
 ## Installation
-1. Make sure to have `llvm` version >= 3.6 installed.  To check which version you have, run `$ lli --version`.  To install llvm, install the `llvm` package on your distro's package manager, eg. for Ubuntu: `$ sudo apt-get install llvm`
+1. Make sure to have `llvm` version >= 3.9 installed.  To check which version you have, run `$ lli --version`.  To install llvm, install the `llvm` package on your distro's package manager, eg. for Ubuntu: `$ sudo apt-get install llvm`
 
 2. Run `$ git clone https://github.com/jfecher/ante.git`
 
