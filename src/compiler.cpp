@@ -249,7 +249,7 @@ TypedValue* compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
     //now that the string is separated, begin interpolation preparation
     
     //lex and parse
-    setLexer(new Lexer(m, sln->loc.begin.filename->c_str()));
+    setLexer(new Lexer(m, sln->loc.begin.filename->c_str(), sln->loc.begin.line-1, sln->loc.begin.column + pos));
     yy::parser p{};
     int flag = p.parse();
     if(flag != PE_OK){ //parsing error, cannot procede
@@ -260,6 +260,7 @@ TypedValue* compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
     //and compile
     Node *expr = parser::getRootNode();
     auto *val = expr->compile(c);
+    if(!val) return 0;
 
     //if the expr is not already a string type, cast it to one
     if(val->type->typeName != "Str"){

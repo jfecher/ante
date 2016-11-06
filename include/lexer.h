@@ -19,7 +19,7 @@ struct Node;
 #define IS_ALPHANUM(c)   (IS_NUMERICAL(c) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c == 95)
 #define IS_WHITESPACE(c) (c == ' ' || c == '\t' || c == '\n' || c == 13) // || c == 130
 
-#define RETURN_PAIR(t) {incPos(2); loc->end = yy::position(fName, row, col); return (t);}
+#define RETURN_PAIR(t) {incPos(2); loc->end = getPos(); return (t);}
 
 namespace ante{
     /* Defined in src/compiler.cpp */
@@ -31,7 +31,7 @@ namespace ante{
         const char* fileName;
         
         Lexer(const char *fileName);
-        Lexer(string& pseudoFile, const char *fileName);
+        Lexer(string& pseudoFile, const char *fileName, unsigned int rowOffset, unsigned int colOffset);
         ~Lexer();
         int next(yy::parser::location_type* yyloc);
         char peek() const;
@@ -50,6 +50,10 @@ namespace ante{
 
         /* Row and column number */
         unsigned int row, col;
+
+        /* Offset given if lexer starts in the middle of a file */
+        /* Used when lexing string interpolations */
+        const unsigned int rowOffset, colOffset;
         
         /* Current and next characters */
         char cur, nxt;
@@ -78,6 +82,7 @@ namespace ante{
         
         void incPos(void);
         void incPos(int end);
+        yy::position getPos(bool inclusiveEnd = true) const;
         
         void setlextxt(string *str);
         int handleComment(yy::parser::location_type* loc);
