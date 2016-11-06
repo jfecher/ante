@@ -34,7 +34,6 @@ void skipToCoords(istream& ifs, unsigned int row, unsigned int col){
             if(c == '\n'){
                 line++;
                 if(line >= row){
-                    c = 0;
                     break;
                 }
             }else if(c == EOF){
@@ -268,8 +267,12 @@ TypedValue* compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
         str_ty->typeName = "Str";
         auto *fn = c->getCastFn(val->type.get(), str_ty);
 
-        if(!fn) return c->compErr("Cannot cast " + typeNodeToStr(val->type.get())
+        if(!fn){
+            delete ls;
+            delete rs;
+            return c->compErr("Cannot cast " + typeNodeToStr(val->type.get())
                 + " to Str for string interpolation.", sln->loc);
+        }
 
         val = new TypedValue(c->builder.CreateCall(fn->val, val->val), str_ty);
     }
@@ -282,9 +285,20 @@ TypedValue* compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
     if(!fn) return c->compErr("++ overload for Str and Str not found while performing Str interpolation.  The prelude may not be imported correctly.", sln->loc);
 
     //call the ++ function to combine the three strings
-    auto *appendL = c->builder.CreateCall(fn->val, {ls->compile(c)->val, val->val});
-    auto *appendR = c->builder.CreateCall(fn->val, {appendL, rs->compile(c)->val});
-    return new TypedValue(appendR, deepCopyTypeNode(val->type.get()));
+    auto *lstr = ls->compile(c);
+    auto *appendL = c->builder.CreateCall(fn->val, {lstr->val, val->val});
+
+    auto *rstr = rs->compile(c);
+    auto *appendR = c->builder.CreateCall(fn->val, {appendL, rstr->val});
+
+    //create the returning typenode
+    auto *strty = mkAnonTypeNode(TT_Data);
+    strty->typeName = "Str";
+
+    delete lstr;
+    delete rstr;
+    delete val;
+    return new TypedValue(appendR, strty);
 }
 
 
@@ -330,10 +344,7 @@ TypedValue* ArrayNode::compile(Compiler *c){
 }
 
 TypedValue* Compiler::getVoidLiteral(){
-    vector<Constant*> elems;
-    vector<Type*> elemTys;
-    Value* tuple = ConstantStruct::get(StructType::get(ctxt, elemTys), elems);
-    return new TypedValue(tuple, mkAnonTypeNode(TT_Void));
+    return new TypedValue(nullptr, mkAnonTypeNode(TT_Void));
 }
 
 TypedValue* TupleNode::compile(Compiler *c){
@@ -754,8 +765,9 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
     }
     
     //store a fake function var, in case this function is recursive
-    auto *fakeFnTv = new TypedValue(preFn, fnTyn);
-    updateFn(fakeFnTv, fdn->basename, fdn->name);
+    auto *fakeFnTv = new TypedValue(preFn, deepCopyTypeNode(fnTyn));
+    if(fdn->name.length() > 0)
+        updateFn(fakeFnTv, fdn->basename, fdn->name);
 
     //actually compile the function, and hold onto the last value
     TypedValue *v = fdn->child->compile(this);
@@ -807,6 +819,7 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
     if(fdn->name.length() > 0)
         updateFn(ret, fdn->basename, fdn->name);
 
+    delete fakeFnTv;
     return ret;
 }
 
@@ -951,6 +964,7 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
             }else{
                 if(*v->type.get() != *retNode){
                     builder.SetInsertPoint(caller);
+                    delete ret;
                     return compErr("Function " + fdn->name + " returned value of type " + 
                             typeNodeToStr(v->type.get()) + " but was declared to return value of type " +
                             typeNodeToStr(retNode), fdn->loc);
@@ -1469,7 +1483,7 @@ void Compiler::compile(){
     scanAllDecls();
 
     //Compile the rest of the program
-    ast->compile(this);
+    delete ast->compile(this);
     exitScope();
 
     //builder should already be at end of main function
@@ -1634,7 +1648,7 @@ inline void Compiler::enterNewScope(){
 }
 
 
-inline void Compiler::exitScope(){
+void Compiler::exitScope(){
     //iterate through all known variables, check for pointers at the end of
     //their lifetime, and insert calls to free for any that are found
     auto vtable = varTable.back().get();
