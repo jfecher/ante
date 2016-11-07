@@ -145,7 +145,7 @@ fun InFile.nextLine: InFile f -> Str
 
 
 //print string without endline
-fun print_no_endl: [c8] str
+fun printne: [c8] str
     var i = 0
     while str#i != '\0' do
         putchar (str#i)
@@ -156,7 +156,7 @@ fun input: [c8] msg -> Str
     var len = 0u32
     var cstr = [c8] c8* 0
 
-    print_no_endl msg
+    printne msg
 
     while
         let c = getchar ()

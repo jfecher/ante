@@ -74,6 +74,14 @@ let raw myPtr = malloc 10
 //strPtr is automatically freed
 free myPtr //myPtr must be manually freed
 ```
+* String interpolation
+```
+let person = "Joe"
+let age = 43
+
+print "${person} is ${age} years old."
+```
+
 * API designers given full reign to implement custom rules for their types, full access to the
 parse tree is provided, along with a quick list of the uses of the variable in question.
 * Programmers have just as much power over their program as the compiler does.  As an example,
