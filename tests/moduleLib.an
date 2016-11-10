@@ -8,7 +8,7 @@
     Alternatively, to compile as a stand-alone
     object file, compile with the -lib flag:
 
-  $ ante -o -lib tests/moduleLib.an
+  $ ante -c -lib tests/moduleLib.an
 */
 
 

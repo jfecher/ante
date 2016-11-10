@@ -12,6 +12,7 @@
 #include <map>
 #include <list>
 #include "parser.h"
+#include "args.h"
 
 using namespace llvm;
 using namespace std;
@@ -138,7 +139,7 @@ namespace ante{
         map<string, DataType*> userTypes;
 
         bool errFlag, compiled, isLib;
-        string fileName, funcPrefix;
+        string fileName, outFile, funcPrefix;
         unsigned int scope;
 
         Compiler(const char *fileName, bool lib=false);
@@ -146,13 +147,14 @@ namespace ante{
 
         void compile();
         void compileNative();
-        int  compileObj();
+        int  compileObj(string &outName);
         void compilePrelude();
         void eval();
         void emitIR();
         void enterNewScope();
         void exitScope();
         void scanAllDecls();
+        void processArgs(CompilerArgs *args, string &input);
         
         //binop functions
         TypedValue* compAdd(TypedValue *l, TypedValue *r, BinOpNode *op);

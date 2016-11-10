@@ -27,21 +27,21 @@ void parseFile(string &fileName){
     }
 }
 
+void printHelp(){
+    puts("Compile for the Ante programming language\n");
+    puts("Usage: ante [options] <inputs>");
+}
+
 int main(int argc, const char **argv){
     auto *args = parseArgs(argc, argv);
+    if(args->hasArg(Args::Help)) printHelp();
 
     for(auto input : args->inputFiles){
-        Compiler ante{input.c_str(), args->hasArg(Args::Lib)};
-        
-        if(args->hasArg(Args::Parse)) parseFile(input);
-        if(args->hasArg(Args::EmitLLVM)) ante.emitIR();
-        
-        if(args->hasArg(Args::OutputName)) ante.compileObj();
-        else ante.compileNative();
+        Compiler ante{input.c_str()};
+        if(args->hasArg(Args::Parse))
+            parseFile(input);
 
-        if(!ante.errFlag && args->hasArg(Args::CompileAndRun)){
-            system(("./" + removeFileExt(ante.fileName)).c_str());
-        }
+        ante.processArgs(args, input);
     }
     
     if(args->hasArg(Args::Eval))

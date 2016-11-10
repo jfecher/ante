@@ -825,11 +825,11 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
 }
 
 
-vector<Argument*> buildArguments(FunctionType *ft){
-    vector<Argument*> args;
+vector<llvm::Argument*> buildArguments(FunctionType *ft){
+    vector<llvm::Argument*> args;
     for(unsigned i = 0, e = ft->getNumParams(); i != e; i++){
         assert(!ft->getParamType(i)->isVoidTy() && "Cannot have void typed arguments!");
-        args.push_back(new Argument(ft->getParamType(i)));
+        args.push_back(new llvm::Argument(ft->getParamType(i)));
     }
     return args;
 }
@@ -856,7 +856,7 @@ TypeNode* createFnTyNode(NamedValNode *params, TypeNode *retTy){
  *  Handles a compiler directive (eg. ![inline]) then compiles the function fdn
  *  with either compFn or compLetBindingFn.
  */
-TypedValue* compPreProcFn(Compiler *c, FuncDeclNode *fdn, unsigned int scope, PreProcNode *ppn){
+TypedValue* compCompilerDirectiveFn(Compiler *c, FuncDeclNode *fdn, unsigned int scope, PreProcNode *ppn){
     fdn->modifiers.release();
     fdn->modifiers.reset(ppn->next.get());
     auto *fn = c->compFn(fdn, scope);
@@ -869,6 +869,17 @@ TypedValue* compPreProcFn(Compiler *c, FuncDeclNode *fdn, unsigned int scope, Pr
             auto *mod = c->module.get();
             c->module.release();
 
+            c->module.reset(new Module(fdn->name, c->ctxt));
+            auto *recomp = c->compFn(fdn, scope);
+
+            c->jitFunction((Function*)recomp->val);
+            c->module.reset(mod);
+        }else if(vn->name == "macro"){
+            auto *mod = c->module.get();
+            c->module.release();
+
+            extern void linkInCompAPI();
+            linkInCompAPI();
             c->module.reset(new Module(fdn->name, c->ctxt));
             auto *recomp = c->compFn(fdn, scope);
 
@@ -887,7 +898,7 @@ TypedValue* compPreProcFn(Compiler *c, FuncDeclNode *fdn, unsigned int scope, Pr
 TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
     BasicBlock *caller = builder.GetInsertBlock();
     if(PreProcNode *ppn = dynamic_cast<PreProcNode*>(fdn->modifiers.get())){
-        auto *ret = compPreProcFn(this, fdn, scope, ppn);
+        auto *ret = compCompilerDirectiveFn(this, fdn, scope, ppn);
         builder.SetInsertPoint(caller);
         return ret;
     }
@@ -1506,22 +1517,21 @@ void Compiler::compile(){
 void Compiler::compileNative(){
     if(!compiled) compile();
 
-    string modName = removeFileExt(fileName);
     //this file will become the obj file before linking
-    string objFile = modName + ".o";
+    string objFile = outFile + ".o";
 
     if(!compileIRtoObj(objFile)){
-        linkObj(objFile, modName);
+        linkObj(objFile, outFile);
         remove(objFile.c_str());
     }
 }
 
 //returns 0 on success
-int Compiler::compileObj(){
+int Compiler::compileObj(string &outName){
     if(!compiled) compile();
 
     string modName = removeFileExt(fileName);
-    string objFile = modName + ".o";
+    string objFile = outName.length() > 0 ? outName : modName + ".o";
 
     return compileIRtoObj(objFile);
 }
@@ -1733,7 +1743,8 @@ Compiler::Compiler(const char *_fileName, bool lib) :
     enterNewScope();
 
     ast.reset(parser::getRootNode());
-    module.reset(new Module(removeFileExt(fileName.c_str()), ctxt));
+    outFile = removeFileExt(fileName.c_str());
+    module.reset(new Module(outFile, ctxt));
 
     //add passes to passmanager.
     //TODO: change passes based on -O0 through -O3 flags
@@ -1746,6 +1757,23 @@ Compiler::Compiler(const char *_fileName, bool lib) :
     passManager->add(createInstructionCombiningPass());
     passManager->add(createReassociatePass());
     passManager->doInitialization();
+}
+
+void Compiler::processArgs(CompilerArgs *args, string &input){
+    string out = "";
+    if(auto *arg = args->getArg(Args::OutputName)){
+        outFile = arg->arg;
+        out = outFile;
+    }
+
+    if(args->hasArg(Args::EmitLLVM)) emitIR();
+    
+    if(args->hasArg(Args::CompileToObj)) compileObj(out);
+    else compileNative();
+
+    if(!errFlag && args->hasArg(Args::CompileAndRun)){
+        system(("./" + outFile).c_str());
+    }
 }
 
 Compiler::~Compiler(){

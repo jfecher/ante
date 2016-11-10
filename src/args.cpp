@@ -8,9 +8,9 @@ map<string, Args> argsMap = {
     {"-o",         Args::OutputName},
     {"-e",         Args::Eval},
     {"-p",         Args::Parse},
-    {"-c",         Args::CompileAs},
+    {"-c",         Args::CompileToObj},
     {"-r",         Args::CompileAndRun},
-    {"-h",         Args::Help},
+    {"-help",      Args::Help},
     {"-lib",       Args::Lib},
     {"-emit-llvm", Args::EmitLLVM}
 };
@@ -19,7 +19,7 @@ void CompilerArgs::addArg(Argument *a){
     args.push_back(a);
 }
     
-bool CompilerArgs::hasArg(Args a){
+bool CompilerArgs::hasArg(Args a) const{
     for(auto &arg : args)
         if(arg->argTy == a)
             return true;
@@ -27,11 +27,24 @@ bool CompilerArgs::hasArg(Args a){
     return false;
 }
 
+ante::Argument* CompilerArgs::getArg(Args a) const{
+    for(auto &arg : args)
+        if(arg->argTy == a)
+            return arg;
+    
+    return 0;
+}
+
+//returns true if there are no -<option> arguments.  Ignores filenames
+bool CompilerArgs::empty() const{
+    return args.empty();
+}
+
 
 enum ArgTy { None, Str, Int };
 
 ArgTy requiresArg(Args a){
-    if(a == OutputName || a == CompileAs)
+    if(a == OutputName)
         return ArgTy::Str;
      
     if(a == OptLvl)

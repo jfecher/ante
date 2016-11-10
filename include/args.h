@@ -11,7 +11,7 @@ namespace ante {
         OutputName,
         Eval,
         Parse,
-        CompileAs,
+        CompileToObj,
         CompileAndRun,
         Help,
         Lib,
@@ -26,11 +26,13 @@ namespace ante {
     };
 
     struct CompilerArgs {
-        vector<Argument*> args;
+        vector<ante::Argument*> args;
         vector<string> inputFiles;
 
-        void addArg(Argument *a);
-        bool hasArg(Args a);
+        void addArg(ante::Argument *a);
+        bool hasArg(ante::Args a) const;
+        ante::Argument* getArg(Args a) const;
+        bool empty() const;
     };
 
     CompilerArgs* parseArgs(int argc, const char** argv);
