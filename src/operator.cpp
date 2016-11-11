@@ -1,5 +1,6 @@
 #include "compiler.h"
 #include "tokens.h"
+#include <llvm/ExecutionEngine/GenericValue.h>
 
 
 TypedValue* Compiler::compAdd(TypedValue *l, TypedValue *r, BinOpNode *op){
@@ -572,6 +573,71 @@ TypeNode* typedValsToTypeNodes(vector<TypedValue*> &tvs){
     return first;
 }
 
+/*
+ *  Converts an llvm GenericValue to a TypedValue
+ */
+TypedValue* genericValueToTypedValue(Compiler *c, GenericValue gv){
+    
+}
+
+/*
+ *  Converts a TypedValue to an llvm GenericValue
+ *  - Assumes the Value* within the TypedValue is a Constant*
+ */
+GenericValue typedValueToGenericValue(Compiler *c, TypedValue *tv){
+    
+}
+
+
+vector<GenericValue> typedValuesToGenericValues(Compiler *c, vector<TypedValue*> &typedArgs, LOC_TY loc, string fnname){
+    vector<GenericValue> ret;
+    ret.reserve(typedArgs.size());
+
+    for(int i = 0; i < typedArgs.size(); i++){
+        auto *tv = typedArgs[i];
+
+        if(!dynamic_cast<Constant*>(tv->val)){
+            c->compErr("Parameter " + to_string(i+1) + " of metafunction " + fnname + " is not a compile time constant", loc);
+            return ret;
+        }
+        ret.push_back(typedValueToGenericValue(c, tv));
+    }
+    return ret;
+}
+    
+/*
+ *  Compile a compile-time function/macro which should not return a function call, just a compile-time constant.
+ *  Ex: A call to Ante.getAST() would be a meta function as it wouldn't make sense to get the parse tree
+ *      during runtime
+ *
+ *  - Assumes arguments are already type-checked
+ */
+TypedValue* compMetaFunction(Compiler *c, Node *lnode, TypedValue *l, vector<TypedValue*> typedArgs){
+    unique_ptr<ExecutionEngine> jit;
+    LLVMInitializeNativeTarget();
+    LLVMInitializeNativeAsmPrinter();
+
+    auto mod = unique_ptr<Module>(new Module(l->val->getName(), c->ctxt));
+
+    auto* eBuilder = new EngineBuilder(unique_ptr<Module>(mod.get()));
+
+    string err;
+    jit.reset(eBuilder->setErrorStr(&err).setEngineKind(EngineKind::JIT).create());
+    if(err.length() > 0) cerr << err << endl;
+
+    string bufName = (mod->getName() + "_tmp").str();
+
+    c->compileIRtoObj(bufName);
+    jit->addModule(move(mod));
+    jit->finalizeObject();
+    remove(bufName.c_str());
+
+    auto args = typedValuesToGenericValues(c, typedArgs, lnode->loc, mod->getName().str());
+
+    auto ret = jit->runFunction((Function*)l->val, args);
+    return genericValueToTypedValue(c, ret);
+}
+
 
 TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
     //used to type-check each parameter later
@@ -620,7 +686,7 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
     if(!tvf || !tvf->val) return 0;
 
     //make sure the l val compiles to a function
-    if(tvf->type->type != TT_Function && tvf->type->type != TT_Method)
+    if(tvf->type->type != TT_Function && tvf->type->type != TT_Method && tvf->type->type != TT_MetaFunction)
         return c->compErr("Called value is not a function or method, it is a(n) " + 
                 llvmTypeToStr(tvf->getType()), l->loc);
 
@@ -689,6 +755,10 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
         }
         paramTy = (TypeNode*)paramTy->next.get();
         i++;
+    }
+    
+    if(tvf->type->type == TT_MetaFunction){
+        return compMetaFunction(c, l, tvf, typedArgs);
     }
 
     return new TypedValue(c->builder.CreateCall(f, args), deepCopyTypeNode(tvf->type->extTy.get()));

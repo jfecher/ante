@@ -24,6 +24,7 @@ enum TypeTag{
     TT_Function,
     TT_Method,
     TT_TaggedUnion,
+    TT_MetaFunction,
     TT_Void
 };
 
