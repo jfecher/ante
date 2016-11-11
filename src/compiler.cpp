@@ -19,7 +19,6 @@
 
 using namespace llvm;
 
-
 /* 
  * Skips input in a given istream until it encounters the given coordinates,
  * with each newline signalling the end of a row.

@@ -30,7 +30,7 @@ DEPFILES := $(OBJFILES:.o=.d)
 
 ante: obj obj/parser.o $(OBJFILES)
 	@echo Linking...
-	@$(CXX) obj/parser.o $(OBJFILES) $(CPPFLAGS) $(LLVMFLAGS) -o ante
+	@$(CXX) obj/parser.o $(OBJFILES) $(CPPFLAGS) $(LLVMFLAGS) -rdynamic -o ante
 
 #export the stdlib to /usr/include/ante
 #this is the only part that requires root permissions
