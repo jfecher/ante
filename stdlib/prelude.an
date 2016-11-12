@@ -36,7 +36,7 @@ fun ftell: File f -> i64;
 fun fsetpos: File f, FilePos fp;
 fun fseek: File f, i64 offset, i32 origin;
 
-fun feof: File f -> bool;
+fun feof: InFile f -> bool;
 fun ferror: File f -> bool;
 
 
@@ -78,7 +78,7 @@ fun Str.write: Str s, OutFile f
 
 ![inline]
 fun Str: [c8] cStr -> Str
-    Str(cStr, strlen cStr)
+    Str(cStr, u32 strlen cStr)
 
 
 //overload [c8] equality operator
@@ -125,8 +125,7 @@ fun InFile.nextLine: InFile f -> Str
     var len = 0u32
     var cstr = [c8] c8* 0
 
-    if feof f then
-        return Str("", 0u32)
+    if feof f then return ""
 
     while not feof f and
         let c = fgetc f

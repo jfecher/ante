@@ -573,11 +573,49 @@ TypeNode* typedValsToTypeNodes(vector<TypedValue*> &tvs){
     return first;
 }
 
+//ante function to convert between IEEE half and IEEE single
+//since c++ does not support an IEEE half value
+extern "C" float f16ToF32_f16(GenericValue v);
+
 /*
  *  Converts an llvm GenericValue to a TypedValue
  */
-TypedValue* genericValueToTypedValue(Compiler *c, GenericValue gv){
+TypedValue* genericValueToTypedValue(Compiler *c, GenericValue gv, TypeNode *tn){
+    auto *copytn = deepCopyTypeNode(tn);
+    switch(tn->type){
+        case TT_I8:              return new TypedValue(ConstantInt::get(Type::getInt8Ty(c->ctxt),  APInt(8,  (char)gv.UIntPairVal.first,   false)), copytn);
+        case TT_I16:             return new TypedValue(ConstantInt::get(Type::getInt16Ty(c->ctxt), APInt(16, (short)gv.UIntPairVal.first,  false)), copytn);
+        case TT_I32:             return new TypedValue(ConstantInt::get(Type::getInt32Ty(c->ctxt), APInt(32, (int)gv.UIntPairVal.first,    false)), copytn);
+        case TT_I64:             return new TypedValue(ConstantInt::get(Type::getInt64Ty(c->ctxt), APInt(64, (long)gv.UIntPairVal.first,   false)), copytn);
+        case TT_U8:              return new TypedValue(ConstantInt::get(Type::getInt8Ty(c->ctxt),  APInt(8,  (char)gv.UIntPairVal.first,   true)),  copytn);
+        case TT_U16:             return new TypedValue(ConstantInt::get(Type::getInt16Ty(c->ctxt), APInt(16, (short)gv.UIntPairVal.first,  true)),  copytn);
+        case TT_U32:             return new TypedValue(ConstantInt::get(Type::getInt32Ty(c->ctxt), APInt(32, (int)gv.UIntPairVal.first,    true)),  copytn);
+        case TT_U64:             return new TypedValue(ConstantInt::get(Type::getInt64Ty(c->ctxt), APInt(64, (long)gv.UIntPairVal.first,   true)),  copytn);
+        case TT_Isz:             return new TypedValue(ConstantInt::get(Type::getInt64Ty(c->ctxt), APInt(64, (long)gv.UIntPairVal.first,   false)), copytn);
+        case TT_Usz:             return new TypedValue(ConstantInt::get(Type::getInt64Ty(c->ctxt), APInt(64, (long)gv.UIntPairVal.first,   true)),  copytn);
+        case TT_C8:              return new TypedValue(ConstantInt::get(Type::getInt8Ty(c->ctxt),  APInt(8,  (char)gv.UIntPairVal.first,   true)),  copytn);
+        case TT_C32:             return new TypedValue(ConstantInt::get(Type::getInt8Ty(c->ctxt),  APInt(8,  (char)gv.UIntPairVal.first,   true)),  copytn);
+        case TT_F16:             return new TypedValue(ConstantFP::get(c->ctxt, APFloat(/*f16ToF32_f16(*/gv.FloatVal/*)*/)), copytn);
+        case TT_F32:             return new TypedValue(ConstantFP::get(c->ctxt, APFloat(gv.FloatVal)), copytn);
+        case TT_F64:             return new TypedValue(ConstantFP::get(c->ctxt, APFloat(gv.DoubleVal)), copytn);
+        case TT_Bool:            return new TypedValue(ConstantInt::get(Type::getInt1Ty(c->ctxt), APInt(1, gv.Untyped[0], true)), copytn);
+        case TT_StrLit:
+        case TT_Tuple:
+        case TT_Array:
+        case TT_Ptr:
+        case TT_Data:
+        case TT_TypeVar:
+        case TT_Function:
+        case TT_Method:
+        case TT_TaggedUnion:
+        case TT_MetaFunction:
+        case TT_Void:
+            return c->getVoidLiteral();
+    }
     
+    c->errFlag = true;
+    cerr << "genericValueToTypedValue: Unknown TypeTag " << typeTagToStr(tn->type) << endl;
+    return 0;
 }
 
 /*
@@ -593,7 +631,7 @@ vector<GenericValue> typedValuesToGenericValues(Compiler *c, vector<TypedValue*>
     vector<GenericValue> ret;
     ret.reserve(typedArgs.size());
 
-    for(int i = 0; i < typedArgs.size(); i++){
+    for(size_t i = 0; i < typedArgs.size(); i++){
         auto *tv = typedArgs[i];
 
         if(!dynamic_cast<Constant*>(tv->val)){
@@ -635,7 +673,7 @@ TypedValue* compMetaFunction(Compiler *c, Node *lnode, TypedValue *l, vector<Typ
     auto args = typedValuesToGenericValues(c, typedArgs, lnode->loc, mod->getName().str());
 
     auto ret = jit->runFunction((Function*)l->val, args);
-    return genericValueToTypedValue(c, ret);
+    return genericValueToTypedValue(c, ret, l->type->extTy.get());
 }
 
 

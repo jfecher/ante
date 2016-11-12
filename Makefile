@@ -20,6 +20,9 @@ SRCFILES := $(shell find $(SRCDIRS) -type f -name "*.cpp")
 
 OBJFILES := $(patsubst src/%.cpp,obj/%.o,$(SRCFILES))
 
+ANSRCFILES := $(shell find $(SRCDIRS) -type f -name "*.an")
+ANOBJFILES := $(patsubst src/%.an,obj/%.ao,$(ANSRCFILES))
+
 #If src/parser.cpp is still present, remove it from objfiles so as to not double-compile it
 OBJFILES := $(patsubst obj/parser.o,,$(OBJFILES))
 
@@ -28,9 +31,9 @@ DEPFILES := $(OBJFILES:.o=.d)
 .PHONY: new clean stdlib
 .DEFAULT: ante
 
-ante: obj obj/parser.o $(OBJFILES)
+ante: obj obj/parser.o $(OBJFILES) $(ANOBJFILES)
 	@echo Linking...
-	@$(CXX) obj/parser.o $(OBJFILES) $(CPPFLAGS) $(LLVMFLAGS) -rdynamic -o ante
+	@$(CXX) obj/parser.o $(OBJFILES) $(ANOBJFILES) $(CPPFLAGS) $(LLVMFLAGS) -rdynamic -o ante
 
 #export the stdlib to /usr/include/ante
 #this is the only part that requires root permissions
@@ -60,6 +63,10 @@ debug_parser:
 obj/%.o: src/%.cpp Makefile | obj
 	@echo Compiling $@...
 	@$(CXX) $(CPPFLAGS) -MMD -MP -Iinclude -c $< -o $@
+
+obj/%.ao: src/%.an Makefile | obj
+	@echo Compiling $@...
+	@ante -lib -c $< -o $@
 
 obj/parser.o: src/syntax.y Makefile
 	@echo Generating parser...

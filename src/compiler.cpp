@@ -1764,6 +1764,17 @@ void Compiler::processArgs(CompilerArgs *args, string &input){
         outFile = arg->arg;
         out = outFile;
     }
+    
+    //make sure even non-called functions are included in the binary
+    //if the -lib flag is set
+    if(args->hasArg(Args::Lib)){
+        isLib = true;
+        if(!compiled) compile();
+
+        for(auto pair : fnDecls)
+            for(auto *fd : pair.second)
+                compFn(fd->fdn, scope);
+    }
 
     if(args->hasArg(Args::EmitLLVM)) emitIR();
     
@@ -1773,6 +1784,7 @@ void Compiler::processArgs(CompilerArgs *args, string &input){
     if(!errFlag && args->hasArg(Args::CompileAndRun)){
         system(("./" + outFile).c_str());
     }
+
 }
 
 Compiler::~Compiler(){
