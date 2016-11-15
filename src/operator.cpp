@@ -623,7 +623,7 @@ TypedValue* genericValueToTypedValue(Compiler *c, GenericValue gv, TypeNode *tn)
  *  - Assumes the Value* within the TypedValue is a Constant*
  */
 GenericValue typedValueToGenericValue(Compiler *c, TypedValue *tv){
-    
+    return GenericValue(nullptr);
 }
 
 
@@ -650,29 +650,46 @@ vector<GenericValue> typedValuesToGenericValues(Compiler *c, vector<TypedValue*>
  *
  *  - Assumes arguments are already type-checked
  */
-TypedValue* compMetaFunction(Compiler *c, Node *lnode, TypedValue *l, vector<TypedValue*> typedArgs){
+TypedValue* compMetaFunctionResult(Compiler *c, Node *lnode, TypedValue *l, vector<TypedValue*> typedArgs){
     unique_ptr<ExecutionEngine> jit;
     LLVMInitializeNativeTarget();
     LLVMInitializeNativeAsmPrinter();
 
-    auto mod = unique_ptr<Module>(new Module(l->val->getName(), c->ctxt));
-
-    auto* eBuilder = new EngineBuilder(unique_ptr<Module>(mod.get()));
+    auto* eBuilder = new EngineBuilder(unique_ptr<Module>(c->module.get()));
 
     string err;
     jit.reset(eBuilder->setErrorStr(&err).setEngineKind(EngineKind::JIT).create());
     if(err.length() > 0) cerr << err << endl;
 
-    string bufName = (mod->getName() + "_tmp").str();
+    string baseName = l->val->getName().str();
 
-    c->compileIRtoObj(bufName);
-    jit->addModule(move(mod));
+    //we need to finalize the module to jit it, but main and the caller function
+    //do not yet return a valid value; fix that on main and the caller temporarily.
+    auto *caller = c->builder.GetInsertBlock();
+    Type *callerRetTy = caller->getParent()->getReturnType();
+
+    //create the tmpret for the caller
+    auto *tmpRet1 = callerRetTy->isVoidTy()
+                   ? c->builder.CreateRetVoid()
+                   : c->builder.CreateRet(UndefValue::get(callerRetTy));
+
+
+    //make a quick return 0 in main
+    c->builder.SetInsertPoint(&c->module->getFunction("main")->getEntryBlock());
+    auto *tmpRet2 = c->builder.CreateRet(ConstantInt::get(c->ctxt, APInt(8, 0, true)));
+
+
     jit->finalizeObject();
-    remove(bufName.c_str());
 
-    auto args = typedValuesToGenericValues(c, typedArgs, lnode->loc, mod->getName().str());
+    auto args = typedValuesToGenericValues(c, typedArgs, lnode->loc, baseName);
 
     auto ret = jit->runFunction((Function*)l->val, args);
+
+    //now that the jitting is done, remove the tmp returns
+    tmpRet1->eraseFromParent();
+    tmpRet2->eraseFromParent();
+
+    c->builder.SetInsertPoint(caller);
     return genericValueToTypedValue(c, ret, l->type->extTy.get());
 }
 
@@ -796,7 +813,7 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
     }
     
     if(tvf->type->type == TT_MetaFunction){
-        return compMetaFunction(c, l, tvf, typedArgs);
+        return compMetaFunctionResult(c, l, tvf, typedArgs);
     }
 
     return new TypedValue(c->builder.CreateCall(f, args), deepCopyTypeNode(tvf->type->extTy.get()));

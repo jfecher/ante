@@ -874,16 +874,9 @@ TypedValue* compCompilerDirectiveFn(Compiler *c, FuncDeclNode *fdn, unsigned int
             c->jitFunction((Function*)recomp->val);
             c->module.reset(mod);
         }else if(vn->name == "macro"){
-            auto *mod = c->module.get();
-            c->module.release();
-
-            extern void linkInCompAPI();
-            linkInCompAPI();
-            c->module.reset(new Module(fdn->name, c->ctxt));
-            auto *recomp = c->compFn(fdn, scope);
-
-            c->jitFunction((Function*)recomp->val);
-            c->module.reset(mod);
+            fn->type->type = TT_MetaFunction;
+        }else if(vn->name == "meta"){
+            fn->type->type = TT_MetaFunction;
         }else{
             return c->compErr("Unrecognized compiler directive", vn->loc);
         }
@@ -1519,7 +1512,7 @@ void Compiler::compileNative(){
     //this file will become the obj file before linking
     string objFile = outFile + ".o";
 
-    if(!compileIRtoObj(objFile)){
+    if(!compileIRtoObj(module.get(), objFile)){
         linkObj(objFile, outFile);
         remove(objFile.c_str());
     }
@@ -1532,7 +1525,7 @@ int Compiler::compileObj(string &outName){
     string modName = removeFileExt(fileName);
     string objFile = outName.length() > 0 ? outName : modName + ".o";
 
-    return compileIRtoObj(objFile);
+    return compileIRtoObj(module.get(), objFile);
 }
 
 
@@ -1582,7 +1575,7 @@ void Compiler::jitFunction(Function *f){
         if(err.length() > 0) cerr << err << endl;
     }
 
-    compileIRtoObj((".tmp_" + f->getName()).str());
+    compileIRtoObj(module.get(), (".tmp_" + f->getName()).str());
     jit->addModule(move(module));
     jit->finalizeObject();
     remove((".tmp_" + f->getName()).str().c_str());
@@ -1605,7 +1598,7 @@ void Compiler::jitFunction(string& fnName){
         if(err.length() > 0) cerr << err << endl;
     }
 
-    compileIRtoObj(".tmp_" + fnName);
+    compileIRtoObj(module.get(), ".tmp_" + fnName);
     jit->addModule(move(module));
     jit->finalizeObject();
     remove((".tmp_" + fnName).c_str());
@@ -1620,7 +1613,7 @@ void Compiler::jitFunction(string& fnName){
  *  Compiles a module into a .o file to be used for linking.
  *  Invokes llc.
  */
-int Compiler::compileIRtoObj(string outFile){
+int Compiler::compileIRtoObj(Module *mod, string outFile){
     auto *tm = getTargetMachine();
 
     std::error_code errCode;
@@ -1628,7 +1621,7 @@ int Compiler::compileIRtoObj(string outFile){
 
     legacy::PassManager pm;
     int res = tm->addPassesToEmitFile(pm, out, llvm::TargetMachine::CGFT_ObjectFile);
-    pm.run(*module);
+    pm.run(*mod);
 
     return res;
 }

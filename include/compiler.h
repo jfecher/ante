@@ -198,7 +198,7 @@ namespace ante{
         void implicitlyCastFltToFlt(TypedValue **lhs, TypedValue **rhs);
         void implicitlyCastIntToFlt(TypedValue **tval, Type *ty);
         
-        int compileIRtoObj(string outFile);
+        int compileIRtoObj(Module *mod, string outFile);
 
         TypedValue* getVoidLiteral();
         static int linkObj(string inFiles, string outFile);
