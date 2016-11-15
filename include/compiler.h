@@ -35,6 +35,8 @@ struct TypedValue {
 
 bool isPrimitiveTypeTag(TypeTag ty);
 TypeNode* mkAnonTypeNode(TypeTag);
+TypeNode* mkPtrTypeNode(TypeNode *t);
+TypeNode* mkDataTypeNode(string tyname);
 
 /*
  * FuncDeclNode and int pair to retain a function's
@@ -116,6 +118,25 @@ struct Variable {
     Variable(string n, TypedValue *tv, unsigned int s, bool nofr=true) : name(n), tval(tv), scope(s), noFree(nofr){}
 };
 
+/* structure that holds a c++ function */
+/* Differs from std::function in that it is
+ * not template differentiated based on type
+ * of the function */
+struct CtFunc {
+    void *fn;
+    vector<TypeNode*> params;
+    unique_ptr<TypeNode> retty;
+
+    size_t numParams() const { return params.size(); }
+    bool typeCheck(vector<TypeNode*> &args);
+    bool typeCheck(vector<TypedValue*> &args);
+    CtFunc(void* fn);
+    CtFunc(void* fn, TypeNode *retTy);
+    CtFunc(void* fn, TypeNode *retTy, vector<TypeNode*> params);
+    void* operator()();
+};
+
+
 //forward-declare location for compErr and ante::err
 namespace yy{ class location; }
 
@@ -170,7 +191,6 @@ namespace ante{
        
         TypedValue* compErr(string msg, yy::location& loc);
 
-        void jitFunction(string& fnName);
         void jitFunction(Function *fnName);
         void importFile(const char *name);
         void updateFn(TypedValue *f, string &name, string &mangledName);

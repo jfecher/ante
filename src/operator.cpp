@@ -583,32 +583,36 @@ extern "C" float f16ToF32_f16(GenericValue v);
 TypedValue* genericValueToTypedValue(Compiler *c, GenericValue gv, TypeNode *tn){
     auto *copytn = deepCopyTypeNode(tn);
     switch(tn->type){
-        case TT_I8:              return new TypedValue(ConstantInt::get(Type::getInt8Ty(c->ctxt),  APInt(8,  (char)gv.UIntPairVal.first,   false)), copytn);
-        case TT_I16:             return new TypedValue(ConstantInt::get(Type::getInt16Ty(c->ctxt), APInt(16, (short)gv.UIntPairVal.first,  false)), copytn);
-        case TT_I32:             return new TypedValue(ConstantInt::get(Type::getInt32Ty(c->ctxt), APInt(32, (int)gv.UIntPairVal.first,    false)), copytn);
-        case TT_I64:             return new TypedValue(ConstantInt::get(Type::getInt64Ty(c->ctxt), APInt(64, (long)gv.UIntPairVal.first,   false)), copytn);
-        case TT_U8:              return new TypedValue(ConstantInt::get(Type::getInt8Ty(c->ctxt),  APInt(8,  (char)gv.UIntPairVal.first,   true)),  copytn);
-        case TT_U16:             return new TypedValue(ConstantInt::get(Type::getInt16Ty(c->ctxt), APInt(16, (short)gv.UIntPairVal.first,  true)),  copytn);
-        case TT_U32:             return new TypedValue(ConstantInt::get(Type::getInt32Ty(c->ctxt), APInt(32, (int)gv.UIntPairVal.first,    true)),  copytn);
-        case TT_U64:             return new TypedValue(ConstantInt::get(Type::getInt64Ty(c->ctxt), APInt(64, (long)gv.UIntPairVal.first,   true)),  copytn);
-        case TT_Isz:             return new TypedValue(ConstantInt::get(Type::getInt64Ty(c->ctxt), APInt(64, (long)gv.UIntPairVal.first,   false)), copytn);
-        case TT_Usz:             return new TypedValue(ConstantInt::get(Type::getInt64Ty(c->ctxt), APInt(64, (long)gv.UIntPairVal.first,   true)),  copytn);
-        case TT_C8:              return new TypedValue(ConstantInt::get(Type::getInt8Ty(c->ctxt),  APInt(8,  (char)gv.UIntPairVal.first,   true)),  copytn);
-        case TT_C32:             return new TypedValue(ConstantInt::get(Type::getInt8Ty(c->ctxt),  APInt(8,  (char)gv.UIntPairVal.first,   true)),  copytn);
+        case TT_I8:              return new TypedValue(ConstantInt::get(Type::getInt8Ty(c->ctxt),  APInt(8,  (char)gv.UIntPairVal.first,                   false)), copytn);
+        case TT_I16:             return new TypedValue(ConstantInt::get(Type::getInt16Ty(c->ctxt), APInt(16, (short)gv.UIntPairVal.first,                  false)), copytn);
+        case TT_I32:             return new TypedValue(ConstantInt::get(Type::getInt32Ty(c->ctxt), APInt(32, (int)gv.UIntPairVal.first,                    false)), copytn);
+        case TT_I64:             return new TypedValue(ConstantInt::get(Type::getInt64Ty(c->ctxt), APInt(64, reinterpret_cast<long long>(gv.PointerVal),   false)), copytn);
+        case TT_U8:              return new TypedValue(ConstantInt::get(Type::getInt8Ty(c->ctxt),  APInt(8,  (char)gv.UIntPairVal.first,                   true)),  copytn);
+        case TT_U16:             return new TypedValue(ConstantInt::get(Type::getInt16Ty(c->ctxt), APInt(16, (short)gv.UIntPairVal.first,                  true)),  copytn);
+        case TT_U32:             return new TypedValue(ConstantInt::get(Type::getInt32Ty(c->ctxt), APInt(32, (int)gv.UIntPairVal.first,                    true)),  copytn);
+        case TT_U64:             return new TypedValue(ConstantInt::get(Type::getInt64Ty(c->ctxt), APInt(64, reinterpret_cast<long long>(gv.PointerVal),   true)),  copytn);
+        case TT_Isz:             return new TypedValue(ConstantInt::get(Type::getInt64Ty(c->ctxt), APInt(64, reinterpret_cast<long long>(gv.PointerVal),   false)), copytn);
+        case TT_Usz:             return new TypedValue(ConstantInt::get(Type::getInt64Ty(c->ctxt), APInt(64, reinterpret_cast<long long>(gv.PointerVal),   true)),  copytn);
+        case TT_C8:              return new TypedValue(ConstantInt::get(Type::getInt8Ty(c->ctxt),  APInt(8,  (char)gv.UIntPairVal.first,                   true)),  copytn);
+        case TT_C32:             return new TypedValue(ConstantInt::get(Type::getInt8Ty(c->ctxt),  APInt(8,  (char)gv.UIntPairVal.first,                   true)),  copytn);
         case TT_F16:             return new TypedValue(ConstantFP::get(c->ctxt, APFloat(/*f16ToF32_f16(*/gv.FloatVal/*)*/)), copytn);
         case TT_F32:             return new TypedValue(ConstantFP::get(c->ctxt, APFloat(gv.FloatVal)), copytn);
         case TT_F64:             return new TypedValue(ConstantFP::get(c->ctxt, APFloat(gv.DoubleVal)), copytn);
         case TT_Bool:            return new TypedValue(ConstantInt::get(Type::getInt1Ty(c->ctxt), APInt(1, gv.Untyped[0], true)), copytn);
-        case TT_StrLit:
-        case TT_Tuple:
-        case TT_Array:
-        case TT_Ptr:
-        case TT_Data:
-        case TT_TypeVar:
-        case TT_Function:
+        case TT_StrLit:          break;    
+        case TT_Tuple:           break;
+        case TT_Array:           break;
+        case TT_Ptr: {
+            auto *cint = ConstantInt::get(Type::getInt64Ty(c->ctxt), APInt(64, reinterpret_cast<long long>(gv.PointerVal), true));
+            auto *ty = c->typeNodeToLlvmType(tn);
+            return new TypedValue(c->builder.CreateIntToPtr(cint, ty), copytn);
+        }case TT_Data:            break;    
+        case TT_TypeVar:         break;
+        case TT_Function:        break;
         case TT_Method:
         case TT_TaggedUnion:
         case TT_MetaFunction:
+                                 break;
         case TT_Void:
             return c->getVoidLiteral();
     }
@@ -642,7 +646,9 @@ vector<GenericValue> typedValuesToGenericValues(Compiler *c, vector<TypedValue*>
     }
     return ret;
 }
-    
+
+
+extern map<string, CtFunc*> compapi;
 /*
  *  Compile a compile-time function/macro which should not return a function call, just a compile-time constant.
  *  Ex: A call to Ante.getAST() would be a meta function as it wouldn't make sense to get the parse tree
@@ -650,6 +656,19 @@ vector<GenericValue> typedValuesToGenericValues(Compiler *c, vector<TypedValue*>
  *
  *  - Assumes arguments are already type-checked
  */
+TypedValue* compMetaFunctionResult(Compiler *c, Node *lnode, TypedValue *l, vector<TypedValue*> typedArgs){
+    string fnName = l->val->getName().str();
+    CtFunc* fn;
+    if((fn = compapi[fnName])){
+        auto *res = (*fn)();
+        auto gv = GenericValue(res);
+        auto *conv = genericValueToTypedValue(c, gv, l->type->extTy.get());
+        return conv;
+    }
+    return c->compErr("Function " + fnName + " not found.", lnode->loc);
+}
+
+/*
 TypedValue* compMetaFunctionResult(Compiler *c, Node *lnode, TypedValue *l, vector<TypedValue*> typedArgs){
     unique_ptr<ExecutionEngine> jit;
     LLVMInitializeNativeTarget();
@@ -691,7 +710,7 @@ TypedValue* compMetaFunctionResult(Compiler *c, Node *lnode, TypedValue *l, vect
 
     c->builder.SetInsertPoint(caller);
     return genericValueToTypedValue(c, ret, l->type->extTy.get());
-}
+}*/
 
 
 TypedValue* compFnCall(Compiler *c, Node *l, Node *r){

@@ -1390,6 +1390,18 @@ TypeNode* mkAnonTypeNode(TypeTag t){
     return new TypeNode(fakeLoc, t, "", nullptr);
 }
 
+TypeNode* mkPtrTypeNode(TypeNode *t){
+    auto *p = mkAnonTypeNode(TT_Ptr);
+    p->extTy.reset(t);
+    return p;
+}
+
+TypeNode* mkDataTypeNode(string tyname){
+    auto *d = mkAnonTypeNode(TT_Data);
+    d->typeName = tyname;
+    return d;
+}
+
 
 /*
  *  Declares functions to be included in every module without need of an import.
@@ -1581,29 +1593,6 @@ void Compiler::jitFunction(Function *f){
     remove((".tmp_" + f->getName()).str().c_str());
     
     auto* fn = jit->getPointerToFunction(f);
-
-    if(fn)
-        reinterpret_cast<void(*)()>(fn)();
-}
-
-void Compiler::jitFunction(string& fnName){
-    if(!jit.get()){
-        LLVMInitializeNativeTarget();
-        LLVMInitializeNativeAsmPrinter();
-        auto* eBuilder = new EngineBuilder(unique_ptr<Module>(module.get()));
-
-        string err;
-
-        jit.reset(eBuilder->setErrorStr(&err).setEngineKind(EngineKind::JIT).create());
-        if(err.length() > 0) cerr << err << endl;
-    }
-
-    compileIRtoObj(module.get(), ".tmp_" + fnName);
-    jit->addModule(move(module));
-    jit->finalizeObject();
-    remove((".tmp_" + fnName).c_str());
-    
-    auto* fn = jit->getPointerToNamedFunction("testfn");
 
     if(fn)
         reinterpret_cast<void(*)()>(fn)();
