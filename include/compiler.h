@@ -164,6 +164,7 @@ namespace ante{
         unsigned int scope;
 
         Compiler(const char *fileName, bool lib=false);
+        Compiler(Node *root, string modName, string &fName, bool lib=false);
         ~Compiler();
 
         void compile();

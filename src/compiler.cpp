@@ -209,17 +209,7 @@ TypedValue* Compiler::getCastFn(TypeNode *from_ty, TypeNode *to_ty){
     string mangledName = mangle(fnBaseName, from_ty);
 
     //Search for the exact function, otherwise there would be implicit casts calling several implicit casts on a single parameter
-    if(auto *fn = getFunction(fnBaseName, mangledName)){
-        //first, assure the function has only one parameter
-        //the return type is guarenteed to be initialized, so it is not checked
-        if(fn->type->extTy->next.get() && !fn->type->extTy->next->next.get()){
-            //type check the only parameter
-            if(*from_ty == *(TypeNode*)fn->type->extTy->next.get()){
-                return fn;
-            }
-        }
-    }
-    return 0;
+    return getFunction(fnBaseName, mangledName);
 }
 
 
@@ -997,7 +987,8 @@ TypedValue* PreProcNode::compile(Compiler *c){
 string mangle(string &base, TypeNode *paramTys){
     string name = base;
     while(paramTys){
-        name += "_" + typeNodeToStr(paramTys);
+        if(paramTys->type != TT_Void)
+            name += "_" + typeNodeToStr(paramTys);
         paramTys = (TypeNode*)paramTys->next.get();
     }
     return name;
@@ -1288,7 +1279,7 @@ void Compiler::updateFn(TypedValue *f, string &name, string &mangledName){
 TypedValue* Compiler::getFunction(string& name, string& mangledName){
     auto list = getFunctionList(name);
     if(list.empty()) return 0;
-
+    
     auto *fd = getFuncDeclFromList(list, mangledName);
     if(!fd) return 0;
 
@@ -1322,6 +1313,7 @@ TypedValue* Compiler::getMangledFunction(string name, TypeNode *params){
 
     auto argc = getTupleSize(params);
     candidates = filterByArgcAndScope(candidates, argc, this->scope);
+    if(candidates.empty()) return 0;
 
     //if there is only one function now, return it.  It will be typechecked later
     if(candidates.size() == 1){
@@ -1740,6 +1732,35 @@ Compiler::Compiler(const char *_fileName, bool lib) :
     passManager->doInitialization();
 }
 
+Compiler::Compiler(Node *root, string modName, string &fName, bool lib) :
+        ctxt(),
+        builder(ctxt), 
+        errFlag(false),
+        compiled(false),
+        isLib(lib),
+        fileName(fName),
+        outFile(modName),
+        funcPrefix(""){
+
+    scope = 0;
+    enterNewScope();
+
+    ast.reset(root);
+    module.reset(new Module(outFile, ctxt));
+
+    //add passes to passmanager.
+    //TODO: change passes based on -O0 through -O3 flags
+    passManager.reset(new legacy::FunctionPassManager(module.get()));
+    //passManager->add(createBasicAliasAnalysisPass());
+    //passManager->add(createGVNPass());
+    passManager->add(createCFGSimplificationPass());
+    passManager->add(createTailCallEliminationPass());
+    passManager->add(createPromoteMemoryToRegisterPass());
+    passManager->add(createInstructionCombiningPass());
+    passManager->add(createReassociatePass());
+    passManager->doInitialization();
+}
+
 void Compiler::processArgs(CompilerArgs *args, string &input){
     string out = "";
     if(auto *arg = args->getArg(Args::OutputName)){
@@ -1755,7 +1776,7 @@ void Compiler::processArgs(CompilerArgs *args, string &input){
 
         for(auto pair : fnDecls)
             for(auto *fd : pair.second)
-                compFn(fd->fdn, scope);
+                compFn(fd->fdn, fd->scope);
     }
 
     if(args->hasArg(Args::EmitLLVM)) emitIR();

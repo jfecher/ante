@@ -1,6 +1,8 @@
 #include "compiler.h"
 #include "tokens.h"
+#include "jitlinker.h"
 #include <llvm/ExecutionEngine/GenericValue.h>
+#include <llvm/Linker/Linker.h>
 
 
 TypedValue* Compiler::compAdd(TypedValue *l, TypedValue *r, BinOpNode *op){
@@ -114,6 +116,27 @@ inline bool isFPTypeTag(const TypeTag tt){
  *  Compiles the extract operator, [
  */
 TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
+    l->val->dump();
+    cout << "l->type = " << typeNodeToStr(l->type.get()) << endl;
+
+    auto *lNxtTy = l->type->next.get();
+    l->type->next.release();
+    l->type->next.reset(r->type.get());
+
+    //now look for the function
+    auto *fn = getMangledFunction("#", l->type.get());
+    l->type->next.release();
+    l->type->next.reset(lNxtTy);
+
+    //operator function found
+    if(fn){
+        //dont even bother type checking, assume the name mangling was performed correctly
+        return new TypedValue(
+                builder.CreateCall(fn->val, {l->val, r->val}),
+                deepCopyTypeNode(fn->type->extTy.get())
+        );
+    }
+    
     if(!isIntTypeTag(r->type->type)){
         return compErr("Index of operator '[' must be an integer expression, got expression of type " + typeNodeToStr(r->type.get()), op->loc);
     }
@@ -182,6 +205,9 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
     auto *newVal = assignExpr->compile(this);
     if(!var || !index || !newVal) return 0;
 
+    tmp->val->dump();
+    cout << "tmp->type = " << typeNodeToStr(tmp->type.get()) << endl;
+
     switch(tmp->type->type){
         case TT_Array: case TT_Ptr: {
 
@@ -231,8 +257,12 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
  */
 TypedValue* createCast(Compiler *c, Type *castTy, TypeNode *tyn, TypedValue *valToCast){
     //first, see if the user created their own cast function
-    if(TypedValue *fn = c->getCastFn(valToCast->type.get(), tyn))
-        return new TypedValue(c->builder.CreateCall(fn->val, valToCast->val), deepCopyTypeNode(fn->type->extTy.get()));
+    if(TypedValue *fn = c->getCastFn(valToCast->type.get(), tyn)){
+        vector<Value*> args;
+        if(valToCast->type->type != TT_Void) args.push_back(valToCast->val);
+        auto *call = c->builder.CreateCall(fn->val, args);
+        return new TypedValue(call, deepCopyTypeNode(fn->type->extTy.get()));
+    }
 
     //otherwise, fallback on known conversions
     if(isIntTypeTag(valToCast->type->type)){
@@ -583,27 +613,27 @@ extern "C" float f16ToF32_f16(GenericValue v);
 TypedValue* genericValueToTypedValue(Compiler *c, GenericValue gv, TypeNode *tn){
     auto *copytn = deepCopyTypeNode(tn);
     switch(tn->type){
-        case TT_I8:              return new TypedValue(ConstantInt::get(Type::getInt8Ty(c->ctxt),  APInt(8,  (char)gv.UIntPairVal.first,                   false)), copytn);
-        case TT_I16:             return new TypedValue(ConstantInt::get(Type::getInt16Ty(c->ctxt), APInt(16, (short)gv.UIntPairVal.first,                  false)), copytn);
-        case TT_I32:             return new TypedValue(ConstantInt::get(Type::getInt32Ty(c->ctxt), APInt(32, (int)gv.UIntPairVal.first,                    false)), copytn);
-        case TT_I64:             return new TypedValue(ConstantInt::get(Type::getInt64Ty(c->ctxt), APInt(64, reinterpret_cast<long long>(gv.PointerVal),   false)), copytn);
-        case TT_U8:              return new TypedValue(ConstantInt::get(Type::getInt8Ty(c->ctxt),  APInt(8,  (char)gv.UIntPairVal.first,                   true)),  copytn);
-        case TT_U16:             return new TypedValue(ConstantInt::get(Type::getInt16Ty(c->ctxt), APInt(16, (short)gv.UIntPairVal.first,                  true)),  copytn);
-        case TT_U32:             return new TypedValue(ConstantInt::get(Type::getInt32Ty(c->ctxt), APInt(32, (int)gv.UIntPairVal.first,                    true)),  copytn);
-        case TT_U64:             return new TypedValue(ConstantInt::get(Type::getInt64Ty(c->ctxt), APInt(64, reinterpret_cast<long long>(gv.PointerVal),   true)),  copytn);
-        case TT_Isz:             return new TypedValue(ConstantInt::get(Type::getInt64Ty(c->ctxt), APInt(64, reinterpret_cast<long long>(gv.PointerVal),   false)), copytn);
-        case TT_Usz:             return new TypedValue(ConstantInt::get(Type::getInt64Ty(c->ctxt), APInt(64, reinterpret_cast<long long>(gv.PointerVal),   true)),  copytn);
-        case TT_C8:              return new TypedValue(ConstantInt::get(Type::getInt8Ty(c->ctxt),  APInt(8,  (char)gv.UIntPairVal.first,                   true)),  copytn);
-        case TT_C32:             return new TypedValue(ConstantInt::get(Type::getInt8Ty(c->ctxt),  APInt(8,  (char)gv.UIntPairVal.first,                   true)),  copytn);
-        case TT_F16:             return new TypedValue(ConstantFP::get(c->ctxt, APFloat(/*f16ToF32_f16(*/gv.FloatVal/*)*/)), copytn);
-        case TT_F32:             return new TypedValue(ConstantFP::get(c->ctxt, APFloat(gv.FloatVal)), copytn);
-        case TT_F64:             return new TypedValue(ConstantFP::get(c->ctxt, APFloat(gv.DoubleVal)), copytn);
-        case TT_Bool:            return new TypedValue(ConstantInt::get(Type::getInt1Ty(c->ctxt), APInt(1, gv.Untyped[0], true)), copytn);
+        case TT_I8:              return new TypedValue(c->builder.getInt8( gv.UIntPairVal.first),                       copytn);
+        case TT_I16:             return new TypedValue(c->builder.getInt16(gv.UIntPairVal.first),                       copytn);
+        case TT_I32:             return new TypedValue(c->builder.getInt32(gv.UIntPairVal.first),                       copytn);
+        case TT_I64:             return new TypedValue(c->builder.getInt64(reinterpret_cast<long long>(gv.PointerVal)), copytn);
+        case TT_U8:              return new TypedValue(c->builder.getInt8( gv.UIntPairVal.first),                       copytn);
+        case TT_U16:             return new TypedValue(c->builder.getInt16(gv.UIntPairVal.first),                       copytn);
+        case TT_U32:             return new TypedValue(c->builder.getInt32(gv.UIntPairVal.first),                       copytn);
+        case TT_U64:             return new TypedValue(c->builder.getInt64(reinterpret_cast<long long>(gv.PointerVal)), copytn);
+        case TT_Isz:             return new TypedValue(c->builder.getInt64(reinterpret_cast<long long>(gv.PointerVal)), copytn);
+        case TT_Usz:             return new TypedValue(c->builder.getInt64(reinterpret_cast<long long>(gv.PointerVal)), copytn);
+        case TT_C8:              return new TypedValue(c->builder.getInt8( gv.UIntPairVal.first),                       copytn);
+        case TT_C32:             return new TypedValue(c->builder.getInt32(gv.UIntPairVal.first),                       copytn);
+        case TT_F16:             return new TypedValue(ConstantFP::get(c->ctxt, APFloat(f16ToF32_f16(gv))),             copytn);
+        case TT_F32:             return new TypedValue(ConstantFP::get(c->ctxt, APFloat(gv.FloatVal)),                  copytn);
+        case TT_F64:             return new TypedValue(ConstantFP::get(c->ctxt, APFloat(gv.DoubleVal)),                 copytn);
+        case TT_Bool:            return new TypedValue(c->builder.getInt1(gv.Untyped[0]),                               copytn);
         case TT_StrLit:          break;    
         case TT_Tuple:           break;
         case TT_Array:           break;
         case TT_Ptr: {
-            auto *cint = ConstantInt::get(Type::getInt64Ty(c->ctxt), APInt(64, reinterpret_cast<long long>(gv.PointerVal), true));
+            auto *cint = c->builder.getInt64(reinterpret_cast<long long>(gv.PointerVal));
             auto *ty = c->typeNodeToLlvmType(tn);
             return new TypedValue(c->builder.CreateIntToPtr(cint, ty), copytn);
         }case TT_Data:            break;    
@@ -658,14 +688,40 @@ extern map<string, CtFunc*> compapi;
  */
 TypedValue* compMetaFunctionResult(Compiler *c, Node *lnode, TypedValue *l, vector<TypedValue*> typedArgs){
     string fnName = l->val->getName().str();
+    
     CtFunc* fn;
     if((fn = compapi[fnName])){
         auto *res = (*fn)();
         auto gv = GenericValue(res);
         auto *conv = genericValueToTypedValue(c, gv, l->type->extTy.get());
+        
+        static_cast<Function*>(l->val)->removeFromParent();
         return conv;
+    }else{
+        LLVMInitializeNativeTarget();
+        LLVMInitializeNativeAsmPrinter();
+
+        auto* mod = wrapFnInModule(c, (Function*)l->val);
+        if(!mod) return 0;
+
+        mod->dump();
+        auto* eBuilder = new EngineBuilder(unique_ptr<Module>(mod));
+
+        string err;
+        unique_ptr<ExecutionEngine> jit{eBuilder->setErrorStr(&err).setEngineKind(EngineKind::JIT).create()};
+        if(err.length() > 0){ 
+            cerr << err << endl;
+            return 0;
+        }
+
+        jit->finalizeObject();
+        string baseName = l->val->getName().str();
+        auto args = typedValuesToGenericValues(c, typedArgs, lnode->loc, baseName);
+
+        auto ret = jit->runFunction(jit->FindFunctionNamed(fnName.c_str()), args);
+        static_cast<Function*>(l->val)->removeFromParent();
+        return genericValueToTypedValue(c, ret, l->type->extTy.get());
     }
-    return c->compErr("Function " + fnName + " not found.", lnode->loc);
 }
 
 /*
