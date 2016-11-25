@@ -654,12 +654,6 @@ int Lexer::genOpTok(yy::parser::location_type* loc){
  *  match them when necessary.  Only used in next() function.
  */
 #define CHECK_FOR_MATCHING_TOKS() {                             \
-    if(cur == '{'){                                             \
-        matchingToks.push('}');                                 \
-        incPos();                                               \
-        return Tok_Indent;                                      \
-    }                                                           \
-                                                                \
     if(cur == '('){                                             \
         matchingToks.push(')');                                 \
         incPos();                                               \

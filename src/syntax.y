@@ -125,10 +125,11 @@ void yyerror(const char *msg);
     Being below HIGH, this ensures parenthetical expressions will be parsed
     as just order-of operations parenthesis, instead of a single-value tuple.
 */
-%nonassoc ')' ']'
+%nonassoc ')' ']' '}'
 
 %nonassoc '(' '[' Indent Unindent
 %nonassoc HIGH
+%nonassoc '{'
 
 %expect 0
 %start top_level_expr_list
@@ -489,6 +490,9 @@ match_expr: Match expr With Newline match  {$$ = mkMatchNode(@$, $2, $5);}
           | match_expr Newline match       {$$ = addMatch($1, $3);}
           ;
 
+fn_brackets: '{' expr_list '}' {$$ = mkTupleNode(@$, $2);}
+           | '{' '}'           {$$ = mkTupleNode(@$, 0);}
+           ;
 
 
 var: ident  %prec Ident {$$ = mkVarNode(@$, (char*)$1);}
@@ -519,7 +523,7 @@ val: '(' expr ')'            {$$ = $2;}
    | import_expr             {$$ = $1;}
    | match_expr    %prec LOW {$$ = $1;}
    | block                   {$$ = $1;}
-   | type_expr      %prec LOW
+   | type_expr     %prec LOW
    ;
 
 tuple: '(' expr_list ')' {$$ = mkTupleNode(@$, $2);}
@@ -551,6 +555,7 @@ arg_list_p: arg_list_p arg  %prec FUNC {$$ = setNext($1, $2);}
 arg: val
    | arg '.' var        {$$ = mkBinOpNode(@$, '.', $1, $3);}
    | type_expr '.' var  {$$ = mkBinOpNode(@$, '.', $1, $3);}
+   | arg fn_brackets    {$$ = mkBinOpNode(@$, '(', $1, $2);}
    ;
 
 /* expr is used in expression blocks and can span multiple lines */
@@ -591,6 +596,7 @@ expr: expr '+' maybe_newline expr                {$$ = mkBinOpNode(@$, '+', $1, 
     | expr Append maybe_newline expr             {$$ = mkBinOpNode(@$, Tok_Append, $1, $4);}
     | expr Range maybe_newline expr              {$$ = mkBinOpNode(@$, Tok_Range, $1, $4);}
     | expr In maybe_newline expr                 {$$ = mkBinOpNode(@$, Tok_In, $1, $4);}
+    | expr fn_brackets                           {$$ = mkBinOpNode(@$, '(', $1, $2);}
     | expr arg_list                              {$$ = mkBinOpNode(@$, '(', $1, $2);}
     | val                             %prec MED  {$$ = $1;}
 

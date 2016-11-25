@@ -704,7 +704,6 @@ TypedValue* compMetaFunctionResult(Compiler *c, Node *lnode, TypedValue *l, vect
         auto* mod = wrapFnInModule(c, (Function*)l->val);
         if(!mod) return 0;
 
-        mod->dump();
         auto* eBuilder = new EngineBuilder(unique_ptr<Module>(mod));
 
         string err;
@@ -719,7 +718,7 @@ TypedValue* compMetaFunctionResult(Compiler *c, Node *lnode, TypedValue *l, vect
         auto args = typedValuesToGenericValues(c, typedArgs, lnode->loc, baseName);
 
         auto ret = jit->runFunction(jit->FindFunctionNamed(fnName.c_str()), args);
-        static_cast<Function*>(l->val)->removeFromParent();
+        //static_cast<Function*>(l->val)->removeFromParent();
         return genericValueToTypedValue(c, ret, l->type->extTy.get());
     }
 }

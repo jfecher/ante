@@ -6,7 +6,7 @@
  */
 #include "jitlinker.h"
 
-void copyDecls(Compiler *src, Compiler *dest){
+void copyDecls(const Compiler *src, Compiler *dest){
     for(const auto& it : src->userTypes){
         dest->userTypes[it.first] = it.second;
     }
@@ -47,24 +47,4 @@ Module* wrapFnInModule(Compiler *c, Function *f){
     auto *mod = ccpy->module.release();
     //delete ccpy;
     return mod;
-}
-
-void linkFunction(Compiler *c, Function *f, Module *mod){
-    Function *fcpy = Function::Create(f->getFunctionType(), Function::ExternalLinkage, f->getName(), mod);
-    LLVMContext ctxt;
-
-    for(auto &bb : *f){
-        auto *bbcpy = BasicBlock::Create(ctxt, bb.getName(), fcpy);
-        IRBuilder<> irb{bbcpy};
-
-        for(auto &instr : bb){
-            if(CallInst *ci = dyn_cast<CallInst>(&instr)){
-                auto *calledFunc = ci->getCalledFunction();
-                if(!mod->getFunction(calledFunc->getName())){
-                    linkFunction(c, calledFunc, mod);
-                }
-            }
-            irb.Insert(&instr);
-        }
-    }
 }
