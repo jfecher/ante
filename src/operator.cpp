@@ -613,27 +613,27 @@ extern "C" float f16ToF32_f16(GenericValue v);
 TypedValue* genericValueToTypedValue(Compiler *c, GenericValue gv, TypeNode *tn){
     auto *copytn = deepCopyTypeNode(tn);
     switch(tn->type){
-        case TT_I8:              return new TypedValue(c->builder.getInt8( gv.UIntPairVal.first),                       copytn);
-        case TT_I16:             return new TypedValue(c->builder.getInt16(gv.UIntPairVal.first),                       copytn);
-        case TT_I32:             return new TypedValue(c->builder.getInt32(gv.UIntPairVal.first),                       copytn);
-        case TT_I64:             return new TypedValue(c->builder.getInt64(reinterpret_cast<long long>(gv.PointerVal)), copytn);
-        case TT_U8:              return new TypedValue(c->builder.getInt8( gv.UIntPairVal.first),                       copytn);
-        case TT_U16:             return new TypedValue(c->builder.getInt16(gv.UIntPairVal.first),                       copytn);
-        case TT_U32:             return new TypedValue(c->builder.getInt32(gv.UIntPairVal.first),                       copytn);
-        case TT_U64:             return new TypedValue(c->builder.getInt64(reinterpret_cast<long long>(gv.PointerVal)), copytn);
-        case TT_Isz:             return new TypedValue(c->builder.getInt64(reinterpret_cast<long long>(gv.PointerVal)), copytn);
-        case TT_Usz:             return new TypedValue(c->builder.getInt64(reinterpret_cast<long long>(gv.PointerVal)), copytn);
-        case TT_C8:              return new TypedValue(c->builder.getInt8( gv.UIntPairVal.first),                       copytn);
-        case TT_C32:             return new TypedValue(c->builder.getInt32(gv.UIntPairVal.first),                       copytn);
+        case TT_I8:              return new TypedValue(c->builder.getInt8( *gv.IntVal.getRawData()),                       copytn);
+        case TT_I16:             return new TypedValue(c->builder.getInt16(*gv.IntVal.getRawData()),                       copytn);
+        case TT_I32:             return new TypedValue(c->builder.getInt32(*gv.IntVal.getRawData()),                       copytn);
+        case TT_I64:             return new TypedValue(c->builder.getInt64(*gv.IntVal.getRawData()), copytn);
+        case TT_U8:              return new TypedValue(c->builder.getInt8( *gv.IntVal.getRawData()),                       copytn);
+        case TT_U16:             return new TypedValue(c->builder.getInt16(*gv.IntVal.getRawData()),                       copytn);
+        case TT_U32:             return new TypedValue(c->builder.getInt32(*gv.IntVal.getRawData()),                       copytn);
+        case TT_U64:             return new TypedValue(c->builder.getInt64(*gv.IntVal.getRawData()), copytn);
+        case TT_Isz:             return new TypedValue(c->builder.getInt64(*gv.IntVal.getRawData()), copytn);
+        case TT_Usz:             return new TypedValue(c->builder.getInt64(*gv.IntVal.getRawData()), copytn);
+        case TT_C8:              return new TypedValue(c->builder.getInt8( *gv.IntVal.getRawData()),                       copytn);
+        case TT_C32:             return new TypedValue(c->builder.getInt32(*gv.IntVal.getRawData()),                       copytn);
         case TT_F16:             return new TypedValue(ConstantFP::get(c->ctxt, APFloat(f16ToF32_f16(gv))),             copytn);
         case TT_F32:             return new TypedValue(ConstantFP::get(c->ctxt, APFloat(gv.FloatVal)),                  copytn);
         case TT_F64:             return new TypedValue(ConstantFP::get(c->ctxt, APFloat(gv.DoubleVal)),                 copytn);
-        case TT_Bool:            return new TypedValue(c->builder.getInt1(gv.Untyped[0]),                               copytn);
+        case TT_Bool:            return new TypedValue(c->builder.getInt1(*gv.IntVal.getRawData()),                               copytn);
         case TT_StrLit:          break;    
         case TT_Tuple:           break;
         case TT_Array:           break;
         case TT_Ptr: {
-            auto *cint = c->builder.getInt64(reinterpret_cast<long long>(gv.PointerVal));
+            auto *cint = c->builder.getInt64((unsigned long) gv.PointerVal);
             auto *ty = c->typeNodeToLlvmType(tn);
             return new TypedValue(c->builder.CreateIntToPtr(cint, ty), copytn);
         }case TT_Data:            break;    
@@ -702,22 +702,30 @@ TypedValue* compMetaFunctionResult(Compiler *c, Node *lnode, TypedValue *l, vect
         LLVMInitializeNativeAsmPrinter();
 
         auto* mod = wrapFnInModule(c, (Function*)l->val);
+
         if(!mod) return 0;
 
         auto* eBuilder = new EngineBuilder(unique_ptr<Module>(mod));
 
         string err;
-        unique_ptr<ExecutionEngine> jit{eBuilder->setErrorStr(&err).setEngineKind(EngineKind::JIT).create()};
+
+        //set use interpreter; for some reason both MCJIT and its ORC replacement corrupt/free the memory
+        //of c->varTable in some way in four instances: two in the call to jit->finalizeObject() and two
+        //in the destructor of jit
+        unique_ptr<ExecutionEngine> jit{eBuilder->setErrorStr(&err).setEngineKind(EngineKind::Interpreter).create()};
+
         if(err.length() > 0){ 
             cerr << err << endl;
             return 0;
         }
 
-        jit->finalizeObject();
+        //jit->finalizeObject(); //HERE!
         string baseName = l->val->getName().str();
         auto args = typedValuesToGenericValues(c, typedArgs, lnode->loc, baseName);
 
-        auto ret = jit->runFunction(jit->FindFunctionNamed(fnName.c_str()), args);
+        auto *fn = jit->FindFunctionNamed(fnName.c_str());
+        auto ret = jit->runFunction(fn, args);
+
         //static_cast<Function*>(l->val)->removeFromParent();
         return genericValueToTypedValue(c, ret, l->type->extTy.get());
     }

@@ -1475,7 +1475,7 @@ void Compiler::eval(){
     tval->val->dump();
 }
 
-void Compiler::compile(){
+Function* Compiler::createMainFn(){
     //get or create the function type for the main method: void()
     FunctionType *ft = FunctionType::get(Type::getInt8Ty(ctxt), false);
     
@@ -1486,25 +1486,33 @@ void Compiler::compile(){
     //Create the entry point for the function
     BasicBlock *bb = BasicBlock::Create(ctxt, "entry", main);
     builder.SetInsertPoint(bb);
-    
+ 
+    return main;
+}
+
+void Compiler::compile(){
+    if(compiled){
+        cerr << module->getName().str() << " module is already compiled, cannot recompile.\n";
+        return;
+    }
+
+    auto *main = createMainFn();
+
     compilePrelude();
     scanAllDecls();
 
     //Compile the rest of the program
     delete ast->compile(this);
-    exitScope();
-
-    //builder should already be at end of main function
+    
     builder.CreateRet(ConstantInt::get(ctxt, APInt(8, 0, true)));
     
     passManager->run(*main);
-
 
     //flag this module as compiled.
     compiled = true;
 
     if(errFlag){
-        puts("Compilation aborted.");
+        fputs("Compilation aborted.\n", stderr);
         exit(1);
     }
 }
@@ -1625,7 +1633,7 @@ void Compiler::emitIR(){
 }
 
 
-inline void Compiler::enterNewScope(){
+void Compiler::enterNewScope(){
     scope++;
     auto *vtable = new map<string, Variable*>();
     varTable.push_back(unique_ptr<map<string, Variable*>>(vtable));
@@ -1666,6 +1674,7 @@ Variable* Compiler::lookup(string var) const{
             return (*it)->at(var);
         }catch(out_of_range r){}
     }
+
     return nullptr;
 }
 
@@ -1695,7 +1704,8 @@ Compiler::Compiler(const char *_fileName, bool lib) :
         compiled(false),
         isLib(lib),
         fileName(_fileName? _fileName : "(stdin)"),
-        funcPrefix(""){
+        funcPrefix(""),
+        scope(0){
 
     setLexer(new Lexer(_fileName));
     yy::parser p{};
@@ -1712,12 +1722,11 @@ Compiler::Compiler(const char *_fileName, bool lib) :
         exit(flag);
     }
 
-    scope = 0;
-    enterNewScope();
-
     ast.reset(parser::getRootNode());
     outFile = removeFileExt(fileName.c_str());
     module.reset(new Module(outFile, ctxt));
+
+    enterNewScope();
 
     //add passes to passmanager.
     //TODO: change passes based on -O0 through -O3 flags
@@ -1740,13 +1749,13 @@ Compiler::Compiler(Node *root, string modName, string &fName, bool lib) :
         isLib(lib),
         fileName(fName),
         outFile(modName),
-        funcPrefix(""){
-
-    scope = 0;
-    enterNewScope();
+        funcPrefix(""),
+        scope(0){
 
     ast.reset(root);
     module.reset(new Module(outFile, ctxt));
+    
+    enterNewScope();
 
     //add passes to passmanager.
     //TODO: change passes based on -O0 through -O3 flags
@@ -1791,7 +1800,7 @@ void Compiler::processArgs(CompilerArgs *args, string &input){
 }
 
 Compiler::~Compiler(){
-    fnDecls.clear();
+    exitScope();
     if(yylexer){
         delete yylexer;
         yylexer = nullptr;

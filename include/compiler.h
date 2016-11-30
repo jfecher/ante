@@ -171,6 +171,7 @@ namespace ante{
         void compileNative();
         int  compileObj(string &outName);
         void compilePrelude();
+        Function* createMainFn();
         void eval();
         void emitIR();
         void enterNewScope();

@@ -7,11 +7,11 @@
 #include "jitlinker.h"
 
 void copyDecls(const Compiler *src, Compiler *dest){
-    for(const auto& it : src->userTypes){
+    for(auto& it : src->userTypes){
         dest->userTypes[it.first] = it.second;
     }
 
-    for(const auto& it : src->fnDecls){
+    for(auto& it : src->fnDecls){
         for(auto *fd : it.second)
             fd->scope = dest->scope;
 
@@ -27,9 +27,15 @@ void copyDecls(const Compiler *src, Compiler *dest){
 Module* wrapFnInModule(Compiler *c, Function *f){
     Compiler *ccpy = new Compiler(c->ast.get(), f->getName(), c->fileName);
     copyDecls(c, ccpy);
+    
+    //create an empty main function to avoid crashes with compFn when
+    //trying to return to the caller function
+    ccpy->createMainFn();
+    //the ret comes separate
+    ccpy->builder.CreateRet(ConstantInt::get(ccpy->ctxt, APInt(8, 1, true)));
 
     string name = f->getName().str();
-        
+
     auto flist = ccpy->getFunctionList(name);
 
     if(flist.size() == 1){
