@@ -116,9 +116,6 @@ inline bool isFPTypeTag(const TypeTag tt){
  *  Compiles the extract operator, [
  */
 TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
-    l->val->dump();
-    cout << "l->type = " << typeNodeToStr(l->type.get()) << endl;
-
     auto *lNxtTy = l->type->next.get();
     l->type->next.release();
     l->type->next.reset(r->type.get());
@@ -204,9 +201,6 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
     auto *index = op->rval->compile(this);
     auto *newVal = assignExpr->compile(this);
     if(!var || !index || !newVal) return 0;
-
-    tmp->val->dump();
-    cout << "tmp->type = " << typeNodeToStr(tmp->type.get()) << endl;
 
     switch(tmp->type->type){
         case TT_Array: case TT_Ptr: {
@@ -714,7 +708,7 @@ TypedValue* compMetaFunctionResult(Compiler *c, Node *lnode, TypedValue *l, vect
         //in the destructor of jit
         unique_ptr<ExecutionEngine> jit{eBuilder->setErrorStr(&err).setEngineKind(EngineKind::Interpreter).create()};
 
-        if(err.length() > 0){ 
+        if(err.length() > 0){
             cerr << err << endl;
             return 0;
         }
@@ -726,54 +720,10 @@ TypedValue* compMetaFunctionResult(Compiler *c, Node *lnode, TypedValue *l, vect
         auto *fn = jit->FindFunctionNamed(fnName.c_str());
         auto ret = jit->runFunction(fn, args);
 
-        //static_cast<Function*>(l->val)->removeFromParent();
+        static_cast<Function*>(l->val)->removeFromParent();
         return genericValueToTypedValue(c, ret, l->type->extTy.get());
     }
 }
-
-/*
-TypedValue* compMetaFunctionResult(Compiler *c, Node *lnode, TypedValue *l, vector<TypedValue*> typedArgs){
-    unique_ptr<ExecutionEngine> jit;
-    LLVMInitializeNativeTarget();
-    LLVMInitializeNativeAsmPrinter();
-
-    auto* eBuilder = new EngineBuilder(unique_ptr<Module>(c->module.get()));
-
-    string err;
-    jit.reset(eBuilder->setErrorStr(&err).setEngineKind(EngineKind::JIT).create());
-    if(err.length() > 0) cerr << err << endl;
-
-    string baseName = l->val->getName().str();
-
-    //we need to finalize the module to jit it, but main and the caller function
-    //do not yet return a valid value; fix that on main and the caller temporarily.
-    auto *caller = c->builder.GetInsertBlock();
-    Type *callerRetTy = caller->getParent()->getReturnType();
-
-    //create the tmpret for the caller
-    auto *tmpRet1 = callerRetTy->isVoidTy()
-                   ? c->builder.CreateRetVoid()
-                   : c->builder.CreateRet(UndefValue::get(callerRetTy));
-
-
-    //make a quick return 0 in main
-    c->builder.SetInsertPoint(&c->module->getFunction("main")->getEntryBlock());
-    auto *tmpRet2 = c->builder.CreateRet(ConstantInt::get(c->ctxt, APInt(8, 0, true)));
-
-
-    jit->finalizeObject();
-
-    auto args = typedValuesToGenericValues(c, typedArgs, lnode->loc, baseName);
-
-    auto ret = jit->runFunction((Function*)l->val, args);
-
-    //now that the jitting is done, remove the tmp returns
-    tmpRet1->eraseFromParent();
-    tmpRet2->eraseFromParent();
-
-    c->builder.SetInsertPoint(caller);
-    return genericValueToTypedValue(c, ret, l->type->extTy.get());
-}*/
 
 
 TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
@@ -806,12 +756,14 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
     if(VarNode *vn = dynamic_cast<VarNode*>(l)){
         //try to see if arg 1's type contains a method of the same name
         auto *params = typedValsToTypeNodes(typedArgs);
-        
+       
+        //try to do module inference
         if(!typedArgs.empty()){
             string fnName = typeNodeToStr(typedArgs[0]->type.get()) + "_" + vn->name;
             tvf = c->getMangledFunction(fnName, params);
         }
-        
+
+        //if the above fails, do regular name mangling only
         if(!tvf) tvf = c->getMangledFunction(vn->name, params);
         delete params;
     }
@@ -836,7 +788,6 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
         push_front(&args, obj->val);
         push_front(&typedArgs, obj);
     }
-
 
     if(f->arg_size() != args.size() && !f->isVarArg()){
         //check if an empty tuple (a void value) is being applied to a zero argument function before continuing

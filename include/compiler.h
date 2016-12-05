@@ -19,6 +19,7 @@ using namespace std;
 
 
 TypeNode* deepCopyTypeNode(const TypeNode *n);
+string typeNodeToStr(TypeNode *t);
 /*
  *  Used for storage of additional information, such as signedness,
  *  not represented by llvm::Type
@@ -31,6 +32,7 @@ struct TypedValue {
     TypedValue(Value *v, unique_ptr<TypeNode> &ty) : val(v), type(deepCopyTypeNode(ty.get())){}
     
     Type* getType() const{ return val->getType(); }
+    void dump() const{ cout << typeNodeToStr(type.get()) << endl; val->dump();  }
 };
 
 bool isPrimitiveTypeTag(TypeTag ty);
@@ -235,7 +237,6 @@ Type* typeTagToLlvmType(TypeTag tagTy, LLVMContext &c, string typeName = "");
 TypeTag llvmTypeToTypeTag(Type *t);
 string llvmTypeToStr(Type *ty);
 string typeTagToStr(TypeTag ty);
-string typeNodeToStr(TypeNode *t);
 bool llvmTypeEq(Type *l, Type *r);
 
 char getBitWidthOfTypeTag(const TypeTag tagTy);

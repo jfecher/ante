@@ -1,7 +1,9 @@
 
 ![macro]
 fun three :=
-    puts "\nthree called!\n" //prints during compile-time when the return value is substituted for this function call
+    puts "three called!" //prints during compile-time when the return value is substituted for this function call
     3
 
-print <| three()
+print three{}
+
+print three{}
