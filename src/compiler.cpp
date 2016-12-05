@@ -1631,6 +1631,15 @@ void Compiler::emitIR(){
     if(errFlag) puts("Partially compiled module: \n");
     module->dump();
 }
+    
+
+/*
+ *  Prints type and value of TypeNode to stdout
+ */
+void TypedValue::dump() const{
+    cout << "type:\t" << typeNodeToStr(type.get()) << endl << "val:\t" << flush;
+    val->dump();
+}
 
 
 void Compiler::enterNewScope(){

@@ -2,6 +2,7 @@
 #include "tokens.h"
 #include "jitlinker.h"
 #include <llvm/ExecutionEngine/GenericValue.h>
+#include <llvm/ExecutionEngine/Interpreter.h>
 #include <llvm/Linker/Linker.h>
 
 
@@ -706,6 +707,7 @@ TypedValue* compMetaFunctionResult(Compiler *c, Node *lnode, TypedValue *l, vect
         //set use interpreter; for some reason both MCJIT and its ORC replacement corrupt/free the memory
         //of c->varTable in some way in four instances: two in the call to jit->finalizeObject() and two
         //in the destructor of jit
+        LLVMLinkInInterpreter();
         unique_ptr<ExecutionEngine> jit{eBuilder->setErrorStr(&err).setEngineKind(EngineKind::Interpreter).create()};
 
         if(err.length() > 0){
@@ -718,10 +720,14 @@ TypedValue* compMetaFunctionResult(Compiler *c, Node *lnode, TypedValue *l, vect
         auto args = typedValuesToGenericValues(c, typedArgs, lnode->loc, baseName);
 
         auto *fn = jit->FindFunctionNamed(fnName.c_str());
-        auto ret = jit->runFunction(fn, args);
+        auto genret = jit->runFunction(fn, args);
 
         static_cast<Function*>(l->val)->removeFromParent();
-        return genericValueToTypedValue(c, ret, l->type->extTy.get());
+        auto *ret = genericValueToTypedValue(c, genret, l->type->extTy.get());
+
+        ret->dump();
+
+        return ret;
     }
 }
 

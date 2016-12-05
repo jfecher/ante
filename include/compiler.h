@@ -32,7 +32,7 @@ struct TypedValue {
     TypedValue(Value *v, unique_ptr<TypeNode> &ty) : val(v), type(deepCopyTypeNode(ty.get())){}
     
     Type* getType() const{ return val->getType(); }
-    void dump() const{ cout << typeNodeToStr(type.get()) << endl; val->dump();  }
+    void dump() const;
 };
 
 bool isPrimitiveTypeTag(TypeTag ty);
