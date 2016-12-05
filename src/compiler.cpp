@@ -1638,7 +1638,11 @@ void Compiler::emitIR(){
  */
 void TypedValue::dump() const{
     cout << "type:\t" << typeNodeToStr(type.get()) << endl << "val:\t" << flush;
-    val->dump();
+    
+    if(type->type != TT_Void)
+        val->dump();
+    else
+        puts("void ()");
 }
 
 
