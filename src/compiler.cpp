@@ -846,10 +846,16 @@ TypeNode* createFnTyNode(NamedValNode *params, TypeNode *retTy){
  *  with either compFn or compLetBindingFn.
  */
 TypedValue* compCompilerDirectiveFn(Compiler *c, FuncDeclNode *fdn, unsigned int scope, PreProcNode *ppn){
+    //remove the preproc node at the front of the modifier list so that the call to
+    //compFn does not call this function in an infinite loop
     fdn->modifiers.release();
     fdn->modifiers.reset(ppn->next.get());
     auto *fn = c->compFn(fdn, scope);
     if(!fn) return 0;
+
+    //put back the preproc node modifier
+    fdn->modifiers.release();
+    fdn->modifiers.reset(ppn);
 
     if(VarNode *vn = dynamic_cast<VarNode*>(ppn->expr.get())){
         if(vn->name == "inline"){
@@ -1268,28 +1274,24 @@ FuncDecl* getFuncDeclFromList(list<FuncDecl*> &l, string &mangledName){
     return 0;
 }
 
-
 void Compiler::updateFn(TypedValue *f, string &name, string &mangledName){
     auto list = fnDecls[name];
     auto *fd = getFuncDeclFromList(list, mangledName);
-    if(fd) fd->tv = f;
+    fd->tv = f;
 }
 
 
 TypedValue* Compiler::getFunction(string& name, string& mangledName){
     auto list = getFunctionList(name);
     if(list.empty()) return 0;
-    
+
     auto *fd = getFuncDeclFromList(list, mangledName);
     if(!fd) return 0;
 
     if(fd->tv) return fd->tv;
 
     //Function has been declared but not defined, so define it.
-    auto *fn = compFn(fd->fdn, fd->scope);
-
-    fd->tv = fn;
-    return fn;
+    return compFn(fd->fdn, fd->scope);
 }
 
 /*
@@ -1318,7 +1320,7 @@ TypedValue* Compiler::getMangledFunction(string name, TypeNode *params){
     //if there is only one function now, return it.  It will be typechecked later
     if(candidates.size() == 1){
         auto *fd = candidates.front();
-        if(!fd->tv) fd->tv = compFn(fd->fdn, fd->scope);
+        if(!fd->tv) compFn(fd->fdn, fd->scope);
         return fd->tv;
     }
 
@@ -1326,7 +1328,7 @@ TypedValue* Compiler::getMangledFunction(string name, TypeNode *params){
     string fnName = mangle(name, params);
     auto *fd = getFuncDeclFromList(candidates, fnName);
     if(fd){ //exact match
-        if(!fd->tv) fd->tv = compFn(fd->fdn, fd->scope);
+        if(!fd->tv) compFn(fd->fdn, fd->scope);
         return fd->tv;
     }
 

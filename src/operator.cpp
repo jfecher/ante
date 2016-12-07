@@ -708,25 +708,21 @@ TypedValue* compMetaFunctionResult(Compiler *c, Node *lnode, TypedValue *l, vect
         //of c->varTable in some way in four instances: two in the call to jit->finalizeObject() and two
         //in the destructor of jit
         LLVMLinkInInterpreter();
-        unique_ptr<ExecutionEngine> jit{eBuilder->setErrorStr(&err).setEngineKind(EngineKind::Interpreter).create()};
+        auto *jit = eBuilder->setErrorStr(&err).setEngineKind(EngineKind::Interpreter).create();
 
         if(err.length() > 0){
             cerr << err << endl;
             return 0;
         }
 
-        //jit->finalizeObject(); //HERE!
         string baseName = l->val->getName().str();
         auto args = typedValuesToGenericValues(c, typedArgs, lnode->loc, baseName);
 
         auto *fn = jit->FindFunctionNamed(fnName.c_str());
         auto genret = jit->runFunction(fn, args);
 
-        static_cast<Function*>(l->val)->removeFromParent();
+        //static_cast<Function*>(l->val)->removeFromParent();
         auto *ret = genericValueToTypedValue(c, genret, l->type->extTy.get());
-
-        ret->dump();
-
         return ret;
     }
 }
