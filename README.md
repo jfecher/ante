@@ -1,6 +1,15 @@
 # Ante
 The compile-time language
 
+Ante is a compiled systems language focusing on providing extreme extensibility through
+the use of a compile-time API.  Using such an API, compiler extensions can be created
+within the program itself, allowing for the addition of a garbage collector, ownership
+system, etc, all in a normal library without requiring any changes to the compiler itself.
+
+Systems languages can traditionally be a pain to write.  To fix this, Ante provides high-level
+solutions such as string interpolation, smart pointers, and pattern matching, while maintaining
+the ability to interact at a lower level if needed.
+
 ## Community
 - Join the official subreddit at [/r/ante](https://www.reddit.com/r/ante) for any and all discussion.  Everyone is welcome!
 
@@ -77,9 +86,12 @@ free myPtr //myPtr must be manually freed
 * String interpolation
 ```
 let person = "Joe"
-let age = 43
+let age = 44
 
 print "${person} is ${age} years old."
+
+//any expression can be within ${ }
+print "Half of ${person}'s age is ${age / 2}"
 ```
 
 * API designers given full reign to implement custom rules for their types, full access to the
@@ -90,18 +102,17 @@ here is an implementation of the goto construct in Ante
 ![macro]
 fun goto: VarNode vn
     let label = ctLookup vn ?
-        None -> compErr "Cannot goto undefined label {vn.name}"
+        None -> compErr "Cannot goto undefined label ${vn.name}"
 
-    LLVM.builder.SetInsertPoint <| getCallSiteBlock()
-    LLVM.builder.CreateBr label
+    LLVM.setInsertPoint getCallSiteBlock{}
+    LLVM.createBr label
 
 ![macro]
 fun label: VarNode vn
-    let ctxt = LLVM.getGlobalContext()
+    let ctxt = Ante.llvm_ctxt
     let callingFn = getCallSiteBlock().getParentFn()
     let lbl = LLVM.BasicBlock ctxt callingFn
     ctStore vn lbl
-
 
 
 //test it out
