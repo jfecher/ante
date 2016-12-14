@@ -136,6 +136,7 @@ struct CtFunc {
     CtFunc(void* fn, TypeNode *retTy);
     CtFunc(void* fn, TypeNode *retTy, vector<TypeNode*> params);
     void* operator()();
+    void* operator()(TypedValue *tv);
 };
 
 

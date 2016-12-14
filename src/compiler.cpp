@@ -122,7 +122,11 @@ size_t getTupleSize(Node *tup){
     return size;
 }
 
-
+Node* getNthNode(Node *node, size_t n){
+    for(; n > 0; n--)
+        node = node->next.get();
+    return node;
+}
 
 /*
  *  Compiles a statement list and returns its last statement.
@@ -625,7 +629,7 @@ TypedValue* compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
             auto index = dataTy->getFieldIndex(field->name);
 
             if(index != -1){
-                TypeNode *indexTy = dataTy->tyn->extTy.get();
+                TypeNode *indexTy = (TypeNode*)getNthNode(dataTy->tyn->extTy.get(), index);
 
                 auto *newval = expr->compile(c);
                 if(!newval) return 0;
@@ -636,7 +640,7 @@ TypedValue* compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
 
 
                 auto *ins = c->builder.CreateInsertValue(val, newval->val, index);
-                
+
                 c->builder.CreateStore(ins, var);
                 return c->getVoidLiteral();
             }

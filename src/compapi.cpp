@@ -7,10 +7,15 @@ extern "C" {
         return ante::parser::getRootNode();
     }
 
+    void Ante_debug(TypedValue *tv){
+        tv->dump();
+    }
+
 }
 
 map<string, CtFunc*> compapi = {
-    {"Ante_getAST", new CtFunc((void*)Ante_getAST, mkPtrTypeNode(mkDataTypeNode("Node")))}
+    {"Ante_getAST", new CtFunc((void*)Ante_getAST, mkPtrTypeNode(mkDataTypeNode("Node")))},
+    {"Ante_debug",  new CtFunc((void*)Ante_debug,  mkAnonTypeNode(TT_Void))}
 };
     
 
@@ -23,4 +28,10 @@ void* CtFunc::operator()(){
     void* (*resfn)() = 0;
     *reinterpret_cast<void**>(&resfn) = fn;
     return resfn();
+}
+
+void* CtFunc::operator()(TypedValue *tv){
+    void* (*resfn)(TypedValue*) = 0;
+    *reinterpret_cast<void**>(&resfn) = fn;
+    return resfn(tv);
 }

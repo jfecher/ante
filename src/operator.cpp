@@ -117,8 +117,7 @@ inline bool isFPTypeTag(const TypeTag tt){
  *  Compiles the extract operator, [
  */
 TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
-    auto *lNxtTy = l->type->next.get();
-    l->type->next.release();
+    auto *lNxtTy = l->type->next.release();
     l->type->next.reset(r->type.get());
 
     //now look for the function
@@ -166,12 +165,23 @@ TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
         auto index = ((ConstantInt*)r->val)->getZExtValue();
 
         //get the type from the index in question
+        //
+        //FIXME: no extty if l is a UserType parameter! retrieve full type from lookupType!
         TypeNode* indexTyn = l->type->extTy.get();
+
+        if(!indexTyn && l->type->type == TT_Data){
+            auto *dataty = lookupType(l->type->typeName);
+            if(!dataty)
+                return compErr("Error when attempting to index variable of type " + typeNodeToStr(l->type.get()), op->loc);
+
+            indexTyn = dataty->tyn->extTy.get();
+        }
+
         for(unsigned i = 0; i < index; i++)
             indexTyn = (TypeNode*)indexTyn->next.get();
 
         Value *tup = llvmTypeToTypeTag(l->getType()) == TT_Ptr ? builder.CreateLoad(l->val) : l->val;
-        return new TypedValue(builder.CreateExtractValue(tup, index), indexTyn);
+        return new TypedValue(builder.CreateExtractValue(tup, index), deepCopyTypeNode(indexTyn));
     }
     return compErr("Type " + llvmTypeToStr(l->getType()) + " does not have elements to access", op->loc);
 }
@@ -441,13 +451,14 @@ TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Ty
         auto *elseVal = ifn->elseN->compile(c);
         auto *elseretbb = c->builder.GetInsertBlock();
 
+        if(!elseVal) return 0;
         if(!dynamic_cast<ReturnInst*>(elseVal->val))
             c->builder.CreateBr(mergebb);
         
         //save the final else
         branches.push_back({elseVal, elseretbb});
 
-        if(!thenVal || !elseVal) return 0;
+        if(!thenVal) return 0;
 
 
         if(*thenVal->type.get() != *elseVal->type.get() && !dynamic_cast<ReturnInst*>(thenVal->val) && !dynamic_cast<ReturnInst*>(elseVal->val))
@@ -495,7 +506,7 @@ TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *bino
                 fd->tv = compFn(fd->fdn, fd->scope);
 
             return fd->tv;
-        }else
+        }else if(l.size() > 1)
             return compErr("Multiple static methods of the same name with different parameters are currently unimplemented.  In the mean time, you can use global functions.", field->loc);
 
         return compErr("No static method called '" + field->name + "' was found in type " + 
@@ -686,11 +697,20 @@ TypedValue* compMetaFunctionResult(Compiler *c, Node *lnode, TypedValue *l, vect
     
     CtFunc* fn;
     if((fn = compapi[fnName])){
-        auto *res = (*fn)();
+        void *res;
+
+        if(fnName == "Ante_debug")
+            res = (*fn)(typedArgs[0]);
+        else
+            res = (*fn)();
+
         auto gv = GenericValue(res);
         auto *conv = genericValueToTypedValue(c, gv, l->type->extTy.get());
-        
-        static_cast<Function*>(l->val)->removeFromParent();
+
+        auto *llvmfn = static_cast<Function*>(l->val);
+        if(llvmfn->getParent())
+            llvmfn->removeFromParent();
+
         return conv;
     }else{
         LLVMInitializeNativeTarget();
