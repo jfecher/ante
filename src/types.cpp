@@ -233,6 +233,9 @@ Type* typeTagToLlvmType(TypeTag ty, LLVMContext &ctxt, string typeName){
         case TT_C32:    return Type::getInt32Ty(ctxt);
         case TT_Bool:   return Type::getInt1Ty(ctxt);
         case TT_Void:   return Type::getVoidTy(ctxt);
+        case TT_TypeVar:
+            cerr << "WARNING: typevars should not be converted to llvm types!\n";
+            return nullptr;
         default:
             cerr << "typeTagToLlvmType: Unknown/Unsupported TypeTag " << ty << ", returning nullptr.\n";
             return nullptr;
@@ -295,9 +298,18 @@ Type* Compiler::typeNodeToLlvmType(TypeNode *tyNode){
 
             //((StructType*)userType->tyn)->setName(tyNode->typeName);
             return typeNodeToLlvmType(userType->tyn.get());
-        case TT_Function: case TT_MetaFunction: //TODO function pointer type
-            cout << "typeNodeToLlvmType: Function pointer types are currently unimplemented.  A void type will be returned instead.\n";
-            return Type::getVoidTy(ctxt);
+        case TT_Function: case TT_MetaFunction: {
+            //ret ty is tyn from above
+            //
+            //get param tys
+            TypeNode *cur = (TypeNode*)tyn->next.get();
+            while(cur){
+                tys.push_back(typeNodeToLlvmType(tyn));
+                cur = (TypeNode*)cur->next.get();
+            }
+
+            return FunctionType::get(typeNodeToLlvmType(tyn), tys, false);
+        }
         case TT_TaggedUnion:
             userType = lookupType(tyNode->typeName);
             if(!userType)
@@ -391,17 +403,21 @@ bool extTysEq(const TypeNode *l, const TypeNode *r){
 bool TypeNode::operator==(TypeNode &r) const {
     if(this->type == TT_TaggedUnion and r.type == TT_Data) return typeName == r.typeName;
     if(this->type == TT_Data and r.type == TT_TaggedUnion) return typeName == r.typeName;
-    
-    if(this->type != r.type) return false;
 
-    if(r.type == TT_Ptr || r.type == TT_Array){
+    if(this->type == TT_TypeVar or r.type == TT_TypeVar)
+        return true;
+
+    if(this->type != r.type)
+        return false;
+
+    if(r.type == TT_Ptr or r.type == TT_Array){
         if(extTy->type == TT_Void || r.extTy->type == TT_Void)
             return true;
 
         return *this->extTy.get() == *r.extTy.get();
-    }else if(r.type == TT_Data || r.type == TT_TaggedUnion){
+    }else if(r.type == TT_Data or r.type == TT_TaggedUnion){
         return typeName == r.typeName;
-    }else if(r.type == TT_Function || r.type == TT_MetaFunction || r.type == TT_Method || r.type == TT_Tuple){
+    }else if(r.type == TT_Function or r.type == TT_MetaFunction or r.type == TT_Method or r.type == TT_Tuple){
         return extTysEq(this, &r);
     }
     //primitive type
@@ -461,6 +477,7 @@ string typeTagToStr(TypeTag ty){
         case TT_Array:        return "Array";
         case TT_Ptr:          return "Ptr"  ;
         case TT_Data:         return "Data" ;
+        case TT_TypeVar:      return "'t";
         case TT_Function:     return "Function";
         case TT_MetaFunction: return "Meta Function";
         case TT_Method:       return "Method";
@@ -500,7 +517,9 @@ string typeNodeToStr(TypeNode *t){
             cur = (TypeNode*)cur->next.get();
             if(cur) ret += ",";
         }
-        return ret + ")=>" + retTy;
+        return ret + ")->" + retTy;
+    }else if(t->type == TT_TypeVar){
+        return "'" + t->typeName;
     }else{
         return typeTagToStr(t->type);
     }

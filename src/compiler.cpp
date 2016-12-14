@@ -813,6 +813,7 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
     if(fdn->name.length() > 0)
         updateFn(ret, fdn->basename, fdn->name);
 
+
     delete fakeFnTv;
     return ret;
 }
