@@ -304,11 +304,11 @@ Type* Compiler::typeNodeToLlvmType(TypeNode *tyNode){
             //get param tys
             TypeNode *cur = (TypeNode*)tyn->next.get();
             while(cur){
-                tys.push_back(typeNodeToLlvmType(tyn));
+                tys.push_back(typeNodeToLlvmType(cur));
                 cur = (TypeNode*)cur->next.get();
             }
 
-            return FunctionType::get(typeNodeToLlvmType(tyn), tys, false);
+            return FunctionType::get(typeNodeToLlvmType(tyn), tys, false)->getPointerTo();
         }
         case TT_TaggedUnion:
             userType = lookupType(tyNode->typeName);
