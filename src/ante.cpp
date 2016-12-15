@@ -28,7 +28,7 @@ void parseFile(string &fileName){
 }
 
 void printHelp(){
-    puts("Compile for the Ante programming language\n");
+    puts("Compiler for the Ante programming language\n");
     puts("Usage: ante [options] <inputs>");
     puts("options:");
     puts("\t-c\t\tcompile to object file");
