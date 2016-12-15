@@ -30,6 +30,15 @@ void parseFile(string &fileName){
 void printHelp(){
     puts("Compile for the Ante programming language\n");
     puts("Usage: ante [options] <inputs>");
+    puts("options:");
+    puts("\t-c\t\tcompile to object file");
+    puts("\t-o <filename>\tspecify output name");
+    puts("\t-p\t\tprint parse tree");
+    puts("\t-0 <number>\tSet optimization level. Arg of 0 = none, 3 = all");
+    puts("\t-r\t\tcompile and run");
+    puts("\t-help\t\tprint this message");
+    puts("\t-lib\t\tcompile as library (include all functions in binary and compile to object file)");
+    puts("\t-emit-llvm\tprint llvm-IR as output");
 }
 
 int main(int argc, const char **argv){
