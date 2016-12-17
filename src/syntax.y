@@ -83,6 +83,7 @@ void yyerror(const char *msg);
 
 
 %left Newline
+%left RArrow
 %left ';'
 %left STMT Fun Let Import Return Ext Var While For Match Trait
 %left If
@@ -90,7 +91,6 @@ void yyerror(const char *msg);
 %left MED
 
 %left MODIFIER Pub Pri Pro Raw Const Noinit Mut
-%left RArrow
 
 
 %left ','
