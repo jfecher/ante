@@ -1186,6 +1186,7 @@ TypedValue* MatchNode::compile(Compiler *c){
         ConstantInt *ci = nullptr;
         auto *br = BasicBlock::Create(c->ctxt, "br", f);
         c->builder.SetInsertPoint(br);
+        c->enterNewScope();
 
         //TypeCast-esque pattern:  Maybe n
         if(TypeCastNode *tn = dynamic_cast<TypeCastNode*>(mbn->pattern.get())){
@@ -1237,6 +1238,7 @@ TypedValue* MatchNode::compile(Compiler *c){
         }
 
         auto *then = mbn->branch->compile(c);
+        c->exitScope();
         c->builder.CreateBr(end);
         merges.push_back(pair<BasicBlock*,TypedValue*>(c->builder.GetInsertBlock(), then));
       
@@ -1741,19 +1743,15 @@ legacy::FunctionPassManager* mkPassManager(Module *m, char optLvl){
     pm->add(createDeadCodeEliminationPass());
     pm->add(createLoopStrengthReducePass());
     pm->add(createLoopUnrollPass());
-    pm->add(createLowerSwitchPass());
     pm->add(createMergedLoadStoreMotionPass());
     pm->add(createMemCpyOptPass());
-    pm->add(createLowerAtomicPass());
     pm->add(createCFGSimplificationPass());
     pm->add(createTailCallEliminationPass());
     pm->add(createInstructionSimplifierPass());
-    pm->add(createSeparateConstOffsetFromGEPPass());
     pm->add(createSpeculativeExecutionPass());
     pm->add(createLoadCombinePass());
     pm->add(createLoopLoadEliminationPass());
     pm->add(createReassociatePass());
-    pm->add(createCFGSimplificationPass());
     pm->add(createPromoteMemoryToRegisterPass());
     pm->add(createInstructionCombiningPass());
     pm->doInitialization();
