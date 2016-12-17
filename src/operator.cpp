@@ -165,8 +165,6 @@ TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
         auto index = ((ConstantInt*)r->val)->getZExtValue();
 
         //get the type from the index in question
-        //
-        //FIXME: no extty if l is a UserType parameter! retrieve full type from lookupType!
         TypeNode* indexTyn = l->type->extTy.get();
 
         if(!indexTyn && l->type->type == TT_Data){
@@ -192,16 +190,16 @@ TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
  *  An insert statement would look similar to the following (in ante syntax):
  *
  *  i32,i32,i32 tuple = (1, 2, 4)
- *  tuple[2] = 3
+ *  tuple#2 = 3
  *
- *  This method Works on lvals and returns the value of the the CreateStore
- *  method when storing the newly inserted tuple.
+ *  This method Works on lvals and returns a void value.
  */
 TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
     auto *tmp = op->lval->compile(this);
     if(!tmp) return 0;
 
-    if(!dynamic_cast<LoadInst*>(tmp->val))
+    //if(!dynamic_cast<LoadInst*>(tmp->val))
+    if(!tmp->hasModifier(Tok_Mut))
         return compErr("Variable must be mutable to insert values, but instead is an immutable " +
                 typeNodeToStr(tmp->type.get()), op->lval->loc);
 
@@ -230,7 +228,8 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
                 dest = builder.CreateGEP(var, indices);
             }
 
-            return new TypedValue(builder.CreateStore(newVal->val, dest), mkAnonTypeNode(TT_Void));
+            builder.CreateStore(newVal->val, dest);
+            return getVoidLiteral();
         }
         case TT_Tuple: case TT_Data:
             if(!dynamic_cast<ConstantInt*>(index->val)){
@@ -544,7 +543,10 @@ TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *bino
 
                     for(int i = 0; i < index; i++)
                         indexTy = (TypeNode*)indexTy->next.get();
-                    
+
+                    //The data type when looking up (usually) does not have any modifiers,
+                    //so apply any potential modifers from the parent to this
+                    indexTy->copyModifiersFrom(tyn);
                     return new TypedValue(builder.CreateExtractValue(val, index), deepCopyTypeNode(indexTy));
                 }
             }
@@ -1043,9 +1045,11 @@ TypedValue* BinOpNode::compile(Compiler *c){
     //first, if both operands are primitive numeric types, use the default ops
     if(isNumericTypeTag(lhs->type->type) && isNumericTypeTag(rhs->type->type)){
         return handlePrimitiveNumericOp(this, c, lhs, rhs);
-    
-    //and bools are only compatible with == and !=
-    }else if(lhs->type->type == TT_Bool && rhs->type->type == TT_Bool){
+
+    //and bools/ptrs are only compatible with == and !=
+    }else if((lhs->type->type == TT_Bool and rhs->type->type == TT_Bool) or
+             (lhs->type->type == TT_Ptr  and rhs->type->type == TT_Ptr)){
+        
         switch(op){
             case Tok_Eq: return new TypedValue(c->builder.CreateICmpEQ(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
             case Tok_NotEq: return new TypedValue(c->builder.CreateICmpNE(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
@@ -1139,6 +1143,9 @@ TypedValue* UnOpNode::compile(Compiler *c){
         case '-': //negation
             return new TypedValue(c->builder.CreateNeg(rhs->val), rhs->type);
         case Tok_Not:
+            if(rhs->type->type != TT_Bool)
+                return c->compErr("Unary not operator not overloaded for type " + typeNodeToStr(rhs->type.get()), loc);
+
             return new TypedValue(c->builder.CreateNot(rhs->val), rhs->type);
         case Tok_New:
             //the 'new' keyword in ante creates a reference to any existing value

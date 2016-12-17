@@ -422,7 +422,10 @@ TypedValue* RetNode::compile(Compiler *c){
                " does not match function return type " + llvmTypeToStr(f->getReturnType()), this->loc);
     }*/
 
-    return new TypedValue(c->builder.CreateRet(ret->val), ret->type);
+    if(ret->type->type == TT_Void)
+        return new TypedValue(c->builder.CreateRetVoid(), ret->type);
+    else
+        return new TypedValue(c->builder.CreateRet(ret->val), ret->type);
 }
 
 
@@ -534,7 +537,10 @@ TypedValue* compVarDeclWithInferredType(VarDeclNode *node, Compiler *c){
     TypedValue *val = node->expr->compile(c);
     if(!val) return nullptr;
         
-    TypedValue *alloca = new TypedValue(c->builder.CreateAlloca(val->getType(), 0, node->name.c_str()), val->type);
+    //set the value as mutable
+    val->type->addModifier(Tok_Mut);
+
+    TypedValue *alloca = new TypedValue(c->builder.CreateAlloca(val->getType(), 0, node->name.c_str()), val->type.get());
     val = new TypedValue(c->builder.CreateStore(val->val, alloca->val), val->type);
 
     bool nofree = true;//val->type->type != TT_Ptr || dynamic_cast<Constant*>(val->val);
@@ -559,6 +565,7 @@ TypedValue* VarDeclNode::compile(Compiler *c){
     if(!tyNode) return compVarDeclWithInferredType(this, c);
 
     Type *ty = c->typeNodeToLlvmType(tyNode);
+    tyNode->addModifier(Tok_Mut);
     TypedValue *alloca = new TypedValue(c->builder.CreateAlloca(ty, 0, name.c_str()), tyNode);
 
     Variable *var = new Variable(name, alloca, c->scope);
@@ -567,6 +574,7 @@ TypedValue* VarDeclNode::compile(Compiler *c){
         TypedValue *val = expr->compile(c);
         if(!val) return 0;
 
+        val->type->addModifier(Tok_Mut);
         var->noFree = true;//var->getType() != TT_Ptr || dynamic_cast<Constant*>(val->val);
         
         //Make sure the assigned value matches the variable's type
@@ -606,8 +614,8 @@ TypedValue* compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
     
         val = l->val;
         tyn = l->type.get();
-        
-        if(!dynamic_cast<LoadInst*>(l->val))
+       
+        if(!tyn->hasModifier(Tok_Mut))
             return c->compErr("Variable must be mutable to be assigned to, but instead is an immutable " +
                     typeNodeToStr(tyn), bop->loc);
     }
@@ -665,7 +673,8 @@ TypedValue* VarAssignNode::compile(Compiler *c){
     TypedValue *tmp = ref_expr->compile(c);
     if(!tmp) return 0;
 
-    if(!dynamic_cast<LoadInst*>(tmp->val))
+    //if(!dynamic_cast<LoadInst*>(tmp->val))
+    if(!tmp->hasModifier(Tok_Mut))
         return c->compErr("Variable must be mutable to be assigned to, but instead is an immutable " +
                 llvmTypeToStr(tmp->getType()), ref_expr->loc);
     
@@ -1640,11 +1649,20 @@ void Compiler::emitIR(){
 }
     
 
+string typeNodeToStrWithModifiers(TypeNode *tn){
+    string ret = "";
+    for(int m : tn->modifiers){
+        ret += Lexer::getTokStr(m) + " ";
+    }
+    return ret + typeNodeToStr(tn);
+}
+
 /*
  *  Prints type and value of TypeNode to stdout
  */
 void TypedValue::dump() const{
-    cout << "type:\t" << typeNodeToStr(type.get()) << endl << "val:\t" << flush;
+    cout << "type:\t" << typeNodeToStrWithModifiers(type.get()) << endl
+         << "val:\t" << flush;
     
     if(type->type != TT_Void)
         val->dump();
@@ -1717,6 +1735,31 @@ inline void Compiler::stoType(DataType *ty, string &typeName){
     userTypes[typeName] = ty;
 }
 
+legacy::FunctionPassManager* mkPassManager(Module *m, char optLvl){
+    auto *pm = new legacy::FunctionPassManager(m);
+    pm->add(createDeadStoreEliminationPass());
+    pm->add(createDeadCodeEliminationPass());
+    pm->add(createLoopStrengthReducePass());
+    pm->add(createLoopUnrollPass());
+    pm->add(createLowerSwitchPass());
+    pm->add(createMergedLoadStoreMotionPass());
+    pm->add(createMemCpyOptPass());
+    pm->add(createLowerAtomicPass());
+    pm->add(createCFGSimplificationPass());
+    pm->add(createTailCallEliminationPass());
+    pm->add(createInstructionSimplifierPass());
+    pm->add(createSeparateConstOffsetFromGEPPass());
+    pm->add(createSpeculativeExecutionPass());
+    pm->add(createLoadCombinePass());
+    pm->add(createLoopLoadEliminationPass());
+    pm->add(createReassociatePass());
+    pm->add(createCFGSimplificationPass());
+    pm->add(createPromoteMemoryToRegisterPass());
+    pm->add(createInstructionCombiningPass());
+    pm->doInitialization();
+    return pm;
+}
+
 Compiler::Compiler(const char *_fileName, bool lib) :
         ctxt(),
         builder(ctxt), 
@@ -1749,16 +1792,7 @@ Compiler::Compiler(const char *_fileName, bool lib) :
     enterNewScope();
 
     //add passes to passmanager.
-    //TODO: change passes based on -O0 through -O3 flags
-    passManager.reset(new legacy::FunctionPassManager(module.get()));
-    //passManager->add(createBasicAliasAnalysisPass());
-    //passManager->add(createGVNPass());
-    passManager->add(createCFGSimplificationPass());
-    passManager->add(createTailCallEliminationPass());
-    passManager->add(createPromoteMemoryToRegisterPass());
-    passManager->add(createInstructionCombiningPass());
-    passManager->add(createReassociatePass());
-    passManager->doInitialization();
+    passManager.reset(mkPassManager(module.get(), 3));
 }
 
 Compiler::Compiler(Node *root, string modName, string &fName, bool lib) :
@@ -1778,16 +1812,7 @@ Compiler::Compiler(Node *root, string modName, string &fName, bool lib) :
     enterNewScope();
 
     //add passes to passmanager.
-    //TODO: change passes based on -O0 through -O3 flags
-    passManager.reset(new legacy::FunctionPassManager(module.get()));
-    //passManager->add(createBasicAliasAnalysisPass());
-    //passManager->add(createGVNPass());
-    passManager->add(createCFGSimplificationPass());
-    passManager->add(createTailCallEliminationPass());
-    passManager->add(createPromoteMemoryToRegisterPass());
-    passManager->add(createInstructionCombiningPass());
-    passManager->add(createReassociatePass());
-    passManager->doInitialization();
+    passManager.reset(mkPassManager(module.get(), 3));
 }
 
 void Compiler::processArgs(CompilerArgs *args, string &input){

@@ -80,12 +80,13 @@ map<int, const char*> tokDict = {
     {Tok_Ext, "Ext"},
 
     //modifiers
-    {Tok_Pub, "Pub"},
-    {Tok_Pri, "Pri"},
-    {Tok_Pro, "Pro"},
-    {Tok_Raw, "Raw"},
-    {Tok_Const, "Const"},
-    {Tok_Noinit, "Noinit"},
+    {Tok_Pub, "pub"},
+    {Tok_Pri, "pri"},
+    {Tok_Pro, "pro"},
+    {Tok_Raw, "raw"},
+    {Tok_Const, "const"},
+    {Tok_Noinit, "noinit"},
+    {Tok_Mut, "mut"},
 
     //other
     {Tok_Where, "Where"},
@@ -151,6 +152,7 @@ map<string, int> keywords = {
     {"raw",      Tok_Raw},
     {"const",    Tok_Const},
     {"noinit",   Tok_Noinit},
+    {"mut",      Tok_Mut},
 
     //other
     {"where",    Tok_Where},

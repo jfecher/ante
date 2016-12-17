@@ -46,6 +46,14 @@ type Str = [c8] cStr, u32 len
 
 
 //functions and methods
+
+/*  
+ * prints type and value (llvm dump) of variable while compiling
+ */
+![meta]
+fun Ante.debug: 't t;
+
+
 ![inline]
 fun i32.print: i32 x
     printf "%d\n" x

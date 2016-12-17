@@ -62,7 +62,7 @@ void yyerror(const char *msg);
 
 /* modifiers */
 %token Pub Pri Pro Raw
-%token Const Noinit
+%token Const Noinit Mut
 
 /* other */
 %token Where
@@ -89,7 +89,7 @@ void yyerror(const char *msg);
 %left Else Elif
 %left MED
 
-%left MODIFIER Pub Pri Pro Raw Const Noinit
+%left MODIFIER Pub Pri Pro Raw Const Noinit Mut
 %left RArrow
 
 
@@ -208,13 +208,16 @@ type_expr_: type_expr_ ',' type %prec LOW {$$ = setNext($1, $3);}
           | type                %prec LOW  {$$ = setRoot($1);}
           ;
 
-type_expr: type_expr_  %prec LOW {Node* tmp = getRoot(); 
-                        if(tmp == $1){//singular type, first type in list equals the last
-                            $$ = tmp;
-                        }else{ //tuple type
-                            $$ = mkTypeNode(@$, TT_Tuple, (char*)"", tmp);
-                        }
-                       }
+type_expr__: type_expr_  %prec LOW {Node* tmp = getRoot(); 
+                                    if(tmp == $1){//singular type, first type in list equals the last
+                                        $$ = tmp;
+                                    }else{ //tuple type
+                                        $$ = mkTypeNode(@$, TT_Tuple, (char*)"", tmp);
+                                    }
+                                   }
+
+type_expr: modifier_list type_expr__  {$$ = ((TypeNode*)$2)->addModifiers((ModNode*)$1);}
+         | type_expr__                {$$ = $1;}
 
 
 modifier: Pub      {$$ = mkModNode(@$, Tok_Pub);} 
@@ -223,6 +226,7 @@ modifier: Pub      {$$ = mkModNode(@$, Tok_Pub);}
         | Raw      {$$ = mkModNode(@$, Tok_Raw);}
         | Const    {$$ = mkModNode(@$, Tok_Const);}
         | Noinit   {$$ = mkModNode(@$, Tok_Noinit);}
+        | Mut      {$$ = mkModNode(@$, Tok_Mut);}
         | preproc  {$$ = $1;}
         ;
 
@@ -238,8 +242,7 @@ var_decl: modifier_list Var ident '=' expr  {$$ = mkVarDeclNode(@3, (char*)$3, $
         | Var ident '=' expr                {$$ = mkVarDeclNode(@2, (char*)$2,  0,  0, $4);}
         ;
 
-let_binding: Let modifier_list type_expr ident '=' expr {$$ = mkLetBindingNode(@$, (char*)$4, $2, $3, $6);}
-           | Let modifier_list ident '=' expr           {$$ = mkLetBindingNode(@$, (char*)$3, $2, 0,  $5);}
+let_binding: Let modifier_list ident '=' expr           {$$ = mkLetBindingNode(@$, (char*)$3, $2, 0,  $5);}
            | Let type_expr ident '=' expr               {$$ = mkLetBindingNode(@$, (char*)$3, 0,  $2, $5);}
            | Let ident '=' expr                         {$$ = mkLetBindingNode(@$, (char*)$2, 0,  0,  $4);}
            ;

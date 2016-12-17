@@ -32,6 +32,7 @@ struct TypedValue {
     TypedValue(Value *v, unique_ptr<TypeNode> &ty) : val(v), type(deepCopyTypeNode(ty.get())){}
     
     Type* getType() const{ return val->getType(); }
+    bool hasModifier(int m) const{ return type->hasModifier(m); }
     void dump() const;
 };
 

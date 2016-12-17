@@ -29,6 +29,42 @@ Node* setElse(Node *ifn, Node *elseN){
     }
     return ifn;
 }
+    
+//apply modifier to this type and all its extensions
+TypeNode* TypeNode::addModifiers(ModNode *m){
+    TypeNode *ext = extTy.get();
+    while(ext){
+        ext->addModifiers(m);
+        ext = (TypeNode*)ext->next.get();
+    }
+
+    while(m){
+        this->modifiers.push_back(m->mod);
+        m = (ModNode*)m->next.get();
+    }
+    return this;
+}
+
+//add a single modifier to this type and all its extensions
+TypeNode* TypeNode::addModifier(int m){
+    TypeNode *ext = extTy.get();
+    while(ext){
+        ext->modifiers.push_back(m);
+        ext = (TypeNode*)ext->next.get();
+    }
+    modifiers.push_back(m);
+    return this;
+}
+
+void TypeNode::copyModifiersFrom(const TypeNode *tn){
+    for(int m : tn->modifiers){
+        addModifier(m);
+    }
+}
+    
+bool TypeNode::hasModifier(int m){
+    return std::find(modifiers.cbegin(), modifiers.cend(), m) != modifiers.cend();
+}
 
 /*
  *  Pops and returns the root of the current block
@@ -194,6 +230,12 @@ TypeNode* deepCopyTypeNode(const TypeNode *n){
     }else if(n->type == TT_Array || n->type == TT_Ptr){
         cpy->extTy.reset(deepCopyTypeNode(n->extTy.get()));
     }
+
+    //finally, do a shallow copy for the modifiers
+    //this becomes a deep copy since this method is called recursively for each extTy
+    for(int m : n->modifiers)
+        cpy->modifiers.push_back(m);
+
     return cpy;
 }
 

@@ -25,6 +25,7 @@ the function is pure in that it would obtain the same result
 every time it is called with a given input.
 */
 
+
 fun fib: i32 n -> i32
     if n <= 3 then 
         (n+1)/2

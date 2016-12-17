@@ -136,16 +136,29 @@ struct BlockNode : public Node{
     ~BlockNode(){}
 };
 
+struct ModNode : public Node{
+    int mod;
+    TypedValue* compile(Compiler*);
+    void print(void);
+    ModNode(LOC_TY& loc, int m) : Node(loc), mod(m){}
+    ~ModNode(){}
+};
+
 struct TypeNode : public Node{
     TypeTag type;
     string typeName; //used for usertypes
     unique_ptr<TypeNode> extTy; //Used for pointers and non-single anonymous types.
+    vector<int> modifiers;
     
     bool operator==(TypeNode &r) const;
     bool operator!=(TypeNode &r) const;
     unsigned int getSizeInBits(Compiler*);
     TypedValue* compile(Compiler*);
     void print(void);
+    TypeNode* addModifiers(ModNode *m);
+    TypeNode* addModifier(int m);
+    void copyModifiersFrom(const TypeNode *tn);
+    bool hasModifier(int m);
     TypeNode(LOC_TY& loc, TypeTag ty, string tName, TypeNode* eTy) : Node(loc), type(ty), typeName(tName), extTy(eTy){}
     ~TypeNode(){}
 };
@@ -157,14 +170,6 @@ struct TypeCastNode : public Node{
     void print(void);
     TypeCastNode(LOC_TY& loc, TypeNode *ty, Node *rv) : Node(loc), typeExpr(ty), rval(rv){}
     ~TypeCastNode(){}
-};
-
-struct ModNode : public Node{
-    int mod;
-    TypedValue* compile(Compiler*);
-    void print(void);
-    ModNode(LOC_TY& loc, int m) : Node(loc), mod(m){}
-    ~ModNode(){}
 };
 
 struct PreProcNode : public Node{
