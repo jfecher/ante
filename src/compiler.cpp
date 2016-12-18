@@ -730,6 +730,30 @@ vector<Type*> getParamTypes(Compiler *c, NamedValNode *nvn, size_t paramCount){
 }
 
 
+/*
+ *  Adds llvm attributes to an Argument based off the parameters type
+ */
+void addArgAttrs(llvm::Argument &arg, TypeNode *paramTyNode){
+    if(paramTyNode->type == TT_Function)
+        arg.addAttr(Attribute::AttrKind::NoCapture);
+    
+}
+
+/*
+ *  Same as addArgAttrs, but for every parameter
+ */
+void addAllArgAttrs(Function *f, NamedValNode *params){
+    for(auto &arg : f->args()){
+        TypeNode *paramTyNode = (TypeNode*)params->typeExpr.get();
+       
+        addArgAttrs(arg, paramTyNode);
+        
+        if(!(params = (NamedValNode*)params->next.get())) break;
+    }
+}
+
+
+
 TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector<Type*> &paramTys, unsigned int scope){
     FunctionType *preFnTy = FunctionType::get(Type::getVoidTy(ctxt), paramTys, fdn->varargs);
 
@@ -752,9 +776,10 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
     vector<Value*> preArgs;
     for(auto &arg : preFn->args()){
         TypeNode *paramTyNode = (TypeNode*)cParam->typeExpr.get();
+        addArgAttrs(arg, paramTyNode);
 
         stoVar(cParam->name, new Variable(cParam->name, new TypedValue(&arg, paramTyNode), this->scope));
-        
+
         preArgs.push_back(&arg);
 
         if(curTyn){
@@ -897,6 +922,7 @@ TypedValue* compCompilerDirectiveFn(Compiler *c, FuncDeclNode *fdn, unsigned int
     }
 }
 
+
 TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
     BasicBlock *caller = builder.GetInsertBlock();
     if(PreProcNode *ppn = dynamic_cast<PreProcNode*>(fdn->modifiers.get())){
@@ -935,7 +961,9 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
     FunctionType *ft = FunctionType::get(retTy, paramTys, fdn->varargs);
     Function *f = Function::Create(ft, Function::ExternalLinkage, fdn->name, module.get());
     f->addFnAttr("nounwind");
-   
+    addAllArgAttrs(f, paramsBegin);
+
+
     auto* ret = new TypedValue(f, fnTy);
     //stoVar(fdn->name, new Variable(fdn->name, ret, scope));
     updateFn(ret, fdn->basename, fdn->name);
