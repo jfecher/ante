@@ -1,5 +1,5 @@
 
-type Vec = [i32] _data, u32 len, u32 cap
+type Vec = [i32] _data, u32 len cap
 
 
 fun Vec := Vec([i32] malloc 32, 0u32, 8u32)
