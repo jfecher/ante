@@ -32,7 +32,7 @@ Module* wrapFnInModule(Compiler *c, Function *f){
     //trying to return to the caller function
     ccpy->createMainFn();
     //the ret comes separate
-    ccpy->builder.CreateRet(ConstantInt::get(ccpy->ctxt, APInt(8, 1, true)));
+    ccpy->builder.CreateRet(ConstantInt::get(ccpy->ctxt, APInt(32, 1)));
 
     string name = f->getName().str();
 

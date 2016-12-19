@@ -5,7 +5,7 @@
 */
 
 //C functions
-fun printf: [c8] fmt, ...;
+fun printf: [c8] fmt, ... -> i32;
 fun puts: [c8] str -> i32;
 fun putchar: c8 char;
 fun getchar: -> c8;

@@ -1523,7 +1523,7 @@ void Compiler::eval(){
 
 Function* Compiler::createMainFn(){
     //get or create the function type for the main method: void()
-    FunctionType *ft = FunctionType::get(Type::getInt8Ty(ctxt), false);
+    FunctionType *ft = FunctionType::get(Type::getInt32Ty(ctxt), false);
     
     //Actually create the function in module m
     string fnName = isLib ? "init_" + removeFileExt(fileName) : "main";
@@ -1550,7 +1550,7 @@ void Compiler::compile(){
     //Compile the rest of the program
     delete ast->compile(this);
     
-    builder.CreateRet(ConstantInt::get(ctxt, APInt(8, 0, true)));
+    builder.CreateRet(ConstantInt::get(ctxt, APInt(32, 0)));
     
     passManager->run(*main);
 

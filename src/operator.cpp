@@ -805,7 +805,7 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
 
     //now that we assured it is a function, unwrap it
     Function *f = (Function*) tvf->val;
-    
+   
     //if tvf is a method, add its host object as the first argument
     if(tvf->type->type == TT_Method){
         TypedValue *obj = ((MethodVal*) tvf)->obj;
@@ -868,12 +868,14 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
         paramTy = (TypeNode*)paramTy->next.get();
         i++;
     }
-    
+
     if(tvf->type->type == TT_MetaFunction){
         return compMetaFunctionResult(c, l, tvf, typedArgs);
     }
 
-    return new TypedValue(c->builder.CreateCall(f, args), deepCopyTypeNode(tvf->type->extTy.get()));
+    auto *call = c->builder.CreateCall(f, args);
+
+    return new TypedValue(call, deepCopyTypeNode(tvf->type->extTy.get()));
 }
 
 TypedValue* Compiler::compLogicalOr(Node *lexpr, Node *rexpr, BinOpNode *op){
