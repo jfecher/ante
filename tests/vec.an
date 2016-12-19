@@ -48,3 +48,5 @@ while i <= 100 do
     i += 1
 
 print v
+
+free <| void* v._data
