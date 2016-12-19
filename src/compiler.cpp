@@ -913,7 +913,7 @@ TypedValue* compCompilerDirectiveFn(Compiler *c, FuncDeclNode *fdn, unsigned int
         }else if(vn->name == "meta"){
             fn->type->type = TT_MetaFunction;
         }else{
-            return c->compErr("Unrecognized compiler directive", vn->loc);
+            return c->compErr("Unrecognized compiler directive '"+vn->name+"'", vn->loc);
         }
 
         return fn;

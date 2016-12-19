@@ -804,7 +804,7 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
                 llvmTypeToStr(tvf->getType()), l->loc);
 
     //now that we assured it is a function, unwrap it
-    Function *f = (Function*) tvf->val;
+    Function *f = (Function*)tvf->val;
    
     //if tvf is a method, add its host object as the first argument
     if(tvf->type->type == TT_Method){
@@ -873,7 +873,10 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
         return compMetaFunctionResult(c, l, tvf, typedArgs);
     }
 
-    auto *call = c->builder.CreateCall(f, args);
+    //use tvf->val as arg, NOT f
+    //
+    //both a C-style cast and dyn-cast to functions fail if f is a function-pointer
+    auto *call = c->builder.CreateCall(tvf->val, args);
 
     return new TypedValue(call, deepCopyTypeNode(tvf->type->extTy.get()));
 }
