@@ -27,40 +27,10 @@ into the compiled module itself.
     - These compile-time functions are checked at compile-time and not compiled into the binary.
     - Ability to write compiler plugins within the compiled program itself
 * Module system allowing the setting of compiler flags on a per-module basis.
-```go
-//create i, a mutable integer
-var i = 55
-
-//Create j, an immutable integer
-let j = 0
-
-let myTuple = (5, 5.0, "five")
-
-//tuples can also be destructured and stored into multiple variables
-let (x, y) = (4, 5)
-
-//Arrays:
-var myArray = [0, 1, 2, 3, 4]
-
-//Return type inference:
-fun add: i32 x y = x + y
-
-//Sum types:
-type Maybe =
-   | Some 't
-   | None
-
-var f = Some 4
-f = None
-
-
-//pattern matching
-match parse_int "0g" with
-| Some n -> print n
-| None -> ()
-
-```
-* Significant whitespace after newlines; no tabs allowed in significant whitespace.
+* Immutability by default
+* Type inferencing
+* Significant whitespace after newlines
+    - No tabs are allowed in significant whitespace
 ```go
 fun myFunction:
     if 3 > 2 then
@@ -69,9 +39,9 @@ fun myFunction:
         print "Invalid laws of mathematics, please try again in an alternate universe"
 ```
 * Reference counted smart pointers by default while keeping the ability to create raw pointers
-* Unique pointers used whenever possible automatically
-* No more memory hassle trying to find cycles with pointers, everything is done by the compiler
-* No garbage collector
+    - Unique pointers used whenever possible automatically
+    - No more memory hassle trying to find cycles with pointers, everything is done by the compiler
+    - No garbage collector
 ```go
 let intPtr = new 5
 let strPtr = new "msg"
@@ -121,48 +91,49 @@ print "hello!"
 goto begin
 ```
 
-* Here is an example implementation of a thread that 'owns' the objects inside its function
+* Here is an example implementation of a thread that 'owns' the mutable objects inside its function
 ```Rust
-type MyThread = 'f fn, Pid pid
+fun SafeThread.run: void->void fn
+    //Import the Ante module for compile-time operations
+    import Ante
 
-ext MyThread
-    fun run: self*
-        self.pid = Thread.exec self.fn
+    //Get a list of all mutable variables used in fn
+    let vars =
+        Ante.getVarsInFn fn
+        .unwrap()
+        .filter isMutable
 
-
-    //Compile time function that runs whenever MyThread is created
-    pri fun handleInputs(onCreation): self
-        //get a list of all mutable variables used
-        let vars = 
-            Ante.getVarsInFn self.fn 
-            .unwrap()
-            .filter _.isMutable
-
-        //Store them compile-time for later use in the cleanup function
-        Ante.ctStore vars
-        
-        //Iterate through each variable and invalidate them
-        vars.iter Ante.invalidate
+    //Invalidate the further use of each variables
+    //NOTE: this does not invalidate their use in fn since Ante
+    //      uses eager evaluation and so fn is already compiled 
+    //      by the time this function is called.
+    vars.iter Ante.invalidate
 
 
-    pri fun cleanup(onDeletion): self
-        let vars = (Ante.ctLookup "vars").unwrap()
-        vars.iter Ante.revalidate
+    //actually run the function
+    //all other operations in SafeThread.run, such as Ante.getVarsInFn,
+    //are compile-time only and are not included in the binary.
+    fn()
+
+    //Function ran, variables are not revalidated because their
+    //ownership was transfered to fn
 ```
-* Explicit yet concise currying support
-```go
-let increment = _ + 1
+* Extensivity is encouraged through type extensions, which allow adding additional static methods to pre-existing types.
+* Universal Function Call Syntax
+```rust
+//add some methods to the Str type
+ext Str
+    fun reverse: Str s -> Str
+        var ret = ""
+        for i in reverse(0 .. s.len) do
+            ret ++= s#i
+        ret
 
-print(increment 4) //prints 5
+print( "!dlrow olleh".reverse() ) //outputs hello world!
+print( reverse "!dlrow olleh" )   //outputs hello world!
 
-let f = _ + increment _
-
-f 3 |> print
-//output: 7
-
-//filter out all numbers that aren't divisible by 7
-let l = List(0..100):filter(_ % 7 == 0)
-
+//Module Inferencing:
+Str.reverse "my str" == reverse "my str"
 ```
 
 * For more information, check out tests/language.an for all planned features.

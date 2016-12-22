@@ -255,14 +255,15 @@ TypeNode* deepCopyTypeNode(const TypeNode *n){
  *  This is used for the shortcut when declaring multiple
  *  variables of the same type, e.g. i32 a b c
  */
-Node* mkNamedValNode(yy::parser::location_type loc, Node* varNodes, Node* tExpr, bool setroot){
+Node* mkNamedValNode(yy::parser::location_type loc, Node* varNodes, Node* tExpr, Node* prev){
     //Note: there will always be at least one varNode
     const TypeNode* ty = (TypeNode*)tExpr;
     VarNode* vn = (VarNode*)varNodes;
     Node *first = new NamedValNode(loc, vn->name, tExpr);
     Node *nxt = first;
 
-    if(setroot) setRoot(first);
+    if(!prev) setRoot(first);
+    else setNext(prev, first);
 
     while((vn = (VarNode*)vn->next.get())){
         TypeNode *tyNode = deepCopyTypeNode(ty);

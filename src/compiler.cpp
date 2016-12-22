@@ -1168,6 +1168,7 @@ TypedValue* DataDeclNode::compile(Compiler *c){
     }else{
         data = new DataType(fieldNames, first);
     }
+    
 
     c->stoType(data, name);
     return c->getVoidLiteral();

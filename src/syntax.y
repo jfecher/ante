@@ -306,14 +306,15 @@ type_decl_list: type_decl_list Newline type_decl           {$$ = setNext($1, $3)
 
 type_decl_block: Indent type_decl_list Unindent  {$$ = getRoot();}
                | params               %prec LOW  {$$ = $1;}
-               | type_expr            %prec LOW  {$$ = mkNamedValNode(@$, mkVarNode(@$, (char*)""), $1);}
+               | type_expr            %prec LOW  {$$ = mkNamedValNode(@$, mkVarNode(@$, (char*)""), $1, 0);}
                | tagged_union_list    %prec LOW  {$$ = getRoot();}
                ;
 
-tagged_union_list: tagged_union_list '|' usertype type_expr_list  %prec LOW  {$$ = setNext($1, mkNamedValNode(@$, mkVarNode(@3, (char*)$3), mkTypeNode(@$, TT_TaggedUnion, (char*)"", getRoot())));}
-                 | tagged_union_list '|' usertype                 %prec LOW  {$$ = setNext($1, mkNamedValNode(@$, mkVarNode(@3, (char*)$3), mkTypeNode(@$, TT_TaggedUnion, (char*)"", 0)));}
-                 | '|' usertype type_expr_list                    %prec LOW  {$$ = setRoot(mkNamedValNode(@$, mkVarNode(@2, (char*)$2), mkTypeNode(@$, TT_TaggedUnion, (char*)"", getRoot())));}
-                 | '|' usertype                                   %prec LOW  {$$ = setRoot(mkNamedValNode(@$, mkVarNode(@2, (char*)$2), mkTypeNode(@$, TT_TaggedUnion, (char*)"", 0)));}
+/* this rule returns a list (handled by mkNamedValNode function) */
+tagged_union_list: tagged_union_list '|' usertype type_expr_list  %prec LOW  {$$ = mkNamedValNode(@$, mkVarNode(@3, (char*)$3), mkTypeNode(@$, TT_TaggedUnion, (char*)"", getRoot()), $1);}
+                 | tagged_union_list '|' usertype                 %prec LOW  {$$ = mkNamedValNode(@$, mkVarNode(@3, (char*)$3), mkTypeNode(@$, TT_TaggedUnion, (char*)"", 0), $1);}
+                 | '|' usertype type_expr_list                    %prec LOW  {$$ = mkNamedValNode(@$, mkVarNode(@2, (char*)$2), mkTypeNode(@$, TT_TaggedUnion, (char*)"", getRoot()), 0);}
+                 | '|' usertype                                   %prec LOW  {$$ = mkNamedValNode(@$, mkVarNode(@2, (char*)$2), mkTypeNode(@$, TT_TaggedUnion, (char*)"", 0), 0);}
 
 
 
@@ -336,12 +337,15 @@ ident_list: raw_ident_list  %prec MED {$$ = getRoot();}
  */
 
 
-_params: _params ',' type_expr ident_list {$$ = setNext($1, mkNamedValNode(@$, $4, $3));}
-      | type_expr ident_list              {$$ = mkNamedValNode(@$, $2, $1, true);}
+/* NOTE: mkNamedValNode takes care of setNext and setRoot
+        for lists automatically in case the shortcut syntax
+        is used and multiple NamedValNodes are made */
+_params: _params ',' type_expr ident_list {$$ = mkNamedValNode(@$, $4, $3, $1);}
+      | type_expr ident_list              {$$ = mkNamedValNode(@$, $2, $1, 0);}
       ;
 
                           /* varargs function .. (Range) followed by . */
-params: _params ',' Range '.' {setNext($1, mkNamedValNode(@$, mkVarNode(@$, (char*)""), 0)); $$ = getRoot();}
+params: _params ',' Range '.' {mkNamedValNode(@$, mkVarNode(@$, (char*)""), 0, $1); $$ = getRoot();}
       | _params               %prec LOW {$$ = getRoot();}
       ;
 
