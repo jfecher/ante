@@ -212,7 +212,7 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
                 return compErr("Cannot create store of types: "+typeNodeToStr(tmp->type.get())+" <- "
                         +typeNodeToStr(newVal->type.get()), assignExpr->loc);
 
-            builder.CreateInsertElement(var, newVal->val, index->val);
+            builder.CreateInsertElement(tmp->val, newVal->val, index->val);
             return getVoidLiteral();
         }
         case TT_Ptr: {
@@ -220,9 +220,8 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
                 return compErr("Cannot create store of types: "+typeNodeToStr(tmp->type.get())+" <- "
                         +typeNodeToStr(newVal->type.get()), assignExpr->loc);
 
-            //Value *dest = builder.CreateGEP(var, index->val);
-            //builder.CreateStore(newVal->val, dest);
-            builder.CreateInsertElement(var, newVal->val, index->val);
+            Value *dest = builder.CreateInBoundsGEP(tmp->getType()->getPointerElementType(), tmp->val, index->val);
+            builder.CreateStore(newVal->val, dest);
             return getVoidLiteral();
         }
         case TT_Tuple: case TT_Data:
