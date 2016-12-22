@@ -185,6 +185,15 @@ Node* mkPreProcNode(LOC_TY loc, Node* expr){
 }
 
 Node* mkTypeNode(yy::parser::location_type loc, TypeTag type, char* typeName, Node* extTy = nullptr){
+    if(type == TT_Array){
+        //2nd type ext is size of the array when making Array types, ensure it is an intlit
+        auto *size = dynamic_cast<IntLitNode*>(extTy->next.get());
+
+        if(!size){
+            ante::error("Size of array must be an integer literal", loc);
+            exit(1);
+        }
+    }
     return new TypeNode(loc, type, typeName, static_cast<TypeNode*>(extTy));
 }
 

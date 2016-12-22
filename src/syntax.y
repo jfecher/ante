@@ -84,10 +84,10 @@ void yyerror(const char *msg);
 
 %left Newline
 %left RArrow
-%left ';'
 %left STMT Fun Let Import Return Ext Var While For Match Trait
 %left If
 %left Else Elif
+%left ';'
 %left MED
 
 %left MODIFIER Pub Pri Pro Raw Const Noinit Mut
@@ -196,12 +196,28 @@ lit_type: I8        {$$ = mkTypeNode(@$, TT_I8,  (char*)"");}
         | typevar   {$$ = mkTypeNode(@$, TT_TypeVar, (char*)$1);}
         ;
 
-type: type '*'              %prec HIGH {$$ = mkTypeNode(@$, TT_Ptr,  (char*)"", $1);}
-    | '[' type_expr ']'     {$$ = mkTypeNode(@$, TT_Array,(char*)"", $2);}
-    | type RArrow type         {setNext($3, $1); $$ = mkTypeNode(@$, TT_Function, (char*)"", $3);}  /* f-ptr w/ params*/
-    | '(' ')' RArrow type   {$$ = mkTypeNode(@$, TT_Function, (char*)"", $4);}  /* f-ptr w/out params*/
-    | '(' type_expr ')'     {$$ = $2;}
-    | lit_type              {$$ = $1;}
+pointer_type: pointer_type '*'  %prec HIGH  {$$ = mkTypeNode(@$, TT_Ptr, (char*)"", $1);}
+            | type '*'          %prec HIGH  {$$ = mkTypeNode(@$, TT_Ptr, (char*)"", $1);}
+            ;
+
+fn_type: '(' ')'            RArrow type  {$$ = mkTypeNode(@$, TT_Function, (char*)"", $4);}
+       | '(' type_expr_ ')' RArrow type  {Node* tmp = getRoot();
+                                          setNext($5, tmp);
+                                          $$ = mkTypeNode(@$, TT_Function, (char*)"", $5);}
+       | lit_type           RArrow type  {setNext($3, $1); $$ = mkTypeNode(@$, TT_Function, (char*)"", $3);}
+       | pointer_type       RArrow type  {setNext($3, $1); $$ = mkTypeNode(@$, TT_Function, (char*)"", $3);}
+       | arr_type           RArrow type  {setNext($3, $1); $$ = mkTypeNode(@$, TT_Function, (char*)"", $3);}
+       ;
+
+/* val is used here instead of intlit due to parse conflicts, but only intlit is allowed */
+arr_type: '[' val type_expr ']' {setNext($3, $2); $$ = mkTypeNode(@$, TT_Array, (char*)"", $3);} 
+         ;
+
+type: pointer_type  %prec LOW  {$$ = $1;}
+    | arr_type      %prec LOW  {$$ = $1;}
+    | fn_type       %prec LOW  {$$ = $1;}
+    | lit_type      %prec LOW  {$$ = $1;}
+    | '(' type_expr ')'        {$$ = $2;} 
     ;
 
 type_expr_: type_expr_ ',' type %prec LOW {$$ = setNext($1, $3);}

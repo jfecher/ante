@@ -10,7 +10,7 @@ char getBitWidthOfTypeTag(const TypeTag ty){
         case TT_Isz: case TT_Usz: return 64; //TODO: detect 32-bit platform
         case TT_Bool: return 1;
    
-        case TT_Ptr: case TT_StrLit: case TT_Array: return 64;
+        case TT_Ptr: case TT_StrLit: return 64;
         case TT_Function: case TT_Method: case TT_MetaFunction: return 64;
         default: return 0;
     }
@@ -38,7 +38,10 @@ unsigned int TypeNode::getSizeInBits(Compiler *c){
             total += ext->getSizeInBits(c);
             ext = (TypeNode*)ext->next.get();
         }
-    }else if(type == TT_Array || type == TT_Ptr || type == TT_Function || type == TT_MetaFunction || type == TT_Method){
+    }else if(type == TT_Array){
+        auto *len = (IntLitNode*)ext->next.get();
+        return stoi(len->val) * ext->getSizeInBits(c);
+    }else if(type == TT_Ptr || type == TT_Function || type == TT_MetaFunction || type == TT_Method){
         return 64;
     }
     
@@ -260,7 +263,7 @@ TypeTag llvmTypeToTypeTag(Type *t){
     if(t->isFloatTy()) return TT_F32;
     if(t->isDoubleTy()) return TT_F64;
     
-    //if(t->isVectorTy()) return TT_Array;
+    if(t->isArrayTy()) return TT_Array;
     if(t->isStructTy() && !t->isEmptyTy()) return TT_Tuple; /* Could also be a TT_Data! */
     if(t->isPointerTy()) return TT_Ptr;
     if(t->isFunctionTy()) return TT_Function;
@@ -283,8 +286,10 @@ Type* Compiler::typeNodeToLlvmType(TypeNode *tyNode){
             return tyn->type != TT_Void ?
                 PointerType::get(typeNodeToLlvmType(tyn), 0)
                 : Type::getInt8Ty(ctxt)->getPointerTo();
-        case TT_Array:
-            return PointerType::get(typeNodeToLlvmType(tyn), 0);
+        case TT_Array:{
+            auto *intlit = (IntLitNode*)tyn->next.get();
+            return ArrayType::get(typeNodeToLlvmType(tyn), stoi(intlit->val));
+        }
         case TT_Tuple:
             while(tyn){
                 tys.push_back(typeNodeToLlvmType(tyn));
@@ -347,7 +352,8 @@ bool llvmTypeEq(Type *l, Type *r){
 
         return llvmTypeEq(lty, rty);
     }else if(ltt == TT_Array){
-        return llvmTypeEq(l->getPointerElementType(), r->getPointerElementType());
+        return l->getArrayElementType() == r->getArrayElementType() &&
+               l->getArrayNumElements() == r->getArrayNumElements();
     }else if(ltt == TT_Function || ltt == TT_MetaFunction){
         int lParamCount = l->getFunctionNumParams();
         int rParamCount = r->getFunctionNumParams();
@@ -410,11 +416,17 @@ bool TypeNode::operator==(TypeNode &r) const {
     if(this->type != r.type)
         return false;
 
-    if(r.type == TT_Ptr or r.type == TT_Array){
+    if(r.type == TT_Ptr){
         if(extTy->type == TT_Void || r.extTy->type == TT_Void)
             return true;
 
         return *this->extTy.get() == *r.extTy.get();
+    }else if(r.type == TT_Array){
+        //size of an array is part of its type and stored in 2nd extTy
+        auto lsz = atoi( ((IntLitNode*)extTy->next.get())->val.c_str() );
+        auto rsz = atoi( ((IntLitNode*)r.extTy->next.get())->val.c_str() );
+
+        return lsz == rsz and *extTy == *r.extTy;
     }else if(r.type == TT_Data or r.type == TT_TaggedUnion){
         return typeName == r.typeName;
     }else if(r.type == TT_Function or r.type == TT_MetaFunction or r.type == TT_Method or r.type == TT_Tuple){
@@ -505,7 +517,8 @@ string typeNodeToStr(TypeNode *t){
     }else if(t->type == TT_Data || t->type == TT_TaggedUnion){
         return string(t->typeName.c_str()); //make a copy of the typename
     }else if(t->type == TT_Array){
-        return '[' + typeNodeToStr(t->extTy.get()) + ']';
+        auto *len = (IntLitNode*)t->extTy->next.get();
+        return '[' + len->val + " " + typeNodeToStr(t->extTy.get()) + ']';
     }else if(t->type == TT_Ptr){
         return typeNodeToStr(t->extTy.get()) + "*";
     }else if(t->type == TT_Function || t->type == TT_MetaFunction || t->type == TT_Method){
@@ -552,7 +565,7 @@ string llvmTypeToStr(Type *ty){
         }
         return ret;
     }else if(tt == TT_Array){
-        return "[" + llvmTypeToStr(ty->getPointerElementType()) + "]";
+        return "[" + to_string(ty->getArrayNumElements()) + " " + llvmTypeToStr(ty->getArrayElementType()) + "]";
     }else if(tt == TT_Ptr){
         return llvmTypeToStr(ty->getPointerElementType()) + "*";
     }else if(tt == TT_Function){

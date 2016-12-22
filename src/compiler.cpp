@@ -204,7 +204,8 @@ TypedValue* TypeNode::compile(Compiler *c){
         ty->type = TT_TaggedUnion;
         return new TypedValue(unionVal, ty);
     }
-    return nullptr;
+
+    return c->compErr("Cannot extract tag value from non-union-tag type " + typeNodeToStr(this), loc);
 }
 
 
@@ -326,6 +327,8 @@ TypedValue* ArrayNode::compile(Compiler *c){
 
     for(Node *n : exprs){
         auto *tval = n->compile(c);
+        if(!tval) return 0;
+
         arr.push_back((Constant*)tval->val);
 
         if(!tyn->extTy.get())
@@ -334,7 +337,7 @@ TypedValue* ArrayNode::compile(Compiler *c){
 
     auto *ty = ArrayType::get(arr[0]->getType(), exprs.size());
     auto *val = ConstantArray::get(ty, arr);
-    return new TypedValue(c->builder.CreateConstGEP1_32(val, 0), tyn);
+    return new TypedValue(val, tyn);
 }
 
 TypedValue* Compiler::getVoidLiteral(){

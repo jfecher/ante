@@ -138,26 +138,21 @@ TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
         return compErr("Index of operator '[' must be an integer expression, got expression of type " + typeNodeToStr(r->type.get()), op->loc);
     }
 
-    if(l->type->type == TT_Array || l->type->type == TT_Ptr){
+    if(l->type->type == TT_Array){
         //check for alloca
         if(dynamic_cast<LoadInst*>(l->val)){
-
-            if(llvmTypeToTypeTag(l->val->getType()) == TT_Ptr){
-                return new TypedValue(builder.CreateLoad(builder.CreateGEP(l->val, r->val)), l->type->extTy.get());
-            }else{
-                Value *arr = static_cast<LoadInst*>(l->val)->getPointerOperand();
+            Value *arr = static_cast<LoadInst*>(l->val)->getPointerOperand();
             
-                vector<Value*> indices;
-                indices.push_back(ConstantInt::get(ctxt, APInt(64, 0, true)));
-                indices.push_back(r->val);
-                return new TypedValue(builder.CreateLoad(builder.CreateGEP(arr, indices)), l->type->extTy.get());
-            }
+            vector<Value*> indices;
+            indices.push_back(ConstantInt::get(ctxt, APInt(64, 0, true)));
+            indices.push_back(r->val);
+            return new TypedValue(builder.CreateLoad(builder.CreateGEP(arr, indices)), l->type->extTy.get());
         }else{
-            if(llvmTypeToTypeTag(l->getType()) == TT_Ptr)
-                return new TypedValue(builder.CreateLoad(builder.CreateGEP(l->val, r->val)), l->type->extTy.get());
-            else
-                return new TypedValue(builder.CreateExtractElement(l->val, r->val), l->type->extTy.get());
+            return new TypedValue(builder.CreateExtractElement(l->val, r->val), l->type->extTy.get());
         }
+    }else if(l->type->type == TT_Ptr){
+        return new TypedValue(builder.CreateLoad(builder.CreateGEP(l->val, r->val)), l->type->extTy.get());
+
     }else if(l->type->type == TT_Tuple || l->type->type == TT_Data){
         if(!dynamic_cast<ConstantInt*>(r->val))
             return compErr("Tuple indices must always be known at compile time.", op->loc);
@@ -212,23 +207,22 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
     if(!var || !index || !newVal) return 0;
 
     switch(tmp->type->type){
-        case TT_Array: case TT_Ptr: {
+        case TT_Array: {
+            if(*tmp->type->extTy != *newVal->type)
+                return compErr("Cannot create store of types: "+typeNodeToStr(tmp->type.get())+" <- "
+                        +typeNodeToStr(newVal->type.get()), assignExpr->loc);
 
+            builder.CreateInsertElement(var, newVal->val, index->val);
+            return getVoidLiteral();
+        }
+        case TT_Ptr: {
             if(*tmp->type->extTy.get() != *newVal->type.get())
                 return compErr("Cannot create store of types: "+typeNodeToStr(tmp->type.get())+" <- "
                         +typeNodeToStr(newVal->type.get()), assignExpr->loc);
 
-            Value *dest;
-            if(tmp->getType()->isPointerTy()){
-                dest = builder.CreateInBoundsGEP(tmp->getType()->getPointerElementType(), tmp->val, index->val);
-            }else{
-                vector<Value*> indices;
-                indices.push_back(ConstantInt::get(ctxt, APInt(64, 0, true)));
-                indices.push_back(index->val);
-                dest = builder.CreateGEP(var, indices);
-            }
-
-            builder.CreateStore(newVal->val, dest);
+            //Value *dest = builder.CreateGEP(var, index->val);
+            //builder.CreateStore(newVal->val, dest);
+            builder.CreateInsertElement(var, newVal->val, index->val);
             return getVoidLiteral();
         }
         case TT_Tuple: case TT_Data:
@@ -300,9 +294,9 @@ TypedValue* createCast(Compiler *c, Type *castTy, TypeNode *tyn, TypedValue *val
             return new TypedValue(c->builder.CreateFPCast(valToCast->val, castTy), tyn);
         }
 
-    }else if(valToCast->type->type == TT_Ptr || valToCast->type->type == TT_Array){
+    }else if(valToCast->type->type == TT_Ptr){
         // ptr -> ptr
-        if(tyn->type == TT_Ptr || tyn->type == TT_Array){
+        if(tyn->type == TT_Ptr){
             return new TypedValue(c->builder.CreatePointerCast(valToCast->val, castTy), tyn);
 
         // ptr -> int
@@ -370,7 +364,7 @@ TypedValue* createCast(Compiler *c, Type *castTy, TypeNode *tyn, TypedValue *val
             return new TypedValue(valToCast->val, tycpy);
         }
     }
-
+ 
     return nullptr;
 }
 
@@ -382,6 +376,9 @@ TypedValue* TypeCastNode::compile(Compiler *c){
     auto* tval = createCast(c, castTy, typeExpr.get(), rtval);
 
     if(!tval){
+        if(*rtval->type == *typeExpr)
+            return c->compErr("Typecast to same type", loc);
+        
         return c->compErr("Invalid type cast " + typeNodeToStr(rtval->type.get()) + 
                 " -> " + typeNodeToStr(typeExpr.get()), loc);
     }else{
@@ -621,22 +618,22 @@ extern "C" float f16ToF32_f16(GenericValue v);
 TypedValue* genericValueToTypedValue(Compiler *c, GenericValue gv, TypeNode *tn){
     auto *copytn = deepCopyTypeNode(tn);
     switch(tn->type){
-        case TT_I8:              return new TypedValue(c->builder.getInt8( *gv.IntVal.getRawData()),                       copytn);
-        case TT_I16:             return new TypedValue(c->builder.getInt16(*gv.IntVal.getRawData()),                       copytn);
-        case TT_I32:             return new TypedValue(c->builder.getInt32(*gv.IntVal.getRawData()),                       copytn);
-        case TT_I64:             return new TypedValue(c->builder.getInt64(*gv.IntVal.getRawData()), copytn);
-        case TT_U8:              return new TypedValue(c->builder.getInt8( *gv.IntVal.getRawData()),                       copytn);
-        case TT_U16:             return new TypedValue(c->builder.getInt16(*gv.IntVal.getRawData()),                       copytn);
-        case TT_U32:             return new TypedValue(c->builder.getInt32(*gv.IntVal.getRawData()),                       copytn);
-        case TT_U64:             return new TypedValue(c->builder.getInt64(*gv.IntVal.getRawData()), copytn);
-        case TT_Isz:             return new TypedValue(c->builder.getInt64(*gv.IntVal.getRawData()), copytn);
-        case TT_Usz:             return new TypedValue(c->builder.getInt64(*gv.IntVal.getRawData()), copytn);
-        case TT_C8:              return new TypedValue(c->builder.getInt8( *gv.IntVal.getRawData()),                       copytn);
-        case TT_C32:             return new TypedValue(c->builder.getInt32(*gv.IntVal.getRawData()),                       copytn);
-        case TT_F16:             return new TypedValue(ConstantFP::get(c->ctxt, APFloat(f16ToF32_f16(gv))),             copytn);
-        case TT_F32:             return new TypedValue(ConstantFP::get(c->ctxt, APFloat(gv.FloatVal)),                  copytn);
-        case TT_F64:             return new TypedValue(ConstantFP::get(c->ctxt, APFloat(gv.DoubleVal)),                 copytn);
-        case TT_Bool:            return new TypedValue(c->builder.getInt1(*gv.IntVal.getRawData()),                               copytn);
+        case TT_I8:              return new TypedValue(c->builder.getInt8( *gv.IntVal.getRawData()),        copytn);
+        case TT_I16:             return new TypedValue(c->builder.getInt16(*gv.IntVal.getRawData()),        copytn);
+        case TT_I32:             return new TypedValue(c->builder.getInt32(*gv.IntVal.getRawData()),        copytn);
+        case TT_I64:             return new TypedValue(c->builder.getInt64(*gv.IntVal.getRawData()),        copytn);
+        case TT_U8:              return new TypedValue(c->builder.getInt8( *gv.IntVal.getRawData()),        copytn);
+        case TT_U16:             return new TypedValue(c->builder.getInt16(*gv.IntVal.getRawData()),        copytn);
+        case TT_U32:             return new TypedValue(c->builder.getInt32(*gv.IntVal.getRawData()),        copytn);
+        case TT_U64:             return new TypedValue(c->builder.getInt64(*gv.IntVal.getRawData()),        copytn);
+        case TT_Isz:             return new TypedValue(c->builder.getInt64(*gv.IntVal.getRawData()),        copytn);
+        case TT_Usz:             return new TypedValue(c->builder.getInt64(*gv.IntVal.getRawData()),        copytn);
+        case TT_C8:              return new TypedValue(c->builder.getInt8( *gv.IntVal.getRawData()),        copytn);
+        case TT_C32:             return new TypedValue(c->builder.getInt32(*gv.IntVal.getRawData()),        copytn);
+        case TT_F16:             return new TypedValue(ConstantFP::get(c->ctxt, APFloat(f16ToF32_f16(gv))), copytn);
+        case TT_F32:             return new TypedValue(ConstantFP::get(c->ctxt, APFloat(gv.FloatVal)),      copytn);
+        case TT_F64:             return new TypedValue(ConstantFP::get(c->ctxt, APFloat(gv.DoubleVal)),     copytn);
+        case TT_Bool:            return new TypedValue(c->builder.getInt1(*gv.IntVal.getRawData()),         copytn);
         case TT_StrLit:          break;    
         case TT_Tuple:           break;
         case TT_Array:           break;
@@ -856,8 +853,8 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
             if(auto *fn = c->getMangledFunction(castFn, tArg->type.get())){
                 //the function's parameter is not type checked as it is assumed it was mangled correctly.
                 
-                //optimize case of Str -> [c8] implicit cast
-                if(tArg->type->typeName == "Str" && castFn == "[c8]")
+                //optimize case of Str -> c8* implicit cast
+                if(tArg->type->typeName == "Str" && castFn == "c8*")
                     args[i-1] = c->builder.CreateExtractValue(args[i-1], 0);
                 else
                     args[i-1] = c->builder.CreateCall(fn->val, tArg->val);
@@ -1089,37 +1086,6 @@ TypedValue* BinOpNode::compile(Compiler *c){
 }
 
 
-unsigned long getSizeInBits(Compiler *c, TypeNode *t){
-    switch(t->type){
-        case TT_Ptr: case TT_Array: case TT_Function: case TT_Method:
-            return 64;
-        case TT_Tuple:{
-            TypeNode *ext = t->extTy.get();
-            unsigned long sum = 0;
-
-            while(ext){
-                sum += getSizeInBits(c, ext);
-                ext = (TypeNode*)ext->next.get();
-            }
-            return sum;
-        }
-        case TT_Data: case TT_TaggedUnion: {
-            auto *ty = c->lookupType(t->typeName);
-            if(!ty) return (long) c->compErr("Use of undeclared type " + typeNodeToStr(t), t->loc);
-            TypeNode *ext = ty->tyn->extTy.get();
-            unsigned long sum = 0;
-
-            while(ext){
-                sum += getSizeInBits(c, ext);
-                ext = (TypeNode*)ext->next.get();
-            }
-            return sum;
-        }
-        default:
-            return getBitWidthOfTypeTag(t->type);
-    }
-}
-
 TypedValue* UnOpNode::compile(Compiler *c){
     TypedValue *rhs = rval->compile(c);
     if(!rhs) return 0;
@@ -1159,7 +1125,7 @@ TypedValue* UnOpNode::compile(Compiler *c){
                 string mallocFnName = "malloc";
                 Function* mallocFn = (Function*)c->getFunction(mallocFnName, mallocFnName)->val;
 
-                unsigned size = getSizeInBits(c, rhs->type.get()) / 8;
+                unsigned size = rhs->type->getSizeInBits(c) / 8;
 
                 Value *sizeVal = ConstantInt::get(c->ctxt, APInt(32, size, true));
 
