@@ -1473,6 +1473,22 @@ inline void Compiler::registerFunction(FuncDeclNode *fn){
     fnDecls[fn->basename].push_front(new FuncDecl(fn, this->scope));
 }
 
+
+/*
+ * Creates a placeholder node that will not generate any code
+ * if its compile method is called.
+ *
+ * Used for filling in gaps after parse tree modifications
+ */
+Node* mkPlaceholderNode(){
+    auto* empty = new string("");
+
+    auto fakeLoc = yy::location(yy::position(empty, 0, 0),
+                                yy::position(empty, 0, 0));
+    
+    return new StrLitNode(fakeLoc, "(placeholder)");
+}
+
 /*
  *  Sweeps through entire parse tree registering all function and data
  *  declarations.  Removes compiled functions.
@@ -1509,10 +1525,10 @@ void Compiler::scanAllDecls(){
         op->compile(this); //register the function`
         if(prev){
             prev->lval.release();
-            prev->lval.reset(mkAnonTypeNode(TT_Void)); //TODO: replace this node with one that does not rely on the ::compile function being empty
+            prev->lval.reset(mkPlaceholderNode());
         }else{
             ast.release();
-            ast.reset(mkAnonTypeNode(TT_Void)); //TODO: replace this node with one that does not rely on the ::compile function being empty
+            ast.reset(mkPlaceholderNode());
         }
     }
 }
