@@ -335,6 +335,8 @@ TypedValue* ArrayNode::compile(Compiler *c){
             tyn->extTy.reset(tval->type.get());
     }
 
+    tyn->extTy->next.reset(new IntLitNode(tyn->loc, to_string(exprs.size()), TT_U32));
+
     auto *ty = ArrayType::get(arr[0]->getType(), exprs.size());
     auto *val = ConstantArray::get(ty, arr);
     return new TypedValue(val, tyn);
@@ -1487,7 +1489,7 @@ Node* mkPlaceholderNode(){
     auto fakeLoc = yy::location(yy::position(empty, 0, 0),
                                 yy::position(empty, 0, 0));
     
-    return new StrLitNode(fakeLoc, "(placeholder)");
+    return new IntLitNode(fakeLoc, "0", TT_U8);
 }
 
 /*
