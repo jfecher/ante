@@ -1451,8 +1451,8 @@ TypeNode* mkDataTypeNode(string tyname){
  *  do not pollute the module with unused definitions.
  */
 void Compiler::compilePrelude(){
-    if(fileName != LIB_DIR "/prelude.an")
-        importFile(LIB_DIR "/prelude.an");
+    if(fileName != LIB_DIR "prelude.an")
+        importFile(LIB_DIR "prelude.an");
 }
 
 

@@ -303,19 +303,19 @@ Node* mkIfNode(yy::parser::location_type loc, Node* con, Node* then, Node* els){
     return new IfNode(loc, con, then, els);
 }
 
-ParentNode* mkWhileNode(yy::parser::location_type loc, Node* con, Node* body){
+Node* mkWhileNode(yy::parser::location_type loc, Node* con, Node* body){
     return new WhileNode(loc, con, body);
 }
 
-ParentNode* mkForNode(yy::parser::location_type loc, Node* var, Node* range, Node* body){
+Node* mkForNode(yy::parser::location_type loc, Node* var, Node* range, Node* body){
     return new ForNode(loc, (char*)var, range, body);
 }
 
-ParentNode* mkFuncDeclNode(yy::parser::location_type loc, Node* s, Node *bn, Node* mods, Node* tExpr, Node* p, Node* b){
+Node* mkFuncDeclNode(yy::parser::location_type loc, Node* s, Node *bn, Node* mods, Node* tExpr, Node* p, Node* b){
     return new FuncDeclNode(loc, (char*)s, (char*)bn, mods, tExpr, p, b);
 }
 
-ParentNode* mkDataDeclNode(yy::parser::location_type loc, char* s, Node* b){
+Node* mkDataDeclNode(yy::parser::location_type loc, char* s, Node* b){
     return new DataDeclNode(loc, s, b, getTupleSize(b));
 }
 
@@ -329,6 +329,6 @@ Node* mkMatchBranchNode(LOC_TY loc, Node* pattern, Node* branch){
     return new MatchBranchNode(loc, pattern, branch);
 }
 
-ParentNode* mkTraitNode(LOC_TY loc, char* s, Node* fns){
+Node* mkTraitNode(LOC_TY loc, char* s, Node* fns){
     return new TraitNode(loc, s, fns);
 }

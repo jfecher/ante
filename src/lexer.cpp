@@ -692,7 +692,7 @@ int Lexer::next(yy::parser::location_type* loc){
             scopes->pop();
 
             //do not return an end-of-file newline
-            shouldReturnNewline = nxt;
+            shouldReturnNewline = (bool) nxt;
             return Tok_Unindent;
         }
     }

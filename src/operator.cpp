@@ -103,16 +103,6 @@ TypedValue* Compiler::compRem(TypedValue *l, TypedValue *r, BinOpNode *op){
     }
 }
 
-inline bool isIntTypeTag(const TypeTag ty){
-    return ty==TT_I8||ty==TT_I16||ty==TT_I32||ty==TT_I64||
-           ty==TT_U8||ty==TT_U16||ty==TT_U32||ty==TT_U64||
-           ty==TT_Isz||ty==TT_Usz||ty==TT_C8;
-}
-
-inline bool isFPTypeTag(const TypeTag tt){
-    return tt==TT_F16||tt==TT_F32||tt==TT_F64;
-}
-
 /*
  *  Compiles the extract operator, [
  */
@@ -609,7 +599,7 @@ TypeNode* typedValsToTypeNodes(vector<TypedValue*> &tvs){
 
 //ante function to convert between IEEE half and IEEE single
 //since c++ does not support an IEEE half value
-extern "C" float f16ToF32_f16(GenericValue v);
+//extern "C" float f16ToF32_f16(GenericValue v);
 
 /*
  *  Converts an llvm GenericValue to a TypedValue
@@ -629,7 +619,7 @@ TypedValue* genericValueToTypedValue(Compiler *c, GenericValue gv, TypeNode *tn)
         case TT_Usz:             return new TypedValue(c->builder.getInt64(*gv.IntVal.getRawData()),        copytn);
         case TT_C8:              return new TypedValue(c->builder.getInt8( *gv.IntVal.getRawData()),        copytn);
         case TT_C32:             return new TypedValue(c->builder.getInt32(*gv.IntVal.getRawData()),        copytn);
-        case TT_F16:             return new TypedValue(ConstantFP::get(c->ctxt, APFloat(f16ToF32_f16(gv))), copytn);
+        case TT_F16:             return new TypedValue(ConstantFP::get(c->ctxt, APFloat(gv.FloatVal)), copytn);
         case TT_F32:             return new TypedValue(ConstantFP::get(c->ctxt, APFloat(gv.FloatVal)),      copytn);
         case TT_F64:             return new TypedValue(ConstantFP::get(c->ctxt, APFloat(gv.DoubleVal)),     copytn);
         case TT_Bool:            return new TypedValue(c->builder.getInt1(*gv.IntVal.getRawData()),         copytn);

@@ -80,7 +80,7 @@ struct BoolLitNode : public Node{
     bool val;
     TypedValue* compile(Compiler*);
     void print(void);
-    BoolLitNode(LOC_TY& loc, char b) : Node(loc), val(b){}
+    BoolLitNode(LOC_TY& loc, char b) : Node(loc), val((bool) b){}
     ~BoolLitNode(){}
 };
 

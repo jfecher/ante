@@ -230,7 +230,7 @@ namespace ante{
         static int linkObj(string inFiles, string outFile);
     };
 }
-        
+
 size_t getTupleSize(Node *tup);
 string mangle(string &base, TypeNode *paramTys);
 

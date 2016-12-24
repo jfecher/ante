@@ -72,7 +72,7 @@ CompilerArgs* ante::parseArgs(int argc, const char** argv){
                 //check to see if this argument requires an addition arg, eg -c <filename>
                 ArgTy ty;
                 if((ty = requiresArg(a)) != ArgTy::None){
-                    if(i + 1 < argc and argv[i+1][0] != '-'){
+                    if(i + 1 < argc && argv[i+1][0] != '-'){
                         s = argv[++i];
                     }else{
                         cerr << "Argument '" << argv[i] << "' requires a " << argTyToStr(ty) << " parameter.\n";
