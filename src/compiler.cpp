@@ -514,9 +514,21 @@ TypedValue* VarNode::compile(Compiler *c){
             new TypedValue(c->builder.CreateLoad(var->getVal(), name), var->tval->type)
             : var->tval;
     }else{
-        auto *fn = c->getFunction(name, name);
+        //if this is a function, then there must be only one function of the same name, otherwise the reference is ambiguous
+        auto fnlist = c->getFunctionList(name);
 
-        return fn? fn : c->compErr("Variable or function '" + name + "' has not been declared.", this->loc);
+        if(fnlist.size() == 1){
+            auto *fd = *fnlist.begin();
+            if(!fd->tv)
+                c->compFn(fd->fdn, fd->scope);
+
+            return fd->tv;
+
+        }else if(fnlist.empty()){
+            return c->compErr("Variable or function '" + name + "' has not been declared.", this->loc);
+        }else{
+            return c->compErr("Too many candidates for function '" + name + "' to reduce to a single instance", this->loc);
+        }
     }
 }
 
