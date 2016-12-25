@@ -11,13 +11,17 @@
         (defined __FreeBSD_kernel__ && __GLIBC__)
 
 #  define AN_NATIVE_OS "FreeBSD"
-#  define LIB_DIR "/usr/include/ante/"
+#  ifndef AN_LIB_DIR
+#    define AN_LIB_DIR "/usr/include/ante/"
+#  endif
 #endif
 
 
 #if defined __gnu_linux__ || defined __linux__ || defined __CYGWIN__
 #  define AN_NATIVE_OS "linux"
-#  define LIB_DIR "/usr/include/ante/"
+#  ifndef AN_LIB_DIR
+#    define AN_LIB_DIR "/usr/include/ante/"
+#  endif
 #endif
 
 
@@ -27,8 +31,9 @@
 
 #  define AN_NATIVE_OS "Darwin"
 #  define AN_NATIVE_VENDOR "apple"
-#  define LIB_DIR "/usr/include/ante/"
-
+#  ifndef AN_LIB_DIR
+#    define AN_LIB_DIR "/usr/include/ante/"
+#  endif
 #endif
 
 
@@ -39,7 +44,9 @@
 #ifdef _WIN32
 #  define AN_NATIVE_OS "Win32"
 #  define AN_NATIVE_VENDOR "PC"
-#  define LIB_DIR "C:\\Program Files (x86)\\Ante\\"
+#  ifndef AN_LIB_DIR
+#    define AN_LIB_DIR "C:\\Program Files (x86)\\Ante\\"
+#  endif
 #endif
 
 
@@ -93,7 +100,9 @@
 //if any of the above macros are not defined, mark them as so.
 #ifndef AN_NATIVE_OS
 #  define AN_NATIVE_OS "UnknownOS"
-#  define LIB_DIR "/usr/include/ante/"
+#  ifndef AN_LIB_DIR
+#    define AN_LIB_DIR "/usr/include/ante/"
+#  endif
 #endif
 
 #ifndef AN_NATIVE_VENDOR
