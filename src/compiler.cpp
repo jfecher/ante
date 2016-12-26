@@ -360,8 +360,8 @@ TypedValue* TupleNode::compile(Compiler *c){
     //add it to pathogenVals
     for(unsigned i = 0; i < exprs.size(); i++){
         auto *tval = exprs[i]->compile(c);
-        if(dynamic_cast<Constant*>(tval->val)){
-            elems.push_back((Constant*)tval->val);
+        if(Constant *elem = dyn_cast<Constant>(tval->val)){
+            elems.push_back(elem);
         }else{
             pathogenVals[i] = tval->val;
             elems.push_back(UndefValue::get(tval->getType()));
@@ -455,7 +455,7 @@ TypedValue* WhileNode::compile(Compiler *c){
     auto *val = child->compile(c); //compile the while loop's body
 
     if(!val) return 0;
-    if(!dynamic_cast<ReturnInst*>(val->val))
+    if(!dyn_cast<ReturnInst>(val->val))
         c->builder.CreateBr(cond);
     
     c->builder.SetInsertPoint(end);
@@ -480,7 +480,7 @@ TypedValue* ForNode::compile(Compiler *c){
     auto *val = child->compile(c); //compile the while loop's body
 
     if(!val) return 0;
-    if(!dynamic_cast<ReturnInst*>(val->val))
+    if(!dyn_cast<ReturnInst>(val->val))
         c->builder.CreateBr(cond);
     
     c->builder.SetInsertPoint(end);
@@ -508,7 +508,7 @@ TypedValue* VarNode::compile(Compiler *c){
     auto *var = c->lookup(name);
 
     if(var){
-        return dynamic_cast<AllocaInst*>(var->getVal()) ?
+        return dyn_cast<AllocaInst>(var->getVal()) ?
             new TypedValue(c->builder.CreateLoad(var->getVal(), name), var->tval->type)
             : var->tval;
     }else{
@@ -807,7 +807,7 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
 
     //llvm requires explicit returns, so generate a return even if
     //the user did not in their function.
-    if(!dynamic_cast<ReturnInst*>(v->val)){
+    if(!dyn_cast<ReturnInst>(v->val)){
         if(v->type->type == TT_Void)
             builder.CreateRetVoid();
         else
@@ -1003,7 +1003,7 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
    
         //llvm requires explicit returns, so generate a void return even if
         //the user did not in their void function.
-        if(retNode && !dynamic_cast<ReturnInst*>(v->val)){
+        if(retNode && !dyn_cast<ReturnInst>(v->val)){
             if(retNode->type == TT_Void){
                 builder.CreateRetVoid();
             }else{
@@ -1290,7 +1290,7 @@ TypedValue* MatchNode::compile(Compiler *c){
         for(auto &pair : merges){
 
             //add each branch to the phi node if it does not return early
-            if(!dynamic_cast<ReturnInst*>(pair.second->val)){
+            if(!dyn_cast<ReturnInst>(pair.second->val)){
 
                 //match the types of those branches that will merge
                 if(*pair.second->type != *merges[0].second->type)
@@ -1738,7 +1738,7 @@ void Compiler::exitScope(){
             string freeFnName = "free";
             Function* freeFn = (Function*)getFunction(freeFnName, freeFnName)->val;
 
-            auto *inst = dynamic_cast<AllocaInst*>(it->second->getVal());
+            auto *inst = dyn_cast<AllocaInst>(it->second->getVal());
             auto *val = inst? builder.CreateLoad(inst) : it->second->getVal();
 
             //change the pointer's type to void so it is not freed again

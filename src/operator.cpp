@@ -130,8 +130,8 @@ TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
 
     if(l->type->type == TT_Array){
         //check for alloca
-        if(dynamic_cast<LoadInst*>(l->val)){
-            Value *arr = static_cast<LoadInst*>(l->val)->getPointerOperand();
+        if(LoadInst *li = dyn_cast<LoadInst>(l->val)){
+            Value *arr = li->getPointerOperand();
             
             vector<Value*> indices;
             indices.push_back(ConstantInt::get(ctxt, APInt(64, 0, true)));
@@ -144,10 +144,11 @@ TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
         return new TypedValue(builder.CreateLoad(builder.CreateGEP(l->val, r->val)), l->type->extTy.get());
 
     }else if(l->type->type == TT_Tuple || l->type->type == TT_Data){
-        if(!dynamic_cast<ConstantInt*>(r->val))
+		auto indexval = dyn_cast<ConstantInt>(r->val);
+        if(!indexval)
             return compErr("Tuple indices must always be known at compile time.", op->loc);
 
-        auto index = ((ConstantInt*)r->val)->getZExtValue();
+        auto index = indexval->getZExtValue();
 
         //get the type from the index in question
         TypeNode* indexTyn = l->type->extTy.get();
@@ -215,10 +216,10 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
             return getVoidLiteral();
         }
         case TT_Tuple: case TT_Data:
-            if(!dynamic_cast<ConstantInt*>(index->val)){
+            if(ConstantInt *tupIndexVal = dyn_cast<ConstantInt>(index->val)){
                 return compErr("Tuple indices must always be known at compile time.", op->loc);
             }else{
-                auto tupIndex = static_cast<ConstantInt*>(index->val)->getZExtValue();
+                auto tupIndex = tupIndexVal->getZExtValue();
 
                 //Type of element at tuple index tupIndex, for type checking
                 Type* tupIndexTy = tmp->val->getType()->getStructElementType(tupIndex);
@@ -425,7 +426,7 @@ TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Ty
     auto *thenretbb = c->builder.GetInsertBlock(); //bb containing final ret of then branch.
 
 
-    if(!dynamic_cast<ReturnInst*>(thenVal->val))
+    if(!dyn_cast<ReturnInst>(thenVal->val))
         c->builder.CreateBr(mergebb);
 
     if(ifn->elseN){
@@ -437,7 +438,7 @@ TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Ty
         auto *elseretbb = c->builder.GetInsertBlock();
 
         if(!elseVal) return 0;
-        if(!dynamic_cast<ReturnInst*>(elseVal->val))
+        if(!dyn_cast<ReturnInst>(elseVal->val))
             c->builder.CreateBr(mergebb);
         
         //save the final else
@@ -446,7 +447,7 @@ TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Ty
         if(!thenVal) return 0;
 
 
-        if(*thenVal->type.get() != *elseVal->type.get() && !dynamic_cast<ReturnInst*>(thenVal->val) && !dynamic_cast<ReturnInst*>(elseVal->val))
+        if(*thenVal->type.get() != *elseVal->type.get() && !dyn_cast<ReturnInst>(thenVal->val) && !dyn_cast<ReturnInst>(elseVal->val))
             return c->compErr("If condition's then expr's type " + typeNodeToStr(thenVal->type.get()) +
                             " does not match the else expr's type " + typeNodeToStr(elseVal->type.get()), ifn->loc);
 
@@ -457,7 +458,7 @@ TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Ty
         if(thenVal->type->type != TT_Void){
             auto *phi = c->builder.CreatePHI(thenVal->getType(), branches.size());
             for(auto &pair : branches)
-                if(!dynamic_cast<ReturnInst*>(pair.first->val))
+                if(!dyn_cast<ReturnInst>(pair.first->val))
                     phi->addIncoming(pair.first->val, pair.second);
 
             return new TypedValue(phi, thenVal->type);
@@ -662,7 +663,7 @@ vector<GenericValue> typedValuesToGenericValues(Compiler *c, vector<TypedValue*>
     for(size_t i = 0; i < typedArgs.size(); i++){
         auto *tv = typedArgs[i];
 
-        if(!dynamic_cast<Constant*>(tv->val)){
+        if(!dyn_cast<Constant>(tv->val)){
             c->compErr("Parameter " + to_string(i+1) + " of metafunction " + fnname + " is not a compile time constant", loc);
             return ret;
         }
@@ -1091,8 +1092,7 @@ TypedValue* UnOpNode::compile(Compiler *c){
             auto *ptrTy = mkAnonTypeNode(TT_Ptr);
             ptrTy->extTy.reset(oldTy);
 
-            if(dynamic_cast<LoadInst*>(rhs->val)){
-                auto *li = static_cast<LoadInst*>(rhs->val);
+            if(LoadInst* li = dyn_cast<LoadInst>(rhs->val)){
                 return new TypedValue(li->getPointerOperand(), ptrTy);
             }else{
                 //if it is not stack-allocated already, allocate it on the stack
