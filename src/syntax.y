@@ -645,10 +645,10 @@ void yy::parser::error(const location& loc, const string& msg){
 } 
 
 
-extern string mangle(std::string &base, TypeNode *paramTys);
+string mangle(std::string &base, TypeNode *paramTys);
 TypeNode* createFnTyNode(NamedValNode *params, TypeNode *retTy);
 TypeNode* mkAnonTypeNode(TypeTag t);
-extern char* strcpy(char* dest, const char* src);
+char* strcpy(char* dest, const char* src);
 
 Node* mangle_fn(Node *basename, Node *nvns_){
     string base = (char*)basename;
