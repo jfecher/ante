@@ -335,6 +335,8 @@ TypedValue* ArrayNode::compile(Compiler *c){
             tyn->extTy.reset(tval->type.get());
     }
 
+    tyn->extTy->next.reset(new IntLitNode(tyn->loc, to_string(exprs.size()), TT_U32));
+
     auto *ty = ArrayType::get(arr[0]->getType(), exprs.size());
     auto *val = ConstantArray::get(ty, arr);
     return new TypedValue(val, tyn);
@@ -512,9 +514,21 @@ TypedValue* VarNode::compile(Compiler *c){
             new TypedValue(c->builder.CreateLoad(var->getVal(), name), var->tval->type)
             : var->tval;
     }else{
-        auto *fn = c->getFunction(name, name);
+        //if this is a function, then there must be only one function of the same name, otherwise the reference is ambiguous
+        auto fnlist = c->getFunctionList(name);
 
-        return fn? fn : c->compErr("Variable or function '" + name + "' has not been declared.", this->loc);
+        if(fnlist.size() == 1){
+            auto *fd = *fnlist.begin();
+            if(!fd->tv)
+                c->compFn(fd->fdn, fd->scope);
+
+            return fd->tv;
+
+        }else if(fnlist.empty()){
+            return c->compErr("Variable or function '" + name + "' has not been declared.", this->loc);
+        }else{
+            return c->compErr("Too many candidates for function '" + name + "' to reduce to a single instance", this->loc);
+        }
     }
 }
 
@@ -1451,8 +1465,8 @@ TypeNode* mkDataTypeNode(string tyname){
  *  do not pollute the module with unused definitions.
  */
 void Compiler::compilePrelude(){
-    if(fileName != LIB_DIR "prelude.an")
-        importFile(LIB_DIR "prelude.an");
+    if(fileName != AN_LIB_DIR "prelude.an")
+        importFile(AN_LIB_DIR "prelude.an");
 }
 
 
@@ -1487,7 +1501,7 @@ Node* mkPlaceholderNode(){
     auto fakeLoc = yy::location(yy::position(empty, 0, 0),
                                 yy::position(empty, 0, 0));
     
-    return new StrLitNode(fakeLoc, "(placeholder)");
+    return new IntLitNode(fakeLoc, "0", TT_U8);
 }
 
 /*

@@ -190,7 +190,7 @@ Node* mkTypeNode(yy::parser::location_type loc, TypeTag type, char* typeName, No
         auto *size = dynamic_cast<IntLitNode*>(extTy->next.get());
 
         if(!size){
-            ante::error("Size of array must be an integer literal", loc);
+            ante::error("Size of array must be an integer literal", extTy->next->loc);
             exit(1);
         }
     }
@@ -217,6 +217,14 @@ Node* mkRetNode(yy::parser::location_type loc, Node* expr){
     return new RetNode(loc, expr);
 }
 
+
+//returns true if type->extTy should be defined
+bool typeHasExtData(TypeTag t){
+    return t == TT_Tuple or t == TT_Array or t == TT_Ptr or t == TT_Data or t == TT_Function
+        or t == TT_Method or t == TT_TaggedUnion or t == TT_MetaFunction;
+    
+}
+
 //helper function to deep-copy TypeNodes.  Used in mkNamedValNode
 TypeNode* deepCopyTypeNode(const TypeNode *n){
     if(!n) return 0;
@@ -225,7 +233,16 @@ TypeNode* deepCopyTypeNode(const TypeNode *n){
                         yy::position(n->loc.end.filename,   n->loc.end.line,   n->loc.end.column)};
     TypeNode *cpy = new TypeNode(loc, n->type, n->typeName, nullptr);
 
-    if(n->type == TT_Tuple || n->type == TT_Data || n->type == TT_Function || n->type == TT_Method){
+    //arrays can have an IntLit in their extTy so handle them specially
+    if(n->type == TT_Array){
+        cpy->extTy.reset(deepCopyTypeNode(n->extTy.get()));
+
+        if(n->extTy->next.get()){
+            auto *len = (IntLitNode*)n->extTy->next.get();
+            auto *len_cpy = new IntLitNode(len->loc, len->val, len->type);
+            cpy->extTy->next.reset(len_cpy);
+        }
+    }else if(typeHasExtData(n->type)){
         TypeNode *nxt = n->extTy.get();
         if(!nxt) return cpy;
 
@@ -236,8 +253,6 @@ TypeNode* deepCopyTypeNode(const TypeNode *n){
             ext->next.reset(deepCopyTypeNode(nxt));
             ext = static_cast<TypeNode*>(ext->next.get());
         }
-    }else if(n->type == TT_Array || n->type == TT_Ptr){
-        cpy->extTy.reset(deepCopyTypeNode(n->extTy.get()));
     }
 
     //finally, do a shallow copy for the modifiers

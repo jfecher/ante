@@ -89,7 +89,6 @@ fun Str.write: Str s, OutFile f
 fun Str: c8* cStr -> Str
     Str(cStr, u32 strlen cStr)
 
-
 //overload Str equality operator
 fun (==): Str l r -> bool
     if l.len != r.len then
@@ -97,13 +96,13 @@ fun (==): Str l r -> bool
 
     //lens are equal, so check the whole array
     var i = 0
-    while l#i != '\0' do
-        if l#i != r#i then
+    while l.cStr#i != '\0' do
+        if l.cStr#i != r.cStr#i then
             return false
 
         i += 1
 
-    l#i == r#i
+    l.cStr#i == r.cStr#i
 
 
 //append two strings

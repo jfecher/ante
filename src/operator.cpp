@@ -624,7 +624,6 @@ TypedValue* genericValueToTypedValue(Compiler *c, GenericValue gv, TypeNode *tn)
         case TT_F32:             return new TypedValue(ConstantFP::get(c->ctxt, APFloat(gv.FloatVal)),      copytn);
         case TT_F64:             return new TypedValue(ConstantFP::get(c->ctxt, APFloat(gv.DoubleVal)),     copytn);
         case TT_Bool:            return new TypedValue(c->builder.getInt1(*gv.IntVal.getRawData()),         copytn);
-        case TT_StrLit:          break;    
         case TT_Tuple:           break;
         case TT_Array:           break;
         case TT_Ptr: {

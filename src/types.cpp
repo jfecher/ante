@@ -10,7 +10,7 @@ char getBitWidthOfTypeTag(const TypeTag ty){
         case TT_Isz: case TT_Usz: return 64; //TODO: detect 32-bit platform
         case TT_Bool: return 1;
    
-        case TT_Ptr: case TT_StrLit: return 64;
+        case TT_Ptr: return 64;
         case TT_Function: case TT_Method: case TT_MetaFunction: return 64;
         default: return 0;
     }
@@ -423,8 +423,8 @@ bool TypeNode::operator==(TypeNode &r) const {
         return *this->extTy.get() == *r.extTy.get();
     }else if(r.type == TT_Array){
         //size of an array is part of its type and stored in 2nd extTy
-        auto lsz = atoi( ((IntLitNode*)extTy->next.get())->val.c_str() );
-        auto rsz = atoi( ((IntLitNode*)r.extTy->next.get())->val.c_str() );
+        auto lsz = std::stoi( ((IntLitNode*)extTy->next.get())->val );
+        auto rsz = std::stoi( ((IntLitNode*)r.extTy->next.get())->val );
 
         return lsz == rsz and *extTy == *r.extTy;
     }else if(r.type == TT_Data or r.type == TT_TaggedUnion){
@@ -450,7 +450,7 @@ bool TypeNode::operator!=(TypeNode &r) const {
  *        declared before non-primitive types in the TypeTag definition.
  */
 bool isPrimitiveTypeTag(TypeTag ty){
-    return ty >= TT_I8 && ty <= TT_StrLit;
+    return ty >= TT_I8 && ty <= TT_Bool;
 }
 
 
