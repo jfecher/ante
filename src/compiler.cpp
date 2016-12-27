@@ -740,7 +740,7 @@ vector<Type*> getParamTypes(Compiler *c, NamedValNode *nvn, size_t paramCount){
         if(paramTyNode)
             paramTys.push_back(c->typeNodeToLlvmType(paramTyNode));
         else
-            paramTys.push_back(nullptr); //terminating null = varargs function
+            paramTys.push_back(0); //terminating null = varargs function
         nvn = (NamedValNode*)nvn->next.get();
     }
     return paramTys;
@@ -1474,7 +1474,7 @@ void Compiler::compilePrelude(){
  *  Removes .an from a source file to get its module name
  */
 string removeFileExt(string file){
-    auto index = file.find('.');
+    auto index = file.find_last_of('.');
     return index == string::npos ? file : file.substr(0, index);
 }
 
@@ -1631,6 +1631,7 @@ const Target* getTarget(){
 
     if(!err.empty()){
         cerr << err << endl;
+		cerr << "Selected triple: " << AN_NATIVE_ARCH ", " AN_NATIVE_VENDOR ", " AN_NATIVE_OS << endl;
         exit(1);
     }
 
@@ -1680,7 +1681,6 @@ void Compiler::jitFunction(Function *f){
 
 /*
  *  Compiles a module into a .o file to be used for linking.
- *  Invokes llc.
  */
 int Compiler::compileIRtoObj(Module *mod, string outFile){
     auto *tm = getTargetMachine();
@@ -1695,10 +1695,11 @@ int Compiler::compileIRtoObj(Module *mod, string outFile){
     return res;
 }
 
-
+/*
+ *  Invoke linker to linke module
+ */
 int Compiler::linkObj(string inFiles, string outFile){
-    //invoke gcc to link the module.
-    string cmd = "gcc " + inFiles + " -o " + outFile;
+    string cmd = AN_LINKER " " + inFiles + " -o " + outFile;
     return system(cmd.c_str());
 }
 
@@ -1847,6 +1848,9 @@ Compiler::Compiler(const char *_fileName, bool lib) :
 
     ast.reset(parser::getRootNode());
     outFile = removeFileExt(fileName.c_str());
+	if (outFile.empty())
+		outFile = "a";
+
     module.reset(new Module(outFile, ctxt));
 
     enterNewScope();

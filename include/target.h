@@ -47,6 +47,8 @@
 #  ifndef AN_LIB_DIR
 #    define AN_LIB_DIR "C:\\Program Files (x86)\\Ante\\"
 #  endif
+
+#  define AN_LINKER "C:\\MinGW\\bin\\gcc.exe"
 #endif
 
 
@@ -110,8 +112,10 @@
 #endif
 
 #ifndef AN_NATIVE_ARCH
-#  define AN_NATIVE_ARCH "UnknownArch"
+#  define AN_NATIVE_ARCH "x86_64" /*UnknownArch*/
 #endif
 
-
+#ifndef AN_LINKER
+#  define AN_LINKER "gcc"
+#endif
 #endif

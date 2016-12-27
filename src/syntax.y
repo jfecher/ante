@@ -22,6 +22,7 @@ extern string typeNodeToStr(TypeNode*);
 
 struct TypeNode;
 
+Node* node_strcpy(const char *cstr);
 Node* mangle_fn(Node *base, Node *nvns);
 
 
@@ -360,7 +361,7 @@ function: fn_def
         ;
 
 fn_name: ident       /* most functions */      {$$ = $1;}
-       | type_expr   /* cast function */       {$$ = (Node*)typeNodeToStr((TypeNode*)$1).c_str();}
+       | type_expr   /* cast function */       {$$ = (Node*)node_strcpy(typeNodeToStr((TypeNode*)$1).c_str());}
        | '(' op ')'  /* operator overloads */  {$$ = $2;}
        ;
 
@@ -648,7 +649,15 @@ void yy::parser::error(const location& loc, const string& msg){
 extern string mangle(std::string &base, TypeNode *paramTys);
 TypeNode* createFnTyNode(NamedValNode *params, TypeNode *retTy);
 TypeNode* mkAnonTypeNode(TypeTag t);
-extern char* strcpy(char* dest, const char* src);
+
+Node* node_strcpy(const char *src){
+	auto len = strlen(src);
+
+	char *dest = (char*)malloc(len+1);
+	strncpy(dest, src, len);
+	dest[len] = '\0';
+	return (Node*)dest;
+}
 
 Node* mangle_fn(Node *basename, Node *nvns_){
     string base = (char*)basename;
@@ -659,7 +668,7 @@ Node* mangle_fn(Node *basename, Node *nvns_){
     auto *fnTy = createFnTyNode(nvn, fakeRetTy);
 
     string name =  mangle(base, (TypeNode*)fnTy->extTy->next.get());
- 
+
     char* ret = (char*)malloc(name.length());
     strcpy(ret, name.c_str());
 
