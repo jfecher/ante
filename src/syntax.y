@@ -646,7 +646,7 @@ void yy::parser::error(const location& loc, const string& msg){
 } 
 
 
-extern string mangle(std::string &base, TypeNode *paramTys);
+string mangle(std::string &base, TypeNode *paramTys);
 TypeNode* createFnTyNode(NamedValNode *params, TypeNode *retTy);
 TypeNode* mkAnonTypeNode(TypeTag t);
 
