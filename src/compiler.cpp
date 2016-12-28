@@ -803,7 +803,7 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
             curTyn->next.reset(paramTyNode);
             curTyn = (TypeNode*)curTyn->next.get();
         }else{
-            fnTyn->extTy.reset(paramTyNode);
+            fnTyn->extTy.reset(deepCopyTypeNode(paramTyNode));
             curTyn = fnTyn->extTy.get();
         }
         if(!(cParam = (NamedValNode*)cParam->next.get())) break;
@@ -1924,7 +1924,7 @@ Compiler::~Compiler(){
     for(auto pair : fnDecls){
         for(auto fd : pair.second){
             delete fd->tv;
-            //delete fd->fdn;
+            delete fd->fdn;
             delete fd;
         }
     }
