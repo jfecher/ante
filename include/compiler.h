@@ -51,6 +51,7 @@ struct FuncDecl {
     unsigned int scope;
     TypedValue *tv;
     FuncDecl(FuncDeclNode *fn, unsigned int s, TypedValue *f=0) : fdn(fn), scope(s), tv(f){}
+    ~FuncDecl(){}
 };
 
 struct MethodVal : public TypedValue {

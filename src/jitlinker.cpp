@@ -25,21 +25,21 @@ void copyDecls(const Compiler *src, Compiler *dest){
  * into the new module as well.
  */
 Module* wrapFnInModule(Compiler *c, Function *f){
-    Compiler *ccpy = new Compiler(c->ast.get(), f->getName(), c->fileName);
-    copyDecls(c, ccpy);
+    Compiler ccpy{c->ast.get(), f->getName(), c->fileName};
+    copyDecls(c, &ccpy);
     
     //create an empty main function to avoid crashes with compFn when
     //trying to return to the caller function
-    ccpy->createMainFn();
+    ccpy.createMainFn();
     //the ret comes separate
-    ccpy->builder.CreateRet(ConstantInt::get(ccpy->ctxt, APInt(32, 1)));
+    ccpy.builder.CreateRet(ConstantInt::get(ccpy.ctxt, APInt(32, 1)));
 
     string name = f->getName().str();
 
-    auto flist = ccpy->getFunctionList(name);
+    auto flist = ccpy.getFunctionList(name);
 
     if(flist.size() == 1){
-        ccpy->compFn((*flist.begin())->fdn, 0);
+        ccpy.compFn((*flist.begin())->fdn, 0);
     }else if(flist.empty()){
         cerr << "No function '" << name << "'\n";
         c->errFlag = true;
@@ -50,7 +50,5 @@ Module* wrapFnInModule(Compiler *c, Function *f){
         return 0;
     }
 
-    auto *mod = ccpy->module.release();
-    //delete ccpy;
-    return mod;
+    return ccpy.module.release();
 }

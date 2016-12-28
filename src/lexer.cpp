@@ -167,6 +167,9 @@ Lexer *yylexer;
 
 /* Sets lexer instance for yylex to use */
 void setLexer(Lexer *l){
+    if(yylexer)
+        delete yylexer;
+    
     yylexer = l;
 }
 

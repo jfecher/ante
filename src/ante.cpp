@@ -56,6 +56,8 @@ int main(int argc, const char **argv){
     if(args->hasArg(Args::Eval))
         Compiler(0).eval();
 
+    if(yylexer)
+        delete yylexer;
     delete args;
     return 0;
 }

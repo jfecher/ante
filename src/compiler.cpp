@@ -1081,7 +1081,7 @@ TypedValue* FuncDeclNode::compile(Compiler *c){
 
 TypedValue* ExtNode::compile(Compiler *c){
     c->funcPrefix = typeNodeToStr(typeExpr.get()) + "_";
-    compileStmtList(methods.get(), c);
+    compileStmtList(methods.release(), c);
     c->funcPrefix = "";
     return c->getVoidLiteral();
 }
@@ -1329,7 +1329,7 @@ TypedValue* MatchBranchNode::compile(Compiler *c){
 
 
 FuncDecl* getFuncDeclFromList(list<FuncDecl*> &l, string &mangledName){
-    for(FuncDecl *fd : l)
+    for(auto *fd : l)
         if(fd->fdn->name == mangledName)
             return fd;
 
@@ -1337,7 +1337,7 @@ FuncDecl* getFuncDeclFromList(list<FuncDecl*> &l, string &mangledName){
 }
 
 void Compiler::updateFn(TypedValue *f, string &name, string &mangledName){
-    auto list = fnDecls[name];
+    auto &list = fnDecls[name];
     auto *fd = getFuncDeclFromList(list, mangledName);
     fd->tv = f;
 }
@@ -1410,30 +1410,28 @@ list<FuncDecl*> Compiler::getFunctionList(string& name){
  * inputted file must exist and be a valid ante source file.
  */
 void Compiler::importFile(const char *fName){
-    Compiler *c = new Compiler(fName, true);
-    c->scanAllDecls();
+    Compiler c{fName, true};
+    c.scanAllDecls();
 
-    if(c->errFlag){
+    if(c.errFlag){
         cout << "Error when importing " << fName << endl;
         errFlag = true;
-        delete c;
         return;
     }
 
     //copy import's userTypes into importer
-    for(const auto& it : c->userTypes){
+    for(const auto& it : c.userTypes){
         userTypes[it.first] = it.second;
     }
 
     //copy functions, but change their scope first
-    for(const auto& it : c->fnDecls){
+    for(const auto& it : c.fnDecls){
         for(auto *fd : it.second)
             fd->scope = this->scope;
 
         fnDecls[it.first] = move(it.second);
     }
-
-    delete c;
+    c.fnDecls.clear();
 }
 
 
@@ -1529,6 +1527,10 @@ void Compiler::scanAllDecls(){
             bop->rval.release();
             bop->lval.release();
             delete bop;
+
+            //while FuncDeclNode's are preserved inside FuncDecl's, these other two nodes must be manually deleted
+            if(dynamic_cast<ExtNode*>(rv) || dynamic_cast<DataDeclNode*>(rv))
+                delete rv;
         }else{
             prev = bop;
             op = bop->lval.get();
@@ -1545,6 +1547,8 @@ void Compiler::scanAllDecls(){
             ast.release();
             ast.reset(mkPlaceholderNode());
         }
+        if(dynamic_cast<ExtNode*>(op) || dynamic_cast<DataDeclNode*>(op))
+            delete op;
     }
 }
 
@@ -1692,6 +1696,7 @@ int Compiler::compileIRtoObj(Module *mod, string outFile){
     int res = tm->addPassesToEmitFile(pm, out, llvm::TargetMachine::CGFT_ObjectFile);
     pm.run(*mod);
 
+    delete tm;
     return res;
 }
 
@@ -1912,6 +1917,15 @@ Compiler::~Compiler(){
     exitScope();
     if(yylexer){
         delete yylexer;
-        yylexer = nullptr;
+        yylexer = 0;
+    }
+
+    //clear fnDecls
+    for(auto pair : fnDecls){
+        for(auto fd : pair.second){
+            delete fd->tv;
+            //delete fd->fdn;
+            delete fd;
+        }
     }
 }

@@ -667,10 +667,11 @@ Node* mangle_fn(Node *basename, Node *nvns_){
     auto *fakeRetTy = mkAnonTypeNode(TT_Void);
     auto *fnTy = createFnTyNode(nvn, fakeRetTy);
 
-    string name =  mangle(base, (TypeNode*)fnTy->extTy->next.get());
+    string name = mangle(base, (TypeNode*)fnTy->extTy->next.get());
+    auto len = name.length();
 
-    char* ret = (char*)malloc(name.length());
-    strcpy(ret, name.c_str());
-
+    char* ret = (char*)malloc(len+1);
+    strncpy(ret, name.c_str(), len);
+    ret[len] = '\0';
     return (Node*)ret;
 }
