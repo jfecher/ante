@@ -29,6 +29,11 @@ Node* setElse(Node *ifn, Node *elseN){
     }
     return ifn;
 }
+
+LOC_TY copyLoc(const LOC_TY &loc){
+    return {yy::position(loc.begin.filename, loc.begin.line, loc.begin.column), 
+            yy::position(loc.end.filename,   loc.end.line,   loc.end.column)};
+}
     
 //apply modifier to this type and all its extensions
 TypeNode* TypeNode::addModifiers(ModNode *m){
@@ -229,8 +234,7 @@ bool typeHasExtData(TypeTag t){
 TypeNode* deepCopyTypeNode(const TypeNode *n){
     if(!n) return 0;
 
-    yy::location loc = {yy::position(n->loc.begin.filename, n->loc.begin.line, n->loc.begin.column), 
-                        yy::position(n->loc.end.filename,   n->loc.end.line,   n->loc.end.column)};
+    auto loc = copyLoc(n->loc);
     TypeNode *cpy = new TypeNode(loc, n->type, n->typeName, nullptr);
 
     //arrays can have an IntLit in their extTy so handle them specially
@@ -239,7 +243,8 @@ TypeNode* deepCopyTypeNode(const TypeNode *n){
 
         if(n->extTy->next.get()){
             auto *len = (IntLitNode*)n->extTy->next.get();
-            auto *len_cpy = new IntLitNode(len->loc, len->val, len->type);
+            auto loc_cpy = copyLoc(len->loc);
+            auto *len_cpy = new IntLitNode(loc_cpy, len->val, len->type);
             cpy->extTy->next.reset(len_cpy);
         }
     }else if(typeHasExtData(n->type)){
@@ -282,7 +287,9 @@ Node* mkNamedValNode(yy::parser::location_type loc, Node* varNodes, Node* tExpr,
 
     while((vn = (VarNode*)vn->next.get())){
         TypeNode *tyNode = deepCopyTypeNode(ty);
-        nxt->next.reset(new NamedValNode(vn->loc, vn->name, tyNode));
+        LOC_TY loccpy = copyLoc(vn->loc);
+
+        nxt->next.reset(new NamedValNode(loccpy, vn->name, tyNode));
         nxt->next->prev = nxt;
         nxt = nxt->next.get();
     }

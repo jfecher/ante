@@ -10,7 +10,7 @@ using namespace ante;
 
 void parseFile(string &fileName){
     //parse and print parse tree
-    setLexer(new Lexer(fileName.c_str()));
+    setLexer(new Lexer(&fileName));
     yy::parser p{};
     int flag = p.parse();
     if(flag == PE_OK){

@@ -28,10 +28,10 @@ namespace ante{
 
     class Lexer{
     public:
-        const char* fileName;
+        string *fileName;
         
-        Lexer(const char *fileName);
-        Lexer(string& pseudoFile, const char *fileName, unsigned int rowOffset, unsigned int colOffset);
+        Lexer(string* fileName);
+        Lexer(string* fileName, string& pseudoFile, unsigned int rowOffset, unsigned int colOffset);
         ~Lexer();
         int next(yy::parser::location_type* yyloc);
         char peek() const;

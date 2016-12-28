@@ -243,7 +243,7 @@ TypedValue* compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
     //now that the string is separated, begin interpolation preparation
     
     //lex and parse
-    setLexer(new Lexer(m, sln->loc.begin.filename->c_str(), sln->loc.begin.line-1, sln->loc.begin.column + pos));
+    setLexer(new Lexer(sln->loc.begin.filename, m, sln->loc.begin.line-1, sln->loc.begin.column + pos));
     yy::parser p{};
     int flag = p.parse();
     if(flag != PE_OK){ //parsing error, cannot procede
@@ -783,14 +783,17 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
     builder.SetInsertPoint(entry);
  
     TypeNode *fnTyn = mkAnonTypeNode(TT_Function);
-    TypeNode *curTyn = 0;
+    TypeNode *fakeRetTy = mkAnonTypeNode(TT_Void);
+    fnTyn->extTy.reset(fakeRetTy);
         
     //tell the compiler to create a new scope on the stack.
     enterNewScope();
 
     //iterate through each parameter and add its value to the new scope.
+    TypeNode *curTyn = 0;
     NamedValNode *cParam = fdn->params.get();
     vector<Value*> preArgs;
+    
     for(auto &arg : preFn->args()){
         TypeNode *paramTyNode = (TypeNode*)cParam->typeExpr.get();
         addArgAttrs(arg, paramTyNode);
@@ -803,14 +806,14 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
             curTyn->next.reset(paramTyNode);
             curTyn = (TypeNode*)curTyn->next.get();
         }else{
-            fnTyn->extTy.reset(deepCopyTypeNode(paramTyNode));
-            curTyn = fnTyn->extTy.get();
+            fnTyn->extTy->next.reset(deepCopyTypeNode(paramTyNode));
+            curTyn = (TypeNode*)fnTyn->extTy->next.get();
         }
         if(!(cParam = (NamedValNode*)cParam->next.get())) break;
     }
     
     //store a fake function var, in case this function is recursive
-    auto *fakeFnTv = new TypedValue(preFn, deepCopyTypeNode(fnTyn));
+    auto *fakeFnTv = new TypedValue(preFn, fnTyn);
     if(fdn->name.length() > 0)
         updateFn(fakeFnTv, fdn->basename, fdn->name);
 
@@ -837,11 +840,13 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
     //prepend the ret type to the function's type node node extension list.
     //(A typenode represents functions by having the first extTy as the ret type,
     //and the (optional) next types in the list as the parameter types)
-    curTyn = fnTyn->extTy.get();
-    fnTyn->extTy.release();
+    TypeNode *newFnTyn = deepCopyTypeNode(fnTyn);
+    TypeNode *params = (TypeNode*)newFnTyn->extTy->next.release();
+
     TypeNode *retTy = deepCopyTypeNode(v->type.get());
-    retTy->next.reset(curTyn);
-    fnTyn->extTy.reset(retTy);
+    
+    retTy->next.reset(params);
+    newFnTyn->extTy.reset(retTy);
 
 
     //finally, swap the bodies of the two functions and delete the former.
@@ -858,7 +863,7 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
     preFn->replaceAllUsesWith(f);
     preFn->removeFromParent();
 
-    auto *ret = new TypedValue(f, fnTyn);
+    auto *ret = new TypedValue(f, newFnTyn);
 
     //only store the function if it has a name (and thus is not a lambda function)
     if(fdn->name.length() > 0)
@@ -1836,7 +1841,7 @@ Compiler::Compiler(const char *_fileName, bool lib) :
         funcPrefix(""),
         scope(0){
 
-    setLexer(new Lexer(_fileName));
+    setLexer(new Lexer(&fileName));
     yy::parser p{};
     int flag = p.parse();
     if(flag != PE_OK){ //parsing error, cannot procede

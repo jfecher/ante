@@ -182,7 +182,7 @@ int yylex(yy::parser::semantic_type* st, yy::location* yyloc){
 /*
  * Initializes lexer
  */
-Lexer::Lexer(const char* file) :
+Lexer::Lexer(string* file) :
     isPseudoFile(false),
     row{1},
     col{1},
@@ -195,11 +195,11 @@ Lexer::Lexer(const char* file) :
     shouldReturnNewline(false)
 {
     if(file){
-        in = new ifstream(file);
+        in = new ifstream(*file);
         fileName = file;
     }else{
         in = (ifstream*) &cin;
-        fileName = "stdin";
+        fileName = new string("stdin");
     }
 
     if(!*in){
@@ -213,7 +213,7 @@ Lexer::Lexer(const char* file) :
 }
 
 
-Lexer::Lexer(string& pFile, const char* fName, unsigned int ro, unsigned int co) :
+Lexer::Lexer(string* fName, string& pFile, unsigned int ro, unsigned int co) :
     isPseudoFile(true),
     row{1},
     col{1},
@@ -245,8 +245,7 @@ char Lexer::peek() const{
 }
 
 yy::position Lexer::getPos(bool inclusiveEnd) const{
-    string* fName = new string(fileName);
-    return yy::position(fName, row + rowOffset, col + colOffset -
+    return yy::position(fileName, row + rowOffset, col + colOffset -
                 (inclusiveEnd ? 0 : 1));
 }
 

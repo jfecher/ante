@@ -325,7 +325,7 @@ block: Indent expr Unindent  {$$ = mkBlockNode(@$, $2);}
 
 
 
-raw_ident_list: raw_ident_list ident  {$$ = setNext($1, mkVarNode(@$, (char*)$2));}
+raw_ident_list: raw_ident_list ident  {$$ = setNext($1, mkVarNode(@2, (char*)$2));}
               | ident                 {$$ = setRoot(mkVarNode(@$, (char*)$1));}
               ;
 
