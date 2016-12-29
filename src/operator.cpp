@@ -215,8 +215,9 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
             builder.CreateStore(newVal->val, dest);
             return getVoidLiteral();
         }
-        case TT_Tuple: case TT_Data:
-            if(ConstantInt *tupIndexVal = dyn_cast<ConstantInt>(index->val)){
+        case TT_Tuple: case TT_Data: {
+            ConstantInt *tupIndexVal = dyn_cast<ConstantInt>(index->val);
+            if(!tupIndexVal){
                 return compErr("Tuple indices must always be known at compile time.", op->loc);
             }else{
                 auto tupIndex = tupIndexVal->getZExtValue();
@@ -235,6 +236,7 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
                 builder.CreateStore(ins, var);
                 return getVoidLiteral();//new TypedValue(builder.CreateStore(insertedTup, var), mkAnonTypeNode(TT_Void));
             }
+        }
         default:
             return compErr("Variable being indexed must be an Array or Tuple, but instead is a(n) " +
                     typeNodeToStr(tmp->type.get()), op->loc); }

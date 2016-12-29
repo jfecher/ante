@@ -1441,10 +1441,8 @@ void Compiler::importFile(const char *fName){
 
 
 TypeNode* mkAnonTypeNode(TypeTag t){
-    auto* empty = new string("");
-    
-    auto fakeLoc = yy::location(yy::position(empty, 0, 0),
-                                yy::position(empty, 0, 0));
+    auto fakeLoc = yy::location(yy::position(0, 0, 0),
+                                yy::position(0, 0, 0));
     
     return new TypeNode(fakeLoc, t, "", nullptr);
 }
