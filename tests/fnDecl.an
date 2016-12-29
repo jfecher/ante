@@ -9,11 +9,11 @@ fun printMsg: bool b
         puts "Goodbye World!"
 
 
-fun divisibleByThree: i32 i -> bool
+fun divisibleByThree: i32 i =
     i % 3 == 0
 
 
-fun isEven: i32 x -> bool
+fun isEven: i32 x =
     x % 2 == 0
 
 

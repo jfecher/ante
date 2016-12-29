@@ -136,12 +136,12 @@ TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
             vector<Value*> indices;
             indices.push_back(ConstantInt::get(ctxt, APInt(64, 0, true)));
             indices.push_back(r->val);
-            return new TypedValue(builder.CreateLoad(builder.CreateGEP(arr, indices)), l->type->extTy.get());
+            return new TypedValue(builder.CreateLoad(builder.CreateGEP(arr, indices)), l->type->extTy);
         }else{
             return new TypedValue(builder.CreateExtractElement(l->val, r->val), l->type->extTy.get());
         }
     }else if(l->type->type == TT_Ptr){
-        return new TypedValue(builder.CreateLoad(builder.CreateGEP(l->val, r->val)), l->type->extTy.get());
+        return new TypedValue(builder.CreateLoad(builder.CreateGEP(l->val, r->val)), l->type->extTy);
 
     }else if(l->type->type == TT_Tuple || l->type->type == TT_Data){
 		auto indexval = dyn_cast<ConstantInt>(r->val);
@@ -251,49 +251,49 @@ TypedValue* createCast(Compiler *c, Type *castTy, TypeNode *tyn, TypedValue *val
         vector<Value*> args;
         if(valToCast->type->type != TT_Void) args.push_back(valToCast->val);
         auto *call = c->builder.CreateCall(fn->val, args);
-        return new TypedValue(call, deepCopyTypeNode(fn->type->extTy.get()));
+        return new TypedValue(call, fn->type->extTy);
     }
 
     //otherwise, fallback on known conversions
     if(isIntTypeTag(valToCast->type->type)){
         // int -> int  (maybe unsigned)
         if(isIntTypeTag(tyn->type)){
-            return new TypedValue(c->builder.CreateIntCast(valToCast->val, castTy, isUnsignedTypeTag(tyn->type)), tyn);
+            return new TypedValue(c->builder.CreateIntCast(valToCast->val, castTy, isUnsignedTypeTag(tyn->type)), deepCopyTypeNode(tyn));
 
         // int -> float
         }else if(isFPTypeTag(tyn->type)){
             if(isUnsignedTypeTag(valToCast->type->type)){
-                return new TypedValue(c->builder.CreateUIToFP(valToCast->val, castTy), tyn);
+                return new TypedValue(c->builder.CreateUIToFP(valToCast->val, castTy), deepCopyTypeNode(tyn));
             }else{
-                return new TypedValue(c->builder.CreateSIToFP(valToCast->val, castTy), tyn);
+                return new TypedValue(c->builder.CreateSIToFP(valToCast->val, castTy), deepCopyTypeNode(tyn));
             }
         
         // int -> ptr
         }else if(tyn->type == TT_Ptr){
-            return new TypedValue(c->builder.CreatePtrToInt(valToCast->val, castTy), tyn);
+            return new TypedValue(c->builder.CreatePtrToInt(valToCast->val, castTy), deepCopyTypeNode(tyn));
         }
     }else if(isFPTypeTag(valToCast->type->type)){
         // float -> int  (maybe unsigned)
         if(isIntTypeTag(tyn->type)){
             if(isUnsignedTypeTag(tyn->type)){
-                return new TypedValue(c->builder.CreateFPToUI(valToCast->val, castTy), tyn);
+                return new TypedValue(c->builder.CreateFPToUI(valToCast->val, castTy), deepCopyTypeNode(tyn));
             }else{
-                return new TypedValue(c->builder.CreateFPToSI(valToCast->val, castTy), tyn);
+                return new TypedValue(c->builder.CreateFPToSI(valToCast->val, castTy), deepCopyTypeNode(tyn));
             }
 
         // float -> float
         }else if(isFPTypeTag(tyn->type)){
-            return new TypedValue(c->builder.CreateFPCast(valToCast->val, castTy), tyn);
+            return new TypedValue(c->builder.CreateFPCast(valToCast->val, castTy), deepCopyTypeNode(tyn));
         }
 
     }else if(valToCast->type->type == TT_Ptr){
         // ptr -> ptr
         if(tyn->type == TT_Ptr){
-            return new TypedValue(c->builder.CreatePointerCast(valToCast->val, castTy), tyn);
+            return new TypedValue(c->builder.CreatePointerCast(valToCast->val, castTy), deepCopyTypeNode(tyn));
 
         // ptr -> int
         }else if(isIntTypeTag(tyn->type)){
-            return new TypedValue(c->builder.CreatePtrToInt(valToCast->val, castTy), tyn);
+            return new TypedValue(c->builder.CreatePtrToInt(valToCast->val, castTy), deepCopyTypeNode(tyn));
         }
     }
 
@@ -551,8 +551,9 @@ TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *bino
             if(!fd->tv)
                 fd->tv = compFn(fd->fdn, fd->scope);
 
-            TypedValue *obj = new TypedValue(val, tyn);
-            return new MethodVal(obj, fd->tv);
+            TypedValue *obj = new TypedValue(val, deepCopyTypeNode(tyn));
+            auto *method_fn = new TypedValue(fd->tv->val, fd->tv->type);
+            return new MethodVal(obj, method_fn);
         }else
             return compErr("Multiple methods of the same name with different parameters are currently unimplemented.  In the mean time, you can use global functions.", field->loc);
 
@@ -610,22 +611,22 @@ TypeNode* typedValsToTypeNodes(vector<TypedValue*> &tvs){
 TypedValue* genericValueToTypedValue(Compiler *c, GenericValue gv, TypeNode *tn){
     auto *copytn = deepCopyTypeNode(tn);
     switch(tn->type){
-        case TT_I8:              return new TypedValue(c->builder.getInt8( *gv.IntVal.getRawData()),        copytn);
-        case TT_I16:             return new TypedValue(c->builder.getInt16(*gv.IntVal.getRawData()),        copytn);
-        case TT_I32:             return new TypedValue(c->builder.getInt32(*gv.IntVal.getRawData()),        copytn);
-        case TT_I64:             return new TypedValue(c->builder.getInt64(*gv.IntVal.getRawData()),        copytn);
-        case TT_U8:              return new TypedValue(c->builder.getInt8( *gv.IntVal.getRawData()),        copytn);
-        case TT_U16:             return new TypedValue(c->builder.getInt16(*gv.IntVal.getRawData()),        copytn);
-        case TT_U32:             return new TypedValue(c->builder.getInt32(*gv.IntVal.getRawData()),        copytn);
-        case TT_U64:             return new TypedValue(c->builder.getInt64(*gv.IntVal.getRawData()),        copytn);
-        case TT_Isz:             return new TypedValue(c->builder.getInt64(*gv.IntVal.getRawData()),        copytn);
-        case TT_Usz:             return new TypedValue(c->builder.getInt64(*gv.IntVal.getRawData()),        copytn);
-        case TT_C8:              return new TypedValue(c->builder.getInt8( *gv.IntVal.getRawData()),        copytn);
-        case TT_C32:             return new TypedValue(c->builder.getInt32(*gv.IntVal.getRawData()),        copytn);
-        case TT_F16:             return new TypedValue(ConstantFP::get(c->ctxt, APFloat(gv.FloatVal)), copytn);
-        case TT_F32:             return new TypedValue(ConstantFP::get(c->ctxt, APFloat(gv.FloatVal)),      copytn);
-        case TT_F64:             return new TypedValue(ConstantFP::get(c->ctxt, APFloat(gv.DoubleVal)),     copytn);
-        case TT_Bool:            return new TypedValue(c->builder.getInt1(*gv.IntVal.getRawData()),         copytn);
+        case TT_I8:              return new TypedValue(c->builder.getInt8( *gv.IntVal.getRawData()),    copytn);
+        case TT_I16:             return new TypedValue(c->builder.getInt16(*gv.IntVal.getRawData()),    copytn);
+        case TT_I32:             return new TypedValue(c->builder.getInt32(*gv.IntVal.getRawData()),    copytn);
+        case TT_I64:             return new TypedValue(c->builder.getInt64(*gv.IntVal.getRawData()),    copytn);
+        case TT_U8:              return new TypedValue(c->builder.getInt8( *gv.IntVal.getRawData()),    copytn);
+        case TT_U16:             return new TypedValue(c->builder.getInt16(*gv.IntVal.getRawData()),    copytn);
+        case TT_U32:             return new TypedValue(c->builder.getInt32(*gv.IntVal.getRawData()),    copytn);
+        case TT_U64:             return new TypedValue(c->builder.getInt64(*gv.IntVal.getRawData()),    copytn);
+        case TT_Isz:             return new TypedValue(c->builder.getInt64(*gv.IntVal.getRawData()),    copytn);
+        case TT_Usz:             return new TypedValue(c->builder.getInt64(*gv.IntVal.getRawData()),    copytn);
+        case TT_C8:              return new TypedValue(c->builder.getInt8( *gv.IntVal.getRawData()),    copytn);
+        case TT_C32:             return new TypedValue(c->builder.getInt32(*gv.IntVal.getRawData()),    copytn);
+        case TT_F16:             return new TypedValue(ConstantFP::get(c->ctxt, APFloat(gv.FloatVal)),  copytn);
+        case TT_F32:             return new TypedValue(ConstantFP::get(c->ctxt, APFloat(gv.FloatVal)),  copytn);
+        case TT_F64:             return new TypedValue(ConstantFP::get(c->ctxt, APFloat(gv.DoubleVal)), copytn);
+        case TT_Bool:            return new TypedValue(c->builder.getInt1(*gv.IntVal.getRawData()),     copytn);
         case TT_Tuple:           break;
         case TT_Array:           break;
         case TT_Ptr: {
@@ -866,7 +867,7 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
     //both a C-style cast and dyn-cast to functions fail if f is a function-pointer
     auto *call = c->builder.CreateCall(tvf->val, args);
 
-    return new TypedValue(call, deepCopyTypeNode(tvf->type->extTy.get()));
+    return new TypedValue(call, tvf->type->extTy);
 }
 
 TypedValue* Compiler::compLogicalOr(Node *lexpr, Node *rexpr, BinOpNode *op){
@@ -1087,7 +1088,7 @@ TypedValue* UnOpNode::compile(Compiler *c){
                 return c->compErr("Cannot dereference non-pointer type " + llvmTypeToStr(rhs->getType()), loc);
             }
             
-            return new TypedValue(c->builder.CreateLoad(rhs->val), rhs->type->extTy.get());
+            return new TypedValue(c->builder.CreateLoad(rhs->val), rhs->type->extTy);
         case '&': {//address-of
             auto *oldTy = deepCopyTypeNode(rhs->type.get());
             auto *ptrTy = mkAnonTypeNode(TT_Ptr);

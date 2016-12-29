@@ -557,7 +557,7 @@ TypedValue* compVarDeclWithInferredType(VarDeclNode *node, Compiler *c){
     //set the value as mutable
     val->type->addModifier(Tok_Mut);
 
-    TypedValue *alloca = new TypedValue(c->builder.CreateAlloca(val->getType(), 0, node->name.c_str()), val->type.get());
+    TypedValue *alloca = new TypedValue(c->builder.CreateAlloca(val->getType(), 0, node->name.c_str()), val->type);
     val = new TypedValue(c->builder.CreateStore(val->val, alloca->val), val->type);
 
     bool nofree = true;//val->type->type != TT_Ptr || dynamic_cast<Constant*>(val->val);
@@ -581,6 +581,10 @@ TypedValue* VarDeclNode::compile(Compiler *c){
     TypeNode *tyNode = (TypeNode*)typeExpr.get();
     if(!tyNode) return compVarDeclWithInferredType(this, c);
 
+    //the type held by this node will be deleted when the parse tree is, so copy
+    //this one so it is not double freed
+    tyNode = deepCopyTypeNode(tyNode);
+
     Type *ty = c->typeNodeToLlvmType(tyNode);
     tyNode->addModifier(Tok_Mut);
     TypedValue *alloca = new TypedValue(c->builder.CreateAlloca(ty, 0, name.c_str()), tyNode);
@@ -601,7 +605,7 @@ TypedValue* VarDeclNode::compile(Compiler *c){
                         expr->loc);
         }
 
-        return new TypedValue(c->builder.CreateStore(val->val, alloca->val), tyNode);
+        return new TypedValue(c->builder.CreateStore(val->val, alloca->val), deepCopyTypeNode(tyNode));
     }else{
         return alloca;
     }
@@ -782,9 +786,9 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
     BasicBlock *entry = BasicBlock::Create(ctxt, "entry", preFn);
     builder.SetInsertPoint(entry);
  
-    TypeNode *fnTyn = mkAnonTypeNode(TT_Function);
+    TypeNode *fakeFnTyn = mkAnonTypeNode(TT_Function);
     TypeNode *fakeRetTy = mkAnonTypeNode(TT_Void);
-    fnTyn->extTy.reset(fakeRetTy);
+    fakeFnTyn->extTy.reset(fakeRetTy);
         
     //tell the compiler to create a new scope on the stack.
     enterNewScope();
@@ -798,7 +802,7 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
         TypeNode *paramTyNode = (TypeNode*)cParam->typeExpr.get();
         addArgAttrs(arg, paramTyNode);
 
-        stoVar(cParam->name, new Variable(cParam->name, new TypedValue(&arg, paramTyNode), this->scope));
+        stoVar(cParam->name, new Variable(cParam->name, new TypedValue(&arg, deepCopyTypeNode(paramTyNode)), this->scope));
 
         preArgs.push_back(&arg);
 
@@ -806,14 +810,14 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
             curTyn->next.reset(paramTyNode);
             curTyn = (TypeNode*)curTyn->next.get();
         }else{
-            fnTyn->extTy->next.reset(deepCopyTypeNode(paramTyNode));
-            curTyn = (TypeNode*)fnTyn->extTy->next.get();
+            fakeFnTyn->extTy->next.reset(deepCopyTypeNode(paramTyNode));
+            curTyn = (TypeNode*)fakeFnTyn->extTy->next.get();
         }
         if(!(cParam = (NamedValNode*)cParam->next.get())) break;
     }
     
     //store a fake function var, in case this function is recursive
-    auto *fakeFnTv = new TypedValue(preFn, fnTyn);
+    auto *fakeFnTv = new TypedValue(preFn, fakeFnTyn);
     if(fdn->name.length() > 0)
         updateFn(fakeFnTv, fdn->basename, fdn->name);
 
@@ -840,7 +844,7 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
     //prepend the ret type to the function's type node node extension list.
     //(A typenode represents functions by having the first extTy as the ret type,
     //and the (optional) next types in the list as the parameter types)
-    TypeNode *newFnTyn = deepCopyTypeNode(fnTyn);
+    TypeNode *newFnTyn = deepCopyTypeNode(fakeFnTyn);
     TypeNode *params = (TypeNode*)newFnTyn->extTy->next.release();
 
     TypeNode *retTy = deepCopyTypeNode(v->type.get());
@@ -1005,7 +1009,7 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
         //iterate through each parameter and add its value to the new scope.
         for(auto &arg : f->args()){
             TypeNode *paramTyNode = (TypeNode*)cParam->typeExpr.get();
-            stoVar(cParam->name, new Variable(cParam->name, new TypedValue(&arg, paramTyNode), this->scope));
+            stoVar(cParam->name, new Variable(cParam->name, new TypedValue(&arg, deepCopyTypeNode(paramTyNode)), this->scope));
 
             if(!(cParam = (NamedValNode*)cParam->next.get())) break;
         }
@@ -1261,7 +1265,7 @@ TypedValue* MatchNode::compile(Compiler *c){
 
                 auto *cast = c->builder.CreateBitCast(alloca, tupTy->getPointerTo());
                 auto *tup = c->builder.CreateLoad(cast);
-                auto *extract = new TypedValue(c->builder.CreateExtractValue(tup, 1), deepCopyTypeNode(tagTy->tyn.get()));
+                auto *extract = new TypedValue(c->builder.CreateExtractValue(tup, 1), tagTy->tyn);
                 c->stoVar(v->name, new Variable(v->name, extract, c->scope, true));
             }else{
                 return c->compErr("pattern typecast's rval is not a ident", tn->rval->loc);
@@ -1281,7 +1285,7 @@ TypedValue* MatchNode::compile(Compiler *c){
 
         //variable/match-all pattern: _
         }else if(VarNode *vn = dynamic_cast<VarNode*>(mbn->pattern.get())){
-            auto *tn = new TypedValue(lval->val, deepCopyTypeNode(lval->type.get()));
+            auto *tn = new TypedValue(lval->val, lval->type);
             match->setDefaultDest(br);
             c->stoVar(vn->name, new Variable(vn->name, tn, c->scope, true));
         }else{
@@ -1321,7 +1325,7 @@ TypedValue* MatchNode::compile(Compiler *c){
             i++;
         }
         phi->addIncoming(UndefValue::get(merges[0].second->getType()), matchbb);
-        return new TypedValue(phi, deepCopyTypeNode(merges[0].second->type.get()));
+        return new TypedValue(phi, merges[0].second->type);
     }else{
         return c->getVoidLiteral();
     }
