@@ -842,17 +842,25 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
             //check for an implicit Cast function
             string castFn = typeNodeToStr(paramTy);
 
+            //extract the nxt type from the tArg if it has one.
+            //otherwise, getMangledFunction will think there are more args
+            auto *nxt = tArg->type->next.release();
+
             if(auto *fn = c->getMangledFunction(castFn, tArg->type.get())){
-                //the function's parameter is not type checked as it is assumed it was mangled correctly.
-                
+                tArg->type->next.reset(nxt);
+
                 //optimize case of Str -> c8* implicit cast
                 if(tArg->type->typeName == "Str" && castFn == "c8*")
                     args[i-1] = c->builder.CreateExtractValue(args[i-1], 0);
                 else
                     args[i-1] = c->builder.CreateCall(fn->val, tArg->val);
 
-            }else return c->compErr("Argument " + to_string(i) + " of function is a(n) " + typeNodeToStr(tArg->type.get())
+            }else{
+                tArg->type->next.reset(nxt);
+
+                return c->compErr("Argument " + to_string(i) + " of function is a(n) " + typeNodeToStr(tArg->type.get())
                     + " but was declared to be a(n) " + typeNodeToStr(paramTy), r->loc);
+            }
         }
         paramTy = (TypeNode*)paramTy->next.get();
         i++;

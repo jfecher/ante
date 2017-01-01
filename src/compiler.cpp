@@ -1397,6 +1397,7 @@ TypedValue* Compiler::getMangledFunction(string name, TypeNode *params){
     if(candidates.empty()) return 0;
 
     auto argc = getTupleSize(params);
+
     candidates = filterByArgcAndScope(candidates, argc, this->scope);
     if(candidates.empty()) return 0;
 

@@ -38,9 +38,17 @@ LOC_TY copyLoc(const LOC_TY &loc){
 //apply modifier to this type and all its extensions
 TypeNode* TypeNode::addModifiers(ModNode *m){
     TypeNode *ext = extTy.get();
-    while(ext){
+
+    //arrays have their size as their second extty so they
+    //must be handled specially
+    if(type == TT_Array){
         ext->addModifiers(m);
         ext = (TypeNode*)ext->next.get();
+    }else{
+        while(ext){
+            ext->addModifiers(m);
+            ext = (TypeNode*)ext->next.get();
+        }
     }
 
     while(m){
@@ -53,10 +61,17 @@ TypeNode* TypeNode::addModifiers(ModNode *m){
 //add a single modifier to this type and all its extensions
 TypeNode* TypeNode::addModifier(int m){
     TypeNode *ext = extTy.get();
-    while(ext){
+
+    if(type == TT_Array){
         ext->modifiers.push_back(m);
         ext = (TypeNode*)ext->next.get();
+    }else{
+        while(ext){
+            ext->modifiers.push_back(m);
+            ext = (TypeNode*)ext->next.get();
+        }
     }
+
     modifiers.push_back(m);
     return this;
 }
