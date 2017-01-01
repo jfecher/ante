@@ -1,6 +1,6 @@
 
 
-fun modify: i32* x
+fun modify: mut i32* x
     @x = @x * 2
 
 var t = 32

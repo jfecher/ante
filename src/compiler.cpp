@@ -342,8 +342,19 @@ TypedValue* ArrayNode::compile(Compiler *c){
     return new TypedValue(val, tyn);
 }
 
+/*
+ *  Return a void literal.
+ *
+ *  Llvm does not have a void value to use, so an undef value is
+ *  returned as the typedvalue's val instead.  The val itself is
+ *  unimportant so long as it is both a no-op and is able to be
+ *  properly dyn_casted (so a nullptr is out of question)
+ */
 TypedValue* Compiler::getVoidLiteral(){
-    return new TypedValue(nullptr, mkAnonTypeNode(TT_Void));
+    return new TypedValue(
+            UndefValue::get(Type::getInt8Ty(ctxt)),
+            mkAnonTypeNode(TT_Void)
+    );
 }
 
 TypedValue* TupleNode::compile(Compiler *c){
