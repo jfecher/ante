@@ -312,7 +312,7 @@ struct FuncDeclNode : public ParentNode{
     TypedValue* compile(Compiler*);
     void print(void);
     FuncDeclNode(LOC_TY& loc, string s, string bn, Node *mods, Node *t, Node *p, Node* b, bool va=false) : ParentNode(loc, b), name(s), basename(bn), modifiers(mods), type(t), params((NamedValNode*)p), varargs(va){}
-    ~FuncDeclNode(){}
+    ~FuncDeclNode(){ if(next.get()) next.release(); }
 };
 
 struct DataDeclNode : public ParentNode{

@@ -837,7 +837,8 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
 
     //create the actual function's type, along with the function itself.
     FunctionType *ft = FunctionType::get(v->getType(), paramTys, fdn->varargs);
-    Function *f = Function::Create(ft, Function::ExternalLinkage, fdn->name.length() > 0 ? fdn->name : "__lambda__", module.get());
+    Function *f = Function::Create(ft, Function::ExternalLinkage,
+            fdn->name.length() > 0 ? fdn->name : "__lambda__", module.get());
   
     //now that we have the real function, replace the old one with it
    
@@ -848,7 +849,7 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
     TypeNode *params = (TypeNode*)newFnTyn->extTy->next.release();
 
     TypeNode *retTy = deepCopyTypeNode(v->type.get());
-    
+
     retTy->next.reset(params);
     newFnTyn->extTy.reset(retTy);
 
@@ -857,7 +858,7 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
     //f->getBasicBlockList().push_back(&preFn->getBasicBlockList().front());
     f->getBasicBlockList().splice(f->begin(), preFn->getBasicBlockList());
     preFn->getBasicBlockList().clearAndLeakNodesUnsafely();
-    
+
     //swap all instances of preFn's parameters with f's parameters
     int i = 0;
     for(auto &arg : f->args()){
@@ -1536,8 +1537,12 @@ void Compiler::scanAllDecls(){
             delete bop;
 
             //while FuncDeclNode's are preserved inside FuncDecl's, these other two nodes must be manually deleted
-            if(dynamic_cast<ExtNode*>(rv) || dynamic_cast<DataDeclNode*>(rv))
+            if(ExtNode *en = dynamic_cast<ExtNode*>(rv)){
+                en->methods.release();
+                delete en;
+            }else if(dynamic_cast<DataDeclNode*>(rv)){
                 delete rv;
+            }
         }else{
             prev = bop;
             op = bop->lval.get();
@@ -1554,8 +1559,13 @@ void Compiler::scanAllDecls(){
             ast.release();
             ast.reset(mkPlaceholderNode());
         }
-        if(dynamic_cast<ExtNode*>(op) || dynamic_cast<DataDeclNode*>(op))
+
+        if(ExtNode *en = dynamic_cast<ExtNode*>(op)){
+            en->methods.release();
+            delete en;
+        }else if(dynamic_cast<DataDeclNode*>(op)){
             delete op;
+        }
     }
 }
 

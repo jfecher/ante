@@ -554,10 +554,10 @@ TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *bino
             TypedValue *obj = new TypedValue(val, deepCopyTypeNode(tyn));
             auto *method_fn = new TypedValue(fd->tv->val, fd->tv->type);
             return new MethodVal(obj, method_fn);
-        }else
+        }else if(l.size() > 1)
             return compErr("Multiple methods of the same name with different parameters are currently unimplemented.  In the mean time, you can use global functions.", field->loc);
-
-        return compErr("Method/Field " + field->name + " not found in type " + typeNodeToStr(tyn), binop->loc);
+        else
+            return compErr("Method/Field " + field->name + " not found in type " + typeNodeToStr(tyn), binop->loc);
     }
 }
 
