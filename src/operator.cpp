@@ -502,6 +502,7 @@ TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *bino
     }else{
         //ln is not a typenode, so this is not a static method call
         Value *val;
+        TypeNode *ltyn;
         TypeNode *tyn;
 
         //prevent l from being used after this scope; only val and tyn should be used as only they
@@ -511,7 +512,7 @@ TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *bino
             if(!l) return 0;
 
             val = l->val;
-            tyn = l->type.get();
+            tyn = ltyn = l->type.get();
         }
 
         //the . operator automatically dereferences pointers, so update val and tyn accordingly.
@@ -519,6 +520,10 @@ TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *bino
             val = builder.CreateLoad(val);
             tyn = tyn->extTy.get();
         }
+
+        //if pointer derefs took place, tyn could have lost its modifiers, so make sure they are copied back
+        if(ltyn->type == TT_Ptr and tyn->modifiers.empty())
+            tyn->copyModifiersFrom(ltyn);
 
         //check to see if this is a field index
         if(tyn->type == TT_Data || tyn->type == TT_Tuple){

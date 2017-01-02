@@ -63,11 +63,11 @@ TypeNode* TypeNode::addModifier(int m){
     TypeNode *ext = extTy.get();
 
     if(type == TT_Array){
-        ext->modifiers.push_back(m);
+        ext->addModifier(m);
         ext = (TypeNode*)ext->next.get();
     }else{
         while(ext){
-            ext->modifiers.push_back(m);
+            ext->addModifier(m);
             ext = (TypeNode*)ext->next.get();
         }
     }

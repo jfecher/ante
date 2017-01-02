@@ -637,15 +637,16 @@ TypedValue* compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
    
     Value *val;
     TypeNode *tyn;
+    TypeNode *ltyn;
 
     //prevent l from being used after this scope; only val and tyn should be used as only they
     //are updated with the automatic pointer dereferences.
     { 
         auto *l = bop->lval->compile(c);
         if(!l) return 0;
-    
+
         val = l->val;
-        tyn = l->type.get();
+        tyn = ltyn = l->type.get();
        
         if(!tyn->hasModifier(Tok_Mut))
             return c->compErr("Variable must be mutable to be assigned to, but instead is an immutable " +
@@ -657,6 +658,10 @@ TypedValue* compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
         val = c->builder.CreateLoad(val);
         tyn = tyn->extTy.get();
     }
+    
+    //if pointer derefs took place, tyn could have lost its modifiers, so make sure they are copied back
+    if(ltyn->type == TT_Ptr and tyn->modifiers.empty())
+        tyn->copyModifiersFrom(ltyn);
 
     //this is the variable that will store the changes after the later insertion
     Value *var = static_cast<LoadInst*>(val)->getPointerOperand();
@@ -1442,12 +1447,12 @@ void Compiler::importFile(const char *fName){
     }
 
     //copy import's userTypes into importer
-    for(const auto& it : c.userTypes){
-        userTypes[it.first] = it.second;
+    for(auto& it : c.userTypes){
+        userTypes[it.first].reset(it.second.release());
     }
 
     //copy functions, but change their scope first
-    for(const auto& it : c.fnDecls){
+    for(auto& it : c.fnDecls){
         for(auto *fd : it.second)
             fd->scope = this->scope;
 
@@ -1823,7 +1828,7 @@ void Compiler::stoVar(string var, Variable *val){
 
 DataType* Compiler::lookupType(string tyname) const{
     try{
-        return userTypes.at(tyname);
+        return userTypes.at(tyname).get();
     }catch(out_of_range r){
         return nullptr;
     }
@@ -1831,7 +1836,7 @@ DataType* Compiler::lookupType(string tyname) const{
 
 
 inline void Compiler::stoType(DataType *ty, string &typeName){
-    userTypes[typeName] = ty;
+    userTypes[typeName].reset(ty);
 }
 
 legacy::FunctionPassManager* mkPassManager(Module *m, char optLvl){

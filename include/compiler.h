@@ -162,7 +162,7 @@ namespace ante{
         map<string, list<FuncDecl*>> fnDecls;
 
         //Map of declared usertypes
-        map<string, DataType*> userTypes;
+        map<string, unique_ptr<DataType>> userTypes;
 
         bool errFlag, compiled, isLib;
         string fileName, outFile, funcPrefix;
