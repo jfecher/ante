@@ -325,7 +325,7 @@ TypedValue* ArrayNode::compile(Compiler *c){
     vector<Constant*> arr;
     TypeNode *tyn = mkAnonTypeNode(TT_Array);
 
-    for(Node *n : exprs){
+    for(auto& n : exprs){
         auto *tval = n->compile(c);
         if(!tval) return 0;
 
@@ -413,7 +413,7 @@ TypedValue* TupleNode::compile(Compiler *c){
 
 vector<TypedValue*> TupleNode::unpack(Compiler *c){
     vector<TypedValue*> ret;
-    for(Node *n : exprs){
+    for(auto& n : exprs){
         auto *tv = n->compile(c);
         if(tv && tv->type->type != TT_Void)
             ret.push_back(tv);
@@ -523,13 +523,13 @@ TypedValue* VarNode::compile(Compiler *c){
     if(var){
         return dyn_cast<AllocaInst>(var->getVal()) ?
             new TypedValue(c->builder.CreateLoad(var->getVal(), name), var->tval->type)
-            : var->tval;
+            : var->tval.get();
     }else{
         //if this is a function, then there must be only one function of the same name, otherwise the reference is ambiguous
-        auto fnlist = c->getFunctionList(name);
+        auto& fnlist = c->getFunctionList(name);
 
         if(fnlist.size() == 1){
-            auto *fd = *fnlist.begin();
+            auto& fd = *fnlist.begin();
             if(!fd->tv)
                 c->compFn(fd->fdn, fd->scope);
 
@@ -580,7 +580,7 @@ TypedValue* VarDeclNode::compile(Compiler *c){
     //check for redeclaration, but only on topmost scope
     Variable *redeclare;
     try{
-        redeclare = c->varTable.back()->at(this->name);
+        redeclare = c->varTable.back()->at(this->name).get();
     }catch(out_of_range r){
         redeclare = 0;
     }
@@ -1121,7 +1121,7 @@ TypedValue* compTaggedUnion(Compiler *c, DataDeclNode *n){
     vector<string> union_name;
     union_name.push_back(n->name);
 
-    vector<UnionTag*> tags;
+    vector<unique_ptr<UnionTag>> tags;
     unsigned int largestTyIdx = 0;
     unsigned int largestTySz = 0;
     int i = 0;
@@ -1130,7 +1130,7 @@ TypedValue* compTaggedUnion(Compiler *c, DataDeclNode *n){
         TypeNode *tyn = (TypeNode*)nvn->typeExpr.get();
         UnionTag *tag = new UnionTag(nvn->name, deepCopyTypeNode(tyn->extTy.get()), tags.size());
 
-        tags.push_back(tag);
+        tags.push_back(unique_ptr<UnionTag>(tag));
 
         //Each union member's type is a tuple of the tag, a u8 value, and the user-defined value
         TypeNode *tagTy = deepCopyTypeNode(tyn->extTy.get());
@@ -1254,7 +1254,7 @@ TypedValue* MatchNode::compile(Compiler *c){
     auto *match = c->builder.CreateSwitch(switchVal, end, branches.size());
     vector<pair<BasicBlock*,TypedValue*>> merges;
 
-    for(auto *mbn : branches){
+    for(auto& mbn : branches){
         ConstantInt *ci = nullptr;
         auto *br = BasicBlock::Create(c->ctxt, "br", f);
         c->builder.SetInsertPoint(br);
@@ -1353,9 +1353,16 @@ TypedValue* MatchBranchNode::compile(Compiler *c){
     return c->getVoidLiteral();
 }
 
+FuncDecl* getFuncDeclFromList(list<unique_ptr<FuncDecl>> &l, string &mangledName){
+    for(auto& fd : l)
+        if(fd->fdn->name == mangledName)
+            return fd.get();
 
-FuncDecl* getFuncDeclFromList(list<FuncDecl*> &l, string &mangledName){
-    for(auto *fd : l)
+    return 0;
+}
+
+FuncDecl* getFuncDeclFromList(list<FuncDecl*> l, string &mangledName){
+    for(auto& fd : l)
         if(fd->fdn->name == mangledName)
             return fd;
 
@@ -1364,13 +1371,15 @@ FuncDecl* getFuncDeclFromList(list<FuncDecl*> &l, string &mangledName){
 
 void Compiler::updateFn(TypedValue *f, string &name, string &mangledName){
     auto &list = fnDecls[name];
-    auto *fd = getFuncDeclFromList(list, mangledName);
+    auto fd = getFuncDeclFromList(list, mangledName);
+
+    //TODO: free me first
     fd->tv = f;
 }
 
 
 TypedValue* Compiler::getFunction(string& name, string& mangledName){
-    auto list = getFunctionList(name);
+    auto& list = getFunctionList(name);
     if(list.empty()) return 0;
 
     auto *fd = getFuncDeclFromList(list, mangledName);
@@ -1386,11 +1395,11 @@ TypedValue* Compiler::getFunction(string& name, string& mangledName){
  * Returns all FuncDecls from a list that have argc number of parameters
  * and can be accessed in the current scope.
  */
-list<FuncDecl*> filterByArgcAndScope(list<FuncDecl*> l, size_t argc, unsigned int scope){
+list<FuncDecl*> filterByArgcAndScope(list<unique_ptr<FuncDecl>> &l, size_t argc, unsigned int scope){
     list<FuncDecl*> ret;
-    for(auto *fd : l){
+    for(auto& fd : l){
         if(fd->scope <= scope && getTupleSize(fd->fdn->params.get()) == argc){
-            ret.push_back(fd);
+            ret.push_back(fd.get());
         }
     }
     return ret;
@@ -1398,17 +1407,17 @@ list<FuncDecl*> filterByArgcAndScope(list<FuncDecl*> l, size_t argc, unsigned in
 
 
 TypedValue* Compiler::getMangledFunction(string name, TypeNode *params){
-    auto candidates = getFunctionList(name);
-    if(candidates.empty()) return 0;
+    auto& fnlist = getFunctionList(name);
+    if(fnlist.empty()) return 0;
 
     auto argc = getTupleSize(params);
 
-    candidates = filterByArgcAndScope(candidates, argc, this->scope);
+    auto candidates = filterByArgcAndScope(fnlist, argc, this->scope);
     if(candidates.empty()) return 0;
 
     //if there is only one function now, return it.  It will be typechecked later
     if(candidates.size() == 1){
-        auto *fd = candidates.front();
+        auto& fd = candidates.front();
         if(!fd->tv) compFn(fd->fdn, fd->scope);
         return fd->tv;
     }
@@ -1428,7 +1437,7 @@ TypedValue* Compiler::getMangledFunction(string name, TypeNode *params){
 }
 
 
-list<FuncDecl*> Compiler::getFunctionList(string& name){
+list<unique_ptr<FuncDecl>>& Compiler::getFunctionList(string& name){
     return fnDecls[name];
 }
 
@@ -1453,7 +1462,7 @@ void Compiler::importFile(const char *fName){
 
     //copy functions, but change their scope first
     for(auto& it : c.fnDecls){
-        for(auto *fd : it.second)
+        for(auto& fd : it.second)
             fd->scope = this->scope;
 
         fnDecls[it.first] = move(it.second);
@@ -1508,7 +1517,7 @@ string removeFileExt(string file){
  *  of a module with unneeded library functions.
  */
 inline void Compiler::registerFunction(FuncDeclNode *fn){
-    fnDecls[fn->basename].push_front(new FuncDecl(fn, this->scope));
+    fnDecls[fn->basename].push_front(unique_ptr<FuncDecl>(new FuncDecl(fn, this->scope)));
 }
 
 
@@ -1777,8 +1786,8 @@ void TypedValue::dump() const{
 
 void Compiler::enterNewScope(){
     scope++;
-    auto *vtable = new map<string, Variable*>();
-    varTable.push_back(unique_ptr<map<string, Variable*>>(vtable));
+    auto *vtable = new map<string, unique_ptr<Variable>>();
+    varTable.push_back(unique_ptr<map<string, unique_ptr<Variable>>>(vtable));
 }
 
 
@@ -1813,7 +1822,7 @@ void Compiler::exitScope(){
 Variable* Compiler::lookup(string var) const{
     for(auto it = varTable.crbegin(); it != varTable.crend(); ++it){
         try{
-            return (*it)->at(var);
+            return (*it)->at(var).get();
         }catch(out_of_range r){}
     }
 
@@ -1822,7 +1831,7 @@ Variable* Compiler::lookup(string var) const{
 
 
 void Compiler::stoVar(string var, Variable *val){
-    (*varTable[val->scope-1])[var] = val;
+    (*varTable[val->scope-1])[var].reset(val);
 }
 
 
@@ -1931,8 +1940,8 @@ void Compiler::processArgs(CompilerArgs *args, string &input){
         isLib = true;
         if(!compiled) compile();
 
-        for(auto pair : fnDecls)
-            for(auto *fd : pair.second)
+        for(auto& pair : fnDecls)
+            for(auto& fd : pair.second)
                 compFn(fd->fdn, fd->scope);
     }
 
@@ -1952,14 +1961,5 @@ Compiler::~Compiler(){
     if(yylexer){
         delete yylexer;
         yylexer = 0;
-    }
-
-    //clear fnDecls
-    for(auto pair : fnDecls){
-        for(auto fd : pair.second){
-            delete fd->tv;
-            delete fd->fdn;
-            delete fd;
-        }
     }
 }

@@ -486,10 +486,10 @@ TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *bino
         //since ln is a typenode, this is a static field/method access, eg Math.rand
         string valName = typeNodeToStr(tn) + "_" + field->name;
 
-        auto l = getFunctionList(valName);
+        auto& l = getFunctionList(valName);
 
         if(l.size() == 1){
-            auto *fd = l.front();
+            auto& fd = l.front();
             if(!fd->tv)
                 fd->tv = compFn(fd->fdn, fd->scope);
 
@@ -549,10 +549,10 @@ TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *bino
         //not a field, so look for a method.
         //TODO: perhaps create a calling convention function
         string funcName = typeNodeToStr(tyn) + "_" + field->name;
-        auto l = getFunctionList(funcName);
+        auto& l = getFunctionList(funcName);
 
         if(l.size() == 1){
-            auto *fd = l.front();
+            auto& fd = l.front();
             if(!fd->tv)
                 fd->tv = compFn(fd->fdn, fd->scope);
 

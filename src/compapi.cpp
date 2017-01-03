@@ -21,7 +21,7 @@ map<string, CtFunc*> compapi = {
 
 CtFunc::CtFunc(void* f) : fn(f), params(), retty(mkAnonTypeNode(TT_Void)){}
 CtFunc::CtFunc(void* f, TypeNode *retTy) : fn(f), params(), retty(retTy){}
-CtFunc::CtFunc(void* f, TypeNode *retTy, vector<TypeNode*> p) : fn(f), params(p), retty(retTy){}
+CtFunc::CtFunc(void* f, TypeNode *retTy, vector<unique_ptr<TypeNode>> p) : fn(f), params(move(p)), retty(retTy){}
 
 //convert void* to void*() and call it
 void* CtFunc::operator()(){

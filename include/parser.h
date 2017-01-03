@@ -93,20 +93,20 @@ struct CharLitNode : public Node{
 };
 
 struct ArrayNode : public Node{
-    vector<Node*> exprs;
+    vector<unique_ptr<Node>> exprs;
     TypedValue* compile(Compiler*);
     void print(void);
-    ArrayNode(LOC_TY& loc, vector<Node*>& e) : Node(loc), exprs(e){}
+    ArrayNode(LOC_TY& loc, vector<unique_ptr<Node>>& e) : Node(loc), exprs(move(e)){}
     ~ArrayNode(){}
 };
 
 struct TupleNode : public Node{
-    vector<Node*> exprs;
+    vector<unique_ptr<Node>> exprs;
     TypedValue* compile(Compiler*);
 
     vector<TypedValue*> unpack(Compiler*);
     void print(void);
-    TupleNode(LOC_TY& loc, vector<Node*>& e) : Node(loc), exprs(e){}
+    TupleNode(LOC_TY& loc, vector<unique_ptr<Node>>& e) : Node(loc), exprs(move(e)){}
     ~TupleNode(){}
 };
 
@@ -287,11 +287,11 @@ struct MatchBranchNode : public Node{
 
 struct MatchNode : public Node{
     unique_ptr<Node> expr;
-    vector<MatchBranchNode*> branches;
+    vector<unique_ptr<MatchBranchNode>> branches;
 
     TypedValue* compile(Compiler*);
     void print(void);
-    MatchNode(LOC_TY& loc, Node *e, vector<MatchBranchNode*> &b) : Node(loc), expr(e), branches(b){}
+    MatchNode(LOC_TY& loc, Node *e, vector<unique_ptr<MatchBranchNode>> &b) : Node(loc), expr(e), branches(move(b)){}
     ~MatchNode(){}
 };
 

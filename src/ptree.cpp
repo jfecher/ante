@@ -102,7 +102,8 @@ Node* setNext(Node* cur, Node* nxt){
 }
 
 Node* addMatch(Node *matchExpr, Node *newMatch){
-    ((MatchNode*)matchExpr)->branches.push_back((MatchBranchNode*)newMatch);
+    ((MatchNode*)matchExpr)->branches.push_back(
+        unique_ptr<MatchBranchNode>((MatchBranchNode*)newMatch));
     return matchExpr;
 }
 
@@ -179,19 +180,23 @@ Node* mkBoolLitNode(LOC_TY loc, char b){
 }
 
 Node* mkArrayNode(LOC_TY loc, Node *expr){
-    vector<Node*> exprs;
+    vector<unique_ptr<Node>> exprs;
     while(expr){
-        exprs.push_back(expr);
-        expr = expr->next.get();
+        exprs.push_back(unique_ptr<Node>(expr));
+        auto *nxt = expr->next.get();
+        expr->next.release();
+        expr = nxt;
     }
     return new ArrayNode(loc, exprs);
 }
 
 Node* mkTupleNode(LOC_TY loc, Node *expr){
-    vector<Node*> exprs;
+    vector<unique_ptr<Node>> exprs;
     while(expr){
-        exprs.push_back(expr);
-        expr = expr->next.get();
+        exprs.push_back(unique_ptr<Node>(expr));
+        auto *nxt = expr->next.get();
+        expr->next.release();
+        expr = nxt;
     }
     return new TupleNode(loc, exprs);
 }
@@ -357,8 +362,9 @@ Node* mkDataDeclNode(LOC_TY loc, char* s, Node* b){
 }
 
 Node* mkMatchNode(LOC_TY loc, Node* expr, Node* branch){
-    vector<MatchBranchNode*> branches;
-    branches.push_back((MatchBranchNode*)branch);
+    vector<unique_ptr<MatchBranchNode>> branches;
+    branch->next.release();
+    branches.push_back(unique_ptr<MatchBranchNode>((MatchBranchNode*)branch));
     return new MatchNode(loc, expr, branches);
 }
 

@@ -51,7 +51,7 @@ struct FuncDecl {
     unsigned int scope;
     TypedValue *tv;
     FuncDecl(FuncDeclNode *fn, unsigned int s, TypedValue *f=0) : fdn(fn), scope(s), tv(f){}
-    ~FuncDecl(){}
+    ~FuncDecl(){ delete fdn; delete tv; }
 };
 
 struct MethodVal : public TypedValue {
@@ -70,10 +70,10 @@ struct UnionTag {
 
 struct DataType {
     vector<string> fields;
-    vector<UnionTag*> tags;
+    vector<unique_ptr<UnionTag>> tags;
     unique_ptr<TypeNode> tyn;
 
-    DataType(vector<string> &f, TypeNode *ty) : fields(f), tyn(ty){}
+    DataType(const vector<string> &f, TypeNode *ty) : fields(f), tyn(ty){}
     ~DataType(){}
 
     int getFieldIndex(string &field) const {
@@ -92,7 +92,7 @@ struct DataType {
     }
 
     unsigned short getTagVal(string &name){
-        for(auto *tag : tags){
+        for(auto& tag : tags){
             if(tag->name == name){
                 return tag->tag;
             }
@@ -103,7 +103,7 @@ struct DataType {
 
 struct Variable {
     string name;
-    TypedValue *tval;
+    unique_ptr<TypedValue> tval;
     unsigned int scope;
     bool noFree;
 
@@ -128,7 +128,7 @@ struct Variable {
  * of the function */
 struct CtFunc {
     void *fn;
-    vector<TypeNode*> params;
+    vector<unique_ptr<TypeNode>> params;
     unique_ptr<TypeNode> retty;
 
     size_t numParams() const { return params.size(); }
@@ -136,7 +136,7 @@ struct CtFunc {
     bool typeCheck(vector<TypedValue*> &args);
     CtFunc(void* fn);
     CtFunc(void* fn, TypeNode *retTy);
-    CtFunc(void* fn, TypeNode *retTy, vector<TypeNode*> params);
+    CtFunc(void* fn, TypeNode *retTy, vector<unique_ptr<TypeNode>> params);
     void* operator()();
     void* operator()(TypedValue *tv);
 };
@@ -156,10 +156,10 @@ namespace ante{
 
         //Stack of maps of variables mapped to their identifier.
         //Maps are seperated according to their scope.
-        vector<unique_ptr<std::map<string, Variable*>>> varTable;
+        vector<unique_ptr<std::map<string, unique_ptr<Variable>>>> varTable;
 
         //Map of declared, but non-defined functions
-        map<string, list<FuncDecl*>> fnDecls;
+        map<string, list<unique_ptr<FuncDecl>>> fnDecls;
 
         //Map of declared usertypes
         map<string, unique_ptr<DataType>> userTypes;
@@ -202,7 +202,7 @@ namespace ante{
         void importFile(const char *name);
         void updateFn(TypedValue *f, string &name, string &mangledName);
         TypedValue* getFunction(string& name, string& mangledName);
-        list<FuncDecl*> getFunctionList(string& name);
+        list<unique_ptr<FuncDecl>>& getFunctionList(string& name);
         TypedValue* getMangledFunction(string nonMangledName, TypeNode *params);
         TypedValue* getCastFn(TypeNode *from_ty, TypeNode *to_ty);
         

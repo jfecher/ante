@@ -242,7 +242,7 @@ void MatchNode::print(){
     cout << "match ";
     expr->print();
     puts(" with");
-    for(auto *b : branches)
+    for(auto& b : branches)
         b->print();
     puts("end match");
 }

@@ -6,16 +6,34 @@
  */
 #include "jitlinker.h"
 
+
+DataType* copy(const DataType* dt){
+    DataType* cpy = new DataType(dt->fields, deepCopyTypeNode(dt->tyn.get()));
+
+    for(auto& tag : dt->tags){
+        auto *tag_cpy = new UnionTag(tag->name, deepCopyTypeNode(tag->tyn.get()), tag->tag);
+        cpy->tags.push_back(unique_ptr<UnionTag>(tag_cpy));
+    }
+
+    return cpy;
+}
+
+//TODO: deep copy fd->fdn
+FuncDecl* copy(const FuncDecl* fd){
+    FuncDecl *cpy = new FuncDecl(fd->fdn, fd->scope, fd->tv);
+    return cpy;
+}
+
 void copyDecls(const Compiler *src, Compiler *dest){
     for(auto& it : src->userTypes){
-        dest->userTypes[it.first] = it.second;
+        dest->userTypes[it.first].reset( copy(it.second.get()) );
     }
 
     for(auto& it : src->fnDecls){
-        for(auto *fd : it.second)
+        for(auto& fd : it.second){
             fd->scope = dest->scope;
-
-        dest->fnDecls[it.first] = it.second;
+            dest->fnDecls[it.first].push_back( unique_ptr<FuncDecl>(copy(fd.get())) );
+        }
     }
 }
 
@@ -36,7 +54,7 @@ Module* wrapFnInModule(Compiler *c, Function *f){
 
     string name = f->getName().str();
 
-    auto flist = ccpy.getFunctionList(name);
+    auto& flist = ccpy.getFunctionList(name);
 
     if(flist.size() == 1){
         ccpy.compFn((*flist.begin())->fdn, 0);
