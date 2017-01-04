@@ -839,6 +839,8 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
 
     //actually compile the function, and hold onto the last value
     TypedValue *v = fdn->child->compile(this);
+    TypeNode *retTy = deepCopyTypeNode(v->type.get());
+    
     //End of the function, discard the function's scope.
     exitScope();
 
@@ -863,8 +865,6 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
     //and the (optional) next types in the list as the parameter types)
     TypeNode *newFnTyn = deepCopyTypeNode(fakeFnTyn);
     TypeNode *params = (TypeNode*)newFnTyn->extTy->next.release();
-
-    TypeNode *retTy = deepCopyTypeNode(v->type.get());
 
     retTy->next.reset(params);
     newFnTyn->extTy.reset(retTy);
