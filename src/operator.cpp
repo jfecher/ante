@@ -863,8 +863,12 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
             }else{
                 tArg->type->next.reset(nxt);
 
+                LOC_TY loc = dynamic_cast<TupleNode*>(r)
+                           ? ((TupleNode*)r)->exprs[i-1]->loc
+                           : r->loc;
+
                 return c->compErr("Argument " + to_string(i) + " of function is a(n) " + typeNodeToStr(tArg->type.get())
-                    + " but was declared to be a(n) " + typeNodeToStr(paramTy), r->loc);
+                    + " but was declared to be a(n) " + typeNodeToStr(paramTy), loc);
             }
         }
         paramTy = (TypeNode*)paramTy->next.get();
