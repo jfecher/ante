@@ -3,6 +3,6 @@
 
 #include "compiler.h"
 
-Module* wrapFnInModule(Compiler*, Function*);
+llvm::Module* wrapFnInModule(Compiler*, Function*);
 
 #endif

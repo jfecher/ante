@@ -146,23 +146,42 @@ struct CtFunc {
 namespace yy{ class location; }
 
 namespace ante{
+
+    struct Module {
+        string name;
+       
+        //declared functions
+        map<string, list<shared_ptr<FuncDecl>>> fnDecls;
+
+        //Map of declared usertypes
+        map<string, shared_ptr<DataType>> userTypes;
+    };
+
     struct Compiler {
         LLVMContext ctxt;
         unique_ptr<ExecutionEngine> jit;
         unique_ptr<legacy::FunctionPassManager> passManager;
-        unique_ptr<Module> module;
+        unique_ptr<llvm::Module> module;
         unique_ptr<Node> ast;
         IRBuilder<> builder;
 
+        //functions and type definitions of current module
+        shared_ptr<ante::Module> compUnit;
+
+        //all functions and type definitions visible to current module
+        shared_ptr<ante::Module> mergedCompUnits;
+
+        //all imported modules
+        vector<shared_ptr<ante::Module>> imports;
+        
+        //every single compiled module, even ones invisible to the current
+        //compilation_unit.  Prevents recompilation of modules
+        map<string, shared_ptr<ante::Module>> allCompiledModules;
+        
         //Stack of maps of variables mapped to their identifier.
         //Maps are seperated according to their scope.
         vector<unique_ptr<std::map<string, unique_ptr<Variable>>>> varTable;
 
-        //Map of declared, but non-defined functions
-        map<string, list<unique_ptr<FuncDecl>>> fnDecls;
-
-        //Map of declared usertypes
-        map<string, unique_ptr<DataType>> userTypes;
 
         bool errFlag, compiled, isLib;
         string fileName, outFile, funcPrefix;
@@ -202,7 +221,7 @@ namespace ante{
         void importFile(const char *name);
         void updateFn(TypedValue *f, string &name, string &mangledName);
         TypedValue* getFunction(string& name, string& mangledName);
-        list<unique_ptr<FuncDecl>>& getFunctionList(string& name);
+        list<shared_ptr<FuncDecl>>& getFunctionList(string& name);
         TypedValue* getMangledFunction(string nonMangledName, TypeNode *params);
         TypedValue* getCastFn(TypeNode *from_ty, TypeNode *to_ty);
         
@@ -225,7 +244,7 @@ namespace ante{
         void implicitlyCastFltToFlt(TypedValue **lhs, TypedValue **rhs);
         void implicitlyCastIntToFlt(TypedValue **tval, Type *ty);
         
-        int compileIRtoObj(Module *mod, string outFile);
+        int compileIRtoObj(llvm::Module *mod, string outFile);
 
         TypedValue* getVoidLiteral();
         static int linkObj(string inFiles, string outFile);

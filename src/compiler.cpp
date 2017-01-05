@@ -946,7 +946,7 @@ TypedValue* compCompilerDirectiveFn(Compiler *c, FuncDeclNode *fdn, unsigned int
             auto *mod = c->module.get();
             c->module.release();
 
-            c->module.reset(new Module(fdn->name, c->ctxt));
+            c->module.reset(new llvm::Module(fdn->name, c->ctxt));
             auto *recomp = c->compFn(fdn, scope);
 
             c->jitFunction((Function*)recomp->val);
@@ -1353,7 +1353,7 @@ TypedValue* MatchBranchNode::compile(Compiler *c){
     return c->getVoidLiteral();
 }
 
-FuncDecl* getFuncDeclFromList(list<unique_ptr<FuncDecl>> &l, string &mangledName){
+FuncDecl* getFuncDeclFromList(list<shared_ptr<FuncDecl>> &l, string &mangledName){
     for(auto& fd : l)
         if(fd->fdn->name == mangledName)
             return fd.get();
@@ -1361,19 +1361,14 @@ FuncDecl* getFuncDeclFromList(list<unique_ptr<FuncDecl>> &l, string &mangledName
     return 0;
 }
 
-FuncDecl* getFuncDeclFromList(list<FuncDecl*> l, string &mangledName){
-    for(auto& fd : l)
-        if(fd->fdn->name == mangledName)
-            return fd;
-
-    return 0;
-}
-
 void Compiler::updateFn(TypedValue *f, string &name, string &mangledName){
-    auto &list = fnDecls[name];
-    auto fd = getFuncDeclFromList(list, mangledName);
+    auto &list = mergedCompUnits->fnDecls[name];
+    auto *fd = getFuncDeclFromList(list, mangledName);
 
     //TODO: free me first
+    //
+    //NOTE: fd here is shared between compUnit and mergedCompUnit modules
+    //      so one update will update across each module
     fd->tv = f;
 }
 
@@ -1395,11 +1390,11 @@ TypedValue* Compiler::getFunction(string& name, string& mangledName){
  * Returns all FuncDecls from a list that have argc number of parameters
  * and can be accessed in the current scope.
  */
-list<FuncDecl*> filterByArgcAndScope(list<unique_ptr<FuncDecl>> &l, size_t argc, unsigned int scope){
-    list<FuncDecl*> ret;
+list<shared_ptr<FuncDecl>> filterByArgcAndScope(list<shared_ptr<FuncDecl>> &l, size_t argc, unsigned int scope){
+    list<shared_ptr<FuncDecl>> ret;
     for(auto& fd : l){
         if(fd->scope <= scope && getTupleSize(fd->fdn->params.get()) == argc){
-            ret.push_back(fd.get());
+            ret.push_back(fd);
         }
     }
     return ret;
@@ -1437,8 +1432,8 @@ TypedValue* Compiler::getMangledFunction(string name, TypeNode *params){
 }
 
 
-list<unique_ptr<FuncDecl>>& Compiler::getFunctionList(string& name){
-    return fnDecls[name];
+list<shared_ptr<FuncDecl>>& Compiler::getFunctionList(string& name){
+    return mergedCompUnits->fnDecls[name];
 }
 
 /*
@@ -1446,28 +1441,36 @@ list<unique_ptr<FuncDecl>>& Compiler::getFunctionList(string& name){
  * inputted file must exist and be a valid ante source file.
  */
 void Compiler::importFile(const char *fName){
-    Compiler c{fName, true};
-    c.scanAllDecls();
+    try{
+        auto& module = allCompiledModules.at(fName);
+        //module is already compiled; just copy the ptr to imports
+        imports.push_back(module);
+        
+    }catch(out_of_range r){
+        //function not found; create new Compiler instance to compile it
+        Compiler *c = new Compiler(fName, true);
+        c->allCompiledModules = allCompiledModules;
+        c->scanAllDecls();
 
-    if(c.errFlag){
-        cout << "Error when importing " << fName << endl;
-        errFlag = true;
-        return;
+        if(c->errFlag){
+            cout << "Error when importing " << fName << endl;
+            errFlag = true;
+            return;
+        }
+
+        for(auto& pair : c->compUnit->fnDecls)
+            for(auto& fd : pair.second)
+                mergedCompUnits->fnDecls[pair.first].push_back(fd);
+
+
+        for(auto& pair : c->compUnit->userTypes)
+            mergedCompUnits->userTypes[pair.first] = pair.second;
+
+
+        imports.push_back(c->compUnit);
+        allCompiledModules[c->fileName] = c->compUnit;
+        delete c;
     }
-
-    //copy import's userTypes into importer
-    for(auto& it : c.userTypes){
-        userTypes[it.first].reset(it.second.release());
-    }
-
-    //copy functions, but change their scope first
-    for(auto& it : c.fnDecls){
-        for(auto& fd : it.second)
-            fd->scope = this->scope;
-
-        fnDecls[it.first] = move(it.second);
-    }
-    c.fnDecls.clear();
 }
 
 
@@ -1517,7 +1520,10 @@ string removeFileExt(string file){
  *  of a module with unneeded library functions.
  */
 inline void Compiler::registerFunction(FuncDeclNode *fn){
-    fnDecls[fn->basename].push_front(unique_ptr<FuncDecl>(new FuncDecl(fn, this->scope)));
+    shared_ptr<FuncDecl> fd{new FuncDecl(fn, this->scope)};
+
+    compUnit->fnDecls[fn->basename].push_front(fd);
+    mergedCompUnits->fnDecls[fn->basename].push_front(fd);
 }
 
 
@@ -1638,6 +1644,9 @@ void Compiler::compile(){
     //flag this module as compiled.
     compiled = true;
 
+    //show other modules this is compiled
+    allCompiledModules[fileName] = compUnit;
+
     if(errFlag){
         fputs("Compilation aborted.\n", stderr);
         exit(1);
@@ -1707,7 +1716,7 @@ void Compiler::jitFunction(Function *f){
     if(!jit.get()){
         LLVMInitializeNativeTarget();
         LLVMInitializeNativeAsmPrinter();
-        auto* eBuilder = new EngineBuilder(unique_ptr<Module>(module.get()));
+        auto* eBuilder = new EngineBuilder(unique_ptr<llvm::Module>(module.get()));
 
         string err;
 
@@ -1729,7 +1738,7 @@ void Compiler::jitFunction(Function *f){
 /*
  *  Compiles a module into a .o file to be used for linking.
  */
-int Compiler::compileIRtoObj(Module *mod, string outFile){
+int Compiler::compileIRtoObj(llvm::Module *mod, string outFile){
     auto *tm = getTargetMachine();
 
     std::error_code errCode;
@@ -1837,7 +1846,7 @@ void Compiler::stoVar(string var, Variable *val){
 
 DataType* Compiler::lookupType(string tyname) const{
     try{
-        return userTypes.at(tyname).get();
+        return mergedCompUnits->userTypes.at(tyname).get();
     }catch(out_of_range r){
         return nullptr;
     }
@@ -1845,10 +1854,13 @@ DataType* Compiler::lookupType(string tyname) const{
 
 
 inline void Compiler::stoType(DataType *ty, string &typeName){
-    userTypes[typeName].reset(ty);
+    shared_ptr<DataType> dt{ty};
+
+    compUnit->userTypes[typeName] = dt;
+    mergedCompUnits->userTypes[typeName] = dt;
 }
 
-legacy::FunctionPassManager* mkPassManager(Module *m, char optLvl){
+legacy::FunctionPassManager* mkPassManager(llvm::Module *m, char optLvl){
     auto *pm = new legacy::FunctionPassManager(m);
     pm->add(createDeadStoreEliminationPass());
     pm->add(createDeadCodeEliminationPass());
@@ -1872,6 +1884,8 @@ legacy::FunctionPassManager* mkPassManager(Module *m, char optLvl){
 Compiler::Compiler(const char *_fileName, bool lib) :
         ctxt(),
         builder(ctxt), 
+        compUnit(new ante::Module()),
+        mergedCompUnits(new ante::Module()),
         errFlag(false),
         compiled(false),
         isLib(lib),
@@ -1899,7 +1913,7 @@ Compiler::Compiler(const char *_fileName, bool lib) :
 	if (outFile.empty())
 		outFile = "a";
 
-    module.reset(new Module(outFile, ctxt));
+    module.reset(new llvm::Module(outFile, ctxt));
 
     enterNewScope();
 
@@ -1909,7 +1923,9 @@ Compiler::Compiler(const char *_fileName, bool lib) :
 
 Compiler::Compiler(Node *root, string modName, string &fName, bool lib) :
         ctxt(),
-        builder(ctxt), 
+        builder(ctxt),
+        compUnit(new ante::Module()),
+        mergedCompUnits(new ante::Module()),
         errFlag(false),
         compiled(false),
         isLib(lib),
@@ -1919,7 +1935,7 @@ Compiler::Compiler(Node *root, string modName, string &fName, bool lib) :
         scope(0){
 
     ast.reset(root);
-    module.reset(new Module(outFile, ctxt));
+    module.reset(new llvm::Module(outFile, ctxt));
     
     enterNewScope();
 
@@ -1940,9 +1956,12 @@ void Compiler::processArgs(CompilerArgs *args, string &input){
         isLib = true;
         if(!compiled) compile();
 
-        for(auto& pair : fnDecls)
-            for(auto& fd : pair.second)
-                compFn(fd->fdn, fd->scope);
+        for(auto& pair : compUnit->fnDecls){
+            for(auto& fd : pair.second){
+                if(!fd->tv)
+                    compFn(fd->fdn, fd->scope);
+            }
+        }
     }
 
     if(args->hasArg(Args::EmitLLVM)) emitIR();

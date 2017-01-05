@@ -716,7 +716,7 @@ TypedValue* compMetaFunctionResult(Compiler *c, Node *lnode, TypedValue *l, vect
 
         if(!mod) return 0;
 
-        auto* eBuilder = new EngineBuilder(unique_ptr<Module>(mod));
+        auto* eBuilder = new EngineBuilder(unique_ptr<llvm::Module>(mod));
 
         string err;
 

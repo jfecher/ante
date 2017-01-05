@@ -7,34 +7,14 @@
 #include "jitlinker.h"
 
 
-DataType* copy(const DataType* dt){
-    DataType* cpy = new DataType(dt->fields, deepCopyTypeNode(dt->tyn.get()));
-
-    for(auto& tag : dt->tags){
-        auto *tag_cpy = new UnionTag(tag->name, deepCopyTypeNode(tag->tyn.get()), tag->tag);
-        cpy->tags.push_back(unique_ptr<UnionTag>(tag_cpy));
-    }
-
-    return cpy;
-}
-
-//TODO: deep copy fd->fdn
-FuncDecl* copy(const FuncDecl* fd){
-    FuncDecl *cpy = new FuncDecl(fd->fdn, fd->scope, fd->tv);
-    return cpy;
-}
-
 void copyDecls(const Compiler *src, Compiler *dest){
-    for(auto& it : src->userTypes){
-        dest->userTypes[it.first].reset( copy(it.second.get()) );
-    }
+    dest->compUnit = src->compUnit;
 
-    for(auto& it : src->fnDecls){
-        for(auto& fd : it.second){
-            fd->scope = dest->scope;
-            dest->fnDecls[it.first].push_back( unique_ptr<FuncDecl>(copy(fd.get())) );
-        }
-    }
+    dest->mergedCompUnits = src->mergedCompUnits;
+
+    dest->imports = src->imports;
+
+    dest->allCompiledModules = src->allCompiledModules;
 }
 
 /*
@@ -42,7 +22,7 @@ void copyDecls(const Compiler *src, Compiler *dest){
  * and copies any functions that are needed by the copied function
  * into the new module as well.
  */
-Module* wrapFnInModule(Compiler *c, Function *f){
+llvm::Module* wrapFnInModule(Compiler *c, Function *f){
     Compiler ccpy{c->ast.get(), f->getName(), c->fileName};
     copyDecls(c, &ccpy);
     
