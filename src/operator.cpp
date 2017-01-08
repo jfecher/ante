@@ -199,7 +199,7 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
 
     switch(tmp->type->type){
         case TT_Array: {
-            if(*tmp->type->extTy != *newVal->type)
+            if(!typeEq(tmp->type->extTy.get(), newVal->type.get()))
                 return compErr("Cannot create store of types: "+typeNodeToStr(tmp->type.get())+" <- "
                         +typeNodeToStr(newVal->type.get()), assignExpr->loc);
 
@@ -207,7 +207,7 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
             return getVoidLiteral();
         }
         case TT_Ptr: {
-            if(*tmp->type->extTy.get() != *newVal->type.get())
+            if(!typeEq(tmp->type->extTy.get(), newVal->type.get()))
                 return compErr("Cannot create store of types: "+typeNodeToStr(tmp->type.get())+" <- "
                         +typeNodeToStr(newVal->type.get()), assignExpr->loc);
 
@@ -304,7 +304,7 @@ TypedValue* createCast(Compiler *c, Type *castTy, TypeNode *tyn, TypedValue *val
     //let example = Int 3
     //              ^^^^^
     auto *dataTy = c->lookupType(tyn->typeName);
-    if(dataTy && *valToCast->type.get() == *dataTy->tyn.get()){
+    if(dataTy && c->typeEq(valToCast->type.get(), dataTy->tyn.get())){
         auto *tycpy = deepCopyTypeNode(valToCast->type.get());
 
         //check if this is a tagged union (sum type)
@@ -349,7 +349,7 @@ TypedValue* createCast(Compiler *c, Type *castTy, TypeNode *tyn, TypedValue *val
     //test for the reverse case, something like:  i32 example
     //where example is of type Int
     }else if(valToCast->type->typeName.size() > 0 && (dataTy = c->lookupType(valToCast->type->typeName))){
-        if(*dataTy->tyn.get() == *tyn){
+        if(c->typeEq(dataTy->tyn.get(), tyn)){
             auto *tycpy = deepCopyTypeNode(valToCast->type.get());
             tycpy->typeName = "";
             tycpy->type = tyn->type;
@@ -368,7 +368,7 @@ TypedValue* TypeCastNode::compile(Compiler *c){
     auto* tval = createCast(c, castTy, typeExpr.get(), rtval);
 
     if(!tval){
-        if(*rtval->type == *typeExpr)
+        if(c->typeEq(rtval->type.get(), typeExpr.get()))
             return c->compErr("Typecast to same type", loc);
         
         return c->compErr("Invalid type cast " + typeNodeToStr(rtval->type.get()) + 
@@ -449,7 +449,7 @@ TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Ty
         if(!thenVal) return 0;
 
 
-        if(*thenVal->type.get() != *elseVal->type.get() && !dyn_cast<ReturnInst>(thenVal->val) && !dyn_cast<ReturnInst>(elseVal->val))
+        if(!c->typeEq(thenVal->type.get(), elseVal->type.get()) && !dyn_cast<ReturnInst>(thenVal->val) && !dyn_cast<ReturnInst>(elseVal->val))
             return c->compErr("If condition's then expr's type " + typeNodeToStr(thenVal->type.get()) +
                             " does not match the else expr's type " + typeNodeToStr(elseVal->type.get()), ifn->loc);
 
@@ -837,7 +837,7 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
         if(!paramTy) break;
 
         //NOTE: llvmTypeEq tests by structural equality, TypeNode::operator== checks nominal equality
-        if(*tArg->type != *paramTy){
+        if(!c->typeEq(tArg->type.get(), paramTy)){
             //param types not equal; check for implicit conversion
             if(isNumericTypeTag(tArg->type->type) && isNumericTypeTag(paramTy->type)){
                 auto *widen = c->implicitlyWidenNum(tArg, paramTy->type);

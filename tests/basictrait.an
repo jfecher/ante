@@ -1,0 +1,37 @@
+
+ext Holder: NumStore
+    fun get: Holder h =
+        i32 h
+
+    fun store: mut Holder* h, i32 n
+        @h = Holder n
+
+
+trait NumStore
+
+    fun get: NumStore ng -> i32
+
+    fun store: mut NumStore* ng, i32 n
+
+fun Holder := Holder 0
+
+type Holder = i32
+
+
+//define function to work on any Holder
+//
+//In the future UserTypes will be passed
+//by reference by default so it will no longer
+//be necessary to require a pointer to a Holder
+fun print: Holder* h
+    print get{@h}
+
+
+//hold and print 5
+var h = &Holder()
+
+store h 5
+print  h
+
+store h 5432
+print h

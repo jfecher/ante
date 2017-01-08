@@ -46,20 +46,22 @@ void skipToCoords(istream& ifs, unsigned int row, unsigned int col){
  *  Prints a given line (row) of a file, along with an arrow pointing to
  *  the specified column.
  */
-void printErrLine(yy::location& loc){
+void printErrLine(const yy::location& loc){
     if(!loc.begin.filename) return;
     ifstream f{*loc.begin.filename};
 
     //Premature newline error, show previous line as error instead
-    if(loc.begin.column == 0) loc.begin.line--;
+    auto line_start = loc.begin.column == 0 ? loc.begin.line - 1 : loc.begin.line;
 
     //skip to line in question
-    skipToCoords(f, loc.begin.line, loc.begin.column);
+    skipToCoords(f, line_start, loc.begin.column);
 
     //print line
     string s;
     getline(f, s);
-    if(loc.begin.column == 0) loc.begin.column = s.length() + 1;
+    
+    auto col_start = loc.begin.column == 0 ? s.length() + 1 : loc.begin.column;
+
     cout << s;
 
     //draw arrow
@@ -68,7 +70,7 @@ void printErrLine(yy::location& loc){
     unsigned int i = 1;
 
     //skip to begin pos
-    for(; i < loc.begin.column; i++) putchar(' ');
+    for(; i < col_start; i++) putchar(' ');
 
     //draw arrow until end pos
     for(; i <= loc.end.column; i++) putchar('^');
@@ -77,7 +79,7 @@ void printErrLine(yy::location& loc){
 }
 
 
-void ante::error(const char* msg, yy::location& loc){
+void ante::error(const char* msg, const yy::location& loc){
     if(loc.begin.filename)
         cout << "\033[;3m" << *loc.begin.filename << "\033[;m: ";
     else
@@ -99,7 +101,7 @@ void ante::error(const char* msg, yy::location& loc){
  *  Inform the user of an error and return nullptr.
  *  (perhaps this should throw an exception?)
  */
-TypedValue* Compiler::compErr(string msg, yy::location& loc){
+TypedValue* Compiler::compErr(const string msg, const yy::location& loc){
     error(msg.c_str(), loc);
     errFlag = true;
     return nullptr;
@@ -679,7 +681,7 @@ TypedValue* compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
                 auto *newval = expr->compile(c);
                 if(!newval) return 0;
 
-                if(*indexTy != *newval->type)
+                if(!c->typeEq(indexTy, newval->type.get()))
                     return c->compErr("Cannot assign expression of type " + typeNodeToStr(newval->type.get()) +
                            " to a variable of type " + typeNodeToStr(indexTy), expr->loc);
 
@@ -1049,7 +1051,7 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
             if(retNode->type == TT_Void){
                 builder.CreateRetVoid();
             }else{
-                if(*v->type.get() != *retNode){
+                if(!typeEq(v->type.get(), retNode)){
                     builder.SetInsertPoint(caller);
                     delete ret;
                     return compErr("Function " + fdn->name + " returned value of type " + 
@@ -1401,7 +1403,7 @@ TypedValue* MatchNode::compile(Compiler *c){
             if(!dyn_cast<ReturnInst>(pair.second->val)){
 
                 //match the types of those branches that will merge
-                if(*pair.second->type != *merges[0].second->type)
+                if(!c->typeEq(pair.second->type.get(), merges[0].second->type.get()))
                     return c->compErr("Branch "+to_string(i)+"'s return type " + typeNodeToStr(pair.second->type.get()) +
                               " != " + typeNodeToStr(merges[0].second->type.get()) + ", the first branch's return type", this->loc);
                 else

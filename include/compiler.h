@@ -40,6 +40,7 @@ bool isPrimitiveTypeTag(TypeTag ty);
 TypeNode* mkAnonTypeNode(TypeTag);
 TypeNode* mkTypeNodeWithExt(TypeTag tt, TypeNode *ext);
 TypeNode* mkDataTypeNode(string tyname);
+bool typeEqBase(const TypeNode *l, const TypeNode *r, const Compiler *c = 0);
 
 /*
  * FuncDeclNode and int pair to retain a function's
@@ -225,7 +226,7 @@ namespace ante{
         TypedValue* compLogicalOr(Node *l, Node *r, BinOpNode *op);
         TypedValue* compLogicalAnd(Node *l, Node *r, BinOpNode *op);
        
-        TypedValue* compErr(string msg, yy::location& loc);
+        TypedValue* compErr(const string msg, const yy::location& loc);
 
         void jitFunction(Function *fnName);
         void importFile(const char *name);
@@ -246,7 +247,8 @@ namespace ante{
         Trait* lookupTrait(string tyname) const;
         void stoType(DataType *ty, string &typeName);
 
-        Type* typeNodeToLlvmType(TypeNode *tyNode);
+        Type* typeNodeToLlvmType(const TypeNode *tyNode);
+        bool typeEq(const TypeNode *l, const TypeNode *r) const;
     
         TypedValue* opImplementedForTypes(int op, TypeNode *l, TypeNode *r);
         TypedValue* implicitlyWidenNum(TypedValue *num, TypeTag castTy);

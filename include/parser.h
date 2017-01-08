@@ -150,8 +150,6 @@ struct TypeNode : public Node{
     unique_ptr<TypeNode> extTy; //Used for pointers and non-single anonymous types.
     vector<int> modifiers;
     
-    bool operator==(TypeNode &r) const;
-    bool operator!=(TypeNode &r) const;
     unsigned int getSizeInBits(Compiler*);
     TypedValue* compile(Compiler*);
     void print(void);
