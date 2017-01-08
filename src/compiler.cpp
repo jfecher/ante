@@ -25,7 +25,7 @@ using namespace llvm;
  *
  * precondition: coordinates must be valid
  */
-void skipToCoords(istream& ifs, unsigned int row, unsigned int col){
+void skipToLine(istream& ifs, unsigned int row){
     unsigned int line = 1;
     if(line != row){
         while(true){
@@ -54,7 +54,7 @@ void printErrLine(const yy::location& loc){
     auto line_start = loc.begin.column == 0 ? loc.begin.line - 1 : loc.begin.line;
 
     //skip to line in question
-    skipToCoords(f, line_start, loc.begin.column);
+    skipToLine(f, line_start);
 
     //print line
     string s;
@@ -793,7 +793,7 @@ void addAllArgAttrs(Function *f, NamedValNode *params){
 
 
 
-TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector<Type*> &paramTys, unsigned int scope){
+TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, vector<Type*> &paramTys){
     FunctionType *preFnTy = FunctionType::get(Type::getVoidTy(ctxt), paramTys, fdn->varargs);
 
     //preFn is the predecessor to fn because we do not yet know its return type, so its body must be compiled,
@@ -994,7 +994,7 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
     }
     
     if(!retNode){
-        auto *ret = compLetBindingFn(fdn, nParams, paramTys, scope);
+        auto *ret = compLetBindingFn(fdn, paramTys);
         builder.SetInsertPoint(caller);
         return ret;
     }
@@ -2028,7 +2028,7 @@ Compiler::Compiler(Node *root, string modName, string &fName, bool lib) :
     passManager.reset(mkPassManager(module.get(), 3));
 }
 
-void Compiler::processArgs(CompilerArgs *args, string &input){
+void Compiler::processArgs(CompilerArgs *args){
     string out = "";
     if(auto *arg = args->getArg(Args::OutputName)){
         outFile = arg->arg;

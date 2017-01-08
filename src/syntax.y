@@ -81,6 +81,7 @@ void yyerror(const char *msg);
     than Ident in decl context
 */
 %nonassoc LOW
+%nonassoc MEDLOW
 
 
 %left Newline
@@ -176,25 +177,25 @@ strlit: StrLit {$$ = mkStrLitNode(@$, lextxt);}
 charlit: CharLit {$$ = mkCharLitNode(@$, lextxt);}
       ;
 
-lit_type: I8        {$$ = mkTypeNode(@$, TT_I8,  (char*)"");}
-        | I16       {$$ = mkTypeNode(@$, TT_I16, (char*)"");}
-        | I32       {$$ = mkTypeNode(@$, TT_I32, (char*)"");}
-        | I64       {$$ = mkTypeNode(@$, TT_I64, (char*)"");}
-        | U8        {$$ = mkTypeNode(@$, TT_U8,  (char*)"");}
-        | U16       {$$ = mkTypeNode(@$, TT_U16, (char*)"");}
-        | U32       {$$ = mkTypeNode(@$, TT_U32, (char*)"");}
-        | U64       {$$ = mkTypeNode(@$, TT_U64, (char*)"");}
-        | Isz       {$$ = mkTypeNode(@$, TT_Isz, (char*)"");}
-        | Usz       {$$ = mkTypeNode(@$, TT_Usz, (char*)"");}
-        | F16       {$$ = mkTypeNode(@$, TT_F16, (char*)"");}
-        | F32       {$$ = mkTypeNode(@$, TT_F32, (char*)"");}
-        | F64       {$$ = mkTypeNode(@$, TT_F64, (char*)"");}
-        | C8        {$$ = mkTypeNode(@$, TT_C8,  (char*)"");}
-        | C32       {$$ = mkTypeNode(@$, TT_C32, (char*)"");}
-        | Bool      {$$ = mkTypeNode(@$, TT_Bool, (char*)"");}
-        | Void      {$$ = mkTypeNode(@$, TT_Void, (char*)"");}
-        | usertype  {$$ = mkTypeNode(@$, TT_Data, (char*)$1);}
-        | typevar   {$$ = mkTypeNode(@$, TT_TypeVar, (char*)$1);}
+lit_type: I8                  {$$ = mkTypeNode(@$, TT_I8,  (char*)"");}
+        | I16                 {$$ = mkTypeNode(@$, TT_I16, (char*)"");}
+        | I32                 {$$ = mkTypeNode(@$, TT_I32, (char*)"");}
+        | I64                 {$$ = mkTypeNode(@$, TT_I64, (char*)"");}
+        | U8                  {$$ = mkTypeNode(@$, TT_U8,  (char*)"");}
+        | U16                 {$$ = mkTypeNode(@$, TT_U16, (char*)"");}
+        | U32                 {$$ = mkTypeNode(@$, TT_U32, (char*)"");}
+        | U64                 {$$ = mkTypeNode(@$, TT_U64, (char*)"");}
+        | Isz                 {$$ = mkTypeNode(@$, TT_Isz, (char*)"");}
+        | Usz                 {$$ = mkTypeNode(@$, TT_Usz, (char*)"");}
+        | F16                 {$$ = mkTypeNode(@$, TT_F16, (char*)"");}
+        | F32                 {$$ = mkTypeNode(@$, TT_F32, (char*)"");}
+        | F64                 {$$ = mkTypeNode(@$, TT_F64, (char*)"");}
+        | C8                  {$$ = mkTypeNode(@$, TT_C8,  (char*)"");}
+        | C32                 {$$ = mkTypeNode(@$, TT_C32, (char*)"");}
+        | Bool                {$$ = mkTypeNode(@$, TT_Bool, (char*)"");}
+        | Void                {$$ = mkTypeNode(@$, TT_Void, (char*)"");}
+        | usertype  %prec LOW {$$ = mkTypeNode(@$, TT_Data, (char*)$1);}
+        | typevar             {$$ = mkTypeNode(@$, TT_TypeVar, (char*)$1);}
         ;
 
 pointer_type: pointer_type '*'  %prec HIGH  {$$ = mkTypeNode(@$, TT_Ptr, (char*)"", $1);}
@@ -505,7 +506,8 @@ while_loop: While expr Do expr  %prec While  {$$ = mkWhileNode(@$, $2, $4);}
 for_loop: For ident In expr Do expr  %prec For  {$$ = mkForNode(@$, $2, $4, $6);}
 
 
-match: '|' expr RArrow expr {$$ = mkMatchBranchNode(@$, $2, $4);}
+match: '|' expr RArrow expr              {$$ = mkMatchBranchNode(@$, $2, $4);}
+     | '|' usertype RArrow expr  %prec Match {$$ = mkMatchBranchNode(@$, mkTypeNode(@2, TT_Data, (char*)$2), $4);}
      ;
 
 

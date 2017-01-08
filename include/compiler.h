@@ -212,7 +212,7 @@ namespace ante{
         void enterNewScope();
         void exitScope();
         void scanAllDecls();
-        void processArgs(CompilerArgs *args, string &input);
+        void processArgs(CompilerArgs *args);
         
         //binop functions
         TypedValue* compAdd(TypedValue *l, TypedValue *r, BinOpNode *op);
@@ -236,7 +236,7 @@ namespace ante{
         TypedValue* getMangledFunction(string nonMangledName, TypeNode *params);
         TypedValue* getCastFn(TypeNode *from_ty, TypeNode *to_ty);
         
-        TypedValue* compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector<Type*> &paramTys, unsigned int scope);
+        TypedValue* compLetBindingFn(FuncDeclNode *fdn, vector<Type*> &paramTys);
         TypedValue* compFn(FuncDeclNode *fn, unsigned int scope);
         void registerFunction(FuncDeclNode *func);
 

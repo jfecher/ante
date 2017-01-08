@@ -50,7 +50,7 @@ int main(int argc, const char **argv){
         if(args->hasArg(Args::Parse))
             parseFile(input);
 
-        ante.processArgs(args, input);
+        ante.processArgs(args);
     }
     
     if(args->hasArg(Args::Eval))
