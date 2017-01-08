@@ -38,7 +38,7 @@ struct TypedValue {
 
 bool isPrimitiveTypeTag(TypeTag ty);
 TypeNode* mkAnonTypeNode(TypeTag);
-TypeNode* mkPtrTypeNode(TypeNode *t);
+TypeNode* mkTypeNodeWithExt(TypeTag tt, TypeNode *ext);
 TypeNode* mkDataTypeNode(string tyname);
 
 /*
@@ -68,9 +68,15 @@ struct UnionTag {
     UnionTag(string &n, TypeNode *ty, unsigned short t) : name(n), tyn(ty), tag(t){}
 };
 
+struct Trait {
+    string name;
+    vector<shared_ptr<FuncDecl>> funcs;
+};
+
 struct DataType {
     vector<string> fields;
     vector<unique_ptr<UnionTag>> tags;
+    vector<shared_ptr<Trait>> traitImpls;
     unique_ptr<TypeNode> tyn;
 
     DataType(const vector<string> &f, TypeNode *ty) : fields(f), tyn(ty){}
@@ -155,6 +161,10 @@ namespace ante{
 
         //Map of declared usertypes
         map<string, shared_ptr<DataType>> userTypes;
+
+        //Map of all declared traits; not including their implementations for a given type
+        //Each DataType is reponsible for holding its own trait implementations
+        map<string, shared_ptr<Trait>> traits;
     };
 
     struct Compiler {
@@ -233,6 +243,7 @@ namespace ante{
         Variable* lookup(string var) const;
         void stoVar(string var, Variable *val);
         DataType* lookupType(string tyname) const;
+        Trait* lookupTrait(string tyname) const;
         void stoType(DataType *ty, string &typeName);
 
         Type* typeNodeToLlvmType(TypeNode *tyNode);

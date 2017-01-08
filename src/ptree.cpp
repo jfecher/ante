@@ -267,7 +267,7 @@ TypeNode* deepCopyTypeNode(const TypeNode *n){
             auto *len_cpy = new IntLitNode(loc_cpy, len->val, len->type);
             cpy->extTy->next.reset(len_cpy);
         }
-    }else if(typeHasExtData(n->type)){
+    }else if(n->extTy.get()){
         TypeNode *nxt = n->extTy.get();
         if(!nxt) return cpy;
 
@@ -337,8 +337,8 @@ Node* mkVarAssignNode(LOC_TY loc, Node* var, Node* expr, bool freeLval = true){
     return new VarAssignNode(loc, var, expr, freeLval);
 }
 
-Node* mkExtNode(LOC_TY loc, Node* ty, Node* methods){
-    return new ExtNode(loc, (TypeNode*)ty, methods);
+Node* mkExtNode(LOC_TY loc, Node* ty, Node* methods, Node* traits){
+    return new ExtNode(loc, (TypeNode*)ty, methods, (TypeNode*)traits);
 }
 
 Node* mkIfNode(LOC_TY loc, Node* con, Node* then, Node* els){

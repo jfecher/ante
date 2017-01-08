@@ -14,7 +14,7 @@ extern "C" {
 }
 
 map<string, CtFunc*> compapi = {
-    {"Ante_getAST", new CtFunc((void*)Ante_getAST, mkPtrTypeNode(mkDataTypeNode("Node")))},
+    {"Ante_getAST", new CtFunc((void*)Ante_getAST, mkTypeNodeWithExt(TT_Ptr, mkDataTypeNode("Node")))},
     {"Ante_debug",  new CtFunc((void*)Ante_debug,  mkAnonTypeNode(TT_Void))}
 };
     

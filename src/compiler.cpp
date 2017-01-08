@@ -839,6 +839,8 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
 
     //actually compile the function, and hold onto the last value
     TypedValue *v = fdn->child->compile(this);
+    if(!v) return 0;
+
     TypeNode *retTy = deepCopyTypeNode(v->type.get());
     
     //End of the function, discard the function's scope.
@@ -1105,10 +1107,71 @@ TypedValue* FuncDeclNode::compile(Compiler *c){
 }
 
 
+FuncDeclNode* findFDN(Node *n, string& basename){
+    while(n){
+        auto *fdn = (FuncDeclNode*)n;
+        
+        if(fdn->basename == basename){
+            return fdn;
+        }
+
+        n = n->next.get();
+    }
+    return 0;
+}
+
+
 TypedValue* ExtNode::compile(Compiler *c){
-    c->funcPrefix = typeNodeToStr(typeExpr.get()) + "_";
-    compileStmtList(methods.release(), c);
-    c->funcPrefix = "";
+    if(traits.get()){
+        //this ExtNode is an implementation of a trait
+        string typestr = typeNodeToStr(typeExpr.get());
+        auto *dt = c->lookupType(typestr);
+        if(!dt)
+            return c->compErr("Cannot implement traits for undeclared type " + typestr, typeExpr->loc);
+
+        //create a vector of the traits that must be implemented
+        TypeNode *curTrait = this->traits.get();
+        vector<Trait*> traits;
+        while(curTrait){
+            string traitstr = typeNodeToStr(curTrait);
+            auto *trait = c->lookupTrait(traitstr);
+            if(!trait)
+                return c->compErr("Trait '" + traitstr + "' is undeclared", curTrait->loc);
+
+            traits.push_back(trait);
+            curTrait = (TypeNode*)curTrait->next.get();
+        }
+
+        //go through each trait and compile the methods for it
+        auto *funcs = methods.get();
+        for(auto& trait : traits){
+            auto *traitImpl = new Trait();
+            traitImpl->name = trait->name;
+
+            for(auto& fd_proto : trait->funcs){
+                auto *fdn = findFDN(funcs, fd_proto->fdn->basename);
+                if(!fdn)
+                    return c->compErr(typestr + " must implement " + fd_proto->fdn->basename + " to implement " + trait->name, fd_proto->fdn->loc);
+
+                fdn->name = c->funcPrefix + fdn->name;
+                fdn->basename = c->funcPrefix + fdn->basename;
+                
+                shared_ptr<FuncDecl> fd{new FuncDecl(fdn, c->scope)};
+                traitImpl->funcs.push_back(fd);
+    
+                c->compUnit->fnDecls[fdn->basename].push_front(fd);
+                c->mergedCompUnits->fnDecls[fdn->basename].push_front(fd);
+            }
+
+            //trait is fully implemented, add it to the DataType
+            dt->traitImpls.push_back(shared_ptr<Trait>(traitImpl));
+        }
+    }else{
+        //this ExtNode is not a trait implementation, so just compile all functions normally
+        c->funcPrefix = typeNodeToStr(typeExpr.get()) + "_";
+        compileStmtList(methods.release(), c);
+        c->funcPrefix = "";
+    }
     return c->getVoidLiteral();
 }
 
@@ -1199,16 +1262,13 @@ TypedValue* DataDeclNode::compile(Compiler *c){
         nvn = (NamedValNode*)nvn->next.get();
     }
 
-    DataType *data;
-    //check if this is a tuple/function type or a singular type
-    if(first->next.get()){
-        TypeNode *dataTyn = mkAnonTypeNode(TT_Tuple);
-        dataTyn->extTy.reset(first);
-        data = new DataType(fieldNames, dataTyn);
-    }else{
-        data = new DataType(fieldNames, first);
-    }
-    
+    //the type is a tuple if it has multiple params, otherwise
+    //it is just a normal type
+    TypeNode *dataTyn = first->next.get()
+                      ? mkTypeNodeWithExt(TT_Tuple, first)
+                      : first;
+
+    DataType *data = new DataType(fieldNames, dataTyn);
 
     c->stoType(data, name);
     return c->getVoidLiteral();
@@ -1216,16 +1276,24 @@ TypedValue* DataDeclNode::compile(Compiler *c){
 
 
 TypedValue* TraitNode::compile(Compiler *c){
-    vector<string> nofields;
-    TypeNode *ty = mkAnonTypeNode(TT_Ptr);
-    ty->extTy.reset(mkAnonTypeNode(TT_Void));
+    auto *trait = new Trait();
+    trait->name = name;
+    
+    auto *curfn = child.release();
+    while(curfn){
+        auto *fn = (FuncDeclNode*)curfn;
+        fn->name = c->funcPrefix + fn->name;
+        fn->basename = c->funcPrefix + fn->basename;
+        
+        shared_ptr<FuncDecl> fd{new FuncDecl(fn, c->scope)};
+        trait->funcs.push_back(fd);
+        curfn = curfn->next.get();
+    }
 
-    DataType *data = new DataType(nofields, ty);
-    c->stoType(data, name);
+    auto traitPtr = shared_ptr<Trait>(trait);
+    c->compUnit->traits[name] = traitPtr;
+    c->mergedCompUnits->traits[name] = traitPtr;
 
-    c->funcPrefix = name + "_";
-    compileStmtList(child.get(), c);
-    c->funcPrefix = "";
     return c->getVoidLiteral();
 }
 
@@ -1481,9 +1549,9 @@ TypeNode* mkAnonTypeNode(TypeTag t){
     return new TypeNode(fakeLoc, t, "", nullptr);
 }
 
-TypeNode* mkPtrTypeNode(TypeNode *t){
-    auto *p = mkAnonTypeNode(TT_Ptr);
-    p->extTy.reset(t);
+TypeNode* mkTypeNodeWithExt(TypeTag tt, TypeNode *ext){
+    auto *p = mkAnonTypeNode(tt);
+    p->extTy.reset(ext);
     return p;
 }
 
@@ -1554,7 +1622,9 @@ void Compiler::scanAllDecls(){
     while((bop = dynamic_cast<BinOpNode*>(op)) && bop->op == ';'){
         auto *rv = bop->rval.get();
 
-        if(dynamic_cast<FuncDeclNode*>(rv) || dynamic_cast<ExtNode*>(rv) || dynamic_cast<DataDeclNode*>(rv)){
+        if(dynamic_cast<FuncDeclNode*>(rv) || dynamic_cast<ExtNode*>(rv) ||
+                dynamic_cast<DataDeclNode*>(rv) || dynamic_cast<TraitNode*>(rv)){
+
             rv->compile(this); //register the function
             if(prev){
                 prev->lval.release();
@@ -1568,12 +1638,14 @@ void Compiler::scanAllDecls(){
             bop->lval.release();
             delete bop;
 
-            //while FuncDeclNode's are preserved inside FuncDecl's, these other two nodes must be manually deleted
-            if(ExtNode *en = dynamic_cast<ExtNode*>(rv)){
-                en->methods.release();
-                delete en;
-            }else if(dynamic_cast<DataDeclNode*>(rv)){
-                delete rv;
+            //while FuncDeclNode's are preserved inside FuncDecl's, these other nodes must be manually deleted
+            if(!dynamic_cast<FuncDeclNode*>(rv)){
+                if(ExtNode *en = dynamic_cast<ExtNode*>(rv)){
+                    en->methods.release();
+                    delete en;
+                }else{
+                    delete rv;
+                }
             }
         }else{
             prev = bop;
@@ -1582,7 +1654,8 @@ void Compiler::scanAllDecls(){
     }
 
     //check the final node
-    if(dynamic_cast<FuncDeclNode*>(op) || dynamic_cast<ExtNode*>(op) || dynamic_cast<DataDeclNode*>(op)){
+    if(dynamic_cast<FuncDeclNode*>(op) || dynamic_cast<ExtNode*>(op) || 
+            dynamic_cast<DataDeclNode*>(op) || dynamic_cast<TraitNode*>(op)){
         op->compile(this); //register the function`
         if(prev){
             prev->lval.release();
@@ -1591,12 +1664,14 @@ void Compiler::scanAllDecls(){
             ast.release();
             ast.reset(mkPlaceholderNode());
         }
-
-        if(ExtNode *en = dynamic_cast<ExtNode*>(op)){
-            en->methods.release();
-            delete en;
-        }else if(dynamic_cast<DataDeclNode*>(op)){
-            delete op;
+            
+        if(!dynamic_cast<FuncDeclNode*>(op)){
+            if(ExtNode *en = dynamic_cast<ExtNode*>(op)){
+                en->methods.release();
+                delete en;
+            }else{
+                delete op;
+            }
         }
     }
 }
@@ -1847,6 +1922,14 @@ void Compiler::stoVar(string var, Variable *val){
 DataType* Compiler::lookupType(string tyname) const{
     try{
         return mergedCompUnits->userTypes.at(tyname).get();
+    }catch(out_of_range r){
+        return nullptr;
+    }
+}
+
+Trait* Compiler::lookupTrait(string tyname) const{
+    try{
+        return mergedCompUnits->traits.at(tyname).get();
     }catch(out_of_range r){
         return nullptr;
     }

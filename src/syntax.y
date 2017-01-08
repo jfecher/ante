@@ -458,15 +458,13 @@ ret_expr: Return expr {$$ = mkRetNode(@$, $2);}
 
 
 extension: Ext type_expr Indent fn_list Unindent {$$ = mkExtNode(@$, $2, $4);}
-
-         /* TODO: add traits field to ExtNode to store this usertype_list of traits */
-         | Ext type_expr ':' usertype_list Indent fn_list Unindent {$$ = mkExtNode(@$, $2, $6);}
+         | Ext type_expr ':' usertype_list Indent fn_list Unindent {$$ = mkExtNode(@$, $2, $6, $4);}
          ;
  
 usertype_list: usertype_list_  {$$ = getRoot();}
 
-usertype_list_: usertype_list_ ',' usertype {$$ = setNext($1, $3);}
-              | usertype                    {$$ = setRoot($1);}
+usertype_list_: usertype_list_ ',' usertype {$$ = setNext($1, mkTypeNode(@3, TT_Data, (char*)$3));}
+              | usertype                    {$$ = setRoot(mkTypeNode(@$, TT_Data, (char*)$1));}
               ;
 
 

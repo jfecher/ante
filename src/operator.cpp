@@ -688,17 +688,22 @@ extern map<string, CtFunc*> compapi;
  *
  *  - Assumes arguments are already type-checked
  */
-TypedValue* compMetaFunctionResult(Compiler *c, Node *lnode, TypedValue *l, vector<TypedValue*> typedArgs){
+TypedValue* compMetaFunctionResult(Compiler *c, Node *lnode, TypedValue *l, vector<TypedValue*> &typedArgs){
     string fnName = l->val->getName().str();
     
     CtFunc* fn;
     if((fn = compapi[fnName])){
         void *res;
 
-        if(fnName == "Ante_debug")
+        if(fnName == "Ante_debug"){
+            if(typedArgs.size() != 1)
+                return c->compErr("Called function was given " + to_string(typedArgs.size()) +
+                        " argument(s) but was declared to take 1", lnode->loc);
+
             res = (*fn)(typedArgs[0]);
-        else
+        }else{
             res = (*fn)();
+        }
 
         auto gv = GenericValue(res);
         auto *conv = genericValueToTypedValue(c, gv, l->type->extTy.get());
@@ -752,8 +757,9 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
     //add all remaining arguments
     if(auto *tup = dynamic_cast<TupleNode*>(r)){
         typedArgs = tup->unpack(c);
+        if(c->errFlag) return 0;
+
         for(TypedValue *v : typedArgs){
-            if(!v) return 0;
             args.push_back(v->val);
         }
     }else{ //single parameter being applied
@@ -1104,12 +1110,10 @@ TypedValue* UnOpNode::compile(Compiler *c){
             if(rhs->type->type != TT_Ptr){
                 return c->compErr("Cannot dereference non-pointer type " + llvmTypeToStr(rhs->getType()), loc);
             }
-            
+           
             return new TypedValue(c->builder.CreateLoad(rhs->val), rhs->type->extTy);
         case '&': {//address-of
-            auto *oldTy = deepCopyTypeNode(rhs->type.get());
-            auto *ptrTy = mkAnonTypeNode(TT_Ptr);
-            ptrTy->extTy.reset(oldTy);
+            auto *ptrTy = mkTypeNodeWithExt(TT_Ptr, deepCopyTypeNode(rhs->type.get()));
 
             if(LoadInst* li = dyn_cast<LoadInst>(rhs->val)){
                 return new TypedValue(li->getPointerOperand(), ptrTy);

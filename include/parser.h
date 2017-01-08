@@ -245,10 +245,12 @@ struct VarAssignNode : public Node{
 
 struct ExtNode : public Node{
     unique_ptr<TypeNode> typeExpr;
+    unique_ptr<TypeNode> traits;
     unique_ptr<Node> methods;
+
     TypedValue* compile(Compiler*);
     void print(void);
-    ExtNode(LOC_TY& loc, TypeNode *t, Node *m) : Node(loc), typeExpr(t), methods(m){}
+    ExtNode(LOC_TY& loc, TypeNode *ty, Node *m, TypeNode *tr) : Node(loc), typeExpr(ty), traits(tr), methods(m){}
     ~ExtNode(){}
 };
 
