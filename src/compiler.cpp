@@ -571,13 +571,12 @@ TypedValue* compVarDeclWithInferredType(VarDeclNode *node, Compiler *c){
     val->type->addModifier(Tok_Mut);
 
     //create the alloca and transfer ownerhip of val->type
-    TypedValue *alloca = new TypedValue(c->builder.CreateAlloca(val->getType(), 0, node->name.c_str()), val->type.get());
+    TypedValue *alloca = new TypedValue(c->builder.CreateAlloca(val->getType(), 0, node->name.c_str()), val->type.release());
 
     bool nofree = true;//val->type->type != TT_Ptr || dynamic_cast<Constant*>(val->val);
     c->stoVar(node->name, new Variable(node->name, alloca, c->scope, nofree));
    
-    c->builder.CreateStore(val->val, alloca->val);
-    return val;
+    return new TypedValue(c->builder.CreateStore(val->val, alloca->val), val->type);
 }
 
 TypedValue* VarDeclNode::compile(Compiler *c){
@@ -620,8 +619,8 @@ TypedValue* VarDeclNode::compile(Compiler *c){
                         expr->loc);
         }
 
-        c->builder.CreateStore(val->val, alloca->val);
-        return val;
+        //transfer ownership of val->type
+        return new TypedValue(c->builder.CreateStore(val->val, alloca->val), val->type.release());
     }else{
         return alloca;
     }
@@ -1309,7 +1308,7 @@ TypedValue* MatchNode::compile(Compiler *c){
     if(!lval) return 0;
 
 
-    if(lval->type->type != TT_TaggedUnion && lval->type->type != TT_Tuple){
+    if(lval->type->type != TT_TaggedUnion && lval->type->type != TT_Data){
         return c->compErr("Cannot match expression of type " + typeNodeToStr(lval->type.get()) + ".  Match expressions must be a tagged union type", expr->loc);
     }
 

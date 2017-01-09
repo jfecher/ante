@@ -109,11 +109,11 @@ void yyerror(const char *msg);
 %left In
 %left Append
 %left Range
-%left '#'
 
 %left '+' '-'
 %left '*' '/' '%'
 
+%left '#'
 %nonassoc '!'
 %left '@' New
 %left '&' TYPE UserType TypeVar I8 I16 I32 I64 U8 U16 U32 U64 Isz Usz F16 F32 F64 C8 C32 Bool Void Type '\''
