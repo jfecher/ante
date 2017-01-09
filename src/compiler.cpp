@@ -524,8 +524,8 @@ TypedValue* VarNode::compile(Compiler *c){
 
     if(var){
         return dyn_cast<AllocaInst>(var->getVal()) ?
-            new TypedValue(c->builder.CreateLoad(var->getVal(), name), var->tval->type)
-            : var->tval.get();
+            new TypedValue(c->builder.CreateLoad(var->getVal(), name), var->tval->type):
+            new TypedValue(var->tval->val, var->tval->type); //deep copy type
     }else{
         //if this is a function, then there must be only one function of the same name, otherwise the reference is ambiguous
         auto& fnlist = c->getFunctionList(name);
@@ -535,7 +535,7 @@ TypedValue* VarNode::compile(Compiler *c){
             if(!fd->tv)
                 c->compFn(fd->fdn, fd->scope);
 
-            return fd->tv;
+            return new TypedValue(fd->tv->val, fd->tv->type);
 
         }else if(fnlist.empty()){
             return c->compErr("Variable or function '" + name + "' has not been declared.", this->loc);
@@ -566,15 +566,17 @@ TypedValue* LetBindingNode::compile(Compiler *c){
 TypedValue* compVarDeclWithInferredType(VarDeclNode *node, Compiler *c){
     TypedValue *val = node->expr->compile(c);
     if(!val) return nullptr;
-        
+
     //set the value as mutable
     val->type->addModifier(Tok_Mut);
 
-    TypedValue *alloca = new TypedValue(c->builder.CreateAlloca(val->getType(), 0, node->name.c_str()), val->type);
-    val = new TypedValue(c->builder.CreateStore(val->val, alloca->val), val->type);
+    //create the alloca and transfer ownerhip of val->type
+    TypedValue *alloca = new TypedValue(c->builder.CreateAlloca(val->getType(), 0, node->name.c_str()), val->type.get());
 
     bool nofree = true;//val->type->type != TT_Ptr || dynamic_cast<Constant*>(val->val);
     c->stoVar(node->name, new Variable(node->name, alloca, c->scope, nofree));
+   
+    c->builder.CreateStore(val->val, alloca->val);
     return val;
 }
 
@@ -618,7 +620,8 @@ TypedValue* VarDeclNode::compile(Compiler *c){
                         expr->loc);
         }
 
-        return new TypedValue(c->builder.CreateStore(val->val, alloca->val), deepCopyTypeNode(tyNode));
+        c->builder.CreateStore(val->val, alloca->val);
+        return val;
     }else{
         return alloca;
     }
@@ -1886,7 +1889,7 @@ void Compiler::exitScope(){
         if(it->second->isFreeable() && it->second->scope == this->scope){
             string freeFnName = "free";
             Function* freeFn = (Function*)getFunction(freeFnName, freeFnName)->val;
-
+            
             auto *inst = dyn_cast<AllocaInst>(it->second->getVal());
             auto *val = inst? builder.CreateLoad(inst) : it->second->getVal();
 

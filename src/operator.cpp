@@ -1148,17 +1148,15 @@ TypedValue* UnOpNode::compile(Compiler *c){
                 //finally store rhs into the malloc'd slot
                 c->builder.CreateStore(rhs->val, typedPtr);
 
-                TypeNode *tyn = mkAnonTypeNode(TT_Ptr);
-                tyn->extTy.reset(deepCopyTypeNode(rhs->type.get()));
-
+                auto *tyn = mkTypeNodeWithExt(TT_Ptr, deepCopyTypeNode(rhs->type.get()));
                 auto *ret = new TypedValue(typedPtr, tyn);
 
-
                 //Create an upper-case name so it cannot be referenced normally
-                string tmpAllocName = "_New" + to_string((unsigned long)ret);
+                string tmpAllocName = "New_" + typeNodeToStr(rhs->type.get());
                 c->stoVar(tmpAllocName, new Variable(tmpAllocName, ret, c->scope, false /*always free*/));
 
-                return ret;
+                //return a copy of ret in case it is modified/freed
+                return new TypedValue(ret->val, ret->type);
             }
     }
     

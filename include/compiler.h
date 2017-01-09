@@ -117,7 +117,7 @@ struct Variable {
     Value* getVal() const{
         return tval->val;
     }
-   
+
     TypeTag getType() const{
         return tval->type->type;
     }
