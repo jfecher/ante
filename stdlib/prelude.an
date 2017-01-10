@@ -108,14 +108,14 @@ fun (==): Str l r -> bool
 //append two strings
 fun (++): Str s1 s2 -> Str
     let len = s1.len + s2.len
-    var buf = malloc len
+    var buf = malloc (len+1)
 
     //copy first string
     memcpy buf s1.cStr s1.len
 
     //copy second string at offset
     var buf_offset = void*(u64 buf + s1.len)
-    memcpy buf_offset s2.cStr s2.len
+    memcpy buf_offset s2.cStr (s2.len+1) //copy terminating null too
 
     Str(c8* buf, len)
 
