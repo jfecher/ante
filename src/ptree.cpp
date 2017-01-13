@@ -25,7 +25,17 @@ Node* setElse(Node *ifn, Node *elseN){
     if(auto *n = dynamic_cast<IfNode*>(ifn)){
         n->elseN.reset(elseN);
     }else{
-        fprintf(stderr, "Syntax error: cannot add an else clause without a matching if then clause.");
+        auto *binop = dynamic_cast<BinOpNode*>(ifn);
+
+        if(binop and (n = dynamic_cast<IfNode*>(binop->rval.get()))){
+            while(auto *tmp = dynamic_cast<IfNode*>(n->elseN.get()))
+                n = tmp;
+
+            n->elseN.reset(elseN);
+            return ifn;
+        }else{
+            ante::error("Missing matching if clause for else clause", ifn->loc);
+        }
     }
     return ifn;
 }
