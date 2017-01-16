@@ -14,6 +14,8 @@
 #  ifndef AN_LIB_DIR
 #    define AN_LIB_DIR "/usr/include/ante/"
 #  endif
+#
+#  define AN_EXEC_STR "./"
 #endif
 
 
@@ -22,6 +24,7 @@
 #  ifndef AN_LIB_DIR
 #    define AN_LIB_DIR "/usr/include/ante/"
 #  endif
+#  define AN_EXEC_STR "./"
 #endif
 
 
@@ -29,11 +32,12 @@
 #if defined macintosh || defined Macintosh || (defined __APPLE__ && \
         defined __MACH__)
 
-#  define AN_NATIVE_OS "Darwin"
+#  define AN_NATIVE_OS "darwin"
 #  define AN_NATIVE_VENDOR "apple"
 #  ifndef AN_LIB_DIR
 #    define AN_LIB_DIR "/usr/include/ante/"
 #  endif
+#  define AN_EXEC_STR "./"
 #endif
 
 
@@ -42,12 +46,13 @@
  *  so the check for _WIN32 must come before the check for _WIN64
  */
 #ifdef _WIN32
-#  define AN_NATIVE_OS "Win32"
-#  define AN_NATIVE_VENDOR "PC"
+#  define AN_NATIVE_OS "win32"
+#  define AN_NATIVE_VENDOR "pc"
 #  ifndef AN_LIB_DIR
 #    define AN_LIB_DIR "C:\\Program Files (x86)\\Ante\\"
 #  endif
-
+#
+#  define AN_EXEC_STR ".\\"
 #  define AN_LINKER "C:\\MinGW\\bin\\gcc.exe"
 #endif
 
@@ -63,6 +68,10 @@
 #  define AN_NATIVE_ARCH "x86_64"
 #endif
 
+#if defined i386 ||  defined __i386__ || defined __i686__ || defined _M_I86 || \
+    defined _M_IX86 || defined __i386 || defined __i386__ || defined __i586__
+#  define AN_NATIVE_ARCH "i686"
+#endif
 
 #if defined i386 || defined __i386__ || defined _M_I86 || defined _X86_
 #  define AN_NATIVE_ARCH "x86_64"
@@ -112,10 +121,14 @@
 #endif
 
 #ifndef AN_NATIVE_ARCH
-#  define AN_NATIVE_ARCH "x86_64" /*UnknownArch*/
+#  define AN_NATIVE_ARCH "UnknownArch"
 #endif
 
 #ifndef AN_LINKER
 #  define AN_LINKER "gcc"
+#endif
+
+#ifndef AN_EXEC_STR
+#  define AN_EXEC_STR "./"
 #endif
 #endif

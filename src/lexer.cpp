@@ -244,8 +244,10 @@ char Lexer::peek() const{
     return cur;
 }
 
+extern yy::position mkPos(string*, unsigned int, unsigned int);
+
 yy::position Lexer::getPos(bool inclusiveEnd) const{
-    return yy::position(fileName, row + rowOffset, col + colOffset -
+    return mkPos(fileName, row + rowOffset, col + colOffset -
                 (inclusiveEnd ? 0 : 1));
 }
 

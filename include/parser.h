@@ -21,6 +21,10 @@ using namespace ante;
 #  define LOC_TY yy::location
 #endif
 
+/* Needed for compliancy with several versions of bison */
+yy::position mkPos(string *f, unsigned int line, unsigned int col);
+LOC_TY mkLoc(yy::position begin, yy::position end);
+
 
 /* forward-decls from compiler.h */
 struct TypedValue;

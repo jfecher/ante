@@ -223,8 +223,8 @@ TypedValue* compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
     string l = sln->val.substr(0, pos);
 
     //make a new sub-location for it
-    yy::location lloc = {yy::position(sln->loc.begin.filename, sln->loc.begin.line, sln->loc.begin.column), 
-                         yy::position(sln->loc.end.filename,   sln->loc.end.line,   sln->loc.begin.column + pos-1)};
+    yy::location lloc = mkLoc(mkPos(sln->loc.begin.filename, sln->loc.begin.line, sln->loc.begin.column), 
+		                mkPos(sln->loc.end.filename,   sln->loc.end.line,   sln->loc.begin.column + pos-1));
     auto *ls = new StrLitNode(lloc, l);
 
 
@@ -236,8 +236,8 @@ TypedValue* compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
     string m = sln->val.substr(pos+2, posEnd - (pos+2));
     
     string r = sln->val.substr(posEnd+1);
-    yy::location rloc = {yy::position(sln->loc.begin.filename, sln->loc.begin.line, sln->loc.begin.column + posEnd + 1), 
-                         yy::position(sln->loc.end.filename,   sln->loc.end.line,   sln->loc.end.column)};
+    yy::location rloc = mkLoc(mkPos(sln->loc.begin.filename, sln->loc.begin.line, sln->loc.begin.column + posEnd + 1),
+							  mkPos(sln->loc.end.filename,   sln->loc.end.line,   sln->loc.end.column));
     auto *rs = new StrLitNode(rloc, r);
 
     //now that the string is separated, begin interpolation preparation
@@ -307,8 +307,13 @@ TypedValue* StrLitNode::compile(Compiler *c){
 
     auto *ptr = c->builder.CreateGlobalStringPtr(val);
 
-    auto* tupleTy = StructType::get(c->ctxt, {Type::getInt8PtrTy(c->ctxt), Type::getInt32Ty(c->ctxt)});
-    Constant* strarr[] = {UndefValue::get(Type::getInt8PtrTy(c->ctxt)), ConstantInt::get(c->ctxt, APInt(8, val.length(), true))};
+	vector<Type*> tys = {Type::getInt8PtrTy(c->ctxt), Type::getInt32Ty(c->ctxt)};
+    auto* tupleTy = StructType::get(c->ctxt, tys);
+    
+	vector<Constant*> strarr = {
+		UndefValue::get(Type::getInt8PtrTy(c->ctxt)),
+		ConstantInt::get(c->ctxt, APInt(8, val.length(), true))
+	};
 
     auto *uninitStr = ConstantStruct::get(tupleTy, strarr);
     auto *str = c->builder.CreateInsertValue(uninitStr, ptr, 0);
@@ -1472,9 +1477,7 @@ void Compiler::importFile(const char *fName){
 
 
 TypeNode* mkAnonTypeNode(TypeTag t){
-    auto fakeLoc = yy::location(yy::position(0, 0, 0),
-                                yy::position(0, 0, 0));
-    
+    auto fakeLoc = mkLoc(mkPos(0, 0, 0), mkPos(0, 0, 0));
     return new TypeNode(fakeLoc, t, "", nullptr);
 }
 
@@ -1530,8 +1533,7 @@ inline void Compiler::registerFunction(FuncDeclNode *fn){
 Node* mkPlaceholderNode(){
     auto* empty = new string("");
 
-    auto fakeLoc = yy::location(yy::position(empty, 0, 0),
-                                yy::position(empty, 0, 0));
+    auto fakeLoc = mkLoc(mkPos(empty, 0, 0), mkPos(empty, 0, 0));
     
     return new IntLitNode(fakeLoc, "0", TT_U8);
 }
@@ -1679,6 +1681,8 @@ const Target* getTarget(){
     if(!err.empty()){
         cerr << err << endl;
 		cerr << "Selected triple: " << AN_NATIVE_ARCH ", " AN_NATIVE_VENDOR ", " AN_NATIVE_OS << endl;
+		cout << "\nRegistered targets:" << endl;
+		TargetRegistry::printRegisteredTargetsForVersion();
         exit(1);
     }
 
@@ -1705,8 +1709,6 @@ TargetMachine* getTargetMachine(){
 }
 void Compiler::jitFunction(Function *f){
     if(!jit.get()){
-        LLVMInitializeNativeTarget();
-        LLVMInitializeNativeAsmPrinter();
         auto* eBuilder = new EngineBuilder(unique_ptr<Module>(module.get()));
 
         string err;
@@ -1735,11 +1737,22 @@ int Compiler::compileIRtoObj(Module *mod, string outFile){
     std::error_code errCode;
     raw_fd_ostream out{outFile, errCode, sys::fs::OpenFlags::F_RW};
 
-    legacy::PassManager pm;
-    int res = tm->addPassesToEmitFile(pm, out, llvm::TargetMachine::CGFT_ObjectFile);
-    pm.run(*mod);
+	char **err;
+	char *filename = (char*)outFile.c_str();
+	int res = LLVMTargetMachineEmitToFile(
+		(LLVMTargetMachineRef)tm,
+		(LLVMModuleRef)mod,
+		filename,
+		(LLVMCodeGenFileType)llvm::TargetMachine::CGFT_ObjectFile, err);
 
-    delete tm;
+    //legacy::PassManager pm;
+    //int res = tm->addPassesToEmitFile(pm, out, llvm::TargetMachine::CGFT_ObjectFile);
+    //pm.run(*mod);
+
+	if (out.has_error())
+		cerr << "Error when compiling to object: " << errCode << endl;
+
+    //delete tm;
     return res;
 }
 
@@ -1886,7 +1899,6 @@ Compiler::Compiler(const char *_fileName, bool lib) :
         //print out remaining errors
         int tok;
         yy::location loc;
-        loc.initialize();
         while((tok = yylexer->next(&loc)) != Tok_Newline && tok != 0);
         while(p.parse() != PE_OK && yylexer->peek() != 0);
 
@@ -1951,7 +1963,7 @@ void Compiler::processArgs(CompilerArgs *args, string &input){
     else compileNative();
 
     if(!errFlag && args->hasArg(Args::CompileAndRun)){
-        system(("./" + outFile).c_str());
+        system((AN_EXEC_STR + outFile).c_str());
     }
 
 }
@@ -1962,4 +1974,8 @@ Compiler::~Compiler(){
         delete yylexer;
         yylexer = 0;
     }
+
+	fnDecls.clear();
+	passManager.release();
+	module.release();
 }
