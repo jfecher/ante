@@ -1825,7 +1825,7 @@ int Compiler::compileIRtoObj(llvm::Module *mod, string outFile){
     std::error_code errCode;
     raw_fd_ostream out{outFile, errCode, sys::fs::OpenFlags::F_RW};
 
-	char **err;
+	char **err = nullptr;
 	char *filename = (char*)outFile.c_str();
 	int res = LLVMTargetMachineEmitToFile(
 		(LLVMTargetMachineRef)tm,
