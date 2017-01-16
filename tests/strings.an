@@ -10,7 +10,7 @@ let openingMsg = "Hello World!"
 fun getClosingMsg := "Goodbye World!\n"
 
 
-printf "%s\n%s" openingMsg.cStr (getClosingMsg ()).cStr
+printf{"%s\n%s", openingMsg.cStr, getClosingMsg{}.cStr}
 
 //string literals are now Str typed by default (no longer [c8])
 let str = "test"
@@ -18,14 +18,4 @@ print str
 
 print "str"
 
-
-
-//Gets the length of null-terminated strings.
-//Same as strlen from the c library.
-fun len: [c8] s -> u32
-    var acc = 0u32
-    while s#acc != 0u8 do
-        acc += 1
-    return acc
-
-printf "len(\"%s\") = %d\n".cStr openingMsg (len openingMsg.cStr)
+printf{"len(\"%s\") = %d\n", openingMsg, openingMsg.len}

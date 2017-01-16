@@ -5,16 +5,13 @@
 
 
 //handles conversion of i32 -> bool
-fun bool.cast: i32 x =
+fun bool: i32 x =
     x != 0
 
 
-fun bool.print: bool b
+fun print: bool b
     if b then puts "true"
     else puts "false"
 
 //test cast of i32 -> bool
 print bool 2
-
-// [c8] -> Str is defined in the prelude
-print Str "[c8] -> Str works!"

@@ -25,7 +25,7 @@ using namespace llvm;
  *
  * precondition: coordinates must be valid
  */
-void skipToCoords(istream& ifs, unsigned int row, unsigned int col){
+void skipToLine(istream& ifs, unsigned int row){
     unsigned int line = 1;
     if(line != row){
         while(true){
@@ -46,20 +46,22 @@ void skipToCoords(istream& ifs, unsigned int row, unsigned int col){
  *  Prints a given line (row) of a file, along with an arrow pointing to
  *  the specified column.
  */
-void printErrLine(yy::location& loc){
+void printErrLine(const yy::location& loc){
     if(!loc.begin.filename) return;
     ifstream f{*loc.begin.filename};
 
     //Premature newline error, show previous line as error instead
-    if(loc.begin.column == 0) loc.begin.line--;
+    auto line_start = loc.begin.column == 0 ? loc.begin.line - 1 : loc.begin.line;
 
     //skip to line in question
-    skipToCoords(f, loc.begin.line, loc.begin.column);
+    skipToLine(f, line_start);
 
     //print line
     string s;
     getline(f, s);
-    if(loc.begin.column == 0) loc.begin.column = s.length() + 1;
+    
+    auto col_start = loc.begin.column == 0 ? s.length() + 1 : loc.begin.column;
+
     cout << s;
 
     //draw arrow
@@ -68,7 +70,7 @@ void printErrLine(yy::location& loc){
     unsigned int i = 1;
 
     //skip to begin pos
-    for(; i < loc.begin.column; i++) putchar(' ');
+    for(; i < col_start; i++) putchar(' ');
 
     //draw arrow until end pos
     for(; i <= loc.end.column; i++) putchar('^');
@@ -77,7 +79,7 @@ void printErrLine(yy::location& loc){
 }
 
 
-void ante::error(const char* msg, yy::location& loc){
+void ante::error(const char* msg, const yy::location& loc){
     if(loc.begin.filename)
         cout << "\033[;3m" << *loc.begin.filename << "\033[;m: ";
     else
@@ -99,7 +101,7 @@ void ante::error(const char* msg, yy::location& loc){
  *  Inform the user of an error and return nullptr.
  *  (perhaps this should throw an exception?)
  */
-TypedValue* Compiler::compErr(string msg, yy::location& loc){
+TypedValue* Compiler::compErr(const string msg, const yy::location& loc){
     error(msg.c_str(), loc);
     errFlag = true;
     return nullptr;
@@ -527,8 +529,8 @@ TypedValue* VarNode::compile(Compiler *c){
 
     if(var){
         return dyn_cast<AllocaInst>(var->getVal()) ?
-            new TypedValue(c->builder.CreateLoad(var->getVal(), name), var->tval->type)
-            : var->tval.get();
+            new TypedValue(c->builder.CreateLoad(var->getVal(), name), var->tval->type):
+            new TypedValue(var->tval->val, var->tval->type); //deep copy type
     }else{
         //if this is a function, then there must be only one function of the same name, otherwise the reference is ambiguous
         auto& fnlist = c->getFunctionList(name);
@@ -538,7 +540,7 @@ TypedValue* VarNode::compile(Compiler *c){
             if(!fd->tv)
                 c->compFn(fd->fdn, fd->scope);
 
-            return fd->tv;
+            return new TypedValue(fd->tv->val, fd->tv->type);
 
         }else if(fnlist.empty()){
             return c->compErr("Variable or function '" + name + "' has not been declared.", this->loc);
@@ -569,16 +571,17 @@ TypedValue* LetBindingNode::compile(Compiler *c){
 TypedValue* compVarDeclWithInferredType(VarDeclNode *node, Compiler *c){
     TypedValue *val = node->expr->compile(c);
     if(!val) return nullptr;
-        
+
     //set the value as mutable
     val->type->addModifier(Tok_Mut);
 
-    TypedValue *alloca = new TypedValue(c->builder.CreateAlloca(val->getType(), 0, node->name.c_str()), val->type);
-    val = new TypedValue(c->builder.CreateStore(val->val, alloca->val), val->type);
+    //create the alloca and transfer ownerhip of val->type
+    TypedValue *alloca = new TypedValue(c->builder.CreateAlloca(val->getType(), 0, node->name.c_str()), val->type.release());
 
     bool nofree = true;//val->type->type != TT_Ptr || dynamic_cast<Constant*>(val->val);
     c->stoVar(node->name, new Variable(node->name, alloca, c->scope, nofree));
-    return val;
+   
+    return new TypedValue(c->builder.CreateStore(val->val, alloca->val), val->type);
 }
 
 TypedValue* VarDeclNode::compile(Compiler *c){
@@ -621,7 +624,8 @@ TypedValue* VarDeclNode::compile(Compiler *c){
                         expr->loc);
         }
 
-        return new TypedValue(c->builder.CreateStore(val->val, alloca->val), deepCopyTypeNode(tyNode));
+        //transfer ownership of val->type
+        return new TypedValue(c->builder.CreateStore(val->val, alloca->val), val->type.release());
     }else{
         return alloca;
     }
@@ -684,7 +688,7 @@ TypedValue* compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
                 auto *newval = expr->compile(c);
                 if(!newval) return 0;
 
-                if(*indexTy != *newval->type)
+                if(!c->typeEq(indexTy, newval->type.get()))
                     return c->compErr("Cannot assign expression of type " + typeNodeToStr(newval->type.get()) +
                            " to a variable of type " + typeNodeToStr(indexTy), expr->loc);
 
@@ -796,7 +800,7 @@ void addAllArgAttrs(Function *f, NamedValNode *params){
 
 
 
-TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector<Type*> &paramTys, unsigned int scope){
+TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, vector<Type*> &paramTys){
     FunctionType *preFnTy = FunctionType::get(Type::getVoidTy(ctxt), paramTys, fdn->varargs);
 
     //preFn is the predecessor to fn because we do not yet know its return type, so its body must be compiled,
@@ -844,6 +848,10 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
 
     //actually compile the function, and hold onto the last value
     TypedValue *v = fdn->child->compile(this);
+    if(!v) return 0;
+
+    TypeNode *retTy = deepCopyTypeNode(v->type.get());
+    
     //End of the function, discard the function's scope.
     exitScope();
 
@@ -868,8 +876,6 @@ TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector
     //and the (optional) next types in the list as the parameter types)
     TypeNode *newFnTyn = deepCopyTypeNode(fakeFnTyn);
     TypeNode *params = (TypeNode*)newFnTyn->extTy->next.release();
-
-    TypeNode *retTy = deepCopyTypeNode(v->type.get());
 
     retTy->next.reset(params);
     newFnTyn->extTy.reset(retTy);
@@ -951,7 +957,7 @@ TypedValue* compCompilerDirectiveFn(Compiler *c, FuncDeclNode *fdn, unsigned int
             auto *mod = c->module.get();
             c->module.release();
 
-            c->module.reset(new Module(fdn->name, c->ctxt));
+            c->module.reset(new llvm::Module(fdn->name, c->ctxt));
             auto *recomp = c->compFn(fdn, scope);
 
             c->jitFunction((Function*)recomp->val);
@@ -995,7 +1001,7 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
     }
     
     if(!retNode){
-        auto *ret = compLetBindingFn(fdn, nParams, paramTys, scope);
+        auto *ret = compLetBindingFn(fdn, paramTys);
         builder.SetInsertPoint(caller);
         return ret;
     }
@@ -1052,7 +1058,7 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
             if(retNode->type == TT_Void){
                 builder.CreateRetVoid();
             }else{
-                if(*v->type.get() != *retNode){
+                if(!typeEq(v->type.get(), retNode)){
                     builder.SetInsertPoint(caller);
                     delete ret;
                     return compErr("Function " + fdn->name + " returned value of type " + 
@@ -1110,10 +1116,71 @@ TypedValue* FuncDeclNode::compile(Compiler *c){
 }
 
 
+FuncDeclNode* findFDN(Node *n, string& basename){
+    while(n){
+        auto *fdn = (FuncDeclNode*)n;
+        
+        if(fdn->basename == basename){
+            return fdn;
+        }
+
+        n = n->next.get();
+    }
+    return 0;
+}
+
+
 TypedValue* ExtNode::compile(Compiler *c){
-    c->funcPrefix = typeNodeToStr(typeExpr.get()) + "_";
-    compileStmtList(methods.release(), c);
-    c->funcPrefix = "";
+    if(traits.get()){
+        //this ExtNode is an implementation of a trait
+        string typestr = typeNodeToStr(typeExpr.get());
+        auto *dt = c->lookupType(typestr);
+        if(!dt)
+            return c->compErr("Cannot implement traits for undeclared type " + typestr, typeExpr->loc);
+
+        //create a vector of the traits that must be implemented
+        TypeNode *curTrait = this->traits.get();
+        vector<Trait*> traits;
+        while(curTrait){
+            string traitstr = typeNodeToStr(curTrait);
+            auto *trait = c->lookupTrait(traitstr);
+            if(!trait)
+                return c->compErr("Trait '" + traitstr + "' is undeclared", curTrait->loc);
+
+            traits.push_back(trait);
+            curTrait = (TypeNode*)curTrait->next.get();
+        }
+
+        //go through each trait and compile the methods for it
+        auto *funcs = methods.get();
+        for(auto& trait : traits){
+            auto *traitImpl = new Trait();
+            traitImpl->name = trait->name;
+
+            for(auto& fd_proto : trait->funcs){
+                auto *fdn = findFDN(funcs, fd_proto->fdn->basename);
+                if(!fdn)
+                    return c->compErr(typestr + " must implement " + fd_proto->fdn->basename + " to implement " + trait->name, fd_proto->fdn->loc);
+
+                fdn->name = c->funcPrefix + fdn->name;
+                fdn->basename = c->funcPrefix + fdn->basename;
+                
+                shared_ptr<FuncDecl> fd{new FuncDecl(fdn, c->scope)};
+                traitImpl->funcs.push_back(fd);
+    
+                c->compUnit->fnDecls[fdn->basename].push_front(fd);
+                c->mergedCompUnits->fnDecls[fdn->basename].push_front(fd);
+            }
+
+            //trait is fully implemented, add it to the DataType
+            dt->traitImpls.push_back(shared_ptr<Trait>(traitImpl));
+        }
+    }else{
+        //this ExtNode is not a trait implementation, so just compile all functions normally
+        c->funcPrefix = typeNodeToStr(typeExpr.get()) + "_";
+        compileStmtList(methods.release(), c);
+        c->funcPrefix = "";
+    }
     return c->getVoidLiteral();
 }
 
@@ -1204,16 +1271,13 @@ TypedValue* DataDeclNode::compile(Compiler *c){
         nvn = (NamedValNode*)nvn->next.get();
     }
 
-    DataType *data;
-    //check if this is a tuple/function type or a singular type
-    if(first->next.get()){
-        TypeNode *dataTyn = mkAnonTypeNode(TT_Tuple);
-        dataTyn->extTy.reset(first);
-        data = new DataType(fieldNames, dataTyn);
-    }else{
-        data = new DataType(fieldNames, first);
-    }
-    
+    //the type is a tuple if it has multiple params, otherwise
+    //it is just a normal type
+    TypeNode *dataTyn = first->next.get()
+                      ? mkTypeNodeWithExt(TT_Tuple, first)
+                      : first;
+
+    DataType *data = new DataType(fieldNames, dataTyn);
 
     c->stoType(data, name);
     return c->getVoidLiteral();
@@ -1221,16 +1285,24 @@ TypedValue* DataDeclNode::compile(Compiler *c){
 
 
 TypedValue* TraitNode::compile(Compiler *c){
-    vector<string> nofields;
-    TypeNode *ty = mkAnonTypeNode(TT_Ptr);
-    ty->extTy.reset(mkAnonTypeNode(TT_Void));
+    auto *trait = new Trait();
+    trait->name = name;
+    
+    auto *curfn = child.release();
+    while(curfn){
+        auto *fn = (FuncDeclNode*)curfn;
+        fn->name = c->funcPrefix + fn->name;
+        fn->basename = c->funcPrefix + fn->basename;
+        
+        shared_ptr<FuncDecl> fd{new FuncDecl(fn, c->scope)};
+        trait->funcs.push_back(fd);
+        curfn = curfn->next.get();
+    }
 
-    DataType *data = new DataType(nofields, ty);
-    c->stoType(data, name);
+    auto traitPtr = shared_ptr<Trait>(trait);
+    c->compUnit->traits[name] = traitPtr;
+    c->mergedCompUnits->traits[name] = traitPtr;
 
-    c->funcPrefix = name + "_";
-    compileStmtList(child.get(), c);
-    c->funcPrefix = "";
     return c->getVoidLiteral();
 }
 
@@ -1241,7 +1313,7 @@ TypedValue* MatchNode::compile(Compiler *c){
     if(!lval) return 0;
 
 
-    if(lval->type->type != TT_TaggedUnion && lval->type->type != TT_Tuple){
+    if(lval->type->type != TT_TaggedUnion && lval->type->type != TT_Data){
         return c->compErr("Cannot match expression of type " + typeNodeToStr(lval->type.get()) + ".  Match expressions must be a tagged union type", expr->loc);
     }
 
@@ -1338,7 +1410,7 @@ TypedValue* MatchNode::compile(Compiler *c){
             if(!dyn_cast<ReturnInst>(pair.second->val)){
 
                 //match the types of those branches that will merge
-                if(*pair.second->type != *merges[0].second->type)
+                if(!c->typeEq(pair.second->type.get(), merges[0].second->type.get()))
                     return c->compErr("Branch "+to_string(i)+"'s return type " + typeNodeToStr(pair.second->type.get()) +
                               " != " + typeNodeToStr(merges[0].second->type.get()) + ", the first branch's return type", this->loc);
                 else
@@ -1358,7 +1430,7 @@ TypedValue* MatchBranchNode::compile(Compiler *c){
     return c->getVoidLiteral();
 }
 
-FuncDecl* getFuncDeclFromList(list<unique_ptr<FuncDecl>> &l, string &mangledName){
+FuncDecl* getFuncDeclFromList(list<shared_ptr<FuncDecl>> &l, string &mangledName){
     for(auto& fd : l)
         if(fd->fdn->name == mangledName)
             return fd.get();
@@ -1366,19 +1438,14 @@ FuncDecl* getFuncDeclFromList(list<unique_ptr<FuncDecl>> &l, string &mangledName
     return 0;
 }
 
-FuncDecl* getFuncDeclFromList(list<FuncDecl*> l, string &mangledName){
-    for(auto& fd : l)
-        if(fd->fdn->name == mangledName)
-            return fd;
-
-    return 0;
-}
-
 void Compiler::updateFn(TypedValue *f, string &name, string &mangledName){
-    auto &list = fnDecls[name];
-    auto fd = getFuncDeclFromList(list, mangledName);
+    auto &list = mergedCompUnits->fnDecls[name];
+    auto *fd = getFuncDeclFromList(list, mangledName);
 
     //TODO: free me first
+    //
+    //NOTE: fd here is shared between compUnit and mergedCompUnit modules
+    //      so one update will update across each module
     fd->tv = f;
 }
 
@@ -1400,11 +1467,11 @@ TypedValue* Compiler::getFunction(string& name, string& mangledName){
  * Returns all FuncDecls from a list that have argc number of parameters
  * and can be accessed in the current scope.
  */
-list<FuncDecl*> filterByArgcAndScope(list<unique_ptr<FuncDecl>> &l, size_t argc, unsigned int scope){
-    list<FuncDecl*> ret;
+list<shared_ptr<FuncDecl>> filterByArgcAndScope(list<shared_ptr<FuncDecl>> &l, size_t argc, unsigned int scope){
+    list<shared_ptr<FuncDecl>> ret;
     for(auto& fd : l){
         if(fd->scope <= scope && getTupleSize(fd->fdn->params.get()) == argc){
-            ret.push_back(fd.get());
+            ret.push_back(fd);
         }
     }
     return ret;
@@ -1442,8 +1509,8 @@ TypedValue* Compiler::getMangledFunction(string name, TypeNode *params){
 }
 
 
-list<unique_ptr<FuncDecl>>& Compiler::getFunctionList(string& name){
-    return fnDecls[name];
+list<shared_ptr<FuncDecl>>& Compiler::getFunctionList(string& name){
+    return mergedCompUnits->fnDecls[name];
 }
 
 /*
@@ -1451,28 +1518,36 @@ list<unique_ptr<FuncDecl>>& Compiler::getFunctionList(string& name){
  * inputted file must exist and be a valid ante source file.
  */
 void Compiler::importFile(const char *fName){
-    Compiler c{fName, true};
-    c.scanAllDecls();
+    try{
+        auto& module = allCompiledModules.at(fName);
+        //module is already compiled; just copy the ptr to imports
+        imports.push_back(module);
+        
+    }catch(out_of_range r){
+        //function not found; create new Compiler instance to compile it
+        Compiler *c = new Compiler(fName, true);
+        c->allCompiledModules = allCompiledModules;
+        c->scanAllDecls();
 
-    if(c.errFlag){
-        cout << "Error when importing " << fName << endl;
-        errFlag = true;
-        return;
+        if(c->errFlag){
+            cout << "Error when importing " << fName << endl;
+            errFlag = true;
+            return;
+        }
+
+        for(auto& pair : c->compUnit->fnDecls)
+            for(auto& fd : pair.second)
+                mergedCompUnits->fnDecls[pair.first].push_back(fd);
+
+
+        for(auto& pair : c->compUnit->userTypes)
+            mergedCompUnits->userTypes[pair.first] = pair.second;
+
+
+        imports.push_back(c->compUnit);
+        allCompiledModules[c->fileName] = c->compUnit;
+        delete c;
     }
-
-    //copy import's userTypes into importer
-    for(auto& it : c.userTypes){
-        userTypes[it.first].reset(it.second.release());
-    }
-
-    //copy functions, but change their scope first
-    for(auto& it : c.fnDecls){
-        for(auto& fd : it.second)
-            fd->scope = this->scope;
-
-        fnDecls[it.first] = move(it.second);
-    }
-    c.fnDecls.clear();
 }
 
 
@@ -1481,9 +1556,9 @@ TypeNode* mkAnonTypeNode(TypeTag t){
     return new TypeNode(fakeLoc, t, "", nullptr);
 }
 
-TypeNode* mkPtrTypeNode(TypeNode *t){
-    auto *p = mkAnonTypeNode(TT_Ptr);
-    p->extTy.reset(t);
+TypeNode* mkTypeNodeWithExt(TypeTag tt, TypeNode *ext){
+    auto *p = mkAnonTypeNode(tt);
+    p->extTy.reset(ext);
     return p;
 }
 
@@ -1520,7 +1595,10 @@ string removeFileExt(string file){
  *  of a module with unneeded library functions.
  */
 inline void Compiler::registerFunction(FuncDeclNode *fn){
-    fnDecls[fn->basename].push_front(unique_ptr<FuncDecl>(new FuncDecl(fn, this->scope)));
+    shared_ptr<FuncDecl> fd{new FuncDecl(fn, this->scope)};
+
+    compUnit->fnDecls[fn->basename].push_front(fd);
+    mergedCompUnits->fnDecls[fn->basename].push_front(fd);
 }
 
 
@@ -1550,7 +1628,9 @@ void Compiler::scanAllDecls(){
     while((bop = dynamic_cast<BinOpNode*>(op)) && bop->op == ';'){
         auto *rv = bop->rval.get();
 
-        if(dynamic_cast<FuncDeclNode*>(rv) || dynamic_cast<ExtNode*>(rv) || dynamic_cast<DataDeclNode*>(rv)){
+        if(dynamic_cast<FuncDeclNode*>(rv) || dynamic_cast<ExtNode*>(rv) ||
+                dynamic_cast<DataDeclNode*>(rv) || dynamic_cast<TraitNode*>(rv)){
+
             rv->compile(this); //register the function
             if(prev){
                 prev->lval.release();
@@ -1564,12 +1644,14 @@ void Compiler::scanAllDecls(){
             bop->lval.release();
             delete bop;
 
-            //while FuncDeclNode's are preserved inside FuncDecl's, these other two nodes must be manually deleted
-            if(ExtNode *en = dynamic_cast<ExtNode*>(rv)){
-                en->methods.release();
-                delete en;
-            }else if(dynamic_cast<DataDeclNode*>(rv)){
-                delete rv;
+            //while FuncDeclNode's are preserved inside FuncDecl's, these other nodes must be manually deleted
+            if(!dynamic_cast<FuncDeclNode*>(rv)){
+                if(ExtNode *en = dynamic_cast<ExtNode*>(rv)){
+                    en->methods.release();
+                    delete en;
+                }else{
+                    delete rv;
+                }
             }
         }else{
             prev = bop;
@@ -1578,7 +1660,8 @@ void Compiler::scanAllDecls(){
     }
 
     //check the final node
-    if(dynamic_cast<FuncDeclNode*>(op) || dynamic_cast<ExtNode*>(op) || dynamic_cast<DataDeclNode*>(op)){
+    if(dynamic_cast<FuncDeclNode*>(op) || dynamic_cast<ExtNode*>(op) || 
+            dynamic_cast<DataDeclNode*>(op) || dynamic_cast<TraitNode*>(op)){
         op->compile(this); //register the function`
         if(prev){
             prev->lval.release();
@@ -1587,12 +1670,14 @@ void Compiler::scanAllDecls(){
             ast.release();
             ast.reset(mkPlaceholderNode());
         }
-
-        if(ExtNode *en = dynamic_cast<ExtNode*>(op)){
-            en->methods.release();
-            delete en;
-        }else if(dynamic_cast<DataDeclNode*>(op)){
-            delete op;
+            
+        if(!dynamic_cast<FuncDeclNode*>(op)){
+            if(ExtNode *en = dynamic_cast<ExtNode*>(op)){
+                en->methods.release();
+                delete en;
+            }else{
+                delete op;
+            }
         }
     }
 }
@@ -1639,6 +1724,9 @@ void Compiler::compile(){
 
     //flag this module as compiled.
     compiled = true;
+
+    //show other modules this is compiled
+    allCompiledModules[fileName] = compUnit;
 
     if(errFlag){
         fputs("Compilation aborted.\n", stderr);
@@ -1709,7 +1797,7 @@ TargetMachine* getTargetMachine(){
 }
 void Compiler::jitFunction(Function *f){
     if(!jit.get()){
-        auto* eBuilder = new EngineBuilder(unique_ptr<Module>(module.get()));
+        auto* eBuilder = new EngineBuilder(unique_ptr<llvm::Module>(module.get()));
 
         string err;
 
@@ -1731,7 +1819,7 @@ void Compiler::jitFunction(Function *f){
 /*
  *  Compiles a module into a .o file to be used for linking.
  */
-int Compiler::compileIRtoObj(Module *mod, string outFile){
+int Compiler::compileIRtoObj(llvm::Module *mod, string outFile){
     auto *tm = getTargetMachine();
 
     std::error_code errCode;
@@ -1813,7 +1901,7 @@ void Compiler::exitScope(){
         if(it->second->isFreeable() && it->second->scope == this->scope){
             string freeFnName = "free";
             Function* freeFn = (Function*)getFunction(freeFnName, freeFnName)->val;
-
+            
             auto *inst = dyn_cast<AllocaInst>(it->second->getVal());
             auto *val = inst? builder.CreateLoad(inst) : it->second->getVal();
 
@@ -1850,7 +1938,15 @@ void Compiler::stoVar(string var, Variable *val){
 
 DataType* Compiler::lookupType(string tyname) const{
     try{
-        return userTypes.at(tyname).get();
+        return mergedCompUnits->userTypes.at(tyname).get();
+    }catch(out_of_range r){
+        return nullptr;
+    }
+}
+
+Trait* Compiler::lookupTrait(string tyname) const{
+    try{
+        return mergedCompUnits->traits.at(tyname).get();
     }catch(out_of_range r){
         return nullptr;
     }
@@ -1858,10 +1954,13 @@ DataType* Compiler::lookupType(string tyname) const{
 
 
 inline void Compiler::stoType(DataType *ty, string &typeName){
-    userTypes[typeName].reset(ty);
+    shared_ptr<DataType> dt{ty};
+
+    compUnit->userTypes[typeName] = dt;
+    mergedCompUnits->userTypes[typeName] = dt;
 }
 
-legacy::FunctionPassManager* mkPassManager(Module *m, char optLvl){
+legacy::FunctionPassManager* mkPassManager(llvm::Module *m, char optLvl){
     auto *pm = new legacy::FunctionPassManager(m);
     pm->add(createDeadStoreEliminationPass());
     pm->add(createDeadCodeEliminationPass());
@@ -1885,6 +1984,8 @@ legacy::FunctionPassManager* mkPassManager(Module *m, char optLvl){
 Compiler::Compiler(const char *_fileName, bool lib) :
         ctxt(),
         builder(ctxt), 
+        compUnit(new ante::Module()),
+        mergedCompUnits(new ante::Module()),
         errFlag(false),
         compiled(false),
         isLib(lib),
@@ -1911,7 +2012,7 @@ Compiler::Compiler(const char *_fileName, bool lib) :
 	if (outFile.empty())
 		outFile = "a";
 
-    module.reset(new Module(outFile, ctxt));
+    module.reset(new llvm::Module(outFile, ctxt));
 
     enterNewScope();
 
@@ -1921,7 +2022,9 @@ Compiler::Compiler(const char *_fileName, bool lib) :
 
 Compiler::Compiler(Node *root, string modName, string &fName, bool lib) :
         ctxt(),
-        builder(ctxt), 
+        builder(ctxt),
+        compUnit(new ante::Module()),
+        mergedCompUnits(new ante::Module()),
         errFlag(false),
         compiled(false),
         isLib(lib),
@@ -1931,7 +2034,7 @@ Compiler::Compiler(Node *root, string modName, string &fName, bool lib) :
         scope(0){
 
     ast.reset(root);
-    module.reset(new Module(outFile, ctxt));
+    module.reset(new llvm::Module(outFile, ctxt));
     
     enterNewScope();
 
@@ -1939,7 +2042,7 @@ Compiler::Compiler(Node *root, string modName, string &fName, bool lib) :
     passManager.reset(mkPassManager(module.get(), 3));
 }
 
-void Compiler::processArgs(CompilerArgs *args, string &input){
+void Compiler::processArgs(CompilerArgs *args){
     string out = "";
     if(auto *arg = args->getArg(Args::OutputName)){
         outFile = arg->arg;
@@ -1952,9 +2055,12 @@ void Compiler::processArgs(CompilerArgs *args, string &input){
         isLib = true;
         if(!compiled) compile();
 
-        for(auto& pair : fnDecls)
-            for(auto& fd : pair.second)
-                compFn(fd->fdn, fd->scope);
+        for(auto& pair : compUnit->fnDecls){
+            for(auto& fd : pair.second){
+                if(!fd->tv)
+                    compFn(fd->fdn, fd->scope);
+            }
+        }
     }
 
     if(args->hasArg(Args::EmitLLVM)) emitIR();

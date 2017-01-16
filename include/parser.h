@@ -154,8 +154,6 @@ struct TypeNode : public Node{
     unique_ptr<TypeNode> extTy; //Used for pointers and non-single anonymous types.
     vector<int> modifiers;
     
-    bool operator==(TypeNode &r) const;
-    bool operator!=(TypeNode &r) const;
     unsigned int getSizeInBits(Compiler*);
     TypedValue* compile(Compiler*);
     void print(void);
@@ -249,10 +247,12 @@ struct VarAssignNode : public Node{
 
 struct ExtNode : public Node{
     unique_ptr<TypeNode> typeExpr;
+    unique_ptr<TypeNode> traits;
     unique_ptr<Node> methods;
+
     TypedValue* compile(Compiler*);
     void print(void);
-    ExtNode(LOC_TY& loc, TypeNode *t, Node *m) : Node(loc), typeExpr(t), methods(m){}
+    ExtNode(LOC_TY& loc, TypeNode *ty, Node *m, TypeNode *tr) : Node(loc), typeExpr(ty), traits(tr), methods(m){}
     ~ExtNode(){}
 };
 

@@ -81,13 +81,24 @@ void yyerror(const char *msg);
     than Ident in decl context
 */
 %nonassoc LOW
+%nonassoc MEDLOW
 
 
 %left Newline
 %left RArrow
-%left STMT Fun Let Import Return Ext Var While For Match Trait
-%left If
+%left STMT Fun Let Import Return Ext Var While For Match Trait If
+
+%left ENDIF
 %left Else Elif
+
+/* fake symbol for intermediate if expresstions
+ *   Else expressions must have lower priority than if/elif
+ *   epressions and If must have same priority as STMT to be
+ *   sequenced properly, necessitating the creation of MEDIF
+ *   for if/elif expressions
+ */
+%left MEDIF
+
 %left ';'
 %left MED
 
@@ -108,11 +119,11 @@ void yyerror(const char *msg);
 %left In
 %left Append
 %left Range
-%left '#'
 
 %left '+' '-'
 %left '*' '/' '%'
 
+%left '#'
 %nonassoc '!'
 %left '@' New
 %left '&' TYPE UserType TypeVar I8 I16 I32 I64 U8 U16 U32 U64 Isz Usz F16 F32 F64 C8 C32 Bool Void Type '\''
@@ -139,13 +150,6 @@ void yyerror(const char *msg);
 top_level_expr_list:  maybe_newline expr {$$ = setRoot($2);}
                    ;
 
-/*
-top_level_expr_list_p: top_level_expr_list_p Newline expr                  %prec Newline {$$ = setNext($1, $3);}
-                     | top_level_expr_list_p Newline if_expr Newline expr  %prec Newline {$$ = mkBinOpNode(@$, ';', getRoot(), $5);}
-                     | expr                                                %prec Newline {$$ = setRoot($1);}
-                     | if_expr Newline expr                                %prec Newline {$$ = setRoot(mkBinOpNode(@$, ';', getRoot()), $3);}
-                     ;
-*/
 
 maybe_newline: Newline  %prec Newline
              |
@@ -176,25 +180,25 @@ strlit: StrLit {$$ = mkStrLitNode(@$, lextxt);}
 charlit: CharLit {$$ = mkCharLitNode(@$, lextxt);}
       ;
 
-lit_type: I8        {$$ = mkTypeNode(@$, TT_I8,  (char*)"");}
-        | I16       {$$ = mkTypeNode(@$, TT_I16, (char*)"");}
-        | I32       {$$ = mkTypeNode(@$, TT_I32, (char*)"");}
-        | I64       {$$ = mkTypeNode(@$, TT_I64, (char*)"");}
-        | U8        {$$ = mkTypeNode(@$, TT_U8,  (char*)"");}
-        | U16       {$$ = mkTypeNode(@$, TT_U16, (char*)"");}
-        | U32       {$$ = mkTypeNode(@$, TT_U32, (char*)"");}
-        | U64       {$$ = mkTypeNode(@$, TT_U64, (char*)"");}
-        | Isz       {$$ = mkTypeNode(@$, TT_Isz, (char*)"");}
-        | Usz       {$$ = mkTypeNode(@$, TT_Usz, (char*)"");}
-        | F16       {$$ = mkTypeNode(@$, TT_F16, (char*)"");}
-        | F32       {$$ = mkTypeNode(@$, TT_F32, (char*)"");}
-        | F64       {$$ = mkTypeNode(@$, TT_F64, (char*)"");}
-        | C8        {$$ = mkTypeNode(@$, TT_C8,  (char*)"");}
-        | C32       {$$ = mkTypeNode(@$, TT_C32, (char*)"");}
-        | Bool      {$$ = mkTypeNode(@$, TT_Bool, (char*)"");}
-        | Void      {$$ = mkTypeNode(@$, TT_Void, (char*)"");}
-        | usertype  {$$ = mkTypeNode(@$, TT_Data, (char*)$1);}
-        | typevar   {$$ = mkTypeNode(@$, TT_TypeVar, (char*)$1);}
+lit_type: I8                  {$$ = mkTypeNode(@$, TT_I8,  (char*)"");}
+        | I16                 {$$ = mkTypeNode(@$, TT_I16, (char*)"");}
+        | I32                 {$$ = mkTypeNode(@$, TT_I32, (char*)"");}
+        | I64                 {$$ = mkTypeNode(@$, TT_I64, (char*)"");}
+        | U8                  {$$ = mkTypeNode(@$, TT_U8,  (char*)"");}
+        | U16                 {$$ = mkTypeNode(@$, TT_U16, (char*)"");}
+        | U32                 {$$ = mkTypeNode(@$, TT_U32, (char*)"");}
+        | U64                 {$$ = mkTypeNode(@$, TT_U64, (char*)"");}
+        | Isz                 {$$ = mkTypeNode(@$, TT_Isz, (char*)"");}
+        | Usz                 {$$ = mkTypeNode(@$, TT_Usz, (char*)"");}
+        | F16                 {$$ = mkTypeNode(@$, TT_F16, (char*)"");}
+        | F32                 {$$ = mkTypeNode(@$, TT_F32, (char*)"");}
+        | F64                 {$$ = mkTypeNode(@$, TT_F64, (char*)"");}
+        | C8                  {$$ = mkTypeNode(@$, TT_C8,  (char*)"");}
+        | C32                 {$$ = mkTypeNode(@$, TT_C32, (char*)"");}
+        | Bool                {$$ = mkTypeNode(@$, TT_Bool, (char*)"");}
+        | Void                {$$ = mkTypeNode(@$, TT_Void, (char*)"");}
+        | usertype  %prec LOW {$$ = mkTypeNode(@$, TT_Data, (char*)$1);}
+        | typevar             {$$ = mkTypeNode(@$, TT_TypeVar, (char*)$1);}
         ;
 
 pointer_type: pointer_type '*'  %prec HIGH  {$$ = mkTypeNode(@$, TT_Ptr, (char*)"", $1);}
@@ -458,15 +462,13 @@ ret_expr: Return expr {$$ = mkRetNode(@$, $2);}
 
 
 extension: Ext type_expr Indent fn_list Unindent {$$ = mkExtNode(@$, $2, $4);}
-
-         /* TODO: add traits field to ExtNode to store this usertype_list of traits */
-         | Ext type_expr ':' usertype_list Indent fn_list Unindent {$$ = mkExtNode(@$, $2, $6);}
+         | Ext type_expr ':' usertype_list Indent fn_list Unindent {$$ = mkExtNode(@$, $2, $6, $4);}
          ;
  
 usertype_list: usertype_list_  {$$ = getRoot();}
 
-usertype_list_: usertype_list_ ',' usertype {$$ = setNext($1, $3);}
-              | usertype                    {$$ = setRoot($1);}
+usertype_list_: usertype_list_ ',' usertype {$$ = setNext($1, mkTypeNode(@3, TT_Data, (char*)$3));}
+              | usertype                    {$$ = setRoot(mkTypeNode(@$, TT_Data, (char*)$1));}
               ;
 
 
@@ -475,29 +477,6 @@ fn_list: fn_list_ {$$ = getRoot();}
 fn_list_: fn_list_ function maybe_newline  {$$ = setNext($1, $2);} 
         | function maybe_newline           {$$ = setRoot($1);}
         ;
-/*
-*/
-/* 
- *  Two stage rule needed (if_pre and if_expr) to properly handle all
- *  Instances of Newline-sequencing with if-exprs, particularly when the
- *  else clause is not present, the LOW precedence needed to 'absorb' the final
- *  Newline from the Then (if an expr-block was found) would also incorrectly cause
- *  all following expressions to be within the If's body.  This is possible for all
- *  statement-like expressions that terminate in an expr and have a LOW precedence.
- */
-/*
-if_expr: if_pre Else expr                      {((IfNode*)$1)->elseN.reset($3); $$ = $1;}
-       | if_pre Newline Else expr  %prec Else  {((IfNode*)$1)->elseN.reset($4); $$ = $1;}
-       | if_pre                    %prec LOW   {$$ = $1;}
-       ;
-*/
-
-if_expr: If expr Then expr                     %prec If {$$ = setRoot(mkIfNode(@$, $2, $4, 0));}
-       | if_expr Elif expr Then expr           %prec If {auto*elif = mkIfNode(@$, $3, $5, 0); setElse($1, elif); $$ = elif;}
-       | if_expr Else expr                     %prec If {$$ = setElse($1, $3);}
-       | if_expr Newline Elif expr Then expr   %prec If {auto*elif = mkIfNode(@$, $4, $6, 0); setElse($1, elif); $$ = elif;}
-       | if_expr Newline Else expr             %prec If {$$ = setElse($1, $4);}
-       ;
 
 
 while_loop: While expr Do expr  %prec While  {$$ = mkWhileNode(@$, $2, $4);}
@@ -507,7 +486,8 @@ while_loop: While expr Do expr  %prec While  {$$ = mkWhileNode(@$, $2, $4);}
 for_loop: For ident In expr Do expr  %prec For  {$$ = mkForNode(@$, $2, $4, $6);}
 
 
-match: '|' expr RArrow expr {$$ = mkMatchBranchNode(@$, $2, $4);}
+match: '|' expr RArrow expr              {$$ = mkMatchBranchNode(@$, $2, $4);}
+     | '|' usertype RArrow expr  %prec Match {$$ = mkMatchBranchNode(@$, mkTypeNode(@2, TT_Data, (char*)$2), $4);}
      ;
 
 
@@ -518,7 +498,11 @@ match_expr: Match expr With Newline match  {$$ = mkMatchNode(@$, $2, $5);}
 fn_brackets: '{' expr_list '}' {$$ = mkTupleNode(@$, $2);}
            | '{' '}'           {$$ = mkTupleNode(@$, 0);}
            ;
-
+    
+if_expr: If expr Then expr                %prec MEDIF  {$$ = setRoot(mkIfNode(@$, $2, $4, 0));}
+       | if_expr Elif expr Then expr      %prec MEDIF  {auto*elif = mkIfNode(@$, $3, $5, 0); setElse($1, elif); $$ = elif;}
+       | if_expr Else expr                             {$$ = setElse($1, $3);}
+       ;
 
 var: ident  %prec Ident {$$ = mkVarNode(@$, (char*)$1);}
    ;
@@ -539,16 +523,16 @@ val: '(' expr ')'            {$$ = $2;}
    | var_decl                {$$ = $1;}
    | while_loop              {$$ = $1;}
    | for_loop                {$$ = $1;}
-   | if_expr       %prec LOW {$$ = getRoot();}
    | function                {$$ = $1;}
    | data_decl               {$$ = $1;}
    | extension               {$$ = $1;}
    | trait_decl              {$$ = $1;}
    | ret_expr                {$$ = $1;}
    | import_expr             {$$ = $1;}
-   | match_expr    %prec LOW {$$ = $1;}
+   | if_expr     %prec STMT  {$$ = $1;}
+   | match_expr  %prec LOW   {$$ = $1;}
    | block                   {$$ = $1;}
-   | type_expr     %prec LOW
+   | type_expr   %prec LOW
    ;
 
 tuple: '(' expr_list ')' {$$ = mkTupleNode(@$, $2);}
@@ -625,12 +609,12 @@ expr: expr '+' maybe_newline expr                {$$ = mkBinOpNode(@$, '+', $1, 
     | expr arg_list                              {$$ = mkBinOpNode(@$, '(', $1, $2);}
     | val                             %prec MED  {$$ = $1;}
 
-    /* 
-        if_expr prec must be low to absorb the newlines before Else / Elif tokens, so 
-       This rule is needed to properly sequence them
-    */
-    | if_expr Newline expr          %prec If     {$$ = mkBinOpNode(@$, ';', getRoot(), $3);}
-    | if_expr Newline               %prec LOW    {$$ = getRoot();}
+    /* this rule returns the original If for precedence reasons compared to its mirror rule in if_expr
+     * that returns the elif node itself.  The former necessitates setElse to travel through the first IfNode's
+     * internal linked list of elsenodes to find the last one and append the new elif */
+    | expr Elif expr Then expr      %prec MEDIF  {auto*elif = mkIfNode(@$, $3, $5, 0); $$ = setElse($1, elif);}
+    | expr Else expr                             {$$ = setElse($1, $3);}
+    
     | match_expr Newline expr       %prec Match  {$$ = mkBinOpNode(@$, ';', $1, $3);}
     | match_expr Newline            %prec LOW    {$$ = $1;}
     | expr Newline                               {$$ = $1;}

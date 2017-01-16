@@ -24,7 +24,7 @@ struct Node;
 namespace ante{
     /* Defined in src/compiler.cpp */
     /* General error function */
-    void error(const char* msg, yy::location& loc);
+    void error(const char* msg, const yy::location& loc);
 
     class Lexer{
     public:

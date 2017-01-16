@@ -38,8 +38,9 @@ struct TypedValue {
 
 bool isPrimitiveTypeTag(TypeTag ty);
 TypeNode* mkAnonTypeNode(TypeTag);
-TypeNode* mkPtrTypeNode(TypeNode *t);
+TypeNode* mkTypeNodeWithExt(TypeTag tt, TypeNode *ext);
 TypeNode* mkDataTypeNode(string tyname);
+bool typeEqBase(const TypeNode *l, const TypeNode *r, const Compiler *c = 0);
 
 /*
  * FuncDeclNode and int pair to retain a function's
@@ -68,9 +69,15 @@ struct UnionTag {
     UnionTag(string &n, TypeNode *ty, unsigned short t) : name(n), tyn(ty), tag(t){}
 };
 
+struct Trait {
+    string name;
+    vector<shared_ptr<FuncDecl>> funcs;
+};
+
 struct DataType {
     vector<string> fields;
     vector<unique_ptr<UnionTag>> tags;
+    vector<shared_ptr<Trait>> traitImpls;
     unique_ptr<TypeNode> tyn;
 
     DataType(const vector<string> &f, TypeNode *ty) : fields(f), tyn(ty){}
@@ -110,7 +117,7 @@ struct Variable {
     Value* getVal() const{
         return tval->val;
     }
-   
+
     TypeTag getType() const{
         return tval->type->type;
     }
@@ -146,23 +153,46 @@ struct CtFunc {
 namespace yy{ class location; }
 
 namespace ante{
+
+    struct Module {
+        string name;
+       
+        //declared functions
+        map<string, list<shared_ptr<FuncDecl>>> fnDecls;
+
+        //Map of declared usertypes
+        map<string, shared_ptr<DataType>> userTypes;
+
+        //Map of all declared traits; not including their implementations for a given type
+        //Each DataType is reponsible for holding its own trait implementations
+        map<string, shared_ptr<Trait>> traits;
+    };
+
     struct Compiler {
         LLVMContext ctxt;
         unique_ptr<ExecutionEngine> jit;
         unique_ptr<legacy::FunctionPassManager> passManager;
-        unique_ptr<Module> module;
+        unique_ptr<llvm::Module> module;
         unique_ptr<Node> ast;
         IRBuilder<> builder;
 
+        //functions and type definitions of current module
+        shared_ptr<ante::Module> compUnit;
+
+        //all functions and type definitions visible to current module
+        shared_ptr<ante::Module> mergedCompUnits;
+
+        //all imported modules
+        vector<shared_ptr<ante::Module>> imports;
+        
+        //every single compiled module, even ones invisible to the current
+        //compilation_unit.  Prevents recompilation of modules
+        map<string, shared_ptr<ante::Module>> allCompiledModules;
+        
         //Stack of maps of variables mapped to their identifier.
         //Maps are seperated according to their scope.
         vector<unique_ptr<std::map<string, unique_ptr<Variable>>>> varTable;
 
-        //Map of declared, but non-defined functions
-        map<string, list<unique_ptr<FuncDecl>>> fnDecls;
-
-        //Map of declared usertypes
-        map<string, unique_ptr<DataType>> userTypes;
 
         bool errFlag, compiled, isLib;
         string fileName, outFile, funcPrefix;
@@ -182,7 +212,7 @@ namespace ante{
         void enterNewScope();
         void exitScope();
         void scanAllDecls();
-        void processArgs(CompilerArgs *args, string &input);
+        void processArgs(CompilerArgs *args);
         
         //binop functions
         TypedValue* compAdd(TypedValue *l, TypedValue *r, BinOpNode *op);
@@ -196,17 +226,17 @@ namespace ante{
         TypedValue* compLogicalOr(Node *l, Node *r, BinOpNode *op);
         TypedValue* compLogicalAnd(Node *l, Node *r, BinOpNode *op);
        
-        TypedValue* compErr(string msg, yy::location& loc);
+        TypedValue* compErr(const string msg, const yy::location& loc);
 
         void jitFunction(Function *fnName);
         void importFile(const char *name);
         void updateFn(TypedValue *f, string &name, string &mangledName);
         TypedValue* getFunction(string& name, string& mangledName);
-        list<unique_ptr<FuncDecl>>& getFunctionList(string& name);
+        list<shared_ptr<FuncDecl>>& getFunctionList(string& name);
         TypedValue* getMangledFunction(string nonMangledName, TypeNode *params);
         TypedValue* getCastFn(TypeNode *from_ty, TypeNode *to_ty);
         
-        TypedValue* compLetBindingFn(FuncDeclNode *fdn, size_t nParams, vector<Type*> &paramTys, unsigned int scope);
+        TypedValue* compLetBindingFn(FuncDeclNode *fdn, vector<Type*> &paramTys);
         TypedValue* compFn(FuncDeclNode *fn, unsigned int scope);
         void registerFunction(FuncDeclNode *func);
 
@@ -214,9 +244,11 @@ namespace ante{
         Variable* lookup(string var) const;
         void stoVar(string var, Variable *val);
         DataType* lookupType(string tyname) const;
+        Trait* lookupTrait(string tyname) const;
         void stoType(DataType *ty, string &typeName);
 
-        Type* typeNodeToLlvmType(TypeNode *tyNode);
+        Type* typeNodeToLlvmType(const TypeNode *tyNode);
+        bool typeEq(const TypeNode *l, const TypeNode *r) const;
     
         TypedValue* opImplementedForTypes(int op, TypeNode *l, TypeNode *r);
         TypedValue* implicitlyWidenNum(TypedValue *num, TypeTag castTy);
@@ -225,7 +257,7 @@ namespace ante{
         void implicitlyCastFltToFlt(TypedValue **lhs, TypedValue **rhs);
         void implicitlyCastIntToFlt(TypedValue **tval, Type *ty);
         
-        int compileIRtoObj(Module *mod, string outFile);
+        int compileIRtoObj(llvm::Module *mod, string outFile);
 
         TypedValue* getVoidLiteral();
         static int linkObj(string inFiles, string outFile);

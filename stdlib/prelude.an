@@ -108,10 +108,14 @@ fun (==): Str l r -> bool
 //append two strings
 fun (++): Str s1 s2 -> Str
     let len = s1.len + s2.len
-    var buf = malloc len
+    var buf = malloc (len+1)
 
+    //copy first string
     memcpy buf s1.cStr s1.len
-    memcpy{void*(u64 buf + s1.len), s2.cStr, s2.len}
+
+    //copy second string at offset
+    var buf_offset = void*(u64 buf + s1.len)
+    memcpy buf_offset s2.cStr (s2.len+1) //copy terminating null too
 
     Str(c8* buf, len)
 
@@ -125,7 +129,7 @@ fun OutFile: Str fName -> OutFile
     OutFile fopen (fName.cStr) "w"
 
 
-fun InFile.nextLine: InFile f -> Str
+fun InFile.next_line: InFile f -> Str
     var len = 0u32
     var cstr = c8* 0
 

@@ -276,7 +276,7 @@ TypeTag llvmTypeToTypeTag(Type *t){
  *  llvmTypeToTokType, information on signedness of integers is still lost, causing the
  *  unfortunate necessity for the use of a TypedValue for the storage of this information.
  */
-Type* Compiler::typeNodeToLlvmType(TypeNode *tyNode){
+Type* Compiler::typeNodeToLlvmType(const TypeNode *tyNode){
     vector<Type*> tys;
     TypeNode *tyn = tyNode->extTy.get();
     DataType *userType;
@@ -390,57 +390,107 @@ bool llvmTypeEq(Type *l, Type *r){
  *  equality of TypeNodes of type Tuple, Data, Function, or any
  *  type with multiple extTys.
  */
-bool extTysEq(const TypeNode *l, const TypeNode *r){
+bool extTysEq(const TypeNode *l, const TypeNode *r, const Compiler *c = 0){
     TypeNode *lExt = l->extTy.get();
     TypeNode *rExt = r->extTy.get();
 
     while(lExt && rExt){
-        if(*lExt != *rExt) return false;
+        if(c){
+            if(!c->typeEq(lExt, rExt)) return false; 
+        }else{
+            if(!typeEqBase(lExt, rExt)) return false;
+        }
+
         lExt = (TypeNode*)lExt->next.get();
         rExt = (TypeNode*)rExt->next.get();
         if((lExt && !rExt) || (rExt && !lExt)) return false;
     }
     return true;
- }
+}
 
 /*
- *  Return true if both typenodes are approximately equal
+ *  Returns true if two types are approx eq
+ *
+ *  Does not check for trait implementation unless c is set.
+ *
+ *  This function is used as a base for typeEq, if a typeEq function
+ *  is needed that does not require a Compiler parameter, this can be
+ *  used, although it does not check for trait impls.  The optional
+ *  Compiler parameter here is only used by the typeEq function.  If
+ *  this function is used as a typeEq function with the Compiler ptr
+ *  the outermost type will not be checked for traits.
  */
-bool TypeNode::operator==(TypeNode &r) const {
-    if(this->type == TT_TaggedUnion and r.type == TT_Data) return typeName == r.typeName;
-    if(this->type == TT_Data and r.type == TT_TaggedUnion) return typeName == r.typeName;
+bool typeEqBase(const TypeNode *l, const TypeNode *r, const Compiler *c){
+    if(l->type == TT_TaggedUnion and r->type == TT_Data) return l->typeName == r->typeName;
+    if(l->type == TT_Data and r->type == TT_TaggedUnion) return l->typeName == r->typeName;
 
-    if(this->type == TT_TypeVar or r.type == TT_TypeVar)
+    if(l->type == TT_TypeVar or r->type == TT_TypeVar)
         return true;
 
-    if(this->type != r.type)
+    if(l->type != r->type)
         return false;
 
-    if(r.type == TT_Ptr){
-        if(extTy->type == TT_Void || r.extTy->type == TT_Void)
+    if(r->type == TT_Ptr){
+        if(l->extTy->type == TT_Void || r->extTy->type == TT_Void)
             return true;
 
-        return *this->extTy.get() == *r.extTy.get();
-    }else if(r.type == TT_Array){
+        return extTysEq(l, r, c);
+    }else if(r->type == TT_Array){
         //size of an array is part of its type and stored in 2nd extTy
-        auto lsz = std::stoi( ((IntLitNode*)extTy->next.get())->val );
-        auto rsz = std::stoi( ((IntLitNode*)r.extTy->next.get())->val );
+        auto lsz = ((IntLitNode*)l->extTy->next.get())->val;
+        auto rsz = ((IntLitNode*)r->extTy->next.get())->val;
+        if(lsz != rsz) return false;
 
-        return lsz == rsz and *extTy == *r.extTy;
-    }else if(r.type == TT_Data or r.type == TT_TaggedUnion){
-        return typeName == r.typeName;
-    }else if(r.type == TT_Function or r.type == TT_MetaFunction or r.type == TT_Method or r.type == TT_Tuple){
-        return extTysEq(this, &r);
+        return extTysEq(l, r, c);
+    }else if(r->type == TT_Data or r->type == TT_TaggedUnion){
+        return l->typeName == r->typeName;
+    }else if(r->type == TT_Function or r->type == TT_MetaFunction or r->type == TT_Method or r->type == TT_Tuple){
+        return extTysEq(l, r, c);
     }
     //primitive type
     return true;
 }
 
-bool TypeNode::operator!=(TypeNode &r) const {
-    return !(*this == r);
+bool dataTypeImplementsTrait(DataType *dt, string trait){
+    for(auto traitImpl : dt->traitImpls){
+        if(traitImpl->name == trait)
+            return true;
+    }
+    return false;
 }
 
+/*
+ *  Return true if both typenodes are approximately equal
+ *
+ *  Compiler instance required to check for trait implementation
+ */
+bool Compiler::typeEq(const TypeNode *l, const TypeNode *r) const {
+    if(l->type == TT_Data and r->type == TT_Data){
+        if(l->typeName == r->typeName)
+            return true;
 
+        //typeName's are different, check if one is a trait and the other
+        //is an implementor of the trait
+        Trait *t;
+        DataType *dt;
+        if((t = lookupTrait(l->typeName))){
+            //Assume r is a datatype
+            //
+            //NOTE: r is never checked if it is a trait because two
+            //      separate traits are never equal anyway
+            dt = lookupType(r->typeName);
+            if(!dt) return false;
+            
+        }else if((t = lookupTrait(r->typeName))){
+            dt = lookupType(l->typeName);
+            if(!dt) return false;
+        }else{
+            return false;
+        }
+        return dataTypeImplementsTrait(dt, t->name);
+    }
+    return typeEqBase(l, r, this);
+}
 
 
 /*

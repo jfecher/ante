@@ -10,13 +10,13 @@ fun mul: u16 a b -> i32
     i32 a * b
 
 printf "%d\n"
-    //Casts must be explicit in function arguments
-    mul (u16 a) (u16 b)
+//b is implicitly widened
+    mul (u16 a) b
 
 
 let msg = "Hello World!".cStr
 
-let world = [c8] c8* (u64 msg + 6)
+let world = c8* (u64 msg + 6)
 
 puts msg
 puts world

@@ -4,12 +4,12 @@ type Maybe =
    | None
 
 
-fun parse_int: [c8] str -> Maybe
+fun parse_int: Str str -> Maybe
     var i = 0
     var sum = 0
 
-    while str#i != '\0' do
-        let c = str#i
+    while str.cStr#i != '\0' do
+        let c = str.cStr#i
         if c >= '0' and c <= '9' then
             sum *= 10
             sum += c - '0'
