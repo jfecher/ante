@@ -6,6 +6,7 @@
 #include "args.h"
 #include <cstring>
 #include <iostream>
+#include <llvm/Support/TargetRegistry.h>
 using namespace ante;
 
 void parseFile(string &fileName){
@@ -21,7 +22,6 @@ void parseFile(string &fileName){
         //print out remaining errors
         int tok;
         yy::location loc;
-        loc.initialize();
         while((tok = yylexer->next(&loc)) != Tok_Newline && tok != 0);
         while(p.parse() != PE_OK && yylexer->peek() != 0);
     }
@@ -39,9 +39,14 @@ void printHelp(){
     puts("\t-help\t\tprint this message");
     puts("\t-lib\t\tcompile as library (include all functions in binary and compile to object file)");
     puts("\t-emit-llvm\tprint llvm-IR as output");
+	puts("\nregistered targets:");
+	TargetRegistry::printRegisteredTargetsForVersion();
 }
 
 int main(int argc, const char **argv){
+	LLVMInitializeNativeTarget();
+	LLVMInitializeNativeAsmPrinter();
+
     auto *args = parseArgs(argc, argv);
     if(args->hasArg(Args::Help)) printHelp();
 

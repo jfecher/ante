@@ -10,7 +10,7 @@
 
 /* This has no effect when generating a c++ parser */
 /* Setting verbose for a c++ parser requires %error-verbose, set in the next section */
-#define YYERROR_VERBOSE
+#define YYERROR_VERBOSE 1
 
 #include "yyparser.h"
 #include <cstring>
@@ -152,7 +152,7 @@ top_level_expr_list:  maybe_newline expr {$$ = setRoot($2);}
 
 
 maybe_newline: Newline  %prec Newline
-             | %empty
+             |
              ;
 
 

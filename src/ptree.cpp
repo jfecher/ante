@@ -40,9 +40,24 @@ Node* setElse(Node *ifn, Node *elseN){
     return ifn;
 }
 
+yy::position mkPos(string *f, unsigned int line, unsigned int col) {
+	yy::position pos;
+	pos.filename = f;
+	pos.line = line;
+	pos.column = col;
+	return pos;
+}
+
+LOC_TY mkLoc(yy::position begin, yy::position end) {
+	LOC_TY loc;
+	loc.begin = begin;
+	loc.end = end;
+	return loc;
+}
+
 LOC_TY copyLoc(const LOC_TY &loc){
-    return {yy::position(loc.begin.filename, loc.begin.line, loc.begin.column), 
-            yy::position(loc.end.filename,   loc.end.line,   loc.end.column)};
+    return mkLoc(mkPos(loc.begin.filename, loc.begin.line, loc.begin.column),
+		         mkPos(loc.end.filename,   loc.end.line,   loc.end.column));
 }
     
 //apply modifier to this type and all its extensions
