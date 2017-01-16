@@ -2081,7 +2081,6 @@ Compiler::~Compiler(){
         yylexer = 0;
     }
 
-	fnDecls.clear();
 	passManager.release();
 	module.release();
 }
