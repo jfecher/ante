@@ -280,8 +280,13 @@ inline void Lexer::incPos(){
     }else{
         if(in->good())
             in->get(nxt);
-        else
-            nxt = 0;
+		else {
+//fix a windows lexing bug where the last character is duplicated before an eof
+#ifdef _WIN32
+			cur = 0;
+#endif
+			nxt = 0;
+		}
     }
 }
 
@@ -495,6 +500,7 @@ int Lexer::skipWsAndReturnNext(yy::location* loc){
 int Lexer::genStrLitTok(yy::parser::location_type* loc){
     string s = "";
     loc->begin = getPos();
+
     incPos();
     while(cur != '"' && cur != '\0'){
         if(cur == '\\'){
@@ -528,7 +534,6 @@ int Lexer::genStrLitTok(yy::parser::location_type* loc){
                     break;
             }
 
-
             incPos();
         }else{
             s += cur;
@@ -537,6 +542,10 @@ int Lexer::genStrLitTok(yy::parser::location_type* loc){
     }
 
     loc->end = getPos();
+
+	if (cur != '"')
+		lexErr("Missing closing string delimiter", loc);
+
     incPos(); //consume ending delim
 
     setlextxt(&s);
