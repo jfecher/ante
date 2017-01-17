@@ -538,6 +538,7 @@ int Lexer::genStrLitTok(yy::parser::location_type* loc){
 
     loc->end = getPos();
     incPos(); //consume ending delim
+
     setlextxt(&s);
     return Tok_StrLit;
 }

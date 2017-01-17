@@ -856,8 +856,10 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
             //extract the nxt type from the tArg if it has one.
             //otherwise, getMangledFunction will think there are more args
             auto *nxt = tArg->type->next.release();
+			TypedValue *fn;
 
-            if(auto *fn = c->getMangledFunction(castFn, tArg->type.get())){
+            if((fn = c->getMangledFunction(castFn, tArg->type.get())) and
+				c->typeEq(paramTy, (const TypeNode*)fn->type->extTy->next.get())){
                 tArg->type->next.reset(nxt);
 
                 //optimize case of Str -> c8* implicit cast
@@ -874,7 +876,7 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
                            : r->loc;
 
                 return c->compErr("Argument " + to_string(i) + " of function is a(n) " + typeNodeToStr(tArg->type.get())
-                    + " but was declared to be a(n) " + typeNodeToStr(paramTy), loc);
+                    + " but was declared to be a(n) " + typeNodeToStr(paramTy) + " and there is no known implicit cast", loc);
             }
         }
         paramTy = (TypeNode*)paramTy->next.get();
