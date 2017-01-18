@@ -69,3 +69,25 @@ int main(int argc, const char **argv){
     delete args;
     return 0;
 }
+
+
+win_console_color getBackgroundColor() {
+	CONSOLE_SCREEN_BUFFER_INFO csbi;
+	GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi);
+	int a = csbi.wAttributes;
+	return (win_console_color)((a / 16) % 16);
+}
+
+void setcolor(win_console_color foreColor, win_console_color backColor) {
+	int fc = foreColor % 16;
+	int bc = backColor % 16;
+
+	unsigned short wAttr = ((unsigned)backColor << 4) | (unsigned)foreColor;
+	SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), wAttr);
+}
+
+std::ostream& operator<<(std::ostream& os, win_console_color color) {
+	os.flush();
+	setcolor(color, getBackgroundColor());
+	return os;
+}
