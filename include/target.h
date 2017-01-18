@@ -146,7 +146,7 @@
 #  define AN_CONSOLE_BOLD "\033[;1m"
 #else
 #  define AN_CONSOLE_COLOR_RED win_console_color::red
-#  define AN_CONSOLE_RESET win_console_color::white
+#  define AN_CONSOLE_RESET win_console_color::darkwhite
 #  define AN_CONSOLE_ITALICS ""
 #  define AN_CONSOLE_BOLD ""
 
