@@ -66,7 +66,7 @@ void printErrLine(const yy::location& loc){
 
     //draw arrow
     putchar('\n');
-    cout << "\033[;31m"; //red
+    cout << AN_CONSOLE_COLOR_RED;
     unsigned int i = 1;
 
     //skip to begin pos
@@ -75,23 +75,23 @@ void printErrLine(const yy::location& loc){
     //draw arrow until end pos
     for(; i <= loc.end.column; i++) putchar('^');
 
-    cout << "\033[;m"; //reset color
+    cout << AN_CONSOLE_RESET; //reset color
 }
 
 
 void ante::error(const char* msg, const yy::location& loc){
-    if(loc.begin.filename)
-        cout << "\033[;3m" << *loc.begin.filename << "\033[;m: ";
-    else
-        cout << "\033[;3m(unknown file)\033[;m: ";
+	if (loc.begin.filename)
+		cout << AN_CONSOLE_ITALICS << *loc.begin.filename << AN_CONSOLE_RESET << ": ";
+	else
+		cout << AN_CONSOLE_ITALICS << "(unknown file)" << AN_CONSOLE_RESET << ": ";
 
-    cout << "\033[;1m" << loc.begin.line << ",";
+    cout << AN_CONSOLE_BOLD << loc.begin.line << ",";
     if(loc.begin.column == loc.end.column)
-        cout << loc.begin.column << "\033[;0m";
+        cout << loc.begin.column << AN_CONSOLE_RESET;
     else
-        cout << loc.begin.column << '-' << loc.end.column << "\033[;0m";
+        cout << loc.begin.column << '-' << loc.end.column << AN_CONSOLE_RESET;
 
-    cout << "\t\033[;31merror: \033[;m" <<  msg << endl;
+    cout << '\t' << AN_CONSOLE_COLOR_RED << "error: " << AN_CONSOLE_RESET << msg << endl;
     printErrLine(loc);
     cout << endl << endl;
 }
