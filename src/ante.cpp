@@ -70,7 +70,7 @@ int main(int argc, const char **argv){
     return 0;
 }
 
-
+#ifdef _WIN32
 win_console_color getBackgroundColor() {
 	CONSOLE_SCREEN_BUFFER_INFO csbi;
 	GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi);
@@ -91,3 +91,4 @@ std::ostream& operator<<(std::ostream& os, win_console_color color) {
 	setcolor(color, getBackgroundColor());
 	return os;
 }
+#endif
