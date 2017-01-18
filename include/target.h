@@ -150,6 +150,7 @@
 #  define AN_CONSOLE_ITALICS ""
 #  define AN_CONSOLE_BOLD ""
 
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
 //thanks to Eklavya Sharma: http://www.cplusplus.com/articles/2ywTURfi/
