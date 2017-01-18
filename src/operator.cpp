@@ -491,7 +491,7 @@ TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *bino
         if(l.size() == 1){
             auto& fd = l.front();
             if(!fd->tv)
-                fd->tv = compFn(fd->fdn, fd->scope);
+                fd->tv = compFn(fd.get());
 
             return fd->tv;
         }else if(l.size() > 1)
@@ -554,7 +554,7 @@ TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *bino
         if(l.size() == 1){
             auto& fd = l.front();
             if(!fd->tv)
-                fd->tv = compFn(fd->fdn, fd->scope);
+                fd->tv = compFn(fd.get());
 
             TypedValue *obj = new TypedValue(val, deepCopyTypeNode(tyn));
             auto *method_fn = new TypedValue(fd->tv->val, fd->tv->type);

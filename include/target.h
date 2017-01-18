@@ -51,7 +51,6 @@
 #  ifndef AN_LIB_DIR
 #    define AN_LIB_DIR "C:\\Program Files (x86)\\Ante\\"
 #  endif
-#
 #  define AN_EXEC_STR ".\\"
 #  define AN_LINKER "C:\\MinGW\\bin\\gcc.exe"
 #endif
@@ -68,13 +67,15 @@
 #  define AN_NATIVE_ARCH "x86_64"
 #endif
 
-#if defined i386 ||  defined __i386__ || defined __i686__ || defined _M_I86 || \
+#if defined i386 || defined __i386__ || defined __i686__ || defined _M_I86 || \
     defined _M_IX86 || defined __i386 || defined __i386__ || defined __i586__
+
+#ifdef _WIN64
+#  define AN_NATIVE_ARCH "x86_64"
+#else
 #  define AN_NATIVE_ARCH "i686"
 #endif
 
-#if defined i386 || defined __i386__ || defined _M_I86 || defined _X86_
-#  define AN_NATIVE_ARCH "x86_64"
 #endif
 
 
@@ -131,4 +132,10 @@
 #ifndef AN_EXEC_STR
 #  define AN_EXEC_STR "./"
 #endif
+
+
+#ifndef AN_TARGET_TRIPLE
+#  define AN_TARGET_TRIPLE AN_NATIVE_ARCH "-" AN_NATIVE_VENDOR "-" AN_NATIVE_OS
+#endif
+
 #endif

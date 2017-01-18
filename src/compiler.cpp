@@ -538,7 +538,7 @@ TypedValue* VarNode::compile(Compiler *c){
         if(fnlist.size() == 1){
             auto& fd = *fnlist.begin();
             if(!fd->tv)
-                c->compFn(fd->fdn, fd->scope);
+                c->compFn(fd.get());
 
             return new TypedValue(fd->tv->val, fd->tv->type);
 
@@ -800,7 +800,8 @@ void addAllArgAttrs(Function *f, NamedValNode *params){
 
 
 
-TypedValue* Compiler::compLetBindingFn(FuncDeclNode *fdn, vector<Type*> &paramTys){
+TypedValue* Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
+    auto *fdn = fd->fdn;
     FunctionType *preFnTy = FunctionType::get(Type::getVoidTy(ctxt), paramTys, fdn->varargs);
 
     //preFn is the predecessor to fn because we do not yet know its return type, so its body must be compiled,
@@ -938,12 +939,14 @@ TypeNode* createFnTyNode(NamedValNode *params, TypeNode *retTy){
  *  Handles a compiler directive (eg. ![inline]) then compiles the function fdn
  *  with either compFn or compLetBindingFn.
  */
-TypedValue* compCompilerDirectiveFn(Compiler *c, FuncDeclNode *fdn, unsigned int scope, PreProcNode *ppn){
+TypedValue* compCompilerDirectiveFn(Compiler *c, FuncDecl *fd, PreProcNode *ppn){
     //remove the preproc node at the front of the modifier list so that the call to
     //compFn does not call this function in an infinite loop
+    auto *fdn = fd->fdn;
+
     fdn->modifiers.release();
     fdn->modifiers.reset(ppn->next.get());
-    auto *fn = c->compFn(fdn, scope);
+    auto *fn = c->compFn(fd);
     if(!fn) return 0;
 
     //put back the preproc node modifier
@@ -958,7 +961,7 @@ TypedValue* compCompilerDirectiveFn(Compiler *c, FuncDeclNode *fdn, unsigned int
             c->module.release();
 
             c->module.reset(new llvm::Module(fdn->name, c->ctxt));
-            auto *recomp = c->compFn(fdn, scope);
+            auto *recomp = c->compFn(fd);
 
             c->jitFunction((Function*)recomp->val);
             c->module.reset(mod);
@@ -977,11 +980,13 @@ TypedValue* compCompilerDirectiveFn(Compiler *c, FuncDeclNode *fdn, unsigned int
 }
 
 
-TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
-    BasicBlock *caller = builder.GetInsertBlock();
+TypedValue* compFnHelper(Compiler *c, FuncDecl *fd){
+    BasicBlock *caller = c->builder.GetInsertBlock();
+    auto *fdn = fd->fdn;
+
     if(PreProcNode *ppn = dynamic_cast<PreProcNode*>(fdn->modifiers.get())){
-        auto *ret = compCompilerDirectiveFn(this, fdn, scope, ppn);
-        builder.SetInsertPoint(caller);
+        auto *ret = compCompilerDirectiveFn(c, fd, ppn);
+        c->builder.SetInsertPoint(caller);
         return ret;
     }
 
@@ -993,7 +998,7 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
     NamedValNode *paramsBegin = fdn->params.get();
     size_t nParams = getTupleSize(paramsBegin);
 
-    vector<Type*> paramTys = getParamTypes(this, paramsBegin, nParams);
+    vector<Type*> paramTys = getParamTypes(c, paramsBegin, nParams);
 
     if(paramTys.size() > 0 && !paramTys.back()){ //varargs fn
         fdn->varargs = true;
@@ -1001,8 +1006,8 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
     }
     
     if(!retNode){
-        auto *ret = compLetBindingFn(fdn, paramTys);
-        builder.SetInsertPoint(caller);
+        auto *ret = c->compLetBindingFn(fd, paramTys);
+        c->builder.SetInsertPoint(caller);
         return ret;
     }
 
@@ -1011,57 +1016,57 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
     TypeNode *fnTy = createFnTyNode(fdn->params.get(), (TypeNode*)fdn->type.get());
 
 
-    Type *retTy = typeNodeToLlvmType(retNode);
+    Type *retTy = c->typeNodeToLlvmType(retNode);
     FunctionType *ft = FunctionType::get(retTy, paramTys, fdn->varargs);
-    Function *f = Function::Create(ft, Function::ExternalLinkage, fdn->name, module.get());
+    Function *f = Function::Create(ft, Function::ExternalLinkage, fdn->name, c->module.get());
     f->addFnAttr("nounwind");
     addAllArgAttrs(f, paramsBegin);
 
 
     auto* ret = new TypedValue(f, fnTy);
     //stoVar(fdn->name, new Variable(fdn->name, ret, scope));
-    updateFn(ret, fdn->basename, fdn->name);
+    c->updateFn(ret, fdn->basename, fdn->name);
 
     //The above handles everything for a function declaration
     //If the function is a definition, then the body will be compiled here.
     if(fdn->child){
         //Create the entry point for the function
-        BasicBlock *bb = BasicBlock::Create(ctxt, "entry", f);
-        builder.SetInsertPoint(bb);
+        BasicBlock *bb = BasicBlock::Create(c->ctxt, "entry", f);
+        c->builder.SetInsertPoint(bb);
 
         //tell the compiler to create a new scope on the stack.
-        enterNewScope();
+        c->enterNewScope();
 
         NamedValNode *cParam = paramsBegin;
 
         //iterate through each parameter and add its value to the new scope.
         for(auto &arg : f->args()){
             TypeNode *paramTyNode = (TypeNode*)cParam->typeExpr.get();
-            stoVar(cParam->name, new Variable(cParam->name, new TypedValue(&arg, deepCopyTypeNode(paramTyNode)), this->scope));
+            c->stoVar(cParam->name, new Variable(cParam->name, new TypedValue(&arg, deepCopyTypeNode(paramTyNode)), c->scope));
 
             if(!(cParam = (NamedValNode*)cParam->next.get())) break;
         }
 
         //actually compile the function, and hold onto the last value
-        TypedValue *v = fdn->child->compile(this);
+        TypedValue *v = fdn->child->compile(c);
         if(!v){
-            builder.SetInsertPoint(caller);
+            c->builder.SetInsertPoint(caller);
             return 0;
         }
         
         //End of the function, discard the function's scope.
-        exitScope();
+        c->exitScope();
    
         //llvm requires explicit returns, so generate a void return even if
         //the user did not in their void function.
         if(retNode && !dyn_cast<ReturnInst>(v->val)){
             if(retNode->type == TT_Void){
-                builder.CreateRetVoid();
+                c->builder.CreateRetVoid();
             }else{
-                if(!typeEq(v->type.get(), retNode)){
-                    builder.SetInsertPoint(caller);
+                if(!c->typeEq(v->type.get(), retNode)){
+                    c->builder.SetInsertPoint(caller);
                     delete ret;
-                    return compErr("Function " + fdn->name + " returned value of type " + 
+                    return c->compErr("Function " + fdn->name + " returned value of type " + 
                             typeNodeToStr(v->type.get()) + " but was declared to return value of type " +
                             typeNodeToStr(retNode), fdn->loc);
                 }
@@ -1069,15 +1074,35 @@ TypedValue* Compiler::compFn(FuncDeclNode *fdn, unsigned int scope){
                 if(v->type->type == TT_TaggedUnion)
                     fnTy->extTy->type = TT_TaggedUnion;
 
-                builder.CreateRet(v->val);
+                c->builder.CreateRet(v->val);
             }
         }
         //optimize!
-        passManager->run(*f);
+        c->passManager->run(*f);
     }
 
-    builder.SetInsertPoint(caller);
+    c->builder.SetInsertPoint(caller);
     return ret;
+}
+
+//Provide a wrapper for function-compiling methods so that each
+//function is compiled in its own isolated module
+TypedValue* Compiler::compFn(FuncDecl *fd){
+    if(fd->module->name != compUnit->name){
+        auto mcu = move(mergedCompUnits);
+
+        cout << "   Compiling " << fd->fdn->name << " in separate module with fns: \n";
+        for(auto& pair : fd->module->fnDecls)
+            cout << pair.first << endl;
+
+        mergedCompUnits = fd->module;
+        auto *ret = compFnHelper(this, fd);
+        mergedCompUnits = mcu;
+
+        return ret;
+    }else{
+        return compFnHelper(this, fd);
+    }
 }
 
 
@@ -1111,7 +1136,8 @@ TypedValue* FuncDeclNode::compile(Compiler *c){
         return c->getVoidLiteral();
     }else{
         //Otherwise, if it is a lambda function, compile it now and return it.
-        return c->compFn(this, c->scope);
+        FuncDecl fd(this, c->scope, c->mergedCompUnits);
+        return c->compFn(&fd);
     }
 }
 
@@ -1165,7 +1191,7 @@ TypedValue* ExtNode::compile(Compiler *c){
                 fdn->name = c->funcPrefix + fdn->name;
                 fdn->basename = c->funcPrefix + fdn->basename;
                 
-                shared_ptr<FuncDecl> fd{new FuncDecl(fdn, c->scope)};
+                shared_ptr<FuncDecl> fd{new FuncDecl(fdn, c->scope, c->compUnit)};
                 traitImpl->funcs.push_back(fd);
     
                 c->compUnit->fnDecls[fdn->basename].push_front(fd);
@@ -1294,7 +1320,7 @@ TypedValue* TraitNode::compile(Compiler *c){
         fn->name = c->funcPrefix + fn->name;
         fn->basename = c->funcPrefix + fn->basename;
         
-        shared_ptr<FuncDecl> fd{new FuncDecl(fn, c->scope)};
+        shared_ptr<FuncDecl> fd{new FuncDecl(fn, c->scope, c->compUnit)};
         trait->funcs.push_back(fd);
         curfn = curfn->next.get();
     }
@@ -1460,7 +1486,7 @@ TypedValue* Compiler::getFunction(string& name, string& mangledName){
     if(fd->tv) return fd->tv;
 
     //Function has been declared but not defined, so define it.
-    return compFn(fd->fdn, fd->scope);
+    return compFn(fd);
 }
 
 /*
@@ -1490,7 +1516,7 @@ TypedValue* Compiler::getMangledFunction(string name, TypeNode *params){
     //if there is only one function now, return it.  It will be typechecked later
     if(candidates.size() == 1){
         auto& fd = candidates.front();
-        if(!fd->tv) compFn(fd->fdn, fd->scope);
+        if(!fd->tv) compFn(fd.get());
         return fd->tv;
     }
 
@@ -1498,7 +1524,7 @@ TypedValue* Compiler::getMangledFunction(string name, TypeNode *params){
     string fnName = mangle(name, params);
     auto *fd = getFuncDeclFromList(candidates, fnName);
     if(fd){ //exact match
-        if(!fd->tv) compFn(fd->fdn, fd->scope);
+        if(!fd->tv) compFn(fd);
         return fd->tv;
     }
 
@@ -1595,7 +1621,7 @@ string removeFileExt(string file){
  *  of a module with unneeded library functions.
  */
 inline void Compiler::registerFunction(FuncDeclNode *fn){
-    shared_ptr<FuncDecl> fd{new FuncDecl(fn, this->scope)};
+    shared_ptr<FuncDecl> fd{new FuncDecl(fn, scope, mergedCompUnits)};
 
     compUnit->fnDecls[fn->basename].push_front(fd);
     mergedCompUnits->fnDecls[fn->basename].push_front(fd);
@@ -2058,7 +2084,7 @@ void Compiler::processArgs(CompilerArgs *args){
         for(auto& pair : compUnit->fnDecls){
             for(auto& fd : pair.second){
                 if(!fd->tv)
-                    compFn(fd->fdn, fd->scope);
+                    compFn(fd.get());
             }
         }
     }

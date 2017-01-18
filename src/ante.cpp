@@ -4,6 +4,7 @@
 #include "ptree.h"
 #include "yyparser.h"
 #include "args.h"
+#include "target.h"
 #include <cstring>
 #include <iostream>
 #include <llvm/Support/TargetRegistry.h>
@@ -39,7 +40,9 @@ void printHelp(){
     puts("\t-help\t\tprint this message");
     puts("\t-lib\t\tcompile as library (include all functions in binary and compile to object file)");
     puts("\t-emit-llvm\tprint llvm-IR as output");
-	puts("\nregistered targets:");
+
+    puts("\nNative target: " AN_TARGET_TRIPLE);
+
 	TargetRegistry::printRegisteredTargetsForVersion();
 }
 

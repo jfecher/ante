@@ -42,6 +42,9 @@ TypeNode* mkTypeNodeWithExt(TypeTag tt, TypeNode *ext);
 TypeNode* mkDataTypeNode(string tyname);
 bool typeEqBase(const TypeNode *l, const TypeNode *r, const Compiler *c = 0);
 
+//declare ante::Module for FuncDecl
+namespace ante { struct Module; }
+
 /*
  * FuncDeclNode and int pair to retain a function's
  * scope after it is imported and lazily compiled later
@@ -51,7 +54,8 @@ struct FuncDecl {
     FuncDeclNode *fdn;
     unsigned int scope;
     TypedValue *tv;
-    FuncDecl(FuncDeclNode *fn, unsigned int s, TypedValue *f=0) : fdn(fn), scope(s), tv(f){}
+    shared_ptr<ante::Module> module;
+    FuncDecl(FuncDeclNode *fn, unsigned int s, shared_ptr<ante::Module> mod, TypedValue *f=0) : fdn(fn), scope(s), tv(f), module(mod){}
     ~FuncDecl(){ delete fdn; delete tv; }
 };
 
@@ -209,8 +213,10 @@ namespace ante{
         Function* createMainFn();
         void eval();
         void emitIR();
+        
         void enterNewScope();
         void exitScope();
+        
         void scanAllDecls();
         void processArgs(CompilerArgs *args);
         
@@ -236,8 +242,8 @@ namespace ante{
         TypedValue* getMangledFunction(string nonMangledName, TypeNode *params);
         TypedValue* getCastFn(TypeNode *from_ty, TypeNode *to_ty);
         
-        TypedValue* compLetBindingFn(FuncDeclNode *fdn, vector<Type*> &paramTys);
-        TypedValue* compFn(FuncDeclNode *fn, unsigned int scope);
+        TypedValue* compLetBindingFn(FuncDecl *fdn, vector<Type*> &paramTys);
+        TypedValue* compFn(FuncDecl *fn);
         void registerFunction(FuncDeclNode *func);
 
         unsigned int getScope() const;

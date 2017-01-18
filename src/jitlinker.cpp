@@ -37,7 +37,7 @@ llvm::Module* wrapFnInModule(Compiler *c, Function *f){
     auto& flist = ccpy.getFunctionList(name);
 
     if(flist.size() == 1){
-        ccpy.compFn((*flist.begin())->fdn, 0);
+        ccpy.compFn((*flist.begin()).get());
     }else if(flist.empty()){
         cerr << "No function '" << name << "'\n";
         c->errFlag = true;
