@@ -859,7 +859,7 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
 			TypedValue *fn;
 
             if((fn = c->getMangledFunction(castFn, tArg->type.get())) and
-				c->typeEq(paramTy, (const TypeNode*)fn->type->extTy->next.get())){
+				c->typeEq(tArg->type.get(), (const TypeNode*)fn->type->extTy->next.get())){
                 tArg->type->next.reset(nxt);
 
                 //optimize case of Str -> c8* implicit cast
