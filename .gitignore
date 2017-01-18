@@ -8,3 +8,7 @@ src/parser.output
 src/parser.cpp
 include/*.hh
 include/yyparser.h
+/src/location.hh
+/src/position.hh
+/src/stack.hh
+/t.exe
