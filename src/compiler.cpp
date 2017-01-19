@@ -19,94 +19,6 @@
 
 using namespace llvm;
 
-/* 
- * Skips input in a given istream until it encounters the given coordinates,
- * with each newline signalling the end of a row.
- *
- * precondition: coordinates must be valid
- */
-void skipToLine(istream& ifs, unsigned int row){
-    unsigned int line = 1;
-    if(line != row){
-        while(true){
-            char c = ifs.get();
-            if(c == '\n'){
-                line++;
-                if(line >= row){
-                    break;
-                }
-            }else if(c == EOF){
-                break;
-            }
-        }
-    }
-}
-
-/*
- *  Prints a given line (row) of a file, along with an arrow pointing to
- *  the specified column.
- */
-void printErrLine(const yy::location& loc){
-    if(!loc.begin.filename) return;
-    ifstream f{*loc.begin.filename};
-
-    //Premature newline error, show previous line as error instead
-    auto line_start = loc.begin.column == 0 ? loc.begin.line - 1 : loc.begin.line;
-
-    //skip to line in question
-    skipToLine(f, line_start);
-
-    //print line
-    string s;
-    getline(f, s);
-    
-    auto col_start = loc.begin.column == 0 ? s.length() + 1 : loc.begin.column;
-
-    cout << s;
-
-    //draw arrow
-    putchar('\n');
-    cout << AN_CONSOLE_COLOR_RED;
-    unsigned int i = 1;
-
-    //skip to begin pos
-    for(; i < col_start; i++) putchar(' ');
-
-    //draw arrow until end pos
-    for(; i <= loc.end.column; i++) putchar('^');
-
-    cout << AN_CONSOLE_RESET; //reset color
-}
-
-
-void ante::error(const char* msg, const yy::location& loc){
-	if (loc.begin.filename)
-		cout << AN_CONSOLE_ITALICS << *loc.begin.filename << AN_CONSOLE_RESET << ": ";
-	else
-		cout << AN_CONSOLE_ITALICS << "(unknown file)" << AN_CONSOLE_RESET << ": ";
-
-    cout << AN_CONSOLE_BOLD << loc.begin.line << ",";
-    if(loc.begin.column == loc.end.column)
-        cout << loc.begin.column << AN_CONSOLE_RESET;
-    else
-        cout << loc.begin.column << '-' << loc.end.column << AN_CONSOLE_RESET;
-
-    cout << '\t' << AN_CONSOLE_COLOR_RED << "error: " << AN_CONSOLE_RESET << msg << endl;
-    printErrLine(loc);
-    cout << endl << endl;
-}
-
-
-/*
- *  Inform the user of an error and return nullptr.
- *  (perhaps this should throw an exception?)
- */
-TypedValue* Compiler::compErr(const string msg, const yy::location& loc){
-    error(msg.c_str(), loc);
-    errFlag = true;
-    return nullptr;
-}
-
 
 /*
  *  Returns amount of values in a tuple, from 0 to max uint.
@@ -207,7 +119,7 @@ TypedValue* TypeNode::compile(Compiler *c){
         return new TypedValue(unionVal, ty);
     }
 
-    return c->compErr("Cannot extract tag value from non-union-tag type " + typeNodeToStr(this), loc);
+    return c->compErr("Cannot extract tag value from non-union-tag type " + typeNodeToColoredStr(this), loc);
 }
 
 
@@ -267,7 +179,7 @@ TypedValue* compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
         if(!fn){
             delete ls;
             delete rs;
-            return c->compErr("Cannot cast " + typeNodeToStr(val->type.get())
+            return c->compErr("Cannot cast " + typeNodeToColoredStr(val->type.get())
                 + " to Str for string interpolation.", sln->loc);
         }
 
@@ -641,7 +553,7 @@ TypedValue* compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
     //A . operator can also have a type/module as its lval, but its
     //impossible to insert into a non-value so fail if the lvalue is one
     if(auto *tn = dynamic_cast<TypeNode*>(bop->lval.get()))
-        return c->compErr("Cannot insert value into static module '" + typeNodeToStr(tn), tn->loc);
+        return c->compErr("Cannot insert value into static module '" + typeNodeToColoredStr(tn), tn->loc);
 
    
     Value *val;
@@ -659,7 +571,7 @@ TypedValue* compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
        
         if(!tyn->hasModifier(Tok_Mut))
             return c->compErr("Variable must be mutable to be assigned to, but instead is an immutable " +
-                    typeNodeToStr(tyn), bop->loc);
+                    typeNodeToColoredStr(tyn), bop->loc);
     }
 
     //the . operator automatically dereferences pointers, so update val and tyn accordingly.
@@ -689,8 +601,8 @@ TypedValue* compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
                 if(!newval) return 0;
 
                 if(!c->typeEq(indexTy, newval->type.get()))
-                    return c->compErr("Cannot assign expression of type " + typeNodeToStr(newval->type.get()) +
-                           " to a variable of type " + typeNodeToStr(indexTy), expr->loc);
+                    return c->compErr("Cannot assign expression of type " + typeNodeToColoredStr(newval->type.get()) +
+                           " to a variable of type " + typeNodeToColoredStr(indexTy), expr->loc);
 
 
                 auto *ins = c->builder.CreateInsertValue(val, newval->val, index);
@@ -701,7 +613,7 @@ TypedValue* compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
         }
     }
 
-    return c->compErr("Method/Field " + field->name + " not found in type " + typeNodeToStr(tyn), bop->loc);
+    return c->compErr("Method/Field " + field->name + " not found in type " + typeNodeToColoredStr(tyn), bop->loc);
 }
 
 TypedValue* VarAssignNode::compile(Compiler *c){
@@ -1067,8 +979,8 @@ TypedValue* compFnHelper(Compiler *c, FuncDecl *fd){
                     c->builder.SetInsertPoint(caller);
                     delete ret;
                     return c->compErr("Function " + fdn->name + " returned value of type " + 
-                            typeNodeToStr(v->type.get()) + " but was declared to return value of type " +
-                            typeNodeToStr(retNode), fdn->loc);
+                            typeNodeToColoredStr(v->type.get()) + " but was declared to return value of type " +
+                            typeNodeToColoredStr(retNode), fdn->loc);
                 }
                 
                 if(v->type->type == TT_TaggedUnion)
@@ -1162,7 +1074,7 @@ TypedValue* ExtNode::compile(Compiler *c){
         string typestr = typeNodeToStr(typeExpr.get());
         auto *dt = c->lookupType(typestr);
         if(!dt)
-            return c->compErr("Cannot implement traits for undeclared type " + typestr, typeExpr->loc);
+            return c->compErr("Cannot implement traits for undeclared type " + typeNodeToColoredStr(typeExpr), typeExpr->loc);
 
         //create a vector of the traits that must be implemented
         TypeNode *curTrait = this->traits.get();
@@ -1171,7 +1083,7 @@ TypedValue* ExtNode::compile(Compiler *c){
             string traitstr = typeNodeToStr(curTrait);
             auto *trait = c->lookupTrait(traitstr);
             if(!trait)
-                return c->compErr("Trait '" + traitstr + "' is undeclared", curTrait->loc);
+                return c->compErr("Trait " + typeNodeToColoredStr(curTrait) + " is undeclared", curTrait->loc);
 
             traits.push_back(trait);
             curTrait = (TypeNode*)curTrait->next.get();
@@ -1186,7 +1098,8 @@ TypedValue* ExtNode::compile(Compiler *c){
             for(auto& fd_proto : trait->funcs){
                 auto *fdn = findFDN(funcs, fd_proto->fdn->basename);
                 if(!fdn)
-                    return c->compErr(typestr + " must implement " + fd_proto->fdn->basename + " to implement " + trait->name, fd_proto->fdn->loc);
+                    return c->compErr(typeNodeToColoredStr(typeExpr) + " must implement " + fd_proto->fdn->basename +
+                            " to implement " + typeNodeToColoredStr(mkDataTypeNode(trait->name)), fd_proto->fdn->loc);
 
                 fdn->name = c->funcPrefix + fdn->name;
                 fdn->basename = c->funcPrefix + fdn->basename;
@@ -1340,7 +1253,8 @@ TypedValue* MatchNode::compile(Compiler *c){
 
 
     if(lval->type->type != TT_TaggedUnion && lval->type->type != TT_Data){
-        return c->compErr("Cannot match expression of type " + typeNodeToStr(lval->type.get()) + ".  Match expressions must be a tagged union type", expr->loc);
+        return c->compErr("Cannot match expression of type " + typeNodeToColoredStr(lval->type) +
+                ".  Match expressions must be a tagged union type", expr->loc);
     }
 
 
@@ -1367,10 +1281,10 @@ TypedValue* MatchNode::compile(Compiler *c){
         if(TypeCastNode *tn = dynamic_cast<TypeCastNode*>(mbn->pattern.get())){
             auto *tagTy = c->lookupType(tn->typeExpr->typeName);
             if(!tagTy)
-                return c->compErr("Union tag " + typeNodeToStr(tn->typeExpr.get()) + " was not yet declared.", tn->typeExpr->loc);
+                return c->compErr("Union tag " + typeNodeToColoredStr(tn->typeExpr) + " was not yet declared.", tn->typeExpr->loc);
        
             if(!tagTy->isUnionTag())
-                return c->compErr(typeNodeToStr(tn->typeExpr.get()) + " must be a union tag to be used in a pattern", tn->typeExpr->loc);
+                return c->compErr(typeNodeToColoredStr(tn->typeExpr) + " must be a union tag to be used in a pattern", tn->typeExpr->loc);
 
             auto *parentTy = c->lookupType(tagTy->getParentUnionName());
             ci = ConstantInt::get(c->ctxt, APInt(8, parentTy->getTagVal(tn->typeExpr->typeName), true));
@@ -1395,10 +1309,10 @@ TypedValue* MatchNode::compile(Compiler *c){
         }else if(TypeNode *tn = dynamic_cast<TypeNode*>(mbn->pattern.get())){
             auto *tagTy = c->lookupType(tn->typeName);
             if(!tagTy)
-                return c->compErr("Union tag " + typeNodeToStr(tn) + " was not yet declared.", tn->loc);
+                return c->compErr("Union tag " + typeNodeToColoredStr(tn) + " was not yet declared.", tn->loc);
        
             if(!tagTy->isUnionTag())
-                return c->compErr(typeNodeToStr(tn) + " must be a union tag to be used in a pattern", tn->loc);
+                return c->compErr(typeNodeToColoredStr(tn) + " must be a union tag to be used in a pattern", tn->loc);
 
             auto *parentTy = c->lookupType(tagTy->getParentUnionName());
             ci = ConstantInt::get(c->ctxt, APInt(8, parentTy->getTagVal(tn->typeName), true));
@@ -1437,8 +1351,8 @@ TypedValue* MatchNode::compile(Compiler *c){
 
                 //match the types of those branches that will merge
                 if(!c->typeEq(pair.second->type.get(), merges[0].second->type.get()))
-                    return c->compErr("Branch "+to_string(i)+"'s return type " + typeNodeToStr(pair.second->type.get()) +
-                              " != " + typeNodeToStr(merges[0].second->type.get()) + ", the first branch's return type", this->loc);
+                    return c->compErr("Branch "+to_string(i)+"'s return type " + typeNodeToColoredStr(pair.second->type) +
+                              " != " + typeNodeToColoredStr(merges[0].second->type) + ", the first branch's return type", this->loc);
                 else
                     phi->addIncoming(pair.second->val, pair.first);
             }

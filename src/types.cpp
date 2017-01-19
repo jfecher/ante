@@ -552,7 +552,7 @@ string typeTagToStr(TypeTag ty){
  *  Converts a typeNode directly to a string with no information loss.
  *  Used in ExtNode::compile
  */
-string typeNodeToStr(TypeNode *t){
+string typeNodeToStr(const TypeNode *t){
     if(t->type == TT_Tuple){
         string ret = "(";
         TypeNode *elem = t->extTy.get();

@@ -18,7 +18,7 @@
 /* Defined in lexer.cpp */
 extern int yylex(yy::parser::semantic_type*, yy::location*);
 
-extern string typeNodeToStr(TypeNode*);
+extern string typeNodeToStr(const TypeNode*);
 
 struct TypeNode;
 

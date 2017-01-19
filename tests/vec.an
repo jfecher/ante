@@ -12,7 +12,7 @@ fun Vec.reserve: mut Vec* v, u32 numElems
             printf "Error in reserving %u elements for Vec\n" numElems
             return ()
 
-        v._data = i32* ptr
+        v._data = InFile* ptr
         v.cap += numElems
 
 
@@ -48,4 +48,4 @@ while i <= 100 do
 
 print v
 
-free <| void* v._data
+free <| v._data

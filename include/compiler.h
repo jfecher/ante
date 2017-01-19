@@ -13,13 +13,17 @@
 #include <list>
 #include "parser.h"
 #include "args.h"
+#include "lazystr.h"
 
 using namespace llvm;
 using namespace std;
 
 
 TypeNode* deepCopyTypeNode(const TypeNode *n);
-string typeNodeToStr(TypeNode *t);
+string typeNodeToStr(const TypeNode *t);
+lazy_str typeNodeToColoredStr(const TypeNode *t);
+lazy_str typeNodeToColoredStr(const unique_ptr<TypeNode>& tn);
+
 /*
  *  Used for storage of additional information, such as signedness,
  *  not represented by llvm::Type
@@ -232,7 +236,8 @@ namespace ante{
         TypedValue* compLogicalOr(Node *l, Node *r, BinOpNode *op);
         TypedValue* compLogicalAnd(Node *l, Node *r, BinOpNode *op);
        
-        TypedValue* compErr(const string msg, const yy::location& loc);
+        //TypedValue* compErr(const string msg, const yy::location& loc);
+        TypedValue* compErr(ante::lazy_printer msg, const yy::location& loc);
 
         void jitFunction(Function *fnName);
         void importFile(const char *name);

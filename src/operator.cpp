@@ -20,7 +20,7 @@ TypedValue* Compiler::compAdd(TypedValue *l, TypedValue *r, BinOpNode *op){
             return new TypedValue(builder.CreateFAdd(l->val, r->val), l->type);
 
         default:
-            return compErr("binary operator + is undefined for the type " + typeNodeToStr(l->type.get()) + " and " + typeNodeToStr(r->type.get()), op->loc);
+            return compErr("binary operator + is undefined for the type " + typeNodeToColoredStr(l->type) + " and " + typeNodeToColoredStr(r->type), op->loc);
     }
 }
 
@@ -38,7 +38,7 @@ TypedValue* Compiler::compSub(TypedValue *l, TypedValue *r, BinOpNode *op){
             return new TypedValue(builder.CreateFSub(l->val, r->val), l->type);
 
         default:
-            return compErr("binary operator - is undefined for the type " + llvmTypeToStr(l->getType()) + " and " + llvmTypeToStr(r->getType()), op->loc);
+            return compErr("binary operator - is undefined for the type " + typeNodeToColoredStr(l->type) + " and " + typeNodeToColoredStr(r->type), op->loc);
     }
 }
 
@@ -55,7 +55,7 @@ TypedValue* Compiler::compMul(TypedValue *l, TypedValue *r, BinOpNode *op){
             return new TypedValue(builder.CreateFMul(l->val, r->val), l->type);
 
         default:
-            return compErr("binary operator * is undefined for the type " + llvmTypeToStr(l->getType()) + " and " + llvmTypeToStr(r->getType()), op->loc);
+            return compErr("binary operator * is undefined for the type " + typeNodeToColoredStr(l->type) + " and " + typeNodeToColoredStr(r->type), op->loc);
     }
 }
 
@@ -77,7 +77,7 @@ TypedValue* Compiler::compDiv(TypedValue *l, TypedValue *r, BinOpNode *op){
             return new TypedValue(builder.CreateFDiv(l->val, r->val), l->type);
 
         default: 
-            return compErr("binary operator / is undefined for the type " + llvmTypeToStr(l->getType()) + " and " + llvmTypeToStr(r->getType()), op->loc);
+            return compErr("binary operator / is undefined for the type " + typeNodeToColoredStr(l->type) + " and " + typeNodeToColoredStr(r->type), op->loc);
     }
 }
 
@@ -99,7 +99,7 @@ TypedValue* Compiler::compRem(TypedValue *l, TypedValue *r, BinOpNode *op){
             return new TypedValue(builder.CreateFRem(l->val, r->val), l->type);
 
         default:
-            return compErr("binary operator % is undefined for the types " + llvmTypeToStr(l->getType()) + " and " + llvmTypeToStr(r->getType()), op->loc);
+            return compErr("binary operator % is undefined for the types " + typeNodeToColoredStr(l->type) + " and " + typeNodeToColoredStr(r->type), op->loc);
     }
 }
 
@@ -125,7 +125,7 @@ TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
     }
     
     if(!isIntTypeTag(r->type->type)){
-        return compErr("Index of operator '[' must be an integer expression, got expression of type " + typeNodeToStr(r->type.get()), op->loc);
+        return compErr("Index of operator '[' must be an integer expression, got expression of type " + typeNodeToColoredStr(r->type), op->loc);
     }
 
     if(l->type->type == TT_Array){
@@ -156,7 +156,7 @@ TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
         if(!indexTyn && l->type->type == TT_Data){
             auto *dataty = lookupType(l->type->typeName);
             if(!dataty)
-                return compErr("Error when attempting to index variable of type " + typeNodeToStr(l->type.get()), op->loc);
+                return compErr("Error when attempting to index variable of type " + typeNodeToColoredStr(l->type), op->loc);
 
             indexTyn = dataty->tyn->extTy.get();
         }
@@ -187,7 +187,7 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
     //if(!dynamic_cast<LoadInst*>(tmp->val))
     if(!tmp->hasModifier(Tok_Mut))
         return compErr("Variable must be mutable to insert values, but instead is an immutable " +
-                typeNodeToStr(tmp->type.get()), op->lval->loc);
+                typeNodeToColoredStr(tmp->type), op->lval->loc);
 
     Value *var = static_cast<LoadInst*>(tmp->val)->getPointerOperand();
     if(!var) return 0;
@@ -200,16 +200,16 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
     switch(tmp->type->type){
         case TT_Array: {
             if(!typeEq(tmp->type->extTy.get(), newVal->type.get()))
-                return compErr("Cannot create store of types: "+typeNodeToStr(tmp->type.get())+" <- "
-                        +typeNodeToStr(newVal->type.get()), assignExpr->loc);
+                return compErr("Cannot create store of types: "+typeNodeToColoredStr(tmp->type)+" <- "
+                        +typeNodeToColoredStr(newVal->type), assignExpr->loc);
 
             builder.CreateInsertElement(tmp->val, newVal->val, index->val);
             return getVoidLiteral();
         }
         case TT_Ptr: {
             if(!typeEq(tmp->type->extTy.get(), newVal->type.get()))
-                return compErr("Cannot create store of types: "+typeNodeToStr(tmp->type.get())+" <- "
-                        +typeNodeToStr(newVal->type.get()), assignExpr->loc);
+                return compErr("Cannot create store of types: "+typeNodeToColoredStr(tmp->type)+" <- "
+                        +typeNodeToColoredStr(newVal->type), assignExpr->loc);
 
             Value *dest = builder.CreateInBoundsGEP(tmp->getType()->getPointerElementType(), tmp->val, index->val);
             builder.CreateStore(newVal->val, dest);
@@ -239,7 +239,7 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
         }
         default:
             return compErr("Variable being indexed must be an Array or Tuple, but instead is a(n) " +
-                    typeNodeToStr(tmp->type.get()), op->loc); }
+                    typeNodeToColoredStr(tmp->type), op->loc); }
 }
 
 /*
@@ -371,8 +371,8 @@ TypedValue* TypeCastNode::compile(Compiler *c){
         if(c->typeEq(rtval->type.get(), typeExpr.get()))
             return c->compErr("Typecast to same type", loc);
         
-        return c->compErr("Invalid type cast " + typeNodeToStr(rtval->type.get()) + 
-                " -> " + typeNodeToStr(typeExpr.get()), loc);
+        return c->compErr("Invalid type cast " + typeNodeToColoredStr(rtval->type) + 
+                " -> " + typeNodeToColoredStr(typeExpr), loc);
     }else{
         return tval;
     }
@@ -450,8 +450,8 @@ TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Ty
 
 
         if(!c->typeEq(thenVal->type.get(), elseVal->type.get()) && !dyn_cast<ReturnInst>(thenVal->val) && !dyn_cast<ReturnInst>(elseVal->val))
-            return c->compErr("If condition's then expr's type " + typeNodeToStr(thenVal->type.get()) +
-                            " does not match the else expr's type " + typeNodeToStr(elseVal->type.get()), ifn->loc);
+            return c->compErr("If condition's then expr's type " + typeNodeToColoredStr(thenVal->type) +
+                            " does not match the else expr's type " + typeNodeToColoredStr(elseVal->type), ifn->loc);
 
 
         c->builder.SetInsertPoint(mergebb);
@@ -498,7 +498,7 @@ TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *bino
             return compErr("Multiple static methods of the same name with different parameters are currently unimplemented.  In the mean time, you can use global functions.", field->loc);
 
         return compErr("No static method called '" + field->name + "' was found in type " + 
-                typeNodeToStr(tn), binop->loc);
+                typeNodeToColoredStr(tn), binop->loc);
     }else{
         //ln is not a typenode, so this is not a static method call
         Value *val;
@@ -562,7 +562,7 @@ TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *bino
         }else if(l.size() > 1)
             return compErr("Multiple methods of the same name with different parameters are currently unimplemented.  In the mean time, you can use global functions.", field->loc);
         else
-            return compErr("Method/Field " + field->name + " not found in type " + typeNodeToStr(tyn), binop->loc);
+            return compErr("Method/Field " + field->name + " not found in type " + typeNodeToColoredStr(tyn), binop->loc);
     }
 }
 
@@ -801,7 +801,7 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
     //make sure the l val compiles to a function
     if(tvf->type->type != TT_Function && tvf->type->type != TT_Method && tvf->type->type != TT_MetaFunction)
         return c->compErr("Called value is not a function or method, it is a(n) " + 
-                llvmTypeToStr(tvf->getType()), l->loc);
+                typeNodeToColoredStr(tvf->type), l->loc);
 
     //now that we assured it is a function, unwrap it
     Function *f = (Function*)tvf->val;
@@ -836,7 +836,6 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
     for(auto tArg : typedArgs){
         if(!paramTy) break;
 
-        //NOTE: llvmTypeEq tests by structural equality, TypeNode::operator== checks nominal equality
         if(!c->typeEq(tArg->type.get(), paramTy)){
             //param types not equal; check for implicit conversion
             if(isNumericTypeTag(tArg->type->type) && isNumericTypeTag(paramTy->type)){
@@ -875,8 +874,8 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
                            ? ((TupleNode*)r)->exprs[i-1]->loc
                            : r->loc;
 
-                return c->compErr("Argument " + to_string(i) + " of function is a(n) " + typeNodeToStr(tArg->type.get())
-                    + " but was declared to be a(n) " + typeNodeToStr(paramTy) + " and there is no known implicit cast", loc);
+                return c->compErr("Argument " + to_string(i) + " of function is a(n) " + typeNodeToColoredStr(tArg->type)
+                    + " but was declared to be a(n) " + typeNodeToColoredStr(paramTy) + " and there is no known implicit cast", loc);
             }
         }
         paramTy = (TypeNode*)paramTy->next.get();
@@ -919,7 +918,7 @@ TypedValue* Compiler::compLogicalOr(Node *lexpr, Node *rexpr, BinOpNode *op){
     builder.CreateBr(mergebb);
     
     if(rhs->type->type != TT_Bool)
-        return compErr("The 'or' operator's rval must be of type bool, but instead is of type "+typeNodeToStr(rhs->type.get()), op->rval->loc);
+        return compErr("The 'or' operator's rval must be of type bool, but instead is of type "+typeNodeToColoredStr(rhs->type), op->rval->loc);
 
     builder.SetInsertPoint(mergebb);
     auto *phi = builder.CreatePHI(rhs->getType(), 2);
@@ -956,7 +955,7 @@ TypedValue* Compiler::compLogicalAnd(Node *lexpr, Node *rexpr, BinOpNode *op){
     builder.CreateBr(mergebb);
 
     if(rhs->type->type != TT_Bool)
-        return compErr("The 'and' operator's rval must be of type bool, but instead is of type "+typeNodeToStr(rhs->type.get()), op->rval->loc);
+        return compErr("The 'and' operator's rval must be of type bool, but instead is of type "+typeNodeToColoredStr(rhs->type), op->rval->loc);
 
     builder.SetInsertPoint(mergebb);
     auto *phi = builder.CreatePHI(rhs->getType(), 2);
@@ -1032,7 +1031,7 @@ TypedValue* handlePrimitiveNumericOp(BinOpNode *bop, Compiler *c, TypedValue *lh
                         return new TypedValue(c->builder.CreateICmpSGE(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
         default:
             return c->compErr("Operator " + Lexer::getTokStr(bop->op) + " is not overloaded for types "
-                   + typeNodeToStr(lhs->type.get()) + " and " + typeNodeToStr(rhs->type.get()), bop->loc);
+                   + typeNodeToColoredStr(lhs->type) + " and " + typeNodeToColoredStr(rhs->type), bop->loc);
     }
 }
 
@@ -1099,7 +1098,7 @@ TypedValue* BinOpNode::compile(Compiler *c){
     }
 
     return c->compErr("Operator " + Lexer::getTokStr(op) + " is not overloaded for types "
-            + typeNodeToStr(lhs->type.get()) + " and " + typeNodeToStr(rhs->type.get()), loc);
+            + typeNodeToColoredStr(lhs->type) + " and " + typeNodeToColoredStr(rhs->type), loc);
 }
 
 
@@ -1110,7 +1109,7 @@ TypedValue* UnOpNode::compile(Compiler *c){
     switch(op){
         case '@': //pointer dereference
             if(rhs->type->type != TT_Ptr){
-                return c->compErr("Cannot dereference non-pointer type " + llvmTypeToStr(rhs->getType()), loc);
+                return c->compErr("Cannot dereference non-pointer type " + typeNodeToColoredStr(rhs->type), loc);
             }
            
             return new TypedValue(c->builder.CreateLoad(rhs->val), rhs->type->extTy);
@@ -1129,7 +1128,7 @@ TypedValue* UnOpNode::compile(Compiler *c){
             return new TypedValue(c->builder.CreateNeg(rhs->val), rhs->type);
         case Tok_Not:
             if(rhs->type->type != TT_Bool)
-                return c->compErr("Unary not operator not overloaded for type " + typeNodeToStr(rhs->type.get()), loc);
+                return c->compErr("Unary not operator not overloaded for type " + typeNodeToColoredStr(rhs->type), loc);
 
             return new TypedValue(c->builder.CreateNot(rhs->val), rhs->type);
         case Tok_New:

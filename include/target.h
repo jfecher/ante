@@ -139,31 +139,4 @@
 #endif
 
 
-#ifndef _WIN32
-#  define AN_CONSOLE_COLOR_RED "\033[;31m"
-#  define AN_CONSOLE_RESET "\033[;m"
-#  define AN_CONSOLE_ITALICS "\033[;3m"
-#  define AN_CONSOLE_BOLD "\033[;1m"
-#else
-#  define AN_CONSOLE_COLOR_RED win_console_color::red
-#  define AN_CONSOLE_RESET win_console_color::white
-#  define AN_CONSOLE_ITALICS ""
-#  define AN_CONSOLE_BOLD ""
-
-#include <windows.h>
-
-//thanks to Eklavya Sharma: http://www.cplusplus.com/articles/2ywTURfi/
-namespace ante {
-	enum win_console_color {
-		black = 0, darkblue = 1, darkgreen = 2, darkcyan = 3, darkred = 4, darkmagenta = 5, darkyellow = 6, darkwhite = 7,
-		gray = 8,      blue = 9,     green = 10,    cyan = 11,    red = 12,    magenta = 13,    yellow = 14,    white = 15
-	};
-}
-
-win_console_color getBackgroundColor();
-void setcolor(win_console_color foreColor, win_console_color backColor);
-std::ostream& operator<<(std::ostream& os, win_console_color color);
-
-#endif
-
 #endif

@@ -94,7 +94,7 @@ void PreProcNode::print(){
  * could also just #include "compiler.h",
  * but that's a bit overkill for one function
  */
-string typeNodeToStr(TypeNode*);
+string typeNodeToStr(const TypeNode*);
 
 void TypeNode::print(){
     cout << typeNodeToStr(this);
