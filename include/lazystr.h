@@ -19,7 +19,7 @@ using namespace std;
 
 //older versions of windows do not understand escape sequences, use winAPI instead
 #else
-#  define AN_CONSOLE_RESET win_console_color::white
+#  define AN_CONSOLE_RESET win_console_color::darkwhite
 #  define AN_CONSOLE_ITALICS ""
 #  define AN_CONSOLE_BOLD ""
 

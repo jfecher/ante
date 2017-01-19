@@ -138,5 +138,4 @@
 #  define AN_TARGET_TRIPLE AN_NATIVE_ARCH "-" AN_NATIVE_VENDOR "-" AN_NATIVE_OS
 #endif
 
-
 #endif
