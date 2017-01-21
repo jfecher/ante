@@ -13,6 +13,13 @@ fun three :=
     puts "three called!" //prints during compile-time when the return value is substituted for this function call
     3
 
+//test compile-time evaluation of user defined functions
 print three{}
 
-print three{}
+//test it again to ensure it is re-evaluated completely
+let res = three()
+
+//test compapi function Ante.debug which prints type and value of any value
+//In this case it should print i32 for the type and show its value as the intlit 3,
+//NOT a function call, because macro calls are replaced directly with the return value.
+Ante.debug res

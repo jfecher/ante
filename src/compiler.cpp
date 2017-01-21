@@ -61,7 +61,7 @@ bool isUnsignedTypeTag(const TypeTag tt){
 
 
 TypedValue* IntLitNode::compile(Compiler *c){
-    return new TypedValue(ConstantInt::get(c->ctxt,
+    return new TypedValue(ConstantInt::get(*c->ctxt,
                             APInt(getBitWidthOfTypeTag(type), 
                             atol(val.c_str()), isUnsignedTypeTag(type))), mkAnonTypeNode(type));
 }
@@ -77,12 +77,12 @@ const fltSemantics& typeTagToFltSemantics(TypeTag tokTy){
 }
 
 TypedValue* FltLitNode::compile(Compiler *c){
-    return new TypedValue(ConstantFP::get(c->ctxt, APFloat(typeTagToFltSemantics(type), val.c_str())), mkAnonTypeNode(type));
+    return new TypedValue(ConstantFP::get(*c->ctxt, APFloat(typeTagToFltSemantics(type), val.c_str())), mkAnonTypeNode(type));
 }
 
 
 TypedValue* BoolLitNode::compile(Compiler *c){
-    return new TypedValue(ConstantInt::get(c->ctxt, APInt(1, (bool)val, true)), mkAnonTypeNode(TT_Bool));
+    return new TypedValue(ConstantInt::get(*c->ctxt, APInt(1, (bool)val, true)), mkAnonTypeNode(TT_Bool));
 }
 
 
@@ -100,7 +100,7 @@ TypedValue* TypeNode::compile(Compiler *c){
         auto *unionDataTy = c->lookupType(dataTy->getParentUnionName());
         if(!unionDataTy) return 0;
 
-        Value *tag = ConstantInt::get(c->ctxt, APInt(8, unionDataTy->getTagVal(typeName), true));
+        Value *tag = ConstantInt::get(*c->ctxt, APInt(8, unionDataTy->getTagVal(typeName), true));
         auto *ty = deepCopyTypeNode(unionDataTy->tyn.get());
 
         Type *unionTy = c->typeNodeToLlvmType(ty);
@@ -221,12 +221,12 @@ TypedValue* StrLitNode::compile(Compiler *c){
 
     auto *ptr = c->builder.CreateGlobalStringPtr(val);
 
-	vector<Type*> tys = {Type::getInt8PtrTy(c->ctxt), Type::getInt32Ty(c->ctxt)};
-    auto* tupleTy = StructType::get(c->ctxt, tys);
+	vector<Type*> tys = {Type::getInt8PtrTy(*c->ctxt), Type::getInt32Ty(*c->ctxt)};
+    auto* tupleTy = StructType::get(*c->ctxt, tys);
     
 	vector<Constant*> strarr = {
-		UndefValue::get(Type::getInt8PtrTy(c->ctxt)),
-		ConstantInt::get(c->ctxt, APInt(8, val.length(), true))
+		UndefValue::get(Type::getInt8PtrTy(*c->ctxt)),
+		ConstantInt::get(*c->ctxt, APInt(8, val.length(), true))
 	};
 
     auto *uninitStr = ConstantStruct::get(tupleTy, strarr);
@@ -236,7 +236,7 @@ TypedValue* StrLitNode::compile(Compiler *c){
 }
 
 TypedValue* CharLitNode::compile(Compiler *c){
-    return new TypedValue(ConstantInt::get(c->ctxt, APInt(8, val, true)), mkAnonTypeNode(TT_C8));
+    return new TypedValue(ConstantInt::get(*c->ctxt, APInt(8, val, true)), mkAnonTypeNode(TT_C8));
 }
 
 
@@ -244,14 +244,21 @@ TypedValue* ArrayNode::compile(Compiler *c){
     vector<Constant*> arr;
     TypeNode *tyn = mkAnonTypeNode(TT_Array);
 
+    int i = 1;
     for(auto& n : exprs){
         auto *tval = n->compile(c);
         if(!tval) return 0;
 
         arr.push_back((Constant*)tval->val);
 
-        if(!tyn->extTy.get())
+        if(!tyn->extTy.get()){
             tyn->extTy.reset(tval->type.get());
+        }else{
+            if(!c->typeEq(tval->type.get(), tyn->extTy.get()))
+                return c->compErr("Element " + to_string(i) + "'s type " + typeNodeToColoredStr(tval->type) +
+                        " does not match the first element's type of " + typeNodeToColoredStr(tyn->extTy), n->loc);
+        }
+        i++;
     }
 
     tyn->extTy->next.reset(new IntLitNode(tyn->loc, to_string(exprs.size()), TT_U32));
@@ -271,7 +278,7 @@ TypedValue* ArrayNode::compile(Compiler *c){
  */
 TypedValue* Compiler::getVoidLiteral(){
     return new TypedValue(
-            UndefValue::get(Type::getInt8Ty(ctxt)),
+            UndefValue::get(Type::getInt8Ty(*ctxt)),
             mkAnonTypeNode(TT_Void)
     );
 }
@@ -314,7 +321,7 @@ TypedValue* TupleNode::compile(Compiler *c){
     }
 
     //Create the constant tuple with undef values in place for the non-constant values
-    Value* tuple = ConstantStruct::get(StructType::get(c->ctxt, elemTys), elems);
+    Value* tuple = ConstantStruct::get(StructType::get(*c->ctxt, elemTys), elems);
 
     //Insert each pathogen value into the tuple individually
     for(auto it = pathogenVals.cbegin(); it != pathogenVals.cend(); it++){
@@ -374,9 +381,9 @@ TypedValue* ImportNode::compile(Compiler *c){
 
 TypedValue* WhileNode::compile(Compiler *c){
     Function *f = c->builder.GetInsertBlock()->getParent();
-    BasicBlock *cond  = BasicBlock::Create(c->ctxt, "while_cond", f);
-    BasicBlock *begin = BasicBlock::Create(c->ctxt, "while", f);
-    BasicBlock *end   = BasicBlock::Create(c->ctxt, "end_while", f);
+    BasicBlock *cond  = BasicBlock::Create(*c->ctxt, "while_cond", f);
+    BasicBlock *begin = BasicBlock::Create(*c->ctxt, "while", f);
+    BasicBlock *end   = BasicBlock::Create(*c->ctxt, "end_while", f);
 
     c->builder.CreateBr(cond);
     c->builder.SetInsertPoint(cond);
@@ -399,9 +406,9 @@ TypedValue* ForNode::compile(Compiler *c){
     assert(false && "For loops are still unimplemented.");
 
     Function *f = c->builder.GetInsertBlock()->getParent();
-    BasicBlock *cond  = BasicBlock::Create(c->ctxt, "for_cond", f);
-    BasicBlock *begin = BasicBlock::Create(c->ctxt, "for", f);
-    BasicBlock *end   = BasicBlock::Create(c->ctxt, "end_for", f);
+    BasicBlock *cond  = BasicBlock::Create(*c->ctxt, "for_cond", f);
+    BasicBlock *begin = BasicBlock::Create(*c->ctxt, "for", f);
+    BasicBlock *end   = BasicBlock::Create(*c->ctxt, "end_for", f);
 
     c->builder.CreateBr(cond);
     c->builder.SetInsertPoint(cond);
@@ -530,10 +537,9 @@ TypedValue* VarDeclNode::compile(Compiler *c){
         var->noFree = true;//var->getType() != TT_Ptr || dynamic_cast<Constant*>(val->val);
         
         //Make sure the assigned value matches the variable's type
-        if(!llvmTypeEq(alloca->getType()->getPointerElementType(), val->getType())){
-            return c->compErr("Cannot assign expression of type " + llvmTypeToStr(val->getType())
-                        + " to a variable of type " + llvmTypeToStr(alloca->getType()->getPointerElementType()),
-                        expr->loc);
+        if(!c->typeEq(alloca->type->extTy.get(), val->type.get())){
+            return c->compErr("Cannot assign expression of type " + typeNodeToColoredStr(val->type)
+                        + " to a variable of type " + typeNodeToColoredStr(alloca->type->extTy), expr->loc);
         }
 
         //transfer ownership of val->type
@@ -634,7 +640,7 @@ TypedValue* VarAssignNode::compile(Compiler *c){
     //if(!dynamic_cast<LoadInst*>(tmp->val))
     if(!tmp->hasModifier(Tok_Mut))
         return c->compErr("Variable must be mutable to be assigned to, but instead is an immutable " +
-                llvmTypeToStr(tmp->getType()), ref_expr->loc);
+                typeNodeToColoredStr(tmp->type), ref_expr->loc);
     
     Value *dest = ((LoadInst*)tmp->val)->getPointerOperand();
     
@@ -647,14 +653,13 @@ TypedValue* VarAssignNode::compile(Compiler *c){
     //lvalue must compile to a pointer for storage, usually an alloca value
     if(!PointerType::isLoadableOrStorableType(tmp->getType())){
         return c->compErr("Attempted assign without a memory address, with type "
-                + llvmTypeToStr(tmp->getType()), ref_expr->loc);
+                + typeNodeToColoredStr(tmp->type), ref_expr->loc);
     }
 
     //and finally, make sure the assigned value matches the variable's type
     if(!llvmTypeEq(tmp->getType(), assignExpr->getType())){
-        return c->compErr("Cannot assign expression of type " + llvmTypeToStr(assignExpr->getType())
-                    + " to a variable of type " + llvmTypeToStr(tmp->getType()),
-                    expr->loc);
+        return c->compErr("Cannot assign expression of type " + typeNodeToColoredStr(assignExpr->type)
+                    + " to a variable of type " + typeNodeToColoredStr(tmp->type), expr->loc);
     }
 
     //now actually create the store
@@ -714,14 +719,14 @@ void addAllArgAttrs(Function *f, NamedValNode *params){
 
 TypedValue* Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
     auto *fdn = fd->fdn;
-    FunctionType *preFnTy = FunctionType::get(Type::getVoidTy(ctxt), paramTys, fdn->varargs);
+    FunctionType *preFnTy = FunctionType::get(Type::getVoidTy(*ctxt), paramTys, fdn->varargs);
 
     //preFn is the predecessor to fn because we do not yet know its return type, so its body must be compiled,
     //then the type must be checked and the new function with correct return type created, and their bodies swapped.
     Function *preFn = Function::Create(preFnTy, Function::ExternalLinkage, "__lambda_pre__", module.get());
 
     //Create the entry point for the function
-    BasicBlock *entry = BasicBlock::Create(ctxt, "entry", preFn);
+    BasicBlock *entry = BasicBlock::Create(*ctxt, "entry", preFn);
     builder.SetInsertPoint(entry);
  
     TypeNode *fakeFnTyn = mkAnonTypeNode(TT_Function);
@@ -872,7 +877,7 @@ TypedValue* compCompilerDirectiveFn(Compiler *c, FuncDecl *fd, PreProcNode *ppn)
             auto *mod = c->module.get();
             c->module.release();
 
-            c->module.reset(new llvm::Module(fdn->name, c->ctxt));
+            c->module.reset(new llvm::Module(fdn->name, *c->ctxt));
             auto *recomp = c->compFn(fd);
 
             c->jitFunction((Function*)recomp->val);
@@ -943,7 +948,7 @@ TypedValue* compFnHelper(Compiler *c, FuncDecl *fd){
     //If the function is a definition, then the body will be compiled here.
     if(fdn->child){
         //Create the entry point for the function
-        BasicBlock *bb = BasicBlock::Create(c->ctxt, "entry", f);
+        BasicBlock *bb = BasicBlock::Create(*c->ctxt, "entry", f);
         c->builder.SetInsertPoint(bb);
 
         //tell the compiler to create a new scope on the stack.
@@ -1049,7 +1054,9 @@ TypedValue* FuncDeclNode::compile(Compiler *c){
     }else{
         //Otherwise, if it is a lambda function, compile it now and return it.
         FuncDecl fd(this, c->scope, c->mergedCompUnits);
-        return c->compFn(&fd);
+        auto *ret = c->compFn(&fd);
+        fd.fdn = 0;
+        return ret;
     }
 }
 
@@ -1267,13 +1274,13 @@ TypedValue* MatchNode::compile(Compiler *c){
     Function *f = c->builder.GetInsertBlock()->getParent();
     auto *matchbb = c->builder.GetInsertBlock();
 
-    auto *end = BasicBlock::Create(c->ctxt, "end_match");
+    auto *end = BasicBlock::Create(*c->ctxt, "end_match");
     auto *match = c->builder.CreateSwitch(switchVal, end, branches.size());
     vector<pair<BasicBlock*,TypedValue*>> merges;
 
     for(auto& mbn : branches){
         ConstantInt *ci = nullptr;
-        auto *br = BasicBlock::Create(c->ctxt, "br", f);
+        auto *br = BasicBlock::Create(*c->ctxt, "br", f);
         c->builder.SetInsertPoint(br);
         c->enterNewScope();
 
@@ -1287,7 +1294,7 @@ TypedValue* MatchNode::compile(Compiler *c){
                 return c->compErr(typeNodeToColoredStr(tn->typeExpr) + " must be a union tag to be used in a pattern", tn->typeExpr->loc);
 
             auto *parentTy = c->lookupType(tagTy->getParentUnionName());
-            ci = ConstantInt::get(c->ctxt, APInt(8, parentTy->getTagVal(tn->typeExpr->typeName), true));
+            ci = ConstantInt::get(*c->ctxt, APInt(8, parentTy->getTagVal(tn->typeExpr->typeName), true));
 
             
             if(VarNode *v = dynamic_cast<VarNode*>(tn->rval.get())){
@@ -1295,7 +1302,7 @@ TypedValue* MatchNode::compile(Compiler *c){
                 c->builder.CreateStore(lval->val, alloca);
 
                 //cast it from (<tag type>, <largest union member type>) to (<tag type>, <this union member's type>)
-                auto *tupTy = StructType::get(c->ctxt, {Type::getInt8Ty(c->ctxt), c->typeNodeToLlvmType(tagTy->tyn.get())});
+                auto *tupTy = StructType::get(*c->ctxt, {Type::getInt8Ty(*c->ctxt), c->typeNodeToLlvmType(tagTy->tyn.get())});
 
                 auto *cast = c->builder.CreateBitCast(alloca, tupTy->getPointerTo());
                 auto *tup = c->builder.CreateLoad(cast);
@@ -1315,7 +1322,7 @@ TypedValue* MatchNode::compile(Compiler *c){
                 return c->compErr(typeNodeToColoredStr(tn) + " must be a union tag to be used in a pattern", tn->loc);
 
             auto *parentTy = c->lookupType(tagTy->getParentUnionName());
-            ci = ConstantInt::get(c->ctxt, APInt(8, parentTy->getTagVal(tn->typeName), true));
+            ci = ConstantInt::get(*c->ctxt, APInt(8, parentTy->getTagVal(tn->typeName), true));
 
         //variable/match-all pattern: _
         }else if(VarNode *vn = dynamic_cast<VarNode*>(mbn->pattern.get())){
@@ -1631,14 +1638,14 @@ void Compiler::eval(){
 
 Function* Compiler::createMainFn(){
     //get or create the function type for the main method: void()
-    FunctionType *ft = FunctionType::get(Type::getInt32Ty(ctxt), false);
+    FunctionType *ft = FunctionType::get(Type::getInt32Ty(*ctxt), false);
     
     //Actually create the function in module m
     string fnName = isLib ? "init_" + removeFileExt(fileName) : "main";
     Function *main = Function::Create(ft, Function::ExternalLinkage, fnName, module.get());
 
     //Create the entry point for the function
-    BasicBlock *bb = BasicBlock::Create(ctxt, "entry", main);
+    BasicBlock *bb = BasicBlock::Create(*ctxt, "entry", main);
     builder.SetInsertPoint(bb);
  
     return main;
@@ -1658,7 +1665,7 @@ void Compiler::compile(){
     //Compile the rest of the program
     delete ast->compile(this);
     
-    builder.CreateRet(ConstantInt::get(ctxt, APInt(32, 0)));
+    builder.CreateRet(ConstantInt::get(*ctxt, APInt(32, 0)));
     
     passManager->run(*main);
 
@@ -1922,8 +1929,8 @@ legacy::FunctionPassManager* mkPassManager(llvm::Module *m, char optLvl){
 }
 
 Compiler::Compiler(const char *_fileName, bool lib) :
-        ctxt(),
-        builder(ctxt), 
+        ctxt(new LLVMContext()),
+        builder(*ctxt), 
         compUnit(new ante::Module()),
         mergedCompUnits(new ante::Module()),
         errFlag(false),
@@ -1952,7 +1959,7 @@ Compiler::Compiler(const char *_fileName, bool lib) :
 	if (outFile.empty())
 		outFile = "a";
 
-    module.reset(new llvm::Module(outFile, ctxt));
+    module.reset(new llvm::Module(outFile, *ctxt));
 
     enterNewScope();
 
@@ -1961,8 +1968,8 @@ Compiler::Compiler(const char *_fileName, bool lib) :
 }
 
 Compiler::Compiler(Node *root, string modName, string &fName, bool lib) :
-        ctxt(),
-        builder(ctxt),
+        ctxt(new LLVMContext()),
+        builder(*ctxt),
         compUnit(new ante::Module()),
         mergedCompUnits(new ante::Module()),
         errFlag(false),
@@ -1974,7 +1981,7 @@ Compiler::Compiler(Node *root, string modName, string &fName, bool lib) :
         scope(0){
 
     ast.reset(root);
-    module.reset(new llvm::Module(outFile, ctxt));
+    module.reset(new llvm::Module(outFile, *ctxt));
     
     enterNewScope();
 

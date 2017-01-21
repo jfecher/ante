@@ -67,7 +67,7 @@ TypedValue* Compiler::implicitlyWidenNum(TypedValue *num, TypeTag castTy){
 
         int lbw = getBitWidthOfTypeTag(num->type->type);
         int rbw = getBitWidthOfTypeTag(castTy);
-        Type *ty = typeTagToLlvmType(castTy, ctxt);
+        Type *ty = typeTagToLlvmType(castTy, *ctxt);
 
         //integer widening
         if(lIsInt && rIsInt){
@@ -237,7 +237,6 @@ Type* typeTagToLlvmType(TypeTag ty, LLVMContext &ctxt, string typeName){
         case TT_Bool:   return Type::getInt1Ty(ctxt);
         case TT_Void:   return Type::getVoidTy(ctxt);
         case TT_TypeVar:
-            cerr << "WARNING: typevars should not be converted to llvm types!\n";
             return nullptr;
         default:
             cerr << "typeTagToLlvmType: Unknown/Unsupported TypeTag " << ty << ", returning nullptr.\n";
@@ -285,7 +284,7 @@ Type* Compiler::typeNodeToLlvmType(const TypeNode *tyNode){
         case TT_Ptr:
             return tyn->type != TT_Void ?
                 PointerType::get(typeNodeToLlvmType(tyn), 0)
-                : Type::getInt8Ty(ctxt)->getPointerTo();
+                : Type::getInt8Ty(*ctxt)->getPointerTo();
         case TT_Array:{
             auto *intlit = (IntLitNode*)tyn->next.get();
             return ArrayType::get(typeNodeToLlvmType(tyn), stoi(intlit->val));
@@ -295,7 +294,7 @@ Type* Compiler::typeNodeToLlvmType(const TypeNode *tyNode){
                 tys.push_back(typeNodeToLlvmType(tyn));
                 tyn = (TypeNode*)tyn->next.get();
             }
-            return StructType::get(ctxt, tys);
+            return StructType::get(*ctxt, tys);
         case TT_Data:
             userType = lookupType(tyNode->typeName);
             if(!userType)
@@ -325,9 +324,9 @@ Type* Compiler::typeNodeToLlvmType(const TypeNode *tyNode){
                 tys.push_back(typeNodeToLlvmType(tyn));
                 tyn = (TypeNode*)tyn->next.get();
             }
-            return StructType::get(ctxt, tys);
+            return StructType::get(*ctxt, tys);
         default:
-            return typeTagToLlvmType(tyNode->type, ctxt);
+            return typeTagToLlvmType(tyNode->type, *ctxt);
     }
 }
 

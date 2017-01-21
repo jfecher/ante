@@ -8,6 +8,8 @@
 
 
 void copyDecls(const Compiler *src, Compiler *dest){
+    //dest->ctxt = src->ctxt;
+
     dest->compUnit = src->compUnit;
 
     dest->mergedCompUnits = src->mergedCompUnits;
@@ -22,22 +24,22 @@ void copyDecls(const Compiler *src, Compiler *dest){
  * and copies any functions that are needed by the copied function
  * into the new module as well.
  */
-llvm::Module* wrapFnInModule(Compiler *c, Function *f){
-    Compiler ccpy{c->ast.get(), f->getName(), c->fileName};
-    copyDecls(c, &ccpy);
-    
+unique_ptr<Compiler> wrapFnInModule(Compiler *c, Function *f){
+    unique_ptr<Compiler> ccpy{new Compiler(c->ast.get(), f->getName(), c->fileName)};
+    copyDecls(c, ccpy.get());
+
     //create an empty main function to avoid crashes with compFn when
     //trying to return to the caller function
-    ccpy.createMainFn();
+    ccpy->createMainFn();
     //the ret comes separate
-    ccpy.builder.CreateRet(ConstantInt::get(ccpy.ctxt, APInt(32, 1)));
+    ccpy->builder.CreateRet(ConstantInt::get(*ccpy->ctxt, APInt(32, 1)));
 
     string name = f->getName().str();
 
-    auto& flist = ccpy.getFunctionList(name);
+    auto& flist = ccpy->getFunctionList(name);
 
     if(flist.size() == 1){
-        ccpy.compFn((*flist.begin()).get());
+        ccpy->compFn((*flist.begin()).get());
     }else if(flist.empty()){
         cerr << "No function '" << name << "'\n";
         c->errFlag = true;
@@ -48,5 +50,5 @@ llvm::Module* wrapFnInModule(Compiler *c, Function *f){
         return 0;
     }
 
-    return ccpy.module.release();
+    return ccpy;
 }

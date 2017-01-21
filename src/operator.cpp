@@ -134,7 +134,7 @@ TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
             Value *arr = li->getPointerOperand();
             
             vector<Value*> indices;
-            indices.push_back(ConstantInt::get(ctxt, APInt(64, 0, true)));
+            indices.push_back(ConstantInt::get(*ctxt, APInt(64, 0, true)));
             indices.push_back(r->val);
             return new TypedValue(builder.CreateLoad(builder.CreateGEP(arr, indices)), l->type->extTy);
         }else{
@@ -167,7 +167,7 @@ TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
         Value *tup = llvmTypeToTypeTag(l->getType()) == TT_Ptr ? builder.CreateLoad(l->val) : l->val;
         return new TypedValue(builder.CreateExtractValue(tup, index), deepCopyTypeNode(indexTyn));
     }
-    return compErr("Type " + llvmTypeToStr(l->getType()) + " does not have elements to access", op->loc);
+    return compErr("Type " + typeNodeToColoredStr(l->type) + " does not have elements to access", op->loc);
 }
 
 
@@ -223,12 +223,12 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
                 auto tupIndex = tupIndexVal->getZExtValue();
 
                 //Type of element at tuple index tupIndex, for type checking
-                Type* tupIndexTy = tmp->val->getType()->getStructElementType(tupIndex);
-                Type* exprTy = newVal->getType();
+                auto* tupIndexTy = (TypeNode*)getNthNode(tmp->type->extTy.get(), tupIndex);
+                auto* exprTy = newVal->type.get();
 
-                if(!llvmTypeEq(tupIndexTy, exprTy)){
-                    return compErr("Cannot assign expression of type " + llvmTypeToStr(exprTy)
-                                + " to tuple index " + to_string(tupIndex) + " of type " + llvmTypeToStr(tupIndexTy),
+                if(!typeEq(tupIndexTy, exprTy)){
+                    return compErr("Cannot assign expression of type " + typeNodeToColoredStr(exprTy)
+                                + " to tuple index " + to_string(tupIndex) + " of type " + typeNodeToColoredStr(tupIndexTy),
                                 assignExpr->loc);
                 }
 
@@ -317,18 +317,18 @@ TypedValue* createCast(Compiler *c, Type *castTy, TypeNode *tyn, TypedValue *val
             Type *variantTy = c->typeNodeToLlvmType(valToCast->type.get());
 
             vector<Type*> unionTys;
-            unionTys.push_back(Type::getInt8Ty(c->ctxt));
+            unionTys.push_back(Type::getInt8Ty(*c->ctxt));
             unionTys.push_back(variantTy);
 
             vector<Constant*> unionVals;
-            unionVals.push_back(ConstantInt::get(c->ctxt, APInt(8, t, true))); //tag
+            unionVals.push_back(ConstantInt::get(*c->ctxt, APInt(8, t, true))); //tag
             unionVals.push_back(UndefValue::get(variantTy));
 
 
             Type *unionTy = c->typeNodeToLlvmType(unionDataTy->tyn.get());
 
             //create a struct of (u8 tag, <union member type>)
-            auto *uninitUnion = ConstantStruct::get(StructType::get(c->ctxt, unionTys), unionVals);
+            auto *uninitUnion = ConstantStruct::get(StructType::get(*c->ctxt, unionTys), unionVals);
             auto* taggedUnion = c->builder.CreateInsertValue(uninitUnion, valToCast->val, 1);
 
             //allocate for the largest possible union member
@@ -385,14 +385,14 @@ TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Ty
     Function *f = c->builder.GetInsertBlock()->getParent();
     auto &blocks = f->getBasicBlockList();
 
-    auto *thenbb = BasicBlock::Create(c->ctxt, "then");
+    auto *thenbb = BasicBlock::Create(*c->ctxt, "then");
    
     //only create the else block if this ifNode actually has an else clause
     BasicBlock *elsebb;
     
     if(ifn->elseN){
         if(dynamic_cast<IfNode*>(ifn->elseN.get())){
-            elsebb = BasicBlock::Create(c->ctxt, "else");
+            elsebb = BasicBlock::Create(*c->ctxt, "else");
             c->builder.CreateCondBr(cond->val, thenbb, elsebb);
     
             blocks.push_back(thenbb);
@@ -409,7 +409,7 @@ TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Ty
             c->builder.SetInsertPoint(elsebb);
             return compIf(c, (IfNode*)ifn->elseN.get(), mergebb, branches);
         }else{
-            elsebb = BasicBlock::Create(c->ctxt, "else");
+            elsebb = BasicBlock::Create(*c->ctxt, "else");
             c->builder.CreateCondBr(cond->val, thenbb, elsebb);
 
             blocks.push_back(thenbb);
@@ -475,7 +475,7 @@ TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Ty
 
 TypedValue* IfNode::compile(Compiler *c){
     auto branches = vector<pair<TypedValue*,BasicBlock*>>();
-    auto *mergebb = BasicBlock::Create(c->ctxt, "endif");
+    auto *mergebb = BasicBlock::Create(*c->ctxt, "endif");
     return compIf(c, this, mergebb, branches);
 }
 
@@ -628,9 +628,9 @@ TypedValue* genericValueToTypedValue(Compiler *c, GenericValue gv, TypeNode *tn)
         case TT_Usz:             return new TypedValue(c->builder.getInt64(*gv.IntVal.getRawData()),    copytn);
         case TT_C8:              return new TypedValue(c->builder.getInt8( *gv.IntVal.getRawData()),    copytn);
         case TT_C32:             return new TypedValue(c->builder.getInt32(*gv.IntVal.getRawData()),    copytn);
-        case TT_F16:             return new TypedValue(ConstantFP::get(c->ctxt, APFloat(gv.FloatVal)),  copytn);
-        case TT_F32:             return new TypedValue(ConstantFP::get(c->ctxt, APFloat(gv.FloatVal)),  copytn);
-        case TT_F64:             return new TypedValue(ConstantFP::get(c->ctxt, APFloat(gv.DoubleVal)), copytn);
+        case TT_F16:             return new TypedValue(ConstantFP::get(*c->ctxt, APFloat(gv.FloatVal)),  copytn);
+        case TT_F32:             return new TypedValue(ConstantFP::get(*c->ctxt, APFloat(gv.FloatVal)),  copytn);
+        case TT_F64:             return new TypedValue(ConstantFP::get(*c->ctxt, APFloat(gv.DoubleVal)), copytn);
         case TT_Bool:            return new TypedValue(c->builder.getInt1(*gv.IntVal.getRawData()),     copytn);
         case TT_Tuple:           break;
         case TT_Array:           break;
@@ -717,12 +717,16 @@ TypedValue* compMetaFunctionResult(Compiler *c, Node *lnode, TypedValue *l, vect
         LLVMInitializeNativeTarget();
         LLVMInitializeNativeAsmPrinter();
 
-        auto* mod = wrapFnInModule(c, (Function*)l->val);
+        auto mod_compiler = wrapFnInModule(c, (Function*)l->val);
+        if(mod_compiler->errFlag) return 0;
 
+        //the compiler created by wrapFnInModule shares a parse tree with this, so it must be released
+        mod_compiler->ast.release();
+
+        auto *mod = mod_compiler->module.release();
         if(!mod) return 0;
 
         auto* eBuilder = new EngineBuilder(unique_ptr<llvm::Module>(mod));
-
         string err;
 
         //set use interpreter; for some reason both MCJIT and its ORC replacement corrupt/free the memory
@@ -742,7 +746,15 @@ TypedValue* compMetaFunctionResult(Compiler *c, Node *lnode, TypedValue *l, vect
         auto *fn = jit->FindFunctionNamed(fnName.c_str());
         auto genret = jit->runFunction(fn, args);
 
-        //static_cast<Function*>(l->val)->removeFromParent();
+
+        //Get the compiled function and reset its tv to mark it as not compiled so that compilers that
+        //share the mergedCompUnits or just the ante::module the function was compiled in (c in this scope)
+        //do not try to call the soon-to-be deleted version of the function.
+        string fnname = l->val->getName().str();
+        auto &list = mod_compiler->getFunctionList(fnname);
+        if(list.size() == 1)
+            list.front()->tv = l;
+
         auto *ret = genericValueToTypedValue(c, genret, l->type->extTy.get());
         return ret;
     }
@@ -901,8 +913,8 @@ TypedValue* Compiler::compLogicalOr(Node *lexpr, Node *rexpr, BinOpNode *op){
     auto *lhs = lexpr->compile(this);
 
     auto *curbbl = builder.GetInsertBlock();
-    auto *orbb = BasicBlock::Create(ctxt, "or");
-    auto *mergebb = BasicBlock::Create(ctxt, "merge");
+    auto *orbb = BasicBlock::Create(*ctxt, "or");
+    auto *mergebb = BasicBlock::Create(*ctxt, "merge");
 
     builder.CreateCondBr(lhs->val, mergebb, orbb);
     blocks.push_back(orbb);
@@ -924,7 +936,7 @@ TypedValue* Compiler::compLogicalOr(Node *lexpr, Node *rexpr, BinOpNode *op){
     auto *phi = builder.CreatePHI(rhs->getType(), 2);
    
     //short circuit, returning true if return from the first label
-    phi->addIncoming(ConstantInt::get(ctxt, APInt(1, true, true)), curbbl);
+    phi->addIncoming(ConstantInt::get(*ctxt, APInt(1, true, true)), curbbl);
     phi->addIncoming(rhs->val, curbbr);
 
     return new TypedValue(phi, rhs->type);
@@ -938,8 +950,8 @@ TypedValue* Compiler::compLogicalAnd(Node *lexpr, Node *rexpr, BinOpNode *op){
     auto *lhs = lexpr->compile(this);
 
     auto *curbbl = builder.GetInsertBlock();
-    auto *andbb = BasicBlock::Create(ctxt, "and");
-    auto *mergebb = BasicBlock::Create(ctxt, "merge");
+    auto *andbb = BasicBlock::Create(*ctxt, "and");
+    auto *mergebb = BasicBlock::Create(*ctxt, "merge");
 
     builder.CreateCondBr(lhs->val, andbb, mergebb);
     blocks.push_back(andbb);
@@ -961,7 +973,7 @@ TypedValue* Compiler::compLogicalAnd(Node *lexpr, Node *rexpr, BinOpNode *op){
     auto *phi = builder.CreatePHI(rhs->getType(), 2);
    
     //short circuit, returning false if return from the first label
-    phi->addIncoming(ConstantInt::get(ctxt, APInt(1, false, true)), curbbl);
+    phi->addIncoming(ConstantInt::get(*ctxt, APInt(1, false, true)), curbbl);
     phi->addIncoming(rhs->val, curbbr);
 
     return new TypedValue(phi, rhs->type);
@@ -1140,7 +1152,7 @@ TypedValue* UnOpNode::compile(Compiler *c){
 
                 unsigned size = rhs->type->getSizeInBits(c) / 8;
 
-                Value *sizeVal = ConstantInt::get(c->ctxt, APInt(32, size, true));
+                Value *sizeVal = ConstantInt::get(*c->ctxt, APInt(32, size, true));
 
                 Value *voidPtr = c->builder.CreateCall(mallocFn, sizeVal);
                 Type *ptrTy = rhs->getType()->getPointerTo();

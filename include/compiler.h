@@ -19,6 +19,7 @@ using namespace llvm;
 using namespace std;
 
 
+Node* getNthNode(Node *node, size_t n);
 TypeNode* deepCopyTypeNode(const TypeNode *n);
 string typeNodeToStr(const TypeNode *t);
 lazy_str typeNodeToColoredStr(const TypeNode *t);
@@ -60,7 +61,7 @@ struct FuncDecl {
     TypedValue *tv;
     shared_ptr<ante::Module> module;
     FuncDecl(FuncDeclNode *fn, unsigned int s, shared_ptr<ante::Module> mod, TypedValue *f=0) : fdn(fn), scope(s), tv(f), module(mod){}
-    ~FuncDecl(){ delete fdn; delete tv; }
+    ~FuncDecl(){ if(fdn){delete fdn;} delete tv; }
 };
 
 struct MethodVal : public TypedValue {
@@ -177,7 +178,7 @@ namespace ante{
     };
 
     struct Compiler {
-        LLVMContext ctxt;
+        shared_ptr<LLVMContext> ctxt;
         unique_ptr<ExecutionEngine> jit;
         unique_ptr<legacy::FunctionPassManager> passManager;
         unique_ptr<llvm::Module> module;

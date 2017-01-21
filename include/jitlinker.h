@@ -3,6 +3,6 @@
 
 #include "compiler.h"
 
-llvm::Module* wrapFnInModule(Compiler*, Function*);
+unique_ptr<Compiler> wrapFnInModule(Compiler *c, Function *f);
 
 #endif
