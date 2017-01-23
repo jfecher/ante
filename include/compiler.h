@@ -163,6 +163,8 @@ namespace yy{ class location; }
 
 namespace ante{
 
+    struct Compiler;
+
     struct Module {
         string name;
        
@@ -175,6 +177,8 @@ namespace ante{
         //Map of all declared traits; not including their implementations for a given type
         //Each DataType is reponsible for holding its own trait implementations
         map<string, shared_ptr<Trait>> traits;
+
+        void import(Compiler *c, shared_ptr<ante::Module> m);
     };
 
     struct Compiler {

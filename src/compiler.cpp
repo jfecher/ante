@@ -1008,10 +1008,6 @@ TypedValue* Compiler::compFn(FuncDecl *fd){
     if(fd->module->name != compUnit->name){
         auto mcu = move(mergedCompUnits);
 
-        cout << "   Compiling " << fd->fdn->name << " in separate module with fns: \n";
-        for(auto& pair : fd->module->fnDecls)
-            cout << pair.first << endl;
-
         mergedCompUnits = fd->module;
         auto *ret = compFnHelper(this, fd);
         mergedCompUnits = mcu;
@@ -1460,6 +1456,21 @@ list<shared_ptr<FuncDecl>>& Compiler::getFunctionList(string& name){
     return mergedCompUnits->fnDecls[name];
 }
 
+
+void ante::Module::import(Compiler *c, shared_ptr<ante::Module> mod){
+    for(auto& pair : mod->fnDecls)
+        for(auto& fd : pair.second){
+            fnDecls[pair.first].push_back(fd);
+        }
+
+
+    for(auto& pair : mod->userTypes)
+        userTypes[pair.first] = pair.second;
+    
+    for(auto& pair : mod->traits)
+        traits[pair.first] = pair.second;
+}
+
 /*
  * imports a given ante file to the current module
  * inputted file must exist and be a valid ante source file.
@@ -1467,14 +1478,24 @@ list<shared_ptr<FuncDecl>>& Compiler::getFunctionList(string& name){
 void Compiler::importFile(const char *fName){
     try{
         auto& module = allCompiledModules.at(fName);
+
+        for(auto &mod : imports){
+            if(mod->name == fName){
+                cerr << AN_ERR_COLOR << "error: " << AN_CONSOLE_RESET << "module " << fName << " has already been imported.\n";
+                errFlag = true;
+                return;
+            }
+        }
+
         //module is already compiled; just copy the ptr to imports
         imports.push_back(module);
+        mergedCompUnits->import(this, module);
         
     }catch(out_of_range r){
         //function not found; create new Compiler instance to compile it
         Compiler *c = new Compiler(fName, true);
         c->allCompiledModules = allCompiledModules;
-        c->scanAllDecls();
+        c->compile();
 
         if(c->errFlag){
             cout << "Error when importing " << fName << endl;
@@ -1482,16 +1503,9 @@ void Compiler::importFile(const char *fName){
             return;
         }
 
-        for(auto& pair : c->compUnit->fnDecls)
-            for(auto& fd : pair.second)
-                mergedCompUnits->fnDecls[pair.first].push_back(fd);
-
-
-        for(auto& pair : c->compUnit->userTypes)
-            mergedCompUnits->userTypes[pair.first] = pair.second;
-
-
         imports.push_back(c->compUnit);
+        mergedCompUnits->import(c, c->compUnit);
+
         allCompiledModules[c->fileName] = c->compUnit;
         delete c;
     }
@@ -1968,8 +1982,12 @@ Compiler::Compiler(const char *_fileName, bool lib) :
         exit(flag);
     }
 
+    auto modName = removeFileExt(fileName);
+    compUnit->name = modName;
+    mergedCompUnits->name = modName;
+    
     ast.reset(parser::getRootNode());
-    outFile = removeFileExt(fileName.c_str());
+    outFile = modName;
 	if (outFile.empty())
 		outFile = "a";
 
@@ -1994,6 +2012,9 @@ Compiler::Compiler(Node *root, string modName, string &fName, bool lib) :
         funcPrefix(""),
         scope(0){
 
+    compUnit->name = modName;
+    mergedCompUnits->name = modName;
+    
     ast.reset(root);
     module.reset(new llvm::Module(outFile, *ctxt));
     
