@@ -1637,9 +1637,12 @@ void Compiler::eval(){
 }
 
 Function* Compiler::createMainFn(){
-    //get or create the function type for the main method: void()
-    FunctionType *ft = FunctionType::get(Type::getInt32Ty(*ctxt), false);
-    
+    Type* argcty = Type::getInt32Ty(*ctxt);
+    Type* argvty = Type::getInt8Ty(*ctxt)->getPointerTo()->getPointerTo();
+
+    //get or create the function type for the main method: (i32, c8**)->i32
+    FunctionType *ft = FunctionType::get(Type::getInt32Ty(*ctxt), {argcty, argvty}, false);
+
     //Actually create the function in module m
     string fnName = isLib ? "init_" + removeFileExt(fileName) : "main";
     Function *main = Function::Create(ft, Function::ExternalLinkage, fnName, module.get());
@@ -1647,7 +1650,18 @@ Function* Compiler::createMainFn(){
     //Create the entry point for the function
     BasicBlock *bb = BasicBlock::Create(*ctxt, "entry", main);
     builder.SetInsertPoint(bb);
- 
+
+    //create argc and argv global vars
+    auto *argc = new GlobalVariable(*module, argcty, false, GlobalValue::PrivateLinkage, builder.getInt32(0), "argc");
+    auto *argv = new GlobalVariable(*module, argvty, false, GlobalValue::PrivateLinkage, ConstantPointerNull::get(dyn_cast<PointerType>(argvty)), "argv");
+
+    auto args = main->getArgumentList().begin();
+    builder.CreateStore(&*args, argc);
+    builder.CreateStore(&*++args, argv);
+
+    stoVar("argc", new Variable("argc", new TypedValue(builder.CreateLoad(argc), mkAnonTypeNode(TT_I32)), 1));
+    stoVar("argv", new Variable("argv", new TypedValue(builder.CreateLoad(argv), mkTypeNodeWithExt(TT_Ptr, mkTypeNodeWithExt(TT_Ptr, mkAnonTypeNode(TT_C8)))), 1));
+
     return main;
 }
 

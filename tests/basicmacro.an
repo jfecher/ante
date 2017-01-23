@@ -10,7 +10,7 @@
 //while compiling and is not included in the binary
 ![macro]
 fun three :=
-    puts "three called!" //prints during compile-time when the return value is substituted for this function call
+    puts "three called!"
     3
 
 //test compile-time evaluation of user defined functions
