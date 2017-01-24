@@ -24,7 +24,7 @@ Node* mkCharLitNode(LOC_TY loc, char* s);
 Node* mkBoolLitNode(LOC_TY loc, char b);
 Node* mkArrayNode(LOC_TY loc, Node *expr);
 Node* mkTupleNode(LOC_TY loc, Node *expr);
-Node* mkModNode(LOC_TY loc, TokenType mod);
+Node* mkModNode(LOC_TY loc, ante::TokenType mod);
 Node* mkTypeNode(LOC_TY loc, TypeTag type, char* typeName, Node *extTy = nullptr);
 Node* mkTypeCastNode(LOC_TY loc, Node *l, Node *r);
 Node* mkUnOpNode(LOC_TY loc, int op, Node *r);

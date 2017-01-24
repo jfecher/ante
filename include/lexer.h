@@ -22,7 +22,6 @@ struct Node;
 #define RETURN_PAIR(t) {incPos(2); loc->end = getPos(); return (t);}
 
 namespace ante{
-    /* Defined in src/compiler.cpp */
     /* General error function */
     void error(const char* msg, const yy::location& loc);
 

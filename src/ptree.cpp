@@ -226,7 +226,7 @@ Node* mkTupleNode(LOC_TY loc, Node *expr){
     return new TupleNode(loc, exprs);
 }
 
-Node* mkModNode(LOC_TY loc, TokenType mod){
+Node* mkModNode(LOC_TY loc, ante::TokenType mod){
     return new ModNode(loc, mod);
 }
 

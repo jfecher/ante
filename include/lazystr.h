@@ -37,12 +37,12 @@ namespace ante {
 	};
 }
 
-win_console_color getBackgroundColor();
+ante::win_console_color getBackgroundColor();
 
 //NOTE: this function sets the console's foreground and background color as it cannot
 //      be contained within the string itself on windows, thus necessitating the lazy_str
-void setcolor(win_console_color foreColor, win_console_color backColor);
-std::ostream& operator<<(std::ostream& os, win_console_color color);
+void setcolor(ante::win_console_color foreColor, ante::win_console_color backColor);
+std::ostream& operator<<(std::ostream& os, ante::win_console_color color);
 
 #endif
 

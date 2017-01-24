@@ -203,7 +203,7 @@ Lexer::Lexer(string* file) :
     }
 
     if(!*in){
-        cerr << "Error: Unable to open file '" << file << "'\n";
+        cerr << "Error: Unable to open file '" << *file << "'\n";
         exit(EXIT_FAILURE);
     }
 
@@ -490,7 +490,7 @@ int Lexer::genWsTok(yy::parser::location_type* loc){
     }
 }
 
-int Lexer::skipWsAndReturnNext(yy::location* loc){
+int Lexer::skipWsAndReturnNext(yy::parser::location_type* loc){
     do{
         incPos();
     }while(cur == ' ');
