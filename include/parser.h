@@ -30,6 +30,19 @@ LOC_TY mkLoc(yy::position begin, yy::position end);
 struct TypedValue;
 namespace ante { struct Compiler; }
 
+//iterates through prev/next links of nodes
+struct NodeIterator {
+    Node *n;
+
+    NodeIterator(Node *r) : n(r){}
+
+    NodeIterator operator++();
+    NodeIterator operator--();
+    Node* operator*();
+    bool operator==(NodeIterator ni);
+    bool operator!=(NodeIterator ni);
+};
+
 /* Base class for all nodes */
 struct Node{
     unique_ptr<Node> next;
@@ -41,6 +54,11 @@ struct Node{
 
     //compile node to a given module
     virtual TypedValue* compile(Compiler*) = 0;
+
+    //iterator support
+    typedef NodeIterator iterator;
+    NodeIterator begin();
+    NodeIterator end();
 
     Node(LOC_TY& l) : next(nullptr), prev(nullptr), loc(l){}
     virtual ~Node(){}

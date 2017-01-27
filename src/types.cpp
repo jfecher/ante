@@ -215,6 +215,23 @@ void Compiler::handleImplicitConversion(TypedValue **lhs, TypedValue **rhs){
     }
 }
 
+
+bool containsTypeVar(const TypeNode *tn){
+    auto tt = tn->type;
+    if(tt == TT_Array or tt == TT_Ptr){
+        return tn->extTy->type == tt;
+    }else if(tt == TT_Tuple or tt == TT_Data or tt == TT_TaggedUnion or
+             tt == TT_Function or tt == TT_Method or tt == TT_MetaFunction){
+        TypeNode *ext = tn->extTy.get();
+        while(ext){
+            if(containsTypeVar(ext))
+                return true;
+        }
+    }
+    return tt == TT_TypeVar;
+}
+
+
 /*
  *  Translates an individual TypeTag to an llvm::Type.
  *  Only intended for primitive types, as there is not enough
@@ -325,6 +342,13 @@ Type* Compiler::typeNodeToLlvmType(const TypeNode *tyNode){
                 tyn = (TypeNode*)tyn->next.get();
             }
             return StructType::get(*ctxt, tys);
+        case TT_TypeVar: {
+            Variable *typeVar = lookup(tyNode->typeName);
+            if(!typeVar)
+                return (Type*)compErr("Use of undeclared type variable " + tyNode->typeName, tyNode->loc);
+
+            return typeNodeToLlvmType(typeVar->tval->type.get());
+        }
         default:
             return typeTagToLlvmType(tyNode->type, *ctxt);
     }
@@ -383,32 +407,37 @@ bool llvmTypeEq(Type *l, Type *r){
     }
 }
 
+
+//forward decl of typeEqHelper for extTysEq fn
+TypeCheckResult typeEqHelper(const Compiler *c, const TypeNode *l, const TypeNode *r, TypeCheckResult *tcr);
+
 /*
  *  Helper function to check if each type's list of extension
  *  types are all approximately equal.  Used when checking the
  *  equality of TypeNodes of type Tuple, Data, Function, or any
  *  type with multiple extTys.
  */
-bool extTysEq(const TypeNode *l, const TypeNode *r, const Compiler *c = 0){
+bool extTysEq(const TypeNode *l, const TypeNode *r, TypeCheckResult *tcr, const Compiler *c = 0){
     TypeNode *lExt = l->extTy.get();
     TypeNode *rExt = r->extTy.get();
 
     while(lExt && rExt){
         if(c){
-            if(!c->typeEq(lExt, rExt)) return false; 
+            if(!typeEqHelper(c, lExt, rExt, tcr)) return tcr;
         }else{
-            if(!typeEqBase(lExt, rExt)) return false;
+            if(!typeEqBase(lExt, rExt, tcr)) return tcr;
         }
 
         lExt = (TypeNode*)lExt->next.get();
         rExt = (TypeNode*)rExt->next.get();
-        if((lExt && !rExt) || (rExt && !lExt)) return false;
+        if((lExt and !rExt) or (rExt and !lExt)) return tcr->setFailure();
     }
-    return true;
+    return tcr->setSuccess();
 }
 
 /*
- *  Returns true if two types are approx eq
+ *  Returns 1 if two types are approx eq
+ *  Returns 2 if two types are approx eq and one is a typevar
  *
  *  Does not check for trait implementation unless c is set.
  *
@@ -419,35 +448,38 @@ bool extTysEq(const TypeNode *l, const TypeNode *r, const Compiler *c = 0){
  *  this function is used as a typeEq function with the Compiler ptr
  *  the outermost type will not be checked for traits.
  */
-bool typeEqBase(const TypeNode *l, const TypeNode *r, const Compiler *c){
-    if(l->type == TT_TaggedUnion and r->type == TT_Data) return l->typeName == r->typeName;
-    if(l->type == TT_Data and r->type == TT_TaggedUnion) return l->typeName == r->typeName;
+TypeCheckResult typeEqBase(const TypeNode *l, const TypeNode *r, TypeCheckResult *tcr, const Compiler *c){
+    if(l->type == TT_TaggedUnion and r->type == TT_Data) return tcr->setRes(l->typeName == r->typeName);
+    if(l->type == TT_Data and r->type == TT_TaggedUnion) return tcr->setRes(l->typeName == r->typeName);
 
-    if(l->type == TT_TypeVar or r->type == TT_TypeVar)
-        return true;
+    if(l->type == TT_TypeVar or r->type == TT_TypeVar){
+        return tcr->setSuccessWithTypeVars();
+    }
 
     if(l->type != r->type)
-        return false;
+        return tcr->setFailure();
 
     if(r->type == TT_Ptr){
         if(l->extTy->type == TT_Void || r->extTy->type == TT_Void)
-            return true;
+            return tcr->setSuccess();
 
-        return extTysEq(l, r, c);
+        return extTysEq(l, r, tcr, c);
     }else if(r->type == TT_Array){
         //size of an array is part of its type and stored in 2nd extTy
         auto lsz = ((IntLitNode*)l->extTy->next.get())->val;
         auto rsz = ((IntLitNode*)r->extTy->next.get())->val;
-        if(lsz != rsz) return false;
+        if(lsz != rsz) return tcr->setFailure();
 
-        return extTysEq(l, r, c);
+        return extTysEq(l, r, tcr, c);
+
     }else if(r->type == TT_Data or r->type == TT_TaggedUnion){
-        return l->typeName == r->typeName;
+        return tcr->setRes(l->typeName == r->typeName);
+
     }else if(r->type == TT_Function or r->type == TT_MetaFunction or r->type == TT_Method or r->type == TT_Tuple){
-        return extTysEq(l, r, c);
+        return extTysEq(l, r, tcr, c);
     }
     //primitive type
-    return true;
+    return tcr->setSuccess();
 }
 
 bool dataTypeImplementsTrait(DataType *dt, string trait){
@@ -457,38 +489,97 @@ bool dataTypeImplementsTrait(DataType *dt, string trait){
     }
     return false;
 }
+    
+TypeNode* TypeCheckResult::getBindingFor(const string &name){
+    for(auto &pair : bindings){
+        if(pair.first == name)
+            return pair.second.get();
+    }
+    return 0;
+}
+
+TypeCheckResult* TypeCheckResult::setRes(bool b){
+    res = (Result)b;
+    return this;
+}
+
+TypeCheckResult* TypeCheckResult::setRes(Result r){
+    res = r;
+    return this;
+}
 
 /*
  *  Return true if both typenodes are approximately equal
  *
  *  Compiler instance required to check for trait implementation
  */
-bool Compiler::typeEq(const TypeNode *l, const TypeNode *r) const {
+TypeCheckResult typeEqHelper(const Compiler *c, const TypeNode *l, const TypeNode *r, TypeCheckResult *tcr){
     if(l->type == TT_Data and r->type == TT_Data){
         if(l->typeName == r->typeName)
-            return true;
+            return tcr->setSuccess();
 
         //typeName's are different, check if one is a trait and the other
         //is an implementor of the trait
         Trait *t;
         DataType *dt;
-        if((t = lookupTrait(l->typeName))){
+        if((t = c->lookupTrait(l->typeName))){
             //Assume r is a datatype
             //
             //NOTE: r is never checked if it is a trait because two
             //      separate traits are never equal anyway
-            dt = lookupType(r->typeName);
-            if(!dt) return false;
+            dt = c->lookupType(r->typeName);
+            if(!dt) return tcr->setFailure();
             
-        }else if((t = lookupTrait(r->typeName))){
-            dt = lookupType(l->typeName);
-            if(!dt) return false;
+        }else if((t = c->lookupTrait(r->typeName))){
+            dt = c->lookupType(l->typeName);
+            if(!dt) return tcr->setFailure();
         }else{
-            return false;
+            return tcr->setFailure();
         }
-        return dataTypeImplementsTrait(dt, t->name);
+
+        tcr->res = (TypeCheckResult::Result)dataTypeImplementsTrait(dt, t->name);
+        return tcr;
+
+    }else if(l->type == TT_TypeVar or r->type == TT_TypeVar){
+      
+        //reassign l and r into typeVar and nonTypeVar so code does not have to be repeated in
+        //one if branch for l and another for r
+        const TypeNode *typeVar, *nonTypeVar;
+
+        if(l->type == TT_TypeVar and r->type != TT_TypeVar){
+            typeVar = l;
+            nonTypeVar = r;
+        }else if(l->type != TT_TypeVar and r->type == TT_TypeVar){
+            typeVar = r;
+            nonTypeVar = l;
+        }else{ //both type vars
+            return tcr->setSuccess();
+        }
+
+
+        Variable *tv = c->lookup(typeVar->typeName);
+        if(!tv){
+            auto *tv = tcr->getBindingFor(typeVar->typeName);
+            if(!tv){
+                //make binding for type var to type of nonTypeVar
+                auto nontvcpy = unique_ptr<TypeNode>(deepCopyTypeNode(nonTypeVar));
+                tcr->bindings.push_back({typeVar->typeName, move(nontvcpy)});
+                return tcr->setSuccessWithTypeVars();
+            }else{ //tv is bound in same typechecking run
+                return typeEqHelper(c, tv, nonTypeVar, tcr);
+            }
+
+        }else{ //tv already bound
+            return typeEqHelper(c, tv->tval->type.get(), nonTypeVar, tcr);
+        }
     }
-    return typeEqBase(l, r, this);
+    return typeEqBase(l, r, tcr, c);
+}
+
+TypeCheckResult Compiler::typeEq(const TypeNode *l, const TypeNode *r) const{
+    auto tcr = TypeCheckResult(false);
+    typeEqHelper(this, l, r, &tcr);
+    return tcr;
 }
 
 
@@ -563,8 +654,8 @@ string typeNodeToStr(const TypeNode *t){
             elem = (TypeNode*)elem->next.get();
         }
         return ret;
-    }else if(t->type == TT_Data || t->type == TT_TaggedUnion){
-        return string(t->typeName.c_str()); //make a copy of the typename
+    }else if(t->type == TT_Data || t->type == TT_TaggedUnion || t->type == TT_TypeVar){
+        return t->typeName;
     }else if(t->type == TT_Array){
         auto *len = (IntLitNode*)t->extTy->next.get();
         return '[' + len->val + " " + typeNodeToStr(t->extTy.get()) + ']';
@@ -580,8 +671,6 @@ string typeNodeToStr(const TypeNode *t){
             if(cur) ret += ",";
         }
         return ret + ")->" + retTy;
-    }else if(t->type == TT_TypeVar){
-        return "'" + t->typeName;
     }else{
         return typeTagToStr(t->type);
     }

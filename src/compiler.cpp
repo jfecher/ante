@@ -1001,6 +1001,54 @@ TypedValue* compFnHelper(Compiler *c, FuncDecl *fd){
     c->builder.SetInsertPoint(caller);
     return ret;
 }
+            
+
+TypeNode* replaceParams(NamedValNode *params, TypeNode *args){
+    TypeNode *oldParams = 0;
+
+    while(params and args){
+        if(oldParams ){
+            oldParams->next.release();
+            oldParams->next.reset(params->typeExpr.release());
+        }else
+            oldParams = (TypeNode*)params->typeExpr.release();
+
+        params->typeExpr.reset(args);
+
+        params = (NamedValNode*)params->next.get();
+        args = (TypeNode*)args->next.get();
+    }
+    return oldParams;
+}
+
+
+TypedValue* compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, TypeNode *args){
+    c->enterNewScope();
+
+    //apply each binding from the typecheck results to a type variables in this scope
+    for(auto& pair : tc.bindings){
+        auto *type_var = new TypedValue(nullptr, pair.second.release());
+        c->stoVar(pair.first, new Variable(pair.first, type_var, c->scope));
+    }
+
+    TypeNode *argscpy = deepCopyTypeNode(args);
+    TypeNode *cur = argscpy;
+    while((args = (TypeNode*)args->next.get())){
+        cur->next.reset(deepCopyTypeNode((TypeNode*)args));
+        cur = (TypeNode*)cur->next.get();
+    }
+
+    //swap out fn's generic params for the concrete arg types
+    auto *params = replaceParams(fd->fdn->params.get(), argscpy);
+
+    //compile the function normally (each typevar should now be
+    //substituted with its checked type from the typecheck tc)
+    auto *res = c->compFn(fd);
+    
+    replaceParams(fd->fdn->params.get(), params);
+    c->exitScope();
+    return res;
+}
 
 //Provide a wrapper for function-compiling methods so that each
 //function is compiled in its own isolated module
@@ -1421,11 +1469,11 @@ list<shared_ptr<FuncDecl>> filterByArgcAndScope(list<shared_ptr<FuncDecl>> &l, s
 }
 
 
-TypedValue* Compiler::getMangledFunction(string name, TypeNode *params){
+TypedValue* Compiler::getMangledFunction(string name, TypeNode *args){
     auto& fnlist = getFunctionList(name);
     if(fnlist.empty()) return 0;
 
-    auto argc = getTupleSize(params);
+    auto argc = getTupleSize(args);
 
     auto candidates = filterByArgcAndScope(fnlist, argc, this->scope);
     if(candidates.empty()) return 0;
@@ -1433,20 +1481,43 @@ TypedValue* Compiler::getMangledFunction(string name, TypeNode *params){
     //if there is only one function now, return it.  It will be typechecked later
     if(candidates.size() == 1){
         auto& fd = candidates.front();
-        if(!fd->tv) compFn(fd.get());
-        return fd->tv;
+       
+        //must check if this functions is generic first
+        auto fnty = unique_ptr<TypeNode>(createFnTyNode(fd->fdn->params.get(), mkAnonTypeNode(TT_Void)));
+        auto *params = (TypeNode*)fnty->extTy->next.get();
+        auto tc = typeEq(params, args);
+        
+        if(tc.res == TypeCheckResult::SuccessWithTypeVars)
+            return compTemplateFn(this, fd.get(), tc, args);
+        else if(fd->tv)
+            return fd->tv;
+        else
+            return compFn(fd.get());
     }
 
     //check for an exact match on the remaining candidates.
-    string fnName = mangle(name, params);
+    string fnName = mangle(name, args);
     auto *fd = getFuncDeclFromList(candidates, fnName);
     if(fd){ //exact match
-        if(!fd->tv) compFn(fd);
-        return fd->tv;
+        return compFn(fd);
     }
 
     //Otherwise, determine which function to use by which needs the least
     //amount of implicit conversions.
+    //first, perform a typecheck.  If it succeeds then the function had a generic/trait parameter
+    //
+    //NOTE: the current implementation will return the first generic function that matches, not necessarily
+    //      the most specific one.
+    for(auto& fd : candidates){
+        auto fnty = unique_ptr<TypeNode>(createFnTyNode(fd->fdn->params.get(), mkAnonTypeNode(TT_Void)));
+        auto *params = (TypeNode*)fnty->extTy->next.get();
+
+        auto tc = typeEq(params, args);
+        if(!!tc){
+            return compTemplateFn(this, fd.get(), tc, args);
+        }
+    }
+
     //TODO
     return 0;
 }

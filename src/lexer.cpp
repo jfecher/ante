@@ -596,6 +596,7 @@ int Lexer::genCharLitTok(yy::parser::location_type* loc){
     incPos();
 
     if(cur != '\''){ //typevar
+        s = '\'' + s;
         while(IS_ALPHANUM(cur)){
             s += cur;
             incPos();

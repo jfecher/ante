@@ -45,7 +45,34 @@ bool isPrimitiveTypeTag(TypeTag ty);
 TypeNode* mkAnonTypeNode(TypeTag);
 TypeNode* mkTypeNodeWithExt(TypeTag tt, TypeNode *ext);
 TypeNode* mkDataTypeNode(string tyname);
-bool typeEqBase(const TypeNode *l, const TypeNode *r, const Compiler *c = 0);
+
+
+
+//result from a typecheck function
+//gives not only a success/failure flag but also the specific
+//typevars binded and what they were binded to.
+struct TypeCheckResult {
+    enum Result { Failure, Success, SuccessWithTypeVars };
+
+    Result res;
+    vector<pair<string, unique_ptr<TypeNode>>> bindings;
+
+
+    TypeCheckResult* setRes(bool b);
+    TypeCheckResult* setRes(Result r);
+    TypeCheckResult* setSuccess(){ if(res != SuccessWithTypeVars) res = Success; return this; }
+    TypeCheckResult* setSuccessWithTypeVars(){ res = SuccessWithTypeVars; return this; }
+    TypeCheckResult* setFailure(){ res = Failure; return this; }
+
+    bool operator!(){return res == Failure;}
+    TypeNode* getBindingFor(const string &s);
+    TypeCheckResult(Result r) : res(r){}
+    TypeCheckResult(bool r) : res((Result)r){}
+};
+
+TypeCheckResult typeEqBase(const TypeNode *l, const TypeNode *r, TypeCheckResult *tcr, const Compiler *c = 0);
+
+
 
 //declare ante::Module for FuncDecl
 namespace ante { struct Module; }
@@ -264,7 +291,7 @@ namespace ante{
         void stoType(DataType *ty, string &typeName);
 
         Type* typeNodeToLlvmType(const TypeNode *tyNode);
-        bool typeEq(const TypeNode *l, const TypeNode *r) const;
+        TypeCheckResult typeEq(const TypeNode *l, const TypeNode *r) const;
     
         TypedValue* opImplementedForTypes(int op, TypeNode *l, TypeNode *r);
         TypedValue* implicitlyWidenNum(TypedValue *num, TypeTag castTy);

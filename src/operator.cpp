@@ -304,7 +304,7 @@ TypedValue* createCast(Compiler *c, Type *castTy, TypeNode *tyn, TypedValue *val
     //let example = Int 3
     //              ^^^^^
     auto *dataTy = c->lookupType(tyn->typeName);
-    if(dataTy && c->typeEq(valToCast->type.get(), dataTy->tyn.get())){
+    if(dataTy && !!c->typeEq(valToCast->type.get(), dataTy->tyn.get())){
         auto *tycpy = deepCopyTypeNode(valToCast->type.get());
 
         //check if this is a tagged union (sum type)
@@ -349,7 +349,7 @@ TypedValue* createCast(Compiler *c, Type *castTy, TypeNode *tyn, TypedValue *val
     //test for the reverse case, something like:  i32 example
     //where example is of type Int
     }else if(valToCast->type->typeName.size() > 0 && (dataTy = c->lookupType(valToCast->type->typeName))){
-        if(c->typeEq(dataTy->tyn.get(), tyn)){
+        if(!!c->typeEq(dataTy->tyn.get(), tyn)){
             auto *tycpy = deepCopyTypeNode(valToCast->type.get());
             tycpy->typeName = "";
             tycpy->type = tyn->type;
@@ -368,7 +368,7 @@ TypedValue* TypeCastNode::compile(Compiler *c){
     auto* tval = createCast(c, castTy, typeExpr.get(), rtval);
 
     if(!tval){
-        if(c->typeEq(rtval->type.get(), typeExpr.get()))
+        if(!!c->typeEq(rtval->type.get(), typeExpr.get()))
             return c->compErr("Typecast to same type", loc);
         
         return c->compErr("Invalid type cast " + typeNodeToColoredStr(rtval->type) + 
@@ -842,13 +842,15 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
 
     /* unpack the tuple of arguments into a vector containing each value */
     int i = 1;
+    //bool isTemplateFn = false;
     TypeNode *paramTy = (TypeNode*)tvf->type->extTy->next.get();
 
     //type check each parameter
     for(auto tArg : typedArgs){
         if(!paramTy) break;
 
-        if(!c->typeEq(tArg->type.get(), paramTy)){
+        auto typecheck = c->typeEq(tArg->type.get(), paramTy);
+        if(!typecheck){
             //param types not equal; check for implicit conversion
             if(isNumericTypeTag(tArg->type->type) && isNumericTypeTag(paramTy->type)){
                 auto *widen = c->implicitlyWidenNum(tArg, paramTy->type);
@@ -870,7 +872,8 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
 			TypedValue *fn;
 
             if((fn = c->getMangledFunction(castFn, tArg->type.get())) and
-				c->typeEq(tArg->type.get(), (const TypeNode*)fn->type->extTy->next.get())){
+				   !!c->typeEq(tArg->type.get(), (const TypeNode*)fn->type->extTy->next.get())){
+                
                 tArg->type->next.reset(nxt);
 
                 //optimize case of Str -> c8* implicit cast
@@ -889,7 +892,10 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
                 return c->compErr("Argument " + to_string(i) + " of function is a(n) " + typeNodeToColoredStr(tArg->type)
                     + " but was declared to be a(n) " + typeNodeToColoredStr(paramTy) + " and there is no known implicit cast", loc);
             }
+        //}else if(typecheck.res == TypeCheckResult::SuccessWithTypeVars){ //typevar encountered in typecheck
+        //    isTemplateFn = true;
         }
+
         paramTy = (TypeNode*)paramTy->next.get();
         i++;
     }
