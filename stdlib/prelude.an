@@ -54,10 +54,42 @@ type Str = c8* cStr, u32 len
 ![meta]
 fun Ante.debug: 't t;
 
+//numerical print functions
+![inline]
+fun i8.print: i8 x = printf "%hhd\n" x
 
 ![inline]
-fun i32.print: i32 x
-    printf "%d\n" x
+fun i16.print: i16 x = printf "%hd\n" x
+
+![inline]
+fun i32.print: i32 x = printf "%d\n" x
+
+![inline]
+fun i64.print: i64 x = printf "%ld\n" x
+
+//unsigned
+![inline]
+fun u8.print: u8 x = printf "%hhu\n" x
+
+![inline]
+fun u16.print: u16 x = printf "%hu\n" x
+
+![inline]
+fun u32.print: u32 x = printf "%u\n" x
+
+![inline]
+fun u64.print: u64 x = printf "%lu\n" x
+
+//floats
+![inline]
+fun f16.print: f16 x = printf "%.2f\n" (f64 x)
+
+![inline]
+fun f32.print: f32 x = printf "%f\n" (f64 x)
+
+![inline]
+fun f64.print: f64 x = printf "%.14f\n" x
+
 
 
 ![inline]
