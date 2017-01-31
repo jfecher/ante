@@ -761,6 +761,25 @@ TypedValue* compMetaFunctionResult(Compiler *c, Node *lnode, TypedValue *l, vect
 }
 
 
+bool isInvalidParamType(Type *t){
+    return t->isArrayTy();
+}
+
+//Computes the address of operator &
+TypedValue* addrOf(Compiler *c, TypedValue* tv){
+    auto *ptrTy = mkTypeNodeWithExt(TT_Ptr, deepCopyTypeNode(tv->type.get()));
+
+    if(LoadInst* li = dyn_cast<LoadInst>(tv->val)){
+        return new TypedValue(li->getPointerOperand(), ptrTy);
+    }else{
+        //if it is not stack-allocated already, allocate it on the stack
+        auto *alloca = c->builder.CreateAlloca(tv->getType());
+        c->builder.CreateStore(tv->val, alloca);
+        return new TypedValue(alloca, ptrTy);
+    }
+}
+
+
 TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
     //used to type-check each parameter later
     vector<TypedValue*> typedArgs;
@@ -772,7 +791,12 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
         if(c->errFlag) return 0;
 
         for(TypedValue *v : typedArgs){
-            args.push_back(v->val);
+            if(isInvalidParamType(v->getType())){
+                auto *arg = addrOf(c, v);
+                args.push_back(arg->val);
+            }else{
+                args.push_back(v->val);
+            }
         }
     }else{ //single parameter being applied
         auto *param = r->compile(c);
@@ -817,7 +841,7 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
 
     //now that we assured it is a function, unwrap it
     Function *f = (Function*)tvf->val;
-   
+
     //if tvf is a method, add its host object as the first argument
     if(tvf->type->type == TT_Method){
         TypedValue *obj = ((MethodVal*) tvf)->obj;
@@ -877,11 +901,18 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
                 tArg->type->next.reset(nxt);
 
                 //optimize case of Str -> c8* implicit cast
-                if(tArg->type->typeName == "Str" && castFn == "c8*")
-                    args[i-1] = c->builder.CreateExtractValue(args[i-1], 0);
-                else
-                    args[i-1] = c->builder.CreateCall(fn->val, tArg->val);
+                /*if(tArg->type->typeName == "Str" && castFn == "c8*"){
+                    tArg->dump();
 
+                    if(tArg->getType()->isPointerTy())
+                        args[i-1] = c->builder.CreateExtractValue(c->builder.CreateLoad(args[i-1]), 0);
+                    else
+                        args[i-1] = c->builder.CreateExtractValue(args[i-1], 0);
+                }else{
+                    args[i-1] = c->builder.CreateCall(fn->val, tArg->val);
+                }*/
+
+                args[i-1] = c->builder.CreateCall(fn->val, args[i-1]);
             }else{
                 tArg->type->next.reset(nxt);
 
@@ -892,8 +923,6 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
                 return c->compErr("Argument " + to_string(i) + " of function is a(n) " + typeNodeToColoredStr(tArg->type)
                     + " but was declared to be a(n) " + typeNodeToColoredStr(paramTy) + " and there is no known implicit cast", loc);
             }
-        //}else if(typecheck.res == TypeCheckResult::SuccessWithTypeVars){ //typevar encountered in typecheck
-        //    isTemplateFn = true;
         }
 
         paramTy = (TypeNode*)paramTy->next.get();
@@ -1131,17 +1160,8 @@ TypedValue* UnOpNode::compile(Compiler *c){
             }
            
             return new TypedValue(c->builder.CreateLoad(rhs->val), rhs->type->extTy);
-        case '&': {//address-of
-            auto *ptrTy = mkTypeNodeWithExt(TT_Ptr, deepCopyTypeNode(rhs->type.get()));
-
-            if(LoadInst* li = dyn_cast<LoadInst>(rhs->val)){
-                return new TypedValue(li->getPointerOperand(), ptrTy);
-            }else{
-                //if it is not stack-allocated already, allocate it on the stack
-                auto *alloca = c->builder.CreateAlloca(rhs->getType());
-                c->builder.CreateStore(rhs->val, alloca);
-                return new TypedValue(alloca, ptrTy);
-            }}
+        case '&': //address-of
+            return addrOf(c, rhs);
         case '-': //negation
             return new TypedValue(c->builder.CreateNeg(rhs->val), rhs->type);
         case Tok_Not:

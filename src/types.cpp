@@ -449,6 +449,8 @@ bool extTysEq(const TypeNode *l, const TypeNode *r, TypeCheckResult *tcr, const 
  *  the outermost type will not be checked for traits.
  */
 TypeCheckResult typeEqBase(const TypeNode *l, const TypeNode *r, TypeCheckResult *tcr, const Compiler *c){
+    if(!l) return !r;
+    
     if(l->type == TT_TaggedUnion and r->type == TT_Data) return tcr->setRes(l->typeName == r->typeName);
     if(l->type == TT_Data and r->type == TT_TaggedUnion) return tcr->setRes(l->typeName == r->typeName);
 
@@ -514,6 +516,8 @@ TypeCheckResult* TypeCheckResult::setRes(Result r){
  *  Compiler instance required to check for trait implementation
  */
 TypeCheckResult typeEqHelper(const Compiler *c, const TypeNode *l, const TypeNode *r, TypeCheckResult *tcr){
+    if(!l) return !r;
+
     if(l->type == TT_Data and r->type == TT_Data){
         if(l->typeName == r->typeName)
             return tcr->setSuccess();

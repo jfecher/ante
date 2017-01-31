@@ -217,7 +217,8 @@ fn_type: '(' ')'            RArrow type  {$$ = mkTypeNode(@$, TT_Function, (char
 /* val is used here instead of intlit due to parse conflicts, but only intlit is allowed */
 arr_type: '[' val type_expr ']' {$3->next.reset($2);
                                  $$ = mkTypeNode(@$, TT_Array, (char*)"", $3);}
-        | '[' type_expr ']'     {$$ = mkTypeNode(@$, TT_Array, (char*)"", mkIntLitNode(@$, (char*)"0"));}
+        | '[' type_expr ']'     {$2->next.reset(mkIntLitNode(@$, (char*)"0"));
+                                 $$ = mkTypeNode(@$, TT_Array, (char*)"", $2);}
         ;
 
 type: pointer_type  %prec LOW  {$$ = $1;}

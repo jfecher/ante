@@ -671,6 +671,20 @@ TypedValue* VarAssignNode::compile(Compiler *c){
 
 
 /*
+ * Transforms t into a parameter type if need be.
+ * - returns pointers to tuple types
+ * - returns pointers to array types
+ */
+Type* parameterize(Type *t){
+    if(t->isArrayTy()) return t->getPointerTo();
+    return t;
+}
+
+bool implicitPassByRef(TypeTag tt){
+    return tt == TT_Array;
+}
+
+/*
  * Translates a NamedValNode list to a vector
  * of the types it contains.  If the list contains
  * a varargs type (represented by the absence of a type)
@@ -683,9 +697,11 @@ vector<Type*> getParamTypes(Compiler *c, NamedValNode *nvn, size_t paramCount){
     for(size_t i = 0; i < paramCount && nvn; i++){
 
         TypeNode *paramTyNode = (TypeNode*)nvn->typeExpr.get();
-        if(paramTyNode)
-            paramTys.push_back(c->typeNodeToLlvmType(paramTyNode));
-        else
+        if(paramTyNode){
+            auto *type = c->typeNodeToLlvmType(paramTyNode);
+            auto *correctedType = parameterize(type);
+            paramTys.push_back(correctedType);
+        }else
             paramTys.push_back(0); //terminating null = varargs function
         nvn = (NamedValNode*)nvn->next.get();
     }
@@ -744,8 +760,12 @@ TypedValue* Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
     for(auto &arg : preFn->args()){
         TypeNode *paramTyNode = (TypeNode*)cParam->typeExpr.get();
         addArgAttrs(arg, paramTyNode);
+            
+        Value *argval = implicitPassByRef(paramTyNode->type)
+                      ? builder.CreateLoad(&arg)
+                      : (Value*) &arg;
 
-        stoVar(cParam->name, new Variable(cParam->name, new TypedValue(&arg, deepCopyTypeNode(paramTyNode)), this->scope));
+        stoVar(cParam->name, new Variable(cParam->name, new TypedValue(argval, deepCopyTypeNode(paramTyNode)), this->scope));
 
         preArgs.push_back(&arg);
 
@@ -959,8 +979,13 @@ TypedValue* compFnHelper(Compiler *c, FuncDecl *fd){
         //iterate through each parameter and add its value to the new scope.
         for(auto &arg : f->args()){
             TypeNode *paramTyNode = (TypeNode*)cParam->typeExpr.get();
-            c->stoVar(cParam->name, new Variable(cParam->name, new TypedValue(&arg, deepCopyTypeNode(paramTyNode)), c->scope));
 
+            Value *argval = implicitPassByRef(paramTyNode->type)
+                          ? c->builder.CreateLoad(&arg)
+                          : (Value*) &arg;
+
+            c->stoVar(cParam->name, new Variable(cParam->name, new TypedValue(argval, deepCopyTypeNode(paramTyNode)), c->scope));
+            
             if(!(cParam = (NamedValNode*)cParam->next.get())) break;
         }
 
@@ -1261,8 +1286,8 @@ TypedValue* DataDeclNode::compile(Compiler *c){
         nvn = (NamedValNode*)nvn->next.get();
     }
 
-    //the type is a tuple if it has multiple params, otherwise
-    //it is just a normal type
+    //the type is a tuple if it has multiple params,
+    //otherwise it is just a normal type
     TypeNode *dataTyn = first->next.get()
                       ? mkTypeNodeWithExt(TT_Tuple, first)
                       : first;
@@ -2023,6 +2048,7 @@ legacy::FunctionPassManager* mkPassManager(llvm::Module *m, char optLvl){
     pm->add(createReassociatePass());
     pm->add(createPromoteMemoryToRegisterPass());
     pm->add(createInstructionCombiningPass());
+    pm->add(createDeadStoreEliminationPass());
     pm->doInitialization();
     return pm;
 }
