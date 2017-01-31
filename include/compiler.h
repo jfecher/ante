@@ -148,7 +148,7 @@ struct Variable {
     string name;
     unique_ptr<TypedValue> tval;
     unsigned int scope;
-    bool noFree;
+    bool noFree, autoDeref;
 
     Value* getVal() const{
         return tval->val;
@@ -162,7 +162,7 @@ struct Variable {
         return tval->type? tval->type->type == TT_Ptr && !noFree : false;
     }
 
-    Variable(string n, TypedValue *tv, unsigned int s, bool nofr=true) : name(n), tval(tv), scope(s), noFree(nofr){}
+    Variable(string n, TypedValue *tv, unsigned int s, bool nofr=true, bool autoDr=false) : name(n), tval(tv), scope(s), noFree(nofr), autoDeref(autoDr){}
 };
 
 /* structure that holds a c++ function */

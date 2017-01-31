@@ -447,7 +447,7 @@ TypedValue* VarNode::compile(Compiler *c){
     auto *var = c->lookup(name);
 
     if(var){
-        return dyn_cast<AllocaInst>(var->getVal()) ?
+        return var->autoDeref ?
             new TypedValue(c->builder.CreateLoad(var->getVal(), name), var->tval->type):
             new TypedValue(var->tval->val, var->tval->type); //deep copy type
     }else{
@@ -481,9 +481,7 @@ TypedValue* LetBindingNode::compile(Compiler *c){
         }
     }
 
-    bool nofree = true;//val->type->type != TT_Ptr || dynamic_cast<Constant*>(val->val);
-    c->stoVar(name, new Variable(name, val, c->scope, nofree));
-    
+    c->stoVar(name, new Variable(name, val, c->scope));
     return val;
 }
 
@@ -498,7 +496,7 @@ TypedValue* compVarDeclWithInferredType(VarDeclNode *node, Compiler *c){
     TypedValue *alloca = new TypedValue(c->builder.CreateAlloca(val->getType(), 0, node->name.c_str()), val->type.release());
 
     bool nofree = true;//val->type->type != TT_Ptr || dynamic_cast<Constant*>(val->val);
-    c->stoVar(node->name, new Variable(node->name, alloca, c->scope, nofree));
+    c->stoVar(node->name, new Variable(node->name, alloca, c->scope, nofree, true));
    
     return new TypedValue(c->builder.CreateStore(val->val, alloca->val), val->type);
 }
@@ -527,7 +525,7 @@ TypedValue* VarDeclNode::compile(Compiler *c){
     tyNode->addModifier(Tok_Mut);
     TypedValue *alloca = new TypedValue(c->builder.CreateAlloca(ty, 0, name.c_str()), tyNode);
 
-    Variable *var = new Variable(name, alloca, c->scope);
+    Variable *var = new Variable(name, alloca, c->scope, true, true);
     c->stoVar(name, var);
     if(expr.get()){
         TypedValue *val = expr->compile(c);
@@ -675,13 +673,14 @@ TypedValue* VarAssignNode::compile(Compiler *c){
  * - returns pointers to tuple types
  * - returns pointers to array types
  */
-Type* parameterize(Type *t){
+Type* parameterize(Type *t, const TypeNode *tn){
     if(t->isArrayTy()) return t->getPointerTo();
+    if(tn->hasModifier(Tok_Mut)) return t->getPointerTo();
     return t;
 }
 
-bool implicitPassByRef(TypeTag tt){
-    return tt == TT_Array;
+bool implicitPassByRef(TypeNode* t){
+    return t->type == TT_Array or t->hasModifier(Tok_Mut);
 }
 
 /*
@@ -699,7 +698,7 @@ vector<Type*> getParamTypes(Compiler *c, NamedValNode *nvn, size_t paramCount){
         TypeNode *paramTyNode = (TypeNode*)nvn->typeExpr.get();
         if(paramTyNode){
             auto *type = c->typeNodeToLlvmType(paramTyNode);
-            auto *correctedType = parameterize(type);
+            auto *correctedType = parameterize(type, paramTyNode);
             paramTys.push_back(correctedType);
         }else
             paramTys.push_back(0); //terminating null = varargs function
@@ -760,12 +759,9 @@ TypedValue* Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
     for(auto &arg : preFn->args()){
         TypeNode *paramTyNode = (TypeNode*)cParam->typeExpr.get();
         addArgAttrs(arg, paramTyNode);
-            
-        Value *argval = implicitPassByRef(paramTyNode->type)
-                      ? builder.CreateLoad(&arg)
-                      : (Value*) &arg;
 
-        stoVar(cParam->name, new Variable(cParam->name, new TypedValue(argval, deepCopyTypeNode(paramTyNode)), this->scope));
+        stoVar(cParam->name, new Variable(cParam->name, new TypedValue(&arg, deepCopyTypeNode(paramTyNode)), this->scope,
+                        /*nofree =*/ true, /*autoDeref = */implicitPassByRef(paramTyNode)));
 
         preArgs.push_back(&arg);
 
@@ -980,11 +976,8 @@ TypedValue* compFnHelper(Compiler *c, FuncDecl *fd){
         for(auto &arg : f->args()){
             TypeNode *paramTyNode = (TypeNode*)cParam->typeExpr.get();
 
-            Value *argval = implicitPassByRef(paramTyNode->type)
-                          ? c->builder.CreateLoad(&arg)
-                          : (Value*) &arg;
-
-            c->stoVar(cParam->name, new Variable(cParam->name, new TypedValue(argval, deepCopyTypeNode(paramTyNode)), c->scope));
+            c->stoVar(cParam->name, new Variable(cParam->name, new TypedValue(&arg, deepCopyTypeNode(paramTyNode)),
+                        c->scope, /*nofree = */true, /*autoDeref = */implicitPassByRef(paramTyNode)));
             
             if(!(cParam = (NamedValNode*)cParam->next.get())) break;
         }
@@ -1376,7 +1369,7 @@ TypedValue* MatchNode::compile(Compiler *c){
                 auto *cast = c->builder.CreateBitCast(alloca, tupTy->getPointerTo());
                 auto *tup = c->builder.CreateLoad(cast);
                 auto *extract = new TypedValue(c->builder.CreateExtractValue(tup, 1), tagTy->tyn);
-                c->stoVar(v->name, new Variable(v->name, extract, c->scope, true));
+                c->stoVar(v->name, new Variable(v->name, extract, c->scope));
             }else{
                 return c->compErr("pattern typecast's rval is not a ident", tn->rval->loc);
             }
@@ -1397,7 +1390,7 @@ TypedValue* MatchNode::compile(Compiler *c){
         }else if(VarNode *vn = dynamic_cast<VarNode*>(mbn->pattern.get())){
             auto *tn = new TypedValue(lval->val, lval->type);
             match->setDefaultDest(br);
-            c->stoVar(vn->name, new Variable(vn->name, tn, c->scope, true));
+            c->stoVar(vn->name, new Variable(vn->name, tn, c->scope));
         }else{
             return c->compErr("Pattern matching non-tagged union types is not yet implemented", mbn->pattern->loc);
         }

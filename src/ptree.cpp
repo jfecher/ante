@@ -107,7 +107,7 @@ void TypeNode::copyModifiersFrom(const TypeNode *tn){
     }
 }
     
-bool TypeNode::hasModifier(int m){
+bool TypeNode::hasModifier(int m) const{
     return std::find(modifiers.cbegin(), modifiers.cend(), m) != modifiers.cend();
 }
 

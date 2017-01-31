@@ -178,7 +178,7 @@ struct TypeNode : public Node{
     TypeNode* addModifiers(ModNode *m);
     TypeNode* addModifier(int m);
     void copyModifiersFrom(const TypeNode *tn);
-    bool hasModifier(int m);
+    bool hasModifier(int m) const;
     TypeNode(LOC_TY& loc, TypeTag ty, string tName, TypeNode* eTy) : Node(loc), type(ty), typeName(tName), extTy(eTy){}
     ~TypeNode(){}
 };

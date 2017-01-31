@@ -344,8 +344,10 @@ Type* Compiler::typeNodeToLlvmType(const TypeNode *tyNode){
             return StructType::get(*ctxt, tys);
         case TT_TypeVar: {
             Variable *typeVar = lookup(tyNode->typeName);
-            if(!typeVar)
-                return (Type*)compErr("Use of undeclared type variable " + tyNode->typeName, tyNode->loc);
+            if(!typeVar){
+                compErr("Use of undeclared type variable " + tyNode->typeName, tyNode->loc);
+                return Type::getVoidTy(*ctxt);
+            }
 
             return typeNodeToLlvmType(typeVar->tval->type.get());
         }

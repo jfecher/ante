@@ -801,9 +801,15 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
     }else{ //single parameter being applied
         auto *param = r->compile(c);
         if(!param) return 0;
+        
         if(param->type->type != TT_Void){
             typedArgs.push_back(param);
-            args.push_back(param->val);
+            if(isInvalidParamType(param->getType())){
+                auto *arg = addrOf(c, param);
+                args.push_back(arg->val);
+            }else{
+                args.push_back(param->val);
+            }
         }
     }
 
@@ -873,6 +879,15 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
     for(auto tArg : typedArgs){
         if(!paramTy) break;
 
+        //Mutable parameters are implicitely passed by reference
+        //
+        //Note that by getting the address of tArg (and not args[i-1])
+        //any previous implicit references (like from the passing of an array type)
+        //are not applied so no implicit references to references accidentally occur
+        if(paramTy->hasModifier(Tok_Mut)){
+            args[i-1] = addrOf(c, tArg)->val;
+        }
+
         auto typecheck = c->typeEq(tArg->type.get(), paramTy);
         if(!typecheck){
             //param types not equal; check for implicit conversion
@@ -901,18 +916,14 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
                 tArg->type->next.reset(nxt);
 
                 //optimize case of Str -> c8* implicit cast
-                /*if(tArg->type->typeName == "Str" && castFn == "c8*"){
-                    tArg->dump();
-
+                if(tArg->type->typeName == "Str" && castFn == "c8*"){
                     if(tArg->getType()->isPointerTy())
                         args[i-1] = c->builder.CreateExtractValue(c->builder.CreateLoad(args[i-1]), 0);
                     else
                         args[i-1] = c->builder.CreateExtractValue(args[i-1], 0);
                 }else{
-                    args[i-1] = c->builder.CreateCall(fn->val, tArg->val);
-                }*/
-
-                args[i-1] = c->builder.CreateCall(fn->val, args[i-1]);
+                    args[i-1] = c->builder.CreateCall(fn->val, args[i-1]);
+                }
             }else{
                 tArg->type->next.reset(nxt);
 

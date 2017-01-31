@@ -4,7 +4,7 @@ type Vec = i32* _data, u32 len cap
 fun Vec := Vec(i32* malloc 32, 0u32, 8u32)
 
 
-fun Vec.reserve: mut Vec* v, u32 numElems
+fun Vec.reserve: mut Vec v, u32 numElems
     if v.len + numElems > v.cap then
         let ptr = realloc{void* v._data, v.cap * 8}
 
@@ -16,7 +16,7 @@ fun Vec.reserve: mut Vec* v, u32 numElems
         v.cap += numElems
 
 
-fun Vec.push: mut Vec* v, i32 elem
+fun Vec.push: mut Vec v, i32 elem
     if v.len >= v.cap then
         Vec.reserve v v.cap
 
@@ -43,7 +43,7 @@ var v = Vec()
 
 var i = 1
 while i <= 100 do
-    Vec.push (&v) i
+    v.push i
     i += 1
 
 print v
