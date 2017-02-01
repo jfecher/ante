@@ -90,6 +90,10 @@ fun f32.print: f32 x = printf "%f\n" (f64 x)
 ![inline]
 fun f64.print: f64 x = printf "%.14f\n" x
 
+//char
+![inline]
+fun c8.print: c8 x = printf "%c\n" x
+
 
 
 ![inline]
@@ -150,6 +154,15 @@ fun (++): Str s1 s2 -> Str
     memcpy buf_offset s2.cStr (s2.len+1) //copy terminating null too
 
     Str(c8* buf, len)
+
+//overload extract operator for Str
+![inline]
+fun (#): Str s, i32 index = s.cStr#index
+
+//overload insert operator for Str
+![inline]
+fun (#): Str s, i32 i, c8 c
+    s.cStr#i = c
 
 
 //IO

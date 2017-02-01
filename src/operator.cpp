@@ -107,6 +107,8 @@ TypedValue* Compiler::compRem(TypedValue *l, TypedValue *r, BinOpNode *op){
  *  Compiles the extract operator, [
  */
 TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
+   
+    /*
     auto *lNxtTy = l->type->next.release();
     l->type->next.reset(r->type.get());
 
@@ -122,7 +124,7 @@ TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
                 builder.CreateCall(fn->val, {l->val, r->val}),
                 deepCopyTypeNode(fn->type->extTy.get())
         );
-    }
+    }*/
     
     if(!isIntTypeTag(r->type->type)){
         return compErr("Index of operator '[' must be an integer expression, got expression of type " + typeNodeToColoredStr(r->type), op->loc);
@@ -153,13 +155,16 @@ TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
         //get the type from the index in question
         TypeNode* indexTyn = l->type->extTy.get();
 
-        if(!indexTyn && l->type->type == TT_Data){
+        if(!indexTyn){
             auto *dataty = lookupType(l->type->typeName);
             if(!dataty)
                 return compErr("Error when attempting to index variable of type " + typeNodeToColoredStr(l->type), op->loc);
 
             indexTyn = dataty->tyn->extTy.get();
         }
+
+        if(index >= getTupleSize(indexTyn))
+            return compErr("Index of " + to_string(index) + " exceeds number of fields in " + typeNodeToColoredStr(l->type), op->loc);
 
         for(unsigned i = 0; i < index; i++)
             indexTyn = (TypeNode*)indexTyn->next.get();
@@ -196,6 +201,14 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
     auto *index = op->rval->compile(this);
     auto *newVal = assignExpr->compile(this);
     if(!var || !index || !newVal) return 0;
+
+    //see if insert operator # = is overloaded already
+    string basefn = "#";
+    string mangledfn = mangle(basefn, tmp->type.get(), mkAnonTypeNode(TT_I32), newVal->type.get());
+    auto *fn = getFunction(basefn, mangledfn);
+    if(fn){
+        return new TypedValue(builder.CreateCall(fn->val, {var, index->val, newVal->val}), fn->type->extTy);
+    }
 
     switch(tmp->type->type){
         case TT_Array: {
@@ -540,7 +553,8 @@ TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *bino
 
                     //The data type when looking up (usually) does not have any modifiers,
                     //so apply any potential modifers from the parent to this
-                    indexTy->copyModifiersFrom(tyn);
+                    if(indexTy->modifiers.empty())
+                        indexTy->copyModifiersFrom(tyn);
                     return new TypedValue(builder.CreateExtractValue(val, index), deepCopyTypeNode(indexTy));
                 }
             }
@@ -1093,6 +1107,22 @@ TypedValue* handlePrimitiveNumericOp(BinOpNode *bop, Compiler *c, TypedValue *lh
     }
 }
 
+TypedValue* checkForOperatorOverload(Compiler *c, TypedValue *lhs, int op, TypedValue *rhs){
+    string basefn = Lexer::getTokStr(op);
+    string mangledfn = mangle(basefn, lhs->type.get(), rhs->type.get());
+
+    //now look for the function
+    auto *fn = c->getFunction(basefn, mangledfn);
+
+    //operator function found
+    if(fn){
+        //dont even bother type checking, assume the name mangling was performed correctly
+        return new TypedValue(c->builder.CreateCall(fn->val, {lhs->val, rhs->val}), fn->type->extTy);
+    }
+    //no operator overload
+    return 0;
+}
+
 /*
  *  Compiles an operation along with its lhs and rhs
  */
@@ -1104,12 +1134,17 @@ TypedValue* BinOpNode::compile(Compiler *c){
         case Tok_Or: return c->compLogicalOr(lval.get(), rval.get(), this);
     }
 
-
     TypedValue *lhs = lval->compile(c);
     TypedValue *rhs = rval->compile(c);
     if(!lhs || !rhs) return 0;
     
     if(op == ';') return rhs;
+   
+
+    if(TypedValue *res = checkForOperatorOverload(c, lhs, op, rhs)){
+        return res;
+    }
+
     if(op == '#') return c->compExtract(lhs, rhs, this);
 
 

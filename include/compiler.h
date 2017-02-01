@@ -309,6 +309,8 @@ namespace ante{
 
 size_t getTupleSize(Node *tup);
 string mangle(string &base, TypeNode *paramTys);
+string mangle(string &base, TypeNode *p1, TypeNode *p2);
+string mangle(string &base, TypeNode *p1, TypeNode *p2, TypeNode *p3);
 
 //conversions
 Type* typeTagToLlvmType(TypeTag tagTy, LLVMContext &c, string typeName = "");

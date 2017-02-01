@@ -19,3 +19,5 @@ print str
 print "str"
 
 printf{"len(\"%s\") = %d\n", openingMsg, openingMsg.len}
+
+print(str#3)

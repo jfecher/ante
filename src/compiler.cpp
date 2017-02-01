@@ -604,6 +604,15 @@ TypedValue* compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
                 auto *newval = expr->compile(c);
                 if(!newval) return 0;
 
+                //see if insert operator # = is overloaded already
+                string op = "#";
+                string mangledfn = mangle(op, tyn, mkAnonTypeNode(TT_I32), newval->type.get());
+                auto *fn = c->getFunction(op, mangledfn);
+                if(fn){
+                    return new TypedValue(c->builder.CreateCall(fn->val, {var, c->builder.getInt32(index), newval->val}), fn->type->extTy);
+                }
+
+                //if not, proceed with normal operations
                 if(!c->typeEq(indexTy, newval->type.get()))
                     return c->compErr("Cannot assign expression of type " + typeNodeToColoredStr(newval->type.get()) +
                            " to a variable of type " + typeNodeToColoredStr(indexTy), expr->loc);
@@ -1100,6 +1109,25 @@ string mangle(string &base, TypeNode *paramTys){
     return name;
 }
 
+//provide common mangle shortcuts.  Useful for checking
+//for operator overloads without needing to remove each Node->next
+//of each TypeNode of the op arguments
+string mangle(string &base, TypeNode *p1, TypeNode *p2){
+    string name = base;
+    string param1 = "_" + typeNodeToStr(p1);
+    string param2 = "_" + typeNodeToStr(p2);
+    name += param1 + param2;
+    return name;
+}
+
+string mangle(string &base, TypeNode *p1, TypeNode *p2, TypeNode *p3){
+    string name = base;
+    string param1 = "_" + typeNodeToStr(p1);
+    string param2 = "_" + typeNodeToStr(p2);
+    string param3 = "_" + typeNodeToStr(p3);
+    name += param1 + param2 + param3;
+    return name;
+}
 
 /*
  *  Registers a function for later compilation

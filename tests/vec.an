@@ -3,7 +3,7 @@ type Vec = i32* _data, u32 len cap
 
 fun Vec := Vec(i32* malloc 32, 0u32, 8u32)
 
-
+//reserve numElements in Vec v, elements will be uninitialized
 fun Vec.reserve: mut Vec v, u32 numElems
     if v.len + numElems > v.cap then
         let ptr = realloc{void* v._data, v.cap * 8}
@@ -18,10 +18,18 @@ fun Vec.reserve: mut Vec v, u32 numElems
 
 fun Vec.push: mut Vec v, i32 elem
     if v.len >= v.cap then
-        Vec.reserve v v.cap
+        v.reserve v.cap
 
-    v._data#v.len = elem
+    v#v.len = elem
     v.len += 1
+
+//define the extract operator
+fun (#): Vec v, i32 i -> i32
+    v._data#i
+
+//define the insert operator
+fun (#): mut Vec v, i32 i, i32 x
+    v._data#i = x
 
 
 fun print: Vec v
@@ -30,9 +38,9 @@ fun print: Vec v
     var i = 0
     while i < v.len do
         if i + 1 == v.len then
-            printf "%d" (v#0#i)
+            printf "%d" (v#i)
         else
-            printf "%d, " (v#0#i)
+            printf "%d, " (v#i)
 
         i += 1
 
