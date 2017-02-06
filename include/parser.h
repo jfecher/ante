@@ -170,6 +170,7 @@ struct TypeNode : public Node{
     TypeTag type;
     string typeName; //used for usertypes
     unique_ptr<TypeNode> extTy; //Used for pointers and non-single anonymous types.
+    vector<unique_ptr<TypeNode>> params; //type parameters for generic types
     vector<int> modifiers;
     
     unsigned int getSizeInBits(Compiler*);
@@ -179,7 +180,7 @@ struct TypeNode : public Node{
     TypeNode* addModifier(int m);
     void copyModifiersFrom(const TypeNode *tn);
     bool hasModifier(int m) const;
-    TypeNode(LOC_TY& loc, TypeTag ty, string tName, TypeNode* eTy) : Node(loc), type(ty), typeName(tName), extTy(eTy){}
+    TypeNode(LOC_TY& loc, TypeTag ty, string tName, TypeNode* eTy) : Node(loc), type(ty), typeName(tName), extTy(eTy), params(), modifiers(){}
     ~TypeNode(){}
 };
 
@@ -340,10 +341,12 @@ struct FuncDeclNode : public ParentNode{
 struct DataDeclNode : public ParentNode{
     string name;
     size_t fields;
+    vector<unique_ptr<TypeNode>> generics;
 
     TypedValue* compile(Compiler*);
     void print(void);
     DataDeclNode(LOC_TY& loc, string s, Node* b, size_t f) : ParentNode(loc, b), name(s), fields(f){}
+    DataDeclNode(LOC_TY& loc, string s, Node* b, size_t f, vector<unique_ptr<TypeNode>> &g) : ParentNode(loc, b), name(s), fields(f), generics(move(g)){}
     ~DataDeclNode(){}
 };
 

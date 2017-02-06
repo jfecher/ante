@@ -521,8 +521,21 @@ TypeCheckResult typeEqHelper(const Compiler *c, const TypeNode *l, const TypeNod
     if(!l) return !r;
 
     if(l->type == TT_Data and r->type == TT_Data){
-        if(l->typeName == r->typeName)
+        if(l->typeName == r->typeName){
+            if(l->params.empty() and r->params.empty())
+                return tcr->setSuccess();
+
+            if(l->params.size() != r->params.size())
+                return tcr->setFailure();
+
+            //check each type param of generic tys
+            for(unsigned int i = 0, len = l->params.size(); i < len; i++){
+                if(!typeEqHelper(c, l->params[i].get(), r->params[i].get(), tcr))
+                    return tcr->setFailure();
+            }
+
             return tcr->setSuccess();
+        }
 
         //typeName's are different, check if one is a trait and the other
         //is an implementor of the trait

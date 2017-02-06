@@ -152,7 +152,7 @@ top_level_expr_list:  maybe_newline expr {$$ = setRoot($2);}
 
 
 maybe_newline: Newline  %prec Newline
-             |
+             | %empty
              ;
 
 
@@ -201,8 +201,8 @@ lit_type: I8                  {$$ = mkTypeNode(@$, TT_I8,  (char*)"");}
         | typevar             {$$ = mkTypeNode(@$, TT_TypeVar, (char*)$1);}
         ;
 
-pointer_type: pointer_type '*'  %prec HIGH  {$$ = mkTypeNode(@$, TT_Ptr, (char*)"", $1);}
-            | type '*'          %prec HIGH  {$$ = mkTypeNode(@$, TT_Ptr, (char*)"", $1);}
+pointer_type: pointer_type '*'  {$$ = mkTypeNode(@$, TT_Ptr, (char*)"", $1);}
+            | type '*'          {$$ = mkTypeNode(@$, TT_Ptr, (char*)"", $1);}
             ;
 
 fn_type: '(' ')'            RArrow type  {$$ = mkTypeNode(@$, TT_Function, (char*)"", $4);}
@@ -221,24 +221,30 @@ arr_type: '[' val type_expr ']' {$3->next.reset($2);
                                  $$ = mkTypeNode(@$, TT_Array, (char*)"", $2);}
         ;
 
-type: pointer_type  %prec LOW  {$$ = $1;}
+generic_type: generic_type lit_type  %prec LOW {((TypeNode*)$1)->params.push_back(unique_ptr<TypeNode>((TypeNode*)$2)); $$ = $1;}
+            | usertype lit_type      %prec LOW {$$ = mkTypeNode(@1, TT_Data, (char*)$1);
+                                           ((TypeNode*)$1)->params.push_back(unique_ptr<TypeNode>((TypeNode*)$2)); $$ = $1;}
+            ;
+
+type: pointer_type  %prec LOW   {$$ = $1;}
     | arr_type      %prec LOW  {$$ = $1;}
-    | fn_type       %prec LOW  {$$ = $1;}
+    | fn_type       %prec LOW   {$$ = $1;}
     | lit_type      %prec LOW  {$$ = $1;}
-    | '(' type_expr ')'        {$$ = $2;} 
+    | generic_type  %prec LOW  {$$ = $1;}
+    | '(' type_expr ')'         {$$ = $2;} 
     ;
 
-type_expr_: type_expr_ ',' type %prec LOW {$$ = setNext($1, $3);}
-          | type                %prec LOW  {$$ = setRoot($1);}
+type_expr_: type_expr_ ',' type  %prec MED {$$ = setNext($1, $3);}
+          | type                 %prec MED {$$ = setRoot($1);}
           ;
 
-type_expr__: type_expr_  %prec LOW {Node* tmp = getRoot(); 
-                                    if(tmp == $1){//singular type, first type in list equals the last
-                                        $$ = tmp;
-                                    }else{ //tuple type
-                                        $$ = mkTypeNode(@$, TT_Tuple, (char*)"", tmp);
-                                    }
-                                   }
+type_expr__: type_expr_  %prec MED {Node* tmp = getRoot(); 
+                          if(tmp == $1){//singular type, first type in list equals the last
+                              $$ = tmp;
+                          }else{ //tuple type
+                              $$ = mkTypeNode(@$, TT_Tuple, (char*)"", tmp);
+                          }
+                         }
 
 type_expr: modifier_list type_expr__  {$$ = ((TypeNode*)$2)->addModifiers((ModNode*)$1);}
          | type_expr__                {$$ = $1;}
@@ -293,8 +299,17 @@ trait_fn: modifier_list Fun fn_name ':' params RArrow type_expr   {$$ = mkFuncDe
         ;
 
 
-data_decl: modifier_list Type usertype '=' type_decl_block         {$$ = mkDataDeclNode(@$, (char*)$3, $5);}
-         | Type usertype '=' type_decl_block                       {$$ = mkDataDeclNode(@$, (char*)$2, $4);}
+generic_params: generic_params typevar  {setNext($1, $2); $$ = $1;}
+              | typevar                 {$$ = mkVarNode(@$, (char*)$1);}
+              ;
+
+maybe_generic_params: generic_params {$$ = $1;}
+                    | %empty         {$$ = nullptr;}
+                    ;
+
+
+data_decl: modifier_list Type usertype maybe_generic_params '=' type_decl_block   {$$ = mkDataDeclNode(@$, (char*)$3, $4, $6);}
+         | Type usertype maybe_generic_params '=' type_decl_block                 {$$ = mkDataDeclNode(@$, (char*)$2, $3, $5);}
          ;
 
 type_expr_list: type_expr_list type_expr  {$$ = setNext($1, $2);}

@@ -1250,7 +1250,7 @@ TypedValue* compTaggedUnion(Compiler *c, DataDeclNode *n){
         }
 
         DataType *data = new DataType(union_name, tagTy);
-       
+
         c->stoType(data, nvn->name);
 
         nvn = (NamedValNode*)nvn->next.get();

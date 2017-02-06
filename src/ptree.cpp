@@ -305,6 +305,15 @@ TypeNode* deepCopyTypeNode(const TypeNode *n){
         }
     }
 
+    //if n has type params, copy them too
+    if(!n->params.empty()){
+        for(auto& tn : n->params){
+            auto param = unique_ptr<TypeNode>(deepCopyTypeNode(tn.get()));
+            cpy->params.push_back(move(param));
+        }
+    }
+
+
     //finally, do a shallow copy for the modifiers
     //this becomes a deep copy since this method is called recursively for each extTy
     for(int m : n->modifiers)
@@ -382,9 +391,18 @@ Node* mkFuncDeclNode(LOC_TY loc, Node* s, Node *bn, Node* mods, Node* tExpr, Nod
     return new FuncDeclNode(loc, (char*)s, (char*)bn, mods, tExpr, p, b);
 }
 
-Node* mkDataDeclNode(LOC_TY loc, char* s, Node* b){
-    return new DataDeclNode(loc, s, b, getTupleSize(b));
+Node* mkDataDeclNode(LOC_TY loc, char* s, Node *p, Node* b){
+    vector<unique_ptr<TypeNode>> params;
+    while(p){
+        auto tn = new TypeNode(p->loc, TT_TypeVar, ((VarNode*)p)->name, nullptr);
+        params.push_back(unique_ptr<TypeNode>(tn));
+        auto *nxt = p->next.get();
+        delete p;
+        p = nxt;
+    }
+    return new DataDeclNode(loc, s, b, getTupleSize(b), params);
 }
+
 
 Node* mkMatchNode(LOC_TY loc, Node* expr, Node* branch){
     vector<unique_ptr<MatchBranchNode>> branches;
