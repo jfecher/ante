@@ -43,9 +43,81 @@ unsigned int TypeNode::getSizeInBits(Compiler *c){
         return stoi(len->val) * ext->getSizeInBits(c);
     }else if(type == TT_Ptr || type == TT_Function || type == TT_MetaFunction || type == TT_Method){
         return 64;
+
+    //TODO: taking the size of a typevar should be an error
+    }else if(type == TT_TypeVar){
+        return 64;
     }
-    
+
     return total;
+}
+
+
+void bind(TypeNode *type_var, const unique_ptr<TypeNode> &concrete_ty){
+    auto *cpy = deepCopyTypeNode(concrete_ty.get());
+    type_var->type = cpy->type;
+    type_var->typeName = cpy->typeName;
+    type_var->params = move(cpy->params);
+    type_var->extTy.reset(cpy->extTy.release());
+    delete cpy;
+}
+
+
+//binds concrete types to a generic type (one with type variables) based on matching names
+//of the type variables with that in the bindings
+void bindGenericToType(TypeNode *tn, const vector<pair<string, unique_ptr<TypeNode>>> &bindings){
+    if(tn->type == TT_TypeVar){
+        for(auto& pair : bindings){
+            if(tn->typeName == pair.first){
+                bind(tn, pair.second);
+            }
+        }
+    }
+
+    auto *ext = tn->extTy.get();
+    while(ext){
+        bindGenericToType(ext, bindings);
+        ext = (TypeNode*)ext->next.get();
+    }
+}
+
+//binds concrete types to a generic type based on declaration order of type vars
+void bindGenericToType(TypeNode *tn, const vector<unique_ptr<TypeNode>> &bindings){
+    if(tn->type == TT_TypeVar){
+        for(auto& tvar : bindings){
+            bind(tn, tvar);
+        }
+    }
+
+    auto *ext = tn->extTy.get();
+    while(ext){
+        bindGenericToType(ext, bindings);
+        ext = (TypeNode*)ext->next.get();
+    }
+}
+
+
+void Compiler::expand(TypeNode *tn){
+    TypeNode *ext = tn->extTy.get();
+    if(ext){
+        while(ext){
+            expand(ext);
+            ext = (TypeNode*)ext->next.get();
+        }
+    }else{
+        auto *dt = lookupType(tn->typeName);
+        if(!dt) return;
+
+        auto *cpy = deepCopyTypeNode(dt->tyn.get());
+        tn->extTy.reset(cpy->extTy.release());
+        ext = tn->extTy.get();
+
+        while(ext){
+            expand(ext);
+            ext = (TypeNode*)ext->next.get();
+        }
+        delete cpy;
+    }
 }
 
 
@@ -313,12 +385,20 @@ Type* Compiler::typeNodeToLlvmType(const TypeNode *tyNode){
             }
             return StructType::get(*ctxt, tys);
         case TT_Data:
-            userType = lookupType(tyNode->typeName);
-            if(!userType)
-                return (Type*)compErr("Use of undeclared type " + tyNode->typeName, tyNode->loc);
+            if(tyn){
+                while(tyn){
+                    tys.push_back(typeNodeToLlvmType(tyn));
+                    tyn = (TypeNode*)tyn->next.get();
+                }
+                return StructType::get(*ctxt, tys);
+            }else{
+                userType = lookupType(tyNode->typeName);
+                if(!userType)
+                    return (Type*)compErr("Use of undeclared type " + tyNode->typeName, tyNode->loc);
 
-            //((StructType*)userType->tyn)->setName(tyNode->typeName);
-            return typeNodeToLlvmType(userType->tyn.get());
+                //((StructType*)userType->tyn)->setName(tyNode->typeName);
+                return typeNodeToLlvmType(userType->tyn.get());
+            }
         case TT_Function: case TT_MetaFunction: {
             //ret ty is tyn from above
             //
@@ -345,7 +425,7 @@ Type* Compiler::typeNodeToLlvmType(const TypeNode *tyNode){
         case TT_TypeVar: {
             Variable *typeVar = lookup(tyNode->typeName);
             if(!typeVar){
-                compErr("Use of undeclared type variable " + tyNode->typeName, tyNode->loc);
+                //compErr("Use of undeclared type variable " + tyNode->typeName, tyNode->loc);
                 return Type::getVoidTy(*ctxt);
             }
 
@@ -496,7 +576,7 @@ bool dataTypeImplementsTrait(DataType *dt, string trait){
     
 TypeNode* TypeCheckResult::getBindingFor(const string &name){
     for(auto &pair : bindings){
-        if(pair.first == name)
+        if(pair.second->typeName == name)
             return pair.second.get();
     }
     return 0;
@@ -674,7 +754,10 @@ string typeNodeToStr(const TypeNode *t){
         }
         return ret;
     }else if(t->type == TT_Data || t->type == TT_TaggedUnion || t->type == TT_TypeVar){
-        return t->typeName;
+        string name = t->typeName;
+        for(auto &tn : t->params) name += " " + typeNodeToStr(tn.get());
+
+        return name;
     }else if(t->type == TT_Array){
         auto *len = (IntLitNode*)t->extTy->next.get();
         return '[' + len->val + " " + typeNodeToStr(t->extTy.get()) + ']';

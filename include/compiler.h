@@ -55,7 +55,7 @@ struct TypeCheckResult {
     enum Result { Failure, Success, SuccessWithTypeVars };
 
     Result res;
-    vector<pair<string, unique_ptr<TypeNode>>> bindings;
+    vector<pair<string,unique_ptr<TypeNode>>> bindings;
 
 
     TypeCheckResult* setRes(bool b);
@@ -66,8 +66,8 @@ struct TypeCheckResult {
 
     bool operator!(){return res == Failure;}
     TypeNode* getBindingFor(const string &s);
-    TypeCheckResult(Result r) : res(r){}
-    TypeCheckResult(bool r) : res((Result)r){}
+    TypeCheckResult(Result r) : res(r), bindings(){}
+    TypeCheckResult(bool r) : res((Result)r), bindings(){}
 };
 
 TypeCheckResult typeEqBase(const TypeNode *l, const TypeNode *r, TypeCheckResult *tcr, const Compiler *c = 0);
@@ -292,6 +292,7 @@ namespace ante{
 
         Type* typeNodeToLlvmType(const TypeNode *tyNode);
         TypeCheckResult typeEq(const TypeNode *l, const TypeNode *r) const;
+        void expand(TypeNode *tn);
     
         TypedValue* opImplementedForTypes(int op, TypeNode *l, TypeNode *r);
         TypedValue* implicitlyWidenNum(TypedValue *num, TypeTag castTy);
@@ -318,6 +319,9 @@ TypeTag llvmTypeToTypeTag(Type *t);
 string llvmTypeToStr(Type *ty);
 string typeTagToStr(TypeTag ty);
 bool llvmTypeEq(Type *l, Type *r);
+        
+void bindGenericToType(TypeNode *tn, const vector<pair<string, unique_ptr<TypeNode>>> &bindings);
+void bindGenericToType(TypeNode *tn, const vector<unique_ptr<TypeNode>> &bindings);
 
 char getBitWidthOfTypeTag(const TypeTag tagTy);
 bool isNumericTypeTag(const TypeTag ty);

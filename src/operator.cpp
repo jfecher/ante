@@ -255,12 +255,60 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
                     typeNodeToColoredStr(tmp->type), op->loc); }
 }
 
+
+TypedValue* createUnionVariantCast(Compiler *c, TypedValue *valToCast, unique_ptr<TypeNode> &castTyn, DataType *dataTy, TypeCheckResult &tyeq){
+    auto *unionDataTy = c->lookupType(dataTy->getParentUnionName());
+
+    auto *tycpy = deepCopyTypeNode(valToCast->type.get());
+    tycpy->typeName = dataTy->getParentUnionName();
+    tycpy->type = TT_TaggedUnion;
+
+    auto dtcpy = deepCopyTypeNode(unionDataTy->tyn.get());
+    dtcpy->type = TT_TaggedUnion;
+    dtcpy->typeName = dataTy->getParentUnionName();
+    if(tyeq.res == TypeCheckResult::SuccessWithTypeVars){
+        bindGenericToType(tycpy, tyeq.bindings);
+        bindGenericToType(dtcpy, tyeq.bindings);
+    }
+
+    auto t = unionDataTy->getTagVal(castTyn->typeName);
+    Type *variantTy = c->typeNodeToLlvmType(tycpy);
+
+    vector<Type*> unionTys;
+    unionTys.push_back(Type::getInt8Ty(*c->ctxt));
+    unionTys.push_back(variantTy);
+
+    vector<Constant*> unionVals;
+    unionVals.push_back(ConstantInt::get(*c->ctxt, APInt(8, t, true))); //tag
+    unionVals.push_back(UndefValue::get(variantTy));
+
+
+    Type *unionTy = c->typeNodeToLlvmType(dtcpy);
+
+    //create a struct of (u8 tag, <union member type>)
+    auto *uninitUnion = ConstantStruct::get(StructType::get(*c->ctxt, unionTys), unionVals);
+    auto* taggedUnion = c->builder.CreateInsertValue(uninitUnion, valToCast->val, 1);
+
+    //allocate for the largest possible union member
+    auto *alloca = c->builder.CreateAlloca(unionTy);
+
+    //but bitcast it the the current member
+    auto *castTo = c->builder.CreateBitCast(alloca, taggedUnion->getType()->getPointerTo());
+    c->builder.CreateStore(taggedUnion, castTo);
+
+    //load the original alloca, not the bitcasted one
+    Value *unionVal = c->builder.CreateLoad(alloca);
+
+    cout << "dt = " << typeNodeToStr(dtcpy) << ", ty = " << typeNodeToStr(tycpy) << endl;
+    return new TypedValue(unionVal, dtcpy);
+}
+
 /*
  *  Creates a cast instruction appropriate for valToCast's type to castTy.
  */
-TypedValue* createCast(Compiler *c, Type *castTy, TypeNode *tyn, TypedValue *valToCast){
+TypedValue* createCast(Compiler *c, unique_ptr<TypeNode> &castTyn, TypedValue *valToCast){
     //first, see if the user created their own cast function
-    if(TypedValue *fn = c->getCastFn(valToCast->type.get(), tyn)){
+    if(TypedValue *fn = c->getCastFn(valToCast->type.get(), castTyn.get())){
         vector<Value*> args;
         if(valToCast->type->type != TT_Void) args.push_back(valToCast->val);
         auto *call = c->builder.CreateCall(fn->val, args);
@@ -269,44 +317,50 @@ TypedValue* createCast(Compiler *c, Type *castTy, TypeNode *tyn, TypedValue *val
 
     //otherwise, fallback on known conversions
     if(isIntTypeTag(valToCast->type->type)){
+        Type *castTy = c->typeNodeToLlvmType(castTyn.get());
+
         // int -> int  (maybe unsigned)
-        if(isIntTypeTag(tyn->type)){
-            return new TypedValue(c->builder.CreateIntCast(valToCast->val, castTy, isUnsignedTypeTag(tyn->type)), deepCopyTypeNode(tyn));
+        if(isIntTypeTag(castTyn->type)){
+            return new TypedValue(c->builder.CreateIntCast(valToCast->val, castTy, isUnsignedTypeTag(castTyn->type)), castTyn);
 
         // int -> float
-        }else if(isFPTypeTag(tyn->type)){
+        }else if(isFPTypeTag(castTyn->type)){
             if(isUnsignedTypeTag(valToCast->type->type)){
-                return new TypedValue(c->builder.CreateUIToFP(valToCast->val, castTy), deepCopyTypeNode(tyn));
+                return new TypedValue(c->builder.CreateUIToFP(valToCast->val, castTy), castTyn);
             }else{
-                return new TypedValue(c->builder.CreateSIToFP(valToCast->val, castTy), deepCopyTypeNode(tyn));
+                return new TypedValue(c->builder.CreateSIToFP(valToCast->val, castTy), castTyn);
             }
-        
+
         // int -> ptr
-        }else if(tyn->type == TT_Ptr){
-            return new TypedValue(c->builder.CreatePtrToInt(valToCast->val, castTy), deepCopyTypeNode(tyn));
+        }else if(castTyn->type == TT_Ptr){
+            return new TypedValue(c->builder.CreatePtrToInt(valToCast->val, castTy), castTyn);
         }
     }else if(isFPTypeTag(valToCast->type->type)){
+        Type *castTy = c->typeNodeToLlvmType(castTyn.get());
+
         // float -> int  (maybe unsigned)
-        if(isIntTypeTag(tyn->type)){
-            if(isUnsignedTypeTag(tyn->type)){
-                return new TypedValue(c->builder.CreateFPToUI(valToCast->val, castTy), deepCopyTypeNode(tyn));
+        if(isIntTypeTag(castTyn->type)){
+            if(isUnsignedTypeTag(castTyn->type)){
+                return new TypedValue(c->builder.CreateFPToUI(valToCast->val, castTy), castTyn);
             }else{
-                return new TypedValue(c->builder.CreateFPToSI(valToCast->val, castTy), deepCopyTypeNode(tyn));
+                return new TypedValue(c->builder.CreateFPToSI(valToCast->val, castTy), castTyn);
             }
 
         // float -> float
-        }else if(isFPTypeTag(tyn->type)){
-            return new TypedValue(c->builder.CreateFPCast(valToCast->val, castTy), deepCopyTypeNode(tyn));
+        }else if(isFPTypeTag(castTyn->type)){
+            return new TypedValue(c->builder.CreateFPCast(valToCast->val, castTy), castTyn);
         }
 
     }else if(valToCast->type->type == TT_Ptr){
+        Type *castTy = c->typeNodeToLlvmType(castTyn.get());
+
         // ptr -> ptr
-        if(tyn->type == TT_Ptr){
-            return new TypedValue(c->builder.CreatePointerCast(valToCast->val, castTy), deepCopyTypeNode(tyn));
+        if(castTyn->type == TT_Ptr){
+            return new TypedValue(c->builder.CreatePointerCast(valToCast->val, castTy), castTyn);
 
         // ptr -> int
-        }else if(isIntTypeTag(tyn->type)){
-            return new TypedValue(c->builder.CreatePtrToInt(valToCast->val, castTy), deepCopyTypeNode(tyn));
+        }else if(isIntTypeTag(castTyn->type)){
+            return new TypedValue(c->builder.CreatePtrToInt(valToCast->val, castTy), castTyn);
         }
     }
 
@@ -316,56 +370,26 @@ TypedValue* createCast(Compiler *c, Type *castTy, TypeNode *tyn, TypedValue *val
     //type Int = i32
     //let example = Int 3
     //              ^^^^^
-    auto *dataTy = c->lookupType(tyn->typeName);
-    if(dataTy && !!c->typeEq(valToCast->type.get(), dataTy->tyn.get())){
-        auto *tycpy = deepCopyTypeNode(valToCast->type.get());
+    auto *dataTy = c->lookupType(castTyn->typeName);
+    auto tyeq = c->typeEq(valToCast->type.get(), dataTy->tyn.get());
 
+    if(dataTy && !!tyeq){
         //check if this is a tagged union (sum type)
-        if(dataTy->isUnionTag()){
-            auto *unionDataTy = c->lookupType(dataTy->getParentUnionName());
-            tycpy->typeName = dataTy->getParentUnionName();
-            tycpy->type = TT_TaggedUnion;
+        if(dataTy->isUnionTag())
+            return createUnionVariantCast(c, valToCast, castTyn, dataTy, tyeq);
 
-            auto t = unionDataTy->getTagVal(tyn->typeName);
-            Type *variantTy = c->typeNodeToLlvmType(valToCast->type.get());
-
-            vector<Type*> unionTys;
-            unionTys.push_back(Type::getInt8Ty(*c->ctxt));
-            unionTys.push_back(variantTy);
-
-            vector<Constant*> unionVals;
-            unionVals.push_back(ConstantInt::get(*c->ctxt, APInt(8, t, true))); //tag
-            unionVals.push_back(UndefValue::get(variantTy));
-
-
-            Type *unionTy = c->typeNodeToLlvmType(unionDataTy->tyn.get());
-
-            //create a struct of (u8 tag, <union member type>)
-            auto *uninitUnion = ConstantStruct::get(StructType::get(*c->ctxt, unionTys), unionVals);
-            auto* taggedUnion = c->builder.CreateInsertValue(uninitUnion, valToCast->val, 1);
-
-            //allocate for the largest possible union member
-            auto *alloca = c->builder.CreateAlloca(unionTy);
-
-            //but bitcast it the the current member
-            auto *castTo = c->builder.CreateBitCast(alloca, taggedUnion->getType()->getPointerTo());
-            c->builder.CreateStore(taggedUnion, castTo);
-
-            //load the original alloca, not the bitcasted one
-            Value *unionVal = c->builder.CreateLoad(alloca);
-            return new TypedValue(unionVal, tycpy);
-        }
-
-        tycpy->typeName = tyn->typeName;
+        auto *tycpy = deepCopyTypeNode(valToCast->type.get());
+        tycpy->typeName = castTyn->typeName;
         tycpy->type = TT_Data;
+
         return new TypedValue(valToCast->val, tycpy);
     //test for the reverse case, something like:  i32 example
     //where example is of type Int
     }else if(valToCast->type->typeName.size() > 0 && (dataTy = c->lookupType(valToCast->type->typeName))){
-        if(!!c->typeEq(dataTy->tyn.get(), tyn)){
+        if(!!c->typeEq(dataTy->tyn.get(), castTyn.get())){
             auto *tycpy = deepCopyTypeNode(valToCast->type.get());
             tycpy->typeName = "";
-            tycpy->type = tyn->type;
+            tycpy->type = castTyn->type;
             return new TypedValue(valToCast->val, tycpy);
         }
     }
@@ -374,11 +398,10 @@ TypedValue* createCast(Compiler *c, Type *castTy, TypeNode *tyn, TypedValue *val
 }
 
 TypedValue* TypeCastNode::compile(Compiler *c){
-    Type *castTy = c->typeNodeToLlvmType(typeExpr.get());
     auto *rtval = rval->compile(c);
-    if(!castTy || !rtval) return 0;
+    if(!rtval) return 0;
 
-    auto* tval = createCast(c, castTy, typeExpr.get(), rtval);
+    auto* tval = createCast(c, typeExpr, rtval);
 
     if(!tval){
         if(!!c->typeEq(rtval->type.get(), typeExpr.get()))
@@ -963,7 +986,8 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
     //both a C-style cast and dyn-cast to functions fail if f is a function-pointer
     auto *call = c->builder.CreateCall(tvf->val, args);
 
-    return new TypedValue(call, tvf->type->extTy);
+    auto *ret = new TypedValue(call, tvf->type->extTy);
+    return ret;
 }
 
 TypedValue* Compiler::compLogicalOr(Node *lexpr, Node *rexpr, BinOpNode *op){

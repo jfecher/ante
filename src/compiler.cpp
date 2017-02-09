@@ -951,14 +951,24 @@ TypedValue* compFnHelper(Compiler *c, FuncDecl *fd){
         auto *ret = c->compLetBindingFn(fd, paramTys);
         c->builder.SetInsertPoint(caller);
         return ret;
+    }else{
+        if(!retNode->params.empty()){
+            c->expand(retNode);
+            bindGenericToType(retNode, retNode->params);
+        }
     }
 
-    
+
     //create the function's actual type node for the tval later
-    TypeNode *fnTy = createFnTyNode(fdn->params.get(), (TypeNode*)fdn->type.get());
+    TypeNode *fnTy = createFnTyNode(fdn->params.get(), retNode);
 
 
     Type *retTy = c->typeNodeToLlvmType(retNode);
+    cout << "retNode: " << typeNodeToStr(retNode) << ", ext = " << typeNodeToStr(retNode->extTy.get()) << ", ext->next = " << typeNodeToStr((TypeNode*)retNode->extTy->next.get()) << endl;
+    cout << "retty: " << flush;
+    retTy->dump();
+    
+
     FunctionType *ft = FunctionType::get(retTy, paramTys, fdn->varargs);
     Function *f = Function::Create(ft, Function::ExternalLinkage, fdn->name, c->module.get());
     f->addFnAttr("nounwind");
@@ -1022,6 +1032,7 @@ TypedValue* compFnHelper(Compiler *c, FuncDecl *fd){
             }
         }
         //optimize!
+        f->dump();
         c->passManager->run(*f);
     }
 
@@ -1379,27 +1390,50 @@ TypedValue* MatchNode::compile(Compiler *c){
             auto *tagTy = c->lookupType(tn->typeExpr->typeName);
             if(!tagTy)
                 return c->compErr("Union tag " + typeNodeToColoredStr(tn->typeExpr) + " was not yet declared.", tn->typeExpr->loc);
-       
+
             if(!tagTy->isUnionTag())
                 return c->compErr(typeNodeToColoredStr(tn->typeExpr) + " must be a union tag to be used in a pattern", tn->typeExpr->loc);
 
             auto *parentTy = c->lookupType(tagTy->getParentUnionName());
             ci = ConstantInt::get(*c->ctxt, APInt(8, parentTy->getTagVal(tn->typeExpr->typeName), true));
 
-            
+
             if(VarNode *v = dynamic_cast<VarNode*>(tn->rval.get())){
                 auto *alloca = c->builder.CreateAlloca(lval->getType());
                 c->builder.CreateStore(lval->val, alloca);
 
+                //If this is a generic type cast like Some 't, the 't must be binded to a concrete type first
+                auto *tagtycpy = deepCopyTypeNode(tagTy->tyn.get());
+                
+                auto *structty = mkTypeNodeWithExt(lval->type->type, mkAnonTypeNode(TT_U8));
+                structty->typeName = lval->type->typeName;
+                structty->extTy->next.reset(tagtycpy);
+
+                lval->dump();
+
+                auto tcr = c->typeEq(structty, lval->type.get());
+                if(tcr.res == TypeCheckResult::SuccessWithTypeVars)
+                    bindGenericToType(tagtycpy, tcr.bindings);
+                else if(tcr.res == TypeCheckResult::Success)
+                    cout << "no binding\n";
+                else if(tcr.res == TypeCheckResult::Failure)
+                    return c->compErr("Cannot bind pattern of type " + typeNodeToColoredStr(structty) +
+                            " to matched value of type " + typeNodeToColoredStr(lval->type), tn->rval->loc);
+
+                cout << "Bound " << typeNodeToStr(structty) << " to " << typeNodeToStr(tagtycpy) << endl;
+
+                structty->extTy->next.release();
+                delete structty;
+
                 //cast it from (<tag type>, <largest union member type>) to (<tag type>, <this union member's type>)
-                auto *tupTy = StructType::get(*c->ctxt, {Type::getInt8Ty(*c->ctxt), c->typeNodeToLlvmType(tagTy->tyn.get())});
+                auto *tupTy = StructType::get(*c->ctxt, {Type::getInt8Ty(*c->ctxt), c->typeNodeToLlvmType(tagtycpy)});
 
                 auto *cast = c->builder.CreateBitCast(alloca, tupTy->getPointerTo());
                 auto *tup = c->builder.CreateLoad(cast);
-                auto *extract = new TypedValue(c->builder.CreateExtractValue(tup, 1), tagTy->tyn);
+                auto *extract = new TypedValue(c->builder.CreateExtractValue(tup, 1), tagtycpy);
                 c->stoVar(v->name, new Variable(v->name, extract, c->scope));
             }else{
-                return c->compErr("pattern typecast's rval is not a ident", tn->rval->loc);
+                return c->compErr("pattern typecast's rval is not a identifier", tn->rval->loc);
             }
 
         //single type pattern:  None

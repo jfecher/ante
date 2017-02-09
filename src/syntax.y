@@ -223,7 +223,7 @@ arr_type: '[' val type_expr ']' {$3->next.reset($2);
 
 generic_type: generic_type lit_type  %prec LOW {((TypeNode*)$1)->params.push_back(unique_ptr<TypeNode>((TypeNode*)$2)); $$ = $1;}
             | usertype lit_type      %prec LOW {$$ = mkTypeNode(@1, TT_Data, (char*)$1);
-                                           ((TypeNode*)$1)->params.push_back(unique_ptr<TypeNode>((TypeNode*)$2)); $$ = $1;}
+                                           ((TypeNode*)$$)->params.push_back(unique_ptr<TypeNode>((TypeNode*)$2));}
             ;
 
 type: pointer_type  %prec LOW   {$$ = $1;}
