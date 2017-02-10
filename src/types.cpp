@@ -65,7 +65,7 @@ void bind(TypeNode *type_var, const unique_ptr<TypeNode> &concrete_ty){
 
 //binds concrete types to a generic type (one with type variables) based on matching names
 //of the type variables with that in the bindings
-void bindGenericToType(TypeNode *tn, const vector<pair<string, unique_ptr<TypeNode>>> &bindings){
+void bindGenericToType_helper(TypeNode *tn, const vector<pair<string, unique_ptr<TypeNode>>> &bindings){
     if(tn->type == TT_TypeVar){
         for(auto& pair : bindings){
             if(tn->typeName == pair.first){
@@ -82,7 +82,7 @@ void bindGenericToType(TypeNode *tn, const vector<pair<string, unique_ptr<TypeNo
 }
 
 //binds concrete types to a generic type based on declaration order of type vars
-void bindGenericToType(TypeNode *tn, const vector<unique_ptr<TypeNode>> &bindings){
+void bindGenericToType_helper(TypeNode *tn, const vector<unique_ptr<TypeNode>> &bindings){
     if(tn->type == TT_TypeVar){
         for(auto& tvar : bindings){
             bind(tn, tvar);
@@ -94,6 +94,29 @@ void bindGenericToType(TypeNode *tn, const vector<unique_ptr<TypeNode>> &binding
         bindGenericToType(ext, bindings);
         ext = (TypeNode*)ext->next.get();
     }
+}
+
+
+void bindGenericToType(TypeNode *tn, const vector<unique_ptr<TypeNode>> &bindings){
+    if(bindings.empty())
+        return;
+
+    if(tn->params.empty())
+        for(auto& b : bindings)
+            tn->params.push_back(unique_ptr<TypeNode>(deepCopyTypeNode(b.get())));
+
+    bindGenericToType_helper(tn, bindings);
+}
+
+void bindGenericToType(TypeNode *tn, const vector<pair<string, unique_ptr<TypeNode>>> &bindings){
+    if(bindings.empty())
+        return;
+    
+    if(tn->params.empty())
+        for(auto& p : bindings)
+            tn->params.push_back(unique_ptr<TypeNode>(deepCopyTypeNode(p.second.get())));
+
+    bindGenericToType_helper(tn, bindings);
 }
 
 
@@ -412,11 +435,14 @@ Type* Compiler::typeNodeToLlvmType(const TypeNode *tyNode){
             return FunctionType::get(typeNodeToLlvmType(tyn), tys, false)->getPointerTo();
         }
         case TT_TaggedUnion:
-            userType = lookupType(tyNode->typeName);
-            if(!userType)
-                return (Type*)compErr("Use of undeclared type " + tyNode->typeName, tyNode->loc);
+            if(!tyn){
+                userType = lookupType(tyNode->typeName);
+                if(!userType)
+                    return (Type*)compErr("Use of undeclared type " + tyNode->typeName, tyNode->loc);
 
-            tyn = userType->tyn->extTy.get();
+                tyn = userType->tyn->extTy.get();
+            }
+            
             while(tyn){
                 tys.push_back(typeNodeToLlvmType(tyn));
                 tyn = (TypeNode*)tyn->next.get();
@@ -600,7 +626,7 @@ TypeCheckResult* TypeCheckResult::setRes(Result r){
 TypeCheckResult typeEqHelper(const Compiler *c, const TypeNode *l, const TypeNode *r, TypeCheckResult *tcr){
     if(!l) return !r;
 
-    if(l->type == TT_Data and r->type == TT_Data){
+    if((l->type == TT_Data and r->type == TT_Data) or (l->type == TT_TaggedUnion and r->type == TT_TaggedUnion)){
         if(l->typeName == r->typeName){
             if(l->params.empty() and r->params.empty())
                 return tcr->setSuccess();

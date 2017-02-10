@@ -259,20 +259,15 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
 TypedValue* createUnionVariantCast(Compiler *c, TypedValue *valToCast, unique_ptr<TypeNode> &castTyn, DataType *dataTy, TypeCheckResult &tyeq){
     auto *unionDataTy = c->lookupType(dataTy->getParentUnionName());
 
-    auto *tycpy = deepCopyTypeNode(valToCast->type.get());
-    tycpy->typeName = dataTy->getParentUnionName();
-    tycpy->type = TT_TaggedUnion;
-
     auto dtcpy = deepCopyTypeNode(unionDataTy->tyn.get());
     dtcpy->type = TT_TaggedUnion;
     dtcpy->typeName = dataTy->getParentUnionName();
     if(tyeq.res == TypeCheckResult::SuccessWithTypeVars){
-        bindGenericToType(tycpy, tyeq.bindings);
         bindGenericToType(dtcpy, tyeq.bindings);
     }
 
     auto t = unionDataTy->getTagVal(castTyn->typeName);
-    Type *variantTy = c->typeNodeToLlvmType(tycpy);
+    Type *variantTy = c->typeNodeToLlvmType(valToCast->type.get());
 
     vector<Type*> unionTys;
     unionTys.push_back(Type::getInt8Ty(*c->ctxt));
@@ -293,13 +288,12 @@ TypedValue* createUnionVariantCast(Compiler *c, TypedValue *valToCast, unique_pt
     auto *alloca = c->builder.CreateAlloca(unionTy);
 
     //but bitcast it the the current member
-    auto *castTo = c->builder.CreateBitCast(alloca, taggedUnion->getType()->getPointerTo());
+    auto *castTo = c->builder.CreateBitCast(alloca, unionTy->getPointerTo());
     c->builder.CreateStore(taggedUnion, castTo);
 
     //load the original alloca, not the bitcasted one
     Value *unionVal = c->builder.CreateLoad(alloca);
 
-    cout << "dt = " << typeNodeToStr(dtcpy) << ", ty = " << typeNodeToStr(tycpy) << endl;
     return new TypedValue(unionVal, dtcpy);
 }
 
@@ -476,18 +470,44 @@ TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Ty
         auto *elseretbb = c->builder.GetInsertBlock();
 
         if(!elseVal) return 0;
-        if(!dyn_cast<ReturnInst>(elseVal->val))
-            c->builder.CreateBr(mergebb);
-        
+
         //save the final else
         branches.push_back({elseVal, elseretbb});
 
         if(!thenVal) return 0;
 
+        auto eq = c->typeEq(thenVal->type.get(), elseVal->type.get());
+        if(!eq and !dyn_cast<ReturnInst>(thenVal->val) && !dyn_cast<ReturnInst>(elseVal->val)){
+            bool tEmpty = thenVal->type->params.empty();
+            bool eEmpty = elseVal->type->params.empty();
 
-        if(!c->typeEq(thenVal->type.get(), elseVal->type.get()) && !dyn_cast<ReturnInst>(thenVal->val) && !dyn_cast<ReturnInst>(elseVal->val))
-            return c->compErr("If condition's then expr's type " + typeNodeToColoredStr(thenVal->type) +
+            //TODO: copy type
+            if(tEmpty and not eEmpty){
+                bindGenericToType(thenVal->type.get(), elseVal->type->params);
+                thenVal->val->mutateType(c->typeNodeToLlvmType(thenVal->type.get()));
+
+                if(LoadInst *li = dyn_cast<LoadInst>(thenVal->val)){
+                    auto *alloca = li->getPointerOperand();
+                    auto *cast = c->builder.CreateBitCast(alloca, c->typeNodeToLlvmType(elseVal->type.get())->getPointerTo());
+                    thenVal->val = c->builder.CreateLoad(cast);
+                }
+            }else if(eEmpty and not tEmpty){
+                bindGenericToType(elseVal->type.get(), thenVal->type->params);
+                elseVal->val->mutateType(c->typeNodeToLlvmType(elseVal->type.get()));
+                
+                if(LoadInst *ri = dyn_cast<LoadInst>(elseVal->val)){
+                    auto *alloca = ri->getPointerOperand();
+                    auto *cast = c->builder.CreateBitCast(alloca, c->typeNodeToLlvmType(thenVal->type.get())->getPointerTo());
+                    elseVal->val = c->builder.CreateLoad(cast);
+                }
+            }else{
+                return c->compErr("If condition's then expr's type " + typeNodeToColoredStr(thenVal->type) +
                             " does not match the else expr's type " + typeNodeToColoredStr(elseVal->type), ifn->loc);
+            }
+        }
+        
+        if(!dyn_cast<ReturnInst>(elseVal->val))
+            c->builder.CreateBr(mergebb);
 
 
         c->builder.SetInsertPoint(mergebb);

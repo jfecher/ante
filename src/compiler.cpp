@@ -964,10 +964,6 @@ TypedValue* compFnHelper(Compiler *c, FuncDecl *fd){
 
 
     Type *retTy = c->typeNodeToLlvmType(retNode);
-    cout << "retNode: " << typeNodeToStr(retNode) << ", ext = " << typeNodeToStr(retNode->extTy.get()) << ", ext->next = " << typeNodeToStr((TypeNode*)retNode->extTy->next.get()) << endl;
-    cout << "retty: " << flush;
-    retTy->dump();
-    
 
     FunctionType *ft = FunctionType::get(retTy, paramTys, fdn->varargs);
     Function *f = Function::Create(ft, Function::ExternalLinkage, fdn->name, c->module.get());
@@ -1032,7 +1028,6 @@ TypedValue* compFnHelper(Compiler *c, FuncDecl *fd){
             }
         }
         //optimize!
-        f->dump();
         c->passManager->run(*f);
     }
 
@@ -1409,18 +1404,14 @@ TypedValue* MatchNode::compile(Compiler *c){
                 structty->typeName = lval->type->typeName;
                 structty->extTy->next.reset(tagtycpy);
 
-                lval->dump();
+                bindGenericToType(structty, lval->type->params);
 
                 auto tcr = c->typeEq(structty, lval->type.get());
                 if(tcr.res == TypeCheckResult::SuccessWithTypeVars)
                     bindGenericToType(tagtycpy, tcr.bindings);
-                else if(tcr.res == TypeCheckResult::Success)
-                    cout << "no binding\n";
                 else if(tcr.res == TypeCheckResult::Failure)
                     return c->compErr("Cannot bind pattern of type " + typeNodeToColoredStr(structty) +
                             " to matched value of type " + typeNodeToColoredStr(lval->type), tn->rval->loc);
-
-                cout << "Bound " << typeNodeToStr(structty) << " to " << typeNodeToStr(tagtycpy) << endl;
 
                 structty->extTy->next.release();
                 delete structty;
