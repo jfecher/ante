@@ -56,46 +56,57 @@ fun Ante.debug: 't t;
 
 //numerical print functions
 ![inline]
-fun i8.print: i8 x = printf "%hhd\n" x
+fun i8.print: i8 x
+    printf "%hhd\n" x
 
 ![inline]
-fun i16.print: i16 x = printf "%hd\n" x
+fun i16.print: i16 x
+    printf "%hd\n" x
 
 ![inline]
-fun i32.print: i32 x = printf "%d\n" x
+fun i32.print: i32 x
+    printf "%d\n" x
 
 ![inline]
-fun i64.print: i64 x = printf "%ld\n" x
+fun i64.print: i64 x
+    printf "%ld\n" x
 
 //unsigned
 ![inline]
-fun u8.print: u8 x = printf "%hhu\n" x
+fun u8.print: u8 x
+    printf "%hhu\n" x
 
 ![inline]
-fun u16.print: u16 x = printf "%hu\n" x
+fun u16.print: u16 x
+    printf "%hu\n" x
 
 ![inline]
-fun u32.print: u32 x = printf "%u\n" x
+fun u32.print: u32 x
+    printf "%u\n" x
 
 ![inline]
-fun u64.print: u64 x = printf "%lu\n" x
+fun u64.print: u64 x
+    printf "%lu\n" x
 
 //floats
 ![inline]
-fun f16.print: f16 x = printf "%.2f\n" (f64 x)
+fun f16.print: f16 x 
+    printf "%.2f\n" (f64 x)
 
 ![inline]
-fun f32.print: f32 x = printf "%f\n" (f64 x)
+fun f32.print: f32 x
+    printf "%f\n" (f64 x)
 
 ![inline]
-fun f64.print: f64 x = printf "%.14f\n" x
+fun f64.print: f64 x
+    printf "%.14f\n" x
 
 //char
 ![inline]
-fun c8.print: c8 x = printf "%c\n" x
+fun c8.print: c8 x
+    printf "%c\n" x
 
-
-
+//c-string
 ![inline]
 fun print: c8* s
     puts s
