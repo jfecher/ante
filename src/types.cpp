@@ -626,13 +626,16 @@ TypeCheckResult* TypeCheckResult::setRes(Result r){
 TypeCheckResult typeEqHelper(const Compiler *c, const TypeNode *l, const TypeNode *r, TypeCheckResult *tcr){
     if(!l) return !r;
 
-    if((l->type == TT_Data and r->type == TT_Data) or (l->type == TT_TaggedUnion and r->type == TT_TaggedUnion)){
+    if((l->type == TT_Data or l->type == TT_TaggedUnion) and (r->type == TT_Data or r->type == TT_TaggedUnion)){
         if(l->typeName == r->typeName){
-            if(l->params.empty() and r->params.empty())
+            if(l->params.empty() and r->params.empty()){
                 return tcr->setSuccess();
+            }
 
-            if(l->params.size() != r->params.size())
-                return tcr->setFailure();
+            if(l->params.size() != r->params.size()){
+                //Types not equal by differing amount of params, see if it is just a lack of a binding issue
+                return extTysEq(l, r, tcr, c);
+            }
 
             //check each type param of generic tys
             for(unsigned int i = 0, len = l->params.size(); i < len; i++){
@@ -689,6 +692,7 @@ TypeCheckResult typeEqHelper(const Compiler *c, const TypeNode *l, const TypeNod
                 //make binding for type var to type of nonTypeVar
                 auto nontvcpy = unique_ptr<TypeNode>(deepCopyTypeNode(nonTypeVar));
                 tcr->bindings.push_back({typeVar->typeName, move(nontvcpy)});
+                
                 return tcr->setSuccessWithTypeVars();
             }else{ //tv is bound in same typechecking run
                 return typeEqHelper(c, tv, nonTypeVar, tcr);

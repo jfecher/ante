@@ -87,7 +87,9 @@ struct FuncDecl {
     unsigned int scope;
     TypedValue *tv;
     shared_ptr<ante::Module> module;
-    FuncDecl(FuncDeclNode *fn, unsigned int s, shared_ptr<ante::Module> mod, TypedValue *f=0) : fdn(fn), scope(s), tv(f), module(mod){}
+    vector<TypedValue*> returns;
+
+    FuncDecl(FuncDeclNode *fn, unsigned int s, shared_ptr<ante::Module> mod, TypedValue *f=0) : fdn(fn), scope(s), tv(f), module(mod), returns(){}
     ~FuncDecl(){ if(fdn){delete fdn;} delete tv; }
 };
 
@@ -233,6 +235,8 @@ namespace ante{
         //Maps are seperated according to their scope.
         vector<unique_ptr<std::map<string, unique_ptr<Variable>>>> varTable;
 
+        //Stack of each called function
+        vector<FuncDecl*> callStack;
 
         bool errFlag, compiled, isLib;
         string fileName, outFile, funcPrefix;
@@ -274,8 +278,9 @@ namespace ante{
         void jitFunction(Function *fnName);
         void importFile(const char *name);
         void updateFn(TypedValue *f, string &name, string &mangledName);
+        FuncDecl* getCurrentFunction() const;
         TypedValue* getFunction(string& name, string& mangledName);
-        list<shared_ptr<FuncDecl>>& getFunctionList(string& name);
+        list<shared_ptr<FuncDecl>>& getFunctionList(string& name) const;
         TypedValue* getMangledFunction(string nonMangledName, TypeNode *params);
         TypedValue* getCastFn(TypeNode *from_ty, TypeNode *to_ty);
         
