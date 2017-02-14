@@ -462,12 +462,13 @@ TypedValue* Compiler::compFn(FuncDecl *fd){
         auto *ret = compFnHelper(this, fd);
         mergedCompUnits = mcu;
 
+        callStack.pop_back();
         return ret;
     }else{
-        return compFnHelper(this, fd);
+        auto *ret = compFnHelper(this, fd);
+        callStack.pop_back();
+        return ret;
     }
-
-    callStack.pop_back();
 }
 
 
@@ -502,11 +503,7 @@ FuncDecl* getFuncDeclFromList(list<shared_ptr<FuncDecl>> &l, string &mangledName
 
 
 FuncDecl* Compiler::getCurrentFunction() const{
-    string name = callStack.back()->fdn->name;
-    string basename = callStack.back()->fdn->basename;
-
-    auto fdlist = mergedCompUnits->fnDecls[basename];
-    return getFuncDeclFromList(fdlist, name);
+    return callStack.back();
 }
 
 

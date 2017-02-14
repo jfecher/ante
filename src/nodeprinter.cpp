@@ -123,13 +123,9 @@ void BinOpNode::print(){
         lval->print();
         rval->print();
     }else if(op == ';'){
-        putchar('{');
         lval->print();
-        putchar('}');
         puts(";");
-        putchar('{');
         rval->print();
-        putchar('}');
     }else{
         putchar('(');
         lval->print();

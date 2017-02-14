@@ -355,7 +355,7 @@ vector<TypedValue*> TupleNode::unpack(Compiler *c){
 TypedValue* RetNode::compile(Compiler *c){
     TypedValue *ret = expr->compile(c);
     if(!ret) return 0;
-   
+    
     auto *retInst = ret->type->type == TT_Void ?
                  new TypedValue(c->builder.CreateRetVoid(), ret->type) :
                  new TypedValue(c->builder.CreateRet(ret->val), ret->type);

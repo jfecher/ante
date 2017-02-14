@@ -535,6 +535,10 @@ TypedValue* IfNode::compile(Compiler *c){
     return compIf(c, this, mergebb, branches);
 }
 
+
+TypeNode* createFnTyNode(NamedValNode *params, TypeNode *retTy);
+
+
 TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *binop){
     if(!ln) return 0;
 
@@ -616,9 +620,15 @@ TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *bino
             TypedValue *obj = new TypedValue(val, deepCopyTypeNode(tyn));
             auto *method_fn = new TypedValue(fd->tv->val, fd->tv->type);
             return new MethodVal(obj, method_fn);
-        }else if(l.size() > 1)
-            return compErr("Multiple methods of the same name with different parameters are currently unimplemented.  In the mean time, you can use global functions.", field->loc);
-        else
+        }else if(l.size() > 1){
+            compErr("Multiple methods of the same name with different parameters are currently unimplemented.  In the mean time, you can use global functions.", field->loc);
+            cout << "note: candidate methods are:\n";
+            for(auto &fd : l){
+                compErr("Candidate function", fd->fdn->loc);
+            }
+
+            return 0;
+        }else
             return compErr("Method/Field " + field->name + " not found in type " + typeNodeToColoredStr(tyn), binop->loc);
     }
 }
