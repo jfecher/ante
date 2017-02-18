@@ -175,12 +175,12 @@ TypedValue* Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
         return 0;
 
     //create the actual function's type, along with the function itself.
-    FunctionType *ft = FunctionType::get(v->getType(), paramTys, fdn->varargs);
+    FunctionType *ft = FunctionType::get(typeNodeToLlvmType(retTy), paramTys, fdn->varargs);
     Function *f = Function::Create(ft, Function::ExternalLinkage,
             fdn->name.length() > 0 ? fdn->name : "__lambda__", module.get());
   
     //now that we have the real function, replace the old one with it
-   
+
     //prepend the ret type to the function's type node node extension list.
     //(A typenode represents functions by having the first extTy as the ret type,
     //and the (optional) next types in the list as the parameter types)

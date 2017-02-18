@@ -23,7 +23,10 @@ Node* setRoot(Node* node){
 
 Node* setElse(Node *ifn, Node *elseN){
     if(auto *n = dynamic_cast<IfNode*>(ifn)){
-        n->elseN.reset(elseN);
+        if(n->elseN)
+            setElse(n->elseN.get(), elseN);
+        else
+            n->elseN.reset(elseN);
     }else{
         auto *binop = dynamic_cast<BinOpNode*>(ifn);
 

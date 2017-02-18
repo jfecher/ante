@@ -506,6 +506,43 @@ TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Ty
             }
         }
         
+        if(eq.res == TypeCheckResult::SuccessWithTypeVars){
+            bool tEmpty = thenVal->type->params.empty();
+            bool eEmpty = elseVal->type->params.empty();
+           
+            TypedValue *generic;
+            TypedValue *concrete;
+
+            if(tEmpty and !eEmpty){
+                generic = thenVal;
+                concrete = elseVal;
+            }else if(eEmpty and !tEmpty){
+                generic = elseVal;
+                concrete = thenVal;
+            }else{
+                return c->compErr("If condition's then expr's type " + typeNodeToColoredStr(thenVal->type) +
+                            " does not match the else expr's type " + typeNodeToColoredStr(elseVal->type), ifn->loc);
+            }
+            
+            //TODO: copy type
+            bindGenericToType(generic->type.get(), concrete->type->params);
+            generic->val->mutateType(c->typeNodeToLlvmType(generic->type.get()));
+
+            auto *ri = dyn_cast<ReturnInst>(generic->val);
+
+            if(LoadInst *li = dyn_cast<LoadInst>(ri ? ri->getReturnValue() : generic->val)){
+                auto *alloca = li->getPointerOperand();
+
+                auto *ins = ri ? ri->getParent() : c->builder.GetInsertBlock();
+                c->builder.SetInsertPoint(ins);
+
+                auto *cast = c->builder.CreateBitCast(alloca, c->typeNodeToLlvmType(generic->type.get())->getPointerTo());
+                auto *fixed_ret = c->builder.CreateLoad(cast);
+                generic->val = fixed_ret;
+                if(ri) ri->eraseFromParent();
+            }
+        }
+        
         if(!dyn_cast<ReturnInst>(elseVal->val))
             c->builder.CreateBr(mergebb);
 
@@ -515,9 +552,12 @@ TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Ty
         //finally, create the ret value of this if expr, unless it is of void type
         if(thenVal->type->type != TT_Void){
             auto *phi = c->builder.CreatePHI(thenVal->getType(), branches.size());
+
             for(auto &pair : branches)
-                if(!dyn_cast<ReturnInst>(pair.first->val))
+                if(!dyn_cast<ReturnInst>(pair.first->val)){
+                    pair.first->dump();
                     phi->addIncoming(pair.first->val, pair.second);
+                }
 
             return new TypedValue(phi, thenVal->type);
         }else{
