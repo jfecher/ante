@@ -555,7 +555,6 @@ TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Ty
 
             for(auto &pair : branches)
                 if(!dyn_cast<ReturnInst>(pair.first->val)){
-                    pair.first->dump();
                     phi->addIncoming(pair.first->val, pair.second);
                 }
 
