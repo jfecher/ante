@@ -1076,9 +1076,10 @@ void Compiler::importFile(const char *fName){
         mergedCompUnits->import(module);
 
     }catch(out_of_range r){
-        //function not found; create new Compiler instance to compile it
+        //module not found; create new Compiler instance to compile it
         Compiler *c = new Compiler(fName, true, ctxt);
         c->allCompiledModules = allCompiledModules;
+        c->compilePrelude();
         c->scanAllDecls();
 
         if(c->errFlag){
