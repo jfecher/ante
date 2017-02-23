@@ -488,7 +488,7 @@ TypedValue* compVarDeclWithInferredType(VarDeclNode *node, Compiler *c){
     val->type->addModifier(Tok_Mut);
 
     //create the alloca and transfer ownerhip of val->type
-    TypedValue *alloca = new TypedValue(c->builder.CreateAlloca(val->getType(), 0, node->name.c_str()), val->type.release());
+    TypedValue *alloca = new TypedValue(c->builder.CreateAlloca(val->getType(), nullptr, node->name.c_str()), val->type.release());
 
     bool nofree = true;//val->type->type != TT_Ptr || dynamic_cast<Constant*>(val->val);
     c->stoVar(node->name, new Variable(node->name, alloca, c->scope, nofree, true));
@@ -518,7 +518,7 @@ TypedValue* VarDeclNode::compile(Compiler *c){
 
     Type *ty = c->typeNodeToLlvmType(tyNode);
     tyNode->addModifier(Tok_Mut);
-    TypedValue *alloca = new TypedValue(c->builder.CreateAlloca(ty, 0, name.c_str()), tyNode);
+    TypedValue *alloca = new TypedValue(c->builder.CreateAlloca(ty, nullptr, name.c_str()), tyNode);
 
     Variable *var = new Variable(name, alloca, c->scope, true, true);
     c->stoVar(name, var);
@@ -1043,12 +1043,10 @@ TypedValue* MatchBranchNode::compile(Compiler *c){
 }
 
 
-void ante::Module::import(Compiler *c, shared_ptr<ante::Module> mod){
+void ante::Module::import(shared_ptr<ante::Module> mod){
     for(auto& pair : mod->fnDecls)
-        for(auto& fd : pair.second){
+        for(auto& fd : pair.second)
             fnDecls[pair.first].push_back(fd);
-        }
-
 
     for(auto& pair : mod->userTypes)
         userTypes[pair.first] = pair.second;
@@ -1075,13 +1073,13 @@ void Compiler::importFile(const char *fName){
 
         //module is already compiled; just copy the ptr to imports
         imports.push_back(module);
-        mergedCompUnits->import(this, module);
-        
+        mergedCompUnits->import(module);
+
     }catch(out_of_range r){
         //function not found; create new Compiler instance to compile it
-        Compiler *c = new Compiler(fName, true);
+        Compiler *c = new Compiler(fName, true, ctxt);
         c->allCompiledModules = allCompiledModules;
-        c->compile();
+        c->scanAllDecls();
 
         if(c->errFlag){
             cout << "Error when importing " << fName << endl;
@@ -1090,7 +1088,7 @@ void Compiler::importFile(const char *fName){
         }
 
         imports.push_back(c->compUnit);
-        mergedCompUnits->import(c, c->compUnit);
+        mergedCompUnits->import(c->compUnit);
 
         allCompiledModules[c->fileName] = c->compUnit;
         delete c;
@@ -1155,65 +1153,10 @@ Node* mkPlaceholderNode(){
  *  declarations.  Removes compiled functions.
  */
 void Compiler::scanAllDecls(){
-    Node *op = ast.get();
-    BinOpNode *prev = 0;
-    BinOpNode *bop;
-
-    while((bop = dynamic_cast<BinOpNode*>(op)) && bop->op == ';'){
-        auto *rv = bop->rval.get();
-
-        if(dynamic_cast<FuncDeclNode*>(rv) || dynamic_cast<ExtNode*>(rv) ||
-                dynamic_cast<DataDeclNode*>(rv) || dynamic_cast<TraitNode*>(rv)){
-
-            rv->compile(this); //register the function
-            if(prev){
-                prev->lval.release();
-                prev->lval.reset(bop->lval.get()); //free the node
-            }else{
-                ast.release();
-                ast.reset(bop->lval.get()); //free the node
-            }
-            op = bop->lval.get();
-            bop->rval.release();
-            bop->lval.release();
-            delete bop;
-
-            //while FuncDeclNode's are preserved inside FuncDecl's, these other nodes must be manually deleted
-            if(!dynamic_cast<FuncDeclNode*>(rv)){
-                if(ExtNode *en = dynamic_cast<ExtNode*>(rv)){
-                    en->methods.release();
-                    delete en;
-                }else{
-                    delete rv;
-                }
-            }
-        }else{
-            prev = bop;
-            op = bop->lval.get();
-        }
-    }
-
-    //check the final node
-    if(dynamic_cast<FuncDeclNode*>(op) || dynamic_cast<ExtNode*>(op) || 
-            dynamic_cast<DataDeclNode*>(op) || dynamic_cast<TraitNode*>(op)){
-        op->compile(this); //register the function`
-        if(prev){
-            prev->lval.release();
-            prev->lval.reset(mkPlaceholderNode());
-        }else{
-            ast.release();
-            ast.reset(mkPlaceholderNode());
-        }
-            
-        if(!dynamic_cast<FuncDeclNode*>(op)){
-            if(ExtNode *en = dynamic_cast<ExtNode*>(op)){
-                en->methods.release();
-                delete en;
-            }else{
-                delete op;
-            }
-        }
-    }
+    for(auto& f : ast->funcs) f->compile(this);
+    for(auto& f : ast->types) f->compile(this);
+    for(auto& f : ast->traits) f->compile(this);
+    for(auto& f : ast->extensions) f->compile(this);
 }
 
 //evaluates and prints a single-expression module
@@ -1259,23 +1202,31 @@ Function* Compiler::createMainFn(){
     return main;
 }
 
+
+TypedValue* RootNode::compile(Compiler *c){
+    auto *mainFn = c->createMainFn();
+
+    c->compilePrelude();
+    c->scanAllDecls();
+
+    //Compile the rest of the program
+    for(auto &n : main)
+        n->compile(c);
+
+    c->builder.CreateRet(ConstantInt::get(*c->ctxt, APInt(32, 0)));
+
+    c->passManager->run(*mainFn);
+    return 0;
+}
+
+
 void Compiler::compile(){
     if(compiled){
-        cerr << module->getName().str() << " module is already compiled, cannot recompile.\n";
+        cerr << "Module " << module->getName().str() << " is already compiled, cannot recompile.\n";
         return;
     }
 
-    auto *main = createMainFn();
-
-    compilePrelude();
-    scanAllDecls();
-
-    //Compile the rest of the program
-    delete ast->compile(this);
-    
-    builder.CreateRet(ConstantInt::get(*ctxt, APInt(32, 0)));
-    
-    passManager->run(*main);
+    ast->compile(this);
 
     //flag this module as compiled.
     compiled = true;
@@ -1537,8 +1488,8 @@ legacy::FunctionPassManager* mkPassManager(llvm::Module *m, char optLvl){
     return pm;
 }
 
-Compiler::Compiler(const char *_fileName, bool lib) :
-        ctxt(new LLVMContext()),
+Compiler::Compiler(const char *_fileName, bool lib, shared_ptr<LLVMContext> llvmCtxt) :
+        ctxt(llvmCtxt ? llvmCtxt : shared_ptr<LLVMContext>(new LLVMContext())),
         builder(*ctxt), 
         compUnit(new ante::Module()),
         mergedCompUnits(new ante::Module()),
@@ -1567,7 +1518,7 @@ Compiler::Compiler(const char *_fileName, bool lib) :
     auto modName = removeFileExt(fileName);
     compUnit->name = modName;
     mergedCompUnits->name = modName;
-    
+
     ast.reset(parser::getRootNode());
     outFile = modName;
 	if (outFile.empty())
@@ -1581,8 +1532,8 @@ Compiler::Compiler(const char *_fileName, bool lib) :
     passManager.reset(mkPassManager(module.get(), 3));
 }
 
-Compiler::Compiler(Node *root, string modName, string &fName, bool lib) :
-        ctxt(new LLVMContext()),
+Compiler::Compiler(Node *root, string modName, string &fName, bool lib, shared_ptr<LLVMContext> llvmCtxt) :
+        ctxt(llvmCtxt ? llvmCtxt : shared_ptr<LLVMContext>(new LLVMContext())),
         builder(*ctxt),
         compUnit(new ante::Module()),
         mergedCompUnits(new ante::Module()),
@@ -1598,7 +1549,9 @@ Compiler::Compiler(Node *root, string modName, string &fName, bool lib) :
     compUnit->name = modName;
     mergedCompUnits->name = modName;
     
-    ast.reset(root);
+    ast.reset(new RootNode(root->loc));
+    ast->main.push_back(unique_ptr<Node>(root));
+
     module.reset(new llvm::Module(outFile, *ctxt));
     
     enterNewScope();

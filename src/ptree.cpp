@@ -7,10 +7,16 @@
 #include "yyparser.h"
 #include <stack>
 
+//stack of relative roots, eg. a FuncDeclNode's first statement would be set as the
+//relative root, where the last would be returned by the parser.  Relative roots are
+//returned through getRoot() which also pops the stack.
 stack<Node*> roots;
 
-Node* ante::parser::getRootNode(){
-    return roots.top();
+//The single true-root of the compiled file.  One RootNode per file parsed.
+RootNode *root;
+
+RootNode* ante::parser::getRootNode(){
+    return root;
 }
 
 /*
@@ -57,6 +63,32 @@ LOC_TY mkLoc(yy::position begin, yy::position end) {
 	loc.end = end;
 	return loc;
 }
+
+//initializes the root node
+void createRoot(LOC_TY& loc){
+    root = new RootNode(loc);
+}
+
+void append_main(Node *n){
+    root->main.push_back(unique_ptr<Node>(n));
+}
+
+void append_fn(Node *n){
+    root->funcs.push_back((FuncDeclNode*)n);
+}
+
+void append_type(Node *n){
+    root->types.push_back((DataDeclNode*)n);
+}
+
+void append_extension(Node *n){
+    root->extensions.push_back((ExtNode*)n);
+}
+
+void append_trait(Node *n){
+    root->traits.push_back((TraitNode*)n);
+}
+
 
 LOC_TY copyLoc(const LOC_TY &loc){
     return mkLoc(mkPos(loc.begin.filename, loc.begin.line, loc.begin.column),
@@ -118,7 +150,7 @@ bool TypeNode::hasModifier(int m) const{
  *  Pops and returns the root of the current block
  */
 Node* getRoot(){
-    Node* ret = roots.top();
+    Node *ret = roots.top();
     roots.pop();
     return ret;
 }

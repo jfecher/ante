@@ -12,6 +12,14 @@ Node* setNext(Node* cur, Node* nxt);
 Node* setElse(Node *ifn, Node *elseN);
 Node* addMatch(Node *matchExpr, Node *newMatch);
 
+void createRoot(LOC_TY& loc);
+
+void append_main(Node *n);
+void append_fn(Node *n);
+void append_type(Node *n);
+void append_extension(Node *n);
+void append_trait(Node *n);
+
 
 #ifndef LOC_TY
 #define LOC_TY yy::location

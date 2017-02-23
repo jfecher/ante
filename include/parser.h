@@ -80,6 +80,33 @@ struct ParentNode : public Node{
     ~ParentNode(){}
 };
 
+
+struct FuncDeclNode;
+struct TraitNode;
+struct ExtNode;
+struct DataDeclNode;
+
+/*
+ * Specialized Node to act as root
+ * - Separates top-level definitions from code that is compiled
+ *   into the 'main' or "init_${module}" function
+ */
+struct RootNode : public Node{
+    //non-owning vectors (each decl is later moved into a ante::module)
+    vector<FuncDeclNode*> funcs;
+    vector<TraitNode*> traits;
+    vector<ExtNode*> extensions;
+    vector<DataDeclNode*> types;
+
+    vector<unique_ptr<Node>> main;
+    
+    TypedValue* compile(Compiler*);
+    void print();
+    RootNode(LOC_TY& loc) : Node(loc){}
+    ~RootNode(){}
+};
+
+
 struct IntLitNode : public Node{
     string val;
     TypeTag type;
@@ -362,7 +389,7 @@ struct TraitNode : public ParentNode{
 
 namespace ante{
     namespace parser{
-        Node* getRootNode();
+        RootNode* getRootNode();
         void printBlock(Node *block);
         void parseErr(ParseErr e, string s, bool showTok);
     }

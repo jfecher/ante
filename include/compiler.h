@@ -207,7 +207,7 @@ namespace ante{
         //Each DataType is reponsible for holding its own trait implementations
         map<string, shared_ptr<Trait>> traits;
 
-        void import(Compiler *c, shared_ptr<ante::Module> m);
+        void import(shared_ptr<ante::Module> m);
     };
 
     struct Compiler {
@@ -215,7 +215,7 @@ namespace ante{
         unique_ptr<ExecutionEngine> jit;
         unique_ptr<legacy::FunctionPassManager> passManager;
         unique_ptr<llvm::Module> module;
-        unique_ptr<Node> ast;
+        unique_ptr<RootNode> ast;
         IRBuilder<> builder;
 
         //functions and type definitions of current module
@@ -242,8 +242,8 @@ namespace ante{
         string fileName, outFile, funcPrefix;
         unsigned int scope;
 
-        Compiler(const char *fileName, bool lib=false);
-        Compiler(Node *root, string modName, string &fName, bool lib=false);
+        Compiler(const char *fileName, bool lib=false, shared_ptr<LLVMContext> ctxt = nullptr);
+        Compiler(Node *root, string modName, string &fName, bool lib=false, shared_ptr<LLVMContext> ctxt = nullptr);
         ~Compiler();
 
         void compile();

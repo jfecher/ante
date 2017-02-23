@@ -30,6 +30,23 @@ void parser::printBlock(Node *block){
     }
 }
 
+void RootNode::print(){
+    puts("Types:");
+    for(auto& f : types){ f->print(); puts("\n"); }
+    
+    puts("\n\nFunctions:");
+    for(auto& f : funcs){ f->print(); puts("\n"); }
+    
+    puts("\n\nTraits:");
+    for(auto& f : traits){ f->print(); puts("\n"); }
+    
+    puts("\n\nExtensions:");
+    for(auto& f : extensions){ f->print(); puts("\n"); }
+    
+    puts("\n\nMain:");
+    for(auto& f : main){ f->print(); puts(";"); }
+}
+
 void IntLitNode::print(){
     cout << val;
     maybePrintArr(next.get());
@@ -258,7 +275,7 @@ void FuncDeclNode::print(){
     }
 
     cout << "fun ";
-    cout << name;
+    cout << basename;
     if(params){
         cout << ": ";
         params->print();

@@ -144,12 +144,23 @@ void yyerror(const char *msg);
 %nonassoc '{'
 
 %expect 0
-%start top_level_expr_list
+%start begin
 %%
 
-top_level_expr_list:  maybe_newline expr {$$ = setRoot($2);}
-                   ;
+begin: maybe_newline top_level_expr
 
+top_level_expr: top_level_expr expr_no_decl  %prec Newline {append_main($2);}
+              | top_level_expr function                    {append_fn($2);}
+              | top_level_expr data_decl                   {append_type($2);}
+              | top_level_expr extension                   {append_extension($2);}
+              | top_level_expr trait_decl                  {append_trait($2);}
+              | top_level_expr Newline
+              | expr_no_decl                 %prec Newline {createRoot($1->loc); append_main($1);}
+              | function                                   {createRoot($1->loc); append_fn($1);}
+              | data_decl                                  {createRoot($1->loc); append_type($1);}
+              | extension                                  {createRoot($1->loc); append_extension($1);}
+              | trait_decl                                 {createRoot($1->loc); append_trait($1);}
+              ;
 
 maybe_newline: Newline  %prec Newline
              | %empty
@@ -525,33 +536,36 @@ var: ident  %prec Ident {$$ = mkVarNode(@$, (char*)$1);}
    ;
 
 
-val: '(' expr ')'            {$$ = $2;}
-   | tuple                   {$$ = $1;}
-   | array                   {$$ = $1;}
-   | unary_op                {$$ = $1;}
-   | var                     {$$ = $1;}
-   | intlit                  {$$ = $1;}
-   | fltlit                  {$$ = $1;}
-   | strlit                  {$$ = $1;}
-   | charlit                 {$$ = $1;}
-   | True                    {$$ = mkBoolLitNode(@$, 1);}
-   | False                   {$$ = mkBoolLitNode(@$, 0);}
-   | let_binding             {$$ = $1;}
-   | var_decl                {$$ = $1;}
-   | while_loop              {$$ = $1;}
-   | for_loop                {$$ = $1;}
-   | function                {$$ = $1;}
-   | data_decl               {$$ = $1;}
-   | extension               {$$ = $1;}
-   | trait_decl              {$$ = $1;}
-   | ret_expr                {$$ = $1;}
-   | import_expr             {$$ = $1;}
-   | if_expr     %prec STMT  {$$ = $1;}
-   | match_expr  %prec LOW   {$$ = $1;}
-   | block                   {$$ = $1;}
-   | type_expr   %prec LOW
-   ;
+val_no_decl: '(' expr ')'            {$$ = $2;}
+           | tuple                   {$$ = $1;}
+           | array                   {$$ = $1;}
+           | unary_op                {$$ = $1;}
+           | var                     {$$ = $1;}
+           | intlit                  {$$ = $1;}
+           | fltlit                  {$$ = $1;}
+           | strlit                  {$$ = $1;}
+           | charlit                 {$$ = $1;}
+           | True                    {$$ = mkBoolLitNode(@$, 1);}
+           | False                   {$$ = mkBoolLitNode(@$, 0);}
+           | let_binding             {$$ = $1;}
+           | var_decl                {$$ = $1;}
+           | while_loop              {$$ = $1;}
+           | for_loop                {$$ = $1;}
+           | ret_expr                {$$ = $1;}
+           | import_expr             {$$ = $1;}
+           | if_expr     %prec STMT  {$$ = $1;}
+           | match_expr  %prec LOW   {$$ = $1;}
+           | block                   {$$ = $1;}
+           | type_expr   %prec LOW
+           ;
 
+val: val_no_decl
+   | data_decl
+   | trait_decl
+   | function
+   | extension
+   ;
+ 
 tuple: '(' expr_list ')' {$$ = mkTupleNode(@$, $2);}
      | '(' ')'           {$$ = mkTupleNode(@$, 0);}
      ;
@@ -593,6 +607,52 @@ expr_list_p: expr_list_p ',' maybe_newline expr  %prec ',' {$$ = setNext($1, $4)
            | expr                                %prec LOW {$$ = setRoot($1);}
            ;
 
+expr_no_decl: expr_no_decl '+' maybe_newline expr_no_decl              {$$ = mkBinOpNode(@$, '+', $1, $4);}
+    | expr_no_decl '-' expr_no_decl                                    {$$ = mkBinOpNode(@$, '-', $1, $3);}
+    | '-' expr_no_decl                                                 {$$ = mkUnOpNode(@$, '-', $2);}
+    | expr_no_decl '-' Newline expr_no_decl                            {$$ = mkBinOpNode(@$, '-', $1, $4);}
+    | expr_no_decl '*' maybe_newline expr_no_decl                      {$$ = mkBinOpNode(@$, '*', $1, $4);}
+    | expr_no_decl '/' maybe_newline expr_no_decl                      {$$ = mkBinOpNode(@$, '/', $1, $4);}
+    | expr_no_decl '%' maybe_newline expr_no_decl                      {$$ = mkBinOpNode(@$, '%', $1, $4);}
+    | expr_no_decl '<' maybe_newline expr_no_decl                      {$$ = mkBinOpNode(@$, '<', $1, $4);}
+    | expr_no_decl '>' maybe_newline expr_no_decl                      {$$ = mkBinOpNode(@$, '>', $1, $4);}
+    | type_expr '.' maybe_newline var                                  {$$ = mkBinOpNode(@$, '.', $1, $4);}
+    | expr_no_decl '.' maybe_newline var                               {$$ = mkBinOpNode(@$, '.', $1, $4);}
+    | expr_no_decl ';' maybe_newline expr_no_decl                      {$$ = mkBinOpNode(@$, ';', $1, $4);}
+    | expr_no_decl '#' maybe_newline expr_no_decl                      {$$ = mkBinOpNode(@$, '#', $1, $4);}
+    | expr_no_decl Eq maybe_newline expr_no_decl                       {$$ = mkBinOpNode(@$, Tok_Eq, $1, $4);}
+    | expr_no_decl NotEq maybe_newline expr_no_decl                    {$$ = mkBinOpNode(@$, Tok_NotEq, $1, $4);}
+    | expr_no_decl GrtrEq maybe_newline expr_no_decl                   {$$ = mkBinOpNode(@$, Tok_GrtrEq, $1, $4);}
+    | expr_no_decl LesrEq maybe_newline expr_no_decl                   {$$ = mkBinOpNode(@$, Tok_LesrEq, $1, $4);}
+    | expr_no_decl Or maybe_newline expr_no_decl                       {$$ = mkBinOpNode(@$, Tok_Or, $1, $4);}
+    | expr_no_decl And maybe_newline expr_no_decl                      {$$ = mkBinOpNode(@$, Tok_And, $1, $4);}
+    | expr_no_decl '=' maybe_newline expr_no_decl                      {$$ = mkVarAssignNode(@$, $1, $4);} /* All VarAssignNodes return void values */
+    | expr_no_decl AddEq maybe_newline expr_no_decl                    {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '+', $1, $4), false);}
+    | expr_no_decl SubEq maybe_newline expr_no_decl                    {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '-', $1, $4), false);}
+    | expr_no_decl MulEq maybe_newline expr_no_decl                    {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '*', $1, $4), false);}
+    | expr_no_decl DivEq maybe_newline expr_no_decl                    {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '/', $1, $4), false);}
+    | expr_no_decl ApplyR maybe_newline expr_no_decl                   {$$ = mkBinOpNode(@$, '(', $4, $1);}
+    | expr_no_decl ApplyL maybe_newline expr_no_decl                   {$$ = mkBinOpNode(@$, '(', $1, $4);}
+    | expr_no_decl Append maybe_newline expr_no_decl                   {$$ = mkBinOpNode(@$, Tok_Append, $1, $4);}
+    | expr_no_decl Range maybe_newline expr_no_decl                    {$$ = mkBinOpNode(@$, Tok_Range, $1, $4);}
+    | expr_no_decl In maybe_newline expr_no_decl                       {$$ = mkBinOpNode(@$, Tok_In, $1, $4);}
+    | expr_no_decl fn_brackets                                         {$$ = mkBinOpNode(@$, '(', $1, $2);}
+    | expr_no_decl arg_list                                            {$$ = mkBinOpNode(@$, '(', $1, $2);}
+    | val_no_decl                                           %prec MED  {$$ = $1;}
+
+    /* this rule returns the original If for precedence reasons compared to its mirror rule in if_expr
+     * that returns the elif node itself.  The former necessitates setElse to travel through the first IfNode's
+     * internal linked list of elsenodes to find the last one and append the new elif */
+    | expr_no_decl Elif expr_no_decl Then expr_no_decl     %prec MEDIF  {auto*elif = mkIfNode(@$, $3, $5, 0); $$ = setElse($1, elif);}
+    | expr_no_decl Else expr_no_decl                                    {$$ = setElse($1, $3);}
+    
+    | match_expr Newline expr_no_decl                      %prec Match  {$$ = mkBinOpNode(@$, ';', $1, $3);}
+    | match_expr Newline                                   %prec LOW    {$$ = $1;}
+    | expr_no_decl Newline                                              {$$ = $1;}
+    | expr_no_decl Newline expr_no_decl                                 {$$ = mkBinOpNode(@$, ';', $1, $3);}
+    ;
+
+
 expr: expr '+' maybe_newline expr                {$$ = mkBinOpNode(@$, '+', $1, $4);}
     | expr '-' expr                              {$$ = mkBinOpNode(@$, '-', $1, $3);}
     | '-' expr                                   {$$ = mkUnOpNode(@$, '-', $2);}
@@ -602,8 +662,8 @@ expr: expr '+' maybe_newline expr                {$$ = mkBinOpNode(@$, '+', $1, 
     | expr '%' maybe_newline expr                {$$ = mkBinOpNode(@$, '%', $1, $4);}
     | expr '<' maybe_newline expr                {$$ = mkBinOpNode(@$, '<', $1, $4);}
     | expr '>' maybe_newline expr                {$$ = mkBinOpNode(@$, '>', $1, $4);}
-    | expr '.' maybe_newline var                 {$$ = mkBinOpNode(@$, '.', $1, $4);}
     | type_expr '.' maybe_newline var            {$$ = mkBinOpNode(@$, '.', $1, $4);}
+    | expr '.' maybe_newline var                 {$$ = mkBinOpNode(@$, '.', $1, $4);}
     | expr ';' maybe_newline expr                {$$ = mkBinOpNode(@$, ';', $1, $4);}
     | expr '#' maybe_newline expr                {$$ = mkBinOpNode(@$, '#', $1, $4);}
     | expr Eq maybe_newline expr                 {$$ = mkBinOpNode(@$, Tok_Eq, $1, $4);}
