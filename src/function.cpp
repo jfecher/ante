@@ -516,7 +516,9 @@ void Compiler::updateFn(TypedValue *f, string &name, string &mangledName){
     //
     //NOTE: fd here is shared between compUnit and mergedCompUnit modules
     //      so one update will update across each module
-    fd->tv = f;
+    //
+    //copy the type
+    fd->tv = new TypedValue(f->val, f->type);
 }
 
 
@@ -560,7 +562,7 @@ TypedValue* Compiler::getMangledFunction(string name, TypeNode *args){
     //if there is only one function now, return it.  It will be typechecked later
     if(candidates.size() == 1){
         auto& fd = candidates.front();
-       
+
         //must check if this functions is generic first
         auto fnty = unique_ptr<TypeNode>(createFnTyNode(fd->fdn->params.get(), mkAnonTypeNode(TT_Void)));
         auto *params = (TypeNode*)fnty->extTy->next.get();

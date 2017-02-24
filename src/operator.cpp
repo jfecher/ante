@@ -675,19 +675,13 @@ TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *bino
 
 template<typename T>
 void push_front(vector<T*> *vec, T *val){
-    auto size = vec->size();
-    if(size != 0)
-        vec->push_back((*vec)[size-1]);
+    vector<T*> cpy;
+    cpy.push_back(val);
 
-    auto it = vec->rbegin();
-    for(; it != vec->rend();){
-        *it = *(++it);
-    }
+    for(auto *v : *vec)
+        cpy.push_back(v);
 
-    if(size != 0)
-        (*vec)[0] = val;
-    else
-        vec->push_back(val);
+    *vec = cpy;
 }
 
 
@@ -907,7 +901,7 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
     }else{ //single parameter being applied
         auto *param = r->compile(c);
         if(!param) return 0;
-        
+
         if(param->type->type != TT_Void){
             typedArgs.push_back(param);
             if(isInvalidParamType(param->getType())){
@@ -928,7 +922,7 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
     if(VarNode *vn = dynamic_cast<VarNode*>(l)){
         //try to see if arg 1's type contains a method of the same name
         auto *params = typedValsToTypeNodes(typedArgs);
-       
+
         //try to do module inference
         if(!typedArgs.empty()){
             string fnName = typeNodeToStr(typedArgs[0]->type.get()) + "_" + vn->name;
@@ -1050,7 +1044,7 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
         return compMetaFunctionResult(c, l, tvf, typedArgs);
     }
 
-    //use tvf->val as arg, NOT f
+    //use tvf->val as arg, NOT f, (if tvf->val is a function-type parameter then f cannot be called)
     //
     //both a C-style cast and dyn-cast to functions fail if f is a function-pointer
     auto *call = c->builder.CreateCall(tvf->val, args);
