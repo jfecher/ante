@@ -207,7 +207,8 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
     string mangledfn = mangle(basefn, tmp->type.get(), mkAnonTypeNode(TT_I32), newVal->type.get());
     auto *fn = getFunction(basefn, mangledfn);
     if(fn){
-        return new TypedValue(builder.CreateCall(fn->val, {var, index->val, newVal->val}), fn->type->extTy);
+        vector<Value*> args = {var, index->val, newVal->val};
+        return new TypedValue(builder.CreateCall(fn->val, args), fn->type->extTy);
     }
 
     switch(tmp->type->type){
@@ -224,7 +225,7 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
                 return compErr("Cannot create store of types: "+typeNodeToColoredStr(tmp->type)+" <- "
                         +typeNodeToColoredStr(newVal->type), assignExpr->loc);
 
-            Value *dest = builder.CreateInBoundsGEP(tmp->getType()->getPointerElementType(), tmp->val, index->val);
+            Value *dest = builder.CreateInBoundsGEP(/*tmp->getType()->getPointerElementType(),*/ tmp->val, index->val);
             builder.CreateStore(newVal->val, dest);
             return getVoidLiteral();
         }
@@ -1204,7 +1205,8 @@ TypedValue* checkForOperatorOverload(Compiler *c, TypedValue *lhs, int op, Typed
     //operator function found
     if(fn){
         //dont even bother type checking, assume the name mangling was performed correctly
-        return new TypedValue(c->builder.CreateCall(fn->val, {lhs->val, rhs->val}), fn->type->extTy);
+        vector<Value*> args = {lhs->val, rhs->val};
+        return new TypedValue(c->builder.CreateCall(fn->val, args), fn->type->extTy);
     }
     //no operator overload
     return 0;
@@ -1271,8 +1273,9 @@ TypedValue* BinOpNode::compile(Compiler *c){
     //operator function found
     if(fn){
         //dont even bother type checking, assume the name mangling was performed correctly
+        vector<Value*> args = {lhs->val, rhs->val};
         return new TypedValue(
-                c->builder.CreateCall(fn->val, {lhs->val, rhs->val}),
+                c->builder.CreateCall(fn->val, args),
                 deepCopyTypeNode(fn->type->extTy.get())
         );
     }

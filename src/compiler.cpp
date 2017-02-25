@@ -195,10 +195,10 @@ TypedValue* compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
 
     //call the ++ function to combine the three strings
     auto *lstr = ls->compile(c);
-    auto *appendL = c->builder.CreateCall(fn->val, {lstr->val, val->val});
+    auto *appendL = c->builder.CreateCall(fn->val, vector<Value*>{lstr->val, val->val});
 
     auto *rstr = rs->compile(c);
-    auto *appendR = c->builder.CreateCall(fn->val, {appendL, rstr->val});
+    auto *appendR = c->builder.CreateCall(fn->val, vector<Value*>{appendL, rstr->val});
 
     //create the returning typenode
     auto *strty = mkAnonTypeNode(TT_Data);
@@ -604,7 +604,7 @@ TypedValue* compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
                 string mangledfn = mangle(op, tyn, mkAnonTypeNode(TT_I32), newval->type.get());
                 auto *fn = c->getFunction(op, mangledfn);
                 if(fn){
-                    return new TypedValue(c->builder.CreateCall(fn->val, {var, c->builder.getInt32(index), newval->val}), fn->type->extTy);
+                    return new TypedValue(c->builder.CreateCall(fn->val, vector<Value*>{var, c->builder.getInt32(index), newval->val}), fn->type->extTy);
                 }
 
                 //if not, proceed with normal operations
