@@ -739,9 +739,9 @@ TypedValue* genericValueToTypedValue(Compiler *c, GenericValue gv, TypeNode *tn)
             auto *cint = c->builder.getInt64((unsigned long) gv.PointerVal);
             auto *ty = c->typeNodeToLlvmType(tn);
             return new TypedValue(c->builder.CreateIntToPtr(cint, ty), copytn);
-        }case TT_Data:            break;    
-        case TT_TypeVar:         break;
-        case TT_Function:        break;
+        }case TT_Data:
+        case TT_TypeVar:
+        case TT_Function:
         case TT_Method:
         case TT_TaggedUnion:
         case TT_MetaFunction:
@@ -795,18 +795,28 @@ TypedValue* compMetaFunctionResult(Compiler *c, Node *lnode, TypedValue *l, vect
     CtFunc* fn;
     if((fn = compapi[fnName])){
         void *res;
+        GenericValue gv;
 
+        //TODO organize CtFunc's by param count + type instead of a hard-coded name check
         if(fnName == "Ante_debug"){
             if(typedArgs.size() != 1)
                 return c->compErr("Called function was given " + to_string(typedArgs.size()) +
                         " argument(s) but was declared to take 1", lnode->loc);
 
             res = (*fn)(typedArgs[0]);
+            gv = GenericValue(res);
+        }else if(fnName == "Ante_sizeof"){
+            if(typedArgs.size() != 1)
+                return c->compErr("Called function was given " + to_string(typedArgs.size()) +
+                        " argument(s) but was declared to take 1", lnode->loc);
+
+            res = (*fn)(c, typedArgs[0]);
+            gv.IntVal = APInt(32, (int)(size_t)res, false);
         }else{
             res = (*fn)();
+            gv = GenericValue(res);
         }
 
-        auto gv = GenericValue(res);
         auto *conv = genericValueToTypedValue(c, gv, l->type->extTy.get());
 
         auto *llvmfn = static_cast<Function*>(l->val);
@@ -815,6 +825,8 @@ TypedValue* compMetaFunctionResult(Compiler *c, Node *lnode, TypedValue *l, vect
 
         return conv;
     }else{
+        cout << "metafn not found for " << fnName << endl;
+
         LLVMInitializeNativeTarget();
         LLVMInitializeNativeAsmPrinter();
 

@@ -46,13 +46,16 @@ fun ferror: File f -> bool;
 type Str = c8* cStr, u32 len
 
 
-//functions and methods
+//Compile-time functions
 
-/*  
- * prints type and value (llvm dump) of variable while compiling
- */
+//prints type and value (llvm dump) of variable while compiling
 ![meta]
 fun Ante.debug: 't t;
+
+//returns the size of a type in Bytes.  Accepts types or values as an argument
+![meta]
+fun Ante.sizeof: 't t -> u32;
+
 
 //numerical print functions
 ![inline]

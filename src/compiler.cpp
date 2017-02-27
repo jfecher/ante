@@ -36,6 +36,10 @@ size_t getTupleSize(Node *tup){
     return size;
 }
 
+/*
+ *  Returns nth node from list.
+ *  Does not check if list contains at least n nodes
+ */
 Node* getNthNode(Node *node, size_t n){
     for(; n > 0; n--)
         node = node->next.get();
@@ -1471,20 +1475,19 @@ legacy::FunctionPassManager* mkPassManager(llvm::Module *m, char optLvl){
     auto *pm = new legacy::FunctionPassManager(m);
     pm->add(createDeadStoreEliminationPass());
     pm->add(createDeadCodeEliminationPass());
-    pm->add(createLoopStrengthReducePass());
-    pm->add(createLoopUnrollPass());
-    pm->add(createMergedLoadStoreMotionPass());
-    pm->add(createMemCpyOptPass());
+    //pm->add(createLoopStrengthReducePass());
+    //pm->add(createLoopUnrollPass());
+    //pm->add(createMergedLoadStoreMotionPass());
+    //pm->add(createMemCpyOptPass());
     pm->add(createCFGSimplificationPass());
     pm->add(createTailCallEliminationPass());
     pm->add(createInstructionSimplifierPass());
-    pm->add(createSpeculativeExecutionPass());
+    //pm->add(createSpeculativeExecutionPass());
     pm->add(createLoadCombinePass());
     pm->add(createLoopLoadEliminationPass());
     pm->add(createReassociatePass());
     pm->add(createPromoteMemoryToRegisterPass());
     pm->add(createInstructionCombiningPass());
-    pm->add(createDeadStoreEliminationPass());
     pm->doInitialization();
     return pm;
 }

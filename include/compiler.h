@@ -173,7 +173,7 @@ struct Variable {
  * of the function */
 struct CtFunc {
     void *fn;
-    vector<unique_ptr<TypeNode>> params;
+    vector<TypeNode*> params;
     unique_ptr<TypeNode> retty;
 
     size_t numParams() const { return params.size(); }
@@ -181,9 +181,14 @@ struct CtFunc {
     bool typeCheck(vector<TypedValue*> &args);
     CtFunc(void* fn);
     CtFunc(void* fn, TypeNode *retTy);
-    CtFunc(void* fn, TypeNode *retTy, vector<unique_ptr<TypeNode>> params);
+    CtFunc(void* fn, TypeNode *retTy, vector<TypeNode*> params);
+
+    ~CtFunc(){ for(auto *tv : params) delete tv; }
+
     void* operator()();
     void* operator()(TypedValue *tv);
+    void* operator()(Compiler *c, TypedValue *tv);
+    void* operator()(TypedValue *p1, TypedValue *p2);
 };
 
 
