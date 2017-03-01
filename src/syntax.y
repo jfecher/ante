@@ -22,7 +22,7 @@ extern string typeNodeToStr(const TypeNode*);
 
 struct TypeNode;
 
-Node* node_strcpy(const char *cstr);
+Node* tnToFnName(Node *n);
 Node* mangle_fn(Node *base, Node *nvns);
 
 
@@ -393,7 +393,7 @@ function: fn_def
         ;
 
 fn_name: ident       /* most functions */      {$$ = $1;}
-       | type_expr   /* cast function */       {$$ = (Node*)node_strcpy(typeNodeToStr((TypeNode*)$1).c_str());}
+       | type_expr   /* cast function */       {$$ = tnToFnName($1);}
        | '(' op ')'  /* operator overloads */  {$$ = $2;}
        ;
 
@@ -711,13 +711,24 @@ string mangle(std::string &base, TypeNode *paramTys);
 TypeNode* createFnTyNode(NamedValNode *params, TypeNode *retTy);
 TypeNode* mkAnonTypeNode(TypeTag t);
 
-Node* node_strcpy(const char *src){
-	auto len = strlen(src);
+Node* tnToFnName(Node *n){
+    auto *tn = (TypeNode*)n;
+    int len;
+    const char *name;
 
-	char *dest = (char*)malloc(len+1);
-	strncpy(dest, src, len);
-	dest[len] = '\0';
-	return (Node*)dest;
+    if(tn->type == TT_Data){
+        len = tn->typeName.size();
+        name = tn->typeName.c_str();
+    }else{
+        string s = typeNodeToStr(tn);
+        len = s.size();
+        name = s.c_str();
+    }
+
+    char *cpy = (char*)malloc(len+1);
+    strncpy(cpy, name, len);
+    cpy[len] = '\0';
+    return (Node*)cpy;
 }
 
 Node* mangle_fn(Node *basename, Node *nvns_){

@@ -654,8 +654,10 @@ TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *bino
 
         if(l.size() == 1){
             auto& fd = l.front();
-            if(!fd->tv)
+            if(!fd->tv){
                 fd->tv = compFn(fd.get());
+                if(!fd->tv) return 0; //error when compiling function
+            }
 
             TypedValue *obj = new TypedValue(val, deepCopyTypeNode(tyn));
             auto *method_fn = new TypedValue(fd->tv->val, fd->tv->type);

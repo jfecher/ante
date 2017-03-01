@@ -137,8 +137,6 @@ TypedValue* Compiler::getCastFn(TypeNode *from_ty, TypeNode *to_ty){
     string fnBaseName = to_ty->params.empty() ? typeNodeToStr(to_ty) : to_ty->typeName;
     string mangledName = mangle(fnBaseName, from_ty);
 
-    cout << "Searching for " << mangledName << endl;
-
     //Search for the exact function, otherwise there would be implicit casts calling several implicit casts on a single parameter
     return getFunction(fnBaseName, mangledName);
 }
