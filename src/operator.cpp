@@ -745,6 +745,7 @@ TypedValue* genericValueToTypedValue(Compiler *c, GenericValue gv, TypeNode *tn)
         case TT_Method:
         case TT_TaggedUnion:
         case TT_MetaFunction:
+        case TT_Type:
                                  break;
         case TT_Void:
             return c->getVoidLiteral();

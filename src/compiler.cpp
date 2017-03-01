@@ -121,15 +121,23 @@ TypedValue* TypeNode::compile(Compiler *c){
         Value *unionVal = c->builder.CreateLoad(alloca);
         ty->type = TT_TaggedUnion;
         return new TypedValue(unionVal, ty);
-    }
+    }else{
+        //return the type as a value
+        auto *cpy = deepCopyTypeNode(this);
 
-    return c->compErr("Cannot extract tag value from non-union-tag type " + typeNodeToColoredStr(this), loc);
+        //The TypeNode* address is wrapped in an llvm int so that llvm::Value methods can be called
+        //without crashing, even if their result is meaningless
+        Value *v = c->builder.getInt64((unsigned long)cpy);
+        return new TypedValue(v, mkAnonTypeNode(TT_Type));
+    }
 }
 
 
 TypedValue* Compiler::getCastFn(TypeNode *from_ty, TypeNode *to_ty){
-    string fnBaseName = typeNodeToStr(to_ty);
+    string fnBaseName = to_ty->params.empty() ? typeNodeToStr(to_ty) : to_ty->typeName;
     string mangledName = mangle(fnBaseName, from_ty);
+
+    cout << "Searching for " << mangledName << endl;
 
     //Search for the exact function, otherwise there would be implicit casts calling several implicit casts on a single parameter
     return getFunction(fnBaseName, mangledName);
@@ -1220,7 +1228,9 @@ TypedValue* RootNode::compile(Compiler *c){
 
     c->builder.CreateRet(ConstantInt::get(*c->ctxt, APInt(32, 0)));
 
-    c->passManager->run(*mainFn);
+    if(!c->errFlag)
+        c->passManager->run(*mainFn);
+    
     return 0;
 }
 

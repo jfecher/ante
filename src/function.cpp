@@ -394,7 +394,9 @@ TypedValue* compFnHelper(Compiler *c, FuncDecl *fd){
         }
 
         //optimize!
-        c->passManager->run(*f);
+        if(!c->errFlag)
+            c->passManager->run(*f);
+        
         delete retty;
     }
 

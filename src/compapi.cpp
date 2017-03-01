@@ -12,7 +12,12 @@ extern "C" {
     }
 
     size_t Ante_sizeof(Compiler *c, TypedValue *tv){
-        return tv->type->getSizeInBits(c) / 8;
+        if(tv->type->type == TT_Type){
+            auto zext = dyn_cast<ConstantInt>(tv->val)->getZExtValue();
+            return ((TypeNode*) zext)->getSizeInBits(c) / 8;
+        }else{
+            return tv->type->getSizeInBits(c) / 8;
+        }
     }
 
 }

@@ -25,6 +25,7 @@ namespace ante {
 		TT_Method,
 		TT_TaggedUnion,
 		TT_MetaFunction,
+		TT_Type, //The type for types
 		TT_Void
 	};
 
