@@ -14,6 +14,32 @@ Type* parameterize(Type *t, const TypeNode *tn){
 bool implicitPassByRef(TypeNode* t){
     return t->type == TT_Array or t->hasModifier(Tok_Mut);
 }
+    
+
+TypedValue* Compiler::callFn(string name, vector<TypedValue*> args){
+    string mangledName = mangle(name, args);
+    TypedValue* fn = getFunction(name, mangledName);
+    if(!fn) return 0;
+
+    //vector of llvm::Value*s for the call to CreateCall at the end
+    vector<Value*> vals;
+    vals.reserve(args.size());
+
+    //Loop through each arg, typecheck them, and build vals vector
+    //TODO: re-arrange all args into one tuple so that typevars
+    //      are matched correctly across parameters
+    TypeNode *param = (TypeNode*)fn->type->extTy->next.get();
+    for(auto *arg : args){
+        auto tc = typeEq(arg->type.get(), param);
+        if(!tc) return 0;
+        param = (TypeNode*)param->next.get();
+        vals.push_back(arg->val);
+    }
+
+    return new TypedValue(builder.CreateCall(fn->val, vals), fn->type->extTy);
+}
+
+
 
 /*
  * Translates a NamedValNode list to a vector

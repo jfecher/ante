@@ -410,24 +410,47 @@ TypedValue* WhileNode::compile(Compiler *c){
 
 
 TypedValue* ForNode::compile(Compiler *c){
-    assert(false && "For loops are still unimplemented.");
-
     Function *f = c->builder.GetInsertBlock()->getParent();
     BasicBlock *cond  = BasicBlock::Create(*c->ctxt, "for_cond", f);
     BasicBlock *begin = BasicBlock::Create(*c->ctxt, "for", f);
     BasicBlock *end   = BasicBlock::Create(*c->ctxt, "end_for", f);
 
+
+    auto *rangev = range->compile(c);
+    Value *alloca = c->builder.CreateAlloca(rangev->getType(), rangev->val);
+    c->builder.CreateStore(rangev->val, alloca);
+    
     c->builder.CreateBr(cond);
     c->builder.SetInsertPoint(cond);
-    auto *condval = range->compile(c);
-    c->builder.CreateCondBr(condval->val, begin, end);
+    
+    auto *rangeVal = new TypedValue(c->builder.CreateLoad(alloca), rangev->type.get());
+    auto *uwrap = c->callFn("unwrap", {rangeVal});
+    if(!uwrap) return c->compErr("Range expression of type " + typeNodeToColoredStr(rangev->type) + " does not implement " + typeNodeToColoredStr(mkDataTypeNode("Iterable")) +
+                ", which it needs to be used in a for loop", range->loc);
+
+    auto *uwrap_var = new Variable(var, uwrap, c->scope);
+    c->stoVar(var, uwrap_var);
+    //set var = unwrap range
+
+    //candval = is_done range
+    auto *is_done = c->callFn("has_next", {rangeVal});
+    if(!is_done) return c->compErr("Range expression of type " + typeNodeToColoredStr(rangev->type) + " does not implement " + typeNodeToColoredStr(mkDataTypeNode("Iterable")) +
+                ", which it needs to be used in a for loop", range->loc);
+    c->builder.CreateCondBr(is_done->val, begin, end);
 
     c->builder.SetInsertPoint(begin);
     auto *val = child->compile(c); //compile the while loop's body
 
     if(!val) return 0;
-    if(!dyn_cast<ReturnInst>(val->val))
+    if(!dyn_cast<ReturnInst>(val->val)){
+        //set range = next range
+        auto *next = c->callFn("next", {new TypedValue(c->builder.CreateLoad(alloca), rangev->type.get())});
+        if(!next) return c->compErr("Range expression of type " + typeNodeToColoredStr(rangev->type) + " does not implement " + typeNodeToColoredStr(mkDataTypeNode("Iterable")) +
+                ", which it needs to be used in a for loop", range->loc);
+    
+        c->builder.CreateStore(next->val, alloca);
         c->builder.CreateBr(cond);
+    }
     
     c->builder.SetInsertPoint(end);
     return c->getVoidLiteral();
@@ -685,6 +708,16 @@ TypedValue* VarAssignNode::compile(Compiler *c){
 
 TypedValue* PreProcNode::compile(Compiler *c){
     return c->getVoidLiteral();
+}
+
+
+string mangle(string &base, vector<TypedValue*> params){
+    string name = base;
+    for(auto *tv : params){
+        if(tv->type->type != TT_Void)
+            name += "_" + typeNodeToStr(tv->type.get());
+    }
+    return name;
 }
 
 

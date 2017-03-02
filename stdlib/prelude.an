@@ -117,6 +117,31 @@ fun print: c8* s
 ![inline]
 fun c8*: Str s = s.cStr
 
+//For-loops work over any range that is Iterable
+trait Iterable
+    fun next: Iter i -> Iter
+    fun unwrap: Iter i -> 't
+    fun has_next: Iter i -> bool
+
+
+type Range = i32 start end step
+
+//creates an inclusive range
+fun (..): i32 start end -> Range
+    Range(start, end, 1)
+
+ext Range : Iterable
+    fun next: Range r -> Range
+        Range(r.start+r.step, r.end, r.step)
+
+    fun unwrap: Range r =
+        r.start
+
+    fun has_next: Range r =
+        r.start + r.step <= r.end + 1
+
+
+
 ![inline]
 fun OutFile.write: OutFile f, c8* cStr
     fputs cStr f

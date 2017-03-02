@@ -288,6 +288,7 @@ namespace ante{
         list<shared_ptr<FuncDecl>>& getFunctionList(string& name) const;
         TypedValue* getMangledFunction(string nonMangledName, TypeNode *params);
         TypedValue* getCastFn(TypeNode *from_ty, TypeNode *to_ty);
+        TypedValue* callFn(string fn, vector<TypedValue*> args);
         
         TypedValue* compLetBindingFn(FuncDecl *fdn, vector<Type*> &paramTys);
         TypedValue* compFn(FuncDecl *fn);
@@ -319,6 +320,7 @@ namespace ante{
 }
 
 size_t getTupleSize(Node *tup);
+string mangle(string &base, vector<TypedValue*> params);
 string mangle(string &base, TypeNode *paramTys);
 string mangle(string &base, TypeNode *p1, TypeNode *p2);
 string mangle(string &base, TypeNode *p1, TypeNode *p2, TypeNode *p3);
