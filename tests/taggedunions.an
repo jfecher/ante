@@ -25,7 +25,7 @@ fun parse_int_str: Str s
     | Some n -> print n
     | None ->
         parse_int_str <| input "Please enter a positive integer: "
-    
+
 
 parse_int_str "32"
 parse_int_str "324321432"

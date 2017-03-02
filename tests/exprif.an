@@ -15,3 +15,5 @@ let n = if true then 2 else 3
 print n
 
 print (if 2 < 1 then 5 else 19)
+
+print (if false then 5 elif true then 1 else 19)

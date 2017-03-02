@@ -309,6 +309,8 @@ TypedValue* TupleNode::compile(Compiler *c){
     //add it to pathogenVals
     for(unsigned i = 0; i < exprs.size(); i++){
         auto *tval = exprs[i]->compile(c);
+        if(!tval) return 0;
+
         if(Constant *elem = dyn_cast<Constant>(tval->val)){
             elems.push_back(elem);
         }else{

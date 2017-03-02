@@ -366,9 +366,9 @@ TypedValue* createCast(Compiler *c, unique_ptr<TypeNode> &castTyn, TypedValue *v
     //let example = Int 3
     //              ^^^^^
     auto *dataTy = c->lookupType(castTyn->typeName);
-    auto tyeq = c->typeEq(valToCast->type.get(), dataTy->tyn.get());
+    TypeCheckResult tyeq{false};
 
-    if(dataTy && !!tyeq){
+    if(dataTy && !!(tyeq = c->typeEq(valToCast->type.get(), dataTy->tyn.get()))){
         //check if this is a tagged union (sum type)
         if(dataTy->isUnionTag())
             return createUnionVariantCast(c, valToCast, castTyn, dataTy, tyeq);
