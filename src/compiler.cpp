@@ -419,10 +419,10 @@ TypedValue* ForNode::compile(Compiler *c){
     auto *rangev = range->compile(c);
     Value *alloca = c->builder.CreateAlloca(rangev->getType(), rangev->val);
     c->builder.CreateStore(rangev->val, alloca);
-    
+
     c->builder.CreateBr(cond);
     c->builder.SetInsertPoint(cond);
-    
+
     auto *rangeVal = new TypedValue(c->builder.CreateLoad(alloca), rangev->type.get());
     auto *uwrap = c->callFn("unwrap", {rangeVal});
     if(!uwrap) return c->compErr("Range expression of type " + typeNodeToColoredStr(rangev->type) + " does not implement " + typeNodeToColoredStr(mkDataTypeNode("Iterable")) +

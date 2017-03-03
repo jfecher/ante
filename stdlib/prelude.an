@@ -119,9 +119,12 @@ fun c8*: Str s = s.cStr
 
 //For-loops work over any range that is Iterable
 trait Iterable
-    fun next: Iter i -> Iter
-    fun unwrap: Iter i -> 't
-    fun has_next: Iter i -> bool
+    fun into_iter: Iterable i -> Iterator
+
+trait Iterator
+    fun next: Iterator i -> Iterator
+    fun unwrap: Iterator i -> 't
+    fun has_next: Iterator i -> bool
 
 
 type Range = i32 start end step
@@ -130,7 +133,11 @@ type Range = i32 start end step
 fun (..): i32 start end -> Range
     Range(start, end, 1)
 
-ext Range : Iterable
+//Takes a tuple of the first two integers and calculates the step by their difference
+fun (..): i32,i32 first_two, i32 end -> Range
+    Range(first_two#0, end, first_two#1 - first_two#0)
+
+ext Range : Iterator
     fun next: Range r -> Range
         Range(r.start+r.step, r.end, r.step)
 
@@ -138,7 +145,7 @@ ext Range : Iterable
         r.start
 
     fun has_next: Range r =
-        r.start + r.step <= r.end + 1
+        r.start <= r.end
 
 
 
