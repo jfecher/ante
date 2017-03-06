@@ -478,27 +478,6 @@ TypedValue* compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, TypeN
     return res;
 }
 
-//Provide a wrapper for function-compiling methods so that each
-//function is compiled in its own isolated module
-TypedValue* Compiler::compFn(FuncDecl *fd){
-    callStack.push_back(fd);
-
-    if(fd->module->name != compUnit->name){
-        auto mcu = move(mergedCompUnits);
-
-        mergedCompUnits = fd->module;
-        auto *ret = compFnHelper(this, fd);
-        mergedCompUnits = mcu;
-
-        callStack.pop_back();
-        return ret;
-    }else{
-        auto *ret = compFnHelper(this, fd);
-        callStack.pop_back();
-        return ret;
-    }
-}
-
 
 /*
  *  Registers a function for later compilation
@@ -527,6 +506,27 @@ FuncDecl* getFuncDeclFromList(list<shared_ptr<FuncDecl>> &l, string &mangledName
             return fd.get();
 
     return 0;
+}
+
+//Provide a wrapper for function-compiling methods so that each
+//function is compiled in its own isolated module
+TypedValue* Compiler::compFn(FuncDecl *fd){
+    callStack.push_back(fd);
+
+    if(fd->module->name != compUnit->name){
+        auto mcu = move(mergedCompUnits);
+
+        mergedCompUnits = fd->module;
+        auto *ret = compFnHelper(this, fd);
+        mergedCompUnits = mcu;
+
+        callStack.pop_back();
+        return ret;
+    }else{
+        auto *ret = compFnHelper(this, fd);
+        callStack.pop_back();
+        return ret;
+    }
 }
 
 
@@ -643,6 +643,16 @@ list<shared_ptr<FuncDecl>>& Compiler::getFunctionList(string& name) const{
  *  of a module with unneeded library functions.
  */
 inline void Compiler::registerFunction(FuncDeclNode *fn){
+    //check for redeclaration
+    auto& list = getFunctionList(fn->basename);
+    if(!list.empty()){
+        auto *redecl = getFuncDeclFromList(list, fn->name);
+        if(redecl and redecl->fdn->name == fn->name){
+            compErr("Function " + fn->name + " was redefined", fn->loc);
+            return;
+        }
+    }
+
     shared_ptr<FuncDecl> fd{new FuncDecl(fn, scope, mergedCompUnits)};
 
     compUnit->fnDecls[fn->basename].push_front(fd);

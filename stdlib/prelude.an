@@ -148,7 +148,6 @@ ext Range : Iterator
         r.start <= r.end
 
 
-
 ![inline]
 fun OutFile.write: OutFile f, c8* cStr
     fputs cStr f

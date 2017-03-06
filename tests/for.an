@@ -1,6 +1,6 @@
 
 
-for i in (0,2)..10 do
+for i in 1..10_000 do
     print i
 
 

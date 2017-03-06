@@ -154,12 +154,14 @@ top_level_expr: top_level_expr expr_no_decl  %prec Newline {append_main($2);}
               | top_level_expr data_decl                   {append_type($2);}
               | top_level_expr extension                   {append_extension($2);}
               | top_level_expr trait_decl                  {append_trait($2);}
+              | top_level_expr import_expr                 {append_import($2);}
               | top_level_expr Newline
               | expr_no_decl                 %prec Newline {createRoot($1->loc); append_main($1);}
               | function                                   {createRoot($1->loc); append_fn($1);}
               | data_decl                                  {createRoot($1->loc); append_type($1);}
               | extension                                  {createRoot($1->loc); append_extension($1);}
               | trait_decl                                 {createRoot($1->loc); append_trait($1);}
+              | import_expr                                {createRoot($1->loc); append_import($1);}
               ;
 
 maybe_newline: Newline  %prec Newline
@@ -552,7 +554,6 @@ val_no_decl: '(' expr ')'            {$$ = $2;}
            | while_loop              {$$ = $1;}
            | for_loop                {$$ = $1;}
            | ret_expr                {$$ = $1;}
-           | import_expr             {$$ = $1;}
            | if_expr     %prec STMT  {$$ = $1;}
            | match_expr  %prec LOW   {$$ = $1;}
            | block                   {$$ = $1;}

@@ -417,6 +417,20 @@ TypedValue* ForNode::compile(Compiler *c){
 
 
     auto *rangev = range->compile(c);
+    if(!rangev) return 0;
+
+    //check if the range expression is its own iterator and thus implements Iterator
+    //If it does not, see if it implements Iterable by attempting to call into_iter on it
+    auto *dt = c->lookupType(typeNodeToStr(rangev->type.get()));
+    if(!dt or (dt and !c->typeImplementsTrait(dt, "Iterator"))){
+        rangev = c->callFn("into_iter", {rangev});
+
+        if(!rangev)
+            return c->compErr("Range expression of type " + typeNodeToColoredStr(rangev->type) + " needs to implement " +
+                typeNodeToColoredStr(mkDataTypeNode("Iterable")) + " or " + typeNodeToColoredStr(mkDataTypeNode("Iterator")) +
+                " to be used in a for loop", range->loc);
+    }
+    
     Value *alloca = c->builder.CreateAlloca(rangev->getType(), rangev->val);
     c->builder.CreateStore(rangev->val, alloca);
 
@@ -425,8 +439,8 @@ TypedValue* ForNode::compile(Compiler *c){
 
     auto *rangeVal = new TypedValue(c->builder.CreateLoad(alloca), rangev->type.get());
     auto *uwrap = c->callFn("unwrap", {rangeVal});
-    if(!uwrap) return c->compErr("Range expression of type " + typeNodeToColoredStr(rangev->type) + " does not implement " + typeNodeToColoredStr(mkDataTypeNode("Iterable")) +
-                ", which it needs to be used in a for loop", range->loc);
+    if(!uwrap) return c->compErr("Range expression of type " + typeNodeToColoredStr(rangev->type) + " does not implement " +
+            typeNodeToColoredStr(mkDataTypeNode("Iterable")) + ", which it needs to be used in a for loop", range->loc);
 
     auto *uwrap_var = new Variable(var, uwrap, c->scope);
     c->stoVar(var, uwrap_var);
@@ -434,8 +448,9 @@ TypedValue* ForNode::compile(Compiler *c){
 
     //candval = is_done range
     auto *is_done = c->callFn("has_next", {rangeVal});
-    if(!is_done) return c->compErr("Range expression of type " + typeNodeToColoredStr(rangev->type) + " does not implement " + typeNodeToColoredStr(mkDataTypeNode("Iterable")) +
-                ", which it needs to be used in a for loop", range->loc);
+    if(!is_done) return c->compErr("Range expression of type " + typeNodeToColoredStr(rangev->type) + " does not implement " +
+            typeNodeToColoredStr(mkDataTypeNode("Iterable")) + ", which it needs to be used in a for loop", range->loc);
+
     c->builder.CreateCondBr(is_done->val, begin, end);
 
     c->builder.SetInsertPoint(begin);
@@ -770,9 +785,19 @@ TypedValue* ExtNode::compile(Compiler *c){
     if(traits.get()){
         //this ExtNode is an implementation of a trait
         string typestr = typeNodeToStr(typeExpr.get());
-        auto *dt = c->lookupType(typestr);
-        if(!dt)
-            return c->compErr("Cannot implement traits for undeclared type " + typeNodeToColoredStr(typeExpr), typeExpr->loc);
+        DataType *dt;
+
+        if(typeExpr->typeName.empty()){ //primitive type being extended
+            dt = c->lookupType(typestr);
+            if(!dt){ //if primitive type has not been extended before, make it a DataType to store in
+                dt = new DataType({/*no fields*/}, deepCopyTypeNode(typeExpr.get()));
+                c->stoType(dt, typestr);
+            }
+        }else{
+            dt = c->lookupType(typestr);
+            if(!dt)
+                return c->compErr("Cannot implement traits for undeclared type " + typeNodeToColoredStr(typeExpr), typeExpr->loc);
+        }
 
         //create a vector of the traits that must be implemented
         TypeNode *curTrait = this->traits.get();
@@ -819,6 +844,13 @@ TypedValue* ExtNode::compile(Compiler *c){
         c->funcPrefix = "";
     }
     return c->getVoidLiteral();
+}
+        
+bool Compiler::typeImplementsTrait(DataType* dt, string traitName) const{
+    for(auto& tr : dt->traitImpls)
+        if(tr->name == traitName)
+            return true;
+    return false;
 }
 
 
@@ -882,6 +914,11 @@ TypedValue* compTaggedUnion(Compiler *c, DataDeclNode *n){
 
 
 TypedValue* DataDeclNode::compile(Compiler *c){
+    //check for redeclaration
+    auto *dt = c->lookupType(this->name);
+    if(dt) return c->compErr("Type " + name + " was redefined", loc);
+
+
     vector<string> fieldNames;
     fieldNames.reserve(fields);
 
@@ -1166,8 +1203,9 @@ TypeNode* mkDataTypeNode(string tyname){
  *  do not pollute the module with unused definitions.
  */
 void Compiler::compilePrelude(){
-    if(fileName != AN_LIB_DIR "prelude.an")
+    if(fileName != AN_LIB_DIR "prelude.an"){
         importFile(AN_LIB_DIR "prelude.an");
+    }
 }
 
 
@@ -1251,6 +1289,8 @@ Function* Compiler::createMainFn(){
 
 TypedValue* RootNode::compile(Compiler *c){
     auto *mainFn = c->createMainFn();
+    for(auto &n : imports)
+        n->compile(c);
 
     c->compilePrelude();
     c->scanAllDecls();
@@ -1535,6 +1575,14 @@ legacy::FunctionPassManager* mkPassManager(llvm::Module *m, char optLvl){
     return pm;
 }
 
+char* copy(const char* str){
+    size_t len = strlen(str);
+    char* cpy = new char[len+1];
+    strncpy(cpy, str, len);
+    cpy[len] = '\0';
+    return cpy;
+}
+
 Compiler::Compiler(const char *_fileName, bool lib, shared_ptr<LLVMContext> llvmCtxt) :
         ctxt(llvmCtxt ? llvmCtxt : shared_ptr<LLVMContext>(new LLVMContext())),
         builder(*ctxt), 
@@ -1548,7 +1596,10 @@ Compiler::Compiler(const char *_fileName, bool lib, shared_ptr<LLVMContext> llvm
         funcPrefix(""),
         scope(0){
 
-    setLexer(new Lexer(&fileName));
+    //The lexer stores the fileName in the loc field of all Nodes. The fileName is copied
+    //to let Node's outlive the Compiler they were made in, ensuring they work with imports.
+    string* fileName_cpy = new string(fileName);
+    setLexer(new Lexer(fileName_cpy));
     yy::parser p{};
     int flag = p.parse();
     if(flag != PE_OK){ //parsing error, cannot procede

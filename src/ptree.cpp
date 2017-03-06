@@ -89,6 +89,10 @@ void append_trait(Node *n){
     root->traits.push_back((TraitNode*)n);
 }
 
+void append_import(Node *n){
+    root->imports.push_back(unique_ptr<ImportNode>((ImportNode*)n));
+}
+
 
 LOC_TY copyLoc(const LOC_TY &loc){
     return mkLoc(mkPos(loc.begin.filename, loc.begin.line, loc.begin.column),

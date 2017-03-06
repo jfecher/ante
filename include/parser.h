@@ -85,6 +85,7 @@ struct FuncDeclNode;
 struct TraitNode;
 struct ExtNode;
 struct DataDeclNode;
+struct ImportNode;
 
 /*
  * Specialized Node to act as root
@@ -97,6 +98,7 @@ struct RootNode : public Node{
     vector<TraitNode*> traits;
     vector<ExtNode*> extensions;
     vector<DataDeclNode*> types;
+    vector<unique_ptr<ImportNode>> imports;
 
     vector<unique_ptr<Node>> main;
     

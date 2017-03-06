@@ -299,6 +299,7 @@ namespace ante{
         void stoVar(string var, Variable *val);
         DataType* lookupType(string tyname) const;
         Trait* lookupTrait(string tyname) const;
+        bool typeImplementsTrait(DataType* dt, string traitName) const;
         void stoType(DataType *ty, string &typeName);
 
         Type* typeNodeToLlvmType(const TypeNode *tyNode);

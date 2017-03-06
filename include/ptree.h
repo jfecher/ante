@@ -19,6 +19,7 @@ void append_fn(Node *n);
 void append_type(Node *n);
 void append_extension(Node *n);
 void append_trait(Node *n);
+void append_import(Node *n);
 
 
 #ifndef LOC_TY
