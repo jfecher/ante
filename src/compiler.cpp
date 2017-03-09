@@ -423,14 +423,18 @@ TypedValue* ForNode::compile(Compiler *c){
     //If it does not, see if it implements Iterable by attempting to call into_iter on it
     auto *dt = c->lookupType(typeNodeToStr(rangev->type.get()));
     if(!dt or (dt and !c->typeImplementsTrait(dt, "Iterator"))){
-        rangev = c->callFn("into_iter", {rangev});
+        auto *res = c->callFn("into_iter", {rangev});
 
-        if(!rangev)
+        if(!res)
             return c->compErr("Range expression of type " + typeNodeToColoredStr(rangev->type) + " needs to implement " +
                 typeNodeToColoredStr(mkDataTypeNode("Iterable")) + " or " + typeNodeToColoredStr(mkDataTypeNode("Iterator")) +
                 " to be used in a for loop", range->loc);
+        
+        rangev = res;
     }
-    
+
+    //by this point, rangev now properly stores the range information, so store it on the stack and insert calls to
+    //unwrap, has_next, and next at the beginning, beginning, and end of the loop respectively.
     Value *alloca = c->builder.CreateAlloca(rangev->getType(), rangev->val);
     c->builder.CreateStore(rangev->val, alloca);
 
