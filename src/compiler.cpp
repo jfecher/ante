@@ -1127,8 +1127,9 @@ TypedValue* MatchBranchNode::compile(Compiler *c){
 
 void ante::Module::import(shared_ptr<ante::Module> mod){
     for(auto& pair : mod->fnDecls)
-        for(auto& fd : pair.second)
+        for(auto& fd : pair.second){
             fnDecls[pair.first].push_back(fd);
+        }
 
     for(auto& pair : mod->userTypes)
         userTypes[pair.first] = pair.second;
@@ -1143,7 +1144,7 @@ void ante::Module::import(shared_ptr<ante::Module> mod){
  */
 void Compiler::importFile(const char *fName){
     try{
-        auto& module = allCompiledModules.at(fName);
+        auto& module = allCompiledModules->at(fName);
 
         for(auto &mod : imports){
             if(mod->name == fName){
@@ -1173,7 +1174,7 @@ void Compiler::importFile(const char *fName){
         imports.push_back(c->compUnit);
         mergedCompUnits->import(c->compUnit);
 
-        allCompiledModules[c->fileName] = c->compUnit;
+        (*allCompiledModules)[fName] = c->compUnit;
         delete c;
     }
 }
@@ -1320,7 +1321,7 @@ void Compiler::compile(){
     compiled = true;
 
     //show other modules this is compiled
-    allCompiledModules[fileName] = compUnit;
+    (*allCompiledModules)[fileName] = compUnit;
 
     if(errFlag){
         fputs("Compilation aborted.\n", stderr);
@@ -1588,6 +1589,7 @@ Compiler::Compiler(const char *_fileName, bool lib, shared_ptr<LLVMContext> llvm
         builder(*ctxt), 
         compUnit(new ante::Module()),
         mergedCompUnits(new ante::Module()),
+        allCompiledModules(new map<string,shared_ptr<ante::Module>>()),
         callStack(),
         errFlag(false),
         compiled(false),
@@ -1635,6 +1637,7 @@ Compiler::Compiler(Node *root, string modName, string &fName, bool lib, shared_p
         builder(*ctxt),
         compUnit(new ante::Module()),
         mergedCompUnits(new ante::Module()),
+        allCompiledModules(new map<string,shared_ptr<ante::Module>>()),
         callStack(),
         errFlag(false),
         compiled(false),

@@ -234,7 +234,7 @@ namespace ante{
         
         //every single compiled module, even ones invisible to the current
         //compilation_unit.  Prevents recompilation of modules
-        map<string, shared_ptr<ante::Module>> allCompiledModules;
+        shared_ptr<map<string, shared_ptr<ante::Module>>> allCompiledModules;
         
         //Stack of maps of variables mapped to their identifier.
         //Maps are seperated according to their scope.
