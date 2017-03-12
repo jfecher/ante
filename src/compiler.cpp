@@ -176,8 +176,13 @@ TypedValue* compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
     }
 
     //and compile
-    Node *expr = parser::getRootNode();
-    auto *val = expr->compile(c);
+    RootNode *expr = parser::getRootNode();
+
+    //Compile each expression and hold onto the last value
+    TypedValue *val;
+    for(auto &n : expr->main)
+        val = n->compile(c);
+    
     if(!val) return 0;
 
     //if the expr is not already a string type, cast it to one

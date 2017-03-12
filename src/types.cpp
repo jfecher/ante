@@ -784,10 +784,7 @@ string typeNodeToStr(const TypeNode *t){
         }
         return ret;
     }else if(t->type == TT_Data || t->type == TT_TaggedUnion || t->type == TT_TypeVar){
-        string name = t->typeName;
-        for(auto &tn : t->params) name += " " + typeNodeToStr(tn.get());
-
-        return name;
+        return t->typeName;
     }else if(t->type == TT_Array){
         auto *len = (IntLitNode*)t->extTy->next.get();
         return '[' + len->val + " " + typeNodeToStr(t->extTy.get()) + ']';

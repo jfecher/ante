@@ -714,21 +714,11 @@ TypeNode* mkAnonTypeNode(TypeTag t);
 
 Node* tnToFnName(Node *n){
     auto *tn = (TypeNode*)n;
-    int len;
-    const char *name;
+    string s = typeNodeToStr(tn);
 
-    if(tn->type == TT_Data){
-        len = tn->typeName.size();
-        name = tn->typeName.c_str();
-    }else{
-        string s = typeNodeToStr(tn);
-        len = s.size();
-        name = s.c_str();
-    }
-
-    char *cpy = (char*)malloc(len+1);
-    strncpy(cpy, name, len);
-    cpy[len] = '\0';
+    char *cpy = (char*)malloc(s.size()+1);
+    strncpy(cpy, s.c_str(), s.size());
+    cpy[s.size()] = '\0';
     return (Node*)cpy;
 }
 
