@@ -1267,22 +1267,18 @@ void Compiler::eval(){
         setLexer(new Lexer(nullptr, cmd, /*line*/1, /*col*/1));
         yy::parser p{};
         int flag = p.parse();
-        if(flag != PE_OK){ //parsing error, cannot procede
-            fputs("Syntax error, aborting.\n", stderr);
-            printf("src = '%s'\n", cmd.c_str());
-            exit(flag);
+        if(flag == PE_OK){
+            RootNode *expr = parser::getRootNode();
+
+            //Compile each expression and hold onto the last value
+            TypedValue *val = 0;
+            for(auto &n : expr->main)
+                val = n->compile(this);
+
+            //print val if it's not an error
+            if(val)
+                val->val->dump();
         }
-        
-        RootNode *expr = parser::getRootNode();
-
-        //Compile each expression and hold onto the last value
-        TypedValue *val = 0;
-        for(auto &n : expr->main)
-            val = n->compile(this);
-
-        //print val if it's not an error
-        if(val)
-            val->val->dump();
     }
 }
 
