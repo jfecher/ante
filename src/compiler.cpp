@@ -1256,8 +1256,34 @@ void Compiler::scanAllDecls(){
 //evaluates and prints a single-expression module
 //Used in REPL
 void Compiler::eval(){
-    auto *tval = ast->compile(this);
-    tval->val->dump();
+    string cmd = "";
+    cout << "Ante REPL v0.0.1\nType 'exit' to exit.\n";
+
+    while(cmd != "exit"){
+        cout << ": " << flush;
+        getline(cin, cmd);
+    
+        //lex and parse the new string
+        setLexer(new Lexer(nullptr, cmd, /*line*/1, /*col*/1));
+        yy::parser p{};
+        int flag = p.parse();
+        if(flag != PE_OK){ //parsing error, cannot procede
+            fputs("Syntax error, aborting.\n", stderr);
+            printf("src = '%s'\n", cmd.c_str());
+            exit(flag);
+        }
+        
+        RootNode *expr = parser::getRootNode();
+
+        //Compile each expression and hold onto the last value
+        TypedValue *val = 0;
+        for(auto &n : expr->main)
+            val = n->compile(this);
+
+        //print val if it's not an error
+        if(val)
+            val->val->dump();
+    }
 }
 
 Function* Compiler::createMainFn(){
@@ -1609,26 +1635,29 @@ Compiler::Compiler(const char *_fileName, bool lib, shared_ptr<LLVMContext> llvm
 
     //The lexer stores the fileName in the loc field of all Nodes. The fileName is copied
     //to let Node's outlive the Compiler they were made in, ensuring they work with imports.
-    string* fileName_cpy = new string(fileName);
-    setLexer(new Lexer(fileName_cpy));
-    yy::parser p{};
-    int flag = p.parse();
-    if(flag != PE_OK){ //parsing error, cannot procede
-        //print out remaining errors
-        int tok;
-        yy::location loc;
-        while((tok = yylexer->next(&loc)) != Tok_Newline && tok != 0);
-        while(p.parse() != PE_OK && yylexer->peek() != 0);
+    if(_fileName){
+        string* fileName_cpy = new string(fileName);
+        setLexer(new Lexer(fileName_cpy));
+        yy::parser p{};
+        int flag = p.parse();
+        if(flag != PE_OK){ //parsing error, cannot procede
+            //print out remaining errors
+            int tok;
+            yy::location loc;
+            while((tok = yylexer->next(&loc)) != Tok_Newline && tok != 0);
+            while(p.parse() != PE_OK && yylexer->peek() != 0);
 
-        fputs("Syntax error, aborting.\n", stderr);
-        exit(flag);
+            fputs("Syntax error, aborting.\n", stderr);
+            exit(flag);
+        }
+        
+        ast.reset(parser::getRootNode());
     }
 
     auto modName = removeFileExt(fileName);
     compUnit->name = modName;
     mergedCompUnits->name = modName;
 
-    ast.reset(parser::getRootNode());
     outFile = modName;
 	if (outFile.empty())
 		outFile = "a";

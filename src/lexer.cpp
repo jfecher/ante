@@ -180,7 +180,8 @@ int yylex(yy::parser::semantic_type* st, yy::location* yyloc){
 
 
 /*
- * Initializes lexer
+ * Initializes lexer from a filename to be opened
+ * If file = nullptr then stdin will be opened instead
  */
 Lexer::Lexer(string* file) :
     isPseudoFile(false),
@@ -213,6 +214,10 @@ Lexer::Lexer(string* file) :
 }
 
 
+/*
+ * Initializes lexer from a string, the 'pseudofile' to be
+ * lexed instead of an actual file
+ */
 Lexer::Lexer(string* fName, string& pFile, unsigned int ro, unsigned int co) :
     isPseudoFile(true),
     row{1},

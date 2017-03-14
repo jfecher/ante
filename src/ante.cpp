@@ -60,8 +60,8 @@ int main(int argc, const char **argv){
 
         ante.processArgs(args);
     }
-    
-    if(args->hasArg(Args::Eval))
+
+    if(args->hasArg(Args::Eval) or args->args.empty())
         Compiler(0).eval();
 
     if(yylexer)
