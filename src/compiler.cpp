@@ -1246,11 +1246,13 @@ Node* mkPlaceholderNode(){
  *  Sweeps through entire parse tree registering all function and data
  *  declarations.  Removes compiled functions.
  */
-void Compiler::scanAllDecls(){
-    for(auto& f : ast->funcs) f->compile(this);
-    for(auto& f : ast->types) f->compile(this);
-    for(auto& f : ast->traits) f->compile(this);
-    for(auto& f : ast->extensions) f->compile(this);
+void Compiler::scanAllDecls(RootNode *root){
+    auto *n = root ? root : ast.get();
+
+    for(auto& f : n->funcs) f->compile(this);
+    for(auto& f : n->types) f->compile(this);
+    for(auto& f : n->traits) f->compile(this);
+    for(auto& f : n->extensions) f->compile(this);
 }
 
 //evaluates and prints a single-expression module
@@ -1258,6 +1260,10 @@ void Compiler::scanAllDecls(){
 void Compiler::eval(){
     string cmd = "";
     cout << "Ante REPL v0.0.1\nType 'exit' to exit.\n";
+   
+    //setup compiler
+    createMainFn();
+    compilePrelude();
 
     cout << ": " << flush;
     getline(cin, cmd);
@@ -1270,9 +1276,7 @@ void Compiler::eval(){
             RootNode *expr = parser::getRootNode();
 
             //Compile each expression and hold onto the last value
-            TypedValue *val = 0;
-            for(auto &n : expr->main)
-                val = n->compile(this);
+            TypedValue *val = expr->compile(this);
 
             //print val if it's not an error
             if(val)
@@ -1321,23 +1325,17 @@ Function* Compiler::createMainFn(){
 
 
 TypedValue* RootNode::compile(Compiler *c){
-    auto *mainFn = c->createMainFn();
     for(auto &n : imports)
         n->compile(c);
 
-    c->compilePrelude();
-    c->scanAllDecls();
+    c->scanAllDecls(this);
 
     //Compile the rest of the program
+    TypedValue *ret = 0;
     for(auto &n : main)
-        n->compile(c);
+        ret = n->compile(c);
 
-    c->builder.CreateRet(ConstantInt::get(*c->ctxt, APInt(32, 0)));
-
-    if(!c->errFlag)
-        c->passManager->run(*mainFn);
-    
-    return 0;
+    return ret;
 }
 
 
@@ -1347,7 +1345,16 @@ void Compiler::compile(){
         return;
     }
 
+    //create implicit main function and import the prelude
+    auto *mainFn = createMainFn();
+    compilePrelude();
+    
     ast->compile(this);
+
+    //always return 0
+    builder.CreateRet(ConstantInt::get(*ctxt, APInt(32, 0)));
+    if(!errFlag)
+        passManager->run(*mainFn);
 
     //flag this module as compiled.
     compiled = true;

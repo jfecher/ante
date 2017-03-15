@@ -262,7 +262,7 @@ namespace ante{
         void enterNewScope();
         void exitScope();
         
-        void scanAllDecls();
+        void scanAllDecls(RootNode *n = 0);
         void processArgs(CompilerArgs *args);
         
         //binop functions
