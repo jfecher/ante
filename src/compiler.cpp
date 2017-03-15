@@ -1259,10 +1259,9 @@ void Compiler::eval(){
     string cmd = "";
     cout << "Ante REPL v0.0.1\nType 'exit' to exit.\n";
 
+    cout << ": " << flush;
+    getline(cin, cmd);
     while(cmd != "exit"){
-        cout << ": " << flush;
-        getline(cin, cmd);
-    
         //lex and parse the new string
         setLexer(new Lexer(nullptr, cmd, /*line*/1, /*col*/1));
         yy::parser p{};
@@ -1279,6 +1278,8 @@ void Compiler::eval(){
             if(val)
                 val->val->dump();
         }
+        cout << ": " << flush;
+        getline(cin, cmd);
     }
 }
 
