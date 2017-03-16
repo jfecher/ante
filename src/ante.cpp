@@ -61,7 +61,7 @@ int main(int argc, const char **argv){
         ante.processArgs(args);
     }
 
-    if(args->hasArg(Args::Eval) or args->args.empty())
+    if(args->hasArg(Args::Eval) or (args->args.empty() and args->inputFiles.empty()))
         Compiler(0).eval();
 
     if(yylexer)
