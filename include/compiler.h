@@ -286,6 +286,7 @@ namespace ante{
         FuncDecl* getCurrentFunction() const;
         TypedValue* getFunction(string& name, string& mangledName);
         list<shared_ptr<FuncDecl>>& getFunctionList(string& name) const;
+        FuncDecl* getFuncDecl(string bn, string mangledName);
         TypedValue* getMangledFunction(string nonMangledName, TypeNode *params);
         TypedValue* getCastFn(TypeNode *from_ty, TypeNode *to_ty);
         TypedValue* callFn(string fn, vector<TypedValue*> args);

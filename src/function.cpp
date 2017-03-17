@@ -638,19 +638,28 @@ list<shared_ptr<FuncDecl>>& Compiler::getFunctionList(string& name) const{
 
 
 /*
+ * Returns the FuncDecl* of a given name/basename pair
+ * returns nullptr if specified function is not found
+ */
+FuncDecl* Compiler::getFuncDecl(string baseName, string mangledName){
+    auto& list = getFunctionList(baseName);
+    if(list.empty()) return 0;
+
+    return getFuncDeclFromList(list, mangledName);
+}
+
+/*
  *  Adds a function to the list of declared, but not defined functions.  A declared function's
  *  FuncDeclNode can be added to be compiled only when it is later called.  Useful to prevent pollution
  *  of a module with unneeded library functions.
  */
 inline void Compiler::registerFunction(FuncDeclNode *fn){
     //check for redeclaration
-    auto& list = getFunctionList(fn->basename);
-    if(!list.empty()){
-        auto *redecl = getFuncDeclFromList(list, fn->name);
-        if(redecl and redecl->fdn->name == fn->name){
-            compErr("Function " + fn->name + " was redefined", fn->loc);
-            return;
-        }
+    auto *redecl = getFuncDecl(fn->basename, fn->name);
+    
+    if(redecl and redecl->fdn->name == fn->name){
+        compErr("Function " + fn->name + " was redefined", fn->loc);
+        return;
     }
 
     shared_ptr<FuncDecl> fd{new FuncDecl(fn, scope, mergedCompUnits)};
