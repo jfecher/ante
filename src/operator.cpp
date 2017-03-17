@@ -831,7 +831,9 @@ TypedValue* compMetaFunctionResult(Compiler *c, Node *lnode, TypedValue *l, vect
         LLVMInitializeNativeTarget();
         LLVMInitializeNativeAsmPrinter();
 
-        auto mod_compiler = wrapFnInModule(c, (Function*)l->val);
+        string basename = dynamic_cast<VarNode*>(lnode) ? ((VarNode*)lnode)->name : fnName;
+
+        auto mod_compiler = wrapFnInModule(c, (Function*)l->val, basename);
         if(!mod_compiler or mod_compiler->errFlag) return 0;
 
         //the compiler created by wrapFnInModule shares a parse tree with this, so it must be released

@@ -24,7 +24,7 @@ void copyDecls(const Compiler *src, Compiler *dest){
  * and copies any functions that are needed by the copied function
  * into the new module as well.
  */
-unique_ptr<Compiler> wrapFnInModule(Compiler *c, Function *f){
+unique_ptr<Compiler> wrapFnInModule(Compiler *c, Function *f, string basename){
     unique_ptr<Compiler> ccpy{new Compiler(c->ast.get(), f->getName(), c->fileName)};
     copyDecls(c, ccpy.get());
 
@@ -36,16 +36,12 @@ unique_ptr<Compiler> wrapFnInModule(Compiler *c, Function *f){
 
     string name = f->getName().str();
 
-    auto& flist = ccpy->getFunctionList(name);
+    auto* fn = ccpy->getFuncDecl(basename, name);
 
-    if(flist.size() == 1){
-        ccpy->compFn((*flist.begin()).get());
-    }else if(flist.empty()){
-        cerr << "No function '" << name << "'\n";
-        c->errFlag = true;
-        return 0;
+    if(fn){
+        ccpy->compFn(fn);
     }else{
-        cerr << "Too many candidates for function '" << name << "'\n";
+        cerr << "Function '" << name << "' not found.\n";
         c->errFlag = true;
         return 0;
     }
