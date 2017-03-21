@@ -763,6 +763,46 @@ TypedValue* genericValueToTypedValue(Compiler *c, GenericValue gv, TypeNode *tn)
  *  - Assumes the Value* within the TypedValue is a Constant*
  */
 GenericValue typedValueToGenericValue(Compiler *c, TypedValue *tv){
+    GenericValue ret;
+    TypeTag tt = tv->type->type;
+
+    switch(tt){
+        case TT_I8:
+        case TT_I16:
+        case TT_I32:
+        case TT_I64:
+        case TT_U8:
+        case TT_U16:
+        case TT_U32:
+        case TT_U64:
+        case TT_Isz:
+        case TT_Usz:;
+        case TT_C8:
+        case TT_C32:
+        case TT_Bool: {
+            auto *ci = dyn_cast<ConstantInt>(tv->val);
+            if(!ci) break;
+            ret.IntVal = APInt(getBitWidthOfTypeTag(tt), isUnsignedTypeTag(tt) ? ci->getZExtValue() : ci->getSExtValue());
+            return ret;
+        }
+        case TT_F16:
+        case TT_F32:
+        case TT_F64:
+        case TT_Tuple:
+        case TT_Array:
+        case TT_Ptr:
+        case TT_Data:
+        case TT_TypeVar:
+        case TT_Function:
+        case TT_Method:
+        case TT_TaggedUnion:
+        case TT_MetaFunction:
+        case TT_Type:
+        case TT_Void:
+            break;
+    }
+    
+    cerr << AN_ERR_COLOR << "error: " << AN_CONSOLE_RESET << "Compile-time function argument must be constant.\n";
     return GenericValue(nullptr);
 }
 
