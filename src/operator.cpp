@@ -821,6 +821,20 @@ vector<GenericValue> typedValuesToGenericValues(Compiler *c, vector<TypedValue*>
 }
 
 
+
+string getName(Node *n){
+    if(VarNode *vn = dynamic_cast<VarNode*>(n))
+        return vn->name;
+    else if(BinOpNode *op = dynamic_cast<BinOpNode*>(n))
+        return getName(op->lval.get()) + "_" + getName(op->rval.get());
+    else if(TypeNode *tn = dynamic_cast<TypeNode*>(n))
+        return typeNodeToStr(tn);
+    else
+        return "";
+}
+
+
+
 extern map<string, CtFunc*> compapi;
 /*
  *  Compile a compile-time function/macro which should not return a function call, just a compile-time constant.
@@ -830,20 +844,22 @@ extern map<string, CtFunc*> compapi;
  *  - Assumes arguments are already type-checked
  */
 TypedValue* compMetaFunctionResult(Compiler *c, Node *lnode, string &mangledName, vector<TypedValue*> &typedArgs){
+    string baseName = getName(lnode);
+
     CtFunc* fn;
-    if((fn = compapi[mangledName])){
+    if((fn = compapi[baseName])){
         void *res;
         GenericValue gv;
 
         //TODO organize CtFunc's by param count + type instead of a hard-coded name check
-        if(mangledName == "Ante_debug"){
+        if(baseName == "Ante_debug"){
             if(typedArgs.size() != 1)
                 return c->compErr("Called function was given " + to_string(typedArgs.size()) +
                         " argument(s) but was declared to take 1", lnode->loc);
 
             res = (*fn)(typedArgs[0]);
             gv = GenericValue(res);
-        }else if(mangledName == "Ante_sizeof"){
+        }else if(baseName == "Ante_sizeof"){
             if(typedArgs.size() != 1)
                 return c->compErr("Called function was given " + to_string(typedArgs.size()) +
                         " argument(s) but was declared to take 1", lnode->loc);
@@ -860,9 +876,7 @@ TypedValue* compMetaFunctionResult(Compiler *c, Node *lnode, string &mangledName
         LLVMInitializeNativeTarget();
         LLVMInitializeNativeAsmPrinter();
 
-        string basename = dynamic_cast<VarNode*>(lnode) ? ((VarNode*)lnode)->name : mangledName;
-
-        auto mod_compiler = wrapFnInModule(c, basename, mangledName);
+        auto mod_compiler = wrapFnInModule(c, baseName, mangledName);
         if(!mod_compiler or mod_compiler->errFlag) return 0;
 
 
@@ -886,14 +900,14 @@ TypedValue* compMetaFunctionResult(Compiler *c, Node *lnode, string &mangledName
             return 0;
         }
 
-        auto args = typedValuesToGenericValues(c, typedArgs, lnode->loc, basename);
+        auto args = typedValuesToGenericValues(c, typedArgs, lnode->loc, baseName);
 
         auto *fn = jit->FindFunctionNamed(mangledName.c_str());
         auto genret = jit->runFunction(fn, args);
 
 
         //get the type of the function to properly translate the return value
-        auto *fnTy = mod_compiler->getFuncDecl(basename, mangledName)->tv->type.get();
+        auto *fnTy = mod_compiler->getFuncDecl(baseName, mangledName)->tv->type.get();
         return genericValueToTypedValue(c, genret, fnTy->extTy.get());
     }
 }
