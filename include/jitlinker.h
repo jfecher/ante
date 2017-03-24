@@ -3,6 +3,6 @@
 
 #include "compiler.h"
 
-unique_ptr<Compiler> wrapFnInModule(Compiler *c, Function *f, string basename);
+unique_ptr<Compiler> wrapFnInModule(Compiler *c, string &basename, string &mangledName);
 
 #endif

@@ -576,9 +576,6 @@ TypedValue* IfNode::compile(Compiler *c){
 }
 
 
-TypeNode* createFnTyNode(NamedValNode *params, TypeNode *retTy);
-
-
 TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *binop){
     if(!ln) return 0;
 
@@ -832,23 +829,21 @@ extern map<string, CtFunc*> compapi;
  *
  *  - Assumes arguments are already type-checked
  */
-TypedValue* compMetaFunctionResult(Compiler *c, Node *lnode, TypedValue *l, vector<TypedValue*> &typedArgs){
-    string fnName = l->val->getName().str();
-    
+TypedValue* compMetaFunctionResult(Compiler *c, Node *lnode, string &mangledName, vector<TypedValue*> &typedArgs){
     CtFunc* fn;
-    if((fn = compapi[fnName])){
+    if((fn = compapi[mangledName])){
         void *res;
         GenericValue gv;
 
         //TODO organize CtFunc's by param count + type instead of a hard-coded name check
-        if(fnName == "Ante_debug"){
+        if(mangledName == "Ante_debug"){
             if(typedArgs.size() != 1)
                 return c->compErr("Called function was given " + to_string(typedArgs.size()) +
                         " argument(s) but was declared to take 1", lnode->loc);
 
             res = (*fn)(typedArgs[0]);
             gv = GenericValue(res);
-        }else if(fnName == "Ante_sizeof"){
+        }else if(mangledName == "Ante_sizeof"){
             if(typedArgs.size() != 1)
                 return c->compErr("Called function was given " + to_string(typedArgs.size()) +
                         " argument(s) but was declared to take 1", lnode->loc);
@@ -860,21 +855,16 @@ TypedValue* compMetaFunctionResult(Compiler *c, Node *lnode, TypedValue *l, vect
             gv = GenericValue(res);
         }
 
-        auto *conv = genericValueToTypedValue(c, gv, l->type->extTy.get());
-
-        auto *llvmfn = static_cast<Function*>(l->val);
-        if(llvmfn->getParent())
-            llvmfn->removeFromParent();
-
-        return conv;
+        return genericValueToTypedValue(c, gv, fn->retty.get());
     }else{
         LLVMInitializeNativeTarget();
         LLVMInitializeNativeAsmPrinter();
 
-        string basename = dynamic_cast<VarNode*>(lnode) ? ((VarNode*)lnode)->name : fnName;
+        string basename = dynamic_cast<VarNode*>(lnode) ? ((VarNode*)lnode)->name : mangledName;
 
-        auto mod_compiler = wrapFnInModule(c, (Function*)l->val, basename);
+        auto mod_compiler = wrapFnInModule(c, basename, mangledName);
         if(!mod_compiler or mod_compiler->errFlag) return 0;
+
 
         //the compiler created by wrapFnInModule shares a parse tree with this, so it must be released
         mod_compiler->ast.release();
@@ -896,23 +886,15 @@ TypedValue* compMetaFunctionResult(Compiler *c, Node *lnode, TypedValue *l, vect
             return 0;
         }
 
-        string baseName = l->val->getName().str();
-        auto args = typedValuesToGenericValues(c, typedArgs, lnode->loc, baseName);
+        auto args = typedValuesToGenericValues(c, typedArgs, lnode->loc, basename);
 
-        auto *fn = jit->FindFunctionNamed(fnName.c_str());
+        auto *fn = jit->FindFunctionNamed(mangledName.c_str());
         auto genret = jit->runFunction(fn, args);
 
 
-        //Get the compiled function and reset its tv to mark it as not compiled so that compilers that
-        //share the mergedCompUnits or just the ante::module the function was compiled in (c in this scope)
-        //do not try to call the soon-to-be deleted version of the function.
-        string fnname = l->val->getName().str();
-        auto &list = mod_compiler->getFunctionList(fnname);
-        if(list.size() == 1)
-            list.front()->tv = l;
-
-        auto *ret = genericValueToTypedValue(c, genret, l->type->extTy.get());
-        return ret;
+        //get the type of the function to properly translate the return value
+        auto *fnTy = mod_compiler->getFuncDecl(basename, mangledName)->tv->type.get();
+        return genericValueToTypedValue(c, genret, fnTy->extTy.get());
     }
 }
 
@@ -994,7 +976,7 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
     if(!tvf) tvf = l->compile(c);
 
     //if there was an error, return
-    if(!tvf || !tvf->val) return 0;
+    if(!tvf) return 0;
 
     //make sure the l val compiles to a function
     if(tvf->type->type != TT_Function && tvf->type->type != TT_Method && tvf->type->type != TT_MetaFunction)
@@ -1011,7 +993,8 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
         push_front(&typedArgs, obj);
     }
 
-    if(f->arg_size() != args.size() && !f->isVarArg()){
+    size_t argc = getTupleSize(tvf->type->extTy.get()) - 1;
+    if(argc != args.size() and (!f or !f->isVarArg())){
         //check if an empty tuple (a void value) is being applied to a zero argument function before continuing
         //if not checked, it will count it as an argument instead of the absence of any
         //NOTE: this has the possibly unwanted side effect of allowing 't->void function applications to be used
@@ -1095,9 +1078,13 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
         paramTy = (TypeNode*)paramTy->next.get();
         i++;
     }
-
+   
+    //if tvf is a ![macro] or similar MetaFunction, then compile it in a separate
+    //module and JIT it instead of creating a call instruction
     if(tvf->type->type == TT_MetaFunction){
-        return compMetaFunctionResult(c, l, tvf, typedArgs);
+        string baseName = dynamic_cast<VarNode*>(l) ? ((VarNode*)l)->name : "";
+        string mangledName = mangle(baseName, (TypeNode*)tvf->type->extTy->next.get());
+        return compMetaFunctionResult(c, l, mangledName, typedArgs);
     }
 
     //use tvf->val as arg, NOT f, (if tvf->val is a function-type parameter then f cannot be called)

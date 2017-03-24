@@ -279,36 +279,37 @@ TypedValue* compCompilerDirectiveFn(Compiler *c, FuncDecl *fd, PreProcNode *ppn)
     //remove the preproc node at the front of the modifier list so that the call to
     //compFn does not call this function in an infinite loop
     auto *fdn = fd->fdn;
-
     fdn->modifiers.release();
     fdn->modifiers.reset(ppn->next.get());
-    auto *fn = c->compFn(fd);
-    if(!fn) return 0;
 
-    //put back the preproc node modifier
-    fdn->modifiers.release();
-    fdn->modifiers.reset(ppn);
-
+    TypedValue *fn;
     if(VarNode *vn = dynamic_cast<VarNode*>(ppn->expr.get())){
         if(vn->name == "inline"){
+            fn = c->compFn(fd);
+            if(!fn) return 0;
             ((Function*)fn->val)->addFnAttr("always_inline");
         }else if(vn->name == "run"){
-            auto *mod = c->module.get();
-            c->module.release();
+            fn = c->compFn(fd);
+            if(!fn) return 0;
+            
+            auto *mod = c->module.release();
 
             c->module.reset(new llvm::Module(fdn->name, *c->ctxt));
             auto *recomp = c->compFn(fd);
 
             c->jitFunction((Function*)recomp->val);
             c->module.reset(mod);
-        }else if(vn->name == "macro"){
-            fn->type->type = TT_MetaFunction;
-        }else if(vn->name == "meta"){
-            fn->type->type = TT_MetaFunction;
+        }else if(vn->name == "macro" or vn->name == "meta"){
+            auto *ext = createFnTyNode(fdn->params.get(), (TypeNode*)fdn->type.get());
+            ext->type = TT_MetaFunction;
+            fn = new TypedValue(nullptr, ext);
         }else{
             return c->compErr("Unrecognized compiler directive '"+vn->name+"'", vn->loc);
         }
-
+    
+        //put back the preproc node modifier
+        fdn->modifiers.release();
+        fdn->modifiers.reset(ppn);
         return fn;
     }else{
         return c->compErr("Unrecognized compiler directive", ppn->loc);
