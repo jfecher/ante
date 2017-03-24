@@ -1013,13 +1013,13 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
         //if not checked, it will count it as an argument instead of the absence of any
         //NOTE: this has the possibly unwanted side effect of allowing 't->void function applications to be used
         //      as parameters for functions requiring 0 parameters, although this does not affect the behaviour of either.
-        if(f->arg_size() != 0 || typedArgs[0]->type->type != TT_Void){
+        if(argc != 0 || typedArgs[0]->type->type != TT_Void){
             if(args.size() == 1)
                 return c->compErr("Called function was given 1 argument but was declared to take " 
-                        + to_string(f->arg_size()), r->loc);
+                        + to_string(argc), r->loc);
             else
                 return c->compErr("Called function was given " + to_string(args.size()) + 
-                        " arguments but was declared to take " + to_string(f->arg_size()), r->loc);
+                        " arguments but was declared to take " + to_string(argc), r->loc);
         }
     }
 
@@ -1080,12 +1080,11 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
             }else{
                 tArg->type->next.reset(nxt);
 
-                LOC_TY loc = dynamic_cast<TupleNode*>(r)
-                           ? ((TupleNode*)r)->exprs[i-1]->loc
-                           : r->loc;
+                Node* locNode = dynamic_cast<TupleNode*>(r) ? ((TupleNode*)r)->exprs[i-1].get() : r;
+                if(!locNode) return 0;
 
                 return c->compErr("Argument " + to_string(i) + " of function is a(n) " + typeNodeToColoredStr(tArg->type)
-                    + " but was declared to be a(n) " + typeNodeToColoredStr(paramTy) + " and there is no known implicit cast", loc);
+                    + " but was declared to be a(n) " + typeNodeToColoredStr(paramTy) + " and there is no known implicit cast", locNode->loc);
             }
         }
 
