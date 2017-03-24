@@ -99,10 +99,10 @@ TypedValue* TypeNode::compile(Compiler *c){
     //check for enum value
     if(type == TT_Data || type == TT_TaggedUnion){
         auto *dataTy = c->lookupType(typeName);
-        if(!dataTy) return 0;
+        if(!dataTy) goto rettype;
 
         auto *unionDataTy = c->lookupType(dataTy->getParentUnionName());
-        if(!unionDataTy) return 0;
+        if(!unionDataTy) goto rettype;
 
         Value *tag = ConstantInt::get(*c->ctxt, APInt(8, unionDataTy->getTagVal(typeName), true));
         auto *ty = deepCopyTypeNode(unionDataTy->tyn.get());
@@ -121,15 +121,16 @@ TypedValue* TypeNode::compile(Compiler *c){
         Value *unionVal = c->builder.CreateLoad(alloca);
         ty->type = TT_TaggedUnion;
         return new TypedValue(unionVal, ty);
-    }else{
-        //return the type as a value
-        auto *cpy = deepCopyTypeNode(this);
-
-        //The TypeNode* address is wrapped in an llvm int so that llvm::Value methods can be called
-        //without crashing, even if their result is meaningless
-        Value *v = c->builder.getInt64((unsigned long)cpy);
-        return new TypedValue(v, mkAnonTypeNode(TT_Type));
     }
+
+rettype:
+    //return the type as a value
+    auto *cpy = deepCopyTypeNode(this);
+
+    //The TypeNode* address is wrapped in an llvm int so that llvm::Value methods can be called
+    //without crashing, even if their result is meaningless
+    Value *v = c->builder.getInt64((unsigned long)cpy);
+    return new TypedValue(v, mkAnonTypeNode(TT_Type));
 }
 
 
@@ -358,6 +359,7 @@ vector<TypedValue*> TupleNode::unpack(Compiler *c){
     vector<TypedValue*> ret;
     for(auto& n : exprs){
         auto *tv = n->compile(c);
+
         if(tv && tv->type->type != TT_Void)
             ret.push_back(tv);
     }
