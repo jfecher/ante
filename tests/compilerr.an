@@ -36,6 +36,12 @@ let res = someFnc()
 someFunc()
 
 
+fun add: i32 a b = a + b
+
+//type error for arguments
+add 2.3 4.2
+
+
 //unrecognized compiler directive
 ![whoami]
 fun f := 0

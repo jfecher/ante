@@ -1044,7 +1044,7 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
         auto typecheck = c->typeEq(tArg->type.get(), paramTy);
         if(!typecheck){
             //param types not equal; check for implicit conversion
-            if(isNumericTypeTag(tArg->type->type) && isNumericTypeTag(paramTy->type)){
+            if(isNumericTypeTag(tArg->type->type) and isNumericTypeTag(paramTy->type)){
                 auto *widen = c->implicitlyWidenNum(tArg, paramTy->type);
                 if(widen != tArg){
                     args[i-1] = widen->val;
@@ -1065,7 +1065,7 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
 
             if((fn = c->getMangledFunction(castFn, tArg->type.get())) and
 				   !!c->typeEq(tArg->type.get(), (const TypeNode*)fn->type->extTy->next.get())){
-                
+
                 tArg->type->next.reset(nxt);
 
                 //optimize case of Str -> c8* implicit cast
@@ -1080,7 +1080,16 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
             }else{
                 tArg->type->next.reset(nxt);
 
-                Node* locNode = dynamic_cast<TupleNode*>(r) ? ((TupleNode*)r)->exprs[i-1].get() : r;
+                Node* locNode = 0;
+                
+                if(TupleNode *tn = dynamic_cast<TupleNode*>(r)){
+                    if(tvf->type->type == TT_Method){
+                        locNode = tn->exprs[i-2].get();
+                    }else{
+                        locNode = tn->exprs[i-1].get();
+                    }
+                }
+
                 if(!locNode) return 0;
 
                 return c->compErr("Argument " + to_string(i) + " of function is a(n) " + typeNodeToColoredStr(tArg->type)
