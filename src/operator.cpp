@@ -939,8 +939,9 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
 
     //add all remaining arguments
     if(auto *tup = dynamic_cast<TupleNode*>(r)){
+        auto flag = c->errFlag;
         typedArgs = tup->unpack(c);
-        if(c->errFlag) return 0;
+        if(c->errFlag != flag) return 0;
 
         for(TypedValue *v : typedArgs){
             if(isInvalidParamType(v->getType())){
