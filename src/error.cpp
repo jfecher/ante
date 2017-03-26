@@ -132,7 +132,7 @@ namespace ante {
  */
 TypedValue* Compiler::compErr(ante::lazy_printer msg, const yy::location& loc, ErrorType t){
     error(msg, loc, t);
-    errFlag = true;
+    errFlag = t == ErrorType::Error;
     return nullptr;
 }
 
