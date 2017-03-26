@@ -2,6 +2,7 @@
 #define LEXER_H
 
 #include "tokens.h"
+#include "error.h"
 #include <iostream>
 #include <fstream>
 #include <stack>
@@ -22,9 +23,6 @@ struct Node;
 #define RETURN_PAIR(t) {incPos(2); loc->end = getPos(); return (t);}
 
 namespace ante{
-    /* General error function */
-    void error(const char* msg, const yy::location& loc);
-
     class Lexer{
     public:
         string *fileName;

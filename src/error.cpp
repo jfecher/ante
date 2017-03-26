@@ -1,5 +1,6 @@
 #include "compiler.h"
 #include "target.h"
+#include "error.h"
 
 /* 
  * Skips input in a given istream until it encounters the given coordinates,
@@ -39,7 +40,7 @@ void wrapInColor(string s, const char* color){
  *  Prints a given line (row) of a file, along with an arrow pointing to
  *  the specified column.
  */
-void printErrLine(const yy::location& loc){
+void printErrLine(const yy::location& loc, ErrorType t){
     if(!loc.begin.filename) return;
     ifstream f{*loc.begin.filename};
 
@@ -59,7 +60,14 @@ void printErrLine(const yy::location& loc){
 
     //draw arrow
     putchar('\n');
-    cout << AN_ERR_COLOR;
+
+    if(t == ErrorType::Error)
+        cout << AN_ERR_COLOR;
+    else if(t == ErrorType::Warning)
+        cout << AN_WARN_COLOR;
+    else
+        cout << AN_NOTE_COLOR;
+
     unsigned int i = 1;
 
     //skip to begin pos
@@ -84,21 +92,36 @@ void printFileNameAndLineNumber(const yy::location& loc){
         cout << loc.begin.column << '-' << loc.end.column << AN_CONSOLE_RESET;
 }
 
-void ante::error(const char* msg, const yy::location& loc){
+void ante::error(const char* msg, const yy::location& loc, ErrorType t){
     printFileNameAndLineNumber(loc);
 
-    cout << '\t' << AN_ERR_COLOR << "error: " << AN_CONSOLE_RESET << msg << endl;
-    printErrLine(loc);
+    if(t == Error)
+        cout << '\t' << AN_ERR_COLOR << "error: " << AN_CONSOLE_RESET << msg << endl;
+    else if(t == Warning)
+        cout << '\t' << AN_WARN_COLOR << "warning: " << AN_CONSOLE_RESET << msg << endl;
+    else if(t == Note)
+        cout << '\t' << AN_NOTE_COLOR << "note: " << AN_CONSOLE_RESET << msg << endl;
+    else
+        cout << '\t' << msg << endl;
+    
+    printErrLine(loc, t);
     cout << endl << endl;
 }
 
 namespace ante {
-    void error(ante::lazy_printer strs, const yy::location& loc){
+    void error(ante::lazy_printer strs, const yy::location& loc, ErrorType t){
         printFileNameAndLineNumber(loc);
 
-        cout << '\t' << AN_ERR_COLOR << "error: " << AN_CONSOLE_RESET << strs << endl;
-
-        printErrLine(loc);
+        if(t == Error)
+            cout << '\t' << AN_ERR_COLOR << "error: " << AN_CONSOLE_RESET << strs << endl;
+        else if(t == Warning)
+            cout << '\t' << AN_WARN_COLOR << "warning: " << AN_CONSOLE_RESET << strs << endl;
+        else if(t == Note)
+            cout << '\t' << AN_NOTE_COLOR << "note: " << AN_CONSOLE_RESET << strs << endl;
+        else
+            cout << '\t' << strs << endl;
+        
+        printErrLine(loc, t);
         cout << endl << endl;
     }
 }
@@ -106,16 +129,9 @@ namespace ante {
 
 /*
  *  Inform the user of an error and return nullptr.
- *  (perhaps this should throw an exception?)
  */
-/*TypedValue* Compiler::compErr(const string msg, const yy::location& loc){
-    error(msg.c_str(), loc);
-    errFlag = true;
-    return nullptr;
-}*/
-
-TypedValue* Compiler::compErr(ante::lazy_printer msg, const yy::location& loc){
-    error(msg, loc);
+TypedValue* Compiler::compErr(ante::lazy_printer msg, const yy::location& loc, ErrorType t){
+    error(msg, loc, t);
     errFlag = true;
     return nullptr;
 }

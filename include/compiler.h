@@ -278,10 +278,10 @@ namespace ante{
         TypedValue* compLogicalAnd(Node *l, Node *r, BinOpNode *op);
        
         //TypedValue* compErr(const string msg, const yy::location& loc);
-        TypedValue* compErr(ante::lazy_printer msg, const yy::location& loc);
+        TypedValue* compErr(ante::lazy_printer msg, const yy::location& loc, ErrorType t = Error);
 
         void jitFunction(Function *fnName);
-        void importFile(const char *name);
+        void importFile(const char *name, Node* locNode = 0);
         void updateFn(TypedValue *f, string &name, string &mangledName);
         FuncDecl* getCurrentFunction() const;
         TypedValue* getFunction(string& name, string& mangledName);

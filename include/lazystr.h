@@ -14,6 +14,8 @@ using namespace std;
 #  define AN_CONSOLE_BOLD "\033[;1m"
 
 #  define AN_ERR_COLOR "\033[;31m"  //red
+#  define AN_WARN_COLOR "\033[;33m"  //yellow
+#  define AN_NOTE_COLOR "\033[;35m"  //purple
 #  define AN_TYPE_COLOR "\033[;34m" //cyan
 #  define AN_COLOR_TYPE const char*
 
@@ -24,6 +26,8 @@ using namespace std;
 #  define AN_CONSOLE_BOLD ""
 
 #  define AN_ERR_COLOR win_console_color::red
+#  define AN_WARN_COLOR win_console_color::yellow
+#  define AN_NOTE_COLOR win_console_color::magenta
 #  define AN_TYPE_COLOR win_console_color::cyan
 #  define AN_COLOR_TYPE win_console_color
 

@@ -591,8 +591,12 @@ TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *bino
                 fd->tv = compFn(fd.get());
 
             return fd->tv;
-        }else if(l.size() > 1)
-            return compErr("Multiple static methods of the same name with different parameters are currently unimplemented.  In the mean time, you can use global functions.", field->loc);
+        }else if(l.size() > 1){
+            compErr("Multiple static methods of the same name with different parameters are currently unimplemented.  In the mean time, you can use global functions.", field->loc);
+            for(auto &fd : l)
+                compErr("Candidate function", fd->fdn->loc, Note);
+            return 0;
+        }
 
         return compErr("No static method called '" + field->name + "' was found in type " + 
                 typeNodeToColoredStr(tn), binop->loc);
@@ -661,11 +665,9 @@ TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *bino
             return new MethodVal(obj, method_fn);
         }else if(l.size() > 1){
             compErr("Multiple methods of the same name with different parameters are currently unimplemented.  In the mean time, you can use global functions.", field->loc);
-            cout << "note: candidate methods are:\n";
-            for(auto &fd : l){
-                compErr("Candidate function", fd->fdn->loc);
-            }
-
+            for(auto &fd : l)
+                compErr("Candidate function", fd->fdn->loc, Note);
+            
             return 0;
         }else
             return compErr("Method/Field " + field->name + " not found in type " + typeNodeToColoredStr(tyn), binop->loc);

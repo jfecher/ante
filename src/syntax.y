@@ -234,9 +234,7 @@ arr_type: '[' val type_expr ']' {$3->next.reset($2);
                                  $$ = mkTypeNode(@$, TT_Array, (char*)"", $2);}
         ;
 
-generic_type: generic_type lit_type  %prec LOW {((TypeNode*)$1)->params.push_back(unique_ptr<TypeNode>((TypeNode*)$2)); $$ = $1;}
-            | usertype lit_type      %prec LOW {$$ = mkTypeNode(@1, TT_Data, (char*)$1);
-                                           ((TypeNode*)$$)->params.push_back(unique_ptr<TypeNode>((TypeNode*)$2));}
+generic_type: type '<' type_expr '>'  {$$ = $1; ((TypeNode*)$$)->params.push_back(unique_ptr<TypeNode>((TypeNode*)$2));}
             ;
 
 type: pointer_type  %prec LOW   {$$ = $1;}
@@ -312,11 +310,11 @@ trait_fn: modifier_list Fun fn_name ':' params RArrow type_expr   {$$ = mkFuncDe
         ;
 
 
-generic_params: generic_params typevar  {setNext($1, $2); $$ = $1;}
-              | typevar                 {$$ = mkVarNode(@$, (char*)$1);}
+generic_params: generic_params ',' typevar  {setNext($1, $2); $$ = $1;}
+              | typevar                     {$$ = mkVarNode(@$, (char*)$1);}
               ;
 
-maybe_generic_params: generic_params {$$ = $1;}
+maybe_generic_params: '<' generic_params '>' {$$ = $1;}
                     | %empty         {$$ = nullptr;}
                     ;
 

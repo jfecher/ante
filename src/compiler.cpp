@@ -388,7 +388,7 @@ TypedValue* RetNode::compile(Compiler *c){
 TypedValue* ImportNode::compile(Compiler *c){
     if(!dynamic_cast<StrLitNode*>(expr.get())) return 0;
 
-    c->importFile(((StrLitNode*)expr.get())->val.c_str());
+    c->importFile(((StrLitNode*)expr.get())->val.c_str(), this);
     return c->getVoidLiteral();
 }
 
@@ -1153,14 +1153,14 @@ void ante::Module::import(shared_ptr<ante::Module> mod){
  * imports a given ante file to the current module
  * inputted file must exist and be a valid ante source file.
  */
-void Compiler::importFile(const char *fName){
+void Compiler::importFile(const char *fName, Node *locNode){
     try{
         auto& module = allCompiledModules->at(fName);
+        string fmodName = removeFileExt(fName);
 
         for(auto &mod : imports){
-            if(mod->name == fName){
-                cerr << AN_ERR_COLOR << "error: " << AN_CONSOLE_RESET << "module " << fName << " has already been imported.\n";
-                errFlag = true;
+            if(mod->name == fmodName){
+                compErr("module " + string(fName) + " has already been imported", locNode->loc, ErrorType::Warning);
                 return;
             }
         }
