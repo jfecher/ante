@@ -1,0 +1,44 @@
+import "tests/strvec.an"
+
+
+fun split: Str s = split s ' '
+
+fun split: Str s, c8 c -> Vec
+    var v = Vec()
+
+    var i = 0
+    var j = 0
+    while i < s.len do
+        if s.cStr#i == c then
+            v.push <| substr s j i
+            j = i + 1
+
+        i += 1
+
+    v.push <| substr s j i
+    v
+
+
+fun substr: Str s, i32 begin end -> Str
+    if end > s.len or begin >= s.len then
+        return ""
+    
+    let len = end - begin
+    var buf = c8* malloc(len + 1)
+    buf#end = '\0'
+
+    var i = 0
+    var b = begin
+    while b < end do
+        buf#i = s#b
+        b += 1
+        i += 1
+
+    Str(buf, len)
+
+
+let str = "test1 test2 test3"
+
+print(split str)
+print(split str 't')
+print(split str 'e')
