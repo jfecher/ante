@@ -165,7 +165,7 @@ top_level_expr: top_level_expr expr_no_decl  %prec Newline {append_main($2);}
               ;
 
 maybe_newline: Newline  %prec Newline
-             | %empty
+             |
              ;
 
 
@@ -315,7 +315,7 @@ generic_params: generic_params ',' typevar  {setNext($1, $2); $$ = $1;}
               ;
 
 maybe_generic_params: '<' generic_params '>' {$$ = $1;}
-                    | %empty         {$$ = nullptr;}
+                    |           {$$ = nullptr;}
                     ;
 
 
