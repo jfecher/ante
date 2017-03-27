@@ -137,6 +137,7 @@ Str.reverse "my str" == reverse "my str"
 ```
 
 * For more information, check out tests/language.an for all planned features.
+    - For implemented features, check out the tests/ directory
 
 
 ## Installation

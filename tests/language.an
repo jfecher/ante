@@ -93,23 +93,37 @@ var myF16 = 0.0f16
 var myF32 = 0.0f32  //32bit IEEE single precision floating point
 var myF64 = 0.0f64
 
-var myC8  = ''   //ASCII char 0x00
+var myC8  = '\0'   //ASCII char 0x00
+var myStr  = "Hello"   //Str type = (cStr: "Hello", len: 5)
 
 var myBool = false
+
 
 /*
     Any primitive value can also be typecasted to any other primitive type, and
     immutable variables may also be shadowed by another immutable variable of 
     the same name, but with an optionally different type.
 */
-
 print i32 4.99  //output: 4
 let n = 43.876
 let n = i32 n
 
-//typeof is a generic function that asks the compiler for the input's type
+//Ante.typeof is a generic function that asks the compiler for the input's type
 //and converts it into a string!
-print(typeof n ++ " " ++ n)  //output: i32 43
+print(Ante.typeof n ++ " " ++ n)  //output: i32 43
+
+
+//Functions in the Ante module are executed compile-time and usually give
+//information (such as the type) that is only relevant then
+//
+//Ante.debug is another compile-time function that works similarly to the print
+//statement above.  It prints the (llvm) value and full type of a variable
+Ante.debug n 
+/* output:
+ *
+ * val: 43
+ * type: i32
+ */
 
 /*
         Modifiers
@@ -138,11 +152,11 @@ print(typeof n ++ " " ++ n)  //output: i32 43
 //Declare a public u8 array buf that is not automatically freed.
 let pub raw buf = [3, 4, 5]
 
-//Declare an array of 100 integers called naturalNumbers and do not
-//initialize it since it is manually initialized in the following loop.
-var naturalNumbers = [i32].ofSize 100
+//Create an empty array of 100 32-bit integers
+var naturalNumbers = [100 i32]()
 
-for i in 1 .. 100
+//NOTE: # is the indexing operator, [] in other languages
+for i in 1 .. 100 do
     naturalNumbers#(i-1) = i
 
 
@@ -172,16 +186,16 @@ pub
     types chosen by the compiler or alternatively can have their type 
     specified with a suffix.
 */
-print(typeof 0)      //output: i32
-print(typeof 0u8)    //output: u8
-print(typeof 0i64)   //output: i64
-print(typeof 255)    //output: u8
+print(Ante.typeof 0)      //output: i32
+print(Ante.typeof 0u8)    //output: u8
+print(Ante.typeof 0i64)   //output: i64
+print(Ante.typeof 255)    //output: u8
 
-print(typeof 3.2))    //output: f32
-print(typeof 3.2f64)) //output: f64
+print(Ante.typeof 3.2))    //output: f32
+print(Ante.typeof 3.2f64)) //output: f64
 
-print(typeof "test") //output: [c8]
-print(typeof 'A')    //output: c8
+print(Ante.typeof "test") //output: [c8]
+print(Ante.typeof 'A')    //output: c8
 
 
 //Integer constants can also be expressed in different bases with the 
@@ -242,11 +256,19 @@ let half = 25.0_f16
 
 /*
         Casting
-    Casts are accomplished by preceeding a value with a type, similar
-    to a variable declaration.  When casting a value, the value is directly
+    Casts are accomplished by preceeding a value with a type, in the form
+    <type> <expr>.  When casting a value, the value is directly
     changed to the corresponding type unless the type specified is a
-    userdata type which overloads the cast function with the same
-    parameters.  Casts are never performed implicitly.
+    type which overloads the cast function with the same parameters.
+    This is traditionally how constructor-like functions are made, by
+    overloading the cast of a void value to the value of the desired type.
+
+    Implicit casts only take place in function calls or operator operations
+    when an argument does not match any parameter type.  Integer widening
+    is an implicit cast, as is the Str -> c8* cast (Str to c-string), although
+    mut Str -> mut c8* is not an implicit cast.  User defined cast functions
+    can optionally be declared with the 'implicit' modifier to be marked as
+    an implicit cast function, although these should generally be avoided.
 */
 
 //When casting integer types to one of a larger size, the value is sign
@@ -257,8 +279,8 @@ let thirteen = i16(7i8 + 6i8)
 
 fun add: i32 x y = x + y
 
-//thirteen must be explicitely casted to an i32, no automatic widening is performed.
-add five (i32 thirteen)
+//thirteen is automatically widened to an i32
+add five thirteen
 
 
 /*
@@ -267,7 +289,7 @@ add five (i32 thirteen)
     The syntax for declaring arrays is shown below.  The array arr
     declared below is an array of 30 integers, each initialized to 1
 */
-var arr = [i32].init 30 (fun = 1)
+var arr = [30 i32].init (fun = 1)
 
 //Each element of an array can also be initialized individually
 var assortedNums = [9, -76, 3.14159265, 2^8, 1 + 2*(6-3)]
@@ -283,21 +305,33 @@ print(assortedNums#0 ++ ", " ++ assortedNums#3)
 /*
     Multidimensional arrays have n pairs of square brackets in their type where
     n is the number of dimensions they contain.  For example, the array below
-    has type [[i32]]
+    has the general type [[i32]], and specific type [2 [2 i32]]
 */
 let box = [[1, 2], [3, 4]]
 
 
-/*
-    The size of an array can also be dynamically edited.  The following syntax
-    should always be used when expanding or restricting an array.
-*/
-arr += 2
+//Ante has two modes of compilation: debug, and release.
+//
+//Debug is the default unless otherwise specified and includes various checks
+//that damper performance but increase safety, such as index out of bounds checking,
+//checking for double-frees, etc.  If any of these checks fail, the program enter
+//an unrecoverable state, as if it had segfaulted, except an appropriate error message
+//will be issued instead.
+//
+//Release is specified as a compiler flag (-release) and simply excludes the checks
+//provided in debug mode.
+arr#432432 = 5
+//output:
+//
+//(debug mode)
+//file.an: line_start-line_end,col_start-col_end:  error: index 432432 is out of bounds
+//arr#432432 = 5
+//    ^^^^^^
+//
+//(release mode)
+//(platform-dependent crash message)
 
-//If the array's size becomes < 0 when the array's size is reduced, it is caught
-//during bounds-checking in debug mode.  In release mode, the program will most
-//likely crash
-arr -= 3
+
 
 //The append operator can also add a single element to an array or list
 arr = arr ++ 5
@@ -308,9 +342,9 @@ box ++= [5, 6]
         Tuples
     In addition to arrays, there are also tuples.  Unlike arrays, tuples can
     be mixed and matched with several types, but each must be stated beforehand.
-    A tuples type is each constituent type seperated by a comma.
+    A tuple's type is each constituent type seperated by a comma.
 */
-//This tuples type is i32,f64
+//This tuple's type is i32,f64
 let tup = (44, 44.0) 
 
 //A tuple literal must be surrounded with parenthesis.
@@ -363,7 +397,7 @@ fun longestStreak: Str s -> i32
 
             curStreak = 0
 
-    return maxStreak
+    maxStreak
 
 
 //Alternatively, one can rewrite the above method using a more functional approach
@@ -413,7 +447,7 @@ fun printMsg:
 fun add_floats: f64 augend, f64 addend -> f64
     augend + addend
 
-//Multiple variables of the same type can be declared by omitting the , and repeated type
+//Multiple parameters of the same type can be declared by omitting the , and repeated type
 fun add_floats_2: f64 augend addend -> f64
     augend + addend
 
@@ -515,8 +549,8 @@ let sum2 = reduce _ (+)
 
 /*
         Calling Conventions
-    Regular functions use the C calling convention, and as such are compiled without
-    any name mangling.  Methods are compiled under the name [datatype]_[method name].
+    Regular functions use the C calling convention, and are name mangled to allow
+    function overloading.  Methods are compiled under the name [datatype]_[method name].
     Since datatypes are always capitalized, and identifiers cannot start with a capital,
     there is no possibility for a name-collision.
 */
@@ -528,14 +562,12 @@ fun printStuff:
 
 ext Str
     
-    //Compiled as "Str_reverse"
+    //Compiled as "Str_reverse_Str"
     fun reverse: Str s -> Str
         var rev = ""
-
         for i in s.len ^.. 0
             rev ++= s#i
-
-        return rev
+        rev
 
 /*
         Control-Flow
