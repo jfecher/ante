@@ -763,6 +763,7 @@ string typeTagToStr(TypeTag ty){
         case TT_MetaFunction: return "Meta Function";
         case TT_Method:       return "Method";
         case TT_TaggedUnion:  return "|";
+        case TT_Type:         return "type";
         default:              return "(Unknown TypeTag " + to_string(ty) + ")";
     }
 }

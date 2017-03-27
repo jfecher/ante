@@ -1514,10 +1514,12 @@ void TypedValue::dump() const{
     cout << "type:\t" << typeNodeToStrWithModifiers(type.get()) << endl
          << "val:\t" << flush;
     
-    if(type->type != TT_Void)
-        val->dump();
-    else
+    if(type->type == TT_Void)
         puts("void ()");
+    else if(type->type == TT_Type)
+        cout << typeNodeToStr((TypeNode*)((ConstantInt*)val)->getZExtValue()) << endl;
+    else
+        val->dump();
 }
 
 
