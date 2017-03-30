@@ -9,7 +9,7 @@ printf "ints[3] = %d\n" (ints#3)
 
 
 var arr = [5, 4, 3, 2]
-printf "arr[2] = %d\n" (arr#1)
+printf "arr[2] = %d\n" (arr#2)
 
 arr#2 = 5
 printf "arr[2] = %d\n" (arr#2)
@@ -17,6 +17,6 @@ printf "arr[2] = %d\n" (arr#2)
 
 
 fun print: [4 i32] arr
-    printf{"[%d, %d, %d, %d]\n", arr#0, arr#1, arr#2, arr#3}
+    printf{"arr = [%d, %d, %d, %d]\n", arr#0, arr#1, arr#2, arr#3}
 
 print arr

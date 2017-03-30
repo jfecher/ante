@@ -19,6 +19,7 @@ bool implicitPassByRef(TypeNode* t){
 TypedValue* Compiler::callFn(string name, vector<TypedValue*> args){
     string mangledName = mangle(name, args);
     TypedValue* fn = getFunction(name, mangledName);
+
     if(!fn) return 0;
 
     //vector of llvm::Value*s for the call to CreateCall at the end

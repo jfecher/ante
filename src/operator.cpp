@@ -217,7 +217,9 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
                 return compErr("Cannot create store of types: "+typeNodeToColoredStr(tmp->type)+" <- "
                         +typeNodeToColoredStr(newVal->type), assignExpr->loc);
 
-            builder.CreateInsertElement(tmp->val, newVal->val, index->val);
+            Value *cast = builder.CreateBitCast(var, var->getType()->getPointerElementType()->getArrayElementType()->getPointerTo());
+            Value *dest = builder.CreateInBoundsGEP(cast, index->val);
+            builder.CreateStore(newVal->val, dest);
             return getVoidLiteral();
         }
         case TT_Ptr: {

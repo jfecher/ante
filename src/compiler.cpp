@@ -831,6 +831,7 @@ TypedValue* ExtNode::compile(Compiler *c){
 
             for(auto& fd_proto : trait->funcs){
                 auto *fdn = findFDN(funcs, fd_proto->fdn->basename);
+
                 if(!fdn)
                     return c->compErr(typeNodeToColoredStr(typeExpr) + " must implement " + fd_proto->fdn->basename +
                             " to implement " + typeNodeToColoredStr(mkDataTypeNode(trait->name)), fd_proto->fdn->loc);
