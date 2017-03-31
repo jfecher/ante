@@ -148,6 +148,35 @@ ext Range : Iterator
         r.start <= r.end
 
 
+//Iterating through an InFile iterates through each line
+ext InFile: Iterator
+    fun has_next: InFile f = not feof f
+
+    fun next: InFile f = f
+
+    fun unwrap: InFile f -> Str
+        var cap = 63
+        var buf = c8* malloc 64
+        var len = 0
+
+        while
+            let c = fgetc f
+            if c != '\n' and not feof f then
+                if len >= cap then
+                    buf = realloc buf (cap*2)
+                    cap *= 2
+
+                buf#len = c
+                len += 1
+                true
+            else
+                false
+        do ()
+
+        buf#cap = '\0'
+        Str(buf, len)
+
+
 ![inline]
 fun OutFile.write: OutFile f, c8* cStr
     fputs cStr f
