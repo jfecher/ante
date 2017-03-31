@@ -33,14 +33,14 @@ fun (#): mut Vec v, i32 i, Str x
 
 
 fun print: Vec v
-    printne "{"
+    printne "{ "
 
     var i = 0
     while i < v.len do
         if i + 1 == v.len then
-            printf "'%s'" (c8* (v#i))
+            printf "\"%s\"" (c8* (v#i))
         else
-            printf "'%s', " (c8* (v#i))
+            printf "\"%s\", " (c8* (v#i))
 
         i += 1
 
@@ -49,10 +49,9 @@ fun print: Vec v
 
 var v = Vec()
 
-var i = 1
-while i <= 100 do
-    v.push i
-    i += 1
+v.push "test1"
+v.push "test 2"
+v.push "test  3"
 
 print v
 
