@@ -333,9 +333,9 @@ type_decl: params          {$$ = $1;}
        */  ;
 
 type_decl_list: type_decl_list Newline type_decl           {$$ = setNext($1, $3);}
-              | type_decl_list Newline tagged_union_list   {setNext($1, getRoot()); $$ = $3;}
+              | type_decl_list Newline tagged_union_list   {$$ = setNext($1, getRoot());}
               | type_decl                                  {$$ = setRoot($1);}
-              | tagged_union_list                          {$$ = $1;}
+              | tagged_union_list                          {$$ = $1;} /* leave root set */
               ;
 
 type_decl_block: Indent type_decl_list Unindent  {$$ = getRoot();}
@@ -527,7 +527,7 @@ fn_brackets: '{' expr_list '}' {$$ = mkTupleNode(@$, $2);}
            | '{' '}'           {$$ = mkTupleNode(@$, 0);}
            ;
     
-if_expr: If expr Then expr                %prec MEDIF  {$$ = setRoot(mkIfNode(@$, $2, $4, 0));}
+if_expr: If expr Then expr                %prec MEDIF  {$$ = mkIfNode(@$, $2, $4, 0);}
        | if_expr Elif expr Then expr      %prec MEDIF  {auto*elif = mkIfNode(@$, $3, $5, 0); setElse($1, elif); $$ = elif;}
        | if_expr Else expr                             {$$ = setElse($1, $3);}
        ;
@@ -642,8 +642,8 @@ expr_no_decl: expr_no_decl '+' maybe_newline expr_no_decl              {$$ = mkB
     /* this rule returns the original If for precedence reasons compared to its mirror rule in if_expr
      * that returns the elif node itself.  The former necessitates setElse to travel through the first IfNode's
      * internal linked list of elsenodes to find the last one and append the new elif */
-    | expr_no_decl Elif expr_no_decl Then expr_no_decl     %prec MEDIF  {auto*elif = mkIfNode(@$, $3, $5, 0); $$ = setElse($1, elif);}
-    | expr_no_decl Else expr_no_decl                                    {$$ = setElse($1, $3);}
+    | expr_no_decl Elif expr_no_decl Then expr_no_decl    %prec MEDIF  {auto*elif = mkIfNode(@$, $3, $5, 0); $$ = setElse($1, elif);}
+    | expr_no_decl Else expr_no_decl                        %prec Else {$$ = setElse($1, $3);}
     
     | match_expr Newline expr_no_decl                      %prec Match  {$$ = mkBinOpNode(@$, ';', $1, $3);}
     | match_expr Newline                                   %prec LOW    {$$ = $1;}

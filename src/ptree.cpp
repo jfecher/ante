@@ -19,14 +19,6 @@ RootNode* ante::parser::getRootNode(){
     return root;
 }
 
-/*
- *  Saves the root of a new block and returns it.
- */
-Node* setRoot(Node* node){
-    roots.push(node);
-    return node;
-}
-
 Node* setElse(Node *ifn, Node *elseN){
     if(auto *n = dynamic_cast<IfNode*>(ifn)){
         if(n->elseN)
@@ -148,6 +140,14 @@ void TypeNode::copyModifiersFrom(const TypeNode *tn){
     
 bool TypeNode::hasModifier(int m) const{
     return std::find(modifiers.cbegin(), modifiers.cend(), m) != modifiers.cend();
+}
+
+/*
+ *  Saves the root of a new block and returns it.
+ */
+Node* setRoot(Node* node){
+    roots.push(node);
+    return node;
 }
 
 /*
