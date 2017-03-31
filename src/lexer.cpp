@@ -456,7 +456,7 @@ int Lexer::genNumLitTok(yy::parser::location_type* loc){
 int Lexer::genWsTok(yy::parser::location_type* loc){
     if(cur == '\n'){
         loc->begin = getPos();
-        
+
         unsigned int newScope = 0;
 
         while(IS_WHITESPACE(cur) && cur != '\0'){
@@ -693,7 +693,7 @@ int Lexer::genOpTok(yy::parser::location_type* loc){
         int top = matchingToks.top();                           \
         matchingToks.pop();                                     \
         incPos();                                               \
-        return top == '}' ? Tok_Unindent : top;                 \
+        return top;                 \
     }                                                           \
 }
 
@@ -723,10 +723,16 @@ int Lexer::next(yy::parser::location_type* loc){
     
     //only check for significant whitespace if the lexer is not trying to match brackets.
     if(IS_WHITESPACE(cur)){
-        if(matchingToks.size() > 0)
+        if(matchingToks.size() > 0){
+            //make sure to maintain line count if a newline is skipped in skipWsAndReturnNext
+            if(cur == '\n'){
+                row++; 
+                col = 0; 
+            }
             return skipWsAndReturnNext(loc);
-        else
+        }else{
             return genWsTok(loc);
+        }
     }
 
     CHECK_FOR_MATCHING_TOKS();
