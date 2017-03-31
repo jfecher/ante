@@ -149,19 +149,22 @@ void yyerror(const char *msg);
 
 begin: maybe_newline top_level_expr
 
-top_level_expr: top_level_expr expr_no_decl  %prec Newline {append_main($2);}
-              | top_level_expr function                    {append_fn($2);}
-              | top_level_expr data_decl                   {append_type($2);}
-              | top_level_expr extension                   {append_extension($2);}
-              | top_level_expr trait_decl                  {append_trait($2);}
-              | top_level_expr import_expr                 {append_import($2);}
+top_level_expr: top_level_expr expr_no_decl  %prec Newline {$$ = append_main($2);}
+              | top_level_expr function                    {$$ = append_fn($2);}
+              | top_level_expr data_decl                   {$$ = append_type($2);}
+              | top_level_expr extension                   {$$ = append_extension($2);}
+              | top_level_expr trait_decl                  {$$ = append_trait($2);}
+              | top_level_expr import_expr                 {$$ = append_import($2);}
               | top_level_expr Newline
-              | expr_no_decl                 %prec Newline {createRoot($1->loc); append_main($1);}
-              | function                                   {createRoot($1->loc); append_fn($1);}
-              | data_decl                                  {createRoot($1->loc); append_type($1);}
-              | extension                                  {createRoot($1->loc); append_extension($1);}
-              | trait_decl                                 {createRoot($1->loc); append_trait($1);}
-              | import_expr                                {createRoot($1->loc); append_import($1);}
+              | expr_no_decl                 %prec Newline {createRoot($1->loc); $$ = append_main($1);}
+              | function                                   {createRoot($1->loc); $$ = append_fn($1);}
+              | data_decl                                  {createRoot($1->loc); $$ = append_type($1);}
+              | extension                                  {createRoot($1->loc); $$ = append_extension($1);}
+              | trait_decl                                 {createRoot($1->loc); $$ = append_trait($1);}
+              | import_expr                                {createRoot($1->loc); $$ = append_import($1);}
+
+              | top_level_expr Elif expr_no_decl Then expr_no_decl    %prec MEDIF {auto*elif = mkIfNode(@$, $3, $5, 0); $$ = setElse($1, elif);}
+              | top_level_expr Else expr_no_decl                      %prec Else  {$$ = setElse($1, $3);}
               ;
 
 maybe_newline: Newline  %prec Newline

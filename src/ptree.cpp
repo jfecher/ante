@@ -61,28 +61,34 @@ void createRoot(LOC_TY& loc){
     root = new RootNode(loc);
 }
 
-void append_main(Node *n){
+Node* append_main(Node *n){
     root->main.push_back(unique_ptr<Node>(n));
+    return n;
 }
 
-void append_fn(Node *n){
+Node*append_fn(Node *n){
     root->funcs.push_back((FuncDeclNode*)n);
+    return n;
 }
 
-void append_type(Node *n){
+Node*append_type(Node *n){
     root->types.push_back((DataDeclNode*)n);
+    return n;
 }
 
-void append_extension(Node *n){
+Node*append_extension(Node *n){
     root->extensions.push_back((ExtNode*)n);
+    return n;
 }
 
-void append_trait(Node *n){
+Node*append_trait(Node *n){
     root->traits.push_back((TraitNode*)n);
+    return n;
 }
 
-void append_import(Node *n){
+Node*append_import(Node *n){
     root->imports.push_back(unique_ptr<ImportNode>((ImportNode*)n));
+    return n;
 }
 
 

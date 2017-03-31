@@ -14,12 +14,12 @@ Node* addMatch(Node *matchExpr, Node *newMatch);
 
 void createRoot(LOC_TY& loc);
 
-void append_main(Node *n);
-void append_fn(Node *n);
-void append_type(Node *n);
-void append_extension(Node *n);
-void append_trait(Node *n);
-void append_import(Node *n);
+Node* append_main(Node *n);
+Node* append_fn(Node *n);
+Node* append_type(Node *n);
+Node* append_extension(Node *n);
+Node* append_trait(Node *n);
+Node* append_import(Node *n);
 
 
 #ifndef LOC_TY
