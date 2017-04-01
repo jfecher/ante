@@ -1601,21 +1601,27 @@ inline void Compiler::stoType(DataType *ty, string &typeName){
 
 legacy::FunctionPassManager* mkPassManager(llvm::Module *m, char optLvl){
     auto *pm = new legacy::FunctionPassManager(m);
-    pm->add(createDeadStoreEliminationPass());
-    pm->add(createDeadCodeEliminationPass());
-    //pm->add(createLoopStrengthReducePass());
-    //pm->add(createLoopUnrollPass());
-    //pm->add(createMergedLoadStoreMotionPass());
-    //pm->add(createMemCpyOptPass());
-    pm->add(createCFGSimplificationPass());
-    pm->add(createTailCallEliminationPass());
-    pm->add(createInstructionSimplifierPass());
-    //pm->add(createSpeculativeExecutionPass());
-    pm->add(createLoadCombinePass());
-    pm->add(createLoopLoadEliminationPass());
-    pm->add(createReassociatePass());
-    pm->add(createPromoteMemoryToRegisterPass());
-    pm->add(createInstructionCombiningPass());
+    if(optLvl > 0){
+        if(optLvl >= 3){
+            pm->add(createLoopStrengthReducePass());
+            pm->add(createLoopUnrollPass());
+            pm->add(createMergedLoadStoreMotionPass());
+            pm->add(createMemCpyOptPass());
+            pm->add(createSpeculativeExecutionPass());
+        }
+        pm->add(createDeadStoreEliminationPass());
+        pm->add(createDeadCodeEliminationPass());
+        pm->add(createCFGSimplificationPass());
+        pm->add(createTailCallEliminationPass());
+        pm->add(createInstructionSimplifierPass());
+        pm->add(createLoadCombinePass());
+        pm->add(createLoopLoadEliminationPass());
+        pm->add(createReassociatePass());
+        pm->add(createPromoteMemoryToRegisterPass());
+
+        //Instruction Combining Pass seems to break nested for loops
+        //pm->add(createInstructionCombiningPass());
+    }
     pm->doInitialization();
     return pm;
 }
@@ -1640,7 +1646,7 @@ Compiler::Compiler(const char *_fileName, bool lib, shared_ptr<LLVMContext> llvm
         isLib(lib),
         fileName(_fileName? _fileName : "(stdin)"),
         funcPrefix(""),
-        scope(0){
+        scope(0), optLvl(2){
 
     //The lexer stores the fileName in the loc field of all Nodes. The fileName is copied
     //to let Node's outlive the Compiler they were made in, ensuring they work with imports.
@@ -1676,7 +1682,7 @@ Compiler::Compiler(const char *_fileName, bool lib, shared_ptr<LLVMContext> llvm
     enterNewScope();
 
     //add passes to passmanager.
-    passManager.reset(mkPassManager(module.get(), 3));
+    passManager.reset(mkPassManager(module.get(), optLvl));
 }
 
 Compiler::Compiler(Node *root, string modName, string &fName, bool lib, shared_ptr<LLVMContext> llvmCtxt) :
@@ -1692,7 +1698,7 @@ Compiler::Compiler(Node *root, string modName, string &fName, bool lib, shared_p
         fileName(fName),
         outFile(modName),
         funcPrefix(""),
-        scope(0){
+        scope(0), optLvl(2){
 
     compUnit->name = modName;
     mergedCompUnits->name = modName;
@@ -1714,7 +1720,17 @@ void Compiler::processArgs(CompilerArgs *args){
         outFile = arg->arg;
         out = outFile;
     }
+
+    if(auto *arg = args->getArg(Args::OptLvl)){
+        if(arg->arg == "0") optLvl = 0;
+        else if(arg->arg == "1") optLvl = 1;
+        else if(arg->arg == "2") optLvl = 2;
+        else if(arg->arg == "3") optLvl = 3;
+        else{ cerr << "Unrecognized OptLvl " << arg->arg << endl; return; }
     
+        passManager.reset(mkPassManager(module.get(), optLvl));
+    }
+
     //make sure even non-called functions are included in the binary
     //if the -lib flag is set
     if(args->hasArg(Args::Lib)){

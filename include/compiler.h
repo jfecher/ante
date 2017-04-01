@@ -245,7 +245,7 @@ namespace ante{
 
         bool errFlag, compiled, isLib;
         string fileName, outFile, funcPrefix;
-        unsigned int scope;
+        unsigned int scope, optLvl;
 
         Compiler(const char *fileName, bool lib=false, shared_ptr<LLVMContext> ctxt = nullptr);
         Compiler(Node *root, string modName, string &fName, bool lib=false, shared_ptr<LLVMContext> ctxt = nullptr);
