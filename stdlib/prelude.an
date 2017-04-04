@@ -131,7 +131,7 @@ type Range = i32 start end step
 
 //creates an inclusive range
 fun (..): i32 start end -> Range
-    Range(start, end, 1)
+    Range(start, end, if end > start then 1 else -1)
 
 //Takes a tuple of the first two integers and calculates the step by their difference
 fun (..): i32,i32 first_two, i32 end -> Range
@@ -139,13 +139,20 @@ fun (..): i32,i32 first_two, i32 end -> Range
 
 ext Range : Iterator
     fun next: Range r -> Range
-        Range(r.start+r.step, r.end, r.step)
+        //make sure range of n..n is not an infinite loop
+        if r.start == r.end then
+            Range(2,0,1)
+        else
+            Range(r.start+r.step, r.end, r.step)
 
     fun unwrap: Range r =
         r.start
 
     fun has_next: Range r =
-        r.start <= r.end
+        if r.step > 0 then
+            r.start <= r.end
+        else
+            r.start >= r.end
 
 
 //Iterating through an InFile iterates through each line
