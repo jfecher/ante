@@ -442,22 +442,16 @@ TypedValue* ForNode::compile(Compiler *c){
 
     //by this point, rangev now properly stores the range information, so store it on the stack and insert calls to
     //unwrap, has_next, and next at the beginning, beginning, and end of the loop respectively.
-    Value *alloca = c->builder.CreateAlloca(rangev->getType(), rangev->val);
+    Value *alloca = c->builder.CreateAlloca(rangev->getType());
     c->builder.CreateStore(rangev->val, alloca);
 
     c->builder.CreateBr(cond);
     c->builder.SetInsertPoint(cond);
 
-    auto *rangeVal = new TypedValue(c->builder.CreateLoad(alloca), rangev->type.get());
-    auto *uwrap = c->callFn("unwrap", {rangeVal});
-    if(!uwrap) return c->compErr("Range expression of type " + typeNodeToColoredStr(rangev->type) + " does not implement " +
-            typeNodeToColoredStr(mkDataTypeNode("Iterable")) + ", which it needs to be used in a for loop", range->loc);
-
-    auto *uwrap_var = new Variable(var, uwrap, c->scope);
-    c->stoVar(var, uwrap_var);
     //set var = unwrap range
 
     //candval = is_done range
+    auto *rangeVal = new TypedValue(c->builder.CreateLoad(alloca), rangev->type.get());
     auto *is_done = c->callFn("has_next", {rangeVal});
     if(!is_done) return c->compErr("Range expression of type " + typeNodeToColoredStr(rangev->type) + " does not implement " +
             typeNodeToColoredStr(mkDataTypeNode("Iterable")) + ", which it needs to be used in a for loop", range->loc);
@@ -465,7 +459,19 @@ TypedValue* ForNode::compile(Compiler *c){
     c->builder.CreateCondBr(is_done->val, begin, end);
 
     c->builder.SetInsertPoint(begin);
-    auto *val = child->compile(c); //compile the while loop's body
+
+    //call unwrap at start of loop
+    //make sure to update rangeVal
+    rangeVal = new TypedValue(c->builder.CreateLoad(alloca), rangev->type.get());
+    auto *uwrap = c->callFn("unwrap", {rangeVal});
+    if(!uwrap) return c->compErr("Range expression of type " + typeNodeToColoredStr(rangev->type) + " does not implement " +
+            typeNodeToColoredStr(mkDataTypeNode("Iterable")) + ", which it needs to be used in a for loop", range->loc);
+
+    auto *uwrap_var = new Variable(var, uwrap, c->scope);
+    c->stoVar(var, uwrap_var);
+
+    //compile the rest of the loop's body
+    auto *val = child->compile(c);
 
     if(!val) return 0;
     if(!dyn_cast<ReturnInst>(val->val)){
