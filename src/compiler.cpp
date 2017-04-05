@@ -1332,7 +1332,7 @@ Function* Compiler::createMainFn(){
 
     auto *main_tv = new TypedValue(main, mkTypeNodeWithExt(TT_Function, main_params));
     auto *main_var = new FuncDecl(0, scope, mergedCompUnits, main_tv);
-    callStack.push_back(main_var);
+    compCtxt->callStack.push_back(main_var);
     return main;
 }
 
@@ -1650,7 +1650,7 @@ Compiler::Compiler(const char *_fileName, bool lib, shared_ptr<LLVMContext> llvm
         compUnit(new ante::Module()),
         mergedCompUnits(new ante::Module()),
         allCompiledModules(new map<string,shared_ptr<ante::Module>>()),
-        callStack(),
+        compCtxt(new CompilerCtxt()),
         errFlag(false),
         compiled(false),
         isLib(lib),
@@ -1701,7 +1701,7 @@ Compiler::Compiler(Node *root, string modName, string &fName, bool lib, shared_p
         compUnit(new ante::Module()),
         mergedCompUnits(new ante::Module()),
         allCompiledModules(new map<string,shared_ptr<ante::Module>>()),
-        callStack(),
+        compCtxt(new CompilerCtxt()),
         errFlag(false),
         compiled(false),
         isLib(lib),
@@ -1763,7 +1763,6 @@ void Compiler::processArgs(CompilerArgs *args){
     if(!errFlag && args->hasArg(Args::CompileAndRun)){
         system((AN_EXEC_STR + outFile).c_str());
     }
-
 }
 
 Compiler::~Compiler(){
@@ -1773,7 +1772,8 @@ Compiler::~Compiler(){
         yylexer = 0;
     }
 
-    callStack.pop_back();
+    if(compCtxt)
+        compCtxt->callStack.pop_back();
 	passManager.release();
 	module.release();
 }

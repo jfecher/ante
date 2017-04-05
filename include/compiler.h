@@ -215,6 +215,22 @@ namespace ante{
         void import(shared_ptr<ante::Module> m);
     };
 
+    /*
+     * Contains state information on module being compiled
+     */
+    struct CompilerCtxt {
+        //Stack of each called function
+        vector<FuncDecl*> callStack;
+
+        //the continue and break labels of each for/while loop to jump out of
+        //the pointer is swapped/nullified when a function is called to prevent
+        //cross-function jumps
+        unique_ptr<vector<BasicBlock*>> continueLabels;
+        unique_ptr<vector<BasicBlock*>> breakLabels;
+
+        CompilerCtxt() : callStack(), continueLabels(new vector<BasicBlock*>()), breakLabels(new vector<BasicBlock*>()){}
+    };
+
     struct Compiler {
         shared_ptr<LLVMContext> ctxt;
         unique_ptr<ExecutionEngine> jit;
@@ -240,8 +256,7 @@ namespace ante{
         //Maps are seperated according to their scope.
         vector<unique_ptr<std::map<string, unique_ptr<Variable>>>> varTable;
 
-        //Stack of each called function
-        vector<FuncDecl*> callStack;
+        unique_ptr<CompilerCtxt> compCtxt;
 
         bool errFlag, compiled, isLib;
         string fileName, outFile, funcPrefix;

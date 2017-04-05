@@ -513,7 +513,11 @@ FuncDecl* getFuncDeclFromList(list<shared_ptr<FuncDecl>> &l, string &mangledName
 //Provide a wrapper for function-compiling methods so that each
 //function is compiled in its own isolated module
 TypedValue* Compiler::compFn(FuncDecl *fd){
-    callStack.push_back(fd);
+    compCtxt->callStack.push_back(fd);
+    auto *continueLabels = compCtxt->continueLabels.release();
+    auto *breakLabels = compCtxt->breakLabels.release();
+    compCtxt->continueLabels = llvm::make_unique<vector<BasicBlock*>>();
+    compCtxt->breakLabels = llvm::make_unique<vector<BasicBlock*>>();
 
     if(fd->module->name != compUnit->name){
         auto mcu = move(mergedCompUnits);
@@ -522,18 +526,22 @@ TypedValue* Compiler::compFn(FuncDecl *fd){
         auto *ret = compFnHelper(this, fd);
         mergedCompUnits = mcu;
 
-        callStack.pop_back();
+        compCtxt->callStack.pop_back();
+        compCtxt->continueLabels.reset(continueLabels);
+        compCtxt->breakLabels.reset(breakLabels);
         return ret;
     }else{
         auto *ret = compFnHelper(this, fd);
-        callStack.pop_back();
+        compCtxt->callStack.pop_back();
+        compCtxt->continueLabels.reset(continueLabels);
+        compCtxt->breakLabels.reset(breakLabels);
         return ret;
     }
 }
 
 
 FuncDecl* Compiler::getCurrentFunction() const{
-    return callStack.back();
+    return compCtxt->callStack.back();
 }
 
 
