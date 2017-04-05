@@ -420,6 +420,7 @@ TypedValue* ForNode::compile(Compiler *c){
     Function *f = c->builder.GetInsertBlock()->getParent();
     BasicBlock *cond  = BasicBlock::Create(*c->ctxt, "for_cond", f);
     BasicBlock *begin = BasicBlock::Create(*c->ctxt, "for", f);
+    BasicBlock *incr = BasicBlock::Create(*c->ctxt, "for_incr", f);
     BasicBlock *end   = BasicBlock::Create(*c->ctxt, "end_for", f);
 
 
@@ -476,6 +477,9 @@ TypedValue* ForNode::compile(Compiler *c){
     if(!val) return 0;
     if(!dyn_cast<ReturnInst>(val->val)){
         //set range = next range
+        c->builder.CreateBr(incr);
+        c->builder.SetInsertPoint(incr);
+
         auto *next = c->callFn("next", {new TypedValue(c->builder.CreateLoad(alloca), rangev->type.get())});
         if(!next) return c->compErr("Range expression of type " + typeNodeToColoredStr(rangev->type) + " does not implement " + typeNodeToColoredStr(mkDataTypeNode("Iterable")) +
                 ", which it needs to be used in a for loop", range->loc);
