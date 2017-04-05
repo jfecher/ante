@@ -426,6 +426,10 @@ Node* mkIfNode(LOC_TY loc, Node* con, Node* then, Node* els){
     return new IfNode(loc, con, then, els);
 }
 
+Node* mkJumpNode(LOC_TY loc, int jumpType, Node* expr){
+    return new JumpNode(loc, jumpType, expr);
+}
+
 Node* mkWhileNode(LOC_TY loc, Node* con, Node* body){
     return new WhileNode(loc, con, body);
 }

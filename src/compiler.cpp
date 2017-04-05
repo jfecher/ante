@@ -405,10 +405,17 @@ TypedValue* WhileNode::compile(Compiler *c){
     c->builder.CreateCondBr(condval->val, begin, end);
 
     c->builder.SetInsertPoint(begin);
+
+    c->compCtxt->breakLabels->push_back(end);
+    c->compCtxt->continueLabels->push_back(cond);
+
     auto *val = child->compile(c); //compile the while loop's body
+    
+    c->compCtxt->breakLabels->pop_back();
+    c->compCtxt->continueLabels->pop_back();
 
     if(!val) return 0;
-    if(!dyn_cast<ReturnInst>(val->val))
+    if(!dyn_cast<ReturnInst>(val->val) and !dyn_cast<BranchInst>(val->val))
         c->builder.CreateBr(cond);
     
     c->builder.SetInsertPoint(end);
@@ -470,12 +477,20 @@ TypedValue* ForNode::compile(Compiler *c){
 
     auto *uwrap_var = new Variable(var, uwrap, c->scope);
     c->stoVar(var, uwrap_var);
+ 
+    
+    //register the branches to break/continue to right before the body is compiled in case there was an error compiling the range
+    c->compCtxt->breakLabels->push_back(end);
+    c->compCtxt->continueLabels->push_back(incr);
 
     //compile the rest of the loop's body
     auto *val = child->compile(c);
+    
+    c->compCtxt->breakLabels->pop_back();;
+    c->compCtxt->continueLabels->pop_back();
 
     if(!val) return 0;
-    if(!dyn_cast<ReturnInst>(val->val)){
+    if(!dyn_cast<ReturnInst>(val->val) and !dyn_cast<BranchInst>(val->val)){
         //set range = next range
         c->builder.CreateBr(incr);
         c->builder.SetInsertPoint(incr);
@@ -487,10 +502,48 @@ TypedValue* ForNode::compile(Compiler *c){
         c->builder.CreateStore(next->val, alloca);
         c->builder.CreateBr(cond);
     }
-    
+
     c->builder.SetInsertPoint(end);
     return c->getVoidLiteral();
 }
+
+
+TypedValue* JumpNode::compile(Compiler *c){
+    auto *e = expr->compile(c);
+    auto *ci = dyn_cast<ConstantInt>(e->val);
+    if(!ci)
+        return c->compErr("Expression must evaluate to a constant integer\n", expr->loc);
+
+    if(!isUnsignedTypeTag(e->type->type) and ci->getSExtValue() < 0)
+        return c->compErr("Cannot jump out of a negative number (" + to_string(ci->getSExtValue()) +  ") of loops", expr->loc);
+
+    //we can now safely get the zero-extended value of ci since even if it is signed, it is not negative
+    auto jumpCount = ci->getZExtValue();
+    
+    //NOTE: continueLabels->size() == breakLabels->size() always
+    auto loopCount = c->compCtxt->breakLabels->size();
+    
+    if(loopCount == 0)
+        return c->compErr("There are no loops to jump out of", this->loc);
+    
+    
+    if(jumpCount == 0)
+        return c->compErr("Cannot jump out of 0 loops", expr->loc);
+
+
+    if(jumpCount > loopCount)
+        return c->compErr("Cannot jump out of " + to_string(jumpCount) + " loops when there are only " +
+                to_string(c->compCtxt->breakLabels->size()) + " loop(s) nested", expr->loc);
+    
+    //actually create the branch instruction
+    BranchInst *br = jumpType == Tok_Continue ?
+        c->builder.CreateBr( c->compCtxt->continueLabels->at(jumpCount - 1) ) :
+        c->builder.CreateBr( c->compCtxt->breakLabels->at(jumpCount - 1) );
+
+    //Although returning a void, use the br as the value so loops know the last instruction was a br and not to insert another
+    return new TypedValue(br, mkAnonTypeNode(TT_Void));
+}
+
 
 //create a new scope if the user indents
 TypedValue* BlockNode::compile(Compiler *c){

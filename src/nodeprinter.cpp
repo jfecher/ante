@@ -238,6 +238,15 @@ void ExtNode::print(){
     cout << "end ext";
 }
 
+void JumpNode::print(){
+    if(jumpType == Tok_Continue)
+        cout << "continue ";
+    else
+        cout << "break ";
+
+    expr->print();
+}
+
 void WhileNode::print(){
     cout << "while ";
     condition->print();

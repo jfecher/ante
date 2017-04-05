@@ -86,7 +86,7 @@ void yyerror(const char *msg);
 
 %left Newline
 %left RArrow
-%left STMT Fun Let Import Return Ext Var While For Match Trait If
+%left STMT Fun Let Import Return Ext Var While For Match Trait If Break Continue
 
 %left ENDIF
 %left Else Elif
@@ -517,6 +517,16 @@ while_loop: While expr Do expr  %prec While  {$$ = mkWhileNode(@$, $2, $4);}
 for_loop: For ident In expr Do expr  %prec For  {$$ = mkForNode(@$, $2, $4, $6);}
 
 
+break: Break expr  %prec Break  {$$ = mkJumpNode(@$, Tok_Break, $2);}
+     | Break                    {$$ = mkJumpNode(@$, Tok_Break, mkIntLitNode(@$, (char*)"1"));}
+     ;
+
+
+continue: Continue expr  %prec Continue  {$$ = mkJumpNode(@$, Tok_Continue, $2);}
+        | Continue                       {$$ = mkJumpNode(@$, Tok_Continue, mkIntLitNode(@$, (char*)"1"));}
+        ;
+
+
 match: '|' expr RArrow expr              {$$ = mkMatchBranchNode(@$, $2, $4);}
      | '|' usertype RArrow expr  %prec Match {$$ = mkMatchBranchNode(@$, mkTypeNode(@2, TT_Data, (char*)$2), $4);}
      ;
@@ -554,6 +564,8 @@ val_no_decl: '(' expr ')'            {$$ = $2;}
            | var_decl                {$$ = $1;}
            | while_loop              {$$ = $1;}
            | for_loop                {$$ = $1;}
+           | break                   {$$ = $1;}
+           | continue                {$$ = $1;}
            | ret_expr                {$$ = $1;}
            | if_expr     %prec STMT  {$$ = $1;}
            | match_expr  %prec LOW   {$$ = $1;}

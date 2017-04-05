@@ -294,6 +294,15 @@ struct ImportNode : public Node{
     ~ImportNode(){}
 };
 
+struct JumpNode : public Node{
+    unique_ptr<Node> expr;
+    int jumpType;
+    TypedValue* compile(Compiler*);
+    void print();
+    JumpNode(LOC_TY& loc, int jt, Node* e) : Node(loc), expr(e), jumpType(jt){}
+    ~JumpNode(){}
+};
+
 struct WhileNode : public ParentNode{
     unique_ptr<Node> condition;
     TypedValue* compile(Compiler*);
