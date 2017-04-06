@@ -355,7 +355,18 @@ tagged_union_list: tagged_union_list '|' usertype type_expr_list  %prec LOW  {$$
 
 
 
-block: Indent expr Unindent  {$$ = mkBlockNode(@$, $2);}
+block: Indent expr Unindent                   {$$ = mkBlockNode(@$, $2);}
+     | Indent break Unindent                  {$$ = mkBlockNode(@$, $2);}
+     | Indent continue Unindent               {$$ = mkBlockNode(@$, $2);}
+     | Indent ret_expr Unindent               {$$ = mkBlockNode(@$, $2);}
+
+     | Indent expr Newline break Unindent     {$$ = mkBlockNode(@$, mkBinOpNode(@$, ';', $2, $4));}
+     | Indent expr Newline continue Unindent  {$$ = mkBlockNode(@$, mkBinOpNode(@$, ';', $2, $4));}
+     | Indent expr Newline ret_expr Unindent  {$$ = mkBlockNode(@$, mkBinOpNode(@$, ';', $2, $4));}
+
+     | Indent expr break Unindent             {$$ = mkBlockNode(@$, mkBinOpNode(@$, ';', $2, $3));}
+     | Indent expr continue Unindent          {$$ = mkBlockNode(@$, mkBinOpNode(@$, ';', $2, $3));}
+     | Indent expr ret_expr Unindent          {$$ = mkBlockNode(@$, mkBinOpNode(@$, ';', $2, $3));}
      ;
 
 
@@ -540,9 +551,9 @@ fn_brackets: '{' expr_list '}' {$$ = mkTupleNode(@$, $2);}
            | '{' '}'           {$$ = mkTupleNode(@$, 0);}
            ;
     
-if_expr: If expr Then expr                %prec MEDIF  {$$ = mkIfNode(@$, $2, $4, 0);}
-       | if_expr Elif expr Then expr      %prec MEDIF  {auto*elif = mkIfNode(@$, $3, $5, 0); setElse($1, elif); $$ = elif;}
-       | if_expr Else expr                             {$$ = setElse($1, $3);}
+if_expr: If expr Then expr_or_jump                %prec MEDIF  {$$ = mkIfNode(@$, $2, $4, 0);}
+       | if_expr Elif expr Then expr_or_jump      %prec MEDIF  {auto*elif = mkIfNode(@$, $3, $5, 0); setElse($1, elif); $$ = elif;}
+       | if_expr Else expr_or_jump                             {$$ = setElse($1, $3);}
        ;
 
 var: ident  %prec Ident {$$ = mkVarNode(@$, (char*)$1);}
@@ -564,9 +575,6 @@ val_no_decl: '(' expr ')'            {$$ = $2;}
            | var_decl                {$$ = $1;}
            | while_loop              {$$ = $1;}
            | for_loop                {$$ = $1;}
-           | break                   {$$ = $1;}
-           | continue                {$$ = $1;}
-           | ret_expr                {$$ = $1;}
            | if_expr     %prec STMT  {$$ = $1;}
            | match_expr  %prec LOW   {$$ = $1;}
            | block                   {$$ = $1;}
@@ -621,6 +629,12 @@ expr_list_p: expr_list_p ',' maybe_newline expr  %prec ',' {$$ = setNext($1, $4)
            | expr                                %prec LOW {$$ = setRoot($1);}
            ;
 
+expr_no_decl_or_jump: expr_no_decl  %prec MEDIF
+                    | break
+                    | continue
+                    | ret_expr
+                    ;
+
 expr_no_decl: expr_no_decl '+' maybe_newline expr_no_decl              {$$ = mkBinOpNode(@$, '+', $1, $4);}
     | expr_no_decl '-' expr_no_decl                                    {$$ = mkBinOpNode(@$, '-', $1, $3);}
     | '-' expr_no_decl                                                 {$$ = mkUnOpNode(@$, '-', $2);}
@@ -657,15 +671,21 @@ expr_no_decl: expr_no_decl '+' maybe_newline expr_no_decl              {$$ = mkB
     /* this rule returns the original If for precedence reasons compared to its mirror rule in if_expr
      * that returns the elif node itself.  The former necessitates setElse to travel through the first IfNode's
      * internal linked list of elsenodes to find the last one and append the new elif */
-    | expr_no_decl Elif expr_no_decl Then expr_no_decl    %prec MEDIF  {auto*elif = mkIfNode(@$, $3, $5, 0); $$ = setElse($1, elif);}
-    | expr_no_decl Else expr_no_decl                        %prec Else {$$ = setElse($1, $3);}
-    
+    | expr_no_decl Elif expr_no_decl Then expr_no_decl_or_jump    %prec MEDIF  {auto*elif = mkIfNode(@$, $3, $5, 0); $$ = setElse($1, elif);}
+    | expr_no_decl Else expr_no_decl_or_jump                        %prec Else {$$ = setElse($1, $3);}
+
     | match_expr Newline expr_no_decl                      %prec Match  {$$ = mkBinOpNode(@$, ';', $1, $3);}
     | match_expr Newline                                   %prec LOW    {$$ = $1;}
     | expr_no_decl Newline                                              {$$ = $1;}
     | expr_no_decl Newline expr_no_decl                                 {$$ = mkBinOpNode(@$, ';', $1, $3);}
     ;
 
+
+expr_or_jump: expr  %prec MEDIF
+            | break
+            | continue
+            | ret_expr
+            ;
 
 expr: expr '+' maybe_newline expr                {$$ = mkBinOpNode(@$, '+', $1, $4);}
     | expr '-' expr                              {$$ = mkBinOpNode(@$, '-', $1, $3);}
@@ -703,8 +723,8 @@ expr: expr '+' maybe_newline expr                {$$ = mkBinOpNode(@$, '+', $1, 
     /* this rule returns the original If for precedence reasons compared to its mirror rule in if_expr
      * that returns the elif node itself.  The former necessitates setElse to travel through the first IfNode's
      * internal linked list of elsenodes to find the last one and append the new elif */
-    | expr Elif expr Then expr      %prec MEDIF  {auto*elif = mkIfNode(@$, $3, $5, 0); $$ = setElse($1, elif);}
-    | expr Else expr                             {$$ = setElse($1, $3);}
+    | expr Elif expr Then expr_or_jump  %prec MEDIF  {auto*elif = mkIfNode(@$, $3, $5, 0); $$ = setElse($1, elif);}
+    | expr Else expr_or_jump                     {$$ = setElse($1, $3);}
     
     | match_expr Newline expr       %prec Match  {$$ = mkBinOpNode(@$, ';', $1, $3);}
     | match_expr Newline            %prec LOW    {$$ = $1;}
