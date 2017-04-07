@@ -1623,9 +1623,9 @@ void Compiler::exitScope(){
 
 
 Variable* Compiler::lookup(string var) const{
-    for(auto it = varTable.crbegin(); it != varTable.crend(); ++it){
+    for(auto i = varTable.size(); i >= fnScope; --i){
         try{
-            return (*it)->at(var).get();
+            return varTable[i-1]->at(var).get();
         }catch(out_of_range r){}
     }
 
@@ -1709,7 +1709,7 @@ Compiler::Compiler(const char *_fileName, bool lib, shared_ptr<LLVMContext> llvm
         isLib(lib),
         fileName(_fileName? _fileName : "(stdin)"),
         funcPrefix(""),
-        scope(0), optLvl(2){
+        scope(0), optLvl(2), fnScope(1){
 
     //The lexer stores the fileName in the loc field of all Nodes. The fileName is copied
     //to let Node's outlive the Compiler they were made in, ensuring they work with imports.
@@ -1761,7 +1761,7 @@ Compiler::Compiler(Node *root, string modName, string &fName, bool lib, shared_p
         fileName(fName),
         outFile(modName),
         funcPrefix(""),
-        scope(0), optLvl(2){
+        scope(0), optLvl(2), fnScope(1){
 
     compUnit->name = modName;
     mergedCompUnits->name = modName;

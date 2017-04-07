@@ -1607,12 +1607,46 @@ fun div: i32 a b =
     ![inline]  //inlines a function
 
     ![run]     //runs a function during compile-time once.  Does not prevent the function from
-               //being executed normally at runtime.
+               //being executed normally at runtime.  If the function requires arguments, they
+               //can be specified as arguments to run, eg.
+               //
+               //![run Ante.module]
+               //fun debug: Module m = print m
 
     ![macro]   //Imports the Ante module, prevents the function from being run at runtime.
                //It is expected that ![macro] functions will always expand into more code
                //either at the callsite or somewhere else.
 
+    ![compiler_directive]
+        //defines a new compiler directive and imports the Ante module.
+        //The function attatched to this directive will be called whenever
+        //its name is used as a compiler directive.
+        //For example:
+        //
+        //![compiler_directive]
+        //fun test: FuncDecl fd = print fd
+        //
+        //![test]
+        //fun add: i32 a b = a + b
+        //
+        //Will define the compiler directive ![test] and use it on the function add to print
+        //out the function's parse tree during compile time.  All compiler_directives should
+        //take an Ante.FuncDecl as their argument, representing the function they're attatched to.
+        //compiler directives requiring more arguments must be specified when used, eg.
+        //
+        //![compiler_directive]
+        //fun register: FuncDecl fd, FnType t
+        //    match t with
+        //    | Init -> gameEngine.init = fd
+        //    | Draw -> gameEngine.draw = fd
+        //    ...
+        //
+        //![register Draw]
+        //fun draw: Screen s = ...
+        //
+        //Where the above example statically links hooks to a game engine, and may possibly
+        //perform some default action if a function is not found such as issuing an error
+        //message or giving a default definition.
 
 /*
  *      Meta Programming
@@ -1642,27 +1676,33 @@ ext Car
 
     fun get_wheels := wheels
 
-    fun set_wheels: f64 v -> wheels = v
+    fun set_wheels: f64 v
+        wheels = v
     
     fun get_axles := axles
 
-    fun set_axles: f64 v -> axles = v
+    fun set_axles: f64 v
+        axles = v
     
     fun get_engine := engine
 
-    fun set_engine: f64 v -> engine = v
+    fun set_engine: f64 v
+        engine = v
     
     fun get_hood := hood
 
-    fun set_hood: f64 v -> hood = v
+    fun set_hood: f64 v
+        hood = v
     
     fun get_lights := lights
 
-    fun set_lights: f64 v -> lights = v
+    fun set_lights: f64 v
+        lights = v
     
     fun get_doors := doors
 
-    fun set_doors: f64 v -> doors = v
+    fun set_doors: f64 v
+        doors = v
 
 
 
@@ -1678,12 +1718,13 @@ ext Car
 ![macro]
 fun defGetAndSetFor: Type t
     for v in fieldsOf t do
-        define "get_{v.name}" ~obj:t (fun = v.val)
-        define "set_{v.name}" ~obj:t (fun nv = v.val = nv)
+        define "get_${v.name}" t (fun = v.val)
+        define "set_${v.name}" t (fun nv = v.val = nv)
 
 //with this function defined, we can just write the following
 defGetAndSetFor Car
 //and have it expand into the 12 get/set functions above
+
 
 
 

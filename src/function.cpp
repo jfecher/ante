@@ -518,6 +518,8 @@ TypedValue* Compiler::compFn(FuncDecl *fd){
     auto *breakLabels = compCtxt->breakLabels.release();
     compCtxt->continueLabels = llvm::make_unique<vector<BasicBlock*>>();
     compCtxt->breakLabels = llvm::make_unique<vector<BasicBlock*>>();
+    int callingFnScope = fnScope;
+    fnScope = scope + 1;
 
     if(fd->module->name != compUnit->name){
         auto mcu = move(mergedCompUnits);
@@ -529,12 +531,14 @@ TypedValue* Compiler::compFn(FuncDecl *fd){
         compCtxt->callStack.pop_back();
         compCtxt->continueLabels.reset(continueLabels);
         compCtxt->breakLabels.reset(breakLabels);
+        fnScope = callingFnScope;
         return ret;
     }else{
         auto *ret = compFnHelper(this, fd);
         compCtxt->callStack.pop_back();
         compCtxt->continueLabels.reset(continueLabels);
         compCtxt->breakLabels.reset(breakLabels);
+        fnScope = callingFnScope;
         return ret;
     }
 }
