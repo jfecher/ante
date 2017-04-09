@@ -1,0 +1,11 @@
+
+global var col = 3
+
+fun b:
+    global col
+    print col
+
+    col += 2
+    print col
+
+b()
