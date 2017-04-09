@@ -56,6 +56,7 @@ map<int, const char*> tokDict = {
     {Tok_IntLit, "IntLit"},
     {Tok_FltLit, "FltLit"},
     {Tok_StrLit, "StrLit"},
+    {Tok_CharLit, "CharLit"},
 
     //keywords
     {Tok_Return, "Return"},
@@ -87,6 +88,7 @@ map<int, const char*> tokDict = {
     {Tok_Const, "const"},
     {Tok_Noinit, "noinit"},
     {Tok_Mut, "mut"},
+    {Tok_Global, "global"},
 
     //other
     {Tok_Where, "Where"},
@@ -153,6 +155,7 @@ map<string, int> keywords = {
     {"const",    Tok_Const},
     {"noinit",   Tok_Noinit},
     {"mut",      Tok_Mut},
+    {"global",   Tok_Global},
 
     //other
     {"where",    Tok_Where},

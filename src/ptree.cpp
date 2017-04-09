@@ -138,6 +138,15 @@ TypeNode* TypeNode::addModifier(int m){
     return this;
 }
 
+Node* mkGlobalNode(LOC_TY loc, Node* s){
+    vector<unique_ptr<VarNode>> vars;
+    while(s){
+        vars.push_back(unique_ptr<VarNode>((VarNode*)s));
+        s = s->next.get();
+    }
+    return new GlobalNode(loc, vars);
+}
+
 void TypeNode::copyModifiersFrom(const TypeNode *tn){
     for(int m : tn->modifiers){
         addModifier(m);

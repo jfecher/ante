@@ -111,6 +111,7 @@ namespace ante {
 		Tok_Const,
 		Tok_Noinit,
 		Tok_Mut,
+        Tok_Global,
 
 		//other
 		Tok_Where,

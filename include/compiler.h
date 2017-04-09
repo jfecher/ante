@@ -254,7 +254,7 @@ namespace ante{
         
         //Stack of maps of variables mapped to their identifier.
         //Maps are seperated according to their scope.
-        vector<unique_ptr<std::map<string, unique_ptr<Variable>>>> varTable;
+        vector<unique_ptr<std::map<string, Variable*>>> varTable;
 
         unique_ptr<CompilerCtxt> compCtxt;
 

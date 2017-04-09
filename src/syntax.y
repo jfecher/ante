@@ -63,7 +63,7 @@ void yyerror(const char *msg);
 
 /* modifiers */
 %token Pub Pri Pro Raw
-%token Const Noinit Mut
+%token Const Noinit Mut Global
 
 /* other */
 %token Where
@@ -102,7 +102,7 @@ void yyerror(const char *msg);
 %left ';'
 %left MED
 
-%left MODIFIER Pub Pri Pro Raw Const Noinit Mut
+%left MODIFIER Pub Pri Pro Raw Const Noinit Mut Global
 
 
 %left ','
@@ -271,6 +271,7 @@ modifier: Pub      {$$ = mkModNode(@$, Tok_Pub);}
         | Const    {$$ = mkModNode(@$, Tok_Const);}
         | Noinit   {$$ = mkModNode(@$, Tok_Noinit);}
         | Mut      {$$ = mkModNode(@$, Tok_Mut);}
+        | Global   {$$ = mkModNode(@$, Tok_Global);}
         | preproc  {$$ = $1;}
         ;
 
@@ -285,6 +286,9 @@ modifier_list: modifier_list_ {$$ = getRoot();}
 var_decl: modifier_list Var ident '=' expr  {$$ = mkVarDeclNode(@3, (char*)$3, $1,  0, $5);}
         | Var ident '=' expr                {$$ = mkVarDeclNode(@2, (char*)$2,  0,  0, $4);}
         ;
+
+global: Global ident_list  {$$ = mkGlobalNode(@$, $2);}
+      ;
 
 let_binding: Let modifier_list ident '=' expr           {$$ = mkLetBindingNode(@$, (char*)$3, $2, 0,  $5);}
            | Let type_expr ident '=' expr               {$$ = mkLetBindingNode(@$, (char*)$3, 0,  $2, $5);}
@@ -579,6 +583,7 @@ val_no_decl: '(' expr ')'            {$$ = $2;}
            | match_expr  %prec LOW   {$$ = $1;}
            | block                   {$$ = $1;}
            | type_expr   %prec LOW
+           | global
            ;
 
 val: val_no_decl

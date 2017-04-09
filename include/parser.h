@@ -237,6 +237,14 @@ struct VarNode : public Node{
     ~VarNode(){}
 };
 
+struct GlobalNode : public Node{
+    vector<unique_ptr<VarNode>> vars;
+    TypedValue* compile(Compiler*);
+    void print(void);
+    GlobalNode(LOC_TY& loc, vector<unique_ptr<VarNode>> &vn) : Node(loc), vars(move(vn)){}
+    ~GlobalNode(){}
+};
+
 struct StrLitNode : public Node{
     string val;
     TypedValue* compile(Compiler*);

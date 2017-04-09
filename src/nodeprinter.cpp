@@ -222,6 +222,16 @@ void VarDeclNode::print(){
     else cout << "(undef)";
 }
 
+void GlobalNode::print(){
+    cout << "global ";
+    for(unsigned i = 0; i < vars.size(); i++){
+        if(i != 0)
+            cout << ", ";
+        vars[i]->print();
+    }
+    puts("");
+}
+
 void VarAssignNode::print(){
     cout << "varAssign ";
     if(ref_expr) ref_expr->print();

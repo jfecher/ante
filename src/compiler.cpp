@@ -600,7 +600,25 @@ TypedValue* LetBindingNode::compile(Compiler *c){
         }
     }
 
-    c->stoVar(name, new Variable(name, val, c->scope));
+    bool isGlobal = false;
+    
+            //add the modifiers to the typedvalue
+    Node *mod = modifiers.get();
+    while(mod){
+        int m = ((ModNode*)mod)->mod;
+        val->type->addModifier(m);
+        if(m == Tok_Global) isGlobal = true;
+        mod = mod->next.get();
+    }
+
+    if(isGlobal){
+        auto *ty = c->typeNodeToLlvmType(val->type.get());
+        auto *global = new GlobalVariable(*c->module, ty, false, GlobalValue::PrivateLinkage, UndefValue::get(ty), this->name);
+        c->builder.CreateStore(val->val, global);
+        val->val = global;
+    }
+
+    c->stoVar(name, new Variable(name, val, c->scope, true, isGlobal));
     return val;
 }
 
@@ -608,11 +626,27 @@ TypedValue* compVarDeclWithInferredType(VarDeclNode *node, Compiler *c){
     TypedValue *val = node->expr->compile(c);
     if(!val) return nullptr;
 
+    bool isGlobal = false;
+    //Add all of the declared modifiers to the typedval
+    Node *mod = node->modifiers.get();
+    while(mod){
+        int m = ((ModNode*)mod)->mod;
+        val->type->addModifier(m);
+        if(m == Tok_Global) isGlobal = true;
+        mod = mod->next.get();
+    }
+
     //set the value as mutable
-    val->type->addModifier(Tok_Mut);
+    if(!val->type->hasModifier(Tok_Mut))
+        val->type->addModifier(Tok_Mut);
+    
+    //location to store var
+    Value *ptr = isGlobal ?
+            (Value*) new GlobalVariable(*c->module, val->getType(), false, GlobalValue::PrivateLinkage, UndefValue::get(val->getType()), node->name) :
+            c->builder.CreateAlloca(val->getType(), nullptr, node->name.c_str());
 
     //create the alloca and transfer ownerhip of val->type
-    TypedValue *alloca = new TypedValue(c->builder.CreateAlloca(val->getType(), nullptr, node->name.c_str()), val->type.release());
+    TypedValue *alloca = new TypedValue(ptr, val->type.release());
 
     bool nofree = true;//val->type->type != TT_Ptr || dynamic_cast<Constant*>(val->val);
     c->stoVar(node->name, new Variable(node->name, alloca, c->scope, nofree, true));
@@ -624,7 +658,7 @@ TypedValue* VarDeclNode::compile(Compiler *c){
     //check for redeclaration, but only on topmost scope
     Variable *redeclare;
     try{
-        redeclare = c->varTable.back()->at(this->name).get();
+        redeclare = c->varTable.back()->at(this->name);
     }catch(out_of_range r){
         redeclare = 0;
     }
@@ -641,8 +675,26 @@ TypedValue* VarDeclNode::compile(Compiler *c){
     tyNode = deepCopyTypeNode(tyNode);
 
     Type *ty = c->typeNodeToLlvmType(tyNode);
-    tyNode->addModifier(Tok_Mut);
-    TypedValue *alloca = new TypedValue(c->builder.CreateAlloca(ty, nullptr, name.c_str()), tyNode);
+
+    bool isGlobal = false;
+    //Add all of the declared modifiers to the typedval
+    Node *mod = modifiers.get();
+    while(mod){
+        int m = ((ModNode*)mod)->mod;
+        tyNode->addModifier(m);
+        if(m == Tok_Global) isGlobal = true;
+        mod = mod->next.get();
+    }
+
+    if(!tyNode->hasModifier(Tok_Mut))
+        tyNode->addModifier(Tok_Mut);
+
+    //location to store var
+    Value *loc = isGlobal ?
+        (Value*) new GlobalVariable(*c->module, ty, false, GlobalValue::PrivateLinkage, UndefValue::get(ty), name) :
+        c->builder.CreateAlloca(ty, nullptr, name.c_str());
+
+    TypedValue *alloca = new TypedValue(loc, tyNode);
 
     Variable *var = new Variable(name, alloca, c->scope, true, true);
     c->stoVar(name, var);
@@ -1053,6 +1105,28 @@ TypedValue* TraitNode::compile(Compiler *c){
     c->mergedCompUnits->traits[name] = traitPtr;
 
     return c->getVoidLiteral();
+}
+
+
+TypedValue* GlobalNode::compile(Compiler *c){
+    TypedValue *ret = 0;
+    for(auto &varName : vars){
+        auto oldFnScope = c->fnScope;
+        c->fnScope = 1;
+        auto *var = c->lookup(varName->name);
+        c->fnScope = oldFnScope;
+
+        if(!var)
+            return c->compErr("Variable '" + varName->name + "' has not been declared.", varName->loc);
+
+        if(!var->tval->type->hasModifier(Tok_Global))
+            return c->compErr("Variable " + varName->name + " must be global to be imported.", varName->loc);
+
+        var->scope = c->scope;
+        c->stoVar(varName->name, var);
+        ret = var->tval.get();
+    }
+    return ret;
 }
 
 
@@ -1589,8 +1663,8 @@ void TypedValue::dump() const{
 
 void Compiler::enterNewScope(){
     scope++;
-    auto *vtable = new map<string, unique_ptr<Variable>>();
-    varTable.push_back(unique_ptr<map<string, unique_ptr<Variable>>>(vtable));
+    auto *vtable = new map<string, Variable*>();
+    varTable.push_back(unique_ptr<map<string, Variable*>>(vtable));
 }
 
 
@@ -1625,7 +1699,7 @@ void Compiler::exitScope(){
 Variable* Compiler::lookup(string var) const{
     for(auto i = varTable.size(); i >= fnScope; --i){
         try{
-            return varTable[i-1]->at(var).get();
+            return varTable[i-1]->at(var);
         }catch(out_of_range r){}
     }
 
@@ -1634,7 +1708,7 @@ Variable* Compiler::lookup(string var) const{
 
 
 void Compiler::stoVar(string var, Variable *val){
-    (*varTable[val->scope-1])[var].reset(val);
+    (*varTable[val->scope-1])[var] = val;
 }
 
 
