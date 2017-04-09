@@ -1126,7 +1126,8 @@ TypedValue* GlobalNode::compile(Compiler *c){
         c->stoVar(varName->name, var);
         ret = var->tval.get();
     }
-    return ret;
+
+    return new TypedValue(c->builder.CreateLoad(ret->val), ret->type);
 }
 
 

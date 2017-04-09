@@ -2,8 +2,7 @@
 global var col = 3
 
 fun b:
-    global col
-    print col
+    print(global col)
 
     col += 2
     print col
