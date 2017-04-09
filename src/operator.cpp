@@ -414,6 +414,10 @@ TypedValue* TypeCastNode::compile(Compiler *c){
 TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<TypedValue*,BasicBlock*>> &branches){
     auto *cond = ifn->condition->compile(c);
     if(!cond) return 0;
+
+    if(cond->type->type != TT_Bool)
+        return c->compErr("If condition must be of type " + typeNodeToColoredStr(mkAnonTypeNode(TT_Bool)) +
+                    " but an expression of type " + typeNodeToColoredStr(cond->type.get()) + " was given", ifn->condition->loc);
     
     Function *f = c->builder.GetInsertBlock()->getParent();
     auto &blocks = f->getBasicBlockList();
