@@ -1,10 +1,12 @@
 
 global var col = 3
+let global step = 2
+
 
 fun b:
-    print(global col)
+    print(global step col)
 
-    col += 2
+    col += step
     print col
 
 b()
