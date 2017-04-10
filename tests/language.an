@@ -147,6 +147,8 @@ Ante.debug n
     noinit     Specifies a variable should not have
                its memory cleared.  This modifier has
                no function in a let binding.
+
+    global     Creates or imports a global variable.
 */
 
 //Declare a public u8 array buf that is not automatically freed.
@@ -178,6 +180,22 @@ pub
     fun printMsg:
         print "Msg"
 
+//declare a global variable
+//Note: modifiers are declared before 'var' but after 'let'
+global var state = 0
+
+fun changeState: i32 newState
+    //import the global variable state
+    global state
+    state = newState
+
+
+let global menuState = 1
+
+fun toMenu:
+    //multiple variables can be imported by separating them with spaces.
+    //when used to import, global returns the last variable imported
+    global menuState state = menuState
 
 /*
         Constants
