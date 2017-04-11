@@ -11,6 +11,7 @@ Node* getRoot();
 Node* setNext(Node* cur, Node* nxt);
 Node* setElse(Node *ifn, Node *elseN);
 Node* addMatch(Node *matchExpr, Node *newMatch);
+Node* applyMods(Node *mods, Node *decls);
 
 void createRoot(LOC_TY& loc);
 

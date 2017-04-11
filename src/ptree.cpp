@@ -138,6 +138,24 @@ TypeNode* TypeNode::addModifier(int m){
     return this;
 }
 
+
+Node* applyMods(Node *mods, Node *decls){
+    Node *decl = decls;
+    while(decl){
+        if(FuncDeclNode *fdn = dynamic_cast<FuncDeclNode*>(decl)){
+            
+        }else if(DataDeclNode *fdn = dynamic_cast<DataDeclNode*>(decl)){
+        }else if(ExtNode *fdn = dynamic_cast<ExtNode*>(decl)){
+        }else if(TraitNode *fdn = dynamic_cast<TraitNode*>(decl)){
+        }else if(LetBindingNode *fdn = dynamic_cast<LetBindingNode*>(decl)){
+        }else if(VarDeclNode *fdn = dynamic_cast<VarDeclNode*>(decl)){
+        }
+    }
+
+    return decls;
+}
+
+
 Node* mkGlobalNode(LOC_TY loc, Node* s){
     vector<unique_ptr<VarNode>> vars;
     while(s){

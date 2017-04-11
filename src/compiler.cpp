@@ -1113,7 +1113,14 @@ TypedValue* GlobalNode::compile(Compiler *c){
     for(auto &varName : vars){
         auto oldFnScope = c->fnScope;
         c->fnScope = 1;
-        auto *var = c->lookup(varName->name);
+        
+        Variable *var;
+        for(auto i = c->varTable.size(); i >= c->fnScope; --i){
+            try{
+                var = c->varTable[i-1]->at(varName->name);
+            }catch(out_of_range r){}
+        }
+
         c->fnScope = oldFnScope;
 
         if(!var)
@@ -1867,6 +1874,11 @@ void Compiler::processArgs(CompilerArgs *args){
         else{ cerr << "Unrecognized OptLvl " << arg->arg << endl; return; }
     
         passManager.reset(mkPassManager(module.get(), optLvl));
+    }
+
+    if(args->hasArg(Args::Check)){
+        compile();
+        return;
     }
 
     //make sure even non-called functions are included in the binary

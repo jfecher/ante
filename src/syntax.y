@@ -283,6 +283,24 @@ modifier_list: modifier_list_ {$$ = getRoot();}
              ;
 
 
+/*
+modifier_block: modifier_list Indent mod_decl_block Unindent {$$ = applyMods($1, getRoot());}
+              ;
+
+mod_decl: function
+        | data_decl
+        | extension
+        | trait_decl
+        | modifier_block
+        | let_binding
+        | var_decl
+        ;
+
+mod_decls_block: mod_decls_block mod_decl  {$$ = setNext($1, $2);}
+               | mod_decl                  {$$ = setRoot($1);}
+               ;
+*/
+
 var_decl: modifier_list Var ident '=' expr  {$$ = mkVarDeclNode(@3, (char*)$3, $1,  0, $5);}
         | Var ident '=' expr                {$$ = mkVarDeclNode(@2, (char*)$2,  0,  0, $4);}
         ;

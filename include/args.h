@@ -11,6 +11,7 @@ namespace ante {
         OutputName,
         Eval,
         Parse,
+        Check,
         CompileToObj,
         CompileAndRun,
         Help,

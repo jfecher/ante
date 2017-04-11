@@ -8,6 +8,7 @@ map<string, Args> argsMap = {
     {"-o",         Args::OutputName},
     {"-e",         Args::Eval},
     {"-p",         Args::Parse},
+    {"-check",     Args::Check},
     {"-c",         Args::CompileToObj},
     {"-r",         Args::CompileAndRun},
     {"-help",      Args::Help},
