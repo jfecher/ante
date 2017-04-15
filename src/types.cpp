@@ -785,6 +785,16 @@ string typeNodeToStr(const TypeNode *t){
         }
         return ret;
     }else if(t->type == TT_Data || t->type == TT_TaggedUnion || t->type == TT_TypeVar){
+        string name = t->typeName;
+        if(!t->params.empty()){
+            name += "<";
+            name += typeNodeToStr(t->params[0].get());
+            for(unsigned i = 1; i < t->params.size(); i++){
+                name += ", ";
+                name += typeNodeToStr(t->params[i].get());
+            }
+            name += ">";
+        }
         return t->typeName;
     }else if(t->type == TT_Array){
         auto *len = (IntLitNode*)t->extTy->next.get();

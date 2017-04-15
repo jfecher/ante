@@ -237,7 +237,7 @@ arr_type: '[' val type_expr ']' {$3->next.reset($2);
                                  $$ = mkTypeNode(@$, TT_Array, (char*)"", $2);}
         ;
 
-generic_type: type '<' type_expr '>'  {$$ = $1; ((TypeNode*)$$)->params.push_back(unique_ptr<TypeNode>((TypeNode*)$2));}
+generic_type: type '<' type_expr '>'  {$$ = $1; ((TypeNode*)$$)->params.push_back(unique_ptr<TypeNode>((TypeNode*)$3));}
             ;
 
 type: pointer_type  %prec LOW   {$$ = $1;}
@@ -335,17 +335,18 @@ trait_fn: modifier_list Fun fn_name ':' params RArrow type_expr   {$$ = mkFuncDe
         ;
 
 
-generic_params: generic_params ',' typevar  {setNext($1, $2); $$ = $1;}
-              | typevar                     {$$ = mkVarNode(@$, (char*)$1);}
+typevar_list: typevar_list ',' typevar  {setNext($1, $2); $$ = $1;}
+            | typevar                   {$$ = mkVarNode(@$, (char*)$1);}
+            ;
+
+generic_params: '<' typevar_list '>' {$$ = $1;}
               ;
 
-maybe_generic_params: '<' generic_params '>' {$$ = $1;}
-                    |           {$$ = nullptr;}
-                    ;
 
-
-data_decl: modifier_list Type usertype maybe_generic_params '=' type_decl_block   {$$ = mkDataDeclNode(@$, (char*)$3, $4, $6);}
-         | Type usertype maybe_generic_params '=' type_decl_block                 {$$ = mkDataDeclNode(@$, (char*)$2, $3, $5);}
+data_decl: modifier_list Type usertype generic_params '=' type_decl_block   {$$ = mkDataDeclNode(@$, (char*)$3, $4, $6);}
+         | modifier_list Type usertype '=' type_decl_block                  {$$ = mkDataDeclNode(@$, (char*)$3,  0, $5);}
+         | Type usertype generic_params '=' type_decl_block                 {$$ = mkDataDeclNode(@$, (char*)$2, $3, $5);}
+         | Type usertype '=' type_decl_block                                {$$ = mkDataDeclNode(@$, (char*)$2,  0, $4);}
          ;
 
 type_expr_list: type_expr_list type_expr  {$$ = setNext($1, $2);}
