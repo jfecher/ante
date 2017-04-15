@@ -440,7 +440,9 @@ Type* Compiler::typeNodeToLlvmType(const TypeNode *tyNode){
                 if(!userType)
                     return (Type*)compErr("Use of undeclared type " + tyNode->typeName, tyNode->loc);
 
-                tyn = userType->tyn->extTy.get();
+                tyn = userType->tyn.get();
+                if(tyn->type != TT_U8)
+                    tyn = tyn->extTy.get();
             }
             
             while(tyn){
