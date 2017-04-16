@@ -534,11 +534,11 @@ TypedValue* JumpNode::compile(Compiler *c){
     if(jumpCount > loopCount)
         return c->compErr("Cannot jump out of " + to_string(jumpCount) + " loops when there are only " +
                 to_string(c->compCtxt->breakLabels->size()) + " loop(s) nested", expr->loc);
-   
+  
     //actually create the branch instruction
     BranchInst *br = jumpType == Tok_Continue ?
-        c->builder.CreateBr( c->compCtxt->continueLabels->at(jumpCount - 1) ) :
-        c->builder.CreateBr( c->compCtxt->breakLabels->at(jumpCount - 1) );
+        c->builder.CreateBr( c->compCtxt->continueLabels->at(loopCount - jumpCount) ) :
+        c->builder.CreateBr( c->compCtxt->breakLabels->at(loopCount - jumpCount) );
 
     //Although returning a void, use the br as the value so loops know the last instruction was a br and not to insert another
     return new TypedValue(br, mkAnonTypeNode(TT_Void));
