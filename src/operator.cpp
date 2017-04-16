@@ -429,20 +429,24 @@ TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Ty
     
     if(ifn->elseN){
         if(dynamic_cast<IfNode*>(ifn->elseN.get())){
-            elsebb = BasicBlock::Create(*c->ctxt, "else");
+            elsebb = BasicBlock::Create(*c->ctxt, "elif");
             c->builder.CreateCondBr(cond->val, thenbb, elsebb);
     
             blocks.push_back(thenbb);
-    
             c->builder.SetInsertPoint(thenbb);
             auto *thenVal = ifn->thenN->compile(c);
-            auto *thenretbb = c->builder.GetInsertBlock();
-            c->builder.CreateBr(mergebb);
-           
-            //save the 'then' value for the PhiNode after all the elifs
-            branches.push_back({thenVal, thenretbb});
 
-            blocks.push_back(elsebb);
+            //If a break, continue, or return was encountered then this branch doesn't merge to the endif
+            if(!dyn_cast<ReturnInst>(thenVal->val) and !dyn_cast<BranchInst>(thenVal->val)){
+                auto *thenretbb = c->builder.GetInsertBlock();
+                c->builder.CreateBr(mergebb);
+            
+                //save the 'then' value for the PhiNode after all the elifs
+                branches.push_back({thenVal, thenretbb});
+
+                blocks.push_back(elsebb);
+            }
+
             c->builder.SetInsertPoint(elsebb);
             return compIf(c, (IfNode*)ifn->elseN.get(), mergebb, branches);
         }else{
@@ -465,7 +469,7 @@ TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Ty
     auto *thenretbb = c->builder.GetInsertBlock(); //bb containing final ret of then branch.
 
 
-    if(!dyn_cast<ReturnInst>(thenVal->val))
+    if(!dyn_cast<ReturnInst>(thenVal->val) and !dyn_cast<BranchInst>(thenVal->val))
         c->builder.CreateBr(mergebb);
 
     if(ifn->elseN){
@@ -479,12 +483,15 @@ TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Ty
         if(!elseVal) return 0;
 
         //save the final else
-        branches.push_back({elseVal, elseretbb});
+        if(!dyn_cast<ReturnInst>(elseVal->val) and !dyn_cast<BranchInst>(elseVal->val))
+            branches.push_back({elseVal, elseretbb});
 
         if(!thenVal) return 0;
 
         auto eq = c->typeEq(thenVal->type.get(), elseVal->type.get());
-        if(!eq and !dyn_cast<ReturnInst>(thenVal->val) && !dyn_cast<ReturnInst>(elseVal->val)){
+        if(!eq and !dyn_cast<ReturnInst>(thenVal->val) and !dyn_cast<ReturnInst>(elseVal->val) and
+                   !dyn_cast<BranchInst>(thenVal->val) and !dyn_cast<BranchInst>(elseVal->val)){
+
             bool tEmpty = thenVal->type->params.empty();
             bool eEmpty = elseVal->type->params.empty();
 
@@ -550,9 +557,8 @@ TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Ty
             }
         }
         
-        if(!dyn_cast<ReturnInst>(elseVal->val))
+        if(!dyn_cast<ReturnInst>(elseVal->val) and !dyn_cast<BranchInst>(elseVal->val))
             c->builder.CreateBr(mergebb);
-
 
         c->builder.SetInsertPoint(mergebb);
 
