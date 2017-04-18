@@ -240,12 +240,12 @@ arr_type: '[' val type_expr ']' {$3->next.reset($2);
 generic_type: type '<' type_expr '>'  {$$ = $1; ((TypeNode*)$$)->params.push_back(unique_ptr<TypeNode>((TypeNode*)$3));}
             ;
 
-type: pointer_type  %prec LOW   {$$ = $1;}
+type: pointer_type  %prec LOW  {$$ = $1;}
     | arr_type      %prec LOW  {$$ = $1;}
-    | fn_type       %prec LOW   {$$ = $1;}
+    | fn_type       %prec LOW  {$$ = $1;}
     | lit_type      %prec LOW  {$$ = $1;}
     | generic_type  %prec LOW  {$$ = $1;}
-    | '(' type_expr ')'         {$$ = $2;} 
+    | '(' type_expr ')'        {$$ = $2;} 
     ;
 
 type_expr_: type_expr_ ',' type  %prec MED {$$ = setNext($1, $3);}

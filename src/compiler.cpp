@@ -1125,7 +1125,9 @@ TypedValue* GlobalNode::compile(Compiler *c){
         for(auto i = c->varTable.size(); i >= c->fnScope; --i){
             try{
                 var = c->varTable[i-1]->at(varName->name);
-            }catch(out_of_range r){}
+            }catch(out_of_range r){
+                var = nullptr;
+            }
         }
 
         c->fnScope = oldFnScope;
