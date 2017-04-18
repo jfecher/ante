@@ -618,6 +618,13 @@ TypedValue* LetBindingNode::compile(Compiler *c){
         val->val = global;
     }
 
+    if(val->getType()->isArrayTy() and not isGlobal){
+        Value *alloca = c->builder.CreateAlloca(val->getType(), nullptr, name.c_str());
+        c->builder.CreateStore(val->val, alloca);
+        val->val = alloca;
+        isGlobal = true;
+    }
+
     c->stoVar(name, new Variable(name, val, c->scope, true, isGlobal));
     return val;
 }
