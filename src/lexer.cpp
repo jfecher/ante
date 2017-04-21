@@ -214,6 +214,9 @@ Lexer::Lexer(string* file) :
     incPos();
     incPos();
     scopes->push(0);
+
+    if(cur == '#' and nxt == '!')
+        while(cur != '\n') incPos();
 }
 
 
