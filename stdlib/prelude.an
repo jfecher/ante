@@ -129,6 +129,17 @@ trait Iterator
 
 type Range = i32 start end step
 
+//returns true if a is in the range r
+fun (in): i32 a, Range r -> bool
+    if r.step == 1 then
+        r.start <= a and a <= r.end
+    else
+        let a_adj = a % r.step
+        let s_adj = r.start % r.step
+        let e_adj = r.end % r.step
+
+        a_adj == s_adj and r.start <= a and a <= r.end
+
 //creates an inclusive range
 fun (..): i32 start end -> Range
     Range(start, end, if end > start then 1 else -1)
