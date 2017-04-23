@@ -31,6 +31,7 @@ into the compiled module itself.
 * Type inferencing
 * Significant whitespace after newlines
     - No tabs are allowed in significant whitespace
+
 ```go
 fun myFunction:
     if 3 > 2 then
@@ -38,10 +39,12 @@ fun myFunction:
     else
         print "Invalid laws of mathematics, please try again in an alternate universe"
 ```
+
 * Reference counted smart pointers by default while keeping the ability to create raw pointers
     - Unique pointers used whenever possible automatically
     - No more memory hassle trying to find cycles with pointers, everything is done by the compiler
     - No garbage collector
+
 ```go
 let intPtr = new 5
 let strPtr = new "msg"
@@ -53,7 +56,9 @@ let raw myPtr = malloc 10
 //strPtr is automatically freed
 free myPtr //myPtr must be manually freed
 ```
+
 * String interpolation
+
 ```
 let person = "Joe"
 let age = 44
@@ -68,6 +73,7 @@ print "Half of ${person}'s age is ${age / 2}"
 parse tree is provided, along with a quick list of the uses of the variable in question.
 * Programmers have just as much power over their program as the compiler does.  As an example,
 here is an implementation of the goto construct in Ante
+
 ```go
 ![macro]
 fun goto: VarNode vn
@@ -92,6 +98,7 @@ goto begin
 ```
 
 * Here is an example implementation of a thread that 'owns' the mutable objects inside its function
+
 ```Rust
 fun SafeThread.run: void->void fn
     //Import the Ante module for compile-time operations
@@ -118,8 +125,10 @@ fun SafeThread.run: void->void fn
     //Function ran, variables are not revalidated because their
     //ownership was transfered to fn
 ```
+
 * Extensivity is encouraged through type extensions, which allow adding additional static methods to pre-existing types.
 * Universal Function Call Syntax
+
 ```rust
 //add some methods to the Str type
 ext Str
