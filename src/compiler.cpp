@@ -181,8 +181,11 @@ TypedValue* compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
 
     //Compile each expression and hold onto the last value
     TypedValue *val;
-    for(auto &n : expr->main)
+    Node *valNode;
+    for(auto &n : expr->main){
         val = n->compile(c);
+        valNode = n.get();
+    }
     
     if(!val) return 0;
 
@@ -196,7 +199,7 @@ TypedValue* compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
             delete ls;
             delete rs;
             return c->compErr("Cannot cast " + typeNodeToColoredStr(val->type.get())
-                + " to Str for string interpolation.", sln->loc);
+                + " to Str for string interpolation.", valNode->loc);
         }
 
         val = new TypedValue(c->builder.CreateCall(fn->val, val->val), str_ty);
@@ -211,9 +214,11 @@ TypedValue* compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
 
     //call the ++ function to combine the three strings
     auto *lstr = ls->compile(c);
+    if(!lstr) return 0;
     auto *appendL = c->builder.CreateCall(fn->val, vector<Value*>{lstr->val, val->val});
 
     auto *rstr = rs->compile(c);
+    if(!rstr) return 0;
     auto *appendR = c->builder.CreateCall(fn->val, vector<Value*>{appendL, rstr->val});
 
     //create the returning typenode
