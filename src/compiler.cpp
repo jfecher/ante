@@ -229,7 +229,8 @@ TypedValue* compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
 
 TypedValue* StrLitNode::compile(Compiler *c){
     auto idx = val.find("${");
-    if(idx != string::npos && val.find("\\${") != idx - 1)
+
+    if(idx != string::npos && (idx == 0 or val.find("\\${") != idx - 1))
         return compStrInterpolation(c, this, idx);
 
     TypeNode *strty = mkAnonTypeNode(TT_Data);

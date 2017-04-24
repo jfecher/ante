@@ -136,7 +136,6 @@ fun (in): i32 a, Range r -> bool
     else
         let a_adj = a % r.step
         let s_adj = r.start % r.step
-        let e_adj = r.end % r.step
 
         a_adj == s_adj and r.start <= a and a <= r.end
 
