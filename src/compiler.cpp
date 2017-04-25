@@ -3,7 +3,7 @@
 #include "target.h"
 #include "yyparser.h"
 #include <llvm/IR/Verifier.h>          //for verifying basic structure of functions
-#include <llvm/Bitcode/ReaderWriter.h> //for r/w when outputting bitcode
+//#include <llvm/Bitcode/ReaderWriter.h> //for r/w when outputting bitcode
 #include <llvm/Support/FileSystem.h>   //for r/w when outputting bitcode
 #include <llvm/Support/raw_ostream.h>  //for ostream when outputting bitcode
 #include "llvm/Transforms/Scalar.h"    //for most passes
@@ -73,10 +73,10 @@ TypedValue* IntLitNode::compile(Compiler *c){
 
 const fltSemantics& typeTagToFltSemantics(TypeTag tokTy){
     switch(tokTy){
-        case TT_F16: return APFloat::IEEEhalf;
-        case TT_F32: return APFloat::IEEEsingle;
-        case TT_F64: return APFloat::IEEEdouble;
-        default:     return APFloat::IEEEdouble;
+        case TT_F16: return APFloat::IEEEhalf();
+        case TT_F32: return APFloat::IEEEsingle();
+        case TT_F64: return APFloat::IEEEdouble();
+        default:     return APFloat::IEEEdouble();
     }
 }
 
