@@ -134,7 +134,7 @@ fun SafeThread.run: void->void fn
 ext Str
     fun reverse: Str s -> Str
         var ret = ""
-        for i in reverse(0 .. s.len) do
+        for i in reverse_indices s do
             ret ++= s#i
         ret
 

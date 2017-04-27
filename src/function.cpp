@@ -609,9 +609,11 @@ TypedValue* Compiler::getMangledFunction(string name, TypeNode *args){
         auto fnty = unique_ptr<TypeNode>(createFnTyNode(fd->fdn->params.get(), mkAnonTypeNode(TT_Void)));
         auto *params = (TypeNode*)fnty->extTy->next.get();
         auto tc = typeEq(params, args);
-        
+
         if(tc.res == TypeCheckResult::SuccessWithTypeVars)
             return compTemplateFn(this, fd.get(), tc, args);
+        else if(!tc)
+            return nullptr;
         else if(fd->tv)
             return fd->tv;
         else
@@ -622,7 +624,8 @@ TypedValue* Compiler::getMangledFunction(string name, TypeNode *args){
     string fnName = mangle(name, args);
     auto *fd = getFuncDeclFromList(candidates, fnName);
     if(fd){ //exact match
-        return compFn(fd);
+        if(!fd->tv) return compFn(fd);
+        else return fd->tv;
     }
 
     //Otherwise, determine which function to use by which needs the least

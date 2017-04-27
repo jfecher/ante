@@ -9,8 +9,8 @@
 //convert f16 to f32
 //
 //Due to name mangling, this is compiled as
-//  f16ToF32_f16
-fun f16ToF32: f16 v = f32 v
+//  f32_from_f16
+fun f32_from: f16 v = f32 v
 
 
 

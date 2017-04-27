@@ -107,25 +107,6 @@ TypedValue* Compiler::compRem(TypedValue *l, TypedValue *r, BinOpNode *op){
  *  Compiles the extract operator, [
  */
 TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
-   
-    /*
-    auto *lNxtTy = l->type->next.release();
-    l->type->next.reset(r->type.get());
-
-    //now look for the function
-    auto *fn = getMangledFunction("#", l->type.get());
-    l->type->next.release();
-    l->type->next.reset(lNxtTy);
-
-    //operator function found
-    if(fn){
-        //dont even bother type checking, assume the name mangling was performed correctly
-        return new TypedValue(
-                builder.CreateCall(fn->val, {l->val, r->val}),
-                deepCopyTypeNode(fn->type->extTy.get())
-        );
-    }*/
-    
     if(!isIntTypeTag(r->type->type)){
         return compErr("Index of operator '[' must be an integer expression, got expression of type " + typeNodeToColoredStr(r->type), op->loc);
     }
@@ -722,7 +703,7 @@ TypeNode* typedValsToTypeNodes(vector<TypedValue*> &tvs){
 
 //ante function to convert between IEEE half and IEEE single
 //since c++ does not support an IEEE half value
-//extern "C" float f16ToF32_f16(GenericValue v);
+extern "C" float f32_from_f16(float f);
 
 /*
  *  Converts an llvm GenericValue to a TypedValue
@@ -742,7 +723,7 @@ TypedValue* genericValueToTypedValue(Compiler *c, GenericValue gv, TypeNode *tn)
         case TT_Usz:             return new TypedValue(c->builder.getInt64(*gv.IntVal.getRawData()),    copytn);
         case TT_C8:              return new TypedValue(c->builder.getInt8( *gv.IntVal.getRawData()),    copytn);
         case TT_C32:             return new TypedValue(c->builder.getInt32(*gv.IntVal.getRawData()),    copytn);
-        case TT_F16:             return new TypedValue(ConstantFP::get(*c->ctxt, APFloat(gv.FloatVal)),  copytn);
+        case TT_F16:             return new TypedValue(ConstantFP::get(*c->ctxt, APFloat(f32_from_f16(gv.FloatVal))),  copytn);
         case TT_F32:             return new TypedValue(ConstantFP::get(*c->ctxt, APFloat(gv.FloatVal)),  copytn);
         case TT_F64:             return new TypedValue(ConstantFP::get(*c->ctxt, APFloat(gv.DoubleVal)), copytn);
         case TT_Bool:            return new TypedValue(c->builder.getInt1(*gv.IntVal.getRawData()),     copytn);
@@ -946,6 +927,45 @@ TypedValue* addrOf(Compiler *c, TypedValue* tv){
 }
 
 
+TypedValue* tryImplicitCast(Compiler *c, TypedValue *arg, TypeNode *castTy){
+    if(isNumericTypeTag(arg->type->type) and isNumericTypeTag(castTy->type)){
+        auto *widen = c->implicitlyWidenNum(arg, castTy->type);
+        if(widen != arg){
+            return widen;
+        }
+    }
+
+    //check for an implicit Cast function
+    string castFn = typeNodeToStr(castTy);
+
+    //extract the nxt type from the arg if it has one.
+    //otherwise, getMangledFunction will think there are more args
+    auto *nxt = arg->type->next.release();
+    TypedValue *fn;
+
+    if((fn = c->getMangledFunction(castFn, arg->type.get())) and
+            !!c->typeEq(arg->type.get(), (const TypeNode*)fn->type->extTy->next.get())){
+
+        arg->type->next.reset(nxt);
+
+        //optimize case of Str -> c8* implicit cast
+        if(arg->type->typeName == "Str" && castFn == "c8*"){
+            Value *str = arg->val;
+            if(str->getType()->isPointerTy())
+                str = c->builder.CreateLoad(str);
+
+            return new TypedValue(c->builder.CreateExtractValue(str, 0),
+                      mkTypeNodeWithExt(TT_Ptr, mkAnonTypeNode(TT_C8)));
+        }else{
+            return new TypedValue(c->builder.CreateCall(fn->val, arg->val), fn->type->extTy);
+        }
+    }else{
+        arg->type->next.reset(nxt);
+        return nullptr;
+    }
+}
+
+
 TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
     //used to type-check each parameter later
     vector<TypedValue*> typedArgs;
@@ -958,25 +978,23 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
         if(c->errFlag != flag) return 0;
 
         for(TypedValue *v : typedArgs){
-            if(isInvalidParamType(v->getType())){
-                auto *arg = addrOf(c, v);
-                args.push_back(arg->val);
-            }else{
-                args.push_back(v->val);
-            }
+            auto *arg = v;
+            if(isInvalidParamType(arg->getType()))
+                arg = addrOf(c, arg);
+
+            args.push_back(arg->val);
         }
     }else{ //single parameter being applied
         auto *param = r->compile(c);
         if(!param) return 0;
 
         if(param->type->type != TT_Void){
-            typedArgs.push_back(param);
-            if(isInvalidParamType(param->getType())){
-                auto *arg = addrOf(c, param);
-                args.push_back(arg->val);
-            }else{
-                args.push_back(param->val);
-            }
+            auto *arg = param;
+            if(isInvalidParamType(arg->getType()))
+                arg = addrOf(c, arg);
+
+            typedArgs.push_back(arg);
+            args.push_back(arg->val);
         }
     }
 
@@ -1058,53 +1076,17 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
 
         auto typecheck = c->typeEq(tArg->type.get(), paramTy);
         if(!typecheck){
-            //param types not equal; check for implicit conversion
-            if(isNumericTypeTag(tArg->type->type) and isNumericTypeTag(paramTy->type)){
-                auto *widen = c->implicitlyWidenNum(tArg, paramTy->type);
-                if(widen != tArg){
-                    args[i-1] = widen->val;
-                    paramTy = (TypeNode*)paramTy->next.get();
-                    i++;
-                    delete widen;
-                    continue;
-                }
-            }
+            TypedValue *cast = tryImplicitCast(c, tArg, paramTy);
 
-            //check for an implicit Cast function
-            string castFn = typeNodeToStr(paramTy);
-
-            //extract the nxt type from the tArg if it has one.
-            //otherwise, getMangledFunction will think there are more args
-            auto *nxt = tArg->type->next.release();
-			TypedValue *fn;
-
-            if((fn = c->getMangledFunction(castFn, tArg->type.get())) and
-				   !!c->typeEq(tArg->type.get(), (const TypeNode*)fn->type->extTy->next.get())){
-
-                tArg->type->next.reset(nxt);
-
-                //optimize case of Str -> c8* implicit cast
-                if(tArg->type->typeName == "Str" && castFn == "c8*"){
-                    if(tArg->getType()->isPointerTy())
-                        args[i-1] = c->builder.CreateExtractValue(c->builder.CreateLoad(args[i-1]), 0);
-                    else
-                        args[i-1] = c->builder.CreateExtractValue(args[i-1], 0);
-                }else{
-                    args[i-1] = c->builder.CreateCall(fn->val, args[i-1]);
-                }
+            if(cast){
+                args[i-1] = cast->val;
+                typedArgs[i-1] = cast;
             }else{
-                tArg->type->next.reset(nxt);
+                TupleNode *tn = dynamic_cast<TupleNode*>(r);
+                if(!tn) return 0;
 
-                Node* locNode = 0;
-                
-                if(TupleNode *tn = dynamic_cast<TupleNode*>(r)){
-                    if(tvf->type->type == TT_Method){
-                        locNode = tn->exprs[i-2].get();
-                    }else{
-                        locNode = tn->exprs[i-1].get();
-                    }
-                }
-
+                size_t index = i - (tvf->type->type == TT_Method ? 2 : 1);
+                Node* locNode = tn->exprs[index].get();
                 if(!locNode) return 0;
 
                 return c->compErr("Argument " + to_string(i) + " of function is a(n) " + typeNodeToColoredStr(tArg->type)
@@ -1274,21 +1256,44 @@ TypedValue* handlePrimitiveNumericOp(BinOpNode *bop, Compiler *c, TypedValue *lh
     }
 }
 
+/*
+ *  Checks the type of a value (usually a function argument) against a type
+ *  and attempts to look for and use an implicit conversion if one is found.
+ */
+TypedValue* typeCheckWithImplicitCasts(Compiler *c, TypedValue *arg, TypeNode *ty){
+    auto tc = c->typeEq(arg->type.get(), ty);
+    if(!!tc) return arg;
+
+    return tryImplicitCast(c, arg, ty);
+}
+
+
 TypedValue* checkForOperatorOverload(Compiler *c, TypedValue *lhs, int op, TypedValue *rhs){
     string basefn = Lexer::getTokStr(op);
     string mangledfn = mangle(basefn, lhs->type.get(), rhs->type.get());
 
-    //now look for the function
-    auto *fn = c->getFunction(basefn, mangledfn);
+    TypeNode *args = lhs->type.get();
 
-    //operator function found
-    if(fn){
-        //dont even bother type checking, assume the name mangling was performed correctly
-        vector<Value*> args = {lhs->val, rhs->val};
-        return new TypedValue(c->builder.CreateCall(fn->val, args), fn->type->extTy);
-    }
-    //no operator overload
-    return 0;
+    //Swap the next value after args with the second argument
+    Node *next = args->next.release();
+    args->next.reset(rhs->type.get());
+
+    //now look for the function
+    auto *fn = c->getMangledFunction(basefn, args);
+    args->next.release();
+    args->next.reset(next);
+    if(!fn) return 0;
+
+    TypeNode *param1 = (TypeNode*)fn->type->extTy->next.get();
+    TypeNode *param2 = (TypeNode*)param1->next.get();
+
+    lhs = typeCheckWithImplicitCasts(c, lhs, param1);
+    rhs = typeCheckWithImplicitCasts(c, rhs, param2);
+
+    if(!lhs or !rhs) return 0;
+
+    vector<Value*> argVals = {lhs->val, rhs->val};
+    return new TypedValue(c->builder.CreateCall(fn->val, argVals), fn->type->extTy);
 }
 
 /*
@@ -1307,7 +1312,7 @@ TypedValue* BinOpNode::compile(Compiler *c){
     if(!lhs || !rhs) return 0;
     
     if(op == ';') return rhs;
-   
+
 
     if(TypedValue *res = checkForOperatorOverload(c, lhs, op, rhs)){
         return res;
@@ -1333,30 +1338,6 @@ TypedValue* BinOpNode::compile(Compiler *c){
             case Tok_Eq: return new TypedValue(c->builder.CreateICmpEQ(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
             case Tok_NotEq: return new TypedValue(c->builder.CreateICmpNE(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
         }
-    }
-
-    //otherwise check if the operator is overloaded
-    //
-    //first create the parameter tuple by setting lty.next = rty
-    auto *lNxtTy = lhs->type->next.get();
-    lhs->type->next.release();
-    lhs->type->next.reset(rhs->type.get());
-
-    //now look for the function
-    auto *fn = c->getMangledFunction(Lexer::getTokStr(op), lhs->type.get());
-
-    //and make swap lTys old next value back
-    lhs->type->next.release();
-    lhs->type->next.reset(lNxtTy);
-
-    //operator function found
-    if(fn){
-        //dont even bother type checking, assume the name mangling was performed correctly
-        vector<Value*> args = {lhs->val, rhs->val};
-        return new TypedValue(
-                c->builder.CreateCall(fn->val, args),
-                deepCopyTypeNode(fn->type->extTy.get())
-        );
     }
 
     return c->compErr("Operator " + Lexer::getTokStr(op) + " is not overloaded for types "
