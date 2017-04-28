@@ -349,10 +349,6 @@ data_decl: modifier_list Type usertype generic_params '=' type_decl_block   {$$ 
          | Type usertype '=' type_decl_block                                {$$ = mkDataDeclNode(@$, (char*)$2,  0, $4);}
          ;
 
-type_expr_list: type_expr_list type_expr  {$$ = setNext($1, $2);}
-              | type_expr                 {$$ = setRoot($1);}
-              ;
-
 type_decl: params          {$$ = $1;}
        /*  | '|' usertype type_expr_list  {$$ = mkNamedValNode(@$, mkVarNode(@2, (char*)$2), mkTypeNode(@$, TT_TaggedUnion, (char*)"", getRoot()));}
          | '|' usertype                 {$$ = mkNamedValNode(@$, mkVarNode(@2, (char*)$2), mkTypeNode(@$, TT_TaggedUnion, (char*)"", 0));}
@@ -371,10 +367,10 @@ type_decl_block: Indent type_decl_list Unindent  {$$ = getRoot();}
                ;
 
 /* this rule returns a list (handled by mkNamedValNode function) */
-tagged_union_list: tagged_union_list '|' usertype type_expr_list  %prec LOW  {$$ = mkNamedValNode(@$, mkVarNode(@3, (char*)$3), mkTypeNode(@$, TT_TaggedUnion, (char*)"", getRoot()), $1);}
-                 | tagged_union_list '|' usertype                 %prec LOW  {$$ = mkNamedValNode(@$, mkVarNode(@3, (char*)$3), mkTypeNode(@$, TT_TaggedUnion, (char*)"", 0), $1);}
-                 | '|' usertype type_expr_list                    %prec LOW  {$$ = mkNamedValNode(@$, mkVarNode(@2, (char*)$2), mkTypeNode(@$, TT_TaggedUnion, (char*)"", getRoot()), 0);}
-                 | '|' usertype                                   %prec LOW  {$$ = mkNamedValNode(@$, mkVarNode(@2, (char*)$2), mkTypeNode(@$, TT_TaggedUnion, (char*)"", 0), 0);}
+tagged_union_list: tagged_union_list '|' usertype type_expr       %prec LOW  {$$ = mkNamedValNode(@$, mkVarNode(@3, (char*)$3), mkTypeNode(@$, TT_TaggedUnion, (char*)"", $4), $1);}
+                 | tagged_union_list '|' usertype                 %prec LOW  {$$ = mkNamedValNode(@$, mkVarNode(@3, (char*)$3), mkTypeNode(@$, TT_TaggedUnion, (char*)"",  0), $1);}
+                 | '|' usertype type_expr                         %prec LOW  {$$ = mkNamedValNode(@$, mkVarNode(@2, (char*)$2), mkTypeNode(@$, TT_TaggedUnion, (char*)"", $3),  0);}
+                 | '|' usertype                                   %prec LOW  {$$ = mkNamedValNode(@$, mkVarNode(@2, (char*)$2), mkTypeNode(@$, TT_TaggedUnion, (char*)"",  0),  0);}
 
 
 

@@ -129,7 +129,7 @@ struct DataType {
     }
 
     bool isUnionTag() const {
-        return fields[0][0] >= 'A' && fields[0][0] <= 'Z';
+        return fields.size() > 0 and fields[0][0] >= 'A' and fields[0][0] <= 'Z';
     }
 
     string getParentUnionName() const {
