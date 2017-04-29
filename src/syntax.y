@@ -85,8 +85,8 @@ void yyerror(const char *msg);
 
 
 %left Newline
-%left RArrow
 %left STMT Fun Let Import Return Ext Var While For Match Trait If Break Continue
+%left RArrow
 
 %left ENDIF
 %left Else Elif
@@ -126,7 +126,7 @@ void yyerror(const char *msg);
 %left '#'
 %nonassoc '!'
 %left '@' New
-%left '&' TYPE UserType TypeVar I8 I16 I32 I64 U8 U16 U32 U64 Isz Usz F16 F32 F64 C8 C32 Bool Void Type '\''
+%left '&' TYPE UserType TypeVar I8 I16 I32 I64 U8 U16 U32 U64 Isz Usz F16 F32 F64 C8 C32 Bool Void Type
 %nonassoc FUNC
 
 %nonassoc LITERALS StrLit IntLit FltLit CharLit True False Ident
@@ -221,13 +221,11 @@ pointer_type: pointer_type '*'  {$$ = mkTypeNode(@$, TT_Ptr, (char*)"", $1);}
             | type '*'          {$$ = mkTypeNode(@$, TT_Ptr, (char*)"", $1);}
             ;
 
-fn_type: '(' ')'            RArrow type  {$$ = mkTypeNode(@$, TT_Function, (char*)"", $4);}
-       | '(' type_expr_ ')' RArrow type  {Node* tmp = getRoot();
-                                          setNext($5, tmp);
-                                          $$ = mkTypeNode(@$, TT_Function, (char*)"", $5);}
-       | lit_type           RArrow type  {setNext($3, $1); $$ = mkTypeNode(@$, TT_Function, (char*)"", $3);}
-       | pointer_type       RArrow type  {setNext($3, $1); $$ = mkTypeNode(@$, TT_Function, (char*)"", $3);}
-       | arr_type           RArrow type  {setNext($3, $1); $$ = mkTypeNode(@$, TT_Function, (char*)"", $3);}
+fn_type: '(' ')'       RArrow type  {$$ = mkTypeNode(@$, TT_Function, (char*)"", $4);}
+       | tuple_type    RArrow type  {setNext($3, $1); $$ = mkTypeNode(@$, TT_Function, (char*)"", $3);}
+       | lit_type      RArrow type  {setNext($3, $1); $$ = mkTypeNode(@$, TT_Function, (char*)"", $3);}
+       | pointer_type  RArrow type  {setNext($3, $1); $$ = mkTypeNode(@$, TT_Function, (char*)"", $3);}
+       | arr_type      RArrow type  {setNext($3, $1); $$ = mkTypeNode(@$, TT_Function, (char*)"", $3);}
        ;
 
 /* val is used here instead of intlit due to parse conflicts, but only intlit is allowed */
@@ -237,15 +235,18 @@ arr_type: '[' val type_expr ']' {$3->next.reset($2);
                                  $$ = mkTypeNode(@$, TT_Array, (char*)"", $2);}
         ;
 
+tuple_type: '(' type_expr ')'  {$$ = $2;}
+          ;
+
 generic_type: type '<' type_expr '>'  {$$ = $1; ((TypeNode*)$$)->params.push_back(unique_ptr<TypeNode>((TypeNode*)$3));}
             ;
 
-type: pointer_type  %prec LOW  {$$ = $1;}
-    | arr_type      %prec LOW  {$$ = $1;}
-    | fn_type       %prec LOW  {$$ = $1;}
-    | lit_type      %prec LOW  {$$ = $1;}
-    | generic_type  %prec LOW  {$$ = $1;}
-    | '(' type_expr ')'        {$$ = $2;} 
+type: pointer_type  %prec STMT  {$$ = $1;}
+    | arr_type      %prec STMT  {$$ = $1;}
+    | fn_type       %prec STMT  {$$ = $1;}
+    | lit_type      %prec STMT  {$$ = $1;}
+    | generic_type  %prec STMT  {$$ = $1;}
+    | tuple_type    %prec STMT  {$$ = $1;} 
     ;
 
 type_expr_: type_expr_ ',' type  %prec MED {$$ = setNext($1, $3);}
@@ -361,16 +362,16 @@ type_decl_list: type_decl_list Newline type_decl           {$$ = setNext($1, $3)
               ;
 
 type_decl_block: Indent type_decl_list Unindent  {$$ = getRoot();}
-               | params               %prec LOW  {$$ = $1;}
-               | type_expr            %prec LOW  {$$ = mkNamedValNode(@$, mkVarNode(@$, (char*)""), $1, 0);}
-               | tagged_union_list    %prec LOW  {$$ = getRoot();}
+               | params               %prec STMT  {$$ = $1;}
+               | type_expr            %prec STMT  {$$ = mkNamedValNode(@$, mkVarNode(@$, (char*)""), $1, 0);}
+               | tagged_union_list    %prec STMT  {$$ = getRoot();}
                ;
 
 /* this rule returns a list (handled by mkNamedValNode function) */
-tagged_union_list: tagged_union_list '|' usertype type_expr       %prec LOW  {$$ = mkNamedValNode(@$, mkVarNode(@3, (char*)$3), mkTypeNode(@$, TT_TaggedUnion, (char*)"", $4), $1);}
-                 | tagged_union_list '|' usertype                 %prec LOW  {$$ = mkNamedValNode(@$, mkVarNode(@3, (char*)$3), mkTypeNode(@$, TT_TaggedUnion, (char*)"",  0), $1);}
-                 | '|' usertype type_expr                         %prec LOW  {$$ = mkNamedValNode(@$, mkVarNode(@2, (char*)$2), mkTypeNode(@$, TT_TaggedUnion, (char*)"", $3),  0);}
-                 | '|' usertype                                   %prec LOW  {$$ = mkNamedValNode(@$, mkVarNode(@2, (char*)$2), mkTypeNode(@$, TT_TaggedUnion, (char*)"",  0),  0);}
+tagged_union_list: tagged_union_list '|' usertype type_expr   %prec STMT  {$$ = mkNamedValNode(@$, mkVarNode(@3, (char*)$3), mkTypeNode(@$, TT_TaggedUnion, (char*)"", $4), $1);}
+                 | tagged_union_list '|' usertype             %prec STMT  {$$ = mkNamedValNode(@$, mkVarNode(@3, (char*)$3), mkTypeNode(@$, TT_TaggedUnion, (char*)"",  0), $1);}
+                 | '|' usertype type_expr                     %prec STMT  {$$ = mkNamedValNode(@$, mkVarNode(@2, (char*)$2), mkTypeNode(@$, TT_TaggedUnion, (char*)"", $3),  0);}
+                 | '|' usertype                               %prec STMT  {$$ = mkNamedValNode(@$, mkVarNode(@2, (char*)$2), mkTypeNode(@$, TT_TaggedUnion, (char*)"",  0),  0);}
 
 
 
