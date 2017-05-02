@@ -1,8 +1,8 @@
 
 before_install:
   - sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
-  - wget http://apt.llvm.org/precise/llvm-toolchain-precise-4.0
-  - dpkg -i llvm-toolchain-precise-4.0.deb
+  - echo 'deb http://apt.llvm.org/precise/ llvm-toolchain-precise-4.0 main' >> /etc/apt/sources.list
+  - echo 'deb-src http://apt.llvm.org/precise/ llvm-toolchain-precise-4.0 main' >> /etc/apt/sources.list
   - wget -O - http://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add -
 
   - sudo apt-get -qq update
