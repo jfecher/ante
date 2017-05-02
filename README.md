@@ -4,7 +4,8 @@ The compile-time language
 Ante is a compiled systems language focusing on providing extreme extensibility through
 the use of a compile-time API.  Using such an API, compiler extensions can be created
 within the program itself, allowing for the addition of a garbage collector, ownership
-system, etc, all in a normal library without requiring any changes to the compiler itself.
+system, automatic linters, etc, all in a normal library without requiring any changes
+to the compiler itself.
 
 Systems languages can traditionally be a pain to write.  To fix this, Ante provides high-level
 solutions such as string interpolation, smart pointers, and pattern matching, while maintaining
