@@ -1,9 +1,4 @@
 
-cache:
-    directories:
-        - llvm-4.0.0
-        - llvm-3.9.1
-
 addons:
     apt:
         sources:
@@ -11,8 +6,10 @@ addons:
             - 'george-edison55-precise-backports'
 
         packages:
-            - 'gcc-4.9'
-            - 'g++-4.9'
+            - gcc-4.9
+            - g++-4.9
+            - llvm-4.0.0
+            - llvm-4.0.0-dev
 
 
 language: cpp
