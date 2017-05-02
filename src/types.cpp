@@ -397,7 +397,7 @@ Type* Compiler::typeNodeToLlvmType(const TypeNode *tyNode){
     switch(tyNode->type){
         case TT_Ptr:
             return tyn->type != TT_Void ?
-                PointerType::get(typeNodeToLlvmType(tyn), 0)
+                typeNodeToLlvmType(tyn)->getPointerTo()
                 : Type::getInt8Ty(*ctxt)->getPointerTo();
         case TT_Array:{
             auto *intlit = (IntLitNode*)tyn->next.get();
@@ -418,8 +418,10 @@ Type* Compiler::typeNodeToLlvmType(const TypeNode *tyNode){
                 return StructType::get(*ctxt, tys);
             }else{
                 Type* t = module->getTypeByName(tyNode->typeName);
-                if(!t)
-                    return (Type*)compErr("Use of undeclared type " + tyNode->typeName, tyNode->loc);
+                if(!t){
+                    compErr("Use of undeclared type " + tyNode->typeName, tyNode->loc);
+                    return Type::getVoidTy(*ctxt);
+                }
 
                 return t;
             }
@@ -438,8 +440,10 @@ Type* Compiler::typeNodeToLlvmType(const TypeNode *tyNode){
         case TT_TaggedUnion:
             if(!tyn){
                 userType = lookupType(tyNode->typeName);
-                if(!userType)
-                    return (Type*)compErr("Use of undeclared type " + tyNode->typeName, tyNode->loc);
+                if(!userType){
+                    compErr("Use of undeclared type " + tyNode->typeName, tyNode->loc);
+                    return Type::getVoidTy(*ctxt);
+                }
 
                 tyn = userType->tyn.get();
                 if(tyn->type != TT_U8)
