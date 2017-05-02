@@ -9,12 +9,16 @@ addons:
         packages:
             - gcc-4.9
             - g++-4.9
+            - llvm-4.0
 
 
 language: cpp
 
 install:
     - export CC='gcc-4.9'; export CXX='g++-4.9'
+    - ls /usr/include
+    - ls /usr/include/llvm
+    - ls /usr/include/llvm-4.0
 
 script: make
 
