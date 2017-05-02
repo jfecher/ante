@@ -16,8 +16,7 @@ char getBitWidthOfTypeTag(const TypeTag ty){
     }
 }
 
-
-unsigned int TypeNode::getSizeInBits(Compiler *c){
+unsigned int TypeNode::getSizeInBits(Compiler *c, string *incompleteType){
     int total = 0;
     TypeNode *ext = this->extTy.get();
 
@@ -27,21 +26,24 @@ unsigned int TypeNode::getSizeInBits(Compiler *c){
     if(type == TT_Data){
         auto *dataTy = c->lookupType(typeName);
         if(!dataTy){
+            if(incompleteType and typeName == *incompleteType)
+                throw IncompleteTypeError();
+
             c->compErr("Type "+typeName+" has not been declared", loc);
             return 0;
         }
-        return dataTy->tyn->getSizeInBits(c);
+        return dataTy->tyn->getSizeInBits(c, incompleteType);
     }
 
-    if(type == TT_Tuple || type == TT_TaggedUnion){
+    if(type == TT_Tuple or type == TT_TaggedUnion){
         while(ext){
-            total += ext->getSizeInBits(c);
+            total += ext->getSizeInBits(c, incompleteType);
             ext = (TypeNode*)ext->next.get();
         }
     }else if(type == TT_Array){
         auto *len = (IntLitNode*)ext->next.get();
-        return stoi(len->val) * ext->getSizeInBits(c);
-    }else if(type == TT_Ptr || type == TT_Function || type == TT_MetaFunction || type == TT_Method){
+        return stoi(len->val) * ext->getSizeInBits(c, incompleteType);
+    }else if(type == TT_Ptr or type == TT_Function or type == TT_MetaFunction or type == TT_Method){
         return 64;
 
     //TODO: taking the size of a typevar should be an error
@@ -122,12 +124,12 @@ void bindGenericToType(TypeNode *tn, const vector<pair<string, unique_ptr<TypeNo
 
 void Compiler::expand(TypeNode *tn){
     TypeNode *ext = tn->extTy.get();
-    if(ext){
+    if(tn->type == TT_Tuple or tn->type == TT_TaggedUnion){
         while(ext){
             expand(ext);
             ext = (TypeNode*)ext->next.get();
         }
-    }else{
+    }else if(!tn->typeName.empty()){
         auto *dt = lookupType(tn->typeName);
         if(!dt) return;
 
@@ -415,12 +417,11 @@ Type* Compiler::typeNodeToLlvmType(const TypeNode *tyNode){
                 }
                 return StructType::get(*ctxt, tys);
             }else{
-                userType = lookupType(tyNode->typeName);
-                if(!userType)
+                Type* t = module->getTypeByName(tyNode->typeName);
+                if(!t)
                     return (Type*)compErr("Use of undeclared type " + tyNode->typeName, tyNode->loc);
 
-                //((StructType*)userType->tyn)->setName(tyNode->typeName);
-                return typeNodeToLlvmType(userType->tyn.get());
+                return t;
             }
         case TT_Function: case TT_MetaFunction: {
             //ret ty is tyn from above

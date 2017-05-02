@@ -30,6 +30,9 @@ LOC_TY mkLoc(yy::position begin, yy::position end);
 struct TypedValue;
 namespace ante { struct Compiler; }
 
+//Exception thrown when trying to take the size of an incomplete recursive type
+struct IncompleteTypeError{};
+
 /* Base class for all nodes */
 struct Node{
     unique_ptr<Node> next;
@@ -184,7 +187,7 @@ struct TypeNode : public Node{
     vector<unique_ptr<TypeNode>> params; //type parameters for generic types
     vector<int> modifiers;
     
-    unsigned int getSizeInBits(Compiler*);
+    unsigned int getSizeInBits(Compiler*, string* tn = 0);
     TypedValue* compile(Compiler*);
     void print(void);
     TypeNode* addModifiers(ModNode *m);

@@ -2,7 +2,8 @@
 before_install:
   - sudo apt-get -qq update
   - sudo apt-get install -y llvm llvm-dev llvm-runtime gcc
-  - sudo apt-get upgrade
+
+install: make get-deps
 
 language: cpp
 

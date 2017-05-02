@@ -1000,6 +1000,8 @@ TypedValue* compTaggedUnion(Compiler *c, DataDeclNode *n){
     fieldNames.reserve(n->fields);
 
     auto *nvn = (NamedValNode*)n->child.get();
+    
+
     vector<string> union_name;
     union_name.push_back(n->name);
 
@@ -1017,11 +1019,17 @@ TypedValue* compTaggedUnion(Compiler *c, DataDeclNode *n){
         //Each union member's type is a tuple of the tag, a u8 value, and the user-defined value
         TypeNode *tagTy = deepCopyTypeNode(tyn->extTy.get());
 
-        auto size = tagTy ? tagTy->getSizeInBits(c) : 0;
-        if(size > largestTySz){
-            largestTySz = size;
-            largestTyIdx = i;
+        try{
+            auto size = tagTy ? tagTy->getSizeInBits(c, &n->name) : 0;
+        
+            if(size > largestTySz){
+                largestTySz = size;
+                largestTyIdx = i;
+            }
+        }catch(IncompleteTypeError e){
+            return c->compErr("Cannot define a recursive type", tyn->loc);
         }
+
 
         DataType *data = new DataType(union_name, tagTy);
 
@@ -1033,17 +1041,29 @@ TypedValue* compTaggedUnion(Compiler *c, DataDeclNode *n){
 
     //use the largest union member's type as the union's type as a whole
     TypeNode *unionTy;
+    vector<Type*> fieldTypes;
 
     //check if this is a tagged union, or just a normal enum where the largest contained type is 0 bits
     if(largestTySz == 0){
         unionTy = mkAnonTypeNode(TT_U8);
+        fieldTypes.push_back(Type::getInt8Ty(*c->ctxt));
     }else{
         auto *largestTyn = largestTySz == 0 ? 0 : deepCopyTypeNode(tags[largestTyIdx]->tyn.get());
         unionTy = mkAnonTypeNode(TT_Tuple);
+       
+        fieldTypes.push_back(Type::getInt8Ty(*c->ctxt));
+        TypeNode *cur = largestTyn;
+        while(cur){
+            fieldTypes.push_back(c->typeNodeToLlvmType(cur));
+            cur = (TypeNode*)cur->next.get();
+        }
 
         unionTy->extTy.reset(mkAnonTypeNode(TT_U8));
         unionTy->extTy->next.reset(largestTyn);
     }
+    
+    auto *st = StructType::create(*c->ctxt, fieldTypes, n->name);
+    st->dump();
 
     unionTy->typeName = n->name;
     DataType *data = new DataType(fieldNames, unionTy);
@@ -1059,9 +1079,13 @@ TypedValue* DataDeclNode::compile(Compiler *c){
     auto *dt = c->lookupType(this->name);
     if(dt) return c->compErr("Type " + name + " was redefined", loc);
 
+    StructType *structTy = StructType::create(*c->ctxt, name);
 
     vector<string> fieldNames;
+    vector<Type*> fieldTypes;
+
     fieldNames.reserve(fields);
+    fieldTypes.reserve(fields);
 
     TypeNode *first = 0;
     TypeNode *nxt = 0;
@@ -1070,9 +1094,15 @@ TypedValue* DataDeclNode::compile(Compiler *c){
     if(((TypeNode*) nvn->typeExpr.get())->type == TT_TaggedUnion){
         return compTaggedUnion(c, this);
     }
-
+        
     while(nvn){
         TypeNode *tyn = (TypeNode*)nvn->typeExpr.get();
+  
+        try{
+            tyn->getSizeInBits(c, &name);
+        }catch(IncompleteTypeError e){
+            return c->compErr("Cannot define a recursive type", tyn->loc);
+        }
 
         if(first){
             nxt->next.reset(deepCopyTypeNode(tyn));
@@ -1083,6 +1113,8 @@ TypedValue* DataDeclNode::compile(Compiler *c){
         }
 
         fieldNames.push_back(nvn->name);
+        fieldTypes.push_back(c->typeNodeToLlvmType(tyn));
+
         nvn = (NamedValNode*)nvn->next.get();
     }
 
@@ -1093,6 +1125,7 @@ TypedValue* DataDeclNode::compile(Compiler *c){
                       : first;
 
     DataType *data = new DataType(fieldNames, dataTyn);
+    structTy->setBody(fieldTypes);
 
     c->stoType(data, name);
     return c->getVoidLiteral();
