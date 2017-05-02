@@ -1,7 +1,7 @@
 
 before_install:
   - sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
-  - sudo echo 'deb http://llvm.org/trusty/ llvm-toolchain-trusty main' > /etc/apt/sources.list.d/llvm.list
+  - sudo echo 'deb http://llvm.org/precise/ llvm-toolchain-precise main' > /etc/apt/sources.list.d/llvm.list
 
   - sudo apt-get -qq update
   - sudo apt-get install -y clang-4.0 llvm-4.0 llvm-4.0-dev
