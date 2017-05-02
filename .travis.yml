@@ -25,7 +25,8 @@ install:
     - sudo apt-get install clang-4.0
     - sudo apt-get install llvm-4.0
     - sudo apt-get install llvm-4.0-dev
-    - ls /usr/include/llvm-4.0
+    - ls /usr/include/llvm-4.0/llvm
+    - mv /usr/include/llvm-4.0/llvm /usr/include/llvm
 
 script: make
 
