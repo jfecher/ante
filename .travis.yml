@@ -1,7 +1,12 @@
 
 before_install:
+  - sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
+  - deb http://apt.llvm.org/precise/llvm-toolchain-precise-4.0 main
+  - deb-src http://apt.llvm.org/precise/llvm-toolchain-precise-4.0 main
+  - wget -O - http://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add -# Fingerprint: 6084 F3CF 814B 57C1 CF12 EFD5 15CF 4D18 AF4F 7421 
+
   - sudo apt-get -qq update
-  - sudo apt-get install -y llvm llvm-dev llvm-runtime gcc
+  - sudo apt-get install -y gcc-6 clang-4.0 llvm-4.0 llvm-4.0-dev
 
 
 language: cpp
