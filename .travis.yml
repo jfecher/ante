@@ -1,4 +1,6 @@
 
+dist: precise
+
 addons:
     apt:
         sources:
@@ -23,8 +25,8 @@ install:
     - sudo apt-get install clang-4.0
     - sudo apt-get install llvm-4.0
     - sudo apt-get install llvm-4.0-dev
-    - ls /usr/share
-    - sudo mv /usr/share/llvm4.0 /usr/share/llvm
+    - ls /usr/share/include
+    - sudo ln /usr/share/include/llvm-4.0 /usr/share/include/llvm
 
 script: make
 
