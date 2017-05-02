@@ -1,10 +1,10 @@
 
 before_install:
   - sudo add-apt-repository ppa:ubuntu-toolchain-r/test -y
-  - sudo add-apt-repository ppa:xorg-edgers/ppa -y
+  - sudo echo 'deb http://llvm.org/trusty/ llvm-toolchain-trusty main' > /etc/apt/sources.list.d/llvm.list
 
   - sudo apt-get -qq update
-  - sudo apt-get install -y gcc-6 clang-4.0 llvm-4.0 llvm-4.0-dev
+  - sudo apt-get install -y clang-4.0 llvm-4.0 llvm-4.0-dev
 
 
 language: cpp
@@ -13,6 +13,5 @@ script: make
 
 compiler:
   - clang
-  - gcc
 
 
