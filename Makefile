@@ -65,8 +65,10 @@ obj/%.o: src/%.cpp Makefile | obj
 	@$(CXX) $(CPPFLAGS) -MMD -MP -Iinclude -c $< -o $@
 
 obj/%.ao: src/%.an Makefile | obj
-	@echo Compiling $@...
-	@ante -lib -c $< -o $@
+	@if which ante > /dev/null; then \
+	     echo Compiling $@...; \
+	     ante -lib -c $< -o $@;\
+	 fi
 
 obj/parser.o: src/syntax.y Makefile
 	@echo Generating parser...
