@@ -26,7 +26,7 @@ install:
     - sudo apt-get install llvm-4.0
     - sudo apt-get install llvm-4.0-dev
     - sudo mv /usr/include/llvm-4.0/llvm /usr/include/llvm
-    - sudo mv /usr/include/llvm-c-4.0/llvm /usr/include/llvm-c
+    - ls /usr/include
 
 script: make
 
