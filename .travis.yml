@@ -28,7 +28,7 @@ install:
     - sudo mv /usr/include/llvm-4.0/llvm /usr/include/llvm
     - sudo mv /usr/include/llvm-c-4.0/llvm-c /usr/include/llvm-c
     - sudo mv /usr/bin/llvm-config-4.0 /usr/bin/llvm-config
-    - sudo mv /usr/lib/llvm-4.0/lib/* /usr/lib/
+    - sudo cp -ar /usr/lib/llvm-4.0/lib /usr/lib
 
 script: make
 
