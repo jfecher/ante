@@ -139,6 +139,7 @@ TypeNode* TypeNode::addModifier(int m){
 }
 
 
+/*
 Node* applyMods(Node *mods, Node *decls){
     Node *decl = decls;
     while(decl){
@@ -154,7 +155,7 @@ Node* applyMods(Node *mods, Node *decls){
 
     return decls;
 }
-
+*/
 
 Node* mkGlobalNode(LOC_TY loc, Node* s){
     vector<unique_ptr<VarNode>> vars;
