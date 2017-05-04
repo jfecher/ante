@@ -9,14 +9,14 @@ addons:
             - 'llvm-toolchain-trusty-4.0'
 
         packages:
-            - gcc-7
-            - g++-7
+            - gcc-4.9
+            - g++-4.9
 
 
 language: cpp
 
 install:
-    - export CC='gcc-7'; export CXX='g++-7'
+    - export CC='gcc-4.9'; export CXX='g++-4.9'
     - wget -O - http://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add -
     - sudo apt-get install llvm-4.0
     - sudo apt-get install llvm-4.0-dev
@@ -24,6 +24,7 @@ install:
     - sudo mv /usr/include/llvm-c-4.0/llvm-c /usr/include/llvm-c
     - sudo mv /usr/bin/llvm-config-4.0 /usr/bin/llvm-config
     - sudo cp -avr /usr/lib/llvm-4.0/lib /usr
+    - ls /usr/lib/
 
 script: make
 
