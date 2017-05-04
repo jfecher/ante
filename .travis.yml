@@ -5,14 +5,17 @@ addons:
     apt:
         sources:
             - 'ubuntu-toolchain-r-test'
-            - 'george-edison55-precise-backports'
             - 'llvm-toolchain-trusty-4.0'
+        packages:
+            - gcc-6
+            - g++-6
+
 
 
 language: cpp
 
 install:
-    - export CC='clang-4.0'; export CXX='clang++-4.0'
+    - export CC='gcc-6'; export CXX='g++-6'
     - wget -O - http://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add -
     - sudo apt-get install llvm-4.0
     - sudo apt-get install llvm-4.0-dev
@@ -20,7 +23,6 @@ install:
     - sudo mv /usr/include/llvm-c-4.0/llvm-c /usr/include/llvm-c
     - sudo mv /usr/bin/llvm-config-4.0 /usr/bin/llvm-config
     - sudo cp -avr /usr/lib/llvm-4.0/lib/* /usr/lib
-    - sudo apt-get install clang-4.0
 
 script: make
 
