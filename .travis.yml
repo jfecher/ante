@@ -17,6 +17,7 @@ language: cpp
 install:
     - export CC='gcc-6'; export CXX='g++-6'
     - wget -O - http://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add -
+    - sudo apt-get autoremove llvm
     - sudo apt-get install llvm-4.0
     - sudo apt-get install llvm-4.0-dev
     - sudo rm -rf /usr/include/llvm
