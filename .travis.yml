@@ -19,8 +19,10 @@ install:
     - wget -O - http://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add -
     - sudo apt-get install llvm-4.0
     - sudo apt-get install llvm-4.0-dev
-    - sudo mv /usr/include/llvm-4.0/llvm /usr/include/llvm
-    - sudo mv /usr/include/llvm-c-4.0/llvm-c /usr/include/llvm-c
+    - sudo rm -rf /usr/include/llvm
+    - sudo mv /usr/include/llvm-4.0/llvm /usr/include/
+    - sudo rm -rf /usr/include/llvm-c
+    - sudo mv /usr/include/llvm-c-4.0/llvm-c /usr/include/
     - sudo mv /usr/bin/llvm-config-4.0 /usr/bin/llvm-config
     - sudo cp -avr /usr/lib/llvm-4.0/lib/* /usr/lib
 
