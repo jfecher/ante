@@ -34,7 +34,7 @@ DEPFILES := $(OBJFILES:.o=.d)
 
 ante: obj obj/parser.o $(OBJFILES) $(ANOBJFILES)
 	@echo Linking...
-	$(CXX) obj/parser.o $(OBJFILES) $(ANOBJFILES) $(CPPFLAGS) $(LLVMFLAGS) -o ante
+	@$(CXX) obj/parser.o $(OBJFILES) $(ANOBJFILES) $(CPPFLAGS) $(LLVMFLAGS) -o ante
 
 #export the stdlib to /usr/include/ante
 #this is the only part that requires root permissions
@@ -63,7 +63,7 @@ debug_parser:
 
 obj/%.o: src/%.cpp Makefile | obj
 	@echo Compiling $@...
-	$(CXX) $(CPPFLAGS) -MMD -MP -Iinclude -c $< -o $@
+	@$(CXX) $(CPPFLAGS) -MMD -MP -Iinclude -c $< -o $@
 
 obj/%.ao: src/%.an Makefile | obj
 	@if command -v ante >/dev/null 2>&1; then \

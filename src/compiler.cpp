@@ -179,8 +179,8 @@ TypedValue* compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
     RootNode *expr = parser::getRootNode();
 
     //Compile each expression and hold onto the last value
-    TypedValue *val;
-    Node *valNode;
+    TypedValue *val = 0;
+    Node *valNode = 0;
     for(auto &n : expr->main){
         val = n->compile(c);
         valNode = n.get();

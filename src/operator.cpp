@@ -406,7 +406,7 @@ TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Ty
     auto *thenbb = BasicBlock::Create(*c->ctxt, "then");
    
     //only create the else block if this ifNode actually has an else clause
-    BasicBlock *elsebb;
+    BasicBlock *elsebb = 0;
     
     if(ifn->elseN){
         if(dynamic_cast<IfNode*>(ifn->elseN.get())){
