@@ -21,11 +21,12 @@ install:
     - sudo apt-get install llvm-4.0
     - sudo apt-get install llvm-4.0-dev
     - sudo rm -rf /usr/include/llvm
-    - sudo mv /usr/include/llvm-4.0/llvm /usr/include/
+    - sudo cp -avr /usr/include/llvm-4.0/llvm /usr/include/
     - sudo rm -rf /usr/include/llvm-c
-    - sudo mv /usr/include/llvm-c-4.0/llvm-c /usr/include/
-    - sudo mv /usr/bin/llvm-config-4.0 /usr/bin/llvm-config
+    - sudo cp -avr /usr/include/llvm-c-4.0/llvm-c /usr/include/
     - sudo cp -avr /usr/lib/llvm-4.0/lib/* /usr/lib
+    - sudo cp /usr/bin/llvm-config-4.0 /usr/bin/llvm-config
+    - sudo cp /usr/bin/llvm-config-4.0 /bin/llvm-config
 
 script: make
 
