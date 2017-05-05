@@ -4,7 +4,7 @@ vpath %.d obj
 
 WARNINGS  := -Wall -Wpedantic -Wsign-compare
 
-LLVMCFG := $(shell if command -v llvm-config-4.0; then echo 'llvm-config-4.0'; else echo 'llvm-config'; fi)
+LLVMCFG := $(shell if command -v llvm-config-4.0 >/dev/null 2>&1; then echo 'llvm-config-4.0'; else echo 'llvm-config'; fi)
 LLVMFLAGS := `$(LLVMCFG) --cppflags --cflags --link-static --libs Core mcjit interpreter native BitWriter Passes Target --ldflags --system-libs` -lffi
 
 LIBDIR := /usr/include/ante
@@ -66,7 +66,7 @@ obj/%.o: src/%.cpp Makefile | obj
 	$(CXX) $(CPPFLAGS) -MMD -MP -Iinclude -c $< -o $@
 
 obj/%.ao: src/%.an Makefile | obj
-	@if command -v ante > /dev/null; then \
+	@if command -v ante >/dev/null 2>&1; then \
 	     echo Compiling $@...; \
 	     ante -lib -c $< -o $@;\
 	 fi
