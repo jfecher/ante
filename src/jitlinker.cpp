@@ -52,11 +52,8 @@ void copyDecls(const Compiler *src, Compiler *dest){
     //dest->ctxt = src->ctxt;
 
     dest->compUnit = copyModuleFuncDecls(src->compUnit);
-
     dest->mergedCompUnits = copyModuleFuncDecls(src->mergedCompUnits);
-
     dest->imports = copyModuleFuncDecls(src->imports);
-
     dest->allCompiledModules = copyModuleFuncDecls(src->allCompiledModules);
 }
 
@@ -120,6 +117,28 @@ void appendModifiers(Node *n, unique_ptr<Node> &mods){
     else mods.reset(n);
 }
 
+
+void declareTypes(Compiler *c){
+    for(auto &p : c->mergedCompUnits->userTypes){
+        string tyName = p.first;
+        auto *dt = c->lookupType(tyName);
+        if(!dt) continue;
+        
+        vector<Type*> fields;
+        TypeNode *fieldNodes = dt->tyn.get();
+        if(dt->tyn->type == TT_Tuple or dt->tyn->type == TT_TaggedUnion)
+            fieldNodes = fieldNodes->extTy.get();
+
+        while(fieldNodes){
+            fields.push_back(c->typeNodeToLlvmType(fieldNodes));
+            fieldNodes = (TypeNode*)fieldNodes->next.get();
+        }
+        
+        StructType::create(*c->ctxt, fields, tyName);
+    }
+}
+
+
 /*
  * Copies a function into a new module (named after the function)
  * and copies any functions that are needed by the copied function
@@ -127,7 +146,9 @@ void appendModifiers(Node *n, unique_ptr<Node> &mods){
  */
 unique_ptr<Compiler> wrapFnInModule(Compiler *c, string &basename, string &mangledName){
     unique_ptr<Compiler> ccpy{new Compiler(c->ast.get(), mangledName, c->fileName)};
+
     copyDecls(c, ccpy.get());
+    declareTypes(ccpy.get());
 
     //create an empty main function to avoid crashes with compFn when
     //trying to return to the caller function

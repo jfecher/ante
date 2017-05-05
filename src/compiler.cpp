@@ -583,10 +583,9 @@ TypedValue* VarNode::compile(Compiler *c){
         if(fnlist.size() == 1){
             auto& fd = *fnlist.begin();
             if(!fd->tv)
-                c->compFn(fd.get());
+                fd->tv = c->compFn(fd.get());
 
             return new TypedValue(fd->tv->val, fd->tv->type);
-
         }else if(fnlist.empty()){
             return c->compErr("Variable or function '" + name + "' has not been declared.", this->loc);
         }else{
@@ -1062,8 +1061,7 @@ TypedValue* compTaggedUnion(Compiler *c, DataDeclNode *n){
         unionTy->extTy->next.reset(largestTyn);
     }
     
-    auto *st = StructType::create(*c->ctxt, fieldTypes, n->name);
-    st->dump();
+    StructType::create(*c->ctxt, fieldTypes, n->name);
 
     unionTy->typeName = n->name;
     DataType *data = new DataType(fieldNames, unionTy);
@@ -1333,9 +1331,8 @@ TypedValue* MatchBranchNode::compile(Compiler *c){
 
 void ante::Module::import(shared_ptr<ante::Module> mod){
     for(auto& pair : mod->fnDecls)
-        for(auto& fd : pair.second){
+        for(auto& fd : pair.second)
             fnDecls[pair.first].push_back(fd);
-        }
 
     for(auto& pair : mod->userTypes)
         userTypes[pair.first] = pair.second;
@@ -1939,7 +1936,7 @@ void Compiler::processArgs(CompilerArgs *args){
         for(auto& pair : compUnit->fnDecls){
             for(auto& fd : pair.second){
                 if(!fd->tv)
-                    compFn(fd.get());
+                    fd->tv = compFn(fd.get());
             }
         }
     }

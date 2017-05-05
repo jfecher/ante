@@ -418,6 +418,7 @@ Type* Compiler::typeNodeToLlvmType(const TypeNode *tyNode){
                 return StructType::get(*ctxt, tys);
             }else{
                 Type* t = module->getTypeByName(tyNode->typeName);
+                
                 if(!t){
                     compErr("Use of undeclared type " + tyNode->typeName, tyNode->loc);
                     return Type::getVoidTy(*ctxt);

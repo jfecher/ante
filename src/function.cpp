@@ -574,7 +574,8 @@ TypedValue* Compiler::getFunction(string& name, string& mangledName){
     if(fd->tv) return fd->tv;
 
     //Function has been declared but not defined, so define it.
-    return compFn(fd);
+    fd->tv = compFn(fd);
+    return fd->tv;
 }
 
 /*
@@ -616,16 +617,20 @@ TypedValue* Compiler::getMangledFunction(string name, TypeNode *args){
             return nullptr;
         else if(fd->tv)
             return fd->tv;
-        else
-            return compFn(fd.get());
+        else{
+            fd->tv = compFn(fd.get());
+            return fd->tv;
+        }
     }
 
     //check for an exact match on the remaining candidates.
     string fnName = mangle(name, args);
     auto *fd = getFuncDeclFromList(candidates, fnName);
     if(fd){ //exact match
-        if(!fd->tv) return compFn(fd);
-        else return fd->tv;
+        if(!fd->tv){
+            fd->tv = compFn(fd);
+            return fd->tv;
+        }else return fd->tv;
     }
 
     //Otherwise, determine which function to use by which needs the least
