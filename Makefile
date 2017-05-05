@@ -5,13 +5,13 @@ vpath %.d obj
 WARNINGS  := -Wall -Wpedantic -Wsign-compare
 
 LLVMCFG := $(shell if command -v llvm-config-4.0; then echo 'llvm-config-4.0'; else echo 'llvm-config'; fi)
-LLVMFLAGS := `$(LLVMCFG) --cppflags --link-static --libs Core mcjit interpreter native BitWriter Passes Target --ldflags --system-libs` -lffi
+LLVMFLAGS := `$(LLVMCFG) --cppflags --cflags --link-static --libs Core mcjit interpreter native BitWriter Passes Target --ldflags --system-libs` -lffi
 
 LIBDIR := /usr/include/ante
 LIBFILES := $(shell find stdlib -type f -name "*.an")
 
 #                              v These macros are required when compiling with clang
-CPPFLAGS  := -g -O0 -std=c++11 `$(LLVMCFG) --cppflags` $(WARNINGS)
+CPPFLAGS  := -g -O0 -std=c++11 `$(LLVMCFG) --cppflags --cflags` $(WARNINGS)
 
 PARSERSRC := src/parser.cpp
 YACCFLAGS := -Lc++ -o$(PARSERSRC) --defines=include/yyparser.h

@@ -18,18 +18,8 @@ install:
     - export CC='gcc-6'; export CXX='g++-6'
     - wget -O - http://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add -
     - sudo apt-get autoremove llvm clang
-    - sudo apt-get install llvm-4.0
-    - sudo apt-get install llvm-4.0-dev
-    - sudo rm -rf /usr/include/llvm
-    - sudo cp -avr /usr/include/llvm-4.0/llvm /usr/include/
-    - sudo rm -rf /usr/include/llvm-c
-    - sudo cp -avr /usr/include/llvm-c-4.0/llvm-c /usr/include/
-    - sudo cp -avr /usr/lib/llvm-4.0/lib/* /usr/lib
-    - sudo cp /usr/bin/llvm-config-4.0 /usr/bin/llvm-config
-    - sudo cp /usr/bin/llvm-config-4.0 /bin/llvm-config
+    - sudo apt-get install llvm-4.0 llvm-4.0-dev
     - sudo rm /usr/local/clang-3.5.0/bin/llvm-config
-    - whereis llvm-config
-    - which llvm-config
 
 script: make
 
