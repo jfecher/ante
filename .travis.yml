@@ -25,10 +25,12 @@ install:
     - sudo rm -rf /usr/include/llvm-c
     - sudo cp -avr /usr/include/llvm-c-4.0/llvm-c /usr/include/
     - sudo cp -avr /usr/lib/llvm-4.0/lib/* /usr/lib
-    - sudo where llvm-config
+    - whereis llvm-config
+    - which llvm-config
     - sudo cp /usr/bin/llvm-config-4.0 /usr/bin/llvm-config
     - sudo cp /usr/bin/llvm-config-4.0 /bin/llvm-config
-    - sudo where llvm-config
+    - whereis llvm-config
+    - which llvm-config
 
 script: make
 
