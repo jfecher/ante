@@ -23,6 +23,8 @@ struct Node;
 #define RETURN_PAIR(t) {incPos(2); loc->end = getPos(); return (t);}
 
 namespace ante{
+    extern bool colored_output;
+
     class Lexer{
     public:
         string *fileName;

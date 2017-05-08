@@ -22,7 +22,7 @@ fun split: Str s, c8 c -> Vec
 fun substr: Str s, i32 begin end -> Str
     if end > s.len or begin >= s.len then
         return ""
-    
+
     let len = end - begin
     var buf = c8* malloc(len + 1)
     buf#end = '\0'

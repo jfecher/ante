@@ -16,7 +16,8 @@ namespace ante {
         CompileAndRun,
         Help,
         Lib,
-        EmitLLVM
+        EmitLLVM,
+        NoColor
     };
 
     struct Argument {

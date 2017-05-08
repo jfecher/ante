@@ -167,6 +167,7 @@ char *lextxt;
 
 Lexer *yylexer;
 
+bool ante::colored_output = true;
 
 /* Sets lexer instance for yylex to use */
 void setLexer(Lexer *l){

@@ -13,7 +13,8 @@ map<string, Args> argsMap = {
     {"-r",         Args::CompileAndRun},
     {"-help",      Args::Help},
     {"-lib",       Args::Lib},
-    {"-emit-llvm", Args::EmitLLVM}
+    {"-emit-llvm", Args::EmitLLVM},
+    {"-no-color",  Args::NoColor}
 };
 
 void CompilerArgs::addArg(Argument *a){

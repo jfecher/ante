@@ -29,12 +29,33 @@ void skipToLine(istream& ifs, unsigned int row){
 void wrapInColor(string s, win_console_color color){
     cout << color << s << AN_CONSOLE_RESET;
 }
+
 #else
 template<typename T>
 void wrapInColor(string s, const char* color){
-    cout << color << s << AN_CONSOLE_RESET;
+    if(colored_output){
+        cout << color << s << AN_CONSOLE_RESET;
+    }else{
+        cout << s;
+    }
 }
 #endif
+
+void printErrorTypeColor(ErrorType t){
+    if(colored_output){
+        if(t == ErrorType::Error)
+            cout << AN_ERR_COLOR;
+        else if(t == ErrorType::Warning)
+            cout << AN_WARN_COLOR;
+        else
+            cout << AN_NOTE_COLOR;
+    }
+}
+
+void clearColor(){
+    if(colored_output)
+        cout << AN_CONSOLE_RESET;
+}
 
 /*
  *  Prints a given line (row) of a file, along with an arrow pointing to
@@ -60,13 +81,7 @@ void printErrLine(const yy::location& loc, ErrorType t){
 
     //draw arrow
     putchar('\n');
-
-    if(t == ErrorType::Error)
-        cout << AN_ERR_COLOR;
-    else if(t == ErrorType::Warning)
-        cout << AN_WARN_COLOR;
-    else
-        cout << AN_NOTE_COLOR;
+    printErrorTypeColor(t);
 
     unsigned int i = 1;
 
@@ -76,34 +91,43 @@ void printErrLine(const yy::location& loc, ErrorType t){
     //draw arrow until end pos
     for(; i <= loc.end.column; i++) putchar('^');
 
-    cout << AN_CONSOLE_RESET; //reset color
+    clearColor();
 }
 
 void printFileNameAndLineNumber(const yy::location& loc){
-	if (loc.begin.filename)
-		cout << AN_CONSOLE_ITALICS << *loc.begin.filename << AN_CONSOLE_RESET << ": ";
-	else
-		cout << AN_CONSOLE_ITALICS << "(unknown file)" << AN_CONSOLE_RESET << ": ";
+    if(colored_output) cout << AN_CONSOLE_ITALICS;
 
-    cout << AN_CONSOLE_BOLD << loc.begin.line << ",";
-    if(loc.begin.column == loc.end.column)
-        cout << loc.begin.column << AN_CONSOLE_RESET;
-    else
-        cout << loc.begin.column << '-' << loc.end.column << AN_CONSOLE_RESET;
+	if (loc.begin.filename) cout << *loc.begin.filename;
+	else cout << "(unknown file)";
+
+    clearColor();
+    cout << ": ";
+
+    if(colored_output) cout << AN_CONSOLE_BOLD;
+    cout << loc.begin.line << ",";
+
+    if(loc.begin.column == loc.end.column) cout << loc.begin.column;
+    else cout << loc.begin.column << '-' << loc.end.column;
+
+    clearColor();
 }
 
 void ante::error(const char* msg, const yy::location& loc, ErrorType t){
     printFileNameAndLineNumber(loc);
 
+    cout << '\t' << flush;
+    printErrorTypeColor(t);
+
     if(t == Error)
-        cout << '\t' << AN_ERR_COLOR << "error: " << AN_CONSOLE_RESET << msg << endl;
+        cout << "error: ";
     else if(t == Warning)
-        cout << '\t' << AN_WARN_COLOR << "warning: " << AN_CONSOLE_RESET << msg << endl;
+        cout << "warning: ";
     else if(t == Note)
-        cout << '\t' << AN_NOTE_COLOR << "note: " << AN_CONSOLE_RESET << msg << endl;
-    else
-        cout << '\t' << msg << endl;
-    
+        cout << "note: ";
+
+    clearColor();
+    cout << msg << endl;
+
     printErrLine(loc, t);
     cout << endl << endl;
 }
@@ -111,15 +135,19 @@ void ante::error(const char* msg, const yy::location& loc, ErrorType t){
 namespace ante {
     void error(ante::lazy_printer strs, const yy::location& loc, ErrorType t){
         printFileNameAndLineNumber(loc);
+    
+        cout << '\t' << flush;
+        printErrorTypeColor(t);
 
         if(t == Error)
-            cout << '\t' << AN_ERR_COLOR << "error: " << AN_CONSOLE_RESET << strs << endl;
+            cout << "error: ";
         else if(t == Warning)
-            cout << '\t' << AN_WARN_COLOR << "warning: " << AN_CONSOLE_RESET << strs << endl;
+            cout << "warning: ";
         else if(t == Note)
-            cout << '\t' << AN_NOTE_COLOR << "note: " << AN_CONSOLE_RESET << strs << endl;
-        else
-            cout << '\t' << strs << endl;
+            cout << "note: ";
+
+        clearColor();
+        cout << strs << endl;
         
         printErrLine(loc, t);
         cout << endl << endl;
@@ -139,12 +167,14 @@ TypedValue* Compiler::compErr(ante::lazy_printer msg, const yy::location& loc, E
 
 lazy_str typeNodeToColoredStr(const TypeNode *tn){
     lazy_str s = typeNodeToStr(tn);
-    s.fmt = AN_TYPE_COLOR;
+    if(colored_output)
+        s.fmt = AN_TYPE_COLOR;
     return s;
 }
 
 lazy_str typeNodeToColoredStr(const unique_ptr<TypeNode>& tn){
     lazy_str s = typeNodeToStr(tn.get());
-    s.fmt = AN_TYPE_COLOR;
+    if(colored_output)
+        s.fmt = AN_TYPE_COLOR;
     return s;
 }
