@@ -1,8 +1,15 @@
 #include "lazystr.h"
 using namespace ante;
 
+namespace ante {
+    extern bool colored_output;
+}
+
 ostream& operator<<(ostream& os, lazy_str& str){
-    os << str.fmt << str.s << AN_CONSOLE_RESET;
+    if(colored_output)
+        os << str.fmt << str.s << AN_CONSOLE_RESET;
+    else
+        os << str.s;
     return os;
 }
 
