@@ -179,7 +179,7 @@ TypedValue* Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
         preArgs.push_back(&arg);
 
         if(curTyn){
-            curTyn->next.reset(paramTyNode);
+            curTyn->next.reset(deepCopyTypeNode(paramTyNode));
             curTyn = (TypeNode*)curTyn->next.get();
         }else{
             fakeFnTyn->extTy->next.reset(deepCopyTypeNode(paramTyNode));
@@ -254,21 +254,6 @@ TypedValue* Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
         updateFn(ret, fdn->basename, fdn->name);
 
 
-    cout << "Freeing " << flush << typeNodeToStr(fakeFnTyn) << endl;
-    cout << fakeRetTy;
-    if(fakeRetTy->next){
-        cout << "(" << fakeRetTy->next.get() << ", ";
-
-        if(fakeRetTy->next->next){
-            cout << fakeRetTy->next->next.get() << ")\n";
-        }else{
-            cout << "0)\n";
-        }
-    }else{
-        cout << "(0, 0)\n";
-    }
-
-
     delete fakeFnTv;
     return ret;
 }
@@ -294,10 +279,6 @@ TypeNode* createFnTyNode(NamedValNode *params, TypeNode *retTy){
 
     TypeNode *curTyn = fnTy->extTy.get();
     while(params && params->typeExpr.get()){
-        if(params->name == "index"){
-            cout << "Adding param for " << flush << params->name << ": " << flush << typeNodeToStr((TypeNode*)params->typeExpr.get()) << endl;
-        }
-
         curTyn->next.reset(deepCopyTypeNode((TypeNode*)params->typeExpr.get()));
         curTyn = (TypeNode*)curTyn->next.get();
         params = (NamedValNode*)params->next.get();

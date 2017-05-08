@@ -81,12 +81,18 @@ obj/parser.o: src/syntax.y Makefile
 
 
 test:
-	@for file in $(TESTFILES); do            \
-		./ante $$file;                       \
-		if [[ $$? -ne 0 ]]; then             \
-		    echo "Failed to compile $$file"; \
-			exit 2;                          \
-		fi;                                  \
+	@for file in $(TESTFILES); do                                                   \
+		./ante $$file;                                                              \
+		if [[ $$? -ne 0 ]]; then                                                    \
+		    echo "Failed to compile $$file";                                        \
+			for f in $(shell find tests -not -name '*.an' -not -name 'tests'); do   \
+				$(RM) $$f;                                                          \
+			done;										                            \
+			exit 2;                                                                 \
+		fi;                                                                         \
+	done;                                                                           \
+	for f in $(shell find tests -not -name '*.an' -not -name 'tests'); do           \
+		$(RM) $$f;                                                                  \
 	done
 
 

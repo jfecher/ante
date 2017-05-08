@@ -231,7 +231,7 @@ struct NamedValNode : public Node{
     TypedValue* compile(Compiler*);
     void print(void);
     NamedValNode(LOC_TY& loc, string s, Node* t) : Node(loc), name(s), typeExpr(t){}
-    ~NamedValNode(){ cout << "Deleting nvn " << name << ": " << typeNodeToStr((TypeNode*)typeExpr.get()) << endl;;}
+    ~NamedValNode(){}
 };
 
 struct VarNode : public Node{
