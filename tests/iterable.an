@@ -5,7 +5,7 @@ type VecIter = i32* elem, u32 elems_remaining
 //A type implements Iterable if it can be used as a range in a for loop, but
 //cannot be used directly, necessitating a separate type to serve as the iterator
 ext Vec : Iterable
-    fun into_iter: -> VecIter
+    fun into_iter: Vec v -> VecIter
         VecIter(v._data, v.len)
 
 //The type returned by into_iter is the iterator used in the for loop.  If a type

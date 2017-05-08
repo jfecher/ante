@@ -1,4 +1,5 @@
 #include "compiler.h"
+#include "types.h"
 #include "tokens.h"
 #include "jitlinker.h"
 #include <llvm/ExecutionEngine/GenericValue.h>
@@ -680,25 +681,12 @@ void push_front(vector<T*> *vec, T *val){
 }
 
 
-TypeNode* typedValsToTypeNodes(vector<TypedValue*> &tvs){
-    if(tvs.empty())
-        return 0;
-
-    TypeNode *first = 0;
-    TypeNode *cur = 0;
-
+vector<TypeNode*> toTypeNodeVector(vector<TypedValue*> &tvs){
+    vector<TypeNode*> ret;
     for(auto *tv : tvs){
-        if(!first){
-            first = deepCopyTypeNode(tv->type.get());
-            cur = first;
-        }else{
-            cur->next.release();
-            cur->next.reset(deepCopyTypeNode(tv->type.get()));
-            cur = (TypeNode*)cur->next.get();
-        }
+        ret.push_back(tv->type.get());
     }
-
-    return first;
+    return ret;
 }
 
 //ante function to convert between IEEE half and IEEE single
@@ -937,16 +925,10 @@ TypedValue* tryImplicitCast(Compiler *c, TypedValue *arg, TypeNode *castTy){
 
     //check for an implicit Cast function
     string castFn = typeNodeToStr(castTy);
-
-    //extract the nxt type from the arg if it has one.
-    //otherwise, getMangledFunction will think there are more args
-    auto *nxt = arg->type->next.release();
     TypedValue *fn;
 
-    if((fn = c->getMangledFunction(castFn, arg->type.get())) and
+    if((fn = c->getMangledFunction(castFn, {arg->type.get()})) and
             !!c->typeEq(arg->type.get(), (const TypeNode*)fn->type->extTy->next.get())){
-
-        arg->type->next.reset(nxt);
 
         //optimize case of Str -> c8* implicit cast
         if(arg->type->typeName == "Str" && castFn == "c8*"){
@@ -960,7 +942,6 @@ TypedValue* tryImplicitCast(Compiler *c, TypedValue *arg, TypeNode *castTy){
             return new TypedValue(c->builder.CreateCall(fn->val, arg->val), fn->type->extTy);
         }
     }else{
-        arg->type->next.reset(nxt);
         return nullptr;
     }
 }
@@ -1006,7 +987,7 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
     //inference a method call for it (inference as in if the <type>. syntax is omitted)
     if(VarNode *vn = dynamic_cast<VarNode*>(l)){
         //try to see if arg 1's type contains a method of the same name
-        auto *params = typedValsToTypeNodes(typedArgs);
+        auto params = toTypeNodeVector(typedArgs);
 
         //try to do module inference
         if(!typedArgs.empty()){
@@ -1016,7 +997,6 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
 
         //if the above fails, do regular name mangling only
         if(!tvf) tvf = c->getMangledFunction(vn->name, params);
-        delete params;
     }
 
     //if it is not a varnode/no method is found, then compile it normally
@@ -1272,16 +1252,8 @@ TypedValue* checkForOperatorOverload(Compiler *c, TypedValue *lhs, int op, Typed
     string basefn = Lexer::getTokStr(op);
     string mangledfn = mangle(basefn, lhs->type.get(), rhs->type.get());
 
-    TypeNode *args = lhs->type.get();
-
-    //Swap the next value after args with the second argument
-    Node *next = args->next.release();
-    args->next.reset(rhs->type.get());
-
     //now look for the function
-    auto *fn = c->getMangledFunction(basefn, args);
-    args->next.release();
-    args->next.reset(next);
+    auto *fn = c->getMangledFunction(basefn, {lhs->type.get(), rhs->type.get()});
     if(!fn) return 0;
 
     TypeNode *param1 = (TypeNode*)fn->type->extTy->next.get();

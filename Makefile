@@ -11,7 +11,7 @@ LIBDIR := /usr/include/ante
 LIBFILES := $(shell find stdlib -type f -name "*.an")
 
 #                              v These macros are required when compiling with clang
-CPPFLAGS  := -g -O0 -std=c++11 `$(LLVMCFG) --cppflags --cflags` $(WARNINGS)
+CPPFLAGS  := -g -std=c++11 `$(LLVMCFG) --cppflags --cflags` -O0 $(WARNINGS)
 
 PARSERSRC := src/parser.cpp
 YACCFLAGS := -Lc++ -o$(PARSERSRC) --defines=include/yyparser.h
@@ -23,6 +23,8 @@ OBJFILES := $(patsubst src/%.cpp,obj/%.o,$(SRCFILES))
 
 ANSRCFILES := $(shell find $(SRCDIRS) -type f -name "*.an")
 ANOBJFILES := $(patsubst src/%.an,obj/%.ao,$(ANSRCFILES))
+
+TESTFILES := $(shell find 'tests/' -type f -name "*.an")
 
 #If src/parser.cpp is still present, remove it from objfiles so as to not double-compile it
 OBJFILES := $(patsubst obj/parser.o,,$(OBJFILES))
@@ -76,6 +78,17 @@ obj/parser.o: src/syntax.y Makefile
 	@$(YACC) $(YACCFLAGS) src/syntax.y
 	@-mv src/*.hh include
 	@$(CXX) $(CPPFLAGS) -MMD -MP -Iinclude -c $(PARSERSRC) -o $@
+
+
+test:
+	@for file in $(TESTFILES); do            \
+		./ante $$file;                       \
+		if [[ $$? -ne 0 ]]; then             \
+		    echo "Failed to compile $$file"; \
+			exit 2;                          \
+		fi;                                  \
+	done
+
 
 #remove all intermediate files
 clean:

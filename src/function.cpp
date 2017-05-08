@@ -1,4 +1,4 @@
-#include "compiler.h"
+#include "function.h"
 
 /*
  * Transforms t into a parameter type if need be.
@@ -14,12 +14,27 @@ Type* parameterize(Type *t, const TypeNode *tn){
 bool implicitPassByRef(TypeNode* t){
     return t->type == TT_Array or t->hasModifier(Tok_Mut);
 }
+
+
+TypeNode* toTypeNodeList(vector<TypedValue*> &args){
+    TypeNode *listBegin = 0;
+    TypeNode *listCur = 0;
     
+    for(auto *arg : args){
+        if(listBegin){
+            listCur->next.reset(deepCopyTypeNode(arg->type.get()));
+            listCur = (TypeNode*)listCur->next.get();
+        }else{
+            listBegin = deepCopyTypeNode(arg->type.get());
+            listCur = listBegin;
+        }
+    }
+    return listBegin;
+}
+
 
 TypedValue* Compiler::callFn(string name, vector<TypedValue*> args){
-    string mangledName = mangle(name, args);
-    TypedValue* fn = getFunction(name, mangledName);
-
+    TypedValue* fn = getMangledFunction(name, toTypeNodeVector(args));
     if(!fn) return 0;
 
     //vector of llvm::Value*s for the call to CreateCall at the end
@@ -31,8 +46,8 @@ TypedValue* Compiler::callFn(string name, vector<TypedValue*> args){
     //      are matched correctly across parameters
     TypeNode *param = (TypeNode*)fn->type->extTy->next.get();
     for(auto *arg : args){
-        auto tc = typeEq(arg->type.get(), param);
-        if(!tc) return 0;
+        arg = typeCheckWithImplicitCasts(this, arg, param);
+        if(!arg) return 0;
         param = (TypeNode*)param->next.get();
         vals.push_back(arg->val);
     }
@@ -239,6 +254,21 @@ TypedValue* Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
         updateFn(ret, fdn->basename, fdn->name);
 
 
+    cout << "Freeing " << flush << typeNodeToStr(fakeFnTyn) << endl;
+    cout << fakeRetTy;
+    if(fakeRetTy->next){
+        cout << "(" << fakeRetTy->next.get() << ", ";
+
+        if(fakeRetTy->next->next){
+            cout << fakeRetTy->next->next.get() << ")\n";
+        }else{
+            cout << "0)\n";
+        }
+    }else{
+        cout << "(0, 0)\n";
+    }
+
+
     delete fakeFnTv;
     return ret;
 }
@@ -264,6 +294,10 @@ TypeNode* createFnTyNode(NamedValNode *params, TypeNode *retTy){
 
     TypeNode *curTyn = fnTy->extTy.get();
     while(params && params->typeExpr.get()){
+        if(params->name == "index"){
+            cout << "Adding param for " << flush << params->name << ": " << flush << typeNodeToStr((TypeNode*)params->typeExpr.get()) << endl;
+        }
+
         curTyn->next.reset(deepCopyTypeNode((TypeNode*)params->typeExpr.get()));
         curTyn = (TypeNode*)curTyn->next.get();
         params = (NamedValNode*)params->next.get();
@@ -503,9 +537,10 @@ TypedValue* FuncDeclNode::compile(Compiler *c){
 }
 
 FuncDecl* getFuncDeclFromList(list<shared_ptr<FuncDecl>> &l, string &mangledName){
-    for(auto& fd : l)
+    for(auto& fd : l){
         if(fd->fdn->name == mangledName)
             return fd.get();
+    }
 
     return 0;
 }
@@ -574,8 +609,8 @@ TypedValue* Compiler::getFunction(string& name, string& mangledName){
     if(fd->tv) return fd->tv;
 
     //Function has been declared but not defined, so define it.
-    fd->tv = compFn(fd);
-    return fd->tv;
+    //fd->tv = compFn(fd);
+    return compFn(fd);
 }
 
 /*
@@ -593,11 +628,38 @@ list<shared_ptr<FuncDecl>> filterByArgcAndScope(list<shared_ptr<FuncDecl>> &l, s
 }
 
 
-TypedValue* Compiler::getMangledFunction(string name, TypeNode *args){
+vector<TypeNode*> vectorize(TypeNode *args){
+    vector<TypeNode*> ret;
+    while(args){
+        ret.push_back(args);
+        args = (TypeNode*)args->next.get();
+    }
+    return ret;
+}
+
+
+TypeNode* toList(vector<TypeNode*> &nodes){
+    TypeNode *begin = 0;
+    TypeNode *cur;
+
+    for(auto node : nodes){
+        if(begin){
+            cur->next.reset( deepCopyTypeNode(node) );
+            cur = (TypeNode*)cur->next.get();
+        }else{
+            begin = deepCopyTypeNode(node);
+            cur = begin;
+        }
+    }
+    return begin;
+}
+
+
+TypedValue* Compiler::getMangledFunction(string name, vector<TypeNode*> args){
     auto& fnlist = getFunctionList(name);
     if(fnlist.empty()) return 0;
 
-    auto argc = getTupleSize(args);
+    auto argc = args.size();
 
     auto candidates = filterByArgcAndScope(fnlist, argc, this->scope);
     if(candidates.empty()) return 0;
@@ -609,17 +671,17 @@ TypedValue* Compiler::getMangledFunction(string name, TypeNode *args){
         //must check if this functions is generic first
         auto fnty = unique_ptr<TypeNode>(createFnTyNode(fd->fdn->params.get(), mkAnonTypeNode(TT_Void)));
         auto *params = (TypeNode*)fnty->extTy->next.get();
-        auto tc = typeEq(params, args);
+        auto tc = typeEq(vectorize(params), args);
 
         if(tc.res == TypeCheckResult::SuccessWithTypeVars)
-            return compTemplateFn(this, fd.get(), tc, args);
+            return compTemplateFn(this, fd.get(), tc, args[0]);
         else if(!tc)
             return nullptr;
         else if(fd->tv)
             return fd->tv;
         else{
-            fd->tv = compFn(fd.get());
-            return fd->tv;
+            //fd->tv = compFn(fd.get());
+            return compFn(fd.get());
         }
     }
 
@@ -628,8 +690,8 @@ TypedValue* Compiler::getMangledFunction(string name, TypeNode *args){
     auto *fd = getFuncDeclFromList(candidates, fnName);
     if(fd){ //exact match
         if(!fd->tv){
-            fd->tv = compFn(fd);
-            return fd->tv;
+            //fd->tv = compFn(fd);
+            return compFn(fd);
         }else return fd->tv;
     }
 
@@ -643,9 +705,9 @@ TypedValue* Compiler::getMangledFunction(string name, TypeNode *args){
         auto fnty = unique_ptr<TypeNode>(createFnTyNode(fd->fdn->params.get(), mkAnonTypeNode(TT_Void)));
         auto *params = (TypeNode*)fnty->extTy->next.get();
 
-        auto tc = typeEq(params, args);
+        auto tc = typeEq(vectorize(params), args);
         if(!!tc){
-            return compTemplateFn(this, fd.get(), tc, args);
+            return compTemplateFn(this, fd.get(), tc, toList(args));
         }
     }
 

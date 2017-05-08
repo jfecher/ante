@@ -19,11 +19,7 @@ using namespace llvm;
 using namespace std;
 
 
-Node* getNthNode(Node *node, size_t n);
-TypeNode* deepCopyTypeNode(const TypeNode *n);
-string typeNodeToStr(const TypeNode *t);
-lazy_str typeNodeToColoredStr(const TypeNode *t);
-lazy_str typeNodeToColoredStr(const unique_ptr<TypeNode>& tn);
+extern TypeNode* deepCopyTypeNode(const TypeNode*);
 
 /*
  *  Used for storage of additional information, such as signedness,
@@ -302,7 +298,7 @@ namespace ante{
         TypedValue* getFunction(string& name, string& mangledName);
         list<shared_ptr<FuncDecl>>& getFunctionList(string& name) const;
         FuncDecl* getFuncDecl(string bn, string mangledName);
-        TypedValue* getMangledFunction(string nonMangledName, TypeNode *params);
+        TypedValue* getMangledFunction(string name, vector<TypeNode*> args);
         TypedValue* getCastFn(TypeNode *from_ty, TypeNode *to_ty);
         TypedValue* callFn(string fn, vector<TypedValue*> args);
         
@@ -320,6 +316,7 @@ namespace ante{
 
         Type* typeNodeToLlvmType(const TypeNode *tyNode);
         TypeCheckResult typeEq(const TypeNode *l, const TypeNode *r) const;
+        TypeCheckResult typeEq(vector<TypeNode*> l, vector<TypeNode*> r) const;
         void expand(TypeNode *tn);
     
         TypedValue* opImplementedForTypes(int op, TypeNode *l, TypeNode *r);
@@ -336,27 +333,15 @@ namespace ante{
     };
 }
 
+Node* getNthNode(Node *node, size_t n);
 size_t getTupleSize(Node *tup);
-string mangle(string &base, vector<TypedValue*> params);
+vector<TypeNode*> vectorize(TypeNode *args);
+vector<TypeNode*> toTypeNodeVector(vector<TypedValue*> &tvs);
+
+string mangle(string &base, vector<TypeNode*> params);
 string mangle(string &base, TypeNode *paramTys);
 string mangle(string &base, TypeNode *p1, TypeNode *p2);
 string mangle(string &base, TypeNode *p1, TypeNode *p2, TypeNode *p3);
-
-//conversions
-Type* typeTagToLlvmType(TypeTag tagTy, LLVMContext &c, string typeName = "");
-TypeTag llvmTypeToTypeTag(Type *t);
-string llvmTypeToStr(Type *ty);
-string typeTagToStr(TypeTag ty);
-bool llvmTypeEq(Type *l, Type *r);
-        
-void bindGenericToType(TypeNode *tn, const vector<pair<string, unique_ptr<TypeNode>>> &bindings);
-void bindGenericToType(TypeNode *tn, const vector<unique_ptr<TypeNode>> &bindings);
-
-char getBitWidthOfTypeTag(const TypeTag tagTy);
-bool isNumericTypeTag(const TypeTag ty);
-bool isIntTypeTag(const TypeTag ty);
-bool isFPTypeTag(const TypeTag tt);
-bool isUnsignedTypeTag(const TypeTag tagTy);
 
 string removeFileExt(string file);
 #endif

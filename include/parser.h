@@ -186,7 +186,7 @@ struct TypeNode : public Node{
     unique_ptr<TypeNode> extTy; //Used for pointers and non-single anonymous types.
     vector<unique_ptr<TypeNode>> params; //type parameters for generic types
     vector<int> modifiers;
-    
+
     unsigned int getSizeInBits(Compiler*, string* tn = 0);
     TypedValue* compile(Compiler*);
     void print(void);
@@ -223,13 +223,15 @@ struct RetNode : public Node{
     ~RetNode(){}
 };
 
+string typeNodeToStr(const TypeNode*);
+
 struct NamedValNode : public Node{
     string name;
     unique_ptr<Node> typeExpr;
     TypedValue* compile(Compiler*);
     void print(void);
     NamedValNode(LOC_TY& loc, string s, Node* t) : Node(loc), name(s), typeExpr(t){}
-    ~NamedValNode(){}
+    ~NamedValNode(){ cout << "Deleting nvn " << name << ": " << typeNodeToStr((TypeNode*)typeExpr.get()) << endl;;}
 };
 
 struct VarNode : public Node{

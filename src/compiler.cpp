@@ -1,7 +1,3 @@
-#include "parser.h"
-#include "compiler.h"
-#include "target.h"
-#include "yyparser.h"
 #include <llvm/IR/Verifier.h>          //for verifying basic structure of functions
 #include <llvm/Support/FileSystem.h>   //for r/w when outputting bitcode
 #include <llvm/Support/raw_ostream.h>  //for ostream when outputting bitcode
@@ -15,6 +11,12 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+
+#include "parser.h"
+#include "compiler.h"
+#include "types.h"
+#include "target.h"
+#include "yyparser.h"
 
 using namespace llvm;
 
@@ -185,7 +187,7 @@ TypedValue* compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
         val = n->compile(c);
         valNode = n.get();
     }
-    
+
     if(!val) return 0;
 
     //if the expr is not already a string type, cast it to one
@@ -417,14 +419,14 @@ TypedValue* WhileNode::compile(Compiler *c){
     c->compCtxt->continueLabels->push_back(cond);
 
     auto *val = child->compile(c); //compile the while loop's body
-    
+
     c->compCtxt->breakLabels->pop_back();
     c->compCtxt->continueLabels->pop_back();
 
     if(!val) return 0;
     if(!dyn_cast<ReturnInst>(val->val) and !dyn_cast<BranchInst>(val->val))
         c->builder.CreateBr(cond);
-    
+
     c->builder.SetInsertPoint(end);
     return c->getVoidLiteral();
 }
@@ -451,7 +453,7 @@ TypedValue* ForNode::compile(Compiler *c){
             return c->compErr("Range expression of type " + typeNodeToColoredStr(rangev->type) + " needs to implement " +
                 typeNodeToColoredStr(mkDataTypeNode("Iterable")) + " or " + typeNodeToColoredStr(mkDataTypeNode("Iterator")) +
                 " to be used in a for loop", range->loc);
-        
+
         rangev = res;
     }
 
@@ -585,6 +587,9 @@ TypedValue* VarNode::compile(Compiler *c){
             if(!fd->tv)
                 fd->tv = c->compFn(fd.get());
 
+            if(!fd or !fd->tv)
+                return 0;
+
             return new TypedValue(fd->tv->val, fd->tv->type);
         }else if(fnlist.empty()){
             return c->compErr("Variable or function '" + name + "' has not been declared.", this->loc);
@@ -607,8 +612,8 @@ TypedValue* LetBindingNode::compile(Compiler *c){
     }
 
     bool isGlobal = false;
-    
-            //add the modifiers to the typedvalue
+
+    //add the modifiers to the typedvalue
     Node *mod = modifiers.get();
     while(mod){
         int m = ((ModNode*)mod)->mod;
@@ -848,7 +853,9 @@ TypedValue* VarAssignNode::compile(Compiler *c){
     }
 
     //and finally, make sure the assigned value matches the variable's type
-    if(!llvmTypeEq(tmp->getType(), assignExpr->getType())){
+    if(!c->typeEq(tmp->type.get(), assignExpr->type.get())){
+        tmp->dump();
+        assignExpr->dump();
         return c->compErr("Cannot assign expression of type " + typeNodeToColoredStr(assignExpr->type)
                     + " to a variable of type " + typeNodeToColoredStr(tmp->type), expr->loc);
     }
@@ -865,11 +872,11 @@ TypedValue* PreProcNode::compile(Compiler *c){
 }
 
 
-string mangle(string &base, vector<TypedValue*> params){
+string mangle(string &base, vector<TypeNode*> params){
     string name = base;
     for(auto *tv : params){
-        if(tv->type->type != TT_Void)
-            name += "_" + typeNodeToStr(tv->type.get());
+        if(tv->type != TT_Void)
+            name += "_" + typeNodeToStr(tv);
     }
     return name;
 }
@@ -994,12 +1001,28 @@ bool Compiler::typeImplementsTrait(DataType* dt, string traitName) const{
 }
 
 
+void declareDataType(Compiler *c, DataType *dt){
+    vector<Type*> fields;
+    string name = dt->tyn->typeName;
+
+    TypeNode *ext = dt->tyn->type == TT_Tuple or dt->tyn->type == TT_TaggedUnion ?
+                    dt->tyn->extTy.get() :
+                    dt->tyn.get();
+
+    while(ext){
+        fields.push_back(c->typeNodeToLlvmType(ext));
+        ext = (TypeNode*)ext->next.get();
+    }
+
+    StructType::create(*c->ctxt, fields, name);
+}
+
+
 TypedValue* compTaggedUnion(Compiler *c, DataDeclNode *n){
     vector<string> fieldNames;
     fieldNames.reserve(n->fields);
 
     auto *nvn = (NamedValNode*)n->child.get();
-    
 
     vector<string> union_name;
     union_name.push_back(n->name);
@@ -1029,8 +1052,8 @@ TypedValue* compTaggedUnion(Compiler *c, DataDeclNode *n){
             return c->compErr("Cannot define a recursive type", tyn->loc);
         }
 
-
         DataType *data = new DataType(union_name, tagTy);
+        //declareDataType(c, data);
 
         c->stoType(data, nvn->name);
 
@@ -1040,31 +1063,20 @@ TypedValue* compTaggedUnion(Compiler *c, DataDeclNode *n){
 
     //use the largest union member's type as the union's type as a whole
     TypeNode *unionTy;
-    vector<Type*> fieldTypes;
 
     //check if this is a tagged union, or just a normal enum where the largest contained type is 0 bits
     if(largestTySz == 0){
         unionTy = mkAnonTypeNode(TT_U8);
-        fieldTypes.push_back(Type::getInt8Ty(*c->ctxt));
     }else{
         auto *largestTyn = largestTySz == 0 ? 0 : deepCopyTypeNode(tags[largestTyIdx]->tyn.get());
         unionTy = mkAnonTypeNode(TT_Tuple);
-       
-        fieldTypes.push_back(Type::getInt8Ty(*c->ctxt));
-        TypeNode *cur = largestTyn;
-        while(cur){
-            fieldTypes.push_back(c->typeNodeToLlvmType(cur));
-            cur = (TypeNode*)cur->next.get();
-        }
-
         unionTy->extTy.reset(mkAnonTypeNode(TT_U8));
         unionTy->extTy->next.reset(largestTyn);
     }
     
-    StructType::create(*c->ctxt, fieldTypes, n->name);
-
     unionTy->typeName = n->name;
     DataType *data = new DataType(fieldNames, unionTy);
+    declareDataType(c, data);
 
     data->tags.swap(tags); 
     c->stoType(data, n->name);
@@ -1936,7 +1948,7 @@ void Compiler::processArgs(CompilerArgs *args){
         for(auto& pair : compUnit->fnDecls){
             for(auto& fd : pair.second){
                 if(!fd->tv)
-                    fd->tv = compFn(fd.get());
+                    compFn(fd.get());
             }
         }
     }
@@ -1947,7 +1959,8 @@ void Compiler::processArgs(CompilerArgs *args){
     else compileNative();
 
     if(!errFlag && args->hasArg(Args::CompileAndRun)){
-        system((AN_EXEC_STR + outFile).c_str());
+        int res = system((AN_EXEC_STR + outFile).c_str());
+        if(res) return; //silence unused return result warning
     }
 }
 

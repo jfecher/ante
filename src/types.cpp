@@ -1,4 +1,4 @@
-#include <compiler.h>
+#include <types.h>
 
 
 char getBitWidthOfTypeTag(const TypeTag ty){
@@ -420,6 +420,9 @@ Type* Compiler::typeNodeToLlvmType(const TypeNode *tyNode){
                 Type* t = module->getTypeByName(tyNode->typeName);
                 
                 if(!t){
+                    auto *dt = lookupType(tyNode->typeName);
+                    if(dt) return typeNodeToLlvmType(dt->tyn.get());
+
                     compErr("Use of undeclared type " + tyNode->typeName, tyNode->loc);
                     return Type::getVoidTy(*ctxt);
                 }
@@ -716,6 +719,18 @@ TypeCheckResult typeEqHelper(const Compiler *c, const TypeNode *l, const TypeNod
 TypeCheckResult Compiler::typeEq(const TypeNode *l, const TypeNode *r) const{
     auto tcr = TypeCheckResult(false);
     typeEqHelper(this, l, r, &tcr);
+    return tcr;
+}
+
+
+TypeCheckResult Compiler::typeEq(vector<TypeNode*> l, vector<TypeNode*> r) const{
+    auto tcr = TypeCheckResult(false);
+    if(l.size() != r.size()) return tcr;
+
+    for(size_t i = 0; i < l.size(); i++){
+        typeEqHelper(this, l[i], r[i], &tcr);
+        if(!tcr) return tcr;
+    }
     return tcr;
 }
 
