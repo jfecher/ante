@@ -288,7 +288,6 @@ namespace ante{
         TypedValue* compLogicalOr(Node *l, Node *r, BinOpNode *op);
         TypedValue* compLogicalAnd(Node *l, Node *r, BinOpNode *op);
        
-        //TypedValue* compErr(const string msg, const yy::location& loc);
         TypedValue* compErr(ante::lazy_printer msg, const yy::location& loc, ErrorType t = Error);
 
         void jitFunction(Function *fnName);

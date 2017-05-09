@@ -169,7 +169,6 @@ TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
  */
 TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
     auto *tmp = op->lval->compile(this);
-    if(!tmp) return 0;
 
     //if(!dynamic_cast<LoadInst*>(tmp->val))
     if(!tmp->hasModifier(Tok_Mut))
@@ -177,12 +176,9 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
                 typeNodeToColoredStr(tmp->type), op->lval->loc);
 
     Value *var = static_cast<LoadInst*>(tmp->val)->getPointerOperand();
-    if(!var) return 0;
-
 
     auto *index = op->rval->compile(this);
     auto *newVal = assignExpr->compile(this);
-    if(!var || !index || !newVal) return 0;
 
     //see if insert operator # = is overloaded already
     string basefn = "#";
@@ -378,8 +374,6 @@ TypedValue* createCast(Compiler *c, unique_ptr<TypeNode> &castTyn, TypedValue *v
 
 TypedValue* TypeCastNode::compile(Compiler *c){
     auto *rtval = rval->compile(c);
-    if(!rtval) return 0;
-
     auto* tval = createCast(c, typeExpr, rtval);
 
     if(!tval){
@@ -395,7 +389,6 @@ TypedValue* TypeCastNode::compile(Compiler *c){
 
 TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<TypedValue*,BasicBlock*>> &branches){
     auto *cond = ifn->condition->compile(c);
-    if(!cond) return 0;
 
     if(cond->type->type != TT_Bool)
         return c->compErr("If condition must be of type " + typeNodeToColoredStr(mkAnonTypeNode(TT_Bool)) +
@@ -1262,11 +1255,22 @@ TypedValue* checkForOperatorOverload(Compiler *c, TypedValue *lhs, int op, Typed
     lhs = typeCheckWithImplicitCasts(c, lhs, param1);
     rhs = typeCheckWithImplicitCasts(c, rhs, param2);
 
-    if(!lhs or !rhs) return 0;
-
     vector<Value*> argVals = {lhs->val, rhs->val};
     return new TypedValue(c->builder.CreateCall(fn->val, argVals), fn->type->extTy);
 }
+
+
+TypedValue* compSequence(Compiler *c, BinOpNode *seq){
+    try{
+        seq->lval->compile(c);
+    }catch(CompilationError *e){
+        delete e;
+    }
+
+    //let CompilationError's of rval percolate
+    return seq->rval->compile(c);
+}
+
 
 /*
  *  Compiles an operation along with its lhs and rhs
@@ -1278,13 +1282,11 @@ TypedValue* BinOpNode::compile(Compiler *c){
         case Tok_And: return c->compLogicalAnd(lval.get(), rval.get(), this);
         case Tok_Or: return c->compLogicalOr(lval.get(), rval.get(), this);
     }
+    
+    if(op == ';') return compSequence(c, this);
 
     TypedValue *lhs = lval->compile(c);
     TypedValue *rhs = rval->compile(c);
-    if(!lhs || !rhs) return 0;
-    
-    if(op == ';') return rhs;
-
 
     if(TypedValue *res = checkForOperatorOverload(c, lhs, op, rhs)){
         return res;
@@ -1319,7 +1321,6 @@ TypedValue* BinOpNode::compile(Compiler *c){
 
 TypedValue* UnOpNode::compile(Compiler *c){
     TypedValue *rhs = rval->compile(c);
-    if(!rhs) return 0;
 
     switch(op){
         case '@': //pointer dereference

@@ -215,11 +215,9 @@ TypedValue* compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
 
     //call the ++ function to combine the three strings
     auto *lstr = ls->compile(c);
-    if(!lstr) return 0;
     auto *appendL = c->builder.CreateCall(fn->val, vector<Value*>{lstr->val, val->val});
 
     auto *rstr = rs->compile(c);
-    if(!rstr) return 0;
     auto *appendR = c->builder.CreateCall(fn->val, vector<Value*>{appendL, rstr->val});
 
     //create the returning typenode
@@ -270,7 +268,6 @@ TypedValue* ArrayNode::compile(Compiler *c){
     int i = 1;
     for(auto& n : exprs){
         auto *tval = n->compile(c);
-        if(!tval) return 0;
 
         arr.push_back((Constant*)tval->val);
 
@@ -322,7 +319,6 @@ TypedValue* TupleNode::compile(Compiler *c){
     //add it to pathogenVals
     for(unsigned i = 0; i < exprs.size(); i++){
         auto *tval = exprs[i]->compile(c);
-        if(!tval) return 0;
 
         if(Constant *elem = dyn_cast<Constant>(tval->val)){
             elems.push_back(elem);
@@ -380,7 +376,6 @@ vector<TypedValue*> TupleNode::unpack(Compiler *c){
  */
 TypedValue* RetNode::compile(Compiler *c){
     TypedValue *ret = expr->compile(c);
-    if(!ret) return 0;
     
     auto *retInst = ret->type->type == TT_Void ?
                  new TypedValue(c->builder.CreateRetVoid(), ret->type) :
@@ -409,7 +404,6 @@ TypedValue* WhileNode::compile(Compiler *c){
     c->builder.CreateBr(cond);
     c->builder.SetInsertPoint(cond);
     auto *condval = condition->compile(c);
-    if(!condval) return 0;
 
     c->builder.CreateCondBr(condval->val, begin, end);
 
@@ -423,7 +417,6 @@ TypedValue* WhileNode::compile(Compiler *c){
     c->compCtxt->breakLabels->pop_back();
     c->compCtxt->continueLabels->pop_back();
 
-    if(!val) return 0;
     if(!dyn_cast<ReturnInst>(val->val) and !dyn_cast<BranchInst>(val->val))
         c->builder.CreateBr(cond);
 
@@ -441,7 +434,6 @@ TypedValue* ForNode::compile(Compiler *c){
 
 
     auto *rangev = range->compile(c);
-    if(!rangev) return 0;
 
     //check if the range expression is its own iterator and thus implements Iterator
     //If it does not, see if it implements Iterable by attempting to call into_iter on it
@@ -602,7 +594,6 @@ TypedValue* VarNode::compile(Compiler *c){
 
 TypedValue* LetBindingNode::compile(Compiler *c){
     TypedValue *val = expr->compile(c);
-    if(!val) return nullptr;
 
     TypeNode *tyNode;
     if((tyNode = (TypeNode*)typeExpr.get())){
@@ -642,7 +633,6 @@ TypedValue* LetBindingNode::compile(Compiler *c){
 
 TypedValue* compVarDeclWithInferredType(VarDeclNode *node, Compiler *c){
     TypedValue *val = node->expr->compile(c);
-    if(!val) return nullptr;
 
     bool isGlobal = false;
     //Add all of the declared modifiers to the typedval
@@ -718,7 +708,6 @@ TypedValue* VarDeclNode::compile(Compiler *c){
     c->stoVar(name, var);
     if(expr.get()){
         TypedValue *val = expr->compile(c);
-        if(!val) return 0;
 
         val->type->addModifier(Tok_Mut);
         var->noFree = true;//var->getType() != TT_Ptr || dynamic_cast<Constant*>(val->val);
@@ -757,7 +746,6 @@ TypedValue* compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
     //are updated with the automatic pointer dereferences.
     { 
         auto *l = bop->lval->compile(c);
-        if(!l) return 0;
 
         val = l->val;
         tyn = ltyn = l->type.get();
@@ -791,7 +779,6 @@ TypedValue* compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
                 TypeNode *indexTy = (TypeNode*)getNthNode(dataTy->tyn->extTy.get(), index);
 
                 auto *newval = expr->compile(c);
-                if(!newval) return 0;
 
                 //see if insert operator # = is overloaded already
                 string op = "#";
@@ -831,7 +818,6 @@ TypedValue* VarAssignNode::compile(Compiler *c){
 
     //otherwise, this is just a normal assign to a variable
     TypedValue *tmp = ref_expr->compile(c);
-    if(!tmp) return 0;
 
     //if(!dynamic_cast<LoadInst*>(tmp->val))
     if(!tmp->hasModifier(Tok_Mut))
@@ -842,9 +828,6 @@ TypedValue* VarAssignNode::compile(Compiler *c){
     
     //compile the expression to store
     TypedValue *assignExpr = expr->compile(c);
-    
-    //Check for errors before continuing
-    if(!assignExpr) return 0;
 
     //lvalue must compile to a pointer for storage, usually an alloca value
     if(!PointerType::isLoadableOrStorableType(tmp->getType())){
@@ -1200,9 +1183,6 @@ TypedValue* GlobalNode::compile(Compiler *c){
 TypedValue* MatchNode::compile(Compiler *c){
     auto *lval = expr->compile(c);
 
-    if(!lval) return 0;
-
-
     if(lval->type->type != TT_TaggedUnion && lval->type->type != TT_Data){
         return c->compErr("Cannot match expression of type " + typeNodeToColoredStr(lval->type) +
                 ".  Match expressions must be a tagged union type", expr->loc);
@@ -1531,17 +1511,27 @@ Function* Compiler::createMainFn(){
 
 
 TypedValue* RootNode::compile(Compiler *c){
-    for(auto &n : imports)
-        n->compile(c);
+    for(auto &n : imports){
+        try{
+            n->compile(c);
+        }catch(CompilationError *e){
+            delete e;
+        }
+    }
 
     c->scanAllDecls(this);
 
     //Compile the rest of the program
     TypedValue *ret = 0;
-    for(auto &n : main)
-        ret = n->compile(c);
+    for(auto &n : main){
+        try{
+            ret = n->compile(c);
+        }catch(CompilationError *e){
+            delete e;
+        }
+    }
 
-    return ret;
+    return ret ? ret : c->getVoidLiteral();
 }
 
 

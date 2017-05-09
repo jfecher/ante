@@ -409,10 +409,12 @@ TypedValue* compFnHelper(Compiler *c, FuncDecl *fd){
         }
 
         //actually compile the function, and hold onto the last value
-        TypedValue *v = fdn->child->compile(c);
-        if(!v){
+        TypedValue *v;
+        try{
+            v = fdn->child->compile(c);
+        }catch(CompilationError *e){
             c->builder.SetInsertPoint(caller);
-            return 0;
+            throw e;
         }
         
         //End of the function, discard the function's scope.
