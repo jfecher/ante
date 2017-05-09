@@ -5,13 +5,13 @@ vpath %.d obj
 WARNINGS  := -Wall -Wpedantic -Wsign-compare
 
 LLVMCFG := $(shell if command -v llvm-config-4.0 >/dev/null 2>&1; then echo 'llvm-config-4.0'; else echo 'llvm-config'; fi)
-LLVMFLAGS := `$(LLVMCFG) --cppflags --cflags --link-static --libs Core mcjit interpreter native BitWriter Passes Target --ldflags --system-libs` -lffi
+LLVMFLAGS := `$(LLVMCFG) --cflags --cppflags --link-static --libs Core mcjit interpreter native BitWriter Passes Target --ldflags --system-libs` -lffi
 
 LIBDIR := /usr/include/ante
 LIBFILES := $(shell find stdlib -type f -name "*.an")
 
 #                              v These macros are required when compiling with clang
-CPPFLAGS  := -g -std=c++11 `$(LLVMCFG) --cppflags --cflags` -O0 $(WARNINGS)
+CPPFLAGS  := -g -std=c++11 `$(LLVMCFG) --cflags --cppflags` -O0 $(WARNINGS)
 
 PARSERSRC := src/parser.cpp
 YACCFLAGS := -Lc++ -o$(PARSERSRC) --defines=include/yyparser.h
@@ -36,7 +36,7 @@ DEPFILES := $(OBJFILES:.o=.d)
 
 ante: obj obj/parser.o $(OBJFILES) $(ANOBJFILES)
 	@echo Linking...
-	@$(CXX) obj/parser.o $(OBJFILES) $(ANOBJFILES) $(CPPFLAGS) $(LLVMFLAGS) -o ante
+	@$(CXX) obj/parser.o $(OBJFILES) $(ANOBJFILES) $(LLVMFLAGS) -o ante
 
 #export the stdlib to /usr/include/ante
 #this is the only part that requires root permissions
