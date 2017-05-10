@@ -65,8 +65,7 @@ void printErrLine(const yy::location& loc, ErrorType t){
     if(!loc.begin.filename) return;
     ifstream f{*loc.begin.filename};
 
-    //Premature newline error, show previous line as error instead
-    auto line_start = loc.begin.column == 0 ? loc.begin.line - 1 : loc.begin.line;
+    auto line_start = loc.begin.line;
 
     //skip to line in question
     skipToLine(f, line_start);
@@ -74,8 +73,8 @@ void printErrLine(const yy::location& loc, ErrorType t){
     //print line
     string s;
     getline(f, s);
-    
-    auto col_start = loc.begin.column == 0 ? s.length() + 1 : loc.begin.column;
+   
+    auto col_start = loc.begin.column;
 
     cout << s;
 

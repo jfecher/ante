@@ -10,5 +10,5 @@ let res = 4 + (4 * 5
 //ident instead of UserType, all datatypes are differentiated from identifiers
 //by their name starting with a capital letter.
 type str =
-    c32[] rawStr
+    [c32] rawStr
     u32 len
