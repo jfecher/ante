@@ -21,13 +21,6 @@
 using namespace llvm;
 
 
-/*
- *  Returns amount of values in a tuple, from 0 to max uint.
- *  Assumes argument is a tuple.
- *  
- *  Doubles as a getNodesInBlock function, but does not
- *  count child nodes.
- */
 size_t getTupleSize(Node *tup){
     size_t size = 0;
     while(tup){
@@ -143,6 +136,15 @@ TypedValue* Compiler::getCastFn(TypeNode *from_ty, TypeNode *to_ty){
     return getFunction(fnBaseName, mangledName);
 }
 
+void scanImports(Compiler *c, RootNode *r){
+    for(auto &n : r->imports){
+        try{
+            n->compile(c);
+        }catch(CompilationError *e){
+            delete e;
+        }
+    }
+}
 
 TypedValue* compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
     //get the left part of the string
@@ -177,15 +179,21 @@ TypedValue* compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
         exit(flag);
     }
 
-    //and compile
     RootNode *expr = parser::getRootNode();
-
-    //Compile each expression and hold onto the last value
     TypedValue *val = 0;
     Node *valNode = 0;
+    
+    scanImports(c, expr);
+    c->scanAllDecls(expr);
+
+    //Compile main and hold onto the last value
     for(auto &n : expr->main){
-        val = n->compile(c);
-        valNode = n.get();
+        try{
+            val = n->compile(c);
+            valNode = n.get();
+        }catch(CompilationError *e){
+            delete e;
+        }
     }
 
     if(!val) return 0;
@@ -1511,14 +1519,7 @@ Function* Compiler::createMainFn(){
 
 
 TypedValue* RootNode::compile(Compiler *c){
-    for(auto &n : imports){
-        try{
-            n->compile(c);
-        }catch(CompilationError *e){
-            delete e;
-        }
-    }
-
+    scanImports(c, this);
     c->scanAllDecls(this);
 
     //Compile the rest of the program
