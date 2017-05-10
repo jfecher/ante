@@ -109,14 +109,16 @@ void addAllArgAttrs(Function *f, NamedValNode *params){
  * returns the return type or nullptr if it could not be matched
  */
 TypeNode* validateReturns(Compiler *c, FuncDecl *fd, TypeNode *retTy = 0){
-    auto *matchTy = retTy ? retTy : fd->returns[fd->returns.size()-1]->type.get();
+    auto *matchTy = retTy ? retTy : fd->returns[fd->returns.size()-1].first->type.get();
 
-    for(auto *ret : fd->returns){
+    for(auto pair : fd->returns){
+        TypedValue *ret = pair.first;
+
         auto tcr = c->typeEq(matchTy, ret->type.get());
         if(!tcr){
             return (TypeNode*)c->compErr("Function " + fd->fdn->basename + " returned value of type " + 
                     typeNodeToColoredStr(ret->type) + " but was declared to return value of type " +
-                    typeNodeToColoredStr(matchTy), fd->fdn->loc);
+                    typeNodeToColoredStr(matchTy), pair.second);
         }
 
         if(tcr.res == TypeCheckResult::SuccessWithTypeVars){
@@ -143,6 +145,19 @@ TypeNode* validateReturns(Compiler *c, FuncDecl *fd, TypeNode *retTy = 0){
     return deepCopyTypeNode(matchTy);
 }
 
+
+LOC_TY getFinalLoc(Node *n){
+    auto *bop = dynamic_cast<BinOpNode*>(n);
+
+    if(!bop){
+        if(BlockNode* bn = dynamic_cast<BlockNode*>(n)){
+            n = bn->block.get();
+            bop = dynamic_cast<BinOpNode*>(n);
+        }
+    }
+
+    return (bop and bop->op == ';') ? bop->rval->loc : n->loc;
+}
 
 
 TypedValue* Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
@@ -203,12 +218,14 @@ TypedValue* Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
     //llvm requires explicit returns, so generate a return even if
     //the user did not in their function.
     if(!dyn_cast<ReturnInst>(v->val)){
+        auto p = pair<TypedValue*,LOC_TY>(v, getFinalLoc(fdn->child.get()));
+
         if(v->type->type == TT_Void){
             builder.CreateRetVoid();
-            fd->returns.push_back(v);
+            fd->returns.push_back(p);
         }else{
             builder.CreateRet(v->val);
-            fd->returns.push_back(v);
+            fd->returns.push_back(p);
         }
     }
     
@@ -422,12 +439,14 @@ TypedValue* compFnHelper(Compiler *c, FuncDecl *fd){
   
         //push the final value as a return, explicit returns are already added in RetNode::compile
         if(retNode && !dyn_cast<ReturnInst>(v->val)){
+            auto p = pair<TypedValue*,LOC_TY>(v, getFinalLoc(fdn->child.get()));
+
             if(retNode->type == TT_Void){
                 c->builder.CreateRetVoid();
-                fd->returns.push_back(c->getVoidLiteral());
+                fd->returns.push_back(p);
             }else{
                 c->builder.CreateRet(v->val);
-                fd->returns.push_back(v);
+                fd->returns.push_back(p);
             }
         }
 

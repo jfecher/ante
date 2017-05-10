@@ -83,7 +83,7 @@ struct FuncDecl {
     unsigned int scope;
     TypedValue *tv;
     shared_ptr<ante::Module> module;
-    vector<TypedValue*> returns;
+    vector<pair<TypedValue*,LOC_TY>> returns;
 
     FuncDecl(FuncDeclNode *fn, unsigned int s, shared_ptr<ante::Module> mod, TypedValue *f=0) : fdn(fn), scope(s), tv(f), module(mod), returns(){}
     ~FuncDecl(){ if(fdn){delete fdn;} delete tv; }

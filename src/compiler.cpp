@@ -382,7 +382,7 @@ TypedValue* RetNode::compile(Compiler *c){
                  new TypedValue(c->builder.CreateRet(ret->val), ret->type);
 
     auto *f = c->getCurrentFunction();
-    f->returns.push_back(retInst);
+    f->returns.push_back({retInst, expr->loc});
     return retInst;
 }
 
