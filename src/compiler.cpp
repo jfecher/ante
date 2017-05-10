@@ -1914,9 +1914,6 @@ void Compiler::processArgs(CompilerArgs *args){
         out = outFile;
     }
 
-    if(args->hasArg(Args::NoColor))
-        colored_output = false;
-
     if(auto *arg = args->getArg(Args::OptLvl)){
         if(arg->arg == "0") optLvl = 0;
         else if(arg->arg == "1") optLvl = 1;

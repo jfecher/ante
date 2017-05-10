@@ -54,6 +54,7 @@ int main(int argc, const char **argv){
 
     auto *args = parseArgs(argc, argv);
     if(args->hasArg(Args::Help)) printHelp();
+    if(args->hasArg(Args::NoColor)) colored_output = false;
 
     for(auto input : args->inputFiles){
         Compiler ante{input.c_str()};

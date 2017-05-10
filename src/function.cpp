@@ -218,14 +218,14 @@ TypedValue* Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
     //llvm requires explicit returns, so generate a return even if
     //the user did not in their function.
     if(!dyn_cast<ReturnInst>(v->val)){
-        auto p = pair<TypedValue*,LOC_TY>(v, getFinalLoc(fdn->child.get()));
+        auto loc = getFinalLoc(fdn->child.get());
 
         if(v->type->type == TT_Void){
             builder.CreateRetVoid();
-            fd->returns.push_back(p);
+            fd->returns.push_back({getVoidLiteral(), loc});
         }else{
             builder.CreateRet(v->val);
-            fd->returns.push_back(p);
+            fd->returns.push_back({v, loc});
         }
     }
     
@@ -439,14 +439,14 @@ TypedValue* compFnHelper(Compiler *c, FuncDecl *fd){
   
         //push the final value as a return, explicit returns are already added in RetNode::compile
         if(retNode && !dyn_cast<ReturnInst>(v->val)){
-            auto p = pair<TypedValue*,LOC_TY>(v, getFinalLoc(fdn->child.get()));
+            auto loc = getFinalLoc(fdn->child.get());
 
             if(retNode->type == TT_Void){
                 c->builder.CreateRetVoid();
-                fd->returns.push_back(p);
+                fd->returns.push_back({c->getVoidLiteral(), loc});
             }else{
                 c->builder.CreateRet(v->val);
-                fd->returns.push_back(p);
+                fd->returns.push_back({v, loc});
             }
         }
 
