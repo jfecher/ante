@@ -238,7 +238,7 @@ arr_type: '[' val type_expr ']' {$3->next.reset($2);
 tuple_type: '(' type_expr ')'  {$$ = $2;}
           ;
 
-generic_type: type '<' type_expr '>'  {$$ = $1; ((TypeNode*)$$)->params.push_back(unique_ptr<TypeNode>((TypeNode*)$3));}
+generic_type: type '<' type_expr '>'  {$$ = $1; ((TypeNode*)$1)->params.push_back(unique_ptr<TypeNode>((TypeNode*)$3));}
             ;
 
 type: pointer_type  %prec STMT  {$$ = $1;}
@@ -336,11 +336,11 @@ trait_fn: modifier_list Fun fn_name ':' params RArrow type_expr   {$$ = mkFuncDe
         ;
 
 
-typevar_list: typevar_list ',' typevar  {setNext($1, $2); $$ = $1;}
-            | typevar                   {$$ = mkVarNode(@$, (char*)$1);}
+typevar_list: typevar_list ',' typevar  {$$ = setNext($1, mkTypeNode(@3, TT_TypeVar, (char*)$3));}
+            | typevar                   {$$ = setRoot(mkTypeNode(@$, TT_TypeVar, (char*)$1));}
             ;
 
-generic_params: '<' typevar_list '>' {$$ = $1;}
+generic_params: '<' typevar_list '>' {$$ = getRoot();}
               ;
 
 

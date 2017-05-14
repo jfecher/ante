@@ -473,11 +473,8 @@ Node* mkFuncDeclNode(LOC_TY loc, Node* s, Node *bn, Node* mods, Node* tExpr, Nod
 Node* mkDataDeclNode(LOC_TY loc, char* s, Node *p, Node* b){
     vector<unique_ptr<TypeNode>> params;
     while(p){
-        auto tn = new TypeNode(p->loc, TT_TypeVar, string(s) + "_" + ((VarNode*)p)->name, nullptr);
-        params.push_back(unique_ptr<TypeNode>(tn));
-        auto *nxt = p->next.get();
-        delete p;
-        p = nxt;
+        params.push_back(unique_ptr<TypeNode>((TypeNode*)p));
+        p = p->next.release();
     }
     return new DataDeclNode(loc, s, b, getTupleSize(b), params);
 }

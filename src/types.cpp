@@ -154,10 +154,10 @@ TypedValue* Compiler::implicitlyWidenNum(TypedValue *num, TypeTag castTy){
     bool lIsInt = isIntTypeTag(num->type->type);
     bool lIsFlt = isFPTypeTag(num->type->type);
 
-    if(lIsInt || lIsFlt){
+    if(lIsInt or lIsFlt){
         bool rIsInt = isIntTypeTag(castTy);
         bool rIsFlt = isFPTypeTag(castTy);
-        if(!rIsInt && !rIsFlt){
+        if(!rIsInt and !rIsFlt){
             cerr << "castTy argument of implicitlyWidenNum must be a numeric primitive type\n";
             exit(1);
         }
@@ -167,7 +167,7 @@ TypedValue* Compiler::implicitlyWidenNum(TypedValue *num, TypeTag castTy){
         Type *ty = typeTagToLlvmType(castTy, *ctxt);
 
         //integer widening
-        if(lIsInt && rIsInt){
+        if(lIsInt and rIsInt){
             if(lbw <= rbw){
                 return new TypedValue(
                     builder.CreateIntCast(num->val, ty, !isUnsignedTypeTag(num->type->type)),
@@ -176,7 +176,7 @@ TypedValue* Compiler::implicitlyWidenNum(TypedValue *num, TypeTag castTy){
             }
 
         //int -> flt, flt -> int is never implicit
-        }else if(lIsInt && rIsFlt){
+        }else if(lIsInt and rIsFlt){
             return new TypedValue(
                 isUnsignedTypeTag(num->type->type)
                     ? builder.CreateUIToFP(num->val, ty)
@@ -186,7 +186,7 @@ TypedValue* Compiler::implicitlyWidenNum(TypedValue *num, TypeTag castTy){
             );
 
         //float widening
-        }else if(lIsFlt && rIsFlt){
+        }else if(lIsFlt and rIsFlt){
             if(lbw < rbw){
                 return new TypedValue(
                     builder.CreateFPExt(num->val, ty),
@@ -233,17 +233,17 @@ void Compiler::implicitlyCastIntToInt(TypedValue **lhs, TypedValue **rhs){
 }
 
 bool isIntTypeTag(const TypeTag ty){
-    return ty==TT_I8||ty==TT_I16||ty==TT_I32||ty==TT_I64||
-           ty==TT_U8||ty==TT_U16||ty==TT_U32||ty==TT_U64||
-           ty==TT_Isz||ty==TT_Usz||ty==TT_C8;
+    return ty==TT_I8 or ty==TT_I16 or ty==TT_I32 or ty==TT_I64 or 
+           ty==TT_U8 or ty==TT_U16 or ty==TT_U32 or ty==TT_U64 or 
+           ty==TT_Isz or ty==TT_Usz or ty==TT_C8;
 }
 
 bool isFPTypeTag(const TypeTag tt){
-    return tt==TT_F16||tt==TT_F32||tt==TT_F64;
+    return tt==TT_F16 or tt==TT_F32 or tt==TT_F64;
 }
 
 bool isNumericTypeTag(const TypeTag ty){
-    return isIntTypeTag(ty) || isFPTypeTag(ty);
+    return isIntTypeTag(ty) or isFPTypeTag(ty);
 }
 
 /*
@@ -294,20 +294,20 @@ void Compiler::implicitlyCastFltToFlt(TypedValue **lhs, TypedValue **rhs){
 void Compiler::handleImplicitConversion(TypedValue **lhs, TypedValue **rhs){
     bool lIsInt = isIntTypeTag((*lhs)->type->type);
     bool lIsFlt = isFPTypeTag((*lhs)->type->type);
-    if(!lIsInt && !lIsFlt) return;
+    if(!lIsInt and !lIsFlt) return;
 
     bool rIsInt = isIntTypeTag((*rhs)->type->type);
     bool rIsFlt = isFPTypeTag((*rhs)->type->type);
-    if(!rIsInt && !rIsFlt) return;
+    if(!rIsInt and !rIsFlt) return;
 
     //both values are numeric, so forward them to the relevant casting method
-    if(lIsInt && rIsInt){
+    if(lIsInt and rIsInt){
         implicitlyCastIntToInt(lhs, rhs);  //implicit int -> int (widening)
-    }else if(lIsInt && rIsFlt){
+    }else if(lIsInt and rIsFlt){
         implicitlyCastIntToFlt(lhs, (*rhs)->getType()); //implicit int -> flt
-    }else if(lIsFlt && rIsInt){
+    }else if(lIsFlt and rIsInt){
         implicitlyCastIntToFlt(rhs, (*lhs)->getType()); //implicit int -> flt
-    }else if(lIsFlt && rIsFlt){
+    }else if(lIsFlt and rIsFlt){
         implicitlyCastFltToFlt(lhs, rhs); //implicit int -> flt
     }
 }
@@ -377,7 +377,7 @@ TypeTag llvmTypeToTypeTag(Type *t){
     if(t->isDoubleTy()) return TT_F64;
     
     if(t->isArrayTy()) return TT_Array;
-    if(t->isStructTy() && !t->isEmptyTy()) return TT_Tuple; /* Could also be a TT_Data! */
+    if(t->isStructTy() and !t->isEmptyTy()) return TT_Tuple; /* Could also be a TT_Data! */
     if(t->isPointerTy()) return TT_Ptr;
     if(t->isFunctionTy()) return TT_Function;
 
@@ -490,13 +490,13 @@ bool llvmTypeEq(Type *l, Type *r){
         Type *lty = l->getPointerElementType();
         Type *rty = r->getPointerElementType();
 
-        if(lty->isVoidTy() || rty->isVoidTy()) return true;
+        if(lty->isVoidTy() or rty->isVoidTy()) return true;
 
         return llvmTypeEq(lty, rty);
     }else if(ltt == TT_Array){
-        return l->getArrayElementType() == r->getArrayElementType() &&
+        return l->getArrayElementType() == r->getArrayElementType() and
                l->getArrayNumElements() == r->getArrayNumElements();
-    }else if(ltt == TT_Function || ltt == TT_MetaFunction){
+    }else if(ltt == TT_Function or ltt == TT_MetaFunction){
         int lParamCount = l->getFunctionNumParams();
         int rParamCount = r->getFunctionNumParams();
         
@@ -508,7 +508,7 @@ bool llvmTypeEq(Type *l, Type *r){
                 return false;
         } 
         return true;
-    }else if(ltt == TT_Tuple || ltt == TT_Data){
+    }else if(ltt == TT_Tuple or ltt == TT_Data){
         int lElemCount = l->getStructNumElements();
         int rElemCount = r->getStructNumElements();
         
@@ -540,7 +540,7 @@ bool extTysEq(const TypeNode *l, const TypeNode *r, TypeCheckResult *tcr, const 
     TypeNode *lExt = l->extTy.get();
     TypeNode *rExt = r->extTy.get();
 
-    while(lExt && rExt){
+    while(lExt and rExt){
         if(c){
             if(!typeEqHelper(c, lExt, rExt, tcr)) return tcr;
         }else{
@@ -581,7 +581,7 @@ TypeCheckResult typeEqBase(const TypeNode *l, const TypeNode *r, TypeCheckResult
         return tcr->setFailure();
 
     if(r->type == TT_Ptr){
-        if(l->extTy->type == TT_Void || r->extTy->type == TT_Void)
+        if(l->extTy->type == TT_Void or r->extTy->type == TT_Void)
             return tcr->setSuccess();
 
         return extTysEq(l, r, tcr, c);
@@ -742,7 +742,7 @@ TypeCheckResult Compiler::typeEq(vector<TypeNode*> l, vector<TypeNode*> r) const
  *        declared before non-primitive types in the TypeTag definition.
  */
 bool isPrimitiveTypeTag(TypeTag ty){
-    return ty >= TT_I8 && ty <= TT_Bool;
+    return ty >= TT_I8 and ty <= TT_Bool;
 }
 
 
@@ -807,7 +807,7 @@ string typeNodeToStr(const TypeNode *t){
             elem = (TypeNode*)elem->next.get();
         }
         return ret;
-    }else if(t->type == TT_Data || t->type == TT_TaggedUnion || t->type == TT_TypeVar){
+    }else if(t->type == TT_Data or t->type == TT_TaggedUnion or t->type == TT_TypeVar){
         string name = t->typeName;
         if(!t->params.empty()){
             name += "<";
@@ -818,13 +818,13 @@ string typeNodeToStr(const TypeNode *t){
             }
             name += ">";
         }
-        return t->typeName;
+        return name;
     }else if(t->type == TT_Array){
         auto *len = (IntLitNode*)t->extTy->next.get();
         return '[' + len->val + " " + typeNodeToStr(t->extTy.get()) + ']';
     }else if(t->type == TT_Ptr){
         return typeNodeToStr(t->extTy.get()) + "*";
-    }else if(t->type == TT_Function || t->type == TT_MetaFunction || t->type == TT_Method){
+    }else if(t->type == TT_Function or t->type == TT_MetaFunction or t->type == TT_Method){
         string ret = "(";
         string retTy = typeNodeToStr(t->extTy.get());
         TypeNode *cur = (TypeNode*)t->extTy->next.get();

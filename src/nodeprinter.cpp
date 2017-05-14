@@ -310,7 +310,19 @@ void FuncDeclNode::print(){
 }
 
 void DataDeclNode::print(){
-    cout << "type " << name << " = ";
+    cout << "type " << name;
+    if(!generics.empty()){
+        cout << "<";
+        for(size_t i = 0; i < generics.size(); i++){
+            cout << typeNodeToStr(generics[i].get());
+            if(i != generics.size()-1){
+                cout << typeNodeToStr(generics[i].get()) << ", ";
+            }
+        }
+        cout << ">";
+    }
+    cout << " = ";
+
     auto *nvn = (NamedValNode*)child.get();
 
     if(((TypeNode*)nvn->typeExpr.get())->type == TT_TaggedUnion){
