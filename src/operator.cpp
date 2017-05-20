@@ -581,7 +581,7 @@ TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *bino
         }else if(l.size() > 1){
             compErr("Multiple static methods of the same name with different parameters are currently unimplemented.  In the mean time, you can use global functions.", field->loc);
             for(auto &fd : l)
-                compErr("Candidate function", fd->fdn->loc, Note);
+                compErr("Candidate function", fd->fdn->loc, ErrorType::Note);
             return 0;
         }
 
@@ -653,7 +653,7 @@ TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *bino
         }else if(l.size() > 1){
             compErr("Multiple methods of the same name with different parameters are currently unimplemented.  In the mean time, you can use global functions.", field->loc);
             for(auto &fd : l)
-                compErr("Candidate function", fd->fdn->loc, Note);
+                compErr("Candidate function", fd->fdn->loc, ErrorType::Note);
             
             return 0;
         }else
@@ -1263,7 +1263,7 @@ TypedValue* checkForOperatorOverload(Compiler *c, TypedValue *lhs, int op, Typed
 TypedValue* compSequence(Compiler *c, BinOpNode *seq){
     try{
         seq->lval->compile(c);
-    }catch(CompilationError *e){
+    }catch(CtError *e){
         delete e;
     }
 

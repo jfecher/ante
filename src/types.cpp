@@ -16,6 +16,14 @@ char getBitWidthOfTypeTag(const TypeTag ty){
     }
 }
 
+/*
+ *  Returns the TypeNode* value of a TypedValue* of type TT_Type
+ */
+TypeNode* extractTypeValue(TypedValue* tv){
+    auto zext = dyn_cast<ConstantInt>(tv->val)->getZExtValue();
+    return (TypeNode*) zext;
+}
+
 unsigned int TypeNode::getSizeInBits(Compiler *c, string *incompleteType){
     int total = 0;
     TypeNode *ext = this->extTy.get();
@@ -27,7 +35,7 @@ unsigned int TypeNode::getSizeInBits(Compiler *c, string *incompleteType){
         auto *dataTy = c->lookupType(typeName);
         if(!dataTy){
             if(incompleteType and typeName == *incompleteType)
-                throw IncompleteTypeError();
+                throw new IncompleteTypeError();
 
             c->compErr("Type "+typeName+" has not been declared", loc);
             return 0;
@@ -48,7 +56,13 @@ unsigned int TypeNode::getSizeInBits(Compiler *c, string *incompleteType){
 
     //TODO: taking the size of a typevar should be an error
     }else if(type == TT_TypeVar){
-        return 64;
+        auto *var = c->lookup(typeName);
+        if(var and var->tval->type->type == TT_Type){
+            return extractTypeValue(var->tval.get())->getSizeInBits(c);
+        }
+
+        throw new TypeVarError();
+        //return 64;
     }
 
     return total;
@@ -351,11 +365,55 @@ Type* typeTagToLlvmType(TypeTag ty, LLVMContext &ctxt, string typeName){
         case TT_Bool:   return Type::getInt1Ty(ctxt);
         case TT_Void:   return Type::getVoidTy(ctxt);
         case TT_TypeVar:
-            return nullptr;
+            throw new IncompleteTypeError();
         default:
             cerr << "typeTagToLlvmType: Unknown/Unsupported TypeTag " << ty << ", returning nullptr.\n";
             return nullptr;
     }
+}
+
+TypeNode* getLargestExt(Compiler *c, TypeNode *tn){
+    TypeNode *largest = 0;
+    size_t largest_size = 0;
+    
+    TypeNode *cur = tn->extTy.get();
+    while(cur){
+        size_t size = cur->getSizeInBits(c);
+        if(size > largest_size){
+            largest = cur;
+            largest_size = size;
+        }
+
+        cur = (TypeNode*)cur->next.get();
+    }
+    return largest;
+}
+
+
+Type* updateLlvmTypeBinding(Compiler *c, DataType *dt, const vector<unique_ptr<TypeNode>> &bindings, string &name){
+    auto *cpy = deepCopyTypeNode(dt->tyn.get());
+    bindGenericToType(cpy, bindings);
+
+    //create an empty type first so we dont end up with infinite recursion
+    auto* structTy = StructType::create(*c->ctxt, name);
+    dt->llvmTypes[name] = structTy;
+
+    if(dt->tyn->type == TT_TaggedUnion)
+        cpy = mkTypeNodeWithExt(TT_Tuple, getLargestExt(c, cpy));
+
+    Type *llvmTy = c->typeNodeToLlvmType(cpy);
+
+
+    if(StructType *st = dyn_cast<StructType>(llvmTy)){
+        structTy->setBody(st->elements());
+    }else{
+        array<Type*,1> body;
+        body[0] = llvmTy;
+        structTy->setBody(body);
+    }
+
+    dt->llvmTypes[name] = structTy;
+    return structTy;
 }
 
 /*
@@ -392,7 +450,6 @@ TypeTag llvmTypeToTypeTag(Type *t){
 Type* Compiler::typeNodeToLlvmType(const TypeNode *tyNode){
     vector<Type*> tys;
     TypeNode *tyn = tyNode->extTy.get();
-    DataType *userType;
 
     switch(tyNode->type){
         case TT_Ptr:
@@ -409,26 +466,21 @@ Type* Compiler::typeNodeToLlvmType(const TypeNode *tyNode){
                 tyn = (TypeNode*)tyn->next.get();
             }
             return StructType::get(*ctxt, tys);
-        case TT_Data:
-            if(tyn){
-                while(tyn){
-                    tys.push_back(typeNodeToLlvmType(tyn));
-                    tyn = (TypeNode*)tyn->next.get();
-                }
-                return StructType::get(*ctxt, tys);
-            }else{
-                Type* t = module->getTypeByName(tyNode->typeName);
-                
-                if(!t){
-                    auto *dt = lookupType(tyNode->typeName);
-                    if(dt) return typeNodeToLlvmType(dt->tyn.get());
+        case TT_Data: case TT_TaggedUnion: {
+            auto *dt = lookupType(tyNode->typeName);
+            if(!dt)
+                compErr("Use of undeclared type " + tyNode->typeName, tyNode->loc);
 
-                    compErr("Use of undeclared type " + tyNode->typeName, tyNode->loc);
-                    return Type::getVoidTy(*ctxt);
-                }
+            string name = dt->name;
+            for(auto &p : tyNode->params)
+                name += "_" + typeNodeToStr(p.get());
 
-                return t;
+            try{
+                return dt->llvmTypes.at(name);
+            }catch(out_of_range r){
+                return updateLlvmTypeBinding(this, dt, tyNode->params, name);
             }
+        }
         case TT_Function: case TT_MetaFunction: {
             //ret ty is tyn from above
             //
@@ -440,7 +492,7 @@ Type* Compiler::typeNodeToLlvmType(const TypeNode *tyNode){
             }
 
             return FunctionType::get(typeNodeToLlvmType(tyn), tys, false)->getPointerTo();
-        }
+        } /*
         case TT_TaggedUnion:
             if(!tyn){
                 userType = lookupType(tyNode->typeName);
@@ -458,15 +510,15 @@ Type* Compiler::typeNodeToLlvmType(const TypeNode *tyNode){
                 tys.push_back(typeNodeToLlvmType(tyn));
                 tyn = (TypeNode*)tyn->next.get();
             }
-            return StructType::get(*ctxt, tys);
+            return StructType::get(*ctxt, tys); */
         case TT_TypeVar: {
             Variable *typeVar = lookup(tyNode->typeName);
             if(!typeVar){
                 //compErr("Use of undeclared type variable " + tyNode->typeName, tyNode->loc);
-                return Type::getVoidTy(*ctxt);
+                throw new IncompleteTypeError();
             }
-
-            return typeNodeToLlvmType(typeVar->tval->type.get());
+            
+            return typeNodeToLlvmType(extractTypeValue(typeVar->tval.get()));
         }
         default:
             return typeTagToLlvmType(tyNode->type, *ctxt);

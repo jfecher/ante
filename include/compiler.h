@@ -109,12 +109,15 @@ struct Trait {
 };
 
 struct DataType {
+    string name;
     vector<string> fields;
     vector<unique_ptr<UnionTag>> tags;
     vector<shared_ptr<Trait>> traitImpls;
     unique_ptr<TypeNode> tyn;
+    vector<unique_ptr<TypeNode>> generics;
+    map<string,Type*> llvmTypes;
 
-    DataType(const vector<string> &f, TypeNode *ty) : fields(f), tyn(ty){}
+    DataType(string n, const vector<string> &f, TypeNode *ty) : name(n), fields(f), tyn(ty){}
     ~DataType(){}
 
     int getFieldIndex(string &field) const {
@@ -288,7 +291,7 @@ namespace ante{
         TypedValue* compLogicalOr(Node *l, Node *r, BinOpNode *op);
         TypedValue* compLogicalAnd(Node *l, Node *r, BinOpNode *op);
        
-        TypedValue* compErr(ante::lazy_printer msg, const yy::location& loc, ErrorType t = Error);
+        TypedValue* compErr(ante::lazy_printer msg, const yy::location& loc, ErrorType t = ErrorType::Error);
 
         void jitFunction(Function *fnName);
         void importFile(const char *name, Node* locNode = 0);

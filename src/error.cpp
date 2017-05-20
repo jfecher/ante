@@ -117,11 +117,11 @@ void ante::error(const char* msg, const yy::location& loc, ErrorType t){
     cout << '\t' << flush;
     printErrorTypeColor(t);
 
-    if(t == Error)
+    if(t == ErrorType::Error)
         cout << "error: ";
-    else if(t == Warning)
+    else if(t == ErrorType::Warning)
         cout << "warning: ";
-    else if(t == Note)
+    else if(t == ErrorType::Note)
         cout << "note: ";
 
     clearColor();
@@ -138,11 +138,11 @@ namespace ante {
         cout << '\t' << flush;
         printErrorTypeColor(t);
 
-        if(t == Error)
+        if(t == ErrorType::Error)
             cout << "error: ";
-        else if(t == Warning)
+        else if(t == ErrorType::Warning)
             cout << "warning: ";
-        else if(t == Note)
+        else if(t == ErrorType::Note)
             cout << "note: ";
 
         clearColor();
@@ -159,8 +159,11 @@ namespace ante {
  */
 TypedValue* Compiler::compErr(ante::lazy_printer msg, const yy::location& loc, ErrorType t){
     error(msg, loc, t);
-    errFlag = t == ErrorType::Error;
-    throw new CompilationError(msg, loc);
+    if(t == ErrorType::Error){
+        errFlag = true;
+        throw new CompilationError(msg, loc);
+    }
+    return nullptr;
 }
 
 

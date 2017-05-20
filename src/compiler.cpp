@@ -140,7 +140,7 @@ void scanImports(Compiler *c, RootNode *r){
     for(auto &n : r->imports){
         try{
             n->compile(c);
-        }catch(CompilationError *e){
+        }catch(CtError *e){
             delete e;
         }
     }
@@ -191,7 +191,7 @@ TypedValue* compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
         try{
             val = n->compile(c);
             valNode = n.get();
-        }catch(CompilationError *e){
+        }catch(CtError *e){
             delete e;
         }
     }
@@ -927,7 +927,7 @@ TypedValue* ExtNode::compile(Compiler *c){
         if(typeExpr->typeName.empty()){ //primitive type being extended
             dt = c->lookupType(typestr);
             if(!dt){ //if primitive type has not been extended before, make it a DataType to store in
-                dt = new DataType({/*no fields*/}, deepCopyTypeNode(typeExpr.get()));
+                dt = new DataType(typestr, {/*no fields*/}, deepCopyTypeNode(typeExpr.get()));
                 c->stoType(dt, typestr);
             }
         }else{
@@ -992,23 +992,6 @@ bool Compiler::typeImplementsTrait(DataType* dt, string traitName) const{
 }
 
 
-void declareDataType(Compiler *c, DataType *dt){
-    vector<Type*> fields;
-    string name = dt->tyn->typeName;
-
-    TypeNode *ext = dt->tyn->type == TT_Tuple or dt->tyn->type == TT_TaggedUnion ?
-                    dt->tyn->extTy.get() :
-                    dt->tyn.get();
-
-    while(ext){
-        fields.push_back(c->typeNodeToLlvmType(ext));
-        ext = (TypeNode*)ext->next.get();
-    }
-
-    StructType::create(*c->ctxt, fields, name);
-}
-
-
 TypedValue* compTaggedUnion(Compiler *c, DataDeclNode *n){
     vector<string> fieldNames;
     fieldNames.reserve(n->fields);
@@ -1019,55 +1002,60 @@ TypedValue* compTaggedUnion(Compiler *c, DataDeclNode *n){
     union_name.push_back(n->name);
 
     vector<unique_ptr<UnionTag>> tags;
-    unsigned int largestTyIdx = 0;
-    unsigned int largestTySz = 0;
-    int i = 0;
+    
+    //hotfix for generic types: bind each generic to void and retranslate when a concrete type is given
+    //TODO: implement fully lazy translation
+    TypeNode *voidTy = mkAnonTypeNode(TT_Void);    
+    if(!n->generics.empty()){
+        for(auto &tn : n->generics){
+            auto *tv = new TypedValue(c->builder.getInt64((uint64_t)voidTy), mkAnonTypeNode(TT_Type));
+            auto  *v = new Variable(tn->typeName, tv, c->scope);
+            c->stoVar(tn->typeName, v);
+        }
+    }
+
+    TypeNode *unionTy = mkAnonTypeNode(TT_TaggedUnion);
+    TypeNode *curExt = 0;
 
     while(nvn){
         TypeNode *tyn = (TypeNode*)nvn->typeExpr.get();
         UnionTag *tag = new UnionTag(nvn->name, deepCopyTypeNode(tyn->extTy.get()), tags.size());
+        
 
         tags.push_back(unique_ptr<UnionTag>(tag));
 
         //Each union member's type is a tuple of the tag, a u8 value, and the user-defined value
         TypeNode *tagTy = deepCopyTypeNode(tyn->extTy.get());
-
-        try{
-            auto size = tagTy ? tagTy->getSizeInBits(c, &n->name) : 0;
+        TypeNode *variant = mkAnonTypeNode(TT_U8);
+        variant->next.reset(tagTy);
         
-            if(size > largestTySz){
-                largestTySz = size;
-                largestTyIdx = i;
-            }
-        }catch(IncompleteTypeError e){
-            return c->compErr("Cannot define a recursive type", tyn->loc);
-        }
-
-        DataType *data = new DataType(union_name, tagTy);
-        //declareDataType(c, data);
-
+        DataType *data = new DataType(nvn->name, union_name, deepCopyTypeNode(tagTy));
         c->stoType(data, nvn->name);
 
+        if(curExt){
+            curExt->next.reset(variant);
+            curExt = variant;
+        }else{
+            unionTy->extTy.reset(variant);
+            curExt = variant;
+        }
+
+        try{
+            if(tagTy) tagTy->getSizeInBits(c, &n->name);
+        }catch(IncompleteTypeError *e){
+            delete e;
+            return c->compErr("Cannot define a recursive type", tyn->loc);
+        }catch(TypeVarError *e){
+            delete e;
+            return c->compErr("Typevar not bound in expression", tyn->loc);
+        }
+
+
         nvn = (NamedValNode*)nvn->next.get();
-        i += 1;
     }
 
-    //use the largest union member's type as the union's type as a whole
-    TypeNode *unionTy;
-
-    //check if this is a tagged union, or just a normal enum where the largest contained type is 0 bits
-    if(largestTySz == 0){
-        unionTy = mkAnonTypeNode(TT_U8);
-    }else{
-        auto *largestTyn = largestTySz == 0 ? 0 : deepCopyTypeNode(tags[largestTyIdx]->tyn.get());
-        unionTy = mkAnonTypeNode(TT_Tuple);
-        unionTy->extTy.reset(mkAnonTypeNode(TT_U8));
-        unionTy->extTy->next.reset(largestTyn);
-    }
-    
     unionTy->typeName = n->name;
-    DataType *data = new DataType(fieldNames, unionTy);
-    declareDataType(c, data);
+    DataType *data = new DataType(n->name, fieldNames, unionTy);
 
     data->tags.swap(tags); 
     c->stoType(data, n->name);
@@ -1076,11 +1064,14 @@ TypedValue* compTaggedUnion(Compiler *c, DataDeclNode *n){
 
 
 TypedValue* DataDeclNode::compile(Compiler *c){
-    //check for redeclaration
     auto *dt = c->lookupType(this->name);
     if(dt) return c->compErr("Type " + name + " was redefined", loc);
+    
+    auto *nvn = (NamedValNode*)child.get();
+    if(((TypeNode*) nvn->typeExpr.get())->type == TT_TaggedUnion){
+        return compTaggedUnion(c, this);
+    }
 
-    StructType *structTy = StructType::create(*c->ctxt, name);
 
     vector<string> fieldNames;
     vector<Type*> fieldTypes;
@@ -1091,18 +1082,29 @@ TypedValue* DataDeclNode::compile(Compiler *c){
     TypeNode *first = 0;
     TypeNode *nxt = 0;
 
-    auto *nvn = (NamedValNode*)child.get();
-    if(((TypeNode*) nvn->typeExpr.get())->type == TT_TaggedUnion){
-        return compTaggedUnion(c, this);
+    //hotfix for generic types: bind each generic to void and retranslate when a concrete type is given
+    //TODO: implement fully lazy translation
+    TypeNode *voidTy = mkAnonTypeNode(TT_Void);    
+    if(!generics.empty()){
+        for(auto &tn : generics){
+            auto *tv = new TypedValue(c->builder.getInt64((uint64_t)voidTy), mkAnonTypeNode(TT_Type));
+            auto  *v = new Variable(tn->typeName, tv, c->scope);
+            c->stoVar(tn->typeName, v);
+        }
     }
-        
+
+   
     while(nvn){
         TypeNode *tyn = (TypeNode*)nvn->typeExpr.get();
   
         try{
             tyn->getSizeInBits(c, &name);
-        }catch(IncompleteTypeError e){
+        }catch(IncompleteTypeError *e){
+            delete e;
             return c->compErr("Cannot define a recursive type", tyn->loc);
+        }catch(TypeVarError *e){
+            delete e;
+            return c->compErr("Typevar not bound in expression", tyn->loc);
         }
 
         if(first){
@@ -1125,8 +1127,8 @@ TypedValue* DataDeclNode::compile(Compiler *c){
                       ? mkTypeNodeWithExt(TT_Tuple, first)
                       : first;
 
-    DataType *data = new DataType(fieldNames, dataTyn);
-    structTy->setBody(fieldTypes);
+    DataType *data = new DataType(name, fieldNames, dataTyn);
+    data->generics = move(generics);
 
     c->stoType(data, name);
     return c->getVoidLiteral();
@@ -1216,7 +1218,7 @@ TypedValue* MatchNode::compile(Compiler *c){
         c->builder.SetInsertPoint(br);
         c->enterNewScope();
 
-        //TypeCast-esque pattern:  Maybe n
+        //TypeCast-esque pattern:  Some n
         if(TypeCastNode *tn = dynamic_cast<TypeCastNode*>(mbn->pattern.get())){
             auto *tagTy = c->lookupType(tn->typeExpr->typeName);
             if(!tagTy)
@@ -1233,7 +1235,7 @@ TypedValue* MatchNode::compile(Compiler *c){
                 auto *alloca = c->builder.CreateAlloca(lval->getType());
                 c->builder.CreateStore(lval->val, alloca);
 
-                //If this is a generic type cast like Some 't, the 't must be binded to a concrete type first
+                //If this is a generic type cast like Some 't, the 't must be bound to a concrete type first
                 auto *tagtycpy = deepCopyTypeNode(tagTy->tyn.get());
                 
                 auto *structty = mkTypeNodeWithExt(lval->type->type, mkAnonTypeNode(TT_U8));
@@ -1443,8 +1445,13 @@ Node* mkPlaceholderNode(){
 void Compiler::scanAllDecls(RootNode *root){
     auto *n = root ? root : ast.get();
 
+    for(auto& f : n->types) try{
+        f->compile(this);
+    }catch(CtError *e){
+        delete e;
+    }
+
     for(auto& f : n->funcs) f->compile(this);
-    for(auto& f : n->types) f->compile(this);
     for(auto& f : n->traits) f->compile(this);
     for(auto& f : n->extensions) f->compile(this);
 }
@@ -1527,7 +1534,7 @@ TypedValue* RootNode::compile(Compiler *c){
     for(auto &n : main){
         try{
             ret = n->compile(c);
-        }catch(CompilationError *e){
+        }catch(CtError *e){
             delete e;
         }
     }

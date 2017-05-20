@@ -30,8 +30,6 @@ LOC_TY mkLoc(yy::position begin, yy::position end);
 struct TypedValue;
 namespace ante { struct Compiler; }
 
-//Exception thrown when trying to take the size of an incomplete recursive type
-struct IncompleteTypeError{};
 
 /* Base class for all nodes */
 struct Node{
