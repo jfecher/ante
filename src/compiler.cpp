@@ -89,6 +89,15 @@ TypedValue* ModNode::compile(Compiler *c){
 }
 
 
+Variable* stoTypeVar(Compiler *c, TypeNode *val, string name){
+    Value *addr = c->builder.getInt64((unsigned long)val);
+    TypedValue *tv = new TypedValue(addr, mkAnonTypeNode(TT_Type));
+    Variable *var = new Variable(name, tv, c->scope);
+    c->stoVar(name, var);
+    return var;
+}
+
+
 TypedValue* TypeNode::compile(Compiler *c){
     //check for enum value
     if(type == TT_Data || type == TT_TaggedUnion){
@@ -99,7 +108,14 @@ TypedValue* TypeNode::compile(Compiler *c){
         if(!unionDataTy) goto rettype;
 
         Value *tag = ConstantInt::get(*c->ctxt, APInt(8, unionDataTy->getTagVal(typeName), true));
-        auto *ty = deepCopyTypeNode(unionDataTy->tyn.get());
+        auto *ty = copy(unionDataTy->tyn);
+
+        if(!unionDataTy->generics.empty()){
+            for(auto &tn : unionDataTy->generics){
+                TypeNode *v = mkTypeNodeWithExt(TT_Ptr, mkAnonTypeNode(TT_Void));
+                stoTypeVar(c, v, tn->typeName);
+            }
+        }
 
         Type *unionTy = c->typeNodeToLlvmType(ty);
         Type *curTy = tag->getType();
@@ -119,7 +135,7 @@ TypedValue* TypeNode::compile(Compiler *c){
 
 rettype:
     //return the type as a value
-    auto *cpy = deepCopyTypeNode(this);
+    auto *cpy = copy(this);
 
     //The TypeNode* address is wrapped in an llvm int so that llvm::Value methods can be called
     //without crashing, even if their result is meaningless
@@ -688,7 +704,7 @@ TypedValue* VarDeclNode::compile(Compiler *c){
 
     //the type held by this node will be deleted when the parse tree is, so copy
     //this one so it is not double freed
-    tyNode = deepCopyTypeNode(tyNode);
+    tyNode = copy(tyNode);
 
     Type *ty = c->typeNodeToLlvmType(tyNode);
 
@@ -927,7 +943,7 @@ TypedValue* ExtNode::compile(Compiler *c){
         if(typeExpr->typeName.empty()){ //primitive type being extended
             dt = c->lookupType(typestr);
             if(!dt){ //if primitive type has not been extended before, make it a DataType to store in
-                dt = new DataType(typestr, {/*no fields*/}, deepCopyTypeNode(typeExpr.get()));
+                dt = new DataType(typestr, {/*no fields*/}, copy(typeExpr));
                 c->stoType(dt, typestr);
             }
         }else{
@@ -1019,26 +1035,28 @@ TypedValue* compTaggedUnion(Compiler *c, DataDeclNode *n){
 
     while(nvn){
         TypeNode *tyn = (TypeNode*)nvn->typeExpr.get();
-        UnionTag *tag = new UnionTag(nvn->name, deepCopyTypeNode(tyn->extTy.get()), tags.size());
-        
+        UnionTag *tag = new UnionTag(nvn->name, copy(tyn->extTy), tags.size());
 
         tags.push_back(unique_ptr<UnionTag>(tag));
 
         //Each union member's type is a tuple of the tag, a u8 value, and the user-defined value
-        TypeNode *tagTy = deepCopyTypeNode(tyn->extTy.get());
+        TypeNode *tagTy = tyn->extTy.get();
         TypeNode *variant = mkAnonTypeNode(TT_U8);
         variant->next.reset(tagTy);
-        
-        DataType *data = new DataType(nvn->name, union_name, deepCopyTypeNode(tagTy));
+        TypeNode *tup = mkTypeNodeWithExt(TT_Tuple, variant);
+
+        DataType *data = new DataType(nvn->name, union_name, copy(tagTy));
         c->stoType(data, nvn->name);
 
+        TypeNode *tupCpy = copy(tup);
         if(curExt){
-            curExt->next.reset(variant);
-            curExt = variant;
+            curExt->next.reset(tupCpy);
         }else{
-            unionTy->extTy.reset(variant);
-            curExt = variant;
+            unionTy->extTy.reset(tupCpy);
         }
+        curExt = tupCpy;
+        variant->next.release();
+        delete tup;
 
         try{
             if(tagTy) tagTy->getSizeInBits(c, &n->name);
@@ -1050,14 +1068,14 @@ TypedValue* compTaggedUnion(Compiler *c, DataDeclNode *n){
             return c->compErr("Typevar not bound in expression", tyn->loc);
         }
 
-
         nvn = (NamedValNode*)nvn->next.get();
     }
 
     unionTy->typeName = n->name;
     DataType *data = new DataType(n->name, fieldNames, unionTy);
-
+    data->generics = move(n->generics);
     data->tags.swap(tags); 
+
     c->stoType(data, n->name);
     return c->getVoidLiteral();
 }
@@ -1108,10 +1126,10 @@ TypedValue* DataDeclNode::compile(Compiler *c){
         }
 
         if(first){
-            nxt->next.reset(deepCopyTypeNode(tyn));
+            nxt->next.reset(copy(tyn));
             nxt = (TypeNode*)nxt->next.get();
         }else{
-            first = deepCopyTypeNode(tyn);
+            first = copy(tyn);
             nxt = first;
         }
 
@@ -1236,7 +1254,7 @@ TypedValue* MatchNode::compile(Compiler *c){
                 c->builder.CreateStore(lval->val, alloca);
 
                 //If this is a generic type cast like Some 't, the 't must be bound to a concrete type first
-                auto *tagtycpy = deepCopyTypeNode(tagTy->tyn.get());
+                auto *tagtycpy = copy(tagTy->tyn);
                 
                 auto *structty = mkTypeNodeWithExt(lval->type->type, mkAnonTypeNode(TT_U8));
                 structty->typeName = lval->type->typeName;

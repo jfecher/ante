@@ -348,8 +348,10 @@ bool typeHasExtData(TypeTag t){
     
 }
 
+TypeNode* copy(const unique_ptr<TypeNode> &n);
+
 //helper function to deep-copy TypeNodes.  Used in mkNamedValNode
-TypeNode* deepCopyTypeNode(const TypeNode *n){
+TypeNode* copy(const TypeNode *n){
     if(!n) return 0;
 
     auto loc = copyLoc(n->loc);
@@ -357,7 +359,7 @@ TypeNode* deepCopyTypeNode(const TypeNode *n){
 
     //arrays can have an IntLit in their extTy so handle them specially
     if(n->type == TT_Array){
-        cpy->extTy.reset(deepCopyTypeNode(n->extTy.get()));
+        cpy->extTy.reset(copy(n->extTy));
 
         auto *len = (IntLitNode*)n->extTy->next.get();
         if(len){
@@ -369,11 +371,11 @@ TypeNode* deepCopyTypeNode(const TypeNode *n){
         TypeNode *nxt = n->extTy.get();
         if(!nxt) return cpy;
 
-        TypeNode *ext = deepCopyTypeNode(nxt);
+        TypeNode *ext = copy(nxt);
         cpy->extTy.reset(ext);
 
         while((nxt = static_cast<TypeNode*>(nxt->next.get()))){
-            ext->next.reset(deepCopyTypeNode(nxt));
+            ext->next.reset(copy(nxt));
             ext = static_cast<TypeNode*>(ext->next.get());
         }
     }
@@ -383,7 +385,7 @@ TypeNode* deepCopyTypeNode(const TypeNode *n){
     //if n has type params, copy them too
     if(!n->params.empty()){
         for(auto& tn : n->params){
-            auto param = unique_ptr<TypeNode>(deepCopyTypeNode(tn.get()));
+            auto param = unique_ptr<TypeNode>(copy(tn));
             cpy->params.push_back(move(param));
         }
     }
@@ -395,6 +397,10 @@ TypeNode* deepCopyTypeNode(const TypeNode *n){
         cpy->modifiers.push_back(m);
 
     return cpy;
+}
+
+TypeNode* copy(const unique_ptr<TypeNode> &n){
+    return copy(n.get());
 }
 
 
@@ -415,7 +421,7 @@ Node* mkNamedValNode(LOC_TY loc, Node* varNodes, Node* tExpr, Node* prev){
     else setNext(prev, first);
 
     while((vn = (VarNode*)vn->next.get())){
-        TypeNode *tyNode = deepCopyTypeNode(ty);
+        TypeNode *tyNode = copy(ty);
         LOC_TY loccpy = copyLoc(vn->loc);
 
         nxt->next.reset(new NamedValNode(loccpy, vn->name, tyNode));

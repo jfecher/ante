@@ -22,10 +22,10 @@ TypeNode* toTypeNodeList(vector<TypedValue*> &args){
     
     for(auto *arg : args){
         if(listBegin){
-            listCur->next.reset(deepCopyTypeNode(arg->type.get()));
+            listCur->next.reset(copy(arg->type));
             listCur = (TypeNode*)listCur->next.get();
         }else{
-            listBegin = deepCopyTypeNode(arg->type.get());
+            listBegin = copy(arg->type);
             listCur = listBegin;
         }
     }
@@ -142,7 +142,7 @@ TypeNode* validateReturns(Compiler *c, FuncDecl *fd, TypeNode *retTy = 0){
         }
     }
 
-    return deepCopyTypeNode(matchTy);
+    return copy(matchTy);
 }
 
 
@@ -188,16 +188,16 @@ TypedValue* Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
         TypeNode *paramTyNode = (TypeNode*)cParam->typeExpr.get();
         addArgAttrs(arg, paramTyNode);
 
-        stoVar(cParam->name, new Variable(cParam->name, new TypedValue(&arg, deepCopyTypeNode(paramTyNode)), this->scope,
+        stoVar(cParam->name, new Variable(cParam->name, new TypedValue(&arg, copy(paramTyNode)), this->scope,
                         /*nofree =*/ true, /*autoDeref = */implicitPassByRef(paramTyNode)));
 
         preArgs.push_back(&arg);
 
         if(curTyn){
-            curTyn->next.reset(deepCopyTypeNode(paramTyNode));
+            curTyn->next.reset(copy(paramTyNode));
             curTyn = (TypeNode*)curTyn->next.get();
         }else{
-            fakeFnTyn->extTy->next.reset(deepCopyTypeNode(paramTyNode));
+            fakeFnTyn->extTy->next.reset(copy(paramTyNode));
             curTyn = (TypeNode*)fakeFnTyn->extTy->next.get();
         }
         if(!(cParam = (NamedValNode*)cParam->next.get())) break;
@@ -209,8 +209,13 @@ TypedValue* Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
         updateFn(fakeFnTv, fdn->basename, fdn->name);
 
     //actually compile the function, and hold onto the last value
-    TypedValue *v = fdn->child->compile(this);
-    if(!v) return 0;
+    TypedValue *v = 0;
+    try{
+        v = fdn->child->compile(this);
+    }catch(CtError *e){
+        delete e;
+        return 0;
+    }
 
     //End of the function, discard the function's scope.
     exitScope();
@@ -243,7 +248,7 @@ TypedValue* Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
     //prepend the ret type to the function's type node node extension list.
     //(A typenode represents functions by having the first extTy as the ret type,
     //and the (optional) next types in the list as the parameter types)
-    TypeNode *newFnTyn = deepCopyTypeNode(fakeFnTyn);
+    TypeNode *newFnTyn = copy(fakeFnTyn);
     TypeNode *params = (TypeNode*)newFnTyn->extTy->next.release();
 
     retTy->next.reset(params);
@@ -292,11 +297,11 @@ vector<llvm::Argument*> buildArguments(FunctionType *ft){
  */
 TypeNode* createFnTyNode(NamedValNode *params, TypeNode *retTy){
     TypeNode *fnTy = mkAnonTypeNode(TT_Function);
-    fnTy->extTy.reset(retTy ? deepCopyTypeNode(retTy) : mkAnonTypeNode(TT_Void));
+    fnTy->extTy.reset(retTy ? copy(retTy) : mkAnonTypeNode(TT_Void));
 
     TypeNode *curTyn = fnTy->extTy.get();
     while(params && params->typeExpr.get()){
-        curTyn->next.reset(deepCopyTypeNode((TypeNode*)params->typeExpr.get()));
+        curTyn->next.reset(copy((TypeNode*)params->typeExpr.get()));
         curTyn = (TypeNode*)curTyn->next.get();
         params = (NamedValNode*)params->next.get();
     }
@@ -374,7 +379,7 @@ TypedValue* compFnHelper(Compiler *c, FuncDecl *fd){
         fdn->varargs = true;
         paramTys.pop_back();
     }
-    
+
     if(!retNode){
         auto *ret = c->compLetBindingFn(fd, paramTys);
         c->builder.SetInsertPoint(caller);
@@ -419,7 +424,7 @@ TypedValue* compFnHelper(Compiler *c, FuncDecl *fd){
         for(auto &arg : f->args()){
             TypeNode *paramTyNode = (TypeNode*)cParam->typeExpr.get();
 
-            c->stoVar(cParam->name, new Variable(cParam->name, new TypedValue(&arg, deepCopyTypeNode(paramTyNode)),
+            c->stoVar(cParam->name, new Variable(cParam->name, new TypedValue(&arg, copy(paramTyNode)),
                         c->scope, /*nofree = */true, /*autoDeref = */implicitPassByRef(paramTyNode)));
             
             if(!(cParam = (NamedValNode*)cParam->next.get())) break;
@@ -429,7 +434,7 @@ TypedValue* compFnHelper(Compiler *c, FuncDecl *fd){
         TypedValue *v;
         try{
             v = fdn->child->compile(c);
-        }catch(CompilationError *e){
+        }catch(CtError *e){
             c->builder.SetInsertPoint(caller);
             throw e;
         }
@@ -497,10 +502,10 @@ TypedValue* compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, TypeN
         c->stoVar(pair.first, new Variable(pair.first, type_var, c->scope));
     }
 
-    TypeNode *argscpy = deepCopyTypeNode(args);
+    TypeNode *argscpy = copy(args);
     TypeNode *cur = argscpy;
     while((args = (TypeNode*)args->next.get())){
-        cur->next.reset(deepCopyTypeNode((TypeNode*)args));
+        cur->next.reset(copy((TypeNode*)args));
         cur = (TypeNode*)cur->next.get();
     }
 
@@ -646,10 +651,10 @@ TypeNode* toList(vector<TypeNode*> &nodes){
 
     for(auto node : nodes){
         if(begin){
-            cur->next.reset( deepCopyTypeNode(node) );
+            cur->next.reset(copy(node));
             cur = (TypeNode*)cur->next.get();
         }else{
-            begin = deepCopyTypeNode(node);
+            begin = copy(node);
             cur = begin;
         }
     }

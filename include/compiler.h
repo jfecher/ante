@@ -19,7 +19,8 @@ using namespace llvm;
 using namespace std;
 
 
-extern TypeNode* deepCopyTypeNode(const TypeNode*);
+extern TypeNode* copy(const TypeNode*);
+extern TypeNode* copy(const unique_ptr<TypeNode>&);
 
 /*
  *  Used for storage of additional information, such as signedness,
@@ -30,7 +31,7 @@ struct TypedValue {
     unique_ptr<TypeNode> type;
 
     TypedValue(Value *v, TypeNode *ty) : val(v), type(ty){}
-    TypedValue(Value *v, unique_ptr<TypeNode> &ty) : val(v), type(deepCopyTypeNode(ty.get())){}
+    TypedValue(Value *v, unique_ptr<TypeNode> &ty) : val(v), type(copy(ty)){}
     
     Type* getType() const{ return val->getType(); }
     bool hasModifier(int m) const{ return type->hasModifier(m); }

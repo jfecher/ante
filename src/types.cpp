@@ -34,8 +34,10 @@ unsigned int TypeNode::getSizeInBits(Compiler *c, string *incompleteType){
     if(type == TT_Data){
         auto *dataTy = c->lookupType(typeName);
         if(!dataTy){
-            if(incompleteType and typeName == *incompleteType)
+            if(incompleteType and typeName == *incompleteType){
+                c->compErr("Incomplete Type", loc);
                 throw new IncompleteTypeError();
+            }
 
             c->compErr("Type "+typeName+" has not been declared", loc);
             return 0;
@@ -57,10 +59,11 @@ unsigned int TypeNode::getSizeInBits(Compiler *c, string *incompleteType){
     //TODO: taking the size of a typevar should be an error
     }else if(type == TT_TypeVar){
         auto *var = c->lookup(typeName);
-        if(var and var->tval->type->type == TT_Type){
+        if(var){
             return extractTypeValue(var->tval.get())->getSizeInBits(c);
         }
 
+        c->compErr("TypeVarError; lookup for "+typeName+" not found", loc);
         throw new TypeVarError();
         //return 64;
     }
@@ -70,7 +73,7 @@ unsigned int TypeNode::getSizeInBits(Compiler *c, string *incompleteType){
 
 
 void bind(TypeNode *type_var, const unique_ptr<TypeNode> &concrete_ty){
-    auto *cpy = deepCopyTypeNode(concrete_ty.get());
+    auto *cpy = copy(concrete_ty);
     type_var->type = cpy->type;
     type_var->typeName = cpy->typeName;
     type_var->params = move(cpy->params);
@@ -119,7 +122,7 @@ void bindGenericToType(TypeNode *tn, const vector<unique_ptr<TypeNode>> &binding
 
     if(tn->params.empty())
         for(auto& b : bindings)
-            tn->params.push_back(unique_ptr<TypeNode>(deepCopyTypeNode(b.get())));
+            tn->params.push_back(unique_ptr<TypeNode>(copy(b)));
 
     bindGenericToType_helper(tn, bindings);
 }
@@ -130,7 +133,7 @@ void bindGenericToType(TypeNode *tn, const vector<pair<string, unique_ptr<TypeNo
     
     if(tn->params.empty())
         for(auto& p : bindings)
-            tn->params.push_back(unique_ptr<TypeNode>(deepCopyTypeNode(p.second.get())));
+            tn->params.push_back(unique_ptr<TypeNode>(copy(p.second)));
 
     bindGenericToType_helper(tn, bindings);
 }
@@ -147,7 +150,7 @@ void Compiler::expand(TypeNode *tn){
         auto *dt = lookupType(tn->typeName);
         if(!dt) return;
 
-        auto *cpy = deepCopyTypeNode(dt->tyn.get());
+        auto *cpy = copy(dt->tyn);
         tn->extTy.reset(cpy->extTy.release());
         ext = tn->extTy.get();
 
@@ -230,7 +233,7 @@ void Compiler::implicitlyCastIntToInt(TypedValue **lhs, TypedValue **rhs){
         if(lbw < rbw){
             auto *ret = new TypedValue(
                 builder.CreateIntCast((*lhs)->val, (*rhs)->getType(), !isUnsignedTypeTag((*lhs)->type->type)),
-                deepCopyTypeNode((*rhs)->type.get())
+                copy((*rhs)->type)
             );
             
             *lhs = ret;
@@ -238,7 +241,7 @@ void Compiler::implicitlyCastIntToInt(TypedValue **lhs, TypedValue **rhs){
         }else{//lbw > rbw
             auto *ret = new TypedValue(
                 builder.CreateIntCast((*rhs)->val, (*lhs)->getType(), !isUnsignedTypeTag((*rhs)->type->type)),
-                deepCopyTypeNode((*lhs)->type.get())
+                copy((*lhs)->type)
             );
 
             *rhs = ret;
@@ -288,13 +291,13 @@ void Compiler::implicitlyCastFltToFlt(TypedValue **lhs, TypedValue **rhs){
         if(lbw < rbw){
             auto *ret = new TypedValue(
                 builder.CreateFPExt((*lhs)->val, (*rhs)->getType()),
-                deepCopyTypeNode((*rhs)->type.get())
+                copy((*rhs)->type)
             );
             *lhs = ret;
         }else{//lbw > rbw
             auto *ret = new TypedValue(
                 builder.CreateFPExt((*rhs)->val, (*lhs)->getType()),
-                deepCopyTypeNode((*lhs)->type.get())
+                copy((*lhs)->type)
             );
             *rhs = ret;
         }
@@ -365,7 +368,7 @@ Type* typeTagToLlvmType(TypeTag ty, LLVMContext &ctxt, string typeName){
         case TT_Bool:   return Type::getInt1Ty(ctxt);
         case TT_Void:   return Type::getVoidTy(ctxt);
         case TT_TypeVar:
-            throw new IncompleteTypeError();
+            throw new TypeVarError();
         default:
             cerr << "typeTagToLlvmType: Unknown/Unsupported TypeTag " << ty << ", returning nullptr.\n";
             return nullptr;
@@ -375,7 +378,7 @@ Type* typeTagToLlvmType(TypeTag ty, LLVMContext &ctxt, string typeName){
 TypeNode* getLargestExt(Compiler *c, TypeNode *tn){
     TypeNode *largest = 0;
     size_t largest_size = 0;
-    
+
     TypeNode *cur = tn->extTy.get();
     while(cur){
         size_t size = cur->getSizeInBits(c);
@@ -391,7 +394,7 @@ TypeNode* getLargestExt(Compiler *c, TypeNode *tn){
 
 
 Type* updateLlvmTypeBinding(Compiler *c, DataType *dt, const vector<unique_ptr<TypeNode>> &bindings, string &name){
-    auto *cpy = deepCopyTypeNode(dt->tyn.get());
+    auto *cpy = copy(dt->tyn);
     bindGenericToType(cpy, bindings);
 
     //create an empty type first so we dont end up with infinite recursion
@@ -399,7 +402,7 @@ Type* updateLlvmTypeBinding(Compiler *c, DataType *dt, const vector<unique_ptr<T
     dt->llvmTypes[name] = structTy;
 
     if(dt->tyn->type == TT_TaggedUnion)
-        cpy = mkTypeNodeWithExt(TT_Tuple, getLargestExt(c, cpy));
+        cpy = getLargestExt(c, cpy);
 
     Type *llvmTy = c->typeNodeToLlvmType(cpy);
 
@@ -515,7 +518,8 @@ Type* Compiler::typeNodeToLlvmType(const TypeNode *tyNode){
             Variable *typeVar = lookup(tyNode->typeName);
             if(!typeVar){
                 //compErr("Use of undeclared type variable " + tyNode->typeName, tyNode->loc);
-                throw new IncompleteTypeError();
+                compErr("tn2llvmt: TypeVarError; lookup for "+tyNode->typeName+" not found", tyNode->loc);
+                throw new TypeVarError();
             }
             
             return typeNodeToLlvmType(extractTypeValue(typeVar->tval.get()));
@@ -753,7 +757,7 @@ TypeCheckResult typeEqHelper(const Compiler *c, const TypeNode *l, const TypeNod
             auto *tv = tcr->getBindingFor(typeVar->typeName);
             if(!tv){
                 //make binding for type var to type of nonTypeVar
-                auto nontvcpy = unique_ptr<TypeNode>(deepCopyTypeNode(nonTypeVar));
+                auto nontvcpy = unique_ptr<TypeNode>(copy(nonTypeVar));
                 tcr->bindings.push_back({typeVar->typeName, move(nontvcpy)});
                 
                 return tcr->setSuccessWithTypeVars();
