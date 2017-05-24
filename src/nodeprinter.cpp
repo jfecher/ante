@@ -89,8 +89,11 @@ void ArrayNode::print(){
 
 void TupleNode::print(){
     putchar('(');
-    if(exprs.size() > 0)
-        exprs[0]->print();
+    for(auto &n : exprs){
+        n->print();
+        if(n != exprs.back())
+            cout << ", ";
+    }
     putchar(')');
 }
 
