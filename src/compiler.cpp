@@ -1017,7 +1017,7 @@ TypedValue* compTaggedUnion(Compiler *c, DataDeclNode *n){
     vector<string> union_name;
     union_name.push_back(n->name);
 
-    vector<unique_ptr<UnionTag>> tags;
+    vector<shared_ptr<UnionTag>> tags;
     
     //hotfix for generic types: bind each generic to void and retranslate when a concrete type is given
     //TODO: implement fully lazy translation
@@ -1037,7 +1037,7 @@ TypedValue* compTaggedUnion(Compiler *c, DataDeclNode *n){
         TypeNode *tyn = (TypeNode*)nvn->typeExpr.get();
         UnionTag *tag = new UnionTag(nvn->name, copy(tyn->extTy), tags.size());
 
-        tags.push_back(unique_ptr<UnionTag>(tag));
+        tags.push_back(shared_ptr<UnionTag>(tag));
 
         //Each union member's type is a tuple of the tag, a u8 value, and the user-defined value
         TypeNode *tagTy = tyn->extTy.get();
@@ -1073,7 +1073,9 @@ TypedValue* compTaggedUnion(Compiler *c, DataDeclNode *n){
 
     unionTy->typeName = n->name;
     DataType *data = new DataType(n->name, fieldNames, unionTy);
-    data->generics = move(n->generics);
+    for(auto &g : n->generics)
+        data->generics.push_back(shared_ptr<TypeNode>(g.release()));
+    
     data->tags.swap(tags); 
 
     c->stoType(data, n->name);
@@ -1146,7 +1148,8 @@ TypedValue* DataDeclNode::compile(Compiler *c){
                       : first;
 
     DataType *data = new DataType(name, fieldNames, dataTyn);
-    data->generics = move(generics);
+    for(auto &g : generics)
+        data->generics.push_back(shared_ptr<TypeNode>(g.release()));
 
     c->stoType(data, name);
     return c->getVoidLiteral();

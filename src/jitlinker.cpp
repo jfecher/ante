@@ -9,16 +9,25 @@
 
 /*
  * Returns a new module containing shallow copies of the given module's
- * usertypes and traits. Copies the FuncDecls one level deeper so that
+ * traits. Copies the FuncDecls and UserTypes one level deeper so that
  * when the FuncDecl is marked as compiled the change is not performed
  * across every Compiler instance that imported the function.
  */
 shared_ptr<ante::Module> copyModuleFuncDecls(const shared_ptr<ante::Module> &mod){
     auto ret = make_shared<ante::Module>();
     ret->name = mod->name;
-    ret->userTypes = mod->userTypes;
     ret->traits = mod->traits;
 
+    //copy each userType except for the LLVMContext-specific llvmTypes field
+    for(auto &pair : mod->userTypes){
+        auto dt = pair.second;
+        auto dt_cpy = make_shared<DataType>(dt->name, dt->fields, dt->tyn.get());
+        dt_cpy->traitImpls = dt->traitImpls;
+        dt_cpy->tags = dt->tags;
+        dt_cpy->generics = dt->generics;
+        ret->userTypes[pair.first] = dt_cpy;
+    }
+   
     for(auto &pair : mod->fnDecls){
         for(auto &fd : pair.second){
             auto fd_cpy = make_shared<FuncDecl>(fd->fdn, fd->scope, ret);
@@ -102,7 +111,7 @@ Node* stripCompilerDirectives(FuncDeclNode *fdn){
 }
 
 
-Node *getLastNode(Node *n){
+Node* getLastNode(Node *n){
     Node *cur = n;
     while(cur){
         n = cur;

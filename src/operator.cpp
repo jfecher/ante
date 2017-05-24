@@ -629,6 +629,7 @@ TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *bino
                     //so apply any potential modifers from the parent to this
                     if(indexTy->modifiers.empty())
                         indexTy->copyModifiersFrom(tyn);
+
                     return new TypedValue(builder.CreateExtractValue(val, index), copy(indexTy));
                 }
             }

@@ -112,10 +112,10 @@ struct Trait {
 struct DataType {
     string name;
     vector<string> fields;
-    vector<unique_ptr<UnionTag>> tags;
+    vector<shared_ptr<UnionTag>> tags;
     vector<shared_ptr<Trait>> traitImpls;
     unique_ptr<TypeNode> tyn;
-    vector<unique_ptr<TypeNode>> generics;
+    vector<shared_ptr<TypeNode>> generics;
     map<string,Type*> llvmTypes;
 
     DataType(string n, const vector<string> &f, TypeNode *ty) : name(n), fields(f), tyn(ty){}
