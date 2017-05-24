@@ -631,9 +631,17 @@ preproc: '!' '[' expr ']'  {$$ = mkPreProcNode(@$, $3);}
 arg_list: arg_list_p  %prec FUNC {$$ = mkTupleNode(@$, getRoot());}
         ;
 
-arg_list_p: arg_list_p arg  %prec FUNC {$$ = setNext($1, $2);}
-          | arg             %prec FUNC {$$ = setRoot($1);}
+arg_list_p: arg_list_p arg        %prec FUNC {$$ = setNext($1, $2);}
+          | arg_list_p arg_block  %prec FUNC {setNext($1, getRoot()); $$ = $2;}
+          | arg                   %prec FUNC {$$ = setRoot($1);}
+          | arg_block             %prec FUNC {$$ = $1;}
           ;
+
+arg_block: Indent arg_stmt_list Unindent {$$ = $2;}
+
+arg_stmt_list: arg_stmt_list Newline expr   %prec STMT  {$$ = setNext($1, $3);}
+             | expr                         %prec STMT  {$$ = setRoot($1);}
+             ;
 
 arg: val
    | arg '.' var        {$$ = mkBinOpNode(@$, '.', $1, $3);}
