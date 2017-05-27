@@ -69,7 +69,7 @@ impl LanguageServer for Backend {
                     completion_item: None,
                 }),
                 code_action_provider: Some(CodeActionProviderCapability::Simple(true)),
-                position_encoding: Some(PositionEncodingKind::UTF8),
+                position_encoding: Some(PositionEncodingKind::UTF16),
                 ..Default::default()
             },
             ..Default::default()

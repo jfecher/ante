@@ -84,11 +84,11 @@ impl<'tokens> Parser<'tokens> {
     }
 
     fn current_token(&self) -> &'tokens Token {
-        &self.tokens[self.token_index].0
+        &self.tokens[self.token_index.min(self.tokens.len() - 1)].0
     }
 
     fn peek_next_token(&self) -> &'tokens Token {
-        &self.tokens[self.token_index + 1].0
+        &self.tokens[(self.token_index + 1).min(self.tokens.len() - 1)].0
     }
 
     fn try_peek_next_token(&self) -> Option<&'tokens Token> {
@@ -148,8 +148,7 @@ impl<'tokens> Parser<'tokens> {
     }
 
     fn advance(&mut self) {
-        self.token_index += 1;
-        assert!(self.token_index < self.tokens.len(), "Parser advanced pass the end of input!");
+        self.token_index = (self.token_index + 1).min(self.tokens.len() - 1);
     }
 
     /// Advance the input if the current token matches the given token.
@@ -1281,16 +1280,20 @@ impl<'tokens> Parser<'tokens> {
     fn delimited_until_recover<T>(
         &mut self, separator: Token, terminators: &[Token], mut parser: impl FnMut(&mut Self) -> Result<T>,
     ) -> Vec<T> {
+        let is_terminator = |this: &Self| {
+            *this.current_token() == Token::EndOfInput || terminators.iter().any(|t| t == this.current_token())
+        };
+
         let mut items = Vec::new();
         loop {
-            if terminators.iter().any(|t| t == self.current_token()) {
+            if is_terminator(self) {
                 break;
             }
             match parser(self) {
                 Ok(item) => items.push(item),
                 Err(error) => {
                     self.diagnostics.push(error);
-                    if terminators.iter().any(|t| t == self.current_token()) {
+                    if is_terminator(self) {
                         break;
                     }
                     self.advance();
@@ -1301,7 +1304,7 @@ impl<'tokens> Parser<'tokens> {
             if self.accept(separator.clone()) {
                 continue;
             }
-            if terminators.iter().any(|t| t == self.current_token()) {
+            if is_terminator(self) {
                 break;
             }
             let message = format!("`{separator}` to separate items");

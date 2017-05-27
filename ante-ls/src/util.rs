@@ -3,14 +3,17 @@ use ropey::Rope;
 use tower_lsp::lsp_types::*;
 
 pub fn position_to_index(position: Position, rope: &Rope) -> Result<usize, ropey::Error> {
-    let line = position.line as usize;
-    let line = rope.try_line_to_char(line)?;
-    Ok(line + position.character as usize)
+    let line_start = rope.try_line_to_char(position.line as usize)?;
+    let base_u16 = rope.char_to_utf16_cu(line_start);
+    // utf16_cu_to_char panics out of bounds; a character past EOL falls back to rope end.
+    let target_u16 = (base_u16 + position.character as usize).min(rope.len_utf16_cu());
+    Ok(rope.utf16_cu_to_char(target_u16))
 }
 
 pub fn index_to_position(index: usize, rope: &Rope) -> Result<Position, ropey::Error> {
     let line = rope.try_char_to_line(index)?;
-    let char = index - rope.line_to_char(line);
+    let line_start = rope.line_to_char(line);
+    let char = rope.char_to_utf16_cu(index) - rope.char_to_utf16_cu(line_start);
     Ok(Position { line: line as u32, character: char as u32 })
 }
 
@@ -26,7 +29,7 @@ pub fn rope_range_to_lsp_range(range: std::ops::Range<usize>, rope: &Rope) -> Re
     Ok(Range { start, end })
 }
 
-/// Convert an LSP `Position` (line + UTF-8 character offset) to a byte offset
+/// Convert an LSP `Position` (line + UTF-16 code-unit offset) to a byte offset
 /// in the underlying file, as used by the Ante compiler's `Position::byte_index`.
 pub fn position_to_byte_offset(position: Position, rope: &Rope) -> Option<usize> {
     let char_idx = position_to_index(position, rope).ok()?;
