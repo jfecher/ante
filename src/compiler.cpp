@@ -677,8 +677,7 @@ TypedValue* compVarDeclWithInferredType(VarDeclNode *node, Compiler *c){
             (Value*) new GlobalVariable(*c->module, val->getType(), false, GlobalValue::PrivateLinkage, UndefValue::get(val->getType()), node->name) :
             c->builder.CreateAlloca(val->getType(), nullptr, node->name.c_str());
 
-    //create the alloca and transfer ownerhip of val->type
-    TypedValue *alloca = new TypedValue(ptr, val->type.release());
+    TypedValue *alloca = new TypedValue(ptr, val->type);
 
     bool nofree = true;//val->type->type != TT_Ptr || dynamic_cast<Constant*>(val->val);
     c->stoVar(node->name, new Variable(node->name, alloca, c->scope, nofree, true));
