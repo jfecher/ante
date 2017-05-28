@@ -682,7 +682,7 @@ TypedValue* compVarDeclWithInferredType(VarDeclNode *node, Compiler *c){
 
     bool nofree = true;//val->type->type != TT_Ptr || dynamic_cast<Constant*>(val->val);
     c->stoVar(node->name, new Variable(node->name, alloca, c->scope, nofree, true));
-   
+
     return new TypedValue(c->builder.CreateStore(val->val, alloca->val), val->type);
 }
 
@@ -733,17 +733,18 @@ TypedValue* VarDeclNode::compile(Compiler *c){
     if(expr.get()){
         TypedValue *val = expr->compile(c);
 
-        val->type->addModifier(Tok_Mut);
+        TypeNode *exprTy = copy(val->type);
+        exprTy->addModifier(Tok_Mut);
         var->noFree = true;//var->getType() != TT_Ptr || dynamic_cast<Constant*>(val->val);
-        
+
         //Make sure the assigned value matches the variable's type
-        if(!c->typeEq(alloca->type->extTy.get(), val->type.get())){
+        if(!c->typeEq(alloca->type->extTy.get(), exprTy)){
             return c->compErr("Cannot assign expression of type " + typeNodeToColoredStr(val->type)
                         + " to a variable of type " + typeNodeToColoredStr(alloca->type->extTy), expr->loc);
         }
 
         //transfer ownership of val->type
-        return new TypedValue(c->builder.CreateStore(val->val, alloca->val), val->type.release());
+        return new TypedValue(c->builder.CreateStore(val->val, alloca->val), exprTy);
     }else{
         return alloca;
     }
@@ -1938,6 +1939,8 @@ Compiler::Compiler(Node *root, string modName, string &fName, bool lib, shared_p
 
 void Compiler::processArgs(CompilerArgs *args){
     string out = "";
+    bool shouldGenerateExecutable = true;
+
     if(auto *arg = args->getArg(Args::OutputName)){
         outFile = arg->arg;
         out = outFile;
@@ -1953,10 +1956,6 @@ void Compiler::processArgs(CompilerArgs *args){
         passManager.reset(mkPassManager(module.get(), optLvl));
     }
 
-    if(args->hasArg(Args::Check)){
-        compile();
-        return;
-    }
 
     //make sure even non-called functions are included in the binary
     //if the -lib flag is set
@@ -1971,15 +1970,35 @@ void Compiler::processArgs(CompilerArgs *args){
             }
         }
     }
-
-    if(args->hasArg(Args::EmitLLVM)) emitIR();
     
-    if(args->hasArg(Args::CompileToObj)) compileObj(out);
-    else compileNative();
+    if(args->hasArg(Args::Check)){
+        if(!compiled) compile();
+        shouldGenerateExecutable = false;
+    }
 
-    if(!errFlag && args->hasArg(Args::CompileAndRun)){
-        int res = system((AN_EXEC_STR + outFile).c_str());
-        if(res) return; //silence unused return result warning
+    if(args->hasArg(Args::EmitLLVM)){
+        emitIR();
+        shouldGenerateExecutable = false;
+    }
+
+    if(args->hasArg(Args::Parse))
+        shouldGenerateExecutable = false;
+
+    if(args->hasArg(Args::CompileToObj)){
+        compileObj(out);
+        shouldGenerateExecutable = false;
+    }
+    
+    if(args->hasArg(Args::CompileAndRun))
+        shouldGenerateExecutable = true;
+    
+    if(shouldGenerateExecutable){
+        compileNative();
+    
+        if(!errFlag && args->hasArg(Args::CompileAndRun)){
+            int res = system((AN_EXEC_STR + outFile).c_str());
+            if(res) return; //silence unused return result warning
+        }
     }
 }
 
