@@ -618,6 +618,9 @@ TypedValue* VarNode::compile(Compiler *c){
 
 TypedValue* LetBindingNode::compile(Compiler *c){
     TypedValue *val = expr->compile(c);
+    if(val->type->type == TT_Void)
+        return c->compErr("Cannot assign a "+typeNodeToColoredStr(mkAnonTypeNode(TT_Void))+
+                " value to a variable", expr->loc);
 
     TypeNode *tyNode;
     if((tyNode = (TypeNode*)typeExpr.get())){
@@ -657,6 +660,9 @@ TypedValue* LetBindingNode::compile(Compiler *c){
 
 TypedValue* compVarDeclWithInferredType(VarDeclNode *node, Compiler *c){
     TypedValue *val = node->expr->compile(c);
+    if(val->type->type == TT_Void)
+        return c->compErr("Cannot assign a "+typeNodeToColoredStr(mkAnonTypeNode(TT_Void))+
+                " value to a variable", node->expr->loc);
 
     bool isGlobal = false;
     //Add all of the declared modifiers to the typedval
@@ -701,6 +707,11 @@ TypedValue* VarDeclNode::compile(Compiler *c){
     TypeNode *tyNode = (TypeNode*)typeExpr.get();
     if(!tyNode) return compVarDeclWithInferredType(this, c);
 
+    if(tyNode->type == TT_Void)
+        return c->compErr("Cannot create a variable of type "+
+                typeNodeToColoredStr(mkAnonTypeNode(TT_Void)), tyNode->loc);
+
+
     //the type held by this node will be deleted when the parse tree is, so copy
     //this one so it is not double freed
     tyNode = copy(tyNode);
@@ -731,6 +742,9 @@ TypedValue* VarDeclNode::compile(Compiler *c){
     c->stoVar(name, var);
     if(expr.get()){
         TypedValue *val = expr->compile(c);
+        if(val->type->type == TT_Void)
+            return c->compErr("Cannot assign a "+typeNodeToColoredStr(mkAnonTypeNode(TT_Void))+
+                    " value to a variable", expr->loc);
 
         TypeNode *exprTy = copy(val->type);
         exprTy->addModifier(Tok_Mut);
