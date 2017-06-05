@@ -917,14 +917,13 @@ TypedValue* tryImplicitCast(Compiler *c, TypedValue *arg, TypeNode *castTy){
     }
 
     //check for an implicit Cast function
-    string castFn = typeNodeToStr(castTy);
     TypedValue *fn;
 
-    if((fn = c->getMangledFunction(castFn, {arg->type.get()})) and
+    if((fn = c->getCastFn(arg->type.get(), castTy)) and
             !!c->typeEq(arg->type.get(), (const TypeNode*)fn->type->extTy->next.get())){
 
         //optimize case of Str -> c8* implicit cast
-        if(arg->type->typeName == "Str" && castFn == "c8*"){
+        if(arg->type->typeName == "Str" && fn->val->getName() == "c8*_init_Str"){
             Value *str = arg->val;
             if(str->getType()->isPointerTy())
                 str = c->builder.CreateLoad(str);
