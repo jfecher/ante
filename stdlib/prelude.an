@@ -115,7 +115,7 @@ fun print: c8* s
     puts s
 
 ![inline]
-fun c8*: Str s = s.cStr
+fun c8*.init: Str s = s.cStr
 
 //For-loops work over any range that is Iterable
 trait Iterable
@@ -213,7 +213,7 @@ fun Str.write: Str s, OutFile f
 
 
 ![inline]
-fun Str: c8* cStr -> Str
+fun Str.init: c8* cStr -> Str
     Str(cStr, u32 strlen cStr)
 
 //overload Str equality operator

@@ -145,7 +145,7 @@ rettype:
 
 
 TypedValue* Compiler::getCastFn(TypeNode *from_ty, TypeNode *to_ty){
-    string fnBaseName = to_ty->params.empty() ? typeNodeToStr(to_ty) : to_ty->typeName;
+    string fnBaseName = (to_ty->params.empty() ? typeNodeToStr(to_ty) : to_ty->typeName) + "_init";
     string mangledName = mangle(fnBaseName, from_ty);
 
     //Search for the exact function, otherwise there would be implicit casts calling several implicit casts on a single parameter
@@ -1007,9 +1007,20 @@ TypedValue* ExtNode::compile(Compiler *c){
         }
     }else{
         //this ExtNode is not a trait implementation, so just compile all functions normally
+        string oldPrefix = c->funcPrefix;
+
+        //Temporarily move away any type params so we get Vec.remove not Vec<'t>.remove as the fn name
+        auto params = move(typeExpr->params);
         c->funcPrefix = typeNodeToStr(typeExpr.get()) + "_";
+        typeExpr->params = move(params);
+
+        auto prevObj = c->compCtxt->obj;
+        c->compCtxt->obj = typeExpr.get();
+
         compileStmtList(methods.release(), c);
-        c->funcPrefix = "";
+
+        c->funcPrefix = oldPrefix;
+        c->compCtxt->obj = prevObj;
     }
     return c->getVoidLiteral();
 }
@@ -1486,9 +1497,23 @@ void Compiler::scanAllDecls(RootNode *root){
         delete e;
     }
 
-    for(auto& f : n->funcs) f->compile(this);
-    for(auto& f : n->traits) f->compile(this);
-    for(auto& f : n->extensions) f->compile(this);
+    for(auto& f : n->funcs) try{
+        f->compile(this);
+    }catch(CtError *e){
+        delete e;
+    }
+
+    for(auto& f : n->traits) try{
+        f->compile(this);
+    }catch(CtError *e){
+        delete e;
+    }
+
+    for(auto& f : n->extensions) try{
+        f->compile(this);
+    }catch(CtError *e){
+        delete e;
+    }
 }
 
 //evaluates and prints a single-expression module

@@ -83,6 +83,7 @@ struct FuncDecl {
     FuncDeclNode *fdn;
     unsigned int scope;
     TypedValue *tv;
+    TypeNode *obj;
     shared_ptr<ante::Module> module;
     vector<pair<TypedValue*,LOC_TY>> returns;
 
@@ -222,13 +223,16 @@ namespace ante{
         //Stack of each called function
         vector<FuncDecl*> callStack;
 
+        //Method object type
+        TypeNode *obj;
+
         //the continue and break labels of each for/while loop to jump out of
         //the pointer is swapped/nullified when a function is called to prevent
         //cross-function jumps
         unique_ptr<vector<BasicBlock*>> continueLabels;
         unique_ptr<vector<BasicBlock*>> breakLabels;
 
-        CompilerCtxt() : callStack(), continueLabels(new vector<BasicBlock*>()), breakLabels(new vector<BasicBlock*>()){}
+        CompilerCtxt() : callStack(), obj(0), continueLabels(new vector<BasicBlock*>()), breakLabels(new vector<BasicBlock*>()){}
     };
 
     struct Compiler {

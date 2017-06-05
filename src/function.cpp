@@ -775,6 +775,7 @@ inline void Compiler::registerFunction(FuncDeclNode *fn){
     }
 
     shared_ptr<FuncDecl> fd{new FuncDecl(fn, scope, mergedCompUnits)};
+    fd->obj = compCtxt->obj;
 
     compUnit->fnDecls[fn->basename].push_front(fd);
     mergedCompUnits->fnDecls[fn->basename].push_front(fd);
