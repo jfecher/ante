@@ -181,13 +181,22 @@ TypedValue* Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
 
     //iterate through each parameter and add its value to the new scope.
     TypeNode *curTyn = 0;
-    NamedValNode *cParam = fdn->params.get();
+    auto paramVec = vectorize(fdn->params.get());
+    size_t i = 0;
+
     vector<Value*> preArgs;
     
     for(auto &arg : preFn->args()){
+        NamedValNode *cParam = paramVec[i];
         TypeNode *paramTyNode = (TypeNode*)cParam->typeExpr.get();
         addArgAttrs(arg, paramTyNode);
 
+        for(size_t j = 0; j < i; j++){
+            if(cParam->name == paramVec[j]->name){
+                return compErr("Parameter name '"+cParam->name+"' is repeated for parameters "+
+                        to_string(j+1)+" and "+to_string(i+1), cParam->loc);
+            }
+        }
         stoVar(cParam->name, new Variable(cParam->name, new TypedValue(&arg, copy(paramTyNode)), this->scope,
                         /*nofree =*/ true, /*autoDeref = */implicitPassByRef(paramTyNode)));
 
@@ -200,6 +209,7 @@ TypedValue* Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
             fakeFnTyn->extTy->next.reset(copy(paramTyNode));
             curTyn = (TypeNode*)fakeFnTyn->extTy->next.get();
         }
+        ++i;
         if(!(cParam = (NamedValNode*)cParam->next.get())) break;
     }
     
@@ -261,7 +271,7 @@ TypedValue* Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
     preFn->getBasicBlockList().clearAndLeakNodesUnsafely();
 
     //swap all instances of preFn's parameters with f's parameters
-    int i = 0;
+    i = 0;
     for(auto &arg : f->args()){
         preArgs[i++]->replaceAllUsesWith(&arg);
     }
@@ -418,15 +428,24 @@ TypedValue* compFnHelper(Compiler *c, FuncDecl *fd){
         //tell the compiler to create a new scope on the stack.
         c->enterNewScope();
 
-        NamedValNode *cParam = paramsBegin;
+        auto paramVec = vectorize(paramsBegin);
+        size_t i = 0;
 
         //iterate through each parameter and add its value to the new scope.
         for(auto &arg : f->args()){
+            NamedValNode *cParam = paramVec[i];
             TypeNode *paramTyNode = (TypeNode*)cParam->typeExpr.get();
 
+            for(size_t j = 0; j < i; j++){
+                if(cParam->name == paramVec[j]->name){
+                    return c->compErr("Parameter name '"+cParam->name+"' is repeated for parameters "+
+                            to_string(j+1)+" and "+to_string(i+1), cParam->loc);
+                }
+            }
             c->stoVar(cParam->name, new Variable(cParam->name, new TypedValue(&arg, copy(paramTyNode)),
                         c->scope, /*nofree = */true, /*autoDeref = */implicitPassByRef(paramTyNode)));
-            
+           
+            i++;
             if(!(cParam = (NamedValNode*)cParam->next.get())) break;
         }
 
@@ -635,24 +654,26 @@ list<shared_ptr<FuncDecl>> filterByArgcAndScope(list<shared_ptr<FuncDecl>> &l, s
 }
 
 
-vector<TypeNode*> vectorize(TypeNode *args){
-    vector<TypeNode*> ret;
+template<typename T>
+vector<T*> vectorize(T *args){
+    vector<T*> ret;
     while(args){
         ret.push_back(args);
-        args = (TypeNode*)args->next.get();
+        args = (T*)args->next.get();
     }
     return ret;
 }
 
 
-TypeNode* toList(vector<TypeNode*> &nodes){
-    TypeNode *begin = 0;
-    TypeNode *cur;
+template<typename T>
+T* toList(vector<T*> &nodes){
+    T *begin = 0;
+    T *cur;
 
     for(auto node : nodes){
         if(begin){
             cur->next.reset(copy(node));
-            cur = (TypeNode*)cur->next.get();
+            cur = (T*)cur->next.get();
         }else{
             begin = copy(node);
             cur = begin;

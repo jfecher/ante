@@ -338,7 +338,8 @@ namespace ante{
 
 Node* getNthNode(Node *node, size_t n);
 size_t getTupleSize(Node *tup);
-vector<TypeNode*> vectorize(TypeNode *args);
+
+template<typename T> vector<T*> vectorize(T *args);
 vector<TypeNode*> toTypeNodeVector(vector<TypedValue*> &tvs);
 
 string mangle(string &base, vector<TypeNode*> params);
