@@ -1,3 +1,5 @@
+#define NOMINMAX
+
 #include "lexer.h"
 #include "parser.h"
 #include "compiler.h"

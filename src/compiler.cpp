@@ -249,11 +249,13 @@ TypedValue* StrLitNode::compile(Compiler *c){
 
     auto *ptr = c->builder.CreateGlobalStringPtr(val);
 
+	//get the llvm Str data type from a fake type node in case we are compiling
+	//the prelude and the Str data type isnt translated into an llvmty yet
     TypeNode *str_tn = mkDataTypeNode("Str");
     auto *tupleTy = cast<StructType>(c->typeNodeToLlvmType(str_tn));
     delete str_tn;
 	
-    vector<Constant*> strarr = {
+	vector<Constant*> strarr = {
 		UndefValue::get(Type::getInt8PtrTy(*c->ctxt)),
 		ConstantInt::get(*c->ctxt, APInt(32, val.length(), true))
 	};
@@ -815,8 +817,16 @@ TypedValue* compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
                     return c->compErr("Cannot assign expression of type " + typeNodeToColoredStr(newval->type.get()) +
                            " to a variable of type " + typeNodeToColoredStr(indexTy), expr->loc);
 
+				Value *nv = newval->val;
+				Type *nt = val->getType()->getStructElementType(index);
 
-                auto *ins = c->builder.CreateInsertValue(val, newval->val, index);
+				//Type check may succeed if a void* is being inserted into any ptr slot,
+				//but llvm will still complain so we create a bit cast to appease it
+				if (nv->getType() != nt and newval->type->type == TT_Ptr) {
+					nv = c->builder.CreateBitCast(nv, nt);
+				}
+
+                auto *ins = c->builder.CreateInsertValue(val, nv, index);
 
                 c->builder.CreateStore(ins, var);
                 return c->getVoidLiteral();
@@ -1406,7 +1416,7 @@ void Compiler::importFile(const char *fName, Node *locNode){
         mergedCompUnits->import(c->compUnit);
 
         (*allCompiledModules)[fName] = c->compUnit;
-        delete c;
+        //delete c;
     }
 }
 
@@ -1471,11 +1481,13 @@ Node* mkPlaceholderNode(){
 void Compiler::scanAllDecls(RootNode *root){
     auto *n = root ? root : ast.get();
 
-    for(auto& f : n->types) try{
-        f->compile(this);
-    }catch(CtError *e){
-        delete e;
-    }
+	for (auto& f : n->types) {
+		try {
+			f->compile(this);
+		}catch (CtError *e) {
+			delete e;
+		}
+	}
 
     for(auto& f : n->funcs) try{
         f->compile(this);
@@ -2042,6 +2054,7 @@ Compiler::~Compiler(){
 
     if(compCtxt)
         compCtxt->callStack.pop_back();
+
 	passManager.release();
 	module.release();
 }

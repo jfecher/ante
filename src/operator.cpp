@@ -333,8 +333,9 @@ TypedValue* createCast(Compiler *c, unique_ptr<TypeNode> &castTyn, TypedValue *v
         if(valToCast->type->type == TT_Ptr){
             return new TypedValue(c->builder.CreatePointerCast(valToCast->val, castTy), castTyn);
 
+		// int -> ptr
         }else if(isIntTypeTag(valToCast->type->type)){
-            return new TypedValue(c->builder.CreatePtrToInt(valToCast->val, castTy), castTyn);
+            return new TypedValue(c->builder.CreateIntToPtr(valToCast->val, castTy), castTyn);
         }
     }
 
@@ -1064,7 +1065,12 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
                 return c->compErr("Argument " + to_string(i) + " of function is a(n) " + typeNodeToColoredStr(tArg->type)
                     + " but was declared to be a(n) " + typeNodeToColoredStr(paramTy) + " and there is no known implicit cast", locNode->loc);
             }
-        }
+
+		//If the types passed type check but still dont match exactly there was probably a void* involved
+		//In that case, create a bit cast to the ptr type of the parameter
+        }else if(args[i-1]->getType() != tvf->getType()->getPointerElementType()->getFunctionParamType(i-1) and paramTy->type == TT_Ptr){
+			args[i-1] = c->builder.CreateBitCast(args[i-1], tvf->getType()->getPointerElementType()->getFunctionParamType(i-1));
+		}
 
         paramTy = (TypeNode*)paramTy->next.get();
         i++;
