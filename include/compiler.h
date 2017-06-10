@@ -83,7 +83,10 @@ struct FuncDecl {
     FuncDeclNode *fdn;
     unsigned int scope;
     TypedValue *tv;
+
     TypeNode *obj;
+    vector<pair<string, TypeNode*>> obj_bindings;
+
     shared_ptr<ante::Module> module;
     vector<pair<TypedValue*,LOC_TY>> returns;
 
@@ -226,6 +229,8 @@ namespace ante{
         //Method object type
         TypeNode *obj;
 
+        map<string, TypeNode*> obj_bindings;
+
         //the continue and break labels of each for/while loop to jump out of
         //the pointer is swapped/nullified when a function is called to prevent
         //cross-function jumps
@@ -320,6 +325,7 @@ namespace ante{
         Trait* lookupTrait(string tyname) const;
         bool typeImplementsTrait(DataType* dt, string traitName) const;
         void stoType(DataType *ty, string &typeName);
+        void stoTypeVar(string &name, TypeNode *ty);
 
         Type* typeNodeToLlvmType(const TypeNode *tyNode);
         TypeCheckResult typeEq(const TypeNode *l, const TypeNode *r) const;

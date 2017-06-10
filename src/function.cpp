@@ -176,9 +176,6 @@ TypedValue* Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
     TypeNode *fakeRetTy = mkAnonTypeNode(TT_Void);
     fakeFnTyn->extTy.reset(fakeRetTy);
         
-    //tell the compiler to create a new scope on the stack.
-    enterNewScope();
-
     //iterate through each parameter and add its value to the new scope.
     TypeNode *curTyn = 0;
     auto paramVec = vectorize(fdn->params.get());
@@ -226,9 +223,6 @@ TypedValue* Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
         delete e;
         return 0;
     }
-
-    //End of the function, discard the function's scope.
-    exitScope();
 
     //llvm requires explicit returns, so generate a return even if
     //the user did not in their function.
@@ -425,9 +419,6 @@ TypedValue* compFnHelper(Compiler *c, FuncDecl *fd){
         BasicBlock *bb = BasicBlock::Create(*c->ctxt, "entry", f);
         c->builder.SetInsertPoint(bb);
 
-        //tell the compiler to create a new scope on the stack.
-        c->enterNewScope();
-
         auto paramVec = vectorize(paramsBegin);
         size_t i = 0;
 
@@ -458,9 +449,6 @@ TypedValue* compFnHelper(Compiler *c, FuncDecl *fd){
             throw e;
         }
         
-        //End of the function, discard the function's scope.
-        c->exitScope();
-  
         //push the final value as a return, explicit returns are already added in RetNode::compile
         if(retNode && !dyn_cast<ReturnInst>(v->val)){
             auto loc = getFinalLoc(fdn->child.get());
@@ -550,6 +538,7 @@ TypedValue* FuncDeclNode::compile(Compiler *c){
         //if it is not, register it to be lazily compiled later (when it is called)
         name = c->funcPrefix + name;
         basename = c->funcPrefix + basename;
+
         c->registerFunction(this);
         //and return a void value
         return c->getVoidLiteral();
@@ -571,6 +560,14 @@ FuncDecl* getFuncDeclFromList(list<shared_ptr<FuncDecl>> &l, string &mangledName
     return 0;
 }
 
+
+void declareBindings(Compiler *c, vector<pair<string,TypeNode*>> &bindings){
+    for(auto &p : bindings){
+        c->stoTypeVar(p.first, p.second);
+    }
+}
+
+
 //Provide a wrapper for function-compiling methods so that each
 //function is compiled in its own isolated module
 TypedValue* Compiler::compFn(FuncDecl *fd){
@@ -580,7 +577,12 @@ TypedValue* Compiler::compFn(FuncDecl *fd){
     compCtxt->continueLabels = llvm::make_unique<vector<BasicBlock*>>();
     compCtxt->breakLabels = llvm::make_unique<vector<BasicBlock*>>();
     int callingFnScope = fnScope;
-    fnScope = scope + 1;
+    
+    enterNewScope();
+    fnScope = scope;
+
+    //Propogate type var bindings of the method obj into the function scope
+    declareBindings(this, fd->obj_bindings);
 
     if(fd->module->name != compUnit->name){
         auto mcu = move(mergedCompUnits);
@@ -593,6 +595,7 @@ TypedValue* Compiler::compFn(FuncDecl *fd){
         compCtxt->continueLabels.reset(continueLabels);
         compCtxt->breakLabels.reset(breakLabels);
         fnScope = callingFnScope;
+        exitScope();
         return ret;
     }else{
         auto *ret = compFnHelper(this, fd);
@@ -600,6 +603,7 @@ TypedValue* Compiler::compFn(FuncDecl *fd){
         compCtxt->continueLabels.reset(continueLabels);
         compCtxt->breakLabels.reset(breakLabels);
         fnScope = callingFnScope;
+        exitScope();
         return ret;
     }
 }
@@ -746,6 +750,44 @@ TypedValue* Compiler::getMangledFunction(string name, vector<TypeNode*> args){
 
 list<shared_ptr<FuncDecl>>& Compiler::getFunctionList(string& name) const{
     return mergedCompUnits->fnDecls[name];
+}
+
+
+TypedValue* Compiler::getCastFn(TypeNode *from_ty, TypeNode *to_ty){
+    string fnBaseName = (to_ty->params.empty() ? typeNodeToStr(to_ty) : to_ty->typeName) + "_init";
+    string mangledName = mangle(fnBaseName, from_ty);
+
+    //Search for the exact function, otherwise there would be implicit casts calling several implicit casts on a single parameter
+    auto *fd = getFuncDecl(fnBaseName, mangledName);
+
+    if(!fd) return nullptr;
+    TypedValue *tv;
+
+    if(!to_ty->params.empty() and !fd->obj->params.empty()){
+        TypeNode *unbound_obj = fd->obj;
+        fd->obj = to_ty;
+
+        size_t argc = to_ty->params.size();
+        if(argc != unbound_obj->params.size())
+            return nullptr;
+
+        size_t i = 0;
+        for(auto& tn : unbound_obj->params){
+            TypeNode *bound_ty = to_ty->params[i].get();
+
+            fd->obj_bindings.push_back(pair<string,TypeNode*>(tn->typeName, bound_ty));
+            i++;
+        }
+
+        tv = compFn(fd);
+
+        fd->obj = unbound_obj;
+        fd->obj_bindings.clear();
+        fd->tv = nullptr;
+    }else{
+        tv = compFn(fd);
+    }
+    return tv;
 }
 
 

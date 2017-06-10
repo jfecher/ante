@@ -427,7 +427,6 @@ function: fn_def
         ;
 
 fn_name: ident       /* most functions */      {$$ = $1;}
-       | type_expr   /* cast function */       {$$ = tnToFnName($1);}
        | '(' op ')'  /* operator overloads */  {$$ = $2;}
        ;
 

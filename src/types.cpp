@@ -518,8 +518,9 @@ Type* Compiler::typeNodeToLlvmType(const TypeNode *tyNode){
             Variable *typeVar = lookup(tyNode->typeName);
             if(!typeVar){
                 //compErr("Use of undeclared type variable " + tyNode->typeName, tyNode->loc);
-                compErr("tn2llvmt: TypeVarError; lookup for "+tyNode->typeName+" not found", tyNode->loc);
-                throw new TypeVarError();
+                //compErr("tn2llvmt: TypeVarError; lookup for "+tyNode->typeName+" not found", tyNode->loc);
+                //throw new TypeVarError();
+                return Type::getInt32Ty(*ctxt);
             }
             
             return typeNodeToLlvmType(extractTypeValue(typeVar->tval.get()));
@@ -528,6 +529,7 @@ Type* Compiler::typeNodeToLlvmType(const TypeNode *tyNode){
             return typeTagToLlvmType(tyNode->type, *ctxt);
     }
 }
+
 
 /*
  *  Returns true if two given types are approximately equal.  This will return

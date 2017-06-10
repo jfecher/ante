@@ -89,15 +89,6 @@ TypedValue* ModNode::compile(Compiler *c){
 }
 
 
-Variable* stoTypeVar(Compiler *c, TypeNode *val, string name){
-    Value *addr = c->builder.getInt64((unsigned long)val);
-    TypedValue *tv = new TypedValue(addr, mkAnonTypeNode(TT_Type));
-    Variable *var = new Variable(name, tv, c->scope);
-    c->stoVar(name, var);
-    return var;
-}
-
-
 TypedValue* TypeNode::compile(Compiler *c){
     //check for enum value
     if(type == TT_Data || type == TT_TaggedUnion){
@@ -113,7 +104,7 @@ TypedValue* TypeNode::compile(Compiler *c){
         if(!unionDataTy->generics.empty()){
             for(auto &tn : unionDataTy->generics){
                 TypeNode *v = mkTypeNodeWithExt(TT_Ptr, mkAnonTypeNode(TT_Void));
-                stoTypeVar(c, v, tn->typeName);
+                c->stoTypeVar(tn->typeName, v);
             }
         }
 
@@ -143,14 +134,6 @@ rettype:
     return new TypedValue(v, mkAnonTypeNode(TT_Type));
 }
 
-
-TypedValue* Compiler::getCastFn(TypeNode *from_ty, TypeNode *to_ty){
-    string fnBaseName = (to_ty->params.empty() ? typeNodeToStr(to_ty) : to_ty->typeName) + "_init";
-    string mangledName = mangle(fnBaseName, from_ty);
-
-    //Search for the exact function, otherwise there would be implicit casts calling several implicit casts on a single parameter
-    return getFunction(fnBaseName, mangledName);
-}
 
 void scanImports(Compiler *c, RootNode *r){
     for(auto &n : r->imports){
@@ -266,12 +249,13 @@ TypedValue* StrLitNode::compile(Compiler *c){
 
     auto *ptr = c->builder.CreateGlobalStringPtr(val);
 
-	vector<Type*> tys = {Type::getInt8PtrTy(*c->ctxt), Type::getInt32Ty(*c->ctxt)};
-    auto* tupleTy = StructType::get(*c->ctxt, tys);
-    
-	vector<Constant*> strarr = {
+    TypeNode *str_tn = mkDataTypeNode("Str");
+    auto *tupleTy = cast<StructType>(c->typeNodeToLlvmType(str_tn));
+    delete str_tn;
+	
+    vector<Constant*> strarr = {
 		UndefValue::get(Type::getInt8PtrTy(*c->ctxt)),
-		ConstantInt::get(*c->ctxt, APInt(8, val.length(), true))
+		ConstantInt::get(*c->ctxt, APInt(32, val.length(), true))
 	};
 
     auto *uninitStr = ConstantStruct::get(tupleTy, strarr);
@@ -1049,9 +1033,7 @@ TypedValue* compTaggedUnion(Compiler *c, DataDeclNode *n){
     TypeNode *voidTy = mkAnonTypeNode(TT_Void);    
     if(!n->generics.empty()){
         for(auto &tn : n->generics){
-            auto *tv = new TypedValue(c->builder.getInt64((uint64_t)voidTy), mkAnonTypeNode(TT_Type));
-            auto  *v = new Variable(tn->typeName, tv, c->scope);
-            c->stoVar(tn->typeName, v);
+            c->stoTypeVar(tn->typeName, voidTy);
         }
     }
 
@@ -1132,9 +1114,7 @@ TypedValue* DataDeclNode::compile(Compiler *c){
     TypeNode *voidTy = mkAnonTypeNode(TT_Void);    
     if(!generics.empty()){
         for(auto &tn : generics){
-            auto *tv = new TypedValue(c->builder.getInt64((uint64_t)voidTy), mkAnonTypeNode(TT_Type));
-            auto  *v = new Variable(tn->typeName, tv, c->scope);
-            c->stoVar(tn->typeName, v);
+            c->stoTypeVar(tn->typeName, voidTy);
         }
     }
 
@@ -1832,7 +1812,20 @@ Variable* Compiler::lookup(string var) const{
 
 
 void Compiler::stoVar(string var, Variable *val){
+    if(var[0] == '\''){
+        auto ty = (TypeNode*)dyn_cast<ConstantInt>(val->tval->val)->getZExtValue();
+        cout << "Storing var " << var << " on scope " << scope << " with fnScope " << fnScope << " and value " << typeNodeToStr(ty) << endl;
+    }
+
     (*varTable[val->scope-1])[var] = val;
+}
+
+
+void Compiler::stoTypeVar(string &name, TypeNode *ty){
+    Value *addr = builder.getInt64((unsigned long)ty);
+    TypedValue *tv = new TypedValue(addr, mkAnonTypeNode(TT_Type));
+    Variable *var = new Variable(name, tv, scope);
+    stoVar(name, var);
 }
 
 

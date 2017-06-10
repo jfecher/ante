@@ -257,11 +257,11 @@ fun (#): Str s, i32 i, c8 c
 
 
 //IO
-fun InFile: Str fName -> InFile
+fun InFile.init: Str fName -> InFile
     InFile fopen (fName.cStr) "r"
 
 
-fun OutFile: Str fName -> OutFile
+fun OutFile.init: Str fName -> OutFile
     OutFile fopen (fName.cStr) "w"
 
 
