@@ -410,7 +410,7 @@ Type* updateLlvmTypeBinding(Compiler *c, DataType *dt, const vector<unique_ptr<T
     if(StructType *st = dyn_cast<StructType>(llvmTy)){
         structTy->setBody(st->elements());
     }else{
-        array<Type*,1> body;
+		array<Type*, 1> body;
         body[0] = llvmTy;
         structTy->setBody(body);
     }

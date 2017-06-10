@@ -266,7 +266,7 @@ TypedValue* Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
         preArgs[i++]->replaceAllUsesWith(&arg);
     }
     
-    preFn->replaceAllUsesWith(f);
+    //preFn->replaceAllUsesWith(f);
     preFn->removeFromParent();
 
     auto *ret = new TypedValue(f, newFnTyn);
