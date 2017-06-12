@@ -237,7 +237,7 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
 }
 
 
-TypedValue* createUnionVariantCast(Compiler *c, TypedValue *valToCast, unique_ptr<TypeNode> &castTyn, DataType *dataTy, TypeCheckResult &tyeq){
+TypedValue* createUnionVariantCast(Compiler *c, TypedValue *valToCast, TypeNode *castTyn, DataType *dataTy, TypeCheckResult &tyeq){
     auto *unionDataTy = c->lookupType(dataTy->getParentUnionName());
 
     auto dtcpy = copy(unionDataTy->tyn);
@@ -281,9 +281,9 @@ TypedValue* createUnionVariantCast(Compiler *c, TypedValue *valToCast, unique_pt
 /*
  *  Creates a cast instruction appropriate for valToCast's type to castTy.
  */
-TypedValue* createCast(Compiler *c, unique_ptr<TypeNode> &castTyn, TypedValue *valToCast){
+TypedValue* createCast(Compiler *c, TypeNode *castTyn, TypedValue *valToCast){
     //first, see if the user created their own cast function
-    if(TypedValue *fn = c->getCastFn(valToCast->type.get(), castTyn.get())){
+    if(TypedValue *fn = c->getCastFn(valToCast->type.get(), castTyn)){
         vector<Value*> args;
         if(valToCast->type->type != TT_Void) args.push_back(valToCast->val);
         auto *call = c->builder.CreateCall(fn->val, args);
@@ -292,7 +292,7 @@ TypedValue* createCast(Compiler *c, unique_ptr<TypeNode> &castTyn, TypedValue *v
 
     //otherwise, fallback on known conversions
     if(isIntTypeTag(castTyn->type)){
-        Type *castTy = c->typeNodeToLlvmType(castTyn.get());
+        Type *castTy = c->typeNodeToLlvmType(castTyn);
         
         // int -> int  (maybe unsigned)
         if(isIntTypeTag(valToCast->type->type)){
@@ -311,7 +311,7 @@ TypedValue* createCast(Compiler *c, unique_ptr<TypeNode> &castTyn, TypedValue *v
             return new TypedValue(c->builder.CreatePtrToInt(valToCast->val, castTy), castTyn);
         }
     }else if(isFPTypeTag(castTyn->type)){
-        Type *castTy = c->typeNodeToLlvmType(castTyn.get());
+        Type *castTy = c->typeNodeToLlvmType(castTyn);
 
         // int -> float
         if(isIntTypeTag(valToCast->type->type)){
@@ -327,7 +327,7 @@ TypedValue* createCast(Compiler *c, unique_ptr<TypeNode> &castTyn, TypedValue *v
         }
 
     }else if(castTyn->type == TT_Ptr){
-        Type *castTy = c->typeNodeToLlvmType(castTyn.get());
+        Type *castTy = c->typeNodeToLlvmType(castTyn);
 
         // ptr -> ptr
         if(valToCast->type->type == TT_Ptr){
@@ -361,7 +361,7 @@ TypedValue* createCast(Compiler *c, unique_ptr<TypeNode> &castTyn, TypedValue *v
     //test for the reverse case, something like:  i32 example
     //where example is of type Int
     }else if(valToCast->type->typeName.size() > 0 && (dataTy = c->lookupType(valToCast->type->typeName))){
-        if(!!c->typeEq(dataTy->tyn.get(), castTyn.get())){
+        if(!!c->typeEq(dataTy->tyn.get(), castTyn)){
             auto *tycpy = copy(valToCast->type);
             tycpy->typeName = "";
             tycpy->type = castTyn->type;
@@ -374,7 +374,17 @@ TypedValue* createCast(Compiler *c, unique_ptr<TypeNode> &castTyn, TypedValue *v
 
 TypedValue* TypeCastNode::compile(Compiler *c){
     auto *rtval = rval->compile(c);
-    auto* tval = createCast(c, typeExpr, rtval);
+
+    auto *ty = typeExpr.get();
+    if(ty->type == TT_TypeVar){
+        Variable *v = c->lookup(ty->typeName);
+        if(!v) c->compErr("Unbound typevar "+ty->typeName, ty->loc);
+
+        auto zext = dyn_cast<ConstantInt>(v->tval->val)->getZExtValue();
+        ty = (TypeNode*)zext;
+    }
+
+    auto* tval = createCast(c, ty, rtval);
 
     if(!tval){
         if(!!c->typeEq(rtval->type.get(), typeExpr.get()))
