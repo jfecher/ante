@@ -278,6 +278,14 @@ TypedValue* createUnionVariantCast(Compiler *c, TypedValue *valToCast, TypeNode 
     return new TypedValue(unionVal, dtcpy);
 }
 
+
+string getCastFnBaseName(TypeNode *t){
+    return (t->params.empty() ? typeNodeToStr(t) : t->typeName) + "_init";
+}
+
+
+TypedValue* compMetaFunctionResult(Compiler *c, LOC_TY &loc, string &baseName, string &mangledName, vector<TypedValue*> &typedArgs);
+
 /*
  *  Creates a cast instruction appropriate for valToCast's type to castTy.
  */
@@ -286,6 +294,14 @@ TypedValue* createCast(Compiler *c, TypeNode *castTyn, TypedValue *valToCast){
     if(TypedValue *fn = c->getCastFn(valToCast->type.get(), castTyn)){
         vector<Value*> args;
         if(valToCast->type->type != TT_Void) args.push_back(valToCast->val);
+    
+        if(fn->type->type == TT_MetaFunction){
+            string baseName = getCastFnBaseName(castTyn);
+            string mangledName = mangle(baseName, valToCast->type.get());
+            vector<TypedValue*> args = {valToCast};
+            return compMetaFunctionResult(c, castTyn->loc, baseName, mangledName, args);
+        }
+
         auto *call = c->builder.CreateCall(fn->val, args);
         return new TypedValue(call, fn->type->extTy);
     }
@@ -387,11 +403,11 @@ TypedValue* TypeCastNode::compile(Compiler *c){
     auto* tval = createCast(c, ty, rtval);
 
     if(!tval){
-        if(!!c->typeEq(rtval->type.get(), typeExpr.get()))
+        if(!!c->typeEq(rtval->type.get(), ty))
             return c->compErr("Typecast to same type", loc);
-        
+
         return c->compErr("Invalid type cast " + typeNodeToColoredStr(rtval->type) + 
-                " -> " + typeNodeToColoredStr(typeExpr), loc);
+                " -> " + typeNodeToColoredStr(ty), loc);
     }else{
         return tval;
     }
@@ -814,8 +830,6 @@ string getName(Node *n){
         return vn->name;
     else if(BinOpNode *op = dynamic_cast<BinOpNode*>(n))
         return getName(op->lval.get()) + "_" + getName(op->rval.get());
-    else if(TypeNode *tn = dynamic_cast<TypeNode*>(n))
-        return typeNodeToStr(tn);
     else
         return "";
 }
@@ -830,9 +844,7 @@ extern map<string, CtFunc*> compapi;
  *
  *  - Assumes arguments are already type-checked
  */
-TypedValue* compMetaFunctionResult(Compiler *c, Node *lnode, string &mangledName, vector<TypedValue*> &typedArgs){
-    string baseName = getName(lnode);
-
+TypedValue* compMetaFunctionResult(Compiler *c, LOC_TY &loc, string &baseName, string &mangledName, vector<TypedValue*> &typedArgs){
     CtFunc* fn;
     if((fn = compapi[baseName])){
         void *res;
@@ -842,14 +854,14 @@ TypedValue* compMetaFunctionResult(Compiler *c, Node *lnode, string &mangledName
         if(baseName == "Ante_debug"){
             if(typedArgs.size() != 1)
                 return c->compErr("Called function was given " + to_string(typedArgs.size()) +
-                        " argument(s) but was declared to take 1", lnode->loc);
+                        " argument(s) but was declared to take 1", loc);
 
             res = (*fn)(typedArgs[0]);
             gv = GenericValue(res);
         }else if(baseName == "Ante_sizeof"){
             if(typedArgs.size() != 1)
                 return c->compErr("Called function was given " + to_string(typedArgs.size()) +
-                        " argument(s) but was declared to take 1", lnode->loc);
+                        " argument(s) but was declared to take 1", loc);
 
             res = (*fn)(c, typedArgs[0]);
             gv.IntVal = APInt(32, (int)(size_t)res, false);
@@ -864,14 +876,10 @@ TypedValue* compMetaFunctionResult(Compiler *c, Node *lnode, string &mangledName
         LLVMInitializeNativeAsmPrinter();
 
         auto mod_compiler = wrapFnInModule(c, baseName, mangledName);
-        if(!mod_compiler or mod_compiler->errFlag) return 0;
-
-
-        //the compiler created by wrapFnInModule shares a parse tree with this, so it must be released
         mod_compiler->ast.release();
-
         auto *mod = mod_compiler->module.release();
-        if(!mod) return 0;
+        
+        if(!mod_compiler or mod_compiler->errFlag or !mod) return 0;
 
         auto* eBuilder = new EngineBuilder(unique_ptr<llvm::Module>(mod));
         string err;
@@ -887,7 +895,7 @@ TypedValue* compMetaFunctionResult(Compiler *c, Node *lnode, string &mangledName
             return 0;
         }
 
-        auto args = typedValuesToGenericValues(c, typedArgs, lnode->loc, baseName);
+        auto args = typedValuesToGenericValues(c, typedArgs, loc, baseName);
 
         auto *fn = jit->FindFunctionNamed(mangledName.c_str());
         auto genret = jit->runFunction(fn, args);
@@ -1089,9 +1097,9 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
     //if tvf is a ![macro] or similar MetaFunction, then compile it in a separate
     //module and JIT it instead of creating a call instruction
     if(tvf->type->type == TT_MetaFunction){
-        string baseName = dynamic_cast<VarNode*>(l) ? ((VarNode*)l)->name : "";
+        string baseName = getName(l);
         string mangledName = mangle(baseName, (TypeNode*)tvf->type->extTy->next.get());
-        return compMetaFunctionResult(c, l, mangledName, typedArgs);
+        return compMetaFunctionResult(c, l->loc, baseName, mangledName, typedArgs);
     }
 
     //use tvf->val as arg, NOT f, (if tvf->val is a function-type parameter then f cannot be called)

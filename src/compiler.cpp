@@ -1830,11 +1830,6 @@ Variable* Compiler::lookup(string var) const{
 
 
 void Compiler::stoVar(string var, Variable *val){
-    if(var[0] == '\''){
-        auto ty = (TypeNode*)dyn_cast<ConstantInt>(val->tval->val)->getZExtValue();
-        cout << "Storing var " << var << " on scope " << scope << " with fnScope " << fnScope << " and value " << typeNodeToStr(ty) << endl;
-    }
-
     (*varTable[val->scope-1])[var] = val;
 }
 
