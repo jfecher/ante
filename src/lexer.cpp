@@ -495,7 +495,7 @@ int Lexer::genWsTok(yy::parser::location_type* loc){
             return Tok_Newline; /* Scope did not change, just return a Newline */
         }
 
-        if(abs((long)cscope - newScope) < 2)
+        if(abs((long)cscope - (long)newScope) < 2)
             lexErr("Changes in significant whitespace cannot be less than 2 spaces in size", loc);
 
         loc->end = getPos();

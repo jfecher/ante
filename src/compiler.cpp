@@ -1489,23 +1489,29 @@ void Compiler::scanAllDecls(RootNode *root){
 		}
 	}
 
-    for(auto& f : n->funcs) try{
-        f->compile(this);
-    }catch(CtError *e){
-        delete e;
-    }
+	for (auto& f : n->funcs) {
+		try {
+			f->compile(this);
+		}catch (CtError *e) {
+			delete e;
+		}
+	}
 
-    for(auto& f : n->traits) try{
-        f->compile(this);
-    }catch(CtError *e){
-        delete e;
-    }
+	for (auto& f : n->traits) {
+		try {
+			f->compile(this);
+		}catch (CtError *e) {
+			delete e;
+		}
+	}
 
-    for(auto& f : n->extensions) try{
-        f->compile(this);
-    }catch(CtError *e){
-        delete e;
-    }
+	for (auto& f : n->extensions) {
+		try {
+			f->compile(this);
+		}catch (CtError *e) {
+			delete e;
+		}
+	}
 }
 
 //evaluates and prints a single-expression module
