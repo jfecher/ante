@@ -294,7 +294,7 @@ TypedValue* createCast(Compiler *c, TypeNode *castTyn, TypedValue *valToCast){
     if(TypedValue *fn = c->getCastFn(valToCast->type.get(), castTyn)){
         vector<Value*> args;
         if(valToCast->type->type != TT_Void) args.push_back(valToCast->val);
-    
+
         if(fn->type->type == TT_MetaFunction){
             string baseName = getCastFnBaseName(castTyn);
             string mangledName = mangle(baseName, valToCast->type.get());
@@ -391,13 +391,17 @@ TypedValue* createCast(Compiler *c, TypeNode *castTyn, TypedValue *valToCast){
 TypedValue* TypeCastNode::compile(Compiler *c){
     auto *rtval = rval->compile(c);
 
-    auto *ty = typeExpr.get();
-    if(ty->type == TT_TypeVar){
-        Variable *v = c->lookup(ty->typeName);
-        if(!v) c->compErr("Unbound typevar "+ty->typeName, ty->loc);
+    auto *ty = copy(typeExpr);
+    c->searchAndReplaceBoundTypeVars(ty);
 
-        auto zext = dyn_cast<ConstantInt>(v->tval->val)->getZExtValue();
-        ty = (TypeNode*)zext;
+    for(auto &p : ty->params){
+        if(p->type == TT_TypeVar){
+            Variable *v = c->lookup(p->typeName);
+            if(!v) c->compErr("Unbound typevar "+p->typeName, p->loc);
+
+            auto zext = dyn_cast<ConstantInt>(v->tval->val)->getZExtValue();
+            p.reset((TypeNode*)zext);
+        }
     }
 
     auto* tval = createCast(c, ty, rtval);
@@ -830,6 +834,8 @@ string getName(Node *n){
         return vn->name;
     else if(BinOpNode *op = dynamic_cast<BinOpNode*>(n))
         return getName(op->lval.get()) + "_" + getName(op->rval.get());
+    else if(TypeNode *tn = dynamic_cast<TypeNode*>(n))
+        return tn->params.empty() ? typeNodeToStr(tn) : tn->typeName;
     else
         return "";
 }

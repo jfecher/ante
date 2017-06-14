@@ -327,6 +327,8 @@ namespace ante{
         void stoType(DataType *ty, string &typeName);
         void stoTypeVar(string &name, TypeNode *ty);
 
+        void searchAndReplaceBoundTypeVars(TypeNode* tn) const;
+
         Type* typeNodeToLlvmType(const TypeNode *tyNode);
         TypeCheckResult typeEq(const TypeNode *l, const TypeNode *r) const;
         TypeCheckResult typeEq(vector<TypeNode*> l, vector<TypeNode*> r) const;

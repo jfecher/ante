@@ -1040,6 +1040,9 @@ TypedValue* compTaggedUnion(Compiler *c, DataDeclNode *n){
     
     //hotfix for generic types: bind each generic to void and retranslate when a concrete type is given
     //TODO: implement fully lazy translation
+    
+    //These are just tmp type vars so we create a new scope to easily discard them later
+    c->enterNewScope();
     TypeNode *voidTy = mkAnonTypeNode(TT_Void);    
     if(!n->generics.empty()){
         for(auto &tn : n->generics){
@@ -1088,6 +1091,8 @@ TypedValue* compTaggedUnion(Compiler *c, DataDeclNode *n){
         nvn = (NamedValNode*)nvn->next.get();
     }
 
+    c->exitScope();
+
     unionTy->typeName = n->name;
     DataType *data = new DataType(n->name, fieldNames, unionTy);
     for(auto &g : n->generics)
@@ -1121,6 +1126,8 @@ TypedValue* DataDeclNode::compile(Compiler *c){
 
     //hotfix for generic types: bind each generic to void and retranslate when a concrete type is given
     //TODO: implement fully lazy translation
+    
+    c->enterNewScope();
     TypeNode *voidTy = mkAnonTypeNode(TT_Void);    
     if(!generics.empty()){
         for(auto &tn : generics){
@@ -1155,6 +1162,8 @@ TypedValue* DataDeclNode::compile(Compiler *c){
 
         nvn = (NamedValNode*)nvn->next.get();
     }
+
+    c->exitScope();
 
     //the type is a tuple if it has multiple params,
     //otherwise it is just a normal type

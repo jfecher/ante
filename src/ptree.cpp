@@ -369,7 +369,6 @@ TypeNode* copy(const TypeNode *n){
         }
     }else if(n->extTy.get()){
         TypeNode *nxt = n->extTy.get();
-        if(!nxt) return cpy;
 
         TypeNode *ext = copy(nxt);
         cpy->extTy.reset(ext);

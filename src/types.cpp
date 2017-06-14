@@ -139,6 +139,10 @@ void bindGenericToType(TypeNode *tn, const vector<pair<string, unique_ptr<TypeNo
 }
 
 
+/*
+ *  Expands a typenode by replacing every Data or TaggedUnion instance with the
+ *  types that it contains.  Does not expand pointer types
+ */
 void Compiler::expand(TypeNode *tn){
     TypeNode *ext = tn->extTy.get();
     if(tn->type == TT_Tuple or tn->type == TT_TaggedUnion){
@@ -159,6 +163,37 @@ void Compiler::expand(TypeNode *tn){
             ext = (TypeNode*)ext->next.get();
         }
         delete cpy;
+    }
+}
+
+
+/*
+ *  Replaces already bound typevars with their declared value
+ */
+void Compiler::searchAndReplaceBoundTypeVars(TypeNode* tn) const{
+    TypeNode *ext = tn->extTy.get();
+    while(ext){
+        //size of an array is stored in the type, skip it
+        if(dynamic_cast<IntLitNode*>(ext))
+            ext = (TypeNode*)ext->next.get();
+
+        searchAndReplaceBoundTypeVars(ext);
+        ext = (TypeNode*)ext->next.get();
+    }
+
+    if(tn->type == TT_TypeVar){
+        auto *var = lookup(tn->typeName);
+        if(!var) return;
+
+        TypeNode* val = (TypeNode*)dyn_cast<ConstantInt>(var->tval->val)->getZExtValue();
+        tn->type = val->type;
+        tn->typeName = val->typeName;
+        tn->extTy.reset(copy(val->extTy));
+        
+        for(auto &p : val->params){
+            auto cpy = unique_ptr<TypeNode>(copy(p.get()));
+            tn->params.push_back(move(cpy));
+        }
     }
 }
 
