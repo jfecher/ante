@@ -13,7 +13,8 @@ trait NumStore
 
     fun store: mut NumStore* ng, i32 n
 
-fun Holder := Holder 0
+
+fun Holder.init := Holder 0
 
 type Holder = i32
 

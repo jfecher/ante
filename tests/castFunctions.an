@@ -5,7 +5,7 @@
 
 
 //handles conversion of i32 -> bool
-fun bool: i32 x =
+fun bool.init: i32 x =
     x != 0
 
 

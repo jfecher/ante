@@ -99,14 +99,12 @@ void yyerror(const char *msg);
  */
 %left MEDIF
 
-%left ';'
 %left MED
-
-%left MODIFIER Pub Pri Pro Raw Const Noinit Mut Global
-
 
 %left ','
 %left '=' AddEq SubEq MulEq DivEq
+%left ';'
+%left MODIFIER Pub Pri Pro Raw Const Noinit Mut Global
 
 %right ApplyL
 %left ApplyR
