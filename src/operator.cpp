@@ -407,14 +407,13 @@ TypedValue* TypeCastNode::compile(Compiler *c){
     auto* tval = createCast(c, ty, rtval);
 
     if(!tval){
-        if(!!c->typeEq(rtval->type.get(), ty))
-            return c->compErr("Typecast to same type", loc);
-
+        //if(!!c->typeEq(rtval->type.get(), ty))
+        //    c->compErr("Typecast to same type", loc, ErrorType::Warning);
+            
         return c->compErr("Invalid type cast " + typeNodeToColoredStr(rtval->type) + 
                 " -> " + typeNodeToColoredStr(ty), loc);
-    }else{
-        return tval;
     }
+    return tval;
 }
 
 TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<TypedValue*,BasicBlock*>> &branches){

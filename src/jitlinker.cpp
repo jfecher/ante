@@ -25,12 +25,15 @@ shared_ptr<ante::Module> copyModuleFuncDecls(const shared_ptr<ante::Module> &mod
         dt_cpy->traitImpls = dt->traitImpls;
         dt_cpy->tags = dt->tags;
         dt_cpy->generics = dt->generics;
+        dt_cpy->llvmTypes = dt->llvmTypes;
         ret->userTypes[pair.first] = dt_cpy;
     }
    
     for(auto &pair : mod->fnDecls){
         for(auto &fd : pair.second){
             auto fd_cpy = make_shared<FuncDecl>(fd->fdn, fd->scope, ret);
+            fd_cpy->obj = fd->obj;
+            fd_cpy->obj_bindings = fd->obj_bindings;
             ret->fnDecls[pair.first].push_back(fd_cpy);
         }
     }

@@ -781,6 +781,9 @@ TypedValue* Compiler::getCastFn(TypeNode *from_ty, TypeNode *to_ty){
 
         tv = compFn(fd);
 
+        //TODO: if fd is a meta function that is a method of a generic object then the generic
+        //      parameters of the object will be unbound here and untraceable when the function is
+        //      lazily compiled at the callsite
         fd->obj = unbound_obj;
         fd->obj_bindings.clear();
         fd->tv = nullptr;

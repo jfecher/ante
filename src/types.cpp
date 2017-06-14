@@ -183,7 +183,12 @@ void Compiler::searchAndReplaceBoundTypeVars(TypeNode* tn) const{
 
     if(tn->type == TT_TypeVar){
         auto *var = lookup(tn->typeName);
-        if(!var) return;
+        if(!var){
+            cout << "Lookup for "+tn->typeName+" not found\n";
+            return;
+        }else{
+            cout << "Lookup for "+tn->typeName+" found\n";
+        }
 
         TypeNode* val = (TypeNode*)dyn_cast<ConstantInt>(var->tval->val)->getZExtValue();
         tn->type = val->type;
