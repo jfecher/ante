@@ -714,7 +714,13 @@ vector<TypeNode*> toTypeNodeVector(vector<TypedValue*> &tvs){
 
 //ante function to convert between IEEE half and IEEE single
 //since c++ does not support an IEEE half value
+#ifndef F16_BOOT
 extern "C" float f32_from_f16(float f);
+#else
+float f32_from_f16(float f) {
+    return f;
+}
+#endif
 
 /*
  *  Converts an llvm GenericValue to a TypedValue

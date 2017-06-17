@@ -4,6 +4,7 @@
 t.an
 u.an
 ante
+bootante
 src/parser.output
 src/parser.cpp
 include/*.hh
