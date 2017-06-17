@@ -35,7 +35,7 @@
 #  define AN_NATIVE_OS "darwin"
 #  define AN_NATIVE_VENDOR "apple"
 #  ifndef AN_LIB_DIR
-#    define AN_LIB_DIR "/usr/include/ante/"
+#    define AN_LIB_DIR "/usr/local/include/ante/"
 #  endif
 #  define AN_EXEC_STR "./"
 #endif
