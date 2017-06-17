@@ -68,10 +68,18 @@ goto begin
 * For more information, check out tests/language.an for all planned features.
     - For implemented features, check out the tests/ directory
 
-
 ## Installation
-1. Make sure to have `llvm` version 4.0 installed.  To check which version you have, run `$ lli --version`.  To install llvm, install
+
+### Requirements
+
+ * `llvm` version 4.0.  To check which version you have, run `$ lli --version`.  To install llvm, install
 the `llvm` package on your distro's package manager, eg. for Ubuntu: `$ sudo apt-get install llvm-4.0`
+ * `yacc`. This is normally provided by GNU Bison - to install Bison, install the `bison` package in your
+distro's package manager.
+
+### Steps
+
+1. Install any required packages.
 
 2. Run `$ git clone https://github.com/jfecher/ante.git`
 
