@@ -4,13 +4,13 @@ vpath %.d obj
 
 WARNINGS  := -Wall -Wpedantic -Wsign-compare
 
+#Required for ubuntu and other distros with outdated llvm packages
 LLVMCFG := $(shell if command -v llvm-config-4.0 >/dev/null 2>&1; then echo 'llvm-config-4.0'; else echo 'llvm-config'; fi)
 LLVMFLAGS := `$(LLVMCFG) --cflags --cppflags --link-static --libs Core mcjit interpreter native BitWriter Passes Target --ldflags --system-libs` -lffi
 
 LIBDIR := /usr/include/ante
 LIBFILES := $(shell find stdlib -type f -name "*.an")
 
-#                              v These macros are required when compiling with clang
 CPPFLAGS  := -g -std=c++11 `$(LLVMCFG) --cflags --cppflags` -O0 $(WARNINGS)
 
 PARSERSRC := src/parser.cpp
@@ -34,6 +34,11 @@ DEPFILES := $(OBJFILES:.o=.d)
 .PHONY: new clean stdlib
 .DEFAULT: ante
 
+ante: obj obj/parser.o $(OBJFILES) $(ANOBJFILES)
+	if [ ! -e obj/f16.ao ]; then $(MAKE) bootante; fi
+	@echo Linking...
+	@$(CXX) obj/parser.o $(OBJFILES) $(ANOBJFILES) $(LLVMFLAGS) -o ante
+
 bootante: obj obj/parser.o $(OBJFILES) $(ANOBJFILES)
 	@echo Bootstrapping f16.ao...
 	$(CXX) -DF16_BOOT $(CPPFLAGS) -MMD -MP -Iinclude -c src/operator.cpp -o obj/operator.o
@@ -43,10 +48,6 @@ bootante: obj obj/parser.o $(OBJFILES) $(ANOBJFILES)
 	rm obj/operator.o obj/compiler.o
 	$(MAKE) obj/operator.o obj/compiler.o
 
-ante: obj obj/parser.o $(OBJFILES) $(ANOBJFILES)
-	if [ ! -e obj/f16.ao ]; then $(MAKE) bootante; fi
-	@echo Linking...
-	@$(CXX) obj/parser.o $(OBJFILES) $(ANOBJFILES) $(LLVMFLAGS) -o ante
 
 #export the stdlib to /usr/include/ante
 #this is the only part that requires root permissions
