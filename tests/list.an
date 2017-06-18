@@ -1,0 +1,30 @@
+
+//This list type does not allow for empty lists
+type List<'t> = 't elem, List<'t>* next
+
+fun List<'t>.init: 't elem -> List<'t>
+    List(elem, void* 0)
+
+
+fun tail: List<'t> l -> List<'t>
+    if l.next != void* 0 then
+        tail(@l.next)
+    else
+        l
+
+fun append: List<'t> l, 't elem
+    var t = tail l
+    t.next = new List elem
+
+fun print: List<'t> l
+    print l.elem
+    if l.next != void* 0 then
+        print(@l.next)
+
+
+var head = List<i32>(0, void* 0)
+append head 1
+append head 2
+append head 3
+
+print head
