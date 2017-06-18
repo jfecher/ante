@@ -1165,11 +1165,7 @@ TypedValue* DataDeclNode::compile(Compiler *c){
 
     c->exitScope();
 
-    //the type is a tuple if it has multiple params,
-    //otherwise it is just a normal type
-    TypeNode *dataTyn = first->next.get()
-                      ? mkTypeNodeWithExt(TT_Tuple, first)
-                      : first;
+    TypeNode *dataTyn = mkTypeNodeWithExt(TT_Tuple, first);
 
     DataType *data = new DataType(name, fieldNames, dataTyn);
     for(auto &g : generics)

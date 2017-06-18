@@ -1,4 +1,5 @@
 *.o
+*.ao
 *.d
 *.gch
 t.an

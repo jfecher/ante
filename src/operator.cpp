@@ -364,24 +364,40 @@ TypedValue* createCast(Compiler *c, TypeNode *castTyn, TypedValue *valToCast){
     auto *dataTy = c->lookupType(castTyn->typeName);
     TypeCheckResult tyeq{false};
 
-    if(dataTy && !!(tyeq = c->typeEq(valToCast->type.get(), dataTy->tyn.get()))){
-        //check if this is a tagged union (sum type)
-        if(dataTy->isUnionTag())
-            return createUnionVariantCast(c, valToCast, castTyn, dataTy, tyeq);
+    if(dataTy){
+        //The tyn of a DataType is always a tuple, so wrap the casting value with a
+        //tuple if it is not one already or else it will always fail type checking.
+        TypeNode *wrapper = valToCast->type->type != TT_Tuple
+                           ? mkTypeNodeWithExt(TT_Tuple, valToCast->type.get())
+                           : valToCast->type.get();
+        
+        if(!!(tyeq = c->typeEq(wrapper, dataTy->tyn.get()))){
+            //check if this is a tagged union (sum type)
+            if(dataTy->isUnionTag())
+                return createUnionVariantCast(c, valToCast, castTyn, dataTy, tyeq);
 
-        auto *tycpy = copy(valToCast->type);
-        tycpy->typeName = castTyn->typeName;
-        tycpy->type = TT_Data;
-
-        return new TypedValue(valToCast->val, tycpy);
+            /*
+            auto *tycpy = copy(valToCast->type);
+            tycpy->typeName = castTyn->typeName;
+            tycpy->type = TT_Data;
+            */
+            return new TypedValue(valToCast->val, copy(castTyn));
+        }
+    }
+    
     //test for the reverse case, something like:  i32 example
     //where example is of type Int
-    }else if(valToCast->type->typeName.size() > 0 && (dataTy = c->lookupType(valToCast->type->typeName))){
-        if(!!c->typeEq(dataTy->tyn.get(), castTyn)){
+    if(valToCast->type->typeName.size() > 0 && (dataTy = c->lookupType(valToCast->type->typeName))){
+        TypeNode *wrapper = castTyn->type != TT_Tuple
+                          ? mkTypeNodeWithExt(TT_Tuple, castTyn)
+                          : castTyn;
+    
+
+        if(!!c->typeEq(dataTy->tyn.get(), wrapper)){ /*
             auto *tycpy = copy(valToCast->type);
             tycpy->typeName = "";
-            tycpy->type = castTyn->type;
-            return new TypedValue(valToCast->val, tycpy);
+            tycpy->type = castTyn->type; */
+            return new TypedValue(valToCast->val, copy(castTyn));
         }
     }
  
