@@ -34,7 +34,7 @@ fun substr: Str s, i32 begin end -> Str
         b += 1
         i += 1
 
-    Str(buf, len)
+    Str(buf, u32 len)
 
 
 let str = "test1 test2 test3"

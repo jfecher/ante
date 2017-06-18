@@ -174,7 +174,7 @@ ext InFile: Iterator
     fun unwrap: InFile f -> Str
         var cap = 63
         var buf = c8* malloc 64
-        var len = 0
+        var len = 0u32
 
         while
             let c = fgetc f

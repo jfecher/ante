@@ -640,16 +640,16 @@ bool extTysEq(const TypeNode *l, const TypeNode *r, TypeCheckResult *tcr, const 
 
     while(lExt and rExt){
         if(c){
-            if(!typeEqHelper(c, lExt, rExt, tcr)) return tcr;
+            if(!typeEqHelper(c, lExt, rExt, tcr)) return tcr->setFailure();
         }else{
-            if(!typeEqBase(lExt, rExt, tcr)) return tcr;
+            if(!typeEqBase(lExt, rExt, tcr)) return tcr->setFailure();
         }
 
         lExt = (TypeNode*)lExt->next.get();
         rExt = (TypeNode*)rExt->next.get();
         if((lExt and !rExt) or (rExt and !lExt)) return tcr->setFailure();
     }
-    return tcr->setSuccess();
+    return tcr;
 }
 
 /*
@@ -672,7 +672,7 @@ TypeCheckResult typeEqBase(const TypeNode *l, const TypeNode *r, TypeCheckResult
     if(l->type == TT_Data and r->type == TT_TaggedUnion) return tcr->setRes(l->typeName == r->typeName);
 
     if(l->type == TT_TypeVar or r->type == TT_TypeVar){
-        return tcr->setSuccessWithTypeVars();
+        return !tcr ? tcr : tcr->setSuccessWithTypeVars();
     }
 
     if(l->type != r->type)
@@ -680,25 +680,29 @@ TypeCheckResult typeEqBase(const TypeNode *l, const TypeNode *r, TypeCheckResult
 
     if(r->type == TT_Ptr){
         if(l->extTy->type == TT_Void or r->extTy->type == TT_Void)
-            return tcr->setSuccess();
+            return tcr;
 
         return extTysEq(l, r, tcr, c);
     }else if(r->type == TT_Array){
         //size of an array is part of its type and stored in 2nd extTy
         auto lsz = ((IntLitNode*)l->extTy->next.get())->val;
         auto rsz = ((IntLitNode*)r->extTy->next.get())->val;
+
+        auto lext = (TypeNode*)l->extTy.get();
+        auto rext = (TypeNode*)r->extTy.get();
+
         if(lsz != rsz) return tcr->setFailure();
 
-        return extTysEq(l, r, tcr, c);
+        return c ? typeEqHelper(c, lext, rext, tcr) : typeEqBase(lext, rext, tcr, c);
 
     }else if(r->type == TT_Data or r->type == TT_TaggedUnion){
-        return tcr->setRes(l->typeName == r->typeName);
+        return !tcr ? tcr : tcr->setRes(l->typeName == r->typeName);
 
     }else if(r->type == TT_Function or r->type == TT_MetaFunction or r->type == TT_Method or r->type == TT_Tuple){
         return extTysEq(l, r, tcr, c);
     }
     //primitive type
-    return tcr->setSuccess();
+    return tcr;
 }
 
 bool dataTypeImplementsTrait(DataType *dt, string trait){
@@ -738,7 +742,7 @@ TypeCheckResult typeEqHelper(const Compiler *c, const TypeNode *l, const TypeNod
     if((l->type == TT_Data or l->type == TT_TaggedUnion) and (r->type == TT_Data or r->type == TT_TaggedUnion)){
         if(l->typeName == r->typeName){
             if(l->params.empty() and r->params.empty()){
-                return tcr->setSuccess();
+                return tcr;
             }
 
             if(l->params.size() != r->params.size()){
@@ -752,7 +756,7 @@ TypeCheckResult typeEqHelper(const Compiler *c, const TypeNode *l, const TypeNod
                     return tcr->setFailure();
             }
 
-            return tcr->setSuccess();
+            return tcr;
         }
 
         //typeName's are different, check if one is a trait and the other
@@ -790,7 +794,7 @@ TypeCheckResult typeEqHelper(const Compiler *c, const TypeNode *l, const TypeNod
             typeVar = r;
             nonTypeVar = l;
         }else{ //both type vars
-            return tcr->setSuccess();
+            return tcr;
         }
 
 
@@ -802,7 +806,7 @@ TypeCheckResult typeEqHelper(const Compiler *c, const TypeNode *l, const TypeNod
                 auto nontvcpy = unique_ptr<TypeNode>(copy(nonTypeVar));
                 tcr->bindings.push_back({typeVar->typeName, move(nontvcpy)});
                 
-                return tcr->setSuccessWithTypeVars();
+                return !tcr ? tcr : tcr->setSuccessWithTypeVars();
             }else{ //tv is bound in same typechecking run
                 return typeEqHelper(c, tv, nonTypeVar, tcr);
             }
@@ -815,14 +819,14 @@ TypeCheckResult typeEqHelper(const Compiler *c, const TypeNode *l, const TypeNod
 }
 
 TypeCheckResult Compiler::typeEq(const TypeNode *l, const TypeNode *r) const{
-    auto tcr = TypeCheckResult(false);
+    auto tcr = TypeCheckResult(true);
     typeEqHelper(this, l, r, &tcr);
     return tcr;
 }
 
 
 TypeCheckResult Compiler::typeEq(vector<TypeNode*> l, vector<TypeNode*> r) const{
-    auto tcr = TypeCheckResult(false);
+    auto tcr = TypeCheckResult(true);
     if(l.size() != r.size()) return tcr;
 
     for(size_t i = 0; i < l.size(); i++){

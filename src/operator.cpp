@@ -388,7 +388,7 @@ TypedValue* createCast(Compiler *c, TypeNode *castTyn, TypedValue *valToCast){
 
         if(!!tc){
             bool isUnion = dataTy->isUnionTag();
-            
+
             auto *to_tyn = copy(dataTy->tyn.get());
             to_tyn->typeName = castTyn->typeName;
             to_tyn->type = isUnion ? TT_TaggedUnion : TT_Data;
