@@ -284,6 +284,19 @@ string getCastFnBaseName(TypeNode *t){
 }
 
 
+void updateBindings(vector<unique_ptr<TypeNode>>& params, const vector<pair<string,unique_ptr<TypeNode>>>& bindings){
+    unsigned i = 0;
+    for(auto &tn : params){
+        for(auto &pair : bindings){
+            if(tn->typeName == pair.first){
+                params[i] = unique_ptr<TypeNode>(copy(pair.second));
+            }
+        }
+        i++;
+    }
+}
+
+
 TypedValue* compMetaFunctionResult(Compiler *c, LOC_TY &loc, string &baseName, string &mangledName, vector<TypedValue*> &typedArgs);
 
 /*
@@ -370,13 +383,25 @@ TypedValue* createCast(Compiler *c, TypeNode *castTyn, TypedValue *valToCast){
         TypeNode *wrapper = valToCast->type->type != TT_Tuple
                            ? mkTypeNodeWithExt(TT_Tuple, valToCast->type.get())
                            : valToCast->type.get();
-        
-        if(!!(tyeq = c->typeEq(wrapper, dataTy->tyn.get()))){
-            //check if this is a tagged union (sum type)
-            if(dataTy->isUnionTag())
-                return createUnionVariantCast(c, valToCast, castTyn, dataTy, tyeq);
+       
+        auto tc = c->typeEq(wrapper, dataTy->tyn.get());
 
-            return new TypedValue(valToCast->val, copy(castTyn));
+        if(!!tc){
+            bool isUnion = dataTy->isUnionTag();
+            
+            auto *to_tyn = copy(dataTy->tyn.get());
+            to_tyn->typeName = castTyn->typeName;
+            to_tyn->type = isUnion ? TT_TaggedUnion : TT_Data;
+
+            if(tc.res == TypeCheckResult::SuccessWithTypeVars){
+                bindGenericToType(to_tyn, tc.bindings);
+                updateBindings(to_tyn->params, tc.bindings);
+            }
+
+            if(isUnion)
+                return createUnionVariantCast(c, valToCast, to_tyn, dataTy, tyeq);
+            else
+                return new TypedValue(valToCast->val, to_tyn);
         }
     }
     
@@ -601,7 +626,7 @@ TypedValue* IfNode::compile(Compiler *c){
 
 
 TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *binop){
-    if(!ln) return 0;
+    if(!ln) throw new CtError();
 
     if(auto *tn = dynamic_cast<TypeNode*>(ln)){
         //since ln is a typenode, this is a static field/method access, eg Math.rand
@@ -652,13 +677,18 @@ TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *bino
 
         //check to see if this is a field index
         if(tyn->type == TT_Data || tyn->type == TT_Tuple){
-            auto dataTy = lookupType(typeNodeToStr(tyn));
+            auto dataTy = lookupType(tyn);
 
             if(dataTy){
                 auto index = dataTy->getFieldIndex(field->name);
 
                 if(index != -1){
-                    TypeNode *indexTy = dataTy->tyn->extTy.get();
+                    auto *dataTyn = copy(dataTy->tyn.get());
+                    if(!tyn->params.empty()){
+                        bindGenericToType(dataTyn, tyn->params);
+                    }
+
+                    TypeNode *indexTy = dataTyn->extTy.get();
 
                     for(int i = 0; i < index; i++)
                         indexTy = (TypeNode*)indexTy->next.get();
@@ -668,11 +698,16 @@ TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *bino
                     if(indexTy->modifiers.empty())
                         indexTy->copyModifiersFrom(tyn);
 
+                    //If dataTy is a single value tuple then val may not be a tuple at all. In this
+                    //case, val should be returned without being extracted from a nonexistant tuple
+                    if(index == 0 and !val->getType()->isStructTy())
+                        return new TypedValue(val, copy(indexTy));
+
                     return new TypedValue(builder.CreateExtractValue(val, index), copy(indexTy));
                 }
             }
         }
-
+        
         //not a field, so look for a method.
         //TODO: perhaps create a calling convention function
         string funcName = typeNodeToStr(tyn) + "_" + field->name;

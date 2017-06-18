@@ -447,7 +447,7 @@ TypedValue* ForNode::compile(Compiler *c){
 
     //check if the range expression is its own iterator and thus implements Iterator
     //If it does not, see if it implements Iterable by attempting to call into_iter on it
-    auto *dt = c->lookupType(typeNodeToStr(rangev->type.get()));
+    auto *dt = c->lookupType(rangev->type.get());
     if(!dt or (dt and !c->typeImplementsTrait(dt, "Iterator"))){
         auto *res = c->callFn("into_iter", {rangev});
 
@@ -794,7 +794,7 @@ TypedValue* compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
 
     //check to see if this is a field index
     if(tyn->type == TT_Data || tyn->type == TT_Tuple){
-        auto dataTy = c->lookupType(typeNodeToStr(tyn));
+        auto dataTy = c->lookupType(tyn);
 
         if(dataTy){
             auto index = dataTy->getFieldIndex(field->name);
@@ -1853,6 +1853,13 @@ DataType* Compiler::lookupType(string tyname) const{
     }catch(out_of_range r){
         return nullptr;
     }
+}
+
+DataType* Compiler::lookupType(TypeNode *tn) const{
+    auto p = move(tn->params);
+    string name = typeNodeToStr(tn);
+    tn->params = move(p);
+    return lookupType(name);
 }
 
 Trait* Compiler::lookupTrait(string tyname) const{
