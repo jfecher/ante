@@ -1092,6 +1092,16 @@ TypedValue* DataDeclNode::compile(Compiler *c){
         return compTaggedUnion(c, this);
     }
 
+    //Create the DataType as a stub first, have its contents be recursive 
+    //just to cause an error if something tries to use the stub
+    DataType *data = new DataType(name, {}, mkDataTypeNode(name));
+            
+    for(auto &g : generics){
+        data->generics.push_back(shared_ptr<TypeNode>(copy(g.get())));
+    }
+   
+    c->stoType(data, name);
+
 
     vector<string> fieldNames;
     vector<Type*> fieldTypes;
@@ -1116,18 +1126,15 @@ TypedValue* DataDeclNode::compile(Compiler *c){
         }
 
         fieldNames.push_back(nvn->name);
-        fieldTypes.push_back(c->typeNodeToLlvmType(tyn));
 
         nvn = (NamedValNode*)nvn->next.get();
     }
 
     TypeNode *dataTyn = mkTypeNodeWithExt(TT_Tuple, first);
 
-    DataType *data = new DataType(name, fieldNames, dataTyn);
-    for(auto &g : generics)
-        data->generics.push_back(shared_ptr<TypeNode>(g.release()));
+    data->fields = fieldNames;
+    data->tyn.reset(dataTyn);
 
-    c->stoType(data, name);
     return c->getVoidLiteral();
 }
 
