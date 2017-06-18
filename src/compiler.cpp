@@ -1856,10 +1856,10 @@ DataType* Compiler::lookupType(string tyname) const{
 }
 
 DataType* Compiler::lookupType(TypeNode *tn) const{
-    auto p = move(tn->params);
-    string name = typeNodeToStr(tn);
-    tn->params = move(p);
-    return lookupType(name);
+    if(tn->typeName.empty())
+        return lookupType(typeNodeToStr(tn));
+    else
+        return lookupType(tn->typeName);
 }
 
 Trait* Compiler::lookupTrait(string tyname) const{
