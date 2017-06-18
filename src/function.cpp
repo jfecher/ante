@@ -505,8 +505,7 @@ TypedValue* compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, TypeN
 
     //apply each binding from the typecheck results to a type variables in this scope
     for(auto& pair : tc.bindings){
-        auto *type_var = new TypedValue(nullptr, pair.second.release());
-        c->stoVar(pair.first, new Variable(pair.first, type_var, c->scope));
+        c->stoTypeVar(pair.first, pair.second.get());
     }
 
     TypeNode *argscpy = copy(args);

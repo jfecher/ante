@@ -799,7 +799,8 @@ TypeCheckResult* TypeCheckResult::setRes(Result r){
  *  Compiler instance required to check for trait implementation
  */
 TypeCheckResult typeEqHelper(const Compiler *c, const TypeNode *l, const TypeNode *r, TypeCheckResult *tcr){
-    if(!l) return !r;
+    if(!l) return !tcr ? tcr : tcr->setRes(!r);
+    if(!r) return tcr->setFailure();
 
     if((l->type == TT_Data or l->type == TT_TaggedUnion) and (r->type == TT_Data or r->type == TT_TaggedUnion)){
         if(l->typeName == r->typeName){
