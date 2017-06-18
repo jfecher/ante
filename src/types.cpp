@@ -35,6 +35,8 @@ TypeNode* extractTypeValue(TypedValue* tv){
  *      - Contain only data types that have been declared
  */
 void validateType(Compiler *c, const TypeNode *tn, const DataDeclNode *rootTy){
+    if(!tn) return;
+
     if(tn->type == TT_Data){
         auto *dataTy = c->lookupType(tn->typeName);
         if(!dataTy){
