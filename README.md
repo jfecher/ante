@@ -19,22 +19,17 @@ the ability to interact at a lower level if needed.
 
 ## Features
 * Systems language that feels like an interpreted language
-* Expression-based syntax, no statements
-* Support for functional, imperative, and object-oriented paradigms
+* Expression-based syntax
 * Robust module system
 * Immutability by default
 * Strongly typed with a detailed algebraic type system and type inferencing
-* Full control given to users allowing them to specify specific requirements for a given
+* Ability to write compiler plugins within the compiled program itself
 type and issue a compile-time error if it is invalidated
     -  Extremely diverse and powerful compile-time analysis that can be custom programmed into
 any datatype creating eg. iterator invalidation, pointer-autofree, or even an ownership system.
 The implementation of these features resembles that of a compiler plugin, except that it is written
 into the compiled module itself.
-    - These compile-time functions are checked at compile-time and not compiled into the binary.
-    - Ability to write compiler plugins within the compiled program itself
 
-* API designers given full reign to implement custom rules for their types, full access to the
-parse tree is provided, along with a quick list of the uses of the variable in question.
 * Programmers have just as much power over their program as the compiler does.  As an example,
 here is an implementation of the goto construct in Ante
 
@@ -60,10 +55,6 @@ label begin
 print "hello!"
 goto begin
 ```
-
-* Extensivity is encouraged through type extensions, which allow adding additional static methods to pre-existing types.
-
-* Universal Function Call Syntax
 
 * For more information, check out tests/language.an for all planned features.
     - For implemented features, check out the tests/ directory

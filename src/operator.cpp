@@ -376,11 +376,6 @@ TypedValue* createCast(Compiler *c, TypeNode *castTyn, TypedValue *valToCast){
             if(dataTy->isUnionTag())
                 return createUnionVariantCast(c, valToCast, castTyn, dataTy, tyeq);
 
-            /*
-            auto *tycpy = copy(valToCast->type);
-            tycpy->typeName = castTyn->typeName;
-            tycpy->type = TT_Data;
-            */
             return new TypedValue(valToCast->val, copy(castTyn));
         }
     }
@@ -393,10 +388,7 @@ TypedValue* createCast(Compiler *c, TypeNode *castTyn, TypedValue *valToCast){
                           : castTyn;
     
 
-        if(!!c->typeEq(dataTy->tyn.get(), wrapper)){ /*
-            auto *tycpy = copy(valToCast->type);
-            tycpy->typeName = "";
-            tycpy->type = castTyn->type; */
+        if(!!c->typeEq(dataTy->tyn.get(), wrapper)){
             return new TypedValue(valToCast->val, copy(castTyn));
         }
     }
