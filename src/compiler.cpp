@@ -1038,18 +1038,6 @@ TypedValue* compTaggedUnion(Compiler *c, DataDeclNode *n){
 
     vector<shared_ptr<UnionTag>> tags;
     
-    //hotfix for generic types: bind each generic to void and retranslate when a concrete type is given
-    //TODO: implement fully lazy translation
-    
-    //These are just tmp type vars so we create a new scope to easily discard them later
-    c->enterNewScope();
-    TypeNode *voidTy = mkAnonTypeNode(TT_Void);    
-    if(!n->generics.empty()){
-        for(auto &tn : n->generics){
-            c->stoTypeVar(tn->typeName, voidTy);
-        }
-    }
-
     TypeNode *unionTy = mkAnonTypeNode(TT_TaggedUnion);
     TypeNode *curExt = 0;
 
@@ -1066,7 +1054,6 @@ TypedValue* compTaggedUnion(Compiler *c, DataDeclNode *n){
         TypeNode *tup = mkTypeNodeWithExt(TT_Tuple, variant);
 
         DataType *data = new DataType(nvn->name, union_name, copy(tagTy));
-        c->stoType(data, nvn->name);
 
         TypeNode *tupCpy = copy(tup);
         if(curExt){
@@ -1078,20 +1065,11 @@ TypedValue* compTaggedUnion(Compiler *c, DataDeclNode *n){
         variant->next.release();
         delete tup;
 
-        try{
-            if(tagTy) tagTy->getSizeInBits(c, &n->name);
-        }catch(IncompleteTypeError *e){
-            delete e;
-            return c->compErr("Cannot define a recursive type", tyn->loc);
-        }catch(TypeVarError *e){
-            delete e;
-            return c->compErr("Typevar not bound in expression", tyn->loc);
-        }
+        validateType(c, tagTy, n);
+        c->stoType(data, nvn->name);
 
         nvn = (NamedValNode*)nvn->next.get();
     }
-
-    c->exitScope();
 
     unionTy->typeName = n->name;
     DataType *data = new DataType(n->name, fieldNames, unionTy);
@@ -1124,30 +1102,10 @@ TypedValue* DataDeclNode::compile(Compiler *c){
     TypeNode *first = 0;
     TypeNode *nxt = 0;
 
-    //hotfix for generic types: bind each generic to void and retranslate when a concrete type is given
-    //TODO: implement fully lazy translation
-    
-    c->enterNewScope();
-    TypeNode *voidTy = mkAnonTypeNode(TT_Void);    
-    if(!generics.empty()){
-        for(auto &tn : generics){
-            c->stoTypeVar(tn->typeName, voidTy);
-        }
-    }
-
-   
     while(nvn){
         TypeNode *tyn = (TypeNode*)nvn->typeExpr.get();
-  
-        try{
-            tyn->getSizeInBits(c, &name);
-        }catch(IncompleteTypeError *e){
-            delete e;
-            return c->compErr("Cannot define a recursive type", tyn->loc);
-        }catch(TypeVarError *e){
-            delete e;
-            return c->compErr("Typevar not bound in expression", tyn->loc);
-        }
+        
+        validateType(c, tyn, this);
 
         if(first){
             nxt->next.reset(copy(tyn));
@@ -1162,8 +1120,6 @@ TypedValue* DataDeclNode::compile(Compiler *c){
 
         nvn = (NamedValNode*)nvn->next.get();
     }
-
-    c->exitScope();
 
     TypeNode *dataTyn = mkTypeNodeWithExt(TT_Tuple, first);
 

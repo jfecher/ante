@@ -24,6 +24,66 @@ TypeNode* extractTypeValue(TypedValue* tv){
     return (TypeNode*) zext;
 }
 
+
+/*
+ *  Checks to see if a type is valid to be used.
+ *  To be valid the type must:
+ *      - Not be recursive (contain no references to
+ *        itself that are not behind a pointer)
+ *      - Contain no typevars that are not declared
+ *        within the rootTy's params
+ *      - Contain only data types that have been declared
+ */
+void validateType(Compiler *c, const TypeNode *tn, const DataDeclNode *rootTy){
+    if(tn->type == TT_Data){
+        auto *dataTy = c->lookupType(tn->typeName);
+        if(!dataTy){
+            if(tn->typeName == rootTy->name){
+                c->compErr("Recursive types are disallowed, wrap the type in a pointer instead", tn->loc);
+            }
+
+            c->compErr("Type "+tn->typeName+" has not been declared", tn->loc);
+        }
+
+        if(dataTy->generics.size() != tn->params.size())
+            c->compErr("Unbound type params for type "+typeNodeToColoredStr(dataTy->tyn.get()), tn->loc);
+
+        TypeNode *dtyn = dataTy->tyn.get();
+        if(!tn->params.empty()){
+            dtyn = copy(dtyn);
+            bindGenericToType(dtyn, tn->params);
+        }
+
+        validateType(c, dtyn, rootTy);
+    
+    }else if(tn->type == TT_Tuple or tn->type == TT_TaggedUnion){
+        TypeNode *ext = tn->extTy.get();
+        while(ext){
+            validateType(c, ext, rootTy);
+            ext = (TypeNode*)ext->next.get();
+        }
+    }else if(tn->type == TT_Array){
+        TypeNode *ext = tn->extTy.get();
+        validateType(c, ext, rootTy);
+    }else if(tn->type == TT_Ptr or tn->type == TT_Function or tn->type == TT_MetaFunction or tn->type == TT_Method){
+        return;
+
+    }else if(tn->type == TT_TypeVar){
+        auto *var = c->lookup(tn->typeName);
+        if(var){
+            return validateType(c, extractTypeValue(var->tval.get()), rootTy);
+        }
+
+        //Typevar not found, if its not in the rootTy's params, then it is unbound
+        for(auto &p : rootTy->generics){
+            if(p->typeName == tn->typeName) return;
+        }
+
+        c->compErr("Lookup for "+tn->typeName+" not found", tn->loc);
+    }
+}
+
+
 unsigned int TypeNode::getSizeInBits(Compiler *c, string *incompleteType){
     int total = 0;
     TypeNode *ext = this->extTy.get();

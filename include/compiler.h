@@ -38,6 +38,8 @@ struct TypedValue {
     void dump() const;
 };
 
+
+void validateType(Compiler *c, const TypeNode* tn, const DataDeclNode* rootTy);
 bool isPrimitiveTypeTag(TypeTag ty);
 TypeNode* mkAnonTypeNode(TypeTag);
 TypeNode* mkTypeNodeWithExt(TypeTag tt, TypeNode *ext);
