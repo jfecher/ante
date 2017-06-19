@@ -380,7 +380,7 @@ TypedValue* createCast(Compiler *c, TypeNode *castTyn, TypedValue *valToCast){
     if(dataTy){
         //The tyn of a DataType is always a tuple, so wrap the casting value with a
         //tuple if it is not one already or else it will always fail type checking.
-        TypeNode *wrapper = valToCast->type->type != TT_Tuple
+        TypeNode *wrapper = valToCast->type->type != TT_Tuple and dataTy->tyn->type == TT_Tuple
                            ? mkTypeNodeWithExt(TT_Tuple, valToCast->type.get())
                            : valToCast->type.get();
        
@@ -408,7 +408,7 @@ TypedValue* createCast(Compiler *c, TypeNode *castTyn, TypedValue *valToCast){
     //test for the reverse case, something like:  i32 example
     //where example is of type Int
     if(valToCast->type->typeName.size() > 0 && (dataTy = c->lookupType(valToCast->type->typeName))){
-        TypeNode *wrapper = castTyn->type != TT_Tuple
+        TypeNode *wrapper = castTyn->type != TT_Tuple and dataTy->tyn->type == TT_Tuple
                           ? mkTypeNodeWithExt(TT_Tuple, castTyn)
                           : castTyn;
     
