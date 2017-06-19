@@ -1049,6 +1049,9 @@ TypedValue* compTaggedUnion(Compiler *c, DataDeclNode *n){
 
         //Each union member's type is a tuple of the tag, a u8 value, and the user-defined value
         TypeNode *tagTy = tyn->extTy.get();
+        if(tagTy->type != TT_Tuple)
+            tagTy = mkTypeNodeWithExt(TT_Tuple, tagTy);
+
         TypeNode *variant = mkAnonTypeNode(TT_U8);
         variant->next.reset(tagTy);
         TypeNode *tup = mkTypeNodeWithExt(TT_Tuple, variant);
