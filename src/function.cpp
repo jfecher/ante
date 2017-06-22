@@ -502,8 +502,6 @@ TypeNode* replaceParams(NamedValNode *params, TypeNode *args){
 
 
 TypedValue* compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, TypeNode *args){
-    c->enterNewScope();
-
     //Each binding from the typecheck results needs to be declared as a typevar in the
     //function's scope, but compFn sets this scope later on, so the needed bindings are
     //instead stored as fake obj bindings to be declared later in compFn
@@ -540,7 +538,6 @@ TypedValue* compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, TypeN
         }
         fd->fdn->type.reset(retTy);
         replaceParams(fd->fdn->params.get(), params);
-        c->exitScope();
         throw e;
     }
 
@@ -553,7 +550,6 @@ TypedValue* compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, TypeN
     
     fd->fdn->type.reset(retTy);
     replaceParams(fd->fdn->params.get(), params);
-    c->exitScope();
     return res;
 }
 
