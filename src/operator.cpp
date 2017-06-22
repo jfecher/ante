@@ -160,12 +160,12 @@ TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
 
 /*
  *  Compiles an insert statement for arrays or tuples.
- *  An insert statement would look similar to the following (in ante syntax):
+ *  An insert statement would look similar to the following:
  *
- *  i32,i32,i32 tuple = (1, 2, 4)
+ *  var tuple = ("one", 2.0, 4)
  *  tuple#2 = 3
  *
- *  This method Works on lvals and returns a void value.
+ *  This method works on lvals and returns a void value.
  */
 TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
     auto *tmp = op->lval->compile(this);
@@ -625,7 +625,7 @@ TypedValue* IfNode::compile(Compiler *c){
     auto *mergebb = BasicBlock::Create(*c->ctxt, "endif");
     return compIf(c, this, mergebb, branches);
 }
-
+        
 
 TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *binop){
     if(!ln) throw new CtError();
@@ -674,8 +674,9 @@ TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *bino
         }
 
         //if pointer derefs took place, tyn could have lost its modifiers, so make sure they are copied back
-        if(ltyn->type == TT_Ptr and tyn->modifiers.empty())
+        if(ltyn->type == TT_Ptr and tyn->modifiers.empty() and !ltyn->modifiers.empty()){
             tyn->copyModifiersFrom(ltyn);
+        }
 
         //check to see if this is a field index
         if(tyn->type == TT_Data || tyn->type == TT_Tuple){
@@ -701,8 +702,9 @@ TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *bino
 
                     //The data type when looking up (usually) does not have any modifiers,
                     //so apply any potential modifers from the parent to this
-                    if(retTy->modifiers.empty())
+                    if(retTy->modifiers.empty() and !ltyn->modifiers.empty()){
                         retTy->copyModifiersFrom(tyn);
+                    }
 
                     //If dataTy is a single value tuple then val may not be a tuple at all. In this
                     //case, val should be returned without being extracted from a nonexistant tuple

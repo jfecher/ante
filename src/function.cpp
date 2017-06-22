@@ -480,24 +480,32 @@ TypedValue* compFnHelper(Compiler *c, FuncDecl *fd){
     c->builder.SetInsertPoint(caller);
     return ret;
 }
-            
 
-TypeNode* replaceParams(NamedValNode *params, TypeNode *args){
-    TypeNode *oldParams = 0;
 
-    while(params and args){
-        if(oldParams ){
-            oldParams->next.release();
-            oldParams->next.reset(params->typeExpr.release());
-        }else
-            oldParams = (TypeNode*)params->typeExpr.release();
+vector<TypeNode*> bindParams(NamedValNode *params, const vector<pair<string,unique_ptr<TypeNode>>> &bindings){
+    vector<TypeNode*> oldParams;
 
-        params->typeExpr.reset(args);
+    while(params){
+        auto *unboundTy = (TypeNode*)params->typeExpr.release();
+        oldParams.push_back(unboundTy);
+
+        auto *boundTy = copy(unboundTy);
+        bindGenericToType(boundTy, bindings);
+        params->typeExpr.reset(boundTy);
 
         params = (NamedValNode*)params->next.get();
-        args = (TypeNode*)args->next.get();
     }
     return oldParams;
+}
+
+void unbindParams(NamedValNode *params, vector<TypeNode*> replacements){
+    size_t i = 0;
+    while(params){
+        params->typeExpr.reset(replacements[i]);
+
+        params = (NamedValNode*)params->next.get();
+        i++;
+    }
 }
 
 
@@ -518,7 +526,7 @@ TypedValue* compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, TypeN
     }
 
     //swap out fn's generic params for the concrete arg types
-    auto *params = replaceParams(fd->fdn->params.get(), argscpy);
+    auto unboundParams = bindParams(fd->fdn->params.get(), tc.bindings);
     auto *retTy = (TypeNode*)fd->fdn->type.release();
 
     auto *boundRetTy = copy(retTy);
@@ -537,7 +545,7 @@ TypedValue* compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, TypeN
             fd->obj_bindings.pop_back();
         }
         fd->fdn->type.reset(retTy);
-        replaceParams(fd->fdn->params.get(), params);
+        unbindParams(fd->fdn->params.get(), unboundParams);
         throw e;
     }
 
@@ -549,7 +557,7 @@ TypedValue* compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, TypeN
     }
     
     fd->fdn->type.reset(retTy);
-    replaceParams(fd->fdn->params.get(), params);
+    unbindParams(fd->fdn->params.get(), unboundParams);
     return res;
 }
 
