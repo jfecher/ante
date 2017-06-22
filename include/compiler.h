@@ -39,14 +39,6 @@ struct TypedValue {
 };
 
 
-void validateType(Compiler *c, const TypeNode* tn, const DataDeclNode* rootTy);
-bool isPrimitiveTypeTag(TypeTag ty);
-TypeNode* mkAnonTypeNode(TypeTag);
-TypeNode* mkTypeNodeWithExt(TypeTag tt, TypeNode *ext);
-TypeNode* mkDataTypeNode(string tyname);
-
-
-
 //result from a typecheck function
 //gives not only a success/failure flag but also the specific
 //typevars binded and what they were binded to.

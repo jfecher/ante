@@ -1047,7 +1047,7 @@ TypedValue* compTaggedUnion(Compiler *c, DataDeclNode *n){
 
         tags.push_back(shared_ptr<UnionTag>(tag));
 
-        //Each union member's type is a tuple of the tag, a u8 value, and the user-defined value
+        //Each union member's type is a tuple of the tag (a u8 value), and the user-defined value
         TypeNode *tagTy = tyn->extTy.get();
 
         TypeNode *variant = mkAnonTypeNode(TT_U8);
@@ -1247,7 +1247,7 @@ TypedValue* MatchNode::compile(Compiler *c){
                 structty->typeName = lval->type->typeName;
                 structty->extTy->next.reset(tagtycpy);
 
-                bindGenericToType(structty, lval->type->params);
+                //bindGenericToType(structty, lval->type->params);
 
                 auto tcr = c->typeEq(structty, lval->type.get());
                 if(tcr.res == TypeCheckResult::SuccessWithTypeVars)
@@ -1746,7 +1746,7 @@ void TypedValue::dump() const{
     if(type->type == TT_Void)
         puts("void ()");
     else if(type->type == TT_Type)
-        cout << typeNodeToStr((TypeNode*)((ConstantInt*)val)->getZExtValue()) << endl;
+        cout << typeNodeToStr(extractTypeValue(this)) << endl;
     else
         val->dump();
 }

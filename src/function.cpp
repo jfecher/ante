@@ -123,7 +123,7 @@ TypeNode* validateReturns(Compiler *c, FuncDecl *fd, TypeNode *retTy = 0){
 
         if(tcr.res == TypeCheckResult::SuccessWithTypeVars){
             //TODO: copy type
-            bindGenericToType(ret->type.get(), matchTy->params);
+            bindGenericToType(ret->type.get(), tcr.bindings);
             ret->val->mutateType(c->typeNodeToLlvmType(ret->type.get()));
 
             auto *ri = dyn_cast<ReturnInst>(ret->val);
@@ -391,7 +391,8 @@ TypedValue* compFnHelper(Compiler *c, FuncDecl *fd){
     }else{
         if(!retNode->params.empty()){
             c->expand(retNode);
-            bindGenericToType(retNode, retNode->params);
+            auto *dt = c->lookupType(retNode);
+            bindGenericToType(retNode, retNode->params, dt);
         }
     }
 
@@ -503,9 +504,12 @@ TypeNode* replaceParams(NamedValNode *params, TypeNode *args){
 TypedValue* compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, TypeNode *args){
     c->enterNewScope();
 
-    //apply each binding from the typecheck results to a type variables in this scope
+    //Each binding from the typecheck results needs to be declared as a typevar in the
+    //function's scope, but compFn sets this scope later on, so the needed bindings are
+    //instead stored as fake obj bindings to be declared later in compFn
+    size_t tmp_bindings_loc = fd->obj_bindings.size();
     for(auto& pair : tc.bindings){
-        c->stoTypeVar(pair.first, pair.second.get());
+        fd->obj_bindings.push_back({pair.first, pair.second.get()});
     }
 
     TypeNode *argscpy = copy(args);
@@ -517,11 +521,37 @@ TypedValue* compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, TypeN
 
     //swap out fn's generic params for the concrete arg types
     auto *params = replaceParams(fd->fdn->params.get(), argscpy);
+    auto *retTy = (TypeNode*)fd->fdn->type.release();
+
+    auto *boundRetTy = copy(retTy);
+    bindGenericToType(boundRetTy, tc.bindings);
+    fd->fdn->type.reset(boundRetTy);
+
 
     //compile the function normally (each typevar should now be
     //substituted with its checked type from the typecheck tc)
-    auto *res = c->compFn(fd);
+    TypedValue *res;
+    try{
+        res = c->compFn(fd);
+    }catch(CtError *e){
+        //cleanup, reset bindings
+        while(fd->obj_bindings.size() > tmp_bindings_loc){
+            fd->obj_bindings.pop_back();
+        }
+        fd->fdn->type.reset(retTy);
+        replaceParams(fd->fdn->params.get(), params);
+        c->exitScope();
+        throw e;
+    }
+
+    auto ls = typeNodeToColoredStr(res->type.get());
+
+    //cleanup, reset bindings
+    while(fd->obj_bindings.size() > tmp_bindings_loc){
+        fd->obj_bindings.pop_back();
+    }
     
+    fd->fdn->type.reset(retTy);
     replaceParams(fd->fdn->params.get(), params);
     c->exitScope();
     return res;

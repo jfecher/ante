@@ -19,9 +19,13 @@ char getBitWidthOfTypeTag(const TypeTag ty){
 /*
  *  Returns the TypeNode* value of a TypedValue* of type TT_Type
  */
-TypeNode* extractTypeValue(TypedValue* tv){
+TypeNode* extractTypeValue(const TypedValue* tv){
     auto zext = dyn_cast<ConstantInt>(tv->val)->getZExtValue();
     return (TypeNode*) zext;
+}
+
+TypeNode* extractTypeValue(const unique_ptr<TypedValue> &tv){
+    return extractTypeValue(tv.get());
 }
 
 
@@ -53,7 +57,7 @@ void validateType(Compiler *c, const TypeNode *tn, const DataDeclNode *rootTy){
         TypeNode *dtyn = dataTy->tyn.get();
         if(!tn->params.empty()){
             dtyn = copy(dtyn);
-            bindGenericToType(dtyn, tn->params);
+            bindGenericToType(dtyn, tn->params, dataTy);
         }
 
         validateType(c, dtyn, rootTy);
@@ -73,7 +77,7 @@ void validateType(Compiler *c, const TypeNode *tn, const DataDeclNode *rootTy){
     }else if(tn->type == TT_TypeVar){
         auto *var = c->lookup(tn->typeName);
         if(var){
-            return validateType(c, extractTypeValue(var->tval.get()), rootTy);
+            return validateType(c, extractTypeValue(var->tval), rootTy);
         }
 
         //Typevar not found, if its not in the rootTy's params, then it is unbound
@@ -122,10 +126,10 @@ unsigned int TypeNode::getSizeInBits(Compiler *c, string *incompleteType){
     }else if(type == TT_TypeVar){
         auto *var = c->lookup(typeName);
         if(var){
-            return extractTypeValue(var->tval.get())->getSizeInBits(c);
+            return extractTypeValue(var->tval)->getSizeInBits(c);
         }
 
-        c->compErr("TypeVarError; lookup for "+typeName+" not found", loc);
+        c->compErr("Lookup for typevar "+typeName+" not found", loc);
         throw new TypeVarError();
         //return 64;
     }
@@ -162,8 +166,9 @@ void bindGenericToType_helper(TypeNode *tn, const vector<pair<string, unique_ptr
     }
 }
 
+/*
 //binds concrete types to a generic type based on declaration order of type vars
-void bindGenericToType_helper(TypeNode *tn, const vector<unique_ptr<TypeNode>> &bindings){
+void bindGenericToType_helper(Compiler *c, TypeNode *tn, const vector<unique_ptr<TypeNode>> &bindings){
     if(tn->type == TT_TypeVar){
         for(auto& tvar : bindings){
             bind(tn, tvar);
@@ -176,28 +181,72 @@ void bindGenericToType_helper(TypeNode *tn, const vector<unique_ptr<TypeNode>> &
         ext = (TypeNode*)ext->next.get();
     }
 }
+*/
 
+vector<pair<string, unique_ptr<TypeNode>>>
+mapBindingsToDataType(const vector<unique_ptr<TypeNode>> &bindings, DataType *dt){
+    vector<pair<string, unique_ptr<TypeNode>>> map;
 
-void bindGenericToType(TypeNode *tn, const vector<unique_ptr<TypeNode>> &bindings){
+    size_t i = 0;
+    for(auto &typevar : dt->generics){
+        pair<string,unique_ptr<TypeNode>> p{typevar->typeName, copy(bindings[i])};
+        map.push_back(move(p));
+        i++;
+    }
+
+    return map;
+}
+
+/*
+ *  Generics can be stored and bound in two ways
+ *    1. Stored as a map from name of typevar -> type bound to
+ *       - Handled by this function
+ *       - This is the format returned by a typeEq type check if it
+ *         indicates the check would only be a success if those typevars
+ *         are bound to the given types.  This is TypeCheckResult::SuccessWithTypeVars
+ *    2. Stored as a vector of ordered bound types.
+ *       - The ordering of type vars in this format is matched to the order of the
+ *         declaration of generics when the datatype was first declared.
+ *         Eg. with type Map<'k,'v> = ... and bindings {Str, i32}, 'k is bound to
+ *         Str and 'v is bound to i32.
+ *       - This is the format used internally by TypeNodes and DataTypes.
+ *       - Before being bound in bindGenericToType this representation must be
+ *         converted to the first beforehand, and to do that it needs the DataType
+ *         to match the typevar ordering with.  The second function below handles
+ *         this conversion
+ */
+void bindGenericToType(TypeNode *tn, const vector<pair<string, unique_ptr<TypeNode>>> &bindings){
     if(bindings.empty())
         return;
 
-    if(tn->params.empty())
-        for(auto& b : bindings)
-            tn->params.push_back(unique_ptr<TypeNode>(copy(b)));
+    if(tn->params.empty()){
+        if(tn->type == TT_Data or tn->type == TT_TaggedUnion)
+            for(auto& p : bindings)
+                tn->params.push_back(unique_ptr<TypeNode>(copy(p.second)));
+    }else{
+        size_t i = 0;
+        for(auto& p : tn->params){
+            for(auto &b : bindings){
+                if(p->typeName == b.first){
+                    tn->params[i].release();
+                    tn->params[i].reset(copy(b.second));
+                }
+            }
+            i++;
+        }
+    }
 
     bindGenericToType_helper(tn, bindings);
 }
 
-void bindGenericToType(TypeNode *tn, const vector<pair<string, unique_ptr<TypeNode>>> &bindings){
+
+void bindGenericToType(TypeNode *tn, const vector<unique_ptr<TypeNode>> &bindings, DataType *dt){
     if(bindings.empty())
         return;
-    
-    if(tn->params.empty())
-        for(auto& p : bindings)
-            tn->params.push_back(unique_ptr<TypeNode>(copy(p.second)));
 
-    bindGenericToType_helper(tn, bindings);
+    auto bindings_map = mapBindingsToDataType(bindings, dt);
+
+    return bindGenericToType(tn, bindings_map);
 }
 
 
@@ -246,13 +295,11 @@ void Compiler::searchAndReplaceBoundTypeVars(TypeNode* tn) const{
     if(tn->type == TT_TypeVar){
         auto *var = lookup(tn->typeName);
         if(!var){
-            cout << "Lookup for "+tn->typeName+" not found\n";
+            cerr << "Lookup for "+tn->typeName+" not found\n";
             return;
-        }else{
-            cout << "Lookup for "+tn->typeName+" found\n";
         }
 
-        TypeNode* val = (TypeNode*)dyn_cast<ConstantInt>(var->tval->val)->getZExtValue();
+        TypeNode* val = extractTypeValue(var->tval);
         tn->type = val->type;
         tn->typeName = val->typeName;
         tn->extTy.reset(copy(val->extTy));
@@ -497,7 +544,7 @@ TypeNode* getLargestExt(Compiler *c, TypeNode *tn){
 
 Type* updateLlvmTypeBinding(Compiler *c, DataType *dt, const vector<unique_ptr<TypeNode>> &bindings, string &name){
     auto *cpy = copy(dt->tyn);
-    bindGenericToType(cpy, bindings);
+    bindGenericToType(cpy, bindings, dt);
 
     //create an empty type first so we dont end up with infinite recursion
     auto* structTy = StructType::create(*c->ctxt, name);
@@ -625,7 +672,7 @@ Type* Compiler::typeNodeToLlvmType(const TypeNode *tyNode){
                 return Type::getInt32Ty(*ctxt);
             }
             
-            return typeNodeToLlvmType(extractTypeValue(typeVar->tval.get()));
+            return typeNodeToLlvmType(extractTypeValue(typeVar->tval));
         }
         default:
             return typeTagToLlvmType(tyNode->type, *ctxt);
@@ -857,26 +904,45 @@ TypeCheckResult typeEqHelper(const Compiler *c, const TypeNode *l, const TypeNod
             typeVar = r;
             nonTypeVar = l;
         }else{ //both type vars
-            return tcr;
+            Variable *lv = c->lookup(l->typeName);
+            Variable *rv = c->lookup(r->typeName);
+
+            if(lv and rv){ //both are already bound
+                auto lty = extractTypeValue(lv->tval);
+                auto rty = extractTypeValue(rv->tval);
+                return typeEqHelper(c, lty, rty, tcr);
+            }else if(lv and not rv){
+                typeVar = r;
+                nonTypeVar = extractTypeValue(lv->tval);
+            }else if(rv and not lv){
+                typeVar = l;
+                nonTypeVar = extractTypeValue(rv->tval);
+            }else{ //neither are bound
+                return !tcr ? tcr : tcr->setRes(l->typeName == r->typeName);
+            }
+            return false;
         }
 
 
-        Variable *tv = c->lookup(typeVar->typeName);
-        if(!tv){
+        //FIXME: the if statement below was commented out as it does not account
+        //       for function calls that should not have access to the current scope.
+        //
+        //Variable *tv = c->lookup(typeVar->typeName);
+        //if(!tv){
             auto *tv = tcr->getBindingFor(typeVar->typeName);
             if(!tv){
                 //make binding for type var to type of nonTypeVar
                 auto nontvcpy = unique_ptr<TypeNode>(copy(nonTypeVar));
                 tcr->bindings.push_back({typeVar->typeName, move(nontvcpy)});
-                
+
                 return !tcr ? tcr : tcr->setSuccessWithTypeVars();
             }else{ //tv is bound in same typechecking run
                 return typeEqHelper(c, tv, nonTypeVar, tcr);
             }
 
-        }else{ //tv already bound
-            return typeEqHelper(c, tv->tval->type.get(), nonTypeVar, tcr);
-        }
+        //}else{ //tv already bound
+        //    return typeEqHelper(c, extractTypeValue(tv->tval), nonTypeVar, tcr);
+        //}
     }
     return typeEqBase(l, r, tcr, c);
 }
@@ -890,7 +956,7 @@ TypeCheckResult Compiler::typeEq(const TypeNode *l, const TypeNode *r) const{
 
 TypeCheckResult Compiler::typeEq(vector<TypeNode*> l, vector<TypeNode*> r) const{
     auto tcr = TypeCheckResult(true);
-    if(l.size() != r.size()) return tcr;
+    if(l.size() != r.size()) return tcr.setFailure();
 
     for(size_t i = 0; i < l.size(); i++){
         typeEqHelper(this, l[i], r[i], &tcr);
@@ -961,6 +1027,8 @@ string typeTagToStr(TypeTag ty){
  *  Used in ExtNode::compile
  */
 string typeNodeToStr(const TypeNode *t){
+    if(!t) return "null";
+
     if(t->type == TT_Tuple){
         string ret = "(";
         TypeNode *elem = t->extTy.get();

@@ -1,4 +1,5 @@
 #include "compiler.h"
+#include "types.h"
 
 /* Provide a callable C API from ante */
 extern "C" {
@@ -13,8 +14,7 @@ extern "C" {
 
     size_t Ante_sizeof(Compiler *c, TypedValue *tv){
         if(tv->type->type == TT_Type){
-            auto zext = dyn_cast<ConstantInt>(tv->val)->getZExtValue();
-            return ((TypeNode*) zext)->getSizeInBits(c) / 8;
+            return extractTypeValue(tv)->getSizeInBits(c) / 8;
         }else{
             return tv->type->getSizeInBits(c) / 8;
         }

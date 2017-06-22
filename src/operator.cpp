@@ -432,8 +432,7 @@ TypedValue* TypeCastNode::compile(Compiler *c){
             Variable *v = c->lookup(p->typeName);
             if(!v) c->compErr("Unbound typevar "+p->typeName, p->loc);
 
-            auto zext = dyn_cast<ConstantInt>(v->tval->val)->getZExtValue();
-            p.reset((TypeNode*)zext);
+            p.reset(extractTypeValue(v->tval));
         }
     }
 
@@ -534,7 +533,8 @@ TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Ty
 
             //TODO: copy type
             if(tEmpty and not eEmpty){
-                bindGenericToType(thenVal->type.get(), elseVal->type->params);
+                auto *dt = c->lookupType(elseVal->type.get());
+                bindGenericToType(thenVal->type.get(), elseVal->type->params, dt);
                 thenVal->val->mutateType(c->typeNodeToLlvmType(thenVal->type.get()));
 
                 if(LoadInst *li = dyn_cast<LoadInst>(thenVal->val)){
@@ -543,7 +543,8 @@ TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Ty
                     thenVal->val = c->builder.CreateLoad(cast);
                 }
             }else if(eEmpty and not tEmpty){
-                bindGenericToType(elseVal->type.get(), thenVal->type->params);
+                auto *dt = c->lookupType(thenVal->type.get());
+                bindGenericToType(elseVal->type.get(), thenVal->type->params, dt);
                 elseVal->val->mutateType(c->typeNodeToLlvmType(elseVal->type.get()));
                 
                 if(LoadInst *ri = dyn_cast<LoadInst>(elseVal->val)){
@@ -576,7 +577,8 @@ TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Ty
             }
             
             //TODO: copy type
-            bindGenericToType(generic->type.get(), concrete->type->params);
+            auto *dt = c->lookupType(concrete->type.get());
+            bindGenericToType(generic->type.get(), concrete->type->params, dt);
             generic->val->mutateType(c->typeNodeToLlvmType(generic->type.get()));
 
             auto *ri = dyn_cast<ReturnInst>(generic->val);
@@ -685,25 +687,29 @@ TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *bino
                 if(index != -1){
                     auto *dataTyn = copy(dataTy->tyn.get());
                     if(!tyn->params.empty()){
-                        bindGenericToType(dataTyn, tyn->params);
+                        bindGenericToType(dataTyn, tyn->params, dataTy);
                     }
+
 
                     TypeNode *indexTy = dataTyn->extTy.get();
 
                     for(int i = 0; i < index; i++)
                         indexTy = (TypeNode*)indexTy->next.get();
 
+                    TypeNode *retTy = copy(indexTy);
+                    delete dataTyn;
+
                     //The data type when looking up (usually) does not have any modifiers,
                     //so apply any potential modifers from the parent to this
-                    if(indexTy->modifiers.empty())
-                        indexTy->copyModifiersFrom(tyn);
+                    if(retTy->modifiers.empty())
+                        retTy->copyModifiersFrom(tyn);
 
                     //If dataTy is a single value tuple then val may not be a tuple at all. In this
                     //case, val should be returned without being extracted from a nonexistant tuple
                     if(index == 0 and !val->getType()->isStructTy())
-                        return new TypedValue(val, copy(indexTy));
+                        return new TypedValue(val, retTy);
 
-                    return new TypedValue(builder.CreateExtractValue(val, index), copy(indexTy));
+                    return new TypedValue(builder.CreateExtractValue(val, index), retTy);
                 }
             }
         }
