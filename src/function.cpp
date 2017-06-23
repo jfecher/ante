@@ -821,7 +821,9 @@ TypedValue* Compiler::getCastFn(TypeNode *from_ty, TypeNode *to_ty){
         fd->obj_bindings.clear();
         fd->tv = nullptr;
     }else{
-        tv = compFn(fd);
+        tv = fd->tv;
+        if(!tv)
+            tv = compFn(fd);
     }
     return tv;
 }
