@@ -7,10 +7,8 @@ fun List<'t>.init: 't elem -> List<'t>
 
 
 fun tail: List<'t> l -> List<'t>
-    if l.next != void* 0 then
-        tail(@l.next)
-    else
-        l
+    if l.next == void* 0 then l
+    else tail(@l.next)
 
 fun append: List<'t> l, 't elem
     var t = tail l
@@ -22,7 +20,7 @@ fun print: List<'t> l
         print(@l.next)
 
 
-var head = List<i32>(0, void* 0)
+var head = List 0
 append head 1
 append head 2
 append head 3

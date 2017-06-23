@@ -51,9 +51,9 @@ copyModuleFuncDecls(const vector<shared_ptr<ante::Module>> &mods){
 }
 
     
-shared_ptr<map<string, shared_ptr<ante::Module>>>
-copyModuleFuncDecls(const shared_ptr<map<string, shared_ptr<ante::Module>>> &varTable){
-    auto ret = make_shared<map<string, shared_ptr<ante::Module>>>();
+shared_ptr<unordered_map<string, shared_ptr<ante::Module>>>
+copyModuleFuncDecls(const shared_ptr<unordered_map<string, shared_ptr<ante::Module>>> &varTable){
+    auto ret = make_shared<unordered_map<string, shared_ptr<ante::Module>>>();
     for(auto &pair : *varTable){
         (*ret)[pair.first] = copyModuleFuncDecls(pair.second);
     }

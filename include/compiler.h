@@ -9,7 +9,7 @@
 #include <llvm/ExecutionEngine/MCJIT.h>
 #include <llvm/ExecutionEngine/ExecutionEngine.h>
 #include <memory>
-#include <map>
+#include <unordered_map>
 #include <list>
 #include "parser.h"
 #include "args.h"
@@ -201,14 +201,14 @@ namespace ante{
         string name;
        
         //declared functions
-        map<string, list<shared_ptr<FuncDecl>>> fnDecls;
+        unordered_map<string, list<shared_ptr<FuncDecl>>> fnDecls;
 
         //Map of declared usertypes
-        map<string, shared_ptr<DataType>> userTypes;
+        unordered_map<string, shared_ptr<DataType>> userTypes;
 
         //Map of all declared traits; not including their implementations for a given type
         //Each DataType is reponsible for holding its own trait implementations
-        map<string, shared_ptr<Trait>> traits;
+        unordered_map<string, shared_ptr<Trait>> traits;
 
         void import(shared_ptr<ante::Module> m);
     };
@@ -253,11 +253,11 @@ namespace ante{
         
         //every single compiled module, even ones invisible to the current
         //compilation_unit.  Prevents recompilation of modules
-        shared_ptr<map<string, shared_ptr<ante::Module>>> allCompiledModules;
+        shared_ptr<unordered_map<string, shared_ptr<ante::Module>>> allCompiledModules;
         
         //Stack of maps of variables mapped to their identifier.
         //Maps are seperated according to their scope.
-        vector<unique_ptr<std::map<string, Variable*>>> varTable;
+        vector<unique_ptr<unordered_map<string, Variable*>>> varTable;
 
         unique_ptr<CompilerCtxt> compCtxt;
 

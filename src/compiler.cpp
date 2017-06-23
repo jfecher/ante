@@ -1769,8 +1769,8 @@ void TypedValue::dump() const{
 
 void Compiler::enterNewScope(){
     scope++;
-    auto *vtable = new map<string, Variable*>();
-    varTable.push_back(unique_ptr<map<string, Variable*>>(vtable));
+    auto *vtable = new unordered_map<string, Variable*>();
+    varTable.emplace_back(vtable);
 }
 
 
@@ -1897,7 +1897,7 @@ Compiler::Compiler(const char *_fileName, bool lib, shared_ptr<LLVMContext> llvm
         builder(*ctxt), 
         compUnit(new ante::Module()),
         mergedCompUnits(new ante::Module()),
-        allCompiledModules(new map<string,shared_ptr<ante::Module>>()),
+        allCompiledModules(new unordered_map<string,shared_ptr<ante::Module>>()),
         compCtxt(new CompilerCtxt()),
         errFlag(false),
         compiled(false),
@@ -1948,7 +1948,7 @@ Compiler::Compiler(Node *root, string modName, string &fName, bool lib, shared_p
         builder(*ctxt),
         compUnit(new ante::Module()),
         mergedCompUnits(new ante::Module()),
-        allCompiledModules(new map<string,shared_ptr<ante::Module>>()),
+        allCompiledModules(new unordered_map<string,shared_ptr<ante::Module>>()),
         compCtxt(new CompilerCtxt()),
         errFlag(false),
         compiled(false),
