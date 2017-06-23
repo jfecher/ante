@@ -98,17 +98,37 @@ TypedValue* TypeNode::compile(Compiler *c){
         auto *unionDataTy = c->lookupType(dataTy->getParentUnionName());
         if(!unionDataTy) goto rettype;
 
-        Value *tag = ConstantInt::get(*c->ctxt, APInt(8, unionDataTy->getTagVal(typeName), true));
-        auto *ty = copy(unionDataTy->tyn);
+        size_t tagIndex = unionDataTy->getTagVal(typeName);
+        Value *tag = ConstantInt::get(*c->ctxt, APInt(8, tagIndex, true));
 
+        //We're compiling this as a tag with no value to bind to, so if there are
+        //any generics in the tag's extensions fail because we cant deduce the type
         if(!unionDataTy->generics.empty()){
-            for(auto &tn : unionDataTy->generics){
-                TypeNode *v = mkTypeNodeWithExt(TT_Ptr, mkAnonTypeNode(TT_Void));
-                c->stoTypeVar(tn->typeName, v);
-            }
+            auto *variant = (TypeNode*)getNthNode(unionDataTy->tyn->extTy.get(), tagIndex);
+
+            //remove all tvars temporarily to cause validateType to error if it encounters any tvars
+            auto tvars = move(unionDataTy->generics);
+            validateType(c, variant, unionDataTy);
+            unionDataTy->generics = move(tvars);
+        }
+        
+        //TaggedUnions store every variant in their type so just retrieve
+        //the variant specified at index tagIndex
+        auto *ty = copy(unionDataTy->tyn.get());
+       
+
+        c->enterNewScope();
+        auto *voidPtr = mkTypeNodeWithExt(TT_Ptr, mkAnonTypeNode(TT_Void));
+
+        for(auto &g : unionDataTy->generics){
+            c->stoTypeVar(g->typeName, voidPtr);
         }
 
         Type *unionTy = c->typeNodeToLlvmType(ty);
+        delete voidPtr;
+        c->exitScope();
+       
+
         Type *curTy = tag->getType();
 
         //allocate for the largest possible union member
@@ -121,6 +141,7 @@ TypedValue* TypeNode::compile(Compiler *c){
         //load the initial alloca, not the bitcasted one
         Value *unionVal = c->builder.CreateLoad(alloca);
         ty->type = TT_TaggedUnion;
+
         return new TypedValue(unionVal, ty);
     }
 
@@ -1243,22 +1264,16 @@ TypedValue* MatchNode::compile(Compiler *c){
                 //If this is a generic type cast like Some 't, the 't must be bound to a concrete type first
                 auto *tagtycpy = copy(tagTy->tyn);
                 
-                auto *structty = mkTypeNodeWithExt(lval->type->type, mkAnonTypeNode(TT_U8));
-                structty->typeName = lval->type->typeName;
-                structty->extTy->next.reset(tagtycpy);
-
                 //bindGenericToType(structty, lval->type->params);
 
-                auto tcr = c->typeEq(structty, lval->type.get());
+                auto tcr = c->typeEq(parentTy->tyn.get(), lval->type.get());
+
                 if(tcr.res == TypeCheckResult::SuccessWithTypeVars)
                     bindGenericToType(tagtycpy, tcr.bindings);
                 else if(tcr.res == TypeCheckResult::Failure)
-                    return c->compErr("Cannot bind pattern of type " + typeNodeToColoredStr(structty) +
+                    return c->compErr("Cannot bind pattern of type " + typeNodeToColoredStr(parentTy->tyn.get()) +
                             " to matched value of type " + typeNodeToColoredStr(lval->type), tn->rval->loc);
-
-                structty->extTy->next.release();
-                delete structty;
-
+                
                 //cast it from (<tag type>, <largest union member type>) to (<tag type>, <this union member's type>)
                 auto *tupTy = StructType::get(*c->ctxt, {Type::getInt8Ty(*c->ctxt), c->typeNodeToLlvmType(tagtycpy)});
 

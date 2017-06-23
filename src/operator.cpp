@@ -243,21 +243,22 @@ TypedValue* createUnionVariantCast(Compiler *c, TypedValue *valToCast, TypeNode 
     auto dtcpy = copy(unionDataTy->tyn);
     dtcpy->type = TT_TaggedUnion;
     dtcpy->typeName = dataTy->getParentUnionName();
+
     if(tyeq.res == TypeCheckResult::SuccessWithTypeVars){
         bindGenericToType(dtcpy, tyeq.bindings);
     }
 
-    auto t = unionDataTy->getTagVal(castTyn->typeName);
     Type *variantTy = c->typeNodeToLlvmType(valToCast->type.get());
+   
+    auto tagVal = unionDataTy->getTagVal(castTyn->typeName);
 
     vector<Type*> unionTys;
     unionTys.push_back(Type::getInt8Ty(*c->ctxt));
     unionTys.push_back(variantTy);
 
     vector<Constant*> unionVals;
-    unionVals.push_back(ConstantInt::get(*c->ctxt, APInt(8, t, true))); //tag
+    unionVals.push_back(ConstantInt::get(*c->ctxt, APInt(8, tagVal, true))); //tag
     unionVals.push_back(UndefValue::get(variantTy));
-
 
     Type *unionTy = c->typeNodeToLlvmType(dtcpy);
 
@@ -375,7 +376,6 @@ TypedValue* createCast(Compiler *c, TypeNode *castTyn, TypedValue *valToCast){
     //let example = Int 3
     //              ^^^^^
     auto *dataTy = c->lookupType(castTyn->typeName);
-    TypeCheckResult tyeq{false};
 
     if(dataTy){
         //The tyn of a DataType is always a tuple, so wrap the casting value with a
@@ -399,7 +399,7 @@ TypedValue* createCast(Compiler *c, TypeNode *castTyn, TypedValue *valToCast){
             }
 
             if(isUnion)
-                return createUnionVariantCast(c, valToCast, to_tyn, dataTy, tyeq);
+                return createUnionVariantCast(c, valToCast, to_tyn, dataTy, tc);
             else
                 return new TypedValue(valToCast->val, to_tyn);
         }

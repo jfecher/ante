@@ -89,6 +89,18 @@ void validateType(Compiler *c, const TypeNode *tn, const DataDeclNode *rootTy){
     }
 }
 
+void validateType(Compiler *c, const TypeNode *tn, const DataType *dt){
+    auto fakeLoc = mkLoc(mkPos(0, 0, 0), mkPos(0, 0, 0));
+    auto *ddn = new DataDeclNode(fakeLoc, dt->name, 0, 0);
+
+    for(auto &g : dt->generics)
+        ddn->generics.emplace_back(g.get());
+
+    validateType(c, tn, ddn);
+    ddn->generics.clear();
+    delete ddn;
+}
+
 
 unsigned int TypeNode::getSizeInBits(Compiler *c, string *incompleteType){
     int total = 0;
@@ -122,7 +134,6 @@ unsigned int TypeNode::getSizeInBits(Compiler *c, string *incompleteType){
     }else if(type == TT_Ptr or type == TT_Function or type == TT_MetaFunction or type == TT_Method){
         return 64;
 
-    //TODO: taking the size of a typevar should be an error
     }else if(type == TT_TypeVar){
         auto *var = c->lookup(typeName);
         if(var){
@@ -131,7 +142,6 @@ unsigned int TypeNode::getSizeInBits(Compiler *c, string *incompleteType){
 
         c->compErr("Lookup for typevar "+typeName+" not found", loc);
         throw new TypeVarError();
-        //return 64;
     }
 
     return total;

@@ -24,6 +24,7 @@ bool llvmTypeEq(Type *l, Type *r);
 
 //typevar utility functions
 void validateType(Compiler *c, const TypeNode* tn, const DataDeclNode* rootTy);
+void validateType(Compiler *c, const TypeNode *tn, const DataType *dt);
 TypeNode* extractTypeValue(const TypedValue *tv);
 TypeNode* extractTypeValue(const unique_ptr<TypedValue> &tv);
 void bindGenericToType(TypeNode *tn, const vector<pair<string, unique_ptr<TypeNode>>> &bindings);
