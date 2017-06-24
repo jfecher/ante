@@ -446,6 +446,10 @@ int Lexer::genNumLitTok(yy::parser::location_type* loc){
                 s += "64";
                 incPos();
                 incPos();
+            }else if(cur == 's' && nxt == 'z'){
+                s += "sz";
+                incPos();
+                incPos();
             }
 
             if(IS_NUMERICAL(cur)){
@@ -454,7 +458,7 @@ int Lexer::genNumLitTok(yy::parser::location_type* loc){
             }
         }
     }
-    
+
     loc->end = getPos(false);
     setlextxt(&s);
     return flt? Tok_FltLit : Tok_IntLit;

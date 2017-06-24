@@ -3,6 +3,10 @@
 
 #include "compiler.h"
 
+#ifndef AN_USZ_SIZE
+#define AN_USZ_SIZE (8*sizeof(void*))
+#endif
+
 TypedValue* typeCheckWithImplicitCasts(Compiler *c, TypedValue *arg, TypeNode *ty);
 
 TypeNode* deepCopyTypeNode(const TypeNode *n);

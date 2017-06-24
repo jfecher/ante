@@ -7,7 +7,7 @@ char getBitWidthOfTypeTag(const TypeTag ty){
         case TT_I16: case TT_U16: case TT_F16: return 16;
         case TT_I32: case TT_U32: case TT_F32: case TT_C32: return 32;
         case TT_I64: case TT_U64: case TT_F64: return 64;
-        case TT_Isz: case TT_Usz: return 64; //TODO: detect 32-bit platform
+        case TT_Isz: case TT_Usz: return AN_USZ_SIZE;
         case TT_Bool: return 1;
    
         case TT_Ptr: return 64;
@@ -517,8 +517,8 @@ Type* typeTagToLlvmType(TypeTag ty, LLVMContext &ctxt, string typeName){
         case TT_I16: case TT_U16: return Type::getInt16Ty(ctxt);
         case TT_I32: case TT_U32: return Type::getInt32Ty(ctxt);
         case TT_I64: case TT_U64: return Type::getInt64Ty(ctxt);
-        case TT_Isz:    return Type::getVoidTy(ctxt); //TODO: implement
-        case TT_Usz:    return Type::getVoidTy(ctxt); //TODO: implement
+        case TT_Isz:    return Type::getIntNTy(ctxt, AN_USZ_SIZE); //TODO: implement
+        case TT_Usz:    return Type::getIntNTy(ctxt, AN_USZ_SIZE); //TODO: implement
         case TT_F16:    return Type::getHalfTy(ctxt);
         case TT_F32:    return Type::getFloatTy(ctxt);
         case TT_F64:    return Type::getDoubleTy(ctxt);

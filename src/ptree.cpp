@@ -212,31 +212,33 @@ Node* mkIntLitNode(LOC_TY loc, char* s){
 
     //check for type suffix
     int len = str.length();
-    if(len > 2){
-        if(len > 3 && (str[len -3] == 'u' || str[len - 3] == 'i')){
-            char sign = str[len - 3];
-            switch(str[len - 2]){
-                case '1':
-                    type = sign == 'i'? TT_I16 : TT_U16;
-                    str = str.substr(0, len-3);
-                    break;
-                case '3':
-                    type = sign == 'i'? TT_I32 : TT_U32;
-                    str = str.substr(0, len-3);
-                    break;
-                case '6':
-                    type = sign == 'i'? TT_I64 : TT_U64;
-                    str = str.substr(0, len-3);
-                    break;
-                default:
-                    break;
-            }
-        }else{
-            char sign = str[len - 2];
-            if(sign == 'u' || sign == 'i'){
-                str = str.substr(0, len-2);
-                type = sign == 'i'? TT_I8 : TT_U8;
-            }
+    if(len > 3 && (str[len -3] == 'u' || str[len - 3] == 'i')){
+        char sign = str[len - 3];
+        switch(str[len - 2]){
+            case '1':
+                type = sign == 'i'? TT_I16 : TT_U16;
+                str = str.substr(0, len-3);
+                break;
+            case '3':
+                type = sign == 'i'? TT_I32 : TT_U32;
+                str = str.substr(0, len-3);
+                break;
+            case '6':
+                type = sign == 'i'? TT_I64 : TT_U64;
+                str = str.substr(0, len-3);
+                break;
+            case 's':
+                type = sign == 'i'? TT_Isz : TT_Usz;
+                str = str.substr(0, len-3);
+                break;
+            default:
+                break;
+        }
+    }else if(len > 1){
+        char sign = str[len - 1];
+        if(sign == 'u' || sign == 'i'){
+            str = str.substr(0, len-1);
+            type = sign == 'i'? TT_Isz : TT_Usz;
         }
     }
 
