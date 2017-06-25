@@ -1,5 +1,5 @@
 
-ext Holder: NumStore
+ext Holder with NumStore
     fun get: Holder h =
         i32 h
 
@@ -20,10 +20,6 @@ type Holder = i32
 
 
 //define function to work on any Holder
-//
-//In the future UserTypes will be passed
-//by reference by default so it will no longer
-//be necessary to require a pointer to a Holder
 fun print: Holder* h
     print get{@h}
 
