@@ -24,7 +24,7 @@ OBJFILES := $(patsubst src/%.cpp,obj/%.o,$(SRCFILES))
 ANSRCFILES := $(shell find $(SRCDIRS) -type f -name "*.an")
 ANOBJFILES := $(patsubst src/%.an,obj/%.ao,$(ANSRCFILES))
 
-TESTFILES := $(shell find 'tests/' -type f -name "*.an")
+TESTFILES := $(shell find 'tests/' -maxdepth 1 -type f -name "*.an")
 
 #If src/parser.cpp is still present, remove it from objfiles so as to not double-compile it
 OBJFILES := $(patsubst obj/parser.o,,$(OBJFILES))

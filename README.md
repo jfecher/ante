@@ -56,8 +56,8 @@ print "hello!"
 goto begin
 ```
 
-* For more information, check out tests/language.an for all planned features.
-    - For implemented features, check out the tests/ directory
+* For more information, check out tests/non_compiling/language.an for all planned features.
+    - For implemented features, check out the tests directory
 
 ## Installation
 
