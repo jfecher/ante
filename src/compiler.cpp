@@ -275,10 +275,10 @@ TypedValue* StrLitNode::compile(Compiler *c){
     TypeNode *str_tn = mkDataTypeNode("Str");
     auto *tupleTy = cast<StructType>(c->typeNodeToLlvmType(str_tn));
     delete str_tn;
-	
+
 	vector<Constant*> strarr = {
 		UndefValue::get(Type::getInt8PtrTy(*c->ctxt)),
-		ConstantInt::get(*c->ctxt, APInt(32, val.length(), true))
+		ConstantInt::get(*c->ctxt, APInt(AN_USZ_SIZE, val.length(), true))
 	};
 
     auto *uninitStr = ConstantStruct::get(tupleTy, strarr);

@@ -1,10 +1,10 @@
 
-type Vec = Str* _data, u32 len cap
+type Vec = Str* _data, usz len cap
 
-fun Vec.init := Vec(malloc(8 * Ante.sizeof ""), 0u32, 8u32)
+fun Vec.init := Vec(malloc(8 * Ante.sizeof ""), 0usz, 8usz)
 
 //reserve numElements in Vec v, elements will be uninitialized
-fun Vec.reserve: mut Vec v, u32 numElems
+fun Vec.reserve: mut Vec v, usz numElems
     if v.len + numElems > v.cap then
         let ptr = realloc{void* v._data, v.cap * 8}
 

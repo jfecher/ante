@@ -13,9 +13,9 @@ fun exit: i32 status;
 fun malloc: u64 size -> void*;
 fun realloc: void* ptr, u64 size -> void*;
 fun free: void* mem;
-fun memcpy: void* dest src, u32 bytes -> void* /*dest*/;
+fun memcpy: void* dest src, usz bytes -> void* /*dest*/;
 fun system: c8* cmd -> i32;
-fun strlen: c8* str -> u64;
+fun strlen: c8* str -> usz;
 
 //C stdio
 type File = void*
@@ -43,7 +43,7 @@ fun ferror: File f -> bool;
 
 
 //Ante datatypes
-type Str = c8* cStr, u32 len
+type Str = c8* cStr, usz len
 
 
 //Compile-time functions
@@ -54,7 +54,7 @@ fun Ante.debug: 't t;
 
 //returns the size of a type in Bytes.  Accepts types or values as an argument
 ![meta]
-fun Ante.sizeof: 't t -> u32;
+fun Ante.sizeof: 't t -> usz;
 
 
 //numerical print functions
@@ -74,6 +74,10 @@ fun i32.print: i32 x
 fun i64.print: i64 x
     printf "%ld\n" x
 
+![inline]
+fun isz.print: isz x
+    printf "%ld\n" x
+
 //unsigned
 ![inline]
 fun u8.print: u8 x
@@ -89,6 +93,10 @@ fun u32.print: u32 x
 
 ![inline]
 fun u64.print: u64 x
+    printf "%lu\n" x
+
+![inline]
+fun usz.print: usz x
     printf "%lu\n" x
 
 //floats
@@ -174,7 +182,7 @@ ext InFile: Iterator
     fun unwrap: InFile f -> Str
         var cap = 63
         var buf = c8* malloc 64
-        var len = 0u32
+        var len = 0usz
 
         while
             let c = fgetc f
@@ -214,7 +222,7 @@ fun Str.write: Str s, OutFile f
 
 ![inline]
 fun Str.init: c8* cStr -> Str
-    Str(cStr, u32 strlen cStr)
+    Str(cStr, usz strlen cStr)
 
 //overload Str equality operator
 fun (==): Str l r -> bool
@@ -266,7 +274,7 @@ fun OutFile.init: Str fName -> OutFile
 
 
 fun InFile.next_line: InFile f -> Str
-    var len = 0u32
+    var len = 0usz
     var cstr = c8* 0
 
     if feof f then return ""
@@ -296,7 +304,7 @@ fun printne: c8* str
 
 //print a message then return user input
 fun input: c8* msg -> Str
-    var len = 0u32
+    var len = 0usz
     var cstr = c8* 0
 
     printne msg

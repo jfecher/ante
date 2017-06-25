@@ -13,6 +13,7 @@ TypedValue* Compiler::compAdd(TypedValue *l, TypedValue *r, BinOpNode *op){
         case TT_I16: case TT_U16:
         case TT_I32: case TT_U32:
         case TT_I64: case TT_U64:
+        case TT_Isz: case TT_Usz:
         case TT_Ptr:
             return new TypedValue(builder.CreateAdd(l->val, r->val), l->type);
         case TT_F16:
@@ -31,6 +32,7 @@ TypedValue* Compiler::compSub(TypedValue *l, TypedValue *r, BinOpNode *op){
         case TT_I16: case TT_U16:
         case TT_I32: case TT_U32:
         case TT_I64: case TT_U64:
+        case TT_Isz: case TT_Usz:
         case TT_Ptr:
             return new TypedValue(builder.CreateSub(l->val, r->val), l->type);
         case TT_F16:
@@ -49,6 +51,7 @@ TypedValue* Compiler::compMul(TypedValue *l, TypedValue *r, BinOpNode *op){
         case TT_I16: case TT_U16:
         case TT_I32: case TT_U32:
         case TT_I64: case TT_U64:
+        case TT_Isz: case TT_Usz:
             return new TypedValue(builder.CreateMul(l->val, r->val), l->type);
         case TT_F16:
         case TT_F32:
@@ -66,11 +69,13 @@ TypedValue* Compiler::compDiv(TypedValue *l, TypedValue *r, BinOpNode *op){
         case TT_I16: 
         case TT_I32: 
         case TT_I64: 
+        case TT_Isz: 
             return new TypedValue(builder.CreateSDiv(l->val, r->val), l->type);
         case TT_U8: case TT_C8:
         case TT_U16:
         case TT_U32:
         case TT_U64:
+        case TT_Usz: 
             return new TypedValue(builder.CreateUDiv(l->val, r->val), l->type);
         case TT_F16:
         case TT_F32:
@@ -88,11 +93,13 @@ TypedValue* Compiler::compRem(TypedValue *l, TypedValue *r, BinOpNode *op){
         case TT_I16:
         case TT_I32:
         case TT_I64:
+        case TT_Isz: 
             return new TypedValue(builder.CreateSRem(l->val, r->val), l->type);
         case TT_U8: case TT_C8:
         case TT_U16:
         case TT_U32:
         case TT_U64:
+        case TT_Usz: 
             return new TypedValue(builder.CreateURem(l->val, r->val), l->type);
         case TT_F16:
         case TT_F32:
@@ -782,22 +789,22 @@ float f32_from_f16(float f) {
 TypedValue* genericValueToTypedValue(Compiler *c, GenericValue gv, TypeNode *tn){
     auto *copytn = copy(tn);
     switch(tn->type){
-        case TT_I8:              return new TypedValue(c->builder.getInt8( *gv.IntVal.getRawData()),    copytn);
-        case TT_I16:             return new TypedValue(c->builder.getInt16(*gv.IntVal.getRawData()),    copytn);
-        case TT_I32:             return new TypedValue(c->builder.getInt32(*gv.IntVal.getRawData()),    copytn);
-        case TT_I64:             return new TypedValue(c->builder.getInt64(*gv.IntVal.getRawData()),    copytn);
-        case TT_U8:              return new TypedValue(c->builder.getInt8( *gv.IntVal.getRawData()),    copytn);
-        case TT_U16:             return new TypedValue(c->builder.getInt16(*gv.IntVal.getRawData()),    copytn);
-        case TT_U32:             return new TypedValue(c->builder.getInt32(*gv.IntVal.getRawData()),    copytn);
-        case TT_U64:             return new TypedValue(c->builder.getInt64(*gv.IntVal.getRawData()),    copytn);
-        case TT_Isz:             return new TypedValue(c->builder.getInt64(*gv.IntVal.getRawData()),    copytn);
-        case TT_Usz:             return new TypedValue(c->builder.getInt64(*gv.IntVal.getRawData()),    copytn);
-        case TT_C8:              return new TypedValue(c->builder.getInt8( *gv.IntVal.getRawData()),    copytn);
-        case TT_C32:             return new TypedValue(c->builder.getInt32(*gv.IntVal.getRawData()),    copytn);
-        case TT_F16:             return new TypedValue(ConstantFP::get(*c->ctxt, APFloat(f32_from_f16(gv.FloatVal))),  copytn);
-        case TT_F32:             return new TypedValue(ConstantFP::get(*c->ctxt, APFloat(gv.FloatVal)),  copytn);
-        case TT_F64:             return new TypedValue(ConstantFP::get(*c->ctxt, APFloat(gv.DoubleVal)), copytn);
-        case TT_Bool:            return new TypedValue(c->builder.getInt1(*gv.IntVal.getRawData()),     copytn);
+        case TT_I8:              return new TypedValue(c->builder.getInt8( *gv.IntVal.getRawData()),                  copytn);
+        case TT_I16:             return new TypedValue(c->builder.getInt16(*gv.IntVal.getRawData()),                  copytn);
+        case TT_I32:             return new TypedValue(c->builder.getInt32(*gv.IntVal.getRawData()),                  copytn);
+        case TT_I64:             return new TypedValue(c->builder.getInt64(*gv.IntVal.getRawData()),                  copytn);
+        case TT_U8:              return new TypedValue(c->builder.getInt8( *gv.IntVal.getRawData()),                  copytn);
+        case TT_U16:             return new TypedValue(c->builder.getInt16(*gv.IntVal.getRawData()),                  copytn);
+        case TT_U32:             return new TypedValue(c->builder.getInt32(*gv.IntVal.getRawData()),                  copytn);
+        case TT_U64:             return new TypedValue(c->builder.getInt64(*gv.IntVal.getRawData()),                  copytn);
+        case TT_Isz:             return new TypedValue(c->builder.getIntN(*gv.IntVal.getRawData(), AN_USZ_SIZE),      copytn);
+        case TT_Usz:             return new TypedValue(c->builder.getIntN(*gv.IntVal.getRawData(), AN_USZ_SIZE),      copytn);
+        case TT_C8:              return new TypedValue(c->builder.getInt8( *gv.IntVal.getRawData()),                  copytn);
+        case TT_C32:             return new TypedValue(c->builder.getInt32(*gv.IntVal.getRawData()),                  copytn);
+        case TT_F16:             return new TypedValue(ConstantFP::get(*c->ctxt, APFloat(f32_from_f16(gv.FloatVal))), copytn);
+        case TT_F32:             return new TypedValue(ConstantFP::get(*c->ctxt, APFloat(gv.FloatVal)),               copytn);
+        case TT_F64:             return new TypedValue(ConstantFP::get(*c->ctxt, APFloat(gv.DoubleVal)),              copytn);
+        case TT_Bool:            return new TypedValue(c->builder.getInt1(*gv.IntVal.getRawData()),                   copytn);
         case TT_Tuple:           break;
         case TT_Array:           break;
         case TT_Ptr: {

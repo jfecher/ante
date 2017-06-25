@@ -205,6 +205,7 @@ Node* addMatch(Node *matchExpr, Node *newMatch){
     return matchExpr;
 }
 
+TypeNode* mkAnonTypeNode(TypeTag);
 
 Node* mkIntLitNode(LOC_TY loc, char* s){
     string str = s;
@@ -234,6 +235,10 @@ Node* mkIntLitNode(LOC_TY loc, char* s){
             default:
                 break;
         }
+    }else if(len > 2 && (str[len-2] == 'u' || str[len-2] == 'i')){
+        char sign = str[len - 2];
+        type = sign == 'i'? TT_I8 : TT_U8;
+        str = str.substr(0, len-2);
     }else if(len > 1){
         char sign = str[len - 1];
         if(sign == 'u' || sign == 'i'){

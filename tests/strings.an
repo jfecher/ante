@@ -1,9 +1,3 @@
-/*
-        strings.an
-    test creation and use of pointers, specifically char pointers
-    set to string constants.  Will eventually be expanded to test
-    the Str datatype once it is implemented.
-*/
 
 let openingMsg = "Hello World!"
 
