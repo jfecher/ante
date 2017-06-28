@@ -30,6 +30,16 @@ LOC_TY mkLoc(yy::position begin, yy::position end);
 struct TypedValue;
 namespace ante { struct Compiler; }
 
+struct Node;
+
+struct NodeIterator {
+    Node *cur;
+
+    NodeIterator operator++();
+    Node* operator*();
+    bool operator==(NodeIterator r);
+    bool operator!=(NodeIterator r);
+};
 
 /* Base class for all nodes */
 struct Node{
@@ -42,6 +52,9 @@ struct Node{
 
     //compile node to a given module
     virtual TypedValue* compile(Compiler*) = 0;
+
+    NodeIterator begin();
+    NodeIterator end();
 
     Node(LOC_TY& l) : next(nullptr), prev(nullptr), loc(l){}
     virtual ~Node(){}

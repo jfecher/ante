@@ -157,6 +157,32 @@ Node* applyMods(Node *mods, Node *decls){
 }
 */
 
+NodeIterator Node::begin(){
+    return {this};
+}
+
+NodeIterator Node::end(){
+    return {nullptr};
+}
+
+NodeIterator NodeIterator::operator++(){
+    cur = cur->next.get();
+    return *this;
+}
+
+Node* NodeIterator::operator*(){
+    return cur;
+}
+
+bool NodeIterator::operator==(NodeIterator r){
+    return cur == r.cur;
+}
+
+bool NodeIterator::operator!=(NodeIterator r){
+    return cur != r.cur;
+}
+
+
 Node* mkGlobalNode(LOC_TY loc, Node* s){
     vector<unique_ptr<VarNode>> vars;
     while(s){

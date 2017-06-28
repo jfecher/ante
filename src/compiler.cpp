@@ -24,9 +24,10 @@ using namespace llvm;
 size_t getTupleSize(Node *tup){
     size_t size = 0;
     while(tup){
-        tup = tup->next.get();
         size++;
+        tup = tup->next.get();
     }
+    
     return size;
 }
 
@@ -45,9 +46,8 @@ Node* getNthNode(Node *node, size_t n){
  */
 TypedValue* compileStmtList(Node *nList, Compiler *c){
     TypedValue *ret = nullptr;
-    while(nList){
-        ret = nList->compile(c);
-        nList = nList->next.get();
+    for(Node *n : *nList){
+        ret = n->compile(c);
     }
     return ret;
 }
@@ -639,12 +639,10 @@ TypedValue* LetBindingNode::compile(Compiler *c){
     bool isGlobal = false;
 
     //add the modifiers to the typedvalue
-    Node *mod = modifiers.get();
-    while(mod){
-        int m = ((ModNode*)mod)->mod;
+    for(Node *n : *modifiers){
+        int m = ((ModNode*)n)->mod;
         val->type->addModifier(m);
         if(m == Tok_Global) isGlobal = true;
-        mod = mod->next.get();
     }
 
     if(isGlobal){
@@ -672,13 +670,12 @@ TypedValue* compVarDeclWithInferredType(VarDeclNode *node, Compiler *c){
                 " value to a variable", node->expr->loc);
 
     bool isGlobal = false;
+    
     //Add all of the declared modifiers to the typedval
-    Node *mod = node->modifiers.get();
-    while(mod){
-        int m = ((ModNode*)mod)->mod;
+    for(Node *n : *node->modifiers){
+        int m = ((ModNode*)n)->mod;
         val->type->addModifier(m);
         if(m == Tok_Global) isGlobal = true;
-        mod = mod->next.get();
     }
 
     //set the value as mutable
@@ -726,13 +723,12 @@ TypedValue* VarDeclNode::compile(Compiler *c){
     Type *ty = c->typeNodeToLlvmType(tyNode);
 
     bool isGlobal = false;
+    
     //Add all of the declared modifiers to the typedval
-    Node *mod = modifiers.get();
-    while(mod){
-        int m = ((ModNode*)mod)->mod;
+    for(Node *n : *modifiers){
+        int m = ((ModNode*)n)->mod;
         tyNode->addModifier(m);
         if(m == Tok_Global) isGlobal = true;
-        mod = mod->next.get();
     }
 
     if(!tyNode->hasModifier(Tok_Mut))
@@ -950,15 +946,13 @@ string mangle(string &base, TypeNode *p1, TypeNode *p2, TypeNode *p3){
 
 //Given a list of FuncDeclNodes, returns the function whose name
 //matches basename, or returns nullptr if not found.
-FuncDeclNode* findFDN(Node *n, string& basename){
-    while(n){
+FuncDeclNode* findFDN(Node *list, string& basename){
+    for(Node *n : *list){
         auto *fdn = (FuncDeclNode*)n;
         
         if(fdn->basename == basename){
             return fdn;
         }
-
-        n = n->next.get();
     }
     return nullptr;
 }

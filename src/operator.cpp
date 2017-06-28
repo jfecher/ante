@@ -828,6 +828,16 @@ TypedValue* genericValueToTypedValue(Compiler *c, GenericValue gv, TypeNode *tn)
     return 0;
 }
 
+
+/*
+ * Returns the pointer value of a constant pointer type
+ */
+void* getConstPtr(Compiler *c, TypedValue *tv){
+    
+    return nullptr;
+}
+
+
 /*
  *  Converts a TypedValue to an llvm GenericValue
  *  - Assumes the Value* within the TypedValue is a Constant*
@@ -856,13 +866,45 @@ GenericValue typedValueToGenericValue(Compiler *c, TypedValue *tv){
             return ret;
         }
         case TT_F16:
-        case TT_F32:
-        case TT_F64:
-        case TT_Tuple:
-        case TT_Array:
+        case TT_F32: {
+            auto *cf = dyn_cast<ConstantFP>(tv->val);
+            if(!cf) break;
+            ret.FloatVal = cf->getValueAPF().convertToFloat();
+            return ret;
+        }
+        case TT_F64: {
+            auto *cf = dyn_cast<ConstantFP>(tv->val);
+            if(!cf) break;
+            ret.DoubleVal = cf->getValueAPF().convertToDouble();
+            return ret;
+        }
         case TT_Ptr:
+        case TT_Array: {
+            ret.PointerVal = getConstPtr(c, tv);
+            return ret;
+        }
+        case TT_Tuple: {
+            size_t i = 0;
+            for(auto &ty : *tv->type->extTy){
+                Value *extract = c->builder.CreateExtractValue(tv->val, i);
+                auto *field = new TypedValue(extract, copy((TypeNode*)&ty));
+                ret.AggregateVal.push_back(typedValueToGenericValue(c, field));
+                i++;
+            }
+            return ret;
+        }
+        case TT_TypeVar: {
+            auto *var = c->lookup(tv->type->typeName);
+            if(!var){
+                cerr << AN_ERR_COLOR << "error: " << AN_CONSOLE_RESET << "Lookup for typevar "+tv->type->typeName+" failed";
+                c->errFlag = true;
+                throw new CtError();
+            }
+
+            auto *boundTv = new TypedValue(tv->val, extractTypeValue(var->tval));
+            return typedValueToGenericValue(c, boundTv);
+        }
         case TT_Data:
-        case TT_TypeVar:
         case TT_Function:
         case TT_Method:
         case TT_TaggedUnion:
@@ -873,6 +915,7 @@ GenericValue typedValueToGenericValue(Compiler *c, TypedValue *tv){
     }
     
     cerr << AN_ERR_COLOR << "error: " << AN_CONSOLE_RESET << "Compile-time function argument must be constant.\n";
+    c->errFlag = true;
     return GenericValue(nullptr);
 }
 
