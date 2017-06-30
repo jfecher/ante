@@ -1,0 +1,57 @@
+\hypertarget{classyy_1_1stack}{}\section{yy\+:\+:stack$<$ T, S $>$ Class Template Reference}
+\label{classyy_1_1stack}\index{yy\+::stack$<$ T, S $>$@{yy\+::stack$<$ T, S $>$}}
+\subsection*{Public Types}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\Hypertarget{classyy_1_1stack_a959921144f243952520a2178121cbe6f}\label{classyy_1_1stack_a959921144f243952520a2178121cbe6f}} 
+typedef S\+::reverse\+\_\+iterator {\bfseries iterator}
+\item 
+\mbox{\Hypertarget{classyy_1_1stack_a0cab3a74b0947ce6de68c3520b9229ab}\label{classyy_1_1stack_a0cab3a74b0947ce6de68c3520b9229ab}} 
+typedef S\+::const\+\_\+reverse\+\_\+iterator {\bfseries const\+\_\+iterator}
+\end{DoxyCompactItemize}
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\Hypertarget{classyy_1_1stack_af4277ae80177abc36f242c3646cbcfbe}\label{classyy_1_1stack_af4277ae80177abc36f242c3646cbcfbe}} 
+{\bfseries stack} (unsigned int n)
+\item 
+\mbox{\Hypertarget{classyy_1_1stack_a1058b8b7e1a3e0aa7b1e6f2f1a62c234}\label{classyy_1_1stack_a1058b8b7e1a3e0aa7b1e6f2f1a62c234}} 
+T \& {\bfseries operator\mbox{[}$\,$\mbox{]}} (unsigned int i)
+\item 
+\mbox{\Hypertarget{classyy_1_1stack_a248d8971564c62112266438ae86e53d5}\label{classyy_1_1stack_a248d8971564c62112266438ae86e53d5}} 
+const T \& {\bfseries operator\mbox{[}$\,$\mbox{]}} (unsigned int i) const
+\item 
+void \hyperlink{classyy_1_1stack_acf2b971ffb94c77b56fc0249b55250fa}{push} (T \&t)
+\item 
+\mbox{\Hypertarget{classyy_1_1stack_a0800c0a796cade80c3ce9a785dc87564}\label{classyy_1_1stack_a0800c0a796cade80c3ce9a785dc87564}} 
+void {\bfseries pop} (unsigned int n=1)
+\item 
+\mbox{\Hypertarget{classyy_1_1stack_ae8b2c8309dcdef98210205b1c96b2238}\label{classyy_1_1stack_ae8b2c8309dcdef98210205b1c96b2238}} 
+void {\bfseries clear} ()
+\item 
+\mbox{\Hypertarget{classyy_1_1stack_adff918ad84f227bd3d51eb8ef5c1dc95}\label{classyy_1_1stack_adff918ad84f227bd3d51eb8ef5c1dc95}} 
+S\+::size\+\_\+type {\bfseries size} () const
+\item 
+\mbox{\Hypertarget{classyy_1_1stack_ab7f28676a74b21114422d94d10b971a7}\label{classyy_1_1stack_ab7f28676a74b21114422d94d10b971a7}} 
+const\+\_\+iterator {\bfseries begin} () const
+\item 
+\mbox{\Hypertarget{classyy_1_1stack_a7d5b4e82ede55ba095de45da26600a8c}\label{classyy_1_1stack_a7d5b4e82ede55ba095de45da26600a8c}} 
+const\+\_\+iterator {\bfseries end} () const
+\end{DoxyCompactItemize}
+
+
+\subsection{Member Function Documentation}
+\mbox{\Hypertarget{classyy_1_1stack_acf2b971ffb94c77b56fc0249b55250fa}\label{classyy_1_1stack_acf2b971ffb94c77b56fc0249b55250fa}} 
+\index{yy\+::stack@{yy\+::stack}!push@{push}}
+\index{push@{push}!yy\+::stack@{yy\+::stack}}
+\subsubsection{\texorpdfstring{push()}{push()}}
+{\footnotesize\ttfamily template$<$class T, class S = std\+::vector$<$\+T$>$$>$ \\
+void \hyperlink{classyy_1_1stack}{yy\+::stack}$<$ T, S $>$\+::push (\begin{DoxyParamCaption}\item[{T \&}]{t }\end{DoxyParamCaption})\hspace{0.3cm}{\ttfamily [inline]}}
+
+Steal the contents of {\itshape t}.
+
+Close to move-\/semantics. 
+
+The documentation for this class was generated from the following file\+:\begin{DoxyCompactItemize}
+\item 
+/home/rndmprsn/\+Code/\+Ante/include/stack.\+hh\end{DoxyCompactItemize}

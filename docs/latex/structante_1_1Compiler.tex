@@ -1,0 +1,264 @@
+\hypertarget{structante_1_1Compiler}{}\section{ante\+:\+:Compiler Struct Reference}
+\label{structante_1_1Compiler}\index{ante\+::\+Compiler@{ante\+::\+Compiler}}
+\subsection*{Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a3eea249babcbd697bf5f9ac4d78c29f1}\label{structante_1_1Compiler_a3eea249babcbd697bf5f9ac4d78c29f1}} 
+{\bfseries Compiler} (const char $\ast$file\+Name, bool lib=false, shared\+\_\+ptr$<$ L\+L\+V\+M\+Context $>$ ctxt=nullptr)
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a030778900cf34d841a3249741d176e3d}\label{structante_1_1Compiler_a030778900cf34d841a3249741d176e3d}} 
+{\bfseries Compiler} (\hyperlink{structNode}{Node} $\ast$root, string mod\+Name, string \&f\+Name, bool lib=false, shared\+\_\+ptr$<$ L\+L\+V\+M\+Context $>$ ctxt=nullptr)
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a4eb6d2076006863fc52116489c7b4ec8}\label{structante_1_1Compiler_a4eb6d2076006863fc52116489c7b4ec8}} 
+void {\bfseries compile} ()
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a95e38823dc493732ccfb9e1fee804038}\label{structante_1_1Compiler_a95e38823dc493732ccfb9e1fee804038}} 
+void {\bfseries compile\+Native} ()
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_adada529302d143f10dd26f0bc08b059f}\label{structante_1_1Compiler_adada529302d143f10dd26f0bc08b059f}} 
+int {\bfseries compile\+Obj} (string \&out\+Name)
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a04558a0884c3f65f17fcc8e5f4d26144}\label{structante_1_1Compiler_a04558a0884c3f65f17fcc8e5f4d26144}} 
+void {\bfseries compile\+Prelude} ()
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a32319f611aed8324441f50b440a90fce}\label{structante_1_1Compiler_a32319f611aed8324441f50b440a90fce}} 
+Function $\ast$ {\bfseries create\+Main\+Fn} ()
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a8aa516b2abbfb1697d3f06972c766ec4}\label{structante_1_1Compiler_a8aa516b2abbfb1697d3f06972c766ec4}} 
+void {\bfseries eval} ()
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_ab257544d05193027c6b66956e5c2d0ad}\label{structante_1_1Compiler_ab257544d05193027c6b66956e5c2d0ad}} 
+void {\bfseries emit\+IR} ()
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a807c820c343bd7b799762b7fb0b950f0}\label{structante_1_1Compiler_a807c820c343bd7b799762b7fb0b950f0}} 
+void {\bfseries enter\+New\+Scope} ()
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a4f3dbb7ff9eb7b951b5efdd72bb0c7f9}\label{structante_1_1Compiler_a4f3dbb7ff9eb7b951b5efdd72bb0c7f9}} 
+void {\bfseries exit\+Scope} ()
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_acbb98f0ef7860dedf0b5fd5e2fba36ae}\label{structante_1_1Compiler_acbb98f0ef7860dedf0b5fd5e2fba36ae}} 
+void {\bfseries scan\+All\+Decls} (\hyperlink{structRootNode}{Root\+Node} $\ast$n=0)
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_adb1aa46e48eb971322d6d77e251b8422}\label{structante_1_1Compiler_adb1aa46e48eb971322d6d77e251b8422}} 
+void {\bfseries process\+Args} (\hyperlink{structante_1_1CompilerArgs}{Compiler\+Args} $\ast$args)
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a88af1760a02ac2afd42d23376bd6cc8a}\label{structante_1_1Compiler_a88af1760a02ac2afd42d23376bd6cc8a}} 
+\hyperlink{structTypedValue}{Typed\+Value} $\ast$ {\bfseries comp\+Add} (\hyperlink{structTypedValue}{Typed\+Value} $\ast$l, \hyperlink{structTypedValue}{Typed\+Value} $\ast$r, \hyperlink{structBinOpNode}{Bin\+Op\+Node} $\ast$op)
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_aef6a4b5a645b4e4973ca4d7cb0a21ce9}\label{structante_1_1Compiler_aef6a4b5a645b4e4973ca4d7cb0a21ce9}} 
+\hyperlink{structTypedValue}{Typed\+Value} $\ast$ {\bfseries comp\+Sub} (\hyperlink{structTypedValue}{Typed\+Value} $\ast$l, \hyperlink{structTypedValue}{Typed\+Value} $\ast$r, \hyperlink{structBinOpNode}{Bin\+Op\+Node} $\ast$op)
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_aa58e6bfd0838779b48964fd3a069f698}\label{structante_1_1Compiler_aa58e6bfd0838779b48964fd3a069f698}} 
+\hyperlink{structTypedValue}{Typed\+Value} $\ast$ {\bfseries comp\+Mul} (\hyperlink{structTypedValue}{Typed\+Value} $\ast$l, \hyperlink{structTypedValue}{Typed\+Value} $\ast$r, \hyperlink{structBinOpNode}{Bin\+Op\+Node} $\ast$op)
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_acb91108743866fb0c9a86b204bfcb540}\label{structante_1_1Compiler_acb91108743866fb0c9a86b204bfcb540}} 
+\hyperlink{structTypedValue}{Typed\+Value} $\ast$ {\bfseries comp\+Div} (\hyperlink{structTypedValue}{Typed\+Value} $\ast$l, \hyperlink{structTypedValue}{Typed\+Value} $\ast$r, \hyperlink{structBinOpNode}{Bin\+Op\+Node} $\ast$op)
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a19cc67657d5364d89f54bd43d8c3ea72}\label{structante_1_1Compiler_a19cc67657d5364d89f54bd43d8c3ea72}} 
+\hyperlink{structTypedValue}{Typed\+Value} $\ast$ {\bfseries comp\+Rem} (\hyperlink{structTypedValue}{Typed\+Value} $\ast$l, \hyperlink{structTypedValue}{Typed\+Value} $\ast$r, \hyperlink{structBinOpNode}{Bin\+Op\+Node} $\ast$op)
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a8241d710e304da8f65421a72dd55a7b4}\label{structante_1_1Compiler_a8241d710e304da8f65421a72dd55a7b4}} 
+\hyperlink{structTypedValue}{Typed\+Value} $\ast$ {\bfseries comp\+Extract} (\hyperlink{structTypedValue}{Typed\+Value} $\ast$l, \hyperlink{structTypedValue}{Typed\+Value} $\ast$r, \hyperlink{structBinOpNode}{Bin\+Op\+Node} $\ast$op)
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a056035aaaa62a7017868e3cb5d6d17a2}\label{structante_1_1Compiler_a056035aaaa62a7017868e3cb5d6d17a2}} 
+\hyperlink{structTypedValue}{Typed\+Value} $\ast$ {\bfseries comp\+Insert} (\hyperlink{structBinOpNode}{Bin\+Op\+Node} $\ast$insert\+Op, \hyperlink{structNode}{Node} $\ast$assign\+Expr)
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_ac229b1748ccbee2a9fbb40a993ce8142}\label{structante_1_1Compiler_ac229b1748ccbee2a9fbb40a993ce8142}} 
+\hyperlink{structTypedValue}{Typed\+Value} $\ast$ {\bfseries comp\+Member\+Access} (\hyperlink{structNode}{Node} $\ast$ln, \hyperlink{structVarNode}{Var\+Node} $\ast$field, \hyperlink{structBinOpNode}{Bin\+Op\+Node} $\ast$binop)
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a8f811023f4c536be22e328337fdc037d}\label{structante_1_1Compiler_a8f811023f4c536be22e328337fdc037d}} 
+\hyperlink{structTypedValue}{Typed\+Value} $\ast$ {\bfseries comp\+Logical\+Or} (\hyperlink{structNode}{Node} $\ast$l, \hyperlink{structNode}{Node} $\ast$r, \hyperlink{structBinOpNode}{Bin\+Op\+Node} $\ast$op)
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a878a402f38a90c24d8e906808c00ac0f}\label{structante_1_1Compiler_a878a402f38a90c24d8e906808c00ac0f}} 
+\hyperlink{structTypedValue}{Typed\+Value} $\ast$ {\bfseries comp\+Logical\+And} (\hyperlink{structNode}{Node} $\ast$l, \hyperlink{structNode}{Node} $\ast$r, \hyperlink{structBinOpNode}{Bin\+Op\+Node} $\ast$op)
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a5ffb3b5970aa4abc4d4512e958796a52}\label{structante_1_1Compiler_a5ffb3b5970aa4abc4d4512e958796a52}} 
+\hyperlink{structTypedValue}{Typed\+Value} $\ast$ {\bfseries comp\+Err} (\hyperlink{structante_1_1lazy__printer}{ante\+::lazy\+\_\+printer} msg, const \hyperlink{classyy_1_1location}{yy\+::location} \&loc, Error\+Type t=Error\+Type\+::\+Error)
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a0712cc6dbd65814f64ed1141d59ab80d}\label{structante_1_1Compiler_a0712cc6dbd65814f64ed1141d59ab80d}} 
+void {\bfseries jit\+Function} (Function $\ast$fn\+Name)
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_aeb22d4fb05bfd59a8e62f12bbc4ac303}\label{structante_1_1Compiler_aeb22d4fb05bfd59a8e62f12bbc4ac303}} 
+void {\bfseries import\+File} (const char $\ast$name, \hyperlink{structNode}{Node} $\ast$loc\+Node=0)
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_ab79a6faf5ca35d988546c7cfb0da189c}\label{structante_1_1Compiler_ab79a6faf5ca35d988546c7cfb0da189c}} 
+void {\bfseries update\+Fn} (\hyperlink{structTypedValue}{Typed\+Value} $\ast$f, string \&name, string \&mangled\+Name)
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_aadf5d45aa729c1998a8c6d0c363d37c6}\label{structante_1_1Compiler_aadf5d45aa729c1998a8c6d0c363d37c6}} 
+\hyperlink{structFuncDecl}{Func\+Decl} $\ast$ {\bfseries get\+Current\+Function} () const
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_aa7126098076855a4d28745e01e836643}\label{structante_1_1Compiler_aa7126098076855a4d28745e01e836643}} 
+\hyperlink{structTypedValue}{Typed\+Value} $\ast$ {\bfseries get\+Function} (string \&name, string \&mangled\+Name)
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a87da0a94baee4c3c47b62127d405f0ff}\label{structante_1_1Compiler_a87da0a94baee4c3c47b62127d405f0ff}} 
+list$<$ shared\+\_\+ptr$<$ \hyperlink{structFuncDecl}{Func\+Decl} $>$ $>$ \& {\bfseries get\+Function\+List} (string \&name) const
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_afd9f784ef4a885779619d34bc600b4d4}\label{structante_1_1Compiler_afd9f784ef4a885779619d34bc600b4d4}} 
+\hyperlink{structFuncDecl}{Func\+Decl} $\ast$ {\bfseries get\+Func\+Decl} (string bn, string mangled\+Name)
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a23c839566efaab64eb5fda7ec210effb}\label{structante_1_1Compiler_a23c839566efaab64eb5fda7ec210effb}} 
+\hyperlink{structTypedValue}{Typed\+Value} $\ast$ {\bfseries get\+Mangled\+Function} (string name, vector$<$ \hyperlink{structTypeNode}{Type\+Node} $\ast$$>$ args)
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a6e1fb074b930c471a6c3a1c26870ada8}\label{structante_1_1Compiler_a6e1fb074b930c471a6c3a1c26870ada8}} 
+\hyperlink{structTypedValue}{Typed\+Value} $\ast$ {\bfseries get\+Cast\+Fn} (\hyperlink{structTypeNode}{Type\+Node} $\ast$from\+\_\+ty, \hyperlink{structTypeNode}{Type\+Node} $\ast$to\+\_\+ty)
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a67505624703cf89322e137b8e3dd5d76}\label{structante_1_1Compiler_a67505624703cf89322e137b8e3dd5d76}} 
+\hyperlink{structTypedValue}{Typed\+Value} $\ast$ {\bfseries call\+Fn} (string fn, vector$<$ \hyperlink{structTypedValue}{Typed\+Value} $\ast$$>$ args)
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_aab84507820503e7858ab2399b9e4aa1c}\label{structante_1_1Compiler_aab84507820503e7858ab2399b9e4aa1c}} 
+\hyperlink{structTypedValue}{Typed\+Value} $\ast$ {\bfseries comp\+Let\+Binding\+Fn} (\hyperlink{structFuncDecl}{Func\+Decl} $\ast$fdn, vector$<$ Type $\ast$$>$ \&param\+Tys)
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a643faf5835a841d25bde4bb3cf3f0632}\label{structante_1_1Compiler_a643faf5835a841d25bde4bb3cf3f0632}} 
+\hyperlink{structTypedValue}{Typed\+Value} $\ast$ {\bfseries comp\+Fn} (\hyperlink{structFuncDecl}{Func\+Decl} $\ast$fn)
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_af8221f402c22ea704876472fde6475f6}\label{structante_1_1Compiler_af8221f402c22ea704876472fde6475f6}} 
+void {\bfseries register\+Function} (\hyperlink{structFuncDeclNode}{Func\+Decl\+Node} $\ast$func)
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_ad9a29d3daf69b8ad5b52e6fb27383fe4}\label{structante_1_1Compiler_ad9a29d3daf69b8ad5b52e6fb27383fe4}} 
+unsigned int {\bfseries get\+Scope} () const
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a78181a4d893f1188a42424dce22e4f77}\label{structante_1_1Compiler_a78181a4d893f1188a42424dce22e4f77}} 
+\hyperlink{structVariable}{Variable} $\ast$ {\bfseries lookup} (string var) const
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a294b50b824204a50c10470b4126f8eca}\label{structante_1_1Compiler_a294b50b824204a50c10470b4126f8eca}} 
+void {\bfseries sto\+Var} (string var, \hyperlink{structVariable}{Variable} $\ast$val)
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_aa6e648733fbac92a7b4ad3edae7594ef}\label{structante_1_1Compiler_aa6e648733fbac92a7b4ad3edae7594ef}} 
+\hyperlink{structDataType}{Data\+Type} $\ast$ {\bfseries lookup\+Type} (string tyname) const
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_ac4ecaa56e2ab3a9e663cb2860d05f293}\label{structante_1_1Compiler_ac4ecaa56e2ab3a9e663cb2860d05f293}} 
+\hyperlink{structDataType}{Data\+Type} $\ast$ {\bfseries lookup\+Type} (\hyperlink{structTypeNode}{Type\+Node} $\ast$tn) const
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a3a53afb3557a548b1a83db80779c4ce6}\label{structante_1_1Compiler_a3a53afb3557a548b1a83db80779c4ce6}} 
+\hyperlink{structTrait}{Trait} $\ast$ {\bfseries lookup\+Trait} (string tyname) const
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a46ac6a30b8f7de0ecd093e99c973bb67}\label{structante_1_1Compiler_a46ac6a30b8f7de0ecd093e99c973bb67}} 
+bool {\bfseries type\+Implements\+Trait} (\hyperlink{structDataType}{Data\+Type} $\ast$dt, string trait\+Name) const
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a9d1f2e7433d86eb4afc67327dae56a54}\label{structante_1_1Compiler_a9d1f2e7433d86eb4afc67327dae56a54}} 
+void {\bfseries sto\+Type} (\hyperlink{structDataType}{Data\+Type} $\ast$ty, string \&type\+Name)
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a39a7698a0eb845d57bdfb1350806a1e9}\label{structante_1_1Compiler_a39a7698a0eb845d57bdfb1350806a1e9}} 
+void {\bfseries sto\+Type\+Var} (string \&name, \hyperlink{structTypeNode}{Type\+Node} $\ast$ty)
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_aeb03d23c6c558e9a3b6fb210edaa2a66}\label{structante_1_1Compiler_aeb03d23c6c558e9a3b6fb210edaa2a66}} 
+void {\bfseries search\+And\+Replace\+Bound\+Type\+Vars} (\hyperlink{structTypeNode}{Type\+Node} $\ast$tn) const
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a7780123f1ffe48a38f18321c7b858957}\label{structante_1_1Compiler_a7780123f1ffe48a38f18321c7b858957}} 
+Type $\ast$ {\bfseries type\+Node\+To\+Llvm\+Type} (const \hyperlink{structTypeNode}{Type\+Node} $\ast$ty\+Node)
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_afebce7fe89c7872f20f3a0901b7a1e41}\label{structante_1_1Compiler_afebce7fe89c7872f20f3a0901b7a1e41}} 
+\hyperlink{structTypeCheckResult}{Type\+Check\+Result} {\bfseries type\+Eq} (const \hyperlink{structTypeNode}{Type\+Node} $\ast$l, const \hyperlink{structTypeNode}{Type\+Node} $\ast$r) const
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a0513611e5e36c172c17d96f591cd3566}\label{structante_1_1Compiler_a0513611e5e36c172c17d96f591cd3566}} 
+\hyperlink{structTypeCheckResult}{Type\+Check\+Result} {\bfseries type\+Eq} (vector$<$ \hyperlink{structTypeNode}{Type\+Node} $\ast$$>$ l, vector$<$ \hyperlink{structTypeNode}{Type\+Node} $\ast$$>$ r) const
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a3b2b161c9d143cf3c03dee50ced4ca0f}\label{structante_1_1Compiler_a3b2b161c9d143cf3c03dee50ced4ca0f}} 
+void {\bfseries expand} (\hyperlink{structTypeNode}{Type\+Node} $\ast$tn)
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_ac118b346466c89bf7d859f20c780d256}\label{structante_1_1Compiler_ac118b346466c89bf7d859f20c780d256}} 
+\hyperlink{structTypedValue}{Typed\+Value} $\ast$ {\bfseries op\+Implemented\+For\+Types} (int op, \hyperlink{structTypeNode}{Type\+Node} $\ast$l, \hyperlink{structTypeNode}{Type\+Node} $\ast$r)
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_acde56e7686233037c0588717c530b675}\label{structante_1_1Compiler_acde56e7686233037c0588717c530b675}} 
+\hyperlink{structTypedValue}{Typed\+Value} $\ast$ {\bfseries implicitly\+Widen\+Num} (\hyperlink{structTypedValue}{Typed\+Value} $\ast$num, Type\+Tag cast\+Ty)
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a05eebcf2c7727ea6186f755be1287101}\label{structante_1_1Compiler_a05eebcf2c7727ea6186f755be1287101}} 
+void {\bfseries handle\+Implicit\+Conversion} (\hyperlink{structTypedValue}{Typed\+Value} $\ast$$\ast$lhs, \hyperlink{structTypedValue}{Typed\+Value} $\ast$$\ast$rhs)
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_aa5c6bffd2635429e1ab52f5b4bd55e59}\label{structante_1_1Compiler_aa5c6bffd2635429e1ab52f5b4bd55e59}} 
+void {\bfseries implicitly\+Cast\+Int\+To\+Int} (\hyperlink{structTypedValue}{Typed\+Value} $\ast$$\ast$lhs, \hyperlink{structTypedValue}{Typed\+Value} $\ast$$\ast$rhs)
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_af6fcc93975ce17219078e6d1d48f9335}\label{structante_1_1Compiler_af6fcc93975ce17219078e6d1d48f9335}} 
+void {\bfseries implicitly\+Cast\+Flt\+To\+Flt} (\hyperlink{structTypedValue}{Typed\+Value} $\ast$$\ast$lhs, \hyperlink{structTypedValue}{Typed\+Value} $\ast$$\ast$rhs)
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_abcba96594972d563c502cb06dd16d26a}\label{structante_1_1Compiler_abcba96594972d563c502cb06dd16d26a}} 
+void {\bfseries implicitly\+Cast\+Int\+To\+Flt} (\hyperlink{structTypedValue}{Typed\+Value} $\ast$$\ast$tval, Type $\ast$ty)
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a0f10ae592495c14f45385bd5f56979b7}\label{structante_1_1Compiler_a0f10ae592495c14f45385bd5f56979b7}} 
+int {\bfseries compile\+I\+Rto\+Obj} (llvm\+::\+Module $\ast$mod, string out\+File)
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a5b7ba0e04379a65b4918177716d14ad5}\label{structante_1_1Compiler_a5b7ba0e04379a65b4918177716d14ad5}} 
+\hyperlink{structTypedValue}{Typed\+Value} $\ast$ {\bfseries get\+Void\+Literal} ()
+\end{DoxyCompactItemize}
+\subsection*{Static Public Member Functions}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a26abed6aa54156a0d2d3db99e1ab8c56}\label{structante_1_1Compiler_a26abed6aa54156a0d2d3db99e1ab8c56}} 
+static int {\bfseries link\+Obj} (string in\+Files, string out\+File)
+\end{DoxyCompactItemize}
+\subsection*{Public Attributes}
+\begin{DoxyCompactItemize}
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a5a5e771f1ce2e1e208cfe1fdaced2961}\label{structante_1_1Compiler_a5a5e771f1ce2e1e208cfe1fdaced2961}} 
+shared\+\_\+ptr$<$ L\+L\+V\+M\+Context $>$ {\bfseries ctxt}
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a438a7c3c856f14f5635eca6cb4839f4f}\label{structante_1_1Compiler_a438a7c3c856f14f5635eca6cb4839f4f}} 
+unique\+\_\+ptr$<$ Execution\+Engine $>$ {\bfseries jit}
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a855bf32f0712fb34f4645a06e5b0e86b}\label{structante_1_1Compiler_a855bf32f0712fb34f4645a06e5b0e86b}} 
+unique\+\_\+ptr$<$ legacy\+::\+Function\+Pass\+Manager $>$ {\bfseries pass\+Manager}
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_af317c2ed51789ef09b871dfbec6a9510}\label{structante_1_1Compiler_af317c2ed51789ef09b871dfbec6a9510}} 
+unique\+\_\+ptr$<$ llvm\+::\+Module $>$ {\bfseries module}
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_aa23130b28d7aa85ab37cecf42dd92611}\label{structante_1_1Compiler_aa23130b28d7aa85ab37cecf42dd92611}} 
+unique\+\_\+ptr$<$ \hyperlink{structRootNode}{Root\+Node} $>$ {\bfseries ast}
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a78073a4fb0d848f88eff1c868cab3736}\label{structante_1_1Compiler_a78073a4fb0d848f88eff1c868cab3736}} 
+I\+R\+Builder {\bfseries builder}
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a903a2eb91408455da74676cf7ddd5282}\label{structante_1_1Compiler_a903a2eb91408455da74676cf7ddd5282}} 
+shared\+\_\+ptr$<$ \hyperlink{structante_1_1Module}{ante\+::\+Module} $>$ {\bfseries comp\+Unit}
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a150c8e9e49e230dcbb886d5392a90175}\label{structante_1_1Compiler_a150c8e9e49e230dcbb886d5392a90175}} 
+shared\+\_\+ptr$<$ \hyperlink{structante_1_1Module}{ante\+::\+Module} $>$ {\bfseries merged\+Comp\+Units}
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a81474059e4354d8c2acfba816205eead}\label{structante_1_1Compiler_a81474059e4354d8c2acfba816205eead}} 
+vector$<$ shared\+\_\+ptr$<$ \hyperlink{structante_1_1Module}{ante\+::\+Module} $>$ $>$ {\bfseries imports}
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a1bf965c9ee5499947458b8ce739a954a}\label{structante_1_1Compiler_a1bf965c9ee5499947458b8ce739a954a}} 
+shared\+\_\+ptr$<$ unordered\+\_\+map$<$ string, shared\+\_\+ptr$<$ \hyperlink{structante_1_1Module}{ante\+::\+Module} $>$ $>$ $>$ {\bfseries all\+Compiled\+Modules}
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_af08b993f5750d7c5d22a1797973806d6}\label{structante_1_1Compiler_af08b993f5750d7c5d22a1797973806d6}} 
+vector$<$ unique\+\_\+ptr$<$ unordered\+\_\+map$<$ string, \hyperlink{structVariable}{Variable} $\ast$ $>$ $>$ $>$ {\bfseries var\+Table}
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a244b0e72828c82cf0bf371ae0c296021}\label{structante_1_1Compiler_a244b0e72828c82cf0bf371ae0c296021}} 
+unique\+\_\+ptr$<$ \hyperlink{structante_1_1CompilerCtxt}{Compiler\+Ctxt} $>$ {\bfseries comp\+Ctxt}
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a2b937b0373fd399673d1e949bae33987}\label{structante_1_1Compiler_a2b937b0373fd399673d1e949bae33987}} 
+bool {\bfseries err\+Flag}
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_ab3af520cc4406c344cb13085b9064667}\label{structante_1_1Compiler_ab3af520cc4406c344cb13085b9064667}} 
+bool {\bfseries compiled}
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a2eada2ae7db8a214762cec4efcdd51e6}\label{structante_1_1Compiler_a2eada2ae7db8a214762cec4efcdd51e6}} 
+bool {\bfseries is\+Lib}
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a7a576d883e0dd34d6a4f19d94ba83a44}\label{structante_1_1Compiler_a7a576d883e0dd34d6a4f19d94ba83a44}} 
+string {\bfseries file\+Name}
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a4a207b55956fa1d74b56ca9aa1955292}\label{structante_1_1Compiler_a4a207b55956fa1d74b56ca9aa1955292}} 
+string {\bfseries out\+File}
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_aedc2565aa8d4b420f0e1b73042fe763c}\label{structante_1_1Compiler_aedc2565aa8d4b420f0e1b73042fe763c}} 
+string {\bfseries func\+Prefix}
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a985cda2993bbf58b0120a87905759bd3}\label{structante_1_1Compiler_a985cda2993bbf58b0120a87905759bd3}} 
+unsigned int {\bfseries scope}
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a9a0f791776d450019cc3272fdfbfbe19}\label{structante_1_1Compiler_a9a0f791776d450019cc3272fdfbfbe19}} 
+unsigned int {\bfseries opt\+Lvl}
+\item 
+\mbox{\Hypertarget{structante_1_1Compiler_a4772b7ae7d73420190a7647ee53f812e}\label{structante_1_1Compiler_a4772b7ae7d73420190a7647ee53f812e}} 
+unsigned int {\bfseries fn\+Scope}
+\end{DoxyCompactItemize}
+
+
+The documentation for this struct was generated from the following files\+:\begin{DoxyCompactItemize}
+\item 
+/home/rndmprsn/\+Code/\+Ante/include/compiler.\+h\item 
+/home/rndmprsn/\+Code/\+Ante/src/compiler.\+cpp\item 
+/home/rndmprsn/\+Code/\+Ante/src/error.\+cpp\item 
+/home/rndmprsn/\+Code/\+Ante/src/function.\+cpp\item 
+/home/rndmprsn/\+Code/\+Ante/src/operator.\+cpp\item 
+/home/rndmprsn/\+Code/\+Ante/src/types.\+cpp\end{DoxyCompactItemize}
