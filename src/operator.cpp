@@ -885,7 +885,7 @@ GenericValue typedValueToGenericValue(Compiler *c, TypedValue *tv){
         }
         case TT_Tuple: {
             size_t i = 0;
-            for(auto &ty : *tv->type->extTy){
+            for(auto *ty : *tv->type->extTy){
                 Value *extract = c->builder.CreateExtractValue(tv->val, i);
                 auto *field = new TypedValue(extract, copy((TypeNode*)&ty));
                 ret.AggregateVal.push_back(typedValueToGenericValue(c, field));

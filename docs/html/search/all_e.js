@@ -1,4 +1,5 @@
 var searchData=
 [
-  ['strlitnode',['StrLitNode',['../structStrLitNode.html',1,'']]]
+  ['retnode',['RetNode',['../structRetNode.html',1,'']]],
+  ['rootnode',['RootNode',['../structRootNode.html',1,'']]]
 ];

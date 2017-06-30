@@ -1,5 +1,6 @@
 var searchData=
 [
-  ['parentnode',['ParentNode',['../structParentNode.html',1,'']]],
-  ['preprocnode',['PreProcNode',['../structPreProcNode.html',1,'']]]
+  ['namedvalnode',['NamedValNode',['../structNamedValNode.html',1,'']]],
+  ['node',['Node',['../structNode.html',1,'']]],
+  ['nodeiterator',['NodeIterator',['../structNodeIterator.html',1,'']]]
 ];

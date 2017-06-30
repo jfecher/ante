@@ -1,5 +1,6 @@
 var searchData=
 [
+  ['token',['token',['../structyy_1_1parser_1_1token.html',1,'yy::parser']]],
   ['trait',['Trait',['../structTrait.html',1,'']]],
   ['traitnode',['TraitNode',['../structTraitNode.html',1,'']]],
   ['tuplenode',['TupleNode',['../structTupleNode.html',1,'']]],
