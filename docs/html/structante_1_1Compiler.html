@@ -74,44 +74,52 @@ $(function() {
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
-<tr class="memitem:a3eea249babcbd697bf5f9ac4d78c29f1"><td class="memItemLeft" align="right" valign="top"><a id="a3eea249babcbd697bf5f9ac4d78c29f1"></a>
-&#160;</td><td class="memItemRight" valign="bottom"><b>Compiler</b> (const char *fileName, bool lib=false, shared_ptr&lt; LLVMContext &gt; ctxt=nullptr)</td></tr>
+<tr class="memitem:a3eea249babcbd697bf5f9ac4d78c29f1"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structante_1_1Compiler.html#a3eea249babcbd697bf5f9ac4d78c29f1">Compiler</a> (const char *fileName, bool lib=false, shared_ptr&lt; LLVMContext &gt; ctxt=nullptr)</td></tr>
+<tr class="memdesc:a3eea249babcbd697bf5f9ac4d78c29f1"><td class="mdescLeft">&#160;</td><td class="mdescRight">The main constructor for <a class="el" href="structante_1_1Compiler.html">Compiler</a>.  <a href="#a3eea249babcbd697bf5f9ac4d78c29f1">More...</a><br /></td></tr>
 <tr class="separator:a3eea249babcbd697bf5f9ac4d78c29f1"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a030778900cf34d841a3249741d176e3d"><td class="memItemLeft" align="right" valign="top"><a id="a030778900cf34d841a3249741d176e3d"></a>
-&#160;</td><td class="memItemRight" valign="bottom"><b>Compiler</b> (<a class="el" href="structNode.html">Node</a> *root, string modName, string &amp;fName, bool lib=false, shared_ptr&lt; LLVMContext &gt; ctxt=nullptr)</td></tr>
+<tr class="memitem:a030778900cf34d841a3249741d176e3d"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structante_1_1Compiler.html#a030778900cf34d841a3249741d176e3d">Compiler</a> (<a class="el" href="structNode.html">Node</a> *root, string modName, string &amp;fName, bool lib=false, shared_ptr&lt; LLVMContext &gt; ctxt=nullptr)</td></tr>
+<tr class="memdesc:a030778900cf34d841a3249741d176e3d"><td class="mdescLeft">&#160;</td><td class="mdescRight">Constructor for a <a class="el" href="structante_1_1Compiler.html">Compiler</a> compiling a sub-module within the current file. Currently only used for string interpolation.  <a href="#a030778900cf34d841a3249741d176e3d">More...</a><br /></td></tr>
 <tr class="separator:a030778900cf34d841a3249741d176e3d"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a4eb6d2076006863fc52116489c7b4ec8"><td class="memItemLeft" align="right" valign="top"><a id="a4eb6d2076006863fc52116489c7b4ec8"></a>
-void&#160;</td><td class="memItemRight" valign="bottom"><b>compile</b> ()</td></tr>
+void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structante_1_1Compiler.html#a4eb6d2076006863fc52116489c7b4ec8">compile</a> ()</td></tr>
+<tr class="memdesc:a4eb6d2076006863fc52116489c7b4ec8"><td class="mdescLeft">&#160;</td><td class="mdescRight">Fully compiles a module. <br /></td></tr>
 <tr class="separator:a4eb6d2076006863fc52116489c7b4ec8"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a95e38823dc493732ccfb9e1fee804038"><td class="memItemLeft" align="right" valign="top"><a id="a95e38823dc493732ccfb9e1fee804038"></a>
-void&#160;</td><td class="memItemRight" valign="bottom"><b>compileNative</b> ()</td></tr>
+void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structante_1_1Compiler.html#a95e38823dc493732ccfb9e1fee804038">compileNative</a> ()</td></tr>
+<tr class="memdesc:a95e38823dc493732ccfb9e1fee804038"><td class="mdescLeft">&#160;</td><td class="mdescRight">Compiles a native binary. <br /></td></tr>
 <tr class="separator:a95e38823dc493732ccfb9e1fee804038"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:adada529302d143f10dd26f0bc08b059f"><td class="memItemLeft" align="right" valign="top"><a id="adada529302d143f10dd26f0bc08b059f"></a>
-int&#160;</td><td class="memItemRight" valign="bottom"><b>compileObj</b> (string &amp;outName)</td></tr>
+<tr class="memitem:adada529302d143f10dd26f0bc08b059f"><td class="memItemLeft" align="right" valign="top">int&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structante_1_1Compiler.html#adada529302d143f10dd26f0bc08b059f">compileObj</a> (string &amp;outName)</td></tr>
+<tr class="memdesc:adada529302d143f10dd26f0bc08b059f"><td class="mdescLeft">&#160;</td><td class="mdescRight">Compiles a module to an object file.  <a href="#adada529302d143f10dd26f0bc08b059f">More...</a><br /></td></tr>
 <tr class="separator:adada529302d143f10dd26f0bc08b059f"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a04558a0884c3f65f17fcc8e5f4d26144"><td class="memItemLeft" align="right" valign="top"><a id="a04558a0884c3f65f17fcc8e5f4d26144"></a>
-void&#160;</td><td class="memItemRight" valign="bottom"><b>compilePrelude</b> ()</td></tr>
+void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structante_1_1Compiler.html#a04558a0884c3f65f17fcc8e5f4d26144">compilePrelude</a> ()</td></tr>
+<tr class="memdesc:a04558a0884c3f65f17fcc8e5f4d26144"><td class="mdescLeft">&#160;</td><td class="mdescRight">Imports the prelude module unless the current module is the prelude. <br /></td></tr>
 <tr class="separator:a04558a0884c3f65f17fcc8e5f4d26144"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a32319f611aed8324441f50b440a90fce"><td class="memItemLeft" align="right" valign="top"><a id="a32319f611aed8324441f50b440a90fce"></a>
-Function *&#160;</td><td class="memItemRight" valign="bottom"><b>createMainFn</b> ()</td></tr>
+<tr class="memitem:a32319f611aed8324441f50b440a90fce"><td class="memItemLeft" align="right" valign="top">Function *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structante_1_1Compiler.html#a32319f611aed8324441f50b440a90fce">createMainFn</a> ()</td></tr>
+<tr class="memdesc:a32319f611aed8324441f50b440a90fce"><td class="mdescLeft">&#160;</td><td class="mdescRight">Creates the main function of a main module or creates the library_init function of a lib module.  <a href="#a32319f611aed8324441f50b440a90fce">More...</a><br /></td></tr>
 <tr class="separator:a32319f611aed8324441f50b440a90fce"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a8aa516b2abbfb1697d3f06972c766ec4"><td class="memItemLeft" align="right" valign="top"><a id="a8aa516b2abbfb1697d3f06972c766ec4"></a>
-void&#160;</td><td class="memItemRight" valign="bottom"><b>eval</b> ()</td></tr>
+void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structante_1_1Compiler.html#a8aa516b2abbfb1697d3f06972c766ec4">eval</a> ()</td></tr>
+<tr class="memdesc:a8aa516b2abbfb1697d3f06972c766ec4"><td class="mdescLeft">&#160;</td><td class="mdescRight">Starts the REPL. <br /></td></tr>
 <tr class="separator:a8aa516b2abbfb1697d3f06972c766ec4"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ab257544d05193027c6b66956e5c2d0ad"><td class="memItemLeft" align="right" valign="top"><a id="ab257544d05193027c6b66956e5c2d0ad"></a>
-void&#160;</td><td class="memItemRight" valign="bottom"><b>emitIR</b> ()</td></tr>
+void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structante_1_1Compiler.html#ab257544d05193027c6b66956e5c2d0ad">emitIR</a> ()</td></tr>
+<tr class="memdesc:ab257544d05193027c6b66956e5c2d0ad"><td class="mdescLeft">&#160;</td><td class="mdescRight">Dumps current contents of module to stdout. <br /></td></tr>
 <tr class="separator:ab257544d05193027c6b66956e5c2d0ad"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a807c820c343bd7b799762b7fb0b950f0"><td class="memItemLeft" align="right" valign="top"><a id="a807c820c343bd7b799762b7fb0b950f0"></a>
-void&#160;</td><td class="memItemRight" valign="bottom"><b>enterNewScope</b> ()</td></tr>
+void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structante_1_1Compiler.html#a807c820c343bd7b799762b7fb0b950f0">enterNewScope</a> ()</td></tr>
+<tr class="memdesc:a807c820c343bd7b799762b7fb0b950f0"><td class="mdescLeft">&#160;</td><td class="mdescRight">Creates and enters a new scope. <br /></td></tr>
 <tr class="separator:a807c820c343bd7b799762b7fb0b950f0"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a4f3dbb7ff9eb7b951b5efdd72bb0c7f9"><td class="memItemLeft" align="right" valign="top"><a id="a4f3dbb7ff9eb7b951b5efdd72bb0c7f9"></a>
-void&#160;</td><td class="memItemRight" valign="bottom"><b>exitScope</b> ()</td></tr>
+void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structante_1_1Compiler.html#a4f3dbb7ff9eb7b951b5efdd72bb0c7f9">exitScope</a> ()</td></tr>
+<tr class="memdesc:a4f3dbb7ff9eb7b951b5efdd72bb0c7f9"><td class="mdescLeft">&#160;</td><td class="mdescRight">Exits a scope and performs any necessary cleanup. <br /></td></tr>
 <tr class="separator:a4f3dbb7ff9eb7b951b5efdd72bb0c7f9"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:acbb98f0ef7860dedf0b5fd5e2fba36ae"><td class="memItemLeft" align="right" valign="top"><a id="acbb98f0ef7860dedf0b5fd5e2fba36ae"></a>
-void&#160;</td><td class="memItemRight" valign="bottom"><b>scanAllDecls</b> (<a class="el" href="structRootNode.html">RootNode</a> *n=0)</td></tr>
+void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structante_1_1Compiler.html#acbb98f0ef7860dedf0b5fd5e2fba36ae">scanAllDecls</a> (<a class="el" href="structRootNode.html">RootNode</a> *n=0)</td></tr>
+<tr class="memdesc:acbb98f0ef7860dedf0b5fd5e2fba36ae"><td class="mdescLeft">&#160;</td><td class="mdescRight">Sweeps through parse tree registering all functions, type declarations, and traits. <br /></td></tr>
 <tr class="separator:acbb98f0ef7860dedf0b5fd5e2fba36ae"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:adb1aa46e48eb971322d6d77e251b8422"><td class="memItemLeft" align="right" valign="top"><a id="adb1aa46e48eb971322d6d77e251b8422"></a>
-void&#160;</td><td class="memItemRight" valign="bottom"><b>processArgs</b> (<a class="el" href="structante_1_1CompilerArgs.html">CompilerArgs</a> *args)</td></tr>
+<tr class="memitem:adb1aa46e48eb971322d6d77e251b8422"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structante_1_1Compiler.html#adb1aa46e48eb971322d6d77e251b8422">processArgs</a> (<a class="el" href="structante_1_1CompilerArgs.html">CompilerArgs</a> *args)</td></tr>
+<tr class="memdesc:adb1aa46e48eb971322d6d77e251b8422"><td class="mdescLeft">&#160;</td><td class="mdescRight">Sets appropriate flags and executes operations specified by the command line arguments.  <a href="#adb1aa46e48eb971322d6d77e251b8422">More...</a><br /></td></tr>
 <tr class="separator:adb1aa46e48eb971322d6d77e251b8422"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a88af1760a02ac2afd42d23376bd6cc8a"><td class="memItemLeft" align="right" valign="top"><a id="a88af1760a02ac2afd42d23376bd6cc8a"></a>
 <a class="el" href="structTypedValue.html">TypedValue</a> *&#160;</td><td class="memItemRight" valign="bottom"><b>compAdd</b> (<a class="el" href="structTypedValue.html">TypedValue</a> *l, <a class="el" href="structTypedValue.html">TypedValue</a> *r, <a class="el" href="structBinOpNode.html">BinOpNode</a> *op)</td></tr>
@@ -146,11 +154,11 @@ void&#160;</td><td class="memItemRight" valign="bottom"><b>processArgs</b> (<a c
 <tr class="memitem:a5ffb3b5970aa4abc4d4512e958796a52"><td class="memItemLeft" align="right" valign="top"><a id="a5ffb3b5970aa4abc4d4512e958796a52"></a>
 <a class="el" href="structTypedValue.html">TypedValue</a> *&#160;</td><td class="memItemRight" valign="bottom"><b>compErr</b> (<a class="el" href="structante_1_1lazy__printer.html">ante::lazy_printer</a> msg, const <a class="el" href="classyy_1_1location.html">yy::location</a> &amp;loc, ErrorType t=ErrorType::Error)</td></tr>
 <tr class="separator:a5ffb3b5970aa4abc4d4512e958796a52"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a0712cc6dbd65814f64ed1141d59ab80d"><td class="memItemLeft" align="right" valign="top"><a id="a0712cc6dbd65814f64ed1141d59ab80d"></a>
-void&#160;</td><td class="memItemRight" valign="bottom"><b>jitFunction</b> (Function *fnName)</td></tr>
+<tr class="memitem:a0712cc6dbd65814f64ed1141d59ab80d"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structante_1_1Compiler.html#a0712cc6dbd65814f64ed1141d59ab80d">jitFunction</a> (Function *fnName)</td></tr>
+<tr class="memdesc:a0712cc6dbd65814f64ed1141d59ab80d"><td class="mdescLeft">&#160;</td><td class="mdescRight">JIT compiles a function with no arguments and calls it afterward.  <a href="#a0712cc6dbd65814f64ed1141d59ab80d">More...</a><br /></td></tr>
 <tr class="separator:a0712cc6dbd65814f64ed1141d59ab80d"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:aeb22d4fb05bfd59a8e62f12bbc4ac303"><td class="memItemLeft" align="right" valign="top"><a id="aeb22d4fb05bfd59a8e62f12bbc4ac303"></a>
-void&#160;</td><td class="memItemRight" valign="bottom"><b>importFile</b> (const char *name, <a class="el" href="structNode.html">Node</a> *locNode=0)</td></tr>
+<tr class="memitem:aeb22d4fb05bfd59a8e62f12bbc4ac303"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structante_1_1Compiler.html#aeb22d4fb05bfd59a8e62f12bbc4ac303">importFile</a> (const char *name, <a class="el" href="structNode.html">Node</a> *locNode=0)</td></tr>
+<tr class="memdesc:aeb22d4fb05bfd59a8e62f12bbc4ac303"><td class="mdescLeft">&#160;</td><td class="mdescRight">Imports a given ante file to the current module inputted file must exist and be a valid ante source file.  <a href="#aeb22d4fb05bfd59a8e62f12bbc4ac303">More...</a><br /></td></tr>
 <tr class="separator:aeb22d4fb05bfd59a8e62f12bbc4ac303"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ab79a6faf5ca35d988546c7cfb0da189c"><td class="memItemLeft" align="right" valign="top"><a id="ab79a6faf5ca35d988546c7cfb0da189c"></a>
 void&#160;</td><td class="memItemRight" valign="bottom"><b>updateFn</b> (<a class="el" href="structTypedValue.html">TypedValue</a> *f, string &amp;name, string &amp;mangledName)</td></tr>
@@ -188,29 +196,28 @@ void&#160;</td><td class="memItemRight" valign="bottom"><b>registerFunction</b> 
 <tr class="memitem:ad9a29d3daf69b8ad5b52e6fb27383fe4"><td class="memItemLeft" align="right" valign="top"><a id="ad9a29d3daf69b8ad5b52e6fb27383fe4"></a>
 unsigned int&#160;</td><td class="memItemRight" valign="bottom"><b>getScope</b> () const</td></tr>
 <tr class="separator:ad9a29d3daf69b8ad5b52e6fb27383fe4"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a78181a4d893f1188a42424dce22e4f77"><td class="memItemLeft" align="right" valign="top"><a id="a78181a4d893f1188a42424dce22e4f77"></a>
-<a class="el" href="structVariable.html">Variable</a> *&#160;</td><td class="memItemRight" valign="bottom"><b>lookup</b> (string var) const</td></tr>
+<tr class="memitem:a78181a4d893f1188a42424dce22e4f77"><td class="memItemLeft" align="right" valign="top"><a class="el" href="structVariable.html">Variable</a> *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structante_1_1Compiler.html#a78181a4d893f1188a42424dce22e4f77">lookup</a> (string var) const</td></tr>
+<tr class="memdesc:a78181a4d893f1188a42424dce22e4f77"><td class="mdescLeft">&#160;</td><td class="mdescRight">Performs a lookup for a variable.  <a href="#a78181a4d893f1188a42424dce22e4f77">More...</a><br /></td></tr>
 <tr class="separator:a78181a4d893f1188a42424dce22e4f77"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a294b50b824204a50c10470b4126f8eca"><td class="memItemLeft" align="right" valign="top"><a id="a294b50b824204a50c10470b4126f8eca"></a>
-void&#160;</td><td class="memItemRight" valign="bottom"><b>stoVar</b> (string var, <a class="el" href="structVariable.html">Variable</a> *val)</td></tr>
+<tr class="memitem:a294b50b824204a50c10470b4126f8eca"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structante_1_1Compiler.html#a294b50b824204a50c10470b4126f8eca">stoVar</a> (string var, <a class="el" href="structVariable.html">Variable</a> *val)</td></tr>
+<tr class="memdesc:a294b50b824204a50c10470b4126f8eca"><td class="mdescLeft">&#160;</td><td class="mdescRight">Stores a variable in the current scope.  <a href="#a294b50b824204a50c10470b4126f8eca">More...</a><br /></td></tr>
 <tr class="separator:a294b50b824204a50c10470b4126f8eca"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:aa6e648733fbac92a7b4ad3edae7594ef"><td class="memItemLeft" align="right" valign="top"><a id="aa6e648733fbac92a7b4ad3edae7594ef"></a>
-<a class="el" href="structDataType.html">DataType</a> *&#160;</td><td class="memItemRight" valign="bottom"><b>lookupType</b> (string tyname) const</td></tr>
+<tr class="memitem:aa6e648733fbac92a7b4ad3edae7594ef"><td class="memItemLeft" align="right" valign="top"><a class="el" href="structDataType.html">DataType</a> *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structante_1_1Compiler.html#aa6e648733fbac92a7b4ad3edae7594ef">lookupType</a> (string tyname) const</td></tr>
+<tr class="memdesc:aa6e648733fbac92a7b4ad3edae7594ef"><td class="mdescLeft">&#160;</td><td class="mdescRight">Performs a lookup for the specified <a class="el" href="structDataType.html">DataType</a>.  <a href="#aa6e648733fbac92a7b4ad3edae7594ef">More...</a><br /></td></tr>
 <tr class="separator:aa6e648733fbac92a7b4ad3edae7594ef"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:ac4ecaa56e2ab3a9e663cb2860d05f293"><td class="memItemLeft" align="right" valign="top"><a id="ac4ecaa56e2ab3a9e663cb2860d05f293"></a>
-<a class="el" href="structDataType.html">DataType</a> *&#160;</td><td class="memItemRight" valign="bottom"><b>lookupType</b> (<a class="el" href="structTypeNode.html">TypeNode</a> *tn) const</td></tr>
+<tr class="memitem:ac4ecaa56e2ab3a9e663cb2860d05f293"><td class="memItemLeft" align="right" valign="top"><a class="el" href="structDataType.html">DataType</a> *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structante_1_1Compiler.html#ac4ecaa56e2ab3a9e663cb2860d05f293">lookupType</a> (<a class="el" href="structTypeNode.html">TypeNode</a> *tn) const</td></tr>
+<tr class="memdesc:ac4ecaa56e2ab3a9e663cb2860d05f293"><td class="mdescLeft">&#160;</td><td class="mdescRight">Performs a lookup a type's full definition.  <a href="#ac4ecaa56e2ab3a9e663cb2860d05f293">More...</a><br /></td></tr>
 <tr class="separator:ac4ecaa56e2ab3a9e663cb2860d05f293"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a3a53afb3557a548b1a83db80779c4ce6"><td class="memItemLeft" align="right" valign="top"><a id="a3a53afb3557a548b1a83db80779c4ce6"></a>
-<a class="el" href="structTrait.html">Trait</a> *&#160;</td><td class="memItemRight" valign="bottom"><b>lookupTrait</b> (string tyname) const</td></tr>
+<tr class="memitem:a3a53afb3557a548b1a83db80779c4ce6"><td class="memItemLeft" align="right" valign="top"><a class="el" href="structTrait.html">Trait</a> *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structante_1_1Compiler.html#a3a53afb3557a548b1a83db80779c4ce6">lookupTrait</a> (string tyname) const</td></tr>
+<tr class="memdesc:a3a53afb3557a548b1a83db80779c4ce6"><td class="mdescLeft">&#160;</td><td class="mdescRight">Performs a lookup for the specified trait.  <a href="#a3a53afb3557a548b1a83db80779c4ce6">More...</a><br /></td></tr>
 <tr class="separator:a3a53afb3557a548b1a83db80779c4ce6"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a46ac6a30b8f7de0ecd093e99c973bb67"><td class="memItemLeft" align="right" valign="top"><a id="a46ac6a30b8f7de0ecd093e99c973bb67"></a>
-bool&#160;</td><td class="memItemRight" valign="bottom"><b>typeImplementsTrait</b> (<a class="el" href="structDataType.html">DataType</a> *dt, string traitName) const</td></tr>
+<tr class="memitem:a46ac6a30b8f7de0ecd093e99c973bb67"><td class="memItemLeft" align="right" valign="top">bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structante_1_1Compiler.html#a46ac6a30b8f7de0ecd093e99c973bb67">typeImplementsTrait</a> (<a class="el" href="structDataType.html">DataType</a> *dt, string traitName) const</td></tr>
 <tr class="separator:a46ac6a30b8f7de0ecd093e99c973bb67"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a9d1f2e7433d86eb4afc67327dae56a54"><td class="memItemLeft" align="right" valign="top"><a id="a9d1f2e7433d86eb4afc67327dae56a54"></a>
-void&#160;</td><td class="memItemRight" valign="bottom"><b>stoType</b> (<a class="el" href="structDataType.html">DataType</a> *ty, string &amp;typeName)</td></tr>
+<tr class="memitem:a9d1f2e7433d86eb4afc67327dae56a54"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structante_1_1Compiler.html#a9d1f2e7433d86eb4afc67327dae56a54">stoType</a> (<a class="el" href="structDataType.html">DataType</a> *ty, string &amp;typeName)</td></tr>
+<tr class="memdesc:a9d1f2e7433d86eb4afc67327dae56a54"><td class="mdescLeft">&#160;</td><td class="mdescRight">Stores a new <a class="el" href="structDataType.html">DataType</a>.  <a href="#a9d1f2e7433d86eb4afc67327dae56a54">More...</a><br /></td></tr>
 <tr class="separator:a9d1f2e7433d86eb4afc67327dae56a54"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a39a7698a0eb845d57bdfb1350806a1e9"><td class="memItemLeft" align="right" valign="top"><a id="a39a7698a0eb845d57bdfb1350806a1e9"></a>
-void&#160;</td><td class="memItemRight" valign="bottom"><b>stoTypeVar</b> (string &amp;name, <a class="el" href="structTypeNode.html">TypeNode</a> *ty)</td></tr>
+<tr class="memitem:a39a7698a0eb845d57bdfb1350806a1e9"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structante_1_1Compiler.html#a39a7698a0eb845d57bdfb1350806a1e9">stoTypeVar</a> (string &amp;name, <a class="el" href="structTypeNode.html">TypeNode</a> *ty)</td></tr>
+<tr class="memdesc:a39a7698a0eb845d57bdfb1350806a1e9"><td class="mdescLeft">&#160;</td><td class="mdescRight">Stores a TypeVar in the current scope.  <a href="#a39a7698a0eb845d57bdfb1350806a1e9">More...</a><br /></td></tr>
 <tr class="separator:a39a7698a0eb845d57bdfb1350806a1e9"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aeb03d23c6c558e9a3b6fb210edaa2a66"><td class="memItemLeft" align="right" valign="top"><a id="aeb03d23c6c558e9a3b6fb210edaa2a66"></a>
 void&#160;</td><td class="memItemRight" valign="bottom"><b>searchAndReplaceBoundTypeVars</b> (<a class="el" href="structTypeNode.html">TypeNode</a> *tn) const</td></tr>
@@ -245,17 +252,17 @@ void&#160;</td><td class="memItemRight" valign="bottom"><b>implicitlyCastFltToFl
 <tr class="memitem:abcba96594972d563c502cb06dd16d26a"><td class="memItemLeft" align="right" valign="top"><a id="abcba96594972d563c502cb06dd16d26a"></a>
 void&#160;</td><td class="memItemRight" valign="bottom"><b>implicitlyCastIntToFlt</b> (<a class="el" href="structTypedValue.html">TypedValue</a> **tval, Type *ty)</td></tr>
 <tr class="separator:abcba96594972d563c502cb06dd16d26a"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a0f10ae592495c14f45385bd5f56979b7"><td class="memItemLeft" align="right" valign="top"><a id="a0f10ae592495c14f45385bd5f56979b7"></a>
-int&#160;</td><td class="memItemRight" valign="bottom"><b>compileIRtoObj</b> (llvm::Module *mod, string outFile)</td></tr>
+<tr class="memitem:a0f10ae592495c14f45385bd5f56979b7"><td class="memItemLeft" align="right" valign="top">int&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structante_1_1Compiler.html#a0f10ae592495c14f45385bd5f56979b7">compileIRtoObj</a> (llvm::Module *mod, string outFile)</td></tr>
+<tr class="memdesc:a0f10ae592495c14f45385bd5f56979b7"><td class="mdescLeft">&#160;</td><td class="mdescRight">Compiles a module into an obj file to be used for linking.  <a href="#a0f10ae592495c14f45385bd5f56979b7">More...</a><br /></td></tr>
 <tr class="separator:a0f10ae592495c14f45385bd5f56979b7"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a5b7ba0e04379a65b4918177716d14ad5"><td class="memItemLeft" align="right" valign="top"><a id="a5b7ba0e04379a65b4918177716d14ad5"></a>
-<a class="el" href="structTypedValue.html">TypedValue</a> *&#160;</td><td class="memItemRight" valign="bottom"><b>getVoidLiteral</b> ()</td></tr>
+<tr class="memitem:a5b7ba0e04379a65b4918177716d14ad5"><td class="memItemLeft" align="right" valign="top"><a class="el" href="structTypedValue.html">TypedValue</a> *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structante_1_1Compiler.html#a5b7ba0e04379a65b4918177716d14ad5">getVoidLiteral</a> ()</td></tr>
+<tr class="memdesc:a5b7ba0e04379a65b4918177716d14ad5"><td class="mdescLeft">&#160;</td><td class="mdescRight">Creates and returns a literal of type void.  <a href="#a5b7ba0e04379a65b4918177716d14ad5">More...</a><br /></td></tr>
 <tr class="separator:a5b7ba0e04379a65b4918177716d14ad5"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="pub-static-methods"></a>
 Static Public Member Functions</h2></td></tr>
-<tr class="memitem:a26abed6aa54156a0d2d3db99e1ab8c56"><td class="memItemLeft" align="right" valign="top"><a id="a26abed6aa54156a0d2d3db99e1ab8c56"></a>
-static int&#160;</td><td class="memItemRight" valign="bottom"><b>linkObj</b> (string inFiles, string outFile)</td></tr>
+<tr class="memitem:a26abed6aa54156a0d2d3db99e1ab8c56"><td class="memItemLeft" align="right" valign="top">static int&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structante_1_1Compiler.html#a26abed6aa54156a0d2d3db99e1ab8c56">linkObj</a> (string inFiles, string outFile)</td></tr>
+<tr class="memdesc:a26abed6aa54156a0d2d3db99e1ab8c56"><td class="mdescLeft">&#160;</td><td class="mdescRight">Invokes the linker specified by AN_LINKER (in <a class="el" href="target_8h_source.html">target.h</a>) to link each object file.  <a href="#a26abed6aa54156a0d2d3db99e1ab8c56">More...</a><br /></td></tr>
 <tr class="separator:a26abed6aa54156a0d2d3db99e1ab8c56"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="pub-attribs"></a>
@@ -324,6 +331,600 @@ unsigned int&#160;</td><td class="memItemRight" valign="bottom"><b>optLvl</b></t
 unsigned int&#160;</td><td class="memItemRight" valign="bottom"><b>fnScope</b></td></tr>
 <tr class="separator:a4772b7ae7d73420190a7647ee53f812e"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
+<h2 class="groupheader">Constructor &amp; Destructor Documentation</h2>
+<a id="a3eea249babcbd697bf5f9ac4d78c29f1"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a3eea249babcbd697bf5f9ac4d78c29f1">&#9670;&nbsp;</a></span>Compiler() <span class="overload">[1/2]</span></h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">Compiler::Compiler </td>
+          <td>(</td>
+          <td class="paramtype">const char *&#160;</td>
+          <td class="paramname"><em>_fileName</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">bool&#160;</td>
+          <td class="paramname"><em>lib</em> = <code>false</code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">shared_ptr&lt; LLVMContext &gt;&#160;</td>
+          <td class="paramname"><em>llvmCtxt</em> = <code>nullptr</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>The main constructor for <a class="el" href="structante_1_1Compiler.html">Compiler</a>. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">_fileName</td><td>Name of the file being compiled </td></tr>
+    <tr><td class="paramname">lib</td><td>Set to true if this module should be compiled as a library </td></tr>
+    <tr><td class="paramname">llvmCtxt</td><td>The llvmCtxt possibly shared with another module </td></tr>
+  </table>
+  </dd>
+</dl>
+
+</div>
+</div>
+<a id="a030778900cf34d841a3249741d176e3d"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a030778900cf34d841a3249741d176e3d">&#9670;&nbsp;</a></span>Compiler() <span class="overload">[2/2]</span></h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">Compiler::Compiler </td>
+          <td>(</td>
+          <td class="paramtype"><a class="el" href="structNode.html">Node</a> *&#160;</td>
+          <td class="paramname"><em>root</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">string&#160;</td>
+          <td class="paramname"><em>modName</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">string &amp;&#160;</td>
+          <td class="paramname"><em>fName</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">bool&#160;</td>
+          <td class="paramname"><em>lib</em> = <code>false</code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">shared_ptr&lt; LLVMContext &gt;&#160;</td>
+          <td class="paramname"><em>llvmCtxt</em> = <code>nullptr</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Constructor for a <a class="el" href="structante_1_1Compiler.html">Compiler</a> compiling a sub-module within the current file. Currently only used for string interpolation. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">root</td><td>The node to set as the root node (does not need to be a <a class="el" href="structRootNode.html">RootNode</a> already) </td></tr>
+    <tr><td class="paramname">modName</td><td>Name of the module being compiled </td></tr>
+    <tr><td class="paramname">fName</td><td>Name of the file being compiled </td></tr>
+    <tr><td class="paramname">lib</td><td>Set to true if this module should be compiled as a library </td></tr>
+    <tr><td class="paramname">llvmCtxt</td><td>The llvmCtxt shared from the parent <a class="el" href="structante_1_1Module.html">Module</a> </td></tr>
+  </table>
+  </dd>
+</dl>
+
+</div>
+</div>
+<h2 class="groupheader">Member Function Documentation</h2>
+<a id="a0f10ae592495c14f45385bd5f56979b7"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a0f10ae592495c14f45385bd5f56979b7">&#9670;&nbsp;</a></span>compileIRtoObj()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">int Compiler::compileIRtoObj </td>
+          <td>(</td>
+          <td class="paramtype">llvm::Module *&#160;</td>
+          <td class="paramname"><em>mod</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">string&#160;</td>
+          <td class="paramname"><em>outFile</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Compiles a module into an obj file to be used for linking. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">mod</td><td>The already-compiled module </td></tr>
+    <tr><td class="paramname">outFile</td><td>Name of the file to output</td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>0 on success </dd></dl>
+
+</div>
+</div>
+<a id="adada529302d143f10dd26f0bc08b059f"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#adada529302d143f10dd26f0bc08b059f">&#9670;&nbsp;</a></span>compileObj()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">int Compiler::compileObj </td>
+          <td>(</td>
+          <td class="paramtype">string &amp;&#160;</td>
+          <td class="paramname"><em>outName</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Compiles a module to an object file. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">outName</td><td>name of the file to output</td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>0 on success </dd></dl>
+
+</div>
+</div>
+<a id="a32319f611aed8324441f50b440a90fce"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a32319f611aed8324441f50b440a90fce">&#9670;&nbsp;</a></span>createMainFn()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">Function * Compiler::createMainFn </td>
+          <td>(</td>
+          <td class="paramname"></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Creates the main function of a main module or creates the library_init function of a lib module. </p>
+<dl class="section return"><dt>Returns</dt><dd>The llvm::Function* of the created function. </dd></dl>
+
+</div>
+</div>
+<a id="a5b7ba0e04379a65b4918177716d14ad5"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a5b7ba0e04379a65b4918177716d14ad5">&#9670;&nbsp;</a></span>getVoidLiteral()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="structTypedValue.html">TypedValue</a> * Compiler::getVoidLiteral </td>
+          <td>(</td>
+          <td class="paramname"></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Creates and returns a literal of type void. </p>
+<dl class="section return"><dt>Returns</dt><dd>A void literal </dd></dl>
+
+</div>
+</div>
+<a id="aeb22d4fb05bfd59a8e62f12bbc4ac303"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#aeb22d4fb05bfd59a8e62f12bbc4ac303">&#9670;&nbsp;</a></span>importFile()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">void Compiler::importFile </td>
+          <td>(</td>
+          <td class="paramtype">const char *&#160;</td>
+          <td class="paramname"><em>fName</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="structNode.html">Node</a> *&#160;</td>
+          <td class="paramname"><em>locNode</em> = <code>0</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Imports a given ante file to the current module inputted file must exist and be a valid ante source file. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">fName</td><td>Name of file to import </td></tr>
+    <tr><td class="paramname">The</td><td>node containing where the file was imported from. Usually the <a class="el" href="structImportNode.html">ImportNode</a> importing the file. Used for error reporting. </td></tr>
+  </table>
+  </dd>
+</dl>
+
+</div>
+</div>
+<a id="a0712cc6dbd65814f64ed1141d59ab80d"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a0712cc6dbd65814f64ed1141d59ab80d">&#9670;&nbsp;</a></span>jitFunction()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">void Compiler::jitFunction </td>
+          <td>(</td>
+          <td class="paramtype">Function *&#160;</td>
+          <td class="paramname"><em>f</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>JIT compiles a function with no arguments and calls it afterward. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">f</td><td>the function to JIT </td></tr>
+  </table>
+  </dd>
+</dl>
+
+</div>
+</div>
+<a id="a26abed6aa54156a0d2d3db99e1ab8c56"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a26abed6aa54156a0d2d3db99e1ab8c56">&#9670;&nbsp;</a></span>linkObj()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">int Compiler::linkObj </td>
+          <td>(</td>
+          <td class="paramtype">string&#160;</td>
+          <td class="paramname"><em>inFiles</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">string&#160;</td>
+          <td class="paramname"><em>outFile</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">static</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Invokes the linker specified by AN_LINKER (in <a class="el" href="target_8h_source.html">target.h</a>) to link each object file. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">inFiles</td><td>String containing each obj file to link separated with spaces </td></tr>
+    <tr><td class="paramname">outFile</td><td>Name of the file to output</td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>0 on success </dd></dl>
+
+</div>
+</div>
+<a id="a78181a4d893f1188a42424dce22e4f77"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a78181a4d893f1188a42424dce22e4f77">&#9670;&nbsp;</a></span>lookup()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="structVariable.html">Variable</a> * Compiler::lookup </td>
+          <td>(</td>
+          <td class="paramtype">string&#160;</td>
+          <td class="paramname"><em>var</em></td><td>)</td>
+          <td> const</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Performs a lookup for a variable. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">var</td><td>Name of the variable to lookup</td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>The Variable* if found, otherwise nullptr </dd></dl>
+
+</div>
+</div>
+<a id="a3a53afb3557a548b1a83db80779c4ce6"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a3a53afb3557a548b1a83db80779c4ce6">&#9670;&nbsp;</a></span>lookupTrait()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="structTrait.html">Trait</a> * Compiler::lookupTrait </td>
+          <td>(</td>
+          <td class="paramtype">string&#160;</td>
+          <td class="paramname"><em>tyname</em></td><td>)</td>
+          <td> const</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Performs a lookup for the specified trait. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">tyname</td><td>Name of the trait to lookup</td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>The Trait* if found, otherwise nullptr </dd></dl>
+
+</div>
+</div>
+<a id="aa6e648733fbac92a7b4ad3edae7594ef"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#aa6e648733fbac92a7b4ad3edae7594ef">&#9670;&nbsp;</a></span>lookupType() <span class="overload">[1/2]</span></h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="structDataType.html">DataType</a> * Compiler::lookupType </td>
+          <td>(</td>
+          <td class="paramtype">string&#160;</td>
+          <td class="paramname"><em>tyname</em></td><td>)</td>
+          <td> const</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Performs a lookup for the specified <a class="el" href="structDataType.html">DataType</a>. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">tyname</td><td>Name of the type to lookup</td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>The DataType* if found, otherwise nullptr </dd></dl>
+
+</div>
+</div>
+<a id="ac4ecaa56e2ab3a9e663cb2860d05f293"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ac4ecaa56e2ab3a9e663cb2860d05f293">&#9670;&nbsp;</a></span>lookupType() <span class="overload">[2/2]</span></h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="structDataType.html">DataType</a> * Compiler::lookupType </td>
+          <td>(</td>
+          <td class="paramtype"><a class="el" href="structTypeNode.html">TypeNode</a> *&#160;</td>
+          <td class="paramname"><em>tn</em></td><td>)</td>
+          <td> const</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Performs a lookup a type's full definition. </p>
+<dl class="section return"><dt>Returns</dt><dd>The DataType* if found, otherwise nullptr </dd></dl>
+
+</div>
+</div>
+<a id="adb1aa46e48eb971322d6d77e251b8422"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#adb1aa46e48eb971322d6d77e251b8422">&#9670;&nbsp;</a></span>processArgs()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">void Compiler::processArgs </td>
+          <td>(</td>
+          <td class="paramtype"><a class="el" href="structante_1_1CompilerArgs.html">CompilerArgs</a> *&#160;</td>
+          <td class="paramname"><em>args</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Sets appropriate flags and executes operations specified by the command line arguments. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">args</td><td>The command line arguments </td></tr>
+  </table>
+  </dd>
+</dl>
+
+</div>
+</div>
+<a id="a9d1f2e7433d86eb4afc67327dae56a54"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a9d1f2e7433d86eb4afc67327dae56a54">&#9670;&nbsp;</a></span>stoType()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">void Compiler::stoType </td>
+          <td>(</td>
+          <td class="paramtype"><a class="el" href="structDataType.html">DataType</a> *&#160;</td>
+          <td class="paramname"><em>ty</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">string &amp;&#160;</td>
+          <td class="paramname"><em>typeName</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Stores a new <a class="el" href="structDataType.html">DataType</a>. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">ty</td><td>The <a class="el" href="structDataType.html">DataType</a> to store </td></tr>
+    <tr><td class="paramname">typeName</td><td>The name of the <a class="el" href="structDataType.html">DataType</a> </td></tr>
+  </table>
+  </dd>
+</dl>
+
+</div>
+</div>
+<a id="a39a7698a0eb845d57bdfb1350806a1e9"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a39a7698a0eb845d57bdfb1350806a1e9">&#9670;&nbsp;</a></span>stoTypeVar()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">void Compiler::stoTypeVar </td>
+          <td>(</td>
+          <td class="paramtype">string &amp;&#160;</td>
+          <td class="paramname"><em>name</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="structTypeNode.html">TypeNode</a> *&#160;</td>
+          <td class="paramname"><em>ty</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Stores a TypeVar in the current scope. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">name</td><td>Name of the typevar to store (including the preceeding ') </td></tr>
+    <tr><td class="paramname">ty</td><td>The type to store </td></tr>
+  </table>
+  </dd>
+</dl>
+
+</div>
+</div>
+<a id="a294b50b824204a50c10470b4126f8eca"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a294b50b824204a50c10470b4126f8eca">&#9670;&nbsp;</a></span>stoVar()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">void Compiler::stoVar </td>
+          <td>(</td>
+          <td class="paramtype">string&#160;</td>
+          <td class="paramname"><em>var</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype"><a class="el" href="structVariable.html">Variable</a> *&#160;</td>
+          <td class="paramname"><em>val</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Stores a variable in the current scope. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">var</td><td>Name of the variable to store </td></tr>
+    <tr><td class="paramname">val</td><td><a class="el" href="structVariable.html">Variable</a> to store </td></tr>
+  </table>
+  </dd>
+</dl>
+
+</div>
+</div>
+<a id="a46ac6a30b8f7de0ecd093e99c973bb67"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a46ac6a30b8f7de0ecd093e99c973bb67">&#9670;&nbsp;</a></span>typeImplementsTrait()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">bool Compiler::typeImplementsTrait </td>
+          <td>(</td>
+          <td class="paramtype"><a class="el" href="structDataType.html">DataType</a> *&#160;</td>
+          <td class="paramname"><em>dt</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">string&#160;</td>
+          <td class="paramname"><em>traitName</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td> const</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+<dl class="section return"><dt>Returns</dt><dd>True if a <a class="el" href="structDataType.html">DataType</a> implements the specified trait </dd></dl>
+
+</div>
+</div>
 <hr/>The documentation for this struct was generated from the following files:<ul>
 <li>include/<a class="el" href="compiler_8h_source.html">compiler.h</a></li>
 <li>src/compiler.cpp</li>
