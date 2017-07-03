@@ -1,4 +1,5 @@
 var searchData=
 [
-  ['value',['value',['../structyy_1_1parser_1_1basic__symbol.html#a07710fa55ed90f64504e2fe9b09802ca',1,'yy::parser::basic_symbol']]]
+  ['line',['line',['../classyy_1_1position.html#aa3806654fd62786a0446a461d55755d6',1,'yy::position']]],
+  ['location',['location',['../structyy_1_1parser_1_1basic__symbol.html#ac49281f0964e646ecb2fe9b1a7cdfac0',1,'yy::parser::basic_symbol']]]
 ];

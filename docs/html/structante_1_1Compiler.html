@@ -71,18 +71,23 @@ $(function() {
 <div class="title">ante::Compiler Struct Reference</div>  </div>
 </div><!--header-->
 <div class="contents">
+
+<p>An Ante compiler responsible for a single module.  
+ <a href="structante_1_1Compiler.html#details">More...</a></p>
+
+<p><code>#include &lt;<a class="el" href="compiler_8h_source.html">compiler.h</a>&gt;</code></p>
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
 <tr class="memitem:a3eea249babcbd697bf5f9ac4d78c29f1"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structante_1_1Compiler.html#a3eea249babcbd697bf5f9ac4d78c29f1">Compiler</a> (const char *fileName, bool lib=false, shared_ptr&lt; LLVMContext &gt; ctxt=nullptr)</td></tr>
-<tr class="memdesc:a3eea249babcbd697bf5f9ac4d78c29f1"><td class="mdescLeft">&#160;</td><td class="mdescRight">The main constructor for <a class="el" href="structante_1_1Compiler.html">Compiler</a>.  <a href="#a3eea249babcbd697bf5f9ac4d78c29f1">More...</a><br /></td></tr>
+<tr class="memdesc:a3eea249babcbd697bf5f9ac4d78c29f1"><td class="mdescLeft">&#160;</td><td class="mdescRight">The main constructor for <a class="el" href="structante_1_1Compiler.html" title="An Ante compiler responsible for a single module. ">Compiler</a>.  <a href="#a3eea249babcbd697bf5f9ac4d78c29f1">More...</a><br /></td></tr>
 <tr class="separator:a3eea249babcbd697bf5f9ac4d78c29f1"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a030778900cf34d841a3249741d176e3d"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structante_1_1Compiler.html#a030778900cf34d841a3249741d176e3d">Compiler</a> (<a class="el" href="structNode.html">Node</a> *root, string modName, string &amp;fName, bool lib=false, shared_ptr&lt; LLVMContext &gt; ctxt=nullptr)</td></tr>
-<tr class="memdesc:a030778900cf34d841a3249741d176e3d"><td class="mdescLeft">&#160;</td><td class="mdescRight">Constructor for a <a class="el" href="structante_1_1Compiler.html">Compiler</a> compiling a sub-module within the current file. Currently only used for string interpolation.  <a href="#a030778900cf34d841a3249741d176e3d">More...</a><br /></td></tr>
+<tr class="memdesc:a030778900cf34d841a3249741d176e3d"><td class="mdescLeft">&#160;</td><td class="mdescRight">Constructor for a <a class="el" href="structante_1_1Compiler.html" title="An Ante compiler responsible for a single module. ">Compiler</a> compiling a sub-module within the current file. Currently only used for string interpolation.  <a href="#a030778900cf34d841a3249741d176e3d">More...</a><br /></td></tr>
 <tr class="separator:a030778900cf34d841a3249741d176e3d"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a4eb6d2076006863fc52116489c7b4ec8"><td class="memItemLeft" align="right" valign="top"><a id="a4eb6d2076006863fc52116489c7b4ec8"></a>
 void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structante_1_1Compiler.html#a4eb6d2076006863fc52116489c7b4ec8">compile</a> ()</td></tr>
-<tr class="memdesc:a4eb6d2076006863fc52116489c7b4ec8"><td class="mdescLeft">&#160;</td><td class="mdescRight">Fully compiles a module. <br /></td></tr>
+<tr class="memdesc:a4eb6d2076006863fc52116489c7b4ec8"><td class="mdescLeft">&#160;</td><td class="mdescRight">Fully compiles a module into llvm bytecode. <br /></td></tr>
 <tr class="separator:a4eb6d2076006863fc52116489c7b4ec8"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a95e38823dc493732ccfb9e1fee804038"><td class="memItemLeft" align="right" valign="top"><a id="a95e38823dc493732ccfb9e1fee804038"></a>
 void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structante_1_1Compiler.html#a95e38823dc493732ccfb9e1fee804038">compileNative</a> ()</td></tr>
@@ -151,8 +156,8 @@ void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="stru
 <tr class="memitem:a878a402f38a90c24d8e906808c00ac0f"><td class="memItemLeft" align="right" valign="top"><a id="a878a402f38a90c24d8e906808c00ac0f"></a>
 <a class="el" href="structTypedValue.html">TypedValue</a> *&#160;</td><td class="memItemRight" valign="bottom"><b>compLogicalAnd</b> (<a class="el" href="structNode.html">Node</a> *l, <a class="el" href="structNode.html">Node</a> *r, <a class="el" href="structBinOpNode.html">BinOpNode</a> *op)</td></tr>
 <tr class="separator:a878a402f38a90c24d8e906808c00ac0f"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a5ffb3b5970aa4abc4d4512e958796a52"><td class="memItemLeft" align="right" valign="top"><a id="a5ffb3b5970aa4abc4d4512e958796a52"></a>
-<a class="el" href="structTypedValue.html">TypedValue</a> *&#160;</td><td class="memItemRight" valign="bottom"><b>compErr</b> (<a class="el" href="structante_1_1lazy__printer.html">ante::lazy_printer</a> msg, const <a class="el" href="classyy_1_1location.html">yy::location</a> &amp;loc, ErrorType t=ErrorType::Error)</td></tr>
+<tr class="memitem:a5ffb3b5970aa4abc4d4512e958796a52"><td class="memItemLeft" align="right" valign="top"><a class="el" href="structTypedValue.html">TypedValue</a> *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structante_1_1Compiler.html#a5ffb3b5970aa4abc4d4512e958796a52">compErr</a> (<a class="el" href="structante_1_1lazy__printer.html">ante::lazy_printer</a> msg, const <a class="el" href="classyy_1_1location.html">yy::location</a> &amp;loc, ErrorType t=ErrorType::Error)</td></tr>
+<tr class="memdesc:a5ffb3b5970aa4abc4d4512e958796a52"><td class="mdescLeft">&#160;</td><td class="mdescRight">Reports a message and highlights the relevant source lines.  <a href="#a5ffb3b5970aa4abc4d4512e958796a52">More...</a><br /></td></tr>
 <tr class="separator:a5ffb3b5970aa4abc4d4512e958796a52"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a0712cc6dbd65814f64ed1141d59ab80d"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structante_1_1Compiler.html#a0712cc6dbd65814f64ed1141d59ab80d">jitFunction</a> (Function *fnName)</td></tr>
 <tr class="memdesc:a0712cc6dbd65814f64ed1141d59ab80d"><td class="mdescLeft">&#160;</td><td class="mdescRight">JIT compiles a function with no arguments and calls it afterward.  <a href="#a0712cc6dbd65814f64ed1141d59ab80d">More...</a><br /></td></tr>
@@ -203,7 +208,7 @@ unsigned int&#160;</td><td class="memItemRight" valign="bottom"><b>getScope</b> 
 <tr class="memdesc:a294b50b824204a50c10470b4126f8eca"><td class="mdescLeft">&#160;</td><td class="mdescRight">Stores a variable in the current scope.  <a href="#a294b50b824204a50c10470b4126f8eca">More...</a><br /></td></tr>
 <tr class="separator:a294b50b824204a50c10470b4126f8eca"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aa6e648733fbac92a7b4ad3edae7594ef"><td class="memItemLeft" align="right" valign="top"><a class="el" href="structDataType.html">DataType</a> *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structante_1_1Compiler.html#aa6e648733fbac92a7b4ad3edae7594ef">lookupType</a> (string tyname) const</td></tr>
-<tr class="memdesc:aa6e648733fbac92a7b4ad3edae7594ef"><td class="mdescLeft">&#160;</td><td class="mdescRight">Performs a lookup for the specified <a class="el" href="structDataType.html">DataType</a>.  <a href="#aa6e648733fbac92a7b4ad3edae7594ef">More...</a><br /></td></tr>
+<tr class="memdesc:aa6e648733fbac92a7b4ad3edae7594ef"><td class="mdescLeft">&#160;</td><td class="mdescRight">Performs a lookup for the specified <a class="el" href="structDataType.html" title="Contains information about a data type. ">DataType</a>.  <a href="#aa6e648733fbac92a7b4ad3edae7594ef">More...</a><br /></td></tr>
 <tr class="separator:aa6e648733fbac92a7b4ad3edae7594ef"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ac4ecaa56e2ab3a9e663cb2860d05f293"><td class="memItemLeft" align="right" valign="top"><a class="el" href="structDataType.html">DataType</a> *&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structante_1_1Compiler.html#ac4ecaa56e2ab3a9e663cb2860d05f293">lookupType</a> (<a class="el" href="structTypeNode.html">TypeNode</a> *tn) const</td></tr>
 <tr class="memdesc:ac4ecaa56e2ab3a9e663cb2860d05f293"><td class="mdescLeft">&#160;</td><td class="mdescRight">Performs a lookup a type's full definition.  <a href="#ac4ecaa56e2ab3a9e663cb2860d05f293">More...</a><br /></td></tr>
@@ -214,7 +219,7 @@ unsigned int&#160;</td><td class="memItemRight" valign="bottom"><b>getScope</b> 
 <tr class="memitem:a46ac6a30b8f7de0ecd093e99c973bb67"><td class="memItemLeft" align="right" valign="top">bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structante_1_1Compiler.html#a46ac6a30b8f7de0ecd093e99c973bb67">typeImplementsTrait</a> (<a class="el" href="structDataType.html">DataType</a> *dt, string traitName) const</td></tr>
 <tr class="separator:a46ac6a30b8f7de0ecd093e99c973bb67"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a9d1f2e7433d86eb4afc67327dae56a54"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structante_1_1Compiler.html#a9d1f2e7433d86eb4afc67327dae56a54">stoType</a> (<a class="el" href="structDataType.html">DataType</a> *ty, string &amp;typeName)</td></tr>
-<tr class="memdesc:a9d1f2e7433d86eb4afc67327dae56a54"><td class="mdescLeft">&#160;</td><td class="mdescRight">Stores a new <a class="el" href="structDataType.html">DataType</a>.  <a href="#a9d1f2e7433d86eb4afc67327dae56a54">More...</a><br /></td></tr>
+<tr class="memdesc:a9d1f2e7433d86eb4afc67327dae56a54"><td class="mdescLeft">&#160;</td><td class="mdescRight">Stores a new <a class="el" href="structDataType.html" title="Contains information about a data type. ">DataType</a>.  <a href="#a9d1f2e7433d86eb4afc67327dae56a54">More...</a><br /></td></tr>
 <tr class="separator:a9d1f2e7433d86eb4afc67327dae56a54"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a39a7698a0eb845d57bdfb1350806a1e9"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structante_1_1Compiler.html#a39a7698a0eb845d57bdfb1350806a1e9">stoTypeVar</a> (string &amp;name, <a class="el" href="structTypeNode.html">TypeNode</a> *ty)</td></tr>
 <tr class="memdesc:a39a7698a0eb845d57bdfb1350806a1e9"><td class="mdescLeft">&#160;</td><td class="mdescRight">Stores a TypeVar in the current scope.  <a href="#a39a7698a0eb845d57bdfb1350806a1e9">More...</a><br /></td></tr>
@@ -286,19 +291,24 @@ unique_ptr&lt; <a class="el" href="structRootNode.html">RootNode</a> &gt;&#160;<
 IRBuilder&#160;</td><td class="memItemRight" valign="bottom"><b>builder</b></td></tr>
 <tr class="separator:a78073a4fb0d848f88eff1c868cab3736"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a903a2eb91408455da74676cf7ddd5282"><td class="memItemLeft" align="right" valign="top"><a id="a903a2eb91408455da74676cf7ddd5282"></a>
-shared_ptr&lt; <a class="el" href="structante_1_1Module.html">ante::Module</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>compUnit</b></td></tr>
+shared_ptr&lt; <a class="el" href="structante_1_1Module.html">ante::Module</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structante_1_1Compiler.html#a903a2eb91408455da74676cf7ddd5282">compUnit</a></td></tr>
+<tr class="memdesc:a903a2eb91408455da74676cf7ddd5282"><td class="mdescLeft">&#160;</td><td class="mdescRight">functions and type definitions of current module <br /></td></tr>
 <tr class="separator:a903a2eb91408455da74676cf7ddd5282"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a150c8e9e49e230dcbb886d5392a90175"><td class="memItemLeft" align="right" valign="top"><a id="a150c8e9e49e230dcbb886d5392a90175"></a>
-shared_ptr&lt; <a class="el" href="structante_1_1Module.html">ante::Module</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>mergedCompUnits</b></td></tr>
+shared_ptr&lt; <a class="el" href="structante_1_1Module.html">ante::Module</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structante_1_1Compiler.html#a150c8e9e49e230dcbb886d5392a90175">mergedCompUnits</a></td></tr>
+<tr class="memdesc:a150c8e9e49e230dcbb886d5392a90175"><td class="mdescLeft">&#160;</td><td class="mdescRight">all functions and type definitions visible to current module <br /></td></tr>
 <tr class="separator:a150c8e9e49e230dcbb886d5392a90175"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a81474059e4354d8c2acfba816205eead"><td class="memItemLeft" align="right" valign="top"><a id="a81474059e4354d8c2acfba816205eead"></a>
-vector&lt; shared_ptr&lt; <a class="el" href="structante_1_1Module.html">ante::Module</a> &gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>imports</b></td></tr>
+vector&lt; shared_ptr&lt; <a class="el" href="structante_1_1Module.html">ante::Module</a> &gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structante_1_1Compiler.html#a81474059e4354d8c2acfba816205eead">imports</a></td></tr>
+<tr class="memdesc:a81474059e4354d8c2acfba816205eead"><td class="mdescLeft">&#160;</td><td class="mdescRight">all imported modules <br /></td></tr>
 <tr class="separator:a81474059e4354d8c2acfba816205eead"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a1bf965c9ee5499947458b8ce739a954a"><td class="memItemLeft" align="right" valign="top"><a id="a1bf965c9ee5499947458b8ce739a954a"></a>
-shared_ptr&lt; unordered_map&lt; string, shared_ptr&lt; <a class="el" href="structante_1_1Module.html">ante::Module</a> &gt; &gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>allCompiledModules</b></td></tr>
+shared_ptr&lt; unordered_map&lt; string, shared_ptr&lt; <a class="el" href="structante_1_1Module.html">ante::Module</a> &gt; &gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structante_1_1Compiler.html#a1bf965c9ee5499947458b8ce739a954a">allCompiledModules</a></td></tr>
+<tr class="memdesc:a1bf965c9ee5499947458b8ce739a954a"><td class="mdescLeft">&#160;</td><td class="mdescRight">every single compiled module, even ones invisible to the current compilation unit. Prevents recompilation of modules <br /></td></tr>
 <tr class="separator:a1bf965c9ee5499947458b8ce739a954a"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:af08b993f5750d7c5d22a1797973806d6"><td class="memItemLeft" align="right" valign="top"><a id="af08b993f5750d7c5d22a1797973806d6"></a>
-vector&lt; unique_ptr&lt; unordered_map&lt; string, <a class="el" href="structVariable.html">Variable</a> * &gt; &gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>varTable</b></td></tr>
+vector&lt; unique_ptr&lt; unordered_map&lt; string, <a class="el" href="structVariable.html">Variable</a> * &gt; &gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structante_1_1Compiler.html#af08b993f5750d7c5d22a1797973806d6">varTable</a></td></tr>
+<tr class="memdesc:af08b993f5750d7c5d22a1797973806d6"><td class="mdescLeft">&#160;</td><td class="mdescRight">Stack of variables mapped to their identifier. Maps are seperated according to their scope. <br /></td></tr>
 <tr class="separator:af08b993f5750d7c5d22a1797973806d6"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a244b0e72828c82cf0bf371ae0c296021"><td class="memItemLeft" align="right" valign="top"><a id="a244b0e72828c82cf0bf371ae0c296021"></a>
 unique_ptr&lt; <a class="el" href="structante_1_1CompilerCtxt.html">CompilerCtxt</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>compCtxt</b></td></tr>
@@ -331,7 +341,9 @@ unsigned int&#160;</td><td class="memItemRight" valign="bottom"><b>optLvl</b></t
 unsigned int&#160;</td><td class="memItemRight" valign="bottom"><b>fnScope</b></td></tr>
 <tr class="separator:a4772b7ae7d73420190a7647ee53f812e"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
-<h2 class="groupheader">Constructor &amp; Destructor Documentation</h2>
+<a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
+<div class="textblock"><p>An Ante compiler responsible for a single module. </p>
+</div><h2 class="groupheader">Constructor &amp; Destructor Documentation</h2>
 <a id="a3eea249babcbd697bf5f9ac4d78c29f1"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a3eea249babcbd697bf5f9ac4d78c29f1">&#9670;&nbsp;</a></span>Compiler() <span class="overload">[1/2]</span></h2>
 
@@ -364,9 +376,12 @@ unsigned int&#160;</td><td class="memItemRight" valign="bottom"><b>fnScope</b></
       </table>
 </div><div class="memdoc">
 
-<p>The main constructor for <a class="el" href="structante_1_1Compiler.html">Compiler</a>. </p>
+<p>The main constructor for <a class="el" href="structante_1_1Compiler.html" title="An Ante compiler responsible for a single module. ">Compiler</a>. </p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
+    <tr><td class="paramname">fileName</td><td>Name of the file being compiled </td></tr>
+    <tr><td class="paramname">lib</td><td>Set to true if this module should be compiled as a library </td></tr>
+    <tr><td class="paramname">ctxt</td><td>The LLVMContext possibly shared with another <a class="el" href="structante_1_1Compiler.html" title="An Ante compiler responsible for a single module. ">Compiler</a></td></tr>
     <tr><td class="paramname">_fileName</td><td>Name of the file being compiled </td></tr>
     <tr><td class="paramname">lib</td><td>Set to true if this module should be compiled as a library </td></tr>
     <tr><td class="paramname">llvmCtxt</td><td>The llvmCtxt possibly shared with another module </td></tr>
@@ -420,14 +435,19 @@ unsigned int&#160;</td><td class="memItemRight" valign="bottom"><b>fnScope</b></
       </table>
 </div><div class="memdoc">
 
-<p>Constructor for a <a class="el" href="structante_1_1Compiler.html">Compiler</a> compiling a sub-module within the current file. Currently only used for string interpolation. </p>
+<p>Constructor for a <a class="el" href="structante_1_1Compiler.html" title="An Ante compiler responsible for a single module. ">Compiler</a> compiling a sub-module within the current file. Currently only used for string interpolation. </p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramname">root</td><td>The node to set as the root node (does not need to be a <a class="el" href="structRootNode.html">RootNode</a> already) </td></tr>
     <tr><td class="paramname">modName</td><td>Name of the module being compiled </td></tr>
     <tr><td class="paramname">fName</td><td>Name of the file being compiled </td></tr>
     <tr><td class="paramname">lib</td><td>Set to true if this module should be compiled as a library </td></tr>
-    <tr><td class="paramname">llvmCtxt</td><td>The llvmCtxt shared from the parent <a class="el" href="structante_1_1Module.html">Module</a> </td></tr>
+    <tr><td class="paramname">ctxt</td><td>The LLVMContext shared from the parent <a class="el" href="structante_1_1Compiler.html" title="An Ante compiler responsible for a single module. ">Compiler</a></td></tr>
+    <tr><td class="paramname">root</td><td>The node to set as the root node (does not need to be a <a class="el" href="structRootNode.html">RootNode</a> already) </td></tr>
+    <tr><td class="paramname">modName</td><td>Name of the module being compiled </td></tr>
+    <tr><td class="paramname">fName</td><td>Name of the file being compiled </td></tr>
+    <tr><td class="paramname">lib</td><td>Set to true if this module should be compiled as a library </td></tr>
+    <tr><td class="paramname">llvmCtxt</td><td>The llvmCtxt shared from the parent <a class="el" href="structante_1_1Module.html" title="An Ante Module. ">Module</a> </td></tr>
   </table>
   </dd>
 </dl>
@@ -435,6 +455,48 @@ unsigned int&#160;</td><td class="memItemRight" valign="bottom"><b>fnScope</b></
 </div>
 </div>
 <h2 class="groupheader">Member Function Documentation</h2>
+<a id="a5ffb3b5970aa4abc4d4512e958796a52"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a5ffb3b5970aa4abc4d4512e958796a52">&#9670;&nbsp;</a></span>compErr()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"><a class="el" href="structTypedValue.html">TypedValue</a> * Compiler::compErr </td>
+          <td>(</td>
+          <td class="paramtype"><a class="el" href="structante_1_1lazy__printer.html">ante::lazy_printer</a>&#160;</td>
+          <td class="paramname"><em>msg</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">const <a class="el" href="classyy_1_1location.html">yy::location</a> &amp;&#160;</td>
+          <td class="paramname"><em>loc</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">ErrorType&#160;</td>
+          <td class="paramname"><em>t</em> = <code>ErrorType::Error</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Reports a message and highlights the relevant source lines. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">t</td><td>Type of message to report, either Error, Warning, or Note </td></tr>
+  </table>
+  </dd>
+</dl>
+
+</div>
+</div>
 <a id="a0f10ae592495c14f45385bd5f56979b7"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a0f10ae592495c14f45385bd5f56979b7">&#9670;&nbsp;</a></span>compileIRtoObj()</h2>
 
@@ -550,7 +612,7 @@ unsigned int&#160;</td><td class="memItemRight" valign="bottom"><b>fnScope</b></
           <td class="memname">void Compiler::importFile </td>
           <td>(</td>
           <td class="paramtype">const char *&#160;</td>
-          <td class="paramname"><em>fName</em>, </td>
+          <td class="paramname"><em>name</em>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
@@ -587,7 +649,7 @@ unsigned int&#160;</td><td class="memItemRight" valign="bottom"><b>fnScope</b></
           <td class="memname">void Compiler::jitFunction </td>
           <td>(</td>
           <td class="paramtype">Function *&#160;</td>
-          <td class="paramname"><em>f</em></td><td>)</td>
+          <td class="paramname"><em>fnName</em></td><td>)</td>
           <td></td>
         </tr>
       </table>
@@ -719,7 +781,7 @@ unsigned int&#160;</td><td class="memItemRight" valign="bottom"><b>fnScope</b></
       </table>
 </div><div class="memdoc">
 
-<p>Performs a lookup for the specified <a class="el" href="structDataType.html">DataType</a>. </p>
+<p>Performs a lookup for the specified <a class="el" href="structDataType.html" title="Contains information about a data type. ">DataType</a>. </p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
     <tr><td class="paramname">tyname</td><td>Name of the type to lookup</td></tr>
@@ -811,11 +873,11 @@ unsigned int&#160;</td><td class="memItemRight" valign="bottom"><b>fnScope</b></
 </table>
 </div><div class="memdoc">
 
-<p>Stores a new <a class="el" href="structDataType.html">DataType</a>. </p>
+<p>Stores a new <a class="el" href="structDataType.html" title="Contains information about a data type. ">DataType</a>. </p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
-    <tr><td class="paramname">ty</td><td>The <a class="el" href="structDataType.html">DataType</a> to store </td></tr>
-    <tr><td class="paramname">typeName</td><td>The name of the <a class="el" href="structDataType.html">DataType</a> </td></tr>
+    <tr><td class="paramname">ty</td><td>The <a class="el" href="structDataType.html" title="Contains information about a data type. ">DataType</a> to store </td></tr>
+    <tr><td class="paramname">typeName</td><td>The name of the <a class="el" href="structDataType.html" title="Contains information about a data type. ">DataType</a> </td></tr>
   </table>
   </dd>
 </dl>
@@ -921,7 +983,7 @@ unsigned int&#160;</td><td class="memItemRight" valign="bottom"><b>fnScope</b></
         </tr>
       </table>
 </div><div class="memdoc">
-<dl class="section return"><dt>Returns</dt><dd>True if a <a class="el" href="structDataType.html">DataType</a> implements the specified trait </dd></dl>
+<dl class="section return"><dt>Returns</dt><dd>True if a <a class="el" href="structDataType.html" title="Contains information about a data type. ">DataType</a> implements the specified trait </dd></dl>
 
 </div>
 </div>

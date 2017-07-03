@@ -66,23 +66,26 @@ $(function() {
 <div class="title">DataType Struct Reference</div>  </div>
 </div><!--header-->
 <div class="contents">
+
+<p>Contains information about a data type.  
+ <a href="structDataType.html#details">More...</a></p>
+
+<p><code>#include &lt;<a class="el" href="compiler_8h_source.html">compiler.h</a>&gt;</code></p>
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
 <tr class="memitem:a1bad1c37b2c2970eceb03de6c8e1a42a"><td class="memItemLeft" align="right" valign="top"><a id="a1bad1c37b2c2970eceb03de6c8e1a42a"></a>
 &#160;</td><td class="memItemRight" valign="bottom"><b>DataType</b> (string n, const vector&lt; string &gt; &amp;f, <a class="el" href="structTypeNode.html">TypeNode</a> *ty)</td></tr>
 <tr class="separator:a1bad1c37b2c2970eceb03de6c8e1a42a"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a17be61dac2ef4a57e83a2c4f3ea08135"><td class="memItemLeft" align="right" valign="top"><a id="a17be61dac2ef4a57e83a2c4f3ea08135"></a>
-int&#160;</td><td class="memItemRight" valign="bottom"><b>getFieldIndex</b> (string &amp;field) const</td></tr>
+<tr class="memitem:a17be61dac2ef4a57e83a2c4f3ea08135"><td class="memItemLeft" align="right" valign="top">int&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structDataType.html#a17be61dac2ef4a57e83a2c4f3ea08135">getFieldIndex</a> (string &amp;field) const</td></tr>
 <tr class="separator:a17be61dac2ef4a57e83a2c4f3ea08135"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a2df232326ecc98f773c79101f822e4f5"><td class="memItemLeft" align="right" valign="top"><a id="a2df232326ecc98f773c79101f822e4f5"></a>
-bool&#160;</td><td class="memItemRight" valign="bottom"><b>isUnionTag</b> () const</td></tr>
+<tr class="memitem:a2df232326ecc98f773c79101f822e4f5"><td class="memItemLeft" align="right" valign="top">bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structDataType.html#a2df232326ecc98f773c79101f822e4f5">isUnionTag</a> () const</td></tr>
 <tr class="separator:a2df232326ecc98f773c79101f822e4f5"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a49376335171335aa74f8d537cacefa0c"><td class="memItemLeft" align="right" valign="top"><a id="a49376335171335aa74f8d537cacefa0c"></a>
-string&#160;</td><td class="memItemRight" valign="bottom"><b>getParentUnionName</b> () const</td></tr>
+<tr class="memitem:a49376335171335aa74f8d537cacefa0c"><td class="memItemLeft" align="right" valign="top">string&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structDataType.html#a49376335171335aa74f8d537cacefa0c">getParentUnionName</a> () const</td></tr>
+<tr class="memdesc:a49376335171335aa74f8d537cacefa0c"><td class="mdescLeft">&#160;</td><td class="mdescRight">Gets the name of the parent union type.  <a href="#a49376335171335aa74f8d537cacefa0c">More...</a><br /></td></tr>
 <tr class="separator:a49376335171335aa74f8d537cacefa0c"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a29a88e1c0987160f27ebdd80291dfb99"><td class="memItemLeft" align="right" valign="top"><a id="a29a88e1c0987160f27ebdd80291dfb99"></a>
-unsigned short&#160;</td><td class="memItemRight" valign="bottom"><b>getTagVal</b> (string &amp;name)</td></tr>
+<tr class="memitem:a29a88e1c0987160f27ebdd80291dfb99"><td class="memItemLeft" align="right" valign="top">unsigned short&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structDataType.html#a29a88e1c0987160f27ebdd80291dfb99">getTagVal</a> (string &amp;name)</td></tr>
+<tr class="memdesc:a29a88e1c0987160f27ebdd80291dfb99"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns the <a class="el" href="structUnionTag.html" title="An individual tag of a tagged union along with the types it corresponds to. ">UnionTag</a> value of a tag within the union type.  <a href="#a29a88e1c0987160f27ebdd80291dfb99">More...</a><br /></td></tr>
 <tr class="separator:a29a88e1c0987160f27ebdd80291dfb99"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="pub-attribs"></a>
@@ -109,6 +112,133 @@ vector&lt; shared_ptr&lt; <a class="el" href="structTypeNode.html">TypeNode</a> 
 map&lt; string, Type * &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>llvmTypes</b></td></tr>
 <tr class="separator:a37d62f0f71e4e2beb4eebd8161ccbd26"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
+<a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
+<div class="textblock"><p>Contains information about a data type. </p>
+</div><h2 class="groupheader">Member Function Documentation</h2>
+<a id="a17be61dac2ef4a57e83a2c4f3ea08135"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a17be61dac2ef4a57e83a2c4f3ea08135">&#9670;&nbsp;</a></span>getFieldIndex()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">int DataType::getFieldIndex </td>
+          <td>(</td>
+          <td class="paramtype">string &amp;&#160;</td>
+          <td class="paramname"><em>field</em></td><td>)</td>
+          <td> const</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">field</td><td>Name of the field to search for</td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>The index of the field on success, -1 on failure </dd></dl>
+
+</div>
+</div>
+<a id="a49376335171335aa74f8d537cacefa0c"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a49376335171335aa74f8d537cacefa0c">&#9670;&nbsp;</a></span>getParentUnionName()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">string DataType::getParentUnionName </td>
+          <td>(</td>
+          <td class="paramname"></td><td>)</td>
+          <td> const</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Gets the name of the parent union type. </p>
+<p>Will fail if this <a class="el" href="structDataType.html" title="Contains information about a data type. ">DataType</a> is not a union tag and contains no fields. Use isUnionTag before calling this function if unsure.</p>
+<dl class="section return"><dt>Returns</dt><dd>The name of the <a class="el" href="structDataType.html" title="Contains information about a data type. ">DataType</a> containing this <a class="el" href="structUnionTag.html" title="An individual tag of a tagged union along with the types it corresponds to. ">UnionTag</a> </dd></dl>
+
+</div>
+</div>
+<a id="a29a88e1c0987160f27ebdd80291dfb99"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a29a88e1c0987160f27ebdd80291dfb99">&#9670;&nbsp;</a></span>getTagVal()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">unsigned short DataType::getTagVal </td>
+          <td>(</td>
+          <td class="paramtype">string &amp;&#160;</td>
+          <td class="paramname"><em>name</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Returns the <a class="el" href="structUnionTag.html" title="An individual tag of a tagged union along with the types it corresponds to. ">UnionTag</a> value of a tag within the union type. </p>
+<p>This function assumes the tag is within the type. The 0 returned on failure is indistinguishable from a tag of value 0 and will be changed to an exception at a later date.</p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">name</td><td>Name of the tag to search for</td></tr>
+  </table>
+  </dd>
+</dl>
+<dl class="section return"><dt>Returns</dt><dd>the value of the tag found, or 0 on failure </dd></dl>
+
+</div>
+</div>
+<a id="a2df232326ecc98f773c79101f822e4f5"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a2df232326ecc98f773c79101f822e4f5">&#9670;&nbsp;</a></span>isUnionTag()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">bool DataType::isUnionTag </td>
+          <td>(</td>
+          <td class="paramname"></td><td>)</td>
+          <td> const</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+<dl class="section return"><dt>Returns</dt><dd>True if this <a class="el" href="structDataType.html" title="Contains information about a data type. ">DataType</a> is actually a tag type </dd></dl>
+
+</div>
+</div>
 <hr/>The documentation for this struct was generated from the following file:<ul>
 <li>include/<a class="el" href="compiler_8h_source.html">compiler.h</a></li>
 </ul>

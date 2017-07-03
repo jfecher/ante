@@ -66,13 +66,18 @@ $(function() {
 <div class="title">TypedValue Struct Reference</div>  </div>
 </div><!--header-->
 <div class="contents">
+
+<p>A Value* and TypeNode* pair.  
+ <a href="structTypedValue.html#details">More...</a></p>
+
+<p><code>#include &lt;<a class="el" href="compiler_8h_source.html">compiler.h</a>&gt;</code></p>
 <div class="dynheader">
 Inheritance diagram for TypedValue:</div>
 <div class="dyncontent">
  <div class="center">
   <img src="structTypedValue.png" usemap="#TypedValue_map" alt=""/>
   <map id="TypedValue_map" name="TypedValue_map">
-<area href="structMethodVal.html" alt="MethodVal" shape="rect" coords="0,56,80,80"/>
+<area href="structMethodVal.html" title="A TypedValue pair of the method and its object. " alt="MethodVal" shape="rect" coords="0,56,80,80"/>
 </map>
  </div></div>
 <table class="memberdecls">
@@ -81,18 +86,17 @@ Public Member Functions</h2></td></tr>
 <tr class="memitem:a6d4b500bb41a72d38da6ae2d35b65f96"><td class="memItemLeft" align="right" valign="top"><a id="a6d4b500bb41a72d38da6ae2d35b65f96"></a>
 &#160;</td><td class="memItemRight" valign="bottom"><b>TypedValue</b> (Value *v, <a class="el" href="structTypeNode.html">TypeNode</a> *ty)</td></tr>
 <tr class="separator:a6d4b500bb41a72d38da6ae2d35b65f96"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a51d0a91961b7f011c4f1eb017a784358"><td class="memItemLeft" align="right" valign="top"><a id="a51d0a91961b7f011c4f1eb017a784358"></a>
-&#160;</td><td class="memItemRight" valign="bottom"><b>TypedValue</b> (Value *v, unique_ptr&lt; <a class="el" href="structTypeNode.html">TypeNode</a> &gt; &amp;ty)</td></tr>
+<tr class="memitem:a51d0a91961b7f011c4f1eb017a784358"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structTypedValue.html#a51d0a91961b7f011c4f1eb017a784358">TypedValue</a> (Value *v, unique_ptr&lt; <a class="el" href="structTypeNode.html">TypeNode</a> &gt; &amp;ty)</td></tr>
+<tr class="memdesc:a51d0a91961b7f011c4f1eb017a784358"><td class="mdescLeft">&#160;</td><td class="mdescRight">Constructs a <a class="el" href="structTypedValue.html" title="A Value* and TypeNode* pair. ">TypedValue</a>.  <a href="#a51d0a91961b7f011c4f1eb017a784358">More...</a><br /></td></tr>
 <tr class="separator:a51d0a91961b7f011c4f1eb017a784358"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a1963855af324d427335d40bb8c7de8d6"><td class="memItemLeft" align="right" valign="top"><a id="a1963855af324d427335d40bb8c7de8d6"></a>
 Type *&#160;</td><td class="memItemRight" valign="bottom"><b>getType</b> () const</td></tr>
 <tr class="separator:a1963855af324d427335d40bb8c7de8d6"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:af8d6267b024979a922dc0e923035c46d"><td class="memItemLeft" align="right" valign="top"><a id="af8d6267b024979a922dc0e923035c46d"></a>
-bool&#160;</td><td class="memItemRight" valign="bottom"><b>hasModifier</b> (int m) const</td></tr>
+<tr class="memitem:af8d6267b024979a922dc0e923035c46d"><td class="memItemLeft" align="right" valign="top">bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structTypedValue.html#af8d6267b024979a922dc0e923035c46d">hasModifier</a> (int m) const</td></tr>
+<tr class="memdesc:af8d6267b024979a922dc0e923035c46d"><td class="mdescLeft">&#160;</td><td class="mdescRight">Returns true if the type of this <a class="el" href="structTypedValue.html" title="A Value* and TypeNode* pair. ">TypedValue</a> contains the given modifier.  <a href="#af8d6267b024979a922dc0e923035c46d">More...</a><br /></td></tr>
 <tr class="separator:af8d6267b024979a922dc0e923035c46d"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a8d29edd52c3548609d3705b4bbb70e5e"><td class="memItemLeft" align="right" valign="top"><a id="a8d29edd52c3548609d3705b4bbb70e5e"></a>
-void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structTypedValue.html#a8d29edd52c3548609d3705b4bbb70e5e">dump</a> () const</td></tr>
-<tr class="memdesc:a8d29edd52c3548609d3705b4bbb70e5e"><td class="mdescLeft">&#160;</td><td class="mdescRight">Prints type and value of <a class="el" href="structTypeNode.html">TypeNode</a> to stdout. <br /></td></tr>
+<tr class="memitem:a8d29edd52c3548609d3705b4bbb70e5e"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structTypedValue.html#a8d29edd52c3548609d3705b4bbb70e5e">dump</a> () const</td></tr>
+<tr class="memdesc:a8d29edd52c3548609d3705b4bbb70e5e"><td class="mdescLeft">&#160;</td><td class="mdescRight">Prints type and value to stdout.  <a href="#a8d29edd52c3548609d3705b4bbb70e5e">More...</a><br /></td></tr>
 <tr class="separator:a8d29edd52c3548609d3705b4bbb70e5e"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="pub-attribs"></a>
@@ -104,6 +108,110 @@ Value *&#160;</td><td class="memItemRight" valign="bottom"><b>val</b></td></tr>
 unique_ptr&lt; <a class="el" href="structTypeNode.html">TypeNode</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>type</b></td></tr>
 <tr class="separator:ae9750aee2108093267d7b1c625deecbb"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
+<a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
+<div class="textblock"><p>A Value* and TypeNode* pair. </p>
+<p>This is the main type used to represent a value in Ante </p>
+</div><h2 class="groupheader">Constructor &amp; Destructor Documentation</h2>
+<a id="a51d0a91961b7f011c4f1eb017a784358"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a51d0a91961b7f011c4f1eb017a784358">&#9670;&nbsp;</a></span>TypedValue()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">TypedValue::TypedValue </td>
+          <td>(</td>
+          <td class="paramtype">Value *&#160;</td>
+          <td class="paramname"><em>v</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">unique_ptr&lt; <a class="el" href="structTypeNode.html">TypeNode</a> &gt; &amp;&#160;</td>
+          <td class="paramname"><em>ty</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Constructs a <a class="el" href="structTypedValue.html" title="A Value* and TypeNode* pair. ">TypedValue</a>. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">v</td><td>The Value to use </td></tr>
+    <tr><td class="paramname">ty</td><td>The <a class="el" href="structTypeNode.html">TypeNode</a> here is copied, not moved </td></tr>
+  </table>
+  </dd>
+</dl>
+
+</div>
+</div>
+<h2 class="groupheader">Member Function Documentation</h2>
+<a id="a8d29edd52c3548609d3705b4bbb70e5e"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a8d29edd52c3548609d3705b4bbb70e5e">&#9670;&nbsp;</a></span>dump()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">void TypedValue::dump </td>
+          <td>(</td>
+          <td class="paramname"></td><td>)</td>
+          <td> const</td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+
+<p>Prints type and value to stdout. </p>
+<p>Prints type and value of <a class="el" href="structTypeNode.html">TypeNode</a> to stdout. </p>
+
+</div>
+</div>
+<a id="af8d6267b024979a922dc0e923035c46d"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#af8d6267b024979a922dc0e923035c46d">&#9670;&nbsp;</a></span>hasModifier()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">bool TypedValue::hasModifier </td>
+          <td>(</td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>m</em></td><td>)</td>
+          <td> const</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>Returns true if the type of this <a class="el" href="structTypedValue.html" title="A Value* and TypeNode* pair. ">TypedValue</a> contains the given modifier. </p>
+<dl class="params"><dt>Parameters</dt><dd>
+  <table class="params">
+    <tr><td class="paramname">m</td><td>The TokTy value of the modifier to search for </td></tr>
+  </table>
+  </dd>
+</dl>
+
+</div>
+</div>
 <hr/>The documentation for this struct was generated from the following files:<ul>
 <li>include/<a class="el" href="compiler_8h_source.html">compiler.h</a></li>
 <li>src/compiler.cpp</li>

@@ -70,6 +70,11 @@ $(function() {
 <div class="title">ante::Module Struct Reference</div>  </div>
 </div><!--header-->
 <div class="contents">
+
+<p>An Ante <a class="el" href="structante_1_1Module.html" title="An Ante Module. ">Module</a>.  
+ <a href="structante_1_1Module.html#details">More...</a></p>
+
+<p><code>#include &lt;<a class="el" href="compiler_8h_source.html">compiler.h</a>&gt;</code></p>
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
@@ -83,16 +88,21 @@ Public Attributes</h2></td></tr>
 string&#160;</td><td class="memItemRight" valign="bottom"><b>name</b></td></tr>
 <tr class="separator:a36e60682c6116681e267643366cd30dd"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a2ab5014305aef42defe08c27ae31d34d"><td class="memItemLeft" align="right" valign="top"><a id="a2ab5014305aef42defe08c27ae31d34d"></a>
-unordered_map&lt; string, list&lt; shared_ptr&lt; <a class="el" href="structFuncDecl.html">FuncDecl</a> &gt; &gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>fnDecls</b></td></tr>
+unordered_map&lt; string, list&lt; shared_ptr&lt; <a class="el" href="structFuncDecl.html">FuncDecl</a> &gt; &gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structante_1_1Module.html#a2ab5014305aef42defe08c27ae31d34d">fnDecls</a></td></tr>
+<tr class="memdesc:a2ab5014305aef42defe08c27ae31d34d"><td class="mdescLeft">&#160;</td><td class="mdescRight">Each declared function in the module. <br /></td></tr>
 <tr class="separator:a2ab5014305aef42defe08c27ae31d34d"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aac3d45722c28295f9edbac8f99652d59"><td class="memItemLeft" align="right" valign="top"><a id="aac3d45722c28295f9edbac8f99652d59"></a>
-unordered_map&lt; string, shared_ptr&lt; <a class="el" href="structDataType.html">DataType</a> &gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>userTypes</b></td></tr>
+unordered_map&lt; string, shared_ptr&lt; <a class="el" href="structDataType.html">DataType</a> &gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structante_1_1Module.html#aac3d45722c28295f9edbac8f99652d59">userTypes</a></td></tr>
+<tr class="memdesc:aac3d45722c28295f9edbac8f99652d59"><td class="mdescLeft">&#160;</td><td class="mdescRight">Each declared <a class="el" href="structDataType.html" title="Contains information about a data type. ">DataType</a> in the module. <br /></td></tr>
 <tr class="separator:aac3d45722c28295f9edbac8f99652d59"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a15e6b1a8b67a18cfcb1bbbddc8f5a3ff"><td class="memItemLeft" align="right" valign="top"><a id="a15e6b1a8b67a18cfcb1bbbddc8f5a3ff"></a>
-unordered_map&lt; string, shared_ptr&lt; <a class="el" href="structTrait.html">Trait</a> &gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><b>traits</b></td></tr>
+unordered_map&lt; string, shared_ptr&lt; <a class="el" href="structTrait.html">Trait</a> &gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structante_1_1Module.html#a15e6b1a8b67a18cfcb1bbbddc8f5a3ff">traits</a></td></tr>
+<tr class="memdesc:a15e6b1a8b67a18cfcb1bbbddc8f5a3ff"><td class="mdescLeft">&#160;</td><td class="mdescRight">Map of all declared traits; not including their implementations for a given type Each <a class="el" href="structDataType.html" title="Contains information about a data type. ">DataType</a> is reponsible for holding its own trait implementations. <br /></td></tr>
 <tr class="separator:a15e6b1a8b67a18cfcb1bbbddc8f5a3ff"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
-<h2 class="groupheader">Member Function Documentation</h2>
+<a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
+<div class="textblock"><p>An Ante <a class="el" href="structante_1_1Module.html" title="An Ante Module. ">Module</a>. </p>
+</div><h2 class="groupheader">Member Function Documentation</h2>
 <a id="aed4991069d849a1d69234d4c42c26fe9"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#aed4991069d849a1d69234d4c42c26fe9">&#9670;&nbsp;</a></span>import()</h2>
 
@@ -112,6 +122,7 @@ unordered_map&lt; string, shared_ptr&lt; <a class="el" href="structTrait.html">T
 <p>Merges two modules. </p>
 <dl class="params"><dt>Parameters</dt><dd>
   <table class="params">
+    <tr><td class="paramname">m</td><td>module to merge into this</td></tr>
     <tr><td class="paramname">mod</td><td>module to merge into this </td></tr>
   </table>
   </dd>

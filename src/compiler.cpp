@@ -20,7 +20,6 @@
 
 using namespace llvm;
 
-
 /**
  * @param tup The head of the list
  *
@@ -1462,15 +1461,7 @@ void ante::Module::import(shared_ptr<ante::Module> mod){
         traits[pair.first] = pair.second;
 }
 
-/**
- * @brief Imports a given ante file to the current module
- * inputted file must exist and be a valid ante source file.
- *
- * @param fName Name of file to import
- * @param The node containing where the file was imported from.
- *        Usually the ImportNode importing the file.  Used for
- *        error reporting.
- */
+
 void Compiler::importFile(const char *fName, Node *locNode){
     try{
         auto& module = allCompiledModules->at(fName);
@@ -1550,9 +1541,6 @@ TypeNode* mkDataTypeNode(string tyname){
 }
 
 
-/**
- * @brief Imports the prelude module unless the current module is the prelude
- */
 void Compiler::compilePrelude(){
     if(fileName != AN_LIB_DIR "prelude.an"){
         importFile(AN_LIB_DIR "prelude.an");
@@ -1587,10 +1575,7 @@ Node* mkPlaceholderNode(){
     return new IntLitNode(fakeLoc, "0", TT_U8);
 }
 
-/**
- * @brief Sweeps through parse tree registering all functions, type
- * declarations, and traits.
- */
+
 void Compiler::scanAllDecls(RootNode *root){
     auto *n = root ? root : ast.get();
 
@@ -1627,9 +1612,6 @@ void Compiler::scanAllDecls(RootNode *root){
 	}
 }
 
-/**
- * @brief Starts the REPL
- */
 void Compiler::eval(){
     string cmd = "";
     cout << "Ante REPL v0.0.1\nType 'exit' to exit.\n";
@@ -1660,12 +1642,7 @@ void Compiler::eval(){
     }
 }
 
-/**
- * @brief Creates the main function of a main module or creates the library_init
- * function of a lib module.
- *
- * @return The llvm::Function* of the created function.
- */
+
 Function* Compiler::createMainFn(){
     Type* argcty = Type::getInt32Ty(*ctxt);
     Type* argvty = Type::getInt8Ty(*ctxt)->getPointerTo()->getPointerTo();
@@ -1721,9 +1698,6 @@ TypedValue* RootNode::compile(Compiler *c){
 }
 
 
-/**
- * @brief Fully compiles a module
- */
 void Compiler::compile(){
     if(compiled){
         cerr << "Module " << module->getName().str() << " is already compiled, cannot recompile.\n";
@@ -1754,9 +1728,6 @@ void Compiler::compile(){
 }
 
 
-/**
- * @brief Compiles a native binary
- */
 void Compiler::compileNative(){
     if(!compiled) compile();
 
@@ -1769,13 +1740,6 @@ void Compiler::compileNative(){
     }
 }
 
-/**
- * @brief Compiles a module to an object file
- *
- * @param outName name of the file to output
- *
- * @return 0 on success
- */
 int Compiler::compileObj(string &outName){
     if(!compiled) compile();
 
@@ -1824,11 +1788,7 @@ TargetMachine* getTargetMachine(){
     return tm;
 }
 
-/**
- * @brief JIT compiles a function with no arguments and calls it afterward
- *
- * @param f the function to JIT
- */
+
 void Compiler::jitFunction(Function *f){
     if(!jit.get()){
         auto* eBuilder = new EngineBuilder(unique_ptr<llvm::Module>(module.get()));
@@ -1850,14 +1810,7 @@ void Compiler::jitFunction(Function *f){
         reinterpret_cast<void(*)()>(fn)();
 }
 
-/**
- * @brief Compiles a module into an obj file to be used for linking.
- *
- * @param mod The already-compiled module
- * @param outFile Name of the file to output
- *
- * @return 0 on success
- */
+
 int Compiler::compileIRtoObj(llvm::Module *mod, string outFile){
     auto *tm = getTargetMachine();
 
@@ -1883,24 +1836,13 @@ int Compiler::compileIRtoObj(llvm::Module *mod, string outFile){
     return res;
 }
 
-/**
- * @brief Invokes the linker specified by AN_LINKER (in target.h) to
- *        link each object file
- *
- * @param inFiles String containing each obj file to link separated with spaces
- * @param outFile Name of the file to output
- *
- * @return 0 on success
- */
+
 int Compiler::linkObj(string inFiles, string outFile){
     string cmd = AN_LINKER " " + inFiles + " -o " + outFile;
     return system(cmd.c_str());
 }
 
 
-/**
- * @brief Dumps current contents of module to stdout
- */
 void Compiler::emitIR(){
     if(!compiled) compile();
     if(errFlag) puts("Partially compiled module: \n");
@@ -1935,9 +1877,6 @@ void TypedValue::dump() const{
 }
 
 
-/**
- * @brief Creates and enters a new scope
- */
 void Compiler::enterNewScope(){
     scope++;
     auto *vtable = new unordered_map<string, Variable*>();
@@ -1945,9 +1884,6 @@ void Compiler::enterNewScope(){
 }
 
 
-/**
- * @brief Exits a scope and performs any necessary cleanup
- */
 void Compiler::exitScope(){
     //iterate through all known variables, check for pointers at the end of
     //their lifetime, and insert calls to free for any that are found
@@ -1976,13 +1912,6 @@ void Compiler::exitScope(){
 }
 
 
-/**
- * @brief Performs a lookup for a variable
- *
- * @param var Name of the variable to lookup
- *
- * @return The Variable* if found, otherwise nullptr
- */
 Variable* Compiler::lookup(string var) const{
     for(auto i = varTable.size(); i >= fnScope; --i){
         try{
@@ -1994,23 +1923,11 @@ Variable* Compiler::lookup(string var) const{
 }
 
 
-/**
- * @brief Stores a variable in the current scope
- *
- * @param var Name of the variable to store
- * @param val Variable to store
- */
 void Compiler::stoVar(string var, Variable *val){
     (*varTable[val->scope-1])[var] = val;
 }
 
 
-/**
- * @brief Stores a TypeVar in the current scope
- *
- * @param name Name of the typevar to store (including the preceeding ')
- * @param ty The type to store
- */
 void Compiler::stoTypeVar(string &name, TypeNode *ty){
     Value *addr = builder.getInt64((unsigned long)ty);
     TypedValue *tv = new TypedValue(addr, mkAnonTypeNode(TT_Type));
@@ -2019,13 +1936,6 @@ void Compiler::stoTypeVar(string &name, TypeNode *ty){
 }
 
 
-/**
- * @brief Performs a lookup for the specified DataType
- *
- * @param tyname Name of the type to lookup
- *
- * @return The DataType* if found, otherwise nullptr
- */
 DataType* Compiler::lookupType(string tyname) const{
     try{
         return mergedCompUnits->userTypes.at(tyname).get();
@@ -2034,11 +1944,6 @@ DataType* Compiler::lookupType(string tyname) const{
     }
 }
 
-/**
- * @brief Performs a lookup a type's full definition
- *
- * @return The DataType* if found, otherwise nullptr
- */
 DataType* Compiler::lookupType(TypeNode *tn) const{
     if(tn->typeName.empty())
         return lookupType(typeNodeToStr(tn));
@@ -2046,13 +1951,6 @@ DataType* Compiler::lookupType(TypeNode *tn) const{
         return lookupType(tn->typeName);
 }
 
-/**
- * @brief Performs a lookup for the specified trait
- *
- * @param tyname Name of the trait to lookup
- *
- * @return The Trait* if found, otherwise nullptr
- */
 Trait* Compiler::lookupTrait(string tyname) const{
     try{
         return mergedCompUnits->traits.at(tyname).get();
@@ -2062,12 +1960,6 @@ Trait* Compiler::lookupTrait(string tyname) const{
 }
 
 
-/**
- * @brief Stores a new DataType
- *
- * @param ty The DataType to store
- * @param typeName The name of the DataType
- */
 inline void Compiler::stoType(DataType *ty, string &typeName){
     shared_ptr<DataType> dt{ty};
 
@@ -2208,12 +2100,7 @@ Compiler::Compiler(Node *root, string modName, string &fName, bool lib, shared_p
     passManager.reset(mkPassManager(module.get(), 3));
 }
 
-/**
- * @brief Sets appropriate flags and executes operations specified by
- *        the command line arguments
- *
- * @param args The command line arguments
- */
+
 void Compiler::processArgs(CompilerArgs *args){
     string out = "";
     bool shouldGenerateExecutable = true;

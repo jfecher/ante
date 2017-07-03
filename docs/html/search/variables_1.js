@@ -1,4 +1,4 @@
 var searchData=
 [
-  ['column',['column',['../classyy_1_1position.html#ada60c2dbba2e05705265f8359f722c4f',1,'yy::position']]]
+  ['begin',['begin',['../classyy_1_1location.html#a70540e90479a85db4112b552d7e032cf',1,'yy::location']]]
 ];

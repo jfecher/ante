@@ -1,4 +1,5 @@
 var searchData=
 [
-  ['kind_5ftype',['kind_type',['../structyy_1_1parser_1_1by__type.html#af8757490fd5397ad574e9fee1b80fa25',1,'yy::parser::by_type']]]
+  ['jitfunction',['jitFunction',['../structante_1_1Compiler.html#a0712cc6dbd65814f64ed1141d59ab80d',1,'ante::Compiler']]],
+  ['jumpnode',['JumpNode',['../structJumpNode.html',1,'']]]
 ];
