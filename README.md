@@ -16,6 +16,7 @@ the ability to interact at a lower level if needed.
 
 ## Community
 - Join the official subreddit at [/r/ante](https://www.reddit.com/r/ante) for any and all discussion.  Everyone is welcome!
+- Looking to contribute?  Checkout [the documentation](http://jfecher.github.io/ante/html/index.html).
 
 ## Features
 * Systems language that feels like an interpreted language
