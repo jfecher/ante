@@ -251,8 +251,8 @@ TypedValue* createUnionVariantCast(Compiler *c, TypedValue *valToCast, TypeNode 
     dtcpy->type = TT_TaggedUnion;
     dtcpy->typeName = dataTy->getParentUnionName();
 
-    if(tyeq.res == TypeCheckResult::SuccessWithTypeVars){
-        bindGenericToType(dtcpy, tyeq.bindings);
+    if(tyeq->res == TypeCheckResult::SuccessWithTypeVars){
+        bindGenericToType(dtcpy, tyeq->bindings);
     }
 
     Type *variantTy = c->typeNodeToLlvmType(valToCast->type.get());
@@ -400,9 +400,9 @@ TypedValue* createCast(Compiler *c, TypeNode *castTyn, TypedValue *valToCast){
             to_tyn->typeName = castTyn->typeName;
             to_tyn->type = isUnion ? TT_TaggedUnion : TT_Data;
 
-            if(tc.res == TypeCheckResult::SuccessWithTypeVars){
-                bindGenericToType(to_tyn, tc.bindings);
-                updateBindings(to_tyn->params, tc.bindings);
+            if(tc->res == TypeCheckResult::SuccessWithTypeVars){
+                bindGenericToType(to_tyn, tc->bindings);
+                updateBindings(to_tyn->params, tc->bindings);
             }
 
             if(isUnion)
@@ -568,7 +568,7 @@ TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Ty
             }
         }
         
-        if(eq.res == TypeCheckResult::SuccessWithTypeVars){
+        if(eq->res == TypeCheckResult::SuccessWithTypeVars){
             bool tEmpty = thenVal->type->params.empty();
             bool eEmpty = elseVal->type->params.empty();
            

@@ -1356,9 +1356,9 @@ TypedValue* MatchNode::compile(Compiler *c){
 
                 auto tcr = c->typeEq(parentTy->tyn.get(), lval->type.get());
 
-                if(tcr.res == TypeCheckResult::SuccessWithTypeVars)
-                    bindGenericToType(tagtycpy, tcr.bindings);
-                else if(tcr.res == TypeCheckResult::Failure)
+                if(tcr->res == TypeCheckResult::SuccessWithTypeVars)
+                    bindGenericToType(tagtycpy, tcr->bindings);
+                else if(tcr->res == TypeCheckResult::Failure)
                     return c->compErr("Cannot bind pattern of type " + typeNodeToColoredStr(parentTy->tyn.get()) +
                             " to matched value of type " + typeNodeToColoredStr(lval->type), tn->rval->loc);
                 

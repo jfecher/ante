@@ -71,18 +71,28 @@ struct TypedValue {
 struct TypeCheckResult {
     enum Result { Failure, Success, SuccessWithTypeVars };
 
-    Result res;
-    vector<pair<string,unique_ptr<TypeNode>>> bindings;
+    //box internals for faster passing by value
+    struct Internals {
+        Result res;
+        unsigned int matches;
+        vector<pair<string,unique_ptr<TypeNode>>> bindings;
+        
+        Internals() : res(Success), matches(0), bindings(){}
+    };
 
+    Internals *box;
 
-    TypeCheckResult* setRes(bool b);
-    TypeCheckResult* setRes(Result r);
-    TypeCheckResult* setSuccess(){ if(res != SuccessWithTypeVars) res = Success; return this; }
-    TypeCheckResult* setSuccessWithTypeVars(){ res = SuccessWithTypeVars; return this; }
-    TypeCheckResult* setFailure(){ res = Failure; return this; }
+    TypeCheckResult successIf(bool b);
+    TypeCheckResult successIf(Result r);
+    TypeCheckResult success();
+    TypeCheckResult successWithTypeVars();
+    TypeCheckResult failure();
 
-    bool operator!(){return res == Failure;}
-    
+    bool failed();
+
+    bool operator!(){return box->res == Failure;}
+    Internals* operator->(){return box;}
+
     /**
      * @brief Searches for the suggested binding of a typevar
      *
@@ -91,9 +101,11 @@ struct TypeCheckResult {
      * @return The binding if found, nullptr otherwise
      */
     TypeNode* getBindingFor(const string &s);
-    TypeCheckResult(Result r) : res(r), bindings(){}
-    TypeCheckResult(bool r) : res((Result)r), bindings(){}
+    TypeCheckResult() : box(new Internals()){}
+    TypeCheckResult(TypeCheckResult &r)  : box(r.box){}
+    TypeCheckResult(TypeCheckResult &&r)  : box(r.box){}
 };
+
 
 /**
  * @brief Base for typeeq
@@ -111,7 +123,7 @@ struct TypeCheckResult {
  *
  * @return The resulting TypeCheckResult
  */
-TypeCheckResult typeEqBase(const TypeNode *l, const TypeNode *r, TypeCheckResult *tcr, const Compiler *c = 0);
+TypeCheckResult typeEqBase(const TypeNode *l, const TypeNode *r, TypeCheckResult tcr, const Compiler *c = 0);
 
 
 

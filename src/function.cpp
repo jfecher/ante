@@ -121,9 +121,9 @@ TypeNode* validateReturns(Compiler *c, FuncDecl *fd, TypeNode *retTy = 0){
                     typeNodeToColoredStr(matchTy), pair.second);
         }
 
-        if(tcr.res == TypeCheckResult::SuccessWithTypeVars){
+        if(tcr->res == TypeCheckResult::SuccessWithTypeVars){
             //TODO: copy type
-            bindGenericToType(ret->type.get(), tcr.bindings);
+            bindGenericToType(ret->type.get(), tcr->bindings);
             ret->val->mutateType(c->typeNodeToLlvmType(ret->type.get()));
 
             auto *ri = dyn_cast<ReturnInst>(ret->val);
@@ -514,7 +514,7 @@ TypedValue* compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, TypeN
     //function's scope, but compFn sets this scope later on, so the needed bindings are
     //instead stored as fake obj bindings to be declared later in compFn
     size_t tmp_bindings_loc = fd->obj_bindings.size();
-    for(auto& pair : tc.bindings){
+    for(auto& pair : tc->bindings){
         fd->obj_bindings.push_back({pair.first, pair.second.get()});
     }
 
@@ -526,11 +526,11 @@ TypedValue* compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, TypeN
     }
 
     //swap out fn's generic params for the concrete arg types
-    auto unboundParams = bindParams(fd->fdn->params.get(), tc.bindings);
+    auto unboundParams = bindParams(fd->fdn->params.get(), tc->bindings);
     auto *retTy = (TypeNode*)fd->fdn->type.release();
 
     auto *boundRetTy = copy(retTy);
-    bindGenericToType(boundRetTy, tc.bindings);
+    bindGenericToType(boundRetTy, tc->bindings);
     fd->fdn->type.reset(boundRetTy);
 
 
@@ -738,7 +738,7 @@ TypedValue* Compiler::getMangledFunction(string name, vector<TypeNode*> args){
         auto *params = (TypeNode*)fnty->extTy->next.get();
         auto tc = typeEq(vectorize(params), args);
 
-        if(tc.res == TypeCheckResult::SuccessWithTypeVars)
+        if(tc->res == TypeCheckResult::SuccessWithTypeVars)
             return compTemplateFn(this, fd.get(), tc, args[0]);
         else if(!tc)
             return nullptr;
