@@ -102,7 +102,7 @@ struct TypeCheckResult {
      */
     TypeNode* getBindingFor(const string &s);
     TypeCheckResult() : box(new Internals()){}
-    TypeCheckResult(TypeCheckResult &r)  : box(r.box){}
+    TypeCheckResult(const TypeCheckResult &r)  : box(r.box){}
     TypeCheckResult(TypeCheckResult &&r)  : box(r.box){}
 };
 

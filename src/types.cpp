@@ -754,6 +754,7 @@ TypeCheckResult TypeCheckResult::success(){
 TypeCheckResult TypeCheckResult::successWithTypeVars(){
     if(box->res != Failure){
         box->res = SuccessWithTypeVars;
+        box->matches++;
     }
     return *this;
 }
@@ -806,7 +807,7 @@ TypeCheckResult extTysEq(const TypeNode *l, const TypeNode *r, TypeCheckResult &
         rExt = (TypeNode*)rExt->next.get();
         if((lExt and !rExt) or (rExt and !lExt)) return tcr.failure();
     }
-    return tcr;
+    return tcr.success();
 }
 
 /*

@@ -718,6 +718,22 @@ T* toList(vector<T*> &nodes){
     }
     return begin;
 }
+    
+vector<pair<TypeCheckResult,FuncDecl*>> filterHighestMatches(vector<pair<TypeCheckResult,FuncDecl*>> &matches){
+    unsigned int highestMatch = 0;
+    vector<pair<TypeCheckResult,FuncDecl*>> highestMatches;
+    
+    for(auto &tcr : matches){
+        if(tcr.first->matches >= highestMatch){
+            if(tcr.first->matches > highestMatch){
+                highestMatch = tcr.first->matches;
+                highestMatches.clear();
+            }
+            highestMatches.push_back(tcr);
+        }
+    }
+    return highestMatches;
+}
 
 
 TypedValue* Compiler::getMangledFunction(string name, vector<TypeNode*> args){
@@ -766,18 +782,26 @@ TypedValue* Compiler::getMangledFunction(string name, vector<TypeNode*> args){
     //
     //NOTE: the current implementation will return the first generic function that matches, not necessarily
     //      the most specific one.
+    
+    vector<pair<TypeCheckResult,FuncDecl*>> results;
+
     for(auto& fd : candidates){
         auto fnty = unique_ptr<TypeNode>(createFnTyNode(fd->fdn->params.get(), mkAnonTypeNode(TT_Void)));
         auto *params = (TypeNode*)fnty->extTy->next.get();
 
         auto tc = typeEq(vectorize(params), args);
-        if(!!tc){
-            return compTemplateFn(this, fd.get(), tc, toList(args));
-        }
+        results.push_back({tc, fd.get()});
     }
 
-    //TODO
-    return 0;
+    auto matches = filterHighestMatches(results);
+
+    if(matches.size() == 1)
+        return compTemplateFn(this, matches[0].second, matches[0].first, toList(args));
+
+    //multiple functions with even matches found, eg. (i32,'t) vs ('t,i32) with the args (i32,i32)
+    //or not functions match at all
+    else 
+        return nullptr;
 }
 
 
