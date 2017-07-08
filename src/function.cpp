@@ -558,6 +558,7 @@ TypedValue* compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, TypeN
     
     fd->fdn->type.reset(retTy);
     unbindParams(fd->fdn->params.get(), unboundParams);
+
     return res;
 }
 
@@ -702,15 +703,14 @@ vector<T*> vectorize(T *args){
 }
 
 
-template<typename T>
-T* toList(vector<T*> &nodes){
-    T *begin = 0;
-    T *cur;
+TypeNode* toList(vector<TypeNode*> &nodes){
+    TypeNode *begin = 0;
+    TypeNode *cur;
 
     for(auto node : nodes){
         if(begin){
             cur->next.reset(copy(node));
-            cur = (T*)cur->next.get();
+            cur = (TypeNode*)cur->next.get();
         }else{
             begin = copy(node);
             cur = begin;
@@ -787,28 +787,32 @@ FuncDecl* Compiler::getMangledFuncDecl(string name, vector<TypeNode*> args){
     return nullptr;
 }
 
+
+/*
+ * Compile a possibly-generic function with given arg types
+ */
+TypedValue* compFnWithArgs(Compiler *c, FuncDecl *fd, vector<TypeNode*> args){
+    //must check if this functions is generic first
+    auto fnty = unique_ptr<TypeNode>(createFnTyNode(fd->fdn->params.get(), mkAnonTypeNode(TT_Void)));
+    auto *params = (TypeNode*)fnty->extTy->next.get();
+    auto tc = c->typeEq(vectorize(params), args);
+
+    if(tc->res == TypeCheckResult::SuccessWithTypeVars)
+        return compTemplateFn(c, fd, tc, toList(args));
+    else if(!tc)
+        return nullptr;
+    else if(fd->tv)
+        return fd->tv;
+    else
+        return c->compFn(fd);
+}
+
+
 TypedValue* Compiler::getMangledFn(string name, vector<TypeNode*> args){
     auto *fd = getMangledFuncDecl(name, args);
-
-    if(fd){
-        //must check if this functions is generic first
-        auto fnty = unique_ptr<TypeNode>(createFnTyNode(fd->fdn->params.get(), mkAnonTypeNode(TT_Void)));
-        auto *params = (TypeNode*)fnty->extTy->next.get();
-        auto tc = typeEq(vectorize(params), args);
-
-        if(tc->res == TypeCheckResult::SuccessWithTypeVars)
-            return compTemplateFn(this, fd, tc, args[0]);
-        else if(!tc)
-            return nullptr;
-        else if(fd->tv)
-            return fd->tv;
-        else{
-            //fd->tv = compFn(fd.get());
-            return compFn(fd);
-        }
-    }
-
-    return nullptr;
+    if(!fd) return nullptr;
+        
+    return compFnWithArgs(this, fd, args);
 }
 
 
@@ -817,15 +821,19 @@ list<shared_ptr<FuncDecl>>& Compiler::getFunctionList(string& name) const{
 }
 
 
+TypeNode* tupleToList(TypeNode *tup){
+    if(tup->type == TT_Tuple)
+        tup = tup->extTy.get();
+    else if(tup->type == TT_Void)
+        tup = nullptr;
+    
+    return tup;
+}
+
+
 FuncDecl* Compiler::getCastFuncDecl(TypeNode *from_ty, TypeNode *to_ty){
     string fnBaseName = getCastFnBaseName(to_ty);
-
-    TypeNode *argList = from_ty;
-    if(from_ty->type == TT_Tuple)
-        argList = argList->extTy.get();
-    else if(from_ty->type == TT_Void)
-        argList = nullptr;
-
+    TypeNode *argList = tupleToList(from_ty);
     return getMangledFuncDecl(fnBaseName, vectorize(argList));
 }
 
@@ -853,7 +861,9 @@ TypedValue* Compiler::getCastFn(TypeNode *from_ty, TypeNode *to_ty, FuncDecl *fd
             i++;
         }
 
-        tv = compFn(fd);
+        //must check if this functions is generic first
+        auto *args = tupleToList(from_ty);
+        tv = compFnWithArgs(this, fd, vectorize(args));
 
         //TODO: if fd is a meta function that is a method of a generic object then the generic
         //      parameters of the object will be unbound here and untraceable when the function is
@@ -863,8 +873,10 @@ TypedValue* Compiler::getCastFn(TypeNode *from_ty, TypeNode *to_ty, FuncDecl *fd
         fd->tv = nullptr;
     }else{
         tv = fd->tv;
-        if(!tv)
-            tv = compFn(fd);
+        if(!tv){
+            auto *args = tupleToList(from_ty);
+            tv = compFnWithArgs(this, fd, vectorize(args));
+        }
     }
     return tv;
 }

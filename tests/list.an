@@ -21,6 +21,7 @@ fun print: List<'t> l
 
 
 var head = List 0
+
 append head 1
 append head 2
 append head 3

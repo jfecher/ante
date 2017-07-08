@@ -422,15 +422,17 @@ TypedValue* createCast(Compiler *c, TypeNode *castTyn, TypedValue *valToCast){
 
         //Compile the function now that we know to use it over a cast
         auto *fn = c->getCastFn(valToCast->type.get(), castTyn, fd);
-        if(fn->type->type == TT_MetaFunction){
-            string baseName = getCastFnBaseName(castTyn);
-            string mangledName = mangle(baseName, valToCast->type.get());
-            vector<TypedValue*> args = {valToCast};
-            return compMetaFunctionResult(c, castTyn->loc, baseName, mangledName, args);
-        }
+        if(fn){
+            if(fn->type->type == TT_MetaFunction){
+                string baseName = getCastFnBaseName(castTyn);
+                string mangledName = mangle(baseName, valToCast->type.get());
+                vector<TypedValue*> args = {valToCast};
+                return compMetaFunctionResult(c, castTyn->loc, baseName, mangledName, args);
+            }
 
-        auto *call = c->builder.CreateCall(fn->val, args);
-        return new TypedValue(call, fn->type->extTy);
+            auto *call = c->builder.CreateCall(fn->val, args);
+            return new TypedValue(call, fn->type->extTy);
+        }
     }
 
     //otherwise, fallback on known conversions
