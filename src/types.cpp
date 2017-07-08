@@ -109,7 +109,7 @@ unsigned int TypeNode::getSizeInBits(Compiler *c, string *incompleteType){
     if(isPrimitiveTypeTag(this->type))
         return getBitWidthOfTypeTag(this->type);
    
-    if(type == TT_Data){
+    if(type == TT_Data and not extTy.get()){
         auto *dataTy = c->lookupType(typeName);
         if(!dataTy){
             if(incompleteType and typeName == *incompleteType){
@@ -120,10 +120,17 @@ unsigned int TypeNode::getSizeInBits(Compiler *c, string *incompleteType){
             c->compErr("Type "+typeName+" has not been declared", loc);
             return 0;
         }
-        return dataTy->tyn->getSizeInBits(c, incompleteType);
+
+        TypeNode *tyn = dataTy->tyn.get();
+        if(!dataTy->generics.empty()){
+            tyn = copy(tyn);
+            bindGenericToType(tyn, params, dataTy);
+        }
+
+        return tyn->getSizeInBits(c, incompleteType);
     }
 
-    if(type == TT_Tuple or type == TT_TaggedUnion){
+    if(type == TT_Tuple or type == TT_TaggedUnion or type == TT_Data){
         while(ext){
             total += ext->getSizeInBits(c, incompleteType);
             ext = (TypeNode*)ext->next.get();
