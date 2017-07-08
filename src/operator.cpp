@@ -307,6 +307,91 @@ void updateBindings(vector<unique_ptr<TypeNode>>& params, const vector<pair<stri
 
 TypedValue* compMetaFunctionResult(Compiler *c, LOC_TY &loc, string &baseName, string &mangledName, vector<TypedValue*> &typedArgs);
 
+
+struct ReinterpretCastResult {
+    enum ReinterpretCastType {
+        NoCast,
+        ValToStruct,
+        ValToUnion,
+        ValToPrimitive
+    } type;
+
+    TypeCheckResult typeCheck;
+    DataType *dataTy;
+};
+
+/*
+ * Check if a reinterpret cast can be performed and return some
+ * information about the type of cast so that no double lookup
+ * is needed
+ */
+ReinterpretCastResult checkForReinterpretCast(Compiler *c, TypeNode *castTyn, TypedValue *valToCast){
+    auto *dataTy = c->lookupType(castTyn->typeName);
+    
+    if(dataTy and dataTy->tyn){
+        //The tyn of a DataType is always a tuple, so wrap the casting value with a
+        //tuple if it is not one already or else it will always fail type checking.
+        TypeNode *wrapper = valToCast->type->type != TT_Tuple and dataTy->tyn->type == TT_Tuple
+                           ? mkTypeNodeWithExt(TT_Tuple, valToCast->type.get())
+                           : valToCast->type.get();
+       
+        auto tc = c->typeEq(wrapper, dataTy->tyn.get());
+        if(!!tc){
+            if(dataTy->isUnionTag())
+                return {ReinterpretCastResult::ValToUnion, tc, dataTy};
+            else
+                return {ReinterpretCastResult::ValToStruct, tc, dataTy};
+        }
+    }
+
+    if(valToCast->type->typeName.size() > 0){
+        dataTy = c->lookupType(valToCast->type->typeName);
+        if(dataTy and dataTy->tyn){
+            TypeNode *wrapper = castTyn->type != TT_Tuple and dataTy->tyn->type == TT_Tuple
+                            ? mkTypeNodeWithExt(TT_Tuple, castTyn)
+                            : castTyn;
+       
+            auto tc = c->typeEq(dataTy->tyn.get(), wrapper);
+            if(!!tc){
+                return {ReinterpretCastResult::ValToPrimitive, tc, dataTy};
+            }
+        }
+    }
+
+    return {ReinterpretCastResult::NoCast, {}, nullptr};
+}
+
+
+TypedValue* doReinterpretCast(Compiler *c, TypeNode *castTyn, TypedValue *valToCast, ReinterpretCastResult *rcr = 0){
+    auto res = rcr ? *rcr : checkForReinterpretCast(c, castTyn, valToCast);
+
+    if(res.type == ReinterpretCastResult::NoCast){
+        return nullptr;
+
+    }else if(res.type == ReinterpretCastResult::ValToPrimitive){
+        return new TypedValue(valToCast->val, copy(castTyn));
+
+    }else{ //ValToUnion or ValToStruct
+        bool isUnion = res.type == ReinterpretCastResult::ValToUnion;
+        auto *to_tyn = copy(res.dataTy->tyn.get());
+        to_tyn->typeName = castTyn->typeName;
+        to_tyn->type = isUnion ? TT_TaggedUnion : TT_Data;
+
+        if(res.typeCheck->res == TypeCheckResult::SuccessWithTypeVars){
+            bindGenericToType(to_tyn, res.typeCheck->bindings);
+            updateBindings(to_tyn->params, res.typeCheck->bindings);
+        }
+
+        if(isUnion) return createUnionVariantCast(c, valToCast, to_tyn, res.dataTy, res.typeCheck);
+        else        return new TypedValue(valToCast->val, to_tyn);
+    }        
+}
+
+bool preferCastOverFunction(Compiler *c, TypedValue *valToCast, ReinterpretCastResult &res, TypedValue *fn){
+    return false /* TODO */ ;
+}
+
+
 /*
  *  Creates a cast instruction appropriate for valToCast's type to castTy.
  */
@@ -315,6 +400,13 @@ TypedValue* createCast(Compiler *c, TypeNode *castTyn, TypedValue *valToCast){
     if(TypedValue *fn = c->getCastFn(valToCast->type.get(), castTyn)){
         vector<Value*> args;
         if(valToCast->type->type != TT_Void) args.push_back(valToCast->val);
+
+        //Check if a cast matches the valToCast closer than the function args do
+        auto castResult = checkForReinterpretCast(c, castTyn, valToCast);
+        if(castResult.type != ReinterpretCastResult::NoCast){
+            if(preferCastOverFunction(c, valToCast, castResult, fn))
+                return doReinterpretCast(c, castTyn, valToCast, &castResult);
+        }       
 
         if(fn->type->type == TT_MetaFunction){
             string baseName = getCastFnBaseName(castTyn);
@@ -376,59 +468,9 @@ TypedValue* createCast(Compiler *c, TypeNode *castTyn, TypedValue *valToCast){
         }
     }
 
-    //if all automatic checks fail, test for structural equality in a datatype cast!
-    //This would apply for the following scenario (and all structurally equivalent types)
-    //
-    //type Int = i32
-    //let example = Int 3
-    //              ^^^^^
-    auto *dataTy = c->lookupType(castTyn->typeName);
-
-    if(dataTy and dataTy->tyn){
-        //The tyn of a DataType is always a tuple, so wrap the casting value with a
-        //tuple if it is not one already or else it will always fail type checking.
-        TypeNode *wrapper = valToCast->type->type != TT_Tuple and dataTy->tyn->type == TT_Tuple
-                           ? mkTypeNodeWithExt(TT_Tuple, valToCast->type.get())
-                           : valToCast->type.get();
-       
-        auto tc = c->typeEq(wrapper, dataTy->tyn.get());
-
-        if(!!tc){
-            bool isUnion = dataTy->isUnionTag();
-
-            auto *to_tyn = copy(dataTy->tyn.get());
-            to_tyn->typeName = castTyn->typeName;
-            to_tyn->type = isUnion ? TT_TaggedUnion : TT_Data;
-
-            if(tc->res == TypeCheckResult::SuccessWithTypeVars){
-                bindGenericToType(to_tyn, tc->bindings);
-                updateBindings(to_tyn->params, tc->bindings);
-            }
-
-            if(isUnion)
-                return createUnionVariantCast(c, valToCast, to_tyn, dataTy, tc);
-            else
-                return new TypedValue(valToCast->val, to_tyn);
-        }
-    }
-    
-    //test for the reverse case, something like:  i32 example
-    //where example is of type Int
-    if(valToCast->type->typeName.size() > 0){
-        dataTy = c->lookupType(valToCast->type->typeName);
-        if(dataTy and dataTy->tyn){
-            TypeNode *wrapper = castTyn->type != TT_Tuple and dataTy->tyn->type == TT_Tuple
-                            ? mkTypeNodeWithExt(TT_Tuple, castTyn)
-                            : castTyn;
-        
-
-            if(!!c->typeEq(dataTy->tyn.get(), wrapper)){
-                return new TypedValue(valToCast->val, copy(castTyn));
-            }
-        }
-    }
- 
-    return nullptr;
+    //NOTE: doReinterpretCast only casts if a valid cast is found,
+    //      if no valid cast is found nullptr is returned
+    return doReinterpretCast(c, castTyn, valToCast);
 }
 
 TypedValue* TypeCastNode::compile(Compiler *c){
