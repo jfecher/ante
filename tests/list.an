@@ -6,11 +6,8 @@ fun List<'t>.init: 't elem -> List<'t>
 
 
 fun tail: List<'t>* l -> List<'t>*
-    if l.next == void* 0 then
-        l
-    else
-        print "Getting next node..."
-        tail(l.next)
+    if l.next == void* 0 then l
+    else tail l.next
 
 fun append: mut List<'t>* l, 't elem
     var t = tail l

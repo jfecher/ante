@@ -1557,7 +1557,7 @@ TypedValue* UnOpNode::compile(Compiler *c){
 
                 //Create an upper-case name so it cannot be referenced normally
                 string tmpAllocName = "New_" + typeNodeToStr(rhs->type.get());
-                c->stoVar(tmpAllocName, new Variable(tmpAllocName, ret, c->scope, false /*always free*/));
+                c->stoVar(tmpAllocName, new Variable(tmpAllocName, ret, c->scope, true));
 
                 //return a copy of ret in case it is modified/freed
                 return new TypedValue(ret->val, ret->type);
