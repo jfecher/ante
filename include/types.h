@@ -34,6 +34,8 @@ TypeNode* extractTypeValue(const unique_ptr<TypedValue> &tv);
 void bindGenericToType(TypeNode *tn, const vector<pair<string, unique_ptr<TypeNode>>> &bindings);
 void bindGenericToType(TypeNode *tn, const vector<unique_ptr<TypeNode>> &bindings, DataType *dt);
 
+string getCastFnBaseName(TypeNode *t);
+
 char getBitWidthOfTypeTag(const TypeTag tagTy);
 bool isPrimitiveTypeTag(TypeTag ty);
 bool isNumericTypeTag(const TypeTag ty);

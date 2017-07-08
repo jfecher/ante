@@ -34,7 +34,7 @@ TypeNode* toTypeNodeList(vector<TypedValue*> &args){
 
 
 TypedValue* Compiler::callFn(string name, vector<TypedValue*> args){
-    TypedValue* fn = getMangledFunction(name, toTypeNodeVector(args));
+    TypedValue* fn = getMangledFn(name, toTypeNodeVector(args));
     if(!fn) return 0;
 
     //vector of llvm::Value*s for the call to CreateCall at the end
@@ -735,45 +735,29 @@ vector<pair<TypeCheckResult,FuncDecl*>> filterHighestMatches(vector<pair<TypeChe
     return highestMatches;
 }
 
-
-TypedValue* Compiler::getMangledFunction(string name, vector<TypeNode*> args){
+FuncDecl* Compiler::getMangledFuncDecl(string name, vector<TypeNode*> args){
     auto& fnlist = getFunctionList(name);
     if(fnlist.empty()) return 0;
 
     auto argc = args.size();
 
-    auto candidates = filterByArgcAndScope(fnlist, argc, this->scope);
+    auto candidates = filterByArgcAndScope(fnlist, argc, scope);
     if(candidates.empty()) return 0;
 
     //if there is only one function now, return it.  It will be typechecked later
     if(candidates.size() == 1){
-        auto& fd = candidates.front();
+        return candidates.front().get();
 
-        //must check if this functions is generic first
-        auto fnty = unique_ptr<TypeNode>(createFnTyNode(fd->fdn->params.get(), mkAnonTypeNode(TT_Void)));
-        auto *params = (TypeNode*)fnty->extTy->next.get();
-        auto tc = typeEq(vectorize(params), args);
-
-        if(tc->res == TypeCheckResult::SuccessWithTypeVars)
-            return compTemplateFn(this, fd.get(), tc, args[0]);
-        else if(!tc)
-            return nullptr;
-        else if(fd->tv)
-            return fd->tv;
-        else{
-            //fd->tv = compFn(fd.get());
-            return compFn(fd.get());
-        }
     }
 
     //check for an exact match on the remaining candidates.
     string fnName = mangle(name, args);
     auto *fd = getFuncDeclFromList(candidates, fnName);
     if(fd){ //exact match
-        if(!fd->tv){
-            //fd->tv = compFn(fd);
-            return compFn(fd);
-        }else return fd->tv;
+        if(!fd->tv)
+            fd->tv = compFn(fd);
+
+        return fd;
     }
 
     //Otherwise, determine which function to use by which needs the least
@@ -795,13 +779,36 @@ TypedValue* Compiler::getMangledFunction(string name, vector<TypeNode*> args){
 
     auto matches = filterHighestMatches(results);
 
+    //TODO: return typecheck infromation so it need not typecheck again in Compiler::getMangledFn
     if(matches.size() == 1)
-        return compTemplateFn(this, matches[0].second, matches[0].first, toList(args));
+        return matches[0].second;
+    
+    //TODO: possibly return all functions considered for better error checking
+    return nullptr;
+}
 
-    //multiple functions with even matches found, eg. (i32,'t) vs ('t,i32) with the args (i32,i32)
-    //or not functions match at all
-    else 
-        return nullptr;
+TypedValue* Compiler::getMangledFn(string name, vector<TypeNode*> args){
+    auto *fd = getMangledFuncDecl(name, args);
+
+    if(fd){
+        //must check if this functions is generic first
+        auto fnty = unique_ptr<TypeNode>(createFnTyNode(fd->fdn->params.get(), mkAnonTypeNode(TT_Void)));
+        auto *params = (TypeNode*)fnty->extTy->next.get();
+        auto tc = typeEq(vectorize(params), args);
+
+        if(tc->res == TypeCheckResult::SuccessWithTypeVars)
+            return compTemplateFn(this, fd, tc, args[0]);
+        else if(!tc)
+            return nullptr;
+        else if(fd->tv)
+            return fd->tv;
+        else{
+            //fd->tv = compFn(fd.get());
+            return compFn(fd);
+        }
+    }
+
+    return nullptr;
 }
 
 
@@ -810,12 +817,22 @@ list<shared_ptr<FuncDecl>>& Compiler::getFunctionList(string& name) const{
 }
 
 
-TypedValue* Compiler::getCastFn(TypeNode *from_ty, TypeNode *to_ty){
-    string fnBaseName = (to_ty->params.empty() ? typeNodeToStr(to_ty) : to_ty->typeName) + "_init";
-    string mangledName = mangle(fnBaseName, from_ty);
+FuncDecl* Compiler::getCastFuncDecl(TypeNode *from_ty, TypeNode *to_ty){
+    string fnBaseName = getCastFnBaseName(to_ty);
 
-    //Search for the exact function, otherwise there would be implicit casts calling several implicit casts on a single parameter
-    auto *fd = getFuncDecl(fnBaseName, mangledName);
+    TypeNode *argList = from_ty;
+    if(from_ty->type == TT_Tuple)
+        argList = argList->extTy.get();
+    else if(from_ty->type == TT_Void)
+        argList = nullptr;
+
+    return getMangledFuncDecl(fnBaseName, vectorize(argList));
+}
+
+
+TypedValue* Compiler::getCastFn(TypeNode *from_ty, TypeNode *to_ty, FuncDecl *fd){
+    if(!fd)
+        fd = getCastFuncDecl(from_ty, to_ty);
 
     if(!fd) return nullptr;
     TypedValue *tv;

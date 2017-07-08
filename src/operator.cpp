@@ -336,6 +336,7 @@ ReinterpretCastResult checkForReinterpretCast(Compiler *c, TypeNode *castTyn, Ty
                            : valToCast->type.get();
        
         auto tc = c->typeEq(wrapper, dataTy->tyn.get());
+
         if(!!tc){
             if(dataTy->isUnionTag())
                 return {ReinterpretCastResult::ValToUnion, tc, dataTy};
@@ -387,8 +388,15 @@ TypedValue* doReinterpretCast(Compiler *c, TypeNode *castTyn, TypedValue *valToC
     }        
 }
 
-bool preferCastOverFunction(Compiler *c, TypedValue *valToCast, ReinterpretCastResult &res, TypedValue *fn){
-    return false /* TODO */ ;
+bool preferCastOverFunction(Compiler *c, TypedValue *valToCast, ReinterpretCastResult &res, FuncDecl *fd){
+    auto *params = (TypeNode*)fd->tv->type->extTy->next.get();
+    
+    auto *args = valToCast->type->type == TT_Tuple
+               ? valToCast->type->extTy.get()
+               : valToCast->type.get();
+
+    auto tc = c->typeEq(vectorize(params), vectorize(args));
+    return tc->matches >= res.typeCheck->matches;
 }
 
 
@@ -397,17 +405,23 @@ bool preferCastOverFunction(Compiler *c, TypedValue *valToCast, ReinterpretCastR
  */
 TypedValue* createCast(Compiler *c, TypeNode *castTyn, TypedValue *valToCast){
     //first, see if the user created their own cast function
-    if(TypedValue *fn = c->getCastFn(valToCast->type.get(), castTyn)){
+    //
+    //NOTE: using getCastFuncDecl lets us not compile the function until after
+    //      we have determined it is the best cast available (otherwise whenever
+    //      a cast fn tries to call its default init we would have an infinite loop)
+    if(FuncDecl *fd = c->getCastFuncDecl(valToCast->type.get(), castTyn)){
         vector<Value*> args;
         if(valToCast->type->type != TT_Void) args.push_back(valToCast->val);
 
         //Check if a cast matches the valToCast closer than the function args do
         auto castResult = checkForReinterpretCast(c, castTyn, valToCast);
         if(castResult.type != ReinterpretCastResult::NoCast){
-            if(preferCastOverFunction(c, valToCast, castResult, fn))
+            if(preferCastOverFunction(c, valToCast, castResult, fd))
                 return doReinterpretCast(c, castTyn, valToCast, &castResult);
         }       
 
+        //Compile the function now that we know to use it over a cast
+        auto *fn = c->getCastFn(valToCast->type.get(), castTyn, fd);
         if(fn->type->type == TT_MetaFunction){
             string baseName = getCastFnBaseName(castTyn);
             string mangledName = mangle(baseName, valToCast->type.get());
@@ -1160,11 +1174,11 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
         //try to do module inference
         if(!typedArgs.empty()){
             string fnName = typeNodeToStr(typedArgs[0]->type.get()) + "_" + vn->name;
-            tvf = c->getMangledFunction(fnName, params);
+            tvf = c->getMangledFn(fnName, params);
         }
 
         //if the above fails, do regular name mangling only
-        if(!tvf) tvf = c->getMangledFunction(vn->name, params);
+        if(!tvf) tvf = c->getMangledFn(vn->name, params);
     }
 
     //if it is not a varnode/no method is found, then compile it normally
@@ -1426,7 +1440,7 @@ TypedValue* checkForOperatorOverload(Compiler *c, TypedValue *lhs, int op, Typed
     string mangledfn = mangle(basefn, lhs->type.get(), rhs->type.get());
 
     //now look for the function
-    auto *fn = c->getMangledFunction(basefn, {lhs->type.get(), rhs->type.get()});
+    auto *fn = c->getMangledFn(basefn, {lhs->type.get(), rhs->type.get()});
     if(!fn) return 0;
 
     TypeNode *param1 = (TypeNode*)fn->type->extTy->next.get();

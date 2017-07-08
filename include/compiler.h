@@ -539,9 +539,12 @@ namespace ante{
         TypedValue* getFunction(string& name, string& mangledName);
         list<shared_ptr<FuncDecl>>& getFunctionList(string& name) const;
         FuncDecl* getFuncDecl(string bn, string mangledName);
-        TypedValue* getMangledFunction(string name, vector<TypeNode*> args);
-        TypedValue* getCastFn(TypeNode *from_ty, TypeNode *to_ty);
         TypedValue* callFn(string fn, vector<TypedValue*> args);
+
+        TypedValue* getMangledFn(string name, vector<TypeNode*> args);
+        TypedValue* getCastFn(TypeNode *from_ty, TypeNode *to_ty, FuncDecl *fd = 0);
+        FuncDecl* getMangledFuncDecl(string name, vector<TypeNode*> args);
+        FuncDecl* getCastFuncDecl(TypeNode *from_ty, TypeNode *to_ty);
         
         TypedValue* compLetBindingFn(FuncDecl *fdn, vector<Type*> &paramTys);
         TypedValue* compFn(FuncDecl *fn);
