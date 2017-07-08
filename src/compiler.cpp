@@ -948,8 +948,6 @@ TypedValue* VarAssignNode::compile(Compiler *c){
 
     //and finally, make sure the assigned value matches the variable's type
     if(!c->typeEq(tmp->type.get(), assignExpr->type.get())){
-        tmp->dump();
-        assignExpr->dump();
         return c->compErr("Cannot assign expression of type " + typeNodeToColoredStr(assignExpr->type)
                     + " to a variable of type " + typeNodeToColoredStr(tmp->type), expr->loc);
     }
