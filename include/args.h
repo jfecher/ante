@@ -28,12 +28,12 @@ namespace ante {
     };
 
     struct CompilerArgs {
-        vector<ante::Argument*> args;
+        vector<Argument*> args;
         vector<string> inputFiles;
 
-        void addArg(ante::Argument *a);
-        bool hasArg(ante::Args a) const;
-        ante::Argument* getArg(Args a) const;
+        void addArg(Argument *a);
+        bool hasArg(Args a) const;
+        Argument* getArg(Args a) const;
         bool empty() const;
     };
 

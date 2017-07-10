@@ -1,4 +1,5 @@
 #include "function.h"
+namespace ante {
 
 /*
  * Transforms t into a parameter type if need be.
@@ -799,7 +800,7 @@ TypedValue* compFnWithArgs(Compiler *c, FuncDecl *fd, vector<TypeNode*> args){
 
     if(tc->res == TypeCheckResult::SuccessWithTypeVars)
         return compTemplateFn(c, fd, tc, toList(args));
-    else if(!tc)
+    else if(!tc) //tc->res == TypeCheckResult::Failure
         return nullptr;
     else if(fd->tv)
         return fd->tv;
@@ -913,3 +914,5 @@ inline void Compiler::registerFunction(FuncDeclNode *fn){
     compUnit->fnDecls[fn->basename].push_front(fd);
     mergedCompUnits->fnDecls[fn->basename].push_front(fd);
 }
+
+} //end of namespace ante

@@ -6,6 +6,8 @@
 //defined in lexer.cpp
 extern char* lextxt;
 
+namespace ante {
+
 Node* setRoot(Node* root);
 Node* getRoot();
 Node* setNext(Node* cur, Node* nxt);
@@ -60,5 +62,7 @@ Node* mkForNode(LOC_TY loc, Node* var, Node* range, Node* body);
 Node* mkFuncDeclNode(LOC_TY loc, Node* s, Node *b, Node* mods, Node* tExpr, Node* p, Node* body);
 Node* mkDataDeclNode(LOC_TY loc, char* s, Node *p, Node* b);
 Node* mkTraitNode(LOC_TY loc, char* s, Node* fns);
+
+}
 
 #endif

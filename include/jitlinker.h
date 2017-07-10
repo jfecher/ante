@@ -3,6 +3,8 @@
 
 #include "compiler.h"
 
-unique_ptr<Compiler> wrapFnInModule(Compiler *c, string &basename, string &mangledName);
+namespace ante {
+    unique_ptr<Compiler> wrapFnInModule(Compiler *c, string &basename, string &mangledName);
+}
 
 #endif

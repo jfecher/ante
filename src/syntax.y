@@ -14,17 +14,19 @@
 
 #include "yyparser.h"
 #include <cstring>
+using namespace ante;
 
 /* Defined in lexer.cpp */
 extern int yylex(yy::parser::semantic_type*, yy::location*);
 
-extern string typeNodeToStr(const TypeNode*);
+namespace ante {
+    extern string typeNodeToStr(const TypeNode*);
 
-struct TypeNode;
+    struct TypeNode;
+}
 
 Node* tnToFnName(Node *n);
 Node* mangle_fn(Node *base, Node *nvns);
-
 
 /*namespace ante{
     extern void error(string& msg, const char *fileName, unsigned int row, unsigned int col);
@@ -766,10 +768,11 @@ void yy::parser::error(const location& loc, const string& msg){
     ante::error(msg.c_str(), l);
 } 
 
-
-string mangle(std::string &base, TypeNode *paramTys);
-TypeNode* createFnTyNode(NamedValNode *params, TypeNode *retTy);
-TypeNode* mkAnonTypeNode(TypeTag t);
+namespace ante {
+    string mangle(std::string &base, TypeNode *paramTys);
+    TypeNode* createFnTyNode(NamedValNode *params, TypeNode *retTy);
+    TypeNode* mkAnonTypeNode(TypeTag t);
+}
 
 Node* tnToFnName(Node *n){
     auto *tn = (TypeNode*)n;

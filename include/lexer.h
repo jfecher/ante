@@ -9,9 +9,9 @@
 #include <map>
 using namespace std;
 
-struct Node;
+namespace ante { struct Node; }
 #ifndef YYSTYPE
-#  define YYSTYPE Node*
+#  define YYSTYPE ante::Node*
 #endif
 #include "yyparser.h"
 

@@ -1,5 +1,6 @@
 #include <types.h>
 
+namespace ante {
 
 char getBitWidthOfTypeTag(const TypeTag ty){
     switch(ty){
@@ -358,7 +359,7 @@ TypedValue* Compiler::implicitlyWidenNum(TypedValue *num, TypeTag castTy){
                 );
             }
 
-        //int -> flt, flt -> int is never implicit
+        //int -> flt, (flt -> int is never implicit)
         }else if(lIsInt and rIsFlt){
             return new TypedValue(
                 isUnsignedTypeTag(num->type->type)
@@ -1169,3 +1170,5 @@ string llvmTypeToStr(Type *ty){
     }
     return "(Unknown type)";
 }
+
+} //end of namespace ante

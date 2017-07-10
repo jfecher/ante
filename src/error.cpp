@@ -1,6 +1,7 @@
 #include "compiler.h"
 #include "target.h"
 #include "error.h"
+namespace ante {
 
 /* 
  * Skips input in a given istream until it encounters the given coordinates,
@@ -111,7 +112,7 @@ void printFileNameAndLineNumber(const yy::location& loc){
     clearColor();
 }
 
-void ante::error(const char* msg, const yy::location& loc, ErrorType t){
+void error(const char* msg, const yy::location& loc, ErrorType t){
     printFileNameAndLineNumber(loc);
 
     cout << '\t' << flush;
@@ -131,33 +132,31 @@ void ante::error(const char* msg, const yy::location& loc, ErrorType t){
     cout << endl << endl;
 }
 
-namespace ante {
-    void error(ante::lazy_printer strs, const yy::location& loc, ErrorType t){
-        printFileNameAndLineNumber(loc);
+void error(lazy_printer strs, const yy::location& loc, ErrorType t){
+    printFileNameAndLineNumber(loc);
+
+    cout << '\t' << flush;
+    printErrorTypeColor(t);
+
+    if(t == ErrorType::Error)
+        cout << "error: ";
+    else if(t == ErrorType::Warning)
+        cout << "warning: ";
+    else if(t == ErrorType::Note)
+        cout << "note: ";
+
+    clearColor();
+    cout << strs << endl;
     
-        cout << '\t' << flush;
-        printErrorTypeColor(t);
-
-        if(t == ErrorType::Error)
-            cout << "error: ";
-        else if(t == ErrorType::Warning)
-            cout << "warning: ";
-        else if(t == ErrorType::Note)
-            cout << "note: ";
-
-        clearColor();
-        cout << strs << endl;
-        
-        printErrLine(loc, t);
-        cout << endl << endl;
-    }
+    printErrLine(loc, t);
+    cout << endl << endl;
 }
 
 
 /*
  *  Inform the user of an error and return nullptr.
  */
-TypedValue* Compiler::compErr(ante::lazy_printer msg, const yy::location& loc, ErrorType t){
+TypedValue* Compiler::compErr(lazy_printer msg, const yy::location& loc, ErrorType t){
     error(msg, loc, t);
     if(t == ErrorType::Error){
         errFlag = true;
@@ -180,3 +179,5 @@ lazy_str typeNodeToColoredStr(const unique_ptr<TypeNode>& tn){
         s.fmt = AN_TYPE_COLOR;
     return s;
 }
+
+} //end of namespace ante

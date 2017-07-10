@@ -6,6 +6,7 @@
 #include <llvm/ExecutionEngine/Interpreter.h>
 #include <llvm/Linker/Linker.h>
 
+namespace ante {
 
 TypedValue* Compiler::compAdd(TypedValue *l, TypedValue *r, BinOpNode *op){
     switch(l->type->type){
@@ -1358,21 +1359,6 @@ TypedValue* Compiler::compLogicalAnd(Node *lexpr, Node *rexpr, BinOpNode *op){
 }
 
 
-TypedValue* Compiler::opImplementedForTypes(int op, TypeNode *l, TypeNode *r){
-    if(isNumericTypeTag(l->type) && isNumericTypeTag(r->type)){
-        switch(op){
-            case '+': case '-': case '*': case '/': case '%': return (TypedValue*)1;
-        }
-    }
-
-    string ls = typeNodeToStr(l);
-    string rs = typeNodeToStr(r);
-    string baseName = Lexer::getTokStr(op);
-    string fullName = baseName + "_" + ls + "_" + rs;
-    
-    return getFunction(baseName, fullName);
-}
-
 TypedValue* handlePrimitiveNumericOp(BinOpNode *bop, Compiler *c, TypedValue *lhs, TypedValue *rhs){
     switch(bop->op){
         case '+': return c->compAdd(lhs, rhs, bop);
@@ -1566,3 +1552,5 @@ TypedValue* UnOpNode::compile(Compiler *c){
     
     return c->compErr("Unknown unary operator " + Lexer::getTokStr(op), loc);
 }
+
+} // end of namespace ante

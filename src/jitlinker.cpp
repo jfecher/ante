@@ -5,7 +5,7 @@
  * and only linking needed functions.
  */
 #include "jitlinker.h"
-
+namespace ante {
 
 /*
  * Returns a new module containing shallow copies of the given module's
@@ -184,3 +184,5 @@ unique_ptr<Compiler> wrapFnInModule(Compiler *c, string &basename, string &mangl
     appendModifiers(cds, fn->fdn->modifiers);
     return ccpy;
 }
+
+} // end of namespace ante

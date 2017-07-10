@@ -20,6 +20,8 @@
 
 using namespace llvm;
 
+namespace ante {
+
 /**
  * @param tup The head of the list
  *
@@ -2177,3 +2179,5 @@ Compiler::~Compiler(){
 	passManager.release();
 	module.release();
 }
+
+} //end of namespace ante

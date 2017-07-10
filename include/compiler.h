@@ -19,311 +19,318 @@ using namespace llvm;
 using namespace std;
 
 
-extern TypeNode* copy(const TypeNode*);
-extern TypeNode* copy(const unique_ptr<TypeNode>&);
+namespace ante {
 
-/**
- * @brief A Value* and TypeNode* pair
- *
- * This is the main type used to represent a value in Ante
- */
-struct TypedValue {
-    Value *val;
-    unique_ptr<TypeNode> type;
+    extern TypeNode* copy(const TypeNode*);
+    extern TypeNode* copy(const unique_ptr<TypeNode>&);
 
-    TypedValue(Value *v, TypeNode *ty) : val(v), type(ty){}
-    
     /**
-     * @brief Constructs a TypedValue 
-     *
-     * @param v The Value to use
-     * @param ty The TypeNode here is copied, not moved
-     */
-    TypedValue(Value *v, unique_ptr<TypeNode> &ty) : val(v), type(copy(ty)){}
-    
-    Type* getType() const{ return val->getType(); }
-    /**
-     * @brief Returns true if the type of this TypedValue contains the given modifier
-     *
-     * @param m The TokTy value of the modifier to search for
-     */
-    bool hasModifier(int m) const{ return type->hasModifier(m); }
-    
-    /**
-     * @brief Prints type and value to stdout
-     */
-    void dump() const;
-};
+    * @brief A Value* and TypeNode* pair
+    *
+    * This is the main type used to represent a value in Ante
+    */
+    struct TypedValue {
+        Value *val;
+        unique_ptr<TypeNode> type;
 
-
-/**
- * @brief The result of a type check
- *
- * Can be one of three states: Failure, Success,
- * or SuccessWithTypeVars.
- *
- * SuccessWithTypeVars indicates the typecheck is only a
- * success if a typevar within is bound to a particular type.
- * For example the check of 't* and i32* would return this status.
- * Whenever SuccessWithTypeVars is set, the bindings field contains
- * the specific bindings that should be bound to the typevar term.
- */
-struct TypeCheckResult {
-    enum Result { Failure, Success, SuccessWithTypeVars };
-
-    //box internals for faster passing by value
-    struct Internals {
-        Result res;
-        unsigned int matches;
-        vector<pair<string,unique_ptr<TypeNode>>> bindings;
+        TypedValue(Value *v, TypeNode *ty) : val(v), type(ty){}
         
-        Internals() : res(Success), matches(0), bindings(){}
+        /**
+        * @brief Constructs a TypedValue 
+        *
+        * @param v The Value to use
+        * @param ty The TypeNode here is copied, not moved
+        */
+        TypedValue(Value *v, unique_ptr<TypeNode> &ty) : val(v), type(copy(ty)){}
+        
+        Type* getType() const{ return val->getType(); }
+        /**
+        * @brief Returns true if the type of this TypedValue contains the given modifier
+        *
+        * @param m The TokTy value of the modifier to search for
+        */
+        bool hasModifier(int m) const{ return type->hasModifier(m); }
+        
+        /**
+        * @brief Prints type and value to stdout
+        */
+        void dump() const;
     };
 
-    Internals *box;
-
-    TypeCheckResult successIf(bool b);
-    TypeCheckResult successIf(Result r);
-    TypeCheckResult success();
-    TypeCheckResult successWithTypeVars();
-    TypeCheckResult failure();
-
-    bool failed();
-
-    bool operator!(){return box->res == Failure;}
-    Internals* operator->(){return box;}
 
     /**
-     * @brief Searches for the suggested binding of a typevar
-     *
-     * @param s Name of the typevar to search for a binding for
-     *
-     * @return The binding if found, nullptr otherwise
-     */
-    TypeNode* getBindingFor(const string &s);
-    TypeCheckResult() : box(new Internals()){}
-    TypeCheckResult(const TypeCheckResult &r)  : box(r.box){}
-    TypeCheckResult(TypeCheckResult &&r)  : box(r.box){}
-};
+    * @brief The result of a type check
+    *
+    * Can be one of three states: Failure, Success,
+    * or SuccessWithTypeVars.
+    *
+    * SuccessWithTypeVars indicates the typecheck is only a
+    * success if a typevar within is bound to a particular type.
+    * For example the check of 't* and i32* would return this status.
+    * Whenever SuccessWithTypeVars is set, the bindings field contains
+    * the specific bindings that should be bound to the typevar term.
+    */
+    struct TypeCheckResult {
+        enum Result { Failure, Success, SuccessWithTypeVars };
 
+        //box internals for faster passing by value
+        struct Internals {
+            Result res;
+            unsigned int matches;
+            vector<pair<string,unique_ptr<TypeNode>>> bindings;
+            
+            Internals() : res(Success), matches(0), bindings(){}
+        };
 
-/**
- * @brief Base for typeeq
- *
- * Unlike typeEq, typeEqBase does not require a Compiler instance, but will not
- * properly handle typevars and certain data types without one.
- *
- * Should only be used in rare situations where you do not have a Compiler instance.
- *
- * @param l Type to check
- * @param r Type to check against
- * @param tcr This parameter is passed recursively, pass a TypeCheckResult::Success
- * if at the beginning of the chain
- * @param c Optional parameter to lookup data type definitions and typevars
- *
- * @return The resulting TypeCheckResult
- */
-TypeCheckResult typeEqBase(const TypeNode *l, const TypeNode *r, TypeCheckResult tcr, const Compiler *c = 0);
+        Internals *box;
 
+        TypeCheckResult successIf(bool b);
+        TypeCheckResult successIf(Result r);
+        TypeCheckResult success();
+        TypeCheckResult successWithTypeVars();
+        TypeCheckResult failure();
 
+        bool failed();
 
-//declare ante::Module for FuncDecl
-namespace ante { struct Module; }
+        bool operator!(){return box->res == Failure;}
+        Internals* operator->(){return box;}
 
-/**
- * @brief Contains information about a function that is not contained
- * within its FuncDeclNode.
- *
- * Holds the scope the function was compiled in, the value of the function
- * so it is not recompiled, the object type if it is a method along with any
- * generic parameters of the object, the module compiled in, and each return
- * instance for type checking.
- */
-struct FuncDecl {
-    FuncDeclNode *fdn;
-    unsigned int scope;
-    TypedValue *tv;
+        /**
+        * @brief Searches for the suggested binding of a typevar
+        *
+        * @param s Name of the typevar to search for a binding for
+        *
+        * @return The binding if found, nullptr otherwise
+        */
+        TypeNode* getBindingFor(const string &s);
+        TypeCheckResult() : box(new Internals()){}
+        TypeCheckResult(const TypeCheckResult &r)  : box(r.box){}
+        TypeCheckResult(TypeCheckResult &&r)  : box(r.box){}
+    };
 
-    TypeNode *obj;
-    vector<pair<string, TypeNode*>> obj_bindings;
-
-    shared_ptr<ante::Module> module;
-    vector<pair<TypedValue*,LOC_TY>> returns;
-
-    FuncDecl(FuncDeclNode *fn, unsigned int s, shared_ptr<ante::Module> mod, TypedValue *f=0) : fdn(fn), scope(s), tv(f), module(mod), returns(){}
-    ~FuncDecl(){ if(fdn){delete fdn;} delete tv; }
-};
-
-/**
- * @brief A TypedValue pair of the method and its object
- */
-struct MethodVal : public TypedValue {
-    TypedValue *obj;
-
-    MethodVal(TypedValue *o, TypedValue *f) : TypedValue(f->val, (f->type->type = TT_Method, f->type.get())), obj(o) {}
-};
-
-/**
- * @brief An individual tag of a tagged union along with the types it corresponds to
- */
-struct UnionTag {
-    string name;
-    unique_ptr<TypeNode> tyn;
-    unsigned short tag;
-    
-    UnionTag(string &n, TypeNode *ty, unsigned short t) : name(n), tyn(ty), tag(t){}
-};
-
-/**
- * @brief Holds the name of a trait and the functions needed to implement it
- */
-struct Trait {
-    string name;
-    vector<shared_ptr<FuncDecl>> funcs;
-};
-
-/**
- * @brief Contains information about a data type
- */
-struct DataType {
-    string name;
-    vector<string> fields;
-    vector<shared_ptr<UnionTag>> tags;
-    vector<shared_ptr<Trait>> traitImpls;
-    unique_ptr<TypeNode> tyn;
-    vector<shared_ptr<TypeNode>> generics;
-    map<string,Type*> llvmTypes;
-
-    DataType(string n, const vector<string> &f, TypeNode *ty) : name(n), fields(f), tyn(ty){}
-    ~DataType(){}
 
     /**
-     * @param field Name of the field to search for
-     *
-     * @return The index of the field on success, -1 on failure
-     */
-    int getFieldIndex(string &field) const {
-        for(unsigned int i = 0; i < fields.size(); i++)
-            if(field == fields[i])
-                return i;
-        return -1;
-    }
+    * @brief Base for typeeq
+    *
+    * Unlike typeEq, typeEqBase does not require a Compiler instance, but will not
+    * properly handle typevars and certain data types without one.
+    *
+    * Should only be used in rare situations where you do not have a Compiler instance.
+    *
+    * @param l Type to check
+    * @param r Type to check against
+    * @param tcr This parameter is passed recursively, pass a TypeCheckResult::Success
+    * if at the beginning of the chain
+    * @param c Optional parameter to lookup data type definitions and typevars
+    *
+    * @return The resulting TypeCheckResult
+    */
+    TypeCheckResult typeEqBase(const TypeNode *l, const TypeNode *r, TypeCheckResult tcr, const Compiler *c = 0);
+
+
+
+    //declare ante::Module for FuncDecl
+    struct Module;
 
     /**
-     * @return True if this DataType is actually a tag type
-     */
-    bool isUnionTag() const {
-        return fields.size() > 0 and fields[0][0] >= 'A' and fields[0][0] <= 'Z';
-    }
+    * @brief Contains information about a function that is not contained
+    * within its FuncDeclNode.
+    *
+    * Holds the scope the function was compiled in, the value of the function
+    * so it is not recompiled, the object type if it is a method along with any
+    * generic parameters of the object, the module compiled in, and each return
+    * instance for type checking.
+    */
+    struct FuncDecl {
+        FuncDeclNode *fdn;
+        unsigned int scope;
+        TypedValue *tv;
+
+        TypeNode *obj;
+
+        /** @brief Any generic parameters the obj may have */
+        vector<pair<string, TypeNode*>> obj_bindings;
+
+        shared_ptr<Module> module;
+        vector<pair<TypedValue*,LOC_TY>> returns;
+
+        FuncDecl(FuncDeclNode *fn, unsigned int s, shared_ptr<Module> mod, TypedValue *f=0) : fdn(fn), scope(s), tv(f), module(mod), returns(){}
+        ~FuncDecl(){ if(fdn){delete fdn;} delete tv; }
+    };
 
     /**
-     * @brief Gets the name of the parent union type
-     *
-     * Will fail if this DataType is not a union tag and contains no fields.
-     * Use isUnionTag before calling this function if unsure.
-     *
-     * @return The name of the DataType containing this UnionTag
-     */
-    string getParentUnionName() const {
-        return fields[0];
-    }
+    * @brief A TypedValue pair of the method and its object
+    */
+    struct MethodVal : public TypedValue {
+        TypedValue *obj;
+
+        MethodVal(TypedValue *o, TypedValue *f) : TypedValue(f->val, (f->type->type = TT_Method, f->type.get())), obj(o) {}
+    };
 
     /**
-     * @brief Returns the UnionTag value of a tag within the union type.
-     *
-     * This function assumes the tag is within the type. The 0 returned
-     * on failure is indistinguishable from a tag of value 0 and will be
-     * changed to an exception at a later date.
-     *
-     * @param name Name of the tag to search for
-     *
-     * @return the value of the tag found, or 0 on failure
-     */
-    unsigned short getTagVal(string &name){
-        for(auto& tag : tags){
-            if(tag->name == name){
-                return tag->tag;
-            }
+    * @brief An individual tag of a tagged union along with the types it corresponds to
+    */
+    struct UnionTag {
+        string name;
+        unique_ptr<TypeNode> tyn;
+        unsigned short tag;
+        
+        UnionTag(string &n, TypeNode *ty, unsigned short t) : name(n), tyn(ty), tag(t){}
+    };
+
+    /**
+    * @brief Holds the name of a trait and the functions needed to implement it
+    */
+    struct Trait {
+        string name;
+        vector<shared_ptr<FuncDecl>> funcs;
+    };
+
+    /**
+    * @brief Contains information about a data type
+    */
+    struct DataType {
+        string name;
+        /** @brief Names of each field. */
+        vector<string> fields;
+        vector<shared_ptr<UnionTag>> tags;
+        vector<shared_ptr<Trait>> traitImpls;
+
+        /** @brief If this is a tagged union, tyn will contain each union member in its extTy */
+        unique_ptr<TypeNode> tyn;
+        vector<shared_ptr<TypeNode>> generics;
+        
+        /** @brief Types are lazily translated into their llvm::Type counterpart to better support
+        * generics and prevent the need of forward-decls */
+        map<string,Type*> llvmTypes;
+
+        DataType(string n, const vector<string> &f, TypeNode *ty) : name(n), fields(f), tyn(ty){}
+        ~DataType(){}
+
+        /**
+        * @param field Name of the field to search for
+        *
+        * @return The index of the field on success, -1 on failure
+        */
+        int getFieldIndex(string &field) const {
+            for(unsigned int i = 0; i < fields.size(); i++)
+                if(field == fields[i])
+                    return i;
+            return -1;
         }
-        //TODO: throw exception
-        return 0;
-    }
-};
 
-struct Variable {
-    string name;
-    
+        /**
+        * @return True if this DataType is actually a tag type
+        */
+        bool isUnionTag() const {
+            return fields.size() > 0 and fields[0][0] >= 'A' and fields[0][0] <= 'Z';
+        }
+
+        /**
+        * @brief Gets the name of the parent union type
+        *
+        * Will fail if this DataType is not a union tag and contains no fields.
+        * Use isUnionTag before calling this function if unsure.
+        *
+        * @return The name of the DataType containing this UnionTag
+        */
+        string getParentUnionName() const {
+            return fields[0];
+        }
+
+        /**
+        * @brief Returns the UnionTag value of a tag within the union type.
+        *
+        * This function assumes the tag is within the type. The 0 returned
+        * on failure is indistinguishable from a tag of value 0 and will be
+        * changed to an exception at a later date.
+        *
+        * @param name Name of the tag to search for
+        *
+        * @return the value of the tag found, or 0 on failure
+        */
+        unsigned short getTagVal(string &name){
+            for(auto& tag : tags){
+                if(tag->name == name){
+                    return tag->tag;
+                }
+            }
+            //TODO: throw exception
+            return 0;
+        }
+    };
+
+    struct Variable {
+        string name;
+        
+        /**
+        * @brief The value assigned to the variable
+        */
+        unique_ptr<TypedValue> tval;
+        unsigned int scope;
+
+        /** @brief Flag for managed pointers.  Currently unused */
+        bool noFree;
+        
+        /**
+        * @brief Set to true if this variable is an implicit pointer.
+        * Used by mutable variables.
+        */
+        bool autoDeref;
+
+        Value* getVal() const{
+            return tval->val;
+        }
+
+        TypeTag getType() const{
+            return tval->type->type;
+        }
+
+        /**
+        * @return True if this is a managed pointer
+        */
+        bool isFreeable() const{
+            return tval->type? tval->type->type == TT_Ptr && !noFree : false;
+        }
+
+        /**
+        * @brief Variable constructor
+        *
+        * @param n Name of variable
+        * @param tv Value of variable
+        * @param s Scope of variable
+        * @param nofr True if the variable should not be free'd
+        * @param autoDr True if the variable should be autotomatically dereferenced
+        */
+        Variable(string n, TypedValue *tv, unsigned int s, bool nofr=true, bool autoDr=false) : name(n), tval(tv), scope(s), noFree(nofr), autoDeref(autoDr){}
+    };
+
     /**
-     * @brief The value assigned to the variable
-     */
-    unique_ptr<TypedValue> tval;
-    unsigned int scope;
-    bool noFree;
-    
-    /**
-     * @brief Set to true if this variable is an implicit pointer.
-     * Used by mutable variables.
-     */
-    bool autoDeref;
+    * @brief Holds a c++ function
+    *
+    * Used to represent compiler API functions and call them
+    * with compile-time constants as arguments
+    */
+    struct CtFunc {
+        void *fn;
+        vector<TypeNode*> params;
+        unique_ptr<TypeNode> retty;
 
-    Value* getVal() const{
-        return tval->val;
-    }
+        size_t numParams() const { return params.size(); }
+        bool typeCheck(vector<TypeNode*> &args);
+        bool typeCheck(vector<TypedValue*> &args);
+        CtFunc(void* fn);
+        CtFunc(void* fn, TypeNode *retTy);
+        CtFunc(void* fn, TypeNode *retTy, vector<TypeNode*> params);
 
-    TypeTag getType() const{
-        return tval->type->type;
-    }
+        ~CtFunc(){ for(auto *tv : params) delete tv; }
 
-    /**
-     * @return True if this is a managed pointer
-     */
-    bool isFreeable() const{
-        return tval->type? tval->type->type == TT_Ptr && !noFree : false;
-    }
+        void* operator()();
+        void* operator()(TypedValue *tv);
+        void* operator()(Compiler *c, TypedValue *tv);
+        void* operator()(TypedValue *p1, TypedValue *p2);
+    };
 
-    /**
-     * @brief Variable constructor
-     *
-     * @param n Name of variable
-     * @param tv Value of variable
-     * @param s Scope of variable
-     * @param nofr True if the variable should not be free'd
-     * @param autoDr True if the variable should be autotomatically dereferenced
-     */
-    Variable(string n, TypedValue *tv, unsigned int s, bool nofr=true, bool autoDr=false) : name(n), tval(tv), scope(s), noFree(nofr), autoDeref(autoDr){}
-};
-
-/**
- * @brief Holds a c++ function
- *
- * Used to represent compiler API functions and call them
- * with compile-time constants as arguments
- */
-struct CtFunc {
-    void *fn;
-    vector<TypeNode*> params;
-    unique_ptr<TypeNode> retty;
-
-    size_t numParams() const { return params.size(); }
-    bool typeCheck(vector<TypeNode*> &args);
-    bool typeCheck(vector<TypedValue*> &args);
-    CtFunc(void* fn);
-    CtFunc(void* fn, TypeNode *retTy);
-    CtFunc(void* fn, TypeNode *retTy, vector<TypeNode*> params);
-
-    ~CtFunc(){ for(auto *tv : params) delete tv; }
-
-    void* operator()();
-    void* operator()(TypedValue *tv);
-    void* operator()(Compiler *c, TypedValue *tv);
-    void* operator()(TypedValue *p1, TypedValue *p2);
-};
-
-
-//forward-declare location for compErr and ante::err
-namespace yy{ class location; }
-
-namespace ante{
 
     struct Compiler;
 
@@ -332,7 +339,7 @@ namespace ante{
      */
     struct Module {
         string name;
-       
+
         /**
          * @brief Each declared function in the module
          */
@@ -354,7 +361,7 @@ namespace ante{
         *
         * @param m module to merge into this
         */
-        void import(shared_ptr<ante::Module> m);
+        void import(shared_ptr<Module> m);
     };
 
     /**
@@ -389,26 +396,20 @@ namespace ante{
         unique_ptr<RootNode> ast;
         IRBuilder<> builder;
 
-        /**
-         * @brief functions and type definitions of current module
-         */
-        shared_ptr<ante::Module> compUnit;
+        /** @brief functions and type definitions of current module */
+        shared_ptr<Module> compUnit;
 
-        /**
-         * @brief all functions and type definitions visible to current module
-         */
-        shared_ptr<ante::Module> mergedCompUnits;
+        /** @brief all functions and type definitions visible to current module */
+        shared_ptr<Module> mergedCompUnits;
 
-        /**
-         * @brief all imported modules
-         */
-        vector<shared_ptr<ante::Module>> imports;
+        /** @brief all imported modules */
+        vector<shared_ptr<Module>> imports;
         
         /**
          * @brief every single compiled module, even ones invisible to the current
          * compilation unit.  Prevents recompilation of modules
          */
-        shared_ptr<unordered_map<string, shared_ptr<ante::Module>>> allCompiledModules;
+        shared_ptr<unordered_map<string, shared_ptr<Module>>> allCompiledModules;
         
         /**
          * @brief Stack of variables mapped to their identifier.
@@ -499,13 +500,54 @@ namespace ante{
         void processArgs(CompilerArgs *args);
         
         //binop functions
+        /**
+         * @brief Emits an add instruction
+         *
+         * Operator overloads are not taken into account and should be handled beforehand.
+         * l and r must be the same type.
+         *
+         * @param op The + Node used for error reporting
+         *
+         * @return The resulting add instruction
+         */
         TypedValue* compAdd(TypedValue *l, TypedValue *r, BinOpNode *op);
         TypedValue* compSub(TypedValue *l, TypedValue *r, BinOpNode *op);
         TypedValue* compMul(TypedValue *l, TypedValue *r, BinOpNode *op);
         TypedValue* compDiv(TypedValue *l, TypedValue *r, BinOpNode *op);
         TypedValue* compRem(TypedValue *l, TypedValue *r, BinOpNode *op);
+        
+        /**
+         * @brief Compiles an extract operation such as array#index
+         *
+         * Operator overloads are not taken into account and should be handled beforehand.
+         *
+         * @param l The container to extract from
+         * @param r The index to extract
+         * @param op The # operator used for error reporting
+         *
+         * @return The result of the extraction
+         */
         TypedValue* compExtract(TypedValue *l, TypedValue *r, BinOpNode *op);
+        
+        /**
+         * @brief Compiles an insert operation such as array#index = 2
+         *
+         * @param insertOp The # operator containing the lhs of the assignment
+         * @param assignExpr The rhs of the assignment
+         *
+         * @return A void literal
+         */
         TypedValue* compInsert(BinOpNode *insertOp, Node *assignExpr);
+        
+        /**
+         * @brief Compiles a named member access such as str.len
+         *
+         * @param ln The value or type/module being accessed
+         * @param field Name of the desired field/method
+         * @param binop Location of the . operator for error reporting
+         *
+         * @return The extracted field or method
+         */
         TypedValue* compMemberAccess(Node *ln, VarNode *field, BinOpNode *binop);
         TypedValue* compLogicalOr(Node *l, Node *r, BinOpNode *op);
         TypedValue* compLogicalAnd(Node *l, Node *r, BinOpNode *op);
@@ -515,7 +557,7 @@ namespace ante{
          *
          * @param t Type of message to report, either Error, Warning, or Note
          */
-        TypedValue* compErr(ante::lazy_printer msg, const yy::location& loc, ErrorType t = ErrorType::Error);
+        TypedValue* compErr(lazy_printer msg, const yy::location& loc, ErrorType t = ErrorType::Error);
 
         /**
         * @brief JIT compiles a function with no arguments and calls it afterward
@@ -534,19 +576,68 @@ namespace ante{
         *        error reporting.
         */
         void importFile(const char *name, Node* locNode = 0);
+        
+        /** @brief Sets the tv of the FuncDecl specified to the value of f */
         void updateFn(TypedValue *f, string &name, string &mangledName);
         FuncDecl* getCurrentFunction() const;
+        
+        /** @brief Returns the exact function specified if found or nullptr if not */
         TypedValue* getFunction(string& name, string& mangledName);
-        list<shared_ptr<FuncDecl>>& getFunctionList(string& name) const;
-        FuncDecl* getFuncDecl(string bn, string mangledName);
-        TypedValue* callFn(string fn, vector<TypedValue*> args);
 
+        /** @brief Returns a list of all functions with the specified name */
+        list<shared_ptr<FuncDecl>>& getFunctionList(string& name) const;
+        
+        /** @brief Returns the exact FuncDecl specified if found or nullptr if not */
+        FuncDecl* getFuncDecl(string bn, string mangledName);
+
+        /** @brief Emits and returns a function call */
+        TypedValue* callFn(string fnBaseName, vector<TypedValue*> args);
+
+        /**
+         * @brief Retrieves the function specified
+         *
+         * Automatically binds generic functions and
+         * Performs argument deduction if necessary
+         *
+         * @param name Basename of function to search for
+         * @param args Types of each argument in case multiple functions are found
+         *
+         * @return The specified function or nullptr
+         */
         TypedValue* getMangledFn(string name, vector<TypeNode*> args);
+        
+        /**
+         * @brief Returns the init method of a type
+         *
+         * @param from_ty Tuple of argument types
+         * @param to_ty Type to cast to
+         * @param fd Optional FuncDecl of cast function to use if already found
+         *
+         * @return The compiled cast function or nullptr if not found
+         */
         TypedValue* getCastFn(TypeNode *from_ty, TypeNode *to_ty, FuncDecl *fd = 0);
+        
+        /**
+         * @brief Retrieves the FuncDecl specified
+         *
+         * @param name Basename of function to search for
+         * @param args Argument types if multiple functions are found
+         *
+         * @return The FuncDecl if found or nullptr if not
+         */
         FuncDecl* getMangledFuncDecl(string name, vector<TypeNode*> args);
         FuncDecl* getCastFuncDecl(TypeNode *from_ty, TypeNode *to_ty);
         
+        /** @brief Compiles a function with inferred return type */
         TypedValue* compLetBindingFn(FuncDecl *fdn, vector<Type*> &paramTys);
+
+        /**
+         * @brief Compiles any non-generic function
+         *
+         * Generic functions (indicated by a typecheck returning
+         * TypeCheckResult::SuccessWithTypeVars) should be compiled
+         * with compTemplateFn which calls this function internally.
+         */
         TypedValue* compFn(FuncDecl *fn);
         void registerFunction(FuncDeclNode *func);
 
@@ -611,18 +702,60 @@ namespace ante{
         */
         void stoTypeVar(string &name, TypeNode *ty);
 
+        /**
+         * @brief Searches through tn and replaces any typevars inside with
+         * their definition from a lookup if found.
+         *
+         * Care must be taken so that the resulting TypeNode not escape the
+         * scope of the typevars in the lookup.  Thus, this function should
+         * not be used for TypeNodes that may be reused at lower scopes.
+         */
         void searchAndReplaceBoundTypeVars(TypeNode* tn) const;
 
         Type* typeNodeToLlvmType(const TypeNode *tyNode);
+        
+        /** @brief Performs a type check against l and r */
         TypeCheckResult typeEq(const TypeNode *l, const TypeNode *r) const;
+        
+        /**
+         * @brief Performs a type check against l and r
+         *
+         * Used for function parameters and similar situations where typevars
+         * across multiple type checks need to be consistent.  Eg. a function
+         * of type ('t, 't)->void should not match the arguments i32 and u64.
+         * Performing a typecheck on each argument separately would give a different
+         * bound value for 't.  Using this function would result in the appropriate
+         * TypeCheckResult::Failure
+         */
         TypeCheckResult typeEq(vector<TypeNode*> l, vector<TypeNode*> r) const;
+        
+        /**
+         * @brief Expands any TT_Data -typed nodes inside of tn to contain their
+         * constituent types.  Does not expand any nodes pointed to by a pointer
+         * type to avoid infinite recursion.
+         */
         void expand(TypeNode *tn);
     
-        TypedValue* opImplementedForTypes(int op, TypeNode *l, TypeNode *r);
+        /**
+         * @brief Performs an implicit widening
+         *
+         * @param num Integer to widen
+         * @param castTy Type to widen to
+         *
+         * @return The widened integer
+         */
         TypedValue* implicitlyWidenNum(TypedValue *num, TypeTag castTy);
+        
+        /** @brief Mutates numerical arguments to match types if possible */
         void handleImplicitConversion(TypedValue **lhs, TypedValue **rhs);
+        
+        /** @brief Mutates integer arguments to match types if not already */
         void implicitlyCastIntToInt(TypedValue **lhs, TypedValue **rhs);
+        
+        /** @brief Mutates floating-point arguments to match types if not already */
         void implicitlyCastFltToFlt(TypedValue **lhs, TypedValue **rhs);
+        
+        /** @brief Mutates an integer to a float */
         void implicitlyCastIntToFlt(TypedValue **tval, Type *ty);
         
         /**
@@ -648,28 +781,35 @@ namespace ante{
         */
         static int linkObj(string inFiles, string outFile);
     };
+
+    /**
+    * @brief Retrieves the Nth node of a list
+    *
+    * Does not check if list contains at least n nodes
+    *
+    * @param node The head of the list
+    * @param n Index of the node to return
+    *
+    * @return The nth node from the list
+    */
+    Node* getNthNode(Node *node, size_t n);
+
+    /** @brief Counts the amount of Nodes in the list */
+    size_t getTupleSize(Node *tup);
+
+    /** @brief Converts the Node list argument into a vector */
+    template<typename T> vector<T*> vectorize(T *args);
+
+    /** @brief Extracts the type of each arg into a TypeNode vector */
+    vector<TypeNode*> toTypeNodeVector(vector<TypedValue*> &tvs);
+
+    string mangle(string &base, vector<TypeNode*> params);
+    string mangle(string &base, TypeNode *paramTys);
+    string mangle(string &base, TypeNode *p1, TypeNode *p2);
+    string mangle(string &base, TypeNode *p1, TypeNode *p2, TypeNode *p3);
+
+    string removeFileExt(string file);
+
 }
 
-/**
- * @brief Retrieves the Nth node of a list
- *
- * Does not check if list contains at least n nodes
- *
- * @param node The head of the list
- * @param n Index of the node to return
- *
- * @return The nth node from the list
- */
-Node* getNthNode(Node *node, size_t n);
-size_t getTupleSize(Node *tup);
-
-template<typename T> vector<T*> vectorize(T *args);
-vector<TypeNode*> toTypeNodeVector(vector<TypedValue*> &tvs);
-
-string mangle(string &base, vector<TypeNode*> params);
-string mangle(string &base, TypeNode *paramTys);
-string mangle(string &base, TypeNode *p1, TypeNode *p2);
-string mangle(string &base, TypeNode *p1, TypeNode *p2, TypeNode *p3);
-
-string removeFileExt(string file);
 #endif
