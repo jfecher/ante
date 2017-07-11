@@ -386,10 +386,14 @@ TypedValue* doReinterpretCast(Compiler *c, TypeNode *castTyn, TypedValue *valToC
 
         if(isUnion) return createUnionVariantCast(c, valToCast, to_tyn, res.dataTy, res.typeCheck);
         else        return new TypedValue(valToCast->val, to_tyn);
-    }        
+    }
 }
 
 bool preferCastOverFunction(Compiler *c, TypedValue *valToCast, ReinterpretCastResult &res, FuncDecl *fd){
+    FuncDecl *curFn = c->getCurrentFunction();
+    if(curFn->fdn and curFn->fdn->name == fd->fdn->name)
+        return true;
+
     auto *fnTy = createFnTyNode(fd->fdn->params.get(), mkAnonTypeNode(TT_Void));
     auto *params = (TypeNode*)fnTy->extTy->next.get();
     
