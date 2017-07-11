@@ -1365,15 +1365,18 @@ TypedValue* MatchNode::compile(Compiler *c){
                 auto *tagtycpy = copy(tagTy->tyn);
                 
                 //bindGenericToType(structty, lval->type->params);
-
                 auto tcr = c->typeEq(parentTy->tyn.get(), lval->type.get());
+                //cout << "\tTypecheck between " << typeNodeToStr(parentTy->tyn.get()) << " and " << typeNodeToStr(lval->type.get()) << endl;
 
-                if(tcr->res == TypeCheckResult::SuccessWithTypeVars)
+                if(tcr->res == TypeCheckResult::SuccessWithTypeVars){
+                    cout << "  binding " << typeNodeToStr(tagtycpy) << endl;
                     bindGenericToType(tagtycpy, tcr->bindings);
-                else if(tcr->res == TypeCheckResult::Failure)
+                    cout << "  bound" << typeNodeToStr(tagtycpy) << endl;
+                }else if(tcr->res == TypeCheckResult::Failure)
                     return c->compErr("Cannot bind pattern of type " + typeNodeToColoredStr(parentTy->tyn.get()) +
                             " to matched value of type " + typeNodeToColoredStr(lval->type), tn->rval->loc);
-                
+               
+                //cout << "Done with match\n";
                 //cast it from (<tag type>, <largest union member type>) to (<tag type>, <this union member's type>)
                 auto *tupTy = StructType::get(*c->ctxt, {Type::getInt8Ty(*c->ctxt), c->typeNodeToLlvmType(tagtycpy)});
 

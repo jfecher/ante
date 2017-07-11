@@ -538,8 +538,6 @@ TypedValue* compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, TypeN
     string mangled = mangle(fd->fdn->basename, fd->fdn->params.get());
     if(TypedValue *fn = c->getFunction(fd->fdn->basename, mangled))
         return fn;
-    else
-        cout << "Couldnt find " << fd->fdn->basename << ", " << mangled << endl;
 
     string oldName = fd->fdn->name;
     fd->fdn->name = mangled;
@@ -664,8 +662,6 @@ FuncDecl* Compiler::getCurrentFunction() const{
 void Compiler::updateFn(TypedValue *f, string &name, string &mangledName){
     auto &list = mergedCompUnits->fnDecls[name];
     auto *fd = getFuncDeclFromList(list, mangledName);
-
-    cout << "Updating " << name << ", " << mangledName << " with " << f << " (fd = " << fd << ")\n";
     fd->tv = new TypedValue(f->val, f->type);
 }
 

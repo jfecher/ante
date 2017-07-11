@@ -766,6 +766,7 @@ TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *bino
                         bindGenericToType(dataTyn, tyn->params, dataTy);
                     }
 
+                    //cout << "    Bound " << typeNodeToStr(dataTyn) << endl;
 
                     TypeNode *indexTy = dataTyn->extTy.get();
 
