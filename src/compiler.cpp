@@ -1366,13 +1366,10 @@ TypedValue* MatchNode::compile(Compiler *c){
                 
                 //bindGenericToType(structty, lval->type->params);
                 auto tcr = c->typeEq(parentTy->tyn.get(), lval->type.get());
-                //cout << "\tTypecheck between " << typeNodeToStr(parentTy->tyn.get()) << " and " << typeNodeToStr(lval->type.get()) << endl;
 
-                if(tcr->res == TypeCheckResult::SuccessWithTypeVars){
-                    cout << "  binding " << typeNodeToStr(tagtycpy) << endl;
+                if(tcr->res == TypeCheckResult::SuccessWithTypeVars)
                     bindGenericToType(tagtycpy, tcr->bindings);
-                    cout << "  bound" << typeNodeToStr(tagtycpy) << endl;
-                }else if(tcr->res == TypeCheckResult::Failure)
+                else if(tcr->res == TypeCheckResult::Failure)
                     return c->compErr("Cannot bind pattern of type " + typeNodeToColoredStr(parentTy->tyn.get()) +
                             " to matched value of type " + typeNodeToColoredStr(lval->type), tn->rval->loc);
                
@@ -1959,7 +1956,7 @@ DataType* Compiler::lookupType(string tyname) const{
     }
 }
 
-DataType* Compiler::lookupType(TypeNode *tn) const{
+DataType* Compiler::lookupType(const TypeNode *tn) const{
     if(tn->typeName.empty())
         return lookupType(typeNodeToStr(tn));
     else

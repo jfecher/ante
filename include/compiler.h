@@ -674,7 +674,7 @@ namespace ante {
         *
         * @return The DataType* if found, otherwise nullptr
         */
-        DataType* lookupType(TypeNode *tn) const;
+        DataType* lookupType(const TypeNode *tn) const;
 
         /**
         * @brief Performs a lookup for the specified trait

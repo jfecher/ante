@@ -876,8 +876,23 @@ TypeCheckResult typeEqHelper(const Compiler *c, const TypeNode *l, const TypeNod
             }
 
             if(l->params.size() != r->params.size()){
+                DataType *dt = nullptr;
+                TypeNode *lc = (TypeNode*)l;
+                TypeNode *rc = (TypeNode*)r;
+
+                if(!l->extTy.get()){
+                    dt = c->lookupType(l);
+                    lc = copy(dt->tyn);
+                    bindGenericToType(lc, l->params, dt);
+                }
+                if(!r->extTy.get()){
+                    if(!dt)
+                        dt = c->lookupType(r);
+                    rc = copy(dt->tyn);
+                    bindGenericToType(rc, r->params, dt);
+                }
                 //Types not equal by differing amount of params, see if it is just a lack of a binding issue
-                return extTysEq(l, r, tcr, c);
+                return extTysEq(lc, rc, tcr, c);
             }
 
             //check each type param of generic tys
