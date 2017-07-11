@@ -987,6 +987,18 @@ string mangle(string &base, vector<TypeNode*> params){
     return name;
 }
 
+string mangle(string &base, NamedValNode *paramTys){
+    string name = base;
+    while(paramTys){
+        auto *tn = (TypeNode*)paramTys->typeExpr.get();
+        if(!tn) break;
+
+        if(tn->type != TT_Void)
+            name += "_" + typeNodeToStr(tn);
+        paramTys = (NamedValNode*)paramTys->next.get();
+    }
+    return name;
+}
 
 string mangle(string &base, TypeNode *paramTys){
     string name = base;

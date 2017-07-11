@@ -499,7 +499,7 @@ vector<TypeNode*> bindParams(NamedValNode *params, const vector<pair<string,uniq
     return oldParams;
 }
 
-void unbindParams(NamedValNode *params, vector<TypeNode*> replacements){
+void unbindParams(NamedValNode *params, vector<TypeNode*> &replacements){
     size_t i = 0;
     while(params){
         params->typeExpr.reset(replacements[i]);
@@ -534,6 +534,15 @@ TypedValue* compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, TypeN
     bindGenericToType(boundRetTy, tc->bindings);
     fd->fdn->type.reset(boundRetTy);
 
+    //test if bound variant is already compiled
+    string mangled = mangle(fd->fdn->basename, fd->fdn->params.get());
+    if(TypedValue *fn = c->getFunction(fd->fdn->basename, mangled))
+        return fn;
+    else
+        cout << "Couldnt find " << fd->fdn->basename << ", " << mangled << endl;
+
+    string oldName = fd->fdn->name;
+    fd->fdn->name = mangled;
 
     //compile the function normally (each typevar should now be
     //substituted with its checked type from the typecheck tc)
@@ -547,10 +556,12 @@ TypedValue* compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, TypeN
         }
         fd->fdn->type.reset(retTy);
         unbindParams(fd->fdn->params.get(), unboundParams);
+        fd->fdn->name = oldName;
         throw e;
     }
 
     auto ls = typeNodeToColoredStr(res->type.get());
+    fd->fdn->name = oldName;
 
     //cleanup, reset bindings
     while(fd->obj_bindings.size() > tmp_bindings_loc){
@@ -654,12 +665,7 @@ void Compiler::updateFn(TypedValue *f, string &name, string &mangledName){
     auto &list = mergedCompUnits->fnDecls[name];
     auto *fd = getFuncDeclFromList(list, mangledName);
 
-    //TODO: free me first
-    //
-    //NOTE: fd here is shared between compUnit and mergedCompUnit modules
-    //      so one update will update across each module
-    //
-    //copy the type
+    cout << "Updating " << name << ", " << mangledName << " with " << f << " (fd = " << fd << ")\n";
     fd->tv = new TypedValue(f->val, f->type);
 }
 
@@ -717,6 +723,7 @@ TypeNode* toList(vector<TypeNode*> &nodes){
             cur = begin;
         }
     }
+
     return begin;
 }
     
@@ -746,10 +753,8 @@ FuncDecl* Compiler::getMangledFuncDecl(string name, vector<TypeNode*> args){
     if(candidates.empty()) return 0;
 
     //if there is only one function now, return it.  It will be typechecked later
-    if(candidates.size() == 1){
+    if(candidates.size() == 1)
         return candidates.front().get();
-
-    }
 
     //check for an exact match on the remaining candidates.
     string fnName = mangle(name, args);

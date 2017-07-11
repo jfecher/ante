@@ -804,6 +804,7 @@ namespace ante {
     vector<TypeNode*> toTypeNodeVector(vector<TypedValue*> &tvs);
 
     string mangle(string &base, vector<TypeNode*> params);
+    string mangle(string &base, NamedValNode *paramTys);
     string mangle(string &base, TypeNode *paramTys);
     string mangle(string &base, TypeNode *p1, TypeNode *p2);
     string mangle(string &base, TypeNode *p1, TypeNode *p2, TypeNode *p3);
