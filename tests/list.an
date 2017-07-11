@@ -21,9 +21,7 @@ fun append: mut List<'t>* l, 't elem
 fun print: List<'t>* l
     print l.elem
     match l.next with
-    | Some n ->
-        Ante.debug n
-        print n
+    | Some n -> print n
 
 
 var head = new List 0
