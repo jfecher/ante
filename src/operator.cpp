@@ -390,13 +390,15 @@ TypedValue* doReinterpretCast(Compiler *c, TypeNode *castTyn, TypedValue *valToC
 }
 
 bool preferCastOverFunction(Compiler *c, TypedValue *valToCast, ReinterpretCastResult &res, FuncDecl *fd){
-    auto *params = (TypeNode*)fd->tv->type->extTy->next.get();
+    auto *fnTy = createFnTyNode(fd->fdn->params.get(), mkAnonTypeNode(TT_Void));
+    auto *params = (TypeNode*)fnTy->extTy->next.get();
     
     auto *args = valToCast->type->type == TT_Tuple
                ? valToCast->type->extTy.get()
                : valToCast->type.get();
 
     auto tc = c->typeEq(vectorize(params), vectorize(args));
+    delete params;
     return tc->matches >= res.typeCheck->matches;
 }
 
