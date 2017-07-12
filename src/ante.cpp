@@ -12,6 +12,11 @@
 #include <llvm/Support/TargetRegistry.h>
 using namespace ante;
 
+/**
+ * @brief Parses a file and prints the resulting parse tree
+ *
+ * @param fileName The file to parse
+ */
 void parseFile(string &fileName){
     //parse and print parse tree
     setLexer(new Lexer(&fileName));
@@ -30,6 +35,9 @@ void parseFile(string &fileName){
     }
 }
 
+/**
+ * @brief Outputs the help message explaining command line options.
+ */
 void printHelp(){
     puts("Compiler for the Ante programming language\n");
     puts("Usage: ante [options] <inputs>");

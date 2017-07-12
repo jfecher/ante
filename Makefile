@@ -35,18 +35,18 @@ DEPFILES := $(OBJFILES:.o=.d)
 .DEFAULT: ante
 
 ante: obj obj/parser.o $(OBJFILES) $(ANOBJFILES)
-	if [ ! -e obj/f16.ao ]; then $(MAKE) bootante; fi
+	@if [ ! -e obj/f16.ao ]; then $(MAKE) bootante; fi
 	@echo Linking...
 	@$(CXX) obj/parser.o $(OBJFILES) $(ANOBJFILES) $(LLVMFLAGS) -o ante
 
 bootante: obj obj/parser.o $(OBJFILES) $(ANOBJFILES)
 	@echo Bootstrapping f16.ao...
-	$(CXX) -DF16_BOOT $(CPPFLAGS) -MMD -MP -Iinclude -c src/operator.cpp -o obj/operator.o
-	$(CXX) -DAN_LIB_DIR="\"stdlib/\"" -DF16_BOOT $(CPPFLAGS) -MMD -MP -Iinclude -c src/compiler.cpp -o obj/compiler.o
-	$(CXX) obj/parser.o $(OBJFILES) $(LLVMFLAGS) -o bootante
-	./bootante -lib -c src/f16.an -o obj/f16.ao
-	rm obj/operator.o obj/compiler.o
-	$(MAKE) obj/operator.o obj/compiler.o
+	@$(CXX) -DF16_BOOT $(CPPFLAGS) -MMD -MP -Iinclude -c src/operator.cpp -o obj/operator.o
+	@$(CXX) -DAN_LIB_DIR="\"stdlib/\"" -DF16_BOOT $(CPPFLAGS) -MMD -MP -Iinclude -c src/compiler.cpp -o obj/compiler.o
+	@$(CXX) obj/parser.o $(OBJFILES) $(LLVMFLAGS) -o bootante
+	@./bootante -lib -c src/f16.an -o obj/f16.ao
+	@rm obj/operator.o obj/compiler.o
+	@$(MAKE) obj/operator.o obj/compiler.o
 
 
 #export the stdlib to /usr/include/ante

@@ -20,19 +20,30 @@
 
 using namespace llvm;
 
+namespace ante {
 
+/**
+ * @param tup The head of the list
+ *
+ * @return The length of the Node list
+ */
 size_t getTupleSize(Node *tup){
     size_t size = 0;
     while(tup){
-        tup = tup->next.get();
         size++;
+        tup = tup->next.get();
     }
+    
     return size;
 }
 
-/*
- *  Returns nth node from list.
- *  Does not check if list contains at least n nodes
+/**
+ * @brief Does not check if list contains at least n nodes
+ *
+ * @param node The head of the list
+ * @param n Index of the node to return
+ *
+ * @return The nth node from the list
  */
 Node* getNthNode(Node *node, size_t n){
     for(; n > 0; n--)
@@ -40,19 +51,25 @@ Node* getNthNode(Node *node, size_t n){
     return node;
 }
 
-/*
- *  Compiles a statement list and returns its last statement.
+/**
+ * @brief Compiles a list of expressions
+ *
+ * @param nList The list to compile
+ *
+ * @return The value of the last expression
  */
 TypedValue* compileStmtList(Node *nList, Compiler *c){
     TypedValue *ret = nullptr;
-    while(nList){
-        ret = nList->compile(c);
-        nList = nList->next.get();
+    for(Node *n : *nList){
+        ret = n->compile(c);
     }
     return ret;
 }
 
 
+/**
+ * @return True if the TypeTag is an unsigned integer type
+ */
 bool isUnsignedTypeTag(const TypeTag tt){
     return tt==TT_U8||tt==TT_U16||tt==TT_U32||tt==TT_U64||tt==TT_Usz;
 }
@@ -84,11 +101,20 @@ TypedValue* BoolLitNode::compile(Compiler *c){
 }
 
 
+/**
+ * @brief this is a stub.  ModNodes should be handled manually in DeclNode::compile methods
+ */
 TypedValue* ModNode::compile(Compiler *c){
     return nullptr;
 }
 
 
+/**
+ * @brief Compiles a TypeNode
+ *
+ * @return The tag value if this node is a union tag, otherwise it returns
+ *         a compile-time value of type Type
+ */
 TypedValue* TypeNode::compile(Compiler *c){
     //check for enum value
     if(type == TT_Data || type == TT_TaggedUnion){
@@ -156,6 +182,9 @@ rettype:
 }
 
 
+/**
+ * @brief Compiles all top-level import expressions
+ */
 void scanImports(Compiler *c, RootNode *r){
     for(auto &n : r->imports){
         try{
@@ -166,6 +195,15 @@ void scanImports(Compiler *c, RootNode *r){
     }
 }
 
+/**
+ * @brief Compiles a Str literal that contains 1+ sites of string interpolation.
+ * Concatenates
+ *
+ * @param sln The string literal to compile
+ * @param pos The index of the first instance of ${ in the string
+ *
+ * @return The resulting concatenated Str
+ */
 TypedValue* compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
     //get the left part of the string
     string l = sln->val.substr(0, pos);
@@ -319,13 +357,10 @@ TypedValue* ArrayNode::compile(Compiler *c){
     return new TypedValue(val, tyn);
 }
 
-/*
- *  Return a void literal.
+/**
+ * @brief Creates and returns a literal of type void
  *
- *  Llvm does not have a void value to use, so an undef value is
- *  returned as the typedvalue's val instead.  The val itself is
- *  unimportant so long as it is both a no-op and is able to be
- *  properly dyn_casted (so a nullptr is out of question)
+ * @return A void literal
  */
 TypedValue* Compiler::getVoidLiteral(){
     return new TypedValue(
@@ -389,6 +424,11 @@ TypedValue* TupleNode::compile(Compiler *c){
 }
 
 
+/**
+ * @brief Compiles a tuple's elements and returns them in a vector
+ *
+ * @return A vector of a tuple's elements 
+ */
 vector<TypedValue*> TupleNode::unpack(Compiler *c){
     vector<TypedValue*> ret;
     for(auto& n : exprs){
@@ -418,6 +458,9 @@ TypedValue* RetNode::compile(Compiler *c){
 }
 
 
+/*
+ * TODO: implement for abitrary compile-time Str expressions
+ */
 TypedValue* ImportNode::compile(Compiler *c){
     if(!dynamic_cast<StrLitNode*>(expr.get())) return 0;
 
@@ -586,13 +629,17 @@ TypedValue* BlockNode::compile(Compiler *c){
 }
 
 
-//Since parameters are managed in Compiler::compfn, this need not do anything
+/**
+ *  @brief This is a stub.  Compilation of parameters is handled within Compiler::compFn
+ */
 TypedValue* NamedValNode::compile(Compiler *c)
 { return nullptr; }
 
 
-/*
- *  Loads a variable from the stack
+/**
+ * @brief Performs a lookup for an identifier and returns its value if found
+ *
+ * @return The value of the variable
  */
 TypedValue* VarNode::compile(Compiler *c){
     auto *var = c->lookup(name);
@@ -639,12 +686,10 @@ TypedValue* LetBindingNode::compile(Compiler *c){
     bool isGlobal = false;
 
     //add the modifiers to the typedvalue
-    Node *mod = modifiers.get();
-    while(mod){
-        int m = ((ModNode*)mod)->mod;
+    for(Node *n : *modifiers){
+        int m = ((ModNode*)n)->mod;
         val->type->addModifier(m);
         if(m == Tok_Global) isGlobal = true;
-        mod = mod->next.get();
     }
 
     if(isGlobal){
@@ -665,6 +710,14 @@ TypedValue* LetBindingNode::compile(Compiler *c){
     return val;
 }
 
+/**
+ * @brief Helper function to compile a VarDeclNode with no specified type.
+ *        Matches the type of the variable with the init expression's type.
+ *
+ * @param node The declaration expression
+ *
+ * @return The newly-declared variable with an inferred type
+ */
 TypedValue* compVarDeclWithInferredType(VarDeclNode *node, Compiler *c){
     TypedValue *val = node->expr->compile(c);
     if(val->type->type == TT_Void)
@@ -672,13 +725,12 @@ TypedValue* compVarDeclWithInferredType(VarDeclNode *node, Compiler *c){
                 " value to a variable", node->expr->loc);
 
     bool isGlobal = false;
+    
     //Add all of the declared modifiers to the typedval
-    Node *mod = node->modifiers.get();
-    while(mod){
-        int m = ((ModNode*)mod)->mod;
+    for(Node *n : *node->modifiers){
+        int m = ((ModNode*)n)->mod;
         val->type->addModifier(m);
         if(m == Tok_Global) isGlobal = true;
-        mod = mod->next.get();
     }
 
     //set the value as mutable
@@ -726,13 +778,12 @@ TypedValue* VarDeclNode::compile(Compiler *c){
     Type *ty = c->typeNodeToLlvmType(tyNode);
 
     bool isGlobal = false;
+    
     //Add all of the declared modifiers to the typedval
-    Node *mod = modifiers.get();
-    while(mod){
-        int m = ((ModNode*)mod)->mod;
+    for(Node *n : *modifiers){
+        int m = ((ModNode*)n)->mod;
         tyNode->addModifier(m);
         if(m == Tok_Global) isGlobal = true;
-        mod = mod->next.get();
     }
 
     if(!tyNode->hasModifier(Tok_Mut))
@@ -770,9 +821,13 @@ TypedValue* VarDeclNode::compile(Compiler *c){
     }
 }
 
-/*
- *  Simple wrapper function for compInsert to insert into a named field
- *  instead of an index
+/**
+ * @brief Compiles an insertion operand into a named field. eg. str#len = 2
+ *
+ * @param bop The field extract that is the lhs of the insertion expression
+ * @param expr The rhs of the insertion expression
+ *
+ * @return A void literal
  */
 TypedValue* compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
     VarNode *field = static_cast<VarNode*>(bop->rval.get());
@@ -858,6 +913,11 @@ TypedValue* compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
     return c->compErr("Method/Field " + field->name + " not found in type " + typeNodeToColoredStr(tyn), bop->loc);
 }
 
+/**
+ * @brief Compiles an assign expression of an already-declared variable
+ *
+ * @return A void literal
+ */
 TypedValue* VarAssignNode::compile(Compiler *c){
     //If this is an insert value (where the lval resembles var[index] = ...)
     //then this must be instead compiled with compInsert, otherwise the [ operator
@@ -890,8 +950,6 @@ TypedValue* VarAssignNode::compile(Compiler *c){
 
     //and finally, make sure the assigned value matches the variable's type
     if(!c->typeEq(tmp->type.get(), assignExpr->type.get())){
-        tmp->dump();
-        assignExpr->dump();
         return c->compErr("Cannot assign expression of type " + typeNodeToColoredStr(assignExpr->type)
                     + " to a variable of type " + typeNodeToColoredStr(tmp->type), expr->loc);
     }
@@ -903,11 +961,23 @@ TypedValue* VarAssignNode::compile(Compiler *c){
     return c->getVoidLiteral();
 }
 
+/**
+ * @brief This function is a stub.  PreProcNodes are handled along with ModNodes
+ * during variable declaration or function compiling.
+ */
 TypedValue* PreProcNode::compile(Compiler *c){
     return c->getVoidLiteral();
 }
 
 
+/**
+ * @brief Mangles a function name
+ *
+ * @param base The unmangled function name
+ * @param params The type of each parameter of the function
+ *
+ * @return The mangled version of the function name
+ */
 string mangle(string &base, vector<TypeNode*> params){
     string name = base;
     for(auto *tv : params){
@@ -917,6 +987,18 @@ string mangle(string &base, vector<TypeNode*> params){
     return name;
 }
 
+string mangle(string &base, NamedValNode *paramTys){
+    string name = base;
+    while(paramTys){
+        auto *tn = (TypeNode*)paramTys->typeExpr.get();
+        if(!tn) break;
+
+        if(tn->type != TT_Void)
+            name += "_" + typeNodeToStr(tn);
+        paramTys = (NamedValNode*)paramTys->next.get();
+    }
+    return name;
+}
 
 string mangle(string &base, TypeNode *paramTys){
     string name = base;
@@ -928,9 +1010,6 @@ string mangle(string &base, TypeNode *paramTys){
     return name;
 }
 
-//provide common mangle shortcuts.  Useful for checking
-//for operator overloads without needing to remove each Node->next
-//of each TypeNode of the op arguments
 string mangle(string &base, TypeNode *p1, TypeNode *p2){
     string name = base;
     string param1 = "_" + typeNodeToStr(p1);
@@ -948,17 +1027,23 @@ string mangle(string &base, TypeNode *p1, TypeNode *p2, TypeNode *p3){
     return name;
 }
 
-//Given a list of FuncDeclNodes, returns the function whose name
-//matches basename, or returns nullptr if not found.
-FuncDeclNode* findFDN(Node *n, string& basename){
-    while(n){
+/**
+ * @brief Given a list of FuncDeclNodes, returns the function whose name
+ *        matches basename, or returns nullptr if not found.
+ *
+ * @param list A list containing only FuncDeclNodes
+ * @param basename The basename of the function to search for
+ *
+ * @return The FuncDeclNode sharing the basename or nullptr if no matching
+ *         functions were found.
+ */
+FuncDeclNode* findFDN(Node *list, string& basename){
+    for(Node *n : *list){
         auto *fdn = (FuncDeclNode*)n;
         
         if(fdn->basename == basename){
             return fdn;
         }
-
-        n = n->next.get();
     }
     return nullptr;
 }
@@ -1040,6 +1125,9 @@ TypedValue* ExtNode::compile(Compiler *c){
     return c->getVoidLiteral();
 }
         
+/**
+ * @return True if a DataType implements the specified trait
+ */
 bool Compiler::typeImplementsTrait(DataType* dt, string traitName) const{
     for(auto& tr : dt->traitImpls)
         if(tr->name == traitName)
@@ -1048,6 +1136,11 @@ bool Compiler::typeImplementsTrait(DataType* dt, string traitName) const{
 }
 
 
+/**
+ * @brief A helper function to compile tagged union declarations
+ *
+ * @return A void literal
+ */
 TypedValue* compTaggedUnion(Compiler *c, DataDeclNode *n){
     vector<string> fieldNames;
     fieldNames.reserve(n->fields);
@@ -1184,6 +1277,13 @@ TypedValue* TraitNode::compile(Compiler *c){
 }
 
 
+/**
+ * @brief Compiles the global expression importing global vars.  This compiles
+ *        the statement-like version of a GlobalNode.  The modifier-like version
+ *        is handled along with other modifiers during a variable's declaration.
+ *
+ * @return The value of the last global brought into scope
+ */
 TypedValue* GlobalNode::compile(Compiler *c){
     TypedValue *ret = 0;
     for(auto &varName : vars){
@@ -1265,15 +1365,15 @@ TypedValue* MatchNode::compile(Compiler *c){
                 auto *tagtycpy = copy(tagTy->tyn);
                 
                 //bindGenericToType(structty, lval->type->params);
-
                 auto tcr = c->typeEq(parentTy->tyn.get(), lval->type.get());
 
-                if(tcr.res == TypeCheckResult::SuccessWithTypeVars)
-                    bindGenericToType(tagtycpy, tcr.bindings);
-                else if(tcr.res == TypeCheckResult::Failure)
+                if(tcr->res == TypeCheckResult::SuccessWithTypeVars)
+                    bindGenericToType(tagtycpy, tcr->bindings);
+                else if(tcr->res == TypeCheckResult::Failure)
                     return c->compErr("Cannot bind pattern of type " + typeNodeToColoredStr(parentTy->tyn.get()) +
                             " to matched value of type " + typeNodeToColoredStr(lval->type), tn->rval->loc);
-                
+               
+                //cout << "Done with match\n";
                 //cast it from (<tag type>, <largest union member type>) to (<tag type>, <this union member's type>)
                 auto *tupTy = StructType::get(*c->ctxt, {Type::getInt8Ty(*c->ctxt), c->typeNodeToLlvmType(tagtycpy)});
 
@@ -1346,11 +1446,21 @@ TypedValue* MatchNode::compile(Compiler *c){
 }
 
 
+/**
+ * @brief This is a stub until patterns are properly implemented
+ *
+ * @return A void literal
+ */
 TypedValue* MatchBranchNode::compile(Compiler *c){
     return c->getVoidLiteral();
 }
 
 
+/**
+ * @brief Merges two modules
+ *
+ * @param mod module to merge into this
+ */
 void ante::Module::import(shared_ptr<ante::Module> mod){
     for(auto& pair : mod->fnDecls)
         for(auto& fd : pair.second)
@@ -1363,10 +1473,7 @@ void ante::Module::import(shared_ptr<ante::Module> mod){
         traits[pair.first] = pair.second;
 }
 
-/*
- * imports a given ante file to the current module
- * inputted file must exist and be a valid ante source file.
- */
+
 void Compiler::importFile(const char *fName, Node *locNode){
     try{
         auto& module = allCompiledModules->at(fName);
@@ -1405,17 +1512,40 @@ void Compiler::importFile(const char *fName, Node *locNode){
 }
 
 
+/**
+ * @brief Creates and returns an anonymous TypeNode (one with
+ *        no location in the source file)
+ *
+ * @param t Value for the TypeNode's type field
+ *
+ * @return The newly created TypeNode
+ */
 TypeNode* mkAnonTypeNode(TypeTag t){
     auto fakeLoc = mkLoc(mkPos(0, 0, 0), mkPos(0, 0, 0));
     return new TypeNode(fakeLoc, t, "", nullptr);
 }
 
+/**
+ * @brief Creates and returns an anonymous TypeNode
+ *
+ * @param tt Value for the TypeNode's type field
+ * @param ext Value for the TypeNodes's extTy field
+ *
+ * @return The newly created TypeNode
+ */
 TypeNode* mkTypeNodeWithExt(TypeTag tt, TypeNode *ext){
     auto *p = mkAnonTypeNode(tt);
     p->extTy.reset(ext);
     return p;
 }
 
+/**
+ * @brief Creates and returns an anonymous TypeNode of type TT_Data
+ *
+ * @param tyname The name of the DataType referenced
+ *
+ * @return The newly created TypeNode
+ */
 TypeNode* mkDataTypeNode(string tyname){
     auto *d = mkAnonTypeNode(TT_Data);
     d->typeName = tyname;
@@ -1423,11 +1553,6 @@ TypeNode* mkDataTypeNode(string tyname){
 }
 
 
-/*
- *  Declares functions to be included in every module without need of an import.
- *  These are registered but not compiled until they are called so that they
- *  do not pollute the module with unused definitions.
- */
 void Compiler::compilePrelude(){
     if(fileName != AN_LIB_DIR "prelude.an"){
         importFile(AN_LIB_DIR "prelude.an");
@@ -1435,8 +1560,10 @@ void Compiler::compilePrelude(){
 }
 
 
-/*
- *  Removes .an from a source file to get its module name
+/**
+ * @brief Removes all text after the final . in a string
+ *
+ * @return The string with the file extension removed
  */
 string removeFileExt(string file){
     auto index = file.find_last_of('.');
@@ -1444,11 +1571,13 @@ string removeFileExt(string file){
 }
 
 
-/*
- * Creates a placeholder node that will not generate any code
- * if its compile method is called.
+/**
+ * @brief Creates a placeholder node that will not generate any code
+ *        if its compile method is called.
  *
  * Used for filling in gaps after parse tree modifications
+ *
+ * @return the placeholder node
  */
 Node* mkPlaceholderNode(){
     auto* empty = new string("");
@@ -1458,10 +1587,7 @@ Node* mkPlaceholderNode(){
     return new IntLitNode(fakeLoc, "0", TT_U8);
 }
 
-/*
- *  Sweeps through entire parse tree registering all function and data
- *  declarations.  Removes compiled functions.
- */
+
 void Compiler::scanAllDecls(RootNode *root){
     auto *n = root ? root : ast.get();
 
@@ -1498,8 +1624,6 @@ void Compiler::scanAllDecls(RootNode *root){
 	}
 }
 
-//evaluates and prints a single-expression module
-//Used in REPL
 void Compiler::eval(){
     string cmd = "";
     cout << "Ante REPL v0.0.1\nType 'exit' to exit.\n";
@@ -1529,6 +1653,7 @@ void Compiler::eval(){
         getline(cin, cmd);
     }
 }
+
 
 Function* Compiler::createMainFn(){
     Type* argcty = Type::getInt32Ty(*ctxt);
@@ -1627,7 +1752,6 @@ void Compiler::compileNative(){
     }
 }
 
-//returns 0 on success
 int Compiler::compileObj(string &outName){
     if(!compiled) compile();
 
@@ -1675,6 +1799,8 @@ TargetMachine* getTargetMachine(){
     
     return tm;
 }
+
+
 void Compiler::jitFunction(Function *f){
     if(!jit.get()){
         auto* eBuilder = new EngineBuilder(unique_ptr<llvm::Module>(module.get()));
@@ -1696,9 +1822,7 @@ void Compiler::jitFunction(Function *f){
         reinterpret_cast<void(*)()>(fn)();
 }
 
-/*
- *  Compiles a module into a .o file to be used for linking.
- */
+
 int Compiler::compileIRtoObj(llvm::Module *mod, string outFile){
     auto *tm = getTargetMachine();
 
@@ -1724,18 +1848,13 @@ int Compiler::compileIRtoObj(llvm::Module *mod, string outFile){
     return res;
 }
 
-/*
- *  Invoke linker to linke module
- */
+
 int Compiler::linkObj(string inFiles, string outFile){
     string cmd = AN_LINKER " " + inFiles + " -o " + outFile;
     return system(cmd.c_str());
 }
 
 
-/*
- *  Dumps current contents of module to stdout
- */
 void Compiler::emitIR(){
     if(!compiled) compile();
     if(errFlag) puts("Partially compiled module: \n");
@@ -1743,6 +1862,9 @@ void Compiler::emitIR(){
 }
     
 
+/**
+ * @brief Translates a TypeNode and its modifiers to a string
+ */
 string typeNodeToStrWithModifiers(TypeNode *tn){
     string ret = "";
     for(int m : tn->modifiers){
@@ -1751,8 +1873,8 @@ string typeNodeToStrWithModifiers(TypeNode *tn){
     return ret + typeNodeToStr(tn);
 }
 
-/*
- *  Prints type and value of TypeNode to stdout
+/**
+ * @brief Prints type and value of TypeNode to stdout
  */
 void TypedValue::dump() const{
     cout << "type:\t" << typeNodeToStrWithModifiers(type.get()) << endl
@@ -1834,7 +1956,7 @@ DataType* Compiler::lookupType(string tyname) const{
     }
 }
 
-DataType* Compiler::lookupType(TypeNode *tn) const{
+DataType* Compiler::lookupType(const TypeNode *tn) const{
     if(tn->typeName.empty())
         return lookupType(typeNodeToStr(tn));
     else
@@ -1857,6 +1979,15 @@ inline void Compiler::stoType(DataType *ty, string &typeName){
     mergedCompUnits->userTypes[typeName] = dt;
 }
 
+/**
+ * @brief Creates a pass manager and fills it with passes.
+ *
+ * @param m Module to create the psas manager for
+ * @param optLvl The optimization level in the range 0..3.
+ * Determines which passes should be added.
+ *
+ * @return The newly-created pass manager
+ */
 legacy::FunctionPassManager* mkPassManager(llvm::Module *m, char optLvl){
     auto *pm = new legacy::FunctionPassManager(m);
     if(optLvl > 0){
@@ -1884,14 +2015,13 @@ legacy::FunctionPassManager* mkPassManager(llvm::Module *m, char optLvl){
     return pm;
 }
 
-char* copy(const char* str){
-    size_t len = strlen(str);
-    char* cpy = new char[len+1];
-    strncpy(cpy, str, len);
-    cpy[len] = '\0';
-    return cpy;
-}
-
+/**
+ * @brief The main constructor for Compiler
+ *
+ * @param _fileName Name of the file being compiled
+ * @param lib Set to true if this module should be compiled as a library
+ * @param llvmCtxt The llvmCtxt possibly shared with another module
+ */
 Compiler::Compiler(const char *_fileName, bool lib, shared_ptr<LLVMContext> llvmCtxt) :
         ctxt(llvmCtxt ? llvmCtxt : shared_ptr<LLVMContext>(new LLVMContext())),
         builder(*ctxt), 
@@ -1943,6 +2073,16 @@ Compiler::Compiler(const char *_fileName, bool lib, shared_ptr<LLVMContext> llvm
     passManager.reset(mkPassManager(module.get(), optLvl));
 }
 
+/**
+ * @brief Constructor for a Compiler compiling a sub-module within the current file.  Currently only
+ * used for string interpolation.
+ *
+ * @param root The node to set as the root node (does not need to be a RootNode already)
+ * @param modName Name of the module being compiled
+ * @param fName Name of the file being compiled
+ * @param lib Set to true if this module should be compiled as a library
+ * @param llvmCtxt The llvmCtxt shared from the parent Module
+ */
 Compiler::Compiler(Node *root, string modName, string &fName, bool lib, shared_ptr<LLVMContext> llvmCtxt) :
         ctxt(llvmCtxt ? llvmCtxt : shared_ptr<LLVMContext>(new LLVMContext())),
         builder(*ctxt),
@@ -1971,6 +2111,7 @@ Compiler::Compiler(Node *root, string modName, string &fName, bool lib, shared_p
     //add passes to passmanager.
     passManager.reset(mkPassManager(module.get(), 3));
 }
+
 
 void Compiler::processArgs(CompilerArgs *args){
     string out = "";
@@ -2050,3 +2191,5 @@ Compiler::~Compiler(){
 	passManager.release();
 	module.release();
 }
+
+} //end of namespace ante

@@ -6,6 +6,7 @@
 #include "compiler.h"
 #include "yyparser.h"
 #include <stack>
+namespace ante {
 
 //stack of relative roots, eg. a FuncDeclNode's first statement would be set as the
 //relative root, where the last would be returned by the parser.  Relative roots are
@@ -156,6 +157,32 @@ Node* applyMods(Node *mods, Node *decls){
     return decls;
 }
 */
+
+NodeIterator Node::begin(){
+    return {this};
+}
+
+NodeIterator Node::end(){
+    return {nullptr};
+}
+
+NodeIterator NodeIterator::operator++(){
+    cur = cur->next.get();
+    return *this;
+}
+
+Node* NodeIterator::operator*(){
+    return cur;
+}
+
+bool NodeIterator::operator==(NodeIterator r){
+    return cur == r.cur;
+}
+
+bool NodeIterator::operator!=(NodeIterator r){
+    return cur != r.cur;
+}
+
 
 Node* mkGlobalNode(LOC_TY loc, Node* s){
     vector<unique_ptr<VarNode>> vars;
@@ -506,3 +533,5 @@ Node* mkMatchBranchNode(LOC_TY loc, Node* pattern, Node* branch){
 Node* mkTraitNode(LOC_TY loc, char* s, Node* fns){
     return new TraitNode(loc, s, fns);
 }
+
+} //end of namespace ante

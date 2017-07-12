@@ -1,4 +1,5 @@
 #include "function.h"
+namespace ante {
 
 /*
  * Transforms t into a parameter type if need be.
@@ -34,7 +35,7 @@ TypeNode* toTypeNodeList(vector<TypedValue*> &args){
 
 
 TypedValue* Compiler::callFn(string name, vector<TypedValue*> args){
-    TypedValue* fn = getMangledFunction(name, toTypeNodeVector(args));
+    TypedValue* fn = getMangledFn(name, toTypeNodeVector(args));
     if(!fn) return 0;
 
     //vector of llvm::Value*s for the call to CreateCall at the end
@@ -121,9 +122,9 @@ TypeNode* validateReturns(Compiler *c, FuncDecl *fd, TypeNode *retTy = 0){
                     typeNodeToColoredStr(matchTy), pair.second);
         }
 
-        if(tcr.res == TypeCheckResult::SuccessWithTypeVars){
+        if(tcr->res == TypeCheckResult::SuccessWithTypeVars){
             //TODO: copy type
-            bindGenericToType(ret->type.get(), tcr.bindings);
+            bindGenericToType(ret->type.get(), tcr->bindings);
             ret->val->mutateType(c->typeNodeToLlvmType(ret->type.get()));
 
             auto *ri = dyn_cast<ReturnInst>(ret->val);
@@ -498,7 +499,7 @@ vector<TypeNode*> bindParams(NamedValNode *params, const vector<pair<string,uniq
     return oldParams;
 }
 
-void unbindParams(NamedValNode *params, vector<TypeNode*> replacements){
+void unbindParams(NamedValNode *params, vector<TypeNode*> &replacements){
     size_t i = 0;
     while(params){
         params->typeExpr.reset(replacements[i]);
@@ -514,7 +515,7 @@ TypedValue* compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, TypeN
     //function's scope, but compFn sets this scope later on, so the needed bindings are
     //instead stored as fake obj bindings to be declared later in compFn
     size_t tmp_bindings_loc = fd->obj_bindings.size();
-    for(auto& pair : tc.bindings){
+    for(auto& pair : tc->bindings){
         fd->obj_bindings.push_back({pair.first, pair.second.get()});
     }
 
@@ -526,13 +527,20 @@ TypedValue* compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, TypeN
     }
 
     //swap out fn's generic params for the concrete arg types
-    auto unboundParams = bindParams(fd->fdn->params.get(), tc.bindings);
+    auto unboundParams = bindParams(fd->fdn->params.get(), tc->bindings);
     auto *retTy = (TypeNode*)fd->fdn->type.release();
 
     auto *boundRetTy = copy(retTy);
-    bindGenericToType(boundRetTy, tc.bindings);
+    bindGenericToType(boundRetTy, tc->bindings);
     fd->fdn->type.reset(boundRetTy);
 
+    //test if bound variant is already compiled
+    string mangled = mangle(fd->fdn->basename, fd->fdn->params.get());
+    if(TypedValue *fn = c->getFunction(fd->fdn->basename, mangled))
+        return fn;
+
+    string oldName = fd->fdn->name;
+    fd->fdn->name = mangled;
 
     //compile the function normally (each typevar should now be
     //substituted with its checked type from the typecheck tc)
@@ -546,10 +554,12 @@ TypedValue* compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, TypeN
         }
         fd->fdn->type.reset(retTy);
         unbindParams(fd->fdn->params.get(), unboundParams);
+        fd->fdn->name = oldName;
         throw e;
     }
 
     auto ls = typeNodeToColoredStr(res->type.get());
+    fd->fdn->name = oldName;
 
     //cleanup, reset bindings
     while(fd->obj_bindings.size() > tmp_bindings_loc){
@@ -558,6 +568,7 @@ TypedValue* compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, TypeN
     
     fd->fdn->type.reset(retTy);
     unbindParams(fd->fdn->params.get(), unboundParams);
+
     return res;
 }
 
@@ -651,13 +662,6 @@ FuncDecl* Compiler::getCurrentFunction() const{
 void Compiler::updateFn(TypedValue *f, string &name, string &mangledName){
     auto &list = mergedCompUnits->fnDecls[name];
     auto *fd = getFuncDeclFromList(list, mangledName);
-
-    //TODO: free me first
-    //
-    //NOTE: fd here is shared between compUnit and mergedCompUnit modules
-    //      so one update will update across each module
-    //
-    //copy the type
     fd->tv = new TypedValue(f->val, f->type);
 }
 
@@ -702,62 +706,60 @@ vector<T*> vectorize(T *args){
 }
 
 
-template<typename T>
-T* toList(vector<T*> &nodes){
-    T *begin = 0;
-    T *cur;
+TypeNode* toList(vector<TypeNode*> &nodes){
+    TypeNode *begin = 0;
+    TypeNode *cur;
 
     for(auto node : nodes){
         if(begin){
             cur->next.reset(copy(node));
-            cur = (T*)cur->next.get();
+            cur = (TypeNode*)cur->next.get();
         }else{
             begin = copy(node);
             cur = begin;
         }
     }
+
     return begin;
 }
+    
+vector<pair<TypeCheckResult,FuncDecl*>> filterHighestMatches(vector<pair<TypeCheckResult,FuncDecl*>> &matches){
+    unsigned int highestMatch = 0;
+    vector<pair<TypeCheckResult,FuncDecl*>> highestMatches;
+    
+    for(auto &tcr : matches){
+        if(tcr.first->matches >= highestMatch){
+            if(tcr.first->matches > highestMatch){
+                highestMatch = tcr.first->matches;
+                highestMatches.clear();
+            }
+            highestMatches.push_back(tcr);
+        }
+    }
+    return highestMatches;
+}
 
-
-TypedValue* Compiler::getMangledFunction(string name, vector<TypeNode*> args){
+FuncDecl* Compiler::getMangledFuncDecl(string name, vector<TypeNode*> args){
     auto& fnlist = getFunctionList(name);
     if(fnlist.empty()) return 0;
 
     auto argc = args.size();
 
-    auto candidates = filterByArgcAndScope(fnlist, argc, this->scope);
+    auto candidates = filterByArgcAndScope(fnlist, argc, scope);
     if(candidates.empty()) return 0;
 
     //if there is only one function now, return it.  It will be typechecked later
-    if(candidates.size() == 1){
-        auto& fd = candidates.front();
-
-        //must check if this functions is generic first
-        auto fnty = unique_ptr<TypeNode>(createFnTyNode(fd->fdn->params.get(), mkAnonTypeNode(TT_Void)));
-        auto *params = (TypeNode*)fnty->extTy->next.get();
-        auto tc = typeEq(vectorize(params), args);
-
-        if(tc.res == TypeCheckResult::SuccessWithTypeVars)
-            return compTemplateFn(this, fd.get(), tc, args[0]);
-        else if(!tc)
-            return nullptr;
-        else if(fd->tv)
-            return fd->tv;
-        else{
-            //fd->tv = compFn(fd.get());
-            return compFn(fd.get());
-        }
-    }
+    if(candidates.size() == 1)
+        return candidates.front().get();
 
     //check for an exact match on the remaining candidates.
     string fnName = mangle(name, args);
     auto *fd = getFuncDeclFromList(candidates, fnName);
     if(fd){ //exact match
-        if(!fd->tv){
-            //fd->tv = compFn(fd);
-            return compFn(fd);
-        }else return fd->tv;
+        if(!fd->tv)
+            fd->tv = compFn(fd);
+
+        return fd;
     }
 
     //Otherwise, determine which function to use by which needs the least
@@ -766,18 +768,53 @@ TypedValue* Compiler::getMangledFunction(string name, vector<TypeNode*> args){
     //
     //NOTE: the current implementation will return the first generic function that matches, not necessarily
     //      the most specific one.
+    
+    vector<pair<TypeCheckResult,FuncDecl*>> results;
+
     for(auto& fd : candidates){
         auto fnty = unique_ptr<TypeNode>(createFnTyNode(fd->fdn->params.get(), mkAnonTypeNode(TT_Void)));
         auto *params = (TypeNode*)fnty->extTy->next.get();
 
         auto tc = typeEq(vectorize(params), args);
-        if(!!tc){
-            return compTemplateFn(this, fd.get(), tc, toList(args));
-        }
+        results.push_back({tc, fd.get()});
     }
 
-    //TODO
-    return 0;
+    auto matches = filterHighestMatches(results);
+
+    //TODO: return typecheck infromation so it need not typecheck again in Compiler::getMangledFn
+    if(matches.size() == 1)
+        return matches[0].second;
+    
+    //TODO: possibly return all functions considered for better error checking
+    return nullptr;
+}
+
+
+/*
+ * Compile a possibly-generic function with given arg types
+ */
+TypedValue* compFnWithArgs(Compiler *c, FuncDecl *fd, vector<TypeNode*> args){
+    //must check if this functions is generic first
+    auto fnty = unique_ptr<TypeNode>(createFnTyNode(fd->fdn->params.get(), mkAnonTypeNode(TT_Void)));
+    auto *params = (TypeNode*)fnty->extTy->next.get();
+    auto tc = c->typeEq(vectorize(params), args);
+
+    if(tc->res == TypeCheckResult::SuccessWithTypeVars)
+        return compTemplateFn(c, fd, tc, toList(args));
+    else if(!tc) //tc->res == TypeCheckResult::Failure
+        return nullptr;
+    else if(fd->tv)
+        return fd->tv;
+    else
+        return c->compFn(fd);
+}
+
+
+TypedValue* Compiler::getMangledFn(string name, vector<TypeNode*> args){
+    auto *fd = getMangledFuncDecl(name, args);
+    if(!fd) return nullptr;
+        
+    return compFnWithArgs(this, fd, args);
 }
 
 
@@ -786,12 +823,26 @@ list<shared_ptr<FuncDecl>>& Compiler::getFunctionList(string& name) const{
 }
 
 
-TypedValue* Compiler::getCastFn(TypeNode *from_ty, TypeNode *to_ty){
-    string fnBaseName = (to_ty->params.empty() ? typeNodeToStr(to_ty) : to_ty->typeName) + "_init";
-    string mangledName = mangle(fnBaseName, from_ty);
+TypeNode* tupleToList(TypeNode *tup){
+    if(tup->type == TT_Tuple)
+        tup = tup->extTy.get();
+    else if(tup->type == TT_Void)
+        tup = nullptr;
+    
+    return tup;
+}
 
-    //Search for the exact function, otherwise there would be implicit casts calling several implicit casts on a single parameter
-    auto *fd = getFuncDecl(fnBaseName, mangledName);
+
+FuncDecl* Compiler::getCastFuncDecl(TypeNode *from_ty, TypeNode *to_ty){
+    string fnBaseName = getCastFnBaseName(to_ty);
+    TypeNode *argList = tupleToList(from_ty);
+    return getMangledFuncDecl(fnBaseName, vectorize(argList));
+}
+
+
+TypedValue* Compiler::getCastFn(TypeNode *from_ty, TypeNode *to_ty, FuncDecl *fd){
+    if(!fd)
+        fd = getCastFuncDecl(from_ty, to_ty);
 
     if(!fd) return nullptr;
     TypedValue *tv;
@@ -812,7 +863,9 @@ TypedValue* Compiler::getCastFn(TypeNode *from_ty, TypeNode *to_ty){
             i++;
         }
 
-        tv = compFn(fd);
+        //must check if this functions is generic first
+        auto *args = tupleToList(from_ty);
+        tv = compFnWithArgs(this, fd, vectorize(args));
 
         //TODO: if fd is a meta function that is a method of a generic object then the generic
         //      parameters of the object will be unbound here and untraceable when the function is
@@ -822,8 +875,10 @@ TypedValue* Compiler::getCastFn(TypeNode *from_ty, TypeNode *to_ty){
         fd->tv = nullptr;
     }else{
         tv = fd->tv;
-        if(!tv)
-            tv = compFn(fd);
+        if(!tv){
+            auto *args = tupleToList(from_ty);
+            tv = compFnWithArgs(this, fd, vectorize(args));
+        }
     }
     return tv;
 }
@@ -860,3 +915,5 @@ inline void Compiler::registerFunction(FuncDeclNode *fn){
     compUnit->fnDecls[fn->basename].push_front(fd);
     mergedCompUnits->fnDecls[fn->basename].push_front(fd);
 }
+
+} //end of namespace ante

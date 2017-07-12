@@ -256,7 +256,9 @@ char Lexer::peek() const{
     return cur;
 }
 
-extern yy::position mkPos(string*, unsigned int, unsigned int);
+namespace ante {
+    yy::position mkPos(string*, unsigned int, unsigned int);
+}
 
 yy::position Lexer::getPos(bool inclusiveEnd) const{
     return mkPos(fileName, row + rowOffset, col + colOffset -

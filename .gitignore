@@ -2,10 +2,12 @@
 *.ao
 *.d
 *.gch
+*.gch-*
 t.an
 u.an
 ante
 bootante
+syntax.tab.c
 src/parser.output
 src/parser.cpp
 include/*.hh

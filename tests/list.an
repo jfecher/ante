@@ -1,26 +1,31 @@
 
-//This list type does not allow for empty lists
-type List:'t = 't elem, (List:'t)* next
+type Maybe:'t =
+   | Some 't
+   | None
+
+type List:'t = 't elem, Maybe:((List:'t)*) next
 
 fun List:'t.init: 't elem -> List:'t
-    List(elem, void* 0)
+    List(elem, None)
 
 
-fun tail: List:'t l -> List:'t
-    if l.next == void* 0 then l
-    else tail(@l.next)
+fun tail: (List:'t)* l -> (List:'t)*
+    match l.next with
+    | Some t -> tail t
+    | None -> l
 
-fun append: List:'t l, 't elem
+fun append: mut (List:'t)* l, 't elem
     var t = tail l
-    t.next = new List elem
+    t.next = Some new List elem
 
-fun print: List:'t l
+fun print: (List:'t)* l
     print l.elem
-    if l.next != void* 0 then
-        print(@l.next)
+    match l.next with
+    | Some n -> print n
 
 
-var head = List 0
+var head = new List 0
+
 append head 1
 append head 2
 append head 3

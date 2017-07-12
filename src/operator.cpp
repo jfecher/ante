@@ -6,6 +6,7 @@
 #include <llvm/ExecutionEngine/Interpreter.h>
 #include <llvm/Linker/Linker.h>
 
+namespace ante {
 
 TypedValue* Compiler::compAdd(TypedValue *l, TypedValue *r, BinOpNode *op){
     switch(l->type->type){
@@ -251,8 +252,8 @@ TypedValue* createUnionVariantCast(Compiler *c, TypedValue *valToCast, TypeNode 
     dtcpy->type = TT_TaggedUnion;
     dtcpy->typeName = dataTy->getParentUnionName();
 
-    if(tyeq.res == TypeCheckResult::SuccessWithTypeVars){
-        bindGenericToType(dtcpy, tyeq.bindings);
+    if(tyeq->res == TypeCheckResult::SuccessWithTypeVars){
+        bindGenericToType(dtcpy, tyeq->bindings);
     }
 
     Type *variantTy = c->typeNodeToLlvmType(valToCast->type.get());
@@ -307,24 +308,138 @@ void updateBindings(vector<unique_ptr<TypeNode>>& params, const vector<pair<stri
 
 TypedValue* compMetaFunctionResult(Compiler *c, LOC_TY &loc, string &baseName, string &mangledName, vector<TypedValue*> &typedArgs);
 
+
+struct ReinterpretCastResult {
+    enum ReinterpretCastType {
+        NoCast,
+        ValToStruct,
+        ValToUnion,
+        ValToPrimitive
+    } type;
+
+    TypeCheckResult typeCheck;
+    DataType *dataTy;
+};
+
+/*
+ * Check if a reinterpret cast can be performed and return some
+ * information about the type of cast so that no double lookup
+ * is needed
+ */
+ReinterpretCastResult checkForReinterpretCast(Compiler *c, TypeNode *castTyn, TypedValue *valToCast){
+    auto *dataTy = c->lookupType(castTyn->typeName);
+    
+    if(dataTy and dataTy->tyn){
+        //The tyn of a DataType is always a tuple, so wrap the casting value with a
+        //tuple if it is not one already or else it will always fail type checking.
+        TypeNode *wrapper = valToCast->type->type != TT_Tuple and dataTy->tyn->type == TT_Tuple
+                           ? mkTypeNodeWithExt(TT_Tuple, valToCast->type.get())
+                           : valToCast->type.get();
+       
+        auto tc = c->typeEq(wrapper, dataTy->tyn.get());
+
+        if(!!tc){
+            if(dataTy->isUnionTag())
+                return {ReinterpretCastResult::ValToUnion, tc, dataTy};
+            else
+                return {ReinterpretCastResult::ValToStruct, tc, dataTy};
+        }
+    }
+
+    if(valToCast->type->typeName.size() > 0){
+        dataTy = c->lookupType(valToCast->type->typeName);
+        if(dataTy and dataTy->tyn){
+            TypeNode *wrapper = castTyn->type != TT_Tuple and dataTy->tyn->type == TT_Tuple
+                            ? mkTypeNodeWithExt(TT_Tuple, castTyn)
+                            : castTyn;
+       
+            auto tc = c->typeEq(dataTy->tyn.get(), wrapper);
+            if(!!tc){
+                return {ReinterpretCastResult::ValToPrimitive, tc, dataTy};
+            }
+        }
+    }
+
+    return {ReinterpretCastResult::NoCast, {}, nullptr};
+}
+
+
+TypedValue* doReinterpretCast(Compiler *c, TypeNode *castTyn, TypedValue *valToCast, ReinterpretCastResult *rcr = 0){
+    auto res = rcr ? *rcr : checkForReinterpretCast(c, castTyn, valToCast);
+
+    if(res.type == ReinterpretCastResult::NoCast){
+        return nullptr;
+
+    }else if(res.type == ReinterpretCastResult::ValToPrimitive){
+        return new TypedValue(valToCast->val, copy(castTyn));
+
+    }else{ //ValToUnion or ValToStruct
+        bool isUnion = res.type == ReinterpretCastResult::ValToUnion;
+        auto *to_tyn = copy(res.dataTy->tyn.get());
+        to_tyn->typeName = castTyn->typeName;
+        to_tyn->type = isUnion ? TT_TaggedUnion : TT_Data;
+
+        if(res.typeCheck->res == TypeCheckResult::SuccessWithTypeVars){
+            bindGenericToType(to_tyn, res.typeCheck->bindings);
+            updateBindings(to_tyn->params, res.typeCheck->bindings);
+        }
+
+        if(isUnion) return createUnionVariantCast(c, valToCast, to_tyn, res.dataTy, res.typeCheck);
+        else        return new TypedValue(valToCast->val, to_tyn);
+    }
+}
+
+bool preferCastOverFunction(Compiler *c, TypedValue *valToCast, ReinterpretCastResult &res, FuncDecl *fd){
+    FuncDecl *curFn = c->getCurrentFunction();
+    if(curFn->fdn and curFn->fdn->name == fd->fdn->name)
+        return true;
+
+    auto *fnTy = createFnTyNode(fd->fdn->params.get(), mkAnonTypeNode(TT_Void));
+    auto *params = (TypeNode*)fnTy->extTy->next.get();
+    
+    auto *args = valToCast->type->type == TT_Tuple
+               ? valToCast->type->extTy.get()
+               : valToCast->type.get();
+
+    auto tc = c->typeEq(vectorize(params), vectorize(args));
+    delete params;
+    return tc->matches >= res.typeCheck->matches;
+}
+
+
 /*
  *  Creates a cast instruction appropriate for valToCast's type to castTy.
  */
 TypedValue* createCast(Compiler *c, TypeNode *castTyn, TypedValue *valToCast){
     //first, see if the user created their own cast function
-    if(TypedValue *fn = c->getCastFn(valToCast->type.get(), castTyn)){
+    //
+    //NOTE: using getCastFuncDecl lets us not compile the function until after
+    //      we have determined it is the best cast available (otherwise whenever
+    //      a cast fn tries to call its default init we would have an infinite loop)
+    if(FuncDecl *fd = c->getCastFuncDecl(valToCast->type.get(), castTyn)){
         vector<Value*> args;
         if(valToCast->type->type != TT_Void) args.push_back(valToCast->val);
 
-        if(fn->type->type == TT_MetaFunction){
-            string baseName = getCastFnBaseName(castTyn);
-            string mangledName = mangle(baseName, valToCast->type.get());
-            vector<TypedValue*> args = {valToCast};
-            return compMetaFunctionResult(c, castTyn->loc, baseName, mangledName, args);
-        }
+        //Check if a cast matches the valToCast closer than the function args do
+        auto castResult = checkForReinterpretCast(c, castTyn, valToCast);
+        if(castResult.type != ReinterpretCastResult::NoCast){
+            if(preferCastOverFunction(c, valToCast, castResult, fd))
+                return doReinterpretCast(c, castTyn, valToCast, &castResult);
+        }       
 
-        auto *call = c->builder.CreateCall(fn->val, args);
-        return new TypedValue(call, fn->type->extTy);
+        //Compile the function now that we know to use it over a cast
+        auto *fn = c->getCastFn(valToCast->type.get(), castTyn, fd);
+        if(fn){
+            if(fn->type->type == TT_MetaFunction){
+                string baseName = getCastFnBaseName(castTyn);
+                string mangledName = mangle(baseName, valToCast->type.get());
+                vector<TypedValue*> args = {valToCast};
+                return compMetaFunctionResult(c, castTyn->loc, baseName, mangledName, args);
+            }
+
+            auto *call = c->builder.CreateCall(fn->val, args);
+            return new TypedValue(call, fn->type->extTy);
+        }
     }
 
     //otherwise, fallback on known conversions
@@ -376,59 +491,9 @@ TypedValue* createCast(Compiler *c, TypeNode *castTyn, TypedValue *valToCast){
         }
     }
 
-    //if all automatic checks fail, test for structural equality in a datatype cast!
-    //This would apply for the following scenario (and all structurally equivalent types)
-    //
-    //type Int = i32
-    //let example = Int 3
-    //              ^^^^^
-    auto *dataTy = c->lookupType(castTyn->typeName);
-
-    if(dataTy and dataTy->tyn){
-        //The tyn of a DataType is always a tuple, so wrap the casting value with a
-        //tuple if it is not one already or else it will always fail type checking.
-        TypeNode *wrapper = valToCast->type->type != TT_Tuple and dataTy->tyn->type == TT_Tuple
-                           ? mkTypeNodeWithExt(TT_Tuple, valToCast->type.get())
-                           : valToCast->type.get();
-       
-        auto tc = c->typeEq(wrapper, dataTy->tyn.get());
-
-        if(!!tc){
-            bool isUnion = dataTy->isUnionTag();
-
-            auto *to_tyn = copy(dataTy->tyn.get());
-            to_tyn->typeName = castTyn->typeName;
-            to_tyn->type = isUnion ? TT_TaggedUnion : TT_Data;
-
-            if(tc.res == TypeCheckResult::SuccessWithTypeVars){
-                bindGenericToType(to_tyn, tc.bindings);
-                updateBindings(to_tyn->params, tc.bindings);
-            }
-
-            if(isUnion)
-                return createUnionVariantCast(c, valToCast, to_tyn, dataTy, tc);
-            else
-                return new TypedValue(valToCast->val, to_tyn);
-        }
-    }
-    
-    //test for the reverse case, something like:  i32 example
-    //where example is of type Int
-    if(valToCast->type->typeName.size() > 0){
-        dataTy = c->lookupType(valToCast->type->typeName);
-        if(dataTy and dataTy->tyn){
-            TypeNode *wrapper = castTyn->type != TT_Tuple and dataTy->tyn->type == TT_Tuple
-                            ? mkTypeNodeWithExt(TT_Tuple, castTyn)
-                            : castTyn;
-        
-
-            if(!!c->typeEq(dataTy->tyn.get(), wrapper)){
-                return new TypedValue(valToCast->val, copy(castTyn));
-            }
-        }
-    }
- 
-    return nullptr;
+    //NOTE: doReinterpretCast only casts if a valid cast is found,
+    //      if no valid cast is found nullptr is returned
+    return doReinterpretCast(c, castTyn, valToCast);
 }
 
 TypedValue* TypeCastNode::compile(Compiler *c){
@@ -568,7 +633,7 @@ TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Ty
             }
         }
         
-        if(eq.res == TypeCheckResult::SuccessWithTypeVars){
+        if(eq->res == TypeCheckResult::SuccessWithTypeVars){
             bool tEmpty = thenVal->type->params.empty();
             bool eEmpty = elseVal->type->params.empty();
            
@@ -701,6 +766,7 @@ TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *bino
                         bindGenericToType(dataTyn, tyn->params, dataTy);
                     }
 
+                    //cout << "    Bound " << typeNodeToStr(dataTyn) << endl;
 
                     TypeNode *indexTy = dataTyn->extTy.get();
 
@@ -828,6 +894,16 @@ TypedValue* genericValueToTypedValue(Compiler *c, GenericValue gv, TypeNode *tn)
     return 0;
 }
 
+
+/*
+ * Returns the pointer value of a constant pointer type
+ */
+void* getConstPtr(Compiler *c, TypedValue *tv){
+    
+    return nullptr;
+}
+
+
 /*
  *  Converts a TypedValue to an llvm GenericValue
  *  - Assumes the Value* within the TypedValue is a Constant*
@@ -856,13 +932,45 @@ GenericValue typedValueToGenericValue(Compiler *c, TypedValue *tv){
             return ret;
         }
         case TT_F16:
-        case TT_F32:
-        case TT_F64:
-        case TT_Tuple:
-        case TT_Array:
+        case TT_F32: {
+            auto *cf = dyn_cast<ConstantFP>(tv->val);
+            if(!cf) break;
+            ret.FloatVal = cf->getValueAPF().convertToFloat();
+            return ret;
+        }
+        case TT_F64: {
+            auto *cf = dyn_cast<ConstantFP>(tv->val);
+            if(!cf) break;
+            ret.DoubleVal = cf->getValueAPF().convertToDouble();
+            return ret;
+        }
         case TT_Ptr:
+        case TT_Array: {
+            ret.PointerVal = getConstPtr(c, tv);
+            return ret;
+        }
+        case TT_Tuple: {
+            size_t i = 0;
+            for(auto *ty : *tv->type->extTy){
+                Value *extract = c->builder.CreateExtractValue(tv->val, i);
+                auto *field = new TypedValue(extract, copy((TypeNode*)&ty));
+                ret.AggregateVal.push_back(typedValueToGenericValue(c, field));
+                i++;
+            }
+            return ret;
+        }
+        case TT_TypeVar: {
+            auto *var = c->lookup(tv->type->typeName);
+            if(!var){
+                cerr << AN_ERR_COLOR << "error: " << AN_CONSOLE_RESET << "Lookup for typevar "+tv->type->typeName+" failed";
+                c->errFlag = true;
+                throw new CtError();
+            }
+
+            auto *boundTv = new TypedValue(tv->val, extractTypeValue(var->tval));
+            return typedValueToGenericValue(c, boundTv);
+        }
         case TT_Data:
-        case TT_TypeVar:
         case TT_Function:
         case TT_Method:
         case TT_TaggedUnion:
@@ -873,6 +981,7 @@ GenericValue typedValueToGenericValue(Compiler *c, TypedValue *tv){
     }
     
     cerr << AN_ERR_COLOR << "error: " << AN_CONSOLE_RESET << "Compile-time function argument must be constant.\n";
+    c->errFlag = true;
     return GenericValue(nullptr);
 }
 
@@ -1075,11 +1184,11 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
         //try to do module inference
         if(!typedArgs.empty()){
             string fnName = typeNodeToStr(typedArgs[0]->type.get()) + "_" + vn->name;
-            tvf = c->getMangledFunction(fnName, params);
+            tvf = c->getMangledFn(fnName, params);
         }
 
         //if the above fails, do regular name mangling only
-        if(!tvf) tvf = c->getMangledFunction(vn->name, params);
+        if(!tvf) tvf = c->getMangledFn(vn->name, params);
     }
 
     //if it is not a varnode/no method is found, then compile it normally
@@ -1257,21 +1366,6 @@ TypedValue* Compiler::compLogicalAnd(Node *lexpr, Node *rexpr, BinOpNode *op){
 }
 
 
-TypedValue* Compiler::opImplementedForTypes(int op, TypeNode *l, TypeNode *r){
-    if(isNumericTypeTag(l->type) && isNumericTypeTag(r->type)){
-        switch(op){
-            case '+': case '-': case '*': case '/': case '%': return (TypedValue*)1;
-        }
-    }
-
-    string ls = typeNodeToStr(l);
-    string rs = typeNodeToStr(r);
-    string baseName = Lexer::getTokStr(op);
-    string fullName = baseName + "_" + ls + "_" + rs;
-    
-    return getFunction(baseName, fullName);
-}
-
 TypedValue* handlePrimitiveNumericOp(BinOpNode *bop, Compiler *c, TypedValue *lhs, TypedValue *rhs){
     switch(bop->op){
         case '+': return c->compAdd(lhs, rhs, bop);
@@ -1341,7 +1435,7 @@ TypedValue* checkForOperatorOverload(Compiler *c, TypedValue *lhs, int op, Typed
     string mangledfn = mangle(basefn, lhs->type.get(), rhs->type.get());
 
     //now look for the function
-    auto *fn = c->getMangledFunction(basefn, {lhs->type.get(), rhs->type.get()});
+    auto *fn = c->getMangledFn(basefn, {lhs->type.get(), rhs->type.get()});
     if(!fn) return 0;
 
     TypeNode *param1 = (TypeNode*)fn->type->extTy->next.get();
@@ -1456,7 +1550,7 @@ TypedValue* UnOpNode::compile(Compiler *c){
 
                 //Create an upper-case name so it cannot be referenced normally
                 string tmpAllocName = "New_" + typeNodeToStr(rhs->type.get());
-                c->stoVar(tmpAllocName, new Variable(tmpAllocName, ret, c->scope, false /*always free*/));
+                c->stoVar(tmpAllocName, new Variable(tmpAllocName, ret, c->scope, true));
 
                 //return a copy of ret in case it is modified/freed
                 return new TypedValue(ret->val, ret->type);
@@ -1465,3 +1559,5 @@ TypedValue* UnOpNode::compile(Compiler *c){
     
     return c->compErr("Unknown unary operator " + Lexer::getTokStr(op), loc);
 }
+
+} // end of namespace ante

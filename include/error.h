@@ -1,9 +1,9 @@
 #ifndef AN_ERROR_H
 #define AN_ERROR_H
 
-struct Node;
+namespace ante { struct Node; }
 #ifndef YYSTYPE
-#  define YYSTYPE Node*
+#  define YYSTYPE ante::Node*
 #endif
 #include "yyparser.h"
 #include "lazystr.h"
