@@ -987,6 +987,18 @@ string mangle(string &base, vector<TypeNode*> params){
     return name;
 }
 
+string mangle(string &base, NamedValNode *paramTys){
+    string name = base;
+    while(paramTys){
+        auto *tn = (TypeNode*)paramTys->typeExpr.get();
+        if(!tn) break;
+
+        if(tn->type != TT_Void)
+            name += "_" + typeNodeToStr(tn);
+        paramTys = (NamedValNode*)paramTys->next.get();
+    }
+    return name;
+}
 
 string mangle(string &base, TypeNode *paramTys){
     string name = base;
@@ -1353,7 +1365,6 @@ TypedValue* MatchNode::compile(Compiler *c){
                 auto *tagtycpy = copy(tagTy->tyn);
                 
                 //bindGenericToType(structty, lval->type->params);
-
                 auto tcr = c->typeEq(parentTy->tyn.get(), lval->type.get());
 
                 if(tcr->res == TypeCheckResult::SuccessWithTypeVars)
@@ -1361,7 +1372,8 @@ TypedValue* MatchNode::compile(Compiler *c){
                 else if(tcr->res == TypeCheckResult::Failure)
                     return c->compErr("Cannot bind pattern of type " + typeNodeToColoredStr(parentTy->tyn.get()) +
                             " to matched value of type " + typeNodeToColoredStr(lval->type), tn->rval->loc);
-                
+               
+                //cout << "Done with match\n";
                 //cast it from (<tag type>, <largest union member type>) to (<tag type>, <this union member's type>)
                 auto *tupTy = StructType::get(*c->ctxt, {Type::getInt8Ty(*c->ctxt), c->typeNodeToLlvmType(tagtycpy)});
 
@@ -1944,7 +1956,7 @@ DataType* Compiler::lookupType(string tyname) const{
     }
 }
 
-DataType* Compiler::lookupType(TypeNode *tn) const{
+DataType* Compiler::lookupType(const TypeNode *tn) const{
     if(tn->typeName.empty())
         return lookupType(typeNodeToStr(tn));
     else

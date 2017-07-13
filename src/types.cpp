@@ -166,41 +166,6 @@ void bind(TypeNode *type_var, const unique_ptr<TypeNode> &concrete_ty){
 }
 
 
-//binds concrete types to a generic type (one with type variables) based on matching names
-//of the type variables with that in the bindings
-void bindGenericToType_helper(TypeNode *tn, const vector<pair<string, unique_ptr<TypeNode>>> &bindings){
-    if(tn->type == TT_TypeVar){
-        for(auto& pair : bindings){
-            if(tn->typeName == pair.first){
-                bind(tn, pair.second);
-            }
-        }
-    }
-
-    auto *ext = tn->extTy.get();
-    while(ext){
-        bindGenericToType(ext, bindings);
-        ext = (TypeNode*)ext->next.get();
-    }
-}
-
-/*
-//binds concrete types to a generic type based on declaration order of type vars
-void bindGenericToType_helper(Compiler *c, TypeNode *tn, const vector<unique_ptr<TypeNode>> &bindings){
-    if(tn->type == TT_TypeVar){
-        for(auto& tvar : bindings){
-            bind(tn, tvar);
-        }
-    }
-
-    auto *ext = tn->extTy.get();
-    while(ext){
-        bindGenericToType(ext, bindings);
-        ext = (TypeNode*)ext->next.get();
-    }
-}
-*/
-
 vector<pair<string, unique_ptr<TypeNode>>>
 mapBindingsToDataType(const vector<unique_ptr<TypeNode>> &bindings, DataType *dt){
     vector<pair<string, unique_ptr<TypeNode>>> map;
@@ -239,22 +204,29 @@ void bindGenericToType(TypeNode *tn, const vector<pair<string, unique_ptr<TypeNo
 
     if(tn->params.empty()){
         if(tn->type == TT_Data or tn->type == TT_TaggedUnion)
+            //TODO: this could cause problems with excess bindings
             for(auto& p : bindings)
                 tn->params.push_back(unique_ptr<TypeNode>(copy(p.second)));
     }else{
-        size_t i = 0;
         for(auto& p : tn->params){
-            for(auto &b : bindings){
-                if(p->typeName == b.first){
-                    tn->params[i].release();
-                    tn->params[i].reset(copy(b.second));
-                }
-            }
-            i++;
+            bindGenericToType(p.get(), bindings);
         }
     }
 
-    bindGenericToType_helper(tn, bindings);
+    if(tn->type == TT_TypeVar){
+        for(auto& pair : bindings){
+            if(tn->typeName == pair.first){
+                bind(tn, pair.second);
+                return;
+            }
+        }
+    }
+
+    auto *ext = tn->extTy.get();
+    while(ext){
+        bindGenericToType(ext, bindings);
+        ext = (TypeNode*)ext->next.get();
+    }
 }
 
 
@@ -904,8 +876,23 @@ TypeCheckResult typeEqHelper(const Compiler *c, const TypeNode *l, const TypeNod
             }
 
             if(l->params.size() != r->params.size()){
+                DataType *dt = nullptr;
+                TypeNode *lc = (TypeNode*)l;
+                TypeNode *rc = (TypeNode*)r;
+
+                if(!l->extTy.get()){
+                    dt = c->lookupType(l);
+                    lc = copy(dt->tyn);
+                    bindGenericToType(lc, l->params, dt);
+                }
+                if(!r->extTy.get()){
+                    if(!dt)
+                        dt = c->lookupType(r);
+                    rc = copy(dt->tyn);
+                    bindGenericToType(rc, r->params, dt);
+                }
                 //Types not equal by differing amount of params, see if it is just a lack of a binding issue
-                return extTysEq(l, r, tcr, c);
+                return extTysEq(lc, rc, tcr, c);
             }
 
             //check each type param of generic tys

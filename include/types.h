@@ -20,6 +20,7 @@ namespace ante {
     TypeNode* mkAnonTypeNode(TypeTag);
     TypeNode* mkTypeNodeWithExt(TypeTag tt, TypeNode *ext);
     TypeNode* mkDataTypeNode(string tyname);
+    TypeNode* createFnTyNode(NamedValNode *params, TypeNode *retTy);
 
     //conversions
     Type* typeTagToLlvmType(TypeTag tagTy, LLVMContext &c, string typeName = "");

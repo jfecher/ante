@@ -386,17 +386,23 @@ TypedValue* doReinterpretCast(Compiler *c, TypeNode *castTyn, TypedValue *valToC
 
         if(isUnion) return createUnionVariantCast(c, valToCast, to_tyn, res.dataTy, res.typeCheck);
         else        return new TypedValue(valToCast->val, to_tyn);
-    }        
+    }
 }
 
 bool preferCastOverFunction(Compiler *c, TypedValue *valToCast, ReinterpretCastResult &res, FuncDecl *fd){
-    auto *params = (TypeNode*)fd->tv->type->extTy->next.get();
+    FuncDecl *curFn = c->getCurrentFunction();
+    if(curFn->fdn and curFn->fdn->name == fd->fdn->name)
+        return true;
+
+    auto *fnTy = createFnTyNode(fd->fdn->params.get(), mkAnonTypeNode(TT_Void));
+    auto *params = (TypeNode*)fnTy->extTy->next.get();
     
     auto *args = valToCast->type->type == TT_Tuple
                ? valToCast->type->extTy.get()
                : valToCast->type.get();
 
     auto tc = c->typeEq(vectorize(params), vectorize(args));
+    delete params;
     return tc->matches >= res.typeCheck->matches;
 }
 
@@ -760,6 +766,7 @@ TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *bino
                         bindGenericToType(dataTyn, tyn->params, dataTy);
                     }
 
+                    //cout << "    Bound " << typeNodeToStr(dataTyn) << endl;
 
                     TypeNode *indexTy = dataTyn->extTy.get();
 
