@@ -8,6 +8,7 @@ u.an
 ante
 bootante
 syntax.tab.c
+.clang_complete
 src/parser.output
 src/parser.cpp
 include/*.hh
