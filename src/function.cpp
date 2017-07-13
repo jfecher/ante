@@ -528,11 +528,14 @@ TypedValue* compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, TypeN
 
     //swap out fn's generic params for the concrete arg types
     auto unboundParams = bindParams(fd->fdn->params.get(), tc->bindings);
-    auto *retTy = (TypeNode*)fd->fdn->type.release();
 
-    auto *boundRetTy = copy(retTy);
-    bindGenericToType(boundRetTy, tc->bindings);
-    fd->fdn->type.reset(boundRetTy);
+    TypeNode *retTy = 0;
+    if(fd->fdn->type.get()){
+        retTy = (TypeNode*)fd->fdn->type.release();
+        auto *boundRetTy = copy(retTy);
+        bindGenericToType(boundRetTy, tc->bindings);
+        fd->fdn->type.reset(boundRetTy);
+    }
 
     //test if bound variant is already compiled
     string mangled = mangle(fd->fdn->basename, fd->fdn->params.get());
