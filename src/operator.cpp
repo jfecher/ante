@@ -767,8 +767,6 @@ TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *bino
                         bindGenericToType(dataTyn, tyn->params, dataTy);
                     }
 
-                    //cout << "    Bound " << typeNodeToStr(dataTyn) << endl;
-
                     TypeNode *indexTy = dataTyn->extTy.get();
 
                     for(int i = 0; i < index; i++)
@@ -798,8 +796,6 @@ TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *bino
         string typeName = tyn->params.empty() ? typeNodeToStr(tyn) : tyn->typeName;
         string funcName = typeName + "_" + field->name;
         auto& l = getFunctionList(funcName);
-
-        cout << "Just got fn list for " << funcName << " of size " << l.size() << endl;
 
         if(l.size() == 1){
             auto& fd = l.front();
