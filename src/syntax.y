@@ -240,10 +240,8 @@ arr_type: '[' val type_expr ']' {$3->next.reset($2);
 tuple_type: '(' type_expr ')'  {$$ = $2;}
           ;
 
-generic_type_list: generic_type_list '#' type  %prec LOW  {$$ = setNext($1, $3);}
-                 | '#' type                    %prec LOW  {$$ = setRoot($2);}
-
-generic_type: type generic_type_list  %prec LOW {$$ = $1; ((TypeNode*)$1)->params.push_back(unique_ptr<TypeNode>((TypeNode*)getRoot()));}
+generic_type: type '#' type          {$$ = $1; ((TypeNode*)$1)->params.push_back(unique_ptr<TypeNode>((TypeNode*)$3));}
+            | generic_type '#' type  {$$ = $1; ((TypeNode*)$1)->params.push_back(unique_ptr<TypeNode>((TypeNode*)$3));}
             ;
 
 type: pointer_type  %prec STMT  {$$ = $1;}
