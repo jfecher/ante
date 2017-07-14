@@ -16,7 +16,7 @@ trait NumStore
 
 
 //Implement NumStore for Holder
-ext Holder with NumStore
+ext Holder: NumStore
     fun get: Holder h =
         i32 h
 
@@ -25,7 +25,7 @@ ext Holder with NumStore
 
 
 //Implement NumStore for Container
-ext Container with NumStore
+ext Container: NumStore
     fun get: Container c =
         match c with
         | Item i -> i

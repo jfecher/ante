@@ -240,8 +240,8 @@ arr_type: '[' val type_expr ']' {$3->next.reset($2);
 tuple_type: '(' type_expr ')'  {$$ = $2;}
           ;
 
-generic_type_list: generic_type_list ':' type  %prec LOW  {$$ = setNext($1, $3);}
-                 | ':' type                    %prec LOW  {$$ = setRoot($2);}
+generic_type_list: generic_type_list '#' type  %prec LOW  {$$ = setNext($1, $3);}
+                 | '#' type                    %prec LOW  {$$ = setRoot($2);}
 
 generic_type: type generic_type_list  %prec LOW {$$ = $1; ((TypeNode*)$1)->params.push_back(unique_ptr<TypeNode>((TypeNode*)getRoot()));}
             ;
@@ -341,8 +341,8 @@ trait_fn: modifier_list Fun fn_name ':' params RArrow type_expr   {$$ = mkFuncDe
         ;
 
 
-typevar_list: typevar_list ':' typevar  {$$ = setNext($1, mkTypeNode(@3, TT_TypeVar, (char*)$3));}
-            | ':' typevar               {$$ = setRoot(mkTypeNode(@$, TT_TypeVar, (char*)$2));}
+typevar_list: typevar_list '#' typevar  {$$ = setNext($1, mkTypeNode(@3, TT_TypeVar, (char*)$3));}
+            | '#' typevar               {$$ = setRoot(mkTypeNode(@$, TT_TypeVar, (char*)$2));}
             ;
 
 generic_params: typevar_list {$$ = getRoot();}
@@ -528,7 +528,7 @@ ret_expr: Return expr {$$ = mkRetNode(@$, $2);}
 
 
 extension: Ext type_expr Indent fn_list Unindent {$$ = mkExtNode(@$, $2, $4);}
-         | Ext type_expr With usertype_list Indent fn_list Unindent {$$ = mkExtNode(@$, $2, $6, $4);}
+         | Ext type_expr ':' usertype_list Indent fn_list Unindent {$$ = mkExtNode(@$, $2, $6, $4);}
          ;
  
 usertype_list: usertype_list_  {$$ = getRoot();}

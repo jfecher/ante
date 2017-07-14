@@ -1,24 +1,24 @@
 
-type Maybe:'t =
+type Maybe#'t =
    | Some 't
    | None
 
-type List:'t = 't elem, Maybe:((List:'t)*) next
+type List#'t = 't elem, Maybe#((List#'t)*) next
 
-fun List:'t.init: 't elem -> List:'t
+fun List#'t.init: 't elem -> List#'t
     List(elem, None)
 
 
-fun tail: (List:'t)* l -> (List:'t)*
+fun tail: (List#'t)* l -> (List#'t)*
     match l.next with
     | Some t -> tail t
     | None -> l
 
-fun append: mut (List:'t)* l, 't elem
+fun append: mut (List#'t)* l, 't elem
     var t = tail l
     t.next = Some new List elem
 
-fun print: (List:'t)* l
+fun print: (List#'t)* l
     print l.elem
     match l.next with
     | Some n -> print n

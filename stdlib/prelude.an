@@ -155,7 +155,7 @@ fun (..): i32 start end -> Range
 fun (..): i32,i32 first_two, i32 end -> Range
     Range(first_two#0, end, first_two#1 - first_two#0)
 
-ext Range with Iterator
+ext Range: Iterator
     fun next: Range r -> Range
         //make sure range of n..n is not an infinite loop
         if r.start == r.end then
@@ -174,7 +174,7 @@ ext Range with Iterator
 
 
 //Iterating through an InFile iterates through each line
-ext InFile with Iterator
+ext InFile: Iterator
     fun has_next: InFile f = not feof f
 
     fun next: InFile f = f
