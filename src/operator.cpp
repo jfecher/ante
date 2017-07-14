@@ -762,11 +762,10 @@ TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *bino
 
                 if(index != -1){
                     auto *dataTyn = copy(dataTy->tyn.get());
+                    
                     if(!tyn->params.empty()){
                         bindGenericToType(dataTyn, tyn->params, dataTy);
                     }
-
-                    //cout << "    Bound " << typeNodeToStr(dataTyn) << endl;
 
                     TypeNode *indexTy = dataTyn->extTy.get();
 
@@ -794,7 +793,8 @@ TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *bino
         
         //not a field, so look for a method.
         //TODO: perhaps create a calling convention function
-        string funcName = typeNodeToStr(tyn) + "_" + field->name;
+        string typeName = tyn->params.empty() ? typeNodeToStr(tyn) : tyn->typeName;
+        string funcName = typeName + "_" + field->name;
         auto& l = getFunctionList(funcName);
 
         if(l.size() == 1){

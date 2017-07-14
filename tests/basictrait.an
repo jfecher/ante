@@ -1,34 +1,69 @@
 
-ext Holder with NumStore
-    fun get: Holder h =
-        i32 h
+type Holder = i32
 
-    fun store: mut Holder* h, i32 n
-        @h = Holder n
+fun Holder.init := Holder 0
 
+type Container =
+   | Item i32
+   | Empty
 
+//Declare the trait NumStore
 trait NumStore
 
     fun get: NumStore ng -> i32
 
-    fun store: mut NumStore* ng, i32 n
+    fun store: mut NumStore ng, i32 n
 
 
-fun Holder.init := Holder 0
+//Implement NumStore for Holder
+ext Holder with NumStore
+    fun get: Holder h =
+        i32 h
 
-type Holder = i32
+    fun store: mut Holder h, i32 n
+        h = Holder n
 
+
+//Implement NumStore for Container
+ext Container with NumStore
+    fun get: Container c =
+        match c with
+        | Item i -> i
+        | Empty -> print "warning: empty"; 0
+    
+    fun store: mut Container c, i32 n
+        c = Item n
 
 //define function to work on any Holder
 fun print: Holder* h
     print get{@h}
 
 
-//hold and print 5
-var h = &Holder()
+fun print: Container c
+    match c with
+    | Item i -> printf "Container { %d }\n" i;()
+    | Empty -> print "Container {}"
+
+
+fun print: Holder h
+    print get{h}
+
+
+var h = Holder()
 
 store h 5
-print  h
+print h
 
 store h 5432
 print h
+
+
+
+var c = Empty
+print c
+
+store c 32
+print c
+
+store c (-432)
+print c
