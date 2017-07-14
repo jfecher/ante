@@ -319,7 +319,7 @@ void DataDeclNode::print(){
         for(size_t i = 0; i < generics.size(); i++){
             cout << typeNodeToStr(generics[i].get());
             if(i != generics.size()-1){
-                cout << typeNodeToStr(generics[i].get()) << ", ";
+                cout << ", ";
             }
         }
         cout << ">";
