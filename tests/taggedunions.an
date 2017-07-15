@@ -1,10 +1,10 @@
 
-type Maybe#'t =
+type Maybe!'t =
    | Some 't
    | None
 
 
-fun parse_int: Str str -> Maybe#i32
+fun parse_int: Str str -> Maybe!i32
     var i = 0
     var sum = 0
 
