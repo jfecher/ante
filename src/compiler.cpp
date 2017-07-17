@@ -1373,9 +1373,11 @@ TypedValue* MatchNode::compile(Compiler *c){
                     return c->compErr("Cannot bind pattern of type " + typeNodeToColoredStr(parentTy->tyn.get()) +
                             " to matched value of type " + typeNodeToColoredStr(lval->type), tn->rval->loc);
                
-                //cout << "Done with match\n";
                 //cast it from (<tag type>, <largest union member type>) to (<tag type>, <this union member's type>)
                 auto *tupTy = StructType::get(*c->ctxt, {Type::getInt8Ty(*c->ctxt), c->typeNodeToLlvmType(tagtycpy)});
+
+                //This is a pattern of the match _ with expr, so if that is mutable this should be too
+                tagtycpy->copyModifiersFrom(lval->type.get());
 
                 auto *cast = c->builder.CreateBitCast(alloca, tupTy->getPointerTo());
                 auto *tup = c->builder.CreateLoad(cast);
