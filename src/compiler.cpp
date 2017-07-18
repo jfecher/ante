@@ -1316,6 +1316,67 @@ TypedValue* GlobalNode::compile(Compiler *c){
 }
 
 
+TypedValue* handleTypeCastPattern(Compiler *c, MatchNode *mn, TypedValue *lval, TypeCastNode *tn, DataType *tagTy, DataType *parentTy){
+    //If this is a generic type cast like Some 't, the 't must be bound to a concrete type first
+    auto *tagtycpy = copy(tagTy->tyn);
+
+    auto tcr = c->typeEq(parentTy->tyn.get(), lval->type.get());
+
+    if(tcr->res == TypeCheckResult::SuccessWithTypeVars)
+        bindGenericToType(tagtycpy, tcr->bindings);
+    else if(tcr->res == TypeCheckResult::Failure)
+        return c->compErr("Cannot bind pattern of type " + typeNodeToColoredStr(parentTy->tyn.get()) +
+                " to matched value of type " + typeNodeToColoredStr(lval->type), tn->rval->loc);
+
+    //cast it from (<tag type>, <largest union member type>) to (<tag type>, <this union member's type>)
+    auto *tupTy = StructType::get(*c->ctxt, {Type::getInt8Ty(*c->ctxt), c->typeNodeToLlvmType(tagtycpy)});
+
+    auto *alloca = c->builder.CreateAlloca(lval->getType());
+    c->builder.CreateStore(lval->val, alloca);
+    auto *cast = c->builder.CreateBitCast(alloca, tupTy->getPointerTo());
+
+    if(VarNode *v = dynamic_cast<VarNode*>(tn->rval.get())){
+        auto *tup = c->builder.CreateLoad(cast);
+        auto *extract = new TypedValue(c->builder.CreateExtractValue(tup, 1), tagtycpy);
+        c->stoVar(v->name, new Variable(v->name, extract, c->scope));
+
+    }else if(TupleNode *t = dynamic_cast<TupleNode*>(tn->rval.get())){
+        auto *taggedValTy = tupTy->getStructElementType(1);
+        if(!taggedValTy->isStructTy()){
+            return c->compErr("Cannot match tuple pattern against non-tuple type " + typeNodeToColoredStr(tagtycpy), t->loc);
+        }
+
+        if(t->exprs.size() != taggedValTy->getNumContainedTypes()){
+            return c->compErr("Cannot match a tuple of size " + to_string(t->exprs.size()) +
+                   " to a pattern of size " + to_string(taggedValTy->getNumContainedTypes()), t->loc);
+        }
+
+        TypeNode *curTyn = tagtycpy->extTy.get();
+        size_t elementNo = 0;
+
+        for(auto &e : t->exprs){
+            VarNode *v;
+            if(!(v = dynamic_cast<VarNode*>(e.get()))){
+                c->compErr("Unknown pattern, expected identifier", e->loc);
+            }
+
+            auto *zero = c->builder.getInt32(0);
+            auto *ptr = c->builder.CreateGEP(cast, {zero, c->builder.getInt32(1)});
+            ptr = c->builder.CreateGEP(ptr, {zero, c->builder.getInt32(elementNo)});
+
+            auto *elem = new TypedValue(c->builder.CreateLoad(ptr), curTyn);
+            c->stoVar(v->name, new Variable(v->name, elem, c->scope));
+            curTyn = (TypeNode*)curTyn->next.get();
+            elementNo++;
+        }
+
+    }else{
+        return c->compErr("pattern typecast's rval is not a identifier", tn->rval->loc);
+    }
+    return nullptr;
+}
+
+
 TypedValue* MatchNode::compile(Compiler *c){
     auto *lval = expr->compile(c);
 
@@ -1355,35 +1416,7 @@ TypedValue* MatchNode::compile(Compiler *c){
 
             auto *parentTy = c->lookupType(tagTy->getParentUnionName());
             ci = ConstantInt::get(*c->ctxt, APInt(8, parentTy->getTagVal(tn->typeExpr->typeName), true));
-
-
-            if(VarNode *v = dynamic_cast<VarNode*>(tn->rval.get())){
-                auto *alloca = c->builder.CreateAlloca(lval->getType());
-                c->builder.CreateStore(lval->val, alloca);
-
-                //If this is a generic type cast like Some 't, the 't must be bound to a concrete type first
-                auto *tagtycpy = copy(tagTy->tyn);
-                
-                //bindGenericToType(structty, lval->type->params);
-                auto tcr = c->typeEq(parentTy->tyn.get(), lval->type.get());
-
-                if(tcr->res == TypeCheckResult::SuccessWithTypeVars)
-                    bindGenericToType(tagtycpy, tcr->bindings);
-                else if(tcr->res == TypeCheckResult::Failure)
-                    return c->compErr("Cannot bind pattern of type " + typeNodeToColoredStr(parentTy->tyn.get()) +
-                            " to matched value of type " + typeNodeToColoredStr(lval->type), tn->rval->loc);
-               
-                //cout << "Done with match\n";
-                //cast it from (<tag type>, <largest union member type>) to (<tag type>, <this union member's type>)
-                auto *tupTy = StructType::get(*c->ctxt, {Type::getInt8Ty(*c->ctxt), c->typeNodeToLlvmType(tagtycpy)});
-
-                auto *cast = c->builder.CreateBitCast(alloca, tupTy->getPointerTo());
-                auto *tup = c->builder.CreateLoad(cast);
-                auto *extract = new TypedValue(c->builder.CreateExtractValue(tup, 1), tagtycpy);
-                c->stoVar(v->name, new Variable(v->name, extract, c->scope));
-            }else{
-                return c->compErr("pattern typecast's rval is not a identifier", tn->rval->loc);
-            }
+            handleTypeCastPattern(c, this, lval, tn, tagTy, parentTy);
 
         //single type pattern:  None
         }else if(TypeNode *tn = dynamic_cast<TypeNode*>(mbn->pattern.get())){
