@@ -477,16 +477,26 @@ TypedValue* WhileNode::compile(Compiler *c){
 
     c->builder.CreateBr(cond);
     c->builder.SetInsertPoint(cond);
-    auto *condval = condition->compile(c);
-
-    c->builder.CreateCondBr(condval->val, begin, end);
-
-    c->builder.SetInsertPoint(begin);
-
+   
+    //Allow break/continue to occur in the while condition
+    //portion of the loop to allow them in the "body" of
+    //while ... do () loops
     c->compCtxt->breakLabels->push_back(end);
     c->compCtxt->continueLabels->push_back(cond);
 
-    auto *val = child->compile(c); //compile the while loop's body
+    TypedValue *val;
+    try{
+        auto *condval = condition->compile(c);
+
+        c->builder.CreateCondBr(condval->val, begin, end);
+        c->builder.SetInsertPoint(begin);
+
+        val = child->compile(c);
+    }catch(CtError *e){
+        c->compCtxt->breakLabels->pop_back();
+        c->compCtxt->continueLabels->pop_back();
+        throw e;
+    }
 
     c->compCtxt->breakLabels->pop_back();
     c->compCtxt->continueLabels->pop_back();
@@ -559,8 +569,15 @@ TypedValue* ForNode::compile(Compiler *c){
     c->compCtxt->continueLabels->push_back(incr);
 
     //compile the rest of the loop's body
-    auto *val = child->compile(c);
-    
+    TypedValue *val;
+    try{
+        val = child->compile(c);
+    }catch(CtError *e){
+        c->compCtxt->breakLabels->pop_back();;
+        c->compCtxt->continueLabels->pop_back();
+        throw e;
+    }
+        
     c->compCtxt->breakLabels->pop_back();;
     c->compCtxt->continueLabels->pop_back();
 
