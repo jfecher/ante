@@ -1,30 +1,42 @@
 
-type Maybe<'t> =
+type Maybe!'t =
    | Some 't
    | None
 
-type List<'t> = 't elem, Maybe<List<'t>*> next
+type List<'t> = Maybe!Node<'t>* first, Maybe!Node<'t>* last
 
-fun List<'t>.init: 't elem -> List<'t>
-    List(elem, None)
+type Node<'t> = 't elem, Maybe!Node<'t>* next
+
+fun Node<'t>.init: 't elem -> Node!'t
+    Node(elem, None)
+
+fun List<'t>.init: 't elem -> List!'t
+    let n = new Node elem
+    List(Some n, Some n)
 
 
-fun tail: List<'t>* l -> List<'t>*
-    match l.next with
-    | Some t -> tail t
-    | None -> l
+fun append: mut List<'t> l, 't elem
+    let n = new Node elem
 
-fun append: mut List<'t>* l, 't elem
-    var t = tail l
-    t.next = Some new List elem
+    match l.last with
+    | Some last ->
+        last.next = Some n
+        l.last = Some n
+    | None ->
+        l.first = Some n
+        l.last = Some n
 
-fun print: List<'t>* l
+fun print: List<'t> l
+    match l.first with
+    | Some n -> print n
+
+fun print: Node<'t>* l
     print l.elem
     match l.next with
     | Some n -> print n
 
 
-var head = new List 0
+var head = List 0
 
 append head 1
 append head 2

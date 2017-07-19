@@ -1319,6 +1319,9 @@ TypedValue* GlobalNode::compile(Compiler *c){
 TypedValue* handleTypeCastPattern(Compiler *c, MatchNode *mn, TypedValue *lval, TypeCastNode *tn, DataType *tagTy, DataType *parentTy){
     //If this is a generic type cast like Some 't, the 't must be bound to a concrete type first
     auto *tagtycpy = copy(tagTy->tyn);
+    
+    //This is a pattern of the match _ with expr, so if that is mutable this should be too
+    tagtycpy->copyModifiersFrom(lval->type.get());
 
     auto tcr = c->typeEq(parentTy->tyn.get(), lval->type.get());
 
@@ -1416,6 +1419,7 @@ TypedValue* MatchNode::compile(Compiler *c){
 
             auto *parentTy = c->lookupType(tagTy->getParentUnionName());
             ci = ConstantInt::get(*c->ctxt, APInt(8, parentTy->getTagVal(tn->typeExpr->typeName), true));
+            
             handleTypeCastPattern(c, this, lval, tn, tagTy, parentTy);
 
         //single type pattern:  None

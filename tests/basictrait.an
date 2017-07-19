@@ -30,9 +30,13 @@ ext Container: NumStore
         match c with
         | Item i -> i
         | Empty -> print "warning: empty"; 0
-
+    
     fun store: mut Container c, i32 n
         c = Item n
+
+//define function to work on any Holder
+fun print: Holder* h
+    print get{@h}
 
 
 fun print: Container c
