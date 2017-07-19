@@ -31,6 +31,7 @@ fun fputs: c8* str, OutFile file;
 fun fputc: c8 char, OutFile file;
 fun fgetc: InFile file -> c8;
 fun fgets: c8* str, i32 numBytes, InFile file -> c8*;
+fun ungetc: c8 c, InFile file -> i32;
 
 fun fgetpos: File f, FilePos fp;
 fun ftell: File f -> i64;
@@ -179,27 +180,7 @@ ext InFile: Iterator
 
     fun next: InFile f = f
 
-    fun unwrap: InFile f -> Str
-        var cap = 63
-        var buf = c8* malloc 64
-        var len = 0usz
-
-        while
-            let c = fgetc f
-            if c != '\n' and not feof f then
-                if len >= cap then
-                    buf = realloc buf (cap*2)
-                    cap *= 2
-
-                buf#len = c
-                len += 1
-                true
-            else
-                false
-        do ()
-
-        buf#cap = '\0'
-        Str(buf, len)
+    fun unwrap: InFile f = next_line f
 
 
 ![inline]
@@ -224,12 +205,11 @@ fun Str.write: Str s, OutFile f
 fun Str.init: c8* cStr -> Str
     Str(cStr, usz strlen cStr)
 
-//overload Str equality operator
+
 fun (==): Str l r -> bool
     if l.len != r.len then
         return false
 
-    //lens are equal, so check the whole array
     var i = 0
     while l.cStr#i != '\0' do
         if l.cStr#i != r.cStr#i then
@@ -240,25 +220,20 @@ fun (==): Str l r -> bool
     l.cStr#i == r.cStr#i
 
 
-//append two strings
 fun (++): Str s1 s2 -> Str
     let len = s1.len + s2.len
     var buf = malloc (len+1)
 
-    //copy first string
-    memcpy buf s1.cStr s1.len
+    memcpy buf (s1.cStr) s1.len
 
-    //copy second string at offset
     var buf_offset = void*(u64 buf + s1.len)
     memcpy buf_offset s2.cStr (s2.len+1) //copy terminating null too
 
     Str(c8* buf, len)
 
-//overload extract operator for Str
 ![inline]
 fun (#): Str s, i32 index = s.cStr#index
 
-//overload insert operator for Str
 ![inline]
 fun (#): Str s, i32 i, c8 c
     s.cStr#i = c
@@ -274,22 +249,33 @@ fun OutFile.init: Str fName -> OutFile
 
 
 fun InFile.next_line: InFile f -> Str
-    var len = 0usz
-    var cstr = c8* 0
-
     if feof f then return ""
+    let eof = c8 255
 
-    while not feof f and
+    var len = 0usz
+    var cap = 64usz
+    var cstr = c8* malloc cap
+
+    while
         let c = fgetc f
-        if len % 32 == 0 then
-            cstr = realloc cstr (len+32)
+
+        if c == eof then break
+
+        //Flag feof if eof occurs after terminating newline
+        if c == '\n' then
+            let peek = fgetc f
+            if peek != eof then ungetc peek f
+            break
+
+        if len+1 >= cap then
+            cap *= 2
+            cstr = realloc cstr cap
 
         cstr#len = c
         len += 1
-        c != '\n'
+        true
     do ()
 
-    len -= 1
     cstr#len = '\0'
     Str(cstr, len)
 
