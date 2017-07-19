@@ -39,6 +39,7 @@ namespace ante {
 
     string getCastFnBaseName(TypeNode *t);
 
+    TypeNode* getLargestExt(Compiler *c, TypeNode *tn);
     char getBitWidthOfTypeTag(const TypeTag tagTy);
     bool isPrimitiveTypeTag(TypeTag ty);
     bool isNumericTypeTag(const TypeTag ty);

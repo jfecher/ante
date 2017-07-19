@@ -256,6 +256,13 @@ TypedValue* createUnionVariantCast(Compiler *c, TypedValue *valToCast, TypeNode 
         bindGenericToType(dtcpy, tyeq->bindings);
     }
 
+    //Union types contain all possible union values in their ext which may cause problems
+    //When taking their size later, so just keep the largest one
+    auto *largest = getLargestExt(c, dtcpy);
+    dtcpy->extTy.release();
+    dtcpy->extTy.reset(largest);
+    largest->next.release();
+
     Type *variantTy = c->typeNodeToLlvmType(valToCast->type.get());
    
     auto tagVal = unionDataTy->getTagVal(castTyn->typeName);

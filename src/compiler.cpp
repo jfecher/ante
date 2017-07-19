@@ -1331,9 +1331,9 @@ TypedValue* handleTypeCastPattern(Compiler *c, MatchNode *mn, TypedValue *lval, 
     //cast it from (<tag type>, <largest union member type>) to (<tag type>, <this union member's type>)
     auto *tupTy = StructType::get(*c->ctxt, {Type::getInt8Ty(*c->ctxt), c->typeNodeToLlvmType(tagtycpy)});
 
-    auto *alloca = c->builder.CreateAlloca(lval->getType());
-    c->builder.CreateStore(lval->val, alloca);
-    auto *cast = c->builder.CreateBitCast(alloca, tupTy->getPointerTo());
+    auto *alloca = addrOf(c, lval);
+
+    auto *cast = c->builder.CreateBitCast(alloca->val, tupTy->getPointerTo());
 
     if(VarNode *v = dynamic_cast<VarNode*>(tn->rval.get())){
         auto *tup = c->builder.CreateLoad(cast);
@@ -1371,7 +1371,7 @@ TypedValue* handleTypeCastPattern(Compiler *c, MatchNode *mn, TypedValue *lval, 
         }
 
     }else{
-        return c->compErr("pattern typecast's rval is not a identifier", tn->rval->loc);
+        return c->compErr("Cannot match unknown pattern", tn->rval->loc);
     }
     return nullptr;
 }

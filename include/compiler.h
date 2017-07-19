@@ -782,6 +782,8 @@ namespace ante {
         static int linkObj(string inFiles, string outFile);
     };
 
+    TypedValue* addrOf(Compiler *c, TypedValue* tv);
+
     /**
     * @brief Retrieves the Nth node of a list
     *
