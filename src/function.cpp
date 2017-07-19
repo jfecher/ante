@@ -217,13 +217,7 @@ TypedValue* Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
         updateFn(fakeFnTv, fdn->basename, fdn->name);
 
     //actually compile the function, and hold onto the last value
-    TypedValue *v = 0;
-    try{
-        v = fdn->child->compile(this);
-    }catch(CtError *e){
-        delete e;
-        return 0;
-    }
+    TypedValue *v = fdn->child->compile(this);
 
     //llvm requires explicit returns, so generate a return even if
     //the user did not in their function.
@@ -386,9 +380,14 @@ TypedValue* compFnHelper(Compiler *c, FuncDecl *fd){
     }
 
     if(!retNode){
-        auto *ret = c->compLetBindingFn(fd, paramTys);
-        c->builder.SetInsertPoint(caller);
-        return ret;
+        try{
+            auto *ret = c->compLetBindingFn(fd, paramTys);
+            c->builder.SetInsertPoint(caller);
+            return ret;
+        }catch(CtError *e){
+            c->builder.SetInsertPoint(caller);
+            throw e;
+        }
     }else{
         if(!retNode->params.empty()){
             c->expand(retNode);

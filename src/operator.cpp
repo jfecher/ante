@@ -891,14 +891,14 @@ TypedValue* genericValueToTypedValue(Compiler *c, GenericValue gv, TypeNode *tn)
         case TT_TaggedUnion:
         case TT_MetaFunction:
         case TT_Type:
-                                 break;
+            break;
         case TT_Void:
             return c->getVoidLiteral();
     }
-    
+
     c->errFlag = true;
     cerr << "genericValueToTypedValue: Unknown TypeTag " << typeTagToStr(tn->type) << endl;
-    return 0;
+    throw new CtError();
 }
 
 
@@ -989,7 +989,7 @@ GenericValue typedValueToGenericValue(Compiler *c, TypedValue *tv){
     
     cerr << AN_ERR_COLOR << "error: " << AN_CONSOLE_RESET << "Compile-time function argument must be constant.\n";
     c->errFlag = true;
-    return GenericValue(nullptr);
+    throw new CtError();
 }
 
 
@@ -1067,7 +1067,10 @@ TypedValue* compMetaFunctionResult(Compiler *c, LOC_TY &loc, string &baseName, s
         mod_compiler->ast.release();
         auto *mod = mod_compiler->module.release();
         
-        if(!mod_compiler or mod_compiler->errFlag or !mod) return 0;
+        if(!mod_compiler or mod_compiler->errFlag or !mod){
+            c->errFlag = true;
+            throw new CtError();
+        }
 
         auto* eBuilder = new EngineBuilder(unique_ptr<llvm::Module>(mod));
         string err;
@@ -1153,9 +1156,7 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
 
     //add all remaining arguments
     if(auto *tup = dynamic_cast<TupleNode*>(r)){
-        auto flag = c->errFlag;
         typedArgs = tup->unpack(c);
-        if(c->errFlag != flag) return 0;
 
         for(TypedValue *v : typedArgs){
             auto *arg = v;
