@@ -1158,10 +1158,10 @@ TypedValue* deduceFunction(Compiler *c, FunctionCandidates *fc, vector<TypedValu
             if(!argTys.empty())
                 msg = msg + " with args " + typeNodeToColoredStr(mkTypeNodeWithExt(TT_Tuple, toList(argTys)));
 
-            c->compErr("Multiple equally-matching candidates found for call to "+fc->candidates[0]->fdn->basename, loc);
+            c->compErr(msg, loc);
         }catch(CtError *e){
-            for(auto &fd : fc->candidates){
-                c->compErr("Candidate", fd->fdn->loc, ErrorType::Note);
+            for(auto &p : matches){
+                c->compErr("Candidate", p.second->fdn->loc, ErrorType::Note);
             }
             throw e;
         }
