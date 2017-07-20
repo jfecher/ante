@@ -157,14 +157,20 @@ namespace ante {
         FuncDecl(FuncDeclNode *fn, unsigned int s, shared_ptr<Module> mod, TypedValue *f=0) : fdn(fn), scope(s), tv(f), module(mod), returns(){}
         ~FuncDecl(){ if(fdn){delete fdn;} delete tv; }
     };
+    
+    TypeNode* mkAnonTypeNode(TypeTag);
 
     /**
-    * @brief A TypedValue pair of the method and its object
-    */
-    struct MethodVal : public TypedValue {
+     * @brief A TypedValue of type TT_FunctionList is returned whenever there are
+     * multiple equally-qualified functions found during a lookup.  A lookup without
+     * the properly mangled argument types will also return this type so that the
+     * desired function may be deduced later with the actual function call arguments.
+     */
+    struct FunctionCandidates : public TypedValue {
+        vector<shared_ptr<FuncDecl>> candidates;
         TypedValue *obj;
 
-        MethodVal(TypedValue *o, TypedValue *f) : TypedValue(f->val, (f->type->type = TT_Method, f->type.get())), obj(o) {}
+        FunctionCandidates(vector<shared_ptr<FuncDecl>> &c, TypedValue *o) : TypedValue(nullptr, mkAnonTypeNode(TT_FunctionList)), candidates(c), obj(o){}
     };
 
     /**
@@ -343,7 +349,7 @@ namespace ante {
         /**
          * @brief Each declared function in the module
          */
-        unordered_map<string, list<shared_ptr<FuncDecl>>> fnDecls;
+        unordered_map<string, vector<shared_ptr<FuncDecl>>> fnDecls;
 
         /**
          * @brief Each declared DataType in the module
@@ -584,8 +590,8 @@ namespace ante {
         /** @brief Returns the exact function specified if found or nullptr if not */
         TypedValue* getFunction(string& name, string& mangledName);
 
-        /** @brief Returns a list of all functions with the specified name */
-        list<shared_ptr<FuncDecl>>& getFunctionList(string& name) const;
+        /** @brief Returns a vector of all functions with the specified baseName */
+        vector<shared_ptr<FuncDecl>>& getFunctionList(string& name) const;
         
         /** @brief Returns the exact FuncDecl specified if found or nullptr if not */
         FuncDecl* getFuncDecl(string bn, string mangledName);
@@ -801,6 +807,9 @@ namespace ante {
 
     /** @brief Converts the Node list argument into a vector */
     template<typename T> vector<T*> vectorize(T *args);
+
+    /** @brief Converts the vector argument into a TypeNode list */
+    TypeNode* toList(vector<TypeNode*> &nodes);
 
     /** @brief Extracts the type of each arg into a TypeNode vector */
     vector<TypeNode*> toTypeNodeVector(vector<TypedValue*> &tvs);

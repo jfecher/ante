@@ -378,7 +378,7 @@ Node* mkRetNode(LOC_TY loc, Node* expr){
 //returns true if type->extTy should be defined
 bool typeHasExtData(TypeTag t){
     return t == TT_Tuple or t == TT_Array or t == TT_Ptr or t == TT_Data or t == TT_Function
-        or t == TT_Method or t == TT_TaggedUnion or t == TT_MetaFunction;
+        or t == TT_TaggedUnion or t == TT_MetaFunction;
     
 }
 

@@ -597,7 +597,7 @@ TypedValue* FuncDeclNode::compile(Compiler *c){
     }
 }
 
-FuncDecl* getFuncDeclFromList(list<shared_ptr<FuncDecl>> &l, string &mangledName){
+FuncDecl* getFuncDeclFromVec(vector<shared_ptr<FuncDecl>> &l, string &mangledName){
     for(auto& fd : l){
         if(fd->fdn->name == mangledName)
             return fd.get();
@@ -663,7 +663,7 @@ FuncDecl* Compiler::getCurrentFunction() const{
 
 void Compiler::updateFn(TypedValue *f, string &name, string &mangledName){
     auto &list = mergedCompUnits->fnDecls[name];
-    auto *fd = getFuncDeclFromList(list, mangledName);
+    auto *fd = getFuncDeclFromVec(list, mangledName);
     fd->tv = new TypedValue(f->val, f->type);
 }
 
@@ -672,7 +672,7 @@ TypedValue* Compiler::getFunction(string& name, string& mangledName){
     auto& list = getFunctionList(name);
     if(list.empty()) return 0;
 
-    auto *fd = getFuncDeclFromList(list, mangledName);
+    auto *fd = getFuncDeclFromVec(list, mangledName);
     if(!fd) return 0;
 
     if(fd->tv) return fd->tv;
@@ -686,8 +686,8 @@ TypedValue* Compiler::getFunction(string& name, string& mangledName){
  * Returns all FuncDecls from a list that have argc number of parameters
  * and can be accessed in the current scope.
  */
-list<shared_ptr<FuncDecl>> filterByArgcAndScope(list<shared_ptr<FuncDecl>> &l, size_t argc, unsigned int scope){
-    list<shared_ptr<FuncDecl>> ret;
+vector<shared_ptr<FuncDecl>> filterByArgcAndScope(vector<shared_ptr<FuncDecl>> &l, size_t argc, unsigned int scope){
+    vector<shared_ptr<FuncDecl>> ret;
     for(auto& fd : l){
         if(fd->scope <= scope && getTupleSize(fd->fdn->params.get()) == argc){
             ret.push_back(fd);
@@ -741,6 +741,24 @@ vector<pair<TypeCheckResult,FuncDecl*>> filterHighestMatches(vector<pair<TypeChe
     return highestMatches;
 }
 
+
+vector<pair<TypeCheckResult,FuncDecl*>>
+filterBestMatches(Compiler *c, vector<shared_ptr<FuncDecl>> candidates, vector<TypeNode*> args){
+    vector<pair<TypeCheckResult,FuncDecl*>> results;
+    results.reserve(candidates.size());
+
+    for(auto& fd : candidates){
+        auto fnty = unique_ptr<TypeNode>(createFnTyNode(fd->fdn->params.get(), mkAnonTypeNode(TT_Void)));
+        auto *params = (TypeNode*)fnty->extTy->next.get();
+
+        auto tc = c->typeEq(vectorize(params), args);
+        results.push_back({tc, fd.get()});
+    }
+
+    return filterHighestMatches(results);
+}
+
+
 FuncDecl* Compiler::getMangledFuncDecl(string name, vector<TypeNode*> args){
     auto& fnlist = getFunctionList(name);
     if(fnlist.empty()) return 0;
@@ -756,32 +774,18 @@ FuncDecl* Compiler::getMangledFuncDecl(string name, vector<TypeNode*> args){
 
     //check for an exact match on the remaining candidates.
     string fnName = mangle(name, args);
-    auto *fd = getFuncDeclFromList(candidates, fnName);
+    auto *fd = getFuncDeclFromVec(candidates, fnName);
     if(fd){ //exact match
+        //TODO: compiling the function here may cause problems if the arguments are
+        //      unbound generic types that exactly matched a generic function that
+        //      should instead be compiled with compTemplateFn
         if(!fd->tv)
             fd->tv = compFn(fd);
 
         return fd;
     }
 
-    //Otherwise, determine which function to use by which needs the least
-    //amount of implicit conversions.
-    //first, perform a typecheck.  If it succeeds then the function had a generic/trait parameter
-    //
-    //NOTE: the current implementation will return the first generic function that matches, not necessarily
-    //      the most specific one.
-    
-    vector<pair<TypeCheckResult,FuncDecl*>> results;
-
-    for(auto& fd : candidates){
-        auto fnty = unique_ptr<TypeNode>(createFnTyNode(fd->fdn->params.get(), mkAnonTypeNode(TT_Void)));
-        auto *params = (TypeNode*)fnty->extTy->next.get();
-
-        auto tc = typeEq(vectorize(params), args);
-        results.push_back({tc, fd.get()});
-    }
-
-    auto matches = filterHighestMatches(results);
+    auto matches = filterBestMatches(this, candidates, args);
 
     //TODO: return typecheck infromation so it need not typecheck again in Compiler::getMangledFn
     if(matches.size() == 1)
@@ -820,7 +824,7 @@ TypedValue* Compiler::getMangledFn(string name, vector<TypeNode*> args){
 }
 
 
-list<shared_ptr<FuncDecl>>& Compiler::getFunctionList(string& name) const{
+vector<shared_ptr<FuncDecl>>& Compiler::getFunctionList(string& name) const{
     return mergedCompUnits->fnDecls[name];
 }
 
@@ -894,7 +898,7 @@ FuncDecl* Compiler::getFuncDecl(string baseName, string mangledName){
     auto& list = getFunctionList(baseName);
     if(list.empty()) return 0;
 
-    return getFuncDeclFromList(list, mangledName);
+    return getFuncDeclFromVec(list, mangledName);
 }
 
 /*
@@ -914,8 +918,8 @@ inline void Compiler::registerFunction(FuncDeclNode *fn){
     shared_ptr<FuncDecl> fd{new FuncDecl(fn, scope, mergedCompUnits)};
     fd->obj = compCtxt->obj;
 
-    compUnit->fnDecls[fn->basename].push_front(fd);
-    mergedCompUnits->fnDecls[fn->basename].push_front(fd);
+    compUnit->fnDecls[fn->basename].push_back(fd);
+    mergedCompUnits->fnDecls[fn->basename].push_back(fd);
 }
 
 } //end of namespace ante

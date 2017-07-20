@@ -11,8 +11,11 @@ char getBitWidthOfTypeTag(const TypeTag ty){
         case TT_Isz: case TT_Usz: return AN_USZ_SIZE;
         case TT_Bool: return 1;
    
-        case TT_Ptr: return 64;
-        case TT_Function: case TT_Method: case TT_MetaFunction: return 64;
+        case TT_Ptr:
+        case TT_Function:
+        case TT_MetaFunction:
+        case TT_FunctionList: return AN_USZ_SIZE;
+  
         default: return 0;
     }
 }
@@ -72,7 +75,7 @@ void validateType(Compiler *c, const TypeNode *tn, const DataDeclNode *rootTy){
     }else if(tn->type == TT_Array){
         TypeNode *ext = tn->extTy.get();
         validateType(c, ext, rootTy);
-    }else if(tn->type == TT_Ptr or tn->type == TT_Function or tn->type == TT_MetaFunction or tn->type == TT_Method){
+    }else if(tn->type == TT_Ptr or tn->type == TT_Function or tn->type == TT_MetaFunction){
         return;
 
     }else if(tn->type == TT_TypeVar){
@@ -139,7 +142,7 @@ unsigned int TypeNode::getSizeInBits(Compiler *c, string *incompleteType){
     }else if(type == TT_Array){
         auto *len = (IntLitNode*)ext->next.get();
         return stoi(len->val) * ext->getSizeInBits(c, incompleteType);
-    }else if(type == TT_Ptr or type == TT_Function or type == TT_MetaFunction or type == TT_Method){
+    }else if(type == TT_Ptr or type == TT_Function or type == TT_MetaFunction){
         return 64;
 
     }else if(type == TT_TypeVar){
@@ -474,7 +477,7 @@ bool containsTypeVar(const TypeNode *tn){
     if(tt == TT_Array or tt == TT_Ptr){
         return tn->extTy->type == tt;
     }else if(tt == TT_Tuple or tt == TT_Data or tt == TT_TaggedUnion or
-             tt == TT_Function or tt == TT_Method or tt == TT_MetaFunction){
+             tt == TT_Function or tt == TT_MetaFunction){
         TypeNode *ext = tn->extTy.get();
         while(ext){
             if(containsTypeVar(ext))
@@ -836,7 +839,7 @@ TypeCheckResult typeEqBase(const TypeNode *l, const TypeNode *r, TypeCheckResult
     }else if(r->type == TT_Data or r->type == TT_TaggedUnion){
         return tcr.successIf(l->typeName == r->typeName);
 
-    }else if(r->type == TT_Function or r->type == TT_MetaFunction or r->type == TT_Method or r->type == TT_Tuple){
+    }else if(r->type == TT_Function or r->type == TT_MetaFunction or r->type == TT_Tuple){
         return extTysEq(l, r, tcr, c);
     }
     //primitive type, we already know l->type == r->type
@@ -1052,7 +1055,7 @@ string typeTagToStr(TypeTag ty){
         case TT_TypeVar:      return "'t";
         case TT_Function:     return "Function";
         case TT_MetaFunction: return "Meta Function";
-        case TT_Method:       return "Method";
+        case TT_FunctionList: return "Function List";
         case TT_TaggedUnion:  return "|";
         case TT_Type:         return "type";
         default:              return "(Unknown TypeTag " + to_string(ty) + ")";
@@ -1094,7 +1097,7 @@ string typeNodeToStr(const TypeNode *t){
         return '[' + len->val + " " + typeNodeToStr(t->extTy.get()) + ']';
     }else if(t->type == TT_Ptr){
         return typeNodeToStr(t->extTy.get()) + "*";
-    }else if(t->type == TT_Function or t->type == TT_MetaFunction or t->type == TT_Method){
+    }else if(t->type == TT_Function or t->type == TT_MetaFunction){
         string ret = "(";
         string retTy = typeNodeToStr(t->extTy.get());
         TypeNode *cur = (TypeNode*)t->extTy->next.get();

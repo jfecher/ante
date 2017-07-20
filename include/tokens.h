@@ -10,19 +10,19 @@
  */
 namespace ante {
 	enum TypeTag {
-		TT_I8, TT_I16, TT_I32, TT_I64, //signed integer types
-		TT_U8, TT_U16, TT_U32, TT_U64, //unsigned integer types
-		TT_F16, TT_F32, TT_F64, //float types
-		TT_Isz, TT_Usz, //pointer-sized integer types
-		TT_C8, TT_C32, //char types
+		TT_I8, TT_I16, TT_I32, TT_I64,
+		TT_U8, TT_U16, TT_U32, TT_U64,
+		TT_F16, TT_F32, TT_F64,
+		TT_Isz, TT_Usz,
+		TT_C8, TT_C32,
 		TT_Bool,
-		TT_Tuple, //anonymous tuples
+		TT_Tuple,
 		TT_Array,
 		TT_Ptr,
 		TT_Data, //all previously declared UserTypes
 		TT_TypeVar,
 		TT_Function,
-		TT_Method,
+		TT_FunctionList,
 		TT_TaggedUnion,
 		TT_MetaFunction,
 		TT_Type, //The type for types

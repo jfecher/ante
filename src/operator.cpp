@@ -1,5 +1,6 @@
 #include "compiler.h"
 #include "types.h"
+#include "function.h"
 #include "tokens.h"
 #include "jitlinker.h"
 #include <llvm/ExecutionEngine/GenericValue.h>
@@ -718,18 +719,8 @@ TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *bino
 
         auto& l = getFunctionList(valName);
 
-        if(l.size() == 1){
-            auto& fd = l.front();
-            if(!fd->tv)
-                fd->tv = compFn(fd.get());
-
-            return fd->tv;
-        }else if(l.size() > 1){
-            compErr("Multiple static methods of the same name with different parameters are currently unimplemented.  In the mean time, you can use global functions.", field->loc);
-            for(auto &fd : l)
-                compErr("Candidate function", fd->fdn->loc, ErrorType::Note);
-            return 0;
-        }
+        if(!l.empty())
+            return new FunctionCandidates(l, nullptr);
 
         return compErr("No static method called '" + field->name + "' was found in type " + 
                 typeNodeToColoredStr(tn), binop->loc);
@@ -804,24 +795,12 @@ TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *bino
         string funcName = typeName + "_" + field->name;
         auto& l = getFunctionList(funcName);
 
-        if(l.size() == 1){
-            auto& fd = l.front();
-            if(!fd->tv){
-                fd->tv = compFn(fd.get());
-                if(!fd->tv) return 0; //error when compiling function
-            }
-
+        if(!l.empty()){
             TypedValue *obj = new TypedValue(val, copy(tyn));
-            auto *method_fn = new TypedValue(fd->tv->val, fd->tv->type);
-            return new MethodVal(obj, method_fn);
-        }else if(l.size() > 1){
-            compErr("Multiple methods of the same name with different parameters are currently unimplemented.  In the mean time, you can use global functions.", field->loc);
-            for(auto &fd : l)
-                compErr("Candidate function", fd->fdn->loc, ErrorType::Note);
-            
-            return 0;
-        }else
+            return new FunctionCandidates(l, obj);
+        }else{
             return compErr("Method/Field " + field->name + " not found in type " + typeNodeToColoredStr(tyn), binop->loc);
+        }
     }
 }
 
@@ -829,6 +808,7 @@ TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *bino
 template<typename T>
 void push_front(vector<T*> *vec, T *val){
     vector<T*> cpy;
+    cpy.reserve(vec->size() + 1);
     cpy.push_back(val);
 
     for(auto *v : *vec)
@@ -887,9 +867,9 @@ TypedValue* genericValueToTypedValue(Compiler *c, GenericValue gv, TypeNode *tn)
         }case TT_Data:
         case TT_TypeVar:
         case TT_Function:
-        case TT_Method:
         case TT_TaggedUnion:
         case TT_MetaFunction:
+        case TT_FunctionList:
         case TT_Type:
             break;
         case TT_Void:
@@ -979,9 +959,9 @@ GenericValue typedValueToGenericValue(Compiler *c, TypedValue *tv){
         }
         case TT_Data:
         case TT_Function:
-        case TT_Method:
         case TT_TaggedUnion:
         case TT_MetaFunction:
+        case TT_FunctionList:
         case TT_Type:
         case TT_Void:
             break;
@@ -1148,6 +1128,47 @@ TypedValue* tryImplicitCast(Compiler *c, TypedValue *arg, TypeNode *castTy){
     }
 }
 
+    
+TypedValue* deduceFunction(Compiler *c, FunctionCandidates *fc, vector<TypedValue*> &args, LOC_TY &loc){
+    if(fc->obj) push_front(&args, fc->obj);
+
+    auto argTys = toTypeNodeVector(args);
+
+    auto matches = filterBestMatches(c, fc->candidates, argTys);
+
+    if(matches.size() == 1){
+        return compFnWithArgs(c, matches[0].second, argTys);
+
+    }else if(matches.empty()){
+        try {
+            lazy_printer msg = "No matching candidates for call to "+fc->candidates[0]->fdn->basename;
+            if(!argTys.empty())
+                msg = msg + " with args " + typeNodeToColoredStr(mkTypeNodeWithExt(TT_Tuple, toList(argTys)));
+
+            c->compErr(msg, loc);
+        }catch(CtError *e){
+            for(auto &fd : fc->candidates){
+                c->compErr("Candidate", fd->fdn->loc, ErrorType::Note);
+            }
+            throw e;
+        }
+    }else{
+        try {
+            lazy_printer msg = "Multiple equally-matching candidates found for call to "+fc->candidates[0]->fdn->basename;
+            if(!argTys.empty())
+                msg = msg + " with args " + typeNodeToColoredStr(mkTypeNodeWithExt(TT_Tuple, toList(argTys)));
+
+            c->compErr("Multiple equally-matching candidates found for call to "+fc->candidates[0]->fdn->basename, loc);
+        }catch(CtError *e){
+            for(auto &fd : fc->candidates){
+                c->compErr("Candidate", fd->fdn->loc, ErrorType::Note);
+            }
+            throw e;
+        }
+    }
+    return nullptr;
+}
+
 
 TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
     //used to type-check each parameter later
@@ -1202,23 +1223,27 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
     //if it is not a varnode/no method is found, then compile it normally
     if(!tvf) tvf = l->compile(c);
 
-    //if there was an error, return
-    if(!tvf) return 0;
+    //Compiling "normally" above may result in a list of functions returned due to the
+    //lack of information on argument types, so handle that now
+    bool is_method = false;
+    if(tvf->type->type == TT_FunctionList){
+        auto *funcs = (FunctionCandidates*)tvf;
+        tvf = deduceFunction(c, funcs, typedArgs, l->loc);
+        if(funcs->obj){
+            push_front(&args, funcs->obj->val);
+            is_method = true;
+        }
+    }
 
     //make sure the l val compiles to a function
-    if(tvf->type->type != TT_Function && tvf->type->type != TT_Method && tvf->type->type != TT_MetaFunction)
+    if(tvf->type->type != TT_Function && tvf->type->type != TT_MetaFunction)
         return c->compErr("Called value is not a function or method, it is a(n) " + 
                 typeNodeToColoredStr(tvf->type), l->loc);
 
+
+    
     //now that we assured it is a function, unwrap it
     Function *f = (Function*)tvf->val;
-
-    //if tvf is a method, add its host object as the first argument
-    if(tvf->type->type == TT_Method){
-        TypedValue *obj = ((MethodVal*) tvf)->obj;
-        push_front(&args, obj->val);
-        push_front(&typedArgs, obj);
-    }
 
     size_t argc = getTupleSize(tvf->type->extTy.get()) - 1;
     if(argc != args.size() and (!f or !f->isVarArg())){
@@ -1265,7 +1290,7 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
                 TupleNode *tn = dynamic_cast<TupleNode*>(r);
                 if(!tn) return 0;
 
-                size_t index = i - (tvf->type->type == TT_Method ? 2 : 1);
+                size_t index = i - (is_method ? 2 : 1);
                 Node* locNode = tn->exprs[index].get();
                 if(!locNode) return 0;
 

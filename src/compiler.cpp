@@ -1115,8 +1115,8 @@ TypedValue* ExtNode::compile(Compiler *c){
                 shared_ptr<FuncDecl> fd{new FuncDecl(fdn, c->scope, c->compUnit)};
                 traitImpl->funcs.push_back(fd);
     
-                c->compUnit->fnDecls[fdn->basename].push_front(fd);
-                c->mergedCompUnits->fnDecls[fdn->basename].push_front(fd);
+                c->compUnit->fnDecls[fdn->basename].push_back(fd);
+                c->mergedCompUnits->fnDecls[fdn->basename].push_back(fd);
             }
 
             //trait is fully implemented, add it to the DataType
