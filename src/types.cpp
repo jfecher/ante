@@ -737,7 +737,6 @@ TypeCheckResult TypeCheckResult::success(){
 TypeCheckResult TypeCheckResult::successWithTypeVars(){
     if(box->res != Failure){
         box->res = SuccessWithTypeVars;
-        box->matches++;
     }
     return *this;
 }

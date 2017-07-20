@@ -730,7 +730,7 @@ vector<pair<TypeCheckResult,FuncDecl*>> filterHighestMatches(vector<pair<TypeChe
     vector<pair<TypeCheckResult,FuncDecl*>> highestMatches;
     
     for(auto &tcr : matches){
-        if(tcr.first->matches >= highestMatch){
+        if(!!tcr.first and tcr.first->matches >= highestMatch){
             if(tcr.first->matches > highestMatch){
                 highestMatch = tcr.first->matches;
                 highestMatches.clear();
