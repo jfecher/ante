@@ -1462,41 +1462,39 @@ TypedValue* MatchNode::compile(Compiler *c){
 
         auto *then = mbn->branch->compile(c);
         c->exitScope();
-        c->builder.CreateBr(end);
+    
+        if(!dyn_cast<ReturnInst>(then->val) and !dyn_cast<BranchInst>(then->val))
+            c->builder.CreateBr(end);
+        
         merges.push_back(pair<BasicBlock*,TypedValue*>(c->builder.GetInsertBlock(), then));
-      
-        //if ci is still null, then the else-like branch was just compiled, and does not correlate to a singular tag
-        if(ci)
-            match->addCase(ci, br);
+        match->addCase(ci, br);
     }
 
     f->getBasicBlockList().push_back(end);
     c->builder.SetInsertPoint(end);
 
-    if(!merges[0].second) return 0;
-
-    if(merges[0].second->type->type != TT_Void){
-        int i = 1;
-        auto *phi = c->builder.CreatePHI(merges[0].second->getType(), branches.size());
-        for(auto &pair : merges){
-
-            //add each branch to the phi node if it does not return early
-            if(!dyn_cast<ReturnInst>(pair.second->val)){
-
-                //match the types of those branches that will merge
-                if(!c->typeEq(pair.second->type.get(), merges[0].second->type.get()))
-                    return c->compErr("Branch "+to_string(i)+"'s return type " + typeNodeToColoredStr(pair.second->type) +
-                              " != " + typeNodeToColoredStr(merges[0].second->type) + ", the first branch's return type", this->loc);
-                else
-                    phi->addIncoming(pair.second->val, pair.first);
-            }
-            i++;
-        }
-        phi->addIncoming(UndefValue::get(merges[0].second->getType()), matchbb);
-        return new TypedValue(phi, merges[0].second->type);
-    }else{
+    //merges can be empty if each branch has an early return
+    if(merges.empty() or merges[0].second->type->type == TT_Void)
         return c->getVoidLiteral();
+
+    int i = 1;
+    auto *phi = c->builder.CreatePHI(merges[0].second->getType(), branches.size());
+    for(auto &pair : merges){
+
+        //add each branch to the phi node if it does not return early
+        if(!dyn_cast<ReturnInst>(pair.second->val)){
+
+            //match the types of those branches that will merge
+            if(!c->typeEq(pair.second->type.get(), merges[0].second->type.get()))
+                return c->compErr("Branch "+to_string(i)+"'s return type " + typeNodeToColoredStr(pair.second->type) +
+                            " != " + typeNodeToColoredStr(merges[0].second->type) + ", the first branch's return type", this->loc);
+            else
+                phi->addIncoming(pair.second->val, pair.first);
+        }
+        i++;
     }
+    phi->addIncoming(UndefValue::get(merges[0].second->getType()), matchbb);
+    return new TypedValue(phi, merges[0].second->type);
 }
 
 
