@@ -138,13 +138,16 @@ void UnOpNode::print(){
     maybePrintArr(next.get());
 }
 
+void SeqNode::print(){
+    for(auto &n : sequence){
+        n->print();
+        puts(";");
+    }
+}
+
 void BinOpNode::print(){
     if(op == '('){
         lval->print();
-        rval->print();
-    }else if(op == ';'){
-        lval->print();
-        puts(";");
         rval->print();
     }else{
         putchar('(');

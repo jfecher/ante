@@ -175,6 +175,14 @@ namespace ante {
         ~BinOpNode(){}
     };
 
+    struct SeqNode : public Node{
+        vector<unique_ptr<Node>> sequence;
+        TypedValue* compile(Compiler*);
+        void print(void);
+        SeqNode(LOC_TY& loc) : Node(loc), sequence(){}
+        ~SeqNode(){}
+    };
+
     struct BlockNode : public Node{
         unique_ptr<Node> block;
         TypedValue* compile(Compiler*);

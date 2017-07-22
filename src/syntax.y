@@ -392,13 +392,13 @@ block: Indent expr Unindent                   {$$ = mkBlockNode(@$, $2);}
      | Indent continue Unindent               {$$ = mkBlockNode(@$, $2);}
      | Indent ret_expr Unindent               {$$ = mkBlockNode(@$, $2);}
 
-     | Indent expr Newline break Unindent     {$$ = mkBlockNode(@$, mkBinOpNode(@$, ';', $2, $4));}
-     | Indent expr Newline continue Unindent  {$$ = mkBlockNode(@$, mkBinOpNode(@$, ';', $2, $4));}
-     | Indent expr Newline ret_expr Unindent  {$$ = mkBlockNode(@$, mkBinOpNode(@$, ';', $2, $4));}
+     | Indent expr Newline break Unindent     {$$ = mkBlockNode(@$, mkSeqNode(@$, $2, $4));}
+     | Indent expr Newline continue Unindent  {$$ = mkBlockNode(@$, mkSeqNode(@$, $2, $4));}
+     | Indent expr Newline ret_expr Unindent  {$$ = mkBlockNode(@$, mkSeqNode(@$, $2, $4));}
 
-     | Indent expr break Unindent             {$$ = mkBlockNode(@$, mkBinOpNode(@$, ';', $2, $3));}
-     | Indent expr continue Unindent          {$$ = mkBlockNode(@$, mkBinOpNode(@$, ';', $2, $3));}
-     | Indent expr ret_expr Unindent          {$$ = mkBlockNode(@$, mkBinOpNode(@$, ';', $2, $3));}
+     | Indent expr break Unindent             {$$ = mkBlockNode(@$, mkSeqNode(@$, $2, $3));}
+     | Indent expr continue Unindent          {$$ = mkBlockNode(@$, mkSeqNode(@$, $2, $3));}
+     | Indent expr ret_expr Unindent          {$$ = mkBlockNode(@$, mkSeqNode(@$, $2, $3));}
      ;
 
 
@@ -686,7 +686,7 @@ expr_no_decl: expr_no_decl '+' maybe_newline expr_no_decl              {$$ = mkB
     | expr_no_decl '>' maybe_newline expr_no_decl                      {$$ = mkBinOpNode(@$, '>', $1, $4);}
     | type_expr '.' maybe_newline var                                  {$$ = mkBinOpNode(@$, '.', $1, $4);}
     | expr_no_decl '.' maybe_newline var                               {$$ = mkBinOpNode(@$, '.', $1, $4);}
-    | expr_no_decl ';' maybe_newline expr_no_decl                      {$$ = mkBinOpNode(@$, ';', $1, $4);}
+    | expr_no_decl ';' maybe_newline expr_no_decl                      {$$ = mkSeqNode(@$, $1, $4);}
     | expr_no_decl '#' maybe_newline expr_no_decl                      {$$ = mkBinOpNode(@$, '#', $1, $4);}
     | expr_no_decl Eq maybe_newline expr_no_decl                       {$$ = mkBinOpNode(@$, Tok_Eq, $1, $4);}
     | expr_no_decl NotEq maybe_newline expr_no_decl                    {$$ = mkBinOpNode(@$, Tok_NotEq, $1, $4);}
@@ -714,10 +714,10 @@ expr_no_decl: expr_no_decl '+' maybe_newline expr_no_decl              {$$ = mkB
     | expr_no_decl Elif expr_no_decl Then expr_no_decl_or_jump    %prec MEDIF  {auto*elif = mkIfNode(@$, $3, $5, 0); $$ = setElse($1, elif);}
     | expr_no_decl Else expr_no_decl_or_jump                        %prec Else {$$ = setElse($1, $3);}
 
-    | match_expr Newline expr_no_decl                      %prec Match  {$$ = mkBinOpNode(@$, ';', $1, $3);}
+    | match_expr Newline expr_no_decl                      %prec Match  {$$ = mkSeqNode(@$, $1, $3);}
     | match_expr Newline                                   %prec LOW    {$$ = $1;}
     | expr_no_decl Newline                                              {$$ = $1;}
-    | expr_no_decl Newline expr_no_decl                                 {$$ = mkBinOpNode(@$, ';', $1, $3);}
+    | expr_no_decl Newline expr_no_decl                                 {$$ = mkSeqNode(@$, $1, $3);}
     ;
 
 
@@ -738,7 +738,7 @@ expr: expr '+' maybe_newline expr                {$$ = mkBinOpNode(@$, '+', $1, 
     | expr '>' maybe_newline expr                {$$ = mkBinOpNode(@$, '>', $1, $4);}
     | type_expr '.' maybe_newline var            {$$ = mkBinOpNode(@$, '.', $1, $4);}
     | expr '.' maybe_newline var                 {$$ = mkBinOpNode(@$, '.', $1, $4);}
-    | expr ';' maybe_newline expr                {$$ = mkBinOpNode(@$, ';', $1, $4);}
+    | expr ';' maybe_newline expr                {$$ = mkSeqNode(@$, $1, $4);}
     | expr '#' maybe_newline expr                {$$ = mkBinOpNode(@$, '#', $1, $4);}
     | expr Eq maybe_newline expr                 {$$ = mkBinOpNode(@$, Tok_Eq, $1, $4);}
     | expr NotEq maybe_newline expr              {$$ = mkBinOpNode(@$, Tok_NotEq, $1, $4);}
@@ -766,10 +766,10 @@ expr: expr '+' maybe_newline expr                {$$ = mkBinOpNode(@$, '+', $1, 
     | expr Elif expr Then expr_or_jump  %prec MEDIF  {auto*elif = mkIfNode(@$, $3, $5, 0); $$ = setElse($1, elif);}
     | expr Else expr_or_jump                     {$$ = setElse($1, $3);}
     
-    | match_expr Newline expr       %prec Match  {$$ = mkBinOpNode(@$, ';', $1, $3);}
+    | match_expr Newline expr       %prec Match  {$$ = mkSeqNode(@$, $1, $3);}
     | match_expr Newline            %prec LOW    {$$ = $1;}
     | expr Newline                               {$$ = $1;}
-    | expr Newline expr                          {$$ = mkBinOpNode(@$, ';', $1, $3);}
+    | expr Newline expr                          {$$ = mkSeqNode(@$, $1, $3);}
     ;
 
 %%

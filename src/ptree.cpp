@@ -27,9 +27,9 @@ Node* setElse(Node *ifn, Node *elseN){
         else
             n->elseN.reset(elseN);
     }else{
-        auto *binop = dynamic_cast<BinOpNode*>(ifn);
+        auto *seq = dynamic_cast<SeqNode*>(ifn);
 
-        if(binop and (n = dynamic_cast<IfNode*>(binop->rval.get()))){
+        if(seq and (n = dynamic_cast<IfNode*>(seq->sequence[1].get()))){
             while(auto *tmp = dynamic_cast<IfNode*>(n->elseN.get()))
                 n = tmp;
 
@@ -364,6 +364,18 @@ Node* mkUnOpNode(LOC_TY loc, int op, Node* r){
 
 Node* mkBinOpNode(LOC_TY loc, int op, Node* l, Node* r){
     return new BinOpNode(loc, op, l, r);
+}
+
+Node* mkSeqNode(LOC_TY loc, Node *l, Node *r){
+    if(SeqNode *seq = dynamic_cast<SeqNode*>(l)){
+        seq->sequence.emplace_back(r);
+        return seq;
+    }else{
+        SeqNode *s = new SeqNode(loc);
+        s->sequence.emplace_back(l);
+        s->sequence.emplace_back(r);
+        return s;
+    }
 }
 
 Node* mkBlockNode(LOC_TY loc, Node *b){

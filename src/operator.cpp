@@ -1482,15 +1482,22 @@ TypedValue* checkForOperatorOverload(Compiler *c, TypedValue *lhs, int op, Typed
 }
 
 
-TypedValue* compSequence(Compiler *c, BinOpNode *seq){
-    try{
-        seq->lval->compile(c);
-    }catch(CtError *e){
-        delete e;
+TypedValue* SeqNode::compile(Compiler *c){
+    TypedValue *ret;
+    size_t i = 1;
+
+    for(auto &n : sequence){
+        try{
+            ret = n->compile(c);
+        }catch(CtError *e){
+            //Unless the final value throws, delete the error
+            if(i == sequence.size()) throw e;
+            else delete e;
+        }
+        i++;
     }
 
-    //let CompilationError's of rval percolate
-    return seq->rval->compile(c);
+    return ret;
 }
 
 
@@ -1505,8 +1512,6 @@ TypedValue* BinOpNode::compile(Compiler *c){
         case Tok_Or: return c->compLogicalOr(lval.get(), rval.get(), this);
     }
     
-    if(op == ';') return compSequence(c, this);
-
     TypedValue *lhs = lval->compile(c);
     TypedValue *rhs = rval->compile(c);
 
