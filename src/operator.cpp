@@ -286,7 +286,7 @@ TypedValue* createUnionVariantCast(Compiler *c, TypedValue *valToCast, TypeNode 
     auto *alloca = c->builder.CreateAlloca(unionTy);
 
     //but bitcast it the the current member
-    auto *castTo = c->builder.CreateBitCast(alloca, unionTy->getPointerTo());
+    auto *castTo = c->builder.CreateBitCast(alloca, taggedUnion->getType()->getPointerTo());
     c->builder.CreateStore(taggedUnion, castTo);
 
     //load the original alloca, not the bitcasted one
@@ -1574,7 +1574,7 @@ TypedValue* UnOpNode::compile(Compiler *c){
 
                 unsigned size = rhs->type->getSizeInBits(c) / 8;
 
-                Value *sizeVal = ConstantInt::get(*c->ctxt, APInt(32, size, true));
+                Value *sizeVal = ConstantInt::get(*c->ctxt, APInt(AN_USZ_SIZE, size, true));
 
                 Value *voidPtr = c->builder.CreateCall(mallocFn, sizeVal);
                 Type *ptrTy = rhs->getType()->getPointerTo();
