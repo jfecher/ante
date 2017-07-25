@@ -1345,7 +1345,7 @@ TypedValue* handleTypeCastPattern(Compiler *c, MatchNode *mn, TypedValue *lval, 
                 " to matched value of type " + typeNodeToColoredStr(lval->type), tn->rval->loc);
 
     //cast it from (<tag type>, <largest union member type>) to (<tag type>, <this union member's type>)
-    auto *tupTy = StructType::get(*c->ctxt, {Type::getInt8Ty(*c->ctxt), c->typeNodeToLlvmType(tagtycpy)});
+    auto *tupTy = StructType::get(*c->ctxt, {Type::getInt8Ty(*c->ctxt), c->typeNodeToLlvmType(tagtycpy)}, true);
 
     auto *alloca = addrOf(c, lval);
 
@@ -1463,7 +1463,9 @@ TypedValue* MatchNode::compile(Compiler *c){
             c->builder.CreateBr(end);
         
         merges.push_back(pair<BasicBlock*,TypedValue*>(c->builder.GetInsertBlock(), then));
-        match->addCase(ci, br);
+
+        if(ci)
+            match->addCase(ci, br);
     }
 
     f->getBasicBlockList().push_back(end);

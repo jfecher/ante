@@ -279,7 +279,7 @@ TypedValue* createUnionVariantCast(Compiler *c, TypedValue *valToCast, TypeNode 
     Type *unionTy = c->typeNodeToLlvmType(dtcpy);
 
     //create a struct of (u8 tag, <union member type>)
-    auto *uninitUnion = ConstantStruct::get(StructType::get(*c->ctxt, unionTys), unionVals);
+    auto *uninitUnion = ConstantStruct::get(StructType::get(*c->ctxt, unionTys, true), unionVals);
     auto* taggedUnion = c->builder.CreateInsertValue(uninitUnion, valToCast->val, 1);
 
     //allocate for the largest possible union member

@@ -86,9 +86,13 @@ vector<Type*> getParamTypes(Compiler *c, NamedValNode *nvn, size_t paramCount){
  *  Adds llvm attributes to an Argument based off the parameters type
  */
 void addArgAttrs(llvm::Argument &arg, TypeNode *paramTyNode){
-    if(paramTyNode->type == TT_Function)
+    if(paramTyNode->type == TT_Function){
         arg.addAttr(Attribute::AttrKind::NoCapture);
-    
+
+        if(!paramTyNode->hasModifier(Tok_Mut)){
+            arg.addAttr(Attribute::AttrKind::ReadOnly);
+        }
+    }
 }
 
 /*

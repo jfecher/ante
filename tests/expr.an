@@ -1,0 +1,28 @@
+
+type Expr =
+   | Add Expr*,Expr*
+   | Sub Expr*,Expr*
+   | Num i32
+
+
+fun eval: Expr* e -> i32
+    match @e with
+    | Add(l, r) -> eval l + eval r
+    | Sub(l, r) -> eval l - eval r
+    | Num n -> n
+
+
+let five = new Num 5
+let two = new Num 2
+let seven = new Num 7
+
+let sub = new Sub(five, two)
+
+let add = new Add(sub, seven)
+
+print eval{five}
+print eval{two}
+print eval{seven}
+
+print eval{sub}
+print eval{add}

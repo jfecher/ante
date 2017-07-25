@@ -540,14 +540,13 @@ Type* updateLlvmTypeBinding(Compiler *c, DataType *dt, const vector<unique_ptr<T
     bindGenericToType(cpy, bindings, dt);
 
     //create an empty type first so we dont end up with infinite recursion
-    auto* structTy = StructType::create(*c->ctxt, name);
+    auto* structTy = StructType::create(*c->ctxt, {}, name, dt->tyn->type == TT_TaggedUnion);
     dt->llvmTypes[name] = structTy;
 
     if(dt->tyn->type == TT_TaggedUnion)
         cpy = getLargestExt(c, cpy);
 
     Type *llvmTy = c->typeNodeToLlvmType(cpy);
-
 
     if(StructType *st = dyn_cast<StructType>(llvmTy)){
         structTy->setBody(st->elements());
