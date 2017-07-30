@@ -1929,12 +1929,26 @@ string typeNodeToStrWithModifiers(TypeNode *tn){
 void TypedValue::dump() const{
     cout << "type:\t" << typeNodeToStrWithModifiers(type.get()) << endl
          << "val:\t" << flush;
-    
+
     if(type->type == TT_Void)
         puts("void ()");
     else if(type->type == TT_Type)
         cout << typeNodeToStr(extractTypeValue(this)) << endl;
-    else
+    else if(type->type == TT_FunctionList){
+        auto *fl = (FunctionCandidates*)this;
+        cout << "(" << fl->candidates.size() << " function" << (fl->candidates.size() == 1 ? ")\n" : "s\n");
+
+        for(auto &c : fl->candidates){
+            cout << endl << c->fdn->basename << " (" << c->fdn->name << " ): \n";
+            if(c->tv){
+                c->tv->dump();
+            }else{
+                cout << "(not yet compiled)\n\n";
+            }
+            cout << "Parse tree:\n";
+            c->fdn->print();
+        }
+    }else
         val->dump();
 }
 

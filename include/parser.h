@@ -227,10 +227,11 @@ namespace ante {
     };
 
     struct PreProcNode : public Node{
-        unique_ptr<Node> expr;
+        shared_ptr<Node> expr;
         TypedValue* compile(Compiler*);
         void print(void);
         PreProcNode(LOC_TY& loc, Node* e) : Node(loc), expr(e){}
+        PreProcNode(LOC_TY& loc, shared_ptr<Node> e) : Node(loc), expr(e){}
         ~PreProcNode(){}
     };
 
@@ -378,15 +379,17 @@ namespace ante {
         ~IfNode(){}
     };
 
-    struct FuncDeclNode : public ParentNode{
+    struct FuncDeclNode : public Node{
         string name, basename;
+        shared_ptr<Node> child;
         unique_ptr<Node> modifiers, type;
         unique_ptr<NamedValNode> params;
         bool varargs;
 
         TypedValue* compile(Compiler*);
         void print(void);
-        FuncDeclNode(LOC_TY& loc, string s, string bn, Node *mods, Node *t, Node *p, Node* b, bool va=false) : ParentNode(loc, b), name(s), basename(bn), modifiers(mods), type(t), params((NamedValNode*)p), varargs(va){}
+        FuncDeclNode(LOC_TY& loc, string s, string bn, Node *mods, Node *t, Node *p, Node* b, bool va=false) : Node(loc), name(s), basename(bn), child(b), modifiers(mods), type(t), params((NamedValNode*)p), varargs(va){}
+        FuncDeclNode(FuncDeclNode* fdn);
         ~FuncDeclNode(){ if(next.get()) next.release(); }
     };
 

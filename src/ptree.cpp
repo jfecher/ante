@@ -521,6 +521,36 @@ Node* mkFuncDeclNode(LOC_TY loc, Node* s, Node *bn, Node* mods, Node* tExpr, Nod
     return new FuncDeclNode(loc, (char*)s, (char*)bn, mods, tExpr, p, b);
 }
 
+FuncDeclNode::FuncDeclNode(FuncDeclNode* fdn) :
+    Node(fdn->loc),
+    name(fdn->name),
+    basename(fdn->basename),
+    child(fdn->child),
+    type(fdn->type.get()),
+    params(fdn->params.get()),
+    varargs(fdn->varargs){
+
+    Node *cur_mod = 0;
+    for(auto *m : *fdn->modifiers){
+        Node *cpy;
+        if(PreProcNode *ppn = dynamic_cast<PreProcNode*>(m)){
+            cpy = new PreProcNode(ppn->loc, ppn->expr);
+        }else if(ModNode *mn = dynamic_cast<ModNode*>(m)){
+            cpy = new ModNode(mn->loc, mn->mod);
+        }else{
+            throw new CtError();
+        }
+        
+        if(cur_mod){
+            cur_mod->next.reset(cpy);
+            cur_mod = cur_mod->next.get();
+        }else{
+            modifiers.reset(cpy);
+            cur_mod = modifiers.get();
+        }
+    }
+}
+
 Node* mkDataDeclNode(LOC_TY loc, char* s, Node *p, Node* b){
     vector<unique_ptr<TypeNode>> params;
     while(p){

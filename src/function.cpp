@@ -218,7 +218,7 @@ TypedValue* Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
     //store a fake function var, in case this function is recursive
     auto *fakeFnTv = new TypedValue(preFn, fakeFnTyn);
     if(fdn->name.length() > 0)
-        updateFn(fakeFnTv, fdn->basename, fdn->name);
+        updateFn(fakeFnTv, fd, fdn->basename, fdn->name);
 
     //actually compile the function, and hold onto the last value
     TypedValue *v = fdn->child->compile(this);
@@ -276,7 +276,7 @@ TypedValue* Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
 
     //only store the function if it has a name (and thus is not a lambda function)
     if(fdn->name.length() > 0)
-        updateFn(ret, fdn->basename, fdn->name);
+        updateFn(ret, fd, fdn->basename, fdn->name);
 
 
     delete fakeFnTv;
@@ -415,7 +415,7 @@ TypedValue* compFnHelper(Compiler *c, FuncDecl *fd){
 
     auto* ret = new TypedValue(f, fnTy);
     //stoVar(fdn->name, new Variable(fdn->name, ret, scope));
-    c->updateFn(ret, fdn->basename, fdn->name);
+    c->updateFn(ret, fd, fdn->basename, fdn->name);
 
     //The above handles everything for a function declaration
     //If the function is a definition, then the body will be compiled here.
@@ -513,11 +513,23 @@ void unbindParams(NamedValNode *params, vector<TypeNode*> &replacements){
 }
 
 
+FuncDecl* shallow_copy(FuncDecl* fd){
+    auto *fdnCpy = new FuncDeclNode(fd->fdn);
+
+    FuncDecl *cpy = new FuncDecl(fdnCpy, fd->scope, fd->module, fd->tv);
+    cpy->obj_bindings = fd->obj_bindings;
+    cpy->obj = fd->obj;
+    return cpy;
+}
+
+
 TypedValue* compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, TypeNode *args){
     //Each binding from the typecheck results needs to be declared as a typevar in the
     //function's scope, but compFn sets this scope later on, so the needed bindings are
     //instead stored as fake obj bindings to be declared later in compFn
-    size_t tmp_bindings_loc = fd->obj_bindings.size();
+    fd = shallow_copy(fd);
+
+    //size_t tmp_bindings_loc = fd->obj_bindings.size();
     for(auto& pair : tc->bindings){
         fd->obj_bindings.push_back({pair.first, pair.second.get()});
     }
@@ -531,7 +543,15 @@ TypedValue* compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, TypeN
 
     //swap out fn's generic params for the concrete arg types
     auto unboundParams = bindParams(fd->fdn->params.get(), tc->bindings);
+    
+    //test if bound variant is already compiled
+    string mangled = mangle(fd->fdn->basename, fd->fdn->params.get());
+    if(TypedValue *fn = c->getFunction(fd->fdn->basename, mangled))
+        return fn;
+    
+    fd->fdn->name = mangled;
 
+    //bind the return type if necessary
     TypeNode *retTy = 0;
     if(fd->fdn->type.get()){
         retTy = (TypeNode*)fd->fdn->type.release();
@@ -540,42 +560,9 @@ TypedValue* compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, TypeN
         fd->fdn->type.reset(boundRetTy);
     }
 
-    //test if bound variant is already compiled
-    string mangled = mangle(fd->fdn->basename, fd->fdn->params.get());
-    if(TypedValue *fn = c->getFunction(fd->fdn->basename, mangled))
-        return fn;
-
-    string oldName = fd->fdn->name;
-    fd->fdn->name = mangled;
-
     //compile the function normally (each typevar should now be
     //substituted with its checked type from the typecheck tc)
-    TypedValue *res;
-    try{
-        res = c->compFn(fd);
-    }catch(CtError *e){
-        //cleanup, reset bindings
-        while(fd->obj_bindings.size() > tmp_bindings_loc){
-            fd->obj_bindings.pop_back();
-        }
-        fd->fdn->type.reset(retTy);
-        unbindParams(fd->fdn->params.get(), unboundParams);
-        fd->fdn->name = oldName;
-        throw e;
-    }
-
-    auto ls = typeNodeToColoredStr(res->type.get());
-    fd->fdn->name = oldName;
-
-    //cleanup, reset bindings
-    while(fd->obj_bindings.size() > tmp_bindings_loc){
-        fd->obj_bindings.pop_back();
-    }
-    
-    fd->fdn->type.reset(retTy);
-    unbindParams(fd->fdn->params.get(), unboundParams);
-
-    return res;
+    return c->compFn(fd);
 }
 
 
@@ -594,9 +581,9 @@ TypedValue* FuncDeclNode::compile(Compiler *c){
         return c->getVoidLiteral();
     }else{
         //Otherwise, if it is a lambda function, compile it now and return it.
-        FuncDecl fd(this, c->scope, c->mergedCompUnits);
-        auto *ret = c->compFn(&fd);
-        fd.fdn = 0;
+        FuncDecl *fd = new FuncDecl(this, c->scope, c->mergedCompUnits);
+        auto *ret = c->compFn(fd);
+        fd->fdn = 0;
         return ret;
     }
 }
@@ -606,7 +593,6 @@ FuncDecl* getFuncDeclFromVec(vector<shared_ptr<FuncDecl>> &l, string &mangledNam
         if(fd->fdn->name == mangledName)
             return fd.get();
     }
-
     return 0;
 }
 
@@ -665,10 +651,15 @@ FuncDecl* Compiler::getCurrentFunction() const{
 
 
 
-void Compiler::updateFn(TypedValue *f, string &name, string &mangledName){
+void Compiler::updateFn(TypedValue *f, FuncDecl *fd, string &name, string &mangledName){
     auto &list = mergedCompUnits->fnDecls[name];
-    auto *fd = getFuncDeclFromVec(list, mangledName);
-    fd->tv = new TypedValue(f->val, f->type);
+    auto *vec_fd = getFuncDeclFromVec(list, mangledName);
+    if(vec_fd){
+        vec_fd->tv = new TypedValue(f->val, f->type);
+    }else{
+        fd->tv = new TypedValue(f->val, f->type);
+        list.push_back(shared_ptr<FuncDecl>(fd));
+    }
 }
 
 

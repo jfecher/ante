@@ -142,7 +142,7 @@ namespace ante {
     * instance for type checking.
     */
     struct FuncDecl {
-        FuncDeclNode *fdn;
+        FuncDeclNode* fdn;
         unsigned int scope;
         TypedValue *tv;
 
@@ -155,7 +155,7 @@ namespace ante {
         vector<pair<TypedValue*,LOC_TY>> returns;
 
         FuncDecl(FuncDeclNode *fn, unsigned int s, shared_ptr<Module> mod, TypedValue *f=0) : fdn(fn), scope(s), tv(f), module(mod), returns(){}
-        ~FuncDecl(){ if(fdn){delete fdn;} delete tv; }
+        ~FuncDecl(){ if(fdn) delete fdn; if(tv) delete tv; }
     };
     
     TypeNode* mkAnonTypeNode(TypeTag);
@@ -170,7 +170,9 @@ namespace ante {
         vector<shared_ptr<FuncDecl>> candidates;
         TypedValue *obj;
 
-        FunctionCandidates(vector<shared_ptr<FuncDecl>> &c, TypedValue *o) : TypedValue(nullptr, mkAnonTypeNode(TT_FunctionList)), candidates(c), obj(o){}
+        FunctionCandidates(LLVMContext *c, vector<shared_ptr<FuncDecl>> &ca, TypedValue *o) :
+            TypedValue(UndefValue::get(Type::getInt8Ty(*c)),
+            mkAnonTypeNode(TT_FunctionList)), candidates(ca), obj(o){}
     };
 
     /**
@@ -584,7 +586,7 @@ namespace ante {
         void importFile(const char *name, Node* locNode = 0);
         
         /** @brief Sets the tv of the FuncDecl specified to the value of f */
-        void updateFn(TypedValue *f, string &name, string &mangledName);
+        void updateFn(TypedValue *f, FuncDecl *fd, string &name, string &mangledName);
         FuncDecl* getCurrentFunction() const;
         
         /** @brief Returns the exact function specified if found or nullptr if not */

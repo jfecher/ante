@@ -720,7 +720,7 @@ TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *bino
         auto& l = getFunctionList(valName);
 
         if(!l.empty())
-            return new FunctionCandidates(l, nullptr);
+            return new FunctionCandidates(ctxt.get(), l, nullptr);
 
         return compErr("No static method called '" + field->name + "' was found in type " + 
                 typeNodeToColoredStr(tn), binop->loc);
@@ -797,7 +797,7 @@ TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *bino
 
         if(!l.empty()){
             TypedValue *obj = new TypedValue(val, copy(tyn));
-            return new FunctionCandidates(l, obj);
+            return new FunctionCandidates(ctxt.get(), l, obj);
         }else{
             return compErr("Method/Field " + field->name + " not found in type " + typeNodeToColoredStr(tyn), binop->loc);
         }
