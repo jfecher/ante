@@ -26,11 +26,13 @@ fun append: mut List<'t> l, 't elem
         l.first = Some n
         l.last = Some n
 
-fun print: List<'t> l
+
+fun print: List l
     match l.first with
     | Some n -> print n
 
-fun print: Node<'t>* l
+
+fun print: Node* l
     print l.elem
     match l.next with
     | Some n -> print n
