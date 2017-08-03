@@ -32,7 +32,7 @@ fun print: List l
     | Some n -> print n
 
 
-fun print: Node* l
+fun print: Node<'t>* l
     print l.elem
     match l.next with
     | Some n -> print n

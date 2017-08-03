@@ -1900,7 +1900,7 @@ int Compiler::compileIRtoObj(llvm::Module *mod, string outFile){
 
 
 int Compiler::linkObj(string inFiles, string outFile){
-    string cmd = AN_LINKER " " + inFiles + " -o " + outFile;
+    string cmd = AN_LINKER " " + inFiles + " -static -o " + outFile;
     return system(cmd.c_str());
 }
 
