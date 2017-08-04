@@ -1936,10 +1936,10 @@ void TypedValue::dump() const{
         cout << typeNodeToStr(extractTypeValue(this)) << endl;
     else if(type->type == TT_FunctionList){
         auto *fl = (FunctionCandidates*)this;
-        cout << "(" << fl->candidates.size() << " function" << (fl->candidates.size() == 1 ? ")\n" : "s\n");
+        cout << "(" << fl->candidates.size() << " function" << (fl->candidates.size() == 1 ? ")\n" : "s)\n");
 
         for(auto &c : fl->candidates){
-            cout << endl << c->fdn->basename << " (" << c->fdn->name << " ): \n";
+            cout << endl << c->fdn->basename << " (" << c->fdn->name << "): \n";
             if(c->tv){
                 c->tv->dump();
             }else{
@@ -1947,6 +1947,7 @@ void TypedValue::dump() const{
             }
             cout << "Parse tree:\n";
             c->fdn->print();
+            cout << endl;
         }
     }else
         val->dump();
