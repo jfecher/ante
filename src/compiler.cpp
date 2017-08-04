@@ -677,7 +677,7 @@ TypedValue* VarNode::compile(Compiler *c){
         }else if(fnlist.empty()){
             return c->compErr("Variable or function '" + name + "' has not been declared.", this->loc);
         }else{
-            return c->compErr("Too many candidates for function '" + name + "' to reduce to a single instance", this->loc);
+            return new FunctionCandidates(c->ctxt.get(), fnlist, nullptr);
         }
     }
 }

@@ -1194,7 +1194,12 @@ TypedValue* deduceFunction(Compiler *c, FunctionCandidates *fc, vector<TypedValu
             c->compErr(msg, loc);
         }catch(CtError *e){
             for(auto &fd : fc->candidates){
-                c->compErr("Candidate", fd->fdn->loc, ErrorType::Note);
+                TypeNode *params;
+                if(!fd->tv)
+                    params = createFnTyNode(fd->fdn->params.get(), mkAnonTypeNode(TT_Void));
+
+                params = mkTypeNodeWithExt(TT_Tuple, (TypeNode*)params->extTy->next.get());
+                c->compErr("Candidate function with params "+typeNodeToColoredStr(params), fd->fdn->loc, ErrorType::Note);
             }
             throw e;
         }
@@ -1207,7 +1212,12 @@ TypedValue* deduceFunction(Compiler *c, FunctionCandidates *fc, vector<TypedValu
             c->compErr(msg, loc);
         }catch(CtError *e){
             for(auto &p : matches){
-                c->compErr("Candidate", p.second->fdn->loc, ErrorType::Note);
+                TypeNode *params;
+                if(!p.second->tv)
+                    params = createFnTyNode(p.second->fdn->params.get(), mkAnonTypeNode(TT_Void));
+
+                params = mkTypeNodeWithExt(TT_Tuple, (TypeNode*)params->extTy->next.get());
+                c->compErr("Candidate function with params "+typeNodeToColoredStr(params), p.second->fdn->loc, ErrorType::Note);
             }
             throw e;
         }
