@@ -486,37 +486,34 @@ TypedValue* compFnHelper(Compiler *c, FuncDecl *fd){
 }
 
 
-vector<TypeNode*> bindParams(NamedValNode *params, const vector<pair<string,unique_ptr<TypeNode>>> &bindings){
-    vector<TypeNode*> oldParams;
+NamedValNode* bindParams(unique_ptr<NamedValNode> &params, const vector<pair<string,unique_ptr<TypeNode>>> &bindings){
+    NamedValNode *newParams = 0;
+    NamedValNode *curParam  = 0;
+    NamedValNode *oldParams = params.get();
 
-    while(params){
-        auto *unboundTy = (TypeNode*)params->typeExpr.release();
-        oldParams.push_back(unboundTy);
+    while(oldParams){
+        auto *unboundTy = (TypeNode*)oldParams->typeExpr.get();
 
         auto *boundTy = copy(unboundTy);
         bindGenericToType(boundTy, bindings);
-        params->typeExpr.reset(boundTy);
+        
+        auto *node = new NamedValNode(oldParams->loc, oldParams->name, boundTy);
+        if(newParams){
+            curParam->next.reset(node);
+        }else{
+            newParams = node;
+        }
 
-        params = (NamedValNode*)params->next.get();
+        curParam = node;
+        oldParams = (NamedValNode*)oldParams->next.get();
     }
-    return oldParams;
+    return newParams;
 }
-
-void unbindParams(NamedValNode *params, vector<TypeNode*> &replacements){
-    size_t i = 0;
-    while(params){
-        params->typeExpr.reset(replacements[i]);
-
-        params = (NamedValNode*)params->next.get();
-        i++;
-    }
-}
-
 
 FuncDecl* shallow_copy(FuncDecl* fd){
     auto *fdnCpy = new FuncDeclNode(fd->fdn);
 
-    FuncDecl *cpy = new FuncDecl(fdnCpy, fd->scope, fd->module, fd->tv);
+    FuncDecl *cpy = new FuncDecl(fdnCpy, fd->scope, fd->module, nullptr);
     cpy->obj_bindings = fd->obj_bindings;
     cpy->obj = fd->obj;
     return cpy;
@@ -524,12 +521,11 @@ FuncDecl* shallow_copy(FuncDecl* fd){
 
 
 TypedValue* compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, TypeNode *args){
+    fd = shallow_copy(fd);
+
     //Each binding from the typecheck results needs to be declared as a typevar in the
     //function's scope, but compFn sets this scope later on, so the needed bindings are
     //instead stored as fake obj bindings to be declared later in compFn
-    fd = shallow_copy(fd);
-
-    //size_t tmp_bindings_loc = fd->obj_bindings.size();
     for(auto& pair : tc->bindings){
         fd->obj_bindings.push_back({pair.first, pair.second.get()});
     }
@@ -542,7 +538,11 @@ TypedValue* compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, TypeN
     }
 
     //swap out fn's generic params for the concrete arg types
-    auto unboundParams = bindParams(fd->fdn->params.get(), tc->bindings);
+    auto boundParams = bindParams(fd->fdn->params, tc->bindings);
+
+    //The unbound template owns the original params
+    fd->fdn->params.release();
+    fd->fdn->params.reset(boundParams);
     
     //test if bound variant is already compiled
     string mangled = mangle(fd->fdn->basename, fd->fdn->params.get());
