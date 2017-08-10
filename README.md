@@ -19,6 +19,7 @@ the ability to interact at a lower level if needed.
 - Looking to contribute?  Checkout [the documentation](http://jfecher.github.io/ante/html/index.html).
 
 ## Features
+* Lisp-esque compile-time execution combined with an extensible compiler API
 * Systems language that feels like an interpreted language
 * Expression-based syntax
 * Robust module system
