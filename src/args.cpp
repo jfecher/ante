@@ -20,12 +20,12 @@ map<string, Args> argsMap = {
 void CompilerArgs::addArg(Argument *a){
     args.push_back(a);
 }
-    
+
 bool CompilerArgs::hasArg(Args a) const{
     for(auto &arg : args)
         if(arg->argTy == a)
             return true;
-    
+
     return false;
 }
 
@@ -33,7 +33,7 @@ ante::Argument* CompilerArgs::getArg(Args a) const{
     for(auto &arg : args)
         if(arg->argTy == a)
             return arg;
-    
+
     return 0;
 }
 
@@ -48,10 +48,10 @@ enum ArgTy { None, Str, Int };
 ArgTy requiresArg(Args a){
     if(a == OutputName)
         return ArgTy::Str;
-     
+
     if(a == OptLvl)
         return ArgTy::Int;
-    
+
     return ArgTy::None;
 }
 

@@ -33,7 +33,7 @@ size_t getTupleSize(Node *tup){
         size++;
         tup = tup->next.get();
     }
-    
+
     return size;
 }
 
@@ -77,7 +77,7 @@ bool isUnsignedTypeTag(const TypeTag tt){
 
 TypedValue* IntLitNode::compile(Compiler *c){
     return new TypedValue(ConstantInt::get(*c->ctxt,
-                            APInt(getBitWidthOfTypeTag(type), 
+                            APInt(getBitWidthOfTypeTag(type),
                             atol(val.c_str()), isUnsignedTypeTag(type))), mkAnonTypeNode(type));
 }
 
@@ -137,11 +137,11 @@ TypedValue* TypeNode::compile(Compiler *c){
             validateType(c, variant, unionDataTy);
             unionDataTy->generics = move(tvars);
         }
-        
+
         //TaggedUnions store every variant in their type so just retrieve
         //the variant specified at index tagIndex
         auto *ty = copy(unionDataTy->tyn.get());
-       
+
 
         c->enterNewScope();
         auto *voidPtr = mkTypeNodeWithExt(TT_Ptr, mkAnonTypeNode(TT_Void));
@@ -153,7 +153,7 @@ TypedValue* TypeNode::compile(Compiler *c){
         Type *unionTy = c->typeNodeToLlvmType(ty);
         delete voidPtr;
         c->exitScope();
-       
+
 
         Type *curTy = tag->getType();
 
@@ -209,7 +209,7 @@ TypedValue* compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
     string l = sln->val.substr(0, pos);
 
     //make a new sub-location for it
-    yy::location lloc = mkLoc(mkPos(sln->loc.begin.filename, sln->loc.begin.line, sln->loc.begin.column), 
+    yy::location lloc = mkLoc(mkPos(sln->loc.begin.filename, sln->loc.begin.line, sln->loc.begin.column),
 		                mkPos(sln->loc.end.filename,   sln->loc.end.line,   sln->loc.begin.column + pos-1));
     auto *ls = new StrLitNode(lloc, l);
 
@@ -220,14 +220,14 @@ TypedValue* compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
 
     //this is the ${...} part of the string without the ${ and }
     string m = sln->val.substr(pos+2, posEnd - (pos+2));
-    
+
     string r = sln->val.substr(posEnd+1);
     yy::location rloc = mkLoc(mkPos(sln->loc.begin.filename, sln->loc.begin.line, sln->loc.begin.column + posEnd + 1),
 							  mkPos(sln->loc.end.filename,   sln->loc.end.line,   sln->loc.end.column));
     auto *rs = new StrLitNode(rloc, r);
 
     //now that the string is separated, begin interpolation preparation
-    
+
     //lex and parse
     setLexer(new Lexer(sln->loc.begin.filename, m, sln->loc.begin.line-1, sln->loc.begin.column + pos));
     yy::parser p{};
@@ -240,7 +240,7 @@ TypedValue* compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
     RootNode *expr = parser::getRootNode();
     TypedValue *val = 0;
     Node *valNode = 0;
-    
+
     scanImports(c, expr);
     c->scanAllDecls(expr);
 
@@ -391,7 +391,7 @@ TypedValue* TupleNode::compile(Compiler *c){
         elemTys.push_back(tval->getType());
 
         if(cur){
-            //cannot just do a swap here because unique_ptr<TypeNode> 
+            //cannot just do a swap here because unique_ptr<TypeNode>
             //cannot swap with a unique_ptr<Node>
             cur->next.release();
             cur->next.reset(tval->type.get());
@@ -415,7 +415,7 @@ TypedValue* TupleNode::compile(Compiler *c){
     if(exprs.size() == 0){
         tyn->type = TT_Void;
     }
-   
+
     return new TypedValue(tuple, tyn);
 }
 
@@ -423,7 +423,7 @@ TypedValue* TupleNode::compile(Compiler *c){
 /**
  * @brief Compiles a tuple's elements and returns them in a vector
  *
- * @return A vector of a tuple's elements 
+ * @return A vector of a tuple's elements
  */
 vector<TypedValue*> TupleNode::unpack(Compiler *c){
     vector<TypedValue*> ret;
@@ -443,7 +443,7 @@ vector<TypedValue*> TupleNode::unpack(Compiler *c){
  */
 TypedValue* RetNode::compile(Compiler *c){
     TypedValue *ret = expr->compile(c);
-    
+
     auto *retInst = ret->type->type == TT_Void ?
                  new TypedValue(c->builder.CreateRetVoid(), ret->type) :
                  new TypedValue(c->builder.CreateRet(ret->val), ret->type);
@@ -473,7 +473,7 @@ TypedValue* WhileNode::compile(Compiler *c){
 
     c->builder.CreateBr(cond);
     c->builder.SetInsertPoint(cond);
-   
+
     //Allow break/continue to occur in the while condition
     //portion of the loop to allow them in the "body" of
     //while ... do () loops
@@ -558,8 +558,8 @@ TypedValue* ForNode::compile(Compiler *c){
 
     auto *uwrap_var = new Variable(var, uwrap, c->scope);
     c->stoVar(var, uwrap_var);
- 
-    
+
+
     //register the branches to break/continue to right before the body is compiled in case there was an error compiling the range
     c->compCtxt->breakLabels->push_back(end);
     c->compCtxt->continueLabels->push_back(incr);
@@ -573,7 +573,7 @@ TypedValue* ForNode::compile(Compiler *c){
         c->compCtxt->continueLabels->pop_back();
         throw e;
     }
-        
+
     c->compCtxt->breakLabels->pop_back();;
     c->compCtxt->continueLabels->pop_back();
 
@@ -586,7 +586,7 @@ TypedValue* ForNode::compile(Compiler *c){
         auto *next = c->callFn("next", {new TypedValue(c->builder.CreateLoad(alloca), rangev->type.get())});
         if(!next) return c->compErr("Range expression of type " + typeNodeToColoredStr(rangev->type) + " does not implement " + typeNodeToColoredStr(mkDataTypeNode("Iterable")) +
                 ", which it needs to be used in a for loop", range->loc);
-    
+
         c->builder.CreateStore(next->val, alloca);
         c->builder.CreateBr(cond);
     }
@@ -607,14 +607,14 @@ TypedValue* JumpNode::compile(Compiler *c){
 
     //we can now safely get the zero-extended value of ci since even if it is signed, it is not negative
     auto jumpCount = ci->getZExtValue();
-    
+
     //NOTE: continueLabels->size() == breakLabels->size() always
     auto loopCount = c->compCtxt->breakLabels->size();
-    
+
     if(loopCount == 0)
         return c->compErr("There are no loops to jump out of", this->loc);
-    
-    
+
+
     if(jumpCount == 0)
         return c->compErr("Cannot jump out of 0 loops", expr->loc);
 
@@ -622,7 +622,7 @@ TypedValue* JumpNode::compile(Compiler *c){
     if(jumpCount > loopCount)
         return c->compErr("Cannot jump out of " + to_string(jumpCount) + " loops when there are only " +
                 to_string(c->compCtxt->breakLabels->size()) + " loop(s) nested", expr->loc);
-  
+
     //actually create the branch instruction
     BranchInst *br = jumpType == Tok_Continue ?
         c->builder.CreateBr( c->compCtxt->continueLabels->at(loopCount - jumpCount) ) :
@@ -738,7 +738,7 @@ TypedValue* compVarDeclWithInferredType(VarDeclNode *node, Compiler *c){
                 " value to a variable", node->expr->loc);
 
     bool isGlobal = false;
-    
+
     //Add all of the declared modifiers to the typedval
     for(Node *n : *node->modifiers){
         int m = ((ModNode*)n)->mod;
@@ -749,7 +749,7 @@ TypedValue* compVarDeclWithInferredType(VarDeclNode *node, Compiler *c){
     //set the value as mutable
     if(!val->type->hasModifier(Tok_Mut))
         val->type->addModifier(Tok_Mut);
-    
+
     //location to store var
     Value *ptr = isGlobal ?
             (Value*) new GlobalVariable(*c->module, val->getType(), false, GlobalValue::PrivateLinkage, UndefValue::get(val->getType()), node->name) :
@@ -791,7 +791,7 @@ TypedValue* VarDeclNode::compile(Compiler *c){
     Type *ty = c->typeNodeToLlvmType(tyNode);
 
     bool isGlobal = false;
-    
+
     //Add all of the declared modifiers to the typedval
     for(Node *n : *modifiers){
         int m = ((ModNode*)n)->mod;
@@ -850,19 +850,19 @@ TypedValue* compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
     if(auto *tn = dynamic_cast<TypeNode*>(bop->lval.get()))
         return c->compErr("Cannot insert value into static module '" + typeNodeToColoredStr(tn), tn->loc);
 
-   
+
     Value *val;
     TypeNode *tyn;
     TypeNode *ltyn;
 
     //prevent l from being used after this scope; only val and tyn should be used as only they
     //are updated with the automatic pointer dereferences.
-    { 
+    {
         auto *l = bop->lval->compile(c);
 
         val = l->val;
         tyn = ltyn = l->type.get();
-       
+
         if(!tyn->hasModifier(Tok_Mut))
             return c->compErr("Variable must be mutable to be assigned to, but instead is an immutable " +
                     typeNodeToColoredStr(tyn), bop->loc);
@@ -873,7 +873,7 @@ TypedValue* compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
         val = c->builder.CreateLoad(val);
         tyn = tyn->extTy.get();
     }
-    
+
     //if pointer derefs took place, tyn could have lost its modifiers, so make sure they are copied back
     if(ltyn->type == TT_Ptr and tyn->modifiers.empty())
         tyn->copyModifiersFrom(ltyn);
@@ -949,9 +949,9 @@ TypedValue* VarAssignNode::compile(Compiler *c){
     if(!tmp->hasModifier(Tok_Mut))
         return c->compErr("Variable must be mutable to be assigned to, but instead is an immutable " +
                 typeNodeToColoredStr(tmp->type), ref_expr->loc);
-    
+
     Value *dest = ((LoadInst*)tmp->val)->getPointerOperand();
-    
+
     //compile the expression to store
     TypedValue *assignExpr = expr->compile(c);
 
@@ -1053,7 +1053,7 @@ string mangle(string &base, TypeNode *p1, TypeNode *p2, TypeNode *p3){
 FuncDeclNode* findFDN(Node *list, string& basename){
     for(Node *n : *list){
         auto *fdn = (FuncDeclNode*)n;
-        
+
         if(fdn->basename == basename){
             return fdn;
         }
@@ -1107,10 +1107,10 @@ TypedValue* ExtNode::compile(Compiler *c){
 
                 fdn->name = c->funcPrefix + fdn->name;
                 fdn->basename = c->funcPrefix + fdn->basename;
-                
+
                 shared_ptr<FuncDecl> fd{new FuncDecl(fdn, c->scope, c->compUnit)};
                 traitImpl->funcs.push_back(fd);
-    
+
                 c->compUnit->fnDecls[fdn->basename].push_back(fd);
                 c->mergedCompUnits->fnDecls[fdn->basename].push_back(fd);
             }
@@ -1137,7 +1137,7 @@ TypedValue* ExtNode::compile(Compiler *c){
     }
     return c->getVoidLiteral();
 }
-        
+
 /**
  * @return True if a DataType implements the specified trait
  */
@@ -1164,7 +1164,7 @@ TypedValue* compTaggedUnion(Compiler *c, DataDeclNode *n){
     union_name.push_back(n->name);
 
     vector<shared_ptr<UnionTag>> tags;
-    
+
     TypeNode *unionTy = mkAnonTypeNode(TT_TaggedUnion);
     TypeNode *curExt = 0;
 
@@ -1203,8 +1203,8 @@ TypedValue* compTaggedUnion(Compiler *c, DataDeclNode *n){
     DataType *data = new DataType(n->name, fieldNames, unionTy);
     for(auto &g : n->generics)
         data->generics.push_back(shared_ptr<TypeNode>(g.release()));
-    
-    data->tags.swap(tags); 
+
+    data->tags.swap(tags);
 
     c->stoType(data, n->name);
     return c->getVoidLiteral();
@@ -1214,20 +1214,20 @@ TypedValue* compTaggedUnion(Compiler *c, DataDeclNode *n){
 TypedValue* DataDeclNode::compile(Compiler *c){
     auto *dt = c->lookupType(this->name);
     if(dt) return c->compErr("Type " + name + " was redefined", loc);
-    
+
     auto *nvn = (NamedValNode*)child.get();
     if(((TypeNode*) nvn->typeExpr.get())->type == TT_TaggedUnion){
         return compTaggedUnion(c, this);
     }
 
-    //Create the DataType as a stub first, have its contents be recursive 
+    //Create the DataType as a stub first, have its contents be recursive
     //just to cause an error if something tries to use the stub
     DataType *data = new DataType(name, {}, mkDataTypeNode(name));
-            
+
     for(auto &g : generics){
         data->generics.push_back(shared_ptr<TypeNode>(copy(g.get())));
     }
-   
+
     c->stoType(data, name);
 
 
@@ -1242,7 +1242,7 @@ TypedValue* DataDeclNode::compile(Compiler *c){
 
     while(nvn){
         TypeNode *tyn = (TypeNode*)nvn->typeExpr.get();
-        
+
         validateType(c, tyn, this);
 
         if(first){
@@ -1270,13 +1270,13 @@ TypedValue* DataDeclNode::compile(Compiler *c){
 TypedValue* TraitNode::compile(Compiler *c){
     auto *trait = new Trait();
     trait->name = name;
-    
+
     auto *curfn = child.release();
     while(curfn){
         auto *fn = (FuncDeclNode*)curfn;
         fn->name = c->funcPrefix + fn->name;
         fn->basename = c->funcPrefix + fn->basename;
-        
+
         shared_ptr<FuncDecl> fd{new FuncDecl(fn, c->scope, c->compUnit)};
         trait->funcs.push_back(fd);
         curfn = curfn->next.get();
@@ -1302,7 +1302,7 @@ TypedValue* GlobalNode::compile(Compiler *c){
     for(auto &varName : vars){
         auto oldFnScope = c->fnScope;
         c->fnScope = 1;
-        
+
         Variable *var;
         for(auto i = c->varTable.size(); i >= c->fnScope; --i){
             try{
@@ -1332,7 +1332,7 @@ TypedValue* GlobalNode::compile(Compiler *c){
 TypedValue* handleTypeCastPattern(Compiler *c, MatchNode *mn, TypedValue *lval, TypeCastNode *tn, DataType *tagTy, DataType *parentTy){
     //If this is a generic type cast like Some 't, the 't must be bound to a concrete type first
     auto *tagtycpy = copy(tagTy->tyn);
-    
+
     //This is a pattern of the match _ with expr, so if that is mutable this should be too
     tagtycpy->copyModifiersFrom(lval->type.get());
 
@@ -1432,7 +1432,7 @@ TypedValue* MatchNode::compile(Compiler *c){
 
             auto *parentTy = c->lookupType(tagTy->getParentUnionName());
             ci = ConstantInt::get(*c->ctxt, APInt(8, parentTy->getTagVal(tn->typeExpr->typeName), true));
-            
+
             handleTypeCastPattern(c, this, lval, tn, tagTy, parentTy);
 
         //single type pattern:  None
@@ -1440,7 +1440,7 @@ TypedValue* MatchNode::compile(Compiler *c){
             auto *tagTy = c->lookupType(tn->typeName);
             if(!tagTy)
                 return c->compErr("Union tag " + typeNodeToColoredStr(tn) + " was not yet declared.", tn->loc);
-       
+
             if(!tagTy->isUnionTag())
                 return c->compErr(typeNodeToColoredStr(tn) + " must be a union tag to be used in a pattern", tn->loc);
 
@@ -1458,10 +1458,10 @@ TypedValue* MatchNode::compile(Compiler *c){
 
         auto *then = mbn->branch->compile(c);
         c->exitScope();
-    
+
         if(!dyn_cast<ReturnInst>(then->val) and !dyn_cast<BranchInst>(then->val))
             c->builder.CreateBr(end);
-        
+
         merges.push_back(pair<BasicBlock*,TypedValue*>(c->builder.GetInsertBlock(), then));
 
         if(ci)
@@ -1518,7 +1518,7 @@ void ante::Module::import(shared_ptr<ante::Module> mod){
 
     for(auto& pair : mod->userTypes)
         userTypes[pair.first] = pair.second;
-    
+
     for(auto& pair : mod->traits)
         traits[pair.first] = pair.second;
 }
@@ -1633,7 +1633,7 @@ Node* mkPlaceholderNode(){
     auto* empty = new string("");
 
     auto fakeLoc = mkLoc(mkPos(empty, 0, 0), mkPos(empty, 0, 0));
-    
+
     return new IntLitNode(fakeLoc, "0", TT_U8);
 }
 
@@ -1677,7 +1677,7 @@ void Compiler::scanAllDecls(RootNode *root){
 void Compiler::eval(){
     string cmd = "";
     cout << "Ante REPL v0.0.1\nType 'exit' to exit.\n";
-   
+
     //setup compiler
     createMainFn();
     compilePrelude();
@@ -1769,7 +1769,7 @@ void Compiler::compile(){
     //create implicit main function and import the prelude
     auto *mainFn = createMainFn();
     compilePrelude();
-    
+
     ast->compile(this);
 
     //always return 0
@@ -1838,15 +1838,15 @@ TargetMachine* getTargetMachine(){
     string features = "";
     string triple = Triple(AN_NATIVE_ARCH, AN_NATIVE_VENDOR, AN_NATIVE_OS).getTriple();
     TargetOptions op;
-    
-    TargetMachine *tm = target->createTargetMachine(triple, cpu, features, op, Reloc::Model::Static, 
+
+    TargetMachine *tm = target->createTargetMachine(triple, cpu, features, op, Reloc::Model::Static,
             CodeModel::Default, CodeGenOpt::Level::Aggressive);
 
     if(!tm){
         cerr << "Error when initializing TargetMachine.\n";
         exit(1);
     }
-    
+
     return tm;
 }
 
@@ -1865,7 +1865,7 @@ void Compiler::jitFunction(Function *f){
     jit->addModule(move(module));
     jit->finalizeObject();
     remove((".tmp_" + f->getName()).str().c_str());
-    
+
     auto* fn = jit->getPointerToFunction(f);
 
     if(fn)
@@ -1910,7 +1910,7 @@ void Compiler::emitIR(){
     if(errFlag) puts("Partially compiled module: \n");
     module->dump();
 }
-    
+
 
 /**
  * @brief Translates a TypeNode and its modifiers to a string
@@ -1970,7 +1970,7 @@ void Compiler::exitScope(){
         if(it->second->isFreeable() && it->second->scope == this->scope){
             string freeFnName = "free";
             Function* freeFn = (Function*)getFunction(freeFnName, freeFnName)->val;
-            
+
             auto *inst = dyn_cast<AllocaInst>(it->second->getVal());
             auto *val = inst? builder.CreateLoad(inst) : it->second->getVal();
 
@@ -2089,7 +2089,7 @@ legacy::FunctionPassManager* mkPassManager(llvm::Module *m, char optLvl){
  */
 Compiler::Compiler(const char *_fileName, bool lib, shared_ptr<LLVMContext> llvmCtxt) :
         ctxt(llvmCtxt ? llvmCtxt : shared_ptr<LLVMContext>(new LLVMContext())),
-        builder(*ctxt), 
+        builder(*ctxt),
         compUnit(new ante::Module()),
         mergedCompUnits(new ante::Module()),
         allCompiledModules(new unordered_map<string,shared_ptr<ante::Module>>()),
@@ -2118,7 +2118,7 @@ Compiler::Compiler(const char *_fileName, bool lib, shared_ptr<LLVMContext> llvm
             fputs("Syntax error, aborting.\n", stderr);
             exit(flag);
         }
-        
+
         ast.reset(parser::getRootNode());
     }
 
@@ -2165,12 +2165,12 @@ Compiler::Compiler(Node *root, string modName, string &fName, bool lib, shared_p
 
     compUnit->name = modName;
     mergedCompUnits->name = modName;
-    
+
     ast.reset(new RootNode(root->loc));
     ast->main.push_back(unique_ptr<Node>(root));
 
     module.reset(new llvm::Module(outFile, *ctxt));
-    
+
     enterNewScope();
 
     //add passes to passmanager.
@@ -2193,7 +2193,7 @@ void Compiler::processArgs(CompilerArgs *args){
         else if(arg->arg == "2") optLvl = 2;
         else if(arg->arg == "3") optLvl = 3;
         else{ cerr << "Unrecognized OptLvl " << arg->arg << endl; return; }
-    
+
         passManager.reset(mkPassManager(module.get(), optLvl));
     }
 
@@ -2211,7 +2211,7 @@ void Compiler::processArgs(CompilerArgs *args){
             }
         }
     }
-    
+
     if(args->hasArg(Args::Check)){
         if(!compiled) compile();
         shouldGenerateExecutable = false;
@@ -2229,13 +2229,13 @@ void Compiler::processArgs(CompilerArgs *args){
         compileObj(out);
         shouldGenerateExecutable = false;
     }
-    
+
     if(args->hasArg(Args::CompileAndRun))
         shouldGenerateExecutable = true;
-    
+
     if(shouldGenerateExecutable){
         compileNative();
-    
+
         if(!errFlag && args->hasArg(Args::CompileAndRun)){
             int res = system((AN_EXEC_STR + outFile).c_str());
             if(res) return; //silence unused return result warning

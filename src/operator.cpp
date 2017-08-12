@@ -67,41 +67,41 @@ TypedValue* Compiler::compMul(TypedValue *l, TypedValue *r, BinOpNode *op){
 
 TypedValue* Compiler::compDiv(TypedValue *l, TypedValue *r, BinOpNode *op){
     switch(l->type->type){
-        case TT_I8:  
-        case TT_I16: 
-        case TT_I32: 
-        case TT_I64: 
-        case TT_Isz: 
+        case TT_I8:
+        case TT_I16:
+        case TT_I32:
+        case TT_I64:
+        case TT_Isz:
             return new TypedValue(builder.CreateSDiv(l->val, r->val), l->type);
         case TT_U8: case TT_C8:
         case TT_U16:
         case TT_U32:
         case TT_U64:
-        case TT_Usz: 
+        case TT_Usz:
             return new TypedValue(builder.CreateUDiv(l->val, r->val), l->type);
         case TT_F16:
         case TT_F32:
         case TT_F64:
             return new TypedValue(builder.CreateFDiv(l->val, r->val), l->type);
 
-        default: 
+        default:
             return compErr("binary operator / is undefined for the type " + typeNodeToColoredStr(l->type) + " and " + typeNodeToColoredStr(r->type), op->loc);
     }
 }
 
 TypedValue* Compiler::compRem(TypedValue *l, TypedValue *r, BinOpNode *op){
     switch(l->type->type){
-        case TT_I8: 
+        case TT_I8:
         case TT_I16:
         case TT_I32:
         case TT_I64:
-        case TT_Isz: 
+        case TT_Isz:
             return new TypedValue(builder.CreateSRem(l->val, r->val), l->type);
         case TT_U8: case TT_C8:
         case TT_U16:
         case TT_U32:
         case TT_U64:
-        case TT_Usz: 
+        case TT_Usz:
             return new TypedValue(builder.CreateURem(l->val, r->val), l->type);
         case TT_F16:
         case TT_F32:
@@ -125,7 +125,7 @@ TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
         //check for alloca
         if(LoadInst *li = dyn_cast<LoadInst>(l->val)){
             Value *arr = li->getPointerOperand();
-            
+
             vector<Value*> indices;
             indices.push_back(ConstantInt::get(*ctxt, APInt(64, 0, true)));
             indices.push_back(r->val);
@@ -265,7 +265,7 @@ TypedValue* createUnionVariantCast(Compiler *c, TypedValue *valToCast, TypeNode 
     largest->next.release();
 
     Type *variantTy = c->typeNodeToLlvmType(valToCast->type.get());
-   
+
     auto tagVal = unionDataTy->getTagVal(castTyn->typeName);
 
     vector<Type*> unionTys;
@@ -336,14 +336,14 @@ struct ReinterpretCastResult {
  */
 ReinterpretCastResult checkForReinterpretCast(Compiler *c, TypeNode *castTyn, TypedValue *valToCast){
     auto *dataTy = c->lookupType(castTyn->typeName);
-    
+
     if(dataTy and dataTy->tyn){
         //The tyn of a DataType is always a tuple, so wrap the casting value with a
         //tuple if it is not one already or else it will always fail type checking.
         TypeNode *wrapper = valToCast->type->type != TT_Tuple and dataTy->tyn->type == TT_Tuple
                            ? mkTypeNodeWithExt(TT_Tuple, valToCast->type.get())
                            : valToCast->type.get();
-       
+
         auto tc = c->typeEq(wrapper, dataTy->tyn.get());
 
         if(!!tc){
@@ -360,7 +360,7 @@ ReinterpretCastResult checkForReinterpretCast(Compiler *c, TypeNode *castTyn, Ty
             TypeNode *wrapper = castTyn->type != TT_Tuple and dataTy->tyn->type == TT_Tuple
                             ? mkTypeNodeWithExt(TT_Tuple, castTyn)
                             : castTyn;
-       
+
             auto tc = c->typeEq(dataTy->tyn.get(), wrapper);
             if(!!tc){
                 return {ReinterpretCastResult::ValToPrimitive, tc, dataTy};
@@ -404,7 +404,7 @@ bool preferCastOverFunction(Compiler *c, TypedValue *valToCast, ReinterpretCastR
 
     auto *fnTy = createFnTyNode(fd->fdn->params.get(), mkAnonTypeNode(TT_Void));
     auto *params = (TypeNode*)fnTy->extTy->next.get();
-    
+
     auto *args = valToCast->type->type == TT_Tuple
                ? valToCast->type->extTy.get()
                : valToCast->type.get();
@@ -433,7 +433,7 @@ TypedValue* createCast(Compiler *c, TypeNode *castTyn, TypedValue *valToCast){
         if(castResult.type != ReinterpretCastResult::NoCast){
             if(preferCastOverFunction(c, valToCast, castResult, fd))
                 return doReinterpretCast(c, castTyn, valToCast, &castResult);
-        }       
+        }
 
         //Compile the function now that we know to use it over a cast
         auto *fn = c->getCastFn(valToCast->type.get(), castTyn, fd);
@@ -453,7 +453,7 @@ TypedValue* createCast(Compiler *c, TypeNode *castTyn, TypedValue *valToCast){
     //otherwise, fallback on known conversions
     if(isIntTypeTag(castTyn->type)){
         Type *castTy = c->typeNodeToLlvmType(castTyn);
-        
+
         // int -> int  (maybe unsigned)
         if(isIntTypeTag(valToCast->type->type)){
             return new TypedValue(c->builder.CreateIntCast(valToCast->val, castTy, isUnsignedTypeTag(castTyn->type)), castTyn);
@@ -524,8 +524,8 @@ TypedValue* TypeCastNode::compile(Compiler *c){
     if(!tval){
         //if(!!c->typeEq(rtval->type.get(), ty))
         //    c->compErr("Typecast to same type", loc, ErrorType::Warning);
-            
-        return c->compErr("Invalid type cast " + typeNodeToColoredStr(rtval->type) + 
+
+        return c->compErr("Invalid type cast " + typeNodeToColoredStr(rtval->type) +
                 " -> " + typeNodeToColoredStr(ty), loc);
     }
     return tval;
@@ -537,20 +537,20 @@ TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Ty
     if(cond->type->type != TT_Bool)
         return c->compErr("If condition must be of type " + typeNodeToColoredStr(mkAnonTypeNode(TT_Bool)) +
                     " but an expression of type " + typeNodeToColoredStr(cond->type.get()) + " was given", ifn->condition->loc);
-    
+
     Function *f = c->builder.GetInsertBlock()->getParent();
     auto &blocks = f->getBasicBlockList();
 
     auto *thenbb = BasicBlock::Create(*c->ctxt, "then");
-   
+
     //only create the else block if this ifNode actually has an else clause
     BasicBlock *elsebb = 0;
-    
+
     if(ifn->elseN){
         if(dynamic_cast<IfNode*>(ifn->elseN.get())){
             elsebb = BasicBlock::Create(*c->ctxt, "elif");
             c->builder.CreateCondBr(cond->val, thenbb, elsebb);
-    
+
             blocks.push_back(thenbb);
             c->builder.SetInsertPoint(thenbb);
             auto *thenVal = ifn->thenN->compile(c);
@@ -559,7 +559,7 @@ TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Ty
             if(!dyn_cast<ReturnInst>(thenVal->val) and !dyn_cast<BranchInst>(thenVal->val)){
                 auto *thenretbb = c->builder.GetInsertBlock();
                 c->builder.CreateBr(mergebb);
-            
+
                 //save the 'then' value for the PhiNode after all the elifs
                 branches.push_back({thenVal, thenretbb});
 
@@ -629,7 +629,7 @@ TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Ty
                 auto *dt = c->lookupType(thenVal->type.get());
                 bindGenericToType(elseVal->type.get(), thenVal->type->params, dt);
                 elseVal->val->mutateType(c->typeNodeToLlvmType(elseVal->type.get()));
-                
+
                 if(LoadInst *ri = dyn_cast<LoadInst>(elseVal->val)){
                     auto *alloca = ri->getPointerOperand();
                     auto *cast = c->builder.CreateBitCast(alloca, c->typeNodeToLlvmType(thenVal->type.get())->getPointerTo());
@@ -640,11 +640,11 @@ TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Ty
                             " does not match the else expr's type " + typeNodeToColoredStr(elseVal->type), ifn->loc);
             }
         }
-        
+
         if(eq->res == TypeCheckResult::SuccessWithTypeVars){
             bool tEmpty = thenVal->type->params.empty();
             bool eEmpty = elseVal->type->params.empty();
-           
+
             TypedValue *generic;
             TypedValue *concrete;
 
@@ -658,7 +658,7 @@ TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Ty
                 return c->compErr("If condition's then expr's type " + typeNodeToColoredStr(thenVal->type) +
                             " does not match the else expr's type " + typeNodeToColoredStr(elseVal->type), ifn->loc);
             }
-            
+
             //TODO: copy type
             auto *dt = c->lookupType(concrete->type.get());
             bindGenericToType(generic->type.get(), concrete->type->params, dt);
@@ -678,7 +678,7 @@ TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Ty
                 if(ri) ri->eraseFromParent();
             }
         }
-        
+
         if(!dyn_cast<ReturnInst>(elseVal->val) and !dyn_cast<BranchInst>(elseVal->val))
             c->builder.CreateBr(mergebb);
 
@@ -708,7 +708,7 @@ TypedValue* IfNode::compile(Compiler *c){
     auto *mergebb = BasicBlock::Create(*c->ctxt, "endif");
     return compIf(c, this, mergebb, branches);
 }
-        
+
 
 TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *binop){
     if(!ln) throw new CtError();
@@ -722,7 +722,7 @@ TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *bino
         if(!l.empty())
             return new FunctionCandidates(ctxt.get(), l, nullptr);
 
-        return compErr("No static method called '" + field->name + "' was found in type " + 
+        return compErr("No static method called '" + field->name + "' was found in type " +
                 typeNodeToColoredStr(tn), binop->loc);
     }else{
         //ln is not a typenode, so this is not a static method call
@@ -732,7 +732,7 @@ TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *bino
 
         //prevent l from being used after this scope; only val and tyn should be used as only they
         //are updated with the automatic pointer dereferences.
-        { 
+        {
             auto *l = ln->compile(this);
             if(!l) return 0;
 
@@ -760,7 +760,7 @@ TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *bino
 
                 if(index != -1){
                     auto *dataTyn = copy(dataTy->tyn.get());
-                    
+
                     if(!tyn->params.empty()){
                         bindGenericToType(dataTyn, tyn->params, dataTy);
                     }
@@ -788,7 +788,7 @@ TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *bino
                 }
             }
         }
-        
+
         //not a field, so look for a method.
         //TODO: perhaps create a calling convention function
         string typeName = tyn->params.empty() ? typeNodeToStr(tyn) : tyn->typeName;
@@ -886,7 +886,7 @@ TypedValue* genericValueToTypedValue(Compiler *c, GenericValue gv, TypeNode *tn)
  * Returns the pointer value of a constant pointer type
  */
 void* getConstPtr(Compiler *c, TypedValue *tv){
-    
+
     return nullptr;
 }
 
@@ -966,7 +966,7 @@ GenericValue typedValueToGenericValue(Compiler *c, TypedValue *tv){
         case TT_Void:
             break;
     }
-    
+
     cerr << AN_ERR_COLOR << "error: " << AN_CONSOLE_RESET << "Compile-time function argument must be constant.\n";
     c->errFlag = true;
     throw new CtError();
@@ -1302,10 +1302,10 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
     }
 
     if(tvf->type->type != TT_Function && tvf->type->type != TT_MetaFunction)
-        return c->compErr("Called value is not a function or method, it is a(n) " + 
+        return c->compErr("Called value is not a function or method, it is a(n) " +
                 typeNodeToColoredStr(tvf->type), l->loc);
 
-    
+
     //now that we assured it is a function, unwrap it
     Function *f = (Function*)tvf->val;
 
@@ -1317,10 +1317,10 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
         //      as parameters for functions requiring 0 parameters, although this does not affect the behaviour of either.
         if(argc != 0 || typedArgs[0]->type->type != TT_Void){
             if(args.size() == 1)
-                return c->compErr("Called function was given 1 argument but was declared to take " 
+                return c->compErr("Called function was given 1 argument but was declared to take "
                         + to_string(argc), r->loc);
             else
-                return c->compErr("Called function was given " + to_string(args.size()) + 
+                return c->compErr("Called function was given " + to_string(args.size()) +
                         " arguments but was declared to take " + to_string(argc), r->loc);
         }
     }
@@ -1371,7 +1371,7 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
         paramTy = (TypeNode*)paramTy->next.get();
         i++;
     }
-   
+
     //if tvf is a ![macro] or similar MetaFunction, then compile it in a separate
     //module and JIT it instead of creating a call instruction
     if(tvf->type->type == TT_MetaFunction){
@@ -1406,24 +1406,24 @@ TypedValue* Compiler::compLogicalOr(Node *lexpr, Node *rexpr, BinOpNode *op){
 
     builder.SetInsertPoint(orbb);
     auto *rhs = rexpr->compile(this);
-    
+
     //the block must be re-gotten in case the expression contains if-exprs, while nodes,
     //or other exprs that change the current block
     auto *curbbr = builder.GetInsertBlock();
     builder.CreateBr(mergebb);
-    
+
     if(rhs->type->type != TT_Bool)
         return compErr("The 'or' operator's rval must be of type bool, but instead is of type "+typeNodeToColoredStr(rhs->type), op->rval->loc);
 
     builder.SetInsertPoint(mergebb);
     auto *phi = builder.CreatePHI(rhs->getType(), 2);
-   
+
     //short circuit, returning true if return from the first label
     phi->addIncoming(ConstantInt::get(*ctxt, APInt(1, true, true)), curbbl);
     phi->addIncoming(rhs->val, curbbr);
 
     return new TypedValue(phi, rhs->type);
-    
+
 }
 
 TypedValue* Compiler::compLogicalAnd(Node *lexpr, Node *rexpr, BinOpNode *op){
@@ -1454,7 +1454,7 @@ TypedValue* Compiler::compLogicalAnd(Node *lexpr, Node *rexpr, BinOpNode *op){
 
     builder.SetInsertPoint(mergebb);
     auto *phi = builder.CreatePHI(rhs->getType(), 2);
-   
+
     //short circuit, returning false if return from the first label
     phi->addIncoming(ConstantInt::get(*ctxt, APInt(1, false, true)), curbbl);
     phi->addIncoming(rhs->val, curbbr);
@@ -1575,7 +1575,7 @@ TypedValue* BinOpNode::compile(Compiler *c){
         case Tok_And: return c->compLogicalAnd(lval.get(), rval.get(), this);
         case Tok_Or: return c->compLogicalOr(lval.get(), rval.get(), this);
     }
-    
+
     TypedValue *lhs = lval->compile(c);
     TypedValue *rhs = rval->compile(c);
 
@@ -1589,7 +1589,7 @@ TypedValue* BinOpNode::compile(Compiler *c){
     //Check if both Values are numeric, and if so, check if their types match.
     //If not, do an implicit conversion (usually a widening) to match them.
     c->handleImplicitConversion(&lhs, &rhs);
-            
+
 
     //first, if both operands are primitive numeric types, use the default ops
     if(isNumericTypeTag(lhs->type->type) && isNumericTypeTag(rhs->type->type)){
@@ -1598,7 +1598,7 @@ TypedValue* BinOpNode::compile(Compiler *c){
     //and bools/ptrs are only compatible with == and !=
     }else if((lhs->type->type == TT_Bool and rhs->type->type == TT_Bool) or
              (lhs->type->type == TT_Ptr  and rhs->type->type == TT_Ptr)){
-        
+
         switch(op){
             case Tok_Eq: return new TypedValue(c->builder.CreateICmpEQ(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
             case Tok_NotEq: return new TypedValue(c->builder.CreateICmpNE(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
@@ -1618,7 +1618,7 @@ TypedValue* UnOpNode::compile(Compiler *c){
             if(rhs->type->type != TT_Ptr){
                 return c->compErr("Cannot dereference non-pointer type " + typeNodeToColoredStr(rhs->type), loc);
             }
-           
+
             return new TypedValue(c->builder.CreateLoad(rhs->val), rhs->type->extTy);
         case '&': //address-of
             return addrOf(c, rhs);
@@ -1658,7 +1658,7 @@ TypedValue* UnOpNode::compile(Compiler *c){
                 return new TypedValue(ret->val, ret->type);
             }
     }
-    
+
     return c->compErr("Unknown unary operator " + Lexer::getTokStr(op), loc);
 }
 

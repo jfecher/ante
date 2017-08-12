@@ -97,7 +97,7 @@ namespace ante {
         vector<unique_ptr<ImportNode>> imports;
 
         vector<unique_ptr<Node>> main;
-        
+
         TypedValue* compile(Compiler*);
         void print();
         RootNode(LOC_TY& loc) : Node(loc){}

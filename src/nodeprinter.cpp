@@ -33,16 +33,16 @@ void parser::printBlock(Node *block){
 void RootNode::print(){
     puts("Types:");
     for(auto& f : types){ f->print(); puts("\n"); }
-    
+
     puts("\n\nFunctions:");
     for(auto& f : funcs){ f->print(); puts("\n"); }
-    
+
     puts("\n\nTraits:");
     for(auto& f : traits){ f->print(); puts("\n"); }
-    
+
     puts("\n\nExtensions:");
     for(auto& f : extensions){ f->print(); puts("\n"); }
-    
+
     puts("\n\nMain:");
     for(auto& f : main){ f->print(); puts(";"); }
 }
@@ -108,7 +108,7 @@ void PreProcNode::print(){
 }
 
 
-/* 
+/*
  * defined in types.cpp.
  *
  * could also just #include "compiler.h",
@@ -213,7 +213,7 @@ void LetBindingNode::print(){
         putchar(' ');
     }
     cout << name << " = ";
-    
+
     expr->print(); //expr is not null-checked since it is required to be non-null
 }
 

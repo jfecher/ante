@@ -34,15 +34,15 @@ namespace ante {
         unique_ptr<TypeNode> type;
 
         TypedValue(Value *v, TypeNode *ty) : val(v), type(ty){}
-        
+
         /**
-        * @brief Constructs a TypedValue 
+        * @brief Constructs a TypedValue
         *
         * @param v The Value to use
         * @param ty The TypeNode here is copied, not moved
         */
         TypedValue(Value *v, unique_ptr<TypeNode> &ty) : val(v), type(copy(ty)){}
-        
+
         Type* getType() const{ return val->getType(); }
         /**
         * @brief Returns true if the type of this TypedValue contains the given modifier
@@ -50,7 +50,7 @@ namespace ante {
         * @param m The TokTy value of the modifier to search for
         */
         bool hasModifier(int m) const{ return type->hasModifier(m); }
-        
+
         /**
         * @brief Prints type and value to stdout
         */
@@ -78,7 +78,7 @@ namespace ante {
             Result res;
             unsigned int matches;
             vector<pair<string,unique_ptr<TypeNode>>> bindings;
-            
+
             Internals() : res(Success), matches(0), bindings(){}
         };
 
@@ -157,7 +157,7 @@ namespace ante {
         FuncDecl(FuncDeclNode *fn, unsigned int s, shared_ptr<Module> mod, TypedValue *f=0) : fdn(fn), scope(s), tv(f), module(mod), returns(){}
         ~FuncDecl(){ if(fdn) delete fdn; if(tv) delete tv; }
     };
-    
+
     TypeNode* mkAnonTypeNode(TypeTag);
 
     /**
@@ -182,7 +182,7 @@ namespace ante {
         string name;
         unique_ptr<TypeNode> tyn;
         unsigned short tag;
-        
+
         UnionTag(string &n, TypeNode *ty, unsigned short t) : name(n), tyn(ty), tag(t){}
     };
 
@@ -207,7 +207,7 @@ namespace ante {
         /** @brief If this is a tagged union, tyn will contain each union member in its extTy */
         unique_ptr<TypeNode> tyn;
         vector<shared_ptr<TypeNode>> generics;
-        
+
         /** @brief Types are lazily translated into their llvm::Type counterpart to better support
         * generics and prevent the need of forward-decls */
         map<string,Type*> llvmTypes;
@@ -270,7 +270,7 @@ namespace ante {
 
     struct Variable {
         string name;
-        
+
         /**
         * @brief The value assigned to the variable
         */
@@ -279,7 +279,7 @@ namespace ante {
 
         /** @brief Flag for managed pointers.  Currently unused */
         bool noFree;
-        
+
         /**
         * @brief Set to true if this variable is an implicit pointer.
         * Used by mutable variables.
@@ -412,13 +412,13 @@ namespace ante {
 
         /** @brief all imported modules */
         vector<shared_ptr<Module>> imports;
-        
+
         /**
          * @brief every single compiled module, even ones invisible to the current
          * compilation unit.  Prevents recompilation of modules
          */
         shared_ptr<unordered_map<string, shared_ptr<Module>>> allCompiledModules;
-        
+
         /**
          * @brief Stack of variables mapped to their identifier.
          * Maps are seperated according to their scope.
@@ -486,13 +486,13 @@ namespace ante {
 
         /** @brief Dumps current contents of module to stdout */
         void emitIR();
-        
+
         /** @brief Creates and enters a new scope */
         void enterNewScope();
 
         /** @brief Exits a scope and performs any necessary cleanup */
         void exitScope();
-        
+
         /**
         * @brief Sweeps through parse tree registering all functions, type
         * declarations, and traits.
@@ -506,7 +506,7 @@ namespace ante {
         * @param args The command line arguments
         */
         void processArgs(CompilerArgs *args);
-        
+
         //binop functions
         /**
          * @brief Emits an add instruction
@@ -523,7 +523,7 @@ namespace ante {
         TypedValue* compMul(TypedValue *l, TypedValue *r, BinOpNode *op);
         TypedValue* compDiv(TypedValue *l, TypedValue *r, BinOpNode *op);
         TypedValue* compRem(TypedValue *l, TypedValue *r, BinOpNode *op);
-        
+
         /**
          * @brief Compiles an extract operation such as array#index
          *
@@ -536,7 +536,7 @@ namespace ante {
          * @return The result of the extraction
          */
         TypedValue* compExtract(TypedValue *l, TypedValue *r, BinOpNode *op);
-        
+
         /**
          * @brief Compiles an insert operation such as array#index = 2
          *
@@ -546,7 +546,7 @@ namespace ante {
          * @return A void literal
          */
         TypedValue* compInsert(BinOpNode *insertOp, Node *assignExpr);
-        
+
         /**
          * @brief Compiles a named member access such as str.len
          *
@@ -584,17 +584,17 @@ namespace ante {
         *        error reporting.
         */
         void importFile(const char *name, Node* locNode = 0);
-        
+
         /** @brief Sets the tv of the FuncDecl specified to the value of f */
         void updateFn(TypedValue *f, FuncDecl *fd, string &name, string &mangledName);
         FuncDecl* getCurrentFunction() const;
-        
+
         /** @brief Returns the exact function specified if found or nullptr if not */
         TypedValue* getFunction(string& name, string& mangledName);
 
         /** @brief Returns a vector of all functions with the specified baseName */
         vector<shared_ptr<FuncDecl>>& getFunctionList(string& name) const;
-        
+
         /** @brief Returns the exact FuncDecl specified if found or nullptr if not */
         FuncDecl* getFuncDecl(string bn, string mangledName);
 
@@ -613,7 +613,7 @@ namespace ante {
          * @return The specified function or nullptr
          */
         TypedValue* getMangledFn(string name, vector<TypeNode*> args);
-        
+
         /**
          * @brief Returns the init method of a type
          *
@@ -624,7 +624,7 @@ namespace ante {
          * @return The compiled cast function or nullptr if not found
          */
         TypedValue* getCastFn(TypeNode *from_ty, TypeNode *to_ty, FuncDecl *fd = 0);
-        
+
         /**
          * @brief Retrieves the FuncDecl specified
          *
@@ -635,7 +635,7 @@ namespace ante {
          */
         FuncDecl* getMangledFuncDecl(string name, vector<TypeNode*> args);
         FuncDecl* getCastFuncDecl(TypeNode *from_ty, TypeNode *to_ty);
-        
+
         /** @brief Compiles a function with inferred return type */
         TypedValue* compLetBindingFn(FuncDecl *fdn, vector<Type*> &paramTys);
 
@@ -721,10 +721,10 @@ namespace ante {
         void searchAndReplaceBoundTypeVars(TypeNode* tn) const;
 
         Type* typeNodeToLlvmType(const TypeNode *tyNode);
-        
+
         /** @brief Performs a type check against l and r */
         TypeCheckResult typeEq(const TypeNode *l, const TypeNode *r) const;
-        
+
         /**
          * @brief Performs a type check against l and r
          *
@@ -736,14 +736,14 @@ namespace ante {
          * TypeCheckResult::Failure
          */
         TypeCheckResult typeEq(vector<TypeNode*> l, vector<TypeNode*> r) const;
-        
+
         /**
          * @brief Expands any TT_Data -typed nodes inside of tn to contain their
          * constituent types.  Does not expand any nodes pointed to by a pointer
          * type to avoid infinite recursion.
          */
         void expand(TypeNode *tn);
-    
+
         /**
          * @brief Performs an implicit widening
          *
@@ -753,19 +753,19 @@ namespace ante {
          * @return The widened integer
          */
         TypedValue* implicitlyWidenNum(TypedValue *num, TypeTag castTy);
-        
+
         /** @brief Mutates numerical arguments to match types if possible */
         void handleImplicitConversion(TypedValue **lhs, TypedValue **rhs);
-        
+
         /** @brief Mutates integer arguments to match types if not already */
         void implicitlyCastIntToInt(TypedValue **lhs, TypedValue **rhs);
-        
+
         /** @brief Mutates floating-point arguments to match types if not already */
         void implicitlyCastFltToFlt(TypedValue **lhs, TypedValue **rhs);
-        
+
         /** @brief Mutates an integer to a float */
         void implicitlyCastIntToFlt(TypedValue **tval, Type *ty);
-        
+
         /**
         * @brief Compiles a module into an obj file to be used for linking.
         *

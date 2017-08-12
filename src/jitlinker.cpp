@@ -28,7 +28,7 @@ shared_ptr<ante::Module> copyModuleFuncDecls(const shared_ptr<ante::Module> &mod
         dt_cpy->llvmTypes = dt->llvmTypes;
         ret->userTypes[pair.first] = dt_cpy;
     }
-   
+
     for(auto &pair : mod->fnDecls){
         for(auto &fd : pair.second){
             auto fd_cpy = make_shared<FuncDecl>(fd->fdn, fd->scope, ret);
@@ -50,7 +50,7 @@ copyModuleFuncDecls(const vector<shared_ptr<ante::Module>> &mods){
     return ret;
 }
 
-    
+
 shared_ptr<unordered_map<string, shared_ptr<ante::Module>>>
 copyModuleFuncDecls(const shared_ptr<unordered_map<string, shared_ptr<ante::Module>>> &varTable){
     auto ret = make_shared<unordered_map<string, shared_ptr<ante::Module>>>();
@@ -75,7 +75,7 @@ void copyDecls(const Compiler *src, Compiler *dest){
 Node* stripCompilerDirectives(FuncDeclNode *fdn){
     Node *mods_begin = 0;
     Node *preprocs_begin = 0;
-    
+
     Node *mods = 0;
     Node *preprocs = 0;
 
@@ -135,7 +135,7 @@ void declareTypes(Compiler *c){
         string tyName = p.first;
         auto *dt = c->lookupType(tyName);
         if(!dt) continue;
-        
+
         vector<Type*> fields;
         TypeNode *fieldNodes = dt->tyn.get();
         if(dt->tyn->type == TT_Tuple or dt->tyn->type == TT_TaggedUnion)
@@ -145,7 +145,7 @@ void declareTypes(Compiler *c){
             fields.push_back(c->typeNodeToLlvmType(fieldNodes));
             fieldNodes = (TypeNode*)fieldNodes->next.get();
         }
-        
+
         StructType::create(*c->ctxt, fields, tyName);
     }
 }

@@ -20,7 +20,7 @@ bool implicitPassByRef(TypeNode* t){
 TypeNode* toTypeNodeList(vector<TypedValue*> &args){
     TypeNode *listBegin = 0;
     TypeNode *listCur = 0;
-    
+
     for(auto *arg : args){
         if(listBegin){
             listCur->next.reset(copy(arg->type));
@@ -101,9 +101,9 @@ void addArgAttrs(llvm::Argument &arg, TypeNode *paramTyNode){
 void addAllArgAttrs(Function *f, NamedValNode *params){
     for(auto &arg : f->args()){
         TypeNode *paramTyNode = (TypeNode*)params->typeExpr.get();
-       
+
         addArgAttrs(arg, paramTyNode);
-        
+
         if(!(params = (NamedValNode*)params->next.get())) break;
     }
 }
@@ -121,7 +121,7 @@ TypeNode* validateReturns(Compiler *c, FuncDecl *fd, TypeNode *retTy = 0){
 
         auto tcr = c->typeEq(matchTy, ret->type.get());
         if(!tcr){
-            return (TypeNode*)c->compErr("Function " + fd->fdn->basename + " returned value of type " + 
+            return (TypeNode*)c->compErr("Function " + fd->fdn->basename + " returned value of type " +
                     typeNodeToColoredStr(ret->type) + " but was declared to return value of type " +
                     typeNodeToColoredStr(matchTy), pair.second);
         }
@@ -176,18 +176,18 @@ TypedValue* Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
     //Create the entry point for the function
     BasicBlock *entry = BasicBlock::Create(*ctxt, "entry", preFn);
     builder.SetInsertPoint(entry);
- 
+
     TypeNode *fakeFnTyn = mkAnonTypeNode(TT_Function);
     TypeNode *fakeRetTy = mkAnonTypeNode(TT_Void);
     fakeFnTyn->extTy.reset(fakeRetTy);
-        
+
     //iterate through each parameter and add its value to the new scope.
     TypeNode *curTyn = 0;
     auto paramVec = vectorize(fdn->params.get());
     size_t i = 0;
 
     vector<Value*> preArgs;
-    
+
     for(auto &arg : preFn->args()){
         NamedValNode *cParam = paramVec[i];
         TypeNode *paramTyNode = (TypeNode*)cParam->typeExpr.get();
@@ -214,7 +214,7 @@ TypedValue* Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
         ++i;
         if(!(cParam = (NamedValNode*)cParam->next.get())) break;
     }
-    
+
     //store a fake function var, in case this function is recursive
     auto *fakeFnTv = new TypedValue(preFn, fakeFnTyn);
     if(fdn->name.length() > 0)
@@ -236,7 +236,7 @@ TypedValue* Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
             fd->returns.push_back({v, loc});
         }
     }
-    
+
     TypeNode *retTy;
     if(!(retTy = validateReturns(this, fd)))
         return 0;
@@ -245,7 +245,7 @@ TypedValue* Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
     FunctionType *ft = FunctionType::get(typeNodeToLlvmType(retTy), paramTys, fdn->varargs);
     Function *f = Function::Create(ft, Function::ExternalLinkage,
             fdn->name.length() > 0 ? fdn->name : "__lambda__", module.get());
-  
+
     //now that we have the real function, replace the old one with it
 
     //prepend the ret type to the function's type node node extension list.
@@ -268,7 +268,7 @@ TypedValue* Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
     for(auto &arg : f->args()){
         preArgs[i++]->replaceAllUsesWith(&arg);
     }
-    
+
     //preFn->replaceAllUsesWith(f);
     preFn->removeFromParent();
 
@@ -332,7 +332,7 @@ TypedValue* compCompilerDirectiveFn(Compiler *c, FuncDecl *fd, PreProcNode *ppn)
         }else if(vn->name == "run"){
             fn = c->compFn(fd);
             if(!fn) return 0;
-            
+
             auto *mod = c->module.release();
 
             c->module.reset(new llvm::Module(fdn->name, *c->ctxt));
@@ -347,7 +347,7 @@ TypedValue* compCompilerDirectiveFn(Compiler *c, FuncDecl *fd, PreProcNode *ppn)
         }else{
             return c->compErr("Unrecognized compiler directive '"+vn->name+"'", vn->loc);
         }
-    
+
         //put back the preproc node modifier
         fdn->modifiers.release();
         fdn->modifiers.reset(ppn);
@@ -440,7 +440,7 @@ TypedValue* compFnHelper(Compiler *c, FuncDecl *fd){
             }
             c->stoVar(cParam->name, new Variable(cParam->name, new TypedValue(&arg, copy(paramTyNode)),
                         c->scope, /*nofree = */true, /*autoDeref = */implicitPassByRef(paramTyNode)));
-           
+
             i++;
             if(!(cParam = (NamedValNode*)cParam->next.get())) break;
         }
@@ -453,7 +453,7 @@ TypedValue* compFnHelper(Compiler *c, FuncDecl *fd){
             c->builder.SetInsertPoint(caller);
             throw e;
         }
-        
+
         //push the final value as a return, explicit returns are already added in RetNode::compile
         if(retNode && !dyn_cast<ReturnInst>(v->val)){
             auto loc = getFinalLoc(fdn->child.get());
@@ -477,7 +477,7 @@ TypedValue* compFnHelper(Compiler *c, FuncDecl *fd){
         //optimize!
         if(!c->errFlag)
             c->passManager->run(*f);
-        
+
         delete retty;
     }
 
@@ -496,7 +496,7 @@ NamedValNode* bindParams(unique_ptr<NamedValNode> &params, const vector<pair<str
 
         auto *boundTy = copy(unboundTy);
         bindGenericToType(boundTy, bindings);
-        
+
         auto *node = new NamedValNode(oldParams->loc, oldParams->name, boundTy);
         if(newParams){
             curParam->next.reset(node);
@@ -543,12 +543,12 @@ TypedValue* compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, TypeN
     //The unbound template owns the original params
     fd->fdn->params.release();
     fd->fdn->params.reset(boundParams);
-    
+
     //test if bound variant is already compiled
     string mangled = mangle(fd->fdn->basename, fd->fdn->params.get());
     if(TypedValue *fn = c->getFunction(fd->fdn->basename, mangled))
         return fn;
-    
+
     fd->fdn->name = mangled;
 
     //bind the return type if necessary
@@ -613,7 +613,7 @@ TypedValue* Compiler::compFn(FuncDecl *fd){
     compCtxt->continueLabels = llvm::make_unique<vector<BasicBlock*>>();
     compCtxt->breakLabels = llvm::make_unique<vector<BasicBlock*>>();
     int callingFnScope = fnScope;
-    
+
     enterNewScope();
     fnScope = scope;
 
@@ -719,11 +719,11 @@ TypeNode* toList(vector<TypeNode*> &nodes){
 
     return begin;
 }
-    
+
 vector<pair<TypeCheckResult,FuncDecl*>> filterHighestMatches(vector<pair<TypeCheckResult,FuncDecl*>> &matches){
     unsigned int highestMatch = 0;
     vector<pair<TypeCheckResult,FuncDecl*>> highestMatches;
-    
+
     for(auto &tcr : matches){
         if(!!tcr.first and tcr.first->matches >= highestMatch){
             if(tcr.first->matches > highestMatch){
@@ -782,7 +782,7 @@ FuncDecl* Compiler::getMangledFuncDecl(string name, vector<TypeNode*> args){
     //TODO: return typecheck infromation so it need not typecheck again in Compiler::getMangledFn
     if(matches.size() == 1)
         return matches[0].second;
-    
+
     //TODO: possibly return all functions considered for better error checking
     return nullptr;
 }
@@ -811,7 +811,7 @@ TypedValue* compFnWithArgs(Compiler *c, FuncDecl *fd, vector<TypeNode*> args){
 TypedValue* Compiler::getMangledFn(string name, vector<TypeNode*> args){
     auto *fd = getMangledFuncDecl(name, args);
     if(!fd) return nullptr;
-        
+
     return compFnWithArgs(this, fd, args);
 }
 
@@ -826,7 +826,7 @@ TypeNode* tupleToList(TypeNode *tup){
         tup = tup->extTy.get();
     else if(tup->type == TT_Void)
         tup = nullptr;
-    
+
     return tup;
 }
 
@@ -901,7 +901,7 @@ FuncDecl* Compiler::getFuncDecl(string baseName, string mangledName){
 inline void Compiler::registerFunction(FuncDeclNode *fn){
     //check for redeclaration
     auto *redecl = getFuncDecl(fn->basename, fn->name);
-    
+
     if(redecl and redecl->fdn->name == fn->name){
         compErr("Function " + fn->name + " was redefined", fn->loc);
         return;

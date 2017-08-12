@@ -98,7 +98,7 @@ LOC_TY copyLoc(const LOC_TY &loc){
     return mkLoc(mkPos(loc.begin.filename, loc.begin.line, loc.begin.column),
 		         mkPos(loc.end.filename,   loc.end.line,   loc.end.column));
 }
-    
+
 //apply modifier to this type and all its extensions
 TypeNode* TypeNode::addModifiers(ModNode *m){
     TypeNode *ext = extTy.get();
@@ -146,7 +146,7 @@ Node* applyMods(Node *mods, Node *decls){
     Node *decl = decls;
     while(decl){
         if(FuncDeclNode *fdn = dynamic_cast<FuncDeclNode*>(decl)){
-            
+
         }else if(DataDeclNode *fdn = dynamic_cast<DataDeclNode*>(decl)){
         }else if(ExtNode *fdn = dynamic_cast<ExtNode*>(decl)){
         }else if(TraitNode *fdn = dynamic_cast<TraitNode*>(decl)){
@@ -199,7 +199,7 @@ void TypeNode::copyModifiersFrom(const TypeNode *tn){
         addModifier(m);
     }
 }
-    
+
 bool TypeNode::hasModifier(int m) const{
     return std::find(modifiers.cbegin(), modifiers.cend(), m) != modifiers.cend();
 }
@@ -392,7 +392,7 @@ Node* mkRetNode(LOC_TY loc, Node* expr){
 bool typeHasExtData(TypeTag t){
     return t == TT_Tuple or t == TT_Array or t == TT_Ptr or t == TT_Data or t == TT_Function
         or t == TT_TaggedUnion or t == TT_MetaFunction;
-    
+
 }
 
 TypeNode* copy(const unique_ptr<TypeNode> &n);
@@ -541,7 +541,7 @@ FuncDeclNode::FuncDeclNode(FuncDeclNode* fdn) :
         }else{
             throw new CtError();
         }
-        
+
         if(cur_mod){
             cur_mod->next.reset(cpy);
             cur_mod = cur_mod->next.get();

@@ -3,7 +3,7 @@
 #include "error.h"
 namespace ante {
 
-/* 
+/*
  * Skips input in a given istream until it encounters the given coordinates,
  * with each newline signalling the end of a row.
  *
@@ -74,7 +74,7 @@ void printErrLine(const yy::location& loc, ErrorType t){
     //print line
     string s;
     getline(f, s);
-   
+
     auto col_start = loc.begin.column;
 
     cout << s;
@@ -147,7 +147,7 @@ void error(lazy_printer strs, const yy::location& loc, ErrorType t){
 
     clearColor();
     cout << strs << endl;
-    
+
     printErrLine(loc, t);
     cout << endl << endl;
 }

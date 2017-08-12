@@ -28,7 +28,7 @@ namespace ante{
     class Lexer{
     public:
         string *fileName;
-        
+
         Lexer(string* fileName);
         Lexer(string* fileName, string& pseudoFile, unsigned int rowOffset, unsigned int colOffset);
         ~Lexer();
@@ -37,11 +37,11 @@ namespace ante{
 
         static void printTok(int t);
         static string getTokStr(int t);
-   
+
     private:
         /* the ifstream to take from */
         ifstream *in;
-        
+
         /* If this is set to true then the psuedoFile string should be parsed
          * as a string containing ante src code.  Used for Str interpolation */
         bool isPseudoFile;
@@ -53,7 +53,7 @@ namespace ante{
         /* Offset given if lexer starts in the middle of a file */
         /* Used when lexing string interpolations */
         const unsigned int rowOffset, colOffset;
-        
+
         /* Current and next characters */
         char cur, nxt;
 
@@ -74,15 +74,15 @@ namespace ante{
         *  or Unindent tokens when required.
         */
         unsigned int cscope;
-        
+
         bool shouldReturnNewline;
-        
+
         void lexErr(const char *msg, yy::parser::location_type* loc);
-        
+
         void incPos(void);
         void incPos(int end);
         yy::position getPos(bool inclusiveEnd = true) const;
-        
+
         void setlextxt(string *str);
         int handleComment(yy::parser::location_type* loc);
         int genWsTok(yy::parser::location_type* loc);

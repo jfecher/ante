@@ -10,12 +10,12 @@ char getBitWidthOfTypeTag(const TypeTag ty){
         case TT_I64: case TT_U64: case TT_F64: return 64;
         case TT_Isz: case TT_Usz: return AN_USZ_SIZE;
         case TT_Bool: return 1;
-   
+
         case TT_Ptr:
         case TT_Function:
         case TT_MetaFunction:
         case TT_FunctionList: return AN_USZ_SIZE;
-  
+
         default: return 0;
     }
 }
@@ -65,7 +65,7 @@ void validateType(Compiler *c, const TypeNode *tn, const DataDeclNode *rootTy){
         }
 
         validateType(c, dtyn, rootTy);
-    
+
     }else if(tn->type == TT_Tuple or tn->type == TT_TaggedUnion){
         TypeNode *ext = tn->extTy.get();
         while(ext){
@@ -112,7 +112,7 @@ unsigned int TypeNode::getSizeInBits(Compiler *c, string *incompleteType){
 
     if(isPrimitiveTypeTag(this->type))
         return getBitWidthOfTypeTag(this->type);
-   
+
     if(type == TT_Data and not extTy.get()){
         auto *dataTy = c->lookupType(typeName);
         if(!dataTy){
@@ -296,7 +296,7 @@ void Compiler::searchAndReplaceBoundTypeVars(TypeNode* tn) const{
         tn->type = val->type;
         tn->typeName = val->typeName;
         tn->extTy.reset(copy(val->extTy));
-        
+
         for(auto &p : val->params){
             auto cpy = unique_ptr<TypeNode>(copy(p.get()));
             tn->params.push_back(move(cpy));
@@ -377,7 +377,7 @@ void Compiler::implicitlyCastIntToInt(TypedValue **lhs, TypedValue **rhs){
                 builder.CreateIntCast((*lhs)->val, (*rhs)->getType(), !isUnsignedTypeTag((*lhs)->type->type)),
                 copy((*rhs)->type)
             );
-            
+
             *lhs = ret;
 
         }else{//lbw > rbw
@@ -392,8 +392,8 @@ void Compiler::implicitlyCastIntToInt(TypedValue **lhs, TypedValue **rhs){
 }
 
 bool isIntTypeTag(const TypeTag ty){
-    return ty==TT_I8 or ty==TT_I16 or ty==TT_I32 or ty==TT_I64 or 
-           ty==TT_U8 or ty==TT_U16 or ty==TT_U32 or ty==TT_U64 or 
+    return ty==TT_I8 or ty==TT_I16 or ty==TT_I32 or ty==TT_I64 or
+           ty==TT_U8 or ty==TT_U16 or ty==TT_U32 or ty==TT_U64 or
            ty==TT_Isz or ty==TT_Usz or ty==TT_C8;
 }
 
@@ -562,8 +562,8 @@ Type* updateLlvmTypeBinding(Compiler *c, DataType *dt, const vector<unique_ptr<T
 
 /*
  *  Translates a llvm::Type to a TypeTag. Not intended for in-depth analysis
- *  as it loses data about the type and name of UserTypes, and cannot distinguish 
- *  between signed and unsigned integer types.  As such, this should mainly be 
+ *  as it loses data about the type and name of UserTypes, and cannot distinguish
+ *  between signed and unsigned integer types.  As such, this should mainly be
  *  used for comparing primitive datatypes, or just to detect if something is a
  *  primitive.
  */
@@ -577,7 +577,7 @@ TypeTag llvmTypeToTypeTag(Type *t){
     if(t->isHalfTy()) return TT_F16;
     if(t->isFloatTy()) return TT_F32;
     if(t->isDoubleTy()) return TT_F64;
-    
+
     if(t->isArrayTy()) return TT_Array;
     if(t->isStructTy() and !t->isEmptyTy()) return TT_Tuple; /* Could also be a TT_Data! */
     if(t->isPointerTy()) return TT_Ptr;
@@ -649,7 +649,7 @@ Type* Compiler::typeNodeToLlvmType(const TypeNode *tyNode){
                 if(tyn->type != TT_U8)
                     tyn = tyn->extTy.get();
             }
-            
+
             while(tyn){
                 tys.push_back(typeNodeToLlvmType(tyn));
                 tyn = (TypeNode*)tyn->next.get();
@@ -663,7 +663,7 @@ Type* Compiler::typeNodeToLlvmType(const TypeNode *tyNode){
                 //throw new TypeVarError();
                 return Type::getInt32Ty(*ctxt);
             }
-            
+
             return typeNodeToLlvmType(extractTypeValue(typeVar->tval));
         }
         default:
@@ -676,7 +676,7 @@ Type* Compiler::typeNodeToLlvmType(const TypeNode *tyNode){
  *  Returns true if two given types are approximately equal.  This will return
  *  true if they are the same primitive datatype, or are both pointers pointing
  *  to the same elementtype, or are both arrays of the same element type, even
- *  if the arrays differ in size.  If two types are needed to be exactly equal, 
+ *  if the arrays differ in size.  If two types are needed to be exactly equal,
  *  pointer comparison can be used instead since llvm::Types are uniqued.
  */
 bool llvmTypeEq(Type *l, Type *r){
@@ -698,26 +698,26 @@ bool llvmTypeEq(Type *l, Type *r){
     }else if(ltt == TT_Function or ltt == TT_MetaFunction){
         int lParamCount = l->getFunctionNumParams();
         int rParamCount = r->getFunctionNumParams();
-        
+
         if(lParamCount != rParamCount)
             return false;
 
         for(int i = 0; i < lParamCount; i++){
             if(!llvmTypeEq(l->getFunctionParamType(i), r->getFunctionParamType(i)))
                 return false;
-        } 
+        }
         return true;
     }else if(ltt == TT_Tuple or ltt == TT_Data){
         int lElemCount = l->getStructNumElements();
         int rElemCount = r->getStructNumElements();
-        
+
         if(lElemCount != rElemCount)
             return false;
 
         for(int i = 0; i < lElemCount; i++){
             if(!llvmTypeEq(l->getStructElementType(i), r->getStructElementType(i)))
                 return false;
-        } 
+        }
 
         return true;
     }else{ //primitive type
@@ -806,7 +806,7 @@ TypeCheckResult extTysEq(const TypeNode *l, const TypeNode *r, TypeCheckResult &
  */
 TypeCheckResult typeEqBase(const TypeNode *l, const TypeNode *r, TypeCheckResult tcr, const Compiler *c){
     if(!l) return tcr.successIf(!r);
- 
+
     if(l->type == TT_TaggedUnion and r->type == TT_Data) return tcr.successIf(l->typeName == r->typeName);
     if(l->type == TT_Data and r->type == TT_TaggedUnion) return tcr.successIf(l->typeName == r->typeName);
 
@@ -851,7 +851,7 @@ bool dataTypeImplementsTrait(DataType *dt, string trait){
     }
     return false;
 }
-    
+
 TypeNode* TypeCheckResult::getBindingFor(const string &name){
     for(auto &pair : box->bindings){
         if(pair.second->typeName == name)
@@ -916,7 +916,7 @@ TypeCheckResult typeEqHelper(const Compiler *c, const TypeNode *l, const TypeNod
             //      separate traits are never equal anyway
             dt = c->lookupType(r->typeName);
             if(!dt) return tcr.failure();
-            
+
         }else if((t = c->lookupTrait(r->typeName))){
             dt = c->lookupType(l->typeName);
             if(!dt) return tcr.failure();
@@ -927,7 +927,7 @@ TypeCheckResult typeEqHelper(const Compiler *c, const TypeNode *l, const TypeNod
         return tcr.successIf(dataTypeImplementsTrait(dt, t->name));
 
     }else if(l->type == TT_TypeVar or r->type == TT_TypeVar){
-      
+
         //reassign l and r into typeVar and nonTypeVar so code does not have to be repeated in
         //one if branch for l and another for r
         const TypeNode *typeVar, *nonTypeVar;
@@ -1021,7 +1021,7 @@ bool isPrimitiveTypeTag(TypeTag ty){
  *  should be used instead to provide the full type.
  */
 string typeTagToStr(TypeTag ty){
-    
+
     switch(ty){
         case TT_I8:    return "i8" ;
         case TT_I16:   return "i16";
@@ -1041,8 +1041,8 @@ string typeTagToStr(TypeTag ty){
         case TT_Bool:  return "bool";
         case TT_Void:  return "void";
 
-        /* 
-         * Because of the loss of specificity for these last four types, 
+        /*
+         * Because of the loss of specificity for these last four types,
          * these strings are most likely insufficient.  The llvm::Type
          * should instead be printed for these types
          */
