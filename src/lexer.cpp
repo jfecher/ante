@@ -79,6 +79,7 @@ map<int, const char*> tokDict = {
     {Tok_Trait, "trait"},
     {Tok_Fun, "fun"},
     {Tok_Ext, "ext"},
+    {Tok_Block, "block"},
 
     //modifiers
     {Tok_Pub, "pub"},
@@ -92,7 +93,7 @@ map<int, const char*> tokDict = {
 
     //other
     {Tok_Where, "where"},
-    
+
     {Tok_Newline, "Newline"},
     {Tok_Indent, "Indent"},
     {Tok_Unindent, "Unindent"},
@@ -147,7 +148,8 @@ map<string, int> keywords = {
     {"trait",    Tok_Trait},
     {"fun",      Tok_Fun},
     {"ext",      Tok_Ext},
-    
+    {"block",    Tok_Block},
+
     {"pub",      Tok_Pub},
     {"pri",      Tok_Pri},
     {"pro",      Tok_Pro},
@@ -161,7 +163,7 @@ map<string, int> keywords = {
     {"where",    Tok_Where},
 };
 
-        
+
 /* Raw text to store identifiers and usertypes in */
 char *lextxt;
 
@@ -173,7 +175,7 @@ bool ante::colored_output = true;
 void setLexer(Lexer *l){
     if(yylexer)
         delete yylexer;
-    
+
     yylexer = l;
 }
 
@@ -375,7 +377,7 @@ int Lexer::genAlphaNumTok(yy::parser::location_type* loc){
             incPos();
         }
     }
-   
+
     loc->end = getPos(false);
 
     if(isUsertype){
@@ -423,7 +425,7 @@ int Lexer::genNumLitTok(yy::parser::location_type* loc){
                 incPos();
                 incPos();
             }
-            
+
             if(IS_NUMERICAL(cur)){
                 loc->end = getPos();
                 lexErr("Extraneous numbers after type suffix.", loc);
@@ -475,10 +477,10 @@ int Lexer::genWsTok(yy::parser::location_type* loc){
         while(IS_WHITESPACE(cur) && cur != '\0'){
             switch(cur){
                 case ' ': newScope++; break;
-                case '\n': 
-                    newScope = 0; 
-                    row++; 
-                    col = 0; 
+                case '\n':
+                    newScope = 0;
+                    row++;
+                    col = 0;
                     loc->begin = getPos();
                     break;
                 case '\t':
@@ -493,7 +495,7 @@ int Lexer::genWsTok(yy::parser::location_type* loc){
         if(!scopes->empty() && newScope == scopes->top()){
             //do not return an end-of-file Newline
             if(!nxt) return 0;
-            
+
             //the row is not set to row for newline tokens in case there are several newlines.
             //In this case, if set to row, it would become the row of the last newline.
             //Incrementing it from its previous token (guarenteed to be non-newline) fixes this.
@@ -534,7 +536,7 @@ int Lexer::genStrLitTok(yy::parser::location_type* loc){
                 case 'r': s += '\r'; break;
                 case 't': s += '\t'; break;
                 case 'v': s += '\v'; break;
-                default: 
+                default:
                     if(!IS_NUMERICAL(nxt)) s += nxt;
                     else{
                         int cha = 0;
@@ -640,11 +642,11 @@ int Lexer::genCharLitTok(yy::parser::location_type* loc){
  *  returns the token by its value.
  */
 int Lexer::genOpTok(yy::parser::location_type* loc){
-    if(cur == '"') 
+    if(cur == '"')
         return genStrLitTok(loc);
     if(cur == '\'')
         return genCharLitTok(loc);
-   
+
     //If the token is none of the above, it must be a symbol, or a pair of symbols.
     //Set the beginning of the token about to be created here.
     loc->begin = getPos();
@@ -658,10 +660,10 @@ int Lexer::genOpTok(yy::parser::location_type* loc){
 
     if(cur == '.' && nxt == '.') RETURN_PAIR(Tok_Range);
     if(cur == '-' && nxt == '>') RETURN_PAIR(Tok_RArrow);
-    
+
     if(cur == '<' && nxt == '|') RETURN_PAIR(Tok_ApplyL);
     if(cur == '|' && nxt == '>') RETURN_PAIR(Tok_ApplyR);
-    
+
     if(cur == '+' && nxt == '+') RETURN_PAIR(Tok_Append);
 
     if(nxt == '='){
@@ -676,9 +678,9 @@ int Lexer::genOpTok(yy::parser::location_type* loc){
             case '<': RETURN_PAIR(Tok_LesrEq);
         }
     }
-    
+
     loc->end = getPos();
-    
+
     if(cur == 0) return 0; //End of input
 
     //If the character is nota, assume it is an operator and return it by value.
@@ -737,14 +739,14 @@ int Lexer::next(yy::parser::location_type* loc){
     if(IS_COMMENT(cur, nxt)) return handleComment(loc);
     if(IS_NUMERICAL(cur))    return genNumLitTok(loc);
     if(IS_ALPHANUM(cur))     return genAlphaNumTok(loc);
-    
+
     //only check for significant whitespace if the lexer is not trying to match brackets.
     if(IS_WHITESPACE(cur)){
         if(matchingToks.size() > 0){
             //make sure to maintain line count if a newline is skipped in skipWsAndReturnNext
             if(cur == '\n'){
-                row++; 
-                col = 0; 
+                row++;
+                col = 0;
             }
             return skipWsAndReturnNext(loc);
         }else{

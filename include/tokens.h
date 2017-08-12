@@ -3,7 +3,7 @@
 
 #define IS_LITERAL(t) ((t) < 258)
 
-/* 
+/*
  *  Basic enum containing all primitive types as well
  *  as the basic classification of some others.  Intended for
  *  quick reference rather than in-depth analysis.
@@ -102,6 +102,7 @@ namespace ante {
 		Tok_Trait,
 		Tok_Fun,
 		Tok_Ext,
+        Tok_Block,
 
 		//modifiers
 		Tok_Pub,

@@ -9,7 +9,7 @@ let c = 4 //i32 by default
 fun mul: u16 a b -> i32
     i32 a * b
 
-printf "%d\n"
+printf "%d\n" block
 //b is implicitly widened
     mul (u16 a) b
 

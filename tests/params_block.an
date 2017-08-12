@@ -3,6 +3,6 @@ fun print: i32 a b c
     printf "(1): %d\n(2): %d\n(3): %d\n" a b c
 
 
-print (1 + 32 / 42 + 222 * 3  / 5)
+print (1 + 32 / 42 + 222 * 3  / 5) block
     2 + 2 - 2 * 555
     3 + 3

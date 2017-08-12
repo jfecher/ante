@@ -44,7 +44,7 @@ void yyerror(const char *msg);
 %token Ident UserType TypeVar
 
 /* types */
-%token I8 I16 I32 I64 
+%token I8 I16 I32 I64
 %token U8 U16 U32 U64
 %token Isz Usz F16 F32 F64
 %token C8 C32 Bool Void
@@ -63,7 +63,7 @@ void yyerror(const char *msg);
 %token For While Do In
 %token Continue Break
 %token Import Let Var Match With
-%token Type Trait Fun Ext
+%token Type Trait Fun Ext Block
 
 /* modifiers */
 %token Pub Pri Pro Raw
@@ -89,7 +89,7 @@ void yyerror(const char *msg);
 
 
 %left Newline
-%left STMT Fun Let Import Return Ext Var While For Match Trait If Break Continue
+%left STMT Fun Let Import Return Ext Var While For Match Trait If Break Continue Type
 %left RArrow
 
 %left ENDIF
@@ -102,6 +102,8 @@ void yyerror(const char *msg);
  *   for if/elif expressions
  */
 %left MEDIF
+
+%nonassoc Indent Unindent
 
 %left MED
 
@@ -131,20 +133,21 @@ void yyerror(const char *msg);
 
 %left '#'
 %left '@' New
-%left '&' TYPE UserType TypeVar I8 I16 I32 I64 U8 U16 U32 U64 Isz Usz F16 F32 F64 C8 C32 Bool Void Type
+%left '&' TYPE UserType TypeVar I8 I16 I32 I64 U8 U16 U32 U64 Isz Usz F16 F32 F64 C8 C32 Bool Void
 %nonassoc FUNC
+%left Block
 
 %nonassoc LITERALS StrLit IntLit FltLit CharLit True False Ident
 %left '.'
 
 
-/* 
+/*
     Being below HIGH, this ensures parenthetical expressions will be parsed
     as just order-of operations parenthesis, instead of a single-value tuple.
 */
 %nonassoc ')' ']' '}'
 
-%nonassoc '(' '[' Indent Unindent
+%nonassoc '(' '['
 %nonassoc HIGH
 %nonassoc '{'
 
@@ -253,14 +256,14 @@ type: pointer_type  %prec STMT  {$$ = $1;}
     | fn_type       %prec STMT  {$$ = $1;}
     | lit_type      %prec STMT  {$$ = $1;}
     | generic_type  %prec STMT  {$$ = $1;}
-    | tuple_type    %prec STMT  {$$ = $1;} 
+    | tuple_type    %prec STMT  {$$ = $1;}
     ;
 
 type_expr_: type_expr_ ',' type  %prec MED {$$ = setNext($1, $3);}
           | type                 %prec MED {$$ = setRoot($1);}
           ;
 
-type_expr__: type_expr_  %prec MED {Node* tmp = getRoot(); 
+type_expr__: type_expr_  %prec MED {Node* tmp = getRoot();
                           if(tmp == $1){//singular type, first type in list equals the last
                               $$ = tmp;
                           }else{ //tuple type
@@ -272,7 +275,7 @@ type_expr: modifier_list type_expr__  {$$ = ((TypeNode*)$2)->addModifiers((ModNo
          | type_expr__                {$$ = $1;}
 
 
-modifier: Pub      {$$ = mkModNode(@$, Tok_Pub);} 
+modifier: Pub      {$$ = mkModNode(@$, Tok_Pub);}
         | Pri      {$$ = mkModNode(@$, Tok_Pri);}
         | Pro      {$$ = mkModNode(@$, Tok_Pro);}
         | Raw      {$$ = mkModNode(@$, Tok_Raw);}
@@ -402,6 +405,8 @@ block: Indent expr Unindent                   {$$ = mkBlockNode(@$, $2);}
      ;
 
 
+explicit_block: Block block  {$$ = $2;}
+
 
 raw_ident_list: raw_ident_list ident  {$$ = setNext($1, mkVarNode(@2, (char*)$2));}
               | ident                 {$$ = setRoot(mkVarNode(@$, (char*)$1));}
@@ -410,7 +415,7 @@ raw_ident_list: raw_ident_list ident  {$$ = setNext($1, mkVarNode(@2, (char*)$2)
 ident_list: raw_ident_list  %prec MED {$$ = getRoot();}
 
 
-/* 
+/*
  * In case of multiple parameters declared with a single type, eg i32 a b c
  * The next parameter should be set to the first in the list, (the one returned by getRoot()),
  * but the variable returned must be the last in the last, in this case $4
@@ -442,8 +447,8 @@ fn_name: ident       /* most functions */      {$$ = $1;}
        | '(' op ')'  /* operator overloads */  {$$ = $2;}
        ;
 
-op: '+'    {$$ = (Node*)"+";} 
-  | '-'    {$$ = (Node*)"-";} 
+op: '+'    {$$ = (Node*)"+";}
+  | '-'    {$$ = (Node*)"-";}
   | '*'    {$$ = (Node*)"*";}
   | '/'    {$$ = (Node*)"/";}
   | '%'    {$$ = (Node*)"%";}
@@ -537,7 +542,7 @@ ret_expr: Return expr {$$ = mkRetNode(@$, $2);}
 extension: Ext type_expr Indent fn_list Unindent {$$ = mkExtNode(@$, $2, $4);}
          | Ext type_expr ':' usertype_list Indent fn_list Unindent {$$ = mkExtNode(@$, $2, $6, $4);}
          ;
- 
+
 usertype_list: usertype_list_  {$$ = getRoot();}
 
 usertype_list_: usertype_list_ ',' usertype {$$ = setNext($1, mkTypeNode(@3, TT_Data, (char*)$3));}
@@ -547,7 +552,7 @@ usertype_list_: usertype_list_ ',' usertype {$$ = setNext($1, mkTypeNode(@3, TT_
 
 fn_list: fn_list_ {$$ = getRoot();}
 
-fn_list_: fn_list_ function maybe_newline  {$$ = setNext($1, $2);} 
+fn_list_: fn_list_ function maybe_newline  {$$ = setNext($1, $2);}
         | function maybe_newline           {$$ = setRoot($1);}
         ;
 
@@ -581,7 +586,7 @@ match_expr: Match expr With Newline match  {$$ = mkMatchNode(@$, $2, $5);}
 fn_brackets: '{' expr_list '}' {$$ = mkTupleNode(@$, $2);}
            | '{' '}'           {$$ = mkTupleNode(@$, 0);}
            ;
-    
+
 if_expr: If expr Then expr_or_jump                %prec MEDIF  {$$ = mkIfNode(@$, $2, $4, 0);}
        | if_expr Elif expr Then expr_or_jump      %prec MEDIF  {auto*elif = mkIfNode(@$, $3, $5, 0); setElse($1, elif); $$ = elif;}
        | if_expr Else expr_or_jump                             {$$ = setElse($1, $3);}
@@ -608,6 +613,7 @@ val_no_decl: '(' expr ')'            {$$ = $2;}
            | for_loop                {$$ = $1;}
            | if_expr     %prec STMT  {$$ = $1;}
            | match_expr  %prec LOW   {$$ = $1;}
+           | explicit_block          {$$ = $1;}
            | block                   {$$ = $1;}
            | type_expr   %prec LOW
            | global
@@ -619,7 +625,7 @@ val: val_no_decl
    | function
    | extension
    ;
- 
+
 tuple: '(' expr_list ')' {$$ = mkTupleNode(@$, $2);}
      | '(' ')'           {$$ = mkTupleNode(@$, 0);}
      ;
@@ -648,7 +654,7 @@ arg_list_p: arg_list_p arg        %prec FUNC {$$ = setNext($1, $2);}
           | arg_block             %prec FUNC {$$ = $1;}
           ;
 
-arg_block: Indent arg_stmt_list Unindent {$$ = $2;}
+arg_block: Block Indent arg_stmt_list Unindent {$$ = $3;}
 
 arg_stmt_list: arg_stmt_list Newline expr   %prec STMT  {$$ = setNext($1, $3);}
              | expr                         %prec STMT  {$$ = setRoot($1);}
@@ -765,7 +771,7 @@ expr: expr '+' maybe_newline expr                {$$ = mkBinOpNode(@$, '+', $1, 
      * internal linked list of elsenodes to find the last one and append the new elif */
     | expr Elif expr Then expr_or_jump  %prec MEDIF  {auto*elif = mkIfNode(@$, $3, $5, 0); $$ = setElse($1, elif);}
     | expr Else expr_or_jump                     {$$ = setElse($1, $3);}
-    
+
     | match_expr Newline expr       %prec Match  {$$ = mkSeqNode(@$, $1, $3);}
     | match_expr Newline            %prec LOW    {$$ = $1;}
     | expr Newline                               {$$ = $1;}
@@ -778,7 +784,7 @@ expr: expr '+' maybe_newline expr                {$$ = mkBinOpNode(@$, '+', $1, 
 void yy::parser::error(const location& loc, const string& msg){
     location l = loc;
     ante::error(msg.c_str(), l);
-} 
+}
 
 namespace ante {
     string mangle(std::string &base, TypeNode *paramTys);
