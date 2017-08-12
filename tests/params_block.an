@@ -3,6 +3,12 @@ fun print: i32 a b c
     printf "(1): %d\n(2): %d\n(3): %d\n" a b c
 
 
-print (1 + 32 / 42 + 222 * 3  / 5) block
-    2 + 2 - 2 * 555
+print (1 + 32 / 42 + 222 * 3  / 5) 32 block
     3 + 3
+
+//TODO: named parameters
+//
+//  print with
+//      a = 1 + 32 / 42 + 222 * 3 / 5
+//      b = 32
+//      c = 3 + 3

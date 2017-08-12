@@ -28,9 +28,8 @@ Node* setElse(Node *ifn, Node *elseN){
             n->elseN.reset(elseN);
     }else{
         auto *seq = dynamic_cast<SeqNode*>(ifn);
-        size_t lastIdx = seq->sequence.size() - 1;
 
-        if(seq and (n = dynamic_cast<IfNode*>(seq->sequence[lastIdx].get()))){
+        if(seq and (n = dynamic_cast<IfNode*>(seq->sequence.back().get()))){
             while(auto *tmp = dynamic_cast<IfNode*>(n->elseN.get()))
                 n = tmp;
 
