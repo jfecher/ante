@@ -211,7 +211,7 @@ fun (==): Str l r -> bool
         return false
 
     var i = 0
-    while l.cStr#i != '\0' do
+    while i < l.len do
         if l.cStr#i != r.cStr#i then
             return false
 
@@ -221,12 +221,15 @@ fun (==): Str l r -> bool
 
 
 fun (++): Str s1 s2 -> Str
+    if s1.len == 0 then return s2
+    if s2.len == 0 then return s1
+    
     let len = s1.len + s2.len
     var buf = malloc (len+1)
 
     memcpy buf (s1.cStr) s1.len
 
-    var buf_offset = void*(u64 buf + s1.len)
+    var buf_offset = void*(usz buf + s1.len)
     memcpy buf_offset s2.cStr (s2.len+1) //copy terminating null too
 
     Str(c8* buf, len)

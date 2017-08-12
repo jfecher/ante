@@ -6,7 +6,8 @@ fun Vec.init := Vec(malloc(8 * Ante.sizeof ""), 0usz, 8usz)
 //reserve numElements in Vec v, elements will be uninitialized
 fun Vec.reserve: mut Vec v, usz numElems
     if v.len + numElems > v.cap then
-        let ptr = realloc{void* v._data, v.cap * 8}
+        let elemSize = Ante.sizeof ""
+        let ptr = realloc{void* v._data, (v.cap + numElems)*elemSize}
 
         if ptr == void* 0 then
             printf "Error in reserving %u elements for Vec\n" numElems
