@@ -771,11 +771,8 @@ FuncDecl* Compiler::getMangledFuncDecl(string name, vector<TypeNode*> args){
     string fnName = mangle(name, args);
     auto *fd = getFuncDeclFromVec(candidates, fnName);
     if(fd){ //exact match
-        //TODO: compiling the function here may cause problems if the arguments are
-        //      unbound generic types that exactly matched a generic function that
-        //      should instead be compiled with compTemplateFn
         if(!fd->tv)
-            fd->tv = compFn(fd);
+            fd->tv = compFnWithArgs(this, fd, args);
 
         return fd;
     }

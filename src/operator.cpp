@@ -1174,7 +1174,7 @@ TypedValue* tryImplicitCast(Compiler *c, TypedValue *arg, TypeNode *castTy){
     }
 }
 
-    
+
 TypedValue* deduceFunction(Compiler *c, FunctionCandidates *fc, vector<TypedValue*> &args, LOC_TY &loc){
     if(fc->obj) push_front(&args, fc->obj);
 
@@ -1226,6 +1226,35 @@ TypedValue* deduceFunction(Compiler *c, FunctionCandidates *fc, vector<TypedValu
 }
 
 
+TypedValue* searchForFunction(Compiler *c, Node *l, vector<TypedValue*> &typedArgs){
+    if(VarNode *vn = dynamic_cast<VarNode*>(l)){
+        //Check if there is a var in local scope first
+        auto *var = c->lookup(vn->name);
+        if(var){
+            return var->autoDeref ?
+                new TypedValue(c->builder.CreateLoad(var->getVal(), vn->name), var->tval->type):
+                new TypedValue(var->tval->val, var->tval->type); //deep copy type
+        }
+
+        auto params = toTypeNodeVector(typedArgs);
+
+        //try to do module inference
+        if(!typedArgs.empty()){
+            string fnName = typeNodeToStr(typedArgs[0]->type.get()) + "_" + vn->name;
+            TypedValue *tvf = c->getMangledFn(fnName, params);
+            if(tvf) return tvf;
+        }
+
+
+        auto *f = c->getMangledFn(vn->name, params);
+        if(f) return f;
+    }
+
+    //if it is not a varnode/no method is found, then compile it normally
+    return l->compile(c);
+}
+
+
 TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
     //used to type-check each parameter later
     vector<TypedValue*> typedArgs;
@@ -1258,26 +1287,7 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
 
 
     //try to compile the function now that the parameters are compiled.
-    TypedValue *tvf = 0;
-
-    //First, check if the lval is a symple VarNode (identifier) and then attempt to
-    //inference a method call for it (inference as in if the <type>. syntax is omitted)
-    if(VarNode *vn = dynamic_cast<VarNode*>(l)){
-        //try to see if arg 1's type contains a method of the same name
-        auto params = toTypeNodeVector(typedArgs);
-
-        //try to do module inference
-        if(!typedArgs.empty()){
-            string fnName = typeNodeToStr(typedArgs[0]->type.get()) + "_" + vn->name;
-            tvf = c->getMangledFn(fnName, params);
-        }
-
-        //if the above fails, do regular name mangling only
-        if(!tvf) tvf = c->getMangledFn(vn->name, params);
-    }
-
-    //if it is not a varnode/no method is found, then compile it normally
-    if(!tvf) tvf = l->compile(c);
+    TypedValue *tvf = searchForFunction(c, l, typedArgs);
 
     //Compiling "normally" above may result in a list of functions returned due to the
     //lack of information on argument types, so handle that now
@@ -1291,11 +1301,9 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
         }
     }
 
-    //make sure the l val compiles to a function
     if(tvf->type->type != TT_Function && tvf->type->type != TT_MetaFunction)
         return c->compErr("Called value is not a function or method, it is a(n) " + 
                 typeNodeToColoredStr(tvf->type), l->loc);
-
 
     
     //now that we assured it is a function, unwrap it
