@@ -641,6 +641,7 @@ unary_op: '@' expr_with_decls                    {$$ = mkUnOpNode(@$, '@', $2);}
         ;
 
 preproc: '!' '[' bound_expr ']'  {$$ = mkPreProcNode(@$, $3);}
+       | '!' var                 {$$ = mkPreProcNode(@$, $2);}
        ;
 
 arg_list: arg_list_p  %prec FUNC {$$ = mkTupleNode(@$, getRoot());}

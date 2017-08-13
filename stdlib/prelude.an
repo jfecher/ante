@@ -50,82 +50,82 @@ type Str = c8* cStr, usz len
 //Compile-time functions
 
 //prints type and value (llvm dump) of variable while compiling
-![meta] fun Ante.debug: 't t;
+!meta fun Ante.debug: 't t;
 
 //returns the size of a type in Bytes.  Accepts types or values as an argument
-![meta] fun Ante.sizeof: 't t -> usz;
+!meta fun Ante.sizeof: 't t -> usz;
 
 //compile-time store and lookup variable functions
-![macro] fun Ante.ctStore: c8* name, 't val;
-![macro] fun Ante.ctLookup: c8* name -> 't;
+!meta fun Ante.ctStore: c8* name, 't val;
+!meta fun Ante.ctLookup: c8* name -> 't;
 
 
 //numerical print functions
-![inline]
+!inline
 fun i8.print: i8 x
     printf "%hhd\n" x
 
-![inline]
+!inline
 fun i16.print: i16 x
     printf "%hd\n" x
 
-![inline]
+!inline
 fun i32.print: i32 x
     printf "%d\n" x
 
-![inline]
+!inline
 fun i64.print: i64 x
     printf "%ld\n" x
 
-![inline]
+!inline
 fun isz.print: isz x
     printf "%ld\n" x
 
 //unsigned
-![inline]
+!inline
 fun u8.print: u8 x
     printf "%hhu\n" x
 
-![inline]
+!inline
 fun u16.print: u16 x
     printf "%hu\n" x
 
-![inline]
+!inline
 fun u32.print: u32 x
     printf "%u\n" x
 
-![inline]
+!inline
 fun u64.print: u64 x
     printf "%lu\n" x
 
-![inline]
+!inline
 fun usz.print: usz x
     printf "%lu\n" x
 
 //floats
-![inline]
+!inline
 fun f16.print: f16 x
     printf "%.2f\n" (f64 x)
 
-![inline]
+!inline
 fun f32.print: f32 x
     printf "%f\n" (f64 x)
 
-![inline]
+!inline
 fun f64.print: f64 x
     printf "%.14f\n" x
 
 //char
-![inline]
+!inline
 fun c8.print: c8 x
     printf "%c\n" x
 
 //c-string
-![inline]
+!inline
 fun print: c8* s
     puts s
 
-![inline]
+!inline
 fun c8*.init: Str s = s.cStr
 
 //For-loops work over any range that is Iterable
@@ -185,25 +185,25 @@ ext InFile: Iterator
     fun unwrap: InFile f = next_line f
 
 
-![inline]
+!inline
 fun OutFile.write: OutFile f, c8* cStr
     fputs cStr f
 
-![inline]
+!inline
 fun OutFile.write: OutFile f, c8 c
     fputc c f
 
 //Str functions
-![inline]
+!inline
 fun Str.print: Str s
     puts s.cStr
 
-![inline]
+!inline
 fun Str.write: Str s, OutFile f
     fputs (s.cStr) f
 
 
-![inline]
+!inline
 fun Str.init: c8* cStr -> Str
     Str(cStr, usz strlen cStr)
 
@@ -236,10 +236,10 @@ fun (++): Str s1 s2 -> Str
 
     Str(c8* buf, len)
 
-![inline]
+!inline
 fun (#): Str s, i32 index = s.cStr#index
 
-![inline]
+!inline
 fun (#): Str s, i32 i, c8 c
     s.cStr#i = c
 
