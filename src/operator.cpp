@@ -3,7 +3,6 @@
 #include "function.h"
 #include "tokens.h"
 #include "jitlinker.h"
-#include <llvm/ExecutionEngine/GenericValue.h>
 #include <llvm/ExecutionEngine/Interpreter.h>
 #include <llvm/Linker/Linker.h>
 
@@ -886,7 +885,25 @@ TypedValue* genericValueToTypedValue(Compiler *c, GenericValue gv, TypeNode *tn)
  * Returns the pointer value of a constant pointer type
  */
 void* getConstPtr(Compiler *c, TypedValue *tv){
+    if(GlobalVariable *gv = dyn_cast<GlobalVariable>(tv->val)){
+        Value *v = gv->getInitializer();
+        if(ConstantDataArray *cda = dyn_cast<ConstantDataArray>(v)){
+            return (void*)strdup(cda->getAsString().str().c_str());
+        }
 
+        auto elem = typedValueToGenericValue(c, new TypedValue(v, tv->type->extTy.get()));
+        auto *ret = new GenericValue(elem);
+        return ret;
+    }else if(ConstantExpr *ce = dyn_cast<ConstantExpr>(tv->val)){
+        Instruction *in = ce->getAsInstruction();
+        if(GetElementPtrInst *gep = dyn_cast<GetElementPtrInst>(in)){
+            auto *ptr = new TypedValue(gep->getPointerOperand(), tv->type->extTy.get());
+            return getConstPtr(c, ptr);
+        }
+    }
+        
+    cout << "error: unknown type given to getConstPtr, dumping\n";
+    tv->dump();
     return nullptr;
 }
 
@@ -1065,6 +1082,20 @@ TypedValue* compMetaFunctionResult(Compiler *c, LOC_TY &loc, string &baseName, s
 
             res = (*fn)(c, typedArgs[0]);
             gv.IntVal = APInt(32, (int)(size_t)res, false);
+        }else if(baseName == "Ante_ctStore"){
+            if(typedArgs.size() != 2)
+                return c->compErr("Called function was given " + to_string(typedArgs.size()) +
+                        " argument(s) but was declared to take 2", loc);
+
+            res = (*fn)(c, typedArgs[0], typedArgs[1]);
+
+        }else if(baseName == "Ante_ctLookup"){
+            if(typedArgs.size() != 1)
+                return c->compErr("Called function was given " + to_string(typedArgs.size()) +
+                        " argument(s) but was declared to take 1", loc);
+
+            res = (*fn)(c, typedArgs[0]);
+            return (TypedValue*)res;
         }else{
             res = (*fn)();
             gv = GenericValue(res);

@@ -338,6 +338,7 @@ namespace ante {
         void* operator()(TypedValue *tv);
         void* operator()(Compiler *c, TypedValue *tv);
         void* operator()(TypedValue *p1, TypedValue *p2);
+        void* operator()(Compiler *c, TypedValue *tv1, TypedValue *tv2);
     };
 
 

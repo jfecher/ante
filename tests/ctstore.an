@@ -1,0 +1,12 @@
+
+let val = 3
+
+Ante.ctStore "my_val".cStr val
+
+let val2 = Ante.ctLookup "my_val".cStr
+
+Ante.debug val2
+
+print val2
+
+

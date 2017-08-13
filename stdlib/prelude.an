@@ -50,12 +50,14 @@ type Str = c8* cStr, usz len
 //Compile-time functions
 
 //prints type and value (llvm dump) of variable while compiling
-![meta]
-fun Ante.debug: 't t;
+![meta] fun Ante.debug: 't t;
 
 //returns the size of a type in Bytes.  Accepts types or values as an argument
-![meta]
-fun Ante.sizeof: 't t -> usz;
+![meta] fun Ante.sizeof: 't t -> usz;
+
+//compile-time store and lookup variable functions
+![macro] fun Ante.ctStore: c8* name, 't val;
+![macro] fun Ante.ctLookup: c8* name -> 't;
 
 
 //numerical print functions
