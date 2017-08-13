@@ -1004,10 +1004,14 @@ string mangle(string &base, NamedValNode *paramTys){
     string name = base;
     while(paramTys){
         auto *tn = (TypeNode*)paramTys->typeExpr.get();
-        if(!tn) break;
-
-        if(tn->type != TT_Void)
+        
+        if(!tn)
+            name += "...";
+        else if(tn == (void*)1)
+            name += AN_MANGLED_SELF;
+        else if(tn->type != TT_Void)
             name += "_" + typeNodeToStr(tn);
+
         paramTys = (NamedValNode*)paramTys->next.get();
     }
     return name;
@@ -1278,6 +1282,7 @@ TypedValue* TraitNode::compile(Compiler *c){
         fn->basename = c->funcPrefix + fn->basename;
 
         shared_ptr<FuncDecl> fd{new FuncDecl(fn, c->scope, c->compUnit)};
+        fd->obj = mkDataTypeNode(name);
         trait->funcs.push_back(fd);
         curfn = curfn->next.get();
     }

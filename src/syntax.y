@@ -21,6 +21,7 @@ extern int yylex(yy::parser::semantic_type*, yy::location*);
 
 namespace ante {
     extern string typeNodeToStr(const TypeNode*);
+    extern string mangle(std::string &base, NamedValNode *paramTys);
 
     struct TypeNode;
 }
@@ -63,7 +64,7 @@ void yyerror(const char *msg);
 %token For While Do In
 %token Continue Break
 %token Import Let Var Match With
-%token Type Trait Fun Ext Block
+%token Type Trait Fun Ext Block Self
 
 /* modifiers */
 %token Pub Pri Pro Raw
@@ -137,7 +138,7 @@ void yyerror(const char *msg);
 %nonassoc FUNC
 %left Block
 
-%nonassoc LITERALS StrLit IntLit FltLit CharLit True False Ident
+%nonassoc LITERALS StrLit IntLit FltLit CharLit True False Ident Self
 %left '.'
 
 
@@ -184,6 +185,7 @@ import_expr: Import expr {$$ = mkImportNode(@$, $2);}
 
 
 ident: Ident {$$ = (Node*)lextxt;}
+     | Self  {$$ = (Node*)"self";}
      ;
 
 usertype: UserType {$$ = (Node*)lextxt;}
@@ -422,8 +424,9 @@ ident_list: raw_ident_list  %prec MED {$$ = getRoot();}
         for lists automatically in case the shortcut syntax
         is used and multiple NamedValNodes are made */
 _params: _params ',' type_expr ident_list {$$ = mkNamedValNode(@$, $4, $3, $1);}
-      | type_expr ident_list              {$$ = mkNamedValNode(@$, $2, $1, 0);}
-      ;
+       | type_expr ident_list             {$$ = mkNamedValNode(@$, $2, $1, 0);}
+       | Self                             {$$ = mkNamedValNode(@$, mkVarNode(@$, (char*)"self"), (Node*)1, 0);}
+       ;
 
                           /* varargs function .. (Range) followed by . */
 params: _params ',' Range '.' {mkNamedValNode(@$, mkVarNode(@$, (char*)""), 0, $1); $$ = getRoot();}
@@ -782,12 +785,6 @@ void yy::parser::error(const location& loc, const string& msg){
     ante::error(msg.c_str(), l);
 }
 
-namespace ante {
-    string mangle(std::string &base, TypeNode *paramTys);
-    TypeNode* createFnTyNode(NamedValNode *params, TypeNode *retTy);
-    TypeNode* mkAnonTypeNode(TypeTag t);
-}
-
 Node* tnToFnName(Node *n){
     auto *tn = (TypeNode*)n;
     string s = typeNodeToStr(tn);
@@ -821,10 +818,7 @@ Node* mangleFn(Node *basename, Node *nvns_){
 
     auto *nvn = (NamedValNode*)nvns_;
 
-    auto *fakeRetTy = mkAnonTypeNode(TT_Void);
-    auto *fnTy = createFnTyNode(nvn, fakeRetTy);
-
-    string name = mangle(base, (TypeNode*)fnTy->extTy->next.get());
+    string name = mangle(base, nvn);
     auto len = name.length();
 
     char* ret = (char*)malloc(len+1);

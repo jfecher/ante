@@ -64,19 +64,25 @@ TypedValue* Compiler::callFn(string name, vector<TypedValue*> args){
  * a varargs type (represented by the absence of a type)
  * then a nullptr is inserted for that parameter.
  */
-vector<Type*> getParamTypes(Compiler *c, NamedValNode *nvn, size_t paramCount){
+vector<Type*> getParamTypes(Compiler *c, FuncDecl *fd, NamedValNode *nvn, size_t paramCount){
     vector<Type*> paramTys;
     paramTys.reserve(paramCount);
 
     for(size_t i = 0; i < paramCount && nvn; i++){
 
         TypeNode *paramTyNode = (TypeNode*)nvn->typeExpr.get();
-        if(paramTyNode){
+        if(paramTyNode == (void*)1){ //self parameter
+            //Self parameters originally have 0x1 as their TypeNodes, but
+            //this should be replaced when FuncDeclNode::compile is called.
+            //Throw an error if that check was somehow bypassed
+            c->compErr("Stray self parameter", nvn->loc);
+        }else if(paramTyNode){
             auto *type = c->typeNodeToLlvmType(paramTyNode);
             auto *correctedType = parameterize(type, paramTyNode);
             paramTys.push_back(correctedType);
-        }else
+        }else{
             paramTys.push_back(0); //terminating null = varargs function
+        }
         nvn = (NamedValNode*)nvn->next.get();
     }
     return paramTys;
@@ -192,6 +198,14 @@ TypedValue* Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
         NamedValNode *cParam = paramVec[i];
         TypeNode *paramTyNode = (TypeNode*)cParam->typeExpr.get();
         addArgAttrs(arg, paramTyNode);
+
+        //Self parameters originally have 0x1 as their TypeNodes, but
+        //this should be replaced when FuncDeclNode::compile is called.
+        //Throw an error if that check was somehow bypassed
+        if(paramTyNode == (void*)1){
+            compErr("Stray self parameter", cParam->loc);
+            //paramTyNode = fd->obj;
+        }
 
         for(size_t j = 0; j < i; j++){
             if(cParam->name == paramVec[j]->name){
@@ -376,7 +390,7 @@ TypedValue* compFnHelper(Compiler *c, FuncDecl *fd){
     NamedValNode *paramsBegin = fdn->params.get();
     size_t nParams = getTupleSize(paramsBegin);
 
-    vector<Type*> paramTys = getParamTypes(c, paramsBegin, nParams);
+    vector<Type*> paramTys = getParamTypes(c, fd, paramsBegin, nParams);
 
     if(paramTys.size() > 0 && !paramTys.back()){ //varargs fn
         fdn->varargs = true;
@@ -573,6 +587,16 @@ TypedValue* FuncDeclNode::compile(Compiler *c){
     //check if the function is a named function.
     if(name.length() > 0){
         //if it is not, register it to be lazily compiled later (when it is called)
+        auto self_loc = name.find(AN_MANGLED_SELF);
+        if(self_loc != string::npos){
+            if(!c->compCtxt->obj)
+                c->compErr("Function must be a method to have a self parameter", params->loc);
+
+            name.replace(self_loc, strlen(AN_MANGLED_SELF), "_" + typeNodeToStr(c->compCtxt->obj));
+            params->typeExpr.release();
+            params->typeExpr.reset(copy(c->compCtxt->obj));
+        }
+
         name = c->funcPrefix + name;
         basename = c->funcPrefix + basename;
 

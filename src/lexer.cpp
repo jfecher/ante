@@ -81,6 +81,9 @@ map<int, const char*> tokDict = {
     {Tok_Ext, "ext"},
     {Tok_Block, "block"},
 
+    //pseudo-keywords
+    {Tok_Self, "self"},
+
     //modifiers
     {Tok_Pub, "pub"},
     {Tok_Pri, "pri"},
@@ -91,7 +94,7 @@ map<int, const char*> tokDict = {
     {Tok_Mut, "mut"},
     {Tok_Global, "global"},
 
-    //other
+    //reserved
     {Tok_Where, "where"},
 
     {Tok_Newline, "Newline"},
@@ -150,6 +153,8 @@ map<string, int> keywords = {
     {"ext",      Tok_Ext},
     {"block",    Tok_Block},
 
+    {"self",     Tok_Self},
+
     {"pub",      Tok_Pub},
     {"pri",      Tok_Pri},
     {"pro",      Tok_Pro},
@@ -159,7 +164,7 @@ map<string, int> keywords = {
     {"mut",      Tok_Mut},
     {"global",   Tok_Global},
 
-    //other
+    //reserved
     {"where",    Tok_Where},
 };
 

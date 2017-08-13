@@ -104,6 +104,9 @@ namespace ante {
 		Tok_Ext,
         Tok_Block,
 
+        //pseudo-keywords
+        Tok_Self,
+
 		//modifiers
 		Tok_Pub,
 		Tok_Pri,
@@ -114,7 +117,7 @@ namespace ante {
 		Tok_Mut,
         Tok_Global,
 
-		//other
+		//reserved
 		Tok_Where,
 
 		Tok_Newline,

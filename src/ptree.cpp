@@ -398,7 +398,7 @@ TypeNode* copy(const unique_ptr<TypeNode> &n);
 
 //helper function to deep-copy TypeNodes.  Used in mkNamedValNode
 TypeNode* copy(const TypeNode *n){
-    if(!n) return 0;
+    if(!n or n == (void*)1) return 0;
 
     auto loc = copyLoc(n->loc);
     TypeNode *cpy = new TypeNode(loc, n->type, n->typeName, nullptr);

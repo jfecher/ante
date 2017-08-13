@@ -18,6 +18,7 @@
 using namespace llvm;
 using namespace std;
 
+#define AN_MANGLED_SELF "_$self$"
 
 namespace ante {
 
