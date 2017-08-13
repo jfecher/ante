@@ -579,6 +579,8 @@ TypedValue* compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, TypeN
     return c->compFn(fd);
 }
 
+//Defined in compiler.cpp
+void manageSelfParam(Compiler *c, FuncDeclNode *fdn);
 
 /*
  *  Registers a function for later compilation
@@ -586,22 +588,12 @@ TypedValue* compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, TypeN
 TypedValue* FuncDeclNode::compile(Compiler *c){
     //check if the function is a named function.
     if(name.length() > 0){
-        //if it is not, register it to be lazily compiled later (when it is called)
-        auto self_loc = name.find(AN_MANGLED_SELF);
-        if(self_loc != string::npos){
-            if(!c->compCtxt->obj)
-                c->compErr("Function must be a method to have a self parameter", params->loc);
-
-            name.replace(self_loc, strlen(AN_MANGLED_SELF), "_" + typeNodeToStr(c->compCtxt->obj));
-            params->typeExpr.release();
-            params->typeExpr.reset(copy(c->compCtxt->obj));
-        }
+        manageSelfParam(c, this);
 
         name = c->funcPrefix + name;
         basename = c->funcPrefix + basename;
 
         c->registerFunction(this);
-        //and return a void value
         return c->getVoidLiteral();
     }else{
         //Otherwise, if it is a lambda function, compile it now and return it.

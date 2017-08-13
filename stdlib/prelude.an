@@ -102,7 +102,7 @@ fun usz.print: usz x
 
 //floats
 ![inline]
-fun f16.print: f16 x 
+fun f16.print: f16 x
     printf "%.2f\n" (f64 x)
 
 ![inline]

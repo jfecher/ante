@@ -1065,6 +1065,20 @@ FuncDeclNode* findFDN(Node *list, string& basename){
     return nullptr;
 }
 
+
+void manageSelfParam(Compiler *c, FuncDeclNode *fdn){
+    auto self_loc = fdn->name.find(AN_MANGLED_SELF);
+    if(self_loc != string::npos){
+        if(!c->compCtxt->obj)
+            c->compErr("Function must be a method to have a self parameter", fdn->params->loc);
+
+        fdn->name.replace(self_loc, strlen(AN_MANGLED_SELF), "_" + typeNodeToStr(c->compCtxt->obj));
+        fdn->params->typeExpr.release();
+        fdn->params->typeExpr.reset(copy(c->compCtxt->obj));
+    }
+}
+
+
 TypedValue* ExtNode::compile(Compiler *c){
     if(traits.get()){
         //this ExtNode is an implementation of a trait
@@ -1108,6 +1122,11 @@ TypedValue* ExtNode::compile(Compiler *c){
                 if(!fdn)
                     return c->compErr(typeNodeToColoredStr(typeExpr) + " must implement " + fd_proto->fdn->basename +
                             " to implement " + typeNodeToColoredStr(mkDataTypeNode(trait->name)), fd_proto->fdn->loc);
+
+                auto *oldObj = c->compCtxt->obj;
+                c->compCtxt->obj = typeExpr.get();
+                manageSelfParam(c, fdn);
+                c->compCtxt->obj = oldObj;
 
                 fdn->name = c->funcPrefix + fdn->name;
                 fdn->basename = c->funcPrefix + fdn->basename;
