@@ -2118,6 +2118,7 @@ Compiler::Compiler(const char *_fileName, bool lib, shared_ptr<LLVMContext> llvm
         mergedCompUnits(new ante::Module()),
         allCompiledModules(new unordered_map<string,shared_ptr<ante::Module>>()),
         compCtxt(new CompilerCtxt()),
+        ctCtxt(new CompilerCtCtxt()),
         errFlag(false),
         compiled(false),
         isLib(lib),
@@ -2172,17 +2173,18 @@ Compiler::Compiler(const char *_fileName, bool lib, shared_ptr<LLVMContext> llvm
  * @param lib Set to true if this module should be compiled as a library
  * @param llvmCtxt The llvmCtxt shared from the parent Module
  */
-Compiler::Compiler(Node *root, string modName, string &fName, bool lib, shared_ptr<LLVMContext> llvmCtxt) :
-        ctxt(llvmCtxt ? llvmCtxt : shared_ptr<LLVMContext>(new LLVMContext())),
+Compiler::Compiler(Compiler *c, Node *root, string modName, bool lib) :
+        ctxt(c->ctxt),
         builder(*ctxt),
         compUnit(new ante::Module()),
         mergedCompUnits(new ante::Module()),
         allCompiledModules(new unordered_map<string,shared_ptr<ante::Module>>()),
         compCtxt(new CompilerCtxt()),
+        ctCtxt(c->ctCtxt),
         errFlag(false),
         compiled(false),
         isLib(lib),
-        fileName(fName),
+        fileName(c->fileName),
         outFile(modName),
         funcPrefix(""),
         scope(0), optLvl(2), fnScope(1){

@@ -157,7 +157,7 @@ void declareTypes(Compiler *c){
  * into the new module as well.
  */
 unique_ptr<Compiler> wrapFnInModule(Compiler *c, string &basename, string &mangledName){
-    unique_ptr<Compiler> ccpy{new Compiler(c->ast.get(), mangledName, c->fileName)};
+    unique_ptr<Compiler> ccpy{new Compiler(c, c->ast.get(), mangledName)};
 
     copyDecls(c, ccpy.get());
     declareTypes(ccpy.get());

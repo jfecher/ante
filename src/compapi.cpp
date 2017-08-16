@@ -24,16 +24,14 @@ extern "C" {
 
     void Ante_ctStore(Compiler *c, TypedValue *nameTv, TypedValue *gv){
         char *name = (char*)typedValueToGenericValue(c, nameTv).PointerVal;
-        auto *var = new Variable(name, gv, c->scope, false);
-        c->stoVar(name, var);
+        c->ctCtxt->ctStores[name] = gv;
     }
 
     TypedValue* Ante_ctLookup(Compiler *c, TypedValue *nameTv){
         char *name = (char*)typedValueToGenericValue(c, nameTv).PointerVal;
-        auto *var = c->lookup(name);
-        if(var) return var->tval.get();
-        else{
-            //Temporary implementation until Maybe<'t> is added to stdlib
+        try{
+            return c->ctCtxt->ctStores.at(name);
+        }catch(out_of_range r){
             cerr << "error: ctLookup: Cannot find var '" << name << "'\n";
             throw new CtError();
         }

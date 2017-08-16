@@ -396,6 +396,17 @@ namespace ante {
     };
 
     /**
+     * @brief Contains compile-time information for user hooks and ctStores.
+     */
+    struct CompilerCtCtxt {
+        /** @brief Compile-time values stored using Ante.ctStore  */
+        map<string, TypedValue*> ctStores;
+
+        /** @brief functions to run whenever a function is declared. */
+        vector<shared_ptr<FuncDecl>> on_fn_declared_hook;
+    };
+
+    /**
      * @brief An Ante compiler responsible for a single module
      */
     struct Compiler {
@@ -429,6 +440,8 @@ namespace ante {
 
         unique_ptr<CompilerCtxt> compCtxt;
 
+        shared_ptr<CompilerCtCtxt> ctCtxt;
+
         bool errFlag, compiled, isLib;
         string fileName, outFile, funcPrefix;
         unsigned int scope, optLvl, fnScope;
@@ -452,7 +465,7 @@ namespace ante {
         * @param lib Set to true if this module should be compiled as a library
         * @param ctxt The LLVMContext shared from the parent Compiler
         */
-        Compiler(Node *root, string modName, string &fName, bool lib=false, shared_ptr<LLVMContext> ctxt = nullptr);
+        Compiler(Compiler *c, Node *root, string modName, bool lib=false);
         ~Compiler();
 
         /** @brief Fully compiles a module into llvm bytecode */
