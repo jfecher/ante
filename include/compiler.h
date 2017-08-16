@@ -403,7 +403,7 @@ namespace ante {
         map<string, TypedValue*> ctStores;
 
         /** @brief functions to run whenever a function is declared. */
-        vector<shared_ptr<FuncDecl>> on_fn_declared_hook;
+        vector<shared_ptr<FuncDecl>> on_fn_decl_hook;
     };
 
     /**

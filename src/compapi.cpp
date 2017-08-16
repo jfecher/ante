@@ -14,6 +14,23 @@ extern "C" {
         tv->dump();
     }
 
+    void Ante_ctError(Compiler *c, TypedValue *msgTv){
+        char *msg = (char*)typedValueToGenericValue(c, msgTv).PointerVal;
+        auto *curfn = c->compCtxt->callStack.back()->fdn;
+        yy::location fakeloc = mkLoc(mkPos(0,0,0), mkPos(0,0,0));
+        c->compErr(msg, curfn ? curfn->loc : fakeloc);
+    }
+
+    TypedValue* FuncDecl_getName(Compiler *c, TypedValue *fd){
+        FuncDecl *f = (FuncDecl*)((ConstantInt*)fd->val)->getZExtValue();
+        string &n = f->fdn->basename;
+
+        yy::location lloc = mkLoc(mkPos(0,0,0), mkPos(0,0,0));
+        auto *strlit = new StrLitNode(lloc, n);
+
+        return strlit->compile(c);
+    }
+
     size_t Ante_sizeof(Compiler *c, TypedValue *tv){
         if(tv->type->type == TT_Type){
             return extractTypeValue(tv)->getSizeInBits(c) / 8;
@@ -40,11 +57,13 @@ extern "C" {
 
 namespace ante {
     map<string, CtFunc*> compapi = {
-        {"Ante_getAST",    new CtFunc((void*)Ante_getAST,    mkTypeNodeWithExt(TT_Ptr, mkDataTypeNode("Node")))},
-        {"Ante_debug",     new CtFunc((void*)Ante_debug,     mkAnonTypeNode(TT_Void), {mkAnonTypeNode(TT_TypeVar)})},
-        {"Ante_sizeof",    new CtFunc((void*)Ante_sizeof,    mkAnonTypeNode(TT_U32), {mkAnonTypeNode(TT_TypeVar)})},
-        {"Ante_ctStore",   new CtFunc((void*)Ante_ctStore,   mkAnonTypeNode(TT_Void),    {mkTypeNodeWithExt(TT_Ptr, mkAnonTypeNode(TT_C8)), mkAnonTypeNode(TT_TypeVar)})},
-        {"Ante_ctLookup",  new CtFunc((void*)Ante_ctLookup,  mkAnonTypeNode(TT_TypeVar), {mkTypeNodeWithExt(TT_Ptr, mkAnonTypeNode(TT_C8))})}
+        {"Ante_getAST",      new CtFunc((void*)Ante_getAST,      mkTypeNodeWithExt(TT_Ptr, mkDataTypeNode("Node")))},
+        {"Ante_debug",       new CtFunc((void*)Ante_debug,       mkAnonTypeNode(TT_Void), {mkAnonTypeNode(TT_TypeVar)})},
+        {"Ante_sizeof",      new CtFunc((void*)Ante_sizeof,      mkAnonTypeNode(TT_U32), {mkAnonTypeNode(TT_TypeVar)})},
+        {"Ante_ctStore",     new CtFunc((void*)Ante_ctStore,     mkAnonTypeNode(TT_Void), {mkTypeNodeWithExt(TT_Ptr, mkAnonTypeNode(TT_C8)), mkAnonTypeNode(TT_TypeVar)})},
+        {"Ante_ctLookup",    new CtFunc((void*)Ante_ctLookup,    mkAnonTypeNode(TT_TypeVar), {mkTypeNodeWithExt(TT_Ptr, mkAnonTypeNode(TT_C8))})},
+        {"Ante_ctError",     new CtFunc((void*)Ante_ctError,     mkAnonTypeNode(TT_Void), {mkTypeNodeWithExt(TT_Ptr, mkAnonTypeNode(TT_C8))})},
+        {"FuncDecl_getName", new CtFunc((void*)FuncDecl_getName, mkDataTypeNode("Str"), {mkDataTypeNode("FuncDecl")})}
     };
 
 

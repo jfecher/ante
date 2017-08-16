@@ -2029,6 +2029,15 @@ void Compiler::stoVar(string var, Variable *val){
 }
 
 
+/*
+ * Helper function to create an llvm integer literal
+ * with the address of a pointer as its value
+ */
+Value* mkPtrInt(Compiler *c, void *addr){
+    return c->builder.getInt64((unsigned long)addr);
+}
+
+
 void Compiler::stoTypeVar(string &name, TypeNode *ty){
     Value *addr = builder.getInt64((unsigned long)ty);
     TypedValue *tv = new TypedValue(addr, mkAnonTypeNode(TT_Type));

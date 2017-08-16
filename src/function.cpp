@@ -358,6 +358,10 @@ TypedValue* compCompilerDirectiveFn(Compiler *c, FuncDecl *fd, PreProcNode *ppn)
             auto *ext = createFnTyNode(fdn->params.get(), (TypeNode*)fdn->type.get());
             ext->type = TT_MetaFunction;
             fn = new TypedValue(nullptr, ext);
+        }else if(vn->name == "on_fn_decl"){
+            auto *ext = createFnTyNode(fdn->params.get(), (TypeNode*)fdn->type.get());
+            ext->type = TT_MetaFunction;
+            fn = new TypedValue(nullptr, ext);
         }else{
             return c->compErr("Unrecognized compiler directive '"+vn->name+"'", vn->loc);
         }
@@ -909,6 +913,8 @@ FuncDecl* Compiler::getFuncDecl(string baseName, string mangledName){
     return getFuncDeclFromVec(list, mangledName);
 }
 
+TypedValue* compMetaFunctionResult(Compiler *c, LOC_TY &loc, string &baseName, string &mangledName, vector<TypedValue*> &typedArgs);
+
 /*
  *  Adds a function to the list of declared, but not defined functions.  A declared function's
  *  FuncDeclNode can be added to be compiled only when it is later called.  Useful to prevent pollution
@@ -923,8 +929,26 @@ inline void Compiler::registerFunction(FuncDeclNode *fn){
         return;
     }
 
-    shared_ptr<FuncDecl> fd{new FuncDecl(fn, scope, mergedCompUnits)};
+    FuncDecl *fdRaw = new FuncDecl(fn, scope, mergedCompUnits);
+    shared_ptr<FuncDecl> fd{fdRaw};
     fd->obj = compCtxt->obj;
+    
+    for(auto &hook : ctCtxt->on_fn_decl_hook){
+        cout << "Iterating over hook " << hook->fdn->basename;
+        Value *fd_val = builder.getInt64((unsigned long)fdRaw);
+        vector<TypedValue*> args;
+        args.push_back(new TypedValue(fd_val, mkDataTypeNode("FuncDecl")));
+        compMetaFunctionResult(this, hook->fdn->loc, hook->fdn->basename, hook->fdn->name, args);
+    }
+
+    for(auto *m : *fn->modifiers){
+        if(PreProcNode *ppn = dynamic_cast<PreProcNode*>(m)){
+            VarNode *vn;
+            if((vn = dynamic_cast<VarNode*>(ppn->expr.get())) and vn->name == "on_fn_decl"){
+                ctCtxt->on_fn_decl_hook.push_back(fd);
+            }
+        }
+    }
 
     compUnit->fnDecls[fn->basename].push_back(fd);
     mergedCompUnits->fnDecls[fn->basename].push_back(fd);

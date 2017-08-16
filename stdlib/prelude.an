@@ -59,6 +59,9 @@ type Str = c8* cStr, usz len
 !meta fun Ante.ctStore: c8* name, 't val;
 !meta fun Ante.ctLookup: c8* name -> 't;
 
+//Note: ctError never returns
+!meta fun Ante.ctError: c8* msg;
+
 
 //numerical print functions
 !inline

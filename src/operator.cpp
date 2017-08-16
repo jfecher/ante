@@ -1089,7 +1089,7 @@ TypedValue* compMetaFunctionResult(Compiler *c, LOC_TY &loc, string &baseName, s
 
             res = (*fn)(c, typedArgs[0], typedArgs[1]);
 
-        }else if(baseName == "Ante_ctLookup"){
+        }else if(baseName == "Ante_ctLookup" or baseName == "Ante_ctError" or baseName == "FuncDecl_getName"){
             if(typedArgs.size() != 1)
                 return c->compErr("Called function was given " + to_string(typedArgs.size()) +
                         " argument(s) but was declared to take 1", loc);
