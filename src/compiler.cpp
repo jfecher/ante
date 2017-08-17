@@ -18,6 +18,7 @@
 #include "target.h"
 #include "yyparser.h"
 
+using namespace std;
 using namespace llvm;
 
 namespace ante {

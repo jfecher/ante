@@ -1,4 +1,7 @@
 #include "function.h"
+using namespace std;
+using namespace llvm;
+
 namespace ante {
 
 /*

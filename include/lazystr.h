@@ -4,7 +4,6 @@
 #include <string>
 #include <ostream>
 #include <list>
-using namespace std;
 
 
 //define colors for windows and other OS
@@ -55,31 +54,31 @@ std::ostream& operator<<(std::ostream& os, ante::win_console_color color);
 //to print and the OS dependent color/formatting to print it in
 namespace ante {
     struct lazy_str {
-        string s;
+        std::string s;
         AN_COLOR_TYPE fmt;
 
         lazy_str(const char* str);
-        lazy_str(string str);
+        lazy_str(std::string str);
     };
 }
 
-ostream& operator<<(ostream& os, ante::lazy_str& str);
+std::ostream& operator<<(std::ostream& os, ante::lazy_str& str);
 
 
 //due to each string's coloring lazy_strs cannot be concatenated, so
 //define a wrapper class that can
 namespace ante {
     struct lazy_printer {
-        list<lazy_str> strs;
+        std::list<lazy_str> strs;
 
         lazy_printer(const char* str);
-        lazy_printer(string str);
+        lazy_printer(std::string str);
     };
 }
 
 ante::lazy_printer operator+(ante::lazy_printer, ante::lazy_str);
 ante::lazy_printer operator+(ante::lazy_str, ante::lazy_printer);
 
-ostream& operator<<(ostream&, ante::lazy_printer&);
+std::ostream& operator<<(std::ostream&, ante::lazy_printer&);
 
 #endif

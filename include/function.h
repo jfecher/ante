@@ -5,10 +5,10 @@
 #include "compiler.h"
 
 namespace ante {
-    typedef vector<pair<TypeCheckResult,FuncDecl*>> FunctionListTCResults;
+    typedef std::vector<std::pair<TypeCheckResult,FuncDecl*>> FunctionListTCResults;
 
-    FunctionListTCResults filterBestMatches(Compiler *c, vector<shared_ptr<FuncDecl>> candidates, vector<TypeNode*> args);
-    TypedValue* compFnWithArgs(Compiler *c, FuncDecl *fd, vector<TypeNode*> args);
+    FunctionListTCResults filterBestMatches(Compiler *c, std::vector<std::shared_ptr<FuncDecl>> candidates, std::vector<TypeNode*> args);
+    TypedValue* compFnWithArgs(Compiler *c, FuncDecl *fd, std::vector<TypeNode*> args);
 }
 
 #endif

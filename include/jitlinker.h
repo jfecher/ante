@@ -5,11 +5,11 @@
 #include "compiler.h"
 
 namespace ante {
-    unique_ptr<Compiler> wrapFnInModule(Compiler *c, string &basename, string &mangledName);
+    std::unique_ptr<Compiler> wrapFnInModule(Compiler *c, std::string &basename, std::string &mangledName);
 
-    GenericValue typedValueToGenericValue(Compiler *c, TypedValue *tv);
-    vector<GenericValue> typedValuesToGenericValues(Compiler *c, vector<TypedValue*> &typedArgs, LOC_TY loc, string fnname);
-    TypedValue* genericValueToTypedValue(Compiler *c, GenericValue gv, TypeNode *tn);
+    llvm::GenericValue typedValueToGenericValue(Compiler *c, TypedValue *tv);
+    std::vector<llvm::GenericValue> typedValuesToGenericValues(Compiler *c, std::vector<TypedValue*> &typedArgs, LOC_TY loc, std::string fnname);
+    TypedValue* genericValueToTypedValue(Compiler *c, llvm::GenericValue gv, TypeNode *tn);
 }
 
 #endif

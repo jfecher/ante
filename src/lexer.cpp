@@ -3,6 +3,7 @@
 #include <cstring>
 
 using namespace ante;
+using namespace std;
 
 /*
  *  Maps each non-literal token to a string representing

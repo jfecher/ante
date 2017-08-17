@@ -12,32 +12,32 @@ namespace ante {
     TypedValue* typeCheckWithImplicitCasts(Compiler *c, TypedValue *arg, TypeNode *ty);
 
     TypeNode* deepCopyTypeNode(const TypeNode *n);
-    string typeNodeToStr(const TypeNode *t);
+    std::string typeNodeToStr(const TypeNode *t);
     lazy_str typeNodeToColoredStr(const TypeNode *t);
-    lazy_str typeNodeToColoredStr(const unique_ptr<TypeNode>& tn);
+    lazy_str typeNodeToColoredStr(const std::unique_ptr<TypeNode>& tn);
 
     //Typevar creation with no yy::location
     TypeNode* mkAnonTypeNode(TypeTag);
     TypeNode* mkTypeNodeWithExt(TypeTag tt, TypeNode *ext);
-    TypeNode* mkDataTypeNode(string tyname);
+    TypeNode* mkDataTypeNode(std::string tyname);
     TypeNode* createFnTyNode(NamedValNode *params, TypeNode *retTy);
 
     //conversions
-    Type* typeTagToLlvmType(TypeTag tagTy, LLVMContext &c, string typeName = "");
-    TypeTag llvmTypeToTypeTag(Type *t);
-    string llvmTypeToStr(Type *ty);
-    string typeTagToStr(TypeTag ty);
-    bool llvmTypeEq(Type *l, Type *r);
+    llvm::Type* typeTagToLlvmType(TypeTag tagTy, llvm::LLVMContext &c, std::string typeName = "");
+    TypeTag llvmTypeToTypeTag(llvm::Type *t);
+    std::string llvmTypeToStr(llvm::Type *ty);
+    std::string typeTagToStr(TypeTag ty);
+    bool llvmTypeEq(llvm::Type *l, llvm::Type *r);
 
     //typevar utility functions
     void validateType(Compiler *c, const TypeNode* tn, const DataDeclNode* rootTy);
     void validateType(Compiler *c, const TypeNode *tn, const DataType *dt);
     TypeNode* extractTypeValue(const TypedValue *tv);
-    TypeNode* extractTypeValue(const unique_ptr<TypedValue> &tv);
-    void bindGenericToType(TypeNode *tn, const vector<pair<string, unique_ptr<TypeNode>>> &bindings);
-    void bindGenericToType(TypeNode *tn, const vector<unique_ptr<TypeNode>> &bindings, DataType *dt);
+    TypeNode* extractTypeValue(const std::unique_ptr<TypedValue> &tv);
+    void bindGenericToType(TypeNode *tn, const std::vector<std::pair<std::string, std::unique_ptr<TypeNode>>> &bindings);
+    void bindGenericToType(TypeNode *tn, const std::vector<std::unique_ptr<TypeNode>> &bindings, DataType *dt);
 
-    string getCastFnBaseName(TypeNode *t);
+    std::string getCastFnBaseName(TypeNode *t);
 
     TypeNode* getLargestExt(Compiler *c, TypeNode *tn);
     char getBitWidthOfTypeTag(const TypeTag tagTy);

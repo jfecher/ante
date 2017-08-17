@@ -15,6 +15,7 @@
 #include "yyparser.h"
 #include <cstring>
 using namespace ante;
+using namespace std;
 
 /* Defined in lexer.cpp */
 extern int yylex(yy::parser::semantic_type*, yy::location*);

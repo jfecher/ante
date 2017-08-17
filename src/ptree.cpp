@@ -6,6 +6,9 @@
 #include "compiler.h"
 #include "yyparser.h"
 #include <stack>
+
+using namespace std;
+
 namespace ante {
 
 //stack of relative roots, eg. a FuncDeclNode's first statement would be set as the

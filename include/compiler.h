@@ -15,15 +15,12 @@
 #include "args.h"
 #include "lazystr.h"
 
-using namespace llvm;
-using namespace std;
-
 #define AN_MANGLED_SELF "_$self$"
 
 namespace ante {
 
     extern TypeNode* copy(const TypeNode*);
-    extern TypeNode* copy(const unique_ptr<TypeNode>&);
+    extern TypeNode* copy(const std::unique_ptr<TypeNode>&);
 
     /**
     * @brief A Value* and TypeNode* pair
@@ -31,10 +28,10 @@ namespace ante {
     * This is the main type used to represent a value in Ante
     */
     struct TypedValue {
-        Value *val;
-        unique_ptr<TypeNode> type;
+        llvm::Value *val;
+        std::unique_ptr<TypeNode> type;
 
-        TypedValue(Value *v, TypeNode *ty) : val(v), type(ty){}
+        TypedValue(llvm::Value *v, TypeNode *ty) : val(v), type(ty){}
 
         /**
         * @brief Constructs a TypedValue
@@ -42,9 +39,9 @@ namespace ante {
         * @param v The Value to use
         * @param ty The TypeNode here is copied, not moved
         */
-        TypedValue(Value *v, unique_ptr<TypeNode> &ty) : val(v), type(copy(ty)){}
+        TypedValue(llvm::Value *v, std::unique_ptr<TypeNode> &ty) : val(v), type(copy(ty)){}
 
-        Type* getType() const{ return val->getType(); }
+        llvm::Type* getType() const{ return val->getType(); }
         /**
         * @brief Returns true if the type of this TypedValue contains the given modifier
         *
@@ -78,7 +75,7 @@ namespace ante {
         struct Internals {
             Result res;
             unsigned int matches;
-            vector<pair<string,unique_ptr<TypeNode>>> bindings;
+            std::vector<std::pair<std::string,std::unique_ptr<TypeNode>>> bindings;
 
             Internals() : res(Success), matches(0), bindings(){}
         };
@@ -103,7 +100,7 @@ namespace ante {
         *
         * @return The binding if found, nullptr otherwise
         */
-        TypeNode* getBindingFor(const string &s);
+        TypeNode* getBindingFor(const std::string &s);
         TypeCheckResult() : box(new Internals()){}
         TypeCheckResult(const TypeCheckResult &r)  : box(r.box){}
         TypeCheckResult(TypeCheckResult &&r)  : box(r.box){}
@@ -150,12 +147,12 @@ namespace ante {
         TypeNode *obj;
 
         /** @brief Any generic parameters the obj may have */
-        vector<pair<string, TypeNode*>> obj_bindings;
+        std::vector<std::pair<std::string, TypeNode*>> obj_bindings;
 
-        shared_ptr<Module> module;
-        vector<pair<TypedValue*,LOC_TY>> returns;
+        std::shared_ptr<Module> module;
+        std::vector<std::pair<TypedValue*,LOC_TY>> returns;
 
-        FuncDecl(FuncDeclNode *fn, unsigned int s, shared_ptr<Module> mod, TypedValue *f=0) : fdn(fn), scope(s), tv(f), module(mod), returns(){}
+        FuncDecl(FuncDeclNode *fn, unsigned int s, std::shared_ptr<Module> mod, TypedValue *f=0) : fdn(fn), scope(s), tv(f), module(mod), returns(){}
         ~FuncDecl(){ if(fdn) delete fdn; if(tv) delete tv; }
     };
 
@@ -168,11 +165,11 @@ namespace ante {
      * desired function may be deduced later with the actual function call arguments.
      */
     struct FunctionCandidates : public TypedValue {
-        vector<shared_ptr<FuncDecl>> candidates;
+        std::vector<std::shared_ptr<FuncDecl>> candidates;
         TypedValue *obj;
 
-        FunctionCandidates(LLVMContext *c, vector<shared_ptr<FuncDecl>> &ca, TypedValue *o) :
-            TypedValue(UndefValue::get(Type::getInt8Ty(*c)),
+        FunctionCandidates(llvm::LLVMContext *c, std::vector<std::shared_ptr<FuncDecl>> &ca, TypedValue *o) :
+            TypedValue(llvm::UndefValue::get(llvm::Type::getInt8Ty(*c)),
             mkAnonTypeNode(TT_FunctionList)), candidates(ca), obj(o){}
     };
 
@@ -180,40 +177,40 @@ namespace ante {
     * @brief An individual tag of a tagged union along with the types it corresponds to
     */
     struct UnionTag {
-        string name;
-        unique_ptr<TypeNode> tyn;
+        std::string name;
+        std::unique_ptr<TypeNode> tyn;
         unsigned short tag;
 
-        UnionTag(string &n, TypeNode *ty, unsigned short t) : name(n), tyn(ty), tag(t){}
+        UnionTag(std::string &n, TypeNode *ty, unsigned short t) : name(n), tyn(ty), tag(t){}
     };
 
     /**
     * @brief Holds the name of a trait and the functions needed to implement it
     */
     struct Trait {
-        string name;
-        vector<shared_ptr<FuncDecl>> funcs;
+        std::string name;
+        std::vector<std::shared_ptr<FuncDecl>> funcs;
     };
 
     /**
     * @brief Contains information about a data type
     */
     struct DataType {
-        string name;
+        std::string name;
         /** @brief Names of each field. */
-        vector<string> fields;
-        vector<shared_ptr<UnionTag>> tags;
-        vector<shared_ptr<Trait>> traitImpls;
+        std::vector<std::string> fields;
+        std::vector<std::shared_ptr<UnionTag>> tags;
+        std::vector<std::shared_ptr<Trait>> traitImpls;
 
         /** @brief If this is a tagged union, tyn will contain each union member in its extTy */
-        unique_ptr<TypeNode> tyn;
-        vector<shared_ptr<TypeNode>> generics;
+        std::unique_ptr<TypeNode> tyn;
+        std::vector<std::shared_ptr<TypeNode>> generics;
 
         /** @brief Types are lazily translated into their llvm::Type counterpart to better support
         * generics and prevent the need of forward-decls */
-        map<string,Type*> llvmTypes;
+        std::map<std::string,llvm::Type*> llvmTypes;
 
-        DataType(string n, const vector<string> &f, TypeNode *ty) : name(n), fields(f), tyn(ty){}
+        DataType(std::string n, const std::vector<std::string> &f, TypeNode *ty) : name(n), fields(f), tyn(ty){}
         ~DataType(){}
 
         /**
@@ -221,7 +218,7 @@ namespace ante {
         *
         * @return The index of the field on success, -1 on failure
         */
-        int getFieldIndex(string &field) const {
+        int getFieldIndex(std::string &field) const {
             for(unsigned int i = 0; i < fields.size(); i++)
                 if(field == fields[i])
                     return i;
@@ -243,7 +240,7 @@ namespace ante {
         *
         * @return The name of the DataType containing this UnionTag
         */
-        string getParentUnionName() const {
+        std::string getParentUnionName() const {
             return fields[0];
         }
 
@@ -258,7 +255,7 @@ namespace ante {
         *
         * @return the value of the tag found, or 0 on failure
         */
-        unsigned short getTagVal(string &name){
+        unsigned short getTagVal(std::string &name){
             for(auto& tag : tags){
                 if(tag->name == name){
                     return tag->tag;
@@ -270,12 +267,12 @@ namespace ante {
     };
 
     struct Variable {
-        string name;
+        std::string name;
 
         /**
         * @brief The value assigned to the variable
         */
-        unique_ptr<TypedValue> tval;
+        std::unique_ptr<TypedValue> tval;
         unsigned int scope;
 
         /** @brief Flag for managed pointers.  Currently unused */
@@ -287,7 +284,7 @@ namespace ante {
         */
         bool autoDeref;
 
-        Value* getVal() const{
+        llvm::Value* getVal() const{
             return tval->val;
         }
 
@@ -311,7 +308,7 @@ namespace ante {
         * @param nofr True if the variable should not be free'd
         * @param autoDr True if the variable should be autotomatically dereferenced
         */
-        Variable(string n, TypedValue *tv, unsigned int s, bool nofr=true, bool autoDr=false) : name(n), tval(tv), scope(s), noFree(nofr), autoDeref(autoDr){}
+        Variable(std::string n, TypedValue *tv, unsigned int s, bool nofr=true, bool autoDr=false) : name(n), tval(tv), scope(s), noFree(nofr), autoDeref(autoDr){}
     };
 
     /**
@@ -322,15 +319,15 @@ namespace ante {
     */
     struct CtFunc {
         void *fn;
-        vector<TypeNode*> params;
-        unique_ptr<TypeNode> retty;
+        std::vector<TypeNode*> params;
+        std::unique_ptr<TypeNode> retty;
 
         size_t numParams() const { return params.size(); }
-        bool typeCheck(vector<TypeNode*> &args);
-        bool typeCheck(vector<TypedValue*> &args);
+        bool typeCheck(std::vector<TypeNode*> &args);
+        bool typeCheck(std::vector<TypedValue*> &args);
         CtFunc(void* fn);
         CtFunc(void* fn, TypeNode *retTy);
-        CtFunc(void* fn, TypeNode *retTy, vector<TypeNode*> params);
+        CtFunc(void* fn, TypeNode *retTy, std::vector<TypeNode*> params);
 
         ~CtFunc(){ for(auto *tv : params) delete tv; }
 
@@ -348,30 +345,30 @@ namespace ante {
      * @brief An Ante Module
      */
     struct Module {
-        string name;
+        std::string name;
 
         /**
          * @brief Each declared function in the module
          */
-        unordered_map<string, vector<shared_ptr<FuncDecl>>> fnDecls;
+        std::unordered_map<std::string, std::vector<std::shared_ptr<FuncDecl>>> fnDecls;
 
         /**
          * @brief Each declared DataType in the module
          */
-        unordered_map<string, shared_ptr<DataType>> userTypes;
+        std::unordered_map<std::string, std::shared_ptr<DataType>> userTypes;
 
         /**
          * @brief Map of all declared traits; not including their implementations for a given type
          * Each DataType is reponsible for holding its own trait implementations
          */
-        unordered_map<string, shared_ptr<Trait>> traits;
+        std::unordered_map<std::string, std::shared_ptr<Trait>> traits;
 
         /**
         * @brief Merges two modules
         *
         * @param m module to merge into this
         */
-        void import(shared_ptr<Module> m);
+        void import(std::shared_ptr<Module> m);
     };
 
     /**
@@ -379,20 +376,20 @@ namespace ante {
      */
     struct CompilerCtxt {
         //Stack of each called function
-        vector<FuncDecl*> callStack;
+        std::vector<FuncDecl*> callStack;
 
         //Method object type
         TypeNode *obj;
 
-        map<string, TypeNode*> obj_bindings;
+        std::map<std::string, TypeNode*> obj_bindings;
 
         //the continue and break labels of each for/while loop to jump out of
         //the pointer is swapped/nullified when a function is called to prevent
         //cross-function jumps
-        unique_ptr<vector<BasicBlock*>> continueLabels;
-        unique_ptr<vector<BasicBlock*>> breakLabels;
+        std::unique_ptr<std::vector<llvm::BasicBlock*>> continueLabels;
+        std::unique_ptr<std::vector<llvm::BasicBlock*>> breakLabels;
 
-        CompilerCtxt() : callStack(), obj(0), continueLabels(new vector<BasicBlock*>()), breakLabels(new vector<BasicBlock*>()){}
+        CompilerCtxt() : callStack(), obj(0), continueLabels(new std::vector<llvm::BasicBlock*>()), breakLabels(new std::vector<llvm::BasicBlock*>()){}
     };
 
     /**
@@ -400,50 +397,50 @@ namespace ante {
      */
     struct CompilerCtCtxt {
         /** @brief Compile-time values stored using Ante.ctStore  */
-        map<string, TypedValue*> ctStores;
+        std::map<std::string, TypedValue*> ctStores;
 
         /** @brief functions to run whenever a function is declared. */
-        vector<shared_ptr<FuncDecl>> on_fn_decl_hook;
+        std::vector<std::shared_ptr<FuncDecl>> on_fn_decl_hook;
     };
 
     /**
      * @brief An Ante compiler responsible for a single module
      */
     struct Compiler {
-        shared_ptr<LLVMContext> ctxt;
-        unique_ptr<ExecutionEngine> jit;
-        unique_ptr<legacy::FunctionPassManager> passManager;
-        unique_ptr<llvm::Module> module;
-        unique_ptr<RootNode> ast;
-        IRBuilder<> builder;
+        std::shared_ptr<llvm::LLVMContext> ctxt;
+        std::unique_ptr<llvm::ExecutionEngine> jit;
+        std::unique_ptr<llvm::legacy::FunctionPassManager> passManager;
+        std::unique_ptr<llvm::Module> module;
+        std::unique_ptr<RootNode> ast;
+        llvm::IRBuilder<> builder;
 
         /** @brief functions and type definitions of current module */
-        shared_ptr<Module> compUnit;
+        std::shared_ptr<Module> compUnit;
 
         /** @brief all functions and type definitions visible to current module */
-        shared_ptr<Module> mergedCompUnits;
+        std::shared_ptr<Module> mergedCompUnits;
 
         /** @brief all imported modules */
-        vector<shared_ptr<Module>> imports;
+        std::vector<std::shared_ptr<Module>> imports;
 
         /**
          * @brief every single compiled module, even ones invisible to the current
          * compilation unit.  Prevents recompilation of modules
          */
-        shared_ptr<unordered_map<string, shared_ptr<Module>>> allCompiledModules;
+        std::shared_ptr<std::unordered_map<std::string, std::shared_ptr<Module>>> allCompiledModules;
 
         /**
          * @brief Stack of variables mapped to their identifier.
          * Maps are seperated according to their scope.
          */
-        vector<unique_ptr<unordered_map<string, Variable*>>> varTable;
+        std::vector<std::unique_ptr<std::unordered_map<std::string, Variable*>>> varTable;
 
-        unique_ptr<CompilerCtxt> compCtxt;
+        std::unique_ptr<CompilerCtxt> compCtxt;
 
-        shared_ptr<CompilerCtCtxt> ctCtxt;
+        std::shared_ptr<CompilerCtCtxt> ctCtxt;
 
         bool errFlag, compiled, isLib;
-        string fileName, outFile, funcPrefix;
+        std::string fileName, outFile, funcPrefix;
         unsigned int scope, optLvl, fnScope;
 
         /**
@@ -453,7 +450,7 @@ namespace ante {
         * @param lib Set to true if this module should be compiled as a library
         * @param ctxt The LLVMContext possibly shared with another Compiler
         */
-        Compiler(const char *fileName, bool lib=false, shared_ptr<LLVMContext> ctxt = nullptr);
+        Compiler(const char *fileName, bool lib=false, std::shared_ptr<llvm::LLVMContext> ctxt = nullptr);
 
         /**
         * @brief Constructor for a Compiler compiling a sub-module within the current file.  Currently only
@@ -465,7 +462,7 @@ namespace ante {
         * @param lib Set to true if this module should be compiled as a library
         * @param ctxt The LLVMContext shared from the parent Compiler
         */
-        Compiler(Compiler *c, Node *root, string modName, bool lib=false);
+        Compiler(Compiler *c, Node *root, std::string modName, bool lib=false);
         ~Compiler();
 
         /** @brief Fully compiles a module into llvm bytecode */
@@ -481,7 +478,7 @@ namespace ante {
         *
         * @return 0 on success
         */
-        int  compileObj(string &outName);
+        int  compileObj(std::string &outName);
 
         /**
         * @brief Imports the prelude module unless the current module is the prelude
@@ -494,7 +491,7 @@ namespace ante {
         *
         * @return The llvm::Function* of the created function.
         */
-        Function* createMainFn();
+        llvm::Function* createMainFn();
 
         /** @brief Starts the REPL */
         void eval();
@@ -587,7 +584,7 @@ namespace ante {
         *
         * @param f the function to JIT
         */
-        void jitFunction(Function *fnName);
+        void jitFunction(llvm::Function *fnName);
 
         /**
         * @brief Imports a given ante file to the current module
@@ -601,20 +598,20 @@ namespace ante {
         void importFile(const char *name, Node* locNode = 0);
 
         /** @brief Sets the tv of the FuncDecl specified to the value of f */
-        void updateFn(TypedValue *f, FuncDecl *fd, string &name, string &mangledName);
+        void updateFn(TypedValue *f, FuncDecl *fd, std::string &name, std::string &mangledName);
         FuncDecl* getCurrentFunction() const;
 
         /** @brief Returns the exact function specified if found or nullptr if not */
-        TypedValue* getFunction(string& name, string& mangledName);
+        TypedValue* getFunction(std::string& name, std::string& mangledName);
 
         /** @brief Returns a vector of all functions with the specified baseName */
-        vector<shared_ptr<FuncDecl>>& getFunctionList(string& name) const;
+        std::vector<std::shared_ptr<FuncDecl>>& getFunctionList(std::string& name) const;
 
         /** @brief Returns the exact FuncDecl specified if found or nullptr if not */
-        FuncDecl* getFuncDecl(string bn, string mangledName);
+        FuncDecl* getFuncDecl(std::string bn, std::string mangledName);
 
         /** @brief Emits and returns a function call */
-        TypedValue* callFn(string fnBaseName, vector<TypedValue*> args);
+        TypedValue* callFn(std::string fnBaseName, std::vector<TypedValue*> args);
 
         /**
          * @brief Retrieves the function specified
@@ -627,7 +624,7 @@ namespace ante {
          *
          * @return The specified function or nullptr
          */
-        TypedValue* getMangledFn(string name, vector<TypeNode*> args);
+        TypedValue* getMangledFn(std::string name, std::vector<TypeNode*> args);
 
         /**
          * @brief Returns the init method of a type
@@ -648,11 +645,11 @@ namespace ante {
          *
          * @return The FuncDecl if found or nullptr if not
          */
-        FuncDecl* getMangledFuncDecl(string name, vector<TypeNode*> args);
+        FuncDecl* getMangledFuncDecl(std::string name, std::vector<TypeNode*> args);
         FuncDecl* getCastFuncDecl(TypeNode *from_ty, TypeNode *to_ty);
 
         /** @brief Compiles a function with inferred return type */
-        TypedValue* compLetBindingFn(FuncDecl *fdn, vector<Type*> &paramTys);
+        TypedValue* compLetBindingFn(FuncDecl *fdn, std::vector<llvm::Type*> &paramTys);
 
         /**
          * @brief Compiles any non-generic function
@@ -673,7 +670,7 @@ namespace ante {
         *
         * @return The Variable* if found, otherwise nullptr
         */
-        Variable* lookup(string var) const;
+        Variable* lookup(std::string var) const;
 
         /**
         * @brief Stores a variable in the current scope
@@ -681,7 +678,7 @@ namespace ante {
         * @param var Name of the variable to store
         * @param val Variable to store
         */
-        void stoVar(string var, Variable *val);
+        void stoVar(std::string var, Variable *val);
 
         /**
         * @brief Performs a lookup for the specified DataType
@@ -690,7 +687,7 @@ namespace ante {
         *
         * @return The DataType* if found, otherwise nullptr
         */
-        DataType* lookupType(string tyname) const;
+        DataType* lookupType(std::string tyname) const;
 
         /**
         * @brief Performs a lookup a type's full definition
@@ -706,8 +703,8 @@ namespace ante {
         *
         * @return The Trait* if found, otherwise nullptr
         */
-        Trait* lookupTrait(string tyname) const;
-        bool typeImplementsTrait(DataType* dt, string traitName) const;
+        Trait* lookupTrait(std::string tyname) const;
+        bool typeImplementsTrait(DataType* dt, std::string traitName) const;
 
         /**
         * @brief Stores a new DataType
@@ -715,7 +712,7 @@ namespace ante {
         * @param ty The DataType to store
         * @param typeName The name of the DataType
         */
-        void stoType(DataType *ty, string &typeName);
+        void stoType(DataType *ty, std::string &typeName);
 
         /**
         * @brief Stores a TypeVar in the current scope
@@ -723,7 +720,7 @@ namespace ante {
         * @param name Name of the typevar to store (including the preceeding ')
         * @param ty The type to store
         */
-        void stoTypeVar(string &name, TypeNode *ty);
+        void stoTypeVar(std::string &name, TypeNode *ty);
 
         /**
          * @brief Searches through tn and replaces any typevars inside with
@@ -735,7 +732,7 @@ namespace ante {
          */
         void searchAndReplaceBoundTypeVars(TypeNode* tn) const;
 
-        Type* typeNodeToLlvmType(const TypeNode *tyNode);
+        llvm::Type* typeNodeToLlvmType(const TypeNode *tyNode);
 
         /** @brief Performs a type check against l and r */
         TypeCheckResult typeEq(const TypeNode *l, const TypeNode *r) const;
@@ -750,7 +747,7 @@ namespace ante {
          * bound value for 't.  Using this function would result in the appropriate
          * TypeCheckResult::Failure
          */
-        TypeCheckResult typeEq(vector<TypeNode*> l, vector<TypeNode*> r) const;
+        TypeCheckResult typeEq(std::vector<TypeNode*> l, std::vector<TypeNode*> r) const;
 
         /**
          * @brief Expands any TT_Data -typed nodes inside of tn to contain their
@@ -779,7 +776,7 @@ namespace ante {
         void implicitlyCastFltToFlt(TypedValue **lhs, TypedValue **rhs);
 
         /** @brief Mutates an integer to a float */
-        void implicitlyCastIntToFlt(TypedValue **tval, Type *ty);
+        void implicitlyCastIntToFlt(TypedValue **tval, llvm::Type *ty);
 
         /**
         * @brief Compiles a module into an obj file to be used for linking.
@@ -789,7 +786,7 @@ namespace ante {
         *
         * @return 0 on success
         */
-        int compileIRtoObj(llvm::Module *mod, string outFile);
+        int compileIRtoObj(llvm::Module *mod, std::string outFile);
 
         TypedValue* getVoidLiteral();
 
@@ -802,7 +799,7 @@ namespace ante {
         *
         * @return 0 on success
         */
-        static int linkObj(string inFiles, string outFile);
+        static int linkObj(std::string inFiles, std::string outFile);
     };
 
     TypedValue* addrOf(Compiler *c, TypedValue* tv);
@@ -823,21 +820,21 @@ namespace ante {
     size_t getTupleSize(Node *tup);
 
     /** @brief Converts the Node list argument into a vector */
-    template<typename T> vector<T*> vectorize(T *args);
+    template<typename T> std::vector<T*> vectorize(T *args);
 
     /** @brief Converts the vector argument into a TypeNode list */
-    TypeNode* toList(vector<TypeNode*> &nodes);
+    TypeNode* toList(std::vector<TypeNode*> &nodes);
 
     /** @brief Extracts the type of each arg into a TypeNode vector */
-    vector<TypeNode*> toTypeNodeVector(vector<TypedValue*> &tvs);
+    std::vector<TypeNode*> toTypeNodeVector(std::vector<TypedValue*> &tvs);
 
-    string mangle(string &base, vector<TypeNode*> params);
-    string mangle(string &base, NamedValNode *paramTys);
-    string mangle(string &base, TypeNode *paramTys);
-    string mangle(string &base, TypeNode *p1, TypeNode *p2);
-    string mangle(string &base, TypeNode *p1, TypeNode *p2, TypeNode *p3);
+    std::string mangle(std::string &base, std::vector<TypeNode*> params);
+    std::string mangle(std::string &base, NamedValNode *paramTys);
+    std::string mangle(std::string &base, TypeNode *paramTys);
+    std::string mangle(std::string &base, TypeNode *p1, TypeNode *p2);
+    std::string mangle(std::string &base, TypeNode *p1, TypeNode *p2, TypeNode *p3);
 
-    string removeFileExt(string file);
+    std::string removeFileExt(std::string file);
 
 }
 

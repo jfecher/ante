@@ -5,6 +5,10 @@
  * and only linking needed functions.
  */
 #include "jitlinker.h"
+
+using namespace std;
+using namespace llvm;
+
 namespace ante {
 
 /*

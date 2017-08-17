@@ -7,7 +7,6 @@
 #include <fstream>
 #include <stack>
 #include <map>
-using namespace std;
 
 namespace ante { struct Node; }
 #ifndef YYSTYPE
@@ -27,20 +26,20 @@ namespace ante{
 
     class Lexer{
     public:
-        string *fileName;
+        std::string *fileName;
 
-        Lexer(string* fileName);
-        Lexer(string* fileName, string& pseudoFile, unsigned int rowOffset, unsigned int colOffset);
+        Lexer(std::string* fileName);
+        Lexer(std::string* fileName, std::string& pseudoFile, unsigned int rowOffset, unsigned int colOffset);
         ~Lexer();
         int next(yy::parser::location_type* yyloc);
         char peek() const;
 
         static void printTok(int t);
-        static string getTokStr(int t);
+        static std::string getTokStr(int t);
 
     private:
         /* the ifstream to take from */
-        ifstream *in;
+        std::ifstream *in;
 
         /* If this is set to true then the psuedoFile string should be parsed
          * as a string containing ante src code.  Used for Str interpolation */
@@ -60,14 +59,14 @@ namespace ante{
         /*
         *  Current scope (indent level) of file
         */
-        stack<unsigned int> *scopes;
+        std::stack<unsigned int> *scopes;
 
         /*
          *  Current and previous tokens to match;
          *  All whitespace is insensitive while this is matching.
          *  Used with toks such as (), {}, and []
          */
-        stack<char> matchingToks;
+        std::stack<char> matchingToks;
 
         /*
         *  Used to remember a new indentation level to issue multiple Indent
@@ -83,7 +82,7 @@ namespace ante{
         void incPos(int end);
         yy::position getPos(bool inclusiveEnd = true) const;
 
-        void setlextxt(string *str);
+        void setlextxt(std::string *str);
         int handleComment(yy::parser::location_type* loc);
         int genWsTok(yy::parser::location_type* loc);
         int genNumLitTok(yy::parser::location_type* loc);

@@ -1,5 +1,6 @@
 #include "lazystr.h"
 using namespace ante;
+using namespace std;
 
 namespace ante {
     extern bool colored_output;

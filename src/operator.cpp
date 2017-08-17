@@ -6,6 +6,9 @@
 #include <llvm/ExecutionEngine/Interpreter.h>
 #include <llvm/Linker/Linker.h>
 
+using namespace std;
+using namespace llvm;
+
 namespace ante {
 
 TypedValue* Compiler::compAdd(TypedValue *l, TypedValue *r, BinOpNode *op){

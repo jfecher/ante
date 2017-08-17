@@ -10,7 +10,9 @@
 #include <cstring>
 #include <iostream>
 #include <llvm/Support/TargetRegistry.h>
+
 using namespace ante;
+using namespace std;
 
 /**
  * @brief Parses a file and prints the resulting parse tree
@@ -55,7 +57,7 @@ void printHelp(){
 
     puts("\nNative target: " AN_TARGET_TRIPLE);
 
-	TargetRegistry::printRegisteredTargetsForVersion();
+    llvm::TargetRegistry::printRegisteredTargetsForVersion();
 }
 
 int main(int argc, const char **argv){

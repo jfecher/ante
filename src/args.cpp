@@ -1,7 +1,9 @@
 #include "args.h"
 #include <map>
 #include <iostream>
+
 using namespace ante;
+using namespace std;
 
 map<string, Args> argsMap = {
     {"-O",         Args::OptLvl},

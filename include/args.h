@@ -3,7 +3,6 @@
 
 #include <vector>
 #include <string>
-using namespace std;
 
 namespace ante {
     enum Args {
@@ -22,14 +21,14 @@ namespace ante {
 
     struct Argument {
         Args argTy;
-        string arg;
+        std::string arg;
 
-        Argument(Args a, string &s) : argTy(a), arg(s){}
+        Argument(Args a, std::string &s) : argTy(a), arg(s){}
     };
 
     struct CompilerArgs {
-        vector<Argument*> args;
-        vector<string> inputFiles;
+        std::vector<Argument*> args;
+        std::vector<std::string> inputFiles;
 
         void addArg(Argument *a);
         bool hasArg(Args a) const;

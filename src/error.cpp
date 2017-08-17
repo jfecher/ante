@@ -1,6 +1,9 @@
 #include "compiler.h"
 #include "target.h"
 #include "error.h"
+
+using namespace std;
+
 namespace ante {
 
 /*

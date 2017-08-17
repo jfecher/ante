@@ -1,6 +1,7 @@
 #include "parser.h"
 using namespace ante::parser;
 using namespace ante;
+using namespace std;
 
 inline void maybePrintArr(Node *n){
     if(n){
