@@ -1581,7 +1581,7 @@ void Compiler::importFile(const char *fName, Node *locNode){
         mergedCompUnits->import(c->compUnit);
 
         (*allCompiledModules)[fName] = c->compUnit;
-        //delete c;
+        delete c;
     }
 }
 
@@ -1918,7 +1918,7 @@ int Compiler::compileIRtoObj(llvm::Module *mod, string outFile){
 	if (out.has_error())
 		cerr << "Error when compiling to object: " << errCode << endl;
 
-    //delete tm;
+    delete tm;
     return res;
 }
 
@@ -2285,11 +2285,12 @@ Compiler::~Compiler(){
         yylexer = 0;
     }
 
-    if(compCtxt)
-        compCtxt->callStack.pop_back();
+    if(compCtxt and compCtxt->callStack.size() >= 1){
+        delete compCtxt->callStack[0];
+    }
 
-	passManager.release();
-	module.release();
+	//passManager.release();
+	//module.release();
 }
 
 } //end of namespace ante
