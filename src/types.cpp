@@ -77,15 +77,11 @@ unsigned short AnDataType::getTagVal(std::string &name){
  
 
 /*
- *  Returns the TypeNode* value of a TypedValue* of type TT_Type
+ *  Returns the TypeNode* value of a TypedValue of type TT_Type
  */
-AnType* extractTypeValue(const TypedValue* tv){
-    auto zext = dyn_cast<ConstantInt>(tv->val)->getZExtValue();
+AnType* extractTypeValue(const TypedValue &tv){
+    auto zext = dyn_cast<ConstantInt>(tv.val)->getZExtValue();
     return (AnType*) zext;
-}
-
-AnType* extractTypeValue(const unique_ptr<TypedValue> &tv){
-    return extractTypeValue(tv.get());
 }
 
 
@@ -794,9 +790,9 @@ AnType* Compiler::searchAndReplaceBoundTypeVars(AnType *tn) const{
  *  Checks for, and implicitly widens an integer or float type.
  *  The original value of num is returned if no widening can be performed.
  */
-TypedValue* Compiler::implicitlyWidenNum(TypedValue *num, TypeTag castTy){
-    bool lIsInt = isIntTypeTag(num->type->typeTag);
-    bool lIsFlt = isFPTypeTag(num->type->typeTag);
+TypedValue Compiler::implicitlyWidenNum(TypedValue &num, TypeTag castTy){
+    bool lIsInt = isIntTypeTag(num.type->typeTag);
+    bool lIsFlt = isFPTypeTag(num.type->typeTag);
 
     if(lIsInt or lIsFlt){
         bool rIsInt = isIntTypeTag(castTy);
@@ -806,25 +802,25 @@ TypedValue* Compiler::implicitlyWidenNum(TypedValue *num, TypeTag castTy){
             exit(1);
         }
 
-        int lbw = getBitWidthOfTypeTag(num->type->typeTag);
+        int lbw = getBitWidthOfTypeTag(num.type->typeTag);
         int rbw = getBitWidthOfTypeTag(castTy);
         Type *ty = typeTagToLlvmType(castTy, *ctxt);
 
         //integer widening
         if(lIsInt and rIsInt){
             if(lbw <= rbw){
-                return new TypedValue(
-                    builder.CreateIntCast(num->val, ty, !isUnsignedTypeTag(num->type->typeTag)),
+                return TypedValue(
+                    builder.CreateIntCast(num.val, ty, !isUnsignedTypeTag(num.type->typeTag)),
                     AnType::getPrimitive(castTy)
                 );
             }
 
         //int -> flt, (flt -> int is never implicit)
         }else if(lIsInt and rIsFlt){
-            return new TypedValue(
-                isUnsignedTypeTag(num->type->typeTag)
-                    ? builder.CreateUIToFP(num->val, ty)
-                    : builder.CreateSIToFP(num->val, ty),
+            return TypedValue(
+                isUnsignedTypeTag(num.type->typeTag)
+                    ? builder.CreateUIToFP(num.val, ty)
+                    : builder.CreateSIToFP(num.val, ty),
 
                 AnType::getPrimitive(castTy)
             );
@@ -832,8 +828,8 @@ TypedValue* Compiler::implicitlyWidenNum(TypedValue *num, TypeTag castTy){
         //float widening
         }else if(lIsFlt and rIsFlt){
             if(lbw < rbw){
-                return new TypedValue(
-                    builder.CreateFPExt(num->val, ty),
+                return TypedValue(
+                    builder.CreateFPExt(num.val, ty),
                     AnType::getPrimitive(castTy)
                 );
             }
@@ -851,26 +847,26 @@ TypedValue* Compiler::implicitlyWidenNum(TypedValue *num, TypeTag castTy){
  *  it is sign extended.
  *  Assumes the llvm::Type of both values to be an instance of IntegerType.
  */
-void Compiler::implicitlyCastIntToInt(TypedValue **lhs, TypedValue **rhs){
-    int lbw = getBitWidthOfTypeTag((*lhs)->type->typeTag);
-    int rbw = getBitWidthOfTypeTag((*rhs)->type->typeTag);
+void Compiler::implicitlyCastIntToInt(TypedValue *lhs, TypedValue *rhs){
+    int lbw = getBitWidthOfTypeTag(lhs->type->typeTag);
+    int rbw = getBitWidthOfTypeTag(rhs->type->typeTag);
 
     if(lbw != rbw){
         //Cast the value with the smaller bitwidth to the type with the larger bitwidth
         if(lbw < rbw){
-            auto *ret = new TypedValue(
-                builder.CreateIntCast((*lhs)->val, (*rhs)->getType(),
-                    !isUnsignedTypeTag((*lhs)->type->typeTag)),
-                (*rhs)->type
+            auto ret = TypedValue(
+                builder.CreateIntCast(lhs->val, rhs->getType(),
+                    !isUnsignedTypeTag(lhs->type->typeTag)),
+                rhs->type
             );
 
             *lhs = ret;
 
         }else{//lbw > rbw
-            auto *ret = new TypedValue(
-                builder.CreateIntCast((*rhs)->val, (*lhs)->getType(),
-                    !isUnsignedTypeTag((*rhs)->type->typeTag)),
-                (*lhs)->type
+            auto ret = TypedValue(
+                builder.CreateIntCast(rhs->val, lhs->getType(),
+                    !isUnsignedTypeTag(rhs->type->typeTag)),
+                lhs->type
             );
 
             *rhs = ret;
@@ -897,11 +893,11 @@ bool isNumericTypeTag(const TypeTag ty){
  *  involving an integer, a float, and a binop.  No matter the ints size,
  *  it is always casted to the (possibly smaller) float value.
  */
-void Compiler::implicitlyCastIntToFlt(TypedValue **lhs, Type *ty){
-    auto *ret = new TypedValue(
-        isUnsignedTypeTag((*lhs)->type->typeTag)
-            ? builder.CreateUIToFP((*lhs)->val, ty)
-            : builder.CreateSIToFP((*lhs)->val, ty),
+void Compiler::implicitlyCastIntToFlt(TypedValue *lhs, Type *ty){
+    auto ret = TypedValue(
+        isUnsignedTypeTag(lhs->type->typeTag)
+            ? builder.CreateUIToFP(lhs->val, ty)
+            : builder.CreateSIToFP(lhs->val, ty),
 
         AnType::getPrimitive(llvmTypeToTypeTag(ty))
     );
@@ -912,21 +908,21 @@ void Compiler::implicitlyCastIntToFlt(TypedValue **lhs, Type *ty){
 /*
  *  Performs an implicit cast from a float to float.
  */
-void Compiler::implicitlyCastFltToFlt(TypedValue **lhs, TypedValue **rhs){
-    int lbw = getBitWidthOfTypeTag((*lhs)->type->typeTag);
-    int rbw = getBitWidthOfTypeTag((*rhs)->type->typeTag);
+void Compiler::implicitlyCastFltToFlt(TypedValue *lhs, TypedValue *rhs){
+    int lbw = getBitWidthOfTypeTag(lhs->type->typeTag);
+    int rbw = getBitWidthOfTypeTag(rhs->type->typeTag);
 
     if(lbw != rbw){
         if(lbw < rbw){
-            auto *ret = new TypedValue(
-                builder.CreateFPExt((*lhs)->val, (*rhs)->getType()),
-                (*rhs)->type
+            auto ret = TypedValue(
+                builder.CreateFPExt(lhs->val, rhs->getType()),
+                rhs->type
             );
             *lhs = ret;
         }else{//lbw > rbw
-            auto *ret = new TypedValue(
-                builder.CreateFPExt((*rhs)->val, (*lhs)->getType()),
-                (*lhs)->type
+            auto ret = TypedValue(
+                builder.CreateFPExt(rhs->val, lhs->getType()),
+                lhs->type
             );
             *rhs = ret;
         }
@@ -937,22 +933,22 @@ void Compiler::implicitlyCastFltToFlt(TypedValue **lhs, TypedValue **rhs){
 /*
  *  Detects, and creates an implicit type conversion when necessary.
  */
-void Compiler::handleImplicitConversion(TypedValue **lhs, TypedValue **rhs){
-    bool lIsInt = isIntTypeTag((*lhs)->type->typeTag);
-    bool lIsFlt = isFPTypeTag((*lhs)->type->typeTag);
+void Compiler::handleImplicitConversion(TypedValue *lhs, TypedValue *rhs){
+    bool lIsInt = isIntTypeTag(lhs->type->typeTag);
+    bool lIsFlt = isFPTypeTag(lhs->type->typeTag);
     if(!lIsInt and !lIsFlt) return;
 
-    bool rIsInt = isIntTypeTag((*rhs)->type->typeTag);
-    bool rIsFlt = isFPTypeTag((*rhs)->type->typeTag);
+    bool rIsInt = isIntTypeTag(rhs->type->typeTag);
+    bool rIsFlt = isFPTypeTag(rhs->type->typeTag);
     if(!rIsInt and !rIsFlt) return;
 
     //both values are numeric, so forward them to the relevant casting method
     if(lIsInt and rIsInt){
         implicitlyCastIntToInt(lhs, rhs);  //implicit int -> int (widening)
     }else if(lIsInt and rIsFlt){
-        implicitlyCastIntToFlt(lhs, (*rhs)->getType()); //implicit int -> flt
+        implicitlyCastIntToFlt(lhs, rhs->getType()); //implicit int -> flt
     }else if(lIsFlt and rIsInt){
-        implicitlyCastIntToFlt(rhs, (*lhs)->getType()); //implicit int -> flt
+        implicitlyCastIntToFlt(rhs, lhs->getType()); //implicit int -> flt
     }else if(lIsFlt and rIsFlt){
         implicitlyCastFltToFlt(lhs, rhs); //implicit int -> flt
     }

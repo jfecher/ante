@@ -9,7 +9,7 @@
 
 namespace ante {
 
-    TypedValue* typeCheckWithImplicitCasts(Compiler *c, TypedValue *arg, AnType *ty);
+    TypedValue typeCheckWithImplicitCasts(Compiler *c, TypedValue &arg, AnType *ty);
 
     std::string anTypeToStr(const AnType *t);
     lazy_str anTypeToColoredStr(const AnType *t);
@@ -35,8 +35,7 @@ namespace ante {
     //typevar utility functions
     void validateType(Compiler *c, const AnType* tn, const DataDeclNode* rootTy);
     void validateType(Compiler *c, const AnType *tn, const AnDataType *dt);
-    AnType* extractTypeValue(const TypedValue *tv);
-    AnType* extractTypeValue(const std::unique_ptr<TypedValue> &tv);
+    AnType* extractTypeValue(const TypedValue &tv);
     AnType* bindGenericToType(Compiler *c, AnType *tn, const std::vector<std::pair<std::string, AnType*>> &bindings);
     AnType* bindGenericToType(Compiler *c, AnType *tn, const std::vector<AnType*> &bindings, AnDataType *dt);
 

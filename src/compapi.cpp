@@ -13,44 +13,44 @@ extern "C" {
         return parser::getRootNode();
     }
 
-    void Ante_debug(TypedValue *tv){
-        tv->dump();
+    void Ante_debug(TypedValue &tv){
+        tv.dump();
     }
 
-    void Ante_ctError(Compiler *c, TypedValue *msgTv){
+    void Ante_ctError(Compiler *c, TypedValue &msgTv){
         char *msg = (char*)typedValueToGenericValue(c, msgTv).PointerVal;
         auto *curfn = c->compCtxt->callStack.back()->fdn;
         yy::location fakeloc = mkLoc(mkPos(0,0,0), mkPos(0,0,0));
         c->compErr(msg, curfn ? curfn->loc : fakeloc);
     }
 
-    TypedValue* FuncDecl_getName(Compiler *c, TypedValue *fd){
-        FuncDecl *f = (FuncDecl*)((ConstantInt*)fd->val)->getZExtValue();
+    TypedValue* FuncDecl_getName(Compiler *c, TypedValue &fd){
+        FuncDecl *f = (FuncDecl*)((ConstantInt*)fd.val)->getZExtValue();
         string &n = f->fdn->basename;
 
         yy::location lloc = mkLoc(mkPos(0,0,0), mkPos(0,0,0));
         auto *strlit = new StrLitNode(lloc, n);
 
-        return strlit->compile(c);
+        return new TypedValue(strlit->compile(c));
     }
 
-    size_t Ante_sizeof(Compiler *c, TypedValue *tv){
-        if(tv->type->typeTag == TT_Type){
+    size_t Ante_sizeof(Compiler *c, TypedValue &tv){
+        if(tv.type->typeTag == TT_Type){
             return extractTypeValue(tv)->getSizeInBits(c) / 8;
         }else{
-            return tv->type->getSizeInBits(c) / 8;
+            return tv.type->getSizeInBits(c) / 8;
         }
     }
 
-    void Ante_ctStore(Compiler *c, TypedValue *nameTv, TypedValue *gv){
+    void Ante_ctStore(Compiler *c, TypedValue &nameTv, TypedValue &gv){
         char *name = (char*)typedValueToGenericValue(c, nameTv).PointerVal;
         c->ctCtxt->ctStores[name] = gv;
     }
 
-    TypedValue* Ante_ctLookup(Compiler *c, TypedValue *nameTv){
+    TypedValue* Ante_ctLookup(Compiler *c, TypedValue &nameTv){
         char *name = (char*)typedValueToGenericValue(c, nameTv).PointerVal;
         try{
-            return c->ctCtxt->ctStores.at(name);
+            return new TypedValue(c->ctCtxt->ctStores.at(name));
         }catch(out_of_range r){
             cerr << "error: ctLookup: Cannot find var '" << name << "'\n";
             throw new CtError();
@@ -82,26 +82,26 @@ namespace ante {
         return resfn();
     }
 
-    void* CtFunc::operator()(TypedValue *tv){
-        void* (*resfn)(TypedValue*) = 0;
+    void* CtFunc::operator()(TypedValue &tv){
+        void* (*resfn)(TypedValue&) = 0;
         *reinterpret_cast<void**>(&resfn) = fn;
         return resfn(tv);
     }
 
-    void* CtFunc::operator()(Compiler *c, TypedValue *tv){
-        void* (*resfn)(Compiler*, TypedValue*) = 0;
+    void* CtFunc::operator()(Compiler *c, TypedValue &tv){
+        void* (*resfn)(Compiler*, TypedValue&) = 0;
         *reinterpret_cast<void**>(&resfn) = fn;
         return resfn(c, tv);
     }
 
-    void* CtFunc::operator()(TypedValue *tv1, TypedValue *tv2){
-        void* (*resfn)(TypedValue*, TypedValue*) = 0;
+    void* CtFunc::operator()(TypedValue &tv1, TypedValue &tv2){
+        void* (*resfn)(TypedValue&, TypedValue&) = 0;
         *reinterpret_cast<void**>(&resfn) = fn;
         return resfn(tv1, tv2);
     }
 
-    void* CtFunc::operator()(Compiler *c, TypedValue *tv1, TypedValue *tv2){
-        void* (*resfn)(Compiler*, TypedValue*, TypedValue*) = 0;
+    void* CtFunc::operator()(Compiler *c, TypedValue &tv1, TypedValue &tv2){
+        void* (*resfn)(Compiler*, TypedValue&, TypedValue&) = 0;
         *reinterpret_cast<void**>(&resfn) = fn;
         return resfn(c, tv1, tv2);
     }

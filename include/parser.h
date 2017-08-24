@@ -51,7 +51,7 @@ namespace ante {
         virtual void print(void) = 0;
 
         //compile node to a given module
-        virtual TypedValue* compile(Compiler*) = 0;
+        virtual TypedValue compile(Compiler*) = 0;
 
         NodeIterator begin();
         NodeIterator end();
@@ -98,7 +98,7 @@ namespace ante {
 
         std::vector<std::unique_ptr<Node>> main;
 
-        TypedValue* compile(Compiler*);
+        TypedValue compile(Compiler*);
         void print();
         RootNode(LOC_TY& loc) : Node(loc){}
         ~RootNode(){}
@@ -108,7 +108,7 @@ namespace ante {
     struct IntLitNode : public Node{
         std::string val;
         TypeTag type;
-        TypedValue* compile(Compiler*);
+        TypedValue compile(Compiler*);
         void print();
         IntLitNode(LOC_TY& loc, std::string s, TypeTag ty) : Node(loc), val(s), type(ty){}
         ~IntLitNode(){}
@@ -117,7 +117,7 @@ namespace ante {
     struct FltLitNode : public Node{
         std::string val;
         TypeTag type;
-        TypedValue* compile(Compiler*);
+        TypedValue compile(Compiler*);
         void print(void);
         FltLitNode(LOC_TY& loc, std::string s, TypeTag ty) : Node(loc), val(s), type(ty){}
         ~FltLitNode(){}
@@ -125,7 +125,7 @@ namespace ante {
 
     struct BoolLitNode : public Node{
         bool val;
-        TypedValue* compile(Compiler*);
+        TypedValue compile(Compiler*);
         void print(void);
         BoolLitNode(LOC_TY& loc, char b) : Node(loc), val((bool) b){}
         ~BoolLitNode(){}
@@ -133,7 +133,7 @@ namespace ante {
 
     struct CharLitNode : public Node{
         char val;
-        TypedValue* compile(Compiler*);
+        TypedValue compile(Compiler*);
         void print(void);
         CharLitNode(LOC_TY& loc, char c) : Node(loc), val(c){}
         ~CharLitNode(){}
@@ -141,7 +141,7 @@ namespace ante {
 
     struct ArrayNode : public Node{
         std::vector<std::unique_ptr<Node>> exprs;
-        TypedValue* compile(Compiler*);
+        TypedValue compile(Compiler*);
         void print(void);
         ArrayNode(LOC_TY& loc, std::vector<std::unique_ptr<Node>>& e) : Node(loc), exprs(move(e)){}
         ~ArrayNode(){}
@@ -149,9 +149,9 @@ namespace ante {
 
     struct TupleNode : public Node{
         std::vector<std::unique_ptr<Node>> exprs;
-        TypedValue* compile(Compiler*);
+        TypedValue compile(Compiler*);
 
-        std::vector<TypedValue*> unpack(Compiler*);
+        std::vector<TypedValue> unpack(Compiler*);
         void print(void);
         TupleNode(LOC_TY& loc, std::vector<std::unique_ptr<Node>>& e) : Node(loc), exprs(move(e)){}
         ~TupleNode(){}
@@ -160,7 +160,7 @@ namespace ante {
     struct UnOpNode : public Node{
         int op;
         std::unique_ptr<Node> rval;
-        TypedValue* compile(Compiler*);
+        TypedValue compile(Compiler*);
         void print(void);
         UnOpNode(LOC_TY& loc, int s, Node *rv) : Node(loc), op(s), rval(rv){}
         ~UnOpNode(){}
@@ -169,7 +169,7 @@ namespace ante {
     struct BinOpNode : public Node{
         int op;
         std::unique_ptr<Node> lval, rval;
-        TypedValue* compile(Compiler*);
+        TypedValue compile(Compiler*);
         void print(void);
         BinOpNode(LOC_TY& loc, int s, Node *lv, Node *rv) : Node(loc), op(s), lval(lv), rval(rv){}
         ~BinOpNode(){}
@@ -177,7 +177,7 @@ namespace ante {
 
     struct SeqNode : public Node{
         std::vector<std::unique_ptr<Node>> sequence;
-        TypedValue* compile(Compiler*);
+        TypedValue compile(Compiler*);
         void print(void);
         SeqNode(LOC_TY& loc) : Node(loc), sequence(){}
         ~SeqNode(){}
@@ -185,7 +185,7 @@ namespace ante {
 
     struct BlockNode : public Node{
         std::unique_ptr<Node> block;
-        TypedValue* compile(Compiler*);
+        TypedValue compile(Compiler*);
         void print(void);
         BlockNode(LOC_TY& loc, Node *b) : Node(loc), block(b){}
         ~BlockNode(){}
@@ -193,7 +193,7 @@ namespace ante {
 
     struct ModNode : public Node{
         int mod;
-        TypedValue* compile(Compiler*);
+        TypedValue compile(Compiler*);
         void print(void);
         ModNode(LOC_TY& loc, int m) : Node(loc), mod(m){}
         ~ModNode(){}
@@ -206,7 +206,7 @@ namespace ante {
         std::vector<std::unique_ptr<TypeNode>> params; //type parameters for generic types
         std::vector<int> modifiers;
 
-        TypedValue* compile(Compiler*);
+        TypedValue compile(Compiler*);
         void print(void);
         TypeNode* addModifiers(ModNode *m);
         TypeNode* addModifier(int m);
@@ -219,7 +219,7 @@ namespace ante {
     struct TypeCastNode : public Node{
         std::unique_ptr<TypeNode> typeExpr;
         std::unique_ptr<Node> rval;
-        TypedValue* compile(Compiler*);
+        TypedValue compile(Compiler*);
         void print(void);
         TypeCastNode(LOC_TY& loc, TypeNode *ty, Node *rv) : Node(loc), typeExpr(ty), rval(rv){}
         ~TypeCastNode(){}
@@ -227,7 +227,7 @@ namespace ante {
 
     struct PreProcNode : public Node{
         std::shared_ptr<Node> expr;
-        TypedValue* compile(Compiler*);
+        TypedValue compile(Compiler*);
         void print(void);
         PreProcNode(LOC_TY& loc, Node* e) : Node(loc), expr(e){}
         PreProcNode(LOC_TY& loc, std::shared_ptr<Node> e) : Node(loc), expr(e){}
@@ -236,7 +236,7 @@ namespace ante {
 
     struct RetNode : public Node{
         std::unique_ptr<Node> expr;
-        TypedValue* compile(Compiler*);
+        TypedValue compile(Compiler*);
         void print(void);
         RetNode(LOC_TY& loc, Node* e) : Node(loc), expr(e){}
         ~RetNode(){}
@@ -245,7 +245,7 @@ namespace ante {
     struct NamedValNode : public Node{
         std::string name;
         std::unique_ptr<Node> typeExpr;
-        TypedValue* compile(Compiler*);
+        TypedValue compile(Compiler*);
         void print(void);
         NamedValNode(LOC_TY& loc, std::string s, Node* t) : Node(loc), name(s), typeExpr(t){}
         ~NamedValNode(){}
@@ -253,7 +253,7 @@ namespace ante {
 
     struct VarNode : public Node{
         std::string name;
-        TypedValue* compile(Compiler*);
+        TypedValue compile(Compiler*);
         void print(void);
         VarNode(LOC_TY& loc, std::string s) : Node(loc), name(s){}
         ~VarNode(){}
@@ -261,7 +261,7 @@ namespace ante {
 
     struct GlobalNode : public Node{
         std::vector<std::unique_ptr<VarNode>> vars;
-        TypedValue* compile(Compiler*);
+        TypedValue compile(Compiler*);
         void print(void);
         GlobalNode(LOC_TY& loc, std::vector<std::unique_ptr<VarNode>> &vn) : Node(loc), vars(move(vn)){}
         ~GlobalNode(){}
@@ -269,7 +269,7 @@ namespace ante {
 
     struct StrLitNode : public Node{
         std::string val;
-        TypedValue* compile(Compiler*);
+        TypedValue compile(Compiler*);
         void print(void);
         StrLitNode(LOC_TY& loc, std::string s) : Node(loc), val(s){}
         ~StrLitNode(){}
@@ -279,7 +279,7 @@ namespace ante {
         std::string name;
         std::unique_ptr<Node> modifiers, typeExpr, expr;
 
-        TypedValue* compile(Compiler*);
+        TypedValue compile(Compiler*);
         void print(void);
         LetBindingNode(LOC_TY& loc, std::string s, Node *mods, Node* t, Node* exp) : Node(loc), name(s), modifiers(mods), typeExpr(t), expr(exp){}
         ~LetBindingNode(){}
@@ -289,7 +289,7 @@ namespace ante {
         std::string name;
         std::unique_ptr<Node> modifiers, typeExpr, expr;
 
-        TypedValue* compile(Compiler*);
+        TypedValue compile(Compiler*);
         void print(void);
         VarDeclNode(LOC_TY& loc, std::string s, Node *mods, Node* t, Node* exp) : Node(loc), name(s), modifiers(mods), typeExpr(t), expr(exp){}
         ~VarDeclNode(){}
@@ -299,7 +299,7 @@ namespace ante {
         Node* ref_expr;
         std::unique_ptr<Node> expr;
         bool freeLval;
-        TypedValue* compile(Compiler*);
+        TypedValue compile(Compiler*);
         void print(void);
         VarAssignNode(LOC_TY& loc, Node* v, Node* exp, bool b) : Node(loc), ref_expr(v), expr(exp), freeLval(b){}
         ~VarAssignNode(){ if(freeLval) delete ref_expr; }
@@ -310,7 +310,7 @@ namespace ante {
         std::unique_ptr<TypeNode> traits;
         std::unique_ptr<Node> methods;
 
-        TypedValue* compile(Compiler*);
+        TypedValue compile(Compiler*);
         void print(void);
         ExtNode(LOC_TY& loc, TypeNode *ty, Node *m, TypeNode *tr) : Node(loc), typeExpr(ty), traits(tr), methods(m){}
         ~ExtNode(){}
@@ -318,7 +318,7 @@ namespace ante {
 
     struct ImportNode : public Node{
         std::unique_ptr<Node> expr;
-        TypedValue* compile(Compiler*);
+        TypedValue compile(Compiler*);
         void print();
         ImportNode(LOC_TY& loc, Node* e) : Node(loc), expr(e){}
         ~ImportNode(){}
@@ -327,7 +327,7 @@ namespace ante {
     struct JumpNode : public Node{
         std::unique_ptr<Node> expr;
         int jumpType;
-        TypedValue* compile(Compiler*);
+        TypedValue compile(Compiler*);
         void print();
         JumpNode(LOC_TY& loc, int jt, Node* e) : Node(loc), expr(e), jumpType(jt){}
         ~JumpNode(){}
@@ -335,7 +335,7 @@ namespace ante {
 
     struct WhileNode : public ParentNode{
         std::unique_ptr<Node> condition;
-        TypedValue* compile(Compiler*);
+        TypedValue compile(Compiler*);
         void print(void);
         WhileNode(LOC_TY& loc, Node *cond, Node *body) : ParentNode(loc, body), condition(cond){}
         ~WhileNode(){}
@@ -344,7 +344,7 @@ namespace ante {
     struct ForNode : public ParentNode{
         std::string var;
         std::unique_ptr<Node> range;
-        TypedValue* compile(Compiler*);
+        TypedValue compile(Compiler*);
         void print(void);
         ForNode(LOC_TY& loc, std::string v, Node *r, Node *body) : ParentNode(loc, body), var(v), range(r){}
         ~ForNode(){}
@@ -352,7 +352,7 @@ namespace ante {
 
     struct MatchBranchNode : public Node{
         std::unique_ptr<Node> pattern, branch;
-        TypedValue* compile(Compiler*);
+        TypedValue compile(Compiler*);
         void print(void);
         MatchBranchNode(LOC_TY& loc, Node *p, Node *b) : Node(loc), pattern(p), branch(b){}
         ~MatchBranchNode(){}
@@ -362,7 +362,7 @@ namespace ante {
         std::unique_ptr<Node> expr;
         std::vector<std::unique_ptr<MatchBranchNode>> branches;
 
-        TypedValue* compile(Compiler*);
+        TypedValue compile(Compiler*);
         void print(void);
         MatchNode(LOC_TY& loc, Node *e, std::vector<std::unique_ptr<MatchBranchNode>> &b) : Node(loc), expr(e), branches(move(b)){}
         ~MatchNode(){}
@@ -370,7 +370,7 @@ namespace ante {
 
     struct IfNode : public Node{
         std::unique_ptr<Node> condition, thenN, elseN;
-        TypedValue* compile(Compiler*);
+        TypedValue compile(Compiler*);
         void print(void);
         IfNode(LOC_TY& loc, Node* c, Node* then, Node* els) : Node(loc), condition(c), thenN(then), elseN(els){}
         ~IfNode(){}
@@ -383,7 +383,7 @@ namespace ante {
         std::unique_ptr<NamedValNode> params;
         bool varargs;
 
-        TypedValue* compile(Compiler*);
+        TypedValue compile(Compiler*);
         void print(void);
         FuncDeclNode(LOC_TY& loc, std::string s, std::string bn, Node *mods, Node *t, Node *p, Node* b, bool va=false) : Node(loc), name(s), basename(bn), child(b), modifiers(mods), type(t), params((NamedValNode*)p), varargs(va){}
         FuncDeclNode(FuncDeclNode* fdn);
@@ -395,7 +395,7 @@ namespace ante {
         size_t fields;
         std::vector<std::unique_ptr<TypeNode>> generics;
 
-        TypedValue* compile(Compiler*);
+        TypedValue compile(Compiler*);
         void print(void);
         DataDeclNode(LOC_TY& loc, std::string s, Node* b, size_t f) : ParentNode(loc, b), name(s), fields(f){}
         DataDeclNode(LOC_TY& loc, std::string s, Node* b, size_t f, std::vector<std::unique_ptr<TypeNode>> &g) : ParentNode(loc, b), name(s), fields(f), generics(move(g)){}
@@ -405,7 +405,7 @@ namespace ante {
     struct TraitNode : public ParentNode{
         std::string name;
 
-        TypedValue* compile(Compiler*);
+        TypedValue compile(Compiler*);
         void print(void);
         TraitNode(LOC_TY& loc, std::string s, Node* b) : ParentNode(loc, b), name(s){}
         ~TraitNode(){}

@@ -160,16 +160,16 @@ void error(lazy_printer strs, const yy::location& loc, ErrorType t){
 /*
  *  Inform the user of an error and return nullptr.
  */
-TypedValue* Compiler::compErr(lazy_printer msg, const yy::location& loc, ErrorType t){
+TypedValue Compiler::compErr(lazy_printer msg, const yy::location& loc, ErrorType t){
     error(msg, loc, t);
     if(t == ErrorType::Error){
         errFlag = true;
         throw new CompilationError(msg, loc);
     }
-    return nullptr;
+    return {};
 }
 
-TypedValue* Compiler::compErr(lazy_printer msg, ErrorType t){
+TypedValue Compiler::compErr(lazy_printer msg, ErrorType t){
     auto loc = mkLoc(mkPos(0,0,0), mkPos(0,0,0));
     return compErr(msg, loc, t);
 }
