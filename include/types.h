@@ -9,37 +9,40 @@
 
 namespace ante {
 
-    TypedValue* typeCheckWithImplicitCasts(Compiler *c, TypedValue *arg, TypeNode *ty);
+    TypedValue* typeCheckWithImplicitCasts(Compiler *c, TypedValue *arg, AnType *ty);
 
-    TypeNode* deepCopyTypeNode(const TypeNode *n);
+    std::string anTypeToStr(const AnType *t);
+    lazy_str anTypeToColoredStr(const AnType *t);
+    
     std::string typeNodeToStr(const TypeNode *t);
     lazy_str typeNodeToColoredStr(const TypeNode *t);
-    lazy_str typeNodeToColoredStr(const std::unique_ptr<TypeNode>& tn);
 
     //Typevar creation with no yy::location
-    TypeNode* mkAnonTypeNode(TypeTag);
-    TypeNode* mkTypeNodeWithExt(TypeTag tt, TypeNode *ext);
-    TypeNode* mkDataTypeNode(std::string tyname);
-    TypeNode* createFnTyNode(NamedValNode *params, TypeNode *retTy);
+    //TypeNode* mkAnonTypeNode(TypeTag);
+    //TypeNode* mkTypeNodeWithExt(TypeTag tt, TypeNode *ext);
+    //TypeNode* mkDataTypeNode(std::string tyname);
+    //TypeNode* createFnTyNode(NamedValNode *params, TypeNode *retTy);
 
     //conversions
-    llvm::Type* typeTagToLlvmType(TypeTag tagTy, llvm::LLVMContext &c, std::string typeName = "");
+    AnType* toAnType(const TypeNode *tn);
+
+    llvm::Type* typeTagToLlvmType(TypeTag tagTy, llvm::LLVMContext &c);
     TypeTag llvmTypeToTypeTag(llvm::Type *t);
     std::string llvmTypeToStr(llvm::Type *ty);
     std::string typeTagToStr(TypeTag ty);
     bool llvmTypeEq(llvm::Type *l, llvm::Type *r);
 
     //typevar utility functions
-    void validateType(Compiler *c, const TypeNode* tn, const DataDeclNode* rootTy);
-    void validateType(Compiler *c, const TypeNode *tn, const DataType *dt);
-    TypeNode* extractTypeValue(const TypedValue *tv);
-    TypeNode* extractTypeValue(const std::unique_ptr<TypedValue> &tv);
-    void bindGenericToType(TypeNode *tn, const std::vector<std::pair<std::string, std::unique_ptr<TypeNode>>> &bindings);
-    void bindGenericToType(TypeNode *tn, const std::vector<std::unique_ptr<TypeNode>> &bindings, DataType *dt);
+    void validateType(Compiler *c, const AnType* tn, const DataDeclNode* rootTy);
+    void validateType(Compiler *c, const AnType *tn, const AnDataType *dt);
+    AnType* extractTypeValue(const TypedValue *tv);
+    AnType* extractTypeValue(const std::unique_ptr<TypedValue> &tv);
+    AnType* bindGenericToType(Compiler *c, AnType *tn, const std::vector<std::pair<std::string, AnType*>> &bindings);
+    AnType* bindGenericToType(Compiler *c, AnType *tn, const std::vector<AnType*> &bindings, AnDataType *dt);
 
-    std::string getCastFnBaseName(TypeNode *t);
+    std::string getCastFnBaseName(AnType *t);
 
-    TypeNode* getLargestExt(Compiler *c, TypeNode *tn);
+    AnType* getLargestExt(Compiler *c, AnDataType *tn);
     char getBitWidthOfTypeTag(const TypeTag tagTy);
     bool isPrimitiveTypeTag(TypeTag ty);
     bool isNumericTypeTag(const TypeTag ty);

@@ -62,7 +62,7 @@ namespace ante {
     };
 }
 
-std::ostream& operator<<(std::ostream& os, ante::lazy_str& str);
+std::ostream& operator<<(std::ostream& os, ante::lazy_str str);
 
 
 //due to each string's coloring lazy_strs cannot be concatenated, so

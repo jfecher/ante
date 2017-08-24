@@ -4,6 +4,8 @@ using namespace llvm;
 
 namespace ante {
 
+AnTypeContainer typeArena;
+
 char getBitWidthOfTypeTag(const TypeTag ty){
     switch(ty){
         case TT_I8:  case TT_U8: case TT_C8:  return 8;
@@ -22,17 +24,411 @@ char getBitWidthOfTypeTag(const TypeTag ty){
     }
 }
 
+bool isGeneric(const std::vector<AnType*> &vec){
+    for(auto *t : vec)
+        if(t->isGeneric)
+            return true;
+    return false;
+}
+
+
+bool AnType::hasModifier(TokenType m){
+    if(auto *modty = dyn_cast<AnModifierType>(this))
+        for(auto mod : modty->modifiers)
+            if(mod == m)
+                return true;
+    return false;
+}
+
+AnModifierType* AnType::addModifier(TokenType m){
+    if(auto *modty = dyn_cast<AnModifierType>(this)){
+        if(std::find(modty->modifiers.cbegin(), modty->modifiers.cend(), m) != modty->modifiers.end()){
+            return modty;
+        }else{
+            auto mods = modty->modifiers;
+            mods.push_back(m);
+            return AnModifierType::get(modty->extTy, mods);
+        }
+    }
+    return AnModifierType::get(this, {m});
+}
+        
+AnType* AnType::copyModifiersFrom(AnType *t){
+    auto *ret = this;
+    if(auto *modty = dyn_cast<AnModifierType>(t)){
+        for(auto mod : modty->modifiers)
+            ret = ret->addModifier(mod);
+    }
+    return ret;
+}
+
+
+unsigned short AnDataType::getTagVal(std::string &name){
+    for(auto& tag : tags){
+        if(tag->name == name){
+            return tag->tag;
+        }
+    }
+    
+    std::cerr << "No value found for tag " << name
+                << " of type " << this->name << std::endl;
+    throw new CtError();
+}
+ 
+
 /*
  *  Returns the TypeNode* value of a TypedValue* of type TT_Type
  */
-TypeNode* extractTypeValue(const TypedValue* tv){
+AnType* extractTypeValue(const TypedValue* tv){
     auto zext = dyn_cast<ConstantInt>(tv->val)->getZExtValue();
-    return (TypeNode*) zext;
+    return (AnType*) zext;
 }
 
-TypeNode* extractTypeValue(const unique_ptr<TypedValue> &tv){
+AnType* extractTypeValue(const unique_ptr<TypedValue> &tv){
     return extractTypeValue(tv.get());
 }
+
+
+AnType* AnType::getPrimitive(TypeTag tag){
+    switch(tag){
+        case TT_I8:           return typeArena.primitiveTypes[tag].get();
+        case TT_I16:          return typeArena.primitiveTypes[tag].get();
+        case TT_I32:          return typeArena.primitiveTypes[tag].get();
+        case TT_I64:          return typeArena.primitiveTypes[tag].get();
+        case TT_Isz:          return typeArena.primitiveTypes[tag].get();
+		case TT_U8:           return typeArena.primitiveTypes[tag].get();
+        case TT_U16:          return typeArena.primitiveTypes[tag].get();
+        case TT_U32:          return typeArena.primitiveTypes[tag].get();
+        case TT_U64:          return typeArena.primitiveTypes[tag].get();
+        case TT_Usz:          return typeArena.primitiveTypes[tag].get();
+        case TT_F16:          return typeArena.primitiveTypes[tag].get();
+        case TT_F32:          return typeArena.primitiveTypes[tag].get();
+        case TT_F64:          return typeArena.primitiveTypes[tag].get();
+        case TT_C8:           return typeArena.primitiveTypes[tag].get();
+        case TT_C32:          return typeArena.primitiveTypes[tag].get();
+		case TT_Bool:         return typeArena.primitiveTypes[tag].get();
+        case TT_Void:         return typeArena.primitiveTypes[tag].get();
+        case TT_FunctionList: return typeArena.primitiveTypes[tag].get();
+        default:
+            cerr << "error: AnType::getPrimitive: TypeTag " << typeTagToStr(tag) << " is not primitive!\n";
+    }
+    throw new CtError();
+}
+
+
+AnType* AnType::getI8(){
+    return typeArena.primitiveTypes[TT_I8].get();
+}
+
+AnType* AnType::getI16(){
+    return typeArena.primitiveTypes[TT_I16].get();
+}
+
+AnType* AnType::getI32(){
+    return typeArena.primitiveTypes[TT_I32].get();
+}
+
+AnType* AnType::getI64(){
+    return typeArena.primitiveTypes[TT_I64].get();
+}
+
+AnType* AnType::getIsz(){
+    return typeArena.primitiveTypes[TT_Isz].get();
+}
+
+AnType* AnType::getU8(){
+    return typeArena.primitiveTypes[TT_U8].get();
+}
+
+AnType* AnType::getU16(){
+    return typeArena.primitiveTypes[TT_U16].get();
+}
+
+AnType* AnType::getU32(){
+    return typeArena.primitiveTypes[TT_U32].get();
+}
+
+AnType* AnType::getU64(){
+    return typeArena.primitiveTypes[TT_U64].get();
+}
+
+AnType* AnType::getUsz(){
+    return typeArena.primitiveTypes[TT_Usz].get();
+}
+
+AnType* AnType::getF16(){
+    return typeArena.primitiveTypes[TT_F16].get();
+}
+
+AnType* AnType::getF32(){
+    return typeArena.primitiveTypes[TT_F32].get();
+}
+
+AnType* AnType::getF64(){
+    return typeArena.primitiveTypes[TT_F64].get();
+}
+
+AnType* AnType::getBool(){
+    return typeArena.primitiveTypes[TT_Bool].get();
+}
+
+AnType* AnType::getVoid(){
+    return typeArena.primitiveTypes[TT_Void].get();
+}
+
+
+AnModifierType* AnType::getModifier(AnType *e, const std::vector<TokenType> modifiers){
+    return AnModifierType::get(e, modifiers);
+}
+
+string getKey(const std::vector<TokenType> &mods){
+    string ret = "";
+    for(auto m : mods){
+        ret += Lexer::getTokStr(m) + "&";
+    }
+    return ret;
+}
+
+AnModifierType* AnModifierType::get(AnType *e, const std::vector<TokenType> modifiers){
+    auto key = getKey(modifiers) + anTypeToStr(e);
+    try{
+        return typeArena.modifierTypes.at(key).get();
+    }catch(out_of_range r){
+        auto mod = new AnModifierType(e, modifiers);
+        typeArena.modifierTypes.emplace(key, mod);
+        return mod;
+    }
+}
+
+
+
+AnPtrType* AnType::getPtr(AnType* ext){ return AnPtrType::get(ext); }
+AnPtrType* AnPtrType::get(AnType* ext){
+    try{
+        return typeArena.ptrTypes.at(ext).get();
+    }catch(out_of_range r){
+        auto ptr = new AnPtrType(ext);
+        typeArena.ptrTypes.emplace(ext, ptr);
+        return ptr;
+    }
+}
+
+AnArrayType* AnType::getArray(AnType* t, size_t len){ return AnArrayType::get(t,len); }
+AnArrayType* AnArrayType::get(AnType* t, size_t len){
+    auto key = anTypeToStr(t) + to_string(len);
+    try{
+        return typeArena.arrayTypes.at(key).get();
+    }catch(out_of_range r){
+        auto arr = new AnArrayType(t, len);
+        typeArena.arrayTypes.emplace(key, arr);
+        return arr;
+    }
+}
+
+string getKey(const std::vector<AnType*> &exts){
+    string ret = "";
+    for(auto *ext : exts){
+        ret += anTypeToStr(ext) + ",";
+    }
+    return ret;
+}
+
+AnAggregateType* AnType::getAggregate(TypeTag t, const std::vector<AnType*> exts){
+    return AnAggregateType::get(t, exts);
+}
+
+AnAggregateType* AnAggregateType::get(TypeTag t, const std::vector<AnType*> exts){
+    auto key = typeTagToStr(t) + getKey(exts);
+    try{
+        return typeArena.aggregateTypes.at(key).get();
+    }catch(out_of_range r){
+        auto agg = new AnAggregateType(t, exts);
+        typeArena.aggregateTypes.emplace(key, agg);
+        return agg;
+    }
+}
+        
+AnFunctionType* AnFunctionType::get(AnType* retty, NamedValNode* params, bool isMetaFunction){
+    vector<AnType*> extTys;
+
+    while(params && params->typeExpr.get()){
+        TypeNode *pty = (TypeNode*)params->typeExpr.get();
+        extTys.push_back(toAnType(pty));
+        params = (NamedValNode*)params->next.get();
+    }
+    return AnFunctionType::get(retty, extTys, isMetaFunction);
+}
+
+
+AnFunctionType* AnFunctionType::get(AnType *retTy, const std::vector<AnType*> elems, bool isMetaFunction){
+    auto key = getKey(elems) + "->" + anTypeToStr(retTy);
+    try{
+        return typeArena.functionTypes.at(key).get();
+    }catch(out_of_range r){
+        auto f = new AnFunctionType(retTy, elems, isMetaFunction);
+        typeArena.functionTypes.emplace(key, f);
+        return f;
+    }
+}
+
+
+AnTypeVarType* AnType::getTypeVar(std::string name){
+    return AnTypeVarType::get(name);
+}
+
+AnTypeVarType* AnTypeVarType::get(std::string name){
+    try{
+        return typeArena.typeVarTypes.at(name).get();
+    }catch(out_of_range r){
+        auto tvar = new AnTypeVarType(name);
+        typeArena.typeVarTypes.emplace(name, tvar);
+        return tvar;
+    }
+}
+
+AnDataType* AnType::getDataType(string name){
+    return AnDataType::get(name);
+}
+
+
+/*
+ * Returns the unique boundName of a generic type after it is bound
+ * with the specified type arguments
+ */
+string getBoundName(string &baseName, const vector<AnType*> &typeArgs){
+    if(typeArgs.empty())
+        return baseName;
+
+    string name = baseName + "<";
+    for(auto *arg : typeArgs){
+        name += anTypeToStr(arg) + ",";
+    }
+    return name + ">";
+}
+
+string getBoundName(string &baseName, const vector<pair<string, AnType*>> &typeArgs){
+    if(typeArgs.empty())
+        return baseName;
+
+    string name = baseName + "<";
+    for(auto &p : typeArgs){
+        name += anTypeToStr(p.second) + ",";
+    }
+    return name + ">";
+}
+
+
+AnDataType* AnDataType::get(string name){
+    try{
+        return typeArena.declaredTypes.at(name).get();
+    }catch(out_of_range r){
+        //create declaration w/out definition
+        auto decl = new AnDataType(name, {});
+        typeArena.declaredTypes.emplace(name, decl);
+        return decl;
+    }
+}
+
+AnDataType* AnDataType::create(string name, vector<AnType*> elems, bool isUnion){
+    try{
+        auto *dt = typeArena.declaredTypes.at(name).get();
+        dt->extTys = elems;
+        return dt;
+    }catch(out_of_range r){
+        auto tvar = new AnDataType(name, elems, isUnion);
+        typeArena.declaredTypes.emplace(name, tvar);
+        return tvar;
+    }
+}
+
+AnTypeContainer::AnTypeContainer(){
+    typeArena.primitiveTypes[TT_I8].reset(new AnType(TT_I8));
+    typeArena.primitiveTypes[TT_I16].reset(new AnType(TT_I16));
+    typeArena.primitiveTypes[TT_I32].reset(new AnType(TT_I32));
+    typeArena.primitiveTypes[TT_I64].reset(new AnType(TT_I64));
+    typeArena.primitiveTypes[TT_Isz].reset(new AnType(TT_Isz));
+    typeArena.primitiveTypes[TT_U8].reset(new AnType(TT_U8));
+    typeArena.primitiveTypes[TT_U16].reset(new AnType(TT_U16));
+    typeArena.primitiveTypes[TT_U32].reset(new AnType(TT_U32));
+    typeArena.primitiveTypes[TT_U64].reset(new AnType(TT_U64));
+    typeArena.primitiveTypes[TT_Usz].reset(new AnType(TT_Usz));
+    typeArena.primitiveTypes[TT_F16].reset(new AnType(TT_F16));
+    typeArena.primitiveTypes[TT_F32].reset(new AnType(TT_F32));
+    typeArena.primitiveTypes[TT_F64].reset(new AnType(TT_F64));
+    typeArena.primitiveTypes[TT_Bool].reset(new AnType(TT_Bool));
+    typeArena.primitiveTypes[TT_Void].reset(new AnType(TT_Void));
+    typeArena.primitiveTypes[TT_C8].reset(new AnType(TT_C8));
+    typeArena.primitiveTypes[TT_C32].reset(new AnType(TT_C32));
+    typeArena.primitiveTypes[TT_FunctionList].reset(new AnType(TT_FunctionList));
+}
+        
+
+AnType* AnType::getFunctionReturnType() const{
+    return ((AnFunctionType*)this)->retTy;
+}
+
+
+AnType* toAnType(const TypeNode *tn){
+    switch(tn->type){
+        case TT_I8:
+        case TT_I16:
+        case TT_I32:
+        case TT_I64:
+        case TT_U8:
+        case TT_U16:
+        case TT_U32:
+        case TT_U64:
+        case TT_F16:
+        case TT_F32:
+        case TT_F64:
+        case TT_Isz:
+        case TT_Usz:
+        case TT_C8:
+        case TT_C32:
+        case TT_Bool:
+        case TT_Void:
+            return AnType::getPrimitive(tn->type);
+
+        case TT_Tuple:
+        case TT_Function:
+        case TT_MetaFunction:
+        case TT_FunctionList: {
+            TypeNode *ext = tn->extTy.get();
+            vector<AnType*> tys;
+            while(ext){
+                tys.push_back(toAnType((TypeNode*)ext));
+                ext = (TypeNode*)ext->next.get();
+            }
+            return AnAggregateType::get(TT_Tuple, tys);
+        }
+
+        case TT_Array: {
+            TypeNode *elemTy = tn->extTy.get();
+            IntLitNode *len = (IntLitNode*)elemTy->next.get();
+            return AnArrayType::get(toAnType(elemTy), len ? stoi(len->val) : 0);
+        }
+        case TT_Ptr:
+            return AnPtrType::get(toAnType(tn->extTy.get()));
+        case TT_Data:
+        case TT_TaggedUnion: {
+            if(!tn->params.empty()){
+                string key = tn->typeName + "<";
+                for(auto &t : tn->params){
+                    key += typeNodeToStr(t.get()) + ",";
+                }
+                return AnDataType::get(key + ">");
+            }else{
+                return AnDataType::get(tn->typeName);
+            }
+        }
+        case TT_TypeVar:
+            return AnTypeVarType::get(tn->typeName);
+        default:
+            cerr << "Unknown TypeTag " << typeTagToStr(tn->type) << endl;
+            return nullptr;
+    }
+}
+
 
 
 /*
@@ -44,63 +440,66 @@ TypeNode* extractTypeValue(const unique_ptr<TypedValue> &tv){
  *        within the rootTy's params
  *      - Contain only data types that have been declared
  */
-void validateType(Compiler *c, const TypeNode *tn, const DataDeclNode *rootTy){
+void validateType(Compiler *c, const AnType *tn, const DataDeclNode *rootTy){
     if(!tn) return;
 
-    if(tn->type == TT_Data){
-        auto *dataTy = c->lookupType(tn->typeName);
-        if(!dataTy){
-            if(tn->typeName == rootTy->name){
-                c->compErr("Recursive types are disallowed, wrap the type in a pointer instead", tn->loc);
+    if(tn->typeTag == TT_Data or tn->typeTag == TT_TaggedUnion){
+        auto *dataTy = (AnDataType*)tn;
+
+        if(dataTy->isStub()){
+            if(dataTy->name == rootTy->name){
+                c->compErr("Recursive types are disallowed, wrap the type in a pointer instead", rootTy->loc);
             }
 
-            c->compErr("Type "+tn->typeName+" has not been declared", tn->loc);
+            c->compErr("Type "+dataTy->name+" has not been declared", rootTy->loc);
         }
 
-        if(dataTy->generics.size() != tn->params.size())
-            c->compErr("Unbound type params for type "+typeNodeToColoredStr(dataTy->tyn.get()), tn->loc);
+        //if(dataTy->generics.size() != tn->params.size())
+        //    c->compErr("Unbound type params for type "+anTypeToColoredStr(dataTy), rootTy->loc);
 
-        TypeNode *dtyn = dataTy->tyn.get();
-        if(!tn->params.empty()){
-            dtyn = copy(dtyn);
-            bindGenericToType(dtyn, tn->params, dataTy);
-        }
+        //if(dataTy->isGeneric){
+        //    dataTy = bindGenericToType(dataTy, tn->params, dataTy);
+        //}
+        
+        for(auto *t : dataTy->extTys)
+            validateType(c, t, rootTy);
 
-        validateType(c, dtyn, rootTy);
-
-    }else if(tn->type == TT_Tuple or tn->type == TT_TaggedUnion){
-        TypeNode *ext = tn->extTy.get();
-        while(ext){
+    }else if(tn->typeTag == TT_Tuple){
+        auto *agg = (AnAggregateType*)tn;
+        for(auto *ext : agg->extTys){
             validateType(c, ext, rootTy);
-            ext = (TypeNode*)ext->next.get();
         }
-    }else if(tn->type == TT_Array){
-        TypeNode *ext = tn->extTy.get();
-        validateType(c, ext, rootTy);
-    }else if(tn->type == TT_Ptr or tn->type == TT_Function or tn->type == TT_MetaFunction){
+    }else if(tn->typeTag == TT_Array){
+        auto *arr = (AnArrayType*)tn;
+        validateType(c, arr->extTy, rootTy);
+    }else if(tn->typeTag == TT_Ptr or tn->typeTag == TT_Function or tn->typeTag == TT_MetaFunction){
         return;
 
-    }else if(tn->type == TT_TypeVar){
-        auto *var = c->lookup(tn->typeName);
+    }else if(tn->typeTag == TT_TypeVar){
+        auto *tvt = (AnTypeVarType*)tn;
+        auto *var = c->lookup(tvt->name);
         if(var){
             return validateType(c, extractTypeValue(var->tval), rootTy);
         }
 
         //Typevar not found, if its not in the rootTy's params, then it is unbound
         for(auto &p : rootTy->generics){
-            if(p->typeName == tn->typeName) return;
+            if(p->typeName == tvt->name) return;
         }
 
-        c->compErr("Lookup for "+tn->typeName+" not found", tn->loc);
+        c->compErr("Lookup for "+tvt->name+" not found", rootTy->loc);
     }
 }
 
-void validateType(Compiler *c, const TypeNode *tn, const DataType *dt){
+void validateType(Compiler *c, const AnType *tn, const AnDataType *dt){
     auto fakeLoc = mkLoc(mkPos(0, 0, 0), mkPos(0, 0, 0));
     auto *ddn = new DataDeclNode(fakeLoc, dt->name, 0, 0);
 
-    for(auto &g : dt->generics)
-        ddn->generics.emplace_back(g.get());
+    for(auto &g : dt->generics){
+        auto *tv = mkAnonTypeNode(TT_TypeVar);
+        tv->typeName = g->name;
+        ddn->generics.emplace_back(tv);
+    }
 
     validateType(c, tn, ddn);
     ddn->generics.clear();
@@ -108,52 +507,54 @@ void validateType(Compiler *c, const TypeNode *tn, const DataType *dt){
 }
 
 
-unsigned int TypeNode::getSizeInBits(Compiler *c, string *incompleteType){
-    int total = 0;
-    TypeNode *ext = this->extTy.get();
+size_t AnType::getSizeInBits(Compiler *c, string *incompleteType){
+    size_t total = 0;
 
-    if(isPrimitiveTypeTag(this->type))
-        return getBitWidthOfTypeTag(this->type);
+    if(isPrimitiveTypeTag(this->typeTag))
+        return getBitWidthOfTypeTag(this->typeTag);
 
-    if(type == TT_Data and not extTy.get()){
-        auto *dataTy = c->lookupType(typeName);
-        if(!dataTy){
-            if(incompleteType and typeName == *incompleteType){
-                c->compErr("Incomplete Type", loc);
+    if(typeTag == TT_Data or typeTag == TT_TaggedUnion){
+        auto *dataTy = (AnDataType*)this;
+
+        if(dataTy->isStub()){
+            if(incompleteType and dataTy->name == *incompleteType){
+                cerr << "Incomplete type " << anTypeToColoredStr(this) << endl;
                 throw new IncompleteTypeError();
             }
 
-            c->compErr("Type "+typeName+" has not been declared", loc);
+            cerr << "Type " << anTypeToColoredStr(this) << " has not been declared\n";
             return 0;
         }
 
-        TypeNode *tyn = dataTy->tyn.get();
-        if(!dataTy->generics.empty()){
-            tyn = copy(tyn);
-            bindGenericToType(tyn, params, dataTy);
-        }
-
-        return tyn->getSizeInBits(c, incompleteType);
-    }
-
-    if(type == TT_Tuple or type == TT_TaggedUnion or type == TT_Data){
-        while(ext){
+        //TypeNode *tyn = dataTy->tyn.get();
+        //if(!dataTy->generics.empty()){
+        //    tyn = copy(tyn);
+        //    bindGenericToType(tyn, params, dataTy);
+        //}
+        for(auto *ext : dataTy->extTys){
             total += ext->getSizeInBits(c, incompleteType);
-            ext = (TypeNode*)ext->next.get();
         }
-    }else if(type == TT_Array){
-        auto *len = (IntLitNode*)ext->next.get();
-        return stoi(len->val) * ext->getSizeInBits(c, incompleteType);
-    }else if(type == TT_Ptr or type == TT_Function or type == TT_MetaFunction){
-        return 64;
+        return total;
 
-    }else if(type == TT_TypeVar){
-        auto *var = c->lookup(typeName);
-        if(var){
+    }else if(typeTag == TT_Tuple){
+        for(auto *ext : ((AnAggregateType*)this)->extTys){
+            total += ext->getSizeInBits(c, incompleteType);
+        }
+
+    }else if(typeTag == TT_Array){
+        auto *arr = (AnArrayType*)this;
+        return arr->len * arr->extTy->getSizeInBits(c, incompleteType);
+    }else if(typeTag == TT_Ptr or typeTag == TT_Function or typeTag == TT_MetaFunction){
+        return AN_USZ_SIZE;
+
+    }else if(typeTag == TT_TypeVar){
+        auto *tvt = (AnTypeVarType*)this;
+        auto *var = c->lookup(tvt->name);
+        if(var)
             return extractTypeValue(var->tval)->getSizeInBits(c);
-        }
 
-        c->compErr("Lookup for typevar "+typeName+" not found", loc);
+        //TODO: store location data in AnTypeVarType
+        cerr << "Lookup for typevar " << tvt->name << " not found" << endl;
         throw new TypeVarError();
     }
 
@@ -161,28 +562,57 @@ unsigned int TypeNode::getSizeInBits(Compiler *c, string *incompleteType){
 }
 
 
-void bind(TypeNode *type_var, const unique_ptr<TypeNode> &concrete_ty){
-    auto *cpy = copy(concrete_ty);
-    type_var->type = cpy->type;
-    type_var->typeName = cpy->typeName;
-    type_var->params = move(cpy->params);
-    type_var->extTy.reset(cpy->extTy.release());
-    delete cpy;
+vector<pair<string, AnType*>>
+mapBindingsToDataType(const vector<AnType*> &bindings, AnDataType *dt){
+    vector<pair<string, AnType*>> ret;
+    ret.reserve(bindings.size());
+
+    for(size_t i = 0; i < dt->generics.size(); i++){
+        ret.emplace_back(dt->generics[i]->name, bindings[i]);
+    }
+    return ret;
 }
 
 
-vector<pair<string, unique_ptr<TypeNode>>>
-mapBindingsToDataType(const vector<unique_ptr<TypeNode>> &bindings, DataType *dt){
-    vector<pair<string, unique_ptr<TypeNode>>> map;
+AnType* find(string &k, const vector<pair<string, AnType*>> &bindings){
+    for(auto &p : bindings)
+        if(p.first == k)
+            return p.second;
+    return nullptr;
+}
 
-    size_t i = 0;
-    for(auto &typevar : dt->generics){
-        pair<string,unique_ptr<TypeNode>> p{typevar->typeName, copy(bindings[i])};
-        map.push_back(move(p));
-        i++;
+
+vector<pair<string, AnType*>>
+filterMatchingBindings(const AnDataType *dt, const vector<pair<string, AnType*>> &bindings){
+    vector<pair<string,AnType*>> matches;
+    for(auto &b : dt->generics){
+        AnType *arg = find(b->name, bindings);
+        if(arg){
+            matches.emplace_back(b->name, arg);
+        }
+    }
+    return matches;
+}
+
+
+Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt){
+    //create an empty type first so we dont end up with infinite recursion
+    auto* structTy = StructType::create(*c->ctxt, {}, dt->name, dt->typeTag == TT_TaggedUnion);
+    dt->llvmType = structTy;
+
+    AnType *ext = dt;
+    if(dt->typeTag == TT_TaggedUnion)
+        ext = getLargestExt(c, dt);
+
+    vector<Type*> tys;
+    for(auto *e : dt->extTys){
+        tys.push_back(c->anTypeToLlvmType(e));
     }
 
-    return map;
+    structTy->setBody(tys);
+
+    dt->llvmType = structTy;
+    return structTy;
 }
 
 /*
@@ -203,108 +633,161 @@ mapBindingsToDataType(const vector<unique_ptr<TypeNode>> &bindings, DataType *dt
  *         to match the typevar ordering with.  The second function below handles
  *         this conversion
  */
-void bindGenericToType(TypeNode *tn, const vector<pair<string, unique_ptr<TypeNode>>> &bindings){
-    if(bindings.empty())
-        return;
+AnType* bindGenericToType(Compiler *c, AnType *tn, const vector<pair<string, AnType*>> &bindings){
+    if(!tn->isGeneric or bindings.empty())
+        return tn;
 
-    if(tn->params.empty()){
-        if(tn->type == TT_Data or tn->type == TT_TaggedUnion)
-            //TODO: this could cause problems with excess bindings
-            for(auto& p : bindings)
-                tn->params.push_back(unique_ptr<TypeNode>(copy(p.second)));
-    }else{
-        for(auto& p : tn->params){
-            bindGenericToType(p.get(), bindings);
+    if(tn->typeTag == TT_Data or tn->typeTag == TT_TaggedUnion){
+        auto *dty = (AnDataType*)tn;
+
+        auto dty_bindings = filterMatchingBindings(dty, bindings);
+        string boundName = getBoundName(dty->name, dty_bindings);
+
+        auto *decl = AnDataType::get(boundName);
+        if(!decl->isStub())
+            return decl;
+
+        //This variant has never been bound before so fill in the stub
+        vector<AnType*> boundExts;
+        boundExts.reserve(dty->extTys.size());
+
+        for(auto *e : dty->extTys){
+            boundExts.push_back(bindGenericToType(c, e, dty_bindings));
         }
-    }
 
-    if(tn->type == TT_TypeVar){
+        decl->unboundType = dty;
+        decl->extTys.swap(boundExts);
+        decl->fields = dty->fields;
+        decl->tags = dty->tags;
+        decl->traitImpls = dty->traitImpls;
+        updateLlvmTypeBinding(c, decl);
+        return decl;
+
+    }else if(tn->typeTag == TT_TypeVar){
+        auto *tv = (AnTypeVarType*)tn;
         for(auto& pair : bindings){
-            if(tn->typeName == pair.first){
-                bind(tn, pair.second);
-                return;
+            if(tv->name == pair.first){
+                return pair.second;
             }
         }
-    }
+        cerr << "warning: unbound type var " << tv->name << " in binding\n";
+        return tv;
 
-    auto *ext = tn->extTy.get();
-    while(ext){
-        bindGenericToType(ext, bindings);
-        ext = (TypeNode*)ext->next.get();
+    }else if(tn->typeTag == TT_Modifier){
+        auto *mod = (AnModifierType*)tn;
+        auto *ty = bindGenericToType(c, mod->extTy, bindings);
+        return AnModifierType::get(ty, mod->modifiers);
+
+    }else if(tn->typeTag == TT_Tuple or tn->typeTag == TT_Function or
+             tn->typeTag == TT_MetaFunction or tn->typeTag == TT_FunctionList){
+        
+        auto *agg = (AnAggregateType*)tn;
+        vector<AnType*> exts;
+        exts.reserve(agg->extTys.size());
+        for(auto *e : agg->extTys){
+            exts.push_back(bindGenericToType(c, e, bindings));
+        }
+        return AnAggregateType::get(tn->typeTag, exts);
+
+    }else if(tn->typeTag == TT_Ptr){
+        auto *ptr = (AnPtrType*)tn;
+        auto *ty = bindGenericToType(c, ptr->extTy, bindings);
+        return AnPtrType::get(ty);
+        
+    }else if(tn->typeTag == TT_Array){
+        auto *arr = (AnArrayType*)tn;
+        auto *ty = bindGenericToType(c, arr->extTy, bindings);
+        return AnArrayType::get(ty, arr->len);
+        
+    }else{
+        return tn;
     }
 }
 
 
-void bindGenericToType(TypeNode *tn, const vector<unique_ptr<TypeNode>> &bindings, DataType *dt){
-    if(bindings.empty())
-        return;
+AnType* bindGenericToType(Compiler *c, AnType *tn, const vector<AnType*> &bindings, AnDataType *dt){
+    if(bindings.empty() or !tn->isGeneric)
+        return tn;
 
     auto bindings_map = mapBindingsToDataType(bindings, dt);
 
-    return bindGenericToType(tn, bindings_map);
-}
-
-
-/*
- *  Expands a typenode by replacing every Data or TaggedUnion instance with the
- *  types that it contains.  Does not expand pointer types
- */
-void Compiler::expand(TypeNode *tn){
-    TypeNode *ext = tn->extTy.get();
-    if(tn->type == TT_Tuple or tn->type == TT_TaggedUnion){
-        while(ext){
-            expand(ext);
-            ext = (TypeNode*)ext->next.get();
-        }
-    }else if(!tn->typeName.empty()){
-        auto *dt = lookupType(tn->typeName);
-        if(!dt) return;
-
-        auto *cpy = copy(dt->tyn);
-        tn->extTy.reset(cpy->extTy.release());
-        ext = tn->extTy.get();
-
-        while(ext){
-            expand(ext);
-            ext = (TypeNode*)ext->next.get();
-        }
-        delete cpy;
-    }
+    return bindGenericToType(c, tn, bindings_map);
 }
 
 
 /*
  *  Replaces already bound typevars with their declared value
- */
-void Compiler::searchAndReplaceBoundTypeVars(TypeNode* tn) const{
-    TypeNode *ext = tn->extTy.get();
-    while(ext){
-        //size of an array is stored in the type, skip it
-        if(dynamic_cast<IntLitNode*>(ext))
-            ext = (TypeNode*)ext->next.get();
+ *
+AnType* Compiler::searchAndReplaceBoundTypeVars(AnType *tn) const{
+    if(!tn->isGeneric)
+        return tn;
+    
+    if(tn->typeTag == TT_Data or tn->typeTag == TT_TaggedUnion){
+        auto *dty = (AnDataType*)tn;
 
-        searchAndReplaceBoundTypeVars(ext);
-        ext = (TypeNode*)ext->next.get();
-    }
+        auto dty_bindings = filterMatchingBindings(dty, bindings);
+        string boundName = getBoundName(dty->name, dty_bindings);
 
-    if(tn->type == TT_TypeVar){
-        auto *var = lookup(tn->typeName);
+        auto *decl = AnDataType::get(boundName);
+        if(!decl->isStub())
+            return decl;
+
+        //This variant has never been bound before so fill in the stub
+        vector<AnType*> boundExts;
+        boundExts.reserve(dty->extTys.size());
+
+        for(auto *e : dty->extTys){
+            boundExts.push_back(bindGenericToType(e, dty_bindings));
+        }
+
+        decl->unboundType = dty;
+        decl->extTys.swap(boundExts);
+        decl->fields = dty->fields;
+        decl->tags = dty->tags;
+        decl->traitImpls = dty->traitImpls;
+        return decl;
+
+    }else if(tn->typeTag == TT_TypeVar){
+        auto *tvt = (AnTypeVarType*)tn;
+        auto *var = lookup(tvt->name);
         if(!var){
-            cerr << "Lookup for "+tn->typeName+" not found\n";
-            return;
+            cerr << "error: Lookup for "+tvt->name+" not found\n";
+            return tn;
         }
 
-        TypeNode* val = extractTypeValue(var->tval);
-        tn->type = val->type;
-        tn->typeName = val->typeName;
-        tn->extTy.reset(copy(val->extTy));
+        return extractTypeValue(var->tval);
 
-        for(auto &p : val->params){
-            auto cpy = unique_ptr<TypeNode>(copy(p.get()));
-            tn->params.push_back(move(cpy));
+    }else if(tn->typeTag == TT_Modifier){
+        auto *mod = (AnModifierType*)tn;
+        auto *ty = bindGenericToType(mod->extTy, bindings);
+        return AnModifierType::get(ty, mod->modifiers);
+
+    }else if(tn->typeTag == TT_Tuple or tn->typeTag == TT_Function or
+             tn->typeTag == TT_MetaFunction or tn->typeTag == TT_FunctionList){
+        
+        auto *agg = (AnAggregateType*)tn;
+        vector<AnType*> exts;
+        exts.reserve(agg->extTys.size());
+        for(auto *e : agg->extTys){
+            exts.push_back(bindGenericToType(e, bindings));
         }
+        return AnAggregateType::get(tn->typeTag, exts);
+
+    }else if(tn->typeTag == TT_Ptr){
+        auto *ptr = (AnPtrType*)tn;
+        auto *ty = bindGenericToType(ptr->extTy, bindings);
+        return AnPtrType::get(ty);
+        
+    }else if(tn->typeTag == TT_Array){
+        auto *arr = (AnArrayType*)tn;
+        auto *ty = bindGenericToType(arr->extTy, bindings);
+        return AnArrayType::get(ty, arr->len);
+        
+    }else{
+        return tn;
     }
 }
+*/
 
 
 /*
@@ -312,8 +795,8 @@ void Compiler::searchAndReplaceBoundTypeVars(TypeNode* tn) const{
  *  The original value of num is returned if no widening can be performed.
  */
 TypedValue* Compiler::implicitlyWidenNum(TypedValue *num, TypeTag castTy){
-    bool lIsInt = isIntTypeTag(num->type->type);
-    bool lIsFlt = isFPTypeTag(num->type->type);
+    bool lIsInt = isIntTypeTag(num->type->typeTag);
+    bool lIsFlt = isFPTypeTag(num->type->typeTag);
 
     if(lIsInt or lIsFlt){
         bool rIsInt = isIntTypeTag(castTy);
@@ -323,7 +806,7 @@ TypedValue* Compiler::implicitlyWidenNum(TypedValue *num, TypeTag castTy){
             exit(1);
         }
 
-        int lbw = getBitWidthOfTypeTag(num->type->type);
+        int lbw = getBitWidthOfTypeTag(num->type->typeTag);
         int rbw = getBitWidthOfTypeTag(castTy);
         Type *ty = typeTagToLlvmType(castTy, *ctxt);
 
@@ -331,19 +814,19 @@ TypedValue* Compiler::implicitlyWidenNum(TypedValue *num, TypeTag castTy){
         if(lIsInt and rIsInt){
             if(lbw <= rbw){
                 return new TypedValue(
-                    builder.CreateIntCast(num->val, ty, !isUnsignedTypeTag(num->type->type)),
-                    mkAnonTypeNode(castTy)
+                    builder.CreateIntCast(num->val, ty, !isUnsignedTypeTag(num->type->typeTag)),
+                    AnType::getPrimitive(castTy)
                 );
             }
 
         //int -> flt, (flt -> int is never implicit)
         }else if(lIsInt and rIsFlt){
             return new TypedValue(
-                isUnsignedTypeTag(num->type->type)
+                isUnsignedTypeTag(num->type->typeTag)
                     ? builder.CreateUIToFP(num->val, ty)
                     : builder.CreateSIToFP(num->val, ty),
 
-                mkAnonTypeNode(castTy)
+                AnType::getPrimitive(castTy)
             );
 
         //float widening
@@ -351,7 +834,7 @@ TypedValue* Compiler::implicitlyWidenNum(TypedValue *num, TypeTag castTy){
             if(lbw < rbw){
                 return new TypedValue(
                     builder.CreateFPExt(num->val, ty),
-                    mkAnonTypeNode(castTy)
+                    AnType::getPrimitive(castTy)
                 );
             }
         }
@@ -369,23 +852,25 @@ TypedValue* Compiler::implicitlyWidenNum(TypedValue *num, TypeTag castTy){
  *  Assumes the llvm::Type of both values to be an instance of IntegerType.
  */
 void Compiler::implicitlyCastIntToInt(TypedValue **lhs, TypedValue **rhs){
-    int lbw = getBitWidthOfTypeTag((*lhs)->type->type);
-    int rbw = getBitWidthOfTypeTag((*rhs)->type->type);
+    int lbw = getBitWidthOfTypeTag((*lhs)->type->typeTag);
+    int rbw = getBitWidthOfTypeTag((*rhs)->type->typeTag);
 
     if(lbw != rbw){
         //Cast the value with the smaller bitwidth to the type with the larger bitwidth
         if(lbw < rbw){
             auto *ret = new TypedValue(
-                builder.CreateIntCast((*lhs)->val, (*rhs)->getType(), !isUnsignedTypeTag((*lhs)->type->type)),
-                copy((*rhs)->type)
+                builder.CreateIntCast((*lhs)->val, (*rhs)->getType(),
+                    !isUnsignedTypeTag((*lhs)->type->typeTag)),
+                (*rhs)->type
             );
 
             *lhs = ret;
 
         }else{//lbw > rbw
             auto *ret = new TypedValue(
-                builder.CreateIntCast((*rhs)->val, (*lhs)->getType(), !isUnsignedTypeTag((*rhs)->type->type)),
-                copy((*lhs)->type)
+                builder.CreateIntCast((*rhs)->val, (*lhs)->getType(),
+                    !isUnsignedTypeTag((*rhs)->type->typeTag)),
+                (*lhs)->type
             );
 
             *rhs = ret;
@@ -414,11 +899,11 @@ bool isNumericTypeTag(const TypeTag ty){
  */
 void Compiler::implicitlyCastIntToFlt(TypedValue **lhs, Type *ty){
     auto *ret = new TypedValue(
-        isUnsignedTypeTag((*lhs)->type->type)
+        isUnsignedTypeTag((*lhs)->type->typeTag)
             ? builder.CreateUIToFP((*lhs)->val, ty)
             : builder.CreateSIToFP((*lhs)->val, ty),
 
-        mkAnonTypeNode(llvmTypeToTypeTag(ty))
+        AnType::getPrimitive(llvmTypeToTypeTag(ty))
     );
     *lhs = ret;
 }
@@ -428,20 +913,20 @@ void Compiler::implicitlyCastIntToFlt(TypedValue **lhs, Type *ty){
  *  Performs an implicit cast from a float to float.
  */
 void Compiler::implicitlyCastFltToFlt(TypedValue **lhs, TypedValue **rhs){
-    int lbw = getBitWidthOfTypeTag((*lhs)->type->type);
-    int rbw = getBitWidthOfTypeTag((*rhs)->type->type);
+    int lbw = getBitWidthOfTypeTag((*lhs)->type->typeTag);
+    int rbw = getBitWidthOfTypeTag((*rhs)->type->typeTag);
 
     if(lbw != rbw){
         if(lbw < rbw){
             auto *ret = new TypedValue(
                 builder.CreateFPExt((*lhs)->val, (*rhs)->getType()),
-                copy((*rhs)->type)
+                (*rhs)->type
             );
             *lhs = ret;
         }else{//lbw > rbw
             auto *ret = new TypedValue(
                 builder.CreateFPExt((*rhs)->val, (*lhs)->getType()),
-                copy((*lhs)->type)
+                (*lhs)->type
             );
             *rhs = ret;
         }
@@ -453,12 +938,12 @@ void Compiler::implicitlyCastFltToFlt(TypedValue **lhs, TypedValue **rhs){
  *  Detects, and creates an implicit type conversion when necessary.
  */
 void Compiler::handleImplicitConversion(TypedValue **lhs, TypedValue **rhs){
-    bool lIsInt = isIntTypeTag((*lhs)->type->type);
-    bool lIsFlt = isFPTypeTag((*lhs)->type->type);
+    bool lIsInt = isIntTypeTag((*lhs)->type->typeTag);
+    bool lIsFlt = isFPTypeTag((*lhs)->type->typeTag);
     if(!lIsInt and !lIsFlt) return;
 
-    bool rIsInt = isIntTypeTag((*rhs)->type->type);
-    bool rIsFlt = isFPTypeTag((*rhs)->type->type);
+    bool rIsInt = isIntTypeTag((*rhs)->type->typeTag);
+    bool rIsFlt = isFPTypeTag((*rhs)->type->typeTag);
     if(!rIsInt and !rIsFlt) return;
 
     //both values are numeric, so forward them to the relevant casting method
@@ -496,7 +981,7 @@ bool containsTypeVar(const TypeNode *tn){
  *  information stored in a TypeTag to convert to array, tuple,
  *  or function types.
  */
-Type* typeTagToLlvmType(TypeTag ty, LLVMContext &ctxt, string typeName){
+Type* typeTagToLlvmType(TypeTag ty, LLVMContext &ctxt){
     switch(ty){
         case TT_I8:  case TT_U8:  return Type::getInt8Ty(ctxt);
         case TT_I16: case TT_U16: return Type::getInt16Ty(ctxt);
@@ -519,48 +1004,21 @@ Type* typeTagToLlvmType(TypeTag ty, LLVMContext &ctxt, string typeName){
     }
 }
 
-TypeNode* getLargestExt(Compiler *c, TypeNode *tn){
-    TypeNode *largest = 0;
+AnType* getLargestExt(Compiler *c, AnDataType *tn){
+    AnType *largest = 0;
     size_t largest_size = 0;
 
-    TypeNode *cur = tn->extTy.get();
-    while(cur){
-        size_t size = cur->getSizeInBits(c);
+    for(auto *e : tn->extTys){
+        size_t size = e->getSizeInBits(c);
         if(size > largest_size){
-            largest = cur;
+            largest = e;
             largest_size = size;
         }
-
-        cur = (TypeNode*)cur->next.get();
     }
     return largest;
 }
 
 
-Type* updateLlvmTypeBinding(Compiler *c, DataType *dt, const vector<unique_ptr<TypeNode>> &bindings, string &name){
-    auto *cpy = copy(dt->tyn);
-    bindGenericToType(cpy, bindings, dt);
-
-    //create an empty type first so we dont end up with infinite recursion
-    auto* structTy = StructType::create(*c->ctxt, {}, name, dt->tyn->type == TT_TaggedUnion);
-    dt->llvmTypes[name] = structTy;
-
-    if(dt->tyn->type == TT_TaggedUnion)
-        cpy = getLargestExt(c, cpy);
-
-    Type *llvmTy = c->typeNodeToLlvmType(cpy);
-
-    if(StructType *st = dyn_cast<StructType>(llvmTy)){
-        structTy->setBody(st->elements());
-    }else{
-		array<Type*, 1> body;
-        body[0] = llvmTy;
-        structTy->setBody(body);
-    }
-
-    dt->llvmTypes[name] = structTy;
-    return structTy;
-}
 
 /*
  *  Translates a llvm::Type to a TypeTag. Not intended for in-depth analysis
@@ -593,83 +1051,58 @@ TypeTag llvmTypeToTypeTag(Type *t){
  *  llvmTypeToTokType, information on signedness of integers is still lost, causing the
  *  unfortunate necessity for the use of a TypedValue for the storage of this information.
  */
-Type* Compiler::typeNodeToLlvmType(const TypeNode *tyNode){
+Type* Compiler::anTypeToLlvmType(const AnType *ty){
     vector<Type*> tys;
-    TypeNode *tyn = tyNode->extTy.get();
 
-    switch(tyNode->type){
-        case TT_Ptr:
-            return tyn->type != TT_Void ?
-                typeNodeToLlvmType(tyn)->getPointerTo()
+    switch(ty->typeTag){
+        case TT_Ptr: {
+            auto *ptr = (AnPtrType*)ty;
+            return ptr->extTy->typeTag != TT_Void ?
+                anTypeToLlvmType(ptr->extTy)->getPointerTo()
                 : Type::getInt8Ty(*ctxt)->getPointerTo();
+        }
         case TT_Array:{
-            auto *intlit = (IntLitNode*)tyn->next.get();
-            return ArrayType::get(typeNodeToLlvmType(tyn), stoi(intlit->val));
+            auto *arr = (AnArrayType*)ty;
+            return ArrayType::get(anTypeToLlvmType(arr->extTy), arr->len);
         }
         case TT_Tuple:
-            while(tyn){
-                tys.push_back(typeNodeToLlvmType(tyn));
-                tyn = (TypeNode*)tyn->next.get();
+            for(auto *e : ((AnAggregateType*)ty)->extTys){
+                tys.push_back(anTypeToLlvmType(e));
             }
             return StructType::get(*ctxt, tys);
         case TT_Data: case TT_TaggedUnion: {
-            auto *dt = lookupType(tyNode->typeName);
-            if(!dt)
-                compErr("Use of undeclared type " + tyNode->typeName, tyNode->loc);
+            auto *dt = ((AnDataType*)ty);
+            if(dt->isStub())
+                compErr("Use of undeclared type " + dt->name);
 
-            string name = dt->name;
-            for(auto &p : tyNode->params)
-                name += "_" + typeNodeToStr(p.get());
-
-            try{
-                return dt->llvmTypes.at(name);
-            }catch(out_of_range r){
-                return updateLlvmTypeBinding(this, dt, tyNode->params, name);
-            }
+            if(dt->llvmType)
+                return dt->llvmType;
+            else
+                return updateLlvmTypeBinding(this, dt);
         }
         case TT_Function: case TT_MetaFunction: {
-            //ret ty is tyn from above
-            //
-            //get param tys
-            TypeNode *cur = (TypeNode*)tyn->next.get();
-            while(cur){
-                tys.push_back(typeNodeToLlvmType(cur));
-                cur = (TypeNode*)cur->next.get();
+            auto *f = ((AnAggregateType*)ty);
+            for(size_t i = 1; i < f->extTys.size(); i++){
+                tys.push_back(anTypeToLlvmType(f->extTys[i]));
             }
 
-            return FunctionType::get(typeNodeToLlvmType(tyn), tys, false)->getPointerTo();
-        } /*
-        case TT_TaggedUnion:
-            if(!tyn){
-                userType = lookupType(tyNode->typeName);
-                if(!userType){
-                    compErr("Use of undeclared type " + tyNode->typeName, tyNode->loc);
-                    return Type::getVoidTy(*ctxt);
-                }
-
-                tyn = userType->tyn.get();
-                if(tyn->type != TT_U8)
-                    tyn = tyn->extTy.get();
-            }
-
-            while(tyn){
-                tys.push_back(typeNodeToLlvmType(tyn));
-                tyn = (TypeNode*)tyn->next.get();
-            }
-            return StructType::get(*ctxt, tys); */
+            return FunctionType::get(anTypeToLlvmType(f->extTys[0]), tys, false)->getPointerTo();
+        }
         case TT_TypeVar: {
-            Variable *typeVar = lookup(tyNode->typeName);
+            auto *tvt = (AnTypeVarType*)ty;
+            Variable *typeVar = lookup(tvt->name);
             if(!typeVar){
-                //compErr("Use of undeclared type variable " + tyNode->typeName, tyNode->loc);
-                //compErr("tn2llvmt: TypeVarError; lookup for "+tyNode->typeName+" not found", tyNode->loc);
+                //compErr("Use of undeclared type variable " + ty->typeName, ty->loc);
+                //compErr("tn2llvmt: TypeVarError; lookup for "+ty->typeName+" not found", ty->loc);
                 //throw new TypeVarError();
+                cerr << "Warning: cannot translate undeclared typevar " << tvt->name << endl;
                 return Type::getInt32Ty(*ctxt);
             }
 
-            return typeNodeToLlvmType(extractTypeValue(typeVar->tval));
+            return anTypeToLlvmType(extractTypeValue(typeVar->tval));
         }
         default:
-            return typeTagToLlvmType(tyNode->type, *ctxt);
+            return typeTagToLlvmType(ty->typeTag, *ctxt);
     }
 }
 
@@ -753,9 +1186,9 @@ TypeCheckResult TypeCheckResult::successIf(bool b){
 }
 
 TypeCheckResult TypeCheckResult::successIf(Result r){
-    if(box->res == Success)
+    if(r == Success)
         return success();
-    else if(box->res == SuccessWithTypeVars)
+    else if(r == SuccessWithTypeVars)
         return successWithTypeVars();
     else
         return failure();
@@ -767,28 +1200,30 @@ bool TypeCheckResult::failed(){
 
 
 //forward decl of typeEqHelper for extTysEq fn
-TypeCheckResult typeEqHelper(const Compiler *c, const TypeNode *l, const TypeNode *r, TypeCheckResult tcr);
+TypeCheckResult typeEqHelper(const Compiler *c, const AnType *l, const AnType *r, TypeCheckResult tcr);
 
 /*
  *  Helper function to check if each type's list of extension
  *  types are all approximately equal.  Used when checking the
- *  equality of TypeNodes of type Tuple, Data, Function, or any
+ *  equality of AnTypes of type Tuple, Data, Function, or any
  *  type with multiple extTys.
  */
-TypeCheckResult extTysEq(const TypeNode *l, const TypeNode *r, TypeCheckResult &tcr, const Compiler *c = 0){
-    TypeNode *lExt = l->extTy.get();
-    TypeNode *rExt = r->extTy.get();
+TypeCheckResult extTysEq(const AnType *l, const AnType *r, TypeCheckResult &tcr, const Compiler *c = 0){
+    auto *lAgg = (AnAggregateType*)l;
+    auto *rAgg = (AnAggregateType*)r;
 
-    while(lExt and rExt){
+    if(lAgg->extTys.size() != rAgg->extTys.size())
+        return tcr.failure();
+
+    for(size_t i = 0; i < lAgg->extTys.size(); i++){
+        auto *lExt = lAgg->extTys[i];
+        auto *rExt = rAgg->extTys[i];
+
         if(c){
             if(!typeEqHelper(c, lExt, rExt, tcr)) return tcr.failure();
         }else{
             if(!typeEqBase(lExt, rExt, tcr)) return tcr.failure();
         }
-
-        lExt = (TypeNode*)lExt->next.get();
-        rExt = (TypeNode*)rExt->next.get();
-        if((lExt and !rExt) or (rExt and !lExt)) return tcr.failure();
     }
     return tcr.success();
 }
@@ -806,47 +1241,53 @@ TypeCheckResult extTysEq(const TypeNode *l, const TypeNode *r, TypeCheckResult &
  *  this function is used as a typeEq function with the Compiler ptr
  *  the outermost type will not be checked for traits.
  */
-TypeCheckResult typeEqBase(const TypeNode *l, const TypeNode *r, TypeCheckResult tcr, const Compiler *c){
-    if(!l) return tcr.successIf(!r);
+TypeCheckResult typeEqBase(const AnType *l, const AnType *r, TypeCheckResult tcr, const Compiler *c){
+    if(l == r) return tcr.success();
 
-    if(l->type == TT_TaggedUnion and r->type == TT_Data) return tcr.successIf(l->typeName == r->typeName);
-    if(l->type == TT_Data and r->type == TT_TaggedUnion) return tcr.successIf(l->typeName == r->typeName);
+    if(l->typeTag == TT_TaggedUnion and r->typeTag == TT_Data)
+        return tcr.successIf(((AnDataType*)l)->name == ((AnDataType*)r)->name);
 
-    if(l->type == TT_TypeVar or r->type == TT_TypeVar)
+    if(l->typeTag == TT_Data and r->typeTag == TT_TaggedUnion)
+        return tcr.successIf(((AnDataType*)l)->name == ((AnDataType*)r)->name);
+
+    if(l->typeTag == TT_TypeVar or r->typeTag == TT_TypeVar)
         return tcr.successWithTypeVars();
 
 
-    if(l->type != r->type)
+    if(l->typeTag != r->typeTag)
         return tcr.failure();
 
-    if(r->type == TT_Ptr){
-        if(l->extTy->type == TT_Void or r->extTy->type == TT_Void)
+    if(r->typeTag == TT_Ptr){
+        auto *lptr = (AnPtrType*)l;
+        auto *rptr = (AnPtrType*)r;
+        if(lptr->extTy->typeTag == TT_Void or rptr->extTy->typeTag == TT_Void)
             return tcr.success();
 
-        return extTysEq(l, r, tcr, c);
-    }else if(r->type == TT_Array){
-        //size of an array is part of its type and stored in 2nd extTy
-        auto lsz = ((IntLitNode*)l->extTy->next.get())->val;
-        auto rsz = ((IntLitNode*)r->extTy->next.get())->val;
+        return c ? typeEqHelper(c, lptr->extTy, rptr->extTy, tcr)
+                 : typeEqBase(lptr->extTy, rptr->extTy, tcr, c);
 
-        auto lext = (TypeNode*)l->extTy.get();
-        auto rext = (TypeNode*)r->extTy.get();
+    }else if(r->typeTag == TT_Array){
+        auto *larr = (AnArrayType*)l;
+        auto *rarr = (AnArrayType*)r;
+        
+        if(larr->len != rarr->len) return tcr.failure();
 
-        if(lsz != rsz) return tcr.failure();
+        return c ? typeEqHelper(c, larr->extTy, rarr->extTy, tcr)
+                 : typeEqBase(larr->extTy, rarr->extTy, tcr, c);
 
-        return c ? typeEqHelper(c, lext, rext, tcr) : typeEqBase(lext, rext, tcr, c);
+    }else if(r->typeTag == TT_Data or r->typeTag == TT_TaggedUnion){
+        auto *ldt = (AnDataType*)l;
+        auto *rdt = (AnDataType*)r;
+        return tcr.successIf(ldt->name == rdt->name);
 
-    }else if(r->type == TT_Data or r->type == TT_TaggedUnion){
-        return tcr.successIf(l->typeName == r->typeName);
-
-    }else if(r->type == TT_Function or r->type == TT_MetaFunction or r->type == TT_Tuple){
+    }else if(r->typeTag == TT_Function or r->typeTag == TT_MetaFunction or r->typeTag == TT_Tuple){
         return extTysEq(l, r, tcr, c);
     }
     //primitive type, we already know l->type == r->type
     return tcr.success();
 }
 
-bool dataTypeImplementsTrait(DataType *dt, string trait){
+bool dataTypeImplementsTrait(AnDataType *dt, string trait){
     for(auto traitImpl : dt->traitImpls){
         if(traitImpl->name == trait)
             return true;
@@ -854,10 +1295,10 @@ bool dataTypeImplementsTrait(DataType *dt, string trait){
     return false;
 }
 
-TypeNode* TypeCheckResult::getBindingFor(const string &name){
+AnType* TypeCheckResult::getBindingFor(const string &name){
     for(auto &pair : box->bindings){
-        if(pair.second->typeName == name)
-            return pair.second.get();
+        if(((AnTypeVarType*)pair.second)->name == name)
+            return pair.second;
     }
     return 0;
 }
@@ -868,59 +1309,30 @@ TypeNode* TypeCheckResult::getBindingFor(const string &name){
  *
  *  Compiler instance required to check for trait implementation
  */
-TypeCheckResult typeEqHelper(const Compiler *c, const TypeNode *l, const TypeNode *r, TypeCheckResult tcr){
-    if(!l) return tcr.successIf(!r);
+TypeCheckResult typeEqHelper(const Compiler *c, const AnType *l, const AnType *r, TypeCheckResult tcr){
+    if(l == r) return tcr.success();
     if(!r) return tcr.failure();
 
-    if((l->type == TT_Data or l->type == TT_TaggedUnion) and (r->type == TT_Data or r->type == TT_TaggedUnion)){
-        if(l->typeName == r->typeName){
-            if(l->params.empty() and r->params.empty()){
-                return tcr.success();
-            }
+    if((l->typeTag == TT_Data or l->typeTag == TT_TaggedUnion) and (r->typeTag == TT_Data or r->typeTag == TT_TaggedUnion)){
+        auto *ldt = (AnDataType*)l;
+        auto *rdt = (AnDataType*)r;
 
-            if(l->params.size() != r->params.size()){
-                DataType *dt = nullptr;
-                TypeNode *lc = (TypeNode*)l;
-                TypeNode *rc = (TypeNode*)r;
-
-                if(!l->extTy.get()){
-                    dt = c->lookupType(l);
-                    lc = copy(dt->tyn);
-                    bindGenericToType(lc, l->params, dt);
-                }
-                if(!r->extTy.get()){
-                    if(!dt)
-                        dt = c->lookupType(r);
-                    rc = copy(dt->tyn);
-                    bindGenericToType(rc, r->params, dt);
-                }
-                //Types not equal by differing amount of params, see if it is just a lack of a binding issue
-                return extTysEq(lc, rc, tcr, c);
-            }
-
-            //check each type param of generic tys
-            for(unsigned int i = 0, len = l->params.size(); i < len; i++){
-                if(!typeEqHelper(c, l->params[i].get(), r->params[i].get(), tcr))
-                    return tcr.failure();
-            }
-
+        if(ldt->name == rdt->name)
             return tcr.success();
+
+        if(ldt->unboundType == rdt or rdt->unboundType == ldt){
+            //TODO: return bind params
         }
 
         //typeName's are different, check if one is a trait and the other
         //is an implementor of the trait
         Trait *t;
-        DataType *dt;
-        if((t = c->lookupTrait(l->typeName))){
-            //Assume r is a datatype
-            //
-            //NOTE: r is never checked if it is a trait because two
-            //      separate traits are never equal anyway
-            dt = c->lookupType(r->typeName);
+        AnDataType *dt;
+        if((t = c->lookupTrait(ldt->name))){
+            dt = c->lookupType(rdt->name);
             if(!dt) return tcr.failure();
-
-        }else if((t = c->lookupTrait(r->typeName))){
-            dt = c->lookupType(l->typeName);
+        }else if((t = c->lookupTrait(rdt->name))){
+            dt = c->lookupType(ldt->name);
             if(!dt) return tcr.failure();
         }else{
             return tcr.failure();
@@ -928,70 +1340,61 @@ TypeCheckResult typeEqHelper(const Compiler *c, const TypeNode *l, const TypeNod
 
         return tcr.successIf(dataTypeImplementsTrait(dt, t->name));
 
-    }else if(l->type == TT_TypeVar or r->type == TT_TypeVar){
+    }else if(l->typeTag == TT_TypeVar or r->typeTag == TT_TypeVar){
 
         //reassign l and r into typeVar and nonTypeVar so code does not have to be repeated in
         //one if branch for l and another for r
-        const TypeNode *typeVar, *nonTypeVar;
+        AnTypeVarType *typeVar;
+        AnType *nonTypeVar;
 
-        if(l->type == TT_TypeVar and r->type != TT_TypeVar){
-            typeVar = l;
-            nonTypeVar = r;
-        }else if(l->type != TT_TypeVar and r->type == TT_TypeVar){
-            typeVar = r;
-            nonTypeVar = l;
+        if(l->typeTag == TT_TypeVar and r->typeTag != TT_TypeVar){
+            typeVar = (AnTypeVarType*)l;
+            nonTypeVar = (AnType*)r;
+        }else if(l->typeTag != TT_TypeVar and r->typeTag == TT_TypeVar){
+            typeVar = (AnTypeVarType*)r;
+            nonTypeVar = (AnType*)l;
         }else{ //both type vars
-            Variable *lv = c->lookup(l->typeName);
-            Variable *rv = c->lookup(r->typeName);
+            auto *ltv = (AnTypeVarType*)l;
+            auto *rtv = (AnTypeVarType*)r;
+            
+            Variable *lv = c->lookup(ltv->name);
+            Variable *rv = c->lookup(rtv->name);
 
             if(lv and rv){ //both are already bound
                 auto lty = extractTypeValue(lv->tval);
                 auto rty = extractTypeValue(rv->tval);
                 return typeEqHelper(c, lty, rty, tcr);
             }else if(lv and not rv){
-                typeVar = r;
+                typeVar = rtv;
                 nonTypeVar = extractTypeValue(lv->tval);
             }else if(rv and not lv){
-                typeVar = l;
+                typeVar = ltv;
                 nonTypeVar = extractTypeValue(rv->tval);
             }else{ //neither are bound
-                return tcr.successIf(l->typeName == r->typeName);
+                return tcr.successIf(ltv->name == rtv->name);
             }
-            return tcr.failure();
         }
 
+        auto *tv = tcr.getBindingFor(typeVar->name);
+        if(!tv){
+            tcr->bindings.emplace_back(typeVar->name, nonTypeVar);
 
-        //FIXME: the if statement below was commented out as it does not account
-        //       for function calls that should not have access to the current scope.
-        //
-        //Variable *tv = c->lookup(typeVar->typeName);
-        //if(!tv){
-            auto *tv = tcr.getBindingFor(typeVar->typeName);
-            if(!tv){
-                //make binding for type var to type of nonTypeVar
-                auto nontvcpy = unique_ptr<TypeNode>(copy(nonTypeVar));
-                tcr->bindings.push_back({typeVar->typeName, move(nontvcpy)});
-
-                return tcr.successWithTypeVars();
-            }else{ //tv is bound in same typechecking run
-                return typeEqHelper(c, tv, nonTypeVar, tcr);
-            }
-
-        //}else{ //tv already bound
-        //    return typeEqHelper(c, extractTypeValue(tv->tval), nonTypeVar, tcr);
-        //}
+            return tcr.successWithTypeVars();
+        }else{ //tv is bound in same typechecking run
+            return typeEqHelper(c, tv, nonTypeVar, tcr);
+        }
     }
     return typeEqBase(l, r, tcr, c);
 }
 
-TypeCheckResult Compiler::typeEq(const TypeNode *l, const TypeNode *r) const{
+TypeCheckResult Compiler::typeEq(const AnType *l, const AnType *r) const{
     auto tcr = TypeCheckResult();
     typeEqHelper(this, l, r, tcr);
     return tcr;
 }
 
 
-TypeCheckResult Compiler::typeEq(vector<TypeNode*> l, vector<TypeNode*> r) const{
+TypeCheckResult Compiler::typeEq(vector<AnType*> l, vector<AnType*> r) const{
     auto tcr = TypeCheckResult();
     if(l.size() != r.size()){
         tcr.failure();
@@ -1058,6 +1461,7 @@ string typeTagToStr(TypeTag ty){
         case TT_FunctionList: return "Function List";
         case TT_TaggedUnion:  return "|";
         case TT_Type:         return "type";
+        case TT_Modifier:     return "modifier";
         default:              return "(Unknown TypeTag " + to_string(ty) + ")";
     }
 }
@@ -1112,6 +1516,38 @@ string typeNodeToStr(const TypeNode *t){
     }
 }
 
+
+string anTypeToStr(const AnType *t){
+    if(auto *dt = dyn_cast<AnDataType>(t)){
+        return dt->name;
+    }else if(auto *tvt = dyn_cast<AnTypeVarType>(t)){
+        return tvt->name;
+    }else if(auto *f = dyn_cast<AnFunctionType>(t)){
+        string ret = "(";
+        string retTy = anTypeToStr(f->retTy);
+        for(auto *param : f->extTys){
+            ret += anTypeToStr(param);
+            if(param) ret += ",";
+        }
+        return ret + ")->" + retTy;
+    }else if(auto *tup = dyn_cast<AnAggregateType>(t)){
+        string ret = "(";
+        for(auto *ext : tup->extTys){
+            if(ext != tup->extTys.back())
+                ret += anTypeToStr(ext) + ", ";
+            else
+                ret += anTypeToStr(ext) + ")";
+        }
+        return ret;
+    }else if(auto *arr = dyn_cast<AnArrayType>(t)){
+        return '[' + to_string(arr->len) + " " + anTypeToStr(arr->extTy) + ']';
+    }else if(auto *ptr = dyn_cast<AnPtrType>(t)){
+        return anTypeToStr(ptr->extTy) + "*";
+    }else{
+        return typeTagToStr(t->typeTag);
+    }
+}
+
 /*
  *  Returns a string representing the full type of ty.  Since it is converting
  *  from a llvm::Type, this will never return an unsigned integer type.
@@ -1120,6 +1556,8 @@ string typeNodeToStr(const TypeNode *t){
  *  to get a type without print color.
  */
 string llvmTypeToStr(Type *ty){
+    if(!ty) return "(null)";
+
     TypeTag tt = llvmTypeToTypeTag(ty);
     if(isPrimitiveTypeTag(tt)){
         return typeTagToStr(tt);

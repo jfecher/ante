@@ -35,7 +35,7 @@ extern "C" {
     }
 
     size_t Ante_sizeof(Compiler *c, TypedValue *tv){
-        if(tv->type->type == TT_Type){
+        if(tv->type->typeTag == TT_Type){
             return extractTypeValue(tv)->getSizeInBits(c) / 8;
         }else{
             return tv->type->getSizeInBits(c) / 8;
@@ -59,20 +59,21 @@ extern "C" {
 }
 
 namespace ante {
-    map<string, CtFunc*> compapi = {
-        {"Ante_getAST",      new CtFunc((void*)Ante_getAST,      mkTypeNodeWithExt(TT_Ptr, mkDataTypeNode("Node")))},
-        {"Ante_debug",       new CtFunc((void*)Ante_debug,       mkAnonTypeNode(TT_Void), {mkAnonTypeNode(TT_TypeVar)})},
-        {"Ante_sizeof",      new CtFunc((void*)Ante_sizeof,      mkAnonTypeNode(TT_U32), {mkAnonTypeNode(TT_TypeVar)})},
-        {"Ante_ctStore",     new CtFunc((void*)Ante_ctStore,     mkAnonTypeNode(TT_Void), {mkTypeNodeWithExt(TT_Ptr, mkAnonTypeNode(TT_C8)), mkAnonTypeNode(TT_TypeVar)})},
-        {"Ante_ctLookup",    new CtFunc((void*)Ante_ctLookup,    mkAnonTypeNode(TT_TypeVar), {mkTypeNodeWithExt(TT_Ptr, mkAnonTypeNode(TT_C8))})},
-        {"Ante_ctError",     new CtFunc((void*)Ante_ctError,     mkAnonTypeNode(TT_Void), {mkTypeNodeWithExt(TT_Ptr, mkAnonTypeNode(TT_C8))})},
-        {"FuncDecl_getName", new CtFunc((void*)FuncDecl_getName, mkDataTypeNode("Str"), {mkDataTypeNode("FuncDecl")})}
-    };
+    map<string, unique_ptr<CtFunc>> compapi;
 
+    void init_compapi(){
+        compapi.emplace("Ante_getAST",      new CtFunc((void*)Ante_getAST,      AnPtrType::get(AnDataType::get("Node"))));
+        compapi.emplace("Ante_debug",       new CtFunc((void*)Ante_debug,       AnType::getVoid(), {AnTypeVarType::get("'t'")}));
+        compapi.emplace("Ante_sizeof",      new CtFunc((void*)Ante_sizeof,      AnType::getU32(),  {AnTypeVarType::get("'t'")}));
+        compapi.emplace("Ante_ctStore",     new CtFunc((void*)Ante_ctStore,     AnType::getVoid(), {AnPtrType::get(AnType::getPrimitive(TT_C8)), AnTypeVarType::get("'t'")}));
+        compapi.emplace("Ante_ctLookup",    new CtFunc((void*)Ante_ctLookup,    AnTypeVarType::get("'t'"), {AnPtrType::get(AnType::getPrimitive(TT_C8))}));
+        compapi.emplace("Ante_ctError",     new CtFunc((void*)Ante_ctError,     AnType::getVoid(), {AnPtrType::get(AnType::getPrimitive(TT_C8))}));
+        compapi.emplace("FuncDecl_getName", new CtFunc((void*)FuncDecl_getName, AnDataType::get("Str"), {AnDataType::get("FuncDecl")}));
+    }
 
-    CtFunc::CtFunc(void* f) : fn(f), params(), retty(mkAnonTypeNode(TT_Void)){}
-    CtFunc::CtFunc(void* f, TypeNode *retTy) : fn(f), params(), retty(retTy){}
-    CtFunc::CtFunc(void* f, TypeNode *retTy, vector<TypeNode*> p) : fn(f), params(p), retty(retTy){}
+    CtFunc::CtFunc(void* f) : fn(f), params(), retty(AnType::getVoid()){}
+    CtFunc::CtFunc(void* f, AnType *retTy) : fn(f), params(), retty(retTy){}
+    CtFunc::CtFunc(void* f, AnType *retTy, vector<AnType*> p) : fn(f), params(p), retty(retTy){}
 
     //convert void* to void*() and call it
     void* CtFunc::operator()(){

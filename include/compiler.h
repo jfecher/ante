@@ -14,13 +14,11 @@
 #include "parser.h"
 #include "args.h"
 #include "lazystr.h"
+#include "type.h"
 
 #define AN_MANGLED_SELF "_$self$"
 
 namespace ante {
-
-    extern TypeNode* copy(const TypeNode*);
-    extern TypeNode* copy(const std::unique_ptr<TypeNode>&);
 
     /**
     * @brief A Value* and TypeNode* pair
@@ -29,25 +27,11 @@ namespace ante {
     */
     struct TypedValue {
         llvm::Value *val;
-        std::unique_ptr<TypeNode> type;
+        AnType *type;
 
-        TypedValue(llvm::Value *v, TypeNode *ty) : val(v), type(ty){}
-
-        /**
-        * @brief Constructs a TypedValue
-        *
-        * @param v The Value to use
-        * @param ty The TypeNode here is copied, not moved
-        */
-        TypedValue(llvm::Value *v, std::unique_ptr<TypeNode> &ty) : val(v), type(copy(ty)){}
+        TypedValue(llvm::Value *v, AnType *ty) : val(v), type(ty){}
 
         llvm::Type* getType() const{ return val->getType(); }
-        /**
-        * @brief Returns true if the type of this TypedValue contains the given modifier
-        *
-        * @param m The TokTy value of the modifier to search for
-        */
-        bool hasModifier(int m) const{ return type->hasModifier(m); }
 
         /**
         * @brief Prints type and value to stdout
@@ -75,7 +59,7 @@ namespace ante {
         struct Internals {
             Result res;
             unsigned int matches;
-            std::vector<std::pair<std::string,std::unique_ptr<TypeNode>>> bindings;
+            std::vector<std::pair<std::string,AnType*>> bindings;
 
             Internals() : res(Success), matches(0), bindings(){}
         };
@@ -100,7 +84,7 @@ namespace ante {
         *
         * @return The binding if found, nullptr otherwise
         */
-        TypeNode* getBindingFor(const std::string &s);
+        AnType* getBindingFor(const std::string &s);
         TypeCheckResult() : box(new Internals()){}
         TypeCheckResult(const TypeCheckResult &r)  : box(r.box){}
         TypeCheckResult(TypeCheckResult &&r)  : box(r.box){}
@@ -123,7 +107,7 @@ namespace ante {
     *
     * @return The resulting TypeCheckResult
     */
-    TypeCheckResult typeEqBase(const TypeNode *l, const TypeNode *r, TypeCheckResult tcr, const Compiler *c = 0);
+    TypeCheckResult typeEqBase(const AnType *l, const AnType *r, TypeCheckResult tcr, const Compiler *c = 0);
 
 
 
@@ -144,10 +128,12 @@ namespace ante {
         unsigned int scope;
         TypedValue *tv;
 
-        TypeNode *obj;
+        AnType *obj;
+
+        AnFunctionType *type;
 
         /** @brief Any generic parameters the obj may have */
-        std::vector<std::pair<std::string, TypeNode*>> obj_bindings;
+        std::vector<std::pair<std::string, AnType*>> obj_bindings;
 
         std::shared_ptr<Module> module;
         std::vector<std::pair<TypedValue*,LOC_TY>> returns;
@@ -170,7 +156,7 @@ namespace ante {
 
         FunctionCandidates(llvm::LLVMContext *c, std::vector<std::shared_ptr<FuncDecl>> &ca, TypedValue *o) :
             TypedValue(llvm::UndefValue::get(llvm::Type::getInt8Ty(*c)),
-            mkAnonTypeNode(TT_FunctionList)), candidates(ca), obj(o){}
+            AnType::getPrimitive(TT_FunctionList)), candidates(ca), obj(o){}
     };
 
     /**
@@ -178,10 +164,10 @@ namespace ante {
     */
     struct UnionTag {
         std::string name;
-        std::unique_ptr<TypeNode> tyn;
+        AnType* ty;
         unsigned short tag;
 
-        UnionTag(std::string &n, TypeNode *ty, unsigned short t) : name(n), tyn(ty), tag(t){}
+        UnionTag(std::string &n, AnType *tyn, unsigned short t) : name(n), ty(tyn), tag(t){}
     };
 
     /**
@@ -194,77 +180,21 @@ namespace ante {
 
     /**
     * @brief Contains information about a data type
-    */
+    *
     struct DataType {
         std::string name;
-        /** @brief Names of each field. */
         std::vector<std::string> fields;
         std::vector<std::shared_ptr<UnionTag>> tags;
         std::vector<std::shared_ptr<Trait>> traitImpls;
 
-        /** @brief If this is a tagged union, tyn will contain each union member in its extTy */
-        std::unique_ptr<TypeNode> tyn;
-        std::vector<std::shared_ptr<TypeNode>> generics;
+        AnDataType* ty;
+        std::vector<AnType*> generics;
 
-        /** @brief Types are lazily translated into their llvm::Type counterpart to better support
-        * generics and prevent the need of forward-decls */
         std::map<std::string,llvm::Type*> llvmTypes;
 
-        DataType(std::string n, const std::vector<std::string> &f, TypeNode *ty) : name(n), fields(f), tyn(ty){}
+        DataType(std::string n, const std::vector<std::string> &f, AnDataType *aty) : name(n), fields(f), ty(aty){}
         ~DataType(){}
-
-        /**
-        * @param field Name of the field to search for
-        *
-        * @return The index of the field on success, -1 on failure
-        */
-        int getFieldIndex(std::string &field) const {
-            for(unsigned int i = 0; i < fields.size(); i++)
-                if(field == fields[i])
-                    return i;
-            return -1;
-        }
-
-        /**
-        * @return True if this DataType is actually a tag type
-        */
-        bool isUnionTag() const {
-            return fields.size() > 0 and fields[0][0] >= 'A' and fields[0][0] <= 'Z';
-        }
-
-        /**
-        * @brief Gets the name of the parent union type
-        *
-        * Will fail if this DataType is not a union tag and contains no fields.
-        * Use isUnionTag before calling this function if unsure.
-        *
-        * @return The name of the DataType containing this UnionTag
-        */
-        std::string getParentUnionName() const {
-            return fields[0];
-        }
-
-        /**
-        * @brief Returns the UnionTag value of a tag within the union type.
-        *
-        * This function assumes the tag is within the type. The 0 returned
-        * on failure is indistinguishable from a tag of value 0 and will be
-        * changed to an exception at a later date.
-        *
-        * @param name Name of the tag to search for
-        *
-        * @return the value of the tag found, or 0 on failure
-        */
-        unsigned short getTagVal(std::string &name){
-            for(auto& tag : tags){
-                if(tag->name == name){
-                    return tag->tag;
-                }
-            }
-            //TODO: throw exception
-            return 0;
-        }
-    };
+    };*/
 
     struct Variable {
         std::string name;
@@ -288,16 +218,12 @@ namespace ante {
             return tval->val;
         }
 
-        TypeTag getType() const{
-            return tval->type->type;
-        }
+        TypeTag getType() const;
 
         /**
         * @return True if this is a managed pointer
         */
-        bool isFreeable() const{
-            return tval->type? tval->type->type == TT_Ptr && !noFree : false;
-        }
+        bool isFreeable() const;
 
         /**
         * @brief Variable constructor
@@ -319,17 +245,17 @@ namespace ante {
     */
     struct CtFunc {
         void *fn;
-        std::vector<TypeNode*> params;
-        std::unique_ptr<TypeNode> retty;
+        std::vector<AnType*> params;
+        AnType* retty;
 
         size_t numParams() const { return params.size(); }
-        bool typeCheck(std::vector<TypeNode*> &args);
+        bool typeCheck(std::vector<AnType*> &args);
         bool typeCheck(std::vector<TypedValue*> &args);
         CtFunc(void* fn);
-        CtFunc(void* fn, TypeNode *retTy);
-        CtFunc(void* fn, TypeNode *retTy, std::vector<TypeNode*> params);
+        CtFunc(void* fn, AnType *retTy);
+        CtFunc(void* fn, AnType *retTy, std::vector<AnType*> params);
 
-        ~CtFunc(){ for(auto *tv : params) delete tv; }
+        ~CtFunc(){}
 
         void* operator()();
         void* operator()(TypedValue *tv);
@@ -355,7 +281,7 @@ namespace ante {
         /**
          * @brief Each declared DataType in the module
          */
-        std::unordered_map<std::string, std::shared_ptr<DataType>> userTypes;
+        std::unordered_map<std::string, AnDataType*> userTypes;
 
         /**
          * @brief Map of all declared traits; not including their implementations for a given type
@@ -379,9 +305,12 @@ namespace ante {
         std::vector<FuncDecl*> callStack;
 
         //Method object type
-        TypeNode *obj;
+        AnType *obj;
 
-        std::map<std::string, TypeNode*> obj_bindings;
+        //Original object type node for managing self params and location info
+        TypeNode *objTn;
+
+        std::map<std::string, AnType*> obj_bindings;
 
         //the continue and break labels of each for/while loop to jump out of
         //the pointer is swapped/nullified when a function is called to prevent
@@ -578,6 +507,7 @@ namespace ante {
          * @param t Type of message to report, either Error, Warning, or Note
          */
         TypedValue* compErr(lazy_printer msg, const yy::location& loc, ErrorType t = ErrorType::Error);
+        TypedValue* compErr(lazy_printer msg, ErrorType t = ErrorType::Error);
 
         /**
         * @brief JIT compiles a function with no arguments and calls it afterward
@@ -624,7 +554,7 @@ namespace ante {
          *
          * @return The specified function or nullptr
          */
-        TypedValue* getMangledFn(std::string name, std::vector<TypeNode*> args);
+        TypedValue* getMangledFn(std::string name, std::vector<AnType*> &args);
 
         /**
          * @brief Returns the init method of a type
@@ -635,7 +565,7 @@ namespace ante {
          *
          * @return The compiled cast function or nullptr if not found
          */
-        TypedValue* getCastFn(TypeNode *from_ty, TypeNode *to_ty, FuncDecl *fd = 0);
+        TypedValue* getCastFn(AnType *from_ty, AnType *to_ty, FuncDecl *fd = 0);
 
         /**
          * @brief Retrieves the FuncDecl specified
@@ -645,8 +575,8 @@ namespace ante {
          *
          * @return The FuncDecl if found or nullptr if not
          */
-        FuncDecl* getMangledFuncDecl(std::string name, std::vector<TypeNode*> args);
-        FuncDecl* getCastFuncDecl(TypeNode *from_ty, TypeNode *to_ty);
+        FuncDecl* getMangledFuncDecl(std::string name, std::vector<AnType*> &args);
+        FuncDecl* getCastFuncDecl(AnType *from_ty, AnType *to_ty);
 
         /** @brief Compiles a function with inferred return type */
         TypedValue* compLetBindingFn(FuncDecl *fdn, std::vector<llvm::Type*> &paramTys);
@@ -687,14 +617,7 @@ namespace ante {
         *
         * @return The DataType* if found, otherwise nullptr
         */
-        DataType* lookupType(std::string tyname) const;
-
-        /**
-        * @brief Performs a lookup a type's full definition
-        *
-        * @return The DataType* if found, otherwise nullptr
-        */
-        DataType* lookupType(const TypeNode *tn) const;
+        AnDataType* lookupType(std::string tyname) const;
 
         /**
         * @brief Performs a lookup for the specified trait
@@ -704,7 +627,7 @@ namespace ante {
         * @return The Trait* if found, otherwise nullptr
         */
         Trait* lookupTrait(std::string tyname) const;
-        bool typeImplementsTrait(DataType* dt, std::string traitName) const;
+        bool typeImplementsTrait(AnDataType* dt, std::string traitName) const;
 
         /**
         * @brief Stores a new DataType
@@ -712,7 +635,7 @@ namespace ante {
         * @param ty The DataType to store
         * @param typeName The name of the DataType
         */
-        void stoType(DataType *ty, std::string &typeName);
+        void stoType(AnDataType *ty, std::string &typeName);
 
         /**
         * @brief Stores a TypeVar in the current scope
@@ -720,22 +643,22 @@ namespace ante {
         * @param name Name of the typevar to store (including the preceeding ')
         * @param ty The type to store
         */
-        void stoTypeVar(std::string &name, TypeNode *ty);
+        void stoTypeVar(std::string &name, AnType *ty);
 
         /**
          * @brief Searches through tn and replaces any typevars inside with
          * their definition from a lookup if found.
          *
-         * Care must be taken so that the resulting TypeNode not escape the
+         * Care must be taken so that the resulting AnType not escape the
          * scope of the typevars in the lookup.  Thus, this function should
          * not be used for TypeNodes that may be reused at lower scopes.
          */
-        void searchAndReplaceBoundTypeVars(TypeNode* tn) const;
+        //AnType* searchAndReplaceBoundTypeVars(AnType* tn) const;
 
-        llvm::Type* typeNodeToLlvmType(const TypeNode *tyNode);
+        llvm::Type* anTypeToLlvmType(const AnType *ty);
 
         /** @brief Performs a type check against l and r */
-        TypeCheckResult typeEq(const TypeNode *l, const TypeNode *r) const;
+        TypeCheckResult typeEq(const AnType *l, const AnType *r) const;
 
         /**
          * @brief Performs a type check against l and r
@@ -747,14 +670,8 @@ namespace ante {
          * bound value for 't.  Using this function would result in the appropriate
          * TypeCheckResult::Failure
          */
-        TypeCheckResult typeEq(std::vector<TypeNode*> l, std::vector<TypeNode*> r) const;
+        TypeCheckResult typeEq(std::vector<AnType*> l, std::vector<AnType*> r) const;
 
-        /**
-         * @brief Expands any TT_Data -typed nodes inside of tn to contain their
-         * constituent types.  Does not expand any nodes pointed to by a pointer
-         * type to avoid infinite recursion.
-         */
-        void expand(TypeNode *tn);
 
         /**
          * @brief Performs an implicit widening
@@ -805,6 +722,15 @@ namespace ante {
     TypedValue* addrOf(Compiler *c, TypedValue* tv);
 
     /**
+     * @brief initialize the compiler api function map.
+     *
+     * Without this call the compiler will think there are
+     * no api functions available and will wrongly try to
+     * compile the declarations without a definition.
+     */
+    void init_compapi();
+
+    /**
     * @brief Retrieves the Nth node of a list
     *
     * Does not check if list contains at least n nodes
@@ -822,13 +748,10 @@ namespace ante {
     /** @brief Converts the Node list argument into a vector */
     template<typename T> std::vector<T*> vectorize(T *args);
 
-    /** @brief Converts the vector argument into a TypeNode list */
-    TypeNode* toList(std::vector<TypeNode*> &nodes);
-
     /** @brief Extracts the type of each arg into a TypeNode vector */
-    std::vector<TypeNode*> toTypeNodeVector(std::vector<TypedValue*> &tvs);
+    std::vector<AnType*> toTypeVector(std::vector<TypedValue*> &tvs);
 
-    std::string mangle(std::string &base, std::vector<TypeNode*> params);
+    std::string mangle(std::string &base, std::vector<AnType*> params);
     std::string mangle(std::string &base, NamedValNode *paramTys);
     std::string mangle(std::string &base, TypeNode *paramTys);
     std::string mangle(std::string &base, TypeNode *p1, TypeNode *p2);

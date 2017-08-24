@@ -1,6 +1,7 @@
 #include "compiler.h"
 #include "target.h"
 #include "error.h"
+#include "types.h"
 
 using namespace std;
 
@@ -168,6 +169,11 @@ TypedValue* Compiler::compErr(lazy_printer msg, const yy::location& loc, ErrorTy
     return nullptr;
 }
 
+TypedValue* Compiler::compErr(lazy_printer msg, ErrorType t){
+    auto loc = mkLoc(mkPos(0,0,0), mkPos(0,0,0));
+    return compErr(msg, loc, t);
+}
+
 
 lazy_str typeNodeToColoredStr(const TypeNode *tn){
     lazy_str s = typeNodeToStr(tn);
@@ -178,6 +184,13 @@ lazy_str typeNodeToColoredStr(const TypeNode *tn){
 
 lazy_str typeNodeToColoredStr(const unique_ptr<TypeNode>& tn){
     lazy_str s = typeNodeToStr(tn.get());
+    if(colored_output)
+        s.fmt = AN_TYPE_COLOR;
+    return s;
+}
+
+lazy_str anTypeToColoredStr(const AnType *t){
+    lazy_str s = anTypeToStr(t);
     if(colored_output)
         s.fmt = AN_TYPE_COLOR;
     return s;

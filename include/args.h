@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <string>
+#include <memory>
 
 namespace ante {
     enum Args {
@@ -27,7 +28,7 @@ namespace ante {
     };
 
     struct CompilerArgs {
-        std::vector<Argument*> args;
+        std::vector<std::unique_ptr<Argument>> args;
         std::vector<std::string> inputFiles;
 
         void addArg(Argument *a);

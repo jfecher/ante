@@ -25,12 +25,12 @@ shared_ptr<ante::Module> copyModuleFuncDecls(const shared_ptr<ante::Module> &mod
     //copy each userType except for the LLVMContext-specific llvmTypes field
     for(auto &pair : mod->userTypes){
         auto dt = pair.second;
-        auto dt_cpy = make_shared<DataType>(dt->name, dt->fields, dt->tyn.get());
-        dt_cpy->traitImpls = dt->traitImpls;
-        dt_cpy->tags = dt->tags;
-        dt_cpy->generics = dt->generics;
-        dt_cpy->llvmTypes = dt->llvmTypes;
-        ret->userTypes[pair.first] = dt_cpy;
+    //    auto dt_cpy = make_shared<AnDataType>(dt->name, dt->fields, dt);
+    //    dt_cpy->traitImpls = dt->traitImpls;
+    //    dt_cpy->tags = dt->tags;
+    //    dt_cpy->generics = dt->generics;
+    //    dt_cpy->llvmType = dt->llvmType;
+        ret->userTypes[pair.first] = dt;
     }
 
     for(auto &pair : mod->fnDecls){
@@ -137,20 +137,20 @@ void appendModifiers(Node *n, unique_ptr<Node> &mods){
 void declareTypes(Compiler *c){
     for(auto &p : c->mergedCompUnits->userTypes){
         string tyName = p.first;
-        auto *dt = c->lookupType(tyName);
-        if(!dt) continue;
+        //auto *dt = c->lookupType(tyName);
+        //if(!dt) continue;
 
-        vector<Type*> fields;
-        TypeNode *fieldNodes = dt->tyn.get();
-        if(dt->tyn->type == TT_Tuple or dt->tyn->type == TT_TaggedUnion)
-            fieldNodes = fieldNodes->extTy.get();
+        //vector<Type*> fields;
+        //TypeNode *fieldNodes = dt->tyn.get();
+        //if(dt->tyn->type == TT_Tuple or dt->tyn->type == TT_TaggedUnion)
+        //    fieldNodes = fieldNodes->extTy.get();
 
-        while(fieldNodes){
-            fields.push_back(c->typeNodeToLlvmType(fieldNodes));
-            fieldNodes = (TypeNode*)fieldNodes->next.get();
-        }
+        //while(fieldNodes){
+        //    fields.push_back(c->typeNodeToLlvmType(fieldNodes));
+        //    fieldNodes = (TypeNode*)fieldNodes->next.get();
+        //}
 
-        StructType::create(*c->ctxt, fields, tyName);
+        //StructType::create(*c->ctxt, fields, tyName);
     }
 }
 

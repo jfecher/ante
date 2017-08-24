@@ -20,7 +20,7 @@ map<string, Args> argsMap = {
 };
 
 void CompilerArgs::addArg(Argument *a){
-    args.push_back(a);
+    args.emplace_back(a);
 }
 
 bool CompilerArgs::hasArg(Args a) const{
@@ -34,7 +34,7 @@ bool CompilerArgs::hasArg(Args a) const{
 ante::Argument* CompilerArgs::getArg(Args a) const{
     for(auto &arg : args)
         if(arg->argTy == a)
-            return arg;
+            return arg.get();
 
     return 0;
 }

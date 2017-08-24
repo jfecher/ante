@@ -1,4 +1,5 @@
 #include "parser.h"
+#include "types.h"
 using namespace ante::parser;
 using namespace ante;
 using namespace std;
@@ -108,14 +109,6 @@ void PreProcNode::print(){
     puts("]");
 }
 
-
-/*
- * defined in types.cpp.
- *
- * could also just #include "compiler.h",
- * but that's a bit overkill for one function
- */
-string typeNodeToStr(const TypeNode*);
 
 void TypeNode::print(){
     cout << typeNodeToStr(this);

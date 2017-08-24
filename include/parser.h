@@ -206,7 +206,6 @@ namespace ante {
         std::vector<std::unique_ptr<TypeNode>> params; //type parameters for generic types
         std::vector<int> modifiers;
 
-        unsigned int getSizeInBits(Compiler*, std::string* tn = 0);
         TypedValue* compile(Compiler*);
         void print(void);
         TypeNode* addModifiers(ModNode *m);
@@ -242,8 +241,6 @@ namespace ante {
         RetNode(LOC_TY& loc, Node* e) : Node(loc), expr(e){}
         ~RetNode(){}
     };
-
-    std::string typeNodeToStr(const TypeNode*);
 
     struct NamedValNode : public Node{
         std::string name;

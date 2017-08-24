@@ -12,7 +12,7 @@ using namespace llvm;
 namespace ante {
 
 TypedValue* Compiler::compAdd(TypedValue *l, TypedValue *r, BinOpNode *op){
-    switch(l->type->type){
+    switch(l->type->typeTag){
         case TT_I8:  case TT_U8:  case TT_C8:
         case TT_I16: case TT_U16:
         case TT_I32: case TT_U32:
@@ -26,12 +26,12 @@ TypedValue* Compiler::compAdd(TypedValue *l, TypedValue *r, BinOpNode *op){
             return new TypedValue(builder.CreateFAdd(l->val, r->val), l->type);
 
         default:
-            return compErr("binary operator + is undefined for the type " + typeNodeToColoredStr(l->type) + " and " + typeNodeToColoredStr(r->type), op->loc);
+            return compErr("binary operator + is undefined for the type " + anTypeToColoredStr(l->type) + " and " + anTypeToColoredStr(r->type), op->loc);
     }
 }
 
 TypedValue* Compiler::compSub(TypedValue *l, TypedValue *r, BinOpNode *op){
-    switch(l->type->type){
+    switch(l->type->typeTag){
         case TT_I8:  case TT_U8:  case TT_C8:
         case TT_I16: case TT_U16:
         case TT_I32: case TT_U32:
@@ -45,12 +45,12 @@ TypedValue* Compiler::compSub(TypedValue *l, TypedValue *r, BinOpNode *op){
             return new TypedValue(builder.CreateFSub(l->val, r->val), l->type);
 
         default:
-            return compErr("binary operator - is undefined for the type " + typeNodeToColoredStr(l->type) + " and " + typeNodeToColoredStr(r->type), op->loc);
+            return compErr("binary operator - is undefined for the type " + anTypeToColoredStr(l->type) + " and " + anTypeToColoredStr(r->type), op->loc);
     }
 }
 
 TypedValue* Compiler::compMul(TypedValue *l, TypedValue *r, BinOpNode *op){
-    switch(l->type->type){
+    switch(l->type->typeTag){
         case TT_I8:  case TT_U8:  case TT_C8:
         case TT_I16: case TT_U16:
         case TT_I32: case TT_U32:
@@ -63,12 +63,12 @@ TypedValue* Compiler::compMul(TypedValue *l, TypedValue *r, BinOpNode *op){
             return new TypedValue(builder.CreateFMul(l->val, r->val), l->type);
 
         default:
-            return compErr("binary operator * is undefined for the type " + typeNodeToColoredStr(l->type) + " and " + typeNodeToColoredStr(r->type), op->loc);
+            return compErr("binary operator * is undefined for the type " + anTypeToColoredStr(l->type) + " and " + anTypeToColoredStr(r->type), op->loc);
     }
 }
 
 TypedValue* Compiler::compDiv(TypedValue *l, TypedValue *r, BinOpNode *op){
-    switch(l->type->type){
+    switch(l->type->typeTag){
         case TT_I8:
         case TT_I16:
         case TT_I32:
@@ -87,12 +87,12 @@ TypedValue* Compiler::compDiv(TypedValue *l, TypedValue *r, BinOpNode *op){
             return new TypedValue(builder.CreateFDiv(l->val, r->val), l->type);
 
         default:
-            return compErr("binary operator / is undefined for the type " + typeNodeToColoredStr(l->type) + " and " + typeNodeToColoredStr(r->type), op->loc);
+            return compErr("binary operator / is undefined for the type " + anTypeToColoredStr(l->type) + " and " + anTypeToColoredStr(r->type), op->loc);
     }
 }
 
 TypedValue* Compiler::compRem(TypedValue *l, TypedValue *r, BinOpNode *op){
-    switch(l->type->type){
+    switch(l->type->typeTag){
         case TT_I8:
         case TT_I16:
         case TT_I32:
@@ -111,7 +111,7 @@ TypedValue* Compiler::compRem(TypedValue *l, TypedValue *r, BinOpNode *op){
             return new TypedValue(builder.CreateFRem(l->val, r->val), l->type);
 
         default:
-            return compErr("binary operator % is undefined for the types " + typeNodeToColoredStr(l->type) + " and " + typeNodeToColoredStr(r->type), op->loc);
+            return compErr("binary operator % is undefined for the types " + anTypeToColoredStr(l->type) + " and " + anTypeToColoredStr(r->type), op->loc);
     }
 }
 
@@ -119,11 +119,11 @@ TypedValue* Compiler::compRem(TypedValue *l, TypedValue *r, BinOpNode *op){
  *  Compiles the extract operator, [
  */
 TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
-    if(!isIntTypeTag(r->type->type)){
-        return compErr("Index of operator '[' must be an integer expression, got expression of type " + typeNodeToColoredStr(r->type), op->loc);
+    if(!isIntTypeTag(r->type->typeTag)){
+        return compErr("Index of operator '[' must be an integer expression, got expression of type " + anTypeToColoredStr(r->type), op->loc);
     }
 
-    if(l->type->type == TT_Array){
+    if(auto *arrty = dyn_cast<AnArrayType>(l->type)){
         //check for alloca
         if(LoadInst *li = dyn_cast<LoadInst>(l->val)){
             Value *arr = li->getPointerOperand();
@@ -131,41 +131,31 @@ TypedValue* Compiler::compExtract(TypedValue *l, TypedValue *r, BinOpNode *op){
             vector<Value*> indices;
             indices.push_back(ConstantInt::get(*ctxt, APInt(64, 0, true)));
             indices.push_back(r->val);
-            return new TypedValue(builder.CreateLoad(builder.CreateGEP(arr, indices)), l->type->extTy);
+            return new TypedValue(builder.CreateLoad(builder.CreateGEP(arr, indices)), arrty->extTy);
         }else{
-            return new TypedValue(builder.CreateExtractElement(l->val, r->val), l->type->extTy.get());
+            return new TypedValue(builder.CreateExtractElement(l->val, r->val), arrty->extTy);
         }
-    }else if(l->type->type == TT_Ptr){
-        return new TypedValue(builder.CreateLoad(builder.CreateGEP(l->val, r->val)), l->type->extTy);
+    }else if(auto *ptrty = dyn_cast<AnPtrType>(l->type)){
+        return new TypedValue(builder.CreateLoad(builder.CreateGEP(l->val, r->val)), ptrty->extTy);
 
-    }else if(l->type->type == TT_Tuple || l->type->type == TT_Data){
+    }else if(l->type->typeTag == TT_Tuple || l->type->typeTag == TT_Data){
 		auto indexval = dyn_cast<ConstantInt>(r->val);
         if(!indexval)
             return compErr("Tuple indices must always be known at compile time.", op->loc);
 
         auto index = indexval->getZExtValue();
 
-        //get the type from the index in question
-        TypeNode* indexTyn = l->type->extTy.get();
+        auto *aggty = (AnAggregateType*)l->type;
 
-        if(!indexTyn){
-            auto *dataty = lookupType(l->type->typeName);
-            if(!dataty)
-                return compErr("Error when attempting to index variable of type " + typeNodeToColoredStr(l->type), op->loc);
+        if(index >= aggty->extTys.size())
+            return compErr("Index of " + to_string(index) + " exceeds number of fields in " + anTypeToColoredStr(l->type), op->loc);
 
-            indexTyn = dataty->tyn->extTy.get();
-        }
+        AnType *indexTy = aggty->extTys[index];
 
-        if(index >= getTupleSize(indexTyn))
-            return compErr("Index of " + to_string(index) + " exceeds number of fields in " + typeNodeToColoredStr(l->type), op->loc);
-
-        for(unsigned i = 0; i < index; i++)
-            indexTyn = (TypeNode*)indexTyn->next.get();
-
-        Value *tup = llvmTypeToTypeTag(l->getType()) == TT_Ptr ? builder.CreateLoad(l->val) : l->val;
-        return new TypedValue(builder.CreateExtractValue(tup, index), copy(indexTyn));
+        Value *tup = l->getType()->isPointerTy() ? builder.CreateLoad(l->val) : l->val;
+        return new TypedValue(builder.CreateExtractValue(tup, index), indexTy);
     }
-    return compErr("Type " + typeNodeToColoredStr(l->type) + " does not have elements to access", op->loc);
+    return compErr("Type " + anTypeToColoredStr(l->type) + " does not have elements to access", op->loc);
 }
 
 
@@ -182,9 +172,9 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
     auto *tmp = op->lval->compile(this);
 
     //if(!dynamic_cast<LoadInst*>(tmp->val))
-    if(!tmp->hasModifier(Tok_Mut))
+    if(!tmp->type->hasModifier(Tok_Mut))
         return compErr("Variable must be mutable to insert values, but instead is an immutable " +
-                typeNodeToColoredStr(tmp->type), op->lval->loc);
+                anTypeToColoredStr(tmp->type), op->lval->loc);
 
     Value *var = static_cast<LoadInst*>(tmp->val)->getPointerOperand();
 
@@ -193,18 +183,20 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
 
     //see if insert operator # = is overloaded already
     string basefn = "#";
-    string mangledfn = mangle(basefn, tmp->type.get(), mkAnonTypeNode(TT_I32), newVal->type.get());
+    string mangledfn = mangle(basefn, {tmp->type, AnType::getI32(), newVal->type});
     auto *fn = getFunction(basefn, mangledfn);
     if(fn){
         vector<Value*> args = {var, index->val, newVal->val};
-        return new TypedValue(builder.CreateCall(fn->val, args), fn->type->extTy);
+        auto *retty = ((AnAggregateType*)fn->type)->extTys[0];
+        return new TypedValue(builder.CreateCall(fn->val, args), retty);
     }
 
-    switch(tmp->type->type){
+    switch(tmp->type->typeTag){
         case TT_Array: {
-            if(!typeEq(tmp->type->extTy.get(), newVal->type.get()))
-                return compErr("Cannot create store of types: "+typeNodeToColoredStr(tmp->type)+" <- "
-                        +typeNodeToColoredStr(newVal->type), assignExpr->loc);
+            auto *arrty = (AnArrayType*)tmp->type;
+            if(!typeEq(arrty->extTy, newVal->type))
+                return compErr("Cannot create store of types: "+anTypeToColoredStr(tmp->type)+" <- "
+                        +anTypeToColoredStr(newVal->type), assignExpr->loc);
 
             Value *cast = builder.CreateBitCast(var, var->getType()->getPointerElementType()->getArrayElementType()->getPointerTo());
             Value *dest = builder.CreateInBoundsGEP(cast, index->val);
@@ -212,9 +204,10 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
             return getVoidLiteral();
         }
         case TT_Ptr: {
-            if(!typeEq(tmp->type->extTy.get(), newVal->type.get()))
-                return compErr("Cannot create store of types: "+typeNodeToColoredStr(tmp->type)+" <- "
-                        +typeNodeToColoredStr(newVal->type), assignExpr->loc);
+            auto *ptrty = (AnPtrType*)tmp->type;
+            if(!typeEq(ptrty->extTy, newVal->type))
+                return compErr("Cannot create store of types: "+anTypeToColoredStr(tmp->type)+" <- "
+                        +anTypeToColoredStr(newVal->type), assignExpr->loc);
 
             Value *dest = builder.CreateInBoundsGEP(/*tmp->getType()->getPointerElementType(),*/ tmp->val, index->val);
             builder.CreateStore(newVal->val, dest);
@@ -223,17 +216,21 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
         case TT_Tuple: case TT_Data: {
             ConstantInt *tupIndexVal = dyn_cast<ConstantInt>(index->val);
             if(!tupIndexVal){
-                return compErr("Tuple indices must always be known at compile time.", op->loc);
+                return compErr("Tuple indices must always be known at compile time", op->loc);
             }else{
                 auto tupIndex = tupIndexVal->getZExtValue();
+                auto *aggty = (AnAggregateType*)tmp->type;
+
+                if(tupIndex >= aggty->extTys.size())
+                    compErr("Index of " + to_string(tupIndex) + " exceeds the maximum index of the tuple, "
+                            + to_string(aggty->extTys.size()-1), op->loc);
 
                 //Type of element at tuple index tupIndex, for type checking
-                auto* tupIndexTy = (TypeNode*)getNthNode(tmp->type->extTy.get(), tupIndex);
-                auto* exprTy = newVal->type.get();
+                auto *tupIndexTy = aggty->extTys[tupIndex];
 
-                if(!typeEq(tupIndexTy, exprTy)){
-                    return compErr("Cannot assign expression of type " + typeNodeToColoredStr(exprTy)
-                                + " to tuple index " + to_string(tupIndex) + " of type " + typeNodeToColoredStr(tupIndexTy),
+                if(!typeEq(tupIndexTy, newVal->type)){
+                    return compErr("Cannot assign expression of type " + anTypeToColoredStr(newVal->type)
+                                + " to tuple index " + to_string(tupIndex) + " of type " + anTypeToColoredStr(tupIndexTy),
                                 assignExpr->loc);
                 }
 
@@ -244,31 +241,20 @@ TypedValue* Compiler::compInsert(BinOpNode *op, Node *assignExpr){
         }
         default:
             return compErr("Variable being indexed must be an Array or Tuple, but instead is a(n) " +
-                    typeNodeToColoredStr(tmp->type), op->loc); }
+                    anTypeToColoredStr(tmp->type), op->loc); }
 }
 
 
-TypedValue* createUnionVariantCast(Compiler *c, TypedValue *valToCast, TypeNode *castTyn, DataType *dataTy, TypeCheckResult &tyeq){
+TypedValue* createUnionVariantCast(Compiler *c, TypedValue *valToCast, string &tagName, AnDataType *dataTy, TypeCheckResult &tyeq){
     auto *unionDataTy = c->lookupType(dataTy->getParentUnionName());
 
-    auto dtcpy = copy(unionDataTy->tyn);
-    dtcpy->type = TT_TaggedUnion;
-    dtcpy->typeName = dataTy->getParentUnionName();
-
     if(tyeq->res == TypeCheckResult::SuccessWithTypeVars){
-        bindGenericToType(dtcpy, tyeq->bindings);
+        unionDataTy = (AnDataType*)bindGenericToType(c, unionDataTy, tyeq->bindings);
     }
 
-    //Union types contain all possible union values in their ext which may cause problems
-    //When taking their size later, so just keep the largest one
-    auto *largest = getLargestExt(c, dtcpy);
-    dtcpy->extTy.release();
-    dtcpy->extTy.reset(largest);
-    largest->next.release();
+    Type *variantTy = c->anTypeToLlvmType(valToCast->type);
 
-    Type *variantTy = c->typeNodeToLlvmType(valToCast->type.get());
-
-    auto tagVal = unionDataTy->getTagVal(castTyn->typeName);
+    auto tagVal = unionDataTy->getTagVal(tagName);
 
     vector<Type*> unionTys;
     unionTys.push_back(Type::getInt8Ty(*c->ctxt));
@@ -278,7 +264,7 @@ TypedValue* createUnionVariantCast(Compiler *c, TypedValue *valToCast, TypeNode 
     unionVals.push_back(ConstantInt::get(*c->ctxt, APInt(8, tagVal, true))); //tag
     unionVals.push_back(UndefValue::get(variantTy));
 
-    Type *unionTy = c->typeNodeToLlvmType(dtcpy);
+    Type *unionTy = c->anTypeToLlvmType(unionDataTy);
 
     //create a struct of (u8 tag, <union member type>)
     auto *uninitUnion = ConstantStruct::get(StructType::get(*c->ctxt, unionTys, true), unionVals);
@@ -294,25 +280,16 @@ TypedValue* createUnionVariantCast(Compiler *c, TypedValue *valToCast, TypeNode 
     //load the original alloca, not the bitcasted one
     Value *unionVal = c->builder.CreateLoad(alloca);
 
-    return new TypedValue(unionVal, dtcpy);
+    return new TypedValue(unionVal, unionDataTy);
 }
 
 
-string getCastFnBaseName(TypeNode *t){
-    return (t->params.empty() ? typeNodeToStr(t) : t->typeName) + "_init";
-}
-
-
-void updateBindings(vector<unique_ptr<TypeNode>>& params, const vector<pair<string,unique_ptr<TypeNode>>>& bindings){
-    unsigned i = 0;
-    for(auto &tn : params){
-        for(auto &pair : bindings){
-            if(tn->typeName == pair.first){
-                params[i] = unique_ptr<TypeNode>(copy(pair.second));
-            }
-        }
-        i++;
+string getCastFnBaseName(AnType *t){
+    if(auto *dt = dyn_cast<AnDataType>(t)){
+        if(dt->unboundType)
+            return anTypeToStr(dt->unboundType) + "_init";
     }
+    return anTypeToStr(t) + "_init";
 }
 
 
@@ -328,25 +305,29 @@ struct ReinterpretCastResult {
     } type;
 
     TypeCheckResult typeCheck;
-    DataType *dataTy;
+    AnDataType *dataTy;
 };
+
+
+vector<AnType*> toArgTuple(AnType *ty){
+    if(ty->typeTag == TT_Tuple){
+        return ((AnAggregateType*)ty)->extTys;
+    }else{
+        return {ty};
+    }
+}
 
 /*
  * Check if a reinterpret cast can be performed and return some
  * information about the type of cast so that no double lookup
  * is needed
  */
-ReinterpretCastResult checkForReinterpretCast(Compiler *c, TypeNode *castTyn, TypedValue *valToCast){
-    auto *dataTy = c->lookupType(castTyn->typeName);
+ReinterpretCastResult checkForReinterpretCast(Compiler *c, AnType *castTy, TypedValue *valToCast){
+    auto *dataTy = dyn_cast<AnDataType>(castTy);
 
-    if(dataTy and dataTy->tyn){
-        //The tyn of a DataType is always a tuple, so wrap the casting value with a
-        //tuple if it is not one already or else it will always fail type checking.
-        TypeNode *wrapper = valToCast->type->type != TT_Tuple and dataTy->tyn->type == TT_Tuple
-                           ? mkTypeNodeWithExt(TT_Tuple, valToCast->type.get())
-                           : valToCast->type.get();
-
-        auto tc = c->typeEq(wrapper, dataTy->tyn.get());
+    if(dataTy){
+        auto argTup = toArgTuple(valToCast->type);
+        auto tc = c->typeEq(dataTy->extTys, argTup);
 
         if(!!tc){
             if(dataTy->isUnionTag())
@@ -356,17 +337,12 @@ ReinterpretCastResult checkForReinterpretCast(Compiler *c, TypeNode *castTyn, Ty
         }
     }
 
-    if(valToCast->type->typeName.size() > 0){
-        dataTy = c->lookupType(valToCast->type->typeName);
-        if(dataTy and dataTy->tyn){
-            TypeNode *wrapper = castTyn->type != TT_Tuple and dataTy->tyn->type == TT_Tuple
-                            ? mkTypeNodeWithExt(TT_Tuple, castTyn)
-                            : castTyn;
+    if(auto *valDt = dyn_cast<AnDataType>(valToCast->type)){
+        auto argTup = toArgTuple(castTy);
 
-            auto tc = c->typeEq(dataTy->tyn.get(), wrapper);
-            if(!!tc){
-                return {ReinterpretCastResult::ValToPrimitive, tc, dataTy};
-            }
+        auto tc = c->typeEq(valDt->extTys, argTup);
+        if(!!tc){
+            return {ReinterpretCastResult::ValToPrimitive, tc, dataTy};
         }
     }
 
@@ -374,27 +350,29 @@ ReinterpretCastResult checkForReinterpretCast(Compiler *c, TypeNode *castTyn, Ty
 }
 
 
-TypedValue* doReinterpretCast(Compiler *c, TypeNode *castTyn, TypedValue *valToCast, ReinterpretCastResult *rcr = 0){
-    auto res = rcr ? *rcr : checkForReinterpretCast(c, castTyn, valToCast);
+
+
+TypedValue* doReinterpretCast(Compiler *c, AnType *castTy, TypedValue *valToCast, ReinterpretCastResult *rcr = 0){
+    auto res = rcr ? *rcr : checkForReinterpretCast(c, castTy, valToCast);
 
     if(res.type == ReinterpretCastResult::NoCast){
         return nullptr;
 
     }else if(res.type == ReinterpretCastResult::ValToPrimitive){
-        return new TypedValue(valToCast->val, copy(castTyn));
+        return new TypedValue(valToCast->val, castTy);
 
     }else{ //ValToUnion or ValToStruct
         bool isUnion = res.type == ReinterpretCastResult::ValToUnion;
-        auto *to_tyn = copy(res.dataTy->tyn.get());
-        to_tyn->typeName = castTyn->typeName;
-        to_tyn->type = isUnion ? TT_TaggedUnion : TT_Data;
+        auto *to_tyn = res.dataTy;
+        string tag = ((AnDataType*)castTy)->name;
+        //to_tyn->typeName = castTy->typeName;
+        //to_tyn->type = isUnion ? TT_TaggedUnion : TT_Data;
 
         if(res.typeCheck->res == TypeCheckResult::SuccessWithTypeVars){
-            bindGenericToType(to_tyn, res.typeCheck->bindings);
-            updateBindings(to_tyn->params, res.typeCheck->bindings);
+            to_tyn = (AnDataType*)bindGenericToType(c, to_tyn, res.typeCheck->bindings);
         }
 
-        if(isUnion) return createUnionVariantCast(c, valToCast, to_tyn, res.dataTy, res.typeCheck);
+        if(isUnion) return createUnionVariantCast(c, valToCast, tag, res.dataTy, res.typeCheck);
         else        return new TypedValue(valToCast->val, to_tyn);
     }
 }
@@ -404,15 +382,10 @@ bool preferCastOverFunction(Compiler *c, TypedValue *valToCast, ReinterpretCastR
     if(curFn->fdn and curFn->fdn->name == fd->fdn->name)
         return true;
 
-    auto *fnTy = createFnTyNode(fd->fdn->params.get(), mkAnonTypeNode(TT_Void));
-    auto *params = (TypeNode*)fnTy->extTy->next.get();
+    auto *fnTy = AnFunctionType::get(AnType::getVoid(), fd->fdn->params.get());
+    auto args = toArgTuple(valToCast->type);
 
-    auto *args = valToCast->type->type == TT_Tuple
-               ? valToCast->type->extTy.get()
-               : valToCast->type.get();
-
-    auto tc = c->typeEq(vectorize(params), vectorize(args));
-    delete params;
+    auto tc = c->typeEq(fnTy->extTys, args);
     return tc->matches >= res.typeCheck->matches;
 }
 
@@ -420,115 +393,109 @@ bool preferCastOverFunction(Compiler *c, TypedValue *valToCast, ReinterpretCastR
 /*
  *  Creates a cast instruction appropriate for valToCast's type to castTy.
  */
-TypedValue* createCast(Compiler *c, TypeNode *castTyn, TypedValue *valToCast){
+TypedValue* createCast(Compiler *c, AnType *castTy, TypedValue *valToCast, LOC_TY &loc){
     //first, see if the user created their own cast function
     //
     //NOTE: using getCastFuncDecl lets us not compile the function until after
     //      we have determined it is the best cast available (otherwise whenever
     //      a cast fn tries to call its default init we would have an infinite loop)
-    if(FuncDecl *fd = c->getCastFuncDecl(valToCast->type.get(), castTyn)){
+    if(FuncDecl *fd = c->getCastFuncDecl(valToCast->type, castTy)){
         vector<Value*> args;
-        if(valToCast->type->type != TT_Void) args.push_back(valToCast->val);
+        if(valToCast->type->typeTag != TT_Void) args.push_back(valToCast->val);
 
         //Check if a cast matches the valToCast closer than the function args do
-        auto castResult = checkForReinterpretCast(c, castTyn, valToCast);
+        auto castResult = checkForReinterpretCast(c, castTy, valToCast);
         if(castResult.type != ReinterpretCastResult::NoCast){
             if(preferCastOverFunction(c, valToCast, castResult, fd))
-                return doReinterpretCast(c, castTyn, valToCast, &castResult);
+                return doReinterpretCast(c, castTy, valToCast, &castResult);
         }
 
         //Compile the function now that we know to use it over a cast
-        auto *fn = c->getCastFn(valToCast->type.get(), castTyn, fd);
+        auto *fn = c->getCastFn(valToCast->type, castTy, fd);
         if(fn){
-            if(fn->type->type == TT_MetaFunction){
-                string baseName = getCastFnBaseName(castTyn);
-                string mangledName = mangle(baseName, valToCast->type.get());
+            if(fn->type->typeTag == TT_MetaFunction){
+                string baseName = getCastFnBaseName(castTy);
+                string mangledName = mangle(baseName, {valToCast->type});
                 vector<TypedValue*> args = {valToCast};
-                return compMetaFunctionResult(c, castTyn->loc, baseName, mangledName, args);
+                return compMetaFunctionResult(c, loc, baseName, mangledName, args);
             }
 
             auto *call = c->builder.CreateCall(fn->val, args);
-            return new TypedValue(call, fn->type->extTy);
+            return new TypedValue(call, fn->type->getFunctionReturnType());
         }
     }
 
     //otherwise, fallback on known conversions
-    if(isIntTypeTag(castTyn->type)){
-        Type *castTy = c->typeNodeToLlvmType(castTyn);
+    if(isIntTypeTag(castTy->typeTag)){
+        Type *llvmCastTy = c->anTypeToLlvmType(castTy);
 
         // int -> int  (maybe unsigned)
-        if(isIntTypeTag(valToCast->type->type)){
-            return new TypedValue(c->builder.CreateIntCast(valToCast->val, castTy, isUnsignedTypeTag(castTyn->type)), castTyn);
+        if(isIntTypeTag(valToCast->type->typeTag)){
+            return new TypedValue(c->builder.CreateIntCast(valToCast->val, llvmCastTy,
+                        isUnsignedTypeTag(castTy->typeTag)), castTy);
 
         // float -> int
-        }else if(isFPTypeTag(valToCast->type->type)){
-            if(isUnsignedTypeTag(castTyn->type)){
-                return new TypedValue(c->builder.CreateFPToUI(valToCast->val, castTy), castTyn);
+        }else if(isFPTypeTag(valToCast->type->typeTag)){
+            if(isUnsignedTypeTag(castTy->typeTag)){
+                return new TypedValue(c->builder.CreateFPToUI(valToCast->val, llvmCastTy), castTy);
             }else{
-                return new TypedValue(c->builder.CreateFPToSI(valToCast->val, castTy), castTyn);
+                return new TypedValue(c->builder.CreateFPToSI(valToCast->val, llvmCastTy), castTy);
             }
 
         // ptr -> int
-        }else if(valToCast->type->type == TT_Ptr){
-            return new TypedValue(c->builder.CreatePtrToInt(valToCast->val, castTy), castTyn);
+        }else if(valToCast->type->typeTag == TT_Ptr){
+            return new TypedValue(c->builder.CreatePtrToInt(valToCast->val, llvmCastTy), castTy);
         }
-    }else if(isFPTypeTag(castTyn->type)){
-        Type *castTy = c->typeNodeToLlvmType(castTyn);
+    }else if(isFPTypeTag(castTy->typeTag)){
+        Type *llvmCastTy = c->anTypeToLlvmType(castTy);
 
         // int -> float
-        if(isIntTypeTag(valToCast->type->type)){
-            if(isUnsignedTypeTag(valToCast->type->type)){
-                return new TypedValue(c->builder.CreateUIToFP(valToCast->val, castTy), castTyn);
+        if(isIntTypeTag(valToCast->type->typeTag)){
+            if(isUnsignedTypeTag(valToCast->type->typeTag)){
+                return new TypedValue(c->builder.CreateUIToFP(valToCast->val, llvmCastTy), castTy);
             }else{
-                return new TypedValue(c->builder.CreateSIToFP(valToCast->val, castTy), castTyn);
+                return new TypedValue(c->builder.CreateSIToFP(valToCast->val, llvmCastTy), castTy);
             }
 
         // float -> float
-        }else if(isFPTypeTag(valToCast->type->type)){
-            return new TypedValue(c->builder.CreateFPCast(valToCast->val, castTy), castTyn);
+        }else if(isFPTypeTag(valToCast->type->typeTag)){
+            return new TypedValue(c->builder.CreateFPCast(valToCast->val, llvmCastTy), castTy);
         }
 
-    }else if(castTyn->type == TT_Ptr){
-        Type *castTy = c->typeNodeToLlvmType(castTyn);
+    }else if(castTy->typeTag == TT_Ptr){
+        Type *llvmCastTy = c->anTypeToLlvmType(castTy);
 
         // ptr -> ptr
-        if(valToCast->type->type == TT_Ptr){
-            return new TypedValue(c->builder.CreatePointerCast(valToCast->val, castTy), castTyn);
+        if(valToCast->type->typeTag == TT_Ptr){
+            return new TypedValue(c->builder.CreatePointerCast(valToCast->val, llvmCastTy), castTy);
 
 		// int -> ptr
-        }else if(isIntTypeTag(valToCast->type->type)){
-            return new TypedValue(c->builder.CreateIntToPtr(valToCast->val, castTy), castTyn);
+        }else if(isIntTypeTag(valToCast->type->typeTag)){
+            return new TypedValue(c->builder.CreateIntToPtr(valToCast->val, llvmCastTy), castTy);
         }
     }
 
     //NOTE: doReinterpretCast only casts if a valid cast is found,
     //      if no valid cast is found nullptr is returned
-    return doReinterpretCast(c, castTyn, valToCast);
+    return doReinterpretCast(c, castTy, valToCast);
 }
 
 TypedValue* TypeCastNode::compile(Compiler *c){
     auto *rtval = rval->compile(c);
 
-    auto *ty = copy(typeExpr);
-    c->searchAndReplaceBoundTypeVars(ty);
-
-    for(auto &p : ty->params){
-        if(p->type == TT_TypeVar){
-            Variable *v = c->lookup(p->typeName);
-            if(!v) c->compErr("Unbound typevar "+p->typeName, p->loc);
-
-            p.reset(extractTypeValue(v->tval));
-        }
+    auto *ty = toAnType(typeExpr.get());
+    if(ty->isGeneric){
+        c->compErr("Cannot cast to a generic type", typeExpr->loc);
     }
 
-    auto* tval = createCast(c, ty, rtval);
+    auto* tval = createCast(c, ty, rtval, loc);
 
     if(!tval){
         //if(!!c->typeEq(rtval->type.get(), ty))
         //    c->compErr("Typecast to same type", loc, ErrorType::Warning);
 
-        return c->compErr("Invalid type cast " + typeNodeToColoredStr(rtval->type) +
-                " -> " + typeNodeToColoredStr(ty), loc);
+        return c->compErr("Invalid type cast " + anTypeToColoredStr(rtval->type) +
+                " -> " + anTypeToColoredStr(ty), loc);
     }
     return tval;
 }
@@ -536,9 +503,9 @@ TypedValue* TypeCastNode::compile(Compiler *c){
 TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<TypedValue*,BasicBlock*>> &branches){
     auto *cond = ifn->condition->compile(c);
 
-    if(cond->type->type != TT_Bool)
-        return c->compErr("If condition must be of type " + typeNodeToColoredStr(mkAnonTypeNode(TT_Bool)) +
-                    " but an expression of type " + typeNodeToColoredStr(cond->type.get()) + " was given", ifn->condition->loc);
+    if(cond->type->typeTag != TT_Bool)
+        return c->compErr("If condition must be of type " + anTypeToColoredStr(AnType::getBool()) +
+                    " but an expression of type " + anTypeToColoredStr(cond->type) + " was given", ifn->condition->loc);
 
     Function *f = c->builder.GetInsertBlock()->getParent();
     auto &blocks = f->getBasicBlockList();
@@ -609,14 +576,14 @@ TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Ty
 
         if(!thenVal) return 0;
 
-        auto eq = c->typeEq(thenVal->type.get(), elseVal->type.get());
+        auto eq = c->typeEq(thenVal->type, elseVal->type);
         if(!eq and !dyn_cast<ReturnInst>(thenVal->val) and !dyn_cast<ReturnInst>(elseVal->val) and
                    !dyn_cast<BranchInst>(thenVal->val) and !dyn_cast<BranchInst>(elseVal->val)){
 
-            bool tEmpty = thenVal->type->params.empty();
-            bool eEmpty = elseVal->type->params.empty();
+            /*
+            bool tEmpty = thenVal->type->isGeneric;
+            bool eEmpty = elseVal->type->isGeneric;
 
-            //TODO: copy type
             if(tEmpty and not eEmpty){
                 auto *dt = c->lookupType(elseVal->type.get());
                 bindGenericToType(thenVal->type.get(), elseVal->type->params, dt);
@@ -638,14 +605,14 @@ TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Ty
                     elseVal->val = c->builder.CreateLoad(cast);
                 }
             }else{
-                return c->compErr("If condition's then expr's type " + typeNodeToColoredStr(thenVal->type) +
-                            " does not match the else expr's type " + typeNodeToColoredStr(elseVal->type), ifn->loc);
-            }
+            */
+            return c->compErr("If condition's then expr's type " + anTypeToColoredStr(thenVal->type) +
+                        " does not match the else expr's type " + anTypeToColoredStr(elseVal->type), ifn->loc);
         }
 
         if(eq->res == TypeCheckResult::SuccessWithTypeVars){
-            bool tEmpty = thenVal->type->params.empty();
-            bool eEmpty = elseVal->type->params.empty();
+            bool tEmpty = thenVal->type->isGeneric;
+            bool eEmpty = elseVal->type->isGeneric;
 
             TypedValue *generic;
             TypedValue *concrete;
@@ -657,14 +624,14 @@ TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Ty
                 generic = elseVal;
                 concrete = thenVal;
             }else{
-                return c->compErr("If condition's then expr's type " + typeNodeToColoredStr(thenVal->type) +
-                            " does not match the else expr's type " + typeNodeToColoredStr(elseVal->type), ifn->loc);
+                return c->compErr("If condition's then expr's type " + anTypeToColoredStr(thenVal->type) +
+                            " does not match the else expr's type " + anTypeToColoredStr(elseVal->type), ifn->loc);
             }
 
-            //TODO: copy type
-            auto *dt = c->lookupType(concrete->type.get());
-            bindGenericToType(generic->type.get(), concrete->type->params, dt);
-            generic->val->mutateType(c->typeNodeToLlvmType(generic->type.get()));
+            generic->type = bindGenericToType(c, generic->type, eq->bindings);
+
+            //TODO: find a way to handle this more gracefully
+            generic->val->mutateType(c->anTypeToLlvmType(generic->type));
 
             auto *ri = dyn_cast<ReturnInst>(generic->val);
 
@@ -674,7 +641,7 @@ TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Ty
                 auto *ins = ri ? ri->getParent() : c->builder.GetInsertBlock();
                 c->builder.SetInsertPoint(ins);
 
-                auto *cast = c->builder.CreateBitCast(alloca, c->typeNodeToLlvmType(generic->type.get())->getPointerTo());
+                auto *cast = c->builder.CreateBitCast(alloca, c->anTypeToLlvmType(generic->type)->getPointerTo());
                 auto *fixed_ret = c->builder.CreateLoad(cast);
                 generic->val = fixed_ret;
                 if(ri) ri->eraseFromParent();
@@ -687,7 +654,7 @@ TypedValue* compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Ty
         c->builder.SetInsertPoint(mergebb);
 
         //finally, create the ret value of this if expr, unless it is of void type
-        if(thenVal->type->type != TT_Void){
+        if(thenVal->type->typeTag != TT_Void){
             auto *phi = c->builder.CreatePHI(thenVal->getType(), branches.size());
 
             for(auto &pair : branches)
@@ -725,12 +692,12 @@ TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *bino
             return new FunctionCandidates(ctxt.get(), l, nullptr);
 
         return compErr("No static method called '" + field->name + "' was found in type " +
-                typeNodeToColoredStr(tn), binop->loc);
+                anTypeToColoredStr(toAnType(tn)), binop->loc);
     }else{
         //ln is not a typenode, so this is not a static method call
         Value *val;
-        TypeNode *ltyn;
-        TypeNode *tyn;
+        AnType *ltyn;
+        AnType *tyn;
 
         //prevent l from being used after this scope; only val and tyn should be used as only they
         //are updated with the automatic pointer dereferences.
@@ -739,69 +706,56 @@ TypedValue* Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *bino
             if(!l) return 0;
 
             val = l->val;
-            tyn = ltyn = l->type.get();
+            tyn = ltyn = l->type;
         }
 
         //the . operator automatically dereferences pointers, so update val and tyn accordingly.
-        while(tyn->type == TT_Ptr){
+        while(tyn->typeTag == TT_Ptr){
             val = builder.CreateLoad(val);
-            tyn = tyn->extTy.get();
+            tyn = ((AnPtrType*)tyn)->extTy;
         }
 
         //if pointer derefs took place, tyn could have lost its modifiers, so make sure they are copied back
-        if(ltyn->type == TT_Ptr and tyn->modifiers.empty() and !ltyn->modifiers.empty()){
-            tyn->copyModifiersFrom(ltyn);
-        }
+        //
+        //TODO: manage AnModifierType* or remove it entirely
+        //
+        //if(ltyn->typeTag == TT_Ptr and tyn->modifiers.empty() and !ltyn->modifiers.empty()){
+        //    tyn->copyModifiersFrom(ltyn);
+        //}
 
         //check to see if this is a field index
-        if(tyn->type == TT_Data || tyn->type == TT_Tuple){
-            auto dataTy = lookupType(tyn);
+        if(auto *dataTy = dyn_cast<AnDataType>(tyn)){
+            auto index = dataTy->getFieldIndex(field->name);
 
-            if(dataTy){
-                auto index = dataTy->getFieldIndex(field->name);
+            if(index != -1){
+                AnType *retTy = dataTy->extTys[index];
 
-                if(index != -1){
-                    auto *dataTyn = copy(dataTy->tyn.get());
+                //The data type when looking up (usually) does not have any modifiers,
+                //so apply any potential modifers from the parent to this
+                //if(retTy->modifiers.empty() and !ltyn->modifiers.empty()){
+                //    retTy->copyModifiersFrom(tyn);
+                //}
 
-                    if(!tyn->params.empty()){
-                        bindGenericToType(dataTyn, tyn->params, dataTy);
-                    }
+                //If dataTy is a single value tuple then val may not be a tuple at all. In this
+                //case, val should be returned without being extracted from a nonexistant tuple
+                if(index == 0 and !val->getType()->isStructTy())
+                    return new TypedValue(val, retTy);
 
-                    TypeNode *indexTy = dataTyn->extTy.get();
-
-                    for(int i = 0; i < index; i++)
-                        indexTy = (TypeNode*)indexTy->next.get();
-
-                    TypeNode *retTy = copy(indexTy);
-                    delete dataTyn;
-
-                    //The data type when looking up (usually) does not have any modifiers,
-                    //so apply any potential modifers from the parent to this
-                    if(retTy->modifiers.empty() and !ltyn->modifiers.empty()){
-                        retTy->copyModifiersFrom(tyn);
-                    }
-
-                    //If dataTy is a single value tuple then val may not be a tuple at all. In this
-                    //case, val should be returned without being extracted from a nonexistant tuple
-                    if(index == 0 and !val->getType()->isStructTy())
-                        return new TypedValue(val, retTy);
-
-                    return new TypedValue(builder.CreateExtractValue(val, index), retTy);
-                }
+                return new TypedValue(builder.CreateExtractValue(val, index), retTy);
             }
         }
 
         //not a field, so look for a method.
         //TODO: perhaps create a calling convention function
-        string typeName = tyn->params.empty() ? typeNodeToStr(tyn) : tyn->typeName;
+        string typeName = anTypeToStr(tyn);
         string funcName = typeName + "_" + field->name;
         auto& l = getFunctionList(funcName);
 
         if(!l.empty()){
-            TypedValue *obj = new TypedValue(val, copy(tyn));
+            TypedValue *obj = new TypedValue(val, tyn);
             return new FunctionCandidates(ctxt.get(), l, obj);
         }else{
-            return compErr("Method/Field " + field->name + " not found in type " + typeNodeToColoredStr(tyn), binop->loc);
+            return compErr("Method/Field " + field->name + " not found in type " + anTypeToColoredStr(tyn), binop->loc);
         }
     }
 }
@@ -820,10 +774,10 @@ void push_front(vector<T*> *vec, T *val){
 }
 
 
-vector<TypeNode*> toTypeNodeVector(vector<TypedValue*> &tvs){
-    vector<TypeNode*> ret;
+vector<AnType*> toAnTypeVector(vector<TypedValue*> &tvs){
+    vector<AnType*> ret;
     for(auto *tv : tvs){
-        ret.push_back(tv->type.get());
+        ret.push_back(tv->type);
     }
     return ret;
 }
@@ -841,32 +795,33 @@ float f32_from_f16(float f) {
 /*
  *  Converts an llvm GenericValue to a TypedValue
  */
-TypedValue* genericValueToTypedValue(Compiler *c, GenericValue gv, TypeNode *tn){
-    auto *copytn = copy(tn);
-    switch(tn->type){
-        case TT_I8:              return new TypedValue(c->builder.getInt8( *gv.IntVal.getRawData()),                  copytn);
-        case TT_I16:             return new TypedValue(c->builder.getInt16(*gv.IntVal.getRawData()),                  copytn);
-        case TT_I32:             return new TypedValue(c->builder.getInt32(*gv.IntVal.getRawData()),                  copytn);
-        case TT_I64:             return new TypedValue(c->builder.getInt64(*gv.IntVal.getRawData()),                  copytn);
-        case TT_U8:              return new TypedValue(c->builder.getInt8( *gv.IntVal.getRawData()),                  copytn);
-        case TT_U16:             return new TypedValue(c->builder.getInt16(*gv.IntVal.getRawData()),                  copytn);
-        case TT_U32:             return new TypedValue(c->builder.getInt32(*gv.IntVal.getRawData()),                  copytn);
-        case TT_U64:             return new TypedValue(c->builder.getInt64(*gv.IntVal.getRawData()),                  copytn);
-        case TT_Isz:             return new TypedValue(c->builder.getIntN(*gv.IntVal.getRawData(), AN_USZ_SIZE),      copytn);
-        case TT_Usz:             return new TypedValue(c->builder.getIntN(*gv.IntVal.getRawData(), AN_USZ_SIZE),      copytn);
-        case TT_C8:              return new TypedValue(c->builder.getInt8( *gv.IntVal.getRawData()),                  copytn);
-        case TT_C32:             return new TypedValue(c->builder.getInt32(*gv.IntVal.getRawData()),                  copytn);
-        case TT_F16:             return new TypedValue(ConstantFP::get(*c->ctxt, APFloat(f32_from_f16(gv.FloatVal))), copytn);
-        case TT_F32:             return new TypedValue(ConstantFP::get(*c->ctxt, APFloat(gv.FloatVal)),               copytn);
-        case TT_F64:             return new TypedValue(ConstantFP::get(*c->ctxt, APFloat(gv.DoubleVal)),              copytn);
-        case TT_Bool:            return new TypedValue(c->builder.getInt1(*gv.IntVal.getRawData()),                   copytn);
+TypedValue* genericValueToTypedValue(Compiler *c, GenericValue gv, AnType *tn){
+    switch(tn->typeTag){
+        case TT_I8:              return new TypedValue(c->builder.getInt8( *gv.IntVal.getRawData()),                  tn);
+        case TT_I16:             return new TypedValue(c->builder.getInt16(*gv.IntVal.getRawData()),                  tn);
+        case TT_I32:             return new TypedValue(c->builder.getInt32(*gv.IntVal.getRawData()),                  tn);
+        case TT_I64:             return new TypedValue(c->builder.getInt64(*gv.IntVal.getRawData()),                  tn);
+        case TT_U8:              return new TypedValue(c->builder.getInt8( *gv.IntVal.getRawData()),                  tn);
+        case TT_U16:             return new TypedValue(c->builder.getInt16(*gv.IntVal.getRawData()),                  tn);
+        case TT_U32:             return new TypedValue(c->builder.getInt32(*gv.IntVal.getRawData()),                  tn);
+        case TT_U64:             return new TypedValue(c->builder.getInt64(*gv.IntVal.getRawData()),                  tn);
+        case TT_Isz:             return new TypedValue(c->builder.getIntN(*gv.IntVal.getRawData(), AN_USZ_SIZE),      tn);
+        case TT_Usz:             return new TypedValue(c->builder.getIntN(*gv.IntVal.getRawData(), AN_USZ_SIZE),      tn);
+        case TT_C8:              return new TypedValue(c->builder.getInt8( *gv.IntVal.getRawData()),                  tn);
+        case TT_C32:             return new TypedValue(c->builder.getInt32(*gv.IntVal.getRawData()),                  tn);
+        case TT_F16:             return new TypedValue(ConstantFP::get(*c->ctxt, APFloat(f32_from_f16(gv.FloatVal))), tn);
+        case TT_F32:             return new TypedValue(ConstantFP::get(*c->ctxt, APFloat(gv.FloatVal)),               tn);
+        case TT_F64:             return new TypedValue(ConstantFP::get(*c->ctxt, APFloat(gv.DoubleVal)),              tn);
+        case TT_Bool:            return new TypedValue(c->builder.getInt1(*gv.IntVal.getRawData()),                   tn);
         case TT_Tuple:           break;
         case TT_Array:           break;
         case TT_Ptr: {
             auto *cint = c->builder.getInt64((unsigned long) gv.PointerVal);
-            auto *ty = c->typeNodeToLlvmType(tn);
-            return new TypedValue(c->builder.CreateIntToPtr(cint, ty), copytn);
-        }case TT_Data:
+            auto *ty = c->anTypeToLlvmType(tn);
+            return new TypedValue(c->builder.CreateIntToPtr(cint, ty), tn);
+        }
+        case TT_Modifier: return genericValueToTypedValue(c, gv, ((AnModifierType*)tn)->extTy);
+        case TT_Data:
         case TT_TypeVar:
         case TT_Function:
         case TT_TaggedUnion:
@@ -879,7 +834,7 @@ TypedValue* genericValueToTypedValue(Compiler *c, GenericValue gv, TypeNode *tn)
     }
 
     c->errFlag = true;
-    cerr << "genericValueToTypedValue: Unknown TypeTag " << typeTagToStr(tn->type) << endl;
+    cerr << "genericValueToTypedValue: Unknown/Unimplemented TypeTag " << typeTagToStr(tn->typeTag) << endl;
     throw new CtError();
 }
 
@@ -888,19 +843,21 @@ TypedValue* genericValueToTypedValue(Compiler *c, GenericValue gv, TypeNode *tn)
  * Returns the pointer value of a constant pointer type
  */
 void* getConstPtr(Compiler *c, TypedValue *tv){
+    auto *ptrty = (AnPtrType*)tv->type;
+
     if(GlobalVariable *gv = dyn_cast<GlobalVariable>(tv->val)){
         Value *v = gv->getInitializer();
         if(ConstantDataArray *cda = dyn_cast<ConstantDataArray>(v)){
             return (void*)strdup(cda->getAsString().str().c_str());
         }
 
-        auto elem = typedValueToGenericValue(c, new TypedValue(v, tv->type->extTy.get()));
+        auto elem = typedValueToGenericValue(c, new TypedValue(v, ptrty->extTy));
         auto *ret = new GenericValue(elem);
         return ret;
     }else if(ConstantExpr *ce = dyn_cast<ConstantExpr>(tv->val)){
         Instruction *in = ce->getAsInstruction();
         if(GetElementPtrInst *gep = dyn_cast<GetElementPtrInst>(in)){
-            auto *ptr = new TypedValue(gep->getPointerOperand(), tv->type->extTy.get());
+            auto *ptr = new TypedValue(gep->getPointerOperand(), ptrty->extTy);
             return getConstPtr(c, ptr);
         }
     }
@@ -917,7 +874,7 @@ void* getConstPtr(Compiler *c, TypedValue *tv){
  */
 GenericValue typedValueToGenericValue(Compiler *c, TypedValue *tv){
     GenericValue ret;
-    TypeTag tt = tv->type->type;
+    TypeTag tt = tv->type->typeTag;
 
     switch(tt){
         case TT_I8:
@@ -958,24 +915,29 @@ GenericValue typedValueToGenericValue(Compiler *c, TypedValue *tv){
         }
         case TT_Tuple: {
             size_t i = 0;
-            for(auto *ty : *tv->type->extTy){
+            for(auto *ty : ((AnAggregateType*)tv->type)->extTys){
                 Value *extract = c->builder.CreateExtractValue(tv->val, i);
-                auto *field = new TypedValue(extract, copy((TypeNode*)&ty));
+                auto *field = new TypedValue(extract, ty);
                 ret.AggregateVal.push_back(typedValueToGenericValue(c, field));
                 i++;
             }
             return ret;
         }
         case TT_TypeVar: {
-            auto *var = c->lookup(tv->type->typeName);
+            auto *tvt = (AnTypeVarType*)tv->type;
+            auto *var = c->lookup(tvt->name);
             if(!var){
-                cerr << AN_ERR_COLOR << "error: " << AN_CONSOLE_RESET << "Lookup for typevar "+tv->type->typeName+" failed";
+                cerr << AN_ERR_COLOR << "error: " << AN_CONSOLE_RESET << "Lookup for typevar "+tvt->name+" failed";
                 c->errFlag = true;
                 throw new CtError();
             }
 
             auto *boundTv = new TypedValue(tv->val, extractTypeValue(var->tval));
             return typedValueToGenericValue(c, boundTv);
+        }
+        case TT_Modifier: {
+            auto *ret = new TypedValue(tv->val, ((AnModifierType*)tv->type));
+            return typedValueToGenericValue(c, ret);
         }
         case TT_Data:
         case TT_Function:
@@ -1104,7 +1066,7 @@ TypedValue* compMetaFunctionResult(Compiler *c, LOC_TY &loc, string &baseName, s
             gv = GenericValue(res);
         }
 
-        return genericValueToTypedValue(c, gv, fn->retty.get());
+        return genericValueToTypedValue(c, gv, fn->retty);
     }else{
         LLVMInitializeNativeTarget();
         LLVMInitializeNativeAsmPrinter();
@@ -1153,8 +1115,9 @@ TypedValue* compMetaFunctionResult(Compiler *c, LOC_TY &loc, string &baseName, s
 
 
         //get the type of the function to properly translate the return value
-        auto *fnTy = mod_compiler->getFuncDecl(baseName, mangledName)->tv->type.get();
-        return genericValueToTypedValue(c, genret, fnTy->extTy.get());
+        auto *fnTy = mod_compiler->getFuncDecl(baseName, mangledName)->tv->type;
+        auto *retty = fnTy->getFunctionReturnType();
+        return genericValueToTypedValue(c, genret, retty);
     }
 }
 
@@ -1165,7 +1128,7 @@ bool isInvalidParamType(Type *t){
 
 //Computes the address of operator &
 TypedValue* addrOf(Compiler *c, TypedValue* tv){
-    auto *ptrTy = mkTypeNodeWithExt(TT_Ptr, copy(tv->type));
+    auto *ptrTy = AnPtrType::get(tv->type);
 
     if(LoadInst* li = dyn_cast<LoadInst>(tv->val)){
         return new TypedValue(li->getPointerOperand(), ptrTy);
@@ -1178,9 +1141,9 @@ TypedValue* addrOf(Compiler *c, TypedValue* tv){
 }
 
 
-TypedValue* tryImplicitCast(Compiler *c, TypedValue *arg, TypeNode *castTy){
-    if(isNumericTypeTag(arg->type->type) and isNumericTypeTag(castTy->type)){
-        auto *widen = c->implicitlyWidenNum(arg, castTy->type);
+TypedValue* tryImplicitCast(Compiler *c, TypedValue *arg, AnType *castTy){
+    if(isNumericTypeTag(arg->type->typeTag) and isNumericTypeTag(castTy->typeTag)){
+        auto *widen = c->implicitlyWidenNum(arg, castTy->typeTag);
         if(widen != arg){
             return widen;
         }
@@ -1189,30 +1152,32 @@ TypedValue* tryImplicitCast(Compiler *c, TypedValue *arg, TypeNode *castTy){
     //check for an implicit Cast function
     TypedValue *fn;
 
-    if((fn = c->getCastFn(arg->type.get(), castTy)) and
-            !!c->typeEq(arg->type.get(), (const TypeNode*)fn->type->extTy->next.get())){
+    if((fn = c->getCastFn(arg->type, castTy))){
+        AnFunctionType *fty = (AnFunctionType*)fn->type;
+        if(!!c->typeEq({arg->type}, fty->extTys)){
+    
+            //optimize case of Str -> c8* implicit cast
+            if(fn->val->getName() == "c8*_init_Str"){
+                Value *str = arg->val;
+                if(str->getType()->isPointerTy())
+                    str = c->builder.CreateLoad(str);
 
-        //optimize case of Str -> c8* implicit cast
-        if(arg->type->typeName == "Str" && fn->val->getName() == "c8*_init_Str"){
-            Value *str = arg->val;
-            if(str->getType()->isPointerTy())
-                str = c->builder.CreateLoad(str);
-
-            return new TypedValue(c->builder.CreateExtractValue(str, 0),
-                      mkTypeNodeWithExt(TT_Ptr, mkAnonTypeNode(TT_C8)));
-        }else{
-            return new TypedValue(c->builder.CreateCall(fn->val, arg->val), fn->type->extTy);
+                return new TypedValue(c->builder.CreateExtractValue(str, 0),
+                        AnPtrType::get(AnType::getPrimitive(TT_C8)));
+            }else{
+                return new TypedValue(c->builder.CreateCall(fn->val, arg->val),
+                        fn->type->getFunctionReturnType());
+            }
         }
-    }else{
-        return nullptr;
     }
+    return nullptr;
 }
 
 
 TypedValue* deduceFunction(Compiler *c, FunctionCandidates *fc, vector<TypedValue*> &args, LOC_TY &loc){
     if(fc->obj) push_front(&args, fc->obj);
 
-    auto argTys = toTypeNodeVector(args);
+    auto argTys = toAnTypeVector(args);
 
     auto matches = filterBestMatches(c, fc->candidates, argTys);
 
@@ -1223,17 +1188,15 @@ TypedValue* deduceFunction(Compiler *c, FunctionCandidates *fc, vector<TypedValu
         try {
             lazy_printer msg = "No matching candidates for call to "+fc->candidates[0]->fdn->basename;
             if(!argTys.empty())
-                msg = msg + " with args " + typeNodeToColoredStr(mkTypeNodeWithExt(TT_Tuple, toList(argTys)));
+                msg = msg + " with args " + anTypeToColoredStr(AnAggregateType::get(TT_Tuple, argTys));
 
             c->compErr(msg, loc);
         }catch(CtError *e){
             for(auto &fd : fc->candidates){
-                TypeNode *params;
-                if(!fd->tv)
-                    params = createFnTyNode(fd->fdn->params.get(), mkAnonTypeNode(TT_Void));
+                auto *fnty = AnFunctionType::get(AnType::getVoid(), fd->fdn->params.get());
+                auto *params = AnAggregateType::get(TT_Tuple, fnty->extTys);
 
-                params = mkTypeNodeWithExt(TT_Tuple, (TypeNode*)params->extTy->next.get());
-                c->compErr("Candidate function with params "+typeNodeToColoredStr(params), fd->fdn->loc, ErrorType::Note);
+                c->compErr("Candidate function with params "+anTypeToColoredStr(params), fd->fdn->loc, ErrorType::Note);
             }
             throw e;
         }
@@ -1241,17 +1204,15 @@ TypedValue* deduceFunction(Compiler *c, FunctionCandidates *fc, vector<TypedValu
         try {
             lazy_printer msg = "Multiple equally-matching candidates found for call to "+fc->candidates[0]->fdn->basename;
             if(!argTys.empty())
-                msg = msg + " with args " + typeNodeToColoredStr(mkTypeNodeWithExt(TT_Tuple, toList(argTys)));
+                msg = msg + " with args " + anTypeToColoredStr(AnAggregateType::get(TT_Tuple, argTys));
 
             c->compErr(msg, loc);
         }catch(CtError *e){
             for(auto &p : matches){
-                TypeNode *params;
-                if(!p.second->tv)
-                    params = createFnTyNode(p.second->fdn->params.get(), mkAnonTypeNode(TT_Void));
+                auto *fnty = AnFunctionType::get(AnType::getVoid(), p.second->fdn->params.get());
+                auto *params = AnAggregateType::get(TT_Tuple, fnty->extTys);
 
-                params = mkTypeNodeWithExt(TT_Tuple, (TypeNode*)params->extTy->next.get());
-                c->compErr("Candidate function with params "+typeNodeToColoredStr(params), p.second->fdn->loc, ErrorType::Note);
+                c->compErr("Candidate function with params "+anTypeToColoredStr(params), p.second->fdn->loc, ErrorType::Note);
             }
             throw e;
         }
@@ -1267,14 +1228,14 @@ TypedValue* searchForFunction(Compiler *c, Node *l, vector<TypedValue*> &typedAr
         if(var){
             return var->autoDeref ?
                 new TypedValue(c->builder.CreateLoad(var->getVal(), vn->name), var->tval->type):
-                new TypedValue(var->tval->val, var->tval->type); //deep copy type
+                new TypedValue(var->tval->val, var->tval->type);
         }
 
-        auto params = toTypeNodeVector(typedArgs);
+        auto params = toTypeVector(typedArgs);
 
         //try to do module inference
         if(!typedArgs.empty()){
-            string fnName = typeNodeToStr(typedArgs[0]->type.get()) + "_" + vn->name;
+            string fnName = anTypeToStr(typedArgs[0]->type) + "_" + vn->name;
             TypedValue *tvf = c->getMangledFn(fnName, params);
             if(tvf) return tvf;
         }
@@ -1309,7 +1270,7 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
         auto *param = r->compile(c);
         if(!param) return 0;
 
-        if(param->type->type != TT_Void){
+        if(param->type->typeTag != TT_Void){
             auto *arg = param;
             if(isInvalidParamType(arg->getType()))
                 arg = addrOf(c, arg);
@@ -1326,7 +1287,7 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
     //Compiling "normally" above may result in a list of functions returned due to the
     //lack of information on argument types, so handle that now
     bool is_method = false;
-    if(tvf->type->type == TT_FunctionList){
+    if(tvf->type->typeTag == TT_FunctionList){
         auto *funcs = (FunctionCandidates*)tvf;
         tvf = deduceFunction(c, funcs, typedArgs, l->loc);
         if(funcs->obj){
@@ -1335,21 +1296,22 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
         }
     }
 
-    if(tvf->type->type != TT_Function && tvf->type->type != TT_MetaFunction)
+    if(tvf->type->typeTag != TT_Function && tvf->type->typeTag != TT_MetaFunction)
         return c->compErr("Called value is not a function or method, it is a(n) " +
-                typeNodeToColoredStr(tvf->type), l->loc);
+                anTypeToColoredStr(tvf->type), l->loc);
 
 
     //now that we assured it is a function, unwrap it
     Function *f = (Function*)tvf->val;
+    AnAggregateType *fty = (AnAggregateType*)tvf->type;
 
-    size_t argc = getTupleSize(tvf->type->extTy.get()) - 1;
+    size_t argc = fty->extTys.size();
     if(argc != args.size() and (!f or !f->isVarArg())){
         //check if an empty tuple (a void value) is being applied to a zero argument function before continuing
         //if not checked, it will count it as an argument instead of the absence of any
         //NOTE: this has the possibly unwanted side effect of allowing 't->void function applications to be used
         //      as parameters for functions requiring 0 parameters, although this does not affect the behaviour of either.
-        if(argc != 0 || typedArgs[0]->type->type != TT_Void){
+        if(argc != 0 || typedArgs[0]->type->typeTag != TT_Void){
             if(args.size() == 1)
                 return c->compErr("Called function was given 1 argument but was declared to take "
                         + to_string(argc), r->loc);
@@ -1359,13 +1321,11 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
         }
     }
 
-    /* unpack the tuple of arguments into a vector containing each value */
-    int i = 1;
-    //bool isTemplateFn = false;
-    TypeNode *paramTy = (TypeNode*)tvf->type->extTy->next.get();
-
     //type check each parameter
-    for(auto tArg : typedArgs){
+    for(size_t i = 0; i < argc; i++){
+        TypedValue *tArg = typedArgs[i];
+        AnType *paramTy = fty->extTys[i];
+
         if(!paramTy) break;
 
         //Mutable parameters are implicitely passed by reference
@@ -1374,43 +1334,41 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
         //any previous implicit references (like from the passing of an array type)
         //are not applied so no implicit references to references accidentally occur
         if(paramTy->hasModifier(Tok_Mut)){
-            args[i-1] = addrOf(c, tArg)->val;
+            args[i] = addrOf(c, tArg)->val;
         }
 
-        auto typecheck = c->typeEq(tArg->type.get(), paramTy);
+        auto typecheck = c->typeEq(tArg->type, paramTy);
         if(!typecheck){
             TypedValue *cast = tryImplicitCast(c, tArg, paramTy);
 
             if(cast){
-                args[i-1] = cast->val;
-                typedArgs[i-1] = cast;
+                args[i] = cast->val;
+                typedArgs[i] = cast;
             }else{
                 TupleNode *tn = dynamic_cast<TupleNode*>(r);
                 if(!tn) return 0;
 
-                size_t index = i - (is_method ? 2 : 1);
+                size_t index = i - (is_method ? 1 : 0);
                 Node* locNode = tn->exprs[index].get();
                 if(!locNode) return 0;
 
-                return c->compErr("Argument " + to_string(i) + " of function is a(n) " + typeNodeToColoredStr(tArg->type)
-                    + " but was declared to be a(n) " + typeNodeToColoredStr(paramTy) + " and there is no known implicit cast", locNode->loc);
+                return c->compErr("Argument " + to_string(i+1) + " of function is a(n) " + anTypeToColoredStr(tArg->type)
+                    + " but was declared to be a(n) " + anTypeToColoredStr(paramTy) + " and there is no known implicit cast", locNode->loc);
             }
 
 		//If the types passed type check but still dont match exactly there was probably a void* involved
 		//In that case, create a bit cast to the ptr type of the parameter
-        }else if(tvf->val and args[i-1]->getType() != tvf->getType()->getPointerElementType()->getFunctionParamType(i-1) and paramTy->type == TT_Ptr){
-			args[i-1] = c->builder.CreateBitCast(args[i-1], tvf->getType()->getPointerElementType()->getFunctionParamType(i-1));
+        }else if(tvf->val and args[i]->getType() != tvf->getType()->getPointerElementType()->getFunctionParamType(i) and paramTy->typeTag == TT_Ptr){
+			args[i] = c->builder.CreateBitCast(args[i], tvf->getType()->getPointerElementType()->getFunctionParamType(i));
 		}
-
-        paramTy = (TypeNode*)paramTy->next.get();
-        i++;
     }
 
     //if tvf is a ![macro] or similar MetaFunction, then compile it in a separate
     //module and JIT it instead of creating a call instruction
-    if(tvf->type->type == TT_MetaFunction){
+    if(tvf->type->typeTag == TT_MetaFunction){
         string baseName = getName(l);
-        string mangledName = mangle(baseName, (TypeNode*)tvf->type->extTy->next.get());
+        auto *fnty = (AnFunctionType*)tvf->type;
+        string mangledName = mangle(baseName, fnty->extTys);
         return compMetaFunctionResult(c, l->loc, baseName, mangledName, typedArgs);
     }
 
@@ -1419,8 +1377,7 @@ TypedValue* compFnCall(Compiler *c, Node *l, Node *r){
     //both a C-style cast and dyn-cast to functions fail if f is a function-pointer
     auto *call = c->builder.CreateCall(tvf->val, args);
 
-    auto *ret = new TypedValue(call, tvf->type->extTy);
-    return ret;
+    return new TypedValue(call, tvf->type->getFunctionReturnType());
 }
 
 TypedValue* Compiler::compLogicalOr(Node *lexpr, Node *rexpr, BinOpNode *op){
@@ -1446,8 +1403,8 @@ TypedValue* Compiler::compLogicalOr(Node *lexpr, Node *rexpr, BinOpNode *op){
     auto *curbbr = builder.GetInsertBlock();
     builder.CreateBr(mergebb);
 
-    if(rhs->type->type != TT_Bool)
-        return compErr("The 'or' operator's rval must be of type bool, but instead is of type "+typeNodeToColoredStr(rhs->type), op->rval->loc);
+    if(rhs->type->typeTag != TT_Bool)
+        return compErr("The 'or' operator's rval must be of type bool, but instead is of type "+anTypeToColoredStr(rhs->type), op->rval->loc);
 
     builder.SetInsertPoint(mergebb);
     auto *phi = builder.CreatePHI(rhs->getType(), 2);
@@ -1483,8 +1440,8 @@ TypedValue* Compiler::compLogicalAnd(Node *lexpr, Node *rexpr, BinOpNode *op){
     auto *curbbr = builder.GetInsertBlock();
     builder.CreateBr(mergebb);
 
-    if(rhs->type->type != TT_Bool)
-        return compErr("The 'and' operator's rval must be of type bool, but instead is of type "+typeNodeToColoredStr(rhs->type), op->rval->loc);
+    if(rhs->type->typeTag != TT_Bool)
+        return compErr("The 'and' operator's rval must be of type bool, but instead is of type "+anTypeToColoredStr(rhs->type), op->rval->loc);
 
     builder.SetInsertPoint(mergebb);
     auto *phi = builder.CreatePHI(rhs->getType(), 2);
@@ -1505,47 +1462,48 @@ TypedValue* handlePrimitiveNumericOp(BinOpNode *bop, Compiler *c, TypedValue *lh
         case '/': return c->compDiv(lhs, rhs, bop);
         case '%': return c->compRem(lhs, rhs, bop);
         case '<':
-                    if(isFPTypeTag(lhs->type->type))
-                        return new TypedValue(c->builder.CreateFCmpOLT(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
-                    else if(isUnsignedTypeTag(lhs->type->type))
-                        return new TypedValue(c->builder.CreateICmpULT(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
+                    if(isFPTypeTag(lhs->type->typeTag))
+                        return new TypedValue(c->builder.CreateFCmpOLT(lhs->val, rhs->val), AnType::getBool());
+                    else if(isUnsignedTypeTag(lhs->type->typeTag))
+                        return new TypedValue(c->builder.CreateICmpULT(lhs->val, rhs->val), AnType::getBool());
                     else
-                        return new TypedValue(c->builder.CreateICmpSLT(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
+                        return new TypedValue(c->builder.CreateICmpSLT(lhs->val, rhs->val), AnType::getBool());
         case '>':
-                    if(isFPTypeTag(lhs->type->type))
-                        return new TypedValue(c->builder.CreateFCmpOGT(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
-                    else if(isUnsignedTypeTag(lhs->type->type))
-                        return new TypedValue(c->builder.CreateICmpUGT(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
+                    if(isFPTypeTag(lhs->type->typeTag))
+                        return new TypedValue(c->builder.CreateFCmpOGT(lhs->val, rhs->val), AnType::getBool());
+                    else if(isUnsignedTypeTag(lhs->type->typeTag))
+                        return new TypedValue(c->builder.CreateICmpUGT(lhs->val, rhs->val), AnType::getBool());
                     else
-                        return new TypedValue(c->builder.CreateICmpSGT(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
-        case '^': return new TypedValue(c->builder.CreateXor(lhs->val, rhs->val), lhs->type);
+                        return new TypedValue(c->builder.CreateICmpSGT(lhs->val, rhs->val), AnType::getBool());
+        case '^':
+                    return new TypedValue(c->builder.CreateXor(lhs->val, rhs->val), lhs->type);
         case Tok_Eq:
-                    if(isFPTypeTag(lhs->type->type))
-                        return new TypedValue(c->builder.CreateFCmpOEQ(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
+                    if(isFPTypeTag(lhs->type->typeTag))
+                        return new TypedValue(c->builder.CreateFCmpOEQ(lhs->val, rhs->val), AnType::getBool());
                     else
-                        return new TypedValue(c->builder.CreateICmpEQ(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
+                        return new TypedValue(c->builder.CreateICmpEQ(lhs->val, rhs->val), AnType::getBool());
         case Tok_NotEq:
-                    if(isFPTypeTag(lhs->type->type))
-                        return new TypedValue(c->builder.CreateFCmpONE(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
+                    if(isFPTypeTag(lhs->type->typeTag))
+                        return new TypedValue(c->builder.CreateFCmpONE(lhs->val, rhs->val), AnType::getBool());
                     else
-                        return new TypedValue(c->builder.CreateICmpNE(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
+                        return new TypedValue(c->builder.CreateICmpNE(lhs->val, rhs->val), AnType::getBool());
         case Tok_LesrEq:
-                    if(isFPTypeTag(lhs->type->type))
-                        return new TypedValue(c->builder.CreateFCmpOLE(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
-                    else if(isUnsignedTypeTag(lhs->type->type))
-                        return new TypedValue(c->builder.CreateICmpULE(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
+                    if(isFPTypeTag(lhs->type->typeTag))
+                        return new TypedValue(c->builder.CreateFCmpOLE(lhs->val, rhs->val), AnType::getBool());
+                    else if(isUnsignedTypeTag(lhs->type->typeTag))
+                        return new TypedValue(c->builder.CreateICmpULE(lhs->val, rhs->val), AnType::getBool());
                     else
-                        return new TypedValue(c->builder.CreateICmpSLE(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
+                        return new TypedValue(c->builder.CreateICmpSLE(lhs->val, rhs->val), AnType::getBool());
         case Tok_GrtrEq:
-                    if(isFPTypeTag(lhs->type->type))
-                        return new TypedValue(c->builder.CreateFCmpOGE(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
-                    else if(isUnsignedTypeTag(lhs->type->type))
-                        return new TypedValue(c->builder.CreateICmpUGE(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
+                    if(isFPTypeTag(lhs->type->typeTag))
+                        return new TypedValue(c->builder.CreateFCmpOGE(lhs->val, rhs->val), AnType::getBool());
+                    else if(isUnsignedTypeTag(lhs->type->typeTag))
+                        return new TypedValue(c->builder.CreateICmpUGE(lhs->val, rhs->val), AnType::getBool());
                     else
-                        return new TypedValue(c->builder.CreateICmpSGE(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
+                        return new TypedValue(c->builder.CreateICmpSGE(lhs->val, rhs->val), AnType::getBool());
         default:
             return c->compErr("Operator " + Lexer::getTokStr(bop->op) + " is not overloaded for types "
-                   + typeNodeToColoredStr(lhs->type) + " and " + typeNodeToColoredStr(rhs->type), bop->loc);
+                   + anTypeToColoredStr(lhs->type) + " and " + anTypeToColoredStr(rhs->type), bop->loc);
     }
 }
 
@@ -1553,8 +1511,8 @@ TypedValue* handlePrimitiveNumericOp(BinOpNode *bop, Compiler *c, TypedValue *lh
  *  Checks the type of a value (usually a function argument) against a type
  *  and attempts to look for and use an implicit conversion if one is found.
  */
-TypedValue* typeCheckWithImplicitCasts(Compiler *c, TypedValue *arg, TypeNode *ty){
-    auto tc = c->typeEq(arg->type.get(), ty);
+TypedValue* typeCheckWithImplicitCasts(Compiler *c, TypedValue *arg, AnType *ty){
+    auto tc = c->typeEq(arg->type, ty);
     if(!!tc) return arg;
 
     return tryImplicitCast(c, arg, ty);
@@ -1563,20 +1521,23 @@ TypedValue* typeCheckWithImplicitCasts(Compiler *c, TypedValue *arg, TypeNode *t
 
 TypedValue* checkForOperatorOverload(Compiler *c, TypedValue *lhs, int op, TypedValue *rhs){
     string basefn = Lexer::getTokStr(op);
-    string mangledfn = mangle(basefn, lhs->type.get(), rhs->type.get());
+    string mangledfn = mangle(basefn, {lhs->type, rhs->type});
 
     //now look for the function
-    auto *fn = c->getMangledFn(basefn, {lhs->type.get(), rhs->type.get()});
+    vector<AnType*> argtys = {lhs->type, rhs->type};
+    auto *fn = c->getMangledFn(basefn, argtys);
     if(!fn) return 0;
 
-    TypeNode *param1 = (TypeNode*)fn->type->extTy->next.get();
-    TypeNode *param2 = (TypeNode*)param1->next.get();
+    auto *fnty = (AnFunctionType*)fn->type;
+
+    AnType *param1 = fnty->extTys[0];
+    AnType *param2 = fnty->extTys[1];
 
     lhs = typeCheckWithImplicitCasts(c, lhs, param1);
     rhs = typeCheckWithImplicitCasts(c, rhs, param2);
 
     vector<Value*> argVals = {lhs->val, rhs->val};
-    return new TypedValue(c->builder.CreateCall(fn->val, argVals), fn->type->extTy);
+    return new TypedValue(c->builder.CreateCall(fn->val, argVals), fnty->getFunctionReturnType());
 }
 
 
@@ -1626,21 +1587,21 @@ TypedValue* BinOpNode::compile(Compiler *c){
 
 
     //first, if both operands are primitive numeric types, use the default ops
-    if(isNumericTypeTag(lhs->type->type) && isNumericTypeTag(rhs->type->type)){
+    if(isNumericTypeTag(lhs->type->typeTag) && isNumericTypeTag(rhs->type->typeTag)){
         return handlePrimitiveNumericOp(this, c, lhs, rhs);
 
     //and bools/ptrs are only compatible with == and !=
-    }else if((lhs->type->type == TT_Bool and rhs->type->type == TT_Bool) or
-             (lhs->type->type == TT_Ptr  and rhs->type->type == TT_Ptr)){
+    }else if((lhs->type->typeTag == TT_Bool and rhs->type->typeTag == TT_Bool) or
+             (lhs->type->typeTag == TT_Ptr  and rhs->type->typeTag == TT_Ptr)){
 
         switch(op){
-            case Tok_Eq: return new TypedValue(c->builder.CreateICmpEQ(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
-            case Tok_NotEq: return new TypedValue(c->builder.CreateICmpNE(lhs->val, rhs->val), mkAnonTypeNode(TT_Bool));
+            case Tok_Eq: return new TypedValue(c->builder.CreateICmpEQ(lhs->val, rhs->val), AnType::getBool());
+            case Tok_NotEq: return new TypedValue(c->builder.CreateICmpNE(lhs->val, rhs->val), AnType::getBool());
         }
     }
 
     return c->compErr("Operator " + Lexer::getTokStr(op) + " is not overloaded for types "
-            + typeNodeToColoredStr(lhs->type) + " and " + typeNodeToColoredStr(rhs->type), loc);
+            + anTypeToColoredStr(lhs->type) + " and " + anTypeToColoredStr(rhs->type), loc);
 }
 
 
@@ -1649,18 +1610,18 @@ TypedValue* UnOpNode::compile(Compiler *c){
 
     switch(op){
         case '@': //pointer dereference
-            if(rhs->type->type != TT_Ptr){
-                return c->compErr("Cannot dereference non-pointer type " + typeNodeToColoredStr(rhs->type), loc);
+            if(rhs->type->typeTag != TT_Ptr){
+                return c->compErr("Cannot dereference non-pointer type " + anTypeToColoredStr(rhs->type), loc);
             }
 
-            return new TypedValue(c->builder.CreateLoad(rhs->val), rhs->type->extTy);
+            return new TypedValue(c->builder.CreateLoad(rhs->val), ((AnPtrType*)rhs->type)->extTy);
         case '&': //address-of
             return addrOf(c, rhs);
         case '-': //negation
             return new TypedValue(c->builder.CreateNeg(rhs->val), rhs->type);
         case Tok_Not:
-            if(rhs->type->type != TT_Bool)
-                return c->compErr("Unary not operator not overloaded for type " + typeNodeToColoredStr(rhs->type), loc);
+            if(rhs->type->typeTag != TT_Bool)
+                return c->compErr("Unary not operator not overloaded for type " + anTypeToColoredStr(rhs->type), loc);
 
             return new TypedValue(c->builder.CreateNot(rhs->val), rhs->type);
         case Tok_New:
@@ -1681,12 +1642,12 @@ TypedValue* UnOpNode::compile(Compiler *c){
                 //finally store rhs into the malloc'd slot
                 c->builder.CreateStore(rhs->val, typedPtr);
 
-                auto *tyn = mkTypeNodeWithExt(TT_Ptr, copy(rhs->type));
+                auto *tyn = AnPtrType::get(rhs->type);
                 auto *ret = new TypedValue(typedPtr, tyn);
 
                 //Create an upper-case name so it cannot be referenced normally
-                string tmpAllocName = "New_" + typeNodeToStr(rhs->type.get());
-                c->stoVar(tmpAllocName, new Variable(tmpAllocName, ret, c->scope, true));
+                //string tmpAllocName = "New_" + anTypeToStr(rhs->type);
+                //c->stoVar(tmpAllocName, new Variable(tmpAllocName, ret, c->scope, true));
 
                 //return a copy of ret in case it is modified/freed
                 return new TypedValue(ret->val, ret->type);

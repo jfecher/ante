@@ -6,7 +6,7 @@ namespace ante {
     extern bool colored_output;
 }
 
-ostream& operator<<(ostream& os, lazy_str& str){
+ostream& operator<<(ostream& os, lazy_str str){
     if(colored_output)
         os << str.fmt << str.s << AN_CONSOLE_RESET;
     else
