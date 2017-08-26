@@ -22,7 +22,7 @@ the ability to interact at a lower level if needed.
 * Lisp-esque compile-time execution combined with an extensible compiler API
 * Systems language that feels like an interpreted language
 * Expression-based syntax
-* Robust module system
+* Robust module system with integrated build system
 * Immutability by default
 * Strongly typed with a detailed algebraic type system and type inferencing
 * Ability to write compiler plugins within the compiled program itself

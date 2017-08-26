@@ -17,8 +17,8 @@ namespace ante {
  * when the FuncDecl is marked as compiled the change is not performed
  * across every Compiler instance that imported the function.
  */
-shared_ptr<ante::Module> copyModuleFuncDecls(const shared_ptr<ante::Module> &mod){
-    auto ret = make_shared<ante::Module>();
+ante::Module* copyModuleFuncDecls(const ante::Module *mod){
+    auto ret = new ante::Module();
     ret->name = mod->name;
     ret->traits = mod->traits;
 
@@ -45,9 +45,9 @@ shared_ptr<ante::Module> copyModuleFuncDecls(const shared_ptr<ante::Module> &mod
     return ret;
 }
 
-vector<shared_ptr<ante::Module>>
-copyModuleFuncDecls(const vector<shared_ptr<ante::Module>> &mods){
-    vector<shared_ptr<ante::Module>> ret;
+vector<ante::Module*>
+copyModuleFuncDecls(const vector<ante::Module*> &mods){
+    vector<ante::Module*> ret;
     for(auto &m : mods){
         ret.push_back(copyModuleFuncDecls(m));
     }
@@ -55,11 +55,11 @@ copyModuleFuncDecls(const vector<shared_ptr<ante::Module>> &mods){
 }
 
 
-shared_ptr<unordered_map<string, shared_ptr<ante::Module>>>
-copyModuleFuncDecls(const shared_ptr<unordered_map<string, shared_ptr<ante::Module>>> &varTable){
-    auto ret = make_shared<unordered_map<string, shared_ptr<ante::Module>>>();
-    for(auto &pair : *varTable){
-        (*ret)[pair.first] = copyModuleFuncDecls(pair.second);
+unordered_map<string, ante::Module*>
+copyModuleFuncDecls(const unordered_map<string, ante::Module*> &varTable){
+    auto ret = unordered_map<string, ante::Module*>();
+    for(auto &pair : varTable){
+        ret[pair.first] = copyModuleFuncDecls(pair.second);
     }
     return ret;
 }
@@ -70,7 +70,6 @@ void copyDecls(const Compiler *src, Compiler *dest){
     dest->compUnit = copyModuleFuncDecls(src->compUnit);
     dest->mergedCompUnits = copyModuleFuncDecls(src->mergedCompUnits);
     dest->imports = copyModuleFuncDecls(src->imports);
-    dest->allCompiledModules = copyModuleFuncDecls(src->allCompiledModules);
 }
 
 /*

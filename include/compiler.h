@@ -138,11 +138,11 @@ namespace ante {
         /** @brief Any generic parameters the obj may have */
         std::vector<std::pair<std::string, AnType*>> obj_bindings;
 
-        std::shared_ptr<Module> module;
+        Module *module;
         std::vector<std::pair<TypedValue,LOC_TY>> returns;
 
-        FuncDecl(FuncDeclNode *fn, unsigned int s, std::shared_ptr<Module> mod, TypedValue f) : fdn(fn), scope(s), tv(f), module(mod), returns(){}
-        FuncDecl(FuncDeclNode *fn, unsigned int s, std::shared_ptr<Module> mod) : fdn(fn), scope(s), tv(), module(mod), returns(){}
+        FuncDecl(FuncDeclNode *fn, unsigned int s, Module *mod, TypedValue f) : fdn(fn), scope(s), tv(f), module(mod), returns(){}
+        FuncDecl(FuncDeclNode *fn, unsigned int s, Module *mod) : fdn(fn), scope(s), tv(), module(mod), returns(){}
         ~FuncDecl(){ if(fdn) delete fdn; }
     };
 
@@ -298,7 +298,7 @@ namespace ante {
         *
         * @param m module to merge into this
         */
-        void import(std::shared_ptr<Module> m);
+        void import(Module *m);
     };
 
     /**
@@ -348,19 +348,13 @@ namespace ante {
         llvm::IRBuilder<> builder;
 
         /** @brief functions and type definitions of current module */
-        std::shared_ptr<Module> compUnit;
+        Module *compUnit;
 
         /** @brief all functions and type definitions visible to current module */
-        std::shared_ptr<Module> mergedCompUnits;
+        Module *mergedCompUnits;
 
         /** @brief all imported modules */
-        std::vector<std::shared_ptr<Module>> imports;
-
-        /**
-         * @brief every single compiled module, even ones invisible to the current
-         * compilation unit.  Prevents recompilation of modules
-         */
-        std::shared_ptr<std::unordered_map<std::string, std::shared_ptr<Module>>> allCompiledModules;
+        std::vector<Module*> imports;
 
         /**
          * @brief Stack of variables mapped to their identifier.
@@ -723,6 +717,22 @@ namespace ante {
         static int linkObj(std::string inFiles, std::string outFile);
     };
 
+    /**
+    * @brief every single compiled module, even ones invisible to the current
+    * compilation unit.  Prevents recompilation of modules and owns all Modules
+    */
+    extern std::unordered_map<std::string, std::unique_ptr<Module>> allCompiledModules;
+    
+    /**
+    * @brief Every merged compilation units.  Each must not be freed until compilation
+    * finishes as there is always a chance an old module is recompiled and the newly
+    * imported functions would need the context they were compiled in.
+    */
+    extern std::vector<std::unique_ptr<Module>> allMergedCompUnits;
+
+    /*
+     * @brief Compiles and returns the address of an lval or expression
+     */
     TypedValue addrOf(Compiler *c, TypedValue &tv);
 
     /**

@@ -23,6 +23,12 @@ using namespace llvm;
 
 namespace ante {
 
+//Global containing every module/file compiled
+//to avoid recompilation
+unordered_map<string, unique_ptr<Module>> allCompiledModules;
+
+vector<unique_ptr<Module>> allMergedCompUnits;
+
 /**
  * @param tup The head of the list
  *
@@ -1091,11 +1097,11 @@ TypedValue ExtNode::compile(Compiler *c){
                 fdn->name = c->funcPrefix + fdn->name;
                 fdn->basename = c->funcPrefix + fdn->basename;
 
-                shared_ptr<FuncDecl> fd{new FuncDecl(fdn, c->scope, c->compUnit)};
-                traitImpl->funcs.push_back(fd);
+                shared_ptr<FuncDecl> fd{new FuncDecl(fdn, c->scope, c->mergedCompUnits)};
+                traitImpl->funcs.emplace_back(fd);
 
-                c->compUnit->fnDecls[fdn->basename].push_back(fd);
-                c->mergedCompUnits->fnDecls[fdn->basename].push_back(fd);
+                c->compUnit->fnDecls[fdn->basename].emplace_back(fd);
+                c->mergedCompUnits->fnDecls[fdn->basename].emplace_back(fd);
             }
 
             //trait is fully implemented, add it to the DataType
@@ -1243,7 +1249,7 @@ TypedValue TraitNode::compile(Compiler *c){
         fn->name = c->funcPrefix + fn->name;
         fn->basename = c->funcPrefix + fn->basename;
 
-        shared_ptr<FuncDecl> fd{new FuncDecl(fn, c->scope, c->compUnit)};
+        shared_ptr<FuncDecl> fd{new FuncDecl(fn, c->scope, c->mergedCompUnits)};
         //TODO: avoid creation of Trait type
         fd->obj = AnDataType::get(name);
         trait->funcs.push_back(fd);
@@ -1478,7 +1484,7 @@ TypedValue MatchBranchNode::compile(Compiler *c){
  *
  * @param mod module to merge into this
  */
-void ante::Module::import(shared_ptr<ante::Module> mod){
+void ante::Module::import(ante::Module *mod){
     for(auto& pair : mod->fnDecls)
         for(auto& fd : pair.second)
             fnDecls[pair.first].push_back(fd);
@@ -1493,7 +1499,7 @@ void ante::Module::import(shared_ptr<ante::Module> mod){
 
 void Compiler::importFile(const char *fName, Node *locNode){
     try{
-        auto& module = allCompiledModules->at(fName);
+        auto *module = allCompiledModules.at(fName).get();
         string fmodName = removeFileExt(fName);
 
         for(auto &mod : imports){
@@ -1511,7 +1517,6 @@ void Compiler::importFile(const char *fName, Node *locNode){
         //module not found; create new Compiler instance to compile it
         auto c = make_unique<Compiler>(fName, true, ctxt);
         c->ctxt = ctxt;
-        c->allCompiledModules = allCompiledModules;
         c->compilePrelude();
         c->scanAllDecls();
 
@@ -1524,7 +1529,7 @@ void Compiler::importFile(const char *fName, Node *locNode){
         imports.push_back(c->compUnit);
         mergedCompUnits->import(c->compUnit);
 
-        (*allCompiledModules)[fName] = c->compUnit;
+        allCompiledModules.emplace(fName, c->compUnit);
     }
 }
 
@@ -1750,7 +1755,9 @@ void Compiler::compile(){
     compiled = true;
 
     //show other modules this is compiled
-    (*allCompiledModules)[fileName] = compUnit;
+    //
+    //FIXME: emplace can segfault if fileName is already a valid key in allCompiledModules
+    allCompiledModules.emplace(fileName, compUnit);
 
     if(errFlag){
         fputs("Compilation aborted.\n", stderr);
@@ -2063,7 +2070,6 @@ Compiler::Compiler(const char *_fileName, bool lib, shared_ptr<LLVMContext> llvm
         builder(*ctxt),
         compUnit(new ante::Module()),
         mergedCompUnits(new ante::Module()),
-        allCompiledModules(new unordered_map<string,shared_ptr<ante::Module>>()),
         compCtxt(new CompilerCtxt()),
         ctCtxt(new CompilerCtCtxt()),
         errFlag(false),
@@ -2093,6 +2099,8 @@ Compiler::Compiler(const char *_fileName, bool lib, shared_ptr<LLVMContext> llvm
 
         ast.reset(parser::getRootNode());
     }
+
+    allMergedCompUnits.emplace_back(mergedCompUnits);
 
     auto modName = removeFileExt(fileName);
     compUnit->name = modName;
@@ -2125,7 +2133,6 @@ Compiler::Compiler(Compiler *c, Node *root, string modName, bool lib) :
         builder(*ctxt),
         compUnit(new ante::Module()),
         mergedCompUnits(new ante::Module()),
-        allCompiledModules(new unordered_map<string,shared_ptr<ante::Module>>()),
         compCtxt(new CompilerCtxt()),
         ctCtxt(c->ctCtxt),
         errFlag(false),
@@ -2135,6 +2142,8 @@ Compiler::Compiler(Compiler *c, Node *root, string modName, bool lib) :
         outFile(modName),
         funcPrefix(""),
         scope(0), optLvl(2), fnScope(1){
+    
+    allMergedCompUnits.emplace_back(mergedCompUnits);
 
     compUnit->name = modName;
     mergedCompUnits->name = modName;

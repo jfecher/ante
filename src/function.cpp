@@ -606,6 +606,7 @@ TypedValue Compiler::compFn(FuncDecl *fd){
     if(fd->module->name != compUnit->name){
         auto mcu = move(mergedCompUnits);
 
+        //TODO: confirm alignment
         mergedCompUnits = fd->module;
         auto ret = compFnHelper(this, fd);
         mergedCompUnits = mcu;
