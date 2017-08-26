@@ -355,11 +355,8 @@ int Lexer::handleComment(yy::parser::location_type* loc){
 *  should always be stored in a node during parsing
 *  and freed later.
 */
-void Lexer::setlextxt(string *str){
-    size_t size = str->size() + 1;
-    lextxt = (char*)malloc(size);
-    strcpy(lextxt, str->c_str());
-    lextxt[size-1] = '\0';
+void Lexer::setlextxt(string &str){
+    lextxt = strdup(str.c_str());
 }
 
 int Lexer::genAlphaNumTok(yy::parser::location_type* loc){
@@ -387,14 +384,14 @@ int Lexer::genAlphaNumTok(yy::parser::location_type* loc){
     loc->end = getPos(false);
 
     if(isUsertype){
-        setlextxt(&s);
+        setlextxt(s);
         return Tok_UserType;
     }else{ //ident or keyword
         auto key = keywords.find(s.c_str());
         if(key != keywords.end()){
             return key->second;
         }else{//ident
-            setlextxt(&s);
+            setlextxt(s);
             return Tok_Ident;
         }
     }
@@ -470,7 +467,7 @@ int Lexer::genNumLitTok(yy::parser::location_type* loc){
     }
 
     loc->end = getPos(false);
-    setlextxt(&s);
+    setlextxt(s);
     return flt? Tok_FltLit : Tok_IntLit;
 }
 
@@ -578,7 +575,7 @@ int Lexer::genStrLitTok(yy::parser::location_type* loc){
 
     incPos(); //consume ending delim
 
-    setlextxt(&s);
+    setlextxt(s);
     return Tok_StrLit;
 }
 
@@ -632,12 +629,12 @@ int Lexer::genCharLitTok(yy::parser::location_type* loc){
             incPos();
         }
         loc->end = getPos(false);
-        setlextxt(&s);
+        setlextxt(s);
         return Tok_TypeVar;
     }
 
     loc->end = getPos();
-    setlextxt(&s);
+    setlextxt(s);
     incPos();
     return Tok_CharLit;
 }

@@ -67,18 +67,18 @@ namespace ante {
             Internals() : res(Success), matches(0), bindings(){}
         };
 
-        Internals *box;
+        std::shared_ptr<Internals> box;
 
-        TypeCheckResult successIf(bool b);
-        TypeCheckResult successIf(Result r);
-        TypeCheckResult success();
-        TypeCheckResult successWithTypeVars();
-        TypeCheckResult failure();
+        TypeCheckResult& successIf(bool b);
+        TypeCheckResult& successIf(Result r);
+        TypeCheckResult& success();
+        TypeCheckResult& successWithTypeVars();
+        TypeCheckResult& failure();
 
         bool failed();
 
         bool operator!(){return box->res == Failure;}
-        Internals* operator->(){return box;}
+        Internals* operator->(){return box.get();}
 
         /**
         * @brief Searches for the suggested binding of a typevar
@@ -90,7 +90,7 @@ namespace ante {
         AnType* getBindingFor(const std::string &s);
         TypeCheckResult() : box(new Internals()){}
         TypeCheckResult(const TypeCheckResult &r)  : box(r.box){}
-        TypeCheckResult(TypeCheckResult &&r)  : box(r.box){}
+        //TypeCheckResult(TypeCheckResult &&r)  : box(move(r.box)){}
     };
 
 
@@ -110,7 +110,7 @@ namespace ante {
     *
     * @return The resulting TypeCheckResult
     */
-    TypeCheckResult typeEqBase(const AnType *l, const AnType *r, TypeCheckResult tcr, const Compiler *c = 0);
+    TypeCheckResult& typeEqBase(const AnType *l, const AnType *r, TypeCheckResult &tcr, const Compiler *c = 0);
 
 
 

@@ -1075,7 +1075,7 @@ TypedValue ExtNode::compile(Compiler *c){
         }
 
         //go through each trait and compile the methods for it
-        auto *funcs = methods.get();
+        auto *funcs = methods.release();
         for(auto& trait : traits){
             auto *traitImpl = new Trait();
             traitImpl->name = trait->name;
@@ -2108,7 +2108,7 @@ Compiler::Compiler(const char *_fileName, bool lib, shared_ptr<LLVMContext> llvm
 
     outFile = modName;
 	if (outFile.empty())
-		outFile = "a";
+		outFile = "a.out";
 
     module.reset(new llvm::Module(outFile, *ctxt));
 

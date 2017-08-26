@@ -1157,31 +1157,31 @@ bool llvmTypeEq(Type *l, Type *r){
 }
 
 
-TypeCheckResult TypeCheckResult::success(){
+TypeCheckResult& TypeCheckResult::success(){
     if(box->res != Failure){
         box->matches++;
     }
     return *this;
 }
 
-TypeCheckResult TypeCheckResult::successWithTypeVars(){
+TypeCheckResult& TypeCheckResult::successWithTypeVars(){
     if(box->res != Failure){
         box->res = SuccessWithTypeVars;
     }
     return *this;
 }
 
-TypeCheckResult TypeCheckResult::failure(){
+TypeCheckResult& TypeCheckResult::failure(){
     box->res = Failure;
     return *this;
 }
 
-TypeCheckResult TypeCheckResult::successIf(bool b){
+TypeCheckResult& TypeCheckResult::successIf(bool b){
     if(b) return success();
     else  return failure();
 }
 
-TypeCheckResult TypeCheckResult::successIf(Result r){
+TypeCheckResult& TypeCheckResult::successIf(Result r){
     if(r == Success)
         return success();
     else if(r == SuccessWithTypeVars)
@@ -1196,7 +1196,7 @@ bool TypeCheckResult::failed(){
 
 
 //forward decl of typeEqHelper for extTysEq fn
-TypeCheckResult typeEqHelper(const Compiler *c, const AnType *l, const AnType *r, TypeCheckResult tcr);
+TypeCheckResult& typeEqHelper(const Compiler *c, const AnType *l, const AnType *r, TypeCheckResult &tcr);
 
 /*
  *  Helper function to check if each type's list of extension
@@ -1204,7 +1204,7 @@ TypeCheckResult typeEqHelper(const Compiler *c, const AnType *l, const AnType *r
  *  equality of AnTypes of type Tuple, Data, Function, or any
  *  type with multiple extTys.
  */
-TypeCheckResult extTysEq(const AnType *l, const AnType *r, TypeCheckResult &tcr, const Compiler *c = 0){
+TypeCheckResult& extTysEq(const AnType *l, const AnType *r, TypeCheckResult &tcr, const Compiler *c = 0){
     auto *lAgg = (AnAggregateType*)l;
     auto *rAgg = (AnAggregateType*)r;
 
@@ -1237,7 +1237,7 @@ TypeCheckResult extTysEq(const AnType *l, const AnType *r, TypeCheckResult &tcr,
  *  this function is used as a typeEq function with the Compiler ptr
  *  the outermost type will not be checked for traits.
  */
-TypeCheckResult typeEqBase(const AnType *l, const AnType *r, TypeCheckResult tcr, const Compiler *c){
+TypeCheckResult& typeEqBase(const AnType *l, const AnType *r, TypeCheckResult &tcr, const Compiler *c){
     if(l == r) return tcr.success();
 
     if(l->typeTag == TT_TaggedUnion and r->typeTag == TT_Data)
@@ -1305,7 +1305,7 @@ AnType* TypeCheckResult::getBindingFor(const string &name){
  *
  *  Compiler instance required to check for trait implementation
  */
-TypeCheckResult typeEqHelper(const Compiler *c, const AnType *l, const AnType *r, TypeCheckResult tcr){
+TypeCheckResult& typeEqHelper(const Compiler *c, const AnType *l, const AnType *r, TypeCheckResult &tcr){
     if(l == r) return tcr.success();
     if(!r) return tcr.failure();
 

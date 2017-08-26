@@ -687,9 +687,9 @@ vector<T*> vectorize(T *args){
 }
 
 
-vector<pair<TypeCheckResult,FuncDecl*>> filterHighestMatches(vector<pair<TypeCheckResult,FuncDecl*>> &matches){
+vector<pair<TypeCheckResult&,FuncDecl*>> filterHighestMatches(vector<pair<TypeCheckResult&,FuncDecl*>> &matches){
     unsigned int highestMatch = 0;
-    vector<pair<TypeCheckResult,FuncDecl*>> highestMatches;
+    vector<pair<TypeCheckResult&,FuncDecl*>> highestMatches;
 
     for(auto &tcr : matches){
         if(!!tcr.first and tcr.first->matches >= highestMatch){
@@ -704,9 +704,9 @@ vector<pair<TypeCheckResult,FuncDecl*>> filterHighestMatches(vector<pair<TypeChe
 }
 
 
-vector<pair<TypeCheckResult,FuncDecl*>>
+vector<pair<TypeCheckResult&,FuncDecl*>>
 filterBestMatches(Compiler *c, vector<shared_ptr<FuncDecl>> candidates, vector<AnType*> args){
-    vector<pair<TypeCheckResult,FuncDecl*>> results;
+    vector<pair<TypeCheckResult&,FuncDecl*>> results;
     results.reserve(candidates.size());
 
     for(auto& fd : candidates){

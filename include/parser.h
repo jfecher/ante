@@ -91,9 +91,9 @@ namespace ante {
     struct RootNode : public Node{
         //non-owning std::vectors (each decl is later moved into a ante::module)
         std::vector<FuncDeclNode*> funcs;
-        std::vector<TraitNode*> traits;
-        std::vector<ExtNode*> extensions;
-        std::vector<DataDeclNode*> types;
+        std::vector<std::unique_ptr<TraitNode>> traits;
+        std::vector<std::unique_ptr<ExtNode>> extensions;
+        std::vector<std::unique_ptr<DataDeclNode>> types;
         std::vector<std::unique_ptr<ImportNode>> imports;
 
         std::vector<std::unique_ptr<Node>> main;

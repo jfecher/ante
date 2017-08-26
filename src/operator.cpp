@@ -352,29 +352,32 @@ ReinterpretCastResult checkForReinterpretCast(Compiler *c, AnType *castTy, Typed
 
 
 
-TypedValue doReinterpretCast(Compiler *c, AnType *castTy, TypedValue &valToCast, ReinterpretCastResult *rcr = 0){
-    auto res = rcr ? *rcr : checkForReinterpretCast(c, castTy, valToCast);
-
-    if(res.type == ReinterpretCastResult::NoCast){
+TypedValue doReinterpretCast(Compiler *c, AnType *castTy, TypedValue &valToCast, ReinterpretCastResult &rcr){
+    if(rcr.type == ReinterpretCastResult::NoCast){
         return {};
 
-    }else if(res.type == ReinterpretCastResult::ValToPrimitive){
+    }else if(rcr.type == ReinterpretCastResult::ValToPrimitive){
         return TypedValue(valToCast.val, castTy);
 
     }else{ //ValToUnion or ValToStruct
-        bool isUnion = res.type == ReinterpretCastResult::ValToUnion;
-        auto *to_tyn = res.dataTy;
+        bool isUnion = rcr.type == ReinterpretCastResult::ValToUnion;
+        auto *to_tyn = rcr.dataTy;
         string tag = ((AnDataType*)castTy)->name;
         //to_tyn->typeName = castTy->typeName;
         //to_tyn->type = isUnion ? TT_TaggedUnion : TT_Data;
 
-        if(res.typeCheck->res == TypeCheckResult::SuccessWithTypeVars){
-            to_tyn = (AnDataType*)bindGenericToType(c, to_tyn, res.typeCheck->bindings);
+        if(rcr.typeCheck->res == TypeCheckResult::SuccessWithTypeVars){
+            to_tyn = (AnDataType*)bindGenericToType(c, to_tyn, rcr.typeCheck->bindings);
         }
 
-        if(isUnion) return createUnionVariantCast(c, valToCast, tag, res.dataTy, res.typeCheck);
+        if(isUnion) return createUnionVariantCast(c, valToCast, tag, rcr.dataTy, rcr.typeCheck);
         else        return TypedValue(valToCast.val, to_tyn);
     }
+}
+
+TypedValue doReinterpretCast(Compiler *c, AnType *castTy, TypedValue &valToCast){
+    auto rcr = checkForReinterpretCast(c, castTy, valToCast);
+    return doReinterpretCast(c, castTy, valToCast, rcr);
 }
 
 bool preferCastOverFunction(Compiler *c, TypedValue &valToCast, ReinterpretCastResult &res, FuncDecl *fd){
@@ -407,7 +410,7 @@ TypedValue createCast(Compiler *c, AnType *castTy, TypedValue &valToCast, LOC_TY
         auto castResult = checkForReinterpretCast(c, castTy, valToCast);
         if(castResult.type != ReinterpretCastResult::NoCast){
             if(preferCastOverFunction(c, valToCast, castResult, fd))
-                return doReinterpretCast(c, castTy, valToCast, &castResult);
+                return doReinterpretCast(c, castTy, valToCast, castResult);
         }
 
         //Compile the function now that we know to use it over a cast

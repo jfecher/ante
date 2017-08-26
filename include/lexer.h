@@ -82,7 +82,7 @@ namespace ante{
         void incPos(int end);
         yy::position getPos(bool inclusiveEnd = true) const;
 
-        void setlextxt(std::string *str);
+        void setlextxt(std::string &str);
         int handleComment(yy::parser::location_type* loc);
         int genWsTok(yy::parser::location_type* loc);
         int genNumLitTok(yy::parser::location_type* loc);
