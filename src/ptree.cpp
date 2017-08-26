@@ -521,7 +521,12 @@ Node* mkForNode(LOC_TY loc, Node* var, Node* range, Node* body){
 }
 
 Node* mkFuncDeclNode(LOC_TY loc, Node* s, Node *bn, Node* mods, Node* tExpr, Node* p, Node* b){
-    return new FuncDeclNode(loc, (char*)s, (char*)bn, mods, tExpr, p, b);
+    auto ret = new FuncDeclNode(loc, (char*)s, (char*)bn, mods, tExpr, p, b);
+
+    //s and bn are copied from lextxt, and may or may not be equal
+    if(s != bn and s) free(s);
+    if(bn) free(bn);
+    return ret;
 }
 
 FuncDeclNode::FuncDeclNode(FuncDeclNode* fdn) :
