@@ -2099,6 +2099,7 @@ Compiler::Compiler(const char *_fileName, bool lib, shared_ptr<LLVMContext> llvm
         }
 
         ast.reset(parser::getRootNode());
+        delete fileName_cpy;
     }
 
     allMergedCompUnits.emplace_back(mergedCompUnits);
