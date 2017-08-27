@@ -692,7 +692,7 @@ TypedValue Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *binop
         auto& l = getFunctionList(valName);
 
         if(!l.empty())
-            return FunctionCandidates(ctxt.get(), l, {});
+            return FunctionCandidates::getAsTypedValue(ctxt.get(), l, {});
 
         return compErr("No static method called '" + field->name + "' was found in type " +
                 anTypeToColoredStr(toAnType(tn)), binop->loc);
@@ -756,7 +756,7 @@ TypedValue Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *binop
 
         if(!l.empty()){
             TypedValue obj = {val, tyn};
-            return FunctionCandidates(ctxt.get(), l, obj);
+            return FunctionCandidates::getAsTypedValue(ctxt.get(), l, obj);
         }else{
             return compErr("Method/Field " + field->name + " not found in type " + anTypeToColoredStr(tyn), binop->loc);
         }
@@ -1185,8 +1185,13 @@ TypedValue deduceFunction(Compiler *c, FunctionCandidates *fc, vector<TypedValue
 
     auto matches = filterBestMatches(c, fc->candidates, argTys);
 
+    cout << "deduceFunction: " << matches.size() << " matches\n";
+
     if(matches.size() == 1){
-        return compFnWithArgs(c, matches[0].second, argTys);
+        cout << "Compiling " << matches[0].second->fdn->name << endl;
+        auto res = compFnWithArgs(c, matches[0].second, argTys);
+        res.dump();
+        return res;
 
     }else if(matches.empty()){
         try {
@@ -1292,13 +1297,17 @@ TypedValue compFnCall(Compiler *c, Node *l, Node *r){
     //lack of information on argument types, so handle that now
     bool is_method = false;
     if(tvf.type->typeTag == TT_FunctionList){
-        auto *funcs = (FunctionCandidates*)&tvf;
+        auto *funcs = (FunctionCandidates*)tvf.val;
         tvf = deduceFunction(c, funcs, typedArgs, l->loc);
         if(!!funcs->obj){
             push_front(args, funcs->obj.val);
             is_method = true;
         }
+        //delete funcs;
     }
+
+    if(!tvf)
+        return {};
 
     if(tvf.type->typeTag != TT_Function && tvf.type->typeTag != TT_MetaFunction)
         return c->compErr("Called value is not a function or method, it is a(n) " +

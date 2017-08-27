@@ -23,6 +23,11 @@ char getBitWidthOfTypeTag(const TypeTag ty){
         default: return 0;
     }
 }
+        
+TypedValue FunctionCandidates::getAsTypedValue(llvm::LLVMContext *c, std::vector<std::shared_ptr<FuncDecl>> &ca, TypedValue o){
+    return {(Value*)new FunctionCandidates(c, ca, o),
+        AnType::getPrimitive(TT_FunctionList)};
+}
 
 bool isGeneric(const std::vector<AnType*> &vec){
     for(auto *t : vec)

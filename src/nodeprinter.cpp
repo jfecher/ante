@@ -183,7 +183,9 @@ void IfNode::print(){
 }
 
 void NamedValNode::print(){
-    if(typeExpr.get())
+    if(typeExpr.get() == (void*)1)
+        cout << "self";
+    else if(typeExpr.get())
         typeExpr->print();
     else
         cout << "..."; //varargs

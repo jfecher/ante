@@ -706,7 +706,7 @@ vector<pair<TypeCheckResult&,FuncDecl*>> filterHighestMatches(vector<pair<TypeCh
 
 
 vector<pair<TypeCheckResult&,FuncDecl*>>
-filterBestMatches(Compiler *c, vector<shared_ptr<FuncDecl>> candidates, vector<AnType*> args){
+filterBestMatches(Compiler *c, vector<shared_ptr<FuncDecl>> &candidates, vector<AnType*> args){
     vector<pair<TypeCheckResult&,FuncDecl*>> results;
     results.reserve(candidates.size());
 

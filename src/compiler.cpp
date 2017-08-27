@@ -640,7 +640,7 @@ TypedValue VarNode::compile(Compiler *c){
         }else if(fnlist.empty()){
             return c->compErr("Variable or function '" + name + "' has not been declared.", this->loc);
         }else{
-            return FunctionCandidates(c->ctxt.get(), fnlist, {});
+            return FunctionCandidates::getAsTypedValue(c->ctxt.get(), fnlist, {});
         }
     }
 }
@@ -1903,6 +1903,11 @@ string anTypeToStrWithModifiers(AnType *tn){
  * @brief Prints type and value of TypeNode to stdout
  */
 void TypedValue::dump() const{
+    if(!type){
+        cout << "(null)\n";
+        return;
+    }
+
     cout << "type:\t" << anTypeToStrWithModifiers(type) << endl
          << "val:\t" << flush;
 

@@ -248,7 +248,7 @@ namespace ante {
         TypedValue compile(Compiler*);
         void print(void);
         NamedValNode(LOC_TY& loc, std::string s, Node* t) : Node(loc), name(s), typeExpr(t){}
-        ~NamedValNode(){}
+        ~NamedValNode(){ if(typeExpr.get() == (void*)1) typeExpr.release(); }
     };
 
     struct VarNode : public Node{

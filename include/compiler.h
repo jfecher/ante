@@ -154,13 +154,18 @@ namespace ante {
      * the properly mangled argument types will also return this type so that the
      * desired function may be deduced later with the actual function call arguments.
      */
-    struct FunctionCandidates : public TypedValue {
+    struct FunctionCandidates {
+        /** @brief FunctionCandidates instances swap places with the llvm::Value part of a 
+         * TypedValue.  Because inheritance cannot be used, the fiirst field is a fakeValue
+         * to avoid crashes when FunctionCandidates are used accidentaly as llvm::Values */
+        llvm::Value *fakeValue;
         std::vector<std::shared_ptr<FuncDecl>> candidates;
         TypedValue obj;
 
         FunctionCandidates(llvm::LLVMContext *c, std::vector<std::shared_ptr<FuncDecl>> &ca, TypedValue o) :
-            TypedValue(llvm::UndefValue::get(llvm::Type::getInt8Ty(*c)),
-            AnType::getPrimitive(TT_FunctionList)), candidates(ca), obj(o){}
+            fakeValue(llvm::UndefValue::get(llvm::Type::getInt8Ty(*c))), candidates(ca), obj(o){}
+
+        static TypedValue getAsTypedValue(llvm::LLVMContext *c, std::vector<std::shared_ptr<FuncDecl>> &ca, TypedValue o);
     };
 
     /**
