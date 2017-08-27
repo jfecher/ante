@@ -732,7 +732,7 @@ TypedValue VarDeclNode::compile(Compiler *c){
     //check for redeclaration, but only on topmost scope
     Variable *redeclare;
     try{
-        redeclare = c->varTable.back()->at(this->name);
+        redeclare = c->varTable.back()->at(this->name).get();
     }catch(out_of_range r){
         redeclare = 0;
     }
@@ -1280,7 +1280,7 @@ TypedValue GlobalNode::compile(Compiler *c){
         Variable *var;
         for(auto i = c->varTable.size(); i >= c->fnScope; --i){
             try{
-                var = c->varTable[i-1]->at(varName->name);
+                var = c->varTable[i-1]->at(varName->name).get();
             }catch(out_of_range r){
                 var = nullptr;
             }
@@ -1932,7 +1932,7 @@ void TypedValue::dump() const{
 
 void Compiler::enterNewScope(){
     scope++;
-    auto *vtable = new unordered_map<string, Variable*>();
+    auto *vtable = new unordered_map<string, unique_ptr<Variable>>();
     varTable.emplace_back(vtable);
 }
 
@@ -1969,7 +1969,7 @@ void Compiler::exitScope(){
 Variable* Compiler::lookup(string var) const{
     for(auto i = varTable.size(); i >= fnScope; --i){
         try{
-            return varTable[i-1]->at(var);
+            return varTable[i-1]->at(var).get();
         }catch(out_of_range r){}
     }
 
@@ -1978,7 +1978,8 @@ Variable* Compiler::lookup(string var) const{
 
 
 void Compiler::stoVar(string var, Variable *val){
-    (*varTable[val->scope-1])[var] = val;
+    //(*varTable[val->scope-1])[var] = val;
+    varTable[val->scope-1]->emplace(var, val);
 }
 
 

@@ -360,7 +360,7 @@ namespace ante {
          * @brief Stack of variables mapped to their identifier.
          * Maps are seperated according to their scope.
          */
-        std::vector<std::unique_ptr<std::unordered_map<std::string, Variable*>>> varTable;
+        std::vector<std::unique_ptr<std::unordered_map<std::string, std::unique_ptr<Variable>>>> varTable;
 
         std::unique_ptr<CompilerCtxt> compCtxt;
 
