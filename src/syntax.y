@@ -438,9 +438,6 @@ function: fn_def
         | fn_decl
         | fn_inferredRet
         | fn_lambda
-        | fn_ext_def
-        | fn_ext_inferredRet
-        | fn_ext_decl
         ;
 
 fn_name: ident       /* most functions */      {$$ = $1;}
@@ -542,6 +539,9 @@ ret_expr: Return expr {$$ = mkRetNode(@$, $2);}
 
 extension: Ext type_expr Indent fn_list Unindent {$$ = mkExtNode(@$, $2, $4);}
          | Ext type_expr ':' usertype_list Indent fn_list Unindent {$$ = mkExtNode(@$, $2, $6, $4);}
+         | fn_ext_def
+         | fn_ext_inferredRet
+         | fn_ext_decl
          ;
 
 usertype_list: usertype_list_  {$$ = getRoot();}

@@ -305,6 +305,8 @@ namespace ante {
         ~VarAssignNode(){ if(freeLval) delete ref_expr; }
     };
 
+    std::string typeNodeToStr(const TypeNode *);
+
     struct ExtNode : public Node{
         std::unique_ptr<TypeNode> typeExpr;
         std::unique_ptr<TypeNode> traits;
