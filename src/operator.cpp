@@ -1185,13 +1185,8 @@ TypedValue deduceFunction(Compiler *c, FunctionCandidates *fc, vector<TypedValue
 
     auto matches = filterBestMatches(c, fc->candidates, argTys);
 
-    cout << "deduceFunction: " << matches.size() << " matches\n";
-
     if(matches.size() == 1){
-        cout << "Compiling " << matches[0].second->fdn->name << endl;
-        auto res = compFnWithArgs(c, matches[0].second, argTys);
-        res.dump();
-        return res;
+        return compFnWithArgs(c, matches[0].second, argTys);
 
     }else if(matches.empty()){
         try {

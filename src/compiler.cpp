@@ -29,6 +29,12 @@ unordered_map<string, unique_ptr<Module>> allCompiledModules;
 
 vector<unique_ptr<Module>> allMergedCompUnits;
 
+//yy::locations stored in all Nodes contain a string* to
+//a filename which must not be freed until all nodes are
+//deleted, including the FuncDeclNodes within ante::Modules
+//that all have a static storage
+vector<unique_ptr<string>> fileNames;
+
 /**
  * @param tup The head of the list
  *
@@ -211,7 +217,8 @@ TypedValue compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
     //now that the string is separated, begin interpolation preparation
 
     //lex and parse
-    auto *lex = new Lexer(sln->loc.begin.filename, m, sln->loc.begin.line-1, sln->loc.begin.column + pos);
+    auto *lex = new Lexer(sln->loc.begin.filename, m,
+            sln->loc.begin.line-1, sln->loc.begin.column + pos);
     setLexer(lex);
     yy::parser p{};
     int flag = p.parse();
@@ -1118,7 +1125,7 @@ TypedValue ExtNode::compile(Compiler *c){
 
         auto prevObj = c->compCtxt->obj;
         auto prevObjTn = c->compCtxt->objTn;
-        
+
         c->compCtxt->obj = toAnType(typeExpr.get());
         c->compCtxt->objTn = typeExpr.get();
 
@@ -1590,23 +1597,6 @@ void Compiler::compilePrelude(){
 string removeFileExt(string file){
     auto index = file.find_last_of('.');
     return index == string::npos ? file : file.substr(0, index);
-}
-
-
-/**
- * @brief Creates a placeholder node that will not generate any code
- *        if its compile method is called.
- *
- * Used for filling in gaps after parse tree modifications
- *
- * @return the placeholder node
- */
-Node* mkPlaceholderNode(){
-    auto* empty = new string("");
-
-    auto fakeLoc = mkLoc(mkPos(empty, 0, 0), mkPos(empty, 0, 0));
-
-    return new IntLitNode(fakeLoc, "0", TT_U8);
 }
 
 
@@ -2089,6 +2079,7 @@ Compiler::Compiler(const char *_fileName, bool lib, shared_ptr<LLVMContext> llvm
     //to let Node's outlive the Compiler they were made in, ensuring they work with imports.
     if(_fileName){
         string* fileName_cpy = new string(fileName);
+        fileNames.emplace_back(fileName_cpy);
         setLexer(new Lexer(fileName_cpy));
         yy::parser p{};
         int flag = p.parse();
@@ -2104,7 +2095,6 @@ Compiler::Compiler(const char *_fileName, bool lib, shared_ptr<LLVMContext> llvm
         }
 
         ast.reset(parser::getRootNode());
-        delete fileName_cpy;
     }
 
     allMergedCompUnits.emplace_back(mergedCompUnits);
