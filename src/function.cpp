@@ -90,7 +90,7 @@ vector<Type*> getParamTypes(Compiler *c, NamedValNode *nvn, size_t paramCount){
             //Throw an error if that check was somehow bypassed
             c->compErr("Stray self parameter", nvn->loc);
         }else if(paramTyNode){
-            auto *type = c->anTypeToLlvmType(toAnType(paramTyNode));
+            auto *type = c->anTypeToLlvmType(toAnType(c, paramTyNode));
             auto *correctedType = parameterize(type, paramTyNode);
             paramTys.push_back(correctedType);
         }else{
@@ -133,7 +133,7 @@ void addAllArgAttrs(Function *f, NamedValNode *params){
  * returns the return type or nullptr if it could not be matched
  */
 AnType* validateReturns(Compiler *c, FuncDecl *fd, TypeNode *retTy = 0){
-    auto *matchTy = retTy ? toAnType(retTy) : fd->returns[fd->returns.size()-1].first.type;
+    auto *matchTy = retTy ? toAnType(c, retTy) : fd->returns[fd->returns.size()-1].first.type;
 
     for(auto pair : fd->returns){
         TypedValue &ret = pair.first;
@@ -223,7 +223,7 @@ TypedValue Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
             }
         }
 
-        AnType *argty = toAnType(paramTyNode);
+        AnType *argty = toAnType(this, paramTyNode);
 
         TypedValue tArg = {&arg, argty};
         stoVar(cParam->name, new Variable(cParam->name, tArg, this->scope,
@@ -335,11 +335,11 @@ TypedValue compCompilerDirectiveFn(Compiler *c, FuncDecl *fd, PreProcNode *ppn){
             c->module.reset(mod);
         }else if(vn->name == "macro" or vn->name == "meta"){
             auto *rettn = (TypeNode*)fdn->type.get();
-            auto *fnty = AnFunctionType::get(toAnType(rettn), fdn->params.get(), true);
+            auto *fnty = AnFunctionType::get(c, toAnType(c, rettn), fdn->params.get(), true);
             fn = TypedValue(nullptr, fnty);
         }else if(vn->name == "on_fn_decl"){
             auto *rettn = (TypeNode*)fdn->type.get();
-            auto *fnty = AnFunctionType::get(toAnType(rettn), fdn->params.get(), true);
+            auto *fnty = AnFunctionType::get(c, toAnType(c, rettn), fdn->params.get(), true);
             fn = TypedValue(nullptr, fnty);
         }else{
             return c->compErr("Unrecognized compiler directive '"+vn->name+"'", vn->loc);
@@ -391,8 +391,8 @@ TypedValue compFnHelper(Compiler *c, FuncDecl *fd){
         }
     }
     
-    auto *anRetTy = toAnType(retNode);
-    auto *fnTy = AnFunctionType::get(anRetTy, fdn->params.get());
+    auto *anRetTy = toAnType(c, retNode);
+    auto *fnTy = AnFunctionType::get(c, anRetTy, fdn->params.get());
 
     Type *retTy = c->anTypeToLlvmType(anRetTy);
 
@@ -428,7 +428,7 @@ TypedValue compFnHelper(Compiler *c, FuncDecl *fd){
                 }
             }
 
-            AnType *paramTy = toAnType(paramTyNode);
+            AnType *paramTy = toAnType(c, paramTyNode);
             TypedValue tArg = {&arg, paramTy};
             c->stoVar(cParam->name, new Variable(cParam->name, tArg, c->scope,
                     /*nofree = */true, /*autoDeref = */implicitPassByRef(paramTyNode)));
@@ -529,7 +529,7 @@ TypedValue compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, vector
     
     //bind the return type if necessary
     if(TypeNode* retTy = (TypeNode*)fd->fdn->type.get()){
-        anRetTy = bindGenericToType(c, toAnType(retTy), tc->bindings);
+        anRetTy = bindGenericToType(c, toAnType(c, retTy), tc->bindings);
     }
 
     auto *fty = AnFunctionType::get(anRetTy, args);
@@ -711,7 +711,7 @@ filterBestMatches(Compiler *c, vector<shared_ptr<FuncDecl>> &candidates, vector<
     results.reserve(candidates.size());
 
     for(auto fd : candidates){
-        auto *fnty = AnFunctionType::get(AnType::getVoid(), fd->fdn->params.get());
+        auto *fnty = AnFunctionType::get(c, AnType::getVoid(), fd->fdn->params.get());
         auto tc = c->typeEq(fnty->extTys, args);
         results.emplace_back(tc, fd.get());
     }
@@ -759,7 +759,7 @@ FuncDecl* Compiler::getMangledFuncDecl(string name, vector<AnType*> &args){
  */
 TypedValue compFnWithArgs(Compiler *c, FuncDecl *fd, vector<AnType*> args){
     //must check if this functions is generic first
-    auto fnty = AnFunctionType::get(AnType::getVoid(), fd->fdn->params.get());
+    auto fnty = AnFunctionType::get(c, AnType::getVoid(), fd->fdn->params.get());
     auto tc = c->typeEq(fnty->extTys, args);
 
     if(tc->res == TypeCheckResult::SuccessWithTypeVars)

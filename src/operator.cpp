@@ -385,7 +385,7 @@ bool preferCastOverFunction(Compiler *c, TypedValue &valToCast, ReinterpretCastR
     if(curFn->fdn and curFn->fdn->name == fd->fdn->name)
         return true;
 
-    auto *fnTy = AnFunctionType::get(AnType::getVoid(), fd->fdn->params.get());
+    auto *fnTy = AnFunctionType::get(c, AnType::getVoid(), fd->fdn->params.get());
     auto args = toArgTuple(valToCast.type);
 
     auto tc = c->typeEq(fnTy->extTys, args);
@@ -486,7 +486,7 @@ TypedValue createCast(Compiler *c, AnType *castTy, TypedValue &valToCast, LOC_TY
 TypedValue TypeCastNode::compile(Compiler *c){
     auto rtval = rval->compile(c);
 
-    auto *ty = toAnType(typeExpr.get());
+    auto *ty = toAnType(c, typeExpr.get());
     if(ty->isGeneric){
         c->compErr("Cannot cast to a generic type", typeExpr->loc);
     }
@@ -695,7 +695,7 @@ TypedValue Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *binop
             return FunctionCandidates::getAsTypedValue(ctxt.get(), l, {});
 
         return compErr("No static method called '" + field->name + "' was found in type " +
-                anTypeToColoredStr(toAnType(tn)), binop->loc);
+                anTypeToColoredStr(toAnType(this, tn)), binop->loc);
     }else{
         //ln is not a typenode, so this is not a static method call
         Value *val;
@@ -1192,7 +1192,7 @@ TypedValue deduceFunction(Compiler *c, FunctionCandidates *fc, vector<TypedValue
             c->compErr(msg, loc);
         }catch(CtError *e){
             for(auto &fd : fc->candidates){
-                auto *fnty = AnFunctionType::get(AnType::getVoid(), fd->fdn->params.get());
+                auto *fnty = AnFunctionType::get(c, AnType::getVoid(), fd->fdn->params.get());
                 auto *params = AnAggregateType::get(TT_Tuple, fnty->extTys);
 
                 c->compErr("Candidate function with params "+anTypeToColoredStr(params), fd->fdn->loc, ErrorType::Note);
@@ -1208,7 +1208,7 @@ TypedValue deduceFunction(Compiler *c, FunctionCandidates *fc, vector<TypedValue
             c->compErr(msg, loc);
         }catch(CtError *e){
             for(auto &p : matches){
-                auto *fnty = AnFunctionType::get(AnType::getVoid(), p.second->fdn->params.get());
+                auto *fnty = AnFunctionType::get(c, AnType::getVoid(), p.second->fdn->params.get());
                 auto *params = AnAggregateType::get(TT_Tuple, fnty->extTys);
 
                 c->compErr("Candidate function with params "+anTypeToColoredStr(params), p.second->fdn->loc, ErrorType::Note);

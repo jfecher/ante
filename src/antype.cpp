@@ -159,7 +159,7 @@ namespace ante {
     string getKey(const std::vector<TokenType> &mods){
         string ret = "";
         for(auto m : mods){
-            ret += Lexer::getTokStr(m) + "&";
+            ret += Lexer::getTokStr(m) + " ";
         }
         return ret;
     }
@@ -213,7 +213,9 @@ namespace ante {
     string getKey(const std::vector<AnType*> &exts){
         string ret = "";
         for(auto *ext : exts){
-            ret += anTypeToStr(ext) + ",";
+            ret += anTypeToStr(ext);
+            if(ext != exts.back())
+                ret += ", ";
         }
         return ret;
     }
@@ -233,12 +235,12 @@ namespace ante {
         }
     }
             
-    AnFunctionType* AnFunctionType::get(AnType* retty, NamedValNode* params, bool isMetaFunction, AnModifier *m){
+    AnFunctionType* AnFunctionType::get(Compiler *c, AnType* retty, NamedValNode* params, bool isMetaFunction, AnModifier *m){
         vector<AnType*> extTys;
 
         while(params && params->typeExpr.get()){
             TypeNode *pty = (TypeNode*)params->typeExpr.get();
-            auto *aty = toAnType(pty);
+            auto *aty = toAnType(c, pty);
             extTys.push_back(aty);
             params = (NamedValNode*)params->next.get();
         }
@@ -340,7 +342,7 @@ namespace ante {
     }
 
 
-    AnType* toAnType(const TypeNode *tn){
+    AnType* toAnType(Compiler *c, const TypeNode *tn){
         auto *mods = tn->modifiers.empty() ? nullptr : AnModifier::get(tn->modifiers);
         switch(tn->type){
             case TT_I8:
@@ -369,7 +371,7 @@ namespace ante {
                 TypeNode *ext = tn->extTy.get();
                 vector<AnType*> tys;
                 while(ext){
-                    tys.push_back(toAnType((TypeNode*)ext));
+                    tys.push_back(toAnType(c, (TypeNode*)ext));
                     ext = (TypeNode*)ext->next.get();
                 }
                 return AnAggregateType::get(TT_Tuple, tys, mods);
@@ -378,18 +380,20 @@ namespace ante {
             case TT_Array: {
                 TypeNode *elemTy = tn->extTy.get();
                 IntLitNode *len = (IntLitNode*)elemTy->next.get();
-                return AnArrayType::get(toAnType(elemTy), len ? stoi(len->val) : 0, mods);
+                return AnArrayType::get(toAnType(c, elemTy), len ? stoi(len->val) : 0, mods);
             }
             case TT_Ptr:
-                return AnPtrType::get(toAnType(tn->extTy.get()), mods);
+                return AnPtrType::get(toAnType(c, tn->extTy.get()), mods);
             case TT_Data:
             case TT_TaggedUnion: {
                 if(!tn->params.empty()){
-                    string key = tn->typeName + "<";
-                    for(auto &t : tn->params){
-                        key += typeNodeToStr(t.get()) + ",";
-                    }
-                    return AnDataType::get(key + ">", mods);
+                    auto *basety = AnDataType::get(tn->typeName, mods);
+
+                    vector<AnType*> bindings;
+                    for(auto &t : tn->params)
+                        bindings.emplace_back(toAnType(c, t.get()));
+
+                    return bindGenericToType(c, basety, bindings, basety);
                 }else{
                     return AnDataType::get(tn->typeName, mods);
                 }

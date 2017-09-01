@@ -26,7 +26,7 @@ namespace ante {
     //TypeNode* createFnTyNode(NamedValNode *params, TypeNode *retTy);
 
     //conversions
-    AnType* toAnType(const TypeNode *tn);
+    AnType* toAnType(Compiler *c, const TypeNode *tn);
 
     llvm::Type* typeTagToLlvmType(TypeTag tagTy, llvm::LLVMContext &c);
     TypeTag llvmTypeToTypeTag(llvm::Type *t);

@@ -162,7 +162,7 @@ TypedValue TypeNode::compile(Compiler *c){
 
 rettype:
     //return the type as a value
-    auto *ty = toAnType(this);
+    auto *ty = toAnType(c, this);
 
     //The TypeNode* address is wrapped in an llvm int so that llvm::Value methods can be called
     //without crashing, even if their result is meaningless
@@ -662,7 +662,7 @@ TypedValue LetBindingNode::compile(Compiler *c){
 
     TypeNode *tyNode;
     if((tyNode = (TypeNode*)typeExpr.get())){
-        auto *anty = toAnType(tyNode);
+        auto *anty = toAnType(c, tyNode);
         if(!llvmTypeEq(val.val->getType(), c->anTypeToLlvmType(anty))){
             return c->compErr("Incompatible types in explicit binding.", expr->loc);
         }
@@ -759,7 +759,7 @@ TypedValue VarDeclNode::compile(Compiler *c){
 
     //the type held by this node will be deleted when the parse tree is, so copy
     //this one so it is not double freed
-    AnType *anTy = toAnType((TypeNode*)typeExpr.get());
+    AnType *anTy = toAnType(c, (TypeNode*)typeExpr.get());
 
     Type *ty = c->anTypeToLlvmType(anTy);
 
@@ -821,7 +821,7 @@ TypedValue compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
     //impossible to insert into a non-value so fail if the lvalue is one
     if(auto *tn = dynamic_cast<TypeNode*>(bop->lval.get()))
         return c->compErr("Cannot insert value into static module '" +
-                anTypeToColoredStr(toAnType(tn)), tn->loc);
+                anTypeToColoredStr(toAnType(c, tn)), tn->loc);
 
 
     Value *val;
@@ -1054,7 +1054,7 @@ TypedValue ExtNode::compile(Compiler *c){
         if(typeExpr->typeName.empty()){ //primitive type being extended
             dt = c->lookupType(typestr);
             if(!dt){ //if primitive type has not been extended before, make it a DataType to store in
-                dt = AnDataType::create(typestr, {toAnType(typeExpr.get())}, false);
+                dt = AnDataType::create(typestr, {toAnType(c, typeExpr.get())}, false);
                 c->stoType(dt, typestr);
             }
         }else{
@@ -1123,7 +1123,7 @@ TypedValue ExtNode::compile(Compiler *c){
         auto prevObj = c->compCtxt->obj;
         auto prevObjTn = c->compCtxt->objTn;
 
-        c->compCtxt->obj = toAnType(typeExpr.get());
+        c->compCtxt->obj = toAnType(c, typeExpr.get());
         c->compCtxt->objTn = typeExpr.get();
 
         compileStmtList(methods.release(), c);
@@ -1165,7 +1165,7 @@ TypedValue compTaggedUnion(Compiler *c, DataDeclNode *n){
 
     while(nvn){
         TypeNode *tyn = (TypeNode*)nvn->typeExpr.get();
-        AnType *tagTy = toAnType(tyn->extTy.get());
+        AnType *tagTy = tyn->extTy ? toAnType(c, tyn->extTy.get()) : AnType::getVoid();
 
         UnionTag *tag = new UnionTag(nvn->name, tagTy, tags.size());
 
@@ -1189,7 +1189,7 @@ TypedValue compTaggedUnion(Compiler *c, DataDeclNode *n){
     data->fields = fieldNames;
 
     for(auto &g : n->generics)
-        data->generics.push_back((AnTypeVarType*)toAnType(g.get()));
+        data->generics.push_back((AnTypeVarType*)toAnType(c, g.get()));
 
     data->tags.swap(tags);
 
@@ -1212,7 +1212,7 @@ TypedValue DataDeclNode::compile(Compiler *c){
     AnDataType *data = AnDataType::create(name, {}, false);
 
     for(auto &g : generics){
-        data->generics.push_back((AnTypeVarType*)toAnType(g.get()));
+        data->generics.push_back((AnTypeVarType*)toAnType(c, g.get()));
     }
 
     c->stoType(data, name);
@@ -1226,7 +1226,7 @@ TypedValue DataDeclNode::compile(Compiler *c){
 
     while(nvn){
         TypeNode *tyn = (TypeNode*)nvn->typeExpr.get();
-        auto ty = toAnType(tyn);
+        auto ty = toAnType(c, tyn);
 
         validateType(c, ty, this);
 

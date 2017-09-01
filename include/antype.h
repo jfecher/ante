@@ -171,7 +171,7 @@ namespace ante {
         AnType *retTy;
 
         static AnFunctionType* get(AnType *retTy, const std::vector<AnType*> elems, bool isMetaFunction = false, AnModifier *m = nullptr);
-        static AnFunctionType* get(AnType* retty, NamedValNode* params, bool isMetaFunction = false, AnModifier *m = nullptr);
+        static AnFunctionType* get(Compiler *c, AnType* retty, NamedValNode* params, bool isMetaFunction = false, AnModifier *m = nullptr);
         
         AnFunctionType* addModifier(TokenType m) override;
 
