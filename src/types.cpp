@@ -1188,9 +1188,6 @@ string anTypeToStrWithoutModifiers(const AnType *t){
 /*
  *  Returns a string representing the full type of ty.  Since it is converting
  *  from a llvm::Type, this will never return an unsigned integer type.
- *
- *  Gives output in a different terminal color intended for printing, use typeNodeToStr
- *  to get a type without print color.
  */
 string llvmTypeToStr(Type *ty){
     if(!ty) return "(null)";

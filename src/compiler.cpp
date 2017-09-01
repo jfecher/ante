@@ -1971,8 +1971,8 @@ Variable* Compiler::lookup(string var) const{
 
 
 void Compiler::stoVar(string var, Variable *val){
-    //(*varTable[val->scope-1])[var] = val;
-    varTable[val->scope-1]->emplace(var, val);
+    (*varTable[val->scope-1])[var].reset(val);
+    //varTable[val->scope-1]->emplace(var, val);
 }
 
 
