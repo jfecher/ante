@@ -1141,36 +1141,49 @@ string typeNodeToStr(const TypeNode *t){
 }
 
 
-string anTypeToStr(const AnType *t){
+string _anTypeToStr(const AnType *t, AnModifier *m){
+    string mods = "";
+    if(t->mods != m and m != (void*)1)
+        mods = modifiersToStr(t->mods);
+
     if(auto *dt = dyn_cast<AnDataType>(t)){
-        return dt->name;
+        return mods + dt->name;
     }else if(auto *tvt = dyn_cast<AnTypeVarType>(t)){
-        return tvt->name;
+        return mods + tvt->name;
     }else if(auto *f = dyn_cast<AnFunctionType>(t)){
-        string ret = "(";
-        string retTy = anTypeToStr(f->retTy);
+        string ret = mods + "(";
+        string retTy = _anTypeToStr(f->retTy, t->mods);
         for(auto *param : f->extTys){
-            ret += anTypeToStr(param);
+            ret += _anTypeToStr(param, t->mods);
             if(param) ret += ",";
         }
         return ret + ")->" + retTy;
     }else if(auto *tup = dyn_cast<AnAggregateType>(t)){
-        string ret = "(";
+        string ret = mods + "(";
         for(auto *ext : tup->extTys){
             if(ext != tup->extTys.back())
-                ret += anTypeToStr(ext) + ", ";
+                ret += _anTypeToStr(ext, t->mods) + ", ";
             else
-                ret += anTypeToStr(ext) + ")";
+                ret += _anTypeToStr(ext, t->mods) + ")";
         }
         return ret;
     }else if(auto *arr = dyn_cast<AnArrayType>(t)){
-        return '[' + to_string(arr->len) + " " + anTypeToStr(arr->extTy) + ']';
+        return mods + '[' + to_string(arr->len) + " " + _anTypeToStr(arr->extTy, t->mods) + ']';
     }else if(auto *ptr = dyn_cast<AnPtrType>(t)){
-        return anTypeToStr(ptr->extTy) + "*";
+        return mods + _anTypeToStr(ptr->extTy, t->mods) + "*";
     }else{
-        return typeTagToStr(t->typeTag);
+        return mods + typeTagToStr(t->typeTag);
     }
 }
+
+string anTypeToStr(const AnType *t){
+    return _anTypeToStr(t, nullptr);
+}
+
+string anTypeToStrWithoutModifiers(const AnType *t){
+    return _anTypeToStr(t, (AnModifier*)1);
+}
+
 
 /*
  *  Returns a string representing the full type of ty.  Since it is converting

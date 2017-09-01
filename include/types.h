@@ -11,6 +11,8 @@ namespace ante {
 
     TypedValue typeCheckWithImplicitCasts(Compiler *c, TypedValue &arg, AnType *ty);
 
+    std::string modifiersToStr(const AnModifier *m);
+    std::string anTypeToStrWithoutModifiers(const AnType *t);
     std::string anTypeToStr(const AnType *t);
     lazy_str anTypeToColoredStr(const AnType *t);
     

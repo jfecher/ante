@@ -961,7 +961,7 @@ string mangle(string &base, vector<AnType*> params){
     string name = base;
     for(auto *tv : params){
         if(tv->typeTag != TT_Void)
-            name += "_" + anTypeToStr(tv);
+            name += "_" + anTypeToStrWithoutModifiers(tv);
     }
     return name;
 }

@@ -204,7 +204,7 @@ namespace ante {
         std::string typeName; //used for usertypes
         std::unique_ptr<TypeNode> extTy; //Used for pointers and non-single anonymous types.
         std::vector<std::unique_ptr<TypeNode>> params; //type parameters for generic types
-        std::vector<int> modifiers;
+        std::vector<TokenType> modifiers;
 
         TypedValue compile(Compiler*);
         void print(void);

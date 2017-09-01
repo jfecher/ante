@@ -118,7 +118,7 @@ TypeNode* TypeNode::addModifiers(ModNode *m){
     }
 
     while(m){
-        this->modifiers.push_back(m->mod);
+        this->modifiers.push_back((TokenType)m->mod);
         m = (ModNode*)m->next.get();
     }
     return this;
@@ -138,7 +138,7 @@ TypeNode* TypeNode::addModifier(int m){
         }
     }
 
-    modifiers.push_back(m);
+    modifiers.push_back((TokenType)m);
     return this;
 }
 
@@ -442,7 +442,7 @@ TypeNode* copy(const TypeNode *n){
     //finally, do a shallow copy for the modifiers
     //this becomes a deep copy since this method is called recursively for each extTy
     for(int m : n->modifiers)
-        cpy->modifiers.push_back(m);
+        cpy->modifiers.push_back((TokenType)m);
 
     return cpy;
 }

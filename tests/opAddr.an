@@ -1,16 +1,16 @@
 
 
-fun modify: mut i32* x
-    @x = @x * 2
+fun modify: mut i32 x
+    x = x * 2
 
 var t = 32
 print t
-modify(&t)
+modify(t)
 print t
 
 let t = 3
 print t
-modify(&t)
+modify(t)
 print t
 
 /* Expected Output:

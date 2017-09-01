@@ -45,7 +45,7 @@ namespace ante {
         throw new CtError();
     }
 
-    string modifiersToStr(AnModifier *m){
+    string modifiersToStr(const AnModifier *m){
         string ret = "";
         if(m)
             for(auto tok : m->modifiers)
@@ -238,7 +238,8 @@ namespace ante {
 
         while(params && params->typeExpr.get()){
             TypeNode *pty = (TypeNode*)params->typeExpr.get();
-            extTys.push_back(toAnType(pty));
+            auto *aty = toAnType(pty);
+            extTys.push_back(aty);
             params = (NamedValNode*)params->next.get();
         }
         return AnFunctionType::get(retty, extTys, isMetaFunction, m);
@@ -340,6 +341,7 @@ namespace ante {
 
 
     AnType* toAnType(const TypeNode *tn){
+        auto *mods = tn->modifiers.empty() ? nullptr : AnModifier::get(tn->modifiers);
         switch(tn->type){
             case TT_I8:
             case TT_I16:
@@ -358,7 +360,7 @@ namespace ante {
             case TT_C32:
             case TT_Bool:
             case TT_Void:
-                return AnType::getPrimitive(tn->type);
+                return AnType::getPrimitive(tn->type, mods);
 
             case TT_Tuple:
             case TT_Function:
@@ -370,16 +372,16 @@ namespace ante {
                     tys.push_back(toAnType((TypeNode*)ext));
                     ext = (TypeNode*)ext->next.get();
                 }
-                return AnAggregateType::get(TT_Tuple, tys);
+                return AnAggregateType::get(TT_Tuple, tys, mods);
             }
 
             case TT_Array: {
                 TypeNode *elemTy = tn->extTy.get();
                 IntLitNode *len = (IntLitNode*)elemTy->next.get();
-                return AnArrayType::get(toAnType(elemTy), len ? stoi(len->val) : 0);
+                return AnArrayType::get(toAnType(elemTy), len ? stoi(len->val) : 0, mods);
             }
             case TT_Ptr:
-                return AnPtrType::get(toAnType(tn->extTy.get()));
+                return AnPtrType::get(toAnType(tn->extTy.get()), mods);
             case TT_Data:
             case TT_TaggedUnion: {
                 if(!tn->params.empty()){
@@ -387,13 +389,13 @@ namespace ante {
                     for(auto &t : tn->params){
                         key += typeNodeToStr(t.get()) + ",";
                     }
-                    return AnDataType::get(key + ">");
+                    return AnDataType::get(key + ">", mods);
                 }else{
-                    return AnDataType::get(tn->typeName);
+                    return AnDataType::get(tn->typeName, mods);
                 }
             }
             case TT_TypeVar:
-                return AnTypeVarType::get(tn->typeName);
+                return AnTypeVarType::get(tn->typeName, mods);
             default:
                 cerr << "Unknown TypeTag " << typeTagToStr(tn->type) << endl;
                 return nullptr;

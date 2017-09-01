@@ -287,7 +287,7 @@ TypedValue createUnionVariantCast(Compiler *c, TypedValue &valToCast, string &ta
 string getCastFnBaseName(AnType *t){
     if(auto *dt = dyn_cast<AnDataType>(t)){
         if(dt->unboundType)
-            return anTypeToStr(dt->unboundType) + "_init";
+            return anTypeToStrWithoutModifiers(dt->unboundType) + "_init";
     }
     return anTypeToStr(t) + "_init";
 }
@@ -865,7 +865,7 @@ void* getConstPtr(Compiler *c, TypedValue &tv){
         }
     }
         
-    cout << "error: unknown type given to getConstPtr, dumping\n";
+    cerr << "error: unknown type given to getConstPtr, dumping\n";
     tv.dump();
     return nullptr;
 }
@@ -1234,7 +1234,7 @@ TypedValue searchForFunction(Compiler *c, Node *l, vector<TypedValue> &typedArgs
 
         //try to do module inference
         if(!typedArgs.empty()){
-            string fnName = anTypeToStr(typedArgs[0].type) + "_" + vn->name;
+            string fnName = anTypeToStrWithoutModifiers(typedArgs[0].type) + "_" + vn->name;
             TypedValue tvf = c->getMangledFn(fnName, params);
             if(!!tvf) return tvf;
         }
