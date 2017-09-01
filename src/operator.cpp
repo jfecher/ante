@@ -823,7 +823,6 @@ TypedValue genericValueToTypedValue(Compiler *c, GenericValue gv, AnType *tn){
             auto *ty = c->anTypeToLlvmType(tn);
             return TypedValue(c->builder.CreateIntToPtr(cint, ty), tn);
         }
-        case TT_Modifier: return genericValueToTypedValue(c, gv, ((AnModifierType*)tn)->extTy);
         case TT_Data:
         case TT_TypeVar:
         case TT_Function:
@@ -938,10 +937,6 @@ GenericValue typedValueToGenericValue(Compiler *c, TypedValue &tv){
 
             auto boundTv = TypedValue(tv.val, extractTypeValue(var->tval));
             return typedValueToGenericValue(c, boundTv);
-        }
-        case TT_Modifier: {
-            auto ret = TypedValue(tv.val, ((AnModifierType*)tv.type));
-            return typedValueToGenericValue(c, ret);
         }
         case TT_Data:
         case TT_Function:

@@ -14,7 +14,7 @@
 #include "parser.h"
 #include "args.h"
 #include "lazystr.h"
-#include "type.h"
+#include "antype.h"
 
 #define AN_MANGLED_SELF "_$self$"
 

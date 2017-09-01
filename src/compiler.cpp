@@ -27,12 +27,13 @@ namespace ante {
 //to avoid recompilation
 unordered_map<string, unique_ptr<Module>> allCompiledModules;
 
+//each mergedCompUnits is static in lifetime
 vector<unique_ptr<Module>> allMergedCompUnits;
 
 //yy::locations stored in all Nodes contain a string* to
 //a filename which must not be freed until all nodes are
 //deleted, including the FuncDeclNodes within ante::Modules
-//that all have a static storage
+//that all have a static lifetime
 vector<unique_ptr<string>> fileNames;
 
 /**
@@ -846,10 +847,6 @@ TypedValue compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
         tyn = ptr->extTy;
     }
 
-    //if pointer derefs took place, tyn could have lost its modifiers, so make sure they are copied back
-    if(ltyn->typeTag == TT_Ptr)
-        tyn = tyn->copyModifiersFrom(ltyn);
-
     //this is the variable that will store the changes after the later insertion
     Value *var = static_cast<LoadInst*>(val)->getPointerOperand();
 
@@ -1314,7 +1311,8 @@ TypedValue handleTypeCastPattern(Compiler *c, TypedValue lval, TypeCastNode *tn,
     //If this is a generic type cast like Some 't, the 't must be bound to a concrete type first
     
     //This is a pattern of the match _ with expr, so if that is mutable this should be too
-    auto tagtycpy = tagTy->copyModifiersFrom(lval.type);
+    //auto tagtycpy = tagTy->copyModifiersFrom(lval.type);
+    AnType *tagtycpy = tagTy;
 
     auto tcr = c->typeEq(parentTy, lval.type);
 

@@ -26,7 +26,6 @@ namespace ante {
 		TT_TaggedUnion,
 		TT_MetaFunction,
 		TT_Type, //The type for types
-        TT_Modifier,
 		TT_Void
 	};
 

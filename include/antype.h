@@ -15,7 +15,7 @@ namespace ante {
     struct UnionTag;
     struct Trait;
 
-    class AnModifierType;
+    class AnModifier;
     class AnAggregateType;
     class AnArrayType;
     class AnPtrType;
@@ -29,22 +29,23 @@ namespace ante {
         friend AnTypeContainer;
 
     protected:
-        AnType(TypeTag id, bool ig = false) : typeTag(id), isGeneric(ig){}
+        AnType(TypeTag id, bool ig, AnModifier *m) :
+            typeTag(id), isGeneric(ig), mods(m){}
         //virtual ~AnType() = delete;
 
     public:
         const TypeTag typeTag;
         bool isGeneric;
+        AnModifier *mods;
 
         bool hasModifier(TokenType m);
-        AnModifierType* addModifier(TokenType m);
-        AnType* copyModifiersFrom(AnType *t);
+        virtual AnType* addModifier(TokenType m);
 
-        size_t getSizeInBits(Compiler *c, std::string *incompleteType = 0);
+        size_t getSizeInBits(Compiler *c, std::string *incompleteType = nullptr);
 
         AnType* getFunctionReturnType() const;
 
-        static AnType* getPrimitive(TypeTag tag);
+        static AnType* getPrimitive(TypeTag tag, AnModifier *mod = nullptr);
         static AnType* getI8();
         static AnType* getI16();
         static AnType* getI32();
@@ -64,7 +65,6 @@ namespace ante {
         static AnDataType* getDataType(std::string name);
         static AnArrayType* getArray(AnType*, size_t len = 0);
         static AnTypeVarType* getTypeVar(std::string name);
-        static AnModifierType* getModifier(AnType *e, const std::vector<TokenType> modifiers);
         static AnFunctionType* getFunction(AnType *r, const std::vector<AnType*>);
         static AnAggregateType* getAggregate(TypeTag t, const std::vector<AnType*>);
     };
@@ -72,42 +72,35 @@ namespace ante {
     bool isGeneric(const std::vector<AnType*> &vec);
 
     //Type modifiers
-    class AnModifierType : public AnType {
+    class AnModifier {
         protected:
-        AnModifierType(AnType *e, std::vector<TokenType> mods) :
-            AnType(TT_Modifier, e->isGeneric), extTy(e), modifiers(mods){
-        }
+        AnModifier(std::vector<TokenType> mods) :
+            modifiers(mods){}
 
         public:
-        AnType* extTy;
         std::vector<TokenType> modifiers;
         std::vector<std::unique_ptr<PreProcNode>> compilerDirectives;
         
-        static AnModifierType* get(AnType *e, std::vector<TokenType> modifiers);
-
-        static bool classof(const AnType *t){
-            return t->typeTag == TT_Modifier;
-        }
+        static AnModifier* get(std::vector<TokenType> modifiers);
     };
 
     //Tuples
     class AnAggregateType : public AnType {
         protected:
-        AnAggregateType(TypeTag ty, const std::vector<AnType*> exts) :
-                AnType(ty, ante::isGeneric(exts)), extTys(exts) {}
+        AnAggregateType(TypeTag ty, const std::vector<AnType*> exts, AnModifier *m) :
+                AnType(ty, ante::isGeneric(exts), m), extTys(exts) {}
 
         public:
         std::vector<AnType*> extTys;
 
-        static AnAggregateType* get(TypeTag t, std::vector<AnType*> types);
+        static AnAggregateType* get(TypeTag t, std::vector<AnType*> types, AnModifier *m = nullptr);
 
         /** @brief Get a function type. */
-        static AnAggregateType* get(AnType* retty, NamedValNode* params);
+        static AnAggregateType* get(AnType* retty, NamedValNode* params, AnModifier *m = nullptr);
+        
+        AnAggregateType* addModifier(TokenType m) override;
         
         static bool classof(const AnType *t){
-            if(t->typeTag == TT_Modifier)
-                t = ((AnModifierType*)t)->extTy;
-
             return t->typeTag == TT_Tuple or t->typeTag == TT_Function
                 or t->typeTag == TT_Data;
         }
@@ -116,8 +109,8 @@ namespace ante {
     //Arrays, both sized and not
     class AnArrayType : public AnType {
         protected:
-        AnArrayType(AnType* ext, size_t l = 0) :
-            AnType(TT_Array, ext->isGeneric), extTy(ext), len(l) {}
+        AnArrayType(AnType* ext, size_t l, AnModifier *m) :
+            AnType(TT_Array, ext->isGeneric, m), extTy(ext), len(l) {}
 
         public:
         AnType *extTy;
@@ -125,29 +118,28 @@ namespace ante {
         /** @brief Length of the array type.  0 if not specified */
         size_t len;
         
-        static AnArrayType* get(AnType*, size_t len = 0);
+        static AnArrayType* get(AnType*, size_t len = 0, AnModifier *m = nullptr);
+        
+        AnArrayType* addModifier(TokenType m) override;
 
         static bool classof(const AnType *t){
-            if(t->typeTag == TT_Modifier)
-                t = ((AnModifierType*)t)->extTy;
             return t->typeTag == TT_Array;
         }
     };
     
     class AnPtrType : public AnType {
         protected:
-        AnPtrType(AnType* ext) :
-            AnType(TT_Ptr, ext->isGeneric), extTy(ext){}
+        AnPtrType(AnType* ext, AnModifier *m) :
+            AnType(TT_Ptr, ext->isGeneric, m), extTy(ext){}
 
         public:
         AnType *extTy;
 
-        static AnPtrType* get(AnType*);
+        static AnPtrType* get(AnType* l, AnModifier *m = nullptr);
+        
+        AnPtrType* addModifier(TokenType m) override;
         
         static bool classof(const AnType *t){
-            if(t->typeTag == TT_Modifier)
-                t = ((AnModifierType*)t)->extTy;
-            
             return t->typeTag == TT_Ptr;
         }
     };
@@ -155,37 +147,35 @@ namespace ante {
     //Typevars
     class AnTypeVarType : public AnType {
         protected:
-        AnTypeVarType(std::string &n) :
-            AnType(TT_TypeVar, true), name(n){}
+        AnTypeVarType(std::string &n, AnModifier *m) :
+            AnType(TT_TypeVar, true, m), name(n){}
 
         public:
         std::string name;
 
-        static AnTypeVarType* get(std::string name);
+        static AnTypeVarType* get(std::string name, AnModifier *m = nullptr);
+        
+        AnTypeVarType* addModifier(TokenType m) override;
         
         static bool classof(const AnType *t){
-            if(t->typeTag == TT_Modifier)
-                t = ((AnModifierType*)t)->extTy;
-            
             return t->typeTag == TT_TypeVar;
         }
     };
 
     class AnFunctionType : public AnAggregateType {
         protected:
-        AnFunctionType(AnType *ret, std::vector<AnType*> elems, bool isMetaFunction=false) :
-            AnAggregateType(isMetaFunction ? TT_MetaFunction : TT_Function, elems), retTy(ret){}
+        AnFunctionType(AnType *ret, std::vector<AnType*> elems, bool isMetaFunction, AnModifier *m) :
+            AnAggregateType(isMetaFunction ? TT_MetaFunction : TT_Function, elems, m), retTy(ret){}
 
         public:
         AnType *retTy;
 
-        static AnFunctionType* get(AnType *retTy, const std::vector<AnType*> elems, bool isMetaFunction = false);
-        static AnFunctionType* get(AnType* retty, NamedValNode* params, bool isMetaFunction = false);
+        static AnFunctionType* get(AnType *retTy, const std::vector<AnType*> elems, bool isMetaFunction = false, AnModifier *m = nullptr);
+        static AnFunctionType* get(AnType* retty, NamedValNode* params, bool isMetaFunction = false, AnModifier *m = nullptr);
+        
+        AnFunctionType* addModifier(TokenType m) override;
 
         static bool classof(const AnType *t){
-            if(t->typeTag == TT_Modifier)
-                t = ((AnModifierType*)t)->extTy;
-            
             return t->typeTag == TT_Function or t->typeTag == TT_MetaFunction;
         }
     };
@@ -194,8 +184,8 @@ namespace ante {
     class AnDataType : public AnAggregateType {
 
         protected:
-        AnDataType(std::string &n, const std::vector<AnType*> elems, bool isUnion = false) :
-            AnAggregateType(isUnion ? TT_TaggedUnion : TT_Data, elems), name(n), unboundType(0), llvmType(0){}
+        AnDataType(std::string &n, const std::vector<AnType*> elems, bool isUnion, AnModifier *m) :
+            AnAggregateType(isUnion ? TT_TaggedUnion : TT_Data, elems, m), name(n), unboundType(0), llvmType(0){}
 
         public:
         std::string name;
@@ -214,16 +204,16 @@ namespace ante {
         * generics and prevent the need of forward-decls */
         llvm::Type* llvmType;
 
-        static AnDataType* get(std::string name);
-        static AnDataType* create(std::string name, std::vector<AnType*> elems, bool isUnion);
-        
+        static AnDataType* get(std::string name, AnModifier *m = nullptr);
+        static AnDataType* getOrCreate(std::string name, std::vector<AnType*> &elems, bool isUnion, AnModifier *m = nullptr);
+        static AnDataType* create(std::string name, std::vector<AnType*> elems, bool isUnion, AnModifier *m = nullptr);
+
+        AnDataType* addModifier(TokenType m) override;
+
         static bool classof(const AnType *t){
-            if(t->typeTag == TT_Modifier)
-                t = ((AnModifierType*)t)->extTy;
-            
             return t->typeTag == TT_Data or t->typeTag == TT_TaggedUnion;
         }
-        
+
         /**
         * @param field Name of the field to search for
         *
@@ -275,7 +265,7 @@ namespace ante {
 
     class AnTypeContainer {
         friend AnType;
-        friend AnModifierType;
+        friend AnModifier;
         friend AnAggregateType;
         friend AnArrayType;
         friend AnPtrType;
@@ -284,7 +274,8 @@ namespace ante {
         friend AnDataType;
 
         std::map<TypeTag,       std::unique_ptr<AnType>> primitiveTypes;
-        std::map<std::string,   std::unique_ptr<AnModifierType>> modifierTypes;
+        std::map<std::string,   std::unique_ptr<AnType>> otherTypes;
+        std::map<std::string,   std::unique_ptr<AnModifier>> modifiers;
         std::map<const AnType*, std::unique_ptr<AnPtrType>> ptrTypes;
         std::map<std::string,   std::unique_ptr<AnArrayType>> arrayTypes;
         std::map<std::string,   std::unique_ptr<AnTypeVarType>> typeVarTypes;
