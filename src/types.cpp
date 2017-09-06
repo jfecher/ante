@@ -240,7 +240,7 @@ filterMatchingBindings(const AnDataType *dt, const vector<pair<string, AnType*>>
 
 Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt, bool force = false){
     //create an empty type first so we dont end up with infinite recursion
-    auto* structTy = StructType::get(*c->ctxt, {}, /*dt->name,*/ dt->typeTag == TT_TaggedUnion);
+    auto* structTy = StructType::create(*c->ctxt, {}, dt->name, dt->typeTag == TT_TaggedUnion);
     dt->llvmType = structTy;
 
     if(dt->isGeneric and !force){
