@@ -658,7 +658,19 @@ namespace ante {
          */
         //AnType* searchAndReplaceBoundTypeVars(AnType* tn) const;
 
-        llvm::Type* anTypeToLlvmType(const AnType *ty);
+        /**
+         * @brief Translates an AnType* to an llvm::Type*.
+         *
+         * Translation fails if the type contains an undeclared data type or an undeclared
+         * type variable unless the force flag is set.  If the force flag is
+         * set each undeclared type var is replaced with a void* and undeclared
+         * data types remain an error.
+         *
+         * The force flag should generally be avoided unless type inferencing is
+         * needed/guarenteed to be performed at a later step to retractively
+         * fix the translated type.
+         */
+        llvm::Type* anTypeToLlvmType(const AnType *ty, bool force = false);
 
         /** @brief Performs a type check against l and r */
         TypeCheckResult typeEq(const AnType *l, const AnType *r) const;

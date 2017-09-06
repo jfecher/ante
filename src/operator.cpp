@@ -246,7 +246,7 @@ TypedValue Compiler::compInsert(BinOpNode *op, Node *assignExpr){
 
 
 TypedValue createUnionVariantCast(Compiler *c, TypedValue &valToCast, string &tagName, AnDataType *dataTy, TypeCheckResult &tyeq){
-    auto *unionDataTy = c->lookupType(dataTy->getParentUnionName());
+    auto *unionDataTy = dataTy->parentUnionType;
 
     if(tyeq->res == TypeCheckResult::SuccessWithTypeVars){
         unionDataTy = (AnDataType*)bindGenericToType(c, unionDataTy, tyeq->bindings);
@@ -362,7 +362,12 @@ TypedValue doReinterpretCast(Compiler *c, AnType *castTy, TypedValue &valToCast,
     }else{ //ValToUnion or ValToStruct
         bool isUnion = rcr.type == ReinterpretCastResult::ValToUnion;
         auto *to_tyn = rcr.dataTy;
-        string tag = ((AnDataType*)castTy)->name;
+
+        string tag;
+        if(((AnDataType*)castTy)->unboundType)
+            tag = ((AnDataType*)((AnDataType*)castTy)->unboundType)->name;
+        else
+            tag = ((AnDataType*)castTy)->name;
         //to_tyn->typeName = castTy->typeName;
         //to_tyn->type = isUnion ? TT_TaggedUnion : TT_Data;
 
@@ -488,7 +493,20 @@ TypedValue TypeCastNode::compile(Compiler *c){
 
     auto *ty = toAnType(c, typeExpr.get());
     if(ty->isGeneric){
-        c->compErr("Cannot cast to a generic type", typeExpr->loc);
+        TypeCheckResult tc;
+        if(auto *dt = dyn_cast<AnDataType>(ty)){
+            if(dt->isUnionTag()){
+                tc = c->typeEq(dt->extTys[0], rtval.type);
+            }
+        }
+
+        if(tc->res != TypeCheckResult::SuccessWithTypeVars)
+            tc = c->typeEq(ty, rtval.type);
+
+        ty = bindGenericToType(c, ty, tc->bindings);
+
+        if(ty->isGeneric)
+            c->compErr("Cannot cast to a generic type " + anTypeToColoredStr(ty), typeExpr->loc);
     }
 
     auto tval = createCast(c, ty, rtval, loc);

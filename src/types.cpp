@@ -49,7 +49,9 @@ string getBoundName(string &baseName, const vector<AnType*> &typeArgs){
 
     string name = baseName + "<";
     for(auto *arg : typeArgs){
-        name += anTypeToStr(arg) + ",";
+        name += anTypeToStr(arg);
+        if(&arg != &typeArgs.back())
+            name += ",";
     }
     return name + ">";
 }
@@ -60,7 +62,9 @@ string getBoundName(string &baseName, const vector<pair<string, AnType*>> &typeA
 
     string name = baseName + "<";
     for(auto &p : typeArgs){
-        name += anTypeToStr(p.second) + ",";
+        name += anTypeToStr(p.second);
+        if(&p != &typeArgs.back())
+            name += ",";
     }
     return name + ">";
 }
@@ -142,7 +146,7 @@ void validateType(Compiler *c, const AnType *tn, const AnDataType *dt){
 }
 
 
-size_t AnType::getSizeInBits(Compiler *c, string *incompleteType){
+size_t AnType::getSizeInBits(Compiler *c, string *incompleteType, bool force){
     size_t total = 0;
 
     if(isPrimitiveTypeTag(this->typeTag))
@@ -167,18 +171,18 @@ size_t AnType::getSizeInBits(Compiler *c, string *incompleteType){
         //    bindGenericToType(tyn, params, dataTy);
         //}
         for(auto *ext : dataTy->extTys){
-            total += ext->getSizeInBits(c, incompleteType);
+            total += ext->getSizeInBits(c, incompleteType, force);
         }
         return total;
 
     }else if(typeTag == TT_Tuple){
         for(auto *ext : ((AnAggregateType*)this)->extTys){
-            total += ext->getSizeInBits(c, incompleteType);
+            total += ext->getSizeInBits(c, incompleteType, force);
         }
 
     }else if(typeTag == TT_Array){
         auto *arr = (AnArrayType*)this;
-        return arr->len * arr->extTy->getSizeInBits(c, incompleteType);
+        return arr->len * arr->extTy->getSizeInBits(c, incompleteType, force);
     }else if(typeTag == TT_Ptr or typeTag == TT_Function or typeTag == TT_MetaFunction){
         return AN_USZ_SIZE;
 
@@ -186,11 +190,15 @@ size_t AnType::getSizeInBits(Compiler *c, string *incompleteType){
         auto *tvt = (AnTypeVarType*)this;
         auto *var = c->lookup(tvt->name);
         if(var)
-            return extractTypeValue(var->tval)->getSizeInBits(c);
+            return extractTypeValue(var->tval)->getSizeInBits(c, incompleteType, force);
 
         //TODO: store location data in AnTypeVarType
-        cerr << "Lookup for typevar " << tvt->name << " not found" << endl;
-        throw new TypeVarError();
+        if(force){
+            return AN_USZ_SIZE;
+        }else{
+            cerr << "Lookup for typevar " << tvt->name << " not found" << endl;
+            throw new TypeVarError();
+        }
     }
 
     return total;
@@ -198,7 +206,7 @@ size_t AnType::getSizeInBits(Compiler *c, string *incompleteType){
 
 
 vector<pair<string, AnType*>>
-mapBindingsToDataType(const vector<AnType*> &bindings, AnDataType *dt){
+mapBindingsToDataType(const vector<AnType*> &bindings, const AnDataType *dt){
     vector<pair<string, AnType*>> ret;
     ret.reserve(bindings.size());
 
@@ -230,24 +238,43 @@ filterMatchingBindings(const AnDataType *dt, const vector<pair<string, AnType*>>
 }
 
 
-Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt){
+Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt, bool force = false){
     //create an empty type first so we dont end up with infinite recursion
-    auto* structTy = StructType::create(*c->ctxt, {}, dt->name, dt->typeTag == TT_TaggedUnion);
+    auto* structTy = StructType::get(*c->ctxt, {}, /*dt->name,*/ dt->typeTag == TT_TaggedUnion);
     dt->llvmType = structTy;
+
+    if(dt->isGeneric and !force){
+        cerr << "Type " << anTypeToStr(dt) << " is generic and cannot be translated.\n";
+        c->errFlag = true;
+        return nullptr;
+    }
 
     AnType *ext = dt;
     if(dt->typeTag == TT_TaggedUnion)
-        ext = getLargestExt(c, dt);
+        ext = getLargestExt(c, dt, force);
 
     vector<Type*> tys;
-    for(auto *e : dt->extTys){
-        tys.push_back(c->anTypeToLlvmType(e));
+    if(auto *aggty = dyn_cast<AnAggregateType>(ext)){
+        for(auto *e : aggty->extTys){
+            tys.push_back(c->anTypeToLlvmType(e, force));
+        }
+    }else{
+        tys.push_back(c->anTypeToLlvmType(ext, force));
     }
 
     structTy->setBody(tys);
 
     dt->llvmType = structTy;
     return structTy;
+}
+
+vector<AnType*> extractTypes(const vector<pair<string, AnType*>> &bindings){
+    vector<AnType*> ret;
+    ret.reserve(bindings.size());
+    for(auto &p : bindings){
+        ret.emplace_back(p.second);
+    }
+    return ret;
 }
 
 /*
@@ -290,9 +317,17 @@ AnType* bindGenericToType(Compiler *c, AnType *tn, const vector<pair<string, AnT
             boundExts.push_back(bindGenericToType(c, e, dty_bindings));
         }
 
+        if(dty->isUnionTag()){
+            auto *unionType = dty->parentUnionType;
+            unionType = (AnDataType*)bindGenericToType(c, unionType, bindings);
+            decl->parentUnionType = unionType;
+        }
+
+        decl->typeTag = dty->typeTag;
+        decl->boundGenerics = extractTypes(dty_bindings);
+        decl->fields = dty->fields;
         decl->unboundType = dty;
         decl->extTys.swap(boundExts);
-        decl->fields = dty->fields;
         decl->tags = dty->tags;
         decl->traitImpls = dty->traitImpls;
         updateLlvmTypeBinding(c, decl);
@@ -629,12 +664,12 @@ Type* typeTagToLlvmType(TypeTag ty, LLVMContext &ctxt){
     }
 }
 
-AnType* getLargestExt(Compiler *c, AnDataType *tn){
+AnType* getLargestExt(Compiler *c, AnDataType *tn, bool force){
     AnType *largest = 0;
     size_t largest_size = 0;
 
     for(auto *e : tn->extTys){
-        size_t size = e->getSizeInBits(c);
+        size_t size = e->getSizeInBits(c, nullptr, force);
         if(size > largest_size){
             largest = e;
             largest_size = size;
@@ -676,7 +711,7 @@ TypeTag llvmTypeToTypeTag(Type *t){
  *  llvmTypeToTokType, information on signedness of integers is still lost, causing the
  *  unfortunate necessity for the use of a TypedValue for the storage of this information.
  */
-Type* Compiler::anTypeToLlvmType(const AnType *ty){
+Type* Compiler::anTypeToLlvmType(const AnType *ty, bool force){
     vector<Type*> tys;
 
     switch(ty->typeTag){
@@ -703,7 +738,7 @@ Type* Compiler::anTypeToLlvmType(const AnType *ty){
             if(dt->llvmType)
                 return dt->llvmType;
             else
-                return updateLlvmTypeBinding(this, dt);
+                return updateLlvmTypeBinding(this, dt, force);
         }
         case TT_Function: case TT_MetaFunction: {
             auto *f = ((AnAggregateType*)ty);
@@ -720,8 +755,10 @@ Type* Compiler::anTypeToLlvmType(const AnType *ty){
                 //compErr("Use of undeclared type variable " + ty->typeName, ty->loc);
                 //compErr("tn2llvmt: TypeVarError; lookup for "+ty->typeName+" not found", ty->loc);
                 //throw new TypeVarError();
-                cerr << "Warning: cannot translate undeclared typevar " << tvt->name << endl;
-                return Type::getInt32Ty(*ctxt);
+                if(!force)
+                    cerr << "Warning: cannot translate undeclared typevar " << tvt->name << endl;
+
+                return Type::getInt64Ty(*ctxt);
             }
 
             return anTypeToLlvmType(extractTypeValue(typeVar->tval));
@@ -894,7 +931,7 @@ TypeCheckResult& typeEqBase(const AnType *l, const AnType *r, TypeCheckResult &t
     }else if(r->typeTag == TT_Array){
         auto *larr = (AnArrayType*)l;
         auto *rarr = (AnArrayType*)r;
-        
+
         if(larr->len != rarr->len) return tcr.failure();
 
         return c ? typeEqHelper(c, larr->extTy, rarr->extTy, tcr)
@@ -938,15 +975,38 @@ TypeCheckResult& typeEqHelper(const Compiler *c, const AnType *l, const AnType *
     if(l == r) return tcr.success();
     if(!r) return tcr.failure();
 
-    if((l->typeTag == TT_Data or l->typeTag == TT_TaggedUnion) and (r->typeTag == TT_Data or r->typeTag == TT_TaggedUnion)){
-        auto *ldt = (AnDataType*)l;
-        auto *rdt = (AnDataType*)r;
-
+    const AnDataType *ldt, *rdt;
+    if((ldt = dyn_cast<AnDataType>(l)) and (rdt = dyn_cast<AnDataType>(r))){
         if(ldt->name == rdt->name)
             return tcr.success();
 
-        if(ldt->unboundType == rdt or rdt->unboundType == ldt){
-            //TODO: return bind params
+        //Two bound types, check to see if their type parameters are equivalent
+        if(ldt->unboundType and ldt->unboundType == rdt->unboundType){
+            for(size_t i = 0; i < ldt->boundGenerics.size(); i++){
+                auto *lbg = ldt->boundGenerics[i];
+                auto *rbg = rdt->boundGenerics[i];
+
+                if(!typeEqHelper(c, lbg, rbg, tcr)) return tcr.failure();
+            }
+            return tcr;
+        }
+
+        if(ldt->unboundType == rdt){
+            if(!rdt->boundGenerics.empty()) return tcr.failure();
+    
+            auto bindings_map = mapBindingsToDataType(ldt->boundGenerics, rdt);
+            for(auto &p : bindings_map)
+                tcr->bindings.emplace_back(p.first, p.second);
+
+            return tcr.successWithTypeVars();
+        }else if(rdt->unboundType == ldt){
+            if(!ldt->boundGenerics.empty()) return tcr.failure();
+            
+            auto bindings_map = mapBindingsToDataType(rdt->boundGenerics, ldt);
+            for(auto &p : bindings_map)
+                tcr->bindings.emplace_back(p.first, p.second);
+
+            return tcr.successWithTypeVars();
         }
 
         //typeName's are different, check if one is a trait and the other
@@ -954,11 +1014,11 @@ TypeCheckResult& typeEqHelper(const Compiler *c, const AnType *l, const AnType *
         Trait *t;
         AnDataType *dt;
         if((t = c->lookupTrait(ldt->name))){
-            dt = c->lookupType(rdt->name);
-            if(!dt) return tcr.failure();
+            dt = AnDataType::get(rdt->name);
+            if(!dt or dt->isStub()) return tcr.failure();
         }else if((t = c->lookupTrait(rdt->name))){
-            dt = c->lookupType(ldt->name);
-            if(!dt) return tcr.failure();
+            dt = AnDataType::get(ldt->name);
+            if(!dt or dt->isStub()) return tcr.failure();
         }else{
             return tcr.failure();
         }

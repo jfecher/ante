@@ -34,14 +34,14 @@ namespace ante {
         //virtual ~AnType() = delete;
 
     public:
-        const TypeTag typeTag;
+        TypeTag typeTag;
         bool isGeneric;
         AnModifier *mods;
 
         bool hasModifier(TokenType m);
         virtual AnType* addModifier(TokenType m);
 
-        size_t getSizeInBits(Compiler *c, std::string *incompleteType = nullptr);
+        size_t getSizeInBits(Compiler *c, std::string *incompleteType = nullptr, bool force = false);
 
         AnType* getFunctionReturnType() const;
 
@@ -185,7 +185,8 @@ namespace ante {
 
         protected:
         AnDataType(std::string &n, const std::vector<AnType*> elems, bool isUnion, AnModifier *m) :
-            AnAggregateType(isUnion ? TT_TaggedUnion : TT_Data, elems, m), name(n), unboundType(0), llvmType(0){}
+            AnAggregateType(isUnion ? TT_TaggedUnion : TT_Data, elems, m), name(n), unboundType(0),
+            parentUnionType(0), llvmType(0){}
 
         public:
         std::string name;
@@ -197,8 +198,11 @@ namespace ante {
 
         /** @brief If this type is a bound version (eg. Maybe<i32>) of some generic
          * type (eg. Maybe<'t>), unboundType will point to the generic type. */
-        AnType *unboundType;
+        AnDataType *unboundType;
+        AnDataType *parentUnionType;
+
         std::vector<AnTypeVarType*> generics;
+        std::vector<AnType*> boundGenerics;
 
         /** @brief Types are lazily translated into their llvm::Type counterpart to better support
         * generics and prevent the need of forward-decls */
@@ -234,7 +238,7 @@ namespace ante {
         * @return True if this DataType is actually a tag type
         */
         bool isUnionTag() const {
-            return fields.size() > 0 and fields[0][0] >= 'A' and fields[0][0] <= 'Z';
+            return parentUnionType;
         }
 
         /**
@@ -245,9 +249,9 @@ namespace ante {
         *
         * @return The name of the DataType containing this UnionTag
         */
-        std::string getParentUnionName() const {
-            return fields[0];
-        }
+        //std::string getParentUnionName() const {
+        //    return parentUnionType->name;
+        //}
 
         /**
         * @brief Returns the UnionTag value of a tag within the union type.

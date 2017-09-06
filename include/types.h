@@ -43,7 +43,7 @@ namespace ante {
 
     std::string getCastFnBaseName(AnType *t);
 
-    AnType* getLargestExt(Compiler *c, AnDataType *tn);
+    AnType* getLargestExt(Compiler *c, AnDataType *tn, bool force = false);
     char getBitWidthOfTypeTag(const TypeTag tagTy);
     bool isPrimitiveTypeTag(TypeTag ty);
     bool isNumericTypeTag(const TypeTag ty);

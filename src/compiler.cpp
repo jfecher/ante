@@ -135,16 +135,16 @@ TypedValue ModNode::compile(Compiler *c){
 TypedValue TypeNode::compile(Compiler *c){
     //check for enum value
     if(type == TT_Data || type == TT_TaggedUnion){
-        auto *dataTy = c->lookupType(typeName);
-        if(!dataTy) goto rettype;
+        auto *dataTy = AnDataType::get(typeName);
+        if(!dataTy or dataTy->isStub()) goto rettype;
 
-        auto *unionDataTy = c->lookupType(dataTy->getParentUnionName());
-        if(!unionDataTy) goto rettype;
+        auto *unionDataTy = dataTy->parentUnionType;
+        if(!unionDataTy or dataTy->isStub()) goto rettype;
 
         size_t tagIndex = unionDataTy->getTagVal(typeName);
         Value *tag = ConstantInt::get(*c->ctxt, APInt(8, tagIndex, true));
 
-        Type *unionTy = c->anTypeToLlvmType(unionDataTy);
+        Type *unionTy = c->anTypeToLlvmType(unionDataTy, true);
 
         Type *curTy = tag->getType();
 
@@ -1052,14 +1052,14 @@ TypedValue ExtNode::compile(Compiler *c){
         AnDataType *dt;
 
         if(typeExpr->typeName.empty()){ //primitive type being extended
-            dt = c->lookupType(typestr);
-            if(!dt){ //if primitive type has not been extended before, make it a DataType to store in
+            dt = AnDataType::get(typestr);
+            if(!dt or dt->isStub()){ //if primitive type has not been extended before, make it a DataType to store in
                 dt = AnDataType::create(typestr, {toAnType(c, typeExpr.get())}, false);
                 c->stoType(dt, typestr);
             }
         }else{
-            dt = c->lookupType(typestr);
-            if(!dt)
+            dt = AnDataType::get(typestr);
+            if(!dt or dt->isStub())
                 return c->compErr("Cannot implement traits for undeclared type " +
                         typeNodeToColoredStr(typeExpr.get()), typeExpr->loc);
         }
@@ -1162,6 +1162,7 @@ TypedValue compTaggedUnion(Compiler *c, DataDeclNode *n){
     vector<shared_ptr<UnionTag>> tags;
 
     vector<AnType*> unionTypes;
+    AnDataType *data = AnDataType::create(union_name, unionTypes, true);
 
     while(nvn){
         TypeNode *tyn = (TypeNode*)nvn->typeExpr.get();
@@ -1174,18 +1175,23 @@ TypedValue compTaggedUnion(Compiler *c, DataDeclNode *n){
         //Each union member's type is a tuple of the tag (a u8 value), and the user-defined value
         auto *tup = AnAggregateType::get(TT_Tuple, {AnType::getU8(), tagTy});
 
-        AnDataType *data = AnDataType::create(nvn->name, {tagTy}, false);
-        data->fields.emplace_back(union_name);
+        AnDataType *tagdt = AnDataType::create(nvn->name, {tagTy}, false);
+        tagdt->fields.emplace_back(union_name);
+        tagdt->parentUnionType = data;
+        for(auto &g : n->generics)
+            tagdt->generics.push_back((AnTypeVarType*)toAnType(c, g.get()));
 
         unionTypes.push_back(tup);
 
         validateType(c, tagTy, n);
-        c->stoType(data, nvn->name);
+        c->stoType(tagdt, nvn->name);
 
         nvn = (NamedValNode*)nvn->next.get();
     }
 
-    AnDataType *data = AnDataType::create(union_name, unionTypes, true);
+    data->typeTag = TT_TaggedUnion;
+    data->isGeneric = isGeneric(unionTypes);
+    data->extTys = unionTypes;
     data->fields = fieldNames;
 
     for(auto &g : n->generics)
@@ -1199,8 +1205,8 @@ TypedValue compTaggedUnion(Compiler *c, DataDeclNode *n){
 
 
 TypedValue DataDeclNode::compile(Compiler *c){
-    auto *dt = c->lookupType(this->name);
-    if(dt) return c->compErr("Type " + name + " was redefined", loc);
+    auto *dt = AnDataType::get(this->name);
+    if(dt and !dt->isStub()) return c->compErr("Type " + name + " was redefined", loc);
 
     auto *nvn = (NamedValNode*)child.get();
     if(((TypeNode*) nvn->typeExpr.get())->type == TT_TaggedUnion){
@@ -1312,7 +1318,7 @@ TypedValue handleTypeCastPattern(Compiler *c, TypedValue lval, TypeCastNode *tn,
     
     //This is a pattern of the match _ with expr, so if that is mutable this should be too
     //auto tagtycpy = tagTy->copyModifiersFrom(lval.type);
-    AnType *tagtycpy = tagTy;
+    AnType *tagtycpy = tagTy->extTys[0];
 
     auto tcr = c->typeEq(parentTy, lval.type);
 
@@ -1321,7 +1327,7 @@ TypedValue handleTypeCastPattern(Compiler *c, TypedValue lval, TypeCastNode *tn,
     else if(tcr->res == TypeCheckResult::Failure)
         return c->compErr("Cannot bind pattern of type " + anTypeToColoredStr(parentTy) +
                 " to matched value of type " + anTypeToColoredStr(lval.type), tn->rval->loc);
-
+    
     //cast it from (<tag type>, <largest union member type>) to (<tag type>, <this union member's type>)
     auto *tupTy = StructType::get(*c->ctxt, {Type::getInt8Ty(*c->ctxt), c->anTypeToLlvmType(tagtycpy)}, true);
 
@@ -1401,28 +1407,28 @@ TypedValue MatchNode::compile(Compiler *c){
 
         //TypeCast-esque pattern:  Some n
         if(TypeCastNode *tn = dynamic_cast<TypeCastNode*>(mbn->pattern.get())){
-            auto *tagTy = c->lookupType(tn->typeExpr->typeName);
-            if(!tagTy)
+            auto *tagTy = AnDataType::get(tn->typeExpr->typeName);
+            if(!tagTy or tagTy->isStub())
                 return c->compErr("Union tag " + typeNodeToColoredStr(tn->typeExpr.get()) + " was not yet declared.", tn->typeExpr->loc);
 
             if(!tagTy->isUnionTag())
                 return c->compErr(typeNodeToColoredStr(tn->typeExpr.get()) + " must be a union tag to be used in a pattern", tn->typeExpr->loc);
 
-            auto *parentTy = c->lookupType(tagTy->getParentUnionName());
+            auto *parentTy = tagTy->parentUnionType;
             ci = ConstantInt::get(*c->ctxt, APInt(8, parentTy->getTagVal(tn->typeExpr->typeName), true));
 
             handleTypeCastPattern(c, lval, tn, tagTy, parentTy);
 
         //single type pattern:  None
         }else if(TypeNode *tn = dynamic_cast<TypeNode*>(mbn->pattern.get())){
-            auto *tagTy = c->lookupType(tn->typeName);
-            if(!tagTy)
+            auto *tagTy = AnDataType::get(tn->typeName);
+            if(!tagTy or tagTy->isStub())
                 return c->compErr("Union tag " + typeNodeToColoredStr(tn) + " was not yet declared.", tn->loc);
 
             if(!tagTy->isUnionTag())
                 return c->compErr(typeNodeToColoredStr(tn) + " must be a union tag to be used in a pattern", tn->loc);
 
-            auto *parentTy = c->lookupType(tagTy->getParentUnionName());
+            auto *parentTy = tagTy->parentUnionType;
             ci = ConstantInt::get(*c->ctxt, APInt(8, parentTy->getTagVal(tn->typeName), true));
 
         //variable/match-all pattern: _
