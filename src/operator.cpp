@@ -312,6 +312,8 @@ struct ReinterpretCastResult {
 vector<AnType*> toArgTuple(AnType *ty){
     if(ty->typeTag == TT_Tuple){
         return ((AnAggregateType*)ty)->extTys;
+    }else if(ty->typeTag == TT_Void){
+        return {};
     }else{
         return {ty};
     }

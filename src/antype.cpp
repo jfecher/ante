@@ -77,6 +77,7 @@ namespace ante {
                 case TT_C32:          return typeArena.primitiveTypes[tag].get();
                 case TT_Bool:         return typeArena.primitiveTypes[tag].get();
                 case TT_Void:         return typeArena.primitiveTypes[tag].get();
+                case TT_Type:         return typeArena.primitiveTypes[tag].get();
                 case TT_FunctionList: return typeArena.primitiveTypes[tag].get();
                 default:
                     cerr << "error: AnType::getPrimitive: TypeTag " << typeTagToStr(tag) << " is not primitive!\n";
@@ -333,6 +334,7 @@ namespace ante {
         typeArena.primitiveTypes[TT_Void].reset(new AnType(TT_Void, false, nullptr));
         typeArena.primitiveTypes[TT_C8].reset(new AnType(TT_C8, false, nullptr));
         typeArena.primitiveTypes[TT_C32].reset(new AnType(TT_C32, false, nullptr));
+        typeArena.primitiveTypes[TT_Type].reset(new AnType(TT_Type, false, nullptr));
         typeArena.primitiveTypes[TT_FunctionList].reset(new AnType(TT_FunctionList, false, nullptr));
     }
             
