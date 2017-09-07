@@ -120,7 +120,7 @@ TypedValue Compiler::compRem(TypedValue &l, TypedValue &r, BinOpNode *op){
  */
 TypedValue Compiler::compExtract(TypedValue &l, TypedValue &r, BinOpNode *op){
     if(!isIntTypeTag(r.type->typeTag)){
-        return compErr("Index of operator '[' must be an integer expression, got expression of type " + anTypeToColoredStr(r.type), op->loc);
+        return compErr("Index of operator '#' must be an integer expression, got expression of type " + anTypeToColoredStr(r.type), op->loc);
     }
 
     if(auto *arrty = dyn_cast<AnArrayType>(l.type)){
@@ -770,7 +770,7 @@ TypedValue Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *binop
 
         //not a field, so look for a method.
         //TODO: perhaps create a calling convention function
-        string typeName = anTypeToStr(tyn);
+        string typeName = anTypeToStrWithoutModifiers(tyn);
         string funcName = typeName + "_" + field->name;
         auto& l = getFunctionList(funcName);
 
@@ -1571,6 +1571,8 @@ TypedValue SeqNode::compile(Compiler *c){
     for(auto &n : sequence){
         try{
             ret = n->compile(c);
+            if(dynamic_cast<FuncDeclNode*>(n.get()))
+                n.release();
         }catch(CtError *e){
             //Unless the final value throws, delete the error
             if(i == sequence.size()) throw e;

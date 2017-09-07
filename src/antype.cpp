@@ -302,6 +302,29 @@ namespace ante {
             return AnDataType::create(name, elems, isUnion, m);
         }
     }
+        
+    AnDataType* AnDataType::getOrCreate(const AnDataType *dt, AnModifier *m){
+        string key = modifiersToStr(m) + dt->name;
+        try{
+            return typeArena.declaredTypes.at(key).get();
+        }catch(out_of_range r){
+            //create declaration w/out definition
+            vector<AnType*> elems;
+            elems.reserve(dt->extTys.size());
+            for(auto *ty : dt->extTys){
+                elems.emplace_back(ty->addModifier(m->modifiers.back()));
+            }
+
+            auto *ret = AnDataType::create(dt->name, elems, dt->typeTag == TT_TaggedUnion, m);
+            ret->fields = dt->fields;
+            ret->tags = dt->tags;
+            ret->traitImpls = dt->traitImpls;
+            ret->unboundType = dt->unboundType;
+            ret->boundGenerics = dt->boundGenerics;
+            ret->generics = dt->generics;
+            return ret;
+        }
+    }
 
     AnDataType* AnDataType::create(string name, vector<AnType*> elems, bool isUnion, AnModifier *m){
         string key = modifiersToStr(m) + name;
@@ -482,12 +505,10 @@ namespace ante {
             }else{
                 auto modifiers = mods->modifiers;
                 modifiers.push_back(m);
-                return AnDataType::getOrCreate(name, extTys,
-                        typeTag == TT_TaggedUnion, AnModifier::get(modifiers));
+                return AnDataType::getOrCreate(this, AnModifier::get(modifiers));
             }
         }
-        return AnDataType::getOrCreate(name, extTys,
-                typeTag == TT_TaggedUnion, AnModifier::get({m}));
+        return AnDataType::getOrCreate(this, AnModifier::get({m}));
     }
 
 }
