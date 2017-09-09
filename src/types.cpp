@@ -48,7 +48,7 @@ string getBoundName(string &baseName, const vector<AnType*> &typeArgs){
         return baseName;
 
     string name = baseName + "<";
-    for(auto *arg : typeArgs){
+    for(auto &arg : typeArgs){
         name += anTypeToStr(arg);
         if(&arg != &typeArgs.back())
             name += ",";
@@ -238,8 +238,9 @@ filterMatchingBindings(const AnDataType *dt, const vector<pair<string, AnType*>>
 }
 
 
-Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt, bool force = false){
+Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt, bool force){
     //create an empty type first so we dont end up with infinite recursion
+
     auto* structTy = StructType::create(*c->ctxt, {}, dt->name, dt->typeTag == TT_TaggedUnion);
     dt->llvmType = structTy;
 
@@ -263,8 +264,6 @@ Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt, bool force = false){
     }
 
     structTy->setBody(tys);
-
-    dt->llvmType = structTy;
     return structTy;
 }
 
@@ -732,8 +731,10 @@ Type* Compiler::anTypeToLlvmType(const AnType *ty, bool force){
             return StructType::get(*ctxt, tys);
         case TT_Data: case TT_TaggedUnion: {
             auto *dt = ((AnDataType*)ty);
-            if(dt->isStub())
-                compErr("Use of undeclared type " + dt->name);
+            if(dt->isStub()){
+                return updateLlvmTypeBinding(this, dt, force);
+                //compErr("Use of undeclared type " + dt->name);
+            }
 
             if(dt->llvmType)
                 return dt->llvmType;
@@ -1220,8 +1221,8 @@ string _anTypeToStr(const AnType *t, AnModifier *m){
         return ret + ")->" + retTy;
     }else if(auto *tup = dyn_cast<AnAggregateType>(t)){
         string ret = mods + "(";
-        for(auto *ext : tup->extTys){
-            if(ext != tup->extTys.back())
+        for(const auto &ext : tup->extTys){
+            if(&ext != &tup->extTys.back())
                 ret += _anTypeToStr(ext, t->mods) + ", ";
             else
                 ret += _anTypeToStr(ext, t->mods) + ")";

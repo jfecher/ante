@@ -7,6 +7,10 @@ namespace ante {
 
     AnTypeContainer typeArena;
 
+    void AnType::dump(){
+        cout << anTypeToStr(this) << endl;
+    }
+
     bool isGeneric(const std::vector<AnType*> &vec){
         for(auto *t : vec)
             if(t->isGeneric)
@@ -213,9 +217,9 @@ namespace ante {
 
     string getKey(const std::vector<AnType*> &exts){
         string ret = "";
-        for(auto *ext : exts){
+        for(auto &ext : exts){
             ret += anTypeToStr(ext);
-            if(ext != exts.back())
+            if(&ext != &exts.back())
                 ret += ", ";
         }
         return ret;

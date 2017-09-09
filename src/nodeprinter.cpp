@@ -157,7 +157,7 @@ void BinOpNode::print(){
 void BlockNode::print(){
     puts("{");
     block->print();
-    cout << "\n}";
+    cout << "\n}" << flush;
 }
 
 void RetNode::print(){
@@ -191,13 +191,13 @@ void NamedValNode::print(){
         cout << "..."; //varargs
 
     putchar(' ');
-    cout << name;
+    cout << name << flush;
 
     maybePrintArr(next.get());
 }
 
 void VarNode::print(){
-    cout << name;
+    cout << name << flush;
     maybePrintArr(next.get());
 }
 

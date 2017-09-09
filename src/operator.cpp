@@ -3,6 +3,7 @@
 #include "function.h"
 #include "tokens.h"
 #include "jitlinker.h"
+#include "types.h"
 #include <llvm/ExecutionEngine/Interpreter.h>
 #include <llvm/Linker/Linker.h>
 
@@ -753,6 +754,10 @@ TypedValue Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *binop
             if(index != -1){
                 AnType *retTy = dataTy->extTys[index];
 
+                if(dataTy->isStub()){
+                    updateLlvmTypeBinding(this, dataTy, false);
+                }
+
                 //The data type when looking up (usually) does not have any modifiers,
                 //so apply any potential modifers from the parent to this
                 //if(retTy->modifiers.empty() and !ltyn->modifiers.empty()){
@@ -764,7 +769,8 @@ TypedValue Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *binop
                 if(index == 0 and !val->getType()->isStructTy())
                     return TypedValue(val, retTy);
 
-                return TypedValue(builder.CreateExtractValue(val, index), retTy);
+                auto ev = builder.CreateExtractValue(val, index);
+                return TypedValue(ev, retTy);
             }
         }
 

@@ -43,6 +43,8 @@ namespace ante {
 
         size_t getSizeInBits(Compiler *c, std::string *incompleteType = nullptr, bool force = false);
 
+        void dump();
+
         AnType* getFunctionReturnType() const;
 
         static AnType* getPrimitive(TypeTag tag, AnModifier *mod = nullptr);

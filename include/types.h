@@ -19,6 +19,8 @@ namespace ante {
     std::string typeNodeToStr(const TypeNode *t);
     lazy_str typeNodeToColoredStr(const TypeNode *t);
 
+    llvm::Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt, bool force = false);
+
     //Typevar creation with no yy::location
     //TypeNode* mkAnonTypeNode(TypeTag);
     //TypeNode* mkTypeNodeWithExt(TypeTag tt, TypeNode *ext);

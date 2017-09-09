@@ -3,9 +3,9 @@ type Maybe!'t =
    | Some 't
    | None
 
-type List<'t> = Maybe!Node<'t>* first, Maybe!Node<'t>* last
+type List<'t> = Maybe<Node<'t>*> first, Maybe<Node<'t>*> last
 
-type Node<'t> = 't elem, Maybe!Node<'t>* next
+type Node<'t> = 't elem, Maybe<Node<'t>*> next
 
 fun Node<'t>.init: 't elem -> Node!'t
     Node(elem, None)
