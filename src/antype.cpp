@@ -188,7 +188,7 @@ namespace ante {
                 return ptr;
             }
         }else{
-            string key = modifiersToStr(m) + anTypeToStr(ext);
+            string key = modifiersToStr(m) + anTypeToStr(ext) + "*";
             try{
                 return (AnPtrType*)typeArena.otherTypes.at(key).get();
             }catch(out_of_range r){
@@ -456,7 +456,7 @@ namespace ante {
         }
         return AnArrayType::get(extTy, len, AnModifier::get({m}));
     }
-        
+
     AnPtrType* AnPtrType::addModifier(TokenType m){
         if(mods){
             if(hasModifier(m)){
