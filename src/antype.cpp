@@ -250,7 +250,7 @@ namespace ante {
 
 
     AnFunctionType* AnFunctionType::get(AnType *retTy, const std::vector<AnType*> elems, bool isMetaFunction, AnModifier *m){
-        auto key = modifiersToStr(m) + getKey(elems) + "->" + anTypeToStr(retTy);
+        auto key = modifiersToStr(m) + (isMetaFunction ? "1":"0") + getKey(elems) + "->" + anTypeToStr(retTy);
         try{
             return typeArena.functionTypes.at(key).get();
         }catch(out_of_range r){
@@ -389,10 +389,23 @@ namespace ante {
             case TT_Void:
                 return AnType::getPrimitive(tn->type, mods);
 
-            case TT_Tuple:
             case TT_Function:
             case TT_MetaFunction:
             case TT_FunctionList: {
+                TypeNode *ext = tn->extTy.get();
+                AnType *ret = 0;
+                vector<AnType*> tys;
+                while(ext){
+                    if(ret){
+                        tys.push_back(toAnType(c, (TypeNode*)ext));
+                    }else{
+                        ret = toAnType(c, (TypeNode*)ext);
+                    }
+                    ext = (TypeNode*)ext->next.get();
+                }
+                return AnFunctionType::get(ret, tys, tn->type == TT_MetaFunction, mods);
+            }
+            case TT_Tuple: {
                 TypeNode *ext = tn->extTy.get();
                 vector<AnType*> tys;
                 while(ext){

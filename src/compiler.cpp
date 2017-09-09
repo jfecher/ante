@@ -1910,7 +1910,7 @@ void TypedValue::dump() const{
     else if(type->typeTag == TT_Type)
         cout << anTypeToStr(extractTypeValue(*this)) << endl;
     else if(type->typeTag == TT_FunctionList){
-        auto *fl = (FunctionCandidates*)this;
+        auto *fl = (FunctionCandidates*)val;
         cout << "(" << fl->candidates.size() << " function" << (fl->candidates.size() == 1 ? ")\n" : "s)\n");
 
         for(auto &c : fl->candidates){
