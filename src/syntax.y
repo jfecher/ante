@@ -525,10 +525,10 @@ fn_ext_decl: modifier_list maybe_newline Fun type_expr '.' fn_name ':' params RA
            | Fun type_expr '.' fn_name ':'                                                     ';'   {$$ = mkExtNode(@2, $2, mkFuncDeclNode(@$, /*fn_name*/$4, $4, /*mods*/ 0, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/0,  /*body*/0));}
            ;
 
-fn_lambda: modifier_list maybe_newline Fun params '=' expr  %prec Fun  {$$ = mkFuncDeclNode(@$, /*fn_name*/(Node*)"", (Node*)"", /*mods*/$1, /*ret_ty*/0,  /*params*/$4, /*body*/$6);}
-         | modifier_list maybe_newline Fun '=' expr         %prec Fun  {$$ = mkFuncDeclNode(@$, /*fn_name*/(Node*)"", (Node*)"", /*mods*/$1, /*ret_ty*/0,  /*params*/0,  /*body*/$5);}
-         | Fun params '=' expr                              %prec Fun  {$$ = mkFuncDeclNode(@$, /*fn_name*/(Node*)"", (Node*)"", /*mods*/ 0, /*ret_ty*/0,  /*params*/$2, /*body*/$4);}
-         | Fun '=' expr                                     %prec Fun  {$$ = mkFuncDeclNode(@$, /*fn_name*/(Node*)"", (Node*)"", /*mods*/ 0, /*ret_ty*/0,  /*params*/0,  /*body*/$3);}
+fn_lambda: modifier_list maybe_newline Fun params '=' expr  %prec Fun  {Node *name = (Node*)strdup(""); $$ = mkFuncDeclNode(@$, /*fn_name*/name, name, /*mods*/$1, /*ret_ty*/0,  /*params*/$4, /*body*/$6);}
+         | modifier_list maybe_newline Fun '=' expr         %prec Fun  {Node *name = (Node*)strdup(""); $$ = mkFuncDeclNode(@$, /*fn_name*/name, name, /*mods*/$1, /*ret_ty*/0,  /*params*/0,  /*body*/$5);}
+         | Fun params '=' expr                              %prec Fun  {Node *name = (Node*)strdup(""); $$ = mkFuncDeclNode(@$, /*fn_name*/name, name, /*mods*/ 0, /*ret_ty*/0,  /*params*/$2, /*body*/$4);}
+         | Fun '=' expr                                     %prec Fun  {Node *name = (Node*)strdup(""); $$ = mkFuncDeclNode(@$, /*fn_name*/name, name, /*mods*/ 0, /*ret_ty*/0,  /*params*/0,  /*body*/$3);}
          ;
 
 
