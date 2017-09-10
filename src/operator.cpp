@@ -1675,14 +1675,7 @@ TypedValue UnOpNode::compile(Compiler *c){
                 c->builder.CreateStore(rhs.val, typedPtr);
 
                 auto *tyn = AnPtrType::get(rhs.type);
-                auto *ret = new TypedValue(typedPtr, tyn);
-
-                //Create an upper-case name so it cannot be referenced normally
-                //string tmpAllocName = "New_" + anTypeToStr(rhs->type);
-                //c->stoVar(tmpAllocName, new Variable(tmpAllocName, ret, c->scope, true));
-
-                //return a copy of ret in case it is modified/freed
-                return TypedValue(ret->val, ret->type);
+                return TypedValue(typedPtr, tyn);
             }
     }
 

@@ -306,7 +306,7 @@ namespace ante {
             return AnDataType::create(name, elems, isUnion, m);
         }
     }
-        
+
     AnDataType* AnDataType::getOrCreate(const AnDataType *dt, AnModifier *m){
         string key = modifiersToStr(m) + dt->name;
         try{
@@ -316,7 +316,7 @@ namespace ante {
             vector<AnType*> elems;
             elems.reserve(dt->extTys.size());
             for(auto *ty : dt->extTys){
-                elems.emplace_back(ty->addModifier(m->modifiers.back()));
+                elems.emplace_back(ty->setModifier(m));
             }
 
             auto *ret = AnDataType::create(dt->name, elems, dt->typeTag == TT_TaggedUnion, m);
@@ -449,7 +449,7 @@ namespace ante {
                 return nullptr;
         }
     }
-        
+
     AnAggregateType* AnAggregateType::addModifier(TokenType m){
         if(mods){
             if(hasModifier(m)){
@@ -457,10 +457,26 @@ namespace ante {
             }else{
                 auto modifiers = mods->modifiers;
                 modifiers.push_back(m);
-                return AnAggregateType::get(typeTag, extTys, AnModifier::get(modifiers));
+                auto *anmod = AnModifier::get(modifiers);
+
+                vector<AnType*> modded_exts;
+                modded_exts.reserve(extTys.size());
+                for(auto &ext : extTys){
+                    modded_exts.emplace_back(ext->setModifier(anmod));
+                }
+
+                return AnAggregateType::get(typeTag, modded_exts, anmod);
             }
         }
-        return AnAggregateType::get(typeTag, extTys, AnModifier::get({m}));
+
+        auto *anmod = AnModifier::get({m});
+
+        vector<AnType*> modded_exts;
+        modded_exts.reserve(extTys.size());
+        for(auto &ext : extTys){
+            modded_exts.emplace_back(ext->setModifier(anmod));
+        }
+        return AnAggregateType::get(typeTag, modded_exts, anmod);
     }
     
     AnArrayType* AnArrayType::addModifier(TokenType m){
@@ -470,10 +486,12 @@ namespace ante {
             }else{
                 auto modifiers = mods->modifiers;
                 modifiers.push_back(m);
-                return AnArrayType::get(extTy, len, AnModifier::get(modifiers));
+                auto *anmod = AnModifier::get(modifiers);
+                return AnArrayType::get(extTy->setModifier(anmod), len, anmod);
             }
         }
-        return AnArrayType::get(extTy, len, AnModifier::get({m}));
+        auto *anmod = AnModifier::get({m});
+        return AnArrayType::get(extTy->setModifier(anmod), len, anmod);
     }
 
     AnPtrType* AnPtrType::addModifier(TokenType m){
@@ -483,10 +501,12 @@ namespace ante {
             }else{
                 auto modifiers = mods->modifiers;
                 modifiers.push_back(m);
-                return AnPtrType::get(extTy, AnModifier::get(modifiers));
+                auto mods = AnModifier::get(modifiers);
+                return AnPtrType::get(extTy->setModifier(mods), mods);
             }
         }
-        return AnPtrType::get(extTy, AnModifier::get({m}));
+        auto mods = AnModifier::get({m});
+        return AnPtrType::get(extTy->setModifier(mods), mods);
     }
         
     AnTypeVarType* AnTypeVarType::addModifier(TokenType m){
@@ -530,4 +550,74 @@ namespace ante {
         return AnDataType::getOrCreate(this, AnModifier::get({m}));
     }
 
+    AnType* AnType::setModifier(AnModifier *m){
+        if(this->mods == m){
+            return this;
+        }else{
+            return AnType::getPrimitive(typeTag, m);
+        }
+    }
+
+    AnAggregateType* AnAggregateType::setModifier(AnModifier *m){
+        if(this->mods == m){
+            return this;
+        }else{
+            vector<AnType*> exts;
+            exts.reserve(extTys.size());
+            for(auto &ext : exts){
+                exts.emplace_back(ext->setModifier(m));
+            }
+            return AnAggregateType::get(typeTag, exts, m);
+        }
+    }
+
+    AnArrayType* AnArrayType::setModifier(AnModifier *m){
+        if(this->mods == m){
+            return this;
+        }else{
+            return AnArrayType::get(extTy->setModifier(m), len, m);
+        }
+    }
+
+    AnPtrType* AnPtrType::setModifier(AnModifier *m){
+        if(this->mods == m){
+            return this;
+        }else{
+            return AnPtrType::get(extTy->setModifier(m), m);
+        }
+    }
+
+    AnTypeVarType* AnTypeVarType::setModifier(AnModifier *m){
+        if(this->mods == m){
+            return this;
+        }else{
+            return AnTypeVarType::get(name, m);
+        }
+    }
+
+    /*
+     *  Set modifiers to an AnFunctionType, although unlike other AggregateTypes,
+     *  the set modifiers do not apply to each of the extTys of the function as
+     *  it would otherwise change the function signature when simply trying to
+     *  make a mutable function pointer.
+     */
+    AnFunctionType* AnFunctionType::setModifier(AnModifier *m){
+        if(this->mods == m){
+            return this;
+        }else{
+            //vector<AnType*> exts(extTys.size());
+            //for(auto &ext : extTys){
+            //    exts.emplace_back(ext);
+            //}
+            return AnFunctionType::get(retTy, extTys, typeTag == TT_MetaFunction, m);
+        }
+    }
+
+    AnDataType* AnDataType::setModifier(AnModifier *m){
+        if(this->mods == m){
+            return this;
+        }else{
+            return AnDataType::getOrCreate(this, m);
+        }
+    }
 }

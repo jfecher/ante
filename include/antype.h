@@ -40,6 +40,7 @@ namespace ante {
 
         bool hasModifier(TokenType m);
         virtual AnType* addModifier(TokenType m);
+        virtual AnType* setModifier(AnModifier *m);
 
         size_t getSizeInBits(Compiler *c, std::string *incompleteType = nullptr, bool force = false);
 
@@ -101,6 +102,7 @@ namespace ante {
         static AnAggregateType* get(AnType* retty, NamedValNode* params, AnModifier *m = nullptr);
         
         AnAggregateType* addModifier(TokenType m) override;
+        AnAggregateType* setModifier(AnModifier *m) override;
         
         static bool classof(const AnType *t){
             return t->typeTag == TT_Tuple or t->typeTag == TT_Function
@@ -123,6 +125,7 @@ namespace ante {
         static AnArrayType* get(AnType*, size_t len = 0, AnModifier *m = nullptr);
         
         AnArrayType* addModifier(TokenType m) override;
+        AnArrayType* setModifier(AnModifier *m) override;
 
         static bool classof(const AnType *t){
             return t->typeTag == TT_Array;
@@ -140,6 +143,7 @@ namespace ante {
         static AnPtrType* get(AnType* l, AnModifier *m = nullptr);
         
         AnPtrType* addModifier(TokenType m) override;
+        AnPtrType* setModifier(AnModifier *m) override;
         
         static bool classof(const AnType *t){
             return t->typeTag == TT_Ptr;
@@ -158,6 +162,7 @@ namespace ante {
         static AnTypeVarType* get(std::string name, AnModifier *m = nullptr);
         
         AnTypeVarType* addModifier(TokenType m) override;
+        AnTypeVarType* setModifier(AnModifier *m) override;
         
         static bool classof(const AnType *t){
             return t->typeTag == TT_TypeVar;
@@ -176,6 +181,7 @@ namespace ante {
         static AnFunctionType* get(Compiler *c, AnType* retty, NamedValNode* params, bool isMetaFunction = false, AnModifier *m = nullptr);
         
         AnFunctionType* addModifier(TokenType m) override;
+        AnFunctionType* setModifier(AnModifier *m) override;
 
         static bool classof(const AnType *t){
             return t->typeTag == TT_Function or t->typeTag == TT_MetaFunction;
@@ -216,6 +222,7 @@ namespace ante {
         static AnDataType* create(std::string name, std::vector<AnType*> elems, bool isUnion, AnModifier *m = nullptr);
 
         AnDataType* addModifier(TokenType m) override;
+        AnDataType* setModifier(AnModifier *m) override;
 
         static bool classof(const AnType *t){
             return t->typeTag == TT_Data or t->typeTag == TT_TaggedUnion;
