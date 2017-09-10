@@ -372,6 +372,8 @@ namespace ante {
 
 
     AnType* toAnType(Compiler *c, const TypeNode *tn){
+        if(!tn) return AnType::getVoid();
+
         auto *mods = tn->modifiers.empty() ? nullptr : AnModifier::get(tn->modifiers);
         switch(tn->type){
             case TT_I8:
