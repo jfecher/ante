@@ -1168,6 +1168,13 @@ TypedValue compTaggedUnion(Compiler *c, DataDeclNode *n){
         TypeNode *tyn = (TypeNode*)nvn->typeExpr.get();
         AnType *tagTy = tyn->extTy ? toAnType(c, tyn->extTy.get()) : AnType::getVoid();
 
+        vector<AnType*> exts;
+        if(tagTy->typeTag == TT_Tuple){
+            exts = ((AnAggregateType*)tagTy)->extTys;
+        }else{
+            exts.emplace_back(tagTy);
+        }
+
         UnionTag *tag = new UnionTag(nvn->name, tagTy, tags.size());
 
         tags.push_back(shared_ptr<UnionTag>(tag));
@@ -1175,7 +1182,7 @@ TypedValue compTaggedUnion(Compiler *c, DataDeclNode *n){
         //Each union member's type is a tuple of the tag (a u8 value), and the user-defined value
         auto *tup = AnAggregateType::get(TT_Tuple, {AnType::getU8(), tagTy});
 
-        AnDataType *tagdt = AnDataType::create(nvn->name, {tagTy}, false);
+        AnDataType *tagdt = AnDataType::create(nvn->name, exts, false);
         tagdt->fields.emplace_back(union_name);
         tagdt->parentUnionType = data;
         for(auto &g : n->generics)
@@ -1318,18 +1325,18 @@ TypedValue handleTypeCastPattern(Compiler *c, TypedValue lval, TypeCastNode *tn,
     
     //This is a pattern of the match _ with expr, so if that is mutable this should be too
     //auto tagtycpy = tagTy->copyModifiersFrom(lval.type);
-    AnType *tagtycpy = tagTy->extTys[0];
+    //AnType *tagtycpy = tagTy/*->extTys[0]*/;
 
     auto tcr = c->typeEq(parentTy, lval.type);
 
     if(tcr->res == TypeCheckResult::SuccessWithTypeVars)
-        tagtycpy = bindGenericToType(c, tagtycpy, tcr->bindings);
+        tagTy = (AnDataType*)bindGenericToType(c, tagTy, tcr->bindings);
     else if(tcr->res == TypeCheckResult::Failure)
         return c->compErr("Cannot bind pattern of type " + anTypeToColoredStr(parentTy) +
                 " to matched value of type " + anTypeToColoredStr(lval.type), tn->rval->loc);
     
     //cast it from (<tag type>, <largest union member type>) to (<tag type>, <this union member's type>)
-    auto *tupTy = StructType::get(*c->ctxt, {Type::getInt8Ty(*c->ctxt), c->anTypeToLlvmType(tagtycpy)}, true);
+    auto *tupTy = StructType::get(*c->ctxt, {Type::getInt8Ty(*c->ctxt), c->anTypeToLlvmType(tagTy)}, true);
 
     auto alloca = addrOf(c, lval);
 
@@ -1337,13 +1344,13 @@ TypedValue handleTypeCastPattern(Compiler *c, TypedValue lval, TypeCastNode *tn,
 
     if(VarNode *v = dynamic_cast<VarNode*>(tn->rval.get())){
         auto *tup = c->builder.CreateLoad(cast);
-        auto extract = TypedValue(c->builder.CreateExtractValue(tup, 1), tagtycpy);
+        auto extract = TypedValue(c->builder.CreateExtractValue(tup, 1), tagTy->extTys[0]);
         c->stoVar(v->name, new Variable(v->name, extract, c->scope));
 
     }else if(TupleNode *t = dynamic_cast<TupleNode*>(tn->rval.get())){
         auto *taggedValTy = tupTy->getStructElementType(1);
-        if(!taggedValTy->isStructTy()){
-            return c->compErr("Cannot match tuple pattern against non-tuple type " + anTypeToColoredStr(tagtycpy), t->loc);
+        if(!tupTy->isStructTy()){
+            return c->compErr("Cannot match tuple pattern against non-tuple type " + anTypeToColoredStr(tagTy), t->loc);
         }
 
         if(t->exprs.size() != taggedValTy->getNumContainedTypes()){
@@ -1351,7 +1358,7 @@ TypedValue handleTypeCastPattern(Compiler *c, TypedValue lval, TypeCastNode *tn,
                    " to a pattern of size " + to_string(taggedValTy->getNumContainedTypes()), t->loc);
         }
 
-        auto *aggTy = (AnAggregateType*)tagtycpy;
+        auto *aggTy = (AnAggregateType*)tagTy;
         size_t elementNo = 0;
 
         for(auto &e : t->exprs){
