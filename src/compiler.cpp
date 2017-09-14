@@ -278,7 +278,6 @@ TypedValue compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
     auto *appendR = c->builder.CreateCall(fn.val, vector<Value*>{appendL, rstr.val});
 
     //create the returning typenode
-    delete lex;
     return TypedValue(appendR, strty);
 }
 
@@ -673,7 +672,7 @@ TypedValue LetBindingNode::compile(Compiler *c){
     //add the modifiers to the typedvalue
     for(Node *n : *modifiers){
         int m = ((ModNode*)n)->mod;
-    //    val->type->addModifier(m);
+        val.type = val.type->addModifier((TokenType)m);
         if(m == Tok_Global) isGlobal = true;
     }
 
@@ -714,7 +713,7 @@ TypedValue compVarDeclWithInferredType(VarDeclNode *node, Compiler *c){
     //Add all of the declared modifiers to the typedval
     for(Node *n : *node->modifiers){
         int m = ((ModNode*)n)->mod;
-    //    val->type->addModifier(m);
+        val.type = val.type->addModifier((TokenType)m);
         if(m == Tok_Global) isGlobal = true;
     }
 
@@ -768,11 +767,12 @@ TypedValue VarDeclNode::compile(Compiler *c){
     //Add all of the declared modifiers to the typedval
     for(Node *n : *modifiers){
         int m = ((ModNode*)n)->mod;
+        anTy = anTy->addModifier((TokenType)m);
         if(m == Tok_Global) isGlobal = true;
     }
 
     if(!anTy->hasModifier(Tok_Mut))
-        anTy->addModifier(Tok_Mut);
+        anTy = anTy->addModifier(Tok_Mut);
 
     //location to store var
     Value *loc = isGlobal ?
@@ -1312,7 +1312,7 @@ TypedValue GlobalNode::compile(Compiler *c){
             return c->compErr("Variable " + varName->name + " must be global to be imported.", varName->loc);
 
         var->scope = c->scope;
-        c->stoVar(varName->name, var);
+        c->stoVar(varName->name, new Variable(*var));
         ret = var->tval;
     }
 
@@ -1334,7 +1334,7 @@ TypedValue handleTypeCastPattern(Compiler *c, TypedValue lval, TypeCastNode *tn,
     else if(tcr->res == TypeCheckResult::Failure)
         return c->compErr("Cannot bind pattern of type " + anTypeToColoredStr(parentTy) +
                 " to matched value of type " + anTypeToColoredStr(lval.type), tn->rval->loc);
-    
+
     //cast it from (<tag type>, <largest union member type>) to (<tag type>, <this union member's type>)
     auto *tupTy = StructType::get(*c->ctxt, {Type::getInt8Ty(*c->ctxt), c->anTypeToLlvmType(tagTy)}, true);
 
@@ -1342,11 +1342,13 @@ TypedValue handleTypeCastPattern(Compiler *c, TypedValue lval, TypeCastNode *tn,
 
     auto *cast = c->builder.CreateBitCast(alloca.val, tupTy->getPointerTo());
 
+    //Cast in the form of: Some n
     if(VarNode *v = dynamic_cast<VarNode*>(tn->rval.get())){
         auto *tup = c->builder.CreateLoad(cast);
         auto extract = TypedValue(c->builder.CreateExtractValue(tup, 1), tagTy->extTys[0]);
         c->stoVar(v->name, new Variable(v->name, extract, c->scope));
 
+    //Destructure multiple: Triple(x, y, z)
     }else if(TupleNode *t = dynamic_cast<TupleNode*>(tn->rval.get())){
         auto *taggedValTy = tupTy->getStructElementType(1);
         if(!tupTy->isStructTy()){

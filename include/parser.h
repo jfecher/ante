@@ -263,7 +263,7 @@ namespace ante {
         std::vector<std::unique_ptr<VarNode>> vars;
         TypedValue compile(Compiler*);
         void print(void);
-        GlobalNode(LOC_TY& loc, std::vector<std::unique_ptr<VarNode>> &vn) : Node(loc), vars(move(vn)){}
+        GlobalNode(LOC_TY& loc, std::vector<std::unique_ptr<VarNode>> &&vn) : Node(loc), vars(move(vn)){}
         ~GlobalNode(){}
     };
 

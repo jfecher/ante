@@ -91,7 +91,7 @@ Node*append_trait(Node *n){
 }
 
 Node*append_import(Node *n){
-    root->imports.push_back(unique_ptr<ImportNode>((ImportNode*)n));
+    root->imports.emplace_back((ImportNode*)n);
     return n;
 }
 
@@ -190,10 +190,10 @@ bool NodeIterator::operator!=(NodeIterator r){
 Node* mkGlobalNode(LOC_TY loc, Node* s){
     vector<unique_ptr<VarNode>> vars;
     while(s){
-        vars.push_back(unique_ptr<VarNode>((VarNode*)s));
+        vars.emplace_back((VarNode*)s);
         s = s->next.get();
     }
-    return new GlobalNode(loc, vars);
+    return new GlobalNode(loc, move(vars));
 }
 
 void TypeNode::copyModifiersFrom(const TypeNode *tn){
@@ -230,8 +230,8 @@ Node* setNext(Node* cur, Node* nxt){
 }
 
 Node* addMatch(Node *matchExpr, Node *newMatch){
-    ((MatchNode*)matchExpr)->branches.push_back(
-        unique_ptr<MatchBranchNode>((MatchBranchNode*)newMatch));
+    ((MatchNode*)matchExpr)->branches.emplace_back(
+        (MatchBranchNode*)newMatch);
     return matchExpr;
 }
 
@@ -317,7 +317,7 @@ Node* mkBoolLitNode(LOC_TY loc, char b){
 Node* mkArrayNode(LOC_TY loc, Node *expr){
     vector<unique_ptr<Node>> exprs;
     while(expr){
-        exprs.push_back(unique_ptr<Node>(expr));
+        exprs.emplace_back(expr);
         auto *nxt = expr->next.get();
         expr->next.release();
         expr = nxt;
@@ -328,7 +328,7 @@ Node* mkArrayNode(LOC_TY loc, Node *expr){
 Node* mkTupleNode(LOC_TY loc, Node *expr){
     vector<unique_ptr<Node>> exprs;
     while(expr){
-        exprs.push_back(unique_ptr<Node>(expr));
+        exprs.emplace_back(expr);
         auto *nxt = expr->next.get();
         expr->next.release();
         expr = nxt;
@@ -433,8 +433,7 @@ TypeNode* copy(const TypeNode *n){
     //if n has type params, copy them too
     if(!n->params.empty()){
         for(auto& tn : n->params){
-            auto param = unique_ptr<TypeNode>(copy(tn));
-            cpy->params.push_back(move(param));
+            cpy->params.emplace_back(copy(tn));
         }
     }
 
@@ -562,7 +561,7 @@ FuncDeclNode::FuncDeclNode(FuncDeclNode* fdn) :
 Node* mkDataDeclNode(LOC_TY loc, char* s, Node *p, Node* b){
     vector<unique_ptr<TypeNode>> params;
     while(p){
-        params.push_back(unique_ptr<TypeNode>((TypeNode*)p));
+        params.emplace_back((TypeNode*)p);
         p = p->next.release();
     }
     return new DataDeclNode(loc, s, b, getTupleSize(b), params);
@@ -572,7 +571,7 @@ Node* mkDataDeclNode(LOC_TY loc, char* s, Node *p, Node* b){
 Node* mkMatchNode(LOC_TY loc, Node* expr, Node* branch){
     vector<unique_ptr<MatchBranchNode>> branches;
     branch->next.release();
-    branches.push_back(unique_ptr<MatchBranchNode>((MatchBranchNode*)branch));
+    branches.emplace_back((MatchBranchNode*)branch);
     return new MatchNode(loc, expr, branches);
 }
 
