@@ -191,8 +191,9 @@ Node* mkGlobalNode(LOC_TY loc, Node* s){
     vector<unique_ptr<VarNode>> vars;
     while(s){
         vars.emplace_back((VarNode*)s);
-        s = s->next.get();
+        s = s->next.release();
     }
+
     return new GlobalNode(loc, move(vars));
 }
 

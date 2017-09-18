@@ -1291,19 +1291,14 @@ TypedValue TraitNode::compile(Compiler *c){
 TypedValue GlobalNode::compile(Compiler *c){
     TypedValue ret;
     for(auto &varName : vars){
-        auto oldFnScope = c->fnScope;
-        c->fnScope = 1;
-
         Variable *var;
-        for(auto i = c->varTable.size(); i >= c->fnScope; --i){
+        for(auto i = c->varTable.size(); i >= 1; --i){
             try{
                 var = c->varTable[i-1]->at(varName->name).get();
             }catch(out_of_range r){
                 var = nullptr;
             }
         }
-
-        c->fnScope = oldFnScope;
 
         if(!var)
             return c->compErr("Variable '" + varName->name + "' has not been declared.", varName->loc);

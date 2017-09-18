@@ -226,11 +226,7 @@ void VarDeclNode::print(){
 
 void GlobalNode::print(){
     cout << "global ";
-    for(unsigned i = 0; i < vars.size(); i++){
-        if(i != 0)
-            cout << ", ";
-        vars[i]->print();
-    }
+    vars[0]->print();
     puts("");
 }
 
