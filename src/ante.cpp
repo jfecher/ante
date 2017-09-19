@@ -60,6 +60,10 @@ void printHelp(){
     llvm::TargetRegistry::printRegisteredTargetsForVersion();
 }
 
+namespace ante {
+    extern AnTypeContainer typeArena;
+}
+
 int main(int argc, const char **argv){
 	LLVMInitializeNativeTarget();
 	LLVMInitializeNativeAsmPrinter();
@@ -77,6 +81,9 @@ int main(int argc, const char **argv){
         }
 
         ante.processArgs(args);
+        typeArena.clearDeclaredTypes();
+        allCompiledModules.clear();
+        allMergedCompUnits.clear();
     }
 
     if(args->hasArg(Args::Eval) or (args->args.empty() and args->inputFiles.empty()))

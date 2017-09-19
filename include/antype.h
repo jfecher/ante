@@ -300,6 +300,10 @@ namespace ante {
     public:
         AnTypeContainer();
         ~AnTypeContainer() = default;
+
+        void clearDeclaredTypes(){
+            declaredTypes.clear();
+        }
     };
 }
 

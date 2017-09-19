@@ -1267,8 +1267,12 @@ TypedValue TraitNode::compile(Compiler *c){
         fn->basename = c->funcPrefix + fn->basename;
 
         shared_ptr<FuncDecl> fd{new FuncDecl(fn, c->scope, c->mergedCompUnits)};
-        //TODO: avoid creation of Trait type
-        fd->obj = AnDataType::get(name);
+
+        //create trait type as a generic void* container
+        vector<AnType*> ext;
+        ext.push_back(AnPtrType::get(AnType::getVoid()));
+        fd->obj = AnDataType::getOrCreate(name, ext, false);
+        
         trait->funcs.push_back(fd);
         curfn = curfn->next.get();
     }
@@ -1618,24 +1622,24 @@ void Compiler::scanAllDecls(RootNode *root){
 			delete e;
 		}
 	}
+	
+    for (auto& f : n->traits) {
+		try {
+			f->compile(this);
+		}catch (CtError *e) {
+			delete e;
+		}
+	}
+	
+    for (auto& f : n->extensions) {
+		try {
+			f->compile(this);
+		}catch (CtError *e) {
+			delete e;
+		}
+	}
 
 	for (auto& f : n->funcs) {
-		try {
-			f->compile(this);
-		}catch (CtError *e) {
-			delete e;
-		}
-	}
-
-	for (auto& f : n->traits) {
-		try {
-			f->compile(this);
-		}catch (CtError *e) {
-			delete e;
-		}
-	}
-
-	for (auto& f : n->extensions) {
 		try {
 			f->compile(this);
 		}catch (CtError *e) {

@@ -1221,6 +1221,9 @@ string _anTypeToStr(const AnType *t, AnModifier *m){
         return ret + ")->" + retTy;
     }else if(auto *tup = dyn_cast<AnAggregateType>(t)){
         string ret = mods + "(";
+        if(tup->extTys.empty())
+            return ret + ")";
+
         for(const auto &ext : tup->extTys){
             if(&ext != &tup->extTys.back())
                 ret += _anTypeToStr(ext, t->mods) + ", ";

@@ -316,7 +316,8 @@ namespace ante {
             vector<AnType*> elems;
             elems.reserve(dt->extTys.size());
             for(auto *ty : dt->extTys){
-                elems.emplace_back(ty->setModifier(m));
+                auto *mod_type = ty->setModifier(m);
+                elems.emplace_back(mod_type);
             }
 
             auto *ret = AnDataType::create(dt->name, elems, dt->typeTag == TT_TaggedUnion, m);
@@ -564,8 +565,9 @@ namespace ante {
         }else{
             vector<AnType*> exts;
             exts.reserve(extTys.size());
-            for(auto &ext : exts){
-                exts.emplace_back(ext->setModifier(m));
+            for(auto &ext : extTys){
+                auto *mod_type = ext->setModifier(m);
+                exts.emplace_back(mod_type);
             }
             return AnAggregateType::get(typeTag, exts, m);
         }
