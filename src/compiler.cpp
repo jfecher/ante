@@ -1698,7 +1698,11 @@ Function* Compiler::createMainFn(){
     auto *argc = new GlobalVariable(*module, argcty, false, GlobalValue::PrivateLinkage, builder.getInt32(0), "argc");
     auto *argv = new GlobalVariable(*module, argvty, false, GlobalValue::PrivateLinkage, ConstantPointerNull::get(dyn_cast<PointerType>(argvty)), "argv");
 
+#if LLVM_VERSION_MAJOR < 5
     auto args = main->getArgumentList().begin();
+#else
+    auto args = main->arg_begin();
+#endif
     builder.CreateStore(&*args, argc);
     builder.CreateStore(&*++args, argv);
 
@@ -2054,7 +2058,10 @@ legacy::FunctionPassManager* mkPassManager(llvm::Module *m, char optLvl){
         pm->add(createCFGSimplificationPass());
         pm->add(createTailCallEliminationPass());
         pm->add(createInstructionSimplifierPass());
+
+#if LLVM_VERSION_MAJOR < 5
         pm->add(createLoadCombinePass());
+#endif
         pm->add(createLoopLoadEliminationPass());
         pm->add(createReassociatePass());
         pm->add(createPromoteMemoryToRegisterPass());
