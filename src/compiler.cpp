@@ -1174,19 +1174,21 @@ TypedValue compTaggedUnion(Compiler *c, DataDeclNode *n){
         }else{
             exts.emplace_back(tagTy);
         }
-
-        UnionTag *tag = new UnionTag(nvn->name, tagTy, tags.size());
-
-        tags.push_back(shared_ptr<UnionTag>(tag));
-
+        
         //Each union member's type is a tuple of the tag (a u8 value), and the user-defined value
         auto *tup = AnAggregateType::get(TT_Tuple, {AnType::getU8(), tagTy});
 
+        //Store the tag as a UnionTag and a AnDataType
         AnDataType *tagdt = AnDataType::create(nvn->name, exts, false);
         tagdt->fields.emplace_back(union_name);
         tagdt->parentUnionType = data;
+        tagdt->isGeneric = isGeneric(exts);
         for(auto &g : n->generics)
             tagdt->generics.push_back((AnTypeVarType*)toAnType(c, g.get()));
+
+        //Store tag vals as a UnionTag
+        UnionTag *tag = new UnionTag(nvn->name, tagdt, data, tags.size());
+        tags.emplace_back(tag);
 
         unionTypes.push_back(tup);
 
@@ -1323,7 +1325,7 @@ TypedValue handleTypeCastPattern(Compiler *c, TypedValue lval, TypeCastNode *tn,
     //If this is a generic type cast like Some 't, the 't must be bound to a concrete type first
     
     //This is a pattern of the match _ with expr, so if that is mutable this should be too
-    //auto tagtycpy = tagTy->copyModifiersFrom(lval.type);
+    tagTy = (AnDataType*)tagTy->setModifier(lval.type->mods);
     //AnType *tagtycpy = tagTy/*->extTys[0]*/;
 
     auto tcr = c->typeEq(parentTy, lval.type);
@@ -1393,7 +1395,6 @@ TypedValue MatchNode::compile(Compiler *c){
                 ".  Match expressions must be a tagged union type", expr->loc);
     }
 
-
     //the tag is always the zero-th index except for in certain optimization cases and if
     //the tagged union has no tagged values and is equivalent to an enum in C-like languages.
     Value *switchVal = llvmTypeToTypeTag(lval.getType()) == TT_Tuple ?
@@ -1425,6 +1426,10 @@ TypedValue MatchNode::compile(Compiler *c){
             auto *parentTy = tagTy->parentUnionType;
             ci = ConstantInt::get(*c->ctxt, APInt(8, parentTy->getTagVal(tn->typeExpr->typeName), true));
 
+            if(((AnDataType*)lval.type)->unboundType){
+            }
+
+            tagTy = (AnDataType*)bindGenericToType(c, tagTy, ((AnDataType*)lval.type)->boundGenerics, tagTy);
             handleTypeCastPattern(c, lval, tn, tagTy, parentTy);
 
         //single type pattern:  None
@@ -1895,17 +1900,6 @@ void Compiler::emitIR(){
 
 
 /**
- * @brief Translates an AnType and its modifiers to a string
- */
-string anTypeToStrWithModifiers(AnType *tn){
-    //string ret = "";
-    //for(int m : tn->modifiers){
-    //    ret += Lexer::getTokStr(m) + " ";
-    //}
-    return /*ret +*/ anTypeToStr(tn);
-}
-
-/**
  * @brief Prints type and value of TypeNode to stdout
  */
 void TypedValue::dump() const{
@@ -1914,7 +1908,7 @@ void TypedValue::dump() const{
         return;
     }
 
-    cout << "type:\t" << anTypeToStrWithModifiers(type) << endl
+    cout << "type:\t" << anTypeToStr(type) << endl
          << "val:\t" << flush;
 
     if(type->typeTag == TT_Void)

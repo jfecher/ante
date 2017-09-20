@@ -173,10 +173,12 @@ namespace ante {
     */
     struct UnionTag {
         std::string name;
-        AnType* ty;
+        AnDataType *ty;
+        AnDataType *parent;
         unsigned short tag;
 
-        UnionTag(std::string &n, AnType *tyn, unsigned short t) : name(n), ty(tyn), tag(t){}
+        UnionTag(std::string &n, AnDataType *tyn, AnDataType *p, unsigned short t) :
+            name(n), ty(tyn), parent(p), tag(t){}
     };
 
     /**

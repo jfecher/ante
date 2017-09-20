@@ -11,7 +11,7 @@ LLVMFLAGS := `$(LLVMCFG) --cflags --cppflags --link-static --libs Core mcjit int
 LIBDIR := /usr/include/ante
 LIBFILES := $(shell find stdlib -type f -name "*.an")
 
-CPPFLAGS  := -g -std=c++11 `$(LLVMCFG) --cflags --cppflags` -O0 $(WARNINGS)
+CPPFLAGS  := -g -fno-limit-debug-info -std=c++11 `$(LLVMCFG) --cflags --cppflags` -O0 $(WARNINGS)
 
 PARSERSRC := src/parser.cpp
 YACCFLAGS := -Lc++ -o$(PARSERSRC) --defines=include/yyparser.h

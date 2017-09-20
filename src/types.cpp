@@ -189,8 +189,14 @@ size_t AnType::getSizeInBits(Compiler *c, string *incompleteType, bool force){
     }else if(typeTag == TT_TypeVar){
         auto *tvt = (AnTypeVarType*)this;
         auto *var = c->lookup(tvt->name);
-        if(var)
-            return extractTypeValue(var->tval)->getSizeInBits(c, incompleteType, force);
+        if(var){
+            auto *extract = extractTypeValue(var->tval);
+            if(extract == tvt){
+                cerr << "Warning: typevar " << tvt->name << " refers to itself, cannot calculate size in bits" << endl;
+                return 0;
+            }
+            return extract->getSizeInBits(c, incompleteType, force);
+        }
 
         //TODO: store location data in AnTypeVarType
         if(force){
@@ -322,6 +328,7 @@ AnType* bindGenericToType(Compiler *c, AnType *tn, const vector<pair<string, AnT
             decl->parentUnionType = unionType;
         }
 
+        decl->mods = dty->mods;
         decl->typeTag = dty->typeTag;
         decl->boundGenerics = extractTypes(dty_bindings);
         decl->fields = dty->fields;
@@ -762,7 +769,14 @@ Type* Compiler::anTypeToLlvmType(const AnType *ty, bool force){
                 return Type::getInt64Ty(*ctxt);
             }
 
-            return anTypeToLlvmType(extractTypeValue(typeVar->tval));
+            AnType *ty = extractTypeValue(typeVar->tval);
+
+            if(ty == tvt){
+                cerr << "Warning: typevar " << tvt->name << " refers to itself" << endl;
+                return Type::getVoidTy(*ctxt);
+            }
+
+            return anTypeToLlvmType(ty);
         }
         default:
             return typeTagToLlvmType(ty->typeTag, *ctxt);
@@ -1067,7 +1081,7 @@ TypeCheckResult& typeEqHelper(const Compiler *c, const AnType *l, const AnType *
 
             return tcr.successWithTypeVars();
         }else{ //tv is bound in same typechecking run
-            return typeEqHelper(c, tv, nonTypeVar, tcr);
+            return tcr;
         }
     }
     return typeEqBase(l, r, tcr, c);

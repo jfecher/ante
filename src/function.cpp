@@ -583,7 +583,8 @@ FuncDecl* getFuncDeclFromVec(vector<shared_ptr<FuncDecl>> &l, string &mangledNam
 
 void declareBindings(Compiler *c, vector<pair<string,AnType*>> &bindings){
     for(auto &p : bindings){
-        c->stoTypeVar(p.first, p.second);
+        if(!p.second->isGeneric)
+            c->stoTypeVar(p.first, p.second);
     }
 }
 

@@ -313,6 +313,8 @@ namespace ante {
             return typeArena.declaredTypes.at(key).get();
         }catch(out_of_range r){
             //create declaration w/out definition
+            auto *ret = AnDataType::create(dt->name, {}, dt->typeTag == TT_TaggedUnion, m);
+            
             vector<AnType*> elems;
             elems.reserve(dt->extTys.size());
             for(auto *ty : dt->extTys){
@@ -320,7 +322,8 @@ namespace ante {
                 elems.emplace_back(mod_type);
             }
 
-            auto *ret = AnDataType::create(dt->name, elems, dt->typeTag == TT_TaggedUnion, m);
+            ret->extTys = elems;
+            ret->isGeneric = ante::isGeneric(elems);
             ret->fields = dt->fields;
             ret->tags = dt->tags;
             ret->traitImpls = dt->traitImpls;
@@ -369,6 +372,14 @@ namespace ante {
 
     AnType* AnType::getFunctionReturnType() const{
         return ((AnFunctionType*)this)->retTy;
+    }
+
+    string typeNodeToStrWithModifiers(const TypeNode *tn){
+        string ret = "";
+        for(auto mod : tn->modifiers){
+            ret += Lexer::getTokStr(mod) + " ";
+        }
+        return ret + typeNodeToStr(tn);
     }
 
 
