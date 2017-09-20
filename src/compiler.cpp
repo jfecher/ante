@@ -1109,7 +1109,7 @@ TypedValue ExtNode::compile(Compiler *c){
             }
 
             //trait is fully implemented, add it to the DataType
-            dt->traitImpls.push_back(shared_ptr<Trait>(traitImpl));
+            dt->traitImpls.emplace_back(traitImpl);
         }
     }else{
         //this ExtNode is not a trait implementation, so just compile all functions normally
