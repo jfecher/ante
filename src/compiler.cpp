@@ -1054,7 +1054,7 @@ TypedValue ExtNode::compile(Compiler *c){
         if(typeExpr->typeName.empty()){ //primitive type being extended
             dt = AnDataType::get(typestr);
             if(!dt or dt->isStub()){ //if primitive type has not been extended before, make it a DataType to store in
-                dt = AnDataType::create(typestr, {toAnType(c, typeExpr.get())}, false);
+                dt = AnDataType::create(typestr, {toAnType(c, typeExpr.get())}, false, {});
                 c->stoType(dt, typestr);
             }
         }else{
@@ -1145,6 +1145,15 @@ bool Compiler::typeImplementsTrait(AnDataType* dt, string traitName) const{
     return false;
 }
 
+vector<AnTypeVarType*> toVec(Compiler *c, const vector<unique_ptr<TypeNode>> &generics){
+    vector<AnTypeVarType*> ret;
+    ret.reserve(generics.size());
+    for(auto &tn : generics){
+        ret.push_back((AnTypeVarType*)toAnType(c, tn.get()));
+    }
+    return ret;
+}
+
 
 /**
  * @brief A helper function to compile tagged union declarations
@@ -1162,7 +1171,7 @@ TypedValue compTaggedUnion(Compiler *c, DataDeclNode *n){
     vector<shared_ptr<UnionTag>> tags;
 
     vector<AnType*> unionTypes;
-    AnDataType *data = AnDataType::create(union_name, unionTypes, true);
+    AnDataType *data = AnDataType::create(union_name, {}, true, toVec(c, n->generics));
 
     while(nvn){
         TypeNode *tyn = (TypeNode*)nvn->typeExpr.get();
@@ -1174,17 +1183,15 @@ TypedValue compTaggedUnion(Compiler *c, DataDeclNode *n){
         }else{
             exts.emplace_back(tagTy);
         }
-        
+
         //Each union member's type is a tuple of the tag (a u8 value), and the user-defined value
         auto *tup = AnAggregateType::get(TT_Tuple, {AnType::getU8(), tagTy});
 
         //Store the tag as a UnionTag and a AnDataType
-        AnDataType *tagdt = AnDataType::create(nvn->name, exts, false);
+        AnDataType *tagdt = AnDataType::create(nvn->name, exts, false, toVec(c, n->generics));
         tagdt->fields.emplace_back(union_name);
         tagdt->parentUnionType = data;
         tagdt->isGeneric = isGeneric(exts);
-        for(auto &g : n->generics)
-            tagdt->generics.push_back((AnTypeVarType*)toAnType(c, g.get()));
 
         //Store tag vals as a UnionTag
         UnionTag *tag = new UnionTag(nvn->name, tagdt, data, tags.size());
@@ -1199,7 +1206,7 @@ TypedValue compTaggedUnion(Compiler *c, DataDeclNode *n){
     }
 
     data->typeTag = TT_TaggedUnion;
-    data->isGeneric = isGeneric(unionTypes);
+    data->isGeneric = !n->generics.empty();
     data->extTys = unionTypes;
     data->fields = fieldNames;
 
@@ -1212,10 +1219,11 @@ TypedValue compTaggedUnion(Compiler *c, DataDeclNode *n){
     return c->getVoidLiteral();
 }
 
-
 TypedValue DataDeclNode::compile(Compiler *c){
-    auto *dt = AnDataType::get(this->name);
-    if(dt and !dt->isStub()) return c->compErr("Type " + name + " was redefined", loc);
+    {   //new scope to ensure dt isn't used after this check
+        auto *dt = AnDataType::get(this->name);
+        if(dt and !dt->isStub()) return c->compErr("Type " + name + " was redefined", loc);
+    }
 
     auto *nvn = (NamedValNode*)child.get();
     if(((TypeNode*) nvn->typeExpr.get())->type == TT_TaggedUnion){
@@ -1224,14 +1232,9 @@ TypedValue DataDeclNode::compile(Compiler *c){
 
     //Create the DataType as a stub first, have its contents be recursive
     //just to cause an error if something tries to use the stub
-    AnDataType *data = AnDataType::create(name, {}, false);
-
-    for(auto &g : generics){
-        data->generics.push_back((AnTypeVarType*)toAnType(c, g.get()));
-    }
+    AnDataType *data = AnDataType::create(name, {}, false, toVec(c, generics));
 
     c->stoType(data, name);
-
 
     vector<string> fieldNames;
     vector<AnType*> fieldTypes;
@@ -1253,7 +1256,6 @@ TypedValue DataDeclNode::compile(Compiler *c){
 
     data->fields = fieldNames;
     data->extTys = fieldTypes;
-
     return c->getVoidLiteral();
 }
 
@@ -1321,11 +1323,11 @@ TypedValue GlobalNode::compile(Compiler *c){
 }
 
 
-TypedValue handleTypeCastPattern(Compiler *c, TypedValue lval, TypeCastNode *tn, AnDataType *tagTy, AnDataType *parentTy){
+void handleTypeCastPattern(Compiler *c, TypedValue lval, TypeCastNode *tn, AnDataType *tagTy, AnDataType *parentTy){
     //If this is a generic type cast like Some 't, the 't must be bound to a concrete type first
     
     //This is a pattern of the match _ with expr, so if that is mutable this should be too
-    tagTy = (AnDataType*)tagTy->setModifier(lval.type->mods);
+    //tagTy = (AnDataType*)tagTy->setModifier(lval.type->mods);
     //AnType *tagtycpy = tagTy/*->extTys[0]*/;
 
     auto tcr = c->typeEq(parentTy, lval.type);
@@ -1333,7 +1335,7 @@ TypedValue handleTypeCastPattern(Compiler *c, TypedValue lval, TypeCastNode *tn,
     if(tcr->res == TypeCheckResult::SuccessWithTypeVars)
         tagTy = (AnDataType*)bindGenericToType(c, tagTy, tcr->bindings);
     else if(tcr->res == TypeCheckResult::Failure)
-        return c->compErr("Cannot bind pattern of type " + anTypeToColoredStr(parentTy) +
+        c->compErr("Cannot bind pattern of type " + anTypeToColoredStr(parentTy) +
                 " to matched value of type " + anTypeToColoredStr(lval.type), tn->rval->loc);
 
     //cast it from (<tag type>, <largest union member type>) to (<tag type>, <this union member's type>)
@@ -1353,11 +1355,11 @@ TypedValue handleTypeCastPattern(Compiler *c, TypedValue lval, TypeCastNode *tn,
     }else if(TupleNode *t = dynamic_cast<TupleNode*>(tn->rval.get())){
         auto *taggedValTy = tupTy->getStructElementType(1);
         if(!tupTy->isStructTy()){
-            return c->compErr("Cannot match tuple pattern against non-tuple type " + anTypeToColoredStr(tagTy), t->loc);
+            c->compErr("Cannot match tuple pattern against non-tuple type " + anTypeToColoredStr(tagTy), t->loc);
         }
 
         if(t->exprs.size() != taggedValTy->getNumContainedTypes()){
-            return c->compErr("Cannot match a tuple of size " + to_string(t->exprs.size()) +
+            c->compErr("Cannot match a tuple of size " + to_string(t->exprs.size()) +
                    " to a pattern of size " + to_string(taggedValTy->getNumContainedTypes()), t->loc);
         }
 
@@ -1381,9 +1383,8 @@ TypedValue handleTypeCastPattern(Compiler *c, TypedValue lval, TypeCastNode *tn,
         }
 
     }else{
-        return c->compErr("Cannot match unknown pattern", tn->rval->loc);
+        c->compErr("Cannot match unknown pattern", tn->rval->loc);
     }
-    return {};
 }
 
 
@@ -1426,10 +1427,8 @@ TypedValue MatchNode::compile(Compiler *c){
             auto *parentTy = tagTy->parentUnionType;
             ci = ConstantInt::get(*c->ctxt, APInt(8, parentTy->getTagVal(tn->typeExpr->typeName), true));
 
-            if(((AnDataType*)lval.type)->unboundType){
-            }
-
             tagTy = (AnDataType*)bindGenericToType(c, tagTy, ((AnDataType*)lval.type)->boundGenerics, tagTy);
+            tagTy = tagTy->setModifier(lval.type->mods);
             handleTypeCastPattern(c, lval, tn, tagTy, parentTy);
 
         //single type pattern:  None

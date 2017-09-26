@@ -508,11 +508,12 @@ TypedValue TypeCastNode::compile(Compiler *c){
 
         ty = bindGenericToType(c, ty, tc->bindings);
 
-        if(ty->isGeneric)
-            c->compErr("Cannot cast to a generic type " + anTypeToColoredStr(ty), typeExpr->loc);
+        //if(ty->isGeneric)
+        //    c->compErr("Cannot cast to a generic type " + anTypeToColoredStr(ty), typeExpr->loc);
     }
 
     auto tval = createCast(c, ty, rtval, loc);
+    tval.dump();
 
     if(!tval){
         //if(!!c->typeEq(rtval->type.get(), ty))
@@ -702,7 +703,9 @@ TypedValue IfNode::compile(Compiler *c){
     return compIf(c, this, mergebb, branches);
 }
 
-
+/*
+ *  Compiles the member access operator, .  eg. struct.field
+ */
 TypedValue Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *binop){
     if(!ln) throw new CtError();
 
@@ -760,9 +763,9 @@ TypedValue Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *binop
 
                 //The data type when looking up (usually) does not have any modifiers,
                 //so apply any potential modifers from the parent to this
-                //if(retTy->modifiers.empty() and !ltyn->modifiers.empty()){
-                //    retTy->copyModifiersFrom(tyn);
-                //}
+                if(!retTy->mods and ltyn->mods){
+                    retTy = retTy->setModifier(tyn->mods);
+                }
 
                 //If dataTy is a single value tuple then val may not be a tuple at all. In this
                 //case, val should be returned without being extracted from a nonexistant tuple
@@ -770,7 +773,8 @@ TypedValue Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *binop
                     return TypedValue(val, retTy);
 
                 auto ev = builder.CreateExtractValue(val, index);
-                return TypedValue(ev, retTy);
+                auto ret = TypedValue(ev, retTy);
+                return ret;
             }
         }
 
@@ -1218,7 +1222,8 @@ TypedValue deduceFunction(Compiler *c, FunctionCandidates *fc, vector<TypedValue
             c->compErr(msg, loc);
         }catch(CtError *e){
             for(auto &fd : fc->candidates){
-                auto *fnty = AnFunctionType::get(c, AnType::getVoid(), fd->fdn->params.get());
+                auto *fnty = fd->type ? fd->type
+                    : AnFunctionType::get(c, AnType::getVoid(), fd->fdn->params.get());
                 auto *params = AnAggregateType::get(TT_Tuple, fnty->extTys);
 
                 c->compErr("Candidate function with params "+anTypeToColoredStr(params), fd->fdn->loc, ErrorType::Note);
@@ -1234,7 +1239,8 @@ TypedValue deduceFunction(Compiler *c, FunctionCandidates *fc, vector<TypedValue
             c->compErr(msg, loc);
         }catch(CtError *e){
             for(auto &p : matches){
-                auto *fnty = AnFunctionType::get(c, AnType::getVoid(), p.second->fdn->params.get());
+                auto *fnty = p.second->type ? p.second->type
+                    : AnFunctionType::get(c, AnType::getVoid(), p.second->fdn->params.get());
                 auto *params = AnAggregateType::get(TT_Tuple, fnty->extTys);
 
                 c->compErr("Candidate function with params "+anTypeToColoredStr(params), p.second->fdn->loc, ErrorType::Note);

@@ -201,7 +201,7 @@ TypedValue Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
     size_t i = 0;
 
     vector<Value*> preArgs;
-    vector<AnType*> argTys;
+    vector<AnType*> paramAnTys;
 
     for(auto &arg : preFn->args()){
         NamedValNode *cParam = paramVec[i];
@@ -223,20 +223,24 @@ TypedValue Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
             }
         }
 
-        AnType *argty = toAnType(this, paramTyNode);
+        //If this function's type is specified beforehand (from a generic binding),
+        //use the param types it specifies, otherwise translate the types now.
+        AnType *paramTy = fd->type ?
+                fd->type->extTys[i]
+                : toAnType(this, paramTyNode);
 
-        TypedValue tArg = {&arg, argty};
+        TypedValue tArg = {&arg, paramTy};
         stoVar(cParam->name, new Variable(cParam->name, tArg, this->scope,
                         /*nofree =*/ true, /*autoDeref = */implicitPassByRef(paramTyNode)));
 
         preArgs.push_back(&arg);
-        argTys.push_back(argty);
+        paramAnTys.push_back(paramTy);
 
         ++i;
     }
 
     //store a fake function var, in case this function is recursive
-    auto *fakeFnTy = AnFunctionType::get(AnType::getVoid(), argTys);
+    auto *fakeFnTy = AnFunctionType::get(AnType::getVoid(), paramAnTys);
     auto fakeFnTv = TypedValue(preFn, fakeFnTy);
     if(fdn->name.length() > 0)
         updateFn(fakeFnTv, fd, fdn->basename, fdn->name);
@@ -268,7 +272,7 @@ TypedValue Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
             fdn->name.length() > 0 ? fdn->name : "__lambda__", module.get());
 
     //now that we have the real function, replace the old one with it
-    auto *newFnTyn = AnFunctionType::get(retTy, argTys);
+    auto *newFnTyn = AnFunctionType::get(retTy, paramAnTys);
 
     //finally, swap the bodies of the two functions and delete the former.
     //f->getBasicBlockList().push_back(&preFn->getBasicBlockList().front());
@@ -390,10 +394,21 @@ TypedValue compFnHelper(Compiler *c, FuncDecl *fd){
             throw e;
         }
     }
-    
-    auto *anRetTy = toAnType(c, retNode);
-    auto *fnTy = AnFunctionType::get(c, anRetTy, fdn->params.get());
 
+    AnType *anRetTy;
+    AnType *fnTy;
+
+    //If the function type was set beforehand (likely due to a generic binding)
+    //Then just retrieve type information from there
+    if(fd->type){
+        fnTy = fd->type;
+        anRetTy = fnTy->getFunctionReturnType();
+    }else{
+        anRetTy = toAnType(c, retNode);
+        fnTy = AnFunctionType::get(c, anRetTy, fdn->params.get());
+    }
+
+    //llvm return type and function type corresponding to the AnTypes above
     Type *retTy = c->anTypeToLlvmType(anRetTy);
 
     FunctionType *ft = FunctionType::get(retTy, paramTys, fdn->varargs);
@@ -428,7 +443,12 @@ TypedValue compFnHelper(Compiler *c, FuncDecl *fd){
                 }
             }
 
-            AnType *paramTy = toAnType(c, paramTyNode);
+            //Again, if the function type was manually specified from a generic type
+            //binding then use that as the param type, otherwise assume it is a concrete type
+            AnType *paramTy = fd->type ?
+                    fd->type->extTys[i]
+                    : toAnType(c, paramTyNode);
+
             TypedValue tArg = {&arg, paramTy};
             c->stoVar(cParam->name, new Variable(cParam->name, tArg, c->scope,
                     /*nofree = */true, /*autoDeref = */implicitPassByRef(paramTyNode)));
@@ -526,16 +546,18 @@ TypedValue compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, vector
     //fd->fdn->params.release();
     //fd->fdn->params.reset(boundParams);
     AnType *anRetTy = AnType::getVoid();
-    
+
     //bind the return type if necessary
     if(TypeNode* retTy = (TypeNode*)fd->fdn->type.get()){
         anRetTy = bindGenericToType(c, toAnType(c, retTy), tc->bindings);
     }
 
     auto *fty = AnFunctionType::get(anRetTy, args);
-    
+    fd->type = fty;
+
     //test if bound variant is already compiled
     string mangled = mangle(fd->fdn->basename, fty->extTys);
+
     TypedValue fn;
     if(!!(fn = c->getFunction(fd->fdn->basename, mangled)))
         return fn;

@@ -217,9 +217,10 @@ namespace ante {
         llvm::Type* llvmType;
 
         static AnDataType* get(std::string name, AnModifier *m = nullptr);
+        static AnDataType* getVariant(std::string &name, std::vector<std::pair<std::string, AnType*>> &boundTys, AnModifier *m = nullptr);
         static AnDataType* getOrCreate(std::string name, std::vector<AnType*> &elems, bool isUnion, AnModifier *m = nullptr);
         static AnDataType* getOrCreate(const AnDataType *dt, AnModifier *m = nullptr);
-        static AnDataType* create(std::string name, std::vector<AnType*> elems, bool isUnion, AnModifier *m = nullptr);
+        static AnDataType* create(std::string name, std::vector<AnType*> elems, bool isUnion, const std::vector<AnTypeVarType*> &generics, AnModifier *m = nullptr);
 
         AnDataType* addModifier(TokenType m) override;
         AnDataType* setModifier(AnModifier *m) override;

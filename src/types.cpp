@@ -38,36 +38,18 @@ AnType* extractTypeValue(const TypedValue &tv){
 }
 
 
-
-/*
- * Returns the unique boundName of a generic type after it is bound
- * with the specified type arguments
- */
-string getBoundName(string &baseName, const vector<AnType*> &typeArgs){
-    if(typeArgs.empty())
-        return baseName;
-
-    string name = baseName + "<";
-    for(auto &arg : typeArgs){
-        name += anTypeToStr(arg);
-        if(&arg != &typeArgs.back())
-            name += ",";
-    }
-    return name + ">";
-}
-
-string getBoundName(string &baseName, const vector<pair<string, AnType*>> &typeArgs){
-    if(typeArgs.empty())
-        return baseName;
-
-    string name = baseName + "<";
-    for(auto &p : typeArgs){
-        name += anTypeToStr(p.second);
-        if(&p != &typeArgs.back())
-            name += ",";
-    }
-    return name + ">";
-}
+//string getBoundName(string &baseName, const vector<pair<string, AnType*>> &typeArgs){
+//    if(typeArgs.empty())
+//        return baseName;
+//
+//    string name = baseName + "<";
+//    for(auto &p : typeArgs){
+//        name += anTypeToStr(p.second);
+//        if(&p != &typeArgs.back())
+//            name += ",";
+//    }
+//    return name + ">";
+//}
 
 
 /*
@@ -246,14 +228,13 @@ filterMatchingBindings(const AnDataType *dt, const vector<pair<string, AnType*>>
 
 Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt, bool force){
     //create an empty type first so we dont end up with infinite recursion
-
     auto* structTy = StructType::create(*c->ctxt, {}, dt->name, dt->typeTag == TT_TaggedUnion);
     dt->llvmType = structTy;
 
     if(dt->isGeneric and !force){
         cerr << "Type " << anTypeToStr(dt) << " is generic and cannot be translated.\n";
-        c->errFlag = true;
-        return nullptr;
+        //c->errFlag = true;
+        //return nullptr;
     }
 
     AnType *ext = dt;
@@ -308,9 +289,10 @@ AnType* bindGenericToType(Compiler *c, AnType *tn, const vector<pair<string, AnT
         auto *dty = (AnDataType*)tn;
 
         auto dty_bindings = filterMatchingBindings(dty, bindings);
-        string boundName = getBoundName(dty->name, dty_bindings);
 
-        auto *decl = AnDataType::get(boundName);
+        auto *decl = AnDataType::getVariant(dty->name, dty_bindings, tn->mods);
+        cout << "  Got variant " << decl->name << endl;
+
         if(!decl->isStub())
             return decl;
 
@@ -328,7 +310,6 @@ AnType* bindGenericToType(Compiler *c, AnType *tn, const vector<pair<string, AnT
             decl->parentUnionType = unionType;
         }
 
-        decl->mods = dty->mods;
         decl->typeTag = dty->typeTag;
         decl->boundGenerics = extractTypes(dty_bindings);
         decl->fields = dty->fields;
@@ -358,17 +339,17 @@ AnType* bindGenericToType(Compiler *c, AnType *tn, const vector<pair<string, AnT
         for(auto *e : agg->extTys){
             exts.push_back(bindGenericToType(c, e, bindings));
         }
-        return AnAggregateType::get(tn->typeTag, exts);
+        return AnAggregateType::get(tn->typeTag, exts, tn->mods);
 
     }else if(tn->typeTag == TT_Ptr){
         auto *ptr = (AnPtrType*)tn;
         auto *ty = bindGenericToType(c, ptr->extTy, bindings);
-        return AnPtrType::get(ty);
+        return AnPtrType::get(ty, tn->mods);
         
     }else if(tn->typeTag == TT_Array){
         auto *arr = (AnArrayType*)tn;
         auto *ty = bindGenericToType(c, arr->extTy, bindings);
-        return AnArrayType::get(ty, arr->len);
+        return AnArrayType::get(ty, arr->len, tn->mods);
         
     }else{
         return tn;
@@ -766,7 +747,7 @@ Type* Compiler::anTypeToLlvmType(const AnType *ty, bool force){
                 if(!force)
                     cerr << "Warning: cannot translate undeclared typevar " << tvt->name << endl;
 
-                return Type::getInt64Ty(*ctxt);
+                return Type::getInt64PtrTy(*ctxt);
             }
 
             AnType *ty = extractTypeValue(typeVar->tval);

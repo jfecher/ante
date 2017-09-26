@@ -303,7 +303,7 @@ namespace ante {
             return typeArena.declaredTypes.at(key).get();
         }catch(out_of_range r){
             //create declaration w/out definition
-            return AnDataType::create(name, elems, isUnion, m);
+            return AnDataType::create(name, elems, isUnion, {}, m);
         }
     }
 
@@ -313,7 +313,7 @@ namespace ante {
             return typeArena.declaredTypes.at(key).get();
         }catch(out_of_range r){
             //create declaration w/out definition
-            auto *ret = AnDataType::create(dt->name, {}, dt->typeTag == TT_TaggedUnion, m);
+            auto *ret = AnDataType::create(dt->name, {}, dt->typeTag == TT_TaggedUnion, dt->generics, m);
             
             vector<AnType*> elems;
             elems.reserve(dt->extTys.size());
@@ -330,20 +330,68 @@ namespace ante {
             ret->unboundType = dt->unboundType;
             ret->boundGenerics = dt->boundGenerics;
             ret->generics = dt->generics;
+            ret->llvmType = dt->llvmType;
             return ret;
         }
     }
 
-    AnDataType* AnDataType::create(string name, vector<AnType*> elems, bool isUnion, AnModifier *m){
-        string key = modifiersToStr(m) + name;
+    string getBoundName(string &baseName, const vector<pair<string, AnType*>> &typeArgs){
+        if(typeArgs.empty())
+            return baseName;
+
+        string name = baseName + "<";
+        for(auto &p : typeArgs){
+            //if(p.second->typeTag != TT_TypeVar)
+                name += anTypeToStr(p.second);
+            if(&p != &typeArgs.back())
+                name += ",";
+        }
+        return name == baseName + "<" ? baseName : name+">";
+    }
+
+    /*
+    * Returns the unique boundName of a generic type after it is bound
+    * with the specified type arguments
+    */
+    string getBoundName(string &baseName, const vector<AnTypeVarType*> &typeArgs){
+        if(typeArgs.empty())
+            return baseName;
+
+        string name = baseName + "<";
+        for(auto &arg : typeArgs){
+            if(arg->typeTag != TT_TypeVar)
+                name += anTypeToStr(arg);
+            if(&arg != &typeArgs.back())
+                name += ",";
+        }
+        return name == baseName + "<" ? baseName : name + ">";
+    }
+
+    AnDataType* AnDataType::getVariant(std::string &name, std::vector<std::pair<std::string, AnType*>> &boundTys, AnModifier *m){
+        string key = getBoundName(name, boundTys);
+        return AnDataType::get(key, m);
+    }
+
+    AnDataType* AnDataType::create(string name, vector<AnType*> elems, bool isUnion, const vector<AnTypeVarType*> &generics, AnModifier *m){
+        string key = modifiersToStr(m) + getBoundName(name, generics);
         try{
             auto *dt = typeArena.declaredTypes.at(key).get();
             dt->extTys = elems;
             return dt;
         }catch(out_of_range r){
-            auto tvar = new AnDataType(name, elems, isUnion, m);
-            typeArena.declaredTypes.emplace(key, tvar);
-            return tvar;
+            vector<AnType*> elemsWithMods;
+            elems.reserve(elems.size());
+            for(auto *ty : elems){
+                auto *mod_type = ty->setModifier(m);
+                elemsWithMods.emplace_back(mod_type);
+            }
+    
+            auto dt = new AnDataType(name, elemsWithMods, isUnion, m);
+            dt->isGeneric = !generics.empty();
+            dt->generics = generics;
+
+            typeArena.declaredTypes.emplace(key, dt);
+            return dt;
         }
     }
 
@@ -449,7 +497,23 @@ namespace ante {
                     for(auto &t : tn->params)
                         bindings.emplace_back(toAnType(c, t.get()));
 
-                    return bindGenericToType(c, basety, bindings, basety);
+                    auto *ret = (AnDataType*)bindGenericToType(c, basety, bindings, basety);
+                    //if(ret->generics.empty() and ret->boundGenerics.empty() and isGeneric(bindings)){
+                    //    for(auto *b : bindings){
+                    //        if(auto *tvt = llvm::dyn_cast<AnTypeVarType>(b)){
+                    //            ret->generics.push_back(tvt);
+                    //            cout << "Pushing back type var\n";
+                    //        }
+                    //    }
+                    //}
+
+                    //auto tnstr = typeNodeToStrWithModifiers(tn);
+                    auto anstr = anTypeToStr(ret);
+                    //if(tnstr != anstr)
+                    //    cout << "\t!!!!! vvvvv !!!!!\n";
+                    //cout << "Translated TypeNode " << typeNodeToStrWithModifiers(tn)
+                    //     << " to " << anTypeToStr(ret) << endl;
+                    return ret;
                 }else{
                     return AnDataType::get(tn->typeName, mods);
                 }
