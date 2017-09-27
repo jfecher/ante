@@ -19,14 +19,14 @@ extern "C" {
 
     void Ante_ctError(Compiler *c, TypedValue &msgTv){
         char *msg = (char*)typedValueToGenericValue(c, msgTv).PointerVal;
-        auto *curfn = c->compCtxt->callStack.back()->fdn;
+        auto *curfn = c->compCtxt->callStack.back()->fdn.get();
         yy::location fakeloc = mkLoc(mkPos(0,0,0), mkPos(0,0,0));
         c->compErr(msg, curfn ? curfn->loc : fakeloc);
     }
 
     TypedValue* FuncDecl_getName(Compiler *c, TypedValue &fd){
         FuncDecl *f = (FuncDecl*)((ConstantInt*)fd.val)->getZExtValue();
-        string &n = f->fdn->basename;
+        string &n = f->getName();
 
         yy::location lloc = mkLoc(mkPos(0,0,0), mkPos(0,0,0));
         auto *strlit = new StrLitNode(lloc, n);

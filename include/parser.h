@@ -379,16 +379,15 @@ namespace ante {
     };
 
     struct FuncDeclNode : public Node{
-        std::string name, basename;
+        std::string name;
         std::shared_ptr<Node> child;
-        std::unique_ptr<Node> modifiers, type;
-        std::unique_ptr<NamedValNode> params;
+        std::shared_ptr<Node> modifiers, type;
+        std::shared_ptr<NamedValNode> params;
         bool varargs;
 
         TypedValue compile(Compiler*);
         void print(void);
-        FuncDeclNode(LOC_TY& loc, std::string s, std::string bn, Node *mods, Node *t, Node *p, Node* b, bool va=false) : Node(loc), name(s), basename(bn), child(b), modifiers(mods), type(t), params((NamedValNode*)p), varargs(va){}
-        FuncDeclNode(FuncDeclNode* fdn);
+        FuncDeclNode(LOC_TY& loc, std::string s, Node *mods, Node *t, Node *p, Node* b, bool va=false) : Node(loc), name(s), child(b), modifiers(mods), type(t), params((NamedValNode*)p), varargs(va){}
         ~FuncDeclNode(){ if(next.get()) next.release(); }
     };
 

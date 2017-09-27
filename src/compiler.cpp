@@ -966,10 +966,11 @@ string mangle(string &base, vector<AnType*> params){
     return name;
 }
 
-string mangle(string &base, NamedValNode *paramTys){
+string mangle(string &base, shared_ptr<NamedValNode> &paramTys){
     string name = base;
-    while(paramTys){
-        auto *tn = (TypeNode*)paramTys->typeExpr.get();
+    NamedValNode *cur = paramTys.get();
+    while(cur){
+        auto *tn = (TypeNode*)cur->typeExpr.get();
         
         if(!tn)
             name += "...";
@@ -978,7 +979,7 @@ string mangle(string &base, NamedValNode *paramTys){
         else if(tn->type != TT_Void)
             name += "_" + typeNodeToStr(tn);
 
-        paramTys = (NamedValNode*)paramTys->next.get();
+        cur = (NamedValNode*)cur->next.get();
     }
     return name;
 }
@@ -1024,7 +1025,7 @@ FuncDeclNode* findFDN(Node *list, string& basename){
     for(Node *n : *list){
         auto *fdn = (FuncDeclNode*)n;
 
-        if(fdn->basename == basename){
+        if(fdn->name == basename){
             return fdn;
         }
     }
@@ -1032,16 +1033,17 @@ FuncDeclNode* findFDN(Node *list, string& basename){
 }
 
 
-void manageSelfParam(Compiler *c, FuncDeclNode *fdn){
-    auto self_loc = fdn->name.find(AN_MANGLED_SELF);
+string manageSelfParam(Compiler *c, FuncDeclNode *fdn, string &mangledName){
+    auto self_loc = mangledName.find(AN_MANGLED_SELF);
     if(self_loc != string::npos){
         if(!c->compCtxt->objTn)
             c->compErr("Function must be a method to have a self parameter", fdn->params->loc);
 
-        fdn->name.replace(self_loc, strlen(AN_MANGLED_SELF), "_" + typeNodeToStr(c->compCtxt->objTn));
+        mangledName.replace(self_loc, strlen(AN_MANGLED_SELF), "_" + typeNodeToStr(c->compCtxt->objTn));
         fdn->params->typeExpr.release();
         fdn->params->typeExpr.reset(c->compCtxt->objTn);
     }
+    return mangledName;
 }
 
 
@@ -1085,27 +1087,28 @@ TypedValue ExtNode::compile(Compiler *c){
             traitImpl->name = trait->name;
 
             for(auto& fd_proto : trait->funcs){
-                auto *fdn = findFDN(funcs, fd_proto->fdn->basename);
+                auto *fdn = findFDN(funcs, fd_proto->getName());
 
                 if(!fdn)
-                    return c->compErr(typeNodeToColoredStr(typeExpr.get()) + " must implement " + fd_proto->fdn->basename +
+                    return c->compErr(typeNodeToColoredStr(typeExpr.get()) + " must implement " + fd_proto->getName() +
                             " to implement " + anTypeToColoredStr(AnDataType::get(trait->name)), fd_proto->fdn->loc);
+                
+                string mangledName = c->funcPrefix + mangle(fdn->name, fdn->params);
+                fdn->name = c->funcPrefix + fdn->name;
 
+                //If there is a self param it would be mangled incorrectly above as mangle does not have
+                //access to what type 'self' references, so fix that here.
                 auto *oldTn = c->compCtxt->objTn;
                 c->compCtxt->objTn = typeExpr.get();
-
-                manageSelfParam(c, fdn);
-
+                mangledName = manageSelfParam(c, fdn, mangledName);
                 c->compCtxt->objTn = oldTn;
 
-                fdn->name = c->funcPrefix + fdn->name;
-                fdn->basename = c->funcPrefix + fdn->basename;
-
-                shared_ptr<FuncDecl> fd{new FuncDecl(fdn, c->scope, c->mergedCompUnits)};
+                shared_ptr<FuncDeclNode> spfdn{fdn};
+                shared_ptr<FuncDecl> fd{new FuncDecl(spfdn, mangledName, c->scope, c->mergedCompUnits)};
                 traitImpl->funcs.emplace_back(fd);
 
-                c->compUnit->fnDecls[fdn->basename].emplace_back(fd);
-                c->mergedCompUnits->fnDecls[fdn->basename].emplace_back(fd);
+                c->compUnit->fnDecls[fdn->name].emplace_back(fd);
+                c->mergedCompUnits->fnDecls[fdn->name].emplace_back(fd);
             }
 
             //trait is fully implemented, add it to the DataType
@@ -1267,10 +1270,11 @@ TypedValue TraitNode::compile(Compiler *c){
     auto *curfn = child.release();
     while(curfn){
         auto *fn = (FuncDeclNode*)curfn;
+        string mangledName = c->funcPrefix + mangle(fn->name, fn->params);
         fn->name = c->funcPrefix + fn->name;
-        fn->basename = c->funcPrefix + fn->basename;
 
-        shared_ptr<FuncDecl> fd{new FuncDecl(fn, c->scope, c->mergedCompUnits)};
+        shared_ptr<FuncDeclNode> spfdn{fn};
+        shared_ptr<FuncDecl> fd{new FuncDecl(spfdn, mangledName, c->scope, c->mergedCompUnits)};
 
         //create trait type as a generic void* container
         vector<AnType*> ext;
@@ -1720,7 +1724,8 @@ Function* Compiler::createMainFn(){
     auto *main_fn_ty = AnFunctionType::get(AnType::getU8(), {argcAnty, argvAnty});
 
     auto main_tv = TypedValue(main, main_fn_ty);
-    auto *main_var = new FuncDecl(0, scope, mergedCompUnits, main_tv);
+    shared_ptr<FuncDeclNode> fakeSp;
+    auto *main_var = new FuncDecl(fakeSp, fnName, scope, mergedCompUnits, main_tv);
     compCtxt->callStack.push_back(main_var);
     return main;
 }
@@ -1919,7 +1924,7 @@ void TypedValue::dump() const{
         cout << "(" << fl->candidates.size() << " function" << (fl->candidates.size() == 1 ? ")\n" : "s)\n");
 
         for(auto &c : fl->candidates){
-            cout << endl << c->fdn->basename << " (" << c->fdn->name << "): \n";
+            cout << endl << c->getName() << " (" << c->mangledName << "): \n";
             if(!!c->tv){
                 c->tv.dump();
             }else{

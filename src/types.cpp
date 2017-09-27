@@ -291,7 +291,6 @@ AnType* bindGenericToType(Compiler *c, AnType *tn, const vector<pair<string, AnT
         auto dty_bindings = filterMatchingBindings(dty, bindings);
 
         auto *decl = AnDataType::getVariant(dty->name, dty_bindings, tn->mods);
-        cout << "  Got variant " << decl->name << endl;
 
         if(!decl->isStub())
             return decl;

@@ -35,7 +35,7 @@ ante::Module* copyModuleFuncDecls(const ante::Module *mod){
 
     for(auto &pair : mod->fnDecls){
         for(auto &fd : pair.second){
-            auto fd_cpy = make_shared<FuncDecl>(fd->fdn, fd->scope, ret);
+            auto fd_cpy = make_shared<FuncDecl>(fd->fdn, fd->mangledName, fd->scope, ret);
             fd_cpy->obj = fd->obj;
             fd_cpy->obj_bindings = fd->obj_bindings;
             ret->fnDecls[pair.first].push_back(fd_cpy);
@@ -111,7 +111,7 @@ Node* stripCompilerDirectives(FuncDeclNode *fdn){
 
     //set the function's modifiers to the list containing just
     //the normal modifiers
-    fdn->modifiers.release();
+    //fdn->modifiers.release();
     fdn->modifiers.reset(mods_begin);
     return preprocs_begin;
 }
@@ -126,7 +126,7 @@ Node* getLastNode(Node *n){
     return n;
 }
 
-void appendModifiers(Node *n, unique_ptr<Node> &mods){
+void appendModifiers(Node *n, shared_ptr<Node> &mods){
     Node *last = getLastNode(mods.get());
     if(last) last->next.reset(n);
     else mods.reset(n);
@@ -172,7 +172,7 @@ unique_ptr<Compiler> wrapFnInModule(Compiler *c, string &basename, string &mangl
     ccpy->builder.CreateRet(ConstantInt::get(*ccpy->ctxt, APInt(32, 1)));
 
     auto *fn = ccpy->getFuncDecl(basename, mangledName);
-    auto *cds = stripCompilerDirectives(fn->fdn);
+    auto *cds = stripCompilerDirectives(fn->fdn.get());
 
     if(fn){
         ccpy->compFn(fn);

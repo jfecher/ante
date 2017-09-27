@@ -8,6 +8,7 @@
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/ExecutionEngine/MCJIT.h>
 #include <llvm/ExecutionEngine/ExecutionEngine.h>
+#include <string>
 #include <memory>
 #include <unordered_map>
 #include <list>
@@ -127,7 +128,9 @@ namespace ante {
     * instance for type checking.
     */
     struct FuncDecl {
-        FuncDeclNode* fdn;
+        std::shared_ptr<FuncDeclNode> fdn;
+        std::string mangledName;
+
         unsigned int scope;
         TypedValue tv;
 
@@ -141,9 +144,13 @@ namespace ante {
         Module *module;
         std::vector<std::pair<TypedValue,LOC_TY>> returns;
 
-        FuncDecl(FuncDeclNode *fn, unsigned int s, Module *mod, TypedValue f) : fdn(fn), scope(s), tv(f), module(mod), returns(){}
-        FuncDecl(FuncDeclNode *fn, unsigned int s, Module *mod) : fdn(fn), scope(s), tv(), module(mod), returns(){}
-        ~FuncDecl(){ if(fdn) delete fdn; }
+        std::string& getName() const {
+            return fdn->name;
+        }
+
+        FuncDecl(std::shared_ptr<FuncDeclNode> &fn, std::string &n, unsigned int s, Module *mod, TypedValue f) : fdn(fn), mangledName(n), scope(s), tv(f), type(0), module(mod), returns(){}
+        FuncDecl(std::shared_ptr<FuncDeclNode> &fn, std::string &n, unsigned int s, Module *mod) : fdn(fn), mangledName(n), scope(s), tv(), type(0), module(mod), returns(){}
+        ~FuncDecl(){}
     };
 
     TypeNode* mkAnonTypeNode(TypeTag);
@@ -594,8 +601,19 @@ namespace ante {
          * with compTemplateFn which calls this function internally.
          */
         TypedValue compFn(FuncDecl *fn);
-        void registerFunction(FuncDeclNode *func);
 
+        /*
+         * @brief Registers a function for later compilation.
+         *
+         * Wraps the FuncDeclNode in a FuncDecl internally and
+         * stores that.  Will fail if there is another function
+         * with a matching mangledName declared.
+         */
+        void registerFunction(FuncDeclNode *func, std::string &mangledName);
+
+        /*
+         * @brief Returns the current scope of the block compiling.
+         */
         unsigned int getScope() const;
 
         /**
@@ -785,7 +803,7 @@ namespace ante {
     std::vector<AnType*> toTypeVector(std::vector<TypedValue> &tvs);
 
     std::string mangle(std::string &base, std::vector<AnType*> params);
-    std::string mangle(std::string &base, NamedValNode *paramTys);
+    std::string mangle(std::string &base, std::shared_ptr<NamedValNode> &paramTys);
     std::string mangle(std::string &base, TypeNode *paramTys);
     std::string mangle(std::string &base, TypeNode *p1, TypeNode *p2);
     std::string mangle(std::string &base, TypeNode *p1, TypeNode *p2, TypeNode *p3);

@@ -520,43 +520,12 @@ Node* mkForNode(LOC_TY loc, Node* var, Node* range, Node* body){
     return new ForNode(loc, (char*)var, range, body);
 }
 
-Node* mkFuncDeclNode(LOC_TY loc, Node* s, Node *bn, Node* mods, Node* tExpr, Node* p, Node* b){
-    auto ret = new FuncDeclNode(loc, (char*)s, (char*)bn, mods, tExpr, p, b);
+Node* mkFuncDeclNode(LOC_TY loc, Node* s, Node* mods, Node* tExpr, Node* p, Node* b){
+    auto ret = new FuncDeclNode(loc, (char*)s, mods, tExpr, p, b);
 
-    //s and bn are copied from lextxt, and may or may not be equal
-    if(s != bn and s) free(s);
-    if(bn) free(bn);
+    //s is copied from lextxt, and may or may not be equal
+    if(s) free(s);
     return ret;
-}
-
-FuncDeclNode::FuncDeclNode(FuncDeclNode* fdn) :
-    Node(fdn->loc),
-    name(fdn->name),
-    basename(fdn->basename),
-    child(fdn->child),
-    type(fdn->type.get()),
-    params(fdn->params.get()),
-    varargs(fdn->varargs){
-
-    Node *cur_mod = 0;
-    for(auto *m : *fdn->modifiers){
-        Node *cpy;
-        if(PreProcNode *ppn = dynamic_cast<PreProcNode*>(m)){
-            cpy = new PreProcNode(ppn->loc, ppn->expr);
-        }else if(ModNode *mn = dynamic_cast<ModNode*>(m)){
-            cpy = new ModNode(mn->loc, mn->mod);
-        }else{
-            throw new CtError();
-        }
-
-        if(cur_mod){
-            cur_mod->next.reset(cpy);
-            cur_mod = cur_mod->next.get();
-        }else{
-            modifiers.reset(cpy);
-            cur_mod = modifiers.get();
-        }
-    }
 }
 
 Node* mkDataDeclNode(LOC_TY loc, char* s, Node *p, Node* b){

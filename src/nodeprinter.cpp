@@ -292,7 +292,7 @@ void FuncDeclNode::print(){
     }
 
     cout << "fun ";
-    cout << basename;
+    cout << name;
     if(params){
         cout << ": ";
         params->print();

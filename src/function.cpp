@@ -140,7 +140,7 @@ AnType* validateReturns(Compiler *c, FuncDecl *fd, TypeNode *retTy = 0){
 
         auto tcr = c->typeEq(matchTy, ret.type);
         if(!tcr){
-            c->compErr("Function " + fd->fdn->basename + " returned value of type " +
+            c->compErr("Function " + fd->getName() + " returned value of type " +
                  anTypeToColoredStr(ret.type) + " but was declared to return value of type " +
                  anTypeToColoredStr(matchTy), pair.second);
         }
@@ -185,7 +185,7 @@ LOC_TY getFinalLoc(Node *n){
 
 
 TypedValue Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
-    auto *fdn = fd->fdn;
+    auto *fdn = fd->fdn.get();
     FunctionType *preFnTy = FunctionType::get(Type::getVoidTy(*ctxt), paramTys, fdn->varargs);
 
     //preFn is the predecessor to fn because we do not yet know its return type, so its body must be compiled,
@@ -243,7 +243,7 @@ TypedValue Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
     auto *fakeFnTy = AnFunctionType::get(AnType::getVoid(), paramAnTys);
     auto fakeFnTv = TypedValue(preFn, fakeFnTy);
     if(fdn->name.length() > 0)
-        updateFn(fakeFnTv, fd, fdn->basename, fdn->name);
+        updateFn(fakeFnTv, fd, fdn->name, fd->mangledName);
 
     //actually compile the function, and hold onto the last value
     TypedValue v = fdn->child->compile(this);
@@ -269,7 +269,7 @@ TypedValue Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
     //create the actual function's type, along with the function itself.
     FunctionType *ft = FunctionType::get(anTypeToLlvmType(retTy), paramTys, fdn->varargs);
     Function *f = Function::Create(ft, Function::ExternalLinkage,
-            fdn->name.length() > 0 ? fdn->name : "__lambda__", module.get());
+            fdn->name.length() > 0 ? fd->mangledName : "__lambda__", module.get());
 
     //now that we have the real function, replace the old one with it
     auto *newFnTyn = AnFunctionType::get(retTy, paramAnTys);
@@ -293,7 +293,7 @@ TypedValue Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
 
     //only store the function if it has a name (and thus is not a lambda function)
     if(fdn->name.length() > 0)
-        updateFn(ret, fd, fdn->basename, fdn->name);
+        updateFn(ret, fd, fdn->name, fd->mangledName);
 
     return ret;
 }
@@ -316,8 +316,8 @@ vector<llvm::Argument*> buildArguments(FunctionType *ft){
 TypedValue compCompilerDirectiveFn(Compiler *c, FuncDecl *fd, PreProcNode *ppn){
     //remove the preproc node at the front of the modifier list so that the call to
     //compFn does not call this function in an infinite loop
-    auto *fdn = fd->fdn;
-    fdn->modifiers.release();
+    auto *fdn = fd->fdn.get();
+    auto mod_cpy = fdn->modifiers;
     fdn->modifiers.reset(ppn->next.get());
 
     TypedValue fn;
@@ -332,7 +332,7 @@ TypedValue compCompilerDirectiveFn(Compiler *c, FuncDecl *fd, PreProcNode *ppn){
 
             auto *mod = c->module.release();
 
-            c->module.reset(new llvm::Module(fdn->name, *c->ctxt));
+            c->module.reset(new llvm::Module(fd->mangledName, *c->ctxt));
             auto recomp = c->compFn(fd);
 
             c->jitFunction((Function*)recomp.val);
@@ -350,8 +350,7 @@ TypedValue compCompilerDirectiveFn(Compiler *c, FuncDecl *fd, PreProcNode *ppn){
         }
 
         //put back the preproc node modifier
-        fdn->modifiers.release();
-        fdn->modifiers.reset(ppn);
+        fdn->modifiers = mod_cpy;
         return fn;
     }else{
         return c->compErr("Unrecognized compiler directive", ppn->loc);
@@ -361,7 +360,7 @@ TypedValue compCompilerDirectiveFn(Compiler *c, FuncDecl *fd, PreProcNode *ppn){
 
 TypedValue compFnHelper(Compiler *c, FuncDecl *fd){
     BasicBlock *caller = c->builder.GetInsertBlock();
-    auto *fdn = fd->fdn;
+    auto *fdn = fd->fdn.get();
 
     if(PreProcNode *ppn = dynamic_cast<PreProcNode*>(fdn->modifiers.get())){
         auto ret = compCompilerDirectiveFn(c, fd, ppn);
@@ -412,14 +411,14 @@ TypedValue compFnHelper(Compiler *c, FuncDecl *fd){
     Type *retTy = c->anTypeToLlvmType(anRetTy);
 
     FunctionType *ft = FunctionType::get(retTy, paramTys, fdn->varargs);
-    Function *f = Function::Create(ft, Function::ExternalLinkage, fdn->name, c->module.get());
+    Function *f = Function::Create(ft, Function::ExternalLinkage, fd->mangledName, c->module.get());
     f->addFnAttr("nounwind");
     addAllArgAttrs(f, paramsBegin);
 
 
     auto ret = TypedValue(f, fnTy);
     //stoVar(fdn->name, new Variable(fdn->name, ret, scope));
-    c->updateFn(ret, fd, fdn->basename, fdn->name);
+    c->updateFn(ret, fd, fdn->name, fd->mangledName);
 
     //The above handles everything for a function declaration
     //If the function is a definition, then the body will be compiled here.
@@ -494,35 +493,9 @@ TypedValue compFnHelper(Compiler *c, FuncDecl *fd){
     return ret;
 }
 
-/*
-vector<AnType*> bindParams(unique_ptr<NamedValNode> &params, const vector<pair<string,AnType*>> &bindings){
-    NamedValNode *oldParams = params.get();
-    vector<AnType*> boundParams;
 
-    while(oldParams){
-        auto *unboundTy = (TypeNode*)oldParams->typeExpr.get();
-
-        auto *boundTy = copy(unboundTy);
-        bindGenericToType(boundTy, bindings);
-
-        auto *node = new NamedValNode(oldParams->loc, oldParams->name, boundTy);
-        if(newParams){
-            curParam->next.reset(node);
-        }else{
-            newParams = node;
-        }
-
-        curParam = node;
-        oldParams = (NamedValNode*)oldParams->next.get();
-    }
-    return newParams;
-}
-*/
-
-FuncDecl* shallow_copy(FuncDecl* fd){
-    auto *fdnCpy = new FuncDeclNode(fd->fdn);
-
-    FuncDecl *cpy = new FuncDecl(fdnCpy, fd->scope, fd->module);
+FuncDecl* shallow_copy(FuncDecl* fd, string &mangledName){
+    FuncDecl *cpy = new FuncDecl(fd->fdn, mangledName, fd->scope, fd->module);
     cpy->obj_bindings = fd->obj_bindings;
     cpy->obj = fd->obj;
     return cpy;
@@ -530,21 +503,7 @@ FuncDecl* shallow_copy(FuncDecl* fd){
 
 
 TypedValue compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, vector<AnType*> &args){
-    fd = shallow_copy(fd);
-
-    //Each binding from the typecheck results needs to be declared as a typevar in the
-    //function's scope, but compFn sets this scope later on, so the needed bindings are
-    //instead stored as fake obj bindings to be declared later in compFn
-    for(auto& pair : tc->bindings){
-        fd->obj_bindings.push_back({pair.first, pair.second});
-    }
-
-    //swap out fn's generic params for the concrete arg types
-    //auto boundParams = bindParams(fd->fdn->params, tc->bindings);
-
-    //The unbound template owns the original params
-    //fd->fdn->params.release();
-    //fd->fdn->params.reset(boundParams);
+    //Default return type in case this function has an inferred return type;
     AnType *anRetTy = AnType::getVoid();
 
     //bind the return type if necessary
@@ -553,16 +512,23 @@ TypedValue compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, vector
     }
 
     auto *fty = AnFunctionType::get(anRetTy, args);
-    fd->type = fty;
 
     //test if bound variant is already compiled
-    string mangled = mangle(fd->fdn->basename, fty->extTys);
+    string mangled = mangle(fd->getName(), fty->extTys);
 
     TypedValue fn;
-    if(!!(fn = c->getFunction(fd->fdn->basename, mangled)))
+    if(!!(fn = c->getFunction(fd->getName(), mangled)))
         return fn;
+    
+    fd = shallow_copy(fd, mangled);
+    fd->type = fty;
 
-    fd->fdn->name = mangled;
+    //Each binding from the typecheck results needs to be declared as a typevar in the
+    //function's scope, but compFn sets this scope later on, so the needed bindings are
+    //instead stored as fake obj bindings to be declared later in compFn
+    for(auto& pair : tc->bindings){
+        fd->obj_bindings.push_back({pair.first, pair.second});
+    }
 
     //compile the function normally (each typevar should now be
     //substituted with its checked type from the typecheck tc)
@@ -570,7 +536,11 @@ TypedValue compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, vector
 }
 
 //Defined in compiler.cpp
-void manageSelfParam(Compiler *c, FuncDeclNode *fdn);
+string manageSelfParam(Compiler *c, FuncDeclNode *fdn, string &mangledName);
+
+bool isDecl(string &name){
+    return name.back() == ';';
+}
 
 /*
  *  Registers a function for later compilation
@@ -578,25 +548,34 @@ void manageSelfParam(Compiler *c, FuncDeclNode *fdn);
 TypedValue FuncDeclNode::compile(Compiler *c){
     //check if the function is a named function.
     if(name.length() > 0){
-        manageSelfParam(c, this);
+        string mangledName;
+        if(isDecl(name)){
+            name = c->funcPrefix + name.substr(0, name.length() - 1);
+            mangledName = name;
+        }else{
+            mangledName = c->funcPrefix + mangle(name, params);
+            mangledName = manageSelfParam(c, this, mangledName);
+            name = c->funcPrefix + name;
+        }
 
-        name = c->funcPrefix + name;
-        basename = c->funcPrefix + basename;
-
-        c->registerFunction(this);
+        c->registerFunction(this, mangledName);
         return c->getVoidLiteral();
     }else{
         //Otherwise, if it is a lambda function, compile it now and return it.
-        FuncDecl *fd = new FuncDecl(this, c->scope, c->mergedCompUnits);
+        string no_name;
+        shared_ptr<FuncDeclNode> lambda{this};
+        FuncDecl *fd = new FuncDecl(lambda, no_name, c->scope, c->mergedCompUnits);
         auto ret = c->compFn(fd);
-        fd->fdn = 0;
+
+        //prevent this function from being called by name
+        fd->mangledName = "";
         return ret;
     }
 }
 
 FuncDecl* getFuncDeclFromVec(vector<shared_ptr<FuncDecl>> &l, string &mangledName){
     for(auto& fd : l){
-        if(fd->fdn->name == mangledName)
+        if(fd->mangledName == mangledName)
             return fd.get();
     }
     return 0;
@@ -734,7 +713,8 @@ filterBestMatches(Compiler *c, vector<shared_ptr<FuncDecl>> &candidates, vector<
     results.reserve(candidates.size());
 
     for(auto fd : candidates){
-        auto *fnty = AnFunctionType::get(c, AnType::getVoid(), fd->fdn->params.get());
+        auto *fnty = fd->type ? fd->type
+            : AnFunctionType::get(c, AnType::getVoid(), fd->fdn->params.get());
         auto tc = c->typeEq(fnty->extTys, args);
         results.emplace_back(tc, fd.get());
     }
@@ -882,16 +862,17 @@ TypedValue compMetaFunctionResult(Compiler *c, LOC_TY &loc, string &baseName, st
  *  FuncDeclNode can be added to be compiled only when it is later called.  Useful to prevent pollution
  *  of a module with unneeded library functions.
  */
-inline void Compiler::registerFunction(FuncDeclNode *fn){
+inline void Compiler::registerFunction(FuncDeclNode *fn, string &mangledName){
     //check for redeclaration
-    auto *redecl = getFuncDecl(fn->basename, fn->name);
+    auto *redecl = getFuncDecl(fn->name, mangledName);
 
-    if(redecl and redecl->fdn->name == fn->name){
+    if(redecl and redecl->mangledName == mangledName){
         compErr("Function " + fn->name + " was redefined", fn->loc);
         return;
     }
 
-    FuncDecl *fdRaw = new FuncDecl(fn, scope, mergedCompUnits);
+    shared_ptr<FuncDeclNode> spToFn{fn};
+    FuncDecl *fdRaw = new FuncDecl(spToFn, mangledName, scope, mergedCompUnits);
     shared_ptr<FuncDecl> fd{fdRaw};
     fd->obj = compCtxt->obj;
 
@@ -899,7 +880,7 @@ inline void Compiler::registerFunction(FuncDeclNode *fn){
         Value *fd_val = builder.getInt64((unsigned long)fdRaw);
         vector<TypedValue> args;
         args.emplace_back(fd_val, AnDataType::get("FuncDecl"));
-        compMetaFunctionResult(this, hook->fdn->loc, hook->fdn->basename, hook->fdn->name, args);
+        compMetaFunctionResult(this, hook->fdn->loc, hook->getName(), hook->mangledName, args);
     }
 
     for(auto *m : *fn->modifiers){
@@ -911,8 +892,8 @@ inline void Compiler::registerFunction(FuncDeclNode *fn){
         }
     }
 
-    compUnit->fnDecls[fn->basename].push_back(fd);
-    mergedCompUnits->fnDecls[fn->basename].push_back(fd);
+    compUnit->fnDecls[fn->name].push_back(fd);
+    mergedCompUnits->fnDecls[fn->name].push_back(fd);
 }
 
 } //end of namespace ante

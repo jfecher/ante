@@ -390,7 +390,7 @@ TypedValue doReinterpretCast(Compiler *c, AnType *castTy, TypedValue &valToCast)
 
 bool preferCastOverFunction(Compiler *c, TypedValue &valToCast, ReinterpretCastResult &res, FuncDecl *fd){
     FuncDecl *curFn = c->getCurrentFunction();
-    if(curFn->fdn and curFn->fdn->name == fd->fdn->name)
+    if(curFn->fdn and curFn->mangledName == fd->mangledName)
         return true;
 
     auto *fnTy = AnFunctionType::get(c, AnType::getVoid(), fd->fdn->params.get());
@@ -513,7 +513,6 @@ TypedValue TypeCastNode::compile(Compiler *c){
     }
 
     auto tval = createCast(c, ty, rtval, loc);
-    tval.dump();
 
     if(!tval){
         //if(!!c->typeEq(rtval->type.get(), ty))
@@ -1215,7 +1214,7 @@ TypedValue deduceFunction(Compiler *c, FunctionCandidates *fc, vector<TypedValue
 
     }else if(matches.empty()){
         try {
-            lazy_printer msg = "No matching candidates for call to "+fc->candidates[0]->fdn->basename;
+            lazy_printer msg = "No matching candidates for call to "+fc->candidates[0]->getName();
             if(!argTys.empty())
                 msg = msg + " with args " + anTypeToColoredStr(AnAggregateType::get(TT_Tuple, argTys));
 
@@ -1232,7 +1231,7 @@ TypedValue deduceFunction(Compiler *c, FunctionCandidates *fc, vector<TypedValue
         }
     }else{
         try {
-            lazy_printer msg = "Multiple equally-matching candidates found for call to "+fc->candidates[0]->fdn->basename;
+            lazy_printer msg = "Multiple equally-matching candidates found for call to "+fc->candidates[0]->getName();
             if(!argTys.empty())
                 msg = msg + " with args " + anTypeToColoredStr(AnAggregateType::get(TT_Tuple, argTys));
 
