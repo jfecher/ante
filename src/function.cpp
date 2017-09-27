@@ -605,30 +605,34 @@ TypedValue Compiler::compFn(FuncDecl *fd){
 
     //Propogate type var bindings of the method obj into the function scope
     declareBindings(this, fd->obj_bindings);
+    TypedValue ret;
 
-    if(fd->module->name != compUnit->name){
-        auto mcu = move(mergedCompUnits);
+    try{
+        if(fd->module->name != compUnit->name){
+            auto mcu = move(mergedCompUnits);
 
-        //TODO: confirm alignment
-        mergedCompUnits = fd->module;
-        auto ret = compFnHelper(this, fd);
-        mergedCompUnits = mcu;
-
+            //Compile the function in its original module
+            mergedCompUnits = fd->module;
+            ret = compFnHelper(this, fd);
+            mergedCompUnits = mcu;
+        }else{
+            ret = compFnHelper(this, fd);
+        }
+    }catch(CtError *e){
         compCtxt->callStack.pop_back();
         compCtxt->continueLabels.reset(continueLabels);
         compCtxt->breakLabels.reset(breakLabels);
         fnScope = callingFnScope;
         exitScope();
-        return ret;
-    }else{
-        auto ret = compFnHelper(this, fd);
-        compCtxt->callStack.pop_back();
-        compCtxt->continueLabels.reset(continueLabels);
-        compCtxt->breakLabels.reset(breakLabels);
-        fnScope = callingFnScope;
-        exitScope();
-        return ret;
+        throw e;
     }
+        
+    compCtxt->callStack.pop_back();
+    compCtxt->continueLabels.reset(continueLabels);
+    compCtxt->breakLabels.reset(breakLabels);
+    fnScope = callingFnScope;
+    exitScope();
+    return ret;
 }
 
 
