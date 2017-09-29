@@ -622,8 +622,12 @@ TypedValue Compiler::compFn(FuncDecl *fd){
         compCtxt->callStack.pop_back();
         compCtxt->continueLabels.reset(continueLabels);
         compCtxt->breakLabels.reset(breakLabels);
+
+        while(scope > callingFnScope)
+            exitScope();
+        
         fnScope = callingFnScope;
-        exitScope();
+
         throw e;
     }
         
