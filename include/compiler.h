@@ -380,7 +380,7 @@ namespace ante {
 
         std::shared_ptr<CompilerCtCtxt> ctCtxt;
 
-        bool errFlag, compiled, isLib;
+        bool errFlag, compiled, isLib, isJIT;
         std::string fileName, outFile, funcPrefix;
         unsigned int scope, optLvl, fnScope;
 

@@ -161,6 +161,7 @@ void declareTypes(Compiler *c){
  */
 unique_ptr<Compiler> wrapFnInModule(Compiler *c, string &basename, string &mangledName){
     unique_ptr<Compiler> ccpy{new Compiler(c, c->ast.get(), mangledName)};
+    ccpy->isJIT = true;
 
     copyDecls(c, ccpy.get());
     declareTypes(ccpy.get());
@@ -172,19 +173,16 @@ unique_ptr<Compiler> wrapFnInModule(Compiler *c, string &basename, string &mangl
     ccpy->builder.CreateRet(ConstantInt::get(*ccpy->ctxt, APInt(32, 1)));
 
     auto *fn = ccpy->getFuncDecl(basename, mangledName);
-    auto *cds = stripCompilerDirectives(fn->fdn.get());
 
     if(fn){
         ccpy->compFn(fn);
     }else{
         cerr << "Function '" << mangledName << "' not found.\n";
         c->errFlag = true;
-        appendModifiers(cds, fn->fdn->modifiers);
         return 0;
     }
 
     //re-add the compiler directives
-    appendModifiers(cds, fn->fdn->modifiers);
     return ccpy;
 }
 

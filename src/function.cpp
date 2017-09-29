@@ -338,9 +338,13 @@ TypedValue compCompilerDirectiveFn(Compiler *c, FuncDecl *fd, PreProcNode *ppn){
             c->jitFunction((Function*)recomp.val);
             c->module.reset(mod);
         }else if(vn->name == "macro" or vn->name == "meta"){
-            auto *rettn = (TypeNode*)fdn->type.get();
-            auto *fnty = AnFunctionType::get(c, toAnType(c, rettn), fdn->params.get(), true);
-            fn = TypedValue(nullptr, fnty);
+            if(c->isJIT){
+                fn = c->compFn(fd);
+            }else{
+                auto *rettn = (TypeNode*)fdn->type.get();
+                auto *fnty = AnFunctionType::get(c, toAnType(c, rettn), fdn->params.get(), true);
+                fn = TypedValue(nullptr, fnty);
+            }
         }else if(vn->name == "on_fn_decl"){
             auto *rettn = (TypeNode*)fdn->type.get();
             auto *fnty = AnFunctionType::get(c, toAnType(c, rettn), fdn->params.get(), true);

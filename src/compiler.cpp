@@ -2088,6 +2088,7 @@ Compiler::Compiler(const char *_fileName, bool lib, shared_ptr<LLVMContext> llvm
         errFlag(false),
         compiled(false),
         isLib(lib),
+        isJIT(false),
         fileName(_fileName? _fileName : "(stdin)"),
         funcPrefix(""),
         scope(0), optLvl(2), fnScope(1){
@@ -2152,6 +2153,7 @@ Compiler::Compiler(Compiler *c, Node *root, string modName, bool lib) :
         errFlag(false),
         compiled(false),
         isLib(lib),
+        isJIT(false),
         fileName(c->fileName),
         outFile(modName),
         funcPrefix(""),
