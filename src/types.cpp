@@ -212,6 +212,7 @@ AnType* find(string &k, const vector<pair<string, AnType*>> &bindings){
     return nullptr;
 }
 
+void print(vector<pair<string, AnType*>>);
 
 vector<pair<string, AnType*>>
 filterMatchingBindings(const AnDataType *dt, const vector<pair<string, AnType*>> &bindings){
@@ -220,15 +221,37 @@ filterMatchingBindings(const AnDataType *dt, const vector<pair<string, AnType*>>
         AnType *arg = find(b->name, bindings);
         if(arg){
             matches.emplace_back(b->name, arg);
+        }else{
+            cout << "Sorry, couldnt find " << b->name << " in ";
+            print(bindings);
         }
     }
     return matches;
 }
 
+string toLlvmTypeName(const AnDataType *dt){
+    auto &typeArgs = dt->boundGenerics;
+    auto &baseName = dt->name;
+
+    if(typeArgs.empty())
+        return baseName;
+
+    string name = baseName + "<";
+    for(auto &p : typeArgs){
+        if(AnDataType *ext = dyn_cast<AnDataType>(p.second))
+            name += toLlvmTypeName(ext);
+        else
+            name += anTypeToStr(p.second);
+
+        if(&p != &typeArgs.back())
+            name += ",";
+    }
+    return name == baseName + "<" ? baseName : name+">";
+}
 
 Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt, bool force){
     //create an empty type first so we dont end up with infinite recursion
-    auto* structTy = StructType::create(*c->ctxt, {}, dt->name, dt->typeTag == TT_TaggedUnion);
+    auto* structTy = StructType::create(*c->ctxt, {}, toLlvmTypeName(dt), dt->typeTag == TT_TaggedUnion);
     dt->llvmType = structTy;
 
     if(dt->isGeneric and !force){
@@ -254,15 +277,6 @@ Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt, bool force){
     return structTy;
 }
 
-vector<AnType*> extractTypes(const vector<pair<string, AnType*>> &bindings){
-    vector<AnType*> ret;
-    ret.reserve(bindings.size());
-    for(auto &p : bindings){
-        ret.emplace_back(p.second);
-    }
-    return ret;
-}
-
 /*
  *  Generics can be stored and bound in two ways
  *    1. Stored as a map from name of typevar -> type bound to
@@ -282,42 +296,43 @@ vector<AnType*> extractTypes(const vector<pair<string, AnType*>> &bindings){
  *         this conversion
  */
 AnType* bindGenericToType(Compiler *c, AnType *tn, const vector<pair<string, AnType*>> &bindings){
-    if(!tn->isGeneric or bindings.empty())
+    //cout << "--> Binding " << anTypeToStr(tn) << endl;
+    if(!tn->isGeneric){
+        //cout << "----> " << anTypeToStr(tn) << " is not generic!\n";
         return tn;
+    }else if(bindings.empty()){
+        //cout << "----> Bindings are empty for " << anTypeToStr(tn) << endl;
+        return tn;
+    }
 
     if(tn->typeTag == TT_Data or tn->typeTag == TT_TaggedUnion){
         auto *dty = (AnDataType*)tn;
 
-        auto dty_bindings = filterMatchingBindings(dty, bindings);
+        //auto dty_bindings = filterMatchingBindings(dty, bindings);
+        auto dty_bindings = bindings;
+        //if(dty_bindings.size() != bindings.size()){
+        //    cout << "bindings: \n";
+        //    for(auto &p : bindings){
+        //        cout << "    " << p.first << " -> " << anTypeToStr(p.second) << endl;
+        //    }
+        //    cout << "dty_bindings: \n";
+        //    for(auto &p : dty_bindings){
+        //        cout << "    " << p.first << " -> " << anTypeToStr(p.second) << endl;
+        //    }
+        //    cout << "dty->generics: \n";
+        //    if(dty->generics.empty()){
+        //        cout << "Generics for " << anTypeToStr(dty) << " are empty.\n";
+        //    }
+        //    for(auto &p : dty->generics){
+        //        cout << "    " << anTypeToStr(p) << endl;
+        //    }
+        //}
 
-        auto *decl = AnDataType::getVariant(dty->name, dty_bindings, tn->mods);
+        auto *ret = AnDataType::getVariant(c, dty, dty_bindings, dty->mods);
+        cout << "--> Got variant for " << anTypeToStr(tn) << " = " << anTypeToStr(ret);
+        print(dty_bindings);
 
-        if(!decl->isStub())
-            return decl;
-
-        //This variant has never been bound before so fill in the stub
-        vector<AnType*> boundExts;
-        boundExts.reserve(dty->extTys.size());
-
-        for(auto *e : dty->extTys){
-            boundExts.push_back(bindGenericToType(c, e, dty_bindings));
-        }
-
-        if(dty->isUnionTag()){
-            auto *unionType = dty->parentUnionType;
-            unionType = (AnDataType*)bindGenericToType(c, unionType, bindings);
-            decl->parentUnionType = unionType;
-        }
-
-        decl->typeTag = dty->typeTag;
-        decl->boundGenerics = extractTypes(dty_bindings);
-        decl->fields = dty->fields;
-        decl->unboundType = dty;
-        decl->extTys.swap(boundExts);
-        decl->tags = dty->tags;
-        decl->traitImpls = dty->traitImpls;
-        updateLlvmTypeBinding(c, decl);
-        return decl;
+        return ret;
 
     }else if(tn->typeTag == TT_TypeVar){
         auto *tv = (AnTypeVarType*)tn;
@@ -978,10 +993,10 @@ TypeCheckResult& typeEqHelper(const Compiler *c, const AnType *l, const AnType *
         //Two bound types, check to see if their type parameters are equivalent
         if(ldt->unboundType and ldt->unboundType == rdt->unboundType){
             for(size_t i = 0; i < ldt->boundGenerics.size(); i++){
-                auto *lbg = ldt->boundGenerics[i];
-                auto *rbg = rdt->boundGenerics[i];
+                auto &lbg = ldt->boundGenerics[i];
+                auto &rbg = rdt->boundGenerics[i];
 
-                if(!typeEqHelper(c, lbg, rbg, tcr)) return tcr.failure();
+                if(!typeEqHelper(c, lbg.second, rbg.second, tcr)) return tcr.failure();
             }
             return tcr;
         }
@@ -989,16 +1004,14 @@ TypeCheckResult& typeEqHelper(const Compiler *c, const AnType *l, const AnType *
         if(ldt->unboundType == rdt){
             if(!rdt->boundGenerics.empty()) return tcr.failure();
     
-            auto bindings_map = mapBindingsToDataType(ldt->boundGenerics, rdt);
-            for(auto &p : bindings_map)
+            for(auto &p : ldt->boundGenerics)
                 tcr->bindings.emplace_back(p.first, p.second);
 
             return tcr.successWithTypeVars();
         }else if(rdt->unboundType == ldt){
             if(!ldt->boundGenerics.empty()) return tcr.failure();
             
-            auto bindings_map = mapBindingsToDataType(rdt->boundGenerics, ldt);
-            for(auto &p : bindings_map)
+            for(auto &p : rdt->boundGenerics)
                 tcr->bindings.emplace_back(p.first, p.second);
 
             return tcr.successWithTypeVars();

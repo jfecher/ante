@@ -39,6 +39,7 @@ fun print: Node<'t>* l
 
 
 var head = List 0
+Ante.debug head
 
 append head 1
 append head 2

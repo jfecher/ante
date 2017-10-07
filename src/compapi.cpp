@@ -62,13 +62,13 @@ namespace ante {
     map<string, unique_ptr<CtFunc>> compapi;
 
     void init_compapi(){
-        compapi.emplace("Ante_getAST",      new CtFunc((void*)Ante_getAST,      AnPtrType::get(AnDataType::get("Node"))));
+        compapi.emplace("Ante_getAST",      new CtFunc((void*)Ante_getAST,      AnPtrType::get(AnDataType::get("Ante.Node"))));
         compapi.emplace("Ante_debug",       new CtFunc((void*)Ante_debug,       AnType::getVoid(), {AnTypeVarType::get("'t'")}));
         compapi.emplace("Ante_sizeof",      new CtFunc((void*)Ante_sizeof,      AnType::getU32(),  {AnTypeVarType::get("'t'")}));
         compapi.emplace("Ante_ctStore",     new CtFunc((void*)Ante_ctStore,     AnType::getVoid(), {AnPtrType::get(AnType::getPrimitive(TT_C8)), AnTypeVarType::get("'t'")}));
         compapi.emplace("Ante_ctLookup",    new CtFunc((void*)Ante_ctLookup,    AnTypeVarType::get("'t'"), {AnPtrType::get(AnType::getPrimitive(TT_C8))}));
         compapi.emplace("Ante_ctError",     new CtFunc((void*)Ante_ctError,     AnType::getVoid(), {AnPtrType::get(AnType::getPrimitive(TT_C8))}));
-        compapi.emplace("FuncDecl_getName", new CtFunc((void*)FuncDecl_getName, AnDataType::get("Str"), {AnDataType::get("FuncDecl")}));
+        compapi.emplace("FuncDecl_getName", new CtFunc((void*)FuncDecl_getName, AnDataType::get("Str"), {AnDataType::get("Ante.FuncDecl")}));
     }
 
     CtFunc::CtFunc(void* f) : fn(f), params(), retty(AnType::getVoid()){}

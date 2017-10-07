@@ -396,6 +396,7 @@ namespace ante {
         size_t fields;
         std::vector<std::unique_ptr<TypeNode>> generics;
 
+        void declare(Compiler*);
         TypedValue compile(Compiler*);
         void print(void);
         DataDeclNode(LOC_TY& loc, std::string s, Node* b, size_t f) : ParentNode(loc, b), name(s), fields(f){}

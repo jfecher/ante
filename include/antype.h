@@ -207,17 +207,27 @@ namespace ante {
         /** @brief If this type is a bound version (eg. Maybe<i32>) of some generic
          * type (eg. Maybe<'t>), unboundType will point to the generic type. */
         AnDataType *unboundType;
+
+        /**
+         * @brief If bound versions of generic types are stored in the variants field
+         * so they may all be accessed and updated if the definition of their generic parent
+         * type is changed.
+         */
+        std::vector<AnDataType*> variants;
+
+        /** @brief The parent union type of this type if it is a union tag */
         AnDataType *parentUnionType;
 
         std::vector<AnTypeVarType*> generics;
-        std::vector<AnType*> boundGenerics;
+        std::vector<std::pair<std::string, AnType*>> boundGenerics;
 
         /** @brief Types are lazily translated into their llvm::Type counterpart to better support
         * generics and prevent the need of forward-decls */
         llvm::Type* llvmType;
 
         static AnDataType* get(std::string name, AnModifier *m = nullptr);
-        static AnDataType* getVariant(std::string &name, std::vector<std::pair<std::string, AnType*>> &boundTys, AnModifier *m = nullptr);
+        static AnDataType* getVariant(Compiler *c, const std::string &name, const std::vector<std::pair<std::string, AnType*>> &boundTys, AnModifier *m = nullptr);
+        static AnDataType* getVariant(Compiler *c, AnDataType *unboundType, const std::vector<std::pair<std::string, AnType*>> &boundTys, AnModifier *m);
         static AnDataType* getOrCreate(std::string name, std::vector<AnType*> &elems, bool isUnion, AnModifier *m = nullptr);
         static AnDataType* getOrCreate(const AnDataType *dt, AnModifier *m = nullptr);
         static AnDataType* create(std::string name, std::vector<AnType*> elems, bool isUnion, const std::vector<AnTypeVarType*> &generics, AnModifier *m = nullptr);

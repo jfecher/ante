@@ -19,6 +19,12 @@ namespace ante {
     std::string typeNodeToStr(const TypeNode *t);
     lazy_str typeNodeToColoredStr(const TypeNode *t);
 
+    std::vector<std::pair<std::string, AnType*>>
+    filterMatchingBindings(const AnDataType *dt, const std::vector<std::pair<std::string, AnType*>> &bindings);
+
+    std::vector<std::pair<std::string, AnType*>>
+    mapBindingsToDataType(const std::vector<AnType*> &bindings, const AnDataType *dt);
+    
     llvm::Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt, bool force = false);
 
     //Typevar creation with no yy::location

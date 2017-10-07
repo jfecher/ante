@@ -1324,8 +1324,8 @@ fun nan: f64 flt =
 //Note that NaN is used alone, if the output is not used,
 //it does not need to be bound.
 match 57.0 with
-| nat n -> print "${n} is positive!"
-| neg n -> print "${n} is negative!"
+| one n -> print "${n} is positive!"
+| neg -> print "${n} is negative!"
 | NaN -> print "NaN!"
 
 /*
@@ -1537,7 +1537,7 @@ fun div: f32 a b = a / b
 
 //This function takes one parameter, a function
 //that takes two f32s as parameters and returns one as well.
-fun doOperation: (f32, f32)f32 opFunc =
+fun doOperation: (f32,f32)->f32 opFunc =
     opFunc 6 4
 
 //our function variable
@@ -1566,7 +1566,7 @@ type Str = [c8] | [c32]
 //NOTE: the precedence of | is greater than that of ,
 type Coord = (i32, i32) | (f64, f64)
 
-type Maybe =
+type Maybe 't =
    | Some 't
    | None
 
@@ -1632,15 +1632,16 @@ fun div: i32 a b =
  *  Every ante file is by default wrapped in its own module.  By default, the name of
  *  this module is the name of the module converted into PascalCase.  In practice, this
  *  removes any preceeding numbers/operators from the name, capitalizes the first letter,
- *  and replaces any space-letter, underscore-letter, or dash-letter with just the letter
- *  capitalized.  A module can be renamed inside of the module expression.  Modules not
- *  only specify which files they contain, but also how to build them.
+ *  and replaces any space-letter, underscore-letter, or dash-letter combination with
+ *  just the letter capitalized.  A module can be renamed inside of the module expression.
+ *  Modules not only specify which files they contain, but also how to build them.
  */
 
 //This line renames this module from Language to AnteLang
 //Note that a module statement does not need to be the first line of a file,
 //but should be near the top to avoid confusion when reading.
 module AnteLang
+//To avoid renaming the module, a name can be omitted entirely, eg. module <block>
 
 //A blank module expression is allowed, and will be built normally, although if you
 //need to set special compiler-flags or compile with external tools you may wish to
@@ -1771,7 +1772,7 @@ ext Car
 
     fun set_lights: mut self, f64 v
         self.lights = v
-    
+
     fun get_doors: self = self.doors
 
     fun set_doors: mut self, f64 v

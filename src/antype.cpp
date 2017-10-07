@@ -8,7 +8,20 @@ namespace ante {
     AnTypeContainer typeArena;
 
     void AnType::dump(){
-        cout << anTypeToStr(this) << endl;
+        cout << anTypeToStr(this);
+        if(auto *dt = llvm::dyn_cast<AnDataType>(this)){
+            if(!dt->generics.empty()){
+                cout << "<";
+                for(auto &t : dt->generics){
+                    if(&t != &dt->generics.back())
+                        cout << anTypeToStr(t) << ", ";
+                    else
+                        cout << anTypeToStr(t) << ">";
+                }
+            }
+            cout << " = " << anTypeToStr(AnAggregateType::get(TT_Tuple, dt->extTys));
+        }
+        cout << endl;
     }
 
     bool isGeneric(const std::vector<AnType*> &vec){
@@ -185,9 +198,12 @@ namespace ante {
     AnPtrType* AnPtrType::get(AnType* ext, AnModifier *m){
         if(!m){
             try{
-                return typeArena.ptrTypes.at(ext).get();
+                auto *ptr = typeArena.ptrTypes.at(ext).get();
+                //cout << "  Got AnPtrType " << anTypeToStr(ptr) << ", isGeneric = " << ptr->isGeneric << ", ext->isGeneric = " << ptr->extTy->isGeneric << endl;
+                return ptr;
             }catch(out_of_range r){
                 auto ptr = new AnPtrType(ext, nullptr);
+                //cout << "  Created AnPtrType " << anTypeToStr(ptr) << ", isGeneric = " << ptr->isGeneric << ", ext->isGeneric = " << ptr->extTy->isGeneric << endl;
                 typeArena.ptrTypes.emplace(ext, ptr);
                 return ptr;
             }
@@ -291,9 +307,14 @@ namespace ante {
             return typeArena.declaredTypes.at(key).get();
         }catch(out_of_range r){
             //create declaration w/out definition
-            auto decl = new AnDataType(name, {}, false, m);
-            typeArena.declaredTypes.emplace(key, decl);
-            return decl;
+            if(m){
+                auto dt = AnDataType::get(name, nullptr);
+                return dt->setModifier(m);
+            }else{
+                auto decl = new AnDataType(name, {}, false, m);
+                typeArena.declaredTypes.emplace(key, decl);
+                return decl;
+            }
         }
     }
 
@@ -323,7 +344,7 @@ namespace ante {
             }
 
             ret->extTys = elems;
-            ret->isGeneric = ante::isGeneric(elems);
+            ret->isGeneric = dt->isGeneric;
             ret->fields = dt->fields;
             ret->tags = dt->tags;
             ret->traitImpls = dt->traitImpls;
@@ -335,13 +356,13 @@ namespace ante {
         }
     }
 
-    string getBoundName(string &baseName, const vector<pair<string, AnType*>> &typeArgs){
+    string getBoundName(const string &baseName, const vector<pair<string, AnType*>> &typeArgs){
         if(typeArgs.empty())
             return baseName;
 
         string name = baseName + "<";
         for(auto &p : typeArgs){
-            //if(p.second->typeTag != TT_TypeVar)
+            if(p.second->typeTag != TT_TypeVar)
                 name += anTypeToStr(p.second);
             if(&p != &typeArgs.back())
                 name += ",";
@@ -353,7 +374,7 @@ namespace ante {
     * Returns the unique boundName of a generic type after it is bound
     * with the specified type arguments
     */
-    string getBoundName(string &baseName, const vector<AnTypeVarType*> &typeArgs){
+    string getBoundName(const string &baseName, const vector<AnTypeVarType*> &typeArgs){
         if(typeArgs.empty())
             return baseName;
 
@@ -367,32 +388,200 @@ namespace ante {
         return name == baseName + "<" ? baseName : name + ">";
     }
 
-    AnDataType* AnDataType::getVariant(std::string &name, std::vector<std::pair<std::string, AnType*>> &boundTys, AnModifier *m){
-        string key = getBoundName(name, boundTys);
-        return AnDataType::get(key, m);
+    vector<AnType*> extractTypes(const vector<pair<string, AnType*>> &bindings){
+        vector<AnType*> ret;
+        ret.reserve(bindings.size());
+        for(auto &p : bindings){
+            ret.emplace_back(p.second);
+        }
+        return ret;
+    }
+
+    void addGenerics(vector<AnTypeVarType*> &dest, vector<AnType*> &src){
+
+    }
+    
+    void print(const vector<pair<string, AnType*>> boundTys){
+        cout << "[";
+        for(auto &p : boundTys){
+            cout << p.first << " -> " << anTypeToStr(p.second);
+            if(AnDataType *dt = llvm::dyn_cast<AnDataType>(p.second)){
+                if(!dt->boundGenerics.empty())
+                    print(dt->boundGenerics);
+            }
+
+            if(&p != &boundTys.back()){
+                cout << ", ";
+            }
+        }
+        cout << "]\n";
+    }
+
+    /*
+     * Helper function for AnDataType::getVariant functions.
+     * Overwrites a given AnDataType to be a bound variant of
+     * the given generic type specified by unboundType.
+     */
+    AnDataType* bindVariant(Compiler *c, AnDataType *unboundType, const std::vector<std::pair<std::string, AnType*>> &bindings, AnModifier *m, AnDataType *variant){
+        //This variant has never been bound before so fill in the stub
+        vector<AnType*> boundExts;
+        boundExts.reserve(unboundType->extTys.size());
+
+        unboundType->variants.push_back(variant);
+
+        if(unboundType->generics.empty()){
+            cout << "WARNING: empty generics for parent type\n";
+        }
+
+        //variant->boundGenerics = filterMatchingBindings(unboundType, bindings);
+        variant->boundGenerics = bindings;
+
+        cout << "Just pushed variant " << unboundType->name;
+        print(variant->boundGenerics);
+        cout << "   Its old generics were ";
+        print(bindings);
+
+        for(auto *e : unboundType->extTys){
+            auto *be = bindGenericToType(c, e, bindings);
+            cout << "Binding " << anTypeToStr(variant) << " ext " << anTypeToStr(e) << " to " << anTypeToStr(be) << endl;
+            boundExts.push_back(be);
+        }
+
+        if(unboundType->isUnionTag()){
+            auto *unionType = unboundType->parentUnionType;
+            unionType = (AnDataType*)bindGenericToType(c, unionType, bindings);
+            variant->parentUnionType = unionType;
+        }
+
+        if(boundExts.empty()){
+            variant->isGeneric = true;
+
+        }else{
+            bool extsGeneric = isGeneric(boundExts);
+            variant->isGeneric = extsGeneric;
+        }
+
+        cout << "  Just bound " << variant->name << " and I must say, it is " <<
+            (variant->isGeneric ? "" : "not ") << "generic\n";
+
+        cout << "isGeneric(\n\t" << flush;
+        for(auto &t : boundExts){
+            if(&t == &boundExts.back())
+                cout << anTypeToStr(t);
+            else
+                cout << anTypeToStr(t) << ", ";
+        }
+
+        cout << " = " << isGeneric(boundExts) << endl << ")\n";
+
+        variant->typeTag = unboundType->typeTag;
+        variant->fields = unboundType->fields;
+        variant->unboundType = unboundType;
+        variant->extTys = boundExts;
+        variant->tags = unboundType->tags;
+        variant->traitImpls = unboundType->traitImpls;
+        updateLlvmTypeBinding(c, variant);
+        return variant;
+    }
+
+
+    /*
+     * Returns a bound variant of an unbound type whose bound
+     * types match the given map of boundTys.  Returns nullptr
+     * if such a type is not found.
+     */
+    AnDataType* findMatchingVariant(AnDataType *unboundType, const vector<pair<string, AnType*>> &boundTys){
+        for(auto *v : unboundType->variants){
+            if(v->boundGenerics == boundTys){
+                cout << "Found ";
+                print(boundTys);
+                return v;
+            }else{
+                cout << "Well ";
+                print(v->boundGenerics);
+                cout << " is not ";
+                print(boundTys);
+            }
+        }
+        cout << "Did not find variant ";
+        print(boundTys);
+        return nullptr;
+    }
+
+    /*
+     * Searches for the bound variant of the generic type
+     * unboundType and creates it if it has not been
+     * previously bound.
+     */
+    AnDataType* AnDataType::getVariant(Compiler *c, AnDataType *unboundType, const vector<pair<string, AnType*>> &boundTys, AnModifier *m){
+        AnDataType *variant = findMatchingVariant(unboundType, boundTys);
+
+        //variant is already bound
+        if(variant)
+            return variant;
+        
+        variant = new AnDataType(unboundType->name, {}, false, unboundType->mods);
+
+        cout << "  Variant " << anTypeToStr(variant) << " is a stub, isGeneric = " << variant->isGeneric
+            << ", binding.  (Parentty = " << anTypeToStr(unboundType) << ", isGeneric = " << unboundType->isGeneric << ")\n";
+
+        return bindVariant(c, unboundType, boundTys, m, variant);
+    }
+
+    /*
+     * Searches for the bound variant of the generic type
+     * specified by name and creates it if it has not been
+     * previously bound.  Will fail if the given name does
+     * not correspond to any defined type.
+     */
+    AnDataType* AnDataType::getVariant(Compiler *c, const string &name, const vector<pair<string, AnType*>> &boundTys, AnModifier *m){
+        auto *unboundType = AnDataType::get(name);
+        if(unboundType->isStub()){
+            cerr << "Warning: Cannot bind undeclared type " << name << endl;
+            return unboundType;
+        }
+
+        AnDataType *variant = findMatchingVariant(unboundType, boundTys);
+
+        //variant is already bound
+        if(variant)
+            return variant;
+        
+        variant = new AnDataType(unboundType->name, {}, false, unboundType->mods);
+        return bindVariant(c, unboundType, boundTys, m, variant);
     }
 
     AnDataType* AnDataType::create(string name, vector<AnType*> elems, bool isUnion, const vector<AnTypeVarType*> &generics, AnModifier *m){
         string key = modifiersToStr(m) + getBoundName(name, generics);
+        AnDataType *dt = 0;
         try{
-            auto *dt = typeArena.declaredTypes.at(key).get();
-            dt->extTys = elems;
-            return dt;
-        }catch(out_of_range r){
-            vector<AnType*> elemsWithMods;
-            elems.reserve(elems.size());
-            for(auto *ty : elems){
-                auto *mod_type = ty->setModifier(m);
-                elemsWithMods.emplace_back(mod_type);
+            dt = typeArena.declaredTypes.at(key).get();
+            if(!dt->isStub()){
+                dt->extTys = elems;
+                dt->isGeneric = !generics.empty();
+                dt->generics = generics;
+                return dt;
             }
-    
-            auto dt = new AnDataType(name, elemsWithMods, isUnion, m);
-            dt->isGeneric = !generics.empty();
-            dt->generics = generics;
+            //cout << "AnDataType::create found stub for " << name << ", overwriting.\n";
+        }catch(out_of_range r){}
 
+        if(!dt){
+            dt = new AnDataType(name, {}, isUnion, m);
             typeArena.declaredTypes.emplace(key, dt);
-            return dt;
         }
+
+        dt->isGeneric = !generics.empty();
+        dt->generics = generics;
+
+        vector<AnType*> elemsWithMods;
+        elems.reserve(elems.size());
+        for(auto *ty : elems){
+            auto *mod_type = ty->setModifier(m);
+            elemsWithMods.emplace_back(mod_type);
+        }
+
+        dt->extTys = elemsWithMods;
+        return dt;
     }
 
     AnTypeContainer::AnTypeContainer(){
@@ -491,29 +680,13 @@ namespace ante {
             case TT_Data:
             case TT_TaggedUnion: {
                 if(!tn->params.empty()){
-                    auto *basety = AnDataType::get(tn->typeName, mods);
-
                     vector<AnType*> bindings;
                     for(auto &t : tn->params)
                         bindings.emplace_back(toAnType(c, t.get()));
 
-                    auto *ret = (AnDataType*)bindGenericToType(c, basety, bindings, basety);
-                    //if(ret->generics.empty() and ret->boundGenerics.empty() and isGeneric(bindings)){
-                    //    for(auto *b : bindings){
-                    //        if(auto *tvt = llvm::dyn_cast<AnTypeVarType>(b)){
-                    //            ret->generics.push_back(tvt);
-                    //            cout << "Pushing back type var\n";
-                    //        }
-                    //    }
-                    //}
+                    auto *basety = AnDataType::get(tn->typeName, mods);
 
-                    //auto tnstr = typeNodeToStrWithModifiers(tn);
-                    auto anstr = anTypeToStr(ret);
-                    //if(tnstr != anstr)
-                    //    cout << "\t!!!!! vvvvv !!!!!\n";
-                    //cout << "Translated TypeNode " << typeNodeToStrWithModifiers(tn)
-                    //     << " to " << anTypeToStr(ret) << endl;
-                    return ret;
+                    return (AnDataType*)bindGenericToType(c, basety, bindings, basety);
                 }else{
                     return AnDataType::get(tn->typeName, mods);
                 }

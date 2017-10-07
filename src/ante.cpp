@@ -65,8 +65,8 @@ namespace ante {
 }
 
 int main(int argc, const char **argv){
-	LLVMInitializeNativeTarget();
-	LLVMInitializeNativeAsmPrinter();
+    LLVMInitializeNativeTarget();
+    LLVMInitializeNativeAsmPrinter();
 
     init_compapi();
 

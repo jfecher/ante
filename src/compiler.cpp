@@ -1209,24 +1209,32 @@ TypedValue compTaggedUnion(Compiler *c, DataDeclNode *n){
     }
 
     data->typeTag = TT_TaggedUnion;
-    data->isGeneric = !n->generics.empty();
     data->extTys = unionTypes;
     data->fields = fieldNames;
 
-    for(auto &g : n->generics)
-        data->generics.push_back((AnTypeVarType*)toAnType(c, g.get()));
-
-    data->tags.swap(tags);
+    data->tags = tags;
+    
+    for(auto *v : data->variants){
+        v->extTys = data->extTys;
+        v->isGeneric = data->isGeneric;
+        v->typeTag = data->typeTag;
+        v->tags = tags;
+        v->unboundType = data;
+        bindGenericToType(c, v, v->boundGenerics);
+    }
 
     c->stoType(data, union_name);
+    if(!data->generics.empty())
+        cout << "Just declared " << data->name << endl;
+    //data->dump();
     return c->getVoidLiteral();
 }
 
 TypedValue DataDeclNode::compile(Compiler *c){
-    {   //new scope to ensure dt isn't used after this check
-        auto *dt = AnDataType::get(this->name);
-        if(dt and !dt->isStub()) return c->compErr("Type " + name + " was redefined", loc);
-    }
+    //{   //new scope to ensure dt isn't used after this check
+    //    auto *dt = AnDataType::get(this->name);
+    //    if(dt and !dt->isStub()) return c->compErr("Type " + name + " was redefined", loc);
+    //}
 
     auto *nvn = (NamedValNode*)child.get();
     if(((TypeNode*) nvn->typeExpr.get())->type == TT_TaggedUnion){
@@ -1236,6 +1244,9 @@ TypedValue DataDeclNode::compile(Compiler *c){
     //Create the DataType as a stub first, have its contents be recursive
     //just to cause an error if something tries to use the stub
     AnDataType *data = AnDataType::create(name, {}, false, toVec(c, generics));
+
+    if(data->llvmType)
+        data->llvmType = nullptr;
 
     c->stoType(data, name);
 
@@ -1259,7 +1270,26 @@ TypedValue DataDeclNode::compile(Compiler *c){
 
     data->fields = fieldNames;
     data->extTys = fieldTypes;
+
+    for(auto *v : data->variants){
+        v->extTys = data->extTys;
+        v->isGeneric = data->isGeneric;
+        v->typeTag = data->typeTag;
+        v->fields = data->fields;
+        v->unboundType = data;
+        bindGenericToType(c, v, v->boundGenerics);
+    }
+    
+    if(!data->generics.empty())
+        cout << "Just declared " << data->name << endl;
+
+    updateLlvmTypeBinding(c, data, true);
     return c->getVoidLiteral();
+}
+
+void DataDeclNode::declare(Compiler *c){
+    //cout << "Declaring " << name << " : " << !generics.empty() << endl;
+    AnDataType::create(name, {}, false, toVec(c, generics));
 }
 
 
@@ -1347,12 +1377,13 @@ void handleTypeCastPattern(Compiler *c, TypedValue lval, TypeCastNode *tn, AnDat
 
     auto alloca = addrOf(c, lval);
 
-    auto *cast = c->builder.CreateBitCast(alloca.val, tupTy->getPointerTo());
+    auto *cast = c->builder.CreateBitCast(alloca.val, c->anTypeToLlvmType(parentTy)->getPointerTo());
 
     //Cast in the form of: Some n
     if(VarNode *v = dynamic_cast<VarNode*>(tn->rval.get())){
         auto *tup = c->builder.CreateLoad(cast);
         auto extract = TypedValue(c->builder.CreateExtractValue(tup, 1), tagTy->extTys[0]);
+
         c->stoVar(v->name, new Variable(v->name, extract, c->scope));
 
     //Destructure multiple: Triple(x, y, z)
@@ -1431,7 +1462,7 @@ TypedValue MatchNode::compile(Compiler *c){
             auto *parentTy = tagTy->parentUnionType;
             ci = ConstantInt::get(*c->ctxt, APInt(8, parentTy->getTagVal(tn->typeExpr->typeName), true));
 
-            tagTy = (AnDataType*)bindGenericToType(c, tagTy, ((AnDataType*)lval.type)->boundGenerics, tagTy);
+            tagTy = (AnDataType*)bindGenericToType(c, tagTy, ((AnDataType*)lval.type)->boundGenerics);
             tagTy = tagTy->setModifier(lval.type->mods);
             handleTypeCastPattern(c, lval, tn, tagTy, parentTy);
 
@@ -1622,6 +1653,14 @@ string removeFileExt(string file){
 
 void Compiler::scanAllDecls(RootNode *root){
     auto *n = root ? root : ast.get();
+	
+    for (auto& f : n->types) {
+		try {
+			f->declare(this);
+		}catch (CtError *e) {
+			delete e;
+		}
+	}
 
 	for (auto& f : n->types) {
 		try {
