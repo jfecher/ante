@@ -128,7 +128,7 @@ void validateType(Compiler *c, const AnType *tn, const AnDataType *dt){
 }
 
 
-size_t AnType::getSizeInBits(Compiler *c, string *incompleteType, bool force){
+size_t AnType::getSizeInBits(Compiler *c, string *incompleteType, bool force) const{
     size_t total = 0;
 
     if(isPrimitiveTypeTag(this->typeTag))
@@ -212,8 +212,6 @@ AnType* find(string &k, const vector<pair<string, AnType*>> &bindings){
     return nullptr;
 }
 
-void print(vector<pair<string, AnType*>>);
-
 vector<pair<string, AnType*>>
 filterMatchingBindings(const AnDataType *dt, const vector<pair<string, AnType*>> &bindings){
     vector<pair<string,AnType*>> matches;
@@ -221,9 +219,6 @@ filterMatchingBindings(const AnDataType *dt, const vector<pair<string, AnType*>>
         AnType *arg = find(b->name, bindings);
         if(arg){
             matches.emplace_back(b->name, arg);
-        }else{
-            cout << "Sorry, couldnt find " << b->name << " in ";
-            print(bindings);
         }
     }
     return matches;
@@ -296,42 +291,16 @@ Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt, bool force){
  *         this conversion
  */
 AnType* bindGenericToType(Compiler *c, AnType *tn, const vector<pair<string, AnType*>> &bindings){
-    //cout << "--> Binding " << anTypeToStr(tn) << endl;
     if(!tn->isGeneric){
-        //cout << "----> " << anTypeToStr(tn) << " is not generic!\n";
         return tn;
     }else if(bindings.empty()){
-        //cout << "----> Bindings are empty for " << anTypeToStr(tn) << endl;
         return tn;
     }
 
     if(tn->typeTag == TT_Data or tn->typeTag == TT_TaggedUnion){
         auto *dty = (AnDataType*)tn;
 
-        //auto dty_bindings = filterMatchingBindings(dty, bindings);
-        auto dty_bindings = bindings;
-        //if(dty_bindings.size() != bindings.size()){
-        //    cout << "bindings: \n";
-        //    for(auto &p : bindings){
-        //        cout << "    " << p.first << " -> " << anTypeToStr(p.second) << endl;
-        //    }
-        //    cout << "dty_bindings: \n";
-        //    for(auto &p : dty_bindings){
-        //        cout << "    " << p.first << " -> " << anTypeToStr(p.second) << endl;
-        //    }
-        //    cout << "dty->generics: \n";
-        //    if(dty->generics.empty()){
-        //        cout << "Generics for " << anTypeToStr(dty) << " are empty.\n";
-        //    }
-        //    for(auto &p : dty->generics){
-        //        cout << "    " << anTypeToStr(p) << endl;
-        //    }
-        //}
-
-        auto *ret = AnDataType::getVariant(c, dty, dty_bindings, dty->mods);
-        cout << "--> Got variant for " << anTypeToStr(tn) << " = " << anTypeToStr(ret);
-        print(dty_bindings);
-
+        auto *ret = AnDataType::getVariant(c, dty, bindings, dty->mods);
         return ret;
 
     }else if(tn->typeTag == TT_TypeVar){
@@ -719,16 +688,16 @@ Type* Compiler::anTypeToLlvmType(const AnType *ty, bool force){
         case TT_Ptr: {
             auto *ptr = (AnPtrType*)ty;
             return ptr->extTy->typeTag != TT_Void ?
-                anTypeToLlvmType(ptr->extTy)->getPointerTo()
+                anTypeToLlvmType(ptr->extTy, force)->getPointerTo()
                 : Type::getInt8Ty(*ctxt)->getPointerTo();
         }
         case TT_Array:{
             auto *arr = (AnArrayType*)ty;
-            return ArrayType::get(anTypeToLlvmType(arr->extTy), arr->len);
+            return ArrayType::get(anTypeToLlvmType(arr->extTy, force), arr->len);
         }
         case TT_Tuple:
             for(auto *e : ((AnAggregateType*)ty)->extTys){
-                tys.push_back(anTypeToLlvmType(e));
+                tys.push_back(anTypeToLlvmType(e, force));
             }
             return StructType::get(*ctxt, tys);
         case TT_Data: case TT_TaggedUnion: {
@@ -746,10 +715,10 @@ Type* Compiler::anTypeToLlvmType(const AnType *ty, bool force){
         case TT_Function: case TT_MetaFunction: {
             auto *f = ((AnAggregateType*)ty);
             for(size_t i = 1; i < f->extTys.size(); i++){
-                tys.push_back(anTypeToLlvmType(f->extTys[i]));
+                tys.push_back(anTypeToLlvmType(f->extTys[i], force));
             }
 
-            return FunctionType::get(anTypeToLlvmType(f->extTys[0]), tys, false)->getPointerTo();
+            return FunctionType::get(anTypeToLlvmType(f->extTys[0], force), tys, false)->getPointerTo();
         }
         case TT_TypeVar: {
             auto *tvt = (AnTypeVarType*)ty;
@@ -771,7 +740,7 @@ Type* Compiler::anTypeToLlvmType(const AnType *ty, bool force){
                 return Type::getVoidTy(*ctxt);
             }
 
-            return anTypeToLlvmType(ty);
+            return anTypeToLlvmType(ty, force);
         }
         default:
             return typeTagToLlvmType(ty->typeTag, *ctxt);
@@ -969,7 +938,7 @@ bool dataTypeImplementsTrait(AnDataType *dt, string trait){
 
 AnType* TypeCheckResult::getBindingFor(const string &name){
     for(auto &pair : box->bindings){
-        if(((AnTypeVarType*)pair.second)->name == name)
+        if(pair.first == name)
             return pair.second;
     }
     return 0;
@@ -987,7 +956,7 @@ TypeCheckResult& typeEqHelper(const Compiler *c, const AnType *l, const AnType *
 
     const AnDataType *ldt, *rdt;
     if((ldt = dyn_cast<AnDataType>(l)) and (rdt = dyn_cast<AnDataType>(r))){
-        if(ldt->name == rdt->name)
+        if(ldt->name == rdt->name and ldt->generics.empty() and rdt->generics.empty())
             return tcr.success();
 
         //Two bound types, check to see if their type parameters are equivalent
@@ -998,21 +967,28 @@ TypeCheckResult& typeEqHelper(const Compiler *c, const AnType *l, const AnType *
 
                 if(!typeEqHelper(c, lbg.second, rbg.second, tcr)) return tcr.failure();
             }
+
             return tcr;
         }
 
-        if(ldt->unboundType == rdt){
-            if(!rdt->boundGenerics.empty()) return tcr.failure();
-    
-            for(auto &p : ldt->boundGenerics)
-                tcr->bindings.emplace_back(p.first, p.second);
+        if(ldt->isVariantOf(rdt)){
+            if(!rdt->isGeneric) return tcr.failure();
+
+            for(auto &p : ldt->boundGenerics){
+                auto *tv = tcr.getBindingFor(p.first);
+                if(!tv)
+                    tcr->bindings.emplace_back(p.first, p.second);
+            }
 
             return tcr.successWithTypeVars();
-        }else if(rdt->unboundType == ldt){
-            if(!ldt->boundGenerics.empty()) return tcr.failure();
-            
-            for(auto &p : rdt->boundGenerics)
-                tcr->bindings.emplace_back(p.first, p.second);
+        }else if(rdt->isVariantOf(ldt)){
+            if(!ldt->isGeneric) return tcr.failure();
+
+            for(auto &p : rdt->boundGenerics){
+                auto *tv = tcr.getBindingFor(p.first);
+                if(!tv)
+                    tcr->bindings.emplace_back(p.first, p.second);
+            }
 
             return tcr.successWithTypeVars();
         }
@@ -1215,7 +1191,20 @@ string _anTypeToStr(const AnType *t, AnModifier *m){
         mods = modifiersToStr(t->mods);
 
     if(auto *dt = dyn_cast<AnDataType>(t)){
-        return mods + dt->name;
+        string n = mods + dt->name;
+
+        if(!dt->boundGenerics.empty()){
+            n += "<";
+            for(auto &t : dt->boundGenerics){
+                if(&t == &dt->boundGenerics.back()){
+                    n += _anTypeToStr(t.second, m);
+                }else{
+                    n += _anTypeToStr(t.second, m) + ", ";
+                }
+            }
+            n += ">";
+        }
+        return n;
     }else if(auto *tvt = dyn_cast<AnTypeVarType>(t)){
         return mods + tvt->name;
     }else if(auto *f = dyn_cast<AnFunctionType>(t)){

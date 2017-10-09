@@ -512,17 +512,10 @@ TypedValue compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, vector
 
     //bind the return type if necessary
     if(TypeNode* retTy = (TypeNode*)fd->fdn->type.get()){
-        //cout << "BINDING RET TO CONCRETE TYPE\n";
         anRetTy = bindGenericToType(c, toAnType(c, retTy), tc->bindings);
-        //cout << "DONE\n";
-        //for(auto &b : tc->bindings){
-        //    cout << "    " << b.first << " -> " << anTypeToStr(b.second) << endl;
-        //}
     }
 
     auto *fty = AnFunctionType::get(anRetTy, args);
-    //cout << "\tFty for " << fd->getName() << ": ";
-    //fty->dump();
 
     //test if bound variant is already compiled
     string mangled = mangle(fd->getName(), fty->extTys);

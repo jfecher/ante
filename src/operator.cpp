@@ -117,7 +117,7 @@ TypedValue Compiler::compRem(TypedValue &l, TypedValue &r, BinOpNode *op){
 }
 
 /*
- *  Compiles the extract operator, [
+ *  Compiles the extract operator, #
  */
 TypedValue Compiler::compExtract(TypedValue &l, TypedValue &r, BinOpNode *op){
     if(!isIntTypeTag(r.type->typeTag)){
@@ -490,7 +490,7 @@ TypedValue createCast(Compiler *c, AnType *castTy, TypedValue &valToCast, LOC_TY
     //      if no valid cast is found nullptr is returned
     return doReinterpretCast(c, castTy, valToCast);
 }
-
+    
 TypedValue TypeCastNode::compile(Compiler *c){
     auto rtval = rval->compile(c);
 
@@ -702,6 +702,16 @@ TypedValue IfNode::compile(Compiler *c){
     return compIf(c, this, mergebb, branches);
 }
 
+string _anTypeToStr(const AnType *t, AnModifier *m);
+
+string toModuleName(AnType *t){
+    if(AnDataType *dt = dyn_cast<AnDataType>(t)){
+        return dt->name;
+    }else{
+        return _anTypeToStr(t, t->mods);
+    }
+}
+
 /*
  *  Compiles the member access operator, .  eg. struct.field
  */
@@ -779,9 +789,10 @@ TypedValue Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *binop
 
         //not a field, so look for a method.
         //TODO: perhaps create a calling convention function
-        string typeName = anTypeToStrWithoutModifiers(tyn);
-        string funcName = typeName + "_" + field->name;
+        string funcName = toModuleName(tyn) + "_" + field->name;
         auto& l = getFunctionList(funcName);
+
+
 
         if(!l.empty()){
             TypedValue obj = {val, tyn};

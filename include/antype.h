@@ -38,13 +38,13 @@ namespace ante {
         bool isGeneric;
         AnModifier *mods;
 
-        bool hasModifier(TokenType m);
+        bool hasModifier(TokenType m) const;
         virtual AnType* addModifier(TokenType m);
         virtual AnType* setModifier(AnModifier *m);
 
-        size_t getSizeInBits(Compiler *c, std::string *incompleteType = nullptr, bool force = false);
+        size_t getSizeInBits(Compiler *c, std::string *incompleteType = nullptr, bool force = false) const;
 
-        void dump();
+        void dump() const;
 
         AnType* getFunctionReturnType() const;
 
@@ -193,8 +193,8 @@ namespace ante {
 
         protected:
         AnDataType(std::string &n, const std::vector<AnType*> elems, bool isUnion, AnModifier *m) :
-            AnAggregateType(isUnion ? TT_TaggedUnion : TT_Data, elems, m), name(n), unboundType(0),
-            parentUnionType(0), llvmType(0){}
+            AnAggregateType(isUnion ? TT_TaggedUnion : TT_Data, elems, m), name(n), fields(), tags(),
+            traitImpls(), unboundType(0), variants(), parentUnionType(0), boundGenerics(), llvmType(0){}
 
         public:
         std::string name;
@@ -234,6 +234,9 @@ namespace ante {
 
         AnDataType* addModifier(TokenType m) override;
         AnDataType* setModifier(AnModifier *m) override;
+
+        /** @brief returns true if this type is a bound variant of the generic type dt */
+        bool isVariantOf(const AnDataType *dt) const;
 
         static bool classof(const AnType *t){
             return t->typeTag == TT_Data or t->typeTag == TT_TaggedUnion;

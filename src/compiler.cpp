@@ -1157,6 +1157,7 @@ vector<AnTypeVarType*> toVec(Compiler *c, const vector<unique_ptr<TypeNode>> &ge
     return ret;
 }
 
+void addGenerics(vector<AnTypeVarType*> &dest, vector<AnType*> &src);
 
 /**
  * @brief A helper function to compile tagged union declarations
@@ -1221,12 +1222,10 @@ TypedValue compTaggedUnion(Compiler *c, DataDeclNode *n){
         v->tags = tags;
         v->unboundType = data;
         bindGenericToType(c, v, v->boundGenerics);
+        addGenerics(v->generics, v->extTys);
     }
 
     c->stoType(data, union_name);
-    if(!data->generics.empty())
-        cout << "Just declared " << data->name << endl;
-    //data->dump();
     return c->getVoidLiteral();
 }
 
@@ -1278,17 +1277,14 @@ TypedValue DataDeclNode::compile(Compiler *c){
         v->fields = data->fields;
         v->unboundType = data;
         bindGenericToType(c, v, v->boundGenerics);
+        addGenerics(v->generics, v->extTys);
     }
-    
-    if(!data->generics.empty())
-        cout << "Just declared " << data->name << endl;
 
-    updateLlvmTypeBinding(c, data, true);
+    //updateLlvmTypeBinding(c, data, true);
     return c->getVoidLiteral();
 }
 
 void DataDeclNode::declare(Compiler *c){
-    //cout << "Declaring " << name << " : " << !generics.empty() << endl;
     AnDataType::create(name, {}, false, toVec(c, generics));
 }
 
@@ -1377,6 +1373,7 @@ void handleTypeCastPattern(Compiler *c, TypedValue lval, TypeCastNode *tn, AnDat
 
     auto alloca = addrOf(c, lval);
 
+    //bit cast the alloca to a pointer to the largest type of the parent union
     auto *cast = c->builder.CreateBitCast(alloca.val, c->anTypeToLlvmType(parentTy)->getPointerTo());
 
     //Cast in the form of: Some n
