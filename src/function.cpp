@@ -77,12 +77,19 @@ TypedValue Compiler::callFn(string name, vector<TypedValue> args){
  * a varargs type (represented by the absence of a type)
  * then a nullptr is inserted for that parameter.
  */
-vector<Type*> getParamTypes(Compiler *c, NamedValNode *nvn, size_t paramCount){
+vector<Type*> getParamTypes(Compiler *c, FuncDecl *fd){
     vector<Type*> paramTys;
-    paramTys.reserve(paramCount);
 
-    for(size_t i = 0; i < paramCount && nvn; i++){
+    if(fd->type){
+        paramTys.reserve(fd->type->extTys.size());
+        for(auto *paramTy : fd->type->extTys)
+            paramTys.push_back(c->anTypeToLlvmType(paramTy));
+        return paramTys;
+    }
 
+    paramTys.reserve(4);
+    auto *nvn = fd->fdn->params.get();
+    while(nvn){
         TypeNode *paramTyNode = (TypeNode*)nvn->typeExpr.get();
         if(paramTyNode == (void*)1){ //self parameter
             //Self parameters originally have 0x1 as their TypeNodes, but
@@ -376,11 +383,7 @@ TypedValue compFnHelper(Compiler *c, FuncDecl *fd){
     //Get and translate the function's return type to an llvm::Type*
     TypeNode *retNode = (TypeNode*)fdn->type.get();
 
-    //Count the number of parameters
-    NamedValNode *paramsBegin = fdn->params.get();
-    size_t nParams = getTupleSize(paramsBegin);
-
-    vector<Type*> paramTys = getParamTypes(c, paramsBegin, nParams);
+    vector<Type*> paramTys = getParamTypes(c, fd);
 
     if(paramTys.size() > 0 && !paramTys.back()){ //varargs fn
         fdn->varargs = true;
@@ -417,7 +420,7 @@ TypedValue compFnHelper(Compiler *c, FuncDecl *fd){
     FunctionType *ft = FunctionType::get(retTy, paramTys, fdn->varargs);
     Function *f = Function::Create(ft, Function::ExternalLinkage, fd->mangledName, c->module.get());
     f->addFnAttr("nounwind");
-    addAllArgAttrs(f, paramsBegin);
+    addAllArgAttrs(f, fdn->params.get());
 
 
     auto ret = TypedValue(f, fnTy);
@@ -431,7 +434,7 @@ TypedValue compFnHelper(Compiler *c, FuncDecl *fd){
         BasicBlock *bb = BasicBlock::Create(*c->ctxt, "entry", f);
         c->builder.SetInsertPoint(bb);
 
-        auto paramVec = vectorize(paramsBegin);
+        auto paramVec = vectorize(fdn->params.get());
         size_t i = 0;
 
         //iterate through each parameter and add its value to the new scope.
@@ -776,6 +779,14 @@ TypedValue compFnWithArgs(Compiler *c, FuncDecl *fd, vector<AnType*> args){
     //must check if this functions is generic first
     auto fnty = AnFunctionType::get(c, AnType::getVoid(), fd->fdn->params.get());
     auto tc = c->typeEq(fnty->extTys, args);
+
+    cout << "\t\t\tCompiling " << fd->mangledName << " with args " << flush;
+    AnFunctionType::get(AnType::getVoid(), args)->dump();
+
+    if(fd->getName() == "print"){
+        cout << "\t\t\tllvm ty for first arg: " << flush;
+        ((AnDataType*)args[0])->llvmType->dump();
+    }
 
     if(tc->res == TypeCheckResult::SuccessWithTypeVars)
         return compTemplateFn(c, fd, tc, args);
