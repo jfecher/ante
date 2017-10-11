@@ -8,18 +8,29 @@ namespace ante {
     AnTypeContainer typeArena;
 
     void AnType::dump() const{
-        cout << anTypeToStr(this);
         if(auto *dt = llvm::dyn_cast<AnDataType>(this)){
+            cout << dt->name;
             if(!dt->generics.empty()){
-                cout << "<";
+                cout << "[";
                 for(auto &t : dt->generics){
                     if(&t != &dt->generics.back())
                         cout << anTypeToStr(t) << ", ";
                     else
-                        cout << anTypeToStr(t) << ">";
+                        cout << anTypeToStr(t) << "]";
+                }
+            }
+            if(!dt->boundGenerics.empty()){
+                cout << "<";
+                for(auto &p : dt->boundGenerics){
+                    if(&p != &dt->boundGenerics.back())
+                        cout << p.first << " -> " << anTypeToStr(p.second) << ", ";
+                    else
+                        cout << p.first << " -> " << anTypeToStr(p.second) << ">";
                 }
             }
             cout << " = " << anTypeToStr(AnAggregateType::get(TT_Tuple, dt->extTys));
+        }else{
+            cout << anTypeToStr(this);
         }
         cout << endl;
     }
@@ -512,6 +523,7 @@ namespace ante {
             }
 
             //variant->boundGenerics = boundBindings;
+
             variant->boundGenerics = filterMatchingBindings(unboundType, bindings);
         }else{
             variant->boundGenerics = filterMatchingBindings(unboundType, bindings);
@@ -527,18 +539,20 @@ namespace ante {
         if(unboundType->isUnionTag()){
             auto *unionType = unboundType->parentUnionType;
             unionType = (AnDataType*)bindGenericToType(c, unionType, bindings);
+            updateLlvmTypeBinding(c, unionType, unionType->isGeneric);
             variant->parentUnionType = unionType;
+
+            cout << "  Llvm bindings for union " << flush;
+            unionType->dump();
+            cout << "\t = " << llvmTypeToStr(unionType->llvmType) << endl;
         }
 
         if(boundExts.empty()){
             variant->isGeneric = isGeneric(variant->boundGenerics);
-
         }else{
             bool extsGeneric = isGeneric(boundExts);
             variant->isGeneric = extsGeneric;
-            //addGenerics(variant->generics, boundExts);
         }
-
 
         variant->typeTag = unboundType->typeTag;
         variant->fields = unboundType->fields;
@@ -567,6 +581,37 @@ namespace ante {
         return nullptr;
     }
 
+    vector<pair<string, AnType*>> flatten(const Compiler *c, const AnDataType *dt, const vector<pair<string, AnType*>> &bindings){
+        vector<pair<string, AnType*>> ret;
+        if(dt->unboundType){
+            //initial bindings are the generics of the parent type
+            ret.reserve(dt->unboundType->generics.size());
+            for(auto *tv : dt->unboundType->generics){
+                ret.emplace_back(tv->name, tv);
+            }
+
+            //once the entire branch is bound, bind the bindings
+            for(auto &p : ret){
+                p.second = bindGenericToType((Compiler*)c, p.second, dt->boundGenerics);
+            }
+
+            for(auto &p : ret){
+                p.second = bindGenericToType((Compiler*)c, p.second, bindings);
+            }
+        }else{
+            ret.reserve(dt->generics.size());
+            for(auto *tv : dt->generics){
+                ret.emplace_back(tv->name, tv);
+            }
+
+            for(auto &p : ret){
+                p.second = bindGenericToType((Compiler*)c, p.second, bindings);
+            }
+        }
+
+        return ret;
+    }
+
     /*
      * Searches for the bound variant of the generic type
      * unboundType and creates it if it has not been
@@ -574,13 +619,18 @@ namespace ante {
      */
     AnDataType* AnDataType::getVariant(Compiler *c, AnDataType *unboundType, const vector<pair<string, AnType*>> &boundTys, AnModifier *m){
         auto filteredBindings = filterMatchingBindings(unboundType, boundTys);
-        
+
+        filteredBindings = flatten(c, unboundType, filteredBindings);
+
+        if(unboundType->unboundType)
+            unboundType = unboundType->unboundType;
+
         AnDataType *variant = findMatchingVariant(unboundType, filteredBindings);
 
         //variant is already bound
         if(variant)
             return variant;
-        
+
         variant = new AnDataType(unboundType->name, {}, false, unboundType->mods);
 
         return bindVariant(c, unboundType, filteredBindings, m, variant);
@@ -600,6 +650,11 @@ namespace ante {
         }
     
         auto filteredBindings = filterMatchingBindings(unboundType, boundTys);
+        filteredBindings = flatten(c, unboundType, filteredBindings);
+
+        if(unboundType->unboundType)
+            unboundType = unboundType->unboundType;
+
         AnDataType *variant = findMatchingVariant(unboundType, filteredBindings);
 
         //variant is already bound

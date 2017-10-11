@@ -24,14 +24,10 @@ namespace ante {
 
     std::vector<std::pair<std::string, AnType*>>
     mapBindingsToDataType(const std::vector<AnType*> &bindings, const AnDataType *dt);
-    
-    llvm::Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt, bool force = false);
 
-    //Typevar creation with no yy::location
-    //TypeNode* mkAnonTypeNode(TypeTag);
-    //TypeNode* mkTypeNodeWithExt(TypeTag tt, TypeNode *ext);
-    //TypeNode* mkDataTypeNode(std::string tyname);
-    //TypeNode* createFnTyNode(NamedValNode *params, TypeNode *retTy);
+    AnAggregateType* flattenBoundTys(const Compiler *c, const AnDataType *dt);
+
+    llvm::Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt, bool force = false);
 
     //conversions
     AnType* toAnType(Compiler *c, const TypeNode *tn);

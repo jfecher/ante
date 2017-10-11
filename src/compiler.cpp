@@ -1221,7 +1221,9 @@ TypedValue compTaggedUnion(Compiler *c, DataDeclNode *n){
         v->typeTag = data->typeTag;
         v->tags = tags;
         v->unboundType = data;
-        bindGenericToType(c, v, v->boundGenerics);
+        *v = *(AnDataType*)bindGenericToType(c, v, v->boundGenerics);
+        if(v->parentUnionType)
+            v->parentUnionType = (AnDataType*)bindGenericToType(c, v->parentUnionType, v->parentUnionType->boundGenerics);
         addGenerics(v->generics, v->extTys);
     }
 
@@ -1276,7 +1278,9 @@ TypedValue DataDeclNode::compile(Compiler *c){
         v->typeTag = data->typeTag;
         v->fields = data->fields;
         v->unboundType = data;
-        bindGenericToType(c, v, v->boundGenerics);
+        *v = *(AnDataType*)bindGenericToType(c, v, v->boundGenerics);
+        if(v->parentUnionType)
+            v->parentUnionType = (AnDataType*)bindGenericToType(c, v->parentUnionType, v->parentUnionType->boundGenerics);
         addGenerics(v->generics, v->extTys);
     }
 

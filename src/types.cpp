@@ -246,12 +246,15 @@ string toLlvmTypeName(const AnDataType *dt){
 
 Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt, bool force){
     //create an empty type first so we dont end up with infinite recursion
-    auto* structTy = StructType::create(*c->ctxt, {}, toLlvmTypeName(dt), dt->typeTag == TT_TaggedUnion);
+    bool isPacked = dt->typeTag == TT_TaggedUnion;
+    auto* structTy = StructType::create(*c->ctxt, {}, toLlvmTypeName(dt), isPacked);
     dt->llvmType = structTy;
+
+    cout << "Updating llvm type for " << anTypeToStr(dt) << endl;
 
     if(dt->isGeneric and !force){
         cerr << "Type " << anTypeToStr(dt) << " is generic and cannot be translated.\n";
-        //c->errFlag = true;
+        c->errFlag = true;
         //return nullptr;
     }
 
@@ -268,7 +271,9 @@ Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt, bool force){
         tys.push_back(c->anTypeToLlvmType(ext, force));
     }
 
-    structTy->setBody(tys);
+    structTy->setBody(tys, isPacked);
+
+    cout << "  llvm ty for " << anTypeToStr(dt) << " is now " << llvmTypeToStr(structTy) << endl;
     return structTy;
 }
 
@@ -944,7 +949,6 @@ AnType* TypeCheckResult::getBindingFor(const string &name){
     return 0;
 }
 
-
 /*
  *  Return true if both typenodes are approximately equal
  *
@@ -971,27 +975,77 @@ TypeCheckResult& typeEqHelper(const Compiler *c, const AnType *l, const AnType *
             return tcr;
         }
 
+        bool lIsBound = !ldt->boundGenerics.empty();
+        bool rIsBound = !rdt->boundGenerics.empty();
+
+        if(lIsBound and rIsBound){
+            for(size_t i = 0; i < ldt->boundGenerics.size(); i++){
+                typeEqHelper(c, ldt->boundGenerics[i].second, rdt->boundGenerics[i].second, tcr);
+                if(tcr.failed()) return tcr;
+            }
+            return tcr;
+        }else if(lIsBound and !rIsBound){
+            for(size_t i = 0; i < ldt->boundGenerics.size(); i++){
+                typeEqHelper(c, ldt->boundGenerics[i].second, rdt->generics[i], tcr);
+                if(tcr.failed()) return tcr;
+            }
+            return tcr;
+        }else if(!lIsBound and rIsBound){
+            for(size_t i = 0; i < ldt->boundGenerics.size(); i++){
+                typeEqHelper(c, ldt->generics[i], rdt->boundGenerics[i].second, tcr);
+                if(tcr.failed()) return tcr;
+            }
+            return tcr;
+        }else{
+            //neither are bound, these should both be parent types
+            return tcr.success();
+        }
+
+        /*
         if(ldt->isVariantOf(rdt)){
             if(!rdt->isGeneric) return tcr.failure();
 
-            for(auto &p : ldt->boundGenerics){
-                auto *tv = tcr.getBindingFor(p.first);
-                if(!tv)
-                    tcr->bindings.emplace_back(p.first, p.second);
-            }
+            //if(rdt->unboundType){
+                auto lBoundTys = flattenBoundTys(c, rdt);
+                auto rBoundTys = flattenBoundTys(c, ldt);
+                lBoundTys->dump();
+                rBoundTys->dump();
+                auto& res = typeEqHelper(c, lBoundTys, rBoundTys, tcr);
 
-            return tcr.successWithTypeVars();
+
+
+                for(auto &b : res->bindings){
+                    cout << b.first << " -> " << anTypeToStr(b.second) << endl;
+                }
+                return res;
+            //}else{
+            //    for(size_t i = 0; i < ldt->extTys.size(); i++){
+            //        typeEqHelper(c, ldt->extTys[i], rdt->extTys[i], tcr);
+            //        if(tcr.failed()) return tcr;
+            //    }
+            //    return tcr;
+            //}
         }else if(rdt->isVariantOf(ldt)){
             if(!ldt->isGeneric) return tcr.failure();
 
-            for(auto &p : rdt->boundGenerics){
-                auto *tv = tcr.getBindingFor(p.first);
-                if(!tv)
-                    tcr->bindings.emplace_back(p.first, p.second);
-            }
-
-            return tcr.successWithTypeVars();
-        }
+            //if(ldt->unboundType){
+                auto lBoundTys = flattenBoundTys(c, rdt);
+                auto rBoundTys = flattenBoundTys(c, ldt);
+                lBoundTys->dump();
+                rBoundTys->dump();
+                auto& res = typeEqHelper(c, lBoundTys, rBoundTys, tcr);
+                for(auto &b : res->bindings){
+                    cout << b.first << " -> " << anTypeToStr(b.second) << endl;
+                }
+                return res;
+            //}else{
+            //    for(size_t i = 0; i < ldt->extTys.size(); i++){
+            //        typeEqHelper(c, ldt->extTys[i], rdt->extTys[i], tcr);
+            //        if(tcr.failed()) return tcr;
+            //    }
+            //    return tcr;
+            //}
+        }*/
 
         //typeName's are different, check if one is a trait and the other
         //is an implementor of the trait
