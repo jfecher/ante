@@ -541,10 +541,6 @@ namespace ante {
             unionType = (AnDataType*)bindGenericToType(c, unionType, bindings);
             updateLlvmTypeBinding(c, unionType, unionType->isGeneric);
             variant->parentUnionType = unionType;
-
-            cout << "  Llvm bindings for union " << flush;
-            unionType->dump();
-            cout << "\t = " << llvmTypeToStr(unionType->llvmType) << endl;
         }
 
         if(boundExts.empty()){
@@ -643,7 +639,7 @@ namespace ante {
      * not correspond to any defined type.
      */
     AnDataType* AnDataType::getVariant(Compiler *c, const string &name, const vector<pair<string, AnType*>> &boundTys, AnModifier *m){
-        auto *unboundType = AnDataType::get(name);
+        auto *unboundType = AnDataType::get(name, m);
         if(unboundType->isStub()){
             cerr << "Warning: Cannot bind undeclared type " << name << endl;
             return unboundType;
@@ -661,7 +657,7 @@ namespace ante {
         if(variant)
             return variant;
         
-        variant = new AnDataType(unboundType->name, {}, false, unboundType->mods);
+        variant = new AnDataType(unboundType->name, {}, false, m);
         return bindVariant(c, unboundType, filteredBindings, m, variant);
     }
 

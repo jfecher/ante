@@ -628,9 +628,12 @@ TypedValue VarNode::compile(Compiler *c){
     auto *var = c->lookup(name);
 
     if(var){
-        return var->autoDeref ?
-            TypedValue(c->builder.CreateLoad(var->getVal(), name), var->tval.type):
-            TypedValue(var->tval.val, var->tval.type); //deep copy type
+        if(var->autoDeref){
+            auto *load = c->builder.CreateLoad(var->getVal(), name);
+            return TypedValue(load, var->tval.type);
+        }else{
+            return TypedValue(var->tval.val, var->tval.type);
+        }
     }else{
         //if this is a function, then there must be only one function of the same name, otherwise the reference is ambiguous
         auto& fnlist = c->getFunctionList(name);

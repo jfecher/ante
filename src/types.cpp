@@ -247,10 +247,10 @@ string toLlvmTypeName(const AnDataType *dt){
 Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt, bool force){
     //create an empty type first so we dont end up with infinite recursion
     bool isPacked = dt->typeTag == TT_TaggedUnion;
-    auto* structTy = StructType::create(*c->ctxt, {}, toLlvmTypeName(dt), isPacked);
-    dt->llvmType = structTy;
+    auto* structTy = dt->llvmType ? (StructType*)dt->llvmType
+        : StructType::create(*c->ctxt, {}, toLlvmTypeName(dt), isPacked);
 
-    cout << "Updating llvm type for " << anTypeToStr(dt) << endl;
+    dt->llvmType = structTy;
 
     if(dt->isGeneric and !force){
         cerr << "Type " << anTypeToStr(dt) << " is generic and cannot be translated.\n";
@@ -272,8 +272,6 @@ Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt, bool force){
     }
 
     structTy->setBody(tys, isPacked);
-
-    cout << "  llvm ty for " << anTypeToStr(dt) << " is now " << llvmTypeToStr(structTy) << endl;
     return structTy;
 }
 
@@ -305,8 +303,7 @@ AnType* bindGenericToType(Compiler *c, AnType *tn, const vector<pair<string, AnT
     if(tn->typeTag == TT_Data or tn->typeTag == TT_TaggedUnion){
         auto *dty = (AnDataType*)tn;
 
-        auto *ret = AnDataType::getVariant(c, dty, bindings, dty->mods);
-        return ret;
+        return AnDataType::getVariant(c, dty, bindings, dty->mods);
 
     }else if(tn->typeTag == TT_TypeVar){
         auto *tv = (AnTypeVarType*)tn;
@@ -1008,16 +1005,7 @@ TypeCheckResult& typeEqHelper(const Compiler *c, const AnType *l, const AnType *
             //if(rdt->unboundType){
                 auto lBoundTys = flattenBoundTys(c, rdt);
                 auto rBoundTys = flattenBoundTys(c, ldt);
-                lBoundTys->dump();
-                rBoundTys->dump();
-                auto& res = typeEqHelper(c, lBoundTys, rBoundTys, tcr);
-
-
-
-                for(auto &b : res->bindings){
-                    cout << b.first << " -> " << anTypeToStr(b.second) << endl;
-                }
-                return res;
+                return typeEqHelper(c, lBoundTys, rBoundTys, tcr);
             //}else{
             //    for(size_t i = 0; i < ldt->extTys.size(); i++){
             //        typeEqHelper(c, ldt->extTys[i], rdt->extTys[i], tcr);
@@ -1031,13 +1019,7 @@ TypeCheckResult& typeEqHelper(const Compiler *c, const AnType *l, const AnType *
             //if(ldt->unboundType){
                 auto lBoundTys = flattenBoundTys(c, rdt);
                 auto rBoundTys = flattenBoundTys(c, ldt);
-                lBoundTys->dump();
-                rBoundTys->dump();
-                auto& res = typeEqHelper(c, lBoundTys, rBoundTys, tcr);
-                for(auto &b : res->bindings){
-                    cout << b.first << " -> " << anTypeToStr(b.second) << endl;
-                }
-                return res;
+                return typeEqHelper(c, lBoundTys, rBoundTys, tcr);
             //}else{
             //    for(size_t i = 0; i < ldt->extTys.size(); i++){
             //        typeEqHelper(c, ldt->extTys[i], rdt->extTys[i], tcr);

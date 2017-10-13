@@ -15,6 +15,12 @@ Type* parameterize(Type *t, const TypeNode *tn){
     return t;
 }
 
+Type* parameterize(Compiler *c, AnType *t){
+    if(t->typeTag == TT_Array) return c->anTypeToLlvmType(t)->getPointerTo();
+    if(t->hasModifier(Tok_Mut)) return c->anTypeToLlvmType(t)->getPointerTo();
+    return c->anTypeToLlvmType(t);
+}
+
 bool implicitPassByRef(TypeNode* t){
     return t->type == TT_Array or t->hasModifier(Tok_Mut);
 }
@@ -82,8 +88,10 @@ vector<Type*> getParamTypes(Compiler *c, FuncDecl *fd){
 
     if(fd->type){
         paramTys.reserve(fd->type->extTys.size());
-        for(auto *paramTy : fd->type->extTys)
-            paramTys.push_back(c->anTypeToLlvmType(paramTy));
+        for(auto *paramTy : fd->type->extTys){
+            auto *llvmty = parameterize(c, paramTy);
+            paramTys.push_back(llvmty);
+        }
         return paramTys;
     }
 
@@ -779,14 +787,6 @@ TypedValue compFnWithArgs(Compiler *c, FuncDecl *fd, vector<AnType*> args){
     //must check if this functions is generic first
     auto fnty = AnFunctionType::get(c, AnType::getVoid(), fd->fdn->params.get());
     auto tc = c->typeEq(fnty->extTys, args);
-
-    cout << "\t\t\tCompiling " << fd->mangledName << " with args " << flush;
-    AnFunctionType::get(AnType::getVoid(), args)->dump();
-
-    if(fd->getName() == "print"){
-        cout << "\t\t\tllvm ty for first arg: " << flush;
-        ((AnDataType*)args[0])->llvmType->dump();
-    }
 
     if(tc->res == TypeCheckResult::SuccessWithTypeVars)
         return compTemplateFn(c, fd, tc, args);
