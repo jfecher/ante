@@ -1723,7 +1723,7 @@ void Compiler::eval(){
 
             //print val if it's not an error
             if(!!val)
-                val.val->dump();
+                val.dump();
         }
         cout << ": " << flush;
         getline(cin, cmd);
@@ -1943,7 +1943,7 @@ int Compiler::linkObj(string inFiles, string outFile){
 void Compiler::emitIR(){
     if(!compiled) compile();
     if(errFlag) puts("Partially compiled module: \n");
-    module->dump();
+    module->print(llvm::errs(), nullptr);
 }
 
 
@@ -1978,8 +1978,10 @@ void TypedValue::dump() const{
             c->fdn->print();
             cout << endl;
         }
-    }else
-        val->dump();
+    }else{
+        val->print(llvm::dbgs(), false);
+        llvm::dbgs() << '\n';
+    }
 }
 
 
