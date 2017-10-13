@@ -27,7 +27,7 @@ fun append: mut List<'t> l, 't elem
         l.last = Some n
 
 
-fun print: List l
+fun print: List<'t> l
     match l.first with
     | Some n -> print n
 

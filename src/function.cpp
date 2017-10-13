@@ -21,27 +21,9 @@ Type* parameterize(Compiler *c, AnType *t){
     return c->anTypeToLlvmType(t);
 }
 
-bool implicitPassByRef(TypeNode* t){
-    return t->type == TT_Array or t->hasModifier(Tok_Mut);
+bool implicitPassByRef(AnType* t){
+    return t->typeTag == TT_Array or t->hasModifier(Tok_Mut);
 }
-
-/*
-TypeNode* toTypeNodeList(vector<TypedValue*> &args){
-    TypeNode *listBegin = 0;
-    TypeNode *listCur = 0;
-
-    for(auto *arg : args){
-        if(listBegin){
-            listCur->next.reset(copy(arg->type));
-            listCur = (TypeNode*)listCur->next.get();
-        }else{
-            listBegin = copy(arg->type);
-            listCur = listBegin;
-        }
-    }
-    return listBegin;
-}
-*/
 
 
 vector<AnType*> toTypeVector(vector<TypedValue> &tvs){
@@ -246,7 +228,7 @@ TypedValue Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
 
         TypedValue tArg = {&arg, paramTy};
         stoVar(cParam->name, new Variable(cParam->name, tArg, this->scope,
-                        /*nofree =*/ true, /*autoDeref = */implicitPassByRef(paramTyNode)));
+                        /*nofree =*/ true, /*autoDeref = */implicitPassByRef(paramTy)));
 
         preArgs.push_back(&arg);
         paramAnTys.push_back(paramTy);
@@ -465,7 +447,7 @@ TypedValue compFnHelper(Compiler *c, FuncDecl *fd){
 
             TypedValue tArg = {&arg, paramTy};
             c->stoVar(cParam->name, new Variable(cParam->name, tArg, c->scope,
-                    /*nofree = */true, /*autoDeref = */implicitPassByRef(paramTyNode)));
+                    /*nofree = */true, /*autoDeref = */implicitPassByRef(paramTy)));
 
             i++;
         }

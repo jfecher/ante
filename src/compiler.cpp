@@ -1381,7 +1381,8 @@ void handleTypeCastPattern(Compiler *c, TypedValue lval, TypeCastNode *tn, AnDat
     auto alloca = addrOf(c, lval);
 
     //bit cast the alloca to a pointer to the largest type of the parent union
-    auto *cast = c->builder.CreateBitCast(alloca.val, c->anTypeToLlvmType(parentTy)->getPointerTo());
+    //auto *cast = c->builder.CreateBitCast(alloca.val, c->anTypeToLlvmType(parentTy)->getPointerTo());
+    auto cast = alloca.val;
 
     //Cast in the form of: Some n
     if(VarNode *v = dynamic_cast<VarNode*>(tn->rval.get())){
