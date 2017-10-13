@@ -988,7 +988,7 @@ TypeCheckResult& typeEqHelper(const Compiler *c, const AnType *l, const AnType *
             }
             return tcr;
         }else if(!lIsBound and rIsBound){
-            for(size_t i = 0; i < ldt->boundGenerics.size(); i++){
+            for(size_t i = 0; i < rdt->boundGenerics.size(); i++){
                 typeEqHelper(c, ldt->generics[i], rdt->boundGenerics[i].second, tcr);
                 if(tcr.failed()) return tcr;
             }

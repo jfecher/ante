@@ -500,6 +500,13 @@ FuncDecl* shallow_copy(FuncDecl* fd, string &mangledName){
 
 
 TypedValue compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, vector<AnType*> &args){
+    //test if bound variant is already compiled
+    string mangled = mangle(fd->getName(), args);
+
+    TypedValue fn;
+    if(!!(fn = c->getFunction(fd->getName(), mangled)))
+        return fn;
+
     //Default return type in case this function has an inferred return type;
     AnType *anRetTy = AnType::getVoid();
 
@@ -510,13 +517,6 @@ TypedValue compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, vector
 
     auto *fty = AnFunctionType::get(anRetTy, args);
 
-    //test if bound variant is already compiled
-    string mangled = mangle(fd->getName(), fty->extTys);
-
-    TypedValue fn;
-    if(!!(fn = c->getFunction(fd->getName(), mangled)))
-        return fn;
-    
     fd = shallow_copy(fd, mangled);
     fd->type = fty;
 
