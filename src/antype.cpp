@@ -92,6 +92,14 @@ namespace ante {
         return modifiersToStr(m) + typeTagToStr(tag);
     }
 
+    template<typename T>
+    T* search(llvm::StringMap<unique_ptr<T>> &map, string &key){
+        auto it = map.find(key);
+        if(it != map.end())
+            return it->getValue().get();
+        return nullptr;
+    }
+
     AnType* AnType::getPrimitive(TypeTag tag, AnModifier *m){
         if(!m){
             switch(tag){
@@ -120,13 +128,13 @@ namespace ante {
             }
         }else{
             string key = typeTagToStrWithModifiers(tag, m);
-            try{
-                return typeArena.otherTypes.at(key).get();
-            }catch(out_of_range r){
-                auto *ty = new AnType(tag, false, m);
-                typeArena.otherTypes.emplace(key, ty);
-                return ty;
-            }
+
+            auto existing_ty = search(typeArena.otherTypes, key);
+            if(existing_ty) return existing_ty;
+                
+            auto *ty = new AnType(tag, false, m);
+            typeArena.otherTypes.try_emplace(key, ty);
+            return ty;
         }
     }
 
@@ -202,13 +210,13 @@ namespace ante {
 
     AnModifier* AnModifier::get(const std::vector<TokenType> modifiers){
         auto key = getKey(modifiers);
-        try{
-            return typeArena.modifiers.at(key).get();
-        }catch(out_of_range r){
-            auto mod = new AnModifier(modifiers);
-            typeArena.modifiers.emplace(key, mod);
-            return mod;
-        }
+
+        auto *existing_ty = search(typeArena.modifiers, key);
+        if(existing_ty) return existing_ty;
+
+        auto mod = new AnModifier(modifiers);
+        typeArena.modifiers.try_emplace(key, mod);
+        return mod;
     }
 
 
@@ -225,26 +233,26 @@ namespace ante {
             }
         }else{
             string key = modifiersToStr(m) + anTypeToStr(ext) + "*";
-            try{
-                return (AnPtrType*)typeArena.otherTypes.at(key).get();
-            }catch(out_of_range r){
-                auto ptr = new AnPtrType(ext, m);
-                typeArena.otherTypes.emplace(key, ptr);
-                return ptr;
-            }
+
+            auto *existing_ty = search(typeArena.otherTypes, key);
+            if(existing_ty) return (AnPtrType*)existing_ty;
+
+            auto ptr = new AnPtrType(ext, m);
+            typeArena.otherTypes.try_emplace(key, ptr);
+            return ptr;
         }
     }
 
     AnArrayType* AnType::getArray(AnType* t, size_t len){ return AnArrayType::get(t,len); }
     AnArrayType* AnArrayType::get(AnType* t, size_t len, AnModifier *m){
         auto key = modifiersToStr(m) + to_string(len) + anTypeToStr(t);
-        try{
-            return typeArena.arrayTypes.at(key).get();
-        }catch(out_of_range r){
-            auto arr = new AnArrayType(t, len, m);
-            typeArena.arrayTypes.emplace(key, arr);
-            return arr;
-        }
+
+        auto existing_ty = search(typeArena.arrayTypes, key);
+        if(existing_ty) return existing_ty;
+
+        auto arr = new AnArrayType(t, len, m);
+        typeArena.arrayTypes.try_emplace(key, arr);
+        return arr;
     }
 
     string getKey(const std::vector<AnType*> &exts){
@@ -263,13 +271,13 @@ namespace ante {
 
     AnAggregateType* AnAggregateType::get(TypeTag t, const std::vector<AnType*> exts, AnModifier *m){
         auto key = modifiersToStr(m) + typeTagToStr(t) + getKey(exts);
-        try{
-            return typeArena.aggregateTypes.at(key).get();
-        }catch(out_of_range r){
-            auto agg = new AnAggregateType(t, exts, m);
-            typeArena.aggregateTypes.emplace(key, agg);
-            return agg;
-        }
+
+        auto existing_ty = search(typeArena.aggregateTypes, key);
+        if(existing_ty) return existing_ty;
+
+        auto agg = new AnAggregateType(t, exts, m);
+        typeArena.aggregateTypes.try_emplace(key, agg);
+        return agg;
     }
             
     AnFunctionType* AnFunctionType::get(Compiler *c, AnType* retty, NamedValNode* params, bool isMetaFunction, AnModifier *m){
@@ -287,13 +295,13 @@ namespace ante {
 
     AnFunctionType* AnFunctionType::get(AnType *retTy, const std::vector<AnType*> elems, bool isMetaFunction, AnModifier *m){
         auto key = modifiersToStr(m) + (isMetaFunction ? "1":"0") + getKey(elems) + "->" + anTypeToStr(retTy);
-        try{
-            return typeArena.functionTypes.at(key).get();
-        }catch(out_of_range r){
-            auto f = new AnFunctionType(retTy, elems, isMetaFunction, m);
-            typeArena.functionTypes.emplace(key, f);
-            return f;
-        }
+
+        auto existing_ty = search(typeArena.functionTypes, key);
+        if(existing_ty) return existing_ty;
+
+        auto f = new AnFunctionType(retTy, elems, isMetaFunction, m);
+        typeArena.functionTypes.try_emplace(key, f);
+        return f;
     }
 
 
@@ -303,13 +311,13 @@ namespace ante {
 
     AnTypeVarType* AnTypeVarType::get(std::string name, AnModifier *m){
         string key = modifiersToStr(m) + name;
-        try{
-            return typeArena.typeVarTypes.at(key).get();
-        }catch(out_of_range r){
-            auto tvar = new AnTypeVarType(name, m);
-            typeArena.typeVarTypes.emplace(key, tvar);
-            return tvar;
-        }
+
+        auto existing_ty = search(typeArena.typeVarTypes, key);
+        if(existing_ty) return existing_ty;
+
+        auto tvar = new AnTypeVarType(name, m);
+        typeArena.typeVarTypes.try_emplace(key, tvar);
+        return tvar;
     }
 
     AnDataType* AnType::getDataType(string name){
@@ -319,57 +327,56 @@ namespace ante {
 
     AnDataType* AnDataType::get(string name, AnModifier *m){
         string key = modifiersToStr(m) + name;
-        try{
-            return typeArena.declaredTypes.at(key).get();
-        }catch(out_of_range r){
-            //create declaration w/out definition
-            if(m){
-                auto dt = AnDataType::get(name, nullptr);
-                return dt->setModifier(m);
-            }else{
-                auto decl = new AnDataType(name, {}, false, m);
-                typeArena.declaredTypes.emplace(key, decl);
-                return decl;
-            }
+
+        auto existing_ty = search(typeArena.declaredTypes, key);
+        if(existing_ty) return existing_ty;
+
+        if(m){
+            auto dt = AnDataType::get(name, nullptr);
+            return dt->setModifier(m);
+        }else{
+            auto decl = new AnDataType(name, {}, false, m);
+            typeArena.declaredTypes.try_emplace(key, decl);
+            return decl;
         }
     }
 
     AnDataType* AnDataType::getOrCreate(std::string name, std::vector<AnType*> &elems, bool isUnion, AnModifier *m){
         string key = modifiersToStr(m) + name;
-        try{
-            return typeArena.declaredTypes.at(key).get();
-        }catch(out_of_range r){
-            //create declaration w/out definition
-            return AnDataType::create(name, elems, isUnion, {}, m);
-        }
+
+        auto existing_ty = search(typeArena.declaredTypes, key);
+        if(existing_ty) return existing_ty;
+
+        //create declaration w/out definition
+        return AnDataType::create(name, elems, isUnion, {}, m);
     }
 
     AnDataType* AnDataType::getOrCreate(const AnDataType *dt, AnModifier *m){
         string key = modifiersToStr(m) + dt->name;
-        try{
-            return typeArena.declaredTypes.at(key).get();
-        }catch(out_of_range r){
-            //create declaration w/out definition
-            auto *ret = AnDataType::create(dt->name, {}, dt->typeTag == TT_TaggedUnion, dt->generics, m);
-            
-            vector<AnType*> elems;
-            elems.reserve(dt->extTys.size());
-            for(auto *ty : dt->extTys){
-                auto *mod_type = ty->setModifier(m);
-                elems.emplace_back(mod_type);
-            }
 
-            ret->extTys = elems;
-            ret->isGeneric = dt->isGeneric;
-            ret->fields = dt->fields;
-            ret->tags = dt->tags;
-            ret->traitImpls = dt->traitImpls;
-            ret->unboundType = dt->unboundType;
-            ret->boundGenerics = dt->boundGenerics;
-            ret->generics = dt->generics;
-            ret->llvmType = dt->llvmType;
-            return ret;
+        auto existing_ty = search(typeArena.declaredTypes, key);
+        if(existing_ty) return existing_ty;
+            
+        //create declaration w/out definition
+        auto *ret = AnDataType::create(dt->name, {}, dt->typeTag == TT_TaggedUnion, dt->generics, m);
+        
+        vector<AnType*> elems;
+        elems.reserve(dt->extTys.size());
+        for(auto *ty : dt->extTys){
+            auto *mod_type = ty->setModifier(m);
+            elems.emplace_back(mod_type);
         }
+
+        ret->extTys = elems;
+        ret->isGeneric = dt->isGeneric;
+        ret->fields = dt->fields;
+        ret->tags = dt->tags;
+        ret->traitImpls = dt->traitImpls;
+        ret->unboundType = dt->unboundType;
+        ret->boundGenerics = dt->boundGenerics;
+        ret->generics = dt->generics;
+        ret->llvmType = dt->llvmType;
+        return ret;
     }
 
     string getBoundName(const string &baseName, const vector<pair<string, AnType*>> &typeArgs){
@@ -663,20 +670,19 @@ namespace ante {
 
     AnDataType* AnDataType::create(string name, vector<AnType*> elems, bool isUnion, const vector<AnTypeVarType*> &generics, AnModifier *m){
         string key = modifiersToStr(m) + getBoundName(name, generics);
-        AnDataType *dt = 0;
-        try{
-            dt = typeArena.declaredTypes.at(key).get();
+        
+        AnDataType *dt = search(typeArena.declaredTypes, key);
+
+        if(dt){
             if(!dt->isStub()){
                 dt->extTys = elems;
                 dt->isGeneric = !generics.empty();
                 dt->generics = generics;
                 return dt;
             }
-        }catch(out_of_range r){}
-
-        if(!dt){
+        }else{
             dt = new AnDataType(name, {}, isUnion, m);
-            typeArena.declaredTypes.emplace(key, dt);
+            typeArena.declaredTypes.try_emplace(key, dt);
         }
 
         dt->isGeneric = !generics.empty();

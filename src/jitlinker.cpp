@@ -30,7 +30,7 @@ ante::Module* copyModuleFuncDecls(const ante::Module *mod){
     //    dt_cpy->tags = dt->tags;
     //    dt_cpy->generics = dt->generics;
     //    dt_cpy->llvmType = dt->llvmType;
-        ret->userTypes[pair.first] = dt;
+        ret->userTypes[pair.first()] = dt;
     }
 
     for(auto &pair : mod->fnDecls){
@@ -38,7 +38,7 @@ ante::Module* copyModuleFuncDecls(const ante::Module *mod){
             auto fd_cpy = make_shared<FuncDecl>(fd->fdn, fd->mangledName, fd->scope, ret);
             fd_cpy->obj = fd->obj;
             fd_cpy->obj_bindings = fd->obj_bindings;
-            ret->fnDecls[pair.first].push_back(fd_cpy);
+            ret->fnDecls[pair.first()].push_back(fd_cpy);
         }
     }
 
@@ -55,11 +55,11 @@ copyModuleFuncDecls(const vector<ante::Module*> &mods){
 }
 
 
-unordered_map<string, ante::Module*>
-copyModuleFuncDecls(const unordered_map<string, ante::Module*> &varTable){
-    auto ret = unordered_map<string, ante::Module*>();
+llvm::StringMap<ante::Module*>
+copyModuleFuncDecls(const llvm::StringMap<ante::Module*> &varTable){
+    auto ret = llvm::StringMap<ante::Module*>();
     for(auto &pair : varTable){
-        ret[pair.first] = copyModuleFuncDecls(pair.second);
+        ret[pair.first()] = copyModuleFuncDecls(pair.second);
     }
     return ret;
 }
@@ -135,7 +135,7 @@ void appendModifiers(Node *n, shared_ptr<Node> &mods){
 
 void declareTypes(Compiler *c){
     for(auto &p : c->mergedCompUnits->userTypes){
-        string tyName = p.first;
+        string tyName = p.first();
         //auto *dt = c->lookupType(tyName);
         //if(!dt) continue;
 

@@ -25,7 +25,7 @@ namespace ante {
 
 //Global containing every module/file compiled
 //to avoid recompilation
-unordered_map<string, unique_ptr<Module>> allCompiledModules;
+llvm::StringMap<unique_ptr<Module>> allCompiledModules;
 
 //each mergedCompUnits is static in lifetime
 vector<unique_ptr<Module>> allMergedCompUnits;
@@ -740,15 +740,10 @@ TypedValue compVarDeclWithInferredType(VarDeclNode *node, Compiler *c){
 
 TypedValue VarDeclNode::compile(Compiler *c){
     //check for redeclaration, but only on topmost scope
-    Variable *redeclare;
-    try{
-        redeclare = c->varTable.back()->at(this->name).get();
-    }catch(out_of_range r){
-        redeclare = 0;
-    }
-
-    if(redeclare)
+    auto redeclare = c->varTable.back()->find(this->name);
+    if(redeclare != c->varTable.back()->end()){
         return c->compErr("Variable " + name + " was redeclared.", this->loc);
+    }
 
     //check for an inferred type
     if(!typeExpr.get())
@@ -1338,9 +1333,10 @@ TypedValue GlobalNode::compile(Compiler *c){
     for(auto &varName : vars){
         Variable *var;
         for(auto i = c->varTable.size(); i >= 1; --i){
-            try{
-                var = c->varTable[i-1]->at(varName->name).get();
-            }catch(out_of_range r){
+            auto it = c->varTable[i-1]->find(varName->name);
+            if(it != c->varTable[i-1]->end()){
+                var = it->getValue().get();
+            }else{
                 var = nullptr;
             }
         }
@@ -1550,19 +1546,21 @@ TypedValue MatchBranchNode::compile(Compiler *c){
 void ante::Module::import(ante::Module *mod){
     for(auto& pair : mod->fnDecls)
         for(auto& fd : pair.second)
-            fnDecls[pair.first].push_back(fd);
+            fnDecls[pair.first()].push_back(fd);
 
     for(auto& pair : mod->userTypes)
-        userTypes[pair.first] = pair.second;
+        userTypes[pair.first()] = pair.second;
 
     for(auto& pair : mod->traits)
-        traits[pair.first] = pair.second;
+        traits[pair.first()] = pair.second;
 }
 
 
 void Compiler::importFile(const char *fName, Node *locNode){
-    try{
-        auto *module = allCompiledModules.at(fName).get();
+    auto it = allCompiledModules.find(fName);
+
+    if(it != allCompiledModules.end()){
+        auto *import = it->getValue().get();
         string fmodName = removeFileExt(fName);
 
         for(auto &mod : imports){
@@ -1571,12 +1569,11 @@ void Compiler::importFile(const char *fName, Node *locNode){
                 return;
             }
         }
-
+        
         //module is already compiled; just copy the ptr to imports
-        imports.push_back(module);
-        mergedCompUnits->import(module);
-
-    }catch(out_of_range r){
+        imports.push_back(import);
+        mergedCompUnits->import(import);
+    }else{
         //module not found; create new Compiler instance to compile it
         auto c = make_unique<Compiler>(fName, true, ctxt);
         c->ctxt = ctxt;
@@ -1592,7 +1589,7 @@ void Compiler::importFile(const char *fName, Node *locNode){
         imports.push_back(c->compUnit);
         mergedCompUnits->import(c->compUnit);
 
-        allCompiledModules.emplace(fName, c->compUnit);
+        allCompiledModules.try_emplace(fName, c->compUnit);
     }
 }
 
@@ -1814,9 +1811,7 @@ void Compiler::compile(){
     compiled = true;
 
     //show other modules this is compiled
-    //
-    //FIXME: emplace can segfault if fileName is already a valid key in allCompiledModules
-    allCompiledModules.emplace(fileName, compUnit);
+    allCompiledModules.try_emplace(fileName, compUnit);
 
     if(errFlag){
         fputs("Compilation aborted.\n", stderr);
@@ -1987,7 +1982,7 @@ void TypedValue::dump() const{
 
 void Compiler::enterNewScope(){
     scope++;
-    auto *vtable = new unordered_map<string, unique_ptr<Variable>>();
+    auto *vtable = new llvm::StringMap<unique_ptr<Variable>>();
     varTable.emplace_back(vtable);
 }
 
@@ -2001,13 +1996,13 @@ void Compiler::exitScope(){
     //their lifetime, and insert calls to free for any that are found
     auto vtable = varTable.back().get();
 
-    for(auto it = vtable->cbegin(); it != vtable->cend(); it++){
-        if(it->second->isFreeable() && it->second->scope == this->scope){
+    for(auto &pair : *vtable){
+        if(pair.second->isFreeable() && pair.second->scope == this->scope){
             string freeFnName = "free";
             Function* freeFn = (Function*)getFunction(freeFnName, freeFnName).val;
 
-            auto *inst = dyn_cast<AllocaInst>(it->second->getVal());
-            auto *val = inst? builder.CreateLoad(inst) : it->second->getVal();
+            auto *inst = dyn_cast<AllocaInst>(pair.second->getVal());
+            auto *val = inst? builder.CreateLoad(inst) : pair.second->getVal();
 
             //cast the freed value to i32* as that is what free accepts
             Type *vPtr = freeFn->getFunctionType()->getFunctionParamType(0);
@@ -2023,11 +2018,11 @@ void Compiler::exitScope(){
 
 Variable* Compiler::lookup(string var) const{
     for(auto i = varTable.size(); i >= fnScope; --i){
-        try{
-            return varTable[i-1]->at(var).get();
-        }catch(out_of_range r){}
+        auto& vt = varTable[i-1];
+        auto it = vt->find(var);
+        if(it != vt->end())
+            return it->getValue().get();
     }
-
     return nullptr;
 }
 
@@ -2056,19 +2051,19 @@ void Compiler::stoTypeVar(string &name, AnType *ty){
 
 
 AnDataType* Compiler::lookupType(string tyname) const{
-    try{
-        return mergedCompUnits->userTypes.at(tyname);
-    }catch(out_of_range r){
-        return nullptr;
-    }
+    auto& ut = mergedCompUnits->userTypes;
+    auto it = ut.find(tyname);
+    if(it != ut.end())
+        return it->getValue();
+    return nullptr;
 }
 
 Trait* Compiler::lookupTrait(string tyname) const{
-    try{
-        return mergedCompUnits->traits.at(tyname).get();
-    }catch(out_of_range r){
-        return nullptr;
-    }
+    auto& ts = mergedCompUnits->traits;
+    auto it = ts.find(tyname);
+    if(it != ts.end())
+        return it->getValue().get();
+    return nullptr;
 }
 
 

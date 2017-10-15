@@ -6,6 +6,7 @@
 #include <memory>
 
 #include <llvm/IR/Module.h>
+#include <llvm/ADT/StringMap.h>
 
 #include "tokens.h"
 #include "parser.h"
@@ -301,15 +302,15 @@ namespace ante {
         friend AnFunctionType;
         friend AnDataType;
 
-        std::map<TypeTag,       std::unique_ptr<AnType>> primitiveTypes;
-        std::map<std::string,   std::unique_ptr<AnType>> otherTypes;
-        std::map<std::string,   std::unique_ptr<AnModifier>> modifiers;
+        std::map<TypeTag, std::unique_ptr<AnType>> primitiveTypes;
+        llvm::StringMap<std::unique_ptr<AnType>> otherTypes;
+        llvm::StringMap<std::unique_ptr<AnModifier>> modifiers;
         std::map<const AnType*, std::unique_ptr<AnPtrType>> ptrTypes;
-        std::map<std::string,   std::unique_ptr<AnArrayType>> arrayTypes;
-        std::map<std::string,   std::unique_ptr<AnTypeVarType>> typeVarTypes;
-        std::map<std::string,   std::unique_ptr<AnAggregateType>> aggregateTypes;
-        std::map<std::string,   std::unique_ptr<AnFunctionType>> functionTypes;
-        std::map<std::string,   std::unique_ptr<AnDataType>> declaredTypes;
+        llvm::StringMap<std::unique_ptr<AnArrayType>> arrayTypes;
+        llvm::StringMap<std::unique_ptr<AnTypeVarType>> typeVarTypes;
+        llvm::StringMap<std::unique_ptr<AnAggregateType>> aggregateTypes;
+        llvm::StringMap<std::unique_ptr<AnFunctionType>> functionTypes;
+        llvm::StringMap<std::unique_ptr<AnDataType>> declaredTypes;
 
     public:
         AnTypeContainer();

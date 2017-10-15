@@ -8,9 +8,10 @@
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/ExecutionEngine/MCJIT.h>
 #include <llvm/ExecutionEngine/ExecutionEngine.h>
+#include <llvm/ADT/StringMap.h>
+
 #include <string>
 #include <memory>
-#include <unordered_map>
 #include <list>
 #include "parser.h"
 #include "args.h"
@@ -196,24 +197,6 @@ namespace ante {
         std::vector<std::shared_ptr<FuncDecl>> funcs;
     };
 
-    /**
-    * @brief Contains information about a data type
-    *
-    struct DataType {
-        std::string name;
-        std::vector<std::string> fields;
-        std::vector<std::shared_ptr<UnionTag>> tags;
-        std::vector<std::shared_ptr<Trait>> traitImpls;
-
-        AnDataType* ty;
-        std::vector<AnType*> generics;
-
-        std::map<std::string,llvm::Type*> llvmTypes;
-
-        DataType(std::string n, const std::vector<std::string> &f, AnDataType *aty) : name(n), fields(f), ty(aty){}
-        ~DataType(){}
-    };*/
-
     struct Variable {
         std::string name;
 
@@ -294,18 +277,18 @@ namespace ante {
         /**
          * @brief Each declared function in the module
          */
-        std::unordered_map<std::string, std::vector<std::shared_ptr<FuncDecl>>> fnDecls;
+        llvm::StringMap<std::vector<std::shared_ptr<FuncDecl>>> fnDecls;
 
         /**
          * @brief Each declared DataType in the module
          */
-        std::unordered_map<std::string, AnDataType*> userTypes;
+        llvm::StringMap<AnDataType*> userTypes;
 
         /**
          * @brief Map of all declared traits; not including their implementations for a given type
          * Each DataType is reponsible for holding its own trait implementations
          */
-        std::unordered_map<std::string, std::shared_ptr<Trait>> traits;
+        llvm::StringMap<std::shared_ptr<Trait>> traits;
 
         /**
         * @brief Merges two modules
@@ -328,7 +311,7 @@ namespace ante {
         //Original object type node for managing self params and location info
         TypeNode *objTn;
 
-        std::map<std::string, AnType*> obj_bindings;
+        llvm::StringMap<AnType*> obj_bindings;
 
         //the continue and break labels of each for/while loop to jump out of
         //the pointer is swapped/nullified when a function is called to prevent
@@ -344,7 +327,7 @@ namespace ante {
      */
     struct CompilerCtCtxt {
         /** @brief Compile-time values stored using Ante.ctStore  */
-        std::map<std::string, TypedValue> ctStores;
+        llvm::StringMap<TypedValue> ctStores;
 
         /** @brief functions to run whenever a function is declared. */
         std::vector<std::shared_ptr<FuncDecl>> on_fn_decl_hook;
@@ -374,7 +357,7 @@ namespace ante {
          * @brief Stack of variables mapped to their identifier.
          * Maps are seperated according to their scope.
          */
-        std::vector<std::unique_ptr<std::unordered_map<std::string, std::unique_ptr<Variable>>>> varTable;
+        std::vector<std::unique_ptr<llvm::StringMap<std::unique_ptr<Variable>>>> varTable;
 
         std::unique_ptr<CompilerCtxt> compCtxt;
 
@@ -758,7 +741,7 @@ namespace ante {
     * @brief every single compiled module, even ones invisible to the current
     * compilation unit.  Prevents recompilation of modules and owns all Modules
     */
-    extern std::unordered_map<std::string, std::unique_ptr<Module>> allCompiledModules;
+    extern llvm::StringMap<std::unique_ptr<Module>> allCompiledModules;
     
     /**
     * @brief Every merged compilation units.  Each must not be freed until compilation
