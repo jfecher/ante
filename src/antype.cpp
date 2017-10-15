@@ -2,6 +2,7 @@
 #include "types.h"
 
 using namespace std;
+using namespace ante::parser;
 
 namespace ante {
 

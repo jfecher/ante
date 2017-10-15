@@ -9,6 +9,9 @@ namespace ante {
 
     FunctionListTCResults filterBestMatches(Compiler *c, std::vector<std::shared_ptr<FuncDecl>> &candidates, std::vector<AnType*> args);
     TypedValue compFnWithArgs(Compiler *c, FuncDecl *fd, std::vector<AnType*> args);
+
+    llvm::Type* parameterize(Compiler *c, AnType *t);
+    bool implicitPassByRef(AnType* t);
 }
 
 #endif

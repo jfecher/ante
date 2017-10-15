@@ -128,7 +128,7 @@ namespace ante {
     * instance for type checking.
     */
     struct FuncDecl {
-        std::shared_ptr<FuncDeclNode> fdn;
+        std::shared_ptr<parser::FuncDeclNode> fdn;
         std::string mangledName;
 
         unsigned int scope;
@@ -148,12 +148,12 @@ namespace ante {
             return fdn->name;
         }
 
-        FuncDecl(std::shared_ptr<FuncDeclNode> &fn, std::string &n, unsigned int s, Module *mod, TypedValue f) : fdn(fn), mangledName(n), scope(s), tv(f), type(0), module(mod), returns(){}
-        FuncDecl(std::shared_ptr<FuncDeclNode> &fn, std::string &n, unsigned int s, Module *mod) : fdn(fn), mangledName(n), scope(s), tv(), type(0), module(mod), returns(){}
+        FuncDecl(std::shared_ptr<parser::FuncDeclNode> &fn, std::string &n, unsigned int s, Module *mod, TypedValue f) : fdn(fn), mangledName(n), scope(s), tv(f), type(0), module(mod), returns(){}
+        FuncDecl(std::shared_ptr<parser::FuncDeclNode> &fn, std::string &n, unsigned int s, Module *mod) : fdn(fn), mangledName(n), scope(s), tv(), type(0), module(mod), returns(){}
         ~FuncDecl(){}
     };
 
-    TypeNode* mkAnonTypeNode(TypeTag);
+    parser::TypeNode* mkAnonTypeNode(TypeTag);
 
     /**
      * @brief A TypedValue of type TT_FunctionList is returned whenever there are
@@ -326,7 +326,7 @@ namespace ante {
         AnType *obj;
 
         //Original object type node for managing self params and location info
-        TypeNode *objTn;
+        parser::TypeNode *objTn;
 
         std::map<std::string, AnType*> obj_bindings;
 
@@ -358,7 +358,7 @@ namespace ante {
         std::unique_ptr<llvm::ExecutionEngine> jit;
         std::unique_ptr<llvm::legacy::FunctionPassManager> passManager;
         std::unique_ptr<llvm::Module> module;
-        std::unique_ptr<RootNode> ast;
+        std::unique_ptr<parser::RootNode> ast;
         llvm::IRBuilder<> builder;
 
         /** @brief functions and type definitions of current module */
@@ -403,7 +403,7 @@ namespace ante {
         * @param lib Set to true if this module should be compiled as a library
         * @param ctxt The LLVMContext shared from the parent Compiler
         */
-        Compiler(Compiler *c, Node *root, std::string modName, bool lib=false);
+        Compiler(Compiler *c, parser::Node *root, std::string modName, bool lib=false);
         ~Compiler();
 
         /** @brief Fully compiles a module into llvm bytecode */
@@ -450,7 +450,7 @@ namespace ante {
         * @brief Sweeps through parse tree registering all functions, type
         * declarations, and traits.
         */
-        void scanAllDecls(RootNode *n = 0);
+        void scanAllDecls(parser::RootNode *n = 0);
 
         /**
         * @brief Sets appropriate flags and executes operations specified by
@@ -471,11 +471,11 @@ namespace ante {
          *
          * @return The resulting add instruction
          */
-        TypedValue compAdd(TypedValue &l, TypedValue &r, BinOpNode *op);
-        TypedValue compSub(TypedValue &l, TypedValue &r, BinOpNode *op);
-        TypedValue compMul(TypedValue &l, TypedValue &r, BinOpNode *op);
-        TypedValue compDiv(TypedValue &l, TypedValue &r, BinOpNode *op);
-        TypedValue compRem(TypedValue &l, TypedValue &r, BinOpNode *op);
+        TypedValue compAdd(TypedValue &l, TypedValue &r, parser::BinOpNode *op);
+        TypedValue compSub(TypedValue &l, TypedValue &r, parser::BinOpNode *op);
+        TypedValue compMul(TypedValue &l, TypedValue &r, parser::BinOpNode *op);
+        TypedValue compDiv(TypedValue &l, TypedValue &r, parser::BinOpNode *op);
+        TypedValue compRem(TypedValue &l, TypedValue &r, parser::BinOpNode *op);
 
         /**
          * @brief Compiles an extract operation such as array#index
@@ -488,7 +488,7 @@ namespace ante {
          *
          * @return The result of the extraction
          */
-        TypedValue compExtract(TypedValue &l, TypedValue &r, BinOpNode *op);
+        TypedValue compExtract(TypedValue &l, TypedValue &r, parser::BinOpNode *op);
 
         /**
          * @brief Compiles an insert operation such as array#index = 2
@@ -498,7 +498,7 @@ namespace ante {
          *
          * @return A void literal
          */
-        TypedValue compInsert(BinOpNode *insertOp, Node *assignExpr);
+        TypedValue compInsert(parser::BinOpNode *insertOp, parser::Node *assignExpr);
 
         /**
          * @brief Compiles a named member access such as str.len
@@ -509,9 +509,9 @@ namespace ante {
          *
          * @return The extracted field or method
          */
-        TypedValue compMemberAccess(Node *ln, VarNode *field, BinOpNode *binop);
-        TypedValue compLogicalOr(Node *l, Node *r, BinOpNode *op);
-        TypedValue compLogicalAnd(Node *l, Node *r, BinOpNode *op);
+        TypedValue compMemberAccess(parser::Node *ln, parser::VarNode *field, parser::BinOpNode *binop);
+        TypedValue compLogicalOr(parser::Node *l, parser::Node *r, parser::BinOpNode *op);
+        TypedValue compLogicalAnd(parser::Node *l, parser::Node *r, parser::BinOpNode *op);
 
         /**
          * @brief Reports a message and highlights the relevant source lines.
@@ -537,7 +537,7 @@ namespace ante {
         *        Usually the ImportNode importing the file.  Used for
         *        error reporting.
         */
-        void importFile(const char *name, Node* locNode = 0);
+        void importFile(const char *name, parser::Node* locNode = 0);
 
         /** @brief Sets the tv of the FuncDecl specified to the value of f */
         void updateFn(TypedValue &f, FuncDecl *fd, std::string &name, std::string &mangledName);
@@ -609,7 +609,7 @@ namespace ante {
          * stores that.  Will fail if there is another function
          * with a matching mangledName declared.
          */
-        void registerFunction(FuncDeclNode *func, std::string &mangledName);
+        void registerFunction(parser::FuncDeclNode *func, std::string &mangledName);
 
         /*
          * @brief Returns the current scope of the block compiling.
@@ -791,10 +791,10 @@ namespace ante {
     *
     * @return The nth node from the list
     */
-    Node* getNthNode(Node *node, size_t n);
+    parser::Node* getNthNode(parser::Node *node, size_t n);
 
     /** @brief Counts the amount of Nodes in the list */
-    size_t getTupleSize(Node *tup);
+    size_t getTupleSize(parser::Node *tup);
 
     /** @brief Converts the Node list argument into a vector */
     template<typename T> std::vector<T*> vectorize(T *args);
@@ -803,10 +803,10 @@ namespace ante {
     std::vector<AnType*> toTypeVector(std::vector<TypedValue> &tvs);
 
     std::string mangle(std::string &base, std::vector<AnType*> params);
-    std::string mangle(std::string &base, std::shared_ptr<NamedValNode> &paramTys);
-    std::string mangle(std::string &base, TypeNode *paramTys);
-    std::string mangle(std::string &base, TypeNode *p1, TypeNode *p2);
-    std::string mangle(std::string &base, TypeNode *p1, TypeNode *p2, TypeNode *p3);
+    std::string mangle(std::string &base, std::shared_ptr<parser::NamedValNode> &paramTys);
+    std::string mangle(std::string &base, parser::TypeNode *paramTys);
+    std::string mangle(std::string &base, parser::TypeNode *p1, parser::TypeNode *p2);
+    std::string mangle(std::string &base, parser::TypeNode *p1, parser::TypeNode *p2, parser::TypeNode *p3);
 
     std::string removeFileExt(std::string file);
 

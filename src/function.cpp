@@ -1,6 +1,8 @@
 #include "function.h"
+
 using namespace std;
 using namespace llvm;
+using namespace ante::parser;
 
 namespace ante {
 
@@ -9,12 +11,6 @@ namespace ante {
  * - returns pointers to tuple types
  * - returns pointers to array types
  */
-Type* parameterize(Type *t, const TypeNode *tn){
-    if(t->isArrayTy()) return t->getPointerTo();
-    if(tn->hasModifier(Tok_Mut)) return t->getPointerTo();
-    return t;
-}
-
 Type* parameterize(Compiler *c, AnType *t){
     if(t->typeTag == TT_Array) return c->anTypeToLlvmType(t)->getPointerTo();
     if(t->hasModifier(Tok_Mut)) return c->anTypeToLlvmType(t)->getPointerTo();
@@ -87,8 +83,8 @@ vector<Type*> getParamTypes(Compiler *c, FuncDecl *fd){
             //Throw an error if that check was somehow bypassed
             c->compErr("Stray self parameter", nvn->loc);
         }else if(paramTyNode){
-            auto *type = c->anTypeToLlvmType(toAnType(c, paramTyNode));
-            auto *correctedType = parameterize(type, paramTyNode);
+            auto *antype = toAnType(c, paramTyNode);
+            auto *correctedType = parameterize(c, antype);
             paramTys.push_back(correctedType);
         }else{
             paramTys.push_back(0); //terminating null = varargs function

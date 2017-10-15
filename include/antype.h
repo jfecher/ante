@@ -82,7 +82,7 @@ namespace ante {
 
         public:
         std::vector<TokenType> modifiers;
-        std::vector<std::unique_ptr<PreProcNode>> compilerDirectives;
+        std::vector<std::unique_ptr<parser::PreProcNode>> compilerDirectives;
         
         static AnModifier* get(std::vector<TokenType> modifiers);
     };
@@ -99,7 +99,7 @@ namespace ante {
         static AnAggregateType* get(TypeTag t, std::vector<AnType*> types, AnModifier *m = nullptr);
 
         /** @brief Get a function type. */
-        static AnAggregateType* get(AnType* retty, NamedValNode* params, AnModifier *m = nullptr);
+        static AnAggregateType* get(AnType* retty, parser::NamedValNode* params, AnModifier *m = nullptr);
         
         AnAggregateType* addModifier(TokenType m) override;
         AnAggregateType* setModifier(AnModifier *m) override;
@@ -178,7 +178,7 @@ namespace ante {
         AnType *retTy;
 
         static AnFunctionType* get(AnType *retTy, const std::vector<AnType*> elems, bool isMetaFunction = false, AnModifier *m = nullptr);
-        static AnFunctionType* get(Compiler *c, AnType* retty, NamedValNode* params, bool isMetaFunction = false, AnModifier *m = nullptr);
+        static AnFunctionType* get(Compiler *c, AnType* retty, parser::NamedValNode* params, bool isMetaFunction = false, AnModifier *m = nullptr);
         
         AnFunctionType* addModifier(TokenType m) override;
         AnFunctionType* setModifier(AnModifier *m) override;

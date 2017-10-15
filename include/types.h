@@ -16,8 +16,8 @@ namespace ante {
     std::string anTypeToStr(const AnType *t);
     lazy_str anTypeToColoredStr(const AnType *t);
     
-    std::string typeNodeToStr(const TypeNode *t);
-    lazy_str typeNodeToColoredStr(const TypeNode *t);
+    std::string typeNodeToStr(const parser::TypeNode *t);
+    lazy_str typeNodeToColoredStr(const parser::TypeNode *t);
 
     std::vector<std::pair<std::string, AnType*>>
     filterMatchingBindings(const AnDataType *dt, const std::vector<std::pair<std::string, AnType*>> &bindings);
@@ -30,7 +30,7 @@ namespace ante {
     llvm::Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt, bool force = false);
 
     //conversions
-    AnType* toAnType(Compiler *c, const TypeNode *tn);
+    AnType* toAnType(Compiler *c, const parser::TypeNode *tn);
 
     llvm::Type* typeTagToLlvmType(TypeTag tagTy, llvm::LLVMContext &c);
     TypeTag llvmTypeToTypeTag(llvm::Type *t);
@@ -39,7 +39,7 @@ namespace ante {
     bool llvmTypeEq(llvm::Type *l, llvm::Type *r);
 
     //typevar utility functions
-    void validateType(Compiler *c, const AnType* tn, const DataDeclNode* rootTy);
+    void validateType(Compiler *c, const AnType* tn, const parser::DataDeclNode* rootTy);
     void validateType(Compiler *c, const AnType *tn, const AnDataType *dt);
     AnType* extractTypeValue(const TypedValue &tv);
     AnType* bindGenericToType(Compiler *c, AnType *tn, const std::vector<std::pair<std::string, AnType*>> &bindings);

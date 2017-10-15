@@ -9,7 +9,7 @@ namespace ante {
 
     llvm::GenericValue typedValueToGenericValue(Compiler *c, TypedValue &tv);
     std::vector<llvm::GenericValue> typedValuesToGenericValues(Compiler *c, std::vector<TypedValue> &typedArgs, LOC_TY loc, std::string fnname);
-    TypedValue genericValueToTypedValue(Compiler *c, llvm::GenericValue gv, TypeNode *tn);
+    TypedValue genericValueToTypedValue(Compiler *c, llvm::GenericValue gv, parser::TypeNode *tn);
 }
 
 #endif

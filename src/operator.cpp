@@ -9,6 +9,7 @@
 
 using namespace std;
 using namespace llvm;
+using namespace ante::parser;
 
 namespace ante {
 
@@ -1580,6 +1581,9 @@ TypedValue checkForOperatorOverload(Compiler *c, TypedValue &lhs, int op, TypedV
 
     lhs = typeCheckWithImplicitCasts(c, lhs, param1);
     rhs = typeCheckWithImplicitCasts(c, rhs, param2);
+
+    if(implicitPassByRef(param1)) lhs = addrOf(c, lhs);
+    if(implicitPassByRef(param2)) rhs = addrOf(c, rhs);
 
     vector<Value*> argVals = {lhs.val, rhs.val};
     return TypedValue(c->builder.CreateCall(fn.val, argVals), fnty->getFunctionReturnType());

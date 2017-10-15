@@ -1,6 +1,7 @@
 #include <types.h>
 using namespace std;
 using namespace llvm;
+using namespace ante::parser;
 
 namespace ante {
 

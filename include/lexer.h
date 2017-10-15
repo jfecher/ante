@@ -8,9 +8,9 @@
 #include <stack>
 #include <map>
 
-namespace ante { struct Node; }
+namespace ante { namespace parser { struct Node; } }
 #ifndef YYSTYPE
-#  define YYSTYPE ante::Node*
+#  define YYSTYPE ante::parser::Node*
 #endif
 #include "yyparser.h"
 

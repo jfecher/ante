@@ -11,8 +11,9 @@
 #include <iostream>
 #include <llvm/Support/TargetRegistry.h>
 
-using namespace ante;
 using namespace std;
+using namespace ante;
+using namespace ante::parser;
 
 /**
  * @brief Parses a file and prints the resulting parse tree

@@ -38,6 +38,16 @@ fun print: Node* l
     | Some n -> print n
 
 
+fun (++): i32 l r =
+    var list = List l
+    append list r
+    list
+
+fun (++): mut List<i32> l, i32 r =
+    append l r
+    l
+
+
 var head = List 0
 
 append head 1
@@ -45,3 +55,7 @@ append head 2
 append head 3
 
 print head
+
+//Same as above, but using ++
+let l = 0 ++ 1 ++ 2 ++ 3
+print l

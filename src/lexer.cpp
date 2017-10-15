@@ -264,12 +264,14 @@ char Lexer::peek() const{
     return cur;
 }
 
-namespace ante {
-    yy::position mkPos(string*, unsigned int, unsigned int);
+namespace ante{
+    namespace parser{
+        yy::position mkPos(string*, unsigned int, unsigned int);
+    }
 }
 
 yy::position Lexer::getPos(bool inclusiveEnd) const{
-    return mkPos(fileName, row + rowOffset, col + colOffset -
+    return parser::mkPos(fileName, row + rowOffset, col + colOffset -
                 (inclusiveEnd ? 0 : 1));
 }
 

@@ -2,9 +2,10 @@
 #include "types.h"
 #include "jitlinker.h"
 
-using namespace ante;
 using namespace std;
 using namespace llvm;
+using namespace ante;
+using namespace ante::parser;
 
 /* Provide a callable C API from ante */
 extern "C" {

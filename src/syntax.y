@@ -14,8 +14,9 @@
 
 #include "yyparser.h"
 #include <cstring>
-using namespace ante;
 using namespace std;
+using namespace ante;
+using namespace ante::parser;
 
 /* Defined in lexer.cpp */
 extern int yylex(yy::parser::semantic_type*, yy::location*);
@@ -24,7 +25,7 @@ namespace ante {
     extern string typeNodeToStr(const TypeNode*);
     extern string mangle(std::string &base, NamedValNode *paramTys);
 
-    struct TypeNode;
+    namespace parser { struct TypeNode; }
 }
 
 Node* externCName(Node *n);
