@@ -700,6 +700,7 @@ namespace ante {
         return dt;
     }
 
+    //Constructor for AnTypeContainer, initializes all primitive types beforehand
     AnTypeContainer::AnTypeContainer(){
         typeArena.primitiveTypes[TT_I8].reset(new AnType(TT_I8, false, nullptr));
         typeArena.primitiveTypes[TT_I16].reset(new AnType(TT_I16, false, nullptr));
