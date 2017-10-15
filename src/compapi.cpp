@@ -50,9 +50,11 @@ extern "C" {
 
     TypedValue* Ante_ctLookup(Compiler *c, TypedValue &nameTv){
         char *name = (char*)typedValueToGenericValue(c, nameTv).PointerVal;
-        try{
-            return new TypedValue(c->ctCtxt->ctStores.at(name));
-        }catch(out_of_range r){
+
+        auto t = c->ctCtxt->ctStores.lookup(name);
+        if(!!t)
+            return new TypedValue(t);
+        else{
             cerr << "error: ctLookup: Cannot find var '" << name << "'\n";
             throw new CtError();
         }
