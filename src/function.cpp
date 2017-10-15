@@ -591,7 +591,7 @@ TypedValue Compiler::compFn(FuncDecl *fd){
     auto *breakLabels = compCtxt->breakLabels.release();
     compCtxt->continueLabels = llvm::make_unique<vector<BasicBlock*>>();
     compCtxt->breakLabels = llvm::make_unique<vector<BasicBlock*>>();
-    int callingFnScope = fnScope;
+    size_t callingFnScope = fnScope;
 
     enterNewScope();
     fnScope = scope;
