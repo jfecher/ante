@@ -27,7 +27,7 @@ the ability to interact at a lower level if needed.
 * Strongly typed with a detailed algebraic type system and type inferencing
 * Ability to write compiler plugins within the compiled program itself
 type and issue a compile-time error if it is invalidated
-    -  Extremely diverse and powerful compile-time analysis that can be custom programmed into
+    -  Diverse and powerful compile-time analysis that can be custom programmed into
 any datatype creating eg. iterator invalidation, pointer-autofree, or even an ownership system.
 The implementation of these features resembles that of a compiler plugin, except that it is written
 into the compiled module itself.
