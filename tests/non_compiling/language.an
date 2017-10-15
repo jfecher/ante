@@ -725,28 +725,6 @@ var ptr = i32* malloc 4
 
 
 /*
-        { and }
-        The curly brackets function as complete replacements for the whitespace
-    sensitive syntax.  Curly brackets are automatically matched like indentation
-    levels are, but also contain no significant whitespace inside them, meaning 
-    if any code were to be used with { and } that requires indented blocks, like 
-    functions, { and } must be recursively used.  In this way, { and } closely 
-    match their usage in C-like languages, and are intended for those who cannot 
-    use significant whitespace for some reason or another.
-*/
-
-fun inefficientAdd: i32 a b -> i32 {
-    if b == 0 then {
-        a
-    }elif b < 0 then {
-        inefficientAdd (a-1) (b+1)
-    }elif b > 0 then {
-        inefficientAdd (a+1) (b-1)
-    }
-}
-
-
-/*
         Data declarations
     In ante, all datatypes are declared through the 'type' keyword which binds a 
     name to a type expression.  This binding must begin with a capital letter 
@@ -799,7 +777,7 @@ let i32,i32 p1 p2 p3 = (0, 0)
 
 
 /*
-        Ranges and Type Conditions
+        Ranges
     Ranges are denoted by start and end values surrounded by the .. operator.
     Ranges declared in this fashion have an inclusive startpoint and exclusive
     endpoint.  To declare ranges with an exclusive startpoint, use ^.. likewise,
@@ -866,48 +844,12 @@ if "test" in (5, 6.5, "test") then
     print "Got it!"
 
 /*
-    Type Conditions are signified with the where keyword and provide a concise way to
-    verify the value of a variable.  Where is always followed by the boolean expression
-    to be checked.
-*/
-type Teen =
-    u8 age  in 10 .. 19
-    Str name  where name.length > 0
-
-let john = Teen(15, "John Brown")
-
-//TypeConditionErr
-let sara = Teen(18, "")
-
-
-//Create a datatype TwoDigits that represents a number that is between
-//10 and 99 inclusive.
-type TwoDigits =
-    u8 in 10..99
-
-let td1 = TwoDigits 32 //Good!
-let td2 = TwoDigits 100 //RangeErr
-
-
-//Type conditions with anonymous fields:
-type LongStr =
-    Str where this.length > 10
-
-//Type conditions are evaluated whenever the corresponding field is changed.
-type Q2Coord =
-    i32 where this#0 < 0
-    i32 where this#1 > 0
-
-var q = Q2Coord(-4, 5)
-q#0 = 2 //where this#0 < 0 is evaluated, and a TypeConditionErr is thrown.
-
-/*
-        Classes
+        Class-like struct
     Class-like data structures can be declared by simply adding methods to the type's namespace.
     These methods are associated methods and do not add to the size of the datatype, but are
-    linked to it at compile-time.  These methods are each within a namespace that is the name
-    of the datatype, but cannot be accessed without an initialization of the datatype if they
-    take self or self* as a parameter.
+    statically linked to it at compile-time.  These methods are each within a namespace that matches
+    the name of the datatype, but cannot be accessed without an initialization of the datatype if they
+    take self as a parameter.
 */
 type Animal =
     u16 age
@@ -1042,54 +984,20 @@ fun add: 't a, 'u b =
     a + b
 
 
-//The syntax for type specifications in a class is to surround them in < and >.
-//In the Angle class, each time it is initialized, a bool is specified as true if the
-//angle is in radians, false otherwise.  This determines how Angle is compiled and
-//cannot be changed after initialization.
-type Angle<bool isRadians> =
-    f64 angle
-
-    if isRadians then
-        fun getQuadrant: self* -> u8
-            u8(self.angle / (3.14159265 / 4) % 4 + 1)
-    else
-        fun getQuadrant: self* -> u8
-            u8(self.angle / 90 % 4 + 1)
-//usage:
-let a1 = Angle<true>  (3.14159265 * 2 / 3)
-let a2 = Angle<false> 120
-assert(a1.getQuadrent() == a2.getQuadrent())
-
 /*
-    The use of type specifications eliminates the need to store excess metadata about
-    the object to be checked each time a function runs as well as encouraging classes
-    to be more specialized without having several copies of otherwise very similar
-    classes, eg. having a AngleDegrees and AngleRadians class seperate then having
-    to worry about them interacting properly.  In this usage, type specifications
-    act by creating a parent class Angle, and two child classes, Angle<true>, and
-    Angle<False>, which correspond to AngleRadians and AngleDegrees.
+    To create a generic type, add a type variable after the classname
 */
-
-
-/*
-    To have a data structure with a member of variable type, type variables can also
-    be used.
-
-    NOTE: Ante implements smart pointers by default, so this class is meant to show
-          how one could be implemented without this feature (eg. if it disabled).
-*/
-type MySmartPtr =
+type MySmartPtr 't =
     't* rawPtr
     pri u16* refCount
 
 
-ext MySmartPtr: Clone
-    fun (new): 't val
+ext MySmartPtr 't: Clone
+    fun init: 't val = MySmartPtr where
         rawPtr = new val
         refCount = new 0u16
 
-    !on_delete
-    fun del:
+    fun del: self
         if @refCount == 0 then
             free refCount
             free rawPtr
@@ -1098,36 +1006,10 @@ ext MySmartPtr: Clone
 
     //Required by Clone trait
     fun clone: self -> MySmartPtr
-        let clone = (rawPtr, refCount)
+        let clone = MySmartPtr(rawPtr, refCount)
         @self.rawPtr += 1
+        clone
 
-        //Although clone is an anonymous tuple-type, since Ante uses structural
-        //equivalence, and MySmartPtr can be comprised of the same types, it is accepted.
-        return clone
-
-
-//where can also be used to check the type specification
-type ChessPiece piece =
-    u8 x y
-
-    assert(piece in ["pawn", "knight", "king"])
-
-fun ChessPiece.validateMove: u8 x2 y2 -> bool
-    if piece == "pawn" then
-        x == x2 and abs(y - y2) == 1
-
-    elif piece == "knight" then
-        if abs(x - x2) == 1 then
-            abs(y - y2) == 2
-        else
-            abs(x - x2) == 2 and abs(y - y2) == 1
-    
-    elif piece == "king" then
-        abs(x - x2) <= 1 and abs(y - y2) <= 1
-
-
-let knight = ChessPiece<"knight">(2, 3)
-assert(knight.validateMove 3 5)
 
 /*
         Operator Overloading
@@ -1325,7 +1207,7 @@ fun nan: f64 flt =
 //it does not need to be bound.
 match 57.0 with
 | one n -> print "${n} is positive!"
-| neg -> print "${n} is negative!"
+| neg n -> print "${n} is negative!"
 | NaN -> print "NaN!"
 
 /*
@@ -1560,33 +1442,32 @@ assert(doOperation fnPtr == 1.5)
 */
 
 //declare a type str that can be a char array of any size
-type Str = [c8] | [c32]
+type Str =
+   | Small [c8]
+   | Large [c32]
+
+let small = Small "string"
 
 //declare a type coord that can be an integer or float tuple
-//NOTE: the precedence of | is greater than that of ,
-type Coord = (i32, i32) | (f64, f64)
+type Coord =
+   | Ints (i32, i32)
+   | Flts (f64, f64)
 
+let ic = Ints(2, 4)
+
+//declare a generic type Maybe that can either hold Some value,
+//or hold nothing
 type Maybe 't =
    | Some 't
    | None
 
-//declare a list type that is a tuple with two indices, the first
-//being the value type, and the second being the next List node.
-type TList = 't, Maybe<List<'t>*>
+let someint = Some 4
+let none = None
 
-//alternatively, type declarations can name each member of the
-//tuple, mimicking a struct.
-type List =
-    't val
-    Maybe<List<'t>*> next
-
-type Vec =
-    ['t] mem
-    u32 len
-    u32 cap
-
-let numsList = List(Some 1, &(Some 2, &(Some 3, None)))
-
+//Lists can either be empty or have an element and another List
+type List 't =
+   | Empty
+   | Cons ('t, List 't)*
 
 
 /*
@@ -1605,18 +1486,21 @@ ext MyErr: Error
     fun desc: self =
         "MyErr: " ++ self.msg
 
+type Result 't 'e =
+   | Ok 't
+   | Err 'e
 
 //This function takes three parameters: two i32s and
 //a function that can return a Str or StrErr
-fun errFunc: i32 a b, i32->(Str|Err) fn -> i32|MyErr
+fun errFunc: i32 a b, i32->Result Str Err fn -> Result i32 MyErr
     //Try to open a file, and if no FileErr is found
     //Then write Just a test, otherwise wrap the error
     //In type MyErr (using Error -> MyErr), and return it.
     openFile "test"?.write "Just a test"
 
     // ? can also be chained
-    Parser.parseI32 "32"?.map fn?.show()
-    1
+    i32.parse "32"?.map fn?.show()
+    Ok 1
 
 
 //At the callsite, matches are used for error handling in expressions
