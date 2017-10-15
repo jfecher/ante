@@ -46,9 +46,10 @@ namespace ante {
         AnType(TypeTag id, bool ig, AnModifier *m) :
             typeTag(id), isGeneric(ig), mods(m){}
 
+    public:
+
         ~AnType() = default;
 
-    public:
         TypeTag typeTag;
         bool isGeneric;
 
@@ -111,9 +112,10 @@ namespace ante {
         AnModifier(std::vector<TokenType> mods) :
             modifiers(mods){}
 
+        public:
+
         ~AnModifier() = default;
 
-        public:
         /** Builtin modifiers such as TT_Mut and TT_Global */
         std::vector<TokenType> modifiers;
 
@@ -130,9 +132,10 @@ namespace ante {
         AnAggregateType(TypeTag ty, const std::vector<AnType*> exts, AnModifier *m) :
                 AnType(ty, ante::isGeneric(exts), m), extTys(exts) {}
 
+        public:
+
         ~AnAggregateType() = default;
 
-        public:
         /** The constituent types of this aggregate type. */
         std::vector<AnType*> extTys;
 
@@ -157,9 +160,10 @@ namespace ante {
         AnArrayType(AnType* ext, size_t l, AnModifier *m) :
             AnType(TT_Array, ext->isGeneric, m), extTy(ext), len(l) {}
 
+        public:
+
         ~AnArrayType() = default;
 
-        public:
         /** The element type of this array. */
         AnType *extTy;
 
@@ -185,9 +189,10 @@ namespace ante {
         AnPtrType(AnType* ext, AnModifier *m) :
             AnType(TT_Ptr, ext->isGeneric, m), extTy(ext){}
 
+        public:
+
         ~AnPtrType() = default;
 
-        public:
         /** The type being pointed to. */
         AnType *extTy;
 
@@ -211,9 +216,10 @@ namespace ante {
         AnTypeVarType(std::string &n, AnModifier *m) :
             AnType(TT_TypeVar, true, m), name(n){}
 
+        public:
+
         ~AnTypeVarType() = default;
 
-        public:
         std::string name;
 
         static AnTypeVarType* get(std::string name, AnModifier *m = nullptr);
@@ -235,9 +241,10 @@ namespace ante {
         AnFunctionType(AnType *ret, std::vector<AnType*> elems, bool isMetaFunction, AnModifier *m) :
             AnAggregateType(isMetaFunction ? TT_MetaFunction : TT_Function, elems, m), retTy(ret){}
 
+        public:
+
         ~AnFunctionType() = default;
 
-        public:
         AnType *retTy;
 
         static AnFunctionType* get(AnType *retTy, const std::vector<AnType*> elems, bool isMetaFunction = false, AnModifier *m = nullptr);
@@ -275,10 +282,11 @@ namespace ante {
         AnDataType(std::string &n, const std::vector<AnType*> elems, bool isUnion, AnModifier *m) :
             AnAggregateType(isUnion ? TT_TaggedUnion : TT_Data, elems, m), name(n), fields(), tags(),
             traitImpls(), unboundType(0), variants(), parentUnionType(0), boundGenerics(), llvmType(0){}
-        
-        ~AnDataType() = default;
 
         public:
+
+        ~AnDataType() = default;
+
         std::string name;
 
         /** Names of each field. */
