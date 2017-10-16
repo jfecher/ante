@@ -82,7 +82,7 @@ fun i64.print: i64 x
 
 !inline
 fun isz.print: isz x
-    printf "%ld\n" x
+    printf "%zi\n" x
 
 //unsigned
 !inline
@@ -103,7 +103,7 @@ fun u64.print: u64 x
 
 !inline
 fun usz.print: usz x
-    printf "%lu\n" x
+    printf "%zu\n" x
 
 //floats
 !inline
