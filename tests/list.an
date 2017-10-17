@@ -1,21 +1,21 @@
 
-type Maybe!'t =
+type Maybe 't =
    | Some 't
    | None
 
-type List<'t> = Maybe<Node<'t>*> first, Maybe<Node<'t>*> last
+type List 't = Maybe((Node 't)*) first, Maybe((Node 't)*) last
 
-type Node<'t> = 't elem, Maybe<Node<'t>*> next
+type Node 't = 't elem, Maybe((Node 't)*) next
 
-fun Node<'t>.init: 't elem -> Node!'t
+fun Node 't.init: 't elem -> Node 't
     Node(elem, None)
 
-fun List<'t>.init: 't elem -> List!'t
+fun List 't.init: 't elem -> List 't
     let n = new Node elem
     List(Some n, Some n)
 
 
-fun append: mut List<'t> l, 't elem
+fun append: mut List 't l, 't elem
     let n = new Node elem
 
     match l.last with
@@ -43,7 +43,7 @@ fun (++): i32 l r =
     append list r
     list
 
-fun (++): mut List<i32> l, i32 r =
+fun (++): mut List i32 l, i32 r =
     append l r
     l
 

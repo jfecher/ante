@@ -153,7 +153,7 @@ void yyerror(const char *msg);
 %nonassoc HIGH
 %nonassoc '{'
 
-%expect 0
+/*%expect 0*/
 %start begin
 %%
 
@@ -249,18 +249,20 @@ arr_type: '[' val type_expr ']' {$3->next.reset($2);
 tuple_type: '(' type_expr ')'  {$$ = $2;}
           ;
 
-generic_type: type '!' type           {$$ = $1; ((TypeNode*)$1)->params.push_back(unique_ptr<TypeNode>((TypeNode*)$3));}
-            | type '<' type_expr_ '>' {$$ = $1; ((TypeNode*)$1)->params = concat(move(((TypeNode*)$1)->params), getRoot());}
-            | generic_type '!' type   {$$ = $1; ((TypeNode*)$1)->params.push_back(unique_ptr<TypeNode>((TypeNode*)$3));}
+generic_type: type type           %prec STMT    {$$ = $1; ((TypeNode*)$1)->params.push_back(unique_ptr<TypeNode>((TypeNode*)$2));}
+            | generic_type type   %prec STMT    {$$ = $1; ((TypeNode*)$1)->params.push_back(unique_ptr<TypeNode>((TypeNode*)$2));}
             ;
 
-type: pointer_type  %prec STMT  {$$ = $1;}
-    | arr_type      %prec STMT  {$$ = $1;}
-    | fn_type       %prec STMT  {$$ = $1;}
-    | lit_type      %prec STMT  {$$ = $1;}
-    | generic_type  %prec STMT  {$$ = $1;}
-    | tuple_type    %prec STMT  {$$ = $1;}
+type: non_generic_type %prec STMT  {$$ = $1;}
+    | generic_type     %prec STMT  {$$ = $1;}
     ;
+
+non_generic_type: pointer_type  %prec STMT  {$$ = $1;}
+                | arr_type      %prec STMT  {$$ = $1;}
+                | fn_type       %prec STMT  {$$ = $1;}
+                | lit_type      %prec STMT  {$$ = $1;}
+                | tuple_type    %prec STMT  {$$ = $1;}
+                ;
 
 type_expr_: type_expr_ ',' type  %prec MED {$$ = setNext($1, $3);}
           | type                 %prec MED {$$ = setRoot($1);}
@@ -349,16 +351,11 @@ trait_fn: modifier_list Fun fn_name ':' params RArrow type_expr   {$$ = mkFuncDe
         ;
 
 
-typevar_list: typevar_list '!' typevar  {$$ = setNext($1, mkTypeNode(@3, TT_TypeVar, (char*)$3)); free($3);}
-            | '!' typevar               {$$ = setRoot(mkTypeNode(@$, TT_TypeVar, (char*)$2)); free($2);}
-            ;
+type_list: type_list type  %prec LOW  {$$ = setNext($1, $2);}
+         | type            %prec LOW  {$$ = setRoot($1);}
+         ;
 
-typevar_list_comma: typevar_list_comma ',' typevar  {$$ = setNext($1, mkTypeNode(@3, TT_TypeVar, (char*)$3)); free($3);}
-                  | typevar                         {$$ = setRoot(mkTypeNode(@$, TT_TypeVar, (char*)$1)); free($1);}
-                  ;
-
-generic_params: typevar_list               {$$ = getRoot();}
-              | '<' typevar_list_comma '>' {$$ = getRoot();}
+generic_params: type_list  %prec LOW {$$ = getRoot();}
               ;
 
 
@@ -635,12 +632,20 @@ array: '[' expr_list ']' {$$ = mkArrayNode(@$, $2);}
      ;
 
 
-unary_op: '@' expr_with_decls                    {$$ = mkUnOpNode(@$, '@', $2);}
-        | '&' expr_with_decls                    {$$ = mkUnOpNode(@$, '&', $2);}
-        | New expr_with_decls                    {$$ = mkUnOpNode(@$, Tok_New, $2);}
-        | Not expr_with_decls                    {$$ = mkUnOpNode(@$, Tok_Not, $2);}
-        | type_expr expr_with_decls  %prec TYPE  {$$ = mkTypeCastNode(@$, $1, $2);}
+unary_op: '@' expr_with_decls                              {$$ = mkUnOpNode(@$, '@', $2);}
+        | '&' expr_with_decls                              {$$ = mkUnOpNode(@$, '&', $2);}
+        | New expr_with_decls                              {$$ = mkUnOpNode(@$, Tok_New, $2);}
+        | Not expr_with_decls                              {$$ = mkUnOpNode(@$, Tok_Not, $2);}
+        | non_generic_type expr_with_decls      %prec TYPE {$$ = mkTypeCastNode(@$, $1, $2);}
+        | explicit_generic_type expr_with_decls %prec TYPE {$$ = mkTypeCastNode(@$, $1, $2);}
         ;
+
+explicit_generic_type: non_generic_type '<' type_list '>'    %prec TYPE {$$ = $1; ((TypeNode*)$1)->params = toOwnedVec(getRoot());}
+                     ;
+
+type_list: type_list ',' type  %prec TYPE {$$ = setNext($1, $3);}
+         | type                %prec TYPE {$$ = setRoot($1);}
+         ;
 
 preproc: '!' '[' bound_expr ']'  {$$ = mkPreProcNode(@$, $3);}
        | '!' var                 {$$ = mkPreProcNode(@$, $2);}
