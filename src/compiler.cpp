@@ -1715,6 +1715,11 @@ TypedValue mergeAndCompile(Compiler *c, RootNode *rn){
         safeCompile(c, t);
         c->ast->extensions.emplace_back(move(t));
     }
+    
+    for(auto &t : rn->funcs){
+        safeCompile(c, t);
+        c->ast->funcs.emplace_back(move(t));
+    }
 
     TypedValue ret;
     for(auto &e : rn->main){
