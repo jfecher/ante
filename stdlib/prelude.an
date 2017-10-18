@@ -62,6 +62,9 @@ type Str = c8* cStr, usz len
 //Note: ctError never returns
 !meta fun Ante.ctError: c8* msg;
 
+//dumps llvm-ir to stdout
+!meta fun Ante.emitIR:;
+
 
 //numerical print functions
 !inline

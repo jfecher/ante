@@ -259,6 +259,7 @@ namespace ante {
         ~CtFunc(){}
 
         void* operator()();
+        void* operator()(Compiler *c);
         void* operator()(TypedValue &tv);
         void* operator()(Compiler *c, TypedValue &tv);
         void* operator()(TypedValue &p1, TypedValue &p2);

@@ -153,7 +153,7 @@ void yyerror(const char *msg);
 %nonassoc HIGH
 %nonassoc '{'
 
-/*%expect 0*/
+%expect 0
 %start begin
 %%
 
@@ -351,11 +351,11 @@ trait_fn: modifier_list Fun fn_name ':' params RArrow type_expr   {$$ = mkFuncDe
         ;
 
 
-type_list: type_list type  %prec LOW  {$$ = setNext($1, $2);}
-         | type            %prec LOW  {$$ = setRoot($1);}
-         ;
+generic_list: generic_list type  %prec LOW  {$$ = setNext($1, $2);}
+            | type               %prec LOW  {$$ = setRoot($1);}
+            ;
 
-generic_params: type_list  %prec LOW {$$ = getRoot();}
+generic_params: generic_list  %prec LOW {$$ = getRoot();}
               ;
 
 

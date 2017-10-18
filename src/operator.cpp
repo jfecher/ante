@@ -1076,14 +1076,14 @@ TypedValue compMetaFunctionResult(Compiler *c, LOC_TY &loc, string &baseName, st
         if(baseName == "Ante_debug"){
             if(typedArgs.size() != 1)
                 return c->compErr("Called function was given " + to_string(typedArgs.size()) +
-                        " argument(s) but was declared to take 1", loc);
+                        " arguments but was declared to take 1", loc);
 
             res = (*fn)(typedArgs[0]);
             gv = GenericValue(res);
         }else if(baseName == "Ante_sizeof"){
             if(typedArgs.size() != 1)
                 return c->compErr("Called function was given " + to_string(typedArgs.size()) +
-                        " argument(s) but was declared to take 1", loc);
+                        " arguments but was declared to take 1", loc);
 
             res = (*fn)(c, typedArgs[0]);
             gv.IntVal = APInt(32, (int)(size_t)res, false);
@@ -1097,10 +1097,17 @@ TypedValue compMetaFunctionResult(Compiler *c, LOC_TY &loc, string &baseName, st
         }else if(baseName == "Ante_ctLookup" or baseName == "Ante_ctError" or baseName == "FuncDecl_getName"){
             if(typedArgs.size() != 1)
                 return c->compErr("Called function was given " + to_string(typedArgs.size()) +
-                        " argument(s) but was declared to take 1", loc);
+                        " arguments but was declared to take 1", loc);
 
             res = (*fn)(c, typedArgs[0]);
             return *(TypedValue*)res;
+        }else if(baseName == "Ante_emitIR"){
+            if(typedArgs.size() != 0)
+                return c->compErr("Called function was given " + to_string(typedArgs.size()) +
+                        " argument(s) but was declared to take 0", loc);
+
+            (*fn)(c);
+            return c->getVoidLiteral();
         }else{
             res = (*fn)();
             gv = GenericValue(res);

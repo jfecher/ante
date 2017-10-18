@@ -102,6 +102,9 @@ namespace ante {
 
             TypedValue compile(Compiler*);
             void print();
+
+            /** Merge all contents of rn into this RootNode */
+            void merge(const RootNode *rn);
             RootNode(LOC_TY& loc) : Node(loc){}
             ~RootNode(){}
         };

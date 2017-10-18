@@ -1654,6 +1654,30 @@ string removeFileExt(string file){
 }
 
 
+template<typename T>
+TypedValue safeCompile(Compiler *c, T &n){
+    TypedValue ret;
+    try{
+        ret = n->compile(c);
+    }catch(CtError *err){
+        delete err;
+    }
+    return ret;
+}
+
+
+template<typename T>
+void compileAll(Compiler *c, vector<T> &v){
+    for(auto &elem : v){
+        try{
+            elem->compile(c);
+        }catch(CtError *err){
+            delete err;
+        }
+    }
+}
+
+
 void Compiler::scanAllDecls(RootNode *root){
     auto *n = root ? root : ast.get();
 	
@@ -1665,37 +1689,39 @@ void Compiler::scanAllDecls(RootNode *root){
 		}
 	}
 
-	for (auto& f : n->types) {
-		try {
-			f->compile(this);
-		}catch (CtError *e) {
-			delete e;
-		}
-	}
-	
-    for (auto& f : n->traits) {
-		try {
-			f->compile(this);
-		}catch (CtError *e) {
-			delete e;
-		}
-	}
-	
-    for (auto& f : n->extensions) {
-		try {
-			f->compile(this);
-		}catch (CtError *e) {
-			delete e;
-		}
-	}
+    compileAll(this, n->types);
+    compileAll(this, n->traits);
+    compileAll(this, n->extensions);
+	compileAll(this, n->funcs);
+}
 
-	for (auto& f : n->funcs) {
-		try {
-			f->compile(this);
-		}catch (CtError *e) {
-			delete e;
-		}
-	}
+TypedValue mergeAndCompile(Compiler *c, RootNode *rn){
+    scanImports(c, rn);
+    move(rn->imports.begin(),
+         next(rn->imports.begin(), rn->imports.size()),
+         back_inserter(c->ast->imports));
+
+    for(auto &t : rn->types){
+        safeCompile(c, t);
+        c->ast->types.emplace_back(move(t));
+    }
+
+    for(auto &t : rn->traits){
+        safeCompile(c, t);
+        c->ast->traits.emplace_back(move(t));
+    }
+
+    for(auto &t : rn->extensions){
+        safeCompile(c, t);
+        c->ast->extensions.emplace_back(move(t));
+    }
+
+    TypedValue ret;
+    for(auto &e : rn->main){
+        ret = safeCompile(c, e);
+        c->ast->main.emplace_back(move(e));
+    }
+    return ret;
 }
 
 void Compiler::eval(){
@@ -1717,7 +1743,8 @@ void Compiler::eval(){
             RootNode *expr = parser::getRootNode();
 
             //Compile each expression and hold onto the last value
-            TypedValue val = expr->compile(this);
+            TypedValue val = ast ? mergeAndCompile(this, expr)
+                                 : (ast.reset(expr), expr->compile(this));
 
             //print val if it's not an error
             if(!!val)

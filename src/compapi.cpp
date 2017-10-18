@@ -55,8 +55,16 @@ extern "C" {
         if(!!t)
             return new TypedValue(t);
         else{
-            cerr << "error: ctLookup: Cannot find var '" << name << "'\n";
+            cerr << "error: ctLookup: Cannot find var '" << name << "'" << endl;
             throw new CtError();
+        }
+    }
+
+    void Ante_emitIR(Compiler *c){
+        if(c and c->module){
+            c->module->print(llvm::errs(), nullptr);
+        }else{
+            cerr << "error: Ante.emitIR: null module" << endl;
         }
     }
 }
@@ -71,6 +79,7 @@ namespace ante {
         compapi.emplace("Ante_ctStore",     new CtFunc((void*)Ante_ctStore,     AnType::getVoid(), {AnPtrType::get(AnType::getPrimitive(TT_C8)), AnTypeVarType::get("'t'")}));
         compapi.emplace("Ante_ctLookup",    new CtFunc((void*)Ante_ctLookup,    AnTypeVarType::get("'t'"), {AnPtrType::get(AnType::getPrimitive(TT_C8))}));
         compapi.emplace("Ante_ctError",     new CtFunc((void*)Ante_ctError,     AnType::getVoid(), {AnPtrType::get(AnType::getPrimitive(TT_C8))}));
+        compapi.emplace("Ante_emitIR",      new CtFunc((void*)Ante_emitIR,      AnType::getVoid()));
         compapi.emplace("FuncDecl_getName", new CtFunc((void*)FuncDecl_getName, AnDataType::get("Str"), {AnDataType::get("Ante.FuncDecl")}));
     }
 
@@ -83,6 +92,12 @@ namespace ante {
         void* (*resfn)() = 0;
         *reinterpret_cast<void**>(&resfn) = fn;
         return resfn();
+    }
+
+    void* CtFunc::operator()(Compiler *c){
+        void* (*resfn)(Compiler*) = 0;
+        *reinterpret_cast<void**>(&resfn) = fn;
+        return resfn(c);
     }
 
     void* CtFunc::operator()(TypedValue &tv){
