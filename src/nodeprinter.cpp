@@ -107,6 +107,7 @@ void ModNode::print(){
         puts("]");
     }else{
         Lexer::printTok(mod);
+        putchar(' ');
     }
 }
 
