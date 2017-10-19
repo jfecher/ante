@@ -158,6 +158,8 @@ void yyerror(const char *msg);
 %%
 
 begin: maybe_newline top_level_expr
+     | maybe_newline  {createRoot(); }
+     ;
 
 top_level_expr: top_level_expr expr_no_decl  %prec Newline {$$ = append_main($2);}
               | top_level_expr function                    {$$ = append_fn($2);}

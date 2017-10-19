@@ -20,6 +20,7 @@ namespace ante {
         Node* addMatch(Node *matchExpr, Node *newMatch);
         Node* applyMods(Node *mods, Node *decls);
 
+        void createRoot();
         void createRoot(LOC_TY& loc);
 
         Node* append_main(Node *n);

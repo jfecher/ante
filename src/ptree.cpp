@@ -68,6 +68,13 @@ namespace ante {
             root = new RootNode(loc);
         }
 
+        void createRoot(){
+            auto loc = mkLoc(mkPos(yylexer->fileName, 0, 0),
+                             mkPos(yylexer->fileName, 0, 0));
+            createRoot(loc);
+        }
+
+
         Node* append_main(Node *n){
             root->main.emplace_back(n);
             return n;
