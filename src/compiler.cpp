@@ -1731,7 +1731,7 @@ TypedValue mergeAndCompile(Compiler *c, RootNode *rn){
 
 void Compiler::eval(){
     string cmd = "";
-    cout << "Ante REPL v0.0.1\nType 'exit' to exit.\n";
+    cout << "Ante REPL v0.0.2\nType 'exit' to exit.\n";
 
     //setup compiler
     createMainFn();
@@ -1752,7 +1752,7 @@ void Compiler::eval(){
                                  : (ast.reset(expr), expr->compile(this));
 
             //print val if it's not an error
-            if(!!val)
+            if(!!val and val.type->typeTag != TT_Void)
                 val.dump();
         }
         cout << ": " << flush;
@@ -2006,6 +2006,8 @@ void TypedValue::dump() const{
             c->fdn->print();
             cout << endl;
         }
+    }else if(type->typeTag == TT_MetaFunction){
+        cout << "(ante function)\n";
     }else{
         val->print(llvm::dbgs(), false);
         llvm::dbgs() << '\n';
