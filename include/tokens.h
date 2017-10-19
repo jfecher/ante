@@ -116,6 +116,7 @@ namespace ante {
 		Tok_Noinit,
 		Tok_Mut,
         Tok_Global,
+        Tok_Ante,
 
 		//reserved
 		Tok_Where,

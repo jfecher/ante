@@ -94,6 +94,7 @@ map<int, const char*> tokDict = {
     {Tok_Noinit, "noinit"},
     {Tok_Mut, "mut"},
     {Tok_Global, "global"},
+    {Tok_Ante, "ante"},
 
     //reserved
     {Tok_Where, "where"},
@@ -164,6 +165,7 @@ map<string, int> keywords = {
     {"noinit",   Tok_Noinit},
     {"mut",      Tok_Mut},
     {"global",   Tok_Global},
+    {"ante",     Tok_Ante},
 
     //reserved
     {"where",    Tok_Where},

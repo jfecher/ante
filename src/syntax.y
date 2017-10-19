@@ -68,8 +68,8 @@ void yyerror(const char *msg);
 %token Type Trait Fun Ext Block Self
 
 /* modifiers */
-%token Pub Pri Pro Raw
-%token Const Noinit Mut Global
+%token Pub Pri Pro Raw Const
+%token Noinit Mut Global Ante
 
 /* other */
 %token Where
@@ -112,7 +112,7 @@ void yyerror(const char *msg);
 %left ','
 %left '=' AddEq SubEq MulEq DivEq
 %left ';'
-%left MODIFIER Pub Pri Pro Raw Const Noinit Mut Global
+%left MODIFIER Pub Pri Pro Raw Const Noinit Mut Global Ante
 
 %right ApplyL
 %left ApplyR
@@ -278,6 +278,7 @@ type_expr__: type_expr_  %prec MED {Node* tmp = getRoot();
 
 type_expr: modifier_list type_expr__  {$$ = ((TypeNode*)$2)->addModifiers((ModNode*)$1);}
          | type_expr__                {$$ = $1;}
+         ;
 
 
 modifier: Pub      {$$ = mkModNode(@$, Tok_Pub);}
@@ -288,6 +289,7 @@ modifier: Pub      {$$ = mkModNode(@$, Tok_Pub);}
         | Noinit   {$$ = mkModNode(@$, Tok_Noinit);}
         | Mut      {$$ = mkModNode(@$, Tok_Mut);}
         | Global   {$$ = mkModNode(@$, Tok_Global);}
+        | Ante     {$$ = mkModNode(@$, Tok_Ante);}
         | preproc  {$$ = $1;}
         ;
 
@@ -647,8 +649,8 @@ type_list: type_list ',' type  %prec TYPE {$$ = setNext($1, $3);}
          | type                %prec TYPE {$$ = setRoot($1);}
          ;
 
-preproc: '!' '[' bound_expr ']'  {$$ = mkPreProcNode(@$, $3);}
-       | '!' var                 {$$ = mkPreProcNode(@$, $2);}
+preproc: '!' '[' bound_expr ']'  {$$ = mkCompilerDirective(@$, $3);}
+       | '!' var                 {$$ = mkCompilerDirective(@$, $2);}
        ;
 
 arg_list: arg_list_p  %prec FUNC {$$ = mkTupleNode(@$, getRoot());}

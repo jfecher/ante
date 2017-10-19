@@ -36,7 +36,8 @@ into the compiled module itself.
 here is an implementation of the goto construct in Ante
 
 ```go
-![macro]
+//The 'ante' keyword declares compile-time functions
+ante
 fun goto: VarNode vn
     let label = ctLookup vn ?
         None -> compErr "Cannot goto undefined label ${vn.name}"
@@ -44,7 +45,7 @@ fun goto: VarNode vn
     LLVM.setInsertPoint getCallSiteBlock{}
     LLVM.createBr label
 
-![macro]
+ante
 fun label: VarNode vn
     let ctxt = Ante.llvm_ctxt
     let callingFn = getCallSiteBlock().getParentFn()
