@@ -76,46 +76,46 @@ void copyDecls(const Compiler *src, Compiler *dest){
 /*
  *  Creates a copy of fdn with all compiler directives removed
  */
-Node* stripCompilerDirectives(FuncDeclNode *fdn){
-    Node *mods_begin = 0;
-    Node *preprocs_begin = 0;
-
-    Node *mods = 0;
-    Node *preprocs = 0;
-
-    //Go through all of the function's modifiers and separate it
-    //into two lists.  One for compiler directives (preprocs) and
-    //the other for normal modifiers
-    Node *cur = fdn->modifiers.get();
-    while(cur){
-        if(dynamic_cast<PreProcNode*>(cur)){
-            if(preprocs){
-                preprocs->next.release();
-                preprocs->next.reset(cur);
-                preprocs = preprocs->next.get();
-            }else{
-                preprocs_begin = cur;
-                preprocs = cur;
-            }
-        }else{
-            if(mods){
-                mods->next.release();
-                mods->next.reset(cur);
-                mods = mods->next.get();
-            }else{
-                mods_begin = cur;
-                mods = cur;
-            }
-        }
-        cur = cur->next.get();
-    }
-
-    //set the function's modifiers to the list containing just
-    //the normal modifiers
-    //fdn->modifiers.release();
-    fdn->modifiers.reset(mods_begin);
-    return preprocs_begin;
-}
+//Node* stripCompilerDirectives(FuncDeclNode *fdn){
+//    Node *mods_begin = 0;
+//    Node *preprocs_begin = 0;
+//
+//    Node *mods = 0;
+//    Node *preprocs = 0;
+//
+//    //Go through all of the function's modifiers and separate it
+//    //into two lists.  One for compiler directives (preprocs) and
+//    //the other for normal modifiers
+//    Node *cur = fdn->modifiers.get();
+//    while(cur){
+//        if(dynamic_cast<PreProcNode*>(cur)){
+//            if(preprocs){
+//                preprocs->next.release();
+//                preprocs->next.reset(cur);
+//                preprocs = preprocs->next.get();
+//            }else{
+//                preprocs_begin = cur;
+//                preprocs = cur;
+//            }
+//        }else{
+//            if(mods){
+//                mods->next.release();
+//                mods->next.reset(cur);
+//                mods = mods->next.get();
+//            }else{
+//                mods_begin = cur;
+//                mods = cur;
+//            }
+//        }
+//        cur = cur->next.get();
+//    }
+//
+//    //set the function's modifiers to the list containing just
+//    //the normal modifiers
+//    //fdn->modifiers.release();
+//    fdn->modifiers.reset(mods_begin);
+//    return preprocs_begin;
+//}
 
 
 Node* getLastNode(Node *n){

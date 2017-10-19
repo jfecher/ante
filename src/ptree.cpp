@@ -343,9 +343,9 @@ namespace ante {
         Node* mkModNode(LOC_TY loc, ante::TokenType mod){
             return new ModNode(loc, mod);
         }
-
-        Node* mkPreProcNode(LOC_TY loc, Node* expr){
-            return new PreProcNode(loc, expr);
+        
+        Node* mkCompilerDirective(LOC_TY loc, Node *n){
+            return new ModNode(loc, n);
         }
 
         Node* mkTypeNode(LOC_TY loc, TypeTag type, char* typeName, Node* extTy = nullptr){
@@ -524,7 +524,8 @@ namespace ante {
         }
 
         Node* mkFuncDeclNode(LOC_TY loc, Node* s, Node* mods, Node* tExpr, Node* p, Node* b){
-            auto ret = new FuncDeclNode(loc, (char*)s, mods, tExpr, p, b);
+            auto ret = new FuncDeclNode(loc, (char*)s,
+                    (ModNode*)mods, (TypeNode*)tExpr, (NamedValNode*)p, b);
 
             //s is copied from lextxt, and may or may not be equal
             if(s) free(s);

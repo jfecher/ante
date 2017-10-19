@@ -42,7 +42,7 @@ namespace ante {
                 return true;
         return false;
     }
-    
+
     bool isGeneric(const std::vector<std::pair<std::string, AnType*>> &vec){
         for(auto &p : vec)
             if(p.second->isGeneric)
@@ -75,7 +75,7 @@ namespace ante {
                 return tag->tag;
             }
         }
-        
+
         std::cerr << "No value found for tag " << name
                     << " of type " << this->name << std::endl;
         throw new CtError();
@@ -132,7 +132,7 @@ namespace ante {
 
             auto existing_ty = search(typeArena.otherTypes, key);
             if(existing_ty) return existing_ty;
-                
+
             auto *ty = new AnType(tag, false, m);
             typeArena.otherTypes.try_emplace(key, ty);
             return ty;
@@ -280,7 +280,7 @@ namespace ante {
         typeArena.aggregateTypes.try_emplace(key, agg);
         return agg;
     }
-            
+
     AnFunctionType* AnFunctionType::get(Compiler *c, AnType* retty, NamedValNode* params, bool isMetaFunction, AnModifier *m){
         vector<AnType*> extTys;
 
@@ -357,10 +357,10 @@ namespace ante {
 
         auto existing_ty = search(typeArena.declaredTypes, key);
         if(existing_ty) return existing_ty;
-            
+
         //create declaration w/out definition
         auto *ret = AnDataType::create(dt->name, {}, dt->typeTag == TT_TaggedUnion, dt->generics, m);
-        
+
         vector<AnType*> elems;
         elems.reserve(dt->extTys.size());
         for(auto *ty : dt->extTys){
@@ -434,7 +434,7 @@ namespace ante {
             }
             if(append)
                 ret.push_back(tvt);
-            
+
             ++pos;
         }
         vec.swap(ret);
@@ -455,7 +455,7 @@ namespace ante {
 
         }else if(AnArrayType *at = llvm::dyn_cast<AnArrayType>(t)){
             return getGenerics(at->extTy);
-        
+
         }else if(AnFunctionType *ft = llvm::dyn_cast<AnFunctionType>(t)){
             vector<AnTypeVarType*> generics;
             for(auto *p : ft->extTys){
@@ -465,7 +465,7 @@ namespace ante {
             auto p_generics = getGenerics(ft->retTy);
             generics.insert(generics.end(), p_generics.begin(), p_generics.end());
             return generics;
-        
+
         }else if(AnAggregateType *agg = llvm::dyn_cast<AnAggregateType>(t)){
             vector<AnTypeVarType*> generics;
             for(auto *p : agg->extTys){
@@ -488,7 +488,7 @@ namespace ante {
         }
         removeDuplicates(dest);
     }
-    
+
     void addGenerics(vector<AnTypeVarType*> &dest, vector<pair<string, AnType*>> &src){
         for(auto &p : src){
             if(p.second->isGeneric){
@@ -652,7 +652,7 @@ namespace ante {
             cerr << "Warning: Cannot bind undeclared type " << name << endl;
             return unboundType;
         }
-    
+
         auto filteredBindings = filterMatchingBindings(unboundType, boundTys);
         filteredBindings = flatten(c, unboundType, filteredBindings);
 
@@ -664,14 +664,14 @@ namespace ante {
         //variant is already bound
         if(variant)
             return variant;
-        
+
         variant = new AnDataType(unboundType->name, {}, false, m);
         return bindVariant(c, unboundType, filteredBindings, m, variant);
     }
 
     AnDataType* AnDataType::create(string name, vector<AnType*> elems, bool isUnion, const vector<AnTypeVarType*> &generics, AnModifier *m){
         string key = modifiersToStr(m) + getBoundName(name, generics);
-        
+
         AnDataType *dt = search(typeArena.declaredTypes, key);
 
         if(dt){
@@ -722,7 +722,7 @@ namespace ante {
         typeArena.primitiveTypes[TT_Type].reset(new AnType(TT_Type, false, nullptr));
         typeArena.primitiveTypes[TT_FunctionList].reset(new AnType(TT_FunctionList, false, nullptr));
     }
-            
+
 
     AnType* AnType::getFunctionReturnType() const{
         return ((AnFunctionType*)this)->retTy;
@@ -844,7 +844,7 @@ namespace ante {
         }
         return AnAggregateType::get(typeTag, modded_exts, anmod);
     }
-    
+
     AnArrayType* AnArrayType::addModifier(TokenType m){
         if(mods){
             if(hasModifier(m)){
@@ -874,7 +874,7 @@ namespace ante {
         auto mods = AnModifier::get({m});
         return AnPtrType::get(extTy->setModifier(mods), mods);
     }
-        
+
     AnTypeVarType* AnTypeVarType::addModifier(TokenType m){
         if(mods){
             if(hasModifier(m)){

@@ -939,14 +939,6 @@ TypedValue VarAssignNode::compile(Compiler *c){
     return c->getVoidLiteral();
 }
 
-/**
- * @brief This function is a stub.  PreProcNodes are handled along with ModNodes
- * during variable declaration or function compiling.
- */
-TypedValue PreProcNode::compile(Compiler *c){
-    return c->getVoidLiteral();
-}
-
 
 /**
  * @brief Mangles a function name
@@ -970,7 +962,7 @@ string mangle(string &base, shared_ptr<NamedValNode> &paramTys){
     NamedValNode *cur = paramTys.get();
     while(cur){
         auto *tn = (TypeNode*)cur->typeExpr.get();
-        
+
         if(!tn)
             name += "...";
         else if(tn == (void*)1)
@@ -1091,7 +1083,7 @@ TypedValue ExtNode::compile(Compiler *c){
                 if(!fdn)
                     return c->compErr(typeNodeToColoredStr(typeExpr.get()) + " must implement " + fd_proto->getName() +
                             " to implement " + anTypeToColoredStr(AnDataType::get(trait->name)), fd_proto->fdn->loc);
-                
+
                 string mangledName = c->funcPrefix + mangle(fdn->name, fdn->params);
                 fdn->name = c->funcPrefix + fdn->name;
 
@@ -1213,7 +1205,7 @@ TypedValue compTaggedUnion(Compiler *c, DataDeclNode *n){
     data->fields = fieldNames;
 
     data->tags = tags;
-    
+
     for(auto *v : data->variants){
         v->extTys = data->extTys;
         v->isGeneric = data->isGeneric;
@@ -1309,7 +1301,7 @@ TypedValue TraitNode::compile(Compiler *c){
         vector<AnType*> ext;
         ext.push_back(AnPtrType::get(AnType::getVoid()));
         fd->obj = AnDataType::getOrCreate(name, ext, false);
-        
+
         trait->funcs.push_back(fd);
         curfn = curfn->next.get();
     }
@@ -1359,7 +1351,7 @@ TypedValue GlobalNode::compile(Compiler *c){
 
 void handleTypeCastPattern(Compiler *c, TypedValue lval, TypeCastNode *tn, AnDataType *tagTy, AnDataType *parentTy){
     //If this is a generic type cast like Some 't, the 't must be bound to a concrete type first
-    
+
     //This is a pattern of the match _ with expr, so if that is mutable this should be too
     //tagTy = (AnDataType*)tagTy->setModifier(lval.type->mods);
     //AnType *tagtycpy = tagTy/*->extTys[0]*/;
@@ -1570,7 +1562,7 @@ void Compiler::importFile(const char *fName, Node *locNode){
                 return;
             }
         }
-        
+
         //module is already compiled; just copy the ptr to imports
         imports.push_back(import);
         mergedCompUnits->import(import);
@@ -1715,7 +1707,7 @@ TypedValue mergeAndCompile(Compiler *c, RootNode *rn){
         safeCompile(c, t);
         c->ast->extensions.emplace_back(move(t));
     }
-    
+
     for(auto &t : rn->funcs){
         safeCompile(c, t);
         c->ast->funcs.emplace_back(move(t));
@@ -2234,7 +2226,7 @@ Compiler::Compiler(Compiler *c, Node *root, string modName, bool lib) :
         outFile(modName),
         funcPrefix(""),
         scope(0), optLvl(2), fnScope(1){
-    
+
     allMergedCompUnits.emplace_back(mergedCompUnits);
 
     compUnit->name = modName;

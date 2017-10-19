@@ -119,8 +119,12 @@ namespace ante {
         /** Builtin modifiers such as TT_Mut and TT_Global */
         std::vector<TokenType> modifiers;
 
-        /** Compiler directives acting as modifiers, such as !unique */
-        std::vector<std::unique_ptr<parser::PreProcNode>> compilerDirectives;
+        /**
+         * Compiler directives acting as modifiers, such as !unique
+         * Each Node is the expression within the directive, rather than
+         * the compiler directive itself.
+         */
+        std::vector<std::unique_ptr<parser::Node>> compilerDirectives;
 
         /** Gets or creates a unique AnModifier instance */
         static AnModifier* get(std::vector<TokenType> modifiers);
@@ -203,7 +207,7 @@ namespace ante {
 
         /** Returns a version of the current type with the specified modifiers. */
         AnPtrType* setModifier(AnModifier *m) override;
-        
+
         static bool classof(const AnType *t){
             return t->typeTag == TT_Ptr;
         }
@@ -229,7 +233,7 @@ namespace ante {
 
         /** Returns a version of the current type with the specified modifiers. */
         AnTypeVarType* setModifier(AnModifier *m) override;
-        
+
         static bool classof(const AnType *t){
             return t->typeTag == TT_TypeVar;
         }
@@ -385,7 +389,7 @@ namespace ante {
         bool isStub() const {
             return extTys.empty();
         }
-        
+
         /** Returns true if this DataType is actually a tag type. */
         bool isUnionTag() const {
             return parentUnionType;

@@ -15,7 +15,7 @@ namespace ante {
     std::string anTypeToStrWithoutModifiers(const AnType *t);
     std::string anTypeToStr(const AnType *t);
     lazy_str anTypeToColoredStr(const AnType *t);
-    
+
     std::string typeNodeToStr(const parser::TypeNode *t);
     lazy_str typeNodeToColoredStr(const parser::TypeNode *t);
 

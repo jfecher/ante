@@ -1,14 +1,7 @@
 
-//NOTE:
-//the ![macro] compiler directive is not
-//a traditional macro.  It just signals
-//to the compiler that the function should
-//always be JITted and its CallInst substituted
-//for its return value.
-//
 //The following function prints "three called!"
 //while compiling and is not included in the binary
-![macro]
+ante
 fun three :=
     puts "three called!"
     3

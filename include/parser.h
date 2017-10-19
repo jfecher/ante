@@ -196,11 +196,33 @@ namespace ante {
             ~BlockNode(){}
         };
 
+        /**
+         *  A Node representing a modifier or compiler directive.
+         *
+         *  This ModNode is a compiler directive if and only if
+         *  its mod tag equals ModNode::CD_ID.  If a ModNode
+         *  is not a compiler directive, its expr field is always null.
+         */
         struct ModNode : public Node{
             int mod;
+            std::shared_ptr<Node> expr;
+
+            //this ModNode is a compiler directive iff its mod == preproc_id
+            //otherwise, it is a normal modifier, and expr is null
+            static const int CD_ID = 1;
+
             TypedValue compile(Compiler*);
             void print(void);
-            ModNode(LOC_TY& loc, int m) : Node(loc), mod(m){}
+
+            bool isCompilerDirective() const {
+                return mod == CD_ID;
+            }
+
+            /** Constructor for normal modifiers */
+            ModNode(LOC_TY& loc, int m) : Node(loc), mod(m), expr(nullptr){}
+
+            /** Constructor for compiler directives */
+            ModNode(LOC_TY& loc, Node *e) : Node(loc), mod(CD_ID), expr(e){}
             ~ModNode(){}
         };
 
@@ -228,15 +250,6 @@ namespace ante {
             void print(void);
             TypeCastNode(LOC_TY& loc, TypeNode *ty, Node *rv) : Node(loc), typeExpr(ty), rval(rv){}
             ~TypeCastNode(){}
-        };
-
-        struct PreProcNode : public Node{
-            std::shared_ptr<Node> expr;
-            TypedValue compile(Compiler*);
-            void print(void);
-            PreProcNode(LOC_TY& loc, Node* e) : Node(loc), expr(e){}
-            PreProcNode(LOC_TY& loc, std::shared_ptr<Node> e) : Node(loc), expr(e){}
-            ~PreProcNode(){}
         };
 
         struct RetNode : public Node{
@@ -384,13 +397,22 @@ namespace ante {
         struct FuncDeclNode : public Node{
             std::string name;
             std::shared_ptr<Node> child;
-            std::shared_ptr<Node> modifiers, type;
+            std::shared_ptr<TypeNode> type;
             std::shared_ptr<NamedValNode> params;
+            std::shared_ptr<ModNode> modifiers;
             bool varargs;
 
             TypedValue compile(Compiler*);
             void print(void);
-            FuncDeclNode(LOC_TY& loc, std::string s, Node *mods, Node *t, Node *p, Node* b, bool va=false) : Node(loc), name(s), child(b), modifiers(mods), type(t), params((NamedValNode*)p), varargs(va){}
+
+            /**
+             * Returns true if this function has the given modifier.
+             * @param mod_id The TokenType value of the modifier in question
+             */
+            bool hasModifier(int mod_id) const;
+
+            FuncDeclNode(LOC_TY& loc, std::string s, ModNode *mods, TypeNode *t, NamedValNode *p, Node* b, bool va=false) :
+                Node(loc), name(s), child(b), type(t), params(p), modifiers(mods), varargs(va){}
             ~FuncDeclNode(){ if(next.get()) next.release(); }
         };
 

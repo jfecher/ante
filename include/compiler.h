@@ -743,7 +743,7 @@ namespace ante {
     * compilation unit.  Prevents recompilation of modules and owns all Modules
     */
     extern llvm::StringMap<std::unique_ptr<Module>> allCompiledModules;
-    
+
     /**
     * @brief Every merged compilation units.  Each must not be freed until compilation
     * finishes as there is always a chance an old module is recompiled and the newly

@@ -101,15 +101,14 @@ void TupleNode::print(){
 }
 
 void ModNode::print(){
-    Lexer::printTok(mod);
+    if(this->isCompilerDirective()){
+        cout << "![";
+        expr->print();
+        puts("]");
+    }else{
+        Lexer::printTok(mod);
+    }
 }
-
-void PreProcNode::print(){
-    cout << "![";
-    expr->print();
-    puts("]");
-}
-
 
 void TypeNode::print(){
     cout << typeNodeToStr(this);

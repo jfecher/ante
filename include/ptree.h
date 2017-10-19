@@ -37,6 +37,11 @@ namespace ante {
         Node* mkArrayNode(LOC_TY loc, Node *expr);
         Node* mkTupleNode(LOC_TY loc, Node *expr);
         Node* mkModNode(LOC_TY loc, ante::TokenType mod);
+
+        //A compiler directive is represented as a ModNode
+        //internally, hence the omission of Node from the name below
+        Node* mkCompilerDirective(LOC_TY loc, Node *mod);
+
         Node* mkGlobalNode(LOC_TY loc, Node* s);
         Node* mkTypeNode(LOC_TY loc, TypeTag type, char* typeName, Node *extTy = nullptr);
         Node* mkTypeCastNode(LOC_TY loc, Node *l, Node *r);
@@ -50,7 +55,6 @@ namespace ante {
         Node* mkImportNode(LOC_TY loc, Node* expr);
         Node* mkLetBindingNode(LOC_TY loc, char* s, Node* mods, Node* tExpr, Node* expr);
         Node* mkVarDeclNode(LOC_TY loc, char* s, Node* mods, Node* tExpr, Node* expr);
-        Node* mkPreProcNode(LOC_TY loc, Node* expr);
         Node* mkVarAssignNode(LOC_TY loc, Node* var, Node* expr, bool shouldFreeLval = true);
         Node* mkExtNode(LOC_TY loc, Node* typeExpr, Node* methods, Node* traits=0);
         Node* mkMatchNode(LOC_TY loc, Node* expr, Node* branch);

@@ -22,7 +22,7 @@ char getBitWidthOfTypeTag(const TypeTag ty){
         default: return 0;
     }
 }
-        
+
 TypedValue FunctionCandidates::getAsTypedValue(llvm::LLVMContext *c, std::vector<std::shared_ptr<FuncDecl>> &ca, TypedValue o){
     return {(Value*)new FunctionCandidates(c, ca, o),
         AnType::getPrimitive(TT_FunctionList)};
@@ -82,7 +82,7 @@ void validateType(Compiler *c, const AnType *tn, const DataDeclNode *rootTy){
         //if(dataTy->isGeneric){
         //    dataTy = bindGenericToType(dataTy, tn->params, dataTy);
         //}
-        
+
         for(auto *t : dataTy->extTys)
             validateType(c, t, rootTy);
 
@@ -318,7 +318,7 @@ AnType* bindGenericToType(Compiler *c, AnType *tn, const vector<pair<string, AnT
 
     }else if(tn->typeTag == TT_Tuple or tn->typeTag == TT_Function or
              tn->typeTag == TT_MetaFunction or tn->typeTag == TT_FunctionList){
-        
+
         auto *agg = (AnAggregateType*)tn;
         vector<AnType*> exts;
         exts.reserve(agg->extTys.size());
@@ -331,12 +331,12 @@ AnType* bindGenericToType(Compiler *c, AnType *tn, const vector<pair<string, AnT
         auto *ptr = (AnPtrType*)tn;
         auto *ty = bindGenericToType(c, ptr->extTy, bindings);
         return AnPtrType::get(ty, tn->mods);
-        
+
     }else if(tn->typeTag == TT_Array){
         auto *arr = (AnArrayType*)tn;
         auto *ty = bindGenericToType(c, arr->extTy, bindings);
         return AnArrayType::get(ty, arr->len, tn->mods);
-        
+
     }else{
         return tn;
     }
@@ -351,77 +351,6 @@ AnType* bindGenericToType(Compiler *c, AnType *tn, const vector<AnType*> &bindin
 
     return bindGenericToType(c, tn, bindings_map);
 }
-
-
-/*
- *  Replaces already bound typevars with their declared value
- *
-AnType* Compiler::searchAndReplaceBoundTypeVars(AnType *tn) const{
-    if(!tn->isGeneric)
-        return tn;
-    
-    if(tn->typeTag == TT_Data or tn->typeTag == TT_TaggedUnion){
-        auto *dty = (AnDataType*)tn;
-
-        auto dty_bindings = filterMatchingBindings(dty, bindings);
-        string boundName = getBoundName(dty->name, dty_bindings);
-
-        auto *decl = AnDataType::get(boundName);
-        if(!decl->isStub())
-            return decl;
-
-        //This variant has never been bound before so fill in the stub
-        vector<AnType*> boundExts;
-        boundExts.reserve(dty->extTys.size());
-
-        for(auto *e : dty->extTys){
-            boundExts.push_back(bindGenericToType(e, dty_bindings));
-        }
-
-        decl->unboundType = dty;
-        decl->extTys.swap(boundExts);
-        decl->fields = dty->fields;
-        decl->tags = dty->tags;
-        decl->traitImpls = dty->traitImpls;
-        return decl;
-
-    }else if(tn->typeTag == TT_TypeVar){
-        auto *tvt = (AnTypeVarType*)tn;
-        auto *var = lookup(tvt->name);
-        if(!var){
-            cerr << "error: Lookup for "+tvt->name+" not found\n";
-            return tn;
-        }
-
-        return extractTypeValue(var->tval);
-
-    }else if(tn->typeTag == TT_Tuple or tn->typeTag == TT_Function or
-             tn->typeTag == TT_MetaFunction or tn->typeTag == TT_FunctionList){
-        
-        auto *agg = (AnAggregateType*)tn;
-        vector<AnType*> exts;
-        exts.reserve(agg->extTys.size());
-        for(auto *e : agg->extTys){
-            exts.push_back(bindGenericToType(e, bindings));
-        }
-        return AnAggregateType::get(tn->typeTag, exts);
-
-    }else if(tn->typeTag == TT_Ptr){
-        auto *ptr = (AnPtrType*)tn;
-        auto *ty = bindGenericToType(ptr->extTy, bindings);
-        return AnPtrType::get(ty);
-        
-    }else if(tn->typeTag == TT_Array){
-        auto *arr = (AnArrayType*)tn;
-        auto *ty = bindGenericToType(arr->extTy, bindings);
-        return AnArrayType::get(ty, arr->len);
-        
-    }else{
-        return tn;
-    }
-}
-*/
-
 
 /*
  *  Checks for, and implicitly widens an integer or float type.
@@ -1062,7 +991,7 @@ TypeCheckResult& typeEqHelper(const Compiler *c, const AnType *l, const AnType *
         }else{ //both type vars
             auto *ltv = (AnTypeVarType*)l;
             auto *rtv = (AnTypeVarType*)r;
-            
+
             Variable *lv = c->lookup(ltv->name);
             Variable *rv = c->lookup(rtv->name);
 

@@ -491,7 +491,7 @@ TypedValue createCast(Compiler *c, AnType *castTy, TypedValue &valToCast, LOC_TY
     //      if no valid cast is found nullptr is returned
     return doReinterpretCast(c, castTy, valToCast);
 }
-    
+
 TypedValue TypeCastNode::compile(Compiler *c){
     auto rtval = rval->compile(c);
 
@@ -905,7 +905,7 @@ void* getConstPtr(Compiler *c, TypedValue &tv){
             return getConstPtr(c, ptr);
         }
     }
-        
+
     cerr << "error: unknown type given to getConstPtr, dumping\n";
     tv.dump();
     return nullptr;
@@ -1202,7 +1202,7 @@ TypedValue tryImplicitCast(Compiler *c, TypedValue &arg, AnType *castTy){
     if(!!(fn = c->getCastFn(arg.type, castTy))){
         AnFunctionType *fty = (AnFunctionType*)fn.type;
         if(!!c->typeEq({arg.type}, fty->extTys)){
-    
+
             //optimize case of Str -> c8* implicit cast
             if(fn.val->getName() == "c8*_init_Str"){
                 Value *str = arg.val;

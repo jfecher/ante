@@ -301,56 +301,64 @@ vector<llvm::Argument*> buildArguments(FunctionType *ft){
     return args;
 }
 
-
 /*
- *  Handles a compiler directive (eg. ![inline]) then compiles the function fdn
- *  with either compFn or compLetBindingFn.
+ *  Handles the modifiers or compiler directives (eg. ![inline]) then
+ *  compiles the function fdn with either compFn or compLetBindingFn.
  */
-TypedValue compCompilerDirectiveFn(Compiler *c, FuncDecl *fd, PreProcNode *ppn){
+TypedValue compFnWithModifiers(Compiler *c, FuncDecl *fd, ModNode *ppn){
     //remove the preproc node at the front of the modifier list so that the call to
     //compFn does not call this function in an infinite loop
     auto *fdn = fd->fdn.get();
     auto mod_cpy = fdn->modifiers;
-    fdn->modifiers.reset(ppn->next.get());
+    fdn->modifiers.reset((ModNode*)ppn->next.get());
 
     TypedValue fn;
-    if(VarNode *vn = dynamic_cast<VarNode*>(ppn->expr.get())){
-        if(vn->name == "inline"){
-            fn = c->compFn(fd);
-            if(!fn) return fn;
-            ((Function*)fn.val)->addFnAttr("always_inline");
-        }else if(vn->name == "run"){
-            fn = c->compFn(fd);
-            if(!fn) return fn;
-
-            auto *mod = c->module.release();
-
-            c->module.reset(new llvm::Module(fd->mangledName, *c->ctxt));
-            auto recomp = c->compFn(fd);
-
-            c->jitFunction((Function*)recomp.val);
-            c->module.reset(mod);
-        }else if(vn->name == "macro" or vn->name == "meta"){
-            if(c->isJIT){
+    if(ppn->isCompilerDirective()){
+        if(VarNode *vn = dynamic_cast<VarNode*>(ppn->expr.get())){
+            if(vn->name == "inline"){
                 fn = c->compFn(fd);
-            }else{
+                if(!fn) return fn;
+                ((Function*)fn.val)->addFnAttr("always_inline");
+            }else if(vn->name == "run"){
+                fn = c->compFn(fd);
+                if(!fn) return fn;
+
+                auto *mod = c->module.release();
+
+                c->module.reset(new llvm::Module(fd->mangledName, *c->ctxt));
+                auto recomp = c->compFn(fd);
+
+                c->jitFunction((Function*)recomp.val);
+                c->module.reset(mod);
+            }else if(vn->name == "on_fn_decl"){
                 auto *rettn = (TypeNode*)fdn->type.get();
                 auto *fnty = AnFunctionType::get(c, toAnType(c, rettn), fdn->params.get(), true);
                 fn = TypedValue(nullptr, fnty);
+            }else{
+                return c->compErr("Unrecognized compiler directive '"+vn->name+"'", vn->loc);
             }
-        }else if(vn->name == "on_fn_decl"){
-            auto *rettn = (TypeNode*)fdn->type.get();
-            auto *fnty = AnFunctionType::get(c, toAnType(c, rettn), fdn->params.get(), true);
-            fn = TypedValue(nullptr, fnty);
-        }else{
-            return c->compErr("Unrecognized compiler directive '"+vn->name+"'", vn->loc);
-        }
 
-        //put back the preproc node modifier
+            //put back the preproc node modifier
+            fdn->modifiers = mod_cpy;
+            return fn;
+        }else{
+            return c->compErr("Unrecognized compiler directive", ppn->loc);
+        }
+    // ppn is a normal modifier
+    }else{
+        if(ppn->mod == Tok_Ante){
+            if(c->isJIT){
+                fn = c->compFn(fd);
+            }else{
+                auto *rettn = (TypeNode*)fd->fdn->type.get();
+                auto *fnty = AnFunctionType::get(c, toAnType(c, rettn), fd->fdn->params.get(), true);
+                fn = TypedValue(nullptr, fnty);
+            }
+        }else{
+            fn = c->compFn(fd);
+        }
         fdn->modifiers = mod_cpy;
         return fn;
-    }else{
-        return c->compErr("Unrecognized compiler directive", ppn->loc);
     }
 }
 
@@ -359,12 +367,11 @@ TypedValue compFnHelper(Compiler *c, FuncDecl *fd){
     BasicBlock *caller = c->builder.GetInsertBlock();
     auto *fdn = fd->fdn.get();
 
-    if(PreProcNode *ppn = dynamic_cast<PreProcNode*>(fdn->modifiers.get())){
-        auto ret = compCompilerDirectiveFn(c, fd, ppn);
+    if(ModNode *ppn = fdn->modifiers.get()){
+        auto ret = compFnWithModifiers(c, fd, ppn);
         c->builder.SetInsertPoint(caller);
         return ret;
     }
-
 
     //Get and translate the function's return type to an llvm::Type*
     TypeNode *retNode = (TypeNode*)fdn->type.get();
@@ -618,12 +625,12 @@ TypedValue Compiler::compFn(FuncDecl *fd){
 
         while(scope > callingFnScope)
             exitScope();
-        
+
         fnScope = callingFnScope;
 
         throw e;
     }
-        
+
     compCtxt->callStack.pop_back();
     compCtxt->continueLabels.reset(continueLabels);
     compCtxt->breakLabels.reset(breakLabels);
@@ -884,10 +891,11 @@ inline void Compiler::registerFunction(FuncDeclNode *fn, string &mangledName){
         compMetaFunctionResult(this, hook->fdn->loc, hook->getName(), hook->mangledName, args);
     }
 
-    for(auto *m : *fn->modifiers){
-        if(PreProcNode *ppn = dynamic_cast<PreProcNode*>(m)){
+    for(auto *mod : *fn->modifiers){
+        auto *m = (ModNode*)mod;
+        if(m->isCompilerDirective()){
             VarNode *vn;
-            if((vn = dynamic_cast<VarNode*>(ppn->expr.get())) and vn->name == "on_fn_decl"){
+            if((vn = dynamic_cast<VarNode*>(m->expr.get())) and vn->name == "on_fn_decl"){
                 ctCtxt->on_fn_decl_hook.push_back(fd);
             }
         }
