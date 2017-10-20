@@ -19,8 +19,6 @@ namespace ante { namespace parser { struct Node; } }
 #define IS_ALPHANUM(c)   (IS_NUMERICAL(c) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c == 95)
 #define IS_WHITESPACE(c) (c == ' ' || c == '\t' || c == '\n' || c == 13) // || c == 130
 
-#define RETURN_PAIR(t) {incPos(2); loc->end = getPos(); return (t);}
-
 namespace ante{
     extern bool colored_output;
 
@@ -29,7 +27,9 @@ namespace ante{
         std::string *fileName;
 
         Lexer(std::string* fileName);
-        Lexer(std::string* fileName, std::string& pseudoFile, unsigned int rowOffset, unsigned int colOffset);
+        Lexer(std::string* fileName, std::string& pseudoFile,
+                unsigned int rowOffset, unsigned int colOffset,
+                bool printInput = false);
         ~Lexer();
         int next(yy::parser::location_type* yyloc);
         char peek() const;
@@ -75,6 +75,11 @@ namespace ante{
         unsigned int cscope;
 
         bool shouldReturnNewline;
+
+        /**
+         * Set to true to print the input colorized while lexing.
+         */
+        bool printInput;
 
         void lexErr(const char *msg, yy::parser::location_type* loc);
 

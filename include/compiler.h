@@ -163,7 +163,7 @@ namespace ante {
      * desired function may be deduced later with the actual function call arguments.
      */
     struct FunctionCandidates {
-        /** @brief FunctionCandidates instances swap places with the llvm::Value part of a 
+        /** @brief FunctionCandidates instances swap places with the llvm::Value part of a
          * TypedValue.  Because inheritance cannot be used, the fiirst field is a fakeValue
          * to avoid crashes when FunctionCandidates are used accidentaly as llvm::Values */
         llvm::Value *fakeValue;
@@ -764,6 +764,27 @@ namespace ante {
      * compile the declarations without a definition.
      */
     void init_compapi();
+
+    /**
+    * @brief Compiles all top-level import expressions
+    */
+    void scanImports(Compiler *c, parser::RootNode *r);
+
+    /**
+    * Compiles the given Node and catches any CtError
+    * exceptions it may throw.
+    */
+    template<typename T>
+    TypedValue safeCompile(Compiler *c, T &n){
+        TypedValue ret;
+        try{
+            ret = n->compile(c);
+        }catch(CtError *err){
+            delete err;
+        }
+        return ret;
+    }
+
 
     /**
     * @brief Retrieves the Nth node of a list

@@ -15,6 +15,7 @@
 #include "parser.h"
 #include "compiler.h"
 #include "types.h"
+#include "repl.h"
 #include "target.h"
 #include "yyparser.h"
 
@@ -1647,18 +1648,6 @@ string removeFileExt(string file){
 
 
 template<typename T>
-TypedValue safeCompile(Compiler *c, T &n){
-    TypedValue ret;
-    try{
-        ret = n->compile(c);
-    }catch(CtError *err){
-        delete err;
-    }
-    return ret;
-}
-
-
-template<typename T>
 void compileAll(Compiler *c, vector<T> &v){
     for(auto &elem : v){
         try{
@@ -1687,71 +1676,13 @@ void Compiler::scanAllDecls(RootNode *root){
 	compileAll(this, n->funcs);
 }
 
-TypedValue mergeAndCompile(Compiler *c, RootNode *rn){
-    scanImports(c, rn);
-    move(rn->imports.begin(),
-         next(rn->imports.begin(), rn->imports.size()),
-         back_inserter(c->ast->imports));
-
-    for(auto &t : rn->types){
-        safeCompile(c, t);
-        c->ast->types.emplace_back(move(t));
-    }
-
-    for(auto &t : rn->traits){
-        safeCompile(c, t);
-        c->ast->traits.emplace_back(move(t));
-    }
-
-    for(auto &t : rn->extensions){
-        safeCompile(c, t);
-        c->ast->extensions.emplace_back(move(t));
-    }
-
-    for(auto &t : rn->funcs){
-        safeCompile(c, t);
-        c->ast->funcs.emplace_back(move(t));
-    }
-
-    TypedValue ret;
-    for(auto &e : rn->main){
-        ret = safeCompile(c, e);
-        c->ast->main.emplace_back(move(e));
-    }
-    return ret;
-}
-
 void Compiler::eval(){
-    string cmd = "";
-    cout << "Ante REPL v0.0.2\nType 'exit' to exit.\n";
-
     //setup compiler
     createMainFn();
     compilePrelude();
 
-    cout << ": " << flush;
-    getline(cin, cmd);
-    while(cmd != "exit"){
-        //lex and parse the new string
-        setLexer(new Lexer(nullptr, cmd, /*line*/1, /*col*/1));
-        yy::parser p{};
-        int flag = p.parse();
-        if(flag == PE_OK){
-            RootNode *expr = parser::getRootNode();
-
-            //Compile each expression and hold onto the last value
-            TypedValue val = ast ? mergeAndCompile(this, expr)
-                                 : (ast.reset(expr), expr->compile(this));
-
-            //print val if it's not an error
-            if(!!val and val.type->typeTag != TT_Void)
-                val.dump();
-        }
-        cout << ": " << flush;
-        getline(cin, cmd);
-    }
+    startRepl(this);
 }
-
 
 Function* Compiler::createMainFn(){
     Type* argcty = Type::getInt32Ty(*ctxt);

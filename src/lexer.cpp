@@ -207,7 +207,8 @@ Lexer::Lexer(string* file) :
     nxt{0},
     scopes{new stack<unsigned int>()},
     cscope{0},
-    shouldReturnNewline(false)
+    shouldReturnNewline(false),
+    printInput(false)
 {
     if(file){
         in = new ifstream(*file);
@@ -235,7 +236,8 @@ Lexer::Lexer(string* file) :
  * Initializes lexer from a string, the 'pseudofile' to be
  * lexed instead of an actual file
  */
-Lexer::Lexer(string* fName, string& pFile, unsigned int ro, unsigned int co) :
+Lexer::Lexer(string* fName, string& pFile,
+        unsigned int ro, unsigned int co, bool pi) :
     isPseudoFile(true),
     row{1},
     col{1},
@@ -245,13 +247,20 @@ Lexer::Lexer(string* fName, string& pFile, unsigned int ro, unsigned int co) :
     nxt{0},
     scopes{new stack<unsigned int>()},
     cscope{0},
-    shouldReturnNewline(false)
+    shouldReturnNewline(false),
+    printInput(pi)
 {
     fileName = fName;
     pseudoFile = (char*)pFile.c_str();
 
-    incPos();
-    incPos();
+    if(pFile.length() >= 1){
+        col += 2;
+        cur = *(pseudoFile++);
+        nxt = *(pseudoFile++);
+    }else if(pFile.length() == 1){
+        col++;
+        cur = *(pseudoFile++);
+    }
 
     scopes->push(0);
 }
@@ -302,7 +311,7 @@ inline void Lexer::incPos(){
     col++;
 
     if(isPseudoFile){
-        nxt = *(pseudoFile++);
+        nxt = !nxt ? 0 : *(pseudoFile++);
     }else{
         if(in->good())
             in->get(nxt);
@@ -326,12 +335,21 @@ void Lexer::incPos(int end){
 int Lexer::handleComment(yy::parser::location_type* loc){
     if(nxt == '*'){
         int level = 1;
+        incPos();
+
+        if(printInput){
+            putchar('/');
+            putchar('*');
+        }
 
         do{
             incPos();
             if(cur == '\n'){
                 row++;
                 col = 0;
+
+            if(printInput)
+                putchar(cur);
 
             //handle nested comments
             }else if(cur == '/' && nxt == '*'){
@@ -345,10 +363,18 @@ int Lexer::handleComment(yy::parser::location_type* loc){
                 }
             }
         }while(level && cur != '\0');
+
+        if(printInput && nxt == '/')
+            putchar('/');
+
         incPos();
         incPos();
     }else{ //single line comment
-        while(cur != '\n' && cur != '\0') incPos();
+        while(cur != '\n' && cur != '\0'){
+            if(printInput)
+                putchar(cur);
+            incPos();
+        }
     }
     return next(loc);
 }
@@ -388,13 +414,19 @@ int Lexer::genAlphaNumTok(yy::parser::location_type* loc){
     loc->end = getPos(false);
 
     if(isUsertype){
+        if(printInput)
+            cout << /* type color << */ s;
         setlextxt(s);
         return Tok_UserType;
     }else{ //ident or keyword
         auto key = keywords.find(s.c_str());
         if(key != keywords.end()){
+            if(printInput)
+                cout << /* keyword color << */ key->first;
             return key->second;
         }else{//ident
+            if(printInput)
+                cout << s;
             setlextxt(s);
             return Tok_Ident;
         }
@@ -406,28 +438,42 @@ int Lexer::genNumLitTok(yy::parser::location_type* loc){
     bool flt = false;
     loc->begin = getPos();
 
+    //if(printInput)
+    //    cout << num color;
+
     while(IS_NUMERICAL(cur) || (cur == '.' && !flt && IS_NUMERICAL(nxt)) || cur == '_'){
         if(cur != '_'){
             s += cur;
             if(cur == '.') flt = true;
         }
+        if(printInput)
+            putchar(cur);
         incPos();
     }
 
     //check for type suffix
     if(flt){
         if(cur == 'f'){
+            if(printInput)
+                putchar('f');
+
             s += 'f';
             incPos();
             if(cur == '1' && nxt == '6'){
+                if(printInput)
+                    fputs("16", stdout);
                 s += "16";
                 incPos();
                 incPos();
             }else if(cur == '3' && nxt == '2'){
+                if(printInput)
+                    fputs("32", stdout);
                 s += "32";
                 incPos();
                 incPos();
             }else if(cur == '6' && nxt == '4'){
+                if(printInput)
+                    fputs("64", stdout);
                 s += "64";
                 incPos();
                 incPos();
@@ -440,24 +486,37 @@ int Lexer::genNumLitTok(yy::parser::location_type* loc){
         }
     }else{
         if(cur == 'i' || cur == 'u'){
+            if(printInput)
+                putchar(cur);
+
             s += cur;
             incPos();
             if(cur == '8'){
+                if(printInput)
+                    fputs("8", stdout);
                 s += '8';
                 incPos();
             }else if(cur == '1' && nxt == '6'){
+                if(printInput)
+                    fputs("16", stdout);
                 s += "16";
                 incPos();
                 incPos();
             }else if(cur == '3' && nxt == '2'){
+                if(printInput)
+                    fputs("32", stdout);
                 s += "32";
                 incPos();
                 incPos();
             }else if(cur == '6' && nxt == '4'){
+                if(printInput)
+                    fputs("64", stdout);
                 s += "64";
                 incPos();
                 incPos();
             }else if(cur == 's' && nxt == 'z'){
+                if(printInput)
+                    fputs("sz", stdout);
                 s += "sz";
                 incPos();
                 incPos();
@@ -495,6 +554,10 @@ int Lexer::genWsTok(yy::parser::location_type* loc){
                     lexErr("Tab characters are invalid whitespace.", loc);
                 default: break;
             }
+
+            if(printInput)
+                putchar(cur);
+
             incPos();
             if(IS_COMMENT(cur, nxt)) return handleComment(loc);
         }
@@ -523,6 +586,9 @@ int Lexer::genWsTok(yy::parser::location_type* loc){
 
 int Lexer::skipWsAndReturnNext(yy::parser::location_type* loc){
     do{
+        if(printInput)
+            putchar(cur);
+
         incPos();
     }while(cur == ' ');
     return next(loc);
@@ -533,8 +599,20 @@ int Lexer::genStrLitTok(yy::parser::location_type* loc){
     loc->begin = getPos();
 
     incPos();
+
+    if(!cur){
+        if(printInput)
+            putchar('"');
+        return '"';
+    }
+
+    if(printInput)
+        cout << /* str color << */ '"';
+
     while(cur != '"' && cur != '\0'){
         if(cur == '\\'){
+            if(printInput)
+                putchar('\\');
             switch(nxt){
                 case 'a': s += '\a'; break;
                 case 'b': s += '\b'; break;
@@ -551,6 +629,8 @@ int Lexer::genStrLitTok(yy::parser::location_type* loc){
                         while(IS_NUMERICAL(cur) && IS_NUMERICAL(nxt)){
                             cha *= 8;
                             cha += cur - '0';
+                            if(printInput)
+                                putchar(nxt);
                             incPos();
                         }
                         //the final char must be added here becuase cur and nxt
@@ -569,16 +649,21 @@ int Lexer::genStrLitTok(yy::parser::location_type* loc){
         }else{
             s += cur;
         }
+
+        if(printInput)
+            putchar(cur);
         incPos();
     }
 
     loc->end = getPos();
 
-	if (cur != '"')
+    if(printInput && cur == '"')
+        putchar('"');
+
+	if(cur != '"')
 		lexErr("Missing closing string delimiter", loc);
 
     incPos(); //consume ending delim
-
     setlextxt(s);
     return Tok_StrLit;
 }
@@ -586,9 +671,20 @@ int Lexer::genStrLitTok(yy::parser::location_type* loc){
 int Lexer::genCharLitTok(yy::parser::location_type* loc){
     string s = "";
     loc->begin = getPos();
-
+    bool hasEscapeSequence = false;
     incPos();
+
+    if(!cur){
+        if(printInput)
+            putchar('\'');
+        return '\'';
+    }
+
     if(cur == '\\'){
+        //because there is an escape sequence, this is known to be a string
+        if(printInput)
+            cout << /* str color << */ "'\\'" << nxt;
+
         switch(nxt){
             case 'a': s += '\a'; break;
             case 'b': s += '\b'; break;
@@ -606,6 +702,8 @@ int Lexer::genCharLitTok(yy::parser::location_type* loc){
                     while(IS_NUMERICAL(cur) && IS_NUMERICAL(nxt)){
                         cha *= 8;
                         cha += cur - '0';
+                        if(printInput)
+                            putchar(nxt);
                         incPos();
                     }
                     //the final char must be added here becuase cur and nxt
@@ -620,6 +718,13 @@ int Lexer::genCharLitTok(yy::parser::location_type* loc){
                 break;
         }
         incPos();
+
+        if(nxt != '\''){
+            loc->end = getPos();
+            lexErr("Missing terminating ' for character literal", loc);
+        }
+
+        hasEscapeSequence = true;
     }else{
         s += cur;
     }
@@ -628,8 +733,16 @@ int Lexer::genCharLitTok(yy::parser::location_type* loc){
 
     if(cur != '\''){ //typevar
         s = '\'' + s;
+
+        if(printInput)
+            cout << /* type color << */ s;
+
         while(IS_ALPHANUM(cur)){
             s += cur;
+
+            if(printInput)
+                putchar(cur);
+
             incPos();
         }
         loc->end = getPos(false);
@@ -637,11 +750,32 @@ int Lexer::genCharLitTok(yy::parser::location_type* loc){
         return Tok_TypeVar;
     }
 
+    if(printInput){
+        if(!hasEscapeSequence){
+            if(printInput){
+                cout << /* str color << */ '\'' << s[0];
+            }
+        }
+        if(cur == '\'')
+            putchar('\'');
+    }
+
     loc->end = getPos();
     setlextxt(s);
     incPos();
     return Tok_CharLit;
 }
+
+#define RETURN_PAIR(t){\
+if(printInput){        \
+    putchar(cur);      \
+    putchar(nxt);      \
+}                      \
+incPos(2);             \
+loc->end = getPos();   \
+return (t);            \
+}
+
 
 /*
  *  Returns an operator token from the lexer's current position.
@@ -659,6 +793,10 @@ int Lexer::genOpTok(yy::parser::location_type* loc){
     loc->begin = getPos();
 
     if(cur == '\\' && nxt == '\n'){ //ignore newline
+        if(printInput){
+            putchar('\\');
+            putchar('\n');
+        }
         incPos(2);
         col = 1;
         row++;
@@ -693,6 +831,9 @@ int Lexer::genOpTok(yy::parser::location_type* loc){
     //If the character is nota, assume it is an operator and return it by value.
     char ret = cur;
     incPos();
+
+    if(printInput && ret)
+        putchar(ret);
     return ret;
 }
 
@@ -705,12 +846,14 @@ int Lexer::genOpTok(yy::parser::location_type* loc){
     if(cur == '('){                                             \
         matchingToks.push(')');                                 \
         incPos();                                               \
+        if(printInput) putchar('(');                            \
         return '(';                                             \
     }                                                           \
                                                                 \
     if(cur == '['){                                             \
         matchingToks.push(']');                                 \
         incPos();                                               \
+        if(printInput) putchar('[');                            \
         return '[';                                             \
     }                                                           \
                                                                 \
@@ -718,8 +861,9 @@ int Lexer::genOpTok(yy::parser::location_type* loc){
     if(matchingToks.size() > 0 && cur == matchingToks.top()){   \
         int top = matchingToks.top();                           \
         matchingToks.pop();                                     \
+        if(printInput) putchar(cur);                            \
         incPos();                                               \
-        return top;                 \
+        return top;                                             \
     }                                                           \
 }
 
@@ -770,6 +914,9 @@ int Lexer::next(yy::parser::location_type* loc){
 
 
 void Lexer::lexErr(const char *msg, yy::parser::location_type* loc){
-    error(msg, *loc);
-    exit(EXIT_FAILURE);//lexing errors are always fatal
+    //If printInput is specified, the user may still be typing
+    if(!printInput){
+        error(msg, *loc);
+        exit(EXIT_FAILURE);//lexing errors are always fatal
+    }
 }
