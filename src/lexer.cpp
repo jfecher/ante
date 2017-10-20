@@ -353,32 +353,38 @@ int Lexer::handleComment(yy::parser::location_type* loc){
 
         do{
             incPos();
-            if(cur == '\n'){
-                row++;
-                col = 0;
+            if(!cur){
+                if(printInput)
+                    setTermFGColor(AN_CONSOLE_RESET);
+                return 0;
+            }
 
             if(printInput)
                 putchar(cur);
 
+            if(cur == '\n'){
+                row++;
+                col = 0;
             //handle nested comments
             }else if(cur == '/' && nxt == '*'){
                 level += 1;
             }else if(cur == '*' && nxt == '/'){
-                if(level != 0){
+                if(level != 0)
                     level -= 1;
-                }else{
-                    loc->end = getPos();
-                    lexErr("Extraneous closing comment", loc);
-                }
             }
-        }while(level && cur != '\0');
+        }while(level);
 
-        if(printInput && nxt == '/')
-            putchar('/');
+        if(printInput){
+            if(nxt == '/')
+                putchar('/');
+            setTermFGColor(AN_CONSOLE_RESET);
+        }
 
         incPos();
         incPos();
     }else{ //single line comment
+        if(printInput)
+            setTermFGColor(AN_COMMENT_COLOR);
         while(cur != '\n' && cur != '\0'){
             if(printInput)
                 putchar(cur);
@@ -386,6 +392,8 @@ int Lexer::handleComment(yy::parser::location_type* loc){
         }
     }
     setTermFGColor(AN_CONSOLE_RESET);
+
+    if(!cur) return 0;
     return next(loc);
 }
 

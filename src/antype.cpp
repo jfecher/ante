@@ -521,12 +521,12 @@ namespace ante {
 
         unboundType->variants.push_back(variant);
 
-        cout << "Binding ";
-        unboundType->dump();
-        cout << "  With bindings ";
-        for(auto &p : bindings){
-            cout << p.first << " -> " << anTypeToStr(p.second) << endl;
-        }
+        //cout << "Binding ";
+        //unboundType->dump();
+        //cout << "  With bindings ";
+        //for(auto &p : bindings){
+        //    cout << p.first << " -> " << anTypeToStr(p.second) << endl;
+        //}
 
         if(unboundType->generics.empty()){
             cerr << "WARNING: empty generics for parent type " << anTypeToStr(unboundType) << endl;
