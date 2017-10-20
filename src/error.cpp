@@ -62,6 +62,11 @@ void clearColor(){
     if(colored_output)
         cout << AN_CONSOLE_RESET;
 }
+    
+
+void setTermFGColor(AN_COLOR_TYPE fg){
+    cout << fg;
+}
 
 /*
  *  Prints a given line (row) of a file, along with an arrow pointing to

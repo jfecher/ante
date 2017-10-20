@@ -1,4 +1,5 @@
 #include "lexer.h"
+#include "lazystr.h"
 #include <cstdlib>
 #include <cstring>
 
@@ -286,6 +287,13 @@ yy::position Lexer::getPos(bool inclusiveEnd) const{
                 (inclusiveEnd ? 0 : 1));
 }
 
+bool isKeywordAType(int tok){
+    return tok == Tok_I8 or tok == Tok_I16 or tok == Tok_I32 or tok == Tok_I64 or tok == Tok_Isz
+        or tok == Tok_U8 or tok == Tok_U16 or tok == Tok_U32 or tok == Tok_U64 or tok == Tok_Usz
+        or tok == Tok_F16 or tok == Tok_F32 or tok == Tok_F64
+        or tok == Tok_C8 or tok == Tok_C32 or tok == Tok_Bool or tok == Tok_Void;
+}
+
 /*
 *  Prints a token's type to stdout
 */
@@ -338,6 +346,7 @@ int Lexer::handleComment(yy::parser::location_type* loc){
         incPos();
 
         if(printInput){
+            setTermFGColor(AN_COMMENT_COLOR);
             putchar('/');
             putchar('*');
         }
@@ -376,6 +385,7 @@ int Lexer::handleComment(yy::parser::location_type* loc){
             incPos();
         }
     }
+    setTermFGColor(AN_CONSOLE_RESET);
     return next(loc);
 }
 
@@ -415,14 +425,15 @@ int Lexer::genAlphaNumTok(yy::parser::location_type* loc){
 
     if(isUsertype){
         if(printInput)
-            cout << /* type color << */ s;
+            cout << AN_TYPE_COLOR << s << AN_CONSOLE_RESET;
         setlextxt(s);
         return Tok_UserType;
     }else{ //ident or keyword
         auto key = keywords.find(s.c_str());
         if(key != keywords.end()){
             if(printInput)
-                cout << /* keyword color << */ key->first;
+                cout << (isKeywordAType(key->second) ? AN_TYPE_COLOR : AN_KEYWORD_COLOR)
+                     << key->first << AN_CONSOLE_RESET;
             return key->second;
         }else{//ident
             if(printInput)
@@ -438,8 +449,8 @@ int Lexer::genNumLitTok(yy::parser::location_type* loc){
     bool flt = false;
     loc->begin = getPos();
 
-    //if(printInput)
-    //    cout << num color;
+    if(printInput)
+        cout << AN_CONSTANT_COLOR;
 
     while(IS_NUMERICAL(cur) || (cur == '.' && !flt && IS_NUMERICAL(nxt)) || cur == '_'){
         if(cur != '_'){
@@ -529,6 +540,9 @@ int Lexer::genNumLitTok(yy::parser::location_type* loc){
         }
     }
 
+    if(printInput)
+        cout << AN_CONSOLE_RESET;
+
     loc->end = getPos(false);
     setlextxt(s);
     return flt? Tok_FltLit : Tok_IntLit;
@@ -607,7 +621,7 @@ int Lexer::genStrLitTok(yy::parser::location_type* loc){
     }
 
     if(printInput)
-        cout << /* str color << */ '"';
+        cout << AN_STRING_COLOR << '"';
 
     while(cur != '"' && cur != '\0'){
         if(cur == '\\'){
@@ -657,8 +671,10 @@ int Lexer::genStrLitTok(yy::parser::location_type* loc){
 
     loc->end = getPos();
 
-    if(printInput && cur == '"')
-        putchar('"');
+    if(printInput){
+        if(cur == '"') putchar('"');
+        cout << AN_CONSOLE_RESET;
+    }
 
 	if(cur != '"')
 		lexErr("Missing closing string delimiter", loc);
@@ -683,7 +699,7 @@ int Lexer::genCharLitTok(yy::parser::location_type* loc){
     if(cur == '\\'){
         //because there is an escape sequence, this is known to be a string
         if(printInput)
-            cout << /* str color << */ "'\\'" << nxt;
+            cout << AN_STRING_COLOR << "'\\'" << nxt;
 
         switch(nxt){
             case 'a': s += '\a'; break;
@@ -734,17 +750,14 @@ int Lexer::genCharLitTok(yy::parser::location_type* loc){
     if(cur != '\''){ //typevar
         s = '\'' + s;
 
-        if(printInput)
-            cout << /* type color << */ s;
-
         while(IS_ALPHANUM(cur)){
             s += cur;
-
-            if(printInput)
-                putchar(cur);
-
             incPos();
         }
+        
+        if(printInput)
+            cout << AN_TYPE_COLOR << s << AN_CONSOLE_RESET;
+
         loc->end = getPos(false);
         setlextxt(s);
         return Tok_TypeVar;
@@ -753,11 +766,12 @@ int Lexer::genCharLitTok(yy::parser::location_type* loc){
     if(printInput){
         if(!hasEscapeSequence){
             if(printInput){
-                cout << /* str color << */ '\'' << s[0];
+                cout << AN_STRING_COLOR << '\'' << s[0];
             }
         }
         if(cur == '\'')
             putchar('\'');
+        cout << AN_CONSOLE_RESET;
     }
 
     loc->end = getPos();

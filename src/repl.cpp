@@ -61,7 +61,7 @@ namespace ante {
 
 
     void startRepl(Compiler *c){
-        cout << "Ante REPL v0.0.3\nType 'exit' to exit.\n";
+        cout << "Ante REPL v0.0.4\nType 'exit' to exit.\n";
         setupTerm();
 
         auto cmd = getInputColorized();

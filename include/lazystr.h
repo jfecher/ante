@@ -18,17 +18,33 @@
 #  define AN_TYPE_COLOR "\033[;34m" //cyan
 #  define AN_COLOR_TYPE const char*
 
+//REPL colors
+#  define AN_NORMAL_COLOR   "\033[;m"
+#  define AN_KEYWORD_COLOR  "\033[;31m"
+#  define AN_STRING_COLOR   "\033[;33m"
+#  define AN_TYPE_COLOR     "\033[;34m"
+#  define AN_CONSTANT_COLOR "\033[;35m"
+#  define AN_COMMENT_COLOR  "\033[;36m"
+
 //older versions of windows do not understand escape sequences, use winAPI instead
 #else
 #  define AN_CONSOLE_RESET win_console_color::darkwhite
 #  define AN_CONSOLE_ITALICS ""
 #  define AN_CONSOLE_BOLD ""
 
-#  define AN_ERR_COLOR win_console_color::red
+#  define AN_ERR_COLOR  win_console_color::red
 #  define AN_WARN_COLOR win_console_color::yellow
 #  define AN_NOTE_COLOR win_console_color::magenta
 #  define AN_TYPE_COLOR win_console_color::cyan
 #  define AN_COLOR_TYPE win_console_color
+
+//REPL colors
+#  define AN_NORMAL_COLOR   win_console_color::darkwhite
+#  define AN_KEYWORD_COLOR  win_console_color::red
+#  define AN_STRING_COLOR   win_console_color::yellow
+#  define AN_TYPE_COLOR     win_console_color::cyan
+#  define AN_CONSTANT_COLOR win_console_color::magenta
+#  define AN_COMMENT_COLOR  win_console_color::gray
 
 #include <windows.h>
 
@@ -42,9 +58,6 @@ namespace ante {
 
 ante::win_console_color getBackgroundColor();
 
-//NOTE: this function sets the console's foreground and background color as it cannot
-//      be contained within the string itself on windows, thus necessitating the lazy_str
-void setcolor(ante::win_console_color foreColor, ante::win_console_color backColor);
 std::ostream& operator<<(std::ostream& os, ante::win_console_color color);
 
 #endif
@@ -60,6 +73,8 @@ namespace ante {
         lazy_str(const char* str);
         lazy_str(std::string str);
     };
+
+    void setTermFGColor(AN_COLOR_TYPE fg);
 }
 
 std::ostream& operator<<(std::ostream& os, ante::lazy_str str);
