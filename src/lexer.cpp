@@ -439,9 +439,15 @@ int Lexer::genAlphaNumTok(yy::parser::location_type* loc){
     }else{ //ident or keyword
         auto key = keywords.find(s.c_str());
         if(key != keywords.end()){
-            if(printInput)
-                cout << (isKeywordAType(key->second) ? AN_TYPE_COLOR : AN_KEYWORD_COLOR)
-                     << key->first << AN_CONSOLE_RESET;
+            if(printInput){
+                if(isKeywordAType(key->second))
+                    cout << AN_TYPE_COLOR;
+                else if(key->second == Tok_True || key->second == Tok_False)
+                    cout << AN_CONSTANT_COLOR;
+                else cout << AN_KEYWORD_COLOR;
+
+                cout << key->first << AN_CONSOLE_RESET;
+            }
             return key->second;
         }else{//ident
             if(printInput)

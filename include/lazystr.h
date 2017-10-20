@@ -24,7 +24,7 @@
 #  define AN_STRING_COLOR   "\033[;33m"
 #  define AN_TYPE_COLOR     "\033[;34m"
 #  define AN_CONSTANT_COLOR "\033[;35m"
-#  define AN_COMMENT_COLOR  "\033[;36m"
+#  define AN_COMMENT_COLOR  "\033[;30m"
 
 //older versions of windows do not understand escape sequences, use winAPI instead
 #else
