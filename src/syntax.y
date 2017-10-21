@@ -355,11 +355,11 @@ trait_fn: modifier_list Fun fn_name ':' params RArrow type_expr   {$$ = mkFuncDe
         ;
 
 
-generic_list: generic_list type  %prec LOW  {$$ = setNext($1, $2);}
-            | type               %prec LOW  {$$ = setRoot($1);}
+typevar_list: typevar_list typevar  %prec LOW  {$$ = setNext($1, mkTypeNode(@$, TT_TypeVar, (char*)$2)); free($2);}
+            | typevar               %prec LOW  {$$ = setRoot(mkTypeNode(@$, TT_TypeVar, (char*)$1)); free($1);}
             ;
 
-generic_params: generic_list  %prec LOW {$$ = getRoot();}
+generic_params: typevar_list  %prec LOW {$$ = getRoot();}
               ;
 
 
