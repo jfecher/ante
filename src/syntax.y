@@ -369,28 +369,40 @@ data_decl: modifier_list Type usertype generic_params '=' type_decl_block   {$$ 
          | Type usertype '=' type_decl_block                                {$$ = mkDataDeclNode(@$, (char*)$2,  0, $4); free($2);}
          ;
 
-type_decl: params          {$$ = $1;}
-       /*  | '|' usertype type_expr_list  {$$ = mkNamedValNode(@$, mkVarNode(@2, (char*)$2), mkTypeNode(@$, TT_TaggedUnion, (char*)"", getRoot()));}
-         | '|' usertype                 {$$ = mkNamedValNode(@$, mkVarNode(@2, (char*)$2), mkTypeNode(@$, TT_TaggedUnion, (char*)"", 0));}
-       */  ;
 
-type_decl_list: type_decl_list Newline type_decl           {$$ = setNext($1, $3);}
-              | type_decl_list Newline tagged_union_list   {$$ = setNext($1, getRoot());}
-              | type_decl                                  {$$ = setRoot($1);}
-              | tagged_union_list                          {$$ = $1;} /* leave root set */
+type_decl_list: type_decl_list Newline params                       {$$ = setNext($1, $3);}
+              | type_decl_list Newline explicit_tagged_union_list   {$$ = setNext($1, getRoot());}
+              | params                                              {$$ = setRoot($1);}
+              | explicit_tagged_union_list                          {$$ = $1;} /* leave root set */
               ;
+
+/* tagged union list with mandatory '|' before first element */
+explicit_tagged_union_list: explicit_tagged_union_list '|' usertype type_expr   %prec STMT  {$$ = mkNamedValNode(@$, mkVarNode(@3, (char*)$3), mkTypeNode(@4, TT_TaggedUnion, (char*)"", $4), $1); free($3);}
+                          | explicit_tagged_union_list '|' usertype             %prec STMT  {$$ = mkNamedValNode(@$, mkVarNode(@3, (char*)$3), mkTypeNode(@3, TT_TaggedUnion, (char*)"",  0), $1); free($3);}
+                          | '|' usertype type_expr                              %prec STMT  {$$ = mkNamedValNode(@$, mkVarNode(@2, (char*)$2), mkTypeNode(@3, TT_TaggedUnion, (char*)"", $3),  0); free($2);}
+                          | '|' usertype                                        %prec STMT  {$$ = mkNamedValNode(@$, mkVarNode(@2, (char*)$2), mkTypeNode(@2, TT_TaggedUnion, (char*)"",  0),  0); free($2);}
 
 type_decl_block: Indent type_decl_list Unindent  {$$ = getRoot();}
                | params               %prec STMT  {$$ = $1;}
                | type_expr            %prec STMT  {$$ = mkNamedValNode(@$, mkVarNode(@$, (char*)""), $1, 0);}
-               | tagged_union_list    %prec STMT  {$$ = getRoot();}
+               | explicit_tagged_union_list    %prec STMT  {$$ = getRoot();}
                ;
 
 /* this rule returns a list (handled by mkNamedValNode function) */
-tagged_union_list: tagged_union_list '|' usertype type_expr   %prec STMT  {$$ = mkNamedValNode(@$, mkVarNode(@3, (char*)$3), mkTypeNode(@$, TT_TaggedUnion, (char*)"", $4), $1); free($3);}
-                 | tagged_union_list '|' usertype             %prec STMT  {$$ = mkNamedValNode(@$, mkVarNode(@3, (char*)$3), mkTypeNode(@$, TT_TaggedUnion, (char*)"",  0), $1); free($3);}
-                 | '|' usertype type_expr                     %prec STMT  {$$ = mkNamedValNode(@$, mkVarNode(@2, (char*)$2), mkTypeNode(@$, TT_TaggedUnion, (char*)"", $3),  0); free($2);}
-                 | '|' usertype                               %prec STMT  {$$ = mkNamedValNode(@$, mkVarNode(@2, (char*)$2), mkTypeNode(@$, TT_TaggedUnion, (char*)"",  0),  0); free($2);}
+//tagged_union_list: tagged_union_list '|' usertype type_expr   %prec STMT  {$$ = mkNamedValNode(@$, mkVarNode(@3, (char*)$3), mkTypeNode(@4, TT_TaggedUnion, (char*)"", $4), $1); free($3);}
+//                 | tagged_union_list '|' usertype             %prec STMT  {$$ = mkNamedValNode(@$, mkVarNode(@3, (char*)$3), mkTypeNode(@3, TT_TaggedUnion, (char*)"",  0), $1); free($3);}
+//
+//                 | usertype type_expr '|' usertype type_expr  %prec STMT  {$$ = mkNamedValNode(@$, mkVarNode(@1, (char*)$1), mkTypeNode(@2, TT_TaggedUnion, (char*)"", $2),
+//                                                                        setRoot(mkNamedValNode(@$, mkVarNode(@4, (char*)$4), mkTypeNode(@5, TT_TaggedUnion, (char*)"", $5), 0))); free($1); free($4);}
+//
+//                 | usertype type_expr '|' usertype            %prec STMT  {$$ = mkNamedValNode(@$, mkVarNode(@1, (char*)$1), mkTypeNode(@2, TT_TaggedUnion, (char*)"", $2),
+//                                                                        setRoot(mkNamedValNode(@$, mkVarNode(@4, (char*)$4), mkTypeNode(@4, TT_TaggedUnion, (char*)"",  0), 0))); free($1); free($4);}
+//
+//                 | usertype '|' usertype type_expr            %prec STMT  {$$ = mkNamedValNode(@$, mkVarNode(@1, (char*)$1), mkTypeNode(@1, TT_TaggedUnion, (char*)"",  0),
+//                                                                        setRoot(mkNamedValNode(@$, mkVarNode(@3, (char*)$3), mkTypeNode(@4, TT_TaggedUnion, (char*)"", $4), 0))); free($1); free($3);}
+//
+//                 | usertype '|' usertype                      %prec STMT  {$$ = mkNamedValNode(@$, mkVarNode(@1, (char*)$1), mkTypeNode(@1, TT_TaggedUnion, (char*)"",  0),
+//                                                                        setRoot(mkNamedValNode(@$, mkVarNode(@3, (char*)$3), mkTypeNode(@3, TT_TaggedUnion, (char*)"",  0), 0))); free($1); free($3);}
 
 
 

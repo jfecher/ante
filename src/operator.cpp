@@ -498,11 +498,11 @@ TypedValue TypeCastNode::compile(Compiler *c){
     auto *ty = toAnType(c, typeExpr.get());
     if(ty->isGeneric){
         TypeCheckResult tc;
-        if(auto *dt = dyn_cast<AnDataType>(ty)){
-            if(dt->isUnionTag()){
-                tc = c->typeEq(dt->extTys[0], rtval.type);
-            }
-        }
+        //if(auto *dt = dyn_cast<AnDataType>(ty)){
+        //    if(dt->isUnionTag()){
+        //        tc = c->typeEq(dt->extTys[0], rtval.type);
+        //    }
+        //}
 
         if(tc->res != TypeCheckResult::SuccessWithTypeVars)
             tc = c->typeEq(ty, rtval.type);
