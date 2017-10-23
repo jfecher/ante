@@ -1569,7 +1569,7 @@ void Compiler::importFile(const char *fName, Node *locNode){
         mergedCompUnits->import(import);
     }else{
         //module not found; create new Compiler instance to compile it
-        auto c = make_unique<Compiler>(fName, true, ctxt);
+        auto c = unique_ptr<Compiler>(new Compiler(fName, true, ctxt));
         c->ctxt = ctxt;
         c->compilePrelude();
         c->scanAllDecls();
