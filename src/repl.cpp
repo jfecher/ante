@@ -19,13 +19,28 @@ namespace ante {
     winsize termSize;
 #endif
 
+#ifdef WIN32
+#  include <windows.h>
+#  define getchar getchar_windows
+
+	HANDLE h;
+	DWORD cc;
+
+	TCHAR getchar_windows() {
+		TCHAR c = 0;
+		ReadConsole(h, &c, 1, &cc, NULL);
+		return c;
+	}
+
+#endif
+
     string getInputColorized(){
         string line = "";
 
         cout << ": " << flush;
         char inp = getchar();
 
-        while(inp and inp != '\n'){
+        while(inp and inp != '\n' and inp != '\r'){
             if(inp == '\b' or inp == 127){
                 if(!line.empty())
                     line = line.substr(0, line.length() - 1);
@@ -37,11 +52,12 @@ namespace ante {
                 line += inp;
             }
 
-            auto *l = new Lexer(nullptr, line, 1, 1, true);
-
-            LOC_TY loc;
-            printf("\033[2K\r: ");
-            while(l->next(&loc));
+#ifdef unix
+			LOC_TY loc;
+			printf("\033[2K\r: ");
+			auto *l = new Lexer(nullptr, line, 1, 1, true);
+			while (l->next(&loc));
+#endif
 
             inp = getchar();
         }
@@ -56,6 +72,15 @@ namespace ante {
         newt.c_lflag &= ~(ICANON | ECHO);
         tcsetattr(STDIN_FILENO, TCSANOW, &newt);
         ioctl(0, TIOCGWINSZ, &termSize);
+#elif defined WIN32
+		DWORD mode;
+		h = GetStdHandle(STD_INPUT_HANDLE);
+		if (h == NULL) {
+			fputs("Error when attempting to access windows terminal\n", stderr);
+			exit(1);
+		}
+		GetConsoleMode(h, &mode);
+		//SetConsoleMode(h, mode & ~(ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT));
 #endif
     }
 
