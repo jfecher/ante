@@ -23,15 +23,50 @@ namespace ante {
 #  include <windows.h>
 #  define getchar getchar_windows
 
-	HANDLE h;
-	DWORD cc;
+	HANDLE h_in, h_out;
+	DWORD cc, normal_mode, getch_mode;
 
 	TCHAR getchar_windows() {
 		TCHAR c = 0;
-		ReadConsole(h, &c, 1, &cc, NULL);
+		SetConsoleMode(h_in, getch_mode);
+		ReadConsole(h_in, &c, 1, &cc, NULL);
+		SetConsoleMode(h_in, normal_mode);
 		return c;
 	}
 
+	void clearline_windows() {
+		DWORD numCharsWritten;
+		CONSOLE_SCREEN_BUFFER_INFO csbi;
+
+		// Get the number of character cells in the current buffer.
+		if (!GetConsoleScreenBufferInfo(h_out, &csbi)){
+			cerr << "Cannot get screen buffer info" << endl;
+			return;
+		}
+
+		COORD homeCoords = { 0, csbi.dwCursorPosition.Y };
+		DWORD cellsToWrite = csbi.dwSize.X;
+
+		// Fill the entire screen with blanks.
+		if (!FillConsoleOutputCharacter(h_out, (TCHAR) ' ', cellsToWrite, homeCoords, &numCharsWritten)) {
+			cerr << "Error when attempting to clear screen" << endl;
+			return;
+		}
+
+		// Get the current text attribute.
+		if (!GetConsoleScreenBufferInfo(h_out, &csbi)) {
+			cerr << "Error when getting screen buffer info" << endl;
+			return;
+		}
+
+		// Set the buffer's attributes accordingly.
+		if (!FillConsoleOutputAttribute(h_out, csbi.wAttributes, cellsToWrite, homeCoords, &numCharsWritten)) {
+			cerr << "Error when attempting to fill attributes" << endl;
+			return;
+		}
+
+		SetConsoleCursorPosition(h_out, homeCoords);
+	}
 #endif
 
     string getInputColorized(){
@@ -53,11 +88,15 @@ namespace ante {
             }
 
 #ifdef unix
-			LOC_TY loc;
 			printf("\033[2K\r: ");
+#elif defined(WIN32)
+			clearline_windows();
+			cout << ": ";
+#endif
+
+			LOC_TY loc;
 			auto *l = new Lexer(nullptr, line, 1, 1, true);
 			while (l->next(&loc));
-#endif
 
             inp = getchar();
         }
@@ -73,14 +112,14 @@ namespace ante {
         tcsetattr(STDIN_FILENO, TCSANOW, &newt);
         ioctl(0, TIOCGWINSZ, &termSize);
 #elif defined WIN32
-		DWORD mode;
-		h = GetStdHandle(STD_INPUT_HANDLE);
-		if (h == NULL) {
+		h_in = GetStdHandle(STD_INPUT_HANDLE);
+		h_out = GetStdHandle(STD_OUTPUT_HANDLE);
+		if (!h_in or !h_out) {
 			fputs("Error when attempting to access windows terminal\n", stderr);
 			exit(1);
 		}
-		GetConsoleMode(h, &mode);
-		//SetConsoleMode(h, mode & ~(ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT));
+		GetConsoleMode(h_in, &normal_mode);
+		getch_mode = normal_mode & ~(ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT);
 #endif
     }
 
