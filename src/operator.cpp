@@ -1058,7 +1058,7 @@ void* lookupCFn(string name){
 #endif
 
 
-extern map<string, CtFunc*> compapi;
+extern map<string, unique_ptr<CtFunc>> compapi;
 /*
  *  Compile a compile-time function/macro which should not return a function call, just a compile-time constant.
  *  Ex: A call to Ante.getAST() would be a meta function as it wouldn't make sense to get the parse tree
@@ -1068,7 +1068,7 @@ extern map<string, CtFunc*> compapi;
  */
 TypedValue compMetaFunctionResult(Compiler *c, LOC_TY &loc, string &baseName, string &mangledName, vector<TypedValue> &typedArgs){
     CtFunc* fn;
-    if((fn = compapi[baseName])){
+    if((fn = compapi[baseName].get())){
         void *res;
         GenericValue gv;
 

@@ -23,6 +23,55 @@ namespace ante {
 
 #ifdef unix
     winsize termSize;
+
+#elif defined(WIN32)
+#  include <windows.h>
+#  define getchar getchar_windows
+
+	HANDLE h_in, h_out;
+	DWORD cc, normal_mode, getch_mode;
+
+	TCHAR getchar_windows() {
+		TCHAR c = 0;
+		SetConsoleMode(h_in, getch_mode);
+		ReadConsole(h_in, &c, 1, &cc, NULL);
+		SetConsoleMode(h_in, normal_mode);
+		return c;
+	}
+
+	void clearline_windows() {
+		DWORD numCharsWritten;
+		CONSOLE_SCREEN_BUFFER_INFO csbi;
+
+		// Get the number of character cells in the current buffer.
+		if (!GetConsoleScreenBufferInfo(h_out, &csbi)){
+			cerr << "Cannot get screen buffer info" << endl;
+			return;
+		}
+
+		COORD homeCoords = { 0, csbi.dwCursorPosition.Y };
+		DWORD cellsToWrite = csbi.dwSize.X;
+
+		// Fill the entire screen with blanks.
+		if (!FillConsoleOutputCharacter(h_out, (TCHAR) ' ', cellsToWrite, homeCoords, &numCharsWritten)) {
+			cerr << "Error when attempting to clear screen" << endl;
+			return;
+		}
+
+		// Get the current text attribute.
+		if (!GetConsoleScreenBufferInfo(h_out, &csbi)) {
+			cerr << "Error when getting screen buffer info" << endl;
+			return;
+		}
+
+		// Set the buffer's attributes accordingly.
+		if (!FillConsoleOutputAttribute(h_out, csbi.wAttributes, cellsToWrite, homeCoords, &numCharsWritten)) {
+			cerr << "Error when attempting to fill attributes" << endl;
+			return;
+		}
+
+		SetConsoleCursorPosition(h_out, homeCoords);
+	}
 #endif
 
     void savePos(){
@@ -44,6 +93,15 @@ namespace ante {
     void clearScreen(){
 #ifdef unix
         printf("\033[J");
+#elif defined(_WIN32)
+        clearline_windows();
+        cout << ": ";
+#endif
+    }
+
+    void newline(){
+#ifdef unix
+        printf("\033[2K\r: ");
 #elif defined(_WIN32)
 
 #endif
@@ -106,13 +164,19 @@ namespace ante {
             updateTermSize();
 
             //stop on newlines unless there is a \ before.
-            if(inp == '\n'){
+            if(inp == '\n' or inp == '\r'){
                 if(line.back() == '\\'){
-                    line.back() = '\n';
+                    if(inp == '\r'){
+                        line.back() = '\r';
+                        line += '\n';
+                    }else{
+                        line.back() = '\n';
+                    }
                 }else{
                     //append the line to the history before the newline is added
                     appendHistory(line);
                     sl_history_pos = sl_history.size();
+                    if(inp == '\r') line += '\r';
                     line += '\n';
                     break;
                 }
@@ -127,12 +191,14 @@ namespace ante {
                 line += inp;
             }
 
-            auto *l = new Lexer(nullptr, line, 1, 1, true);
-
+#if defined(unix) || defined(_WIN32)
             loadPos();
+            newline();
+
             LOC_TY loc;
-            printf("\033[2K\r: ");
-            while(l->next(&loc));
+			auto *l = new Lexer(nullptr, line, 1, 1, true);
+			while (l->next(&loc)){ /* do nothing*/ };
+#endif
 
             inp = getchar();
         }
@@ -148,6 +214,15 @@ namespace ante {
         newt.c_lflag &= ~(ICANON | ECHO);
         tcsetattr(STDIN_FILENO, TCSANOW, &newt);
         ioctl(0, TIOCGWINSZ, &termSize);
+#elif defined WIN32
+		h_in = GetStdHandle(STD_INPUT_HANDLE);
+		h_out = GetStdHandle(STD_OUTPUT_HANDLE);
+		if (!h_in or !h_out) {
+			fputs("Error when attempting to access windows terminal\n", stderr);
+			exit(1);
+		}
+		GetConsoleMode(h_in, &normal_mode);
+		getch_mode = normal_mode & ~(ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT);
 #endif
     }
 

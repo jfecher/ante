@@ -288,10 +288,10 @@ yy::position Lexer::getPos(bool inclusiveEnd) const{
 }
 
 bool isKeywordAType(int tok){
-    return tok == Tok_I8 or tok == Tok_I16 or tok == Tok_I32 or tok == Tok_I64 or tok == Tok_Isz
-        or tok == Tok_U8 or tok == Tok_U16 or tok == Tok_U32 or tok == Tok_U64 or tok == Tok_Usz
-        or tok == Tok_F16 or tok == Tok_F32 or tok == Tok_F64
-        or tok == Tok_C8 or tok == Tok_C32 or tok == Tok_Bool or tok == Tok_Void;
+    return tok == Tok_I8 || tok == Tok_I16 || tok == Tok_I32 || tok == Tok_I64 || tok == Tok_Isz
+		|| tok == Tok_U8 || tok == Tok_U16 || tok == Tok_U32 || tok == Tok_U64 || tok == Tok_Usz
+		|| tok == Tok_F16 || tok == Tok_F32 || tok == Tok_F64
+		|| tok == Tok_C8 || tok == Tok_C32 || tok == Tok_Bool || tok == Tok_Void;
 }
 
 /*
