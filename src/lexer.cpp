@@ -208,6 +208,7 @@ Lexer::Lexer(string* file) :
     nxt{0},
     scopes{new stack<unsigned int>()},
     cscope{0},
+    manualScopeLevel{0},
     shouldReturnNewline(false),
     printInput(false)
 {
@@ -248,6 +249,7 @@ Lexer::Lexer(string* fName, string& pFile,
     nxt{0},
     scopes{new stack<unsigned int>()},
     cscope{0},
+    manualScopeLevel{0},
     shouldReturnNewline(false),
     printInput(pi)
 {
@@ -563,7 +565,7 @@ int Lexer::genNumLitTok(yy::parser::location_type* loc){
 }
 
 int Lexer::genWsTok(yy::parser::location_type* loc){
-    if(cur == '\n'){
+    if(cur == '\n' and manualScopeLevel == 0){
         loc->begin = getPos();
 
         unsigned int newScope = 0;
@@ -698,6 +700,24 @@ int Lexer::genStrLitTok(yy::parser::location_type* loc){
     return Tok_StrLit;
 }
 
+
+int Lexer::genTypeVarTok(yy::parser::location_type* loc, string &s){
+    s = '\'' + s;
+
+    while(IS_ALPHANUM(cur)){
+        s += cur;
+        incPos();
+    }
+
+    if(printInput)
+        cout << AN_TYPE_COLOR << s << AN_CONSOLE_RESET;
+
+    loc->end = getPos(false);
+    setlextxt(s);
+    return Tok_TypeVar;
+}
+
+
 int Lexer::genCharLitTok(yy::parser::location_type* loc){
     string s = "";
     loc->begin = getPos();
@@ -761,21 +781,8 @@ int Lexer::genCharLitTok(yy::parser::location_type* loc){
 
     incPos();
 
-    if(cur != '\''){ //typevar
-        s = '\'' + s;
-
-        while(IS_ALPHANUM(cur)){
-            s += cur;
-            incPos();
-        }
-        
-        if(printInput)
-            cout << AN_TYPE_COLOR << s << AN_CONSOLE_RESET;
-
-        loc->end = getPos(false);
-        setlextxt(s);
-        return Tok_TypeVar;
-    }
+    if(cur != '\'') //typevar
+        return genTypeVarTok(loc, s);
 
     if(printInput){
         if(!hasEscapeSequence){
@@ -885,13 +892,22 @@ int Lexer::genOpTok(yy::parser::location_type* loc){
         return '[';                                             \
     }                                                           \
                                                                 \
+    if(cur == '{'){                                             \
+        matchingToks.push('}');                                 \
+        manualScopeLevel++;                                     \
+        incPos();                                               \
+        if(printInput) putchar('{');                            \
+        return Tok_Indent;                                      \
+    }                                                           \
+                                                                \
                                                                 \
     if(matchingToks.size() > 0 && cur == matchingToks.top()){   \
         int top = matchingToks.top();                           \
         matchingToks.pop();                                     \
         if(printInput) putchar(cur);                            \
         incPos();                                               \
-        return top;                                             \
+        if(top == '}') manualScopeLevel--;                      \
+        return top == '}'? Tok_Unindent : top;                  \
     }                                                           \
 }
 

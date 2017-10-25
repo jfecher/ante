@@ -74,6 +74,13 @@ namespace ante{
         */
         unsigned int cscope;
 
+        /**
+         * The amount of nested { and } the lexer is within.
+         *
+         * Changes in indentation are ignored when manualScopeLevel > 0
+         */
+        unsigned int manualScopeLevel;
+
         bool shouldReturnNewline;
 
         /**
@@ -95,6 +102,7 @@ namespace ante{
         int genStrLitTok(yy::parser::location_type* loc);
         int genCharLitTok(yy::parser::location_type* loc);
         int genOpTok(yy::parser::location_type* loc);
+        int genTypeVarTok(yy::parser::location_type* loc, std::string &s);
         int skipWsAndReturnNext(yy::parser::location_type* loc);
     };
 }
