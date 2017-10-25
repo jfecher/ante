@@ -341,6 +341,9 @@ void Lexer::incPos(int end){
     }
 }
 
+unsigned int Lexer::getManualScopeLevel() const {
+    return manualScopeLevel;
+}
 
 int Lexer::handleComment(yy::parser::location_type* loc){
     if(nxt == '*'){

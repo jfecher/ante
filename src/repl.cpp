@@ -24,6 +24,20 @@ namespace ante {
 #ifdef unix
     winsize termSize;
 
+#   define savePos() printf("\033[s")
+#   define loadPos() printf("\033[u")
+#   define clearScreen() printf("\033[J")
+#   define newline() printf("\033[2K\r: ")
+
+    void updateTermSize(){
+        winsize w;
+        ioctl(0, TIOCGWINSZ, &w);
+        if(w.ws_col != termSize.ws_col){
+            termSize = w;
+            clearScreen();
+        }
+    }
+
 #elif defined(WIN32)
 #  include <windows.h>
 #  define getchar getchar_windows
@@ -72,57 +86,46 @@ namespace ante {
 
 		SetConsoleCursorPosition(h_out, homeCoords);
 	}
-#endif
 
-    void savePos(){
-#ifdef unix
-        printf("\033[s");
-#elif defined(_WIN32)
+    void savePos(){}
 
-#endif
-    }
-
-    void loadPos(){
-#ifdef unix
-        printf("\033[u");
-#elif defined(_WIN32)
-
-#endif
-    }
+    void loadPos(){}
 
     void clearScreen(){
-#ifdef unix
-        printf("\033[J");
-#elif defined(_WIN32)
         clearline_windows();
         cout << ": ";
-#endif
     }
 
-    void newline(){
-#ifdef unix
-        printf("\033[2K\r: ");
-#elif defined(_WIN32)
+    void newline(){}
 
+    void updateTermSize(){}
 #endif
-    }
 
-    void updateTermSize(){
-#ifdef unix
-        winsize w;
-        ioctl(0, TIOCGWINSZ, &w);
-        if(w.ws_col != termSize.ws_col){
-            termSize = w;
-            clearScreen();
-        }
-#elif defined(_WIN32)
-
-#endif
-    }
 
     void appendHistory(string &line){
         if(!line.empty() and (sl_history.empty() or line != sl_history.back()))
             sl_history.push_back(line);
+    }
+
+    void previousLineInHistory(string &line){
+        if(sl_history_pos == sl_history.size()){
+            appendHistory(line);
+        }
+
+        if(sl_history_pos > 0){
+            sl_history_pos--;
+            line = sl_history[sl_history_pos];
+        }
+    }
+
+    void nextLineInHistory(string &line){
+        if(sl_history_pos < sl_history.size() - 1){
+            sl_history_pos++;
+            line = sl_history[sl_history_pos];
+        }else if(sl_history_pos == sl_history.size() - 1){
+            line = "";
+            sl_history_pos++;
+        }
     }
 
     void handleEscSeq(string &line){
@@ -133,24 +136,59 @@ namespace ante {
             }else if(escSeq == 67 and sl_pos < line.length()){ //right
                 sl_pos++;
             }else if(escSeq == 65){ //up
-                if(sl_history_pos == sl_history.size()){
-                    appendHistory(line);
-                }
-
-                if(sl_history_pos > 0){
-                    sl_history_pos--;
-                    line = sl_history[sl_history_pos];
-                }
+                previousLineInHistory(line);
             }else if(escSeq == 66){ //down
-                if(sl_history_pos < sl_history.size() - 1){
-                    sl_history_pos++;
-                    line = sl_history[sl_history_pos];
-                }else if(sl_history_pos == sl_history.size() - 1){
-                    line = "";
-                    sl_history_pos++;
-                }
+                nextLineInHistory(line);
             }
         }
+    }
+
+    bool lastCharIsOpenBracket(string &line){
+        for(auto it = line.rbegin(); it != line.rend(); it++){
+            if(*it != ' ' and *it != '\t' and *it != '\r' and *it != '\n'){
+                return *it == '{';
+            }
+        }
+        return false;
+    }
+
+    /**
+     *  Called whenever return is pressed in the REPL
+     *
+     *  Returns true if the line is finished and should be
+     *  evaluated.  This is only false if a \ precedes the
+     *  newline character or the last non-whitespace char
+     *  is a {
+     */
+    bool handleNewline(string &line, char nlChar){
+        if(line.back() == '\\'){
+            if(nlChar == '\r'){
+                line.back() = '\r';
+                line += '\n';
+            }else{
+                line.back() = '\n';
+            }
+            return false;
+        }
+
+        //lex through input to ensure all brackets are matched
+        LOC_TY loc;
+        auto l = Lexer(nullptr, line, 1, 1, false);
+        while (l.next(&loc)){ /* do nothing*/ };
+
+        //unmatched {
+        if(l.getManualScopeLevel() > 0){
+            if(nlChar == '\r') line += "\r\n";
+            else line += '\n';
+            return false;
+        }
+
+        //append the line to the history before the newline is added
+        appendHistory(line);
+        sl_history_pos = sl_history.size();
+        if(nlChar == '\r') line += '\r';
+        line += '\n';
+        return true;
     }
 
     string getInputColorized(){
@@ -165,21 +203,8 @@ namespace ante {
 
             //stop on newlines unless there is a \ before.
             if(inp == '\n' or inp == '\r'){
-                if(line.back() == '\\'){
-                    if(inp == '\r'){
-                        line.back() = '\r';
-                        line += '\n';
-                    }else{
-                        line.back() = '\n';
-                    }
-                }else{
-                    //append the line to the history before the newline is added
-                    appendHistory(line);
-                    sl_history_pos = sl_history.size();
-                    if(inp == '\r') line += '\r';
-                    line += '\n';
+                if(handleNewline(line, inp))
                     break;
-                }
             }else if(inp == '\t'){
                 line += "    "; //replace tabs with 4 spaces
             }else if(inp == '\b' or inp == 127){
@@ -196,8 +221,8 @@ namespace ante {
             newline();
 
             LOC_TY loc;
-			auto *l = new Lexer(nullptr, line, 1, 1, true);
-			while (l->next(&loc)){ /* do nothing*/ };
+			auto l = Lexer(nullptr, line, 1, 1, true);
+			while (l.next(&loc)){ /* do nothing*/ };
 #endif
 
             inp = getchar();
@@ -207,6 +232,9 @@ namespace ante {
         return line;
     }
 
+    /**
+     * Disables character echoing and enables per-character input for getchar
+     */
     void setupTerm(){
 #ifdef unix
         termios newt;

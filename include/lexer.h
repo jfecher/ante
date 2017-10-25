@@ -37,6 +37,8 @@ namespace ante{
         static void printTok(int t);
         static std::string getTokStr(int t);
 
+        unsigned int getManualScopeLevel() const;
+
     private:
         /* the ifstream to take from */
         std::ifstream *in;
