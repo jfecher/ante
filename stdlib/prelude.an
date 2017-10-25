@@ -65,6 +65,9 @@ ante fun Ante.ctError: c8* msg;
 //dumps llvm-ir to stdout
 ante fun Ante.emitIR:;
 
+//useful in the repl to redefine functions
+ante fun Ante.forget: c8* function_name;
+
 
 //numerical print functions
 !inline

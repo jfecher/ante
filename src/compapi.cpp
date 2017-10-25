@@ -67,6 +67,11 @@ extern "C" {
             cerr << "error: Ante.emitIR: null module" << endl;
         }
     }
+
+    void Ante_forget(Compiler *c, TypedValue &msgTv){
+        char *msg = (char*)typedValueToGenericValue(c, msgTv).PointerVal;
+        c->mergedCompUnits->fnDecls[msg].clear();
+    }
 }
 
 namespace ante {
@@ -80,6 +85,7 @@ namespace ante {
         compapi.emplace("Ante_ctLookup",    new CtFunc((void*)Ante_ctLookup,    AnTypeVarType::get("'t'"), {AnPtrType::get(AnType::getPrimitive(TT_C8))}));
         compapi.emplace("Ante_ctError",     new CtFunc((void*)Ante_ctError,     AnType::getVoid(), {AnPtrType::get(AnType::getPrimitive(TT_C8))}));
         compapi.emplace("Ante_emitIR",      new CtFunc((void*)Ante_emitIR,      AnType::getVoid()));
+        compapi.emplace("Ante_forget",      new CtFunc((void*)Ante_forget,      AnType::getVoid(), {AnPtrType::get(AnType::getPrimitive(TT_C8))}));
         compapi.emplace("FuncDecl_getName", new CtFunc((void*)FuncDecl_getName, AnDataType::get("Str"), {AnDataType::get("Ante.FuncDecl")}));
     }
 

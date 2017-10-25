@@ -1101,6 +1101,13 @@ TypedValue compMetaFunctionResult(Compiler *c, LOC_TY &loc, string &baseName, st
 
             res = (*fn)(c, typedArgs[0]);
             return *(TypedValue*)res;
+        }else if(baseName == "Ante_forget"){
+            if(typedArgs.size() != 1)
+                return c->compErr("Called function was given " + to_string(typedArgs.size()) +
+                        " arguments but was declared to take 1", loc);
+
+            (*fn)(c, typedArgs[0]);
+            return c->getVoidLiteral();
         }else if(baseName == "Ante_emitIR"){
             if(typedArgs.size() != 0)
                 return c->compErr("Called function was given " + to_string(typedArgs.size()) +
