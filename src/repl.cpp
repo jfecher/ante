@@ -281,9 +281,9 @@ namespace ante {
         appendHistory(line);
         sl_history_pos = sl_history.size();
         if(nlChar == '\r'){
-            insertCharAt(line, '\r', sl_pos++);
+            line += '\r';
         }
-        insertCharAt(line, '\n', sl_pos++);
+        line += '\n';
         return true;
     }
 
