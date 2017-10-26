@@ -24,10 +24,13 @@ namespace ante {
 #ifdef unix
     winsize termSize;
 
-#   define savePos() printf("\033[s")
-#   define loadPos() printf("\033[u")
 #   define clearScreen() printf("\033[J")
-#   define newline() printf("\033[2K\r: ")
+#   define clearLine() printf("\033[2K\r")
+
+#   define moveUp()    printf("\033[A")
+#   define moveDown()  printf("\033[B")
+#   define moveRight() printf("\033[C")
+#   define moveLeft()  printf("\033[D")
 
     void updateTermSize(){
         winsize w;
@@ -53,7 +56,7 @@ namespace ante {
 		return c;
 	}
 
-	void clearline_windows() {
+	void clearLine() {
 		DWORD numCharsWritten;
 		CONSOLE_SCREEN_BUFFER_INFO csbi;
 
@@ -87,19 +90,97 @@ namespace ante {
 		SetConsoleCursorPosition(h_out, homeCoords);
 	}
 
-    void savePos(){}
+    void moveToPos(unsigned int pos, unsigned int cur_pos, string &line){}
 
-    void loadPos(){}
-
-    void clearScreen(){
-        clearline_windows();
-        cout << ": ";
-    }
-
-    void newline(){}
+    void clearScreen(){}
 
     void updateTermSize(){}
+
+    void moveUp(){}
+
+    void moveDown(){}
+
+    void moveRight(){}
+
+    void moveLeft(){}
 #endif
+
+    pair<unsigned int, unsigned int> getCoordOfPos(unsigned int pos, string &s){
+        unsigned int lin = 0;
+        unsigned int col = 0;
+
+        for(unsigned int i = 0; i < pos; i++){
+            if(s[i] == '\n'){
+                lin++;
+                col = 0;
+            }else{
+                col++;
+            }
+        }
+        return {col, lin};
+    }
+
+    vector<unsigned int> getLineLengths(string &lines){
+        vector<unsigned int> ret;
+        unsigned int len = 0;
+        for(auto &c : lines){
+            if(c == '\n'){
+                ret.push_back(len);
+                len = 0;
+            }else{
+                len++;
+            }
+        }
+        return ret;
+    }
+
+    void moveBackToOriginFrom(pair<unsigned int, unsigned int> c){
+        for(unsigned int i = 0; i < c.first; i++){
+            moveLeft();
+        }
+
+        for(unsigned int i = 0; i < c.second; i++){
+            moveUp();
+        }
+    }
+
+    void clearLines(unsigned int lines){
+        for(unsigned int i = 0; i < lines; i++){
+            clearLine();
+            if(i != lines - 1)
+                moveDown();
+        }
+    }
+
+    void moveToPos(unsigned int pos, unsigned int cur_pos, string &line){
+        auto len = getCoordOfPos(cur_pos, line);
+
+        //account for the fact that ": " precedes
+        //the first line and thus every other line starts
+        //2 columns before 0,0
+        moveBackToOriginFrom(len);
+        if(len.second != 0){
+            moveRight();
+            moveRight();
+        }
+
+        auto c = getCoordOfPos(pos, line);
+
+        //opposite of the above adjustment
+        if(c.second != 0){
+            moveLeft();
+            moveLeft();
+        }
+
+        for(unsigned int i = 0; i < c.first; i++){
+            moveRight();
+        }
+
+        for(unsigned int i = 0; i < c.second; i++){
+            moveDown();
+        }
+    }
+
 
 
     void appendHistory(string &line){
@@ -115,6 +196,7 @@ namespace ante {
         if(sl_history_pos > 0){
             sl_history_pos--;
             line = sl_history[sl_history_pos];
+            sl_pos = line.length();
         }
     }
 
@@ -122,9 +204,19 @@ namespace ante {
         if(sl_history_pos < sl_history.size() - 1){
             sl_history_pos++;
             line = sl_history[sl_history_pos];
+            sl_pos = line.length();
         }else if(sl_history_pos == sl_history.size() - 1){
             line = "";
             sl_history_pos++;
+            sl_pos = 0;
+        }
+    }
+
+    void insertCharAt(string &line, char c, unsigned int pos){
+        if(pos == line.length()){
+            line += c;
+        }else{
+            line = line.substr(0, pos) + c + line.substr(pos);
         }
     }
 
@@ -161,12 +253,13 @@ namespace ante {
      *  is a {
      */
     bool handleNewline(string &line, char nlChar){
-        if(line.back() == '\\'){
+        if(!line.empty() and line[sl_pos-1] == '\\'){
             if(nlChar == '\r'){
-                line.back() = '\r';
-                line += '\n';
+                //overwrite backslash
+                line[sl_pos-1] = '\r';
+                insertCharAt(line, '\n', sl_pos++);
             }else{
-                line.back() = '\n';
+                line[sl_pos-1] = '\n';
             }
             return false;
         }
@@ -178,25 +271,36 @@ namespace ante {
 
         //unmatched {
         if(l.getManualScopeLevel() > 0){
-            if(nlChar == '\r') line += "\r\n";
-            else line += '\n';
+            if(nlChar == '\r')
+                insertCharAt(line, '\r', sl_pos++);
+            insertCharAt(line, '\n', sl_pos++);
             return false;
         }
 
         //append the line to the history before the newline is added
         appendHistory(line);
         sl_history_pos = sl_history.size();
-        if(nlChar == '\r') line += '\r';
-        line += '\n';
+        if(nlChar == '\r'){
+            insertCharAt(line, '\r', sl_pos++);
+        }
+        insertCharAt(line, '\n', sl_pos++);
         return true;
+    }
+
+    void removeCharAt(unsigned int pos, string &line){
+        if(pos > 0 and pos <= line.length()){
+            line = line.substr(0, pos - 1) + line.substr(pos);
+            sl_pos--;
+        }
     }
 
     string getInputColorized(){
         string line = "";
 
-        savePos();
-        cout << ": " << flush;
+        cout << "\r: " << flush;
         char inp = getchar();
+
+        sl_pos = 0;
 
         while(inp){
             updateTermSize();
@@ -207,28 +311,43 @@ namespace ante {
                     break;
             }else if(inp == '\t'){
                 line += "    "; //replace tabs with 4 spaces
+                sl_pos += 4;
             }else if(inp == '\b' or inp == 127){
-                if(!line.empty())
-                    line = line.substr(0, line.length() - 1);
+                removeCharAt(sl_pos, line);
             }else if(inp == '\033'){
                 handleEscSeq(line);
             }else{
-                line += inp;
+                insertCharAt(line, inp, sl_pos);
+                sl_pos++;
             }
 
 #if defined(unix) || defined(_WIN32)
-            loadPos();
-            newline();
+            //use lexer for syntax highlighting
+            LOC_TY loc;
+			auto l = Lexer(nullptr, line, 1, 1, true);
+			while (l.next(&loc)){ /* do nothing*/ };
 
+            //move cursor from end of text to the current pos
+            moveToPos(sl_pos, line.length(), line);
+            inp = getchar();
+
+            //reset line to :
+            auto coords = getCoordOfPos(sl_pos, line);
+            moveBackToOriginFrom(coords);
+
+            auto max_coords = getCoordOfPos(line.length(), line);
+            clearLines(max_coords.second + 1);
+            moveBackToOriginFrom({0, max_coords.second});
+
+            cout << ": ";
+#endif
+        }
+
+#if defined(unix) || defined(_WIN32)
             LOC_TY loc;
 			auto l = Lexer(nullptr, line, 1, 1, true);
 			while (l.next(&loc)){ /* do nothing*/ };
 #endif
-
-            inp = getchar();
-        }
-
-        puts("");
         return line;
     }
 
@@ -256,7 +375,7 @@ namespace ante {
 
 
     void startRepl(Compiler *c){
-        cout << "Ante REPL v0.0.6\nType 'exit' to exit.\n";
+        cout << "Ante REPL v0.1.0\nType 'exit' to exit.\n";
         setupTerm();
 
         auto cmd = getInputColorized();
