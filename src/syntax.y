@@ -25,12 +25,16 @@ namespace ante {
     extern string typeNodeToStr(const TypeNode*);
     extern string mangle(std::string &base, NamedValNode *paramTys);
 
-    namespace parser { struct TypeNode; }
+    namespace parser {
+        struct TypeNode;
+
+        Node* externCName(Node *n);
+        vector<unique_ptr<TypeNode>> toOwnedVec(Node *tn);
+        vector<unique_ptr<TypeNode>> concat(vector<unique_ptr<TypeNode>>&& l, Node *tn);
+        TypeNode* addAndFreeModifiers(Node *tn, Node *m);
+    }
 }
 
-Node* externCName(Node *n);
-vector<unique_ptr<TypeNode>> toOwnedVec(Node *tn);
-vector<unique_ptr<TypeNode>> concat(vector<unique_ptr<TypeNode>>&& l, Node *tn);
 
 /*namespace ante{
     extern void error(string& msg, const char *fileName, unsigned int row, unsigned int col);
@@ -278,7 +282,7 @@ type_expr__: type_expr_  %prec MED {Node* tmp = getRoot();
                           }
                          }
 
-type_expr: modifier_list type_expr__  {$$ = ((TypeNode*)$2)->addModifiers((ModNode*)$1);}
+type_expr: modifier_list type_expr__  {$$ = addAndFreeModifiers($2, $1);}
          | type_expr__                {$$ = $1;}
          ;
 
@@ -809,28 +813,40 @@ void yy::parser::error(const location& loc, const string& msg){
     ante::error(msg.c_str(), l);
 }
 
-Node* externCName(Node *n){
-    size_t len = strlen((char*)n);
-    char *c = (char*)realloc(n, len+2);
-    c[len] = ';';
-    c[len+1] = '\0';
-    return (Node*)c;
-}
+namespace ante {
+    namespace parser {
+        Node* externCName(Node *n){
+            size_t len = strlen((char*)n);
+            char *c = (char*)realloc(n, len+2);
+            c[len] = ';';
+            c[len+1] = '\0';
+            return (Node*)c;
+        }
 
-vector<unique_ptr<TypeNode>> toOwnedVec(Node *tn){
-    vector<unique_ptr<TypeNode>> ret;
-    while(tn){
-        ret.push_back(unique_ptr<TypeNode>((TypeNode*)tn));
-        tn = tn->next.get();
+        vector<unique_ptr<TypeNode>> toOwnedVec(Node *tn){
+            vector<unique_ptr<TypeNode>> ret;
+            while(tn){
+                ret.push_back(unique_ptr<TypeNode>((TypeNode*)tn));
+                tn = tn->next.get();
+            }
+            return ret;
+        }
+
+        vector<unique_ptr<TypeNode>> concat(vector<unique_ptr<TypeNode>>&& l, Node *tn){
+            auto r = toOwnedVec(tn);
+            vector<unique_ptr<TypeNode>> ret;
+            ret.reserve(l.size() + r.size());
+            for(auto &&e : l) ret.insert(ret.end(), move(e));
+            for(auto &&e : r) ret.insert(ret.end(), move(e));
+            return ret;
+        }
+
+        TypeNode* addAndFreeModifiers(Node *typenode, Node *modnode){
+            TypeNode *tn = (TypeNode*)typenode;
+            ModNode *m = (ModNode*)modnode;
+            tn = tn->addModifiers(m);
+            delete m;
+            return tn;
+        }
     }
-    return ret;
-}
-
-vector<unique_ptr<TypeNode>> concat(vector<unique_ptr<TypeNode>>&& l, Node *tn){
-    auto r = toOwnedVec(tn);
-    vector<unique_ptr<TypeNode>> ret;
-    ret.reserve(l.size() + r.size());
-    for(auto &&e : l) ret.insert(ret.end(), move(e));
-    for(auto &&e : r) ret.insert(ret.end(), move(e));
-    return ret;
 }
