@@ -266,7 +266,9 @@ Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt, bool force){
     vector<Type*> tys;
     if(auto *aggty = dyn_cast<AnAggregateType>(ext)){
         for(auto *e : aggty->extTys){
-            tys.push_back(c->anTypeToLlvmType(e, force));
+            auto *llvmTy = c->anTypeToLlvmType(e, force);
+            if(!llvmTy->isVoidTy())
+                tys.push_back(llvmTy);
         }
     }else{
         tys.push_back(c->anTypeToLlvmType(ext, force));
@@ -629,7 +631,9 @@ Type* Compiler::anTypeToLlvmType(const AnType *ty, bool force){
         }
         case TT_Tuple:
             for(auto *e : ((AnAggregateType*)ty)->extTys){
-                tys.push_back(anTypeToLlvmType(e, force));
+                auto *ty = anTypeToLlvmType(e, force);
+                if(!ty->isVoidTy())
+                    tys.push_back(ty);
             }
             return StructType::get(*ctxt, tys);
         case TT_Data: case TT_TaggedUnion: {

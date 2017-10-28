@@ -141,7 +141,7 @@ TypedValue TypeNode::compile(Compiler *c){
         if(!dataTy or dataTy->isStub()) goto rettype;
 
         auto *unionDataTy = dataTy->parentUnionType;
-        if(!unionDataTy or dataTy->isStub()) goto rettype;
+        if(!unionDataTy or unionDataTy->isStub()) goto rettype;
 
         size_t tagIndex = unionDataTy->getTagVal(typeName);
         Value *tag = ConstantInt::get(*c->ctxt, APInt(8, tagIndex, true));
@@ -1178,7 +1178,7 @@ TypedValue compTaggedUnion(Compiler *c, DataDeclNode *n){
         if(tagTy->typeTag == TT_Tuple){
             exts = ((AnAggregateType*)tagTy)->extTys;
         }else{
-            exts.emplace_back(tagTy);
+            exts.push_back(tagTy);
         }
 
         //Each union member's type is a tuple of the tag (a u8 value), and the user-defined value
