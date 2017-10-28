@@ -1350,7 +1350,7 @@ TypedValue compFnCall(Compiler *c, Node *l, Node *r){
             push_front(args, funcs->obj.val);
             is_method = true;
         }
-        //delete funcs;
+        delete funcs;
     }
 
     if(!tvf)
