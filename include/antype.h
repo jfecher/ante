@@ -432,6 +432,12 @@ namespace ante {
         llvm::StringMap<std::unique_ptr<AnFunctionType>> functionTypes;
         llvm::StringMap<std::unique_ptr<AnDataType>> declaredTypes;
 
+        /** generic variants are retrieved through their parent type,
+         * never directly through the map of declaredTypes.  Keeping
+         * all variants here avoids having to sift through every variant
+         * of a type and makes ownership simpler. */
+        std::vector<std::unique_ptr<AnDataType>> genericVariants;
+
         /** Contains primitive types or ptrTypes with modifiers that
          *  cannot be otherwise stored in their appropriate containers
          *  without changing the key type.  */

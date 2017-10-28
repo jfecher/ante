@@ -577,7 +577,7 @@ namespace ante {
     AnDataType* findMatchingVariant(AnDataType *unboundType, const vector<pair<string, AnType*>> &boundTys){
         auto filteredBindings = filterMatchingBindings(unboundType, boundTys);
 
-        for(auto *v : unboundType->variants){
+        for(auto &v : unboundType->variants){
             if(v->boundGenerics == filteredBindings){
                 return v;
             }
@@ -636,7 +636,7 @@ namespace ante {
             return variant;
 
         variant = new AnDataType(unboundType->name, {}, false, unboundType->mods);
-
+        typeArena.genericVariants.emplace_back(variant);
         return bindVariant(c, unboundType, filteredBindings, m, variant);
     }
 
@@ -666,6 +666,7 @@ namespace ante {
             return variant;
 
         variant = new AnDataType(unboundType->name, {}, false, m);
+        typeArena.genericVariants.emplace_back(variant);
         return bindVariant(c, unboundType, filteredBindings, m, variant);
     }
 

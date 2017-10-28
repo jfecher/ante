@@ -1208,7 +1208,7 @@ TypedValue compTaggedUnion(Compiler *c, DataDeclNode *n){
 
     data->tags = tags;
 
-    for(auto *v : data->variants){
+    for(auto &v : data->variants){
         v->extTys = data->extTys;
         v->isGeneric = data->isGeneric;
         v->typeTag = data->typeTag;
@@ -1265,7 +1265,7 @@ TypedValue DataDeclNode::compile(Compiler *c){
     data->fields = fieldNames;
     data->extTys = fieldTypes;
 
-    for(auto *v : data->variants){
+    for(auto &v : data->variants){
         v->extTys = data->extTys;
         v->isGeneric = data->isGeneric;
         v->typeTag = data->typeTag;
