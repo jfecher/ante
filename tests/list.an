@@ -1,6 +1,6 @@
 
-type Maybe 't =
-   | Some 't
+type Maybe 'm =
+   | Some 'm
    | None
 
 type List 't = Maybe((Node 't)*) first, Maybe((Node 't)*) last

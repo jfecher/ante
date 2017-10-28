@@ -902,62 +902,33 @@ TypeCheckResult& typeEqHelper(const Compiler *c, const AnType *l, const AnType *
             return tcr;
         }
 
-        bool lIsBound = !ldt->boundGenerics.empty();
-        bool rIsBound = !rdt->boundGenerics.empty();
+        if(ldt->name == rdt->name){
+            bool lIsBound = !ldt->boundGenerics.empty();
+            bool rIsBound = !rdt->boundGenerics.empty();
 
-        if(lIsBound and rIsBound){
-            for(size_t i = 0; i < ldt->boundGenerics.size(); i++){
-                typeEqHelper(c, ldt->boundGenerics[i].second, rdt->boundGenerics[i].second, tcr);
-                if(tcr.failed()) return tcr;
+            if(lIsBound and rIsBound){
+                for(size_t i = 0; i < ldt->boundGenerics.size(); i++){
+                    typeEqHelper(c, ldt->boundGenerics[i].second, rdt->boundGenerics[i].second, tcr);
+                    if(tcr.failed()) return tcr;
+                }
+                return tcr;
+            }else if(lIsBound and !rIsBound){
+                for(size_t i = 0; i < ldt->boundGenerics.size(); i++){
+                    typeEqHelper(c, ldt->boundGenerics[i].second, rdt->generics[i], tcr);
+                    if(tcr.failed()) return tcr;
+                }
+                return tcr;
+            }else if(!lIsBound and rIsBound){
+                for(size_t i = 0; i < rdt->boundGenerics.size(); i++){
+                    typeEqHelper(c, ldt->generics[i], rdt->boundGenerics[i].second, tcr);
+                    if(tcr.failed()) return tcr;
+                }
+                return tcr;
+            }else{
+                //neither are bound, these should both be parent types
+                return tcr.success();
             }
-            return tcr;
-        }else if(lIsBound and !rIsBound){
-            for(size_t i = 0; i < ldt->boundGenerics.size(); i++){
-                typeEqHelper(c, ldt->boundGenerics[i].second, rdt->generics[i], tcr);
-                if(tcr.failed()) return tcr;
-            }
-            return tcr;
-        }else if(!lIsBound and rIsBound){
-            for(size_t i = 0; i < rdt->boundGenerics.size(); i++){
-                typeEqHelper(c, ldt->generics[i], rdt->boundGenerics[i].second, tcr);
-                if(tcr.failed()) return tcr;
-            }
-            return tcr;
-        }else{
-            //neither are bound, these should both be parent types
-            return tcr.success();
         }
-
-        /*
-        if(ldt->isVariantOf(rdt)){
-            if(!rdt->isGeneric) return tcr.failure();
-
-            //if(rdt->unboundType){
-                auto lBoundTys = flattenBoundTys(c, rdt);
-                auto rBoundTys = flattenBoundTys(c, ldt);
-                return typeEqHelper(c, lBoundTys, rBoundTys, tcr);
-            //}else{
-            //    for(size_t i = 0; i < ldt->extTys.size(); i++){
-            //        typeEqHelper(c, ldt->extTys[i], rdt->extTys[i], tcr);
-            //        if(tcr.failed()) return tcr;
-            //    }
-            //    return tcr;
-            //}
-        }else if(rdt->isVariantOf(ldt)){
-            if(!ldt->isGeneric) return tcr.failure();
-
-            //if(ldt->unboundType){
-                auto lBoundTys = flattenBoundTys(c, rdt);
-                auto rBoundTys = flattenBoundTys(c, ldt);
-                return typeEqHelper(c, lBoundTys, rBoundTys, tcr);
-            //}else{
-            //    for(size_t i = 0; i < ldt->extTys.size(); i++){
-            //        typeEqHelper(c, ldt->extTys[i], rdt->extTys[i], tcr);
-            //        if(tcr.failed()) return tcr;
-            //    }
-            //    return tcr;
-            //}
-        }*/
 
         //typeName's are different, check if one is a trait and the other
         //is an implementor of the trait
@@ -1016,7 +987,7 @@ TypeCheckResult& typeEqHelper(const Compiler *c, const AnType *l, const AnType *
 
             return tcr.successWithTypeVars();
         }else{ //tv is bound in same typechecking run
-            return tcr;
+            return typeEqHelper(c, tv, nonTypeVar, tcr);
         }
     }
     return typeEqBase(l, r, tcr, c);
