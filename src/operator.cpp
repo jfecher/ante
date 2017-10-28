@@ -1666,6 +1666,12 @@ TypedValue BinOpNode::compile(Compiler *c){
         }
     }
 
+    if(op == '+' or op == '-'){
+        if((lhs.type->typeTag == TT_Ptr or isNumericTypeTag(lhs.type->typeTag)) and
+           (rhs.type->typeTag == TT_Ptr or isNumericTypeTag(rhs.type->typeTag)))
+            return handlePrimitiveNumericOp(this, c, lhs, rhs);
+    }
+
     return c->compErr("Operator " + Lexer::getTokStr(op) + " is not overloaded for types "
             + anTypeToColoredStr(lhs.type) + " and " + anTypeToColoredStr(rhs.type), loc);
 }
