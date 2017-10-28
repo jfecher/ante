@@ -20,9 +20,9 @@ let sub = new Sub(five, two)
 
 let add = new Add(sub, seven)
 
-print eval{five}
-print eval{two}
-print eval{seven}
+print <| eval five
+print <| eval two
+print <| eval seven
 
-print eval{sub}
-print eval{add}
+print <| eval sub
+print <| eval add

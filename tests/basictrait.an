@@ -36,7 +36,7 @@ ext Container: NumStore
 
 //define function to work on any Holder
 fun print: Holder* h
-    print get{@h}
+    print <| get (@h)
 
 
 fun print: Container c
@@ -46,7 +46,7 @@ fun print: Container c
 
 
 fun print: Holder h
-    print get{h}
+    print <| get h
 
 
 var h = Holder()

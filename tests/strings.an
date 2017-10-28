@@ -4,14 +4,14 @@ let openingMsg = "Hello World!"
 fun getClosingMsg := "Goodbye World!\n"
 
 
-printf{"%s\n%s", openingMsg.cStr, getClosingMsg{}.cStr}
+printf "%s\n%s" openingMsg.cStr (getClosingMsg()).cStr
 
-//string literals are now Str typed by default (no longer [c8])
+//string literals are of type Str by default (not c8* or [c8])
 let str = "test"
 print str
 
 print "str"
 
-printf{"len(\"%s\") = %d\n", openingMsg, openingMsg.len}
+printf "len(\"%s\") = %d\n" openingMsg openingMsg.len
 
 print(str#3)

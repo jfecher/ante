@@ -7,7 +7,7 @@ fun three :=
     3
 
 //test compile-time evaluation of user defined functions
-print three{}
+print <| three()
 
 //test it again to ensure it is re-evaluated completely
 let res = three()
