@@ -513,6 +513,7 @@ TypedValue ForNode::compile(Compiler *c){
 
     //candval = is_done range
     auto rangeVal = TypedValue(c->builder.CreateLoad(alloca), rangev.type);
+
     auto is_done = c->callFn("has_next", {rangeVal});
     if(!is_done) return c->compErr("Range expression of type " + anTypeToColoredStr(rangev.type) + " does not implement " +
             anTypeToColoredStr(AnDataType::get("Iterable")) + ", which it needs to be used in a for loop", range->loc);
@@ -1711,8 +1712,9 @@ Function* Compiler::createMainFn(){
     builder.CreateStore(&*args, argc);
     builder.CreateStore(&*++args, argv);
 
-    AnType *argcAnty = AnType::getI32();
-    AnType *argvAnty = AnPtrType::get(AnPtrType::get(AnType::getPrimitive(TT_C8)));
+    auto *global_mod = AnModifier::get({Tok_Global});
+    AnType *argcAnty = AnType::getPrimitive(TT_I32, global_mod);
+    AnType *argvAnty = AnPtrType::get(AnPtrType::get(AnType::getPrimitive(TT_C8)), global_mod);
 
     stoVar("argc", new Variable("argc", TypedValue(builder.CreateLoad(argc), argcAnty), 1));
     stoVar("argv", new Variable("argv", TypedValue(builder.CreateLoad(argv), argvAnty), 1));
