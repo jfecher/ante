@@ -808,6 +808,7 @@ namespace ante {
     std::vector<AnType*> toTypeVector(std::vector<TypedValue> &tvs);
 
     std::string mangle(std::string &base, std::vector<AnType*> params);
+    std::string mangle(FuncDecl *fd, std::vector<AnType*> &params);
     std::string mangle(std::string &base, std::shared_ptr<parser::NamedValNode> &paramTys);
     std::string mangle(std::string &base, parser::TypeNode *paramTys);
     std::string mangle(std::string &base, parser::TypeNode *p1, parser::TypeNode *p2);

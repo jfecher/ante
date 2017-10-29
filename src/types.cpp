@@ -1128,6 +1128,8 @@ string typeNodeToStr(const TypeNode *t){
 
 string _anTypeToStr(const AnType *t, AnModifier *m){
     string mods = "";
+    if(!t) return "(null)";
+
     if(t->mods != m and m != (void*)1)
         mods = modifiersToStr(t->mods);
 

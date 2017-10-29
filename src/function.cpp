@@ -504,24 +504,13 @@ FuncDecl* shallow_copy(FuncDecl* fd, string &mangledName){
 
 TypedValue compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, vector<AnType*> &args){
     //test if bound variant is already compiled
-    string mangled = mangle(fd->getName(), args);
+    string mangled = mangle(fd, args);
 
     TypedValue fn;
     if(!!(fn = c->getFunction(fd->getName(), mangled)))
         return fn;
 
-    //Default return type in case this function has an inferred return type;
-    AnType *anRetTy = AnType::getVoid();
-
-    //bind the return type if necessary
-    if(TypeNode* retTy = (TypeNode*)fd->fdn->type.get()){
-        anRetTy = bindGenericToType(c, toAnType(c, retTy), tc->bindings);
-    }
-
-    auto *fty = AnFunctionType::get(anRetTy, args);
-
     fd = shallow_copy(fd, mangled);
-    fd->type = fty;
 
     //Each binding from the typecheck results needs to be declared as a typevar in the
     //function's scope, but compFn sets this scope later on, so the needed bindings are
@@ -529,6 +518,17 @@ TypedValue compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, vector
     for(auto& pair : tc->bindings){
         fd->obj_bindings.push_back({pair.first, pair.second});
     }
+
+    //Default return type in case this function has an inferred return type;
+    AnType *anRetTy = AnType::getVoid();
+
+    //bind the return type if necessary
+    if(TypeNode* retTy = (TypeNode*)fd->fdn->type.get()){
+        anRetTy = bindGenericToType(c, toAnType(c, retTy), fd->obj_bindings);
+    }
+
+    auto *fty = AnFunctionType::get(anRetTy, args);
+    fd->type = fty;
 
     //compile the function normally (each typevar should now be
     //substituted with its checked type from the typecheck tc)
@@ -815,25 +815,23 @@ TypedValue Compiler::getCastFn(AnType *from_ty, AnType *to_ty, FuncDecl *fd){
     TypedValue tv;
 
     auto *to_ty_dt = dyn_cast<AnDataType>(to_ty);
-    if(to_ty_dt and to_ty_dt->unboundType and !fd->obj_bindings.empty()){
+    if(to_ty_dt and to_ty_dt->unboundType){
         AnType *unbound_obj = fd->obj;
         fd->obj = to_ty;
-
-        //size_t argc = to_ty->params.size();
-        //if(argc != unbound_obj->params.size())
-        //    return nullptr;
-
-        //size_t i = 0;
-        //for(auto& tn : unbound_obj->params){
-        //    TypeNode *bound_ty = to_ty->params[i].get();
-
-        //    fd->obj_bindings.push_back(pair<string,TypeNode*>(tn->typeName, bound_ty));
-        //    i++;
-        //}
+        fd->obj_bindings = to_ty_dt->boundGenerics;
 
         //must check if this functions is generic first
         auto args = toArgTuple(from_ty);
-        tv = compFnWithArgs(this, fd, args);
+        if(!fd->obj_bindings.empty()){
+            //force a call to compTemplateFunction as the object itself is generic
+            //and must be bound even if the function has no parameters to match.
+            //This is common in a constructor for an empty container, eg. Vec<i32>()
+            auto fnty = AnFunctionType::get(this, AnType::getVoid(), fd->fdn->params.get());
+            auto tc = typeEq(fnty->extTys, args);
+            tv = compTemplateFn(this, fd, tc, args);
+        }else{
+            tv = compFnWithArgs(this, fd, args);
+        }
 
         //TODO: if fd is a meta function that is a method of a generic object then the generic
         //      parameters of the object will be unbound here and untraceable when the function is

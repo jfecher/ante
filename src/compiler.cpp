@@ -959,6 +959,14 @@ string mangle(string &base, vector<AnType*> params){
     return name;
 }
 
+string mangle(FuncDecl *fd, vector<AnType*> &params){
+    string name = anTypeToStr(fd->obj);
+    for(auto *tv : params)
+        if(tv->typeTag != TT_Void)
+            name += "_" + anTypeToStrWithoutModifiers(tv);
+    return name;
+}
+
 string mangle(string &base, shared_ptr<NamedValNode> &paramTys){
     string name = base;
     NamedValNode *cur = paramTys.get();
