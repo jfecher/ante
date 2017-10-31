@@ -868,7 +868,7 @@ TypedValue compMetaFunctionResult(Compiler *c, LOC_TY &loc, string &baseName, st
  *  FuncDeclNode can be added to be compiled only when it is later called.  Useful to prevent pollution
  *  of a module with unneeded library functions.
  */
-inline void Compiler::registerFunction(FuncDeclNode *fn, string &mangledName){
+void Compiler::registerFunction(FuncDeclNode *fn, string &mangledName){
     //check for redeclaration
     auto *redecl = getFuncDecl(fn->name, mangledName);
 

@@ -600,6 +600,13 @@ namespace ante {
          */
         unsigned int getScope() const;
 
+        /*
+         * Returns the name of the singular ante::Module this
+         * Compiler is in charge of compiling.
+         */
+        std::string& getModuleName() const;
+
+
         /**
         * @brief Performs a lookup for a variable
         *

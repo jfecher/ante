@@ -1580,8 +1580,8 @@ void Compiler::importFile(const char *fName, Node *locNode){
         //module not found; create new Compiler instance to compile it
         auto c = unique_ptr<Compiler>(new Compiler(fName, true, ctxt));
         c->ctxt = ctxt;
-        c->compilePrelude();
-        c->scanAllDecls();
+        c->module.reset(module.get());
+        c->compile();
 
         if(c->errFlag){
             cout << "Error when importing " << fName << endl;
@@ -1589,9 +1589,9 @@ void Compiler::importFile(const char *fName, Node *locNode){
             return;
         }
 
+        c->module.release();
         imports.push_back(c->compUnit);
         mergedCompUnits->import(c->compUnit);
-
         allCompiledModules.try_emplace(fName, c->compUnit);
     }
 }
@@ -1642,6 +1642,10 @@ void Compiler::compilePrelude(){
     if(fileName != AN_LIB_DIR "prelude.an"){
         importFile(AN_LIB_DIR "prelude.an");
     }
+}
+
+string& Compiler::getModuleName() const {
+    return compUnit->name;
 }
 
 
@@ -1698,41 +1702,57 @@ Function* Compiler::createMainFn(){
     Type* argvty = Type::getInt8Ty(*ctxt)->getPointerTo()->getPointerTo();
 
     //get or create the function type for the main method: (i32, c8**)->i32
-    FunctionType *ft = FunctionType::get(Type::getInt32Ty(*ctxt), {argcty, argvty}, false);
+    FunctionType *ft = isLib?
+        FunctionType::get(Type::getInt32Ty(*ctxt), {}, false):
+        FunctionType::get(Type::getInt32Ty(*ctxt), {argcty, argvty}, false);
 
     //Actually create the function in module m
-    string fnName = isLib ? "init_" + removeFileExt(fileName) : "main";
+    string fnName = isLib ? getModuleName() + "_init_module" : "main";
     Function *main = Function::Create(ft, Function::ExternalLinkage, fnName, module.get());
 
     //Create the entry point for the function
     BasicBlock *bb = BasicBlock::Create(*ctxt, "entry", main);
     builder.SetInsertPoint(bb);
 
-    //create argc and argv global vars
-    auto *argc = new GlobalVariable(*module, argcty, false, GlobalValue::PrivateLinkage, builder.getInt32(0), "argc");
-    auto *argv = new GlobalVariable(*module, argvty, false, GlobalValue::PrivateLinkage, ConstantPointerNull::get(dyn_cast<PointerType>(argvty)), "argv");
+    AnFunctionType *main_fn_ty;
+
+    if(!isLib){
+        //create argc and argv global vars
+        auto *argc = new GlobalVariable(*module, argcty, false, GlobalValue::PrivateLinkage, builder.getInt32(0), "argc");
+        auto *argv = new GlobalVariable(*module, argvty, false, GlobalValue::PrivateLinkage, ConstantPointerNull::get(dyn_cast<PointerType>(argvty)), "argv");
 
 #if LLVM_VERSION_MAJOR < 5
-    auto args = main->getArgumentList().begin();
+        auto args = main->getArgumentList().begin();
 #else
-    auto args = main->arg_begin();
+        auto args = main->arg_begin();
 #endif
-    builder.CreateStore(&*args, argc);
-    builder.CreateStore(&*++args, argv);
 
-    auto *global_mod = AnModifier::get({Tok_Global});
-    AnType *argcAnty = AnType::getPrimitive(TT_I32, global_mod);
-    AnType *argvAnty = AnPtrType::get(AnPtrType::get(AnType::getPrimitive(TT_C8)), global_mod);
+        builder.CreateStore(&*args, argc);
+        builder.CreateStore(&*++args, argv);
 
-    stoVar("argc", new Variable("argc", TypedValue(builder.CreateLoad(argc), argcAnty), 1));
-    stoVar("argv", new Variable("argv", TypedValue(builder.CreateLoad(argv), argvAnty), 1));
+        auto *global_mod = AnModifier::get({Tok_Global});
+        AnType *argcAnty = AnType::getPrimitive(TT_I32, global_mod);
+        AnType *argvAnty = AnPtrType::get(AnPtrType::get(AnType::getPrimitive(TT_C8)), global_mod);
 
-    //add main to call stack
-    auto *main_fn_ty = AnFunctionType::get(AnType::getU8(), {argcAnty, argvAnty});
+        stoVar("argc", new Variable("argc", TypedValue(builder.CreateLoad(argc), argcAnty), 1));
+        stoVar("argv", new Variable("argv", TypedValue(builder.CreateLoad(argv), argvAnty), 1));
+
+        main_fn_ty = AnFunctionType::get(AnType::getU8(), {argcAnty, argvAnty});
+    }else{
+        main_fn_ty = AnFunctionType::get(AnType::getU8(), {});
+    }
 
     auto main_tv = TypedValue(main, main_fn_ty);
-    shared_ptr<FuncDeclNode> fakeSp;
+    auto fakeLoc = mkLoc(mkPos(0, 0, 0), mkPos(0, 0, 0));
+    auto *fakeFdn = new FuncDeclNode(fakeLoc, fnName, nullptr, nullptr, nullptr, nullptr);
+    shared_ptr<FuncDeclNode> fakeSp{fakeFdn};
     auto *main_var = new FuncDecl(fakeSp, fnName, scope, mergedCompUnits, main_tv);
+
+    //TODO: merge this code with Compiler::registerFunction
+    shared_ptr<FuncDecl> fd{main_var};
+    compUnit->fnDecls[fnName].push_back(fd);
+    mergedCompUnits->fnDecls[fnName].push_back(fd);
+
     compCtxt->callStack.push_back(main_var);
     return main;
 }
@@ -2042,6 +2062,40 @@ inline void Compiler::stoType(AnDataType *dt, string &typeName){
 }
 
 /**
+ * Converts a given filename (with its file
+ * extension already removed) to a module name.
+ *
+ * - Replaces directory separators with '.'
+ * - Capitalizes first letters of words
+ * - Ignores non alphanumeric characters
+ */
+string toModuleName(string &s){
+    string mod = "";
+    bool capitalize = true;
+
+    for(auto &c : s){
+        if(capitalize and c >= 'a' and c <= 'z'){
+            mod += c + 'A' - 'a';
+            capitalize = false;
+        }else{
+#ifdef _WIN32
+            if(c == '\\'){
+#else
+            if(c == '/'){
+#endif
+                if(&c != s.c_str()){
+                    capitalize = true;
+                    mod += '.';
+                }
+            }else if(IS_ALPHANUM(c)){
+                mod += c;
+            }
+        }
+    }
+    return mod;
+}
+
+/**
  * @brief Creates a pass manager and fills it with passes.
  *
  * @param m Module to create the psas manager for
@@ -2126,11 +2180,12 @@ Compiler::Compiler(const char *_fileName, bool lib, shared_ptr<LLVMContext> llvm
 
     allMergedCompUnits.emplace_back(mergedCompUnits);
 
-    auto modName = removeFileExt(fileName);
+    auto fileNameWithoutExt = removeFileExt(fileName);
+    auto modName = toModuleName(fileNameWithoutExt);
     compUnit->name = modName;
     mergedCompUnits->name = modName;
 
-    outFile = modName;
+    outFile = fileNameWithoutExt;
 	if (outFile.empty())
 		outFile = "a.out";
 
@@ -2256,13 +2311,6 @@ Compiler::~Compiler(){
         delete yylexer;
         yylexer = 0;
     }
-
-    if(compCtxt and compCtxt->callStack.size() >= 1){
-        delete compCtxt->callStack[0];
-    }
-
-	//passManager.release();
-	//module.release();
 }
 
 } //end of namespace ante
