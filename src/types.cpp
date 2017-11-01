@@ -891,7 +891,7 @@ TypeCheckResult& typeEqHelper(const Compiler *c, const AnType *l, const AnType *
 
     const AnDataType *ldt, *rdt;
     if((ldt = dyn_cast<AnDataType>(l)) and (rdt = dyn_cast<AnDataType>(r))){
-        if(ldt->name == rdt->name and ldt->generics.empty() and rdt->generics.empty())
+        if(ldt->name == rdt->name and ldt->boundGenerics.empty() and rdt->boundGenerics.empty())
             return tcr.success();
 
         //Two bound types, check to see if their type parameters are equivalent
