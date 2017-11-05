@@ -1,11 +1,13 @@
+#include <llvm/ExecutionEngine/Interpreter.h>
+#include <llvm/Linker/Linker.h>
 #include "compiler.h"
 #include "types.h"
 #include "function.h"
 #include "tokens.h"
 #include "jitlinker.h"
 #include "types.h"
-#include <llvm/ExecutionEngine/Interpreter.h>
-#include <llvm/Linker/Linker.h>
+#include "jit.h"
+#include "argtuple.h"
 
 using namespace std;
 using namespace llvm;
@@ -826,192 +828,6 @@ vector<AnType*> toAnTypeVector(vector<TypedValue> &tvs){
     return ret;
 }
 
-//ante function to convert between IEEE half and IEEE single
-//since c++ does not support an IEEE half value
-#ifndef F16_BOOT
-extern "C" float f32_from_f16(float f);
-#else
-float f32_from_f16(float f) {
-    return f;
-}
-#endif
-
-/*
- *  Converts an llvm GenericValue to a TypedValue
- */
-TypedValue genericValueToTypedValue(Compiler *c, GenericValue gv, AnType *tn){
-    switch(tn->typeTag){
-        case TT_I8:              return TypedValue(c->builder.getInt8( *gv.IntVal.getRawData()),                  tn);
-        case TT_I16:             return TypedValue(c->builder.getInt16(*gv.IntVal.getRawData()),                  tn);
-        case TT_I32:             return TypedValue(c->builder.getInt32(*gv.IntVal.getRawData()),                  tn);
-        case TT_I64:             return TypedValue(c->builder.getInt64(*gv.IntVal.getRawData()),                  tn);
-        case TT_U8:              return TypedValue(c->builder.getInt8( *gv.IntVal.getRawData()),                  tn);
-        case TT_U16:             return TypedValue(c->builder.getInt16(*gv.IntVal.getRawData()),                  tn);
-        case TT_U32:             return TypedValue(c->builder.getInt32(*gv.IntVal.getRawData()),                  tn);
-        case TT_U64:             return TypedValue(c->builder.getInt64(*gv.IntVal.getRawData()),                  tn);
-        case TT_Isz:             return TypedValue(c->builder.getIntN(*gv.IntVal.getRawData(), AN_USZ_SIZE),      tn);
-        case TT_Usz:             return TypedValue(c->builder.getIntN(*gv.IntVal.getRawData(), AN_USZ_SIZE),      tn);
-        case TT_C8:              return TypedValue(c->builder.getInt8( *gv.IntVal.getRawData()),                  tn);
-        case TT_C32:             return TypedValue(c->builder.getInt32(*gv.IntVal.getRawData()),                  tn);
-        case TT_F16:             return TypedValue(ConstantFP::get(*c->ctxt, APFloat(f32_from_f16(gv.FloatVal))), tn);
-        case TT_F32:             return TypedValue(ConstantFP::get(*c->ctxt, APFloat(gv.FloatVal)),               tn);
-        case TT_F64:             return TypedValue(ConstantFP::get(*c->ctxt, APFloat(gv.DoubleVal)),              tn);
-        case TT_Bool:            return TypedValue(c->builder.getInt1(*gv.IntVal.getRawData()),                   tn);
-        case TT_Tuple:           break;
-        case TT_Array:           break;
-        case TT_Ptr: {
-            auto *cint = c->builder.getInt64((unsigned long) gv.PointerVal);
-            auto *ty = c->anTypeToLlvmType(tn);
-            return TypedValue(c->builder.CreateIntToPtr(cint, ty), tn);
-        }
-        case TT_Data:
-        case TT_TypeVar:
-        case TT_Function:
-        case TT_TaggedUnion:
-        case TT_MetaFunction:
-        case TT_FunctionList:
-        case TT_Type:
-            break;
-        case TT_Void:
-            return c->getVoidLiteral();
-    }
-
-    c->errFlag = true;
-    cerr << "genericValueToTypedValue: Unknown/Unimplemented TypeTag " << typeTagToStr(tn->typeTag) << endl;
-    throw new CtError();
-}
-
-
-/*
- * Returns the pointer value of a constant pointer type
- */
-void* getConstPtr(Compiler *c, TypedValue &tv){
-    auto *ptrty = (AnPtrType*)tv.type;
-
-    if(GlobalVariable *gv = dyn_cast<GlobalVariable>(tv.val)){
-        Value *v = gv->getInitializer();
-        if(ConstantDataArray *cda = dyn_cast<ConstantDataArray>(v)){
-            return (void*)strdup(cda->getAsString().str().c_str());
-        }
-
-        TypedValue tv = {v, ptrty->extTy};
-        auto elem = typedValueToGenericValue(c, tv);
-        auto *ret = new GenericValue(elem);
-        return ret;
-    }else if(ConstantExpr *ce = dyn_cast<ConstantExpr>(tv.val)){
-        Instruction *in = ce->getAsInstruction();
-        if(GetElementPtrInst *gep = dyn_cast<GetElementPtrInst>(in)){
-            auto ptr = TypedValue(gep->getPointerOperand(), ptrty->extTy);
-            return getConstPtr(c, ptr);
-        }
-    }
-
-    cerr << "error: unknown type given to getConstPtr, dumping\n";
-    tv.dump();
-    return nullptr;
-}
-
-
-/*
- *  Converts a TypedValue to an llvm GenericValue
- *  - Assumes the Value* within the TypedValue is a Constant*
- */
-GenericValue typedValueToGenericValue(Compiler *c, TypedValue &tv){
-    GenericValue ret;
-    TypeTag tt = tv.type->typeTag;
-
-    switch(tt){
-        case TT_I8:
-        case TT_I16:
-        case TT_I32:
-        case TT_I64:
-        case TT_U8:
-        case TT_U16:
-        case TT_U32:
-        case TT_U64:
-        case TT_Isz:
-        case TT_Usz:;
-        case TT_C8:
-        case TT_C32:
-        case TT_Bool: {
-            auto *ci = dyn_cast<ConstantInt>(tv.val);
-            if(!ci) break;
-            ret.IntVal = APInt(getBitWidthOfTypeTag(tt), isUnsignedTypeTag(tt) ? ci->getZExtValue() : ci->getSExtValue());
-            return ret;
-        }
-        case TT_F16:
-        case TT_F32: {
-            auto *cf = dyn_cast<ConstantFP>(tv.val);
-            if(!cf) break;
-            ret.FloatVal = cf->getValueAPF().convertToFloat();
-            return ret;
-        }
-        case TT_F64: {
-            auto *cf = dyn_cast<ConstantFP>(tv.val);
-            if(!cf) break;
-            ret.DoubleVal = cf->getValueAPF().convertToDouble();
-            return ret;
-        }
-        case TT_Ptr:
-        case TT_Array: {
-            ret.PointerVal = getConstPtr(c, tv);
-            return ret;
-        }
-        case TT_Tuple: {
-            size_t i = 0;
-            for(auto *ty : ((AnAggregateType*)tv.type)->extTys){
-                Value *extract = c->builder.CreateExtractValue(tv.val, i);
-                auto field = TypedValue(extract, ty);
-                ret.AggregateVal.push_back(typedValueToGenericValue(c, field));
-                i++;
-            }
-            return ret;
-        }
-        case TT_TypeVar: {
-            auto *tvt = (AnTypeVarType*)tv.type;
-            auto *var = c->lookup(tvt->name);
-            if(!var){
-                cerr << AN_ERR_COLOR << "error: " << AN_CONSOLE_RESET << "Lookup for typevar "+tvt->name+" failed";
-                c->errFlag = true;
-                throw new CtError();
-            }
-
-            auto boundTv = TypedValue(tv.val, extractTypeValue(var->tval));
-            return typedValueToGenericValue(c, boundTv);
-        }
-        case TT_Data:
-        case TT_Function:
-        case TT_TaggedUnion:
-        case TT_MetaFunction:
-        case TT_FunctionList:
-        case TT_Type:
-        case TT_Void:
-            break;
-    }
-
-    cerr << AN_ERR_COLOR << "error: " << AN_CONSOLE_RESET << "Compile-time function argument must be constant.\n";
-    c->errFlag = true;
-    throw new CtError();
-}
-
-
-vector<GenericValue> typedValuesToGenericValues(Compiler *c, vector<TypedValue> &typedArgs, LOC_TY loc, string fnname){
-    vector<GenericValue> ret;
-    ret.reserve(typedArgs.size());
-
-    for(size_t i = 0; i < typedArgs.size(); i++){
-        auto &tv = typedArgs[i];
-
-        if(!dyn_cast<Constant>(tv.val)){
-            c->compErr("Parameter " + to_string(i+1) + " of metafunction " + fnname + " is not a compile time constant", loc);
-            return ret;
-        }
-        ret.push_back(typedValueToGenericValue(c, tv));
-    }
-    return ret;
-}
-
-
 
 string getName(Node *n){
     if(VarNode *vn = dynamic_cast<VarNode*>(n))
@@ -1058,7 +874,84 @@ void* lookupCFn(string name){
 #endif
 
 
+TypedValue createMallocAndStore(Compiler *c, TypedValue &val){
+    string mallocFnName = "malloc";
+    Function* mallocFn = (Function*)c->getFunction(mallocFnName, mallocFnName).val;
+
+    unsigned size = val.type->getSizeInBits(c) / 8;
+
+    Value *sizeVal = ConstantInt::get(*c->ctxt, APInt(AN_USZ_SIZE, size, true));
+
+    Value *voidPtr = c->builder.CreateCall(mallocFn, sizeVal);
+    Type *ptrTy = val.getType()->getPointerTo();
+    Value *typedPtr = c->builder.CreatePointerCast(voidPtr, ptrTy);
+
+    //finally store val1 into the malloc'd slot
+    c->builder.CreateStore(val.val, typedPtr);
+
+    auto *tyn = AnPtrType::get(val.type);
+    return TypedValue(typedPtr, tyn);
+}
+
+
+
+vector<Value*> unwrapVoidPtrArgs(Compiler *c, Value *anteCallArg, FuncDecl *fd){
+    vector<Value*> ret;
+
+    auto *fnTy = cast<Function>(fd->tv.val)->getFunctionType();
+    Type *argTupTy = StructType::get(*c->ctxt, fnTy->params(), true);
+    Type *argsTy = argTupTy->getPointerTo();
+
+    Value *cast = c->builder.CreateBitCast(anteCallArg, argsTy);
+
+    for(size_t i = 0; i < argTupTy->getNumContainedTypes(); i++){
+        vector<Value*> indices = {
+            c->builder.getInt32(0),
+            c->builder.getInt32(i)
+        };
+        Value *gep = c->builder.CreateGEP(cast, indices);
+        ret.push_back(c->builder.CreateLoad(gep));
+    }
+
+    return ret;
+}
+
+
+/**
+ * Creates a function AnteCall that unpacks the given arguments from a void*,
+ * and returns the result of a call to the given FuncDecl with those arguments.
+ *
+ * AnteCall has the type 't*->'u* where 't is a tuple of fd's parameter types (to
+ * be unpacked within AnteCall) and 'u is the return type of fd.
+ */
+void createDriverFunction(Compiler *c, FuncDecl *fd, vector<TypedValue> &typedArgs){
+    Type *voidPtrTy = Type::getInt8Ty(*c->ctxt)->getPointerTo();
+    FunctionType *fnTy = FunctionType::get(voidPtrTy, voidPtrTy, false);
+
+    //preFn is the predecessor to fn because we do not yet know its return type, so its body must be compiled,
+    //then the type must be checked and the new function with correct return type created, and their bodies swapped.
+    Function *fn = Function::Create(fnTy, Function::ExternalLinkage, "AnteCall", c->module.get());
+    BasicBlock *entry = BasicBlock::Create(*c->ctxt, "entry", fn);
+    c->builder.SetInsertPoint(entry);
+
+    auto *fnArg1 = fn->arg_begin();
+    auto args = unwrapVoidPtrArgs(c, fnArg1, fd);
+
+    Value *call = c->builder.CreateCall(fd->tv.val, args);
+    AnType *retTy = fd->tv.type->getFunctionReturnType();
+    if(retTy->typeTag == TT_Void){
+        c->builder.CreateRetVoid();
+    }else{
+        auto callTv = TypedValue(call, fd->tv.type->getFunctionReturnType());
+
+        auto store = createMallocAndStore(c, callTv);
+        c->builder.CreateRet(store.val);
+    }
+}
+
+
 extern map<string, unique_ptr<CtFunc>> compapi;
+
 /*
  *  Compile a compile-time function/macro which should not return a function call, just a compile-time constant.
  *  Ex: A call to Ante.getAST() would be a meta function as it wouldn't make sense to get the parse tree
@@ -1069,8 +962,7 @@ extern map<string, unique_ptr<CtFunc>> compapi;
 TypedValue compMetaFunctionResult(Compiler *c, LOC_TY &loc, string &baseName, string &mangledName, vector<TypedValue> &typedArgs){
     CtFunc* fn;
     if((fn = compapi[baseName].get())){
-        void *res;
-        GenericValue gv;
+        TypedValue *res;
 
         //TODO organize CtFunc's by param count + type instead of a hard-coded name check
         if(baseName == "Ante_debug"){
@@ -1078,100 +970,87 @@ TypedValue compMetaFunctionResult(Compiler *c, LOC_TY &loc, string &baseName, st
                 return c->compErr("Called function was given " + to_string(typedArgs.size()) +
                         " arguments but was declared to take 1", loc);
 
-            res = (*fn)(typedArgs[0]);
-            gv = GenericValue(res);
+            res = (*fn)(c, typedArgs[0]);
         }else if(baseName == "Ante_sizeof"){
             if(typedArgs.size() != 1)
                 return c->compErr("Called function was given " + to_string(typedArgs.size()) +
                         " arguments but was declared to take 1", loc);
 
             res = (*fn)(c, typedArgs[0]);
-            gv.IntVal = APInt(32, (int)(size_t)res, false);
         }else if(baseName == "Ante_ctStore"){
             if(typedArgs.size() != 2)
                 return c->compErr("Called function was given " + to_string(typedArgs.size()) +
                         " argument(s) but was declared to take 2", loc);
 
             res = (*fn)(c, typedArgs[0], typedArgs[1]);
-
         }else if(baseName == "Ante_ctLookup" or baseName == "Ante_ctError" or baseName == "FuncDecl_getName"){
             if(typedArgs.size() != 1)
                 return c->compErr("Called function was given " + to_string(typedArgs.size()) +
                         " arguments but was declared to take 1", loc);
 
             res = (*fn)(c, typedArgs[0]);
-            return *(TypedValue*)res;
         }else if(baseName == "Ante_forget"){
             if(typedArgs.size() != 1)
                 return c->compErr("Called function was given " + to_string(typedArgs.size()) +
                         " arguments but was declared to take 1", loc);
 
-            (*fn)(c, typedArgs[0]);
-            return c->getVoidLiteral();
+            res = (*fn)(c, typedArgs[0]);
         }else if(baseName == "Ante_emitIR"){
             if(typedArgs.size() != 0)
                 return c->compErr("Called function was given " + to_string(typedArgs.size()) +
                         " argument(s) but was declared to take 0", loc);
 
-            (*fn)(c);
-            return c->getVoidLiteral();
+            res = (*fn)(c);
         }else{
-            res = (*fn)();
-            gv = GenericValue(res);
+            res = (*fn)(c);
         }
 
-        return genericValueToTypedValue(c, gv, fn->retty);
+        if(res){
+            TypedValue ret = *res;
+            delete res;
+            return ret;
+        }else{
+            return c->getVoidLiteral();
+        }
     }else{
-        LLVMInitializeNativeTarget();
-        LLVMInitializeNativeAsmPrinter();
-
         auto mod_compiler = wrapFnInModule(c, baseName, mangledName);
         mod_compiler->ast.release();
-        auto *mod = mod_compiler->module.release();
 
-        if(!mod_compiler or mod_compiler->errFlag or !mod){
+        if(!mod_compiler or mod_compiler->errFlag){
             c->errFlag = true;
             throw new CtError();
         }
 
-        auto* eBuilder = new EngineBuilder(unique_ptr<llvm::Module>(mod));
-        string err;
 
-        //set use interpreter; for some reason both MCJIT and its ORC replacement corrupt/free the memory
-        //of c->varTable in some way in four instances: two in the call to jit->finalizeObject() and two
-        //in the destructor of jit
-        LLVMLinkInInterpreter();
-        auto *jit = eBuilder->setErrorStr(&err).setEngineKind(EngineKind::Interpreter).create();
+        //jit->DisableSymbolSearching();
+        //for(auto &f : mod->getFunctionList()){
+        //    if(f.isDeclaration()){
+        //        try{
+        //            auto fAddr = lookupCFn(f.getName().str());
+        //            jit->addGlobalMapping(&f, fAddr);
+        //        }catch(out_of_range r){
+        //            c->compErr("Cannot link to unknown external function "+f.getName().str()+ " in compile-time module", loc);
+        //        }
+        //    }
+        //}
 
-        if(err.length() > 0){
-            cerr << err << endl;
-            return {};
+        auto *fd = mod_compiler->getFuncDecl(baseName, mangledName);
+        createDriverFunction(mod_compiler.get(), fd, typedArgs);
+
+        JIT* jit = new JIT();
+        jit->addModule(move(mod_compiler->module));
+
+        auto fn = (void*(*)(void*))jit->getSymbolAddress("AnteCall");
+        if(fn){
+            auto arg = ArgTuple(c, typedArgs);
+
+            auto res = fn(arg.asRawData());
+            auto *retTy = fd->tv.type->getFunctionReturnType();
+            return ArgTuple(c, res, retTy).asTypedValue();
+        }else{
+            cerr << "(null)" << endl;
+            return c->getVoidLiteral();
         }
-
-#ifdef _WIN32
-        jit->DisableSymbolSearching();
-        for(auto &f : mod->getFunctionList()){
-            if(f.isDeclaration()){
-                try{
-                    auto fAddr = lookupCFn(f.getName().str());
-                    jit->addGlobalMapping(&f, fAddr);
-                }catch(out_of_range r){
-                    c->compErr("Cannot link to unknown external function "+f.getName().str()+ " in compile-time module", loc);
-                }
-            }
-        }
-#endif
-
-        auto args = typedValuesToGenericValues(c, typedArgs, loc, baseName);
-
-        auto *fn = jit->FindFunctionNamed(mangledName.c_str());
-        auto genret = jit->runFunction(fn, args);
-
-
-        //get the type of the function to properly translate the return value
-        auto *fnTy = mod_compiler->getFuncDecl(baseName, mangledName)->tv.type;
-        auto *retty = fnTy->getFunctionReturnType();
-        return genericValueToTypedValue(c, genret, retty);
     }
 }
 
@@ -1698,25 +1577,7 @@ TypedValue UnOpNode::compile(Compiler *c){
             return TypedValue(c->builder.CreateNot(rhs.val), rhs.type);
         case Tok_New:
             //the 'new' keyword in ante creates a reference to any existing value
-
-            if(rhs.getType()->isSized()){
-                string mallocFnName = "malloc";
-                Function* mallocFn = (Function*)c->getFunction(mallocFnName, mallocFnName).val;
-
-                unsigned size = rhs.type->getSizeInBits(c) / 8;
-
-                Value *sizeVal = ConstantInt::get(*c->ctxt, APInt(AN_USZ_SIZE, size, true));
-
-                Value *voidPtr = c->builder.CreateCall(mallocFn, sizeVal);
-                Type *ptrTy = rhs.getType()->getPointerTo();
-                Value *typedPtr = c->builder.CreatePointerCast(voidPtr, ptrTy);
-
-                //finally store rhs into the malloc'd slot
-                c->builder.CreateStore(rhs.val, typedPtr);
-
-                auto *tyn = AnPtrType::get(rhs.type);
-                return TypedValue(typedPtr, tyn);
-            }
+            return createMallocAndStore(c, rhs);
     }
 
     return c->compErr("Unknown unary operator " + Lexer::getTokStr(op), loc);

@@ -12,7 +12,7 @@ char getBitWidthOfTypeTag(const TypeTag ty){
         case TT_I32: case TT_U32: case TT_F32: case TT_C32: return 32;
         case TT_I64: case TT_U64: case TT_F64: return 64;
         case TT_Isz: case TT_Usz: return AN_USZ_SIZE;
-        case TT_Bool: return 1;
+        case TT_Bool: return 8;
 
         case TT_Ptr:
         case TT_Function:

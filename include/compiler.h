@@ -238,34 +238,6 @@ namespace ante {
         Variable(std::string n, TypedValue tv, unsigned int s, bool nofr=true, bool autoDr=false) : name(n), tval(tv), scope(s), noFree(nofr), autoDeref(autoDr){}
     };
 
-    /**
-    * @brief Holds a c++ function
-    *
-    * Used to represent compiler API functions and call them
-    * with compile-time constants as arguments
-    */
-    struct CtFunc {
-        void *fn;
-        std::vector<AnType*> params;
-        AnType* retty;
-
-        size_t numParams() const { return params.size(); }
-        bool typeCheck(std::vector<AnType*> &args);
-        bool typeCheck(std::vector<TypedValue&> &args);
-        CtFunc(void* fn);
-        CtFunc(void* fn, AnType *retTy);
-        CtFunc(void* fn, AnType *retTy, std::vector<AnType*> params);
-
-        ~CtFunc(){}
-
-        void* operator()();
-        void* operator()(Compiler *c);
-        void* operator()(TypedValue &tv);
-        void* operator()(Compiler *c, TypedValue &tv);
-        void* operator()(TypedValue &p1, TypedValue &p2);
-        void* operator()(Compiler *c, TypedValue &tv1, TypedValue &tv2);
-    };
-
 
     struct Compiler;
 
