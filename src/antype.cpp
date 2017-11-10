@@ -101,6 +101,12 @@ namespace ante {
         return nullptr;
     }
 
+    template<typename T>
+    void addKVPair(llvm::StringMap<unique_ptr<T>> &map, string &key, T* val){
+        auto entry = llvm::StringMapEntry<unique_ptr<T>>::Create(key, unique_ptr<T>(val));
+        map.insert(entry);
+    }
+
     AnType* AnType::getPrimitive(TypeTag tag, AnModifier *m){
         if(!m){
             switch(tag){
@@ -134,7 +140,7 @@ namespace ante {
             if(existing_ty) return existing_ty;
 
             auto *ty = new AnType(tag, false, m);
-            typeArena.otherTypes.try_emplace(key, ty);
+            addKVPair(typeArena.otherTypes, key, ty);
             return ty;
         }
     }
@@ -216,7 +222,7 @@ namespace ante {
         if(existing_ty) return existing_ty;
 
         auto mod = new AnModifier(modifiers);
-        typeArena.modifiers.try_emplace(key, mod);
+        addKVPair(typeArena.modifiers, key, mod);
         return mod;
     }
 
@@ -239,7 +245,7 @@ namespace ante {
             if(existing_ty) return (AnPtrType*)existing_ty;
 
             auto ptr = new AnPtrType(ext, m);
-            typeArena.otherTypes.try_emplace(key, ptr);
+            addKVPair(typeArena.otherTypes, key, (AnType*)ptr);
             return ptr;
         }
     }
@@ -252,7 +258,7 @@ namespace ante {
         if(existing_ty) return existing_ty;
 
         auto arr = new AnArrayType(t, len, m);
-        typeArena.arrayTypes.try_emplace(key, arr);
+        addKVPair(typeArena.arrayTypes, key, arr);
         return arr;
     }
 
@@ -277,7 +283,7 @@ namespace ante {
         if(existing_ty) return existing_ty;
 
         auto agg = new AnAggregateType(t, exts, m);
-        typeArena.aggregateTypes.try_emplace(key, agg);
+        addKVPair(typeArena.aggregateTypes, key, agg);
         return agg;
     }
 
@@ -301,7 +307,7 @@ namespace ante {
         if(existing_ty) return existing_ty;
 
         auto f = new AnFunctionType(retTy, elems, isMetaFunction, m);
-        typeArena.functionTypes.try_emplace(key, f);
+        addKVPair(typeArena.functionTypes, key, f);
         return f;
     }
 
@@ -317,7 +323,7 @@ namespace ante {
         if(existing_ty) return existing_ty;
 
         auto tvar = new AnTypeVarType(name, m);
-        typeArena.typeVarTypes.try_emplace(key, tvar);
+        addKVPair(typeArena.typeVarTypes, key, tvar);
         return tvar;
     }
 
@@ -337,7 +343,7 @@ namespace ante {
             return dt->setModifier(m);
         }else{
             auto decl = new AnDataType(name, {}, false, m);
-            typeArena.declaredTypes.try_emplace(key, decl);
+            addKVPair(typeArena.declaredTypes, key, decl);
             return decl;
         }
     }
@@ -684,7 +690,7 @@ namespace ante {
             }
         }else{
             dt = new AnDataType(name, {}, isUnion, m);
-            typeArena.declaredTypes.try_emplace(key, dt);
+            addKVPair(typeArena.declaredTypes, key, dt);
         }
 
         dt->isGeneric = !generics.empty();

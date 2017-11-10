@@ -42,7 +42,7 @@ namespace ante {
             case TT_Tuple:           break;
             case TT_Array:           break;
             case TT_Ptr: {
-                auto *cint = c->builder.getIntN(*(size_t*)data, AN_USZ_SIZE);
+                auto *cint = c->builder.getIntN(AN_USZ_SIZE, *(size_t*)data);
                 auto *ty = c->anTypeToLlvmType(tn);
                 return TypedValue(c->builder.CreateIntToPtr(cint, ty), tn);
             }
@@ -73,16 +73,21 @@ namespace ante {
         if(GlobalVariable *gv = dyn_cast<GlobalVariable>(tv.val)){
             Value *v = gv->getInitializer();
             if(ConstantDataArray *cda = dyn_cast<ConstantDataArray>(v)){
-                //return (void*)strdup(cda->getAsString().str().c_str());
+                char *cstr = strdup(cda->getAsString().str().c_str());
+                *(void**)data = cstr;
+            }else{
+                TypedValue tv = {v, ptrty->extTy};
+                void **oldData = (void**)data;
+                data = *oldData;
+                storeValue(c, tv);
+                *oldData = data;
+                data = oldData;
             }
-
-            TypedValue tv = {v, ptrty->extTy};
-            //auto elem = typedValueToGenericValue(c, tv);
         }else if(ConstantExpr *ce = dyn_cast<ConstantExpr>(tv.val)){
             Instruction *in = ce->getAsInstruction();
             if(GetElementPtrInst *gep = dyn_cast<GetElementPtrInst>(in)){
-                //auto ptr = TypedValue(gep->getPointerOperand(), ptrty->extTy);
-                //getConstPtr(c, ptr);
+                auto ptr = TypedValue(gep->getPointerOperand(), ptrty->extTy);
+                storePtr(c, ptr);
             }
         }else{
             cerr << "error: unknown type given to getConstPtr, dumping\n";
