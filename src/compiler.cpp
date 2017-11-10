@@ -334,9 +334,15 @@ TypedValue ArrayNode::compile(Compiler *c){
         i++;
     }
 
-    auto *ty = ArrayType::get(arr[0]->getType(), exprs.size());
-    auto *val = ConstantArray::get(ty, arr);
-    return TypedValue(val, AnArrayType::get(elemTy, exprs.size()));
+    if(exprs.empty()){
+        auto *ty = ArrayType::get(Type::getInt8Ty(*c->ctxt)->getPointerTo(), 0);
+        auto *val = ConstantArray::get(ty, arr);
+        return TypedValue(val, AnArrayType::get(elemTy, 0));
+    }else{
+        auto *ty = ArrayType::get(arr[0]->getType(), exprs.size());
+        auto *val = ConstantArray::get(ty, arr);
+        return TypedValue(val, AnArrayType::get(elemTy, exprs.size()));
+    }
 }
 
 /**
