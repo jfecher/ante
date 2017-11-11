@@ -8,7 +8,11 @@ WARNINGS  := -Wall -Wpedantic -Wsign-compare
 LLVMCFG := $(shell if command -v llvm-config-5.0 >/dev/null 2>&1; then echo 'llvm-config-5.0'; else echo 'llvm-config'; fi)
 LLVMFLAGS := `$(LLVMCFG) --cflags --cppflags --libs Core mcjit interpreter native BitWriter Passes Target --ldflags --system-libs` -lffi
 
-LIBDIR := /usr/include/ante
+# Change this to change the location of the stdlib
+# Expects the stdlib/*.an to be located in this dirirectory
+ANLIBDIR := "$(pwd)/stdlib/"
+
+
 LIBFILES := $(shell find stdlib -type f -name "*.an")
 
 CPPFLAGS  := -g -std=c++11 `$(LLVMCFG) --cflags --cppflags` -O0 $(WARNINGS)
@@ -52,19 +56,12 @@ bootante: obj obj/parser.o $(OBJFILES) $(ANOBJFILES)
 	@$(MAKE) obj/operator.o obj/compiler.o
 
 
-#export the stdlib to /usr/include/ante
+#export the stdlib to $(ANLIBDIR) (default ./stdlib/)
 #this is the only part that requires root permissions
 stdlib: $(LIBFILES) Makefile
-	@if [ `id -u` -eq 0 ]; then                                                      \
-	    echo 'Exporting $< to $(LIBDIR)...';                                         \
-	    mkdir -p $(LIBDIR);                                                          \
-	    cp stdlib/*.an $(LIBDIR);                                                    \
-	 else                                                                            \
-	    printf '\033[;31mMust run with root permissions to export stdlib!\033[;m\n'; \
-		echo 'To export stdlib run:';                                                \
-		echo -e '\n$$ sudo make stdlib\n';                                           \
-		exit 1;                                                                      \
-	 fi
+	echo 'Exporting $< to $(ANLIBDIR)...';                                       \
+	mkdir -p $(ANLIBDIR);                                                        \
+	cp stdlib/*.an $(ANLIBDIR);                                                  \
 
 new: clean ante
 
@@ -79,7 +76,7 @@ debug_parser:
 
 obj/%.o: src/%.cpp Makefile | obj
 	@echo Compiling $@...
-	@$(CXX) $(CPPFLAGS) -MMD -MP -Iinclude -c $< -o $@
+	@$(CXX) -DAN_LIB_DIR="\"stdlib/\"" $(CPPFLAGS) -MMD -MP -Iinclude -c $< -o $@
 
 obj/%.ao: src/%.an Makefile | obj
 	@if command -v ./ante >/dev/null 2>&1; then \
