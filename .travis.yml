@@ -33,5 +33,5 @@ install:
     - sudo rm -rf /usr/include/llvm
     - sudo rm -rf /usr/include/llvm-c
 
-script: make && make stdlib && make test
+script: make
 
