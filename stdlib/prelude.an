@@ -56,11 +56,13 @@ ante fun Ante.debug: 't t;
 ante fun Ante.sizeof: 't t -> usz;
 
 //compile-time store and lookup variable functions
-ante fun Ante.ctStore: c8* name, 't val;
-ante fun Ante.ctLookup: c8* name -> 't;
+//NOTE: these functions are paired, Ante.lookup will
+//      never reference variables not stored with Ante.store
+ante fun Ante.store: c8* name, 't val;
+ante fun Ante.lookup: c8* name -> 't;
 
-//Note: ctError never returns
-ante fun Ante.ctError: c8* msg;
+//Note: error never returns
+ante fun Ante.error: c8* msg;
 
 //dumps llvm-ir to stdout
 ante fun Ante.emitIR:;

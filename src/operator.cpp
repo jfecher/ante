@@ -977,13 +977,13 @@ TypedValue compMetaFunctionResult(Compiler *c, LOC_TY &loc, string &baseName, st
                         " arguments but was declared to take 1", loc);
 
             res = (*fn)(c, typedArgs[0]);
-        }else if(baseName == "Ante_ctStore"){
+        }else if(baseName == "Ante_store"){
             if(typedArgs.size() != 2)
                 return c->compErr("Called function was given " + to_string(typedArgs.size()) +
                         " argument(s) but was declared to take 2", loc);
 
             res = (*fn)(c, typedArgs[0], typedArgs[1]);
-        }else if(baseName == "Ante_ctLookup" or baseName == "Ante_ctError" or baseName == "FuncDecl_getName"){
+        }else if(baseName == "Ante_lookup" or baseName == "Ante_error" or baseName == "FuncDecl_getName"){
             if(typedArgs.size() != 1)
                 return c->compErr("Called function was given " + to_string(typedArgs.size()) +
                         " arguments but was declared to take 1", loc);
