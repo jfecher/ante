@@ -98,7 +98,7 @@ test:
 	@ERRC=0;                                                                  \
 	for file in $(TESTFILES); do                                              \
 		./ante -check $$file;                                                 \
-		if [[ $$? -ne 0 ]]; then                                              \
+		if [ $$? -ne 0 ]; then                                                \
 		    echo "Failed to compile $$file";                                  \
 		    ERRC=1;                                                           \
 		fi;                                                                   \
