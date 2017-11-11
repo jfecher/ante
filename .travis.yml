@@ -6,6 +6,11 @@ addons:
         sources:
             - 'ubuntu-toolchain-r-test'
             - 'llvm-toolchain-trusty-5.0'
+        packages:
+            - 'llvm-5.0'
+            - 'llvm-5.0-dev'
+            - 'g++-7'
+            - 'gcc-7'
 
 # To install llvm-5.0 on older (trusty 14) ubuntu installations:
 # Append The following packages (from apt.llvm.org) to
@@ -25,7 +30,6 @@ install:
     - export CC='gcc-7'; export CXX='g++-7'
     - wget -O - http://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add -
     - sudo apt-get autoremove llvm clang
-    - sudo apt-get install llvm-5.0 llvm-5.0-dev g++-7 clang-5.0
     - sudo rm -rf /usr/include/llvm
     - sudo rm -rf /usr/include/llvm-c
 
