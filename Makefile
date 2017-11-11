@@ -5,7 +5,7 @@ vpath %.d obj
 WARNINGS  := -Wall -Wpedantic -Wsign-compare
 
 #Required for ubuntu and other distros with outdated llvm packages
-LLVMCFG := $(shell if command -v llvm-config-4.0 >/dev/null 2>&1; then echo 'llvm-config-4.0'; else echo 'llvm-config'; fi)
+LLVMCFG := $(shell if command -v llvm-config-5.0 >/dev/null 2>&1; then echo 'llvm-config-5.0'; else echo 'llvm-config'; fi)
 LLVMFLAGS := `$(LLVMCFG) --cflags --cppflags --libs Core mcjit interpreter native BitWriter Passes Target --ldflags --system-libs` -lffi
 
 LIBDIR := /usr/include/ante
@@ -41,8 +41,11 @@ ante: obj obj/parser.o $(OBJFILES) $(ANOBJFILES)
 
 bootante: obj obj/parser.o $(OBJFILES) $(ANOBJFILES)
 	@echo Bootstrapping f16.ao...
-	@$(CXX) -DF16_BOOT $(CPPFLAGS) -MMD -MP -Iinclude -c src/operator.cpp -o obj/operator.o
+	@echo Compiling argtuple.o...
+	@$(CXX) -DF16_BOOT $(CPPFLAGS) -MMD -MP -Iinclude -c src/argtuple.cpp -o obj/argtuple.o
+	@echo Compiling compiler.o...
 	@$(CXX) -DAN_LIB_DIR="\"stdlib/\"" -DF16_BOOT $(CPPFLAGS) -MMD -MP -Iinclude -c src/compiler.cpp -o obj/compiler.o
+	@echo Linking bootante...
 	@$(CXX) obj/parser.o $(OBJFILES) $(LLVMFLAGS) -o bootante
 	@./bootante -lib -c src/f16.an -o obj/f16.ao
 	@rm obj/operator.o obj/compiler.o
