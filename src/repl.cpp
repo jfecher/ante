@@ -373,9 +373,29 @@ namespace ante {
 #endif
     }
 
+    /** Undo any changes done by setupTerm */
+    void resetTerm(){
+#ifdef unix
+        termios newt;
+        tcgetattr(STDIN_FILENO, &newt);
+        newt.c_lflag |= (ICANON | ECHO);
+        tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+        ioctl(0, TIOCGWINSZ, &termSize);
+#elif defined WIN32
+		h_in = GetStdHandle(STD_INPUT_HANDLE);
+		h_out = GetStdHandle(STD_OUTPUT_HANDLE);
+		if (!h_in or !h_out) {
+			fputs("Error when attempting to access windows terminal\n", stderr);
+			exit(1);
+		}
+		GetConsoleMode(h_in, &normal_mode);
+		getch_mode = normal_mode | (ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT);
+#endif
+    }
+
 
     void startRepl(Compiler *c){
-        cout << "Ante REPL v0.1.0\nType 'exit' to exit.\n";
+        cout << "Ante REPL v0.1.1\nType 'exit' to exit.\n";
         setupTerm();
 
         auto cmd = getInputColorized();
@@ -407,6 +427,8 @@ namespace ante {
 
             cmd = getInputColorized();
         }
+
+        resetTerm();
     }
 
     TypedValue mergeAndCompile(Compiler *c, RootNode *rn){
