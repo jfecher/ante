@@ -128,6 +128,13 @@ TypedValue ModNode::compile(Compiler *c){
 }
 
 
+/** returns true if this tag type does not have any associated types. */
+bool isSimpleTag(AnDataType *dt){
+    return dt->extTys.size() == 1
+       and dt->extTys[0] == AnType::getVoid();
+}
+
+
 /**
  * @brief Compiles a TypeNode
  *
@@ -138,7 +145,7 @@ TypedValue TypeNode::compile(Compiler *c){
     //check for enum value
     if(type == TT_Data || type == TT_TaggedUnion){
         auto *dataTy = AnDataType::get(typeName);
-        if(!dataTy or dataTy->isStub()) goto rettype;
+        if(!dataTy or dataTy->isStub() or !isSimpleTag(dataTy)) goto rettype;
 
         auto *unionDataTy = dataTy->parentUnionType;
         if(!unionDataTy or unionDataTy->isStub()) goto rettype;
