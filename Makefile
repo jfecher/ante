@@ -10,7 +10,7 @@ LLVMFLAGS := `$(LLVMCFG) --cflags --cppflags --libs Core mcjit interpreter nativ
 
 # Change this to change the location of the stdlib
 # Expects the stdlib/*.an to be located in this dirirectory
-ANLIBDIR := "$(pwd)/stdlib/"
+ANLIBDIR := "\"$(shell pwd)/stdlib/\""
 
 
 LIBFILES := $(shell find stdlib -type f -name "*.an")
@@ -46,9 +46,9 @@ ante: obj obj/parser.o $(OBJFILES) $(ANOBJFILES)
 bootante: obj obj/parser.o $(OBJFILES) $(ANOBJFILES)
 	@echo Bootstrapping f16.ao...
 	@echo Compiling argtuple.o...
-	@$(CXX) -DF16_BOOT $(CPPFLAGS) -MMD -MP -Iinclude -c src/argtuple.cpp -o obj/argtuple.o
+	@$(CXX) -DAN_LIB_DIR=$(ANLIBDIR) -DF16_BOOT $(CPPFLAGS) -MMD -MP -Iinclude -c src/argtuple.cpp -o obj/argtuple.o
 	@echo Compiling compiler.o...
-	@$(CXX) -DAN_LIB_DIR="\"stdlib/\"" -DF16_BOOT $(CPPFLAGS) -MMD -MP -Iinclude -c src/compiler.cpp -o obj/compiler.o
+	@$(CXX) -DAN_LIB_DIR=$(ANLIBDIR) -DF16_BOOT $(CPPFLAGS) -MMD -MP -Iinclude -c src/compiler.cpp -o obj/compiler.o
 	@echo Linking bootante...
 	@$(CXX) obj/parser.o $(OBJFILES) $(LLVMFLAGS) -o bootante
 	@./bootante -lib -c src/f16.an -o obj/f16.ao
@@ -76,7 +76,7 @@ debug_parser:
 
 obj/%.o: src/%.cpp Makefile | obj
 	@echo Compiling $@...
-	@$(CXX) -DAN_LIB_DIR="\"stdlib/\"" $(CPPFLAGS) -MMD -MP -Iinclude -c $< -o $@
+	@$(CXX) -DAN_LIB_DIR=$(ANLIBDIR) $(CPPFLAGS) -MMD -MP -Iinclude -c $< -o $@
 
 obj/%.ao: src/%.an Makefile | obj
 	@if command -v ./ante >/dev/null 2>&1; then \
@@ -88,7 +88,7 @@ obj/parser.o: src/syntax.y Makefile
 	@echo Generating parser...
 	@$(YACC) $(YACCFLAGS) src/syntax.y
 	@-mv src/*.hh include
-	@$(CXX) $(CPPFLAGS) -MMD -MP -Iinclude -c $(PARSERSRC) -o $@
+	@$(CXX) -DAN_LIB_DIR=$(ANLIBDIR) $(CPPFLAGS) -MMD -MP -Iinclude -c $(PARSERSRC) -o $@
 
 
 test:
