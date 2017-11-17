@@ -27,16 +27,16 @@ namespace ante {
 
 //Global containing every module/file compiled
 //to avoid recompilation
-llvm::StringMap<unique_ptr<Module>> allCompiledModules;
+llvm::StringMap<Module*> allCompiledModules;
 
 //each mergedCompUnits is static in lifetime
-vector<unique_ptr<Module>> allMergedCompUnits;
+vector<Module*> allMergedCompUnits;
 
 //yy::locations stored in all Nodes contain a string* to
 //a filename which must not be freed until all nodes are
 //deleted, including the FuncDeclNodes within ante::Modules
 //that all have a static lifetime
-vector<unique_ptr<string>> fileNames;
+vector<string*> fileNames;
 
 /**
  * @param tup The head of the list
@@ -1576,7 +1576,7 @@ void Compiler::importFile(const char *fName, Node *locNode){
     auto it = allCompiledModules.find(fName);
 
     if(it != allCompiledModules.end()){
-        auto *import = it->getValue().get();
+        auto *import = it->getValue();
         string fmodName = removeFileExt(fName);
 
         for(auto &mod : imports){
