@@ -709,25 +709,25 @@ namespace ante {
 
     //Constructor for AnTypeContainer, initializes all primitive types beforehand
     AnTypeContainer::AnTypeContainer(){
-        typeArena.primitiveTypes[TT_I8].reset(new AnType(TT_I8, false, nullptr));
-        typeArena.primitiveTypes[TT_I16].reset(new AnType(TT_I16, false, nullptr));
-        typeArena.primitiveTypes[TT_I32].reset(new AnType(TT_I32, false, nullptr));
-        typeArena.primitiveTypes[TT_I64].reset(new AnType(TT_I64, false, nullptr));
-        typeArena.primitiveTypes[TT_Isz].reset(new AnType(TT_Isz, false, nullptr));
-        typeArena.primitiveTypes[TT_U8].reset(new AnType(TT_U8, false, nullptr));
-        typeArena.primitiveTypes[TT_U16].reset(new AnType(TT_U16, false, nullptr));
-        typeArena.primitiveTypes[TT_U32].reset(new AnType(TT_U32, false, nullptr));
-        typeArena.primitiveTypes[TT_U64].reset(new AnType(TT_U64, false, nullptr));
-        typeArena.primitiveTypes[TT_Usz].reset(new AnType(TT_Usz, false, nullptr));
-        typeArena.primitiveTypes[TT_F16].reset(new AnType(TT_F16, false, nullptr));
-        typeArena.primitiveTypes[TT_F32].reset(new AnType(TT_F32, false, nullptr));
-        typeArena.primitiveTypes[TT_F64].reset(new AnType(TT_F64, false, nullptr));
-        typeArena.primitiveTypes[TT_Bool].reset(new AnType(TT_Bool, false, nullptr));
-        typeArena.primitiveTypes[TT_Void].reset(new AnType(TT_Void, false, nullptr));
-        typeArena.primitiveTypes[TT_C8].reset(new AnType(TT_C8, false, nullptr));
-        typeArena.primitiveTypes[TT_C32].reset(new AnType(TT_C32, false, nullptr));
-        typeArena.primitiveTypes[TT_Type].reset(new AnType(TT_Type, false, nullptr));
-        typeArena.primitiveTypes[TT_FunctionList].reset(new AnType(TT_FunctionList, false, nullptr));
+        primitiveTypes[TT_I8].reset(new AnType(TT_I8, false, nullptr));
+        primitiveTypes[TT_I16].reset(new AnType(TT_I16, false, nullptr));
+        primitiveTypes[TT_I32].reset(new AnType(TT_I32, false, nullptr));
+        primitiveTypes[TT_I64].reset(new AnType(TT_I64, false, nullptr));
+        primitiveTypes[TT_Isz].reset(new AnType(TT_Isz, false, nullptr));
+        primitiveTypes[TT_U8].reset(new AnType(TT_U8, false, nullptr));
+        primitiveTypes[TT_U16].reset(new AnType(TT_U16, false, nullptr));
+        primitiveTypes[TT_U32].reset(new AnType(TT_U32, false, nullptr));
+        primitiveTypes[TT_U64].reset(new AnType(TT_U64, false, nullptr));
+        primitiveTypes[TT_Usz].reset(new AnType(TT_Usz, false, nullptr));
+        primitiveTypes[TT_F16].reset(new AnType(TT_F16, false, nullptr));
+        primitiveTypes[TT_F32].reset(new AnType(TT_F32, false, nullptr));
+        primitiveTypes[TT_F64].reset(new AnType(TT_F64, false, nullptr));
+        primitiveTypes[TT_Bool].reset(new AnType(TT_Bool, false, nullptr));
+        primitiveTypes[TT_Void].reset(new AnType(TT_Void, false, nullptr));
+        primitiveTypes[TT_C8].reset(new AnType(TT_C8, false, nullptr));
+        primitiveTypes[TT_C32].reset(new AnType(TT_C32, false, nullptr));
+        primitiveTypes[TT_Type].reset(new AnType(TT_Type, false, nullptr));
+        primitiveTypes[TT_FunctionList].reset(new AnType(TT_FunctionList, false, nullptr));
     }
 
 
