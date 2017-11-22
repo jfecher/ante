@@ -2087,8 +2087,12 @@ string toModuleName(string &s){
     bool capitalize = true;
 
     for(auto &c : s){
-        if(capitalize and c >= 'a' and c <= 'z'){
-            mod += c + 'A' - 'a';
+        if(capitalize and ((c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z'))){
+            if(c >= 'a' and c <= 'z'){
+                mod += c + 'A' - 'a';
+            }else{
+                mod += c;
+            }
             capitalize = false;
         }else{
 #ifdef _WIN32
