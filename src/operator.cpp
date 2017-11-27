@@ -1244,11 +1244,6 @@ TypedValue compFnCall(Compiler *c, Node *l, Node *r){
     AnAggregateType *fty = (AnAggregateType*)tvf.type;
 
     size_t argc = fty->extTys.size();
-
-    cout << "fty = ";
-    fty->dump();
-    cout << ", argc = " << argc << endl;
-
     if(argc != args.size() and (!f or !f->isVarArg())){
         //check if an empty tuple (a void value) is being applied to a zero argument function before continuing
         //if not checked, it will count it as an argument instead of the absence of any

@@ -131,6 +131,12 @@ fun f64.print: f64 x
 fun c8.print: c8 x
     printf "%c\n" x
 
+//bool
+!inline
+fun bool.print: bool b
+    if b then puts "true"
+    else puts "false"
+
 //c-string
 !inline
 fun print: c8* s
