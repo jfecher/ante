@@ -899,18 +899,15 @@ vector<Value*> unwrapVoidPtrArgs(Compiler *c, Value *anteCallArg, FuncDecl *fd){
     vector<Value*> ret;
 
     auto *fnTy = cast<Function>(fd->tv.val)->getFunctionType();
-    Type *argTupTy = StructType::get(*c->ctxt, fnTy->params(), true);
-    Type *argsTy = argTupTy->getPointerTo();
+    if(fnTy->getNumParams() == 0) return ret;
 
-    Value *cast = c->builder.CreateBitCast(anteCallArg, argsTy);
+    size_t argc = fnTy->getNumParams();
+    for(size_t i = 0; i < argc; i++){
+        Value *cast = c->builder.CreateBitCast(anteCallArg, fnTy->getParamType(i)->getPointerTo());
+        ret.push_back(c->builder.CreateLoad(cast));
 
-    for(size_t i = 0; i < argTupTy->getNumContainedTypes(); i++){
-        vector<Value*> indices = {
-            c->builder.getInt32(0),
-            c->builder.getInt32(i)
-        };
-        Value *gep = c->builder.CreateGEP(cast, indices);
-        ret.push_back(c->builder.CreateLoad(gep));
+        if(i != argc - 1)
+            anteCallArg = c->builder.CreateInBoundsGEP(cast, c->builder.getInt64(1));
     }
 
     return ret;

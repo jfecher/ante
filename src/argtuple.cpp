@@ -89,6 +89,24 @@ namespace ante {
                 auto ptr = TypedValue(gep->getPointerOperand(), ptrty->extTy);
                 storePtr(c, ptr);
             }
+        }else if(BitCastInst *be = dyn_cast<BitCastInst>(tv.val)){
+            auto optv = TypedValue(be->getOperand(0), tv.type);
+            storePtr(c, optv);
+        }else if(CallInst *ci = dyn_cast<CallInst>(tv.val)){
+            auto f = ci->getCalledFunction();
+            if(f and f->getName() == "malloc"){
+                TypedValue tv = {ci->getArgOperand(0), ptrty->extTy};
+
+                storeValue(c, tv);
+
+                void **newPtr = new void*();
+                *newPtr = data;
+                data = newPtr;
+            }else{
+                cerr << "error: unknown ptr-returning function " << (f ? f->getName().str() : "(null)") << endl;
+                c->errFlag = true;
+                tv.dump();
+            }
         }else{
             cerr << "error: unknown type given to getConstPtr, dumping\n";
             c->errFlag = true;
@@ -111,6 +129,8 @@ namespace ante {
     void ArgTuple::storeValue(Compiler *c, TypedValue &tv){
         auto *ci = dyn_cast<ConstantInt>(tv.val);
         auto *cf = dyn_cast<ConstantFP>(tv.val);
+
+        data = malloc(tv.type->getSizeInBits(c) / 8);
 
         TypeTag tt = tv.type->typeTag;
         switch(tt){
@@ -169,18 +189,19 @@ namespace ante {
     ArgTuple::ArgTuple(Compiler *c, vector<TypedValue> &tvals)
             : data(nullptr){
 
-        size_t size = 0;
+        //size_t size = 0;
         vector<AnType*> types;
         for(auto &tv : tvals){
-            size_t elemSize = tv.type->getSizeInBits(c) / 8;
-
-            void *dataBegin = realloc(data, size + elemSize);
-            data = (char*)dataBegin + size;
-
-            types.push_back(tv.type);
+            //size_t elemSize = tv.type->getSizeInBits(c) / 8;
             storeValue(c, tv);
-            data = dataBegin;
-            size += elemSize;
+
+            //void *dataBegin = realloc(data, size + elemSize);
+            //data = (char*)dataBegin + size;
+
+            //types.push_back(tv.type);
+            //storeValue(c, tv);
+            //data = dataBegin;
+            //size += elemSize;
         }
     }
 
