@@ -1417,6 +1417,7 @@ TypedValue handlePrimitiveNumericOp(BinOpNode *bop, Compiler *c, TypedValue &lhs
         case '^':
                     return TypedValue(c->builder.CreateXor(lhs.val, rhs.val), lhs.type);
         case Tok_Eq:
+        case Tok_Is:
                     if(isFPTypeTag(lhs.type->typeTag))
                         return TypedValue(c->builder.CreateFCmpOEQ(lhs.val, rhs.val), AnType::getBool());
                     else
@@ -1539,8 +1540,12 @@ TypedValue BinOpNode::compile(Compiler *c){
     }else if((lhs.type->typeTag == TT_Bool and rhs.type->typeTag == TT_Bool) or
              (lhs.type->typeTag == TT_Ptr  and rhs.type->typeTag == TT_Ptr)){
 
+        //== is no longer implemented for pointers by default
+        if(op == Tok_Eq and lhs.type->typeTag == TT_Bool and rhs.type->typeTag == TT_Bool)
+            return TypedValue(c->builder.CreateICmpEQ(lhs.val, rhs.val), AnType::getBool());
+
         switch(op){
-            case Tok_Eq: return TypedValue(c->builder.CreateICmpEQ(lhs.val, rhs.val), AnType::getBool());
+            case Tok_Is:    return TypedValue(c->builder.CreateICmpEQ(lhs.val, rhs.val), AnType::getBool());
             case Tok_NotEq: return TypedValue(c->builder.CreateICmpNE(lhs.val, rhs.val), AnType::getBool());
         }
     }

@@ -8,7 +8,7 @@ fun Vec.reserve: mut Vec v, u32 numElems
     if v.len + numElems > v.cap then
         let ptr = realloc (void* v._data) (4*(v.cap+numElems))
 
-        if ptr == void* 0 then
+        if ptr is void* 0 then
             printf "Error in reserving %u elements for Vec\n" numElems
             return ()
 

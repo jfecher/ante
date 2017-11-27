@@ -32,7 +32,7 @@ map<int, const char*> tokDict = {
     {Tok_C8, "c8"},
     {Tok_C32, "c32"},
     {Tok_Bool, "bool"},
-    {Tok_Void, "Void"},
+    {Tok_Void, "void"},
 
     {Tok_Eq, "=="},
     {Tok_NotEq, "!="},
@@ -51,6 +51,7 @@ map<int, const char*> tokDict = {
     {Tok_Append, "++"},
     {Tok_New, "new"},
     {Tok_Not, "not"},
+    {Tok_Is, "is"},
 
     //literals
     {Tok_True, "true"},
@@ -133,6 +134,7 @@ map<string, int> keywords = {
     {"false",    Tok_False},
     {"new",      Tok_New},
     {"not",      Tok_Not},
+    {"is",       Tok_Is},
 
     {"return",   Tok_Return},
     {"if",       Tok_If},

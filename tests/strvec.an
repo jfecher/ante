@@ -9,7 +9,7 @@ fun Vec.reserve: mut Vec v, usz numElems
         let elemSize = Ante.sizeof ""
         let ptr = realloc (void* v._data) (elemSize*(v.cap + numElems))
 
-        if ptr == void* 0 then
+        if ptr is void* 0 then
             printf "Error in reserving %u elements for Vec\n" numElems
             return ()
 

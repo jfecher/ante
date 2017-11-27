@@ -57,7 +57,7 @@ void yyerror(const char *msg);
 
 /* operators */
 %token Eq NotEq AddEq SubEq MulEq DivEq GrtrEq LesrEq
-%token Or And Range RArrow ApplyL ApplyR Append New Not
+%token Or And Range RArrow ApplyL ApplyR Append New Not Is
 
 /* literals */
 %token True False
@@ -126,7 +126,7 @@ void yyerror(const char *msg);
 %left Or
 %left And
 %left Not
-%left Eq  NotEq GrtrEq LesrEq '<' '>'
+%left Eq Is NotEq GrtrEq LesrEq '<' '>'
 
 %left In
 %left Append
@@ -487,6 +487,7 @@ op: '+'    {$$ = (Node*)"+";}
   | Append {$$ = (Node*)"++";}
   | Range  {$$ = (Node*)"..";}
   | In     {$$ = (Node*)"in";}
+  | Is     {$$ = (Node*)"is";}
   ;
 
 /* NOTE: lextxt contents from fn_name and the mangleFn result are freed in the call to mkFuncDeclNode */
@@ -714,6 +715,7 @@ expr_no_decl: expr_no_decl '+' maybe_newline expr_no_decl                      {
             | expr_no_decl ';' maybe_newline expr_no_decl                      {$$ = mkSeqNode(@$, $1, $4);}
             | expr_no_decl '#' maybe_newline expr_no_decl                      {$$ = mkBinOpNode(@$, '#', $1, $4);}
             | expr_no_decl Eq maybe_newline expr_no_decl                       {$$ = mkBinOpNode(@$, Tok_Eq, $1, $4);}
+            | expr_no_decl Is maybe_newline expr_no_decl                       {$$ = mkBinOpNode(@$, Tok_Is, $1, $4);}
             | expr_no_decl NotEq maybe_newline expr_no_decl                    {$$ = mkBinOpNode(@$, Tok_NotEq, $1, $4);}
             | expr_no_decl GrtrEq maybe_newline expr_no_decl                   {$$ = mkBinOpNode(@$, Tok_GrtrEq, $1, $4);}
             | expr_no_decl LesrEq maybe_newline expr_no_decl                   {$$ = mkBinOpNode(@$, Tok_LesrEq, $1, $4);}
@@ -774,6 +776,7 @@ expr_with_decls: expr_with_decls '+' maybe_newline expr_with_decls              
                | expr_with_decls ';' maybe_newline expr_with_decls                    {$$ = mkSeqNode(@$, $1, $4);}
                | expr_with_decls '#' maybe_newline expr_with_decls                    {$$ = mkBinOpNode(@$, '#', $1, $4);}
                | expr_with_decls Eq maybe_newline expr_with_decls                     {$$ = mkBinOpNode(@$, Tok_Eq, $1, $4);}
+               | expr_with_decls Is maybe_newline expr_with_decls                     {$$ = mkBinOpNode(@$, Tok_Is, $1, $4);}
                | expr_with_decls NotEq maybe_newline expr_with_decls                  {$$ = mkBinOpNode(@$, Tok_NotEq, $1, $4);}
                | expr_with_decls GrtrEq maybe_newline expr_with_decls                 {$$ = mkBinOpNode(@$, Tok_GrtrEq, $1, $4);}
                | expr_with_decls LesrEq maybe_newline expr_with_decls                 {$$ = mkBinOpNode(@$, Tok_LesrEq, $1, $4);}
