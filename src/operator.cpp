@@ -1215,7 +1215,6 @@ TypedValue compFnCall(Compiler *c, Node *l, Node *r){
         }
     }
 
-
     //try to compile the function now that the parameters are compiled.
     TypedValue tvf = searchForFunction(c, l, typedArgs);
 
@@ -1245,6 +1244,11 @@ TypedValue compFnCall(Compiler *c, Node *l, Node *r){
     AnAggregateType *fty = (AnAggregateType*)tvf.type;
 
     size_t argc = fty->extTys.size();
+
+    cout << "fty = ";
+    fty->dump();
+    cout << ", argc = " << argc << endl;
+
     if(argc != args.size() and (!f or !f->isVarArg())){
         //check if an empty tuple (a void value) is being applied to a zero argument function before continuing
         //if not checked, it will count it as an argument instead of the absence of any
@@ -1285,7 +1289,12 @@ TypedValue compFnCall(Compiler *c, Node *l, Node *r){
                 typedArgs[i] = cast;
             }else{
                 TupleNode *tn = dynamic_cast<TupleNode*>(r);
-                if(!tn) return {};
+
+                //If there is no arg tuple then this function was applied with <| or |>
+                if(!tn){
+                    return c->compErr("Argument " + to_string(i+1) + " of function is a(n) " + anTypeToColoredStr(tArg.type)
+                        + " but was declared to be a(n) " + anTypeToColoredStr(paramTy) + " and there is no known implicit cast", r->loc);
+                }
 
                 size_t index = i - (is_method ? 1 : 0);
                 Node* locNode = tn->exprs[index].get();
