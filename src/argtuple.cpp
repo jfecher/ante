@@ -90,22 +90,16 @@ namespace ante {
                 storePtr(c, ptr);
             }
         }else if(BitCastInst *be = dyn_cast<BitCastInst>(tv.val)){
-            auto optv = TypedValue(be->getOperand(0), tv.type);
-            storePtr(c, optv);
-        }else if(CallInst *ci = dyn_cast<CallInst>(tv.val)){
-            auto f = ci->getCalledFunction();
-            if(f and f->getName() == "malloc"){
-                TypedValue tv = {ci->getArgOperand(0), ptrty->extTy};
-
-                storeValue(c, tv);
-
-                void **newPtr = new void*();
-                *newPtr = data;
-                data = newPtr;
-            }else{
-                cerr << "error: unknown ptr-returning function " << (f ? f->getName().str() : "(null)") << endl;
-                c->errFlag = true;
-                tv.dump();
+            //there should be stores in this bitcast if it was of malloc
+            for(auto *u : be->users()){
+                if(StoreInst *si = dyn_cast<StoreInst>(u)){
+                    TypedValue elem = {si->getValueOperand(), ptrty->extTy};
+                    void **data_ptr = (void**)data;
+                    storeValue(c, elem);
+                    *data_ptr = data;
+                    data = data_ptr;
+                    return;
+                }
             }
         }else{
             cerr << "error: unknown type given to getConstPtr, dumping\n";
