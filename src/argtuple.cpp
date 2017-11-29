@@ -94,16 +94,43 @@ namespace ante {
                 auto ptr = TypedValue(gep->getPointerOperand(), ptrty->extTy);
                 storePtr(c, ptr);
             }
+
+        //mutable pointer passed, find last store
+        }else if(LoadInst *si = dyn_cast<LoadInst>(tv.val)){
+            for(auto *u : si->getPointerOperand()->users()){
+                if(StoreInst *si = dyn_cast<StoreInst>(u)){
+                    Value *vo = si->getValueOperand();
+
+                    if(BitCastInst *be = dyn_cast<BitCastInst>(vo)){
+                        for(auto *u : be->users()){
+                            if(StoreInst *si = dyn_cast<StoreInst>(u)){
+                                TypedValue elem = {si->getValueOperand(), ptrty};
+                                storePtr(c, elem);
+                                return;
+                            }
+                        }
+                    }
+
+                    TypedValue elem = {vo, ptrty};
+                    storePtr(c, elem);
+                    return;
+                }
+            }
+
         }else if(BitCastInst *be = dyn_cast<BitCastInst>(tv.val)){
             //there should be stores in this bitcast if it was of malloc
             for(auto *u : be->users()){
                 if(StoreInst *si = dyn_cast<StoreInst>(u)){
-                    TypedValue elem = {si->getValueOperand(), ptrty->extTy};
-                    void **data_ptr = (void**)data;
-                    allocAndStoreValue(c, elem);
-                    *data_ptr = data;
-                    data = data_ptr;
-                    return;
+                    //Its possible this is a store of the same type if the pointer is mutable,
+                    //we want what is stored within only
+                    if(si->getValueOperand()->getType() == tv.val->getType()->getPointerElementType()){
+                        TypedValue elem = {si->getValueOperand(), ptrty->extTy};
+                        void **data_ptr = (void**)data;
+                        allocAndStoreValue(c, elem);
+                        *data_ptr = data;
+                        data = data_ptr;
+                        return;
+                    }
                 }
             }
         }else{
