@@ -44,8 +44,10 @@ namespace ante {
 
             /** Stores pointer value of a constant pointer type */
             void storePtr(Compiler *c, TypedValue &tv);
-    
-            
+
+            /** Allocates space then calls storeValue */
+            void allocAndStoreValue(Compiler *c, TypedValue &tv);
+
             /** Stores a tuple value in data */
             void storeTuple(Compiler *c, TypedValue &tup);
 

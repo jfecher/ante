@@ -62,6 +62,11 @@ namespace ante {
         cerr << "ArgTuple: Unknown/Unimplemented TypeTag " << typeTagToStr(tn->typeTag) << endl;
         return c->getVoidLiteral();
     }
+
+    void ArgTuple::allocAndStoreValue(Compiler *c, TypedValue &tv){
+        data = malloc(tv.type->getSizeInBits(c) / 8);
+        storeValue(c, tv);
+    }
     
     
     /**
@@ -79,7 +84,7 @@ namespace ante {
                 TypedValue tv = {v, ptrty->extTy};
                 void **oldData = (void**)data;
                 data = *oldData;
-                storeValue(c, tv);
+                allocAndStoreValue(c, tv);
                 *oldData = data;
                 data = oldData;
             }
@@ -95,7 +100,7 @@ namespace ante {
                 if(StoreInst *si = dyn_cast<StoreInst>(u)){
                     TypedValue elem = {si->getValueOperand(), ptrty->extTy};
                     void **data_ptr = (void**)data;
-                    storeValue(c, elem);
+                    allocAndStoreValue(c, elem);
                     *data_ptr = data;
                     data = data_ptr;
                     return;
@@ -107,8 +112,8 @@ namespace ante {
             tv.dump();
         }
     }
-    
-    
+
+
     void ArgTuple::storeTuple(Compiler *c, TypedValue &tup){
         //size_t i = 0;
         //for(auto *ty : ((AnAggregateType*)tup.type)->extTys){
@@ -123,8 +128,6 @@ namespace ante {
     void ArgTuple::storeValue(Compiler *c, TypedValue &tv){
         auto *ci = dyn_cast<ConstantInt>(tv.val);
         auto *cf = dyn_cast<ConstantFP>(tv.val);
-
-        data = malloc(tv.type->getSizeInBits(c) / 8);
 
         TypeTag tt = tv.type->typeTag;
         switch(tt){
@@ -183,19 +186,18 @@ namespace ante {
     ArgTuple::ArgTuple(Compiler *c, vector<TypedValue> &tvals)
             : data(nullptr){
 
-        //size_t size = 0;
-        vector<AnType*> types;
+        size_t size = 0;
         for(auto &tv : tvals){
-            //size_t elemSize = tv.type->getSizeInBits(c) / 8;
+            size_t elemSize = tv.type->getSizeInBits(c) / 8;
+
+            //we're reallocating the data manually here for the tuple
+            //so storeValue must be used instead of allocAndStore
+            void *dataBegin = realloc(data, size + elemSize);
+            data = (char*)dataBegin + size;
+
             storeValue(c, tv);
-
-            //void *dataBegin = realloc(data, size + elemSize);
-            //data = (char*)dataBegin + size;
-
-            //types.push_back(tv.type);
-            //storeValue(c, tv);
-            //data = dataBegin;
-            //size += elemSize;
+            data = dataBegin;
+            size += elemSize;
         }
     }
 
@@ -203,7 +205,7 @@ namespace ante {
     ArgTuple::ArgTuple(Compiler *c, TypedValue &val)
             : data(nullptr), tval(val){
 
-        storeValue(c, val);
+        allocAndStoreValue(c, val);
     }
 
 
