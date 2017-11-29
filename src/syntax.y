@@ -136,6 +136,7 @@ void yyerror(const char *msg);
 
 %left '+' '-'
 %left '*' '/' '%'
+%right '^'
 
 %left '#'
 %left '@' New
@@ -466,6 +467,7 @@ op: '+'    {$$ = (Node*)"+";}
   | '*'    {$$ = (Node*)"*";}
   | '/'    {$$ = (Node*)"/";}
   | '%'    {$$ = (Node*)"%";}
+  | '^'    {$$ = (Node*)"^";}
   | '<'    {$$ = (Node*)"<";}
   | '>'    {$$ = (Node*)">";}
   | '.'    {$$ = (Node*)".";}
@@ -708,6 +710,7 @@ expr_no_decl: expr_no_decl '+' maybe_newline expr_no_decl                      {
             | expr_no_decl '*' maybe_newline expr_no_decl                      {$$ = mkBinOpNode(@$, '*', $1, $4);}
             | expr_no_decl '/' maybe_newline expr_no_decl                      {$$ = mkBinOpNode(@$, '/', $1, $4);}
             | expr_no_decl '%' maybe_newline expr_no_decl                      {$$ = mkBinOpNode(@$, '%', $1, $4);}
+            | expr_no_decl '^' maybe_newline expr_no_decl                      {$$ = mkBinOpNode(@$, '^', $1, $4);}
             | expr_no_decl '<' maybe_newline expr_no_decl                      {$$ = mkBinOpNode(@$, '<', $1, $4);}
             | expr_no_decl '>' maybe_newline expr_no_decl                      {$$ = mkBinOpNode(@$, '>', $1, $4);}
             | type_expr '.' maybe_newline var                                  {$$ = mkBinOpNode(@$, '.', $1, $4);}
@@ -769,6 +772,7 @@ expr_with_decls: expr_with_decls '+' maybe_newline expr_with_decls              
                | expr_with_decls '*' maybe_newline expr_with_decls                    {$$ = mkBinOpNode(@$, '*', $1, $4);}
                | expr_with_decls '/' maybe_newline expr_with_decls                    {$$ = mkBinOpNode(@$, '/', $1, $4);}
                | expr_with_decls '%' maybe_newline expr_with_decls                    {$$ = mkBinOpNode(@$, '%', $1, $4);}
+               | expr_with_decls '^' maybe_newline expr_with_decls                    {$$ = mkBinOpNode(@$, '^', $1, $4);}
                | expr_with_decls '<' maybe_newline expr_with_decls                    {$$ = mkBinOpNode(@$, '<', $1, $4);}
                | expr_with_decls '>' maybe_newline expr_with_decls                    {$$ = mkBinOpNode(@$, '>', $1, $4);}
                | type_expr '.' maybe_newline var                                      {$$ = mkBinOpNode(@$, '.', $1, $4);}

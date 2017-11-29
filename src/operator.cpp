@@ -1415,8 +1415,6 @@ TypedValue handlePrimitiveNumericOp(BinOpNode *bop, Compiler *c, TypedValue &lhs
                         return TypedValue(c->builder.CreateICmpUGT(lhs.val, rhs.val), AnType::getBool());
                     else
                         return TypedValue(c->builder.CreateICmpSGT(lhs.val, rhs.val), AnType::getBool());
-        case '^':
-                    return TypedValue(c->builder.CreateXor(lhs.val, rhs.val), lhs.type);
         case Tok_Eq:
         case Tok_Is:
                     if(isFPTypeTag(lhs.type->typeTag))
