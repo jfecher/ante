@@ -2,7 +2,6 @@
 #define COMPILER_H
 
 #include <climits> //required by llvm when using clang
-#include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/LLVMContext.h>
@@ -312,7 +311,6 @@ namespace ante {
     struct Compiler {
         std::shared_ptr<llvm::LLVMContext> ctxt;
         std::unique_ptr<llvm::ExecutionEngine> jit;
-        std::unique_ptr<llvm::legacy::FunctionPassManager> passManager;
         std::unique_ptr<llvm::Module> module;
         std::unique_ptr<parser::RootNode> ast;
         llvm::IRBuilder<> builder;

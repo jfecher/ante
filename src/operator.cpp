@@ -1,5 +1,5 @@
 #include <llvm/ExecutionEngine/Interpreter.h>
-#include <llvm/Linker/Linker.h>
+#include <llvm/Transforms/Utils/Cloning.h>
 #include "compiler.h"
 #include "types.h"
 #include "function.h"
@@ -119,6 +119,7 @@ TypedValue Compiler::compRem(TypedValue &l, TypedValue &r, BinOpNode *op){
     }
 }
 
+
 /*
  *  Compiles the extract operator, #
  */
@@ -192,7 +193,8 @@ TypedValue Compiler::compInsert(BinOpNode *op, Node *assignExpr){
     if(!!fn){
         vector<Value*> args = {var, index.val, newVal.val};
         auto *retty = ((AnAggregateType*)fn.type)->extTys[0];
-        return TypedValue(builder.CreateCall(fn.val, args), retty);
+        auto *call = builder.CreateCall(fn.val, args);
+        return TypedValue(call, retty);
     }
 
     switch(tmp.type->typeTag){
@@ -1085,19 +1087,9 @@ TypedValue tryImplicitCast(Compiler *c, TypedValue &arg, AnType *castTy){
     if(!!(fn = c->getCastFn(arg.type, castTy))){
         AnFunctionType *fty = (AnFunctionType*)fn.type;
         if(!!c->typeEq({arg.type}, fty->extTys)){
-
-            //optimize case of Str -> c8* implicit cast
-            if(fn.val->getName() == "c8*_init_Str"){
-                Value *str = arg.val;
-                if(str->getType()->isPointerTy())
-                    str = c->builder.CreateLoad(str);
-
-                return TypedValue(c->builder.CreateExtractValue(str, 0),
-                       AnPtrType::get(AnType::getPrimitive(TT_C8)));
-            }else{
-                return TypedValue(c->builder.CreateCall(fn.val, arg.val),
-                       fn.type->getFunctionReturnType());
-            }
+            vector<Value*> args{arg.val};
+            auto *call = c->builder.CreateCall(fn.val, args);
+            return TypedValue(call, fn.type->getFunctionReturnType());
         }
     }
     return {};
@@ -1312,11 +1304,9 @@ TypedValue compFnCall(Compiler *c, Node *l, Node *r){
         return compMetaFunctionResult(c, l->loc, baseName, mangledName, typedArgs);
     }
 
-    //use tvf->val as arg, NOT f, (if tvf->val is a function-type parameter then f cannot be called)
-    //
-    //both a C-style cast and dyn-cast to functions fail if f is a function-pointer
+    //Create the call to tvf.val, not f as if tvf is a function pointer,
+    //passing it as f will fail.
     auto *call = c->builder.CreateCall(tvf.val, args);
-
     return TypedValue(call, tvf.type->getFunctionReturnType());
 }
 
@@ -1479,7 +1469,8 @@ TypedValue checkForOperatorOverload(Compiler *c, TypedValue &lhs, int op, TypedV
     if(implicitPassByRef(param2)) rhs = addrOf(c, rhs);
 
     vector<Value*> argVals = {lhs.val, rhs.val};
-    return TypedValue(c->builder.CreateCall(fn.val, argVals), fnty->getFunctionReturnType());
+    auto call = c->builder.CreateCall(fn.val, argVals);
+    return TypedValue(call, fnty->getFunctionReturnType());
 }
 
 

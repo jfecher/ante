@@ -1,12 +1,14 @@
 #include <llvm/IR/Verifier.h>          //for verifying basic structure of functions
 #include <llvm/Support/FileSystem.h>   //for r/w when outputting bitcode
 #include <llvm/Support/raw_ostream.h>  //for ostream when outputting bitcode
-#include "llvm/Transforms/Scalar.h"    //for most passes
-#include "llvm/Support/TargetRegistry.h"
-#include "llvm/Target/TargetMachine.h"
-#include "llvm/Linker/Linker.h"
-#include "llvm/ExecutionEngine/SectionMemoryManager.h"
-#include "llvm/ExecutionEngine/GenericValue.h"
+#include <llvm/Transforms/Scalar.h>    //for most passes
+#include <llvm/IR/LegacyPassManager.h>
+#include <llvm/Support/TargetRegistry.h>
+#include <llvm/Target/TargetMachine.h>
+#include <llvm/Linker/Linker.h>
+#include <llvm/ExecutionEngine/SectionMemoryManager.h>
+#include <llvm/ExecutionEngine/GenericValue.h>
+#include <llvm/Transforms/IPO/AlwaysInliner.h>
 
 #include <cstdio>
 #include <cstdlib>
@@ -1788,6 +1790,44 @@ TypedValue RootNode::compile(Compiler *c){
     return !!ret ? ret : c->getVoidLiteral();
 }
 
+/**
+ * @brief Fills the given PassManager with passes appropriate
+ * for the given optLvl.
+ *
+ * @param pm The PassManager to add passes to
+ * @param optLvl The optimization level in the range 0..3.
+ * Determines which passes should be added.  With 3 being
+ * all passes.
+ */
+inline void addPasses(legacy::PassManager &pm, char optLvl){
+    if(optLvl > 0){
+        if(optLvl >= 3){
+            pm.add(createLoopStrengthReducePass());
+            pm.add(createLoopUnrollPass());
+            pm.add(createMergedLoadStoreMotionPass());
+            pm.add(createMemCpyOptPass());
+            pm.add(createSpeculativeExecutionPass());
+        }
+        pm.add(createAlwaysInlinerLegacyPass());
+        pm.add(createDeadStoreEliminationPass());
+        pm.add(createDeadCodeEliminationPass());
+        pm.add(createCFGSimplificationPass());
+        pm.add(createTailCallEliminationPass());
+        pm.add(createInstructionSimplifierPass());
+
+#if LLVM_VERSION_MAJOR < 5
+        pm.add(createLoadCombinePass());
+#endif
+        pm.add(createLoopLoadEliminationPass());
+        pm.add(createReassociatePass());
+        pm.add(createPromoteMemoryToRegisterPass());
+
+        //Instruction Combining Pass seems to break nested for loops
+        //pm.add(createInstructionCombiningPass());
+    }
+}
+
+
 
 void Compiler::compile(){
     if(compiled){
@@ -1796,15 +1836,19 @@ void Compiler::compile(){
     }
 
     //create implicit main function and import the prelude
-    auto *mainFn = createMainFn();
+    createMainFn();
     compilePrelude();
 
     ast->compile(this);
 
     //always return 0
     builder.CreateRet(ConstantInt::get(*ctxt, APInt(32, 0)));
-    if(!errFlag)
-        passManager->run(*mainFn);
+
+    if(!errFlag and !isLib){
+        legacy::PassManager pm;
+        addPasses(pm, optLvl);
+        pm.run(*module);
+    }
 
     //flag this module as compiled.
     compiled = true;
@@ -1915,10 +1959,6 @@ int Compiler::compileIRtoObj(llvm::Module *mod, string outFile){
 		(LLVMModuleRef)mod,
 		filename,
 		(LLVMCodeGenFileType)llvm::TargetMachine::CGFT_ObjectFile, err);
-
-    //legacy::PassManager pm;
-    //int res = tm->addPassesToEmitFile(pm, out, llvm::TargetMachine::CGFT_ObjectFile);
-    //pm.run(*mod);
 
 	if (out.has_error())
 		cerr << "Error when compiling to object: " << errCode << endl;
@@ -2113,45 +2153,6 @@ string toModuleName(string &s){
 }
 
 /**
- * @brief Creates a pass manager and fills it with passes.
- *
- * @param m Module to create the psas manager for
- * @param optLvl The optimization level in the range 0..3.
- * Determines which passes should be added.
- *
- * @return The newly-created pass manager
- */
-legacy::FunctionPassManager* mkPassManager(llvm::Module *m, char optLvl){
-    auto *pm = new legacy::FunctionPassManager(m);
-    if(optLvl > 0){
-        if(optLvl >= 3){
-            pm->add(createLoopStrengthReducePass());
-            pm->add(createLoopUnrollPass());
-            pm->add(createMergedLoadStoreMotionPass());
-            pm->add(createMemCpyOptPass());
-            pm->add(createSpeculativeExecutionPass());
-        }
-        pm->add(createDeadStoreEliminationPass());
-        pm->add(createDeadCodeEliminationPass());
-        pm->add(createCFGSimplificationPass());
-        pm->add(createTailCallEliminationPass());
-        pm->add(createInstructionSimplifierPass());
-
-#if LLVM_VERSION_MAJOR < 5
-        pm->add(createLoadCombinePass());
-#endif
-        pm->add(createLoopLoadEliminationPass());
-        pm->add(createReassociatePass());
-        pm->add(createPromoteMemoryToRegisterPass());
-
-        //Instruction Combining Pass seems to break nested for loops
-        //pm->add(createInstructionCombiningPass());
-    }
-    pm->doInitialization();
-    return pm;
-}
-
-/**
  * @brief The main constructor for Compiler
  *
  * @param _fileName Name of the file being compiled
@@ -2209,9 +2210,6 @@ Compiler::Compiler(const char *_fileName, bool lib, shared_ptr<LLVMContext> llvm
     module.reset(new llvm::Module(outFile, *ctxt));
 
     enterNewScope();
-
-    //add passes to passmanager.
-    passManager.reset(mkPassManager(module.get(), optLvl));
 }
 
 /**
@@ -2251,9 +2249,6 @@ Compiler::Compiler(Compiler *c, Node *root, string modName, bool lib) :
     module.reset(new llvm::Module(outFile, *ctxt));
 
     enterNewScope();
-
-    //add passes to passmanager.
-    passManager.reset(mkPassManager(module.get(), 3));
 }
 
 
@@ -2272,8 +2267,6 @@ void Compiler::processArgs(CompilerArgs *args){
         else if(arg->arg == "2") optLvl = 2;
         else if(arg->arg == "3") optLvl = 3;
         else{ cerr << "Unrecognized OptLvl " << arg->arg << endl; return; }
-
-        passManager.reset(mkPassManager(module.get(), optLvl));
     }
 
 

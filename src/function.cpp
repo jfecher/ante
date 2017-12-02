@@ -318,7 +318,7 @@ TypedValue compFnWithModifiers(Compiler *c, FuncDecl *fd, ModNode *ppn){
             if(vn->name == "inline"){
                 fn = c->compFn(fd);
                 if(!fn) return fn;
-                ((Function*)fn.val)->addFnAttr("always_inline");
+                ((Function*)fn.val)->addFnAttr(Attribute::AttrKind::AlwaysInline);
             }else if(vn->name == "run"){
                 fn = c->compFn(fd);
                 if(!fn) return fn;
@@ -412,7 +412,7 @@ TypedValue compFnHelper(Compiler *c, FuncDecl *fd){
 
     FunctionType *ft = FunctionType::get(retTy, paramTys, fdn->varargs);
     Function *f = Function::Create(ft, Function::ExternalLinkage, fd->mangledName, c->module.get());
-    f->addFnAttr("nounwind");
+    f->addFnAttr(Attribute::AttrKind::NoUnwind);
     addAllArgAttrs(f, fdn->params.get());
 
 
@@ -483,10 +483,6 @@ TypedValue compFnHelper(Compiler *c, FuncDecl *fd){
             c->builder.SetInsertPoint(caller);
             return {};
         }
-
-        //optimize!
-        if(!c->errFlag)
-            c->passManager->run(*f);
     }
 
     c->builder.SetInsertPoint(caller);
