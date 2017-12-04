@@ -95,28 +95,6 @@ namespace ante {
                 storePtr(c, ptr);
             }
 
-        //mutable pointer passed, find last store
-        }else if(LoadInst *si = dyn_cast<LoadInst>(tv.val)){
-            for(auto *u : si->getPointerOperand()->users()){
-                if(StoreInst *si = dyn_cast<StoreInst>(u)){
-                    Value *vo = si->getValueOperand();
-
-                    if(BitCastInst *be = dyn_cast<BitCastInst>(vo)){
-                        for(auto *u : be->users()){
-                            if(StoreInst *si = dyn_cast<StoreInst>(u)){
-                                TypedValue elem = {si->getValueOperand(), ptrty};
-                                storePtr(c, elem);
-                                return;
-                            }
-                        }
-                    }
-
-                    TypedValue elem = {vo, ptrty};
-                    storePtr(c, elem);
-                    return;
-                }
-            }
-
         }else if(BitCastInst *be = dyn_cast<BitCastInst>(tv.val)){
             //there should be stores in this bitcast if it was of malloc
             for(auto *u : be->users()){
@@ -149,6 +127,34 @@ namespace ante {
         //    ret.AggregateVal.push_back(typedValueToGenericValue(c, field));
         //    i++;
         //}
+    }
+
+    /**
+     * Finds and returns the last stored value from a LoadInst
+     * of a mutable variable.
+     */
+    TypedValue findLastStore(Compiler *c, TypedValue &tv){
+        //mutable pointer passed, find last store
+        if(LoadInst *si = dyn_cast<LoadInst>(tv.val)){
+            for(auto *u : si->getPointerOperand()->users()){
+                if(StoreInst *si = dyn_cast<StoreInst>(u)){
+                    Value *vo = si->getValueOperand();
+
+                    if(BitCastInst *be = dyn_cast<BitCastInst>(vo)){
+                        for(auto *u : be->users()){
+                            if(StoreInst *si = dyn_cast<StoreInst>(u)){
+                                return {si->getValueOperand(), tv.type};
+                            }
+                        }
+                    }
+                    return {vo, tv.type};
+                }
+            }
+        }
+
+        cerr << "Cannot find last store to mutable variable during translation." << endl;
+        tv.dump();
+        return {};
     }
 
 
@@ -222,6 +228,10 @@ namespace ante {
             void *dataBegin = realloc(data, size + elemSize);
             data = (char*)dataBegin + size;
 
+            if(tv.type->hasModifier(Tok_Mut)){
+                tv = findLastStore(c, tv);
+            }
+
             storeValue(c, tv);
             data = dataBegin;
             size += elemSize;
@@ -231,6 +241,10 @@ namespace ante {
 
     ArgTuple::ArgTuple(Compiler *c, TypedValue &val)
             : data(nullptr), tval(val){
+
+        if(val.type->hasModifier(Tok_Mut)){
+            val = findLastStore(c, val);
+        }
 
         allocAndStoreValue(c, val);
     }
