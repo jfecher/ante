@@ -238,6 +238,12 @@ fun (==): Str l r -> bool
 
     l.cStr#i == r.cStr#i
 
+!inline
+fun (is): Str l r = l.cStr is r.cStr
+
+!inline
+fun (!=): Str l r = not(l == r)
+
 
 fun (++): Str s1 s2 -> Str
     if s1.len == 0 then return s2
@@ -262,10 +268,12 @@ fun (#): Str s, i32 i, c8 c
 
 
 //IO
+!inline
 fun InFile.init: Str fName -> InFile
     InFile fopen (fName.cStr) "r"
 
 
+!inline
 fun OutFile.init: Str fName -> OutFile
     OutFile fopen (fName.cStr) "w"
 
