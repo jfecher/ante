@@ -120,13 +120,23 @@ namespace ante {
 
 
     void ArgTuple::storeTuple(Compiler *c, TypedValue &tup){
-        //size_t i = 0;
-        //for(auto *ty : ((AnAggregateType*)tup.type)->extTys){
-        //    Value *extract = c->builder.CreateExtractValue(tup.val, i);
-        //    auto field = TypedValue(extract, ty);
-        //    ret.AggregateVal.push_back(typedValueToGenericValue(c, field));
-        //    i++;
-        //}
+        auto *sty = (AnAggregateType*)tup.type;
+        if(ConstantStruct *ca = dyn_cast<ConstantStruct>(tup.val)){
+            void *orig_data = this->data;
+            for(size_t i = 0; i < ca->getNumOperands(); i++){
+                Value *elem = ca->getAggregateElement(i);
+                AnType *ty = sty->extTys[i];
+                auto field = TypedValue(elem, ty);
+                storeValue(c, field);
+                data = (char*)data + ty->getSizeInBits(c) / 8;
+            }
+            data = orig_data;
+        }else{
+            //single-value "tuple"
+            AnType *ty = sty->extTys[0];
+            auto field = TypedValue(tup.val, ty);
+            storeValue(c, field);
+        }
     }
 
     /**
@@ -197,7 +207,7 @@ namespace ante {
                 storeValue(c, boundTv);
                 return;
             }
-            case TT_Data:
+            case TT_Data: storeTuple(c, tv); return;
             case TT_Function:
             case TT_TaggedUnion:
             case TT_MetaFunction:
