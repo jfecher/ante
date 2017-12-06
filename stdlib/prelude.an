@@ -1,6 +1,6 @@
 /*
         prelude.an
-    Standard functions and datatypes pre-imported 
+    Standard functions and datatypes pre-imported
     into every Ante source file.
 */
 
@@ -248,7 +248,7 @@ fun (!=): Str l r = not(l == r)
 fun (++): Str s1 s2 -> Str
     if s1.len == 0 then return s2
     if s2.len == 0 then return s1
-    
+
     let len = s1.len + s2.len
     var buf = malloc (len+1)
 

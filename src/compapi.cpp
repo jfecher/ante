@@ -30,7 +30,7 @@ extern "C" {
     }
 
     void* Ante_error(Compiler *c, TypedValue &msgTv){
-        char *msg = (char*)ArgTuple(c, msgTv).asRawData();
+        char *msg = *(char**)ArgTuple(c, msgTv).asRawData();
         auto *curfn = c->compCtxt->callStack.back()->fdn.get();
         yy::location fakeloc = mkLoc(mkPos(0,0,0), mkPos(0,0,0));
         c->compErr(msg, curfn ? curfn->loc : fakeloc);
@@ -57,13 +57,13 @@ extern "C" {
     }
 
     void* Ante_store(Compiler *c, TypedValue &nameTv, TypedValue &gv){
-        char *name = (char*)ArgTuple(c, nameTv).asRawData();
+        char *name = *(char**)ArgTuple(c, nameTv).asRawData();
         c->ctCtxt->ctStores[name] = gv;
         return nullptr;
     }
 
     TypedValue* Ante_lookup(Compiler *c, TypedValue &nameTv){
-        char *name = (char*)ArgTuple(c, nameTv).asRawData();
+        char *name = *(char**)ArgTuple(c, nameTv).asRawData();
 
         auto t = c->ctCtxt->ctStores.lookup(name);
         if(!!t){
@@ -84,7 +84,7 @@ extern "C" {
     }
 
     void* Ante_forget(Compiler *c, TypedValue &msgTv){
-        char *msg = (char*)ArgTuple(c, msgTv).asRawData();
+        char *msg = *(char**)ArgTuple(c, msgTv).asRawData();
         c->mergedCompUnits->fnDecls[msg].clear();
         return nullptr;
     }

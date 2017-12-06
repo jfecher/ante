@@ -79,7 +79,7 @@ namespace ante {
             Value *v = gv->getInitializer();
             if(ConstantDataArray *cda = dyn_cast<ConstantDataArray>(v)){
                 char *cstr = strdup(cda->getAsString().str().c_str());
-                data = cstr;
+                *(void**)data = cstr;
             }else{
                 TypedValue tv = {v, ptrty->extTy};
                 void **oldData = (void**)data;
