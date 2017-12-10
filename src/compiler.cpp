@@ -29,16 +29,16 @@ namespace ante {
 
 //Global containing every module/file compiled
 //to avoid recompilation
-llvm::StringMap<Module*> allCompiledModules;
+llvm::StringMap<unique_ptr<Module>> allCompiledModules;
 
 //each mergedCompUnits is static in lifetime
-vector<Module*> allMergedCompUnits;
+vector<unique_ptr<Module>> allMergedCompUnits;
 
 //yy::locations stored in all Nodes contain a string* to
 //a filename which must not be freed until all nodes are
 //deleted, including the FuncDeclNodes within ante::Modules
 //that all have a static lifetime
-vector<string*> fileNames;
+vector<unique_ptr<string>> fileNames;
 
 /**
  * @param tup The head of the list
@@ -1578,7 +1578,7 @@ void Compiler::importFile(const char *fName, Node *locNode){
     auto it = allCompiledModules.find(fName);
 
     if(it != allCompiledModules.end()){
-        auto *import = it->getValue();
+        auto *import = it->getValue().get();
         string fmodName = removeFileExt(fName);
 
         for(auto &mod : imports){
@@ -1607,7 +1607,6 @@ void Compiler::importFile(const char *fName, Node *locNode){
         c->module.release();
         imports.push_back(c->compUnit);
         mergedCompUnits->import(c->compUnit);
-        allCompiledModules.try_emplace(fName, c->compUnit);
     }
 }
 
@@ -1852,9 +1851,6 @@ void Compiler::compile(){
 
     //flag this module as compiled.
     compiled = true;
-
-    //show other modules this is compiled
-    allCompiledModules.try_emplace(fileName, compUnit);
 
     if(errFlag){
         fputs("Compilation aborted.\n", stderr);
@@ -2196,12 +2192,14 @@ Compiler::Compiler(const char *_fileName, bool lib, shared_ptr<LLVMContext> llvm
         ast.reset(parser::getRootNode());
     }
 
-    allMergedCompUnits.emplace_back(mergedCompUnits);
-
     auto fileNameWithoutExt = removeFileExt(fileName);
     auto modName = toModuleName(fileNameWithoutExt);
     compUnit->name = modName;
     mergedCompUnits->name = modName;
+
+    //Add this module to the cache to ensure it is not compiled twice
+    allMergedCompUnits.emplace_back(mergedCompUnits);
+    allCompiledModules.try_emplace(fileName, compUnit);
 
     outFile = fileNameWithoutExt;
 	if (outFile.empty())
@@ -2239,6 +2237,7 @@ Compiler::Compiler(Compiler *c, Node *root, string modName, bool lib) :
         scope(0), optLvl(2), fnScope(1){
 
     allMergedCompUnits.emplace_back(mergedCompUnits);
+    allCompiledModules.try_emplace(fileName, compUnit);
 
     compUnit->name = modName;
     mergedCompUnits->name = modName;

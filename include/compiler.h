@@ -719,14 +719,14 @@ namespace ante {
     * @brief every single compiled module, even ones invisible to the current
     * compilation unit.  Prevents recompilation of modules and owns all Modules
     */
-    extern llvm::StringMap<Module*> allCompiledModules;
+    extern llvm::StringMap<std::unique_ptr<Module>> allCompiledModules;
 
     /**
     * @brief Every merged compilation units.  Each must not be freed until compilation
     * finishes as there is always a chance an old module is recompiled and the newly
     * imported functions would need the context they were compiled in.
     */
-    extern std::vector<Module*> allMergedCompUnits;
+    extern std::vector<std::unique_ptr<Module>> allMergedCompUnits;
 
     /*
      * @brief Compiles and returns the address of an lval or expression
