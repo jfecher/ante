@@ -819,7 +819,7 @@ TypeCheckResult& extTysEq(const AnType *l, const AnType *r, TypeCheckResult &tcr
  *  the outermost type will not be checked for traits.
  */
 TypeCheckResult& typeEqBase(const AnType *l, const AnType *r, TypeCheckResult &tcr, const Compiler *c){
-    if(l == r) return tcr.success();
+    if(l == r and !l->isGeneric) return tcr.success();
 
     if(l->typeTag == TT_TaggedUnion and r->typeTag == TT_Data)
         return tcr.successIf(((AnDataType*)l)->name == ((AnDataType*)r)->name);
@@ -886,7 +886,7 @@ AnType* TypeCheckResult::getBindingFor(const string &name){
  *  Compiler instance required to check for trait implementation
  */
 TypeCheckResult& typeEqHelper(const Compiler *c, const AnType *l, const AnType *r, TypeCheckResult &tcr){
-    if(l == r) return tcr.success();
+    if(l == r and !l->isGeneric) return tcr.success();
     if(!r) return tcr.failure();
 
     const AnDataType *ldt, *rdt;
@@ -968,18 +968,41 @@ TypeCheckResult& typeEqHelper(const Compiler *c, const AnType *l, const AnType *
             auto *rtv = (AnTypeVarType*)r;
 
             Variable *lv = c->lookup(ltv->name);
+
+            //If they are equal, return before doing the second lookup
+            if(ltv == rtv){
+                if(lv){
+                    auto lty = extractTypeValue(lv->tval);
+                    tcr->bindings.emplace_back(lv->name, lty);
+                    return tcr.successWithTypeVars();
+                }else{
+                    //Binding for the equal typevars not found in scope,
+                    //so dont add it to bindings, just return Success
+                    return tcr;
+                }
+            }
+
             Variable *rv = c->lookup(rtv->name);
 
             if(lv and rv){ //both are already bound
+                //add bindings from scope to the TypeCheckResult
+                //and recur on them to make sure they're equal
                 auto lty = extractTypeValue(lv->tval);
                 auto rty = extractTypeValue(rv->tval);
+                tcr->bindings.emplace_back(lv->name, lty);
+                tcr->bindings.emplace_back(rv->name, rty);
+                tcr.successWithTypeVars();
                 return typeEqHelper(c, lty, rty, tcr);
             }else if(lv and not rv){
                 typeVar = rtv;
                 nonTypeVar = extractTypeValue(lv->tval);
+                tcr->bindings.emplace_back(lv->name, nonTypeVar);
+                //fall through to successWithTypeVars below
             }else if(rv and not lv){
                 typeVar = ltv;
                 nonTypeVar = extractTypeValue(rv->tval);
+                tcr->bindings.emplace_back(rv->name, nonTypeVar);
+                //fall through to successWithTypeVars below
             }else{ //neither are bound
                 return tcr.successIf(ltv->name == rtv->name);
             }
