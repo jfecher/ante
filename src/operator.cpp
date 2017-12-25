@@ -188,8 +188,8 @@ TypedValue Compiler::compInsert(BinOpNode *op, Node *assignExpr){
 
     //see if insert operator # = is overloaded already
     string basefn = "#";
-    string mangledfn = mangle(basefn, {tmp.type, AnType::getI32(), newVal.type});
-    auto fn = getFunction(basefn, mangledfn);
+    vector<AnType*> args = {tmp.type, AnType::getI32(), newVal.type};
+    auto fn = getMangledFn(basefn, args);
     if(!!fn){
         vector<Value*> args = {var, index.val, newVal.val};
         auto *retty = ((AnAggregateType*)fn.type)->extTys[0];

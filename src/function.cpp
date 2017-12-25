@@ -534,6 +534,11 @@ TypedValue compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, vector
 //Defined in compiler.cpp
 string manageSelfParam(Compiler *c, FuncDeclNode *fdn, string &mangledName);
 
+
+/**
+ * Returns true if the given function name is a declaration
+ * and not a definition
+ */
 bool isDecl(string &name){
     return name.back() == ';';
 }
