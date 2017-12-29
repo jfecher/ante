@@ -2136,6 +2136,22 @@ inline void Compiler::stoType(AnDataType *dt, string &typeName){
     mergedCompUnits->userTypes[typeName] = dt;
 }
 
+
+/**
+ * Returns the directory prefix of a filename.
+ * If there is none, an empty string is returned.
+ * Eg. dirprefix("path/to/file") == "path/to/"
+ */
+string dirprefix(string &f){
+    auto c = f.find_last_of("/");
+    if(c != string::npos){
+        return f.substr(0, c+1);
+    }else{
+        return "";
+    }
+}
+
+
 /**
  * Converts a given filename (with its file
  * extension already removed) to a module name.
@@ -2218,7 +2234,7 @@ Compiler::Compiler(const char *_fileName, bool lib, shared_ptr<LLVMContext> llvm
         ast.reset(parser::getRootNode());
     }
 
-    relativeRoots = {"./", AN_LIB_DIR};
+    relativeRoots = {dirprefix(fileName), AN_LIB_DIR};
 
     auto fileNameWithoutExt = removeFileExt(fileName);
     auto modName = toModuleName(fileNameWithoutExt);
@@ -2266,7 +2282,7 @@ Compiler::Compiler(Compiler *c, Node *root, string modName, bool lib) :
 
     allMergedCompUnits.emplace_back(mergedCompUnits);
     allCompiledModules.try_emplace(fileName, compUnit);
-    relativeRoots = {"./", AN_LIB_DIR};
+    relativeRoots = {dirprefix(fileName), AN_LIB_DIR};
 
     compUnit->name = modName;
     mergedCompUnits->name = modName;
