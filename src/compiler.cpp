@@ -1833,7 +1833,7 @@ inline void addPasses(legacy::PassManager &pm, char optLvl){
             pm.add(createMemCpyOptPass());
             pm.add(createSpeculativeExecutionPass());
         }
-        pm.add(createAlwaysInlinerLegacyPass());
+        //pm.add(createAlwaysInlinerLegacyPass());
         pm.add(createDeadStoreEliminationPass());
         pm.add(createDeadCodeEliminationPass());
         pm.add(createCFGSimplificationPass());
