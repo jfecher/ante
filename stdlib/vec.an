@@ -1,0 +1,47 @@
+
+type Vec 't = 't* _data, u32 len cap
+
+ext Vec 't
+    fun init :=
+        Vec<'t>('t* malloc(4 * Ante.sizeof 't), 0u32, 4u32)
+
+    //reserve numElements in Vec v, elements will be uninitialized
+    fun reserve: mut Vec 't v, u32 numElems
+        if v.len + numElems > v.cap then
+            //FIXME: Ante.sizeof 't breaks, Ante.sizeof i32 works
+            let ptr = realloc v._data ((v.cap+numElems) * Ante.sizeof i32)
+
+            if ptr is void* 0 then
+                printf "Error in reserving %u elements for Vec\n" numElems
+                return ()
+
+            v._data = ptr
+            v.cap += numElems
+
+    fun push: mut Vec 't v, 't elem
+        if v.len >= v.cap then
+            v.reserve v.cap
+
+        v#v.len = elem
+        v.len += 1
+
+    fun print: Vec 't v
+        printne "{ "
+
+        var i = 0
+        while i < v.len do
+            printne (v#i)
+            if i + 1 != v.len then
+                printf ", "
+
+            i += 1
+
+        print " }"
+
+//define the extract operator
+fun (#): Vec 't v, i32 i -> 't
+    v._data#i
+
+//define the insert operator
+fun (#): mut Vec 't v, i32 i, 't x
+    v._data#i = x
