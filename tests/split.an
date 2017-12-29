@@ -1,4 +1,4 @@
-import "tests/strvec.an"
+import "strvec.an"
 
 
 fun split: Str s = split s ' '

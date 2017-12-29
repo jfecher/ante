@@ -1,4 +1,4 @@
-import "tests/vec.an"
+import "vec.an"
 
 
 fun Vec.pop: mut Vec v

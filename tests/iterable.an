@@ -1,4 +1,4 @@
-import "tests/vec.an"
+import "vec.an"
 
 type VecIter = i32* elem, u32 elems_remaining
 
