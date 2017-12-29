@@ -73,74 +73,86 @@ ante fun Ante.forget: c8* function_name;
 
 //numerical print functions
 !inline
-fun i8.print: i8 x
-    printf "%hhd\n" x
+fun i8.printne: i8 x
+    printf "%hhd" x
 
 !inline
-fun i16.print: i16 x
-    printf "%hd\n" x
+fun i16.printne: i16 x
+    printf "%hd" x
 
 !inline
-fun i32.print: i32 x
-    printf "%d\n" x
+fun i32.printne: i32 x
+    printf "%d" x
 
 !inline
-fun i64.print: i64 x
-    printf "%ld\n" x
+fun i64.printne: i64 x
+    printf "%ld" x
 
 !inline
-fun isz.print: isz x
-    printf "%zi\n" x
+fun isz.printne: isz x
+    printf "%zi" x
 
 //unsigned
 !inline
-fun u8.print: u8 x
-    printf "%hhu\n" x
+fun u8.printne: u8 x
+    printf "%hhu" x
 
 !inline
-fun u16.print: u16 x
-    printf "%hu\n" x
+fun u16.printne: u16 x
+    printf "%hu" x
 
 !inline
-fun u32.print: u32 x
-    printf "%u\n" x
+fun u32.printne: u32 x
+    printf "%u" x
 
 !inline
-fun u64.print: u64 x
-    printf "%lu\n" x
+fun u64.printne: u64 x
+    printf "%lu" x
 
 !inline
-fun usz.print: usz x
-    printf "%zu\n" x
+fun usz.printne: usz x
+    printf "%zu" x
 
 //floats
 !inline
-fun f16.print: f16 x
-    printf "%.2f\n" (f64 x)
+fun f16.printne: f16 x
+    printf "%.2f" (f64 x)
 
 !inline
-fun f32.print: f32 x
-    printf "%f\n" (f64 x)
+fun f32.printne: f32 x
+    printf "%f" (f64 x)
 
 !inline
-fun f64.print: f64 x
-    printf "%.14f\n" x
+fun f64.printne: f64 x
+    printf "%.14f" x
 
 //char
 !inline
-fun c8.print: c8 x
-    printf "%c\n" x
+fun c8.printne: c8 x
+    printf "%c" x
 
 //bool
 !inline
-fun bool.print: bool b
-    if b then puts "true"
-    else puts "false"
+fun bool.printne: bool b
+    if b then printf "true"
+    else printf "false"
 
 //c-string
 !inline
-fun print: c8* s
-    puts s
+fun printne: c8* s
+    printf "%s" s
+
+
+!inline
+fun printne: Str s
+    printne s.cStr
+
+
+!inline
+fun print: 't x
+    printne x
+    puts ""
+
 
 !inline
 fun c8*.init: Str s = s.cStr
@@ -309,14 +321,6 @@ fun InFile.next_line: InFile f -> Str
     cstr#len = '\0'
     Str(cstr, len)
 
-
-
-//print string without endline
-fun printne: c8* str
-    var i = 0
-    while str#i != '\0' do
-        putchar (str#i)
-        i += 1
 
 //print a message then return user input
 fun input: c8* msg -> Str

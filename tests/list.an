@@ -27,15 +27,17 @@ fun append: mut List 't l, 't elem
         l.last = Some n
 
 
-fun print: List l
+fun printne: List l
     match l.first with
-    | Some n -> print n
+    | Some n -> printne "[ "; printne n
+    | None -> printne "[ ]"
 
 
-fun print: Node* l
-    print l.elem
+fun printne: Node* l
+    printne l.elem
     match l.next with
-    | Some n -> print n
+    | Some n -> printne ", "; printne n
+    | None -> printne " ]"
 
 
 fun (++): i32 l r =
