@@ -447,7 +447,7 @@ TypedValue RetNode::compile(Compiler *c){
 TypedValue ImportNode::compile(Compiler *c){
     if(!dynamic_cast<StrLitNode*>(expr.get())) return {};
 
-    c->importFile(((StrLitNode*)expr.get())->val.c_str(), this);
+    c->importFile(((StrLitNode*)expr.get())->val.c_str(), this->loc);
     return c->getVoidLiteral();
 }
 
@@ -1573,8 +1573,31 @@ void ante::Module::import(ante::Module *mod){
         traits[pair.first()] = pair.second;
 }
 
+inline bool fileExists(const string &fName){
+    if(FILE *f = fopen(fName.c_str(), "r")){
+        fclose(f);
+        return true;
+    }
+    return false;
+}
 
-void Compiler::importFile(const char *fName, Node *locNode){
+/**
+ * Returns the first path to a given filename
+ * matched within the relative root directories.
+ * If no file is found then the empty string is returned.
+ */
+string findFile(Compiler *c, const char *fName){
+    for(auto &dir : c->relativeRoots){
+        auto f = dir + fName;
+        if(fileExists(f)){
+            return f;
+        }
+    }
+    return "";
+}
+
+
+void Compiler::importFile(const char *fName, LOC_TY &loc){
     auto it = allCompiledModules.find(fName);
 
     if(it != allCompiledModules.end()){
@@ -1583,8 +1606,7 @@ void Compiler::importFile(const char *fName, Node *locNode){
 
         for(auto &mod : imports){
             if(mod->name == fmodName){
-                compErr("module " + string(fName) + " has already been imported", locNode->loc, ErrorType::Warning);
-                return;
+                compErr("Module " + string(fName) + " has already been imported", loc, ErrorType::Warning);
             }
         }
 
@@ -1592,16 +1614,19 @@ void Compiler::importFile(const char *fName, Node *locNode){
         imports.push_back(import);
         mergedCompUnits->import(import);
     }else{
+        auto f = findFile(this, fName);
+        if(f.empty()){
+            compErr("No Module '" + string(fName) + "' was found.", loc);
+        }
+
         //module not found; create new Compiler instance to compile it
-        auto c = unique_ptr<Compiler>(new Compiler(fName, true, ctxt));
+        auto c = unique_ptr<Compiler>(new Compiler(f.c_str(), true, ctxt));
         c->ctxt = ctxt;
         c->module.reset(module.get());
         c->compile();
 
         if(c->errFlag){
-            cout << "Error when importing " << fName << endl;
-            errFlag = true;
-            return;
+            compErr("Error when importing '" + string(fName) + "'", loc);
         }
 
         c->module.release();
@@ -1654,7 +1679,8 @@ TypeNode* mkDataTypeNode(string tyname){
 
 void Compiler::compilePrelude(){
     if(fileName != AN_LIB_DIR "prelude.an"){
-        importFile(AN_LIB_DIR "prelude.an");
+        auto fakeLoc = mkLoc(mkPos(0, 0, 0), mkPos(0, 0, 0));
+        importFile("prelude.an", fakeLoc);
     }
 }
 
@@ -2192,6 +2218,8 @@ Compiler::Compiler(const char *_fileName, bool lib, shared_ptr<LLVMContext> llvm
         ast.reset(parser::getRootNode());
     }
 
+    relativeRoots = {"./", AN_LIB_DIR};
+
     auto fileNameWithoutExt = removeFileExt(fileName);
     auto modName = toModuleName(fileNameWithoutExt);
     compUnit->name = modName;
@@ -2238,6 +2266,7 @@ Compiler::Compiler(Compiler *c, Node *root, string modName, bool lib) :
 
     allMergedCompUnits.emplace_back(mergedCompUnits);
     allCompiledModules.try_emplace(fileName, compUnit);
+    relativeRoots = {"./", AN_LIB_DIR};
 
     compUnit->name = modName;
     mergedCompUnits->name = modName;

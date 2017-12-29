@@ -59,7 +59,7 @@ namespace ante {
     struct TypeCheckResult {
         enum Result { Failure, Success, SuccessWithTypeVars };
 
-        //box internals for faster passing by value
+        //box internals for faster passing by value and easier ownership transfer
         struct Internals {
             Result res;
             unsigned int matches;
@@ -163,7 +163,7 @@ namespace ante {
      */
     struct FunctionCandidates {
         /** @brief FunctionCandidates instances swap places with the llvm::Value part of a
-         * TypedValue.  Because inheritance cannot be used, the fiirst field is a fakeValue
+         * TypedValue.  Because inheritance cannot be used, the first field is a fakeValue
          * to avoid crashes when FunctionCandidates are used accidentaly as llvm::Values */
         llvm::Value *fakeValue;
         std::vector<std::shared_ptr<FuncDecl>> candidates;
@@ -334,6 +334,11 @@ namespace ante {
 
         std::shared_ptr<CompilerCtCtxt> ctCtxt;
 
+        /** Relative root directorys to search within.
+         * Given a module M, M can be within any of
+         * the relative root directories */
+        std::vector<std::string> relativeRoots;
+
         bool errFlag, compiled, isLib, isJIT;
         std::string fileName, outFile, funcPrefix;
         unsigned int scope, optLvl, fnScope;
@@ -491,7 +496,7 @@ namespace ante {
         *        Usually the ImportNode importing the file.  Used for
         *        error reporting.
         */
-        void importFile(const char *name, parser::Node* locNode = 0);
+        void importFile(const char *name, LOC_TY &loc);
 
         /** @brief Sets the tv of the FuncDecl specified to the value of f */
         void updateFn(TypedValue &f, FuncDecl *fd, std::string &name, std::string &mangledName);

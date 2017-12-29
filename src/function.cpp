@@ -609,16 +609,7 @@ TypedValue Compiler::compFn(FuncDecl *fd){
     TypedValue ret;
 
     try{
-        if(fd->module->name != compUnit->name){
-            auto mcu = move(mergedCompUnits);
-
-            //Compile the function in its original module
-            mergedCompUnits = fd->module;
-            ret = compFnHelper(this, fd);
-            mergedCompUnits = mcu;
-        }else{
-            ret = compFnHelper(this, fd);
-        }
+        ret = compFnHelper(this, fd);
     }catch(CtError *e){
         compCtxt->callStack.pop_back();
         compCtxt->continueLabels.reset(continueLabels);
