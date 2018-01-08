@@ -157,6 +157,16 @@ fun print: 't x
 !inline
 fun c8*.init: Str s = s.cStr
 
+
+//Pointer Equivalence
+!inline
+fun (==): 't* l r =
+    @l == @r
+
+//void* have no element, so structural equivalence is an error
+fun (==): void* l r =
+    Ante.error "Cannot call == on a void*!  Use 'is' to compare addresses!".cStr
+
 //For-loops work over any range that is Iterable
 trait Iterable
     fun into_iter: Iterable i -> Iterator
@@ -264,10 +274,10 @@ fun (++): Str s1 s2 -> Str
     let len = s1.len + s2.len
     var buf = malloc (len+1)
 
-    memcpy buf (s1.cStr) s1.len
+    memcpy buf (void* s1.cStr) s1.len
 
     var buf_offset = void*(usz buf + s1.len)
-    memcpy buf_offset s2.cStr (s2.len+1) //copy terminating null too
+    memcpy buf_offset (void* s2.cStr) (s2.len+1) //copy terminating null too
 
     Str(c8* buf, len)
 
@@ -311,7 +321,7 @@ fun InFile.next_line: InFile f -> Str
 
         if len+1 >= cap then
             cap *= 2
-            cstr = realloc cstr cap
+            cstr = c8* realloc (void* cstr) cap
 
         cstr#len = c
         len += 1
@@ -332,7 +342,7 @@ fun input: c8* msg -> Str
     while
         let c = getchar ()
         if len % 32 == 0 then
-            cstr = realloc cstr (len+32)
+            cstr = c8* realloc (void* cstr) (len+32)
 
         cstr#len = c
         len += 1
