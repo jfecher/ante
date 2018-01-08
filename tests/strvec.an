@@ -1,19 +1,19 @@
 
 type Vec = Str* _data, usz len cap
 
-fun Vec.init := Vec(malloc(8 * Ante.sizeof ""), 0usz, 8usz)
+fun Vec.init := Vec(Str* malloc(8 * Ante.sizeof Str), 0usz, 8usz)
 
 //reserve numElements in Vec v, elements will be uninitialized
 fun Vec.reserve: mut Vec v, usz numElems
     if v.len + numElems > v.cap then
-        let elemSize = Ante.sizeof ""
-        let ptr = realloc (void* v._data) (elemSize*(v.cap + numElems))
+        let size = (v.cap + numElems) * Ante.sizeof Str
+        let ptr = realloc (void* v._data) size
 
         if ptr is void* 0 then
             printf "Error in reserving %u elements for Vec\n" numElems
             return ()
 
-        v._data = ptr
+        v._data = Str* ptr
         v.cap += numElems
 
 
@@ -56,4 +56,4 @@ v.push "test  3"
 
 print v
 
-free <| v._data
+free <| void* v._data

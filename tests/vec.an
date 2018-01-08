@@ -6,13 +6,14 @@ fun Vec.init := Vec(i32* malloc 32, 0u32, 8u32)
 //reserve numElements in Vec v, elements will be uninitialized
 fun Vec.reserve: mut Vec v, u32 numElems
     if v.len + numElems > v.cap then
-        let ptr = realloc (void* v._data) (4*(v.cap+numElems))
+        let size = (v.cap + numElems) * Ante.sizeof i32
+        let ptr = realloc (void* v._data) size
 
         if ptr is void* 0 then
             printf "Error in reserving %u elements for Vec\n" numElems
             return ()
 
-        v._data = ptr
+        v._data = i32* ptr
         v.cap += numElems
 
 
@@ -33,7 +34,7 @@ fun (#): mut Vec v, i32 i, i32 x
 
 
 fun print: Vec v
-    printne "{"
+    printne "{ "
 
     var i = 0
     while i < v.len do
@@ -56,4 +57,4 @@ while i <= 100 do
 
 print v
 
-free <| v._data
+free <| void* v._data

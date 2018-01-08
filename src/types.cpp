@@ -837,8 +837,6 @@ TypeCheckResult& typeEqBase(const AnType *l, const AnType *r, TypeCheckResult &t
     if(r->typeTag == TT_Ptr){
         auto *lptr = (AnPtrType*)l;
         auto *rptr = (AnPtrType*)r;
-        if(lptr->extTy->typeTag == TT_Void or rptr->extTy->typeTag == TT_Void)
-            return tcr.success();
 
         return c ? typeEqHelper(c, lptr->extTy, rptr->extTy, tcr)
                  : typeEqBase(lptr->extTy, rptr->extTy, tcr, c);

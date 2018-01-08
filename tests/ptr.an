@@ -15,4 +15,4 @@ printf "%p -> %d\n" longPtr (@longPtr)
 printf "%p -> %f\n" fltPtr (@fltPtr)
 
 
-free longPtr
+free (void* longPtr)
