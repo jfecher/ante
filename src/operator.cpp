@@ -756,14 +756,6 @@ TypedValue Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *binop
             tyn = ((AnPtrType*)tyn)->extTy;
         }
 
-        //if pointer derefs took place, tyn could have lost its modifiers, so make sure they are copied back
-        //
-        //TODO: manage AnModifierType* or remove it entirely
-        //
-        //if(ltyn->typeTag == TT_Ptr and tyn->modifiers.empty() and !ltyn->modifiers.empty()){
-        //    tyn->copyModifiersFrom(ltyn);
-        //}
-
         //check to see if this is a field index
         if(auto *dataTy = dyn_cast<AnDataType>(tyn)){
             auto index = dataTy->getFieldIndex(field->name);
@@ -796,8 +788,6 @@ TypedValue Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *binop
         //TODO: perhaps create a calling convention function
         string funcName = toModuleName(tyn) + "_" + field->name;
         auto& l = getFunctionList(funcName);
-
-
 
         if(!l.empty()){
             TypedValue obj = {val, tyn};
@@ -880,7 +870,12 @@ TypedValue createMallocAndStore(Compiler *c, TypedValue &val){
     string mallocFnName = "malloc";
     Function* mallocFn = (Function*)c->getFunction(mallocFnName, mallocFnName).val;
 
-    unsigned size = val.type->getSizeInBits(c) / 8;
+    auto size_result = val.type->getSizeInBits(c);
+    if(!size_result){
+        cerr << size_result.getErr() << endl;
+        size_result = 0;
+    }
+    auto size = size_result.getVal() / 8;
 
     Value *sizeVal = ConstantInt::get(*c->ctxt, APInt(AN_USZ_SIZE, size, true));
 

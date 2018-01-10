@@ -307,6 +307,7 @@ namespace ante {
         if(existing_ty) return existing_ty;
 
         auto f = new AnFunctionType(retTy, elems, isMetaFunction, m);
+
         addKVPair(typeArena.functionTypes, key, f);
         return f;
     }

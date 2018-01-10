@@ -739,12 +739,8 @@ FuncDecl* Compiler::getMangledFuncDecl(string name, vector<AnType*> &args){
     //check for an exact match on the remaining candidates.
     string fnName = mangle(name, args);
     auto *fd = getFuncDeclFromVec(candidates, fnName);
-    if(fd){ //exact match
-        if(!fd->tv)
-            fd->tv = compFnWithArgs(this, fd, args);
-
+    if(fd) //exact match
         return fd;
-    }
 
     auto matches = filterBestMatches(this, candidates, args);
 
@@ -807,12 +803,12 @@ TypedValue Compiler::getCastFn(AnType *from_ty, AnType *to_ty, FuncDecl *fd){
     TypedValue tv;
 
     auto *to_ty_dt = dyn_cast<AnDataType>(to_ty);
-    if(to_ty_dt and to_ty_dt->unboundType){
+    if(to_ty_dt and to_ty_dt->isVariant()){
         AnType *unbound_obj = fd->obj;
         fd->obj = to_ty;
         fd->obj_bindings = to_ty_dt->boundGenerics;
 
-        //must check if this functions is generic first
+        //must check if this function is generic first
         auto args = toArgTuple(from_ty);
         if(!fd->obj_bindings.empty()){
             //force a call to compTemplateFunction as the object itself is generic

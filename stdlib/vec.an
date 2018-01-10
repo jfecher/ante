@@ -9,13 +9,14 @@ ext Vec 't
     fun reserve: mut Vec 't v, u32 numElems
         if v.len + numElems > v.cap then
             //FIXME: Ante.sizeof 't breaks, Ante.sizeof i32 works
-            let ptr = realloc v._data ((v.cap+numElems) * Ante.sizeof i32)
+            let size = (v.cap + numElems) * Ante.sizeof i32
+            let ptr = realloc v._data size
 
             if ptr is void* 0 then
                 printf "Error in reserving %u elements for Vec\n" numElems
                 return ()
 
-            v._data = ptr
+            v._data = 't* ptr
             v.cap += numElems
 
     fun push: mut Vec 't v, 't elem
@@ -25,18 +26,18 @@ ext Vec 't
         v#v.len = elem
         v.len += 1
 
-    fun print: Vec 't v
-        printne "{ "
+fun printne: Vec 't v
+    printne "{ "
 
-        var i = 0
-        while i < v.len do
-            printne (v#i)
-            if i + 1 != v.len then
-                printf ", "
+    var i = 0
+    while i < v.len do
+        printne (v#i)
+        if i + 1 != v.len then
+            printf ", "
 
-            i += 1
+        i += 1
 
-        print " }"
+    printne " }"
 
 //define the extract operator
 fun (#): Vec 't v, i32 i -> 't

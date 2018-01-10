@@ -129,11 +129,11 @@ void validateType(Compiler *c, const AnType *tn, const AnDataType *dt){
 }
 
 
-size_t AnType::getSizeInBits(Compiler *c, string *incompleteType, bool force) const{
+Result<size_t, string> AnType::getSizeInBits(Compiler *c, string *incompleteType, bool force) const{
     size_t total = 0;
 
     if(isPrimitiveTypeTag(this->typeTag))
-        return getBitWidthOfTypeTag(this->typeTag);
+        return (size_t)getBitWidthOfTypeTag(this->typeTag);
 
     if(typeTag == TT_Data or typeTag == TT_TaggedUnion){
         auto *dataTy = (AnDataType*)this;
@@ -144,28 +144,28 @@ size_t AnType::getSizeInBits(Compiler *c, string *incompleteType, bool force) co
                 throw new IncompleteTypeError();
             }
 
-            cerr << "Type " << anTypeToColoredStr(this) << " has not been declared\n";
-            return 0;
+            return "Type " + anTypeToStr(this) + " has not been declared\n";
         }
 
-        //TypeNode *tyn = dataTy->tyn.get();
-        //if(!dataTy->generics.empty()){
-        //    tyn = copy(tyn);
-        //    bindGenericToType(tyn, params, dataTy);
-        //}
         for(auto *ext : dataTy->extTys){
-            total += ext->getSizeInBits(c, incompleteType, force);
+            auto val = ext->getSizeInBits(c, incompleteType, force);
+            if(!val) return val;
+            total += val.getVal();
         }
-        return total;
 
     }else if(typeTag == TT_Tuple){
         for(auto *ext : ((AnAggregateType*)this)->extTys){
-            total += ext->getSizeInBits(c, incompleteType, force);
+            auto val = ext->getSizeInBits(c, incompleteType, force);
+            if(!val) return val;
+            total += val.getVal();
         }
 
     }else if(typeTag == TT_Array){
         auto *arr = (AnArrayType*)this;
-        return arr->len * arr->extTy->getSizeInBits(c, incompleteType, force);
+        auto val = arr->extTy->getSizeInBits(c, incompleteType, force);
+        if(!val) return val;
+        return arr->len * val.getVal();
+
     }else if(typeTag == TT_Ptr or typeTag == TT_Function or typeTag == TT_MetaFunction){
         return AN_USZ_SIZE;
 
@@ -175,19 +175,13 @@ size_t AnType::getSizeInBits(Compiler *c, string *incompleteType, bool force) co
         if(var){
             auto *extract = extractTypeValue(var->tval);
             if(extract == tvt){
-                cerr << "Warning: typevar " << tvt->name << " refers to itself, cannot calculate size in bits" << endl;
-                return 0;
+                return failure<size_t, string>("Warning: typevar " + tvt->name + " refers to itself, cannot calculate size in bits");
             }
             return extract->getSizeInBits(c, incompleteType, force);
         }
 
-        //TODO: store location data in AnTypeVarType
-        if(force){
-            return AN_USZ_SIZE;
-        }else{
-            cerr << "Lookup for typevar " << tvt->name << " not found" << endl;
-            throw new TypeVarError();
-        }
+        if(force) return AN_USZ_SIZE;
+        else return "Lookup for typevar " + tvt->name + " not found";
     }
 
     return total;
@@ -573,10 +567,15 @@ AnType* getLargestExt(Compiler *c, AnDataType *tn, bool force){
     size_t largest_size = 0;
 
     for(auto *e : tn->extTys){
-        size_t size = e->getSizeInBits(c, nullptr, force);
-        if(size > largest_size){
+        auto size = e->getSizeInBits(c, nullptr, force);
+        if(!size){
+            cerr << size.getErr() << endl;
+            size = 0;
+        }
+
+        if(size.getVal() > largest_size){
             largest = e;
-            largest_size = size;
+            largest_size = size.getVal();
         }
     }
     return largest;

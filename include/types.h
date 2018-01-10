@@ -2,6 +2,7 @@
 #define AN_TYPES_H
 
 #include "compiler.h"
+#include "result.h"
 
 #ifndef AN_USZ_SIZE
 #define AN_USZ_SIZE (8*sizeof(void*))

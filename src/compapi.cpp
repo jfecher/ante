@@ -48,11 +48,16 @@ extern "C" {
     }
 
     TypedValue* Ante_sizeof(Compiler *c, TypedValue &tv){
-        size_t size = tv.type->typeTag == TT_Type
-                    ? extractTypeValue(tv)->getSizeInBits(c) / 8
-                    : tv.type->getSizeInBits(c) / 8;
+        auto size = tv.type->typeTag == TT_Type
+                    ? extractTypeValue(tv)->getSizeInBits(c)
+                    : tv.type->getSizeInBits(c);
 
-        Value *sizeVal = c->builder.getIntN(AN_USZ_SIZE, size);
+        if(!size){
+            cerr << size.getErr() << endl;
+            size = 0;
+        }
+
+        Value *sizeVal = c->builder.getIntN(AN_USZ_SIZE, size.getVal());
         return new TypedValue(sizeVal, AnType::getUsz());
     }
 

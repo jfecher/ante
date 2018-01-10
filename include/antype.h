@@ -10,6 +10,7 @@
 
 #include "tokens.h"
 #include "parser.h"
+#include "result.h"
 
 namespace ante {
     struct Compiler;
@@ -65,12 +66,12 @@ namespace ante {
         /** Returns a version of the current type with the specified modifiers. */
         virtual AnType* setModifier(AnModifier *m);
 
-        /** Returns the size of this type in bits.
+        /** Returns the size of this type in bits or an error message if the type is invalid.
          *  @param incompleteType The name of an undeclared type, used to issue an IncompleteTypeError if
          *                        it is found within the type being sized and not behind a pointer.
          *  @param force Set to true if this type is known to be generic and although its size is technically
          *               unknown, a guess for the size should be given anyway. */
-        size_t getSizeInBits(Compiler *c, std::string *incompleteType = nullptr, bool force = false) const;
+        Result<size_t, std::string> getSizeInBits(Compiler *c, std::string *incompleteType = nullptr, bool force = false) const;
 
         /** Print the contents of this type to stdout. */
         void dump() const;
@@ -393,6 +394,11 @@ namespace ante {
         /** Returns true if this DataType is actually a tag type. */
         bool isUnionTag() const {
             return parentUnionType;
+        }
+
+        /** Returns true if this DataType is a bound generic variant of another */
+        bool isVariant() const {
+            return unboundType;
         }
 
         /**

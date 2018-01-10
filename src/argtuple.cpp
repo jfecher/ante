@@ -64,7 +64,12 @@ namespace ante {
     }
 
     void ArgTuple::allocAndStoreValue(Compiler *c, TypedValue &tv){
-        data = malloc(tv.type->getSizeInBits(c) / 8);
+        auto size = tv.type->getSizeInBits(c);
+        if(!size){
+            cerr << size.getErr() << endl;
+            size = 0;
+        }
+        data = malloc(size.getVal() / 8);
         storeValue(c, tv);
     }
     
@@ -128,7 +133,13 @@ namespace ante {
                 AnType *ty = sty->extTys[i];
                 auto field = TypedValue(elem, ty);
                 storeValue(c, field);
-                data = (char*)data + ty->getSizeInBits(c) / 8;
+
+                auto size = ty->getSizeInBits(c);
+                if(!size){
+                    cerr << size.getErr() << endl;
+                    return;
+                }
+                data = (char*)data + size.getVal() / 8;
             }
             data = orig_data;
         }else{
@@ -231,11 +242,17 @@ namespace ante {
 
         size_t size = 0;
         for(auto &tv : tvals){
-            size_t elemSize = tv.type->getSizeInBits(c) / 8;
+            auto elemSize = tv.type->getSizeInBits(c);
+            if(!elemSize){
+                cerr << elemSize.getErr() << endl;
+                return;
+            }
+
+            elemSize = elemSize.getVal() / 8;
 
             //we're reallocating the data manually here for the tuple
             //so storeValue must be used instead of allocAndStore
-            void *dataBegin = realloc(data, size + elemSize);
+            void *dataBegin = realloc(data, size + elemSize.getVal());
             data = (char*)dataBegin + size;
 
             if(tv.type->hasModifier(Tok_Mut)){
@@ -244,7 +261,7 @@ namespace ante {
 
             storeValue(c, tv);
             data = dataBegin;
-            size += elemSize;
+            size += elemSize.getVal();
         }
     }
 
