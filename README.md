@@ -78,8 +78,4 @@ distro's package manager.
 
 2. Run `$ git clone https://github.com/jfecher/ante.git`
 
-3. Run `$ cd ante && make && sudo make stdlib`
-
-    - NOTE: root permissions are only needed to export the standard library.  To export it manually, execute the following command as root:
-
-        `# mkdir -p /usr/include/ante && cp stdlib/*.an /usr/include/ante`
+3. Run `$ cd ante && make
