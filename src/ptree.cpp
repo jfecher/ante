@@ -539,13 +539,13 @@ namespace ante {
             return ret;
         }
 
-        Node* mkDataDeclNode(LOC_TY loc, char* s, Node *p, Node* b){
+        Node* mkDataDeclNode(LOC_TY loc, char* s, Node *p, Node* b, bool isAlias){
             vector<unique_ptr<TypeNode>> params;
             while(p){
                 params.emplace_back((TypeNode*)p);
                 p = p->next.release();
             }
-            return new DataDeclNode(loc, s, b, getTupleSize(b), params);
+            return new DataDeclNode(loc, s, b, getTupleSize(b), params, isAlias);
         }
 
 

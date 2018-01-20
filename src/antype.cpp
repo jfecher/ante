@@ -386,6 +386,19 @@ namespace ante {
         ret->llvmType = dt->llvmType;
         return ret;
     }
+        
+    /** Returns the type this type is aliased to */
+    AnType* AnDataType::getAliasedType() const {
+        if(isAlias){
+            if(extTys.size() == 1){
+                return extTys[0];
+            }else{
+                return AnAggregateType::get(TT_Tuple, extTys);
+            }
+        }else{
+            return AnType::getVoid();
+        }
+    }
 
     string getBoundName(const string &baseName, const vector<pair<string, AnType*>> &typeArgs){
         if(typeArgs.empty())

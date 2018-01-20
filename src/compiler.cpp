@@ -1230,6 +1230,7 @@ TypedValue compTaggedUnion(Compiler *c, DataDeclNode *n){
     data->fields = fieldNames;
 
     data->tags = tags;
+    data->isAlias = n->isAlias;
 
     for(auto &v : data->variants){
         v->extTys = data->extTys;
@@ -1242,6 +1243,7 @@ TypedValue compTaggedUnion(Compiler *c, DataDeclNode *n){
             v->parentUnionType = (AnDataType*)bindGenericToType(c, v->parentUnionType, v->parentUnionType->boundGenerics);
         addGenerics(v->generics, v->extTys);
     }
+
 
     c->stoType(data, union_name);
     return c->getVoidLiteral();
@@ -1287,6 +1289,7 @@ TypedValue DataDeclNode::compile(Compiler *c){
 
     data->fields = fieldNames;
     data->extTys = fieldTypes;
+    data->isAlias = this->isAlias;
 
     for(auto &v : data->variants){
         v->extTys = data->extTys;

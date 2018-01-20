@@ -1,0 +1,16 @@
+type T = Str
+type U is Str
+
+fun f: Str s
+    print s
+
+fun g: U s
+    print s
+
+let s = "test"
+let u = U "test"
+
+f s
+f u
+g s
+g u

@@ -115,7 +115,7 @@ void validateType(Compiler *c, const AnType *tn, const DataDeclNode *rootTy){
 
 void validateType(Compiler *c, const AnType *tn, const AnDataType *dt){
     auto fakeLoc = mkLoc(mkPos(0, 0, 0), mkPos(0, 0, 0));
-    auto *ddn = new DataDeclNode(fakeLoc, dt->name, 0, 0);
+    auto *ddn = new DataDeclNode(fakeLoc, dt->name, 0, 0, false);
 
     for(auto &g : dt->generics){
         auto *tv = mkAnonTypeNode(TT_TypeVar);
@@ -819,13 +819,15 @@ TypeCheckResult& extTysEq(const AnType *l, const AnType *r, TypeCheckResult &tcr
  */
 TypeCheckResult& typeEqBase(const AnType *l, const AnType *r, TypeCheckResult &tcr, const Compiler *c){
     if(l == r and !l->isGeneric) return tcr.success();
-
+    
     if(l->typeTag == TT_TaggedUnion and r->typeTag == TT_Data)
         return tcr.successIf(((AnDataType*)l)->name == ((AnDataType*)r)->name);
 
     if(l->typeTag == TT_Data and r->typeTag == TT_TaggedUnion)
         return tcr.successIf(((AnDataType*)l)->name == ((AnDataType*)r)->name);
 
+    //typevars should be handled by typeEqHelper which requires the Compiler param,
+    //if typeEqBase is called without a Compiler param they will return success without any bindings
     if(l->typeTag == TT_TypeVar or r->typeTag == TT_TypeVar)
         return tcr.successWithTypeVars();
 
@@ -877,6 +879,54 @@ AnType* TypeCheckResult::getBindingFor(const string &name){
     return 0;
 }
 
+
+TypeCheckResult& typeCheckBoundDataTypes(const Compiler *c, const AnDataType *l, const AnDataType *r, TypeCheckResult &tcr){
+    for(size_t i = 0; i < l->boundGenerics.size(); i++){
+        auto &lbg = l->boundGenerics[i];
+        auto &rbg = r->boundGenerics[i];
+
+        if(!typeEqHelper(c, lbg.second, rbg.second, tcr)) return tcr.failure();
+    }
+
+    return tcr;
+}
+
+
+/**
+ * Returns the type check result of two possibly generic AnDataTypes with matching typenames.
+ */
+TypeCheckResult& typeCheckVariants(const Compiler *c, const AnDataType *l, const AnDataType *r, TypeCheckResult &tcr){
+    bool lIsBound = !l->boundGenerics.empty();
+    bool rIsBound = !r->boundGenerics.empty();
+
+    //Two bound variants are equal if their type parameters are equal
+    if(lIsBound and rIsBound){
+        for(size_t i = 0; i < l->boundGenerics.size(); i++){
+            typeEqHelper(c, l->boundGenerics[i].second, r->boundGenerics[i].second, tcr);
+            if(tcr.failed()) return tcr;
+        }
+        return tcr;
+    //Perform type checks to get the needed bindings of type
+    //variables to bind an unbound variant to a given bound variant.
+    }else if(lIsBound and !rIsBound){
+        for(size_t i = 0; i < l->boundGenerics.size(); i++){
+            typeEqHelper(c, l->boundGenerics[i].second, r->generics[i], tcr);
+            if(tcr.failed()) return tcr;
+        }
+        return tcr;
+    }else if(!lIsBound and rIsBound){
+        for(size_t i = 0; i < r->boundGenerics.size(); i++){
+            typeEqHelper(c, l->generics[i], r->boundGenerics[i].second, tcr);
+            if(tcr.failed()) return tcr;
+        }
+        return tcr;
+    //neither are bound, these should both be parent types
+    }else{
+        return tcr.success();
+    }
+}
+
+
 /*
  *  Return true if both typenodes are approximately equal
  *
@@ -885,50 +935,26 @@ AnType* TypeCheckResult::getBindingFor(const string &name){
 TypeCheckResult& typeEqHelper(const Compiler *c, const AnType *l, const AnType *r, TypeCheckResult &tcr){
     if(l == r and !l->isGeneric) return tcr.success();
     if(!r) return tcr.failure();
+    
+    //check for type aliases
+    const AnDataType *dt;
+    if((dt = dyn_cast<AnDataType>(l)) && dt->isAlias){
+        return typeEqHelper(c, dt->getAliasedType(), r, tcr);
+    }else if((dt = dyn_cast<AnDataType>(r)) && dt->isAlias){
+        return typeEqHelper(c, l, dt->getAliasedType(), tcr);
+    }
 
     const AnDataType *ldt, *rdt;
     if((ldt = dyn_cast<AnDataType>(l)) and (rdt = dyn_cast<AnDataType>(r))){
         if(ldt->name == rdt->name and ldt->boundGenerics.empty() and rdt->boundGenerics.empty())
             return tcr.success();
 
-        //Two bound types, check to see if their type parameters are equivalent
         if(ldt->unboundType and ldt->unboundType == rdt->unboundType){
-            for(size_t i = 0; i < ldt->boundGenerics.size(); i++){
-                auto &lbg = ldt->boundGenerics[i];
-                auto &rbg = rdt->boundGenerics[i];
-
-                if(!typeEqHelper(c, lbg.second, rbg.second, tcr)) return tcr.failure();
-            }
-
-            return tcr;
+            return typeCheckBoundDataTypes(c, ldt, rdt, tcr);
         }
 
         if(ldt->name == rdt->name){
-            bool lIsBound = !ldt->boundGenerics.empty();
-            bool rIsBound = !rdt->boundGenerics.empty();
-
-            if(lIsBound and rIsBound){
-                for(size_t i = 0; i < ldt->boundGenerics.size(); i++){
-                    typeEqHelper(c, ldt->boundGenerics[i].second, rdt->boundGenerics[i].second, tcr);
-                    if(tcr.failed()) return tcr;
-                }
-                return tcr;
-            }else if(lIsBound and !rIsBound){
-                for(size_t i = 0; i < ldt->boundGenerics.size(); i++){
-                    typeEqHelper(c, ldt->boundGenerics[i].second, rdt->generics[i], tcr);
-                    if(tcr.failed()) return tcr;
-                }
-                return tcr;
-            }else if(!lIsBound and rIsBound){
-                for(size_t i = 0; i < rdt->boundGenerics.size(); i++){
-                    typeEqHelper(c, ldt->generics[i], rdt->boundGenerics[i].second, tcr);
-                    if(tcr.failed()) return tcr;
-                }
-                return tcr;
-            }else{
-                //neither are bound, these should both be parent types
-                return tcr.success();
-            }
+            return typeCheckVariants(c, ldt, rdt, tcr);
         }
 
         //typeName's are different, check if one is a trait and the other

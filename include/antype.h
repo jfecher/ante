@@ -285,8 +285,9 @@ namespace ante {
 
         protected:
         AnDataType(std::string &n, const std::vector<AnType*> elems, bool isUnion, AnModifier *m) :
-            AnAggregateType(isUnion ? TT_TaggedUnion : TT_Data, elems, m), name(n), fields(), tags(),
-            traitImpls(), unboundType(0), variants(), parentUnionType(0), boundGenerics(), llvmType(0){}
+            AnAggregateType(isUnion ? TT_TaggedUnion : TT_Data, elems, m), name(n),
+            fields(), tags(), traitImpls(), unboundType(0), variants(), parentUnionType(0),
+            boundGenerics(), llvmType(0), isAlias(false){}
 
         public:
 
@@ -337,6 +338,10 @@ namespace ante {
          * May be nullptr if this type has not yet been translated. */
         llvm::Type* llvmType;
 
+        /** True if this type is just an alias for its contents
+         *  rather than an entirely new type */
+        bool isAlias;
+
         /** Search for a data type by name.
          * Returns a stub type if no type with a matching name is found. */
         static AnDataType* get(std::string name, AnModifier *m = nullptr);
@@ -369,6 +374,9 @@ namespace ante {
         /** Returns true if this type is a bound variant of the generic type dt.
          *  If dt is not a generic type, this function will always return false. */
         bool isVariantOf(const AnDataType *dt) const;
+       
+        /** Returns the type this type is aliased to */
+        AnType* getAliasedType() const;
 
         /** Returns true if the given AnType is an AnDataType */
         static bool classof(const AnType *t){

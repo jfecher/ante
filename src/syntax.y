@@ -368,10 +368,14 @@ generic_params: typevar_list  %prec LOW {$$ = getRoot();}
               ;
 
 
-data_decl: modifier_list Type usertype generic_params '=' type_decl_block   {$$ = mkDataDeclNode(@$, (char*)$3, $4, $6); free($3);}
-         | modifier_list Type usertype '=' type_decl_block                  {$$ = mkDataDeclNode(@$, (char*)$3,  0, $5); free($3);}
-         | Type usertype generic_params '=' type_decl_block                 {$$ = mkDataDeclNode(@$, (char*)$2, $3, $5); free($2);}
-         | Type usertype '=' type_decl_block                                {$$ = mkDataDeclNode(@$, (char*)$2,  0, $4); free($2);}
+data_decl: modifier_list Type usertype generic_params '=' type_decl_block   {$$ = mkDataDeclNode(@$, (char*)$3, $4, $6, false); free($3);}
+         | modifier_list Type usertype '=' type_decl_block                  {$$ = mkDataDeclNode(@$, (char*)$3,  0, $5, false); free($3);}
+         | Type usertype generic_params '=' type_decl_block                 {$$ = mkDataDeclNode(@$, (char*)$2, $3, $5, false); free($2);}
+         | Type usertype '=' type_decl_block                                {$$ = mkDataDeclNode(@$, (char*)$2,  0, $4, false); free($2);}
+         | modifier_list Type usertype generic_params Is type_decl_block    {$$ = mkDataDeclNode(@$, (char*)$3, $4, $6, true); free($3);}
+         | modifier_list Type usertype Is type_decl_block                   {$$ = mkDataDeclNode(@$, (char*)$3,  0, $5, true); free($3);}
+         | Type usertype generic_params Is type_decl_block                  {$$ = mkDataDeclNode(@$, (char*)$2, $3, $5, true); free($2);}
+         | Type usertype Is type_decl_block                                 {$$ = mkDataDeclNode(@$, (char*)$2,  0, $4, true); free($2);}
          ;
 
 
