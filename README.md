@@ -78,4 +78,4 @@ distro's package manager.
 
 2. Run `$ git clone https://github.com/jfecher/ante.git`
 
-3. Run `$ cd ante && make
+3. Run `$ cd ante && make`
