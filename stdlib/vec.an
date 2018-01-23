@@ -5,6 +5,16 @@ ext Vec 't
     fun init :=
         Vec<'t>('t* malloc(4 * Ante.sizeof 't), 0u32, 4u32)
 
+    fun init: Range r -> Vec i32
+        (Vec<i32>()).fill r
+
+
+    //Fill Vec with items from the Range
+    fun fill: mut Vec i32 v, Range r -> Vec i32
+        for i in r do
+            v.push i
+        v
+
     //reserve numElements in Vec v, elements will be uninitialized
     fun reserve: mut Vec 't v, u32 numElems
         if v.len + numElems > v.cap then
