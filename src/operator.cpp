@@ -500,22 +500,23 @@ TypedValue TypeCastNode::compile(Compiler *c){
     auto rtval = rval->compile(c);
 
     auto *ty = toAnType(c, typeExpr.get());
-    if(ty->isGeneric){
-        TypeCheckResult tc;
-        //if(auto *dt = dyn_cast<AnDataType>(ty)){
-        //    if(dt->isUnionTag()){
-        //        tc = c->typeEq(dt->extTys[0], rtval.type);
-        //    }
-        //}
 
-        if(tc->res != TypeCheckResult::SuccessWithTypeVars)
-            tc = c->typeEq(ty, rtval.type);
+    //if(ty->isGeneric){
+    //    TypeCheckResult tc;
+    //    //if(auto *dt = dyn_cast<AnDataType>(ty)){
+    //    //    if(dt->isUnionTag()){
+    //    //        tc = c->typeEq(dt->extTys[0], rtval.type);
+    //    //    }
+    //    //}
 
-        ty = bindGenericToType(c, ty, tc->bindings);
+    //    if(tc->res != TypeCheckResult::SuccessWithTypeVars)
+    //        tc = c->typeEq(ty, rtval.type);
 
-        //if(ty->isGeneric)
-        //    c->compErr("Cannot cast to a generic type " + anTypeToColoredStr(ty), typeExpr->loc);
-    }
+    //    ty = bindGenericToType(c, ty, tc->bindings);
+
+    //    //if(ty->isGeneric)
+    //    //    c->compErr("Cannot cast to a generic type " + anTypeToColoredStr(ty), typeExpr->loc);
+    //}
 
     auto tval = createCast(c, ty, rtval, loc);
 

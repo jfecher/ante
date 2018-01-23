@@ -2082,7 +2082,7 @@ void Compiler::exitScope(){
 }
 
 
-Variable* Compiler::lookup(string var) const{
+Variable* Compiler::lookup(string const& var) const{
     for(auto i = varTable.size(); i >= fnScope; --i){
         auto& vt = varTable[i-1];
         auto it = vt->find(var);
@@ -2115,8 +2115,15 @@ void Compiler::stoTypeVar(string &name, AnType *ty){
     stoVar(name, var);
 }
 
+AnType* Compiler::lookupTypeVar(string const& name) const{
+    auto tvar = lookup(name);
+    if(!tvar) return nullptr;
 
-AnDataType* Compiler::lookupType(string tyname) const{
+    return extractTypeValue(tvar->tval);
+}
+
+
+AnDataType* Compiler::lookupType(string const& tyname) const{
     auto& ut = mergedCompUnits->userTypes;
     auto it = ut.find(tyname);
     if(it != ut.end())
@@ -2124,7 +2131,7 @@ AnDataType* Compiler::lookupType(string tyname) const{
     return nullptr;
 }
 
-Trait* Compiler::lookupTrait(string tyname) const{
+Trait* Compiler::lookupTrait(string const& tyname) const{
     auto& ts = mergedCompUnits->traits;
     auto it = ts.find(tyname);
     if(it != ts.end())

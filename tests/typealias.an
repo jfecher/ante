@@ -1,4 +1,3 @@
-type T = Str
 type U is Str
 
 fun f: Str s

@@ -99,9 +99,9 @@ void validateType(Compiler *c, const AnType *tn, const DataDeclNode *rootTy){
 
     }else if(tn->typeTag == TT_TypeVar){
         auto *tvt = (AnTypeVarType*)tn;
-        auto *var = c->lookup(tvt->name);
-        if(var){
-            return validateType(c, extractTypeValue(var->tval), rootTy);
+        auto *binding = c->lookupTypeVar(tvt->name);
+        if(binding){
+            return validateType(c, binding, rootTy);
         }
 
         //Typevar not found, if its not in the rootTy's params, then it is unbound
@@ -171,13 +171,12 @@ Result<size_t, string> AnType::getSizeInBits(Compiler *c, string *incompleteType
 
     }else if(typeTag == TT_TypeVar){
         auto *tvt = (AnTypeVarType*)this;
-        auto *var = c->lookup(tvt->name);
-        if(var){
-            auto *extract = extractTypeValue(var->tval);
-            if(extract == tvt){
+        auto *binding = c->lookupTypeVar(tvt->name);
+        if(binding){
+            if(binding == tvt){
                 return failure<size_t, string>("Warning: typevar " + tvt->name + " refers to itself, cannot calculate size in bits");
             }
-            return extract->getSizeInBits(c, incompleteType, force);
+            return binding->getSizeInBits(c, incompleteType, force);
         }
 
         if(force) return AN_USZ_SIZE;
@@ -657,8 +656,8 @@ Type* Compiler::anTypeToLlvmType(const AnType *ty, bool force){
         }
         case TT_TypeVar: {
             auto *tvt = (AnTypeVarType*)ty;
-            Variable *typeVar = lookup(tvt->name);
-            if(!typeVar){
+            AnType *binding = lookupTypeVar(tvt->name);
+            if(!binding){
                 //compErr("Use of undeclared type variable " + ty->typeName, ty->loc);
                 //compErr("tn2llvmt: TypeVarError; lookup for "+ty->typeName+" not found", ty->loc);
                 //throw new TypeVarError();
@@ -668,14 +667,12 @@ Type* Compiler::anTypeToLlvmType(const AnType *ty, bool force){
                 return Type::getInt64PtrTy(*ctxt);
             }
 
-            AnType *ty = extractTypeValue(typeVar->tval);
-
-            if(ty == tvt){
+            if(binding == tvt){
                 cerr << "Warning: typevar " << tvt->name << " refers to itself" << endl;
                 return Type::getVoidTy(*ctxt);
             }
 
-            return anTypeToLlvmType(ty, force);
+            return anTypeToLlvmType(binding, force);
         }
         default:
             return typeTagToLlvmType(ty->typeTag, *ctxt);
@@ -990,13 +987,13 @@ TypeCheckResult& typeEqHelper(const Compiler *c, const AnType *l, const AnType *
             auto *ltv = (AnTypeVarType*)l;
             auto *rtv = (AnTypeVarType*)r;
 
-            Variable *lv = c->lookup(ltv->name);
+            //lookup the type bound to ltv
+            AnType *lv = c->lookupTypeVar(ltv->name);
 
             //If they are equal, return before doing the second lookup
             if(ltv == rtv){
                 if(lv){
-                    auto lty = extractTypeValue(lv->tval);
-                    tcr->bindings.emplace_back(lv->name, lty);
+                    tcr->bindings.emplace_back(ltv->name, lv);
                     return tcr.successWithTypeVars();
                 }else{
                     //Binding for the equal typevars not found in scope,
@@ -1005,26 +1002,24 @@ TypeCheckResult& typeEqHelper(const Compiler *c, const AnType *l, const AnType *
                 }
             }
 
-            Variable *rv = c->lookup(rtv->name);
+            AnType *rv = c->lookupTypeVar(rtv->name);
 
             if(lv and rv){ //both are already bound
                 //add bindings from scope to the TypeCheckResult
                 //and recur on them to make sure they're equal
-                auto lty = extractTypeValue(lv->tval);
-                auto rty = extractTypeValue(rv->tval);
-                tcr->bindings.emplace_back(lv->name, lty);
-                tcr->bindings.emplace_back(rv->name, rty);
+                tcr->bindings.emplace_back(ltv->name, lv);
+                tcr->bindings.emplace_back(rtv->name, rv);
                 tcr.successWithTypeVars();
-                return typeEqHelper(c, lty, rty, tcr);
+                return typeEqHelper(c, lv, rv, tcr);
             }else if(lv and not rv){
-                typeVar = rtv;
-                nonTypeVar = extractTypeValue(lv->tval);
-                tcr->bindings.emplace_back(lv->name, nonTypeVar);
+                typeVar = rtv; //rtv binding not found so it stays as a typevar
+                nonTypeVar = lv;
+                tcr->bindings.emplace_back(ltv->name, nonTypeVar);
                 //fall through to successWithTypeVars below
             }else if(rv and not lv){
                 typeVar = ltv;
-                nonTypeVar = extractTypeValue(rv->tval);
-                tcr->bindings.emplace_back(rv->name, nonTypeVar);
+                nonTypeVar = rv;
+                tcr->bindings.emplace_back(rtv->name, nonTypeVar);
                 //fall through to successWithTypeVars below
             }else{ //neither are bound
                 return tcr.successIf(ltv->name == rtv->name);

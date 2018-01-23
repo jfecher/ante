@@ -589,7 +589,7 @@ namespace ante {
         *
         * @return The Variable* if found, otherwise nullptr
         */
-        Variable* lookup(std::string var) const;
+        Variable* lookup(std::string const& var) const;
 
         /**
         * @brief Stores a variable in the current scope
@@ -606,7 +606,16 @@ namespace ante {
         *
         * @return The DataType* if found, otherwise nullptr
         */
-        AnDataType* lookupType(std::string tyname) const;
+        AnDataType* lookupType(std::string const& tyname) const;
+
+        /**
+        * @brief Performs a lookup for the specified typevar
+        *
+        * @param name Name of the type to lookup
+        *
+        * @return The AnType* bound to the typevar if found, otherwise nullptr
+        */
+        AnType* lookupTypeVar(std::string const& name) const;
 
         /**
         * @brief Performs a lookup for the specified trait
@@ -615,7 +624,12 @@ namespace ante {
         *
         * @return The Trait* if found, otherwise nullptr
         */
-        Trait* lookupTrait(std::string tyname) const;
+        Trait* lookupTrait(std::string const& tyname) const;
+
+        /**
+         * @brief Returns true if the given AnDataType implements
+         * the trait with name traitName
+         */
         bool typeImplementsTrait(AnDataType* dt, std::string traitName) const;
 
         /**
