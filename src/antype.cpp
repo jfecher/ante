@@ -102,7 +102,7 @@ namespace ante {
     }
 
     template<typename T>
-    void addKVPair(llvm::StringMap<unique_ptr<T>> &map, string &key, T* val){
+    void addKVPair(llvm::StringMap<unique_ptr<T>> &map, string const& key, T* val){
         auto entry = llvm::StringMapEntry<unique_ptr<T>>::Create(key, unique_ptr<T>(val));
         map.insert(entry);
     }
@@ -349,6 +349,13 @@ namespace ante {
         }
     }
 
+    /**
+     * Returns the unique key for the given variant and modifier pair.
+     */
+    string variantKey(const AnDataType *variant, AnModifier *m){
+        return modifiersToStr(m) + anTypeToStr(variant);
+    }
+
     AnDataType* AnDataType::getOrCreate(std::string name, std::vector<AnType*> &elems, bool isUnion, AnModifier *m){
         string key = modifiersToStr(m) + name;
 
@@ -360,13 +367,27 @@ namespace ante {
     }
 
     AnDataType* AnDataType::getOrCreate(const AnDataType *dt, AnModifier *m){
-        string key = modifiersToStr(m) + dt->name;
+        string key = modifiersToStr(m) + anTypeToStr(dt);
 
-        auto existing_ty = search(typeArena.declaredTypes, key);
-        if(existing_ty) return existing_ty;
+        if(dt->isVariant()){
+            auto existing_ty = search(typeArena.genericVariants, key);
+            if(existing_ty) return existing_ty;
+        }else{
+            auto existing_ty = search(typeArena.declaredTypes, key);
+            if(existing_ty) return existing_ty;
+        }
 
         //create declaration w/out definition
-        auto *ret = AnDataType::create(dt->name, {}, dt->typeTag == TT_TaggedUnion, dt->generics, m);
+        AnDataType *ret;
+
+        //Store the new dt in genericVariants or the standard container depending
+        //on if it is a generic variant or parent type / non generic type.
+        if(dt->isVariant()){
+            ret = new AnDataType(dt->unboundType->name, {}, false, m);
+            addKVPair(typeArena.genericVariants, variantKey(dt, m), ret);
+        }else{
+            ret = AnDataType::create(dt->name, {}, dt->typeTag == TT_TaggedUnion, dt->generics, m);
+        }
 
         vector<AnType*> elems;
         elems.reserve(dt->extTys.size());
@@ -549,13 +570,9 @@ namespace ante {
             for(auto &p : unboundType->boundGenerics){
                 boundBindings.emplace_back(p.first, bindGenericToType(c, p.second, bindings));
             }
-
-            //variant->boundGenerics = boundBindings;
-
-            variant->boundGenerics = filterMatchingBindings(unboundType, bindings);
-        }else{
-            variant->boundGenerics = filterMatchingBindings(unboundType, bindings);
         }
+        
+        variant->boundGenerics = filterMatchingBindings(unboundType, bindings);
 
         addGenerics(variant->generics, variant->boundGenerics);
 
@@ -656,7 +673,8 @@ namespace ante {
             return variant;
 
         variant = new AnDataType(unboundType->name, {}, false, unboundType->mods);
-        typeArena.genericVariants.emplace_back(variant);
+
+        addKVPair(typeArena.genericVariants, variantKey(variant, m), variant);
         return bindVariant(c, unboundType, filteredBindings, m, variant);
     }
 
@@ -686,7 +704,7 @@ namespace ante {
             return variant;
 
         variant = new AnDataType(unboundType->name, {}, false, m);
-        typeArena.genericVariants.emplace_back(variant);
+        addKVPair(typeArena.genericVariants, variantKey(variant, m), variant);
         return bindVariant(c, unboundType, filteredBindings, m, variant);
     }
 
