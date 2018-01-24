@@ -1135,7 +1135,8 @@ TypedValue searchForFunction(Compiler *c, Node *l, vector<TypedValue> &typedArgs
 
         //try to do module inference
         if(!typedArgs.empty()){
-            string fnName = anTypeToStrWithoutModifiers(typedArgs[0].type) + "_" + vn->name;
+            string fnName = toModuleName(typedArgs[0].type) + "_" + vn->name;
+
             TypedValue tvf = c->getMangledFn(fnName, params);
             if(!!tvf) return tvf;
         }
