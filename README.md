@@ -16,8 +16,8 @@ the ability to interact at a lower level if needed.
 
 ## Community
 - Join the official subreddit at [/r/ante](https://www.reddit.com/r/ante) for any and all discussion.  Everyone is welcome!
-- Want to learn Ante?  Check out [the website](http://jfecher.github.io/ante/).
-- Looking to contribute?  Check out [the documentation](http://jfecher.github.io/ante/public/doxygen/html/).
+- Want to learn Ante?  Check out [the website](http://antelang.org/).
+- Looking to contribute?  Check out [the documentation](http://antelang.org/doxygen/html/).
 
 ## Features
 * Lisp-esque compile-time execution combined with an extensible compiler API
