@@ -6,7 +6,7 @@ ext Vec 't
         Vec<'t>('t* malloc(4 * Ante.sizeof 't), 0u32, 4u32)
 
     fun init: Range r -> Vec i32
-        (Vec<i32>()).fill r
+        fill (Vec<i32>()) r
 
 
     //Fill Vec with items from the Range
@@ -18,8 +18,7 @@ ext Vec 't
     //reserve numElements in Vec v, elements will be uninitialized
     fun reserve: mut Vec 't v, u32 numElems
         if v.len + numElems > v.cap then
-            //FIXME: Ante.sizeof 't breaks, Ante.sizeof i32 works
-            let size = (v.cap + numElems) * Ante.sizeof i32
+            let size = (v.cap + numElems) * Ante.sizeof 't
             let ptr = realloc (void* v._data) size
 
             if ptr is void* 0 then

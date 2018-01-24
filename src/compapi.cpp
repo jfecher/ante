@@ -57,7 +57,7 @@ extern "C" {
             size = 0;
         }
 
-        Value *sizeVal = c->builder.getIntN(AN_USZ_SIZE, size.getVal());
+        Value *sizeVal = c->builder.getIntN(AN_USZ_SIZE, size.getVal() / 8);
         return new TypedValue(sizeVal, AnType::getUsz());
     }
 
