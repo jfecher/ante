@@ -884,8 +884,7 @@ TypeCheckResult& typeCheckBoundDataTypes(const Compiler *c, const AnDataType *l,
 
         if(!typeEqHelper(c, lbg.second, rbg.second, tcr)) return tcr.failure();
     }
-
-    return tcr;
+    return tcr.success();
 }
 
 
@@ -902,7 +901,7 @@ TypeCheckResult& typeCheckVariants(const Compiler *c, const AnDataType *l, const
             typeEqHelper(c, l->boundGenerics[i].second, r->boundGenerics[i].second, tcr);
             if(tcr.failed()) return tcr;
         }
-        return tcr;
+        return tcr.success();
     //Perform type checks to get the needed bindings of type
     //variables to bind an unbound variant to a given bound variant.
     }else if(lIsBound and !rIsBound){
@@ -910,13 +909,13 @@ TypeCheckResult& typeCheckVariants(const Compiler *c, const AnDataType *l, const
             typeEqHelper(c, l->boundGenerics[i].second, r->generics[i], tcr);
             if(tcr.failed()) return tcr;
         }
-        return tcr;
+        return tcr.success();
     }else if(!lIsBound and rIsBound){
         for(size_t i = 0; i < r->boundGenerics.size(); i++){
             typeEqHelper(c, l->generics[i], r->boundGenerics[i].second, tcr);
             if(tcr.failed()) return tcr;
         }
-        return tcr;
+        return tcr.success();
     //neither are bound, these should both be parent types
     }else{
         return tcr.success();
@@ -932,7 +931,7 @@ TypeCheckResult& typeCheckVariants(const Compiler *c, const AnDataType *l, const
 TypeCheckResult& typeEqHelper(const Compiler *c, const AnType *l, const AnType *r, TypeCheckResult &tcr){
     if(l == r and !l->isGeneric) return tcr.success();
     if(!r) return tcr.failure();
-    
+
     //check for type aliases
     const AnDataType *dt;
     if((dt = dyn_cast<AnDataType>(l)) && dt->isAlias){
