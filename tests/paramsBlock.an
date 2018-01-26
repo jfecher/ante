@@ -8,7 +8,7 @@ print (1 + 32 / 42 + 222 * 3  / 5) 32 block
 
 //TODO: named parameters
 //
-//  print with
+//  print where
 //      a = 1 + 32 / 42 + 222 * 3 / 5
 //      b = 32
 //      c = 3 + 3

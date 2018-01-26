@@ -440,14 +440,72 @@ TypedValue RetNode::compile(Compiler *c){
     return retInst;
 }
 
+/** add ".an" if string does not end with it already */
+string addAnSuffix(string const& s){
+    if(s.empty() || (s.length() >= 3 && s.substr(s.length()-3) == ".an")){
+        return s;
+    }else{
+        return s + ".an";
+    }
+}
+
+/**
+ * Convert a module's name to a file name by lowercasing
+ * the first character of each file/folder in the path
+ */
+string moduleNameToFileName(string const& modName){
+    string fName = "";
+    bool lowercase = true;
+
+    for(char c : modName){
+        if(lowercase){
+            fName += tolower(c);
+            lowercase = false;
+        }else if(c == '/'){
+            fName += c;
+            lowercase = true;
+        }else{
+            fName += c;
+        }
+    }
+    return fName;
+}
+
+
+
+string moduleExprToStr(Node *expr){
+    if(BinOpNode *bn = dynamic_cast<BinOpNode*>(expr)){
+        if(bn->op != '.') return "";
+
+        return moduleExprToStr(bn->lval.get()) + "/" + moduleExprToStr(bn->rval.get());
+    }else if(TypeNode *tn = dynamic_cast<TypeNode*>(expr)){
+        if(tn->type != TT_Data || !tn->params.empty()) return "";
+
+        return tn->typeName;
+    }else{
+        return "";
+    }
+}
+
+string importExprToStr(Node *expr){
+    if(dynamic_cast<StrLitNode*>(expr)){
+        return static_cast<StrLitNode*>(expr)->val;
+    }else{
+        return addAnSuffix(moduleNameToFileName(moduleExprToStr(expr)));
+    }
+}
+
 
 /*
  * TODO: implement for abitrary compile-time Str expressions
  */
 TypedValue ImportNode::compile(Compiler *c){
-    if(!dynamic_cast<StrLitNode*>(expr.get())) return {};
+    string path = importExprToStr(expr.get());
+    if(path.empty()){
+        c->compErr("No viable overload for import for malformed expression", loc);
+    }
 
-    c->importFile(((StrLitNode*)expr.get())->val.c_str(), this->loc);
+    c->importFile(path.c_str(), loc);
     return c->getVoidLiteral();
 }
 
@@ -1589,9 +1647,10 @@ inline bool fileExists(const string &fName){
  * matched within the relative root directories.
  * If no file is found then the empty string is returned.
  */
-string findFile(Compiler *c, const char *fName){
-    for(auto &dir : c->relativeRoots){
-        auto f = dir + fName;
+string findFile(Compiler *c, string const& fName){
+    for(auto &root : c->relativeRoots){
+        string f = root + addAnSuffix(fName);
+
         if(fileExists(f)){
             return f;
         }
@@ -1600,10 +1659,13 @@ string findFile(Compiler *c, const char *fName){
 }
 
 
-void Compiler::importFile(const char *fName, LOC_TY &loc){
-    auto it = allCompiledModules.find(fName);
+void Compiler::importFile(string const& fName, LOC_TY &loc){
+    //f = fName with full directory
+    string f = findFile(this, fName);
+    auto it = allCompiledModules.find(f);
 
     if(it != allCompiledModules.end()){
+        //module already compiled
         auto *import = it->getValue().get();
         string fmodName = removeFileExt(fName);
 
@@ -1613,13 +1675,11 @@ void Compiler::importFile(const char *fName, LOC_TY &loc){
             }
         }
 
-        //module is already compiled; just copy the ptr to imports
         imports.push_back(import);
         mergedCompUnits->import(import);
     }else{
-        auto f = findFile(this, fName);
         if(f.empty()){
-            compErr("No Module '" + string(fName) + "' was found.", loc);
+            compErr("No file named '" + string(fName) + "' was found.", loc);
         }
 
         //module not found; create new Compiler instance to compile it
@@ -2192,6 +2252,8 @@ string toModuleName(string &s){
                     capitalize = true;
                     mod += '.';
                 }
+            }else if(c == '_'){
+                capitalize = true;
             }else if(IS_ALPHANUM(c)){
                 mod += c;
             }
@@ -2244,7 +2306,7 @@ Compiler::Compiler(const char *_fileName, bool lib, shared_ptr<LLVMContext> llvm
         ast.reset(parser::getRootNode());
     }
 
-    relativeRoots = {dirprefix(fileName), AN_LIB_DIR};
+    relativeRoots = {AN_EXEC_STR, AN_LIB_DIR};
 
     auto fileNameWithoutExt = removeFileExt(fileName);
     auto modName = toModuleName(fileNameWithoutExt);
@@ -2292,7 +2354,7 @@ Compiler::Compiler(Compiler *c, Node *root, string modName, bool lib) :
 
     allMergedCompUnits.emplace_back(mergedCompUnits);
     allCompiledModules.try_emplace(fileName, compUnit);
-    relativeRoots = {dirprefix(fileName), AN_LIB_DIR};
+    relativeRoots = {AN_EXEC_STR, AN_LIB_DIR};
 
     compUnit->name = modName;
     mergedCompUnits->name = modName;

@@ -1,0 +1,8 @@
+//test basic conversion to filename
+import Vec
+
+//test conversion of relative paths
+import Tests.FnDecl
+
+
+print Vec(1 .. fact 5)

@@ -1,5 +1,5 @@
 //Test basic module imports
-import "moduleLib.an"
+import "tests/moduleLib.an"
 
 let vec1 = (2, 3)
 let vec2 = (4, 2)

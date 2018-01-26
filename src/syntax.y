@@ -718,7 +718,9 @@ expr_no_decl: expr_no_decl '+' maybe_newline expr_no_decl                      {
             | expr_no_decl '<' maybe_newline expr_no_decl                      {$$ = mkBinOpNode(@$, '<', $1, $4);}
             | expr_no_decl '>' maybe_newline expr_no_decl                      {$$ = mkBinOpNode(@$, '>', $1, $4);}
             | type_expr '.' maybe_newline var                                  {$$ = mkBinOpNode(@$, '.', $1, $4);}
+            | type_expr '.' maybe_newline type_expr                            {$$ = mkBinOpNode(@$, '.', $1, $4);}
             | expr_no_decl '.' maybe_newline var                               {$$ = mkBinOpNode(@$, '.', $1, $4);}
+            | expr_no_decl '.' maybe_newline type_expr                         {$$ = mkBinOpNode(@$, '.', $1, $4);}
             | expr_no_decl ';' maybe_newline expr_no_decl                      {$$ = mkSeqNode(@$, $1, $4);}
             | expr_no_decl '#' maybe_newline expr_no_decl                      {$$ = mkBinOpNode(@$, '#', $1, $4);}
             | expr_no_decl Eq maybe_newline expr_no_decl                       {$$ = mkBinOpNode(@$, Tok_Eq, $1, $4);}
@@ -780,7 +782,9 @@ expr_with_decls: expr_with_decls '+' maybe_newline expr_with_decls              
                | expr_with_decls '<' maybe_newline expr_with_decls                    {$$ = mkBinOpNode(@$, '<', $1, $4);}
                | expr_with_decls '>' maybe_newline expr_with_decls                    {$$ = mkBinOpNode(@$, '>', $1, $4);}
                | type_expr '.' maybe_newline var                                      {$$ = mkBinOpNode(@$, '.', $1, $4);}
+               | type_expr '.' maybe_newline type_expr                                {$$ = mkBinOpNode(@$, '.', $1, $4);}
                | expr_with_decls '.' maybe_newline var                                {$$ = mkBinOpNode(@$, '.', $1, $4);}
+               | expr_with_decls '.' maybe_newline type_expr                          {$$ = mkBinOpNode(@$, '.', $1, $4);}
                | expr_with_decls ';' maybe_newline expr_with_decls                    {$$ = mkSeqNode(@$, $1, $4);}
                | expr_with_decls '#' maybe_newline expr_with_decls                    {$$ = mkBinOpNode(@$, '#', $1, $4);}
                | expr_with_decls Eq maybe_newline expr_with_decls                     {$$ = mkBinOpNode(@$, Tok_Eq, $1, $4);}

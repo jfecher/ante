@@ -496,7 +496,7 @@ namespace ante {
         *        Usually the ImportNode importing the file.  Used for
         *        error reporting.
         */
-        void importFile(const char *name, LOC_TY &loc);
+        void importFile(std::string const& name, LOC_TY &loc);
 
         /** @brief Sets the tv of the FuncDecl specified to the value of f */
         void updateFn(TypedValue &f, FuncDecl *fd, std::string &name, std::string &mangledName);
