@@ -11,6 +11,7 @@ fun putchar: c8 char;
 fun getchar: -> c8;
 fun exit: i32 status;
 fun malloc: usz size -> void*;
+fun calloc: usz num size -> void*;
 fun realloc: void* ptr, usz size -> void*;
 fun free: void* mem;
 fun memcpy: void* dest src, usz bytes -> void* /*dest*/;
@@ -46,6 +47,9 @@ fun ferror: File f -> bool;
 //Ante datatypes
 type Str = c8* cStr, usz len
 
+type Maybe 't =
+   | Some 't
+   | None
 
 //Compile-time functions
 
@@ -149,6 +153,10 @@ fun printne: Str s
 
 
 !inline
+fun printne: 't x
+    printf "%s" (Str x).cStr
+
+!inline
 fun print: 't x
     printne x
     puts ""
@@ -156,6 +164,95 @@ fun print: 't x
 
 !inline
 fun c8*.init: Str s = s.cStr
+
+
+fun Str.reverse: Str s -> Str
+    var buf = c8* malloc (s.len + 1)
+
+    var i = 0usz
+    while i < s.len do
+        buf#i = s.cStr#(s.len-i-1)
+        i += 1
+
+    buf#i = '\0'
+    Str(buf, i)
+
+
+fun Str.init: i64 i -> Str
+    if i == 0 then return "0"
+    var buf = c8* calloc 21 1
+    var digit = 0usz
+
+    var x = i
+    var isNeg = x < 0 and ((x *= -1); true)
+
+    while x > 0 do
+        buf#digit = c8(x % 10) + '0'
+        x /= 10
+        digit += 1
+
+    let s = reverse Str(buf, digit)
+    if isNeg then "-" ++ s else s
+
+fun Str.init: u64 i -> Str
+    if i == 0 then return "0"
+    var buf = c8* calloc 21 1
+    var digit = 0usz
+
+    var x = i
+    while x > 0 do
+        buf#digit = c8(x % 10) + '0'
+        x /= 10
+        digit += 1
+
+    reverse Str(buf, digit)
+
+
+!inline fun Str.init: i8 x = Str (i64 x)
+!inline fun Str.init: i16 x = Str (i64 x)
+!inline fun Str.init: i32 x = Str (i64 x)
+!inline fun Str.init: isz x = Str (i64 x)
+
+!inline fun Str.init: u8 x = Str (u64 x)
+!inline fun Str.init: u16 x = Str (u64 x)
+!inline fun Str.init: u32 x = Str (u64 x)
+!inline fun Str.init: usz x = Str (u64 x)
+
+
+fun u64.parse: Str s -> Maybe u64
+    var i = 0
+    var sum = 0u64
+
+    while s#i != '\0' do
+        let c = s#i
+        if c >= '0' and c <= '9' then
+            sum *= 10
+            sum += c - '0'
+            i += 1
+        else
+            return None
+
+    Some sum
+
+fun i64.parse: Str s -> Maybe i64
+    var i = 0
+    var sum = 0i64
+    let isNeg =
+        if s.len != 0 and s#0 == '-' then
+            i += 1
+            true
+        else false
+
+    while s#i != '\0' do
+        let c = s#i
+        if c >= '0' and c <= '9' then
+            sum *= 10
+            sum += c - '0'
+            i += 1
+        else
+            return None
+
+    Some (if isNeg then -1 * sum else sum)
 
 
 //Pointer Equivalence

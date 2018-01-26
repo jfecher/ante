@@ -8,6 +8,8 @@ ext Vec 't
     fun init: Range r -> Vec i32
         fill (Vec<i32>()) r
 
+    fun is_empty: Vec v =
+        v.len == 0
 
     //Fill Vec with items from the Range
     fun fill: mut Vec i32 v, Range r -> Vec i32
