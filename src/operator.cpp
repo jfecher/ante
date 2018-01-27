@@ -448,7 +448,7 @@ TypedValue createCast(Compiler *c, AnType *castTy, TypedValue &valToCast, LOC_TY
         // int -> int  (maybe unsigned)
         if(isIntTypeTag(valToCast.type->typeTag)){
             return TypedValue(c->builder.CreateIntCast(valToCast.val, llvmCastTy,
-                        isUnsignedTypeTag(castTy->typeTag)), castTy);
+                        !isUnsignedTypeTag(valToCast.type->typeTag)), castTy);
 
         // float -> int
         }else if(isFPTypeTag(valToCast.type->typeTag)){
