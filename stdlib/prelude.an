@@ -288,7 +288,7 @@ fun (in): i32 a, Range r -> bool
 
 //creates an inclusive range
 fun (..): i32 start end -> Range
-    Range(start, end, if end > start then 1 else -1)
+    Range(start, end, 1)
 
 //Takes a tuple of the first two integers and calculates the step by their difference
 fun (..): i32,i32 first_two, i32 end -> Range
@@ -329,14 +329,14 @@ fun OutFile.write: OutFile f, c8* cStr
 fun OutFile.write: OutFile f, c8 c
     fputc c f
 
+!inline
+fun OutFile.write: OutFile f, Str s
+    fputs (s.cStr) f
+
 //Str functions
 !inline
 fun Str.print: Str s
     puts s.cStr
-
-!inline
-fun Str.write: Str s, OutFile f
-    fputs (s.cStr) f
 
 
 !inline
