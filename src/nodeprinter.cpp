@@ -290,12 +290,20 @@ void MatchBranchNode::print(){
 }
 
 void FuncDeclNode::print(){
+    bool isExtern = false;
     if(modifiers.get()){
         printSpaceDelimitedList(modifiers.get());
     }
 
     cout << "fun ";
-    cout << name;
+
+    if(!name.empty() && name[name.size()-1] == ';'){
+        isExtern = true;
+        cout << name.substr(0, name.size()-1);
+    }else{
+        cout << name;
+    }
+
     if(params){
         cout << ": ";
         params->print();
@@ -307,6 +315,8 @@ void FuncDeclNode::print(){
     if(child.get()){
         cout << " = ";
         child->print();
+    }else if(isExtern){
+        cout << ";";
     }
 }
 
