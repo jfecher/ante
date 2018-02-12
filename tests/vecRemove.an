@@ -1,4 +1,4 @@
-import "tests/vec.an"
+import Vec
 
 
 fun Vec.pop: mut Vec v
@@ -12,7 +12,7 @@ fun Vec.remove: mut Vec v, i32 idx
         v.len -= 1
 
 
-var v = Vec()
+var v = Vec<i32>()
 v.push 1
 v.push 1
 v.push 2

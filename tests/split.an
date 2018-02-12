@@ -1,10 +1,9 @@
-import "tests/strvec.an"
-
+import Vec
 
 fun split: Str s = split s ' '
 
-fun split: Str s, c8 c -> Vec
-    var v = Vec()
+fun split: Str s, c8 c -> Vec Str
+    var v = Vec<Str>()
 
     var i = 0
     var j = 0
