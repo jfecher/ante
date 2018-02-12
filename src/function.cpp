@@ -689,15 +689,27 @@ vector<T*> vectorize(T *args){
     return ret;
 }
 
-
+/**
+ * Return a new vector containing only the given pairs with the
+ * highest amount of matches.  In the case there are multiple equally,
+ * matching candidates, results are further filtered by the minimum amount
+ * of type bindings needed.  If there are still multiple equally matching
+ * candidates, they are all returned.
+ */
 vector<pair<TypeCheckResult,FuncDecl*>> filterHighestMatches(vector<pair<TypeCheckResult,FuncDecl*>> &matches){
     unsigned int highestMatch = 0;
+    unsigned int reqBindings = 0;
     vector<pair<TypeCheckResult,FuncDecl*>> highestMatches;
 
     for(auto &tcr : matches){
         if(!!tcr.first and tcr.first->matches >= highestMatch){
             if(tcr.first->matches > highestMatch){
                 highestMatch = tcr.first->matches;
+                reqBindings = tcr.first->bindings.size();
+                highestMatches.clear();
+            }else if(tcr.first->bindings.size() < reqBindings){
+                highestMatch = tcr.first->matches;
+                reqBindings = tcr.first->bindings.size();
                 highestMatches.clear();
             }
             highestMatches.push_back(tcr);
@@ -707,6 +719,12 @@ vector<pair<TypeCheckResult,FuncDecl*>> filterHighestMatches(vector<pair<TypeChe
 }
 
 
+/**
+ * Return only the candidates that best match the given argument types
+ * in a type check.  This results in the candidates with the most structural
+ * matches (eg. prefer  't* over 't if arg is a pointer) and the least amount
+ * of required type bindings (eg. prefer i32* over 't* if arg is i32*).
+ */
 vector<pair<TypeCheckResult,FuncDecl*>>
 filterBestMatches(Compiler *c, vector<shared_ptr<FuncDecl>> &candidates, vector<AnType*> args){
     vector<pair<TypeCheckResult,FuncDecl*>> results;
