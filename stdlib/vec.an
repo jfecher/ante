@@ -1,9 +1,9 @@
 
-type Vec 't = 't* _data, u32 len cap
+type Vec 't = 't* _data, usz len cap
 
 ext Vec 't
     fun init :=
-        Vec<'t>('t* malloc(4 * Ante.sizeof 't), 0u32, 4u32)
+        Vec<'t>('t* malloc(4 * Ante.sizeof 't), 0usz, 4usz)
 
     fun init: Range r -> Vec i32
         fill (Vec<i32>()) r
@@ -18,7 +18,7 @@ ext Vec 't
         v
 
     //reserve numElements in Vec v, elements will be uninitialized
-    fun reserve: mut Vec 't v, u32 numElems
+    fun reserve: mut Vec 't v, usz numElems
         if v.len + numElems > v.cap then
             let size = (v.cap + numElems) * Ante.sizeof 't
             let ptr = realloc (void* v._data) size
@@ -36,6 +36,23 @@ ext Vec 't
 
         v#v.len = elem
         v.len += 1
+
+type VecIter 't = 't* view, usz idx len
+
+ext Vec : Iterable
+    fun into_iter: Vec 't v =
+        VecIter(v._data, 0usz, v.len)
+
+ext VecIter : Iterator
+    fun has_next: VecIter v =
+        v.idx < v.len
+
+    fun unwrap: VecIter 't v -> 't
+        v.view#v.idx
+
+    fun next: VecIter 't v -> VecIter 't
+        VecIter(v.view, v.idx + 1, v.len)
+
 
 fun printne: Vec 't v
     printne "{ "
