@@ -47,6 +47,9 @@ TypedValue Compiler::callFn(string name, vector<TypedValue> args){
     for(size_t i = 0; i < args.size(); i++){
         auto arg = typeCheckWithImplicitCasts(this, args[i], fnty->extTys[i]);
         if(!arg) return arg;
+        if(fnty->extTys[i]->hasModifier(Tok_Mut)){
+            arg = addrOf(this, arg);
+        }
         vals.push_back(arg.val);
     }
 

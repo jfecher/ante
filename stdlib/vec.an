@@ -40,7 +40,7 @@ ext Vec 't
 type VecIter 't = 't* view, usz idx len
 
 ext Vec : Iterable
-    fun into_iter: Vec 't v =
+    fun into_iter: Vec v =
         VecIter(v._data, 0usz, v.len)
 
 ext VecIter : Iterator
