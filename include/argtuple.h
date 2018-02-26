@@ -20,13 +20,13 @@ namespace ante {
              * Constructs an ArgTuple from the given TypedValue arguments.
              *  - Assumes each Value* within each argument is a Constant*
              */
-            ArgTuple(Compiler *c, std::vector<TypedValue> &val);
+            ArgTuple(Compiler *c, std::vector<TypedValue> const& val);
 
             /**
              * Constructs an ArgTuple of a single value from the given argument.
              *  - Assumes the Value* within val is a Constant*
              */
-            ArgTuple(Compiler *c, TypedValue &val);
+            ArgTuple(Compiler *c, TypedValue const& val);
 
             /** Constructs an ArgTuple using the given pre-initialized data. */
             ArgTuple(Compiler *c, void *data, AnType *type);
@@ -43,22 +43,22 @@ namespace ante {
             TypedValue tval;
 
             /** Stores pointer value of a constant pointer type */
-            void storePtr(Compiler *c, TypedValue &tv);
+            void storePtr(Compiler *c, TypedValue const& tv);
 
             /** Allocates space then calls storeValue */
-            void allocAndStoreValue(Compiler *c, TypedValue &tv);
+            void allocAndStoreValue(Compiler *c, TypedValue const& tv);
 
             /** Stores a tuple value in data */
-            void storeTuple(Compiler *c, TypedValue &tup);
+            void storeTuple(Compiler *c, TypedValue const& tup);
 
             /**
              * Converts the given TypedValue into its corresponding
              * value in c++ and stores it in this->data
              */
-            void storeValue(Compiler *c, TypedValue &tv);
+            void storeValue(Compiler *c, TypedValue const& tv);
     };
-    
-    
+
+
     /**
      * Holds a c++ function.
      *
@@ -80,8 +80,8 @@ namespace ante {
         ~CtFunc(){}
 
         TypedValue* operator()(Compiler *c);
-        TypedValue* operator()(Compiler *c, TypedValue &tv);
-        TypedValue* operator()(Compiler *c, TypedValue &tv1, TypedValue &tv2);
+        TypedValue* operator()(Compiler *c, TypedValue const& tv);
+        TypedValue* operator()(Compiler *c, TypedValue const& tv1, TypedValue const& tv2);
     };
 }
 

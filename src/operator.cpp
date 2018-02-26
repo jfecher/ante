@@ -298,10 +298,6 @@ string getCastFnBaseName(AnType *t){
     return anTypeToStr(t) + "_init";
 }
 
-
-TypedValue compMetaFunctionResult(Compiler *c, LOC_TY &loc, string &baseName, string &mangledName, vector<TypedValue> &typedArgs);
-
-
 struct ReinterpretCastResult {
     enum ReinterpretCastType {
         NoCast,
@@ -899,7 +895,7 @@ vector<Value*> unwrapVoidPtrArgs(Compiler *c, Value *anteCallArg, FuncDecl *fd){
  * AnteCall has the type 't*->'u* where 't is a tuple of fd's parameter types (to
  * be unpacked within AnteCall) and 'u is the return type of fd.
  */
-void createDriverFunction(Compiler *c, FuncDecl *fd, vector<TypedValue> &typedArgs){
+void createDriverFunction(Compiler *c, FuncDecl *fd, vector<TypedValue> const& typedArgs){
     Type *voidPtrTy = Type::getInt8Ty(*c->ctxt)->getPointerTo();
     FunctionType *fnTy = FunctionType::get(voidPtrTy, voidPtrTy, false);
 
@@ -934,7 +930,7 @@ extern map<string, unique_ptr<CtFunc>> compapi;
  *
  *  - Assumes arguments are already type-checked
  */
-TypedValue compMetaFunctionResult(Compiler *c, LOC_TY &loc, string &baseName, string &mangledName, vector<TypedValue> &typedArgs){
+TypedValue compMetaFunctionResult(Compiler *c, LOC_TY const& loc, string const& baseName, string const& mangledName, vector<TypedValue> const& typedArgs){
     CtFunc* fn;
     if((fn = compapi[baseName].get())){
         TypedValue *res;
@@ -989,6 +985,8 @@ TypedValue compMetaFunctionResult(Compiler *c, LOC_TY &loc, string &baseName, st
         }
     }else{
         auto mod_compiler = wrapFnInModule(c, baseName, mangledName);
+        if(!mod_compiler) return {};
+
         mod_compiler->ast.release();
 
         if(!mod_compiler or mod_compiler->errFlag){

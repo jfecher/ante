@@ -23,7 +23,7 @@ extern int yylex(yy::parser::semantic_type*, yy::location*);
 
 namespace ante {
     extern string typeNodeToStr(const TypeNode*);
-    extern string mangle(std::string &base, NamedValNode *paramTys);
+    extern string mangle(std::string const& base, NamedValNode *paramTys);
 
     namespace parser {
         struct TypeNode;
@@ -253,7 +253,8 @@ arr_type: '[' val type_expr ']' {$3->next.reset($2);
                                  $$ = mkTypeNode(@$, TT_Array, (char*)"", $2);}
         ;
 
-tuple_type: '(' type_expr ')'  {$$ = $2;}
+tuple_type: '(' type_expr ')'      {$$ = $2;}
+          | '(' type_expr ',' ')'  {$$ = mkTypeNode(@$, TT_Tuple, (char*)"", $2);}
           ;
 
 generic_type: type type           %prec STMT    {$$ = $1; ((TypeNode*)$1)->params.push_back(unique_ptr<TypeNode>((TypeNode*)$2));}

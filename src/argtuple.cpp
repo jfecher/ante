@@ -63,7 +63,7 @@ namespace ante {
         return c->getVoidLiteral();
     }
 
-    void ArgTuple::allocAndStoreValue(Compiler *c, TypedValue &tv){
+    void ArgTuple::allocAndStoreValue(Compiler *c, TypedValue const& tv){
         auto size = tv.type->getSizeInBits(c);
         if(!size){
             cerr << size.getErr() << endl;
@@ -77,7 +77,7 @@ namespace ante {
     /**
      * Stores a pointer value of a constant pointer type
      */
-    void ArgTuple::storePtr(Compiler *c, TypedValue &tv){
+    void ArgTuple::storePtr(Compiler *c, TypedValue const &tv){
         auto *ptrty = (AnPtrType*)tv.type;
 
         if(GlobalVariable *gv = dyn_cast<GlobalVariable>(tv.val)){
@@ -124,7 +124,7 @@ namespace ante {
     }
 
 
-    void ArgTuple::storeTuple(Compiler *c, TypedValue &tup){
+    void ArgTuple::storeTuple(Compiler *c, TypedValue const& tup){
         auto *sty = (AnAggregateType*)tup.type;
         if(ConstantStruct *ca = dyn_cast<ConstantStruct>(tup.val)){
             void *orig_data = this->data;
@@ -154,7 +154,7 @@ namespace ante {
      * Finds and returns the last stored value from a LoadInst
      * of a mutable variable.
      */
-    TypedValue findLastStore(Compiler *c, TypedValue &tv){
+    TypedValue findLastStore(Compiler *c, TypedValue const& tv){
         //mutable pointer passed, find last store
         if(LoadInst *si = dyn_cast<LoadInst>(tv.val)){
             for(auto *u : si->getPointerOperand()->users()){
@@ -179,7 +179,7 @@ namespace ante {
     }
 
 
-    void ArgTuple::storeValue(Compiler *c, TypedValue &tv){
+    void ArgTuple::storeValue(Compiler *c, TypedValue const& tv){
         auto *ci = dyn_cast<ConstantInt>(tv.val);
         auto *cf = dyn_cast<ConstantFP>(tv.val);
 
@@ -237,7 +237,7 @@ namespace ante {
     *  Converts a TypedValue to an llvm GenericValue
     *  - Assumes the Value* within the TypedValue is a Constant*
     */
-    ArgTuple::ArgTuple(Compiler *c, vector<TypedValue> &tvals)
+    ArgTuple::ArgTuple(Compiler *c, vector<TypedValue> const& tvals)
             : data(nullptr){
 
         size_t size = 0;
@@ -256,24 +256,25 @@ namespace ante {
             data = (char*)dataBegin + size;
 
             if(tv.type->hasModifier(Tok_Mut)){
-                tv = findLastStore(c, tv);
+                storeValue(c, findLastStore(c, tv));
+            }else{
+                storeValue(c, tv);
             }
 
-            storeValue(c, tv);
             data = dataBegin;
             size += elemSize.getVal();
         }
     }
 
 
-    ArgTuple::ArgTuple(Compiler *c, TypedValue &val)
+    ArgTuple::ArgTuple(Compiler *c, TypedValue const& val)
             : data(nullptr), tval(val){
 
         if(val.type->hasModifier(Tok_Mut)){
-            val = findLastStore(c, val);
+            allocAndStoreValue(c, findLastStore(c, val));
+        }else{
+            allocAndStoreValue(c, val);
         }
-
-        allocAndStoreValue(c, val);
     }
 
 

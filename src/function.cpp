@@ -870,8 +870,6 @@ FuncDecl* Compiler::getFuncDecl(string baseName, string mangledName){
     return getFuncDeclFromVec(list, mangledName);
 }
 
-TypedValue compMetaFunctionResult(Compiler *c, LOC_TY &loc, string &baseName, string &mangledName, vector<TypedValue> &typedArgs);
-
 /*
  *  Adds a function to the list of declared, but not defined functions.  A declared function's
  *  FuncDeclNode can be added to be compiled only when it is later called.  Useful to prevent pollution

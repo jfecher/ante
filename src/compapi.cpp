@@ -121,14 +121,14 @@ namespace ante {
         return resfn(c);
     }
 
-    TypedValue* CtFunc::operator()(Compiler *c, TypedValue &tv){
-        TypedValue* (*resfn)(Compiler*, TypedValue&) = 0;
+    TypedValue* CtFunc::operator()(Compiler *c, TypedValue const& tv){
+        TypedValue* (*resfn)(Compiler*, TypedValue const&) = 0;
         *reinterpret_cast<void**>(&resfn) = fn;
         return resfn(c, tv);
     }
 
-    TypedValue* CtFunc::operator()(Compiler *c, TypedValue &tv1, TypedValue &tv2){
-        TypedValue* (*resfn)(Compiler*, TypedValue&, TypedValue&) = 0;
+    TypedValue* CtFunc::operator()(Compiler *c, TypedValue const& tv1, TypedValue const& tv2){
+        TypedValue* (*resfn)(Compiler*, TypedValue const&, TypedValue const&) = 0;
         *reinterpret_cast<void**>(&resfn) = fn;
         return resfn(c, tv1, tv2);
     }

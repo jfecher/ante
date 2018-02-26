@@ -393,6 +393,17 @@ namespace ante {
 #endif
     }
 
+    TypedValue compMetaFunctionResult(Compiler *c, LOC_TY const& loc, string const& baseName, string const& mangledName, vector<TypedValue> const& typedArgs);
+
+    /**
+     * Output a value from the REPL by using its print function if found.
+     */
+    void output(Compiler *c, TypedValue &tv){
+        vector<AnType*> args = {tv.type};
+        string mangledName = mangle("print", args);
+        compMetaFunctionResult(c, mkLoc(mkPos(0,0,0),mkPos(0,0,0)), "print", mangledName, {tv});
+    }
+
 
     void startRepl(Compiler *c){
         cout << "Ante REPL v0.1.1\nType 'exit' to exit.\n";
@@ -422,7 +433,7 @@ namespace ante {
 
                 //print val if it's not an error
                 if(!!val and val.type->typeTag != TT_Void)
-                    val.dump();
+                    output(c, val);
             }
 
             cmd = getInputColorized();

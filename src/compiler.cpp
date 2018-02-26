@@ -1023,7 +1023,7 @@ TypedValue VarAssignNode::compile(Compiler *c){
  *
  * @return The mangled version of the function name
  */
-string mangle(string &base, vector<AnType*> params){
+string mangle(string const& base, vector<AnType*> const& params){
     string name = base;
     for(auto *tv : params){
         if(tv->typeTag != TT_Void)
@@ -1032,7 +1032,7 @@ string mangle(string &base, vector<AnType*> params){
     return name;
 }
 
-string mangle(FuncDecl *fd, vector<AnType*> &params){
+string mangle(FuncDecl *fd, vector<AnType*> const& params){
     string name = (fd->obj ? anTypeToStr(fd->obj) + "_" : "") + fd->fdn->name;
     for(auto *tv : params)
         if(tv->typeTag != TT_Void)
@@ -1040,7 +1040,7 @@ string mangle(FuncDecl *fd, vector<AnType*> &params){
     return name;
 }
 
-string mangle(string &base, shared_ptr<NamedValNode> &paramTys){
+string mangle(string const& base, shared_ptr<NamedValNode> const& paramTys){
     string name = base;
     NamedValNode *cur = paramTys.get();
     while(cur){
@@ -1058,7 +1058,7 @@ string mangle(string &base, shared_ptr<NamedValNode> &paramTys){
     return name;
 }
 
-string mangle(string &base, TypeNode *paramTys){
+string mangle(string const& base, TypeNode *paramTys){
     string name = base;
     while(paramTys){
         if(paramTys->type != TT_Void)
@@ -1068,7 +1068,7 @@ string mangle(string &base, TypeNode *paramTys){
     return name;
 }
 
-string mangle(string &base, TypeNode *p1, TypeNode *p2){
+string mangle(string const& base, TypeNode *p1, TypeNode *p2){
     string name = base;
     string param1 = "_" + typeNodeToStr(p1);
     string param2 = "_" + typeNodeToStr(p2);
@@ -1076,7 +1076,7 @@ string mangle(string &base, TypeNode *p1, TypeNode *p2){
     return name;
 }
 
-string mangle(string &base, TypeNode *p1, TypeNode *p2, TypeNode *p3){
+string mangle(string const& base, TypeNode *p1, TypeNode *p2, TypeNode *p3){
     string name = base;
     string param1 = "_" + typeNodeToStr(p1);
     string param2 = "_" + typeNodeToStr(p2);

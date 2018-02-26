@@ -4,7 +4,7 @@
 #include "compiler.h"
 
 namespace ante {
-    std::unique_ptr<Compiler> wrapFnInModule(Compiler *c, std::string &basename, std::string &mangledName);
+    std::unique_ptr<Compiler> wrapFnInModule(Compiler *c, std::string const& basename, std::string const& mangledName);
 }
 
 #endif

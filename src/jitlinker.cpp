@@ -160,7 +160,7 @@ void declareTypes(Compiler *c){
  * and copies any functions that are needed by the copied function
  * into the new module as well.
  */
-unique_ptr<Compiler> wrapFnInModule(Compiler *c, string &basename, string &mangledName){
+unique_ptr<Compiler> wrapFnInModule(Compiler *c, string const& basename, string const& mangledName){
     unique_ptr<Compiler> ccpy{new Compiler(c, c->ast.get(), mangledName)};
     ccpy->isJIT = true;
 
@@ -179,6 +179,7 @@ unique_ptr<Compiler> wrapFnInModule(Compiler *c, string &basename, string &mangl
         ccpy->compFn(fn);
     }else{
         cerr << "Function '" << mangledName << "' not found.\n";
+        ccpy->ast.release();
         c->errFlag = true;
         return 0;
     }
