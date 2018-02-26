@@ -79,9 +79,15 @@ namespace ante {
 
         ~CtFunc(){}
 
+        using Arg = TypedValue const&;
+
         TypedValue* operator()(Compiler *c);
-        TypedValue* operator()(Compiler *c, TypedValue const& tv);
-        TypedValue* operator()(Compiler *c, TypedValue const& tv1, TypedValue const& tv2);
+        TypedValue* operator()(Compiler *c, Arg tv);
+        TypedValue* operator()(Compiler *c, Arg tv1, Arg tv2);
+        TypedValue* operator()(Compiler *c, Arg tv1, Arg tv2, Arg tv3);
+        TypedValue* operator()(Compiler *c, Arg tv1, Arg tv2, Arg tv3, Arg tv4);
+        TypedValue* operator()(Compiler *c, Arg tv1, Arg tv2, Arg tv3, Arg tv4, Arg tv5);
+        TypedValue* operator()(Compiler *c, Arg tv1, Arg tv2, Arg tv3, Arg tv4, Arg tv5, Arg tv6);
     };
 }
 

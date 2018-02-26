@@ -121,15 +121,39 @@ namespace ante {
         return resfn(c);
     }
 
-    TypedValue* CtFunc::operator()(Compiler *c, TypedValue const& tv){
-        TypedValue* (*resfn)(Compiler*, TypedValue const&) = 0;
+    TypedValue* CtFunc::operator()(Compiler *c, Arg tv){
+        TypedValue* (*resfn)(Compiler*, Arg) = 0;
         *reinterpret_cast<void**>(&resfn) = fn;
         return resfn(c, tv);
     }
 
-    TypedValue* CtFunc::operator()(Compiler *c, TypedValue const& tv1, TypedValue const& tv2){
-        TypedValue* (*resfn)(Compiler*, TypedValue const&, TypedValue const&) = 0;
+    TypedValue* CtFunc::operator()(Compiler *c, Arg tv1, Arg tv2){
+        TypedValue* (*resfn)(Compiler*, Arg, Arg) = 0;
         *reinterpret_cast<void**>(&resfn) = fn;
         return resfn(c, tv1, tv2);
+    }
+
+    TypedValue* CtFunc::operator()(Compiler *c, Arg tv1, Arg tv2, Arg tv3){
+        TypedValue* (*resfn)(Compiler*, Arg, Arg, Arg) = 0;
+        *reinterpret_cast<void**>(&resfn) = fn;
+        return resfn(c, tv1, tv2, tv3);
+    }
+
+    TypedValue* CtFunc::operator()(Compiler *c, Arg tv1, Arg tv2, Arg tv3, Arg tv4){
+        TypedValue* (*resfn)(Compiler*, Arg, Arg, Arg, Arg) = 0;
+        *reinterpret_cast<void**>(&resfn) = fn;
+        return resfn(c, tv1, tv2, tv3, tv4);
+    }
+
+    TypedValue* CtFunc::operator()(Compiler *c, Arg tv1, Arg tv2, Arg tv3, Arg tv4, Arg tv5){
+        TypedValue* (*resfn)(Compiler*, Arg, Arg, Arg, Arg, Arg) = 0;
+        *reinterpret_cast<void**>(&resfn) = fn;
+        return resfn(c, tv1, tv2, tv3, tv4, tv5);
+    }
+
+    TypedValue* CtFunc::operator()(Compiler *c, Arg tv1, Arg tv2, Arg tv3, Arg tv4, Arg tv5, Arg tv6){
+        TypedValue* (*resfn)(Compiler*, Arg, Arg, Arg, Arg, Arg, Arg) = 0;
+        *reinterpret_cast<void**>(&resfn) = fn;
+        return resfn(c, tv1, tv2, tv3, tv4, tv5, tv6);
     }
 }

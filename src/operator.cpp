@@ -924,56 +924,39 @@ void createDriverFunction(Compiler *c, FuncDecl *fd, vector<TypedValue> const& t
 extern map<string, unique_ptr<CtFunc>> compapi;
 
 /*
- *  Compile a compile-time function/macro which should not return a function call, just a compile-time constant.
- *  Ex: A call to Ante.getAST() would be a meta function as it wouldn't make sense to get the parse tree
- *      during runtime
+ *  Compile a compile-time function/macro which should not return a function call,
+ *  just a compile-time constant.
+ *
+ *  Ex: A call to Ante.getAST() would be a meta function as it wouldn't make sense
+ *      to get the parse tree during runtime.
  *
  *  - Assumes arguments are already type-checked
  */
-TypedValue compMetaFunctionResult(Compiler *c, LOC_TY const& loc, string const& baseName, string const& mangledName, vector<TypedValue> const& typedArgs){
+TypedValue compMetaFunctionResult(Compiler *c, LOC_TY const& loc, string const& baseName,
+        string const& mangledName, vector<TypedValue> const& typedArgs){
+
     CtFunc* fn;
     if((fn = compapi[baseName].get())){
         TypedValue *res;
 
-        //TODO organize CtFunc's by param count + type instead of a hard-coded name check
-        if(baseName == "Ante_debug"){
-            if(typedArgs.size() != 1)
-                return c->compErr("Called function was given " + to_string(typedArgs.size()) +
-                        " arguments but was declared to take 1", loc);
+        if(typedArgs.size() != fn->params.size())
+            return c->compErr("Called function was given " + to_string(typedArgs.size()) +
+                    " argument(s) but was declared to take " + to_string(fn->params.size()), loc);
 
-            res = (*fn)(c, typedArgs[0]);
-        }else if(baseName == "Ante_sizeof"){
-            if(typedArgs.size() != 1)
-                return c->compErr("Called function was given " + to_string(typedArgs.size()) +
-                        " arguments but was declared to take 1", loc);
+        /* alias typedArgs for switch statement */
+        vector<TypedValue> const& ta = typedArgs;
 
-            res = (*fn)(c, typedArgs[0]);
-        }else if(baseName == "Ante_store"){
-            if(typedArgs.size() != 2)
-                return c->compErr("Called function was given " + to_string(typedArgs.size()) +
-                        " argument(s) but was declared to take 2", loc);
-
-            res = (*fn)(c, typedArgs[0], typedArgs[1]);
-        }else if(baseName == "Ante_lookup" or baseName == "Ante_error" or baseName == "FuncDecl_getName"){
-            if(typedArgs.size() != 1)
-                return c->compErr("Called function was given " + to_string(typedArgs.size()) +
-                        " arguments but was declared to take 1", loc);
-
-            res = (*fn)(c, typedArgs[0]);
-        }else if(baseName == "Ante_forget"){
-            if(typedArgs.size() != 1)
-                return c->compErr("Called function was given " + to_string(typedArgs.size()) +
-                        " arguments but was declared to take 1", loc);
-
-            res = (*fn)(c, typedArgs[0]);
-        }else if(baseName == "Ante_emitIR"){
-            if(typedArgs.size() != 0)
-                return c->compErr("Called function was given " + to_string(typedArgs.size()) +
-                        " argument(s) but was declared to take 0", loc);
-
-            res = (*fn)(c);
-        }else{
-            res = (*fn)(c);
+        switch(fn->params.size()){
+            case 0: res = (*fn)(c); break;
+            case 1: res = (*fn)(c, ta[0]); break;
+            case 2: res = (*fn)(c, ta[0], ta[1]); break;
+            case 3: res = (*fn)(c, ta[0], ta[1], ta[2]); break;
+            case 4: res = (*fn)(c, ta[0], ta[1], ta[2], ta[3]); break;
+            case 5: res = (*fn)(c, ta[0], ta[1], ta[2], ta[3], ta[4]); break;
+            case 6: res = (*fn)(c, ta[0], ta[1], ta[2], ta[3], ta[4], ta[5]); break;
+            default:
+                cerr << "CtFuncs with more than 6 parameters are unimplemented." << endl;
+                return {};
         }
 
         if(res){
@@ -993,19 +976,6 @@ TypedValue compMetaFunctionResult(Compiler *c, LOC_TY const& loc, string const& 
             c->errFlag = true;
             throw new CtError();
         }
-
-
-        //jit->DisableSymbolSearching();
-        //for(auto &f : mod->getFunctionList()){
-        //    if(f.isDeclaration()){
-        //        try{
-        //            auto fAddr = lookupCFn(f.getName().str());
-        //            jit->addGlobalMapping(&f, fAddr);
-        //        }catch(out_of_range r){
-        //            c->compErr("Cannot link to unknown external function "+f.getName().str()+ " in compile-time module", loc);
-        //        }
-        //    }
-        //}
 
         auto *fd = mod_compiler->getFuncDecl(baseName, mangledName);
         createDriverFunction(mod_compiler.get(), fd, typedArgs);
