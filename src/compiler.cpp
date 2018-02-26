@@ -2118,6 +2118,8 @@ bool Variable::isFreeable() const{
 }
 
 void Compiler::exitScope(){
+    if(varTable.empty()) return;
+
     //iterate through all known variables, check for pointers at the end of
     //their lifetime, and insert calls to free for any that are found
     auto vtable = varTable.back().get();
