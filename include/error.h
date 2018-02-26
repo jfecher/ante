@@ -20,6 +20,8 @@ namespace ante {
     struct CompilationError : public CtError {
         lazy_printer msg;
         const yy::location loc;
+
+        CompilationError(lazy_printer m) : msg(m), loc(){}
         CompilationError(lazy_printer m, const yy::location l) : msg(m), loc(l){}
     };
 

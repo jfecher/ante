@@ -751,7 +751,7 @@ namespace ante {
     TypedValue addrOf(Compiler *c, TypedValue &tv);
 
 
-    /*
+    /**
     *  Compile a compile-time function/macro which should not return a function call, just a compile-time constant.
     *  Ex: A call to Ante.getAST() would be a meta function as it wouldn't make sense to get the parse tree
     *      during runtime
@@ -759,6 +759,14 @@ namespace ante {
     *  - Assumes arguments are already type-checked
     */
     TypedValue compMetaFunctionResult(Compiler *c, LOC_TY const& loc, std::string const& baseName, std::string const& mangledName, std::vector<TypedValue> const& typedArgs);
+
+    /**
+     *  Search for a given function specified by the expression l.
+     *
+     *  - Takes into account argument types instead of returning first function found.
+     *  - Functions in local scope will shadow global functions.
+     */
+    TypedValue searchForFunction(Compiler *c, parser::Node *l, std::vector<TypedValue> const& typedArgs);
 
     /**
      * @brief initialize the compiler api function map.
@@ -809,7 +817,7 @@ namespace ante {
     template<typename T> std::vector<T*> vectorize(T *args);
 
     /** @brief Extracts the type of each arg into a TypeNode vector */
-    std::vector<AnType*> toTypeVector(std::vector<TypedValue> &tvs);
+    std::vector<AnType*> toTypeVector(std::vector<TypedValue> const& tvs);
 
     std::string mangle(std::string const& base, std::vector<AnType*> const& params);
     std::string mangle(FuncDecl *fd, std::vector<AnType*> const& params);

@@ -5,6 +5,7 @@
  * and only linking needed functions.
  */
 #include "jitlinker.h"
+#include "function.h"
 
 using namespace std;
 using namespace llvm;
@@ -160,7 +161,9 @@ void declareTypes(Compiler *c){
  * and copies any functions that are needed by the copied function
  * into the new module as well.
  */
-unique_ptr<Compiler> wrapFnInModule(Compiler *c, string const& basename, string const& mangledName){
+unique_ptr<Compiler> wrapFnInModule(Compiler *c, string const& basename,
+        string const& mangledName, vector<AnType*> const& argTys){
+
     unique_ptr<Compiler> ccpy{new Compiler(c, c->ast.get(), mangledName)};
     ccpy->isJIT = true;
 
@@ -176,12 +179,11 @@ unique_ptr<Compiler> wrapFnInModule(Compiler *c, string const& basename, string 
     auto *fn = ccpy->getFuncDecl(basename, mangledName);
 
     if(fn){
-        ccpy->compFn(fn);
+        compFnWithArgs(ccpy.get(), fn, argTys);
     }else{
-        cerr << "Function '" << mangledName << "' not found.\n";
         ccpy->ast.release();
         c->errFlag = true;
-        return 0;
+        throw new CompilationError("Error in evaluating " + basename + ", aborting.\n");
     }
 
     //re-add the compiler directives

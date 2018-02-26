@@ -22,7 +22,7 @@ bool implicitPassByRef(AnType* t){
 }
 
 
-vector<AnType*> toTypeVector(vector<TypedValue> &tvs){
+vector<AnType*> toTypeVector(vector<TypedValue> const& tvs){
     vector<AnType*> ret;
     ret.reserve(tvs.size());
     for(const auto tv : tvs)
@@ -505,9 +505,12 @@ TypedValue compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, vector
     //test if bound variant is already compiled
     string mangled = mangle(fd, args);
 
-    TypedValue fn;
-    if(!!(fn = c->getFunction(fd->getName(), mangled)))
-        return fn;
+    FuncDecl* fdRedef;
+    if(!!(fdRedef = c->getFuncDecl(fd->getName(), mangled))){
+        if(fdRedef->mangledName == mangled && !!fdRedef->tv){
+            return fdRedef->tv;
+        }
+    }
 
     fd = shallow_copy(fd, mangled);
 

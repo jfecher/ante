@@ -967,9 +967,7 @@ TypedValue compMetaFunctionResult(Compiler *c, LOC_TY const& loc, string const& 
             return c->getVoidLiteral();
         }
     }else{
-        auto mod_compiler = wrapFnInModule(c, baseName, mangledName);
-        if(!mod_compiler) return {};
-
+        auto mod_compiler = wrapFnInModule(c, baseName, mangledName, toTypeVector(typedArgs));
         mod_compiler->ast.release();
 
         if(!mod_compiler or mod_compiler->errFlag){
@@ -978,6 +976,7 @@ TypedValue compMetaFunctionResult(Compiler *c, LOC_TY const& loc, string const& 
         }
 
         auto *fd = mod_compiler->getFuncDecl(baseName, mangledName);
+        if(!fd) return {};
         createDriverFunction(mod_compiler.get(), fd, typedArgs);
 
         JIT* jit = new JIT();
@@ -1089,7 +1088,7 @@ TypedValue deduceFunction(Compiler *c, FunctionCandidates *fc, vector<TypedValue
 }
 
 
-TypedValue searchForFunction(Compiler *c, Node *l, vector<TypedValue> &typedArgs){
+TypedValue searchForFunction(Compiler *c, Node *l, vector<TypedValue> const& typedArgs){
     if(VarNode *vn = dynamic_cast<VarNode*>(l)){
         //Check if there is a var in local scope first
         auto *var = c->lookup(vn->name);

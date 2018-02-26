@@ -398,18 +398,27 @@ namespace ante {
      */
     void output(Compiler *c, TypedValue &tv){
         vector<AnType*> args = {tv.type};
-        string mangledName = mangle("print", args);
+        string name = "print";
+
+        auto fake_loc = mkLoc(mkPos(0, 0, 0), mkPos(0, 0, 0));
+        Node *n = new VarNode(fake_loc, "print");
+        TypedValue tvf = searchForFunction(c, n, {tv});
+        string mangledName = tvf.val->getName();
+        delete n;
 
         try{
-            compMetaFunctionResult(c, mkLoc(mkPos(0,0,0),mkPos(0,0,0)), "print", mangledName, {tv});
+            //compMetaFunctionResult(c, fake_loc, "print", mangledName, {tv});
+            compMetaFunctionResult(c, fake_loc, name, mangledName, {tv});
         }catch(CtError *err){
-            cerr << "Error in evaluating " << mangledName << ", aborting." << endl;
+            //fall back on naive dumping of llvm value
+            tv.dump();
+            delete err;
         }
     }
 
 
     void startRepl(Compiler *c){
-        cout << "Ante REPL v0.1.1\nType 'exit' to exit.\n";
+        cout << "Ante REPL v0.2.0\nType 'exit' to exit.\n";
         setupTerm();
 
         auto cmd = getInputColorized();
