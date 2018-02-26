@@ -1,6 +1,6 @@
 #ifndef AN_ARGTUPLE_H
 #define AN_ARGTUPLE_H
-    
+
 #include "compiler.h"
 
 namespace ante {
@@ -50,6 +50,12 @@ namespace ante {
 
             /** Stores a tuple value in data */
             void storeTuple(Compiler *c, TypedValue const& tup);
+
+            /** Stores a primitive integer, character, or boolean. */
+            void storeInt(Compiler *c, TypedValue const& tv);
+
+            /** Stores a primitive floating-point value. */
+            void storeFloat(Compiler *c, TypedValue const& tv);
 
             /**
              * Converts the given TypedValue into its corresponding

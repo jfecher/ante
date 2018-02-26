@@ -409,8 +409,12 @@ namespace ante {
         try{
             //compMetaFunctionResult(c, fake_loc, "print", mangledName, {tv});
             compMetaFunctionResult(c, fake_loc, name, mangledName, {tv});
-        }catch(CtError *err){
+        }catch(CompilationError *err){
             //fall back on naive dumping of llvm value
+            cerr << err->msg << endl;
+            tv.dump();
+            delete err;
+        }catch(CtError *err){
             tv.dump();
             delete err;
         }

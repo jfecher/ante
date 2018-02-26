@@ -59,21 +59,20 @@ namespace ante {
         }
 
         c->errFlag = true;
-        cerr << "ArgTuple: Unknown/Unimplemented TypeTag " << typeTagToStr(tn->typeTag) << endl;
-        return c->getVoidLiteral();
+        throw new CompilationError("Unknown/Unimplemented TypeTag " + typeTagToStr(tn->typeTag));
     }
 
     void ArgTuple::allocAndStoreValue(Compiler *c, TypedValue const& tv){
         auto size = tv.type->getSizeInBits(c);
         if(!size){
-            cerr << size.getErr() << endl;
-            size = 0;
+            c->errFlag = true;
+            throw new CompilationError(size.getErr());
         }
         data = malloc(size.getVal() / 8);
         storeValue(c, tv);
     }
-    
-    
+
+
     /**
      * Stores a pointer value of a constant pointer type
      */
@@ -117,9 +116,8 @@ namespace ante {
                 }
             }
         }else{
-            cerr << "error: unknown type given to getConstPtr, dumping\n";
             c->errFlag = true;
-            tv.dump();
+            throw new CompilationError("unknown type given to getConstPtr: " + anTypeToStr(tv.type));
         }
     }
 
@@ -136,8 +134,8 @@ namespace ante {
 
                 auto size = ty->getSizeInBits(c);
                 if(!size){
-                    cerr << size.getErr() << endl;
-                    return;
+                    c->errFlag = true;
+                    throw new CompilationError(size.getErr());
                 }
                 data = (char*)data + size.getVal() / 8;
             }
@@ -173,18 +171,19 @@ namespace ante {
             }
         }
 
-        cerr << "Cannot find last store to mutable variable during translation." << endl;
-        tv.dump();
-        return {};
+        c->errFlag = true;
+        throw new CompilationError("Cannot find last store to mutable variable during translation.");
     }
 
 
-    void ArgTuple::storeValue(Compiler *c, TypedValue const& tv){
+    void ArgTuple::storeInt(Compiler *c, TypedValue const& tv){
         auto *ci = dyn_cast<ConstantInt>(tv.val);
-        auto *cf = dyn_cast<ConstantFP>(tv.val);
+        if(!ci){
+            c->errFlag = true;
+            throw new CompilationError("Cannot convert non-constant integer.");
+        }
 
-        TypeTag tt = tv.type->typeTag;
-        switch(tt){
+        switch(tv.type->typeTag){
             case TT_I8:   *(uint8_t*) data = ci->getSExtValue(); return;
             case TT_U8:
             case TT_C8:
@@ -198,9 +197,40 @@ namespace ante {
             case TT_U64:  *(uint64_t*)data = ci->getZExtValue(); return;
             case TT_Isz:  *(size_t*)  data = ci->getSExtValue(); return;
             case TT_Usz:  *(size_t*)  data = ci->getZExtValue(); return;
-            case TT_F16:  *(float*)   data = cf->getValueAPF().convertToFloat(); return;
-            case TT_F32:  *(float*)   data = cf->getValueAPF().convertToFloat(); return;
-            case TT_F64:  *(double*)  data = cf->getValueAPF().convertToDouble(); return;
+            default: return;
+        }
+    }
+
+
+    void ArgTuple::storeFloat(Compiler *c, TypedValue const& tv){
+        auto *cf = dyn_cast<ConstantFP>(tv.val);
+        if(!cf){
+            c->errFlag = true;
+            throw new CompilationError("Cannot convert non-constant floating point value.");
+        }
+
+        switch(tv.type->typeTag){
+            case TT_F16: *(float*)   data = cf->getValueAPF().convertToFloat(); return;
+            case TT_F32: *(float*)   data = cf->getValueAPF().convertToFloat(); return;
+            case TT_F64: *(double*)  data = cf->getValueAPF().convertToDouble(); return;
+            default: return;
+        }
+    }
+
+
+    void ArgTuple::storeValue(Compiler *c, TypedValue const& tv){
+        switch(tv.type->typeTag){
+            case TT_I8: case TT_U8: case TT_C8: case TT_Bool:
+            case TT_I16: case TT_U16:
+            case TT_I32: case TT_U32: case TT_C32:
+            case TT_I64: case TT_U64: case TT_Isz: case TT_Usz:
+                storeInt(c, tv);
+                return;
+            case TT_F16:
+            case TT_F32:
+            case TT_F64:
+                storeFloat(c, tv);
+                return;
             case TT_Ptr:
             case TT_Array: storePtr(c, tv); return;
             case TT_Tuple: storeTuple(c, tv); return;
@@ -208,9 +238,8 @@ namespace ante {
                 auto *tvt = (AnTypeVarType*)tv.type;
                 auto *var = c->lookup(tvt->name);
                 if(!var){
-                    cerr << AN_ERR_COLOR << "error: " << AN_CONSOLE_RESET << "Lookup for typevar "+tvt->name+" failed";
                     c->errFlag = true;
-                    return;
+                    throw new CompilationError("Lookup for typevar " + tvt->name + " failed");
                 }
 
                 auto *type = extractTypeValue(var->tval);
@@ -228,8 +257,8 @@ namespace ante {
                 break;
         }
 
-        cerr << AN_ERR_COLOR << "error: " << AN_CONSOLE_RESET << "Compile-time function argument must be constant.\n";
         c->errFlag = true;
+        throw new CompilationError("Compile-time function argument must be constant.");
     }
 
 
@@ -244,8 +273,10 @@ namespace ante {
         for(auto &tv : tvals){
             auto elemSize = tv.type->getSizeInBits(c);
             if(!elemSize){
-                cerr << elemSize.getErr() << endl;
-                return;
+                // NOTE: throwing exceptions in constructors is bad and can lead
+                //       to memory leaks or worse.
+                c->errFlag = true;
+                throw new CompilationError(elemSize.getErr());
             }
 
             elemSize = elemSize.getVal() / 8;
