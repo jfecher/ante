@@ -31,8 +31,8 @@ namespace ante {
             case TT_U16:             return TypedValue(c->builder.getInt16(*(uint16_t*)data), tn);
             case TT_U32:             return TypedValue(c->builder.getInt32(*(uint32_t*)data), tn);
             case TT_U64:             return TypedValue(c->builder.getInt64(*(uint64_t*)data), tn);
-            case TT_Isz:             return TypedValue(c->builder.getIntN( *(size_t*)  data, AN_USZ_SIZE), tn);
-            case TT_Usz:             return TypedValue(c->builder.getIntN( *(size_t*)  data, AN_USZ_SIZE), tn);
+            case TT_Isz:             return TypedValue(c->builder.getIntN(AN_USZ_SIZE, *(size_t*) data), tn);
+            case TT_Usz:             return TypedValue(c->builder.getIntN(AN_USZ_SIZE, *(size_t*) data), tn);
             case TT_C8:              return TypedValue(c->builder.getInt8( *(uint8_t*) data), tn);
             case TT_C32:             return TypedValue(c->builder.getInt32(*(uint32_t*)data), tn);
             case TT_F16:             return TypedValue(ConstantFP::get(*c->ctxt, APFloat(f32_from_f16(*(uint16_t*)data))), tn);
@@ -42,7 +42,7 @@ namespace ante {
             case TT_Tuple:           break;
             case TT_Array:           break;
             case TT_Ptr: {
-                auto *cint = c->builder.getIntN(AN_USZ_SIZE, *(size_t*)data);
+                auto *cint = c->builder.getIntN(*(size_t*)data, AN_USZ_SIZE);
                 auto *ty = c->anTypeToLlvmType(tn);
                 return TypedValue(c->builder.CreateIntToPtr(cint, ty), tn);
             }
