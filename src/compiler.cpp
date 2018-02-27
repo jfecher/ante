@@ -450,29 +450,20 @@ string addAnSuffix(string const& s){
 }
 
 /**
- * Convert a module's name to a file name by lowercasing
- * the first character of each file/folder in the path
+ * Return a copy of the given string with the first character in lowercase.
  */
-string moduleNameToFileName(string const& modName){
-    string fName = "";
-    bool lowercase = true;
-
-    for(char c : modName){
-        if(lowercase){
-            fName += tolower(c);
-            lowercase = false;
-        }else if(c == '/'){
-            fName += c;
-            lowercase = true;
-        }else{
-            fName += c;
-        }
-    }
-    return fName;
+string lowercaseFirstLetter(string const& s){
+    if(s.empty()) return "";
+    return char(tolower(s[0])) + s.substr(1);
 }
 
-
-
+/**
+ * Convert an import expression to a filepath string.
+ * Converts most tokens as given, but lowercases the first letter of types
+ * as these modules are expected to meet the convention of capital module
+ * name referring to a lowercase filename.  If this is not desired, string
+ * literals can be used instead.
+ */
 string moduleExprToStr(Node *expr){
     if(BinOpNode *bn = dynamic_cast<BinOpNode*>(expr)){
         if(bn->op != '.') return "";
@@ -481,17 +472,25 @@ string moduleExprToStr(Node *expr){
     }else if(TypeNode *tn = dynamic_cast<TypeNode*>(expr)){
         if(tn->type != TT_Data || !tn->params.empty()) return "";
 
-        return tn->typeName;
+        return lowercaseFirstLetter(tn->typeName);
+    }else if(VarNode *va = dynamic_cast<VarNode*>(expr)){
+        return va->name;
+    }else if(StrLitNode *sln = dynamic_cast<StrLitNode*>(expr)){
+        return sln->val;
     }else{
         return "";
     }
 }
 
+/**
+ * Converts an import expression to a filepath string.
+ * See moduleExprToStr for details.
+ */
 string importExprToStr(Node *expr){
-    if(dynamic_cast<StrLitNode*>(expr)){
-        return static_cast<StrLitNode*>(expr)->val;
+    if(StrLitNode *sln = dynamic_cast<StrLitNode*>(expr)){
+        return sln->val;
     }else{
-        return addAnSuffix(moduleNameToFileName(moduleExprToStr(expr)));
+        return addAnSuffix(moduleExprToStr(expr));
     }
 }
 
