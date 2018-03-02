@@ -354,6 +354,33 @@ ReinterpretCastResult checkForReinterpretCast(Compiler *c, AnType *castTy, Typed
 }
 
 
+/**
+ *  Reinterpret a value as a tuple value when casting to a tuple type.
+ *
+ *  This function handles instances when a casted type is equal to the
+ *  casting type's rhs in its definition.
+ *
+ *  For example, given the definition type T = U and a variable u: U
+ *  the cast T u will be managed by this function with from = u and to = T
+ */
+TypedValue reinterpretTuple(Compiler *c, Value *from, AnType *to){
+    auto *structTy = c->anTypeToLlvmType(to);
+    Value *rstruct = UndefValue::get(structTy);
+
+    if(structTy->getStructElementType(0) == from->getType()){
+        rstruct = c->builder.CreateInsertValue(rstruct, from, 0);
+        return TypedValue(rstruct, to);
+    }
+
+    auto nElems = rstruct->getType()->getStructNumElements();
+    for(size_t i = 0; i < nElems; i++){
+        auto *elem = c->builder.CreateExtractValue(from, i);
+        rstruct = c->builder.CreateInsertValue(rstruct, elem, i);
+    }
+
+    return TypedValue(rstruct, to);
+}
+
 
 
 TypedValue doReinterpretCast(Compiler *c, AnType *castTy, TypedValue &valToCast, ReinterpretCastResult &rcr){
@@ -380,7 +407,7 @@ TypedValue doReinterpretCast(Compiler *c, AnType *castTy, TypedValue &valToCast,
         }
 
         if(isUnion) return createUnionVariantCast(c, valToCast, tag, rcr.dataTy, rcr.typeCheck);
-        else        return TypedValue(valToCast.val, to_tyn);
+        else return reinterpretTuple(c, valToCast.val, to_tyn);
     }
 }
 
