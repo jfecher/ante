@@ -34,7 +34,7 @@ ext Vec 't
         if v.len >= v.cap then
             v.reserve v.cap
 
-        v#v.len = elem
+        v._data#v.len = elem
         v.len += 1
 
 type VecIter 't = 't* view, usz idx len
@@ -59,7 +59,7 @@ fun printne: Vec 't v
 
     var i = 0
     while i < v.len do
-        printne (v#i)
+        printne (v._data#i)
         if i + 1 != v.len then
             printf ", "
 
