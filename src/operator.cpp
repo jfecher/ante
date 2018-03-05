@@ -1029,17 +1029,34 @@ bool isInvalidParamType(Type *t){
 }
 
 //Computes the address of operator &
+//
+//Returns a TypedValue that is a reference to the given tv.
+//If the given tv is not mutable and does not have an existing
+//reference one is created on the stack.
 TypedValue addrOf(Compiler *c, TypedValue &tv){
     auto *ptrTy = AnPtrType::get(tv.type);
 
     if(LoadInst* li = dyn_cast<LoadInst>(tv.val)){
         return TypedValue(li->getPointerOperand(), ptrTy);
-    }else{
-        //if it is not stack-allocated already, allocate it on the stack
-        auto *alloca = c->builder.CreateAlloca(tv.getType());
-        c->builder.CreateStore(tv.val, alloca);
-        return TypedValue(alloca, ptrTy);
+
+    }else if(ExtractValueInst *evi = dyn_cast<ExtractValueInst>(tv.val)){
+        Value *agg = evi->getAggregateOperand();
+        size_t index = evi->getAggregateOperandIndex();
+        if(LoadInst *li = dyn_cast<LoadInst>(agg)){
+            return TypedValue(c->builder.CreateConstGEP1_32(li->getPointerOperand(), index), ptrTy);
+        }
+    }else if(ExtractElementInst *eei = dyn_cast<ExtractElementInst>(tv.val)){
+        Value *agg = eei->getVectorOperand();
+        Value *index = eei->getIndexOperand();
+        if(LoadInst *li = dyn_cast<LoadInst>(agg)){
+            return TypedValue(c->builder.CreateGEP(li->getPointerOperand(), index), ptrTy);
+        }
     }
+
+    //if it is not stack-allocated already, allocate it on the stack
+    auto *alloca = c->builder.CreateAlloca(tv.getType());
+    c->builder.CreateStore(tv.val, alloca);
+    return TypedValue(alloca, ptrTy);
 }
 
 
