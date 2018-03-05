@@ -253,7 +253,7 @@ TypedValue Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
             builder.CreateRetVoid();
             fd->returns.push_back({getVoidLiteral(), loc});
         }else{
-            builder.CreateRet(v.val);
+            v.val = builder.CreateRet(v.val);
             fd->returns.push_back({v, loc});
         }
     }
@@ -475,7 +475,7 @@ TypedValue compFnHelper(Compiler *c, FuncDecl *fd){
                 c->builder.CreateRetVoid();
                 fd->returns.push_back({c->getVoidLiteral(), loc});
             }else{
-                c->builder.CreateRet(v.val);
+                v.val = c->builder.CreateRet(v.val);
                 fd->returns.push_back({v, loc});
             }
         }
