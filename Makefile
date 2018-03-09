@@ -28,7 +28,7 @@ OBJFILES := $(patsubst src/%.cpp,obj/%.o,$(SRCFILES))
 ANSRCFILES := $(shell find $(SRCDIRS) -type f -name "*.an")
 ANOBJFILES := $(patsubst src/%.an,obj/%.ao,$(ANSRCFILES))
 
-TESTFILES := $(shell find 'tests/' -maxdepth 1 -type f -name "*.an")
+TESTFILES := $(shell find 'tests/integration/' -maxdepth 1 -type f -name "*.an")
 
 #If src/parser.cpp is still present, remove it from objfiles so as to not double-compile it
 OBJFILES := $(patsubst obj/parser.o,,$(OBJFILES))
@@ -42,6 +42,11 @@ ante: obj obj/parser.o $(OBJFILES) $(ANOBJFILES)
 	@if [ ! -e obj/f16.ao ]; then $(MAKE) bootante; fi
 	@echo Linking...
 	@$(CXX) obj/parser.o $(OBJFILES) $(ANOBJFILES) $(LLVMFLAGS) -o ante
+
+
+run: ante
+	./ante
+
 
 bootante: obj obj/parser.o $(OBJFILES) $(ANOBJFILES)
 	@echo Bootstrapping f16.ao...
@@ -66,7 +71,7 @@ stdlib: $(LIBFILES) Makefile
 new: clean ante
 
 #create the obj folder if it is not present
-obj: 
+obj:
 	@mkdir -p obj
 
 debug_parser:
@@ -91,7 +96,19 @@ obj/parser.o: src/syntax.y Makefile
 	@$(CXX) -DAN_LIB_DIR=$(ANLIBDIR) $(CPPFLAGS) -MMD -MP -Iinclude -c $(PARSERSRC) -o $@
 
 
-test:
+test: unittest integrationtest
+
+
+unittest: ante tests/unit/main.cpp
+	@$(CXX) -DAN_LIB_DIR=$(ANLIBDIR) -DF16_BOOT $(CPPFLAGS) -MMD -MP -Iinclude -c tests/unit/main.cpp -o obj/test-main.o
+	@mv obj/ante.o obj/ante.o.tmp
+	@$(CXX) -DAN_LIB_DIR=$(ANLIBDIR) -DF16_BOOT -DTEST_MAIN $(CPPFLAGS) -MMD -MP -Iinclude -c src/ante.cpp -o obj/ante.o
+	@$(CXX) obj/test-main.o obj/parser.o $(OBJFILES) $(ANOBJFILES) $(LLVMFLAGS) -o unittest
+	@mv obj/ante.o.tmp obj/ante.o
+	@./unittest
+
+
+integrationtest:
 	@ERRC=0;                                                                  \
 	for file in $(TESTFILES); do                                              \
 		./ante -check $$file;                                                 \

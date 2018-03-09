@@ -1,0 +1,10 @@
+//test basic conversion to filename
+// Vec -> STD_LIB_DIR/vec.an
+import Vec
+
+//test conversion of relative paths
+// Tests.Integration.FnDecl -> ./tests/integration/fnDecl.an
+import Tests.Integration.FnDecl
+
+
+print Vec(1 .. fact 5)

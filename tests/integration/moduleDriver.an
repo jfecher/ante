@@ -1,0 +1,9 @@
+//Test basic module imports from string literal
+import "tests/integration/moduleLib.an"
+
+let tup1 = (2, 3)
+let tup2 = (4, 2)
+
+print <| tup1.dotProduct tup2
+
+print "done!"

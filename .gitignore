@@ -7,6 +7,7 @@ t.an
 u.an
 ante
 bootante
+unittest
 syntax.tab.c
 .clang_complete
 src/parser.output
