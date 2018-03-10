@@ -139,7 +139,7 @@ namespace ante {
             auto existing_ty = search(typeArena.otherTypes, key);
             if(existing_ty) return existing_ty;
 
-            auto *ty = new AnType(tag, false, m);
+            auto *ty = new AnType(tag, false, 1, m);
             addKVPair(typeArena.otherTypes, key, ty);
             return ty;
         }
@@ -333,7 +333,7 @@ namespace ante {
     }
 
 
-    AnDataType* AnDataType::get(string name, AnModifier *m){
+    AnDataType* AnDataType::get(string const& name, AnModifier *m){
         string key = modifiersToStr(m) + name;
 
         auto existing_ty = search(typeArena.declaredTypes, key);
@@ -356,7 +356,7 @@ namespace ante {
         return modifiersToStr(m) + anTypeToStr(variant);
     }
 
-    AnDataType* AnDataType::getOrCreate(std::string name, std::vector<AnType*> &elems, bool isUnion, AnModifier *m){
+    AnDataType* AnDataType::getOrCreate(std::string const& name, std::vector<AnType*> const& elems, bool isUnion, AnModifier *m){
         string key = modifiersToStr(m) + name;
 
         auto existing_ty = search(typeArena.declaredTypes, key);
@@ -556,7 +556,9 @@ namespace ante {
      * Overwrites a given AnDataType to be a bound variant of
      * the given generic type specified by unboundType.
      */
-    AnDataType* bindVariant(Compiler *c, AnDataType *unboundType, const std::vector<std::pair<std::string, AnType*>> &bindings, AnModifier *m, AnDataType *variant){
+    AnDataType* bindVariant(Compiler *c, AnDataType *unboundType, const std::vector<std::pair<std::string,
+            AnType*>> &bindings, AnModifier *m, AnDataType *variant){
+
         vector<AnType*> boundExts;
         boundExts.reserve(unboundType->extTys.size());
 
@@ -571,8 +573,9 @@ namespace ante {
                 boundBindings.emplace_back(p.first, bindGenericToType(c, p.second, bindings));
             }
         }
-        
+
         variant->boundGenerics = filterMatchingBindings(unboundType, bindings);
+        variant->numMatchedTys = variant->boundGenerics.size() + 1;
 
         addGenerics(variant->generics, variant->boundGenerics);
 
@@ -658,7 +661,7 @@ namespace ante {
      * unboundType and creates it if it has not been
      * previously bound.
      */
-    AnDataType* AnDataType::getVariant(Compiler *c, AnDataType *unboundType, const vector<pair<string, AnType*>> &boundTys, AnModifier *m){
+    AnDataType* AnDataType::getVariant(Compiler *c, AnDataType *unboundType, vector<pair<string, AnType*>> const& boundTys, AnModifier *m){
         auto filteredBindings = filterMatchingBindings(unboundType, boundTys);
 
         filteredBindings = flatten(c, unboundType, filteredBindings);
@@ -684,7 +687,7 @@ namespace ante {
      * previously bound.  Will fail if the given name does
      * not correspond to any defined type.
      */
-    AnDataType* AnDataType::getVariant(Compiler *c, const string &name, const vector<pair<string, AnType*>> &boundTys, AnModifier *m){
+    AnDataType* AnDataType::getVariant(Compiler *c, string const& name, vector<pair<string, AnType*>> const& boundTys, AnModifier *m){
         auto *unboundType = AnDataType::get(name, m);
         if(unboundType->isStub()){
             cerr << "Warning: Cannot bind undeclared type " << name << endl;
@@ -708,7 +711,7 @@ namespace ante {
         return bindVariant(c, unboundType, filteredBindings, m, variant);
     }
 
-    AnDataType* AnDataType::create(string name, vector<AnType*> elems, bool isUnion, const vector<AnTypeVarType*> &generics, AnModifier *m){
+    AnDataType* AnDataType::create(string const& name, vector<AnType*> const& elems, bool isUnion, vector<AnTypeVarType*> const& generics, AnModifier *m){
         string key = modifiersToStr(m) + getBoundName(name, generics);
 
         AnDataType *dt = search(typeArena.declaredTypes, key);
@@ -729,7 +732,7 @@ namespace ante {
         dt->generics = generics;
 
         vector<AnType*> elemsWithMods;
-        elems.reserve(elems.size());
+        elemsWithMods.reserve(elems.size());
         for(auto *ty : elems){
             auto *mod_type = ty->setModifier(m);
             elemsWithMods.emplace_back(mod_type);
@@ -741,25 +744,25 @@ namespace ante {
 
     //Constructor for AnTypeContainer, initializes all primitive types beforehand
     AnTypeContainer::AnTypeContainer(){
-        primitiveTypes[TT_I8].reset(new AnType(TT_I8, false, nullptr));
-        primitiveTypes[TT_I16].reset(new AnType(TT_I16, false, nullptr));
-        primitiveTypes[TT_I32].reset(new AnType(TT_I32, false, nullptr));
-        primitiveTypes[TT_I64].reset(new AnType(TT_I64, false, nullptr));
-        primitiveTypes[TT_Isz].reset(new AnType(TT_Isz, false, nullptr));
-        primitiveTypes[TT_U8].reset(new AnType(TT_U8, false, nullptr));
-        primitiveTypes[TT_U16].reset(new AnType(TT_U16, false, nullptr));
-        primitiveTypes[TT_U32].reset(new AnType(TT_U32, false, nullptr));
-        primitiveTypes[TT_U64].reset(new AnType(TT_U64, false, nullptr));
-        primitiveTypes[TT_Usz].reset(new AnType(TT_Usz, false, nullptr));
-        primitiveTypes[TT_F16].reset(new AnType(TT_F16, false, nullptr));
-        primitiveTypes[TT_F32].reset(new AnType(TT_F32, false, nullptr));
-        primitiveTypes[TT_F64].reset(new AnType(TT_F64, false, nullptr));
-        primitiveTypes[TT_Bool].reset(new AnType(TT_Bool, false, nullptr));
-        primitiveTypes[TT_Void].reset(new AnType(TT_Void, false, nullptr));
-        primitiveTypes[TT_C8].reset(new AnType(TT_C8, false, nullptr));
-        primitiveTypes[TT_C32].reset(new AnType(TT_C32, false, nullptr));
-        primitiveTypes[TT_Type].reset(new AnType(TT_Type, false, nullptr));
-        primitiveTypes[TT_FunctionList].reset(new AnType(TT_FunctionList, false, nullptr));
+        primitiveTypes[TT_I8].reset(new AnType(TT_I8, false, 1, nullptr));
+        primitiveTypes[TT_I16].reset(new AnType(TT_I16, false, 1, nullptr));
+        primitiveTypes[TT_I32].reset(new AnType(TT_I32, false, 1, nullptr));
+        primitiveTypes[TT_I64].reset(new AnType(TT_I64, false, 1, nullptr));
+        primitiveTypes[TT_Isz].reset(new AnType(TT_Isz, false, 1, nullptr));
+        primitiveTypes[TT_U8].reset(new AnType(TT_U8, false, 1, nullptr));
+        primitiveTypes[TT_U16].reset(new AnType(TT_U16, false, 1, nullptr));
+        primitiveTypes[TT_U32].reset(new AnType(TT_U32, false, 1, nullptr));
+        primitiveTypes[TT_U64].reset(new AnType(TT_U64, false, 1, nullptr));
+        primitiveTypes[TT_Usz].reset(new AnType(TT_Usz, false, 1, nullptr));
+        primitiveTypes[TT_F16].reset(new AnType(TT_F16, false, 1, nullptr));
+        primitiveTypes[TT_F32].reset(new AnType(TT_F32, false, 1, nullptr));
+        primitiveTypes[TT_F64].reset(new AnType(TT_F64, false, 1, nullptr));
+        primitiveTypes[TT_Bool].reset(new AnType(TT_Bool, false, 1, nullptr));
+        primitiveTypes[TT_Void].reset(new AnType(TT_Void, false, 1, nullptr));
+        primitiveTypes[TT_C8].reset(new AnType(TT_C8, false, 1, nullptr));
+        primitiveTypes[TT_C32].reset(new AnType(TT_C32, false, 1, nullptr));
+        primitiveTypes[TT_Type].reset(new AnType(TT_Type, false, 1, nullptr));
+        primitiveTypes[TT_FunctionList].reset(new AnType(TT_FunctionList, false, 1, nullptr));
     }
 
 

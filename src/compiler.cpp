@@ -279,7 +279,8 @@ TypedValue compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
     string appendFn = "++";
     string mangledAppendFn = "++_Str_Str";
     auto fn = c->getFunction(appendFn, mangledAppendFn);
-    if(!fn) return c->compErr("++ overload for Str and Str not found while performing Str interpolation.  The prelude may not be imported correctly.", sln->loc);
+    if(!fn) return c->compErr("++ overload for Str and Str not found while performing Str interpolation."
+            "  The prelude may not be imported correctly.", sln->loc);
 
     //call the ++ function to combine the three strings
     auto lstr = ls->compile(c);
@@ -338,7 +339,7 @@ TypedValue ArrayNode::compile(Compiler *c){
         }else{
             if(!c->typeEq(tval.type, elemTy))
                 return c->compErr("Element " + to_string(i) + "'s type " + anTypeToColoredStr(tval.type) +
-                        " does not match the first element's type of " + anTypeToColoredStr(elemTy), n->loc);
+                    " does not match the first element's type of " + anTypeToColoredStr(elemTy), n->loc);
         }
         i++;
     }
@@ -573,8 +574,9 @@ TypedValue ForNode::compile(Compiler *c){
         rangev = res;
     }
 
-    //by this point, rangev now properly stores the range information, so store it on the stack and insert calls to
-    //unwrap, has_next, and next at the beginning, beginning, and end of the loop respectively.
+    //by this point, rangev now properly stores the range information,
+    //so store it on the stack and insert calls to unwrap, has_next,
+    //and next at the beginning, beginning, and end of the loop respectively.
     Value *alloca = c->builder.CreateAlloca(rangev.getType());
     c->builder.CreateStore(rangev.val, alloca);
 
@@ -604,7 +606,8 @@ TypedValue ForNode::compile(Compiler *c){
     c->stoVar(var, uwrap_var);
 
 
-    //register the branches to break/continue to right before the body is compiled in case there was an error compiling the range
+    //register the branches to break/continue to right before the body
+    //is compiled in case there was an error compiling the range
     c->compCtxt->breakLabels->push_back(end);
     c->compCtxt->continueLabels->push_back(incr);
 
@@ -1776,7 +1779,7 @@ void compileAll(Compiler *c, vector<T> &v){
 
 void Compiler::scanAllDecls(RootNode *root){
     auto *n = root ? root : ast.get();
-	
+
     for (auto& f : n->types) {
 		try {
 			f->declare(this);
@@ -2172,7 +2175,7 @@ Value* mkPtrInt(Compiler *c, void *addr){
 }
 
 
-void Compiler::stoTypeVar(string &name, AnType *ty){
+void Compiler::stoTypeVar(string const& name, AnType *ty){
     Value *addr = builder.getInt64((unsigned long)ty);
     TypedValue tv = TypedValue(addr, AnType::getPrimitive(TT_Type));
     Variable *var = new Variable(name, tv, scope);
@@ -2204,7 +2207,7 @@ Trait* Compiler::lookupTrait(string const& tyname) const{
 }
 
 
-inline void Compiler::stoType(AnDataType *dt, string &typeName){
+inline void Compiler::stoType(AnDataType *dt, string const& typeName){
     //shared_ptr<AnDataType> dt{ty};
     compUnit->userTypes[typeName] = dt;
     mergedCompUnits->userTypes[typeName] = dt;

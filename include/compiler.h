@@ -73,12 +73,14 @@ namespace ante {
         TypeCheckResult& successIf(bool b);
         TypeCheckResult& successIf(Result r);
         TypeCheckResult& success();
+        TypeCheckResult& success(size_t matches);
         TypeCheckResult& successWithTypeVars();
         TypeCheckResult& failure();
 
         bool failed();
 
-        bool operator!(){return box->res == Failure;}
+        bool operator!() const { return box->res == Failure; }
+        explicit operator bool() const { return box->res == Success || box->res == SuccessWithTypeVars; }
         Internals* operator->(){return box.get();}
 
         /**
@@ -636,7 +638,7 @@ namespace ante {
         * @param ty The DataType to store
         * @param typeName The name of the DataType
         */
-        void stoType(AnDataType *ty, std::string &typeName);
+        void stoType(AnDataType *ty, std::string const& typeName);
 
         /**
         * @brief Stores a TypeVar in the current scope
@@ -644,7 +646,7 @@ namespace ante {
         * @param name Name of the typevar to store (including the preceeding ')
         * @param ty The type to store
         */
-        void stoTypeVar(std::string &name, AnType *ty);
+        void stoTypeVar(std::string const& name, AnType *ty);
 
         /**
          * @brief Searches through tn and replaces any typevars inside with

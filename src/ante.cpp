@@ -65,6 +65,7 @@ namespace ante {
     extern AnTypeContainer typeArena;
 }
 
+#ifndef NO_MAIN
 int main(int argc, const char **argv){
     LLVMInitializeNativeTarget();
     LLVMInitializeNativeAsmPrinter();
@@ -96,3 +97,4 @@ int main(int argc, const char **argv){
 
     return 0;
 }
+#endif

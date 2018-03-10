@@ -1028,6 +1028,7 @@ bool isInvalidParamType(Type *t){
     return t->isArrayTy();
 }
 
+
 //Computes the address of operator &
 //
 //Returns a TypedValue that is a reference to the given tv.
@@ -1038,7 +1039,6 @@ TypedValue addrOf(Compiler *c, TypedValue &tv){
 
     if(LoadInst* li = dyn_cast<LoadInst>(tv.val)){
         return TypedValue(li->getPointerOperand(), ptrTy);
-
     }else if(ExtractValueInst *evi = dyn_cast<ExtractValueInst>(tv.val)){
         Value *agg = evi->getAggregateOperand();
         size_t index = evi->getAggregateOperandIndex();
@@ -1052,7 +1052,6 @@ TypedValue addrOf(Compiler *c, TypedValue &tv){
             return TypedValue(c->builder.CreateGEP(li->getPointerOperand(), index), ptrTy);
         }
     }
-
     //if it is not stack-allocated already, allocate it on the stack
     auto *alloca = c->builder.CreateAlloca(tv.getType());
     c->builder.CreateStore(tv.val, alloca);

@@ -76,13 +76,6 @@ void validateType(Compiler *c, const AnType *tn, const DataDeclNode *rootTy){
             c->compErr("Type "+dataTy->name+" has not been declared", rootTy->loc);
         }
 
-        //if(dataTy->generics.size() != tn->params.size())
-        //    c->compErr("Unbound type params for type "+anTypeToColoredStr(dataTy), rootTy->loc);
-
-        //if(dataTy->isGeneric){
-        //    dataTy = bindGenericToType(dataTy, tn->params, dataTy);
-        //}
-
         for(auto *t : dataTy->extTys)
             validateType(c, t, rootTy);
 
@@ -734,6 +727,14 @@ bool llvmTypeEq(Type *l, Type *r){
 }
 
 
+TypeCheckResult& TypeCheckResult::success(size_t matches){
+    if(box->res != Failure){
+        box->matches += matches;
+    }
+    return *this;
+}
+
+
 TypeCheckResult& TypeCheckResult::success(){
     if(box->res != Failure){
         box->matches++;
@@ -815,7 +816,7 @@ TypeCheckResult& extTysEq(const AnType *l, const AnType *r, TypeCheckResult &tcr
  *  the outermost type will not be checked for traits.
  */
 TypeCheckResult& typeEqBase(const AnType *l, const AnType *r, TypeCheckResult &tcr, const Compiler *c){
-    if(l == r and !l->isGeneric) return tcr.success();
+    if(l == r and !l->isGeneric) return tcr.success(l->numMatchedTys);
     
     if(l->typeTag == TT_TaggedUnion and r->typeTag == TT_Data)
         return tcr.successIf(((AnDataType*)l)->name == ((AnDataType*)r)->name);
@@ -877,7 +878,9 @@ AnType* TypeCheckResult::getBindingFor(const string &name){
 }
 
 
-TypeCheckResult& typeCheckBoundDataTypes(const Compiler *c, const AnDataType *l, const AnDataType *r, TypeCheckResult &tcr){
+TypeCheckResult& typeCheckBoundDataTypes(const Compiler *c, const AnDataType *l,
+        const AnDataType *r, TypeCheckResult &tcr){
+
     for(size_t i = 0; i < l->boundGenerics.size(); i++){
         auto &lbg = l->boundGenerics[i];
         auto &rbg = r->boundGenerics[i];
@@ -891,7 +894,9 @@ TypeCheckResult& typeCheckBoundDataTypes(const Compiler *c, const AnDataType *l,
 /**
  * Returns the type check result of two possibly generic AnDataTypes with matching typenames.
  */
-TypeCheckResult& typeCheckVariants(const Compiler *c, const AnDataType *l, const AnDataType *r, TypeCheckResult &tcr){
+TypeCheckResult& typeCheckVariants(const Compiler *c, const AnDataType *l,
+        const AnDataType *r, TypeCheckResult &tcr){
+
     bool lIsBound = !l->boundGenerics.empty();
     bool rIsBound = !r->boundGenerics.empty();
 
@@ -929,7 +934,7 @@ TypeCheckResult& typeCheckVariants(const Compiler *c, const AnDataType *l, const
  *  Compiler instance required to check for trait implementation
  */
 TypeCheckResult& typeEqHelper(const Compiler *c, const AnType *l, const AnType *r, TypeCheckResult &tcr){
-    if(l == r and !l->isGeneric) return tcr.success();
+    if(l == r and !l->isGeneric) return tcr.success(l->numMatchedTys);
     if(!r) return tcr.failure();
 
     //check for type aliases
@@ -997,7 +1002,8 @@ TypeCheckResult& typeEqHelper(const Compiler *c, const AnType *l, const AnType *
                 }else{
                     //Binding for the equal typevars not found in scope,
                     //so dont add it to bindings, just return Success
-                    return tcr;
+                    //since 't == 't even if 't is unbound
+                    return tcr.success();
                 }
             }
 
@@ -1030,8 +1036,22 @@ TypeCheckResult& typeEqHelper(const Compiler *c, const AnType *l, const AnType *
             tcr->bindings.emplace_back(typeVar->name, nonTypeVar);
 
             return tcr.successWithTypeVars();
-        }else{ //tv is bound in same typechecking run
-            return typeEqHelper(c, tv, nonTypeVar, tcr);
+        }else{
+            //tv is bound in same typechecking run
+            //Create fake TypeCheckResult to avoid adding
+            //the matches from the typevar's bound value to the concrete param.
+            //This ensures ('t, 't) has 1 match with (i32, i32), the tuple's structure.
+            //Not 2: the tuple structure and the second 't that is already bound to i32
+            auto tc2 = TypeCheckResult();
+            typeEqHelper(c, tv, nonTypeVar, tc2);
+            if(!tc2) return tcr.failure();
+
+            if(tc2->res == TypeCheckResult::SuccessWithTypeVars){
+                tcr->res = TypeCheckResult::SuccessWithTypeVars;
+                for(auto &b : tc2->bindings)
+                    tcr->bindings.push_back(b);
+            }
+            return tcr;
         }
     }
     return typeEqBase(l, r, tcr, c);

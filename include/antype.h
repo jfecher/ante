@@ -44,8 +44,8 @@ namespace ante {
         friend AnTypeContainer;
 
     protected:
-        AnType(TypeTag id, bool ig, AnModifier *m) :
-            typeTag(id), isGeneric(ig), mods(m){}
+        AnType(TypeTag id, bool ig, size_t mt, AnModifier *m) :
+            typeTag(id), isGeneric(ig), numMatchedTys(mt), mods(m){}
 
     public:
 
@@ -53,6 +53,11 @@ namespace ante {
 
         TypeTag typeTag;
         bool isGeneric;
+
+        /** The number of types contained within this AnType, including itself.
+         * This is the number of types "matched" during type checking when this
+         * type is equal to another. */
+        size_t numMatchedTys;
 
         /** This type's modifiers.
          * Will always have at least one modifier or be nullptr. */
@@ -70,7 +75,8 @@ namespace ante {
          *  @param incompleteType The name of an undeclared type, used to issue an IncompleteTypeError if
          *                        it is found within the type being sized and not behind a pointer.
          *  @param force Set to true if this type is known to be generic and although its size is technically
-         *               unknown, a guess for the size should be given anyway. */
+         *               unknown, a guess for the size (by replacing unknown typevars with a pointer type)
+         *               should be given anyway. */
         Result<size_t, std::string> getSizeInBits(Compiler *c, std::string *incompleteType = nullptr, bool force = false) const;
 
         /** Print the contents of this type to stdout. */
@@ -135,7 +141,7 @@ namespace ante {
     class AnAggregateType : public AnType {
         protected:
         AnAggregateType(TypeTag ty, const std::vector<AnType*> exts, AnModifier *m) :
-                AnType(ty, ante::isGeneric(exts), m), extTys(exts) {}
+                AnType(ty, ante::isGeneric(exts), exts.size()+1, m), extTys(exts) {}
 
         public:
 
@@ -159,11 +165,16 @@ namespace ante {
         }
     };
 
-    /** Arrays types, both sized and unsized */
+    /**
+     * Arrays types, both sized and unsized.
+     *
+     * NOTE: Arrays have 2 or 3 contained types.  The array type itself,
+     * its element type, and the optional size of the array.
+     */
     class AnArrayType : public AnType {
         protected:
         AnArrayType(AnType* ext, size_t l, AnModifier *m) :
-            AnType(TT_Array, ext->isGeneric, m), extTy(ext), len(l) {}
+            AnType(TT_Array, ext->isGeneric, l == 0 ? 2 : 3, m), extTy(ext), len(l) {}
 
         public:
 
@@ -192,7 +203,7 @@ namespace ante {
     class AnPtrType : public AnType {
         protected:
         AnPtrType(AnType* ext, AnModifier *m) :
-            AnType(TT_Ptr, ext->isGeneric, m), extTy(ext){}
+            AnType(TT_Ptr, ext->isGeneric, 2, m), extTy(ext){}
 
         public:
 
@@ -219,7 +230,7 @@ namespace ante {
     class AnTypeVarType : public AnType {
         protected:
         AnTypeVarType(std::string &n, AnModifier *m) :
-            AnType(TT_TypeVar, true, m), name(n){}
+            AnType(TT_TypeVar, true, 1, m), name(n){}
 
         public:
 
@@ -244,7 +255,11 @@ namespace ante {
     class AnFunctionType : public AnAggregateType {
         protected:
         AnFunctionType(AnType *ret, std::vector<AnType*> elems, bool isMetaFunction, AnModifier *m) :
-            AnAggregateType(isMetaFunction ? TT_MetaFunction : TT_Function, elems, m), retTy(ret){}
+                AnAggregateType(isMetaFunction ? TT_MetaFunction : TT_Function, elems, m), retTy(ret){
+
+            //numMatchedTys = #params + 1 ret ty + 1 fn ty itself
+            numMatchedTys = elems.size() + 2;
+        }
 
         public:
 
@@ -284,10 +299,16 @@ namespace ante {
     class AnDataType : public AnAggregateType {
 
         protected:
-        AnDataType(std::string &n, const std::vector<AnType*> elems, bool isUnion, AnModifier *m) :
-            AnAggregateType(isUnion ? TT_TaggedUnion : TT_Data, elems, m), name(n),
-            fields(), tags(), traitImpls(), unboundType(0), variants(), parentUnionType(0),
-            boundGenerics(), llvmType(0), isAlias(false){}
+        AnDataType(std::string const& n, const std::vector<AnType*> elems, bool isUnion, AnModifier *m) :
+                AnAggregateType(isUnion ? TT_TaggedUnion : TT_Data, elems, m), name(n),
+                fields(), tags(), traitImpls(), unboundType(0), variants(), parentUnionType(0),
+                boundGenerics(), llvmType(0), isAlias(false){
+
+            /* Just the type itself as DataTypes are considered opaque for type checking purposes
+             * since only their names are checked.  If generics are added later to this type,
+             * numMatchedTys must be updated with the number of generic params as well. */
+            numMatchedTys = 1;
+        }
 
         public:
 
@@ -344,26 +365,26 @@ namespace ante {
 
         /** Search for a data type by name.
          * Returns a stub type if no type with a matching name is found. */
-        static AnDataType* get(std::string name, AnModifier *m = nullptr);
+        static AnDataType* get(std::string const& name, AnModifier *m = nullptr);
 
         /** Searches for a bound variant of the type specified by name.
          * If no variant is found, a variant will be bound with the given bindings.
          * If not type with the name 'name' is found this function will issue a
          * warning and return the stub of that type. */
-        static AnDataType* getVariant(Compiler *c, const std::string &name, const std::vector<std::pair<std::string, AnType*>> &boundTys, AnModifier *m = nullptr);
+        static AnDataType* getVariant(Compiler *c, std::string const& name, std::vector<std::pair<std::string, AnType*>> const& boundTys, AnModifier *m = nullptr);
 
         /** Searches for a bound variant of the given unboundType.
          * If no variant is found, a variant will be bound with the given bindings. */
-        static AnDataType* getVariant(Compiler *c, AnDataType *unboundType, const std::vector<std::pair<std::string, AnType*>> &boundTys, AnModifier *m);
+        static AnDataType* getVariant(Compiler *c, AnDataType *unboundType, std::vector<std::pair<std::string, AnType*>> const& boundTys, AnModifier *m = nullptr);
 
         /** Looks for a data type by the given name and modifiers and creates it if has not been already */
-        static AnDataType* getOrCreate(std::string name, std::vector<AnType*> &elems, bool isUnion, AnModifier *m = nullptr);
+        static AnDataType* getOrCreate(std::string const& name, std::vector<AnType*> const& elems, bool isUnion, AnModifier *m = nullptr);
 
         /** Looks for a version of the dt with the given modifiers and creates it if has not been already */
         static AnDataType* getOrCreate(const AnDataType *dt, AnModifier *m = nullptr);
 
         /** Creates or overwrites the type specified by name. */
-        static AnDataType* create(std::string name, std::vector<AnType*> elems, bool isUnion, const std::vector<AnTypeVarType*> &generics, AnModifier *m = nullptr);
+        static AnDataType* create(std::string const& name, std::vector<AnType*> const& elems, bool isUnion, std::vector<AnTypeVarType*> const& generics, AnModifier *m = nullptr);
 
         /** Returns a new AnDataType* with the given modifier appended to the current type's modifiers. */
         AnDataType* addModifier(TokenType m) override;
