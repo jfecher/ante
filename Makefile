@@ -25,15 +25,18 @@ SRCFILES := $(shell find $(SRCDIRS) -type f -name "*.cpp")
 
 OBJFILES := $(patsubst src/%.cpp,obj/%.o,$(SRCFILES))
 
-ANSRCFILES := $(shell find $(SRCDIRS) -type f -name "*.an")
-ANOBJFILES := $(patsubst src/%.an,obj/%.ao,$(ANSRCFILES))
-
-TESTFILES := $(shell find 'tests/integration/' -maxdepth 1 -type f -name "*.an")
+DEPFILES := $(OBJFILES:.o=.d)
 
 #If src/parser.cpp is still present, remove it from objfiles so as to not double-compile it
 OBJFILES := $(patsubst obj/parser.o,,$(OBJFILES))
 
-DEPFILES := $(OBJFILES:.o=.d)
+ANSRCFILES := $(shell find $(SRCDIRS) -type f -name "*.an")
+ANOBJFILES := $(patsubst src/%.an,obj/%.ao,$(ANSRCFILES))
+
+ITESTFILES := $(shell find 'tests/integration' -maxdepth 1 -type f -name "*.an")
+UTESTFILES := $(shell find 'tests/unit' -maxdepth 1 -type f -name "*.cpp")
+
+UOBJFILES := $(patsubst tests/unit/%.cpp,obj/unit/%.o,$(UTESTFILES))
 
 .PHONY: new clean stdlib
 .DEFAULT: ante
@@ -61,18 +64,14 @@ bootante: obj obj/parser.o $(OBJFILES) $(ANOBJFILES)
 	@$(MAKE) obj/operator.o obj/compiler.o
 
 
-#export the stdlib to $(ANLIBDIR) (default ./stdlib/)
-#this is the only part that requires root permissions
-stdlib: $(LIBFILES) Makefile
-	echo 'Exporting $< to $(ANLIBDIR)...';                                       \
-	mkdir -p $(ANLIBDIR);                                                        \
-	cp stdlib/*.an $(ANLIBDIR);                                                  \
-
 new: clean ante
 
 #create the obj folder if it is not present
 obj:
 	@mkdir -p obj
+
+obj/unit:
+	@mkdir -p obj/unit
 
 debug_parser:
 	@echo Generating parser.output file...
@@ -99,18 +98,24 @@ obj/parser.o: src/syntax.y Makefile
 test: unittest integrationtest
 
 
-unittest: ante tests/unit/main.cpp
-	@$(CXX) -DAN_LIB_DIR=$(ANLIBDIR) -DF16_BOOT $(CPPFLAGS) -MMD -MP -Iinclude -c tests/unit/main.cpp -o obj/test-main.o
+
+obj/unit/%.o: tests/unit/%.cpp Makefile | obj/unit
+	@echo Compiling unittest $@...
+	@$(CXX) -DAN_LIB_DIR=$(ANLIBDIR) $(CPPFLAGS) -MMD -MP -Iinclude -c $< -o $@
+
+
+unittest: ante $(UOBJFILES)
+	@echo Linking unittests...
 	@mv obj/ante.o obj/ante.o.tmp
-	@$(CXX) -DAN_LIB_DIR=$(ANLIBDIR) -DF16_BOOT -DTEST_MAIN $(CPPFLAGS) -MMD -MP -Iinclude -c src/ante.cpp -o obj/ante.o
-	@$(CXX) obj/test-main.o obj/parser.o $(OBJFILES) $(ANOBJFILES) $(LLVMFLAGS) -o unittest
+	@$(CXX) -DAN_LIB_DIR=$(ANLIBDIR) -DNO_MAIN $(CPPFLAGS) -MMD -MP -Iinclude -c src/ante.cpp -o obj/ante.o
+	@$(CXX) obj/parser.o $(UOBJFILES) $(OBJFILES) $(ANOBJFILES) $(LLVMFLAGS) -o unittest
 	@mv obj/ante.o.tmp obj/ante.o
 	@./unittest
 
 
 integrationtest:
 	@ERRC=0;                                                                  \
-	for file in $(TESTFILES); do                                              \
+	for file in $(ITESTFILES); do                                             \
 		./ante -check $$file;                                                 \
 		if [ $$? -ne 0 ]; then                                                \
 		    echo "Failed to compile $$file";                                  \
@@ -122,4 +127,4 @@ integrationtest:
 
 #remove all intermediate files
 clean:
-	-@$(RM) obj/*.o obj/*.d include/*.hh include/yyparser.h src/parser.cpp
+	-@$(RM) obj/*.o obj/unit/*.o obj/*.d include/*.hh include/yyparser.h src/parser.cpp
