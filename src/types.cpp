@@ -133,7 +133,7 @@ Result<size_t, string> AnType::getSizeInBits(Compiler *c, string *incompleteType
     size_t total = 0;
 
     if(isPrimitiveTypeTag(this->typeTag))
-        return (size_t)getBitWidthOfTypeTag(this->typeTag);
+        return getBitWidthOfTypeTag(this->typeTag);
 
     if(typeTag == TT_Data or typeTag == TT_TaggedUnion){
         auto *dataTy = (AnDataType*)this;
@@ -174,7 +174,7 @@ Result<size_t, string> AnType::getSizeInBits(Compiler *c, string *incompleteType
         auto *binding = c->lookupTypeVar(tvt->name);
         if(binding){
             if(binding == tvt){
-                return failure<size_t, string>("Warning: typevar " + tvt->name + " refers to itself, cannot calculate size in bits");
+                return "Typevar " + tvt->name + " refers to itself, cannot calculate size in bits";
             }
             return binding->getSizeInBits(c, incompleteType, force);
         }

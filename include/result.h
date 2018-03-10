@@ -15,10 +15,27 @@ namespace ante {
             T val;
             E error;
 
-            U(){}
+            U(){ memset(this, 0, sizeof(U)); }
             U(T v) : val(v){}
             U(E e) : error(e){}
             ~U(){}
+
+            bool initialized() const {
+                for(unsigned i = 0; i < sizeof(U); i++){
+                    if(((char*)this)[i]) return false;
+                }
+                return true;
+            }
+
+            void deleteVal(){
+                if(initialized() && !std::is_trivially_destructible<T>())
+                    val.T::~T();
+            }
+
+            void deleteErr(){
+                if(initialized() && !std::is_trivially_destructible<E>())
+                    error.E::~E();
+            }
         } valOrErr;
 
     public:
@@ -28,16 +45,14 @@ namespace ante {
         Result(T v) : isVal(true), valOrErr(v) {}
         Result(E e) : isVal(false), valOrErr(e) {}
 
-        Result(Result<T, E> &r) : isVal(r.isVal){
-            if(r) valOrErr.val = r.getVal();
-            else valOrErr.error = r.getErr();
+        Result(const Result<T, E> &r) : isVal(r.isVal) {
+            if(r.isVal) valOrErr.val = r.valOrErr.val;
+            else valOrErr.error = r.valOrErr.error;
         }
 
-        Result(Result<T, E> &&r) : isVal(r.isVal){
-            if(r) valOrErr.val = r.getVal();
-            else valOrErr.error = r.getErr();
-            r.isVal = false;
-            r.valOrErr.error = "";
+        Result(Result<T, E> &&r) : isVal(r.isVal) {
+            if(r.isVal) valOrErr.val = (r.valOrErr.val);
+            else valOrErr.error = move(r.valOrErr.error);
         }
 
         Result<T, E>& operator=(const Result<T, E>& rhs){
@@ -52,13 +67,15 @@ namespace ante {
         }
 
         ~Result(){
-            //if(isVal){
-            //    if(!std::is_trivially_destructible<T>())
-            //        valOrErr.val::T::~T();
-            //}else{
-            //    if(!std::is_trivially_destructible<E>())
-            //        valOrErr.error::E::~E();
-            //}
+            if(isVal) valOrErr.deleteVal();
+            else valOrErr.deleteErr();
+        }
+
+        bool operator==(const Result<T, E>& rhs){
+            if(rhs.isVal != isVal) return false;
+
+            if(isVal) return getVal() == rhs.getVal();
+            else return getErr() == rhs.getErr();
         }
 
         explicit operator bool() const{
@@ -77,7 +94,7 @@ namespace ante {
             exit(1);
         }
 
-        std::string getErr() const {
+        E getErr() const {
             if(!isVal)
                 return valOrErr.error;
             
