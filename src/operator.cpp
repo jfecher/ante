@@ -130,14 +130,15 @@ TypedValue Compiler::compExtract(TypedValue &l, TypedValue &r, BinOpNode *op){
 
     if(auto *arrty = dyn_cast<AnArrayType>(l.type)){
         //check for alloca
-        if(LoadInst *li = dyn_cast<LoadInst>(l.val)){
-            Value *arr = li->getPointerOperand();
+        Value *arr = dyn_cast<LoadInst>(l.val) ?
+                cast<LoadInst>(l.val)->getPointerOperand() :
+                addrOf(this, l).val;
 
-            vector<Value*> indices;
-            indices.push_back(ConstantInt::get(*ctxt, APInt(64, 0, true)));
-            indices.push_back(r.val);
-            return TypedValue(builder.CreateLoad(builder.CreateGEP(arr, indices)), arrty->extTy);
-        }
+        vector<Value*> indices;
+        indices.push_back(ConstantInt::get(*ctxt, APInt(64, 0, true)));
+        indices.push_back(r.val);
+        return TypedValue(builder.CreateLoad(builder.CreateGEP(arr, indices)), arrty->extTy);
+
     }else if(auto *ptrty = dyn_cast<AnPtrType>(l.type)){
         return TypedValue(builder.CreateLoad(builder.CreateGEP(l.val, r.val)), ptrty->extTy);
 
