@@ -1041,9 +1041,10 @@ TypedValue addrOf(Compiler *c, TypedValue &tv){
         return TypedValue(li->getPointerOperand(), ptrTy);
     }else if(ExtractValueInst *evi = dyn_cast<ExtractValueInst>(tv.val)){
         Value *agg = evi->getAggregateOperand();
-        size_t index = evi->getAggregateOperandIndex();
+        size_t index = evi->getIndices()[0];
         if(LoadInst *li = dyn_cast<LoadInst>(agg)){
-            return TypedValue(c->builder.CreateConstGEP1_32(li->getPointerOperand(), index), ptrTy);
+            return TypedValue(c->builder.CreateStructGEP(agg->getType(),
+                        li->getPointerOperand(), index), ptrTy);
         }
     }else if(ExtractElementInst *eei = dyn_cast<ExtractElementInst>(tv.val)){
         Value *agg = eei->getVectorOperand();
