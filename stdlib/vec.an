@@ -82,6 +82,12 @@ fun printne: Vec 't v
 
     printne " }"
 
+fun (in): 't elem, Vec 't v -> bool
+    for e in v do
+        if e == elem then
+            return true
+    false
+
 //define the extract operator
 fun (#): Vec 't v, i32 i -> 't
     v._data#i
