@@ -137,8 +137,6 @@ TypedValue Compiler::compExtract(TypedValue &l, TypedValue &r, BinOpNode *op){
             indices.push_back(ConstantInt::get(*ctxt, APInt(64, 0, true)));
             indices.push_back(r.val);
             return TypedValue(builder.CreateLoad(builder.CreateGEP(arr, indices)), arrty->extTy);
-        }else{
-            return TypedValue(builder.CreateExtractElement(l.val, r.val), arrty->extTy);
         }
     }else if(auto *ptrty = dyn_cast<AnPtrType>(l.type)){
         return TypedValue(builder.CreateLoad(builder.CreateGEP(l.val, r.val)), ptrty->extTy);
@@ -1045,12 +1043,6 @@ TypedValue addrOf(Compiler *c, TypedValue &tv){
         if(LoadInst *li = dyn_cast<LoadInst>(agg)){
             return TypedValue(c->builder.CreateStructGEP(agg->getType(),
                         li->getPointerOperand(), index), ptrTy);
-        }
-    }else if(ExtractElementInst *eei = dyn_cast<ExtractElementInst>(tv.val)){
-        Value *agg = eei->getVectorOperand();
-        Value *index = eei->getIndexOperand();
-        if(LoadInst *li = dyn_cast<LoadInst>(agg)){
-            return TypedValue(c->builder.CreateGEP(li->getPointerOperand(), index), ptrTy);
         }
     }
     //if it is not stack-allocated already, allocate it on the stack
