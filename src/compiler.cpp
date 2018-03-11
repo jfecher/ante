@@ -2063,7 +2063,6 @@ int Compiler::linkObj(string inFiles, string outFile){
 
 void Compiler::emitIR(){
     if(!compiled) compile();
-    if(errFlag) puts("Partially compiled module: \n");
 
     std::error_code ec;
     auto&& fd = raw_fd_ostream(outFile + ".ll", ec, llvm::sys::fs::OpenFlags::F_Text);
