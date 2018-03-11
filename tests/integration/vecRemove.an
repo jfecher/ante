@@ -1,17 +1,5 @@
 import Vec
 
-
-fun Vec.pop: mut Vec v
-    v.len -= 1
-
-fun Vec.remove: mut Vec v, i32 idx
-    if idx < v.len - 1 then
-        for i in idx .. i32(v.len)-1 do
-            v._data#i = v._data#(i+1)
-
-        v.len -= 1
-
-
 var v = Vec<i32>()
 v.push 1
 v.push 1
@@ -24,8 +12,16 @@ v.push 21
 
 print v
 
+fun assert: bool b
+    if not b then
+        puts "Assertation failed"
+        exit 1
+
 v.pop()
 print v
+assert (13 in v)
+assert not(21 in v)
 
 v.remove 4
 print v
+assert not(4 in v)
