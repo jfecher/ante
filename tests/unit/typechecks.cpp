@@ -80,11 +80,13 @@ TEST_CASE("TypeVarType Checks", "[typeEq]"){
     
     REQUIRE(c.typeEq(empty_t, empty));
 
-    REQUIRE(c.typeEq(empty_t, empty_u).failed());
+    REQUIRE(c.typeEq(empty_t, empty_u));
     
     REQUIRE(c.typeEq(empty, empty_u));
 
-    REQUIRE(c.typeEq(empty, empty_u)->bindings == bindings2);
+    //When matching 't against 'u no bindings are given
+    //as it is unclear if 't should be bound to 'u or vice versa
+    REQUIRE(c.typeEq(empty, empty_u)->bindings.empty());
 }
 
 

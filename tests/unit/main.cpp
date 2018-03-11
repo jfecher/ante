@@ -4,26 +4,26 @@
 //Override some of the printing behaviour for the tests
 namespace ante {
     //overide << for type bindings
-    std::ostream& operator<<(std::ostream &out, std::pair<std::string, ante::AnType*> const p){
+    ostream& operator<<(ostream &out, pair<string, AnType*> const p){
         out << '"' << p.first << "\" -> " << anTypeToStr(p.second);
         return out;
     }
 
     //overide << for vectors of type bindings
-    std::ostream& operator<<(std::ostream &out, std::vector<std::pair<std::string, ante::AnType*>> const& vec){
+    ostream& operator<<(ostream &out, vector<pair<string, AnType*>> const& vec){
         if(vec.empty()) return out << "{}";
 
-        out << vec[0];
+        out << "{ " << vec[0];
         for(auto &i = ++begin(vec); i != end(vec); i++){
             out << ", " << *i;
         }
-        return out << "}";
+        return out << " }";
     }
 
     //overide << for TypeCheckResult
-    std::ostream& operator<<(std::ostream &out, TypeCheckResult const& tcr){
+    ostream& operator<<(ostream &out, TypeCheckResult const& tcr){
         out << "TypeCheckResult(" << tcr.box->res << ", " << tcr.box->matches
-            << ", " << tcr.box->bindings << ")" << std::endl;
+            << ", " << tcr.box->bindings << ")" << endl;
         return out;
     }
 }

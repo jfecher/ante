@@ -1027,7 +1027,7 @@ TypeCheckResult& typeEqHelper(const Compiler *c, const AnType *l, const AnType *
                 tcr->bindings.emplace_back(rtv->name, nonTypeVar);
                 //fall through to successWithTypeVars below
             }else{ //neither are bound
-                return tcr.successIf(ltv->name == rtv->name);
+                return tcr.success();
             }
         }
 
