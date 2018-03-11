@@ -37,6 +37,21 @@ ext Vec 't
         v._data#v.len = elem
         v.len += 1
 
+    fun pop: mut Vec v
+        v.len -= 1
+
+    fun remove: mut Vec v, i32 idx
+        if idx > 0 then
+            if idx == v.len - 1 then
+                v.len -= 1
+
+            elif idx < v.len - 1 then
+                for i in idx .. i32(v.len)-1 do
+                    v._data#i = v._data#(i+1)
+
+                v.len -= 1
+
+
 type VecIter 't = 't* view, usz idx len
 
 ext Vec : Iterable
