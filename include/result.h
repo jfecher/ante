@@ -5,70 +5,62 @@
 
 namespace ante {
 
+    constexpr size_t cmax(size_t a, size_t b){
+        return a > b ? a : b;
+    }
+
     /** Holds either the templated value or an error string */
     template<typename T, typename E>
     class Result {
     private:
+        static constexpr size_t size = cmax(sizeof(T), sizeof(E));
+        static constexpr size_t align = cmax(alignof(T), alignof(E));
+
+        using Box = typename std::aligned_storage<size, align>::type;
+
         bool isVal;
-
-        union U {
-            T val;
-            E error;
-
-            U(){ memset(this, 0, sizeof(U)); }
-            U(T v) : val(v){}
-            U(E e) : error(e){}
-            ~U(){}
-
-            bool initialized() const {
-                for(unsigned i = 0; i < sizeof(U); i++){
-                    if(((char*)this)[i]) return false;
-                }
-                return true;
-            }
-
-            void deleteVal(){
-                if(initialized() && !std::is_trivially_destructible<T>())
-                    val.T::~T();
-            }
-
-            void deleteErr(){
-                if(initialized() && !std::is_trivially_destructible<E>())
-                    error.E::~E();
-            }
-        } valOrErr;
+        Box valOrErr;
 
     public:
-        Result(bool b, T v) : isVal(b), valOrErr(v){}
-        Result(bool b, E v) : isVal(b), valOrErr(v){}
-
-        Result(T v) : isVal(true), valOrErr(v) {}
-        Result(E e) : isVal(false), valOrErr(e) {}
-
-        Result(const Result<T, E> &r) : isVal(r.isVal) {
-            if(r.isVal) valOrErr.val = r.valOrErr.val;
-            else valOrErr.error = r.valOrErr.error;
+        Result(bool b, T v) : isVal(b) {
+            ::new (&valOrErr) T(v);
         }
 
+        Result(bool b, E v) : isVal(b) {
+            ::new (&valOrErr) E(v);
+        }
+
+        Result(T t) : isVal(true) {
+            ::new (&valOrErr) T(t);
+        }
+
+        Result(E e) : isVal(false) {
+            ::new (&valOrErr) E(e);
+        }
+
+        //Result(const Result<T, E> &r) : isVal(r.isVal), valOrErr(r) {}
+
         Result(Result<T, E> &&r) : isVal(r.isVal) {
-            if(r.isVal) valOrErr.val = (r.valOrErr.val);
-            else valOrErr.error = move(r.valOrErr.error);
+            if(isVal) ::new (&valOrErr) T((*reinterpret_cast<T*>(&r.valOrErr)));
+            else ::new (&valOrErr) E(move(*reinterpret_cast<E*>(&r.valOrErr)));
         }
 
         Result<T, E>& operator=(const Result<T, E>& rhs){
             if(rhs.isVal){
                 isVal = true;
-                valOrErr.val = rhs.getVal();
+                auto t = rhs.getVal();
+                valOrErr = *reinterpret_cast<Box*>(&t);
             }else{
                 isVal = false;
-                valOrErr.error = rhs.getErr();
+                auto e = rhs.getErr();
+                valOrErr = *reinterpret_cast<Box*>(&e);
             }
             return *this;
         }
 
         ~Result(){
-            if(isVal) valOrErr.deleteVal();
-            else valOrErr.deleteErr();
+            if(isVal) reinterpret_cast<T*>(&valOrErr)->T::~T();
+            else reinterpret_cast<E*>(&valOrErr)->E::~E();
         }
 
         bool operator==(const Result<T, E>& rhs){
@@ -88,7 +80,7 @@ namespace ante {
 
         T getVal() const{
             if(isVal)
-                return valOrErr.val;
+                return *reinterpret_cast<const T*>(&valOrErr);
             
             std::cerr << "getVal() called on Result without a value!" << std::endl;
             exit(1);
@@ -96,7 +88,7 @@ namespace ante {
 
         E getErr() const {
             if(!isVal)
-                return valOrErr.error;
+                return *reinterpret_cast<const E*>(&valOrErr);
             
             std::cerr << "getVal() called on Result without a value!" << std::endl;
             exit(1);
