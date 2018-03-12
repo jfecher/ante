@@ -1,4 +1,5 @@
 #include "function.h"
+#include "argtuple.h"
 
 using namespace std;
 using namespace llvm;
@@ -304,6 +305,7 @@ vector<llvm::Argument*> buildArguments(FunctionType *ft){
     return args;
 }
 
+
 /*
  *  Handles the modifiers or compiler directives (eg. ![inline]) then
  *  compiles the function fdn with either compFn or compLetBindingFn.
@@ -350,7 +352,8 @@ TypedValue compFnWithModifiers(Compiler *c, FuncDecl *fd, ModNode *ppn){
     // ppn is a normal modifier
     }else{
         if(ppn->mod == Tok_Ante){
-            if(c->isJIT){
+            bool fnInCompAPI = compapi[fd->getName()].get();
+            if(c->isJIT && !fnInCompAPI){
                 fn = c->compFn(fd);
             }else{
                 auto *rettn = (TypeNode*)fd->fdn->type.get();

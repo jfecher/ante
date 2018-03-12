@@ -1,0 +1,10 @@
+
+ante fun get_val :=
+    let val = Ante.lookup "val".cStr
+    print "got ${val}"
+    val
+
+Ante.store "val".cStr 55
+
+let v = get_val()
+Ante.debug v

@@ -947,8 +947,6 @@ void createDriverFunction(Compiler *c, FuncDecl *fd, vector<TypedValue> const& t
 }
 
 
-extern map<string, unique_ptr<CtFunc>> compapi;
-
 /*
  *  Compile a compile-time function/macro which should not return a function call,
  *  just a compile-time constant.

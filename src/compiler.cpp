@@ -1035,7 +1035,7 @@ string mangle(string const& base, vector<AnType*> const& params){
 }
 
 string mangle(FuncDecl *fd, vector<AnType*> const& params){
-    string name = (fd->obj ? anTypeToStr(fd->obj) + "_" : "") + fd->fdn->name;
+    string name = fd->fdn->name;
     for(auto *tv : params)
         if(tv->typeTag != TT_Void)
             name += "_" + anTypeToStrWithoutModifiers(tv);

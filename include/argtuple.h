@@ -95,6 +95,8 @@ namespace ante {
         TypedValue* operator()(Compiler *c, Arg tv1, Arg tv2, Arg tv3, Arg tv4, Arg tv5);
         TypedValue* operator()(Compiler *c, Arg tv1, Arg tv2, Arg tv3, Arg tv4, Arg tv5, Arg tv6);
     };
+
+    extern std::map<std::string, std::unique_ptr<ante::CtFunc>> compapi;
 }
 
 #endif
