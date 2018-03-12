@@ -18,10 +18,15 @@ fun assert: bool b
         exit 1
 
 v.pop()
-print v
 assert (13 in v)
 assert not(21 in v)
-
-v.remove 4
 print v
-assert not(4 in v)
+
+let idx4 = v#4
+v.remove_index 4
+assert not(idx4 in v)
+print v
+
+v.remove_elem 8
+assert not(8 in v)
+print v

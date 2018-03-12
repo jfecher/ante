@@ -37,19 +37,29 @@ ext Vec 't
         v._data#v.len = elem
         v.len += 1
 
-    fun pop: mut Vec v
-        v.len -= 1
+    fun pop: mut Vec 't v -> Maybe 't
+        if v.len > 0 then
+            v.len -= 1
+            Some (v._data#v.len)
+        else None
 
-    fun remove: mut Vec v, i32 idx
-        if idx > 0 then
-            if idx == v.len - 1 then
-                v.len -= 1
+    fun remove_index: mut Vec v, i32 idx
+        if idx == v.len - 1 then
+            v.len -= 1
+        elif idx > 0 and idx < v.len - 1 then
+            for i in idx .. i32(v.len)-1 do
+                v._data#i = v._data#(i+1)
 
-            elif idx < v.len - 1 then
-                for i in idx .. i32(v.len)-1 do
-                    v._data#i = v._data#(i+1)
+            v.len -= 1
+        else
+            print "Vec.remove: index ${idx} out of bounds for Vec of length ${v.len}"
+            exit 1
 
-                v.len -= 1
+    fun remove_elem: mut Vec 't v, 't elem
+        for i in 0 .. i32(v.len - 1) do
+            if elem == v._data#i then
+                v.remove_index i
+                return ()
 
 
 type VecIter 't = 't* view, usz idx len
