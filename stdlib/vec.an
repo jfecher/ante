@@ -30,6 +30,8 @@ ext Vec 't
             v._data = 't* ptr
             v.cap += numElems
 
+    //push an element onto the end of the vector.
+    //resizes if necessary
     fun push: mut Vec 't v, 't elem
         if v.len >= v.cap then
             v.reserve v.cap
@@ -37,16 +39,20 @@ ext Vec 't
         v._data#v.len = elem
         v.len += 1
 
+    //pop the last element off if it exists
+    //this will never resize the vector.
     fun pop: mut Vec 't v -> Maybe 't
         if v.len > 0 then
             v.len -= 1
             Some (v._data#v.len)
         else None
 
-    fun remove_index: mut Vec v, i32 idx
+    //remove the element at the given index and return it.
+    //will error if the index is out of bounds.
+    fun remove_index: mut Vec 't v, i32 idx -> 't
         if idx == v.len - 1 then
             v.len -= 1
-        elif idx > 0 and idx < v.len - 1 then
+        elif idx >= 0 and idx < v.len - 1 then
             for i in idx .. i32(v.len)-1 do
                 v._data#i = v._data#(i+1)
 
@@ -55,11 +61,32 @@ ext Vec 't
             print "Vec.remove: index ${idx} out of bounds for Vec of length ${v.len}"
             exit 1
 
-    fun remove_elem: mut Vec 't v, 't elem
+        v._data#v.len
+
+    //remove the first instance of the given element from
+    //the vector or none if the element was not found.
+    //Uses == to determine element equality.
+    //returns the index where the element was found.
+    fun remove_first: mut Vec 't v, 't elem -> Maybe i32
         for i in 0 .. i32(v.len - 1) do
             if elem == v._data#i then
                 v.remove_index i
-                return ()
+                return Some i
+        None
+
+    //remove all matching elements from the vector and
+    //return the number of elements removed.
+    //Uses == to determine element equality.
+    fun remove_all: mut Vec 't v, 't elem -> u32
+        var count = 0u32
+        var i = 0
+        while i < v.len do
+            if elem == v._data#i then
+                v.remove_index i
+                count += 1
+                i -= 1
+            i += 1
+        count
 
 
 type VecIter 't = 't* view, usz idx len
@@ -105,3 +132,12 @@ fun (#): Vec 't v, i32 i -> 't
 //define the insert operator
 fun (#): mut Vec 't v, i32 i, 't x
     v._data#i = x
+
+fun (==): Vec 't l r -> bool
+    if l.len != r.len then
+        return false
+
+    for i in 0 .. i32(l.len - 1) do
+        if l._data#i != r._data#i then
+            return false
+    true

@@ -27,6 +27,20 @@ v.remove_index 4
 assert not(idx4 in v)
 print v
 
-v.remove_elem 8
+//remove element 8 at index 4
+let idx = v.remove_first 8
 assert not(8 in v)
+assert (idx == Some 4)
 print v
+
+let count = v.remove_all 1
+assert not(1 in v)
+assert (count == 2)
+print v
+
+var v2 = Vec<i32>()
+v2.push 2
+v2.push 3
+v2.push 13
+
+assert (v == v2)

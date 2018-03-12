@@ -51,6 +51,18 @@ type Maybe 't =
    | Some 't
    | None
 
+fun (==): Maybe l r -> bool
+    match l with
+    | Some lv ->
+        match r with
+        | Some rv -> lv == rv
+        | None -> false
+    | None ->
+        match r with
+        | Some rv -> false
+        | None -> true
+
+
 //Compile-time functions
 
 //prints type and value (llvm dump) of variable while compiling
