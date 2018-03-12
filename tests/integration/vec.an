@@ -10,8 +10,6 @@ v.push 8
 v.push 13
 v.push 21
 
-print v
-
 fun assert: bool b
     if not b then
         puts "Assertation failed"
@@ -20,27 +18,57 @@ fun assert: bool b
 v.pop()
 assert (13 in v)
 assert not(21 in v)
-print v
 
 let idx4 = v#4
 v.remove_index 4
 assert not(idx4 in v)
-print v
 
 //remove element 8 at index 4
 let idx = v.remove_first 8
 assert not(8 in v)
 assert (idx == Some 4)
-print v
 
 let count = v.remove_all 1
 assert not(1 in v)
 assert (count == 2)
-print v
-
+ 
 var v2 = Vec<i32>()
 v2.push 2
 v2.push 3
 v2.push 13
 
 assert (v == v2)
+
+
+
+var v3 = Vec<i32>()
+v3.push 0
+v3.push 1
+v3.push 2
+v3.push 3
+v3.push 4
+v3.push 5
+v3.push 6
+v3.push 7
+v3.push 8
+v3.push 9
+v3.push 10
+
+var idxs = Vec<i32>()
+idxs.push 0
+idxs.push 1
+idxs.push 4
+idxs.push 5
+idxs.push 7
+idxs.push 10
+
+v3.remove_indices idxs
+
+var v4 = Vec<i32>()
+v4.push 2
+v4.push 3
+v4.push 6
+v4.push 8
+v4.push 9
+
+assert (v3 == v4)

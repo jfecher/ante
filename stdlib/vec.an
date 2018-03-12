@@ -11,6 +11,13 @@ ext Vec 't
     fun is_empty: Vec v =
         v.len == 0
 
+    fun indices: Vec v =
+        Range(0, i32(v.len - 1), 1)
+
+    fun len: Vec v = v.len
+
+    fun capacity: Vec v = v.cap
+
     //Fill Vec with items from the Range
     fun fill: mut Vec i32 v, Range r -> Vec i32
         for i in r do
@@ -58,7 +65,7 @@ ext Vec 't
 
             v.len -= 1
         else
-            print "Vec.remove: index ${idx} out of bounds for Vec of length ${v.len}"
+            print "Vec.remove_index: index ${idx} out of bounds for Vec of length ${v.len}"
             exit 1
 
         v._data#v.len
@@ -68,25 +75,47 @@ ext Vec 't
     //Uses == to determine element equality.
     //returns the index where the element was found.
     fun remove_first: mut Vec 't v, 't elem -> Maybe i32
-        for i in 0 .. i32(v.len - 1) do
+        for i in v.indices () do
             if elem == v._data#i then
                 v.remove_index i
                 return Some i
         None
 
+    //Remove the given indices from the vector
+    //Expects the indices to be in sorted order.
+    //Will error if any index is out of bounds.
+    fun remove_indices: mut Vec 't v, Vec i32 indices
+        var moved = 0
+        for i in indices.indices() do
+            let cur = indices#i
+
+            if cur < 0 or cur >= v.len then
+                print "Vec.remove: index ${cur} out of bounds for Vec of length ${v.len}"
+                exit 1
+
+            moved += 1
+            if i != indices.len - 1 then
+                let nxt = indices#(i+1)
+                for j in cur+1 .. nxt-1 do
+                    v._data#(j-moved) = v._data#j
+            else
+                for j in cur+1 .. i32(v.len - 1) do
+                    v._data#(j-moved) = v._data#j
+
+        v.len -= moved
+
+
     //remove all matching elements from the vector and
     //return the number of elements removed.
     //Uses == to determine element equality.
-    fun remove_all: mut Vec 't v, 't elem -> u32
-        var count = 0u32
-        var i = 0
-        while i < v.len do
+    fun remove_all: mut Vec 't v, 't elem -> usz
+        var indices = Vec<i32>()
+        for i in v.indices() do
             if elem == v._data#i then
-                v.remove_index i
-                count += 1
-                i -= 1
-            i += 1
-        count
+                indices.push i
+
+        v.remove_indices indices
+        indices.len
 
 
 type VecIter 't = 't* view, usz idx len
@@ -119,12 +148,6 @@ fun printne: Vec 't v
 
     printne " }"
 
-fun (in): 't elem, Vec 't v -> bool
-    for e in v do
-        if e == elem then
-            return true
-    false
-
 //define the extract operator
 fun (#): Vec 't v, i32 i -> 't
     v._data#i
@@ -132,6 +155,12 @@ fun (#): Vec 't v, i32 i -> 't
 //define the insert operator
 fun (#): mut Vec 't v, i32 i, 't x
     v._data#i = x
+
+fun (in): 't elem, Vec 't v -> bool
+    for e in v do
+        if e == elem then
+            return true
+    false
 
 fun (==): Vec 't l r -> bool
     if l.len != r.len then
