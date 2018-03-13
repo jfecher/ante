@@ -35,6 +35,8 @@ namespace ante {
 
         bool operator!() const{ return !type; }
 
+        explicit operator bool() const{ return type; }
+
         llvm::Type* getType() const{ return val->getType(); }
 
         /**

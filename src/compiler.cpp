@@ -418,7 +418,7 @@ vector<TypedValue> TupleNode::unpack(Compiler *c){
     for(auto& n : exprs){
         auto tv = n->compile(c);
 
-        if(!!tv && tv.type->typeTag != TT_Void)
+        if(tv && tv.type->typeTag != TT_Void)
             ret.push_back(tv);
     }
     return ret;
@@ -939,7 +939,7 @@ TypedValue compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
             string op = "#";
             string mangledfn = mangle(op, {tyn, AnType::getI32(), newval.type});
             auto fn = c->getFunction(op, mangledfn);
-            if(!!fn)
+            if(fn)
                 return TypedValue(c->builder.CreateCall(fn.val, vector<Value*>{
                             var, c->builder.getInt32(index), newval.val}),
                         fn.type->getFunctionReturnType());
@@ -1877,7 +1877,7 @@ TypedValue RootNode::compile(Compiler *c){
         }
     }
 
-    return !!ret ? ret : c->getVoidLiteral();
+    return ret ? ret : c->getVoidLiteral();
 }
 
 /**
@@ -2092,7 +2092,7 @@ void TypedValue::dump() const{
 
         for(auto &c : fl->candidates){
             cout << endl << c->getName() << " (" << c->mangledName << "): \n";
-            if(!!c->tv){
+            if(c->tv){
                 c->tv.dump();
             }else{
                 cout << "(not yet compiled)\n\n";

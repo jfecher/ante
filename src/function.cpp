@@ -509,8 +509,8 @@ TypedValue compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, vector
     string mangled = mangle(fd, args);
 
     FuncDecl* fdRedef;
-    if(!!(fdRedef = c->getFuncDecl(fd->getName(), mangled))){
-        if(fdRedef->mangledName == mangled && !!fdRedef->tv){
+    if((fdRedef = c->getFuncDecl(fd->getName(), mangled))){
+        if(fdRedef->mangledName == mangled && fdRedef->tv){
             return fdRedef->tv;
         }
     }
@@ -666,7 +666,7 @@ TypedValue Compiler::getFunction(string& name, string& mangledName){
     auto *fd = getFuncDeclFromVec(list, mangledName);
     if(!fd) return {};
 
-    if(!!fd->tv) return fd->tv;
+    if(fd->tv) return fd->tv;
 
     //Function has been declared but not defined, so define it.
     //fd->tv = compFn(fd);
@@ -711,7 +711,7 @@ vector<pair<TypeCheckResult,FuncDecl*>> filterHighestMatches(vector<pair<TypeChe
     vector<pair<TypeCheckResult,FuncDecl*>> highestMatches;
 
     for(auto &tcr : matches){
-        if(!!tcr.first and tcr.first->matches >= highestMatch){
+        if(tcr.first and tcr.first->matches >= highestMatch){
             if(tcr.first->matches > highestMatch){
                 highestMatch = tcr.first->matches;
                 reqBindings = tcr.first->bindings.size();
@@ -792,7 +792,7 @@ TypedValue compFnWithArgs(Compiler *c, FuncDecl *fd, vector<AnType*> args){
         return compTemplateFn(c, fd, tc, args);
     else if(!tc) //tc->res == TypeCheckResult::Failure
         return {};
-    else if(!!fd->tv)
+    else if(fd->tv)
         return fd->tv;
     else
         return c->compFn(fd);

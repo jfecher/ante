@@ -189,7 +189,7 @@ TypedValue Compiler::compInsert(BinOpNode *op, Node *assignExpr){
     string basefn = "#";
     vector<AnType*> args = {tmp.type, AnType::getI32(), newVal.type};
     auto fn = getMangledFn(basefn, args);
-    if(!!fn){
+    if(fn){
         vector<Value*> args = {var, index.val, newVal.val};
         auto *retty = ((AnAggregateType*)fn.type)->extTys[0];
         auto *call = builder.CreateCall(fn.val, args);
@@ -332,7 +332,7 @@ ReinterpretCastResult checkForReinterpretCast(Compiler *c, AnType *castTy, Typed
         auto argTup = toArgTuple(valToCast.type);
         auto tc = c->typeEq(dataTy->extTys, argTup);
 
-        if(!!tc){
+        if(tc){
             if(dataTy->isUnionTag())
                 return {ReinterpretCastResult::ValToUnion, tc, dataTy};
             else
@@ -344,7 +344,7 @@ ReinterpretCastResult checkForReinterpretCast(Compiler *c, AnType *castTy, Typed
         auto argTup = toArgTuple(castTy);
 
         auto tc = c->typeEq(valDt->extTys, argTup);
-        if(!!tc){
+        if(tc){
             return {ReinterpretCastResult::ValToPrimitive, tc, dataTy};
         }
     }
@@ -450,7 +450,7 @@ TypedValue createCast(Compiler *c, AnType *castTy, TypedValue &valToCast, LOC_TY
 
         //Compile the function now that we know to use it over a cast
         auto fn = c->getCastFn(valToCast.type, castTy, fd);
-        if(!!fn){
+        if(fn){
             if(fn.type->typeTag == TT_MetaFunction){
                 string baseName = getCastFnBaseName(castTy);
                 string mangledName = mangle(baseName, {valToCast.type});
@@ -1062,9 +1062,9 @@ TypedValue tryImplicitCast(Compiler *c, TypedValue &arg, AnType *castTy){
     //check for an implicit Cast function
     TypedValue fn;
 
-    if(!!(fn = c->getCastFn(arg.type, castTy))){
+    if((fn = c->getCastFn(arg.type, castTy))){
         AnFunctionType *fty = (AnFunctionType*)fn.type;
-        if(!!c->typeEq({arg.type}, fty->extTys)){
+        if(c->typeEq({arg.type}, fty->extTys)){
             vector<Value*> args{arg.val};
             auto *call = c->builder.CreateCall(fn.val, args);
             return TypedValue(call, fn.type->getFunctionReturnType());
@@ -1140,12 +1140,12 @@ TypedValue searchForFunction(Compiler *c, Node *l, vector<TypedValue> const& typ
             string fnName = toModuleName(typedArgs[0].type) + "_" + vn->name;
 
             TypedValue tvf = c->getMangledFn(fnName, params);
-            if(!!tvf) return tvf;
+            if(tvf) return tvf;
         }
 
 
         auto f = c->getMangledFn(vn->name, params);
-        if(!!f) return f;
+        if(f) return f;
     }
 
     //if it is not a varnode/no method is found, then compile it normally
@@ -1213,10 +1213,11 @@ TypedValue compFnCall(Compiler *c, Node *l, Node *r){
 
     size_t argc = fty->extTys.size();
     if(argc != args.size() and (!f or !f->isVarArg())){
-        //check if an empty tuple (a void value) is being applied to a zero argument function before continuing
-        //if not checked, it will count it as an argument instead of the absence of any
-        //NOTE: this has the possibly unwanted side effect of allowing 't->void function applications to be used
-        //      as parameters for functions requiring 0 parameters, although this does not affect the behaviour of either.
+        //check if an empty tuple (a void value) is being applied to a zero argument function before
+        //continuing if not checked, it will count it as an argument instead of the absence of any
+        //NOTE: this has the possibly unwanted side effect of allowing 't->void function applications
+        //      to be used as parameters for functions requiring 0 parameters, although this does
+        //      not affect the behaviour of the call.
         if(argc != 0 || typedArgs[0].type->typeTag != TT_Void){
             if(args.size() == 1)
                 return c->compErr("Called function was given 1 argument but was declared to take "
@@ -1247,7 +1248,7 @@ TypedValue compFnCall(Compiler *c, Node *l, Node *r){
         if(!typecheck){
             TypedValue cast = tryImplicitCast(c, tArg, paramTy);
 
-            if(!!cast){
+            if(cast){
                 args[i] = cast.val;
                 typedArgs[i] = cast;
             }else{
@@ -1421,7 +1422,7 @@ TypedValue handlePrimitiveNumericOp(BinOpNode *bop, Compiler *c, TypedValue &lhs
  */
 TypedValue typeCheckWithImplicitCasts(Compiler *c, TypedValue &arg, AnType *ty){
     auto tc = c->typeEq(arg.type, ty);
-    if(!!tc) return arg;
+    if(tc) return arg;
 
     return tryImplicitCast(c, arg, ty);
 }
@@ -1489,7 +1490,7 @@ TypedValue BinOpNode::compile(Compiler *c){
     TypedValue rhs = rval->compile(c);
 
     TypedValue res;
-    if(!!(res = checkForOperatorOverload(c, lhs, op, rhs))){
+    if((res = checkForOperatorOverload(c, lhs, op, rhs))){
         return res;
     }
 

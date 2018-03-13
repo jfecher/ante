@@ -267,8 +267,11 @@ namespace ante {
 
         AnType *retTy;
 
-        static AnFunctionType* get(AnType *retTy, const std::vector<AnType*> elems, bool isMetaFunction = false, AnModifier *m = nullptr);
-        static AnFunctionType* get(Compiler *c, AnType* retty, parser::NamedValNode* params, bool isMetaFunction = false, AnModifier *m = nullptr);
+        static AnFunctionType* get(AnType *retTy, const std::vector<AnType*> elems,
+                bool isMetaFunction = false, AnModifier *m = nullptr);
+
+        static AnFunctionType* get(Compiler *c, AnType* retty, parser::NamedValNode* params,
+                bool isMetaFunction = false, AnModifier *m = nullptr);
 
         /** Returns a version of the current type with an additional modifier m. */
         AnFunctionType* addModifier(TokenType m) override;

@@ -71,7 +71,7 @@ extern "C" {
         char *name = *(char**)ArgTuple(c, nameTv).asRawData();
 
         auto t = c->ctCtxt->ctStores.lookup(name);
-        if(!!t){
+        if(t){
             return new TypedValue(t);
         }else{
             cerr << "error: ctLookup: Cannot find var '" << name << "'" << endl;
