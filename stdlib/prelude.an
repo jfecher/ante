@@ -192,32 +192,37 @@ fun Str.reverse: Str s -> Str
 
 fun Str.init: i64 i -> Str
     if i == 0 then return "0"
-    var buf = c8* calloc 21 1
-    var digit = 0usz
+    var len = 0usz
+    var buf = c8* malloc 21
+    buf#20 = '\0'
 
     var x = i
-    var isNeg = x < 0 and ((x *= -1); true)
+    let isNeg = i < 0 and ((x *= -1); true)
 
-    while x > 0 do
-        buf#digit = c8(x % 10) + '0'
+    while x != 0 do
+        len += 1
+        buf#(20 - len) = '0' + c8(x % 10)
         x /= 10
-        digit += 1
 
-    let s = reverse Str(buf, digit)
-    if isNeg then "-" ++ s else s
+    if isNeg then
+        len += 1
+        buf#(20 - len) = '-'
+
+    Str(buf + (20 - len), len)
 
 fun Str.init: u64 i -> Str
     if i == 0 then return "0"
-    var buf = c8* calloc 21 1
-    var digit = 0usz
+    var len = 0usz
+    var buf = c8* malloc 21
+    buf#20 = '\0'
 
     var x = i
-    while x > 0 do
-        buf#digit = c8(x % 10) + '0'
+    while x != 0 do
+        len += 1
+        buf#(20 - len) = '0' + c8(x % 10)
         x /= 10
-        digit += 1
 
-    reverse Str(buf, digit)
+    Str(buf + (20 - len), len)
 
 
 !inline fun Str.init: i8 x = Str (i64 x)
