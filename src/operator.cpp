@@ -1079,6 +1079,15 @@ TypedValue deduceFunction(Compiler *c, FunctionCandidates *fc, vector<TypedValue
 
     auto argTys = toAnTypeVector(args);
 
+    if(fc->candidates.size() == 1){
+        auto fnty = AnFunctionType::get(c, AnType::getVoid(), fc->candidates[0]->fdn->params.get());
+        if(fnty->isGeneric){
+            return compFnWithArgs(c, fc->candidates[0].get(), argTys);
+        }else{
+            return c->compFn(fc->candidates[0].get());
+        }
+    }
+
     auto matches = filterBestMatches(c, fc->candidates, argTys);
 
     if(matches.size() == 1){
@@ -1199,8 +1208,10 @@ TypedValue compFnCall(Compiler *c, Node *l, Node *r){
         delete funcs;
     }
 
-    if(!tvf)
+    if(!tvf){
+        c->errFlag = true;
         return {};
+    }
 
     if(tvf.type->typeTag != TT_Function && tvf.type->typeTag != TT_MetaFunction)
         return c->compErr("Called value is not a function or method, it is a(n) " +
@@ -1262,7 +1273,10 @@ TypedValue compFnCall(Compiler *c, Node *l, Node *r){
 
                 size_t index = i - (is_method ? 1 : 0);
                 Node* locNode = tn->exprs[index].get();
-                if(!locNode) return {};
+                if(!locNode){
+                    c->errFlag = true;
+                    return {};
+                }
 
                 return c->compErr("Argument " + to_string(i+1) + " of function is a(n) " + anTypeToColoredStr(tArg.type)
                     + " but was declared to be a(n) " + anTypeToColoredStr(paramTy) + " and there is no known implicit cast", locNode->loc);

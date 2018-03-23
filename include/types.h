@@ -55,7 +55,6 @@ namespace ante {
     bool isIntTypeTag(const TypeTag ty);
     bool isFPTypeTag(const TypeTag tt);
     bool isUnsignedTypeTag(const TypeTag tagTy);
-
 }
 
 #endif
