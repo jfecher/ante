@@ -1074,6 +1074,52 @@ TypedValue tryImplicitCast(Compiler *c, TypedValue &arg, AnType *castTy){
 }
 
 
+void showNoMatchingCandidateError(Compiler *c, vector<shared_ptr<FuncDecl>> &candidates,
+        vector<AnType*> &argTys, LOC_TY &loc){
+
+    try {
+        lazy_printer msg = "No matching candidates for call to " + candidates[0]->getName();
+        if(!argTys.empty())
+            msg = msg + " with args " + anTypeToColoredStr(AnAggregateType::get(TT_Tuple, argTys));
+
+        c->compErr(msg, loc);
+    }catch(CtError *e){
+        for(auto &fd : candidates){
+            auto *fnty = fd->type ? fd->type
+                : AnFunctionType::get(c, AnType::getVoid(), fd->fdn->params.get());
+            auto *params = AnAggregateType::get(TT_Tuple, fnty->extTys);
+
+            c->compErr("Candidate function with params "+anTypeToColoredStr(params),
+                    fd->fdn->loc, ErrorType::Note);
+        }
+        throw e;
+    }
+}
+
+
+void showMultipleEquallyMatchingCandidatesError(Compiler *c, vector<shared_ptr<FuncDecl>> &candidates,
+        vector<AnType*> argTys, FunctionListTCResults &matches, LOC_TY &loc){
+
+    try {
+        lazy_printer msg = "Multiple equally-matching candidates found for call to " + candidates[0]->getName();
+        if(!argTys.empty())
+            msg = msg + " with args " + anTypeToColoredStr(AnAggregateType::get(TT_Tuple, argTys));
+
+        c->compErr(msg, loc);
+    }catch(CtError *e){
+        for(auto &p : matches){
+            auto *fnty = p.second->type ? p.second->type
+                : AnFunctionType::get(c, AnType::getVoid(), p.second->fdn->params.get());
+            auto *params = AnAggregateType::get(TT_Tuple, fnty->extTys);
+
+            c->compErr("Candidate function with params "+anTypeToColoredStr(params),
+                    p.second->fdn->loc, ErrorType::Note);
+        }
+        throw e;
+    }
+}
+
+
 TypedValue deduceFunction(Compiler *c, FunctionCandidates *fc, vector<TypedValue> &args, LOC_TY &loc){
     if(!!fc->obj) push_front(args, fc->obj);
 
@@ -1094,39 +1140,9 @@ TypedValue deduceFunction(Compiler *c, FunctionCandidates *fc, vector<TypedValue
         return compFnWithArgs(c, matches[0].second, argTys);
 
     }else if(matches.empty()){
-        try {
-            lazy_printer msg = "No matching candidates for call to "+fc->candidates[0]->getName();
-            if(!argTys.empty())
-                msg = msg + " with args " + anTypeToColoredStr(AnAggregateType::get(TT_Tuple, argTys));
-
-            c->compErr(msg, loc);
-        }catch(CtError *e){
-            for(auto &fd : fc->candidates){
-                auto *fnty = fd->type ? fd->type
-                    : AnFunctionType::get(c, AnType::getVoid(), fd->fdn->params.get());
-                auto *params = AnAggregateType::get(TT_Tuple, fnty->extTys);
-
-                c->compErr("Candidate function with params "+anTypeToColoredStr(params), fd->fdn->loc, ErrorType::Note);
-            }
-            throw e;
-        }
+        showNoMatchingCandidateError(c, fc->candidates, argTys, loc);
     }else{
-        try {
-            lazy_printer msg = "Multiple equally-matching candidates found for call to "+fc->candidates[0]->getName();
-            if(!argTys.empty())
-                msg = msg + " with args " + anTypeToColoredStr(AnAggregateType::get(TT_Tuple, argTys));
-
-            c->compErr(msg, loc);
-        }catch(CtError *e){
-            for(auto &p : matches){
-                auto *fnty = p.second->type ? p.second->type
-                    : AnFunctionType::get(c, AnType::getVoid(), p.second->fdn->params.get());
-                auto *params = AnAggregateType::get(TT_Tuple, fnty->extTys);
-
-                c->compErr("Candidate function with params "+anTypeToColoredStr(params), p.second->fdn->loc, ErrorType::Note);
-            }
-            throw e;
-        }
+        showMultipleEquallyMatchingCandidatesError(c, fc->candidates, argTys, matches, loc);
     }
     return {};
 }
