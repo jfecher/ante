@@ -49,7 +49,7 @@ namespace ante {
 
     public:
 
-        ~AnType() = default;
+        virtual ~AnType() = default;
 
         TypeTag typeTag;
         bool isGeneric;

@@ -11,6 +11,10 @@
 #include <iostream>
 #include <llvm/Support/TargetRegistry.h>
 
+#if LLVM_VERSION_MAJOR >= 6
+#include <llvm/Support/raw_os_ostream.h>
+#endif
+
 using namespace std;
 using namespace ante;
 using namespace ante::parser;
@@ -58,7 +62,12 @@ void printHelp(){
 
     puts("\nNative target: " AN_TARGET_TRIPLE);
 
+#if LLVM_VERSION_MAJOR >= 6
+    llvm::raw_os_ostream os{std::cout};
+    llvm::TargetRegistry::printRegisteredTargetsForVersion(os);
+#else
     llvm::TargetRegistry::printRegisteredTargetsForVersion();
+#endif
 }
 
 namespace ante {

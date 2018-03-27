@@ -1,6 +1,11 @@
 #include <llvm/IR/Verifier.h>          //for verifying basic structure of functions
 #include <llvm/Support/FileSystem.h>   //for r/w when outputting bitcode
 #include <llvm/Support/raw_ostream.h>  //for ostream when outputting bitcode
+
+#if LLVM_VERSION_MAJOR >= 6
+#include <llvm/Support/raw_os_ostream.h>
+#endif
+
 #include <llvm/Transforms/Scalar.h>    //for most passes
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/Support/TargetRegistry.h>
@@ -1984,7 +1989,12 @@ const Target* getTarget(){
         cerr << err << endl;
 		cerr << "Selected triple: " << AN_NATIVE_ARCH ", " AN_NATIVE_VENDOR ", " AN_NATIVE_OS << endl;
 		cout << "\nRegistered targets:" << endl;
+#if LLVM_VERSION_MAJOR >= 6
+        llvm::raw_os_ostream os{std::cout};
+		TargetRegistry::printRegisteredTargetsForVersion(os);
+#else
 		TargetRegistry::printRegisteredTargetsForVersion();
+#endif
         exit(1);
     }
 
@@ -1999,8 +2009,13 @@ TargetMachine* getTargetMachine(){
     string triple = Triple(AN_NATIVE_ARCH, AN_NATIVE_VENDOR, AN_NATIVE_OS).getTriple();
     TargetOptions op;
 
+#if LLVM_VERSION_MAJOR >= 6
+    TargetMachine *tm = target->createTargetMachine(triple, cpu, features, op, Reloc::Model::Static,
+            None, CodeGenOpt::Level::Aggressive);
+#else
     TargetMachine *tm = target->createTargetMachine(triple, cpu, features, op, Reloc::Model::Static,
             CodeModel::Default, CodeGenOpt::Level::Aggressive);
+#endif
 
     if(!tm){
         cerr << "Error when initializing TargetMachine.\n";
