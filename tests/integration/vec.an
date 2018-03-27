@@ -16,6 +16,7 @@ fun assert: bool b
         exit 1
 
 v.pop()
+
 assert (13 in v)
 assert (21 not in v)
 
@@ -40,7 +41,7 @@ v2.push 13
 assert (v == v2)
 
 
-var v3 = Vec(0..10)
+var v3 = Vec(0..11)
 
 var idxs = Vec<i32>()
 idxs.push 0

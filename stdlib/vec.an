@@ -12,7 +12,7 @@ ext Vec 't
         v.len == 0
 
     fun indices: Vec v =
-        Range(0, i32(v.len - 1), 1)
+        Range(0, i32 v.len, 1)
 
     fun len: Vec v = v.len
 
@@ -60,7 +60,7 @@ ext Vec 't
         if idx == v.len - 1 then
             v.len -= 1
         elif idx >= 0 and idx < v.len - 1 then
-            for i in idx .. i32(v.len)-1 do
+            for i in idx .. i32 v.len do
                 v._data#i = v._data#(i+1)
 
             v.len -= 1
@@ -96,10 +96,10 @@ ext Vec 't
             moved += 1
             if i != indices.len - 1 then
                 let nxt = indices#(i+1)
-                for j in cur+1 .. nxt-1 do
+                for j in cur+1 .. nxt do
                     v._data#(j-moved) = v._data#j
             else
-                for j in cur+1 .. i32(v.len - 1) do
+                for j in cur+1 .. i32 v.len do
                     v._data#(j-moved) = v._data#j
 
         v.len -= moved
@@ -166,7 +166,7 @@ fun (==): Vec 't l r -> bool
     if l.len != r.len then
         return false
 
-    for i in 0 .. i32(l.len - 1) do
+    for i in 0 .. i32 l.len do
         if l._data#i != r._data#i then
             return false
     true

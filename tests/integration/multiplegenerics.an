@@ -1,6 +1,6 @@
 import Vec
 
-print Vec(1..25)
+print Vec(1..26)
 
 var v2 = Vec<u8>()
 v2.push 0u8

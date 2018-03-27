@@ -313,20 +313,17 @@ fun (..): i32,i32 first_two, i32 end -> Range
 
 ext Range: Iterator
     fun next: Range r -> Range
-        //make sure range of n..n is not an infinite loop
-        if r.start == r.end then
-            Range(2,0,1)
-        else
-            Range(r.start+r.step, r.end, r.step)
+        Range(r.start+r.step, r.end, r.step)
 
     fun unwrap: Range r =
         r.start
 
     fun has_next: Range r =
         if r.step > 0 then
-            r.start <= r.end
-        else
-            r.start >= r.end
+            r.start < r.end
+        elif r.step < 0 then
+            r.start > r.end
+        else false //step = 0
 
 
 //Iterating through an InFile iterates through each line

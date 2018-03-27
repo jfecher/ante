@@ -1,11 +1,11 @@
 
 
-for i in 1..10_000 do
+for i in 0..10_000 do
     print i
 
 
 /*    expands into
- * var r = 1..10_000
+ * var r = 0..10_000
  * while has_next r do
  *    let i = unwrap r
  *    print i
