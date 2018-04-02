@@ -156,19 +156,32 @@ void declareTypes(Compiler *c){
 }
 
 
+void copyGlobals(Compiler *c, Compiler *ccpy){
+    for(auto &g : c->module->getGlobalList()){
+        if(g.getName() != "argc" and g.getName() != "argv"){
+            auto *gl = new GlobalVariable(*ccpy->module, g.getType(), false,
+                    GlobalValue::PrivateLinkage, g.getInitializer(), g.getName());
+
+            g.replaceAllUsesWith(gl);
+        }
+    }
+}
+
+
 /*
  * Copies a function into a new module (named after the function)
  * and copies any functions that are needed by the copied function
  * into the new module as well.
  */
-unique_ptr<Compiler> wrapFnInModule(Compiler *c, string const& basename,
-        string const& mangledName, vector<AnType*> const& argTys){
+unique_ptr<Compiler> wrapFnInModule(Compiler *c, string const& baseName,
+        string const& mangledName, vector<TypedValue> const& args){
 
     unique_ptr<Compiler> ccpy{new Compiler(c, c->ast.get(), mangledName)};
     ccpy->isJIT = true;
 
     copyDecls(c, ccpy.get());
     declareTypes(ccpy.get());
+    copyGlobals(c, ccpy.get());
 
     //create an empty main function to avoid crashes with compFn when
     //trying to return to the caller function
@@ -176,17 +189,22 @@ unique_ptr<Compiler> wrapFnInModule(Compiler *c, string const& basename,
     //the ret comes separate
     ccpy->builder.CreateRet(ConstantInt::get(*ccpy->ctxt, APInt(32, 1)));
 
-    auto *fn = ccpy->getFuncDecl(basename, mangledName);
+    ccpy->ctCtxt->args = args;
+
+    auto *fn = ccpy->getFuncDecl(baseName, mangledName);
 
     if(fn){
+        auto argTys = toTypeVector(args);
         compFnWithArgs(ccpy.get(), fn, argTys);
+    }else if(ccpy->getFunction(baseName, baseName)){
+        return ccpy;
     }else{
         ccpy->ast.release();
         c->errFlag = true;
-        throw new CompilationError("Error in evaluating " + basename + ", aborting.\n");
+        cout << "Throwing error in wrapFnInModule when compiling " << baseName << " : " << mangledName << '\n';
+        throw new CompilationError("Error in evaluating " + baseName + ", aborting.\n");
     }
 
-    //re-add the compiler directives
     return ccpy;
 }
 

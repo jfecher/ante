@@ -445,7 +445,7 @@ namespace ante {
 
                 //Compile each expression and hold onto the last value
                 TypedValue val = c->ast ? mergeAndCompile(c, expr)
-                                        : (c->ast.reset(expr), expr->compile(c));
+                               : (c->ast.reset(expr), CompilingVisitor::compile(c, expr));
 
                 //print val if it's not an error
                 if(!!val and val.type->typeTag != TT_Void)

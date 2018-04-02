@@ -3,7 +3,7 @@
 //while compiling and is not included in the binary
 ante
 fun three :=
-    puts "three called!"
+    puts "three called!".cStr
     3
 
 //test compile-time evaluation of user defined functions

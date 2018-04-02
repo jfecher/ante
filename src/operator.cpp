@@ -173,7 +173,7 @@ TypedValue Compiler::compExtract(TypedValue &l, TypedValue &r, BinOpNode *op){
  *  This method works on lvals and returns a void value.
  */
 TypedValue Compiler::compInsert(BinOpNode *op, Node *assignExpr){
-    auto tmp = op->lval->compile(this);
+    auto tmp = CompilingVisitor::compile(this, op->lval);
 
     //if(!dynamic_cast<LoadInst*>(tmp->val))
     if(!tmp.type->hasModifier(Tok_Mut))
@@ -182,8 +182,8 @@ TypedValue Compiler::compInsert(BinOpNode *op, Node *assignExpr){
 
     Value *var = static_cast<LoadInst*>(tmp.val)->getPointerOperand();
 
-    auto index = op->rval->compile(this);
-    auto newVal = assignExpr->compile(this);
+    auto index =  CompilingVisitor::compile(this, op->rval);
+    auto newVal = CompilingVisitor::compile(this, assignExpr);
 
     //see if insert operator # = is overloaded already
     string basefn = "#";
@@ -448,6 +448,15 @@ TypedValue createCast(Compiler *c, AnType *castTy, TypedValue &valToCast, LOC_TY
                 return doReinterpretCast(c, castTy, valToCast, castResult);
         }
 
+        if(c->isJIT){
+            auto *fnty = AnFunctionType::get(c, AnType::getVoid(), fd->fdn->params.get());
+            if(fnty->extTys.size() == 1 and c->typeEq(fnty->extTys[0], valToCast.type)){
+                string baseName = getCastFnBaseName(castTy);
+                string mangledName = mangle(baseName, {valToCast.type});
+                return compileAndCallAnteFunction(c, baseName, mangledName, {valToCast});
+            }
+        }
+
         //Compile the function now that we know to use it over a cast
         auto fn = c->getCastFn(valToCast.type, castTy, fd);
         if(fn){
@@ -518,22 +527,22 @@ TypedValue createCast(Compiler *c, AnType *castTy, TypedValue &valToCast, LOC_TY
     return doReinterpretCast(c, castTy, valToCast);
 }
 
-TypedValue TypeCastNode::compile(Compiler *c){
-    auto rtval = rval->compile(c);
+void CompilingVisitor::visit(TypeCastNode *n){
+    n->rval->accept(*this);
+    auto rtval = this->val;
 
-    auto *ty = toAnType(c, typeExpr.get());
+    auto *ty = toAnType(c, n->typeExpr.get());
 
-    auto tval = createCast(c, ty, rtval, loc);
+    this->val = createCast(c, ty, rtval, n->loc);
 
-    if(!tval){
-        return c->compErr("Invalid type cast " + anTypeToColoredStr(rtval.type) +
-                " -> " + anTypeToColoredStr(ty), loc);
+    if(!val){
+        c->compErr("Invalid type cast " + anTypeToColoredStr(rtval.type) +
+                " -> " + anTypeToColoredStr(ty), n->loc);
     }
-    return tval;
 }
 
 TypedValue compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<TypedValue,BasicBlock*>> &branches){
-    auto cond = ifn->condition->compile(c);
+    auto cond = CompilingVisitor::compile(c, ifn->condition);
 
     if(cond.type->typeTag != TT_Bool)
         return c->compErr("If condition must be of type " + anTypeToColoredStr(AnType::getBool()) +
@@ -554,7 +563,7 @@ TypedValue compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Typ
 
             blocks.push_back(thenbb);
             c->builder.SetInsertPoint(thenbb);
-            auto thenVal = ifn->thenN->compile(c);
+            auto thenVal = CompilingVisitor::compile(c, ifn->thenN);
 
             //If a break, continue, or return was encountered then this branch doesn't merge to the endif
             if(!dyn_cast<ReturnInst>(thenVal.val) and !dyn_cast<BranchInst>(thenVal.val)){
@@ -584,7 +593,7 @@ TypedValue compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Typ
     }
 
     c->builder.SetInsertPoint(thenbb);
-    auto thenVal = ifn->thenN->compile(c);
+    auto thenVal = CompilingVisitor::compile(c, ifn->thenN);
     if(!thenVal) return thenVal;
     auto *thenretbb = c->builder.GetInsertBlock(); //bb containing final ret of then branch.
 
@@ -597,7 +606,7 @@ TypedValue compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Typ
         branches.push_back({thenVal, thenretbb});
 
         c->builder.SetInsertPoint(elsebb);
-        auto elseVal = ifn->elseN->compile(c);
+        auto elseVal = CompilingVisitor::compile(c, ifn->elseN);
         auto *elseretbb = c->builder.GetInsertBlock();
 
         if(!elseVal) return {};
@@ -704,10 +713,10 @@ TypedValue compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Typ
     }
 }
 
-TypedValue IfNode::compile(Compiler *c){
+void CompilingVisitor::visit(IfNode *n){
     auto branches = vector<pair<TypedValue,BasicBlock*>>();
     auto *mergebb = BasicBlock::Create(*c->ctxt, "endif");
-    return compIf(c, this, mergebb, branches);
+    this->val = compIf(c, n, mergebb, branches);
 }
 
 string _anTypeToStr(const AnType *t, AnModifier *m);
@@ -746,7 +755,7 @@ TypedValue Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *binop
         //prevent l from being used after this scope; only val and tyn should be used as only they
         //are updated with the automatic pointer dereferences.
         {
-            auto l = ln->compile(this);
+            auto l = CompilingVisitor::compile(this, ln);
             if(!l) return {};
 
             val = l.val;
@@ -946,6 +955,46 @@ void createDriverFunction(Compiler *c, FuncDecl *fd, vector<TypedValue> const& t
     }
 }
 
+TypedValue compileAndCallAnteFunction(Compiler *c, string const& baseName,
+        string const& mangledName, vector<TypedValue> const& typedArgs){
+
+    auto mod_compiler = wrapFnInModule(c, baseName, mangledName, typedArgs);
+    mod_compiler->ast.release();
+
+    if(!mod_compiler or mod_compiler->errFlag){
+        c->errFlag = true;
+        cout << "Error 1 in compileAndCallAnteFunction\n";
+        throw new CtError();
+    }
+
+    auto *fd = mod_compiler->getFuncDecl(baseName, mangledName);
+
+    //error here!
+    if(!fd) fd = mod_compiler->getFuncDecl(baseName, baseName);
+
+    if(!fd){
+        c->errFlag = true;
+        cout << "Error 2 in compileAndCallAnteFunction: !fd\n";
+        throw new CtError();
+    }
+
+    createDriverFunction(mod_compiler.get(), fd, typedArgs);
+
+    JIT* jit = new JIT();
+    jit->addModule(move(mod_compiler->module));
+
+    auto fn = (void*(*)(void*))jit->getSymbolAddress("AnteCall");
+    if(fn){
+        auto arg = ArgTuple(c, typedArgs);
+
+        auto res = fn(arg.asRawData());
+        auto *retTy = fd->tv.type->getFunctionReturnType();
+        return ArgTuple(c, res, retTy).asTypedValue();
+    }else{
+        cerr << "(null)" << endl;
+        return c->getVoidLiteral();
+    }
+}
 
 /*
  *  Compile a compile-time function/macro which should not return a function call,
@@ -960,63 +1009,39 @@ TypedValue compMetaFunctionResult(Compiler *c, LOC_TY const& loc, string const& 
         string const& mangledName, vector<TypedValue> const& typedArgs){
 
     CtFunc* fn;
-    if((fn = compapi[baseName].get())){
-        TypedValue *res;
+    if(!(fn = compapi[baseName].get())){
+        return compileAndCallAnteFunction(c, baseName, mangledName, typedArgs);
+    }
 
-        if(typedArgs.size() != fn->params.size())
-            return c->compErr("Called function was given " + to_string(typedArgs.size()) +
-                    " argument(s) but was declared to take " + to_string(fn->params.size()), loc);
+    //fn was found, this is a builtin compiler api function
+    TypedValue *res;
 
-        /* alias typedArgs for switch statement */
-        vector<TypedValue> const& ta = typedArgs;
+    if(typedArgs.size() != fn->params.size())
+        return c->compErr("Called function was given " + to_string(typedArgs.size()) +
+                " argument(s) but was declared to take " + to_string(fn->params.size()), loc);
 
-        switch(fn->params.size()){
-            case 0: res = (*fn)(c); break;
-            case 1: res = (*fn)(c, ta[0]); break;
-            case 2: res = (*fn)(c, ta[0], ta[1]); break;
-            case 3: res = (*fn)(c, ta[0], ta[1], ta[2]); break;
-            case 4: res = (*fn)(c, ta[0], ta[1], ta[2], ta[3]); break;
-            case 5: res = (*fn)(c, ta[0], ta[1], ta[2], ta[3], ta[4]); break;
-            case 6: res = (*fn)(c, ta[0], ta[1], ta[2], ta[3], ta[4], ta[5]); break;
-            default:
-                cerr << "CtFuncs with more than 6 parameters are unimplemented." << endl;
-                return {};
-        }
+    /* alias typedArgs for switch statement */
+    vector<TypedValue> const& ta = typedArgs;
 
-        if(res){
-            TypedValue ret = *res;
-            delete res;
-            return ret;
-        }else{
-            return c->getVoidLiteral();
-        }
+    switch(fn->params.size()){
+        case 0: res = (*fn)(c); break;
+        case 1: res = (*fn)(c, ta[0]); break;
+        case 2: res = (*fn)(c, ta[0], ta[1]); break;
+        case 3: res = (*fn)(c, ta[0], ta[1], ta[2]); break;
+        case 4: res = (*fn)(c, ta[0], ta[1], ta[2], ta[3]); break;
+        case 5: res = (*fn)(c, ta[0], ta[1], ta[2], ta[3], ta[4]); break;
+        case 6: res = (*fn)(c, ta[0], ta[1], ta[2], ta[3], ta[4], ta[5]); break;
+        default:
+            cerr << "CtFuncs with more than 6 parameters are unimplemented." << endl;
+            return {};
+    }
+
+    if(res){
+        TypedValue ret = *res;
+        delete res;
+        return ret;
     }else{
-        auto mod_compiler = wrapFnInModule(c, baseName, mangledName, toTypeVector(typedArgs));
-        mod_compiler->ast.release();
-
-        if(!mod_compiler or mod_compiler->errFlag){
-            c->errFlag = true;
-            throw new CtError();
-        }
-
-        auto *fd = mod_compiler->getFuncDecl(baseName, mangledName);
-        if(!fd) return {};
-        createDriverFunction(mod_compiler.get(), fd, typedArgs);
-
-        JIT* jit = new JIT();
-        jit->addModule(move(mod_compiler->module));
-
-        auto fn = (void*(*)(void*))jit->getSymbolAddress("AnteCall");
-        if(fn){
-            auto arg = ArgTuple(c, typedArgs);
-
-            auto res = fn(arg.asRawData());
-            auto *retTy = fd->tv.type->getFunctionReturnType();
-            return ArgTuple(c, res, retTy).asTypedValue();
-        }else{
-            cerr << "(null)" << endl;
-            return c->getVoidLiteral();
-        }
+        return c->getVoidLiteral();
     }
 }
 
@@ -1062,7 +1087,19 @@ TypedValue tryImplicitCast(Compiler *c, TypedValue &arg, AnType *castTy){
     //check for an implicit Cast function
     TypedValue fn;
 
-    if((fn = c->getCastFn(arg.type, castTy))){
+    if(c->isJIT){
+        string baseName = getCastFnBaseName(castTy);
+        string mangledName = mangle(baseName, {arg.type});
+
+        //perform an unfortunate double lookup
+        //TODO: rework compileAndCallAnteFunction to accept FuncDecls
+        if(FuncDecl *fd = c->getFuncDecl(baseName, mangledName)){
+            AnFunctionType *fty = AnFunctionType::get(c, AnType::getVoid(), fd->fdn->params.get());
+            if(c->typeEq({arg.type}, fty->extTys)){
+                return compileAndCallAnteFunction(c, baseName, mangledName, {arg});
+            }
+        }
+    }else if((fn = c->getCastFn(arg.type, castTy))){
         AnFunctionType *fty = (AnFunctionType*)fn.type;
         if(c->typeEq({arg.type}, fty->extTys)){
             vector<Value*> args{arg.val};
@@ -1174,7 +1211,7 @@ TypedValue searchForFunction(Compiler *c, Node *l, vector<TypedValue> const& typ
     }
 
     //if it is not a varnode/no method is found, then compile it normally
-    return l->compile(c);
+    return CompilingVisitor::compile(c, l);
 }
 
 
@@ -1195,7 +1232,7 @@ TypedValue compFnCall(Compiler *c, Node *l, Node *r){
             args.push_back(arg.val);
         }
     }else{ //single parameter being applied
-        auto param = r->compile(c);
+        auto param = CompilingVisitor::compile(c, r);
         if(!param) return param;
 
         if(param.type->typeTag != TT_Void){
@@ -1307,7 +1344,7 @@ TypedValue compFnCall(Compiler *c, Node *l, Node *r){
 
     //if tvf is a ![macro] or similar MetaFunction, then compile it in a separate
     //module and JIT it instead of creating a call instruction
-    if(tvf.type->typeTag == TT_MetaFunction){
+    if(c->isJIT or tvf.type->typeTag == TT_MetaFunction){
         string baseName = getName(l);
         auto *fnty = (AnFunctionType*)tvf.type;
         string mangledName = mangle(baseName, fnty->extTys);
@@ -1324,7 +1361,7 @@ TypedValue Compiler::compLogicalOr(Node *lexpr, Node *rexpr, BinOpNode *op){
     Function *f = builder.GetInsertBlock()->getParent();
     auto &blocks = f->getBasicBlockList();
 
-    auto lhs = lexpr->compile(this);
+    auto lhs = CompilingVisitor::compile(this, lexpr);
 
     auto *curbbl = builder.GetInsertBlock();
     auto *orbb = BasicBlock::Create(*ctxt, "or");
@@ -1336,7 +1373,7 @@ TypedValue Compiler::compLogicalOr(Node *lexpr, Node *rexpr, BinOpNode *op){
 
 
     builder.SetInsertPoint(orbb);
-    auto rhs = rexpr->compile(this);
+    auto rhs = CompilingVisitor::compile(this, rexpr);
 
     //the block must be re-gotten in case the expression contains if-exprs, while nodes,
     //or other exprs that change the current block
@@ -1361,7 +1398,7 @@ TypedValue Compiler::compLogicalAnd(Node *lexpr, Node *rexpr, BinOpNode *op){
     Function *f = builder.GetInsertBlock()->getParent();
     auto &blocks = f->getBasicBlockList();
 
-    auto lhs = lexpr->compile(this);
+    auto lhs = CompilingVisitor::compile(this, lexpr);
 
     auto *curbbl = builder.GetInsertBlock();
     auto *andbb = BasicBlock::Create(*ctxt, "and");
@@ -1373,7 +1410,7 @@ TypedValue Compiler::compLogicalAnd(Node *lexpr, Node *rexpr, BinOpNode *op){
 
 
     builder.SetInsertPoint(andbb);
-    auto rhs = rexpr->compile(this);
+    auto rhs = CompilingVisitor::compile(this, rexpr);
 
     //the block must be re-gotten in case the expression contains if-exprs, while nodes,
     //or other exprs that change the current block
@@ -1484,47 +1521,54 @@ TypedValue checkForOperatorOverload(Compiler *c, TypedValue &lhs, int op, TypedV
 }
 
 
-TypedValue SeqNode::compile(Compiler *c){
-    TypedValue ret;
+void CompilingVisitor::visit(SeqNode *n){
     size_t i = 1;
-
-    for(auto &n : sequence){
+    for(auto &node : n->sequence){
         try{
-            ret = n->compile(c);
-            if(dynamic_cast<FuncDeclNode*>(n.get()))
-                n.release();
+            node->accept(*this);
+            if(dynamic_cast<FuncDeclNode*>(node.get()))
+                node.release();
         }catch(CtError *e){
             //Unless the final value throws, delete the error
-            if(i == sequence.size()) throw e;
+            if(i == n->sequence.size()) throw e;
             else delete e;
         }
         i++;
     }
-
-    return ret;
 }
 
 
 /*
  *  Compiles an operation along with its lhs and rhs
  */
-TypedValue BinOpNode::compile(Compiler *c){
-    switch(op){
-        case '.': return c->compMemberAccess(lval.get(), (VarNode*)rval.get(), this);
-        case '(': return compFnCall(c, lval.get(), rval.get());
-        case Tok_And: return c->compLogicalAnd(lval.get(), rval.get(), this);
-        case Tok_Or: return c->compLogicalOr(lval.get(), rval.get(), this);
+void CompilingVisitor::visit(BinOpNode *n){
+    if(n->op == '.'){
+        this->val = c->compMemberAccess(n->lval.get(), (VarNode*)n->rval.get(), n);
+        return;
+    }else if(n->op == '('){
+        this->val = compFnCall(c, n->lval.get(), n->rval.get());
+        return;
+    }else if(n->op == Tok_And){
+        this->val = c->compLogicalAnd(n->lval.get(), n->rval.get(), n);
+        return;
+    }else if(n->op == Tok_Or){
+        this->val = c->compLogicalOr(n->lval.get(), n->rval.get(), n);
+        return;
     }
 
-    TypedValue lhs = lval->compile(c);
-    TypedValue rhs = rval->compile(c);
+    TypedValue lhs = CompilingVisitor::compile(c, n->lval);
+    TypedValue rhs = CompilingVisitor::compile(c, n->rval);
 
     TypedValue res;
-    if((res = checkForOperatorOverload(c, lhs, op, rhs))){
-        return res;
+    if((res = checkForOperatorOverload(c, lhs, n->op, rhs))){
+        this->val =res;
+        return;
     }
 
-    if(op == '#') return c->compExtract(lhs, rhs, this);
+    if(n->op == '#'){
+        this->val = c->compExtract(lhs, rhs, n);
+        return;
+    }
 
 
     //Check if both Values are numeric, and if so, check if their types match.
@@ -1534,58 +1578,71 @@ TypedValue BinOpNode::compile(Compiler *c){
 
     //first, if both operands are primitive numeric types, use the default ops
     if(isNumericTypeTag(lhs.type->typeTag) && isNumericTypeTag(rhs.type->typeTag)){
-        return handlePrimitiveNumericOp(this, c, lhs, rhs);
+        this->val = handlePrimitiveNumericOp(n, c, lhs, rhs);
+        return;
 
     //and bools/ptrs are only compatible with == and !=
     }else if((lhs.type->typeTag == TT_Bool and rhs.type->typeTag == TT_Bool) or
              (lhs.type->typeTag == TT_Ptr  and rhs.type->typeTag == TT_Ptr)){
 
         //== is no longer implemented for pointers by default
-        if(op == Tok_Eq and lhs.type->typeTag == TT_Bool and rhs.type->typeTag == TT_Bool)
-            return TypedValue(c->builder.CreateICmpEQ(lhs.val, rhs.val), AnType::getBool());
+        if(n->op == Tok_Eq and lhs.type->typeTag == TT_Bool and rhs.type->typeTag == TT_Bool){
+            this->val = TypedValue(c->builder.CreateICmpEQ(lhs.val, rhs.val), AnType::getBool());
+            return;
+        }
 
-        switch(op){
-            case Tok_Is:    return TypedValue(c->builder.CreateICmpEQ(lhs.val, rhs.val), AnType::getBool());
-            case Tok_NotEq: return TypedValue(c->builder.CreateICmpNE(lhs.val, rhs.val), AnType::getBool());
+        if(n->op == Tok_Is){
+            this->val = TypedValue(c->builder.CreateICmpEQ(lhs.val, rhs.val), AnType::getBool());
+            return;
+        }else if(n->op == Tok_NotEq){
+            this->val = TypedValue(c->builder.CreateICmpNE(lhs.val, rhs.val), AnType::getBool());
+            return;
         }
     }
 
-    if(op == '+' or op == '-'){
+    if(n->op == '+' or n->op == '-'){
         if((lhs.type->typeTag == TT_Ptr or isNumericTypeTag(lhs.type->typeTag)) and
-           (rhs.type->typeTag == TT_Ptr or isNumericTypeTag(rhs.type->typeTag)))
-            return handlePrimitiveNumericOp(this, c, lhs, rhs);
+           (rhs.type->typeTag == TT_Ptr or isNumericTypeTag(rhs.type->typeTag))){
+            this->val = handlePrimitiveNumericOp(n, c, lhs, rhs);
+            return;
+        }
     }
 
-    return c->compErr("Operator " + Lexer::getTokStr(op) + " is not overloaded for types "
-            + anTypeToColoredStr(lhs.type) + " and " + anTypeToColoredStr(rhs.type), loc);
+    c->compErr("Operator " + Lexer::getTokStr(n->op) + " is not overloaded for types "
+            + anTypeToColoredStr(lhs.type) + " and " + anTypeToColoredStr(rhs.type), n->loc);
 }
 
 
-TypedValue UnOpNode::compile(Compiler *c){
-    TypedValue rhs = rval->compile(c);
+void CompilingVisitor::visit(UnOpNode *n){
+    n->rval->accept(*this);
 
-    switch(op){
+    switch(n->op){
         case '@': //pointer dereference
-            if(rhs.type->typeTag != TT_Ptr){
-                return c->compErr("Cannot dereference non-pointer type " + anTypeToColoredStr(rhs.type), loc);
+            if(val.type->typeTag != TT_Ptr){
+                c->compErr("Cannot dereference non-pointer type " + anTypeToColoredStr(val.type), n->loc);
             }
 
-            return TypedValue(c->builder.CreateLoad(rhs.val), ((AnPtrType*)rhs.type)->extTy);
+            this->val = TypedValue(c->builder.CreateLoad(val.val), ((AnPtrType*)val.type)->extTy);
+            return;
         case '&': //address-of
-            return addrOf(c, rhs);
+            this->val = addrOf(c, val);
+            return;
         case '-': //negation
-            return TypedValue(c->builder.CreateNeg(rhs.val), rhs.type);
+            this->val = TypedValue(c->builder.CreateNeg(val.val), val.type);
+            return;
         case Tok_Not:
-            if(rhs.type->typeTag != TT_Bool)
-                return c->compErr("Unary not operator not overloaded for type " + anTypeToColoredStr(rhs.type), loc);
+            if(val.type->typeTag != TT_Bool)
+                c->compErr("Unary not operator not overloaded for type " + anTypeToColoredStr(val.type), n->loc);
 
-            return TypedValue(c->builder.CreateNot(rhs.val), rhs.type);
+            this->val = TypedValue(c->builder.CreateNot(val.val), val.type);
+            return;
         case Tok_New:
             //the 'new' keyword in ante creates a reference to any existing value
-            return createMallocAndStore(c, rhs);
+            this->val = createMallocAndStore(c, val);
+            return;
     }
 
-    return c->compErr("Unknown unary operator " + Lexer::getTokStr(op), loc);
+    c->compErr("Unknown unary operator " + Lexer::getTokStr(n->op), n->loc);
 }
 
 } // end of namespace ante

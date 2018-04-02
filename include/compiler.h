@@ -46,6 +46,47 @@ namespace ante {
     };
 
 
+    struct CompilingVisitor : public NodeVisitor {
+        TypedValue val;
+        Compiler *c;
+
+        CompilingVisitor(Compiler *cc) : c(cc){}
+
+        static TypedValue compile(Compiler *c, std::unique_ptr<parser::Node> &n){
+            return compile(c, n.get());
+        }
+        static TypedValue compile(Compiler *c, std::shared_ptr<parser::Node> &n){
+            return compile(c, n.get());
+        }
+        static TypedValue compile(Compiler *c, parser::Node *n){
+            CompilingVisitor v{c};
+            n->accept(v);
+            return v.val;
+        }
+
+        DECLARE_NODE_VISIT_METHODS()
+    };
+
+    struct PrintingVisitor : public NodeVisitor {
+        static void print(std::unique_ptr<parser::Node> &n){
+            return print(n.get());
+        }
+        static void print(std::shared_ptr<parser::Node> &n){
+            return print(n.get());
+        }
+        static void print(parser::Node *n){
+            PrintingVisitor v;
+            n->accept(v);
+        }
+
+        DECLARE_NODE_VISIT_METHODS()
+    };
+
+    struct InterpretingVisitor : public NodeVisitor {
+        DECLARE_NODE_VISIT_METHODS()
+    };
+
+
     /**
     * @brief The result of a type check
     *
@@ -305,6 +346,10 @@ namespace ante {
 
         /** @brief functions to run whenever a function is declared. */
         std::vector<std::shared_ptr<FuncDecl>> on_fn_decl_hook;
+
+        /** @brief arguments to current ante function being called.
+         * Will be empty if !isJIT */
+        std::vector<TypedValue> args;
     };
 
     /**
@@ -505,10 +550,10 @@ namespace ante {
         FuncDecl* getCurrentFunction() const;
 
         /** @brief Returns the exact function specified if found or nullptr if not */
-        TypedValue getFunction(std::string& name, std::string& mangledName);
+        TypedValue getFunction(std::string const& name, std::string const& mangledName);
 
         /** @brief Returns a vector of all functions with the specified baseName */
-        std::vector<std::shared_ptr<FuncDecl>>& getFunctionList(std::string& name) const;
+        std::vector<std::shared_ptr<FuncDecl>>& getFunctionList(std::string const& name) const;
 
         /** @brief Returns the exact FuncDecl specified if found or nullptr if not */
         FuncDecl* getFuncDecl(std::string bn, std::string mangledName);
@@ -772,6 +817,16 @@ namespace ante {
      */
     TypedValue searchForFunction(Compiler *c, parser::Node *l, std::vector<TypedValue> const& typedArgs);
 
+
+    /**
+     * Compile and call an ante function with the given arguments.
+     *
+     * The result of the call will be translated into a TypedValue.
+     * This function will throw a CompilationError* on error
+     */
+    TypedValue compileAndCallAnteFunction(Compiler *c, std::string const& baseName,
+        std::string const& mangledName, std::vector<TypedValue> const& typedArgs);
+
     /**
      * @brief initialize the compiler api function map.
      *
@@ -792,13 +847,13 @@ namespace ante {
     */
     template<typename T>
     TypedValue safeCompile(Compiler *c, T &n){
-        TypedValue ret;
+        CompilingVisitor v{c};
         try{
-            ret = n->compile(c);
+            n->accept(v);
         }catch(CtError *err){
             delete err;
         }
-        return ret;
+        return v.val;
     }
 
 

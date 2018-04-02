@@ -1,5 +1,6 @@
 #include "function.h"
 #include "argtuple.h"
+#include "jitlinker.h"
 
 using namespace std;
 using namespace llvm;
@@ -226,7 +227,12 @@ TypedValue Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
                 fd->type->extTys[i]
                 : toAnType(this, paramTyNode);
 
-        TypedValue tArg = {&arg, paramTy};
+        //If we are JIT compiling this function we want the args to be perfectly forwarded.
+        //They must be passed directly to work with certain compiler-api functions.  For example,
+        //it is important that Ante.store does not store a llvm::Argument
+        TypedValue tArg = isJIT ?
+            ctCtxt->args[i] : TypedValue(&arg, paramTy);
+
         stoVar(cParam->name, new Variable(cParam->name, tArg, this->scope,
                         /*nofree =*/ true, /*autoDeref = */implicitPassByRef(paramTy)));
 
@@ -243,7 +249,7 @@ TypedValue Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
         updateFn(fakeFnTv, fd, fdn->name, fd->mangledName);
 
     //actually compile the function, and hold onto the last value
-    TypedValue v = fdn->child->compile(this);
+    TypedValue v = CompilingVisitor::compile(this, fdn->child);
 
     //llvm requires explicit returns, so generate a return even if
     //the user did not in their function.
@@ -454,7 +460,12 @@ TypedValue compFnHelper(Compiler *c, FuncDecl *fd){
                     fd->type->extTys[i]
                     : toAnType(c, paramTyNode);
 
-            TypedValue tArg = {&arg, paramTy};
+            //If we are JIT compiling this function we want the args to be perfectly forwarded.
+            //They must be passed directly to work with certain compiler-api functions.  For example,
+            //it is important that Ante.store does not store a llvm::Argument
+            TypedValue tArg = c->isJIT ?
+                c->ctCtxt->args[i] : TypedValue(&arg, paramTy);
+
             c->stoVar(cParam->name, new Variable(cParam->name, tArg, c->scope,
                     /*nofree = */true, /*autoDeref = */implicitPassByRef(paramTy)));
 
@@ -464,7 +475,7 @@ TypedValue compFnHelper(Compiler *c, FuncDecl *fd){
         //actually compile the function, and hold onto the last value
         TypedValue v;
         try{
-            v = fdn->child->compile(c);
+            v = CompilingVisitor::compile(c, fdn->child);
         }catch(CtError *e){
             c->builder.SetInsertPoint(caller);
             throw e;
@@ -555,35 +566,34 @@ bool isDecl(string &name){
 /*
  *  Registers a function for later compilation
  */
-TypedValue FuncDeclNode::compile(Compiler *c){
+void CompilingVisitor::visit(FuncDeclNode *n){
     //check if the function is a named function.
-    if(name.length() > 0){
+    if(n->name.length() > 0){
         string mangledName;
-        if(isDecl(name)){
-            name = c->funcPrefix + name.substr(0, name.length() - 1);
-            mangledName = name;
+        if(isDecl(n->name)){
+            n->name = c->funcPrefix + n->name.substr(0, n->name.length() - 1);
+            mangledName = n->name;
         }else{
-            mangledName = c->funcPrefix + mangle(name, params);
-            mangledName = manageSelfParam(c, this, mangledName);
-            name = c->funcPrefix + name;
+            mangledName = c->funcPrefix + mangle(n->name, n->params);
+            mangledName = manageSelfParam(c, n, mangledName);
+            n->name = c->funcPrefix + n->name;
         }
 
-        c->registerFunction(this, mangledName);
-        return c->getVoidLiteral();
+        c->registerFunction(n, mangledName);
+        this->val = c->getVoidLiteral();
     }else{
         //Otherwise, if it is a lambda function, compile it now and return it.
         string no_name;
-        shared_ptr<FuncDeclNode> lambda{this};
+        shared_ptr<FuncDeclNode> lambda{n};
         FuncDecl *fd = new FuncDecl(lambda, no_name, c->scope, c->mergedCompUnits);
-        auto ret = c->compFn(fd);
+        this->val = c->compFn(fd);
 
         //prevent this function from being called by name
         fd->mangledName = "";
-        return ret;
     }
 }
 
-FuncDecl* getFuncDeclFromVec(vector<shared_ptr<FuncDecl>> &l, string &mangledName){
+FuncDecl* getFuncDeclFromVec(vector<shared_ptr<FuncDecl>> &l, string const& mangledName){
     for(auto& fd : l){
         if(fd->mangledName == mangledName)
             return fd.get();
@@ -659,7 +669,7 @@ void Compiler::updateFn(TypedValue &f, FuncDecl *fd, string &name, string &mangl
 }
 
 
-TypedValue Compiler::getFunction(string& name, string& mangledName){
+TypedValue Compiler::getFunction(string const& name, string const& mangledName){
     auto& list = getFunctionList(name);
     if(list.empty()) return {};
 
@@ -807,7 +817,7 @@ TypedValue Compiler::getMangledFn(string name, vector<AnType*> &args){
 }
 
 
-vector<shared_ptr<FuncDecl>>& Compiler::getFunctionList(string& name) const{
+vector<shared_ptr<FuncDecl>>& Compiler::getFunctionList(string const& name) const{
     return mergedCompUnits->fnDecls[name];
 }
 

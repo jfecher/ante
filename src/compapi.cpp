@@ -44,7 +44,7 @@ extern "C" {
         yy::location lloc = mkLoc(mkPos(0,0,0), mkPos(0,0,0));
         auto *strlit = new StrLitNode(lloc, n);
 
-        return new TypedValue(strlit->compile(c));
+        return new TypedValue(CompilingVisitor::compile(c, strlit));
     }
 
     TypedValue* Ante_sizeof(Compiler *c, TypedValue &tv){

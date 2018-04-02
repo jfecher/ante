@@ -5,7 +5,7 @@
 
 namespace ante {
     std::unique_ptr<Compiler> wrapFnInModule(Compiler *c, std::string const& basename,
-            std::string const& mangledName, std::vector<AnType*> const& argTys);
+            std::string const& mangledName, std::vector<TypedValue> const& args);
 }
 
 #endif

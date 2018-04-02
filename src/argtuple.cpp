@@ -59,6 +59,7 @@ namespace ante {
         }
 
         c->errFlag = true;
+        cout << "Unknown/Unimplemented TypeTag " + typeTagToStr(tn->typeTag) << endl;
         throw new CompilationError("Unknown/Unimplemented TypeTag " + typeTagToStr(tn->typeTag));
     }
 
@@ -117,6 +118,8 @@ namespace ante {
             }
         }else{
             c->errFlag = true;
+            cout << "unknown value given to getConstPtr:\n";
+            tv.dump();
             throw new CompilationError("unknown type given to getConstPtr: " + anTypeToStr(tv.type));
         }
     }
@@ -135,6 +138,7 @@ namespace ante {
                 auto size = ty->getSizeInBits(c);
                 if(!size){
                     c->errFlag = true;
+                    cout << "storeTuple: " << size.getErr() << endl;
                     throw new CompilationError(size.getErr());
                 }
                 data = (char*)data + size.getVal() / 8;
@@ -172,14 +176,23 @@ namespace ante {
         }
 
         c->errFlag = true;
+        cout << "Cannot find last store to mutable variable during translation.\n";
         throw new CompilationError("Cannot find last store to mutable variable during translation.");
     }
 
 
     void ArgTuple::storeInt(Compiler *c, TypedValue const& tv){
-        auto *ci = dyn_cast<ConstantInt>(tv.val);
+        Value *v = tv.val;
+        if(auto *e = dyn_cast<SExtInst>(tv.val)){
+            v = e->getOperand(0);
+        }
+
+        auto *ci = dyn_cast<ConstantInt>(v);
+
         if(!ci){
             c->errFlag = true;
+            cout << "Cannot convert non-constant integer.\n";
+            v->print(dbgs());
             throw new CompilationError("Cannot convert non-constant integer.");
         }
 
@@ -206,6 +219,7 @@ namespace ante {
         auto *cf = dyn_cast<ConstantFP>(tv.val);
         if(!cf){
             c->errFlag = true;
+            cout << "Cannot convert non-constant floating point value.\n";
             throw new CompilationError("Cannot convert non-constant floating point value.");
         }
 
@@ -239,6 +253,7 @@ namespace ante {
                 auto *var = c->lookup(tvt->name);
                 if(!var){
                     c->errFlag = true;
+                    cout << "Lookup for typevar " + tvt->name + " failed\n";
                     throw new CompilationError("Lookup for typevar " + tvt->name + " failed");
                 }
 
@@ -258,6 +273,7 @@ namespace ante {
         }
 
         c->errFlag = true;
+        cout << "Compile-time function argument must be constant.\n";
         throw new CompilationError("Compile-time function argument must be constant.");
     }
 
@@ -276,6 +292,7 @@ namespace ante {
                 // NOTE: throwing exceptions in constructors is bad and can lead
                 //       to memory leaks or worse.
                 c->errFlag = true;
+                cout << "ArgTuple: sizeerror: " << elemSize.getErr() << '\n';
                 throw new CompilationError(elemSize.getErr());
             }
 

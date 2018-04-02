@@ -10,14 +10,14 @@ using namespace std;
 inline void maybePrintArr(Node *n){
     if(n){
         cout << ", ";
-        n->print();
+        PrintingVisitor::print(n);
     }
 }
 
 inline void printSpaceDelimitedList(Node *n){
     Node *nxt = n;
     while(nxt){
-        nxt->print();
+        PrintingVisitor::print(nxt);
         nxt = nxt->next.get();
         if(nxt) putchar(' ');
     }
@@ -29,304 +29,298 @@ inline void printSpaceDelimitedList(Node *n){
  */
 void parser::printBlock(Node *block){
     while(block){
-        block->print();
+        PrintingVisitor::print(block);
         block = block->next.get();
         cout << endl;
     }
 }
 
-void RootNode::print(){
+void PrintingVisitor::visit(RootNode *n){
     puts("Types:");
-    for(auto& f : types){ f->print(); puts("\n"); }
+    for(auto& f : n->types){ f->accept(*this); puts("\n"); }
 
     puts("\n\nFunctions:");
-    for(auto& f : funcs){ f->print(); puts("\n"); }
+    for(auto& f : n->funcs){ f->accept(*this); puts("\n"); }
 
     puts("\n\nTraits:");
-    for(auto& f : traits){ f->print(); puts("\n"); }
+    for(auto& f : n->traits){ f->accept(*this); puts("\n"); }
 
     puts("\n\nExtensions:");
-    for(auto& f : extensions){ f->print(); puts("\n"); }
+    for(auto& f : n->extensions){ f->accept(*this); puts("\n"); }
 
     puts("\n\nMain:");
-    for(auto& f : main){ f->print(); puts(";"); }
+    for(auto& f : n->main){ f->accept(*this); puts(";"); }
 }
 
-void IntLitNode::print(){
-    cout << val;
-    maybePrintArr(next.get());
+void PrintingVisitor::visit(IntLitNode *n){
+    cout << n->val;
+    maybePrintArr(n->next.get());
 }
 
-void FltLitNode::print(){
-    cout << val;
-    maybePrintArr(next.get());
+void PrintingVisitor::visit(FltLitNode *n){
+    cout << n->val;
+    maybePrintArr(n->next.get());
 }
 
-void BoolLitNode::print(){
-    if(val)
+void PrintingVisitor::visit(BoolLitNode *n){
+    if(n->val)
         cout << "true";
     else
         cout << "false";
-    maybePrintArr(next.get());
+    maybePrintArr(n->next.get());
 }
 
-void StrLitNode::print(){
-    cout << '"' << val << '"';
-    maybePrintArr(next.get());
+void PrintingVisitor::visit(StrLitNode *n){
+    cout << '"' << n->val << '"';
+    maybePrintArr(n->next.get());
 }
 
-void CharLitNode::print(){
-    cout << '\'' << val << '\'';
-    maybePrintArr(next.get());
+void PrintingVisitor::visit(CharLitNode *n){
+    cout << '\'' << n->val << '\'';
+    maybePrintArr(n->next.get());
 }
 
-void ArrayNode::print(){
+void PrintingVisitor::visit(ArrayNode *n){
     putchar('[');
-    /*for(size_t i = 0; i < exprs.size(); i++){
-        exprs[i]->print();
-        if(i != exprs.size() - 1){
-            cout << ", ";
-        }
-    }*/
-    exprs[0]->print();
+    n->exprs[0]->accept(*this);
     putchar(']');
 }
 
-void TupleNode::print(){
+void PrintingVisitor::visit(TupleNode *n){
     putchar('(');
-    for(auto &n : exprs){
-        n->print();
-        if(n != exprs.back())
+    for(auto &elem : n->exprs){
+        elem->accept(*this);
+        if(elem != n->exprs.back())
             cout << ", ";
     }
     putchar(')');
 }
 
-void ModNode::print(){
-    if(this->isCompilerDirective()){
+void PrintingVisitor::visit(ModNode *n){
+    if(n->isCompilerDirective()){
         cout << "![";
-        expr->print();
+        n->expr->accept(*this);
         puts("]");
     }else{
-        Lexer::printTok(mod);
+        Lexer::printTok(n->mod);
         putchar(' ');
     }
 }
 
-void TypeNode::print(){
-    cout << typeNodeToStr(this);
+void PrintingVisitor::visit(TypeNode *n){
+    cout << typeNodeToStr(n);
 }
 
-void TypeCastNode::print(){
+void PrintingVisitor::visit(TypeCastNode *n){
     putchar('(');
-    typeExpr->print();
+    n->typeExpr->accept(*this);
     putchar(' ');
-    rval->print();
+    n->rval->accept(*this);
     putchar(')');
-    maybePrintArr(next.get());
+    maybePrintArr(n->next.get());
 }
 
-void UnOpNode::print(){
+void PrintingVisitor::visit(UnOpNode *n){
     putchar('(');
-    Lexer::printTok(op);
+    Lexer::printTok(n->op);
     putchar(' ');
-    rval->print();
+    n->rval->accept(*this);
     putchar(')');
-    maybePrintArr(next.get());
+    maybePrintArr(n->next.get());
 }
 
-void SeqNode::print(){
-    for(auto &n : sequence){
-        n->print();
+void PrintingVisitor::visit(SeqNode *n){
+    for(auto &n : n->sequence){
+        n->accept(*this);
         puts(";");
     }
 }
 
-void BinOpNode::print(){
-    if(op == '('){
-        lval->print();
-        rval->print();
+void PrintingVisitor::visit(BinOpNode *n){
+    if(n->op == '('){
+        n->lval->accept(*this);
+        n->rval->accept(*this);
     }else{
         putchar('(');
-        lval->print();
+        n->lval->accept(*this);
         putchar(' ');
-        Lexer::printTok(op);
+        Lexer::printTok(n->op);
         putchar(' ');
-        rval->print();
+        n->rval->accept(*this);
         putchar(')');
     }
 }
 
-void BlockNode::print(){
+void PrintingVisitor::visit(BlockNode *n){
     puts("{");
-    block->print();
+    n->block->accept(*this);
     cout << "\n}" << flush;
 }
 
-void RetNode::print(){
+void PrintingVisitor::visit(RetNode *n){
     cout << "return ";
-    if(expr) expr->print();
+    if(n->expr) n->expr->accept(*this);
 }
 
-void ImportNode::print(){
+void PrintingVisitor::visit(ImportNode *n){
     cout << "import ";
-    expr->print();
+    n->expr->accept(*this);
 }
 
 
-void IfNode::print(){
+void PrintingVisitor::visit(IfNode *n){
     cout << "if ";
-    condition->print();
+    n->condition->accept(*this);
     puts(" then");
-    thenN->print();
-    if(elseN){
+    n->thenN->accept(*this);
+    if(n->elseN){
         puts("\nelse");
-        elseN->print();
+        n->elseN->accept(*this);
     }
 }
 
-void NamedValNode::print(){
-    if(typeExpr.get() == (void*)1)
+void PrintingVisitor::visit(NamedValNode *n){
+    if(n->typeExpr.get() == (void*)1)
         cout << "self";
-    else if(typeExpr.get())
-        typeExpr->print();
+    else if(n->typeExpr.get())
+        n->typeExpr->accept(*this);
     else
         cout << "..."; //varargs
 
     putchar(' ');
-    cout << name << flush;
+    cout << n->name << flush;
 
-    maybePrintArr(next.get());
+    maybePrintArr(n->next.get());
 }
 
-void VarNode::print(){
-    cout << name << flush;
-    maybePrintArr(next.get());
+void PrintingVisitor::visit(VarNode *n){
+    cout << n->name << flush;
+    maybePrintArr(n->next.get());
 }
 
 
-void LetBindingNode::print(){
+void PrintingVisitor::visit(LetBindingNode *n){
     cout << "let ";
-    if(typeExpr.get()){
-        typeExpr->print();
+    if(n->typeExpr.get()){
+        n->typeExpr->accept(*this);
         putchar(' ');
     }
-    cout << name << " = ";
+    cout << n->name << " = ";
 
-    expr->print(); //expr is not null-checked since it is required to be non-null
+    n->expr->accept(*this); //expr is not null-checked since it is required to be non-null
 }
 
-void VarDeclNode::print(){
+void PrintingVisitor::visit(VarDeclNode *n){
     cout << "varDecl ";
-    if(typeExpr){
-        typeExpr->print();
+    if(n->typeExpr){
+        n->typeExpr->accept(*this);
         putchar(' ');
     }
-    cout << name << " = ";
-    if(expr) expr->print();
+    cout << n->name << " = ";
+    if(n->expr) n->expr->accept(*this);
     else cout << "(undef)";
 }
 
-void GlobalNode::print(){
+void PrintingVisitor::visit(GlobalNode *n){
     cout << "global ";
-    vars[0]->print();
+    n->vars[0]->accept(*this);
     puts("");
 }
 
-void VarAssignNode::print(){
+void PrintingVisitor::visit(VarAssignNode *n){
     cout << "varAssign ";
-    if(ref_expr) ref_expr->print();
+    if(n->ref_expr) n->ref_expr->accept(*this);
     cout << " = ";
-    if(expr) expr->print();
+    if(n->expr) n->expr->accept(*this);
     else cout << "(undef)";
 }
 
-void ExtNode::print(){
+void PrintingVisitor::visit(ExtNode *n){
     cout << "ext ";
-    typeExpr->print();
+    n->typeExpr->accept(*this);
     cout << "\n";
-    printBlock(methods.get());
+    printBlock(n->methods.get());
     cout << "end ext";
 }
 
-void JumpNode::print(){
-    if(jumpType == Tok_Continue)
+void PrintingVisitor::visit(JumpNode *n){
+    if(n->jumpType == Tok_Continue)
         cout << "continue ";
     else
         cout << "break ";
 
-    expr->print();
+    n->expr->accept(*this);
 }
 
-void WhileNode::print(){
+void PrintingVisitor::visit(WhileNode *n){
     cout << "while ";
-    condition->print();
+    n->condition->accept(*this);
     puts(" do ");
-    child->print();
+    n->child->accept(*this);
 }
 
-void ForNode::print(){
-    cout << "for " << var << " in ";
-    range->print();
+void PrintingVisitor::visit(ForNode *n){
+    cout << "for " << n->var << " in ";
+    n->range->accept(*this);
     puts(" do ");
-    child->print();
+    n->child->accept(*this);
 }
 
-void MatchNode::print(){
+void PrintingVisitor::visit(MatchNode *n){
     cout << "match ";
-    expr->print();
+    n->expr->accept(*this);
     puts(" with");
-    for(auto& b : branches)
-        b->print();
+    for(auto& b : n->branches)
+        b->accept(*this);
     puts("end match");
 }
 
-void MatchBranchNode::print(){
+void PrintingVisitor::visit(MatchBranchNode *n){
     cout << "| ";
-    pattern->print();
+    n->pattern->accept(*this);
     cout << " -> ";
-    branch->print();
+    n->branch->accept(*this);
     putchar('\n');
 }
 
-void FuncDeclNode::print(){
+void PrintingVisitor::visit(FuncDeclNode *n){
     bool isExtern = false;
-    if(modifiers.get()){
-        printSpaceDelimitedList(modifiers.get());
+    if(n->modifiers.get()){
+        printSpaceDelimitedList(n->modifiers.get());
     }
 
     cout << "fun ";
 
-    if(!name.empty() && name[name.size()-1] == ';'){
+    if(!n->name.empty() && n->name[n->name.size()-1] == ';'){
         isExtern = true;
-        cout << name.substr(0, name.size()-1);
+        cout << n->name.substr(0, n->name.size()-1);
     }else{
-        cout << name;
+        cout << n->name;
     }
 
-    if(params){
+    if(n->params){
         cout << ": ";
-        params->print();
+        n->params->accept(*this);
     }
-    if(type){
+    if(n->type){
         cout << " -> ";
-        type->print();
+        n->type->accept(*this);
     }
-    if(child.get()){
+    if(n->child.get()){
         cout << " = ";
-        child->print();
+        n->child->accept(*this);
     }else if(isExtern){
         cout << ";";
     }
 }
 
-void DataDeclNode::print(){
-    cout << "type " << name;
-    if(!generics.empty()){
+void PrintingVisitor::visit(DataDeclNode *n){
+    cout << "type " << n->name;
+    if(!n->generics.empty()){
         cout << "<";
-        for(size_t i = 0; i < generics.size(); i++){
-            cout << typeNodeToStr(generics[i].get());
-            if(i != generics.size()-1){
+        for(size_t i = 0; i < n->generics.size(); i++){
+            cout << typeNodeToStr(n->generics[i].get());
+            if(i != n->generics.size()-1){
                 cout << ", ";
             }
         }
@@ -334,7 +328,7 @@ void DataDeclNode::print(){
     }
     cout << " = ";
 
-    auto *nvn = (NamedValNode*)child.get();
+    auto *nvn = (NamedValNode*)n->child.get();
 
     if(((TypeNode*)nvn->typeExpr.get())->type == TT_TaggedUnion){
         cout << endl;
@@ -345,12 +339,12 @@ void DataDeclNode::print(){
             nvn = (NamedValNode*)nvn->next.get();
         }
     }else{
-        child->print();
+        n->child->accept(*this);
     }
 }
 
-void TraitNode::print(){
-    cout << "trait " << name << endl;
-    printBlock(child.get());
-    cout << "end of trait " << name << endl;
+void PrintingVisitor::visit(TraitNode *n){
+    cout << "trait " << n->name << endl;
+    printBlock(n->child.get());
+    cout << "end of trait " << n->name << endl;
 }
