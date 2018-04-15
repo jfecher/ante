@@ -314,8 +314,10 @@ TypedValue compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
 void CompilingVisitor::visit(StrLitNode *n){
     auto idx = n->val.find("${");
 
-    if(idx != string::npos and (idx == 0 or n->val.find("\\${") != idx - 1))
+    if(idx != string::npos and (idx == 0 or n->val.find("\\${") != idx - 1)){
         this->val = compStrInterpolation(c, n, idx);
+        return;
+    }
 
     AnType *strty = AnDataType::get("Str");
 
