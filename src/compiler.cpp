@@ -122,7 +122,7 @@ void CompilingVisitor::visit(FltLitNode *n){
 
 
 void CompilingVisitor::visit(BoolLitNode *n){
-    val = TypedValue(ConstantInt::get(*c->ctxt, APInt(1, (bool)val, true)),
+    val = TypedValue(ConstantInt::get(*c->ctxt, APInt(1, (bool)n->val, true)),
             AnType::getBool());
 }
 
