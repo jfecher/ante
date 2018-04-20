@@ -1538,6 +1538,35 @@ void CompilingVisitor::visit(SeqNode *n){
 }
 
 
+TypedValue handlePointerOffset(BinOpNode *n, Compiler *c, TypedValue &lhs, TypedValue &rhs){
+    Value *ptr;
+    Value *idx;
+    AnType *ptrTy;
+
+    if(lhs.type->typeTag == TT_Ptr and rhs.type->typeTag != TT_Ptr){
+        ptr = lhs.val;
+        idx = rhs.val;
+        ptrTy = lhs.type;
+    }else if(lhs.type->typeTag != TT_Ptr and rhs.type->typeTag == TT_Ptr){
+        ptr = rhs.val;
+        idx = lhs.val;
+        ptrTy = rhs.type;
+    }else{
+        c->compErr("Operands for pointer addition must be a pointer and an integer", n->loc);
+    }
+
+    if(n->op == '+'){
+        return {c->builder.CreateInBoundsGEP(ptr, idx), ptrTy};
+    }else if(n->op == '-'){
+        idx = c->builder.CreateNeg(idx);
+        return {c->builder.CreateInBoundsGEP(ptr, idx), ptrTy};
+    }else{
+        c->compErr("Operator " + to_string(n->op) + " is not a primitive pointer operator", n->loc);
+    }
+    return {}; //unreachable
+}
+
+
 /*
  *  Compiles an operation along with its lhs and rhs
  */
@@ -1603,7 +1632,7 @@ void CompilingVisitor::visit(BinOpNode *n){
     if(n->op == '+' or n->op == '-'){
         if((lhs.type->typeTag == TT_Ptr or isNumericTypeTag(lhs.type->typeTag)) and
            (rhs.type->typeTag == TT_Ptr or isNumericTypeTag(rhs.type->typeTag))){
-            this->val = handlePrimitiveNumericOp(n, c, lhs, rhs);
+            this->val = handlePointerOffset(n, c, lhs, rhs);
             return;
         }
     }
@@ -1628,6 +1657,9 @@ void CompilingVisitor::visit(UnOpNode *n){
             this->val = addrOf(c, val);
             return;
         case '-': //negation
+            if(!isNumericTypeTag(val.type->typeTag))
+                c->compErr("Cannot negate non-numeric type " + anTypeToColoredStr(val.type), n->loc);
+
             this->val = TypedValue(c->builder.CreateNeg(val.val), val.type);
             return;
         case Tok_Not:
