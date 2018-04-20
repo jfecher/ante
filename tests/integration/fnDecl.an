@@ -27,7 +27,7 @@ if divisibleByThree 23 then
    puts "23 is divisible by 3"
 
 if isEven 4 then
-   printf "fact(5) = %d\n" (fact 5)
+    printf "fact(5) = %d\n" (fact 5)
 
 printMsg (1 + 1 != 2)
 

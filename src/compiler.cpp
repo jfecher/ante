@@ -756,49 +756,6 @@ void CompilingVisitor::visit(VarNode *n){
     }
 }
 
-
-void CompilingVisitor::visit(LetBindingNode *n){
-    n->expr->accept(*this);
-
-    if(val.type->typeTag == TT_Void)
-        c->compErr("Cannot assign a "+anTypeToColoredStr(AnType::getVoid())+
-                " value to a variable", n->expr->loc);
-
-    TypeNode *tyNode;
-    if((tyNode = (TypeNode*)n->typeExpr.get())){
-        auto *anty = toAnType(c, tyNode);
-        if(!llvmTypeEq(val.val->getType(), c->anTypeToLlvmType(anty))){
-            c->compErr("Incompatible types in explicit binding.", n->expr->loc);
-        }
-    }
-
-    bool isGlobal = false;
-
-    //add the modifiers to the typedvalue
-    for(Node *n : *n->modifiers){
-        int m = ((ModNode*)n)->mod;
-        val.type = val.type->addModifier((TokenType)m);
-        if(m == Tok_Global) isGlobal = true;
-    }
-
-    if(isGlobal){
-        auto *ty = c->anTypeToLlvmType(val.type);
-        auto *global = new GlobalVariable(*c->module, ty, false, GlobalValue::PrivateLinkage, UndefValue::get(ty), n->name);
-        c->builder.CreateStore(val.val, global);
-        val.val = global;
-    }
-
-    if(val.getType()->isArrayTy() and not isGlobal){
-        Value *alloca = c->builder.CreateAlloca(val.getType(), nullptr, n->name.c_str());
-        c->builder.CreateStore(val.val, alloca);
-        val.val = alloca;
-        isGlobal = true;
-    }
-
-    c->stoVar(n->name, new Variable(n->name, val, c->scope, true, isGlobal));
-    //return val;
-}
-
 /**
  * @brief Helper function to compile a VarDeclNode with no specified type.
  *        Matches the type of the variable with the init expression's type.
@@ -840,29 +797,29 @@ TypedValue compVarDeclWithInferredType(VarDeclNode *node, Compiler *c){
     return TypedValue(c->builder.CreateStore(val.val, alloca.val), val.type);
 }
 
-void CompilingVisitor::visit(VarDeclNode *n){
+TypedValue compMutVarDecl(VarDeclNode *n, CompilingVisitor &v){
     //check for redeclaration, but only on topmost scope
-    auto redeclare = c->varTable.back()->find(n->name);
-    if(redeclare != c->varTable.back()->end()){
-        c->compErr("Variable " + n->name + " was redeclared.", n->loc);
+    auto redeclare = v.c->varTable.back()->find(n->name);
+    if(redeclare != v.c->varTable.back()->end()){
+        v.c->compErr("Variable " + n->name + " was redeclared.", n->loc);
     }
 
     //check for an inferred type
     if(!n->typeExpr.get()){
-        this->val = compVarDeclWithInferredType(n, c);
-        return;
+        v.val = compVarDeclWithInferredType(n, v.c);
+        return v.val;
     }
 
     if(((TypeNode*)n->typeExpr.get())->type == TT_Void)
-        c->compErr("Cannot create a variable of type "+
+        v.c->compErr("Cannot create a variable of type "+
                 anTypeToColoredStr(AnType::getVoid()), n->typeExpr->loc);
 
 
     //the type held by this node will be deleted when the parse tree is, so copy
     //this one so it is not double freed
-    AnType *anTy = toAnType(c, (TypeNode*)n->typeExpr.get());
+    AnType *anTy = toAnType(v.c, (TypeNode*)n->typeExpr.get());
 
-    Type *ty = c->anTypeToLlvmType(anTy);
+    Type *ty = v.c->anTypeToLlvmType(anTy);
 
     bool isGlobal = false;
 
@@ -878,34 +835,83 @@ void CompilingVisitor::visit(VarDeclNode *n){
 
     //location to store var
     Value *loc = isGlobal ?
-        (Value*) new GlobalVariable(*c->module, ty, false, GlobalValue::PrivateLinkage, UndefValue::get(ty), n->name) :
-        c->builder.CreateAlloca(ty, nullptr, n->name.c_str());
+        (Value*) new GlobalVariable(*v.c->module, ty, false, GlobalValue::PrivateLinkage, UndefValue::get(ty), n->name) :
+        v.c->builder.CreateAlloca(ty, nullptr, n->name.c_str());
 
     TypedValue alloca = TypedValue(loc, anTy);
 
-    Variable *var = new Variable(n->name, alloca, c->scope, true, true);
-    c->stoVar(n->name, var);
+    Variable *var = new Variable(n->name, alloca, v.c->scope, true, true);
+    v.c->stoVar(n->name, var);
     if(n->expr.get()){
-        n->expr->accept(*this);
-        if(val.type->typeTag == TT_Void)
-            c->compErr("Cannot assign a "+anTypeToColoredStr(AnType::getVoid())+
+        n->expr->accept(v);
+        if(v.val.type->typeTag == TT_Void)
+            v.c->compErr("Cannot assign a "+anTypeToColoredStr(AnType::getVoid())+
                     " value to a variable", n->expr->loc);
 
-        AnType *exprTy = val.type->addModifier(Tok_Mut);
+        AnType *exprTy = v.val.type->addModifier(Tok_Mut);
         var->noFree = true;//var->getType() != TT_Ptr || dynamic_cast<Constant*>(val->val);
 
         //Make sure the assigned value matches the variable's type
         auto *allocaTy = (AnPtrType*)alloca.type;
-        if(!c->typeEq(allocaTy->extTy, exprTy)){
-            c->compErr("Cannot assign expression of type " + anTypeToColoredStr(val.type)
+        if(!v.c->typeEq(allocaTy->extTy, exprTy)){
+            v.c->compErr("Cannot assign expression of type " + anTypeToColoredStr(v.val.type)
                         + " to a variable of type " + anTypeToColoredStr(allocaTy->extTy), n->expr->loc);
         }
 
         //transfer ownership of val->type
-        this->val = TypedValue(c->builder.CreateStore(val.val, alloca.val), exprTy);
+        v.val = TypedValue(v.c->builder.CreateStore(v.val.val, alloca.val), exprTy);
     }else{
-        this->val = alloca;
+        v.val = alloca;
     }
+    return v.val;
+}
+
+
+void CompilingVisitor::visit(VarDeclNode *n){
+    if(n->hasMod(Tok_Mut)){
+        compMutVarDecl(n, *this);
+        return;
+    }
+
+    n->expr->accept(*this);
+
+    if(val.type->typeTag == TT_Void)
+        c->compErr("Cannot assign a "+anTypeToColoredStr(AnType::getVoid())+
+                " value to a variable", n->expr->loc);
+
+    TypeNode *tyNode;
+    if((tyNode = (TypeNode*)n->typeExpr.get())){
+        auto *anty = toAnType(c, tyNode);
+        if(!llvmTypeEq(val.val->getType(), c->anTypeToLlvmType(anty))){
+            c->compErr("Incompatible types in explicit binding.", n->expr->loc);
+        }
+    }
+
+    bool isGlobal = false;
+
+    //add the modifiers to the typedvalue
+    for(Node *n : *n->modifiers){
+        int m = ((ModNode*)n)->mod;
+        val.type = val.type->addModifier((TokenType)m);
+        if(m == Tok_Global) isGlobal = true;
+    }
+
+    if(isGlobal){
+        auto *ty = c->anTypeToLlvmType(val.type);
+        auto *global = new GlobalVariable(*c->module, ty, false, GlobalValue::PrivateLinkage, UndefValue::get(ty), n->name);
+        c->builder.CreateStore(val.val, global);
+        val.val = global;
+    }
+
+    if(val.getType()->isArrayTy() and not isGlobal){
+        Value *alloca = c->builder.CreateAlloca(val.getType(), nullptr, n->name.c_str());
+        c->builder.CreateStore(val.val, alloca);
+        val.val = alloca;
+        isGlobal = true;
+    }
+
+    c->stoVar(n->name, new Variable(n->name, val, c->scope, true, isGlobal));
+    //return val;
 }
 
 /**

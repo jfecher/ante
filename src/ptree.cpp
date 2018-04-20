@@ -162,7 +162,6 @@ namespace ante {
                 }else if(DataDeclNode *fdn = dynamic_cast<DataDeclNode*>(decl)){
                 }else if(ExtNode *fdn = dynamic_cast<ExtNode*>(decl)){
                 }else if(TraitNode *fdn = dynamic_cast<TraitNode*>(decl)){
-                }else if(LetBindingNode *fdn = dynamic_cast<LetBindingNode*>(decl)){
                 }else if(VarDeclNode *fdn = dynamic_cast<VarDeclNode*>(decl)){
                 }
             }
@@ -496,10 +495,6 @@ namespace ante {
 
         Node* mkImportNode(LOC_TY loc, Node* expr){
             return new ImportNode(loc, expr);
-        }
-
-        Node* mkLetBindingNode(LOC_TY loc, char* s, Node* mods, Node* tExpr, Node* expr){
-            return new LetBindingNode(loc, s, mods, tExpr, expr);
         }
 
         Node* mkVarDeclNode(LOC_TY loc, char* s, Node* mods, Node* tExpr, Node* expr){

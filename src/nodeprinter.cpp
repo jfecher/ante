@@ -199,17 +199,6 @@ void PrintingVisitor::visit(VarNode *n){
 }
 
 
-void PrintingVisitor::visit(LetBindingNode *n){
-    cout << "let ";
-    if(n->typeExpr.get()){
-        n->typeExpr->accept(*this);
-        putchar(' ');
-    }
-    cout << n->name << " = ";
-
-    n->expr->accept(*this); //expr is not null-checked since it is required to be non-null
-}
-
 void PrintingVisitor::visit(VarDeclNode *n){
     cout << "varDecl ";
     if(n->typeExpr){

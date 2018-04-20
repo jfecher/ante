@@ -5,8 +5,8 @@ type Maybe 't =
 
 
 fun parse_int: Str str -> Maybe i32
-    var i = 0
-    var sum = 0
+    mut i = 0
+    mut sum = 0
 
     while str.cStr#i != '\0' do
         let c = str.cStr#i

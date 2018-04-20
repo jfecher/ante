@@ -85,7 +85,7 @@ ext Vec 't
     //Expects the indices to be in sorted order.
     //Will error if any index is out of bounds.
     fun remove_indices: mut Vec 't v, Vec i32 indices
-        var moved = 0
+        mut moved = 0
         for i in indices.indices() do
             let cur = indices#i
 
@@ -109,7 +109,7 @@ ext Vec 't
     //return the number of elements removed.
     //Uses == to determine element equality.
     fun remove_all: mut Vec 't v, 't elem -> usz
-        var indices = Vec<i32>()
+        mut indices = Vec<i32>()
         for i in v.indices() do
             if elem == v._data#i then
                 indices.push i
@@ -138,7 +138,7 @@ ext VecIter : Iterator
 fun printne: Vec 't v
     printne "{ "
 
-    var i = 0
+    mut i = 0
     while i < v.len do
         printne (v._data#i)
         if i + 1 != v.len then

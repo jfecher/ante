@@ -1,10 +1,10 @@
 
-global var col = 3
-let global step = 2
+mut global col = 3
+global step = 2
 
 
 fun b:
-    print(global step col)
+    print(import global step col)
 
     col += step
     print col

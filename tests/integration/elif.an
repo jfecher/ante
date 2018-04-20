@@ -4,7 +4,7 @@
     and parse/compile multiple elifs and elses correctly
 */
 
-var i = (fun = 4)()
+let i = (fun = 4)()
 
 if i == 3 then
     print "three"

@@ -1,5 +1,5 @@
 fun loop: i32 n, i32->void f
-    var i = 0
+    mut i = 0
     while i < n do
         f i
         i += 1

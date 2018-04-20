@@ -271,15 +271,6 @@ namespace ante {
             ~StrLitNode(){}
         };
 
-        struct LetBindingNode : public Node{
-            std::string name;
-            std::unique_ptr<Node> modifiers, typeExpr, expr;
-
-            void accept(NodeVisitor& v){ v.visit(this); }
-            LetBindingNode(LOC_TY& loc, std::string s, Node *mods, Node* t, Node* exp) : Node(loc), name(s), modifiers(mods), typeExpr(t), expr(exp){}
-            ~LetBindingNode(){}
-        };
-
         struct VarDeclNode : public Node{
             std::string name;
             std::unique_ptr<Node> modifiers, typeExpr, expr;
@@ -287,6 +278,16 @@ namespace ante {
             void accept(NodeVisitor& v){ v.visit(this); }
             VarDeclNode(LOC_TY& loc, std::string s, Node *mods, Node* t, Node* exp) : Node(loc), name(s), modifiers(mods), typeExpr(t), expr(exp){}
             ~VarDeclNode(){}
+            bool hasMod(int mod) const noexcept {
+                for(const Node *n : *modifiers){
+                    if(const ModNode *m = dynamic_cast<const ModNode*>(n)){
+                        if(m->mod == mod){
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            }
         };
 
         struct VarAssignNode : public Node{

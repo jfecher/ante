@@ -2,13 +2,13 @@
     varDecl.an
         Tests initializations, assignments, and print statements
 */
-var i = 12
+mut i = 12
 print i
 i = 3
 print i
 
 
-var s = "Hello "
+mut s = "Hello "
 printf "%s" s
 s = "World!"
 print s

@@ -49,7 +49,7 @@ fun print: Holder h
     print <| get h
 
 
-var h = Holder()
+mut h = Holder()
 
 store h 5
 print h
@@ -59,7 +59,7 @@ print h
 
 
 
-var c = Empty
+mut c = Empty
 print c
 
 store c 32

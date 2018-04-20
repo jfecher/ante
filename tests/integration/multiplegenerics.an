@@ -2,12 +2,12 @@ import Vec
 
 print Vec(1..26)
 
-var v2 = Vec<u8>()
+mut v2 = Vec<u8>()
 v2.push 0u8
 v2.push 2u8
 print v2
 
-var vs = Vec<Str>()
+mut vs = Vec<Str>()
 push vs "One"
 push vs "Two"
 push vs "Three"

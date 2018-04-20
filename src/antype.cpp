@@ -57,6 +57,7 @@ namespace ante {
     }
 
     AnType* AnType::addModifier(TokenType m){
+        if(m == Tok_Let) return this;
         if(mods){
             if(hasModifier(m)){
                 return this;
@@ -859,6 +860,7 @@ namespace ante {
     }
 
     AnAggregateType* AnAggregateType::addModifier(TokenType m){
+        if(m == Tok_Let) return this;
         if(mods){
             if(hasModifier(m)){
                 return this;
@@ -888,6 +890,7 @@ namespace ante {
     }
 
     AnArrayType* AnArrayType::addModifier(TokenType m){
+        if(m == Tok_Let) return this;
         if(mods){
             if(hasModifier(m)){
                 return this;
@@ -903,6 +906,7 @@ namespace ante {
     }
 
     AnPtrType* AnPtrType::addModifier(TokenType m){
+        if(m == Tok_Let) return this;
         if(mods){
             if(hasModifier(m)){
                 return this;
@@ -918,6 +922,7 @@ namespace ante {
     }
 
     AnTypeVarType* AnTypeVarType::addModifier(TokenType m){
+        if(m == Tok_Let) return this;
         if(mods){
             if(hasModifier(m)){
                 return this;
@@ -931,6 +936,7 @@ namespace ante {
     }
 
     AnFunctionType* AnFunctionType::addModifier(TokenType m){
+        if(m == Tok_Let) return this;
         if(mods){
             if(hasModifier(m)){
                 return this;
@@ -946,6 +952,7 @@ namespace ante {
     }
 
     AnDataType* AnDataType::addModifier(TokenType m){
+        if(m == Tok_Let) return this;
         if(mods){
             if(hasModifier(m)){
                 return this;

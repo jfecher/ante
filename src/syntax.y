@@ -68,7 +68,7 @@ void yyerror(const char *msg);
 %token If Then Elif Else
 %token For While Do In
 %token Continue Break
-%token Import Let Var Match With
+%token Import Let Match With
 %token Type Trait Fun Ext Block Self
 
 /* modifiers */
@@ -95,7 +95,7 @@ void yyerror(const char *msg);
 
 
 %left Newline
-%left STMT Fun Let Import Return Ext Var While For Match Trait If Break Continue Type
+%left STMT Fun Let Import Return Ext While For Match Trait If Break Continue Type
 %left RArrow
 
 %left ENDIF
@@ -298,6 +298,7 @@ modifier: Pub      {$$ = mkModNode(@$, Tok_Pub);}
         | Mut      {$$ = mkModNode(@$, Tok_Mut);}
         | Global   {$$ = mkModNode(@$, Tok_Global);}
         | Ante     {$$ = mkModNode(@$, Tok_Ante);}
+        | Let      {$$ = mkModNode(@$, Tok_Let);}
         | preproc  {$$ = $1;}
         ;
 
@@ -318,7 +319,6 @@ mod_decl: function
         | extension
         | trait_decl
         | modifier_block
-        | let_binding
         | var_decl
         ;
 
@@ -327,18 +327,12 @@ mod_decls_block: mod_decls_block mod_decl  {$$ = setNext($1, $2);}
                ;
 */
 
-var_decl: modifier_list Var ident '=' expr  {$$ = mkVarDeclNode(@3, (char*)$3, $1,  0, $5); free($3);}
-        | Var ident '=' expr                {$$ = mkVarDeclNode(@2, (char*)$2,  0,  0, $4); free($2);}
+var_decl: modifier_list ident '=' expr  {$$ = mkVarDeclNode(@2, (char*)$2, $1, 0, $4); free($2);}
+        | modifier_list ident ':' type_expr '=' expr  {$$ = mkVarDeclNode(@2, (char*)$2, $1, $4, $6); free($2);}
         ;
 
-global: Global ident_list  {$$ = mkGlobalNode(@$, $2);}
+global: Import Global ident_list  {$$ = mkGlobalNode(@$, $3);}
       ;
-
-let_binding: Let modifier_list ident '=' expr           {$$ = mkLetBindingNode(@$, (char*)$3, $2, 0,  $5); free($3);}
-           | Let type_expr ident '=' expr               {$$ = mkLetBindingNode(@$, (char*)$3, 0,  $2, $5); free($3);}
-           | Let ident '=' expr                         {$$ = mkLetBindingNode(@$, (char*)$2, 0,  0,  $4); free($2);}
-           ;
-
 
 trait_decl: Trait usertype Indent trait_fn_list Unindent  {$$ = mkTraitNode(@$, (char*)$2, $4); free($2);}
           ;
@@ -633,7 +627,6 @@ val_no_decl: '(' bound_expr ')'            {$$ = $2;}
            | charlit                 {$$ = $1;}
            | True                    {$$ = mkBoolLitNode(@$, 1);}
            | False                   {$$ = mkBoolLitNode(@$, 0);}
-           | let_binding             {$$ = $1;}
            | var_decl                {$$ = $1;}
            | while_loop              {$$ = $1;}
            | for_loop                {$$ = $1;}

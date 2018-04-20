@@ -41,7 +41,7 @@ fun printne: Node* l
 
 
 fun (++): i32 l r =
-    var list = List l
+    mut list = List l
     append list r
     list
 
@@ -50,7 +50,7 @@ fun (++): mut List i32 l, i32 r =
     l
 
 
-var head = List 0
+mut head = List 0
 
 append head 1
 append head 2

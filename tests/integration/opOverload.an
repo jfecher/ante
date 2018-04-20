@@ -2,7 +2,7 @@
 
 fun (+): Str l r -> Str
     let len = l.len + r.len
-    var buf = malloc len
+    mut buf = malloc len
 
     memcpy buf (void* l.cStr) l.len
     memcpy (void* (u64 buf + l.len)) (void* r.cStr) r.len

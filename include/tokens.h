@@ -96,7 +96,6 @@ namespace ante {
         Tok_Break,
         Tok_Import,
         Tok_Let,
-        Tok_Var,
         Tok_Match,
         Tok_With,
         Tok_Type,

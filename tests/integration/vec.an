@@ -1,6 +1,6 @@
 import Vec
 
-var v = Vec<i32>()
+mut v = Vec<i32>()
 v.push 1
 v.push 1
 v.push 2
@@ -33,7 +33,7 @@ let count = v.remove_all 1
 assert (1 not in v)
 assert (count == 2)
  
-var v2 = Vec<i32>()
+mut v2 = Vec<i32>()
 v2.push 2
 v2.push 3
 v2.push 13
@@ -41,9 +41,9 @@ v2.push 13
 assert (v == v2)
 
 
-var v3 = Vec(0..11)
+mut v3 = Vec(0..11)
 
-var idxs = Vec<i32>()
+mut idxs = Vec<i32>()
 idxs.push 0
 idxs.push 1
 idxs.push 4
@@ -53,7 +53,7 @@ idxs.push 10
 
 v3.remove_indices idxs
 
-var v4 = Vec<i32>()
+mut v4 = Vec<i32>()
 v4.push 2
 v4.push 3
 v4.push 6

@@ -10,7 +10,7 @@ fun pow: i32 base exponent -> i32
         base * pow base (exponent - 1)
 
 
-var i = 0
+mut i = 0
 let base = 2
 
 while i < 16 do

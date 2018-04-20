@@ -54,7 +54,6 @@ namespace ante {
         Node* mkVarNode(LOC_TY loc, char* s);
         Node* mkRetNode(LOC_TY loc, Node* expr);
         Node* mkImportNode(LOC_TY loc, Node* expr);
-        Node* mkLetBindingNode(LOC_TY loc, char* s, Node* mods, Node* tExpr, Node* expr);
         Node* mkVarDeclNode(LOC_TY loc, char* s, Node* mods, Node* tExpr, Node* expr);
         Node* mkVarAssignNode(LOC_TY loc, Node* var, Node* expr, bool shouldFreeLval = true);
         Node* mkExtNode(LOC_TY loc, Node* typeExpr, Node* methods, Node* traits=0);

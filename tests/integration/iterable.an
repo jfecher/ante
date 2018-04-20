@@ -1,6 +1,6 @@
 import Vec
 
-var v = Vec<i32>()
+mut v = Vec<i32>()
 v.push 1
 v.push 1
 v.push 2

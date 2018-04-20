@@ -1,9 +1,9 @@
 
 //Reverse a string
 fun reverse: Str s -> Str
-    var buf = c8* malloc s.len
+    mut buf = c8* malloc s.len
 
-    var i = 0usz
+    mut i = 0usz
     while i < s.len do
         buf#i = s.cStr#(s.len-i-1)
         i += 1
@@ -17,9 +17,9 @@ fun (++): Str l, i32 r -> Str
   
     //get the string form of an integer, but in reverse
     fun rev_str: i32 x -> Str
-        var buf = c8* malloc 12
-        var i = 0usz
-        var n = x
+        mut buf = c8* malloc 12
+        mut i = 0usz
+        mut n = x
 
         while n > 0 do
             buf#i = c8(n %10) + '0'

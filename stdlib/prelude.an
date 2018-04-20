@@ -184,9 +184,9 @@ fun c8*.init: Str s = s.cStr
 
 
 fun Str.reverse: Str s -> Str
-    var buf = c8* malloc (s.len + 1)
+    mut buf = c8* malloc (s.len + 1)
 
-    var i = 0usz
+    mut i = 0usz
     while i < s.len do
         buf#i = s.cStr#(s.len-i-1)
         i += 1
@@ -197,11 +197,11 @@ fun Str.reverse: Str s -> Str
 
 fun Str.init: i64 i -> Str
     if i == 0 then return "0"
-    var len = 0usz
-    var buf = c8* malloc 21
+    mut len = 0usz
+    mut buf = c8* malloc 21
     buf#20 = '\0'
 
-    var x = i
+    mut x = i
     let isNeg = i < 0 and ((x *= -1); true)
 
     while x != 0 do
@@ -217,11 +217,11 @@ fun Str.init: i64 i -> Str
 
 fun Str.init: u64 i -> Str
     if i == 0 then return "0"
-    var len = 0usz
-    var buf = c8* malloc 21
+    mut len = 0usz
+    mut buf = c8* malloc 21
     buf#20 = '\0'
 
-    var x = i
+    mut x = i
     while x != 0 do
         len += 1
         buf#(20 - len) = '0' + c8(x % 10)
@@ -242,8 +242,8 @@ fun Str.init: u64 i -> Str
 
 
 fun u64.parse: Str s -> Maybe u64
-    var i = 0
-    var sum = 0u64
+    mut i = 0
+    mut sum = 0u64
 
     while s#i != '\0' do
         let c = s#i
@@ -257,8 +257,8 @@ fun u64.parse: Str s -> Maybe u64
     Some sum
 
 fun i64.parse: Str s -> Maybe i64
-    var i = 0
-    var sum = 0i64
+    mut i = 0
+    mut sum = 0i64
     let isNeg =
         if s.len != 0 and s#0 == '-' then
             i += 1
@@ -367,7 +367,7 @@ fun (==): Str l r -> bool
     if l.len != r.len then
         return false
 
-    var i = 0
+    mut i = 0
     while i < l.len do
         if l.cStr#i != r.cStr#i then
             return false
@@ -388,11 +388,11 @@ fun (++): Str s1 s2 -> Str
     if s2.len == 0 then return s1
 
     let len = s1.len + s2.len
-    var buf = malloc (len+1)
+    mut buf = malloc (len+1)
 
     memcpy buf (void* s1.cStr) s1.len
 
-    var buf_offset = void*(usz buf + s1.len)
+    mut buf_offset = void*(usz buf + s1.len)
     memcpy buf_offset (void* s2.cStr) (s2.len+1) //copy terminating null too
 
     Str(c8* buf, len)
@@ -420,9 +420,9 @@ fun InFile.next_line: InFile f -> Str
     if feof f then return ""
     let eof = c8 255
 
-    var len = 0usz
-    var cap = 64usz
-    var cstr = c8* malloc cap
+    mut len = 0usz
+    mut cap = 64usz
+    mut cstr = c8* malloc cap
 
     while
         let c = fgetc f
@@ -450,8 +450,8 @@ fun InFile.next_line: InFile f -> Str
 
 //print a message then return user input
 fun input: c8* msg -> Str
-    var len = 0usz
-    var cstr = c8* 0
+    mut len = 0usz
+    mut cstr = c8* 0
 
     printne msg
 

@@ -8,7 +8,7 @@ puts (msgs#2)
 printf "ints[3] = %d\n" (ints#3)
 
 
-var arr = [5, 4, 3, 2]
+mut arr = [5, 4, 3, 2]
 printf "arr[2] = %d\n" (arr#2)
 
 arr#2 = 5

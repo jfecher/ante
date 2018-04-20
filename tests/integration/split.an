@@ -3,10 +3,10 @@ import Vec
 fun split: Str s = split s ' '
 
 fun split: Str s, c8 c -> Vec Str
-    var v = Vec<Str>()
+    mut v = Vec<Str>()
 
-    var i = 0
-    var j = 0
+    mut i = 0
+    mut j = 0
     while i < s.len do
         if s.cStr#i == c then
             v.push <| substr s j i
@@ -23,11 +23,11 @@ fun substr: Str s, i32 begin end -> Str
         return ""
 
     let len = end - begin
-    var buf = c8* malloc(len + 1)
+    mut buf = c8* malloc(len + 1)
     buf#end = '\0'
 
-    var i = 0
-    var b = begin
+    mut i = 0
+    mut b = begin
     while b < end do
         buf#i = s#b
         b += 1
