@@ -2207,6 +2207,17 @@ Variable* Compiler::lookup(string const& var) const{
         if(it != vt->end())
             return it->getValue().get();
     }
+    //local var not found, search for a global
+    if(!varTable.empty()){
+        for(auto i = varTable.size(); i >= 1; --i){
+            auto it = varTable[i-1]->find(var);
+            if(it != varTable[i-1]->end()){
+                Variable *v = it->getValue().get();
+                if(v->tval.type->hasModifier(Tok_Global))
+                    return v;
+            }
+        }
+    }
     return nullptr;
 }
 
