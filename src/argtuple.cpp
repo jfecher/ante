@@ -15,6 +15,97 @@ namespace ante {
     }
 #endif
 
+    template<typename T>
+    vector<T> vecOfSize(size_t elems){
+        vector<T> vec;
+        vec.reserve(elems);
+        return vec;
+    }
+
+    TypedValue convertToTypedValue(Compiler *c, ArgTuple &arg, AnType *tn);
+
+    TypedValue convertTupleToTypedValue(Compiler *c, ArgTuple &arg, AnAggregateType *tn){
+        if(tn->extTys.empty()){
+            return c->getVoidLiteral();
+        }
+
+        vector<Constant*> elems;
+        elems.reserve(tn->extTys.size());
+
+        vector<Type*> elemTys;
+        elemTys.reserve(tn->extTys.size());
+
+        vector<AnType*> anElemTys;
+        anElemTys.reserve(tn->extTys.size());
+
+        map<unsigned, Value*> nonConstants;
+        size_t offset = 0;
+
+        for(unsigned i = 0; i < tn->extTys.size(); i++){
+            char* elem = (char*)arg.asRawData() + offset;
+            ArgTuple elemTup{c, (void*)elem, tn->extTys[i]};
+            TypedValue tval = elemTup.asTypedValue();
+
+            if(Constant *elem = dyn_cast<Constant>(tval.val)){
+                elems.push_back(elem);
+            }else{
+                nonConstants[i] = tval.val;
+                elems.push_back(UndefValue::get(tval.getType()));
+            }
+
+            auto res = tn->extTys[i]->getSizeInBits(c);
+            if(!res){
+                c->errFlag = true;
+                cout << "Unknown/Unimplemented TypeTag " + typeTagToStr(tn->typeTag) << endl;
+                throw new CompilationError("Unknown/Unimplemented TypeTag " + typeTagToStr(tn->typeTag));
+            }
+
+            offset += res.getVal() / 8;
+            elemTys.push_back(tval.getType());
+            anElemTys.push_back(tval.type);
+        }
+
+        //Create the constant tuple with undef values in place for the non-constant values
+        Value* tuple = ConstantStruct::get((StructType*)c->anTypeToLlvmType(tn), elems);
+
+        //Insert each pathogen value into the tuple individually
+        for(const auto &p : nonConstants){
+            tuple = c->builder.CreateInsertValue(tuple, p.second, p.first);
+        }
+
+        return TypedValue(tuple, tn);
+    }
+
+
+    /**
+     * Finds and returns the last stored value from a LoadInst
+     * of a mutable variable.
+     */
+    TypedValue findLastStore(Compiler *c, TypedValue const& tv){
+        //mutable pointer passed, find last store
+        if(LoadInst *si = dyn_cast<LoadInst>(tv.val)){
+            for(auto *u : si->getPointerOperand()->users()){
+                if(StoreInst *si = dyn_cast<StoreInst>(u)){
+                    Value *vo = si->getValueOperand();
+
+                    if(BitCastInst *be = dyn_cast<BitCastInst>(vo)){
+                        for(auto *u : be->users()){
+                            if(StoreInst *si = dyn_cast<StoreInst>(u)){
+                                return {si->getValueOperand(), tv.type};
+                            }
+                        }
+                    }
+                    return {vo, tv.type};
+                }
+            }
+        }
+
+        c->errFlag = true;
+        cout << "Cannot find last store to mutable variable during translation.\n";
+        throw new CompilationError("Cannot find last store to mutable variable during translation.");
+    }
+
+
     /**
      * Converts an ArgTuple into a typedValue.  If the type
      * cannot be converted or an error occurs, c's error flag
@@ -39,14 +130,15 @@ namespace ante {
             case TT_F32:             return TypedValue(ConstantFP::get(*c->ctxt, APFloat(*(float*)data)), tn);
             case TT_F64:             return TypedValue(ConstantFP::get(*c->ctxt, APFloat(*(double*)data)), tn);
             case TT_Bool:            return TypedValue(c->builder.getInt1(*(uint8_t*)data), tn);
-            case TT_Tuple:           break;
             case TT_Array:           break;
             case TT_Ptr: {
-                auto *cint = c->builder.getIntN(*(size_t*)data, AN_USZ_SIZE);
+                auto *cint = c->builder.getIntN(AN_USZ_SIZE, *(size_t*)data);
                 auto *ty = c->anTypeToLlvmType(tn);
                 return TypedValue(c->builder.CreateIntToPtr(cint, ty), tn);
             }
             case TT_Data:
+            case TT_Tuple:
+                return convertTupleToTypedValue(c, arg, (AnAggregateType*)tn);
             case TT_TypeVar:
             case TT_Function:
             case TT_TaggedUnion:
@@ -116,6 +208,30 @@ namespace ante {
                     }
                 }
             }
+        }else if(LoadInst *li = dyn_cast<LoadInst>(tv.val)){
+            auto ptr = findLastStore(c, tv);
+            storePtr(c, ptr);
+
+        }else if(PtrToIntInst *ptii = dyn_cast<PtrToIntInst>(tv.val)){
+            auto ptr = ptii->getOperand(0);
+            storePtr(c, {ptr, tv.type});
+        }else if(IntToPtrInst *itpi = dyn_cast<IntToPtrInst>(tv.val)){
+            c->module->print(dbgs(), nullptr);
+            auto ptr = itpi->getOperand(0);
+
+            if(ConstantInt *addr = dyn_cast<ConstantInt>(ptr)){
+                *(void**)data = (void*)dyn_cast<ConstantInt>(ptr)->getZExtValue();
+            }else{
+                storePtr(c, {ptr, tv.type});
+            }
+        }else if(BinaryOperator *bi = dyn_cast<BinaryOperator>(tv.val)){
+            if(bi->getOpcode() == BinaryOperator::BinaryOps::Add and dyn_cast<ConstantInt>(bi->getOperand(1))){
+                TypedValue ptr{bi->getOperand(0), tv.type};
+                storePtr(c, ptr);
+                cout << "Getting val from: \n";
+                ptr.dump();
+                *(char**)data += cast<ConstantInt>(bi->getOperand(1))->getZExtValue();
+            }
         }else{
             c->errFlag = true;
             cout << "unknown value given to getConstPtr:\n";
@@ -150,34 +266,6 @@ namespace ante {
             auto field = TypedValue(tup.val, ty);
             storeValue(c, field);
         }
-    }
-
-    /**
-     * Finds and returns the last stored value from a LoadInst
-     * of a mutable variable.
-     */
-    TypedValue findLastStore(Compiler *c, TypedValue const& tv){
-        //mutable pointer passed, find last store
-        if(LoadInst *si = dyn_cast<LoadInst>(tv.val)){
-            for(auto *u : si->getPointerOperand()->users()){
-                if(StoreInst *si = dyn_cast<StoreInst>(u)){
-                    Value *vo = si->getValueOperand();
-
-                    if(BitCastInst *be = dyn_cast<BitCastInst>(vo)){
-                        for(auto *u : be->users()){
-                            if(StoreInst *si = dyn_cast<StoreInst>(u)){
-                                return {si->getValueOperand(), tv.type};
-                            }
-                        }
-                    }
-                    return {vo, tv.type};
-                }
-            }
-        }
-
-        c->errFlag = true;
-        cout << "Cannot find last store to mutable variable during translation.\n";
-        throw new CompilationError("Cannot find last store to mutable variable during translation.");
     }
 
 

@@ -903,19 +903,27 @@ TypedValue createMallocAndStore(Compiler *c, TypedValue &val){
 }
 
 
-
-vector<Value*> unwrapVoidPtrArgs(Compiler *c, Value *anteCallArg, FuncDecl *fd){
+/*
+ * Unwrap the single i8* argument given to AnteCall into a vector of each value the
+ * function it should call requires.
+ */
+vector<Value*> unwrapVoidPtrArgs(Compiler *c, Value *anteCallArg, vector<TypedValue> const& typedArgs, FuncDecl *fd){
     vector<Value*> ret;
+    bool varargs = cast<Function>(fd->tv.val)->isVarArg();
 
     auto *fnTy = cast<Function>(fd->tv.val)->getFunctionType();
-    if(fnTy->getNumParams() == 0) return ret;
+    if(fnTy->getNumParams() == 0 and !varargs) return ret;
 
     size_t argc = fnTy->getNumParams();
-    for(size_t i = 0; i < argc; i++){
-        Value *cast = c->builder.CreateBitCast(anteCallArg, fnTy->getParamType(i)->getPointerTo());
+    for(size_t i = 0; i < argc or (varargs and i < typedArgs.size()); i++){
+        llvm::Type *castTy = varargs ?
+            typedArgs[i].getType()->getPointerTo() :
+            fnTy->getParamType(i)->getPointerTo();
+
+        Value *cast = c->builder.CreateBitCast(anteCallArg, castTy);
         ret.push_back(c->builder.CreateLoad(cast));
 
-        if(i != argc - 1)
+        if(i != argc - 1 or (varargs and i != typedArgs.size() - 1))
             anteCallArg = c->builder.CreateInBoundsGEP(cast, c->builder.getInt64(1));
     }
 
@@ -941,7 +949,7 @@ void createDriverFunction(Compiler *c, FuncDecl *fd, vector<TypedValue> const& t
     c->builder.SetInsertPoint(entry);
 
     auto *fnArg1 = fn->arg_begin();
-    auto args = unwrapVoidPtrArgs(c, fnArg1, fd);
+    auto args = unwrapVoidPtrArgs(c, fnArg1, typedArgs, fd);
 
     Value *call = c->builder.CreateCall(fd->tv.val, args);
     AnType *retTy = fd->tv.type->getFunctionReturnType();
@@ -951,7 +959,8 @@ void createDriverFunction(Compiler *c, FuncDecl *fd, vector<TypedValue> const& t
         auto callTv = TypedValue(call, fd->tv.type->getFunctionReturnType());
 
         auto store = createMallocAndStore(c, callTv);
-        c->builder.CreateRet(store.val);
+        auto ret = c->builder.CreateBitCast(store.val, voidPtrTy);
+        c->builder.CreateRet(ret);
     }
 }
 
@@ -979,6 +988,7 @@ TypedValue compileAndCallAnteFunction(Compiler *c, string const& baseName,
     }
 
     createDriverFunction(mod_compiler.get(), fd, typedArgs);
+    std::error_code ec;
 
     JIT* jit = new JIT();
     jit->addModule(move(mod_compiler->module));

@@ -10,10 +10,10 @@ namespace ante {
         AnType *type;
 
         explicit operator bool() const {
-            return val;
+            return type;
         }
         
-        AnyValue(void* v, AnType *ty) : val(v), type(ty){}
+        AnyValue() : val(nullptr), type(nullptr){}
 
         template<typename T>
         AnyValue(T const& v, AnType *ty) : type(ty){

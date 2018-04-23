@@ -181,7 +181,7 @@ unique_ptr<Compiler> wrapFnInModule(Compiler *c, string const& baseName,
 
     copyDecls(c, ccpy.get());
     declareTypes(ccpy.get());
-    copyGlobals(c, ccpy.get());
+    //copyGlobals(c, ccpy.get());
 
     //create an empty main function to avoid crashes with compFn when
     //trying to return to the caller function
@@ -192,6 +192,7 @@ unique_ptr<Compiler> wrapFnInModule(Compiler *c, string const& baseName,
     ccpy->ctCtxt->args = args;
 
     auto *fn = ccpy->getFuncDecl(baseName, mangledName);
+    //ccpy->module->print(dbgs(), nullptr);
 
     if(fn){
         auto argTys = toTypeVector(args);

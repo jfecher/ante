@@ -75,7 +75,7 @@ namespace ante {
     };    
 
 
-#define DECLARE_NODE_VISIT_METHODS()                  \
+#define DECLARE_NODE_VISIT_METHODS()       \
     void visit(parser::RootNode*);         \
     void visit(parser::IntLitNode*);       \
     void visit(parser::FltLitNode*);       \

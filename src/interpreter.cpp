@@ -6,40 +6,38 @@ using namespace ante;
 using namespace ante::parser;
 using namespace std;
 
-#ifdef hi_there
-
-AnyValue RootNode::eval(Compiler *c){
+void InterpretingVisitor::visit(RootNode *n){
 
 }
 
 
-AnyValue IntLitNode::eval(Compiler *c){
-    return AnyValue(atoi(val.c_str()), AnType::getPrimitive(type));
+void InterpretingVisitor::visit(IntLitNode *n){
+    val = AnyValue(atoi(n->val.c_str()), AnType::getPrimitive(n->type));
 }
 
 
-AnyValue FltLitNode::eval(Compiler *c){
-    return AnyValue(atof(val.c_str()), AnType::getPrimitive(type));
+void InterpretingVisitor::visit(FltLitNode *n){
+    val = AnyValue(atof(n->val.c_str()), AnType::getPrimitive(n->type));
 }
 
 
-AnyValue BoolLitNode::eval(Compiler *c){
-    return AnyValue(val, AnType::getBool());
+void InterpretingVisitor::visit(BoolLitNode *n){
+    val = AnyValue(n->val, AnType::getBool());
 }
 
 
-AnyValue CharLitNode::eval(Compiler *c){
-    return AnyValue(val, AnType::getPrimitive(TT_C8));
+void InterpretingVisitor::visit(CharLitNode *n){
+    val = AnyValue(n->val, AnType::getPrimitive(TT_C8));
 }
 
 
-AnyValue ArrayNode::eval(Compiler *c){
+void InterpretingVisitor::visit(ArrayNode *n){
     vector<AnyValue> arr;
-    AnType *elemTy = exprs.empty() ? AnType::getVoid() : nullptr;
+    AnType *elemTy = n->exprs.empty() ? AnType::getVoid() : nullptr;
 
     int i = 1;
-    for(auto& n : exprs){
-        auto val = n->eval(c);
+    for(auto& n : n->exprs){
+        n->accept(*this);
 
         arr.push_back(val);
 
@@ -53,155 +51,177 @@ AnyValue ArrayNode::eval(Compiler *c){
         i++;
     }
 
-    return AnyValue(arr, AnArrayType::get(elemTy, exprs.size()));
+    val = AnyValue(arr, AnArrayType::get(elemTy, n->exprs.size()));
 }
 
 
-AnyValue TupleNode::eval(Compiler *c){
+void InterpretingVisitor::visit(TupleNode *n){
     vector<AnyValue> vals;
-    vals.reserve(exprs.size());
+    vals.reserve(n->exprs.size());
 
     vector<AnType*> types;
-    types.reserve(exprs.size());
+    types.reserve(n->exprs.size());
 
-    for(auto &e : exprs){
-        auto val = e->eval(c);
+    for(auto &e : n->exprs){
+        e->accept(*this);
         vals.push_back(val);
         types.push_back(val.type);
     }
 
     AnType *t = AnAggregateType::get(TT_Tuple, types);
-    return AnyValue(vals, t);
+    val = AnyValue(vals, t);
 }
 
 
-AnyValue UnOpNode::eval(Compiler *c){
+void InterpretingVisitor::visit(UnOpNode *n){
+    n->rval->accept(*this);
 
+    switch(n->op){
+        case '@': //pointer dereference
+            if(val.type->typeTag != TT_Ptr){
+                c->compErr("Cannot dereference non-pointer type " + anTypeToColoredStr(val.type), n->loc);
+            }
+
+            this->val = AnyValue(*(void**)val.val, ((AnPtrType*)val.type)->extTy);
+            return;
+        case '&': //address-of
+            // Casting val.val to (int*) should select the generic constructor that allocates values
+            this->val = AnyValue((int*)val.val, ((AnPtrType*)val.type)->extTy);
+            return;
+        case '-': //negation
+            this->val = AnyValue(-*(size_t*)val.val, val.type);
+            return;
+        case Tok_Not:
+            if(val.type->typeTag != TT_Bool)
+                c->compErr("Unary not operator not overloaded for type " + anTypeToColoredStr(val.type), n->loc);
+
+            this->val = AnyValue(!*(bool*)val.val, val.type);
+            return;
+        case Tok_New:
+            //the 'new' keyword in ante creates a reference to any existing value
+            this->val = AnyValue((int*)val.val, ((AnPtrType*)val.type)->extTy);
+            return;
+    }
+
+    c->compErr("Unknown unary operator " + Lexer::getTokStr(n->op), n->loc);
 }
 
 
-AnyValue BinOpNode::eval(Compiler *c){
-
-}
-
-
-AnyValue SeqNode::eval(Compiler *c){
-
-}
-
-
-AnyValue BlockNode::eval(Compiler *c){
-
-}
-
-
-AnyValue ModNode::eval(Compiler *c){
-
-}
-
-
-AnyValue TypeNode::eval(Compiler *c){
-
-}
-
-
-AnyValue TypeCastNode::eval(Compiler *c){
-
-}
-
-
-AnyValue RetNode::eval(Compiler *c){
-
-}
-
-
-AnyValue NamedValNode::eval(Compiler *c){
+void InterpretingVisitor::visit(BinOpNode *n){
 
 }
 
 
-AnyValue VarNode::eval(Compiler *c){
+void InterpretingVisitor::visit(SeqNode *n){
 
 }
 
 
-AnyValue GlobalNode::eval(Compiler *c){
+void InterpretingVisitor::visit(BlockNode *n){
 
 }
 
 
-AnyValue StrLitNode::eval(Compiler *c){
+void InterpretingVisitor::visit(ModNode *n){
 
 }
 
 
-AnyValue LetBindingNode::eval(Compiler *c){
+void InterpretingVisitor::visit(TypeNode *n){
 
 }
 
 
-AnyValue VarDeclNode::eval(Compiler *c){
+void InterpretingVisitor::visit(TypeCastNode *n){
 
 }
 
 
-AnyValue VarAssignNode::eval(Compiler *c){
+void InterpretingVisitor::visit(RetNode *n){
 
 }
 
 
-AnyValue ExtNode::eval(Compiler *c){
+void InterpretingVisitor::visit(NamedValNode *n){
 
 }
 
 
-AnyValue ImportNode::eval(Compiler *c){
+void InterpretingVisitor::visit(VarNode *n){
 
 }
 
 
-AnyValue JumpNode::eval(Compiler *c){
+void InterpretingVisitor::visit(GlobalNode *n){
 
 }
 
 
-AnyValue WhileNode::eval(Compiler *c){
+void InterpretingVisitor::visit(StrLitNode *n){
 
 }
 
 
-AnyValue ForNode::eval(Compiler *c){
+void InterpretingVisitor::visit(VarDeclNode *n){
 
 }
 
 
-AnyValue MatchBranchNode::eval(Compiler *c){
+void InterpretingVisitor::visit(VarAssignNode *n){
 
 }
 
 
-AnyValue MatchNode::eval(Compiler *c){
+void InterpretingVisitor::visit(ExtNode *n){
 
 }
 
 
-AnyValue IfNode::eval(Compiler *c){
+void InterpretingVisitor::visit(ImportNode *n){
 
 }
 
 
-AnyValue FuncDeclNode::eval(Compiler *c){
+void InterpretingVisitor::visit(JumpNode *n){
 
 }
 
 
-AnyValue DataDeclNode::eval(Compiler *c){
+void InterpretingVisitor::visit(WhileNode *n){
 
 }
 
 
-AnyValue TraitNode::eval(Compiler *c){
+void InterpretingVisitor::visit(ForNode *n){
 
 }
 
-#endif
+
+void InterpretingVisitor::visit(MatchBranchNode *n){
+
+}
+
+
+void InterpretingVisitor::visit(MatchNode *n){
+
+}
+
+
+void InterpretingVisitor::visit(IfNode *n){
+
+}
+
+
+void InterpretingVisitor::visit(FuncDeclNode *n){
+
+}
+
+
+void InterpretingVisitor::visit(DataDeclNode *n){
+
+}
+
+
+void InterpretingVisitor::visit(TraitNode *n){
+
+}

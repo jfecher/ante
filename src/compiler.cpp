@@ -786,10 +786,11 @@ TypedValue compVarDeclWithInferredType(VarDeclNode *node, Compiler *c){
 
     //location to store var
     Value *ptr = isGlobal ?
-            (Value*) new GlobalVariable(*c->module, val.getType(), false, GlobalValue::PrivateLinkage, UndefValue::get(val.getType()), node->name) :
+            (Value*) new GlobalVariable(*c->module, val.getType(), false,
+                    GlobalValue::PrivateLinkage, UndefValue::get(val.getType()), node->name) :
             c->builder.CreateAlloca(val.getType(), nullptr, node->name.c_str());
 
-    TypedValue alloca = TypedValue(ptr, val.type);
+    TypedValue alloca{ptr, val.type};
 
     bool nofree = true;//val->type->type != TT_Ptr || dynamic_cast<Constant*>(val->val);
     c->stoVar(node->name, new Variable(node->name, alloca, c->scope, nofree, true));
