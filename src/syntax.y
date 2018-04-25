@@ -310,25 +310,9 @@ modifier_list: modifier_list_ {$$ = getRoot();}
              ;
 
 
-/*
-modifier_block: modifier_list Indent mod_decl_block Unindent {$$ = applyMods($1, getRoot());}
-              ;
-
-mod_decl: function
-        | data_decl
-        | extension
-        | trait_decl
-        | modifier_block
-        | var_decl
-        ;
-
-mod_decls_block: mod_decls_block mod_decl  {$$ = setNext($1, $2);}
-               | mod_decl                  {$$ = setRoot($1);}
-               ;
-*/
-
-var_decl: modifier_list ident '=' expr  {$$ = mkVarDeclNode(@2, (char*)$2, $1, 0, $4); free($2);}
+var_decl: modifier_list ident '=' expr                {$$ = mkVarDeclNode(@2, (char*)$2, $1, 0, $4); free($2);}
         | modifier_list ident ':' type_expr '=' expr  {$$ = mkVarDeclNode(@2, (char*)$2, $1, $4, $6); free($2);}
+        | ident ':' type_expr '=' expr                {$$ = mkVarDeclNode(@1, (char*)$1,  0, $3, $5); free($1);}
         ;
 
 global: Import Global ident_list  {$$ = mkGlobalNode(@$, $3);}
