@@ -16,7 +16,6 @@
 #include "args.h"
 #include "lazystr.h"
 #include "antype.h"
-#include "anyvalue.h"
 
 #define AN_MANGLED_SELF "_$self$"
 
@@ -79,27 +78,6 @@ namespace ante {
             PrintingVisitor v;
             n->accept(v);
         }
-
-        DECLARE_NODE_VISIT_METHODS()
-    };
-
-    struct InterpretingVisitor : public NodeVisitor {
-        Compiler *c;
-        AnyValue val;
-
-        InterpretingVisitor(Compiler *cc) : c(cc){}
-
-        static void interpret(Compiler *c, std::unique_ptr<parser::Node> &n){
-            return interpret(c, n.get());
-        }
-        static void interpret(Compiler *c, std::shared_ptr<parser::Node> &n){
-            return interpret(c, n.get());
-        }
-        static void interpret(Compiler *c, parser::Node *n){
-            InterpretingVisitor v{c};
-            n->accept(v);
-        }
-
 
         DECLARE_NODE_VISIT_METHODS()
     };
