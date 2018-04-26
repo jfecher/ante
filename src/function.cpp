@@ -10,8 +10,8 @@ namespace ante {
 
 /*
  * Transforms t into a parameter type if need be.
- * - returns pointers to tuple types
- * - returns pointers to array types
+ * - wraps array types in pointers
+ * - wraps mutable types in pointers
  */
 Type* parameterize(Compiler *c, AnType *t){
     if(t->typeTag == TT_Array) return c->anTypeToLlvmType(t)->getPointerTo();

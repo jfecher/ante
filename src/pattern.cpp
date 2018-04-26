@@ -1,4 +1,4 @@
-#include "compiler.h"
+#include "pattern.h"
 #include "types.h"
 
 using namespace std;
@@ -6,70 +6,206 @@ using namespace llvm;
 using namespace ante::parser;
 
 namespace ante {
-    void handleTypeCastPattern(Compiler *c, TypedValue lval, TypeCastNode *tn, AnDataType *tagTy, AnDataType *parentTy){
-        //If this is a generic type cast like Some 't, the 't must be bound to a concrete type first
 
-        //This is a pattern of the match _ with expr, so if that is mutable this should be too
-        //tagTy = (AnDataType*)tagTy->setModifier(lval.type->mods);
-        //AnType *tagtycpy = tagTy/*->extTys[0]*/;
+    enum LiteralType {
+        Int, Flt, Str
+    };
 
-        auto tcr = c->typeEq(parentTy, lval.type);
+    //Define a new assert macro so it remains in the binary even if NDEBUG is defined.
+    //Implement on one line to keep __LINE__ referring to the correct assertion line.
+    #define assert_unreachable() { fprintf(stderr, "assert_unreachable failed on line %d of file '%s'", __LINE__, \
+                                        __FILE__); exit(1); }
 
+    Function* getCurFunction(Compiler *c){
+        return c->builder.GetInsertBlock()->getParent();
+    }
+
+    void match_literal(CompilingVisitor &cv, MatchNode *n, Node *pattern,
+            BasicBlock *jmpOnFail, TypedValue &valToMatch, LiteralType literalType){
+
+        pattern->accept(cv);
+
+        auto tcr = cv.c->typeEq(cv.val.type, valToMatch.type);
+        if(!tcr){
+            cv.c->compErr("Cannot match pattern of type " + anTypeToColoredStr(cv.val.type)
+                    + " to corresponding value's type " + anTypeToColoredStr(valToMatch.type), pattern->loc);
+        }
+
+        Value *eq;
+        if(literalType == Int){
+            eq = cv.c->builder.CreateICmpEQ(cv.val.val, valToMatch.val);
+        }else if(literalType == Flt){
+            eq = cv.c->builder.CreateFCmpOEQ(cv.val.val, valToMatch.val);
+        }else if(literalType == Str){
+            eq = cv.c->callFn("==", {cv.val, valToMatch}).val;
+        }else{
+            assert_unreachable();
+        }
+
+        BasicBlock *jmpOnSuccess = BasicBlock::Create(*cv.c->ctxt, "match", getCurFunction(cv.c));
+
+        cv.c->builder.CreateCondBr(eq, jmpOnSuccess, jmpOnFail);
+        cv.c->builder.SetInsertPoint(jmpOnSuccess);
+    }
+
+    /**
+     * Match a catch-all var pattern that binds the
+     * matched value to the given identifier
+     */
+    void match_var(CompilingVisitor &cv, MatchNode *n, VarNode *pattern,
+            BasicBlock *jmpOnFail, TypedValue &valToMatch){
+
+        cv.c->stoVar(pattern->name, new Variable(pattern->name, valToMatch, cv.c->scope));
+    }
+
+    /**
+     * Match a tuple-destructure pattern
+     */
+    void match_tuple(CompilingVisitor &cv, MatchNode *n, TupleNode *t,
+            BasicBlock *jmpOnFail, TypedValue &valToMatch){
+
+        Type *tupTy = valToMatch.getType();
+
+        if(!tupTy->isStructTy()){
+            valToMatch.dump();
+            cv.c->compErr("Cannot match tuple pattern against non-tuple type "
+                    + anTypeToColoredStr(valToMatch.type), t->loc);
+        }
+
+        if(t->exprs.size() != tupTy->getNumContainedTypes()){
+            cv.c->compErr("Cannot match a tuple of size " + to_string(t->exprs.size()) +
+                " to a pattern of size " + to_string(tupTy->getNumContainedTypes()), t->loc);
+        }
+
+        auto *aggTy = (AnAggregateType*)valToMatch.type;
+        size_t elementNo = 0;
+
+        for(auto &e : t->exprs){
+            Value *elem = cv.c->builder.CreateExtractValue(valToMatch.val, elementNo);
+            TypedValue elemTv{elem, aggTy->extTys[elementNo++]};
+
+            handlePattern(cv, n, e.get(), jmpOnFail, elemTv);
+        }
+    }
+
+    AnType* unionVariantToTupleTy(AnType *ty){
+        if(ty->typeTag == TT_Data){
+            AnDataType *dt = static_cast<AnDataType*>(ty);
+
+            if(dt->extTys.size() == 1){
+                return dt->extTys[0];
+            }else{
+                return AnAggregateType::get(TT_Tuple, dt->extTys, dt->mods);
+            }
+        }
+        return ty;
+    }
+
+    TypedValue unionDowncast(Compiler *c, TypedValue valToMatch, AnDataType *tagTy){
+        auto alloca = addrOf(c, valToMatch);
+
+        //bitcast valToMatch* to (tag, tagData)*
+        AnType *anTagData = unionVariantToTupleTy(tagTy);
+        Type *tagData = c->anTypeToLlvmType(anTagData);
+        auto castTy = StructType::get(*c->ctxt, {c->builder.getInt8Ty(), tagData}, true);
+        auto *cast = c->builder.CreateBitCast(alloca.val, castTy->getPointerTo());
+
+        //extract tag_data from (tag, tagData)*
+        auto *gep = c->builder.CreateStructGEP(castTy, cast, 1);
+        auto *deref = c->builder.CreateLoad(gep);
+        return {deref, unionVariantToTupleTy(tagTy)};
+    }
+
+    /**
+     * Match a union variant pattern, eg. Some x or None
+     * @param pattern The type to match against, eg. Some
+     * @param bindExpr The optional expr to bind params to, eg. x
+     */
+    void match_variant(CompilingVisitor &cv, MatchNode *n, TypeNode *pattern,
+            Node *bindExpr, BasicBlock *jmpOnFail, TypedValue &valToMatch){
+
+        Compiler *c = cv.c;
+
+        auto *tagTy = AnDataType::get(pattern->typeName);
+        if(!tagTy or tagTy->isStub())
+            c->compErr("No type " + typeNodeToColoredStr(pattern)
+                    + " found in scope", pattern->loc);
+
+        if(!tagTy->isUnionTag())
+            c->compErr(typeNodeToColoredStr(pattern)
+                    + " must be a union tag to be used in a pattern", pattern->loc);
+
+        auto *parentTy = tagTy->parentUnionType;
+        ConstantInt *ci = ConstantInt::get(*c->ctxt,
+                APInt(8, parentTy->getTagVal(pattern->typeName), true));
+
+        tagTy = (AnDataType*)bindGenericToType(c, tagTy, ((AnDataType*)valToMatch.type)->boundGenerics);
+        tagTy = tagTy->setModifier(valToMatch.type->mods);
+
+        auto tcr = c->typeEq(parentTy, valToMatch.type);
         if(tcr->res == TypeCheckResult::SuccessWithTypeVars)
             tagTy = (AnDataType*)bindGenericToType(c, tagTy, tcr->bindings);
         else if(tcr->res == TypeCheckResult::Failure)
             c->compErr("Cannot bind pattern of type " + anTypeToColoredStr(parentTy) +
-                    " to matched value of type " + anTypeToColoredStr(lval.type), tn->rval->loc);
+                    " to matched value of type " + anTypeToColoredStr(valToMatch.type), pattern->loc);
 
-        //cast it from (<tag type>, <largest union member type>) to (<tag type>, <this union member's type>)
-        auto *tupTy = StructType::get(*c->ctxt, {Type::getInt8Ty(*c->ctxt), c->anTypeToLlvmType(tagTy)}, true);
+        //Extract tag value and check for equality
+        Value *eq;
+        if(valToMatch.getType()->isStructTy()){
+            Value *tagVal = c->builder.CreateExtractValue(valToMatch.val, 0);
+            eq = c->builder.CreateICmpEQ(tagVal, ci);
+        }else if(valToMatch.getType()->isIntegerTy()){
+            eq = c->builder.CreateICmpEQ(valToMatch.val, ci);
+        }else{
+            //all tagged unions are either just their tag (enum) or a tag and value.
+            assert_unreachable();
+        }
 
-        auto alloca = addrOf(c, lval);
+        BasicBlock *jmpOnSuccess = BasicBlock::Create(*cv.c->ctxt, "match", getCurFunction(cv.c));
+        c->builder.CreateCondBr(eq, jmpOnSuccess, jmpOnFail);
+        c->builder.SetInsertPoint(jmpOnSuccess);
 
-        //bit cast the alloca to a pointer to the largest type of the parent union
-        //auto *cast = c->builder.CreateBitCast(alloca.val, c->anTypeToLlvmType(parentTy)->getPointerTo());
-        auto cast = alloca.val;
-
-        //Cast in the form of: Some n
-        if(VarNode *v = dynamic_cast<VarNode*>(tn->rval.get())){
-            auto *tup = c->builder.CreateLoad(cast);
-            auto extract = TypedValue(c->builder.CreateExtractValue(tup, 1), tagTy->extTys[0]);
-
-            c->stoVar(v->name, new Variable(v->name, extract, c->scope));
-
-        //Destructure multiple: Triple(x, y, z)
-        }else if(TupleNode *t = dynamic_cast<TupleNode*>(tn->rval.get())){
-            auto *taggedValTy = tupTy->getStructElementType(1);
-            if(!tupTy->isStructTy()){
-                c->compErr("Cannot match tuple pattern against non-tuple type " + anTypeToColoredStr(tagTy), t->loc);
+        //bind any identifiers and match remaining pattern
+        if(bindExpr){
+            TypedValue variant;
+            if(valToMatch.getType()->isStructTy()){
+                variant = unionDowncast(c, valToMatch, tagTy);
+            }else if(valToMatch.getType()->isIntegerTy()){
+                variant = c->getVoidLiteral();
+            }else{
+                //all tagged unions are either just their tag (enum) or a tag and value.
+                assert_unreachable();
             }
+            handlePattern(cv, n, bindExpr, jmpOnFail, variant);
+        }
+    }
 
-            if(t->exprs.size() != taggedValTy->getNumContainedTypes()){
-                c->compErr("Cannot match a tuple of size " + to_string(t->exprs.size()) +
-                    " to a pattern of size " + to_string(taggedValTy->getNumContainedTypes()), t->loc);
-            }
+    void handlePattern(CompilingVisitor &cv, MatchNode *n, Node *pattern,
+            BasicBlock *jmpOnFail, TypedValue valToMatch){
 
-            auto *aggTy = (AnAggregateType*)tagTy;
-            size_t elementNo = 0;
+        if(TupleNode *tn = dynamic_cast<TupleNode*>(pattern)){
+            match_tuple(cv, n, tn, jmpOnFail, valToMatch);
 
-            for(auto &e : t->exprs){
-                VarNode *v;
-                if(!(v = dynamic_cast<VarNode*>(e.get()))){
-                    c->compErr("Unknown pattern, expected identifier", e->loc);
-                }
+        }else if(TypeCastNode *tcn = dynamic_cast<TypeCastNode*>(pattern)){
+            match_variant(cv, n, tcn->typeExpr.get(), tcn->rval.get(), jmpOnFail, valToMatch);
 
-                auto *zero = c->builder.getInt32(0);
-                auto *ptr = c->builder.CreateGEP(cast, {zero, c->builder.getInt32(1)});
-                ptr = c->builder.CreateGEP(ptr, {zero, c->builder.getInt32(elementNo)});
+        }else if(TypeNode *tn = dynamic_cast<TypeNode*>(pattern)){
+            match_variant(cv, n, tn, nullptr, jmpOnFail, valToMatch);
 
-                AnType *curTy = aggTy->extTys[elementNo];
-                auto elem = TypedValue(c->builder.CreateLoad(ptr), curTy);
-                c->stoVar(v->name, new Variable(v->name, elem, c->scope));
-                elementNo++;
-            }
+        }else if(VarNode *vn = dynamic_cast<VarNode*>(pattern)){
+            match_var(cv, n, vn, jmpOnFail, valToMatch);
+
+        }else if(IntLitNode *iln = dynamic_cast<IntLitNode*>(pattern)){
+            match_literal(cv, n, pattern, jmpOnFail, valToMatch, Int);
+
+        }else if(FltLitNode *fln = dynamic_cast<FltLitNode*>(pattern)){
+            match_literal(cv, n, pattern, jmpOnFail, valToMatch, Flt);
+
+        }else if(StrLitNode *sln = dynamic_cast<StrLitNode*>(pattern)){
+            match_literal(cv, n, pattern, jmpOnFail, valToMatch, Str);
 
         }else{
-            c->compErr("Cannot match unknown pattern", tn->rval->loc);
+            cv.c->compErr("Unknown pattern", pattern->loc);
         }
     }
 
@@ -78,81 +214,27 @@ namespace ante {
         n->expr->accept(*this);
         auto valToMatch = this->val;
 
-        if(valToMatch.type->typeTag != TT_TaggedUnion && valToMatch.type->typeTag != TT_Data){
-            c->compErr("Cannot match expression of type " + anTypeToColoredStr(valToMatch.type) +
-                    ".  Match expressions must be a tagged union type", n->expr->loc);
-        }
-
-        //the tag is always the zero-th index except for in certain optimization cases and if
-        //the tagged union has no tagged values and is equivalent to an enum in C-like languages.
-        Value *switchVal = llvmTypeToTypeTag(valToMatch.getType()) == TT_Tuple ?
-                c->builder.CreateExtractValue(valToMatch.val, 0)
-                : valToMatch.val;
-
         Function *f = c->builder.GetInsertBlock()->getParent();
-        auto *matchbb = c->builder.GetInsertBlock();
 
-        auto *end = BasicBlock::Create(*c->ctxt, "end_match");
-        auto *match = c->builder.CreateSwitch(switchVal, end, n->branches.size());
         vector<pair<BasicBlock*,TypedValue>> merges;
+        merges.reserve(n->branches.size());
+
+        BasicBlock *endmatch = BasicBlock::Create(*c->ctxt, "end_match", f);
 
         for(auto& mbn : n->branches){
-            ConstantInt *ci = nullptr;
-            auto *br = BasicBlock::Create(*c->ctxt, "br", f);
-            c->builder.SetInsertPoint(br);
+            BasicBlock *endpat = BasicBlock::Create(*c->ctxt, "end_pattern", f);
+
             c->enterNewScope();
-
-            //TypeCast-esque pattern:  Some n
-            if(TypeCastNode *tn = dynamic_cast<TypeCastNode*>(mbn->pattern.get())){
-                auto *tagTy = AnDataType::get(tn->typeExpr->typeName);
-                if(!tagTy or tagTy->isStub())
-                    c->compErr("Union tag " + typeNodeToColoredStr(tn->typeExpr.get()) + " was not yet declared.", tn->typeExpr->loc);
-
-                if(!tagTy->isUnionTag())
-                    c->compErr(typeNodeToColoredStr(tn->typeExpr.get()) + " must be a union tag to be used in a pattern", tn->typeExpr->loc);
-
-                auto *parentTy = tagTy->parentUnionType;
-                ci = ConstantInt::get(*c->ctxt, APInt(8, parentTy->getTagVal(tn->typeExpr->typeName), true));
-
-                tagTy = (AnDataType*)bindGenericToType(c, tagTy, ((AnDataType*)valToMatch.type)->boundGenerics);
-                tagTy = tagTy->setModifier(valToMatch.type->mods);
-                handleTypeCastPattern(c, valToMatch, tn, tagTy, parentTy);
-
-            //single type pattern:  None
-            }else if(TypeNode *tn = dynamic_cast<TypeNode*>(mbn->pattern.get())){
-                auto *tagTy = AnDataType::get(tn->typeName);
-                if(!tagTy or tagTy->isStub())
-                    c->compErr("Union tag " + typeNodeToColoredStr(tn) + " was not yet declared.", tn->loc);
-
-                if(!tagTy->isUnionTag())
-                    c->compErr(typeNodeToColoredStr(tn) + " must be a union tag to be used in a pattern", tn->loc);
-
-                auto *parentTy = tagTy->parentUnionType;
-                ci = ConstantInt::get(*c->ctxt, APInt(8, parentTy->getTagVal(tn->typeName), true));
-
-            //variable/match-all pattern: _
-            }else if(VarNode *vn = dynamic_cast<VarNode*>(mbn->pattern.get())){
-                auto tn = TypedValue(valToMatch.val, valToMatch.type);
-                match->setDefaultDest(br);
-                c->stoVar(vn->name, new Variable(vn->name, tn, c->scope));
-            }else{
-                c->compErr("Pattern matching non-tagged union types is not yet implemented", mbn->pattern->loc);
-            }
-
+            handlePattern(*this, n, mbn->pattern.get(), endpat, valToMatch);
             mbn->branch->accept(*this);
+            merges.push_back({c->builder.GetInsertBlock(), val});
+            c->builder.CreateBr(endpat); //branch done, insert jump to outside of match
+            c->builder.SetInsertPoint(endpat); //set insert point to next branch
             c->exitScope();
-
-            if(!dyn_cast<ReturnInst>(val.val) and !dyn_cast<BranchInst>(val.val))
-                c->builder.CreateBr(end);
-
-            merges.push_back(pair<BasicBlock*,TypedValue>(c->builder.GetInsertBlock(), val));
-
-            if(ci)
-                match->addCase(ci, br);
         }
 
-        f->getBasicBlockList().push_back(end);
-        c->builder.SetInsertPoint(end);
+        c->builder.CreateBr(endmatch); //branch done, insert jump to outside of match
+        c->builder.SetInsertPoint(endmatch);
 
         //merges can be empty if each branch has an early return
         if(merges.empty() or merges[0].second.type->typeTag == TT_Void){
@@ -170,13 +252,14 @@ namespace ante {
                 //match the types of those branches that will merge
                 if(!c->typeEq(pair.second.type, merges[0].second.type))
                     c->compErr("Branch "+to_string(i)+"'s return type " + anTypeToColoredStr(pair.second.type) +
-                            " != " + anTypeToColoredStr(merges[0].second.type) + ", the first branch's return type", n->loc);
+                            " != " + anTypeToColoredStr(merges[0].second.type)
+                            + ", the first branch's return type", n->loc);
                 else
                     phi->addIncoming(pair.second.val, pair.first);
             }
             i++;
         }
-        phi->addIncoming(UndefValue::get(merges[0].second.getType()), matchbb);
+        //phi->addIncoming(UndefValue::get(merges[0].second.getType()), matchbb);
         this->val = TypedValue(phi, merges[0].second.type);
     }
 }
