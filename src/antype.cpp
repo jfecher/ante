@@ -408,7 +408,7 @@ namespace ante {
         ret->llvmType = dt->llvmType;
         return ret;
     }
-        
+
     /** Returns the type this type is aliased to */
     AnType* AnDataType::getAliasedType() const {
         if(isAlias){

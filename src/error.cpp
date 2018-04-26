@@ -62,7 +62,7 @@ void clearColor(){
     if(colored_output)
         cout << AN_CONSOLE_RESET;
 }
-    
+
 
 void setTermFGColor(AN_COLOR_TYPE fg){
     cout << fg;

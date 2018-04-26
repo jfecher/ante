@@ -14,7 +14,7 @@ extern "C" {
     TypedValue* Ante_getAST(Compiler *c){
         auto *root = parser::getRootNode();
         Value *addr = c->builder.getIntN(AN_USZ_SIZE, (size_t)root);
-        
+
         auto *anType = AnPtrType::get(AnDataType::get("Ante.Node"));
         auto *llvmType = c->anTypeToLlvmType(anType);
 

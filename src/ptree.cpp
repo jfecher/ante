@@ -349,7 +349,7 @@ namespace ante {
         Node* mkModNode(LOC_TY loc, ante::TokenType mod){
             return new ModNode(loc, mod);
         }
-        
+
         Node* mkCompilerDirective(LOC_TY loc, Node *n){
             return new ModNode(loc, n);
         }

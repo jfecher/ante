@@ -817,7 +817,7 @@ TypeCheckResult& extTysEq(const AnType *l, const AnType *r, TypeCheckResult &tcr
  */
 TypeCheckResult& typeEqBase(const AnType *l, const AnType *r, TypeCheckResult &tcr, const Compiler *c){
     if(l == r and !l->isGeneric) return tcr.success(l->numMatchedTys);
-    
+
     if(l->typeTag == TT_TaggedUnion and r->typeTag == TT_Data)
         return tcr.successIf(((AnDataType*)l)->name == ((AnDataType*)r)->name);
 

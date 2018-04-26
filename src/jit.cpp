@@ -6,7 +6,7 @@ using namespace llvm;
 using namespace llvm::orc;
 
 namespace ante {
-    
+
     JIT::ModuleHandle JIT::addModule(std::unique_ptr<Module> m){
         auto symResolver = createLambdaResolver(
             //Look back into the JIT itself to find symbols part of the same dylib
