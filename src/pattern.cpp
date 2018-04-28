@@ -55,7 +55,9 @@ namespace ante {
     void match_var(CompilingVisitor &cv, MatchNode *n, VarNode *pattern,
             BasicBlock *jmpOnFail, TypedValue &valToMatch){
 
-        cv.c->stoVar(pattern->name, new Variable(pattern->name, valToMatch, cv.c->scope));
+        //Do not bind to _ to enforce convention of _ to indicate an unused value
+        if(pattern->name != "_")
+            cv.c->stoVar(pattern->name, new Variable(pattern->name, valToMatch, cv.c->scope));
     }
 
     /**
@@ -101,19 +103,30 @@ namespace ante {
         return ty;
     }
 
+    Type* getUnionVariantType(Compiler *c, AnDataType *tagTy){
+        AnType *anTagData = unionVariantToTupleTy(tagTy);
+        Type *tagData = c->anTypeToLlvmType(anTagData);
+        return tagData->isVoidTy() ?
+            StructType::get(*c->ctxt, {c->builder.getInt8Ty()}, true) :
+            StructType::get(*c->ctxt, {c->builder.getInt8Ty(), tagData}, true);
+    }
+
     TypedValue unionDowncast(Compiler *c, TypedValue valToMatch, AnDataType *tagTy){
         auto alloca = addrOf(c, valToMatch);
 
         //bitcast valToMatch* to (tag, tagData)*
-        AnType *anTagData = unionVariantToTupleTy(tagTy);
-        Type *tagData = c->anTypeToLlvmType(anTagData);
-        auto castTy = StructType::get(*c->ctxt, {c->builder.getInt8Ty(), tagData}, true);
-        auto *cast = c->builder.CreateBitCast(alloca.val, castTy->getPointerTo());
+        auto *castTy = getUnionVariantType(c, tagTy);
 
-        //extract tag_data from (tag, tagData)*
-        auto *gep = c->builder.CreateStructGEP(castTy, cast, 1);
-        auto *deref = c->builder.CreateLoad(gep);
-        return {deref, unionVariantToTupleTy(tagTy)};
+        if(castTy->getStructNumElements() != 1){
+            auto *cast = c->builder.CreateBitCast(alloca.val, castTy->getPointerTo());
+
+            //extract tag_data from (tag, tagData)*
+            auto *gep = c->builder.CreateStructGEP(castTy, cast, 1);
+            auto *deref = c->builder.CreateLoad(gep);
+            return {deref, unionVariantToTupleTy(tagTy)};
+        }else{
+            return c->getVoidLiteral();
+        }
     }
 
     /**
