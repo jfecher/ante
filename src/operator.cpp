@@ -15,8 +15,6 @@ using namespace ante::parser;
 
 namespace ante {
 
-extern map<string, unique_ptr<CtFunc>> compapi;
-
 TypedValue Compiler::compAdd(TypedValue &l, TypedValue &r, BinOpNode *op){
     switch(l.type->typeTag){
         case TT_I8:  case TT_U8:  case TT_C8:

@@ -1,5 +1,5 @@
 #include "jit.h"
-#include "argtuple.h"
+#include "compapi.h"
 #include <iostream>
 
 using namespace std;

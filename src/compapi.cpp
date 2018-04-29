@@ -1,7 +1,6 @@
-#include "compiler.h"
 #include "types.h"
-#include "jitlinker.h"
 #include "argtuple.h"
+#include "compapi.h"
 
 using namespace std;
 using namespace llvm;
@@ -141,6 +140,12 @@ namespace ante {
         compapi.emplace("Ante_emit_ir",     new CtFunc((void*)Ante_emit_ir,     AnType::getVoid()));
         compapi.emplace("Ante_forget",      new CtFunc((void*)Ante_forget,      AnType::getVoid(), {AnPtrType::get(AnType::getPrimitive(TT_C8))}));
         compapi.emplace("FuncDecl_getName", new CtFunc((void*)FuncDecl_getName, AnDataType::get("Str"), {AnDataType::get("Ante.FuncDecl")}));
+    }
+
+    CtFunc* compapi_get(string const& fn){
+        auto it = compapi.find(fn);
+        return it != compapi.end() ?
+            it->second.get() : nullptr;
     }
 
     CtFunc::CtFunc(void* f) : fn(f), params(), retty(AnType::getVoid()){}
