@@ -1371,6 +1371,9 @@ TypedValue Compiler::compLogicalOr(Node *lexpr, Node *rexpr, BinOpNode *op){
     auto &blocks = f->getBasicBlockList();
 
     auto lhs = CompilingVisitor::compile(this, lexpr);
+    if(lhs.type->typeTag != TT_Bool)
+        return compErr("The 'or' operator's lval must be of type bool, but instead is of type "
+                + anTypeToColoredStr(lhs.type), op->lval->loc);
 
     auto *curbbl = builder.GetInsertBlock();
     auto *orbb = BasicBlock::Create(*ctxt, "or");
@@ -1390,7 +1393,8 @@ TypedValue Compiler::compLogicalOr(Node *lexpr, Node *rexpr, BinOpNode *op){
     builder.CreateBr(mergebb);
 
     if(rhs.type->typeTag != TT_Bool)
-        return compErr("The 'or' operator's rval must be of type bool, but instead is of type "+anTypeToColoredStr(rhs.type), op->rval->loc);
+        return compErr("The 'or' operator's rval must be of type bool, but instead is of type "
+                + anTypeToColoredStr(rhs.type), op->rval->loc);
 
     builder.SetInsertPoint(mergebb);
     auto *phi = builder.CreatePHI(rhs.getType(), 2);
@@ -1408,6 +1412,9 @@ TypedValue Compiler::compLogicalAnd(Node *lexpr, Node *rexpr, BinOpNode *op){
     auto &blocks = f->getBasicBlockList();
 
     auto lhs = CompilingVisitor::compile(this, lexpr);
+    if(lhs.type->typeTag != TT_Bool)
+        return compErr("The 'and' operator's lval must be of type bool, but instead is of type "
+                + anTypeToColoredStr(lhs.type), op->lval->loc);
 
     auto *curbbl = builder.GetInsertBlock();
     auto *andbb = BasicBlock::Create(*ctxt, "and");
@@ -1427,7 +1434,8 @@ TypedValue Compiler::compLogicalAnd(Node *lexpr, Node *rexpr, BinOpNode *op){
     builder.CreateBr(mergebb);
 
     if(rhs.type->typeTag != TT_Bool)
-        return compErr("The 'and' operator's rval must be of type bool, but instead is of type "+anTypeToColoredStr(rhs.type), op->rval->loc);
+        return compErr("The 'and' operator's rval must be of type bool, but instead is of type "
+                + anTypeToColoredStr(rhs.type), op->rval->loc);
 
     builder.SetInsertPoint(mergebb);
     auto *phi = builder.CreatePHI(rhs.getType(), 2);
