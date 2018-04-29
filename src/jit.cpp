@@ -6,39 +6,29 @@ using namespace std;
 using namespace llvm;
 using namespace llvm::orc;
 
+extern "C" void* Ante_store(ante::Compiler*, ante::TypedValue&, ante::TypedValue&);
+
 namespace ante {
-
-    extern map<string, unique_ptr<CtFunc>> compapi;
-
     JIT::ModuleHandle JIT::addModule(std::unique_ptr<llvm::Module> m){
         auto symResolver = createLambdaResolver(
             //Look back into the JIT itself to find symbols part of the same dylib
             [&](const string &name){
-                cout << "Resolving " << name << " in dylib\n";
                 if(auto sym = codLayer.findSymbol(name, false))
                     return sym;
-                cout << "Cannot find symbol " << name << endl;
                 return JITSymbol(nullptr);
             },
             //search for external symbols in the host process
             [](const string &name){
-                cout << "Resolving " << name << " in host process\n";
                 if(auto symAddr = RTDyldMemoryManager::getSymbolAddressInProcess(name))
                     return JITSymbol(symAddr, JITSymbolFlags::Exported);
 
-                cout << "sizeof(compapi) = " << compapi.size() << '\n';
-                for(auto &p : compapi){
-                    cout << p.first << " -> " << p.second.get() << '\n';
-                }
-
-                CtFunc *fn = compapi[name].get();
-                if(fn){
+                if(CtFunc *fn = compapi_lookup(name)){
+                    cout << "Calling addr:          " << fn << endl;
+                    cout << "Note: Ante_store addr: " << (void*)Ante_store << endl;
                     uint64_t addr = (uint64_t)fn;
-                    cout << "Calling addr: " << addr << endl;
                     return JITSymbol(addr, JITSymbolFlags::Exported);
                 }
 
-                cout << "Cannot find symbol " << name << endl;
                 return JITSymbol(nullptr);
             }
         );

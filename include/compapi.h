@@ -34,6 +34,12 @@ namespace ante {
         TypedValue* operator()(Compiler *c, Arg tv1, Arg tv2, Arg tv3, Arg tv4, Arg tv5);
         TypedValue* operator()(Compiler *c, Arg tv1, Arg tv2, Arg tv3, Arg tv4, Arg tv5, Arg tv6);
     };
+
+    /**
+     * Lookup the name of a function in the list of compiler api functions.
+     * If no function is found, nullptr is returned.
+     */
+    CtFunc* compapi_lookup(std::string const& fn);
 }
 
 #endif

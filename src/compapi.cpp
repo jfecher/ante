@@ -142,7 +142,7 @@ namespace ante {
         compapi.emplace("FuncDecl_getName", new CtFunc((void*)FuncDecl_getName, AnDataType::get("Str"), {AnDataType::get("Ante.FuncDecl")}));
     }
 
-    CtFunc* compapi_get(string const& fn){
+    CtFunc* compapi_lookup(string const& fn){
         auto it = compapi.find(fn);
         return it != compapi.end() ?
             it->second.get() : nullptr;
