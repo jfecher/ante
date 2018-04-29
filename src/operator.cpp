@@ -15,6 +15,8 @@ using namespace ante::parser;
 
 namespace ante {
 
+extern map<string, unique_ptr<CtFunc>> compapi;
+
 TypedValue Compiler::compAdd(TypedValue &l, TypedValue &r, BinOpNode *op){
     switch(l.type->typeTag){
         case TT_I8:  case TT_U8:  case TT_C8:
@@ -446,15 +448,6 @@ TypedValue createCast(Compiler *c, AnType *castTy, TypedValue &valToCast, LOC_TY
         if(castResult.type != ReinterpretCastResult::NoCast){
             if(preferCastOverFunction(c, valToCast, castResult, fd))
                 return doReinterpretCast(c, castTy, valToCast, castResult);
-        }
-
-        if(c->isJIT){
-            auto *fnty = AnFunctionType::get(c, AnType::getVoid(), fd->fdn->params.get());
-            if(fnty->extTys.size() == 1 and c->typeEq(fnty->extTys[0], valToCast.type)){
-                string baseName = getCastFnBaseName(castTy);
-                string mangledName = mangle(baseName, {valToCast.type});
-                return compileAndCallAnteFunction(c, baseName, mangledName, {valToCast});
-            }
         }
 
         //Compile the function now that we know to use it over a cast
@@ -964,6 +957,26 @@ void createDriverFunction(Compiler *c, FuncDecl *fd, vector<TypedValue> const& t
     }
 }
 
+void p(llvm::Module *m){
+    m->print(dbgs(), nullptr);
+    puts("");
+}
+
+void p(unique_ptr<llvm::Module> &m){
+    p(m.get());
+    puts("");
+}
+
+void p(Value *v){
+    v->print(dbgs());
+    puts("");
+}
+
+void p(Type *t){
+    t->print(dbgs());
+    puts("");
+}
+
 TypedValue compileAndCallAnteFunction(Compiler *c, string const& baseName,
         string const& mangledName, vector<TypedValue> const& typedArgs){
 
@@ -972,7 +985,7 @@ TypedValue compileAndCallAnteFunction(Compiler *c, string const& baseName,
 
     if(!mod_compiler or mod_compiler->errFlag){
         c->errFlag = true;
-        cout << "Error 1 in compileAndCallAnteFunction\n";
+        cout << "Error encountered while JITing " << baseName << ", aborting.\n";
         throw new CtError();
     }
 
@@ -983,7 +996,7 @@ TypedValue compileAndCallAnteFunction(Compiler *c, string const& baseName,
 
     if(!fd){
         c->errFlag = true;
-        cout << "Error 2 in compileAndCallAnteFunction: !fd\n";
+        cout << "Error encountered while getting JITed FuncDecl of " << baseName << ", aborting.\n";
         throw new CtError();
     }
 
@@ -1018,9 +1031,11 @@ TypedValue compileAndCallAnteFunction(Compiler *c, string const& baseName,
 TypedValue compMetaFunctionResult(Compiler *c, LOC_TY const& loc, string const& baseName,
         string const& mangledName, vector<TypedValue> const& typedArgs){
 
+    return compileAndCallAnteFunction(c, baseName, mangledName, typedArgs);
+
+/*
     CtFunc* fn;
     if(!(fn = compapi[baseName].get())){
-        return compileAndCallAnteFunction(c, baseName, mangledName, typedArgs);
     }
 
     //fn was found, this is a builtin compiler api function
@@ -1030,7 +1045,7 @@ TypedValue compMetaFunctionResult(Compiler *c, LOC_TY const& loc, string const& 
         return c->compErr("Called function was given " + to_string(typedArgs.size()) +
                 " argument(s) but was declared to take " + to_string(fn->params.size()), loc);
 
-    /* alias typedArgs for switch statement */
+    // alias typedArgs for switch statement
     vector<TypedValue> const& ta = typedArgs;
 
     switch(fn->params.size()){
@@ -1052,7 +1067,7 @@ TypedValue compMetaFunctionResult(Compiler *c, LOC_TY const& loc, string const& 
         return ret;
     }else{
         return c->getVoidLiteral();
-    }
+    }*/
 }
 
 
@@ -1095,21 +1110,7 @@ TypedValue tryImplicitCast(Compiler *c, TypedValue &arg, AnType *castTy){
     }
 
     //check for an implicit Cast function
-    TypedValue fn;
-
-    if(c->isJIT){
-        string baseName = getCastFnBaseName(castTy);
-        string mangledName = mangle(baseName, {arg.type});
-
-        //perform an unfortunate double lookup
-        //TODO: rework compileAndCallAnteFunction to accept FuncDecls
-        if(FuncDecl *fd = c->getFuncDecl(baseName, mangledName)){
-            AnFunctionType *fty = AnFunctionType::get(c, AnType::getVoid(), fd->fdn->params.get());
-            if(c->typeEq({arg.type}, fty->extTys)){
-                return compileAndCallAnteFunction(c, baseName, mangledName, {arg});
-            }
-        }
-    }else if((fn = c->getCastFn(arg.type, castTy))){
+    if(TypedValue fn = c->getCastFn(arg.type, castTy)){
         AnFunctionType *fty = (AnFunctionType*)fn.type;
         if(c->typeEq({arg.type}, fty->extTys)){
             vector<Value*> args{arg.val};
@@ -1354,7 +1355,7 @@ TypedValue compFnCall(Compiler *c, Node *l, Node *r){
 
     //if tvf is a ![macro] or similar MetaFunction, then compile it in a separate
     //module and JIT it instead of creating a call instruction
-    if(c->isJIT or tvf.type->typeTag == TT_MetaFunction){
+    if(tvf.type->typeTag == TT_MetaFunction){
         string baseName = getName(l);
         auto *fnty = (AnFunctionType*)tvf.type;
         string mangledName = mangle(baseName, fnty->extTys);

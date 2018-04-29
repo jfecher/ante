@@ -230,8 +230,7 @@ TypedValue Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
         //If we are JIT compiling this function we want the args to be perfectly forwarded.
         //They must be passed directly to work with certain compiler-api functions.  For example,
         //it is important that Ante.store does not store a llvm::Argument
-        TypedValue tArg = isJIT ?
-            ctCtxt->args[i] : TypedValue(&arg, paramTy);
+        TypedValue tArg{&arg, paramTy};
 
         stoVar(cParam->name, new Variable(cParam->name, tArg, this->scope,
                         /*nofree =*/ true, /*autoDeref = */implicitPassByRef(paramTy)));
@@ -358,8 +357,7 @@ TypedValue compFnWithModifiers(Compiler *c, FuncDecl *fd, ModNode *ppn){
     // ppn is a normal modifier
     }else{
         if(ppn->mod == Tok_Ante){
-            bool fnInCompAPI = compapi[fd->getName()].get();
-            if(c->isJIT && !fnInCompAPI){
+            if(c->isJIT){
                 fn = c->compFn(fd);
             }else{
                 auto *rettn = (TypeNode*)fd->fdn->type.get();
@@ -463,8 +461,7 @@ TypedValue compFnHelper(Compiler *c, FuncDecl *fd){
             //If we are JIT compiling this function we want the args to be perfectly forwarded.
             //They must be passed directly to work with certain compiler-api functions.  For example,
             //it is important that Ante.store does not store a llvm::Argument
-            TypedValue tArg = c->isJIT ?
-                c->ctCtxt->args[i] : TypedValue(&arg, paramTy);
+            TypedValue tArg{&arg, paramTy};
 
             c->stoVar(cParam->name, new Variable(cParam->name, tArg, c->scope,
                     /*nofree = */true, /*autoDeref = */implicitPassByRef(paramTy)));

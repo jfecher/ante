@@ -278,12 +278,8 @@ TypedValue compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
                 + " to Str for string interpolation.", valNode->loc);
         }
 
-        if(c->isJIT){
-            val = compileAndCallAnteFunction(c, fd->getName(), fd->mangledName, {val});
-        }else{
-            auto fn = c->getCastFn(val.type, strty, fd);
-            val = TypedValue(c->builder.CreateCall(fn.val, val.val), strty);
-        }
+        auto fn = c->getCastFn(val.type, strty, fd);
+        val = TypedValue(c->builder.CreateCall(fn.val, val.val), strty);
     }
 
     //Finally, the interpolation is done.  Now just combine the three strings
@@ -292,11 +288,6 @@ TypedValue compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
     string mangledAppendFn = "++_Str_Str";
     auto lstr = CompilingVisitor::compile(c, ls);
     auto rstr = CompilingVisitor::compile(c, rs);
-
-    if(c->isJIT){
-        auto appendL = compileAndCallAnteFunction(c, appendFn, mangledAppendFn, {lstr, val});
-        return compileAndCallAnteFunction(c, appendFn, mangledAppendFn, {appendL, rstr});
-    }
 
     auto fn = c->getFunction(appendFn, mangledAppendFn);
     if(!fn) return c->compErr("++ overload for Str and Str not found while performing Str interpolation."

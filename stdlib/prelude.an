@@ -82,11 +82,15 @@ ante fun Ante.sizeof: 't t -> usz;
 ante fun Ante.store: c8* name, 't val;
 ante fun Ante.lookup: c8* name -> 't;
 
+// evaluate a program string and return the result.
+// will error and return void if a syntax error is found.
+ante fun Ante.eval: c8* eval_str -> 't;
+
 //Note: error never returns
 ante fun Ante.error: c8* msg;
 
 //dumps llvm-ir to stdout
-ante fun Ante.emitIR:;
+ante fun Ante.emit_ir:;
 
 //useful in the repl to redefine functions
 ante fun Ante.forget: c8* function_name;

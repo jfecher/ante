@@ -1,4 +1,5 @@
 #include "jit.h"
+#include "argtuple.h"
 #include <iostream>
 
 using namespace std;
@@ -7,18 +8,37 @@ using namespace llvm::orc;
 
 namespace ante {
 
-    JIT::ModuleHandle JIT::addModule(std::unique_ptr<Module> m){
+    extern map<string, unique_ptr<CtFunc>> compapi;
+
+    JIT::ModuleHandle JIT::addModule(std::unique_ptr<llvm::Module> m){
         auto symResolver = createLambdaResolver(
             //Look back into the JIT itself to find symbols part of the same dylib
             [&](const string &name){
+                cout << "Resolving " << name << " in dylib\n";
                 if(auto sym = codLayer.findSymbol(name, false))
                     return sym;
+                cout << "Cannot find symbol " << name << endl;
                 return JITSymbol(nullptr);
             },
             //search for external symbols in the host process
             [](const string &name){
+                cout << "Resolving " << name << " in host process\n";
                 if(auto symAddr = RTDyldMemoryManager::getSymbolAddressInProcess(name))
                     return JITSymbol(symAddr, JITSymbolFlags::Exported);
+
+                cout << "sizeof(compapi) = " << compapi.size() << '\n';
+                for(auto &p : compapi){
+                    cout << p.first << " -> " << p.second.get() << '\n';
+                }
+
+                CtFunc *fn = compapi[name].get();
+                if(fn){
+                    uint64_t addr = (uint64_t)fn;
+                    cout << "Calling addr: " << addr << endl;
+                    return JITSymbol(addr, JITSymbolFlags::Exported);
+                }
+
+                cout << "Cannot find symbol " << name << endl;
                 return JITSymbol(nullptr);
             }
         );
@@ -26,7 +46,7 @@ namespace ante {
         return cantFail(codLayer.addModule(move(m), move(symResolver)));
     }
 
-    std::shared_ptr<Module> JIT::optimizeModule(std::shared_ptr<Module> m){
+    std::shared_ptr<llvm::Module> JIT::optimizeModule(std::shared_ptr<llvm::Module> m){
         auto fpm = llvm::make_unique<legacy::FunctionPassManager>(m.get());
 
         fpm->add(createInstructionCombiningPass());

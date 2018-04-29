@@ -79,11 +79,43 @@ extern "C" {
         }
     }
 
-    void* Ante_emitIR(Compiler *c){
+    TypedValue* Ante_eval(Compiler *c, TypedValue &nameTv){
+        string eval_str = string(*(char**)ArgTuple(c, nameTv).asRawData());
+        string file_name = "eval";
+
+        auto *lex = new Lexer(&file_name, eval_str, 1u, 1u);
+        setLexer(lex);
+        yy::parser p{};
+        int flag = p.parse();
+        if(flag != PE_OK){ //parsing error, cannot procede
+            fputs("Syntax error in call to Ante.eval, aborting.\n", stderr);
+            return new TypedValue(c->getVoidLiteral());
+        }
+
+        RootNode *expr = parser::getRootNode();
+        TypedValue val;
+        Node *valNode = 0;
+
+        scanImports(c, expr);
+        c->scanAllDecls(expr);
+
+        //Compile main and hold onto the last value
+        for(auto &n : expr->main){
+            try{
+                val = CompilingVisitor::compile(c, n);
+                valNode = n.get();
+            }catch(CtError *e){
+                delete e;
+            }
+        }
+        return new TypedValue(val);
+    }
+
+    void* Ante_emit_ir(Compiler *c){
         if(c and c->module){
             c->module->print(llvm::errs(), nullptr);
         }else{
-            cerr << "error: Ante.emitIR: null module" << endl;
+            cerr << "error: Ante.emit_ir: null module" << endl;
         }
         return nullptr;
     }
@@ -103,9 +135,10 @@ namespace ante {
         compapi.emplace("Ante_debug",       new CtFunc((void*)Ante_debug,       AnType::getVoid(), {AnTypeVarType::get("'t'")}));
         compapi.emplace("Ante_sizeof",      new CtFunc((void*)Ante_sizeof,      AnType::getU32(),  {AnTypeVarType::get("'t'")}));
         compapi.emplace("Ante_store",       new CtFunc((void*)Ante_store,       AnType::getVoid(), {AnPtrType::get(AnType::getPrimitive(TT_C8)), AnTypeVarType::get("'t'")}));
-        compapi.emplace("Ante_lookup",      new CtFunc((void*)Ante_lookup,      AnTypeVarType::get("'t'"), {AnPtrType::get(AnType::getPrimitive(TT_C8))}));
+        compapi.emplace("Ante_lookup",      new CtFunc((void*)Ante_lookup,      AnTypeVarType::get("'Dyn"), {AnPtrType::get(AnType::getPrimitive(TT_C8))}));
+        compapi.emplace("Ante_eval",        new CtFunc((void*)Ante_eval,        AnTypeVarType::get("'Dyn"), {AnPtrType::get(AnType::getPrimitive(TT_C8))}));
         compapi.emplace("Ante_error",       new CtFunc((void*)Ante_error,       AnType::getVoid(), {AnPtrType::get(AnType::getPrimitive(TT_C8))}));
-        compapi.emplace("Ante_emitIR",      new CtFunc((void*)Ante_emitIR,      AnType::getVoid()));
+        compapi.emplace("Ante_emit_ir",     new CtFunc((void*)Ante_emit_ir,     AnType::getVoid()));
         compapi.emplace("Ante_forget",      new CtFunc((void*)Ante_forget,      AnType::getVoid(), {AnPtrType::get(AnType::getPrimitive(TT_C8))}));
         compapi.emplace("FuncDecl_getName", new CtFunc((void*)FuncDecl_getName, AnDataType::get("Str"), {AnDataType::get("Ante.FuncDecl")}));
     }
