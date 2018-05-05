@@ -1,14 +1,7 @@
 #define NOMINMAX
 
-#include "lexer.h"
-#include "parser.h"
-#include "compiler.h"
-#include "ptree.h"
-#include "yyparser.h"
-#include "args.h"
+#include "compapi.h"
 #include "target.h"
-#include <cstring>
-#include <iostream>
 #include <llvm/Support/TargetRegistry.h>
 
 #if LLVM_VERSION_MAJOR >= 6
@@ -79,7 +72,7 @@ int main(int argc, const char **argv){
     LLVMInitializeNativeTarget();
     LLVMInitializeNativeAsmPrinter();
 
-    init_compapi();
+    capi::init();
 
     auto *args = parseArgs(argc, argv);
     if(args->hasArg(Args::Help)) printHelp();

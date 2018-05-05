@@ -2,15 +2,16 @@
 #include "compapi.h"
 #include <iostream>
 
-using namespace std;
-using namespace llvm;
-using namespace llvm::orc;
-
-extern "C" void* Ante_store(ante::Compiler*, ante::TypedValue&, ante::TypedValue&);
+using std::string;
+using std::unique_ptr;
+using llvm::JITSymbol;
+using llvm::JITSymbolFlags;
+using llvm::JITTargetAddress;
+using llvm::RTDyldMemoryManager;
 
 namespace ante {
     JIT::ModuleHandle JIT::addModule(std::unique_ptr<llvm::Module> m){
-        auto symResolver = createLambdaResolver(
+        auto symResolver = llvm::orc::createLambdaResolver(
             //Look back into the JIT itself to find symbols part of the same dylib
             [&](const string &name){
                 if(auto sym = codLayer.findSymbol(name, false))
@@ -22,10 +23,8 @@ namespace ante {
                 if(auto symAddr = RTDyldMemoryManager::getSymbolAddressInProcess(name))
                     return JITSymbol(symAddr, JITSymbolFlags::Exported);
 
-                if(CtFunc *fn = compapi_lookup(name)){
-                    cout << "Calling addr:          " << fn << endl;
-                    cout << "Note: Ante_store addr: " << (void*)Ante_store << endl;
-                    uint64_t addr = (uint64_t)fn;
+                if(capi::CtFunc *fn = capi::lookup(name)){
+                    uint64_t addr = (uint64_t)fn->fn;
                     return JITSymbol(addr, JITSymbolFlags::Exported);
                 }
 
@@ -37,12 +36,12 @@ namespace ante {
     }
 
     std::shared_ptr<llvm::Module> JIT::optimizeModule(std::shared_ptr<llvm::Module> m){
-        auto fpm = llvm::make_unique<legacy::FunctionPassManager>(m.get());
+        auto fpm = llvm::make_unique<llvm::legacy::FunctionPassManager>(m.get());
 
-        fpm->add(createInstructionCombiningPass());
-        fpm->add(createReassociatePass());
-        fpm->add(createGVNPass());
-        fpm->add(createCFGSimplificationPass());
+        fpm->add(llvm::createInstructionCombiningPass());
+        fpm->add(llvm::createReassociatePass());
+        fpm->add(llvm::createGVNPass());
+        fpm->add(llvm::createCFGSimplificationPass());
         fpm->doInitialization();
 
         for(auto &f : *m){
@@ -53,8 +52,8 @@ namespace ante {
 
     JITSymbol JIT::findSymbol(const string name){
         string mangledName;
-        raw_string_ostream mangledNameStream(mangledName);
-        Mangler::getNameWithPrefix(mangledNameStream, name, dl);
+        llvm::raw_string_ostream mangledNameStream(mangledName);
+        llvm::Mangler::getNameWithPrefix(mangledNameStream, name, dl);
         return codLayer.findSymbol(mangledNameStream.str(), true);
     }
 
@@ -67,6 +66,6 @@ namespace ante {
     }
 
     void JIT::handleUnrecognizedFn(){
-        cerr << "JIT Error: Unrecognized function called, aborting!" << endl;
+        std::cerr << "JIT Error: Unrecognized function called, aborting!" << std::endl;
     }
 }

@@ -1,5 +1,6 @@
 #include "function.h"
 #include "jitlinker.h"
+#include "compapi.h"
 
 using namespace std;
 using namespace llvm;
@@ -22,10 +23,22 @@ bool implicitPassByRef(AnType* t){
     return t->typeTag == TT_Array or t->hasModifier(Tok_Mut);
 }
 
+/*
+ * Return true if the given function type
+ * is a user-declared ante function or a
+ * compiler-api function (TT_MetaFunction)
+ */
+bool isCompileTimeFunction(AnType *fty){
+    return fty->typeTag == TT_MetaFunction or
+        (fty->typeTag == TT_Function and fty->hasModifier(Tok_Ante));
+}
+
+bool isCompileTimeFunction(TypedValue &tv){
+    return isCompileTimeFunction(tv.type);
+}
 
 vector<AnType*> toTypeVector(vector<TypedValue> const& tvs){
-    vector<AnType*> ret;
-    ret.reserve(tvs.size());
+    auto ret = vecOf<AnType*>(tvs.size());
     for(const auto tv : tvs)
         ret.push_back(tv.type);
     return ret;
@@ -38,8 +51,7 @@ TypedValue Compiler::callFn(string name, vector<TypedValue> args){
     if(!fn) return fn;
 
     //vector of llvm::Value*s for the call to CreateCall at the end
-    vector<Value*> vals;
-    vals.reserve(args.size());
+    auto vals = vecOf<Value*>(args.size());
 
     //Loop through each arg, typecheck them, and build vals vector
     //TODO: re-arrange all args into one tuple so that typevars
@@ -83,7 +95,7 @@ vector<Type*> getParamTypes(Compiler *c, FuncDecl *fd){
         TypeNode *paramTyNode = (TypeNode*)nvn->typeExpr.get();
         if(paramTyNode == (void*)1){ //self parameter
             //Self parameters originally have 0x1 as their TypeNodes, but
-            //this should be replaced when FuncDeclNode::compile is called.
+            //this should be replaced when visit(FuncDeclNode*) is called.
             //Throw an error if that check was somehow bypassed
             c->compErr("Stray self parameter", nvn->loc);
         }else if(paramTyNode){
@@ -206,7 +218,7 @@ TypedValue Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
         addArgAttrs(arg, paramTyNode);
 
         //Self parameters originally have 0x1 as their TypeNodes, but
-        //this should be replaced when FuncDeclNode::compile is called.
+        //this should be replaced when visit(FuncDeclNode*) is called.
         //Throw an error if that check was somehow bypassed
         if(paramTyNode == (void*)1){
             compErr("Stray self parameter", cParam->loc);
@@ -357,10 +369,24 @@ TypedValue compFnWithModifiers(Compiler *c, FuncDecl *fd, ModNode *ppn){
     }else{
         if(ppn->mod == Tok_Ante){
             if(c->isJIT){
-                fn = c->compFn(fd);
+                if(capi::lookup(fd->getName())){
+                    fn = c->compFn(fd);
+                    //Tag as TT_MetaFunction
+                    auto *oldTy = (AnFunctionType*)fn.type;
+                    fn.type = AnFunctionType::get(oldTy->retTy, oldTy->extTys, true);
+                    fd->tv = fn;
+                }else{
+                    fn = c->compFn(fd);
+                }
             }else{
                 auto *rettn = (TypeNode*)fd->fdn->type.get();
-                auto *fnty = AnFunctionType::get(c, toAnType(c, rettn), fd->fdn->params.get(), true);
+                AnFunctionType *fnty;
+                if(capi::lookup(fd->getName())){
+                    fnty = AnFunctionType::get(c, toAnType(c, rettn), fd->fdn->params.get(), true);
+                }else{
+                    fnty = AnFunctionType::get(c, toAnType(c, rettn), fd->fdn->params.get(), false);
+                    fnty = fnty->addModifier(Tok_Ante);
+                }
                 fn = TypedValue(nullptr, fnty);
             }
         }else{
@@ -425,8 +451,7 @@ TypedValue compFnHelper(Compiler *c, FuncDecl *fd){
     addAllArgAttrs(f, fdn->params.get());
 
 
-    auto ret = TypedValue(f, fnTy);
-    //stoVar(fdn->name, new Variable(fdn->name, ret, scope));
+    TypedValue ret{f, fnTy};
     c->updateFn(ret, fd, fdn->name, fd->mangledName);
 
     //The above handles everything for a function declaration
@@ -503,6 +528,13 @@ TypedValue compFnHelper(Compiler *c, FuncDecl *fd){
 }
 
 
+TypedValue FuncDecl::getOrCompileFn(Compiler *c){
+    if(this->tv) return tv;
+    c->compFn(this);
+    return tv;
+}
+
+
 FuncDecl* shallow_copy(FuncDecl* fd, string &mangledName){
     FuncDecl *cpy = new FuncDecl(fd->fdn, mangledName, fd->scope, fd->module);
     cpy->obj_bindings = fd->obj_bindings;
@@ -512,8 +544,12 @@ FuncDecl* shallow_copy(FuncDecl* fd, string &mangledName){
 
 
 TypedValue compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, vector<AnType*> &args){
+    //ensure we are not recompiling a nomangle function
+    //if(fd->isDecl())
+    //    return fd->getOrCompileFn(c);
+
     //test if bound variant is already compiled
-    string mangled = mangle(fd, args);
+    string mangled = fd->isDecl() ? fd->getName() : mangle(fd, args);
 
     FuncDecl* fdRedef;
     if((fdRedef = c->getFuncDecl(fd->getName(), mangled))){
@@ -564,7 +600,7 @@ bool isDecl(string &name){
  */
 void CompilingVisitor::visit(FuncDeclNode *n){
     //check if the function is a named function.
-    if(n->name.length() > 0){
+    if(!n->name.empty()){
         string mangledName;
         if(isDecl(n->name)){
             n->name = c->funcPrefix + n->name.substr(0, n->name.length() - 1);
@@ -650,7 +686,6 @@ TypedValue Compiler::compFn(FuncDecl *fd){
 FuncDecl* Compiler::getCurrentFunction() const{
     return compCtxt->callStack.back();
 }
-
 
 
 void Compiler::updateFn(TypedValue &f, FuncDecl *fd, string &name, string &mangledName){
@@ -742,8 +777,7 @@ vector<pair<TypeCheckResult,FuncDecl*>> filterHighestMatches(vector<pair<TypeChe
  */
 vector<pair<TypeCheckResult,FuncDecl*>>
 filterBestMatches(Compiler *c, vector<shared_ptr<FuncDecl>> &candidates, vector<AnType*> args){
-    vector<pair<TypeCheckResult,FuncDecl*>> results;
-    results.reserve(candidates.size());
+    auto results = vecOf<pair<TypeCheckResult,FuncDecl*>>(candidates.size());
 
     for(auto fd : candidates){
         auto *fnty = fd->type ? fd->type

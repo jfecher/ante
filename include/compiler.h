@@ -16,35 +16,12 @@
 #include "args.h"
 #include "lazystr.h"
 #include "antype.h"
+#include "argtuple.h"
+#include "typedvalue.h"
 
 #define AN_MANGLED_SELF "_$self$"
 
 namespace ante {
-
-    /**
-    * @brief A Value* and TypeNode* pair
-    *
-    * This is the main type used to represent a value in Ante
-    */
-    struct TypedValue {
-        llvm::Value *val;
-        AnType *type;
-
-        TypedValue() : val(nullptr), type(nullptr){}
-        TypedValue(llvm::Value *v, AnType *ty) : val(v), type(ty){}
-
-        bool operator!() const{ return !type; }
-
-        explicit operator bool() const{ return type; }
-
-        llvm::Type* getType() const{ return val->getType(); }
-
-        /**
-        * @brief Prints type and value to stdout
-        */
-        void dump() const;
-    };
-
 
     struct CompilingVisitor : public NodeVisitor {
         TypedValue val;
@@ -185,9 +162,15 @@ namespace ante {
         Module *module;
         std::vector<std::pair<TypedValue,LOC_TY>> returns;
 
-        std::string& getName() const {
+        std::string& getName() const noexcept {
             return fdn->name;
         }
+
+        bool isDecl() const noexcept {
+            return fdn->name.back() == ';' or mangledName == fdn->name;
+        }
+
+        TypedValue getOrCompileFn(Compiler *c);
 
         FuncDecl(std::shared_ptr<parser::FuncDeclNode> &fn, std::string &n, unsigned int s, Module *mod, TypedValue f) : fdn(fn), mangledName(n), scope(s), tv(f), type(0), module(mod), returns(){}
         FuncDecl(std::shared_ptr<parser::FuncDeclNode> &fn, std::string &n, unsigned int s, Module *mod) : fdn(fn), mangledName(n), scope(s), tv(), type(0), module(mod), returns(){}
@@ -338,7 +321,7 @@ namespace ante {
      */
     struct CompilerCtCtxt {
         /** @brief Compile-time values stored using Ante.ctStore  */
-        llvm::StringMap<TypedValue> ctStores;
+        llvm::StringMap<ArgTuple> ctStores;
 
         /** @brief functions to run whenever a function is declared. */
         std::vector<std::shared_ptr<FuncDecl>> on_fn_decl_hook;
@@ -462,7 +445,23 @@ namespace ante {
         */
         void processArgs(CompilerArgs *args);
 
-        //binop functions
+
+        /**
+         * Create a tuple of the given elements.
+         *
+         * @param packed True if the tuple should be represented as a packed structure.
+         */
+        llvm::Value* tupleOf(std::vector<llvm::Value*> const& elems, bool packed);
+
+        /**
+         * Create a ptr to the memory address specified.
+         *
+         * The given memory address does not change during runtime, and as such this
+         * should only be used for pointers whose contents are guarenteed to also
+         * be present when the module is executed.
+         */
+        llvm::Value* ptrTo(void* val);
+
         /**
          * @brief Emits an add instruction
          *
@@ -803,7 +802,8 @@ namespace ante {
     *
     *  - Assumes arguments are already type-checked
     */
-    TypedValue compMetaFunctionResult(Compiler *c, LOC_TY const& loc, std::string const& baseName, std::string const& mangledName, std::vector<TypedValue> const& typedArgs);
+    TypedValue compMetaFunctionResult(Compiler *c, LOC_TY const& loc, std::string const& baseName,
+            std::string const& mangledName, std::vector<TypedValue> const& typedArgs);
 
     /**
      *  Search for a given function specified by the expression l.
@@ -822,15 +822,6 @@ namespace ante {
      */
     TypedValue compileAndCallAnteFunction(Compiler *c, std::string const& baseName,
         std::string const& mangledName, std::vector<TypedValue> const& typedArgs);
-
-    /**
-     * @brief initialize the compiler api function map.
-     *
-     * Without this call the compiler will think there are
-     * no api functions available and will wrongly try to
-     * compile the declarations without a definition.
-     */
-    void init_compapi();
 
     /**
     * @brief Compiles all top-level import expressions
@@ -867,6 +858,13 @@ namespace ante {
 
     /** @brief Counts the amount of Nodes in the list */
     size_t getTupleSize(parser::Node *tup);
+
+    /** @brief Create a vector with a capacity of at least cap elements. */
+    template<typename T> std::vector<T> vecOf(size_t cap){
+        std::vector<T> vec;
+        vec.reserve(cap);
+        return vec;
+    }
 
     /** @brief Converts the Node list argument into a vector */
     template<typename T> std::vector<T*> vectorize(T *args);

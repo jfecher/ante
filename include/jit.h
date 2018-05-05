@@ -25,7 +25,7 @@
 #include <vector>
 
 namespace ante {
-    
+
     class JIT {
         private:
             std::unique_ptr<llvm::TargetMachine> tm;
@@ -62,7 +62,7 @@ namespace ante {
                             },
                             *compileCallbackManager,
                             llvm::orc::createLocalIndirectStubsManagerBuilder(tm->getTargetTriple())){
-                        
+
                         //pass a nullptr to load the current process
                         llvm::sys::DynamicLibrary::LoadLibraryPermanently(nullptr);
                     }

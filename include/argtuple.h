@@ -1,20 +1,33 @@
 #ifndef AN_ARGTUPLE_H
 #define AN_ARGTUPLE_H
 
-#include "compiler.h"
+#include "typedvalue.h"
+#include "error.h"
+#include <vector>
 
 namespace ante {
+    struct Compiler;
 
-    /** A data structure for translating between c++ values
-     * and TypedValues while jitting. */
+    /** A data structure for translating between runtime
+     * values and TypedValues while jitting. */
     class ArgTuple {
 
         public:
             /** Converts a tuple pointer into a TypedValue */
-            TypedValue asTypedValue() const { return tval; }
+            TypedValue asTypedValue(Compiler *c) const;
 
             /** Returns the contained data without any conversions. */
             void* asRawData() const { return data; }
+
+            /** Return the AnType* of the contained value. */
+            AnType *getType() const { return type; }
+
+            template<typename T>
+            T castTo() const {
+                if(!data)
+                    throw new CompilationError("Uninitialized data in cast");
+                return *(T*)data;
+            }
 
             /**
              * Constructs an ArgTuple from the given TypedValue arguments.
@@ -28,11 +41,11 @@ namespace ante {
              */
             ArgTuple(Compiler *c, TypedValue const& val);
 
-            /** Constructs an ArgTuple using the given pre-initialized data. */
-            ArgTuple(Compiler *c, void *data, AnType *type);
+            /** Construct an ArgTuple using the given pre-initialized data. */
+            ArgTuple(void *d, AnType *t) : data(d), type(t){}
 
             /** Constructs an empty ArgTuple representing a void literal. */
-            ArgTuple();
+            ArgTuple() = default;
 
 
         private:
@@ -40,7 +53,7 @@ namespace ante {
             void *data;
 
             /** The type and value of this data. */
-            TypedValue tval;
+            AnType *type;
 
             /** Stores pointer value of a constant pointer type */
             void storePtr(Compiler *c, TypedValue const& tv);

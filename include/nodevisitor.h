@@ -72,7 +72,7 @@ namespace ante {
         virtual void visit(parser::FuncDeclNode*) = 0;
         virtual void visit(parser::DataDeclNode*) = 0;
         virtual void visit(parser::TraitNode*) = 0;
-    };    
+    };
 
 
 #define DECLARE_NODE_VISIT_METHODS()       \

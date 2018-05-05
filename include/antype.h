@@ -298,7 +298,7 @@ namespace ante {
      *  In the case of a tagged union, each union variant is stored as
      *  an extTy so sizeInBits(union->extTys) != sizeInBits(union).
      *  To determine the type of a union, ante::getLargestExt should be used.
-     */ 
+     */
     class AnDataType : public AnAggregateType {
 
         protected:
@@ -398,7 +398,7 @@ namespace ante {
         /** Returns true if this type is a bound variant of the generic type dt.
          *  If dt is not a generic type, this function will always return false. */
         bool isVariantOf(const AnDataType *dt) const;
-       
+
         /** Returns the type this type is aliased to */
         AnType* getAliasedType() const;
 

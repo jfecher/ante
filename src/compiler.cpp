@@ -381,41 +381,18 @@ void CompilingVisitor::visit(TupleNode *n){
         return;
     }
 
-    vector<Constant*> elems;
-    elems.reserve(n->exprs.size());
+    auto elemTys = vecOf<AnType*>(n->exprs.size());
+    auto vals = vecOf<Value*>(n->exprs.size());
 
-    vector<Type*> elemTys;
-    elemTys.reserve(n->exprs.size());
-
-    vector<AnType*> anElemTys;
-    anElemTys.reserve(n->exprs.size());
-
-    map<unsigned, Value*> pathogenVals;
-
-    //Compile every value in the tuple, and if it is not constant,
-    //add it to pathogenVals
-    for(unsigned i = 0; i < n->exprs.size(); i++){
-        auto tval = CompilingVisitor::compile(c, n->exprs[i]);
-
-        if(Constant *elem = dyn_cast<Constant>(tval.val)){
-            elems.push_back(elem);
-        }else{
-            pathogenVals[i] = tval.val;
-            elems.push_back(UndefValue::get(tval.getType()));
-        }
-        elemTys.push_back(tval.getType());
-        anElemTys.push_back(tval.type);
+    for(auto &expr : n->exprs){
+        expr->accept(*this);
+        vals.push_back(this->val.val);
+        elemTys.push_back(this->val.type);
     }
 
-    //Create the constant tuple with undef values in place for the non-constant values
-    Value* tuple = ConstantStruct::get(StructType::get(*c->ctxt, elemTys), elems);
+    Value* tuple = c->tupleOf(vals, false);
 
-    //Insert each pathogen value into the tuple individually
-    for(const auto &p : pathogenVals){
-        tuple = c->builder.CreateInsertValue(tuple, p.second, p.first);
-    }
-
-    auto *tupTy = AnAggregateType::get(TT_Tuple, anElemTys);
+    auto *tupTy = AnAggregateType::get(TT_Tuple, elemTys);
     this->val = TypedValue(tuple, tupTy);
 }
 
@@ -1252,8 +1229,7 @@ bool Compiler::typeImplementsTrait(AnDataType* dt, string traitName) const{
 }
 
 vector<AnTypeVarType*> toVec(Compiler *c, const vector<unique_ptr<TypeNode>> &generics){
-    vector<AnTypeVarType*> ret;
-    ret.reserve(generics.size());
+    auto ret = vecOf<AnTypeVarType*>(generics.size());
     for(auto &tn : generics){
         ret.push_back((AnTypeVarType*)toAnType(c, tn.get()));
     }
@@ -1268,8 +1244,7 @@ void addGenerics(vector<AnTypeVarType*> &dest, vector<AnType*> &src);
  * @return A void literal
  */
 TypedValue compTaggedUnion(Compiler *c, DataDeclNode *n){
-    vector<string> fieldNames;
-    fieldNames.reserve(n->fields);
+    auto fieldNames = vecOf<string>(n->fields);
 
     auto *nvn = (NamedValNode*)n->child.get();
 
@@ -1357,11 +1332,8 @@ void CompilingVisitor::visit(DataDeclNode *n){
 
     c->stoType(data, n->name);
 
-    vector<string> fieldNames;
-    vector<AnType*> fieldTypes;
-
-    fieldNames.reserve(n->fields);
-    fieldTypes.reserve(n->fields);
+    auto fieldNames = vecOf<string>(n->fields);
+    auto fieldTypes = vecOf<AnType*>(n->fields);
 
     while(nvn){
         TypeNode *tyn = (TypeNode*)nvn->typeExpr.get();
@@ -1840,7 +1812,7 @@ const Target* getTarget(){
     if(!err.empty()){
         cerr << err << endl;
 		cerr << "Selected triple: " << AN_NATIVE_ARCH ", " AN_NATIVE_VENDOR ", " AN_NATIVE_OS << endl;
-		cout << "\nRegistered targets:" << endl;
+		cerr << "\nRegistered targets:\n";
 #if LLVM_VERSION_MAJOR >= 6
         llvm::raw_os_ostream os{std::cout};
 		TargetRegistry::printRegisteredTargetsForVersion(os);

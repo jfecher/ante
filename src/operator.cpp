@@ -8,6 +8,7 @@
 #include "types.h"
 #include "jit.h"
 #include "argtuple.h"
+#include "compapi.h"
 
 using namespace std;
 using namespace llvm;
@@ -451,7 +452,7 @@ TypedValue createCast(Compiler *c, AnType *castTy, TypedValue &valToCast, LOC_TY
         //Compile the function now that we know to use it over a cast
         auto fn = c->getCastFn(valToCast.type, castTy, fd);
         if(fn){
-            if(fn.type->typeTag == TT_MetaFunction){
+            if(isCompileTimeFunction(fn)){
                 string baseName = getCastFnBaseName(castTy);
                 string mangledName = mangle(baseName, {valToCast.type});
                 vector<TypedValue> args = {valToCast};
@@ -804,8 +805,7 @@ TypedValue Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *binop
 
 template<typename T>
 void push_front(vector<T> &vec, T val){
-    vector<T> cpy;
-    cpy.reserve(vec.size() + 1);
+    auto cpy = vecOf<T>(vec.size() + 1);
     cpy.push_back(val);
 
     for(auto &v : vec)
@@ -816,7 +816,7 @@ void push_front(vector<T> &vec, T val){
 
 
 vector<AnType*> toAnTypeVector(vector<TypedValue> &tvs){
-    vector<AnType*> ret;
+    auto ret = vecOf<AnType*>(tvs.size());
     for(const auto &tv : tvs){
         ret.push_back(tv.type);
     }
@@ -983,7 +983,7 @@ TypedValue compileAndCallAnteFunction(Compiler *c, string const& baseName,
 
     if(!mod_compiler or mod_compiler->errFlag){
         c->errFlag = true;
-        cout << "Error encountered while JITing " << baseName << ", aborting.\n";
+        cerr << "Error encountered while JITing " << baseName << ", aborting.\n";
         throw new CtError();
     }
 
@@ -994,7 +994,7 @@ TypedValue compileAndCallAnteFunction(Compiler *c, string const& baseName,
 
     if(!fd){
         c->errFlag = true;
-        cout << "Error encountered while getting JITed FuncDecl of " << baseName << ", aborting.\n";
+        cerr << "Error encountered while getting JITed FuncDecl of " << baseName << ", aborting.\n";
         throw new CtError();
     }
 
@@ -1010,7 +1010,7 @@ TypedValue compileAndCallAnteFunction(Compiler *c, string const& baseName,
 
         auto res = fn(arg.asRawData());
         auto *retTy = fd->tv.type->getFunctionReturnType();
-        return ArgTuple(c, res, retTy).asTypedValue();
+        return ArgTuple(res, retTy).asTypedValue(c);
     }else{
         cerr << "(null)" << endl;
         return c->getVoidLiteral();
@@ -1027,33 +1027,27 @@ TypedValue compileAndCallAnteFunction(Compiler *c, string const& baseName,
  *  - Assumes arguments are already type-checked
  */
 TypedValue compMetaFunctionResult(Compiler *c, LOC_TY const& loc, string const& baseName,
-        string const& mangledName, vector<TypedValue> const& typedArgs){
+        string const& mangledName, vector<TypedValue> const& ta){
 
-    return compileAndCallAnteFunction(c, baseName, mangledName, typedArgs);
+    capi::CtFunc* fn = capi::lookup(baseName);
 
-/*
-    CtFunc* fn;
-    if(!(fn = compapi[baseName].get())){
-    }
+    //fn not found, this is a user-defined ante function
+    if(!fn)
+        return compileAndCallAnteFunction(c, baseName, mangledName, ta);
 
-    //fn was found, this is a builtin compiler api function
-    TypedValue *res;
-
-    if(typedArgs.size() != fn->params.size())
-        return c->compErr("Called function was given " + to_string(typedArgs.size()) +
+    if(ta.size() != fn->params.size())
+        return c->compErr("Called function was given " + to_string(ta.size()) +
                 " argument(s) but was declared to take " + to_string(fn->params.size()), loc);
 
-    // alias typedArgs for switch statement
-    vector<TypedValue> const& ta = typedArgs;
-
+    TypedValue *res;
     switch(fn->params.size()){
         case 0: res = (*fn)(c); break;
-        case 1: res = (*fn)(c, ta[0]); break;
-        case 2: res = (*fn)(c, ta[0], ta[1]); break;
-        case 3: res = (*fn)(c, ta[0], ta[1], ta[2]); break;
-        case 4: res = (*fn)(c, ta[0], ta[1], ta[2], ta[3]); break;
-        case 5: res = (*fn)(c, ta[0], ta[1], ta[2], ta[3], ta[4]); break;
-        case 6: res = (*fn)(c, ta[0], ta[1], ta[2], ta[3], ta[4], ta[5]); break;
+        case 1: res = (*fn)(c, ArgTuple(c, ta[0])); break;
+        case 2: res = (*fn)(c, ArgTuple(c, ta[0]), ArgTuple(c, ta[1])); break;
+        case 3: res = (*fn)(c, ArgTuple(c, ta[0]), ArgTuple(c, ta[1]), ArgTuple(c, ta[2])); break;
+        case 4: res = (*fn)(c, ArgTuple(c, ta[0]), ArgTuple(c, ta[1]), ArgTuple(c, ta[2]), ArgTuple(c, ta[3])); break;
+        case 5: res = (*fn)(c, ArgTuple(c, ta[0]), ArgTuple(c, ta[1]), ArgTuple(c, ta[2]), ArgTuple(c, ta[3]), ArgTuple(c, ta[4])); break;
+        case 6: res = (*fn)(c, ArgTuple(c, ta[0]), ArgTuple(c, ta[1]), ArgTuple(c, ta[2]), ArgTuple(c, ta[3]), ArgTuple(c, ta[4]), ArgTuple(c, ta[5])); break;
         default:
             cerr << "CtFuncs with more than 6 parameters are unimplemented." << endl;
             return {};
@@ -1065,7 +1059,7 @@ TypedValue compMetaFunctionResult(Compiler *c, LOC_TY const& loc, string const& 
         return ret;
     }else{
         return c->getVoidLiteral();
-    }*/
+    }
 }
 
 
@@ -1194,6 +1188,52 @@ TypedValue deduceFunction(Compiler *c, FunctionCandidates *fc, vector<TypedValue
 }
 
 
+Value* Compiler::tupleOf(vector<Value*> const& elems, bool packed){
+    vector<int> nonConstIndices;
+    auto constVals = vecOf<Constant*>(elems.size());
+
+    for(size_t i = 0; i < elems.size(); i++){
+        if(Constant *con = dyn_cast<Constant>(elems[i])){
+            constVals.push_back(con);
+        }else{
+            constVals.push_back(UndefValue::get(elems[i]->getType()));
+            nonConstIndices.push_back(i);
+        }
+    }
+
+    Value* tuple = ConstantStruct::getAnon(constVals, packed);
+
+    for(int i : nonConstIndices){
+        tuple = builder.CreateInsertValue(tuple, elems[i], i);
+    }
+    return tuple;
+}
+
+
+Value* Compiler::ptrTo(void* val){
+    auto *cint = builder.getIntN(AN_USZ_SIZE, (size_t)val);
+    Type *ptrTy = Type::getInt8Ty(*ctxt)->getPointerTo();
+    return builder.CreateIntToPtr(cint, ptrTy);
+}
+
+
+vector<Value*> adaptArgsToCompilerAPIFn(Compiler *c, vector<Value*> &args, vector<TypedValue> &typedArgs){
+    auto ret = vecOf<Value*>(args.size() + 1);
+
+    //Compiler API functions take an implicit Compiler* parameter
+    Value *cArg = c->ptrTo(c);
+    ret.push_back(cArg);
+
+    int i = 0;
+    for(auto *val : args){
+        auto valTy = c->ptrTo(typedArgs[i++].type);
+        auto arg = c->tupleOf({val, valTy}, true);
+        ret.push_back(arg);
+    }
+    return ret;
+}
+
+
 TypedValue searchForFunction(Compiler *c, Node *l, vector<TypedValue> const& typedArgs){
     if(VarNode *vn = dynamic_cast<VarNode*>(l)){
         //Check if there is a var in local scope first
@@ -1275,7 +1315,7 @@ TypedValue compFnCall(Compiler *c, Node *l, Node *r){
         return {};
     }
 
-    if(tvf.type->typeTag != TT_Function && tvf.type->typeTag != TT_MetaFunction)
+    if(!dyn_cast<AnFunctionType>(tvf.type))
         return c->compErr("Called value is not a function or method, it is a(n) " +
                 anTypeToColoredStr(tvf.type), l->loc);
 
@@ -1351,13 +1391,17 @@ TypedValue compFnCall(Compiler *c, Node *l, Node *r){
 		}
     }
 
-    //if tvf is a ![macro] or similar MetaFunction, then compile it in a separate
+    //if tvf is a ante function or similar MetaFunction, then compile it in a separate
     //module and JIT it instead of creating a call instruction
-    if(tvf.type->typeTag == TT_MetaFunction){
-        string baseName = getName(l);
-        auto *fnty = (AnFunctionType*)tvf.type;
-        string mangledName = mangle(baseName, fnty->extTys);
-        return compMetaFunctionResult(c, l->loc, baseName, mangledName, typedArgs);
+    if(isCompileTimeFunction(tvf)){
+        if(c->isJIT and tvf.type->typeTag == TT_MetaFunction){
+            args = adaptArgsToCompilerAPIFn(c, args, typedArgs);
+        }else{
+            string baseName = getName(l);
+            auto *fnty = (AnFunctionType*)tvf.type;
+            string mangledName = mangle(baseName, fnty->extTys);
+            return compMetaFunctionResult(c, l->loc, baseName, mangledName, typedArgs);
+        }
     }
 
     //Create the call to tvf.val, not f as if tvf is a function pointer,

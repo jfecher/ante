@@ -15,36 +15,22 @@ namespace ante {
     }
 #endif
 
-    template<typename T>
-    vector<T> vecOfSize(size_t elems){
-        vector<T> vec;
-        vec.reserve(elems);
-        return vec;
-    }
-
-    TypedValue convertToTypedValue(Compiler *c, ArgTuple &arg, AnType *tn);
-
-    TypedValue convertTupleToTypedValue(Compiler *c, ArgTuple &arg, AnAggregateType *tn){
+    TypedValue convertTupleToTypedValue(Compiler *c, ArgTuple const& arg, AnAggregateType *tn){
         if(tn->extTys.empty()){
             return c->getVoidLiteral();
         }
 
-        vector<Constant*> elems;
-        elems.reserve(tn->extTys.size());
-
-        vector<Type*> elemTys;
-        elemTys.reserve(tn->extTys.size());
-
-        vector<AnType*> anElemTys;
-        anElemTys.reserve(tn->extTys.size());
+        auto elems = vecOf<Constant*>(tn->extTys.size());
+        auto elemTys = vecOf<Type*>(tn->extTys.size());
+        auto anElemTys = vecOf<AnType*>(tn->extTys.size());
 
         map<unsigned, Value*> nonConstants;
         size_t offset = 0;
 
         for(unsigned i = 0; i < tn->extTys.size(); i++){
             char* elem = (char*)arg.asRawData() + offset;
-            ArgTuple elemTup{c, (void*)elem, tn->extTys[i]};
-            TypedValue tval = elemTup.asTypedValue();
+            ArgTuple elemTup{(void*)elem, tn->extTys[i]};
+            TypedValue tval = elemTup.asTypedValue(c);
 
             if(Constant *elem = dyn_cast<Constant>(tval.val)){
                 elems.push_back(elem);
@@ -111,34 +97,33 @@ namespace ante {
      * cannot be converted or an error occurs, c's error flag
      * is set and a void literal is returned.
      */
-    TypedValue convertToTypedValue(Compiler *c, ArgTuple &arg, AnType *tn){
-        auto *data = arg.asRawData();
-        switch(tn->typeTag){
-            case TT_I8:              return TypedValue(c->builder.getInt8( *(uint8_t*) data), tn);
-            case TT_I16:             return TypedValue(c->builder.getInt16(*(uint16_t*)data), tn);
-            case TT_I32:             return TypedValue(c->builder.getInt32(*(uint32_t*)data), tn);
-            case TT_I64:             return TypedValue(c->builder.getInt64(*(uint64_t*)data), tn);
-            case TT_U8:              return TypedValue(c->builder.getInt8( *(uint8_t*) data), tn);
-            case TT_U16:             return TypedValue(c->builder.getInt16(*(uint16_t*)data), tn);
-            case TT_U32:             return TypedValue(c->builder.getInt32(*(uint32_t*)data), tn);
-            case TT_U64:             return TypedValue(c->builder.getInt64(*(uint64_t*)data), tn);
-            case TT_Isz:             return TypedValue(c->builder.getIntN(AN_USZ_SIZE, *(size_t*) data), tn);
-            case TT_Usz:             return TypedValue(c->builder.getIntN(AN_USZ_SIZE, *(size_t*) data), tn);
-            case TT_C8:              return TypedValue(c->builder.getInt8( *(uint8_t*) data), tn);
-            case TT_C32:             return TypedValue(c->builder.getInt32(*(uint32_t*)data), tn);
-            case TT_F16:             return TypedValue(ConstantFP::get(*c->ctxt, APFloat(f32_from_f16(*(uint16_t*)data))), tn);
-            case TT_F32:             return TypedValue(ConstantFP::get(*c->ctxt, APFloat(*(float*)data)), tn);
-            case TT_F64:             return TypedValue(ConstantFP::get(*c->ctxt, APFloat(*(double*)data)), tn);
-            case TT_Bool:            return TypedValue(c->builder.getInt1(*(uint8_t*)data), tn);
+    TypedValue ArgTuple::asTypedValue(Compiler *c) const{
+        switch(type->typeTag){
+            case TT_I8:              return TypedValue(c->builder.getInt8( *(uint8_t*) data), type);
+            case TT_I16:             return TypedValue(c->builder.getInt16(*(uint16_t*)data), type);
+            case TT_I32:             return TypedValue(c->builder.getInt32(*(uint32_t*)data), type);
+            case TT_I64:             return TypedValue(c->builder.getInt64(*(uint64_t*)data), type);
+            case TT_U8:              return TypedValue(c->builder.getInt8( *(uint8_t*) data), type);
+            case TT_U16:             return TypedValue(c->builder.getInt16(*(uint16_t*)data), type);
+            case TT_U32:             return TypedValue(c->builder.getInt32(*(uint32_t*)data), type);
+            case TT_U64:             return TypedValue(c->builder.getInt64(*(uint64_t*)data), type);
+            case TT_Isz:             return TypedValue(c->builder.getIntN(AN_USZ_SIZE, *(size_t*) data), type);
+            case TT_Usz:             return TypedValue(c->builder.getIntN(AN_USZ_SIZE, *(size_t*) data), type);
+            case TT_C8:              return TypedValue(c->builder.getInt8( *(uint8_t*) data), type);
+            case TT_C32:             return TypedValue(c->builder.getInt32(*(uint32_t*)data), type);
+            case TT_F16:             return TypedValue(ConstantFP::get(*c->ctxt, APFloat(f32_from_f16(*(uint16_t*)data))), type);
+            case TT_F32:             return TypedValue(ConstantFP::get(*c->ctxt, APFloat(*(float*)data)), type);
+            case TT_F64:             return TypedValue(ConstantFP::get(*c->ctxt, APFloat(*(double*)data)), type);
+            case TT_Bool:            return TypedValue(c->builder.getInt1(*(uint8_t*)data), type);
             case TT_Array:           break;
             case TT_Ptr: {
                 auto *cint = c->builder.getIntN(AN_USZ_SIZE, *(size_t*)data);
-                auto *ty = c->anTypeToLlvmType(tn);
-                return TypedValue(c->builder.CreateIntToPtr(cint, ty), tn);
+                auto *ty = c->anTypeToLlvmType(type);
+                return TypedValue(c->builder.CreateIntToPtr(cint, ty), type);
             }
             case TT_Data:
             case TT_Tuple:
-                return convertTupleToTypedValue(c, arg, (AnAggregateType*)tn);
+                return convertTupleToTypedValue(c, *this, (AnAggregateType*)type);
             case TT_TypeVar:
             case TT_Function:
             case TT_TaggedUnion:
@@ -151,8 +136,8 @@ namespace ante {
         }
 
         c->errFlag = true;
-        cout << "Unknown/Unimplemented TypeTag " + typeTagToStr(tn->typeTag) << endl;
-        throw new CompilationError("Unknown/Unimplemented TypeTag " + typeTagToStr(tn->typeTag));
+        cout << "Unknown/Unimplemented TypeTag " + typeTagToStr(type->typeTag) << endl;
+        throw new CompilationError("Unknown/Unimplemented TypeTag " + typeTagToStr(type->typeTag));
     }
 
     void ArgTuple::allocAndStoreValue(Compiler *c, TypedValue const& tv){
@@ -228,8 +213,8 @@ namespace ante {
             if(bi->getOpcode() == BinaryOperator::BinaryOps::Add and dyn_cast<ConstantInt>(bi->getOperand(1))){
                 TypedValue ptr{bi->getOperand(0), tv.type};
                 storePtr(c, ptr);
-                cout << "Getting val from: \n";
-                ptr.dump();
+                //cout << "Getting val from: \n";
+                //ptr.dump();
                 *(char**)data += cast<ConstantInt>(bi->getOperand(1))->getZExtValue();
             }
         }else{
@@ -351,11 +336,13 @@ namespace ante {
                 return;
             }
             case TT_Data: storeTuple(c, tv); return;
+            case TT_Type:
+                *(void**)data = extractTypeValue(tv);
+                return;
             case TT_Function:
             case TT_TaggedUnion:
             case TT_MetaFunction:
             case TT_FunctionList:
-            case TT_Type:
             case TT_Void:
                 break;
         }
@@ -404,20 +391,12 @@ namespace ante {
 
 
     ArgTuple::ArgTuple(Compiler *c, TypedValue const& val)
-            : data(nullptr), tval(val){
+            : data(nullptr), type(val.type){
 
         if(val.type->hasModifier(Tok_Mut)){
             allocAndStoreValue(c, findLastStore(c, val));
         }else{
             allocAndStoreValue(c, val);
         }
-    }
-
-
-    /**
-     * Constructs an ArgTuple using the given pre-initialized data.
-     */
-    ArgTuple::ArgTuple(Compiler *c, void *d, AnType *t) : data(d){
-        this->tval = convertToTypedValue(c, *this, t);
     }
 }

@@ -19,7 +19,7 @@ namespace ante {
     struct Compiler;
 
     namespace parser {
-    
+
         /* Needed for compliancy with several versions of bison */
         yy::position mkPos(std::string *f, unsigned int line, unsigned int col);
         LOC_TY mkLoc(yy::position begin, yy::position end);

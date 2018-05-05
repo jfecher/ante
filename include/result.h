@@ -81,7 +81,7 @@ namespace ante {
         T getVal() const{
             if(isVal)
                 return *reinterpret_cast<const T*>(&valOrErr);
-            
+
             std::cerr << "getVal() called on Result without a value!" << std::endl;
             exit(1);
         }
@@ -89,7 +89,7 @@ namespace ante {
         E getErr() const {
             if(!isVal)
                 return *reinterpret_cast<const E*>(&valOrErr);
-            
+
             std::cerr << "getVal() called on Result without a value!" << std::endl;
             exit(1);
         }

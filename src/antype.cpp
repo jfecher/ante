@@ -390,8 +390,7 @@ namespace ante {
             ret = AnDataType::create(dt->name, {}, dt->typeTag == TT_TaggedUnion, dt->generics, m);
         }
 
-        vector<AnType*> elems;
-        elems.reserve(dt->extTys.size());
+        auto elems = vecOf<AnType*>(dt->extTys.size());
         for(auto *ty : dt->extTys){
             auto *mod_type = ty->setModifier(m);
             elems.emplace_back(mod_type);
@@ -455,8 +454,7 @@ namespace ante {
     }
 
     vector<AnType*> extractTypes(const vector<pair<string, AnType*>> &bindings){
-        vector<AnType*> ret;
-        ret.reserve(bindings.size());
+        auto ret = vecOf<AnType*>(bindings.size());
         for(auto &p : bindings){
             ret.emplace_back(p.second);
         }
@@ -560,8 +558,7 @@ namespace ante {
     AnDataType* bindVariant(Compiler *c, AnDataType *unboundType, const std::vector<std::pair<std::string,
             AnType*>> &bindings, AnModifier *m, AnDataType *variant){
 
-        vector<AnType*> boundExts;
-        boundExts.reserve(unboundType->extTys.size());
+        auto boundExts = vecOf<AnType*>(unboundType->extTys.size());
 
         unboundType->variants.push_back(variant);
 
@@ -732,8 +729,7 @@ namespace ante {
         dt->isGeneric = !generics.empty();
         dt->generics = generics;
 
-        vector<AnType*> elemsWithMods;
-        elemsWithMods.reserve(elems.size());
+        auto elemsWithMods = vecOf<AnType*>(elems.size());
         for(auto *ty : elems){
             auto *mod_type = ty->setModifier(m);
             elemsWithMods.emplace_back(mod_type);
@@ -869,8 +865,7 @@ namespace ante {
                 modifiers.push_back(m);
                 auto *anmod = AnModifier::get(modifiers);
 
-                vector<AnType*> modded_exts;
-                modded_exts.reserve(extTys.size());
+                auto modded_exts = vecOf<AnType*>(extTys.size());
                 for(auto &ext : extTys){
                     modded_exts.emplace_back(ext->setModifier(anmod));
                 }
@@ -881,8 +876,7 @@ namespace ante {
 
         auto *anmod = AnModifier::get({m});
 
-        vector<AnType*> modded_exts;
-        modded_exts.reserve(extTys.size());
+        auto modded_exts = vecOf<AnType*>(extTys.size());
         for(auto &ext : extTys){
             modded_exts.emplace_back(ext->setModifier(anmod));
         }
@@ -977,8 +971,7 @@ namespace ante {
         if(this->mods == m){
             return this;
         }else{
-            vector<AnType*> exts;
-            exts.reserve(extTys.size());
+            auto exts = vecOf<AnType*>(extTys.size());
             for(auto &ext : extTys){
                 auto *mod_type = ext->setModifier(m);
                 exts.emplace_back(mod_type);
