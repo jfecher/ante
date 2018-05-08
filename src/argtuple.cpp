@@ -352,6 +352,95 @@ namespace ante {
         throw new CompilationError("Compile-time function argument must be constant.");
     }
 
+    void ArgTuple::printUnion(Compiler *c, std::ostream &os) const{
+        auto *dt = dyn_cast<AnDataType>(type);
+        char tag = castTo<char>();
+
+        auto &tagty = dt->tags[tag]->ty;
+        ArgTuple((char*)data + 1, tagty).printTupleOrData(c, os);
+    }
+
+    void ArgTuple::printTupleOrData(Compiler *c, std::ostream &os) const{
+        auto *dt = dyn_cast<AnDataType>(type);
+        if(dt){
+            if(dt->typeTag == TT_TaggedUnion){
+                printUnion(c, os);
+                return;
+            }else if(dt->name == "Str"){
+                os << "Str \"" << castTo<string>() << '"';
+                return;
+            }
+            os << anTypeToStr(dt) << ' ';
+        }
+        os << '(';
+        auto *agg = dyn_cast<AnAggregateType>(type);
+        if(!agg){
+            cerr << "printTupleOrData called on non-aggregate type\n";
+            throw new CtError();
+        }
+
+        char* dataptr = (char*)data;
+        for(auto &ty : agg->extTys){
+            auto size = ty->getSizeInBits(c);
+            ArgTuple(dataptr, ty).printCtVal(c, os);
+            if(&ty != &agg->extTys.back()){
+                cout << ", ";
+            }
+            dataptr += size.getVal() / 8;
+        }
+        putchar(')');
+    }
+
+
+    void ArgTuple::printCtVal(Compiler *c, std::ostream &os) const{
+        switch(type->typeTag){
+            case TT_I8:  os << "i8 " << castTo<int8_t>(); break;
+            case TT_I16: os << "i16 " << castTo<int16_t>(); break;
+            case TT_I32: os << "i32 " << castTo<int32_t>(); break;
+            case TT_I64: os << "i64 " << castTo<int64_t>(); break;
+            case TT_Isz: os << "isz " << castTo<signed long>(); break;
+            case TT_U8:  os << "u8 " << castTo<uint8_t>(); break;
+            case TT_U16: os << "u16 " << castTo<uint16_t>(); break;
+            case TT_U32: os << "u32 " << castTo<uint32_t>(); break;
+            case TT_U64: os << "u64 " << castTo<uint64_t>(); break;
+            case TT_Usz: os << "usz " << castTo<size_t>(); break;
+            case TT_C8:  os << "c8 " << castTo<char>(); break;
+            case TT_C32: os << "c32 " << castTo<wchar_t>(); break;  /** TODO: wchar_t is 16 bits on windows, not 32 */
+            case TT_Bool: os << "bool " << (castTo<bool>() ? "true" : "false"); break;
+            case TT_F16: os << "f16 " << castTo<float>(); break;
+            case TT_F32: os << "f32 " << castTo<float>(); break;
+            case TT_F64: os << "f64 " << castTo<double>(); break;
+            case TT_Ptr:
+                if(((AnPtrType*)type)->extTy->typeTag == TT_C8){
+                    os << "c8* " << castTo<char*>();
+                }else{
+                    os << anTypeToStr(type) << ' ' << castTo<void*>() << " -> ";
+                    ArgTuple(*(void**)data, ((AnPtrType*)type)->extTy).printCtVal(c, os);
+                }
+                break;
+            case TT_Array:
+                os << anTypeToStr(type) << " [...]";
+                break;
+            case TT_TaggedUnion:
+            case TT_Data:
+            case TT_Tuple:
+                printTupleOrData(c, os);
+                break;
+            case TT_Type: castTo<AnType*>()->dump(); break;
+            case TT_Function: os << "fun @ " << castTo<void*>(); break;
+            case TT_MetaFunction: os << "compiler-api function\n";
+            case TT_FunctionList: os << "function list\n";
+            case TT_TypeVar: os << anTypeToStr(type) << " ?"; break; //compile-time value with unknown type, something went wrong.
+            case TT_Void: os << "()"; break;
+        }
+    }
+
+
+    void ArgTuple::print(Compiler *c, std::ostream &os) const {
+        printCtVal(c, os);
+        puts("");
+    }
+
 
     /*
     *  Converts a TypedValue to an llvm GenericValue

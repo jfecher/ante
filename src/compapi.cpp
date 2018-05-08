@@ -24,7 +24,7 @@ extern "C" {
     /** All compiler api functions must return a pointer to some
      * value, so void-returning functions return a nullptr */
     void* Ante_debug(Compiler *c, ArgTuple &tv){
-        cout << anTypeToStr(tv.getType());
+        tv.print(c);
         return nullptr;
     }
 

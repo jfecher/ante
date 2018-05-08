@@ -29,6 +29,9 @@ namespace ante {
                 return *(T*)data;
             }
 
+            /** Dump the contained value to the given stream. */
+            void print(Compiler *c, std::ostream &os = std::cout) const;
+
             /**
              * Constructs an ArgTuple from the given TypedValue arguments.
              *  - Assumes each Value* within each argument is a Constant*
@@ -75,7 +78,17 @@ namespace ante {
              * value in c++ and stores it in this->data
              */
             void storeValue(Compiler *c, TypedValue const& tv);
-    };
+
+            /** Implementation of print function. */
+            void printCtVal(Compiler *c, std::ostream &os) const;
+
+            /** Implementation of print function. */
+            void printTupleOrData(Compiler *c, std::ostream &os) const;
+
+            /** Implementation of print function. */
+            void printUnion(Compiler *c, std::ostream &os) const;
+
+    }__attribute__((__packed__));
 }
 
 #endif

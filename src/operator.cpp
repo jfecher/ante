@@ -1226,9 +1226,14 @@ vector<Value*> adaptArgsToCompilerAPIFn(Compiler *c, vector<Value*> &args, vecto
 
     int i = 0;
     for(auto *val : args){
+        auto valref = c->builder.CreateAlloca(val->getType());
+        c->builder.CreateStore(val, valref);
         auto valTy = c->ptrTo(typedArgs[i++].type);
-        auto arg = c->tupleOf({val, valTy}, true);
-        ret.push_back(arg);
+
+        auto arg = c->tupleOf({valref, valTy}, true);
+        auto argref = c->builder.CreateAlloca(arg->getType());
+        c->builder.CreateStore(arg, argref);
+        ret.push_back(argref);
     }
     return ret;
 }
