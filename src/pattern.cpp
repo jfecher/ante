@@ -69,7 +69,6 @@ namespace ante {
         Type *tupTy = valToMatch.getType();
 
         if(!tupTy->isStructTy()){
-            valToMatch.dump();
             cv.c->compErr("Cannot match tuple pattern against non-tuple type "
                     + anTypeToColoredStr(valToMatch.type), t->loc);
         }
@@ -235,19 +234,21 @@ namespace ante {
         BasicBlock *endmatch = BasicBlock::Create(*c->ctxt, "end_match", f);
 
         for(auto& mbn : n->branches){
-            BasicBlock *endpat = BasicBlock::Create(*c->ctxt, "end_pattern", f);
+            BasicBlock *endpat = &mbn == &n->branches.back() ?
+                endmatch : BasicBlock::Create(*c->ctxt, "end_pattern", f);
 
             c->enterNewScope();
             handlePattern(*this, n, mbn->pattern.get(), endpat, valToMatch);
             mbn->branch->accept(*this);
-            merges.push_back({c->builder.GetInsertBlock(), val});
-            c->builder.CreateBr(endpat); //branch done, insert jump to outside of match
+            merges.push_back({c->builder.GetInsertBlock(), this->val});
+
+            //dont jump to after the match if the branch already returned from the function
+            if(!dyn_cast<ReturnInst>(this->val.val))
+                c->builder.CreateBr(endmatch);
+
             c->builder.SetInsertPoint(endpat); //set insert point to next branch
             c->exitScope();
         }
-
-        c->builder.CreateBr(endmatch); //branch done, insert jump to outside of match
-        c->builder.SetInsertPoint(endmatch);
 
         //merges can be empty if each branch has an early return
         if(merges.empty() or merges[0].second.type->typeTag == TT_Void){
@@ -263,12 +264,13 @@ namespace ante {
             if(!dyn_cast<ReturnInst>(pair.second.val)){
 
                 //match the types of those branches that will merge
-                if(!c->typeEq(pair.second.type, merges[0].second.type))
+                if(!c->typeEq(pair.second.type, merges[0].second.type)){
                     c->compErr("Branch "+to_string(i)+"'s return type " + anTypeToColoredStr(pair.second.type) +
                             " != " + anTypeToColoredStr(merges[0].second.type)
                             + ", the first branch's return type", n->loc);
-                else
+                }else{
                     phi->addIncoming(pair.second.val, pair.first);
+                }
             }
             i++;
         }

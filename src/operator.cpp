@@ -460,15 +460,21 @@ TypedValue createCast(Compiler *c, AnType *castTy, TypedValue &valToCast, LOC_TY
         //Compile the function now that we know to use it over a cast
         auto fn = c->getCastFn(valToCast.type, castTy, fd);
         if(fn){
-            if(fn.type->typeTag == TT_MetaFunction){
-                string baseName = getCastFnBaseName(castTy);
-                string mangledName = mangle(baseName, {valToCast.type});
-                vector<TypedValue> args = {valToCast};
-                return compMetaFunctionResult(c, loc, baseName, mangledName, args);
-            }
+            //quickly type check argument
+            auto *fnty = dyn_cast<AnFunctionType>(fn.type);
+            if((!fnty->extTys.empty() and c->typeEq(fnty->extTys[0], valToCast.type)) or
+               (fnty->extTys.empty() and valToCast.type->typeTag == TT_Void)){
 
-            auto *call = c->builder.CreateCall(fn.val, args);
-            return TypedValue(call, fn.type->getFunctionReturnType());
+                if(fn.type->typeTag == TT_MetaFunction){
+                    string baseName = getCastFnBaseName(castTy);
+                    string mangledName = mangle(baseName, {valToCast.type});
+                    vector<TypedValue> args = {valToCast};
+                    return compMetaFunctionResult(c, loc, baseName, mangledName, args);
+                }
+
+                auto *call = c->builder.CreateCall(fn.val, args);
+                return TypedValue(call, fn.type->getFunctionReturnType());
+            }
         }
     }
 
@@ -972,7 +978,7 @@ TypedValue compileAndCallAnteFunction(Compiler *c, string const& baseName,
 
     if(!mod_compiler or mod_compiler->errFlag){
         c->errFlag = true;
-        cout << "Error 1 in compileAndCallAnteFunction\n";
+        cerr << "Error 1 in compileAndCallAnteFunction\n";
         throw new CtError();
     }
 
@@ -983,7 +989,7 @@ TypedValue compileAndCallAnteFunction(Compiler *c, string const& baseName,
 
     if(!fd){
         c->errFlag = true;
-        cout << "Error 2 in compileAndCallAnteFunction: !fd\n";
+        cerr << "Error 2 in compileAndCallAnteFunction: !fd\n";
         throw new CtError();
     }
 
