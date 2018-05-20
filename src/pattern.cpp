@@ -232,6 +232,7 @@ namespace ante {
         merges.reserve(n->branches.size());
 
         BasicBlock *endmatch = BasicBlock::Create(*c->ctxt, "end_match", f);
+        BasicBlock *finalEndPat = nullptr;
 
         for(auto& mbn : n->branches){
             BasicBlock *endpat = &mbn == &n->branches.back() ?
@@ -247,7 +248,15 @@ namespace ante {
                 c->builder.CreateBr(endmatch);
 
             c->builder.SetInsertPoint(endpat); //set insert point to next branch
+            finalEndPat = endpat == endmatch ? finalEndPat : endpat;
             c->exitScope();
+        }
+
+        // Cannot prove to LLVM match is exhaustive so an uninitialized value must be
+        // "returned" each time from the branch where all matches fail.
+        if(finalEndPat){
+            TypedValue retOnFailAll = {UndefValue::get(this->val.getType()), val.type};
+            merges.push_back({finalEndPat, retOnFailAll});
         }
 
         //merges can be empty if each branch has an early return
