@@ -37,21 +37,22 @@ into the compiled module itself.
 here is an implementation of the goto construct in Ante
 
 ```go
-//The 'ante' keyword declares compile-time functions
+//The 'ante' keyword declares compile-time values
 ante
-fun goto: VarNode vn
-    let label = Ante.lookup vn ?
-        None -> Ante.error "Cannot goto undefined label ${vn}"
+    global mut labels = Map.init Str LLVM.BasicBlock
 
-    LLVM.setInsertPoint <| getCallSiteBlock ()
-    LLVM.createBr label
+    fun goto: VarNode vn
+        let label = labels.lookup vn.name ?
+            None -> Ante.error "Cannot goto undefined label ${vn}"
 
-ante
-fun label: VarNode vn
-    let ctxt = Ante.llvm_ctxt
-    let callingFn = getParentFn <| getCallSiteBlock ()
-    let lbl = LLVM.BasicBlock ctxt callingFn
-    Ante.store vn lbl
+        LLVM.setInsertPoint <| getCallSiteBlock ()
+        LLVM.createBr label
+
+    fun label: VarNode vn
+        let ctxt = Ante.llvm_ctxt
+        let callingFn = getParentFn <| getCallSiteBlock ()
+        let lbl = LLVM.BasicBlock ctxt callingFn
+        labels#vn.name = lbl
 
 
 //test it out
