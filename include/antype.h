@@ -17,6 +17,7 @@ namespace ante {
     struct UnionTag;
     struct Trait;
 
+    class BasicModifier;
     class AnModifier;
     class AnAggregateType;
     class AnArrayType;
@@ -44,8 +45,8 @@ namespace ante {
         friend AnTypeContainer;
 
     protected:
-        AnType(TypeTag id, bool ig, size_t mt, AnModifier *m) :
-            typeTag(id), isGeneric(ig), numMatchedTys(mt), mods(m){}
+        AnType(TypeTag id, bool ig, size_t mt) :
+            typeTag(id), isGeneric(ig), numMatchedTys(mt){}
 
     public:
 
@@ -59,17 +60,14 @@ namespace ante {
          * type is equal to another. */
         size_t numMatchedTys;
 
-        /** This type's modifiers.
-         * Will always have at least one modifier or be nullptr. */
-        AnModifier *mods;
-
         bool hasModifier(TokenType m) const;
+
+        virtual bool isModifierType() const noexcept {
+            return false;
+        }
 
         /** Returns a version of the current type with the additional modifier m. */
         virtual AnType* addModifier(TokenType m);
-
-        /** Returns a version of the current type with the specified modifiers. */
-        virtual AnType* setModifier(AnModifier *m);
 
         /** Returns the size of this type in bits or an error message if the type is invalid.
          *  @param incompleteType The name of an undeclared type, used to issue an IncompleteTypeError if
@@ -86,7 +84,7 @@ namespace ante {
          *  Assumes that this AnType is a AnFuncionType instance. */
         AnType* getFunctionReturnType() const;
 
-        static AnType* getPrimitive(TypeTag tag, AnModifier *mod = nullptr);
+        static AnType* getPrimitive(TypeTag tag);
         static AnType* getI8();
         static AnType* getI16();
         static AnType* getI32();
@@ -112,36 +110,91 @@ namespace ante {
 
     bool isGeneric(const std::vector<AnType*> &vec);
 
-    /** Type modifiers.
-     * An AnModifier is not itself a type. */
-    class AnModifier {
+    /**
+     *  Virtual base class for modifier types.
+     *
+     *  Not all modifiers are valid types but new type modifiers
+     *  may be defined by users.
+     */
+    class AnModifier : public AnType {
         protected:
-        AnModifier(std::vector<TokenType> mods) :
-            modifiers(mods){}
+        AnModifier(AnType *modifiedType) :
+            AnType(modifiedType->typeTag, modifiedType->isGeneric,
+                    modifiedType->numMatchedTys+1), extTy(modifiedType){}
 
         public:
+        AnType *extTy;
+        
+        bool isModifierType() const noexcept override {
+            return true;
+        }
 
         ~AnModifier() = default;
-
-        /** Builtin modifiers such as TT_Mut and TT_Global */
-        std::vector<TokenType> modifiers;
-
-        /**
-         * Compiler directives acting as modifiers, such as !unique
-         * Each Node is the expression within the directive, rather than
-         * the compiler directive itself.
-         */
-        std::vector<std::unique_ptr<parser::Node>> compilerDirectives;
-
-        /** Gets or creates a unique AnModifier instance */
-        static AnModifier* get(std::vector<TokenType> modifiers);
     };
+
+
+    template<typename T>
+    const typename std::remove_pointer<T>::type* try_cast(const AnType *type){
+        using u = typename std::remove_pointer<T>::type;
+
+        if(type->isModifierType()){
+            auto *mod = static_cast<const AnModifier*>(type);
+            return try_cast<u*>(mod->extTy);
+        }
+
+        return u::classof(type) ?
+            static_cast<const u*>(type) :
+            nullptr;
+    }
+
+
+    /** Represents a built-in modifier type such as mut */
+    class BasicModifier : public AnModifier {
+        protected:
+        BasicModifier(AnType *modified_type, TokenType m) :
+            AnModifier(modified_type), mod(m){}
+
+        public:
+        const TokenType mod;
+
+        static BasicModifier* get(AnType *modifiedType, TokenType mod);
+
+        /** Returns a version of the current type with an additional modifier m. */
+        AnType* addModifier(TokenType m) override;
+
+        ~BasicModifier() = default;
+    };
+
+
+    /**
+     * A user-defined modifier. 
+     *
+     * Has the chance to contain an invalid compiler-directive
+     * that does not operate on a Ante.Type or Ante.TypeDecl.
+     */
+    class CompilerDirectiveModifier : public AnModifier {
+        protected:
+        CompilerDirectiveModifier(AnType *modified_type, std::shared_ptr<parser::Node> &d) :
+            AnModifier(modified_type), directive(d){}
+
+        public:
+        std::shared_ptr<parser::Node> directive;
+
+        static CompilerDirectiveModifier* get(AnType *modifiedType, std::shared_ptr<parser::Node> &directive);
+        static CompilerDirectiveModifier* get(AnType *modifiedType, parser::Node *directive);
+
+        /** Returns a version of the current type with an additional modifier m. */
+        AnType* addModifier(TokenType m) override;
+
+        ~CompilerDirectiveModifier() = default;
+    };
+
 
     /** Tuple types */
     class AnAggregateType : public AnType {
         protected:
-        AnAggregateType(TypeTag ty, const std::vector<AnType*> exts, AnModifier *m) :
-                AnType(ty, ante::isGeneric(exts), exts.size()+1, m), extTys(exts) {}
+        AnAggregateType(TypeTag ty, const std::vector<AnType*> exts) :
+                AnType(ty, ante::isGeneric(exts), exts.size()+1), extTys(exts) {}
 
         public:
 
@@ -150,13 +203,14 @@ namespace ante {
         /** The constituent types of this aggregate type. */
         std::vector<AnType*> extTys;
 
-        static AnAggregateType* get(TypeTag t, std::vector<AnType*> types, AnModifier *m = nullptr);
+        static AnAggregateType* get(TypeTag t, std::vector<AnType*> types);
 
         /** Returns a version of the current type with an additional modifier m. */
-        AnAggregateType* addModifier(TokenType m) override;
+        AnType* addModifier(TokenType m) override;
 
-        /** Returns a version of the current type with the specified modifiers. */
-        AnAggregateType* setModifier(AnModifier *m) override;
+        virtual bool isModifierType() const noexcept override {
+            return false;
+        }
 
         /** Returns true if this type is a tuple, function, or (a declared) data type */
         static bool classof(const AnType *t){
@@ -173,8 +227,8 @@ namespace ante {
      */
     class AnArrayType : public AnType {
         protected:
-        AnArrayType(AnType* ext, size_t l, AnModifier *m) :
-            AnType(TT_Array, ext->isGeneric, l == 0 ? 2 : 3, m), extTy(ext), len(l) {}
+        AnArrayType(AnType* ext, size_t l) :
+            AnType(TT_Array, ext->isGeneric, l == 0 ? 2 : 3), extTy(ext), len(l) {}
 
         public:
 
@@ -186,13 +240,14 @@ namespace ante {
         /** Length of the array type.  0 if not specified */
         size_t len;
 
-        static AnArrayType* get(AnType*, size_t len = 0, AnModifier *m = nullptr);
+        static AnArrayType* get(AnType*, size_t len = 0);
 
         /** Returns a version of the current type with an additional modifier m. */
-        AnArrayType* addModifier(TokenType m) override;
+        AnType* addModifier(TokenType m) override;
 
-        /** Returns a version of the current type with the specified modifiers. */
-        AnArrayType* setModifier(AnModifier *m) override;
+        virtual bool isModifierType() const noexcept override {
+            return false;
+        }
 
         static bool classof(const AnType *t){
             return t->typeTag == TT_Array;
@@ -202,8 +257,8 @@ namespace ante {
     /** Pointer types */
     class AnPtrType : public AnType {
         protected:
-        AnPtrType(AnType* ext, AnModifier *m) :
-            AnType(TT_Ptr, ext->isGeneric, 2, m), extTy(ext){}
+        AnPtrType(AnType* ext) :
+            AnType(TT_Ptr, ext->isGeneric, 2), extTy(ext){}
 
         public:
 
@@ -212,13 +267,14 @@ namespace ante {
         /** The type being pointed to. */
         AnType *extTy;
 
-        static AnPtrType* get(AnType* l, AnModifier *m = nullptr);
+        static AnPtrType* get(AnType* l);
 
         /** Returns a version of the current type with an additional modifier m. */
-        AnPtrType* addModifier(TokenType m) override;
+        AnType* addModifier(TokenType m) override;
 
-        /** Returns a version of the current type with the specified modifiers. */
-        AnPtrType* setModifier(AnModifier *m) override;
+        virtual bool isModifierType() const noexcept override {
+            return false;
+        }
 
         static bool classof(const AnType *t){
             return t->typeTag == TT_Ptr;
@@ -229,8 +285,8 @@ namespace ante {
      *  Typevar types are always generic. */
     class AnTypeVarType : public AnType {
         protected:
-        AnTypeVarType(std::string &n, AnModifier *m) :
-            AnType(TT_TypeVar, true, 1, m), name(n){}
+        AnTypeVarType(std::string &n) :
+            AnType(TT_TypeVar, true, 1), name(n){}
 
         public:
 
@@ -238,13 +294,14 @@ namespace ante {
 
         std::string name;
 
-        static AnTypeVarType* get(std::string name, AnModifier *m = nullptr);
+        static AnTypeVarType* get(std::string name);
 
         /** Returns a version of the current type with an additional modifier m. */
-        AnTypeVarType* addModifier(TokenType m) override;
+        AnType* addModifier(TokenType m) override;
 
-        /** Returns a version of the current type with the specified modifiers. */
-        AnTypeVarType* setModifier(AnModifier *m) override;
+        virtual bool isModifierType() const noexcept override {
+            return false;
+        }
 
         static bool classof(const AnType *t){
             return t->typeTag == TT_TypeVar;
@@ -254,8 +311,8 @@ namespace ante {
     /** A function type */
     class AnFunctionType : public AnAggregateType {
         protected:
-        AnFunctionType(AnType *ret, std::vector<AnType*> elems, bool isMetaFunction, AnModifier *m) :
-                AnAggregateType(isMetaFunction ? TT_MetaFunction : TT_Function, elems, m), retTy(ret){
+        AnFunctionType(AnType *ret, std::vector<AnType*> elems, bool isMetaFunction) :
+                AnAggregateType(isMetaFunction ? TT_MetaFunction : TT_Function, elems), retTy(ret){
 
             //numMatchedTys = #params + 1 ret ty + 1 fn ty itself
             numMatchedTys = elems.size() + 2;
@@ -268,16 +325,17 @@ namespace ante {
         AnType *retTy;
 
         static AnFunctionType* get(AnType *retTy, const std::vector<AnType*> elems,
-                bool isMetaFunction = false, AnModifier *m = nullptr);
+                bool isMetaFunction = false);
 
         static AnFunctionType* get(Compiler *c, AnType* retty, parser::NamedValNode* params,
-                bool isMetaFunction = false, AnModifier *m = nullptr);
+                bool isMetaFunction = false);
 
         /** Returns a version of the current type with an additional modifier m. */
-        AnFunctionType* addModifier(TokenType m) override;
+        AnType* addModifier(TokenType m) override;
 
-        /** Returns a version of the current type with the specified modifiers. */
-        AnFunctionType* setModifier(AnModifier *m) override;
+        virtual bool isModifierType() const noexcept override {
+            return false;
+        }
 
         /** Returns true if this type is a TT_Function or TT_MetaFunction */
         static bool classof(const AnType *t){
@@ -302,8 +360,8 @@ namespace ante {
     class AnDataType : public AnAggregateType {
 
         protected:
-        AnDataType(std::string const& n, const std::vector<AnType*> elems, bool isUnion, AnModifier *m) :
-                AnAggregateType(isUnion ? TT_TaggedUnion : TT_Data, elems, m), name(n),
+        AnDataType(std::string const& n, const std::vector<AnType*> elems, bool isUnion) :
+                AnAggregateType(isUnion ? TT_TaggedUnion : TT_Data, elems), name(n),
                 fields(), tags(), traitImpls(), unboundType(0), variants(), parentUnionType(0),
                 boundGenerics(), llvmType(0), isAlias(false){
 
@@ -368,32 +426,29 @@ namespace ante {
 
         /** Search for a data type by name.
          * Returns a stub type if no type with a matching name is found. */
-        static AnDataType* get(std::string const& name, AnModifier *m = nullptr);
+        static AnDataType* get(std::string const& name);
 
         /** Searches for a bound variant of the type specified by name.
          * If no variant is found, a variant will be bound with the given bindings.
          * If not type with the name 'name' is found this function will issue a
          * warning and return the stub of that type. */
-        static AnDataType* getVariant(Compiler *c, std::string const& name, std::vector<std::pair<std::string, AnType*>> const& boundTys, AnModifier *m = nullptr);
+        static AnDataType* getVariant(Compiler *c, std::string const& name, std::vector<std::pair<std::string, AnType*>> const& boundTys);
 
         /** Searches for a bound variant of the given unboundType.
          * If no variant is found, a variant will be bound with the given bindings. */
-        static AnDataType* getVariant(Compiler *c, AnDataType *unboundType, std::vector<std::pair<std::string, AnType*>> const& boundTys, AnModifier *m = nullptr);
+        static AnDataType* getVariant(Compiler *c, AnDataType *unboundType, std::vector<std::pair<std::string, AnType*>> const& boundTys);
 
         /** Looks for a data type by the given name and modifiers and creates it if has not been already */
-        static AnDataType* getOrCreate(std::string const& name, std::vector<AnType*> const& elems, bool isUnion, AnModifier *m = nullptr);
+        static AnDataType* getOrCreate(std::string const& name, std::vector<AnType*> const& elems, bool isUnion);
 
         /** Looks for a version of the dt with the given modifiers and creates it if has not been already */
-        static AnDataType* getOrCreate(const AnDataType *dt, AnModifier *m = nullptr);
+        static AnDataType* getOrCreate(const AnDataType *dt);
 
         /** Creates or overwrites the type specified by name. */
-        static AnDataType* create(std::string const& name, std::vector<AnType*> const& elems, bool isUnion, std::vector<AnTypeVarType*> const& generics, AnModifier *m = nullptr);
+        static AnDataType* create(std::string const& name, std::vector<AnType*> const& elems, bool isUnion, std::vector<AnTypeVarType*> const& generics);
 
         /** Returns a new AnDataType* with the given modifier appended to the current type's modifiers. */
-        AnDataType* addModifier(TokenType m) override;
-
-        /** Returns a new AnDataType* with the specified modifiers. */
-        AnDataType* setModifier(AnModifier *m) override;
+        AnType* addModifier(TokenType m) override;
 
         /** Returns true if this type is a bound variant of the generic type dt.
          *  If dt is not a generic type, this function will always return false. */
@@ -401,6 +456,10 @@ namespace ante {
 
         /** Returns the type this type is aliased to */
         AnType* getAliasedType() const;
+
+        virtual bool isModifierType() const noexcept override {
+            return false;
+        }
 
         /** Returns true if the given AnType is an AnDataType */
         static bool classof(const AnType *t){
@@ -453,7 +512,8 @@ namespace ante {
      */
     class AnTypeContainer {
         friend AnType;
-        friend AnModifier;
+        friend BasicModifier;
+        friend CompilerDirectiveModifier;
         friend AnAggregateType;
         friend AnArrayType;
         friend AnPtrType;

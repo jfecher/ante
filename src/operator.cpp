@@ -292,8 +292,7 @@ TypedValue createUnionVariantCast(Compiler *c, TypedValue &valToCast, string &ta
 
 string getCastFnBaseName(AnType *t){
     if(auto *dt = dyn_cast<AnDataType>(t)){
-        if(dt->unboundType)
-            return anTypeToStrWithoutModifiers(dt->unboundType) + "_init";
+        return dt->name + "_init";
     }
     return anTypeToStr(t) + "_init";
 }
@@ -711,13 +710,13 @@ void CompilingVisitor::visit(IfNode *n){
     this->val = compIf(c, n, mergebb, branches);
 }
 
-string _anTypeToStr(const AnType *t, AnModifier *m);
-
 string toModuleName(AnType *t){
     if(AnDataType *dt = dyn_cast<AnDataType>(t)){
         return dt->name;
+    }else if(t->isModifierType()){
+        return toModuleName(static_cast<AnModifier*>(t)->extTy);
     }else{
-        return _anTypeToStr(t, t->mods);
+        return anTypeToStr(t);
     }
 }
 
@@ -773,9 +772,10 @@ TypedValue Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *binop
 
                 //The data type when looking up (usually) does not have any modifiers,
                 //so apply any potential modifers from the parent to this
-                if(!retTy->mods and ltyn->mods){
-                    retTy = retTy->setModifier(tyn->mods);
-                }
+                //TODO: re-add set modifier
+                //if(!retTy->isModifierType() and ltyn->isModifierType()){
+                //    retTy = retTy->setModifier(tyn->mods);
+                //}
 
                 //If dataTy is a single value tuple then val may not be a tuple at all. In this
                 //case, val should be returned without being extracted from a nonexistant tuple

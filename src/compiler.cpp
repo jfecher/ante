@@ -127,14 +127,6 @@ void CompilingVisitor::visit(BoolLitNode *n){
 }
 
 
-/**
- * @brief this is a stub.  ModNodes should be handled manually in visit(DeclNode) methods
- */
-void CompilingVisitor::visit(ModNode *n){
-    throw std::runtime_error("CompilingVisitor::visit(ModNode *n): stub");
-}
-
-
 /** returns true if this tag type does not have any associated types. */
 bool isSimpleTag(AnDataType *dt){
     return dt->extTys.size() == 1
@@ -725,52 +717,68 @@ void CompilingVisitor::visit(VarNode *n){
 }
 
 /**
- * @brief Helper function to compile a VarDeclNode with no specified type.
+ * @brief Helper function to compile a variable declaration with no specified type.
  *        Matches the type of the variable with the init expression's type.
  *
  * @param node The declaration expression
  *
  * @return The newly-declared variable with an inferred type
  */
-TypedValue compVarDeclWithInferredType(VarDeclNode *node, Compiler *c){
-    TypedValue val = CompilingVisitor::compile(c, node->expr);
+TypedValue compMutBinding(VarAssignNode *node, CompilingVisitor &cv){
+    Compiler *c = cv.c;
+    if(!dynamic_cast<VarNode*>(node))
+        return c->compErr("Unknown pattern for l-expr", node->expr->loc);
+
+    string &name = static_cast<VarNode*>(node->ref_expr)->name;
+
+    //check for redeclaration, but only on topmost scope
+    auto redeclare = c->varTable.back()->find(name);
+    if(redeclare != c->varTable.back()->end()){
+        c->compErr("Variable " + name + " was redeclared.", node->loc);
+    }
+
+    node->expr->accept(cv);
+    TypedValue &val = cv.val;
     if(val.type->typeTag == TT_Void)
         return c->compErr("Cannot assign a "+anTypeToColoredStr(AnType::getVoid())+
                 " value to a variable", node->expr->loc);
 
     bool isGlobal = false;
-
-    //Add all of the declared modifiers to the typedval
-    for(Node *n : *node->modifiers){
-        int m = ((ModNode*)n)->mod;
-        val.type = val.type->addModifier((TokenType)m);
+    for(auto &n : node->modifiers){
+        TokenType m = (TokenType)n->mod;
+        val.type = val.type->addModifier(m);
         if(m == Tok_Global) isGlobal = true;
     }
 
-    //set the value as mutable
-    if(!val.type->hasModifier(Tok_Mut)){
-        val.type = val.type->addModifier(Tok_Mut);
-    }
+    //set the value as mutable if not already.
+    //NOTE: addModifier does not add repeat modifiers.
+    val.type = val.type->addModifier(Tok_Mut);
 
     //location to store var
     Value *ptr = isGlobal ?
             (Value*) new GlobalVariable(*c->module, val.getType(), false,
-                    GlobalValue::PrivateLinkage, UndefValue::get(val.getType()), node->name) :
-            c->builder.CreateAlloca(val.getType(), nullptr, node->name.c_str());
+                    GlobalValue::PrivateLinkage, UndefValue::get(val.getType()), name) :
+            c->builder.CreateAlloca(val.getType(), nullptr, name.c_str());
 
     TypedValue alloca{ptr, val.type};
 
     bool nofree = true;//val->type->type != TT_Ptr || dynamic_cast<Constant*>(val->val);
-    c->stoVar(node->name, new Variable(node->name, alloca, c->scope, nofree, true));
+    c->stoVar(name, new Variable(name, alloca, c->scope, nofree, true));
 
     return TypedValue(c->builder.CreateStore(val.val, alloca.val), val.type);
 }
 
-TypedValue compMutVarDecl(VarDeclNode *n, CompilingVisitor &v){
+/*
+TypedValue compMutVarDecl(VarAssignNode *n, CompilingVisitor &v){
+    if(!dynamic_cast<VarNode*>(n)){
+        return c->compErr("Unknown pattern for l-expr", n->expr->loc);
+    }
+    string &name = static_cast<VarNode*>(n->ref_expr)->name;
+
     //check for redeclaration, but only on topmost scope
-    auto redeclare = v.c->varTable.back()->find(n->name);
+    auto redeclare = v.c->varTable.back()->find(name);
     if(redeclare != v.c->varTable.back()->end()){
-        v.c->compErr("Variable " + n->name + " was redeclared.", n->loc);
+        v.c->compErr("Variable " + name + " was redeclared.", n->loc);
     }
 
     //check for an inferred type
@@ -793,11 +801,11 @@ TypedValue compMutVarDecl(VarDeclNode *n, CompilingVisitor &v){
     bool isGlobal = false;
 
     //Add all of the declared modifiers to the typedval
-    for(Node *n : *n->modifiers){
-        int m = ((ModNode*)n)->mod;
-        anTy = anTy->addModifier((TokenType)m);
-        if(m == Tok_Global) isGlobal = true;
-    }
+    //for(Node *n : *n->modifiers){
+    //    int m = ((ModNode*)n)->mod;
+    //    anTy = anTy->addModifier((TokenType)m);
+    //    if(m == Tok_Global) isGlobal = true;
+    //}
 
     if(!anTy->hasModifier(Tok_Mut))
         anTy = anTy->addModifier(Tok_Mut);
@@ -833,55 +841,50 @@ TypedValue compMutVarDecl(VarDeclNode *n, CompilingVisitor &v){
         v.val = alloca;
     }
     return v.val;
-}
+}*/
 
 
-void CompilingVisitor::visit(VarDeclNode *n){
-    if(n->hasMod(Tok_Mut)){
-        compMutVarDecl(n, *this);
-        return;
-    }
+void compLetBinding(VarAssignNode *node, CompilingVisitor &cv){
+    Compiler *c = cv.c;
+    if(!dynamic_cast<VarNode*>(node))
+        c->compErr("Unknown pattern for l-expr", node->expr->loc);
 
-    n->expr->accept(*this);
+    string &name = static_cast<VarNode*>(node->ref_expr)->name;
 
+    TypedValue val = CompilingVisitor::compile(c, node->expr);
     if(val.type->typeTag == TT_Void)
         c->compErr("Cannot assign a "+anTypeToColoredStr(AnType::getVoid())+
-                " value to a variable", n->expr->loc);
-
-    TypeNode *tyNode;
-    if((tyNode = (TypeNode*)n->typeExpr.get())){
-        auto *anty = toAnType(c, tyNode);
-        if(!llvmTypeEq(val.val->getType(), c->anTypeToLlvmType(anty))){
-            c->compErr("Incompatible types in explicit binding.", n->expr->loc);
-        }
-    }
+                " value to a variable", node->expr->loc);
 
     bool isGlobal = false;
 
-    //add the modifiers to the typedvalue
-    for(Node *n : *n->modifiers){
-        int m = ((ModNode*)n)->mod;
-        val.type = val.type->addModifier((TokenType)m);
-        if(m == Tok_Global) isGlobal = true;
+    //set the value as mutable
+    if(!val.type->hasModifier(Tok_Mut)){
+        val.type = val.type->addModifier(Tok_Mut);
     }
 
-    if(isGlobal){
-        auto *ty = c->anTypeToLlvmType(val.type);
-        auto *global = new GlobalVariable(*c->module, ty, false, GlobalValue::PrivateLinkage, UndefValue::get(ty), n->name);
-        c->builder.CreateStore(val.val, global);
-        val.val = global;
-    }
+    //location to store var
+    Value *ptr = isGlobal ?
+            (Value*) new GlobalVariable(*c->module, val.getType(), false,
+                    GlobalValue::PrivateLinkage, UndefValue::get(val.getType()), name) :
+            c->builder.CreateAlloca(val.getType(), nullptr, name.c_str());
 
-    if(val.getType()->isArrayTy() and not isGlobal){
-        Value *alloca = c->builder.CreateAlloca(val.getType(), nullptr, n->name.c_str());
-        c->builder.CreateStore(val.val, alloca);
-        val.val = alloca;
-        isGlobal = true;
-    }
+    TypedValue alloca{ptr, val.type};
 
-    c->stoVar(n->name, new Variable(n->name, val, c->scope, true, isGlobal));
-    //return val;
+    bool nofree = true;//val->type->type != TT_Ptr || dynamic_cast<Constant*>(val->val);
+    c->stoVar(name, new Variable(name, alloca, c->scope, nofree, true));
+
+    cv.val = {c->builder.CreateStore(val.val, alloca.val), val.type};
 }
+
+
+void CompilingVisitor::visit(ModNode *n){
+    cerr << "Warning: " << Lexer::getTokStr(n->mod) << " unimplemented in expr:\n";
+    PrintingVisitor::print(n);
+    n->expr->accept(*this);
+    return;
+}
+
 
 /**
  * @brief Compiles an insertion operand into a named field. eg. str#len = 2
@@ -988,6 +991,12 @@ void CompilingVisitor::visit(VarAssignNode *n){
         }
     }
 
+    if(n->hasModifier(Tok_Let)){
+        compLetBinding(n, *this);
+    }else if(n->hasModifier(Tok_Mut)){
+        compMutBinding(n, *this);
+    }
+
     //otherwise, this is just a normal assign to a variable
     n->ref_expr->accept(*this);
 
@@ -1033,7 +1042,7 @@ string mangle(string const& base, vector<AnType*> const& params){
     string name = base;
     for(auto *tv : params){
         if(tv->typeTag != TT_Void)
-            name += "_" + anTypeToStrWithoutModifiers(tv);
+            name += "_" + anTypeToStr(tv);
     }
     return name;
 }
@@ -1042,7 +1051,7 @@ string mangle(FuncDecl *fd, vector<AnType*> const& params){
     string name = fd->fdn->name;
     for(auto *tv : params)
         if(tv->typeTag != TT_Void)
-            name += "_" + anTypeToStrWithoutModifiers(tv);
+            name += "_" + anTypeToStr(tv);
     return name;
 }
 
@@ -1480,6 +1489,7 @@ inline bool fileExists(const string &fName){
 string findFile(Compiler *c, string const& fName){
     for(auto &root : c->relativeRoots){
         string f = root + addAnSuffix(fName);
+        cout << "Searching for " << f << '\n';
 
         if(fileExists(f)){
             return f;
@@ -1609,13 +1619,13 @@ void compileAll(Compiler *c, vector<T> &vec){
 void Compiler::scanAllDecls(RootNode *root){
     auto *n = root ? root : ast.get();
 
-    for (auto& f : n->types) {
-		try {
-			f->declare(this);
-		}catch (CtError *e) {
-			delete e;
-		}
-	}
+    //for (auto& f : n->types) {
+	//	try {
+	//		f->declare(this);
+	//	}catch (CtError *e) {
+	//		delete e;
+	//	}
+	//}
 
     compileAll(this, n->types);
     compileAll(this, n->traits);
@@ -1664,9 +1674,9 @@ Function* Compiler::createMainFn(){
         builder.CreateStore(&*args, argc);
         builder.CreateStore(&*++args, argv);
 
-        auto *global_mod = AnModifier::get({Tok_Global});
-        AnType *argcAnty = AnType::getPrimitive(TT_I32, global_mod);
-        AnType *argvAnty = AnPtrType::get(AnPtrType::get(AnType::getPrimitive(TT_C8)), global_mod);
+        //auto *global_mod = AnModifier::get({Tok_Global});
+        AnType *argcAnty = BasicModifier::get(AnType::getPrimitive(TT_I32), Tok_Global);
+        AnType *argvAnty = BasicModifier::get(AnPtrType::get(AnPtrType::get(AnType::getPrimitive(TT_C8))), Tok_Global);
 
         stoVar("argc", new Variable("argc", TypedValue(builder.CreateLoad(argc), argcAnty), 1));
         stoVar("argv", new Variable("argv", TypedValue(builder.CreateLoad(argv), argvAnty), 1));
@@ -1678,7 +1688,7 @@ Function* Compiler::createMainFn(){
 
     auto main_tv = TypedValue(main, main_fn_ty);
     auto fakeLoc = mkLoc(mkPos(0, 0, 0), mkPos(0, 0, 0));
-    auto *fakeFdn = new FuncDeclNode(fakeLoc, fnName, nullptr, nullptr, nullptr, nullptr);
+    auto *fakeFdn = new FuncDeclNode(fakeLoc, fnName, nullptr, nullptr, nullptr);
     shared_ptr<FuncDeclNode> fakeSp{fakeFdn};
     auto *main_var = new FuncDecl(fakeSp, fnName, scope, mergedCompUnits, main_tv);
 

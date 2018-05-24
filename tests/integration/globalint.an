@@ -4,7 +4,7 @@ global step = 2
 
 
 fun b:
-    print(import global step col)
+    print col
 
     col += step
     print col

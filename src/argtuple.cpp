@@ -173,7 +173,10 @@ namespace ante {
         }else if(ConstantExpr *ce = dyn_cast<ConstantExpr>(tv.val)){
             Instruction *in = ce->getAsInstruction();
             if(GetElementPtrInst *gep = dyn_cast<GetElementPtrInst>(in)){
-                auto ptr = TypedValue(gep->getPointerOperand(), ptrty->extTy);
+                gep->print(dbgs());
+                auto ptr = TypedValue(gep->getPointerOperand(), ptrty);
+                cout << '\n' << flush;
+                ptr.dump();
                 storePtr(c, ptr);
             }
 
@@ -221,7 +224,7 @@ namespace ante {
             c->errFlag = true;
             cout << "unknown value given to getConstPtr:\n";
             tv.dump();
-            throw new CompilationError("unknown type given to getConstPtr: " + anTypeToStr(tv.type));
+            throw new CompilationError("unknown value given to getConstPtr of type: " + anTypeToColoredStr(tv.type));
         }
     }
 
@@ -319,8 +322,9 @@ namespace ante {
                 storeFloat(c, tv);
                 return;
             case TT_Ptr:
+            case TT_Function:
+            case TT_MetaFunction:
             case TT_Array: storePtr(c, tv); return;
-            case TT_Tuple: storeTuple(c, tv); return;
             case TT_TypeVar: {
                 auto *tvt = (AnTypeVarType*)tv.type;
                 auto *var = c->lookup(tvt->name);
@@ -335,16 +339,18 @@ namespace ante {
                 storeValue(c, boundTv);
                 return;
             }
-            case TT_Data: storeTuple(c, tv); return;
+            case TT_Tuple:
+            case TT_TaggedUnion:
+            case TT_Data:
+                storeTuple(c, tv);
+                return;
             case TT_Type:
                 *(void**)data = extractTypeValue(tv);
                 return;
-            case TT_Function:
-            case TT_TaggedUnion:
-            case TT_MetaFunction:
             case TT_FunctionList:
-            case TT_Void:
                 break;
+            case TT_Void:
+                return;
         }
 
         c->errFlag = true;
@@ -367,10 +373,9 @@ namespace ante {
                 printUnion(c, os);
                 return;
             }else if(dt->name == "Str"){
-                os << "Str \"" << castTo<string>() << '"';
+                os << '"' << castTo<string>() << '"';
                 return;
             }
-            os << anTypeToStr(dt) << ' ';
         }
         os << '(';
         auto *agg = dyn_cast<AnAggregateType>(type);
@@ -394,49 +399,50 @@ namespace ante {
 
     void ArgTuple::printCtVal(Compiler *c, std::ostream &os) const{
         switch(type->typeTag){
-            case TT_I8:  os << "i8 " << castTo<int8_t>(); break;
-            case TT_I16: os << "i16 " << castTo<int16_t>(); break;
-            case TT_I32: os << "i32 " << castTo<int32_t>(); break;
-            case TT_I64: os << "i64 " << castTo<int64_t>(); break;
-            case TT_Isz: os << "isz " << castTo<signed long>(); break;
-            case TT_U8:  os << "u8 " << castTo<uint8_t>(); break;
-            case TT_U16: os << "u16 " << castTo<uint16_t>(); break;
-            case TT_U32: os << "u32 " << castTo<uint32_t>(); break;
-            case TT_U64: os << "u64 " << castTo<uint64_t>(); break;
-            case TT_Usz: os << "usz " << castTo<size_t>(); break;
-            case TT_C8:  os << "c8 " << castTo<char>(); break;
-            case TT_C32: os << "c32 " << castTo<wchar_t>(); break;  /** TODO: wchar_t is 16 bits on windows, not 32 */
-            case TT_Bool: os << "bool " << (castTo<bool>() ? "true" : "false"); break;
-            case TT_F16: os << "f16 " << castTo<float>(); break;
-            case TT_F32: os << "f32 " << castTo<float>(); break;
-            case TT_F64: os << "f64 " << castTo<double>(); break;
+            case TT_I8:  os << castTo<int8_t>(); break;
+            case TT_I16: os << castTo<int16_t>(); break;
+            case TT_I32: os << castTo<int32_t>(); break;
+            case TT_I64: os << castTo<int64_t>(); break;
+            case TT_Isz: os << castTo<signed long>(); break;
+            case TT_U8:  os << castTo<uint8_t>(); break;
+            case TT_U16: os << castTo<uint16_t>(); break;
+            case TT_U32: os << castTo<uint32_t>(); break;
+            case TT_U64: os << castTo<uint64_t>(); break;
+            case TT_Usz: os << castTo<size_t>(); break;
+            case TT_C8:  os << '\'' << castTo<char>() << '\''; break;
+            case TT_C32: os << '\'' << castTo<wchar_t>() << '\''; break;  /** TODO: wchar_t is 16 bits on windows, not 32 */
+            case TT_Bool: os << (castTo<bool>() ? "true" : "false"); break;
+            case TT_F16: os << castTo<float>(); break;
+            case TT_F32: os << castTo<float>(); break;
+            case TT_F64: os << castTo<double>(); break;
             case TT_Ptr:
                 if(((AnPtrType*)type)->extTy->typeTag == TT_C8){
-                    os << "c8* " << castTo<char*>();
+                    os << '"' << castTo<char*>() << '"';
                 }else{
-                    os << anTypeToStr(type) << ' ' << castTo<void*>() << " -> ";
+                    os << castTo<void*>() << " -> ";
                     ArgTuple(*(void**)data, ((AnPtrType*)type)->extTy).printCtVal(c, os);
                 }
                 break;
             case TT_Array:
-                os << anTypeToStr(type) << " [...]";
+                os << " [...]";
                 break;
             case TT_TaggedUnion:
             case TT_Data:
             case TT_Tuple:
                 printTupleOrData(c, os);
                 break;
-            case TT_Type: castTo<AnType*>()->dump(); break;
+            case TT_Type: cout << anTypeToStr(castTo<AnType*>()); break;
             case TT_Function: os << "fun @ " << castTo<void*>(); break;
             case TT_MetaFunction: os << "compiler-api function\n";
             case TT_FunctionList: os << "function list\n";
-            case TT_TypeVar: os << anTypeToStr(type) << " ?"; break; //compile-time value with unknown type, something went wrong.
+            case TT_TypeVar: os << "?"; break; //compile-time value with unknown type, something went wrong.
             case TT_Void: os << "()"; break;
         }
     }
 
 
     void ArgTuple::print(Compiler *c, std::ostream &os) const {
+        cout << anTypeToColoredStr(type) << ' ';
         printCtVal(c, os);
         puts("");
     }

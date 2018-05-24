@@ -59,20 +59,24 @@ namespace ante {
             virtual ~Node(){}
         };
 
+        struct ModNode;
+
         /*
-        * Class for all nodes that can contain child statement nodes,
-        * if statements, function declarations, etc
-        */
-        struct ParentNode : public Node{
-            std::unique_ptr<Node> child;
+         * Base class for all Nodes that can possibly be modified
+         * by a modifier or compiler directive.
+         */
+        struct ModifiableNode : public Node{
+            std::vector<std::unique_ptr<ModNode>> modifiers;
 
             /*
-                * The body should always be known when a
-                * parent node is initialized, so it is required
-                * in the constructor (unlike next and prev)
-                */
-            ParentNode(LOC_TY& loc, Node* c) : Node(loc), child(c){}
-            ~ParentNode(){}
+             * The body should always be known when a
+             * parent node is initialized, so it is required
+             * in the constructor (unlike next and prev)
+             */
+            ModifiableNode(LOC_TY& loc) : Node(loc){}
+            ~ModifiableNode(){}
+
+            bool hasModifier(int mod) const;
         };
 
 
@@ -89,13 +93,8 @@ namespace ante {
         */
         struct RootNode : public Node{
             //non-owning std::vectors (each decl is later moved into a ante::module)
-            std::vector<FuncDeclNode*> funcs;
-            std::vector<std::unique_ptr<TraitNode>> traits;
-            std::vector<std::unique_ptr<ExtNode>> extensions;
-            std::vector<std::unique_ptr<DataDeclNode>> types;
-            std::vector<std::unique_ptr<ImportNode>> imports;
-
-            std::vector<std::unique_ptr<Node>> main;
+            std::vector<Node*> funcs;
+            std::vector<std::unique_ptr<Node>> traits, extensions, types, imports, main;
 
             void accept(NodeVisitor& v){ v.visit(this); }
 
@@ -191,7 +190,8 @@ namespace ante {
          */
         struct ModNode : public Node{
             int mod;
-            std::shared_ptr<Node> expr;
+            std::shared_ptr<Node> directive;
+            std::unique_ptr<Node> expr;
 
             //this ModNode is a compiler directive iff its mod == preproc_id
             //otherwise, it is a normal modifier, and expr is null
@@ -204,10 +204,10 @@ namespace ante {
             }
 
             /** Constructor for normal modifiers */
-            ModNode(LOC_TY& loc, int m) : Node(loc), mod(m), expr(nullptr){}
+            ModNode(LOC_TY& loc, int m, Node *e) : Node(loc), mod(m), expr(e){}
 
             /** Constructor for compiler directives */
-            ModNode(LOC_TY& loc, Node *e) : Node(loc), mod(CD_ID), expr(e){}
+            ModNode(LOC_TY& loc, Node *d, Node *e) : Node(loc), mod(CD_ID), directive(d), expr(e){}
             ~ModNode(){}
         };
 
@@ -216,14 +216,9 @@ namespace ante {
             std::string typeName; //used for usertypes
             std::unique_ptr<TypeNode> extTy; //Used for pointers and non-single anonymous types.
             std::vector<std::unique_ptr<TypeNode>> params; //type parameters for generic types
-            std::vector<TokenType> modifiers;
 
             void accept(NodeVisitor& v){ v.visit(this); }
-            TypeNode* addModifiers(ModNode *m);
-            TypeNode* addModifier(int m);
-            void copyModifiersFrom(const TypeNode *tn);
-            bool hasModifier(int m) const;
-            TypeNode(LOC_TY& loc, TypeTag ty, std::string tName, TypeNode* eTy) : Node(loc), type(ty), typeName(tName), extTy(eTy), params(), modifiers(){}
+            TypeNode(LOC_TY& loc, TypeTag ty, std::string tName, TypeNode* eTy) : Node(loc), type(ty), typeName(tName), extTy(eTy), params(){}
             ~TypeNode(){}
         };
 
@@ -271,41 +266,24 @@ namespace ante {
             ~StrLitNode(){}
         };
 
-        struct VarDeclNode : public Node{
-            std::string name;
-            std::unique_ptr<Node> modifiers, typeExpr, expr;
-
-            void accept(NodeVisitor& v){ v.visit(this); }
-            VarDeclNode(LOC_TY& loc, std::string s, Node *mods, Node* t, Node* exp) : Node(loc), name(s), modifiers(mods), typeExpr(t), expr(exp){}
-            ~VarDeclNode(){}
-            bool hasMod(int mod) const noexcept {
-                for(const Node *n : *modifiers){
-                    if(const ModNode *m = dynamic_cast<const ModNode*>(n)){
-                        if(m->mod == mod){
-                            return true;
-                        }
-                    }
-                }
-                return false;
-            }
-        };
-
-        struct VarAssignNode : public Node{
+        struct VarAssignNode : public ModifiableNode{
             Node* ref_expr;
             std::unique_ptr<Node> expr;
             bool freeLval;
             void accept(NodeVisitor& v){ v.visit(this); }
-            VarAssignNode(LOC_TY& loc, Node* v, Node* exp, bool b) : Node(loc), ref_expr(v), expr(exp), freeLval(b){}
+            VarAssignNode(LOC_TY& loc, Node* v, Node* exp, bool b)
+                : ModifiableNode(loc), ref_expr(v), expr(exp), freeLval(b){}
             ~VarAssignNode(){ if(freeLval) delete ref_expr; }
         };
 
-        struct ExtNode : public Node{
+        struct ExtNode : public ModifiableNode{
             std::unique_ptr<TypeNode> typeExpr;
             std::unique_ptr<TypeNode> traits;
             std::unique_ptr<Node> methods;
 
             void accept(NodeVisitor& v){ v.visit(this); }
-            ExtNode(LOC_TY& loc, TypeNode *ty, Node *m, TypeNode *tr) : Node(loc), typeExpr(ty), traits(tr), methods(m){}
+            ExtNode(LOC_TY& loc, TypeNode *ty, Node *m, TypeNode *tr)
+                : ModifiableNode(loc), typeExpr(ty), traits(tr), methods(m){}
             ~ExtNode(){}
         };
 
@@ -324,18 +302,20 @@ namespace ante {
             ~JumpNode(){}
         };
 
-        struct WhileNode : public ParentNode{
-            std::unique_ptr<Node> condition;
+        struct WhileNode : public Node{
+            std::unique_ptr<Node> condition, child;
             void accept(NodeVisitor& v){ v.visit(this); }
-            WhileNode(LOC_TY& loc, Node *cond, Node *body) : ParentNode(loc, body), condition(cond){}
+            WhileNode(LOC_TY& loc, Node *cond, Node *body)
+                : Node(loc), condition(cond), child(body){}
             ~WhileNode(){}
         };
 
-        struct ForNode : public ParentNode{
+        struct ForNode : public Node{
             std::string var;
-            std::unique_ptr<Node> range;
+            std::unique_ptr<Node> range, child;
             void accept(NodeVisitor& v){ v.visit(this); }
-            ForNode(LOC_TY& loc, std::string v, Node *r, Node *body) : ParentNode(loc, body), var(v), range(r){}
+            ForNode(LOC_TY& loc, std::string v, Node *r, Node *body) :
+                Node(loc), var(v), range(r), child(body){}
             ~ForNode(){}
         };
 
@@ -351,39 +331,35 @@ namespace ante {
             std::vector<std::unique_ptr<MatchBranchNode>> branches;
 
             void accept(NodeVisitor& v){ v.visit(this); }
-            MatchNode(LOC_TY& loc, Node *e, std::vector<std::unique_ptr<MatchBranchNode>> &b) : Node(loc), expr(e), branches(move(b)){}
+            MatchNode(LOC_TY& loc, Node *e, std::vector<std::unique_ptr<MatchBranchNode>> &b)
+                : Node(loc), expr(e), branches(move(b)){}
             ~MatchNode(){}
         };
 
         struct IfNode : public Node{
             std::unique_ptr<Node> condition, thenN, elseN;
             void accept(NodeVisitor& v){ v.visit(this); }
-            IfNode(LOC_TY& loc, Node* c, Node* then, Node* els) : Node(loc), condition(c), thenN(then), elseN(els){}
+            IfNode(LOC_TY& loc, Node* c, Node* then, Node* els)
+                : Node(loc), condition(c), thenN(then), elseN(els){}
             ~IfNode(){}
         };
 
-        struct FuncDeclNode : public Node{
+        struct FuncDeclNode : public ModifiableNode{
             std::string name;
             std::shared_ptr<Node> child;
             std::shared_ptr<TypeNode> type;
             std::shared_ptr<NamedValNode> params;
-            std::shared_ptr<ModNode> modifiers;
             bool varargs;
 
             void accept(NodeVisitor& v){ v.visit(this); }
 
-            /**
-             * Returns true if this function has the given modifier.
-             * @param mod_id The TokenType value of the modifier in question
-             */
-            bool hasModifier(int mod_id) const;
-
-            FuncDeclNode(LOC_TY& loc, std::string s, ModNode *mods, TypeNode *t, NamedValNode *p, Node* b, bool va=false) :
-                Node(loc), name(s), child(b), type(t), params(p), modifiers(mods), varargs(va){}
+            FuncDeclNode(LOC_TY& loc, std::string s, TypeNode *t, NamedValNode *p, Node* b, bool va=false) :
+                ModifiableNode(loc), name(s), child(b), type(t), params(p), varargs(va){}
             ~FuncDeclNode(){ if(next.get()) next.release(); }
         };
 
-        struct DataDeclNode : public ParentNode{
+        struct DataDeclNode : public ModifiableNode{
+            std::unique_ptr<Node> child;
             std::string name;
             size_t fields;
             std::vector<std::unique_ptr<TypeNode>> generics;
@@ -391,17 +367,20 @@ namespace ante {
 
             void declare(Compiler*);
             void accept(NodeVisitor& v){ v.visit(this); }
-            DataDeclNode(LOC_TY& loc, std::string s, Node* b, size_t f, bool a) : ParentNode(loc, b), name(s), fields(f), isAlias(a){}
+            DataDeclNode(LOC_TY& loc, std::string s, Node* b, size_t f, bool a)
+                : ModifiableNode(loc), child(b), name(s), fields(f), isAlias(a){}
             DataDeclNode(LOC_TY& loc, std::string s, Node* b, size_t f, std::vector<std::unique_ptr<TypeNode>> &g, bool a)
-                : ParentNode(loc, b), name(s), fields(f), generics(move(g)), isAlias(a){}
+                : ModifiableNode(loc), child(b), name(s), fields(f), generics(move(g)), isAlias(a){}
             ~DataDeclNode(){}
         };
 
-        struct TraitNode : public ParentNode{
+        struct TraitNode : public ModifiableNode{
+            std::unique_ptr<Node> child;
             std::string name;
 
             void accept(NodeVisitor& v){ v.visit(this); }
-            TraitNode(LOC_TY& loc, std::string s, Node* b) : ParentNode(loc, b), name(s){}
+            TraitNode(LOC_TY& loc, std::string s, Node* b)
+                : ModifiableNode(loc), child(b), name(s){}
             ~TraitNode(){}
         };
 

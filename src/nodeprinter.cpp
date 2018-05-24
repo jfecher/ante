@@ -99,11 +99,13 @@ void PrintingVisitor::visit(TupleNode *n){
 void PrintingVisitor::visit(ModNode *n){
     if(n->isCompilerDirective()){
         cout << "![";
-        n->expr->accept(*this);
+        n->directive->accept(*this);
         puts("]");
+        n->expr->accept(*this);
     }else{
         Lexer::printTok(n->mod);
         putchar(' ');
+        n->expr->accept(*this);
     }
 }
 
@@ -199,17 +201,6 @@ void PrintingVisitor::visit(VarNode *n){
 }
 
 
-void PrintingVisitor::visit(VarDeclNode *n){
-    cout << "varDecl ";
-    if(n->typeExpr){
-        n->typeExpr->accept(*this);
-        putchar(' ');
-    }
-    cout << n->name << " = ";
-    if(n->expr) n->expr->accept(*this);
-    else cout << "(undef)";
-}
-
 void PrintingVisitor::visit(GlobalNode *n){
     cout << "global ";
     n->vars[0]->accept(*this);
@@ -274,10 +265,6 @@ void PrintingVisitor::visit(MatchBranchNode *n){
 
 void PrintingVisitor::visit(FuncDeclNode *n){
     bool isExtern = false;
-    if(n->modifiers.get()){
-        printSpaceDelimitedList(n->modifiers.get());
-    }
-
     cout << "fun ";
 
     if(!n->name.empty() && n->name[n->name.size()-1] == ';'){

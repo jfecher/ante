@@ -81,77 +81,39 @@ namespace ante {
         }
 
         Node*append_fn(Node *n){
-            root->funcs.push_back((FuncDeclNode*)n);
+            root->funcs.push_back(n);
             return n;
         }
-
+        
         Node*append_type(Node *n){
-            root->types.emplace_back((DataDeclNode*)n);
+            root->types.emplace_back(n);
             return n;
         }
 
         Node*append_extension(Node *n){
-            root->extensions.emplace_back((ExtNode*)n);
+            root->extensions.emplace_back(n);
             return n;
         }
 
         Node*append_trait(Node *n){
-            root->traits.emplace_back((TraitNode*)n);
+            root->traits.emplace_back(n);
             return n;
         }
 
         Node*append_import(Node *n){
-            root->imports.emplace_back((ImportNode*)n);
+            root->imports.emplace_back(n);
             return n;
         }
-
+        
+        Node* append_modifier(Node *modifiableNode, Node *modifier){
+            ((ModifiableNode*)modifiableNode)->modifiers.emplace_back((ModNode*)modifier);
+            return modifiableNode;
+        }
 
         LOC_TY copyLoc(const LOC_TY &loc){
             return mkLoc(mkPos(loc.begin.filename, loc.begin.line, loc.begin.column),
                         mkPos(loc.end.filename,   loc.end.line,   loc.end.column));
         }
-
-        //apply modifier to this type and all its extensions
-        TypeNode* TypeNode::addModifiers(ModNode *m){
-            TypeNode *ext = extTy.get();
-
-            //arrays have their size as their second extty so they
-            //must be handled specially
-            if(type == TT_Array){
-                ext->addModifiers(m);
-                ext = (TypeNode*)ext->next.get();
-            }else{
-                while(ext){
-                    ext->addModifiers(m);
-                    ext = (TypeNode*)ext->next.get();
-                }
-            }
-
-            while(m){
-                this->modifiers.push_back((TokenType)m->mod);
-                m = (ModNode*)m->next.get();
-            }
-            return this;
-        }
-
-        //add a single modifier to this type and all its extensions
-        TypeNode* TypeNode::addModifier(int m){
-            TypeNode *ext = extTy.get();
-
-            if(type == TT_Array){
-                ext->addModifier(m);
-                ext = (TypeNode*)ext->next.get();
-            }else{
-                while(ext){
-                    ext->addModifier(m);
-                    ext = (TypeNode*)ext->next.get();
-                }
-            }
-
-            modifiers.push_back((TokenType)m);
-            return this;
-        }
-
 
         /*
         Node* applyMods(Node *mods, Node *decls){
@@ -162,7 +124,6 @@ namespace ante {
                 }else if(DataDeclNode *fdn = dynamic_cast<DataDeclNode*>(decl)){
                 }else if(ExtNode *fdn = dynamic_cast<ExtNode*>(decl)){
                 }else if(TraitNode *fdn = dynamic_cast<TraitNode*>(decl)){
-                }else if(VarDeclNode *fdn = dynamic_cast<VarDeclNode*>(decl)){
                 }
             }
 
@@ -204,16 +165,6 @@ namespace ante {
             }
 
             return new GlobalNode(loc, move(vars));
-        }
-
-        void TypeNode::copyModifiersFrom(const TypeNode *tn){
-            for(int m : tn->modifiers){
-                addModifier(m);
-            }
-        }
-
-        bool TypeNode::hasModifier(int m) const{
-            return std::find(modifiers.cbegin(), modifiers.cend(), m) != modifiers.cend();
         }
 
         /*
@@ -347,14 +298,22 @@ namespace ante {
         }
 
         Node* mkModNode(LOC_TY loc, ante::TokenType mod){
-            return new ModNode(loc, mod);
+            return new ModNode(loc, mod, nullptr);
+        }
+        
+        Node* mkModExprNode(LOC_TY loc, ante::TokenType mod, Node *expr){
+            return new ModNode(loc, mod, expr);
         }
 
-        Node* mkCompilerDirective(LOC_TY loc, Node *n){
-            return new ModNode(loc, n);
+        Node* mkCompilerDirective(LOC_TY loc, Node *directive){
+            return new ModNode(loc, directive, nullptr);
+        }
+        
+        Node* mkCompilerDirectiveExpr(LOC_TY loc, Node *directive, Node *expr){
+            return new ModNode(loc, directive, expr);
         }
 
-        Node* mkTypeNode(LOC_TY loc, TypeTag type, char* typeName, Node* extTy = nullptr){
+        Node* mkTypeNode(LOC_TY loc, TypeTag type, char* typeName, Node* extTy){
             if(type == TT_Array){
                 //2nd type ext is size of the array when making Array types, ensure it is an intlit
                 auto *size = dynamic_cast<IntLitNode*>(extTy->next.get());
@@ -446,13 +405,6 @@ namespace ante {
                     cpy->params.emplace_back(copy(tn));
                 }
             }
-
-
-            //finally, do a shallow copy for the modifiers
-            //this becomes a deep copy since this method is called recursively for each extTy
-            for(int m : n->modifiers)
-                cpy->modifiers.push_back((TokenType)m);
-
             return cpy;
         }
 
@@ -497,11 +449,7 @@ namespace ante {
             return new ImportNode(loc, expr);
         }
 
-        Node* mkVarDeclNode(LOC_TY loc, char* s, Node* mods, Node* tExpr, Node* expr){
-            return new VarDeclNode(loc, s, mods, tExpr, expr);
-        }
-
-        Node* mkVarAssignNode(LOC_TY loc, Node* var, Node* expr, bool freeLval = true){
+        Node* mkVarAssignNode(LOC_TY loc, Node* var, Node* expr, bool freeLval){
             return new VarAssignNode(loc, var, expr, freeLval);
         }
 
@@ -525,9 +473,8 @@ namespace ante {
             return new ForNode(loc, (char*)var, range, body);
         }
 
-        Node* mkFuncDeclNode(LOC_TY loc, Node* s, Node* mods, Node* tExpr, Node* p, Node* b){
-            auto ret = new FuncDeclNode(loc, (char*)s,
-                    (ModNode*)mods, (TypeNode*)tExpr, (NamedValNode*)p, b);
+        Node* mkFuncDeclNode(LOC_TY loc, Node* s, Node* tExpr, Node* p, Node* b){
+            auto ret = new FuncDeclNode(loc, (char*)s, (TypeNode*)tExpr, (NamedValNode*)p, b);
 
             //s is copied from lextxt, and may or may not be equal
             if(s) free(s);

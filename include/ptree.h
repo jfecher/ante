@@ -29,6 +29,7 @@ namespace ante {
         Node* append_extension(Node *n);
         Node* append_trait(Node *n);
         Node* append_import(Node *n);
+        Node* append_modifier(Node *modifiableNode, Node *modifier);
 
         Node* mkIntLitNode(LOC_TY loc, char* s);
         Node* mkFltLitNode(LOC_TY loc, char* s);
@@ -38,10 +39,12 @@ namespace ante {
         Node* mkArrayNode(LOC_TY loc, Node *expr);
         Node* mkTupleNode(LOC_TY loc, Node *expr);
         Node* mkModNode(LOC_TY loc, ante::TokenType mod);
+        Node* mkModExprNode(LOC_TY loc, ante::TokenType mod, Node *expr);
 
         //A compiler directive is represented as a ModNode
         //internally, hence the omission of Node from the name below
-        Node* mkCompilerDirective(LOC_TY loc, Node *mod);
+        Node* mkCompilerDirective(LOC_TY loc, Node *directive);
+        Node* mkCompilerDirectiveExpr(LOC_TY loc, Node *directive, Node *expr);
 
         Node* mkGlobalNode(LOC_TY loc, Node* s);
         Node* mkTypeNode(LOC_TY loc, TypeTag type, char* typeName, Node *extTy = nullptr);
@@ -54,7 +57,6 @@ namespace ante {
         Node* mkVarNode(LOC_TY loc, char* s);
         Node* mkRetNode(LOC_TY loc, Node* expr);
         Node* mkImportNode(LOC_TY loc, Node* expr);
-        Node* mkVarDeclNode(LOC_TY loc, char* s, Node* mods, Node* tExpr, Node* expr);
         Node* mkVarAssignNode(LOC_TY loc, Node* var, Node* expr, bool shouldFreeLval = true);
         Node* mkExtNode(LOC_TY loc, Node* typeExpr, Node* methods, Node* traits=0);
         Node* mkMatchNode(LOC_TY loc, Node* expr, Node* branch);
@@ -64,7 +66,7 @@ namespace ante {
         Node* mkIfNode(LOC_TY loc, Node* con, Node* body, Node* els);
         Node* mkWhileNode(LOC_TY loc, Node* con, Node* body);
         Node* mkForNode(LOC_TY loc, Node* var, Node* range, Node* body);
-        Node* mkFuncDeclNode(LOC_TY loc, Node* s, Node* mods, Node* tExpr, Node* p, Node* body);
+        Node* mkFuncDeclNode(LOC_TY loc, Node* s, Node* tExpr, Node* p, Node* body);
         Node* mkDataDeclNode(LOC_TY loc, char* s, Node *p, Node* b, bool isAlias);
         Node* mkTraitNode(LOC_TY loc, char* s, Node* fns);
 

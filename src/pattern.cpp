@@ -97,7 +97,7 @@ namespace ante {
             if(dt->extTys.size() == 1){
                 return dt->extTys[0];
             }else{
-                return AnAggregateType::get(TT_Tuple, dt->extTys, dt->mods);
+                return AnAggregateType::get(TT_Tuple, dt->extTys);
             }
         }
         return ty;
@@ -153,7 +153,7 @@ namespace ante {
                 APInt(8, parentTy->getTagVal(pattern->typeName), true));
 
         tagTy = (AnDataType*)bindGenericToType(c, tagTy, ((AnDataType*)valToMatch.type)->boundGenerics);
-        tagTy = tagTy->setModifier(valToMatch.type->mods);
+        // tagTy = tagTy->setModifier(valToMatch.type->mods);
 
         auto tcr = c->typeEq(parentTy, valToMatch.type);
         if(tcr->res == TypeCheckResult::SuccessWithTypeVars)

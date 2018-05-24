@@ -117,9 +117,10 @@ void addArgAttrs(llvm::Argument &arg, TypeNode *paramTyNode){
     if(paramTyNode->type == TT_Function){
         arg.addAttr(Attribute::AttrKind::NoCapture);
 
-        if(!paramTyNode->hasModifier(Tok_Mut)){
-            arg.addAttr(Attribute::AttrKind::ReadOnly);
-        }
+        //TODO: re-add
+        //if(!paramTyNode->hasModifier(Tok_Mut)){
+        //    arg.addAttr(Attribute::AttrKind::ReadOnly);
+        //}
     }
 }
 
@@ -330,8 +331,6 @@ TypedValue compFnWithModifiers(Compiler *c, FuncDecl *fd, ModNode *ppn){
     //remove the preproc node at the front of the modifier list so that the call to
     //compFn does not call this function in an infinite loop
     auto *fdn = fd->fdn.get();
-    auto mod_cpy = fdn->modifiers;
-    fdn->modifiers.reset((ModNode*)ppn->next.get());
 
     TypedValue fn;
     if(ppn->isCompilerDirective()){
@@ -359,8 +358,6 @@ TypedValue compFnWithModifiers(Compiler *c, FuncDecl *fd, ModNode *ppn){
                 return c->compErr("Unrecognized compiler directive '"+vn->name+"'", vn->loc);
             }
 
-            //put back the preproc node modifier
-            fdn->modifiers = mod_cpy;
             return fn;
         }else{
             return c->compErr("Unrecognized compiler directive", ppn->loc);
@@ -380,7 +377,7 @@ TypedValue compFnWithModifiers(Compiler *c, FuncDecl *fd, ModNode *ppn){
                 }
             }else{
                 auto *rettn = (TypeNode*)fd->fdn->type.get();
-                AnFunctionType *fnty;
+                AnType *fnty;
                 if(capi::lookup(fd->getName())){
                     fnty = AnFunctionType::get(c, toAnType(c, rettn), fd->fdn->params.get(), true);
                 }else{
@@ -392,7 +389,6 @@ TypedValue compFnWithModifiers(Compiler *c, FuncDecl *fd, ModNode *ppn){
         }else{
             fn = c->compFn(fd);
         }
-        fdn->modifiers = mod_cpy;
         return fn;
     }
 }
@@ -402,11 +398,11 @@ TypedValue compFnHelper(Compiler *c, FuncDecl *fd){
     BasicBlock *caller = c->builder.GetInsertBlock();
     auto *fdn = fd->fdn.get();
 
-    if(ModNode *ppn = fdn->modifiers.get()){
-        auto ret = compFnWithModifiers(c, fd, ppn);
-        c->builder.SetInsertPoint(caller);
-        return ret;
-    }
+    //if(ModNode *ppn = fdn->modifiers.get()){
+    //    auto ret = compFnWithModifiers(c, fd, ppn);
+    //    c->builder.SetInsertPoint(caller);
+    //    return ret;
+    //}
 
     //Get and translate the function's return type to an llvm::Type*
     TypeNode *retNode = (TypeNode*)fdn->type.get();
@@ -942,15 +938,15 @@ void Compiler::registerFunction(FuncDeclNode *fn, string &mangledName){
         compMetaFunctionResult(this, hook->fdn->loc, hook->getName(), hook->mangledName, args);
     }
 
-    for(auto *mod : *fn->modifiers){
-        auto *m = (ModNode*)mod;
-        if(m->isCompilerDirective()){
-            VarNode *vn;
-            if((vn = dynamic_cast<VarNode*>(m->expr.get())) and vn->name == "on_fn_decl"){
-                ctCtxt->on_fn_decl_hook.push_back(fd);
-            }
-        }
-    }
+    //for(auto *mod : *fn->modifiers){
+    //    auto *m = (ModNode*)mod;
+    //    if(m->isCompilerDirective()){
+    //        VarNode *vn;
+    //        if((vn = dynamic_cast<VarNode*>(m->expr.get())) and vn->name == "on_fn_decl"){
+    //            ctCtxt->on_fn_decl_hook.push_back(fd);
+    //        }
+    //    }
+    //}
 
     compUnit->fnDecls[fn->name].push_back(fd);
     mergedCompUnits->fnDecls[fn->name].push_back(fd);

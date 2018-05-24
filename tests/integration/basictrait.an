@@ -35,7 +35,7 @@ ext Container: NumStore
         c = Item n
 
 //define function to work on any Holder
-fun print: Holder* h
+fun print: &Holder h
     print <| get (@h)
 
 

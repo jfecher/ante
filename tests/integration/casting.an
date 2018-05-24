@@ -16,7 +16,7 @@ printf "%d\n" block
 
 let msg = "Hello World!".cStr
 
-let world = c8* (u64 msg + 6)
+let world = &c8(u64 msg + 6)
 
 puts msg
 puts world

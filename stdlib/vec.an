@@ -1,9 +1,9 @@
 
-type Vec 't = 't* _data, usz len cap
+type Vec 't = &'t _data, usz len cap
 
 ext Vec 't
     fun init :=
-        Vec<'t>('t* malloc(4 * Ante.sizeof 't), 0usz, 4usz)
+        Vec<'t>(&'t malloc(4 * Ante.sizeof 't), 0usz, 4usz)
 
     fun init: Range r -> Vec i32
         fill (Vec<i32>()) r
@@ -28,13 +28,13 @@ ext Vec 't
     fun reserve: mut Vec 't v, usz numElems
         if v.len + numElems > v.cap then
             let size = (v.cap + numElems) * Ante.sizeof 't
-            let ptr = realloc (void* v._data) size
+            let ptr = realloc (&void v._data) size
 
-            if ptr is void* 0 then
+            if ptr is &void 0 then
                 printf "Error in reserving %u elements for Vec\n" numElems
                 return ()
 
-            v._data = 't* ptr
+            v._data = &'t ptr
             v.cap += numElems
 
     //push an element onto the end of the vector.
@@ -118,7 +118,18 @@ ext Vec 't
         indices.len
 
 
-type VecIter 't = 't* view, usz idx len
+    //Remove an element by swapping it with the last element in O(1) time.
+    //Returns true if a swap was performed or false otherwise.
+    //Will not swap if the given index is the index of the last element.
+    fun swap_last: mut Vec 't v, usz idx -> bool
+        if idx >= v.len or (v.len != 0 and idx == v.len - 1) then false
+        else
+            v.len -= 1
+            v._data#idx = v._data#v.len
+            true
+
+
+type VecIter 't = &'t view, usz idx len
 
 ext Vec : Iterable
     fun into_iter: Vec v =

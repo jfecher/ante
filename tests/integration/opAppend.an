@@ -1,7 +1,7 @@
 
 //Reverse a string
 fun reverse: Str s -> Str
-    mut buf = c8* malloc s.len
+    mut buf = &c8 malloc s.len
 
     mut i = 0usz
     while i < s.len do
@@ -17,7 +17,7 @@ fun (++): Str l, i32 r -> Str
   
     //get the string form of an integer, but in reverse
     fun rev_str: i32 x -> Str
-        mut buf = c8* malloc 12
+        mut buf = &c8 malloc 12
         mut i = 0usz
         mut n = x
 

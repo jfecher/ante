@@ -4,5 +4,3 @@ mut i = 0
 while i < 10_000 do
     printf "%d\n" i
     i += 1
-
-

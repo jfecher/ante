@@ -15,6 +15,8 @@ using namespace ante::parser;
 
 extern char* lextxt;
 
+extern "C" void* Ante_debug(Compiler *c, ArgTuple &tv);
+
 namespace ante {
 
     unsigned int sl_pos = 0;
@@ -392,30 +394,16 @@ namespace ante {
 		getch_mode = normal_mode | (ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT);
 #endif
     }
-
+    
     /**
      * Output a value from the REPL by using its print function if found.
      */
     void output(Compiler *c, TypedValue &tv){
-        vector<AnType*> args = {tv.type};
-        string name = "print";
-
-        auto fake_loc = mkLoc(mkPos(0, 0, 0), mkPos(0, 0, 0));
-        Node *n = new VarNode(fake_loc, "print");
-        TypedValue tvf = searchForFunction(c, n, {tv});
-        string mangledName = tvf.val->getName();
-        delete n;
-
-        try{
-            //compMetaFunctionResult(c, fake_loc, "print", mangledName, {tv});
-            compMetaFunctionResult(c, fake_loc, name, mangledName, {tv});
-        }catch(CompilationError *err){
-            //fall back on naive dumping of llvm value
-            cerr << err->msg << endl;
-            tv.dump();
-            delete err;
-        }catch(CtError *err){
-            tv.dump();
+        try {
+            ArgTuple arg{c, tv};
+            Ante_debug(c, arg);
+        }catch(ante::CompilationError *err){
+            cout << err->msg << endl;
             delete err;
         }
     }

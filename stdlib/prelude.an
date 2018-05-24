@@ -5,33 +5,33 @@
 */
 
 //C functions
-fun printf: c8* fmt, ... -> i32;
-fun puts: c8* str -> i32;
+fun printf: &c8 fmt, ... -> i32;
+fun puts: &c8 str -> i32;
 fun putchar: c8 char;
 fun getchar: -> c8;
 fun exit: i32 status;
-fun malloc: usz size -> void*;
-fun calloc: usz num size -> void*;
-fun realloc: void* ptr, usz size -> void*;
-fun free: void* mem;
-fun memcpy: void* dest src, usz bytes -> void* /*dest*/;
-fun system: c8* cmd -> i32;
-fun strlen: c8* str -> usz;
+fun malloc: usz size -> &void;
+fun calloc: usz num size -> &void;
+fun realloc: &void ptr, usz size -> &void;
+fun free: &void mem;
+fun memcpy: &void dest src, usz bytes -> &void /*dest*/;
+fun system: &c8 cmd -> i32;
+fun strlen: &c8 str -> usz;
 
 //C stdio
-type File = void*
-type FilePos = void*
+type File = &void
+type FilePos = &void
 
 type InFile = File
 type OutFile = File
 
-fun fopen: c8* fName, c8* mode -> File;
+fun fopen: &c8 fName, &c8 mode -> File;
 fun fclose: File file;
 
-fun fputs: c8* str, OutFile file;
+fun fputs: &c8 str, OutFile file;
 fun fputc: c8 char, OutFile file;
 fun fgetc: InFile file -> c8;
-fun fgets: c8* str, i32 numBytes, InFile file -> c8*;
+fun fgets: &c8 str, i32 numBytes, InFile file -> &c8;
 fun ungetc: c8 c, InFile file -> i32;
 
 fun fgetpos: File f, FilePos fp;
@@ -45,7 +45,7 @@ fun ferror: File f -> bool;
 
 
 //Ante datatypes
-type Str = c8* cStr, usz len
+type Str = &c8 cStr, usz len
 
 type Maybe 't =
    | Some 't
@@ -77,13 +77,13 @@ ante fun Ante.debug: 't t;
 ante fun Ante.sizeof: 't t -> usz;
 
 //Note: error never returns
-ante fun Ante.error: c8* msg;
+ante fun Ante.error: &c8 msg;
 
 //dumps llvm-ir to stdout
 ante fun Ante.emit_ir:;
 
 //useful in the repl to redefine functions
-ante fun Ante.forget: c8* function_name;
+ante fun Ante.forget: &c8 function_name;
 
 
 //numerical print functions
@@ -154,7 +154,7 @@ fun bool.printne: bool b
 
 //c-string
 !inline
-fun printne: c8* s
+fun printne: &c8 s
     printf "%s" s
 
 
@@ -174,11 +174,11 @@ fun print: 't x
 
 
 !inline
-fun c8*.init: Str s = s.cStr
+fun &c8.init: Str s = s.cStr
 
 
 fun Str.reverse: Str s -> Str
-    mut buf = c8* malloc (s.len + 1)
+    mut buf = &c8 malloc (s.len + 1)
 
     mut i = 0usz
     while i < s.len do
@@ -192,7 +192,7 @@ fun Str.reverse: Str s -> Str
 fun Str.init: i64 i -> Str
     if i == 0 then return "0"
     mut len = 0usz
-    mut buf = c8* malloc 21
+    mut buf = &c8 malloc 21
     buf#20 = '\0'
 
     mut x = i
@@ -212,7 +212,7 @@ fun Str.init: i64 i -> Str
 fun Str.init: u64 i -> Str
     if i == 0 then return "0"
     mut len = 0usz
-    mut buf = c8* malloc 21
+    mut buf = &c8 malloc 21
     buf#20 = '\0'
 
     mut x = i
@@ -273,12 +273,12 @@ fun i64.parse: Str s -> Maybe i64
 
 //Pointer Equivalence
 !inline
-fun (==): 't* l r =
+fun (==): &'t l r =
     @l == @r
 
-//void* have no element, so structural equivalence is an error
-fun (==): void* l r =
-    Ante.error "Cannot call == on a void*!  Use 'is' to compare addresses!".cStr
+//&void have no element, so structural equivalence is an error
+fun (==): &void l r =
+    Ante.error "Cannot call == on a &void!  Use 'is' to compare addresses!".cStr
 
 //For-loops work over any range that is Iterable
 trait Iterable
@@ -335,7 +335,7 @@ ext InFile: Iterator
 
 
 !inline
-fun OutFile.write: OutFile f, c8* cStr
+fun OutFile.write: OutFile f, &c8 cStr
     fputs cStr f
 
 !inline
@@ -353,7 +353,7 @@ fun Str.print: Str s
 
 
 !inline
-fun Str.init: c8* cStr -> Str
+fun Str.init: &c8 cStr -> Str
     Str(cStr, usz strlen cStr)
 
 
@@ -384,12 +384,12 @@ fun (++): Str s1 s2 -> Str
     let len = s1.len + s2.len
     mut buf = malloc (len+1)
 
-    memcpy buf (void* s1.cStr) s1.len
+    memcpy buf (&void s1.cStr) s1.len
 
-    mut buf_offset = void*(usz buf + s1.len)
-    memcpy buf_offset (void* s2.cStr) (s2.len+1) //copy terminating null too
+    mut buf_offset = &void(usz buf + s1.len)
+    memcpy buf_offset (&void s2.cStr) (s2.len+1) //copy terminating null too
 
-    Str(c8* buf, len)
+    Str(&c8 buf, len)
 
 !inline
 fun (#): Str s, i32 index = s.cStr#index
@@ -416,7 +416,7 @@ fun InFile.next_line: InFile f -> Str
 
     mut len = 0usz
     mut cap = 64usz
-    mut cstr = c8* malloc cap
+    mut cstr = &c8 malloc cap
 
     while
         let c = fgetc f
@@ -431,7 +431,7 @@ fun InFile.next_line: InFile f -> Str
 
         if len+1 >= cap then
             cap *= 2
-            cstr = c8* realloc (void* cstr) cap
+            cstr = &c8 realloc (&void cstr) cap
 
         cstr#len = c
         len += 1
@@ -443,16 +443,16 @@ fun InFile.next_line: InFile f -> Str
 
 
 //print a message then return user input
-fun input: c8* msg -> Str
+fun input: &c8 msg -> Str
     mut len = 0usz
-    mut cstr = c8* 0
+    mut cstr = &c8 0
 
     printne msg
 
     while
         let c = getchar ()
         if len % 32 == 0 then
-            cstr = c8* realloc (void* cstr) (len+32)
+            cstr = &c8 realloc (&void cstr) (len+32)
 
         cstr#len = c
         len += 1

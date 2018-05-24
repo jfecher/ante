@@ -292,7 +292,7 @@ AnType* bindGenericToType(Compiler *c, AnType *tn, const vector<pair<string, AnT
     if(tn->typeTag == TT_Data or tn->typeTag == TT_TaggedUnion){
         auto *dty = (AnDataType*)tn;
 
-        return AnDataType::getVariant(c, dty, bindings, dty->mods);
+        return AnDataType::getVariant(c, dty, bindings);
 
     }else if(tn->typeTag == TT_TypeVar){
         auto *tv = (AnTypeVarType*)tn;
@@ -313,17 +313,17 @@ AnType* bindGenericToType(Compiler *c, AnType *tn, const vector<pair<string, AnT
         for(auto *e : agg->extTys){
             exts.push_back(bindGenericToType(c, e, bindings));
         }
-        return AnAggregateType::get(tn->typeTag, exts, tn->mods);
+        return AnAggregateType::get(tn->typeTag, exts);
 
     }else if(tn->typeTag == TT_Ptr){
         auto *ptr = (AnPtrType*)tn;
         auto *ty = bindGenericToType(c, ptr->extTy, bindings);
-        return AnPtrType::get(ty, tn->mods);
+        return AnPtrType::get(ty);
 
     }else if(tn->typeTag == TT_Array){
         auto *arr = (AnArrayType*)tn;
         auto *ty = bindGenericToType(c, arr->extTy, bindings);
-        return AnArrayType::get(ty, arr->len, tn->mods);
+        return AnArrayType::get(ty, arr->len);
 
     }else{
         return tn;
@@ -1186,65 +1186,65 @@ string typeNodeToStr(const TypeNode *t){
 }
 
 
-string _anTypeToStr(const AnType *t, AnModifier *m){
-    string mods = "";
+string anTypeToStr(const AnType *t){
     if(!t) return "(null)";
 
-    if(t->mods != m and m != (void*)1)
-        mods = modifiersToStr(t->mods);
+    /** Must check for modifiers first as they can be lost after dyn_cast */
+    if(t->isModifierType()){
+        if(auto *mod = dynamic_cast<const BasicModifier*>(t)){
+            return Lexer::getTokStr(mod->mod) + anTypeToStr(mod->extTy);
 
-    if(auto *dt = dyn_cast<AnDataType>(t)){
-        string n = mods + dt->name;
+        }else if(auto *cdmod = dynamic_cast<const CompilerDirectiveModifier*>(t)){
+            //TODO: modify printingvisitor to print to streams
+            // PrintingVisitor::print(cdmod->directive.get());
+            return anTypeToStr(cdmod->extTy);
+        }else{
+            return "(unknown modifier type)";
+        }
+    }else if(auto *dt = dyn_cast<AnDataType>(t)){
+        string n = dt->name;
 
         if(!dt->boundGenerics.empty()){
             n += "<";
             for(auto &t : dt->boundGenerics){
                 if(&t == &dt->boundGenerics.back()){
-                    n += _anTypeToStr(t.second, m);
+                    n += anTypeToStr(t.second);
                 }else{
-                    n += _anTypeToStr(t.second, m) + ", ";
+                    n += anTypeToStr(t.second) + ", ";
                 }
             }
             n += ">";
         }
         return n;
     }else if(auto *tvt = dyn_cast<AnTypeVarType>(t)){
-        return mods + tvt->name;
+        return tvt->name;
     }else if(auto *f = dyn_cast<AnFunctionType>(t)){
-        string ret = mods + "(";
-        string retTy = _anTypeToStr(f->retTy, t->mods);
+        string ret = "(";
+        string retTy = anTypeToStr(f->retTy);
         for(auto *param : f->extTys){
-            ret += _anTypeToStr(param, t->mods);
+            ret += anTypeToStr(param);
             if(param) ret += ",";
         }
         return ret + ")->" + retTy;
     }else if(auto *tup = dyn_cast<AnAggregateType>(t)){
-        string ret = mods + "(";
+        string ret = "(";
         if(tup->extTys.empty())
             return ret + ")";
 
         for(const auto &ext : tup->extTys){
             if(&ext != &tup->extTys.back())
-                ret += _anTypeToStr(ext, t->mods) + ", ";
+                ret += anTypeToStr(ext) + ", ";
             else
-                ret += _anTypeToStr(ext, t->mods) + ")";
+                ret += anTypeToStr(ext) + ")";
         }
         return ret;
     }else if(auto *arr = dyn_cast<AnArrayType>(t)){
-        return mods + '[' + to_string(arr->len) + " " + _anTypeToStr(arr->extTy, t->mods) + ']';
+        return '[' + to_string(arr->len) + " " + anTypeToStr(arr->extTy) + ']';
     }else if(auto *ptr = dyn_cast<AnPtrType>(t)){
-        return mods + _anTypeToStr(ptr->extTy, t->mods) + "*";
+        return anTypeToStr(ptr->extTy) + "*";
     }else{
-        return mods + typeTagToStr(t->typeTag);
+        return typeTagToStr(t->typeTag);
     }
-}
-
-string anTypeToStr(const AnType *t){
-    return _anTypeToStr(t, nullptr);
-}
-
-string anTypeToStrWithoutModifiers(const AnType *t){
-    return _anTypeToStr(t, (AnModifier*)1);
 }
 
 

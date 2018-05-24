@@ -9,7 +9,7 @@ namespace ante {
     AnTypeContainer typeArena;
 
     void AnType::dump() const{
-        if(auto *dt = llvm::dyn_cast<AnDataType>(this)){
+        if(auto *dt = try_cast<AnDataType>(this)){
             cout << dt->name;
             if(!dt->generics.empty()){
                 cout << "[";
@@ -52,22 +52,12 @@ namespace ante {
 
 
     bool AnType::hasModifier(TokenType m) const{
-        if(!mods) return false;
-        return std::find(mods->modifiers.cbegin(), mods->modifiers.cend(), m) != mods->modifiers.end();
+        return false;
     }
 
     AnType* AnType::addModifier(TokenType m){
         if(m == Tok_Let) return this;
-        if(mods){
-            if(hasModifier(m)){
-                return this;
-            }else{
-                auto modifiers = mods->modifiers;
-                modifiers.push_back(m);
-                return AnType::getPrimitive(typeTag, AnModifier::get(modifiers));
-            }
-        }
-        return AnType::getPrimitive(typeTag, AnModifier::get({m}));
+        return BasicModifier::get(this, m);
     }
 
     unsigned short AnDataType::getTagVal(std::string &name){
@@ -82,20 +72,16 @@ namespace ante {
         throw new CtError();
     }
 
-    string modifiersToStr(const AnModifier *m){
-        string ret = "";
-        if(m)
-            for(auto tok : m->modifiers)
-                ret += Lexer::getTokStr(tok) + " ";
-        return ret;
-    }
-
-    string typeTagToStrWithModifiers(TypeTag tag, AnModifier *m){
-        return modifiersToStr(m) + typeTagToStr(tag);
-    }
+    //string modifiersToStr(const AnModifier *m){
+    //    string ret = "";
+    //    if(m)
+    //        for(auto tok : m->modifiers)
+    //            ret += Lexer::getTokStr(tok) + " ";
+    //    return ret;
+    //}
 
     template<typename T>
-    T* search(llvm::StringMap<unique_ptr<T>> &map, string &key){
+    T* search(llvm::StringMap<unique_ptr<T>> &map, string const& key){
         auto it = map.find(key);
         if(it != map.end())
             return it->getValue().get();
@@ -108,41 +94,30 @@ namespace ante {
         map.insert(entry);
     }
 
-    AnType* AnType::getPrimitive(TypeTag tag, AnModifier *m){
-        if(!m){
-            switch(tag){
-                case TT_I8:           return typeArena.primitiveTypes[tag].get();
-                case TT_I16:          return typeArena.primitiveTypes[tag].get();
-                case TT_I32:          return typeArena.primitiveTypes[tag].get();
-                case TT_I64:          return typeArena.primitiveTypes[tag].get();
-                case TT_Isz:          return typeArena.primitiveTypes[tag].get();
-                case TT_U8:           return typeArena.primitiveTypes[tag].get();
-                case TT_U16:          return typeArena.primitiveTypes[tag].get();
-                case TT_U32:          return typeArena.primitiveTypes[tag].get();
-                case TT_U64:          return typeArena.primitiveTypes[tag].get();
-                case TT_Usz:          return typeArena.primitiveTypes[tag].get();
-                case TT_F16:          return typeArena.primitiveTypes[tag].get();
-                case TT_F32:          return typeArena.primitiveTypes[tag].get();
-                case TT_F64:          return typeArena.primitiveTypes[tag].get();
-                case TT_C8:           return typeArena.primitiveTypes[tag].get();
-                case TT_C32:          return typeArena.primitiveTypes[tag].get();
-                case TT_Bool:         return typeArena.primitiveTypes[tag].get();
-                case TT_Void:         return typeArena.primitiveTypes[tag].get();
-                case TT_Type:         return typeArena.primitiveTypes[tag].get();
-                case TT_FunctionList: return typeArena.primitiveTypes[tag].get();
-                default:
-                    cerr << "error: AnType::getPrimitive: TypeTag " << typeTagToStr(tag) << " is not primitive!\n";
-                    throw new CtError();
-            }
-        }else{
-            string key = typeTagToStrWithModifiers(tag, m);
-
-            auto existing_ty = search(typeArena.otherTypes, key);
-            if(existing_ty) return existing_ty;
-
-            auto *ty = new AnType(tag, false, 1, m);
-            addKVPair(typeArena.otherTypes, key, ty);
-            return ty;
+    AnType* AnType::getPrimitive(TypeTag tag){
+        switch(tag){
+            case TT_I8:           return typeArena.primitiveTypes[tag].get();
+            case TT_I16:          return typeArena.primitiveTypes[tag].get();
+            case TT_I32:          return typeArena.primitiveTypes[tag].get();
+            case TT_I64:          return typeArena.primitiveTypes[tag].get();
+            case TT_Isz:          return typeArena.primitiveTypes[tag].get();
+            case TT_U8:           return typeArena.primitiveTypes[tag].get();
+            case TT_U16:          return typeArena.primitiveTypes[tag].get();
+            case TT_U32:          return typeArena.primitiveTypes[tag].get();
+            case TT_U64:          return typeArena.primitiveTypes[tag].get();
+            case TT_Usz:          return typeArena.primitiveTypes[tag].get();
+            case TT_F16:          return typeArena.primitiveTypes[tag].get();
+            case TT_F32:          return typeArena.primitiveTypes[tag].get();
+            case TT_F64:          return typeArena.primitiveTypes[tag].get();
+            case TT_C8:           return typeArena.primitiveTypes[tag].get();
+            case TT_C32:          return typeArena.primitiveTypes[tag].get();
+            case TT_Bool:         return typeArena.primitiveTypes[tag].get();
+            case TT_Void:         return typeArena.primitiveTypes[tag].get();
+            case TT_Type:         return typeArena.primitiveTypes[tag].get();
+            case TT_FunctionList: return typeArena.primitiveTypes[tag].get();
+            default:
+                cerr << "error: AnType::getPrimitive: TypeTag " << typeTagToStr(tag) << " is not primitive!\n";
+                throw new CtError();
         }
     }
 
@@ -208,57 +183,68 @@ namespace ante {
     }
 
 
-    string getKey(const std::vector<TokenType> &mods){
-        string ret = "";
-        for(auto m : mods){
-            ret += Lexer::getTokStr(m) + " ";
-        }
+    string getKey(const AnType *modifiedType, TokenType mod){
+        return to_string(mod) + anTypeToStr(modifiedType);
+    }
+
+    BasicModifier* BasicModifier::get(AnType *modifiedType, TokenType mod){
+        auto key = getKey(modifiedType, mod);
+
+        auto *existing_ty = search(typeArena.modifiers, key);
+        if(existing_ty) return static_cast<BasicModifier*>(existing_ty);
+
+        auto ret = new BasicModifier(modifiedType, mod);
+        addKVPair(typeArena.modifiers, key, (AnModifier*)ret);
         return ret;
     }
 
-    AnModifier* AnModifier::get(const std::vector<TokenType> modifiers){
-        auto key = getKey(modifiers);
+    /** NOTE: this treats all directives as different and will break
+     * reference equality for these types.  In practice this is not too
+     * problematic as it is impossible to compare the arbitrary expressions
+     * anyways. */
+    string getKey(const AnType *modifiedType, Node* directive){
+        return to_string((size_t)directive);
+    }
+    
+    CompilerDirectiveModifier* CompilerDirectiveModifier::get(AnType *modifiedType,
+            std::shared_ptr<Node> &directive){
+
+        auto key = getKey(modifiedType, directive.get());
 
         auto *existing_ty = search(typeArena.modifiers, key);
-        if(existing_ty) return existing_ty;
+        if(existing_ty) return static_cast<CompilerDirectiveModifier*>(existing_ty);
 
-        auto mod = new AnModifier(modifiers);
-        addKVPair(typeArena.modifiers, key, mod);
-        return mod;
+        auto ret = new CompilerDirectiveModifier(modifiedType, directive);
+        addKVPair(typeArena.modifiers, key, (AnModifier*)ret);
+        return ret;
+    }
+    
+    CompilerDirectiveModifier* CompilerDirectiveModifier::get(AnType *modifiedType, Node *directive){
+        shared_ptr<Node> dir{directive};
+        return CompilerDirectiveModifier::get(modifiedType, dir);
     }
 
 
     AnPtrType* AnType::getPtr(AnType* ext){ return AnPtrType::get(ext); }
-    AnPtrType* AnPtrType::get(AnType* ext, AnModifier *m){
-        if(!m){
-            try{
-                auto *ptr = typeArena.ptrTypes.at(ext).get();
-                return ptr;
-            }catch(out_of_range r){
-                auto ptr = new AnPtrType(ext, nullptr);
-                typeArena.ptrTypes.emplace(ext, ptr);
-                return ptr;
-            }
-        }else{
-            string key = modifiersToStr(m) + anTypeToStr(ext) + "*";
-
-            auto *existing_ty = search(typeArena.otherTypes, key);
-            if(existing_ty) return (AnPtrType*)existing_ty;
-
-            auto ptr = new AnPtrType(ext, m);
-            addKVPair(typeArena.otherTypes, key, (AnType*)ptr);
+    AnPtrType* AnPtrType::get(AnType* ext){
+        try{
+            auto *ptr = typeArena.ptrTypes.at(ext).get();
+            return ptr;
+        }catch(out_of_range r){
+            auto ptr = new AnPtrType(ext);
+            typeArena.ptrTypes.emplace(ext, ptr);
             return ptr;
         }
     }
 
     AnArrayType* AnType::getArray(AnType* t, size_t len){ return AnArrayType::get(t,len); }
-    AnArrayType* AnArrayType::get(AnType* t, size_t len, AnModifier *m){
-        auto key = modifiersToStr(m) + to_string(len) + anTypeToStr(t);
+    AnArrayType* AnArrayType::get(AnType* t, size_t len){
+        auto key = to_string(len) + anTypeToStr(t);
 
         auto existing_ty = search(typeArena.arrayTypes, key);
         if(existing_ty) return existing_ty;
 
-        auto arr = new AnArrayType(t, len, m);
+        auto arr = new AnArrayType(t, len);
         addKVPair(typeArena.arrayTypes, key, arr);
         return arr;
     }
@@ -277,18 +263,18 @@ namespace ante {
         return AnAggregateType::get(t, exts);
     }
 
-    AnAggregateType* AnAggregateType::get(TypeTag t, const std::vector<AnType*> exts, AnModifier *m){
-        auto key = modifiersToStr(m) + typeTagToStr(t) + getKey(exts);
+    AnAggregateType* AnAggregateType::get(TypeTag t, const std::vector<AnType*> exts){
+        auto key = typeTagToStr(t) + getKey(exts);
 
         auto existing_ty = search(typeArena.aggregateTypes, key);
         if(existing_ty) return existing_ty;
 
-        auto agg = new AnAggregateType(t, exts, m);
+        auto agg = new AnAggregateType(t, exts);
         addKVPair(typeArena.aggregateTypes, key, agg);
         return agg;
     }
 
-    AnFunctionType* AnFunctionType::get(Compiler *c, AnType* retty, NamedValNode* params, bool isMetaFunction, AnModifier *m){
+    AnFunctionType* AnFunctionType::get(Compiler *c, AnType* retty, NamedValNode* params, bool isMetaFunction){
         vector<AnType*> extTys;
 
         while(params && params->typeExpr.get()){
@@ -297,17 +283,17 @@ namespace ante {
             extTys.push_back(aty);
             params = (NamedValNode*)params->next.get();
         }
-        return AnFunctionType::get(retty, extTys, isMetaFunction, m);
+        return AnFunctionType::get(retty, extTys, isMetaFunction);
     }
 
 
-    AnFunctionType* AnFunctionType::get(AnType *retTy, const std::vector<AnType*> elems, bool isMetaFunction, AnModifier *m){
-        auto key = modifiersToStr(m) + (isMetaFunction ? "1":"0") + getKey(elems) + "->" + anTypeToStr(retTy);
+    AnFunctionType* AnFunctionType::get(AnType *retTy, const std::vector<AnType*> elems, bool isMetaFunction){
+        auto key = (isMetaFunction ? "1":"0") + getKey(elems) + "->" + anTypeToStr(retTy);
 
         auto existing_ty = search(typeArena.functionTypes, key);
         if(existing_ty) return existing_ty;
 
-        auto f = new AnFunctionType(retTy, elems, isMetaFunction, m);
+        auto f = new AnFunctionType(retTy, elems, isMetaFunction);
 
         addKVPair(typeArena.functionTypes, key, f);
         return f;
@@ -318,13 +304,13 @@ namespace ante {
         return AnTypeVarType::get(name);
     }
 
-    AnTypeVarType* AnTypeVarType::get(std::string name, AnModifier *m){
-        string key = modifiersToStr(m) + name;
+    AnTypeVarType* AnTypeVarType::get(std::string name){
+        string &key = name;
 
         auto existing_ty = search(typeArena.typeVarTypes, key);
         if(existing_ty) return existing_ty;
 
-        auto tvar = new AnTypeVarType(name, m);
+        auto tvar = new AnTypeVarType(name);
         addKVPair(typeArena.typeVarTypes, key, tvar);
         return tvar;
     }
@@ -334,41 +320,36 @@ namespace ante {
     }
 
 
-    AnDataType* AnDataType::get(string const& name, AnModifier *m){
-        string key = modifiersToStr(m) + name;
+    AnDataType* AnDataType::get(string const& name){
+        string const& key = name;
 
         auto existing_ty = search(typeArena.declaredTypes, key);
         if(existing_ty) return existing_ty;
 
-        if(m){
-            auto dt = AnDataType::get(name, nullptr);
-            return dt->setModifier(m);
-        }else{
-            auto decl = new AnDataType(name, {}, false, m);
-            addKVPair(typeArena.declaredTypes, key, decl);
-            return decl;
-        }
+        auto decl = new AnDataType(name, {}, false);
+        addKVPair(typeArena.declaredTypes, key, decl);
+        return decl;
     }
 
     /**
      * Returns the unique key for the given variant and modifier pair.
      */
-    string variantKey(const AnDataType *variant, AnModifier *m){
-        return modifiersToStr(m) + anTypeToStr(variant);
+    string variantKey(const AnDataType *variant){
+        return anTypeToStr(variant);
     }
 
-    AnDataType* AnDataType::getOrCreate(std::string const& name, std::vector<AnType*> const& elems, bool isUnion, AnModifier *m){
-        string key = modifiersToStr(m) + name;
+    AnDataType* AnDataType::getOrCreate(std::string const& name, std::vector<AnType*> const& elems, bool isUnion){
+        string const& key = name;
 
         auto existing_ty = search(typeArena.declaredTypes, key);
         if(existing_ty) return existing_ty;
 
         //create declaration w/out definition
-        return AnDataType::create(name, elems, isUnion, {}, m);
+        return AnDataType::create(name, elems, isUnion, {});
     }
 
-    AnDataType* AnDataType::getOrCreate(const AnDataType *dt, AnModifier *m){
-        string key = modifiersToStr(m) + anTypeToStr(dt);
+    AnDataType* AnDataType::getOrCreate(const AnDataType *dt){
+        string key = anTypeToStr(dt);
 
         if(dt->isVariant()){
             auto existing_ty = search(typeArena.genericVariants, key);
@@ -384,19 +365,13 @@ namespace ante {
         //Store the new dt in genericVariants or the standard container depending
         //on if it is a generic variant or parent type / non generic type.
         if(dt->isVariant()){
-            ret = new AnDataType(dt->unboundType->name, {}, false, m);
-            addKVPair(typeArena.genericVariants, variantKey(dt, m), ret);
+            ret = new AnDataType(dt->unboundType->name, {}, false);
+            addKVPair(typeArena.genericVariants, variantKey(dt), ret);
         }else{
-            ret = AnDataType::create(dt->name, {}, dt->typeTag == TT_TaggedUnion, dt->generics, m);
+            ret = AnDataType::create(dt->name, {}, dt->typeTag == TT_TaggedUnion, dt->generics);
         }
 
-        auto elems = vecOf<AnType*>(dt->extTys.size());
-        for(auto *ty : dt->extTys){
-            auto *mod_type = ty->setModifier(m);
-            elems.emplace_back(mod_type);
-        }
-
-        ret->extTys = elems;
+        ret->extTys = dt->extTys;
         ret->isGeneric = dt->isGeneric;
         ret->fields = dt->fields;
         ret->tags = dt->tags;
@@ -556,7 +531,7 @@ namespace ante {
      * the given generic type specified by unboundType.
      */
     AnDataType* bindVariant(Compiler *c, AnDataType *unboundType, const std::vector<std::pair<std::string,
-            AnType*>> &bindings, AnModifier *m, AnDataType *variant){
+            AnType*>> &bindings, AnDataType *variant){
 
         auto boundExts = vecOf<AnType*>(unboundType->extTys.size());
 
@@ -659,7 +634,7 @@ namespace ante {
      * unboundType and creates it if it has not been
      * previously bound.
      */
-    AnDataType* AnDataType::getVariant(Compiler *c, AnDataType *unboundType, vector<pair<string, AnType*>> const& boundTys, AnModifier *m){
+    AnDataType* AnDataType::getVariant(Compiler *c, AnDataType *unboundType, vector<pair<string, AnType*>> const& boundTys){
         auto filteredBindings = filterMatchingBindings(unboundType, boundTys);
 
         filteredBindings = flatten(c, unboundType, filteredBindings);
@@ -673,10 +648,10 @@ namespace ante {
         if(variant)
             return variant;
 
-        variant = new AnDataType(unboundType->name, {}, false, unboundType->mods);
+        variant = new AnDataType(unboundType->name, {}, false);
 
-        addKVPair(typeArena.genericVariants, variantKey(variant, m), variant);
-        return bindVariant(c, unboundType, filteredBindings, m, variant);
+        addKVPair(typeArena.genericVariants, variantKey(variant), variant);
+        return bindVariant(c, unboundType, filteredBindings, variant);
     }
 
     /*
@@ -685,8 +660,8 @@ namespace ante {
      * previously bound.  Will fail if the given name does
      * not correspond to any defined type.
      */
-    AnDataType* AnDataType::getVariant(Compiler *c, string const& name, vector<pair<string, AnType*>> const& boundTys, AnModifier *m){
-        auto *unboundType = AnDataType::get(name, m);
+    AnDataType* AnDataType::getVariant(Compiler *c, string const& name, vector<pair<string, AnType*>> const& boundTys){
+        auto *unboundType = AnDataType::get(name);
         if(unboundType->isStub()){
             cerr << "Warning: Cannot bind undeclared type " << name << endl;
             return unboundType;
@@ -704,13 +679,13 @@ namespace ante {
         if(variant)
             return variant;
 
-        variant = new AnDataType(unboundType->name, {}, false, m);
-        addKVPair(typeArena.genericVariants, variantKey(variant, m), variant);
-        return bindVariant(c, unboundType, filteredBindings, m, variant);
+        variant = new AnDataType(unboundType->name, {}, false);
+        addKVPair(typeArena.genericVariants, variantKey(variant), variant);
+        return bindVariant(c, unboundType, filteredBindings, variant);
     }
 
-    AnDataType* AnDataType::create(string const& name, vector<AnType*> const& elems, bool isUnion, vector<AnTypeVarType*> const& generics, AnModifier *m){
-        string key = modifiersToStr(m) + getBoundName(name, generics);
+    AnDataType* AnDataType::create(string const& name, vector<AnType*> const& elems, bool isUnion, vector<AnTypeVarType*> const& generics){
+        string key = getBoundName(name, generics);
 
         AnDataType *dt = search(typeArena.declaredTypes, key);
 
@@ -722,44 +697,37 @@ namespace ante {
                 return dt;
             }
         }else{
-            dt = new AnDataType(name, {}, isUnion, m);
+            dt = new AnDataType(name, {}, isUnion);
             addKVPair(typeArena.declaredTypes, key, dt);
         }
 
         dt->isGeneric = !generics.empty();
         dt->generics = generics;
-
-        auto elemsWithMods = vecOf<AnType*>(elems.size());
-        for(auto *ty : elems){
-            auto *mod_type = ty->setModifier(m);
-            elemsWithMods.emplace_back(mod_type);
-        }
-
-        dt->extTys = elemsWithMods;
+        dt->extTys = elems;
         return dt;
     }
 
     //Constructor for AnTypeContainer, initializes all primitive types beforehand
     AnTypeContainer::AnTypeContainer(){
-        primitiveTypes[TT_I8].reset(new AnType(TT_I8, false, 1, nullptr));
-        primitiveTypes[TT_I16].reset(new AnType(TT_I16, false, 1, nullptr));
-        primitiveTypes[TT_I32].reset(new AnType(TT_I32, false, 1, nullptr));
-        primitiveTypes[TT_I64].reset(new AnType(TT_I64, false, 1, nullptr));
-        primitiveTypes[TT_Isz].reset(new AnType(TT_Isz, false, 1, nullptr));
-        primitiveTypes[TT_U8].reset(new AnType(TT_U8, false, 1, nullptr));
-        primitiveTypes[TT_U16].reset(new AnType(TT_U16, false, 1, nullptr));
-        primitiveTypes[TT_U32].reset(new AnType(TT_U32, false, 1, nullptr));
-        primitiveTypes[TT_U64].reset(new AnType(TT_U64, false, 1, nullptr));
-        primitiveTypes[TT_Usz].reset(new AnType(TT_Usz, false, 1, nullptr));
-        primitiveTypes[TT_F16].reset(new AnType(TT_F16, false, 1, nullptr));
-        primitiveTypes[TT_F32].reset(new AnType(TT_F32, false, 1, nullptr));
-        primitiveTypes[TT_F64].reset(new AnType(TT_F64, false, 1, nullptr));
-        primitiveTypes[TT_Bool].reset(new AnType(TT_Bool, false, 1, nullptr));
-        primitiveTypes[TT_Void].reset(new AnType(TT_Void, false, 1, nullptr));
-        primitiveTypes[TT_C8].reset(new AnType(TT_C8, false, 1, nullptr));
-        primitiveTypes[TT_C32].reset(new AnType(TT_C32, false, 1, nullptr));
-        primitiveTypes[TT_Type].reset(new AnType(TT_Type, false, 1, nullptr));
-        primitiveTypes[TT_FunctionList].reset(new AnType(TT_FunctionList, false, 1, nullptr));
+        primitiveTypes[TT_I8].reset(new AnType(TT_I8, false, 1));
+        primitiveTypes[TT_I16].reset(new AnType(TT_I16, false, 1));
+        primitiveTypes[TT_I32].reset(new AnType(TT_I32, false, 1));
+        primitiveTypes[TT_I64].reset(new AnType(TT_I64, false, 1));
+        primitiveTypes[TT_Isz].reset(new AnType(TT_Isz, false, 1));
+        primitiveTypes[TT_U8].reset(new AnType(TT_U8, false, 1));
+        primitiveTypes[TT_U16].reset(new AnType(TT_U16, false, 1));
+        primitiveTypes[TT_U32].reset(new AnType(TT_U32, false, 1));
+        primitiveTypes[TT_U64].reset(new AnType(TT_U64, false, 1));
+        primitiveTypes[TT_Usz].reset(new AnType(TT_Usz, false, 1));
+        primitiveTypes[TT_F16].reset(new AnType(TT_F16, false, 1));
+        primitiveTypes[TT_F32].reset(new AnType(TT_F32, false, 1));
+        primitiveTypes[TT_F64].reset(new AnType(TT_F64, false, 1));
+        primitiveTypes[TT_Bool].reset(new AnType(TT_Bool, false, 1));
+        primitiveTypes[TT_Void].reset(new AnType(TT_Void, false, 1));
+        primitiveTypes[TT_C8].reset(new AnType(TT_C8, false, 1));
+        primitiveTypes[TT_C32].reset(new AnType(TT_C32, false, 1));
+        primitiveTypes[TT_Type].reset(new AnType(TT_Type, false, 1));
+        primitiveTypes[TT_FunctionList].reset(new AnType(TT_FunctionList, false, 1));
     }
 
 
@@ -767,19 +735,10 @@ namespace ante {
         return ((AnFunctionType*)this)->retTy;
     }
 
-    string typeNodeToStrWithModifiers(const TypeNode *tn){
-        string ret = "";
-        for(auto mod : tn->modifiers){
-            ret += Lexer::getTokStr(mod) + " ";
-        }
-        return ret + typeNodeToStr(tn);
-    }
-
 
     AnType* toAnType(Compiler *c, const TypeNode *tn){
         if(!tn) return AnType::getVoid();
 
-        auto *mods = tn->modifiers.empty() ? nullptr : AnModifier::get(tn->modifiers);
         switch(tn->type){
             case TT_I8:
             case TT_I16:
@@ -798,7 +757,7 @@ namespace ante {
             case TT_C32:
             case TT_Bool:
             case TT_Void:
-                return AnType::getPrimitive(tn->type, mods);
+                return AnType::getPrimitive(tn->type);
 
             case TT_Function:
             case TT_MetaFunction:
@@ -814,7 +773,7 @@ namespace ante {
                     }
                     ext = (TypeNode*)ext->next.get();
                 }
-                return AnFunctionType::get(ret, tys, tn->type == TT_MetaFunction, mods);
+                return AnFunctionType::get(ret, tys, tn->type == TT_MetaFunction);
             }
             case TT_Tuple: {
                 TypeNode *ext = tn->extTy.get();
@@ -823,16 +782,16 @@ namespace ante {
                     tys.push_back(toAnType(c, (TypeNode*)ext));
                     ext = (TypeNode*)ext->next.get();
                 }
-                return AnAggregateType::get(TT_Tuple, tys, mods);
+                return AnAggregateType::get(TT_Tuple, tys);
             }
 
             case TT_Array: {
                 TypeNode *elemTy = tn->extTy.get();
                 IntLitNode *len = (IntLitNode*)elemTy->next.get();
-                return AnArrayType::get(toAnType(c, elemTy), len ? stoi(len->val) : 0, mods);
+                return AnArrayType::get(toAnType(c, elemTy), len ? stoi(len->val) : 0);
             }
             case TT_Ptr:
-                return AnPtrType::get(toAnType(c, tn->extTy.get()), mods);
+                return AnPtrType::get(toAnType(c, tn->extTy.get()));
             case TT_Data:
             case TT_TaggedUnion: {
                 if(!tn->params.empty()){
@@ -840,193 +799,59 @@ namespace ante {
                     for(auto &t : tn->params)
                         bindings.emplace_back(toAnType(c, t.get()));
 
-                    auto *basety = AnDataType::get(tn->typeName, mods);
+                    auto *basety = AnDataType::get(tn->typeName);
 
                     return (AnDataType*)bindGenericToType(c, basety, bindings, basety);
                 }else{
-                    return AnDataType::get(tn->typeName, mods);
+                    return AnDataType::get(tn->typeName);
                 }
             }
             case TT_TypeVar:
-                return AnTypeVarType::get(tn->typeName, mods);
+                return AnTypeVarType::get(tn->typeName);
             default:
                 cerr << "Unknown TypeTag " << typeTagToStr(tn->type) << endl;
                 return nullptr;
         }
     }
 
-    AnAggregateType* AnAggregateType::addModifier(TokenType m){
+    AnType* BasicModifier::addModifier(TokenType m){
         if(m == Tok_Let) return this;
-        if(mods){
-            if(hasModifier(m)){
-                return this;
-            }else{
-                auto modifiers = mods->modifiers;
-                modifiers.push_back(m);
-                auto *anmod = AnModifier::get(modifiers);
-
-                auto modded_exts = vecOf<AnType*>(extTys.size());
-                for(auto &ext : extTys){
-                    modded_exts.emplace_back(ext->setModifier(anmod));
-                }
-
-                return AnAggregateType::get(typeTag, modded_exts, anmod);
-            }
-        }
-
-        auto *anmod = AnModifier::get({m});
-
-        auto modded_exts = vecOf<AnType*>(extTys.size());
-        for(auto &ext : extTys){
-            modded_exts.emplace_back(ext->setModifier(anmod));
-        }
-        return AnAggregateType::get(typeTag, modded_exts, anmod);
+        return mod == m ? this :
+            BasicModifier::get(extTy->addModifier(m), mod);
     }
 
-    AnArrayType* AnArrayType::addModifier(TokenType m){
+    AnType* CompilerDirectiveModifier::addModifier(TokenType m){
         if(m == Tok_Let) return this;
-        if(mods){
-            if(hasModifier(m)){
-                return this;
-            }else{
-                auto modifiers = mods->modifiers;
-                modifiers.push_back(m);
-                auto *anmod = AnModifier::get(modifiers);
-                return AnArrayType::get(extTy->setModifier(anmod), len, anmod);
-            }
-        }
-        auto *anmod = AnModifier::get({m});
-        return AnArrayType::get(extTy->setModifier(anmod), len, anmod);
+        return CompilerDirectiveModifier::get(extTy->addModifier(m), directive);
     }
 
-    AnPtrType* AnPtrType::addModifier(TokenType m){
+    AnType* AnAggregateType::addModifier(TokenType m){
         if(m == Tok_Let) return this;
-        if(mods){
-            if(hasModifier(m)){
-                return this;
-            }else{
-                auto modifiers = mods->modifiers;
-                modifiers.push_back(m);
-                auto mods = AnModifier::get(modifiers);
-                return AnPtrType::get(extTy->setModifier(mods), mods);
-            }
-        }
-        auto mods = AnModifier::get({m});
-        return AnPtrType::get(extTy->setModifier(mods), mods);
+        return BasicModifier::get(this, m);
     }
 
-    AnTypeVarType* AnTypeVarType::addModifier(TokenType m){
+    AnType* AnArrayType::addModifier(TokenType m){
         if(m == Tok_Let) return this;
-        if(mods){
-            if(hasModifier(m)){
-                return this;
-            }else{
-                auto modifiers = mods->modifiers;
-                modifiers.push_back(m);
-                return AnTypeVarType::get(name, AnModifier::get(modifiers));
-            }
-        }
-        return AnTypeVarType::get(name, AnModifier::get({m}));
+        return BasicModifier::get(this, m);
     }
 
-    AnFunctionType* AnFunctionType::addModifier(TokenType m){
+    AnType* AnPtrType::addModifier(TokenType m){
         if(m == Tok_Let) return this;
-        if(mods){
-            if(hasModifier(m)){
-                return this;
-            }else{
-                auto modifiers = mods->modifiers;
-                modifiers.push_back(m);
-                return AnFunctionType::get(retTy, extTys,
-                        typeTag == TT_MetaFunction, AnModifier::get(modifiers));
-            }
-        }
-        return AnFunctionType::get(retTy, extTys,
-                typeTag == TT_MetaFunction, AnModifier::get({m}));
+        return BasicModifier::get(this, m);
     }
 
-    AnDataType* AnDataType::addModifier(TokenType m){
+    AnType* AnTypeVarType::addModifier(TokenType m){
         if(m == Tok_Let) return this;
-        if(mods){
-            if(hasModifier(m)){
-                return this;
-            }else{
-                auto modifiers = mods->modifiers;
-                modifiers.push_back(m);
-                return AnDataType::getOrCreate(this, AnModifier::get(modifiers));
-            }
-        }
-        return AnDataType::getOrCreate(this, AnModifier::get({m}));
+        return BasicModifier::get(this, m);
     }
 
-    AnType* AnType::setModifier(AnModifier *m){
-        if(this->mods == m){
-            return this;
-        }else{
-            return AnType::getPrimitive(typeTag, m);
-        }
+    AnType* AnFunctionType::addModifier(TokenType m){
+        if(m == Tok_Let) return this;
+        return BasicModifier::get(this, m);
     }
 
-    AnAggregateType* AnAggregateType::setModifier(AnModifier *m){
-        if(this->mods == m){
-            return this;
-        }else{
-            auto exts = vecOf<AnType*>(extTys.size());
-            for(auto &ext : extTys){
-                auto *mod_type = ext->setModifier(m);
-                exts.emplace_back(mod_type);
-            }
-            return AnAggregateType::get(typeTag, exts, m);
-        }
-    }
-
-    AnArrayType* AnArrayType::setModifier(AnModifier *m){
-        if(this->mods == m){
-            return this;
-        }else{
-            return AnArrayType::get(extTy->setModifier(m), len, m);
-        }
-    }
-
-    AnPtrType* AnPtrType::setModifier(AnModifier *m){
-        if(this->mods == m){
-            return this;
-        }else{
-            return AnPtrType::get(extTy->setModifier(m), m);
-        }
-    }
-
-    AnTypeVarType* AnTypeVarType::setModifier(AnModifier *m){
-        if(this->mods == m){
-            return this;
-        }else{
-            return AnTypeVarType::get(name, m);
-        }
-    }
-
-    /*
-     *  Set modifiers to an AnFunctionType, although unlike other AggregateTypes,
-     *  the set modifiers do not apply to each of the extTys of the function as
-     *  it would otherwise change the function signature when simply trying to
-     *  make a mutable function pointer.
-     */
-    AnFunctionType* AnFunctionType::setModifier(AnModifier *m){
-        if(this->mods == m){
-            return this;
-        }else{
-            //vector<AnType*> exts(extTys.size());
-            //for(auto &ext : extTys){
-            //    exts.emplace_back(ext);
-            //}
-            return AnFunctionType::get(retTy, extTys, typeTag == TT_MetaFunction, m);
-        }
-    }
-
-    AnDataType* AnDataType::setModifier(AnModifier *m){
-        if(this->mods == m){
-            return this;
-        }else{
-            return AnDataType::getOrCreate(this, m);
-        }
+    AnType* AnDataType::addModifier(TokenType m){
+        if(m == Tok_Let) return this;
+        return BasicModifier::get(this, m);
     }
 }

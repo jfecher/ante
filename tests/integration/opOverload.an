@@ -4,10 +4,10 @@ fun (+): Str l r -> Str
     let len = l.len + r.len
     mut buf = malloc len
 
-    memcpy buf (void* l.cStr) l.len
-    memcpy (void* (u64 buf + l.len)) (void* r.cStr) r.len
+    memcpy buf (&void l.cStr) l.len
+    memcpy (&void (u64 buf + l.len)) (&void r.cStr) r.len
 
-    Str(c8* buf, len)
+    Str(&c8 buf, len)
 
 
 print <| "test" + "ing"

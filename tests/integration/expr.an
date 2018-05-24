@@ -1,11 +1,11 @@
 
 type Expr =
-   | Add Expr*,Expr*
-   | Sub Expr*,Expr*
+   | Add &Expr,&Expr
+   | Sub &Expr,&Expr
    | Num i32
 
 
-fun eval: Expr* e -> i32
+fun eval: &Expr e -> i32
     match @e with
     | Add(l, r) -> eval l + eval r
     | Sub(l, r) -> eval l - eval r
