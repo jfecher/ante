@@ -327,14 +327,16 @@ vector<llvm::Argument*> buildArguments(FunctionType *ft){
  *  Handles the modifiers or compiler directives (eg. ![inline]) then
  *  compiles the function fdn with either compFn or compLetBindingFn.
  */
-TypedValue compFnWithModifiers(Compiler *c, FuncDecl *fd, ModNode *ppn){
+TypedValue compFnWithModifiers(Compiler *c, FuncDecl *fd, ModNode *mod){
     //remove the preproc node at the front of the modifier list so that the call to
     //compFn does not call this function in an infinite loop
     auto *fdn = fd->fdn.get();
+    fd->fdn->modifiers.back().release();
+    fd->fdn->modifiers.pop_back();
 
     TypedValue fn;
-    if(ppn->isCompilerDirective()){
-        if(VarNode *vn = dynamic_cast<VarNode*>(ppn->expr.get())){
+    if(mod->isCompilerDirective()){
+        if(VarNode *vn = dynamic_cast<VarNode*>(mod->expr.get())){
             if(vn->name == "inline"){
                 fn = c->compFn(fd);
                 if(!fn) return fn;
@@ -355,16 +357,18 @@ TypedValue compFnWithModifiers(Compiler *c, FuncDecl *fd, ModNode *ppn){
                 auto *fnty = AnFunctionType::get(c, toAnType(c, rettn), fdn->params.get(), true);
                 fn = TypedValue(nullptr, fnty);
             }else{
+                fd->fdn->modifiers.emplace_back(mod);
                 return c->compErr("Unrecognized compiler directive '"+vn->name+"'", vn->loc);
             }
 
             return fn;
         }else{
-            return c->compErr("Unrecognized compiler directive", ppn->loc);
+            fd->fdn->modifiers.emplace_back(mod);
+            return c->compErr("Unrecognized compiler directive", mod->loc);
         }
     // ppn is a normal modifier
     }else{
-        if(ppn->mod == Tok_Ante){
+        if(mod->mod == Tok_Ante){
             if(c->isJIT){
                 if(capi::lookup(fd->getName())){
                     fn = c->compFn(fd);
@@ -389,6 +393,7 @@ TypedValue compFnWithModifiers(Compiler *c, FuncDecl *fd, ModNode *ppn){
         }else{
             fn = c->compFn(fd);
         }
+        fd->fdn->modifiers.emplace_back(mod);
         return fn;
     }
 }
@@ -398,11 +403,11 @@ TypedValue compFnHelper(Compiler *c, FuncDecl *fd){
     BasicBlock *caller = c->builder.GetInsertBlock();
     auto *fdn = fd->fdn.get();
 
-    //if(ModNode *ppn = fdn->modifiers.get()){
-    //    auto ret = compFnWithModifiers(c, fd, ppn);
-    //    c->builder.SetInsertPoint(caller);
-    //    return ret;
-    //}
+    if(!fdn->modifiers.empty()){
+        auto ret = compFnWithModifiers(c, fd, fdn->modifiers.back().get());
+        c->builder.SetInsertPoint(caller);
+        return ret;
+    }
 
     //Get and translate the function's return type to an llvm::Type*
     TypeNode *retNode = (TypeNode*)fdn->type.get();
@@ -865,7 +870,7 @@ TypedValue Compiler::getCastFn(AnType *from_ty, AnType *to_ty, FuncDecl *fd){
     if(!fd) return {};
     TypedValue tv;
 
-    auto *to_ty_dt = dyn_cast<AnDataType>(to_ty);
+    auto *to_ty_dt = try_cast<AnDataType>(to_ty);
     if(to_ty_dt and to_ty_dt->isVariant()){
         AnType *unbound_obj = fd->obj;
         fd->obj = to_ty;

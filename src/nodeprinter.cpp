@@ -52,6 +52,13 @@ void PrintingVisitor::visit(RootNode *n){
     for(auto& f : n->main){ f->accept(*this); puts(";"); }
 }
 
+void printModifiers(PrintingVisitor &v, ModifiableNode *n){
+    for(auto it = n->modifiers.rbegin(); it != n->modifiers.rend(); ++it){
+        (*it)->accept(v);
+        putchar(' ');
+    }
+}
+
 void PrintingVisitor::visit(IntLitNode *n){
     cout << n->val;
     maybePrintArr(n->next.get());
@@ -100,16 +107,18 @@ void PrintingVisitor::visit(ModNode *n){
     if(n->isCompilerDirective()){
         cout << "![";
         n->directive->accept(*this);
-        puts("]");
-        n->expr->accept(*this);
+        putchar(']');
     }else{
         Lexer::printTok(n->mod);
+    }
+    if(n->expr){
         putchar(' ');
         n->expr->accept(*this);
     }
 }
 
 void PrintingVisitor::visit(TypeNode *n){
+    printModifiers(*this, n);
     cout << typeNodeToStr(n);
 }
 
@@ -208,14 +217,16 @@ void PrintingVisitor::visit(GlobalNode *n){
 }
 
 void PrintingVisitor::visit(VarAssignNode *n){
-    cout << "varAssign ";
+    printModifiers(*this, n);
+    cout << "varAssign <(";
     if(n->ref_expr) n->ref_expr->accept(*this);
-    cout << " = ";
-    if(n->expr) n->expr->accept(*this);
+    cout << ") = (";
+    if(n->expr) {n->expr->accept(*this); puts(")>"); }
     else cout << "(undef)";
 }
 
 void PrintingVisitor::visit(ExtNode *n){
+    printModifiers(*this, n);
     cout << "ext ";
     n->typeExpr->accept(*this);
     cout << "\n";
@@ -264,6 +275,7 @@ void PrintingVisitor::visit(MatchBranchNode *n){
 }
 
 void PrintingVisitor::visit(FuncDeclNode *n){
+    printModifiers(*this, n);
     bool isExtern = false;
     cout << "fun ";
 
@@ -291,6 +303,7 @@ void PrintingVisitor::visit(FuncDeclNode *n){
 }
 
 void PrintingVisitor::visit(DataDeclNode *n){
+    printModifiers(*this, n);
     cout << "type " << n->name;
     if(!n->generics.empty()){
         cout << "<";
@@ -320,6 +333,7 @@ void PrintingVisitor::visit(DataDeclNode *n){
 }
 
 void PrintingVisitor::visit(TraitNode *n){
+    printModifiers(*this, n);
     cout << "trait " << n->name << endl;
     printBlock(n->child.get());
     cout << "end of trait " << n->name << endl;

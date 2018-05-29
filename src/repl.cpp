@@ -394,7 +394,7 @@ namespace ante {
 		getch_mode = normal_mode | (ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT);
 #endif
     }
-    
+
     /**
      * Output a value from the REPL by using its print function if found.
      */

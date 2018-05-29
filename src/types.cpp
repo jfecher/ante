@@ -220,7 +220,7 @@ string toLlvmTypeName(const AnDataType *dt){
 
     string name = baseName + "<";
     for(auto &p : typeArgs){
-        if(AnDataType *ext = dyn_cast<AnDataType>(p.second))
+        if(AnDataType *ext = try_cast<AnDataType>(p.second))
             name += toLlvmTypeName(ext);
         else
             name += anTypeToStr(p.second);
@@ -250,7 +250,7 @@ Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt, bool force){
         ext = getLargestExt(c, dt, force);
 
     vector<Type*> tys;
-    if(auto *aggty = dyn_cast<AnAggregateType>(ext)){
+    if(auto *aggty = try_cast<AnAggregateType>(ext)){
         for(auto *e : aggty->extTys){
             auto *llvmTy = c->anTypeToLlvmType(e, force);
             if(!llvmTy->isVoidTy())
@@ -611,24 +611,28 @@ Type* Compiler::anTypeToLlvmType(const AnType *ty, bool force){
 
     switch(ty->typeTag){
         case TT_Ptr: {
-            auto *ptr = (AnPtrType*)ty;
+            auto *ptr = try_cast<AnPtrType>(ty);
             return ptr->extTy->typeTag != TT_Void ?
                 anTypeToLlvmType(ptr->extTy, force)->getPointerTo()
                 : Type::getInt8Ty(*ctxt)->getPointerTo();
         }
+        case TT_Type:
+            return Type::getInt8Ty(*ctxt)->getPointerTo();
         case TT_Array:{
-            auto *arr = (AnArrayType*)ty;
+            auto *arr = try_cast<AnArrayType>(ty);
             return ArrayType::get(anTypeToLlvmType(arr->extTy, force), arr->len);
         }
         case TT_Tuple:
-            for(auto *e : ((AnAggregateType*)ty)->extTys){
+            for(auto *e : try_cast<AnAggregateType>(ty)->extTys){
                 auto *ty = anTypeToLlvmType(e, force);
                 if(!ty->isVoidTy())
                     tys.push_back(ty);
             }
             return StructType::get(*ctxt, tys);
         case TT_Data: case TT_TaggedUnion: {
-            auto *dt = ((AnDataType*)ty);
+            //TODO: remove const from function
+            //updatellvmtypebinding breaks const correctness
+            auto *dt = (AnDataType*)try_cast<AnDataType>(ty);
             if(dt->isStub()){
                 return updateLlvmTypeBinding(this, dt, force);
                 //compErr("Use of undeclared type " + dt->name);
@@ -640,7 +644,7 @@ Type* Compiler::anTypeToLlvmType(const AnType *ty, bool force){
                 return updateLlvmTypeBinding(this, dt, force);
         }
         case TT_Function: case TT_MetaFunction: {
-            auto *f = ((AnAggregateType*)ty);
+            auto *f = try_cast<AnAggregateType>(ty);
             for(size_t i = 1; i < f->extTys.size(); i++){
                 tys.push_back(anTypeToLlvmType(f->extTys[i], force));
             }
@@ -648,7 +652,7 @@ Type* Compiler::anTypeToLlvmType(const AnType *ty, bool force){
             return FunctionType::get(anTypeToLlvmType(f->extTys[0], force), tys, false)->getPointerTo();
         }
         case TT_TypeVar: {
-            auto *tvt = (AnTypeVarType*)ty;
+            auto *tvt = try_cast<AnTypeVarType>(ty);
             AnType *binding = lookupTypeVar(tvt->name);
             if(!binding){
                 //compErr("Use of undeclared type variable " + ty->typeName, ty->loc);
@@ -939,14 +943,14 @@ TypeCheckResult& typeEqHelper(const Compiler *c, const AnType *l, const AnType *
 
     //check for type aliases
     const AnDataType *dt;
-    if((dt = dyn_cast<AnDataType>(l)) && dt->isAlias){
+    if((dt = try_cast<AnDataType>(l)) && dt->isAlias){
         return typeEqHelper(c, dt->getAliasedType(), r, tcr);
-    }else if((dt = dyn_cast<AnDataType>(r)) && dt->isAlias){
+    }else if((dt = try_cast<AnDataType>(r)) && dt->isAlias){
         return typeEqHelper(c, l, dt->getAliasedType(), tcr);
     }
 
     const AnDataType *ldt, *rdt;
-    if((ldt = dyn_cast<AnDataType>(l)) and (rdt = dyn_cast<AnDataType>(r))){
+    if((ldt = try_cast<AnDataType>(l)) and (rdt = try_cast<AnDataType>(r))){
         if(ldt->name == rdt->name and ldt->boundGenerics.empty() and rdt->boundGenerics.empty())
             return tcr.success();
 
@@ -1192,7 +1196,7 @@ string anTypeToStr(const AnType *t){
     /** Must check for modifiers first as they can be lost after dyn_cast */
     if(t->isModifierType()){
         if(auto *mod = dynamic_cast<const BasicModifier*>(t)){
-            return Lexer::getTokStr(mod->mod) + anTypeToStr(mod->extTy);
+            return Lexer::getTokStr(mod->mod) + ' ' + anTypeToStr(mod->extTy);
 
         }else if(auto *cdmod = dynamic_cast<const CompilerDirectiveModifier*>(t)){
             //TODO: modify printingvisitor to print to streams
@@ -1201,7 +1205,7 @@ string anTypeToStr(const AnType *t){
         }else{
             return "(unknown modifier type)";
         }
-    }else if(auto *dt = dyn_cast<AnDataType>(t)){
+    }else if(auto *dt = try_cast<AnDataType>(t)){
         string n = dt->name;
 
         if(!dt->boundGenerics.empty()){
@@ -1216,9 +1220,9 @@ string anTypeToStr(const AnType *t){
             n += ">";
         }
         return n;
-    }else if(auto *tvt = dyn_cast<AnTypeVarType>(t)){
+    }else if(auto *tvt = try_cast<AnTypeVarType>(t)){
         return tvt->name;
-    }else if(auto *f = dyn_cast<AnFunctionType>(t)){
+    }else if(auto *f = try_cast<AnFunctionType>(t)){
         string ret = "(";
         string retTy = anTypeToStr(f->retTy);
         for(auto *param : f->extTys){
@@ -1226,7 +1230,7 @@ string anTypeToStr(const AnType *t){
             if(param) ret += ",";
         }
         return ret + ")->" + retTy;
-    }else if(auto *tup = dyn_cast<AnAggregateType>(t)){
+    }else if(auto *tup = try_cast<AnAggregateType>(t)){
         string ret = "(";
         if(tup->extTys.empty())
             return ret + ")";
@@ -1238,9 +1242,9 @@ string anTypeToStr(const AnType *t){
                 ret += anTypeToStr(ext) + ")";
         }
         return ret;
-    }else if(auto *arr = dyn_cast<AnArrayType>(t)){
+    }else if(auto *arr = try_cast<AnArrayType>(t)){
         return '[' + to_string(arr->len) + " " + anTypeToStr(arr->extTy) + ']';
-    }else if(auto *ptr = dyn_cast<AnPtrType>(t)){
+    }else if(auto *ptr = try_cast<AnPtrType>(t)){
         return anTypeToStr(ptr->extTy) + "*";
     }else{
         return typeTagToStr(t->typeTag);

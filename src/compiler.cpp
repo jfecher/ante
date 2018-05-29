@@ -257,7 +257,7 @@ TypedValue compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
     if(!val) return val;
 
     //if the expr is not already a string type, cast it to one
-    auto *strty = dyn_cast<AnDataType>(val.type);
+    auto *strty = try_cast<AnDataType>(val.type);
     if(!strty or strty->name != "Str"){
 		strty = AnDataType::get("Str");
         auto fd = c->getCastFuncDecl(val.type, strty);
@@ -542,7 +542,7 @@ void CompilingVisitor::visit(ForNode *n){
 
     //check if the range expression is its own iterator and thus implements Iterator
     //If it does not, see if it implements Iterable by attempting to call into_iter on it
-    auto *dt = dyn_cast<AnDataType>(rangev.type);
+    auto *dt = try_cast<AnDataType>(rangev.type);
     if(!dt or !c->typeImplementsTrait(dt, "Iterator")){
         auto res = c->callFn("into_iter", {rangev});
 
@@ -726,7 +726,7 @@ void CompilingVisitor::visit(VarNode *n){
  */
 TypedValue compMutBinding(VarAssignNode *node, CompilingVisitor &cv){
     Compiler *c = cv.c;
-    if(!dynamic_cast<VarNode*>(node))
+    if(!dynamic_cast<VarNode*>(node->ref_expr))
         return c->compErr("Unknown pattern for l-expr", node->expr->loc);
 
     string &name = static_cast<VarNode*>(node->ref_expr)->name;
@@ -846,7 +846,7 @@ TypedValue compMutVarDecl(VarAssignNode *n, CompilingVisitor &v){
 
 void compLetBinding(VarAssignNode *node, CompilingVisitor &cv){
     Compiler *c = cv.c;
-    if(!dynamic_cast<VarNode*>(node))
+    if(!dynamic_cast<VarNode*>(node->ref_expr))
         c->compErr("Unknown pattern for l-expr", node->expr->loc);
 
     string &name = static_cast<VarNode*>(node->ref_expr)->name;
@@ -922,7 +922,7 @@ TypedValue compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
     }
 
     //the . operator automatically dereferences pointers, so update val and tyn accordingly.
-    while(auto *ptr = dyn_cast<AnPtrType>(tyn)){
+    while(auto *ptr = try_cast<AnPtrType>(tyn)){
         val = c->builder.CreateLoad(val);
         tyn = ptr->extTy;
     }
@@ -931,7 +931,7 @@ TypedValue compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
     Value *var = static_cast<LoadInst*>(val)->getPointerOperand();
 
     //check to see if this is a field index
-    if(auto dataTy = dyn_cast<AnDataType>(tyn)){
+    if(auto dataTy = try_cast<AnDataType>(tyn)){
         auto index = dataTy->getFieldIndex(field->name);
 
         if(index != -1){
@@ -1489,8 +1489,6 @@ inline bool fileExists(const string &fName){
 string findFile(Compiler *c, string const& fName){
     for(auto &root : c->relativeRoots){
         string f = root + addAnSuffix(fName);
-        cout << "Searching for " << f << '\n';
-
         if(fileExists(f)){
             return f;
         }

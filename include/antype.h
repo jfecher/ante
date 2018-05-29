@@ -60,7 +60,7 @@ namespace ante {
          * type is equal to another. */
         size_t numMatchedTys;
 
-        bool hasModifier(TokenType m) const;
+        virtual bool hasModifier(TokenType m) const;
 
         virtual bool isModifierType() const noexcept {
             return false;
@@ -124,7 +124,7 @@ namespace ante {
 
         public:
         AnType *extTy;
-        
+
         bool isModifierType() const noexcept override {
             return true;
         }
@@ -134,16 +134,30 @@ namespace ante {
 
 
     template<typename T>
-    const typename std::remove_pointer<T>::type* try_cast(const AnType *type){
+    typename std::remove_pointer<T>::type* try_cast(AnType *type){
         using u = typename std::remove_pointer<T>::type;
 
         if(type->isModifierType()){
-            auto *mod = static_cast<const AnModifier*>(type);
-            return try_cast<u*>(mod->extTy);
+            auto *mod = static_cast<AnModifier*>(type);
+            return try_cast<T>(mod->extTy);
         }
 
         return u::classof(type) ?
-            static_cast<const u*>(type) :
+            static_cast<u*>(type) :
+            nullptr;
+    }
+
+    template<typename T>
+    const typename std::remove_pointer<T>::type* try_cast(const AnType *type){
+        using u = const typename std::remove_pointer<T>::type;
+
+        if(type->isModifierType()){
+            auto *mod = static_cast<const AnModifier*>(type);
+            return try_cast<T>(mod->extTy);
+        }
+
+        return u::classof(type) ?
+            static_cast<u*>(type) :
             nullptr;
     }
 
@@ -159,6 +173,8 @@ namespace ante {
 
         static BasicModifier* get(AnType *modifiedType, TokenType mod);
 
+        bool hasModifier(TokenType m) const override;
+
         /** Returns a version of the current type with an additional modifier m. */
         AnType* addModifier(TokenType m) override;
 
@@ -167,7 +183,7 @@ namespace ante {
 
 
     /**
-     * A user-defined modifier. 
+     * A user-defined modifier.
      *
      * Has the chance to contain an invalid compiler-directive
      * that does not operate on a Ante.Type or Ante.TypeDecl.

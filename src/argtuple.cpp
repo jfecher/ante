@@ -359,7 +359,7 @@ namespace ante {
     }
 
     void ArgTuple::printUnion(Compiler *c, std::ostream &os) const{
-        auto *dt = dyn_cast<AnDataType>(type);
+        auto *dt = try_cast<AnDataType>(type);
         char tag = castTo<char>();
 
         auto &tagty = dt->tags[tag]->ty;
@@ -367,7 +367,7 @@ namespace ante {
     }
 
     void ArgTuple::printTupleOrData(Compiler *c, std::ostream &os) const{
-        auto *dt = dyn_cast<AnDataType>(type);
+        auto *dt = try_cast<AnDataType>(type);
         if(dt){
             if(dt->typeTag == TT_TaggedUnion){
                 printUnion(c, os);
@@ -378,7 +378,7 @@ namespace ante {
             }
         }
         os << '(';
-        auto *agg = dyn_cast<AnAggregateType>(type);
+        auto *agg = try_cast<AnAggregateType>(type);
         if(!agg){
             cerr << "printTupleOrData called on non-aggregate type\n";
             throw new CtError();

@@ -55,6 +55,12 @@ namespace ante {
         return false;
     }
 
+
+    bool BasicModifier::hasModifier(TokenType m) const {
+        return this->mod == m;
+    }
+
+
     AnType* AnType::addModifier(TokenType m){
         if(m == Tok_Let) return this;
         return BasicModifier::get(this, m);
@@ -205,7 +211,7 @@ namespace ante {
     string getKey(const AnType *modifiedType, Node* directive){
         return to_string((size_t)directive);
     }
-    
+
     CompilerDirectiveModifier* CompilerDirectiveModifier::get(AnType *modifiedType,
             std::shared_ptr<Node> &directive){
 
@@ -218,7 +224,7 @@ namespace ante {
         addKVPair(typeArena.modifiers, key, (AnModifier*)ret);
         return ret;
     }
-    
+
     CompilerDirectiveModifier* CompilerDirectiveModifier::get(AnType *modifiedType, Node *directive){
         shared_ptr<Node> dir{directive};
         return CompilerDirectiveModifier::get(modifiedType, dir);
@@ -459,19 +465,19 @@ namespace ante {
      * Returns a vector of all typevars used by a given type
      */
     vector<AnTypeVarType*> getGenerics(AnType *t){
-        if(AnDataType *dt = llvm::dyn_cast<AnDataType>(t)){
+        if(AnDataType *dt = try_cast<AnDataType>(t)){
             return dt->generics;
 
-        }else if(AnTypeVarType *tvt = llvm::dyn_cast<AnTypeVarType>(t)){
+        }else if(AnTypeVarType *tvt = try_cast<AnTypeVarType>(t)){
             return {tvt};
 
-        }else if(AnPtrType *pt = llvm::dyn_cast<AnPtrType>(t)){
+        }else if(AnPtrType *pt = try_cast<AnPtrType>(t)){
             return getGenerics(pt->extTy);
 
-        }else if(AnArrayType *at = llvm::dyn_cast<AnArrayType>(t)){
+        }else if(AnArrayType *at = try_cast<AnArrayType>(t)){
             return getGenerics(at->extTy);
 
-        }else if(AnFunctionType *ft = llvm::dyn_cast<AnFunctionType>(t)){
+        }else if(AnFunctionType *ft = try_cast<AnFunctionType>(t)){
             vector<AnTypeVarType*> generics;
             for(auto *p : ft->extTys){
                 auto p_generics = getGenerics(p);
@@ -481,7 +487,7 @@ namespace ante {
             generics.insert(generics.end(), p_generics.begin(), p_generics.end());
             return generics;
 
-        }else if(AnAggregateType *agg = llvm::dyn_cast<AnAggregateType>(t)){
+        }else if(AnAggregateType *agg = try_cast<AnAggregateType>(t)){
             vector<AnTypeVarType*> generics;
             for(auto *p : agg->extTys){
                 auto p_generics = getGenerics(p);

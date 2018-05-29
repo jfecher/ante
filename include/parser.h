@@ -211,14 +211,15 @@ namespace ante {
             ~ModNode(){}
         };
 
-        struct TypeNode : public Node{
+        struct TypeNode : public ModifiableNode{
             TypeTag type;
             std::string typeName; //used for usertypes
             std::unique_ptr<TypeNode> extTy; //Used for pointers and non-single anonymous types.
             std::vector<std::unique_ptr<TypeNode>> params; //type parameters for generic types
 
             void accept(NodeVisitor& v){ v.visit(this); }
-            TypeNode(LOC_TY& loc, TypeTag ty, std::string tName, TypeNode* eTy) : Node(loc), type(ty), typeName(tName), extTy(eTy), params(){}
+            TypeNode(LOC_TY& loc, TypeTag ty, std::string tName, TypeNode* eTy)
+                : ModifiableNode(loc), type(ty), typeName(tName), extTy(eTy), params(){}
             ~TypeNode(){}
         };
 

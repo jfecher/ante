@@ -129,7 +129,7 @@ TypedValue Compiler::compExtract(TypedValue &l, TypedValue &r, BinOpNode *op){
         return compErr("Index of operator '#' must be an integer expression, got expression of type " + anTypeToColoredStr(r.type), op->loc);
     }
 
-    if(auto *arrty = dyn_cast<AnArrayType>(l.type)){
+    if(auto *arrty = try_cast<AnArrayType>(l.type)){
         //check for alloca
         Value *arr = dyn_cast<LoadInst>(l.val) ?
                 cast<LoadInst>(l.val)->getPointerOperand() :
@@ -140,7 +140,7 @@ TypedValue Compiler::compExtract(TypedValue &l, TypedValue &r, BinOpNode *op){
         indices.push_back(r.val);
         return TypedValue(builder.CreateLoad(builder.CreateGEP(arr, indices)), arrty->extTy);
 
-    }else if(auto *ptrty = dyn_cast<AnPtrType>(l.type)){
+    }else if(auto *ptrty = try_cast<AnPtrType>(l.type)){
         return TypedValue(builder.CreateLoad(builder.CreateGEP(l.val, r.val)), ptrty->extTy);
 
     }else if(l.type->typeTag == TT_Tuple || l.type->typeTag == TT_Data){
@@ -291,7 +291,7 @@ TypedValue createUnionVariantCast(Compiler *c, TypedValue &valToCast, string &ta
 
 
 string getCastFnBaseName(AnType *t){
-    if(auto *dt = dyn_cast<AnDataType>(t)){
+    if(auto *dt = try_cast<AnDataType>(t)){
         return dt->name + "_init";
     }
     return anTypeToStr(t) + "_init";
@@ -326,7 +326,7 @@ vector<AnType*> toArgTuple(AnType *ty){
  * is needed
  */
 ReinterpretCastResult checkForReinterpretCast(Compiler *c, AnType *castTy, TypedValue &valToCast){
-    auto *dataTy = dyn_cast<AnDataType>(castTy);
+    auto *dataTy = try_cast<AnDataType>(castTy);
 
     if(dataTy){
         auto argTup = toArgTuple(valToCast.type);
@@ -340,7 +340,7 @@ ReinterpretCastResult checkForReinterpretCast(Compiler *c, AnType *castTy, Typed
         }
     }
 
-    if(auto *valDt = dyn_cast<AnDataType>(valToCast.type)){
+    if(auto *valDt = try_cast<AnDataType>(valToCast.type)){
         auto argTup = toArgTuple(castTy);
 
         auto tc = c->typeEq(valDt->extTys, argTup);
@@ -711,7 +711,7 @@ void CompilingVisitor::visit(IfNode *n){
 }
 
 string toModuleName(AnType *t){
-    if(AnDataType *dt = dyn_cast<AnDataType>(t)){
+    if(AnDataType *dt = try_cast<AnDataType>(t)){
         return dt->name;
     }else if(t->isModifierType()){
         return toModuleName(static_cast<AnModifier*>(t)->extTy);
@@ -760,7 +760,7 @@ TypedValue Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *binop
         }
 
         //check to see if this is a field index
-        if(auto *dataTy = dyn_cast<AnDataType>(tyn)){
+        if(auto *dataTy = try_cast<AnDataType>(tyn)){
             auto index = dataTy->getFieldIndex(field->name);
 
             if(index != -1){
@@ -1320,7 +1320,7 @@ TypedValue compFnCall(Compiler *c, Node *l, Node *r){
         return {};
     }
 
-    if(!dyn_cast<AnFunctionType>(tvf.type))
+    if(!try_cast<AnFunctionType>(tvf.type))
         return c->compErr("Called value is not a function or method, it is a(n) " +
                 anTypeToColoredStr(tvf.type), l->loc);
 
