@@ -3,9 +3,9 @@ type Maybe 'm =
    | Some 'm
    | None
 
-type List 't = Maybe (&Node 't) first, Maybe (&Node 't) last
+type List 't = Maybe (ref Node 't) first, Maybe (ref Node 't) last
 
-type Node 't = 't elem, Maybe (&Node 't) next
+type Node 't = 't elem, Maybe (ref Node 't) next
 
 fun Node 't.init: 't elem -> Node 't
     Node(elem, None)
@@ -33,7 +33,7 @@ fun printne: List l
     | None -> printne "[ ]"
 
 
-fun printne: &Node l
+fun printne: ref Node l
     printne l.elem
     match l.next with
     | Some n -> printne ", "; printne n

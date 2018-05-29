@@ -1,9 +1,9 @@
 
-type Vec 't = &'t _data, usz len cap
+type Vec 't = ref 't _data, usz len cap
 
 ext Vec 't
     fun init :=
-        Vec<'t>(&'t malloc(4 * Ante.sizeof 't), 0usz, 4usz)
+        Vec<'t>(ref 't malloc(4 * Ante.sizeof 't), 0usz, 4usz)
 
     fun init: Range r -> Vec i32
         fill (Vec<i32>()) r
@@ -28,13 +28,13 @@ ext Vec 't
     fun reserve: mut Vec 't v, usz numElems
         if v.len + numElems > v.cap then
             let size = (v.cap + numElems) * Ante.sizeof 't
-            let ptr = realloc (&void v._data) size
+            let ptr = realloc (ref void v._data) size
 
-            if ptr is &void 0 then
+            if ptr is ref void 0 then
                 printf "Error in reserving %u elements for Vec\n" numElems
                 return ()
 
-            v._data = &'t ptr
+            v._data = ref 't ptr
             v.cap += numElems
 
     //push an element onto the end of the vector.
@@ -129,7 +129,7 @@ ext Vec 't
             true
 
 
-type VecIter 't = &'t view, usz idx len
+type VecIter 't = ref 't view, usz idx len
 
 ext Vec : Iterable
     fun into_iter: Vec v =

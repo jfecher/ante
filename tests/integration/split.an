@@ -23,7 +23,7 @@ fun substr: Str s, i32 begin end -> Str
         return ""
 
     let len = end - begin
-    mut buf = &c8 malloc(len + 1)
+    mut buf = ref c8 malloc(len + 1)
     buf#end = '\0'
 
     mut i = 0

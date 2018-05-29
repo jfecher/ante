@@ -6,7 +6,7 @@ fun getClosingMsg := "Goodbye World!\n"
 
 printf "%s\n%s" openingMsg.cStr (getClosingMsg()).cStr
 
-//string literals are of type Str by default (not &c8 or [c8])
+//string literals are of type Str by default (not ref c8 or [c8])
 let str = "test"
 print str
 

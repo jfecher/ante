@@ -98,6 +98,7 @@ namespace ante {
         Tok_Let,
         Tok_Match,
         Tok_With,
+        Tok_Ref,
         Tok_Type,
         Tok_Trait,
         Tok_Fun,
