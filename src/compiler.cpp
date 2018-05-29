@@ -1627,7 +1627,8 @@ void CompilingVisitor::visit(RootNode *n){
     //Compile the rest of the program
     for(auto &node : n->main){
         try{
-            node->accept(*this);
+            if(node)
+                node->accept(*this);
         }catch(CtError *e){
             delete e;
         }
