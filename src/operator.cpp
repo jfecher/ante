@@ -710,11 +710,11 @@ void CompilingVisitor::visit(IfNode *n){
     this->val = compIf(c, n, mergebb, branches);
 }
 
-string toModuleName(AnType *t){
-    if(AnDataType *dt = try_cast<AnDataType>(t)){
+string toModuleName(const AnType *t){
+    if(auto *dt = try_cast<AnDataType>(t)){
         return dt->name;
     }else if(t->isModifierType()){
-        return toModuleName(static_cast<AnModifier*>(t)->extTy);
+        return toModuleName(static_cast<const AnModifier*>(t)->extTy);
     }else{
         return anTypeToStr(t);
     }
@@ -770,12 +770,7 @@ TypedValue Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *binop
                     updateLlvmTypeBinding(this, dataTy, false);
                 }
 
-                //The data type when looking up (usually) does not have any modifiers,
-                //so apply any potential modifers from the parent to this
-                //TODO: re-add set modifier
-                //if(!retTy->isModifierType() and ltyn->isModifierType()){
-                //    retTy = retTy->setModifier(tyn->mods);
-                //}
+                retTy = (AnType*)tyn->addModifiersTo(retTy);
 
                 //If dataTy is a single value tuple then val may not be a tuple at all. In this
                 //case, val should be returned without being extracted from a nonexistant tuple

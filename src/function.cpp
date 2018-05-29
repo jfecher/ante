@@ -336,7 +336,7 @@ TypedValue compFnWithModifiers(Compiler *c, FuncDecl *fd, ModNode *mod){
 
     TypedValue fn;
     if(mod->isCompilerDirective()){
-        if(VarNode *vn = dynamic_cast<VarNode*>(mod->expr.get())){
+        if(VarNode *vn = dynamic_cast<VarNode*>(mod->directive.get())){
             if(vn->name == "inline"){
                 fn = c->compFn(fd);
                 if(!fn) return fn;
@@ -386,7 +386,7 @@ TypedValue compFnWithModifiers(Compiler *c, FuncDecl *fd, ModNode *mod){
                     fnty = AnFunctionType::get(c, toAnType(c, rettn), fd->fdn->params.get(), true);
                 }else{
                     fnty = AnFunctionType::get(c, toAnType(c, rettn), fd->fdn->params.get(), false);
-                    fnty = fnty->addModifier(Tok_Ante);
+                    fnty = (AnType*)fnty->addModifier(Tok_Ante);
                 }
                 fn = TypedValue(nullptr, fnty);
             }

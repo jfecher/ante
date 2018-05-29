@@ -746,13 +746,12 @@ TypedValue compMutBinding(VarAssignNode *node, CompilingVisitor &cv){
     bool isGlobal = false;
     for(auto &n : node->modifiers){
         TokenType m = (TokenType)n->mod;
-        val.type = val.type->addModifier(m);
+        val.type = (AnType*)val.type->addModifier(m);
         if(m == Tok_Global) isGlobal = true;
     }
 
     //set the value as mutable if not already.
-    //NOTE: addModifier does not add repeat modifiers.
-    val.type = val.type->addModifier(Tok_Mut);
+    val.type = (AnType*)val.type->addModifier(Tok_Mut);
 
     //location to store var
     Value *ptr = isGlobal ?
@@ -781,12 +780,7 @@ void compLetBinding(VarAssignNode *node, CompilingVisitor &cv){
         c->compErr("Cannot assign a "+anTypeToColoredStr(AnType::getVoid())+
                 " value to a variable", node->expr->loc);
 
-    bool isGlobal = false;
-
-    //set the value as mutable
-    if(!val.type->hasModifier(Tok_Mut)){
-        val.type = val.type->addModifier(Tok_Mut);
-    }
+    bool isGlobal = node->hasModifier(Tok_Global);
 
     //location to store var
     Value *ptr = isGlobal ?
@@ -831,7 +825,6 @@ TypedValue compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
 
     Value *val;
     AnType *tyn;
-    AnType *ltyn;
 
     //prevent l from being used after this scope; only val and tyn should be used as only they
     //are updated with the automatic pointer dereferences.
@@ -839,7 +832,7 @@ TypedValue compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
         auto l = CompilingVisitor::compile(c, bop->lval);
 
         val = l.val;
-        tyn = ltyn = l.type;
+        tyn = l.type;
 
         if(!tyn->hasModifier(Tok_Mut))
             return c->compErr("Variable must be mutable to be assigned to, but instead is an immutable " +
@@ -918,8 +911,10 @@ void CompilingVisitor::visit(VarAssignNode *n){
 
     if(n->hasModifier(Tok_Let)){
         compLetBinding(n, *this);
+        return;
     }else if(n->hasModifier(Tok_Mut)){
         compMutBinding(n, *this);
+        return;
     }
 
     //otherwise, this is just a normal assign to a variable

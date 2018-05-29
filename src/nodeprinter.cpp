@@ -218,10 +218,9 @@ void PrintingVisitor::visit(GlobalNode *n){
 
 void PrintingVisitor::visit(VarAssignNode *n){
     printModifiers(*this, n);
-    cout << "varAssign <(";
     if(n->ref_expr) n->ref_expr->accept(*this);
-    cout << ") = (";
-    if(n->expr) {n->expr->accept(*this); puts(")>"); }
+    cout << " = ";
+    if(n->expr) n->expr->accept(*this);
     else cout << "(undef)";
 }
 

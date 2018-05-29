@@ -67,7 +67,10 @@ namespace ante {
         }
 
         /** Returns a version of the current type with the additional modifier m. */
-        virtual AnType* addModifier(TokenType m);
+        virtual const AnType* addModifier(TokenType m) const;
+
+        /** Add all compatible modifiers from the current type to the given and return it. */
+        virtual const AnType* addModifiersTo(const AnType* t) const;
 
         /** Returns the size of this type in bits or an error message if the type is invalid.
          *  @param incompleteType The name of an undeclared type, used to issue an IncompleteTypeError if
@@ -118,12 +121,12 @@ namespace ante {
      */
     class AnModifier : public AnType {
         protected:
-        AnModifier(AnType *modifiedType) :
+        AnModifier(const AnType *modifiedType) :
             AnType(modifiedType->typeTag, modifiedType->isGeneric,
                     modifiedType->numMatchedTys+1), extTy(modifiedType){}
 
         public:
-        AnType *extTy;
+        const AnType *extTy;
 
         bool isModifierType() const noexcept override {
             return true;
@@ -141,7 +144,7 @@ namespace ante {
 
         while(type->isModifierType()){
             auto *mod = static_cast<AnModifier*>(type);
-            type = mod->extTy;
+            type = (AnType*)mod->extTy;
         }
         return static_cast<T*>(type);
     }
@@ -163,18 +166,21 @@ namespace ante {
     /** Represents a built-in modifier type such as mut */
     class BasicModifier : public AnModifier {
         protected:
-        BasicModifier(AnType *modified_type, TokenType m) :
+        BasicModifier(const AnType *modified_type, TokenType m) :
             AnModifier(modified_type), mod(m){}
 
         public:
         const TokenType mod;
 
-        static BasicModifier* get(AnType *modifiedType, TokenType mod);
+        static BasicModifier* get(const AnType *modifiedType, TokenType mod);
 
         bool hasModifier(TokenType m) const override;
 
         /** Returns a version of the current type with an additional modifier m. */
-        AnType* addModifier(TokenType m) override;
+        const AnType* addModifier(TokenType m) const override;
+
+        /** Add all compatible modifiers from the current type to the given and return it. */
+        const AnType* addModifiersTo(const AnType* t) const override;
 
         ~BasicModifier() = default;
     };
@@ -188,17 +194,20 @@ namespace ante {
      */
     class CompilerDirectiveModifier : public AnModifier {
         protected:
-        CompilerDirectiveModifier(AnType *modified_type, std::shared_ptr<parser::Node> &d) :
+        CompilerDirectiveModifier(const AnType *modified_type, const std::shared_ptr<parser::Node> &d) :
             AnModifier(modified_type), directive(d){}
 
         public:
         std::shared_ptr<parser::Node> directive;
 
-        static CompilerDirectiveModifier* get(AnType *modifiedType, std::shared_ptr<parser::Node> &directive);
-        static CompilerDirectiveModifier* get(AnType *modifiedType, parser::Node *directive);
+        static CompilerDirectiveModifier* get(const AnType *modifiedType, const std::shared_ptr<parser::Node> &directive);
+        static CompilerDirectiveModifier* get(const AnType *modifiedType, const parser::Node *directive);
 
         /** Returns a version of the current type with an additional modifier m. */
-        AnType* addModifier(TokenType m) override;
+        const AnType* addModifier(TokenType m) const override;
+
+        /** Add all compatible modifiers from the current type to the given and return it. */
+        const AnType* addModifiersTo(const AnType* t) const override;
 
         ~CompilerDirectiveModifier() = default;
     };
@@ -220,7 +229,7 @@ namespace ante {
         static AnAggregateType* get(TypeTag t, std::vector<AnType*> types);
 
         /** Returns a version of the current type with an additional modifier m. */
-        AnType* addModifier(TokenType m) override;
+        const AnType* addModifier(TokenType m) const override;
 
         virtual bool isModifierType() const noexcept override {
             return false;
@@ -257,7 +266,7 @@ namespace ante {
         static AnArrayType* get(AnType*, size_t len = 0);
 
         /** Returns a version of the current type with an additional modifier m. */
-        AnType* addModifier(TokenType m) override;
+        const AnType* addModifier(TokenType m) const override;
 
         virtual bool isModifierType() const noexcept override {
             return false;
@@ -284,7 +293,7 @@ namespace ante {
         static AnPtrType* get(AnType* l);
 
         /** Returns a version of the current type with an additional modifier m. */
-        AnType* addModifier(TokenType m) override;
+        const AnType* addModifier(TokenType m) const override;
 
         virtual bool isModifierType() const noexcept override {
             return false;
@@ -311,7 +320,7 @@ namespace ante {
         static AnTypeVarType* get(std::string name);
 
         /** Returns a version of the current type with an additional modifier m. */
-        AnType* addModifier(TokenType m) override;
+        const AnType* addModifier(TokenType m) const override;
 
         virtual bool isModifierType() const noexcept override {
             return false;
@@ -345,7 +354,7 @@ namespace ante {
                 bool isMetaFunction = false);
 
         /** Returns a version of the current type with an additional modifier m. */
-        AnType* addModifier(TokenType m) override;
+        const AnType* addModifier(TokenType m) const override;
 
         virtual bool isModifierType() const noexcept override {
             return false;
@@ -462,7 +471,7 @@ namespace ante {
         static AnDataType* create(std::string const& name, std::vector<AnType*> const& elems, bool isUnion, std::vector<AnTypeVarType*> const& generics);
 
         /** Returns a new AnDataType* with the given modifier appended to the current type's modifiers. */
-        AnType* addModifier(TokenType m) override;
+        const AnType* addModifier(TokenType m) const override;
 
         /** Returns true if this type is a bound variant of the generic type dt.
          *  If dt is not a generic type, this function will always return false. */

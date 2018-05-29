@@ -61,9 +61,24 @@ namespace ante {
     }
 
 
-    AnType* AnType::addModifier(TokenType m){
+    const AnType* AnType::addModifier(TokenType m) const {
         if(m == Tok_Let) return this;
-        return BasicModifier::get(this, m);
+        return BasicModifier::get((AnType*)this, m);
+    }
+
+    //base case, generic AnType has no mods
+    const AnType* AnType::addModifiersTo(const AnType* t) const {
+        return t;
+    }
+
+    //base case, generic AnType has no mods
+    const AnType* BasicModifier::addModifiersTo(const AnType* t) const {
+        return extTy->addModifiersTo(t)->addModifier(this->mod);
+    }
+
+    //base case, generic AnType has no mods
+    const AnType* CompilerDirectiveModifier::addModifiersTo(const AnType* t) const {
+        return CompilerDirectiveModifier::get(extTy->addModifiersTo(t), directive);
     }
 
     unsigned short AnDataType::getTagVal(std::string &name){
@@ -193,7 +208,7 @@ namespace ante {
         return to_string(mod) + anTypeToStr(modifiedType);
     }
 
-    BasicModifier* BasicModifier::get(AnType *modifiedType, TokenType mod){
+    BasicModifier* BasicModifier::get(const AnType *modifiedType, TokenType mod){
         auto key = getKey(modifiedType, mod);
 
         auto *existing_ty = search(typeArena.modifiers, key);
@@ -212,8 +227,8 @@ namespace ante {
         return to_string((size_t)directive);
     }
 
-    CompilerDirectiveModifier* CompilerDirectiveModifier::get(AnType *modifiedType,
-            std::shared_ptr<Node> &directive){
+    CompilerDirectiveModifier* CompilerDirectiveModifier::get(const AnType *modifiedType,
+            const std::shared_ptr<Node> &directive){
 
         auto key = getKey(modifiedType, directive.get());
 
@@ -225,8 +240,8 @@ namespace ante {
         return ret;
     }
 
-    CompilerDirectiveModifier* CompilerDirectiveModifier::get(AnType *modifiedType, Node *directive){
-        shared_ptr<Node> dir{directive};
+    CompilerDirectiveModifier* CompilerDirectiveModifier::get(const AnType *modifiedType, const Node *directive){
+        shared_ptr<Node> dir{(Node*)directive};
         return CompilerDirectiveModifier::get(modifiedType, dir);
     }
 
@@ -744,6 +759,7 @@ namespace ante {
 
     AnType* toAnType(Compiler *c, const TypeNode *tn){
         if(!tn) return AnType::getVoid();
+        AnType *ret;
 
         switch(tn->type){
             case TT_I8:
@@ -763,7 +779,8 @@ namespace ante {
             case TT_C32:
             case TT_Bool:
             case TT_Void:
-                return AnType::getPrimitive(tn->type);
+                ret = AnType::getPrimitive(tn->type);
+                break;
 
             case TT_Function:
             case TT_MetaFunction:
@@ -779,7 +796,8 @@ namespace ante {
                     }
                     ext = (TypeNode*)ext->next.get();
                 }
-                return AnFunctionType::get(ret, tys, tn->type == TT_MetaFunction);
+                ret = AnFunctionType::get(ret, tys, tn->type == TT_MetaFunction);
+                break;
             }
             case TT_Tuple: {
                 TypeNode *ext = tn->extTy.get();
@@ -788,16 +806,19 @@ namespace ante {
                     tys.push_back(toAnType(c, (TypeNode*)ext));
                     ext = (TypeNode*)ext->next.get();
                 }
-                return AnAggregateType::get(TT_Tuple, tys);
+                ret = AnAggregateType::get(TT_Tuple, tys);
+                break;
             }
 
             case TT_Array: {
                 TypeNode *elemTy = tn->extTy.get();
                 IntLitNode *len = (IntLitNode*)elemTy->next.get();
-                return AnArrayType::get(toAnType(c, elemTy), len ? stoi(len->val) : 0);
+                ret = AnArrayType::get(toAnType(c, elemTy), len ? stoi(len->val) : 0);
+                break;
             }
             case TT_Ptr:
-                return AnPtrType::get(toAnType(c, tn->extTy.get()));
+                ret = AnPtrType::get(toAnType(c, tn->extTy.get()));
+                break;
             case TT_Data:
             case TT_TaggedUnion: {
                 if(!tn->params.empty()){
@@ -807,56 +828,69 @@ namespace ante {
 
                     auto *basety = AnDataType::get(tn->typeName);
 
-                    return try_cast<AnDataType>(bindGenericToType(c, basety, bindings, basety));
+                    ret = try_cast<AnDataType>(bindGenericToType(c, basety, bindings, basety));
                 }else{
-                    return AnDataType::get(tn->typeName);
+                    ret = AnDataType::get(tn->typeName);
                 }
+                break;
             }
             case TT_TypeVar:
-                return AnTypeVarType::get(tn->typeName);
+                ret = AnTypeVarType::get(tn->typeName);
+                break;
             default:
                 cerr << "Unknown TypeTag " << typeTagToStr(tn->type) << endl;
                 return nullptr;
         }
+
+        for(auto &m : tn->modifiers){
+            if(m->isCompilerDirective()){
+                ret = CompilerDirectiveModifier::get(ret, m->directive);
+            }else{
+                ret = (AnType*)ret->addModifier((TokenType)m->mod);
+            }
+        }
+        return ret;
     }
 
-    AnType* BasicModifier::addModifier(TokenType m){
+    const AnType* BasicModifier::addModifier(TokenType m) const{
         if(m == Tok_Let) return this;
-        return mod == m ? this :
-            BasicModifier::get(extTy->addModifier(m), mod);
+        if(this->mod == m or (this->mod == Tok_Const and m == Tok_Mut))
+            return this;
+        else
+            return BasicModifier::get(extTy->addModifier(m), mod);
     }
 
-    AnType* CompilerDirectiveModifier::addModifier(TokenType m){
+    const AnType* CompilerDirectiveModifier::addModifier(TokenType m) const{
         if(m == Tok_Let) return this;
         return CompilerDirectiveModifier::get(extTy->addModifier(m), directive);
     }
 
-    AnType* AnAggregateType::addModifier(TokenType m){
+    const AnType* AnAggregateType::addModifier(TokenType m) const{
         if(m == Tok_Let) return this;
         return BasicModifier::get(this, m);
     }
 
-    AnType* AnArrayType::addModifier(TokenType m){
+    const AnType* AnArrayType::addModifier(TokenType m) const{
         if(m == Tok_Let) return this;
         return BasicModifier::get(this, m);
     }
 
-    AnType* AnPtrType::addModifier(TokenType m){
+    const AnType* AnPtrType::addModifier(TokenType m) const{
         if(m == Tok_Let) return this;
         return BasicModifier::get(this, m);
     }
 
-    AnType* AnTypeVarType::addModifier(TokenType m){
+    const AnType* AnTypeVarType::addModifier(TokenType m) const{
         if(m == Tok_Let) return this;
         return BasicModifier::get(this, m);
     }
 
-    AnType* AnFunctionType::addModifier(TokenType m){
+    const AnType* AnFunctionType::addModifier(TokenType m) const{
         if(m == Tok_Let) return this;
         return BasicModifier::get(this, m);
     }
 
-    AnType* AnDataType::addModifier(TokenType m){
+    const AnType* AnDataType::addModifier(TokenType m) const{
         if(m == Tok_Let) return this;
         return BasicModifier::get(this, m);
     }
