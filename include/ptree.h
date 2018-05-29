@@ -29,7 +29,7 @@ namespace ante {
         Node* append_extension(Node *n);
         Node* append_trait(Node *n);
         Node* append_import(Node *n);
-        Node* append_modifier(Node *modifiableNode, Node *modifier);
+        Node* append_modifier(Node *modifier, Node *modifiableNode);
 
         Node* mkIntLitNode(LOC_TY loc, char* s);
         Node* mkFltLitNode(LOC_TY loc, char* s);

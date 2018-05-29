@@ -26,6 +26,14 @@ namespace ante {
             return root;
         }
 
+        bool ModifiableNode::hasModifier(int mod) const {
+            for(auto& m : this->modifiers){
+                if(m->mod == mod)
+                    return true;
+            }
+            return false;
+        }
+
         Node* setElse(Node *ifn, Node *elseN){
             if(auto *n = dynamic_cast<IfNode*>(ifn)){
                 if(n->elseN)
@@ -84,7 +92,7 @@ namespace ante {
             root->funcs.push_back(n);
             return n;
         }
-        
+
         Node*append_type(Node *n){
             root->types.emplace_back(n);
             return n;
@@ -104,10 +112,16 @@ namespace ante {
             root->imports.emplace_back(n);
             return n;
         }
-        
-        Node* append_modifier(Node *modifiableNode, Node *modifier){
-            ((ModifiableNode*)modifiableNode)->modifiers.emplace_back((ModNode*)modifier);
-            return modifiableNode;
+
+        Node* append_modifier(Node *modifier, Node *modifiableNode){
+            ModNode *m = (ModNode*)modifier;
+            if(ModifiableNode *van = dynamic_cast<ModifiableNode*>(modifiableNode)){
+                van->modifiers.emplace_back(m);
+                return van;
+            }else{
+                m->expr.reset(modifiableNode);
+                return m;
+            }
         }
 
         LOC_TY copyLoc(const LOC_TY &loc){
@@ -300,7 +314,7 @@ namespace ante {
         Node* mkModNode(LOC_TY loc, ante::TokenType mod){
             return new ModNode(loc, mod, nullptr);
         }
-        
+
         Node* mkModExprNode(LOC_TY loc, ante::TokenType mod, Node *expr){
             return new ModNode(loc, mod, expr);
         }
@@ -308,7 +322,7 @@ namespace ante {
         Node* mkCompilerDirective(LOC_TY loc, Node *directive){
             return new ModNode(loc, directive, nullptr);
         }
-        
+
         Node* mkCompilerDirectiveExpr(LOC_TY loc, Node *directive, Node *expr){
             return new ModNode(loc, directive, expr);
         }
