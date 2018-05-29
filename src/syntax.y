@@ -186,7 +186,7 @@ top_level_expr_nm: function                                   {$$ = append_fn($1
                  | import_expr                                {$$ = append_import($1);}
                  ;
 
-/* 
+/*
  * %empty is avoided here since it is handled differently on
  * windows and older versions of bison
  */

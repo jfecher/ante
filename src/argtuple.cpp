@@ -123,7 +123,7 @@ namespace ante {
             }
             case TT_Data:
             case TT_Tuple:
-                return convertTupleToTypedValue(c, *this, (AnAggregateType*)type);
+                return convertTupleToTypedValue(c, *this, try_cast<AnAggregateType>(type));
             case TT_TypeVar:
             case TT_Function:
             case TT_TaggedUnion:
@@ -155,7 +155,7 @@ namespace ante {
      * Stores a pointer value of a constant pointer type
      */
     void ArgTuple::storePtr(Compiler *c, TypedValue const &tv){
-        auto *ptrty = (AnPtrType*)tv.type;
+        auto *ptrty = try_cast<AnPtrType>(tv.type);
 
         if(GlobalVariable *gv = dyn_cast<GlobalVariable>(tv.val)){
             Value *v = gv->getInitializer();
@@ -230,7 +230,7 @@ namespace ante {
 
 
     void ArgTuple::storeTuple(Compiler *c, TypedValue const& tup){
-        auto *sty = (AnAggregateType*)tup.type;
+        auto *sty = try_cast<AnAggregateType>(tup.type);
         if(ConstantStruct *ca = dyn_cast<ConstantStruct>(tup.val)){
             void *orig_data = this->data;
             for(size_t i = 0; i < ca->getNumOperands(); i++){
@@ -326,7 +326,7 @@ namespace ante {
             case TT_MetaFunction:
             case TT_Array: storePtr(c, tv); return;
             case TT_TypeVar: {
-                auto *tvt = (AnTypeVarType*)tv.type;
+                auto *tvt = try_cast<AnTypeVarType>(tv.type);
                 auto *var = c->lookup(tvt->name);
                 if(!var){
                     c->errFlag = true;
@@ -416,11 +416,11 @@ namespace ante {
             case TT_F32: os << castTo<float>(); break;
             case TT_F64: os << castTo<double>(); break;
             case TT_Ptr:
-                if(((AnPtrType*)type)->extTy->typeTag == TT_C8){
+                if(try_cast<AnPtrType>(type)->extTy->typeTag == TT_C8){
                     os << '"' << castTo<char*>() << '"';
                 }else{
                     os << castTo<void*>() << " -> ";
-                    ArgTuple(*(void**)data, ((AnPtrType*)type)->extTy).printCtVal(c, os);
+                    ArgTuple(*(void**)data, try_cast<AnPtrType>(type)->extTy).printCtVal(c, os);
                 }
                 break;
             case TT_Array:

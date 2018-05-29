@@ -565,7 +565,7 @@ namespace ante {
 
         if(unboundType->isUnionTag()){
             auto *unionType = unboundType->parentUnionType;
-            unionType = (AnDataType*)bindGenericToType(c, unionType, bindings);
+            unionType = try_cast<AnDataType>(bindGenericToType(c, unionType, bindings));
             updateLlvmTypeBinding(c, unionType, unionType->isGeneric);
             variant->parentUnionType = unionType;
         }
@@ -738,7 +738,7 @@ namespace ante {
 
 
     AnType* AnType::getFunctionReturnType() const{
-        return ((AnFunctionType*)this)->retTy;
+        return try_cast<AnFunctionType>(this)->retTy;
     }
 
 
@@ -807,7 +807,7 @@ namespace ante {
 
                     auto *basety = AnDataType::get(tn->typeName);
 
-                    return (AnDataType*)bindGenericToType(c, basety, bindings, basety);
+                    return try_cast<AnDataType>(bindGenericToType(c, basety, bindings, basety));
                 }else{
                     return AnDataType::get(tn->typeName);
                 }

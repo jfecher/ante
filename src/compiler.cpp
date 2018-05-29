@@ -768,81 +768,6 @@ TypedValue compMutBinding(VarAssignNode *node, CompilingVisitor &cv){
     return TypedValue(c->builder.CreateStore(val.val, alloca.val), val.type);
 }
 
-/*
-TypedValue compMutVarDecl(VarAssignNode *n, CompilingVisitor &v){
-    if(!dynamic_cast<VarNode*>(n)){
-        return c->compErr("Unknown pattern for l-expr", n->expr->loc);
-    }
-    string &name = static_cast<VarNode*>(n->ref_expr)->name;
-
-    //check for redeclaration, but only on topmost scope
-    auto redeclare = v.c->varTable.back()->find(name);
-    if(redeclare != v.c->varTable.back()->end()){
-        v.c->compErr("Variable " + name + " was redeclared.", n->loc);
-    }
-
-    //check for an inferred type
-    if(!n->typeExpr.get()){
-        v.val = compVarDeclWithInferredType(n, v.c);
-        return v.val;
-    }
-
-    if(((TypeNode*)n->typeExpr.get())->type == TT_Void)
-        v.c->compErr("Cannot create a variable of type "+
-                anTypeToColoredStr(AnType::getVoid()), n->typeExpr->loc);
-
-
-    //the type held by this node will be deleted when the parse tree is, so copy
-    //this one so it is not double freed
-    AnType *anTy = toAnType(v.c, (TypeNode*)n->typeExpr.get());
-
-    Type *ty = v.c->anTypeToLlvmType(anTy);
-
-    bool isGlobal = false;
-
-    //Add all of the declared modifiers to the typedval
-    //for(Node *n : *n->modifiers){
-    //    int m = ((ModNode*)n)->mod;
-    //    anTy = anTy->addModifier((TokenType)m);
-    //    if(m == Tok_Global) isGlobal = true;
-    //}
-
-    if(!anTy->hasModifier(Tok_Mut))
-        anTy = anTy->addModifier(Tok_Mut);
-
-    //location to store var
-    Value *loc = isGlobal ?
-        (Value*) new GlobalVariable(*v.c->module, ty, false, GlobalValue::PrivateLinkage, UndefValue::get(ty), n->name) :
-        v.c->builder.CreateAlloca(ty, nullptr, n->name.c_str());
-
-    TypedValue alloca = TypedValue(loc, anTy);
-
-    Variable *var = new Variable(n->name, alloca, v.c->scope, true, true);
-    v.c->stoVar(n->name, var);
-    if(n->expr.get()){
-        n->expr->accept(v);
-        if(v.val.type->typeTag == TT_Void)
-            v.c->compErr("Cannot assign a "+anTypeToColoredStr(AnType::getVoid())+
-                    " value to a variable", n->expr->loc);
-
-        AnType *exprTy = v.val.type->addModifier(Tok_Mut);
-        var->noFree = true;//var->getType() != TT_Ptr || dynamic_cast<Constant*>(val->val);
-
-        //Make sure the assigned value matches the variable's type
-        auto *allocaTy = (AnPtrType*)alloca.type;
-        if(!v.c->typeEq(allocaTy->extTy, exprTy)){
-            v.c->compErr("Cannot assign expression of type " + anTypeToColoredStr(v.val.type)
-                        + " to a variable of type " + anTypeToColoredStr(allocaTy->extTy), n->expr->loc);
-        }
-
-        //transfer ownership of val->type
-        v.val = TypedValue(v.c->builder.CreateStore(v.val.val, alloca.val), exprTy);
-    }else{
-        v.val = alloca;
-    }
-    return v.val;
-}*/
-
 
 void compLetBinding(VarAssignNode *node, CompilingVisitor &cv){
     Compiler *c = cv.c;
@@ -1240,7 +1165,7 @@ bool Compiler::typeImplementsTrait(AnDataType* dt, string traitName) const{
 vector<AnTypeVarType*> toVec(Compiler *c, const vector<unique_ptr<TypeNode>> &generics){
     auto ret = vecOf<AnTypeVarType*>(generics.size());
     for(auto &tn : generics){
-        ret.push_back((AnTypeVarType*)toAnType(c, tn.get()));
+        ret.push_back(try_cast<AnTypeVarType>(toAnType(c, tn.get())));
     }
     return ret;
 }
@@ -1270,7 +1195,7 @@ TypedValue compTaggedUnion(Compiler *c, DataDeclNode *n){
 
         vector<AnType*> exts;
         if(tagTy->typeTag == TT_Tuple){
-            exts = ((AnAggregateType*)tagTy)->extTys;
+            exts = try_cast<AnAggregateType>(tagTy)->extTys;
         }else{
             exts.push_back(tagTy);
         }
@@ -1309,9 +1234,9 @@ TypedValue compTaggedUnion(Compiler *c, DataDeclNode *n){
         v->typeTag = data->typeTag;
         v->tags = tags;
         v->unboundType = data;
-        *v = *(AnDataType*)bindGenericToType(c, v, v->boundGenerics);
+        *v = *try_cast<AnDataType>(bindGenericToType(c, v, v->boundGenerics));
         if(v->parentUnionType)
-            v->parentUnionType = (AnDataType*)bindGenericToType(c, v->parentUnionType, v->parentUnionType->boundGenerics);
+            v->parentUnionType = try_cast<AnDataType>(bindGenericToType(c, v->parentUnionType, v->parentUnionType->boundGenerics));
         addGenerics(v->generics, v->extTys);
     }
 
@@ -1366,9 +1291,9 @@ void CompilingVisitor::visit(DataDeclNode *n){
         v->typeTag = data->typeTag;
         v->fields = data->fields;
         v->unboundType = data;
-        *v = *(AnDataType*)bindGenericToType(c, v, v->boundGenerics);
+        *v = *try_cast<AnDataType>(bindGenericToType(c, v, v->boundGenerics));
         if(v->parentUnionType)
-            v->parentUnionType = (AnDataType*)bindGenericToType(c, v->parentUnionType, v->parentUnionType->boundGenerics);
+            v->parentUnionType = try_cast<AnDataType>(bindGenericToType(c, v->parentUnionType, v->parentUnionType->boundGenerics));
         addGenerics(v->generics, v->extTys);
     }
 

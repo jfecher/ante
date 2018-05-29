@@ -150,7 +150,7 @@ TypedValue Compiler::compExtract(TypedValue &l, TypedValue &r, BinOpNode *op){
 
         auto index = indexval->getZExtValue();
 
-        auto *aggty = (AnAggregateType*)l.type;
+        auto *aggty = try_cast<AnAggregateType>(l.type);
 
         if(index >= aggty->extTys.size())
             return compErr("Index of " + to_string(index) + " exceeds number of fields in " + anTypeToColoredStr(l.type), op->loc);
@@ -192,14 +192,14 @@ TypedValue Compiler::compInsert(BinOpNode *op, Node *assignExpr){
     auto fn = getMangledFn(basefn, args);
     if(fn){
         vector<Value*> args = {var, index.val, newVal.val};
-        auto *retty = ((AnAggregateType*)fn.type)->extTys[0];
+        auto *retty = try_cast<AnAggregateType>(fn.type)->extTys[0];
         auto *call = builder.CreateCall(fn.val, args);
         return TypedValue(call, retty);
     }
 
     switch(tmp.type->typeTag){
         case TT_Array: {
-            auto *arrty = (AnArrayType*)tmp.type;
+            auto *arrty = try_cast<AnArrayType>(tmp.type);
             if(!typeEq(arrty->extTy, newVal.type))
                 return compErr("Cannot create store of types: "+anTypeToColoredStr(tmp.type)+" <- "
                         +anTypeToColoredStr(newVal.type), assignExpr->loc);
@@ -210,7 +210,7 @@ TypedValue Compiler::compInsert(BinOpNode *op, Node *assignExpr){
             return getVoidLiteral();
         }
         case TT_Ptr: {
-            auto *ptrty = (AnPtrType*)tmp.type;
+            auto *ptrty = try_cast<AnPtrType>(tmp.type);
             if(!typeEq(ptrty->extTy, newVal.type))
                 return compErr("Cannot create store of types: "+anTypeToColoredStr(tmp.type)+" <- "
                         +anTypeToColoredStr(newVal.type), assignExpr->loc);
@@ -225,7 +225,7 @@ TypedValue Compiler::compInsert(BinOpNode *op, Node *assignExpr){
                 return compErr("Tuple indices must always be known at compile time", op->loc);
             }else{
                 auto tupIndex = tupIndexVal->getZExtValue();
-                auto *aggty = (AnAggregateType*)tmp.type;
+                auto *aggty = try_cast<AnAggregateType>(tmp.type);
 
                 if(tupIndex >= aggty->extTys.size())
                     compErr("Index of " + to_string(tupIndex) + " exceeds the maximum index of the tuple, "
@@ -255,7 +255,7 @@ TypedValue createUnionVariantCast(Compiler *c, TypedValue &valToCast, string &ta
     auto *unionDataTy = dataTy->parentUnionType;
 
     if(tyeq->res == TypeCheckResult::SuccessWithTypeVars){
-        unionDataTy = (AnDataType*)bindGenericToType(c, unionDataTy, tyeq->bindings);
+        unionDataTy = try_cast<AnDataType>(bindGenericToType(c, unionDataTy, tyeq->bindings));
     }
 
     Type *variantTy = c->anTypeToLlvmType(valToCast.type);
@@ -312,7 +312,7 @@ struct ReinterpretCastResult {
 
 vector<AnType*> toArgTuple(AnType *ty){
     if(ty->typeTag == TT_Tuple){
-        return ((AnAggregateType*)ty)->extTys;
+        return try_cast<AnAggregateType>(ty)->extTys;
     }else if(ty->typeTag == TT_Void){
         return {};
     }else{
@@ -394,15 +394,15 @@ TypedValue doReinterpretCast(Compiler *c, AnType *castTy, TypedValue &valToCast,
         auto *to_tyn = rcr.dataTy;
 
         string tag;
-        if(((AnDataType*)castTy)->unboundType)
-            tag = ((AnDataType*)((AnDataType*)castTy)->unboundType)->name;
+        if(AnDataType *unbound = try_cast<AnDataType>(castTy)->unboundType)
+            tag = try_cast<AnDataType>(unbound)->name;
         else
-            tag = ((AnDataType*)castTy)->name;
+            tag = try_cast<AnDataType>(castTy)->name;
         //to_tyn->typeName = castTy->typeName;
         //to_tyn->type = isUnion ? TT_TaggedUnion : TT_Data;
 
         if(rcr.typeCheck->res == TypeCheckResult::SuccessWithTypeVars){
-            to_tyn = (AnDataType*)bindGenericToType(c, to_tyn, rcr.typeCheck->bindings);
+            to_tyn = try_cast<AnDataType>(bindGenericToType(c, to_tyn, rcr.typeCheck->bindings));
         }
 
         if(isUnion) return createUnionVariantCast(c, valToCast, tag, rcr.dataTy, rcr.typeCheck);
@@ -756,7 +756,7 @@ TypedValue Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *binop
         //the . operator automatically dereferences pointers, so update val and tyn accordingly.
         while(tyn->typeTag == TT_Ptr){
             val = builder.CreateLoad(val);
-            tyn = ((AnPtrType*)tyn)->extTy;
+            tyn = try_cast<AnPtrType>(tyn)->extTy;
         }
 
         //check to see if this is a field index
@@ -1103,7 +1103,7 @@ TypedValue tryImplicitCast(Compiler *c, TypedValue &arg, AnType *castTy){
 
     //check for an implicit Cast function
     if(TypedValue fn = c->getCastFn(arg.type, castTy)){
-        AnFunctionType *fty = (AnFunctionType*)fn.type;
+        AnFunctionType *fty = try_cast<AnFunctionType>(fn.type);
         if(c->typeEq({arg.type}, fty->extTys)){
             vector<Value*> args{arg.val};
             auto *call = c->builder.CreateCall(fn.val, args);
@@ -1327,7 +1327,7 @@ TypedValue compFnCall(Compiler *c, Node *l, Node *r){
 
     //now that we assured it is a function, unwrap it
     Function *f = (Function*)tvf.val;
-    AnAggregateType *fty = (AnAggregateType*)tvf.type;
+    AnAggregateType *fty = try_cast<AnAggregateType>(tvf.type);
 
     size_t argc = fty->extTys.size();
     if(argc != args.size() and (!f or !f->isVarArg())){
@@ -1403,7 +1403,7 @@ TypedValue compFnCall(Compiler *c, Node *l, Node *r){
             args = adaptArgsToCompilerAPIFn(c, args, typedArgs);
         }else{
             string baseName = getName(l);
-            auto *fnty = (AnFunctionType*)tvf.type;
+            auto *fnty = try_cast<AnFunctionType>(tvf.type);
             string mangledName = mangle(baseName, fnty->extTys);
             return compMetaFunctionResult(c, l->loc, baseName, mangledName, typedArgs);
         }
@@ -1570,7 +1570,7 @@ TypedValue checkForOperatorOverload(Compiler *c, TypedValue &lhs, int op, TypedV
     auto fn = c->getMangledFn(basefn, argtys);
     if(!fn) return fn;
 
-    auto *fnty = (AnFunctionType*)fn.type;
+    auto *fnty = try_cast<AnFunctionType>(fn.type);
 
     AnType *param1 = fnty->extTys[0];
     AnType *param2 = fnty->extTys[1];
@@ -1717,7 +1717,7 @@ void CompilingVisitor::visit(UnOpNode *n){
                 c->compErr("Cannot dereference non-pointer type " + anTypeToColoredStr(val.type), n->loc);
             }
 
-            this->val = TypedValue(c->builder.CreateLoad(val.val), ((AnPtrType*)val.type)->extTy);
+            this->val = TypedValue(c->builder.CreateLoad(val.val), try_cast<AnPtrType>(val.type)->extTy);
             return;
         case '&': //address-of
             this->val = addrOf(c, val);

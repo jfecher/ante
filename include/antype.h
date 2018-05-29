@@ -134,31 +134,29 @@ namespace ante {
 
 
     template<typename T>
-    typename std::remove_pointer<T>::type* try_cast(AnType *type){
-        using u = typename std::remove_pointer<T>::type;
-
-        if(type->isModifierType()){
-            auto *mod = static_cast<AnModifier*>(type);
-            return try_cast<T>(mod->extTy);
+    T* try_cast(AnType *type){
+        if(!T::classof(type)){
+            return nullptr;
         }
 
-        return u::classof(type) ?
-            static_cast<u*>(type) :
-            nullptr;
+        while(type->isModifierType()){
+            auto *mod = static_cast<AnModifier*>(type);
+            type = mod->extTy;
+        }
+        return static_cast<T*>(type);
     }
 
     template<typename T>
-    const typename std::remove_pointer<T>::type* try_cast(const AnType *type){
-        using u = const typename std::remove_pointer<T>::type;
-
-        if(type->isModifierType()){
-            auto *mod = static_cast<const AnModifier*>(type);
-            return try_cast<T>(mod->extTy);
+    const T* try_cast(const AnType *type){
+        if(!T::classof(type)){
+            return nullptr;
         }
 
-        return u::classof(type) ?
-            static_cast<u*>(type) :
-            nullptr;
+        while(type->isModifierType()){
+            auto *mod = static_cast<const AnModifier*>(type);
+            type = mod->extTy;
+        }
+        return static_cast<const T*>(type);
     }
 
 

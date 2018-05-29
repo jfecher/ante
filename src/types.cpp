@@ -66,7 +66,7 @@ void validateType(Compiler *c, const AnType *tn, const DataDeclNode *rootTy){
     if(!tn) return;
 
     if(tn->typeTag == TT_Data or tn->typeTag == TT_TaggedUnion){
-        auto *dataTy = (AnDataType*)tn;
+        auto *dataTy = try_cast<AnDataType>(tn);
 
         if(dataTy->isStub()){
             if(dataTy->name == rootTy->name){
@@ -80,18 +80,18 @@ void validateType(Compiler *c, const AnType *tn, const DataDeclNode *rootTy){
             validateType(c, t, rootTy);
 
     }else if(tn->typeTag == TT_Tuple){
-        auto *agg = (AnAggregateType*)tn;
+        auto *agg = try_cast<AnAggregateType>(tn);
         for(auto *ext : agg->extTys){
             validateType(c, ext, rootTy);
         }
     }else if(tn->typeTag == TT_Array){
-        auto *arr = (AnArrayType*)tn;
+        auto *arr = try_cast<AnArrayType>(tn);
         validateType(c, arr->extTy, rootTy);
     }else if(tn->typeTag == TT_Ptr or tn->typeTag == TT_Function or tn->typeTag == TT_MetaFunction){
         return;
 
     }else if(tn->typeTag == TT_TypeVar){
-        auto *tvt = (AnTypeVarType*)tn;
+        auto *tvt = try_cast<AnTypeVarType>(tn);
         auto *binding = c->lookupTypeVar(tvt->name);
         if(binding){
             return validateType(c, binding, rootTy);
@@ -128,9 +128,7 @@ Result<size_t, string> AnType::getSizeInBits(Compiler *c, string *incompleteType
     if(isPrimitiveTypeTag(this->typeTag))
         return getBitWidthOfTypeTag(this->typeTag);
 
-    if(typeTag == TT_Data or typeTag == TT_TaggedUnion){
-        auto *dataTy = (AnDataType*)this;
-
+    if(auto *dataTy = try_cast<AnDataType>(this)){
         if(dataTy->isStub()){
             if(incompleteType and dataTy->name == *incompleteType){
                 cerr << "Incomplete type " << anTypeToColoredStr(this) << endl;
@@ -146,24 +144,24 @@ Result<size_t, string> AnType::getSizeInBits(Compiler *c, string *incompleteType
             total += val.getVal();
         }
 
-    }else if(typeTag == TT_Tuple){
-        for(auto *ext : ((AnAggregateType*)this)->extTys){
+    // function & metafunction are aggregate types but have different sizes than
+    // a tuple so this case must be checked for before AnAggregateType is
+    }else if(typeTag == TT_Ptr or typeTag == TT_Function or typeTag == TT_MetaFunction){
+        return AN_USZ_SIZE;
+
+    }else if(auto *tup = try_cast<AnAggregateType>(this)){
+        for(auto *ext : tup->extTys){
             auto val = ext->getSizeInBits(c, incompleteType, force);
             if(!val) return val;
             total += val.getVal();
         }
 
-    }else if(typeTag == TT_Array){
-        auto *arr = (AnArrayType*)this;
+    }else if(auto *arr = try_cast<AnArrayType>(this)){
         auto val = arr->extTy->getSizeInBits(c, incompleteType, force);
         if(!val) return val;
         return arr->len * val.getVal();
 
-    }else if(typeTag == TT_Ptr or typeTag == TT_Function or typeTag == TT_MetaFunction){
-        return AN_USZ_SIZE;
-
-    }else if(typeTag == TT_TypeVar){
-        auto *tvt = (AnTypeVarType*)this;
+    }else if(auto *tvt = try_cast<AnTypeVarType>(this)){
         auto *binding = c->lookupTypeVar(tvt->name);
         if(binding){
             if(binding == tvt){
@@ -289,13 +287,10 @@ AnType* bindGenericToType(Compiler *c, AnType *tn, const vector<pair<string, AnT
         return tn;
     }
 
-    if(tn->typeTag == TT_Data or tn->typeTag == TT_TaggedUnion){
-        auto *dty = (AnDataType*)tn;
-
+    if(auto *dty = try_cast<AnDataType>(tn)){
         return AnDataType::getVariant(c, dty, bindings);
 
-    }else if(tn->typeTag == TT_TypeVar){
-        auto *tv = (AnTypeVarType*)tn;
+    }else if(auto *tv = try_cast<AnTypeVarType>(tn)){
         for(auto& pair : bindings){
             if(tv->name == pair.first){
                 return pair.second;
@@ -304,10 +299,7 @@ AnType* bindGenericToType(Compiler *c, AnType *tn, const vector<pair<string, AnT
         cerr << "warning: unbound type var " << tv->name << " in binding\n";
         return tv;
 
-    }else if(tn->typeTag == TT_Tuple or tn->typeTag == TT_Function or
-             tn->typeTag == TT_MetaFunction or tn->typeTag == TT_FunctionList){
-
-        auto *agg = (AnAggregateType*)tn;
+    }else if(auto *agg = try_cast<AnAggregateType>(tn)){
         vector<AnType*> exts;
         exts.reserve(agg->extTys.size());
         for(auto *e : agg->extTys){
@@ -315,13 +307,11 @@ AnType* bindGenericToType(Compiler *c, AnType *tn, const vector<pair<string, AnT
         }
         return AnAggregateType::get(tn->typeTag, exts);
 
-    }else if(tn->typeTag == TT_Ptr){
-        auto *ptr = (AnPtrType*)tn;
+    }else if(auto *ptr = try_cast<AnPtrType>(tn)){
         auto *ty = bindGenericToType(c, ptr->extTy, bindings);
         return AnPtrType::get(ty);
 
-    }else if(tn->typeTag == TT_Array){
-        auto *arr = (AnArrayType*)tn;
+    }else if(auto *arr = try_cast<AnArrayType>(tn)){
         auto *ty = bindGenericToType(c, arr->extTy, bindings);
         return AnArrayType::get(ty, arr->len);
 
@@ -786,10 +776,7 @@ TypeCheckResult& typeEqHelper(const Compiler *c, const AnType *l, const AnType *
  *  equality of AnTypes of type Tuple, Data, Function, or any
  *  type with multiple extTys.
  */
-TypeCheckResult& extTysEq(const AnType *l, const AnType *r, TypeCheckResult &tcr, const Compiler *c = 0){
-    auto *lAgg = (AnAggregateType*)l;
-    auto *rAgg = (AnAggregateType*)r;
-
+TypeCheckResult& extTysEq(const AnAggregateType *lAgg, const AnAggregateType *rAgg, TypeCheckResult &tcr, const Compiler *c = 0){
     if(lAgg->extTys.size() != rAgg->extTys.size())
         return tcr.failure();
 
@@ -823,10 +810,10 @@ TypeCheckResult& typeEqBase(const AnType *l, const AnType *r, TypeCheckResult &t
     if(l == r and !l->isGeneric) return tcr.success(l->numMatchedTys);
 
     if(l->typeTag == TT_TaggedUnion and r->typeTag == TT_Data)
-        return tcr.successIf(((AnDataType*)l)->name == ((AnDataType*)r)->name);
+        return tcr.successIf(try_cast<AnDataType>(l)->name == try_cast<AnDataType>(r)->name);
 
     if(l->typeTag == TT_Data and r->typeTag == TT_TaggedUnion)
-        return tcr.successIf(((AnDataType*)l)->name == ((AnDataType*)r)->name);
+        return tcr.successIf(try_cast<AnDataType>(l)->name == try_cast<AnDataType>(r)->name);
 
     //typevars should be handled by typeEqHelper which requires the Compiler param,
     //if typeEqBase is called without a Compiler param they will return success without any bindings
@@ -837,29 +824,28 @@ TypeCheckResult& typeEqBase(const AnType *l, const AnType *r, TypeCheckResult &t
     if(l->typeTag != r->typeTag)
         return tcr.failure();
 
-    if(r->typeTag == TT_Ptr){
-        auto *lptr = (AnPtrType*)l;
-        auto *rptr = (AnPtrType*)r;
+    if(auto *lptr = try_cast<AnPtrType>(l)){
+        auto *rptr = try_cast<AnPtrType>(r);
 
         return c ? typeEqHelper(c, lptr->extTy, rptr->extTy, tcr)
                  : typeEqBase(lptr->extTy, rptr->extTy, tcr, c);
 
-    }else if(r->typeTag == TT_Array){
-        auto *larr = (AnArrayType*)l;
-        auto *rarr = (AnArrayType*)r;
+    }else if(auto *larr = try_cast<AnArrayType>(l)){
+        auto *rarr = try_cast<AnArrayType>(r);
 
         if(larr->len != rarr->len) return tcr.failure();
 
         return c ? typeEqHelper(c, larr->extTy, rarr->extTy, tcr)
                  : typeEqBase(larr->extTy, rarr->extTy, tcr, c);
 
-    }else if(r->typeTag == TT_Data or r->typeTag == TT_TaggedUnion){
-        auto *ldt = (AnDataType*)l;
-        auto *rdt = (AnDataType*)r;
+    /* This case should be handled by typeEqHelper and should only reach here if there is no
+     * valid Compiler* parameter to lookup definitions from. */
+    }else if(auto *ldt = try_cast<AnDataType>(l)){
+        auto *rdt = try_cast<AnDataType>(r);
         return tcr.successIf(ldt->name == rdt->name);
 
-    }else if(r->typeTag == TT_Function or r->typeTag == TT_MetaFunction or r->typeTag == TT_Tuple){
-        return extTysEq(l, r, tcr, c);
+    }else if(auto *lAgg = try_cast<AnAggregateType>(l)){
+        return extTysEq(lAgg, try_cast<AnAggregateType>(r), tcr, c);
     }
     //primitive type, we already know l->type == r->type
     return tcr.success();
@@ -982,18 +968,19 @@ TypeCheckResult& typeEqHelper(const Compiler *c, const AnType *l, const AnType *
 
         //reassign l and r into typeVar and nonTypeVar so code does not have to be repeated in
         //one if branch for l and another for r
-        AnTypeVarType *typeVar;
+        const AnTypeVarType *typeVar;
         AnType *nonTypeVar;
 
         if(l->typeTag == TT_TypeVar and r->typeTag != TT_TypeVar){
-            typeVar = (AnTypeVarType*)l;
+            typeVar = try_cast<AnTypeVarType>(l);
+            //cast away const to store in string,AnType* pair later
             nonTypeVar = (AnType*)r;
         }else if(l->typeTag != TT_TypeVar and r->typeTag == TT_TypeVar){
-            typeVar = (AnTypeVarType*)r;
+            typeVar = try_cast<AnTypeVarType>(r);
             nonTypeVar = (AnType*)l;
         }else{ //both type vars
-            auto *ltv = (AnTypeVarType*)l;
-            auto *rtv = (AnTypeVarType*)r;
+            auto *ltv = try_cast<AnTypeVarType>(l);
+            auto *rtv = try_cast<AnTypeVarType>(r);
 
             //lookup the type bound to ltv
             AnType *lv = c->lookupTypeVar(ltv->name);

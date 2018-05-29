@@ -56,7 +56,7 @@ TypedValue Compiler::callFn(string name, vector<TypedValue> args){
     //Loop through each arg, typecheck them, and build vals vector
     //TODO: re-arrange all args into one tuple so that typevars
     //      are matched correctly across parameters
-    auto *fnty = (AnFunctionType*)fn.type;
+    auto *fnty = try_cast<AnFunctionType>(fn.type);
     for(size_t i = 0; i < args.size(); i++){
         auto arg = typeCheckWithImplicitCasts(this, args[i], fnty->extTys[i]);
         if(!arg) return arg;
@@ -373,7 +373,7 @@ TypedValue compFnWithModifiers(Compiler *c, FuncDecl *fd, ModNode *mod){
                 if(capi::lookup(fd->getName())){
                     fn = c->compFn(fd);
                     //Tag as TT_MetaFunction
-                    auto *oldTy = (AnFunctionType*)fn.type;
+                    auto *oldTy = try_cast<AnFunctionType>(fn.type);
                     fn.type = AnFunctionType::get(oldTy->retTy, oldTy->extTys, true);
                     fd->tv = fn;
                 }else{

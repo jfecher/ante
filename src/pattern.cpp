@@ -79,7 +79,7 @@ namespace ante {
                 " to a pattern of size " + to_string(tupTy->getNumContainedTypes()), t->loc);
         }
 
-        auto *aggTy = (AnAggregateType*)valToMatch.type;
+        auto *aggTy = try_cast<AnAggregateType>(valToMatch.type);
         size_t elementNo = 0;
 
         for(auto &e : t->exprs){
@@ -152,12 +152,12 @@ namespace ante {
         ConstantInt *ci = ConstantInt::get(*c->ctxt,
                 APInt(8, parentTy->getTagVal(pattern->typeName), true));
 
-        tagTy = (AnDataType*)bindGenericToType(c, tagTy, ((AnDataType*)valToMatch.type)->boundGenerics);
+        tagTy = try_cast<AnDataType>(bindGenericToType(c, tagTy, try_cast<AnDataType>(valToMatch.type)->boundGenerics));
         // tagTy = tagTy->setModifier(valToMatch.type->mods);
 
         auto tcr = c->typeEq(parentTy, valToMatch.type);
         if(tcr->res == TypeCheckResult::SuccessWithTypeVars)
-            tagTy = (AnDataType*)bindGenericToType(c, tagTy, tcr->bindings);
+            tagTy = try_cast<AnDataType>(bindGenericToType(c, tagTy, tcr->bindings));
         else if(tcr->res == TypeCheckResult::Failure)
             c->compErr("Cannot bind pattern of type " + anTypeToColoredStr(parentTy) +
                     " to matched value of type " + anTypeToColoredStr(valToMatch.type), pattern->loc);
