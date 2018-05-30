@@ -724,10 +724,10 @@ void CompilingVisitor::visit(VarNode *n){
  *
  * @return The newly-declared variable with an inferred type
  */
-TypedValue compMutBinding(VarAssignNode *node, CompilingVisitor &cv){
+void compMutBinding(VarAssignNode *node, CompilingVisitor &cv){
     Compiler *c = cv.c;
     if(!dynamic_cast<VarNode*>(node->ref_expr))
-        return c->compErr("Unknown pattern for l-expr", node->expr->loc);
+        c->compErr("Unknown pattern for l-expr", node->expr->loc);
 
     string &name = static_cast<VarNode*>(node->ref_expr)->name;
 
@@ -740,7 +740,7 @@ TypedValue compMutBinding(VarAssignNode *node, CompilingVisitor &cv){
     node->expr->accept(cv);
     TypedValue &val = cv.val;
     if(val.type->typeTag == TT_Void)
-        return c->compErr("Cannot assign a "+anTypeToColoredStr(AnType::getVoid())+
+        c->compErr("Cannot assign a "+anTypeToColoredStr(AnType::getVoid())+
                 " value to a variable", node->expr->loc);
 
     bool isGlobal = false;
@@ -764,7 +764,7 @@ TypedValue compMutBinding(VarAssignNode *node, CompilingVisitor &cv){
     bool nofree = true;//val->type->type != TT_Ptr || dynamic_cast<Constant*>(val->val);
     c->stoVar(name, new Variable(name, alloca, c->scope, nofree, true));
 
-    return TypedValue(c->builder.CreateStore(val.val, alloca.val), val.type);
+    cv.val = TypedValue(c->builder.CreateStore(val.val, alloca.val), val.type);
 }
 
 
@@ -909,11 +909,11 @@ void CompilingVisitor::visit(VarAssignNode *n){
         }
     }
 
-    if(n->hasModifier(Tok_Let)){
-        compLetBinding(n, *this);
-        return;
-    }else if(n->hasModifier(Tok_Mut)){
+    if(n->hasModifier(Tok_Mut)){
         compMutBinding(n, *this);
+        return;
+    }else if(!n->modifiers.empty()){
+        compLetBinding(n, *this);
         return;
     }
 
