@@ -208,13 +208,13 @@ namespace ante {
         }else if(VarNode *vn = dynamic_cast<VarNode*>(pattern)){
             match_var(cv, n, vn, jmpOnFail, valToMatch);
 
-        }else if(IntLitNode *iln = dynamic_cast<IntLitNode*>(pattern)){
+        }else if(dynamic_cast<IntLitNode*>(pattern)){
             match_literal(cv, n, pattern, jmpOnFail, valToMatch, Int);
 
-        }else if(FltLitNode *fln = dynamic_cast<FltLitNode*>(pattern)){
+        }else if(dynamic_cast<FltLitNode*>(pattern)){
             match_literal(cv, n, pattern, jmpOnFail, valToMatch, Flt);
 
-        }else if(StrLitNode *sln = dynamic_cast<StrLitNode*>(pattern)){
+        }else if(dynamic_cast<StrLitNode*>(pattern)){
             match_literal(cv, n, pattern, jmpOnFail, valToMatch, Str);
 
         }else{

@@ -196,7 +196,7 @@ namespace ante {
                     }
                 }
             }
-        }else if(LoadInst *li = dyn_cast<LoadInst>(tv.val)){
+        }else if(dyn_cast<LoadInst>(tv.val)){
             auto ptr = findLastStore(c, tv);
             storePtr(c, ptr);
 
@@ -208,7 +208,7 @@ namespace ante {
             auto ptr = itpi->getOperand(0);
 
             if(ConstantInt *addr = dyn_cast<ConstantInt>(ptr)){
-                *(void**)data = (void*)dyn_cast<ConstantInt>(ptr)->getZExtValue();
+                *(void**)data = (void*)addr->getZExtValue();
             }else{
                 storePtr(c, {ptr, tv.type});
             }
@@ -433,8 +433,8 @@ namespace ante {
                 break;
             case TT_Type: cout << anTypeToStr(castTo<AnType*>()); break;
             case TT_Function: os << "fun @ " << castTo<void*>(); break;
-            case TT_MetaFunction: os << "compiler-api function\n";
-            case TT_FunctionList: os << "function list\n";
+            case TT_MetaFunction: os << "compiler-api function\n"; break;
+            case TT_FunctionList: os << "function list\n"; break;
             case TT_TypeVar: os << "?"; break; //compile-time value with unknown type, something went wrong.
             case TT_Void: os << "()"; break;
         }

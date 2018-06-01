@@ -251,7 +251,7 @@ namespace ante {
         try{
             auto *ptr = typeArena.ptrTypes.at(ext).get();
             return ptr;
-        }catch(out_of_range r){
+        }catch(out_of_range &r){
             auto ptr = new AnPtrType(ext);
             typeArena.ptrTypes.emplace(ext, ptr);
             return ptr;

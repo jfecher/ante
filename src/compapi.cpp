@@ -116,7 +116,6 @@ extern "C" {
 
         RootNode *expr = parser::getRootNode();
         TypedValue val;
-        Node *valNode = 0;
 
         scanImports(c, expr);
         c->scanAllDecls(expr);
@@ -125,7 +124,6 @@ extern "C" {
         for(auto &n : expr->main){
             try{
                 val = CompilingVisitor::compile(c, n);
-                valNode = n.get();
             }catch(CtError *e){
                 delete e;
             }

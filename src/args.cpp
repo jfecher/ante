@@ -85,7 +85,7 @@ CompilerArgs* ante::parseArgs(int argc, const char** argv){
                 }
 
                 ret->addArg(new Argument(a, s));
-            }catch(out_of_range r){
+            }catch(out_of_range &r){
                 cerr << "Ante: argument '" << argv[i] << "' was not recognized.\n";
 				cerr << "      try -help for a list of options\n";
                 exit(1);

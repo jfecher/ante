@@ -756,8 +756,9 @@ void yy::parser::error(const location& loc, const string& msg){
 namespace ante {
     namespace parser {
         Node* externCName(Node *n){
-            size_t len = strlen((char*)n);
-            char *c = (char*)realloc(n, len+2);
+            char *str = (char*)n;
+            size_t len = strlen(str);
+            char *c = (char*)realloc(str, len+2);
             c[len] = ';';
             c[len+1] = '\0';
             return (Node*)c;
