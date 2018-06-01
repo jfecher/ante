@@ -1655,6 +1655,20 @@ void CompilingVisitor::visit(BinOpNode *n){
         return;
     }
 
+    if(n->op == Tok_As){
+        n->lval->accept(*this);
+        auto ltval = this->val;
+        auto *ty = toAnType(c, (TypeNode*)n->rval.get());
+
+        this->val = createCast(c, ty, ltval, n->loc);
+
+        if(!val){
+            c->compErr("Invalid type cast " + anTypeToColoredStr(ltval.type) +
+                    " -> " + anTypeToColoredStr(ty), n->loc);
+        }
+        return;
+    }
+
     if(n->op == '#'){
         this->val = c->compExtract(lhs, rhs, n);
         return;

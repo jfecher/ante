@@ -83,6 +83,7 @@ map<int, const char*> tokDict = {
     {Tok_Fun, "fun"},
     {Tok_Ext, "ext"},
     {Tok_Block, "block"},
+    {Tok_As, "as"},
 
     //pseudo-keywords
     {Tok_Self, "self"},
@@ -157,6 +158,7 @@ map<string, int> keywords = {
     {"fun",      Tok_Fun},
     {"ext",      Tok_Ext},
     {"block",    Tok_Block},
+    {"as",       Tok_As},
 
     {"self",     Tok_Self},
 

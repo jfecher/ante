@@ -104,6 +104,7 @@ namespace ante {
         Tok_Fun,
         Tok_Ext,
         Tok_Block,
+        Tok_As,
 
         //pseudo-keywords
         Tok_Self,

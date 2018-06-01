@@ -118,9 +118,9 @@ void addArgAttrs(llvm::Argument &arg, TypeNode *paramTyNode){
         arg.addAttr(Attribute::AttrKind::NoCapture);
 
         //TODO: re-add
-        //if(!paramTyNode->hasModifier(Tok_Mut)){
-        //    arg.addAttr(Attribute::AttrKind::ReadOnly);
-        //}
+        if(!paramTyNode->hasModifier(Tok_Mut)){
+            arg.addAttr(Attribute::AttrKind::ReadOnly);
+        }
     }
 }
 

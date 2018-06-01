@@ -386,7 +386,7 @@ fun (++): Str s1 s2 -> Str
 
     memcpy buf (ref void s1.cStr) s1.len
 
-    mut buf_offset = ref void(usz buf + s1.len)
+    mut buf_offset = (usz buf + s1.len) as ref void
     memcpy buf_offset (ref void s2.cStr) (s2.len+1) //copy terminating null too
 
     Str(ref c8 buf, len)

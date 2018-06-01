@@ -66,9 +66,9 @@ void yyerror(const char *msg);
 %token Return
 %token If Then Elif Else
 %token For While Do In
-%token Continue Break
-%token Import Let Match With Ref
-%token Type Trait Fun Ext Block Self
+%token Continue Break Import
+%token Let Match With Ref Type
+%token Trait Fun Ext Block As Self
 
 /* modifiers */
 %token Pub Pri Pro Raw Const
@@ -137,6 +137,7 @@ void yyerror(const char *msg);
 %left '*' '/' '%'
 %right '^'
 
+%left As
 %left '#'
 %left '@' New '&' Ref
 %left TYPE UserType TypeVar I8 I16 I32 I64 U8 U16 U32 U64 Isz Usz F16 F32 F64 C8 C32 Bool Void
@@ -442,6 +443,7 @@ op: '+'    {$$ = (Node*)"+";}
   | Range  {$$ = (Node*)"..";}
   | In     {$$ = (Node*)"in";}
   | Is     {$$ = (Node*)"is";}
+  | As     {$$ = (Node*)"as";}
   ;
 
 /* NOTE: lextxt contents from fn_name and the mangleFn result are freed in the call to mkFuncDeclNode */
@@ -656,6 +658,7 @@ expr_no_decl: expr_no_decl '+' maybe_newline expr_no_decl                      {
             | expr_no_decl Range maybe_newline expr_no_decl                    {$$ = mkBinOpNode(@$, Tok_Range, $1, $4);}
             | expr_no_decl In maybe_newline expr_no_decl                       {$$ = mkBinOpNode(@$, Tok_In, $1, $4);}
             | expr_no_decl Not In maybe_newline expr_no_decl                   {$$ = mkUnOpNode(@$, Tok_Not, mkBinOpNode(@$, Tok_In, $1, $5));}
+            | expr_no_decl As maybe_newline bounded_type_expr                  {$$ = mkBinOpNode(@$, Tok_As, $1, $4);}
             | expr_no_decl fn_brackets                                         {$$ = mkBinOpNode(@$, '(', $1, $2);}
             | expr_no_decl arg_list                                            {$$ = mkBinOpNode(@$, '(', $1, $2);}
             | val_no_decl                                           %prec MED  {$$ = $1;}
@@ -722,6 +725,7 @@ expr_with_decls: expr_with_decls '+' maybe_newline expr_with_decls              
                | expr_with_decls Range maybe_newline expr_with_decls                  {$$ = mkBinOpNode(@$, Tok_Range, $1, $4);}
                | expr_with_decls In maybe_newline expr_with_decls                     {$$ = mkBinOpNode(@$, Tok_In, $1, $4);}
                | expr_with_decls Not In maybe_newline expr_with_decls                 {$$ = mkUnOpNode(@$, Tok_Not, mkBinOpNode(@$, Tok_In, $1, $5));}
+               | expr_with_decls As maybe_newline bounded_type_expr                   {$$ = mkBinOpNode(@$, Tok_As, $1, $4);}
                | expr_with_decls fn_brackets                                          {$$ = mkBinOpNode(@$, '(', $1, $2);}
                | expr_with_decls arg_list                                             {$$ = mkBinOpNode(@$, '(', $1, $2);}
                | val                                                       %prec MED  {$$ = $1;}
