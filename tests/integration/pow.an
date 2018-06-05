@@ -1,9 +1,9 @@
 
 
 fun pow: i32 base exponent -> i32
-    if exponent == 0 then
+    if exponent = 0 then
         1
-    elif exponent % 2 == 0 then
+    elif exponent % 2 = 0 then
         let v = pow base (exponent / 2)
         v * v
     else

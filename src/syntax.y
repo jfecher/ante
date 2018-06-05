@@ -55,7 +55,7 @@ void yyerror(const char *msg);
 %token C8 C32 Bool Void
 
 /* operators */
-%token Eq NotEq AddEq SubEq MulEq DivEq GrtrEq LesrEq
+%token Assign NotEq AddEq SubEq MulEq DivEq GrtrEq LesrEq
 %token Or And Range RArrow ApplyL ApplyR Append New Not Is
 
 /* literals */
@@ -113,7 +113,7 @@ void yyerror(const char *msg);
 %left MED
 
 %left ','
-%left '=' AddEq SubEq MulEq DivEq
+%left Assign AddEq SubEq MulEq DivEq
 %left ';'
 %left MODIFIER Pub Pri Pro Raw Const Noinit Mut Global Ante
 
@@ -125,7 +125,7 @@ void yyerror(const char *msg);
 %left Or
 %left And
 %left Not
-%left Eq Is NotEq GrtrEq LesrEq '<' '>'
+%left '=' Is NotEq GrtrEq LesrEq '<' '>'
 
 %left In
 %left Append
@@ -426,7 +426,7 @@ op: '+'    {$$ = (Node*)"+";}
   | '.'    {$$ = (Node*)".";}
   | ';'    {$$ = (Node*)";";}
   | '#'    {$$ = (Node*)"#";}
-  | Eq     {$$ = (Node*)"==";}
+  | Assign {$$ = (Node*)":=";}
   | NotEq  {$$ = (Node*)"!=";}
   | GrtrEq {$$ = (Node*)">=";}
   | LesrEq {$$ = (Node*)"<=";}
@@ -455,6 +455,7 @@ fn_ext_def: Fun bounded_type_expr '.' fn_name ':' params RArrow bounded_type_exp
 
 fn_ext_inferredRet: Fun bounded_type_expr '.' fn_name ':' params '=' expr                               {$$ = mkExtNode(@$, $2, mkFuncDeclNode(@4, /*fn_name*/$4, /*ret_ty*/0, /*params*/$6, /*body*/$8)); }
                   | Fun bounded_type_expr '.' fn_name ':' '=' expr                                      {$$ = mkExtNode(@$, $2, mkFuncDeclNode(@4, /*fn_name*/$4, /*ret_ty*/0, /*params*/0,  /*body*/$7)); }
+                  | Fun bounded_type_expr '.' fn_name Assign  expr                                      {$$ = mkExtNode(@$, $2, mkFuncDeclNode(@4, /*fn_name*/$4, /*ret_ty*/0, /*params*/0,  /*body*/$6)); }
                   ;
 
 fn_def: Fun fn_name ':' params RArrow bounded_type_expr block                              {$$ = mkFuncDeclNode(@2, /*fn_name*/$2, /*ret_ty*/$6,                                  /*params*/$4, /*body*/$7);}
@@ -465,6 +466,7 @@ fn_def: Fun fn_name ':' params RArrow bounded_type_expr block                   
 
 fn_inferredRet: Fun fn_name ':' params '=' expr                               {$$ = mkFuncDeclNode(@2, /*fn_name*/$2, /*ret_ty*/0, /*params*/$4, /*body*/$6);}
               | Fun fn_name ':' '=' expr                                      {$$ = mkFuncDeclNode(@2, /*fn_name*/$2, /*ret_ty*/0, /*params*/0,  /*body*/$5);}
+              | Fun fn_name Assign  expr                                      {$$ = mkFuncDeclNode(@2, /*fn_name*/$2, /*ret_ty*/0, /*params*/0,  /*body*/$4);}
               ;
 
 fn_decl: Fun fn_name ':' params RArrow bounded_type_expr                             ';'   {$$ = mkFuncDeclNode(@2, /*fn_name*/externCName($2), /*ret_ty*/$6,                                  /*params*/$4, /*body*/0);}
@@ -645,7 +647,7 @@ expr_no_decl: expr_no_decl '+' maybe_newline expr_no_decl                      {
             | expr_no_decl '.' maybe_newline type_expr                         {$$ = mkBinOpNode(@$, '.', $1, $4);}
             | expr_no_decl ';' maybe_newline expr_no_decl                      {$$ = mkSeqNode(@$, $1, $4);}
             | expr_no_decl '#' maybe_newline expr_no_decl                      {$$ = mkBinOpNode(@$, '#', $1, $4);}
-            | expr_no_decl Eq maybe_newline expr_no_decl                       {$$ = mkBinOpNode(@$, Tok_Eq, $1, $4);}
+            | expr_no_decl '=' maybe_newline expr_no_decl                      {$$ = mkBinOpNode(@$, '=', $1, $4);}
             | expr_no_decl Is maybe_newline expr_no_decl                       {$$ = mkBinOpNode(@$, Tok_Is, $1, $4);}
             | expr_no_decl NotEq maybe_newline expr_no_decl                    {$$ = mkBinOpNode(@$, Tok_NotEq, $1, $4);}
             | expr_no_decl GrtrEq maybe_newline expr_no_decl                   {$$ = mkBinOpNode(@$, Tok_GrtrEq, $1, $4);}
@@ -667,8 +669,8 @@ expr_no_decl: expr_no_decl '+' maybe_newline expr_no_decl                      {
             | expr_no_decl SubEq maybe_newline expr_no_decl             {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '-', $1, $4), false);}
             | expr_no_decl MulEq maybe_newline expr_no_decl             {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '*', $1, $4), false);}
             | expr_no_decl DivEq maybe_newline expr_no_decl             {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '/', $1, $4), false);}
-            | expr_no_decl '=' maybe_newline expr_no_decl               {$$ = mkVarAssignNode(@$, $1, $4);} /* All VarAssignNodes return void values */
-            | modifier maybe_newline expr_no_decl  %prec Newline   {$$ = append_modifier($1, $3);}
+            | expr_no_decl Assign maybe_newline expr_no_decl            {$$ = mkVarAssignNode(@$, $1, $4);} /* All VarAssignNodes return void values */
+            | modifier maybe_newline expr_no_decl  %prec Newline        {$$ = append_modifier($1, $3);}
 
 
             /* this rule returns the original If for precedence reasons compared to its mirror rule in if_expr
@@ -712,7 +714,7 @@ expr_with_decls: expr_with_decls '+' maybe_newline expr_with_decls              
                | expr_with_decls '.' maybe_newline type_expr               {$$ = mkBinOpNode(@$, '.', $1, $4);}
                | expr_with_decls ';' maybe_newline expr_with_decls                    {$$ = mkSeqNode(@$, $1, $4);}
                | expr_with_decls '#' maybe_newline expr_with_decls                    {$$ = mkBinOpNode(@$, '#', $1, $4);}
-               | expr_with_decls Eq maybe_newline expr_with_decls                     {$$ = mkBinOpNode(@$, Tok_Eq, $1, $4);}
+               | expr_with_decls '=' maybe_newline expr                               {$$ = mkBinOpNode(@$, '=', $1, $4);}
                | expr_with_decls Is maybe_newline expr_with_decls                     {$$ = mkBinOpNode(@$, Tok_Is, $1, $4);}
                | expr_with_decls NotEq maybe_newline expr_with_decls                  {$$ = mkBinOpNode(@$, Tok_NotEq, $1, $4);}
                | expr_with_decls GrtrEq maybe_newline expr_with_decls                 {$$ = mkBinOpNode(@$, Tok_GrtrEq, $1, $4);}
@@ -734,8 +736,8 @@ expr_with_decls: expr_with_decls '+' maybe_newline expr_with_decls              
                | expr_with_decls SubEq maybe_newline expr             {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '-', $1, $4), false);}
                | expr_with_decls MulEq maybe_newline expr             {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '*', $1, $4), false);}
                | expr_with_decls DivEq maybe_newline expr             {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '/', $1, $4), false);}
-               | expr_with_decls '=' maybe_newline expr               {$$ = mkVarAssignNode(@$, $1, $4);} /* All VarAssignNodes return void values */
-               | modifier maybe_newline expr_with_decls   %prec Let   {$$ = append_modifier($1, $3);}
+               | expr_with_decls Assign maybe_newline expr            {$$ = mkVarAssignNode(@$, $1, $4);} /* All VarAssignNodes return void values */
+               | modifier maybe_newline expr_with_decls %prec Let   {$$ = append_modifier($1, $3);}
 
                /* this rule returns the original If for precedence reasons compared to its mirror rule in if_expr
                 * that returns the elif node itself.  The former necessitates setElse to travel through the first IfNode's

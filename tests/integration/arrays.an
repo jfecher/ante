@@ -11,7 +11,7 @@ printf "ints[3] = %d\n" (ints#3)
 mut arr = [5, 4, 3, 2]
 printf "arr[2] = %d\n" (arr#2)
 
-arr#2 = 5
+arr#2 := 5
 printf "arr[2] = %d\n" (arr#2)
 
 

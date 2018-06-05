@@ -18,7 +18,7 @@ let x = 8
 let y = 7
 printf "mul(%d, %d) = %d\n" x y (mul x y)
 
-if x + y == mul x y then
+if x + y = mul x y then
     exit 5
 
 

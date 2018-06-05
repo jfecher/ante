@@ -51,11 +51,11 @@ type Maybe 't =
    | Some 't
    | None
 
-fun (==): Maybe l r -> bool
+fun (=): Maybe l r -> bool
     match l with
     | Some lv ->
         match r with
-        | Some rv -> lv == rv
+        | Some rv -> lv = rv
         | None -> false
     | None ->
         match r with
@@ -182,43 +182,43 @@ fun Str.reverse: Str s -> Str
 
     mut i = 0usz
     while i < s.len do
-        buf#i = s.cStr#(s.len-i-1)
+        buf#i := s.cStr#(s.len-i-1)
         i += 1
 
-    buf#i = '\0'
+    buf#i := '\0'
     Str(buf, i)
 
 
 fun Str.init: i64 i -> Str
-    if i == 0 then return "0"
+    if i = 0 then return "0"
     mut len = 0usz
     mut buf = ref c8 malloc 21
-    buf#20 = '\0'
+    buf#20 := '\0'
 
     mut x = i
     let isNeg = i < 0 and ((x *= -1); true)
 
     while x != 0 do
         len += 1
-        buf#(20 - len) = '0' + c8(x % 10)
+        buf#(20 - len) := '0' + c8(x % 10)
         x /= 10
 
     if isNeg then
         len += 1
-        buf#(20 - len) = '-'
+        buf#(20 - len) := '-'
 
     Str(buf + (20 - len), len)
 
 fun Str.init: u64 i -> Str
-    if i == 0 then return "0"
+    if i = 0 then return "0"
     mut len = 0usz
     mut buf = ref c8 malloc 21
-    buf#20 = '\0'
+    buf#20 := '\0'
 
     mut x = i
     while x != 0 do
         len += 1
-        buf#(20 - len) = '0' + c8(x % 10)
+        buf#(20 - len) := '0' + c8(x % 10)
         x /= 10
 
     Str(buf + (20 - len), len)
@@ -254,7 +254,7 @@ fun i64.parse: Str s -> Maybe i64
     mut i = 0
     mut sum = 0i64
     let isNeg =
-        if s.len != 0 and s#0 == '-' then
+        if s.len != 0 and s#0 = '-' then
             i += 1
             true
         else false
@@ -273,12 +273,12 @@ fun i64.parse: Str s -> Maybe i64
 
 //Pointer Equivalence
 !inline
-fun (==): ref 't l r =
-    @l == @r
+fun (=): ref 't l r =
+    @l = @r
 
 //ref void have no element, so structural equivalence is an error
-fun (==): ref void l r =
-    Ante.error "Cannot call == on a ref void!  Use 'is' to compare addresses!".cStr
+fun (=): ref void l r =
+    Ante.error "Cannot call = on a ref void!  Use 'is' to compare addresses!".cStr
 
 //For-loops work over any range that is Iterable
 trait Iterable
@@ -294,13 +294,13 @@ type Range = i32 start end step
 
 //returns true if a is in the range r
 fun (in): i32 a, Range r -> bool
-    if r.step == 1 then
+    if r.step = 1 then
         r.start <= a and a <= r.end
     else
         let a_adj = a % r.step
         let s_adj = r.start % r.step
 
-        a_adj == s_adj and r.start <= a and a <= r.end
+        a_adj = s_adj and r.start <= a and a <= r.end
 
 //creates an inclusive range
 fun (..): i32 start end -> Range
@@ -357,7 +357,7 @@ fun Str.init: ref c8 cStr -> Str
     Str(cStr, usz strlen cStr)
 
 
-fun (==): Str l r -> bool
+fun (=): Str l r -> bool
     if l.len != r.len then
         return false
 
@@ -368,18 +368,18 @@ fun (==): Str l r -> bool
 
         i += 1
 
-    l.cStr#i == r.cStr#i
+    l.cStr#i = r.cStr#i
 
 !inline
 fun (is): Str l r = l.cStr is r.cStr
 
 !inline
-fun (!=): Str l r = not(l == r)
+fun (!=): Str l r = not(l = r)
 
 
 fun (++): Str s1 s2 -> Str
-    if s1.len == 0 then return s2
-    if s2.len == 0 then return s1
+    if s1.len = 0 then return s2
+    if s2.len = 0 then return s1
 
     let len = s1.len + s2.len
     mut buf = malloc (len+1)
@@ -396,7 +396,7 @@ fun (#): Str s, i32 index = s.cStr#index
 
 !inline
 fun (#): Str s, i32 i, c8 c
-    s.cStr#i = c
+    s.cStr#i := c
 
 
 //IO
@@ -421,24 +421,24 @@ fun InFile.next_line: InFile f -> Str
     while
         let c = fgetc f
 
-        if c == eof then break
+        if c = eof then break
 
         //Flag feof if eof occurs after terminating newline
-        if c == '\n' then
+        if c = '\n' then
             let peek = fgetc f
             if peek != eof then ungetc peek f
             break
 
         if len+1 >= cap then
             cap *= 2
-            cstr = ref c8 realloc (ref void cstr) cap
+            cstr := ref c8 realloc (ref void cstr) cap
 
-        cstr#len = c
+        cstr#len := c
         len += 1
         true
     do ()
 
-    cstr#len = '\0'
+    cstr#len := '\0'
     Str(cstr, len)
 
 
@@ -451,14 +451,14 @@ fun input: ref c8 msg -> Str
 
     while
         let c = getchar ()
-        if len % 32 == 0 then
-            cstr = ref c8 realloc (ref void cstr) (len+32)
+        if len % 32 = 0 then
+            cstr := ref c8 realloc (ref void cstr) (len+32)
 
-        cstr#len = c
+        cstr#len := c
         len += 1
         c != '\n'
     do ()
 
     len -= 1
-    cstr#len = '\0'
+    cstr#len := '\0'
     Str(cstr, len)

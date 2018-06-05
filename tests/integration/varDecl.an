@@ -4,11 +4,11 @@
 */
 mut i = 12
 print i
-i = 3
+i := 3
 print i
 
 
 mut s = "Hello "
 printf "%s" s
-s = "World!"
+s := "World!"
 print s

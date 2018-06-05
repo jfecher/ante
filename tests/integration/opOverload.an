@@ -19,7 +19,7 @@ print <| "Hello " + "W" + "orld" + "!"
 let s1 = "hello"
 let s2 = "hello"
 
-if s1 == s2 then
+if s1 = s2 then
     print "Strings are equal!"
 else
     print "Strings are not equal."

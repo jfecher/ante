@@ -9,5 +9,5 @@ for i in 0..10_000 do
  * while has_next r do
  *    let i = unwrap r
  *    print i
- *    r = next r
+ *    r := next r
  */

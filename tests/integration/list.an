@@ -20,11 +20,11 @@ fun append: mut List 't l, 't elem
 
     match l.last with
     | Some last ->
-        last.next = Some n
-        l.last = Some n
+        last.next := Some n
+        l.last := Some n
     | None ->
-        l.first = Some n
-        l.last = Some n
+        l.first := Some n
+        l.last := Some n
 
 
 fun printne: List l

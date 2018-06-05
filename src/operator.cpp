@@ -1513,7 +1513,7 @@ TypedValue handlePrimitiveNumericOp(BinOpNode *bop, Compiler *c, TypedValue &lhs
                         return TypedValue(c->builder.CreateICmpUGT(lhs.val, rhs.val), AnType::getBool());
                     else
                         return TypedValue(c->builder.CreateICmpSGT(lhs.val, rhs.val), AnType::getBool());
-        case Tok_Eq:
+        case '=':
         case Tok_Is:
                     if(isFPTypeTag(lhs.type->typeTag))
                         return TypedValue(c->builder.CreateFCmpOEQ(lhs.val, rhs.val), AnType::getBool());
@@ -1689,8 +1689,8 @@ void CompilingVisitor::visit(BinOpNode *n){
     }else if((lhs.type->typeTag == TT_Bool and rhs.type->typeTag == TT_Bool) or
              (lhs.type->typeTag == TT_Ptr  and rhs.type->typeTag == TT_Ptr)){
 
-        //== is no longer implemented for pointers by default
-        if(n->op == Tok_Eq and lhs.type->typeTag == TT_Bool and rhs.type->typeTag == TT_Bool){
+        //= is no longer implemented for pointers by default
+        if(n->op == '=' and lhs.type->typeTag == TT_Bool and rhs.type->typeTag == TT_Bool){
             this->val = TypedValue(c->builder.CreateICmpEQ(lhs.val, rhs.val), AnType::getBool());
             return;
         }

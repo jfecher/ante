@@ -34,7 +34,7 @@ map<int, const char*> tokDict = {
     {Tok_Bool, "bool"},
     {Tok_Void, "void"},
 
-    {Tok_Eq, "=="},
+    {Tok_Assign, ":="},
     {Tok_NotEq, "!="},
     {Tok_AddEq, "+="},
     {Tok_SubEq, "-="},
@@ -855,7 +855,7 @@ int Lexer::genOpTok(yy::parser::location_type* loc){
 
     if(nxt == '='){
         switch(cur){
-            case '=': RETURN_PAIR(Tok_Eq);
+            case ':': RETURN_PAIR(Tok_Assign);
             case '+': RETURN_PAIR(Tok_AddEq);
             case '-': RETURN_PAIR(Tok_SubEq);
             case '*': RETURN_PAIR(Tok_MulEq);

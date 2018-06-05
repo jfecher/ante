@@ -1,6 +1,6 @@
 
 fun modify: mut i32 x
-    x = x * 2
+    x := x * 2
 
 mut t = 32
 print t

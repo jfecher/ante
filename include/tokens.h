@@ -54,7 +54,7 @@ namespace ante {
         Tok_Void,
 
         /*operators*/
-        Tok_Eq,
+        Tok_Assign,
         Tok_NotEq,
         Tok_AddEq,
         Tok_SubEq,

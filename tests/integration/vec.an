@@ -27,18 +27,18 @@ assert (idx4 not in v)
 //remove element 8 at index 4
 let idx = v.remove_first 8
 assert (8 not in v)
-assert (idx == Some 4)
+assert (idx = Some 4)
 
 let count = v.remove_all 1
 assert (1 not in v)
-assert (count == 2)
+assert (count = 2)
  
 mut v2 = Vec<i32>()
 v2.push 2
 v2.push 3
 v2.push 13
 
-assert (v == v2)
+assert (v = v2)
 
 
 mut v3 = Vec(0..11)
@@ -60,7 +60,7 @@ v4.push 6
 v4.push 8
 v4.push 9
 
-assert (v3 == v4)
+assert (v3 = v4)
 
 v3.swap_last 1
 print v3

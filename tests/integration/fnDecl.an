@@ -10,11 +10,11 @@ fun printMsg: bool b
 
 
 fun divisibleByThree: i32 i =
-    i % 3 == 0
+    i % 3 = 0
 
 
 fun isEven: i32 x =
-    x % 2 == 0
+    x % 2 = 0
 
 
 fun fact: i32 x -> i32

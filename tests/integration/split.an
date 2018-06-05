@@ -8,9 +8,9 @@ fun split: Str s, c8 c -> Vec Str
     mut i = 0
     mut j = 0
     while i < s.len do
-        if s.cStr#i == c then
+        if s.cStr#i = c then
             v.push <| substr s j i
-            j = i + 1
+            j := i + 1
 
         i += 1
 
@@ -24,12 +24,12 @@ fun substr: Str s, i32 begin end -> Str
 
     let len = end - begin
     mut buf = ref c8 malloc(len + 1)
-    buf#end = '\0'
+    buf#end := '\0'
 
     mut i = 0
     mut b = begin
     while b < end do
-        buf#i = s#b
+        buf#i := s#b
         b += 1
         i += 1
 

@@ -118,10 +118,16 @@ namespace ante {
             if(ModifiableNode *van = dynamic_cast<ModifiableNode*>(modifiableNode)){
                 van->modifiers.emplace_back(m);
                 return van;
-            }else{
-                m->expr.reset(modifiableNode);
-                return m;
+            }else if(BinOpNode *assign = dynamic_cast<BinOpNode*>(modifiableNode)){
+                if(assign->op == '='){
+                    auto *vas = new VarAssignNode(assign->loc, assign->lval.release(), assign->rval.release(), false);
+                    delete assign;
+                    vas->modifiers.emplace_back(m);
+                    return vas;
+                }
             }
+            m->expr.reset(modifiableNode);
+            return m;
         }
 
         LOC_TY copyLoc(const LOC_TY &loc){

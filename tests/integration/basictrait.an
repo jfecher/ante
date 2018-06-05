@@ -21,7 +21,7 @@ ext Holder: NumStore
         i32 h
 
     fun store: mut Holder h, i32 n
-        h = Holder n
+        h := Holder n
 
 
 //Implement NumStore for Container
@@ -32,7 +32,7 @@ ext Container: NumStore
         | Empty -> print "warning: empty"; 0
     
     fun store: mut Container c, i32 n
-        c = Item n
+        c := Item n
 
 //define function to work on any Holder
 fun print: ref Holder h
