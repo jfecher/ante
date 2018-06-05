@@ -781,6 +781,7 @@ void compLetBinding(VarAssignNode *node, CompilingVisitor &cv){
                 " value to a variable", node->expr->loc);
 
     bool isGlobal = node->hasModifier(Tok_Global);
+    val.type = (AnType*)val.type->addModifier(Tok_Global);
 
     //location to store var
     Value *ptr = isGlobal ?
