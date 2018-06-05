@@ -202,6 +202,8 @@ namespace ante {
 
         static CompilerDirectiveModifier* get(const AnType *modifiedType, const std::shared_ptr<parser::Node> &directive);
         static CompilerDirectiveModifier* get(const AnType *modifiedType, const parser::Node *directive);
+        
+        bool hasModifier(TokenType m) const override;
 
         /** Returns a version of the current type with an additional modifier m. */
         const AnType* addModifier(TokenType m) const override;

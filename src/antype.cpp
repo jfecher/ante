@@ -57,7 +57,12 @@ namespace ante {
 
 
     bool BasicModifier::hasModifier(TokenType m) const {
-        return this->mod == m;
+        return mod == m or extTy->hasModifier(m);
+    }
+
+
+    bool CompilerDirectiveModifier::hasModifier(TokenType m) const {
+        return extTy->hasModifier(m);
     }
 
 
