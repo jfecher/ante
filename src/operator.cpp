@@ -138,10 +138,12 @@ TypedValue Compiler::compExtract(TypedValue &l, TypedValue &r, BinOpNode *op){
         vector<Value*> indices;
         indices.push_back(ConstantInt::get(*ctxt, APInt(64, 0, true)));
         indices.push_back(r.val);
-        return TypedValue(builder.CreateLoad(builder.CreateGEP(arr, indices)), arrty->extTy);
+        auto *retty = (AnType*)l.type->addModifiersTo(arrty->extTy);
+        return TypedValue(builder.CreateLoad(builder.CreateGEP(arr, indices)), retty);
 
     }else if(auto *ptrty = try_cast<AnPtrType>(l.type)){
-        return TypedValue(builder.CreateLoad(builder.CreateGEP(l.val, r.val)), ptrty->extTy);
+        auto *retty = (AnType*)l.type->addModifiersTo(ptrty->extTy);
+        return TypedValue(builder.CreateLoad(builder.CreateGEP(l.val, r.val)), retty);
 
     }else if(l.type->typeTag == TT_Tuple || l.type->typeTag == TT_Data){
 		auto indexval = dyn_cast<ConstantInt>(r.val);
@@ -155,7 +157,7 @@ TypedValue Compiler::compExtract(TypedValue &l, TypedValue &r, BinOpNode *op){
         if(index >= aggty->extTys.size())
             return compErr("Index of " + to_string(index) + " exceeds number of fields in " + anTypeToColoredStr(l.type), op->loc);
 
-        AnType *indexTy = aggty->extTys[index];
+        AnType *indexTy = (AnType*)l.type->addModifiersTo(aggty->extTys[index]);
 
         Value *tup = l.getType()->isPointerTy() ? builder.CreateLoad(l.val) : l.val;
         return TypedValue(builder.CreateExtractValue(tup, index), indexTy);

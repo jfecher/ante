@@ -371,7 +371,8 @@ fun (=): Str l r -> bool
     l.cStr#i = r.cStr#i
 
 !inline
-fun (is): Str l r = l.cStr is r.cStr
+fun (is): Str l r =
+    l.cStr is r.cStr
 
 !inline
 fun (!=): Str l r = not(l = r)
