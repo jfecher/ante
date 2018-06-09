@@ -27,8 +27,10 @@ inline void printSpaceDelimitedList(Node *n){
  *  Prints a list of nodes, can print
  *  entire parse tree if passed the root.
  */
-void parser::printBlock(Node *block){
+void parser::printBlock(Node *block, size_t scope){
     while(block){
+        for(size_t i = 0; i < scope; i++)
+            putchar(' ');
         PrintingVisitor::print(block);
         block = block->next.get();
         cout << endl;
@@ -141,9 +143,14 @@ void PrintingVisitor::visit(UnOpNode *n){
 }
 
 void PrintingVisitor::visit(SeqNode *n){
-    for(auto &n : n->sequence){
-        n->accept(*this);
-        puts(";");
+    for(auto &c : n->sequence){
+        c->accept(*this);
+
+        if(&c != &n->sequence.back()){
+            puts(";");
+            for(size_t i = 0; i < indent_level; i++)
+                putchar(' ');
+        }
     }
 }
 
@@ -164,8 +171,16 @@ void PrintingVisitor::visit(BinOpNode *n){
 
 void PrintingVisitor::visit(BlockNode *n){
     puts("{");
+    indent_level += 2;
+    for(size_t i = 0; i < indent_level; i++)
+        putchar(' ');
     n->block->accept(*this);
-    cout << "\n}" << flush;
+    indent_level -= 2;
+
+    cout << endl;
+    for(size_t i = 0; i < indent_level; i++)
+        putchar(' ');
+    cout << "}" << flush;
 }
 
 void PrintingVisitor::visit(RetNode *n){
@@ -182,10 +197,15 @@ void PrintingVisitor::visit(ImportNode *n){
 void PrintingVisitor::visit(IfNode *n){
     cout << "if ";
     n->condition->accept(*this);
-    puts(" then");
+    cout << " then ";
+
     n->thenN->accept(*this);
     if(n->elseN){
-        puts("\nelse");
+        cout << endl;
+        for(size_t i = 0; i < indent_level; i++)
+            putchar(' ');
+        cout << "else ";
+
         n->elseN->accept(*this);
     }
 }
@@ -219,7 +239,7 @@ void PrintingVisitor::visit(GlobalNode *n){
 void PrintingVisitor::visit(VarAssignNode *n){
     printModifiers(*this, n);
     if(n->ref_expr) n->ref_expr->accept(*this);
-    cout << " = ";
+    cout << " := ";
     if(n->expr) n->expr->accept(*this);
     else cout << "(undef)";
 }
@@ -229,7 +249,7 @@ void PrintingVisitor::visit(ExtNode *n){
     cout << "ext ";
     n->typeExpr->accept(*this);
     cout << "\n";
-    printBlock(n->methods.get());
+    printBlock(n->methods.get(), this->indent_level);
     cout << "end ext";
 }
 
@@ -245,14 +265,14 @@ void PrintingVisitor::visit(JumpNode *n){
 void PrintingVisitor::visit(WhileNode *n){
     cout << "while ";
     n->condition->accept(*this);
-    puts(" do ");
+    cout << " do ";
     n->child->accept(*this);
 }
 
 void PrintingVisitor::visit(ForNode *n){
     cout << "for " << n->var << " in ";
     n->range->accept(*this);
-    puts(" do ");
+    cout << " do ";
     n->child->accept(*this);
 }
 
@@ -260,9 +280,15 @@ void PrintingVisitor::visit(MatchNode *n){
     cout << "match ";
     n->expr->accept(*this);
     puts(" with");
-    for(auto& b : n->branches)
+    for(auto& b : n->branches){
+        for(size_t i = 0; i < indent_level; i++)
+            putchar(' ');
         b->accept(*this);
-    puts("end match");
+        cout << endl;
+    }
+    for(size_t i = 0; i < indent_level; i++)
+        putchar(' ');
+    cout << "end match";
 }
 
 void PrintingVisitor::visit(MatchBranchNode *n){
@@ -270,7 +296,6 @@ void PrintingVisitor::visit(MatchBranchNode *n){
     n->pattern->accept(*this);
     cout << " -> ";
     n->branch->accept(*this);
-    putchar('\n');
 }
 
 void PrintingVisitor::visit(FuncDeclNode *n){
@@ -334,6 +359,6 @@ void PrintingVisitor::visit(DataDeclNode *n){
 void PrintingVisitor::visit(TraitNode *n){
     printModifiers(*this, n);
     cout << "trait " << n->name << endl;
-    printBlock(n->child.get());
+    printBlock(n->child.get(), this->indent_level);
     cout << "end of trait " << n->name << endl;
 }

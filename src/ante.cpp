@@ -24,7 +24,7 @@ void parseFile(string &fileName){
     int flag = p.parse();
     if(flag == PE_OK){
         Node* root = parser::getRootNode();
-        parser::printBlock(root);
+        parser::printBlock(root, 0);
         delete root;
     }else{
         //print out remaining errors
@@ -81,7 +81,7 @@ int main(int argc, const char **argv){
     for(auto input : args->inputFiles){
         Compiler ante{input.c_str()};
         if(args->hasArg(Args::Parse)){
-            parser::printBlock(ante.ast.get());
+            parser::printBlock(ante.ast.get(), 0);
         }
 
         ante.processArgs(args);

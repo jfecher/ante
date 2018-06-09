@@ -45,6 +45,8 @@ namespace ante {
     };
 
     struct PrintingVisitor : public NodeVisitor {
+        size_t indent_level = 0;
+
         static void print(std::unique_ptr<parser::Node> &n){
             return print(n.get());
         }

@@ -386,7 +386,7 @@ namespace ante {
         };
 
         RootNode* getRootNode();
-        void printBlock(Node *block);
+        void printBlock(Node *block, size_t indent_level);
         void parseErr(ParseErr e, std::string s, bool showTok);
     } // end of ante::parser
 
