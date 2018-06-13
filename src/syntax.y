@@ -168,12 +168,12 @@ begin:  maybe_newline {createRoot();} top_level_expr_list
 
 top_level_expr_list: top_level_expr_list top_level_expr  %prec Newline
                    | top_level_expr_list expr_no_decl    %prec Newline    {$$ = append_main($2);}
-                   | top_level_expr_list Newline
+                   | top_level_expr_list Newline         
                    | top_level_expr
-                   | expr_no_decl                        %prec Newline                                        {$$ = append_main($1);}
+                   | expr_no_decl                        %prec Newline  {$$ = append_main($1);}
 
-                   | top_level_expr Elif expr Then expr_no_decl_or_jump    %prec MEDIF {auto*elif = mkIfNode(@$, $3, $5, 0); $$ = setElse($1, elif);}
-                   | top_level_expr Else expr_no_decl_or_jump                    %prec Else  {$$ = setElse($1, $3);}
+                   | top_level_expr_list Elif expr Then expr_no_decl_or_jump    %prec MEDIF {auto*elif = mkIfNode(@$, $3, $5, 0); $$ = setElse($1, elif);}
+                   | top_level_expr_list Else expr_no_decl_or_jump                    %prec Else  {$$ = setElse($1, $3);}
                    ;
 
 top_level_expr: modifier maybe_newline top_level_expr     {$$ = append_modifier($1, $3);}
