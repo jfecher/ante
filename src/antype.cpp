@@ -86,6 +86,12 @@ namespace ante {
         return CompilerDirectiveModifier::get(extTy->addModifiersTo(t), directive);
     }
 
+    size_t getNumMatchedTys(const vector<AnType*> &types){
+        size_t ret = 0;
+        for(auto *ty : types) ret += ty->numMatchedTys;
+        return ret;
+    }
+
     unsigned short AnDataType::getTagVal(std::string &name){
         for(auto& tag : tags){
             if(tag->name == name){

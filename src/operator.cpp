@@ -1149,7 +1149,7 @@ void showMultipleEquallyMatchingCandidatesError(Compiler *c, vector<shared_ptr<F
                 : AnFunctionType::get(c, AnType::getVoid(), p.second->fdn->params.get());
             auto *params = AnAggregateType::get(TT_Tuple, fnty->extTys);
 
-            c->compErr("Candidate function with params "+anTypeToColoredStr(params),
+            c->compErr("Candidate function with params "+anTypeToColoredStr(params)+" and score of "+to_string(p.first->matches),
                     p.second->fdn->loc, ErrorType::Note);
         }
         throw e;

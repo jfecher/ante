@@ -826,12 +826,14 @@ TypeCheckResult& typeEqBase(const AnType *l, const AnType *r, TypeCheckResult &t
 
     if(auto *lptr = try_cast<AnPtrType>(l)){
         auto *rptr = try_cast<AnPtrType>(r);
+        tcr->matches++;
 
         return c ? typeEqHelper(c, lptr->extTy, rptr->extTy, tcr)
                  : typeEqBase(lptr->extTy, rptr->extTy, tcr, c);
 
     }else if(auto *larr = try_cast<AnArrayType>(l)){
         auto *rarr = try_cast<AnArrayType>(r);
+        tcr->matches++;
 
         if(larr->len != rarr->len) return tcr.failure();
 

@@ -215,11 +215,13 @@ namespace ante {
     };
 
 
+    size_t getNumMatchedTys(const std::vector<AnType*> &types);
+
     /** Tuple types */
     class AnAggregateType : public AnType {
         protected:
         AnAggregateType(TypeTag ty, const std::vector<AnType*> exts) :
-                AnType(ty, ante::isGeneric(exts), exts.size()+1), extTys(exts) {}
+                AnType(ty, ante::isGeneric(exts), getNumMatchedTys(exts)+1), extTys(exts) {}
 
         public:
 
@@ -253,7 +255,7 @@ namespace ante {
     class AnArrayType : public AnType {
         protected:
         AnArrayType(AnType* ext, size_t l) :
-            AnType(TT_Array, ext->isGeneric, l == 0 ? 2 : 3), extTy(ext), len(l) {}
+            AnType(TT_Array, ext->isGeneric, ext->numMatchedTys + (l == 0 ? 1 : 2)), extTy(ext), len(l) {}
 
         public:
 
@@ -283,7 +285,7 @@ namespace ante {
     class AnPtrType : public AnType {
         protected:
         AnPtrType(AnType* ext) :
-            AnType(TT_Ptr, ext->isGeneric, 2), extTy(ext){}
+            AnType(TT_Ptr, ext->isGeneric, ext->numMatchedTys + 2), extTy(ext){}
 
         public:
 
