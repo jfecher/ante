@@ -791,17 +791,17 @@ namespace ante {
             case TT_MetaFunction:
             case TT_FunctionList: {
                 TypeNode *ext = tn->extTy.get();
-                AnType *ret = 0;
+                AnType *retty = 0;
                 vector<AnType*> tys;
                 while(ext){
-                    if(ret){
+                    if(retty){
                         tys.push_back(toAnType(c, (TypeNode*)ext));
                     }else{
-                        ret = toAnType(c, (TypeNode*)ext);
+                        retty = toAnType(c, (TypeNode*)ext);
                     }
                     ext = (TypeNode*)ext->next.get();
                 }
-                ret = AnFunctionType::get(ret, tys, tn->type == TT_MetaFunction);
+                ret = AnFunctionType::get(retty, tys, tn->type == TT_MetaFunction);
                 break;
             }
             case TT_Tuple: {
