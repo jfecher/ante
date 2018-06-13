@@ -1,16 +1,11 @@
 
 ante fun get_val :=
-    let val = Ante.lookup "val".cStr
-    printf ("got %d\n".cStr) val
-    val
-
-Ante.store "val".cStr 55
+    Ante.debug "test"
+    3
 
 let v = get_val()
 Ante.debug v
 
-//Test storing another value is typesafe
-Ante.store "val".cStr 23_u16
 let q = get_val()
 Ante.debug q
 
