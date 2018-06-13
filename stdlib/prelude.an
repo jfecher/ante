@@ -361,18 +361,13 @@ fun (=): Str l r -> bool
     if l.len != r.len then
         return false
 
-    mut i = 0
-    while i < l.len do
+    for i in 0 .. i32 l.len do
         if l.cStr#i != r.cStr#i then
             return false
-
-        i += 1
-
-    l.cStr#i = r.cStr#i
+    true
 
 !inline
-fun (is): Str l r =
-    l.cStr is r.cStr
+fun (is): Str l r = l.cStr is r.cStr
 
 !inline
 fun (!=): Str l r = not(l = r)
