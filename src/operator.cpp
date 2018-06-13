@@ -1728,7 +1728,8 @@ void CompilingVisitor::visit(UnOpNode *n){
                 c->compErr("Cannot dereference non-pointer type " + anTypeToColoredStr(val.type), n->loc);
             }
 
-            this->val = TypedValue(c->builder.CreateLoad(val.val), try_cast<AnPtrType>(val.type)->extTy);
+            this->val = TypedValue(c->builder.CreateLoad(val.val),
+                (AnType*)val.type->addModifiersTo(try_cast<AnPtrType>(val.type)->extTy));
             return;
         case '&': //address-of
             this->val = addrOf(c, val);
