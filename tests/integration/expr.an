@@ -1,7 +1,7 @@
 
 type Expr =
-   | Add ref Expr, ref Expr
-   | Sub ref Expr, ref Expr
+   | Add ref Expr, (ref Expr)
+   | Sub ref Expr, (ref Expr)
    | Num i32
 
 
