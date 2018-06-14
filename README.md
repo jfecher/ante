@@ -38,21 +38,21 @@ here is an implementation of the goto construct in Ante
 
 ```go
 //The 'ante' keyword declares compile-time values
-ante global mut
-    labels = Map VarNode BasicBlock ()
+ante
+    global mut labels = Map.init Str LLVM.BasicBlock
 
-ante fun label: VarNode vn
-    let ctxt = Ante.llvm_ctxt
-    let callingFn = getParentFn <| getCallSiteBlock ()
-    let lbl = LLVM.BasicBlock ctxt callingFn
-    labels#vn = lbl
+    fun goto: VarNode vn
+        let label = labels.lookup vn.name ?
+            None -> Ante.error "Cannot goto undefined label ${vn}"
 
-ante fun goto: VarNode vn
-    let label = labels#vn ?
-        None -> Ante.error "Cannot goto undefined label ${vn}"
+        LLVM.setInsertPoint <| getCallSiteBlock ()
+        LLVM.createBr label
 
-    LLVM.setInsertPoint <| getCallSiteBlock ()
-    LLVM.createBr label
+    fun label: VarNode vn
+        let ctxt = Ante.llvm_ctxt
+        let callingFn = getParentFn <| getCallSiteBlock ()
+        let lbl = LLVM.BasicBlock ctxt callingFn
+        labels#vn.name = lbl
 
 
 //test it out
@@ -80,3 +80,27 @@ distro's package manager.
 2. Run `$ git clone https://github.com/jfecher/ante.git`
 
 3. Run `$ cd ante && make`
+
+### Trying Ante in Docker
+
+Alternatively, you can try Ante using Docker. You can build the image using:
+
+```
+docker build . -t ante
+```
+
+and then start it with:
+
+```
+docker run -it ante
+```
+
+At this point you can install nano/vim/emacs to get an editor and using the compiler/REPL (in /home/ante/ante) to write some code and run it.
+If you wish you can share volume between your host and the container so you will be able to use an editor already installed on your computer and keep the sources files you have written even if the container is deleted. 
+Be cautious though, as doing wild thing in your container may affect your host filesystem.
+
+Finally, you can add the Ante compiler to your path for your convenience using:
+
+```
+export PATH="/home/ante:$PATH"
+```

@@ -453,15 +453,21 @@ TypedValue createCast(Compiler *c, AnType *castTy, TypedValue &valToCast, LOC_TY
         //Compile the function now that we know to use it over a cast
         auto fn = c->getCastFn(valToCast.type, castTy, fd);
         if(fn){
-            if(isCompileTimeFunction(fn)){
-                string baseName = getCastFnBaseName(castTy);
-                string mangledName = mangle(baseName, {valToCast.type});
-                vector<TypedValue> args = {valToCast};
-                return compMetaFunctionResult(c, loc, baseName, mangledName, args);
-            }
+            //quickly type check argument
+            auto *fnty = try_cast<AnFunctionType>(fn.type);
+            if((!fnty->extTys.empty() and c->typeEq(fnty->extTys[0], valToCast.type)) or
+               (fnty->extTys.empty() and valToCast.type->typeTag == TT_Void)){
 
-            auto *call = c->builder.CreateCall(fn.val, args);
-            return TypedValue(call, fn.type->getFunctionReturnType());
+                if(isCompileTimeFunction(fn)){
+                    string baseName = getCastFnBaseName(castTy);
+                    string mangledName = mangle(baseName, {valToCast.type});
+                    vector<TypedValue> args = {valToCast};
+                    return compMetaFunctionResult(c, loc, baseName, mangledName, args);
+                }
+
+                auto *call = c->builder.CreateCall(fn.val, args);
+                return TypedValue(call, fn.type->getFunctionReturnType());
+            }
         }
     }
 
@@ -980,7 +986,7 @@ TypedValue compileAndCallAnteFunction(Compiler *c, string const& baseName,
 
     if(!mod_compiler or mod_compiler->errFlag){
         c->errFlag = true;
-        cerr << "Error encountered while JITing " << baseName << ", aborting.\n";
+        cerr << "Error 1 encountered while JITing " << baseName << ", aborting.\n";
         throw new CtError();
     }
 
@@ -991,7 +997,7 @@ TypedValue compileAndCallAnteFunction(Compiler *c, string const& baseName,
 
     if(!fd){
         c->errFlag = true;
-        cerr << "Error encountered while getting JITed FuncDecl of " << baseName << ", aborting.\n";
+        cerr << "Error 2 encountered while getting JITed FuncDecl of " << baseName << ", aborting.\n";
         throw new CtError();
     }
 
