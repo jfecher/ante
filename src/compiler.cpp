@@ -780,8 +780,12 @@ void compLetBinding(VarAssignNode *node, CompilingVisitor &cv){
         c->compErr("Cannot assign a "+anTypeToColoredStr(AnType::getVoid())+
                 " value to a variable", node->expr->loc);
 
-    bool isGlobal = node->hasModifier(Tok_Global);
-    val.type = (AnType*)val.type->addModifier(Tok_Global);
+    bool isGlobal = false;
+    for(auto &n : node->modifiers){
+        TokenType m = (TokenType)n->mod;
+        val.type = (AnType*)val.type->addModifier(m);
+        if(m == Tok_Global) isGlobal = true;
+    }
 
     //location to store var
     Value *ptr = isGlobal ?
