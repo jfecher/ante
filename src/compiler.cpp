@@ -261,9 +261,12 @@ TypedValue compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
     if(!strty or strty->name != "Str"){
 		strty = AnDataType::get("Str");
         auto fd = c->getCastFuncDecl(val.type, strty);
-        auto fnty = AnFunctionType::get(c, AnType::getVoid(), fd->fdn->params.get());
+        AnFunctionType *fnty = nullptr;
 
-        if(!fd or !c->typeEq(fnty->extTys, {val.type})){
+        if(fd)
+            fnty = AnFunctionType::get(c, AnType::getVoid(), fd->fdn->params.get());
+
+        if(!fd or (fnty and !c->typeEq(fnty->extTys, {val.type}))){
             delete ls;
             delete rs;
             return c->compErr("Cannot cast " + anTypeToColoredStr(val.type)
