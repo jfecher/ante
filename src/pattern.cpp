@@ -83,7 +83,7 @@ namespace ante {
 
         for(auto &e : t->exprs){
             Value *elem = cv.c->builder.CreateExtractValue(valToMatch.val, elementNo);
-            TypedValue elemTv{elem, aggTy->extTys[elementNo++]};
+            TypedValue elemTv{elem, (AnType*)valToMatch.type->addModifiersTo(aggTy->extTys[elementNo++])};
 
             handlePattern(cv, n, e.get(), jmpOnFail, elemTv);
         }
@@ -122,7 +122,8 @@ namespace ante {
             //extract tag_data from (tag, tagData)*
             auto *gep = c->builder.CreateStructGEP(castTy, cast, 1);
             auto *deref = c->builder.CreateLoad(gep);
-            return {deref, unionVariantToTupleTy(tagTy)};
+            auto *type = (AnType*)valToMatch.type->addModifiersTo(unionVariantToTupleTy(tagTy));
+            return {deref, type};
         }else{
             return c->getVoidLiteral();
         }
