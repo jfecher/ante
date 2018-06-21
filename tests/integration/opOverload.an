@@ -5,7 +5,7 @@ fun (+): Str l r -> Str
     mut buf = malloc len
 
     memcpy buf (ref void l.cStr) l.len
-    memcpy (ref void (u64 buf + l.len)) (ref void r.cStr) r.len
+    memcpy ((u64 buf + l.len) as ref void) (ref void r.cStr) r.len
 
     Str(ref c8 buf, len)
 
