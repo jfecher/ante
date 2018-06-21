@@ -3,7 +3,7 @@ type Vec 't = ref 't _data, usz len cap
 
 ext Vec 't
     fun init :=
-        Vec<'t>(ref 't malloc(4 * Ante.sizeof 't), 0usz, 4usz)
+        Vec<'t>(ref 't malloc(1 * Ante.sizeof 't), 0usz, 1usz)
 
     fun init: Range r -> Vec i32
         fill (Vec<i32>()) r
