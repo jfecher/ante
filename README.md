@@ -29,7 +29,7 @@ the ability to interact at a lower level if needed.
 * Ability to write compiler plugins within the compiled program itself
 type and issue a compile-time error if it is invalidated
     -  Diverse and powerful compile-time analysis that can be custom programmed into
-any datatype creating eg. iterator invalidation, pointer-autofree, or even an ownership system.
+any datatype creating eg. domain-specific optimizations, pointer-autofree, or even an ownership system.
 The implementation of these features resembles that of a compiler plugin, except that it is written
 into the compiled module itself.
 
