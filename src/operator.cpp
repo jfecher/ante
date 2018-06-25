@@ -1117,8 +1117,8 @@ TypedValue tryImplicitCast(Compiler *c, TypedValue &arg, AnType *castTy){
 }
 
 
-void showNoMatchingCandidateError(Compiler *c, vector<shared_ptr<FuncDecl>> &candidates,
-        vector<AnType*> &argTys, LOC_TY &loc){
+void showNoMatchingCandidateError(Compiler *c, const vector<shared_ptr<FuncDecl>> &candidates,
+        const vector<AnType*> &argTys, LOC_TY &loc){
 
     try {
         lazy_printer msg = "No matching candidates for call to " + candidates[0]->getName();
@@ -1140,8 +1140,8 @@ void showNoMatchingCandidateError(Compiler *c, vector<shared_ptr<FuncDecl>> &can
 }
 
 
-void showMultipleEquallyMatchingCandidatesError(Compiler *c, vector<shared_ptr<FuncDecl>> &candidates,
-        vector<AnType*> argTys, FunctionListTCResults &matches, LOC_TY &loc){
+void showMultipleEquallyMatchingCandidatesError(Compiler *c, const vector<shared_ptr<FuncDecl>> &candidates,
+        const vector<AnType*> argTys, FunctionListTCResults &matches, LOC_TY &loc){
 
     try {
         lazy_printer msg = "Multiple equally-matching candidates found for call to " + candidates[0]->getName();
@@ -1311,6 +1311,9 @@ TypedValue compFnCall(Compiler *c, Node *l, Node *r){
     if(tvf.type->typeTag == TT_FunctionList){
         auto *funcs = (FunctionCandidates*)tvf.val;
         tvf = deduceFunction(c, funcs, typedArgs, l->loc);
+        if(!tvf){
+            showNoMatchingCandidateError(c, funcs->candidates, toTypeVector(typedArgs), l->loc);
+        }
         if(!!funcs->obj){
             push_front(args, funcs->obj.val);
             is_method = true;
@@ -1319,7 +1322,7 @@ TypedValue compFnCall(Compiler *c, Node *l, Node *r){
     }
 
     if(!tvf){
-        c->errFlag = true;
+        c->compErr("Unknown error when attempting to call function", l->loc);
         return {};
     }
 
@@ -1383,13 +1386,10 @@ TypedValue compFnCall(Compiler *c, Node *l, Node *r){
 
                 size_t index = i - (is_method ? 1 : 0);
                 Node* locNode = tn->exprs[index].get();
-                if(!locNode){
-                    c->errFlag = true;
-                    return {};
-                }
 
+                //locNode may be null, default to highlighting entire call expr if so
                 return c->compErr("Argument " + to_string(i+1) + " of function is a(n) " + anTypeToColoredStr(tArg.type)
-                    + " but was declared to be a(n) " + anTypeToColoredStr(paramTy) + " and there is no known implicit cast", locNode->loc);
+                    + " but was declared to be a(n) " + anTypeToColoredStr(paramTy) + " and there is no known implicit cast", (locNode ? locNode : l)->loc);
             }
 
 		//If the types passed type check but still dont match exactly there was probably a void* involved

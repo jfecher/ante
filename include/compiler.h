@@ -99,7 +99,7 @@ namespace ante {
 
         bool operator!() const { return box->res == Failure; }
         explicit operator bool() const { return box->res == Success || box->res == SuccessWithTypeVars; }
-        Internals* operator->(){return box.get();}
+        Internals* operator->() const { return box.get(); }
 
         /**
         * @brief Searches for the suggested binding of a typevar
