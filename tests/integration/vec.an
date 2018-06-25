@@ -64,6 +64,6 @@ v4.push 9
 
 assert (v3 = v4)
 
-v3.swap_last 1
-print v3
+v4.swap_last 1
+print v4
 print "tests passed: ${tests_passed}"
