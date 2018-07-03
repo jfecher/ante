@@ -1,8 +1,3 @@
-
-type Maybe 'm =
-   | Some 'm
-   | None
-
 type List 't = Maybe (ref Node 't) first, Maybe (ref Node 't) last
 
 type Node 't = 't elem, Maybe (ref Node 't) next
