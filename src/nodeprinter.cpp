@@ -38,19 +38,14 @@ void parser::printBlock(Node *block, size_t scope){
 }
 
 void PrintingVisitor::visit(RootNode *n){
-    puts("Types:");
     for(auto& f : n->types){ f->accept(*this); puts("\n"); }
 
-    puts("\n\nFunctions:");
     for(auto& f : n->funcs){ f->accept(*this); puts("\n"); }
 
-    puts("\n\nTraits:");
     for(auto& f : n->traits){ f->accept(*this); puts("\n"); }
 
-    puts("\n\nExtensions:");
     for(auto& f : n->extensions){ f->accept(*this); puts("\n"); }
 
-    puts("\n\nMain:");
     for(auto& f : n->main){ f->accept(*this); puts(";"); }
 }
 
