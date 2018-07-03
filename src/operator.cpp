@@ -1528,6 +1528,7 @@ TypedValue handlePrimitiveNumericOp(BinOpNode *bop, Compiler *c, TypedValue &lhs
                     else
                         return TypedValue(c->builder.CreateICmpEQ(lhs.val, rhs.val), AnType::getBool());
         case Tok_NotEq:
+        case Tok_Isnt:
                     if(isFPTypeTag(lhs.type->typeTag))
                         return TypedValue(c->builder.CreateFCmpONE(lhs.val, rhs.val), AnType::getBool());
                     else
@@ -1706,7 +1707,7 @@ void CompilingVisitor::visit(BinOpNode *n){
         if(n->op == Tok_Is){
             this->val = TypedValue(c->builder.CreateICmpEQ(lhs.val, rhs.val), AnType::getBool());
             return;
-        }else if(n->op == Tok_NotEq){
+        }else if(n->op == Tok_NotEq || n->op == Tok_Isnt){
             this->val = TypedValue(c->builder.CreateICmpNE(lhs.val, rhs.val), AnType::getBool());
             return;
         }

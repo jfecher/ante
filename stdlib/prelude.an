@@ -370,7 +370,10 @@ fun (=): Str l r -> bool
 fun (is): Str l r = l.cStr is r.cStr
 
 !inline
-fun (!=): Str l r = not(l = r)
+fun (!=): 't l r = not(l = r)
+
+!inline
+fun (isnt): 't l r = not(l is r)
 
 
 fun (++): Str s1 s2 -> Str

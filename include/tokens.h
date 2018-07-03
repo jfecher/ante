@@ -72,6 +72,7 @@ namespace ante {
         Tok_New,
         Tok_Not,
         Tok_Is,
+        Tok_Isnt,
         //All other operators are returned by ASCII value
 
         //literals
