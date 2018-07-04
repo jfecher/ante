@@ -39,7 +39,7 @@ here is an implementation of the goto construct in Ante
 ```go
 //The 'ante' keyword declares compile-time values
 ante
-    global mut labels = Map.init Str LLVM.BasicBlock
+    global mut labels = Map.of Str LLVM.BasicBlock
 
     fun goto: VarNode vn
         let label = labels.lookup vn.name ?
@@ -52,7 +52,7 @@ ante
         let ctxt = Ante.llvm_ctxt
         let callingFn = getParentFn <| getCallSiteBlock ()
         let lbl = LLVM.BasicBlock ctxt callingFn
-        labels#vn.name = lbl
+        labels#vn.name := lbl
 
 
 //test it out
