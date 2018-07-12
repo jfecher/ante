@@ -1,4 +1,4 @@
-type List 't = Maybe (ref Node 't) first, Maybe (ref Node 't) last
+type List 't = Maybe (ref Node 't) first last
 
 type Node 't = 't elem, Maybe (ref Node 't) next
 

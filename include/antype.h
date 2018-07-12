@@ -4,6 +4,8 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <algorithm>
+#include <unordered_map>
 
 #include <llvm/IR/Module.h>
 #include <llvm/ADT/StringMap.h>
@@ -548,25 +550,25 @@ namespace ante {
         friend AnFunctionType;
         friend AnDataType;
 
-        std::map<TypeTag, std::unique_ptr<AnType>> primitiveTypes;
-        llvm::StringMap<std::unique_ptr<AnModifier>> modifiers;
-        std::map<const AnType*, std::unique_ptr<AnPtrType>> ptrTypes;
-        llvm::StringMap<std::unique_ptr<AnArrayType>> arrayTypes;
-        llvm::StringMap<std::unique_ptr<AnTypeVarType>> typeVarTypes;
-        llvm::StringMap<std::unique_ptr<AnAggregateType>> aggregateTypes;
-        llvm::StringMap<std::unique_ptr<AnFunctionType>> functionTypes;
-        llvm::StringMap<std::unique_ptr<AnDataType>> declaredTypes;
+        std::unordered_map<TypeTag, std::unique_ptr<AnType>> primitiveTypes;
+        std::unordered_map<size_t, std::unique_ptr<AnModifier>> modifiers;
+        std::unordered_map<const AnType*, std::unique_ptr<AnPtrType>> ptrTypes;
+        std::unordered_map<size_t, std::unique_ptr<AnArrayType>> arrayTypes;
+        std::unordered_map<size_t, std::unique_ptr<AnTypeVarType>> typeVarTypes;
+        std::unordered_map<size_t, std::unique_ptr<AnAggregateType>> aggregateTypes;
+        std::unordered_map<size_t, std::unique_ptr<AnFunctionType>> functionTypes;
+        std::unordered_map<size_t, std::unique_ptr<AnDataType>> declaredTypes;
 
         /** generic variants are retrieved through their parent type,
          * never directly through the map of declaredTypes.  Keeping
          * all variants here avoids having to sift through every variant
          * of a type and makes ownership simpler. */
-        llvm::StringMap<std::unique_ptr<AnDataType>> genericVariants;
+        std::unordered_map<size_t, std::unique_ptr<AnDataType>> genericVariants;
 
         /** Contains primitive types or ptrTypes with modifiers that
          *  cannot be otherwise stored in their appropriate containers
          *  without changing the key type.  */
-        llvm::StringMap<std::unique_ptr<AnType>> otherTypes;
+        std::unordered_map<size_t, std::unique_ptr<AnType>> otherTypes;
 
     public:
         AnTypeContainer();

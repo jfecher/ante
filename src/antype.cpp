@@ -1,6 +1,8 @@
 #include "antype.h"
 #include "types.h"
 
+#define AN_HASH_PRIME 0x9e3779e9
+
 using namespace std;
 using namespace ante::parser;
 
@@ -113,17 +115,16 @@ namespace ante {
     //}
 
     template<typename T>
-    T* search(llvm::StringMap<unique_ptr<T>> &map, string const& key){
+    T* search(std::unordered_map<size_t, unique_ptr<T>> &map, size_t key){
         auto it = map.find(key);
         if(it != map.end())
-            return it->getValue().get();
+            return it->second.get();
         return nullptr;
     }
 
     template<typename T>
-    void addKVPair(llvm::StringMap<unique_ptr<T>> &map, string const& key, T* val){
-        auto entry = llvm::StringMapEntry<unique_ptr<T>>::Create(key, unique_ptr<T>(val));
-        map.insert(entry);
+    void addKVPair(std::unordered_map<size_t, unique_ptr<T>> &map, size_t key, T* val){
+        map[key] = unique_ptr<T>(val);
     }
 
     AnType* AnType::getPrimitive(TypeTag tag){
@@ -215,12 +216,12 @@ namespace ante {
     }
 
 
-    string getKey(const AnType *modifiedType, TokenType mod){
-        return to_string(mod) + anTypeToStr(modifiedType);
+    size_t hash_basic_modifier(const AnType *modifiedType, TokenType mod){
+        return std::hash<size_t>()((size_t)modifiedType) ^ mod;
     }
 
     BasicModifier* BasicModifier::get(const AnType *modifiedType, TokenType mod){
-        auto key = getKey(modifiedType, mod);
+        auto key = hash_basic_modifier(modifiedType, mod);
 
         auto *existing_ty = search(typeArena.modifiers, key);
         if(existing_ty) return static_cast<BasicModifier*>(existing_ty);
@@ -234,14 +235,15 @@ namespace ante {
      * reference equality for these types.  In practice this is not too
      * problematic as it is impossible to compare the arbitrary expressions
      * anyways. */
-    string getKey(const AnType *modifiedType, Node* directive){
-        return to_string((size_t)directive);
+    size_t hash_cd_modifier(const AnType *modifiedType, Node* directive){
+        return std::hash<size_t>()((size_t)modifiedType) ^
+            std::hash<size_t>()((size_t)directive);
     }
 
     CompilerDirectiveModifier* CompilerDirectiveModifier::get(const AnType *modifiedType,
             const std::shared_ptr<Node> &directive){
 
-        auto key = getKey(modifiedType, directive.get());
+        auto key = hash_cd_modifier(modifiedType, directive.get());
 
         auto *existing_ty = search(typeArena.modifiers, key);
         if(existing_ty) return static_cast<CompilerDirectiveModifier*>(existing_ty);
@@ -269,9 +271,13 @@ namespace ante {
         }
     }
 
+    size_t hash_array_ty(size_t size, const AnType *elemTy){
+        return size ^ std::hash<size_t>()((size_t)elemTy);
+    }
+
     AnArrayType* AnType::getArray(AnType* t, size_t len){ return AnArrayType::get(t,len); }
     AnArrayType* AnArrayType::get(AnType* t, size_t len){
-        auto key = to_string(len) + anTypeToStr(t);
+        auto key = hash_array_ty(len, t);
 
         auto existing_ty = search(typeArena.arrayTypes, key);
         if(existing_ty) return existing_ty;
@@ -281,12 +287,10 @@ namespace ante {
         return arr;
     }
 
-    string getKey(const std::vector<AnType*> &exts){
-        string ret = "";
+    size_t hash_aggregate(TypeTag t, const std::vector<AnType*> &exts){
+        size_t ret = 37 ^ t; //37 as small prime
         for(auto &ext : exts){
-            ret += anTypeToStr(ext);
-            if(&ext != &exts.back())
-                ret += ", ";
+            ret ^= (size_t)ext + AN_HASH_PRIME + (ret << 6) + (ret >> 2);
         }
         return ret;
     }
@@ -296,7 +300,7 @@ namespace ante {
     }
 
     AnAggregateType* AnAggregateType::get(TypeTag t, const std::vector<AnType*> exts){
-        auto key = typeTagToStr(t) + getKey(exts);
+        auto key = hash_aggregate(t, exts);
 
         auto existing_ty = search(typeArena.aggregateTypes, key);
         if(existing_ty) return existing_ty;
@@ -318,9 +322,17 @@ namespace ante {
         return AnFunctionType::get(retty, extTys, isMetaFunction);
     }
 
+    size_t hash_function_ty(AnType *retTy, const std::vector<AnType*> &elems, bool isMetaFunction){
+        size_t ret = elems.size();
+        ret ^= (size_t)retTy + AN_HASH_PRIME + (ret << 6) + (ret >> 2);
+        for(auto &ext : elems){
+            ret ^= (size_t)ext + AN_HASH_PRIME + (ret << 6) + (ret >> 2);
+        }
+        return ret;
+    }
 
     AnFunctionType* AnFunctionType::get(AnType *retTy, const std::vector<AnType*> elems, bool isMetaFunction){
-        auto key = (isMetaFunction ? "1":"0") + getKey(elems) + "->" + anTypeToStr(retTy);
+        auto key = hash_function_ty(retTy, elems, isMetaFunction);
 
         auto existing_ty = search(typeArena.functionTypes, key);
         if(existing_ty) return existing_ty;
@@ -337,7 +349,7 @@ namespace ante {
     }
 
     AnTypeVarType* AnTypeVarType::get(std::string name){
-        string &key = name;
+        auto key = std::hash<string>()(name);
 
         auto existing_ty = search(typeArena.typeVarTypes, key);
         if(existing_ty) return existing_ty;
@@ -351,9 +363,12 @@ namespace ante {
         return AnDataType::get(name);
     }
 
+    size_t hash_data_ty(string const& name){
+        return std::hash<string>()(name);
+    }
 
     AnDataType* AnDataType::get(string const& name){
-        string const& key = name;
+        auto key = hash_data_ty(name);
 
         auto existing_ty = search(typeArena.declaredTypes, key);
         if(existing_ty) return existing_ty;
@@ -366,12 +381,12 @@ namespace ante {
     /**
      * Returns the unique key for the given variant and modifier pair.
      */
-    string variantKey(const AnDataType *variant){
-        return anTypeToStr(variant);
+    size_t hash_variant_ty(const AnDataType *variant){
+        return std::hash<string>()(variant->name);
     }
 
     AnDataType* AnDataType::getOrCreate(std::string const& name, std::vector<AnType*> const& elems, bool isUnion){
-        string const& key = name;
+        auto key = hash_data_ty(name);
 
         auto existing_ty = search(typeArena.declaredTypes, key);
         if(existing_ty) return existing_ty;
@@ -381,7 +396,7 @@ namespace ante {
     }
 
     AnDataType* AnDataType::getOrCreate(const AnDataType *dt){
-        string key = anTypeToStr(dt);
+        auto key = hash_variant_ty(dt);
 
         if(dt->isVariant()){
             auto existing_ty = search(typeArena.genericVariants, key);
@@ -398,7 +413,7 @@ namespace ante {
         //on if it is a generic variant or parent type / non generic type.
         if(dt->isVariant()){
             ret = new AnDataType(dt->unboundType->name, {}, false);
-            addKVPair(typeArena.genericVariants, variantKey(dt), ret);
+            addKVPair(typeArena.genericVariants, hash_variant_ty(dt), ret);
         }else{
             ret = AnDataType::create(dt->name, {}, dt->typeTag == TT_TaggedUnion, dt->generics);
         }
@@ -682,7 +697,7 @@ namespace ante {
 
         variant = new AnDataType(unboundType->name, {}, false);
 
-        addKVPair(typeArena.genericVariants, variantKey(variant), variant);
+        addKVPair(typeArena.genericVariants, hash_variant_ty(variant), variant);
         return bindVariant(c, unboundType, filteredBindings, variant);
     }
 
@@ -712,12 +727,22 @@ namespace ante {
             return variant;
 
         variant = new AnDataType(unboundType->name, {}, false);
-        addKVPair(typeArena.genericVariants, variantKey(variant), variant);
+        addKVPair(typeArena.genericVariants, hash_variant_ty(variant), variant);
         return bindVariant(c, unboundType, filteredBindings, variant);
     }
 
+    size_t hash_variant_ty2(string const& name, vector<AnTypeVarType*> const& generics){
+        size_t ret = std::hash<string>()(name);
+
+        for(auto &g : generics){
+            if(g->typeTag != TT_TypeVar)
+                ret ^= (size_t)g + AN_HASH_PRIME + (ret << 6) + (ret >> 2);
+        }
+        return ret;
+    }
+
     AnDataType* AnDataType::create(string const& name, vector<AnType*> const& elems, bool isUnion, vector<AnTypeVarType*> const& generics){
-        string key = getBoundName(name, generics);
+        auto key = hash_variant_ty2(name, generics);
 
         AnDataType *dt = search(typeArena.declaredTypes, key);
 
@@ -834,8 +859,10 @@ namespace ante {
             case TT_TaggedUnion: {
                 if(!tn->params.empty()){
                     vector<AnType*> bindings;
-                    for(auto &t : tn->params)
-                        bindings.emplace_back(toAnType(c, t.get()));
+                    for(auto &t : tn->params){
+                        auto *b = toAnType(c, t.get());
+                        bindings.emplace_back(b);
+                    }
 
                     auto *basety = AnDataType::get(tn->typeName);
 
