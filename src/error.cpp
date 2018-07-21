@@ -31,22 +31,6 @@ void skipToLine(istream& ifs, unsigned int row){
     }
 }
 
-#ifdef _WIN32
-void wrapInColor(string s, win_console_color color){
-    cout << color << s << AN_CONSOLE_RESET;
-}
-
-#else
-template<typename T>
-void wrapInColor(string s, const char* color){
-    if(colored_output){
-        cout << color << s << AN_CONSOLE_RESET;
-    }else{
-        cout << s;
-    }
-}
-#endif
-
 void printErrorTypeColor(ErrorType t){
     if(colored_output){
         if(t == ErrorType::Error)

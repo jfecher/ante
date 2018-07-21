@@ -71,7 +71,8 @@ namespace ante {
         AN_COLOR_TYPE fmt;
 
         lazy_str(const char* str);
-        lazy_str(std::string str);
+        lazy_str(std::string const& str);
+        lazy_str(std::string const& str, AN_COLOR_TYPE fg);
     };
 
     void setTermFGColor(AN_COLOR_TYPE fg);

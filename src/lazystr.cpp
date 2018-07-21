@@ -32,7 +32,9 @@ lazy_printer operator+(lazy_str ls, lazy_printer lp){
 }
 
 
-lazy_str::lazy_str(string str) : s(str), fmt(AN_CONSOLE_RESET){}
+lazy_str::lazy_str(string const& str) : s(str), fmt(AN_CONSOLE_RESET){}
+
+lazy_str::lazy_str(string const& str, AN_COLOR_TYPE fg) : s(str), fmt(fg){}
 
 lazy_str::lazy_str(const char* str) : s(str), fmt(AN_CONSOLE_RESET){}
 

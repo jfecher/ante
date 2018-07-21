@@ -14,6 +14,8 @@
 #include "parser.h"
 #include "result.h"
 
+#define AN_HASH_PRIME 0x9e3779e9
+
 namespace ante {
     struct Compiler;
     struct UnionTag;
@@ -372,7 +374,6 @@ namespace ante {
         }
     };
 
-
     /**
      *  A user-declared data type.
      *
@@ -531,7 +532,30 @@ namespace ante {
         */
         unsigned short getTagVal(std::string &name);
     };
+}
 
+namespace std {
+    template<typename T, typename U>
+    struct hash<std::pair<T, U>> {
+        size_t operator()(std::pair<T, U> const& t) const {
+            auto key = std::hash<T>()(t.first);
+            return std::hash<U>()(t.second) + AN_HASH_PRIME + (key << 6) + (key >> 2);
+        }
+    };
+
+    template<typename T>
+    struct hash<std::vector<T>> {
+        size_t operator()(std::vector<T> const& v) const {
+            size_t ret = v.size();
+            for(auto &e : v){
+                ret ^= std::hash<T>()(e) + AN_HASH_PRIME + (ret << 6) + (ret >> 2);
+            }
+            return ret;
+        }
+    };
+}
+
+namespace ante {
     /**
      *  An owning container for all AnTypes
      *
@@ -550,25 +574,25 @@ namespace ante {
         friend AnFunctionType;
         friend AnDataType;
 
+        using FnTypeKey = std::pair<AnType*, std::pair<std::vector<AnType*>, bool>>;
+        using AggTypeKey = std::pair<TypeTag, std::vector<AnType*>>;
+        using VariantTypeKey = std::pair<std::string, std::vector<std::pair<std::string, AnType*>>>;
+
         std::unordered_map<TypeTag, std::unique_ptr<AnType>> primitiveTypes;
-        std::unordered_map<size_t, std::unique_ptr<AnModifier>> modifiers;
-        std::unordered_map<const AnType*, std::unique_ptr<AnPtrType>> ptrTypes;
-        std::unordered_map<size_t, std::unique_ptr<AnArrayType>> arrayTypes;
-        std::unordered_map<size_t, std::unique_ptr<AnTypeVarType>> typeVarTypes;
-        std::unordered_map<size_t, std::unique_ptr<AnAggregateType>> aggregateTypes;
-        std::unordered_map<size_t, std::unique_ptr<AnFunctionType>> functionTypes;
-        std::unordered_map<size_t, std::unique_ptr<AnDataType>> declaredTypes;
+        std::unordered_map<std::pair<AnType*, TokenType>, std::unique_ptr<AnModifier>> basicModifiers;
+        std::unordered_map<std::pair<AnType*, size_t>, std::unique_ptr<AnModifier>> cdModifiers;
+        std::unordered_map<AnType*, std::unique_ptr<AnPtrType>> ptrTypes;
+        std::unordered_map<std::pair<AnType*, size_t>, std::unique_ptr<AnArrayType>> arrayTypes;
+        std::unordered_map<std::string, std::unique_ptr<AnTypeVarType>> typeVarTypes;
+        std::unordered_map<AggTypeKey, std::unique_ptr<AnAggregateType>> aggregateTypes;
+        std::unordered_map<FnTypeKey, std::unique_ptr<AnFunctionType>> functionTypes;
+        std::unordered_map<std::string, std::unique_ptr<AnDataType>> declaredTypes;
 
         /** generic variants are retrieved through their parent type,
          * never directly through the map of declaredTypes.  Keeping
          * all variants here avoids having to sift through every variant
          * of a type and makes ownership simpler. */
-        std::unordered_map<size_t, std::unique_ptr<AnDataType>> genericVariants;
-
-        /** Contains primitive types or ptrTypes with modifiers that
-         *  cannot be otherwise stored in their appropriate containers
-         *  without changing the key type.  */
-        std::unordered_map<size_t, std::unique_ptr<AnType>> otherTypes;
+        std::unordered_map<VariantTypeKey, std::unique_ptr<AnDataType>> genericVariants;
 
     public:
         AnTypeContainer();
