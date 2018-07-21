@@ -800,7 +800,7 @@ void compLetBinding(VarAssignNode *node, CompilingVisitor &cv){
         c->stoVar(name, new Variable(name, alloca, c->scope, true, true));
         cv.val = {c->builder.CreateStore(val.val, alloca.val), val.type};
     }else{
-        c->stoVar(name, new Variable(name, val, c->scope, true, true));
+        c->stoVar(name, new Variable(name, val, c->scope, true, false));
         cv.val = val;
     }
 }
