@@ -790,18 +790,19 @@ void compLetBinding(VarAssignNode *node, CompilingVisitor &cv){
         if(m == Tok_Global) isGlobal = true;
     }
 
-    //location to store var
-    Value *ptr = isGlobal ?
-            (Value*) new GlobalVariable(*c->module, val.getType(), false,
-                    GlobalValue::PrivateLinkage, UndefValue::get(val.getType()), name) :
-            c->builder.CreateAlloca(val.getType(), nullptr, name.c_str());
+    if(isGlobal){
+        //location to store var
+        Value *ptr = new GlobalVariable(*c->module, val.getType(), false,
+                        GlobalValue::PrivateLinkage, UndefValue::get(val.getType()), name);
 
-    TypedValue alloca{ptr, val.type};
+        TypedValue alloca{ptr, val.type};
 
-    bool nofree = true;//val->type->type != TT_Ptr || dynamic_cast<Constant*>(val->val);
-    c->stoVar(name, new Variable(name, alloca, c->scope, nofree, true));
-
-    cv.val = {c->builder.CreateStore(val.val, alloca.val), val.type};
+        c->stoVar(name, new Variable(name, alloca, c->scope, true, true));
+        cv.val = {c->builder.CreateStore(val.val, alloca.val), val.type};
+    }else{
+        c->stoVar(name, new Variable(name, val, c->scope, true, true));
+        cv.val = val;
+    }
 }
 
 
