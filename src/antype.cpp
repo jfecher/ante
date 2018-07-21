@@ -660,8 +660,9 @@ namespace ante {
 
         variant = new AnDataType(unboundType->name, {}, false);
 
-        addKVPair(typeArena.genericVariants, make_pair(variant->name, boundTys), variant);
-        return bindVariant(c, unboundType, filteredBindings, variant);
+        variant = bindVariant(c, unboundType, filteredBindings, variant);
+        addKVPair(typeArena.genericVariants, make_pair(variant->name, variant->boundGenerics), variant);
+        return variant;
     }
 
     /*
@@ -690,8 +691,9 @@ namespace ante {
             return variant;
 
         variant = new AnDataType(unboundType->name, {}, false);
-        addKVPair(typeArena.genericVariants, make_pair(variant->name, boundTys), variant);
-        return bindVariant(c, unboundType, filteredBindings, variant);
+        variant = bindVariant(c, unboundType, filteredBindings, variant);
+        addKVPair(typeArena.genericVariants, make_pair(variant->name, variant->boundGenerics), variant);
+        return variant;
     }
 
     AnDataType* AnDataType::create(string const& name, vector<AnType*> const& elems, bool isUnion, vector<AnTypeVarType*> const& generics){
