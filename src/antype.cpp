@@ -92,7 +92,7 @@ namespace ante {
         return ret;
     }
 
-    unsigned short AnDataType::getTagVal(std::string &name){
+    unsigned short AnDataType::getTagVal(std::string const& name){
         for(auto& tag : tags){
             if(tag->name == name){
                 return tag->tag;
@@ -315,11 +315,11 @@ namespace ante {
     }
 
 
-    AnTypeVarType* AnType::getTypeVar(std::string name){
+    AnTypeVarType* AnType::getTypeVar(std::string const& name){
         return AnTypeVarType::get(name);
     }
 
-    AnTypeVarType* AnTypeVarType::get(std::string name){
+    AnTypeVarType* AnTypeVarType::get(std::string const& name){
         auto key = name;
 
         auto existing_ty = search(typeArena.typeVarTypes, key);
@@ -330,7 +330,7 @@ namespace ante {
         return tvar;
     }
 
-    AnDataType* AnType::getDataType(string name){
+    AnDataType* AnType::getDataType(string const& name){
         return AnDataType::get(name);
     }
 
@@ -504,7 +504,7 @@ namespace ante {
         }
     }
 
-    void addGenerics(vector<AnTypeVarType*> &dest, vector<AnType*> &src){
+    void addGenerics(vector<AnTypeVarType*> &dest, vector<AnType*> const& src){
         for(auto *t : src){
             if(t->isGeneric){
                 auto g = getGenerics(t);
@@ -514,7 +514,7 @@ namespace ante {
         removeDuplicates(dest);
     }
 
-    void addGenerics(vector<AnTypeVarType*> &dest, vector<pair<string, AnType*>> &src){
+    void addGenerics(vector<AnTypeVarType*> &dest, vector<pair<string, AnType*>> const& src){
         for(auto &p : src){
             if(p.second->isGeneric){
                 auto g = getGenerics(p.second);
@@ -608,7 +608,8 @@ namespace ante {
         return nullptr;
     }
 
-    vector<pair<string, AnType*>> flatten(const Compiler *c, const AnDataType *dt, const vector<pair<string, AnType*>> &bindings){
+    vector<pair<string, AnType*>> flatten(const Compiler *c, const AnDataType *dt,
+            const vector<pair<string, AnType*>> &bindings){
         vector<pair<string, AnType*>> ret;
         if(dt->unboundType){
             //initial bindings are the generics of the parent type
@@ -644,7 +645,8 @@ namespace ante {
      * unboundType and creates it if it has not been
      * previously bound.
      */
-    AnDataType* AnDataType::getVariant(Compiler *c, AnDataType *unboundType, vector<pair<string, AnType*>> const& boundTys){
+    AnDataType* AnDataType::getVariant(Compiler *c, AnDataType *unboundType,
+            vector<pair<string, AnType*>> const& boundTys){
         auto filteredBindings = filterMatchingBindings(unboundType, boundTys);
 
         filteredBindings = flatten(c, unboundType, filteredBindings);
@@ -671,7 +673,8 @@ namespace ante {
      * previously bound.  Will fail if the given name does
      * not correspond to any defined type.
      */
-    AnDataType* AnDataType::getVariant(Compiler *c, string const& name, vector<pair<string, AnType*>> const& boundTys){
+    AnDataType* AnDataType::getVariant(Compiler *c, string const& name,
+            vector<pair<string, AnType*>> const& boundTys){
         auto *unboundType = AnDataType::get(name);
         if(unboundType->isStub()){
             cerr << "Warning: Cannot bind undeclared type " << name << endl;
@@ -696,7 +699,8 @@ namespace ante {
         return variant;
     }
 
-    AnDataType* AnDataType::create(string const& name, vector<AnType*> const& elems, bool isUnion, vector<AnTypeVarType*> const& generics){
+    AnDataType* AnDataType::create(string const& name, vector<AnType*> const& elems,
+            bool isUnion, vector<AnTypeVarType*> const& generics){
         auto key = name;
 
         AnDataType *dt = search(typeArena.declaredTypes, key);

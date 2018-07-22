@@ -1174,8 +1174,6 @@ vector<AnTypeVarType*> toVec(Compiler *c, const vector<unique_ptr<TypeNode>> &ge
     return ret;
 }
 
-void addGenerics(vector<AnTypeVarType*> &dest, vector<AnType*> &src);
-
 /**
  * @brief A helper function to compile tagged union declarations
  *

@@ -108,9 +108,9 @@ namespace ante {
         static AnType* getBool();
         static AnType* getVoid();
         static AnPtrType* getPtr(AnType*);
-        static AnDataType* getDataType(std::string name);
+        static AnDataType* getDataType(std::string const& name);
         static AnArrayType* getArray(AnType*, size_t len = 0);
-        static AnTypeVarType* getTypeVar(std::string name);
+        static AnTypeVarType* getTypeVar(std::string const& name);
         static AnFunctionType* getFunction(AnType *r, const std::vector<AnType*>);
         static AnAggregateType* getAggregate(TypeTag t, const std::vector<AnType*>);
     };
@@ -316,7 +316,7 @@ namespace ante {
      *  Typevar types are always generic. */
     class AnTypeVarType : public AnType {
         protected:
-        AnTypeVarType(std::string &n) :
+        AnTypeVarType(std::string const& n) :
             AnType(TT_TypeVar, true, 1), name(n){}
 
         public:
@@ -325,7 +325,7 @@ namespace ante {
 
         std::string name;
 
-        static AnTypeVarType* get(std::string name);
+        static AnTypeVarType* get(std::string const& name);
 
         /** Returns a version of the current type with an additional modifier m. */
         const AnType* addModifier(TokenType m) const override;
@@ -500,7 +500,7 @@ namespace ante {
         * @param field Name of the field to search for
         * @return The index of the field on success, -1 on failure
         */
-        int getFieldIndex(std::string &field) const {
+        int getFieldIndex(std::string const& field) const {
             for(unsigned int i = 0; i < fields.size(); i++)
                 if(field == fields[i])
                     return i;
@@ -530,7 +530,7 @@ namespace ante {
         *
         * @return the value of the tag found, or 0 on failure
         */
-        unsigned short getTagVal(std::string &name);
+        unsigned short getTagVal(std::string const& name);
     };
 }
 
@@ -556,6 +556,8 @@ namespace std {
 }
 
 namespace ante {
+    void addGenerics(std::vector<AnTypeVarType*> &dest, std::vector<AnType*> const& src);
+
     /**
      *  An owning container for all AnTypes
      *
