@@ -657,8 +657,13 @@ int Lexer::genStrLitTok(yy::parser::location_type* loc){
                 case 't': s += '\t'; break;
                 case 'v': s += '\v'; break;
                 default:
-                    if(!IS_NUMERICAL(nxt)) s += nxt;
-                    else{
+                    if(!IS_NUMERICAL(nxt)){
+                        if(nxt == '\n'){
+                            col = 0;
+                            row++;
+                        }
+                        s += nxt;
+                    }else{
                         int cha = 0;
                         incPos();
                         while(IS_NUMERICAL(cur) && IS_NUMERICAL(nxt)){
@@ -682,6 +687,10 @@ int Lexer::genStrLitTok(yy::parser::location_type* loc){
 
             incPos();
         }else{
+            if(nxt == '\n'){
+                col = 0;
+                row++;
+            }
             s += cur;
         }
 
