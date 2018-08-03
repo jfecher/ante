@@ -1745,7 +1745,10 @@ void CompilingVisitor::visit(UnOpNode *n){
             if(!isNumericTypeTag(val.type->typeTag))
                 c->compErr("Cannot negate non-numeric type " + anTypeToColoredStr(val.type), n->loc);
 
-            this->val = TypedValue(c->builder.CreateNeg(val.val), val.type);
+            if(isFPTypeTag(val.type->typeTag))
+                this->val = TypedValue(c->builder.CreateFNeg(val.val), val.type);
+            else
+                this->val = TypedValue(c->builder.CreateNeg(val.val), val.type);
             return;
         case Tok_Not:
             if(val.type->typeTag != TT_Bool)
