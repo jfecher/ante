@@ -142,7 +142,7 @@ namespace ante {
 
     template<typename T>
     T* try_cast(AnType *type){
-        if(!T::classof(type)){
+        if(!T::istype(type)){
             return nullptr;
         }
 
@@ -155,7 +155,7 @@ namespace ante {
 
     template<typename T>
     const T* try_cast(const AnType *type){
-        if(!T::classof(type)){
+        if(!T::istype(type)){
             return nullptr;
         }
 
@@ -244,9 +244,9 @@ namespace ante {
         }
 
         /** Returns true if this type is a tuple, function, or (a declared) data type */
-        static bool classof(const AnType *t){
+        static bool istype(const AnType *t){
             return t->typeTag == TT_Tuple or t->typeTag == TT_Function
-                or t->typeTag == TT_Data;
+                or t->typeTag == TT_Data or t->typeTag == TT_MetaFunction;
         }
     };
 
@@ -280,7 +280,7 @@ namespace ante {
             return false;
         }
 
-        static bool classof(const AnType *t){
+        static bool istype(const AnType *t){
             return t->typeTag == TT_Array;
         }
     };
@@ -307,7 +307,7 @@ namespace ante {
             return false;
         }
 
-        static bool classof(const AnType *t){
+        static bool istype(const AnType *t){
             return t->typeTag == TT_Ptr;
         }
     };
@@ -334,7 +334,7 @@ namespace ante {
             return false;
         }
 
-        static bool classof(const AnType *t){
+        static bool istype(const AnType *t){
             return t->typeTag == TT_TypeVar;
         }
     };
@@ -369,7 +369,7 @@ namespace ante {
         }
 
         /** Returns true if this type is a TT_Function or TT_MetaFunction */
-        static bool classof(const AnType *t){
+        static bool istype(const AnType *t){
             return t->typeTag == TT_Function or t->typeTag == TT_MetaFunction;
         }
     };
@@ -492,7 +492,7 @@ namespace ante {
         }
 
         /** Returns true if the given AnType is an AnDataType */
-        static bool classof(const AnType *t){
+        static bool istype(const AnType *t){
             return t->typeTag == TT_Data or t->typeTag == TT_TaggedUnion;
         }
 

@@ -113,10 +113,25 @@ namespace ante {
             return n;
         }
 
+        void copyModsToContainedNodes(ModNode *m, ModifiableNode *n){
+            if(!m->isCompilerDirective()){
+                if(ExtNode *en = dynamic_cast<ExtNode*>(n)){
+                    for(auto *f : *en->methods){
+                        if(ModifiableNode *fmn = dynamic_cast<ModifiableNode*>(f)){
+                            ModNode *cpy = new ModNode(m->loc, m->mod, nullptr);
+                            fmn->modifiers.emplace_back(cpy);
+                        }
+                    }
+                }
+            }
+        }
+
         Node* append_modifier(Node *modifier, Node *modifiableNode){
             ModNode *m = (ModNode*)modifier;
             if(ModifiableNode *van = dynamic_cast<ModifiableNode*>(modifiableNode)){
                 van->modifiers.emplace_back(m);
+                copyModsToContainedNodes(m, van);
+
                 return van;
             }else if(BinOpNode *assign = dynamic_cast<BinOpNode*>(modifiableNode)){
                 if(assign->op == '='){
