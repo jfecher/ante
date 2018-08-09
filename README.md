@@ -39,19 +39,18 @@ here is an implementation of the goto construct in Ante
 ```go
 //The 'ante' keyword declares compile-time values
 ante
-    global mut labels = Map.of Str LLVM.BasicBlock
+    global mut labels = Map.of Str Llvm.BasicBlock
 
     fun goto: VarNode vn
         let label = labels.lookup vn.name ?
             None -> Ante.error "Cannot goto undefined label ${vn}"
 
-        LLVM.setInsertPoint <| getCallSiteBlock ()
-        LLVM.createBr label
+        Llvm.setInsertPoint (getCallSiteBlock ())
+        createBr label
 
     fun label: VarNode vn
-        let ctxt = Ante.llvm_ctxt
-        let callingFn = getParentFn <| getCallSiteBlock ()
-        let lbl = LLVM.BasicBlock ctxt callingFn
+        let callingFn = getParentFn (getCallSiteBlock ())
+        let lbl = Llvm.BasicBlock(Ante.llvm_ctxt, callingFn)
         labels#vn.name := lbl
 
 
