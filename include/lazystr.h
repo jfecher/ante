@@ -76,25 +76,22 @@ namespace ante {
     };
 
     void setTermFGColor(AN_COLOR_TYPE fg);
-}
 
-std::ostream& operator<<(std::ostream& os, ante::lazy_str str);
+    std::ostream& operator<<(std::ostream& os, ante::lazy_str str);
 
-
-//due to each string's coloring lazy_strs cannot be concatenated, so
-//define a wrapper class that can
-namespace ante {
+    //due to each string's coloring lazy_strs cannot be concatenated, so
+    //define a wrapper class that can
     struct lazy_printer {
         std::list<lazy_str> strs;
 
         lazy_printer(const char* str);
         lazy_printer(std::string str);
     };
+
+    lazy_printer operator+(lazy_printer, lazy_str);
+    lazy_printer operator+(lazy_str, lazy_printer);
+
+    std::ostream& operator<<(std::ostream&, lazy_printer&);
 }
-
-ante::lazy_printer operator+(ante::lazy_printer, ante::lazy_str);
-ante::lazy_printer operator+(ante::lazy_str, ante::lazy_printer);
-
-std::ostream& operator<<(std::ostream&, ante::lazy_printer&);
 
 #endif

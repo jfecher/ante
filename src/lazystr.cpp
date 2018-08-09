@@ -4,31 +4,31 @@ using namespace std;
 
 namespace ante {
     extern bool colored_output;
-}
 
-ostream& operator<<(ostream& os, lazy_str str){
-    if(colored_output)
-        os << str.fmt << str.s << AN_CONSOLE_RESET;
-    else
-        os << str.s;
-    return os;
-}
-
-ostream& operator<<(ostream& os, lazy_printer& lp){
-    for(auto& str : lp.strs){
-        os << str;
+    ostream& operator<<(ostream& os, lazy_str str){
+        if(colored_output)
+            os << str.fmt << str.s << AN_CONSOLE_RESET;
+        else
+            os << str.s;
+        return os;
     }
-    return os;
-}
 
-lazy_printer operator+(lazy_printer lp, lazy_str ls){
-    lp.strs.push_back(ls);
-    return lp;
-}
+    ostream& operator<<(ostream& os, lazy_printer& lp){
+        for(auto& str : lp.strs){
+            os << str;
+        }
+        return os;
+    }
 
-lazy_printer operator+(lazy_str ls, lazy_printer lp){
-    lp.strs.push_front(ls);
-    return lp;
+    lazy_printer operator+(lazy_printer lp, lazy_str ls){
+        lp.strs.push_back(ls);
+        return lp;
+    }
+
+    lazy_printer operator+(lazy_str ls, lazy_printer lp){
+        lp.strs.push_front(ls);
+        return lp;
+    }
 }
 
 
