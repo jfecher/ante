@@ -114,7 +114,7 @@ TEST_CASE("Datatype partial bindings"){
     REQUIRE(ta_tb->boundGenerics.size() == 1);
     REQUIRE(ta_tb->boundGenerics[0] == binding2);
     //no named generics, positional only (no longer any 'c, only generic was curried)
-    REQUIRE(ta_tb->generics.empty()); 
+    REQUIRE(ta_tb->generics.empty());
 }
 
 
