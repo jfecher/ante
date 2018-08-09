@@ -538,7 +538,7 @@ TypedValue FuncDecl::getOrCompileFn(Compiler *c){
 
 FuncDecl* shallow_copy(FuncDecl* fd, string &mangledName){
     FuncDecl *cpy = new FuncDecl(fd->fdn, mangledName, fd->scope, fd->module);
-    cpy->obj_bindings = fd->obj_bindings;
+    cpy->objBindings = fd->objBindings;
     cpy->obj = fd->obj;
     return cpy;
 }
@@ -564,16 +564,14 @@ TypedValue compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, vector
     //Each binding from the typecheck results needs to be declared as a typevar in the
     //function's scope, but compFn sets this scope later on, so the needed bindings are
     //instead stored as fake obj bindings to be declared later in compFn
-    for(auto& pair : tc->bindings){
-        fd->obj_bindings.push_back({pair.first, pair.second});
-    }
+    fd->objBindings.insert(fd->objBindings.end(), tc->bindings.begin(), tc->bindings.end());
 
     //Default return type in case this function has an inferred return type;
     AnType *anRetTy = AnType::getVoid();
 
     //bind the return type if necessary
     if(TypeNode* retTy = (TypeNode*)fd->fdn->type.get()){
-        anRetTy = bindGenericToType(c, toAnType(c, retTy), fd->obj_bindings);
+        anRetTy = bindGenericToType(c, toAnType(c, retTy), fd->objBindings);
     }
 
     auto *fty = AnFunctionType::get(anRetTy, args);
@@ -635,10 +633,11 @@ FuncDecl* getFuncDeclFromVec(vector<shared_ptr<FuncDecl>> &l, string const& mang
 }
 
 
-void declareBindings(Compiler *c, vector<pair<string,AnType*>> &bindings){
-    for(auto &p : bindings){
-        if(!p.second->isGeneric)
-            c->stoTypeVar(p.first, p.second);
+void declareBindings(Compiler *c, vector<TypeBinding> &bindings){
+    for(auto &b : bindings){
+        if(!b.getBinding()->isGeneric && b.isNominalBinding()){
+            c->stoTypeVar(b.getTypeVarName(), b.getBinding());
+        }
     }
 }
 
@@ -657,7 +656,7 @@ TypedValue Compiler::compFn(FuncDecl *fd){
     fnScope = scope;
 
     //Propogate type var bindings of the method obj into the function scope
-    declareBindings(this, fd->obj_bindings);
+    declareBindings(this, fd->objBindings);
     TypedValue ret;
 
     try{
@@ -874,11 +873,14 @@ TypedValue Compiler::getCastFn(AnType *from_ty, AnType *to_ty, FuncDecl *fd){
     if(to_ty_dt and to_ty_dt->isVariant()){
         AnType *unbound_obj = fd->obj;
         fd->obj = to_ty;
-        fd->obj_bindings = to_ty_dt->boundGenerics;
+        fd->objBindings = to_ty_dt->boundGenerics;
+
+        auto tc = typeEq(unbound_obj, to_ty);
+        fd->objBindings.insert(fd->objBindings.end(), tc->bindings.begin(), tc->bindings.end());
 
         //must check if this function is generic first
         auto args = toArgTuple(from_ty);
-        if(!fd->obj_bindings.empty()){
+        if(!fd->objBindings.empty()){
             //force a call to compTemplateFunction as the object itself is generic
             //and must be bound even if the function has no parameters to match.
             //This is common in a constructor for an empty container, eg. Vec<i32>()
@@ -893,7 +895,7 @@ TypedValue Compiler::getCastFn(AnType *from_ty, AnType *to_ty, FuncDecl *fd){
         //      parameters of the object will be unbound here and untraceable when the function is
         //      lazily compiled at the callsite
         fd->obj = unbound_obj;
-        fd->obj_bindings.clear();
+        fd->objBindings.clear();
         fd->tv = {};
     }else{
         tv = fd->tv;

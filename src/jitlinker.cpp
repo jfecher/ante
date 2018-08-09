@@ -39,7 +39,7 @@ ante::Module* copyModuleFuncDecls(const ante::Module *mod){
         for(auto &fd : pair.second){
             auto fd_cpy = make_shared<FuncDecl>(fd->fdn, fd->mangledName, fd->scope, ret);
             fd_cpy->obj = fd->obj;
-            fd_cpy->obj_bindings = fd->obj_bindings;
+            fd_cpy->objBindings = fd->objBindings;
             ret->fnDecls[pair.first()].push_back(fd_cpy);
         }
     }

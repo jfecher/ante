@@ -302,7 +302,7 @@ namespace ante {
         //Original object type node for managing self params and location info
         parser::TypeNode *objTn;
 
-        llvm::StringMap<AnType*> obj_bindings;
+        llvm::StringMap<AnType*> objBindings;
 
         //the continue and break labels of each for/while loop to jump out of
         //the pointer is swapped/nullified when a function is called to prevent
