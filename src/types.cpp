@@ -228,7 +228,6 @@ Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt, bool force){
     if(dt->isGeneric and !force){
         cerr << "Type " << anTypeToStr(dt) << " is generic and cannot be translated.\n";
         c->errFlag = true;
-        //return nullptr;
     }
 
     AnType *ext = dt;
@@ -857,43 +856,6 @@ TypeCheckResult& typeCheckBoundDataTypes(const Compiler *c, const AnDataType *l,
 }
 
 
-/* Add the bound generics from the bound type to the correct position in the unbound type.
- * Although most typevars are bound by name, eg. ('t, 't) typecheck (i32, i32) => 't = i32,
- * (unbound) generics are matched by their position, so if a type T 't = ... is declared and
- * used in a typecheck ('t, 't, T) against (i32, i32, T), although T was originally declared
- * as T 't, the typevar used in its declaration is distinct from the first two in the tuple.
- */
-/*
-TypeCheckResult& matchBoundAndUnboundType(const Compiler *c, vector<GenericTypeParam> const& generics,
-        vector<TypeBinding> const& bindings, string const& typeName, TypeCheckResult &tcr){
-
-    if(bindings.size() != generics.size())
-        return tcr.failure();
-
-    for(size_t i = 0; i < bindings.size(); i++){
-        string name = "'" + typeName + " " + to_string(i);
-        auto *binding = findBindingFor(generics[i], bindings);
-
-        //If there is no binding then we are matching a curried type against a noncurried one.
-        //All non-specified typevars match on these anyway so no need for an else branch.
-        if(binding){
-            auto *preExistingBinding = findBindingFor(name, tcr->bindings);
-
-            if(preExistingBinding){
-                typeEqHelper(c, binding->getBinding(), preExistingBinding->getBinding(), tcr);
-                if(tcr.failed()) return tcr;
-            }else{
-                tcr->bindings.push_back(*binding);
-                tcr.successWithTypeVars();
-            }
-        }
-    }
-
-    return tcr;
-}
-*/
-
-
 TypeCheckResult& addBindingsToTypeCheck(const Compiler *c, vector<TypeBinding> const& bindings, TypeCheckResult &tcr){
     for(auto &b : bindings){
         auto *repeat = findBindingFor(b.getGenericTypeParam(), tcr->bindings);
@@ -905,6 +867,7 @@ TypeCheckResult& addBindingsToTypeCheck(const Compiler *c, vector<TypeBinding> c
             tcr->bindings.push_back(b);
         }
     }
+    tcr->matches++;
     return tcr.successWithTypeVars();
 }
 
