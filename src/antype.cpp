@@ -15,37 +15,43 @@ namespace ante {
                 cout << "[";
                 for(auto &t : dt->generics){
                     if(&t != &dt->generics.back())
-                        cout << anTypeToStr(t) << ", ";
+                        cout << t << ", ";
                     else
-                        cout << anTypeToStr(t) << "]";
+                        cout << t << "]";
                 }
             }
-            if(!dt->boundGenerics.empty()){
+            if(dt->isVariant()){
                 cout << "<";
-                for(auto &p : dt->boundGenerics){
-                    if(&p != &dt->boundGenerics.back())
-                        cout << p.first << " -> " << anTypeToStr(p.second) << ", ";
-                    else
-                        cout << p.first << " -> " << anTypeToStr(p.second) << ">";
+                for(auto &b : dt->boundGenerics){
+                    cout << b << ((&b != &dt->boundGenerics.back()) ? ", " : ">");
                 }
             }
-            cout << " = " << anTypeToStr(AnAggregateType::get(TT_Tuple, dt->extTys));
+            cout << " = ";
+            if(dt->extTys.empty()){
+                cout << "()";
+            }else{
+                for(auto &ext : dt->extTys){
+                    cout << anTypeToStr(ext);
+                    if(&ext != &dt->extTys.back())
+                        cout << (dt->typeTag == TT_TaggedUnion? " | " : ", ");
+                }
+            }
         }else{
             cout << anTypeToStr(this);
         }
         cout << endl;
     }
 
-    bool isGeneric(const std::vector<AnType*> &vec){
+    bool isGeneric(vector<AnType*> const& vec){
         for(auto *t : vec)
             if(t->isGeneric)
                 return true;
         return false;
     }
 
-    bool isGeneric(const std::vector<std::pair<std::string, AnType*>> &vec){
+    bool isGeneric(vector<TypeBinding> const& vec){
         for(auto &p : vec)
-            if(p.second->isGeneric)
+            if(p.getBinding()->isGeneric)
                 return true;
         return false;
     }
@@ -406,48 +412,16 @@ namespace ante {
         }
     }
 
-    string getBoundName(const string &baseName, const vector<pair<string, AnType*>> &typeArgs){
-        if(typeArgs.empty())
-            return baseName;
-
-        string name = baseName + "<";
-        for(auto &p : typeArgs){
-            if(p.second->typeTag != TT_TypeVar)
-                name += anTypeToStr(p.second);
-            if(&p != &typeArgs.back())
-                name += ",";
-        }
-        return name == baseName + "<" ? baseName : name+">";
-    }
-
-    /*
-    * Returns the unique boundName of a generic type after it is bound
-    * with the specified type arguments
-    */
-    string getBoundName(const string &baseName, const vector<AnTypeVarType*> &typeArgs){
-        if(typeArgs.empty())
-            return baseName;
-        
-        string name = baseName + "<";
-        for(auto &arg : typeArgs){
-            if(arg->typeTag != TT_TypeVar)
-                name += anTypeToStr(arg);
-            if(&arg != &typeArgs.back())
-                name += ",";
-        }
-        return name == baseName + "<" ? baseName : name + ">";
-    }
-
-    vector<AnType*> extractTypes(const vector<pair<string, AnType*>> &bindings){
+    vector<AnType*> extractTypes(const vector<TypeBinding> &bindings){
         auto ret = vecOf<AnType*>(bindings.size());
         for(auto &p : bindings){
-            ret.emplace_back(p.second);
+            ret.emplace_back(p.getBinding());
         }
         return ret;
     }
 
-    void removeDuplicates(vector<AnTypeVarType*> &vec){
-        vector<AnTypeVarType*> ret;
+    void removeDuplicates(vector<GenericTypeParam> &vec){
+        vector<GenericTypeParam> ret;
 
         /* the pos after the current element */
         auto pos = ++vec.begin();
@@ -468,12 +442,12 @@ namespace ante {
     /*
      * Returns a vector of all typevars used by a given type
      */
-    vector<AnTypeVarType*> getGenerics(AnType *t){
+    vector<GenericTypeParam> getGenerics(AnType *t){
         if(AnDataType *dt = try_cast<AnDataType>(t)){
             return dt->generics;
 
         }else if(AnTypeVarType *tvt = try_cast<AnTypeVarType>(t)){
-            return {tvt};
+            return {tvt->name};
 
         }else if(AnPtrType *pt = try_cast<AnPtrType>(t)){
             return getGenerics(pt->extTy);
@@ -482,7 +456,7 @@ namespace ante {
             return getGenerics(at->extTy);
 
         }else if(AnFunctionType *ft = try_cast<AnFunctionType>(t)){
-            vector<AnTypeVarType*> generics;
+            vector<GenericTypeParam> generics;
             for(auto *p : ft->extTys){
                 auto p_generics = getGenerics(p);
                 generics.insert(generics.end(), p_generics.begin(), p_generics.end());
@@ -492,7 +466,7 @@ namespace ante {
             return generics;
 
         }else if(AnAggregateType *agg = try_cast<AnAggregateType>(t)){
-            vector<AnTypeVarType*> generics;
+            vector<GenericTypeParam> generics;
             for(auto *p : agg->extTys){
                 auto p_generics = getGenerics(p);
                 generics.insert(generics.end(), p_generics.begin(), p_generics.end());
@@ -504,7 +478,7 @@ namespace ante {
         }
     }
 
-    void addGenerics(vector<AnTypeVarType*> &dest, vector<AnType*> const& src){
+    void addGenerics(vector<GenericTypeParam> &dest, vector<AnType*> const& src){
         for(auto *t : src){
             if(t->isGeneric){
                 auto g = getGenerics(t);
@@ -514,10 +488,10 @@ namespace ante {
         removeDuplicates(dest);
     }
 
-    void addGenerics(vector<AnTypeVarType*> &dest, vector<pair<string, AnType*>> const& src){
+    void addGenerics(vector<GenericTypeParam> &dest, vector<TypeBinding> const& src){
         for(auto &p : src){
-            if(p.second->isGeneric){
-                auto g = getGenerics(p.second);
+            if(p.getBinding()->isGeneric){
+                auto g = getGenerics(p.getBinding());
                 dest.insert(dest.end(), g.begin(), g.end());
             }
         }
@@ -535,13 +509,36 @@ namespace ante {
         return false;
     }
 
+    /**
+     *  Converts a vector of structured bindings to a vector
+     *  of nominal bindings.  Used when binding the converting
+     *  the generic args of a generic variant to the nominal args
+     *  needed to actually bind its contained types.
+     */
+    vector<TypeBinding> mapStructuredBindingsToNamedBindings(AnDataType *unboundType,
+            vector<TypeBinding> const& bindings){
+
+        auto ret = vecOf<TypeBinding>(bindings.size());
+
+        for(const auto& binding : bindings){
+            if(binding.isNominalBinding()){
+                cerr << lazy_str("WARNING: ", AN_WARN_COLOR) << "Nominal binding `"
+                    << binding << "` used in datatype mapping, ignoring.\n";
+            }else{
+                string typeVarName = unboundType->generics[binding.getIndex()].typeVarName;
+                ret.emplace_back(typeVarName, binding.getBinding());
+            }
+        }
+        return ret;
+    }
+
     /*
      * Helper function for AnDataType::getVariant functions.
      * Overwrites a given AnDataType to be a bound variant of
      * the given generic type specified by unboundType.
      */
-    AnDataType* bindVariant(Compiler *c, AnDataType *unboundType, const std::vector<std::pair<std::string,
-            AnType*>> &bindings, AnDataType *variant){
+    AnDataType* bindVariant(Compiler *c, AnDataType *unboundType,
+            vector<TypeBinding> const& bindings, AnDataType *variant){
 
         auto boundExts = vecOf<AnType*>(unboundType->extTys.size());
 
@@ -551,19 +548,20 @@ namespace ante {
             cerr << "WARNING: empty generics for parent type " << anTypeToStr(unboundType) << endl;
             variant->boundGenerics = bindings;
 
-            vector<pair<string, AnType*>> boundBindings;
+            vector<TypeBinding> boundBindings;
             for(auto &p : unboundType->boundGenerics){
-                boundBindings.emplace_back(p.first, bindGenericToType(c, p.second, bindings));
+                boundBindings.emplace_back(p.getTypeVarName(), bindGenericToType(c, p.getBinding(), bindings));
             }
         }
 
-        variant->boundGenerics = filterMatchingBindings(unboundType, bindings);
+        variant->boundGenerics = bindings;
         variant->numMatchedTys = variant->boundGenerics.size() + 1;
 
         addGenerics(variant->generics, variant->boundGenerics);
 
+        auto internalBindings = mapStructuredBindingsToNamedBindings(unboundType, bindings);
         for(auto *e : unboundType->extTys){
-            auto *be = bindGenericToType(c, e, bindings);
+            auto *be = bindGenericToType(c, e, internalBindings);
             boundExts.push_back(be);
         }
 
@@ -597,7 +595,7 @@ namespace ante {
      * types match the given map of boundTys.  Returns nullptr
      * if such a type is not found.
      */
-    AnDataType* findMatchingVariant(AnDataType *unboundType, const vector<pair<string, AnType*>> &boundTys){
+    AnDataType* findMatchingVariant(AnDataType *unboundType, vector<TypeBinding> const& boundTys){
         auto filteredBindings = filterMatchingBindings(unboundType, boundTys);
 
         for(auto &v : unboundType->variants){
@@ -608,32 +606,25 @@ namespace ante {
         return nullptr;
     }
 
-    vector<pair<string, AnType*>> flatten(const Compiler *c, const AnDataType *dt,
-            const vector<pair<string, AnType*>> &bindings){
-        vector<pair<string, AnType*>> ret;
-        if(dt->unboundType){
-            //initial bindings are the generics of the parent type
-            ret.reserve(dt->unboundType->generics.size());
-            for(auto *tv : dt->unboundType->generics){
-                ret.emplace_back(tv->name, tv);
-            }
+    vector<TypeBinding> flatten(const Compiler *c, const AnDataType *dt,
+            vector<TypeBinding> const& bindings){
 
-            //once the entire branch is bound, bind the bindings
-            for(auto &p : ret){
-                p.second = bindGenericToType((Compiler*)c, p.second, dt->boundGenerics);
-            }
+        vector<TypeBinding> ret;
+
+        if(dt->isVariant()){
+            ret = dt->boundGenerics;
 
             for(auto &p : ret){
-                p.second = bindGenericToType((Compiler*)c, p.second, bindings);
+                p.setBinding(bindGenericToType((Compiler*)c, p.getBinding(), bindings));
             }
-        }else{
-            ret.reserve(dt->generics.size());
-            for(auto *tv : dt->generics){
-                ret.emplace_back(tv->name, tv);
-            }
+        }
 
-            for(auto &p : ret){
-                p.second = bindGenericToType((Compiler*)c, p.second, bindings);
+        //bind any structural bindings
+        for(auto &g : dt->generics){
+            if(!g.isNominalBinding()){
+                auto binding = findBindingFor({"", dt, g.pos}, bindings);
+                if(binding)
+                    ret.push_back(*binding);
             }
         }
 
@@ -646,12 +637,19 @@ namespace ante {
      * previously bound.
      */
     AnDataType* AnDataType::getVariant(Compiler *c, AnDataType *unboundType,
-            vector<pair<string, AnType*>> const& boundTys){
-        auto filteredBindings = filterMatchingBindings(unboundType, boundTys);
+            vector<TypeBinding> const& boundTys){
 
+        //type is fully bound and no longer generic, early return
+        if(!unboundType->isGeneric and !unboundType->isVariant())
+            return unboundType;
+
+        auto filteredBindings = filterMatchingBindings(unboundType, boundTys);
         filteredBindings = flatten(c, unboundType, filteredBindings);
 
-        if(unboundType->unboundType)
+        if(filteredBindings.empty())
+            return unboundType;
+
+        if(unboundType->isVariant())
             unboundType = unboundType->unboundType;
 
         AnDataType *variant = findMatchingVariant(unboundType, filteredBindings);
@@ -674,33 +672,19 @@ namespace ante {
      * not correspond to any defined type.
      */
     AnDataType* AnDataType::getVariant(Compiler *c, string const& name,
-            vector<pair<string, AnType*>> const& boundTys){
+            vector<TypeBinding> const& boundTys){
+
         auto *unboundType = AnDataType::get(name);
         if(unboundType->isStub()){
             cerr << "Warning: Cannot bind undeclared type " << name << endl;
             return unboundType;
         }
 
-        auto filteredBindings = filterMatchingBindings(unboundType, boundTys);
-        filteredBindings = flatten(c, unboundType, filteredBindings);
-
-        if(unboundType->unboundType)
-            unboundType = unboundType->unboundType;
-
-        AnDataType *variant = findMatchingVariant(unboundType, filteredBindings);
-
-        //variant is already bound
-        if(variant)
-            return variant;
-
-        variant = new AnDataType(unboundType->name, {}, false);
-        variant = bindVariant(c, unboundType, filteredBindings, variant);
-        addKVPair(typeArena.genericVariants, make_pair(variant->name, variant->boundGenerics), variant);
-        return variant;
+        return AnDataType::getVariant(c, unboundType, boundTys);
     }
 
     AnDataType* AnDataType::create(string const& name, vector<AnType*> const& elems,
-            bool isUnion, vector<AnTypeVarType*> const& generics){
+            bool isUnion, vector<GenericTypeParam> const& generics){
         auto key = name;
 
         AnDataType *dt = search(typeArena.declaredTypes, key);
@@ -817,15 +801,17 @@ namespace ante {
             case TT_Data:
             case TT_TaggedUnion: {
                 if(!tn->params.empty()){
-                    vector<AnType*> bindings;
-                    for(auto &t : tn->params){
-                        auto *b = toAnType(c, t.get());
-                        bindings.emplace_back(b);
-                    }
-
                     auto *basety = AnDataType::get(tn->typeName);
 
-                    ret = try_cast<AnDataType>(bindGenericToType(c, basety, bindings, basety));
+                    vector<TypeBinding> bindings;
+                    for(size_t i = 0; i < tn->params.size(); i++){
+                        auto *b = toAnType(c, tn->params[i].get());
+                        //empty string because we cannot know the original typevar used in the declaration
+                        //and it is unneeded except for when printing a parent datatype, which this is not.
+                        bindings.emplace_back("", basety, i, b);
+                    }
+
+                    ret = try_cast<AnDataType>(bindGenericToType(c, basety, bindings));
                 }else{
                     ret = AnDataType::get(tn->typeName);
                 }

@@ -19,15 +19,15 @@ namespace ante {
     std::string typeNodeToStr(const parser::TypeNode *t);
     lazy_str typeNodeToColoredStr(const parser::TypeNode *t);
 
-    std::vector<std::pair<std::string, AnType*>>
-    filterMatchingBindings(const AnDataType *dt, const std::vector<std::pair<std::string, AnType*>> &bindings);
-
-    std::vector<std::pair<std::string, AnType*>>
-    mapBindingsToDataType(const std::vector<AnType*> &bindings, const AnDataType *dt);
+    std::vector<TypeBinding>
+    filterMatchingBindings(const AnDataType *dt, std::vector<TypeBinding> const& bindings);
 
     AnAggregateType* flattenBoundTys(const Compiler *c, const AnDataType *dt);
 
     llvm::Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt, bool force = false);
+
+    const TypeBinding* findBindingFor(GenericTypeParam const& param,
+            std::vector<TypeBinding> const& bindings);
 
     //conversions
     AnType* toAnType(Compiler *c, const parser::TypeNode *tn);
@@ -42,8 +42,7 @@ namespace ante {
     void validateType(Compiler *c, const AnType* tn, const parser::DataDeclNode* rootTy);
     void validateType(Compiler *c, const AnType *tn, const AnDataType *dt);
     AnType* extractTypeValue(const TypedValue &tv);
-    AnType* bindGenericToType(Compiler *c, AnType *tn, const std::vector<std::pair<std::string, AnType*>> &bindings);
-    AnType* bindGenericToType(Compiler *c, AnType *tn, const std::vector<AnType*> &bindings, AnDataType *dt);
+    AnType* bindGenericToType(Compiler *c, AnType *tn, const std::vector<TypeBinding> &bindings);
 
     std::string getCastFnBaseName(AnType *t);
 

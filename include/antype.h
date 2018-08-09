@@ -13,6 +13,7 @@
 #include "tokens.h"
 #include "parser.h"
 #include "result.h"
+#include "typebinding.h"
 
 #define AN_HASH_PRIME 0x9e3779e9
 
@@ -428,7 +429,7 @@ namespace ante {
          *  Only parent types (the unbound generic variant matching the type's definition)
          *  have variants.  If an incomplete binding such as Node<Maybe<'u>> is bound
          *  to Node<Maybe<i32>> the resulting type is flattened and stored as a variant
-         *  of the parent type, Node<'n> so that each parent type has a single vector
+         *  of the parent type Node<'n> so that each parent type has a single vector
          *  of variants rather than a tree structure.
          */
         std::vector<AnDataType*> variants;
@@ -437,14 +438,14 @@ namespace ante {
         AnDataType *parentUnionType;
 
         /** Typevars this type is generic over */
-        std::vector<AnTypeVarType*> generics;
+        std::vector<GenericTypeParam> generics;
 
         /**
          * The set of bindings used to bind the parent type to this variant.
          *
          * Empty if this type is not a bound version of some generic type.
          */
-        std::vector<std::pair<std::string, AnType*>> boundGenerics;
+        std::vector<TypeBinding> boundGenerics;
 
         /** The llvm Type corresponding to this data type.
          * May be nullptr if this type has not yet been translated. */
@@ -462,11 +463,11 @@ namespace ante {
          * If no variant is found, a variant will be bound with the given bindings.
          * If not type with the name 'name' is found this function will issue a
          * warning and return the stub of that type. */
-        static AnDataType* getVariant(Compiler *c, std::string const& name, std::vector<std::pair<std::string, AnType*>> const& boundTys);
+        static AnDataType* getVariant(Compiler *c, std::string const& name, std::vector<TypeBinding> const& boundTys);
 
         /** Searches for a bound variant of the given unboundType.
          * If no variant is found, a variant will be bound with the given bindings. */
-        static AnDataType* getVariant(Compiler *c, AnDataType *unboundType, std::vector<std::pair<std::string, AnType*>> const& boundTys);
+        static AnDataType* getVariant(Compiler *c, AnDataType *unboundType, std::vector<TypeBinding> const& boundTys);
 
         /** Looks for a data type by the given name and modifiers and creates it if has not been already */
         static AnDataType* getOrCreate(std::string const& name, std::vector<AnType*> const& elems, bool isUnion);
@@ -475,10 +476,15 @@ namespace ante {
         static AnDataType* getOrCreate(const AnDataType *dt);
 
         /** Creates or overwrites the type specified by name. */
-        static AnDataType* create(std::string const& name, std::vector<AnType*> const& elems, bool isUnion, std::vector<AnTypeVarType*> const& generics);
+        static AnDataType* create(std::string const& name, std::vector<AnType*> const& elems, bool isUnion, std::vector<GenericTypeParam> const& generics);
 
         /** Returns a new AnDataType* with the given modifier appended to the current type's modifiers. */
         const AnType* addModifier(TokenType m) const override;
+
+        /** Returns true if this DataType is a bound generic variant of another */
+        bool isVariant() const {
+            return unboundType;
+        }
 
         /** Returns true if this type is a bound variant of the generic type dt.
          *  If dt is not a generic type, this function will always return false. */
@@ -517,11 +523,6 @@ namespace ante {
             return parentUnionType;
         }
 
-        /** Returns true if this DataType is a bound generic variant of another */
-        bool isVariant() const {
-            return unboundType;
-        }
-
         /**
         * Returns the UnionTag of a tag within the union type.
         *
@@ -532,14 +533,15 @@ namespace ante {
         */
         unsigned short getTagVal(std::string const& name);
     };
+
+    size_t hashCombine(size_t l, size_t r);
 }
 
 namespace std {
     template<typename T, typename U>
     struct hash<std::pair<T, U>> {
         size_t operator()(std::pair<T, U> const& t) const {
-            auto key = std::hash<T>()(t.first);
-            return std::hash<U>()(t.second) + AN_HASH_PRIME + (key << 6) + (key >> 2);
+            return ante::hashCombine(std::hash<T>()(t.first), std::hash<U>()(t.second));
         }
     };
 
@@ -548,15 +550,28 @@ namespace std {
         size_t operator()(std::vector<T> const& v) const {
             size_t ret = v.size();
             for(auto &e : v){
-                ret ^= std::hash<T>()(e) + AN_HASH_PRIME + (ret << 6) + (ret >> 2);
+                ret = ante::hashCombine(ret, std::hash<T>()(e));
             }
             return ret;
+        }
+    };
+
+    template<>
+    struct hash<ante::TypeBinding> {
+        size_t operator()(ante::TypeBinding const& binding) const {
+            if(binding.isNominalBinding()){
+                return ante::hashCombine(std::hash<std::string>()(binding.getTypeVarName()),
+                        std::hash<ante::AnType*>()(binding.getBinding()));
+            }else{
+                return ante::hashCombine(std::hash<size_t>()(binding.getIndex()),
+                        std::hash<ante::AnType*>()(binding.getBinding()));
+            }
         }
     };
 }
 
 namespace ante {
-    void addGenerics(std::vector<AnTypeVarType*> &dest, std::vector<AnType*> const& src);
+    void addGenerics(std::vector<GenericTypeParam> &dest, std::vector<AnType*> const& src);
 
     /**
      *  An owning container for all AnTypes
@@ -578,7 +593,7 @@ namespace ante {
 
         using FnTypeKey = std::pair<AnType*, std::pair<std::vector<AnType*>, bool>>;
         using AggTypeKey = std::pair<TypeTag, std::vector<AnType*>>;
-        using VariantTypeKey = std::pair<std::string, std::vector<std::pair<std::string, AnType*>>>;
+        using VariantTypeKey = std::pair<std::string, std::vector<TypeBinding>>;
 
         std::unordered_map<TypeTag, std::unique_ptr<AnType>> primitiveTypes;
         std::unordered_map<std::pair<AnType*, TokenType>, std::unique_ptr<AnModifier>> basicModifiers;

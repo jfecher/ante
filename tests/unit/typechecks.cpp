@@ -1,6 +1,5 @@
 #include "unittest.h"
 
-
 TEST_CASE("Type Checks", "[typeEq]"){
     auto&& c = Compiler(nullptr);
 
@@ -38,17 +37,17 @@ TEST_CASE("Type Checks", "[typeEq]"){
 
         REQUIRE(bindings.size() == 2);
 
-        REQUIRE(contains(bindings, pair<string, AnType*>{"'t", intTy}));
+        REQUIRE(contains(bindings, TypeBinding("'t", intTy)));
 
-        REQUIRE(contains(bindings, pair<string, AnType*>("'u", boolTy)));
+        REQUIRE(contains(bindings, TypeBinding("'u", boolTy)));
     }
 
     SECTION("Empty isz* == Empty isz*"){
         //Empty 't
-        auto empty = AnDataType::create("Empty", {}, false, {t});
+        auto empty = AnDataType::create("Empty", {}, false, {string("'t")});
 
         //Empty isz*
-        vector<pair<string,AnType*>> bindings {{"'t", intPtr}};
+        vector<TypeBinding> bindings {{"'t", intPtr}};
         auto empty_i32Ptr = AnDataType::getVariant(&c, empty, bindings);
         
         auto empty_i32Ptr2 = AnDataType::getVariant(&c, empty, bindings);
@@ -66,27 +65,56 @@ TEST_CASE("TypeVarType Checks", "[typeEq]"){
     auto u = AnTypeVarType::get("'u");
 
 
-    auto empty = AnDataType::create("Empty", {}, false, {t});
+    auto empty = AnDataType::create("Empty", {}, false, {t->name});
 
     //'t -> 't
-    vector<pair<string,AnType*>> bindings {{"'t", t}};
-    auto empty_t = AnDataType::getVariant(&c, empty, bindings);
+    auto empty_t = AnDataType::getVariant(&c, empty, {{"'t", t}});
     
     //'t -> 'u
-    vector<pair<string,AnType*>> bindings2 {{"'t", u}};
-    auto empty_u = AnDataType::getVariant(&c, empty, bindings2);
+    auto empty_u = AnDataType::getVariant(&c, empty, {{"'t", u}});
 
     REQUIRE(empty_t != empty_u);
     
     REQUIRE(c.typeEq(empty_t, empty));
 
     REQUIRE(c.typeEq(empty_t, empty_u));
-    
+
     REQUIRE(c.typeEq(empty, empty_u));
 
     //When matching 't against 'u no bindings are given
     //as it is unclear if 't should be bound to 'u or vice versa
     REQUIRE(c.typeEq(empty, empty_u)->bindings.empty());
+}
+
+
+TEST_CASE("Datatype partial bindings"){
+    auto&& compiler = Compiler(nullptr);
+
+    auto ta = AnDataType::create("TypeA", {}, false, {string("'a")});
+    auto tb = AnDataType::create("TypeB", {}, false, {string("'b")});
+
+    auto c = AnTypeVarType::get("'c");
+    auto tbc = AnDataType::getVariant(&compiler, tb, {{"'b", tb, 0, c}});
+
+    //TypeA (TypeB 'c)
+    //Should have binding (TypeA position 0) -> TypeB 'c, and generic 'c
+    auto binding1 = TypeBinding("'a", ta, 0, tbc);
+    auto ta_tbc = AnDataType::getVariant(&compiler, ta, {binding1});
+    REQUIRE(ta_tbc->isGeneric);
+    REQUIRE(ta_tbc->boundGenerics.size() == 1);
+    REQUIRE(ta_tbc->boundGenerics[0] == binding1);
+    REQUIRE(ta_tbc->generics.size() == 1);
+    REQUIRE(ta_tbc->generics[0].typeVarName == "'c");
+
+    //TypeA TypeB
+    //Should have binding (TypeA position 0) -> TypeB, and generic (TypeB position 0)
+    auto binding2 = TypeBinding("'a", ta, 0, tb);
+    auto ta_tb = AnDataType::getVariant(&compiler, ta, {binding2});
+    REQUIRE(ta_tb->isGeneric);
+    REQUIRE(ta_tb->boundGenerics.size() == 1);
+    REQUIRE(ta_tb->boundGenerics[0] == binding2);
+    //no named generics, positional only (no longer any 'c, only generic was curried)
+    REQUIRE(ta_tb->generics.empty()); 
 }
 
 

@@ -15,6 +15,7 @@
 #include "parser.h"
 #include "args.h"
 #include "lazystr.h"
+#include "typebinding.h"
 #include "antype.h"
 #include "argtuple.h"
 #include "typedvalue.h"
@@ -81,9 +82,11 @@ namespace ante {
         struct Internals {
             Result res;
             unsigned int matches;
-            std::vector<std::pair<std::string,AnType*>> bindings;
 
-            Internals() : res(Success), matches(0), bindings(){}
+            /* typevar mappings, eg. 't to i32 */
+            std::vector<TypeBinding> bindings;
+
+            Internals() : res{Success}, matches{0}, bindings{}{}
         };
 
         std::shared_ptr<Internals> box;
@@ -101,14 +104,6 @@ namespace ante {
         explicit operator bool() const { return box->res == Success || box->res == SuccessWithTypeVars; }
         Internals* operator->() const { return box.get(); }
 
-        /**
-        * @brief Searches for the suggested binding of a typevar
-        *
-        * @param s Name of the typevar to search for a binding for
-        *
-        * @return The binding if found, nullptr otherwise
-        */
-        AnType* getBindingFor(const std::string &s);
         TypeCheckResult() : box(new Internals()){}
         TypeCheckResult(const TypeCheckResult &r)  : box(r.box){}
         //TypeCheckResult(TypeCheckResult &&r)  : box(move(r.box)){}
@@ -159,7 +154,7 @@ namespace ante {
         AnFunctionType *type;
 
         /** @brief Any generic parameters the obj may have */
-        std::vector<std::pair<std::string, AnType*>> obj_bindings;
+        std::vector<TypeBinding> objBindings;
 
         Module *module;
         std::vector<std::pair<TypedValue,LOC_TY>> returns;

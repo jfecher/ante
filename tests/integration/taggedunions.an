@@ -1,9 +1,4 @@
 
-type Maybe 't =
-   | Some 't
-   | None
-
-
 fun parse_int: Str str -> Maybe i32
     mut i = 0
     mut sum = 0

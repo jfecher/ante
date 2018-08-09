@@ -1166,13 +1166,24 @@ bool Compiler::typeImplementsTrait(AnDataType* dt, string traitName) const{
     return false;
 }
 
-vector<AnTypeVarType*> toVec(Compiler *c, const vector<unique_ptr<TypeNode>> &generics){
-    auto ret = vecOf<AnTypeVarType*>(generics.size());
-    for(auto &tn : generics){
-        ret.push_back(try_cast<AnTypeVarType>(toAnType(c, tn.get())));
+
+/**
+ * Converts a vector of typevar TypeNodes to a vector of GenericTypeParams
+ * to be the positional generics of a generic datatype.
+ *
+ * Note that because the parent datatype is expected to not yet be created,
+ * the 'dt' field of the GenericTypeParams will need to be updated afterward.
+ */
+vector<GenericTypeParam>
+createStructuralGenericParams(Compiler *c, vector<unique_ptr<TypeNode>> const& generics){
+    auto ret = vecOf<GenericTypeParam>(generics.size());
+    for(size_t i = 0; i < generics.size(); i++){
+        TypeNode *tn = generics[i].get();
+        ret.emplace_back(tn->typeName, nullptr, i);
     }
     return ret;
 }
+
 
 /**
  * @brief A helper function to compile tagged union declarations
@@ -1189,7 +1200,10 @@ TypedValue compTaggedUnion(Compiler *c, DataDeclNode *n){
     vector<shared_ptr<UnionTag>> tags;
 
     vector<AnType*> unionTypes;
-    AnDataType *data = AnDataType::create(union_name, {}, true, toVec(c, n->generics));
+
+    auto generics = createStructuralGenericParams(c, n->generics);
+    AnDataType *data = AnDataType::create(union_name, {}, true, generics);
+    for(auto &g : data->generics){ g.dt = data; }
 
     while(nvn){
         TypeNode *tyn = (TypeNode*)nvn->typeExpr.get();
@@ -1206,7 +1220,11 @@ TypedValue compTaggedUnion(Compiler *c, DataDeclNode *n){
         auto *tup = AnAggregateType::get(TT_Tuple, {AnType::getU8(), tagTy});
 
         //Store the tag as a UnionTag and a AnDataType
-        AnDataType *tagdt = AnDataType::create(nvn->name, exts, false, toVec(c, n->generics));
+        AnDataType *tagdt = AnDataType::create(nvn->name, exts, false, generics);
+
+        //A tag's generics should have their dt set to the dt for the whole union
+        for(auto &g : tagdt->generics){ g.dt = data; }
+
         tagdt->fields.emplace_back(union_name);
         tagdt->parentUnionType = data;
         tagdt->isGeneric = isGeneric(exts);
@@ -1261,7 +1279,9 @@ void CompilingVisitor::visit(DataDeclNode *n){
 
     //Create the DataType as a stub first, have its contents be recursive
     //just to cause an error if something tries to use the stub
-    AnDataType *data = AnDataType::create(n->name, {}, false, toVec(c, n->generics));
+    auto generics = createStructuralGenericParams(c, n->generics);
+    AnDataType *data = AnDataType::create(n->name, {}, false, generics);
+    for(auto &g : data->generics){ g.dt = data; }
 
     if(data->llvmType)
         data->llvmType = nullptr;
@@ -1303,8 +1323,11 @@ void CompilingVisitor::visit(DataDeclNode *n){
     this->val = c->getVoidLiteral();
 }
 
+
 void DataDeclNode::declare(Compiler *c){
-    AnDataType::create(name, {}, false, toVec(c, generics));
+    auto genericParams = createStructuralGenericParams(c, this->generics);
+    AnDataType *data = AnDataType::create(name, {}, false, genericParams);
+    for(auto &g : data->generics){ g.dt = data; }
 }
 
 
@@ -1544,13 +1567,13 @@ void compileAll(Compiler *c, vector<T> &vec){
 void Compiler::scanAllDecls(RootNode *root){
     auto *n = root ? root : ast.get();
 
-    //for (auto& f : n->types) {
-	//	try {
-	//		f->declare(this);
-	//	}catch (CtError *e) {
-	//		delete e;
-	//	}
-	//}
+    for (auto& f : n->types) {
+		try {
+			((DataDeclNode*)f.get())->declare(this);
+		}catch (CtError *e) {
+			delete e;
+		}
+	}
 
     compileAll(this, n->types);
     compileAll(this, n->traits);

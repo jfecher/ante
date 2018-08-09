@@ -39,20 +39,6 @@ AnType* extractTypeValue(const TypedValue &tv){
 }
 
 
-//string getBoundName(string &baseName, const vector<pair<string, AnType*>> &typeArgs){
-//    if(typeArgs.empty())
-//        return baseName;
-//
-//    string name = baseName + "<";
-//    for(auto &p : typeArgs){
-//        name += anTypeToStr(p.second);
-//        if(&p != &typeArgs.back())
-//            name += ",";
-//    }
-//    return name + ">";
-//}
-
-
 /*
  *  Checks to see if a type is valid to be used.
  *  To be valid the type must:
@@ -112,7 +98,7 @@ void validateType(Compiler *c, const AnType *tn, const AnDataType *dt){
 
     for(auto &g : dt->generics){
         auto *tv = mkAnonTypeNode(TT_TypeVar);
-        tv->typeName = g->name;
+        tv->typeName = g.typeVarName;
         ddn->generics.emplace_back(tv);
     }
 
@@ -167,6 +153,7 @@ Result<size_t, string> AnType::getSizeInBits(Compiler *c, string *incompleteType
             if(binding == tvt){
                 return "Typevar " + tvt->name + " refers to itself, cannot calculate size in bits";
             }
+            //possible infinite loop for mutally recursive typevars
             return binding->getSizeInBits(c, incompleteType, force);
         }
 
@@ -178,32 +165,33 @@ Result<size_t, string> AnType::getSizeInBits(Compiler *c, string *incompleteType
 }
 
 
-vector<pair<string, AnType*>>
-mapBindingsToDataType(const vector<AnType*> &bindings, const AnDataType *dt){
-    vector<pair<string, AnType*>> ret;
-    ret.reserve(bindings.size());
-
-    for(size_t i = 0; i < dt->generics.size(); i++){
-        ret.emplace_back(dt->generics[i]->name, bindings[i]);
-    }
-    return ret;
+size_t hashCombine(size_t l, size_t r){
+    return l ^ (r + AN_HASH_PRIME + (l << 6) + (l >> 2));
 }
 
 
-AnType* find(string &k, const vector<pair<string, AnType*>> &bindings){
-    for(auto &p : bindings)
-        if(p.first == k)
-            return p.second;
+/**
+* @brief Searches for the suggested binding of a typevar
+*
+* @param s Name of the typevar to search for a binding for
+*
+* @return The binding if found, nullptr otherwise
+*/
+const TypeBinding* findBindingFor(GenericTypeParam const& param, vector<TypeBinding> const& bindings){
+    for(auto &b : bindings){
+        if(b.matches(param))
+            return &b;
+    }
     return nullptr;
 }
 
-vector<pair<string, AnType*>>
-filterMatchingBindings(const AnDataType *dt, const vector<pair<string, AnType*>> &bindings){
-    vector<pair<string,AnType*>> matches;
-    for(auto &b : dt->generics){
-        AnType *arg = find(b->name, bindings);
-        if(arg){
-            matches.emplace_back(b->name, arg);
+
+vector<TypeBinding> filterMatchingBindings(const AnDataType *dt, vector<TypeBinding> const& bindings){
+    vector<TypeBinding> matches;
+    for(auto &g : dt->generics){
+        auto *b = findBindingFor(g, bindings);
+        if(b){
+            matches.push_back(*b);
         }
     }
     return matches;
@@ -217,13 +205,13 @@ string toLlvmTypeName(const AnDataType *dt){
         return baseName;
 
     string name = baseName + "<";
-    for(auto &p : typeArgs){
-        if(AnDataType *ext = try_cast<AnDataType>(p.second))
+    for(auto &b : typeArgs){
+        if(AnDataType *ext = try_cast<AnDataType>(b.getBinding()))
             name += toLlvmTypeName(ext);
         else
-            name += anTypeToStr(p.second);
+            name += anTypeToStr(b.getBinding());
 
-        if(&p != &typeArgs.back())
+        if(&b != &typeArgs.back())
             name += ",";
     }
     return name == baseName + "<" ? baseName : name+">";
@@ -280,7 +268,7 @@ Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt, bool force){
  *         to match the typevar ordering with.  The second function below handles
  *         this conversion
  */
-AnType* bindGenericToType(Compiler *c, AnType *tn, const vector<pair<string, AnType*>> &bindings){
+AnType* bindGenericToType(Compiler *c, AnType *tn, vector<TypeBinding> const& bindings){
     if(!tn->isGeneric){
         return tn;
     }else if(bindings.empty()){
@@ -291,9 +279,9 @@ AnType* bindGenericToType(Compiler *c, AnType *tn, const vector<pair<string, AnT
         return AnDataType::getVariant(c, dty, bindings);
 
     }else if(auto *tv = try_cast<AnTypeVarType>(tn)){
-        for(auto& pair : bindings){
-            if(tv->name == pair.first){
-                return pair.second;
+        for(auto& b : bindings){
+            if(b.matches(tv->name)){
+                return b.getBinding();
             }
         }
         cerr << "warning: unbound type var " << tv->name << " in binding\n";
@@ -320,15 +308,6 @@ AnType* bindGenericToType(Compiler *c, AnType *tn, const vector<pair<string, AnT
     }
 }
 
-
-AnType* bindGenericToType(Compiler *c, AnType *tn, const vector<AnType*> &bindings, AnDataType *dt){
-    if(bindings.empty() or !tn->isGeneric)
-        return tn;
-
-    auto bindings_map = mapBindingsToDataType(bindings, dt);
-
-    return bindGenericToType(c, tn, bindings_map);
-}
 
 /*
  *  Checks for, and implicitly widens an integer or float type.
@@ -861,25 +840,72 @@ bool dataTypeImplementsTrait(AnDataType *dt, string trait){
     return false;
 }
 
-AnType* TypeCheckResult::getBindingFor(const string &name){
-    for(auto &pair : box->bindings){
-        if(pair.first == name)
-            return pair.second;
-    }
-    return 0;
-}
-
 
 TypeCheckResult& typeCheckBoundDataTypes(const Compiler *c, const AnDataType *l,
         const AnDataType *r, TypeCheckResult &tcr){
+
+    if(l->boundGenerics.size() != r->boundGenerics.size())
+        return tcr.failure();
 
     for(size_t i = 0; i < l->boundGenerics.size(); i++){
         auto &lbg = l->boundGenerics[i];
         auto &rbg = r->boundGenerics[i];
 
-        if(!typeEqHelper(c, lbg.second, rbg.second, tcr)) return tcr.failure();
+        if(!typeEqHelper(c, lbg.getBinding(), rbg.getBinding(), tcr)) return tcr.failure();
     }
     return tcr.success();
+}
+
+
+/* Add the bound generics from the bound type to the correct position in the unbound type.
+ * Although most typevars are bound by name, eg. ('t, 't) typecheck (i32, i32) => 't = i32,
+ * (unbound) generics are matched by their position, so if a type T 't = ... is declared and
+ * used in a typecheck ('t, 't, T) against (i32, i32, T), although T was originally declared
+ * as T 't, the typevar used in its declaration is distinct from the first two in the tuple.
+ */
+/*
+TypeCheckResult& matchBoundAndUnboundType(const Compiler *c, vector<GenericTypeParam> const& generics,
+        vector<TypeBinding> const& bindings, string const& typeName, TypeCheckResult &tcr){
+
+    if(bindings.size() != generics.size())
+        return tcr.failure();
+
+    for(size_t i = 0; i < bindings.size(); i++){
+        string name = "'" + typeName + " " + to_string(i);
+        auto *binding = findBindingFor(generics[i], bindings);
+
+        //If there is no binding then we are matching a curried type against a noncurried one.
+        //All non-specified typevars match on these anyway so no need for an else branch.
+        if(binding){
+            auto *preExistingBinding = findBindingFor(name, tcr->bindings);
+
+            if(preExistingBinding){
+                typeEqHelper(c, binding->getBinding(), preExistingBinding->getBinding(), tcr);
+                if(tcr.failed()) return tcr;
+            }else{
+                tcr->bindings.push_back(*binding);
+                tcr.successWithTypeVars();
+            }
+        }
+    }
+
+    return tcr;
+}
+*/
+
+
+TypeCheckResult& addBindingsToTypeCheck(const Compiler *c, vector<TypeBinding> const& bindings, TypeCheckResult &tcr){
+    for(auto &b : bindings){
+        auto *repeat = findBindingFor(b.getGenericTypeParam(), tcr->bindings);
+        if(repeat){
+            auto tc2 = TypeCheckResult();
+            typeEqHelper(c, b.getBinding(), repeat->getBinding(), tc2);
+            if(!tc2) return tcr.failure();
+        }else{
+            tcr->bindings.push_back(b);
+        }
+    }
+    return tcr.successWithTypeVars();
 }
 
 
@@ -889,30 +915,22 @@ TypeCheckResult& typeCheckBoundDataTypes(const Compiler *c, const AnDataType *l,
 TypeCheckResult& typeCheckVariants(const Compiler *c, const AnDataType *l,
         const AnDataType *r, TypeCheckResult &tcr){
 
-    bool lIsBound = !l->boundGenerics.empty();
-    bool rIsBound = !r->boundGenerics.empty();
+    bool lIsBound = l->isVariant();
+    bool rIsBound = r->isVariant();
 
     //Two bound variants are equal if their type parameters are equal
     if(lIsBound and rIsBound){
         for(size_t i = 0; i < l->boundGenerics.size(); i++){
-            typeEqHelper(c, l->boundGenerics[i].second, r->boundGenerics[i].second, tcr);
+            typeEqHelper(c, l->boundGenerics[i].getBinding(), r->boundGenerics[i].getBinding(), tcr);
             if(tcr.failed()) return tcr;
         }
         return tcr.success();
     //Perform type checks to get the needed bindings of type
     //variables to bind an unbound variant to a given bound variant.
     }else if(lIsBound and !rIsBound){
-        for(size_t i = 0; i < l->boundGenerics.size(); i++){
-            typeEqHelper(c, l->boundGenerics[i].second, r->generics[i], tcr);
-            if(tcr.failed()) return tcr;
-        }
-        return tcr.success();
+        return addBindingsToTypeCheck(c, l->boundGenerics, tcr);
     }else if(!lIsBound and rIsBound){
-        for(size_t i = 0; i < r->boundGenerics.size(); i++){
-            typeEqHelper(c, l->generics[i], r->boundGenerics[i].second, tcr);
-            if(tcr.failed()) return tcr;
-        }
-        return tcr.success();
+        return addBindingsToTypeCheck(c, r->boundGenerics, tcr);
     //neither are bound, these should both be parent types
     }else{
         return tcr.success();
@@ -939,7 +957,7 @@ TypeCheckResult& typeEqHelper(const Compiler *c, const AnType *l, const AnType *
 
     const AnDataType *ldt, *rdt;
     if((ldt = try_cast<AnDataType>(l)) and (rdt = try_cast<AnDataType>(r))){
-        if(ldt->name == rdt->name and ldt->boundGenerics.empty() and rdt->boundGenerics.empty())
+        if(ldt->name == rdt->name and !ldt->isVariant() and !rdt->isVariant())
             return tcr.success();
 
         if(ldt->unboundType and ldt->unboundType == rdt->unboundType){
@@ -1024,7 +1042,7 @@ TypeCheckResult& typeEqHelper(const Compiler *c, const AnType *l, const AnType *
             }
         }
 
-        auto *tv = tcr.getBindingFor(typeVar->name);
+        auto *tv = findBindingFor(typeVar->name, tcr->bindings);
         if(!tv){
             tcr->bindings.emplace_back(typeVar->name, nonTypeVar);
 
@@ -1036,7 +1054,7 @@ TypeCheckResult& typeEqHelper(const Compiler *c, const AnType *l, const AnType *
             //This ensures ('t, 't) has 1 match with (i32, i32), the tuple's structure.
             //Not 2: the tuple structure and the second 't that is already bound to i32
             auto tc2 = TypeCheckResult();
-            typeEqHelper(c, tv, nonTypeVar, tc2);
+            typeEqHelper(c, tv->getBinding(), nonTypeVar, tc2);
             if(!tc2) return tcr.failure();
 
             if(tc2->res == TypeCheckResult::SuccessWithTypeVars){
@@ -1108,11 +1126,12 @@ string typeTagToStr(TypeTag ty){
         case TT_C32:   return "c32";
         case TT_Bool:  return "bool";
         case TT_Void:  return "void";
+        case TT_Type:  return "Type";
 
         /*
-         * Because of the loss of specificity for these last four types,
-         * these strings are most likely insufficient.  The llvm::Type
-         * should instead be printed for these types
+         * Because of the loss of specificity for these last types,
+         * these strings are most likely insufficient.  The entire
+         * AnType should be preferred to be used instead.
          */
         case TT_Tuple:        return "Tuple";
         case TT_Array:        return "Array";
@@ -1123,7 +1142,6 @@ string typeTagToStr(TypeTag ty){
         case TT_MetaFunction: return "Meta Function";
         case TT_FunctionList: return "Function List";
         case TT_TaggedUnion:  return "|";
-        case TT_Type:         return "type";
         default:              return "(Unknown TypeTag " + to_string(ty) + ")";
     }
 }
@@ -1197,13 +1215,13 @@ string anTypeToStr(const AnType *t){
     }else if(auto *dt = try_cast<AnDataType>(t)){
         string n = dt->name;
 
-        if(!dt->boundGenerics.empty()){
+        if(dt->isVariant()){
             n += "<";
             for(auto &t : dt->boundGenerics){
                 if(&t == &dt->boundGenerics.back()){
-                    n += anTypeToStr(t.second);
+                    n += anTypeToStr(t.getBinding());
                 }else{
-                    n += anTypeToStr(t.second) + ", ";
+                    n += anTypeToStr(t.getBinding()) + ", ";
                 }
             }
             n += ">";
