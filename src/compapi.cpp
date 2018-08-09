@@ -66,6 +66,11 @@ extern "C" {
         return new TypedValue(sizeVal, AnType::getUsz());
     }
 
+    TypedValue* Ante_typeof(Compiler *c, ArgTuple &val){
+        Value *addr = c->builder.getInt64((unsigned long) val.getType());
+        return new TypedValue(addr, BasicModifier::get(AnType::getPrimitive(TT_Type), Tok_Ante));
+    }
+
     void* Ante_store(Compiler *c, ArgTuple &name, ArgTuple &gv){
         auto *cstrTy = AnPtrType::get(AnType::getPrimitive(TT_C8));
         if(!c->typeEq(name.getType(), cstrTy)){
@@ -161,6 +166,7 @@ namespace ante {
             compapi.emplace("Ante_getAST",      new CtFunc((void*)Ante_getAST,      AnPtrType::get(AnDataType::get("Ante.Node"))));
             compapi.emplace("Ante_debug",       new CtFunc((void*)Ante_debug,       AnType::getVoid(), {AnTypeVarType::get("'t'")}));
             compapi.emplace("Ante_sizeof",      new CtFunc((void*)Ante_sizeof,      AnType::getU32(),  {AnTypeVarType::get("'t'")}));
+            compapi.emplace("Ante_typeof",      new CtFunc((void*)Ante_typeof,      AnType::getPrimitive(TT_Type), {AnTypeVarType::get("'t")}));
             compapi.emplace("Ante_store",       new CtFunc((void*)Ante_store,       AnType::getVoid(), {AnPtrType::get(AnType::getPrimitive(TT_C8)), AnTypeVarType::get("'t'")}));
             compapi.emplace("Ante_lookup",      new CtFunc((void*)Ante_lookup,      AnTypeVarType::get("'Dyn"), {AnPtrType::get(AnType::getPrimitive(TT_C8))}));
             compapi.emplace("Ante_eval",        new CtFunc((void*)Ante_eval,        AnTypeVarType::get("'Dyn"), {AnPtrType::get(AnType::getPrimitive(TT_C8))}));
