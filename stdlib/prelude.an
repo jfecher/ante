@@ -5,18 +5,18 @@
 */
 
 //C functions
-fun printf: ref c8 fmt, ... -> i32;
-fun puts: ref c8 str -> i32;
-fun putchar: c8 char;
-fun getchar: -> c8;
-fun exit: i32 status;
-fun malloc: usz size -> ref void;
-fun calloc: usz num size -> ref void;
-fun realloc: ref void ptr, usz size -> ref void;
-fun free: ref void mem;
-fun memcpy: ref void dest src, usz bytes -> ref void /*dest*/;
-fun system: ref c8 cmd -> i32;
-fun strlen: ref c8 str -> usz;
+fun printf: ref c8 fmt, ... -> i32
+fun puts: ref c8 str -> i32
+fun putchar: c8 char
+fun getchar: -> c8
+fun exit: i32 status
+fun malloc: usz size -> ref void
+fun calloc: usz num size -> ref void
+fun realloc: ref void ptr, usz size -> ref void
+fun free: ref void mem
+fun memcpy: ref void dest src, usz bytes -> ref void /*dest*/
+fun system: ref c8 cmd -> i32
+fun strlen: ref c8 str -> usz
 
 //C stdio
 type File = ref void
@@ -25,22 +25,22 @@ type FilePos = ref void
 type InFile = File
 type OutFile = File
 
-fun fopen: ref c8 fName, ref c8 mode -> File;
-fun fclose: File file;
+fun fopen: ref c8 fName, ref c8 mode -> File
+fun fclose: File file
 
-fun fputs: ref c8 str, OutFile file;
-fun fputc: c8 char, OutFile file;
-fun fgetc: InFile file -> c8;
-fun fgets: ref c8 str, i32 numBytes, InFile file -> ref c8;
-fun ungetc: c8 c, InFile file -> i32;
+fun fputs: ref c8 str, OutFile file
+fun fputc: c8 char, OutFile file
+fun fgetc: InFile file -> c8
+fun fgets: ref c8 str, i32 numBytes, InFile file -> ref c8
+fun ungetc: c8 c, InFile file -> i32
 
-fun fgetpos: File f, FilePos fp;
-fun ftell: File f -> i64;
-fun fsetpos: File f, FilePos fp;
-fun fseek: File f, i64 offset, i32 origin;
+fun fgetpos: File f, FilePos fp
+fun ftell: File f -> i64
+fun fsetpos: File f, FilePos fp
+fun fseek: File f, i64 offset, i32 origin
 
-fun feof: InFile f -> bool;
-fun ferror: File f -> bool;
+fun feof: InFile f -> bool
+fun ferror: File f -> bool
 
 
 
@@ -71,19 +71,22 @@ fun Str.init: Maybe l -> Str
 //Compile-time functions
 
 //prints type and value (llvm dump) of variable while compiling
-ante fun Ante.debug: 't t;
+ante fun Ante.debug: 't t
 
 //returns the size of a type in Bytes.  Accepts types or values as an argument
-ante fun Ante.sizeof: 't t -> usz;
+ante fun Ante.sizeof: 't t -> usz
+
+//return the type of an expression.  Note: Type is an ante type (compile-time only)
+ante fun Ante.typeof: 't t -> Type
 
 //Note: error never returns
-ante fun Ante.error: ref c8 msg;
+ante fun Ante.error: ref c8 msg
 
 //dumps llvm-ir to stdout
-ante fun Ante.emit_ir:;
+ante fun Ante.emit_ir:
 
 //useful in the repl to redefine functions
-ante fun Ante.forget: ref c8 function_name;
+ante fun Ante.forget: ref c8 function_name
 
 
 //numerical print functions
