@@ -46,7 +46,7 @@ ante
             None -> Ante.error "Cannot goto undefined label ${vn}"
 
         Llvm.setInsertPoint (getCallSiteBlock ())
-        createBr label
+        Llvm.createBr label
 
     fun label: VarNode vn
         let callingFn = getParentFn (getCallSiteBlock ())
