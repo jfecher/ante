@@ -1793,10 +1793,10 @@ TargetMachine* getTargetMachine(){
     TargetOptions op;
 
 #if LLVM_VERSION_MAJOR >= 6
-    TargetMachine *tm = target->createTargetMachine(triple, cpu, features, op, Reloc::Model::Static,
+    TargetMachine *tm = target->createTargetMachine(triple, cpu, features, op, Reloc::Model::PIC_,
             None, CodeGenOpt::Level::Aggressive);
 #else
-    TargetMachine *tm = target->createTargetMachine(triple, cpu, features, op, Reloc::Model::Static,
+    TargetMachine *tm = target->createTargetMachine(triple, cpu, features, op, Reloc::Model::PIC_,
             CodeModel::Default, CodeGenOpt::Level::Aggressive);
 #endif
 
