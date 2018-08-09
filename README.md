@@ -94,12 +94,4 @@ and then start it with:
 docker run -it ante
 ```
 
-At this point you can install nano/vim/emacs to get an editor and using the compiler/REPL (in /home/ante/ante) to write some code and run it.
-If you wish you can share volume between your host and the container so you will be able to use an editor already installed on your computer and keep the sources files you have written even if the container is deleted. 
-Be cautious though, as doing wild thing in your container may affect your host filesystem.
-
-Finally, you can add the Ante compiler to your path for your convenience using:
-
-```
-export PATH="/home/ante:$PATH"
-```
+At this point you can install an editor and use the compiler/REPL (in /home/ante/ante) to write some code and run it.
