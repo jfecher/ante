@@ -1203,7 +1203,6 @@ TypedValue compTaggedUnion(Compiler *c, DataDeclNode *n){
 
     auto generics = createStructuralGenericParams(c, n->generics);
     AnDataType *data = AnDataType::create(union_name, {}, true, generics);
-    for(auto &g : data->generics){ g.dt = data; }
 
     while(nvn){
         TypeNode *tyn = (TypeNode*)nvn->typeExpr.get();
@@ -1281,7 +1280,6 @@ void CompilingVisitor::visit(DataDeclNode *n){
     //just to cause an error if something tries to use the stub
     auto generics = createStructuralGenericParams(c, n->generics);
     AnDataType *data = AnDataType::create(n->name, {}, false, generics);
-    for(auto &g : data->generics){ g.dt = data; }
 
     if(data->llvmType)
         data->llvmType = nullptr;
@@ -1326,8 +1324,7 @@ void CompilingVisitor::visit(DataDeclNode *n){
 
 void DataDeclNode::declare(Compiler *c){
     auto genericParams = createStructuralGenericParams(c, this->generics);
-    AnDataType *data = AnDataType::create(name, {}, false, genericParams);
-    for(auto &g : data->generics){ g.dt = data; }
+    AnDataType::create(name, {}, false, genericParams);
 }
 
 

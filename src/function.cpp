@@ -794,9 +794,7 @@ FuncDecl* Compiler::getMangledFuncDecl(string name, vector<AnType*> &args){
     auto& fnlist = getFunctionList(name);
     if(fnlist.empty()) return 0;
 
-    auto argc = args.size();
-
-    auto candidates = filterByArgcAndScope(fnlist, argc, scope);
+    auto candidates = filterByArgcAndScope(fnlist, args.size(), scope);
     if(candidates.empty()) return 0;
 
     //if there is only one function now, return it.  It will be typechecked later

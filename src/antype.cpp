@@ -606,6 +606,27 @@ namespace ante {
         return nullptr;
     }
 
+    /* If generic types are bound to any other type (that is possibly already generic),
+     * then the generic type list of a given type will become more of a tree, eg.
+     *
+     * List 't => List (Ptr 'u) => List (Ptr ('a, 'b)) => List (Ptr (i32, i32))
+     *         => List i32
+     *         => List ('a, 'a) => List (Str, Str)
+     *                          => List (usz, usz)
+     *
+     * The flatten function takes a generic variant and a list of bindings and binds
+     * the type relative to the parent type so that the full tree above never forms.
+     * The tree is flattened to a lsit as soon as a variant is bound relative to another,
+     * take, eg:
+     *
+     * List 't => List (Ptr 'u)
+     *
+     * After receiving the binding 'u => ('a, 'b) flatten performs this binding relative
+     * to List 't rather than List (Ptr 'u) so the result after this step is
+     *
+     * List 't => List (Ptr 'u)
+     *         => List (Ptr ('a, 'b))
+     */
     vector<TypeBinding> flatten(const Compiler *c, const AnDataType *dt,
             vector<TypeBinding> const& bindings){
 
@@ -704,6 +725,15 @@ namespace ante {
         dt->isGeneric = !generics.empty();
         dt->generics = generics;
         dt->extTys = elems;
+
+        for(size_t i = 0; i < dt->generics.size(); i++){
+            auto &g = dt->generics[i];
+            if(!g.dt){
+                g.dt = dt;
+                g.pos = i;
+            }
+        }
+
         return dt;
     }
 
