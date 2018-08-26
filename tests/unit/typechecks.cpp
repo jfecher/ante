@@ -47,10 +47,12 @@ TEST_CASE("Type Checks", "[typeEq]"){
         auto empty = AnDataType::create("Empty", {}, false, {string("'t")});
 
         //Empty isz*
-        vector<TypeBinding> bindings {{"'t", intPtr}};
+        vector<TypeBinding> bindings {{"'t", empty, 0, intPtr}};
         auto empty_i32Ptr = AnDataType::getVariant(&c, empty, bindings);
         
         auto empty_i32Ptr2 = AnDataType::getVariant(&c, empty, bindings);
+
+        REQUIRE(empty_i32Ptr != empty);
 
         REQUIRE(empty_i32Ptr == empty_i32Ptr2);
 
@@ -64,14 +66,17 @@ TEST_CASE("TypeVarType Checks", "[typeEq]"){
     auto t = AnTypeVarType::get("'t");
     auto u = AnTypeVarType::get("'u");
 
-
     auto empty = AnDataType::create("Empty", {}, false, {t->name});
 
     //'t -> 't
-    auto empty_t = AnDataType::getVariant(&c, empty, {{"'t", t}});
-    
+    auto empty_t = AnDataType::getVariant(&c, empty, {{"'t", empty, 0, t}});
+
     //'t -> 'u
-    auto empty_u = AnDataType::getVariant(&c, empty, {{"'t", u}});
+    auto empty_u = AnDataType::getVariant(&c, empty, {{"'t", empty, 0, u}});
+
+    REQUIRE(empty != nullptr);
+
+    REQUIRE(empty_t != empty);
 
     REQUIRE(empty_t != empty_u);
     
@@ -81,9 +86,14 @@ TEST_CASE("TypeVarType Checks", "[typeEq]"){
 
     REQUIRE(c.typeEq(empty, empty_u));
 
-    //When matching 't against 'u no bindings are given
-    //as it is unclear if 't should be bound to 'u or vice versa
-    REQUIRE(c.typeEq(empty, empty_u)->bindings.empty());
+    //both typevars must be bound, solution:
+    //solution: bind 't and 'u to new typevar 'Tu
+    //REQUIRE(c.typeEq(empty_t, empty_u)->bindings.size() == 2);
+
+    //When matching an unbound type against a type bound to a
+    //type variable, the only binding should be a positional binding
+    //of (pos 0) => 'u
+    REQUIRE(c.typeEq(empty, empty_u)->bindings.size() == 1);
 }
 
 
@@ -113,8 +123,9 @@ TEST_CASE("Datatype partial bindings"){
     REQUIRE(ta_tb->isGeneric);
     REQUIRE(ta_tb->boundGenerics.size() == 1);
     REQUIRE(ta_tb->boundGenerics[0] == binding2);
-    //no named generics, positional only (no longer any 'c, only generic was curried)
-    REQUIRE(ta_tb->generics.empty());
+
+    //should still have 1 (curried) generic param
+    REQUIRE(ta_tb->generics.size() == 1);
 }
 
 
