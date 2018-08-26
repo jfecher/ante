@@ -1202,16 +1202,13 @@ string anTypeToStr(const AnType *t){
         return ret + ")->" + retTy;
     }else if(auto *tup = try_cast<AnAggregateType>(t)){
         string ret = "(";
-        if(tup->extTys.empty())
-            return ret + ")";
 
         for(const auto &ext : tup->extTys){
+            ret += anTypeToStr(ext);
             if(&ext != &tup->extTys.back())
-                ret += anTypeToStr(ext) + ", ";
-            else
-                ret += anTypeToStr(ext) + ")";
+                ret += ", ";
         }
-        return ret;
+        return ret + ")";
     }else if(auto *arr = try_cast<AnArrayType>(t)){
         return '[' + to_string(arr->len) + " " + anTypeToStr(arr->extTy) + ']';
     }else if(auto *ptr = try_cast<AnPtrType>(t)){
