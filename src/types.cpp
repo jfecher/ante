@@ -1195,11 +1195,16 @@ string anTypeToStr(const AnType *t){
     }else if(auto *f = try_cast<AnFunctionType>(t)){
         string ret = "(";
         string retTy = anTypeToStr(f->retTy);
-        for(auto *param : f->extTys){
-            ret += anTypeToStr(param);
-            if(param) ret += ",";
+        if(f->extTys.size() == 1){
+            return anTypeToStr(f->extTys[0]) + " -> " + retTy;
         }
-        return ret + ")->" + retTy;
+
+        for(auto &param : f->extTys){
+            ret += anTypeToStr(param);
+            if(&param != &f->extTys.back())
+                ret += ", ";
+        }
+        return ret + ") -> " + retTy;
     }else if(auto *tup = try_cast<AnAggregateType>(t)){
         string ret = "(";
 
