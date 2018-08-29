@@ -15,7 +15,7 @@ ANLIBDIR := "\"$(shell pwd)/stdlib/\""
 
 LIBFILES := $(shell find stdlib -type f -name "*.an")
 
-CPPFLAGS  := -g -std=c++11 `$(LLVMCFG) --cflags --cppflags` -O0 $(WARNINGS)
+CPPFLAGS  := -g -std=c++17 `$(LLVMCFG) --cflags --cppflags` -O0 $(WARNINGS)
 
 PARSERSRC := src/parser.cpp
 YACCFLAGS := -Lc++ -o$(PARSERSRC) --defines=include/yyparser.h
