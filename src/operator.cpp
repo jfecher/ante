@@ -323,6 +323,40 @@ vector<AnType*> toArgTuple(AnType *ty){
 }
 
 /*
+ * Finds a GenericTypeParam by name, even if it is a nominal param.
+ */
+optional<GenericTypeParam> findBindingByName(vector<GenericTypeParam> const& params, string const& name){
+    for(auto &p : params){
+        if(p.typeVarName == name)
+            return optional(p);
+    }
+    return {};
+}
+
+
+/*
+ * When casting a tuple to a declared type, type variables often need to be converted
+ * from a named variable, say 't, to a structural one, say MyType position 0 when binding MyType
+ */
+vector<TypeBinding> convertNominalBindingsToStructuralBindings(TypeCheckResult &tc, AnDataType *dataTy){
+    auto ret = vecOf<TypeBinding>(tc->bindings.size());
+
+    for(auto &binding : tc->bindings){
+        if(binding.isNominalBinding()){
+            auto p2 = findBindingByName(dataTy->generics, binding.getTypeVarName());
+            if(p2){
+                ret.emplace_back(p2->typeVarName, p2->dt, p2->pos, binding.getBinding());
+            }else{
+                ret.push_back(binding);
+            }
+        }else{
+            ret.push_back(binding);
+        }
+    }
+    return ret;
+}
+
+/*
  * Check if a reinterpret cast can be performed and return some
  * information about the type of cast so that no double lookup
  * is needed
@@ -333,6 +367,10 @@ ReinterpretCastResult checkForReinterpretCast(Compiler *c, AnType *castTy, Typed
     if(dataTy){
         auto argTup = toArgTuple(valToCast.type);
         auto tc = c->typeEq(dataTy->extTys, argTup);
+        //Given, ('t, i32) and (u32, i32), we have (bind 't to u32) but
+        //we cannot bind to to, say MyType '_ so we convert 't to MyType position n
+        //this is done manually here since we are converting a tuple to a declared type
+        tc->bindings = convertNominalBindingsToStructuralBindings(tc, dataTy);
 
         if(tc){
             if(dataTy->isUnionTag())
@@ -344,8 +382,9 @@ ReinterpretCastResult checkForReinterpretCast(Compiler *c, AnType *castTy, Typed
 
     if(auto *valDt = try_cast<AnDataType>(valToCast.type)){
         auto argTup = toArgTuple(castTy);
-
         auto tc = c->typeEq(valDt->extTys, argTup);
+        tc->bindings = convertNominalBindingsToStructuralBindings(tc, dataTy);
+
         if(tc){
             return {ReinterpretCastResult::ValToPrimitive, tc, dataTy};
         }

@@ -822,7 +822,7 @@ FuncDecl* Compiler::getMangledFuncDecl(string name, vector<AnType*> &args){
  * Compile a possibly-generic function with given arg types
  */
 TypedValue compFnWithArgs(Compiler *c, FuncDecl *fd, vector<AnType*> args){
-    //must check if this functions is generic first
+    //must check if this function is generic first
     auto fnty = AnFunctionType::get(c, AnType::getVoid(), fd->fdn->params.get());
     auto tc = c->typeEq(fnty->extTys, args);
 

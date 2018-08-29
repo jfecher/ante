@@ -104,7 +104,7 @@ namespace ante {
         TypeBinding(std::string const& name, AnType *binding)
             : param{name}, boundType{binding}{}
 
-        TypeBinding(std::string const& name, AnDataType *parentTy,
+        TypeBinding(std::string const& name, const AnDataType *parentTy,
                 size_t idx, AnType *binding)
             : param{name, parentTy, idx}, boundType{binding}{}
 
