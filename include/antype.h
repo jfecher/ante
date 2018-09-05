@@ -199,14 +199,13 @@ namespace ante {
      */
     class CompilerDirectiveModifier : public AnModifier {
         protected:
-        CompilerDirectiveModifier(const AnType *modified_type, const std::shared_ptr<parser::Node> &d) :
+        CompilerDirectiveModifier(const AnType *modified_type, parser::Node *d) :
             AnModifier(modified_type), directive(d){}
 
         public:
-        std::shared_ptr<parser::Node> directive;
+        parser::Node *directive;
 
-        static CompilerDirectiveModifier* get(const AnType *modifiedType, const std::shared_ptr<parser::Node> &directive);
-        static CompilerDirectiveModifier* get(const AnType *modifiedType, const parser::Node *directive);
+        static CompilerDirectiveModifier* get(const AnType *modifiedType, parser::Node *directive);
         
         bool hasModifier(TokenType m) const override;
 

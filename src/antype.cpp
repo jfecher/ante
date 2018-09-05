@@ -238,10 +238,8 @@ namespace ante {
      * reference equality for these types.  In practice this is not too
      * problematic as it is impossible to compare the arbitrary expressions
      * anyways. */
-    CompilerDirectiveModifier* CompilerDirectiveModifier::get(const AnType *modifiedType,
-            const std::shared_ptr<Node> &directive){
-
-        auto key = make_pair((AnType*)modifiedType, (size_t)directive.get());
+    CompilerDirectiveModifier* CompilerDirectiveModifier::get(const AnType *modifiedType, Node *directive){
+        auto key = make_pair((AnType*)modifiedType, (size_t)directive);
 
         auto *existing_ty = search(typeArena.cdModifiers, key);
         if(existing_ty) return static_cast<CompilerDirectiveModifier*>(existing_ty);
@@ -250,12 +248,6 @@ namespace ante {
         addKVPair(typeArena.cdModifiers, key, (AnModifier*)ret);
         return ret;
     }
-
-    CompilerDirectiveModifier* CompilerDirectiveModifier::get(const AnType *modifiedType, const Node *directive){
-        shared_ptr<Node> dir{(Node*)directive};
-        return CompilerDirectiveModifier::get(modifiedType, dir);
-    }
-
 
     AnPtrType* AnType::getPtr(AnType* ext){ return AnPtrType::get(ext); }
     AnPtrType* AnPtrType::get(AnType* ext){
@@ -857,7 +849,7 @@ namespace ante {
 
         for(auto &m : tn->modifiers){
             if(m->isCompilerDirective()){
-                ret = CompilerDirectiveModifier::get(ret, m->directive);
+                ret = CompilerDirectiveModifier::get(ret, m->directive.get());
             }else{
                 ret = (AnType*)ret->addModifier((TokenType)m->mod);
             }

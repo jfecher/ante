@@ -92,9 +92,7 @@ namespace ante {
         *   into the 'main' or "init_${module}" function
         */
         struct RootNode : public Node{
-            //non-owning std::vectors (each decl is later moved into a ante::module)
-            std::vector<Node*> funcs;
-            std::vector<std::unique_ptr<Node>> traits, extensions, types, imports, main;
+            std::vector<std::unique_ptr<Node>> funcs, traits, extensions, types, imports, main;
 
             void accept(NodeVisitor& v){ v.visit(this); }
 
@@ -190,8 +188,7 @@ namespace ante {
          */
         struct ModNode : public Node{
             int mod;
-            std::shared_ptr<Node> directive;
-            std::unique_ptr<Node> expr;
+            std::unique_ptr<Node> directive, expr;
 
             //this ModNode is a compiler directive iff its mod == preproc_id
             //otherwise, it is a normal modifier, and expr is null

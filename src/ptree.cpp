@@ -82,33 +82,32 @@ namespace ante {
             createRoot(loc);
         }
 
-
         Node* append_main(Node *n){
             root->main.emplace_back(n);
             return n;
         }
 
-        Node*append_fn(Node *n){
-            root->funcs.push_back(n);
+        Node* append_fn(Node *n){
+            root->funcs.emplace_back(n);
             return n;
         }
 
-        Node*append_type(Node *n){
+        Node* append_type(Node *n){
             root->types.emplace_back(n);
             return n;
         }
 
-        Node*append_extension(Node *n){
+        Node* append_extension(Node *n){
             root->extensions.emplace_back(n);
             return n;
         }
 
-        Node*append_trait(Node *n){
+        Node* append_trait(Node *n){
             root->traits.emplace_back(n);
             return n;
         }
 
-        Node*append_import(Node *n){
+        Node* append_import(Node *n){
             root->imports.emplace_back(n);
             return n;
         }
@@ -149,22 +148,6 @@ namespace ante {
             return mkLoc(mkPos(loc.begin.filename, loc.begin.line, loc.begin.column),
                         mkPos(loc.end.filename,   loc.end.line,   loc.end.column));
         }
-
-        /*
-        Node* applyMods(Node *mods, Node *decls){
-            Node *decl = decls;
-            while(decl){
-                if(FuncDeclNode *fdn = dynamic_cast<FuncDeclNode*>(decl)){
-
-                }else if(DataDeclNode *fdn = dynamic_cast<DataDeclNode*>(decl)){
-                }else if(ExtNode *fdn = dynamic_cast<ExtNode*>(decl)){
-                }else if(TraitNode *fdn = dynamic_cast<TraitNode*>(decl)){
-                }
-            }
-
-            return decls;
-        }
-        */
 
         NodeIterator Node::begin(){
             return {this};

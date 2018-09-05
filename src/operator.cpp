@@ -1632,18 +1632,14 @@ TypedValue checkForOperatorOverload(Compiler *c, TypedValue &lhs, int op, TypedV
 
 
 void CompilingVisitor::visit(SeqNode *n){
-    size_t i = 1;
     for(auto &node : n->sequence){
         try{
             node->accept(*this);
-            if(dynamic_cast<FuncDeclNode*>(node.get()))
-                node.release();
         }catch(CtError *e){
             //Unless the final value throws, delete the error
-            if(i == n->sequence.size()) throw e;
+            if(&node == &n->sequence.back()) throw e;
             else delete e;
         }
-        i++;
     }
 }
 
