@@ -130,7 +130,7 @@ void CompilingVisitor::visit(BoolLitNode *n){
 /** returns true if this tag type does not have any associated types. */
 bool isSimpleTag(AnDataType *dt){
     return dt->extTys.size() == 1
-       and dt->extTys[0] == AnType::getVoid();
+        && dt->extTys[0] == AnType::getVoid();
 }
 
 
@@ -266,7 +266,7 @@ TypedValue compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
         if(fd)
             fnty = AnFunctionType::get(c, AnType::getVoid(), fd->fdn->params.get());
 
-        if(!fd or (fnty and !c->typeEq(fnty->extTys, {val.type}))){
+        if(!fd or (fnty && !c->typeEq(fnty->extTys, {val.type}))){
             delete ls;
             delete rs;
             return c->compErr("Cannot cast " + anTypeToColoredStr(val.type)
@@ -300,7 +300,7 @@ TypedValue compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
 void CompilingVisitor::visit(StrLitNode *n){
     auto idx = n->val.find("${");
 
-    if(idx != string::npos and (idx == 0 or n->val.find("\\${") != idx - 1)){
+    if(idx != string::npos && (idx == 0 or n->val.find("\\${") != idx - 1)){
         this->val = compStrInterpolation(c, n, idx);
         return;
     }
@@ -310,7 +310,7 @@ void CompilingVisitor::visit(StrLitNode *n){
     auto *ptr = c->builder.CreateGlobalStringPtr(n->val, "_strlit");
 
 	//get the llvm Str data type from a fake type node in case we are compiling
-	//the prelude and the Str data type isnt translated into an llvmty yet
+	//the prelude && the Str data type isnt translated into an llvmty yet
     auto *tupleTy = cast<StructType>(c->anTypeToLlvmType(strty));
 
 	vector<Constant*> strarr = {
@@ -526,7 +526,7 @@ void CompilingVisitor::visit(WhileNode *n){
     c->compCtxt->breakLabels->pop_back();
     c->compCtxt->continueLabels->pop_back();
 
-    if(!dyn_cast<ReturnInst>(val.val) and !dyn_cast<BranchInst>(val.val))
+    if(!dyn_cast<ReturnInst>(val.val) && !dyn_cast<BranchInst>(val.val))
         c->builder.CreateBr(cond);
 
     c->builder.SetInsertPoint(end);
@@ -607,7 +607,7 @@ void CompilingVisitor::visit(ForNode *n){
     c->compCtxt->continueLabels->pop_back();
 
     if(!val) return;
-    if(!dyn_cast<ReturnInst>(val.val) and !dyn_cast<BranchInst>(val.val)){
+    if(!dyn_cast<ReturnInst>(val.val) && !dyn_cast<BranchInst>(val.val)){
         //set range = next range
         c->builder.CreateBr(incr);
         c->builder.SetInsertPoint(incr);
@@ -633,7 +633,7 @@ void CompilingVisitor::visit(JumpNode *n){
     if(!ci)
         c->compErr("Expression must evaluate to a constant integer\n", n->expr->loc);
 
-    if(!isUnsignedTypeTag(val.type->typeTag) and ci->getSExtValue() < 0)
+    if(!isUnsignedTypeTag(val.type->typeTag) && ci->getSExtValue() < 0)
         c->compErr("Cannot jump out of a negative number (" + to_string(ci->getSExtValue()) +  ") of loops", n->expr->loc);
 
     //we can now safely get the zero-extended value of ci since even if it is signed, it is not negative
@@ -888,7 +888,7 @@ TypedValue compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
 
             //Type check may succeed if a void* is being inserted into any ptr slot,
             //but llvm will still complain so we create a bit cast to appease it
-            if(nv->getType() != nt and newval.type->typeTag == TT_Ptr) {
+            if(nv->getType() != nt && newval.type->typeTag == TT_Ptr) {
                 nv = c->builder.CreateBitCast(nv, nt);
             }
 
@@ -1297,7 +1297,7 @@ TypedValue compTaggedUnion(Compiler *c, DataDeclNode *n){
 void CompilingVisitor::visit(DataDeclNode *n){
     //{   //new scope to ensure dt isn't used after this check
     //    auto *dt = AnDataType::get(this->name);
-    //    if(dt and !dt->isStub()) return c->compErr("Type " + name + " was redefined", loc);
+    //    if(dt && !dt->isStub()) return c->compErr("Type " + name + " was redefined", loc);
     //}
 
     auto *nvn = (NamedValNode*)n->child.get();
@@ -1747,7 +1747,7 @@ void Compiler::compile(){
     //always return 0
     builder.CreateRet(ConstantInt::get(*ctxt, APInt(32, 0)));
 
-    if(!errFlag and !isLib){
+    if(!errFlag && !isLib){
         legacy::PassManager pm;
         addPasses(pm, optLvl);
         pm.run(*module);
@@ -2064,8 +2064,8 @@ string toModuleName(string &s){
     bool capitalize = true;
 
     for(auto &c : s){
-        if(capitalize and ((c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z'))){
-            if(c >= 'a' and c <= 'z'){
+        if(capitalize && ((c >= 'a' && c <= 'z') or (c >= 'A' && c <= 'Z'))){
+            if(c >= 'a' && c <= 'z'){
                 mod += c + 'A' - 'a';
             }else{
                 mod += c;

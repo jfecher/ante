@@ -43,7 +43,7 @@ namespace ante {
             }else{
                 auto *seq = dynamic_cast<SeqNode*>(ifn);
 
-                if(seq and (n = dynamic_cast<IfNode*>(seq->sequence.back().get()))){
+                if(seq && (n = dynamic_cast<IfNode*>(seq->sequence.back().get()))){
                     while(auto *tmp = dynamic_cast<IfNode*>(n->elseN.get()))
                         n = tmp;
 

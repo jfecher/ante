@@ -30,7 +30,7 @@ bool implicitPassByRef(AnType* t){
  */
 bool isCompileTimeFunction(AnType *fty){
     return fty->typeTag == TT_MetaFunction or
-        (fty->typeTag == TT_Function and fty->hasModifier(Tok_Ante));
+        (fty->typeTag == TT_Function && fty->hasModifier(Tok_Ante));
 }
 
 bool isCompileTimeFunction(TypedValue &tv){
@@ -190,7 +190,7 @@ LOC_TY getFinalLoc(Node *n){
         }
     }
 
-    return (bop and bop->op == ';') ? bop->rval->loc : n->loc;
+    return (bop && bop->op == ';') ? bop->rval->loc : n->loc;
 }
 
 
@@ -595,7 +595,7 @@ string manageSelfParam(Compiler *c, FuncDeclNode *fdn, string &mangledName);
  * and not a definition
  */
 bool isDecl(string &name){
-    return name.back() == ';';
+    return !name.empty() && name.back() == ';';
 }
 
 /*
@@ -755,7 +755,7 @@ vector<pair<TypeCheckResult,FuncDecl*>> filterHighestMatches(vector<pair<TypeChe
     vector<pair<TypeCheckResult,FuncDecl*>> highestMatches;
 
     for(auto &tcr : matches){
-        if(tcr.first and tcr.first->matches >= highestMatch){
+        if(tcr.first && tcr.first->matches >= highestMatch){
             if(tcr.first->matches > highestMatch){
                 highestMatch = tcr.first->matches;
                 reqBindings = tcr.first->bindings.size();
@@ -871,7 +871,7 @@ TypedValue Compiler::getCastFn(AnType *from_ty, AnType *to_ty, FuncDecl *fd){
     TypedValue tv;
 
     auto *to_ty_dt = try_cast<AnDataType>(to_ty);
-    if(to_ty_dt and to_ty_dt->isVariant()){
+    if(to_ty_dt && to_ty_dt->isVariant()){
         AnType *unbound_obj = fd->obj;
         fd->obj = to_ty;
         fd->objBindings = to_ty_dt->boundGenerics;
@@ -929,7 +929,7 @@ void Compiler::registerFunction(FuncDeclNode *fn, string &mangledName){
     //check for redeclaration
     auto *redecl = getFuncDecl(fn->name, mangledName);
 
-    if(redecl and redecl->mangledName == mangledName){
+    if(redecl && redecl->mangledName == mangledName){
         compErr("Function " + fn->name + " was redefined", fn->loc);
         return;
     }

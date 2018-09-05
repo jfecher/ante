@@ -570,7 +570,7 @@ int Lexer::genNumLitTok(yy::parser::location_type* loc){
 }
 
 int Lexer::genWsTok(yy::parser::location_type* loc){
-    if(cur == '\n' and manualScopeLevel == 0){
+    if(cur == '\n' && manualScopeLevel == 0){
         loc->begin = getPos();
 
         unsigned int newScope = 0;

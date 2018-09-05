@@ -459,7 +459,7 @@ TypedValue doReinterpretCast(Compiler *c, AnType *castTy, TypedValue &valToCast)
 
 bool preferCastOverFunction(Compiler *c, TypedValue &valToCast, ReinterpretCastResult &res, FuncDecl *fd){
     FuncDecl *curFn = c->getCurrentFunction();
-    if(curFn->fdn and curFn->mangledName == fd->mangledName)
+    if(curFn->fdn && curFn->mangledName == fd->mangledName)
         return true;
 
     auto *fnTy = AnFunctionType::get(c, AnType::getVoid(), fd->fdn->params.get());
@@ -495,8 +495,8 @@ TypedValue createCast(Compiler *c, AnType *castTy, TypedValue &valToCast, LOC_TY
         if(fn){
             //quickly type check argument
             auto *fnty = try_cast<AnFunctionType>(fn.type);
-            if((!fnty->extTys.empty() and c->typeEq(fnty->extTys[0], valToCast.type)) or
-               (fnty->extTys.empty() and valToCast.type->typeTag == TT_Void)){
+            if((!fnty->extTys.empty() && c->typeEq(fnty->extTys[0], valToCast.type)) or
+               (fnty->extTys.empty() && valToCast.type->typeTag == TT_Void)){
 
                 if(isCompileTimeFunction(fn)){
                     string baseName = getCastFnBaseName(castTy);
@@ -605,7 +605,7 @@ TypedValue compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Typ
             auto thenVal = CompilingVisitor::compile(c, ifn->thenN);
 
             //If a break, continue, or return was encountered then this branch doesn't merge to the endif
-            if(!dyn_cast<ReturnInst>(thenVal.val) and !dyn_cast<BranchInst>(thenVal.val)){
+            if(!dyn_cast<ReturnInst>(thenVal.val) && !dyn_cast<BranchInst>(thenVal.val)){
                 auto *thenretbb = c->builder.GetInsertBlock();
                 c->builder.CreateBr(mergebb);
 
@@ -637,7 +637,7 @@ TypedValue compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Typ
     auto *thenretbb = c->builder.GetInsertBlock(); //bb containing final ret of then branch.
 
 
-    if(!dyn_cast<ReturnInst>(thenVal.val) and !dyn_cast<BranchInst>(thenVal.val))
+    if(!dyn_cast<ReturnInst>(thenVal.val) && !dyn_cast<BranchInst>(thenVal.val))
         c->builder.CreateBr(mergebb);
 
     if(ifn->elseN){
@@ -651,20 +651,20 @@ TypedValue compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Typ
         if(!elseVal) return {};
 
         //save the final else
-        if(!dyn_cast<ReturnInst>(elseVal.val) and !dyn_cast<BranchInst>(elseVal.val))
+        if(!dyn_cast<ReturnInst>(elseVal.val) && !dyn_cast<BranchInst>(elseVal.val))
             branches.push_back({elseVal, elseretbb});
 
         if(!thenVal) return {};
 
         auto eq = c->typeEq(thenVal.type, elseVal.type);
-        if(!eq and !dyn_cast<ReturnInst>(thenVal.val) and !dyn_cast<ReturnInst>(elseVal.val) and
-                   !dyn_cast<BranchInst>(thenVal.val) and !dyn_cast<BranchInst>(elseVal.val)){
+        if(!eq && !dyn_cast<ReturnInst>(thenVal.val) && !dyn_cast<ReturnInst>(elseVal.val) and
+                   !dyn_cast<BranchInst>(thenVal.val) && !dyn_cast<BranchInst>(elseVal.val)){
 
             /*
             bool tEmpty = thenVal->type->isGeneric;
             bool eEmpty = elseVal->type->isGeneric;
 
-            if(tEmpty and not eEmpty){
+            if(tEmpty && !eEmpty){
                 auto *dt = c->lookupType(elseVal->type.get());
                 bindGenericToType(thenVal->type.get(), elseVal->type->params, dt);
                 thenVal->val->mutateType(c->typeNodeToLlvmType(thenVal->type.get()));
@@ -674,7 +674,7 @@ TypedValue compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Typ
                     auto *cast = c->builder.CreateBitCast(alloca, c->typeNodeToLlvmType(elseVal->type.get())->getPointerTo());
                     thenVal->val = c->builder.CreateLoad(cast);
                 }
-            }else if(eEmpty and not tEmpty){
+            }else if(eEmpty && !tEmpty){
                 auto *dt = c->lookupType(thenVal->type.get());
                 bindGenericToType(elseVal->type.get(), thenVal->type->params, dt);
                 elseVal->val->mutateType(c->typeNodeToLlvmType(elseVal->type.get()));
@@ -697,10 +697,10 @@ TypedValue compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Typ
             TypedValue generic;
             TypedValue concrete;
 
-            if(tEmpty and !eEmpty){
+            if(tEmpty && !eEmpty){
                 generic = thenVal;
                 concrete = elseVal;
-            }else if(eEmpty and !tEmpty){
+            }else if(eEmpty && !tEmpty){
                 generic = elseVal;
                 concrete = thenVal;
             }else{
@@ -728,7 +728,7 @@ TypedValue compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Typ
             }
         }
 
-        if(!dyn_cast<ReturnInst>(elseVal.val) and !dyn_cast<BranchInst>(elseVal.val))
+        if(!dyn_cast<ReturnInst>(elseVal.val) && !dyn_cast<BranchInst>(elseVal.val))
             c->builder.CreateBr(mergebb);
 
         c->builder.SetInsertPoint(mergebb);
@@ -822,7 +822,7 @@ TypedValue Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *binop
 
                 //If dataTy is a single value tuple then val may not be a tuple at all. In this
                 //case, val should be returned without being extracted from a nonexistant tuple
-                if(index == 0 and !val->getType()->isStructTy())
+                if(index == 0 && !val->getType()->isStructTy())
                     return TypedValue(val, retTy);
 
                 auto ev = builder.CreateExtractValue(val, index);
@@ -946,10 +946,10 @@ vector<Value*> unwrapVoidPtrArgs(Compiler *c, Value *anteCallArg, vector<TypedVa
     bool varargs = cast<Function>(fd->tv.val)->isVarArg();
 
     auto *fnTy = cast<Function>(fd->tv.val)->getFunctionType();
-    if(fnTy->getNumParams() == 0 and !varargs) return ret;
+    if(fnTy->getNumParams() == 0 && !varargs) return ret;
 
     size_t argc = fnTy->getNumParams();
-    for(size_t i = 0; i < argc or (varargs and i < typedArgs.size()); i++){
+    for(size_t i = 0; i < argc or (varargs && i < typedArgs.size()); i++){
         llvm::Type *castTy = varargs ?
             typedArgs[i].getType()->getPointerTo() :
             fnTy->getParamType(i)->getPointerTo();
@@ -957,7 +957,7 @@ vector<Value*> unwrapVoidPtrArgs(Compiler *c, Value *anteCallArg, vector<TypedVa
         Value *cast = c->builder.CreateBitCast(anteCallArg, castTy);
         ret.push_back(c->builder.CreateLoad(cast));
 
-        if(i != argc - 1 or (varargs and i != typedArgs.size() - 1))
+        if(i != argc - 1 or (varargs && i != typedArgs.size() - 1))
             anteCallArg = c->builder.CreateInBoundsGEP(cast, c->builder.getInt64(1));
     }
 
@@ -1137,7 +1137,7 @@ TypedValue addrOf(Compiler *c, TypedValue &tv){
 
 
 TypedValue tryImplicitCast(Compiler *c, TypedValue &arg, AnType *castTy){
-    if(isNumericTypeTag(arg.type->typeTag) and isNumericTypeTag(castTy->typeTag)){
+    if(isNumericTypeTag(arg.type->typeTag) && isNumericTypeTag(castTy->typeTag)){
         auto widen = c->implicitlyWidenNum(arg, castTy->typeTag);
         if(widen.val != arg.val){
             return widen;
@@ -1376,7 +1376,7 @@ TypedValue compFnCall(Compiler *c, Node *l, Node *r){
     AnAggregateType *fty = try_cast<AnAggregateType>(tvf.type);
 
     size_t argc = fty->extTys.size();
-    if(argc != args.size() and (!f or !f->isVarArg())){
+    if(argc != args.size() && (!f or !f->isVarArg())){
         //check if an empty tuple (a void value) is being applied to a zero argument function before
         //continuing if not checked, it will count it as an argument instead of the absence of any
         //NOTE: this has the possibly unwanted side effect of allowing 't->void function applications
@@ -1434,7 +1434,7 @@ TypedValue compFnCall(Compiler *c, Node *l, Node *r){
 
 		//If the types passed type check but still dont match exactly there was probably a void* involved
 		//In that case, create a bit cast to the ptr type of the parameter
-        }else if(tvf.val and args[i]->getType() != tvf.getType()->getPointerElementType()->getFunctionParamType(i) and paramTy->typeTag == TT_Ptr){
+        }else if(tvf.val && args[i]->getType() != tvf.getType()->getPointerElementType()->getFunctionParamType(i) && paramTy->typeTag == TT_Ptr){
 			args[i] = c->builder.CreateBitCast(args[i], tvf.getType()->getPointerElementType()->getFunctionParamType(i));
 		}
     }
@@ -1442,7 +1442,7 @@ TypedValue compFnCall(Compiler *c, Node *l, Node *r){
     //if tvf is a ante function or similar MetaFunction, then compile it in a separate
     //module and JIT it instead of creating a call instruction
     if(isCompileTimeFunction(tvf)){
-        if(c->isJIT and tvf.type->typeTag == TT_MetaFunction){
+        if(c->isJIT && tvf.type->typeTag == TT_MetaFunction){
             args = adaptArgsToCompilerAPIFn(c, args, typedArgs);
         }else{
             string baseName = getName(l);
@@ -1649,11 +1649,11 @@ TypedValue handlePointerOffset(BinOpNode *n, Compiler *c, TypedValue &lhs, Typed
     Value *idx;
     AnType *ptrTy;
 
-    if(lhs.type->typeTag == TT_Ptr and rhs.type->typeTag != TT_Ptr){
+    if(lhs.type->typeTag == TT_Ptr && rhs.type->typeTag != TT_Ptr){
         ptr = lhs.val;
         idx = rhs.val;
         ptrTy = lhs.type;
-    }else if(lhs.type->typeTag != TT_Ptr and rhs.type->typeTag == TT_Ptr){
+    }else if(lhs.type->typeTag != TT_Ptr && rhs.type->typeTag == TT_Ptr){
         ptr = rhs.val;
         idx = lhs.val;
         ptrTy = rhs.type;
@@ -1731,11 +1731,11 @@ void CompilingVisitor::visit(BinOpNode *n){
         return;
 
     //and bools/ptrs are only compatible with == and !=
-    }else if((lhs.type->typeTag == TT_Bool and rhs.type->typeTag == TT_Bool) or
-             (lhs.type->typeTag == TT_Ptr  and rhs.type->typeTag == TT_Ptr)){
+    }else if((lhs.type->typeTag == TT_Bool && rhs.type->typeTag == TT_Bool) or
+             (lhs.type->typeTag == TT_Ptr && rhs.type->typeTag == TT_Ptr)){
 
         //= is no longer implemented for pointers by default
-        if(n->op == '=' and lhs.type->typeTag == TT_Bool and rhs.type->typeTag == TT_Bool){
+        if(n->op == '=' &&lhs.type->typeTag == TT_Bool && rhs.type->typeTag == TT_Bool){
             this->val = TypedValue(c->builder.CreateICmpEQ(lhs.val, rhs.val), AnType::getBool());
             return;
         }

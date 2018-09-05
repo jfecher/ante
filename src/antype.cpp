@@ -653,7 +653,7 @@ namespace ante {
             vector<TypeBinding> const& boundTys){
 
         //type is fully bound and no longer generic, early return
-        if(!unboundType->isGeneric and !unboundType->isVariant())
+        if(!unboundType->isGeneric && !unboundType->isVariant())
             return unboundType;
 
         auto filteredBindings = filterMatchingBindings(unboundType, boundTys);
@@ -859,7 +859,7 @@ namespace ante {
 
     const AnType* BasicModifier::addModifier(TokenType m) const{
         if(m == Tok_Let) return this;
-        if(this->mod == m or (this->mod == Tok_Const and m == Tok_Mut))
+        if(this->mod == m or (this->mod == Tok_Const && m == Tok_Mut))
             return this;
         else
             return BasicModifier::get(extTy->addModifier(m), mod);

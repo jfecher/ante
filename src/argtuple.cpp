@@ -213,7 +213,7 @@ namespace ante {
                 storePtr(c, {ptr, tv.type});
             }
         }else if(BinaryOperator *bi = dyn_cast<BinaryOperator>(tv.val)){
-            if(bi->getOpcode() == BinaryOperator::BinaryOps::Add and dyn_cast<ConstantInt>(bi->getOperand(1))){
+            if(bi->getOpcode() == BinaryOperator::BinaryOps::Add && dyn_cast<ConstantInt>(bi->getOperand(1))){
                 TypedValue ptr{bi->getOperand(0), tv.type};
                 storePtr(c, ptr);
                 //cout << "Getting val from: \n";

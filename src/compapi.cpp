@@ -137,7 +137,7 @@ extern "C" {
     }
 
     void* Ante_emit_ir(Compiler *c){
-        if(c and c->module){
+        if(c && c->module){
             c->module->print(llvm::errs(), nullptr);
         }else{
             cerr << "error: Ante.emit_ir: null module" << endl;

@@ -186,7 +186,7 @@ namespace ante {
 
 
     void appendHistory(string &line){
-        if(!line.empty() and (sl_history.empty() or line != sl_history.back()))
+        if(!line.empty() && (sl_history.empty() or line != sl_history.back()))
             sl_history.push_back(line);
     }
 
@@ -225,9 +225,9 @@ namespace ante {
     void handleEscSeq(string &line){
         if(getchar() == '['){
             char escSeq = getchar();
-            if(escSeq == 68 and sl_pos > 0){ //move left
+            if(escSeq == 68 && sl_pos > 0){ //move left
                 sl_pos--;
-            }else if(escSeq == 67 and sl_pos < line.length()){ //right
+            }else if(escSeq == 67 && sl_pos < line.length()){ //right
                 sl_pos++;
             }else if(escSeq == 65){ //up
                 previousLineInHistory(line);
@@ -239,7 +239,7 @@ namespace ante {
 
     bool lastCharIsOpenBracket(string &line){
         for(auto it = line.rbegin(); it != line.rend(); it++){
-            if(*it != ' ' and *it != '\t' and *it != '\r' and *it != '\n'){
+            if(*it != ' ' && *it != '\t' && *it != '\r' && *it != '\n'){
                 return *it == '{';
             }
         }
@@ -255,7 +255,7 @@ namespace ante {
      *  is a {
      */
     bool handleNewline(string &line, char nlChar){
-        if(!line.empty() and line[sl_pos-1] == '\\'){
+        if(!line.empty() && line[sl_pos-1] == '\\'){
             if(nlChar == '\r'){
                 //overwrite backslash
                 line[sl_pos-1] = '\r';
@@ -290,7 +290,7 @@ namespace ante {
     }
 
     void removeCharAt(unsigned int pos, string &line){
-        if(pos > 0 and pos <= line.length()){
+        if(pos > 0 && pos <= line.length()){
             line = line.substr(0, pos - 1) + line.substr(pos);
             sl_pos--;
         }

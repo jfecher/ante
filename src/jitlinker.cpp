@@ -158,7 +158,7 @@ void declareTypes(Compiler *c){
 
 void copyGlobals(Compiler *c, Compiler *ccpy){
     for(auto &g : c->module->getGlobalList()){
-        if(g.getName() != "argc" and g.getName() != "argv"){
+        if(g.getName() != "argc" && g.getName() != "argv"){
             auto *gl = new GlobalVariable(*ccpy->module, g.getType(), false,
                     GlobalValue::PrivateLinkage, g.getInitializer(), g.getName());
 

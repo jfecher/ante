@@ -116,7 +116,7 @@ Result<size_t, string> AnType::getSizeInBits(Compiler *c, string *incompleteType
 
     if(auto *dataTy = try_cast<AnDataType>(this)){
         if(dataTy->isStub()){
-            if(incompleteType and dataTy->name == *incompleteType){
+            if(incompleteType && dataTy->name == *incompleteType){
                 cerr << "Incomplete type " << anTypeToColoredStr(this) << endl;
                 throw new IncompleteTypeError();
             }
@@ -225,7 +225,7 @@ Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt, bool force){
 
     dt->llvmType = structTy;
 
-    if(dt->isGeneric and !force){
+    if(dt->isGeneric && !force){
         cerr << "Type " << anTypeToStr(dt) << " is generic and cannot be translated.\n";
         c->errFlag = true;
     }
@@ -319,7 +319,7 @@ TypedValue Compiler::implicitlyWidenNum(TypedValue &num, TypeTag castTy){
     if(lIsInt or lIsFlt){
         bool rIsInt = isIntTypeTag(castTy);
         bool rIsFlt = isFPTypeTag(castTy);
-        if(!rIsInt and !rIsFlt){
+        if(!rIsInt && !rIsFlt){
             cerr << "castTy argument of implicitlyWidenNum must be a numeric primitive type\n";
             exit(1);
         }
@@ -329,7 +329,7 @@ TypedValue Compiler::implicitlyWidenNum(TypedValue &num, TypeTag castTy){
         Type *ty = typeTagToLlvmType(castTy, *ctxt);
 
         //integer widening
-        if(lIsInt and rIsInt){
+        if(lIsInt && rIsInt){
             if(lbw <= rbw){
                 return TypedValue(
                     builder.CreateIntCast(num.val, ty, !isUnsignedTypeTag(num.type->typeTag)),
@@ -338,7 +338,7 @@ TypedValue Compiler::implicitlyWidenNum(TypedValue &num, TypeTag castTy){
             }
 
         //int -> flt, (flt -> int is never implicit)
-        }else if(lIsInt and rIsFlt){
+        }else if(lIsInt && rIsFlt){
             return TypedValue(
                 isUnsignedTypeTag(num.type->typeTag)
                     ? builder.CreateUIToFP(num.val, ty)
@@ -348,7 +348,7 @@ TypedValue Compiler::implicitlyWidenNum(TypedValue &num, TypeTag castTy){
             );
 
         //float widening
-        }else if(lIsFlt and rIsFlt){
+        }else if(lIsFlt && rIsFlt){
             if(lbw < rbw){
                 return TypedValue(
                     builder.CreateFPExt(num.val, ty),
@@ -458,20 +458,20 @@ void Compiler::implicitlyCastFltToFlt(TypedValue *lhs, TypedValue *rhs){
 void Compiler::handleImplicitConversion(TypedValue *lhs, TypedValue *rhs){
     bool lIsInt = isIntTypeTag(lhs->type->typeTag);
     bool lIsFlt = isFPTypeTag(lhs->type->typeTag);
-    if(!lIsInt and !lIsFlt) return;
+    if(!lIsInt && !lIsFlt) return;
 
     bool rIsInt = isIntTypeTag(rhs->type->typeTag);
     bool rIsFlt = isFPTypeTag(rhs->type->typeTag);
-    if(!rIsInt and !rIsFlt) return;
+    if(!rIsInt && !rIsFlt) return;
 
     //both values are numeric, so forward them to the relevant casting method
-    if(lIsInt and rIsInt){
+    if(lIsInt && rIsInt){
         implicitlyCastIntToInt(lhs, rhs);  //implicit int -> int (widening)
-    }else if(lIsInt and rIsFlt){
+    }else if(lIsInt && rIsFlt){
         implicitlyCastIntToFlt(lhs, rhs->getType()); //implicit int -> flt
-    }else if(lIsFlt and rIsInt){
+    }else if(lIsFlt && rIsInt){
         implicitlyCastIntToFlt(rhs, lhs->getType()); //implicit int -> flt
-    }else if(lIsFlt and rIsFlt){
+    }else if(lIsFlt && rIsFlt){
         implicitlyCastFltToFlt(lhs, rhs); //implicit int -> flt
     }
 }
@@ -562,7 +562,7 @@ TypeTag llvmTypeToTypeTag(Type *t){
     if(t->isDoubleTy()) return TT_F64;
 
     if(t->isArrayTy()) return TT_Array;
-    if(t->isStructTy() and !t->isEmptyTy()) return TT_Tuple; /* Could also be a TT_Data! */
+    if(t->isStructTy() && !t->isEmptyTy()) return TT_Tuple; /* Could also be a TT_Data! */
     if(t->isPointerTy()) return TT_Ptr;
     if(t->isFunctionTy()) return TT_Function;
 
@@ -785,12 +785,12 @@ TypeCheckResult& extTysEq(const AnAggregateType *lAgg, const AnAggregateType *rA
  *  the outermost type will not be checked for traits.
  */
 TypeCheckResult& typeEqBase(const AnType *l, const AnType *r, TypeCheckResult &tcr, const Compiler *c){
-    if(l == r and !l->isGeneric) return tcr.success(l->numMatchedTys);
+    if(l == r && !l->isGeneric) return tcr.success(l->numMatchedTys);
 
-    if(l->typeTag == TT_TaggedUnion and r->typeTag == TT_Data)
+    if(l->typeTag == TT_TaggedUnion && r->typeTag == TT_Data)
         return tcr.successIf(try_cast<AnDataType>(l)->name == try_cast<AnDataType>(r)->name);
 
-    if(l->typeTag == TT_Data and r->typeTag == TT_TaggedUnion)
+    if(l->typeTag == TT_Data && r->typeTag == TT_TaggedUnion)
         return tcr.successIf(try_cast<AnDataType>(l)->name == try_cast<AnDataType>(r)->name);
 
     //typevars should be handled by typeEqHelper which requires the Compiler param,
@@ -882,7 +882,7 @@ TypeCheckResult& typeCheckVariants(const Compiler *c, const AnDataType *l,
     bool rIsBound = r->isVariant();
 
     //Two bound variants are equal if their type parameters are equal
-    if(lIsBound and rIsBound){
+    if(lIsBound && rIsBound){
         for(size_t i = 0; i < l->boundGenerics.size(); i++){
             typeEqHelper(c, l->boundGenerics[i].getBinding(), r->boundGenerics[i].getBinding(), tcr);
             if(tcr.failed()) return tcr;
@@ -890,9 +890,9 @@ TypeCheckResult& typeCheckVariants(const Compiler *c, const AnDataType *l,
         return tcr.success();
     //Perform type checks to get the needed bindings of type
     //variables to bind an unbound variant to a given bound variant.
-    }else if(lIsBound and !rIsBound){
+    }else if(lIsBound && !rIsBound){
         return addBindingsToTypeCheck(c, l->boundGenerics, tcr);
-    }else if(!lIsBound and rIsBound){
+    }else if(!lIsBound && rIsBound){
         return addBindingsToTypeCheck(c, r->boundGenerics, tcr);
     //neither are bound, these should both be parent types
     }else{
@@ -907,7 +907,7 @@ TypeCheckResult& typeCheckVariants(const Compiler *c, const AnDataType *l,
  *  Compiler instance required to check for trait implementation
  */
 TypeCheckResult& typeEqHelper(const Compiler *c, const AnType *l, const AnType *r, TypeCheckResult &tcr){
-    if(l == r and !l->isGeneric) return tcr.success(l->numMatchedTys);
+    if(l == r && !l->isGeneric) return tcr.success(l->numMatchedTys);
     if(!r) return tcr.failure();
 
     //check for type aliases
@@ -919,11 +919,11 @@ TypeCheckResult& typeEqHelper(const Compiler *c, const AnType *l, const AnType *
     }
 
     const AnDataType *ldt, *rdt;
-    if((ldt = try_cast<AnDataType>(l)) and (rdt = try_cast<AnDataType>(r))){
-        if(ldt->name == rdt->name and !ldt->isVariant() and !rdt->isVariant())
+    if((ldt = try_cast<AnDataType>(l)) && (rdt = try_cast<AnDataType>(r))){
+        if(ldt->name == rdt->name && !ldt->isVariant() && !rdt->isVariant())
             return tcr.success();
 
-        if(ldt->unboundType and ldt->unboundType == rdt->unboundType){
+        if(ldt->unboundType && ldt->unboundType == rdt->unboundType){
             return typeCheckBoundDataTypes(c, ldt, rdt, tcr);
         }
 
@@ -954,11 +954,11 @@ TypeCheckResult& typeEqHelper(const Compiler *c, const AnType *l, const AnType *
         const AnTypeVarType *typeVar;
         AnType *nonTypeVar;
 
-        if(l->typeTag == TT_TypeVar and r->typeTag != TT_TypeVar){
+        if(l->typeTag == TT_TypeVar && r->typeTag != TT_TypeVar){
             typeVar = try_cast<AnTypeVarType>(l);
             //cast away const to store in string,AnType* pair later
             nonTypeVar = (AnType*)r;
-        }else if(l->typeTag != TT_TypeVar and r->typeTag == TT_TypeVar){
+        }else if(l->typeTag != TT_TypeVar && r->typeTag == TT_TypeVar){
             typeVar = try_cast<AnTypeVarType>(r);
             nonTypeVar = (AnType*)l;
         }else{ //both type vars
@@ -983,19 +983,19 @@ TypeCheckResult& typeEqHelper(const Compiler *c, const AnType *l, const AnType *
 
             AnType *rv = c->lookupTypeVar(rtv->name);
 
-            if(lv and rv){ //both are already bound
+            if(lv && rv){ //both are already bound
                 //add bindings from scope to the TypeCheckResult
                 //and recur on them to make sure they're equal
                 tcr->bindings.emplace_back(ltv->name, lv);
                 tcr->bindings.emplace_back(rtv->name, rv);
                 tcr.successWithTypeVars();
                 return typeEqHelper(c, lv, rv, tcr);
-            }else if(lv and not rv){
+            }else if(lv && not rv){
                 typeVar = rtv; //rtv binding not found so it stays as a typevar
                 nonTypeVar = lv;
                 tcr->bindings.emplace_back(ltv->name, nonTypeVar);
                 //fall through to successWithTypeVars below
-            }else if(rv and not lv){
+            }else if(rv && not lv){
                 typeVar = ltv;
                 nonTypeVar = rv;
                 tcr->bindings.emplace_back(rtv->name, nonTypeVar);
@@ -1060,7 +1060,7 @@ TypeCheckResult Compiler::typeEq(vector<AnType*> l, vector<AnType*> r) const{
  *        declared before non-primitive types in the TypeTag definition.
  */
 bool isPrimitiveTypeTag(TypeTag ty){
-    return ty >= TT_I8 and ty <= TT_Bool;
+    return ty >= TT_I8 && ty <= TT_Bool;
 }
 
 

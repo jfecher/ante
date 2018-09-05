@@ -90,7 +90,7 @@ int main(int argc, const char **argv){
         allMergedCompUnits.clear();
     }
 
-    if(args->hasArg(Args::Eval) or (args->args.empty() and args->inputFiles.empty()))
+    if(args->hasArg(Args::Eval) or (args->args.empty() && args->inputFiles.empty()))
         Compiler(0).eval();
 
     if(yylexer)
