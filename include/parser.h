@@ -353,7 +353,7 @@ namespace ante {
 
             FuncDeclNode(LOC_TY& loc, std::string s, TypeNode *t, NamedValNode *p, Node* b, bool va=false) :
                 ModifiableNode(loc), name(s), child(b), type(t), params(p), varargs(va){}
-            ~FuncDeclNode(){ if(next.get()) next.release(); }
+            ~FuncDeclNode(){}
         };
 
         struct DataDeclNode : public ModifiableNode{
