@@ -585,7 +585,7 @@ void CompilingVisitor::visit(ForNode *n){
     if(!uwrap) c->compErr("Range expression of type " + anTypeToColoredStr(rangev.type) + " does not implement " +
             anTypeToColoredStr(AnDataType::get("Iterable")) + ", which it needs to be used in a for loop", n->range->loc);
 
-    auto *uwrap_var = new Variable(n->var, uwrap, c->scope);
+    auto *uwrap_var = new Variable(n->var, uwrap, c->scope, {Assignment::ForLoop, n});
     c->stoVar(n->var, uwrap_var);
 
 
@@ -697,7 +697,8 @@ void CompilingVisitor::visit(VarNode *n){
             this->val = TypedValue(var->tval.val, var->tval.type);
         }
     }else{
-        //if this is a function, then there must be only one function of the same name, otherwise the reference is ambiguous
+        //if this is a function, then there can be multiple candidates of
+        //the same name that must be filtered at the callsite
         auto& fnlist = c->getFunctionList(n->name);
 
         if(fnlist.size() == 1){
@@ -764,8 +765,7 @@ void compMutBinding(VarAssignNode *node, CompilingVisitor &cv){
 
     TypedValue alloca{ptr, val.type};
 
-    bool nofree = true;//val->type->type != TT_Ptr || dynamic_cast<Constant*>(val->val);
-    c->stoVar(name, new Variable(name, alloca, c->scope, nofree, true));
+    c->stoVar(name, new Variable(name, alloca, c->scope, {Assignment::Normal, node->expr.get()}, true));
 
     cv.val = TypedValue(c->builder.CreateStore(val.val, alloca.val), val.type);
 }
@@ -790,6 +790,8 @@ void compLetBinding(VarAssignNode *node, CompilingVisitor &cv){
         if(m == Tok_Global) isGlobal = true;
     }
 
+    Assignment assignment{Assignment::Normal, node->expr.get()};
+
     if(isGlobal){
         //location to store var
         Value *ptr = new GlobalVariable(*c->module, val.getType(), false,
@@ -797,10 +799,10 @@ void compLetBinding(VarAssignNode *node, CompilingVisitor &cv){
 
         TypedValue alloca{ptr, val.type};
 
-        c->stoVar(name, new Variable(name, alloca, c->scope, true, true));
+        c->stoVar(name, new Variable(name, alloca, c->scope, assignment, true));
         cv.val = {c->builder.CreateStore(val.val, alloca.val), val.type};
     }else{
-        c->stoVar(name, new Variable(name, val, c->scope, true, false));
+        c->stoVar(name, new Variable(name, val, c->scope, assignment, false));
         cv.val = val;
     }
 }
@@ -838,7 +840,8 @@ TypedValue compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
     //prevent l from being used after this scope; only val and tyn should be used as only they
     //are updated with the automatic pointer dereferences.
     {
-        auto l = CompilingVisitor::compile(c, bop->lval);
+        CompilingVisitor cv{c};
+        auto l = compileRefExpr(cv, bop->lval.get(), expr);
 
         val = l.val;
         tyn = l.type;
@@ -900,6 +903,34 @@ TypedValue compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
 }
 
 /**
+ * @brief Keeps track of assignments to variables
+ *
+ * This will fail if the assignment is not in the form: ident := expr
+ */
+TypedValue compileRefExpr(CompilingVisitor &cv, Node *refExpr, Node *assignExpr){
+    if(VarNode *vn = dynamic_cast<VarNode*>(refExpr)){
+        auto *var = cv.c->lookup(vn->name);
+
+        if(!var)
+            cv.c->compErr("Variable or function '" + vn->name + "' has not been declared.", vn->loc);
+
+        TypedValue ret;
+        if(var->autoDeref){
+            auto *load = cv.c->builder.CreateLoad(var->getVal(), vn->name);
+            ret = TypedValue(load, var->tval.type);
+        }else{
+            ret = TypedValue(var->tval.val, var->tval.type);
+        }
+
+        var->assignments.emplace_back(Assignment::Normal, assignExpr);
+        return ret;
+    }else{
+        refExpr->accept(cv);
+        return cv.val;
+    }
+}
+
+/**
  * @brief Compiles an assign expression of an already-declared variable
  *
  * @return A void literal
@@ -927,7 +958,7 @@ void CompilingVisitor::visit(VarAssignNode *n){
     }
 
     //otherwise, this is just a normal assign to a variable
-    n->ref_expr->accept(*this);
+    this->val = compileRefExpr(*this, n->ref_expr, n->expr.get());
 
     //if(!dynamic_cast<LoadInst*>(val->val))
     if(!val.type->hasModifier(Tok_Mut))
@@ -1099,7 +1130,7 @@ void CompilingVisitor::visit(ExtNode *n){
         }
 
         //go through each trait and compile the methods for it
-        auto *funcs = n->methods.release();
+        auto *funcs = n->methods.get();
         for(auto& trait : traits){
             auto *traitImpl = new Trait();
             traitImpl->name = trait->name;
@@ -1121,8 +1152,7 @@ void CompilingVisitor::visit(ExtNode *n){
                 mangledName = manageSelfParam(c, fdn, mangledName);
                 c->compCtxt->objTn = oldTn;
 
-                shared_ptr<FuncDeclNode> spfdn{fdn};
-                shared_ptr<FuncDecl> fd{new FuncDecl(spfdn, mangledName, c->scope, c->mergedCompUnits)};
+                shared_ptr<FuncDecl> fd{new FuncDecl(fdn, mangledName, c->scope, c->mergedCompUnits)};
                 traitImpl->funcs.emplace_back(fd);
 
                 c->compUnit->fnDecls[fdn->name].emplace_back(fd);
@@ -1147,7 +1177,7 @@ void CompilingVisitor::visit(ExtNode *n){
         c->compCtxt->obj = toAnType(c, n->typeExpr.get());
         c->compCtxt->objTn = n->typeExpr.get();
 
-        compileStmtList(n->methods.release(), c);
+        compileStmtList(n->methods.get(), c);
 
         c->funcPrefix = oldPrefix;
         c->compCtxt->obj = prevObj;
@@ -1332,14 +1362,13 @@ void CompilingVisitor::visit(TraitNode *n){
     auto *trait = new Trait();
     trait->name = n->name;
 
-    auto *curfn = n->child.release();
+    auto *curfn = n->child.get();
     while(curfn){
         auto *fn = (FuncDeclNode*)curfn;
         string mangledName = c->funcPrefix + mangle(fn->name, fn->params);
         fn->name = c->funcPrefix + fn->name;
 
-        shared_ptr<FuncDeclNode> spfdn{fn};
-        shared_ptr<FuncDecl> fd{new FuncDecl(spfdn, mangledName, c->scope, c->mergedCompUnits)};
+        shared_ptr<FuncDecl> fd{new FuncDecl(fn, mangledName, c->scope, c->mergedCompUnits)};
 
         //create trait type as a generic void* container
         vector<AnType*> ext;
@@ -1562,7 +1591,7 @@ void compileAll(Compiler *c, vector<T> &vec){
 
 
 void Compiler::scanAllDecls(RootNode *root){
-    auto *n = root ? root : ast.get();
+    auto *n = root ? root : compUnit->ast.get();
 
     for (auto& f : n->types) {
 		try {
@@ -1619,12 +1648,13 @@ Function* Compiler::createMainFn(){
         builder.CreateStore(&*args, argc);
         builder.CreateStore(&*++args, argv);
 
-        //auto *global_mod = AnModifier::get({Tok_Global});
         AnType *argcAnty = BasicModifier::get(AnType::getPrimitive(TT_I32), Tok_Global);
         AnType *argvAnty = BasicModifier::get(AnPtrType::get(AnPtrType::get(AnType::getPrimitive(TT_C8))), Tok_Global);
 
-        stoVar("argc", new Variable("argc", TypedValue(builder.CreateLoad(argc), argcAnty), 1));
-        stoVar("argv", new Variable("argv", TypedValue(builder.CreateLoad(argv), argvAnty), 1));
+        Assignment assignment{Assignment::Parameter, std::nullopt};
+
+        stoVar("argc", new Variable("argc", TypedValue(builder.CreateLoad(argc), argcAnty), 1, assignment));
+        stoVar("argv", new Variable("argv", TypedValue(builder.CreateLoad(argv), argvAnty), 1, assignment));
 
         main_fn_ty = AnFunctionType::get(AnType::getU8(), {argcAnty, argvAnty});
     }else{
@@ -1634,8 +1664,7 @@ Function* Compiler::createMainFn(){
     auto main_tv = TypedValue(main, main_fn_ty);
     auto fakeLoc = mkLoc(mkPos(0, 0, 0), mkPos(0, 0, 0));
     auto *fakeFdn = new FuncDeclNode(fakeLoc, fnName, nullptr, nullptr, nullptr);
-    shared_ptr<FuncDeclNode> fakeSp{fakeFdn};
-    auto *main_var = new FuncDecl(fakeSp, fnName, scope, mergedCompUnits, main_tv);
+    auto *main_var = new FuncDecl(fakeFdn, fnName, scope, mergedCompUnits, main_tv);
 
     //TODO: merge this code with Compiler::registerFunction
     shared_ptr<FuncDecl> fd{main_var};
@@ -1714,7 +1743,7 @@ void Compiler::compile(){
     createMainFn();
     compilePrelude();
 
-    CompilingVisitor::compile(this, ast.get());
+    CompilingVisitor::compile(this, compUnit->ast.get());
 
     //always return 0
     builder.CreateRet(ConstantInt::get(*ctxt, APInt(32, 0)));
@@ -1913,10 +1942,6 @@ void Compiler::enterNewScope(){
 }
 
 
-bool Variable::isFreeable() const{
-    return !noFree;
-}
-
 void Compiler::exitScope(){
     if(varTable.empty()) return;
 
@@ -1925,17 +1950,8 @@ void Compiler::exitScope(){
     auto vtable = varTable.back().get();
 
     for(auto &pair : *vtable){
-        if(pair.second->isFreeable() && pair.second->scope == this->scope){
-            string freeFnName = "free";
-            Function* freeFn = (Function*)getFunction(freeFnName, freeFnName).val;
-
-            auto *inst = dyn_cast<AllocaInst>(pair.second->getVal());
-            auto *val = inst? builder.CreateLoad(inst) : pair.second->getVal();
-
-            //cast the freed value to i32* as that is what free accepts
-            Type *vPtr = freeFn->getFunctionType()->getFunctionParamType(0);
-            val = builder.CreatePointerCast(val, vPtr);
-            builder.CreateCall(freeFn, val);
+        if(pair.second->scope == this->scope){
+            //TODO: destructor stub
         }
     }
 
@@ -1984,7 +2000,8 @@ Value* mkPtrInt(Compiler *c, void *addr){
 void Compiler::stoTypeVar(string const& name, AnType *ty){
     Value *addr = builder.getInt64((unsigned long)ty);
     TypedValue tv = TypedValue(addr, AnType::getPrimitive(TT_Type));
-    Variable *var = new Variable(name, tv, scope);
+    Assignment a{Assignment::TypeVar, std::nullopt};
+    Variable *var = new Variable(name, tv, scope, a);
     stoVar(name, var);
 }
 
@@ -2116,7 +2133,7 @@ Compiler::Compiler(const char *_fileName, bool lib, shared_ptr<LLVMContext> llvm
             exit(flag);
         }
 
-        ast.reset(parser::getRootNode());
+        compUnit->ast.reset(parser::getRootNode());
     }
 
     relativeRoots = {AN_EXEC_STR, AN_LIB_DIR};
@@ -2172,8 +2189,8 @@ Compiler::Compiler(Compiler *c, Node *root, string modName, bool lib) :
     compUnit->name = modName;
     mergedCompUnits->name = modName;
 
-    ast.reset(new RootNode(root->loc));
-    ast->main.push_back(unique_ptr<Node>(root));
+    compUnit->ast.reset(new RootNode(root->loc));
+    compUnit->ast->main.push_back(unique_ptr<Node>(root));
 
     module.reset(new llvm::Module(outFile, *ctxt));
 

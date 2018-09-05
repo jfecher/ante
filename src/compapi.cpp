@@ -36,7 +36,7 @@ extern "C" {
                     + anTypeToColoredStr(msg.getType()) + " was given instead.");
         }
 
-        auto *curfn = c->compCtxt->callStack.back()->fdn.get();
+        auto *curfn = c->compCtxt->callStack.back()->fdn;
         yy::location fakeloc = mkLoc(mkPos(0,0,0), mkPos(0,0,0));
         c->compErr(msg.castTo<char*>(), curfn ? curfn->loc : fakeloc);
         return nullptr;

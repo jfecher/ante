@@ -81,7 +81,7 @@ int main(int argc, const char **argv){
     for(auto input : args->inputFiles){
         Compiler ante{input.c_str()};
         if(args->hasArg(Args::Parse)){
-            parser::printBlock(ante.ast.get(), 0);
+            parser::printBlock(ante.getAST(), 0);
         }
 
         ante.processArgs(args);

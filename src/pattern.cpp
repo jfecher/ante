@@ -56,8 +56,11 @@ namespace ante {
             BasicBlock *jmpOnFail, TypedValue &valToMatch){
 
         //Do not bind to _ to enforce convention of _ to indicate an unused value
-        if(pattern->name != "_")
-            cv.c->stoVar(pattern->name, new Variable(pattern->name, valToMatch, cv.c->scope));
+        if(pattern->name != "_"){
+            Assignment a{Assignment::Normal, n->expr.get()};
+            auto var = new Variable(pattern->name, valToMatch, cv.c->scope, a);
+            cv.c->stoVar(pattern->name, var);
+        }
     }
 
     /**

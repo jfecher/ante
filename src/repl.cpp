@@ -432,8 +432,8 @@ namespace ante {
                 RootNode *expr = parser::getRootNode();
 
                 //Compile each expression and hold onto the last value
-                TypedValue val = c->ast ? mergeAndCompile(c, expr)
-                               : (c->ast.reset(expr), CompilingVisitor::compile(c, expr));
+                TypedValue val = c->getAST() ? mergeAndCompile(c, expr)
+                               : (c->compUnit->ast.reset(expr), CompilingVisitor::compile(c, expr));
 
                 //print val if it's not an error
                 if(!!val and val.type->typeTag != TT_Void)
@@ -450,32 +450,32 @@ namespace ante {
         scanImports(c, rn);
         move(rn->imports.begin(),
             next(rn->imports.begin(), rn->imports.size()),
-            back_inserter(c->ast->imports));
+            back_inserter(c->getAST()->imports));
 
         for(auto &t : rn->types){
             safeCompile(c, t);
-            c->ast->types.emplace_back(move(t));
+            c->getAST()->types.emplace_back(move(t));
         }
 
         for(auto &t : rn->traits){
             safeCompile(c, t);
-            c->ast->traits.emplace_back(move(t));
+            c->getAST()->traits.emplace_back(move(t));
         }
 
         for(auto &t : rn->extensions){
             safeCompile(c, t);
-            c->ast->extensions.emplace_back(move(t));
+            c->getAST()->extensions.emplace_back(move(t));
         }
 
         for(auto &t : rn->funcs){
             safeCompile(c, t);
-            c->ast->funcs.emplace_back(move(t));
+            c->getAST()->funcs.emplace_back(move(t));
         }
 
         TypedValue ret;
         for(auto &e : rn->main){
             ret = safeCompile(c, e);
-            c->ast->main.emplace_back(move(e));
+            c->getAST()->main.emplace_back(move(e));
         }
         return ret;
     }

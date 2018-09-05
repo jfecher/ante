@@ -195,7 +195,7 @@ LOC_TY getFinalLoc(Node *n){
 
 
 TypedValue Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
-    auto *fdn = fd->fdn.get();
+    auto *fdn = fd->fdn;
     FunctionType *preFnTy = FunctionType::get(Type::getVoidTy(*ctxt), paramTys, fdn->varargs);
 
     //preFn is the predecessor to fn because we do not yet know its return type, so its body must be compiled,
@@ -244,8 +244,10 @@ TypedValue Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
         //it is important that Ante.store does not store a llvm::Argument
         TypedValue tArg{&arg, paramTy};
 
-        stoVar(cParam->name, new Variable(cParam->name, tArg, this->scope,
-                        /*nofree =*/ true, /*autoDeref = */implicitPassByRef(paramTy)));
+        Assignment a{Assignment::Parameter, (Node*)fd};
+
+        auto paramVar = new Variable(cParam->name, tArg, this->scope, a, implicitPassByRef(paramTy));
+        stoVar(cParam->name, paramVar);
 
         preArgs.push_back(&arg);
         paramAnTys.push_back(paramTy);
@@ -330,7 +332,7 @@ vector<llvm::Argument*> buildArguments(FunctionType *ft){
 TypedValue compFnWithModifiers(Compiler *c, FuncDecl *fd, ModNode *mod){
     //remove the preproc node at the front of the modifier list so that the call to
     //compFn does not call this function in an infinite loop
-    auto *fdn = fd->fdn.get();
+    auto *fdn = fd->fdn;
     fd->fdn->modifiers.back().release();
     fd->fdn->modifiers.pop_back();
 
@@ -401,7 +403,7 @@ TypedValue compFnWithModifiers(Compiler *c, FuncDecl *fd, ModNode *mod){
 
 TypedValue compFnHelper(Compiler *c, FuncDecl *fd){
     BasicBlock *caller = c->builder.GetInsertBlock();
-    auto *fdn = fd->fdn.get();
+    auto *fdn = fd->fdn;
 
     if(!fdn->modifiers.empty()){
         auto ret = compFnWithModifiers(c, fd, fdn->modifiers.back().get());
@@ -488,8 +490,10 @@ TypedValue compFnHelper(Compiler *c, FuncDecl *fd){
             //it is important that Ante.store does not store a llvm::Argument
             TypedValue tArg{&arg, paramTy};
 
-            c->stoVar(cParam->name, new Variable(cParam->name, tArg, c->scope,
-                    /*nofree = */true, /*autoDeref = */implicitPassByRef(paramTy)));
+            Assignment a{Assignment::Parameter, (Node*)fdn};
+
+            auto paramVar = new Variable(cParam->name, tArg, c->scope, a, implicitPassByRef(paramTy));
+            c->stoVar(cParam->name, paramVar);
 
             i++;
         }
@@ -615,8 +619,7 @@ void CompilingVisitor::visit(FuncDeclNode *n){
     }else{
         //Otherwise, if it is a lambda function, compile it now and return it.
         string no_name;
-        shared_ptr<FuncDeclNode> lambda{n};
-        FuncDecl *fd = new FuncDecl(lambda, no_name, c->scope, c->mergedCompUnits);
+        FuncDecl *fd = new FuncDecl(n, no_name, c->scope, c->mergedCompUnits);
         this->val = c->compFn(fd);
 
         //prevent this function from being called by name
@@ -931,8 +934,7 @@ void Compiler::registerFunction(FuncDeclNode *fn, string &mangledName){
         return;
     }
 
-    shared_ptr<FuncDeclNode> spToFn{fn};
-    FuncDecl *fdRaw = new FuncDecl(spToFn, mangledName, scope, mergedCompUnits);
+    FuncDecl *fdRaw = new FuncDecl(fn, mangledName, scope, mergedCompUnits);
     shared_ptr<FuncDecl> fd{fdRaw};
     fd->obj = compCtxt->obj;
 

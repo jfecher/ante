@@ -12,6 +12,8 @@
 #include <string>
 #include <memory>
 #include <list>
+#include <optional>
+
 #include "parser.h"
 #include "args.h"
 #include "lazystr.h"
@@ -143,7 +145,7 @@ namespace ante {
     * instance for type checking.
     */
     struct FuncDecl {
-        std::shared_ptr<parser::FuncDeclNode> fdn;
+        parser::FuncDeclNode* fdn;
         std::string mangledName;
 
         unsigned int scope;
@@ -169,8 +171,8 @@ namespace ante {
 
         TypedValue getOrCompileFn(Compiler *c);
 
-        FuncDecl(std::shared_ptr<parser::FuncDeclNode> &fn, std::string &n, unsigned int s, Module *mod, TypedValue f) : fdn(fn), mangledName(n), scope(s), tv(f), type(0), module(mod), returns(){}
-        FuncDecl(std::shared_ptr<parser::FuncDeclNode> &fn, std::string &n, unsigned int s, Module *mod) : fdn(fn), mangledName(n), scope(s), tv(), type(0), module(mod), returns(){}
+        FuncDecl(parser::FuncDeclNode *fn, std::string &n, unsigned int s, Module *mod, TypedValue f) : fdn(fn), mangledName(n), scope(s), tv(f), type(0), module(mod), returns(){}
+        FuncDecl(parser::FuncDeclNode *fn, std::string &n, unsigned int s, Module *mod) : fdn(fn), mangledName(n), scope(s), tv(), type(0), module(mod), returns(){}
         ~FuncDecl(){}
     };
 
@@ -217,6 +219,24 @@ namespace ante {
         std::vector<std::shared_ptr<FuncDecl>> funcs;
     };
 
+    struct Assignment {
+        enum Type {
+            ForLoop, Parameter, TypeVar, Normal
+        } assignmentType;
+
+        std::optional<parser::Node*> assignmentExpr;
+
+        Assignment() = delete;
+        Assignment(Assignment::Type t, std::optional<parser::Node*> expr) :
+            assignmentType{t}, assignmentExpr{expr}{}
+    };
+
+    /**
+     * A variable assigned a certain value and restricted to a given scope.
+     *
+     * Variables may be mutable or immutable and all keep track of each time
+     * they are assigned.
+     */
     struct Variable {
         std::string name;
 
@@ -226,14 +246,20 @@ namespace ante {
         TypedValue tval;
         unsigned int scope;
 
-        /** @brief Flag for managed pointers.  Currently unused */
-        bool noFree;
-
         /**
         * @brief Set to true if this variable is an implicit pointer.
         * Used by mutable variables.
         */
         bool autoDeref;
+
+        /**
+         * @brief The non-empty list of assignments to this variable.
+         * 
+         * The first assignment is always the declaration and
+         * if the variable is immutable the list will always be of length 1.
+         */
+        std::list<Assignment> assignments;
+
 
         llvm::Value* getVal() const{
             return tval.val;
@@ -242,20 +268,19 @@ namespace ante {
         TypeTag getType() const;
 
         /**
-        * @return True if this is a managed pointer
-        */
-        bool isFreeable() const;
-
-        /**
         * @brief Variable constructor
         *
         * @param n Name of variable
         * @param tv Value of variable
         * @param s Scope of variable
-        * @param nofr True if the variable should not be free'd
-        * @param autoDr True if the variable should be autotomatically dereferenced
+        * @param declaration The assignment expression this variable was declared in
+        * @param ismutable True if the variable's alloca should be autotomatically dereferenced
         */
-        Variable(std::string n, TypedValue tv, unsigned int s, bool nofr=true, bool autoDr=false) : name(n), tval(tv), scope(s), noFree(nofr), autoDeref(autoDr){}
+        Variable(std::string n, TypedValue tv, unsigned int s, Assignment const& declaration, bool ismutable=false)
+                : name(n), tval(tv), scope(s), autoDeref(ismutable), assignments{}{
+
+            assignments.push_back(declaration);
+        }
     };
 
 
@@ -264,6 +289,11 @@ namespace ante {
      */
     struct Module {
         std::string name;
+
+        /**
+         * @brief The abstract syntax tree representing the contents of the module.
+         */
+        std::unique_ptr<parser::RootNode> ast;
 
         /**
          * @brief Each declared function in the module
@@ -335,7 +365,6 @@ namespace ante {
         std::shared_ptr<llvm::LLVMContext> ctxt;
         std::unique_ptr<llvm::ExecutionEngine> jit;
         std::unique_ptr<llvm::Module> module;
-        std::unique_ptr<parser::RootNode> ast;
         llvm::IRBuilder<> builder;
 
         /** @brief functions and type definitions of current module */
@@ -427,6 +456,11 @@ namespace ante {
 
         /** @brief Exits a scope and performs any necessary cleanup */
         void exitScope();
+
+        /** @brief Returns a pointer to the RootNode of the current Module. */
+        parser::RootNode* getAST() const {
+            return compUnit->ast.get();
+        }
 
         /**
         * @brief Sweeps through parse tree registering all functions, type
@@ -855,6 +889,8 @@ namespace ante {
 
     /** @brief Counts the amount of Nodes in the list */
     size_t getTupleSize(parser::Node *tup);
+
+    TypedValue compileRefExpr(CompilingVisitor &cv, parser::Node *refExpr, parser::Node *assignExpr);
 
     /** @brief Create a vector with a capacity of at least cap elements. */
     template<typename T> std::vector<T> vecOf(size_t cap){

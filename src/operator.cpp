@@ -176,7 +176,8 @@ TypedValue Compiler::compExtract(TypedValue &l, TypedValue &r, BinOpNode *op){
  *  This method works on lvals and returns a void value.
  */
 TypedValue Compiler::compInsert(BinOpNode *op, Node *assignExpr){
-    auto tmp = CompilingVisitor::compile(this, op->lval);
+    CompilingVisitor cv{this};
+    auto tmp = compileRefExpr(cv, op->lval.get(), assignExpr);
 
     //if(!dynamic_cast<LoadInst*>(tmp->val))
     if(!tmp.type->hasModifier(Tok_Mut))
@@ -1021,7 +1022,7 @@ TypedValue compileAndCallAnteFunction(Compiler *c, string const& baseName,
         string const& mangledName, vector<TypedValue> const& typedArgs){
 
     auto mod_compiler = wrapFnInModule(c, baseName, mangledName, typedArgs);
-    mod_compiler->ast.release();
+    mod_compiler->compUnit->ast.release();
 
     if(!mod_compiler or mod_compiler->errFlag){
         c->errFlag = true;

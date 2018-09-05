@@ -176,7 +176,7 @@ void copyGlobals(Compiler *c, Compiler *ccpy){
 unique_ptr<Compiler> wrapFnInModule(Compiler *c, string const& baseName,
         string const& mangledName, vector<TypedValue> const& args){
 
-    unique_ptr<Compiler> ccpy{new Compiler(c, c->ast.get(), mangledName)};
+    unique_ptr<Compiler> ccpy{new Compiler(c, c->getAST(), mangledName)};
     ccpy->isJIT = true;
 
     copyDecls(c, ccpy.get());
@@ -200,7 +200,7 @@ unique_ptr<Compiler> wrapFnInModule(Compiler *c, string const& baseName,
     }else if(ccpy->getFunction(baseName, baseName)){
         return ccpy;
     }else{
-        ccpy->ast.release();
+        ccpy->compUnit->ast.release();
         c->errFlag = true;
         cout << "Throwing error in wrapFnInModule when compiling " << baseName << " : " << mangledName << '\n';
         throw new CompilationError("Error in evaluating " + baseName + ", aborting.\n");
