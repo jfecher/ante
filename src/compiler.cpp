@@ -1662,14 +1662,13 @@ Function* Compiler::createMainFn(){
     }
 
     auto main_tv = TypedValue(main, main_fn_ty);
-    auto fakeLoc = mkLoc(mkPos(0, 0, 0), mkPos(0, 0, 0));
-    auto *fakeFdn = new FuncDeclNode(fakeLoc, fnName, nullptr, nullptr, nullptr);
-    auto *main_var = new FuncDecl(fakeFdn, fnName, scope, mergedCompUnits, main_tv);
+    auto *main_var = new FuncDecl(nullptr, fnName, scope, mergedCompUnits, main_tv);
 
     //TODO: merge this code with Compiler::registerFunction
     shared_ptr<FuncDecl> fd{main_var};
-    compUnit->fnDecls[fnName].push_back(fd);
-    mergedCompUnits->fnDecls[fnName].push_back(fd);
+    string uncallable = fnName + "*";
+    compUnit->fnDecls[uncallable].push_back(fd);
+    mergedCompUnits->fnDecls[uncallable].push_back(fd);
 
     compCtxt->callStack.push_back(main_var);
     return main;
