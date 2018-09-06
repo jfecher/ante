@@ -853,12 +853,11 @@ vector<shared_ptr<FuncDecl>>& Compiler::getFunctionList(string const& name) cons
 }
 
 
-vector<AnType*> toArgTuple(AnType *ty);
 
 
 FuncDecl* Compiler::getCastFuncDecl(AnType *from_ty, AnType *to_ty){
     string fnBaseName = getCastFnBaseName(to_ty);
-    auto args = toArgTuple(from_ty);
+    auto args = toTuple(from_ty);
     return getMangledFuncDecl(fnBaseName, args);
 }
 
@@ -880,7 +879,7 @@ TypedValue Compiler::getCastFn(AnType *from_ty, AnType *to_ty, FuncDecl *fd){
         fd->objBindings.insert(fd->objBindings.end(), tc->bindings.begin(), tc->bindings.end());
 
         //must check if this function is generic first
-        auto args = toArgTuple(from_ty);
+        auto args = toTuple(from_ty);
         if(!fd->objBindings.empty()){
             //force a call to compTemplateFunction as the object itself is generic
             //and must be bound even if the function has no parameters to match.
@@ -901,7 +900,7 @@ TypedValue Compiler::getCastFn(AnType *from_ty, AnType *to_ty, FuncDecl *fd){
     }else{
         tv = fd->tv;
         if(!tv){
-            auto args = toArgTuple(from_ty);
+            auto args = toTuple(from_ty);
             tv = compFnWithArgs(this, fd, args);
         }
     }

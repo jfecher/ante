@@ -313,7 +313,7 @@ struct ReinterpretCastResult {
 };
 
 
-vector<AnType*> toArgTuple(AnType *ty){
+vector<AnType*> toTuple(AnType *ty){
     if(ty->typeTag == TT_Tuple){
         return try_cast<AnAggregateType>(ty)->extTys;
     }else if(ty->typeTag == TT_Void){
@@ -366,7 +366,7 @@ ReinterpretCastResult checkForReinterpretCast(Compiler *c, AnType *castTy, Typed
     auto *dataTy = try_cast<AnDataType>(castTy);
 
     if(dataTy){
-        auto argTup = toArgTuple(valToCast.type);
+        auto argTup = toTuple(valToCast.type);
         auto tc = c->typeEq(dataTy->extTys, argTup);
         //Given, ('t, i32) and (u32, i32), we have (bind 't to u32) but
         //we cannot bind to to, say MyType '_ so we convert 't to MyType position n
@@ -382,7 +382,7 @@ ReinterpretCastResult checkForReinterpretCast(Compiler *c, AnType *castTy, Typed
     }
 
     if(auto *valDt = try_cast<AnDataType>(valToCast.type)){
-        auto argTup = toArgTuple(castTy);
+        auto argTup = toTuple(castTy);
         auto tc = c->typeEq(valDt->extTys, argTup);
         tc->bindings = convertNominalBindingsToStructuralBindings(tc, dataTy);
 
@@ -463,7 +463,7 @@ bool preferCastOverFunction(Compiler *c, TypedValue &valToCast, ReinterpretCastR
         return true;
 
     auto *fnTy = AnFunctionType::get(c, AnType::getVoid(), fd->fdn->params.get());
-    auto args = toArgTuple(valToCast.type);
+    auto args = toTuple(valToCast.type);
 
     auto tc = c->typeEq(fnTy->extTys, args);
     return tc->matches >= res.typeCheck->matches;

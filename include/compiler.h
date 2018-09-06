@@ -902,6 +902,10 @@ namespace ante {
     /** @brief Converts the Node list argument into a vector */
     template<typename T> std::vector<T*> vectorize(T *args);
 
+    /** @brief Extract elements of an AnAggregateType to a vector, otherwise
+     * return a single element vector consisting of the type itself. */
+    std::vector<AnType*> toTuple(AnType *ty);
+
     /** @brief Extracts the type of each arg into a TypeNode vector */
     std::vector<AnType*> toTypeVector(std::vector<TypedValue> const& tvs);
 
