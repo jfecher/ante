@@ -107,7 +107,7 @@ namespace ante {
     void moveLeft(){}
 #endif
 
-    pair<unsigned int, unsigned int> getCoordOfPos(unsigned int pos, string &s){
+    pair<unsigned int, unsigned int> getCoordOfPos(unsigned int pos, string const& s){
         unsigned int lin = 0;
         unsigned int col = 0;
 
@@ -122,7 +122,7 @@ namespace ante {
         return {col, lin};
     }
 
-    vector<unsigned int> getLineLengths(string &lines){
+    vector<unsigned int> getLineLengths(string const& lines){
         vector<unsigned int> ret;
         unsigned int len = 0;
         for(auto &c : lines){
@@ -185,7 +185,7 @@ namespace ante {
 
 
 
-    void appendHistory(string &line){
+    void appendHistory(string const& line){
         if(!line.empty() && (sl_history.empty() or line != sl_history.back()))
             sl_history.push_back(line);
     }
@@ -237,7 +237,7 @@ namespace ante {
         }
     }
 
-    bool lastCharIsOpenBracket(string &line){
+    bool lastCharIsOpenBracket(string const& line){
         for(auto it = line.rbegin(); it != line.rend(); it++){
             if(*it != ' ' && *it != '\t' && *it != '\r' && *it != '\n'){
                 return *it == '{';
