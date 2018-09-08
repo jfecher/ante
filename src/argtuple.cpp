@@ -490,7 +490,7 @@ namespace ante {
     }
 
     ArgTuple::ArgTuple(Compiler *c, TypedValue const& val, unique_ptr<parser::Node> const& expr){
-        ArgTuple(c, val, expr.get());
+        *this = ArgTuple(c, val, expr.get());
     }
 
     ArgTuple::ArgTuple(Compiler *c, TypedValue const& val, parser::Node *expr)
