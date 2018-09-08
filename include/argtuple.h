@@ -1,9 +1,13 @@
 #ifndef AN_ARGTUPLE_H
 #define AN_ARGTUPLE_H
 
+#include <unordered_set>
+#include <vector>
+#include <nodevisitor.h>
+#include <llvm/ADT/StringMap.h>
 #include "typedvalue.h"
 #include "error.h"
-#include <vector>
+#include "parser.h"
 
 namespace ante {
     struct Compiler;
@@ -34,15 +38,20 @@ namespace ante {
 
             /**
              * Constructs an ArgTuple from the given TypedValue arguments.
-             *  - Assumes each Value* within each argument is a Constant*
+             * - Can throw if the given expressions aren't able to be evaluated
+             *   during compile-time (eg. are mut, loop bindings, or a parameter).
              */
-            ArgTuple(Compiler *c, std::vector<TypedValue> const& val);
+            ArgTuple(Compiler *c, std::vector<TypedValue> const& val,
+                    std::vector<std::unique_ptr<parser::Node>> const& exprs);
 
             /**
              * Constructs an ArgTuple of a single value from the given argument.
-             *  - Assumes the Value* within val is a Constant*
+             * - Can throw if the given expressions aren't able to be evaluated
+             *   during compile-time (eg. are mut, loop bindings, or a parameter).
              */
-            ArgTuple(Compiler *c, TypedValue const& val);
+            ArgTuple(Compiler *c, TypedValue const& val, std::unique_ptr<parser::Node> const& expr);
+
+            ArgTuple(Compiler *c, TypedValue const& val, parser::Node *expr);
 
             /** Construct an ArgTuple using the given pre-initialized data. */
             ArgTuple(void *d, AnType *t) : data(d), type(t){}
@@ -89,6 +98,56 @@ namespace ante {
             void printUnion(Compiler *c, std::ostream &os) const;
 
     }__attribute__((__packed__));
+
+    /**
+     * Ensures the contents of an expression is able to be evaluated
+     * during compile-time, throwing an exception if it is not.
+     *
+     * An expression is not able to be evaluated during compile-time iff:
+     * - It uses a previously-declared mut variable, that is not ante mut
+     * - It uses a previously-declared function parameter not marked ante
+     * - It uses a previously-declared loop binding not marked ante
+     */
+    struct AnteVisitor : public NodeVisitor {
+        Compiler *c;
+
+        /** Pseudo var table used for tracking which variables are declared inside and
+         * which are declared outisde the given expression. */
+        std::vector<std::unordered_set<std::string>> varTable;
+
+        /** External bindings (the minimal environment) the expression needs to run */
+        std::vector<std::pair<std::string, parser::Node*>> dependencies;
+
+        /** True if we are inside the ante expr and not backtracing a dependency */
+        bool inAnteExpr;
+
+        /** True if all identifiers should be implicitly declared (ie. in a match pattern) */
+        bool implicitDeclare;
+
+        DECLARE_NODE_VISIT_METHODS();
+
+        AnteVisitor(Compiler *cc) : c{cc}, inAnteExpr{true}, implicitDeclare{false}{
+            varTable.emplace_back();
+        }
+        AnteVisitor() = delete;
+
+        /** Throw an error if an expr is not a well-typed ante expression */
+        static void validate(Compiler *c, parser::Node *n){
+            AnteVisitor v{c};
+            n->accept(v);
+        }
+
+        bool isDeclaredInternally(std::string const& var) const;
+
+        /** Visit a declaration external to the ante expression. */
+        void visitExternalDecl(std::string const& name, parser::Node *decl);
+
+        void declare(std::string const& var);
+
+        void newScope();
+
+        void endScope();
+    };
 }
 
 #endif

@@ -8,7 +8,8 @@ namespace ante {
      * Merge the contents of rn into the current RootNode
      * of the compiler and update declarations accordingly
      */
-    TypedValue mergeAndCompile(Compiler *c, parser::RootNode *rn);
+    TypedValue mergeAndCompile(Compiler *c, parser::RootNode *rn,
+            parser::ModNode *anteExpr);
 
     /**
      * Starts the read-eval printline loop.

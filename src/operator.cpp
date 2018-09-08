@@ -473,7 +473,7 @@ bool preferCastOverFunction(Compiler *c, TypedValue &valToCast, ReinterpretCastR
 /*
  *  Creates a cast instruction appropriate for valToCast's type to castTy.
  */
-TypedValue createCast(Compiler *c, AnType *castTy, TypedValue &valToCast, LOC_TY &loc){
+TypedValue createCast(Compiler *c, AnType *castTy, TypedValue &valToCast, Node *locNode){
     //first, see if the user created their own cast function
     //
     //NOTE: using getCastFuncDecl lets us not compile the function until after
@@ -502,7 +502,12 @@ TypedValue createCast(Compiler *c, AnType *castTy, TypedValue &valToCast, LOC_TY
                     string baseName = getCastFnBaseName(castTy);
                     string mangledName = mangle(baseName, {valToCast.type});
                     vector<TypedValue> args = {valToCast};
-                    return compMetaFunctionResult(c, loc, baseName, mangledName, args);
+
+                    vector<unique_ptr<Node>> anteExpr;
+                    anteExpr.emplace_back(locNode);
+                    auto res = compMetaFunctionResult(c, locNode->loc, baseName, mangledName, args, anteExpr);
+                    anteExpr[0].release();
+                    return res;
                 }
 
                 auto *call = c->builder.CreateCall(fn.val, args);
@@ -572,7 +577,7 @@ void CompilingVisitor::visit(TypeCastNode *n){
 
     auto *ty = toAnType(c, n->typeExpr.get());
 
-    this->val = createCast(c, ty, rtval, n->loc);
+    this->val = createCast(c, ty, rtval, n);
 
     if(!val){
         c->compErr("Invalid type cast " + anTypeToColoredStr(rtval.type) +
@@ -998,60 +1003,208 @@ void createDriverFunction(Compiler *c, FuncDecl *fd, vector<TypedValue> const& t
     }
 }
 
-void p(llvm::Module *m){
-    m->print(dbgs(), nullptr);
-    puts("");
+void createDriverFunction(Compiler *c, Function *f, AnType *retTy){
+    if(f->arg_size() != 0){
+        cerr << "createDriverFunction(Compiler*, Function*, AnType*) can only be used if the function takes no arguments\n"; 
+        exit(1);
+    }
+
+    Type *voidPtrTy = Type::getInt8Ty(*c->ctxt)->getPointerTo();
+    FunctionType *fnTy = FunctionType::get(voidPtrTy, {}, false);
+
+    Function *fn = Function::Create(fnTy, Function::ExternalLinkage, "AnteCall", c->module.get());
+    BasicBlock *entry = BasicBlock::Create(*c->ctxt, "entry", fn);
+    c->builder.SetInsertPoint(entry);
+
+    Value *call = c->builder.CreateCall(f, {});
+
+    if(retTy->typeTag == TT_Void){
+        c->builder.CreateRetVoid();
+    }else{
+        auto callTv = TypedValue(call, retTy);
+
+        auto store = createMallocAndStore(c, callTv);
+        auto ret = c->builder.CreateBitCast(store.val, voidPtrTy);
+        c->builder.CreateRet(ret);
+    }
 }
 
-void p(unique_ptr<llvm::Module> &m){
-    p(m.get());
-    puts("");
+/**
+ * Creates an empty nullary function
+ */
+Function* createFunctionShell(Compiler *c){
+    auto *fnty = FunctionType::get(Type::getVoidTy(*c->ctxt), {}, false);
+    llvm::Function *f = Function::Create(fnty, Function::LinkageTypes::PrivateLinkage, "EmptyShell", c->module.get());
+    BasicBlock::Create(*c->ctxt, "entry", f);
+    return f;
 }
 
-void p(Value *v){
-    v->print(dbgs());
-    puts("");
+
+/**
+ * TODO: should fail when tracing mutable variables with stores
+ *       that are dependent on previous stores, eg.
+ *
+ *  mut a = 1
+ *  a += 2
+ *  ante a    => gives dependency {a = a + 2} but not previous assignment of a
+ *
+ *  also fails to remember a var is mutable
+ */
+vector<pair<string, Node*>> traceDependenciesOfAnteExpr(Compiler *c, Node *anteExpr){
+    vector<Node*> deps;
+
+    AnteVisitor a{c};
+    anteExpr->accept(a);
+
+    return a.dependencies;
 }
 
-void p(Type *t){
-    t->print(dbgs());
-    puts("");
+
+void insertDependencies(CompilingVisitor &cv, Function *f,
+        vector<pair<string, Node*>> const& deps){
+
+    BasicBlock *oldBlock = cv.c->builder.GetInsertBlock();
+    cv.c->builder.SetInsertPoint(&f->getBasicBlockList().back());
+
+    //compile a let-binding for each dependency
+    for(auto [name, expr] : deps){
+        Compiler *c = cv.c;
+        TypedValue val = CompilingVisitor::compile(c, expr);
+        if(val.type->typeTag == TT_Void)
+            c->compErr("Cannot assign a "+anTypeToColoredStr(AnType::getVoid())+
+                    " value to a variable", expr->loc);
+
+        Assignment assignment{Assignment::Normal, expr};
+        c->stoVar(name, new Variable(name, val, c->scope, assignment, false));
+        cv.val = val;
+    }
+
+    cv.c->builder.SetInsertPoint(oldBlock);
+}
+
+
+pair<Function*, AnType*> compileTheFunction(CompilingVisitor &cv, Function *f, Node *expr){
+    BasicBlock *oldBlock = cv.c->builder.GetInsertBlock();
+    cv.c->builder.SetInsertPoint(&f->getBasicBlockList().back());
+
+    expr->accept(cv);
+
+    if(!dyn_cast<ReturnInst>(cv.val.val)){
+        if(cv.val.type->typeTag == TT_Void)
+            cv.c->builder.CreateRetVoid();
+        else
+            cv.c->builder.CreateRet(cv.val.val);
+    }
+
+    auto *fnty = FunctionType::get(cv.c->anTypeToLlvmType(cv.val.type), {}, false);
+    llvm::Function *fFinal = Function::Create(fnty, Function::LinkageTypes::PrivateLinkage, "Shell", cv.c->module.get());
+    moveFunctionBody(f, fFinal);
+    f->eraseFromParent();
+
+    cv.c->builder.SetInsertPoint(oldBlock);
+    return {fFinal, cv.val.type};
+}
+
+
+TypedValue compileAndCallAnteFunction(Compiler *c, ModNode *n){
+    CompilingVisitor cv{c};
+
+    //and will crash llvm if we try to clone it without a ReturnInst
+    auto mainFnName = c->compCtxt->callStack[0]->mangledName;
+    auto main = c->module->getFunction(mainFnName);
+    if(main){
+        main->removeFromParent();
+    }
+
+    auto originalInsertPoint = c->builder.GetInsertBlock();
+
+    //compile ante function and a driver to run it
+    auto oldVal = c->isJIT;
+    c->isJIT = true;
+    c->enterNewScope();
+    auto shell = createFunctionShell(c);
+    auto deps = traceDependenciesOfAnteExpr(c, n->expr.get());
+    insertDependencies(cv, shell, deps);
+    auto shellAndType = compileTheFunction(cv, shell, n->expr.get());
+    c->exitScope();
+    c->isJIT = oldVal;
+
+    auto shellName = shellAndType.first->getName();
+
+    createDriverFunction(c, shellAndType.first, shellAndType.second);
+
+    //clone and swap module
+    c->module->print(dbgs(), nullptr);
+    auto clone = llvm::CloneModule(c->module.get());
+
+    JIT* jit = new JIT();
+    jit->addModule(move(clone));
+
+    //restore original module before evaluating the function
+    if(main){
+        c->module->getFunctionList().push_front(main);
+    }
+
+    //erase generated functions
+    c->module->getFunction(shellName)->eraseFromParent();
+    c->module->getFunction("AnteCall")->eraseFromParent();
+    c->builder.SetInsertPoint(originalInsertPoint);
+
+    auto fn = (void*(*)())jit->getSymbolAddress("AnteCall");
+    if(fn){
+        auto res = fn();
+        return ArgTuple(res, shellAndType.second).asTypedValue(c);
+    }else{
+        cerr << "(null)" << endl;
+        return c->getVoidLiteral();
+    }
 }
 
 TypedValue compileAndCallAnteFunction(Compiler *c, string const& baseName,
-        string const& mangledName, vector<TypedValue> const& typedArgs){
+        string const& mangledName, vector<TypedValue> const& typedArgs,
+        vector<unique_ptr<Node>> const& argExprs){
 
-    auto mod_compiler = wrapFnInModule(c, baseName, mangledName, typedArgs);
-    mod_compiler->compUnit->ast.release();
-
-    if(!mod_compiler or mod_compiler->errFlag){
-        c->errFlag = true;
-        cerr << "Error 1 encountered while JITing " << baseName << ", aborting.\n";
-        throw new CtError();
+    //temporarily remove main function since it is unfinished
+    //and will crash llvm if we try to clone it without a ReturnInst
+    auto mainFnName = c->compCtxt->callStack[0]->mangledName;
+    auto f = c->module->getFunction(mainFnName);
+    if(f){
+        f->removeFromParent();
     }
 
-    auto *fd = mod_compiler->getFuncDecl(baseName, mangledName);
+    //clone and swap module
+    auto originalInsertPoint = c->builder.GetInsertBlock();
+    auto original = c->module.release();
+    auto clone = llvm::CloneModule(original);
+    c->module.swap(clone);
 
-    //error here!
-    if(!fd) fd = mod_compiler->getFuncDecl(baseName, baseName);
+    //compile ante function and a driver to run it
+    auto oldVal = c->isJIT;
+    c->isJIT = true;
+    auto *fd = c->getFuncDecl(baseName, mangledName);
+    auto argTys = toTypeVector(typedArgs);
+    compFnWithArgs(c, fd, argTys);
+    c->isJIT = oldVal;
 
-    if(!fd){
-        c->errFlag = true;
-        cerr << "Error 2 encountered while getting JITed FuncDecl of " << baseName << ", aborting.\n";
-        throw new CtError();
-    }
-
-    createDriverFunction(mod_compiler.get(), fd, typedArgs);
+    createDriverFunction(c, fd, typedArgs);
     std::error_code ec;
 
     JIT* jit = new JIT();
-    jit->addModule(move(mod_compiler->module));
+    jit->addModule(move(c->module));
+
+    //restore original module before evaluating the function
+    c->module.reset(original);
+    if(f){
+        c->module->getFunctionList().push_front(f);
+    }
+    c->builder.SetInsertPoint(originalInsertPoint);
 
     auto fn = (void*(*)(void*))jit->getSymbolAddress("AnteCall");
     if(fn){
-        auto arg = ArgTuple(c, typedArgs);
+        auto arg = ArgTuple(c, typedArgs, argExprs);
 
         auto res = fn(arg.asRawData());
+
         auto *retTy = fd->tv.type->getFunctionReturnType();
         return ArgTuple(res, retTy).asTypedValue(c);
     }else{
@@ -1070,27 +1223,29 @@ TypedValue compileAndCallAnteFunction(Compiler *c, string const& baseName,
  *  - Assumes arguments are already type-checked
  */
 TypedValue compMetaFunctionResult(Compiler *c, LOC_TY const& loc, string const& baseName,
-        string const& mangledName, vector<TypedValue> const& ta){
+        string const& mangledName, vector<TypedValue> const& ta, vector<unique_ptr<Node>> const& argExprs){
 
     capi::CtFunc* fn = capi::lookup(baseName);
 
     //fn not found, this is a user-defined ante function
     if(!fn)
-        return compileAndCallAnteFunction(c, baseName, mangledName, ta);
+        return compileAndCallAnteFunction(c, baseName, mangledName, ta, argExprs);
 
     if(ta.size() != fn->params.size())
         return c->compErr("Called function was given " + to_string(ta.size()) +
                 " argument(s) but was declared to take " + to_string(fn->params.size()), loc);
 
+    using A = ArgTuple;
+
     TypedValue *res;
     switch(fn->params.size()){
         case 0: res = (*fn)(c); break;
-        case 1: res = (*fn)(c, ArgTuple(c, ta[0])); break;
-        case 2: res = (*fn)(c, ArgTuple(c, ta[0]), ArgTuple(c, ta[1])); break;
-        case 3: res = (*fn)(c, ArgTuple(c, ta[0]), ArgTuple(c, ta[1]), ArgTuple(c, ta[2])); break;
-        case 4: res = (*fn)(c, ArgTuple(c, ta[0]), ArgTuple(c, ta[1]), ArgTuple(c, ta[2]), ArgTuple(c, ta[3])); break;
-        case 5: res = (*fn)(c, ArgTuple(c, ta[0]), ArgTuple(c, ta[1]), ArgTuple(c, ta[2]), ArgTuple(c, ta[3]), ArgTuple(c, ta[4])); break;
-        case 6: res = (*fn)(c, ArgTuple(c, ta[0]), ArgTuple(c, ta[1]), ArgTuple(c, ta[2]), ArgTuple(c, ta[3]), ArgTuple(c, ta[4]), ArgTuple(c, ta[5])); break;
+        case 1: res = (*fn)(c, A(c, ta[0], argExprs[0])); break;
+        case 2: res = (*fn)(c, A(c, ta[0], argExprs[0]), A(c, ta[1], argExprs[1])); break;
+        case 3: res = (*fn)(c, A(c, ta[0], argExprs[0]), A(c, ta[1], argExprs[1]), A(c, ta[2], argExprs[2])); break;
+        case 4: res = (*fn)(c, A(c, ta[0], argExprs[0]), A(c, ta[1], argExprs[1]), A(c, ta[2], argExprs[2]), A(c, ta[3], argExprs[3])); break;
+        case 5: res = (*fn)(c, A(c, ta[0], argExprs[0]), A(c, ta[1], argExprs[1]), A(c, ta[2], argExprs[2]), A(c, ta[3], argExprs[3]), A(c, ta[4], argExprs[4])); break;
+        case 6: res = (*fn)(c, A(c, ta[0], argExprs[0]), A(c, ta[1], argExprs[1]), A(c, ta[2], argExprs[2]), A(c, ta[3], argExprs[3]), A(c, ta[4], argExprs[4]), A(c, ta[5], argExprs[5])); break;
         default:
             cerr << "CtFuncs with more than 6 parameters are unimplemented." << endl;
             return {};
@@ -1448,7 +1603,15 @@ TypedValue compFnCall(Compiler *c, Node *l, Node *r){
             string baseName = getName(l);
             auto *fnty = try_cast<AnFunctionType>(tvf.type);
             string mangledName = mangle(baseName, fnty->extTys);
-            return compMetaFunctionResult(c, l->loc, baseName, mangledName, typedArgs);
+            if(auto *tup = dynamic_cast<TupleNode*>(r)){
+                return compMetaFunctionResult(c, l->loc, baseName, mangledName, typedArgs, tup->exprs);
+            }else{
+                vector<unique_ptr<Node>> anteExpr;
+                anteExpr.emplace_back(r);
+                auto res = compMetaFunctionResult(c, l->loc, baseName, mangledName, typedArgs, {anteExpr});
+                anteExpr[0].release();
+                return res;
+            }
         }
     }
 
@@ -1705,7 +1868,7 @@ void CompilingVisitor::visit(BinOpNode *n){
         auto ltval = this->val;
         auto *ty = toAnType(c, (TypeNode*)n->rval.get());
 
-        this->val = createCast(c, ty, ltval, n->loc);
+        this->val = createCast(c, ty, ltval, n);
 
         if(!val){
             c->compErr("Invalid type cast " + anTypeToColoredStr(ltval.type) +

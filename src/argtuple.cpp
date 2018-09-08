@@ -452,8 +452,13 @@ namespace ante {
     *  Converts a TypedValue to an llvm GenericValue
     *  - Assumes the Value* within the TypedValue is a Constant*
     */
-    ArgTuple::ArgTuple(Compiler *c, vector<TypedValue> const& tvals)
+    ArgTuple::ArgTuple(Compiler *c, vector<TypedValue> const& tvals,
+            vector<unique_ptr<parser::Node>> const& exprs)
             : data(nullptr){
+
+        for(auto &n : exprs){
+            AnteVisitor::validate(c, n.get());
+        }
 
         size_t size = 0;
         for(auto &tv : tvals){
@@ -484,9 +489,14 @@ namespace ante {
         }
     }
 
+    ArgTuple::ArgTuple(Compiler *c, TypedValue const& val, unique_ptr<parser::Node> const& expr){
+        ArgTuple(c, val, expr.get());
+    }
 
-    ArgTuple::ArgTuple(Compiler *c, TypedValue const& val)
+    ArgTuple::ArgTuple(Compiler *c, TypedValue const& val, parser::Node *expr)
             : data(nullptr), type(val.type){
+
+        AnteVisitor::validate(c, expr);
 
         if(val.type->hasModifier(Tok_Mut)){
             allocAndStoreValue(c, findLastStore(c, val));

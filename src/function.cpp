@@ -194,6 +194,13 @@ LOC_TY getFinalLoc(Node *n){
 }
 
 
+//swap the bodies of the two functions and delete the former.
+void moveFunctionBody(Function *src, Function *dest){
+    dest->getBasicBlockList().splice(dest->begin(), src->getBasicBlockList());
+    src->getBasicBlockList().clearAndLeakNodesUnsafely();
+}
+
+
 TypedValue Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
     auto *fdn = fd->fdn;
     FunctionType *preFnTy = FunctionType::get(Type::getVoidTy(*ctxt), paramTys, fdn->varargs);
@@ -290,10 +297,8 @@ TypedValue Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
     //now that we have the real function, replace the old one with it
     auto *newFnTyn = AnFunctionType::get(retTy, paramAnTys);
 
-    //finally, swap the bodies of the two functions and delete the former.
-    //f->getBasicBlockList().push_back(&preFn->getBasicBlockList().front());
-    f->getBasicBlockList().splice(f->begin(), preFn->getBasicBlockList());
-    preFn->getBasicBlockList().clearAndLeakNodesUnsafely();
+    //move contents of preFn to f
+    moveFunctionBody(preFn, f);
 
     //swap all instances of preFn's parameters with f's parameters
     i = 0;
@@ -941,7 +946,7 @@ void Compiler::registerFunction(FuncDeclNode *fn, string &mangledName){
         Value *fd_val = builder.getInt64((unsigned long)fdRaw);
         vector<TypedValue> args;
         args.emplace_back(fd_val, AnDataType::get("FuncDecl"));
-        compMetaFunctionResult(this, hook->fdn->loc, hook->getName(), hook->mangledName, args);
+        compMetaFunctionResult(this, hook->fdn->loc, hook->getName(), hook->mangledName, args, {});
     }
 
     //for(auto *mod : *fn->modifiers){

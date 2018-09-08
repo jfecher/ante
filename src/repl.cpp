@@ -398,9 +398,9 @@ namespace ante {
     /**
      * Output a value from the REPL by using its print function if found.
      */
-    void output(Compiler *c, TypedValue &tv){
+    void output(Compiler *c, TypedValue &tv, parser::Node *expr){
         try {
-            ArgTuple arg{c, tv};
+            ArgTuple arg{c, tv, expr};
             Ante_debug(c, arg);
         }catch(ante::CompilationError *err){
             cout << err->msg << endl;
@@ -428,16 +428,27 @@ namespace ante {
                 continue;
             }
 
+            c->isJIT = true;
+
+            LOC_TY loc;
+            ModNode *expr = new ModNode(loc, Tok_Ante, nullptr);
             if(flag == PE_OK){
-                RootNode *expr = parser::getRootNode();
+                RootNode *root = parser::getRootNode();
+                expr->expr.release();
+                expr->expr.reset(root);
 
                 //Compile each expression and hold onto the last value
-                TypedValue val = c->getAST() ? mergeAndCompile(c, expr)
-                               : (c->compUnit->ast.reset(expr), CompilingVisitor::compile(c, expr));
+                TypedValue val;
+                if(c->getAST()){
+                    val = mergeAndCompile(c, root, expr);
+                }else{
+                    c->compUnit->ast.reset(root);
+                    val = CompilingVisitor::compile(c, expr);
+                }
 
                 //print val if it's not an error
                 if(!!val and val.type->typeTag != TT_Void)
-                    output(c, val);
+                    output(c, val, c->getAST());
             }
 
             cmd = getInputColorized();
@@ -446,35 +457,31 @@ namespace ante {
         resetTerm();
     }
 
-    TypedValue mergeAndCompile(Compiler *c, RootNode *rn){
+    TypedValue mergeAndCompile(Compiler *c, RootNode *rn, ModNode *anteExpr){
+        auto ret = safeCompile(c, anteExpr);
+
         scanImports(c, rn);
         move(rn->imports.begin(),
             next(rn->imports.begin(), rn->imports.size()),
             back_inserter(c->getAST()->imports));
 
         for(auto &t : rn->types){
-            safeCompile(c, t);
             c->getAST()->types.emplace_back(move(t));
         }
 
         for(auto &t : rn->traits){
-            safeCompile(c, t);
             c->getAST()->traits.emplace_back(move(t));
         }
 
         for(auto &t : rn->extensions){
-            safeCompile(c, t);
             c->getAST()->extensions.emplace_back(move(t));
         }
 
         for(auto &t : rn->funcs){
-            safeCompile(c, t);
             c->getAST()->funcs.emplace_back(move(t));
         }
 
-        TypedValue ret;
         for(auto &e : rn->main){
-            ret = safeCompile(c, e);
             c->getAST()->main.emplace_back(move(e));
         }
         return ret;

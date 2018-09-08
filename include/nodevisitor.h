@@ -104,7 +104,7 @@ namespace ante {
     void visit(parser::IfNode*);           \
     void visit(parser::FuncDeclNode*);     \
     void visit(parser::DataDeclNode*);     \
-    void visit(parser::TraitNode*);
+    void visit(parser::TraitNode*)
 }
 
 #endif

@@ -15,6 +15,8 @@ namespace ante {
 
     llvm::Type* parameterize(Compiler *c, AnType *t);
     bool implicitPassByRef(AnType* t);
+
+    void moveFunctionBody(llvm::Function *src, llvm::Function *dest);
 }
 
 #endif

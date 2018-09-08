@@ -21,6 +21,7 @@
 
 #include "parser.h"
 #include "compiler.h"
+#include "function.h"
 #include "types.h"
 #include "repl.h"
 #include "target.h"
@@ -809,10 +810,13 @@ void compLetBinding(VarAssignNode *node, CompilingVisitor &cv){
 
 
 void CompilingVisitor::visit(ModNode *n){
-    cerr << "Warning: " << Lexer::getTokStr(n->mod) << " unimplemented in expr:\n";
-    PrintingVisitor::print(n);
-    n->expr->accept(*this);
-    return;
+    if(n->mod == Tok_Ante){
+        val = compileAndCallAnteFunction(c, n);
+    }else{
+        cerr << "Warning: " << Lexer::getTokStr(n->mod) << " unimplemented in expr:\n";
+        PrintingVisitor::print(n);
+        n->expr->accept(*this);
+    }
 }
 
 

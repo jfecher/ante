@@ -44,7 +44,7 @@ namespace ante {
             return v.val;
         }
 
-        DECLARE_NODE_VISIT_METHODS()
+        DECLARE_NODE_VISIT_METHODS();
     };
 
     struct PrintingVisitor : public NodeVisitor {
@@ -61,7 +61,7 @@ namespace ante {
             n->accept(v);
         }
 
-        DECLARE_NODE_VISIT_METHODS()
+        DECLARE_NODE_VISIT_METHODS();
     };
 
 
@@ -834,7 +834,8 @@ namespace ante {
     *  - Assumes arguments are already type-checked
     */
     TypedValue compMetaFunctionResult(Compiler *c, LOC_TY const& loc, std::string const& baseName,
-            std::string const& mangledName, std::vector<TypedValue> const& typedArgs);
+            std::string const& mangledName, std::vector<TypedValue> const& typedArgs,
+            std::vector<std::unique_ptr<parser::Node>> const& argExprs);
 
     /**
      *  Search for a given function specified by the expression l.
@@ -852,7 +853,16 @@ namespace ante {
      * This function will throw a CompilationError* on error
      */
     TypedValue compileAndCallAnteFunction(Compiler *c, std::string const& baseName,
-        std::string const& mangledName, std::vector<TypedValue> const& typedArgs);
+        std::string const& mangledName, std::vector<TypedValue> const& typedArgs,
+        std::vector<std::unique_ptr<parser::Node>> const& argExprs);
+
+    /**
+     * Compile and call an ante expression from its node in the AST.
+     *
+     * The result of the call will be translated into a TypedValue.
+     * This function will throw a CompilationError* on error
+     */
+    TypedValue compileAndCallAnteFunction(Compiler *c, parser::ModNode *n);
 
     /**
     * @brief Compiles all top-level import expressions
