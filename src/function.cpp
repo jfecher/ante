@@ -378,13 +378,15 @@ TypedValue compFnWithModifiers(Compiler *c, FuncDecl *fd, ModNode *mod){
         if(mod->mod == Tok_Ante){
             if(c->isJIT){
                 if(capi::lookup(fd->getName())){
-                    fn = c->compFn(fd);
+                    fn = fd->tv.val ? fd->tv : c->compFn(fd);
                     //Tag as TT_MetaFunction
                     auto *oldTy = try_cast<AnFunctionType>(fn.type);
                     fn.type = AnFunctionType::get(oldTy->retTy, oldTy->extTys, true);
                     fd->tv = fn;
                 }else{
                     fn = c->compFn(fd);
+                    fn.type = (AnType*)fn.type->addModifier(Tok_Ante);
+                    fd->tv.type = fn.type;
                 }
             }else{
                 auto *rettn = (TypeNode*)fd->fdn->type.get();
@@ -396,6 +398,7 @@ TypedValue compFnWithModifiers(Compiler *c, FuncDecl *fd, ModNode *mod){
                     fnty = (AnType*)fnty->addModifier(Tok_Ante);
                 }
                 fn = TypedValue(nullptr, fnty);
+                fd->tv.type = fnty;
             }
         }else{
             fn = c->compFn(fd);
@@ -559,7 +562,7 @@ TypedValue compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, vector
     //    return fd->getOrCompileFn(c);
 
     //test if bound variant is already compiled
-    string mangled = fd->isDecl() ? fd->getName() : mangle(fd, args);
+    string mangled = mangle(fd, args);
 
     FuncDecl* fdRedef;
     if((fdRedef = c->getFuncDecl(fd->getName(), mangled))){
@@ -699,10 +702,8 @@ FuncDecl* Compiler::getCurrentFunction() const{
 void Compiler::updateFn(TypedValue &f, FuncDecl *fd, string &name, string &mangledName){
     auto &list = mergedCompUnits->fnDecls[name];
     auto *vec_fd = getFuncDeclFromVec(list, mangledName);
-    if(vec_fd){
-        vec_fd->tv = f;
-    }else{
-        fd->tv = f;
+    fd->tv = f;
+    if(!vec_fd){
         list.push_back(shared_ptr<FuncDecl>(fd));
     }
 }
@@ -838,7 +839,7 @@ TypedValue compFnWithArgs(Compiler *c, FuncDecl *fd, vector<AnType*> args){
         return compTemplateFn(c, fd, tc, args);
     else if(!tc) //tc->res == TypeCheckResult::Failure
         return {};
-    else if(fd->tv)
+    else if(fd->tv.val)
         return fd->tv;
     else
         return c->compFn(fd);

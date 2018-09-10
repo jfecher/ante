@@ -1165,16 +1165,12 @@ TypedValue compileAndCallAnteFunction(Compiler *c, string const& baseName,
     //temporarily remove main function since it is unfinished
     //and will crash llvm if we try to clone it without a ReturnInst
     auto mainFnName = c->compCtxt->callStack[0]->mangledName;
-    auto f = c->module->getFunction(mainFnName);
-    if(f){
-        f->removeFromParent();
+    auto main = c->module->getFunction(mainFnName);
+    if(main){
+        main->removeFromParent();
     }
 
-    //clone and swap module
     auto originalInsertPoint = c->builder.GetInsertBlock();
-    auto original = c->module.release();
-    auto clone = llvm::CloneModule(original);
-    c->module.swap(clone);
 
     //compile ante function and a driver to run it
     auto oldVal = c->isJIT;

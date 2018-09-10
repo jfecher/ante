@@ -756,6 +756,9 @@ void compMutBinding(VarAssignNode *node, CompilingVisitor &cv){
         if(m == Tok_Global) isGlobal = true;
     }
 
+    if(cv.c->isJIT)
+        val.type = (AnType*)val.type->addModifier(Tok_Ante);
+
     //set the value as mutable if not already.
     val.type = (AnType*)val.type->addModifier(Tok_Mut);
 
@@ -791,6 +794,9 @@ void compLetBinding(VarAssignNode *node, CompilingVisitor &cv){
         val.type = (AnType*)val.type->addModifier(m);
         if(m == Tok_Global) isGlobal = true;
     }
+
+    if(cv.c->isJIT)
+        val.type = (AnType*)val.type->addModifier(Tok_Ante);
 
     Assignment assignment{Assignment::Normal, node->expr.get()};
 
@@ -1013,6 +1019,9 @@ string mangle(string const& base, vector<AnType*> const& params){
 }
 
 string mangle(FuncDecl *fd, vector<AnType*> const& params){
+    if(fd->isDecl())
+        return fd->getName();
+
     string name = fd->fdn->name;
     for(auto *tv : params)
         if(tv->typeTag != TT_Void)
@@ -1934,10 +1943,14 @@ void TypedValue::dump() const{
             cout << endl;
         }
     }else if(type->typeTag == TT_MetaFunction){
-        cout << "(ante function)\n";
+        cout << "(compiler API function)\n";
     }else{
-        val->print(llvm::dbgs(), false);
-        llvm::dbgs() << '\n';
+        if(val){
+            val->print(llvm::dbgs(), false);
+            llvm::dbgs() << '\n';
+        }else{
+            cout << "(null)\n";
+        }
     }
 }
 
