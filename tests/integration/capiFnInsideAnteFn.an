@@ -3,10 +3,10 @@ ante fun get_val :=
     Ante.debug "test"
     3
 
-let v = get_val()
+let v = get_val ()
 Ante.debug v
 
-let q = get_val()
+let q = get_val ()
 Ante.debug q
 
 print q

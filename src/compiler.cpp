@@ -746,7 +746,7 @@ void compMutBinding(VarAssignNode *node, CompilingVisitor &cv){
     node->expr->accept(cv);
     TypedValue &val = cv.val;
     if(val.type->typeTag == TT_Void)
-        c->compErr("Cannot assign a "+anTypeToColoredStr(AnType::getVoid())+
+        c->compErr("Cannot assign a " + anTypeToColoredStr(AnType::getVoid()) +
                 " value to a variable", node->expr->loc);
 
     bool isGlobal = false;

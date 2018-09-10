@@ -1071,7 +1071,7 @@ void insertDependencies(CompilingVisitor &cv, Function *f,
         Compiler *c = cv.c;
         TypedValue val = CompilingVisitor::compile(c, expr);
         if(val.type->typeTag == TT_Void)
-            c->compErr("Cannot assign a "+anTypeToColoredStr(AnType::getVoid())+
+            c->compErr("Cannot assign a " + anTypeToColoredStr(AnType::getVoid()) +
                     " value to a variable", expr->loc);
 
         Assignment assignment{Assignment::Normal, expr};
@@ -1133,8 +1133,6 @@ TypedValue compileAndCallAnteFunction(Compiler *c, ModNode *n){
 
     createDriverFunction(c, shellAndType.first, shellAndType.second);
 
-    //clone and swap module
-    c->module->print(dbgs(), nullptr);
     auto clone = llvm::CloneModule(c->module.get());
 
     JIT* jit = new JIT();
@@ -1189,22 +1187,24 @@ TypedValue compileAndCallAnteFunction(Compiler *c, string const& baseName,
     createDriverFunction(c, fd, typedArgs);
     std::error_code ec;
 
+    auto clone = llvm::CloneModule(c->module.get());
+
     JIT* jit = new JIT();
-    jit->addModule(move(c->module));
+    jit->addModule(move(clone));
 
     //restore original module before evaluating the function
-    c->module.reset(original);
-    if(f){
-        c->module->getFunctionList().push_front(f);
+    if(main){
+        c->module->getFunctionList().push_front(main);
     }
+
+    //erase generated functions
+    c->module->getFunction("AnteCall")->eraseFromParent();
     c->builder.SetInsertPoint(originalInsertPoint);
 
     auto fn = (void*(*)(void*))jit->getSymbolAddress("AnteCall");
     if(fn){
         auto arg = ArgTuple(c, typedArgs, argExprs);
-
         auto res = fn(arg.asRawData());
-
         auto *retTy = fd->tv.type->getFunctionReturnType();
         return ArgTuple(res, retTy).asTypedValue(c);
     }else{
@@ -1228,8 +1228,9 @@ TypedValue compMetaFunctionResult(Compiler *c, LOC_TY const& loc, string const& 
     capi::CtFunc* fn = capi::lookup(baseName);
 
     //fn not found, this is a user-defined ante function
-    if(!fn)
+    if(!fn){
         return compileAndCallAnteFunction(c, baseName, mangledName, ta, argExprs);
+    }
 
     if(ta.size() != fn->params.size())
         return c->compErr("Called function was given " + to_string(ta.size()) +
