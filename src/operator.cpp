@@ -1126,12 +1126,10 @@ TypedValue compileAndCallAnteFunction(Compiler *c, ModNode *n){
     //compile ante function and a driver to run it
     auto oldVal = c->isJIT;
     c->isJIT = true;
-    c->enterNewScope();
     auto shell = createFunctionShell(c);
     auto deps = traceDependenciesOfAnteExpr(c, n->expr.get());
     insertDependencies(cv, shell, deps);
     auto shellAndType = compileTheFunction(cv, shell, n->expr.get());
-    c->exitScope();
     c->isJIT = oldVal;
 
     auto shellName = shellAndType.first->getName();
