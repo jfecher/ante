@@ -1089,6 +1089,11 @@ pair<Function*, AnType*> compileTheFunction(CompilingVisitor &cv, Function *f, N
 
     expr->accept(cv);
 
+    // error in repl, caught by RootNode but must be handled again
+    if(!cv.val.val){
+        cv.val = cv.c->getVoidLiteral();
+    }
+
     if(!dyn_cast<ReturnInst>(cv.val.val)){
         if(cv.val.type->typeTag == TT_Void)
             cv.c->builder.CreateRetVoid();
