@@ -2,7 +2,7 @@
 #define AN_COMPAPI_H
 
 #include "compiler.h"
-#include "argtuple.h"
+#include "antevalue.h"
 
 namespace ante {
     // namespace for compiler-api handling functions.
@@ -28,7 +28,7 @@ namespace ante {
 
             ~CtFunc(){}
 
-            using Arg = ArgTuple const&;
+            using Arg = AnteValue const&;
 
             TypedValue* operator()(Compiler *c);
             TypedValue* operator()(Compiler *c, Arg tv);

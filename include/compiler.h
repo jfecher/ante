@@ -19,7 +19,7 @@
 #include "lazystr.h"
 #include "typebinding.h"
 #include "antype.h"
-#include "argtuple.h"
+#include "antevalue.h"
 #include "typedvalue.h"
 
 #define AN_MANGLED_SELF "_$self$"
@@ -348,7 +348,7 @@ namespace ante {
      */
     struct CompilerCtCtxt {
         /** @brief Compile-time values stored using Ante.ctStore  */
-        llvm::StringMap<ArgTuple> ctStores;
+        llvm::StringMap<AnteValue> ctStores;
 
         /** @brief functions to run whenever a function is declared. */
         std::vector<std::shared_ptr<FuncDecl>> on_fn_decl_hook;

@@ -1,5 +1,5 @@
 #include "types.h"
-#include "argtuple.h"
+#include "antevalue.h"
 #include "compapi.h"
 
 using namespace std;
@@ -23,12 +23,12 @@ extern "C" {
 
     /** All compiler api functions must return a pointer to some
      * value, so void-returning functions return a nullptr */
-    void* Ante_debug(Compiler *c, ArgTuple &tv){
+    void* Ante_debug(Compiler *c, AnteValue &tv){
         tv.print(c);
         return nullptr;
     }
 
-    void* Ante_error(Compiler *c, ArgTuple &msg){
+    void* Ante_error(Compiler *c, AnteValue &msg){
         auto *cstrTy = AnPtrType::get(AnType::getPrimitive(TT_C8));
         if(!c->typeEq(msg.getType(), cstrTy)){
             throw new CompilationError("First argument of Ante.store must be of type " +
@@ -42,7 +42,7 @@ extern "C" {
         return nullptr;
     }
 
-    TypedValue* FuncDecl_getName(Compiler *c, ArgTuple &fd){
+    TypedValue* FuncDecl_getName(Compiler *c, AnteValue &fd){
         FuncDecl *f = fd.castTo<FuncDecl*>();
         string &n = f->getName();
 
@@ -52,7 +52,7 @@ extern "C" {
         return new TypedValue(CompilingVisitor::compile(c, strlit));
     }
 
-    TypedValue* Ante_sizeof(Compiler *c, ArgTuple &tv){
+    TypedValue* Ante_sizeof(Compiler *c, AnteValue &tv){
         auto size = tv.getType()->typeTag == TT_Type
                     ? tv.castTo<AnType*>()->getSizeInBits(c)
                     : tv.getType()->getSizeInBits(c);
@@ -66,12 +66,12 @@ extern "C" {
         return new TypedValue(sizeVal, AnType::getUsz());
     }
 
-    TypedValue* Ante_typeof(Compiler *c, ArgTuple &val){
+    TypedValue* Ante_typeof(Compiler *c, AnteValue &val){
         Value *addr = c->builder.getInt64((unsigned long) val.getType());
         return new TypedValue(addr, BasicModifier::get(AnType::getPrimitive(TT_Type), Tok_Ante));
     }
 
-    void* Ante_store(Compiler *c, ArgTuple &name, ArgTuple &gv){
+    void* Ante_store(Compiler *c, AnteValue &name, AnteValue &gv){
         auto *cstrTy = AnPtrType::get(AnType::getPrimitive(TT_C8));
         if(!c->typeEq(name.getType(), cstrTy)){
             throw new CompilationError("First argument of Ante.store must be of type " +
@@ -82,7 +82,7 @@ extern "C" {
         return nullptr;
     }
 
-    TypedValue* Ante_lookup(Compiler *c, ArgTuple &name){
+    TypedValue* Ante_lookup(Compiler *c, AnteValue &name){
         auto *cstrTy = AnPtrType::get(AnType::getPrimitive(TT_C8));
         if(!c->typeEq(name.getType(), cstrTy)){
             throw new CompilationError("Argument of Ante.lookup must be of type " +
@@ -99,7 +99,7 @@ extern "C" {
         }
     }
 
-    TypedValue* Ante_eval(Compiler *c, ArgTuple &evalArg){
+    TypedValue* Ante_eval(Compiler *c, AnteValue &evalArg){
         auto *cstrTy = AnPtrType::get(AnType::getPrimitive(TT_C8));
         if(!c->typeEq(evalArg.getType(), cstrTy)){
             throw new CompilationError("Argument of Ante.eval must be of type " +
@@ -145,7 +145,7 @@ extern "C" {
         return nullptr;
     }
 
-    void* Ante_forget(Compiler *c, ArgTuple &name){
+    void* Ante_forget(Compiler *c, AnteValue &name){
         auto *cstrTy = AnPtrType::get(AnType::getPrimitive(TT_C8));
         if(!c->typeEq(name.getType(), cstrTy)){
             throw new CompilationError("Argument of Ante.forget must be of type " +

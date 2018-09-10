@@ -7,7 +7,7 @@
 #include "jitlinker.h"
 #include "types.h"
 #include "jit.h"
-#include "argtuple.h"
+#include "antevalue.h"
 #include "compapi.h"
 
 using namespace std;
@@ -1154,7 +1154,7 @@ TypedValue compileAndCallAnteFunction(Compiler *c, ModNode *n){
     auto fn = (void*(*)())jit->getSymbolAddress("AnteCall");
     if(fn){
         auto res = fn();
-        return ArgTuple(res, shellAndType.second).asTypedValue(c);
+        return AnteValue(res, shellAndType.second).asTypedValue(c);
     }else{
         cerr << "(null)" << endl;
         return c->getVoidLiteral();
@@ -1202,10 +1202,10 @@ TypedValue compileAndCallAnteFunction(Compiler *c, string const& baseName,
 
     auto fn = (void*(*)(void*))jit->getSymbolAddress("AnteCall");
     if(fn){
-        auto arg = ArgTuple(c, typedArgs, argExprs);
+        auto arg = AnteValue(c, typedArgs, argExprs);
         auto res = fn(arg.asRawData());
         auto *retTy = fd->tv.type->getFunctionReturnType();
-        return ArgTuple(res, retTy).asTypedValue(c);
+        return AnteValue(res, retTy).asTypedValue(c);
     }else{
         cerr << "(null)" << endl;
         return c->getVoidLiteral();
@@ -1235,7 +1235,7 @@ TypedValue compMetaFunctionResult(Compiler *c, LOC_TY const& loc, string const& 
         return c->compErr("Called function was given " + to_string(ta.size()) +
                 " argument(s) but was declared to take " + to_string(fn->params.size()), loc);
 
-    using A = ArgTuple;
+    using A = AnteValue;
 
     TypedValue *res;
     switch(fn->params.size()){

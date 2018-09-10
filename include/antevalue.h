@@ -1,5 +1,5 @@
-#ifndef AN_ARGTUPLE_H
-#define AN_ARGTUPLE_H
+#ifndef AN_ANTEVALUE_H
+#define AN_ANTEVALUE_H
 
 #include <unordered_set>
 #include <vector>
@@ -14,7 +14,7 @@ namespace ante {
 
     /** A data structure for translating between runtime
      * values and TypedValues while jitting. */
-    class ArgTuple {
+    class AnteValue {
 
         public:
             /** Converts a tuple pointer into a TypedValue */
@@ -37,27 +37,27 @@ namespace ante {
             void print(Compiler *c, std::ostream &os = std::cout) const;
 
             /**
-             * Constructs an ArgTuple from the given TypedValue arguments.
+             * Constructs an AnteValue from the given TypedValue arguments.
              * - Can throw if the given expressions aren't able to be evaluated
              *   during compile-time (eg. are mut, loop bindings, or a parameter).
              */
-            ArgTuple(Compiler *c, std::vector<TypedValue> const& val,
+            AnteValue(Compiler *c, std::vector<TypedValue> const& val,
                     std::vector<std::unique_ptr<parser::Node>> const& exprs);
 
             /**
-             * Constructs an ArgTuple of a single value from the given argument.
+             * Constructs an AnteValue of a single value from the given argument.
              * - Can throw if the given expressions aren't able to be evaluated
              *   during compile-time (eg. are mut, loop bindings, or a parameter).
              */
-            ArgTuple(Compiler *c, TypedValue const& val, std::unique_ptr<parser::Node> const& expr);
+            AnteValue(Compiler *c, TypedValue const& val, std::unique_ptr<parser::Node> const& expr);
 
-            ArgTuple(Compiler *c, TypedValue const& val, parser::Node *expr);
+            AnteValue(Compiler *c, TypedValue const& val, parser::Node *expr);
 
-            /** Construct an ArgTuple using the given pre-initialized data. */
-            ArgTuple(void *d, AnType *t) : data(d), type(t){}
+            /** Construct an AnteValue using the given pre-initialized data. */
+            AnteValue(void *d, AnType *t) : data(d), type(t){}
 
-            /** Constructs an empty ArgTuple representing a void literal. */
-            ArgTuple() = default;
+            /** Constructs an empty AnteValue representing a void literal. */
+            AnteValue() = default;
 
 
         private:

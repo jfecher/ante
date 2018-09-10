@@ -1,4 +1,4 @@
-#include "argtuple.h"
+#include "antevalue.h"
 #include "types.h"
 
 using namespace std;
@@ -15,7 +15,7 @@ namespace ante {
     }
 #endif
 
-    TypedValue convertTupleToTypedValue(Compiler *c, ArgTuple const& arg, AnAggregateType *tn){
+    TypedValue convertTupleToTypedValue(Compiler *c, AnteValue const& arg, AnAggregateType *tn){
         if(tn->extTys.empty()){
             return c->getVoidLiteral();
         }
@@ -29,7 +29,7 @@ namespace ante {
 
         for(unsigned i = 0; i < tn->extTys.size(); i++){
             char* elem = (char*)arg.asRawData() + offset;
-            ArgTuple elemTup{(void*)elem, tn->extTys[i]};
+            AnteValue elemTup{(void*)elem, tn->extTys[i]};
             TypedValue tval = elemTup.asTypedValue(c);
 
             if(Constant *elem = dyn_cast<Constant>(tval.val)){
@@ -93,11 +93,11 @@ namespace ante {
 
 
     /**
-     * Converts an ArgTuple into a typedValue.  If the type
+     * Converts an AnteValue into a typedValue.  If the type
      * cannot be converted or an error occurs, c's error flag
      * is set and a void literal is returned.
      */
-    TypedValue ArgTuple::asTypedValue(Compiler *c) const{
+    TypedValue AnteValue::asTypedValue(Compiler *c) const{
         switch(type->typeTag){
             case TT_I8:              return TypedValue(c->builder.getInt8( *(uint8_t*) data), type);
             case TT_I16:             return TypedValue(c->builder.getInt16(*(uint16_t*)data), type);
@@ -140,7 +140,7 @@ namespace ante {
         throw new CompilationError("Unknown/Unimplemented TypeTag " + typeTagToStr(type->typeTag));
     }
 
-    void ArgTuple::allocAndStoreValue(Compiler *c, TypedValue const& tv){
+    void AnteValue::allocAndStoreValue(Compiler *c, TypedValue const& tv){
         auto size = tv.type->getSizeInBits(c);
         if(!size){
             c->errFlag = true;
@@ -154,7 +154,7 @@ namespace ante {
     /**
      * Stores a pointer value of a constant pointer type
      */
-    void ArgTuple::storePtr(Compiler *c, TypedValue const &tv){
+    void AnteValue::storePtr(Compiler *c, TypedValue const &tv){
         auto *ptrty = try_cast<AnPtrType>(tv.type);
 
         if(GlobalVariable *gv = dyn_cast<GlobalVariable>(tv.val)){
@@ -229,7 +229,7 @@ namespace ante {
     }
 
 
-    void ArgTuple::storeTuple(Compiler *c, TypedValue const& tup){
+    void AnteValue::storeTuple(Compiler *c, TypedValue const& tup){
         auto *sty = try_cast<AnAggregateType>(tup.type);
         if(ConstantStruct *ca = dyn_cast<ConstantStruct>(tup.val)){
             void *orig_data = this->data;
@@ -257,7 +257,7 @@ namespace ante {
     }
 
 
-    void ArgTuple::storeInt(Compiler *c, TypedValue const& tv){
+    void AnteValue::storeInt(Compiler *c, TypedValue const& tv){
         Value *v = tv.val;
         if(auto *e = dyn_cast<SExtInst>(tv.val)){
             v = e->getOperand(0);
@@ -291,7 +291,7 @@ namespace ante {
     }
 
 
-    void ArgTuple::storeFloat(Compiler *c, TypedValue const& tv){
+    void AnteValue::storeFloat(Compiler *c, TypedValue const& tv){
         auto *cf = dyn_cast<ConstantFP>(tv.val);
         if(!cf){
             c->errFlag = true;
@@ -308,7 +308,7 @@ namespace ante {
     }
 
 
-    void ArgTuple::storeValue(Compiler *c, TypedValue const& tv){
+    void AnteValue::storeValue(Compiler *c, TypedValue const& tv){
         switch(tv.type->typeTag){
             case TT_I8: case TT_U8: case TT_C8: case TT_Bool:
             case TT_I16: case TT_U16:
@@ -358,15 +358,15 @@ namespace ante {
         throw new CompilationError("Compile-time function argument must be constant.");
     }
 
-    void ArgTuple::printUnion(Compiler *c, std::ostream &os) const{
+    void AnteValue::printUnion(Compiler *c, std::ostream &os) const{
         auto *dt = try_cast<AnDataType>(type);
         char tag = castTo<char>();
 
         auto &tagty = dt->tags[tag]->ty;
-        ArgTuple((char*)data + 1, tagty).printTupleOrData(c, os);
+        AnteValue((char*)data + 1, tagty).printTupleOrData(c, os);
     }
 
-    void ArgTuple::printTupleOrData(Compiler *c, std::ostream &os) const{
+    void AnteValue::printTupleOrData(Compiler *c, std::ostream &os) const{
         auto *dt = try_cast<AnDataType>(type);
         if(dt){
             if(dt->typeTag == TT_TaggedUnion){
@@ -387,7 +387,7 @@ namespace ante {
         char* dataptr = (char*)data;
         for(auto &ty : agg->extTys){
             auto size = ty->getSizeInBits(c);
-            ArgTuple(dataptr, ty).printCtVal(c, os);
+            AnteValue(dataptr, ty).printCtVal(c, os);
             if(&ty != &agg->extTys.back()){
                 cout << ", ";
             }
@@ -397,7 +397,7 @@ namespace ante {
     }
 
 
-    void ArgTuple::printCtVal(Compiler *c, std::ostream &os) const{
+    void AnteValue::printCtVal(Compiler *c, std::ostream &os) const{
         switch(type->typeTag){
             case TT_I8:  os << castTo<int8_t>(); break;
             case TT_I16: os << castTo<int16_t>(); break;
@@ -420,7 +420,7 @@ namespace ante {
                     os << '"' << castTo<char*>() << '"';
                 }else{
                     os << castTo<void*>() << " -> ";
-                    ArgTuple(*(void**)data, try_cast<AnPtrType>(type)->extTy).printCtVal(c, os);
+                    AnteValue(*(void**)data, try_cast<AnPtrType>(type)->extTy).printCtVal(c, os);
                 }
                 break;
             case TT_Array:
@@ -441,7 +441,7 @@ namespace ante {
     }
 
 
-    void ArgTuple::print(Compiler *c, std::ostream &os) const {
+    void AnteValue::print(Compiler *c, std::ostream &os) const {
         cout << anTypeToColoredStr(type) << ' ';
         printCtVal(c, os);
         puts("");
@@ -452,7 +452,7 @@ namespace ante {
     *  Converts a TypedValue to an llvm GenericValue
     *  - Assumes the Value* within the TypedValue is a Constant*
     */
-    ArgTuple::ArgTuple(Compiler *c, vector<TypedValue> const& tvals,
+    AnteValue::AnteValue(Compiler *c, vector<TypedValue> const& tvals,
             vector<unique_ptr<parser::Node>> const& exprs)
             : data(nullptr){
 
@@ -467,7 +467,7 @@ namespace ante {
                 // NOTE: throwing exceptions in constructors is bad and can lead
                 //       to memory leaks or worse.
                 c->errFlag = true;
-                cout << "ArgTuple: sizeerror: " << elemSize.getErr() << '\n';
+                cout << "AnteValue: sizeerror: " << elemSize.getErr() << '\n';
                 throw new CompilationError(elemSize.getErr());
             }
 
@@ -489,11 +489,11 @@ namespace ante {
         }
     }
 
-    ArgTuple::ArgTuple(Compiler *c, TypedValue const& val, unique_ptr<parser::Node> const& expr){
-        *this = ArgTuple(c, val, expr.get());
+    AnteValue::AnteValue(Compiler *c, TypedValue const& val, unique_ptr<parser::Node> const& expr){
+        *this = AnteValue(c, val, expr.get());
     }
 
-    ArgTuple::ArgTuple(Compiler *c, TypedValue const& val, parser::Node *expr)
+    AnteValue::AnteValue(Compiler *c, TypedValue const& val, parser::Node *expr)
             : data(nullptr), type(val.type){
 
         AnteVisitor::validate(c, expr);

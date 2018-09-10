@@ -15,7 +15,7 @@ using namespace ante::parser;
 
 extern char* lextxt;
 
-extern "C" void* Ante_debug(Compiler *c, ArgTuple &tv);
+extern "C" void* Ante_debug(Compiler *c, AnteValue &tv);
 
 namespace ante {
 
@@ -400,7 +400,7 @@ namespace ante {
      */
     void output(Compiler *c, TypedValue &tv, parser::Node *expr){
         try {
-            ArgTuple arg{c, tv, expr};
+            AnteValue arg{c, tv, expr};
             Ante_debug(c, arg);
         }catch(ante::CompilationError *err){
             cout << err->msg << endl;
