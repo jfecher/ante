@@ -7,6 +7,7 @@
 #endif
 
 #include <llvm/Transforms/Scalar.h>    //for most passes
+#include <llvm/Transforms/IPO.h>
 #include <llvm/IR/LegacyPassManager.h>
 #include <llvm/Support/TargetRegistry.h>
 #include <llvm/Target/TargetMachine.h>
@@ -1728,6 +1729,9 @@ inline void addPasses(legacy::PassManager &pm, char optLvl){
         pm.add(createLoopLoadEliminationPass());
         pm.add(createReassociatePass());
         pm.add(createPromoteMemoryToRegisterPass());
+
+        pm.add(llvm::createGlobalDCEPass());
+        pm.add(llvm::createDeadCodeEliminationPass());
 
         //Instruction Combining Pass seems to break nested for loops
         //pm.add(createInstructionCombiningPass());
