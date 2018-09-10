@@ -772,7 +772,8 @@ void compMutBinding(VarAssignNode *node, CompilingVisitor &cv){
 
     c->stoVar(name, new Variable(name, alloca, c->scope, {Assignment::Normal, node->expr.get()}, true));
 
-    cv.val = TypedValue(c->builder.CreateStore(val.val, alloca.val), val.type);
+    c->builder.CreateStore(val.val, alloca.val);
+    cv.val = c->getVoidLiteral();
 }
 
 
