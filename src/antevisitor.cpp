@@ -11,9 +11,9 @@ namespace ante {
         return false;
     }
 
-    void AnteVisitor::visitExternalDecl(std::string const& name, parser::Node *decl){
+    void AnteVisitor::visitExternalDecl(std::string const& name, AnType* type, parser::Node *decl){
         inAnteExpr = false;
-        dependencies.emplace_back(name, decl);
+        dependencies.emplace_back(name, type, decl);
         decl->accept(*this);
         inAnteExpr = true;
     }
@@ -145,7 +145,7 @@ namespace ante {
                     if(v->tval.type->hasModifier(Tok_Mut) && !v->tval.type->hasModifier(Tok_Ante)){
                         c->compErr("Cannot evaluate a mutable variable during compile-time.  Use 'ante mut' in its declaration instead if you wish to evaluate it.", n->loc);
                     }else if(v->assignments.back().assignmentExpr){
-                        visitExternalDecl(n->name, *v->assignments.back().assignmentExpr);
+                        visitExternalDecl(n->name, v->tval.type, *v->assignments.back().assignmentExpr);
                     }else{
                         c->compErr("Cannot find last assignment to variable used in ante expression.", n->loc);
                     }

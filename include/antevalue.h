@@ -116,7 +116,7 @@ namespace ante {
         std::vector<std::unordered_set<std::string>> varTable;
 
         /** External bindings (the minimal environment) the expression needs to run */
-        std::vector<std::pair<std::string, parser::Node*>> dependencies;
+        std::vector<std::tuple<std::string, AnType*, parser::Node*>> dependencies;
 
         /** True if we are inside the ante expr and not backtracing a dependency */
         bool inAnteExpr;
@@ -140,7 +140,7 @@ namespace ante {
         bool isDeclaredInternally(std::string const& var) const;
 
         /** Visit a declaration external to the ante expression. */
-        void visitExternalDecl(std::string const& name, parser::Node *decl);
+        void visitExternalDecl(std::string const& name, AnType *type, parser::Node *decl);
 
         void declare(std::string const& var);
 

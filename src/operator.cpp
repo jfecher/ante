@@ -1050,7 +1050,7 @@ Function* createFunctionShell(Compiler *c){
  *
  *  also fails to remember a var is mutable
  */
-vector<pair<string, Node*>> traceDependenciesOfAnteExpr(Compiler *c, Node *anteExpr){
+vector<tuple<string, AnType*, Node*>> traceDependenciesOfAnteExpr(Compiler *c, Node *anteExpr){
     vector<Node*> deps;
 
     AnteVisitor a{c};
@@ -1061,22 +1061,29 @@ vector<pair<string, Node*>> traceDependenciesOfAnteExpr(Compiler *c, Node *anteE
 
 
 void insertDependencies(CompilingVisitor &cv, Function *f,
-        vector<pair<string, Node*>> const& deps){
+        vector<tuple<string, AnType*, Node*>> const& deps){
 
     BasicBlock *oldBlock = cv.c->builder.GetInsertBlock();
     cv.c->builder.SetInsertPoint(&f->getBasicBlockList().back());
 
     //compile a let-binding for each dependency
-    for(auto [name, expr] : deps){
+    for(auto [name, type, expr] : deps){
         Compiler *c = cv.c;
         TypedValue val = CompilingVisitor::compile(c, expr);
-        if(val.type->typeTag == TT_Void)
-            c->compErr("Cannot assign a " + anTypeToColoredStr(AnType::getVoid()) +
-                    " value to a variable", expr->loc);
+
+        TypedValue result;
+        if(type->hasModifier(Tok_Mut)){
+            Value *alloca = c->builder.CreateAlloca(val.getType(), nullptr, name);
+            val.val = c->builder.CreateStore(val.val, alloca);
+            result = {alloca, type};
+        }else{
+            result = val;
+        }
 
         Assignment assignment{Assignment::Normal, expr};
-        c->stoVar(name, new Variable(name, val, c->scope, assignment, false));
-        cv.val = val;
+        c->stoVar(name, new Variable(name, result, c->scope, assignment, type->hasModifier(Tok_Mut)));
+        cv.val.val = val.val;
+        cv.val.type = type;
     }
 
     cv.c->builder.SetInsertPoint(oldBlock);
