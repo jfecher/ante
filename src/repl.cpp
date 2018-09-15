@@ -417,9 +417,7 @@ namespace ante {
 
         while(cmd != "exit\n"){
             int flag;
-            //Catch any lexing errors
             try{
-                //lex and parse the new string
                 setLexer(new Lexer(nullptr, cmd, /*line*/1, /*col*/1));
                 yy::parser p{};
                 flag = p.parse();
@@ -437,13 +435,18 @@ namespace ante {
                 expr->expr.release();
                 expr->expr.reset(root);
 
-                //Compile each expression and hold onto the last value
                 TypedValue val;
                 if(c->getAST()){
                     val = mergeAndCompile(c, root, expr);
                 }else{
                     c->compUnit->ast.reset(root);
-                    val = CompilingVisitor::compile(c, expr);
+                    try{
+                        val = CompilingVisitor::compile(c, expr);
+                    }catch(CompilationError *err){
+                        c->compUnit->ast.reset();
+                        delete err;
+                        val = {};
+                    }
                 }
 
                 //print val if it's not an error
@@ -457,8 +460,18 @@ namespace ante {
         resetTerm();
     }
 
+    /**
+     * Compile an expression and merge it with the current AST
+     * if it is well-formed.
+     */
     TypedValue mergeAndCompile(Compiler *c, RootNode *rn, ModNode *anteExpr){
-        auto ret = safeCompile(c, anteExpr);
+        TypedValue ret;
+        try{
+            ret = CompilingVisitor::compile(c, anteExpr);
+        }catch(...){
+            // return before merging the error-ing expressions
+            return {};
+        }
 
         scanImports(c, rn);
         move(rn->imports.begin(),
