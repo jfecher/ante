@@ -1,6 +1,7 @@
 #include <llvm/ExecutionEngine/Interpreter.h>
 #include <llvm/Transforms/Utils/Cloning.h>
 #include "compiler.h"
+#include "scopeguard.h"
 #include "types.h"
 #include "function.h"
 #include "tokens.h"
@@ -1090,7 +1091,7 @@ void insertDependencies(CompilingVisitor &cv, Function *f,
 }
 
 
-pair<Function*, AnType*> compileTheFunction(CompilingVisitor &cv, Function *f, Node *expr){
+pair<Function*, AnType*> compileShellFunction(CompilingVisitor &cv, Function *f, Node *expr){
     BasicBlock *oldBlock = cv.c->builder.GetInsertBlock();
     cv.c->builder.SetInsertPoint(&f->getBasicBlockList().back());
 
@@ -1118,6 +1119,58 @@ pair<Function*, AnType*> compileTheFunction(CompilingVisitor &cv, Function *f, N
 }
 
 
+TypedValue callAnteFunction(Compiler *c, Function *main, BasicBlock *originalInsertPoint,
+        vector<TypedValue> const& typedArgs, vector<unique_ptr<Node>> const& argExprs,
+        JIT *jit, AnType *retTy){
+
+    auto symbol = jit->getSymbolAddress("AnteCall");
+    if(symbol){
+        void *res;
+        if(typedArgs.empty()){
+            auto fn = (void*(*)())symbol;
+            res = fn();
+        }else{
+            auto fn = (void*(*)(void*))symbol;
+            auto arg = AnteValue(c, typedArgs, argExprs);
+            res = fn(arg.asRawData());
+        }
+        return AnteValue(res, retTy).asTypedValue(c);
+    }else{
+        LOC_TY loc;
+        if(!argExprs.empty()) loc = argExprs[0]->loc;
+        c->compErr("Could not find entry symbol while JITing ante function", loc);
+        return c->getVoidLiteral(); //unreachable
+    }
+}
+
+
+template<typename T>
+pair<Function*, AnType*> compileAnonAnteFunction(CompilingVisitor &cv, ModNode *n, T &&cleanup){
+    TMP_SET(cv.c->isJIT, true);
+    auto shell = createFunctionShell(cv.c);
+    try{
+        auto deps = traceDependenciesOfAnteExpr(cv.c, n->expr.get());
+        insertDependencies(cv, shell, deps);
+        return compileShellFunction(cv, shell, n->expr.get());
+    }catch(...){
+        //error tracing dependencies, need to cleanup callstack before unwinding
+        cleanup();
+        throw;
+    }
+}
+
+
+FuncDecl* compileAnteFunction(Compiler *c, string const& baseName, string const& mangledName,
+        vector<TypedValue> const& typedArgs){
+    FuncDecl *ret;
+    TMP_SET(c->isJIT, true);
+    ret = c->getFuncDecl(baseName, mangledName);
+    auto argTys = toTypeVector(typedArgs);
+    compFnWithArgs(c, ret, argTys);
+    return ret;
+}
+
+
 TypedValue compileAndCallAnteFunction(Compiler *c, ModNode *n){
     CompilingVisitor cv{c};
 
@@ -1130,15 +1183,16 @@ TypedValue compileAndCallAnteFunction(Compiler *c, ModNode *n){
 
     auto originalInsertPoint = c->builder.GetInsertBlock();
 
-    //compile ante function and a driver to run it
-    auto oldVal = c->isJIT;
-    c->isJIT = true;
-    auto shell = createFunctionShell(c);
-    auto deps = traceDependenciesOfAnteExpr(c, n->expr.get());
-    insertDependencies(cv, shell, deps);
-    auto shellAndType = compileTheFunction(cv, shell, n->expr.get());
-    c->isJIT = oldVal;
+    auto cleanup = [&]{
+        if(main)
+            c->module->getFunctionList().push_front(main);
+        if(auto f1 = c->module->getFunction("AnteCall")) f1->eraseFromParent();
+        if(auto f2 = c->module->getFunction("EmptyShell")) f2->eraseFromParent();
+        c->builder.SetInsertPoint(originalInsertPoint);
+    };
 
+    //compile ante function and a driver to run it
+    auto shellAndType = compileAnonAnteFunction(cv, n, cleanup);
     auto shellName = shellAndType.first->getName();
 
     createDriverFunction(c, shellAndType.first, shellAndType.second);
@@ -1148,24 +1202,9 @@ TypedValue compileAndCallAnteFunction(Compiler *c, ModNode *n){
     JIT* jit = new JIT();
     jit->addModule(move(clone));
 
-    //restore original module before evaluating the function
-    if(main){
-        c->module->getFunctionList().push_front(main);
-    }
-
-    //erase generated functions
-    c->module->getFunction(shellName)->eraseFromParent();
-    c->module->getFunction("AnteCall")->eraseFromParent();
-    c->builder.SetInsertPoint(originalInsertPoint);
-
-    auto fn = (void*(*)())jit->getSymbolAddress("AnteCall");
-    if(fn){
-        auto res = fn();
-        return AnteValue(res, shellAndType.second).asTypedValue(c);
-    }else{
-        cerr << "(null)" << endl;
-        return c->getVoidLiteral();
-    }
+    cleanup();
+    c->module->getFunction(shellName)->removeFromParent();
+    return callAnteFunction(c, main, originalInsertPoint, {}, {}, jit, shellAndType.second);
 }
 
 TypedValue compileAndCallAnteFunction(Compiler *c, string const& baseName,
@@ -1183,40 +1222,23 @@ TypedValue compileAndCallAnteFunction(Compiler *c, string const& baseName,
     auto originalInsertPoint = c->builder.GetInsertBlock();
 
     //compile ante function and a driver to run it
-    auto oldVal = c->isJIT;
-    c->isJIT = true;
-    auto *fd = c->getFuncDecl(baseName, mangledName);
-    auto argTys = toTypeVector(typedArgs);
-    compFnWithArgs(c, fd, argTys);
-    c->isJIT = oldVal;
+    FuncDecl *fd = compileAnteFunction(c, baseName, mangledName, typedArgs);
 
     createDriverFunction(c, fd, typedArgs);
-    std::error_code ec;
+    auto *retTy = fd->tv.type->getFunctionReturnType();
 
     auto clone = llvm::CloneModule(c->module.get());
 
     JIT* jit = new JIT();
     jit->addModule(move(clone));
 
-    //restore original module before evaluating the function
     if(main){
         c->module->getFunctionList().push_front(main);
     }
 
-    //erase generated functions
     c->module->getFunction("AnteCall")->eraseFromParent();
     c->builder.SetInsertPoint(originalInsertPoint);
-
-    auto fn = (void*(*)(void*))jit->getSymbolAddress("AnteCall");
-    if(fn){
-        auto arg = AnteValue(c, typedArgs, argExprs);
-        auto res = fn(arg.asRawData());
-        auto *retTy = fd->tv.type->getFunctionReturnType();
-        return AnteValue(res, retTy).asTypedValue(c);
-    }else{
-        cerr << "(null)" << endl;
-        return c->getVoidLiteral();
-    }
+    return callAnteFunction(c, main, originalInsertPoint, typedArgs, argExprs, jit, retTy);
 }
 
 /*

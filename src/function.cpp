@@ -1,6 +1,7 @@
 #include "function.h"
 #include "jitlinker.h"
 #include "compapi.h"
+#include "scopeguard.h"
 
 using namespace std;
 using namespace llvm;
@@ -661,10 +662,15 @@ TypedValue Compiler::compFn(FuncDecl *fd){
     auto *breakLabels = compCtxt->breakLabels.release();
     compCtxt->continueLabels = llvm::make_unique<vector<BasicBlock*>>();
     compCtxt->breakLabels = llvm::make_unique<vector<BasicBlock*>>();
-    size_t callingFnScope = fnScope;
+
+    DEFER(
+        compCtxt->callStack.pop_back();
+        compCtxt->continueLabels.reset(continueLabels);
+        compCtxt->breakLabels.reset(breakLabels);
+    );
 
     enterNewScope();
-    fnScope = scope;
+    auto ts = tmpSet(this->fnScope, this->scope);
 
     //Propogate type var bindings of the method obj into the function scope
     declareBindings(this, fd->objBindings);
@@ -673,22 +679,13 @@ TypedValue Compiler::compFn(FuncDecl *fd){
     try{
         ret = compFnHelper(this, fd);
     }catch(CtError *e){
-        compCtxt->callStack.pop_back();
-        compCtxt->continueLabels.reset(continueLabels);
-        compCtxt->breakLabels.reset(breakLabels);
 
-        while(scope > callingFnScope)
+        while(scope > ts.getOldVal())
             exitScope();
-
-        fnScope = callingFnScope;
 
         throw e;
     }
 
-    compCtxt->callStack.pop_back();
-    compCtxt->continueLabels.reset(continueLabels);
-    compCtxt->breakLabels.reset(breakLabels);
-    fnScope = callingFnScope;
     exitScope();
     return ret;
 }
