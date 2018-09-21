@@ -857,10 +857,6 @@ TypedValue compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
 
         val = l.val;
         tyn = l.type;
-
-        if(!tyn->hasModifier(Tok_Mut))
-            return c->compErr("Variable must be mutable to be assigned to, but instead is an immutable " +
-                    anTypeToColoredStr(tyn), bop->loc);
     }
 
     //the . operator automatically dereferences pointers, so update val and tyn accordingly.
@@ -926,6 +922,11 @@ TypedValue compileRefExpr(CompilingVisitor &cv, Node *refExpr, Node *assignExpr)
         if(!var)
             cv.c->compErr("Variable or function '" + vn->name + "' has not been declared.", vn->loc);
 
+        if(!var->tval.type->hasModifier(Tok_Mut))
+            cv.c->compErr("Variable must be mutable to be assigned to, but instead is an immutable " +
+                    anTypeToColoredStr(var->tval.type), refExpr->loc);
+
+
         TypedValue ret;
         if(var->autoDeref){
             auto *load = cv.c->builder.CreateLoad(var->getVal(), vn->name);
@@ -971,11 +972,6 @@ void CompilingVisitor::visit(VarAssignNode *n){
 
     //otherwise, this is just a normal assign to a variable
     this->val = compileRefExpr(*this, n->ref_expr, n->expr.get());
-
-    //if(!dynamic_cast<LoadInst*>(val->val))
-    if(!val.type->hasModifier(Tok_Mut))
-        c->compErr("Variable must be mutable to be assigned to, but instead is an immutable " +
-                anTypeToColoredStr(val.type), n->ref_expr->loc);
 
     Value *dest = ((LoadInst*)val.val)->getPointerOperand();
 
