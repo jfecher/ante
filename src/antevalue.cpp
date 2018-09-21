@@ -42,7 +42,7 @@ namespace ante {
             auto res = tn->extTys[i]->getSizeInBits(c);
             if(!res){
                 c->errFlag = true;
-                cout << "Unknown/Unimplemented TypeTag " + typeTagToStr(tn->typeTag) << endl;
+                cerr << "Unknown/Unimplemented TypeTag " + typeTagToStr(tn->typeTag) << endl;
                 throw new CompilationError("Unknown/Unimplemented TypeTag " + typeTagToStr(tn->typeTag));
             }
 
@@ -89,7 +89,7 @@ namespace ante {
         }
 
         c->errFlag = true;
-        cout << "Cannot find last store to mutable variable during translation.\n";
+        cerr << "Cannot find last store to mutable variable during translation.\n";
         throw new CompilationError("Cannot find last store to mutable variable during translation.");
     }
 
@@ -138,7 +138,7 @@ namespace ante {
         }
 
         c->errFlag = true;
-        cout << "Unknown/Unimplemented TypeTag " + typeTagToStr(type->typeTag) << endl;
+        cerr << "Unknown/Unimplemented TypeTag " + typeTagToStr(type->typeTag) << endl;
         throw new CompilationError("Unknown/Unimplemented TypeTag " + typeTagToStr(type->typeTag));
     }
 
@@ -159,7 +159,11 @@ namespace ante {
     void AnteValue::storePtr(Compiler *c, TypedValue const &tv){
         auto *ptrty = try_cast<AnPtrType>(tv.type);
 
-        if(GlobalVariable *gv = dyn_cast<GlobalVariable>(tv.val)){
+        if(ConstantExpr *ce = dyn_cast<ConstantExpr>(tv.val)){
+            Instruction *in = ce->getAsInstruction();
+            auto ptr = TypedValue(in, ptrty);
+            storePtr(c, ptr);
+        }else if(GlobalVariable *gv = dyn_cast<GlobalVariable>(tv.val)){
             Value *v = gv->getInitializer();
             if(ConstantDataArray *cda = dyn_cast<ConstantDataArray>(v)){
                 char *cstr = strdup(cda->getAsString().str().c_str());
@@ -172,16 +176,6 @@ namespace ante {
                 *oldData = data;
                 data = oldData;
             }
-        }else if(ConstantExpr *ce = dyn_cast<ConstantExpr>(tv.val)){
-            Instruction *in = ce->getAsInstruction();
-            if(GetElementPtrInst *gep = dyn_cast<GetElementPtrInst>(in)){
-                gep->print(dbgs());
-                auto ptr = TypedValue(gep->getPointerOperand(), ptrty);
-                cout << '\n' << flush;
-                ptr.dump();
-                storePtr(c, ptr);
-            }
-
         }else if(BitCastInst *be = dyn_cast<BitCastInst>(tv.val)){
             //there should be stores in this bitcast if it was of malloc
             for(auto *u : be->users()){
@@ -206,7 +200,6 @@ namespace ante {
             auto ptr = ptii->getOperand(0);
             storePtr(c, {ptr, tv.type});
         }else if(IntToPtrInst *itpi = dyn_cast<IntToPtrInst>(tv.val)){
-            c->module->print(dbgs(), nullptr);
             auto ptr = itpi->getOperand(0);
 
             if(ConstantInt *addr = dyn_cast<ConstantInt>(ptr)){
@@ -218,13 +211,11 @@ namespace ante {
             if(bi->getOpcode() == BinaryOperator::BinaryOps::Add && dyn_cast<ConstantInt>(bi->getOperand(1))){
                 TypedValue ptr{bi->getOperand(0), tv.type};
                 storePtr(c, ptr);
-                //cout << "Getting val from: \n";
-                //ptr.dump();
                 *(char**)data += cast<ConstantInt>(bi->getOperand(1))->getZExtValue();
             }
         }else{
             c->errFlag = true;
-            cout << "unknown value given to getConstPtr:\n";
+            cerr << "unknown value given to getConstPtr:\n";
             tv.dump();
             throw new CompilationError("unknown value given to getConstPtr of type: " + anTypeToColoredStr(tv.type));
         }
@@ -244,7 +235,7 @@ namespace ante {
                 auto size = ty->getSizeInBits(c);
                 if(!size){
                     c->errFlag = true;
-                    cout << "storeTuple: " << size.getErr() << endl;
+                    cerr << "storeTuple: " << size.getErr() << endl;
                     throw new CompilationError(size.getErr());
                 }
                 data = (char*)data + size.getVal() / 8;
@@ -269,7 +260,7 @@ namespace ante {
 
         if(!ci){
             c->errFlag = true;
-            cout << "Cannot convert non-constant integer.\n";
+            cerr << "Cannot convert non-constant integer.\n";
             v->print(dbgs());
             throw new CompilationError("Cannot convert non-constant integer.");
         }
@@ -297,7 +288,7 @@ namespace ante {
         auto *cf = dyn_cast<ConstantFP>(tv.val);
         if(!cf){
             c->errFlag = true;
-            cout << "Cannot convert non-constant floating point value.\n";
+            cerr << "Cannot convert non-constant floating point value.\n";
             throw new CompilationError("Cannot convert non-constant floating point value.");
         }
 
@@ -332,7 +323,7 @@ namespace ante {
                 auto *var = c->lookup(tvt->name);
                 if(!var){
                     c->errFlag = true;
-                    cout << "Lookup for typevar " + tvt->name + " failed\n";
+                    cerr << "Lookup for typevar " + tvt->name + " failed\n";
                     throw new CompilationError("Lookup for typevar " + tvt->name + " failed");
                 }
 
@@ -356,7 +347,7 @@ namespace ante {
         }
 
         c->errFlag = true;
-        cout << "Compile-time function argument must be constant.\n";
+        cerr << "Compile-time function argument must be constant.\n";
         throw new CompilationError("Compile-time function argument must be constant.");
     }
 
@@ -444,7 +435,7 @@ namespace ante {
 
 
     void AnteValue::print(Compiler *c, std::ostream &os) const {
-        cout << anTypeToColoredStr(type) << ' ';
+        cerr << anTypeToColoredStr(type) << ' ';
         printCtVal(c, os);
         puts("");
     }
@@ -469,7 +460,7 @@ namespace ante {
                 // NOTE: throwing exceptions in constructors is bad and can lead
                 //       to memory leaks or worse.
                 c->errFlag = true;
-                cout << "AnteValue: sizeerror: " << elemSize.getErr() << '\n';
+                cerr << "AnteValue: sizeerror: " << elemSize.getErr() << '\n';
                 throw new CompilationError(elemSize.getErr());
             }
 
