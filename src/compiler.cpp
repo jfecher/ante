@@ -1714,6 +1714,27 @@ void CompilingVisitor::visit(RootNode *n){
  * all passes.
  */
 inline void addPasses(legacy::PassManager &pm, char optLvl){
+    /*
+     * More aggressive optimization but breaks certain tests due to poor type
+     * casts caused by not yet knowing the full type of the operand.
+     * Until global type inference is implemented this is commented out.
+    if(optLvl > 0){
+        llvm::FunctionAnalysisManager fam;
+        llvm::PassBuilder builder;
+        builder.registerFunctionAnalyses(fam);
+
+        auto opt = optLvl == 1 ? PassBuilder::OptimizationLevel::O1
+                 : optLvl == 2 ? PassBuilder::OptimizationLevel::O2
+                 : PassBuilder::OptimizationLevel::O3;
+
+        auto fpm = builder.buildFunctionSimplificationPipeline(opt,
+                PassBuilder::ThinLTOPhase::None);
+
+        for(auto &f : module->functions()){
+            fpm.run(f, fam);
+        }
+    }
+    */
     if(optLvl > 0){
         if(optLvl >= 3){
             pm.add(createLoopStrengthReducePass());
