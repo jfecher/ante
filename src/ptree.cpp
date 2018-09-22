@@ -204,7 +204,6 @@ namespace ante {
 
         Node* setNext(Node* cur, Node* nxt){
             cur->next.reset(nxt);
-            nxt->prev = cur;
             return nxt;
         }
 
@@ -452,7 +451,6 @@ namespace ante {
                 LOC_TY loccpy = copyLoc(vn->loc);
 
                 nxt->next.reset(new NamedValNode(loccpy, vn->name, tyNode));
-                nxt->next->prev = nxt;
                 nxt = nxt->next.get();
             }
             delete varNodes;

@@ -47,7 +47,6 @@ namespace ante {
         /* Base class for all nodes */
         struct Node{
             std::unique_ptr<Node> next;
-            Node *prev;
             LOC_TY loc;
 
             virtual void accept(NodeVisitor& v) = 0;
@@ -55,7 +54,7 @@ namespace ante {
             NodeIterator begin();
             NodeIterator end();
 
-            Node(LOC_TY& l) : next(nullptr), prev(nullptr), loc(l){}
+            Node(LOC_TY& l) : next(nullptr), loc(l){}
             virtual ~Node(){}
         };
 
