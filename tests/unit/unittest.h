@@ -26,6 +26,4 @@ namespace ante {
 
 #include "catch.hpp"
 
-using namespace ante;
-using namespace std;
 #endif

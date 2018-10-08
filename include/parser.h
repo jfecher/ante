@@ -7,6 +7,7 @@
 #include "tokens.h"
 #include "location.hh"
 #include "nodevisitor.h"
+#include "declaration.h"
 
 #ifndef LOC_TY
 #  define LOC_TY yy::location
@@ -14,9 +15,11 @@
 
 namespace ante {
 
-    /* forward-decls from compiler.h */
+    /* forward-decls from {compiler.h, declaration.h, antype.h} */
     struct TypedValue;
     struct Compiler;
+    struct Declaration;
+    class AnType;
 
     namespace parser {
 
@@ -54,8 +57,16 @@ namespace ante {
             NodeIterator begin();
             NodeIterator end();
 
-            Node(LOC_TY& l) : next(nullptr), loc(l){}
+            /** Nodes with a declaration store their type in a shared Declaration so these
+             * get/set helpers are provided for uniform access. */
+            virtual AnType* getType() const { return type; }
+            virtual void setType(AnType *other) { type = other; };
+
+            Node(LOC_TY& l) : next{nullptr}, loc{l}, type{nullptr}{}
             virtual ~Node(){}
+
+            private:
+                AnType *type;
         };
 
         struct ModNode;
@@ -104,17 +115,17 @@ namespace ante {
 
         struct IntLitNode : public Node{
             std::string val;
-            TypeTag type;
+            TypeTag typeTag;
             void accept(NodeVisitor& v){ v.visit(this); }
-            IntLitNode(LOC_TY& loc, std::string s, TypeTag ty) : Node(loc), val(s), type(ty){}
+            IntLitNode(LOC_TY& loc, std::string s, TypeTag ty) : Node(loc), val(s), typeTag(ty){}
             ~IntLitNode(){}
         };
 
         struct FltLitNode : public Node{
             std::string val;
-            TypeTag type;
+            TypeTag typeTag;
             void accept(NodeVisitor& v){ v.visit(this); }
-            FltLitNode(LOC_TY& loc, std::string s, TypeTag ty) : Node(loc), val(s), type(ty){}
+            FltLitNode(LOC_TY& loc, std::string s, TypeTag ty) : Node(loc), val(s), typeTag(ty){}
             ~FltLitNode(){}
         };
 
@@ -159,6 +170,8 @@ namespace ante {
         struct BinOpNode : public Node{
             int op;
             std::unique_ptr<Node> lval, rval;
+            std::vector<Declaration*> decls;
+
             void accept(NodeVisitor& v){ v.visit(this); }
             BinOpNode(LOC_TY& loc, int s, Node *lv, Node *rv) : Node(loc), op(s), lval(lv), rval(rv){}
             ~BinOpNode(){}
@@ -208,14 +221,14 @@ namespace ante {
         };
 
         struct TypeNode : public ModifiableNode{
-            TypeTag type;
+            TypeTag typeTag;
             std::string typeName; //used for usertypes
             std::unique_ptr<TypeNode> extTy; //Used for pointers and non-single anonymous types.
             std::vector<std::unique_ptr<TypeNode>> params; //type parameters for generic types
 
             void accept(NodeVisitor& v){ v.visit(this); }
             TypeNode(LOC_TY& loc, TypeTag ty, std::string tName, TypeNode* eTy)
-                : ModifiableNode(loc), type(ty), typeName(tName), extTy(eTy), params(){}
+                : ModifiableNode(loc), typeTag(ty), typeName(tName), extTy(eTy), params(){}
             ~TypeNode(){}
         };
 
@@ -237,23 +250,31 @@ namespace ante {
         struct NamedValNode : public Node{
             std::string name;
             std::unique_ptr<Node> typeExpr;
+            std::vector<Declaration*> decls;
             void accept(NodeVisitor& v){ v.visit(this); }
             NamedValNode(LOC_TY& loc, std::string s, Node* t) : Node(loc), name(s), typeExpr(t){}
             ~NamedValNode(){ if(typeExpr.get() == (void*)1) typeExpr.release(); }
+
+            virtual AnType* getType() const {
+                assert(decls.size() >= 1);
+                return decls[0]->tval.type;
+            }
+
+            virtual void setType(AnType *other) {
+                assert(decls.size() >= 1);
+                decls[0]->tval.type = other;
+            }
         };
 
         struct VarNode : public Node{
             std::string name;
+            std::vector<Declaration*> decls;
             void accept(NodeVisitor& v){ v.visit(this); }
             VarNode(LOC_TY& loc, std::string s) : Node(loc), name(s){}
             ~VarNode(){}
-        };
 
-        struct GlobalNode : public Node{
-            std::vector<std::unique_ptr<VarNode>> vars;
-            void accept(NodeVisitor& v){ v.visit(this); }
-            GlobalNode(LOC_TY& loc, std::vector<std::unique_ptr<VarNode>> &&vn) : Node(loc), vars(move(vn)){}
-            ~GlobalNode(){}
+            AnType* getType() const;
+            void setType(AnType *other);
         };
 
         struct StrLitNode : public Node{
@@ -308,11 +329,10 @@ namespace ante {
         };
 
         struct ForNode : public Node{
-            std::string var;
-            std::unique_ptr<Node> range, child;
+            std::unique_ptr<Node> pattern, range, child;
             void accept(NodeVisitor& v){ v.visit(this); }
-            ForNode(LOC_TY& loc, std::string v, Node *r, Node *body) :
-                Node(loc), var(v), range(r), child(body){}
+            ForNode(LOC_TY& loc, Node *v, Node *r, Node *body) :
+                Node(loc), pattern(v), range(r), child(body){}
             ~ForNode(){}
         };
 
@@ -344,15 +364,24 @@ namespace ante {
         struct FuncDeclNode : public ModifiableNode{
             std::string name;
             std::shared_ptr<Node> child;
-            std::shared_ptr<TypeNode> type;
+            std::shared_ptr<TypeNode> returnType;
             std::shared_ptr<NamedValNode> params;
             bool varargs;
+            Declaration* decl;
 
             void accept(NodeVisitor& v){ v.visit(this); }
 
             FuncDeclNode(LOC_TY& loc, std::string s, TypeNode *t, NamedValNode *p, Node* b, bool va=false) :
-                ModifiableNode(loc), name(s), child(b), type(t), params(p), varargs(va){}
+                ModifiableNode(loc), name(s), child(b), returnType(t), params(p), varargs(va), decl(0){}
             ~FuncDeclNode(){}
+
+            virtual AnType* getType() const {
+                return decl->tval.type;
+            }
+
+            virtual void setType(AnType *other) {
+                decl->tval.type = other;
+            }
         };
 
         struct DataDeclNode : public ModifiableNode{
@@ -362,7 +391,6 @@ namespace ante {
             std::vector<std::unique_ptr<TypeNode>> generics;
             bool isAlias;
 
-            void declare(Compiler*);
             void accept(NodeVisitor& v){ v.visit(this); }
             DataDeclNode(LOC_TY& loc, std::string s, Node* b, size_t f, bool a)
                 : ModifiableNode(loc), child(b), name(s), fields(f), isAlias(a){}

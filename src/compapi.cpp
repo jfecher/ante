@@ -30,13 +30,13 @@ extern "C" {
 
     void* Ante_error(Compiler *c, AnteValue &msg){
         auto *cstrTy = AnPtrType::get(AnType::getPrimitive(TT_C8));
-        if(!c->typeEq(msg.getType(), cstrTy)){
+        if(!typeEq(msg.getType(), cstrTy)){
             throw new CompilationError("First argument of Ante.store must be of type " +
                     anTypeToColoredStr(cstrTy) + " but a value of type "
                     + anTypeToColoredStr(msg.getType()) + " was given instead.");
         }
 
-        auto *curfn = c->compCtxt->callStack.back()->fdn;
+        auto *curfn = c->compCtxt->callStack.back()->getFDN();
         yy::location fakeloc = mkLoc(mkPos(0,0,0), mkPos(0,0,0));
         c->compErr(msg.castTo<char*>(), curfn ? curfn->loc : fakeloc);
         return nullptr;
@@ -44,7 +44,7 @@ extern "C" {
 
     TypedValue* FuncDecl_getName(Compiler *c, AnteValue &fd){
         FuncDecl *f = fd.castTo<FuncDecl*>();
-        string &n = f->getName();
+        string n = f->getName();
 
         yy::location lloc = mkLoc(mkPos(0,0,0), mkPos(0,0,0));
         auto *strlit = new StrLitNode(lloc, n);
@@ -71,71 +71,6 @@ extern "C" {
         return new TypedValue(addr, BasicModifier::get(AnType::getPrimitive(TT_Type), Tok_Ante));
     }
 
-    void* Ante_store(Compiler *c, AnteValue &name, AnteValue &gv){
-        auto *cstrTy = AnPtrType::get(AnType::getPrimitive(TT_C8));
-        if(!c->typeEq(name.getType(), cstrTy)){
-            throw new CompilationError("First argument of Ante.store must be of type " +
-                    anTypeToColoredStr(cstrTy) + " but a value of type "
-                    + anTypeToColoredStr(name.getType()) + " was given instead.");
-        }
-        c->ctCtxt->ctStores[name.castTo<char*>()] = gv;
-        return nullptr;
-    }
-
-    TypedValue* Ante_lookup(Compiler *c, AnteValue &name){
-        auto *cstrTy = AnPtrType::get(AnType::getPrimitive(TT_C8));
-        if(!c->typeEq(name.getType(), cstrTy)){
-            throw new CompilationError("Argument of Ante.lookup must be of type " +
-                    anTypeToColoredStr(cstrTy) + " but a value of type "
-                    + anTypeToColoredStr(name.getType()) + " was given instead.");
-        }
-
-        auto t = c->ctCtxt->ctStores.find(name.castTo<char*>());
-        if(t != c->ctCtxt->ctStores.end()){
-            return new TypedValue(t->second.asTypedValue(c));
-        }else{
-            std::cerr << "error: ctLookup: Cannot find var '" << name.castTo<char*>() << "'" << endl;
-            throw new CtError();
-        }
-    }
-
-    TypedValue* Ante_eval(Compiler *c, AnteValue &evalArg){
-        auto *cstrTy = AnPtrType::get(AnType::getPrimitive(TT_C8));
-        if(!c->typeEq(evalArg.getType(), cstrTy)){
-            throw new CompilationError("Argument of Ante.eval must be of type " +
-                    anTypeToColoredStr(cstrTy) + " but a value of type "
-                    + anTypeToColoredStr(evalArg.getType()) + " was given instead.");
-        }
-
-        string eval_str = evalArg.castTo<char*>();
-        string file_name = "eval";
-
-        auto *lex = new Lexer(&file_name, eval_str, 1u, 1u);
-        setLexer(lex);
-        yy::parser p{};
-        int flag = p.parse();
-        if(flag != PE_OK){ //parsing error, cannot procede
-            fputs("Syntax error in call to Ante.eval, aborting.\n", stderr);
-            return new TypedValue(c->getVoidLiteral());
-        }
-
-        RootNode *expr = parser::getRootNode();
-        TypedValue val;
-
-        scanImports(c, expr);
-        c->scanAllDecls(expr);
-
-        //Compile main and hold onto the last value
-        for(auto &n : expr->main){
-            try{
-                val = CompilingVisitor::compile(c, n);
-            }catch(CtError *e){
-                delete e;
-            }
-        }
-        return new TypedValue(val);
-    }
-
     void* Ante_emit_ir(Compiler *c){
         if(c && c->module){
             c->module->print(llvm::errs(), nullptr);
@@ -147,12 +82,13 @@ extern "C" {
 
     void* Ante_forget(Compiler *c, AnteValue &name){
         auto *cstrTy = AnPtrType::get(AnType::getPrimitive(TT_C8));
-        if(!c->typeEq(name.getType(), cstrTy)){
+        if(!typeEq(name.getType(), cstrTy)){
             throw new CompilationError("Argument of Ante.forget must be of type " +
                     anTypeToColoredStr(cstrTy) + " but a value of type "
                     + anTypeToColoredStr(name.getType()) + " was given instead.");
         }
-        c->mergedCompUnits->fnDecls[name.castTo<char*>()].clear();
+        //TODO: re-add
+        //c->mergedCompUnits->fnDecls[name.castTo<char*>()].clear();
         return nullptr;
     }
 }
@@ -167,9 +103,6 @@ namespace ante {
             compapi.emplace("Ante_debug",       new CtFunc((void*)Ante_debug,       AnType::getVoid(), {AnTypeVarType::get("'t'")}));
             compapi.emplace("Ante_sizeof",      new CtFunc((void*)Ante_sizeof,      AnType::getU32(),  {AnTypeVarType::get("'t'")}));
             compapi.emplace("Ante_typeof",      new CtFunc((void*)Ante_typeof,      AnType::getPrimitive(TT_Type), {AnTypeVarType::get("'t")}));
-            compapi.emplace("Ante_store",       new CtFunc((void*)Ante_store,       AnType::getVoid(), {AnPtrType::get(AnType::getPrimitive(TT_C8)), AnTypeVarType::get("'t'")}));
-            compapi.emplace("Ante_lookup",      new CtFunc((void*)Ante_lookup,      AnTypeVarType::get("'Dyn"), {AnPtrType::get(AnType::getPrimitive(TT_C8))}));
-            compapi.emplace("Ante_eval",        new CtFunc((void*)Ante_eval,        AnTypeVarType::get("'Dyn"), {AnPtrType::get(AnType::getPrimitive(TT_C8))}));
             compapi.emplace("Ante_error",       new CtFunc((void*)Ante_error,       AnType::getVoid(), {AnPtrType::get(AnType::getPrimitive(TT_C8))}));
             compapi.emplace("Ante_emit_ir",     new CtFunc((void*)Ante_emit_ir,     AnType::getVoid()));
             compapi.emplace("Ante_forget",      new CtFunc((void*)Ante_forget,      AnType::getVoid(), {AnPtrType::get(AnType::getPrimitive(TT_C8))}));

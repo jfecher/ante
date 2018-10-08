@@ -40,13 +40,21 @@ void parser::printBlock(Node *block, size_t scope){
 void PrintingVisitor::visit(RootNode *n){
     for(auto& f : n->types){ f->accept(*this); puts("\n"); }
 
-    for(auto& f : n->funcs){ f->accept(*this); puts("\n"); }
+    for(auto& f : n->funcs){
+        f->accept(*this); 
+        cout << "  :  " << anTypeToColoredStr(f->getType());
+        puts("\n");
+    }
 
     for(auto& f : n->traits){ f->accept(*this); puts("\n"); }
 
     for(auto& f : n->extensions){ f->accept(*this); puts("\n"); }
 
-    for(auto& f : n->main){ f->accept(*this); puts(";"); }
+    for(auto& f : n->main){
+        f->accept(*this);
+        cout << "  :  " << anTypeToColoredStr(f->getType());
+        puts(";");
+    }
 }
 
 void printModifiers(PrintingVisitor &v, ModifiableNode *n){
@@ -143,6 +151,9 @@ void PrintingVisitor::visit(SeqNode *n){
 
         if(&c != &n->sequence.back()){
             puts(";");
+
+            cout << "  :  " << anTypeToStr(c->getType());
+
             for(size_t i = 0; i < indent_level; i++)
                 putchar(' ');
         }
@@ -152,15 +163,15 @@ void PrintingVisitor::visit(SeqNode *n){
 void PrintingVisitor::visit(BinOpNode *n){
     if(n->op == '('){
         n->lval->accept(*this);
+
         n->rval->accept(*this);
     }else{
-        putchar('(');
         n->lval->accept(*this);
+
         putchar(' ');
         Lexer::printTok(n->op);
         putchar(' ');
         n->rval->accept(*this);
-        putchar(')');
     }
 }
 
@@ -190,6 +201,7 @@ void PrintingVisitor::visit(ImportNode *n){
 
 
 void PrintingVisitor::visit(IfNode *n){
+    cout << anTypeToColoredStr(n->getType()) << ' ';
     cout << "if ";
     n->condition->accept(*this);
     cout << " then ";
@@ -220,16 +232,10 @@ void PrintingVisitor::visit(NamedValNode *n){
 }
 
 void PrintingVisitor::visit(VarNode *n){
-    cout << n->name << flush;
+    cout << '(' << n->name << ": " << anTypeToColoredStr(n->getType()) << ')' << flush;
     maybePrintArr(n->next.get());
 }
 
-
-void PrintingVisitor::visit(GlobalNode *n){
-    cout << "global ";
-    n->vars[0]->accept(*this);
-    puts("");
-}
 
 void PrintingVisitor::visit(VarAssignNode *n){
     printModifiers(*this, n);
@@ -265,7 +271,9 @@ void PrintingVisitor::visit(WhileNode *n){
 }
 
 void PrintingVisitor::visit(ForNode *n){
-    cout << "for " << n->var << " in ";
+    cout << "for ";
+    n->pattern->accept(*this);
+    cout << " in ";
     n->range->accept(*this);
     cout << " do ";
     n->child->accept(*this);
@@ -309,9 +317,9 @@ void PrintingVisitor::visit(FuncDeclNode *n){
         cout << ": ";
         n->params->accept(*this);
     }
-    if(n->type){
+    if(n->returnType){
         cout << " -> ";
-        n->type->accept(*this);
+        n->returnType->accept(*this);
     }
     if(n->child.get()){
         cout << " = ";
@@ -338,9 +346,9 @@ void PrintingVisitor::visit(DataDeclNode *n){
 
     auto *nvn = (NamedValNode*)n->child.get();
 
-    if(((TypeNode*)nvn->typeExpr.get())->type == TT_TaggedUnion){
+    if(((TypeNode*)nvn->typeExpr.get())->typeTag == TT_TaggedUnion){
         cout << endl;
-        while(nvn && ((TypeNode*)nvn->typeExpr.get())->type == TT_TaggedUnion){
+        while(nvn && ((TypeNode*)nvn->typeExpr.get())->typeTag == TT_TaggedUnion){
             auto *ty = (TypeNode*)nvn->typeExpr.get();
 
             cout << "| " << nvn->name << " " << (ty->extTy.get() ? typeNodeToStr(ty->extTy.get()) : "") << endl;

@@ -20,7 +20,6 @@ namespace ante {
         struct RetNode;
         struct NamedValNode;
         struct VarNode;
-        struct GlobalNode;
         struct StrLitNode;
         struct VarAssignNode;
         struct ExtNode;
@@ -56,7 +55,6 @@ namespace ante {
         virtual void visit(parser::RetNode*) = 0;
         virtual void visit(parser::NamedValNode*) = 0;
         virtual void visit(parser::VarNode*) = 0;
-        virtual void visit(parser::GlobalNode*) = 0;
         virtual void visit(parser::StrLitNode*) = 0;
         virtual void visit(parser::VarAssignNode*) = 0;
         virtual void visit(parser::ExtNode*) = 0;
@@ -91,7 +89,6 @@ namespace ante {
     void visit(parser::RetNode*);          \
     void visit(parser::NamedValNode*);     \
     void visit(parser::VarNode*);          \
-    void visit(parser::GlobalNode*);       \
     void visit(parser::StrLitNode*);       \
     void visit(parser::VarAssignNode*);    \
     void visit(parser::ExtNode*);          \

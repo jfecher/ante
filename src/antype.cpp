@@ -1,5 +1,6 @@
 #include "antype.h"
 #include "types.h"
+#include "uniontag.h"
 
 using namespace std;
 using namespace ante::parser;
@@ -288,12 +289,12 @@ namespace ante {
         return agg;
     }
 
-    AnFunctionType* AnFunctionType::get(Compiler *c, AnType* retty, NamedValNode* params, bool isMetaFunction){
+    AnFunctionType* AnFunctionType::get(AnType* retty, NamedValNode* params, bool isMetaFunction){
         vector<AnType*> extTys;
 
         while(params && params->typeExpr.get()){
             TypeNode *pty = (TypeNode*)params->typeExpr.get();
-            auto *aty = toAnType(c, pty);
+            auto *aty = toAnType(pty);
             extTys.push_back(aty);
             params = (NamedValNode*)params->next.get();
         }
@@ -529,7 +530,7 @@ namespace ante {
      * Overwrites a given AnDataType to be a bound variant of
      * the given generic type specified by unboundType.
      */
-    AnDataType* bindVariant(Compiler *c, AnDataType *unboundType,
+    AnDataType* bindVariant(AnDataType *unboundType,
             vector<TypeBinding> const& bindings, AnDataType *variant){
 
         auto boundExts = vecOf<AnType*>(unboundType->extTys.size());
@@ -542,7 +543,7 @@ namespace ante {
 
             vector<TypeBinding> boundBindings;
             for(auto &p : unboundType->boundGenerics){
-                boundBindings.emplace_back(p.getTypeVarName(), bindGenericToType(c, p.getBinding(), bindings));
+                boundBindings.emplace_back(p.getTypeVarName(), bindGenericToType(p.getBinding(), bindings));
             }
         }
 
@@ -553,14 +554,13 @@ namespace ante {
 
         auto internalBindings = mapStructuredBindingsToNamedBindings(unboundType, bindings);
         for(auto *e : unboundType->extTys){
-            auto *be = bindGenericToType(c, e, internalBindings);
+            auto *be = bindGenericToType(e, internalBindings);
             boundExts.push_back(be);
         }
 
         if(unboundType->isUnionTag()){
             auto *unionType = unboundType->parentUnionType;
-            unionType = try_cast<AnDataType>(bindGenericToType(c, unionType, bindings));
-            updateLlvmTypeBinding(c, unionType, unionType->isGeneric);
+            unionType = try_cast<AnDataType>(bindGenericToType(unionType, bindings));
             variant->parentUnionType = unionType;
         }
 
@@ -577,7 +577,6 @@ namespace ante {
         variant->extTys = boundExts;
         variant->tags = unboundType->tags;
         variant->traitImpls = unboundType->traitImpls;
-        updateLlvmTypeBinding(c, variant, variant->isGeneric);
         return variant;
     }
 
@@ -619,7 +618,7 @@ namespace ante {
      * List 't => List (Ptr 'u)
      *         => List (Ptr ('a, 'b))
      */
-    vector<TypeBinding> flatten(const Compiler *c, const AnDataType *dt,
+    vector<TypeBinding> flatten(const AnDataType *dt,
             vector<TypeBinding> const& bindings){
 
         vector<TypeBinding> ret;
@@ -628,7 +627,7 @@ namespace ante {
             ret = dt->boundGenerics;
 
             for(auto &p : ret){
-                p.setBinding(bindGenericToType((Compiler*)c, p.getBinding(), bindings));
+                p.setBinding(bindGenericToType(p.getBinding(), bindings));
             }
         }
 
@@ -649,7 +648,7 @@ namespace ante {
      * unboundType and creates it if it has not been
      * previously bound.
      */
-    AnDataType* AnDataType::getVariant(Compiler *c, AnDataType *unboundType,
+    AnDataType* AnDataType::getVariant(AnDataType *unboundType,
             vector<TypeBinding> const& boundTys){
 
         //type is fully bound and no longer generic, early return
@@ -657,7 +656,7 @@ namespace ante {
             return unboundType;
 
         auto filteredBindings = filterMatchingBindings(unboundType, boundTys);
-        filteredBindings = flatten(c, unboundType, filteredBindings);
+        filteredBindings = flatten(unboundType, filteredBindings);
 
         if(filteredBindings.empty())
             return unboundType;
@@ -673,7 +672,7 @@ namespace ante {
 
         variant = new AnDataType(unboundType->name, {}, false);
 
-        variant = bindVariant(c, unboundType, filteredBindings, variant);
+        variant = bindVariant(unboundType, filteredBindings, variant);
         addKVPair(typeArena.genericVariants, make_pair(variant->name, variant->boundGenerics), variant);
         return variant;
     }
@@ -684,7 +683,7 @@ namespace ante {
      * previously bound.  Will fail if the given name does
      * not correspond to any defined type.
      */
-    AnDataType* AnDataType::getVariant(Compiler *c, string const& name,
+    AnDataType* AnDataType::getVariant(string const& name,
             vector<TypeBinding> const& boundTys){
 
         auto *unboundType = AnDataType::get(name);
@@ -693,7 +692,7 @@ namespace ante {
             return unboundType;
         }
 
-        return AnDataType::getVariant(c, unboundType, boundTys);
+        return AnDataType::getVariant(unboundType, boundTys);
     }
 
     AnDataType* AnDataType::create(string const& name, vector<AnType*> const& elems,
@@ -758,11 +757,11 @@ namespace ante {
     }
 
 
-    AnType* toAnType(Compiler *c, const TypeNode *tn){
+    AnType* toAnType(const TypeNode *tn){
         if(!tn) return AnType::getVoid();
         AnType *ret;
 
-        switch(tn->type){
+        switch(tn->typeTag){
             case TT_I8:
             case TT_I16:
             case TT_I32:
@@ -780,7 +779,7 @@ namespace ante {
             case TT_C32:
             case TT_Bool:
             case TT_Void:
-                ret = AnType::getPrimitive(tn->type);
+                ret = AnType::getPrimitive(tn->typeTag);
                 break;
 
             case TT_Function:
@@ -791,20 +790,20 @@ namespace ante {
                 vector<AnType*> tys;
                 while(ext){
                     if(retty){
-                        tys.push_back(toAnType(c, (TypeNode*)ext));
+                        tys.push_back(toAnType(ext));
                     }else{
-                        retty = toAnType(c, (TypeNode*)ext);
+                        retty = toAnType(ext);
                     }
                     ext = (TypeNode*)ext->next.get();
                 }
-                ret = AnFunctionType::get(retty, tys, tn->type == TT_MetaFunction);
+                ret = AnFunctionType::get(retty, tys, tn->typeTag == TT_MetaFunction);
                 break;
             }
             case TT_Tuple: {
                 TypeNode *ext = tn->extTy.get();
                 vector<AnType*> tys;
                 while(ext){
-                    tys.push_back(toAnType(c, (TypeNode*)ext));
+                    tys.push_back(toAnType(ext));
                     ext = (TypeNode*)ext->next.get();
                 }
                 ret = AnAggregateType::get(TT_Tuple, tys);
@@ -814,11 +813,11 @@ namespace ante {
             case TT_Array: {
                 TypeNode *elemTy = tn->extTy.get();
                 IntLitNode *len = (IntLitNode*)elemTy->next.get();
-                ret = AnArrayType::get(toAnType(c, elemTy), len ? stoi(len->val) : 0);
+                ret = AnArrayType::get(toAnType(elemTy), len ? stoi(len->val) : 0);
                 break;
             }
             case TT_Ptr:
-                ret = AnPtrType::get(toAnType(c, tn->extTy.get()));
+                ret = AnPtrType::get(toAnType(tn->extTy.get()));
                 break;
             case TT_Data:
             case TT_TaggedUnion: {
@@ -827,13 +826,13 @@ namespace ante {
 
                     vector<TypeBinding> bindings;
                     for(size_t i = 0; i < tn->params.size(); i++){
-                        auto *b = toAnType(c, tn->params[i].get());
+                        auto *b = toAnType(tn->params[i].get());
                         //empty string because we cannot know the original typevar used in the declaration
                         //and it is unneeded except for when printing a parent datatype, which this is not.
                         bindings.emplace_back("", basety, i, b);
                     }
 
-                    ret = try_cast<AnDataType>(bindGenericToType(c, basety, bindings));
+                    ret = try_cast<AnDataType>(bindGenericToType(basety, bindings));
                 }else{
                     ret = AnDataType::get(tn->typeName);
                 }
@@ -843,7 +842,7 @@ namespace ante {
                 ret = AnTypeVarType::get(tn->typeName);
                 break;
             default:
-                cerr << "Unknown TypeTag " << typeTagToStr(tn->type) << endl;
+                cerr << "Unknown TypeTag " << typeTagToStr(tn->typeTag) << endl;
                 return nullptr;
         }
 

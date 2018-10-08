@@ -1,4 +1,6 @@
 #include "unittest.h"
+using namespace ante;
+using namespace std;
 
 auto c = new Compiler(nullptr);
 

@@ -2,6 +2,9 @@
 
 #include "compapi.h"
 #include "target.h"
+#include "module.h"
+#include "typeinference.h"
+#include "nameresolution.h"
 #include <llvm/Support/TargetRegistry.h>
 
 #if LLVM_VERSION_MAJOR >= 6
@@ -11,6 +14,19 @@
 using namespace std;
 using namespace ante;
 using namespace ante::parser;
+
+/**
+* @brief every single compiled module, even ones invisible to the current
+* compilation unit.  Prevents recompilation of modules and owns all Modules
+*/
+extern llvm::StringMap<unique_ptr<Module>> allCompiledModules;
+
+/**
+* @brief Every merged compilation units.  Each must not be freed until compilation
+* finishes as there is always a chance an old module is recompiled and the newly
+* imported functions would need the context they were compiled in.
+*/
+extern list<unique_ptr<Module>> allMergedCompUnits;
 
 /**
  * @brief Parses a file and prints the resulting parse tree
@@ -74,6 +90,21 @@ int main(int argc, const char **argv){
 
     capi::init();
 
+    if(argc > 1){
+        string* s = new string(argv[1]);
+        setLexer(new Lexer(s));
+        yy::parser p{};
+        int flag = p.parse();
+        if(flag == PE_OK){
+            Node* root = parser::getRootNode();
+            NameResolutionVisitor::resolve(root);
+            TypeInferenceVisitor::infer(root);
+            parser::printBlock(root, 0);
+            delete root;
+        }
+    }
+
+    /*
     auto *args = parseArgs(argc, argv);
     if(args->hasArg(Args::Help)) printHelp();
     if(args->hasArg(Args::NoColor)) colored_output = false;
@@ -92,10 +123,11 @@ int main(int argc, const char **argv){
 
     if(args->hasArg(Args::Eval) or (args->args.empty() && args->inputFiles.empty()))
         Compiler(0).eval();
+    */
 
     if(yylexer)
         delete yylexer;
-    delete args;
+    //delete args;
 
     return 0;
 }

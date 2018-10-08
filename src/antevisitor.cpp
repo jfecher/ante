@@ -115,6 +115,7 @@ namespace ante {
             return;
         }
 
+        /*
         if(!isDeclaredInternally(n->name)){
             auto *v = c->lookup(n->name);
 
@@ -151,14 +152,7 @@ namespace ante {
                     }
                     break;
             }
-        }
-    }
-
-    void AnteVisitor::visit(parser::GlobalNode *n){
-        for(auto &m : n->vars){
-            m->accept(*this);
-            declare(m->name);
-        }
+        }*/
     }
 
     void AnteVisitor::visit(parser::StrLitNode *n){
@@ -201,7 +195,9 @@ namespace ante {
     }
 
     void AnteVisitor::visit(parser::ForNode *n){
-        declare(n->var);
+        implicitDeclare = true;
+        n->pattern->accept(*this);
+        implicitDeclare = false;
         n->range->accept(*this);
         n->child->accept(*this);
     }

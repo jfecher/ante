@@ -1,0 +1,241 @@
+#include "typeinference.h"
+#include "antype.h"
+#include "compiler.h"
+#include "types.h"
+
+#include "constraintfindingvisitor.h"
+#include "unification.h"
+
+using namespace std;
+
+namespace ante {
+    using namespace parser;
+
+    /** Annotate all nodes with placeholder types */
+    void TypeInferenceVisitor::visit(RootNode *n){
+        for(auto &m : n->imports)
+            m->accept(*this);
+        for(auto &m : n->types)
+            m->accept(*this);
+        for(auto &m : n->traits)
+            m->accept(*this);
+        for(auto &m : n->extensions)
+            m->accept(*this);
+        for(auto &m : n->funcs)
+            m->accept(*this);
+
+        auto lastType = AnType::getVoid();
+        for(auto &m : n->main){
+            m->accept(*this);
+            lastType = m->getType();
+        }
+        n->setType(lastType);
+    }
+
+    void TypeInferenceVisitor::visit(IntLitNode *n){
+        n->setType(AnType::getPrimitive(n->typeTag));
+    }
+
+    void TypeInferenceVisitor::visit(FltLitNode *n){
+        n->setType(AnType::getPrimitive(n->typeTag));
+    }
+
+    void TypeInferenceVisitor::visit(BoolLitNode *n){
+        n->setType(AnType::getBool());
+    }
+
+    void TypeInferenceVisitor::visit(StrLitNode *n){
+        n->setType(AnType::getDataType("Str"));
+    }
+
+    void TypeInferenceVisitor::visit(CharLitNode *n){
+        n->setType(AnType::getPrimitive(TT_C8));
+    }
+
+    void TypeInferenceVisitor::visit(ArrayNode *n){
+        for(auto &e : n->exprs)
+            e->accept(*this);
+
+        n->setType(nextTypeVar());
+    }
+
+    void TypeInferenceVisitor::visit(TupleNode *n){
+        auto types = vecOf<AnType*>(n->exprs.size());
+        for(auto &e : n->exprs){
+            e->accept(*this);
+            types.push_back(e->getType());
+        }
+
+        if(n->exprs.empty())
+            n->setType(AnType::getVoid());
+        else
+            n->setType(AnType::getAggregate(TT_Tuple, types));
+    }
+
+    void TypeInferenceVisitor::visit(ModNode *n){
+        if(n->expr)
+            n->expr->accept(*this);
+        n->setType(nextTypeVar());
+    }
+
+    void TypeInferenceVisitor::visit(TypeNode *n){
+        n->setType(toAnType(n));
+    }
+
+    void TypeInferenceVisitor::visit(TypeCastNode *n){
+        n->rval->accept(*this);
+        n->setType(n->rval->getType());
+    }
+
+    void TypeInferenceVisitor::visit(UnOpNode *n){
+        n->rval->accept(*this);
+        n->setType(nextTypeVar());
+    }
+
+    void TypeInferenceVisitor::visit(SeqNode *n){
+        auto lastType = AnType::getVoid();
+        for(auto &stmt : n->sequence){
+            stmt->accept(*this);
+            lastType = stmt->getType();
+        }
+        n->setType(lastType);
+    }
+
+    AnFunctionType* unknownFunctionType(Declaration *decl, AnType *args){
+        if(decl->tval.type && !try_cast<AnTypeVarType>(decl->tval.type))
+            return try_cast<AnFunctionType>(decl->tval.type);
+
+        auto retTy = nextTypeVar();
+        if(args->typeTag == TT_Tuple){
+            auto argsTup = try_cast<AnAggregateType>(args);
+            vector<AnType*> params;
+            params.reserve(argsTup->extTys.size());
+            for(size_t i = 0; i < argsTup->extTys.size(); i++)
+                params.push_back(nextTypeVar());
+            decl->tval.type = AnFunctionType::get(retTy, params);
+        }else{
+            auto param = nextTypeVar();
+            decl->tval.type = AnFunctionType::get(retTy, {param});
+        }
+        return try_cast<AnFunctionType>(decl->tval.type);
+    }
+
+    void TypeInferenceVisitor::visit(BinOpNode *n){
+        n->lval->accept(*this);
+        n->rval->accept(*this);
+        n->setType(nextTypeVar());
+    }
+
+    void TypeInferenceVisitor::visit(BlockNode *n){
+        n->block->accept(*this);
+        n->setType(n->block->getType());
+    }
+
+    void TypeInferenceVisitor::visit(RetNode *n){
+        n->expr->accept(*this);
+        n->setType(n->expr->getType());
+    }
+
+    void TypeInferenceVisitor::visit(ImportNode *n){
+        n->setType(AnType::getVoid());
+    }
+
+    void TypeInferenceVisitor::visit(IfNode *n){
+        n->condition->accept(*this);
+        n->thenN->accept(*this);
+        if(n->elseN){
+            n->elseN->accept(*this);
+            n->setType(nextTypeVar());
+        }else{
+            n->setType(AnType::getVoid());
+        }
+    }
+
+    void TypeInferenceVisitor::visit(NamedValNode *n){
+        n->typeExpr->accept(*this);
+        n->setType(n->typeExpr->getType());
+    }
+
+    void TypeInferenceVisitor::visit(VarNode *n){
+        if(!n->decls[0]->tval.type){
+            auto tv = nextTypeVar();
+            n->decls[0]->tval.type = nextTypeVar();
+            n->setType(tv);
+        }else if(auto *fnty = try_cast<AnFunctionType>(n->decls[0]->tval.type)){
+            n->setType(copyWithNewTypeVars(fnty));
+        }else{
+            n->setType(n->decls[0]->tval.type);
+        }
+    }
+
+
+    void TypeInferenceVisitor::visit(VarAssignNode *n){
+        n->expr->accept(*this);
+        n->ref_expr->accept(*this);
+
+        n->ref_expr->setType(n->expr->getType());
+        if(n->modifiers.empty()){
+            n->setType(AnType::getVoid());
+            static_cast<VarNode*>(n->ref_expr)->decls[0]->tval.type = nextTypeVar();
+        }else{
+            n->setType(n->expr->getType());
+        }
+    }
+
+    void TypeInferenceVisitor::visit(ExtNode *n){
+        for(auto *m : *n->methods)
+            m->accept(*this);
+        n->setType(AnType::getVoid());
+    }
+
+    void TypeInferenceVisitor::visit(JumpNode *n){
+        n->expr->accept(*this);
+        n->setType(AnType::getVoid());
+    }
+
+    void TypeInferenceVisitor::visit(WhileNode *n){
+        n->condition->accept(*this);
+        n->child->accept(*this);
+        n->setType(AnType::getVoid());
+    }
+
+    void TypeInferenceVisitor::visit(ForNode *n){
+        n->range->accept(*this);
+        n->pattern->accept(*this);
+        n->child->accept(*this);
+        n->setType(AnType::getVoid());
+    }
+
+    void TypeInferenceVisitor::visit(MatchNode *n){
+        n->expr->accept(*this);
+        for(auto &b : n->branches){
+            b->accept(*this);
+        }
+        n->setType(nextTypeVar());
+    }
+
+    void TypeInferenceVisitor::visit(MatchBranchNode *n){
+        n->pattern->accept(*this);
+        n->branch->accept(*this);
+        n->setType(n->branch->getType());
+    }
+
+    void TypeInferenceVisitor::visit(FuncDeclNode *n){
+        vector<AnType*> paramTypes;
+        for(auto *p : *n->params){
+            p->accept(*this);
+            paramTypes.push_back(p->getType());
+        }
+
+        n->child->accept(*this);
+        n->setType(AnFunctionType::get(n->child->getType(), paramTypes));
+    }
+
+    void TypeInferenceVisitor::visit(DataDeclNode *n){
+        n->setType(AnType::getVoid());
+    }
+
+    void TypeInferenceVisitor::visit(TraitNode *n){
+        n->setType(AnType::getVoid());
+    }
+}

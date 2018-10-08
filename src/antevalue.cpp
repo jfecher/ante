@@ -1,5 +1,6 @@
 #include "antevalue.h"
 #include "types.h"
+#include "uniontag.h"
 
 using namespace std;
 using namespace llvm;
@@ -319,15 +320,16 @@ namespace ante {
             case TT_MetaFunction:
             case TT_Array: storePtr(c, tv); return;
             case TT_TypeVar: {
-                auto *tvt = try_cast<AnTypeVarType>(tv.type);
-                auto *var = c->lookup(tvt->name);
-                if(!var){
-                    c->errFlag = true;
-                    cerr << "Lookup for typevar " + tvt->name + " failed\n";
-                    throw new CompilationError("Lookup for typevar " + tvt->name + " failed");
-                }
+                //TODO: re-add
+                //auto *tvt = try_cast<AnTypeVarType>(tv.type);
+                //auto *var = c->lookup(tvt->name);
+                //if(!var){
+                //    c->errFlag = true;
+                //    cerr << "Lookup for typevar " + tvt->name + " failed\n";
+                //    throw new CompilationError("Lookup for typevar " + tvt->name + " failed");
+                //}
 
-                auto *type = extractTypeValue(var->tval);
+                //auto *type = extractTypeValue(var->tval);
                 auto boundTv = TypedValue(tv.val, type);
                 storeValue(c, boundTv);
                 return;

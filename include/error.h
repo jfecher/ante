@@ -32,6 +32,8 @@ namespace ante {
     /* General error function */
     void error(const char* msg, const yy::location& loc, ErrorType t = ErrorType::Error);
 
+    void error(lazy_printer msg, const yy::location& loc, ErrorType t = ErrorType::Error);
+
 }
 
 #endif

@@ -46,7 +46,6 @@ namespace ante {
         Node* mkCompilerDirective(LOC_TY loc, Node *directive);
         Node* mkCompilerDirectiveExpr(LOC_TY loc, Node *directive, Node *expr);
 
-        Node* mkGlobalNode(LOC_TY loc, Node* s);
         Node* mkTypeNode(LOC_TY loc, TypeTag type, char* typeName, Node *extTy = nullptr);
         Node* mkTypeCastNode(LOC_TY loc, Node *l, Node *r);
         Node* mkUnOpNode(LOC_TY loc, int op, Node *r);

@@ -227,6 +227,8 @@ namespace ante {
         AnAggregateType(TypeTag ty, const std::vector<AnType*> exts) :
                 AnType(ty, ante::isGeneric(exts), getNumMatchedTys(exts)+1), extTys(exts) {}
 
+        AnAggregateType(TypeTag ty, const std::vector<AnType*> exts, bool isGeneric) :
+                AnType(ty, isGeneric, getNumMatchedTys(exts)+1), extTys(exts) {}
         public:
 
         ~AnAggregateType() = default;
@@ -343,7 +345,8 @@ namespace ante {
     class AnFunctionType : public AnAggregateType {
         protected:
         AnFunctionType(AnType *ret, std::vector<AnType*> elems, bool isMetaFunction) :
-                AnAggregateType(isMetaFunction ? TT_MetaFunction : TT_Function, elems), retTy(ret){
+                AnAggregateType(isMetaFunction ? TT_MetaFunction : TT_Function, elems,
+                        ret->isGeneric || ante::isGeneric(elems)), retTy(ret){
 
             //numMatchedTys = #params + 1 ret ty + 1 fn ty itself
             numMatchedTys = elems.size() + 2;
@@ -358,7 +361,7 @@ namespace ante {
         static AnFunctionType* get(AnType *retTy, const std::vector<AnType*> elems,
                 bool isMetaFunction = false);
 
-        static AnFunctionType* get(Compiler *c, AnType* retty, parser::NamedValNode* params,
+        static AnFunctionType* get(AnType* retty, parser::NamedValNode* params,
                 bool isMetaFunction = false);
 
         /** Returns a version of the current type with an additional modifier m. */
@@ -462,11 +465,11 @@ namespace ante {
          * If no variant is found, a variant will be bound with the given bindings.
          * If not type with the name 'name' is found this function will issue a
          * warning and return the stub of that type. */
-        static AnDataType* getVariant(Compiler *c, std::string const& name, std::vector<TypeBinding> const& boundTys);
+        static AnDataType* getVariant(std::string const& name, std::vector<TypeBinding> const& boundTys);
 
         /** Searches for a bound variant of the given unboundType.
          * If no variant is found, a variant will be bound with the given bindings. */
-        static AnDataType* getVariant(Compiler *c, AnDataType *unboundType, std::vector<TypeBinding> const& boundTys);
+        static AnDataType* getVariant(AnDataType *unboundType, std::vector<TypeBinding> const& boundTys);
 
         /** Looks for a data type by the given name and modifiers and creates it if has not been already */
         static AnDataType* getOrCreate(std::string const& name, std::vector<AnType*> const& elems, bool isUnion);

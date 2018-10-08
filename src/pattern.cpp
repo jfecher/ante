@@ -25,7 +25,7 @@ namespace ante {
 
         pattern->accept(cv);
 
-        auto tcr = cv.c->typeEq(cv.val.type, valToMatch.type);
+        auto tcr = typeEq(cv.val.type, valToMatch.type);
         if(!tcr){
             cv.c->compErr("Cannot match pattern of type " + anTypeToColoredStr(cv.val.type)
                     + " to corresponding value's type " + anTypeToColoredStr(valToMatch.type), pattern->loc);
@@ -57,9 +57,7 @@ namespace ante {
 
         //Do not bind to _ to enforce convention of _ to indicate an unused value
         if(pattern->name != "_"){
-            Assignment a{Assignment::Normal, n->expr.get()};
-            auto var = new Variable(pattern->name, valToMatch, cv.c->scope, a);
-            cv.c->stoVar(pattern->name, var);
+            pattern->decls[0]->tval = valToMatch;
         }
     }
 
@@ -155,12 +153,12 @@ namespace ante {
         ConstantInt *ci = ConstantInt::get(*c->ctxt,
                 APInt(8, parentTy->getTagVal(pattern->typeName), true));
 
-        tagTy = try_cast<AnDataType>(bindGenericToType(c, tagTy, try_cast<AnDataType>(valToMatch.type)->boundGenerics));
+        tagTy = try_cast<AnDataType>(bindGenericToType(tagTy, try_cast<AnDataType>(valToMatch.type)->boundGenerics));
         // tagTy = tagTy->setModifier(valToMatch.type->mods);
 
-        auto tcr = c->typeEq(parentTy, valToMatch.type);
+        auto tcr = typeEq(parentTy, valToMatch.type);
         if(tcr->res == TypeCheckResult::SuccessWithTypeVars)
-            tagTy = try_cast<AnDataType>(bindGenericToType(c, tagTy, tcr->bindings));
+            tagTy = try_cast<AnDataType>(bindGenericToType(tagTy, tcr->bindings));
         else if(tcr->res == TypeCheckResult::Failure)
             c->compErr("Cannot bind pattern of type " + anTypeToColoredStr(parentTy) +
                     " to matched value of type " + anTypeToColoredStr(valToMatch.type), pattern->loc);
@@ -242,7 +240,6 @@ namespace ante {
             BasicBlock *endpat = &mbn == &n->branches.back() ?
                 endmatch : BasicBlock::Create(*c->ctxt, "end_pattern", f);
 
-            c->enterNewScope();
             handlePattern(*this, n, mbn->pattern.get(), endpat, valToMatch);
             mbn->branch->accept(*this);
             merges.push_back({c->builder.GetInsertBlock(), this->val});
@@ -253,7 +250,6 @@ namespace ante {
 
             c->builder.SetInsertPoint(endpat); //set insert point to next branch
             finalEndPat = endpat == endmatch ? finalEndPat : endpat;
-            c->exitScope();
         }
 
         // Cannot prove to LLVM match is exhaustive so an uninitialized value must be
@@ -277,7 +273,7 @@ namespace ante {
             if(!dyn_cast<ReturnInst>(pair.second.val)){
 
                 //match the types of those branches that will merge
-                if(!c->typeEq(pair.second.type, merges[0].second.type)){
+                if(!typeEq(pair.second.type, merges[0].second.type)){
                     c->compErr("Branch "+to_string(i)+"'s return type " + anTypeToColoredStr(pair.second.type) +
                             " != " + anTypeToColoredStr(merges[0].second.type)
                             + ", the first branch's return type", n->loc);

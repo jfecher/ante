@@ -1,4 +1,6 @@
 #include <types.h>
+#include <trait.h>
+#include <nameresolution.h>
 using namespace std;
 using namespace llvm;
 using namespace ante::parser;
@@ -23,13 +25,6 @@ char getBitWidthOfTypeTag(const TypeTag ty){
     }
 }
 
-TypedValue FunctionCandidates::getAsTypedValue(llvm::LLVMContext *c, std::vector<std::shared_ptr<FuncDecl>> &ca, TypedValue o){
-    return {(Value*)new FunctionCandidates(c, ca, o),
-        AnType::getPrimitive(TT_FunctionList)};
-}
-
-
-
 /*
  *  Returns the TypeNode* value of a TypedValue of type TT_Type
  */
@@ -37,76 +32,6 @@ AnType* extractTypeValue(const TypedValue &tv){
     auto zext = dyn_cast<ConstantInt>(tv.val)->getZExtValue();
     return (AnType*) zext;
 }
-
-
-/*
- *  Checks to see if a type is valid to be used.
- *  To be valid the type must:
- *      - Not be recursive (contain no references to
- *        itself that are not behind a pointer)
- *      - Contain no typevars that are not declared
- *        within the rootTy's params
- *      - Contain only data types that have been declared
- */
-void validateType(Compiler *c, const AnType *tn, const DataDeclNode *rootTy){
-    if(!tn) return;
-
-    if(tn->typeTag == TT_Data or tn->typeTag == TT_TaggedUnion){
-        auto *dataTy = try_cast<AnDataType>(tn);
-
-        if(dataTy->isStub()){
-            if(dataTy->name == rootTy->name){
-                c->compErr("Recursive types are disallowed, wrap the type in a pointer instead", rootTy->loc);
-            }
-
-            c->compErr("Type "+dataTy->name+" has not been declared", rootTy->loc);
-        }
-
-        for(auto *t : dataTy->extTys)
-            validateType(c, t, rootTy);
-
-    }else if(tn->typeTag == TT_Tuple){
-        auto *agg = try_cast<AnAggregateType>(tn);
-        for(auto *ext : agg->extTys){
-            validateType(c, ext, rootTy);
-        }
-    }else if(tn->typeTag == TT_Array){
-        auto *arr = try_cast<AnArrayType>(tn);
-        validateType(c, arr->extTy, rootTy);
-    }else if(tn->typeTag == TT_Ptr or tn->typeTag == TT_Function or tn->typeTag == TT_MetaFunction){
-        return;
-
-    }else if(tn->typeTag == TT_TypeVar){
-        auto *tvt = try_cast<AnTypeVarType>(tn);
-        auto *binding = c->lookupTypeVar(tvt->name);
-        if(binding){
-            return validateType(c, binding, rootTy);
-        }
-
-        //Typevar not found, if its not in the rootTy's params, then it is unbound
-        for(auto &p : rootTy->generics){
-            if(p->typeName == tvt->name) return;
-        }
-
-        c->compErr("Lookup for "+tvt->name+" not found", rootTy->loc);
-    }
-}
-
-void validateType(Compiler *c, const AnType *tn, const AnDataType *dt){
-    auto fakeLoc = mkLoc(mkPos(0, 0, 0), mkPos(0, 0, 0));
-    auto *ddn = new DataDeclNode(fakeLoc, dt->name, 0, 0, false);
-
-    for(auto &g : dt->generics){
-        auto *tv = mkAnonTypeNode(TT_TypeVar);
-        tv->typeName = g.typeVarName;
-        ddn->generics.emplace_back(tv);
-    }
-
-    validateType(c, tn, ddn);
-    ddn->generics.clear();
-    delete ddn;
-}
-
 
 Result<size_t, string> AnType::getSizeInBits(Compiler *c, string *incompleteType, bool force) const{
     size_t total = 0;
@@ -148,15 +73,6 @@ Result<size_t, string> AnType::getSizeInBits(Compiler *c, string *incompleteType
         return arr->len * val.getVal();
 
     }else if(auto *tvt = try_cast<AnTypeVarType>(this)){
-        auto *binding = c->lookupTypeVar(tvt->name);
-        if(binding){
-            if(binding == tvt){
-                return "Typevar " + tvt->name + " refers to itself, cannot calculate size in bits";
-            }
-            //possible infinite loop for mutally recursive typevars
-            return binding->getSizeInBits(c, incompleteType, force);
-        }
-
         if(force) return AN_USZ_SIZE;
         else return "Lookup for typevar " + tvt->name + " not found";
     }
@@ -267,7 +183,7 @@ Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt, bool force){
  *         to match the typevar ordering with.  The second function below handles
  *         this conversion
  */
-AnType* bindGenericToType(Compiler *c, AnType *tn, vector<TypeBinding> const& bindings){
+AnType* bindGenericToType(AnType *tn, vector<TypeBinding> const& bindings){
     if(!tn->isGeneric){
         return tn;
     }else if(bindings.empty()){
@@ -275,7 +191,7 @@ AnType* bindGenericToType(Compiler *c, AnType *tn, vector<TypeBinding> const& bi
     }
 
     if(auto *dty = try_cast<AnDataType>(tn)){
-        return AnDataType::getVariant(c, dty, bindings);
+        return AnDataType::getVariant(dty, bindings);
 
     }else if(auto *tv = try_cast<AnTypeVarType>(tn)){
         for(auto& b : bindings){
@@ -290,16 +206,16 @@ AnType* bindGenericToType(Compiler *c, AnType *tn, vector<TypeBinding> const& bi
         vector<AnType*> exts;
         exts.reserve(agg->extTys.size());
         for(auto *e : agg->extTys){
-            exts.push_back(bindGenericToType(c, e, bindings));
+            exts.push_back(bindGenericToType(e, bindings));
         }
         return AnAggregateType::get(tn->typeTag, exts);
 
     }else if(auto *ptr = try_cast<AnPtrType>(tn)){
-        auto *ty = bindGenericToType(c, ptr->extTy, bindings);
+        auto *ty = bindGenericToType(ptr->extTy, bindings);
         return AnPtrType::get(ty);
 
     }else if(auto *arr = try_cast<AnArrayType>(tn)){
-        auto *ty = bindGenericToType(c, arr->extTy, bindings);
+        auto *ty = bindGenericToType(arr->extTy, bindings);
         return AnArrayType::get(ty, arr->len);
 
     }else{
@@ -478,9 +394,9 @@ void Compiler::handleImplicitConversion(TypedValue *lhs, TypedValue *rhs){
 
 
 bool containsTypeVar(const TypeNode *tn){
-    auto tt = tn->type;
+    auto tt = tn->typeTag;
     if(tt == TT_Array or tt == TT_Ptr){
-        return tn->extTy->type == tt;
+        return tn->extTy->typeTag == tt;
     }else if(tt == TT_Tuple or tt == TT_Data or tt == TT_TaggedUnion or
              tt == TT_Function or tt == TT_MetaFunction){
         TypeNode *ext = tn->extTy.get();
@@ -621,23 +537,13 @@ Type* Compiler::anTypeToLlvmType(const AnType *ty, bool force){
         }
         case TT_TypeVar: {
             auto *tvt = try_cast<AnTypeVarType>(ty);
-            AnType *binding = lookupTypeVar(tvt->name);
-            if(!binding){
-                //compErr("Use of undeclared type variable " + ty->typeName, ty->loc);
-                //compErr("tn2llvmt: TypeVarError; lookup for "+ty->typeName+" not found", ty->loc);
-                //throw new TypeVarError();
-                if(!force)
-                    cerr << "Warning: cannot translate undeclared typevar " << tvt->name << endl;
+            //compErr("Use of undeclared type variable " + ty->typeName, ty->loc);
+            //compErr("tn2llvmt: TypeVarError; lookup for "+ty->typeName+" not found", ty->loc);
+            //throw new TypeVarError();
+            if(!force)
+                cerr << "Warning: cannot translate undeclared typevar " << tvt->name << endl;
 
-                return Type::getInt64PtrTy(*ctxt);
-            }
-
-            if(binding == tvt){
-                cerr << "Warning: typevar " << tvt->name << " refers to itself" << endl;
-                return Type::getVoidTy(*ctxt);
-            }
-
-            return anTypeToLlvmType(binding, force);
+            return Type::getInt64PtrTy(*ctxt);
         }
         default:
             return typeTagToLlvmType(ty->typeTag, *ctxt);
@@ -746,7 +652,7 @@ bool TypeCheckResult::failed(){
 
 
 //forward decl of typeEqHelper for extTysEq fn
-TypeCheckResult& typeEqHelper(const Compiler *c, const AnType *l, const AnType *r, TypeCheckResult &tcr);
+TypeCheckResult& typeEqHelper(const AnType *l, const AnType *r, TypeCheckResult &tcr);
 
 /*
  *  Helper function to check if each type's list of extension
@@ -754,7 +660,7 @@ TypeCheckResult& typeEqHelper(const Compiler *c, const AnType *l, const AnType *
  *  equality of AnTypes of type Tuple, Data, Function, or any
  *  type with multiple extTys.
  */
-TypeCheckResult& extTysEq(const AnAggregateType *lAgg, const AnAggregateType *rAgg, TypeCheckResult &tcr, const Compiler *c = 0){
+TypeCheckResult& extTysEq(const AnAggregateType *lAgg, const AnAggregateType *rAgg, TypeCheckResult &tcr){
     if(lAgg->extTys.size() != rAgg->extTys.size())
         return tcr.failure();
 
@@ -762,11 +668,7 @@ TypeCheckResult& extTysEq(const AnAggregateType *lAgg, const AnAggregateType *rA
         auto *lExt = lAgg->extTys[i];
         auto *rExt = rAgg->extTys[i];
 
-        if(c){
-            if(!typeEqHelper(c, lExt, rExt, tcr)) return tcr.failure();
-        }else{
-            if(!typeEqBase(lExt, rExt, tcr)) return tcr.failure();
-        }
+        if(!typeEqHelper(lExt, rExt, tcr)) return tcr.failure();
     }
     return tcr.success();
 }
@@ -775,8 +677,6 @@ TypeCheckResult& extTysEq(const AnAggregateType *lAgg, const AnAggregateType *rA
  *  Returns 1 if two types are approx eq
  *  Returns 2 if two types are approx eq and one is a typevar
  *
- *  Does not check for trait implementation unless c is set.
- *
  *  This function is used as a base for typeEq, if a typeEq function
  *  is needed that does not require a Compiler parameter, this can be
  *  used, although it does not check for trait impls.  The optional
@@ -784,7 +684,7 @@ TypeCheckResult& extTysEq(const AnAggregateType *lAgg, const AnAggregateType *rA
  *  this function is used as a typeEq function with the Compiler ptr
  *  the outermost type will not be checked for traits.
  */
-TypeCheckResult& typeEqBase(const AnType *l, const AnType *r, TypeCheckResult &tcr, const Compiler *c){
+TypeCheckResult& typeEqBase(const AnType *l, const AnType *r, TypeCheckResult &tcr){
     if(l == r && !l->isGeneric) return tcr.success(l->numMatchedTys);
 
     if(l->typeTag == TT_TaggedUnion && r->typeTag == TT_Data)
@@ -806,8 +706,7 @@ TypeCheckResult& typeEqBase(const AnType *l, const AnType *r, TypeCheckResult &t
         auto *rptr = try_cast<AnPtrType>(r);
         tcr->matches++;
 
-        return c ? typeEqHelper(c, lptr->extTy, rptr->extTy, tcr)
-                 : typeEqBase(lptr->extTy, rptr->extTy, tcr, c);
+        return typeEqHelper(lptr->extTy, rptr->extTy, tcr);
 
     }else if(auto *larr = try_cast<AnArrayType>(l)){
         auto *rarr = try_cast<AnArrayType>(r);
@@ -815,8 +714,7 @@ TypeCheckResult& typeEqBase(const AnType *l, const AnType *r, TypeCheckResult &t
 
         if(larr->len != rarr->len) return tcr.failure();
 
-        return c ? typeEqHelper(c, larr->extTy, rarr->extTy, tcr)
-                 : typeEqBase(larr->extTy, rarr->extTy, tcr, c);
+        return typeEqHelper(larr->extTy, rarr->extTy, tcr);
 
     /* This case should be handled by typeEqHelper and should only reach here if there is no
      * valid Compiler* parameter to lookup definitions from. */
@@ -825,7 +723,7 @@ TypeCheckResult& typeEqBase(const AnType *l, const AnType *r, TypeCheckResult &t
         return tcr.successIf(ldt->name == rdt->name);
 
     }else if(auto *lAgg = try_cast<AnAggregateType>(l)){
-        return extTysEq(lAgg, try_cast<AnAggregateType>(r), tcr, c);
+        return extTysEq(lAgg, try_cast<AnAggregateType>(r), tcr);
     }
     //primitive type, we already know l->type == r->type
     return tcr.success();
@@ -840,7 +738,7 @@ bool dataTypeImplementsTrait(AnDataType *dt, string trait){
 }
 
 
-TypeCheckResult& typeCheckBoundDataTypes(const Compiler *c, const AnDataType *l,
+TypeCheckResult& typeCheckBoundDataTypes(const AnDataType *l,
         const AnDataType *r, TypeCheckResult &tcr){
 
     if(l->boundGenerics.size() != r->boundGenerics.size())
@@ -850,18 +748,18 @@ TypeCheckResult& typeCheckBoundDataTypes(const Compiler *c, const AnDataType *l,
         auto &lbg = l->boundGenerics[i];
         auto &rbg = r->boundGenerics[i];
 
-        if(!typeEqHelper(c, lbg.getBinding(), rbg.getBinding(), tcr)) return tcr.failure();
+        if(!typeEqHelper(lbg.getBinding(), rbg.getBinding(), tcr)) return tcr.failure();
     }
     return tcr.success();
 }
 
 
-TypeCheckResult& addBindingsToTypeCheck(const Compiler *c, vector<TypeBinding> const& bindings, TypeCheckResult &tcr){
+TypeCheckResult& addBindingsToTypeCheck(vector<TypeBinding> const& bindings, TypeCheckResult &tcr){
     for(auto &b : bindings){
         auto *repeat = findBindingFor(b.getGenericTypeParam(), tcr->bindings);
         if(repeat){
             auto tc2 = TypeCheckResult();
-            typeEqHelper(c, b.getBinding(), repeat->getBinding(), tc2);
+            typeEqHelper(b.getBinding(), repeat->getBinding(), tc2);
             if(!tc2) return tcr.failure();
         }else{
             tcr->bindings.push_back(b);
@@ -875,7 +773,7 @@ TypeCheckResult& addBindingsToTypeCheck(const Compiler *c, vector<TypeBinding> c
 /**
  * Returns the type check result of two possibly generic AnDataTypes with matching typenames.
  */
-TypeCheckResult& typeCheckVariants(const Compiler *c, const AnDataType *l,
+TypeCheckResult& typeCheckVariants(const AnDataType *l,
         const AnDataType *r, TypeCheckResult &tcr){
 
     bool lIsBound = l->isVariant();
@@ -884,16 +782,16 @@ TypeCheckResult& typeCheckVariants(const Compiler *c, const AnDataType *l,
     //Two bound variants are equal if their type parameters are equal
     if(lIsBound && rIsBound){
         for(size_t i = 0; i < l->boundGenerics.size(); i++){
-            typeEqHelper(c, l->boundGenerics[i].getBinding(), r->boundGenerics[i].getBinding(), tcr);
+            typeEqHelper(l->boundGenerics[i].getBinding(), r->boundGenerics[i].getBinding(), tcr);
             if(tcr.failed()) return tcr;
         }
         return tcr.success();
     //Perform type checks to get the needed bindings of type
     //variables to bind an unbound variant to a given bound variant.
     }else if(lIsBound && !rIsBound){
-        return addBindingsToTypeCheck(c, l->boundGenerics, tcr);
+        return addBindingsToTypeCheck(l->boundGenerics, tcr);
     }else if(!lIsBound && rIsBound){
-        return addBindingsToTypeCheck(c, r->boundGenerics, tcr);
+        return addBindingsToTypeCheck(r->boundGenerics, tcr);
     //neither are bound, these should both be parent types
     }else{
         return tcr.success();
@@ -906,16 +804,16 @@ TypeCheckResult& typeCheckVariants(const Compiler *c, const AnDataType *l,
  *
  *  Compiler instance required to check for trait implementation
  */
-TypeCheckResult& typeEqHelper(const Compiler *c, const AnType *l, const AnType *r, TypeCheckResult &tcr){
+TypeCheckResult& typeEqHelper(const AnType *l, const AnType *r, TypeCheckResult &tcr){
     if(l == r && !l->isGeneric) return tcr.success(l->numMatchedTys);
     if(!r) return tcr.failure();
 
     //check for type aliases
     const AnDataType *dt;
     if((dt = try_cast<AnDataType>(l)) && dt->isAlias){
-        return typeEqHelper(c, dt->getAliasedType(), r, tcr);
+        return typeEqHelper(dt->getAliasedType(), r, tcr);
     }else if((dt = try_cast<AnDataType>(r)) && dt->isAlias){
-        return typeEqHelper(c, l, dt->getAliasedType(), tcr);
+        return typeEqHelper(l, dt->getAliasedType(), tcr);
     }
 
     const AnDataType *ldt, *rdt;
@@ -924,28 +822,30 @@ TypeCheckResult& typeEqHelper(const Compiler *c, const AnType *l, const AnType *
             return tcr.success();
 
         if(ldt->unboundType && ldt->unboundType == rdt->unboundType){
-            return typeCheckBoundDataTypes(c, ldt, rdt, tcr);
+            return typeCheckBoundDataTypes(ldt, rdt, tcr);
         }
 
         if(ldt->name == rdt->name){
-            return typeCheckVariants(c, ldt, rdt, tcr);
+            return typeCheckVariants(ldt, rdt, tcr);
         }
 
         //typeName's are different, check if one is a trait and the other
         //is an implementor of the trait
-        Trait *t;
-        AnDataType *dt;
-        if((t = c->lookupTrait(ldt->name))){
-            dt = AnDataType::get(rdt->name);
-            if(!dt or dt->isStub()) return tcr.failure();
-        }else if((t = c->lookupTrait(rdt->name))){
-            dt = AnDataType::get(ldt->name);
-            if(!dt or dt->isStub()) return tcr.failure();
-        }else{
-            return tcr.failure();
-        }
 
-        return tcr.successIf(dataTypeImplementsTrait(dt, t->name));
+        //TODO: re-add
+        // Trait *t;
+        // AnDataType *dt;
+        // if((t = c->lookupTrait(ldt->name))){
+        //     dt = AnDataType::get(rdt->name);
+        //     if(!dt or dt->isStub()) return tcr.failure();
+        // }else if((t = c->lookupTrait(rdt->name))){
+        //     dt = AnDataType::get(ldt->name);
+        //     if(!dt or dt->isStub()) return tcr.failure();
+        // }else{
+        //     return tcr.failure();
+        // }
+
+        return tcr.failure(); //tcr.successIf(dataTypeImplementsTrait(dt, t->name));
 
     }else if(l->typeTag == TT_TypeVar or r->typeTag == TT_TypeVar){
 
@@ -966,43 +866,16 @@ TypeCheckResult& typeEqHelper(const Compiler *c, const AnType *l, const AnType *
             auto *rtv = try_cast<AnTypeVarType>(r);
 
             //lookup the type bound to ltv
-            AnType *lv = c->lookupTypeVar(ltv->name);
 
             //If they are equal, return before doing the second lookup
             if(ltv == rtv){
-                if(lv){
-                    tcr->bindings.emplace_back(ltv->name, lv);
-                    return tcr.successWithTypeVars();
-                }else{
-                    //Binding for the equal typevars not found in scope,
-                    //so dont add it to bindings, just return Success
-                    //since 't == 't even if 't is unbound
-                    return tcr.success();
-                }
-            }
-
-            AnType *rv = c->lookupTypeVar(rtv->name);
-
-            if(lv && rv){ //both are already bound
-                //add bindings from scope to the TypeCheckResult
-                //and recur on them to make sure they're equal
-                tcr->bindings.emplace_back(ltv->name, lv);
-                tcr->bindings.emplace_back(rtv->name, rv);
-                tcr.successWithTypeVars();
-                return typeEqHelper(c, lv, rv, tcr);
-            }else if(lv && not rv){
-                typeVar = rtv; //rtv binding not found so it stays as a typevar
-                nonTypeVar = lv;
-                tcr->bindings.emplace_back(ltv->name, nonTypeVar);
-                //fall through to successWithTypeVars below
-            }else if(rv && not lv){
-                typeVar = ltv;
-                nonTypeVar = rv;
-                tcr->bindings.emplace_back(rtv->name, nonTypeVar);
-                //fall through to successWithTypeVars below
-            }else{ //neither are bound
+                //Binding for the equal typevars not found in scope,
+                //so dont add it to bindings, just return Success
+                //since 't == 't even if 't is unbound
                 return tcr.success();
             }
+
+            return tcr.success();
         }
 
         auto *tv = findBindingFor(typeVar->name, tcr->bindings);
@@ -1017,7 +890,7 @@ TypeCheckResult& typeEqHelper(const Compiler *c, const AnType *l, const AnType *
             //This ensures ('t, 't) has 1 match with (i32, i32), the tuple's structure.
             //Not 2: the tuple structure and the second 't that is already bound to i32
             auto tc2 = TypeCheckResult();
-            typeEqHelper(c, tv->getBinding(), nonTypeVar, tc2);
+            typeEqHelper(tv->getBinding(), nonTypeVar, tc2);
             if(!tc2) return tcr.failure();
 
             if(tc2->res == TypeCheckResult::SuccessWithTypeVars){
@@ -1028,17 +901,17 @@ TypeCheckResult& typeEqHelper(const Compiler *c, const AnType *l, const AnType *
             return tcr;
         }
     }
-    return typeEqBase(l, r, tcr, c);
+    return typeEqBase(l, r, tcr);
 }
 
-TypeCheckResult Compiler::typeEq(const AnType *l, const AnType *r) const{
+TypeCheckResult typeEq(const AnType *l, const AnType *r){
     auto tcr = TypeCheckResult();
-    typeEqHelper(this, l, r, tcr);
+    typeEqHelper(l, r, tcr);
     return tcr;
 }
 
 
-TypeCheckResult Compiler::typeEq(vector<AnType*> l, vector<AnType*> r) const{
+TypeCheckResult typeEq(vector<AnType*> l, vector<AnType*> r){
     auto tcr = TypeCheckResult();
     if(l.size() != r.size()){
         tcr.failure();
@@ -1046,7 +919,7 @@ TypeCheckResult Compiler::typeEq(vector<AnType*> l, vector<AnType*> r) const{
     }
 
     for(size_t i = 0; i < l.size(); i++){
-        typeEqHelper(this, l[i], r[i], tcr);
+        typeEqHelper(l[i], r[i], tcr);
         if(tcr.failed()) return tcr;
     }
     return tcr;
@@ -1116,7 +989,7 @@ string typeTagToStr(TypeTag ty){
 string typeNodeToStr(const TypeNode *t){
     if(!t) return "null";
 
-    if(t->type == TT_Tuple){
+    if(t->typeTag == TT_Tuple){
         string ret = "(";
         TypeNode *elem = t->extTy.get();
         while(elem){
@@ -1127,7 +1000,7 @@ string typeNodeToStr(const TypeNode *t){
             elem = (TypeNode*)elem->next.get();
         }
         return ret;
-    }else if(t->type == TT_Data or t->type == TT_TaggedUnion or t->type == TT_TypeVar){
+    }else if(t->typeTag == TT_Data or t->typeTag == TT_TaggedUnion or t->typeTag == TT_TypeVar){
         string name = t->typeName;
         if(!t->params.empty()){
             name += "<";
@@ -1139,12 +1012,12 @@ string typeNodeToStr(const TypeNode *t){
             name += ">";
         }
         return name;
-    }else if(t->type == TT_Array){
+    }else if(t->typeTag == TT_Array){
         auto *len = (IntLitNode*)t->extTy->next.get();
         return '[' + len->val + " " + typeNodeToStr(t->extTy.get()) + ']';
-    }else if(t->type == TT_Ptr){
+    }else if(t->typeTag == TT_Ptr){
         return typeNodeToStr(t->extTy.get()) + "*";
-    }else if(t->type == TT_Function or t->type == TT_MetaFunction){
+    }else if(t->typeTag == TT_Function or t->typeTag == TT_MetaFunction){
         string ret = "(";
         string retTy = typeNodeToStr(t->extTy.get());
         TypeNode *cur = (TypeNode*)t->extTy->next.get();
@@ -1155,7 +1028,7 @@ string typeNodeToStr(const TypeNode *t){
         }
         return ret + ")->" + retTy;
     }else{
-        return typeTagToStr(t->type);
+        return typeTagToStr(t->typeTag);
     }
 }
 

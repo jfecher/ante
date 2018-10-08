@@ -24,8 +24,11 @@
 #include "compiler.h"
 #include "function.h"
 #include "types.h"
+#include "trait.h"
 #include "repl.h"
+#include "uniontag.h"
 #include "target.h"
+#include "nameresolution.h"
 #include "yyparser.h"
 
 using namespace std;
@@ -33,19 +36,6 @@ using namespace llvm;
 using namespace ante::parser;
 
 namespace ante {
-
-//Global containing every module/file compiled
-//to avoid recompilation
-llvm::StringMap<unique_ptr<Module>> allCompiledModules;
-
-//each mergedCompUnits is static in lifetime
-vector<unique_ptr<Module>> allMergedCompUnits;
-
-//yy::locations stored in all Nodes contain a string* to
-//a filename which must not be freed until all nodes are
-//deleted, including the FuncDeclNodes within ante::Modules
-//that all have a static lifetime
-vector<unique_ptr<string>> fileNames;
 
 /**
  * @param tup The head of the list
@@ -102,9 +92,9 @@ bool isUnsignedTypeTag(const TypeTag tt){
 
 void CompilingVisitor::visit(IntLitNode *n){
     val = TypedValue(ConstantInt::get(*c->ctxt,
-                    APInt(getBitWidthOfTypeTag(n->type),
-                    atol(n->val.c_str()), isUnsignedTypeTag(n->type))),
-            AnType::getPrimitive(n->type));
+                    APInt(getBitWidthOfTypeTag(n->typeTag),
+                    atol(n->val.c_str()), isUnsignedTypeTag(n->typeTag))),
+            AnType::getPrimitive(n->typeTag));
 }
 
 
@@ -118,8 +108,8 @@ const fltSemantics& typeTagToFltSemantics(TypeTag tokTy){
 }
 
 void CompilingVisitor::visit(FltLitNode *n){
-    val = TypedValue(ConstantFP::get(*c->ctxt, APFloat(typeTagToFltSemantics(n->type), n->val.c_str())),
-            AnType::getPrimitive(n->type));
+    val = TypedValue(ConstantFP::get(*c->ctxt, APFloat(typeTagToFltSemantics(n->typeTag), n->val.c_str())),
+            AnType::getPrimitive(n->typeTag));
 }
 
 
@@ -144,7 +134,7 @@ bool isSimpleTag(AnDataType *dt){
  */
 void CompilingVisitor::visit(TypeNode *n){
     //check for enum value
-    if(n->type == TT_Data || n->type == TT_TaggedUnion){
+    if(n->typeTag == TT_Data || n->typeTag == TT_TaggedUnion){
         auto *dataTy = AnDataType::get(n->typeName);
         if(!dataTy or dataTy->isStub() or !isSimpleTag(dataTy)) goto rettype;
 
@@ -173,26 +163,12 @@ void CompilingVisitor::visit(TypeNode *n){
 
 rettype:
     //return the type as a value
-    auto *ty = toAnType(c, n);
+    auto *ty = toAnType(n);
 
     //The TypeNode* address is wrapped in an llvm int so that llvm::Value methods can be called
     //without crashing, even if their result is meaningless
     Value *v = c->builder.getInt64((unsigned long)ty);
     val =TypedValue(v, AnType::getPrimitive(TT_Type));
-}
-
-
-/**
- * @brief Compiles all top-level import expressions
- */
-void scanImports(Compiler *c, RootNode *r){
-    for(auto &n : r->imports){
-        try{
-            CompilingVisitor::compile(c, n.get());
-        }catch(CtError *e){
-            delete e;
-        }
-    }
 }
 
 /**
@@ -243,8 +219,8 @@ TypedValue compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
     TypedValue val;
     Node *valNode = 0;
 
-    scanImports(c, expr);
-    c->scanAllDecls(expr);
+    NameResolutionVisitor v;
+    v.resolve(expr);
 
     //Compile main and hold onto the last value
     for(auto &n : expr->main){
@@ -266,9 +242,9 @@ TypedValue compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
         AnFunctionType *fnty = nullptr;
 
         if(fd)
-            fnty = AnFunctionType::get(c, AnType::getVoid(), fd->fdn->params.get());
+            fnty = AnFunctionType::get(AnType::getVoid(), fd->getFDN()->params.get());
 
-        if(!fd or (fnty && !c->typeEq(fnty->extTys, {val.type}))){
+        if(!fd or (fnty && !typeEq(fnty->extTys, {val.type}))){
             delete ls;
             delete rs;
             return c->compErr("Cannot cast " + anTypeToColoredStr(val.type)
@@ -344,7 +320,7 @@ void CompilingVisitor::visit(ArrayNode *n){
         if(!elemTy){
             elemTy = tval.type;
         }else{
-            if(!c->typeEq(tval.type, elemTy))
+            if(!typeEq(tval.type, elemTy))
                 c->compErr("Element " + to_string(i) + "'s type " + anTypeToColoredStr(tval.type) +
                     " does not match the first element's type of " + anTypeToColoredStr(elemTy), n->loc);
         }
@@ -428,72 +404,13 @@ void CompilingVisitor::visit(RetNode *n){
     this->val = retInst;
 }
 
-/** add ".an" if string does not end with it already */
-string addAnSuffix(string const& s){
-    if(s.empty() || (s.length() >= 3 && s.substr(s.length()-3) == ".an")){
-        return s;
-    }else{
-        return s + ".an";
-    }
-}
-
-/**
- * Return a copy of the given string with the first character in lowercase.
- */
-string lowercaseFirstLetter(string const& s){
-    if(s.empty()) return "";
-    return char(tolower(s[0])) + s.substr(1);
-}
-
-/**
- * Convert an import expression to a filepath string.
- * Converts most tokens as given, but lowercases the first letter of types
- * as these modules are expected to meet the convention of capital module
- * name referring to a lowercase filename.  If this is not desired, string
- * literals can be used instead.
- */
-string moduleExprToStr(Node *expr){
-    if(BinOpNode *bn = dynamic_cast<BinOpNode*>(expr)){
-        if(bn->op != '.') return "";
-
-        return moduleExprToStr(bn->lval.get()) + "/" + moduleExprToStr(bn->rval.get());
-    }else if(TypeNode *tn = dynamic_cast<TypeNode*>(expr)){
-        if(tn->type != TT_Data || !tn->params.empty()) return "";
-
-        return lowercaseFirstLetter(tn->typeName);
-    }else if(VarNode *va = dynamic_cast<VarNode*>(expr)){
-        return va->name;
-    }else if(StrLitNode *sln = dynamic_cast<StrLitNode*>(expr)){
-        return sln->val;
-    }else{
-        return "";
-    }
-}
-
-/**
- * Converts an import expression to a filepath string.
- * See moduleExprToStr for details.
- */
-string importExprToStr(Node *expr){
-    if(StrLitNode *sln = dynamic_cast<StrLitNode*>(expr)){
-        return sln->val;
-    }else{
-        return addAnSuffix(moduleExprToStr(expr));
-    }
-}
 
 
 /*
  * TODO: implement for abitrary compile-time Str expressions
  */
 void CompilingVisitor::visit(ImportNode *n){
-    string path = importExprToStr(n->expr.get());
-    if(path.empty()){
-        c->compErr("No viable overload for import for malformed expression", n->loc);
-    }
-
-    c->importFile(path.c_str(), n->loc);
-    val =c->getVoidLiteral();
+    val = c->getVoidLiteral();
 }
 
 
@@ -587,9 +504,9 @@ void CompilingVisitor::visit(ForNode *n){
     if(!uwrap) c->compErr("Range expression of type " + anTypeToColoredStr(rangev.type) + " does not implement " +
             anTypeToColoredStr(AnDataType::get("Iterable")) + ", which it needs to be used in a for loop", n->range->loc);
 
-    auto *uwrap_var = new Variable(n->var, uwrap, c->scope, {Assignment::ForLoop, n});
-    c->stoVar(n->var, uwrap_var);
-
+    //TODO: handle arbitrary patterns
+    // auto *decl = n->pattern->decls[0];
+    // decl->tval = uwrap;
 
     //register the branches to break/continue to right before the body
     //is compiled in case there was an error compiling the range
@@ -668,9 +585,7 @@ void CompilingVisitor::visit(JumpNode *n){
 
 //create a new scope if the user indents
 void CompilingVisitor::visit(BlockNode *n){
-    c->enterNewScope();
     n->block->accept(*this);
-    c->exitScope();
 }
 
 
@@ -689,36 +604,10 @@ void CompilingVisitor::visit(NamedValNode *n)
  * @return The value of the variable
  */
 void CompilingVisitor::visit(VarNode *n){
-    auto *var = c->lookup(n->name);
-
-    if(var){
-        if(var->autoDeref){
-            auto *load = c->builder.CreateLoad(var->getVal(), n->name);
-            this->val = TypedValue(load, var->tval.type);
-        }else{
-            this->val = TypedValue(var->tval.val, var->tval.type);
-        }
+    if(n->decls[0]->tval){
+        val = n->decls[0]->tval;
     }else{
-        //if this is a function, then there can be multiple candidates of
-        //the same name that must be filtered at the callsite
-        auto& fnlist = c->getFunctionList(n->name);
-
-        if(fnlist.size() == 1){
-            auto& fd = *fnlist.begin();
-            if(!fd->tv)
-                fd->tv = c->compFn(fd.get());
-
-            if(!fd or !fd->tv){
-                c->errFlag = true;
-                return;
-            }
-
-            this->val = TypedValue(fd->tv.val, fd->tv.type);
-        }else if(fnlist.empty()){
-            c->compErr("Variable or function '" + n->name + "' has not been declared.", n->loc);
-        }else{
-            this->val = FunctionCandidates::getAsTypedValue(c->ctxt.get(), fnlist, {});
-        }
+        n->decls[0]->definition->accept(*this);
     }
 }
 
@@ -735,25 +624,14 @@ void compMutBinding(VarAssignNode *node, CompilingVisitor &cv){
     if(!dynamic_cast<VarNode*>(node->ref_expr))
         c->compErr("Unknown pattern for l-expr", node->expr->loc);
 
-    string &name = static_cast<VarNode*>(node->ref_expr)->name;
-
-    //check for redeclaration, but only on topmost scope
-    auto redeclare = c->varTable.back()->find(name);
-    if(redeclare != c->varTable.back()->end()){
-        c->compErr("Variable " + name + " was redeclared.", node->loc);
-    }
+    auto *decl = static_cast<VarNode*>(node->ref_expr)->decls[0];
 
     node->expr->accept(cv);
     TypedValue &val = cv.val;
-    if(val.type->typeTag == TT_Void)
-        c->compErr("Cannot assign a " + anTypeToColoredStr(AnType::getVoid()) +
-                " value to a variable", node->expr->loc);
 
-    bool isGlobal = false;
     for(auto &n : node->modifiers){
         TokenType m = (TokenType)n->mod;
         val.type = (AnType*)val.type->addModifier(m);
-        if(m == Tok_Global) isGlobal = true;
     }
 
     if(cv.c->isJIT)
@@ -763,14 +641,13 @@ void compMutBinding(VarAssignNode *node, CompilingVisitor &cv){
     val.type = (AnType*)val.type->addModifier(Tok_Mut);
 
     //location to store var
-    Value *ptr = isGlobal ?
+    Value *ptr = decl->isGlobal() ?
             (Value*) new GlobalVariable(*c->module, val.getType(), false,
-                    GlobalValue::PrivateLinkage, UndefValue::get(val.getType()), name) :
-            c->builder.CreateAlloca(val.getType(), nullptr, name.c_str());
+                    GlobalValue::PrivateLinkage, UndefValue::get(val.getType()), decl->name) :
+            c->builder.CreateAlloca(val.getType(), nullptr, decl->name.c_str());
 
     TypedValue alloca{ptr, val.type};
-
-    c->stoVar(name, new Variable(name, alloca, c->scope, {Assignment::Normal, node->expr.get()}, true));
+    decl->tval = alloca;
 
     c->builder.CreateStore(val.val, alloca.val);
     cv.val = c->getVoidLiteral();
@@ -782,36 +659,28 @@ void compLetBinding(VarAssignNode *node, CompilingVisitor &cv){
     if(!dynamic_cast<VarNode*>(node->ref_expr))
         c->compErr("Unknown pattern for l-expr", node->expr->loc);
 
-    string &name = static_cast<VarNode*>(node->ref_expr)->name;
+    auto *decl = static_cast<VarNode*>(node->ref_expr)->decls[0];
 
     TypedValue val = CompilingVisitor::compile(c, node->expr);
-    if(val.type->typeTag == TT_Void)
-        c->compErr("Cannot assign a "+anTypeToColoredStr(AnType::getVoid())+
-                " value to a variable", node->expr->loc);
 
-    bool isGlobal = false;
     for(auto &n : node->modifiers){
         TokenType m = (TokenType)n->mod;
         val.type = (AnType*)val.type->addModifier(m);
-        if(m == Tok_Global) isGlobal = true;
     }
 
     if(cv.c->isJIT)
         val.type = (AnType*)val.type->addModifier(Tok_Ante);
 
-    Assignment assignment{Assignment::Normal, node->expr.get()};
-
-    if(isGlobal){
+    if(decl->isGlobal()){
         //location to store var
         Value *ptr = new GlobalVariable(*c->module, val.getType(), false,
-                        GlobalValue::PrivateLinkage, UndefValue::get(val.getType()), name);
+                        GlobalValue::PrivateLinkage, UndefValue::get(val.getType()), decl->name);
 
         TypedValue alloca{ptr, val.type};
-
-        c->stoVar(name, new Variable(name, alloca, c->scope, assignment, true));
+        decl->tval = alloca;
         cv.val = {c->builder.CreateStore(val.val, alloca.val), val.type};
     }else{
-        c->stoVar(name, new Variable(name, val, c->scope, assignment, false));
+        decl->tval = val;
         cv.val = val;
     }
 }
@@ -843,7 +712,7 @@ TypedValue compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
     //impossible to insert into a non-value so fail if the lvalue is one
     if(auto *tn = dynamic_cast<TypeNode*>(bop->lval.get()))
         return c->compErr("Cannot insert value into static module '" +
-                anTypeToColoredStr(toAnType(c, tn)), tn->loc);
+                anTypeToColoredStr(toAnType(tn)), tn->loc);
 
 
     Value *val;
@@ -887,7 +756,7 @@ TypedValue compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
                         fn.type->getFunctionReturnType());
 
             //if not, proceed with normal operations
-            if(!c->typeEq(indexTy, newval.type))
+            if(!typeEq(indexTy, newval.type))
                 return c->compErr("Cannot assign expression of type " + anTypeToColoredStr(newval.type) +
                         " to a variable of type " + anTypeToColoredStr(indexTy), expr->loc);
 
@@ -917,25 +786,21 @@ TypedValue compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
  */
 TypedValue compileRefExpr(CompilingVisitor &cv, Node *refExpr, Node *assignExpr){
     if(VarNode *vn = dynamic_cast<VarNode*>(refExpr)){
-        auto *var = cv.c->lookup(vn->name);
+        auto *decl = vn->decls[0];
 
-        if(!var)
-            cv.c->compErr("Variable or function '" + vn->name + "' has not been declared.", vn->loc);
-
-        if(!var->tval.type->hasModifier(Tok_Mut))
+        if(!decl->tval.type->hasModifier(Tok_Mut))
             cv.c->compErr("Variable must be mutable to be assigned to, but instead is an immutable " +
-                    anTypeToColoredStr(var->tval.type), refExpr->loc);
+                    anTypeToColoredStr(decl->tval.type), refExpr->loc);
 
 
         TypedValue ret;
-        if(var->autoDeref){
-            auto *load = cv.c->builder.CreateLoad(var->getVal(), vn->name);
-            ret = TypedValue(load, var->tval.type);
+        if(decl->shouldAutoDeref()){
+            auto *load = cv.c->builder.CreateLoad(decl->tval.val, vn->name);
+            ret = TypedValue(load, decl->tval.type);
         }else{
-            ret = TypedValue(var->tval.val, var->tval.type);
+            ret = decl->tval;
         }
 
-        var->assignments.emplace_back(Assignment::Normal, assignExpr);
         return ret;
     }else{
         refExpr->accept(cv);
@@ -985,7 +850,7 @@ void CompilingVisitor::visit(VarAssignNode *n){
     }
 
     //and finally, make sure the assigned value matches the variable's type
-    if(!c->typeEq(val.type, assignExpr.type)){
+    if(!typeEq(val.type, assignExpr.type)){
         c->compErr("Cannot assign expression of type " + anTypeToColoredStr(assignExpr.type)
                     + " to a variable of type " + anTypeToColoredStr(val.type), n->expr->loc);
     }
@@ -1019,7 +884,7 @@ string mangle(FuncDecl *fd, vector<AnType*> const& params){
     if(fd->isDecl())
         return fd->getName();
 
-    string name = fd->fdn->name;
+    string name = fd->getName();
     for(auto *tv : params)
         if(tv->typeTag != TT_Void)
             name += "_" + anTypeToStr(tv);
@@ -1036,7 +901,7 @@ string mangle(string const& base, shared_ptr<NamedValNode> const& paramTys){
             name += "...";
         else if(tn == (void*)1)
             name += AN_MANGLED_SELF;
-        else if(tn->type != TT_Void)
+        else if(tn->typeTag != TT_Void)
             name += "_" + typeNodeToStr(tn);
 
         cur = (NamedValNode*)cur->next.get();
@@ -1047,7 +912,7 @@ string mangle(string const& base, shared_ptr<NamedValNode> const& paramTys){
 string mangle(string const& base, TypeNode *paramTys){
     string name = base;
     while(paramTys){
-        if(paramTys->type != TT_Void)
+        if(paramTys->typeTag != TT_Void)
             name += "_" + typeNodeToStr(paramTys);
         paramTys = (TypeNode*)paramTys->next.get();
     }
@@ -1081,7 +946,7 @@ string mangle(string const& base, TypeNode *p1, TypeNode *p2, TypeNode *p3){
  * @return The FuncDeclNode sharing the basename or nullptr if no matching
  *         functions were found.
  */
-FuncDeclNode* findFDN(Node *list, string& basename){
+FuncDeclNode* findFDN(Node *list, string const& basename){
     for(Node *n : *list){
         auto *fdn = (FuncDeclNode*)n;
 
@@ -1108,92 +973,6 @@ string manageSelfParam(Compiler *c, FuncDeclNode *fdn, string &mangledName){
 
 
 void CompilingVisitor::visit(ExtNode *n){
-    if(n->traits.get()){
-        //this ExtNode is an implementation of a trait
-        string typestr = typeNodeToStr(n->typeExpr.get());
-        AnDataType *dt;
-
-        if(n->typeExpr->typeName.empty()){ //primitive type being extended
-            dt = AnDataType::get(typestr);
-            if(!dt or dt->isStub()){ //if primitive type has not been extended before, make it a DataType to store in
-                dt = AnDataType::create(typestr, {toAnType(c, n->typeExpr.get())}, false, {});
-                c->stoType(dt, typestr);
-            }
-        }else{
-            dt = AnDataType::get(typestr);
-            if(!dt or dt->isStub())
-                c->compErr("Cannot implement traits for undeclared type " +
-                        typeNodeToColoredStr(n->typeExpr.get()), n->typeExpr->loc);
-        }
-
-        //create a vector of the traits that must be implemented
-        TypeNode *curTrait = n->traits.get();
-        vector<Trait*> traits;
-        while(curTrait){
-            string traitstr = typeNodeToStr(curTrait);
-            auto *trait = c->lookupTrait(traitstr);
-            if(!trait)
-                c->compErr("Trait " + typeNodeToColoredStr(curTrait)
-                        + " is undeclared", curTrait->loc);
-
-            traits.push_back(trait);
-            curTrait = (TypeNode*)curTrait->next.get();
-        }
-
-        //go through each trait and compile the methods for it
-        auto *funcs = n->methods.get();
-        for(auto& trait : traits){
-            auto *traitImpl = new Trait();
-            traitImpl->name = trait->name;
-
-            for(auto& fd_proto : trait->funcs){
-                auto *fdn = findFDN(funcs, fd_proto->getName());
-
-                if(!fdn)
-                    c->compErr(typeNodeToColoredStr(n->typeExpr.get()) + " must implement " + fd_proto->getName() +
-                        " to implement " + anTypeToColoredStr(AnDataType::get(trait->name)), fd_proto->fdn->loc);
-
-                string mangledName = c->funcPrefix + mangle(fdn->name, fdn->params);
-                fdn->name = c->funcPrefix + fdn->name;
-
-                //If there is a self param it would be mangled incorrectly above as mangle does not have
-                //access to what type 'self' references, so fix that here.
-                auto *oldTn = c->compCtxt->objTn;
-                c->compCtxt->objTn = n->typeExpr.get();
-                mangledName = manageSelfParam(c, fdn, mangledName);
-                c->compCtxt->objTn = oldTn;
-
-                shared_ptr<FuncDecl> fd{new FuncDecl(fdn, mangledName, c->scope, c->mergedCompUnits)};
-                traitImpl->funcs.emplace_back(fd);
-
-                c->compUnit->fnDecls[fdn->name].emplace_back(fd);
-                c->mergedCompUnits->fnDecls[fdn->name].emplace_back(fd);
-            }
-
-            //trait is fully implemented, add it to the DataType
-            dt->traitImpls.emplace_back(traitImpl);
-        }
-    }else{
-        //this ExtNode is not a trait implementation, so just compile all functions normally
-        string oldPrefix = c->funcPrefix;
-
-        //Temporarily move away any type params so we get Vec.remove not Vec<'t>.remove as the fn name
-        auto params = move(n->typeExpr->params);
-        c->funcPrefix = typeNodeToStr(n->typeExpr.get()) + "_";
-        n->typeExpr->params = move(params);
-
-        auto prevObj = c->compCtxt->obj;
-        auto prevObjTn = c->compCtxt->objTn;
-
-        c->compCtxt->obj = toAnType(c, n->typeExpr.get());
-        c->compCtxt->objTn = n->typeExpr.get();
-
-        compileStmtList(n->methods.get(), c);
-
-        c->funcPrefix = oldPrefix;
-        c->compCtxt->obj = prevObj;
-        c->compCtxt->objTn = prevObjTn;
-    }
     this->val = c->getVoidLiteral();
 }
 
@@ -1232,85 +1011,11 @@ createStructuralGenericParams(Compiler *c, vector<unique_ptr<TypeNode>> const& g
  * @return A void literal
  */
 TypedValue compTaggedUnion(Compiler *c, DataDeclNode *n){
-    auto fieldNames = vecOf<string>(n->fields);
-
-    auto *nvn = (NamedValNode*)n->child.get();
-
-    string &union_name = n->name;
-
-    vector<shared_ptr<UnionTag>> tags;
-
-    vector<AnType*> unionTypes;
-
-    auto generics = createStructuralGenericParams(c, n->generics);
-    AnDataType *data = AnDataType::create(union_name, {}, true, generics);
-
-    while(nvn){
-        TypeNode *tyn = (TypeNode*)nvn->typeExpr.get();
-        AnType *tagTy = tyn->extTy ? toAnType(c, tyn->extTy.get()) : AnType::getVoid();
-
-        vector<AnType*> exts;
-        if(tagTy->typeTag == TT_Tuple){
-            exts = try_cast<AnAggregateType>(tagTy)->extTys;
-        }else{
-            exts.push_back(tagTy);
-        }
-
-        //Each union member's type is a tuple of the tag (a u8 value), and the user-defined value
-        auto *tup = AnAggregateType::get(TT_Tuple, {AnType::getU8(), tagTy});
-
-        //Store the tag as a UnionTag and a AnDataType
-        AnDataType *tagdt = AnDataType::create(nvn->name, exts, false, generics);
-
-        //A tag's generics should have their dt set to the dt for the whole union
-        for(auto &g : tagdt->generics){ g.dt = data; }
-
-        tagdt->fields.emplace_back(union_name);
-        tagdt->parentUnionType = data;
-        tagdt->isGeneric = isGeneric(exts);
-
-        //Store tag vals as a UnionTag
-        UnionTag *tag = new UnionTag(nvn->name, tagdt, data, tags.size());
-        tags.emplace_back(tag);
-
-        unionTypes.push_back(tup);
-
-        validateType(c, tagTy, n);
-        c->stoType(tagdt, nvn->name);
-
-        nvn = (NamedValNode*)nvn->next.get();
-    }
-
-    data->typeTag = TT_TaggedUnion;
-    data->extTys = unionTypes;
-    data->fields = fieldNames;
-
-    data->tags = tags;
-    data->isAlias = n->isAlias;
-
-    for(auto &v : data->variants){
-        v->extTys = data->extTys;
-        v->isGeneric = data->isGeneric;
-        v->typeTag = data->typeTag;
-        v->tags = tags;
-        v->unboundType = data;
-        *v = *try_cast<AnDataType>(bindGenericToType(c, v, v->boundGenerics));
-        if(v->parentUnionType)
-            v->parentUnionType = try_cast<AnDataType>(bindGenericToType(c, v->parentUnionType, v->parentUnionType->boundGenerics));
-        addGenerics(v->generics, v->extTys);
-    }
-
-
-    c->stoType(data, union_name);
     return c->getVoidLiteral();
 }
 
 void CompilingVisitor::visit(DataDeclNode *n){
-    //{   //new scope to ensure dt isn't used after this check
-    //    auto *dt = AnDataType::get(this->name);
-    //    if(dt && !dt->isStub()) return c->compErr("Type " + name + " was redefined", loc);
-    //}
-
+    /*
     auto *nvn = (NamedValNode*)n->child.get();
     if(((TypeNode*) nvn->typeExpr.get())->type == TT_TaggedUnion){
         this->val = compTaggedUnion(c, n);
@@ -1357,79 +1062,15 @@ void CompilingVisitor::visit(DataDeclNode *n){
             v->parentUnionType = try_cast<AnDataType>(bindGenericToType(c, v->parentUnionType, v->parentUnionType->boundGenerics));
         addGenerics(v->generics, v->extTys);
     }
+    */
 
     //updateLlvmTypeBinding(c, data, true);
     this->val = c->getVoidLiteral();
 }
 
 
-void DataDeclNode::declare(Compiler *c){
-    auto genericParams = createStructuralGenericParams(c, this->generics);
-    AnDataType::create(name, {}, false, genericParams);
-}
-
-
 void CompilingVisitor::visit(TraitNode *n){
-    auto *trait = new Trait();
-    trait->name = n->name;
-
-    auto *curfn = n->child.get();
-    while(curfn){
-        auto *fn = (FuncDeclNode*)curfn;
-        string mangledName = c->funcPrefix + mangle(fn->name, fn->params);
-        fn->name = c->funcPrefix + fn->name;
-
-        shared_ptr<FuncDecl> fd{new FuncDecl(fn, mangledName, c->scope, c->mergedCompUnits)};
-
-        //create trait type as a generic void* container
-        vector<AnType*> ext;
-        ext.push_back(AnPtrType::get(AnType::getVoid()));
-        fd->obj = AnDataType::getOrCreate(n->name, ext, false);
-
-        trait->funcs.push_back(fd);
-        curfn = curfn->next.get();
-    }
-
-    auto traitPtr = shared_ptr<Trait>(trait);
-    c->compUnit->traits[n->name] = traitPtr;
-    c->mergedCompUnits->traits[n->name] = traitPtr;
-
     this->val = c->getVoidLiteral();
-}
-
-
-/**
- * @brief Compiles the global expression importing global vars.  This compiles
- *        the statement-like version of a GlobalNode.  The modifier-like version
- *        is handled along with other modifiers during a variable's declaration.
- *
- * @return The value of the last global brought into scope
- */
-void CompilingVisitor::visit(GlobalNode *n){
-    TypedValue ret;
-    for(auto &varName : n->vars){
-        Variable *var;
-        for(auto i = c->varTable.size(); i >= 1; --i){
-            auto it = c->varTable[i-1]->find(varName->name);
-            if(it != c->varTable[i-1]->end()){
-                var = it->getValue().get();
-            }else{
-                var = nullptr;
-            }
-        }
-
-        if(!var)
-            c->compErr("Variable '" + varName->name + "' has not been declared.", varName->loc);
-
-        if(!var->tval.type->hasModifier(Tok_Global))
-            c->compErr("Variable " + varName->name + " must be global to be imported.", varName->loc);
-
-        var->scope = c->scope;
-        c->stoVar(varName->name, new Variable(*var));
-        ret = var->tval;
-    }
-
-    this->val = TypedValue(c->builder.CreateLoad(ret.val), ret.type);
 }
 
 
@@ -1440,87 +1081,6 @@ void CompilingVisitor::visit(GlobalNode *n){
  */
 void CompilingVisitor::visit(MatchBranchNode *n){
     //STUB
-}
-
-
-/**
- * @brief Merges two modules
- *
- * @param mod module to merge into this
- */
-void ante::Module::import(ante::Module *mod){
-    for(auto& pair : mod->fnDecls)
-        for(auto& fd : pair.second)
-            fnDecls[pair.first()].push_back(fd);
-
-    for(auto& pair : mod->userTypes)
-        userTypes[pair.first()] = pair.second;
-
-    for(auto& pair : mod->traits)
-        traits[pair.first()] = pair.second;
-}
-
-inline bool fileExists(const string &fName){
-    if(FILE *f = fopen(fName.c_str(), "r")){
-        fclose(f);
-        return true;
-    }
-    return false;
-}
-
-/**
- * Returns the first path to a given filename
- * matched within the relative root directories.
- * If no file is found then the empty string is returned.
- */
-string findFile(Compiler *c, string const& fName){
-    for(auto &root : c->relativeRoots){
-        string f = root + addAnSuffix(fName);
-        if(fileExists(f)){
-            return f;
-        }
-    }
-    return "";
-}
-
-
-void Compiler::importFile(string const& fName, LOC_TY &loc){
-    //f = fName with full directory
-    string f = findFile(this, fName);
-    auto it = allCompiledModules.find(f);
-
-    if(it != allCompiledModules.end()){
-        //module already compiled
-        auto *import = it->getValue().get();
-        string fmodName = removeFileExt(fName);
-
-        for(auto &mod : imports){
-            if(mod->name == fmodName){
-                compErr("Module " + string(fName) + " has already been imported", loc, ErrorType::Warning);
-            }
-        }
-
-        imports.push_back(import);
-        mergedCompUnits->import(import);
-    }else{
-        if(f.empty()){
-            compErr("No file named '" + string(fName) + "' was found.", loc);
-        }
-
-        //module not found; create new Compiler instance to compile it
-        auto c = unique_ptr<Compiler>(new Compiler(f.c_str(), true, ctxt));
-        c->ctxt = ctxt;
-        c->module.reset(module.get());
-        c->compile();
-
-        if(c->errFlag){
-            compErr("Error when importing '" + string(fName) + "'", loc);
-        }
-
-        c->module.release();
-        imports.push_back(c->compUnit);
-        mergedCompUnits->import(c->compUnit);
-    }
 }
 
 
@@ -1567,15 +1127,11 @@ TypeNode* mkDataTypeNode(string tyname){
 
 void Compiler::compilePrelude(){
     if(fileName != AN_LIB_DIR "prelude.an"){
-        auto fakeLoc = mkLoc(mkPos(0, 0, 0), mkPos(0, 0, 0));
-        importFile("prelude.an", fakeLoc);
+        //TODO: re-add
+        //auto fakeLoc = mkLoc(mkPos(0, 0, 0), mkPos(0, 0, 0));
+        //importFile("prelude.an", fakeLoc);
     }
 }
-
-string& Compiler::getModuleName() const {
-    return compUnit->name;
-}
-
 
 /**
  * @brief Removes all text after the final . in a string
@@ -1602,20 +1158,8 @@ void compileAll(Compiler *c, vector<T> &vec){
 
 
 void Compiler::scanAllDecls(RootNode *root){
-    auto *n = root ? root : compUnit->ast.get();
-
-    for (auto& f : n->types) {
-		try {
-			((DataDeclNode*)f.get())->declare(this);
-		}catch (CtError *e) {
-			delete e;
-		}
-	}
-
-    compileAll(this, n->types);
-    compileAll(this, n->traits);
-    compileAll(this, n->extensions);
-	compileAll(this, n->funcs);
+    NameResolutionVisitor n;
+    root->accept(n);
 }
 
 void Compiler::eval(){
@@ -1636,14 +1180,12 @@ Function* Compiler::createMainFn(){
         FunctionType::get(Type::getInt32Ty(*ctxt), {argcty, argvty}, false);
 
     //Actually create the function in module m
-    string fnName = isLib ? getModuleName() + "_init_module" : "main";
+    string fnName = isLib ? "init_module" : "main";
     Function *main = Function::Create(ft, Function::ExternalLinkage, fnName, module.get());
 
     //Create the entry point for the function
     BasicBlock *bb = BasicBlock::Create(*ctxt, "entry", main);
     builder.SetInsertPoint(bb);
-
-    AnFunctionType *main_fn_ty;
 
     if(!isLib){
         //create argc and argv global vars
@@ -1658,36 +1200,13 @@ Function* Compiler::createMainFn(){
 
         builder.CreateStore(&*args, argc);
         builder.CreateStore(&*++args, argv);
-
-        AnType *argcAnty = BasicModifier::get(AnType::getPrimitive(TT_I32), Tok_Global);
-        AnType *argvAnty = BasicModifier::get(AnPtrType::get(AnPtrType::get(AnType::getPrimitive(TT_C8))), Tok_Global);
-
-        Assignment assignment{Assignment::Parameter, std::nullopt};
-
-        stoVar("argc", new Variable("argc", TypedValue(builder.CreateLoad(argc), argcAnty), 1, assignment));
-        stoVar("argv", new Variable("argv", TypedValue(builder.CreateLoad(argv), argvAnty), 1, assignment));
-
-        main_fn_ty = AnFunctionType::get(AnType::getU8(), {argcAnty, argvAnty});
-    }else{
-        main_fn_ty = AnFunctionType::get(AnType::getU8(), {});
     }
 
-    auto main_tv = TypedValue(main, main_fn_ty);
-    auto *main_var = new FuncDecl(nullptr, fnName, scope, mergedCompUnits, main_tv);
-
-    //TODO: merge this code with Compiler::registerFunction
-    shared_ptr<FuncDecl> fd{main_var};
-    string uncallable = fnName + "*";
-    compUnit->fnDecls[uncallable].push_back(fd);
-    mergedCompUnits->fnDecls[uncallable].push_back(fd);
-
-    compCtxt->callStack.push_back(main_var);
     return main;
 }
 
 
 void CompilingVisitor::visit(RootNode *n){
-    scanImports(c, n);
     c->scanAllDecls(n);
 
     //Compile the rest of the program
@@ -1713,7 +1232,7 @@ void CompilingVisitor::visit(RootNode *n){
  * Determines which passes should be added.  With 3 being
  * all passes.
  */
-inline void addPasses(legacy::PassManager &pm, char optLvl){
+void addPasses(legacy::PassManager &pm, char optLvl){
     /*
      * More aggressive optimization but breaks certain tests due to poor type
      * casts caused by not yet knowing the full type of the operand.
@@ -1777,7 +1296,7 @@ void Compiler::compile(){
     createMainFn();
     compilePrelude();
 
-    CompilingVisitor::compile(this, compUnit->ast.get());
+    CompilingVisitor::compile(this, ast);
 
     //always return 0
     builder.CreateRet(ConstantInt::get(*ctxt, APInt(32, 0)));
@@ -1944,25 +1463,9 @@ void TypedValue::dump() const{
         puts("void ()");
     else if(type->typeTag == TT_Type)
         cout << anTypeToStr(extractTypeValue(*this)) << endl;
-    else if(type->typeTag == TT_FunctionList){
-        auto *fl = (FunctionCandidates*)val;
-        cout << "(" << fl->candidates.size() << " function" << (fl->candidates.size() == 1 ? ")\n" : "s)\n");
-
-        for(auto &c : fl->candidates){
-            cout << endl << c->getName() << " (" << c->mangledName << "): \n";
-            if(c->tv){
-                c->tv.dump();
-            }else{
-                cout << "(not yet compiled)\n\n";
-            }
-            cout << "Parse tree:\n";
-            PrintingVisitor pv;
-            c->fdn->accept(pv);
-            cout << endl;
-        }
-    }else if(type->typeTag == TT_MetaFunction){
+    else if(type->typeTag == TT_MetaFunction)
         cout << "(compiler API function)\n";
-    }else{
+    else{
         if(val){
             val->print(llvm::dbgs(), false);
             llvm::dbgs() << '\n';
@@ -1973,59 +1476,6 @@ void TypedValue::dump() const{
 }
 
 
-void Compiler::enterNewScope(){
-    scope++;
-    auto *vtable = new llvm::StringMap<unique_ptr<Variable>>();
-    varTable.emplace_back(vtable);
-}
-
-
-void Compiler::exitScope(){
-    if(varTable.empty()) return;
-
-    //iterate through all known variables, check for pointers at the end of
-    //their lifetime, and insert calls to free for any that are found
-    auto vtable = varTable.back().get();
-
-    for(auto &pair : *vtable){
-        if(pair.second->scope == this->scope){
-            //TODO: destructor stub
-        }
-    }
-
-    scope--;
-    varTable.pop_back();
-}
-
-
-Variable* Compiler::lookup(string const& var) const{
-    for(auto i = varTable.size(); i >= fnScope; --i){
-        auto& vt = varTable[i-1];
-        auto it = vt->find(var);
-        if(it != vt->end())
-            return it->getValue().get();
-    }
-    //local var not found, search for a global
-    if(!varTable.empty()){
-        for(auto i = varTable.size(); i >= 1; --i){
-            auto it = varTable[i-1]->find(var);
-            if(it != varTable[i-1]->end()){
-                Variable *v = it->getValue().get();
-                if(v->tval.type->hasModifier(Tok_Global))
-                    return v;
-            }
-        }
-    }
-    return nullptr;
-}
-
-
-void Compiler::stoVar(string var, Variable *val){
-    (*varTable[val->scope-1])[var].reset(val);
-    //varTable[val->scope-1]->emplace(var, val);
-}
-
-
 /*
  * Helper function to create an llvm integer literal
  * with the address of a pointer as its value
@@ -2033,47 +1483,6 @@ void Compiler::stoVar(string var, Variable *val){
 Value* mkPtrInt(Compiler *c, void *addr){
     return c->builder.getInt64((unsigned long)addr);
 }
-
-
-void Compiler::stoTypeVar(string const& name, AnType *ty){
-    Value *addr = builder.getInt64((unsigned long)ty);
-    TypedValue tv = TypedValue(addr, AnType::getPrimitive(TT_Type));
-    Assignment a{Assignment::TypeVar, std::nullopt};
-    Variable *var = new Variable(name, tv, scope, a);
-    stoVar(name, var);
-}
-
-AnType* Compiler::lookupTypeVar(string const& name) const{
-    auto tvar = lookup(name);
-    if(!tvar) return nullptr;
-
-    return extractTypeValue(tvar->tval);
-}
-
-
-AnDataType* Compiler::lookupType(string const& tyname) const{
-    auto& ut = mergedCompUnits->userTypes;
-    auto it = ut.find(tyname);
-    if(it != ut.end())
-        return it->getValue();
-    return nullptr;
-}
-
-Trait* Compiler::lookupTrait(string const& tyname) const{
-    auto& ts = mergedCompUnits->traits;
-    auto it = ts.find(tyname);
-    if(it != ts.end())
-        return it->getValue().get();
-    return nullptr;
-}
-
-
-inline void Compiler::stoType(AnDataType *dt, string const& typeName){
-    //shared_ptr<AnDataType> dt{ty};
-    compUnit->userTypes[typeName] = dt;
-    mergedCompUnits->userTypes[typeName] = dt;
-}
-
 
 /**
  * Returns the directory prefix of a filename.
@@ -2091,46 +1500,6 @@ string dirprefix(string &f){
 
 
 /**
- * Converts a given filename (with its file
- * extension already removed) to a module name.
- *
- * - Replaces directory separators with '.'
- * - Capitalizes first letters of words
- * - Ignores non alphanumeric characters
- */
-string toModuleName(string &s){
-    string mod = "";
-    bool capitalize = true;
-
-    for(auto &c : s){
-        if(capitalize && ((c >= 'a' && c <= 'z') or (c >= 'A' && c <= 'Z'))){
-            if(c >= 'a' && c <= 'z'){
-                mod += c + 'A' - 'a';
-            }else{
-                mod += c;
-            }
-            capitalize = false;
-        }else{
-#ifdef _WIN32
-            if(c == '\\'){
-#else
-            if(c == '/'){
-#endif
-                if(&c != s.c_str()){
-                    capitalize = true;
-                    mod += '.';
-                }
-            }else if(c == '_'){
-                capitalize = true;
-            }else if(IS_ALPHANUM(c)){
-                mod += c;
-            }
-        }
-    }
-    return mod;
-}
-
-/**
  * @brief The main constructor for Compiler
  *
  * @param _fileName Name of the file being compiled
@@ -2140,8 +1509,6 @@ string toModuleName(string &s){
 Compiler::Compiler(const char *_fileName, bool lib, shared_ptr<LLVMContext> llvmCtxt) :
         ctxt(llvmCtxt ? llvmCtxt : shared_ptr<LLVMContext>(new LLVMContext())),
         builder(*ctxt),
-        compUnit(new ante::Module()),
-        mergedCompUnits(new ante::Module()),
         compCtxt(new CompilerCtxt()),
         ctCtxt(new CompilerCtCtxt()),
         errFlag(false),
@@ -2152,11 +1519,8 @@ Compiler::Compiler(const char *_fileName, bool lib, shared_ptr<LLVMContext> llvm
         funcPrefix(""),
         scope(0), optLvl(2), fnScope(1){
 
-    //The lexer stores the fileName in the loc field of all Nodes. The fileName is copied
-    //to let Node's outlive the Compiler they were made in, ensuring they work with imports.
     if(_fileName){
         string* fileName_cpy = new string(fileName);
-        fileNames.emplace_back(fileName_cpy);
         setLexer(new Lexer(fileName_cpy));
         yy::parser p{};
         int flag = p.parse();
@@ -2170,28 +1534,16 @@ Compiler::Compiler(const char *_fileName, bool lib, shared_ptr<LLVMContext> llvm
             fputs("Syntax error, aborting.\n", stderr);
             exit(flag);
         }
-
-        compUnit->ast.reset(parser::getRootNode());
     }
 
-    relativeRoots = {AN_EXEC_STR, AN_LIB_DIR};
-
     auto fileNameWithoutExt = removeFileExt(fileName);
-    auto modName = toModuleName(fileNameWithoutExt);
-    compUnit->name = modName;
-    mergedCompUnits->name = modName;
 
     //Add this module to the cache to ensure it is not compiled twice
-    allMergedCompUnits.emplace_back(mergedCompUnits);
-    allCompiledModules.try_emplace(fileName, compUnit);
-
     outFile = fileNameWithoutExt;
 	if (outFile.empty())
 		outFile = "a.out";
 
     module.reset(new llvm::Module(outFile, *ctxt));
-
-    enterNewScope();
 }
 
 /**
@@ -2207,8 +1559,6 @@ Compiler::Compiler(const char *_fileName, bool lib, shared_ptr<LLVMContext> llvm
 Compiler::Compiler(Compiler *c, Node *root, string modName, bool lib) :
         ctxt(c->ctxt),
         builder(*ctxt),
-        compUnit(new ante::Module()),
-        mergedCompUnits(new ante::Module()),
         compCtxt(new CompilerCtxt()),
         ctCtxt(c->ctCtxt),
         errFlag(false),
@@ -2220,19 +1570,7 @@ Compiler::Compiler(Compiler *c, Node *root, string modName, bool lib) :
         funcPrefix(""),
         scope(0), optLvl(2), fnScope(1){
 
-    allMergedCompUnits.emplace_back(mergedCompUnits);
-    allCompiledModules.try_emplace(fileName, compUnit);
-    relativeRoots = {AN_EXEC_STR, AN_LIB_DIR};
-
-    compUnit->name = modName;
-    mergedCompUnits->name = modName;
-
-    compUnit->ast.reset(new RootNode(root->loc));
-    compUnit->ast->main.push_back(unique_ptr<Node>(root));
-
     module.reset(new llvm::Module(outFile, *ctxt));
-
-    enterNewScope();
 }
 
 
@@ -2260,12 +1598,8 @@ void Compiler::processArgs(CompilerArgs *args){
         isLib = true;
         if(!compiled) compile();
 
-        for(auto& pair : compUnit->fnDecls){
-            for(auto& fd : pair.second){
-                if(!fd->tv)
-                    compFn(fd.get());
-            }
-        }
+        for(auto &f : ast->funcs)
+            CompilingVisitor::compile(this, f);
     }
 
     if(args->hasArg(Args::Check)){
@@ -2300,7 +1634,6 @@ void Compiler::processArgs(CompilerArgs *args){
 }
 
 Compiler::~Compiler(){
-    exitScope();
     if(yylexer){
         delete yylexer;
         yylexer = 0;

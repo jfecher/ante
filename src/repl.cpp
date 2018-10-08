@@ -2,6 +2,7 @@
 #include "target.h"
 #include <vector>
 #include <string>
+#include <nameresolution.h>
 
 #ifdef unix
 #  include <unistd.h>
@@ -439,11 +440,12 @@ namespace ante {
                 if(c->getAST()){
                     val = mergeAndCompile(c, root, expr);
                 }else{
-                    c->compUnit->ast.reset(root);
+                    //TODO: re-add
+                    // c->compUnit->ast.reset(root);
                     try{
                         val = CompilingVisitor::compile(c, expr);
                     }catch(CompilationError *err){
-                        c->compUnit->ast.reset();
+                        // c->compUnit->ast.reset();
                         delete err;
                         val = {};
                     }
@@ -473,7 +475,9 @@ namespace ante {
             return {};
         }
 
-        scanImports(c, rn);
+        NameResolutionVisitor v;
+        v.resolve(rn);
+
         move(rn->imports.begin(),
             next(rn->imports.begin(), rn->imports.size()),
             back_inserter(c->getAST()->imports));

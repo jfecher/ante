@@ -26,6 +26,22 @@ namespace ante {
             return root;
         }
 
+        AnType* VarNode::getType() const {
+            if(decls[0]->isFuncDecl()){
+                return Node::getType();
+            }else{
+                return decls[0]->tval.type;
+            }
+        }
+
+        void VarNode::setType(AnType *other){
+            if(decls[0]->isFuncDecl()){
+                Node::setType(other);
+            }else{
+                decls[0]->tval.type = other;
+            }
+        }
+
         bool ModifiableNode::hasModifier(int mod) const {
             for(auto& m : this->modifiers){
                 if(m->mod == mod)
@@ -172,17 +188,6 @@ namespace ante {
 
         bool NodeIterator::operator!=(NodeIterator r){
             return cur != r.cur;
-        }
-
-
-        Node* mkGlobalNode(LOC_TY loc, Node* s){
-            vector<unique_ptr<VarNode>> vars;
-            while(s){
-                vars.emplace_back((VarNode*)s);
-                s = s->next.release();
-            }
-
-            return new GlobalNode(loc, move(vars));
         }
 
         /*
@@ -390,16 +395,16 @@ namespace ante {
             if(!n or n == (void*)1) return 0;
 
             auto loc = copyLoc(n->loc);
-            TypeNode *cpy = new TypeNode(loc, n->type, n->typeName, nullptr);
+            TypeNode *cpy = new TypeNode(loc, n->typeTag, n->typeName, nullptr);
 
             //arrays can have an IntLit in their extTy so handle them specially
-            if(n->type == TT_Array){
+            if(n->typeTag == TT_Array){
                 cpy->extTy.reset(copy(n->extTy));
 
                 auto *len = (IntLitNode*)n->extTy->next.get();
                 if(len){
                     auto loc_cpy = copyLoc(len->loc);
-                    auto *len_cpy = new IntLitNode(loc_cpy, len->val, len->type);
+                    auto *len_cpy = new IntLitNode(loc_cpy, len->val, len->typeTag);
                     cpy->extTy->next.reset(len_cpy);
                 }
             }else if(n->extTy.get()){
@@ -486,7 +491,7 @@ namespace ante {
         }
 
         Node* mkForNode(LOC_TY loc, Node* var, Node* range, Node* body){
-            return new ForNode(loc, (char*)var, range, body);
+            return new ForNode(loc, new VarNode(loc, (char*)var), range, body);
         }
 
         Node* mkFuncDeclNode(LOC_TY loc, Node* s, Node* tExpr, Node* p, Node* b){

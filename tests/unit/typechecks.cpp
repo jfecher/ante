@@ -1,4 +1,7 @@
 #include "unittest.h"
+#include "types.h"
+using namespace ante;
+using namespace std;
 
 TEST_CASE("Type Checks", "[typeEq]"){
     auto&& c = Compiler(nullptr);
@@ -20,15 +23,15 @@ TEST_CASE("Type Checks", "[typeEq]"){
     REQUIRE(voidPtr == AnPtrType::get(AnType::getVoid()));
 
     //basic equality
-    REQUIRE(c.typeEq(voidTy, voidTy));
+    REQUIRE(typeEq(voidTy, voidTy));
 
-    REQUIRE(!c.typeEq(voidPtr, intPtr));
+    REQUIRE(!typeEq(voidPtr, intPtr));
 
     SECTION("('t, bool) == (isz, 'u)"){
         auto tup1 = AnAggregateType::get(TT_Tuple, {t, boolTy});
         auto tup2 = AnAggregateType::get(TT_Tuple, {intTy, u});
 
-        auto tc = c.typeEq(tup1, tup2);
+        auto tc = typeEq(tup1, tup2);
         auto &bindings = tc->bindings;
         
         REQUIRE(tup1 != tup2);
@@ -48,15 +51,15 @@ TEST_CASE("Type Checks", "[typeEq]"){
 
         //Empty isz*
         vector<TypeBinding> bindings {{"'t", empty, 0, intPtr}};
-        auto empty_i32Ptr = AnDataType::getVariant(&c, empty, bindings);
+        auto empty_i32Ptr = AnDataType::getVariant(empty, bindings);
         
-        auto empty_i32Ptr2 = AnDataType::getVariant(&c, empty, bindings);
+        auto empty_i32Ptr2 = AnDataType::getVariant(empty, bindings);
 
         REQUIRE(empty_i32Ptr != empty);
 
         REQUIRE(empty_i32Ptr == empty_i32Ptr2);
 
-        REQUIRE(c.typeEq(empty_i32Ptr, empty_i32Ptr2));
+        REQUIRE(typeEq(empty_i32Ptr, empty_i32Ptr2));
     }
 }
 
@@ -69,10 +72,10 @@ TEST_CASE("TypeVarType Checks", "[typeEq]"){
     auto empty = AnDataType::create("Empty", {}, false, {t->name});
 
     //'t -> 't
-    auto empty_t = AnDataType::getVariant(&c, empty, {{"'t", empty, 0, t}});
+    auto empty_t = AnDataType::getVariant(empty, {{"'t", empty, 0, t}});
 
     //'t -> 'u
-    auto empty_u = AnDataType::getVariant(&c, empty, {{"'t", empty, 0, u}});
+    auto empty_u = AnDataType::getVariant(empty, {{"'t", empty, 0, u}});
 
     REQUIRE(empty != nullptr);
 
@@ -80,20 +83,20 @@ TEST_CASE("TypeVarType Checks", "[typeEq]"){
 
     REQUIRE(empty_t != empty_u);
     
-    REQUIRE(c.typeEq(empty_t, empty));
+    REQUIRE(typeEq(empty_t, empty));
 
-    REQUIRE(c.typeEq(empty_t, empty_u));
+    REQUIRE(typeEq(empty_t, empty_u));
 
-    REQUIRE(c.typeEq(empty, empty_u));
+    REQUIRE(typeEq(empty, empty_u));
 
     //both typevars must be bound, solution:
     //solution: bind 't and 'u to new typevar 'Tu
-    //REQUIRE(c.typeEq(empty_t, empty_u)->bindings.size() == 2);
+    //REQUIRE(typeEq(empty_t, empty_u)->bindings.size() == 2);
 
     //When matching an unbound type against a type bound to a
     //type variable, the only binding should be a positional binding
     //of (pos 0) => 'u
-    REQUIRE(c.typeEq(empty, empty_u)->bindings.size() == 1);
+    REQUIRE(typeEq(empty, empty_u)->bindings.size() == 1);
 }
 
 
@@ -104,12 +107,12 @@ TEST_CASE("Datatype partial bindings"){
     auto tb = AnDataType::create("TypeB", {}, false, {string("'b")});
 
     auto c = AnTypeVarType::get("'c");
-    auto tbc = AnDataType::getVariant(&compiler, tb, {{"'b", tb, 0, c}});
+    auto tbc = AnDataType::getVariant(tb, {{"'b", tb, 0, c}});
 
     //TypeA (TypeB 'c)
     //Should have binding (TypeA position 0) -> TypeB 'c, and generic 'c
     auto binding1 = TypeBinding("'a", ta, 0, tbc);
-    auto ta_tbc = AnDataType::getVariant(&compiler, ta, {binding1});
+    auto ta_tbc = AnDataType::getVariant(ta, {binding1});
     REQUIRE(ta_tbc->isGeneric);
     REQUIRE(ta_tbc->boundGenerics.size() == 1);
     REQUIRE(ta_tbc->boundGenerics[0] == binding1);
@@ -119,7 +122,7 @@ TEST_CASE("Datatype partial bindings"){
     //TypeA TypeB
     //Should have binding (TypeA position 0) -> TypeB, and generic (TypeB position 0)
     auto binding2 = TypeBinding("'a", ta, 0, tb);
-    auto ta_tb = AnDataType::getVariant(&compiler, ta, {binding2});
+    auto ta_tb = AnDataType::getVariant(ta, {binding2});
     REQUIRE(ta_tb->isGeneric);
     REQUIRE(ta_tb->boundGenerics.size() == 1);
     REQUIRE(ta_tb->boundGenerics[0] == binding2);
@@ -141,10 +144,10 @@ TEST_CASE("Best Match", "[typeEq]"){
     auto tup3 = AnAggregateType::get(TT_Tuple, {i, t});
     auto tup4 = AnAggregateType::get(TT_Tuple, {t, t});
 
-    auto tc1 = c.typeEq(tup1, tup1);
-    auto tc2 = c.typeEq(tup1, tup2);
-    auto tc3 = c.typeEq(tup1, tup3);
-    auto tc4 = c.typeEq(tup1, tup4);
+    auto tc1 = typeEq(tup1, tup1);
+    auto tc2 = typeEq(tup1, tup2);
+    auto tc3 = typeEq(tup1, tup3);
+    auto tc4 = typeEq(tup1, tup4);
 
     REQUIRE(tc1->res == TypeCheckResult::Success);
     REQUIRE(tc2->res == TypeCheckResult::SuccessWithTypeVars);

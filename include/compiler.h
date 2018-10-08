@@ -20,7 +20,10 @@
 #include "typebinding.h"
 #include "antype.h"
 #include "antevalue.h"
+#include "funcdecl.h"
+#include "variable.h"
 #include "typedvalue.h"
+#include "typecheckresult.h"
 
 #define AN_MANGLED_SELF "_$self$"
 
@@ -65,259 +68,7 @@ namespace ante {
     };
 
 
-    /**
-    * @brief The result of a type check
-    *
-    * Can be one of three states: Failure, Success,
-    * or SuccessWithTypeVars.
-    *
-    * SuccessWithTypeVars indicates the typecheck is only a
-    * success if a typevar within is bound to a particular type.
-    * For example the check of 't* and i32* would return this status.
-    * Whenever SuccessWithTypeVars is set, the bindings field contains
-    * the specific bindings that should be bound to the typevar term.
-    */
-    struct TypeCheckResult {
-        enum Result { Failure, Success, SuccessWithTypeVars };
-
-        //box internals for faster passing by value and easier ownership transfer
-        struct Internals {
-            Result res;
-            unsigned int matches;
-
-            /* typevar mappings, eg. 't to i32 */
-            std::vector<TypeBinding> bindings;
-
-            Internals() : res{Success}, matches{0}, bindings{}{}
-        };
-
-        std::shared_ptr<Internals> box;
-
-        TypeCheckResult& successIf(bool b);
-        TypeCheckResult& successIf(Result r);
-        TypeCheckResult& success();
-        TypeCheckResult& success(size_t matches);
-        TypeCheckResult& successWithTypeVars();
-        TypeCheckResult& failure();
-
-        bool failed();
-
-        bool operator!() const { return box->res == Failure; }
-        explicit operator bool() const { return box->res == Success || box->res == SuccessWithTypeVars; }
-        Internals* operator->() const { return box.get(); }
-
-        TypeCheckResult() : box(new Internals()){}
-        TypeCheckResult(const TypeCheckResult &r)  : box(r.box){}
-        //TypeCheckResult(TypeCheckResult &&r)  : box(move(r.box)){}
-    };
-
-
-    /**
-    * @brief Base for typeeq
-    *
-    * Unlike typeEq, typeEqBase does not require a Compiler instance, but will not
-    * properly handle typevars and certain data types without one.
-    *
-    * Should only be used in rare situations where you do not have a Compiler instance.
-    *
-    * @param l Type to check
-    * @param r Type to check against
-    * @param tcr This parameter is passed recursively, pass a TypeCheckResult::Success
-    * if at the beginning of the chain
-    * @param c Optional parameter to lookup data type definitions and typevars
-    *
-    * @return The resulting TypeCheckResult
-    */
-    TypeCheckResult& typeEqBase(const AnType *l, const AnType *r, TypeCheckResult &tcr, const Compiler *c = 0);
-
-
-
-    //declare ante::Module for FuncDecl
-    struct Module;
-
-    /**
-    * @brief Contains information about a function that is not contained
-    * within its FuncDeclNode.
-    *
-    * Holds the scope the function was compiled in, the value of the function
-    * so it is not recompiled, the object type if it is a method along with any
-    * generic parameters of the object, the module compiled in, and each return
-    * instance for type checking.
-    */
-    struct FuncDecl {
-        parser::FuncDeclNode* fdn;
-        std::string mangledName;
-
-        unsigned int scope;
-        TypedValue tv;
-
-        AnType *obj;
-
-        AnFunctionType *type;
-
-        /** @brief Any generic parameters the obj may have */
-        std::vector<TypeBinding> objBindings;
-
-        Module *module;
-        std::vector<std::pair<TypedValue,LOC_TY>> returns;
-
-        std::string& getName() const noexcept {
-            return fdn->name;
-        }
-
-        bool isDecl() const noexcept {
-            return fdn->name.back() == ';' or mangledName == fdn->name;
-        }
-
-        TypedValue getOrCompileFn(Compiler *c);
-
-        FuncDecl(parser::FuncDeclNode *fn, std::string &n, unsigned int s, Module *mod, TypedValue f) : fdn(fn), mangledName(n), scope(s), tv(f), type(0), module(mod), returns(){}
-        FuncDecl(parser::FuncDeclNode *fn, std::string &n, unsigned int s, Module *mod) : fdn(fn), mangledName(n), scope(s), tv(), type(0), module(mod), returns(){}
-        ~FuncDecl(){}
-    };
-
     parser::TypeNode* mkAnonTypeNode(TypeTag);
-
-    /**
-     * @brief A TypedValue of type TT_FunctionList is returned whenever there are
-     * multiple equally-qualified functions found during a lookup.  A lookup without
-     * the properly mangled argument types will also return this type so that the
-     * desired function may be deduced later with the actual function call arguments.
-     */
-    struct FunctionCandidates {
-        /** @brief FunctionCandidates instances swap places with the llvm::Value part of a
-         * TypedValue.  Because inheritance cannot be used, the first field is a fakeValue
-         * to avoid crashes when FunctionCandidates are used accidentaly as llvm::Values */
-        llvm::Value *fakeValue;
-        std::vector<std::shared_ptr<FuncDecl>> candidates;
-        TypedValue obj;
-
-        FunctionCandidates(llvm::LLVMContext *c, std::vector<std::shared_ptr<FuncDecl>> &ca, TypedValue o) :
-            fakeValue(llvm::UndefValue::get(llvm::Type::getInt8Ty(*c))), candidates(ca), obj(o){}
-
-        static TypedValue getAsTypedValue(llvm::LLVMContext *c, std::vector<std::shared_ptr<FuncDecl>> &ca, TypedValue o);
-    };
-
-    /**
-    * @brief An individual tag of a tagged union along with the types it corresponds to
-    */
-    struct UnionTag {
-        std::string name;
-        AnDataType *ty;
-        AnDataType *parent;
-        unsigned short tag;
-
-        UnionTag(std::string &n, AnDataType *tyn, AnDataType *p, unsigned short t) :
-            name(n), ty(tyn), parent(p), tag(t){}
-    };
-
-    /**
-    * @brief Holds the name of a trait and the functions needed to implement it
-    */
-    struct Trait {
-        std::string name;
-        std::vector<std::shared_ptr<FuncDecl>> funcs;
-    };
-
-    struct Assignment {
-        enum Type {
-            ForLoop, Parameter, TypeVar, Normal
-        } assignmentType;
-
-        std::optional<parser::Node*> assignmentExpr;
-
-        Assignment() = delete;
-        Assignment(Assignment::Type t, std::optional<parser::Node*> expr) :
-            assignmentType{t}, assignmentExpr{expr}{}
-    };
-
-    /**
-     * A variable assigned a certain value and restricted to a given scope.
-     *
-     * Variables may be mutable or immutable and all keep track of each time
-     * they are assigned.
-     */
-    struct Variable {
-        std::string name;
-
-        /**
-        * @brief The value assigned to the variable
-        */
-        TypedValue tval;
-        unsigned int scope;
-
-        /**
-        * @brief Set to true if this variable is an implicit pointer.
-        * Used by mutable variables.
-        */
-        bool autoDeref;
-
-        /**
-         * @brief The non-empty list of assignments to this variable.
-         * 
-         * The first assignment is always the declaration and
-         * if the variable is immutable the list will always be of length 1.
-         */
-        std::list<Assignment> assignments;
-
-
-        llvm::Value* getVal() const{
-            return tval.val;
-        }
-
-        TypeTag getType() const;
-
-        /**
-        * @brief Variable constructor
-        *
-        * @param n Name of variable
-        * @param tv Value of variable
-        * @param s Scope of variable
-        * @param declaration The assignment expression this variable was declared in
-        * @param ismutable True if the variable's alloca should be autotomatically dereferenced
-        */
-        Variable(std::string n, TypedValue tv, unsigned int s, Assignment const& declaration, bool ismutable=false)
-                : name(n), tval(tv), scope(s), autoDeref(ismutable), assignments{}{
-
-            assignments.push_back(declaration);
-        }
-    };
-
-
-    /**
-     * @brief An Ante Module
-     */
-    struct Module {
-        std::string name;
-
-        /**
-         * @brief The abstract syntax tree representing the contents of the module.
-         */
-        std::unique_ptr<parser::RootNode> ast;
-
-        /**
-         * @brief Each declared function in the module
-         */
-        llvm::StringMap<std::vector<std::shared_ptr<FuncDecl>>> fnDecls;
-
-        /**
-         * @brief Each declared DataType in the module
-         */
-        llvm::StringMap<AnDataType*> userTypes;
-
-        /**
-         * @brief Map of all declared traits; not including their implementations for a given type
-         * Each DataType is reponsible for holding its own trait implementations
-         */
-        llvm::StringMap<std::shared_ptr<Trait>> traits;
-
-        /**
-        * @brief Merges two modules
-        *
-        * @param m module to merge into this
-        */
-        void import(Module *m);
-    };
 
     /**
      * @brief Contains state information on the module being compiled
@@ -367,29 +118,14 @@ namespace ante {
         std::unique_ptr<llvm::Module> module;
         llvm::IRBuilder<> builder;
 
-        /** @brief functions and type definitions of current module */
-        Module *compUnit;
-
-        /** @brief all functions and type definitions visible to current module */
-        Module *mergedCompUnits;
-
-        /** @brief all imported modules */
-        std::vector<Module*> imports;
-
-        /**
-         * @brief Stack of variables mapped to their identifier.
-         * Maps are seperated according to their scope.
-         */
-        std::vector<std::unique_ptr<llvm::StringMap<std::unique_ptr<Variable>>>> varTable;
+        /** The abstract syntax tree.
+         *  This is gradually filled with more information
+         *  during each compilation phase. */
+        parser::RootNode* ast;
 
         std::unique_ptr<CompilerCtxt> compCtxt;
 
         std::shared_ptr<CompilerCtCtxt> ctCtxt;
-
-        /** Relative root directorys to search within.
-         * Given a module M, M can be within any of
-         * the relative root directories */
-        std::vector<std::string> relativeRoots;
 
         bool errFlag, compiled, isLib, isJIT;
         std::string fileName, outFile, funcPrefix;
@@ -451,15 +187,9 @@ namespace ante {
         /** @brief Dumps current contents of module to stdout */
         void emitIR();
 
-        /** @brief Creates and enters a new scope */
-        void enterNewScope();
-
-        /** @brief Exits a scope and performs any necessary cleanup */
-        void exitScope();
-
         /** @brief Returns a pointer to the RootNode of the current Module. */
         parser::RootNode* getAST() const {
-            return compUnit->ast.get();
+            return ast;
         }
 
         /**
@@ -560,26 +290,15 @@ namespace ante {
         */
         void jitFunction(llvm::Function *fnName);
 
-        /**
-        * @brief Imports a given ante file to the current module
-        * inputted file must exist and be a valid ante source file.
-        *
-        * @param fName Name of file to import
-        * @param The node containing where the file was imported from.
-        *        Usually the ImportNode importing the file.  Used for
-        *        error reporting.
-        */
-        void importFile(std::string const& name, LOC_TY &loc);
-
         /** @brief Sets the tv of the FuncDecl specified to the value of f */
-        void updateFn(TypedValue &f, FuncDecl *fd, std::string &name, std::string &mangledName);
+        void updateFn(TypedValue &f, FuncDecl *fd, std::string const& name, std::string const& mangledName);
         FuncDecl* getCurrentFunction() const;
 
         /** @brief Returns the exact function specified if found or nullptr if not */
         TypedValue getFunction(std::string const& name, std::string const& mangledName);
 
         /** @brief Returns a vector of all functions with the specified baseName */
-        std::vector<std::shared_ptr<FuncDecl>>& getFunctionList(std::string const& name) const;
+        std::vector<std::shared_ptr<FuncDecl>> getFunctionList(std::string const& name) const;
 
         /** @brief Returns the exact FuncDecl specified if found or nullptr if not */
         FuncDecl* getFuncDecl(std::string bn, std::string mangledName);
@@ -654,82 +373,11 @@ namespace ante {
          */
         std::string& getModuleName() const;
 
-
-        /**
-        * @brief Performs a lookup for a variable
-        *
-        * @param var Name of the variable to lookup
-        *
-        * @return The Variable* if found, otherwise nullptr
-        */
-        Variable* lookup(std::string const& var) const;
-
-        /**
-        * @brief Stores a variable in the current scope
-        *
-        * @param var Name of the variable to store
-        * @param val Variable to store
-        */
-        void stoVar(std::string var, Variable *val);
-
-        /**
-        * @brief Performs a lookup for the specified DataType
-        *
-        * @param tyname Name of the type to lookup
-        *
-        * @return The DataType* if found, otherwise nullptr
-        */
-        AnDataType* lookupType(std::string const& tyname) const;
-
-        /**
-        * @brief Performs a lookup for the specified typevar
-        *
-        * @param name Name of the type to lookup
-        *
-        * @return The AnType* bound to the typevar if found, otherwise nullptr
-        */
-        AnType* lookupTypeVar(std::string const& name) const;
-
-        /**
-        * @brief Performs a lookup for the specified trait
-        *
-        * @param tyname Name of the trait to lookup
-        *
-        * @return The Trait* if found, otherwise nullptr
-        */
-        Trait* lookupTrait(std::string const& tyname) const;
-
         /**
          * @brief Returns true if the given AnDataType implements
          * the trait with name traitName
          */
         bool typeImplementsTrait(AnDataType* dt, std::string traitName) const;
-
-        /**
-        * @brief Stores a new DataType
-        *
-        * @param ty The DataType to store
-        * @param typeName The name of the DataType
-        */
-        void stoType(AnDataType *ty, std::string const& typeName);
-
-        /**
-        * @brief Stores a TypeVar in the current scope
-        *
-        * @param name Name of the typevar to store (including the preceeding ')
-        * @param ty The type to store
-        */
-        void stoTypeVar(std::string const& name, AnType *ty);
-
-        /**
-         * @brief Searches through tn and replaces any typevars inside with
-         * their definition from a lookup if found.
-         *
-         * Care must be taken so that the resulting AnType not escape the
-         * scope of the typevars in the lookup.  Thus, this function should
-         * not be used for TypeNodes that may be reused at lower scopes.
-         */
-        //AnType* searchAndReplaceBoundTypeVars(AnType* tn) const;
 
         /**
          * @brief Translates an AnType* to an llvm::Type*.
@@ -744,22 +392,6 @@ namespace ante {
          * fix the translated type.
          */
         llvm::Type* anTypeToLlvmType(const AnType *ty, bool force = false);
-
-        /** @brief Performs a type check against l and r */
-        TypeCheckResult typeEq(const AnType *l, const AnType *r) const;
-
-        /**
-         * @brief Performs a type check against l and r
-         *
-         * Used for function parameters and similar situations where typevars
-         * across multiple type checks need to be consistent.  Eg. a function
-         * of type ('t, 't)->void should not match the arguments i32 and u64.
-         * Performing a typecheck on each argument separately would give a different
-         * bound value for 't.  Using this function would result in the appropriate
-         * TypeCheckResult::Failure
-         */
-        TypeCheckResult typeEq(std::vector<AnType*> l, std::vector<AnType*> r) const;
-
 
         /**
          * @brief Performs an implicit widening
@@ -807,19 +439,6 @@ namespace ante {
         static int linkObj(std::string inFiles, std::string outFile);
     };
 
-    /**
-    * @brief every single compiled module, even ones invisible to the current
-    * compilation unit.  Prevents recompilation of modules and owns all Modules
-    */
-    extern llvm::StringMap<std::unique_ptr<Module>> allCompiledModules;
-
-    /**
-    * @brief Every merged compilation units.  Each must not be freed until compilation
-    * finishes as there is always a chance an old module is recompiled and the newly
-    * imported functions would need the context they were compiled in.
-    */
-    extern std::vector<std::unique_ptr<Module>> allMergedCompUnits;
-
     /*
      * @brief Compiles and returns the address of an lval or expression
      */
@@ -836,14 +455,6 @@ namespace ante {
     TypedValue compMetaFunctionResult(Compiler *c, LOC_TY const& loc, std::string const& baseName,
             std::string const& mangledName, std::vector<TypedValue> const& typedArgs,
             std::vector<std::unique_ptr<parser::Node>> const& argExprs);
-
-    /**
-     *  Search for a given function specified by the expression l.
-     *
-     *  - Takes into account argument types instead of returning first function found.
-     *  - Functions in local scope will shadow global functions.
-     */
-    TypedValue searchForFunction(Compiler *c, parser::Node *l, std::vector<TypedValue> const& typedArgs);
 
 
     /**
@@ -863,11 +474,6 @@ namespace ante {
      * This function will throw a CompilationError* on error
      */
     TypedValue compileAndCallAnteFunction(Compiler *c, parser::ModNode *n);
-
-    /**
-    * @brief Compiles all top-level import expressions
-    */
-    void scanImports(Compiler *c, parser::RootNode *r);
 
     /**
     * Compiles the given Node and catches any CtError
