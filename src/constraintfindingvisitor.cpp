@@ -43,12 +43,16 @@ namespace ante {
     void ConstraintFindingVisitor::visit(CharLitNode *n){}
 
     void ConstraintFindingVisitor::visit(ArrayNode *n){
+        auto arrty = try_cast<AnArrayType>(n->getType());
         if(!n->exprs.empty()){
             auto t1 = n->exprs[0]->getType();
             for(auto it = ++n->exprs.begin(); it != n->exprs.end(); it++){
                 (*it)->accept(*this);
                 constraints.emplace_back(t1, (*it)->getType());
             }
+            constraints.emplace_back(arrty->extTy, t1);
+        }else{
+            constraints.emplace_back(arrty->extTy, AnType::getVoid());
         }
     }
 

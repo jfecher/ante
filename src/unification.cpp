@@ -84,7 +84,7 @@ namespace ante {
             return AnPtrType::get(substitute(u, name, ptr->extTy));
 
         }else if(auto arr = try_cast<AnArrayType>(t)){
-            return AnArrayType::get(substitute(u, name, ptr->extTy), arr->len);
+            return AnArrayType::get(substitute(u, name, arr->extTy), arr->len);
 
         }else if(auto tv = try_cast<AnTypeVarType>(t)){
             return tv->name == name ? u : t;

@@ -19,14 +19,18 @@ namespace ante {
             m->accept(*this);
         for(auto &m : n->traits)
             m->accept(*this);
-        for(auto &m : n->extensions)
-            m->accept(*this);
-        for(auto &m : n->funcs)
-            m->accept(*this);
+
+        for(auto &m : n->extensions){
+            TypeInferenceVisitor::infer(m);
+        }
+
+        for(auto &m : n->funcs){
+            TypeInferenceVisitor::infer(m);
+        }
 
         auto lastType = AnType::getVoid();
         for(auto &m : n->main){
-            m->accept(*this);
+            TypeInferenceVisitor::infer(m);
             lastType = m->getType();
         }
         n->setType(lastType);
@@ -56,7 +60,8 @@ namespace ante {
         for(auto &e : n->exprs)
             e->accept(*this);
 
-        n->setType(nextTypeVar());
+        auto ty = AnArrayType::get(nextTypeVar(), n->exprs.size());
+        n->setType(ty);
     }
 
     void TypeInferenceVisitor::visit(TupleNode *n){
