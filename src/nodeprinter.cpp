@@ -94,8 +94,13 @@ void PrintingVisitor::visit(CharLitNode *n){
 
 void PrintingVisitor::visit(ArrayNode *n){
     putchar('[');
-    n->exprs[0]->accept(*this);
+    for(auto &e : n->exprs){
+        e->accept(*this);
+        if(&e != &n->exprs.back())
+            cout << ", ";
+    }
     putchar(']');
+    cout << " : " << anTypeToColoredStr(n->getType()) << "  ";
 }
 
 void PrintingVisitor::visit(TupleNode *n){
