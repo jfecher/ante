@@ -77,6 +77,10 @@ namespace ante {
             void declare(std::string const& name, parser::VarNode *decl);
             void declare(std::string const& name, parser::NamedValNode *decl);
 
+            /** Declare functions but do not define them */
+            void declare(parser::FuncDeclNode *decl);
+            void declare(parser::ExtNode *decl);
+
             /** Declare a type with its contents unknown */
             void declare(std::string const& name, std::vector<std::unique_ptr<parser::TypeNode>> const& generics);
 

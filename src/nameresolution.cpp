@@ -136,6 +136,22 @@ namespace ante {
         return mergedCompUnits->fnDecls[name];
     }
 
+    /** Declare function but do not define it */
+    void NameResolutionVisitor::declare(FuncDeclNode *n){
+        auto *fd = new FuncDecl(n, n->name, this->mergedCompUnits);
+        mergedCompUnits->fnDecls[n->name].push_back(fd);
+        n->decl = fd;
+    }
+
+    void NameResolutionVisitor::declare(ExtNode *n){
+        for(auto *f : *n->methods){
+            auto fdn = static_cast<FuncDeclNode*>(f);
+            auto *fd = new FuncDecl(fdn, fdn->name, this->mergedCompUnits);
+            mergedCompUnits->fnDecls[fdn->name].push_back(fd);
+            fdn->decl = fd;
+        }
+    }
+
 
     void NameResolutionVisitor::visit(RootNode *n){
         for(auto &m : n->imports)
@@ -144,10 +160,26 @@ namespace ante {
             m->accept(*this);
         for(auto &m : n->traits)
             m->accept(*this);
+
+        // unwrap any surrounding modifiers then declare
+        for(auto &m : n->extensions){
+            auto mn = m.get();
+            while(dynamic_cast<ModNode*>(mn))
+                mn = static_cast<ModNode*>(mn)->expr.get();
+            declare(static_cast<ExtNode*>(mn));
+        }
+        for(auto &m : n->funcs){
+            auto mn = m.get();
+            while(dynamic_cast<ModNode*>(mn))
+                mn = static_cast<ModNode*>(mn)->expr.get();
+            declare(static_cast<FuncDeclNode*>(mn));
+        }
+
         for(auto &m : n->extensions)
             m->accept(*this);
         for(auto &m : n->funcs)
             m->accept(*this);
+
         for(auto &m : n->main)
             m->accept(*this);
     }
@@ -534,6 +566,9 @@ namespace ante {
     }
 
     void NameResolutionVisitor::visit(ExtNode *n){
+        if(!static_cast<FuncDeclNode*>(n->methods.get())->decl){
+            declare(n);
+        }
         //TODO: declare methods contained within submodules
         for(auto *m : *n->methods)
             m->accept(*this);
@@ -579,9 +614,9 @@ namespace ante {
     }
 
     void NameResolutionVisitor::visit(FuncDeclNode *n){
-        auto *fd = new FuncDecl(n, n->name, this->mergedCompUnits);
-        mergedCompUnits->fnDecls[n->name].push_back(fd);
-        n->decl = fd;
+        if(!n->decl){
+            declare(n);
+        }
 
         enterFunction();
         for(auto *p : *n->params){
@@ -750,6 +785,7 @@ namespace ante {
             auto *fdn = static_cast<FuncDeclNode*>(fn);
             auto *fd = new FuncDecl(fdn, fdn->name, this->mergedCompUnits);
             mergedCompUnits->fnDecls[fdn->name].push_back(fd);
+            fdn->decl = fd;
         }
     }
 }
