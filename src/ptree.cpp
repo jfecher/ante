@@ -5,6 +5,7 @@
  */
 #include "compiler.h"
 #include "yyparser.h"
+#include "unification.h"
 #include <stack>
 
 using namespace std;
@@ -346,6 +347,11 @@ namespace ante {
                 }
             }
             return new TypeNode(loc, type, typeName, static_cast<TypeNode*>(extTy));
+        }
+
+        Node* mkInferredTypeNode(LOC_TY loc){
+            auto t = nextTypeVar();
+            return new TypeNode(loc, TT_TypeVar, t->name, nullptr);
         }
 
         Node* mkTypeCastNode(LOC_TY loc, Node *l, Node *r){

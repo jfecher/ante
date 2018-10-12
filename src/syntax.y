@@ -394,8 +394,10 @@ ident_list: raw_ident_list  %prec MED {$$ = getRoot();}
         for lists automatically in case the shortcut syntax
         is used and multiple NamedValNodes are made */
 _params: _params ',' bounded_type_expr ident_list {$$ = mkNamedValNode(@$, $4, $3, $1);}
+       | _params ',' ident_list                   {$$ = mkNamedValNode(@$, $3, mkInferredTypeNode(@3), $1);}
        | bounded_type_expr ident_list             {$$ = mkNamedValNode(@$, $2, $1, 0);}
-       | Self                             {$$ = mkNamedValNode(@$, mkVarNode(@$, (char*)"self"), (Node*)1, 0);}
+       | ident_list                               {$$ = mkNamedValNode(@$, $1, mkInferredTypeNode(@$), 0);}
+//       | Self                                     {$$ = mkNamedValNode(@$, mkVarNode(@$, (char*)"self"), (Node*)1, 0);}
        ;
 
                           /* varargs function .. (Range) followed by . */
