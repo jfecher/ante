@@ -172,12 +172,10 @@ namespace ante {
 
     void ConstraintFindingVisitor::visit(BlockNode *n){
         n->block->accept(*this);
-        constraints.emplace_back(n->getType(), n->block->getType());
     }
 
     void ConstraintFindingVisitor::visit(RetNode *n){
         n->expr->accept(*this);
-        constraints.emplace_back(n->getType(), n->expr->getType());
     }
 
     void ConstraintFindingVisitor::visit(ImportNode *n){}

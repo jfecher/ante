@@ -52,7 +52,6 @@ void PrintingVisitor::visit(RootNode *n){
 
     for(auto& f : n->main){
         f->accept(*this);
-        cout << "  :  " << anTypeToColoredStr(f->getType());
         puts(";");
     }
 }
@@ -100,7 +99,6 @@ void PrintingVisitor::visit(ArrayNode *n){
             cout << ", ";
     }
     putchar(']');
-    cout << " : " << anTypeToColoredStr(n->getType()) << "  ";
 }
 
 void PrintingVisitor::visit(TupleNode *n){
@@ -206,7 +204,6 @@ void PrintingVisitor::visit(ImportNode *n){
 
 
 void PrintingVisitor::visit(IfNode *n){
-    cout << anTypeToColoredStr(n->getType()) << ' ';
     cout << "if ";
     n->condition->accept(*this);
     cout << " then ";

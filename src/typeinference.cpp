@@ -30,7 +30,7 @@ namespace ante {
 
         auto lastType = AnType::getVoid();
         for(auto &m : n->main){
-            TypeInferenceVisitor::infer(m);
+            m->accept(*this);
             lastType = m->getType();
         }
         n->setType(lastType);
@@ -233,7 +233,7 @@ namespace ante {
         }
 
         n->child->accept(*this);
-        n->setType(AnFunctionType::get(n->child->getType(), paramTypes));
+        n->setType(AnFunctionType::get(nextTypeVar(), paramTypes));
     }
 
     void TypeInferenceVisitor::visit(DataDeclNode *n){

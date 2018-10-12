@@ -133,9 +133,10 @@ namespace ante {
     Substitutions unifyOne(AnType *t1, AnType *t2){
         auto tv1 = try_cast<AnTypeVarType>(t1);
         auto tv2 = try_cast<AnTypeVarType>(t2);
-        if(tv1 && !tv2){
+
+        if(tv1){
             return {{tv1->name, t2}};
-        }else if(tv2 && !tv1){
+        }else if(tv2){
             return {{tv2->name, t1}};
         }
 
