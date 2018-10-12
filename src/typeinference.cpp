@@ -21,11 +21,11 @@ namespace ante {
             m->accept(*this);
 
         for(auto &m : n->extensions){
-            TypeInferenceVisitor::infer(m);
+            m->accept(*this);
         }
 
         for(auto &m : n->funcs){
-            TypeInferenceVisitor::infer(m);
+            m->accept(*this);
         }
 
         auto lastType = AnType::getVoid();
@@ -181,7 +181,6 @@ namespace ante {
         n->ref_expr->setType(n->expr->getType());
         if(n->modifiers.empty()){
             n->setType(AnType::getVoid());
-            static_cast<VarNode*>(n->ref_expr)->decls[0]->tval.type = nextTypeVar();
         }else{
             n->setType(n->expr->getType());
         }
@@ -234,6 +233,13 @@ namespace ante {
 
         n->child->accept(*this);
         n->setType(AnFunctionType::get(nextTypeVar(), paramTypes));
+
+        // finish inference for functions early
+        ConstraintFindingVisitor step2;
+        n->accept(step2);
+        auto constraints = step2.getConstraints();
+        auto substitutions = unify(constraints);
+        SubstitutingVisitor::substituteIntoAst(n, substitutions);
     }
 
     void TypeInferenceVisitor::visit(DataDeclNode *n){

@@ -118,7 +118,6 @@ namespace ante {
         n->expr->accept(*this);
         n->ref_expr->accept(*this);
 
-        n->ref_expr->setType(n->expr->getType());
         if(!n->modifiers.empty())
             n->setType(applySubstitutions(substitutions, n->getType()));
     }
