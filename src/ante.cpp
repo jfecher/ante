@@ -97,7 +97,11 @@ int main(int argc, const char **argv){
         int flag = p.parse();
         if(flag == PE_OK){
             Node* root = parser::getRootNode();
-            NameResolutionVisitor::resolve(root);
+            NameResolutionVisitor v;
+            root->accept(v);
+            if(v.hasError())
+                return 1;
+
             TypeInferenceVisitor::infer(root);
             parser::printBlock(root, 0);
             delete root;

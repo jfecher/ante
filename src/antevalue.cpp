@@ -354,10 +354,10 @@ namespace ante {
     }
 
     void AnteValue::printUnion(Compiler *c, std::ostream &os) const{
-        auto *dt = try_cast<AnDataType>(type);
+        auto *dt = try_cast<AnSumType>(type);
         char tag = castTo<char>();
 
-        auto &tagty = dt->tags[tag]->ty;
+        auto &tagty = dt->tags[tag];
         AnteValue((char*)data + 1, tagty).printTupleOrData(c, os);
     }
 

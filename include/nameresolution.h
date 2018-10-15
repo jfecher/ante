@@ -47,6 +47,10 @@ namespace ante {
             enterFunction();
         }
 
+        bool hasError() const noexcept {
+            return errFlag;
+        }
+
         /**
          * Perform name resolution for each module and
          * imported module.
@@ -82,16 +86,21 @@ namespace ante {
             void declare(parser::ExtNode *decl);
 
             /** Declare a type with its contents unknown */
-            void declare(std::string const& name, std::vector<std::unique_ptr<parser::TypeNode>> const& generics);
+            void declareProductType(parser::DataDeclNode *n);
+            void declareSumType(parser::DataDeclNode *n);
 
             /** Define a type with the given contents. */
             void define(std::string const& name, AnDataType *type);
 
             std::optional<Variable*> lookupVar(std::string const& name) const;
 
+            void searchForField(parser::Node *n);
+
             void validateType(const AnType *tn, const parser::DataDeclNode *decl);
 
             size_t getScope() const;
+
+            void importFile(std::string const& fileName, LOC_TY &loc);
 
             void newScope();
 

@@ -49,7 +49,11 @@ namespace ante {
     }
 
     void TypeInferenceVisitor::visit(StrLitNode *n){
-        n->setType(AnType::getDataType("Str"));
+        auto strty = AnDataType::get("Str");
+        if(!strty){
+            strty = AnProductType::create("Str", {}, {});
+        }
+        n->setType(strty);
     }
 
     void TypeInferenceVisitor::visit(CharLitNode *n){
@@ -167,6 +171,7 @@ namespace ante {
             n->decls[0]->tval.type = nextTypeVar();
             n->setType(tv);
         }else if(auto *fnty = try_cast<AnFunctionType>(n->decls[0]->tval.type)){
+            cout << anTypeToColoredStr(fnty) << "      " << copyWithNewTypeVars(fnty) << endl;
             n->setType(copyWithNewTypeVars(fnty));
         }else{
             n->setType(n->decls[0]->tval.type);
@@ -232,7 +237,12 @@ namespace ante {
         }
 
         n->child->accept(*this);
-        n->setType(AnFunctionType::get(nextTypeVar(), paramTypes));
+
+        if(n->returnType){
+            n->setType(AnFunctionType::get(toAnType(n->returnType.get()), paramTypes));
+        }else{
+            n->setType(AnFunctionType::get(nextTypeVar(), paramTypes));
+        }
 
         // finish inference for functions early
         ConstraintFindingVisitor step2;

@@ -363,9 +363,9 @@ namespace ante {
 
         struct FuncDeclNode : public ModifiableNode{
             std::string name;
-            std::shared_ptr<Node> child;
-            std::shared_ptr<TypeNode> returnType;
-            std::shared_ptr<NamedValNode> params;
+            std::unique_ptr<Node> child;
+            std::unique_ptr<TypeNode> returnType;
+            std::unique_ptr<NamedValNode> params;
             bool varargs;
             Declaration* decl;
 

@@ -28,7 +28,6 @@ namespace ante {
     namespace parser {
         struct TypeNode;
 
-        Node* externCName(Node *n);
         vector<unique_ptr<TypeNode>> toOwnedVec(Node *tn);
         vector<unique_ptr<TypeNode>> concat(vector<unique_ptr<TypeNode>>&& l, Node *tn);
     }
@@ -470,16 +469,16 @@ fn_inferredRet: Fun fn_name ':' params '=' expr     %prec Newline               
               | Fun fn_name Assign  expr            %prec Newline                          {$$ = mkFuncDeclNode(@2, /*fn_name*/$2, /*ret_ty*/0, /*params*/0,  /*body*/$4);}
               ;
 
-fn_decl: Fun fn_name ':' params RArrow bounded_type_expr    %prec Fun     {$$ = mkFuncDeclNode(@2, /*fn_name*/externCName($2), /*ret_ty*/$6,                                  /*params*/$4, /*body*/0);}
-       | Fun fn_name ':' RArrow bounded_type_expr           %prec Fun     {$$ = mkFuncDeclNode(@2, /*fn_name*/externCName($2), /*ret_ty*/$5,                                  /*params*/0,  /*body*/0);}
-       | Fun fn_name ':' params                             %prec Fun     {$$ = mkFuncDeclNode(@2, /*fn_name*/externCName($2), /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/$4, /*body*/0);}
-       | Fun fn_name ':'                                    %prec Fun     {$$ = mkFuncDeclNode(@2, /*fn_name*/externCName($2), /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/0,  /*body*/0);}
+fn_decl: Fun fn_name ':' params RArrow bounded_type_expr    %prec Fun     {$$ = mkFuncDeclNode(@2, /*fn_name*/$2, /*ret_ty*/$6,                                  /*params*/$4, /*body*/0);}
+       | Fun fn_name ':' RArrow bounded_type_expr           %prec Fun     {$$ = mkFuncDeclNode(@2, /*fn_name*/$2, /*ret_ty*/$5,                                  /*params*/0,  /*body*/0);}
+       | Fun fn_name ':' params                             %prec Fun     {$$ = mkFuncDeclNode(@2, /*fn_name*/$2, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/$4, /*body*/0);}
+       | Fun fn_name ':'                                    %prec Fun     {$$ = mkFuncDeclNode(@2, /*fn_name*/$2, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/0,  /*body*/0);}
        ;
 
-fn_ext_decl: Fun bounded_type_expr '.' fn_name ':' params RArrow bounded_type_expr     %prec Fun    {$$ = mkExtNode(@2, $2, mkFuncDeclNode(@$, /*fn_name*/externCName($4), /*ret_ty*/$8,                                  /*params*/$6, /*body*/0));}
-           | Fun bounded_type_expr '.' fn_name ':' RArrow bounded_type_expr            %prec Fun    {$$ = mkExtNode(@2, $2, mkFuncDeclNode(@$, /*fn_name*/externCName($4), /*ret_ty*/$7,                                  /*params*/0,  /*body*/0));}
-           | Fun bounded_type_expr '.' fn_name ':' params                              %prec Fun    {$$ = mkExtNode(@2, $2, mkFuncDeclNode(@$, /*fn_name*/externCName($4), /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/$6, /*body*/0));}
-           | Fun bounded_type_expr '.' fn_name ':'                                     %prec Fun    {$$ = mkExtNode(@2, $2, mkFuncDeclNode(@$, /*fn_name*/externCName($4), /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/0,  /*body*/0));}
+fn_ext_decl: Fun bounded_type_expr '.' fn_name ':' params RArrow bounded_type_expr     %prec Fun    {$$ = mkExtNode(@2, $2, mkFuncDeclNode(@$, /*fn_name*/$4, /*ret_ty*/$8,                                  /*params*/$6, /*body*/0));}
+           | Fun bounded_type_expr '.' fn_name ':' RArrow bounded_type_expr            %prec Fun    {$$ = mkExtNode(@2, $2, mkFuncDeclNode(@$, /*fn_name*/$4, /*ret_ty*/$7,                                  /*params*/0,  /*body*/0));}
+           | Fun bounded_type_expr '.' fn_name ':' params                              %prec Fun    {$$ = mkExtNode(@2, $2, mkFuncDeclNode(@$, /*fn_name*/$4, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/$6, /*body*/0));}
+           | Fun bounded_type_expr '.' fn_name ':'                                     %prec Fun    {$$ = mkExtNode(@2, $2, mkFuncDeclNode(@$, /*fn_name*/$4, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/0,  /*body*/0));}
            ;
 
 fn_lambda: Fun params '=' expr                              %prec Fun  {$$ = mkFuncDeclNode(@$, /*fn_name*/(Node*)strdup(""), /*ret_ty*/0,  /*params*/$2, /*body*/$4);}
@@ -767,15 +766,6 @@ void yy::parser::error(const location& loc, const string& msg){
 
 namespace ante {
     namespace parser {
-        Node* externCName(Node *n){
-            char *str = (char*)n;
-            size_t len = strlen(str);
-            char *c = (char*)realloc(str, len+2);
-            c[len] = ';';
-            c[len+1] = '\0';
-            return (Node*)c;
-        }
-
         vector<unique_ptr<TypeNode>> toOwnedVec(Node *tn){
             vector<unique_ptr<TypeNode>> ret;
             while(tn){

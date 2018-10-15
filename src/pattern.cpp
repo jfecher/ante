@@ -25,12 +25,6 @@ namespace ante {
 
         pattern->accept(cv);
 
-        auto tcr = typeEq(cv.val.type, valToMatch.type);
-        if(!tcr){
-            cv.c->compErr("Cannot match pattern of type " + anTypeToColoredStr(cv.val.type)
-                    + " to corresponding value's type " + anTypeToColoredStr(valToMatch.type), pattern->loc);
-        }
-
         Value *eq;
         if(literalType == Int){
             eq = cv.c->builder.CreateICmpEQ(cv.val.val, valToMatch.val);
@@ -92,18 +86,18 @@ namespace ante {
 
     AnType* unionVariantToTupleTy(AnType *ty){
         if(ty->typeTag == TT_Data){
-            AnDataType *dt = static_cast<AnDataType*>(ty);
+            AnProductType *dt = static_cast<AnProductType*>(ty);
 
-            if(dt->extTys.size() == 1){
-                return dt->extTys[0];
+            if(dt->fields.size() == 1){
+                return dt->fields[0];
             }else{
-                return AnAggregateType::get(TT_Tuple, dt->extTys);
+                return AnAggregateType::get(TT_Tuple, dt->fields);
             }
         }
         return ty;
     }
 
-    Type* getUnionVariantType(Compiler *c, AnDataType *tagTy){
+    Type* getUnionVariantType(Compiler *c, AnProductType *tagTy){
         AnType *anTagData = unionVariantToTupleTy(tagTy);
         Type *tagData = c->anTypeToLlvmType(anTagData);
         return tagData->isVoidTy() ?
@@ -111,7 +105,7 @@ namespace ante {
             StructType::get(*c->ctxt, {c->builder.getInt8Ty(), tagData}, true);
     }
 
-    TypedValue unionDowncast(Compiler *c, TypedValue valToMatch, AnDataType *tagTy){
+    TypedValue unionDowncast(Compiler *c, TypedValue valToMatch, AnProductType *tagTy){
         auto alloca = addrOf(c, valToMatch);
 
         //bitcast valToMatch* to (tag, tagData)*
@@ -140,28 +134,18 @@ namespace ante {
 
         Compiler *c = cv.c;
 
-        auto *tagTy = AnDataType::get(pattern->typeName);
-        if(!tagTy or tagTy->isStub())
+        auto *tagTy = AnProductType::get(pattern->typeName);
+        if(!tagTy)
             c->compErr("No type " + typeNodeToColoredStr(pattern)
                     + " found in scope", pattern->loc);
 
-        if(!tagTy->isUnionTag())
+        if(!tagTy->parentUnionType)
             c->compErr(typeNodeToColoredStr(pattern)
                     + " must be a union tag to be used in a pattern", pattern->loc);
 
         auto *parentTy = tagTy->parentUnionType;
         ConstantInt *ci = ConstantInt::get(*c->ctxt,
                 APInt(8, parentTy->getTagVal(pattern->typeName), true));
-
-        tagTy = try_cast<AnDataType>(bindGenericToType(tagTy, try_cast<AnDataType>(valToMatch.type)->boundGenerics));
-        // tagTy = tagTy->setModifier(valToMatch.type->mods);
-
-        auto tcr = typeEq(parentTy, valToMatch.type);
-        if(tcr->res == TypeCheckResult::SuccessWithTypeVars)
-            tagTy = try_cast<AnDataType>(bindGenericToType(tagTy, tcr->bindings));
-        else if(tcr->res == TypeCheckResult::Failure)
-            c->compErr("Cannot bind pattern of type " + anTypeToColoredStr(parentTy) +
-                    " to matched value of type " + anTypeToColoredStr(valToMatch.type), pattern->loc);
 
         //Extract tag value and check for equality
         Value *eq;
@@ -268,18 +252,9 @@ namespace ante {
         int i = 1;
         auto *phi = c->builder.CreatePHI(merges[0].second.getType(), n->branches.size());
         for(auto &pair : merges){
-
             //add each branch to the phi node if it does not return early
             if(!dyn_cast<ReturnInst>(pair.second.val)){
-
-                //match the types of those branches that will merge
-                if(!typeEq(pair.second.type, merges[0].second.type)){
-                    c->compErr("Branch "+to_string(i)+"'s return type " + anTypeToColoredStr(pair.second.type) +
-                            " != " + anTypeToColoredStr(merges[0].second.type)
-                            + ", the first branch's return type", n->loc);
-                }else{
-                    phi->addIncoming(pair.second.val, pair.first);
-                }
+                phi->addIncoming(pair.second.val, pair.first);
             }
             i++;
         }

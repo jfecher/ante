@@ -10,7 +10,9 @@ namespace ante {
 
     std::vector<AnType*> copyWithNewTypeVars(std::vector<AnType*> tys,
             std::unordered_map<std::string, AnTypeVarType*> &map){
-        auto ret = vecOf<AnType*>(tys.size());
+
+        std::vector<AnType*> ret;
+        ret.reserve(tys.size());
         for(auto &t : tys){
             ret.push_back(copyWithNewTypeVars(t, map));
         }
@@ -65,9 +67,10 @@ namespace ante {
     }
 
 
-
+    template<class T>
     std::vector<AnType*> substituteIntoAll(AnType *u, std::string const& name,
-            std::vector<AnType*> const& vec){
+            std::vector<T*> const& vec){
+
         std::vector<AnType*> ret;
         ret.reserve(vec.size());
         for(auto &elem : vec){
@@ -89,8 +92,13 @@ namespace ante {
         }else if(auto tv = try_cast<AnTypeVarType>(t)){
             return tv->name == name ? u : t;
 
-        }else if(auto dt = try_cast<AnDataType>(t)){
-            auto exts = substituteIntoAll(u, name, dt->extTys);;
+        }else if(auto dt = try_cast<AnProductType>(t)){
+            auto exts = substituteIntoAll(u, name, dt->fields);;
+            /* TODO */
+            return t;
+
+        }else if(auto st = try_cast<AnSumType>(t)){
+            auto exts = substituteIntoAll(u, name, st->tags);;
             /* TODO */
             return t;
 
@@ -116,8 +124,8 @@ namespace ante {
         return t;
     }
 
-
-    Substitutions unifyExts(std::vector<AnType*> const& exts1, std::vector<AnType*> const& exts2){
+    template<class T>
+    Substitutions unifyExts(std::vector<T*> const& exts1, std::vector<T*> const& exts2){
         if(exts1.size() != exts2.size()){
             LOC_TY loc;
             error("Types are of varying sizes", loc);
@@ -161,9 +169,13 @@ namespace ante {
             ret.emplace_back(arr1->extTy, arr2->extTy);
             return unify(ret);
 
-        }else if(auto dt1 = try_cast<AnDataType>(t1)){
-            auto dt2 = try_cast<AnDataType>(t2);
-            return unifyExts(dt1->extTys, dt2->extTys);
+        }else if(auto pt1 = try_cast<AnProductType>(t1)){
+            auto pt2 = try_cast<AnProductType>(t2);
+            return unifyExts(pt1->fields, pt2->fields);
+
+        }else if(auto st1 = try_cast<AnSumType>(t1)){
+            auto st2 = try_cast<AnSumType>(t2);
+            return unifyExts(st1->tags, st2->tags);
 
         }else if(auto fn1 = try_cast<AnFunctionType>(t1)){
             auto fn2 = try_cast<AnFunctionType>(t2);
@@ -198,11 +210,17 @@ namespace ante {
         }else{
             auto &p = *cur;
             auto t2 = unify(list, ++cur);
-            auto t1 = unifyOne(applySubstitutions(t2, p.first), applySubstitutions(t2, p.second));
 
-            Substitutions ret = t1;
-            ret.insert(ret.end(), t2.begin(), t2.end());
-            return ret;
+            try{
+                auto t1 = unifyOne(applySubstitutions(t2, p.first), applySubstitutions(t2, p.second));
+
+                Substitutions ret = t1;
+                ret.insert(ret.end(), t2.begin(), t2.end());
+                return ret;
+            }catch(CompilationError *e){
+                delete e;
+                return t2;
+            }
         }
     }
 

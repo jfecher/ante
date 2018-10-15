@@ -1,6 +1,7 @@
 #include <llvm/IR/Verifier.h>          //for verifying basic structure of functions
 #include <llvm/Support/FileSystem.h>   //for r/w when outputting bitcode
 #include <llvm/Support/raw_ostream.h>  //for ostream when outputting bitcode
+#include <llvm/Passes/PassBuilder.h>
 
 #if LLVM_VERSION_MAJOR >= 6
 #include <llvm/Support/raw_os_ostream.h>
@@ -120,9 +121,9 @@ void CompilingVisitor::visit(BoolLitNode *n){
 
 
 /** returns true if this tag type does not have any associated types. */
-bool isSimpleTag(AnDataType *dt){
-    return dt->extTys.size() == 1
-        && dt->extTys[0] == AnType::getVoid();
+bool isSimpleTag(AnProductType *dt){
+    return dt->parentUnionType && dt->fields.size() == 1
+        && dt->fields[0] == AnType::getVoid();
 }
 
 
@@ -135,11 +136,10 @@ bool isSimpleTag(AnDataType *dt){
 void CompilingVisitor::visit(TypeNode *n){
     //check for enum value
     if(n->typeTag == TT_Data || n->typeTag == TT_TaggedUnion){
-        auto *dataTy = AnDataType::get(n->typeName);
-        if(!dataTy or dataTy->isStub() or !isSimpleTag(dataTy)) goto rettype;
+        auto *dataTy = AnProductType::get(n->typeName);
+        if(!dataTy or !isSimpleTag(dataTy)) goto rettype;
 
         auto *unionDataTy = dataTy->parentUnionType;
-        if(!unionDataTy or unionDataTy->isStub()) goto rettype;
 
         size_t tagIndex = unionDataTy->getTagVal(n->typeName);
         Value *tag = ConstantInt::get(*c->ctxt, APInt(8, tagIndex, true));
@@ -217,7 +217,6 @@ TypedValue compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
 
     RootNode *expr = parser::getRootNode();
     TypedValue val;
-    Node *valNode = 0;
 
     NameResolutionVisitor v;
     v.resolve(expr);
@@ -225,35 +224,13 @@ TypedValue compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
     //Compile main and hold onto the last value
     for(auto &n : expr->main){
         try{
-            val = CompilingVisitor::compile(c, n);
-            valNode = n.get();
+            val = CompilingVisitor::compile(c, n.get());
         }catch(CtError *e){
             delete e;
         }
     }
 
     if(!val) return val;
-
-    //if the expr is not already a string type, cast it to one
-    auto *strty = try_cast<AnDataType>(val.type);
-    if(!strty or strty->name != "Str"){
-		strty = AnDataType::get("Str");
-        auto fd = c->getCastFuncDecl(val.type, strty);
-        AnFunctionType *fnty = nullptr;
-
-        if(fd)
-            fnty = AnFunctionType::get(AnType::getVoid(), fd->getFDN()->params.get());
-
-        if(!fd or (fnty && !typeEq(fnty->extTys, {val.type}))){
-            delete ls;
-            delete rs;
-            return c->compErr("Cannot cast " + anTypeToColoredStr(val.type)
-                + " to Str for string interpolation.", valNode->loc);
-        }
-
-        auto fn = c->getCastFn(val.type, strty, fd);
-        val = TypedValue(c->builder.CreateCall(fn.val, val.val), strty);
-    }
 
     //Finally, the interpolation is done.  Now just combine the three strings
     //get the ++_Str_Str function
@@ -271,7 +248,7 @@ TypedValue compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
     auto *appendR = c->builder.CreateCall(fn.val, vector<Value*>{appendL, rstr.val});
 
     //create the returning typenode
-    return TypedValue(appendR, strty);
+    return TypedValue(appendR, val.type);
 }
 
 
@@ -283,7 +260,7 @@ void CompilingVisitor::visit(StrLitNode *n){
         return;
     }
 
-    AnType *strty = AnDataType::get("Str");
+    AnType *strty = AnProductType::get("Str");
 
     auto *ptr = c->builder.CreateGlobalStringPtr(n->val, "_strlit");
 
@@ -309,32 +286,20 @@ void CompilingVisitor::visit(CharLitNode *n){
 
 void CompilingVisitor::visit(ArrayNode *n){
     vector<Constant*> arr;
-    AnType *elemTy = n->exprs.empty() ? AnType::getVoid() : nullptr;
 
-    int i = 1;
     for(auto& n : n->exprs){
         auto tval = CompilingVisitor::compile(c, n);
-
         arr.push_back((Constant*)tval.val);
-
-        if(!elemTy){
-            elemTy = tval.type;
-        }else{
-            if(!typeEq(tval.type, elemTy))
-                c->compErr("Element " + to_string(i) + "'s type " + anTypeToColoredStr(tval.type) +
-                    " does not match the first element's type of " + anTypeToColoredStr(elemTy), n->loc);
-        }
-        i++;
     }
 
     if(n->exprs.empty()){
         auto *ty = ArrayType::get(Type::getInt8Ty(*c->ctxt)->getPointerTo(), 0);
         auto *carr = ConstantArray::get(ty, arr);
-        this->val = TypedValue(carr, AnArrayType::get(elemTy, 0));
+        this->val = TypedValue(carr, n->getType());
     }else{
         auto *ty = ArrayType::get(arr[0]->getType(), n->exprs.size());
         auto *carr = ConstantArray::get(ty, arr);
-        this->val = TypedValue(carr, AnArrayType::get(elemTy, n->exprs.size()));
+        this->val = TypedValue(carr, n->getType());
     }
 }
 
@@ -470,7 +435,7 @@ void CompilingVisitor::visit(ForNode *n){
 
         if(!res)
             c->compErr("Range expression of type " + anTypeToColoredStr(rangev.type) + " needs to implement " +
-                anTypeToColoredStr(AnDataType::get("Iterable")) + " or " + anTypeToColoredStr(AnDataType::get("Iterator")) +
+                lazy_str("Iterable", AN_TYPE_COLOR) + " or " + lazy_str("Iterator", AN_TYPE_COLOR) +
                 " to be used in a for loop", n->range->loc);
 
         rangev = res;
@@ -492,7 +457,7 @@ void CompilingVisitor::visit(ForNode *n){
 
     auto is_done = c->callFn("has_next", {rangeVal});
     if(!is_done) c->compErr("Range expression of type " + anTypeToColoredStr(rangev.type) + " does not implement " +
-            anTypeToColoredStr(AnDataType::get("Iterable")) + ", which it needs to be used in a for loop", n->range->loc);
+            lazy_str("Iterable", AN_TYPE_COLOR) + ", which it needs to be used in a for loop", n->range->loc);
 
     c->builder.CreateCondBr(is_done.val, begin, end);
     c->builder.SetInsertPoint(begin);
@@ -502,7 +467,7 @@ void CompilingVisitor::visit(ForNode *n){
     rangeVal = TypedValue(c->builder.CreateLoad(alloca), rangev.type);
     auto uwrap = c->callFn("unwrap", {rangeVal});
     if(!uwrap) c->compErr("Range expression of type " + anTypeToColoredStr(rangev.type) + " does not implement " +
-            anTypeToColoredStr(AnDataType::get("Iterable")) + ", which it needs to be used in a for loop", n->range->loc);
+            lazy_str("Iterable", AN_TYPE_COLOR) + ", which it needs to be used in a for loop", n->range->loc);
 
     //TODO: handle arbitrary patterns
     // auto *decl = n->pattern->decls[0];
@@ -533,8 +498,8 @@ void CompilingVisitor::visit(ForNode *n){
 
         TypedValue arg = {c->builder.CreateLoad(alloca), rangev.type};
         auto next = c->callFn("next", {arg});
-        if(!next) c->compErr("Range expression of type " + anTypeToColoredStr(rangev.type) + " does not implement " + anTypeToColoredStr(AnDataType::get("Iterable")) +
-                ", which it needs to be used in a for loop", n->range->loc);
+        if(!next) c->compErr("Range expression of type " + anTypeToColoredStr(rangev.type) + " does not implement "
+                + lazy_str("Iterable", AN_TYPE_COLOR) + ", which it needs to be used in a for loop", n->range->loc);
 
         c->builder.CreateStore(next.val, alloca);
         c->builder.CreateBr(cond);
@@ -738,12 +703,10 @@ TypedValue compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
     Value *var = static_cast<LoadInst*>(val)->getPointerOperand();
 
     //check to see if this is a field index
-    if(auto dataTy = try_cast<AnDataType>(tyn)){
+    if(auto dataTy = try_cast<AnProductType>(tyn)){
         auto index = dataTy->getFieldIndex(field->name);
 
         if(index != -1){
-            AnType *indexTy = dataTy->extTys[index];
-
             auto newval = CompilingVisitor::compile(c, expr);
 
             //see if insert operator # = is overloaded already
@@ -754,11 +717,6 @@ TypedValue compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
                 return TypedValue(c->builder.CreateCall(fn.val, vector<Value*>{
                             var, c->builder.getInt32(index), newval.val}),
                         fn.type->getFunctionReturnType());
-
-            //if not, proceed with normal operations
-            if(!typeEq(indexTy, newval.type))
-                return c->compErr("Cannot assign expression of type " + anTypeToColoredStr(newval.type) +
-                        " to a variable of type " + anTypeToColoredStr(indexTy), expr->loc);
 
             Value *nv = newval.val;
             Type *nt = val->getType()->getStructElementType(index);
@@ -847,12 +805,6 @@ void CompilingVisitor::visit(VarAssignNode *n){
     if(!PointerType::isLoadableOrStorableType(val.getType())){
         c->compErr("Attempted assign without a memory address, with type "
                 + anTypeToColoredStr(val.type), n->ref_expr->loc);
-    }
-
-    //and finally, make sure the assigned value matches the variable's type
-    if(!typeEq(val.type, assignExpr.type)){
-        c->compErr("Cannot assign expression of type " + anTypeToColoredStr(assignExpr.type)
-                    + " to a variable of type " + anTypeToColoredStr(val.type), n->expr->loc);
     }
 
     //now actually create the store
@@ -987,83 +939,7 @@ bool Compiler::typeImplementsTrait(AnDataType* dt, string traitName) const{
 }
 
 
-/**
- * Converts a vector of typevar TypeNodes to a vector of GenericTypeParams
- * to be the positional generics of a generic datatype.
- *
- * Note that because the parent datatype is expected to not yet be created,
- * the 'dt' field of the GenericTypeParams will need to be updated afterward.
- */
-vector<GenericTypeParam>
-createStructuralGenericParams(Compiler *c, vector<unique_ptr<TypeNode>> const& generics){
-    auto ret = vecOf<GenericTypeParam>(generics.size());
-    for(size_t i = 0; i < generics.size(); i++){
-        TypeNode *tn = generics[i].get();
-        ret.emplace_back(tn->typeName, nullptr, i);
-    }
-    return ret;
-}
-
-
-/**
- * @brief A helper function to compile tagged union declarations
- *
- * @return A void literal
- */
-TypedValue compTaggedUnion(Compiler *c, DataDeclNode *n){
-    return c->getVoidLiteral();
-}
-
 void CompilingVisitor::visit(DataDeclNode *n){
-    /*
-    auto *nvn = (NamedValNode*)n->child.get();
-    if(((TypeNode*) nvn->typeExpr.get())->type == TT_TaggedUnion){
-        this->val = compTaggedUnion(c, n);
-        return;
-    }
-
-    //Create the DataType as a stub first, have its contents be recursive
-    //just to cause an error if something tries to use the stub
-    auto generics = createStructuralGenericParams(c, n->generics);
-    AnDataType *data = AnDataType::create(n->name, {}, false, generics);
-
-    if(data->llvmType)
-        data->llvmType = nullptr;
-
-    c->stoType(data, n->name);
-
-    auto fieldNames = vecOf<string>(n->fields);
-    auto fieldTypes = vecOf<AnType*>(n->fields);
-
-    while(nvn){
-        TypeNode *tyn = (TypeNode*)nvn->typeExpr.get();
-        auto ty = toAnType(c, tyn);
-
-        validateType(c, ty, n);
-
-        fieldTypes.push_back(ty);
-        fieldNames.push_back(nvn->name);
-
-        nvn = (NamedValNode*)nvn->next.get();
-    }
-
-    data->fields = fieldNames;
-    data->extTys = fieldTypes;
-    data->isAlias = n->isAlias;
-
-    for(auto &v : data->variants){
-        v->extTys = data->extTys;
-        v->isGeneric = data->isGeneric;
-        v->typeTag = data->typeTag;
-        v->fields = data->fields;
-        v->unboundType = data;
-        *v = *try_cast<AnDataType>(bindGenericToType(c, v, v->boundGenerics));
-        if(v->parentUnionType)
-            v->parentUnionType = try_cast<AnDataType>(bindGenericToType(c, v->parentUnionType, v->parentUnionType->boundGenerics));
-        addGenerics(v->generics, v->extTys);
-    }
-    */
-
     //updateLlvmTypeBinding(c, data, true);
     this->val = c->getVoidLiteral();
 }
@@ -1232,11 +1108,7 @@ void CompilingVisitor::visit(RootNode *n){
  * Determines which passes should be added.  With 3 being
  * all passes.
  */
-void addPasses(legacy::PassManager &pm, char optLvl){
-    /*
-     * More aggressive optimization but breaks certain tests due to poor type
-     * casts caused by not yet knowing the full type of the operand.
-     * Until global type inference is implemented this is commented out.
+void addPasses(legacy::PassManager &pm, llvm::Module *m, char optLvl){
     if(optLvl > 0){
         llvm::FunctionAnalysisManager fam;
         llvm::PassBuilder builder;
@@ -1249,38 +1121,9 @@ void addPasses(legacy::PassManager &pm, char optLvl){
         auto fpm = builder.buildFunctionSimplificationPipeline(opt,
                 PassBuilder::ThinLTOPhase::None);
 
-        for(auto &f : module->functions()){
+        for(auto &f : m->functions()){
             fpm.run(f, fam);
         }
-    }
-    */
-    if(optLvl > 0){
-        if(optLvl >= 3){
-            pm.add(createLoopStrengthReducePass());
-            pm.add(createLoopUnrollPass());
-            pm.add(createMergedLoadStoreMotionPass());
-            pm.add(createMemCpyOptPass());
-            pm.add(createSpeculativeExecutionPass());
-        }
-        //pm.add(createAlwaysInlinerLegacyPass());
-        pm.add(createDeadStoreEliminationPass());
-        pm.add(createDeadCodeEliminationPass());
-        pm.add(createCFGSimplificationPass());
-        pm.add(createTailCallEliminationPass());
-        pm.add(createInstructionSimplifierPass());
-
-#if LLVM_VERSION_MAJOR < 5
-        pm.add(createLoadCombinePass());
-#endif
-        pm.add(createLoopLoadEliminationPass());
-        pm.add(createReassociatePass());
-        pm.add(createPromoteMemoryToRegisterPass());
-
-        pm.add(llvm::createGlobalDCEPass());
-        pm.add(llvm::createDeadCodeEliminationPass());
-
-        //Instruction Combining Pass seems to break nested for loops
-        //pm.add(createInstructionCombiningPass());
     }
 }
 
@@ -1303,7 +1146,7 @@ void Compiler::compile(){
 
     if(!errFlag && !isLib){
         legacy::PassManager pm;
-        addPasses(pm, optLvl);
+        addPasses(pm, module.get(), optLvl);
         pm.run(*module);
     }
 
@@ -1413,9 +1256,6 @@ void Compiler::jitFunction(Function *f){
 int Compiler::compileIRtoObj(llvm::Module *mod, string outFile){
     auto *tm = getTargetMachine();
 
-    std::error_code errCode;
-    raw_fd_ostream out{outFile, errCode, sys::fs::OpenFlags::F_RW};
-
 	char **err = nullptr;
 	char *filename = (char*)outFile.c_str();
 	int res = LLVMTargetMachineEmitToFile(
@@ -1423,9 +1263,6 @@ int Compiler::compileIRtoObj(llvm::Module *mod, string outFile){
 		(LLVMModuleRef)mod,
 		filename,
 		(LLVMCodeGenFileType)llvm::TargetMachine::CGFT_ObjectFile, err);
-
-	if (out.has_error())
-		cerr << "Error when compiling to object: " << errCode << endl;
 
     delete tm;
     return res;

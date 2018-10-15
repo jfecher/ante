@@ -25,6 +25,14 @@ list<unique_ptr<string>> fileNames;
 namespace ante {
     using namespace parser;
 
+    void tryAccept(NameResolutionVisitor &v, Node *n){
+        try{
+            n->accept(v);
+        }catch(CompilationError *e){
+            delete e;
+        }
+    }
+
     void NameResolutionVisitor::error(lazy_printer msg, LOC_TY loc, ErrorType t){
         ante::error(msg, loc, t);
         if(t == ErrorType::Error){
@@ -33,19 +41,11 @@ namespace ante {
         }
     }
 
-    /**
-    * Converts a vector of typevar TypeNodes to a vector of GenericTypeParams
-    * to be the positional generics of a generic datatype.
-    *
-    * Note that because the parent datatype is expected to not yet be created,
-    * the 'dt' field of the GenericTypeParams will need to be updated afterward.
-    */
-    vector<GenericTypeParam>
-    createStructuralGenericParams(vector<unique_ptr<TypeNode>> const& generics){
-        auto ret = vecOf<GenericTypeParam>(generics.size());
-        for(size_t i = 0; i < generics.size(); i++){
-            TypeNode *tn = generics[i].get();
-            ret.emplace_back(tn->typeName, nullptr, i);
+
+    vector<AnTypeVarType*> convertToTypeVars(vector<unique_ptr<TypeNode>> const& types){
+        auto ret = vecOf<AnTypeVarType*>(types.size());
+        for(auto &t : types){
+            ret.push_back(static_cast<AnTypeVarType*>(toAnType(t.get())));
         }
         return ret;
     }
@@ -65,9 +65,20 @@ namespace ante {
     }
 
 
-    void NameResolutionVisitor::declare(string const& name, vector<unique_ptr<TypeNode>> const& generics){
-        auto genericParams = createStructuralGenericParams(generics);
-        AnDataType::create(name, {}, false, genericParams);
+    void NameResolutionVisitor::declareProductType(DataDeclNode *n){
+        if(AnProductType::get(n->name)){
+            error(n->name + " was already declared", n->loc);
+        }
+
+        AnProductType::create(n->name, {}, convertToTypeVars(n->generics));
+    }
+
+    void NameResolutionVisitor::declareSumType(DataDeclNode *n){
+        if(AnProductType::get(n->name)){
+            error(n->name + " was already declared", n->loc);
+        }
+
+        AnSumType::create(n->name, {}, convertToTypeVars(n->generics));
     }
 
 
@@ -140,6 +151,7 @@ namespace ante {
     void NameResolutionVisitor::declare(FuncDeclNode *n){
         auto *fd = new FuncDecl(n, n->name, this->mergedCompUnits);
         mergedCompUnits->fnDecls[n->name].push_back(fd);
+        compUnit->fnDecls[n->name].push_back(fd);
         n->decl = fd;
     }
 
@@ -148,18 +160,23 @@ namespace ante {
             auto fdn = static_cast<FuncDeclNode*>(f);
             auto *fd = new FuncDecl(fdn, fdn->name, this->mergedCompUnits);
             mergedCompUnits->fnDecls[fdn->name].push_back(fd);
+            compUnit->fnDecls[fdn->name].push_back(fd);
             fdn->decl = fd;
         }
     }
 
 
     void NameResolutionVisitor::visit(RootNode *n){
+        if(compUnit->name != ".Stdlib.Prelude"){
+            importFile("stdlib/prelude.an", n->loc);
+        }
+
         for(auto &m : n->imports)
-            m->accept(*this);
+            tryAccept(*this, m.get());
         for(auto &m : n->types)
-            m->accept(*this);
+            tryAccept(*this, m.get());
         for(auto &m : n->traits)
-            m->accept(*this);
+            tryAccept(*this, m.get());
 
         // unwrap any surrounding modifiers then declare
         for(auto &m : n->extensions){
@@ -176,12 +193,12 @@ namespace ante {
         }
 
         for(auto &m : n->extensions)
-            m->accept(*this);
+            tryAccept(*this, m.get());
         for(auto &m : n->funcs)
-            m->accept(*this);
+            tryAccept(*this, m.get());
 
         for(auto &m : n->main)
-            m->accept(*this);
+            tryAccept(*this, m.get());
     }
 
     void NameResolutionVisitor::visit(IntLitNode *n){}
@@ -215,6 +232,12 @@ namespace ante {
 
     void NameResolutionVisitor::visit(TypeCastNode *n){
         n->rval->accept(*this);
+
+        /*  Check for validity of cast
+        if(!val){
+            c->compErr("Invalid type cast " + anTypeToColoredStr(rtval.type) +
+                    " -> " + anTypeToColoredStr(ty), n->loc);
+        }*/
     }
 
     void NameResolutionVisitor::visit(UnOpNode *n){
@@ -222,8 +245,13 @@ namespace ante {
     }
 
     void NameResolutionVisitor::visit(SeqNode *n){
-        for(auto &e : n->sequence)
-            e->accept(*this);
+        for(auto &e : n->sequence){
+            try{
+                e->accept(*this);
+            }catch(CompilationError *e){
+                delete e;
+            }
+        }
     }
 
 
@@ -259,8 +287,34 @@ namespace ante {
         }
     }
 
+
+    void NameResolutionVisitor::searchForField(Node *n){
+        VarNode *vn = dynamic_cast<VarNode*>(n);
+        if(!vn){
+            error("RHS of . operator must be an identifier", n->loc);
+        }
+
+        for(auto &p : mergedCompUnits->userTypes){
+            if(auto *pt = try_cast<AnProductType>(p.second)){
+                for(auto &field : pt->fieldNames){
+                    if(field == vn->name)
+                        return;
+                }
+            }
+        }
+
+        error("No field named " + vn->name + " found for any type", vn->loc);
+    }
+
+
     void NameResolutionVisitor::visit(BinOpNode *n){
         n->lval->accept(*this);
+
+        if(n->op == '.' && !dynamic_cast<TypeNode*>(n->lval.get())){
+            searchForField(n->rval.get());
+            return;
+        }
+
         n->rval->accept(*this);
 
         if(n->op != '('){
@@ -397,7 +451,9 @@ namespace ante {
             fputs("Syntax error, aborting.\n", stderr);
             exit(flag);
         }
-        newVisitor.compUnit->ast.reset(parser::getRootNode());
+
+        RootNode *root = parser::getRootNode();
+        newVisitor.compUnit->ast.reset(root);
 
         auto fileNameWithoutExt = removeFileExt(file);
         auto modName = toModuleName(fileNameWithoutExt);
@@ -407,11 +463,13 @@ namespace ante {
         //Add this module to the cache to ensure it is not compiled twice
         allMergedCompUnits.emplace_back(newVisitor.mergedCompUnits);
         allCompiledModules.try_emplace(file, newVisitor.compUnit);
+        
+        root->accept(newVisitor);
         return newVisitor;
     }
 
 
-    void importFile(NameResolutionVisitor &v, string const& fName, LOC_TY &loc){
+    void NameResolutionVisitor::importFile(string const& fName, LOC_TY &loc){
         //f = fName with full directory
         string fullPath = findFile(fName);
         if(fullPath.empty()){
@@ -424,26 +482,26 @@ namespace ante {
             auto *import = it->getValue().get();
             string fmodName = removeFileExt(fName);
 
-            for(auto *mod : v.imports){
+            for(auto *mod : this->imports){
                 if(mod->name == fmodName){
                     error("Module " + string(fName) + " has already been imported", loc, ErrorType::Warning);
                     return;
                 }
             }
 
-            v.imports.push_back(import);
-            v.mergedCompUnits->import(import);
+            this->imports.push_back(import);
+            this->mergedCompUnits->import(import);
         }else{
             //module not found
             NameResolutionVisitor newVisitor = visitImport(fullPath);
 
             //old import code
-            if(newVisitor.errFlag){
+            if(newVisitor.hasError()){
                 error("Error when importing '" + string(fName) + "'", loc);
             }
 
-            v.imports.push_back(newVisitor.compUnit);
-            v.mergedCompUnits->import(newVisitor.compUnit);
+            this->imports.push_back(newVisitor.compUnit);
+            this->mergedCompUnits->import(newVisitor.compUnit);
         }
     }
 
@@ -499,7 +557,7 @@ namespace ante {
             error("No viable overload for import for malformed expression", n->loc);
         }
 
-        importFile(*this, path.c_str(), n->loc);
+        importFile(path.c_str(), n->loc);
     }
 
 
@@ -516,7 +574,8 @@ namespace ante {
     }
 
     void NameResolutionVisitor::visit(NamedValNode *n){
-        n->typeExpr->accept(*this);
+        if(n->typeExpr)
+            n->typeExpr->accept(*this);
         declare(n->name, n);
     }
 
@@ -623,7 +682,8 @@ namespace ante {
             p->accept(*this);
         }
 
-        n->child->accept(*this);
+        if(n->child)
+            n->child->accept(*this);
         exitFunction();
     }
 
@@ -636,13 +696,13 @@ namespace ante {
     *        within the rootTy's params
     *      - Contain only data types that have been declared
     */
-    void NameResolutionVisitor::validateType(const AnType *tn, const DataDeclNode *rootTy) {
+    void NameResolutionVisitor::validateType(const AnType *tn, const DataDeclNode *rootTy){
         if(!tn) return;
 
-        if(tn->typeTag == TT_Data or tn->typeTag == TT_TaggedUnion){
-            auto *dataTy = try_cast<AnDataType>(tn);
+        if(tn->typeTag == TT_Data){
+            auto *dataTy = try_cast<AnProductType>(tn);
 
-            if(dataTy->isStub()){
+            if(dataTy->name == rootTy->name){
                 if(dataTy->name == rootTy->name){
                     error("Recursive types are disallowed, wrap the type in a pointer instead", rootTy->loc);
                 }
@@ -650,7 +710,21 @@ namespace ante {
                 error("Type "+dataTy->name+" has not been declared", rootTy->loc);
             }
 
-            for(auto *t : dataTy->extTys)
+            for(auto *t : dataTy->fields)
+                validateType(t, rootTy);
+
+        }else if(tn->typeTag == TT_TaggedUnion){
+            auto *dataTy = try_cast<AnSumType>(tn);
+
+            if(dataTy->name == rootTy->name){
+                if(dataTy->name == rootTy->name){
+                    error("Recursive types are disallowed, wrap the type in a pointer instead", rootTy->loc);
+                }
+
+                error("Type "+dataTy->name+" has not been declared", rootTy->loc);
+            }
+
+            for(auto *t : dataTy->tags)
                 validateType(t, rootTy);
 
         }else if(tn->typeTag == TT_Tuple){
@@ -678,8 +752,11 @@ namespace ante {
 
     void NameResolutionVisitor::visitUnionDecl(parser::DataDeclNode *decl){
         auto *nvn = (NamedValNode*)decl->child.get();
-        auto generics = createStructuralGenericParams(decl->generics);
-        AnDataType *data = AnDataType::create(decl->name, {}, true, generics);
+
+        auto generics = convertToTypeVars(decl->generics);
+        AnSumType *data = AnSumType::get(decl->name);
+        if(!data)
+            data = AnSumType::create(decl->name, {}, generics);
 
         while(nvn){
             TypeNode *tyn = (TypeNode*)nvn->typeExpr.get();
@@ -692,24 +769,13 @@ namespace ante {
                 exts.push_back(tagTy);
             }
 
-            //Each union member's type is a tuple of the tag (a u8 value), and the user-defined value
-            auto *tup = AnAggregateType::get(TT_Tuple, {AnType::getU8(), tagTy});
-
             //Store the tag as a UnionTag and a AnDataType
-            AnDataType *tagdt = AnDataType::create(nvn->name, exts, false, generics);
+            //AnDataType *tagdt = AnDataType::create(nvn->name, exts, false, generics);
+            AnProductType *tagdt = AnProductType::create(nvn->name, exts, generics);
 
-            //A tag's generics should have their dt set to the dt for the whole union
-            for(auto &g : tagdt->generics){ g.dt = data; }
-
-            tagdt->fields.emplace_back(decl->name);
             tagdt->parentUnionType = data;
             tagdt->isGeneric = isGeneric(exts);
-
-            //Store tag vals as a UnionTag
-            UnionTag *tag = new UnionTag(nvn->name, tagdt, data, data->tags.size());
-            data->tags.emplace_back(tag);
-
-            data->extTys.push_back(tup);
+            data->tags.emplace_back(tagdt);
 
             validateType(tagTy, decl);
             define(nvn->name, tagdt);
@@ -720,19 +786,6 @@ namespace ante {
         data->typeTag = TT_TaggedUnion;
         data->isAlias = decl->isAlias;
         define(decl->name, data);
-
-        /* TODO: rebind generics
-        for(auto &v : data->variants){
-            v->extTys = data->extTys;
-            v->isGeneric = data->isGeneric;
-            v->typeTag = data->typeTag;
-            v->tags = tags;
-            v->unboundType = data;
-            *v = *try_cast<AnDataType>(bindGenericToType(c, v, v->boundGenerics));
-            if(v->parentUnionType)
-                v->parentUnionType = try_cast<AnDataType>(bindGenericToType(c, v->parentUnionType, v->parentUnionType->boundGenerics));
-            addGenerics(v->generics, v->extTys);
-        } */
     }
 
 
@@ -743,14 +796,13 @@ namespace ante {
             return;
         }
 
-        //Create the DataType as a stub first, have its contents be recursive
-        //just to cause an error if something tries to use the stub
-        auto generics = createStructuralGenericParams(n->generics);
-        AnDataType *data = AnDataType::create(n->name, {}, true, generics);
+        AnProductType *data = AnProductType::get(n->name);
+        if(!data)
+            data = AnProductType::create(n->name, {}, convertToTypeVars(n->generics));
 
         define(n->name, data);
         data->fields.reserve(n->fields);
-        data->extTys.reserve(n->fields);
+        data->fieldNames.reserve(n->fields);
         data->isAlias = n->isAlias;
 
         while(nvn){
@@ -759,25 +811,11 @@ namespace ante {
 
             validateType(ty, n);
 
-            data->extTys.push_back(ty);
-            data->fields.push_back(nvn->name);
+            data->fields.push_back(ty);
+            data->fieldNames.push_back(nvn->name);
 
             nvn = (NamedValNode*)nvn->next.get();
         }
-
-        /* TODO: rebind generics
-        for(auto &v : data->variants){
-            v->extTys = data->extTys;
-            v->isGeneric = data->isGeneric;
-            v->typeTag = data->typeTag;
-            v->fields = data->fields;
-            v->unboundType = data;
-            *v = *try_cast<AnDataType>(bindGenericToType(c, v, v->boundGenerics));
-            if(v->parentUnionType)
-                v->parentUnionType = try_cast<AnDataType>(bindGenericToType(c, v->parentUnionType, v->parentUnionType->boundGenerics));
-            addGenerics(v->generics, v->extTys);
-        }
-        */
     }
 
     void NameResolutionVisitor::visit(TraitNode *n){

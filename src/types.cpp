@@ -39,20 +39,29 @@ Result<size_t, string> AnType::getSizeInBits(Compiler *c, string *incompleteType
     if(isPrimitiveTypeTag(this->typeTag))
         return getBitWidthOfTypeTag(this->typeTag);
 
-    if(auto *dataTy = try_cast<AnDataType>(this)){
-        if(dataTy->isStub()){
-            if(incompleteType && dataTy->name == *incompleteType){
-                cerr << "Incomplete type " << anTypeToColoredStr(this) << endl;
-                throw new IncompleteTypeError();
-            }
-
-            return "Type " + anTypeToStr(this) + " has not been declared\n";
+    if(auto *dataTy = try_cast<AnProductType>(this)){
+        if(incompleteType && dataTy->name == *incompleteType){
+            cerr << "Incomplete type " << anTypeToColoredStr(this) << endl;
+            throw new IncompleteTypeError();
         }
 
-        for(auto *ext : dataTy->extTys){
+        for(auto *ext : dataTy->fields){
             auto val = ext->getSizeInBits(c, incompleteType, force);
             if(!val) return val;
             total += val.getVal();
+        }
+
+    }else if(auto *sumTy = try_cast<AnSumType>(this)){
+        if(incompleteType && sumTy->name == *incompleteType){
+            cerr << "Incomplete type " << anTypeToColoredStr(this) << endl;
+            throw new IncompleteTypeError();
+        }
+
+        for(auto *ext : sumTy->tags){
+            auto val = ext->getSizeInBits(c, incompleteType, force);
+            if(!val) return val;
+            if(val.getVal() > total)
+                total= val.getVal();
         }
 
     // function & metafunction are aggregate types but have different sizes than
@@ -86,33 +95,6 @@ size_t hashCombine(size_t l, size_t r){
 }
 
 
-/**
-* @brief Searches for the suggested binding of a typevar
-*
-* @param s Name of the typevar to search for a binding for
-*
-* @return The binding if found, nullptr otherwise
-*/
-const TypeBinding* findBindingFor(GenericTypeParam const& param, vector<TypeBinding> const& bindings){
-    for(auto &b : bindings){
-        if(b.matches(param))
-            return &b;
-    }
-    return nullptr;
-}
-
-
-vector<TypeBinding> filterMatchingBindings(const AnDataType *dt, vector<TypeBinding> const& bindings){
-    vector<TypeBinding> matches;
-    for(auto &g : dt->generics){
-        auto *b = findBindingFor(g, bindings);
-        if(b){
-            matches.push_back(*b);
-        }
-    }
-    return matches;
-}
-
 string toLlvmTypeName(const AnDataType *dt){
     auto &typeArgs = dt->boundGenerics;
     auto &baseName = dt->name;
@@ -122,10 +104,10 @@ string toLlvmTypeName(const AnDataType *dt){
 
     string name = baseName + "<";
     for(auto &b : typeArgs){
-        if(AnDataType *ext = try_cast<AnDataType>(b.getBinding()))
+        if(AnDataType *ext = try_cast<AnDataType>(b))
             name += toLlvmTypeName(ext);
         else
-            name += anTypeToStr(b.getBinding());
+            name += anTypeToStr(b);
 
         if(&b != &typeArgs.back())
             name += ",";
@@ -147,8 +129,8 @@ Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt, bool force){
     }
 
     AnType *ext = dt;
-    if(dt->typeTag == TT_TaggedUnion)
-        ext = getLargestExt(c, dt, force);
+    if(auto *st = try_cast<AnSumType>(dt))
+        ext = getLargestExt(c, st, force);
 
     vector<Type*> tys;
     if(auto *aggty = try_cast<AnAggregateType>(ext)){
@@ -164,65 +146,6 @@ Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt, bool force){
     structTy->setBody(tys, isPacked);
     return structTy;
 }
-
-/*
- *  Generics can be stored and bound in two ways
- *    1. Stored as a map from name of typevar -> type bound to
- *       - Handled by this function
- *       - This is the format returned by a typeEq type check if it
- *         indicates the check would only be a success if those typevars
- *         are bound to the given types.  This is TypeCheckResult::SuccessWithTypeVars
- *    2. Stored as a vector of ordered bound types.
- *       - The ordering of type vars in this format is matched to the order of the
- *         declaration of generics when the datatype was first declared.
- *         Eg. with type Map<'k,'v> = ... and bindings {Str, i32}, 'k is bound to
- *         Str and 'v is bound to i32.
- *       - This is the format used internally by TypeNodes and DataTypes.
- *       - Before being bound in bindGenericToType this representation must be
- *         converted to the first beforehand, and to do that it needs the DataType
- *         to match the typevar ordering with.  The second function below handles
- *         this conversion
- */
-AnType* bindGenericToType(AnType *tn, vector<TypeBinding> const& bindings){
-    if(!tn->isGeneric){
-        return tn;
-    }else if(bindings.empty()){
-        return tn;
-    }
-
-    if(auto *dty = try_cast<AnDataType>(tn)){
-        return AnDataType::getVariant(dty, bindings);
-
-    }else if(auto *tv = try_cast<AnTypeVarType>(tn)){
-        for(auto& b : bindings){
-            if(b.matches(tv->name)){
-                return b.getBinding();
-            }
-        }
-        cerr << "warning: unbound type var " << tv->name << " in binding\n";
-        return tv;
-
-    }else if(auto *agg = try_cast<AnAggregateType>(tn)){
-        vector<AnType*> exts;
-        exts.reserve(agg->extTys.size());
-        for(auto *e : agg->extTys){
-            exts.push_back(bindGenericToType(e, bindings));
-        }
-        return AnAggregateType::get(tn->typeTag, exts);
-
-    }else if(auto *ptr = try_cast<AnPtrType>(tn)){
-        auto *ty = bindGenericToType(ptr->extTy, bindings);
-        return AnPtrType::get(ty);
-
-    }else if(auto *arr = try_cast<AnArrayType>(tn)){
-        auto *ty = bindGenericToType(arr->extTy, bindings);
-        return AnArrayType::get(ty, arr->len);
-
-    }else{
-        return tn;
-    }
-}
-
 
 /*
  *  Checks for, and implicitly widens an integer or float type.
@@ -438,11 +361,11 @@ Type* typeTagToLlvmType(TypeTag ty, LLVMContext &ctxt){
     }
 }
 
-AnType* getLargestExt(Compiler *c, AnDataType *tn, bool force){
+AnType* getLargestExt(Compiler *c, AnSumType *unionType, bool force){
     AnType *largest = 0;
     size_t largest_size = 0;
 
-    for(auto *e : tn->extTys){
+    for(auto *e : unionType->tags){
         auto size = e->getSizeInBits(c, nullptr, force);
         if(!size){
             cerr << size.getErr() << endl;
@@ -514,14 +437,7 @@ Type* Compiler::anTypeToLlvmType(const AnType *ty, bool force){
             }
             return StructType::get(*ctxt, tys);
         case TT_Data: case TT_TaggedUnion: {
-            //TODO: remove const from function
-            //updatellvmtypebinding breaks const correctness
             auto *dt = (AnDataType*)try_cast<AnDataType>(ty);
-            if(dt->isStub()){
-                return updateLlvmTypeBinding(this, dt, force);
-                //compErr("Use of undeclared type " + dt->name);
-            }
-
             if(dt->llvmType)
                 return dt->llvmType;
             else
@@ -605,130 +521,6 @@ bool llvmTypeEq(Type *l, Type *r){
 }
 
 
-TypeCheckResult& TypeCheckResult::success(size_t matches){
-    if(box->res != Failure){
-        box->matches += matches;
-    }
-    return *this;
-}
-
-
-TypeCheckResult& TypeCheckResult::success(){
-    if(box->res != Failure){
-        box->matches++;
-    }
-    return *this;
-}
-
-TypeCheckResult& TypeCheckResult::successWithTypeVars(){
-    if(box->res != Failure){
-        box->res = SuccessWithTypeVars;
-    }
-    return *this;
-}
-
-TypeCheckResult& TypeCheckResult::failure(){
-    box->res = Failure;
-    return *this;
-}
-
-TypeCheckResult& TypeCheckResult::successIf(bool b){
-    if(b) return success();
-    else  return failure();
-}
-
-TypeCheckResult& TypeCheckResult::successIf(Result r){
-    if(r == Success)
-        return success();
-    else if(r == SuccessWithTypeVars)
-        return successWithTypeVars();
-    else
-        return failure();
-}
-
-bool TypeCheckResult::failed(){
-    return box->res == Failure;
-}
-
-
-//forward decl of typeEqHelper for extTysEq fn
-TypeCheckResult& typeEqHelper(const AnType *l, const AnType *r, TypeCheckResult &tcr);
-
-/*
- *  Helper function to check if each type's list of extension
- *  types are all approximately equal.  Used when checking the
- *  equality of AnTypes of type Tuple, Data, Function, or any
- *  type with multiple extTys.
- */
-TypeCheckResult& extTysEq(const AnAggregateType *lAgg, const AnAggregateType *rAgg, TypeCheckResult &tcr){
-    if(lAgg->extTys.size() != rAgg->extTys.size())
-        return tcr.failure();
-
-    for(size_t i = 0; i < lAgg->extTys.size(); i++){
-        auto *lExt = lAgg->extTys[i];
-        auto *rExt = rAgg->extTys[i];
-
-        if(!typeEqHelper(lExt, rExt, tcr)) return tcr.failure();
-    }
-    return tcr.success();
-}
-
-/*
- *  Returns 1 if two types are approx eq
- *  Returns 2 if two types are approx eq and one is a typevar
- *
- *  This function is used as a base for typeEq, if a typeEq function
- *  is needed that does not require a Compiler parameter, this can be
- *  used, although it does not check for trait impls.  The optional
- *  Compiler parameter here is only used by the typeEq function.  If
- *  this function is used as a typeEq function with the Compiler ptr
- *  the outermost type will not be checked for traits.
- */
-TypeCheckResult& typeEqBase(const AnType *l, const AnType *r, TypeCheckResult &tcr){
-    if(l == r && !l->isGeneric) return tcr.success(l->numMatchedTys);
-
-    if(l->typeTag == TT_TaggedUnion && r->typeTag == TT_Data)
-        return tcr.successIf(try_cast<AnDataType>(l)->name == try_cast<AnDataType>(r)->name);
-
-    if(l->typeTag == TT_Data && r->typeTag == TT_TaggedUnion)
-        return tcr.successIf(try_cast<AnDataType>(l)->name == try_cast<AnDataType>(r)->name);
-
-    //typevars should be handled by typeEqHelper which requires the Compiler param,
-    //if typeEqBase is called without a Compiler param they will return success without any bindings
-    if(l->typeTag == TT_TypeVar or r->typeTag == TT_TypeVar)
-        return tcr.successWithTypeVars();
-
-
-    if(l->typeTag != r->typeTag)
-        return tcr.failure();
-
-    if(auto *lptr = try_cast<AnPtrType>(l)){
-        auto *rptr = try_cast<AnPtrType>(r);
-        tcr->matches++;
-
-        return typeEqHelper(lptr->extTy, rptr->extTy, tcr);
-
-    }else if(auto *larr = try_cast<AnArrayType>(l)){
-        auto *rarr = try_cast<AnArrayType>(r);
-        tcr->matches++;
-
-        if(larr->len != rarr->len) return tcr.failure();
-
-        return typeEqHelper(larr->extTy, rarr->extTy, tcr);
-
-    /* This case should be handled by typeEqHelper and should only reach here if there is no
-     * valid Compiler* parameter to lookup definitions from. */
-    }else if(auto *ldt = try_cast<AnDataType>(l)){
-        auto *rdt = try_cast<AnDataType>(r);
-        return tcr.successIf(ldt->name == rdt->name);
-
-    }else if(auto *lAgg = try_cast<AnAggregateType>(l)){
-        return extTysEq(lAgg, try_cast<AnAggregateType>(r), tcr);
-    }
-    //primitive type, we already know l->type == r->type
-    return tcr.success();
-}
-
 bool dataTypeImplementsTrait(AnDataType *dt, string trait){
     for(auto traitImpl : dt->traitImpls){
         if(traitImpl->name == trait)
@@ -736,195 +528,6 @@ bool dataTypeImplementsTrait(AnDataType *dt, string trait){
     }
     return false;
 }
-
-
-TypeCheckResult& typeCheckBoundDataTypes(const AnDataType *l,
-        const AnDataType *r, TypeCheckResult &tcr){
-
-    if(l->boundGenerics.size() != r->boundGenerics.size())
-        return tcr.failure();
-
-    for(size_t i = 0; i < l->boundGenerics.size(); i++){
-        auto &lbg = l->boundGenerics[i];
-        auto &rbg = r->boundGenerics[i];
-
-        if(!typeEqHelper(lbg.getBinding(), rbg.getBinding(), tcr)) return tcr.failure();
-    }
-    return tcr.success();
-}
-
-
-TypeCheckResult& addBindingsToTypeCheck(vector<TypeBinding> const& bindings, TypeCheckResult &tcr){
-    for(auto &b : bindings){
-        auto *repeat = findBindingFor(b.getGenericTypeParam(), tcr->bindings);
-        if(repeat){
-            auto tc2 = TypeCheckResult();
-            typeEqHelper(b.getBinding(), repeat->getBinding(), tc2);
-            if(!tc2) return tcr.failure();
-        }else{
-            tcr->bindings.push_back(b);
-        }
-    }
-    tcr->matches++;
-    return tcr.successWithTypeVars();
-}
-
-
-/**
- * Returns the type check result of two possibly generic AnDataTypes with matching typenames.
- */
-TypeCheckResult& typeCheckVariants(const AnDataType *l,
-        const AnDataType *r, TypeCheckResult &tcr){
-
-    bool lIsBound = l->isVariant();
-    bool rIsBound = r->isVariant();
-
-    //Two bound variants are equal if their type parameters are equal
-    if(lIsBound && rIsBound){
-        for(size_t i = 0; i < l->boundGenerics.size(); i++){
-            typeEqHelper(l->boundGenerics[i].getBinding(), r->boundGenerics[i].getBinding(), tcr);
-            if(tcr.failed()) return tcr;
-        }
-        return tcr.success();
-    //Perform type checks to get the needed bindings of type
-    //variables to bind an unbound variant to a given bound variant.
-    }else if(lIsBound && !rIsBound){
-        return addBindingsToTypeCheck(l->boundGenerics, tcr);
-    }else if(!lIsBound && rIsBound){
-        return addBindingsToTypeCheck(r->boundGenerics, tcr);
-    //neither are bound, these should both be parent types
-    }else{
-        return tcr.success();
-    }
-}
-
-
-/*
- *  Return true if both typenodes are approximately equal
- *
- *  Compiler instance required to check for trait implementation
- */
-TypeCheckResult& typeEqHelper(const AnType *l, const AnType *r, TypeCheckResult &tcr){
-    if(l == r && !l->isGeneric) return tcr.success(l->numMatchedTys);
-    if(!r) return tcr.failure();
-
-    //check for type aliases
-    const AnDataType *dt;
-    if((dt = try_cast<AnDataType>(l)) && dt->isAlias){
-        return typeEqHelper(dt->getAliasedType(), r, tcr);
-    }else if((dt = try_cast<AnDataType>(r)) && dt->isAlias){
-        return typeEqHelper(l, dt->getAliasedType(), tcr);
-    }
-
-    const AnDataType *ldt, *rdt;
-    if((ldt = try_cast<AnDataType>(l)) && (rdt = try_cast<AnDataType>(r))){
-        if(ldt->name == rdt->name && !ldt->isVariant() && !rdt->isVariant())
-            return tcr.success();
-
-        if(ldt->unboundType && ldt->unboundType == rdt->unboundType){
-            return typeCheckBoundDataTypes(ldt, rdt, tcr);
-        }
-
-        if(ldt->name == rdt->name){
-            return typeCheckVariants(ldt, rdt, tcr);
-        }
-
-        //typeName's are different, check if one is a trait and the other
-        //is an implementor of the trait
-
-        //TODO: re-add
-        // Trait *t;
-        // AnDataType *dt;
-        // if((t = c->lookupTrait(ldt->name))){
-        //     dt = AnDataType::get(rdt->name);
-        //     if(!dt or dt->isStub()) return tcr.failure();
-        // }else if((t = c->lookupTrait(rdt->name))){
-        //     dt = AnDataType::get(ldt->name);
-        //     if(!dt or dt->isStub()) return tcr.failure();
-        // }else{
-        //     return tcr.failure();
-        // }
-
-        return tcr.failure(); //tcr.successIf(dataTypeImplementsTrait(dt, t->name));
-
-    }else if(l->typeTag == TT_TypeVar or r->typeTag == TT_TypeVar){
-
-        //reassign l and r into typeVar and nonTypeVar so code does not have to be repeated in
-        //one if branch for l and another for r
-        const AnTypeVarType *typeVar;
-        AnType *nonTypeVar;
-
-        if(l->typeTag == TT_TypeVar && r->typeTag != TT_TypeVar){
-            typeVar = try_cast<AnTypeVarType>(l);
-            //cast away const to store in string,AnType* pair later
-            nonTypeVar = (AnType*)r;
-        }else if(l->typeTag != TT_TypeVar && r->typeTag == TT_TypeVar){
-            typeVar = try_cast<AnTypeVarType>(r);
-            nonTypeVar = (AnType*)l;
-        }else{ //both type vars
-            auto *ltv = try_cast<AnTypeVarType>(l);
-            auto *rtv = try_cast<AnTypeVarType>(r);
-
-            //lookup the type bound to ltv
-
-            //If they are equal, return before doing the second lookup
-            if(ltv == rtv){
-                //Binding for the equal typevars not found in scope,
-                //so dont add it to bindings, just return Success
-                //since 't == 't even if 't is unbound
-                return tcr.success();
-            }
-
-            return tcr.success();
-        }
-
-        auto *tv = findBindingFor(typeVar->name, tcr->bindings);
-        if(!tv){
-            tcr->bindings.emplace_back(typeVar->name, nonTypeVar);
-
-            return tcr.successWithTypeVars();
-        }else{
-            //tv is bound in same typechecking run
-            //Create fake TypeCheckResult to avoid adding
-            //the matches from the typevar's bound value to the concrete param.
-            //This ensures ('t, 't) has 1 match with (i32, i32), the tuple's structure.
-            //Not 2: the tuple structure and the second 't that is already bound to i32
-            auto tc2 = TypeCheckResult();
-            typeEqHelper(tv->getBinding(), nonTypeVar, tc2);
-            if(!tc2) return tcr.failure();
-
-            if(tc2->res == TypeCheckResult::SuccessWithTypeVars){
-                tcr->res = TypeCheckResult::SuccessWithTypeVars;
-                for(auto &b : tc2->bindings)
-                    tcr->bindings.push_back(b);
-            }
-            return tcr;
-        }
-    }
-    return typeEqBase(l, r, tcr);
-}
-
-TypeCheckResult typeEq(const AnType *l, const AnType *r){
-    auto tcr = TypeCheckResult();
-    typeEqHelper(l, r, tcr);
-    return tcr;
-}
-
-
-TypeCheckResult typeEq(vector<AnType*> l, vector<AnType*> r){
-    auto tcr = TypeCheckResult();
-    if(l.size() != r.size()){
-        tcr.failure();
-        return tcr;
-    }
-
-    for(size_t i = 0; i < l.size(); i++){
-        typeEqHelper(l[i], r[i], tcr);
-        if(tcr.failed()) return tcr;
-    }
-    return tcr;
-}
-
 
 /*
  *  Returns true if the given typetag is a primitive type, and thus
@@ -1055,9 +658,9 @@ string anTypeToStr(const AnType *t){
             n += "<";
             for(auto &t : dt->boundGenerics){
                 if(&t == &dt->boundGenerics.back()){
-                    n += anTypeToStr(t.getBinding());
+                    n += anTypeToStr(t);
                 }else{
-                    n += anTypeToStr(t.getBinding()) + ", ";
+                    n += anTypeToStr(t) + ", ";
                 }
             }
             n += ">";

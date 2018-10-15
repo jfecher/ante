@@ -10,17 +10,6 @@ using namespace ante::parser;
 /* Provide a callable C API from ante */
 extern "C" {
 
-    TypedValue* Ante_getAST(Compiler *c){
-        auto *root = parser::getRootNode();
-        Value *addr = c->builder.getIntN(AN_USZ_SIZE, (size_t)root);
-
-        auto *anType = AnPtrType::get(AnDataType::get("Ante.Node"));
-        auto *llvmType = c->anTypeToLlvmType(anType);
-
-        Value *ptr = c->builder.CreateIntToPtr(addr, llvmType);
-        return new TypedValue(ptr, anType);
-    }
-
     /** All compiler api functions must return a pointer to some
      * value, so void-returning functions return a nullptr */
     void* Ante_debug(Compiler *c, AnteValue &tv){
@@ -29,13 +18,6 @@ extern "C" {
     }
 
     void* Ante_error(Compiler *c, AnteValue &msg){
-        auto *cstrTy = AnPtrType::get(AnType::getPrimitive(TT_C8));
-        if(!typeEq(msg.getType(), cstrTy)){
-            throw new CompilationError("First argument of Ante.store must be of type " +
-                    anTypeToColoredStr(cstrTy) + " but a value of type "
-                    + anTypeToColoredStr(msg.getType()) + " was given instead.");
-        }
-
         auto *curfn = c->compCtxt->callStack.back()->getFDN();
         yy::location fakeloc = mkLoc(mkPos(0,0,0), mkPos(0,0,0));
         c->compErr(msg.castTo<char*>(), curfn ? curfn->loc : fakeloc);
@@ -81,12 +63,6 @@ extern "C" {
     }
 
     void* Ante_forget(Compiler *c, AnteValue &name){
-        auto *cstrTy = AnPtrType::get(AnType::getPrimitive(TT_C8));
-        if(!typeEq(name.getType(), cstrTy)){
-            throw new CompilationError("Argument of Ante.forget must be of type " +
-                    anTypeToColoredStr(cstrTy) + " but a value of type "
-                    + anTypeToColoredStr(name.getType()) + " was given instead.");
-        }
         //TODO: re-add
         //c->mergedCompUnits->fnDecls[name.castTo<char*>()].clear();
         return nullptr;
@@ -99,7 +75,6 @@ namespace ante {
         map<string, unique_ptr<CtFunc>> compapi;
 
         void init(){
-            compapi.emplace("Ante_getAST",      new CtFunc((void*)Ante_getAST,      AnPtrType::get(AnDataType::get("Ante.Node"))));
             compapi.emplace("Ante_debug",       new CtFunc((void*)Ante_debug,       AnType::getVoid(), {AnTypeVarType::get("'t'")}));
             compapi.emplace("Ante_sizeof",      new CtFunc((void*)Ante_sizeof,      AnType::getU32(),  {AnTypeVarType::get("'t'")}));
             compapi.emplace("Ante_typeof",      new CtFunc((void*)Ante_typeof,      AnType::getPrimitive(TT_Type), {AnTypeVarType::get("'t")}));

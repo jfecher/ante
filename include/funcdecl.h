@@ -23,9 +23,6 @@ namespace ante {
 
         AnFunctionType *type;
 
-        /** @brief Any generic parameters the obj may have */
-        std::vector<TypeBinding> objBindings;
-
         Module *module;
         std::vector<std::pair<TypedValue,LOC_TY>> returns;
 

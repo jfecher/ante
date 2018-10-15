@@ -2,6 +2,7 @@
 #include "compapi.h"
 #include <iostream>
 
+/*
 using std::string;
 using std::unique_ptr;
 using llvm::JITSymbol;
@@ -10,7 +11,7 @@ using llvm::JITTargetAddress;
 using llvm::RTDyldMemoryManager;
 
 namespace ante {
-    JIT::ModuleHandle JIT::addModule(std::unique_ptr<llvm::Module> m){
+    JIT::ModuleHandle JIT::addModule(ModuleHandle m){
         auto symResolver = llvm::orc::createLambdaResolver(
             //Look back into the JIT itself to find symbols part of the same dylib
             [&](const string &name){
@@ -32,13 +33,14 @@ namespace ante {
             }
         );
 
-        return cantFail(codLayer.addModule(move(m), move(symResolver)));
+        //return cantFail(codLayer.addModule(m, move(symResolver)));
+        return 0;
     }
 
     std::shared_ptr<llvm::Module> JIT::optimizeModule(std::shared_ptr<llvm::Module> m){
         auto fpm = llvm::make_unique<llvm::legacy::FunctionPassManager>(m.get());
 
-        fpm->add(llvm::createInstructionCombiningPass());
+        //fpm->add(llvm::createInstructionCombiningPass());
         fpm->add(llvm::createReassociatePass());
         fpm->add(llvm::createGVNPass());
         fpm->add(llvm::createCFGSimplificationPass());
@@ -69,3 +71,4 @@ namespace ante {
         std::cerr << "JIT Error: Unrecognized function called, aborting!" << std::endl;
     }
 }
+*/

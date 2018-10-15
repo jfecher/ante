@@ -13,7 +13,6 @@
 #include "tokens.h"
 #include "parser.h"
 #include "result.h"
-#include "typebinding.h"
 
 #define AN_HASH_PRIME 0x9e3779e9
 
@@ -109,14 +108,15 @@ namespace ante {
         static AnType* getBool();
         static AnType* getVoid();
         static AnPtrType* getPtr(AnType*);
-        static AnDataType* getDataType(std::string const& name);
         static AnArrayType* getArray(AnType*, size_t len = 0);
         static AnTypeVarType* getTypeVar(std::string const& name);
         static AnFunctionType* getFunction(AnType *r, const std::vector<AnType*>);
         static AnAggregateType* getAggregate(TypeTag t, const std::vector<AnType*>);
     };
 
+    class AnProductType;
     bool isGeneric(const std::vector<AnType*> &vec);
+    bool isGeneric(const std::vector<AnProductType*> &vec);
 
     /**
      *  Virtual base class for modifier types.
@@ -377,44 +377,26 @@ namespace ante {
         }
     };
 
+    using TypeBindings = std::vector<AnType*>;
+    using GenericParams = std::vector<AnTypeVarType*>;
+
     /**
-     *  A user-declared data type.
+     *  A base class for any user-declared data type.
      *
      *  Corresponds to a single 'type T = ...' instance
-     *
-     *  Instances of this type may either have a TypeTag of TT_Data
-     *  or TT_TaggedUnion which differentiates product types from
-     *  sum types respectively.
-     *
-     *  In the case of a tagged union, each union variant is stored as
-     *  an extTy so sizeInBits(union->extTys) != sizeInBits(union).
-     *  To determine the type of a union, ante::getLargestExt should be used.
      */
-    class AnDataType : public AnAggregateType {
+    class AnDataType : public AnType {
 
         protected:
-        AnDataType(std::string const& n, const std::vector<AnType*> elems, bool isUnion) :
-                AnAggregateType(isUnion ? TT_TaggedUnion : TT_Data, elems), name(n),
-                fields(), tags(), traitImpls(), unboundType(0), variants(), parentUnionType(0),
-                boundGenerics(), llvmType(0), isAlias(false){
-
-            /* Just the type itself as DataTypes are considered opaque for type checking purposes
-             * since only their names are checked.  If generics are added later to this type,
-             * numMatchedTys must be updated with the number of generic params as well. */
-            numMatchedTys = 1;
-        }
+        AnDataType(std::string const& n, TypeTag tt) :
+                AnType(TT_Data, false, 1), name(n), traitImpls(), unboundType(0),
+                variants(), boundGenerics(), llvmType(0), isAlias(false){}
 
         public:
 
         ~AnDataType() = default;
 
         std::string name;
-
-        /** Names of each field. */
-        std::vector<std::string> fields;
-
-        /** Contains the UnionTag of each of the union's variants. */
-        std::vector<std::shared_ptr<UnionTag>> tags;
 
         /** The traits this data type implements. */
         std::vector<std::shared_ptr<Trait>> traitImpls;
@@ -436,18 +418,15 @@ namespace ante {
          */
         std::vector<AnDataType*> variants;
 
-        /** The parent union type of this type if it is a union tag */
-        AnDataType *parentUnionType;
-
         /** Typevars this type is generic over */
-        std::vector<GenericTypeParam> generics;
+        GenericParams generics;
 
         /**
          * The set of bindings used to bind the parent type to this variant.
          *
          * Empty if this type is not a bound version of some generic type.
          */
-        std::vector<TypeBinding> boundGenerics;
+        TypeBindings boundGenerics;
 
         /** The llvm Type corresponding to this data type.
          * May be nullptr if this type has not yet been translated. */
@@ -458,30 +437,13 @@ namespace ante {
         bool isAlias;
 
         /** Search for a data type by name.
-         * Returns a stub type if no type with a matching name is found. */
+         * Returns null if no type with a matching name is found. */
         static AnDataType* get(std::string const& name);
 
-        /** Searches for a bound variant of the type specified by name.
-         * If no variant is found, a variant will be bound with the given bindings.
-         * If not type with the name 'name' is found this function will issue a
-         * warning and return the stub of that type. */
-        static AnDataType* getVariant(std::string const& name, std::vector<TypeBinding> const& boundTys);
-
-        /** Searches for a bound variant of the given unboundType.
-         * If no variant is found, a variant will be bound with the given bindings. */
-        static AnDataType* getVariant(AnDataType *unboundType, std::vector<TypeBinding> const& boundTys);
-
-        /** Looks for a data type by the given name and modifiers and creates it if has not been already */
-        static AnDataType* getOrCreate(std::string const& name, std::vector<AnType*> const& elems, bool isUnion);
-
-        /** Looks for a version of the dt with the given modifiers and creates it if has not been already */
-        static AnDataType* getOrCreate(const AnDataType *dt);
-
-        /** Creates or overwrites the type specified by name. */
-        static AnDataType* create(std::string const& name, std::vector<AnType*> const& elems, bool isUnion, std::vector<GenericTypeParam> const& generics);
-
-        /** Returns a new AnDataType* with the given modifier appended to the current type's modifiers. */
-        const AnType* addModifier(TokenType m) const override;
+        /** Returns true if the given AnType is an AnDataType */
+        static bool istype(const AnType *t){
+            return t->typeTag == TT_Data || t->typeTag == TT_TaggedUnion;
+        }
 
         /** Returns true if this DataType is a bound generic variant of another */
         bool isVariant() const {
@@ -494,14 +456,31 @@ namespace ante {
 
         /** Returns the type this type is aliased to */
         AnType* getAliasedType() const;
+    };
 
-        virtual bool isModifierType() const noexcept override {
-            return false;
-        }
+    class AnSumType;
+
+    class AnProductType : public AnDataType {
+
+        protected:
+        AnProductType(std::string const& n, std::vector<AnType*> const& elems) :
+                AnDataType(n, TT_Data), fields(elems), parentUnionType(nullptr) {}
+
+        public:
+
+        ~AnProductType() = default;
+
+        std::vector<AnType*> fields;
+
+        /** Names of each field. */
+        std::vector<std::string> fieldNames;
+
+        /** The parent union type of this type if it is a union tag */
+        AnSumType *parentUnionType;
 
         /** Returns true if the given AnType is an AnDataType */
         static bool istype(const AnType *t){
-            return t->typeTag == TT_Data or t->typeTag == TT_TaggedUnion;
+            return t->typeTag == TT_Data;
         }
 
         /** Returns the given field index or found, or -1 otherwise
@@ -510,19 +489,44 @@ namespace ante {
         */
         int getFieldIndex(std::string const& field) const {
             for(unsigned int i = 0; i < fields.size(); i++)
-                if(field == fields[i])
+                if(field == fieldNames[i])
                     return i;
             return -1;
         }
 
-        /** Returns true if this DataType's contents are not yet defined. */
-        bool isStub() const {
-            return extTys.empty();
+        /** Returns a new AnDataType* with the given modifier appended to the current type's modifiers. */
+        const AnType* addModifier(TokenType m) const override;
+
+        bool isModifierType() const noexcept override {
+            return false;
         }
 
-        /** Returns true if this DataType is actually a tag type. */
-        bool isUnionTag() const {
-            return parentUnionType;
+        /** Search for a data type by name.
+         * Returns null if no type with a matching name is found. */
+        static AnProductType* get(std::string const& name);
+
+        /** Creates or overwrites the type specified by name. */
+        static AnProductType* create(std::string const& name, std::vector<AnType*> const& elems,
+                GenericParams const& generics);
+    };
+
+
+    class AnSumType : public AnDataType {
+
+        protected:
+        AnSumType(std::string const& n, std::vector<AnProductType*> const& elems) :
+                AnDataType(n, TT_TaggedUnion), tags(elems){}
+
+        public:
+
+        ~AnSumType() = default;
+
+        /** Contains the UnionTag of each of the union's variants. */
+        std::vector<AnProductType*> tags;
+
+        /** Returns true if the given AnType is an AnDataType */
+        static bool istype(const AnType *t){
+            return t->typeTag == TT_TaggedUnion;
         }
 
         /**
@@ -533,7 +537,22 @@ namespace ante {
         *
         * @return the value of the tag found, or 0 on failure
         */
-        unsigned short getTagVal(std::string const& name);
+        size_t getTagVal(std::string const& name);
+
+        /** Search for a data type by name.
+         * Returns null if no type with a matching name is found. */
+        static AnSumType* get(std::string const& name);
+
+        /** Creates or overwrites the type specified by name. */
+        static AnSumType* create(std::string const& name, std::vector<AnProductType*> const& elems,
+                GenericParams const& generics);
+
+        /** Returns a new AnDataType* with the given modifier appended to the current type's modifiers. */
+        const AnType* addModifier(TokenType m) const override;
+
+        bool isModifierType() const noexcept override {
+            return false;
+        }
     };
 
     size_t hashCombine(size_t l, size_t r);
@@ -557,24 +576,9 @@ namespace std {
             return ret;
         }
     };
-
-    template<>
-    struct hash<ante::TypeBinding> {
-        size_t operator()(ante::TypeBinding const& binding) const {
-            if(binding.isNominalBinding()){
-                return ante::hashCombine(std::hash<std::string>()(binding.getTypeVarName()),
-                        std::hash<ante::AnType*>()(binding.getBinding()));
-            }else{
-                return ante::hashCombine(std::hash<size_t>()(binding.getIndex()),
-                        std::hash<ante::AnType*>()(binding.getBinding()));
-            }
-        }
-    };
 }
 
 namespace ante {
-    void addGenerics(std::vector<GenericTypeParam> &dest, std::vector<AnType*> const& src);
-
     /**
      *  An owning container for all AnTypes
      *
@@ -592,10 +596,12 @@ namespace ante {
         friend AnTypeVarType;
         friend AnFunctionType;
         friend AnDataType;
+        friend AnProductType;
+        friend AnSumType;
 
         using FnTypeKey = std::pair<AnType*, std::pair<std::vector<AnType*>, bool>>;
         using AggTypeKey = std::pair<TypeTag, std::vector<AnType*>>;
-        using VariantTypeKey = std::pair<std::string, std::vector<TypeBinding>>;
+        using VariantTypeKey = std::pair<std::string, std::vector<AnType*>>;
 
         std::unordered_map<TypeTag, std::unique_ptr<AnType>> primitiveTypes;
         std::unordered_map<std::pair<AnType*, TokenType>, std::unique_ptr<AnModifier>> basicModifiers;
@@ -605,7 +611,7 @@ namespace ante {
         std::unordered_map<std::string, std::unique_ptr<AnTypeVarType>> typeVarTypes;
         std::unordered_map<AggTypeKey, std::unique_ptr<AnAggregateType>> aggregateTypes;
         std::unordered_map<FnTypeKey, std::unique_ptr<AnFunctionType>> functionTypes;
-        std::unordered_map<std::string, std::unique_ptr<AnDataType>> declaredTypes;
+        std::unordered_map<std::string, std::unique_ptr<AnDataType>> dataTypes;
 
         /** generic variants are retrieved through their parent type,
          * never directly through the map of declaredTypes.  Keeping
@@ -618,7 +624,7 @@ namespace ante {
         ~AnTypeContainer() = default;
 
         void clearDeclaredTypes(){
-            declaredTypes.clear();
+            dataTypes.clear();
         }
     };
 }

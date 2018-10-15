@@ -58,7 +58,7 @@ TypedValue Compiler::callFn(string name, vector<TypedValue> args){
     //      are matched correctly across parameters
     auto *fnty = try_cast<AnFunctionType>(fn.type);
     for(size_t i = 0; i < args.size(); i++){
-        auto arg = typeCheckWithImplicitCasts(this, args[i], fnty->extTys[i]);
+        auto arg = args[i];
         if(!arg) return arg;
         if(fnty->extTys[i]->hasModifier(Tok_Mut)){
             arg = addrOf(this, arg);
@@ -137,49 +137,6 @@ void addAllArgAttrs(Function *f, NamedValNode *params){
     }
 }
 
-/*
- * Type checks each return value
- *
- * returns the return type or nullptr if it could not be matched
- */
-AnType* validateReturns(Compiler *c, FuncDecl *fd, TypeNode *retTy = 0){
-    auto *matchTy = retTy ? toAnType(retTy) : fd->returns[fd->returns.size()-1].first.type;
-
-    for(auto pair : fd->returns){
-        TypedValue &ret = pair.first;
-
-        auto tcr = typeEq(matchTy, ret.type);
-        if(!tcr){
-            c->compErr("Function " + fd->getName() + " returned value of type " +
-                 anTypeToColoredStr(ret.type) + " but was declared to return value of type " +
-                 anTypeToColoredStr(matchTy), pair.second);
-        }
-
-        if(tcr->res == TypeCheckResult::SuccessWithTypeVars){
-            //TODO: copy type
-            bindGenericToType(ret.type, tcr->bindings);
-            ret.val->mutateType(c->anTypeToLlvmType(ret.type));
-
-            auto *ri = dyn_cast<ReturnInst>(ret.val);
-
-            if(LoadInst *li = dyn_cast<LoadInst>(ri ? ri->getReturnValue() : ret.val)){
-                auto *alloca = li->getPointerOperand();
-
-                auto *ins = ri ? ri->getParent() : c->builder.GetInsertBlock();
-                c->builder.SetInsertPoint(ins);
-
-                auto *cast = c->builder.CreateBitCast(alloca, c->anTypeToLlvmType(matchTy)->getPointerTo());
-                auto *fixed_ret = c->builder.CreateLoad(cast);
-                c->builder.CreateRet(fixed_ret);
-                if(ri) ri->eraseFromParent();
-            }
-        }
-    }
-
-    return matchTy;
-}
-
-
 LOC_TY getFinalLoc(Node *n){
     auto *bop = dynamic_cast<BinOpNode*>(n);
 
@@ -198,121 +155,6 @@ LOC_TY getFinalLoc(Node *n){
 void moveFunctionBody(Function *src, Function *dest){
     dest->getBasicBlockList().splice(dest->begin(), src->getBasicBlockList());
     src->getBasicBlockList().clearAndLeakNodesUnsafely();
-}
-
-
-TypedValue Compiler::compLetBindingFn(FuncDecl *fd, vector<Type*> &paramTys){
-    auto *fdn = fd->getFDN();
-    FunctionType *preFnTy = FunctionType::get(Type::getVoidTy(*ctxt), paramTys, fdn->varargs);
-
-    //preFn is the predecessor to fn because we do not yet know its return type, so its body must be compiled,
-    //then the type must be checked and the new function with correct return type created, and their bodies swapped.
-    Function *preFn = Function::Create(preFnTy, Function::ExternalLinkage, "__lambda_pre__", module.get());
-
-    //Create the entry point for the function
-    BasicBlock *entry = BasicBlock::Create(*ctxt, "entry", preFn);
-    builder.SetInsertPoint(entry);
-
-    //iterate through each parameter and add its value to the new scope.
-    auto paramVec = vectorize(fdn->params.get());
-    size_t i = 0;
-
-    vector<Value*> preArgs;
-    vector<AnType*> paramAnTys;
-
-    for(auto &arg : preFn->args()){
-        NamedValNode *cParam = paramVec[i];
-        TypeNode *paramTyNode = (TypeNode*)cParam->typeExpr.get();
-        addArgAttrs(arg, paramTyNode);
-
-        //Self parameters originally have 0x1 as their TypeNodes, but
-        //this should be replaced when visit(FuncDeclNode*) is called.
-        //Throw an error if that check was somehow bypassed
-        if(paramTyNode == (void*)1){
-            compErr("Stray self parameter", cParam->loc);
-            //paramTyNode = fd->obj;
-        }
-
-        for(size_t j = 0; j < i; j++){
-            if(cParam->name == paramVec[j]->name){
-                return compErr("Parameter name '"+cParam->name+"' is repeated for parameters "+
-                        to_string(j+1)+" and "+to_string(i+1), cParam->loc);
-            }
-        }
-
-        //If this function's type is specified beforehand (from a generic binding),
-        //use the param types it specifies, otherwise translate the types now.
-        AnType *paramTy = fd->type ?
-                fd->type->extTys[i]
-                : toAnType(paramTyNode);
-
-        cParam->decls[0]->tval = {&arg, paramTy};
-
-        //If we are JIT compiling this function we want the args to be perfectly forwarded.
-        //They must be passed directly to work with certain compiler-api functions.  For example,
-        //it is important that Ante.store does not store a llvm::Argument
-
-        preArgs.push_back(&arg);
-        paramAnTys.push_back(paramTy);
-
-        ++i;
-    }
-
-    //store a fake function var, in case this function is recursive
-    auto *fakeFnTy = AnFunctionType::get(AnType::getVoid(), paramAnTys);
-    auto fakeFnTv = TypedValue(preFn, fakeFnTy);
-    if(fdn->name.length() > 0)
-        updateFn(fakeFnTv, fd, fdn->name, fd->getMangledName());
-
-    //actually compile the function, and hold onto the last value
-    TypedValue v = CompilingVisitor::compile(this, fdn->child);
-
-    //llvm requires explicit returns, so generate a return even if
-    //the user did not in their function.
-    if(!dyn_cast<ReturnInst>(v.val)){
-        auto loc = getFinalLoc(fdn->child.get());
-
-        if(v.type->typeTag == TT_Void){
-            builder.CreateRetVoid();
-            fd->returns.push_back({getVoidLiteral(), loc});
-        }else{
-            v.val = builder.CreateRet(v.val);
-            fd->returns.push_back({v, loc});
-        }
-    }
-
-    AnType *retTy;
-    if(!(retTy = validateReturns(this, fd)))
-        return {};
-
-    //create the actual function's type, along with the function itself.
-    FunctionType *ft = FunctionType::get(anTypeToLlvmType(retTy), paramTys, fdn->varargs);
-    Function *f = Function::Create(ft, Function::ExternalLinkage,
-            fdn->name.length() > 0 ? fd->getMangledName() : "__lambda__", module.get());
-
-    //now that we have the real function, replace the old one with it
-    auto *newFnTyn = AnFunctionType::get(retTy, paramAnTys);
-
-    //move contents of preFn to f
-    moveFunctionBody(preFn, f);
-
-    //swap all instances of preFn's parameters with f's parameters
-    i = 0;
-    for(auto &arg : f->args()){
-        preArgs[i++]->replaceAllUsesWith(&arg);
-    }
-
-    //preFn->replaceAllUsesWith(f);
-    //preFn->removeFromParent();
-    preFn->eraseFromParent();
-
-    TypedValue ret = {f, newFnTyn};
-
-    //only store the function if it has a name (and thus is not a lambda function)
-    if(fdn->name.length() > 0)
-        updateFn(ret, fd, fdn->name, fd->getMangledName());
-
-    return ret;
 }
 
 
@@ -425,29 +267,8 @@ TypedValue compFnHelper(Compiler *c, FuncDecl *fd){
         paramTys.pop_back();
     }
 
-    if(!retNode){
-        try{
-            auto ret = c->compLetBindingFn(fd, paramTys);
-            c->builder.SetInsertPoint(caller);
-            return ret;
-        }catch(CtError *e){
-            c->builder.SetInsertPoint(caller);
-            throw e;
-        }
-    }
-
-    AnType *anRetTy;
-    AnType *fnTy;
-
-    //If the function type was set beforehand (likely due to a generic binding)
-    //Then just retrieve type information from there
-    if(fd->type){
-        fnTy = fd->type;
-        anRetTy = fnTy->getFunctionReturnType();
-    }else{
-        anRetTy = toAnType(retNode);
-        fnTy = AnFunctionType::get(anRetTy, fdn->params.get());
-    }
+    AnFunctionType *fnTy = try_cast<AnFunctionType>(fdn->getType());
+    AnType *anRetTy = fnTy->retTy;
 
     //llvm return type and function type corresponding to the AnTypes above
     Type *retTy = c->anTypeToLlvmType(anRetTy);
@@ -514,13 +335,6 @@ TypedValue compFnHelper(Compiler *c, FuncDecl *fd){
                 fd->returns.push_back({v, loc});
             }
         }
-
-        //dont optimize if the return type is invalid.  LLVM will most likely crash
-        AnType *retty;
-        if(!(retty = validateReturns(c, fd, retNode))){
-            c->builder.SetInsertPoint(caller);
-            return {};
-        }
     }
 
     c->builder.SetInsertPoint(caller);
@@ -537,48 +351,8 @@ TypedValue FuncDecl::getOrCompileFn(Compiler *c){
 
 FuncDecl* shallow_copy(FuncDecl* fd, string &mangledName){
     FuncDecl *cpy = new FuncDecl(fd->getFDN(), mangledName, fd->module);
-    cpy->objBindings = fd->objBindings;
     cpy->obj = fd->obj;
     return cpy;
-}
-
-
-TypedValue compTemplateFn(Compiler *c, FuncDecl *fd, TypeCheckResult &tc, vector<AnType*> &args){
-    //ensure we are not recompiling a nomangle function
-    //if(fd->isDecl())
-    //    return fd->getOrCompileFn(c);
-
-    //test if bound variant is already compiled
-    string mangled = mangle(fd, args);
-
-    FuncDecl* fdRedef;
-    if((fdRedef = c->getFuncDecl(fd->getName(), mangled))){
-        if(fdRedef->getMangledName() == mangled && fdRedef->tval){
-            return fdRedef->tval;
-        }
-    }
-
-    fd = shallow_copy(fd, mangled);
-
-    //Each binding from the typecheck results needs to be declared as a typevar in the
-    //function's scope, but compFn sets this scope later on, so the needed bindings are
-    //instead stored as fake obj bindings to be declared later in compFn
-    fd->objBindings.insert(fd->objBindings.end(), tc->bindings.begin(), tc->bindings.end());
-
-    //Default return type in case this function has an inferred return type;
-    AnType *anRetTy = AnType::getVoid();
-
-    //bind the return type if necessary
-    if(TypeNode* retTy = fd->getFDN()->returnType.get()){
-        anRetTy = bindGenericToType(toAnType(retTy), fd->objBindings);
-    }
-
-    auto *fty = AnFunctionType::get(anRetTy, args);
-    fd->type = fty;
-
-    //compile the function normally (each typevar should now be
-    //substituted with its checked type from the typecheck tc)
-    return c->compFn(fd);
 }
 
 //Defined in compiler.cpp
@@ -593,36 +367,9 @@ bool isDecl(string &name){
     return !name.empty() && name.back() == ';';
 }
 
-/*
- *  Registers a function for later compilation
- */
-void CompilingVisitor::visit(FuncDeclNode *n){
-    //check if the function is a named function.
-    /*
-    if(!n->name.empty()){
-        string mangledName;
-        if(isDecl(n->name)){
-            n->name = c->funcPrefix + n->name.substr(0, n->name.length() - 1);
-            mangledName = n->name;
-        }else{
-            mangledName = c->funcPrefix + mangle(n->name, n->params);
-            mangledName = manageSelfParam(c, n, mangledName);
-            n->name = c->funcPrefix + n->name;
-        }
 
-        c->registerFunction(n, mangledName);
-        this->val = c->getVoidLiteral();
-    }else{
-        //Otherwise, if it is a lambda function, compile it now and return it.
-        string no_name;
-        FuncDecl *fd = new FuncDecl(n, no_name, c->scope, c->mergedCompUnits);
-        this->val = c->compFn(fd);
+void CompilingVisitor::visit(FuncDeclNode *n){}
 
-        //prevent this function from being called by name
-        fd->mangledName = "";
-    }
-    */
-}
 
 FuncDecl* getFuncDeclFromVec(vector<shared_ptr<FuncDecl>> &l, string const& mangledName){
     for(auto& fd : l){
@@ -630,15 +377,6 @@ FuncDecl* getFuncDeclFromVec(vector<shared_ptr<FuncDecl>> &l, string const& mang
             return fd.get();
     }
     return 0;
-}
-
-
-void declareBindings(Compiler *c, vector<TypeBinding> &bindings){
-    for(auto &b : bindings){
-        if(!b.getBinding()->isGeneric && b.isNominalBinding()){
-            //c->stoTypeVar(b.getTypeVarName(), b.getBinding());
-        }
-    }
 }
 
 
@@ -657,12 +395,7 @@ TypedValue Compiler::compFn(FuncDecl *fd){
         compCtxt->breakLabels.reset(breakLabels);
     );
 
-    auto ts = tmpSet(this->fnScope, this->scope);
-
-    //Propogate type var bindings of the method obj into the function scope
-    declareBindings(this, fd->objBindings);
-    TypedValue ret;
-
+    TMP_SET(this->fnScope, this->scope);
     return compFnHelper(this, fd);
 }
 
@@ -674,12 +407,6 @@ FuncDecl* Compiler::getCurrentFunction() const{
 
 void Compiler::updateFn(TypedValue &f, FuncDecl *fd, string const& name, string const& mangledName){
     //TODO: remove entirely
-    //auto &list = mergedCompUnits->fnDecls[name];
-    //auto *vec_fd = getFuncDeclFromVec(list, mangledName);
-    //fd->tval = f;
-    //if(!vec_fd){
-    //    list.push_back(shared_ptr<FuncDecl>(fd));
-    //}
 }
 
 
@@ -722,57 +449,6 @@ vector<T*> vectorize(T *args){
     return ret;
 }
 
-/**
- * Return a new vector containing only the given pairs with the
- * highest amount of matches.  In the case there are multiple equally,
- * matching candidates, results are further filtered by the minimum amount
- * of type bindings needed.  If there are still multiple equally matching
- * candidates, they are all returned.
- */
-vector<pair<TypeCheckResult,FuncDecl*>> filterHighestMatches(vector<pair<TypeCheckResult,FuncDecl*>> &matches){
-    unsigned int highestMatch = 0;
-    unsigned int reqBindings = 0;
-    vector<pair<TypeCheckResult,FuncDecl*>> highestMatches;
-
-    for(auto &tcr : matches){
-        if(tcr.first && tcr.first->matches >= highestMatch){
-            if(tcr.first->matches > highestMatch){
-                highestMatch = tcr.first->matches;
-                reqBindings = tcr.first->bindings.size();
-                highestMatches.clear();
-            }else if(tcr.first->bindings.size() < reqBindings){
-                highestMatch = tcr.first->matches;
-                reqBindings = tcr.first->bindings.size();
-                highestMatches.clear();
-            }
-            highestMatches.push_back(tcr);
-        }
-    }
-    return highestMatches;
-}
-
-
-/**
- * Return only the candidates that best match the given argument types
- * in a type check.  This results in the candidates with the most structural
- * matches (eg. prefer  't* over 't if arg is a pointer) and the least amount
- * of required type bindings (eg. prefer i32* over 't* if arg is i32*).
- */
-vector<pair<TypeCheckResult,FuncDecl*>>
-filterBestMatches(Compiler *c, vector<shared_ptr<FuncDecl>> &candidates, vector<AnType*> args){
-    auto results = vecOf<pair<TypeCheckResult,FuncDecl*>>(candidates.size());
-
-    for(auto fd : candidates){
-        auto *fnty = fd->type ? fd->type
-            : AnFunctionType::get(AnType::getVoid(), fd->getFDN()->params.get());
-        auto tc = typeEq(fnty->extTys, args);
-        results.emplace_back(tc, fd.get());
-    }
-
-    return filterHighestMatches(results);
-}
-
-
 FuncDecl* Compiler::getMangledFuncDecl(string name, vector<AnType*> &args){
     auto fnlist = getFunctionList(name);
     if(fnlist.empty()) return 0;
@@ -790,12 +466,7 @@ FuncDecl* Compiler::getMangledFuncDecl(string name, vector<AnType*> &args){
     if(fd) //exact match
         return fd;
 
-    auto matches = filterBestMatches(this, candidates, args);
-
-    //TODO: return typecheck infromation so it need not typecheck again in Compiler::getMangledFn
-    if(matches.size() == 1)
-        return matches[0].second;
-
+    throw CtError();
     //TODO: possibly return all functions considered for better error checking
     return nullptr;
 }
@@ -805,15 +476,7 @@ FuncDecl* Compiler::getMangledFuncDecl(string name, vector<AnType*> &args){
  * Compile a possibly-generic function with given arg types
  */
 TypedValue compFnWithArgs(Compiler *c, FuncDecl *fd, vector<AnType*> args){
-    //must check if this function is generic first
-    auto fnty = AnFunctionType::get(AnType::getVoid(), fd->getFDN()->params.get());
-    auto tc = typeEq(fnty->extTys, args);
-
-    if(tc->res == TypeCheckResult::SuccessWithTypeVars)
-        return compTemplateFn(c, fd, tc, args);
-    else if(!tc) //tc->res == TypeCheckResult::Failure
-        return {};
-    else if(fd->tval.val)
+    if(fd->tval.val)
         return fd->tval;
     else
         return c->compFn(fd);
@@ -833,62 +496,6 @@ vector<shared_ptr<FuncDecl>> Compiler::getFunctionList(string const& name) const
     // return mergedCompUnits->fnDecls[name];
     return {};
 }
-
-
-
-
-FuncDecl* Compiler::getCastFuncDecl(AnType *from_ty, AnType *to_ty){
-    string fnBaseName = getCastFnBaseName(to_ty);
-    auto args = toTuple(from_ty);
-    return getMangledFuncDecl(fnBaseName, args);
-}
-
-
-TypedValue Compiler::getCastFn(AnType *from_ty, AnType *to_ty, FuncDecl *fd){
-    if(!fd)
-        fd = getCastFuncDecl(from_ty, to_ty);
-
-    if(!fd) return {};
-    TypedValue tv;
-
-    auto *to_ty_dt = try_cast<AnDataType>(to_ty);
-    if(to_ty_dt && to_ty_dt->isVariant()){
-        AnType *unbound_obj = fd->obj;
-        fd->obj = to_ty;
-        fd->objBindings = to_ty_dt->boundGenerics;
-
-        auto tc = typeEq(unbound_obj, to_ty);
-        fd->objBindings.insert(fd->objBindings.end(), tc->bindings.begin(), tc->bindings.end());
-
-        //must check if this function is generic first
-        auto args = toTuple(from_ty);
-        if(!fd->objBindings.empty()){
-            //force a call to compTemplateFunction as the object itself is generic
-            //and must be bound even if the function has no parameters to match.
-            //This is common in a constructor for an empty container, eg. Vec<i32>()
-            auto fnty = AnFunctionType::get(AnType::getVoid(), fd->getFDN()->params.get());
-            auto tc = typeEq(fnty->extTys, args);
-            tv = compTemplateFn(this, fd, tc, args);
-        }else{
-            tv = compFnWithArgs(this, fd, args);
-        }
-
-        //TODO: if fd is a meta function that is a method of a generic object then the generic
-        //      parameters of the object will be unbound here and untraceable when the function is
-        //      lazily compiled at the callsite
-        fd->obj = unbound_obj;
-        fd->objBindings.clear();
-        fd->tval = {};
-    }else{
-        tv = fd->tval;
-        if(!tv){
-            auto args = toTuple(from_ty);
-            tv = compFnWithArgs(this, fd, args);
-        }
-    }
-    return tv;
-}
-
 
 /*
  * Returns the FuncDecl* of a given name/basename pair

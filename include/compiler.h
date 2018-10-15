@@ -17,13 +17,11 @@
 #include "parser.h"
 #include "args.h"
 #include "lazystr.h"
-#include "typebinding.h"
 #include "antype.h"
 #include "antevalue.h"
 #include "funcdecl.h"
 #include "variable.h"
 #include "typedvalue.h"
-#include "typecheckresult.h"
 
 #define AN_MANGLED_SELF "_$self$"
 
@@ -340,9 +338,6 @@ namespace ante {
          */
         FuncDecl* getMangledFuncDecl(std::string name, std::vector<AnType*> &args);
         FuncDecl* getCastFuncDecl(AnType *from_ty, AnType *to_ty);
-
-        /** @brief Compiles a function with inferred return type */
-        TypedValue compLetBindingFn(FuncDecl *fdn, std::vector<llvm::Type*> &paramTys);
 
         /**
          * @brief Compiles any non-generic function

@@ -24,6 +24,7 @@
 #include <string>
 #include <vector>
 
+/*
 namespace ante {
 
     class JIT {
@@ -44,7 +45,11 @@ namespace ante {
             std::shared_ptr<llvm::Module> optimizeModule(std::shared_ptr<llvm::Module> m);
 
         public:
-            using ModuleHandle = decltype(codLayer)::ModuleHandleT;
+#if LLVM_VERSION_MAJOR >= 7
+            using ModuleHandle = decltype(optimizeLayer)::;
+#else
+            using ModuleHandle = std::unique_ptr<llvm::Module>;
+#endif
 
             JIT() : tm(llvm::EngineBuilder().selectTarget()), dl(tm->createDataLayout()),
                     objectLayer([](){ return std::make_shared<llvm::SectionMemoryManager>(); }),
@@ -54,7 +59,7 @@ namespace ante {
                     }),
                     compileCallbackManager(
                             llvm::orc::createLocalCompileCallbackManager(tm->getTargetTriple(),
-                                (llvm::JITTargetAddress)&handleUnrecognizedFn)),
+                                (llvm::JITTargetAddress)&handleUnrecognizedFn), false),
                     codLayer(optimizeLayer, [this](llvm::Function &f){
                                 //Appease the "'this' parameter not used" warning
                                 this->doNothing();
@@ -73,7 +78,7 @@ namespace ante {
 
             llvm::TargetMachine& getTargetMachine() { return *tm; }
 
-            JIT::ModuleHandle addModule(std::unique_ptr<llvm::Module> m);
+            JIT::ModuleHandle addModule(ModuleHandle m);
 
             llvm::JITSymbol findSymbol(const std::string name);
 
@@ -82,5 +87,6 @@ namespace ante {
             void removeModule(JIT::ModuleHandle h);
     };
 }
+*/
 
 #endif
