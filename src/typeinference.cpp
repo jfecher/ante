@@ -161,20 +161,28 @@ namespace ante {
     }
 
     void TypeInferenceVisitor::visit(NamedValNode *n){
-        n->typeExpr->accept(*this);
-        n->setType(n->typeExpr->getType());
+        if(n->typeExpr){
+            n->typeExpr->accept(*this);
+            n->setType(n->typeExpr->getType());
+        }else{
+            n->setType(nextTypeVar());
+        }
     }
 
     void TypeInferenceVisitor::visit(VarNode *n){
-        if(!n->decls[0]->tval.type){
+        auto *decl = n->decls[0];
+        if(!decl->tval.type && decl->isFuncDecl()){
+            decl->definition->accept(*this);
+        }
+
+        if(!decl->tval.type){
             auto tv = nextTypeVar();
-            n->decls[0]->tval.type = nextTypeVar();
+            decl->tval.type = nextTypeVar();
             n->setType(tv);
-        }else if(auto *fnty = try_cast<AnFunctionType>(n->decls[0]->tval.type)){
-            cout << anTypeToColoredStr(fnty) << "      " << copyWithNewTypeVars(fnty) << endl;
+        }else if(auto *fnty = try_cast<AnFunctionType>(decl->tval.type)){
             n->setType(copyWithNewTypeVars(fnty));
         }else{
-            n->setType(n->decls[0]->tval.type);
+            n->setType(decl->tval.type);
         }
     }
 
@@ -236,13 +244,14 @@ namespace ante {
             paramTypes.push_back(p->getType());
         }
 
-        n->child->accept(*this);
-
         if(n->returnType){
             n->setType(AnFunctionType::get(toAnType(n->returnType.get()), paramTypes));
         }else{
             n->setType(AnFunctionType::get(nextTypeVar(), paramTypes));
         }
+
+        if(n->child)
+            n->child->accept(*this);
 
         // finish inference for functions early
         ConstraintFindingVisitor step2;
@@ -250,6 +259,8 @@ namespace ante {
         auto constraints = step2.getConstraints();
         auto substitutions = unify(constraints);
         SubstitutingVisitor::substituteIntoAst(n, substitutions);
+
+        cout << n->name << " : " << anTypeToStr(n->getType()) << endl;
     }
 
     void TypeInferenceVisitor::visit(DataDeclNode *n){

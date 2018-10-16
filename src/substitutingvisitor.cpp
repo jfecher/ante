@@ -105,7 +105,8 @@ namespace ante {
     }
 
     void SubstitutingVisitor::visit(NamedValNode *n){
-        n->typeExpr->accept(*this);
+        if(n->typeExpr)
+            n->typeExpr->accept(*this);
         n->setType(applySubstitutions(substitutions, n->getType()));
     }
 
@@ -161,7 +162,8 @@ namespace ante {
             p->accept(*this);
         }
 
-        n->child->accept(*this);
+        if(n->child)
+            n->child->accept(*this);
         n->setType(applySubstitutions(substitutions, n->getType()));
     }
 

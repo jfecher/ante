@@ -192,7 +192,8 @@ namespace ante {
     }
 
     void ConstraintFindingVisitor::visit(NamedValNode *n){
-        n->typeExpr->accept(*this);
+        if(n->typeExpr)
+            n->typeExpr->accept(*this);
     }
 
     void ConstraintFindingVisitor::visit(VarNode *n){}
@@ -241,10 +242,13 @@ namespace ante {
         for(auto *p : *n->params){
             p->accept(*this);
         }
-        n->child->accept(*this);
 
-        auto fnty = try_cast<AnFunctionType>(n->getType());
-        constraints.emplace_back(fnty->retTy, n->child->getType());
+        if(n->child){
+            n->child->accept(*this);
+
+            auto fnty = try_cast<AnFunctionType>(n->getType());
+            constraints.emplace_back(fnty->retTy, n->child->getType());
+        }
     }
 
     void ConstraintFindingVisitor::visit(DataDeclNode *n){}

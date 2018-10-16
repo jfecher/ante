@@ -5,6 +5,7 @@
 #include "uniontag.h"
 #include "nodecl.h"
 #include "scopeguard.h"
+#include "types.h"
 
 using namespace std;
 
@@ -263,6 +264,8 @@ namespace ante {
             return *l + "." + *r;
         }else if(VarNode *vn = dynamic_cast<VarNode*>(n)){
             return vn->name;
+        }else if(TypeNode *tn = dynamic_cast<TypeNode*>(n)){
+            return typeNodeToStr(tn);
         }else{
             return std::nullopt;
         }
