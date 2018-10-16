@@ -134,8 +134,10 @@ namespace ante {
                             + " were given", n->lval->loc);
                 }
 
+                auto argtup = static_cast<parser::TupleNode*>(n->rval.get());
+
                 for(size_t i = 0; i < args->extTys.size(); i++){
-                    constraints.emplace_back(args->extTys[i], fnty->extTys[i], n->loc);
+                    constraints.emplace_back(args->extTys[i], fnty->extTys[i], argtup->exprs[i]->loc);
                 }
                 constraints.emplace_back(n->getType(), fnty->retTy, n->loc);
             }
