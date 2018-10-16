@@ -132,6 +132,7 @@ namespace ante {
                     error("Function takes " + to_string(fnty->extTys.size())
                             + " arguments but " + to_string(args->extTys.size())
                             + " were given", n->lval->loc);
+                    return;
                 }
 
                 auto argtup = static_cast<parser::TupleNode*>(n->rval.get());

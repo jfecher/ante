@@ -299,9 +299,14 @@ namespace ante {
 
         for(auto &p : mergedCompUnits->userTypes){
             if(auto *pt = try_cast<AnProductType>(p.second)){
-                for(auto &field : pt->fieldNames){
-                    if(field == vn->name)
+                for(size_t i = 0; i < pt->fieldNames.size(); i++){
+                    auto &field = pt->fieldNames[i];
+                    if(field == vn->name){
+                        auto *fakeDecl = new Variable(field, vn);
+                        fakeDecl->tval.type = pt->fields[i];
+                        vn->decls.push_back(fakeDecl);
                         return;
+                    }
                 }
             }
         }
