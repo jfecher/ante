@@ -3,6 +3,7 @@
 
 #include "parser.h"
 #include "antype.h"
+#include <tuple>
 
 namespace ante {
     
@@ -11,10 +12,10 @@ namespace ante {
 
         DECLARE_NODE_VISIT_METHODS();
 
-        std::list<std::pair<AnType*, AnType*>> getConstraints() const;
+        std::list<std::tuple<AnType*, AnType*, LOC_TY&>> getConstraints() const;
 
         private:
-            std::list<std::pair<AnType*, AnType*>> constraints;
+            std::list<std::tuple<AnType*, AnType*, LOC_TY&>> constraints;
     };
 }
 

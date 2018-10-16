@@ -125,20 +125,19 @@ namespace ante {
     }
 
     template<class T>
-    Substitutions unifyExts(std::vector<T*> const& exts1, std::vector<T*> const& exts2){
+    Substitutions unifyExts(std::vector<T*> const& exts1, std::vector<T*> const& exts2, LOC_TY &loc){
         if(exts1.size() != exts2.size()){
-            LOC_TY loc;
             error("Types are of varying sizes", loc);
         }
 
-        std::list<std::pair<AnType*, AnType*>> ret;
+        std::list<std::tuple<AnType*, AnType*, LOC_TY&>> ret;
         for(size_t i = 0; i < exts1.size(); i++)
-            ret.emplace_back(exts1[i], exts2[i]);
+            ret.emplace_back(exts1[i], exts2[i], loc);
         return unify(ret);
     }
 
 
-    Substitutions unifyOne(AnType *t1, AnType *t2){
+    Substitutions unifyOne(AnType *t1, AnType *t2, LOC_TY &loc){
         auto tv1 = try_cast<AnTypeVarType>(t1);
         auto tv2 = try_cast<AnTypeVarType>(t2);
 
@@ -149,51 +148,50 @@ namespace ante {
         }
 
         if(t1->typeTag != t2->typeTag){
-            LOC_TY loc;
             error("Mismatched types " + anTypeToColoredStr(t1) + " and " + anTypeToColoredStr(t2), loc);
             return {};
         }
 
-        std::list<std::pair<AnType*, AnType*>> ret;
+        std::list<std::tuple<AnType*, AnType*, LOC_TY&>> ret;
 
         if(!t1->isGeneric && !t2->isGeneric)
             return {};
 
         if(auto ptr1 = try_cast<AnPtrType>(t1)){
             auto ptr2 = try_cast<AnPtrType>(t2);
-            ret.emplace_back(ptr1->extTy, ptr2->extTy);
+            ret.emplace_back(ptr1->extTy, ptr2->extTy, loc);
             return unify(ret);
 
         }else if(auto arr1 = try_cast<AnArrayType>(t1)){
             auto arr2 = try_cast<AnArrayType>(t2);
-            ret.emplace_back(arr1->extTy, arr2->extTy);
+            ret.emplace_back(arr1->extTy, arr2->extTy, loc);
             return unify(ret);
 
         }else if(auto pt1 = try_cast<AnProductType>(t1)){
             auto pt2 = try_cast<AnProductType>(t2);
-            return unifyExts(pt1->fields, pt2->fields);
+            return unifyExts(pt1->fields, pt2->fields, loc);
 
         }else if(auto st1 = try_cast<AnSumType>(t1)){
             auto st2 = try_cast<AnSumType>(t2);
-            return unifyExts(st1->tags, st2->tags);
+            return unifyExts(st1->tags, st2->tags, loc);
 
         }else if(auto fn1 = try_cast<AnFunctionType>(t1)){
             auto fn2 = try_cast<AnFunctionType>(t2);
             if(fn1->extTys.size() != fn2->extTys.size()){
-                LOC_TY loc;
                 error("Types are of varying sizes", loc);
+                return {};
             }
 
-            std::list<std::pair<AnType*, AnType*>> ret;
+            std::list<std::tuple<AnType*, AnType*, LOC_TY&>> ret;
             for(size_t i = 0; i < fn1->extTys.size(); i++)
-                ret.emplace_back(fn1->extTys[i], fn2->extTys[i]);
+                ret.emplace_back(fn1->extTys[i], fn2->extTys[i], loc);
 
-            ret.emplace_back(fn1->retTy, fn2->retTy);
+            ret.emplace_back(fn1->retTy, fn2->retTy, loc);
             return unify(ret);
 
         }else if(auto tup1 = try_cast<AnAggregateType>(t1)){
             auto tup2 = try_cast<AnAggregateType>(t2);
-            return unifyExts(tup1->extTys, tup2->extTys);
+            return unifyExts(tup1->extTys, tup2->extTys, loc);
 
         }else{
             return {};
@@ -202,8 +200,8 @@ namespace ante {
     }
 
 
-    Substitutions unify(std::list<std::pair<AnType*, AnType*>> const& list,
-            std::list<std::pair<AnType*, AnType*>>::iterator cur){
+    Substitutions unify(std::list<std::tuple<AnType*, AnType*, LOC_TY&>> const& list,
+            std::list<std::tuple<AnType*, AnType*, LOC_TY&>>::iterator cur){
 
         if(cur == list.end()){
             return {};
@@ -212,7 +210,8 @@ namespace ante {
             auto t2 = unify(list, ++cur);
 
             try{
-                auto t1 = unifyOne(applySubstitutions(t2, p.first), applySubstitutions(t2, p.second));
+                auto t1 = unifyOne(applySubstitutions(t2, std::get<0>(p)),
+                        applySubstitutions(t2, std::get<1>(p)), std::get<2>(p));
 
                 Substitutions ret = t1;
                 ret.insert(ret.end(), t2.begin(), t2.end());
@@ -224,7 +223,7 @@ namespace ante {
         }
     }
 
-    Substitutions unify(std::list<std::pair<AnType*, AnType*>>& cur){
+    Substitutions unify(std::list<std::tuple<AnType*, AnType*, LOC_TY&>>& cur){
         return unify(cur, cur.begin());
     }
 }

@@ -238,6 +238,9 @@ namespace ante {
     }
 
     void TypeInferenceVisitor::visit(FuncDeclNode *n){
+        if(n->getType())
+            return;
+
         vector<AnType*> paramTypes;
         for(auto *p : *n->params){
             p->accept(*this);
@@ -259,8 +262,6 @@ namespace ante {
         auto constraints = step2.getConstraints();
         auto substitutions = unify(constraints);
         SubstitutingVisitor::substituteIntoAst(n, substitutions);
-
-        cout << n->name << " : " << anTypeToStr(n->getType()) << endl;
     }
 
     void TypeInferenceVisitor::visit(DataDeclNode *n){

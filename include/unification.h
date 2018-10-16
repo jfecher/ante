@@ -2,6 +2,7 @@
 #define AN_UNIFICATION_H
 
 #include "antype.h"
+#include <tuple>
 
 namespace ante {
     using Substitutions = std::list<std::pair<std::string, AnType*>>;
@@ -10,7 +11,7 @@ namespace ante {
      * Returns a new substituted type or t if name was not contained within */
     AnType* substitute(AnType *u, std::string const& name, AnType *t);
 
-    Substitutions unify(std::list<std::pair<AnType*, AnType*>>& list);
+    Substitutions unify(std::list<std::tuple<AnType*, AnType*, LOC_TY&>>& list);
 
     AnType* applySubstitutions(Substitutions const& substitutions, AnType *t);
 
