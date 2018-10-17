@@ -69,21 +69,25 @@ void printErrLine(const yy::location& loc, ErrorType t){
     string s;
     getline(f, s);
 
-    auto col_start = loc.begin.column;
-
-    cout << s;
+    for(size_t i = 0; i < s.size(); i++){
+        if(i == loc.begin.column - 1){
+            printErrorTypeColor(t);
+        }else if(i == loc.end.column){
+            cout << AN_CONSOLE_RESET;
+        }
+        cout << s[i];
+    }
 
     //draw arrow
-    putchar('\n');
-    printErrorTypeColor(t);
+    if(!colored_output){
+        putchar('\n');
+        printErrorTypeColor(t);
+        unsigned int i = 1;
 
-    unsigned int i = 1;
-
-    //skip to begin pos
-    for(; i < col_start; i++) putchar(' ');
-
-    //draw arrow until end pos
-    for(; i <= loc.end.column; i++) putchar('^');
+        //skip to begin pos and draw arrow until end pos
+        for(; i < loc.begin.column; i++) putchar(' ');
+        for(; i <= loc.end.column; i++) putchar('^');
+    }
 
     clearColor();
 }
