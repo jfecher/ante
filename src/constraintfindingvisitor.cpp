@@ -250,7 +250,8 @@ namespace ante {
             n->child->accept(*this);
 
             auto fnty = try_cast<AnFunctionType>(n->getType());
-            constraints.emplace_back(fnty->retTy, n->child->getType(), n->loc);
+            if(fnty->retTy->typeTag != TT_Void)
+                constraints.emplace_back(fnty->retTy, n->child->getType(), n->loc);
         }
     }
 
