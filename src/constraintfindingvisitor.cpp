@@ -128,16 +128,23 @@ namespace ante {
                 constraints.emplace_back(n->lval->getType(), fnty, n->loc);
             }else{
                 auto args = try_cast<AnAggregateType>(n->rval->getType());
-                if(args->extTys.size() != fnty->extTys.size()){
-                    error("Function takes " + to_string(fnty->extTys.size())
-                            + " arguments but " + to_string(args->extTys.size())
-                            + " were given", n->lval->loc);
-                    return;
+
+                size_t paramc = fnty->extTys.size();
+                size_t argc = args->extTys.size();
+                if(argc != paramc){
+                    // If this is not a single () being applied to a no-parameter function
+                    if(!(argc == 1 && paramc == 0 && args->extTys[0]->typeTag == TT_Void)){
+                        string weregiven = argc == 1 ? " was given" : " were given";
+                        error("Function takes " + to_string(paramc)
+                                + " argument(s) but " + to_string(argc)
+                                + weregiven, n->lval->loc);
+                        return;
+                    }
                 }
 
                 auto argtup = static_cast<parser::TupleNode*>(n->rval.get());
 
-                for(size_t i = 0; i < args->extTys.size(); i++){
+                for(size_t i = 0; i < fnty->extTys.size(); i++){
                     constraints.emplace_back(args->extTys[i], fnty->extTys[i], argtup->exprs[i]->loc);
                 }
                 constraints.emplace_back(n->getType(), fnty->retTy, n->loc);
