@@ -1,0 +1,34 @@
+
+fun id: x = x
+
+
+fun min: a, b =
+    if a < b then a
+    else b
+
+
+fun implies: c, d = not c or d
+
+
+let lamb = fun a, b = a + b
+
+
+fun add1: n -> i32
+    n + 1
+
+
+let res1 = id 1
+
+let res2 = id "two"
+
+let res3 = id 4.4
+
+let res4 = min 5 3
+
+let lamb2 = lamb
+
+let res5 = lamb2 55 23
+
+let res6 = add1 3
+
+let res7 = implies false true
