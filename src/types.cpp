@@ -133,8 +133,8 @@ Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt, bool force){
         ext = getLargestExt(c, st, force);
 
     vector<Type*> tys;
-    if(auto *aggty = try_cast<AnAggregateType>(ext)){
-        for(auto *e : aggty->extTys){
+    if(auto *aggty = try_cast<AnProductType>(ext)){
+        for(auto *e : aggty->fields){
             auto *llvmTy = c->anTypeToLlvmType(e, force);
             if(!llvmTy->isVoidTy())
                 tys.push_back(llvmTy);

@@ -90,25 +90,6 @@ int main(int argc, const char **argv){
 
     capi::init();
 
-    if(argc > 1){
-        string* s = new string(argv[1]);
-        setLexer(new Lexer(s));
-        yy::parser p{};
-        int flag = p.parse();
-        if(flag == PE_OK){
-            Node* root = parser::getRootNode();
-            NameResolutionVisitor v;
-            root->accept(v);
-            if(v.hasError())
-                return 1;
-
-            TypeInferenceVisitor::infer(root);
-            parser::printBlock(root, 0);
-            delete root;
-        }
-    }
-
-    /*
     auto *args = parseArgs(argc, argv);
     if(args->hasArg(Args::Help)) printHelp();
     if(args->hasArg(Args::NoColor)) colored_output = false;
@@ -127,7 +108,6 @@ int main(int argc, const char **argv){
 
     if(args->hasArg(Args::Eval) or (args->args.empty() && args->inputFiles.empty()))
         Compiler(0).eval();
-    */
 
     if(yylexer)
         delete yylexer;

@@ -248,7 +248,7 @@ namespace ante {
         /** Returns true if this type is a tuple, function, or (a declared) data type */
         static bool istype(const AnType *t){
             return t->typeTag == TT_Tuple or t->typeTag == TT_Function
-                or t->typeTag == TT_Data or t->typeTag == TT_MetaFunction;
+                or t->typeTag == TT_MetaFunction;
         }
     };
 

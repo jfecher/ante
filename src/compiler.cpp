@@ -31,6 +31,7 @@
 #include "target.h"
 #include "nameresolution.h"
 #include "yyparser.h"
+#include "typeinference.h"
 
 using namespace std;
 using namespace llvm;
@@ -1373,6 +1374,14 @@ Compiler::Compiler(const char *_fileName, bool lib, shared_ptr<LLVMContext> llvm
         }
     }
 
+    RootNode* root = parser::getRootNode();
+    NameResolutionVisitor v;
+    root->accept(v);
+    if(v.hasError())
+        errFlag = true;
+    TypeInferenceVisitor::infer(root);
+    this->ast = root;
+
     auto fileNameWithoutExt = removeFileExt(fileName);
 
     //Add this module to the cache to ensure it is not compiled twice
@@ -1408,6 +1417,13 @@ Compiler::Compiler(Compiler *c, Node *root, string modName, bool lib) :
         scope(0), optLvl(2), fnScope(1){
 
     module.reset(new llvm::Module(outFile, *ctxt));
+    this->ast = (RootNode*)root;
+
+    NameResolutionVisitor v;
+    root->accept(v);
+    if(v.hasError())
+        errFlag = true;
+    TypeInferenceVisitor::infer(root);
 }
 
 

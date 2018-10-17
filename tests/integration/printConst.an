@@ -3,5 +3,5 @@
     A basic test file for calling print functions.
 */
 
-print "Hello World!"
-printf "%s #%d\n" "Hello Friend" (3 + 4)
+puts "Hello World!".cStr
+printf ("%s #7\n".cStr) "Hello Friend"
