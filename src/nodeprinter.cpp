@@ -228,7 +228,7 @@ void PrintingVisitor::visit(NamedValNode *n){
         cout << "..."; //varargs
 
     putchar(' ');
-    cout << n->name << flush;
+    cout << n->name << ": " << anTypeToColoredStr(n->getType()) << flush;
 
     maybePrintArr(n->next.get());
 }
