@@ -797,8 +797,7 @@ void CompilingVisitor::visit(VarAssignNode *n){
 
     //otherwise, this is just a normal assign to a variable
     this->val = compileRefExpr(*this, n->ref_expr, n->expr.get());
-
-    Value *dest = ((LoadInst*)val.val)->getPointerOperand();
+    Value *dest = val.val;
 
     //compile the expression to store
     TypedValue assignExpr = CompilingVisitor::compile(c, n->expr);
