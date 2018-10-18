@@ -911,20 +911,6 @@ FuncDeclNode* findFDN(Node *list, string const& basename){
 }
 
 
-string manageSelfParam(Compiler *c, FuncDeclNode *fdn, string &mangledName){
-    auto self_loc = mangledName.find(AN_MANGLED_SELF);
-    if(self_loc != string::npos){
-        if(!c->compCtxt->objTn)
-            c->compErr("Function must be a method to have a self parameter", fdn->params->loc);
-
-        mangledName.replace(self_loc, strlen(AN_MANGLED_SELF), "_" + typeNodeToStr(c->compCtxt->objTn));
-        fdn->params->typeExpr.release();
-        fdn->params->typeExpr.reset(c->compCtxt->objTn);
-    }
-    return mangledName;
-}
-
-
 void CompilingVisitor::visit(ExtNode *n){
     this->val = c->getVoidLiteral();
 }

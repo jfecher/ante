@@ -355,9 +355,6 @@ FuncDecl* shallow_copy(FuncDecl* fd, string &mangledName){
     return cpy;
 }
 
-//Defined in compiler.cpp
-string manageSelfParam(Compiler *c, FuncDeclNode *fdn, string &mangledName);
-
 
 /**
  * Returns true if the given function name is a declaration
