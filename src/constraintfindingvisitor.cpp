@@ -24,8 +24,8 @@ namespace ante {
             m->accept(*this);
         for(auto &m : n->extensions)
             m->accept(*this);
-        for(auto &m : n->funcs)
-            m->accept(*this);
+        //for(auto &m : n->funcs)
+        //    m->accept(*this);
 
         for(auto &m : n->main){
             m->accept(*this);
