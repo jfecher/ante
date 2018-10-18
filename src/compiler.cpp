@@ -16,6 +16,7 @@
 #include <llvm/ExecutionEngine/SectionMemoryManager.h>
 #include <llvm/ExecutionEngine/GenericValue.h>
 #include <llvm/Transforms/IPO/AlwaysInliner.h>
+#include <llvm/Transforms/IPO/PassManagerBuilder.h>
 
 #include <cstdio>
 #include <cstdlib>
@@ -1109,22 +1110,15 @@ void CompilingVisitor::visit(RootNode *n){
  * Determines which passes should be added.  With 3 being
  * all passes.
  */
-void addPasses(legacy::PassManager &pm, llvm::Module *m, char optLvl){
+void addPasses(llvm::Module *m, char optLvl){
     if(optLvl > 0){
-        llvm::FunctionAnalysisManager fam;
-        llvm::PassBuilder builder;
-        builder.registerFunctionAnalyses(fam);
+        llvm::verifyModule(*m, &dbgs());
 
-        auto opt = optLvl == 1 ? PassBuilder::OptimizationLevel::O1
-                 : optLvl == 2 ? PassBuilder::OptimizationLevel::O2
-                 : PassBuilder::OptimizationLevel::O3;
-
-        auto fpm = builder.buildFunctionSimplificationPipeline(opt,
-                PassBuilder::ThinLTOPhase::None);
-
-        for(auto &f : m->functions()){
-            fpm.run(f, fam);
-        }
+        llvm::legacy::PassManager pm;
+        llvm::PassManagerBuilder pmb;
+        pmb.OptLevel = optLvl;
+        pmb.populateModulePassManager(pm);
+        pm.run(*m);
     }
 }
 
@@ -1146,9 +1140,7 @@ void Compiler::compile(){
     builder.CreateRet(ConstantInt::get(*ctxt, APInt(32, 0)));
 
     if(!errFlag && !isLib){
-        legacy::PassManager pm;
-        addPasses(pm, module.get(), optLvl);
-        pm.run(*module);
+        addPasses(module.get(), optLvl);
     }
 
     //flag this module as compiled.
