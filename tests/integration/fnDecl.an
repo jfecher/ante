@@ -4,9 +4,9 @@
 */
 fun printMsg: bool b
     if b then
-        puts "Hello World!"
+        puts "Hello World!".cStr
     else
-        puts "Goodbye World!"
+        puts "Goodbye World!".cStr
 
 
 fun divisibleByThree: i32 i =
@@ -17,17 +17,17 @@ fun isEven: i32 x =
     x % 2 = 0
 
 
-fun fact: i32 x -> i32
+fun fact: i32 x =
     if x <= 1 then 1
     else x * fact(x-1)
 
 
 printMsg true
 if divisibleByThree 23 then
-   puts "23 is divisible by 3"
+   puts "23 is divisible by 3".cStr
 
 if isEven 4 then
-    printf "fact(5) = %d\n" (fact 5)
+    printf "fact(5) = %d\n".cStr (fact 5)
 
 printMsg (1 + 1 != 2)
 
