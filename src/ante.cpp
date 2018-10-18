@@ -29,26 +29,15 @@ extern llvm::StringMap<unique_ptr<Module>> allCompiledModules;
 extern list<unique_ptr<Module>> allMergedCompUnits;
 
 /**
- * @brief Parses a file and prints the resulting parse tree
+ * @brief Prints the parse tree annotated with names and types
  *
- * @param fileName The file to parse
+ * @param root The RootNode of the parse tree to print out
  */
-void parseFile(string &fileName){
-    //parse and print parse tree
-    setLexer(new Lexer(&fileName));
-    yy::parser p{};
-    int flag = p.parse();
-    if(flag == PE_OK){
-        Node* root = parser::getRootNode();
-        parser::printBlock(root, 0);
-        delete root;
-    }else{
-        //print out remaining errors
-        int tok;
-        yy::location loc;
-        while((tok = yylexer->next(&loc)) != Tok_Newline && tok != 0);
-        while(p.parse() != PE_OK && yylexer->peek() != 0);
-    }
+void showParseTree(RootNode *root){
+    // Must annotate parse tree with name/type information first
+    NameResolutionVisitor::resolve(root);
+    TypeInferenceVisitor::infer(root);
+    parser::printBlock(root, 0);
 }
 
 /**
@@ -97,7 +86,7 @@ int main(int argc, const char **argv){
     for(auto input : args->inputFiles){
         Compiler ante{input.c_str()};
         if(args->hasArg(Args::Parse)){
-            parser::printBlock(ante.getAST(), 0);
+            showParseTree(ante.getAST());
         }
 
         ante.processArgs(args);
