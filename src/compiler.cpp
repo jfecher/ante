@@ -1037,6 +1037,9 @@ void compileAll(Compiler *c, vector<T> &vec){
 void Compiler::scanAllDecls(RootNode *root){
     NameResolutionVisitor n;
     root->accept(n);
+    if(n.hasError()) errFlag = true;
+
+    TypeInferenceVisitor::infer(root);
 }
 
 void Compiler::eval(){
@@ -1363,15 +1366,10 @@ Compiler::Compiler(const char *_fileName, bool lib, shared_ptr<LLVMContext> llvm
             fputs("Syntax error, aborting.\n", stderr);
             exit(flag);
         }
-    }
 
-    RootNode* root = parser::getRootNode();
-    NameResolutionVisitor v;
-    root->accept(v);
-    if(v.hasError())
-        errFlag = true;
-    TypeInferenceVisitor::infer(root);
-    this->ast = root;
+        RootNode* root = parser::getRootNode();
+        this->ast = root;
+    }
 
     auto fileNameWithoutExt = removeFileExt(fileName);
 
@@ -1409,12 +1407,6 @@ Compiler::Compiler(Compiler *c, Node *root, string modName, bool lib) :
 
     module.reset(new llvm::Module(outFile, *ctxt));
     this->ast = (RootNode*)root;
-
-    NameResolutionVisitor v;
-    root->accept(v);
-    if(v.hasError())
-        errFlag = true;
-    TypeInferenceVisitor::infer(root);
 }
 
 
