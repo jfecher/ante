@@ -80,32 +80,12 @@ TypedValue Compiler::callFn(string name, vector<TypedValue> args){
 vector<Type*> getParamTypes(Compiler *c, FuncDecl *fd){
     vector<Type*> paramTys;
 
-    if(fd->type){
-        paramTys.reserve(fd->type->extTys.size());
-        for(auto *paramTy : fd->type->extTys){
-            auto *llvmty = parameterize(c, paramTy);
-            paramTys.push_back(llvmty);
-        }
-        return paramTys;
-    }
+    auto fnty = try_cast<AnFunctionType>(fd->tval.type);
 
-    paramTys.reserve(4);
-    auto *nvn = fd->getFDN()->params.get();
-    while(nvn){
-        TypeNode *paramTyNode = (TypeNode*)nvn->typeExpr.get();
-        if(paramTyNode == (void*)1){ //self parameter
-            //Self parameters originally have 0x1 as their TypeNodes, but
-            //this should be replaced when visit(FuncDeclNode*) is called.
-            //Throw an error if that check was somehow bypassed
-            c->compErr("Stray self parameter", nvn->loc);
-        }else if(paramTyNode){
-            auto *antype = toAnType(paramTyNode);
-            auto *correctedType = parameterize(c, antype);
-            paramTys.push_back(correctedType);
-        }else{
-            paramTys.push_back(0); //terminating null = varargs function
-        }
-        nvn = (NamedValNode*)nvn->next.get();
+    paramTys.reserve(fnty->extTys.size());
+    for(auto *paramTy : fnty->extTys){
+        auto *llvmty = parameterize(c, paramTy);
+        paramTys.push_back(llvmty);
     }
     return paramTys;
 }
@@ -218,13 +198,9 @@ TypedValue compFnWithModifiers(Compiler *c, FuncDecl *fd, ModNode *mod){
                 if(capi::lookup(fd->getName())){
                     fn = fd->tval.val ? fd->tval : c->compFn(fd);
                     //Tag as TT_MetaFunction
-                    auto *oldTy = try_cast<AnFunctionType>(fn.type);
-                    fn.type = AnFunctionType::get(oldTy->retTy, oldTy->extTys, true);
-                    fd->tval = fn;
+                    fd->tval.val = fn.val;
                 }else{
                     fn = c->compFn(fd);
-                    fn.type = (AnType*)fn.type->addModifier(Tok_Ante);
-                    fd->tval.type = fn.type;
                 }
             }else{
                 auto *rettn = (TypeNode*)fdn->returnType.get();
@@ -236,7 +212,6 @@ TypedValue compFnWithModifiers(Compiler *c, FuncDecl *fd, ModNode *mod){
                     fnty = (AnType*)fnty->addModifier(Tok_Ante);
                 }
                 fn = TypedValue(nullptr, fnty);
-                fd->tval.type = fnty;
             }
         }else{
             fn = c->compFn(fd);
@@ -257,30 +232,13 @@ TypedValue compFnHelper(Compiler *c, FuncDecl *fd){
         return ret;
     }
 
-    //Get and translate the function's return type to an llvm::Type*
-    TypeNode *retNode = (TypeNode*)fdn->returnType.get();
-
-    vector<Type*> paramTys = getParamTypes(c, fd);
-
-    if(paramTys.size() > 0 && !paramTys.back()){ //varargs fn
-        fdn->varargs = true;
-        paramTys.pop_back();
-    }
-
     AnFunctionType *fnTy = try_cast<AnFunctionType>(fdn->getType());
-    AnType *anRetTy = fnTy->retTy;
 
-    //llvm return type and function type corresponding to the AnTypes above
-    Type *retTy = c->anTypeToLlvmType(anRetTy);
-
-    FunctionType *ft = FunctionType::get(retTy, paramTys, fdn->varargs);
+    FunctionType *ft = dyn_cast<FunctionType>(c->anTypeToLlvmType(fnTy)->getPointerElementType());
     Function *f = Function::Create(ft, Function::ExternalLinkage, fd->getMangledName(), c->module.get());
-    f->addFnAttr(Attribute::AttrKind::NoUnwind);
-    addAllArgAttrs(f, fdn->params.get());
-
 
     TypedValue ret{f, fnTy};
-    c->updateFn(ret, fd, fdn->name, fd->getMangledName());
+    fd->tval.val = f;
 
     //The above handles everything for a function declaration
     //If the function is a definition, then the body will be compiled here.
@@ -295,7 +253,6 @@ TypedValue compFnHelper(Compiler *c, FuncDecl *fd){
         //iterate through each parameter and add its value to the new scope.
         for(auto &arg : f->args()){
             NamedValNode *cParam = paramVec[i];
-            TypeNode *paramTyNode = (TypeNode*)cParam->typeExpr.get();
 
             for(size_t j = 0; j < i; j++){
                 if(cParam->name == paramVec[j]->name){
@@ -304,17 +261,11 @@ TypedValue compFnHelper(Compiler *c, FuncDecl *fd){
                 }
             }
 
-            //Again, if the function type was manually specified from a generic type
-            //binding then use that as the param type, otherwise assume it is a concrete type
-            AnType *paramTy = fd->type ?
-                    fd->type->extTys[i]
-                    : toAnType(paramTyNode);
-
-            cParam->decls[0]->tval = {&arg, paramTy};
+            cParam->decls[0]->tval.val = &arg;
             i++;
         }
 
-        //actually compile the function, and hold onto the last value
+        //Compile the function body, and hold onto the last value
         TypedValue v;
         try{
             v = CompilingVisitor::compile(c, fdn->child);
@@ -324,10 +275,10 @@ TypedValue compFnHelper(Compiler *c, FuncDecl *fd){
         }
 
         //push the final value as a return, explicit returns are already added in RetNode::compile
-        if(retNode && !dyn_cast<ReturnInst>(v.val)){
+        if(!dyn_cast<ReturnInst>(v.val)){
             auto loc = getFinalLoc(fdn->child.get());
 
-            if(retNode->typeTag == TT_Void){
+            if(fnTy->retTy->typeTag == TT_Void){
                 c->builder.CreateRetVoid();
                 fd->returns.push_back({c->getVoidLiteral(), loc});
             }else{
@@ -475,8 +426,11 @@ FuncDecl* Compiler::getMangledFuncDecl(string name, vector<AnType*> &args){
 TypedValue compFnWithArgs(Compiler *c, FuncDecl *fd, vector<AnType*> args){
     if(fd->tval.val)
         return fd->tval;
-    else
-        return c->compFn(fd);
+    else{
+        TypedValue ret = c->compFn(fd);
+        fd->tval.val = ret.val;
+        return ret;
+    }
 }
 
 

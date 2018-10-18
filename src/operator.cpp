@@ -1163,10 +1163,28 @@ vector<Value*> adaptArgsToCompilerAPIFn(Compiler *c, vector<Value*> &args, vecto
 }
 
 
-TypedValue compFnCall(Compiler *c, Node *l, Node *r){
+TypedValue getFunction(Compiler *c, BinOpNode *bop){
+    Declaration *decl = bop->decls[0];
+    if(decl->tval.val){
+        return decl->tval;
+    }else if(decl->isFuncDecl()){
+        auto res = c->compFn(static_cast<FuncDecl*>(decl));
+        decl->tval.val = res.val;
+        return res;
+    }else{
+        // error! (how did this pass type check?)
+        return {};
+    }
+}
+
+
+TypedValue compFnCall(Compiler *c, BinOpNode *bop){
     //used to type-check each parameter later
     vector<TypedValue> typedArgs;
     vector<Value*> args;
+
+    Node *l = bop->lval.get();
+    Node *r = bop->rval.get();
 
     //add all remaining arguments
     if(auto *tup = dynamic_cast<TupleNode*>(r)){
@@ -1194,7 +1212,7 @@ TypedValue compFnCall(Compiler *c, Node *l, Node *r){
     }
 
     //try to compile the function now that the parameters are compiled.
-    TypedValue tvf = {}; // TODO: Re-add searchForFunction(c, l, typedArgs);
+    TypedValue tvf = getFunction(c, bop); // TODO: Re-add searchForFunction(c, l, typedArgs);
 
     /*
      * TODO: re-add
@@ -1447,7 +1465,7 @@ void CompilingVisitor::visit(BinOpNode *n){
         this->val = c->compMemberAccess(n->lval.get(), (VarNode*)n->rval.get(), n);
         return;
     }else if(n->op == '('){
-        this->val = compFnCall(c, n->lval.get(), n->rval.get());
+        this->val = compFnCall(c, n);
         return;
     }else if(n->op == Tok_And){
         this->val = c->compLogicalAnd(n->lval.get(), n->rval.get(), n);
