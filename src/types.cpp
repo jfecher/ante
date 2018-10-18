@@ -444,12 +444,17 @@ Type* Compiler::anTypeToLlvmType(const AnType *ty, bool force){
                 return updateLlvmTypeBinding(this, dt, force);
         }
         case TT_Function: case TT_MetaFunction: {
-            auto *f = try_cast<AnAggregateType>(ty);
-            for(size_t i = 1; i < f->extTys.size(); i++){
+            auto *f = try_cast<AnFunctionType>(ty);
+            for(size_t i = 0; i < f->extTys.size(); i++){
+                if(auto *tvt = try_cast<AnTypeVarType>(f->extTys[i])){
+                    if(tvt->name.find("!va") != string::npos){
+                        return FunctionType::get(anTypeToLlvmType(f->retTy, force), tys, true)->getPointerTo();
+                    }
+                }
                 tys.push_back(anTypeToLlvmType(f->extTys[i], force));
             }
 
-            return FunctionType::get(anTypeToLlvmType(f->extTys[0], force), tys, false)->getPointerTo();
+            return FunctionType::get(anTypeToLlvmType(f->retTy, force), tys, false)->getPointerTo();
         }
         case TT_TypeVar: {
             auto *tvt = try_cast<AnTypeVarType>(ty);
