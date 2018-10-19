@@ -1172,8 +1172,7 @@ TypedValue getFunction(Compiler *c, BinOpNode *bop){
         decl->tval.val = res.val;
         return res;
     }else{
-        // error! (how did this pass type check?)
-        return {};
+        return CompilingVisitor::compile(c, decl->definition);
     }
 }
 
@@ -1212,7 +1211,7 @@ TypedValue compFnCall(Compiler *c, BinOpNode *bop){
     }
 
     //try to compile the function now that the parameters are compiled.
-    TypedValue tvf = getFunction(c, bop); // TODO: Re-add searchForFunction(c, l, typedArgs);
+    TypedValue tvf = getFunction(c, bop);
 
     /*
      * TODO: re-add

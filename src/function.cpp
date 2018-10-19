@@ -316,7 +316,13 @@ bool isDecl(string &name){
 }
 
 
-void CompilingVisitor::visit(FuncDeclNode *n){}
+void CompilingVisitor::visit(FuncDeclNode *n){
+    // Only lambdas need to be compiled immediately.
+    // Other functions can be done lazily when called.
+    if(n->name.empty() && n->decl->isFuncDecl()){
+        val = c->compFn(static_cast<FuncDecl*>(n->decl));
+    }
+}
 
 
 FuncDecl* getFuncDeclFromVec(vector<shared_ptr<FuncDecl>> &l, string const& mangledName){
