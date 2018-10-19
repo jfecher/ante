@@ -13,7 +13,7 @@ fun implies: c, d = not c or d
 let lamb = fun a, b = a + b
 
 
-fun add1: n -> i32
+fun add1: n =
     n + 1
 
 
