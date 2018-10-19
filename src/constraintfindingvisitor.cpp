@@ -131,7 +131,8 @@ namespace ante {
 
                 size_t paramc = fnty->extTys.size();
                 size_t argc = args->extTys.size();
-                if(argc != paramc){
+
+                if(argc != paramc && !fnty->isVarArgs()){
                     // If this is not a single () being applied to a no-parameter function
                     if(!(argc == 1 && paramc == 0 && args->extTys[0]->typeTag == TT_Void)){
                         string weregiven = argc == 1 ? " was given" : " were given";
@@ -144,8 +145,23 @@ namespace ante {
 
                 auto argtup = static_cast<parser::TupleNode*>(n->rval.get());
 
-                for(size_t i = 0; i < fnty->extTys.size(); i++){
-                    constraints.emplace_back(args->extTys[i], fnty->extTys[i], argtup->exprs[i]->loc);
+                if(!fnty->isVarArgs()){
+                    for(size_t i = 0; i < fnty->extTys.size(); i++){
+                        constraints.emplace_back(args->extTys[i], fnty->extTys[i], argtup->exprs[i]->loc);
+                    }
+                }else{
+                    size_t i = 0;
+                    for(; i < fnty->extTys.size() - 1; i++){
+                        constraints.emplace_back(args->extTys[i], fnty->extTys[i], argtup->exprs[i]->loc);
+                    }
+
+                    // typecheck var args as a tuple of additional arguments, though they should always be
+                    // matched against a typevar anyway so these constraints should never fail.
+                    vector<AnType*> varargs;
+                    for(; i < args->extTys.size(); i++){
+                        varargs.push_back(args->extTys[i]);
+                    }
+                    constraints.emplace_back(AnAggregateType::get(TT_Tuple, varargs), fnty->extTys.back(), n->loc);
                 }
                 constraints.emplace_back(n->getType(), fnty->retTy, n->loc);
             }

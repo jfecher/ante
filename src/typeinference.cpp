@@ -166,7 +166,7 @@ namespace ante {
             n->setType(n->typeExpr->getType());
         }else{
             auto tv = nextTypeVar();
-            auto va = AnTypeVarType::get(tv->name + "!va");
+            auto va = AnTypeVarType::get(tv->name + "...");
             n->setType(va);
         }
     }

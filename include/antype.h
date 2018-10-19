@@ -336,6 +336,12 @@ namespace ante {
             return false;
         }
 
+        bool isVarArgs() const noexcept {
+            size_t len = name.size();
+            // Using string::find would be more terse but would needlessly check the whole string
+            return len > 3 && name[len-3] == '.' && name[len-2] == '.' && name[len-1] == '.';;
+        }
+
         static bool istype(const AnType *t){
             return t->typeTag == TT_TypeVar;
         }
@@ -369,6 +375,11 @@ namespace ante {
 
         virtual bool isModifierType() const noexcept override {
             return false;
+        }
+
+        bool isVarArgs() const noexcept {
+            return !extTys.empty() && extTys.back()->typeTag == TT_TypeVar
+                && try_cast<AnTypeVarType>(extTys.back())->isVarArgs();
         }
 
         /** Returns true if this type is a TT_Function or TT_MetaFunction */

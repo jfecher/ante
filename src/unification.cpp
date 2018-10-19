@@ -37,6 +37,9 @@ namespace ante {
                 return it->second;
             }else{
                 auto newtv = nextTypeVar();
+                if(tv->isVarArgs())
+                    newtv = AnTypeVarType::get(newtv->name + "...");
+
                 map[tv->name] = newtv;
                 return newtv;
             }

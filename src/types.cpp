@@ -447,7 +447,7 @@ Type* Compiler::anTypeToLlvmType(const AnType *ty, bool force){
             auto *f = try_cast<AnFunctionType>(ty);
             for(size_t i = 0; i < f->extTys.size(); i++){
                 if(auto *tvt = try_cast<AnTypeVarType>(f->extTys[i])){
-                    if(tvt->name.find("!va") != string::npos){
+                    if(tvt->isVarArgs()){
                         return FunctionType::get(anTypeToLlvmType(f->retTy, force), tys, true)->getPointerTo();
                     }
                 }
