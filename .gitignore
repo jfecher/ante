@@ -27,3 +27,5 @@ CMakeCache.txt
 CMakeFiles/*
 compile_commands.json
 .idea/*
+Makefile
+llvm_build/*

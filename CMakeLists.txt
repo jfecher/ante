@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.9)
-project(Ante)
+project(ante)
 
 set(PROJECT_VERSION_MAJOR 0)
 set(PROJECT_VERSION_MINOR 9)
@@ -30,18 +30,7 @@ if(NOT EXISTS "${PROJECT_SOURCE_DIR}/llvm/CMakeLists.txt")
     message(FATAL_ERROR "The submodules were not downloaded! GIT_SUBMODULE was turned off or failed. Please update submodules and try again.")
 endif()
 
-# cmake -DCMAKE_INSTALL_PREFIX=/tmp/llvm -P cmake_install.cmake
-
-
-#include_directories(${CMAKE_BINARY_DIR}/llvm/include)
-#add_library(LLVM SHARED IMPORTED)
-#set_target_properties( LLVM PROPERTIES IMPORTED_LOCATION ${CMAKE_BINARY_DIR}/llvm/lib/libLLVM.so )
-
-#add_llvm_implicit_projects()
-#add_llvm_external_project(Ante)
-include_directories (Ante)
-
-
+# Check if llvm 8.0 exists in the system or if the submodule should be built
 find_package(LLVM 8.0 CONFIG)
 if (NOT LLVM_FOUND)
     message("System LLVM was not found, LLVM will be built from the submodule.")
@@ -67,11 +56,19 @@ if (NOT LLVM_FOUND)
 endif()
 
 
+# Add the parser generation step
+find_package(BISON)
+set(AN_PARSER_SRC ${CMAKE_SOURCE_DIR}/src/parser.cpp)
+set(AN_YYPARSER_H ${CMAKE_SOURCE_DIR}/include/yyparser.h)
+set(AN_SYNTAX_Y ${CMAKE_SOURCE_DIR}/src/syntax.y)
+message(${AN_SYNTAX_Y})
+bison_target(parser ${AN_SYNTAX_Y} ${AN_PARSER_SRC} COMPILE_FLAGS "-Lc++ -o${AN_PARSER_SRC} --defines=${AN_YYPARSER_H}")
+
 include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
 
 
-add_executable(Ante
+add_executable(ante
         include/antevalue.h
         include/antype.h
         include/args.h
@@ -84,19 +81,16 @@ add_executable(Ante
         include/function.h
         include/lazystr.h
         include/lexer.h
-        include/location.hh
         include/module.h
         include/nameresolution.h
         include/nodecl.h
         include/nodevisitor.h
         include/parser.h
         include/pattern.h
-        include/position.hh
         include/ptree.h
         include/repl.h
         include/result.h
         include/scopeguard.h
-        include/stack.hh
         include/substitutingvisitor.h
         include/target.h
         include/tokens.h
@@ -107,7 +101,7 @@ add_executable(Ante
         include/unification.h
         include/uniontag.h
         include/variable.h
-        include/yyparser.h
+        ${BISON_parser_OUTPUT_HEADER}
         src/ante.cpp
         src/antevalue.cpp
         src/antevisitor.cpp
@@ -120,23 +114,20 @@ add_executable(Ante
         src/function.cpp
         src/lazystr.cpp
         src/lexer.cpp
-        src/location.hh
         src/nameresolution.cpp
         src/nodeprinter.cpp
         src/operator.cpp
-        src/parser.cpp
+        ${BISON_parser_OUTPUT_SOURCE}
         src/pattern.cpp
-        src/position.hh
         src/ptree.cpp
         src/repl.cpp
-        src/stack.hh
         src/substitutingvisitor.cpp
         src/typeinference.cpp
         src/types.cpp
         src/unification.cpp)
 
 
-add_executable(AnteTests
+add_executable(antetests
         include/antevalue.h
         include/antype.h
         include/args.h
@@ -149,19 +140,16 @@ add_executable(AnteTests
         include/function.h
         include/lazystr.h
         include/lexer.h
-        include/location.hh
         include/module.h
         include/nameresolution.h
         include/nodecl.h
         include/nodevisitor.h
         include/parser.h
         include/pattern.h
-        include/position.hh
         include/ptree.h
         include/repl.h
         include/result.h
         include/scopeguard.h
-        include/stack.hh
         include/substitutingvisitor.h
         include/target.h
         include/tokens.h
@@ -172,7 +160,7 @@ add_executable(AnteTests
         include/unification.h
         include/uniontag.h
         include/variable.h
-        include/yyparser.h
+        ${BISON_parser_OUTPUT_HEADER}
         src/antevalue.cpp
         src/antevisitor.cpp
         src/antype.cpp
@@ -184,16 +172,13 @@ add_executable(AnteTests
         src/function.cpp
         src/lazystr.cpp
         src/lexer.cpp
-        src/location.hh
         src/nameresolution.cpp
         src/nodeprinter.cpp
         src/operator.cpp
-        src/parser.cpp
+        ${BISON_parser_OUTPUT_SOURCE}
         src/pattern.cpp
-        src/position.hh
         src/ptree.cpp
         src/repl.cpp
-        src/stack.hh
         src/substitutingvisitor.cpp
         src/typeinference.cpp
         src/types.cpp
@@ -211,8 +196,8 @@ add_executable(AnteTests
 llvm_map_components_to_libnames(llvm_libs core native bitwriter passes target all)
 
 # Link against LLVM libraries
-target_link_libraries(Ante ${llvm_libs})
+target_link_libraries(ante ${llvm_libs})
 
-target_link_libraries(AnteTests ${llvm_libs})
+target_link_libraries(antetests ${llvm_libs})
 
 # depends on targets: llvm-headers and llvm-libraries intrinsics_gen table_gen
