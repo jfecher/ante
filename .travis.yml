@@ -33,5 +33,5 @@ install:
     - sudo rm -rf /usr/include/llvm
     - sudo rm -rf /usr/include/llvm-c
 
-script: cmake .
+script: cmake . && cmake --build . && ./antetests
 
