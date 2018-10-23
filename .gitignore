@@ -6,6 +6,7 @@
 t.an
 u.an
 ante
+antetests
 bootante
 unittest
 syntax.tab.c
@@ -18,3 +19,11 @@ include/yyparser.h
 /src/position.hh
 /src/stack.hh
 /t.exe
+*.cbp
+CPack*
+cmake*
+CMakeLists.txt.user
+CMakeCache.txt
+CMakeFiles/*
+compile_commands.json
+.idea/*
