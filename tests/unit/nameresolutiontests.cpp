@@ -196,9 +196,7 @@ TEST_CASE("Function Resolution", "[nameResolution]"){
     root->main.emplace_back(p1d);
 
 
-    puts("Resolving fn...");
     NameResolutionVisitor::resolve(root);
-    puts("Resolved fn.");
 
     REQUIRE(funcA->decls.size() == 1);
     REQUIRE(funcB->decls.size() == 1);

@@ -23,7 +23,9 @@ TEST_CASE("Type Checks", "[typeEq]"){
     REQUIRE(voidPtr == AnPtrType::get(AnType::getVoid()));
 
     //basic equality
-    REQUIRE(voidTy == AnPtrType::get(AnType::getVoid()));
+    REQUIRE(voidTy == AnType::getVoid());
+
+    REQUIRE(voidTy == voidPtr->extTy);
 
     REQUIRE(voidPtr != intPtr);
 
