@@ -13,14 +13,9 @@ namespace ante {
         return find(begin(container), end(container), elem) != end(container);
     }
 
-    std::string to_string(ante::TypeBinding const& b);
-
     //overide << for vectors of type bindings
     std::ostream& operator<<(std::ostream &out,
             std::vector<std::pair<std::string, ante::AnType*>> const& vec);
-
-    //overide << for TypeCheckResult
-    std::ostream& operator<<(std::ostream &out, ante::TypeCheckResult const& tcr);
 }
 
 

@@ -7,7 +7,6 @@
 #include "function.h"
 #include "tokens.h"
 #include "types.h"
-#include "jit.h"
 #include "antevalue.h"
 #include "compapi.h"
 
@@ -666,8 +665,8 @@ void* lookupCFn(string name){
 
 
 TypedValue createMallocAndStore(Compiler *c, TypedValue &val){
-    string mallocFnName = "malloc";
-    Function* mallocFn = (Function*)c->getFunction(mallocFnName, mallocFnName).val;
+    auto *mallocTy = FunctionType::get(Type::getIntNPtrTy(*c->ctxt, 8), {Type::getIntNTy(*c->ctxt, AN_USZ_SIZE)}, false);
+    Function* mallocFn = Function::Create(mallocTy, Function::ExternalLinkage, "malloc");
 
     auto size_result = val.type->getSizeInBits(c);
     if(!size_result){
@@ -871,7 +870,8 @@ TypedValue callAnteFunction(Compiler *c, Function *main, BasicBlock *originalIns
         vector<TypedValue> const& typedArgs, vector<unique_ptr<Node>> const& argExprs,
         unique_ptr<orc::LLLazyJIT> &jit, AnType *retTy){
 
-    auto symbol = jit->lookup(jit->getMainVSO(), "AnteCall").get().getAddress();
+    auto symbol = jit->lookup("AnteCall").get().getAddress();
+
     if(symbol){
         void *res;
         if(typedArgs.empty()){
@@ -919,12 +919,14 @@ FuncDecl* compileAnteFunction(Compiler *c, string const& baseName, string const&
     return ret;
 }
 
+#include "target.h"
+
 
 TypedValue compileAndCallAnteFunction(Compiler *c, ModNode *n){
     CompilingVisitor cv{c};
 
     //and will crash llvm if we try to clone it without a ReturnInst
-    auto mainFnName = c->compCtxt->callStack[0]->getMangledName();
+    auto mainFnName = "main";
     auto main = c->module->getFunction(mainFnName);
     if(main){
         main->removeFromParent();
@@ -947,14 +949,15 @@ TypedValue compileAndCallAnteFunction(Compiler *c, ModNode *n){
     createDriverFunction(c, shellAndType.first, shellAndType.second);
 
     auto clone = llvm::CloneModule(*c->module.get());
+    auto tsm = orc::ThreadSafeModule(move(clone), std::unique_ptr<LLVMContext>(c->ctxt.get()));
 
-    std::unique_ptr<orc::ExecutionSession> es;
-    std::unique_ptr<TargetMachine> tm;
+    auto triple = Triple(AN_NATIVE_ARCH, AN_NATIVE_VENDOR, AN_NATIVE_OS);
     DataLayout dl{clone.get()};
-    LLVMContext ctxt;
+    orc::JITTargetMachineBuilder b{triple};
 
-    auto &jit = orc::LLLazyJIT::Create(move(es), move(tm), dl, ctxt).get();
-    jit->addIRModule(jit->getMainVSO(), move(clone)).success();
+    auto &jit = orc::LLLazyJIT::Create(b, dl).get();
+
+    jit->addLazyIRModule(move(tsm)).success();
 
     cleanup();
     c->module->getFunction(shellName)->removeFromParent();
@@ -967,7 +970,7 @@ TypedValue compileAndCallAnteFunction(Compiler *c, string const& baseName,
 
     //temporarily remove main function since it is unfinished
     //and will crash llvm if we try to clone it without a ReturnInst
-    auto mainFnName = c->compCtxt->callStack[0]->getMangledName();
+    auto mainFnName = "main";
     auto main = c->module->getFunction(mainFnName);
     if(main){
         main->removeFromParent();
@@ -982,14 +985,15 @@ TypedValue compileAndCallAnteFunction(Compiler *c, string const& baseName,
     auto *retTy = fd->tval.type->getFunctionReturnType();
 
     auto clone = llvm::CloneModule(*c->module);
+    auto tsm = orc::ThreadSafeModule(move(clone), std::unique_ptr<LLVMContext>(c->ctxt.get()));
 
-    std::unique_ptr<orc::ExecutionSession> es;
-    std::unique_ptr<TargetMachine> tm;
+    auto triple = Triple(AN_NATIVE_ARCH, AN_NATIVE_VENDOR, AN_NATIVE_OS);
     DataLayout dl{clone.get()};
-    LLVMContext ctxt;
+    orc::JITTargetMachineBuilder b{triple};
 
-    auto &jit = orc::LLLazyJIT::Create(move(es), move(tm), dl, ctxt).get();
-    jit->addIRModule(jit->getMainVSO(), move(clone)).success();
+    auto &jit = orc::LLLazyJIT::Create(b, dl).get();
+
+    jit->addLazyIRModule(move(tsm)).success();
 
     if(main){
         c->module->getFunctionList().push_front(main);

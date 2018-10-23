@@ -1,0 +1,3 @@
+[submodule "llvm"]
+	path = llvm
+	url = https://github.com/jfecher/llvm

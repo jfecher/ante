@@ -486,6 +486,7 @@ namespace ante {
         /** Names of each field. */
         std::vector<std::string> fieldNames;
 
+        
         /** The parent union type of this type if it is a union tag */
         AnSumType *parentUnionType;
 

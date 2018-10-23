@@ -2,11 +2,7 @@
 #include <llvm/Support/FileSystem.h>   //for r/w when outputting bitcode
 #include <llvm/Support/raw_ostream.h>  //for ostream when outputting bitcode
 #include <llvm/Passes/PassBuilder.h>
-
-#if LLVM_VERSION_MAJOR >= 6
 #include <llvm/Support/raw_os_ostream.h>
-#endif
-
 #include <llvm/Transforms/Scalar.h>    //for most passes
 #include <llvm/Transforms/IPO.h>
 #include <llvm/IR/LegacyPassManager.h>
@@ -1057,12 +1053,7 @@ Function* Compiler::createMainFn(){
         //create argc and argv global vars
         auto *argc = new GlobalVariable(*module, argcty, false, GlobalValue::PrivateLinkage, builder.getInt32(0), "argc");
         auto *argv = new GlobalVariable(*module, argvty, false, GlobalValue::PrivateLinkage, ConstantPointerNull::get(dyn_cast<PointerType>(argvty)), "argv");
-
-#if LLVM_VERSION_MAJOR < 5
-        auto args = main->getArgumentList().begin();
-#else
         auto args = main->arg_begin();
-#endif
 
         builder.CreateStore(&*args, argc);
         builder.CreateStore(&*++args, argv);
@@ -1175,12 +1166,8 @@ const Target* getTarget(){
         cerr << err << endl;
 		cerr << "Selected triple: " << AN_NATIVE_ARCH ", " AN_NATIVE_VENDOR ", " AN_NATIVE_OS << endl;
 		cerr << "\nRegistered targets:\n";
-#if LLVM_VERSION_MAJOR >= 6
         llvm::raw_os_ostream os{std::cout};
 		TargetRegistry::printRegisteredTargetsForVersion(os);
-#else
-		TargetRegistry::printRegisteredTargetsForVersion();
-#endif
         exit(1);
     }
 
@@ -1195,13 +1182,8 @@ TargetMachine* getTargetMachine(){
     string triple = Triple(AN_NATIVE_ARCH, AN_NATIVE_VENDOR, AN_NATIVE_OS).getTriple();
     TargetOptions op;
 
-#if LLVM_VERSION_MAJOR >= 6
     TargetMachine *tm = target->createTargetMachine(triple, cpu, features, op, Reloc::Model::PIC_,
             None, CodeGenOpt::Level::Aggressive);
-#else
-    TargetMachine *tm = target->createTargetMachine(triple, cpu, features, op, Reloc::Model::PIC_,
-            CodeModel::Default, CodeGenOpt::Level::Aggressive);
-#endif
 
     if(!tm){
         cerr << "Error when initializing TargetMachine.\n";

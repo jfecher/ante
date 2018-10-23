@@ -6,15 +6,9 @@ using namespace std;
 using namespace llvm;
 
 namespace ante {
-    //ante function to convert between IEEE half and IEEE single
-    //since c++ does not support an IEEE half value
-#ifndef F16_BOOT
-    extern "C" float f32_from_f16(uint16_t f);
-#else
     float f32_from_f16(uint16_t f) {
         return f;
     }
-#endif
 
     TypedValue convertTupleToTypedValue(Compiler *c, AnteValue const& arg, AnAggregateType *tn){
         if(tn->extTys.empty()){
