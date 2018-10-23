@@ -5,10 +5,10 @@ addons:
     apt:
         sources:
             - 'ubuntu-toolchain-r-test'
-            - 'llvm-toolchain-trusty-5.0'
+            # - 'llvm-toolchain-trusty-5.0'
         packages:
-            - 'llvm-5.0'
-            - 'llvm-5.0-dev'
+            # - 'llvm-5.0'
+            # - 'llvm-5.0-dev'
             - 'g++-7'
             - 'gcc-7'
 
@@ -28,7 +28,7 @@ language: cpp
 
 install:
     - export CC='gcc-7'; export CXX='g++-7'
-    - wget -O - http://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add -
+      # - wget -O - http://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add -
     - sudo apt-get autoremove llvm clang
     - sudo rm -rf /usr/include/llvm
     - sudo rm -rf /usr/include/llvm-c
