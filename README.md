@@ -89,6 +89,9 @@ arguments to cmake.
 
 3. Run `$ cmake --build .`  This may take a while as it is also building llvm.
 
+NOTE: If you are planning to develop ante in vim or a similar editor, make sure
+to add include and llvm/include to your include paths.
+
 ### Trying Ante in Docker
 
 Alternatively, you can try Ante using Docker. You can build the image using:

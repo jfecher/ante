@@ -34,7 +34,6 @@ install:
 
 script:
     cmake .
-    # Building llvm can timeout with the default build time
-    travis_wait 120 cmake --build .
+    cmake --build .
     ./antetests
 

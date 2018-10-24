@@ -61,7 +61,6 @@ find_package(BISON)
 set(AN_PARSER_SRC ${CMAKE_SOURCE_DIR}/src/parser.cpp)
 set(AN_YYPARSER_H ${CMAKE_SOURCE_DIR}/include/yyparser.h)
 set(AN_SYNTAX_Y ${CMAKE_SOURCE_DIR}/src/syntax.y)
-message(${AN_SYNTAX_Y})
 bison_target(parser ${AN_SYNTAX_Y} ${AN_PARSER_SRC} COMPILE_FLAGS "-Lc++ -o${AN_PARSER_SRC} --defines=${AN_YYPARSER_H}")
 
 include_directories(${LLVM_INCLUDE_DIRS})
