@@ -28,10 +28,13 @@ language: cpp
 
 install:
     - export CC='gcc-7'; export CXX='g++-7'
-      # - wget -O - http://apt.llvm.org/llvm-snapshot.gpg.key|sudo apt-key add -
     - sudo apt-get autoremove llvm clang
     - sudo rm -rf /usr/include/llvm
     - sudo rm -rf /usr/include/llvm-c
 
-script: cmake . && cmake --build . && ./antetests
+script:
+    cmake .
+    # Building llvm can timeout with the default build time
+    travis_wait 120 cmake --build .
+    ./antetests
 
