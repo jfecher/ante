@@ -33,7 +33,7 @@ install:
     - sudo rm -rf /usr/include/llvm-c
 
 script:
-    cmake .
-    cmake --build .
-    ./antetests
+    - cmake .
+    - cmake --build .
+    - ./antetests
 
