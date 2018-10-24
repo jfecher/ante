@@ -67,18 +67,27 @@ goto begin
 
 ### Requirements
 
- * `llvm` version >= 5.0.  To check which version you have, run `$ lli --version`.  To install llvm, install
-the `llvm` package on your distro's package manager, eg. for Ubuntu: `$ sudo apt-get install llvm-5.0`
  * `yacc`. This is normally provided by GNU Bison - to install Bison, install the `bison` package in your
 distro's package manager.
+ * (Optional) `llvm` version >= 8.0.  There is no need to install llvm manually.  If you do not have it
+ installed already, cmake will automatically use the version in ante's git submodule.  If you wish to
+ install llvm system wide anyway, then make sure to check which version you have by running `$ lli --version`.
+ To install a specific version of llvm, install the `llvm` package on your distro's package manager, eg. for
+ Ubuntu: `$ sudo apt-get install llvm-8.0`.  Note that not all versions may be available on all systems
+ without building from source.
 
 ### Steps
 
-1. Install any required packages.
+1. Install yacc/bison.
 
 2. Run `$ git clone https://github.com/jfecher/ante.git`
 
-3. Run `$ cd ante && make`
+3. Run `$ cd ante && cmake .` This will generate your platform specific
+build files.  Usually either a Makefile or Visual Studio solution file.
+You can also specify which to make manually by passing the appropriate
+arguments to cmake.
+
+3. Run `$ cmake --build .`  This may take a while as it is also building llvm.
 
 ### Trying Ante in Docker
 
