@@ -1,6 +1,7 @@
 
-script:
-    - cmake .
-    - cmake --build .
-    - ./antetests
+antetest:
+    script:
+        - cmake .
+        - cmake --build .
+        - ./antetests
 
