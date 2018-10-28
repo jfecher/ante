@@ -1,9 +1,11 @@
 
+before_script:
+    - apt-get update -yqq
+    - apt-get install cmake
+    - apt-get install gcc
+
 antetest:
     script:
-        - sudo apt-get update -y
-        - sudo apt-get install cmake
-        - sudo apt-get install gcc
         - cmake .
         - cmake --build .
         - ./antetests
