@@ -1,8 +1,9 @@
 
 before_script:
+    - apt-get repository ppa:ubuntu-toolchain-r/test -yqq
     - apt-get update -yqq
     - apt-get install cmake -yqq
-    - apt-get install gcc -yqq
+    - apt-get install gcc-7 g++-7 -yqq
     - apt-get install bison -yqq
 
 antetest:
