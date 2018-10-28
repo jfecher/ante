@@ -19,14 +19,10 @@ namespace ante {
             m->accept(*this);
         for(auto &m : n->traits)
             m->accept(*this);
-
-        for(auto &m : n->extensions){
+        for(auto &m : n->extensions)
             m->accept(*this);
-        }
-
-        for(auto &m : n->funcs){
+        for(auto &m : n->funcs)
             m->accept(*this);
-        }
 
         auto lastType = AnType::getVoid();
         for(auto &m : n->main){
@@ -92,6 +88,7 @@ namespace ante {
     }
 
     void TypeInferenceVisitor::visit(TypeCastNode *n){
+        n->typeExpr->accept(*this);
         n->rval->accept(*this);
         n->setType(n->rval->getType());
     }
@@ -272,5 +269,8 @@ namespace ante {
 
     void TypeInferenceVisitor::visit(TraitNode *n){
         n->setType(AnType::getVoid());
+        for(auto *node : *n->child){
+            node->accept(*this);
+        }
     }
 }

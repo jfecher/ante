@@ -827,11 +827,21 @@ namespace ante {
     }
 
     void NameResolutionVisitor::visit(TraitNode *n){
+        auto tr = new Trait();
+        tr->name = n->name;
+
+        // trait type is created here but the internal trait
+        // tr will still be mutated with additional methods after
+        AnTraitType::create(tr);
+
         for(auto *fn : *n->child){
             auto *fdn = static_cast<FuncDeclNode*>(fn);
+            fdn->accept(*this);
+
             auto *fd = new FuncDecl(fdn, fdn->name, this->mergedCompUnits);
             mergedCompUnits->fnDecls[fdn->name].push_back(fd);
             fdn->decl = fd;
+            tr->funcs.emplace_back(fd);
         }
     }
 }

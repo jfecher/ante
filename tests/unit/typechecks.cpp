@@ -1,5 +1,6 @@
 #include "unittest.h"
 #include "types.h"
+#include "unification.h"
 using namespace ante;
 using namespace std;
 
@@ -29,42 +30,36 @@ TEST_CASE("Type Checks", "[typeEq]"){
 
     REQUIRE(voidPtr != intPtr);
 
-    /*
     SECTION("('t, bool) == (isz, 'u)"){
         auto tup1 = AnAggregateType::get(TT_Tuple, {t, boolTy});
         auto tup2 = AnAggregateType::get(TT_Tuple, {intTy, u});
+        LOC_TY loc;
 
-        auto tc = typeEq(tup1, tup2);
-        auto &bindings = tc->bindings;
+        std::list<std::tuple<AnType*,AnType*,LOC_TY&>> unificationList;
+        unificationList.emplace_back(tup1, tup2, loc);
+        auto subs = ante::unify(unificationList);
 
-        REQUIRE(tup1 != tup2);
+        REQUIRE(subs.size() == 2);
 
-        REQUIRE(tc->res == TypeCheckResult::SuccessWithTypeVars);
+        std::pair<std::string,AnType*> expected = {"'t", intTy};
+        REQUIRE(std::find(subs.begin(), subs.end(), expected) != subs.end());
 
-        REQUIRE(bindings.size() == 2);
-
-        REQUIRE(contains(bindings, TypeBinding("'t", intTy)));
-
-        REQUIRE(contains(bindings, TypeBinding("'u", boolTy)));
+        std::pair<std::string,AnType*> expected2 = {"'u", boolTy};
+        REQUIRE(std::find(subs.begin(), subs.end(), expected2) != subs.end());
     }
 
-    SECTION("Empty isz* == Empty isz*"){
+    SECTION("Empty isz == Empty isz"){
         //Empty 't
-        auto empty = AnProductType::create("Empty", {}, false, {string("'t")});
+        auto empty = AnProductType::create("Empty", {}, {AnTypeVarType::get("'t")});
 
-        //Empty isz*
-        vector<TypeBinding> bindings {{"'t", empty, 0, intPtr}};
-        auto empty_i32Ptr = AnProductType::getVariant(empty, bindings);
-        
-        auto empty_i32Ptr2 = AnProductType::getVariant(empty, bindings);
+        //Empty isz
+        auto empty_isz  = applySubstitutions({{"'t", intTy}}, empty);
+        auto empty_isz2 = applySubstitutions({{"'t", intTy}}, empty);
 
-        REQUIRE(empty_i32Ptr != empty);
+        REQUIRE(empty_isz != empty);
 
-        REQUIRE(empty_i32Ptr == empty_i32Ptr2);
-
-        REQUIRE(typeEq(empty_i32Ptr, empty_i32Ptr2));
+        REQUIRE(empty_isz == empty_isz2);
     }
-     */
 }
 
 /*

@@ -219,8 +219,6 @@ namespace ante {
             return matchExpr;
         }
 
-        TypeNode* mkAnonTypeNode(TypeTag);
-
         Node* mkIntLitNode(LOC_TY loc, char* s){
             string str = s;
             TypeTag type = TT_I32;

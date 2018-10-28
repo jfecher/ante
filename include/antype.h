@@ -13,6 +13,7 @@
 #include "tokens.h"
 #include "parser.h"
 #include "result.h"
+#include "trait.h"
 
 #define AN_HASH_PRIME 0x9e3779e9
 
@@ -143,7 +144,7 @@ namespace ante {
 
     template<typename T>
     T* try_cast(AnType *type){
-        if(!T::istype(type)){
+        if(!type || !T::istype(type)){
             return nullptr;
         }
 
@@ -486,7 +487,6 @@ namespace ante {
         /** Names of each field. */
         std::vector<std::string> fieldNames;
 
-        
         /** The parent union type of this type if it is a union tag */
         AnSumType *parentUnionType;
 
@@ -517,12 +517,30 @@ namespace ante {
          * Returns null if no type with a matching name is found. */
         static AnProductType* get(std::string const& name);
 
+        /** Search for a data type generic variant by name.
+         * Returns it if found, or creates it otherwise. */
+        static AnProductType* getOrCreateVariant(AnProductType *parent, std::vector<AnType*> const& elems,
+                GenericParams const& generics);
+
         /** Creates or overwrites the type specified by name. */
         static AnProductType* create(std::string const& name, std::vector<AnType*> const& elems,
                 GenericParams const& generics);
     };
 
 
+    /**
+     * Represents a tagged union or sum type.
+     *
+     * Any type declared in the form is a sum type
+     * and is therefore handled by this class:
+     *
+     * type T =
+     *    | C1 t
+     *    | C2 t
+     *    ...
+     *
+     * Is a sum type handled by this class.
+     */
     class AnSumType : public AnDataType {
 
         protected:
@@ -533,7 +551,7 @@ namespace ante {
 
         ~AnSumType() = default;
 
-        /** Contains the UnionTag of each of the union's variants. */
+        /** Contains the UnionTag of each of the union's OR'd types. */
         std::vector<AnProductType*> tags;
 
         /** Returns true if the given AnType is an AnDataType */
@@ -555,9 +573,58 @@ namespace ante {
          * Returns null if no type with a matching name is found. */
         static AnSumType* get(std::string const& name);
 
+        /** Search for a data type generic variant by name.
+         * Returns it if found, or creates it otherwise. */
+        static AnSumType* getOrCreateVariant(AnSumType *parent, std::vector<AnProductType*> const& elems,
+                GenericParams const& generics);
+
         /** Creates or overwrites the type specified by name. */
         static AnSumType* create(std::string const& name, std::vector<AnProductType*> const& elems,
                 GenericParams const& generics);
+
+        /** Returns a new AnDataType* with the given modifier appended to the current type's modifiers. */
+        const AnType* addModifier(TokenType m) const override;
+
+        bool isModifierType() const noexcept override {
+            return false;
+        }
+    };
+
+
+    class AnTraitType : public AnDataType {
+        private:
+        /** Return the names of all traits concatenated with '+' */
+        std::string combineNames(std::vector<Trait*> const& traits);
+
+        protected:
+        AnTraitType(Trait *t) : AnDataType(t->name, TT_Trait), traits({t}){
+            isGeneric = true;
+        }
+
+        AnTraitType(std::vector<Trait*> t) : AnDataType(combineNames(t), TT_Trait), traits(t){
+            isGeneric = true;
+        }
+
+        public:
+
+        const std::vector<Trait*> traits;
+
+        ~AnTraitType() = default;
+
+        /** Returns true if the given AnType is an AnDataType */
+        static bool istype(const AnType *t){
+            return t->typeTag == TT_Trait;
+        }
+
+        /** Search for a data type by name.
+         * Returns null if no type with a matching name is found. */
+        static AnTraitType* get(std::string const& name);
+
+        /** Creates a new trait type matching the given trait declaration. */
+        static AnTraitType* create(Trait *trait);
+
+        /** Creates a new TraitType that is a union of the 2 given. */
+        AnTraitType* merge(AnTraitType *t);
 
         /** Returns a new AnDataType* with the given modifier appended to the current type's modifiers. */
         const AnType* addModifier(TokenType m) const override;
@@ -597,6 +664,10 @@ namespace ante {
      *  Note that this class is a singleton, creating new instances
      *  of this class would be meaningless as the AnTypeContainer
      *  referenced by each AnType is unable to be swapped out.
+     *
+     *  Use of hashing to unique each AnType can also be quite inefficient
+     *  since most AnTypes will have short lifetimes in practice.  Future
+     *  optimizations can likely be made on the allocation patterns here.
      */
     class AnTypeContainer {
         friend AnType;
@@ -610,10 +681,13 @@ namespace ante {
         friend AnDataType;
         friend AnProductType;
         friend AnSumType;
+        friend AnTraitType;
 
         using FnTypeKey = std::pair<AnType*, std::pair<std::vector<AnType*>, bool>>;
         using AggTypeKey = std::pair<TypeTag, std::vector<AnType*>>;
-        using VariantTypeKey = std::pair<std::string, std::vector<AnType*>>;
+        using PVariantTypeKey = std::pair<std::string, std::vector<AnType*>>;
+        using SVariantTypeKey = std::pair<std::string, std::vector<AnProductType*>>;
+        using MultiTraitTypeKey = std::vector<Trait*>;
 
         std::unordered_map<TypeTag, std::unique_ptr<AnType>> primitiveTypes;
         std::unordered_map<std::pair<AnType*, TokenType>, std::unique_ptr<AnModifier>> basicModifiers;
@@ -629,7 +703,9 @@ namespace ante {
          * never directly through the map of declaredTypes.  Keeping
          * all variants here avoids having to sift through every variant
          * of a type and makes ownership simpler. */
-        std::unordered_map<VariantTypeKey, std::unique_ptr<AnDataType>> genericVariants;
+        std::unordered_map<MultiTraitTypeKey, std::unique_ptr<AnTraitType>> multiTraitTypes;
+        std::unordered_map<PVariantTypeKey, std::unique_ptr<AnProductType>> productTypeVariants;
+        std::unordered_map<SVariantTypeKey, std::unique_ptr<AnSumType>> sumTypeVariants;
 
     public:
         AnTypeContainer();

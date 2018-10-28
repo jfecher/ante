@@ -309,6 +309,7 @@ modifier: Pub      {$$ = mkModNode(@$, Tok_Pub);}
 
 
 trait_decl: Trait usertype Indent trait_fn_list Unindent  {$$ = mkTraitNode(@$, (char*)$2, $4); free($2);}
+          | Trait usertype generic_params Indent trait_fn_list Unindent  {$$ = mkTraitNode(@$, (char*)$2, $4); free($2);}
           ;
 
 trait_fn_list: _trait_fn_list maybe_newline {$$ = getRoot();}
