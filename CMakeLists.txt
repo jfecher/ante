@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.9)
+cmake_minimum_required(VERSION 3.4.3)
 project(ante)
 
 set(PROJECT_VERSION_MAJOR 0)
@@ -30,7 +30,7 @@ if(NOT EXISTS "${PROJECT_SOURCE_DIR}/llvm/CMakeLists.txt")
     message(FATAL_ERROR "The submodules were not downloaded! GIT_SUBMODULE was turned off or failed. Please update submodules and try again.")
 endif()
 
-# Check if llvm 8.0 exists in the system or if the submodule should be built
+# Check if llvm >= 8.0 exists in the system or if the submodule should be built
 find_package(LLVM 8.0 CONFIG)
 if (NOT LLVM_FOUND)
     message("System LLVM was not found, LLVM will be built from the submodule.")
