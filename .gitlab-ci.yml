@@ -1,8 +1,8 @@
 
 before_script:
     - apt-get update -yqq
-    - apt-get install cmake
-    - apt-get install gcc
+    - apt-get install cmake -yqq
+    - apt-get install gcc -yqq
 
 antetest:
     script:
