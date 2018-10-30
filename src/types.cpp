@@ -96,7 +96,7 @@ size_t hashCombine(size_t l, size_t r){
 
 
 string toLlvmTypeName(const AnDataType *dt){
-    auto &typeArgs = dt->boundGenerics;
+    auto &typeArgs = dt->typeArgs;
     auto &baseName = dt->name;
 
     if(typeArgs.empty())
@@ -112,7 +112,7 @@ string toLlvmTypeName(const AnDataType *dt){
         if(&b != &typeArgs.back())
             name += ",";
     }
-    return name == baseName + "<" ? baseName : name+">";
+    return name + ">";
 }
 
 Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt, bool force){
@@ -659,16 +659,8 @@ string anTypeToStr(const AnType *t){
     }else if(auto *dt = try_cast<AnDataType>(t)){
         string n = dt->name;
 
-        if(dt->isVariant()){
-            n += "<";
-            for(auto &t : dt->boundGenerics){
-                if(&t == &dt->boundGenerics.back()){
-                    n += anTypeToStr(t);
-                }else{
-                    n += anTypeToStr(t) + ", ";
-                }
-            }
-            n += ">";
+        for(auto &a : dt->typeArgs){
+            n += " " + anTypeToStr(a);
         }
         return n;
     }else if(auto *tvt = try_cast<AnTypeVarType>(t)){

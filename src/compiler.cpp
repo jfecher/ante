@@ -27,7 +27,6 @@
 #include "uniontag.h"
 #include "target.h"
 #include "nameresolution.h"
-#include "yyparser.h"
 #include "typeinference.h"
 
 using namespace std;

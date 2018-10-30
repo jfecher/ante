@@ -389,8 +389,7 @@ namespace ante {
         }
     };
 
-    using TypeBindings = std::vector<AnType*>;
-    using GenericParams = std::vector<AnTypeVarType*>;
+    using TypeArgs = std::vector<AnType*>;
 
     /**
      *  A base class for any user-declared data type.
@@ -401,8 +400,8 @@ namespace ante {
 
         protected:
         AnDataType(std::string const& n, TypeTag tt) :
-                AnType(TT_Data, false, 1), name(n), traitImpls(), unboundType(0),
-                variants(), boundGenerics(), llvmType(0), isAlias(false){}
+                AnType(TT_Data, false, 1), name(n), traitImpls(),
+                unboundType(0), llvmType(0), isAlias(false){}
 
         public:
 
@@ -419,26 +418,8 @@ namespace ante {
          * Otherwise, this field will be nullptr. */
         AnDataType *unboundType;
 
-        /**
-         *  Bound versions of generic types.
-         *
-         *  Only parent types (the unbound generic variant matching the type's definition)
-         *  have variants.  If an incomplete binding such as Node<Maybe<'u>> is bound
-         *  to Node<Maybe<i32>> the resulting type is flattened and stored as a variant
-         *  of the parent type Node<'n> so that each parent type has a single vector
-         *  of variants rather than a tree structure.
-         */
-        std::vector<AnDataType*> variants;
-
         /** Typevars this type is generic over */
-        GenericParams generics;
-
-        /**
-         * The set of bindings used to bind the parent type to this variant.
-         *
-         * Empty if this type is not a bound version of some generic type.
-         */
-        TypeBindings boundGenerics;
+        TypeArgs typeArgs;
 
         /** The llvm Type corresponding to this data type.
          * May be nullptr if this type has not yet been translated. */
@@ -520,11 +501,11 @@ namespace ante {
         /** Search for a data type generic variant by name.
          * Returns it if found, or creates it otherwise. */
         static AnProductType* getOrCreateVariant(AnProductType *parent, std::vector<AnType*> const& elems,
-                GenericParams const& generics);
+                TypeArgs const& generics);
 
         /** Creates or overwrites the type specified by name. */
         static AnProductType* create(std::string const& name, std::vector<AnType*> const& elems,
-                GenericParams const& generics);
+                TypeArgs const& generics);
     };
 
 
@@ -576,11 +557,11 @@ namespace ante {
         /** Search for a data type generic variant by name.
          * Returns it if found, or creates it otherwise. */
         static AnSumType* getOrCreateVariant(AnSumType *parent, std::vector<AnProductType*> const& elems,
-                GenericParams const& generics);
+                TypeArgs const& generics);
 
         /** Creates or overwrites the type specified by name. */
         static AnSumType* create(std::string const& name, std::vector<AnProductType*> const& elems,
-                GenericParams const& generics);
+                TypeArgs const& generics);
 
         /** Returns a new AnDataType* with the given modifier appended to the current type's modifiers. */
         const AnType* addModifier(TokenType m) const override;

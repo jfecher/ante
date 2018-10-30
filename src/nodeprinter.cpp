@@ -42,7 +42,8 @@ void PrintingVisitor::visit(RootNode *n){
 
     for(auto& f : n->funcs){
         f->accept(*this); 
-        cout << "  :  " << anTypeToColoredStr(f->getType());
+        if(static_cast<FuncDeclNode*>(f.get())->decl)
+            cout << "  :  " << anTypeToColoredStr(f->getType());
         puts("\n");
     }
 
@@ -228,13 +229,16 @@ void PrintingVisitor::visit(NamedValNode *n){
         cout << "..."; //varargs
 
     putchar(' ');
-    cout << n->name << ": " << anTypeToColoredStr(n->getType()) << flush;
+
+    if(!n->decls.empty() && n->getType())
+        cout << n->name << ": " << anTypeToColoredStr(n->getType()) << flush;
 
     maybePrintArr(n->next.get());
 }
 
 void PrintingVisitor::visit(VarNode *n){
-    cout << '(' << n->name << ": " << anTypeToColoredStr(n->getType()) << ')' << flush;
+    if(!n->decls.empty())
+        cout << '(' << n->name << ": " << anTypeToColoredStr(n->getType()) << ')' << flush;
     maybePrintArr(n->next.get());
 }
 

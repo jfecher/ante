@@ -13,20 +13,8 @@ namespace ante {
     void AnType::dump() const{
         if(auto *dt = try_cast<AnDataType>(this)){
             cout << dt->name;
-            if(!dt->generics.empty()){
-                cout << "[";
-                for(auto &t : dt->generics){
-                    if(&t != &dt->generics.back())
-                        cout << t->name << ", ";
-                    else
-                        cout << t->name << "]";
-                }
-            }
-            if(dt->isVariant()){
-                cout << "<";
-                for(auto &b : dt->boundGenerics){
-                    cout << b << ((&b != &dt->boundGenerics.back()) ? ", " : ">");
-                }
+            for(auto &arg : dt->typeArgs){
+                cout << ' ' << anTypeToStr(arg);
             }
             cout << " = ";
             if(auto *pt = try_cast<AnProductType>(this)){
@@ -313,14 +301,14 @@ namespace ante {
     }
 
     AnProductType* AnProductType::create(string const& name, std::vector<AnType*> const& elems,
-            GenericParams const& generics){
+            TypeArgs const& typeArgs){
 
         auto existing_ty = AnProductType::get(name);
         if(existing_ty) return existing_ty;
 
         AnDataType* decl = new AnProductType(name, elems);
-        decl->generics = generics;
-        decl->isGeneric = !generics.empty();
+        decl->typeArgs = typeArgs;
+        decl->isGeneric = !typeArgs.empty();
 
         addKVPair(typeArena.dataTypes, name, decl);
         return static_cast<AnProductType*>(decl);
@@ -333,14 +321,14 @@ namespace ante {
     }
 
     AnSumType* AnSumType::create(string const& name, std::vector<AnProductType*> const& unionMembers,
-            GenericParams const& generics){
+            TypeArgs const& typeArgs){
 
         auto existing_ty = AnSumType::get(name);
         if(existing_ty) return existing_ty;
 
         AnDataType* decl = new AnSumType(name, unionMembers);
-        decl->generics = generics;
-        decl->isGeneric = !generics.empty();
+        decl->typeArgs = typeArgs;
+        decl->isGeneric = !typeArgs.empty();
 
         addKVPair(typeArena.dataTypes, name, decl);
         return static_cast<AnSumType*>(decl);
@@ -361,13 +349,14 @@ namespace ante {
      * Returns it if found, or creates it otherwise.
      */
     AnProductType* AnProductType::getOrCreateVariant(AnProductType *parent,
-            std::vector<AnType*> const& elems, GenericParams const& generics){
+            std::vector<AnType*> const& elems, TypeArgs const& typeArgs){
 
         pair<string, vector<AnType*>> vec{parent->name, elems};
         auto t = search(typeArena.productTypeVariants, vec);
         if(t) return t;
         auto ret = new AnProductType(parent->name, elems);
-        ret->generics = generics;
+        ret->typeArgs = typeArgs;
+        ret->isGeneric = ante::isGeneric(typeArgs);
         ret->fields = parent->fields;
         ret->parentUnionType = parent->parentUnionType; //Will never bind the parent union type!
         return ret;
@@ -378,13 +367,13 @@ namespace ante {
      * Returns it if found, or creates it otherwise.
      */
     AnSumType* AnSumType::getOrCreateVariant(AnSumType *parent,
-            std::vector<AnProductType*> const& elems, GenericParams const& generics){
+            std::vector<AnProductType*> const& elems, TypeArgs const& typeArgs){
 
         pair<string, vector<AnProductType*>> vec{parent->name, elems};
         auto t = search(typeArena.sumTypeVariants, vec);
         if(t) return t;
         auto ret = new AnSumType(parent->name, elems);
-        ret->generics = generics;
+        ret->typeArgs = typeArgs;
         return ret;
     }
 
@@ -424,45 +413,6 @@ namespace ante {
         auto ret = new AnTraitType(unionVec);
         typeArena.multiTraitTypes.try_emplace(unionVec, ret);
         return ret;
-    }
-
-    /*
-     * Returns a vector of all typevars used by a given type
-     */
-    GenericParams getGenerics(AnType *t){
-        if(AnDataType *dt = try_cast<AnDataType>(t)){
-            return dt->generics;
-
-        }else if(AnTypeVarType *tvt = try_cast<AnTypeVarType>(t)){
-            return {tvt};
-
-        }else if(AnPtrType *pt = try_cast<AnPtrType>(t)){
-            return getGenerics(pt->extTy);
-
-        }else if(AnArrayType *at = try_cast<AnArrayType>(t)){
-            return getGenerics(at->extTy);
-
-        }else if(AnFunctionType *ft = try_cast<AnFunctionType>(t)){
-            GenericParams generics;
-            for(auto *p : ft->extTys){
-                auto p_generics = getGenerics(p);
-                generics.insert(generics.end(), p_generics.begin(), p_generics.end());
-            }
-            auto p_generics = getGenerics(ft->retTy);
-            generics.insert(generics.end(), p_generics.begin(), p_generics.end());
-            return generics;
-
-        }else if(AnAggregateType *agg = try_cast<AnAggregateType>(t)){
-            GenericParams generics;
-            for(auto *p : agg->extTys){
-                auto p_generics = getGenerics(p);
-                generics.insert(generics.end(), p_generics.begin(), p_generics.end());
-            }
-            return generics;
-
-        }else{
-            return {};
-        }
     }
 
     bool AnDataType::isVariantOf(const AnDataType *dt) const {

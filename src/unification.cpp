@@ -71,13 +71,13 @@ namespace ante {
 
 
     template<class T>
-    std::vector<AnType*> substituteIntoAll(AnType *u, std::string const& name,
+    std::vector<T*> substituteIntoAll(AnType *u, std::string const& name,
             std::vector<T*> const& vec){
 
-        std::vector<AnType*> ret;
+        std::vector<T*> ret;
         ret.reserve(vec.size());
         for(auto &elem : vec){
-            ret.push_back(substitute(u, name, elem));
+            ret.push_back(static_cast<T*>(substitute(u, name, elem)));
         }
         return ret;
     }
@@ -97,13 +97,21 @@ namespace ante {
 
         }else if(auto dt = try_cast<AnProductType>(t)){
             auto exts = substituteIntoAll(u, name, dt->fields);;
-            /* TODO */
-            return t;
+            auto generics = substituteIntoAll(u, name, dt->typeArgs);;
+
+            if(exts == dt->fields && generics == dt->typeArgs)
+                return t;
+            else
+                return AnProductType::getOrCreateVariant(dt, exts, generics);
 
         }else if(auto st = try_cast<AnSumType>(t)){
             auto exts = substituteIntoAll(u, name, st->tags);;
-            /* TODO */
-            return t;
+            auto generics = substituteIntoAll(u, name, st->typeArgs);;
+
+            if(exts == st->tags && generics == st->typeArgs)
+                return st;
+            else
+                return AnSumType::getOrCreateVariant(st, exts, generics);
 
         }else if(auto fn = try_cast<AnFunctionType>(t)){
             auto exts = substituteIntoAll(u, name, fn->extTys);;
@@ -140,6 +148,11 @@ namespace ante {
     }
 
 
+    bool implements(AnType *type, AnTraitType *trait){
+        return true;
+    }
+
+
     Substitutions unifyOne(AnType *t1, AnType *t2, LOC_TY &loc){
         auto tv1 = try_cast<AnTypeVarType>(t1);
         auto tv2 = try_cast<AnTypeVarType>(t2);
@@ -151,6 +164,15 @@ namespace ante {
         }
 
         if(t1->typeTag != t2->typeTag){
+            auto trait = try_cast<AnTraitType>(t1);
+            if(implements(t2, trait)){
+                return {};
+            }
+
+            trait = try_cast<AnTraitType>(t2);
+            if(implements(t1, trait)){
+                return {};
+            }
             error("Mismatched types " + anTypeToColoredStr(t1) + " and " + anTypeToColoredStr(t2), loc);
             return {};
         }
