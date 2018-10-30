@@ -588,24 +588,26 @@ namespace ante {
                     return nullptr;
                 }
 
+                ret = basety;
+
                 size_t i = 0;
                 if(!tn->params.empty()){
                     Substitutions subs;
-                    for(; i < tn->params.size(); i++){
+                    for(; i < tn->params.size() && i < basety->typeArgs.size(); i++){
                         auto *b = static_cast<AnTypeVarType*>(toAnType(tn->params[i].get()));
-                        subs.emplace_back(basety->generics[i]->name, b);
+                        auto *basetyTypeArg = try_cast<AnTypeVarType>(basety->typeArgs[i]);
+                        subs.emplace_back(basetyTypeArg->name, b);
                     }
-                    ret = applySubstitutions(subs, basety);
-                }else{
-                    ret = basety;
+                    ret = applySubstitutions(subs, ret);
                 }
 
                 // Fill in unspecified typevars;  eg change List to List 't
-                for(; i < basety->generics.size(); i++){
+                for(; i < basety->typeArgs.size(); i++){
                     Substitutions subs;
                     auto *b = nextTypeVar();
-                    subs.emplace_back(basety->generics[i]->name, b);
-                    ret = applySubstitutions(subs, basety);
+                    auto *basetyTypeArg = try_cast<AnTypeVarType>(basety->typeArgs[i]);
+                    subs.emplace_back(basetyTypeArg->name, b);
+                    ret = applySubstitutions(subs, ret);
                 }
                 break;
             }
