@@ -579,12 +579,16 @@ namespace ante {
         std::string combineNames(std::vector<Trait*> const& traits);
 
         protected:
-        AnTraitType(Trait *t) : AnDataType(t->name, TT_Trait), traits({t}){
-            isGeneric = true;
+        AnTraitType(Trait *t, TypeArgs const& tArgs)
+                : AnDataType(t->name, TT_Trait), traits({t}){
+            this->typeArgs = tArgs;
+            isGeneric = ante::isGeneric(tArgs);
         }
 
-        AnTraitType(std::vector<Trait*> t) : AnDataType(combineNames(t), TT_Trait), traits(t){
-            isGeneric = true;
+        AnTraitType(std::vector<Trait*> t, TypeArgs const& tArgs)
+                : AnDataType(combineNames(t), TT_Trait), traits(t){
+            this->typeArgs = tArgs;
+            isGeneric = ante::isGeneric(tArgs);
         }
 
         public:
@@ -603,7 +607,7 @@ namespace ante {
         static AnTraitType* get(std::string const& name);
 
         /** Creates a new trait type matching the given trait declaration. */
-        static AnTraitType* create(Trait *trait);
+        static AnTraitType* create(Trait *trait, TypeArgs const& typeArgs);
 
         /** Creates a new TraitType that is a union of the 2 given. */
         AnTraitType* merge(AnTraitType *t);
