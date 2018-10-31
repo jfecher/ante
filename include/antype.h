@@ -400,7 +400,7 @@ namespace ante {
 
         protected:
         AnDataType(std::string const& n, TypeTag tt) :
-                AnType(TT_Data, false, 1), name(n), traitImpls(),
+                AnType(tt, false, 1), name(n), traitImpls(),
                 unboundType(0), llvmType(0), isAlias(false){}
 
         public:
@@ -435,7 +435,8 @@ namespace ante {
 
         /** Returns true if the given AnType is an AnDataType */
         static bool istype(const AnType *t){
-            return t->typeTag == TT_Data || t->typeTag == TT_TaggedUnion;
+            return t->typeTag == TT_Data || t->typeTag == TT_TaggedUnion
+                || t->typeTag == TT_Trait;
         }
 
         /** Returns true if this DataType is a bound generic variant of another */
