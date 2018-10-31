@@ -101,7 +101,7 @@ namespace ante {
     template<typename Key, typename Val>
     void addKVPair(std::unordered_map<Key, unique_ptr<Val>> &map, Key const& key, Val* val){
         if(map[key]){
-            cout << lazy_str("WARNING", AN_WARN_COLOR) << ": Hash collision between "
+            cerr << lazy_str("WARNING", AN_WARN_COLOR) << ": Hash collision between "
                 << anTypeToColoredStr(map[key].get()) << " and " << anTypeToColoredStr(val) << endl;
         }
         map[key] = unique_ptr<Val>(val);
@@ -386,8 +386,8 @@ namespace ante {
     }
 
 
-    AnTraitType* AnTraitType::create(Trait *trait){
-        auto ret = new AnTraitType(trait);
+    AnTraitType* AnTraitType::create(Trait *trait, TypeArgs const& tArgs){
+        auto ret = new AnTraitType(trait, tArgs);
         typeArena.dataTypes.try_emplace(trait->name, ret);
         return ret;
     }
@@ -404,13 +404,30 @@ namespace ante {
 
         auto it = std::set_union(traits.begin(), traits.end(),
                 t->traits.begin(), t->traits.end(), unionVec.begin());
-
         unionVec.resize(it - unionVec.begin());
 
         auto existing_ty = search(typeArena.multiTraitTypes, unionVec);
         if(existing_ty) return existing_ty;
 
-        auto ret = new AnTraitType(unionVec);
+        //merge all typeArgs, save for the shared 'self' type arg
+        TypeArgs typeArgs = this->typeArgs;
+
+        // If either typeArg is bound and different from the other they can't be merged.
+        // FIXME: This will fail when checking eg.  Eq (Show 'a) = Eq (Other 'b)
+        //        Resulting in a merge of Eq (Other 'b) instead of Eq (Show+Other 'b)
+        if(typeArgs.back() != t->typeArgs.back() &&
+                (!typeArgs.back()->isGeneric || !t->typeArgs.back()->isGeneric)){
+
+            cerr << "ERROR: Union of two incompatible trait types: " << anTypeToColoredStr(this)
+                 << " and " << anTypeToColoredStr(t) << endl
+                 << "NOTE: Cause is generic parameter " << anTypeToColoredStr(typeArgs.back())
+                 << " != " << anTypeToColoredStr(t->typeArgs.back()) << endl;
+        }
+
+        typeArgs.pop_back();
+        typeArgs.insert(typeArgs.end(), t->typeArgs.begin(), t->typeArgs.end());
+
+        auto ret = new AnTraitType(unionVec, typeArgs);
         typeArena.multiTraitTypes.try_emplace(unionVec, ret);
         return ret;
     }
@@ -531,6 +548,7 @@ namespace ante {
                 ret = AnPtrType::get(toAnType(tn->extTy.get()));
                 break;
             case TT_Data:
+            case TT_Trait:
             case TT_TaggedUnion: {
                 AnDataType *basety = AnDataType::get(tn->typeName);
                 if(!basety){

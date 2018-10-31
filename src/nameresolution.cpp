@@ -843,7 +843,7 @@ namespace ante {
 
         // trait type is created here but the internal trait
         // tr will still be mutated with additional methods after
-        AnTraitType::create(tr);
+        AnTraitType::create(tr, convertToTypeArgs(n->generics));
 
         for(auto *fn : *n->child){
             auto *fdn = static_cast<FuncDeclNode*>(fn);

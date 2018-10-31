@@ -138,7 +138,12 @@ namespace ante {
     template<class T>
     Substitutions unifyExts(std::vector<T*> const& exts1, std::vector<T*> const& exts2, LOC_TY &loc){
         if(exts1.size() != exts2.size()){
-            error("Types are of varying sizes", loc);
+            std::vector<AnType*> lt{exts1.begin(), exts1.end()};
+            std::vector<AnType*> rt{exts2.begin(), exts2.end()};
+            auto l = AnAggregateType::get(TT_Tuple, lt);
+            auto r = AnAggregateType::get(TT_Tuple, rt);
+            error("Types are of varying sizes: " + anTypeToColoredStr(l)
+                    + " vs " + anTypeToColoredStr(r), loc);
         }
 
         std::list<std::tuple<AnType*, AnType*, LOC_TY&>> ret;
@@ -165,12 +170,12 @@ namespace ante {
 
         if(t1->typeTag != t2->typeTag){
             auto trait = try_cast<AnTraitType>(t1);
-            if(implements(t2, trait)){
+            if(trait && implements(t2, trait)){
                 return {};
             }
 
             trait = try_cast<AnTraitType>(t2);
-            if(implements(t1, trait)){
+            if(trait && implements(t1, trait)){
                 return {};
             }
             error("Mismatched types " + anTypeToColoredStr(t1) + " and " + anTypeToColoredStr(t2), loc);
