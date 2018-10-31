@@ -512,7 +512,7 @@ namespace ante {
                 params.emplace_back((TypeNode*)p);
                 p = p->next.release();
             }
-            return new DataDeclNode(loc, s, b, getTupleSize(b), params, isAlias);
+            return new DataDeclNode(loc, s, b, getTupleSize(b), move(params), isAlias);
         }
 
 
@@ -527,8 +527,13 @@ namespace ante {
             return new MatchBranchNode(loc, pattern, branch);
         }
 
-        Node* mkTraitNode(LOC_TY loc, char* s, Node* fns){
-            return new TraitNode(loc, s, fns);
+        Node* mkTraitNode(LOC_TY loc, char* s, Node* generics, Node* fns){
+            vector<unique_ptr<TypeNode>> genericsVec;
+            while(generics){
+                genericsVec.emplace_back((TypeNode*)generics);
+                generics = generics->next.release();
+            }
+            return new TraitNode(loc, s, move(genericsVec), fns);
         }
     } //end of namespace ante::parser
 } //end of namespace ante
