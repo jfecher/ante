@@ -351,14 +351,16 @@ namespace ante {
     AnProductType* AnProductType::getOrCreateVariant(AnProductType *parent,
             std::vector<AnType*> const& elems, TypeArgs const& typeArgs){
 
-        pair<string, vector<AnType*>> vec{parent->name, elems};
-        auto t = search(typeArena.productTypeVariants, vec);
+        pair<string, vector<AnType*>> key{parent->name, elems};
+        auto t = search(typeArena.productTypeVariants, key);
         if(t) return t;
+
         auto ret = new AnProductType(parent->name, elems);
         ret->typeArgs = typeArgs;
         ret->isGeneric = ante::isGeneric(typeArgs);
         ret->fields = parent->fields;
         ret->parentUnionType = parent->parentUnionType; //Will never bind the parent union type!
+        typeArena.productTypeVariants.try_emplace(key, ret);
         return ret;
     }
 
@@ -369,11 +371,13 @@ namespace ante {
     AnSumType* AnSumType::getOrCreateVariant(AnSumType *parent,
             std::vector<AnProductType*> const& elems, TypeArgs const& typeArgs){
 
-        pair<string, vector<AnProductType*>> vec{parent->name, elems};
-        auto t = search(typeArena.sumTypeVariants, vec);
+        pair<string, vector<AnProductType*>> key{parent->name, elems};
+        auto t = search(typeArena.sumTypeVariants, key);
         if(t) return t;
+
         auto ret = new AnSumType(parent->name, elems);
         ret->typeArgs = typeArgs;
+        typeArena.sumTypeVariants.try_emplace(key, ret);
         return ret;
     }
 
