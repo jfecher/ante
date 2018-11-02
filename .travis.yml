@@ -34,6 +34,5 @@ install:
 
 script:
     - cmake .
-    - make -j 8 .
+    - make -j 8
     - ./antetests
-
