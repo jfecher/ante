@@ -367,7 +367,13 @@ void PrintingVisitor::visit(DataDeclNode *n){
 
 void PrintingVisitor::visit(TraitNode *n){
     printModifiers(*this, n);
-    cout << "trait " << n->name << endl;
+    cout << "trait " << n->name;
+    for(auto &tv : n->generics){
+        putchar(' ');
+        tv->accept(*this);
+    }
+    puts("");
+
     printBlock(n->child.get(), this->indent_level);
     cout << "end of trait " << n->name << endl;
 }
