@@ -647,6 +647,40 @@ string typeNodeToStr(const TypeNode *t){
 }
 
 
+/**
+ * true if the type should be wrapped in parenthesis
+ * when being outputted as a string as a datatype typeArg
+ *
+ * eg.  in  Vec (Vec i32)
+ * type = (Vec i32) and the return value should be true.
+ */
+bool shouldWrapInParenthesis(AnType *type){
+    //Quick and dirty checks just to see if we need parenthesis wrapping the type or not
+    if(ante::isPrimitiveTypeTag(type->typeTag) || type->typeTag == TT_TypeVar || type->typeTag == TT_Array)
+        return false;
+
+    auto adt = try_cast<AnDataType>(type);
+    return adt || !adt->typeArgs.empty();
+}
+
+/**
+ * true if the type should be wrapped in parenthesis
+ * when being outputted as a string as a tuple member
+ *
+ * eg.  in  (Vec i32, i32, (i32, Str))
+ * type = any element of the three element tuple above
+ * and the return value should be true only for the contained
+ * tuple (in this case)
+ */
+bool shouldWrapInParenthesisWhenInTuple(AnType *type){
+    //Quick and dirty checks just to see if we need parenthesis wrapping the type or not
+    if(ante::isPrimitiveTypeTag(type->typeTag) || type->typeTag == TT_TypeVar || type->typeTag == TT_Array)
+        return false;
+
+    return type->typeTag == TT_Tuple;
+}
+
+
 string anTypeToStr(const AnType *t){
     if(!t) return "(null)";
 
@@ -666,7 +700,10 @@ string anTypeToStr(const AnType *t){
         string n = dt->name;
 
         for(auto &a : dt->typeArgs){
-            n += " " + anTypeToStr(a);
+            if(shouldWrapInParenthesis(a))
+                n += " (" + anTypeToStr(a) + ')';
+            else
+                n += ' ' + anTypeToStr(a);
         }
         return n;
     }else if(auto *tvt = try_cast<AnTypeVarType>(t)){
@@ -675,20 +712,23 @@ string anTypeToStr(const AnType *t){
         string ret = "(";
         string retTy = anTypeToStr(f->retTy);
         if(f->extTys.size() == 1){
-            return anTypeToStr(f->extTys[0]) + " -> " + retTy;
+            if(f->extTys[0]->typeTag == TT_Function)
+                return '(' + anTypeToStr(f->extTys[0]) + ") -> " + retTy;
+            else
+                return anTypeToStr(f->extTys[0]) + " -> " + retTy;
         }
 
-        for(auto &param : f->extTys){
-            ret += anTypeToStr(param);
-            if(&param != &f->extTys.back())
-                ret += ", ";
-        }
-        return ret + ") -> " + retTy;
+        auto paramTypes = AnAggregateType::get(TT_Tuple, f->extTys);
+        return anTypeToStr(paramTypes) + " -> " + retTy;
     }else if(auto *tup = try_cast<AnAggregateType>(t)){
         string ret = "(";
 
         for(const auto &ext : tup->extTys){
-            ret += anTypeToStr(ext);
+            if(shouldWrapInParenthesisWhenInTuple(ext))
+                ret += '(' + anTypeToStr(ext) + ')';
+            else
+                ret += anTypeToStr(ext);
+
             if(&ext != &tup->extTys.back())
                 ret += ", ";
         }
