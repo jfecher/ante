@@ -606,6 +606,9 @@ namespace ante {
          * Returns null if no type with a matching name is found. */
         static AnTraitType* get(std::string const& name);
 
+        /** Get an existing generic variant or create one if it does not yet exist */
+        static AnTraitType* getOrCreateVariant(AnTraitType *parent, TypeArgs const& generics);
+
         /** Creates a new trait type matching the given trait declaration. */
         static AnTraitType* create(Trait *trait, TypeArgs const& typeArgs);
 

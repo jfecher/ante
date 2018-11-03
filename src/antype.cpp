@@ -390,6 +390,12 @@ namespace ante {
     }
 
 
+    AnTraitType* AnTraitType::getOrCreateVariant(AnTraitType *parent, TypeArgs const& generics){
+        //TODO: create traitvariants field to store these permanently in
+        return new AnTraitType(parent->traits, generics);
+    }
+
+
     AnTraitType* AnTraitType::create(Trait *trait, TypeArgs const& tArgs){
         auto ret = new AnTraitType(trait, tArgs);
         typeArena.dataTypes.try_emplace(trait->name, ret);

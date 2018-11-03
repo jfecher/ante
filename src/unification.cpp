@@ -19,6 +19,17 @@ namespace ante {
         return ret;
     }
 
+    std::vector<AnProductType*> copyWithNewTypeVars(std::vector<AnProductType*> tys,
+            std::unordered_map<std::string, AnTypeVarType*> &map){
+
+        std::vector<AnProductType*> ret;
+        ret.reserve(tys.size());
+        for(auto &t : tys){
+            ret.push_back(static_cast<AnProductType*>(copyWithNewTypeVars(t, map)));
+        }
+        return ret;
+    }
+
 
     AnType* copyWithNewTypeVars(AnType *t, std::unordered_map<std::string, AnTypeVarType*> &map){
         if(!t->isGeneric)
@@ -27,9 +38,28 @@ namespace ante {
         if(auto fn = try_cast<AnFunctionType>(t)){
             return AnFunctionType::get(copyWithNewTypeVars(fn->retTy, map), copyWithNewTypeVars(fn->extTys, map));
 
-        }else if(auto dt = try_cast<AnDataType>(t)){
-            // TODO
-            return dt;
+        }else if(auto pt = try_cast<AnProductType>(t)){
+            auto exts = copyWithNewTypeVars(pt->fields, map);
+            auto typeVars = copyWithNewTypeVars(pt->typeArgs, map);
+            if(exts == pt->fields && typeVars == pt->typeArgs)
+                return pt;
+            else
+                return AnProductType::getOrCreateVariant(pt, exts, typeVars);
+
+        }else if(auto st = try_cast<AnSumType>(t)){
+            auto exts = copyWithNewTypeVars(st->tags, map);
+            auto typeVars = copyWithNewTypeVars(st->typeArgs, map);
+            if(exts == st->tags && typeVars == st->typeArgs)
+                return st;
+            else
+                return AnSumType::getOrCreateVariant(st, exts, typeVars);
+
+        }else if(auto tt = try_cast<AnTraitType>(t)){
+            auto typeVars = copyWithNewTypeVars(tt->typeArgs, map);
+            if(typeVars == tt->typeArgs)
+                return tt;
+            else
+                return AnTraitType::getOrCreateVariant(tt, typeVars);
 
         }else if(auto tv = try_cast<AnTypeVarType>(t)){
             auto it = map.find(tv->name);
@@ -112,6 +142,14 @@ namespace ante {
                 return st;
             else
                 return AnSumType::getOrCreateVariant(st, exts, generics);
+
+        }else if(auto tt = try_cast<AnTraitType>(t)){
+            auto generics = substituteIntoAll(u, name, tt->typeArgs);;
+
+            if(generics == tt->typeArgs)
+                return tt;
+            else
+                return AnTraitType::getOrCreateVariant(tt, generics);
 
         }else if(auto fn = try_cast<AnFunctionType>(t)){
             auto exts = substituteIntoAll(u, name, fn->extTys);;
