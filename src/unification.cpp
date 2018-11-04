@@ -174,14 +174,14 @@ namespace ante {
     }
 
     template<class T>
-    Substitutions unifyExts(std::vector<T*> const& exts1, std::vector<T*> const& exts2, LOC_TY &loc){
+    Substitutions unifyExts(std::vector<T*> const& exts1, std::vector<T*> const& exts2,
+            LOC_TY &loc, AnType *t1, AnType *t2){
+
         if(exts1.size() != exts2.size()){
             std::vector<AnType*> lt{exts1.begin(), exts1.end()};
             std::vector<AnType*> rt{exts2.begin(), exts2.end()};
-            auto l = AnAggregateType::get(TT_Tuple, lt);
-            auto r = AnAggregateType::get(TT_Tuple, rt);
-            error("Types are of varying sizes: " + anTypeToColoredStr(l)
-                    + " vs " + anTypeToColoredStr(r), loc);
+            error("Mismatched types " + anTypeToColoredStr(t1)
+                    + " and " + anTypeToColoredStr(t2), loc);
         }
 
         std::list<std::tuple<AnType*, AnType*, LOC_TY&>> ret;
@@ -237,21 +237,21 @@ namespace ante {
 
         }else if(auto pt1 = try_cast<AnProductType>(t1)){
             auto pt2 = try_cast<AnProductType>(t2);
-            auto l1 = unifyExts(pt1->fields, pt2->fields, loc);
-            auto l2 = unifyExts(pt1->typeArgs, pt2->typeArgs, loc);
+            auto l1 = unifyExts(pt1->fields, pt2->fields, loc, pt1, pt2);
+            auto l2 = unifyExts(pt1->typeArgs, pt2->typeArgs, loc, pt1, pt2);
             l1.merge(l2);
             return l1;
 
         }else if(auto st1 = try_cast<AnSumType>(t1)){
             auto st2 = try_cast<AnSumType>(t2);
-            auto l1 = unifyExts(st1->tags, st2->tags, loc);
-            auto l2 = unifyExts(st1->typeArgs, st2->typeArgs, loc);
+            auto l1 = unifyExts(st1->tags, st2->tags, loc, st1, st2);
+            auto l2 = unifyExts(st1->typeArgs, st2->typeArgs, loc, st1, st2);
             l1.merge(l2);
             return l1;
 
         }else if(auto tt1 = try_cast<AnTraitType>(t1)){
             auto tt2 = try_cast<AnTraitType>(t2);
-            return unifyExts(tt1->typeArgs, tt2->typeArgs, loc);
+            return unifyExts(tt1->typeArgs, tt2->typeArgs, loc, tt1, tt2);
 
         }else if(auto fn1 = try_cast<AnFunctionType>(t1)){
             auto fn2 = try_cast<AnFunctionType>(t2);
@@ -269,7 +269,7 @@ namespace ante {
 
         }else if(auto tup1 = try_cast<AnAggregateType>(t1)){
             auto tup2 = try_cast<AnAggregateType>(t2);
-            return unifyExts(tup1->extTys, tup2->extTys, loc);
+            return unifyExts(tup1->extTys, tup2->extTys, loc, tup1, tup2);
 
         }else{
             return {};
