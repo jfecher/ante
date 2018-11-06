@@ -41,20 +41,21 @@ TEST_CASE("Type Checks", "[typeEq]"){
 
         REQUIRE(subs.size() == 2);
 
-        std::pair<std::string,AnType*> expected = {"'t", intTy};
+        std::pair<AnType*,AnType*> expected = {t, intTy};
         REQUIRE(std::find(subs.begin(), subs.end(), expected) != subs.end());
 
-        std::pair<std::string,AnType*> expected2 = {"'u", boolTy};
+        std::pair<AnType*,AnType*> expected2 = {u, boolTy};
         REQUIRE(std::find(subs.begin(), subs.end(), expected2) != subs.end());
     }
 
     SECTION("Empty isz == Empty isz"){
         //Empty 't
-        auto empty = AnProductType::create("Empty", {}, {AnTypeVarType::get("'t")});
+        auto tvar = AnTypeVarType::get("'t");
+        auto empty = AnProductType::create("Empty", {}, {tvar});
 
         //Empty isz
-        auto empty_isz  = applySubstitutions({{"'t", intTy}}, empty);
-        auto empty_isz2 = applySubstitutions({{"'t", intTy}}, empty);
+        auto empty_isz  = applySubstitutions({{tvar, intTy}}, empty);
+        auto empty_isz2 = applySubstitutions({{tvar, intTy}}, empty);
 
         REQUIRE(empty_isz != empty);
 

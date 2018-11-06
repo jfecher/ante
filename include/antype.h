@@ -576,17 +576,18 @@ namespace ante {
     class AnTraitType : public AnDataType {
         private:
         /** Return the names of all traits concatenated with '+' */
-        std::string combineNames(std::vector<Trait*> const& traits);
+        std::string combineNames(std::vector<AnTraitType*> const& traits);
 
         protected:
         AnTraitType(Trait *t, TypeArgs const& tArgs)
                 : AnDataType(t->name, TT_Trait), traits({t}){
             this->typeArgs = tArgs;
+            composedTraitTypes.push_back(this);
             isGeneric = ante::isGeneric(tArgs);
         }
 
-        AnTraitType(std::vector<Trait*> t, TypeArgs const& tArgs)
-                : AnDataType(combineNames(t), TT_Trait), traits(t){
+        AnTraitType(std::vector<AnTraitType*> t, std::vector<Trait*> traits, TypeArgs const& tArgs)
+                : AnDataType(combineNames(t), TT_Trait), traits(traits), composedTraitTypes(t){
             this->typeArgs = tArgs;
             isGeneric = ante::isGeneric(tArgs);
         }
@@ -594,6 +595,7 @@ namespace ante {
         public:
 
         const std::vector<Trait*> traits;
+        std::vector<AnTraitType*> composedTraitTypes;
 
         ~AnTraitType() = default;
 

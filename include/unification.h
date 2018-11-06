@@ -5,13 +5,15 @@
 #include <tuple>
 
 namespace ante {
-    using Substitutions = std::list<std::pair<std::string, AnType*>>;
+    using Substitutions = std::list<std::pair<AnType*, AnType*>>;
 
-    /** Substitute all instances of AnTypeVar(name) in t with u.
-     * Returns a new substituted type or t if name was not contained within */
-    AnType* substitute(AnType *u, std::string const& name, AnType *t);
+    using UnificationList = std::list<std::tuple<AnType*, AnType*, LOC_TY&>>;
 
-    Substitutions unify(std::list<std::tuple<AnType*, AnType*, LOC_TY&>>& list);
+    /** Substitute all instances of a given type subType in t with u.
+     * Returns a new substituted type or t if subType was not contained within */
+    AnType* substitute(AnType *u, AnType *subType, AnType *t);
+
+    Substitutions unify(UnificationList const& list);
 
     AnType* applySubstitutions(Substitutions const& substitutions, AnType *t);
 

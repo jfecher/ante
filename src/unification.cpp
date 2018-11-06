@@ -101,33 +101,33 @@ namespace ante {
 
 
     template<class T>
-    std::vector<T*> substituteIntoAll(AnType *u, std::string const& name,
+    std::vector<T*> substituteIntoAll(AnType *u, AnType *subType,
             std::vector<T*> const& vec){
 
         std::vector<T*> ret;
         ret.reserve(vec.size());
         for(auto &elem : vec){
-            ret.push_back(static_cast<T*>(substitute(u, name, elem)));
+            ret.push_back(static_cast<T*>(substitute(u, subType, elem)));
         }
         return ret;
     }
 
-    AnType* substitute(AnType *u, std::string const& name, AnType *t){
+    AnType* substitute(AnType *u, AnType* subType, AnType *t){
         if(!t->isGeneric)
             return t;
 
         if(auto ptr = try_cast<AnPtrType>(t)){
-            return AnPtrType::get(substitute(u, name, ptr->extTy));
+            return AnPtrType::get(substitute(u, subType, ptr->extTy));
 
         }else if(auto arr = try_cast<AnArrayType>(t)){
-            return AnArrayType::get(substitute(u, name, arr->extTy), arr->len);
+            return AnArrayType::get(substitute(u, subType, arr->extTy), arr->len);
 
         }else if(auto tv = try_cast<AnTypeVarType>(t)){
-            return tv->name == name ? u : t;
+            return tv == subType ? u : t;
 
         }else if(auto dt = try_cast<AnProductType>(t)){
-            auto exts = substituteIntoAll(u, name, dt->fields);;
-            auto generics = substituteIntoAll(u, name, dt->typeArgs);;
+            auto exts = substituteIntoAll(u, subType, dt->fields);;
+            auto generics = substituteIntoAll(u, subType, dt->typeArgs);;
 
             if(exts == dt->fields && generics == dt->typeArgs)
                 return t;
@@ -135,8 +135,8 @@ namespace ante {
                 return AnProductType::getOrCreateVariant(dt, exts, generics);
 
         }else if(auto st = try_cast<AnSumType>(t)){
-            auto exts = substituteIntoAll(u, name, st->tags);;
-            auto generics = substituteIntoAll(u, name, st->typeArgs);;
+            auto exts = substituteIntoAll(u, subType, st->tags);;
+            auto generics = substituteIntoAll(u, subType, st->typeArgs);;
 
             if(exts == st->tags && generics == st->typeArgs)
                 return st;
@@ -144,7 +144,11 @@ namespace ante {
                 return AnSumType::getOrCreateVariant(st, exts, generics);
 
         }else if(auto tt = try_cast<AnTraitType>(t)){
-            auto generics = substituteIntoAll(u, name, tt->typeArgs);;
+            if(tt == subType){
+                return u;
+            }
+
+            auto generics = substituteIntoAll(u, subType, tt->typeArgs);;
 
             if(generics == tt->typeArgs)
                 return tt;
@@ -152,12 +156,12 @@ namespace ante {
                 return AnTraitType::getOrCreateVariant(tt, generics);
 
         }else if(auto fn = try_cast<AnFunctionType>(t)){
-            auto exts = substituteIntoAll(u, name, fn->extTys);;
-            auto rett = substitute(u, name, fn->retTy);
+            auto exts = substituteIntoAll(u, subType, fn->extTys);;
+            auto rett = substitute(u, subType, fn->retTy);
             return AnFunctionType::get(rett, exts, t->typeTag == TT_MetaFunction);
 
         }else if(auto tup = try_cast<AnAggregateType>(t)){
-            auto exts = substituteIntoAll(u, name, tup->extTys);;
+            auto exts = substituteIntoAll(u, subType, tup->extTys);;
             return AnAggregateType::get(TT_Tuple, exts);
 
         }else{
@@ -196,31 +200,47 @@ namespace ante {
     }
 
 
+    /** True if the trait t1 is contained within trait t2 */
+    UnificationList intersection(AnTraitType *t1, AnTraitType *t2, LOC_TY loc){
+        UnificationList pairs;
+        for(auto *l : t1->composedTraitTypes){
+            auto &ct = t2->composedTraitTypes;
+            auto it = std::find_if(ct.begin(), ct.end(), [&](auto ty){
+                return l->traits == ty->traits;
+            });
+            if(it != ct.end()){
+                pairs.emplace_back(l, *it, loc);
+            }
+        }
+        return pairs;
+    }
+
+
     Substitutions unifyOne(AnType *t1, AnType *t2, LOC_TY &loc){
         auto tv1 = try_cast<AnTypeVarType>(t1);
         auto tv2 = try_cast<AnTypeVarType>(t2);
 
         if(tv1){
-            return {{tv1->name, t2}};
+            return {{tv1, t2}};
         }else if(tv2){
-            return {{tv2->name, t1}};
+            return {{tv2, t1}};
         }
 
         if(t1->typeTag != t2->typeTag){
             auto trait = try_cast<AnTraitType>(t1);
             if(trait && implements(t2, trait)){
-                return {};
+                return {{trait, t2}};
             }
 
             trait = try_cast<AnTraitType>(t2);
             if(trait && implements(t1, trait)){
-                return {};
+                return {{trait, t1}};
             }
             error("Mismatched types " + anTypeToColoredStr(t1) + " and " + anTypeToColoredStr(t2), loc);
             return {};
         }
 
-        std::list<std::tuple<AnType*, AnType*, LOC_TY&>> ret;
+        UnificationList ret;
 
         if(!t1->isGeneric && !t2->isGeneric)
             return {};
@@ -251,7 +271,17 @@ namespace ante {
 
         }else if(auto tt1 = try_cast<AnTraitType>(t1)){
             auto tt2 = try_cast<AnTraitType>(t2);
-            return unifyExts(tt1->typeArgs, tt2->typeArgs, loc, tt1, tt2);
+            if(tt1->name == tt2->name){
+                return unifyExts(tt1->typeArgs, tt2->typeArgs, loc, tt1, tt2);
+            }
+
+            ret = intersection(tt1, tt2, loc);
+
+            auto merge = tt1->merge(tt2);
+            auto unifyRes = unify(ret);
+            Substitutions l = {{tt1, merge}, {tt2, merge}};
+            l.merge(unifyRes);
+            return l;
 
         }else if(auto fn1 = try_cast<AnFunctionType>(t1)){
             auto fn2 = try_cast<AnFunctionType>(t2);
@@ -260,7 +290,6 @@ namespace ante {
                 return {};
             }
 
-            std::list<std::tuple<AnType*, AnType*, LOC_TY&>> ret;
             for(size_t i = 0; i < fn1->extTys.size(); i++)
                 ret.emplace_back(fn1->extTys[i], fn2->extTys[i], loc);
 
@@ -278,9 +307,7 @@ namespace ante {
     }
 
 
-    Substitutions unify(std::list<std::tuple<AnType*, AnType*, LOC_TY&>> const& list,
-            std::list<std::tuple<AnType*, AnType*, LOC_TY&>>::iterator cur){
-
+    Substitutions unify(UnificationList const& list, UnificationList::const_iterator cur){
         if(cur == list.end()){
             return {};
         }else{
@@ -301,7 +328,7 @@ namespace ante {
         }
     }
 
-    Substitutions unify(std::list<std::tuple<AnType*, AnType*, LOC_TY&>>& cur){
+    Substitutions unify(UnificationList const& cur){
         return unify(cur, cur.begin());
     }
 }

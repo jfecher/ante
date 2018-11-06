@@ -392,7 +392,9 @@ namespace ante {
 
     AnTraitType* AnTraitType::getOrCreateVariant(AnTraitType *parent, TypeArgs const& generics){
         //TODO: create traitvariants field to store these permanently in
-        return new AnTraitType(parent->traits, generics);
+        auto ret = new AnTraitType({parent}, parent->traits, generics);
+        ret->composedTraitTypes[0] = ret;
+        return ret;
     }
 
 
@@ -402,19 +404,24 @@ namespace ante {
         return ret;
     }
 
-    /** Creates a new TraitType that is a union of the 2 given.
-     *
-     * NOTE: This can be sped up by sorting both vectors first then
-     * merging, but in practice few enough traits are combined that
-     * we do not run into this asymptotic behaviour.
-     */
-    AnTraitType* AnTraitType::merge(AnTraitType *t){
-        vector<Trait*> unionVec;
-        unionVec.reserve(traits.size() + t->traits.size());
 
-        auto it = std::set_union(traits.begin(), traits.end(),
-                t->traits.begin(), t->traits.end(), unionVec.begin());
+    template<typename T>
+    vector<T> union_of(vector<T> const& l, vector<T> const& r){
+        vector<T> unionVec{l.size() + r.size()};
+
+        /* TODO: find a simpler set union method.
+         * we are more concerned with constant factors
+         * than asymptotic behaviour */
+        auto it = std::set_union(l.begin(), l.end(),
+                r.begin(), r.end(), unionVec.begin());
         unionVec.resize(it - unionVec.begin());
+        return unionVec;
+    }
+
+
+    /** Creates a new TraitType that is a union of the 2 given. */
+    AnTraitType* AnTraitType::merge(AnTraitType *t){
+        auto unionVec = union_of(traits, t->traits);
 
         auto existing_ty = search(typeArena.multiTraitTypes, unionVec);
         if(existing_ty) return existing_ty;
@@ -437,7 +444,9 @@ namespace ante {
         typeArgs.pop_back();
         typeArgs.insert(typeArgs.end(), t->typeArgs.begin(), t->typeArgs.end());
 
-        auto ret = new AnTraitType(unionVec, typeArgs);
+        auto newTraitTypes = union_of(composedTraitTypes, t->composedTraitTypes);
+
+        auto ret = new AnTraitType(newTraitTypes, unionVec, typeArgs);
         typeArena.multiTraitTypes.try_emplace(unionVec, ret);
         return ret;
     }
@@ -484,7 +493,7 @@ namespace ante {
     /**
      * Return the names of all traits concatenated with '+'
      */
-    string AnTraitType::combineNames(std::vector<Trait*> const& traits){
+    string AnTraitType::combineNames(std::vector<AnTraitType*> const& traits){
         string name = "";
         for(const auto &trait : traits){
             name += trait->name;
@@ -574,7 +583,7 @@ namespace ante {
                     for(; i < tn->params.size() && i < basety->typeArgs.size(); i++){
                         auto *b = static_cast<AnTypeVarType*>(toAnType(tn->params[i].get()));
                         auto *basetyTypeArg = try_cast<AnTypeVarType>(basety->typeArgs[i]);
-                        subs.emplace_back(basetyTypeArg->name, b);
+                        subs.emplace_back(basetyTypeArg, b);
                     }
                     ret = applySubstitutions(subs, ret);
                 }
@@ -584,7 +593,7 @@ namespace ante {
                     Substitutions subs;
                     auto *b = nextTypeVar();
                     auto *basetyTypeArg = try_cast<AnTypeVarType>(basety->typeArgs[i]);
-                    subs.emplace_back(basetyTypeArg->name, b);
+                    subs.emplace_back(basetyTypeArg, b);
                     ret = applySubstitutions(subs, ret);
                 }
                 break;

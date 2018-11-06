@@ -155,9 +155,6 @@ void PrintingVisitor::visit(SeqNode *n){
 
         if(&c != &n->sequence.back()){
             puts(";");
-
-            cout << "  :  " << anTypeToStr(c->getType());
-
             for(size_t i = 0; i < indent_level; i++)
                 putchar(' ');
         }
