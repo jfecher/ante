@@ -139,7 +139,6 @@ namespace ante {
                         error("Function takes " + to_string(paramc)
                                 + " argument(s) but " + to_string(argc)
                                 + weregiven, n->lval->loc);
-                        return;
                     }
                 }
 

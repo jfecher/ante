@@ -32,9 +32,15 @@ extern list<unique_ptr<Module>> allMergedCompUnits;
  */
 void showParseTree(RootNode *root){
     // Must annotate parse tree with name/type information first
-    NameResolutionVisitor::resolve(root);
-    TypeInferenceVisitor::infer(root);
-    parser::printBlock(root, 0);
+    try{
+        NameResolutionVisitor v;
+        v.visit(root);
+        if(v.errFlag) return;
+        TypeInferenceVisitor::infer(root);
+        parser::printBlock(root, 0);
+    }catch(...){
+        /* User should already be notified if an error occurred */
+    }
 }
 
 /**

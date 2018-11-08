@@ -572,7 +572,6 @@ namespace ante {
                 AnDataType *basety = AnDataType::get(tn->typeName);
                 if(!basety){
                     ante::error("Use of undeclared type " + lazy_str(tn->typeName, AN_TYPE_COLOR), tn->loc);
-                    return nullptr;
                 }
 
                 ret = basety;

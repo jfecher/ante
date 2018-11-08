@@ -182,10 +182,9 @@ namespace ante {
             LOC_TY &loc, AnType *t1, AnType *t2){
 
         if(exts1.size() != exts2.size()){
-            std::vector<AnType*> lt{exts1.begin(), exts1.end()};
-            std::vector<AnType*> rt{exts2.begin(), exts2.end()};
-            error("Mismatched types " + anTypeToColoredStr(t1)
+            showError("Mismatched types " + anTypeToColoredStr(t1)
                     + " and " + anTypeToColoredStr(t2), loc);
+            return {};
         }
 
         std::list<std::tuple<AnType*, AnType*, LOC_TY&>> ret;
@@ -236,7 +235,7 @@ namespace ante {
             if(trait && implements(t1, trait)){
                 return {{trait, t1}};
             }
-            error("Mismatched types " + anTypeToColoredStr(t1) + " and " + anTypeToColoredStr(t2), loc);
+            showError("Mismatched types " + anTypeToColoredStr(t1) + " and " + anTypeToColoredStr(t2), loc);
             return {};
         }
 
@@ -287,7 +286,6 @@ namespace ante {
             auto fn2 = try_cast<AnFunctionType>(t2);
             if(fn1->extTys.size() != fn2->extTys.size()){
                 error("Types are of varying sizes", loc);
-                return {};
             }
 
             for(size_t i = 0; i < fn1->extTys.size(); i++)

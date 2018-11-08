@@ -341,7 +341,6 @@ namespace ante {
 
                 if(!size){
                     ante::error("Size of array must be an integer literal", extTy->next->loc);
-                    exit(1);
                 }
             }
             return new TypeNode(loc, type, typeName, static_cast<TypeNode*>(extTy));

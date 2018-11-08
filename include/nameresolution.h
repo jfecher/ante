@@ -112,6 +112,11 @@ namespace ante {
 
             void visitUnionDecl(parser::DataDeclNode *decl);
 
+            /** A safe wrapper around toAnType that catches any exceptions and
+             * sets error flags to let the compiler know it cannot continue to
+             * the next phase. */
+            AnType* tryToAnType(parser::TypeNode *tn);
+
             std::vector<FuncDecl*>& getFunctionList(std::string const& name) const;
 
             std::vector<Declaration*> findCandidates(parser::Node *n) const;

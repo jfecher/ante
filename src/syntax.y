@@ -33,13 +33,6 @@ namespace ante {
     }
 }
 
-
-/*namespace ante{
-    extern void error(string& msg, const char *fileName, unsigned int row, unsigned int col);
-}*/
-
-void yyerror(const char *msg);
-
 %}
 
 %locations
@@ -761,7 +754,7 @@ expr: expr '+' maybe_newline expr                    {$$ = mkBinOpNode(@$, '+', 
 /* location parser error */
 void yy::parser::error(const location& loc, const string& msg){
     location l = loc;
-    ante::error(msg.c_str(), l);
+    ante::showError(msg.c_str(), l);
 }
 
 namespace ante {
