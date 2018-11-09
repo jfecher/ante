@@ -341,7 +341,6 @@ namespace ante {
 
                 if(!size){
                     ante::error("Size of array must be an integer literal", extTy->next->loc);
-                    exit(1);
                 }
             }
             return new TypeNode(loc, type, typeName, static_cast<TypeNode*>(extTy));
@@ -529,11 +528,17 @@ namespace ante {
 
         Node* mkTraitNode(LOC_TY loc, char* s, Node* generics, Node* fns){
             vector<unique_ptr<TypeNode>> genericsVec;
+            TypeNode *selfType = 0;
+
             while(generics){
-                genericsVec.emplace_back((TypeNode*)generics);
+                if(selfType){
+                    genericsVec.emplace_back((TypeNode*)generics);
+                }else{
+                    selfType = (TypeNode*)generics;
+                }
                 generics = generics->next.release();
             }
-            return new TraitNode(loc, s, move(genericsVec), fns);
+            return new TraitNode(loc, s, selfType, move(genericsVec), fns);
         }
     } //end of namespace ante::parser
 } //end of namespace ante

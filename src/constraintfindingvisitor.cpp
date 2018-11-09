@@ -139,7 +139,6 @@ namespace ante {
                         error("Function takes " + to_string(paramc)
                                 + " argument(s) but " + to_string(argc)
                                 + weregiven, n->lval->loc);
-                        return;
                     }
                 }
 
@@ -260,7 +259,7 @@ namespace ante {
     }
 
     void ConstraintFindingVisitor::visit(MatchBranchNode *n){
-        n->pattern->accept(*this);
+        //n->pattern->accept(*this);
         n->branch->accept(*this);
     }
 

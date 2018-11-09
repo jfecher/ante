@@ -212,11 +212,15 @@ TypedValue compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
         exit(flag);
     }
 
+    //TODO: abstract the following into compile() or similar
     RootNode *expr = parser::getRootNode();
     TypedValue val;
 
     NameResolutionVisitor v;
     v.resolve(expr);
+    if(v.errFlag){ throw CtError(); }
+
+    TypeInferenceVisitor::infer(expr);
 
     //Compile main and hold onto the last value
     for(auto &n : expr->main){
@@ -977,9 +981,11 @@ void compileAll(Compiler *c, vector<T> &vec){
 void Compiler::scanAllDecls(RootNode *root){
     NameResolutionVisitor n;
     root->accept(n);
-    if(n.hasError()) errFlag = true;
-
-    TypeInferenceVisitor::infer(root);
+    if(n.hasError()){
+        errFlag = true;
+    }else{
+        TypeInferenceVisitor::infer(root);
+    }
 }
 
 void Compiler::eval(){

@@ -155,9 +155,6 @@ void PrintingVisitor::visit(SeqNode *n){
 
         if(&c != &n->sequence.back()){
             puts(";");
-
-            cout << "  :  " << anTypeToStr(c->getType());
-
             for(size_t i = 0; i < indent_level; i++)
                 putchar(' ');
         }
@@ -367,7 +364,13 @@ void PrintingVisitor::visit(DataDeclNode *n){
 
 void PrintingVisitor::visit(TraitNode *n){
     printModifiers(*this, n);
-    cout << "trait " << n->name << endl;
+    cout << "trait " << n->name;
+    for(auto &tv : n->generics){
+        putchar(' ');
+        tv->accept(*this);
+    }
+    puts("");
+
     printBlock(n->child.get(), this->indent_level);
     cout << "end of trait " << n->name << endl;
 }

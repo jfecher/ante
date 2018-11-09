@@ -90,7 +90,7 @@ namespace ante {
     void TypeInferenceVisitor::visit(TypeCastNode *n){
         n->typeExpr->accept(*this);
         n->rval->accept(*this);
-        n->setType(n->rval->getType());
+        n->setType(n->typeExpr->getType());
     }
 
     void TypeInferenceVisitor::visit(UnOpNode *n){
@@ -127,6 +127,12 @@ namespace ante {
     }
 
     void TypeInferenceVisitor::visit(BinOpNode *n){
+        // If we have a field access operator, we cannot try to
+        // coerce the module name into a type
+        if(n->op == '.' && dynamic_cast<TypeNode*>(n->lval.get())){
+            return;
+        }
+
         n->lval->accept(*this);
         n->rval->accept(*this);
         n->setType(nextTypeVar());

@@ -110,7 +110,8 @@ void printFileNameAndLineNumber(const yy::location& loc){
     clearColor();
 }
 
-void error(const char* msg, const yy::location& loc, ErrorType t){
+
+void showFileInfo(const yy::location &loc, ErrorType t){
     printFileNameAndLineNumber(loc);
 
     cout << '\t' << flush;
@@ -124,30 +125,25 @@ void error(const char* msg, const yy::location& loc, ErrorType t){
         cout << "note: ";
 
     clearColor();
-    cout << msg << endl;
+}
 
+
+void showError(lazy_printer msg, const yy::location& loc, ErrorType t){
+    showFileInfo(loc, t);
+    cout << msg << endl;
     printErrLine(loc, t);
     cout << endl << endl;
 }
 
+
+void error(const char* msg, const yy::location& loc, ErrorType t){
+    showError(msg, loc, t);
+    throw CtError();
+}
+
 void error(lazy_printer strs, const yy::location& loc, ErrorType t){
-    printFileNameAndLineNumber(loc);
-
-    cout << '\t' << flush;
-    printErrorTypeColor(t);
-
-    if(t == ErrorType::Error)
-        cout << "error: ";
-    else if(t == ErrorType::Warning)
-        cout << "warning: ";
-    else if(t == ErrorType::Note)
-        cout << "note: ";
-
-    clearColor();
-    cout << strs << endl;
-
-    printErrLine(loc, t);
-    cout << endl << endl;
+    showError(strs, loc, t);
+    throw CtError();
 }
 
 
@@ -155,7 +151,7 @@ void error(lazy_printer strs, const yy::location& loc, ErrorType t){
  *  Inform the user of an error and return nullptr.
  */
 TypedValue Compiler::compErr(lazy_printer msg, const yy::location& loc, ErrorType t){
-    error(msg, loc, t);
+    showError(msg, loc, t);
     if(t == ErrorType::Error){
         errFlag = true;
         throw new CompilationError(msg, loc);

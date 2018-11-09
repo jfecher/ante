@@ -126,11 +126,11 @@ add_library(antecommon SHARED
 
 # Find the libraries that correspond to the LLVM components
 # that we wish to use
-llvm_map_components_to_libnames(llvm_libs core native bitwriter passes target all)
+llvm_map_components_to_libnames(llvm_libs core orcjit native bitwriter passes target)
+target_link_libraries(antecommon ${llvm_libs})
 
 add_executable(ante src/ante.cpp)
 target_link_libraries(ante antecommon)
-target_link_libraries(ante ${llvm_libs})
 
 add_executable(antetests
         tests/unit/catch.hpp
@@ -141,6 +141,5 @@ add_executable(antetests
         tests/unit/unittest.h)
 
 target_link_libraries(antetests antecommon)
-target_link_libraries(antetests ${llvm_libs})
 
 # depends on targets: llvm-headers and llvm-libraries intrinsics_gen table_gen

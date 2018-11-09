@@ -576,17 +576,20 @@ namespace ante {
     class AnTraitType : public AnDataType {
         private:
         /** Return the names of all traits concatenated with '+' */
-        std::string combineNames(std::vector<Trait*> const& traits);
+        std::string combineNames(std::vector<AnTraitType*> const& traits);
 
         protected:
-        AnTraitType(Trait *t, TypeArgs const& tArgs)
-                : AnDataType(t->name, TT_Trait), traits({t}){
+        AnTraitType(Trait *t, AnType *self,  TypeArgs const& tArgs)
+                : AnDataType(t->name, TT_Trait), traits({t}), selfType(self) {
             this->typeArgs = tArgs;
+            composedTraitTypes.push_back(this);
             isGeneric = ante::isGeneric(tArgs);
         }
 
-        AnTraitType(std::vector<Trait*> t, TypeArgs const& tArgs)
-                : AnDataType(combineNames(t), TT_Trait), traits(t){
+        AnTraitType(std::vector<AnTraitType*> t, std::vector<Trait*> traits,
+                AnType *self, TypeArgs const& tArgs)
+                : AnDataType(combineNames(t), TT_Trait), traits(traits),
+                  composedTraitTypes(t), selfType(self) {
             this->typeArgs = tArgs;
             isGeneric = ante::isGeneric(tArgs);
         }
@@ -594,6 +597,11 @@ namespace ante {
         public:
 
         const std::vector<Trait*> traits;
+        std::vector<AnTraitType*> composedTraitTypes;
+
+        /** Type type implementing this trait, eg i32 for Eq i32
+         * or Vec for Collection Vec i32 */
+        AnType *selfType;
 
         ~AnTraitType() = default;
 
@@ -606,8 +614,11 @@ namespace ante {
          * Returns null if no type with a matching name is found. */
         static AnTraitType* get(std::string const& name);
 
+        /** Get an existing generic variant or create one if it does not yet exist */
+        static AnTraitType* getOrCreateVariant(AnTraitType *parent, AnType *self, TypeArgs const& generics);
+
         /** Creates a new trait type matching the given trait declaration. */
-        static AnTraitType* create(Trait *trait, TypeArgs const& typeArgs);
+        static AnTraitType* create(Trait *trait, AnType *self, TypeArgs const& typeArgs);
 
         /** Creates a new TraitType that is a union of the 2 given. */
         AnTraitType* merge(AnTraitType *t);

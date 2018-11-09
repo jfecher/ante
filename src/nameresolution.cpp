@@ -35,7 +35,7 @@ namespace ante {
     }
 
     void NameResolutionVisitor::error(lazy_printer msg, LOC_TY loc, ErrorType t){
-        ante::error(msg, loc, t);
+        ante::showError(msg, loc, t);
         if(t == ErrorType::Error){
             errFlag = true;
             throw new CompilationError(msg, loc);
@@ -317,6 +317,11 @@ namespace ante {
 
 
     void NameResolutionVisitor::visit(BinOpNode *n){
+        if(n->op == '.' && dynamic_cast<TypeNode*>(n->lval.get())){
+            //TODO: auto-module import
+            return;
+        }
+
         n->lval->accept(*this);
 
         if(n->op == '.' && !dynamic_cast<TypeNode*>(n->lval.get())){
@@ -494,7 +499,6 @@ namespace ante {
             for(auto *mod : this->imports){
                 if(mod->name == fmodName){
                     error("Module " + string(fName) + " has already been imported", loc, ErrorType::Warning);
-                    return;
                 }
             }
 
@@ -841,9 +845,11 @@ namespace ante {
         auto tr = new Trait();
         tr->name = n->name;
 
+        AnType *genericSelfParam = toAnType(n->selfType.get());
+
         // trait type is created here but the internal trait
         // tr will still be mutated with additional methods after
-        AnTraitType::create(tr, convertToTypeArgs(n->generics));
+        AnTraitType::create(tr, genericSelfParam, convertToTypeArgs(n->generics));
 
         for(auto *fn : *n->child){
             auto *fdn = static_cast<FuncDeclNode*>(fn);

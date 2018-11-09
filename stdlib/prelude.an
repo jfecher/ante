@@ -51,6 +51,8 @@ type Maybe 't =
    | Some 't
    | None
 
+type Type = ref void
+
 fun (=): Maybe l r -> bool
     match l with
     | Some lv ->
@@ -92,73 +94,73 @@ ante fun Ante.forget: ref c8 function_name
 //numerical print functions
 !inline
 fun i8.printne: i8 x
-    printf "%hhd" x
+    printf "%hhd".cStr x
 
 !inline
 fun i16.printne: i16 x
-    printf "%hd" x
+    printf "%hd".cStr x
 
 !inline
 fun i32.printne: i32 x
-    printf "%d" x
+    printf "%d".cStr x
 
 !inline
 fun i64.printne: i64 x
-    printf "%ld" x
+    printf "%ld".cStr x
 
 !inline
 fun isz.printne: isz x
-    printf "%zi" x
+    printf "%zi".cStr x
 
 //unsigned
 !inline
 fun u8.printne: u8 x
-    printf "%hhu" x
+    printf "%hhu".cStr x
 
 !inline
 fun u16.printne: u16 x
-    printf "%hu" x
+    printf "%hu".cStr x
 
 !inline
 fun u32.printne: u32 x
-    printf "%u" x
+    printf "%u".cStr x
 
 !inline
 fun u64.printne: u64 x
-    printf "%lu" x
+    printf "%lu".cStr x
 
 !inline
 fun usz.printne: usz x
-    printf "%zu" x
+    printf "%zu".cStr x
 
 //floats
 !inline
 fun f16.printne: f16 x
-    printf "%.2f" (f64 x)
+    printf "%.2f".cStr (f64 x)
 
 !inline
 fun f32.printne: f32 x
-    printf "%f" (f64 x)
+    printf "%f".cStr (f64 x)
 
 !inline
 fun f64.printne: f64 x
-    printf "%.14f" x
+    printf "%.14f".cStr x
 
 //char
 !inline
 fun c8.printne: c8 x
-    printf "%c" x
+    printf "%c".cStr x
 
 //bool
 !inline
 fun bool.printne: bool b
-    if b then printf "true"
-    else printf "false"
+    if b then printf "true".cStr
+    else printf "false".cStr
 
 //c-string
 !inline
 fun printne: ref c8 s
-    printf "%s" s
+    printf "%s".cStr s
 
 
 !inline
@@ -168,12 +170,12 @@ fun printne: Str s
 
 !inline
 fun printne: 't x
-    printf "%s" (Str x).cStr
+    printf "%s".cStr (Str x).cStr
 
 !inline
 fun print: 't x
     printne x
-    puts ""
+    puts "".cStr
 
 
 !inline
@@ -404,12 +406,12 @@ fun (#): Str s, i32 i, c8 c
 //IO
 !inline
 fun InFile.init: Str fName -> InFile
-    InFile fopen (fName.cStr) "r"
+    InFile fopen (fName.cStr) "r".cStr
 
 
 !inline
 fun OutFile.init: Str fName -> OutFile
-    OutFile fopen (fName.cStr) "w"
+    OutFile fopen (fName.cStr) "w".cStr
 
 
 fun InFile.next_line: InFile f -> Str

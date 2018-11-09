@@ -351,14 +351,16 @@ namespace ante {
     AnProductType* AnProductType::getOrCreateVariant(AnProductType *parent,
             std::vector<AnType*> const& elems, TypeArgs const& typeArgs){
 
-        pair<string, vector<AnType*>> vec{parent->name, elems};
-        auto t = search(typeArena.productTypeVariants, vec);
+        pair<string, vector<AnType*>> key{parent->name, elems};
+        auto t = search(typeArena.productTypeVariants, key);
         if(t) return t;
+
         auto ret = new AnProductType(parent->name, elems);
         ret->typeArgs = typeArgs;
         ret->isGeneric = ante::isGeneric(typeArgs);
         ret->fields = parent->fields;
         ret->parentUnionType = parent->parentUnionType; //Will never bind the parent union type!
+        typeArena.productTypeVariants.try_emplace(key, ret);
         return ret;
     }
 
@@ -369,11 +371,13 @@ namespace ante {
     AnSumType* AnSumType::getOrCreateVariant(AnSumType *parent,
             std::vector<AnProductType*> const& elems, TypeArgs const& typeArgs){
 
-        pair<string, vector<AnProductType*>> vec{parent->name, elems};
-        auto t = search(typeArena.sumTypeVariants, vec);
+        pair<string, vector<AnProductType*>> key{parent->name, elems};
+        auto t = search(typeArena.sumTypeVariants, key);
         if(t) return t;
+
         auto ret = new AnSumType(parent->name, elems);
         ret->typeArgs = typeArgs;
+        typeArena.sumTypeVariants.try_emplace(key, ret);
         return ret;
     }
 
@@ -386,25 +390,40 @@ namespace ante {
     }
 
 
-    AnTraitType* AnTraitType::create(Trait *trait, TypeArgs const& tArgs){
-        auto ret = new AnTraitType(trait, tArgs);
+    AnTraitType* AnTraitType::getOrCreateVariant(AnTraitType *parent,
+            AnType *self, TypeArgs const& generics){
+
+        //TODO: create traitvariants field to store these permanently in
+        auto ret = new AnTraitType({parent}, parent->traits, self, generics);
+        ret->composedTraitTypes[0] = ret;
+        return ret;
+    }
+
+
+    AnTraitType* AnTraitType::create(Trait *trait, AnType *self, TypeArgs const& tArgs){
+        auto ret = new AnTraitType(trait, self, tArgs);
         typeArena.dataTypes.try_emplace(trait->name, ret);
         return ret;
     }
 
-    /** Creates a new TraitType that is a union of the 2 given.
-     *
-     * NOTE: This can be sped up by sorting both vectors first then
-     * merging, but in practice few enough traits are combined that
-     * we do not run into this asymptotic behaviour.
-     */
-    AnTraitType* AnTraitType::merge(AnTraitType *t){
-        vector<Trait*> unionVec;
-        unionVec.reserve(traits.size() + t->traits.size());
 
-        auto it = std::set_union(traits.begin(), traits.end(),
-                t->traits.begin(), t->traits.end(), unionVec.begin());
+    template<typename T>
+    vector<T> union_of(vector<T> const& l, vector<T> const& r){
+        vector<T> unionVec{l.size() + r.size()};
+
+        /* TODO: find a simpler set union method.
+         * we are more concerned with constant factors
+         * than asymptotic behaviour */
+        auto it = std::set_union(l.begin(), l.end(),
+                r.begin(), r.end(), unionVec.begin());
         unionVec.resize(it - unionVec.begin());
+        return unionVec;
+    }
+
+
+    /** Creates a new TraitType that is a union of the 2 given. */
+    AnTraitType* AnTraitType::merge(AnTraitType *t){
+        auto unionVec = union_of(traits, t->traits);
 
         auto existing_ty = search(typeArena.multiTraitTypes, unionVec);
         if(existing_ty) return existing_ty;
@@ -415,19 +434,20 @@ namespace ante {
         // If either typeArg is bound and different from the other they can't be merged.
         // FIXME: This will fail when checking eg.  Eq (Show 'a) = Eq (Other 'b)
         //        Resulting in a merge of Eq (Other 'b) instead of Eq (Show+Other 'b)
-        if(typeArgs.back() != t->typeArgs.back() &&
-                (!typeArgs.back()->isGeneric || !t->typeArgs.back()->isGeneric)){
+        if(this->selfType != t->selfType &&
+                (!selfType->isGeneric || !t->selfType->isGeneric)){
 
             cerr << "ERROR: Union of two incompatible trait types: " << anTypeToColoredStr(this)
                  << " and " << anTypeToColoredStr(t) << endl
-                 << "NOTE: Cause is generic parameter " << anTypeToColoredStr(typeArgs.back())
-                 << " != " << anTypeToColoredStr(t->typeArgs.back()) << endl;
+                 << "NOTE: Cause is the type implementing the trait differs: " << anTypeToColoredStr(selfType)
+                 << " != " << anTypeToColoredStr(selfType) << endl;
         }
 
-        typeArgs.pop_back();
         typeArgs.insert(typeArgs.end(), t->typeArgs.begin(), t->typeArgs.end());
 
-        auto ret = new AnTraitType(unionVec, typeArgs);
+        auto newTraitTypes = union_of(composedTraitTypes, t->composedTraitTypes);
+
+        auto ret = new AnTraitType(newTraitTypes, unionVec, selfType, typeArgs);
         typeArena.multiTraitTypes.try_emplace(unionVec, ret);
         return ret;
     }
@@ -474,7 +494,7 @@ namespace ante {
     /**
      * Return the names of all traits concatenated with '+'
      */
-    string AnTraitType::combineNames(std::vector<Trait*> const& traits){
+    string AnTraitType::combineNames(std::vector<AnTraitType*> const& traits){
         string name = "";
         for(const auto &trait : traits){
             name += trait->name;
@@ -553,7 +573,6 @@ namespace ante {
                 AnDataType *basety = AnDataType::get(tn->typeName);
                 if(!basety){
                     ante::error("Use of undeclared type " + lazy_str(tn->typeName, AN_TYPE_COLOR), tn->loc);
-                    return nullptr;
                 }
 
                 ret = basety;
@@ -564,7 +583,7 @@ namespace ante {
                     for(; i < tn->params.size() && i < basety->typeArgs.size(); i++){
                         auto *b = static_cast<AnTypeVarType*>(toAnType(tn->params[i].get()));
                         auto *basetyTypeArg = try_cast<AnTypeVarType>(basety->typeArgs[i]);
-                        subs.emplace_back(basetyTypeArg->name, b);
+                        subs.emplace_back(basetyTypeArg, b);
                     }
                     ret = applySubstitutions(subs, ret);
                 }
@@ -574,7 +593,7 @@ namespace ante {
                     Substitutions subs;
                     auto *b = nextTypeVar();
                     auto *basetyTypeArg = try_cast<AnTypeVarType>(basety->typeArgs[i]);
-                    subs.emplace_back(basetyTypeArg->name, b);
+                    subs.emplace_back(basetyTypeArg, b);
                     ret = applySubstitutions(subs, ret);
                 }
                 break;

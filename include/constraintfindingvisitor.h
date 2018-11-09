@@ -3,6 +3,7 @@
 
 #include "parser.h"
 #include "antype.h"
+#include "unification.h"
 #include <tuple>
 
 namespace ante {
@@ -12,10 +13,10 @@ namespace ante {
 
         DECLARE_NODE_VISIT_METHODS();
 
-        std::list<std::tuple<AnType*, AnType*, LOC_TY&>> getConstraints() const;
+        UnificationList getConstraints() const;
 
         private:
-            std::list<std::tuple<AnType*, AnType*, LOC_TY&>> constraints;
+            UnificationList constraints;
     };
 }
 

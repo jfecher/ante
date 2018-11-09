@@ -29,11 +29,13 @@ namespace ante {
 
     struct TypeVarError : public CtError {};
 
-    /* General error function */
+    /* General error function.  Show an error and the line it is on, and throw an exception. */
     void error(const char* msg, const yy::location& loc, ErrorType t = ErrorType::Error);
 
     void error(lazy_printer msg, const yy::location& loc, ErrorType t = ErrorType::Error);
 
+    /* Show an error and the line it is on, but do not throw an exception. */
+    void showError(lazy_printer msg, const yy::location& loc, ErrorType t = ErrorType::Error);
 }
 
 #endif
