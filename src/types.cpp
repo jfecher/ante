@@ -699,6 +699,10 @@ string anTypeToStr(const AnType *t){
     }else if(auto *dt = try_cast<AnDataType>(t)){
         string n = dt->name;
 
+        if(auto *tt = try_cast<AnTraitType>(t)){
+            n += ' ' + anTypeToStr(tt->selfType);
+        }
+
         for(auto &a : dt->typeArgs){
             if(shouldWrapInParenthesis(a))
                 n += " (" + anTypeToStr(a) + ')';

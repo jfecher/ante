@@ -259,7 +259,7 @@ namespace ante {
     }
 
     void ConstraintFindingVisitor::visit(MatchBranchNode *n){
-        n->pattern->accept(*this);
+        //n->pattern->accept(*this);
         n->branch->accept(*this);
     }
 

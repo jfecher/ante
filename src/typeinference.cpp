@@ -90,7 +90,7 @@ namespace ante {
     void TypeInferenceVisitor::visit(TypeCastNode *n){
         n->typeExpr->accept(*this);
         n->rval->accept(*this);
-        n->setType(n->rval->getType());
+        n->setType(n->typeExpr->getType());
     }
 
     void TypeInferenceVisitor::visit(UnOpNode *n){

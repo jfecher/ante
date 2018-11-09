@@ -390,16 +390,18 @@ namespace ante {
     }
 
 
-    AnTraitType* AnTraitType::getOrCreateVariant(AnTraitType *parent, TypeArgs const& generics){
+    AnTraitType* AnTraitType::getOrCreateVariant(AnTraitType *parent,
+            AnType *self, TypeArgs const& generics){
+
         //TODO: create traitvariants field to store these permanently in
-        auto ret = new AnTraitType({parent}, parent->traits, generics);
+        auto ret = new AnTraitType({parent}, parent->traits, self, generics);
         ret->composedTraitTypes[0] = ret;
         return ret;
     }
 
 
-    AnTraitType* AnTraitType::create(Trait *trait, TypeArgs const& tArgs){
-        auto ret = new AnTraitType(trait, tArgs);
+    AnTraitType* AnTraitType::create(Trait *trait, AnType *self, TypeArgs const& tArgs){
+        auto ret = new AnTraitType(trait, self, tArgs);
         typeArena.dataTypes.try_emplace(trait->name, ret);
         return ret;
     }
@@ -432,21 +434,20 @@ namespace ante {
         // If either typeArg is bound and different from the other they can't be merged.
         // FIXME: This will fail when checking eg.  Eq (Show 'a) = Eq (Other 'b)
         //        Resulting in a merge of Eq (Other 'b) instead of Eq (Show+Other 'b)
-        if(typeArgs.back() != t->typeArgs.back() &&
-                (!typeArgs.back()->isGeneric || !t->typeArgs.back()->isGeneric)){
+        if(this->selfType != t->selfType &&
+                (!selfType->isGeneric || !t->selfType->isGeneric)){
 
             cerr << "ERROR: Union of two incompatible trait types: " << anTypeToColoredStr(this)
                  << " and " << anTypeToColoredStr(t) << endl
-                 << "NOTE: Cause is generic parameter " << anTypeToColoredStr(typeArgs.back())
-                 << " != " << anTypeToColoredStr(t->typeArgs.back()) << endl;
+                 << "NOTE: Cause is the type implementing the trait differs: " << anTypeToColoredStr(selfType)
+                 << " != " << anTypeToColoredStr(selfType) << endl;
         }
 
-        typeArgs.pop_back();
         typeArgs.insert(typeArgs.end(), t->typeArgs.begin(), t->typeArgs.end());
 
         auto newTraitTypes = union_of(composedTraitTypes, t->composedTraitTypes);
 
-        auto ret = new AnTraitType(newTraitTypes, unionVec, typeArgs);
+        auto ret = new AnTraitType(newTraitTypes, unionVec, selfType, typeArgs);
         typeArena.multiTraitTypes.try_emplace(unionVec, ret);
         return ret;
     }

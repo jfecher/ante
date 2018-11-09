@@ -394,7 +394,9 @@ namespace ante {
             void accept(NodeVisitor& v){ v.visit(this); }
             DataDeclNode(LOC_TY& loc, std::string s, Node* b, size_t f, bool a)
                 : ModifiableNode(loc), child(b), name(s), fields(f), isAlias(a){}
-            DataDeclNode(LOC_TY& loc, std::string s, Node* b, size_t f, std::vector<std::unique_ptr<TypeNode>> &&g, bool a)
+
+            DataDeclNode(LOC_TY& loc, std::string s, Node* b, size_t f,
+                    std::vector<std::unique_ptr<TypeNode>> &&g, bool a)
                 : ModifiableNode(loc), child(b), name(s), fields(f), generics(move(g)), isAlias(a){}
             ~DataDeclNode(){}
         };
@@ -403,10 +405,12 @@ namespace ante {
             std::unique_ptr<Node> child;
             std::string name;
             std::vector<std::unique_ptr<TypeNode>> generics;
+            std::unique_ptr<TypeNode> selfType;
 
             void accept(NodeVisitor& v){ v.visit(this); }
-            TraitNode(LOC_TY& loc, std::string s, std::vector<std::unique_ptr<TypeNode>> &&g, Node* b)
-                : ModifiableNode(loc), child(b), name(s), generics(move(g)){}
+            TraitNode(LOC_TY& loc, std::string s, TypeNode *self,
+                    std::vector<std::unique_ptr<TypeNode>> &&g, Node* b)
+                : ModifiableNode(loc), child(b), name(s), generics(move(g)), selfType(self){}
             ~TraitNode(){}
         };
 

@@ -56,10 +56,11 @@ namespace ante {
 
         }else if(auto tt = try_cast<AnTraitType>(t)){
             auto typeVars = copyWithNewTypeVars(tt->typeArgs, map);
-            if(typeVars == tt->typeArgs)
+            auto selfType = copyWithNewTypeVars(tt->selfType, map);
+            if(selfType == tt->selfType && typeVars == tt->typeArgs)
                 return tt;
             else
-                return AnTraitType::getOrCreateVariant(tt, typeVars);
+                return AnTraitType::getOrCreateVariant(tt, selfType, typeVars);
 
         }else if(auto tv = try_cast<AnTypeVarType>(t)){
             auto it = map.find(tv->name);
@@ -149,11 +150,12 @@ namespace ante {
             }
 
             auto generics = substituteIntoAll(u, subType, tt->typeArgs);;
+            auto selfType = substitute(u, subType, tt->selfType);
 
-            if(generics == tt->typeArgs)
+            if(selfType == tt->selfType && generics == tt->typeArgs)
                 return tt;
             else
-                return AnTraitType::getOrCreateVariant(tt, generics);
+                return AnTraitType::getOrCreateVariant(tt, selfType, generics);
 
         }else if(auto fn = try_cast<AnFunctionType>(t)){
             auto exts = substituteIntoAll(u, subType, fn->extTys);;
@@ -224,15 +226,18 @@ namespace ante {
         }else if(tv2){
             return {{tv2, t1}};
         }
+            auto s = anTypeToColoredStr;
 
         if(t1->typeTag != t2->typeTag){
             auto trait = try_cast<AnTraitType>(t1);
             if(trait && implements(t2, trait)){
+                std::cout << "Impl1 " << s(t2) << " with " << s(trait) << std::endl;
                 return {{trait, t2}};
             }
 
             trait = try_cast<AnTraitType>(t2);
             if(trait && implements(t1, trait)){
+                std::cout << "Impl2 " << s(t1) << " with " << s(trait) << std::endl;
                 return {{trait, t1}};
             }
             showError("Mismatched types " + anTypeToColoredStr(t1) + " and " + anTypeToColoredStr(t2), loc);
@@ -271,7 +276,11 @@ namespace ante {
         }else if(auto tt1 = try_cast<AnTraitType>(t1)){
             auto tt2 = try_cast<AnTraitType>(t2);
             if(tt1->name == tt2->name){
-                return unifyExts(tt1->typeArgs, tt2->typeArgs, loc, tt1, tt2);
+                auto l = unifyExts(tt1->typeArgs, tt2->typeArgs, loc, tt1, tt2);
+                ret.emplace_back(tt1->selfType, tt2->selfType, loc);
+                l.merge(unify(ret));
+                std::cout << "Unify " << s(tt1->selfType) << " and " << s(tt2->selfType)<< std::endl;
+                return unify(ret);
             }
 
             ret = intersection(tt1, tt2, loc);
@@ -279,6 +288,8 @@ namespace ante {
             auto merge = tt1->merge(tt2);
             auto unifyRes = unify(ret);
             Substitutions l = {{tt1, merge}, {tt2, merge}};
+
+            std::cout << "Replace " << s(tt1) << " with " << s(merge) << ", and " << s(tt2) << " with " << s(merge) << std::endl;
             l.merge(unifyRes);
             return l;
 
