@@ -71,13 +71,13 @@ namespace ante {
 
 
     template<class T>
-    std::vector<AnType*> substituteIntoAll(AnType *u, std::string const& name,
+    std::vector<T*> substituteIntoAll(AnType *u, std::string const& name,
             std::vector<T*> const& vec){
 
-        std::vector<AnType*> ret;
+        std::vector<T*> ret;
         ret.reserve(vec.size());
         for(auto &elem : vec){
-            ret.push_back(substitute(u, name, elem));
+            ret.push_back(static_cast<T*>(substitute(u, name, elem)));
         }
         return ret;
     }
@@ -97,13 +97,21 @@ namespace ante {
 
         }else if(auto dt = try_cast<AnProductType>(t)){
             auto exts = substituteIntoAll(u, name, dt->fields);;
-            /* TODO */
-            return t;
+            auto generics = substituteIntoAll(u, name, dt->typeArgs);;
+
+            if(exts == dt->fields && generics == dt->typeArgs)
+                return t;
+            else
+                return AnProductType::getOrCreateVariant(dt, exts, generics);
 
         }else if(auto st = try_cast<AnSumType>(t)){
             auto exts = substituteIntoAll(u, name, st->tags);;
-            /* TODO */
-            return t;
+            auto generics = substituteIntoAll(u, name, st->typeArgs);;
+
+            if(exts == st->tags && generics == st->typeArgs)
+                return st;
+            else
+                return AnSumType::getOrCreateVariant(st, exts, generics);
 
         }else if(auto fn = try_cast<AnFunctionType>(t)){
             auto exts = substituteIntoAll(u, name, fn->extTys);;
@@ -130,13 +138,23 @@ namespace ante {
     template<class T>
     Substitutions unifyExts(std::vector<T*> const& exts1, std::vector<T*> const& exts2, LOC_TY &loc){
         if(exts1.size() != exts2.size()){
-            error("Types are of varying sizes", loc);
+            std::vector<AnType*> lt{exts1.begin(), exts1.end()};
+            std::vector<AnType*> rt{exts2.begin(), exts2.end()};
+            auto l = AnAggregateType::get(TT_Tuple, lt);
+            auto r = AnAggregateType::get(TT_Tuple, rt);
+            error("Types are of varying sizes: " + anTypeToColoredStr(l)
+                    + " vs " + anTypeToColoredStr(r), loc);
         }
 
         std::list<std::tuple<AnType*, AnType*, LOC_TY&>> ret;
         for(size_t i = 0; i < exts1.size(); i++)
             ret.emplace_back(exts1[i], exts2[i], loc);
         return unify(ret);
+    }
+
+
+    bool implements(AnType *type, AnTraitType *trait){
+        return true;
     }
 
 
@@ -151,6 +169,15 @@ namespace ante {
         }
 
         if(t1->typeTag != t2->typeTag){
+            auto trait = try_cast<AnTraitType>(t1);
+            if(trait && implements(t2, trait)){
+                return {};
+            }
+
+            trait = try_cast<AnTraitType>(t2);
+            if(trait && implements(t1, trait)){
+                return {};
+            }
             error("Mismatched types " + anTypeToColoredStr(t1) + " and " + anTypeToColoredStr(t2), loc);
             return {};
         }

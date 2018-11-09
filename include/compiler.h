@@ -66,8 +66,6 @@ namespace ante {
     };
 
 
-    parser::TypeNode* mkAnonTypeNode(TypeTag);
-
     /**
      * @brief Contains state information on the module being compiled
      */

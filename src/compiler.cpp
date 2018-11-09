@@ -27,7 +27,6 @@
 #include "uniontag.h"
 #include "target.h"
 #include "nameresolution.h"
-#include "yyparser.h"
 #include "typeinference.h"
 
 using namespace std;
@@ -940,47 +939,6 @@ void CompilingVisitor::visit(TraitNode *n){
  */
 void CompilingVisitor::visit(MatchBranchNode *n){
     //STUB
-}
-
-
-/**
- * @brief Creates and returns an anonymous TypeNode (one with
- *        no location in the source file)
- *
- * @param t Value for the TypeNode's type field
- *
- * @return The newly created TypeNode
- */
-TypeNode* mkAnonTypeNode(TypeTag t){
-    auto fakeLoc = mkLoc(mkPos(0, 0, 0), mkPos(0, 0, 0));
-    return new TypeNode(fakeLoc, t, "", nullptr);
-}
-
-/**
- * @brief Creates and returns an anonymous TypeNode
- *
- * @param tt Value for the TypeNode's type field
- * @param ext Value for the TypeNodes's extTy field
- *
- * @return The newly created TypeNode
- */
-TypeNode* mkTypeNodeWithExt(TypeTag tt, TypeNode *ext){
-    auto *p = mkAnonTypeNode(tt);
-    p->extTy.reset(ext);
-    return p;
-}
-
-/**
- * @brief Creates and returns an anonymous TypeNode of type TT_Data
- *
- * @param tyname The name of the DataType referenced
- *
- * @return The newly created TypeNode
- */
-TypeNode* mkDataTypeNode(string tyname){
-    auto *d = mkAnonTypeNode(TT_Data);
-    d->typeName = tyname;
-    return d;
 }
 
 

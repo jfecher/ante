@@ -4,6 +4,7 @@
 #include <string>
 #include <memory>
 #include "trait.h"
+#include "antype.h"
 
 namespace ante {
     /**

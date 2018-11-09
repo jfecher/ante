@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.2)
+cmake_minimum_required(VERSION 3.4.3)
 project(ante)
 
 set(PROJECT_VERSION_MAJOR 0)
@@ -61,14 +61,13 @@ find_package(BISON)
 set(AN_PARSER_SRC ${CMAKE_SOURCE_DIR}/src/parser.cpp)
 set(AN_YYPARSER_H ${CMAKE_SOURCE_DIR}/include/yyparser.h)
 set(AN_SYNTAX_Y ${CMAKE_SOURCE_DIR}/src/syntax.y)
-message(${AN_SYNTAX_Y})
 bison_target(parser ${AN_SYNTAX_Y} ${AN_PARSER_SRC} COMPILE_FLAGS "-Lc++ -o${AN_PARSER_SRC} --defines=${AN_YYPARSER_H}")
 
 include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
 
 
-add_executable(ante
+add_library(antecommon SHARED
         include/antevalue.h
         include/antype.h
         include/args.h
@@ -102,7 +101,6 @@ add_executable(ante
         include/uniontag.h
         include/variable.h
         ${BISON_parser_OUTPUT_HEADER}
-        src/ante.cpp
         src/antevalue.cpp
         src/antevisitor.cpp
         src/antype.cpp
@@ -126,63 +124,15 @@ add_executable(ante
         src/types.cpp
         src/unification.cpp)
 
+# Find the libraries that correspond to the LLVM components
+# that we wish to use
+llvm_map_components_to_libnames(llvm_libs core native bitwriter passes target all)
+
+add_executable(ante src/ante.cpp)
+target_link_libraries(ante antecommon)
+target_link_libraries(ante ${llvm_libs})
 
 add_executable(antetests
-        include/antevalue.h
-        include/antype.h
-        include/args.h
-        include/compapi.h
-        include/compiler.h
-        include/constraintfindingvisitor.h
-        include/declaration.h
-        include/error.h
-        include/funcdecl.h
-        include/function.h
-        include/lazystr.h
-        include/lexer.h
-        include/module.h
-        include/nameresolution.h
-        include/nodecl.h
-        include/nodevisitor.h
-        include/parser.h
-        include/pattern.h
-        include/ptree.h
-        include/repl.h
-        include/result.h
-        include/scopeguard.h
-        include/substitutingvisitor.h
-        include/target.h
-        include/tokens.h
-        include/trait.h
-        include/typedvalue.h
-        include/typeinference.h
-        include/types.h
-        include/unification.h
-        include/uniontag.h
-        include/variable.h
-        ${BISON_parser_OUTPUT_HEADER}
-        src/antevalue.cpp
-        src/antevisitor.cpp
-        src/antype.cpp
-        src/args.cpp
-        src/compapi.cpp
-        src/compiler.cpp
-        src/constraintfindingvisitor.cpp
-        src/error.cpp
-        src/function.cpp
-        src/lazystr.cpp
-        src/lexer.cpp
-        src/nameresolution.cpp
-        src/nodeprinter.cpp
-        src/operator.cpp
-        ${BISON_parser_OUTPUT_SOURCE}
-        src/pattern.cpp
-        src/ptree.cpp
-        src/repl.cpp
-        src/substitutingvisitor.cpp
-        src/typeinference.cpp
-        src/types.cpp
-        src/unification.cpp
         tests/unit/catch.hpp
         tests/unit/main.cpp
         tests/unit/nameresolutiontests.cpp
@@ -190,14 +140,7 @@ add_executable(antetests
         tests/unit/typechecks.cpp
         tests/unit/unittest.h)
 
-
-# Find the libraries that correspond to the LLVM components
-# that we wish to use
-llvm_map_components_to_libnames(llvm_libs core native bitwriter passes target all)
-
-# Link against LLVM libraries
-target_link_libraries(ante ${llvm_libs})
-
+target_link_libraries(antetests antecommon)
 target_link_libraries(antetests ${llvm_libs})
 
 # depends on targets: llvm-headers and llvm-libraries intrinsics_gen table_gen

@@ -284,10 +284,10 @@ fun (=): ref void l r =
     Ante.error "Cannot call = on a ref void!  Use 'is' to compare addresses!".cStr
 
 //For-loops work over any range that is Iterable
-trait Iterable
+trait Iterable 'i
     fun into_iter: Iterable i -> Iterator
 
-trait Iterator
+trait Iterator 'i
     fun next: Iterator i -> Iterator
     fun unwrap: Iterator i -> 't
     fun has_next: Iterator i -> bool

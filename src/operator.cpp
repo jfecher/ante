@@ -221,7 +221,7 @@ TypedValue Compiler::compInsert(BinOpNode *op, Node *assignExpr){
 
                 auto *ins = builder.CreateInsertValue(tmp.val, newVal.val, tupIndex);
                 builder.CreateStore(ins, var);
-                return getVoidLiteral();//new TypedValue(builder.CreateStore(insertedTup, var), mkAnonTypeNode(TT_Void));
+                return getVoidLiteral();
             }
         }
         default:

@@ -37,3 +37,4 @@ llvm_build/*
 *.tlog
 *.obj
 *.pdb
+libantecommon.so

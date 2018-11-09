@@ -96,7 +96,7 @@ size_t hashCombine(size_t l, size_t r){
 
 
 string toLlvmTypeName(const AnDataType *dt){
-    auto &typeArgs = dt->boundGenerics;
+    auto &typeArgs = dt->typeArgs;
     auto &baseName = dt->name;
 
     if(typeArgs.empty())
@@ -112,21 +112,27 @@ string toLlvmTypeName(const AnDataType *dt){
         if(&b != &typeArgs.back())
             name += ",";
     }
-    return name == baseName + "<" ? baseName : name+">";
+    return name + ">";
 }
 
 Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt, bool force){
+    if(dt->isGeneric && !force){
+        cerr << "Type " << anTypeToStr(dt) << " is generic and cannot be translated.\n";
+        c->errFlag = true;
+    }
+
+    if(auto *tt = try_cast<AnTraitType>(dt)){
+        auto llvmty = c->anTypeToLlvmType(tt->typeArgs.back());
+        dt->llvmType = llvmty;
+        return llvmty;
+    }
+
     //create an empty type first so we dont end up with infinite recursion
     bool isPacked = dt->typeTag == TT_TaggedUnion;
     auto* structTy = dt->llvmType ? (StructType*)dt->llvmType
         : StructType::create(*c->ctxt, {}, toLlvmTypeName(dt), isPacked);
 
     dt->llvmType = structTy;
-
-    if(dt->isGeneric && !force){
-        cerr << "Type " << anTypeToStr(dt) << " is generic and cannot be translated.\n";
-        c->errFlag = true;
-    }
 
     AnType *ext = dt;
     if(auto *st = try_cast<AnSumType>(dt))
@@ -356,8 +362,8 @@ Type* typeTagToLlvmType(TypeTag ty, LLVMContext &ctxt){
         case TT_TypeVar:
             throw new TypeVarError();
         default:
-            cerr << "typeTagToLlvmType: Unknown/Unsupported TypeTag " << ty << ", returning nullptr.\n";
-            return nullptr;
+            cerr << "typeTagToLlvmType: Unknown/Unsupported TypeTag " << ty << ", exiting.\n";
+            exit(1);
     }
 }
 
@@ -436,7 +442,7 @@ Type* Compiler::anTypeToLlvmType(const AnType *ty, bool force){
                     tys.push_back(ty);
             }
             return StructType::get(*ctxt, tys);
-        case TT_Data: case TT_TaggedUnion: {
+        case TT_Data: case TT_TaggedUnion: case TT_Trait: {
             auto *dt = (AnDataType*)try_cast<AnDataType>(ty);
             if(dt->llvmType)
                 return dt->llvmType;
@@ -659,16 +665,8 @@ string anTypeToStr(const AnType *t){
     }else if(auto *dt = try_cast<AnDataType>(t)){
         string n = dt->name;
 
-        if(dt->isVariant()){
-            n += "<";
-            for(auto &t : dt->boundGenerics){
-                if(&t == &dt->boundGenerics.back()){
-                    n += anTypeToStr(t);
-                }else{
-                    n += anTypeToStr(t) + ", ";
-                }
-            }
-            n += ">";
+        for(auto &a : dt->typeArgs){
+            n += " " + anTypeToStr(a);
         }
         return n;
     }else if(auto *tvt = try_cast<AnTypeVarType>(t)){

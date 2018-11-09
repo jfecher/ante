@@ -43,8 +43,9 @@ namespace ante {
     }
 
 
-    vector<AnTypeVarType*> convertToTypeVars(vector<unique_ptr<TypeNode>> const& types){
-        auto ret = vecOf<AnTypeVarType*>(types.size());
+    TypeArgs convertToTypeArgs(vector<unique_ptr<TypeNode>> const& types){
+        TypeArgs ret;
+        ret.reserve(types.size());
         for(auto &t : types){
             ret.push_back(static_cast<AnTypeVarType*>(toAnType(t.get())));
         }
@@ -71,7 +72,7 @@ namespace ante {
             error(n->name + " was already declared", n->loc);
         }
 
-        AnProductType::create(n->name, {}, convertToTypeVars(n->generics));
+        AnProductType::create(n->name, {}, convertToTypeArgs(n->generics));
     }
 
     void NameResolutionVisitor::declareSumType(DataDeclNode *n){
@@ -79,7 +80,7 @@ namespace ante {
             error(n->name + " was already declared", n->loc);
         }
 
-        AnSumType::create(n->name, {}, convertToTypeVars(n->generics));
+        AnSumType::create(n->name, {}, convertToTypeArgs(n->generics));
     }
 
 
@@ -610,8 +611,9 @@ namespace ante {
             }else{
                 // Cannot do a simple assignment since vector<ParentClass> != vector<BaseClass>
                 n->decls.reserve(fnlist.size());
-                for(auto *funcDecl : fnlist)
+                for(auto *funcDecl : fnlist){
                     n->decls.push_back(funcDecl);
+                }
             }
         }
     }
@@ -633,8 +635,10 @@ namespace ante {
     }
 
     void NameResolutionVisitor::visit(ExtNode *n){
-        if(!static_cast<FuncDeclNode*>(n->methods.get())->decl){
-            declare(n);
+        if(!static_cast<FuncDeclNode*>(n->methods.get())->decl && !n->traits){
+            for(auto *f : *n->methods){
+                declare(static_cast<FuncDeclNode*>(f));
+            }
         }
         //TODO: declare methods contained within submodules
         for(auto *m : *n->methods)
@@ -761,7 +765,7 @@ namespace ante {
     void NameResolutionVisitor::visitUnionDecl(parser::DataDeclNode *decl){
         auto *nvn = (NamedValNode*)decl->child.get();
 
-        auto generics = convertToTypeVars(decl->generics);
+        auto generics = convertToTypeArgs(decl->generics);
         AnSumType *data = AnSumType::get(decl->name);
         if(!data)
             data = AnSumType::create(decl->name, {}, generics);
@@ -769,6 +773,10 @@ namespace ante {
         while(nvn){
             TypeNode *tyn = (TypeNode*)nvn->typeExpr.get();
             AnType *tagTy = tyn->extTy ? toAnType(tyn->extTy.get()) : AnType::getVoid();
+
+            // fake var to make sure the field decl is not null
+            auto var = new Variable(nvn->name, decl);
+            nvn->decls.push_back(var);
 
             vector<AnType*> exts;
             if(tagTy->typeTag == TT_Tuple){
@@ -806,7 +814,7 @@ namespace ante {
 
         AnProductType *data = AnProductType::get(n->name);
         if(!data)
-            data = AnProductType::create(n->name, {}, convertToTypeVars(n->generics));
+            data = AnProductType::create(n->name, {}, convertToTypeArgs(n->generics));
 
         define(n->name, data);
         data->fields.reserve(n->fields);
@@ -816,6 +824,9 @@ namespace ante {
         while(nvn){
             TypeNode *tyn = (TypeNode*)nvn->typeExpr.get();
             auto ty = toAnType(tyn);
+
+            auto var = new Variable(nvn->name, n);
+            nvn->decls.push_back(var);
 
             validateType(ty, n);
 
@@ -827,11 +838,21 @@ namespace ante {
     }
 
     void NameResolutionVisitor::visit(TraitNode *n){
+        auto tr = new Trait();
+        tr->name = n->name;
+
+        // trait type is created here but the internal trait
+        // tr will still be mutated with additional methods after
+        AnTraitType::create(tr, convertToTypeArgs(n->generics));
+
         for(auto *fn : *n->child){
             auto *fdn = static_cast<FuncDeclNode*>(fn);
-            auto *fd = new FuncDecl(fdn, fdn->name, this->mergedCompUnits);
+            fdn->accept(*this);
+
+            auto *fd = static_cast<FuncDecl*>(fdn->decl);
             mergedCompUnits->fnDecls[fdn->name].push_back(fd);
             fdn->decl = fd;
+            tr->funcs.emplace_back(fd);
         }
     }
 }

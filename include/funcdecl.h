@@ -4,10 +4,11 @@
 #include "parser.h"
 #include "typedvalue.h"
 #include "declaration.h"
-#include "antype.h"
 
 namespace ante {
     struct Module;
+
+    class AnFunctionType;
 
     /**
     * @brief Contains information about a function that is not contained
