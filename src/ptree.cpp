@@ -8,6 +8,8 @@
 #include "unification.h"
 #include <stack>
 
+#include <compiler.h>
+
 using namespace std;
 using namespace ante::parser;
 
@@ -497,8 +499,8 @@ namespace ante {
             return new ForNode(loc, new VarNode(loc, (char*)var), range, body);
         }
 
-        Node* mkFuncDeclNode(LOC_TY loc, Node* s, Node* tExpr, Node* p, Node* b){
-            auto ret = new FuncDeclNode(loc, (char*)s, (TypeNode*)tExpr, (NamedValNode*)p, b);
+        Node* mkFuncDeclNode(LOC_TY loc, Node* s, Node* tExpr, Node* p, Node* tcc, Node* b){
+            auto ret = new FuncDeclNode(loc, (char*)s, (TypeNode*)tExpr, (NamedValNode*)p, (TypeNode*)tcc, b);
 
             //s is copied from lextxt, and may or may not be equal
             if(s) free(s);

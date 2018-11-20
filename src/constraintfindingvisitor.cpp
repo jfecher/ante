@@ -10,8 +10,70 @@ using namespace std;
 namespace ante {
     using namespace parser;
 
-    std::list<std::tuple<AnType*, AnType*, LOC_TY&>> ConstraintFindingVisitor::getConstraints() const {
+    UnificationList ConstraintFindingVisitor::getConstraints() const {
         return constraints;
+    }
+
+    template<typename T, typename F,
+        typename U = typename std::decay<typename std::result_of<F&(typename std::vector<T>::const_reference)>::type>::type>
+    std::vector<U> fnMap(std::vector<T> const& vec, F f){
+        std::vector<U> result;
+        result.reserve(vec.size());
+        for(const auto& elem : vec){
+            result.emplace_back(f(elem));
+        }
+        return result;
+    }
+
+    AnType* ConstraintFindingVisitor::handleTypeClassConstraints(AnType *t, LOC_TY const& loc){
+        if(!t->isGeneric)
+            return t;
+
+        auto handleExt = [&](AnType* ext){
+            return handleTypeClassConstraints(ext, loc);
+        };
+        auto handleTcExt = [&](AnTraitType* ext){
+            return (AnTraitType*)handleTypeClassConstraints(ext, loc);
+        };
+
+        if(auto ptr = try_cast<AnPtrType>(t)){
+            return AnPtrType::get(handleTypeClassConstraints(ptr->extTy, loc));
+
+        }else if(auto arr = try_cast<AnArrayType>(t)){
+            return AnArrayType::get(handleTypeClassConstraints(arr->extTy, loc), arr->len);
+
+        }else if(auto pt = try_cast<AnProductType>(t)){
+            auto tArgs = fnMap(pt->typeArgs, handleExt);
+            return AnProductType::getOrCreateVariant(pt, pt->fields, tArgs);
+
+        }else if(auto st = try_cast<AnSumType>(t)){
+            auto tArgs = fnMap(st->typeArgs, handleExt);
+            return AnSumType::getOrCreateVariant(st, st->tags, tArgs);
+
+        }else if(auto tt = try_cast<AnTraitType>(t)){
+            auto tArgs = fnMap(tt->typeArgs, handleExt);
+            auto self = handleTypeClassConstraints(tt->selfType, loc);
+
+            constraints.emplace_back(tt, loc);
+            return self;
+
+        }else if(auto fn = try_cast<AnFunctionType>(t)){
+            auto params = fnMap(fn->extTys, handleExt);
+            auto retty = handleTypeClassConstraints(fn->retTy, loc);
+            auto tcc = fnMap(fn->typeClassConstraints, handleTcExt);
+            return AnFunctionType::get(retty, params, tcc);
+
+        }else if(auto tup = try_cast<AnAggregateType>(t)){
+            return AnAggregateType::get(tup->typeTag, fnMap(tup->extTys, handleExt));
+        }else{
+            return t;
+        }
+    }
+
+    void ConstraintFindingVisitor::addConstraint(AnType *a, AnType *b, LOC_TY &loc){
+        a = handleTypeClassConstraints(a, loc);
+        b = handleTypeClassConstraints(b, loc);
+        constraints.emplace_back(a, b, loc);
     }
 
     /** Annotate all nodes with placeholder types */
@@ -48,11 +110,11 @@ namespace ante {
             auto t1 = n->exprs[0]->getType();
             for(auto it = ++n->exprs.begin(); it != n->exprs.end(); it++){
                 (*it)->accept(*this);
-                constraints.emplace_back(t1, (*it)->getType(), (*it)->loc);
+                addConstraint(t1, (*it)->getType(), (*it)->loc);
             }
-            constraints.emplace_back(arrty->extTy, t1, n->loc);
+            addConstraint(arrty->extTy, t1, n->loc);
         }else{
-            constraints.emplace_back(arrty->extTy, AnType::getVoid(), n->loc);
+            addConstraint(arrty->extTy, AnType::getVoid(), n->loc);
         }
     }
 
@@ -70,7 +132,7 @@ namespace ante {
 
     void ConstraintFindingVisitor::visit(TypeCastNode *n){
         n->rval->accept(*this);
-        constraints.emplace_back(n->typeExpr->getType(), n->rval->getType(), n->loc);
+        addConstraint(n->typeExpr->getType(), n->rval->getType(), n->loc);
     }
 
     void ConstraintFindingVisitor::visit(UnOpNode *n){
@@ -78,24 +140,24 @@ namespace ante {
         auto tv = nextTypeVar();
         switch(n->op){
         case '@':
-            constraints.emplace_back(n->rval->getType(), AnPtrType::get(tv), n->loc);
-            constraints.emplace_back(n->getType(), tv, n->loc);
+            addConstraint(n->rval->getType(), AnPtrType::get(tv), n->loc);
+            addConstraint(n->getType(), tv, n->loc);
             break;
         case '&':
-            constraints.emplace_back(n->getType(), AnPtrType::get(tv), n->loc);
-            constraints.emplace_back(n->rval->getType(), tv, n->loc);
+            addConstraint(n->getType(), AnPtrType::get(tv), n->loc);
+            addConstraint(n->rval->getType(), tv, n->loc);
             break;
         case '-': //negation
-            constraints.emplace_back(n->getType(), AnType::getI32(), n->loc);
-            constraints.emplace_back(n->rval->getType(), AnType::getI32(), n->loc);
+            addConstraint(n->getType(), AnType::getI32(), n->loc);
+            addConstraint(n->rval->getType(), AnType::getI32(), n->loc);
             break;
         case Tok_Not:
-            constraints.emplace_back(n->rval->getType(), AnType::getBool(), n->loc);
-            constraints.emplace_back(n->getType(), AnType::getBool(), n->loc);
+            addConstraint(n->rval->getType(), AnType::getBool(), n->loc);
+            addConstraint(n->getType(), AnType::getBool(), n->loc);
             break;
         case Tok_New:
-            constraints.emplace_back(n->getType(), AnPtrType::get(tv), n->loc);
-            constraints.emplace_back(n->rval->getType(), tv, n->loc);
+            addConstraint(n->getType(), AnPtrType::get(tv), n->loc);
+            addConstraint(n->rval->getType(), tv, n->loc);
             break;
         }
     }
@@ -118,14 +180,14 @@ namespace ante {
 
                 for(size_t i = 0; i < args->extTys.size(); i++){
                     auto param = nextTypeVar();
-                    constraints.emplace_back(args->extTys[i], param, n->loc);
+                    addConstraint(args->extTys[i], param, n->loc);
                     params.push_back(param);
                 }
                 auto retTy = nextTypeVar();
-                constraints.emplace_back(n->getType(), retTy, n->loc);
+                addConstraint(n->getType(), retTy, n->loc);
 
-                fnty = AnFunctionType::get(retTy, params);
-                constraints.emplace_back(n->lval->getType(), fnty, n->loc);
+                fnty = AnFunctionType::get(retTy, params, {});
+                addConstraint(n->lval->getType(), fnty, n->loc);
             }else{
                 auto args = try_cast<AnAggregateType>(n->rval->getType());
 
@@ -146,12 +208,12 @@ namespace ante {
 
                 if(!fnty->isVarArgs()){
                     for(size_t i = 0; i < fnty->extTys.size(); i++){
-                        constraints.emplace_back(args->extTys[i], fnty->extTys[i], argtup->exprs[i]->loc);
+                        addConstraint(args->extTys[i], fnty->extTys[i], argtup->exprs[i]->loc);
                     }
                 }else{
                     size_t i = 0;
                     for(; i < fnty->extTys.size() - 1; i++){
-                        constraints.emplace_back(args->extTys[i], fnty->extTys[i], argtup->exprs[i]->loc);
+                        addConstraint(args->extTys[i], fnty->extTys[i], argtup->exprs[i]->loc);
                     }
 
                     // typecheck var args as a tuple of additional arguments, though they should always be
@@ -160,38 +222,38 @@ namespace ante {
                     for(; i < args->extTys.size(); i++){
                         varargs.push_back(args->extTys[i]);
                     }
-                    constraints.emplace_back(AnAggregateType::get(TT_Tuple, varargs), fnty->extTys.back(), n->loc);
+                    addConstraint(AnAggregateType::get(TT_Tuple, varargs), fnty->extTys.back(), n->loc);
                 }
-                constraints.emplace_back(n->getType(), fnty->retTy, n->loc);
+                addConstraint(n->getType(), fnty->retTy, n->loc);
             }
         }else if(n->op == '+' || n->op == '-' || n->op == '*' || n->op == '/' || n->op == '%' || n->op == '^'){
-            constraints.emplace_back(n->lval->getType(), AnType::getI32(), n->loc);
-            constraints.emplace_back(n->rval->getType(), AnType::getI32(), n->loc);
-            constraints.emplace_back(n->getType(), AnType::getI32(), n->loc);
+            addConstraint(n->lval->getType(), AnType::getI32(), n->loc);
+            addConstraint(n->rval->getType(), AnType::getI32(), n->loc);
+            addConstraint(n->getType(), AnType::getI32(), n->loc);
         }else if(n->op == '<' || n->op == '>' || n->op == Tok_GrtrEq || n->op == Tok_LesrEq){
-            constraints.emplace_back(n->lval->getType(), AnType::getI32(), n->loc);
-            constraints.emplace_back(n->rval->getType(), AnType::getI32(), n->loc);
-            constraints.emplace_back(n->getType(), AnType::getBool(), n->loc);
+            addConstraint(n->lval->getType(), AnType::getI32(), n->loc);
+            addConstraint(n->rval->getType(), AnType::getI32(), n->loc);
+            addConstraint(n->getType(), AnType::getBool(), n->loc);
         }else if(n->op == '#'){
             auto t = nextTypeVar();
-            constraints.emplace_back(n->lval->getType(), AnArrayType::get(t), n->loc);
-            constraints.emplace_back(n->rval->getType(), AnType::getI32(), n->loc);
-            constraints.emplace_back(n->getType(), t, n->loc);
+            addConstraint(n->lval->getType(), AnArrayType::get(t), n->loc);
+            addConstraint(n->rval->getType(), AnType::getI32(), n->loc);
+            addConstraint(n->getType(), t, n->loc);
         }else if(n->op == Tok_Or || n->op == Tok_And){
-            constraints.emplace_back(n->lval->getType(), AnType::getBool(), n->loc);
-            constraints.emplace_back(n->rval->getType(), AnType::getBool(), n->loc);
-            constraints.emplace_back(n->getType(), AnType::getBool(), n->loc);
+            addConstraint(n->lval->getType(), AnType::getBool(), n->loc);
+            addConstraint(n->rval->getType(), AnType::getBool(), n->loc);
+            addConstraint(n->getType(), AnType::getBool(), n->loc);
         }else if(n->op == Tok_Is || n->op == Tok_Isnt || n->op == '=' || n->op == Tok_NotEq){
-            constraints.emplace_back(n->lval->getType(), n->rval->getType(), n->loc);
-            constraints.emplace_back(n->getType(), AnType::getBool(), n->loc);
+            addConstraint(n->lval->getType(), n->rval->getType(), n->loc);
+            addConstraint(n->getType(), AnType::getBool(), n->loc);
         }else if(n->op == Tok_Range){
-            constraints.emplace_back(n->lval->getType(), AnType::getI32(), n->loc);
-            constraints.emplace_back(n->rval->getType(), AnType::getI32(), n->loc);
+            addConstraint(n->lval->getType(), AnType::getI32(), n->loc);
+            addConstraint(n->rval->getType(), AnType::getI32(), n->loc);
         }else if(n->op == Tok_In){
             auto tv = nextTypeVar();
-            constraints.emplace_back(tv, n->lval->getType(), n->loc);
-            constraints.emplace_back(n->rval->getType(), AnArrayType::get(tv), n->loc);
-            constraints.emplace_back(n->getType(), AnType::getBool(), n->loc);
+            addConstraint(tv, n->lval->getType(), n->loc);
+            addConstraint(n->rval->getType(), AnArrayType::get(tv), n->loc);
+            addConstraint(n->getType(), AnType::getBool(), n->loc);
         }
     }
 
@@ -208,11 +270,11 @@ namespace ante {
     void ConstraintFindingVisitor::visit(IfNode *n){
         n->condition->accept(*this);
         n->thenN->accept(*this);
-        constraints.emplace_back(n->condition->getType(), AnType::getBool(), n->loc);
+        addConstraint(n->condition->getType(), AnType::getBool(), n->loc);
         if(n->elseN){
             n->elseN->accept(*this);
-            constraints.emplace_back(n->thenN->getType(), n->elseN->getType(), n->loc);
-            constraints.emplace_back(n->thenN->getType(), n->getType(), n->loc);
+            addConstraint(n->thenN->getType(), n->elseN->getType(), n->loc);
+            addConstraint(n->thenN->getType(), n->getType(), n->loc);
         }
     }
 
@@ -236,13 +298,13 @@ namespace ante {
 
     void ConstraintFindingVisitor::visit(JumpNode *n){
         n->expr->accept(*this);
-        constraints.emplace_back(n->expr->getType(), AnType::getI32(), n->loc);
+        addConstraint(n->expr->getType(), AnType::getI32(), n->loc);
     }
 
     void ConstraintFindingVisitor::visit(WhileNode *n){
         n->condition->accept(*this);
         n->child->accept(*this);
-        constraints.emplace_back(n->condition->getType(), AnType::getBool(), n->loc);
+        addConstraint(n->condition->getType(), AnType::getBool(), n->loc);
     }
 
     void ConstraintFindingVisitor::visit(ForNode *n){
@@ -273,7 +335,7 @@ namespace ante {
 
             auto fnty = try_cast<AnFunctionType>(n->getType());
             if(fnty->retTy->typeTag != TT_Void)
-                constraints.emplace_back(fnty->retTy, n->child->getType(), n->loc);
+                addConstraint(fnty->retTy, n->child->getType(), n->loc);
         }
     }
 

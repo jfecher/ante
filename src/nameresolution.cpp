@@ -462,7 +462,7 @@ namespace ante {
             while((tok = yylexer->next(&loc)) != Tok_Newline && tok != 0);
             while(p.parse() != PE_OK && yylexer->peek() != 0);
 
-            fputs("Syntax error, aborting.\n", stderr);
+            cerr << "Syntax error, aborting.\n";
             exit(flag);
         }
 
@@ -782,9 +782,10 @@ namespace ante {
             auto var = new Variable(nvn->name, decl);
             nvn->decls.push_back(var);
 
-            vector<AnType*> exts;
+            vector<AnType*> exts = { AnType::getU8() }; //All variants are comprised of at least their tag value
             if(tagTy->typeTag == TT_Tuple){
-                exts = try_cast<AnAggregateType>(tagTy)->extTys;
+                auto &extTys = try_cast<AnAggregateType>(tagTy)->extTys;
+                exts.insert(exts.end(), extTys.begin(), extTys.end());
             }else{
                 exts.push_back(tagTy);
             }

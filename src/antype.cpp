@@ -269,16 +269,17 @@ namespace ante {
             extTys.push_back(aty);
             params = (NamedValNode*)params->next.get();
         }
-        return AnFunctionType::get(retty, extTys, isMetaFunction);
+        return AnFunctionType::get(retty, extTys, {}, isMetaFunction);
     }
 
-    AnFunctionType* AnFunctionType::get(AnType *retTy, const std::vector<AnType*> elems, bool isMetaFunction){
-        auto key = make_pair(retTy, make_pair(elems, isMetaFunction));
+    AnFunctionType* AnFunctionType::get(AnType *retTy, std::vector<AnType*> const& elems,
+            std::vector<AnTraitType*> const& tcConstrains, bool isMetaFunction){
+        auto key = make_pair(retTy, make_pair(elems, make_pair(tcConstrains, isMetaFunction)));
 
         auto existing_ty = search(typeArena.functionTypes, key);
         if(existing_ty) return existing_ty;
 
-        auto f = new AnFunctionType(retTy, elems, isMetaFunction);
+        auto f = new AnFunctionType(retTy, elems, tcConstrains, isMetaFunction);
 
         addKVPair(typeArena.functionTypes, key, f);
         return f;
@@ -544,7 +545,7 @@ namespace ante {
                     }
                     ext = (TypeNode*)ext->next.get();
                 }
-                ret = AnFunctionType::get(retty, tys, tn->typeTag == TT_MetaFunction);
+                ret = AnFunctionType::get(retty, tys, {}, tn->typeTag == TT_MetaFunction);
                 break;
             }
             case TT_Tuple: {
@@ -580,6 +581,11 @@ namespace ante {
                 size_t i = 0;
                 if(!tn->params.empty()){
                     Substitutions subs;
+                    if(auto *tt = try_cast<AnTraitType>(basety)){
+                        subs.emplace_back(tt->selfType, toAnType(tn->params[0].get()));
+                        i++;
+                    }
+
                     for(; i < tn->params.size() && i < basety->typeArgs.size(); i++){
                         auto *b = static_cast<AnTypeVarType*>(toAnType(tn->params[i].get()));
                         auto *basetyTypeArg = try_cast<AnTypeVarType>(basety->typeArgs[i]);

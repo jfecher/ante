@@ -31,6 +31,7 @@ namespace ante {
     class AnDataType;
     class AnFunctionType;
     class AnTypeContainer;
+    class AnTraitType;
 
     /** A primitive type
      *
@@ -351,9 +352,11 @@ namespace ante {
     /** A function type */
     class AnFunctionType : public AnAggregateType {
         protected:
-        AnFunctionType(AnType *ret, std::vector<AnType*> elems, bool isMetaFunction) :
-                AnAggregateType(isMetaFunction ? TT_MetaFunction : TT_Function, elems,
-                        ret->isGeneric || ante::isGeneric(elems)), retTy(ret){
+        AnFunctionType(AnType *ret, std::vector<AnType*> elems,
+                std::vector<AnTraitType*> tcConstrains, bool isMetaFunction)
+                : AnAggregateType(isMetaFunction ? TT_MetaFunction : TT_Function, elems,
+                        ret->isGeneric || ante::isGeneric(elems)),
+                  retTy(ret), typeClassConstraints(tcConstrains){
 
             //numMatchedTys = #params + 1 ret ty + 1 fn ty itself
             numMatchedTys = elems.size() + 2;
@@ -365,8 +368,10 @@ namespace ante {
 
         AnType *retTy;
 
-        static AnFunctionType* get(AnType *retTy, const std::vector<AnType*> elems,
-                bool isMetaFunction = false);
+        std::vector<AnTraitType*> typeClassConstraints;
+
+        static AnFunctionType* get(AnType *retTy, std::vector<AnType*> const& elems,
+                std::vector<AnTraitType*> const& tcConstrains, bool isMetaFunction = false);
 
         static AnFunctionType* get(AnType* retty, parser::NamedValNode* params,
                 bool isMetaFunction = false);
@@ -583,7 +588,7 @@ namespace ante {
                 : AnDataType(t->name, TT_Trait), traits({t}), selfType(self) {
             this->typeArgs = tArgs;
             composedTraitTypes.push_back(this);
-            isGeneric = ante::isGeneric(tArgs);
+            isGeneric = self->isGeneric || ante::isGeneric(tArgs);
         }
 
         AnTraitType(std::vector<AnTraitType*> t, std::vector<Trait*> traits,
@@ -591,7 +596,7 @@ namespace ante {
                 : AnDataType(combineNames(t), TT_Trait), traits(traits),
                   composedTraitTypes(t), selfType(self) {
             this->typeArgs = tArgs;
-            isGeneric = ante::isGeneric(tArgs);
+            isGeneric = self->isGeneric || ante::isGeneric(tArgs);
         }
 
         public:
@@ -680,7 +685,7 @@ namespace ante {
         friend AnSumType;
         friend AnTraitType;
 
-        using FnTypeKey = std::pair<AnType*, std::pair<std::vector<AnType*>, bool>>;
+        using FnTypeKey = std::pair<AnType*, std::pair<std::vector<AnType*>, std::pair<std::vector<AnTraitType*>, bool>>>;
         using AggTypeKey = std::pair<TypeTag, std::vector<AnType*>>;
         using PVariantTypeKey = std::pair<std::string, std::vector<AnType*>>;
         using SVariantTypeKey = std::pair<std::string, std::vector<AnProductType*>>;

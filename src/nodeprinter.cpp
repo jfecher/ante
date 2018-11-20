@@ -324,6 +324,10 @@ void PrintingVisitor::visit(FuncDeclNode *n){
         cout << " -> ";
         n->returnType->accept(*this);
     }
+    if(n->typeClassConstraints){
+        cout << " : ";
+        n->typeClassConstraints->accept(*this);
+    }
     if(n->child.get()){
         cout << " = ";
         n->child->accept(*this);

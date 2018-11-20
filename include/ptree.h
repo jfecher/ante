@@ -66,7 +66,7 @@ namespace ante {
         Node* mkIfNode(LOC_TY loc, Node* con, Node* body, Node* els);
         Node* mkWhileNode(LOC_TY loc, Node* con, Node* body);
         Node* mkForNode(LOC_TY loc, Node* var, Node* range, Node* body);
-        Node* mkFuncDeclNode(LOC_TY loc, Node* s, Node* tExpr, Node* p, Node* body);
+        Node* mkFuncDeclNode(LOC_TY loc, Node* s, Node* tExpr, Node* p, Node* tcc, Node* body);
         Node* mkDataDeclNode(LOC_TY loc, char* s, Node *p, Node* b, bool isAlias);
         Node* mkTraitNode(LOC_TY loc, char* s, Node* generics, Node* fns);
 

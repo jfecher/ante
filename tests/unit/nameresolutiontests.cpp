@@ -170,7 +170,7 @@ TEST_CASE("Function Resolution", "[nameResolution]"){
 
     auto ifn = new IfNode(loc, cond, p1b, p2b);
 
-    auto fdn = new FuncDeclNode(loc, "func", nullptr, p1a, ifn);
+    auto fdn = new FuncDeclNode(loc, "func", nullptr, p1a, {}, ifn);
 
     root->funcs.emplace_back(fdn);
     auto funcA = new VarNode(loc, "func");

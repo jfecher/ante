@@ -8,35 +8,26 @@ namespace ante {
         return AnTypeVarType::get("'" + std::to_string(++curTypeVar));
     }
 
-    std::vector<AnType*> copyWithNewTypeVars(std::vector<AnType*> tys,
+    template<typename T>
+    std::vector<T*> copyWithNewTypeVars(std::vector<T*> tys,
             std::unordered_map<std::string, AnTypeVarType*> &map){
 
-        std::vector<AnType*> ret;
+        std::vector<T*> ret;
         ret.reserve(tys.size());
         for(auto &t : tys){
-            ret.push_back(copyWithNewTypeVars(t, map));
+            ret.push_back((T*)copyWithNewTypeVars(t, map));
         }
         return ret;
     }
-
-    std::vector<AnProductType*> copyWithNewTypeVars(std::vector<AnProductType*> tys,
-            std::unordered_map<std::string, AnTypeVarType*> &map){
-
-        std::vector<AnProductType*> ret;
-        ret.reserve(tys.size());
-        for(auto &t : tys){
-            ret.push_back(static_cast<AnProductType*>(copyWithNewTypeVars(t, map)));
-        }
-        return ret;
-    }
-
 
     AnType* copyWithNewTypeVars(AnType *t, std::unordered_map<std::string, AnTypeVarType*> &map){
         if(!t->isGeneric)
             return t;
 
         if(auto fn = try_cast<AnFunctionType>(t)){
-            return AnFunctionType::get(copyWithNewTypeVars(fn->retTy, map), copyWithNewTypeVars(fn->extTys, map));
+            return AnFunctionType::get(copyWithNewTypeVars(fn->retTy, map),
+                    copyWithNewTypeVars(fn->extTys, map),
+                    copyWithNewTypeVars(fn->typeClassConstraints, map));
 
         }else if(auto pt = try_cast<AnProductType>(t)){
             auto exts = copyWithNewTypeVars(pt->fields, map);
@@ -160,7 +151,8 @@ namespace ante {
         }else if(auto fn = try_cast<AnFunctionType>(t)){
             auto exts = substituteIntoAll(u, subType, fn->extTys);;
             auto rett = substitute(u, subType, fn->retTy);
-            return AnFunctionType::get(rett, exts, t->typeTag == TT_MetaFunction);
+            auto tcc  = substituteIntoAll(u, subType, fn->typeClassConstraints);
+            return AnFunctionType::get(rett, exts, tcc, t->typeTag == TT_MetaFunction);
 
         }else if(auto tup = try_cast<AnAggregateType>(t)){
             auto exts = substituteIntoAll(u, subType, tup->extTys);;
@@ -181,7 +173,7 @@ namespace ante {
 
     template<class T>
     Substitutions unifyExts(std::vector<T*> const& exts1, std::vector<T*> const& exts2,
-            LOC_TY &loc, AnType *t1, AnType *t2){
+            LOC_TY const& loc, AnType *t1, AnType *t2){
 
         if(exts1.size() != exts2.size()){
             showError("Mismatched types " + anTypeToColoredStr(t1)
@@ -189,7 +181,7 @@ namespace ante {
             return {};
         }
 
-        std::list<std::tuple<AnType*, AnType*, LOC_TY&>> ret;
+        UnificationList ret;
         for(size_t i = 0; i < exts1.size(); i++)
             ret.emplace_back(exts1[i], exts2[i], loc);
         return unify(ret);
@@ -210,14 +202,23 @@ namespace ante {
                 return l->traits == ty->traits;
             });
             if(it != ct.end()){
-                pairs.emplace_back(l, *it, loc);
+                if(l->typeArgs.size() != (*it)->typeArgs.size()){
+                    showError("Mismatched type sizes " + anTypeToColoredStr(l)
+                    + " and " + anTypeToColoredStr(*it), loc);
+                    return {};
+                }
+
+                for(size_t i = 0; i < l->typeArgs.size(); i++){
+                    pairs.emplace_back(l->typeArgs[i], (*it)->typeArgs[i], loc);
+                }
+                pairs.emplace_back(l->selfType, (*it)->selfType, loc);
             }
         }
         return pairs;
     }
 
 
-    Substitutions unifyOne(AnType *t1, AnType *t2, LOC_TY &loc){
+    Substitutions unifyOne(AnType *t1, AnType *t2, LOC_TY const& loc){
         auto tv1 = try_cast<AnTypeVarType>(t1);
         auto tv2 = try_cast<AnTypeVarType>(t2);
 
@@ -226,19 +227,16 @@ namespace ante {
         }else if(tv2){
             return {{tv2, t1}};
         }
-            auto s = anTypeToColoredStr;
 
         if(t1->typeTag != t2->typeTag){
             auto trait = try_cast<AnTraitType>(t1);
-            if(trait && implements(t2, trait)){
-                std::cout << "Impl1 " << s(t2) << " with " << s(trait) << std::endl;
-                return {{trait, t2}};
+            if(trait){
+                return unifyOne(trait->selfType, t2, loc);
             }
 
             trait = try_cast<AnTraitType>(t2);
-            if(trait && implements(t1, trait)){
-                std::cout << "Impl2 " << s(t1) << " with " << s(trait) << std::endl;
-                return {{trait, t1}};
+            if(trait){
+                return unifyOne(t1, trait->selfType, loc);
             }
             showError("Mismatched types " + anTypeToColoredStr(t1) + " and " + anTypeToColoredStr(t2), loc);
             return {};
@@ -275,23 +273,8 @@ namespace ante {
 
         }else if(auto tt1 = try_cast<AnTraitType>(t1)){
             auto tt2 = try_cast<AnTraitType>(t2);
-            if(tt1->name == tt2->name){
-                auto l = unifyExts(tt1->typeArgs, tt2->typeArgs, loc, tt1, tt2);
-                ret.emplace_back(tt1->selfType, tt2->selfType, loc);
-                l.merge(unify(ret));
-                std::cout << "Unify " << s(tt1->selfType) << " and " << s(tt2->selfType)<< std::endl;
-                return unify(ret);
-            }
-
-            ret = intersection(tt1, tt2, loc);
-
-            auto merge = tt1->merge(tt2);
-            auto unifyRes = unify(ret);
-            Substitutions l = {{tt1, merge}, {tt2, merge}};
-
-            std::cout << "Replace " << s(tt1) << " with " << s(merge) << ", and " << s(tt2) << " with " << s(merge) << std::endl;
-            l.merge(unifyRes);
-            return l;
+            ret.emplace_back(tt1->selfType, tt2->selfType, loc);
+            return unify(ret);
 
         }else if(auto fn1 = try_cast<AnFunctionType>(t1)){
             auto fn2 = try_cast<AnFunctionType>(t2);
@@ -312,7 +295,6 @@ namespace ante {
         }else{
             return {};
         }
-
     }
 
 
@@ -323,9 +305,15 @@ namespace ante {
             auto &p = *cur;
             auto t2 = unify(list, ++cur);
 
+            if(!p.isEqConstraint()){
+                return t2;
+            }
+
             try{
-                auto t1 = unifyOne(applySubstitutions(t2, std::get<0>(p)),
-                        applySubstitutions(t2, std::get<1>(p)), std::get<2>(p));
+                auto eq = p.asEqConstraint();
+
+                auto t1 = unifyOne(applySubstitutions(t2, eq.first),
+                        applySubstitutions(t2, eq.second), p.loc);
 
                 Substitutions ret = t1;
                 ret.insert(ret.end(), t2.begin(), t2.end());

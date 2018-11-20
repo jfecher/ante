@@ -118,10 +118,10 @@ namespace ante {
             params.reserve(argsTup->extTys.size());
             for(size_t i = 0; i < argsTup->extTys.size(); i++)
                 params.push_back(nextTypeVar());
-            decl->tval.type = AnFunctionType::get(retTy, params);
+            decl->tval.type = AnFunctionType::get(retTy, params, {});
         }else{
             auto param = nextTypeVar();
-            decl->tval.type = AnFunctionType::get(retTy, {param});
+            decl->tval.type = AnFunctionType::get(retTy, {param}, {});
         }
         return try_cast<AnFunctionType>(decl->tval.type);
     }
@@ -242,6 +242,30 @@ namespace ante {
         n->setType(n->branch->getType());
     }
 
+
+    vector<AnTraitType*> getAllTcConstraints(AnFunctionType *fn, UnificationList const& constraints,
+            Substitutions const& substitutions){
+
+        auto tcConstraints = fn->typeClassConstraints;
+        for(auto &c : constraints){
+            if(!c.isEqConstraint()){
+                auto resolved = applySubstitutions(substitutions, c.asTypeClassConstraint());
+                tcConstraints.push_back((AnTraitType*)resolved);
+            }
+        }
+        return tcConstraints;
+    }
+
+
+    vector<AnTraitType*> toTraitTypeVec(std::unique_ptr<TypeNode> &tn){
+        vector<AnTraitType*> ret;
+        for(Node *n : *tn){
+            ret.push_back((AnTraitType*)toAnType((TypeNode*)n));
+        }
+        return ret;
+    }
+
+
     void TypeInferenceVisitor::visit(FuncDeclNode *n){
         if(n->getType())
             return;
@@ -252,10 +276,11 @@ namespace ante {
             paramTypes.push_back(p->getType());
         }
 
+        auto typeClassConstraints = toTraitTypeVec(n->typeClassConstraints);
         if(n->returnType){
-            n->setType(AnFunctionType::get(toAnType(n->returnType.get()), paramTypes));
+            n->setType(AnFunctionType::get(toAnType(n->returnType.get()), paramTypes, typeClassConstraints));
         }else{
-            n->setType(AnFunctionType::get(nextTypeVar(), paramTypes));
+            n->setType(AnFunctionType::get(nextTypeVar(), paramTypes, typeClassConstraints));
         }
 
         if(n->child)
@@ -267,6 +292,13 @@ namespace ante {
         auto constraints = step2.getConstraints();
         auto substitutions = unify(constraints);
         SubstitutingVisitor::substituteIntoAst(n, substitutions);
+
+        // apply typeclass constraints to function
+        auto fnTy = try_cast<AnFunctionType>(n->getType());
+        auto tcConstraints = getAllTcConstraints(fnTy, constraints, substitutions);
+        auto newFnTy = AnFunctionType::get(fnTy->retTy, fnTy->extTys, tcConstraints,
+                fnTy->typeTag == TT_MetaFunction);
+        n->setType(newFnTy);
     }
 
     void TypeInferenceVisitor::visit(DataDeclNode *n){

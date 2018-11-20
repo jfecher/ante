@@ -8,6 +8,8 @@
 #include "substitutingvisitor.h"
 
 namespace ante {
+    AnType* applySubstitutions(Substitutions const& substitutions, AnType *t);
+    lazy_str anTypeToColoredStr(const AnType*);
 
     /**
      * Perform type inference on a parse tree.

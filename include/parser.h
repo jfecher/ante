@@ -366,13 +366,16 @@ namespace ante {
             std::unique_ptr<Node> child;
             std::unique_ptr<TypeNode> returnType;
             std::unique_ptr<NamedValNode> params;
+            std::unique_ptr<TypeNode> typeClassConstraints;
             bool varargs;
             Declaration* decl;
 
             void accept(NodeVisitor& v){ v.visit(this); }
 
-            FuncDeclNode(LOC_TY& loc, std::string s, TypeNode *t, NamedValNode *p, Node* b, bool va=false) :
-                ModifiableNode(loc), name(s), child(b), returnType(t), params(p), varargs(va), decl(0){}
+            FuncDeclNode(LOC_TY& loc, std::string s, TypeNode *t, NamedValNode *p,
+                TypeNode *tcc, Node* b, bool va=false)
+                : ModifiableNode(loc), name(s), child(b), returnType(t), params(p),
+                  typeClassConstraints(tcc), varargs(va), decl(0){}
             ~FuncDeclNode(){}
 
             virtual AnType* getType() const {

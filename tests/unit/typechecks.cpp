@@ -35,7 +35,7 @@ TEST_CASE("Type Checks", "[typeEq]"){
         auto tup2 = AnAggregateType::get(TT_Tuple, {intTy, u});
         LOC_TY loc;
 
-        std::list<std::tuple<AnType*,AnType*,LOC_TY&>> unificationList;
+        UnificationList unificationList;
         unificationList.emplace_back(tup1, tup2, loc);
         auto subs = ante::unify(unificationList);
 

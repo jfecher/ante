@@ -17,6 +17,12 @@ namespace ante {
 
         private:
             UnificationList constraints;
+
+            void addConstraint(AnType *a, AnType *b, LOC_TY &loc);
+
+            /** Searches type for typeclasses, removes them from the type, and adds them
+             * as a separate constraint.  Returns a new type with type classes removed. */
+            AnType* handleTypeClassConstraints(AnType *t, LOC_TY const& loc);
     };
 }
 

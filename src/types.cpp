@@ -130,7 +130,7 @@ Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt, bool force){
     //create an empty type first so we dont end up with infinite recursion
     bool isPacked = dt->typeTag == TT_TaggedUnion;
     auto* structTy = dt->llvmType ? (StructType*)dt->llvmType
-        : StructType::create(*c->ctxt, {}, toLlvmTypeName(dt), isPacked);
+        : StructType::create(*c->ctxt, toLlvmTypeName(dt));
 
     dt->llvmType = structTy;
 
@@ -681,6 +681,17 @@ bool shouldWrapInParenthesisWhenInTuple(AnType *type){
 }
 
 
+string commaSeparated(std::vector<AnTraitType*> const& types){
+    string ret = "";
+    for(const auto &ty : types){
+        ret += anTypeToStr(ty);
+        if(&ty != &types.back())
+            ret += ", ";
+    }
+    return ret;
+}
+
+
 string anTypeToStr(const AnType *t){
     if(!t) return "(null)";
 
@@ -715,15 +726,18 @@ string anTypeToStr(const AnType *t){
     }else if(auto *f = try_cast<AnFunctionType>(t)){
         string ret = "(";
         string retTy = anTypeToStr(f->retTy);
+        string tcConstraints = f->typeClassConstraints.empty() ? ""
+            : " : " + commaSeparated(f->typeClassConstraints);
+
         if(f->extTys.size() == 1){
-            if(f->extTys[0]->typeTag == TT_Function)
-                return '(' + anTypeToStr(f->extTys[0]) + ") -> " + retTy;
+            if(f->extTys[0]->typeTag == TT_Function || f->extTys[0]->typeTag == TT_Tuple)
+                return '(' + anTypeToStr(f->extTys[0]) + ") -> " + retTy + tcConstraints;
             else
-                return anTypeToStr(f->extTys[0]) + " -> " + retTy;
+                return anTypeToStr(f->extTys[0]) + " -> " + retTy + tcConstraints;
         }
 
         auto paramTypes = AnAggregateType::get(TT_Tuple, f->extTys);
-        return anTypeToStr(paramTypes) + " -> " + retTy;
+        return anTypeToStr(paramTypes) + " -> " + retTy + tcConstraints;
     }else if(auto *tup = try_cast<AnAggregateType>(t)){
         string ret = "(";
 
