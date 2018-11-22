@@ -29,4 +29,12 @@ compile_commands.json
 .idea/*
 Makefile
 llvm_build/*
+*.filters
+*.vcxproj
+*.sln
+*.db
+*.opendb
+*.tlog
+*.obj
+*.pdb
 libantecommon.so
