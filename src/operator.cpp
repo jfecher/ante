@@ -585,7 +585,7 @@ TypedValue Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *binop
         string funcName = toModuleName(tyn) + "_" + field->name;
         auto l = getFunctionList(funcName);
 
-        //TODO: return compile(op->decls[0])
+        //TODO: return compile(op->decl)
         if(!l.empty()){
             TypedValue obj = {val, tyn};
             return obj;
@@ -1167,7 +1167,7 @@ vector<Value*> adaptArgsToCompilerAPIFn(Compiler *c, vector<Value*> &args, vecto
 
 
 TypedValue getFunction(Compiler *c, BinOpNode *bop){
-    Declaration *decl = bop->decls[0];
+    Declaration *decl = bop->decl;
     if(decl->tval.val){
         return decl->tval;
     }else if(decl->isFuncDecl()){
@@ -1480,9 +1480,9 @@ void CompilingVisitor::visit(BinOpNode *n){
     TypedValue lhs = CompilingVisitor::compile(c, n->lval);
     TypedValue rhs = CompilingVisitor::compile(c, n->rval);
 
-    if(n->decls[0]->isFuncDecl()){
+    if(n->decl->isFuncDecl()){
         //call function
-        Value *call = c->builder.CreateCall(n->decls[0]->tval.val, {lhs.val, rhs.val});
+        Value *call = c->builder.CreateCall(n->decl->tval.val, {lhs.val, rhs.val});
         this->val = {call, n->getType()};
         return;
     }

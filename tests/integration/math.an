@@ -16,8 +16,8 @@ fun mul: i32 a b -> i32
 let n1 = 3
 let n2 = 4
 
-printf "%d + %d = %d\n" n1 n2 (add n1 n2)
-printf "%d * %d = %d\n" n1 n2 (mul n1 n2)
+printf "%d + %d = %d\n".cStr n1 n2 (add n1 n2)
+printf "%d * %d = %d\n".cStr n1 n2 (mul n1 n2)
 
 //Void values can be used in expressions if they are followed by
 //the sequencing operator ;

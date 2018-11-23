@@ -227,14 +227,14 @@ void PrintingVisitor::visit(NamedValNode *n){
 
     putchar(' ');
 
-    if(!n->decls.empty() && n->getType())
+    if(n->decl && n->getType())
         cout << n->name << ": " << anTypeToColoredStr(n->getType()) << flush;
 
     maybePrintArr(n->next.get());
 }
 
 void PrintingVisitor::visit(VarNode *n){
-    if(!n->decls.empty())
+    if(n->decl)
         cout << '(' << n->name << ": " << anTypeToColoredStr(n->getType()) << ')' << flush;
     maybePrintArr(n->next.get());
 }

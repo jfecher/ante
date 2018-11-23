@@ -21,7 +21,7 @@ namespace ante {
         /**
          * @brief Each declared function in the module
          */
-        llvm::StringMap<std::vector<FuncDecl*>> fnDecls;
+        llvm::StringMap<FuncDecl*> fnDecls;
 
         /**
          * @brief Each declared DataType in the module
@@ -38,8 +38,9 @@ namespace ante {
         * @brief Merges two modules
         *
         * @param m module to merge into this
+        * @param loc The location of the import node in case a name is duplicated
         */
-        void import(Module *m);
+        void import(Module *m, LOC_TY &loc);
     };
 }
 

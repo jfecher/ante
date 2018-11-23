@@ -570,10 +570,10 @@ void CompilingVisitor::visit(NamedValNode *n)
  * @return The value of the variable
  */
 void CompilingVisitor::visit(VarNode *n){
-    if(n->decls[0]->tval){
-        val = n->decls[0]->tval;
+    if(n->decl->tval){
+        val = n->decl->tval;
     }else{
-        n->decls[0]->definition->accept(*this);
+        n->decl->definition->accept(*this);
     }
 }
 
@@ -590,7 +590,7 @@ void compMutBinding(VarAssignNode *node, CompilingVisitor &cv){
     if(!dynamic_cast<VarNode*>(node->ref_expr))
         c->compErr("Unknown pattern for l-expr", node->expr->loc);
 
-    auto *decl = static_cast<VarNode*>(node->ref_expr)->decls[0];
+    auto *decl = static_cast<VarNode*>(node->ref_expr)->decl;
 
     node->expr->accept(cv);
     TypedValue &val = cv.val;
@@ -625,7 +625,7 @@ void compLetBinding(VarAssignNode *node, CompilingVisitor &cv){
     if(!dynamic_cast<VarNode*>(node->ref_expr))
         c->compErr("Unknown pattern for l-expr", node->expr->loc);
 
-    auto *decl = static_cast<VarNode*>(node->ref_expr)->decls[0];
+    auto *decl = static_cast<VarNode*>(node->ref_expr)->decl;
 
     TypedValue val = CompilingVisitor::compile(c, node->expr);
 
@@ -745,7 +745,7 @@ TypedValue compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
  */
 TypedValue compileRefExpr(CompilingVisitor &cv, Node *refExpr, Node *assignExpr){
     if(VarNode *vn = dynamic_cast<VarNode*>(refExpr)){
-        auto *decl = vn->decls[0];
+        auto *decl = vn->decl;
 
         if(!decl->tval.type->hasModifier(Tok_Mut))
             cv.c->compErr("Variable must be mutable to be assigned to, but instead is an immutable " +

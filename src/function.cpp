@@ -261,7 +261,7 @@ TypedValue compFnHelper(Compiler *c, FuncDecl *fd){
                 }
             }
 
-            cParam->decls[0]->tval.val = &arg;
+            cParam->decl->tval.val = &arg;
             i++;
         }
 

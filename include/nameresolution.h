@@ -74,9 +74,9 @@ namespace ante {
 
         DECLARE_NODE_VISIT_METHODS();
 
-        private:
-            void error(lazy_printer msg, LOC_TY loc, ErrorType t = ErrorType::Error);
+        void error(lazy_printer msg, LOC_TY loc, ErrorType t = ErrorType::Error);
 
+        private:
             /** Declare a variable with its type unknown */
             void declare(std::string const& name, parser::VarNode *decl);
             void declare(std::string const& name, parser::NamedValNode *decl);
@@ -117,9 +117,9 @@ namespace ante {
              * the next phase. */
             AnType* tryToAnType(parser::TypeNode *tn);
 
-            std::vector<FuncDecl*>& getFunctionList(std::string const& name) const;
+            FuncDecl* getFunction(std::string const& name) const;
 
-            std::vector<Declaration*> findCandidates(parser::Node *n) const;
+            Declaration* findCandidate(parser::Node *n) const;
     };
 }
 

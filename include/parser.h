@@ -62,6 +62,8 @@ namespace ante {
             virtual AnType* getType() const { return type; }
             virtual void setType(AnType *other) { type = other; };
 
+            LOC_TY& getLoc() noexcept { return loc; }
+
             Node(LOC_TY& l) : next{nullptr}, loc{l}, type{nullptr}{}
             virtual ~Node(){}
 
@@ -170,7 +172,7 @@ namespace ante {
         struct BinOpNode : public Node{
             int op;
             std::unique_ptr<Node> lval, rval;
-            std::vector<Declaration*> decls;
+            Declaration* decl;
 
             void accept(NodeVisitor& v){ v.visit(this); }
             BinOpNode(LOC_TY& loc, int s, Node *lv, Node *rv) : Node(loc), op(s), lval(lv), rval(rv){}
@@ -250,25 +252,25 @@ namespace ante {
         struct NamedValNode : public Node{
             std::string name;
             std::unique_ptr<Node> typeExpr;
-            std::vector<Declaration*> decls;
+            Declaration* decl;
             void accept(NodeVisitor& v){ v.visit(this); }
             NamedValNode(LOC_TY& loc, std::string s, Node* t) : Node(loc), name(s), typeExpr(t){}
             ~NamedValNode(){ if(typeExpr.get() == (void*)1) typeExpr.release(); }
 
             virtual AnType* getType() const {
-                assert(decls.size() >= 1);
-                return decls[0]->tval.type;
+                assert(decl);
+                return decl->tval.type;
             }
 
             virtual void setType(AnType *other) {
-                assert(decls.size() >= 1);
-                decls[0]->tval.type = other;
+                assert(decl);
+                decl->tval.type = other;
             }
         };
 
         struct VarNode : public Node{
             std::string name;
-            std::vector<Declaration*> decls;
+            Declaration* decl;
             void accept(NodeVisitor& v){ v.visit(this); }
             VarNode(LOC_TY& loc, std::string s) : Node(loc), name(s){}
             ~VarNode(){}

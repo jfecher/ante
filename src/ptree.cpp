@@ -30,18 +30,18 @@ namespace ante {
         }
 
         AnType* VarNode::getType() const {
-            if(decls[0]->isFuncDecl()){
+            if(decl->isFuncDecl()){
                 return Node::getType();
             }else{
-                return decls[0]->tval.type;
+                return decl->tval.type;
             }
         }
 
         void VarNode::setType(AnType *other){
-            if(decls[0]->isFuncDecl()){
+            if(decl->isFuncDecl()){
                 Node::setType(other);
             }else{
-                decls[0]->tval.type = other;
+                decl->tval.type = other;
             }
         }
 

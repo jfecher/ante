@@ -52,17 +52,45 @@ namespace ante {
         return ret;
     }
 
+    /** Check if a name was declared previously in the given table.
+     * Throw an appropriate error if it was. */
+    template<typename T>
+    void checkForPreviousDecl(NameResolutionVisitor *v, string const& name,
+            T const& tbl, LOC_TY &loc, string kind = "", LOC_TY *importLoc = nullptr){
+
+        auto prevDecl = tbl.find(name);
+
+        //Lambda to just call the apropriate error function
+        auto err = [&](string prepend, string msg, LOC_TY loc, ErrorType errTy){
+            if(v)   v->error(prepend + name + msg, loc, errTy);
+            else ante::error(prepend + name + msg, loc, errTy);
+        };
+
+        if(prevDecl != tbl.end()){
+            try{
+                err(kind + ' ', " was already declared", loc, ErrorType::Error);
+            }catch(...){
+                err("", " was previously declared here", (*prevDecl).getValue()->getLoc(), ErrorType::Note);
+                if(importLoc)
+                    err("Second", " was imported here", *importLoc, ErrorType::Note);
+                throw;
+            }
+        }
+    }
+
 
     void NameResolutionVisitor::declare(string const& name, VarNode *decl){
+        checkForPreviousDecl(this, name, varTable.top().back(), decl->loc, "Variable");
         auto var = new Variable(name, decl);
-        decl->decls.push_back(var);
+        decl->decl = var;
         varTable.top().back().try_emplace(name, var);
     }
 
 
     void NameResolutionVisitor::declare(string const& name, NamedValNode *decl){
+        checkForPreviousDecl(this, name, varTable.top().back(), decl->loc, "Parameter");
         auto var = new Variable(name, decl);
-        decl->decls.push_back(var);
+        decl->decl = var;
         varTable.top().back().try_emplace(name, var);
     }
 
@@ -145,25 +173,23 @@ namespace ante {
     }
 
 
-    vector<FuncDecl*>& NameResolutionVisitor::getFunctionList(string const& name) const{
+    FuncDecl* NameResolutionVisitor::getFunction(string const& name) const{
         return mergedCompUnits->fnDecls[name];
     }
 
     /** Declare function but do not define it */
     void NameResolutionVisitor::declare(FuncDeclNode *n){
+        checkForPreviousDecl(this, n->name, this->compUnit->fnDecls, n->loc, "Function");
+
         auto *fd = new FuncDecl(n, n->name, this->mergedCompUnits);
-        mergedCompUnits->fnDecls[n->name].push_back(fd);
-        compUnit->fnDecls[n->name].push_back(fd);
+        mergedCompUnits->fnDecls[n->name] = fd;
+        compUnit->fnDecls[n->name] = fd;
         n->decl = fd;
     }
 
     void NameResolutionVisitor::declare(ExtNode *n){
         for(auto *f : *n->methods){
-            auto fdn = static_cast<FuncDeclNode*>(f);
-            auto *fd = new FuncDecl(fdn, fdn->name, this->mergedCompUnits);
-            mergedCompUnits->fnDecls[fdn->name].push_back(fd);
-            compUnit->fnDecls[fdn->name].push_back(fd);
-            fdn->decl = fd;
+            declare(static_cast<FuncDeclNode*>(f));
         }
     }
 
@@ -273,21 +299,14 @@ namespace ante {
     }
 
 
-    vector<Declaration*> NameResolutionVisitor::findCandidates(Node *n) const {
+    Declaration* NameResolutionVisitor::findCandidate(Node *n) const {
         auto name = getIdentifier(n);
         if(!name){
-            return {new NoDecl(n)};
+            return new NoDecl(n);
+        }else if(auto vn = dynamic_cast<VarNode*>(n); vn && !vn->decl->isFuncDecl()){
+            return vn->decl;
         }else{
-            auto decls = getFunctionList(*name);
-            auto ret = vecOf<Declaration*>(decls.size());
-            for(auto &decl : decls)
-                ret.push_back(decl);
-
-            if(auto vn = dynamic_cast<VarNode*>(n); vn && !vn->decls[0]->isFuncDecl()){
-                ret.push_back(vn->decls[0]);
-            }
-
-            return ret;
+            return getFunction(*name);
         }
     }
 
@@ -305,7 +324,7 @@ namespace ante {
                     if(field == vn->name){
                         auto *fakeDecl = new Variable(field, vn);
                         fakeDecl->tval.type = pt->fields[i];
-                        vn->decls.push_back(fakeDecl);
+                        vn->decl = fakeDecl;
                         return;
                     }
                 }
@@ -332,15 +351,13 @@ namespace ante {
         n->rval->accept(*this);
 
         if(n->op != '('){
-            auto &candidates = getFunctionList(to_string(n->op));
-            n->decls.reserve(candidates.size());
-            for(auto &c : candidates)
-                n->decls.push_back(c);
-
-            if(candidates.empty()) //v TODO: memory leak here
-                n->decls.push_back(new NoDecl(n));
+            FuncDecl *candidate = getFunction(to_string(n->op));
+            if(candidate)
+                n->decl = candidate;
+            else //v TODO: memory leak here
+                n->decl = new NoDecl(n);
         }else{
-            n->decls = findCandidates(n->lval.get());
+            n->decl = findCandidate(n->lval.get());
         }
     }
 
@@ -359,16 +376,37 @@ namespace ante {
     *
     * @param mod module to merge into this
     */
-    void ante::Module::import(ante::Module *mod){
-        for(auto& pair : mod->fnDecls)
-            for(auto& fd : pair.second)
-                fnDecls[pair.first()].push_back(fd);
+    void ante::Module::import(ante::Module *mod, LOC_TY &loc){
+        for(auto& pair : mod->fnDecls){
+            checkForPreviousDecl(nullptr, pair.first().str(), fnDecls, pair.second->getLoc(), "Imported function", &loc);
+            fnDecls[pair.first()] = pair.second;
+        }
 
-        for(auto& pair : mod->userTypes)
+        for(auto& pair : mod->userTypes){
+            auto prevDecl = userTypes.find(name);
+            if(prevDecl != userTypes.end()){
+                try{
+                    error("Type " + name + " was already declared", loc);
+                }catch(...){
+                    error("The second " + name + " was imported here", loc, ErrorType::Note);
+                    throw;
+                }
+            }
             userTypes[pair.first()] = pair.second;
+        }
 
-        for(auto& pair : mod->traits)
+        for(auto& pair : mod->traits){
+            auto prevDecl = traits.find(name);
+            if(prevDecl != traits.end()){
+                try{
+                    error("Trait " + name + " was already declared", loc);
+                }catch(...){
+                    error("The second " + name + " was imported here", loc, ErrorType::Note);
+                    throw;
+                }
+            }
             traits[pair.first()] = pair.second;
+        }
     }
 
     inline bool fileExists(const string &fName){
@@ -503,7 +541,7 @@ namespace ante {
             }
 
             this->imports.push_back(import);
-            this->mergedCompUnits->import(import);
+            this->mergedCompUnits->import(import, loc);
         }else{
             //module not found
             NameResolutionVisitor newVisitor = visitImport(fullPath);
@@ -514,7 +552,7 @@ namespace ante {
             }
 
             this->imports.push_back(newVisitor.compUnit);
-            this->mergedCompUnits->import(newVisitor.compUnit);
+            this->mergedCompUnits->import(newVisitor.compUnit, loc);
         }
     }
 
@@ -599,26 +637,12 @@ namespace ante {
         }
 
         auto maybeVar = lookupVar(n->name);
-
         if(maybeVar){
-            n->decls = {*maybeVar};
+            n->decl = *maybeVar;
+        }else if(FuncDecl *fn = getFunction(n->name)){
+            n->decl = fn;
         }else{
-            //if this is a function, then there can be multiple candidates of
-            //the same name that must be filtered at the callsite
-            auto& fnlist = getFunctionList(n->name);
-
-            if(fnlist.size() == 1){
-                auto& fd = *fnlist.begin();
-                n->decls = {fd};
-            }else if(fnlist.empty()){
-                error("Variable or function '" + n->name + "' has not been declared.", n->loc);
-            }else{
-                // Cannot do a simple assignment since vector<ParentClass> != vector<BaseClass>
-                n->decls.reserve(fnlist.size());
-                for(auto *funcDecl : fnlist){
-                    n->decls.push_back(funcDecl);
-                }
-            }
+            error("Variable or function '" + n->name + "' has not been declared.", n->loc);
         }
     }
 
@@ -780,7 +804,7 @@ namespace ante {
 
             // fake var to make sure the field decl is not null
             auto var = new Variable(nvn->name, decl);
-            nvn->decls.push_back(var);
+            nvn->decl = var;
 
             vector<AnType*> exts = { AnType::getU8() }; //All variants are comprised of at least their tag value
             if(tagTy->typeTag == TT_Tuple){
@@ -831,7 +855,7 @@ namespace ante {
             auto ty = toAnType(tyn);
 
             auto var = new Variable(nvn->name, n);
-            nvn->decls.push_back(var);
+            nvn->decl = var;
 
             validateType(ty, n);
 
@@ -857,7 +881,7 @@ namespace ante {
             fdn->accept(*this);
 
             auto *fd = static_cast<FuncDecl*>(fdn->decl);
-            mergedCompUnits->fnDecls[fdn->name].push_back(fd);
+            mergedCompUnits->fnDecls[fdn->name] = fd;
             fdn->decl = fd;
             tr->funcs.emplace_back(fd);
         }

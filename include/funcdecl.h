@@ -31,6 +31,10 @@ namespace ante {
             return static_cast<parser::FuncDeclNode*>(this->definition);
         }
 
+        LOC_TY& getLoc() const noexcept {
+            return getFDN()->loc;
+        }
+
         /** Gets the unmangled name. */
         const std::string& getName() const noexcept {
             return getFDN()->name;

@@ -175,7 +175,7 @@ namespace ante {
     }
 
     void TypeInferenceVisitor::visit(VarNode *n){
-        auto *decl = n->decls[0];
+        auto *decl = n->decl;
         if(!decl->tval.type && decl->isFuncDecl()){
             decl->definition->accept(*this);
         }

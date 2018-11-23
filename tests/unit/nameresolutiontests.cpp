@@ -21,16 +21,16 @@ TEST_CASE("Sequence Resolution", "[nameResolution]"){
     declThenReference->sequence.emplace_back(van);
     declThenReference->sequence.emplace_back(var1Cpy);
 
-    REQUIRE(var1->decls.empty());
-    REQUIRE(var1Cpy->decls.empty());
+    REQUIRE(!var1->decl);
+    REQUIRE(!var1Cpy->decl);
 
     NameResolutionVisitor v;
     v.resolve(declThenReference);
 
-    REQUIRE(var1->decls.size() == 1);
-    REQUIRE(var1Cpy->decls.size() == 1);
-    REQUIRE(var1Cpy->decls[0] == var1->decls[0]);
-    REQUIRE(var1Cpy->decls[0]->name == "var1");
+    REQUIRE(var1->decl);
+    REQUIRE(var1Cpy->decl);
+    REQUIRE(var1Cpy->decl == var1->decl);
+    REQUIRE(var1Cpy->decl->name == "var1");
     delete declThenReference;
 }
 
@@ -78,20 +78,20 @@ TEST_CASE("Mutability Resolution", "[nameResolution]"){
     NameResolutionVisitor v;
     v.resolve(seq);
 
-    REQUIRE(var1a->decls.size() == 1);
-    REQUIRE(var1b->decls.size() == 1);
-    REQUIRE(var1c->decls.size() == 1);
-    REQUIRE(var2a->decls.size() == 1);
-    REQUIRE(var2b->decls.size() == 1);
-    REQUIRE(var2c->decls.size() == 1);
+    REQUIRE(var1a->decl);
+    REQUIRE(var1b->decl);
+    REQUIRE(var1c->decl);
+    REQUIRE(var2a->decl);
+    REQUIRE(var2b->decl);
+    REQUIRE(var2c->decl);
 
-    REQUIRE(var1a->decls[0] == var1b->decls[0]);
-    REQUIRE(var1b->decls[0] == var1c->decls[0]);
+    REQUIRE(var1a->decl == var1b->decl);
+    REQUIRE(var1b->decl == var1c->decl);
 
-    REQUIRE(var2a->decls[0] == var2b->decls[0]);
-    REQUIRE(var2b->decls[0] == var2c->decls[0]);
+    REQUIRE(var2a->decl == var2b->decl);
+    REQUIRE(var2b->decl == var2c->decl);
 
-    REQUIRE(var1a->decls[0] != var2a->decls[0]);
+    REQUIRE(var1a->decl != var2a->decl);
     delete seq;
 }
 
@@ -131,15 +131,15 @@ TEST_CASE("Shadowing Resolution", "[nameResolution]"){
     NameResolutionVisitor v;
     v.resolve(seq);
 
-    REQUIRE(var1a->decls.size() == 1);
-    REQUIRE(var1b->decls.size() == 1);
-    REQUIRE(var1c->decls.size() == 1);
-    REQUIRE(var1d->decls.size() == 1);
+    REQUIRE(var1a->decl);
+    REQUIRE(var1b->decl);
+    REQUIRE(var1c->decl);
+    REQUIRE(var1d->decl);
 
-    REQUIRE(var1a->decls[0] == var1d->decls[0]);
-    REQUIRE(var1b->decls[0] == var1c->decls[0]);
+    REQUIRE(var1a->decl == var1d->decl);
+    REQUIRE(var1b->decl == var1c->decl);
 
-    REQUIRE(var1a->decls[0] != var1b->decls[0]);
+    REQUIRE(var1a->decl != var1b->decl);
     delete seq;
 }
 
@@ -198,29 +198,28 @@ TEST_CASE("Function Resolution", "[nameResolution]"){
 
     NameResolutionVisitor::resolve(root);
 
-    REQUIRE(funcA->decls.size() == 1);
-    REQUIRE(funcB->decls.size() == 1);
-    REQUIRE(funcA->decls[0] == funcB->decls[0]);
-    REQUIRE(funcA->decls[0] == fdn->decl);
-    REQUIRE(funcA->decls[0] != nullptr);
+    REQUIRE(funcA->decl);
+    REQUIRE(funcB->decl);
+    REQUIRE(funcA->decl == funcB->decl);
+    REQUIRE(funcA->decl == fdn->decl);
 
-    REQUIRE(p1a->decls.size() == 1);
-    REQUIRE(p1b->decls.size() == 1);
-    REQUIRE(p1a->decls[0] == p1b->decls[0]);
-    REQUIRE(p1a->decls[0] != funcA->decls[0]);
+    REQUIRE(p1a->decl);
+    REQUIRE(p1b->decl);
+    REQUIRE(p1a->decl == p1b->decl);
+    REQUIRE(p1a->decl != funcA->decl);
 
-    REQUIRE(p2a->decls.size() == 1);
-    REQUIRE(p2b->decls.size() == 1);
-    REQUIRE(p2a->decls[0] == p2b->decls[0]);
-    REQUIRE(p2a->decls[0] != funcA->decls[0]);
+    REQUIRE(p2a->decl);
+    REQUIRE(p2b->decl);
+    REQUIRE(p2a->decl == p2b->decl);
+    REQUIRE(p2a->decl != funcA->decl);
 
     //Shadowing of function parameters
-    REQUIRE(p1c->decls.size() == 1);
-    REQUIRE(p1d->decls.size() == 1);
-    REQUIRE(p1c->decls[0] == p1d->decls[0]);
-    REQUIRE(p1c->decls[0] != p1a->decls[0]);
-    REQUIRE(p1c->decls[0] != p2a->decls[0]);
-    REQUIRE(p1c->decls[0] != funcA->decls[0]);
+    REQUIRE(p1c->decl);
+    REQUIRE(p1d->decl);
+    REQUIRE(p1c->decl == p1d->decl);
+    REQUIRE(p1c->decl != p1a->decl);
+    REQUIRE(p1c->decl != p2a->decl);
+    REQUIRE(p1c->decl != funcA->decl);
     delete root;
 }
 

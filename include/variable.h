@@ -29,6 +29,10 @@ namespace ante {
             return tval.val;
         }
 
+        LOC_TY& getLoc() const {
+            return definition->loc;
+        }
+
         TypeTag getType() const;
 
         /**
