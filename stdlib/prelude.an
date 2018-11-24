@@ -53,7 +53,7 @@ type Maybe 't =
 
 type Type = ref void
 
-ext Eq (Maybe (Eq 'e))
+impl Eq (Maybe (Eq 'e))
     fun (=): Maybe 'e l r -> bool
         match l with
         | Some lv ->
@@ -67,7 +67,7 @@ ext Eq (Maybe (Eq 'e))
         
 
 
-ext To Str (Maybe (To Str 'm))
+impl To Str (Maybe (To Str 'm))
     fun to: Type Str _, Maybe 'm l -> Str
         match l with
         | Some val -> Str val
@@ -75,7 +75,7 @@ ext To Str (Maybe (To Str 'm))
 
 
 //Compile-time functions
-ext Ante
+module Ante
     //prints type and value (llvm dump) of variable while compiling
     ante fun debug: 't t
 
@@ -83,7 +83,7 @@ ext Ante
     ante fun sizeof: 't t -> usz
 
     //return the type of an expression.  Note: Type is an ante type (compile-time only)
-    ante fun typeof: 't t -> Type
+    ante fun typeof: 't t -> Type 't
 
     //Note: error never returns
     ante fun error: ref c8 msg
@@ -108,93 +108,92 @@ trait To 't 'u
 
 
 //numerical print functions
-ext Print i8
+impl Print i8
     fun printne: i8 x
         printf "%hhd".cStr x
 
-ext Print i16
+impl Print i16
     fun printne: i16 x
         printf "%hd".cStr x
 
-ext Print i32
+impl Print i32
     fun printne: i32 x
         printf "%d".cStr x
 
-ext Print i64
+impl Print i64
     fun printne: i64 x
         printf "%ld".cStr x
 
-ext Print isz
+impl Print isz
     fun printne: isz x
         printf "%zi".cStr x
 
 //unsigned
-ext Print u8
+impl Print u8
     fun printne: u8 x
         printf "%hhu".cStr x
 
-ext Print u16
+impl Print u16
     fun printne: u16 x
         printf "%hu".cStr x
 
-ext Print u32
+impl Print u32
     fun printne: u32 x
         printf "%u".cStr x
 
-ext Print u64
+impl Print u64
     fun printne: u64 x
         printf "%lu".cStr x
 
-ext Print usz
+impl Print usz
     fun printne: usz x
         printf "%zu".cStr x
 
 //floats
-ext Print f16
+impl Print f16
     fun printne: f16 x
         printf "%.2f".cStr (f64 x)
 
-ext Print f32
+impl Print f32
     fun printne: f32 x
         printf "%f".cStr (f64 x)
 
-ext Print f64
+impl Print f64
     fun printne: f64 x
         printf "%.14f".cStr x
 
 //char
-ext Print c8
+impl Print c8
     fun printne: c8 x
         printf "%c".cStr x
 
 //bool
-ext Print bool
+impl Print bool
     fun printne: bool b
         if b then printf "true".cStr
         else printf "false".cStr
 
 //c-string
-ext Print (ref c8)
+impl Print (ref c8)
     fun printne: ref c8 s
         printf "%s".cStr s
 
 
-ext Print Str
+impl Print Str
     fun printne: Str s
         printne s.cStr
 
 
-ext Print (To 't Str)
+impl Print (To 't Str)
     fun printne: 't x
         printne (to Str x).cStr
 
 
-ext To Str c8
-    fun to: Str s, Type c8 _ =
-        s.cStr
+impl To Str c8
+    fun to: _, Str s = s.cStr
 
 
-ext Str
+module Str
     fun reverse: Str s -> Str
         mut buf = ref c8 malloc (s.len + 1)
 
@@ -207,8 +206,8 @@ ext Str
         Str(buf, i)
 
 
-ext To i64 Str
-    fun to: i64 i, Type Str _ -> Str
+module To i64 Str
+    fun to: _, i64 i -> Str
         if i = 0 then return "0"
         mut len = 0usz
         mut buf = ref c8 malloc 21
@@ -229,8 +228,8 @@ ext To i64 Str
         Str(buf + (20 - len), len)
 
 
-ext To u64 Str
-    fun to: u64 i, Type u64 _ -> Str
+module To u64 Str
+    fun to: _, u64 i -> Str
         if i = 0 then return "0"
         mut len = 0usz
         mut buf = ref c8 malloc 21
@@ -246,32 +245,32 @@ ext To u64 Str
 
 
 // convert all other numeric types to strings by widening first
-ext To i8 Str
-    fun to: i8 x, Type Str _ = to Str (i64 x)
+impl To i8 Str
+    fun to: _, i8 x = to Str (i64 x)
 
-ext To i16 Str
-    fun to: i16 x, Type Str _ = to Str (i64 x)
+impl To i16 Str
+    fun to: _, i16 x = to Str (i64 x)
 
-ext To i32 Str
-    fun to: i32 x, Type Str _ = to Str (i64 x)
+impl To i32 Str
+    fun to: _, i32 x = to Str (i64 x)
 
-ext To isz Str
-    fun to: isz x, Type Str _ = to Str (i64 x)
+impl To isz Str
+    fun to: _, isz x = to Str (i64 x)
 
-ext To u8 Str
-    fun to: u8 x, Type Str _ = to Str (us4 x)
+impl To u8 Str
+    fun to: _, u8 x = to Str (u64 x)
 
-ext To u16 Str
-    fun to: u16 x, Type Str _ = to Str (u64 x)
+impl To u16 Str
+    fun to: _, u16 x = to Str (u64 x)
 
-ext To u32 Str
-    fun to: u32 x, Type Str _ = to Str (u64 x)
+impl To u32 Str
+    fun to: _, u32 x = to Str (u64 x)
 
-ext To usz Str
-    fun to: usz x, Type Str _ = to Str (u64 x)
+impl To usz Str
+    fun to: _, usz x = to Str (u64 x)
 
 
-ext u64
+module u64
     fun parse: Str s -> Maybe u64
         mut i = 0
         mut sum = 0u64
@@ -287,7 +286,7 @@ ext u64
 
         Some sum
 
-ext i64
+module i64
     fun parse: Str s -> Maybe i64
         mut i = 0
         mut sum = 0i64
@@ -310,7 +309,7 @@ ext i64
 
 
 //Pointer Equivalence
-ext Eq (ref (Eq 't))
+impl Eq (ref (Eq 't))
     fun (=): ref 't l r =
         @l = @r
 
@@ -340,18 +339,18 @@ fun (in): i32 a, Range r -> bool
         a_adj = s_adj and r.start <= a and a < r.end
 
 //creates an inclusive range
-ext Range i32
+impl Range i32
     type Result = Range
     fun (..): i32 start end -> Range
         Range(start, end, 1)
 
 //Takes a tuple of the first two integers and calculates the step by their difference
-ext Range (i32,i32) i32
+impl Range (i32,i32) i32
     type Result = Range
     fun (..): i32,i32 first_two, i32 end -> Range
         Range(first_two#0, end, first_two#1 - first_two#0)
 
-ext Iterator Range
+impl Iterator Range
     type Elem = i32
 
     fun next: Range r -> Range
@@ -369,7 +368,7 @@ ext Iterator Range
 
 
 //Iterating through an InFile iterates through each line
-ext Iterator InFile
+impl Iterator InFile
     type Elem = Str
 
     fun has_next: InFile f = not feof f
@@ -379,7 +378,7 @@ ext Iterator InFile
     fun unwrap: InFile f = next_line f
 
 
-ext OutFile
+impl OutFile
     fun write: OutFile f, ref c8 cStr
         fputs cStr f
 
@@ -389,15 +388,15 @@ ext OutFile
     fun write: OutFile f, Str s
         fputs (s.cStr) f
 
-ext Str
+impl Str
     fun print: Str s
         puts s.cStr
 
-ext To Str (ref c8)
+impl To Str (ref c8)
     fun to: t, ref c8 cStr -> Str
         Str(cStr, usz strlen cStr)
 
-ext Eq Str
+impl Eq Str
     fun (=): Str l r -> bool
         if l.len != r.len then
             return false
@@ -407,11 +406,11 @@ ext Eq Str
                 return false
         true
 
-ext Is Str
+impl Is Str
     fun (is): Str l r = l.cStr is r.cStr
 
 
-ext Append Str
+impl Append Str
     fun (++): Str s1 s2 -> Str
         if s1.len = 0 then return s2
         if s2.len = 0 then return s1
@@ -426,7 +425,7 @@ ext Append Str
 
         Str(ref c8 buf, len)
 
-ext Extract Str i32
+impl Extract Str i32
     type Elem = c8
 
     fun (#): Str s, i32 index = s.cStr#index
@@ -435,17 +434,17 @@ ext Extract Str i32
         s.cStr#i := c
 
 
-ext To InFile Str
+impl To InFile Str
     fun to: t, Str fName -> InFile
         InFile fopen (fName.cStr) "r".cStr
 
 
-ext To OutFile Str
+impl To OutFile Str
     fun to: t, Str fName -> OutFile
         OutFile fopen (fName.cStr) "w".cStr
 
 
-ext InFile
+module InFile
     fun next_line: InFile f -> Str
         if feof f then return ""
         let eof = c8 255

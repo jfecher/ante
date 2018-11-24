@@ -104,7 +104,8 @@ namespace ante {
         Tok_Type,
         Tok_Trait,
         Tok_Fun,
-        Tok_Ext,
+        Tok_Module,
+        Tok_Impl,
         Tok_Block,
         Tok_As,
 

@@ -82,7 +82,8 @@ map<int, const char*> tokDict = {
     {Tok_Type, "type"},
     {Tok_Trait, "trait"},
     {Tok_Fun, "fun"},
-    {Tok_Ext, "ext"},
+    {Tok_Module, "module"},
+    {Tok_Impl, "impl"},
     {Tok_Block, "block"},
     {Tok_As, "as"},
 
@@ -156,7 +157,8 @@ map<string, int> keywords = {
     {"type",     Tok_Type},
     {"trait",    Tok_Trait},
     {"fun",      Tok_Fun},
-    {"ext",      Tok_Ext},
+    {"module",   Tok_Module},
+    {"impl",     Tok_Impl},
     {"block",    Tok_Block},
     {"as",       Tok_As},
 

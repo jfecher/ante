@@ -58,9 +58,9 @@ namespace ante {
 %token Return
 %token If Then Elif Else
 %token For While Do In
-%token Continue Break Import
-%token Let Match With Ref Type
-%token Trait Fun Ext Block As Self
+%token Continue Break Import Let
+%token Match With Ref Type Trait
+%token Fun Module Impl Block As Self
 
 /* modifiers */
 %token Pub Pri Pro Const
@@ -86,7 +86,7 @@ namespace ante {
 
 
 %left Newline
-%left STMT Fun Let Import Return Ext While For Match Trait If Break Continue Type
+%left STMT Fun Let Import Return Module Impl While For Match Trait If Break Continue Type
 %right RArrow
 
 %left ENDIF
@@ -491,16 +491,9 @@ ret_expr: Return expr {$$ = mkRetNode(@$, $2);}
         ;
 
 
-extension: Ext bounded_type_expr Indent ext_list Unindent {$$ = mkExtNode(@$, $2, $4);}
-         | Ext bounded_type_expr ':' usertype_list Indent ext_list Unindent {$$ = mkExtNode(@$, $2, $6, $4);}
+extension: Module bounded_type_expr Indent ext_list Unindent  {$$ = mkExtNode(@$, $2, $4);}
+         | Impl   bounded_type_expr Indent ext_list Unindent  {$$ = mkExtNode(@$, $2, $4);}
          ;
-
-usertype_list: usertype_list_  {$$ = getRoot();}
-
-usertype_list_: usertype_list_ ',' usertype {$$ = setNext($1, mkTypeNode(@3, TT_Data, (char*)$3)); free($3);}
-              | usertype                    {$$ = setRoot(mkTypeNode(@$, TT_Data, (char*)$1)); free($1);}
-              ;
-
 
 ext_list: fn_list_ {$$ = getRoot();}
 
