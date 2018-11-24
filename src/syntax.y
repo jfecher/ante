@@ -286,7 +286,7 @@ type_expr: type_expr__    {$$ = $1;}
          ;
 
 preproc: '!' '[' expr ']'         {$$ = mkCompilerDirective(@$, $3);}
-       | '!' var                        {$$ = mkCompilerDirective(@$, $2);}
+       | '!' var                  {$$ = mkCompilerDirective(@$, $2);}
        ;
 
 modifier: Pub      {$$ = mkModNode(@$, Tok_Pub);}
@@ -306,9 +306,16 @@ trait_decl: Trait usertype generic_params Indent trait_fn_list Unindent  {$$ = m
 
 trait_fn_list: _trait_fn_list maybe_newline {$$ = getRoot();}
 
-_trait_fn_list: _trait_fn_list Newline trait_fn  {$$ = setNext($1, $3);}
-              | trait_fn                         {$$ = setRoot($1);}
+_trait_fn_list: _trait_fn_list Newline trait_fn    {$$ = setNext($1, $3);}
+              | _trait_fn_list Newline type_family {$$ = setNext($1, $3);}
+              | trait_fn                           {$$ = setRoot($1);}
+              | type_family                        {$$ = setRoot($1);}
               ;
+
+
+type_family: Type usertype                  {$$ = mkDataDeclNode(@2, (char*)$2,  0, 0, false); free($2);}
+           | Type usertype generic_params   {$$ = mkDataDeclNode(@2, (char*)$2, $3, 0, false); free($2);}
+           ;
 
 
 trait_fn_no_mods: Fun fn_name ':' params RArrow bounded_type_expr ':' tc_constraints  {$$ = mkFuncDeclNode(@2, /*fn_name*/$2, /*ret_ty*/$6,                                  /*params*/$4, /*constraints*/$8, /*body*/0);}
@@ -451,21 +458,6 @@ tc_constraints: typeclass_constraints_  %prec LOW  {$$ = getRoot();}
               ;
 
 /* NOTE: lextxt contents from fn_name and the mangleFn result are freed in the call to mkFuncDeclNode */
-fn_ext_def: Fun bounded_type_expr '.' fn_name ':' params RArrow bounded_type_expr ':' tc_constraints block   {$$ = mkExtNode(@4, $2, mkFuncDeclNode(@$, /*fn_name*/$4, /*ret_ty*/$8, /*params*/$6, /*constraints*/ $10, /*body*/$11)); }
-          | Fun bounded_type_expr '.' fn_name ':' RArrow bounded_type_expr ':' tc_constraints block          {$$ = mkExtNode(@4, $2, mkFuncDeclNode(@$, /*fn_name*/$4, /*ret_ty*/$7, /*params*/0,  /*constraints*/ $9, /*body*/$10)); }
-          | Fun bounded_type_expr '.' fn_name ':' params ':' tc_constraints block                            {$$ = mkExtNode(@4, $2, mkFuncDeclNode(@$, /*fn_name*/$4, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/$6, /*constraints*/$8, /*body*/$9)); }
-          | Fun bounded_type_expr '.' fn_name ':' params RArrow bounded_type_expr block                      {$$ = mkExtNode(@4, $2, mkFuncDeclNode(@$, /*fn_name*/$4, /*ret_ty*/$8, /*params*/$6, /*constraints*/0, /*body*/$9)); }
-          | Fun bounded_type_expr '.' fn_name ':' RArrow bounded_type_expr block                             {$$ = mkExtNode(@4, $2, mkFuncDeclNode(@$, /*fn_name*/$4, /*ret_ty*/$7, /*params*/0,  /*constraints*/0, /*body*/$8)); }
-          | Fun bounded_type_expr '.' fn_name ':' params block                                               {$$ = mkExtNode(@4, $2, mkFuncDeclNode(@$, /*fn_name*/$4, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/$6, /*constraints*/0, /*body*/$7)); }
-          | Fun bounded_type_expr '.' fn_name ':' block                                                      {$$ = mkExtNode(@4, $2, mkFuncDeclNode(@$, /*fn_name*/$4, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/0,  /*constraints*/0, /*body*/$6)); }
-          ;
-
-fn_ext_inferredRet: Fun bounded_type_expr '.' fn_name ':' params ':' tc_constraints '=' expr   %prec Newline  {$$ = mkExtNode(@$, $2, mkFuncDeclNode(@4, /*fn_name*/$4, /*ret_ty*/0, /*params*/$6, /*constraints*/$8, /*body*/$10)); }
-                  | Fun bounded_type_expr '.' fn_name ':' params '=' expr                      %prec Newline  {$$ = mkExtNode(@$, $2, mkFuncDeclNode(@4, /*fn_name*/$4, /*ret_ty*/0, /*params*/$6, /*constraints*/0, /*body*/$8)); }
-                  | Fun bounded_type_expr '.' fn_name ':' '=' expr                             %prec Newline  {$$ = mkExtNode(@$, $2, mkFuncDeclNode(@4, /*fn_name*/$4, /*ret_ty*/0, /*params*/0,  /*constraints*/0, /*body*/$7)); }
-                  | Fun bounded_type_expr '.' fn_name Assign  expr                             %prec Newline  {$$ = mkExtNode(@$, $2, mkFuncDeclNode(@4, /*fn_name*/$4, /*ret_ty*/0, /*params*/0,  /*constraints*/0, /*body*/$6)); }
-                  ;
-
 fn_def: Fun fn_name ':' params RArrow bounded_type_expr ':' tc_constraints block   {$$ = mkFuncDeclNode(@2, /*fn_name*/$2, /*ret_ty*/$6, /*params*/$4, /*constraints*/$8, /*body*/$9);}
       | Fun fn_name ':' RArrow bounded_type_expr ':' tc_constraints block          {$$ = mkFuncDeclNode(@2, /*fn_name*/$2, /*ret_ty*/$5, /*params*/0,  /*constraints*/$7, /*body*/$8);}
       | Fun fn_name ':' params ':' tc_constraints block                            {$$ = mkFuncDeclNode(@2, /*fn_name*/$2, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/$4, /*constraints*/$6, /*body*/$7);}
@@ -490,15 +482,6 @@ fn_decl: Fun fn_name ':' params RArrow bounded_type_expr ':' tc_constraints   %p
        | Fun fn_name ':'                                                      %prec Fun  {$$ = mkFuncDeclNode(@2, /*fn_name*/$2, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/0,  /*constraints*/0,  /*body*/0);}
        ;
 
-fn_ext_decl: Fun bounded_type_expr '.' fn_name ':' params RArrow bounded_type_expr ':' tc_constraints     %prec Fun    {$$ = mkExtNode(@2, $2, mkFuncDeclNode(@$, /*fn_name*/$4, /*ret_ty*/$8,                                  /*params*/$6, /*constraints*/$10, /*body*/0));}
-           | Fun bounded_type_expr '.' fn_name ':' RArrow bounded_type_expr ':' tc_constraints            %prec Fun    {$$ = mkExtNode(@2, $2, mkFuncDeclNode(@$, /*fn_name*/$4, /*ret_ty*/$7,                                  /*params*/0,  /*constraints*/$9,  /*body*/0));}
-           | Fun bounded_type_expr '.' fn_name ':' params ':' tc_constraints                              %prec Fun    {$$ = mkExtNode(@2, $2, mkFuncDeclNode(@$, /*fn_name*/$4, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/$6, /*constraints*/$8,  /*body*/0));}
-           | Fun bounded_type_expr '.' fn_name ':' params RArrow bounded_type_expr                        %prec Fun    {$$ = mkExtNode(@2, $2, mkFuncDeclNode(@$, /*fn_name*/$4, /*ret_ty*/$8,                                  /*params*/$6, /*constraints*/0,   /*body*/0));}
-           | Fun bounded_type_expr '.' fn_name ':' RArrow bounded_type_expr                               %prec Fun    {$$ = mkExtNode(@2, $2, mkFuncDeclNode(@$, /*fn_name*/$4, /*ret_ty*/$7,                                  /*params*/0,  /*constraints*/0,   /*body*/0));}
-           | Fun bounded_type_expr '.' fn_name ':' params                                                 %prec Fun    {$$ = mkExtNode(@2, $2, mkFuncDeclNode(@$, /*fn_name*/$4, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/$6, /*constraints*/0,   /*body*/0));}
-           | Fun bounded_type_expr '.' fn_name ':'                                                        %prec Fun    {$$ = mkExtNode(@2, $2, mkFuncDeclNode(@$, /*fn_name*/$4, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/0,  /*constraints*/0,   /*body*/0));}
-           ;
-
 fn_lambda: Fun params '=' expr                              %prec Fun  {$$ = mkFuncDeclNode(@$, /*fn_name*/(Node*)strdup(""), /*ret_ty*/0,  /*params*/$2, /*constraints*/0, /*body*/$4);}
          | Fun '=' expr                                     %prec Fun  {$$ = mkFuncDeclNode(@$, /*fn_name*/(Node*)strdup(""), /*ret_ty*/0,  /*params*/0,  /*constraints*/0, /*body*/$3);}
          ;
@@ -508,11 +491,8 @@ ret_expr: Return expr {$$ = mkRetNode(@$, $2);}
         ;
 
 
-extension: Ext bounded_type_expr Indent fn_list Unindent {$$ = mkExtNode(@$, $2, $4);}
-         | Ext bounded_type_expr ':' usertype_list Indent fn_list Unindent {$$ = mkExtNode(@$, $2, $6, $4);}
-         | fn_ext_def
-         | fn_ext_inferredRet
-         | fn_ext_decl
+extension: Ext bounded_type_expr Indent ext_list Unindent {$$ = mkExtNode(@$, $2, $4);}
+         | Ext bounded_type_expr ':' usertype_list Indent ext_list Unindent {$$ = mkExtNode(@$, $2, $6, $4);}
          ;
 
 usertype_list: usertype_list_  {$$ = getRoot();}
@@ -522,11 +502,21 @@ usertype_list_: usertype_list_ ',' usertype {$$ = setNext($1, mkTypeNode(@3, TT_
               ;
 
 
-fn_list: fn_list_ {$$ = getRoot();}
+ext_list: fn_list_ {$$ = getRoot();}
 
-fn_list_: fn_list_ function maybe_newline  {$$ = setNext($1, $2);}
-        | function maybe_newline           {$$ = setRoot($1);}
+fn_list_: fn_list_ ext_fn maybe_newline  {$$ = setNext($1, $2);}
+        | fn_list_ ext_dd maybe_newline  {$$ = setNext($1, $2);}
+        | ext_fn maybe_newline           {$$ = setRoot($1);}
+        | ext_dd maybe_newline           {$$ = setRoot($1);}
         ;
+
+ext_fn: modifier maybe_newline function  {$$ = append_modifier($1, $3);}
+      | function
+      ;
+
+ext_dd: modifier maybe_newline data_decl  {$$ = append_modifier($1, $3);}
+      | data_decl
+      ;
 
 
 while_loop: While expr Do expr  %prec While  {$$ = mkWhileNode(@$, $2, $4);}
