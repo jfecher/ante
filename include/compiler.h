@@ -190,8 +190,10 @@ namespace ante {
         /**
         * @brief Sweeps through parse tree registering all functions, type
         * declarations, and traits.
+        *
+        * @return true on error
         */
-        void scanAllDecls(parser::RootNode *n = 0);
+        bool scanAllDecls(parser::RootNode *n = 0);
 
         /**
         * @brief Sets appropriate flags and executes operations specified by

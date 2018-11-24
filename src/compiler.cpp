@@ -978,7 +978,7 @@ void compileAll(Compiler *c, vector<T> &vec){
 }
 
 
-void Compiler::scanAllDecls(RootNode *root){
+bool Compiler::scanAllDecls(RootNode *root){
     NameResolutionVisitor n;
     root->accept(n);
     if(n.hasError()){
@@ -986,6 +986,7 @@ void Compiler::scanAllDecls(RootNode *root){
     }else{
         TypeInferenceVisitor::infer(root);
     }
+    return errFlag;
 }
 
 void Compiler::eval(){
@@ -1028,7 +1029,8 @@ Function* Compiler::createMainFn(){
 
 
 void CompilingVisitor::visit(RootNode *n){
-    c->scanAllDecls(n);
+    if(c->scanAllDecls(n))
+        return;
 
     //Compile the rest of the program
     for(auto &node : n->main){

@@ -200,7 +200,7 @@ namespace ante {
 
     void NameResolutionVisitor::visit(RootNode *n){
         if(compUnit->name != ".Stdlib.Prelude"){
-            importFile("stdlib/prelude.an", n->loc);
+            tryTo([&](){ importFile("stdlib/prelude.an", n->loc); });
         }
 
         for(auto &m : n->imports)
@@ -665,7 +665,7 @@ namespace ante {
     }
 
     void NameResolutionVisitor::visit(ExtNode *n){
-        if(!static_cast<FuncDeclNode*>(n->methods.get())->decl && !n->traits){
+        if(!static_cast<FuncDeclNode*>(n->methods.get())->decl){
             declare(n);
         }
         //TODO: declare methods contained within submodules
