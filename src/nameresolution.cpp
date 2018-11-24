@@ -26,9 +26,10 @@ list<unique_ptr<string>> fileNames;
 namespace ante {
     using namespace parser;
 
-    void tryAccept(NameResolutionVisitor &v, Node *n){
+    template<typename F>
+    void tryTo(F f){
         try{
-            n->accept(v);
+            f();
         }catch(CompilationError *e){
             delete e;
         }
@@ -189,7 +190,10 @@ namespace ante {
 
     void NameResolutionVisitor::declare(ExtNode *n){
         for(auto *f : *n->methods){
-            declare(static_cast<FuncDeclNode*>(f));
+            auto fn = dynamic_cast<FuncDeclNode*>(f);
+            if(fn){
+                declare(fn);
+            } //TODO: handle else case for type families
         }
     }
 
@@ -200,33 +204,35 @@ namespace ante {
         }
 
         for(auto &m : n->imports)
-            tryAccept(*this, m.get());
+            tryTo([&](){ m->accept(*this); });
         for(auto &m : n->types)
-            tryAccept(*this, m.get());
+            tryTo([&](){ m->accept(*this); });
         for(auto &m : n->traits)
-            tryAccept(*this, m.get());
+            tryTo([&](){ m->accept(*this); });
 
         // unwrap any surrounding modifiers then declare
         for(auto &m : n->extensions){
             auto mn = m.get();
             while(dynamic_cast<ModNode*>(mn))
                 mn = static_cast<ModNode*>(mn)->expr.get();
-            declare(static_cast<ExtNode*>(mn));
+
+            tryTo([&](){ declare(static_cast<ExtNode*>(mn)); });
         }
+
         for(auto &m : n->funcs){
             auto mn = m.get();
             while(dynamic_cast<ModNode*>(mn))
                 mn = static_cast<ModNode*>(mn)->expr.get();
-            declare(static_cast<FuncDeclNode*>(mn));
+
+            tryTo([&](){ declare(static_cast<FuncDeclNode*>(mn)); });
         }
 
         for(auto &m : n->extensions)
-            tryAccept(*this, m.get());
+            tryTo([&](){ m->accept(*this); });
         for(auto &m : n->funcs)
-            tryAccept(*this, m.get());
-
+            tryTo([&](){ m->accept(*this); });
         for(auto &m : n->main)
-            tryAccept(*this, m.get());
+            tryTo([&](){ m->accept(*this); });
     }
 
     void NameResolutionVisitor::visit(IntLitNode *n){}
@@ -274,11 +280,7 @@ namespace ante {
 
     void NameResolutionVisitor::visit(SeqNode *n){
         for(auto &e : n->sequence){
-            try{
-                e->accept(*this);
-            }catch(CompilationError *e){
-                delete e;
-            }
+            tryTo([&](){ e->accept(*this); });
         }
     }
 
@@ -664,9 +666,7 @@ namespace ante {
 
     void NameResolutionVisitor::visit(ExtNode *n){
         if(!static_cast<FuncDeclNode*>(n->methods.get())->decl && !n->traits){
-            for(auto *f : *n->methods){
-                declare(static_cast<FuncDeclNode*>(f));
-            }
+            declare(n);
         }
         //TODO: declare methods contained within submodules
         for(auto *m : *n->methods)
@@ -836,6 +836,8 @@ namespace ante {
 
     void NameResolutionVisitor::visit(DataDeclNode *n){
         auto *nvn = (NamedValNode*)n->child.get();
+        if(!nvn) return; //type family
+
         if(((TypeNode*) nvn->typeExpr.get())->typeTag == TT_TaggedUnion){
             visitUnionDecl(n);
             return;
@@ -877,13 +879,15 @@ namespace ante {
         AnTraitType::create(tr, genericSelfParam, convertToTypeArgs(n->generics));
 
         for(auto *fn : *n->child){
-            auto *fdn = static_cast<FuncDeclNode*>(fn);
-            fdn->accept(*this);
+            fn->accept(*this);
 
-            auto *fd = static_cast<FuncDecl*>(fdn->decl);
-            mergedCompUnits->fnDecls[fdn->name] = fd;
-            fdn->decl = fd;
-            tr->funcs.emplace_back(fd);
+            auto *fdn = dynamic_cast<FuncDeclNode*>(fn);
+            if(fdn){
+                auto *fd = static_cast<FuncDecl*>(fdn->decl);
+                mergedCompUnits->fnDecls[fdn->name] = fd;
+                fdn->decl = fd;
+                tr->funcs.emplace_back(fd);
+            }
         }
     }
 }

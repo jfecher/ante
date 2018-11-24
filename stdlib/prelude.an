@@ -55,10 +55,15 @@ type Type = ref void
 
 ext Eq (Maybe (Eq 'e))
     fun (=): Maybe 'e l r -> bool
-        match (l, r) with
-        | (Some lv, Some rv) -> lv = rv
-        | (None, None) -> true
-        | _ -> false
+        match l with
+        | Some lv ->
+            match r with
+            | Some rv -> lv = rv
+            | None -> false
+        | None ->
+            match r with
+            | Some rv -> false
+            | None -> true
         
 
 
@@ -335,12 +340,16 @@ fun (in): i32 a, Range r -> bool
         a_adj = s_adj and r.start <= a and a < r.end
 
 //creates an inclusive range
-fun (..): i32 start end -> Range
-    Range(start, end, 1)
+ext Range i32
+    type Result = Range
+    fun (..): i32 start end -> Range
+        Range(start, end, 1)
 
 //Takes a tuple of the first two integers and calculates the step by their difference
-fun (..): i32,i32 first_two, i32 end -> Range
-    Range(first_two#0, end, first_two#1 - first_two#0)
+ext Range (i32,i32) i32
+    type Result = Range
+    fun (..): i32,i32 first_two, i32 end -> Range
+        Range(first_two#0, end, first_two#1 - first_two#0)
 
 ext Iterator Range
     type Elem = i32
