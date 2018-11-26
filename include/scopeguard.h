@@ -91,8 +91,8 @@ namespace ante {
 /** Auxilary functions for automatically naming the return values */
 #define CONCAT_(x, y) x ## y
 #define CONCAT(x, y) CONCAT_(x, y)
-#define DEFER(f) auto CONCAT(__defer_, __line__) = ante::defer([&](){ f })
-#define TMP_SET(var, val) auto CONCAT(__tmpset_, __line__) = ante::tmpSet((var), (val))
+#define DEFER(f) auto CONCAT(__defer_, __LINE__) = ante::defer([&](){ f })
+#define TMP_SET(var, val) auto CONCAT(__tmpset_, __LINE__) = ante::tmpSet((var), (val))
 }
 
 #endif
