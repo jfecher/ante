@@ -206,7 +206,7 @@ module Str
         Str(buf, i)
 
 
-module To i64 Str
+impl To i64 Str
     fun to: _, i64 i -> Str
         if i = 0 then return "0"
         mut len = 0usz
@@ -228,7 +228,7 @@ module To i64 Str
         Str(buf + (20 - len), len)
 
 
-module To u64 Str
+impl To u64 Str
     fun to: _, u64 i -> Str
         if i = 0 then return "0"
         mut len = 0usz

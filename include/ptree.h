@@ -58,7 +58,7 @@ namespace ante {
         Node* mkRetNode(LOC_TY loc, Node* expr);
         Node* mkImportNode(LOC_TY loc, Node* expr);
         Node* mkVarAssignNode(LOC_TY loc, Node* var, Node* expr, bool shouldFreeLval = true);
-        Node* mkExtNode(LOC_TY loc, Node* typeExpr, Node* methods, Node* traits=0);
+        Node* mkExtNode(LOC_TY loc, Node* typeExpr, Node* methods, Node* traits);
         Node* mkMatchNode(LOC_TY loc, Node* expr, Node* branch);
         Node* mkMatchBranchNode(LOC_TY loc, Node* pattern, Node* branch);
         Node* mkJumpNode(LOC_TY loc, int jumpType, Node* expr);

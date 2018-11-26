@@ -491,8 +491,8 @@ ret_expr: Return expr {$$ = mkRetNode(@$, $2);}
         ;
 
 
-extension: Module bounded_type_expr Indent ext_list Unindent  {$$ = mkExtNode(@$, $2, $4);}
-         | Impl   bounded_type_expr Indent ext_list Unindent  {$$ = mkExtNode(@$, $2, $4);}
+extension: Module bounded_type_expr Indent ext_list Unindent  {$$ = mkExtNode(@$, $2, $4, 0);}
+         | Impl   bounded_type_expr Indent ext_list Unindent  {$$ = mkExtNode(@$,  0, $4, $2);}
          ;
 
 ext_list: fn_list_ {$$ = getRoot();}

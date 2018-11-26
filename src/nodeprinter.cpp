@@ -250,11 +250,16 @@ void PrintingVisitor::visit(VarAssignNode *n){
 
 void PrintingVisitor::visit(ExtNode *n){
     printModifiers(*this, n);
-    cout << "ext ";
-    n->typeExpr->accept(*this);
+    if(n->typeExpr){
+        cout << "module ";
+        n->typeExpr->accept(*this);
+    }else{
+        cout << "impl ";
+        n->traits->accept(*this);
+    }
     cout << "\n";
     printBlock(n->methods.get(), this->indent_level);
-    cout << "end ext";
+    cout << "end";
 }
 
 void PrintingVisitor::visit(JumpNode *n){

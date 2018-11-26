@@ -189,11 +189,13 @@ namespace ante {
     }
 
     void NameResolutionVisitor::declare(ExtNode *n){
-        for(auto *f : *n->methods){
-            auto fn = dynamic_cast<FuncDeclNode*>(f);
-            if(fn){
-                declare(fn);
-            } //TODO: handle else case for type families
+        // Only declare methods if this is a module, not an impl
+        if(n->typeExpr){
+            NameResolutionVisitor submodule;
+            submodule.compUnit->name = this->compUnit->name + "." + typeNodeToStr(n->typeExpr.get());
+
+            for(auto *m : *n->methods)
+                tryTo([&](){ m->accept(submodule); });
         }
     }
 
@@ -668,9 +670,6 @@ namespace ante {
         if(!static_cast<FuncDeclNode*>(n->methods.get())->decl){
             declare(n);
         }
-        //TODO: declare methods contained within submodules
-        for(auto *m : *n->methods)
-            m->accept(*this);
     }
 
     void NameResolutionVisitor::visit(JumpNode *n){
