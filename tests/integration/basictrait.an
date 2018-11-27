@@ -8,15 +8,14 @@ type Container =
    | Empty
 
 //Declare the trait NumStore
-trait NumStore
+trait NumStore 't
+    fun get: 't ng -> i32
 
-    fun get: NumStore ng -> i32
-
-    fun store: mut NumStore ng, i32 n
+    fun store: mut 't ng, i32 n
 
 
 //Implement NumStore for Holder
-ext Holder: NumStore
+impl NumStore Holder
     fun get: Holder h =
         i32 h
 
@@ -25,7 +24,7 @@ ext Holder: NumStore
 
 
 //Implement NumStore for Container
-ext Container: NumStore
+impl NumStore Container
     fun get: Container c =
         match c with
         | Item i -> i

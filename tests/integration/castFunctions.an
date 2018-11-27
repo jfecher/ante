@@ -5,8 +5,9 @@
 
 
 //handles conversion of i32 -> bool
-fun bool.init: i32 x =
-    x != 0
+module bool
+    fun init: i32 x =
+        x != 0
 
 
 fun print: bool b
