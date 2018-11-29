@@ -687,8 +687,7 @@ namespace ante {
 
         using FnTypeKey = std::pair<AnType*, std::pair<std::vector<AnType*>, std::pair<std::vector<AnTraitType*>, bool>>>;
         using AggTypeKey = std::pair<TypeTag, std::vector<AnType*>>;
-        using PVariantTypeKey = std::pair<std::string, std::vector<AnType*>>;
-        using SVariantTypeKey = std::pair<std::string, std::vector<AnProductType*>>;
+        using PSVariantTypeKey = std::pair<std::string, std::vector<AnType*>>;
         using MultiTraitTypeKey = std::vector<Trait*>;
 
         std::unordered_map<TypeTag, std::unique_ptr<AnType>> primitiveTypes;
@@ -706,8 +705,7 @@ namespace ante {
          * all variants here avoids having to sift through every variant
          * of a type and makes ownership simpler. */
         std::unordered_map<MultiTraitTypeKey, std::unique_ptr<AnTraitType>> multiTraitTypes;
-        std::unordered_map<PVariantTypeKey, std::unique_ptr<AnProductType>> productTypeVariants;
-        std::unordered_map<SVariantTypeKey, std::unique_ptr<AnSumType>> sumTypeVariants;
+        std::unordered_map<PSVariantTypeKey, std::unique_ptr<AnType>> dataTypeVariants;
 
     public:
         AnTypeContainer();
