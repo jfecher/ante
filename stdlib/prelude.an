@@ -51,7 +51,7 @@ type Maybe 't =
    | Some 't
    | None
 
-type Type = ref void
+type Type 't = void
 
 impl Eq (Maybe (Eq 'e))
     fun (=): Maybe 'e l r -> bool

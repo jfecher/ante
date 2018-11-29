@@ -84,7 +84,19 @@ namespace ante {
     }
 
     void TypeInferenceVisitor::visit(TypeNode *n){
-        n->setType(toAnType(n));
+        //Type 't
+        auto type = AnProductType::get("Type");
+        if(!type || type->typeArgs.size() != 1){
+            ante::error("type `Type 't` in the prelude was redefined or removed sometime before translation of this type", n->loc);
+        }
+
+        auto tvar = type->typeArgs[0];
+        auto repl = toAnType(n);
+        auto type_n = applySubstitutions({{tvar, repl}}, type);
+        cout << anTypeToColoredStr(type) << " [" << anTypeToColoredStr(tvar) << " -> " << anTypeToColoredStr(repl) 
+            << "] = " << anTypeToColoredStr(type_n) << endl;
+
+        n->setType(type_n);
     }
 
     void TypeInferenceVisitor::visit(TypeCastNode *n){
@@ -165,9 +177,10 @@ namespace ante {
 
     void TypeInferenceVisitor::visit(NamedValNode *n){
         if(n->typeExpr){
-            n->typeExpr->accept(*this);
-            n->setType(n->typeExpr->getType());
-        }else{
+            auto ty = toAnType((TypeNode*)n->typeExpr.get());
+            n->typeExpr->setType(ty);
+            n->setType(ty);
+        }else{ // type field is null if this is a variadic parameter ie the '...' in printf: Str a, ... -> i32
             auto tv = nextTypeVar();
             auto va = AnTypeVarType::get(tv->name + "...");
             n->setType(va);
