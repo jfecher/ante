@@ -93,14 +93,13 @@ namespace ante {
         auto tvar = type->typeArgs[0];
         auto repl = toAnType(n);
         auto type_n = applySubstitutions({{tvar, repl}}, type);
-        cout << anTypeToColoredStr(type) << " [" << anTypeToColoredStr(tvar) << " -> " << anTypeToColoredStr(repl) 
-            << "] = " << anTypeToColoredStr(type_n) << endl;
-
         n->setType(type_n);
     }
 
     void TypeInferenceVisitor::visit(TypeCastNode *n){
-        n->typeExpr->accept(*this);
+        auto ty = toAnType(n->typeExpr.get());
+        n->typeExpr->setType(ty);
+
         n->rval->accept(*this);
         n->setType(n->typeExpr->getType());
     }
