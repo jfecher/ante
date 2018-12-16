@@ -422,8 +422,7 @@ namespace ante {
                 setLexer(new Lexer(nullptr, cmd, /*line*/1, /*col*/1));
                 yy::parser p{};
                 flag = p.parse();
-            }catch(CtError *e){
-                delete e;
+            }catch(CtError e){
                 continue;
             }
 

@@ -164,11 +164,6 @@ namespace ante {
         int  compileObj(std::string &outName);
 
         /**
-        * @brief Imports the prelude module unless the current module is the prelude
-        */
-        void compilePrelude();
-
-        /**
         * @brief Creates the main function of a main module or creates the library_init
         * function of a lib module.
         *
@@ -478,9 +473,7 @@ namespace ante {
         CompilingVisitor v{c};
         try{
             n->accept(v);
-        }catch(CtError *err){
-            delete err;
-        }
+        }catch(CtError err){}
         return v.val;
     }
 

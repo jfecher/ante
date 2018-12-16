@@ -32,7 +32,7 @@ namespace ante {
             f();
         }catch(CompilationError *e){
             delete e;
-        }
+        }catch(CtError e){}
     }
 
     void NameResolutionVisitor::error(lazy_printer msg, LOC_TY loc, ErrorType t){
@@ -520,7 +520,7 @@ namespace ante {
         //Add this module to the cache to ensure it is not compiled twice
         allMergedCompUnits.emplace_back(newVisitor.mergedCompUnits);
         allCompiledModules.try_emplace(file, newVisitor.compUnit);
-        
+
         root->accept(newVisitor);
         return newVisitor;
     }
@@ -575,6 +575,7 @@ namespace ante {
             for(auto *mod : this->imports){
                 if(mod->name == import->name){
                     error("Module " + lazy_str(import->name, AN_TYPE_COLOR) + " has already been imported", loc, ErrorType::Warning);
+                    return;
                 }
                 checkForConflict(import, mod, loc);
             }

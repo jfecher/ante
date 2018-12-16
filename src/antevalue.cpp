@@ -372,7 +372,7 @@ namespace ante {
         auto *agg = try_cast<AnAggregateType>(type);
         if(!agg){
             cerr << "printTupleOrData called on non-aggregate type\n";
-            throw new CtError();
+            throw CtError();
         }
 
         char* dataptr = (char*)data;

@@ -226,9 +226,7 @@ TypedValue compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
     for(auto &n : expr->main){
         try{
             val = CompilingVisitor::compile(c, n.get());
-        }catch(CtError *e){
-            delete e;
-        }
+        }catch(CtError e){}
     }
 
     if(!val) return val;
@@ -402,7 +400,7 @@ void CompilingVisitor::visit(WhileNode *n){
         c->builder.SetInsertPoint(begin);
 
         n->child->accept(*this);
-    }catch(CtError *e){
+    }catch(CtError e){
         c->compCtxt->breakLabels->pop_back();
         c->compCtxt->continueLabels->pop_back();
         throw e;
@@ -482,7 +480,7 @@ void CompilingVisitor::visit(ForNode *n){
     //compile the rest of the loop's body
     try{
         n->child->accept(*this);
-    }catch(CtError *e){
+    }catch(CtError e){
         c->compCtxt->breakLabels->pop_back();;
         c->compCtxt->continueLabels->pop_back();
         throw e;
@@ -945,15 +943,6 @@ void CompilingVisitor::visit(MatchBranchNode *n){
     //STUB
 }
 
-
-void Compiler::compilePrelude(){
-    if(fileName != AN_LIB_DIR "prelude.an"){
-        //TODO: re-add
-        //auto fakeLoc = mkLoc(mkPos(0, 0, 0), mkPos(0, 0, 0));
-        //importFile("prelude.an", fakeLoc);
-    }
-}
-
 /**
  * @brief Removes all text after the final . in a string
  *
@@ -971,9 +960,7 @@ void compileAll(Compiler *c, vector<T> &vec){
     for(auto &elem : vec){
         try{
             elem->accept(v);
-        }catch(CtError *err){
-            delete err;
-        }
+        }catch(CtError err){}
     }
 }
 
@@ -992,8 +979,6 @@ bool Compiler::scanAllDecls(RootNode *root){
 void Compiler::eval(){
     //setup compiler
     createMainFn();
-    compilePrelude();
-
     startRepl(this);
 }
 
@@ -1037,9 +1022,7 @@ void CompilingVisitor::visit(RootNode *n){
         try{
             if(node)
                 node->accept(*this);
-        }catch(CtError *e){
-            delete e;
-        }
+        }catch(CtError e){}
     }
 
     if(n->main.empty())
@@ -1077,7 +1060,6 @@ void Compiler::compile(){
 
     //create implicit main function and import the prelude
     createMainFn();
-    compilePrelude();
 
     CompilingVisitor::compile(this, ast);
 

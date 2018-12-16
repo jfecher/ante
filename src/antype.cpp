@@ -130,7 +130,7 @@ namespace ante {
             case TT_FunctionList: return typeArena.primitiveTypes[tag].get();
             default:
                 cerr << "error: AnType::getPrimitive: TypeTag " << typeTagToStr(tag) << " is not primitive!\n";
-                throw new CtError();
+                throw CtError();
         }
     }
 

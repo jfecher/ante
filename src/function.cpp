@@ -269,7 +269,7 @@ TypedValue compFnHelper(Compiler *c, FuncDecl *fd){
         TypedValue v;
         try{
             v = CompilingVisitor::compile(c, fdn->child);
-        }catch(CtError *e){
+        }catch(CtError e){
             c->builder.SetInsertPoint(caller);
             throw e;
         }

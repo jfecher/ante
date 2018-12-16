@@ -61,7 +61,7 @@ void printErrLine(const yy::location& loc, ErrorType t){
     ifstream f{*loc.begin.filename};
 
     // highlight the whole first line if the error spans multiple lines
-    unsigned int end_col = loc.begin.line == loc.end.line ? loc.begin.column : -1;
+    unsigned int end_col = loc.begin.line == loc.end.line ? loc.end.column : -1;
 
     //skip to line in question
     skipToLine(f, loc.begin.line);

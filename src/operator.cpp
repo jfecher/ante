@@ -521,7 +521,7 @@ string toModuleName(const AnType *t){
  *  Compiles the member access operator, .  eg. struct.field
  */
 TypedValue Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *binop){
-    if(!ln) throw new CtError();
+    if(!ln) throw CtError();
 
     if(auto *tn = dynamic_cast<TypeNode*>(ln)){
         //since ln is a typenode, this is a static field/method access, eg Math.rand
@@ -1102,7 +1102,7 @@ void showNoMatchingCandidateError(Compiler *c, const vector<shared_ptr<FuncDecl>
             msg = msg + " with args " + anTypeToColoredStr(AnAggregateType::get(TT_Tuple, argTys));
 
         c->compErr(msg, loc);
-    }catch(CtError *e){
+    }catch(CtError e){
         for(auto &fd : candidates){
             auto *fnty = fd->type ? fd->type
                 : AnFunctionType::get(AnType::getVoid(), fd->getFDN()->params.get());
@@ -1421,10 +1421,9 @@ void CompilingVisitor::visit(SeqNode *n){
     for(auto &node : n->sequence){
         try{
             node->accept(*this);
-        }catch(CtError *e){
+        }catch(CtError e){
             //Unless the final value throws, delete the error
             if(&node == &n->sequence.back()) throw e;
-            else delete e;
         }
     }
 }
