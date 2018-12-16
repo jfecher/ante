@@ -231,6 +231,7 @@ Lexer::Lexer(string* file) :
 
     incPos();
     incPos();
+    row = col = 1;
     scopes->push(0);
 
     if(cur == '#' && nxt == '!')
