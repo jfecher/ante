@@ -13,19 +13,6 @@ using namespace ante;
 using namespace ante::parser;
 
 /**
-* @brief every single compiled module, even ones invisible to the current
-* compilation unit.  Prevents recompilation of modules and owns all Modules
-*/
-extern llvm::StringMap<unique_ptr<Module>> allCompiledModules;
-
-/**
-* @brief Every merged compilation units.  Each must not be freed until compilation
-* finishes as there is always a chance an old module is recompiled and the newly
-* imported functions would need the context they were compiled in.
-*/
-extern list<unique_ptr<Module>> allMergedCompUnits;
-
-/**
  * @brief Prints the parse tree annotated with names and types
  *
  * @param root The RootNode of the parse tree to print out
@@ -90,8 +77,6 @@ int main(int argc, const char **argv){
 
         ante.processArgs(args);
         typeArena.clearDeclaredTypes();
-        allCompiledModules.clear();
-        allMergedCompUnits.clear();
     }
 
     if(args->hasArg(Args::Eval) || (args->args.empty() && args->inputFiles.empty()))

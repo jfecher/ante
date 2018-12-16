@@ -193,6 +193,7 @@ namespace ante {
         if(n->typeExpr){
             NameResolutionVisitor submodule;
             submodule.compUnit->name = this->compUnit->name + "." + typeNodeToStr(n->typeExpr.get());
+            tryTo([&](){ importFile("stdlib/prelude.an", n->loc); });
 
             for(auto *m : *n->methods)
                 tryTo([&](){ m->accept(submodule); });
@@ -525,6 +526,40 @@ namespace ante {
     }
 
 
+    /**
+     * Issue an error if any of the names in the given module
+     * conflict with any in the modules already imported.
+     */
+    void checkForConflict(Module *import, Module *other, LOC_TY &loc){
+        for(const auto& ty : import->userTypes){
+            if(other->userTypes.find(ty.getKey()) != other->userTypes.end()){
+                error(lazy_str(ty.getKey().str(), AN_TYPE_COLOR) +  " in module "
+                        + lazy_str(import->name, AN_TYPE_COLOR) + " conflicts with "
+                        + lazy_str(ty.getKey().str(), AN_TYPE_COLOR)
+                        + " in module " + lazy_str(other->name, AN_TYPE_COLOR), loc, ErrorType::Error);
+            }
+        }
+
+        for(const auto& tr : import->traits){
+            if(other->traits.find(tr.getKey()) != other->traits.end()){
+                error(lazy_str(tr.getKey().str(), AN_TYPE_COLOR) +  " in module "
+                        + lazy_str(import->name, AN_TYPE_COLOR) + " conflicts with "
+                        + lazy_str(tr.getKey().str(), AN_TYPE_COLOR)
+                        + " in module " + lazy_str(other->name, AN_TYPE_COLOR), loc, ErrorType::Error);
+            }
+        }
+
+        for(const auto& fn : import->fnDecls){
+            if(other->fnDecls.find(fn.getKey()) != other->fnDecls.end()){
+                error(lazy_str(fn.getKey().str(), AN_TYPE_COLOR) +  " in module "
+                        + lazy_str(import->name, AN_TYPE_COLOR) + " conflicts with "
+                        + lazy_str(fn.getKey().str(), AN_TYPE_COLOR)
+                        + " in module " + lazy_str(other->name, AN_TYPE_COLOR), loc, ErrorType::Error);
+            }
+        }
+    }
+
+
     void NameResolutionVisitor::importFile(string const& fName, LOC_TY &loc){
         //f = fName with full directory
         string fullPath = findFile(fName);
@@ -536,16 +571,16 @@ namespace ante {
         if(it != allCompiledModules.end()){
             //module already compiled
             auto *import = it->getValue().get();
-            string fmodName = removeFileExt(fName);
 
             for(auto *mod : this->imports){
-                if(mod->name == fmodName){
-                    error("Module " + string(fName) + " has already been imported", loc, ErrorType::Warning);
+                if(mod->name == import->name){
+                    error("Module " + lazy_str(import->name, AN_TYPE_COLOR) + " has already been imported", loc, ErrorType::Warning);
                 }
+                checkForConflict(import, mod, loc);
             }
 
             this->imports.push_back(import);
-            this->mergedCompUnits->import(import, loc);
+            //this->mergedCompUnits->import(import, loc);
         }else{
             //module not found
             NameResolutionVisitor newVisitor = visitImport(fullPath);
@@ -556,7 +591,7 @@ namespace ante {
             }
 
             this->imports.push_back(newVisitor.compUnit);
-            this->mergedCompUnits->import(newVisitor.compUnit, loc);
+            //this->mergedCompUnits->import(newVisitor.compUnit, loc);
         }
     }
 

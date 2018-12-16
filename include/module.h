@@ -14,6 +14,11 @@ namespace ante {
         std::string name;
 
         /**
+         * @brief All imports of the module
+         */
+        std::vector<Module*> imports;
+
+        /**
          * @brief The abstract syntax tree representing the contents of the module.
          */
         std::unique_ptr<parser::RootNode> ast;
