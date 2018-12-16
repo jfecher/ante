@@ -60,10 +60,11 @@ void printErrLine(const yy::location& loc, ErrorType t){
     if(!loc.begin.filename) return;
     ifstream f{*loc.begin.filename};
 
-    auto line_start = loc.begin.line;
+    // highlight the whole first line if the error spans multiple lines
+    unsigned int end_col = loc.begin.line == loc.end.line ? loc.begin.column : -1;
 
     //skip to line in question
-    skipToLine(f, line_start);
+    skipToLine(f, loc.begin.line);
 
     //print line
     string s;
@@ -72,7 +73,7 @@ void printErrLine(const yy::location& loc, ErrorType t){
     for(size_t i = 0; i < s.size(); i++){
         if(i == loc.begin.column - 1){
             printErrorTypeColor(t);
-        }else if(i == loc.end.column){
+        }else if(i == end_col){
             cout << AN_CONSOLE_RESET;
         }
         cout << s[i];
