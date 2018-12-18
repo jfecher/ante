@@ -356,7 +356,7 @@ namespace ante {
         n->rval->accept(*this);
 
         if(n->op != '('){
-            FuncDecl *candidate = getFunction(to_string(n->op));
+            FuncDecl *candidate = getFunction(Lexer::getTokStr(n->op));
             if(candidate)
                 n->decl = candidate;
             else //v TODO: memory leak here
