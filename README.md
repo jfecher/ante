@@ -20,26 +20,21 @@ the ability to interact at a lower level if needed.
 - Looking to contribute?  Check out [the documentation](http://antelang.org/doxygen/html/).
 
 ## Features
-* Lisp-esque compile-time execution combined with an extensible compiler API
-* Systems language that feels like an interpreted language
+* Strong focus on readability
 * Expression-based syntax
 * Robust module system with integrated build system
-* Immutability by default
+* Immutable by default
 * Strongly typed with a detailed algebraic type system and type inferencing
-* Ability to write compiler plugins within the compiled program itself
-type and issue a compile-time error if it is invalidated
-    -  Diverse and powerful compile-time analysis that can be custom programmed into
-any datatype creating eg. domain-specific optimizations, pointer-autofree, or even an ownership system.
-The implementation of these features resembles that of a compiler plugin, except that it is written
-into the compiled module itself.
-
-* Programmers have just as much power over their program as the compiler does.  As an example,
-here is an implementation of the goto construct in Ante
+* Compile-time execution combined with an extensible compiler API
+    - Ability to write compiler plugins within the compiled program itself
+    - Use compiler API to analyze or change type system, IR, macros, etc.
+    - Programmers have just as much power over their program as the compiler does.  As an example,
+    here is an implementation of the goto construct in Ante:
 
 ```go
 //The 'ante' keyword declares compile-time values
 ante
-    global mut labels = Map.of Str Llvm.BasicBlock
+    global mut labels = Map.empty ()
 
     fun goto: VarNode vn
         let label = labels.lookup vn.name ?
@@ -59,9 +54,6 @@ label begin
 print "hello!"
 goto begin
 ```
-
-* For more information, check out tests/non_compiling/language.an for all planned features.
-    - For implemented features, check out the tests directory
 
 ## Installation
 
