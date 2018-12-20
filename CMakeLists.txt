@@ -66,6 +66,7 @@ bison_target(parser ${AN_SYNTAX_Y} ${AN_PARSER_SRC} COMPILE_FLAGS "-Lc++ -o${AN_
 include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
 
+add_definitions(-DAN_LIB_DIR="${PROJECT_SOURCE_DIR}/stdlib/")
 
 add_library(antecommon SHARED
         include/antevalue.h
