@@ -34,16 +34,9 @@ namespace ante {
         /** @brief functions and type definitions of current module */
         Module *compUnit;
 
-        /** @brief all functions and type definitions visible to current module */
-        Module *mergedCompUnits;
-
-        /** @brief all imported modules */
-        std::vector<Module*> imports;
-
         /** Construct a new NameResolutionVisitor */
         NameResolutionVisitor(){
             compUnit = new Module();
-            mergedCompUnits = new Module();
             enterFunction();
         }
 

@@ -53,6 +53,11 @@ type Maybe 't =
 
 type Type 't = void
 
+
+trait Empty 't
+    fun empty: Type 't ty -> 't
+
+
 impl Eq (Maybe (Eq 'e))
     fun (=): Maybe 'e l r -> bool
         match l with

@@ -1,12 +1,14 @@
-
 type Vec 't = ref 't _data, usz len cap
 
-ext Vec 't
-    fun init :=
-        Vec<'t>(ref 't malloc(1 * Ante.sizeof 't), 0usz, 1usz)
+impl Empty (Vec 'e)
+    fun empty: ty =
+        Vec(ref 'e 0, 0usz, 0usz)
 
-    fun init: Range r -> Vec i32
-        fill (Vec<i32>()) r
+module Vec 't
+    fun empty := empty Vec
+
+    fun of: Range r -> Vec (Elem 'c)
+        fill (empty Vec) r
 
     fun is_empty: Vec v =
         v.len = 0
@@ -20,8 +22,8 @@ ext Vec 't
 
     //Fill Vec with items from the Range
     fun fill: mut Vec i32 v, Range r -> Vec i32
-        for i in r do
-            v.push i
+        for e in r do
+            v.push e
         v
 
     //reserve numElements in Vec v, elements will be uninitialized
@@ -131,11 +133,14 @@ ext Vec 't
 
 type VecIter 't = ref 't view, usz idx len
 
-ext Vec : Iterable
+impl Iterable Vec
+    type Iter = VecIter
     fun into_iter: Vec v =
         VecIter(v._data, 0usz, v.len)
 
-ext VecIter : Iterator
+impl Iterator (VecIter 't)
+    type Elem = 't
+
     fun has_next: VecIter v =
         v.idx < v.len
 
@@ -145,39 +150,41 @@ ext VecIter : Iterator
     fun next: VecIter 't v -> VecIter 't
         VecIter(v.view, v.idx + 1, v.len)
 
+impl Printne (Vec 't)
+    fun printne: Vec 't v
+        printne "{ "
 
-fun printne: Vec 't v
-    printne "{ "
+        mut i = 0
+        while i < v.len do
+            printne (v._data#i)
+            if i + 1 != v.len then
+                printf ", "
 
-    mut i = 0
-    while i < v.len do
-        printne (v._data#i)
-        if i + 1 != v.len then
-            printf ", "
+            i += 1
 
-        i += 1
+        printne " }"
 
-    printne " }"
+impl Extract (Vec 't)
+    fun (#): Vec 't v, i32 i -> 't
+        v._data#i
 
-//define the extract operator
-fun (#): Vec 't v, i32 i -> 't
-    v._data#i
+impl Insert (Vec 't)
+    fun (#): mut Vec 't v, i32 i, 't x
+        v._data#i := x
 
-//define the insert operator
-fun (#): mut Vec 't v, i32 i, 't x
-    v._data#i := x
+impl In (Vec 't)
+    fun (in): 't elem, Vec 't v -> bool
+        for e in v do
+            if e = elem then
+                return true
+        false
 
-fun (in): 't elem, Vec 't v -> bool
-    for e in v do
-        if e = elem then
-            return true
-    false
-
-fun (=): Vec 't l r -> bool
-    if l.len != r.len then
-        return false
-
-    for i in 0 .. i32 l.len do
-        if l._data#i != r._data#i then
+impl Eq (Vec 't)
+    fun (=): Vec 't l r -> bool
+        if l.len != r.len then
             return false
-    true
+
+        for i in 0 .. i32 l.len do
+            if l._data#i != r._data#i then
+                return false
+        true

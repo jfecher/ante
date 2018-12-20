@@ -38,14 +38,6 @@ namespace ante {
          * Each DataType is reponsible for holding its own trait implementations
          */
         llvm::StringMap<std::shared_ptr<Trait>> traits;
-
-        /**
-        * @brief Merges two modules
-        *
-        * @param m module to merge into this
-        * @param loc The location of the import node in case a name is duplicated
-        */
-        void import(Module *m, LOC_TY &loc);
     };
 }
 

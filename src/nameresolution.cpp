@@ -13,9 +13,6 @@ using namespace std;
 //to avoid recompilation
 llvm::StringMap<unique_ptr<ante::Module>> allCompiledModules;
 
-//each mergedCompUnits is static in lifetime
-list<unique_ptr<ante::Module>> allMergedCompUnits;
-
 //yy::locations stored in all Nodes contain a string* to
 //a filename which must not be freed until all nodes are
 //deleted, including the FuncDeclNodes within ante::Modules
@@ -117,7 +114,6 @@ namespace ante {
         if(typeTable.size() == 1){
             //TODO: Check for redeclaration
             compUnit->userTypes.try_emplace(name, dt);
-            mergedCompUnits->userTypes.try_emplace(name, dt);
         }else{
             typeTable.top().back().try_emplace(name, dt);
         }
@@ -175,15 +171,23 @@ namespace ante {
 
 
     FuncDecl* NameResolutionVisitor::getFunction(string const& name) const{
-        return mergedCompUnits->fnDecls[name];
+        auto it = compUnit->fnDecls.find(name);
+        if(it != compUnit->fnDecls.end())
+            return it->getValue();
+
+        for(const Module *m : compUnit->imports){
+            auto it = m->fnDecls.find(name);
+            if(it != m->fnDecls.end())
+                return it->getValue();
+        }
+        return nullptr;
     }
 
     /** Declare function but do not define it */
     void NameResolutionVisitor::declare(FuncDeclNode *n){
         checkForPreviousDecl(this, n->name, this->compUnit->fnDecls, n->loc, "Function");
 
-        auto *fd = new FuncDecl(n, n->name, this->mergedCompUnits);
-        mergedCompUnits->fnDecls[n->name] = fd;
+        auto *fd = new FuncDecl(n, n->name, this->compUnit);
         compUnit->fnDecls[n->name] = fd;
         n->decl = fd;
     }
@@ -192,11 +196,13 @@ namespace ante {
         // Only declare methods if this is a module, not an impl
         if(n->typeExpr){
             NameResolutionVisitor submodule;
-            submodule.compUnit->name = this->compUnit->name + "." + typeNodeToStr(n->typeExpr.get());
-            tryTo([&](){ importFile("stdlib/prelude.an", n->loc); });
+            string name = compUnit->name + "." + typeNodeToStr(n->typeExpr.get());
+            submodule.compUnit->name = name;
+            tryTo([&](){ submodule.importFile("stdlib/prelude.an", n->loc); });
+            allCompiledModules.try_emplace(name, submodule.compUnit);
 
             for(auto *m : *n->methods)
-                tryTo([&](){ m->accept(submodule); });
+                tryTo([&](){ submodule.declare((FuncDeclNode*)m); });
         }
     }
 
@@ -322,7 +328,7 @@ namespace ante {
             error("RHS of . operator must be an identifier", n->loc);
         }
 
-        for(auto &p : mergedCompUnits->userTypes){
+        for(auto &p : compUnit->userTypes){
             if(auto *pt = try_cast<AnProductType>(p.second)){
                 for(size_t i = 0; i < pt->fieldNames.size(); i++){
                     auto &field = pt->fieldNames[i];
@@ -331,6 +337,22 @@ namespace ante {
                         fakeDecl->tval.type = pt->fields[i];
                         vn->decl = fakeDecl;
                         return;
+                    }
+                }
+            }
+        }
+
+        for(Module *m : compUnit->imports){
+            for(auto &p : m->userTypes){
+                if(auto *pt = try_cast<AnProductType>(p.second)){
+                    for(size_t i = 0; i < pt->fieldNames.size(); i++){
+                        auto &field = pt->fieldNames[i];
+                        if(field == vn->name){
+                            auto *fakeDecl = new Variable(field, vn);
+                            fakeDecl->tval.type = pt->fields[i];
+                            vn->decl = fakeDecl;
+                            return;
+                        }
                     }
                 }
             }
@@ -374,44 +396,6 @@ namespace ante {
 
     void NameResolutionVisitor::visit(RetNode *n){
         n->expr->accept(*this);
-    }
-
-    /**
-    * @brief Merges two modules
-    *
-    * @param mod module to merge into this
-    */
-    void ante::Module::import(ante::Module *mod, LOC_TY &loc){
-        for(auto& pair : mod->fnDecls){
-            checkForPreviousDecl(nullptr, pair.first().str(), fnDecls, pair.second->getLoc(), "Imported function", &loc);
-            fnDecls[pair.first()] = pair.second;
-        }
-
-        for(auto& pair : mod->userTypes){
-            auto prevDecl = userTypes.find(name);
-            if(prevDecl != userTypes.end()){
-                try{
-                    error("Type " + name + " was already declared", loc);
-                }catch(...){
-                    error("The second " + name + " was imported here", loc, ErrorType::Note);
-                    throw;
-                }
-            }
-            userTypes[pair.first()] = pair.second;
-        }
-
-        for(auto& pair : mod->traits){
-            auto prevDecl = traits.find(name);
-            if(prevDecl != traits.end()){
-                try{
-                    error("Trait " + name + " was already declared", loc);
-                }catch(...){
-                    error("The second " + name + " was imported here", loc, ErrorType::Note);
-                    throw;
-                }
-            }
-            traits[pair.first()] = pair.second;
-        }
     }
 
     inline bool fileExists(const string &fName){
@@ -515,10 +499,8 @@ namespace ante {
         auto fileNameWithoutExt = removeFileExt(file);
         auto modName = toModuleName(fileNameWithoutExt);
         newVisitor.compUnit->name = modName;
-        newVisitor.mergedCompUnits->name = modName;
 
         //Add this module to the cache to ensure it is not compiled twice
-        allMergedCompUnits.emplace_back(newVisitor.mergedCompUnits);
         allCompiledModules.try_emplace(file, newVisitor.compUnit);
 
         root->accept(newVisitor);
@@ -572,7 +554,7 @@ namespace ante {
             //module already compiled
             auto *import = it->getValue().get();
 
-            for(auto *mod : this->imports){
+            for(auto *mod : compUnit->imports){
                 if(mod->name == import->name){
                     error("Module " + lazy_str(import->name, AN_TYPE_COLOR) + " has already been imported", loc, ErrorType::Warning);
                     return;
@@ -580,7 +562,7 @@ namespace ante {
                 checkForConflict(import, mod, loc);
             }
 
-            this->imports.push_back(import);
+            compUnit->imports.push_back(import);
             //this->mergedCompUnits->import(import, loc);
         }else{
             //module not found
@@ -591,7 +573,7 @@ namespace ante {
                 error("Error when importing '" + string(fName) + "'", loc);
             }
 
-            this->imports.push_back(newVisitor.compUnit);
+            compUnit->imports.push_back(newVisitor.compUnit);
             //this->mergedCompUnits->import(newVisitor.compUnit, loc);
         }
     }
@@ -703,8 +685,14 @@ namespace ante {
     }
 
     void NameResolutionVisitor::visit(ExtNode *n){
-        if(!static_cast<FuncDeclNode*>(n->methods.get())->decl){
-            declare(n);
+        if(n->typeExpr){
+            NameResolutionVisitor submodule;
+            string name = this->compUnit->name + "." + typeNodeToStr(n->typeExpr.get());
+            submodule.compUnit = allCompiledModules[name].get();
+            assert(submodule.compUnit && ("Could not find submodule " + name).c_str());
+
+            for(auto *m : *n->methods)
+                tryTo([&](){ m->accept(submodule); });
         }
     }
 
@@ -919,7 +907,7 @@ namespace ante {
             auto *fdn = dynamic_cast<FuncDeclNode*>(fn);
             if(fdn){
                 auto *fd = static_cast<FuncDecl*>(fdn->decl);
-                mergedCompUnits->fnDecls[fdn->name] = fd;
+                compUnit->fnDecls[fdn->name] = fd;
                 fdn->decl = fd;
                 tr->funcs.emplace_back(fd);
             }
