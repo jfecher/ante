@@ -688,6 +688,7 @@ namespace ante {
         if(n->typeExpr){
             NameResolutionVisitor submodule;
             string name = this->compUnit->name + "." + typeNodeToStr(n->typeExpr.get());
+            delete submodule.compUnit;
             submodule.compUnit = allCompiledModules[name].get();
             assert(submodule.compUnit && ("Could not find submodule " + name).c_str());
 
