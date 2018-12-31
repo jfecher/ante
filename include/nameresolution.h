@@ -36,7 +36,7 @@ namespace ante {
 
         /** Construct a new NameResolutionVisitor */
         NameResolutionVisitor(){
-            compUnit = new Module();
+            compUnit = new Module("");
             enterFunction();
         }
 

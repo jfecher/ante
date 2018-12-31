@@ -6,12 +6,9 @@
 #include "nodecl.h"
 #include "scopeguard.h"
 #include "types.h"
+#include "moduletree.h"
 
 using namespace std;
-
-//Global containing every module/file compiled
-//to avoid recompilation
-llvm::StringMap<unique_ptr<ante::Module>> allCompiledModules;
 
 //yy::locations stored in all Nodes contain a string* to
 //a filename which must not be freed until all nodes are
@@ -195,14 +192,15 @@ namespace ante {
     void NameResolutionVisitor::declare(ExtNode *n){
         // Only declare methods if this is a module, not an impl
         if(n->typeExpr){
-            NameResolutionVisitor submodule;
-            string name = compUnit->name + "." + typeNodeToStr(n->typeExpr.get());
-            submodule.compUnit->name = name;
-            tryTo([&](){ submodule.importFile("stdlib/prelude.an", n->loc); });
-            allCompiledModules.try_emplace(name, submodule.compUnit);
+            string name = typeNodeToStr(n->typeExpr.get());
+            Module &submodule = compUnit->addChild(name);
 
+            NameResolutionVisitor submoduleVisitor;
+            submoduleVisitor.compUnit = &submodule;
+
+            tryTo([&](){ submoduleVisitor.importFile("stdlib/prelude.an", n->loc); });
             for(auto *m : *n->methods)
-                tryTo([&](){ submodule.declare((FuncDeclNode*)m); });
+                tryTo([&](){ submoduleVisitor.declare((FuncDeclNode*)m); });
         }
     }
 
@@ -293,6 +291,46 @@ namespace ante {
         }
     }
 
+    /**
+    * Converts a given filename (with its file
+    * extension already removed) to a module name.
+    *
+    * - Replaces directory separators with '.'
+    * - Capitalizes first letters of words
+    * - Ignores non alphanumeric characters
+    */
+    string toModuleName(string const& s){
+        string mod = "";
+        bool capitalize = true;
+
+        for(auto &c : s){
+            if(capitalize && ((c >= 'a' && c <= 'z') or (c >= 'A' && c <= 'Z'))){
+                if(c >= 'a' && c <= 'z'){
+                    mod += c + 'A' - 'a';
+                }else{
+                    mod += c;
+                }
+                capitalize = false;
+            }else{
+#ifdef _WIN32
+                if(c == '\\'){
+#else
+                if(c == '/'){
+#endif
+                    if(&c != s.c_str()){
+                        capitalize = true;
+                        mod += '.';
+                    }
+                }else if(c == '_'){
+                    capitalize = true;
+                }else if(IS_ALPHANUM(c)){
+                    mod += c;
+                }
+            }
+        }
+        return mod;
+    }
+
 
     optional<string> getIdentifier(Node *n){
         if(BinOpNode *bop = dynamic_cast<BinOpNode*>(n); bop && bop->op == '.'){
@@ -362,9 +400,67 @@ namespace ante {
     }
 
 
+    bool isImplicitImportExpr(BinOpNode *bop){
+        return bop && bop->op == '.' && dynamic_cast<TypeNode*>(bop->lval.get());
+    }
+
+
+    Module *findModule(NameResolutionVisitor *v, string const& name){
+        for(Module *m : v->compUnit->imports){
+            auto it = m->findChild(name);
+            if(it != m->childrenEnd())
+                return &it->second;
+        }
+
+        Module &root = Module::getRoot();
+        auto it = root.findChild(name);
+        return it != root.childrenEnd() ? &it->second : nullptr;
+    }
+
+
+    std::pair<Module*, Node*> handleImplicitModuleImport(NameResolutionVisitor *v, BinOpNode *n){
+        BinOpNode *cur = n;
+        TypeNode *tn;
+        Node *rhs = n->rval.get();
+
+        Module *m = nullptr;
+
+        while(isImplicitImportExpr(cur)){
+            tn = static_cast<TypeNode*>(cur->lval.get());
+
+            if(m == nullptr){
+                m = findModule(v, tn->typeName);
+            }else{
+                auto it = m->findChild(tn->typeName);
+                if(it == m->childrenEnd()){
+                    error("Cannot find module " + lazy_str(tn->typeName, AN_TYPE_COLOR), tn->loc);
+                }
+                m = &it->second;
+            }
+
+            rhs = cur->rval.get();
+            cur = dynamic_cast<BinOpNode*>(rhs);
+        }
+
+        if(!m){
+            error("Cannot find module " + lazy_str(((TypeNode*)(n->lval.get()))->typeName, AN_TYPE_COLOR), n->lval->loc);
+        }
+        return {m, rhs};
+    }
+
+
     void NameResolutionVisitor::visit(BinOpNode *n){
         if(n->op == '.' && dynamic_cast<TypeNode*>(n->lval.get())){
-            //TODO: auto-module import
+            auto [mod, node] = handleImplicitModuleImport(this, n);
+            if(VarNode *vn = dynamic_cast<VarNode*>(node)){
+                auto fn = mod->fnDecls.find(vn->name);
+                if(fn == mod->fnDecls.end()){
+                    error("No function named '" + vn->name + "' has not been declared in "
+                            + lazy_str(mod->name, AN_TYPE_COLOR), n->loc);
+                }
+                vn->decl = fn->second;
+                n->decl = fn->second;
+            }
             return;
         }
 
@@ -431,53 +527,14 @@ namespace ante {
         return "";
     }
 
-    /**
-    * Converts a given filename (with its file
-    * extension already removed) to a module name.
-    *
-    * - Replaces directory separators with '.'
-    * - Capitalizes first letters of words
-    * - Ignores non alphanumeric characters
-    */
-    string toModuleName(string &s){
-        string mod = "";
-        bool capitalize = true;
 
-        for(auto &c : s){
-            if(capitalize && ((c >= 'a' && c <= 'z') or (c >= 'A' && c <= 'Z'))){
-                if(c >= 'a' && c <= 'z'){
-                    mod += c + 'A' - 'a';
-                }else{
-                    mod += c;
-                }
-                capitalize = false;
-            }else{
-#ifdef _WIN32
-                if(c == '\\'){
-#else
-                if(c == '/'){
-#endif
-                    if(&c != s.c_str()){
-                        capitalize = true;
-                        mod += '.';
-                    }
-                }else if(c == '_'){
-                    capitalize = true;
-                }else if(IS_ALPHANUM(c)){
-                    mod += c;
-                }
-            }
-        }
-        return mod;
-    }
-
-
-    NameResolutionVisitor visitImport(string const& file){
+    template<class StringIt>
+    NameResolutionVisitor visitImport(string const& filename, StringIt path){
         NameResolutionVisitor newVisitor;
 
         //The lexer stores the fileName in the loc field of all Nodes. The fileName is copied
         //to let Node's outlive the context they were made in, ensuring they work with imports.
-        string* fileName_cpy = new string(file);
+        string* fileName_cpy = new string(filename);
         fileNames.emplace_back(fileName_cpy);
         setLexer(new Lexer(fileName_cpy));
         yy::parser p{};
@@ -493,15 +550,11 @@ namespace ante {
             exit(flag);
         }
 
+        //Add this module to the cache first to ensure it is not compiled twice
+        newVisitor.compUnit = &Module::getRoot().addPath(path);
+
         RootNode *root = parser::getRootNode();
         newVisitor.compUnit->ast.reset(root);
-
-        auto fileNameWithoutExt = removeFileExt(file);
-        auto modName = toModuleName(fileNameWithoutExt);
-        newVisitor.compUnit->name = modName;
-
-        //Add this module to the cache to ensure it is not compiled twice
-        allCompiledModules.try_emplace(file, newVisitor.compUnit);
 
         root->accept(newVisitor);
         return newVisitor;
@@ -549,10 +602,13 @@ namespace ante {
             error("No file named '" + string(fName) + "' was found.", loc);
         }
 
-        auto it = allCompiledModules.find(fullPath);
-        if(it != allCompiledModules.end()){
+        auto modPath = ModulePath(fName);
+
+        Module &root = Module::getRoot();
+        auto it = root.findPath(modPath);
+        if(it != root.childrenEnd()){
             //module already compiled
-            auto *import = it->getValue().get();
+            Module *import = &it->getValue();
 
             for(auto *mod : compUnit->imports){
                 if(mod->name == import->name){
@@ -563,10 +619,9 @@ namespace ante {
             }
 
             compUnit->imports.push_back(import);
-            //this->mergedCompUnits->import(import, loc);
         }else{
             //module not found
-            NameResolutionVisitor newVisitor = visitImport(fullPath);
+            NameResolutionVisitor newVisitor = visitImport(fullPath, modPath);
 
             //old import code
             if(newVisitor.hasError()){
@@ -574,7 +629,6 @@ namespace ante {
             }
 
             compUnit->imports.push_back(newVisitor.compUnit);
-            //this->mergedCompUnits->import(newVisitor.compUnit, loc);
         }
     }
 
@@ -686,10 +740,10 @@ namespace ante {
 
     void NameResolutionVisitor::visit(ExtNode *n){
         if(n->typeExpr){
+            string name = typeNodeToStr(n->typeExpr.get());
             NameResolutionVisitor submodule;
-            string name = this->compUnit->name + "." + typeNodeToStr(n->typeExpr.get());
-            delete submodule.compUnit;
-            submodule.compUnit = allCompiledModules[name].get();
+            submodule.compUnit = &compUnit->findChild(name)->second;
+
             assert(submodule.compUnit && ("Could not find submodule " + name).c_str());
 
             for(auto *m : *n->methods)

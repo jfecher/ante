@@ -168,7 +168,6 @@ void PrintingVisitor::visit(BinOpNode *n){
         n->rval->accept(*this);
     }else{
         n->lval->accept(*this);
-
         putchar(' ');
         Lexer::printTok(n->op);
         putchar(' ');

@@ -6,7 +6,7 @@ impl Empty (Vec 'e)
 
 fun empty := empty Vec
 
-fun of: Range r -> Vec (Elem 'c)
+fun of: Range r -> Vec i32
     fill (empty Vec) r
 
 fun is_empty: Vec v =
