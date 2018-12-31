@@ -82,6 +82,7 @@ add_library(antecommon SHARED
         include/lazystr.h
         include/lexer.h
         include/module.h
+        include/moduletree.h
         include/nameresolution.h
         include/nodecl.h
         include/nodevisitor.h
@@ -113,6 +114,7 @@ add_library(antecommon SHARED
         src/function.cpp
         src/lazystr.cpp
         src/lexer.cpp
+        src/moduletree.cpp
         src/nameresolution.cpp
         src/nodeprinter.cpp
         src/operator.cpp
