@@ -48,18 +48,18 @@ TEST_CASE("Type Checks", "[typeEq]"){
         REQUIRE(std::find(subs.begin(), subs.end(), expected2) != subs.end());
     }
 
-    SECTION("Empty isz == Empty isz"){
+    SECTION("MyType isz == MyType isz"){
         //Empty 't
         auto tvar = AnTypeVarType::get("'t");
-        auto empty = AnProductType::create("Empty", {}, {tvar});
+        auto mytype = AnProductType::create("MyType", {}, {tvar});
 
         //Empty isz
-        auto empty_isz  = applySubstitutions({{tvar, intTy}}, empty);
-        auto empty_isz2 = applySubstitutions({{tvar, intTy}}, empty);
+        auto mytype_isz  = applySubstitutions({{tvar, intTy}}, mytype);
+        auto mytype_isz2 = applySubstitutions({{tvar, intTy}}, mytype);
 
-        REQUIRE(empty_isz != empty);
+        REQUIRE(mytype_isz != mytype);
 
-        REQUIRE(empty_isz == empty_isz2);
+        REQUIRE(mytype_isz == mytype_isz2);
     }
 }
 
