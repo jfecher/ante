@@ -108,53 +108,34 @@ namespace ante {
     /**
      * Provides an iterator over a substrings of a file path.
      * each item is separated by the OS-specific file separater character.
+     * When converting a path to a module path, / and \ will both be treated
+     * as directory separators, regardless of OS.  Furthermore, the file named '.'
+     * will be skipped, so both stdlib/prelude.an and ./stdlib/prelude.an are equivalent.
      */
-    struct ModulePath
+    class ModulePath
     {
         typedef ModulePath iterator;
         typedef std::string const& reference;
         typedef std::string const* pointer;
 
-#ifdef _WIN32
-    #define AN_PATH_SEPARATOR '\\'
-#else
-    #define AN_PATH_SEPARATOR '/'
-#endif
-
-        std::string const& s;
+        std::string s;
         std::string substr;
         std::string::size_type prev, cur;
 
+        /** remove trailing .an from module names */
+        void removeTrailingFileType();
+
     public:
-        ModulePath(std::string const& s)
-            : s{s}, prev{0}, cur{0} {}
+        ModulePath(std::string const& s);
         ~ModulePath() = default;
 
-        iterator begin() const { return *this; }
-        iterator end() const { ModulePath r{s}; r.cur = s.length(); return r; }
+        iterator begin() const;
+        iterator end() const;
 
-        iterator  operator++(int) /* postfix */         {
-            iterator i = *this;
-            prev = cur;
-            while(cur < s.length() && s[cur] != AN_PATH_SEPARATOR)
-                ++cur;
-            substr = s.substr(prev, cur - prev);
-            return i;
-        }
-        iterator& operator++()    /* prefix */          {
-            prev = cur;
-            while(cur < s.length() && s[cur] != AN_PATH_SEPARATOR)
-                ++cur;
-            substr = s.substr(prev, cur - prev);
-            return *this;
-        }
-        reference operator* () const                    { return substr; }
-        pointer   operator->() const                    { return &substr; }
-        bool      operator==(const iterator& rhs) const { return s == rhs.s && cur == rhs.cur; }
-        bool      operator!=(const iterator& rhs) const { return !(*this == rhs); }
+        iterator& operator++();
+        reference operator* () const;
+        bool operator!=(const iterator& rhs) const;
     };
-
-
 }
 
 

@@ -20,4 +20,53 @@ namespace ante {
         children.try_emplace(childName, childName);
         return children.find(childName)->second;
     }
+
+    void ModulePath::removeTrailingFileType(){
+        if(substr.length() >= 3 && substr.compare(substr.length() - 3, 3, ".an") == 0){
+            substr = substr.substr(0, substr.length() - 3);
+        }
+    }
+
+    ModulePath::ModulePath(std::string const& s)
+        : s{s}, prev{0}, cur{0} {
+            this->operator++();
+        }
+
+    ModulePath::iterator ModulePath::begin() const {
+        return *this;
+    }
+
+    ModulePath::iterator ModulePath::end() const {
+        ModulePath e{*this};
+        e.cur = s.length();
+        e.prev = s.length();
+        return e;
+    }
+
+    constexpr bool isPathSeparator(char c){
+        return c == '/' || c == '\\';
+    }
+
+    ModulePath::iterator& ModulePath::operator++()    /* prefix */          {
+        prev = cur;
+        while(cur < s.length() && !isPathSeparator(s[cur]))
+            ++cur;
+        substr = s.substr(prev, cur - prev);
+        if(!substr.empty())
+            substr[0] = std::toupper(substr[0]);
+        while(isPathSeparator(s[cur]))
+            ++cur;
+        removeTrailingFileType();
+        if(substr == ".")
+            this->operator++();
+        return *this;
+    }
+
+    ModulePath::reference ModulePath::operator* () const {
+        return substr;
+    }
+
+    bool ModulePath::operator!=(const iterator& rhs) const {
+        return s != rhs.s || cur != rhs.cur || prev != rhs.prev;
+    }
 }

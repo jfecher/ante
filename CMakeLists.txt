@@ -140,6 +140,7 @@ add_executable(antetests
         tests/unit/nameresolutiontests.cpp
         tests/unit/sizeinbits.cpp
         tests/unit/typechecks.cpp
+        tests/unit/modulepath.cpp
         tests/unit/unittest.h)
 
 target_link_libraries(antetests antecommon)
