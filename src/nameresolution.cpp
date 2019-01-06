@@ -206,7 +206,7 @@ namespace ante {
 
 
     void NameResolutionVisitor::visit(RootNode *n){
-        if(compUnit->name != ".Stdlib.Prelude"){
+        if(compUnit->name != "Prelude"){
             tryTo([&](){ importFile("stdlib/prelude.an", n->loc); });
         }
 
@@ -661,6 +661,7 @@ namespace ante {
         }else if(StrLitNode *sln = dynamic_cast<StrLitNode*>(expr)){
             return sln->val;
         }else{
+            error("Syntax error in import expression", expr->loc);
             return "";
         }
     }
