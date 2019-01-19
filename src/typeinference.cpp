@@ -141,6 +141,8 @@ namespace ante {
         // If we have a field access operator, we cannot try to
         // coerce the module name into a type
         if(n->op == '.' && dynamic_cast<TypeNode*>(n->lval.get())){
+            n->rval->accept(*this);
+            n->setType(nextTypeVar());
             return;
         }
 
