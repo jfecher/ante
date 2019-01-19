@@ -14,7 +14,7 @@ using namespace std;
 //a filename which must not be freed until all nodes are
 //deleted, including the FuncDeclNodes within ante::Modules
 //that all have a static lifetime
-list<unique_ptr<string>> fileNames;
+list<string> fileNames;
 
 
 namespace ante {
@@ -534,9 +534,8 @@ namespace ante {
 
         //The lexer stores the fileName in the loc field of all Nodes. The fileName is copied
         //to let Node's outlive the context they were made in, ensuring they work with imports.
-        string* fileName_cpy = new string(filename);
-        fileNames.emplace_back(fileName_cpy);
-        setLexer(new Lexer(fileName_cpy));
+        fileNames.emplace_back(filename);
+        setLexer(new Lexer(&fileNames.back()));
         yy::parser p{};
         int flag = p.parse();
         if(flag != PE_OK){ //parsing error, cannot procede

@@ -84,6 +84,7 @@ namespace ante {
                     if(ret == node->childrenEnd()){
                         return children.end();
                     }
+                    node = &ret->getValue();
                 }
                 return ret;
             }
