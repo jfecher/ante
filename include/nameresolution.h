@@ -25,8 +25,6 @@ namespace ante {
         /** Globals may be accessed from any scope but can be shadowed by any scope as well. */
         llvm::StringMap<std::unique_ptr<Variable>> globals;
 
-        bool errFlag = false;
-
         /** When this is set to true all VarNodes will be automatically declared as new variables.
          * This is used inside of match patterns. */
         bool autoDeclare = false;
@@ -38,10 +36,6 @@ namespace ante {
         NameResolutionVisitor(){
             compUnit = new Module("");
             enterFunction();
-        }
-
-        bool hasError() const noexcept {
-            return errFlag;
         }
 
         /**
@@ -66,8 +60,6 @@ namespace ante {
         }
 
         DECLARE_NODE_VISIT_METHODS();
-
-        void error(lazy_printer msg, LOC_TY loc, ErrorType t = ErrorType::Error);
 
         private:
             /** Declare a variable with its type unknown */

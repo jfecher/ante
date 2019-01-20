@@ -117,8 +117,7 @@ string toLlvmTypeName(const AnDataType *dt){
 
 Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt, bool force){
     if(dt->isGeneric && !force){
-        cerr << "Type " << anTypeToStr(dt) << " is generic and cannot be translated.\n";
-        c->errFlag = true;
+        error("Type " + anTypeToColoredStr(dt) + " is generic and cannot be translated", unknownLoc());
     }
 
     if(auto *tt = try_cast<AnTraitType>(dt)){
@@ -464,8 +463,8 @@ Type* Compiler::anTypeToLlvmType(const AnType *ty, bool force){
         }
         case TT_TypeVar: {
             auto *tvt = try_cast<AnTypeVarType>(ty);
-            //compErr("Use of undeclared type variable " + ty->typeName, ty->loc);
-            //compErr("tn2llvmt: TypeVarError; lookup for "+ty->typeName+" not found", ty->loc);
+            //error("Use of undeclared type variable " + ty->typeName, ty->loc);
+            //error("tn2llvmt: TypeVarError; lookup for "+ty->typeName+" not found", ty->loc);
             //throw new TypeVarError();
             if(!force)
                 cerr << "Warning: cannot translate undeclared typevar " << tvt->name << endl;

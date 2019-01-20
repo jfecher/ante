@@ -22,7 +22,7 @@ void showParseTree(RootNode *root){
     try{
         NameResolutionVisitor v;
         v.visit(root);
-        if(v.errFlag) return;
+        if(errorCount()) return;
         TypeInferenceVisitor::infer(root);
         parser::printBlock(root, 0);
     }catch(...){

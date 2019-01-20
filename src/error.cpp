@@ -8,6 +8,8 @@ using namespace ante::parser;
 
 namespace ante {
 
+size_t globalErrorCount = 0;
+
 /*
  * Skips input in a given istream until it encounters the given coordinates,
  * with each newline signalling the end of a row.
@@ -130,10 +132,23 @@ void showFileInfo(const yy::location &loc, ErrorType t){
 
 
 void showError(lazy_printer msg, const yy::location& loc, ErrorType t){
+    if(t == ErrorType::Error)
+        globalErrorCount++;
+
     showFileInfo(loc, t);
     cout << msg << endl;
     printErrLine(loc, t);
     cout << endl << endl;
+}
+
+
+size_t errorCount() {
+    return globalErrorCount;
+}
+
+
+LOC_TY unknownLoc(){
+    return parser::mkLoc(parser::mkPos(0, 0, 0), parser::mkPos(0, 0, 0));
 }
 
 
@@ -145,24 +160,6 @@ void error(const char* msg, const yy::location& loc, ErrorType t){
 void error(lazy_printer strs, const yy::location& loc, ErrorType t){
     showError(strs, loc, t);
     throw CtError();
-}
-
-
-/*
- *  Inform the user of an error and return nullptr.
- */
-TypedValue Compiler::compErr(lazy_printer msg, const yy::location& loc, ErrorType t){
-    showError(msg, loc, t);
-    if(t == ErrorType::Error){
-        errFlag = true;
-        throw new CompilationError(msg, loc);
-    }
-    return {};
-}
-
-TypedValue Compiler::compErr(lazy_printer msg, ErrorType t){
-    auto loc = mkLoc(mkPos(0,0,0), mkPos(0,0,0));
-    return compErr(msg, loc, t);
 }
 
 

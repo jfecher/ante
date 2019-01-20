@@ -17,25 +17,23 @@ namespace ante {
 
     struct CtError {};
 
-    struct CompilationError : public CtError {
-        lazy_printer msg;
-        const yy::location loc;
-
-        CompilationError(lazy_printer m) : msg(m), loc(){}
-        CompilationError(lazy_printer m, const yy::location l) : msg(m), loc(l){}
-    };
-
     struct IncompleteTypeError : public CtError {};
 
     struct TypeVarError : public CtError {};
 
-    /* General error function.  Show an error and the line it is on, and throw an exception. */
+    /** General error function.  Show an error and the line it is on, and throw an exception. */
     void error(const char* msg, const yy::location& loc, ErrorType t = ErrorType::Error);
 
     void error(lazy_printer msg, const yy::location& loc, ErrorType t = ErrorType::Error);
 
-    /* Show an error and the line it is on, but do not throw an exception. */
+    /** Show an error and the line it is on, but do not throw an exception. */
     void showError(lazy_printer msg, const yy::location& loc, ErrorType t = ErrorType::Error);
+
+    /** Return the number of errors issued, omitting warnings and notes */
+    size_t errorCount();
+
+    /** Return an empty yy::location for when the error location is unknown or internal */
+    yy::location unknownLoc();
 }
 
 #endif

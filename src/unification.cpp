@@ -318,8 +318,7 @@ namespace ante {
                 Substitutions ret = t1;
                 ret.insert(ret.end(), t2.begin(), t2.end());
                 return ret;
-            }catch(CompilationError *e){
-                delete e;
+            }catch(CtError e){
                 return t2;
             }
         }

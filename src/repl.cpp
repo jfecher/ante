@@ -403,10 +403,7 @@ namespace ante {
         try {
             AnteValue arg{c, tv, expr};
             Ante_debug(c, arg);
-        }catch(ante::CompilationError *err){
-            cout << err->msg << endl;
-            delete err;
-        }
+        }catch(CtError err){}
     }
 
 
@@ -443,9 +440,8 @@ namespace ante {
                     // c->compUnit->ast.reset(root);
                     try{
                         val = CompilingVisitor::compile(c, expr);
-                    }catch(CompilationError *err){
+                    }catch(CtError err){
                         // c->compUnit->ast.reset();
-                        delete err;
                         val = {};
                     }
                 }

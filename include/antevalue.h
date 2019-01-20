@@ -29,7 +29,7 @@ namespace ante {
             template<typename T>
             T castTo() const {
                 if(!data)
-                    throw new CompilationError("Uninitialized data in cast");
+                    throw CtError();
                 return *(T*)data;
             }
 

@@ -183,13 +183,14 @@ TypedValue compFnWithModifiers(Compiler *c, FuncDecl *fd, ModNode *mod){
                 fn = TypedValue(nullptr, fnty);
             }else{
                 fdn->modifiers.emplace_back(mod);
-                return c->compErr("Unrecognized compiler directive '"+vn->name+"'", vn->loc);
+                error("Unrecognized compiler directive '"+vn->name+"'", vn->loc);
             }
 
             return fn;
         }else{
             fdn->modifiers.emplace_back(mod);
-            return c->compErr("Unrecognized compiler directive", mod->loc);
+            error("Unrecognized compiler directive", mod->loc);
+            return {};
         }
     // ppn is a normal modifier
     }else{
@@ -256,7 +257,7 @@ TypedValue compFnHelper(Compiler *c, FuncDecl *fd){
 
             for(size_t j = 0; j < i; j++){
                 if(cParam->name == paramVec[j]->name){
-                    return c->compErr("Parameter name '"+cParam->name+"' is repeated for parameters "+
+                    error("Parameter name '"+cParam->name+"' is repeated for parameters "+
                             to_string(j+1)+" and "+to_string(i+1), cParam->loc);
                 }
             }
@@ -476,7 +477,7 @@ void Compiler::registerFunction(FuncDeclNode *fn, string &mangledName){
     auto *redecl = getFuncDecl(fn->name, mangledName);
 
     if(redecl && redecl->getMangledName() == mangledName){
-        compErr("Function " + fn->name + " was redefined", fn->loc);
+        error("Function " + fn->name + " was redefined", fn->loc);
         return;
     }
 

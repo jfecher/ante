@@ -36,9 +36,7 @@ namespace ante {
 
             auto res = tn->extTys[i]->getSizeInBits(c);
             if(!res){
-                c->errFlag = true;
-                cerr << "Unknown/Unimplemented TypeTag " + typeTagToStr(tn->typeTag) << endl;
-                throw new CompilationError("Unknown/Unimplemented TypeTag " + typeTagToStr(tn->typeTag));
+                error("Unknown/Unimplemented TypeTag " + typeTagToStr(tn->typeTag), unknownLoc());
             }
 
             offset += res.getVal() / 8;
@@ -83,9 +81,8 @@ namespace ante {
             return tv;
         }
 
-        c->errFlag = true;
-        cerr << "Cannot find last store to mutable variable during translation.\n";
-        throw new CompilationError("Cannot find last store to mutable variable during translation.");
+        error("Cannot find last store to mutable variable during translation", unknownLoc());
+        return {};
     }
 
 
@@ -133,16 +130,14 @@ namespace ante {
                 return c->getVoidLiteral();
         }
 
-        c->errFlag = true;
-        cerr << "Unknown/Unimplemented TypeTag " + typeTagToStr(type->typeTag) << endl;
-        throw new CompilationError("Unknown/Unimplemented TypeTag " + typeTagToStr(type->typeTag));
+        error("Unknown/Unimplemented TypeTag " + typeTagToStr(type->typeTag), unknownLoc());
+        return {};
     }
 
     void AnteValue::allocAndStoreValue(Compiler *c, TypedValue const& tv){
         auto size = tv.type->getSizeInBits(c);
         if(!size){
-            c->errFlag = true;
-            throw new CompilationError(size.getErr());
+            error(size.getErr(), unknownLoc());
         }
         data = malloc(size.getVal() / 8);
         storeValue(c, tv);
@@ -210,10 +205,8 @@ namespace ante {
                 *(char**)data += cast<ConstantInt>(bi->getOperand(1))->getZExtValue();
             }
         }else{
-            c->errFlag = true;
-            cerr << "unknown value given to getConstPtr:\n";
             tv.dump();
-            throw new CompilationError("unknown value given to getConstPtr of type: " + anTypeToColoredStr(tv.type));
+            error("unknown value given to getConstPtr of type: " + anTypeToColoredStr(tv.type), unknownLoc());
         }
     }
 
@@ -230,9 +223,7 @@ namespace ante {
 
                 auto size = ty->getSizeInBits(c);
                 if(!size){
-                    c->errFlag = true;
-                    cerr << "storeTuple: " << size.getErr() << endl;
-                    throw new CompilationError(size.getErr());
+                    error("storeTuple: " + size.getErr(), unknownLoc());
                 }
                 data = (char*)data + size.getVal() / 8;
             }
@@ -255,10 +246,8 @@ namespace ante {
         auto *ci = dyn_cast<ConstantInt>(v);
 
         if(!ci){
-            c->errFlag = true;
-            cerr << "Cannot convert non-constant integer.\n";
             v->print(dbgs());
-            throw new CompilationError("Cannot convert non-constant integer.");
+            error("Cannot convert non-constant integer", unknownLoc());
         }
 
         switch(tv.type->typeTag){
@@ -283,9 +272,7 @@ namespace ante {
     void AnteValue::storeFloat(Compiler *c, TypedValue const& tv){
         auto *cf = dyn_cast<ConstantFP>(tv.val);
         if(!cf){
-            c->errFlag = true;
-            cerr << "Cannot convert non-constant floating point value.\n";
-            throw new CompilationError("Cannot convert non-constant floating point value.");
+            error("Cannot convert non-constant floating point value", unknownLoc());
         }
 
         switch(tv.type->typeTag){
@@ -321,7 +308,6 @@ namespace ante {
                 //if(!var){
                 //    c->errFlag = true;
                 //    cerr << "Lookup for typevar " + tvt->name + " failed\n";
-                //    throw new CompilationError("Lookup for typevar " + tvt->name + " failed");
                 //}
 
                 //auto *type = extractTypeValue(var->tval);
@@ -344,9 +330,7 @@ namespace ante {
                 return;
         }
 
-        c->errFlag = true;
-        cerr << "Compile-time function argument must be constant.\n";
-        throw new CompilationError("Compile-time function argument must be constant.");
+        error("Compile-time function argument must be constant", unknownLoc());
     }
 
     void AnteValue::printUnion(Compiler *c, std::ostream &os) const{
@@ -456,11 +440,7 @@ namespace ante {
         for(auto &tv : tvals){
             auto elemSize = tv.type->getSizeInBits(c);
             if(!elemSize){
-                // NOTE: throwing exceptions in constructors is bad and can lead
-                //       to memory leaks or worse.
-                c->errFlag = true;
-                cerr << "AnteValue: sizeerror: " << elemSize.getErr() << '\n';
-                throw new CompilationError(elemSize.getErr());
+                error("AnteValue: sizeerror: " + elemSize.getErr(), unknownLoc());
             }
 
             elemSize = elemSize.getVal() / 8;

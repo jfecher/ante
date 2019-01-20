@@ -64,12 +64,12 @@ namespace ante {
         Type *tupTy = valToMatch.getType();
 
         if(!tupTy->isStructTy()){
-            cv.c->compErr("Cannot match tuple pattern against non-tuple type "
+            error("Cannot match tuple pattern against non-tuple type "
                     + anTypeToColoredStr(valToMatch.type), t->loc);
         }
 
         if(t->exprs.size() != tupTy->getNumContainedTypes()){
-            cv.c->compErr("Cannot match a tuple of size " + to_string(t->exprs.size()) +
+            error("Cannot match a tuple of size " + to_string(t->exprs.size()) +
                 " to a pattern of size " + to_string(tupTy->getNumContainedTypes()), t->loc);
         }
 
@@ -136,11 +136,11 @@ namespace ante {
 
         auto *tagTy = AnProductType::get(pattern->typeName);
         if(!tagTy)
-            c->compErr("No type " + typeNodeToColoredStr(pattern)
+            error("No type " + typeNodeToColoredStr(pattern)
                     + " found in scope", pattern->loc);
 
         if(!tagTy->parentUnionType)
-            c->compErr(typeNodeToColoredStr(pattern)
+            error(typeNodeToColoredStr(pattern)
                     + " must be a union tag to be used in a pattern", pattern->loc);
 
         auto *parentTy = tagTy->parentUnionType;
@@ -203,7 +203,7 @@ namespace ante {
             match_literal(cv, n, pattern, jmpOnFail, valToMatch, Str);
 
         }else{
-            cv.c->compErr("Unknown pattern", pattern->loc);
+            error("Unknown pattern", pattern->loc);
         }
     }
 

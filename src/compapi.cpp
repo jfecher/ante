@@ -19,8 +19,7 @@ extern "C" {
 
     void* Ante_error(Compiler *c, AnteValue &msg){
         auto *curfn = c->compCtxt->callStack.back()->getFDN();
-        yy::location fakeloc = mkLoc(mkPos(0,0,0), mkPos(0,0,0));
-        c->compErr(msg.castTo<char*>(), curfn ? curfn->loc : fakeloc);
+        error(msg.castTo<char*>(), curfn ? curfn->loc : unknownLoc());
         return nullptr;
     }
 

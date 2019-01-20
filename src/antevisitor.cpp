@@ -125,30 +125,30 @@ namespace ante {
                     return;
 
                 if(fnlist.empty())
-                    c->compErr("Use of undeclared variable " + n->name + " in ante expression", n->loc);
+                    error("Use of undeclared variable " + n->name + " in ante expression", n->loc);
             }
 
             switch(v->assignments.back().assignmentType){
                 case Assignment::ForLoop:
                     if(!v->tval.type->hasModifier(Tok_Ante)){
-                        c->compErr("Cannot evaluate a non-ante for-loop binding during compile-time.  Prefix the for loop with 'ante' to evaluate it in compile-time",
+                        error("Cannot evaluate a non-ante for-loop binding during compile-time.  Prefix the for loop with 'ante' to evaluate it in compile-time",
                                 n->loc);
                     }
                     break;
                 case Assignment::Parameter:
                     if(!v->tval.type->hasModifier(Tok_Ante)){
-                        c->compErr("Cannot evaluate a non-ante parameter during compile-time.  Mark the parameter's type with 'ante' to take in the parameter during compile-time", n->loc);
+                        error("Cannot evaluate a non-ante parameter during compile-time.  Mark the parameter's type with 'ante' to take in the parameter during compile-time", n->loc);
                     }
                     break;
                 case Assignment::TypeVar:
                     break;
                 case Assignment::Normal:
                     if(v->tval.type->hasModifier(Tok_Mut) && !v->tval.type->hasModifier(Tok_Ante)){
-                        c->compErr("Cannot evaluate a mutable variable during compile-time.  Use 'ante mut' in its declaration instead if you wish to evaluate it.", n->loc);
+                        error("Cannot evaluate a mutable variable during compile-time.  Use 'ante mut' in its declaration instead if you wish to evaluate it.", n->loc);
                     }else if(v->assignments.back().assignmentExpr){
                         visitExternalDecl(n->name, v->tval.type, *v->assignments.back().assignmentExpr);
                     }else{
-                        c->compErr("Cannot find last assignment to variable used in ante expression.", n->loc);
+                        error("Cannot find last assignment to variable used in ante expression.", n->loc);
                     }
                     break;
             }
@@ -170,7 +170,7 @@ namespace ante {
             if(parser::VarNode *vn = dynamic_cast<parser::VarNode*>(n->ref_expr)){
                 declare(vn->name);
             }else{
-                c->compErr("Pattern-declarations currently unimplemented in ante expressions", n->ref_expr->loc);
+                error("Pattern-declarations currently unimplemented in ante expressions", n->ref_expr->loc);
             }
         }
     }

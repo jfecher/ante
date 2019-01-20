@@ -122,7 +122,7 @@ namespace ante {
 
         std::shared_ptr<CompilerCtCtxt> ctCtxt;
 
-        bool errFlag, compiled, isLib, isJIT;
+        bool compiled, isLib, isJIT;
         std::string fileName, outFile, funcPrefix;
         unsigned int scope, optLvl, fnScope;
 
@@ -266,14 +266,6 @@ namespace ante {
         TypedValue compMemberAccess(parser::Node *ln, parser::VarNode *field, parser::BinOpNode *binop);
         TypedValue compLogicalOr(parser::Node *l, parser::Node *r, parser::BinOpNode *op);
         TypedValue compLogicalAnd(parser::Node *l, parser::Node *r, parser::BinOpNode *op);
-
-        /**
-         * @brief Reports a message and highlights the relevant source lines.
-         *
-         * @param t Type of message to report, either Error, Warning, or Note
-         */
-        TypedValue compErr(lazy_printer msg, const yy::location& loc, ErrorType t = ErrorType::Error);
-        TypedValue compErr(lazy_printer msg, ErrorType t = ErrorType::Error);
 
         /**
         * @brief JIT compiles a function with no arguments and calls it afterward
@@ -450,7 +442,7 @@ namespace ante {
      * Compile and call an ante function with the given arguments.
      *
      * The result of the call will be translated into a TypedValue.
-     * This function will throw a CompilationError* on error
+     * This function will throw a CtError on error
      */
     TypedValue compileAndCallAnteFunction(Compiler *c, std::string const& baseName,
         std::string const& mangledName, std::vector<TypedValue> const& typedArgs,
@@ -460,7 +452,7 @@ namespace ante {
      * Compile and call an ante expression from its node in the AST.
      *
      * The result of the call will be translated into a TypedValue.
-     * This function will throw a CompilationError* on error
+     * This function will throw a CtError on error
      */
     TypedValue compileAndCallAnteFunction(Compiler *c, parser::ModNode *n);
 

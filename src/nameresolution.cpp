@@ -24,19 +24,8 @@ namespace ante {
     void tryTo(F f){
         try{
             f();
-        }catch(CompilationError *e){
-            delete e;
         }catch(CtError e){}
     }
-
-    void NameResolutionVisitor::error(lazy_printer msg, LOC_TY loc, ErrorType t){
-        ante::showError(msg, loc, t);
-        if(t == ErrorType::Error){
-            errFlag = true;
-            throw new CompilationError(msg, loc);
-        }
-    }
-
 
     TypeArgs convertToTypeArgs(vector<unique_ptr<TypeNode>> const& types){
         TypeArgs ret;
@@ -54,22 +43,12 @@ namespace ante {
             T const& tbl, LOC_TY &loc, string kind = "", LOC_TY *importLoc = nullptr){
 
         auto prevDecl = tbl.find(name);
-
-        //Lambda to just call the apropriate error function
-        auto err = [&](string prepend, string msg, LOC_TY loc, ErrorType errTy){
-            if(v)   v->error(prepend + name + msg, loc, errTy);
-            else ante::error(prepend + name + msg, loc, errTy);
-        };
-
         if(prevDecl != tbl.end()){
-            try{
-                err(kind + ' ', " was already declared", loc, ErrorType::Error);
-            }catch(...){
-                err("", " was previously declared here", (*prevDecl).getValue()->getLoc(), ErrorType::Note);
-                if(importLoc)
-                    err("Second", " was imported here", *importLoc, ErrorType::Note);
-                throw;
-            }
+            showError(kind + ' ' + name + " was already declared", loc);
+            error(name + " was previously declared here", (*prevDecl).getValue()->getLoc(), ErrorType::Note);
+            if(importLoc)
+                error("Second" + name +  " was imported here", *importLoc, ErrorType::Note);
+            throw CtError();
         }
     }
 
@@ -276,7 +255,7 @@ namespace ante {
 
         /*  Check for validity of cast
         if(!val){
-            c->compErr("Invalid type cast " + anTypeToColoredStr(rtval.type) +
+            error("Invalid type cast " + anTypeToColoredStr(rtval.type) +
                     " -> " + anTypeToColoredStr(ty), n->loc);
         }*/
     }
@@ -570,7 +549,7 @@ namespace ante {
                 error(lazy_str(ty.getKey().str(), AN_TYPE_COLOR) +  " in module "
                         + lazy_str(import->name, AN_TYPE_COLOR) + " conflicts with "
                         + lazy_str(ty.getKey().str(), AN_TYPE_COLOR)
-                        + " in module " + lazy_str(other->name, AN_TYPE_COLOR), loc, ErrorType::Error);
+                        + " in module " + lazy_str(other->name, AN_TYPE_COLOR), loc);
             }
         }
 
@@ -579,7 +558,7 @@ namespace ante {
                 error(lazy_str(tr.getKey().str(), AN_TYPE_COLOR) +  " in module "
                         + lazy_str(import->name, AN_TYPE_COLOR) + " conflicts with "
                         + lazy_str(tr.getKey().str(), AN_TYPE_COLOR)
-                        + " in module " + lazy_str(other->name, AN_TYPE_COLOR), loc, ErrorType::Error);
+                        + " in module " + lazy_str(other->name, AN_TYPE_COLOR), loc);
             }
         }
 
@@ -588,7 +567,7 @@ namespace ante {
                 error(lazy_str(fn.getKey().str(), AN_TYPE_COLOR) +  " in module "
                         + lazy_str(import->name, AN_TYPE_COLOR) + " conflicts with "
                         + lazy_str(fn.getKey().str(), AN_TYPE_COLOR)
-                        + " in module " + lazy_str(other->name, AN_TYPE_COLOR), loc, ErrorType::Error);
+                        + " in module " + lazy_str(other->name, AN_TYPE_COLOR), loc);
             }
         }
     }
@@ -620,10 +599,11 @@ namespace ante {
             compUnit->imports.push_back(import);
         }else{
             //module not found
+            size_t oldErrCount = errorCount();
             NameResolutionVisitor newVisitor = visitImport(fullPath, modPath);
 
-            //old import code
-            if(newVisitor.hasError()){
+            //more errors occurred since visiting the import
+            if(oldErrCount != errorCount()){
                 error("Error when importing '" + string(fName) + "'", loc);
             }
 

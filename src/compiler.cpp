@@ -189,7 +189,7 @@ TypedValue compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
 
     auto posEnd = sln->val.find("}", pos);
     if(posEnd == string::npos)
-        return c->compErr("Interpolated string must have a closing bracket", sln->loc);
+        error("Interpolated string must have a closing bracket", sln->loc);
 
     //this is the ${...} part of the string without the ${ and }
     string m = sln->val.substr(pos+2, posEnd - (pos+2));
@@ -216,10 +216,8 @@ TypedValue compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
     RootNode *expr = parser::getRootNode();
     TypedValue val;
 
-    NameResolutionVisitor v;
-    v.resolve(expr);
-    if(v.errFlag){ throw CtError(); }
-
+    // errors may occur here but we cannot recover so let it throw
+    NameResolutionVisitor::resolve(expr);
     TypeInferenceVisitor::infer(expr);
 
     //Compile main and hold onto the last value
@@ -239,7 +237,7 @@ TypedValue compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
     auto rstr = CompilingVisitor::compile(c, rs);
 
     auto fn = c->getFunction(appendFn, mangledAppendFn);
-    if(!fn) return c->compErr("++ overload for Str and Str not found while performing Str interpolation."
+    if(!fn) error("++ overload for Str and Str not found while performing Str interpolation."
             "  The prelude may not be imported correctly.", sln->loc);
 
     //call the ++ function to combine the three strings
@@ -433,7 +431,7 @@ void CompilingVisitor::visit(ForNode *n){
         auto res = c->callFn("into_iter", {rangev});
 
         if(!res)
-            c->compErr("Range expression of type " + anTypeToColoredStr(rangev.type) + " needs to implement " +
+            error("Range expression of type " + anTypeToColoredStr(rangev.type) + " needs to implement " +
                 lazy_str("Iterable", AN_TYPE_COLOR) + " or " + lazy_str("Iterator", AN_TYPE_COLOR) +
                 " to be used in a for loop", n->range->loc);
 
@@ -455,7 +453,7 @@ void CompilingVisitor::visit(ForNode *n){
     auto rangeVal = TypedValue(c->builder.CreateLoad(alloca), rangev.type);
 
     auto is_done = c->callFn("has_next", {rangeVal});
-    if(!is_done) c->compErr("Range expression of type " + anTypeToColoredStr(rangev.type) + " does not implement " +
+    if(!is_done) error("Range expression of type " + anTypeToColoredStr(rangev.type) + " does not implement " +
             lazy_str("Iterable", AN_TYPE_COLOR) + ", which it needs to be used in a for loop", n->range->loc);
 
     c->builder.CreateCondBr(is_done.val, begin, end);
@@ -465,7 +463,7 @@ void CompilingVisitor::visit(ForNode *n){
     //make sure to update rangeVal
     rangeVal = TypedValue(c->builder.CreateLoad(alloca), rangev.type);
     auto uwrap = c->callFn("unwrap", {rangeVal});
-    if(!uwrap) c->compErr("Range expression of type " + anTypeToColoredStr(rangev.type) + " does not implement " +
+    if(!uwrap) error("Range expression of type " + anTypeToColoredStr(rangev.type) + " does not implement " +
             lazy_str("Iterable", AN_TYPE_COLOR) + ", which it needs to be used in a for loop", n->range->loc);
 
     //TODO: handle arbitrary patterns
@@ -497,7 +495,7 @@ void CompilingVisitor::visit(ForNode *n){
 
         TypedValue arg = {c->builder.CreateLoad(alloca), rangev.type};
         auto next = c->callFn("next", {arg});
-        if(!next) c->compErr("Range expression of type " + anTypeToColoredStr(rangev.type) + " does not implement "
+        if(!next) error("Range expression of type " + anTypeToColoredStr(rangev.type) + " does not implement "
                 + lazy_str("Iterable", AN_TYPE_COLOR) + ", which it needs to be used in a for loop", n->range->loc);
 
         c->builder.CreateStore(next.val, alloca);
@@ -514,10 +512,10 @@ void CompilingVisitor::visit(JumpNode *n){
 
     auto *ci = dyn_cast<ConstantInt>(val.val);
     if(!ci)
-        c->compErr("Expression must evaluate to a constant integer\n", n->expr->loc);
+        error("Expression must evaluate to a constant integer\n", n->expr->loc);
 
     if(!isUnsignedTypeTag(val.type->typeTag) && ci->getSExtValue() < 0)
-        c->compErr("Cannot jump out of a negative number (" + to_string(ci->getSExtValue()) +  ") of loops", n->expr->loc);
+        error("Cannot jump out of a negative number (" + to_string(ci->getSExtValue()) +  ") of loops", n->expr->loc);
 
     //we can now safely get the zero-extended value of ci since even if it is signed, it is not negative
     auto jumpCount = ci->getZExtValue();
@@ -526,15 +524,15 @@ void CompilingVisitor::visit(JumpNode *n){
     auto loopCount = c->compCtxt->breakLabels->size();
 
     if(loopCount == 0)
-        c->compErr("There are no loops to jump out of", n->loc);
+        error("There are no loops to jump out of", n->loc);
 
 
     if(jumpCount == 0)
-        c->compErr("Cannot jump out of 0 loops", n->expr->loc);
+        error("Cannot jump out of 0 loops", n->expr->loc);
 
 
     if(jumpCount > loopCount)
-        c->compErr("Cannot jump out of " + to_string(jumpCount) + " loops when there are only " +
+        error("Cannot jump out of " + to_string(jumpCount) + " loops when there are only " +
                 to_string(c->compCtxt->breakLabels->size()) + " loop(s) nested", n->expr->loc);
 
     //actually create the branch instruction
@@ -586,7 +584,7 @@ void CompilingVisitor::visit(VarNode *n){
 void compMutBinding(VarAssignNode *node, CompilingVisitor &cv){
     Compiler *c = cv.c;
     if(!dynamic_cast<VarNode*>(node->ref_expr))
-        c->compErr("Unknown pattern for l-expr", node->expr->loc);
+        error("Unknown pattern for l-expr", node->expr->loc);
 
     auto *decl = static_cast<VarNode*>(node->ref_expr)->decl;
 
@@ -621,7 +619,7 @@ void compMutBinding(VarAssignNode *node, CompilingVisitor &cv){
 void compLetBinding(VarAssignNode *node, CompilingVisitor &cv){
     Compiler *c = cv.c;
     if(!dynamic_cast<VarNode*>(node->ref_expr))
-        c->compErr("Unknown pattern for l-expr", node->expr->loc);
+        error("Unknown pattern for l-expr", node->expr->loc);
 
     auto *decl = static_cast<VarNode*>(node->ref_expr)->decl;
 
@@ -675,7 +673,7 @@ TypedValue compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
     //A . operator can also have a type/module as its lval, but its
     //impossible to insert into a non-value so fail if the lvalue is one
     if(auto *tn = dynamic_cast<TypeNode*>(bop->lval.get()))
-        return c->compErr("Cannot insert value into static module '" +
+        error("Cannot insert value into static module '" +
                 anTypeToColoredStr(toAnType(tn)), tn->loc);
 
 
@@ -733,7 +731,8 @@ TypedValue compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
         }
     }
 
-    return c->compErr("Method/Field " + field->name + " not found in type " + anTypeToColoredStr(tyn), bop->loc);
+    error("Method/Field " + field->name + " not found in type " + anTypeToColoredStr(tyn), bop->loc);
+    return {};
 }
 
 /**
@@ -746,7 +745,7 @@ TypedValue compileRefExpr(CompilingVisitor &cv, Node *refExpr, Node *assignExpr)
         auto *decl = vn->decl;
 
         if(!decl->tval.type->hasModifier(Tok_Mut))
-            cv.c->compErr("Variable must be mutable to be assigned to, but instead is an immutable " +
+            error("Variable must be mutable to be assigned to, but instead is an immutable " +
                     anTypeToColoredStr(decl->tval.type), refExpr->loc);
 
 
@@ -801,7 +800,7 @@ void CompilingVisitor::visit(VarAssignNode *n){
 
     //lvalue must compile to a pointer for storage, usually an alloca value
     if(!PointerType::isLoadableOrStorableType(val.getType())){
-        c->compErr("Attempted assign without a memory address, with type "
+        error("Attempted assign without a memory address, with type "
                 + anTypeToColoredStr(val.type), n->ref_expr->loc);
     }
 
@@ -966,14 +965,10 @@ void compileAll(Compiler *c, vector<T> &vec){
 
 
 bool Compiler::scanAllDecls(RootNode *root){
-    NameResolutionVisitor n;
-    root->accept(n);
-    if(n.hasError()){
-        errFlag = true;
-    }else{
+    NameResolutionVisitor::resolve(root);
+    if(!errorCount())
         TypeInferenceVisitor::infer(root);
-    }
-    return errFlag;
+    return errorCount();
 }
 
 void Compiler::eval(){
@@ -1066,14 +1061,14 @@ void Compiler::compile(){
     //always return 0
     builder.CreateRet(ConstantInt::get(*ctxt, APInt(32, 0)));
 
-    if(!errFlag && !isLib){
+    if(!errorCount() && !isLib){
         addPasses(module.get(), optLvl);
     }
 
     //flag this module as compiled.
     compiled = true;
 
-    if(errFlag){
+    if(errorCount()){
         fputs("Compilation aborted.\n", stderr);
         exit(1);
     }
@@ -1259,7 +1254,6 @@ Compiler::Compiler(const char *_fileName, bool lib, shared_ptr<LLVMContext> llvm
         builder(*ctxt),
         compCtxt(new CompilerCtxt()),
         ctCtxt(new CompilerCtCtxt()),
-        errFlag(false),
         compiled(false),
         isLib(lib),
         isJIT(false),
@@ -1312,7 +1306,6 @@ Compiler::Compiler(Compiler *c, Node *root, string modName, bool lib) :
         builder(*ctxt),
         compCtxt(new CompilerCtxt()),
         ctCtxt(c->ctCtxt),
-        errFlag(false),
         compiled(false),
         isLib(lib),
         isJIT(false),
@@ -1378,7 +1371,7 @@ void Compiler::processArgs(CompilerArgs *args){
     if(shouldGenerateExecutable){
         compileNative();
 
-        if(!errFlag && args->hasArg(Args::CompileAndRun)){
+        if(!errorCount() && args->hasArg(Args::CompileAndRun)){
             int res = system((AN_EXEC_STR + outFile).c_str());
             if(res) return; //silence unused return result warning
         }
