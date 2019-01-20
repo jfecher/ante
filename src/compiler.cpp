@@ -1053,20 +1053,22 @@ void Compiler::compile(){
         return;
     }
 
-    //create implicit main function and import the prelude
-    createMainFn();
+    try {
+        //create implicit main function and import the prelude
+        createMainFn();
 
-    CompilingVisitor::compile(this, ast);
+        CompilingVisitor::compile(this, ast);
 
-    //always return 0
-    builder.CreateRet(ConstantInt::get(*ctxt, APInt(32, 0)));
+        //always return 0
+        builder.CreateRet(ConstantInt::get(*ctxt, APInt(32, 0)));
 
-    if(!errorCount() && !isLib){
-        addPasses(module.get(), optLvl);
-    }
+        if(!errorCount() && !isLib){
+            addPasses(module.get(), optLvl);
+        }
 
-    //flag this module as compiled.
-    compiled = true;
+        //flag this module as compiled.
+        compiled = true;
+    }catch(...){}
 
     if(errorCount()){
         fputs("Compilation aborted.\n", stderr);
