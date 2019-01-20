@@ -659,7 +659,7 @@ bool shouldWrapInParenthesis(AnType *type){
         return false;
 
     auto adt = try_cast<AnDataType>(type);
-    return adt || !adt->typeArgs.empty();
+    return adt && !adt->typeArgs.empty();
 }
 
 /**
