@@ -604,15 +604,7 @@ unary_op: '@' expr                              {$$ = mkUnOpNode(@$, '@', $2);}
         | New expr                              {$$ = mkUnOpNode(@$, Tok_New, $2);}
         | Not expr                              {$$ = mkUnOpNode(@$, Tok_Not, $2);}
         | non_generic_type expr      %prec TYPE {$$ = mkTypeCastNode(@$, $1, $2);}
-        | explicit_generic_type expr %prec TYPE {$$ = mkTypeCastNode(@$, $1, $2);}
         ;
-
-explicit_generic_type: non_generic_type '<' type_list '>'    %prec TYPE {$$ = $1; ((TypeNode*)$1)->params = toOwnedVec(getRoot());}
-                     ;
-
-type_list: type_list ',' type  %prec TYPE {$$ = setNext($1, $3);}
-         | type                %prec TYPE {$$ = setRoot($1);}
-         ;
 
 arg_list: arg_list_p  %prec FUNC {$$ = mkTupleNode(@$, getRoot());}
         ;
