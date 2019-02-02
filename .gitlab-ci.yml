@@ -1,9 +1,8 @@
+image: gcc
 
 before_script:
     - apt-get update -yqq
-    - add-apt-repository ppa:ubuntu-toolchain-r/test -y
-    - apt-get update -yqq
-    - apt-get install cmake gcc-7 g++-7 bison -yqq
+    - apt-get install cmake bison -yqq
 
 antetest:
     script:
