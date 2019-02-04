@@ -2,7 +2,7 @@
 
 ### The compile-time language
 
-[![Build Status](https://travis-ci.org/jfecher/ante.svg?branch=master)](https://travis-ci.org/jfecher/ante)
+[![Build Status](https://gitlab.com/jfecher/ante/badges/typeinference/build.svg)](https://gitlab.com/rndmprsn/ante/commits/typeinference)
 
 Ante is a compiled systems language focusing on providing extreme extensibility through
 the use of a compile-time API.  Using such an API, compiler extensions can be created
