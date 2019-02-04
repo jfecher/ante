@@ -223,6 +223,20 @@ TypedValue compFnWithModifiers(Compiler *c, FuncDecl *fd, ModNode *mod){
 }
 
 
+AnFunctionType* removeCompileTimeParams(AnType *functy){
+    auto ft = static_cast<AnFunctionType*>(functy);
+
+    vector<AnType*> params;
+    params.reserve(ft->extTys.size());
+    for(auto &param : ft->extTys){
+        if(!isCompileTimeOnlyParamType(param)){
+            params.push_back(param);
+        }
+    }
+    return AnFunctionType::get(ft->retTy, params, {});
+}
+
+
 TypedValue compFnHelper(Compiler *c, FuncDecl *fd){
     BasicBlock *caller = c->builder.GetInsertBlock();
     auto *fdn = fd->getFDN();
@@ -233,6 +247,7 @@ TypedValue compFnHelper(Compiler *c, FuncDecl *fd){
         return ret;
     }
 
+    fdn->setType(removeCompileTimeParams(fdn->getType()));
     AnFunctionType *fnTy = try_cast<AnFunctionType>(fdn->getType());
 
     FunctionType *ft = dyn_cast<FunctionType>(c->anTypeToLlvmType(fnTy)->getPointerElementType());

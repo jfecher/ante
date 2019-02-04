@@ -132,7 +132,7 @@ namespace ante {
 
     void ConstraintFindingVisitor::visit(TypeCastNode *n){
         n->rval->accept(*this);
-        addConstraint(n->typeExpr->getType(), n->rval->getType(), n->loc);
+        //addConstraint(n->typeExpr->getType(), n->rval->getType(), n->loc);
     }
 
     void ConstraintFindingVisitor::visit(UnOpNode *n){

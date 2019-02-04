@@ -25,6 +25,12 @@ char getBitWidthOfTypeTag(const TypeTag ty){
     }
 }
 
+
+bool isCompileTimeOnlyParamType(AnType *ty){
+    return ty->typeTag == TT_Type || ty->typeTag == TT_Void || ty->hasModifier(Tok_Ante);
+}
+
+
 /*
  *  Returns the TypeNode* value of a TypedValue of type TT_Type
  */

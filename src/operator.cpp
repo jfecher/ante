@@ -1204,6 +1204,9 @@ TypedValue compFnCall(Compiler *c, BinOpNode *bop){
 
         for(TypedValue v : typedArgs){
             auto arg = v;
+            if(isCompileTimeOnlyParamType(arg.type))
+                continue;
+
             if(isInvalidParamType(arg.getType()))
                 arg = addrOf(c, arg);
 
@@ -1213,8 +1216,9 @@ TypedValue compFnCall(Compiler *c, BinOpNode *bop){
         auto param = CompilingVisitor::compile(c, r);
         if(!param) return param;
 
-        if(param.type->typeTag != TT_Void){
+        if(!isCompileTimeOnlyParamType(param.type)){
             auto arg = param;
+
             if(isInvalidParamType(arg.getType()))
                 arg = addrOf(c, arg);
 
