@@ -32,7 +32,7 @@ fun reserve: mut Vec 't v, usz numElems
         let ptr = realloc (ref void v._data) size
 
         if ptr is ref void 0 then
-            printf "Error in reserving %u elements for Vec\n" numElems
+            printf ("Error in reserving %u elements for Vec\n".cStr) numElems
             return ()
 
         v._data := ref 't ptr
@@ -163,15 +163,15 @@ impl Printne (Vec 't)
 
         printne " }"
 
-impl Extract (Vec 't)
-    fun (#): Vec 't v, i32 i -> 't
+impl Extract (Vec 't) 't
+    fun (#): Vec 't v, usz i -> 't
         v._data#i
 
-impl Insert (Vec 't)
-    fun (#): mut Vec 't v, i32 i, 't x
+impl Insert (Vec 't) 't
+    fun (#): mut Vec 't v, usz i, 't x
         v._data#i := x
 
-impl In (Vec 't)
+impl In (Vec 't) 't
     fun (in): 't elem, Vec 't v -> bool
         for e in v do
             if e = elem then

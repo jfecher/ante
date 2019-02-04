@@ -168,6 +168,53 @@ namespace ante {
         }
     }
 
+
+    AnType* getOpTraitType(int op){
+        AnTraitType *parent;
+        switch(op){
+            case '+': parent = AnTraitType::get("Add"); break;
+            case '-': parent = AnTraitType::get("Sub"); break;
+            case '*': parent = AnTraitType::get("Mul"); break;
+            case '/': parent = AnTraitType::get("Div"); break;
+            case '%': parent = AnTraitType::get("Mod"); break;
+            case '^': parent = AnTraitType::get("Pow"); break;
+            case '<': parent = AnTraitType::get("Cmp"); break;
+            case '>': parent = AnTraitType::get("Cmp"); break;
+            case Tok_GrtrEq: parent = AnTraitType::get("Cmp"); break;
+            case Tok_LesrEq: parent = AnTraitType::get("Cmp"); break;
+            case '=': parent = AnTraitType::get("Eq"); break;
+            case Tok_NotEq: parent = AnTraitType::get("Eq"); break;
+            default:
+                cerr << "getOpTraitType: unknown op '" << (char)op << "' (" << (int)op << ") given.  ";
+                exit(1);
+        }
+        if(!parent){
+            cerr << "getOpTraitType: numeric trait for op '" << (char)op << "' (" << (int)op << ") not found.  The stdlib may not have been imported properly.\n";
+            exit(1);
+        }
+        return AnTraitType::getOrCreateVariant(parent, nextTypeVar(), {});
+    }
+
+
+    pair<AnTraitType*, AnTypeVarType*> getCollectionOpTraitType(int op){
+        AnTraitType *parent;
+        auto collectionTyVar = nextTypeVar();
+        auto elemTy = nextTypeVar();
+        switch(op){
+            case '#':     parent = AnTraitType::get("Extract"); break;
+            case Tok_In:  parent = AnTraitType::get("In"); break;
+            default:
+                cerr << "getCollectionOpTraitType: unknown op '" << (char)op << "' (" << (int)op << ") given.  ";
+                exit(1);
+        }
+        if(!parent){
+            cerr << "Cannot find Extract trait.  The prelude may not have been imported properly.\n";
+            exit(1);
+        }
+        return {AnTraitType::getOrCreateVariant(parent, collectionTyVar, {elemTy}), elemTy};
+    }
+
+
     void ConstraintFindingVisitor::visit(BinOpNode *n){
         n->lval->accept(*this);
         n->rval->accept(*this);
@@ -227,18 +274,21 @@ namespace ante {
                 addConstraint(n->getType(), fnty->retTy, n->loc);
             }
         }else if(n->op == '+' || n->op == '-' || n->op == '*' || n->op == '/' || n->op == '%' || n->op == '^'){
-            addConstraint(n->lval->getType(), AnType::getI32(), n->loc);
-            addConstraint(n->rval->getType(), AnType::getI32(), n->loc);
-            addConstraint(n->getType(), AnType::getI32(), n->loc);
+            AnType *numTy = getOpTraitType(n->op);
+            addConstraint(n->lval->getType(), numTy, n->loc);
+            addConstraint(n->rval->getType(), numTy, n->loc);
+            addConstraint(n->getType(), numTy, n->loc);
         }else if(n->op == '<' || n->op == '>' || n->op == Tok_GrtrEq || n->op == Tok_LesrEq){
-            addConstraint(n->lval->getType(), AnType::getI32(), n->loc);
-            addConstraint(n->rval->getType(), AnType::getI32(), n->loc);
+            AnType *numTy = getOpTraitType(n->op);
+            addConstraint(n->lval->getType(), numTy, n->loc);
+            addConstraint(n->rval->getType(), numTy, n->loc);
             addConstraint(n->getType(), AnType::getBool(), n->loc);
         }else if(n->op == '#'){
-            auto t = nextTypeVar();
-            addConstraint(n->lval->getType(), AnArrayType::get(t), n->loc);
-            addConstraint(n->rval->getType(), AnType::getI32(), n->loc);
-            addConstraint(n->getType(), t, n->loc);
+            auto [collectionTy, elemTy] = getCollectionOpTraitType(n->op);
+
+            addConstraint(n->lval->getType(), collectionTy, n->loc);
+            addConstraint(n->rval->getType(), AnType::getUsz(), n->loc);
+            addConstraint(n->getType(), elemTy, n->loc);
         }else if(n->op == Tok_Or || n->op == Tok_And){
             addConstraint(n->lval->getType(), AnType::getBool(), n->loc);
             addConstraint(n->rval->getType(), AnType::getBool(), n->loc);
@@ -250,9 +300,10 @@ namespace ante {
             addConstraint(n->lval->getType(), AnType::getI32(), n->loc);
             addConstraint(n->rval->getType(), AnType::getI32(), n->loc);
         }else if(n->op == Tok_In){
-            auto tv = nextTypeVar();
-            addConstraint(tv, n->lval->getType(), n->loc);
-            addConstraint(n->rval->getType(), AnArrayType::get(tv), n->loc);
+            auto [collectionTy, elemTy] = getCollectionOpTraitType(n->op);
+
+            addConstraint(n->lval->getType(), elemTy, n->loc);
+            addConstraint(n->rval->getType(), collectionTy, n->loc);
             addConstraint(n->getType(), AnType::getBool(), n->loc);
         }
     }

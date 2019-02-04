@@ -8,6 +8,7 @@
 #include "types.h"
 #include "antevalue.h"
 #include "compapi.h"
+#include "target.h"
 
 using namespace std;
 using namespace llvm;
@@ -928,7 +929,6 @@ FuncDecl* compileAnteFunction(Compiler *c, string const& baseName, string const&
     return ret;
 }
 
-#include "target.h"
 
 
 TypedValue compileAndCallAnteFunction(Compiler *c, ModNode *n){

@@ -100,6 +100,41 @@ module Ante
     ante fun forget: ref c8 function_name
 
 
+trait Add 'n
+    fun (+): 'n l r -> 'n
+
+trait Sub 'n
+    fun (-): 'n l r -> 'n
+
+trait Mul 'n
+    fun (*): 'n l r -> 'n
+
+trait Div 'n
+    fun (/): 'n l r -> 'n
+
+trait Mod 'n
+    fun (%): 'n l r -> 'n
+
+trait Pow 'n
+    fun (^): 'n l r -> 'n
+
+trait Cmp 'n
+    fun (<): 'n l r -> bool
+    fun (>): 'n l r -> bool
+    // fun(<=): 'n l r = not (n > r)
+    // fun(>=): 'n l r = not (n < r)
+
+trait Eq 't
+    fun (=): 't l r -> bool
+    // fun (!=): 't l r = not (l = r)
+
+trait Extract 'col 'elem
+    fun (#): 'col collection, usz index -> 'elem
+
+trait In 'col 'elem
+    fun (in): 'col collection, 'elem elem -> bool
+
+
 trait Print 't
     fun printne: 't x
     
@@ -334,14 +369,15 @@ trait Iterator 'i
 type Range = i32 start end step
 
 //returns true if a is in the range r
-fun (in): i32 a, Range r -> bool
-    if r.step = 1 then
-        r.start <= a and a < r.end
-    else
-        let a_adj = a % r.step
-        let s_adj = r.start % r.step
+impl In Range i32
+    fun (in): i32 a, Range r -> bool
+        if r.step = 1 then
+            r.start <= a and a < r.end
+        else
+            let a_adj = a % r.step
+            let s_adj = r.start % r.step
 
-        a_adj = s_adj and r.start <= a and a < r.end
+            a_adj = s_adj and r.start <= a and a < r.end
 
 //creates an inclusive range
 impl Range i32
