@@ -140,10 +140,18 @@ namespace ante {
     void TypeInferenceVisitor::visit(BinOpNode *n){
         // If we have a field access operator, we cannot try to
         // coerce the module name into a type
-        if(n->op == '.' && dynamic_cast<TypeNode*>(n->lval.get())){
-            n->rval->accept(*this);
-            n->setType(nextTypeVar());
-            return;
+        if(n->op == '.'){
+            if(dynamic_cast<TypeNode*>(n->lval.get())){
+                n->rval->accept(*this);
+                n->setType(nextTypeVar());
+                return;
+            }else{
+                // type of field found during name resolution
+                if(n->rval->getType()){
+                    n->setType(n->rval->getType());
+                    return;
+                }
+            }
         }
 
         n->lval->accept(*this);
