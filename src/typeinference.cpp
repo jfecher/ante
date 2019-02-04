@@ -279,7 +279,7 @@ namespace ante {
     }
 
 
-    vector<AnTraitType*> toTraitTypeVec(std::unique_ptr<TypeNode> &tn){
+    vector<AnTraitType*> toTraitTypeVec(std::unique_ptr<TypeNode> const& tn){
         vector<AnTraitType*> ret;
         for(Node *n : *tn){
             ret.push_back((AnTraitType*)toAnType((TypeNode*)n));
