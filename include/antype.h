@@ -634,6 +634,10 @@ namespace ante {
         bool isModifierType() const noexcept override {
             return false;
         }
+
+        bool operator==(AnTraitType const& r){
+            return selfType == r.selfType && typeArgs == r.typeArgs && traits == r.traits;
+        }
     };
 
     size_t hashCombine(size_t l, size_t r);

@@ -57,6 +57,9 @@ namespace ante {
     std::vector<T*> copyWithNewTypeVars(std::vector<T*> tys, std::unordered_map<std::string, AnTypeVarType*> &map);
 
     AnType* copyWithNewTypeVars(AnType *t);
+
+    AnFunctionType* removeDuplicateTypeClassConstraints(AnFunctionType *t);
+    void checkTypeClassImplExists(AnFunctionType *ft);
 }
 
 #endif /* end of include guard: AN_UNIFICATION_H */

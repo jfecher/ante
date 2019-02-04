@@ -320,6 +320,8 @@ namespace ante {
         auto tcConstraints = getAllTcConstraints(fnTy, constraints, substitutions);
         auto newFnTy = AnFunctionType::get(fnTy->retTy, fnTy->extTys, tcConstraints,
                 fnTy->typeTag == TT_MetaFunction);
+        newFnTy = removeDuplicateTypeClassConstraints(newFnTy);
+        checkTypeClassImplExists(newFnTy);
         n->setType(newFnTy);
     }
 

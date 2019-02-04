@@ -164,6 +164,28 @@ namespace ante {
     }
 
 
+    AnFunctionType* removeDuplicateTypeClassConstraints(AnFunctionType *t){
+        std::vector<AnTraitType*> c;
+        c.reserve(t->typeClassConstraints.size());
+
+        auto tEnd = t->typeClassConstraints.end();
+        for(auto it1 = t->typeClassConstraints.begin(); it1 != tEnd; ++it1){
+            auto elemit = std::find_if(it1 + 1, tEnd, [&](AnTraitType *elem){
+                return *elem == **it1;
+            });
+            if(elemit == tEnd)
+                c.push_back(*it1);
+        }
+
+        return AnFunctionType::get(t->retTy, t->extTys, c);
+    }
+
+
+    void checkTypeClassImplExists(AnFunctionType *ft){
+        // TODO: ensure a given impl exists for each finished type class constraint
+    }
+
+
     AnType* applySubstitutions(Substitutions const& substitutions, AnType *t){
         for(auto it = substitutions.rbegin(); it != substitutions.rend(); it++){
             t = substitute(it->second, it->first, t);
