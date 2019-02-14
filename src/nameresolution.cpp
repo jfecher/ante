@@ -744,11 +744,11 @@ namespace ante {
 
     void NameResolutionVisitor::visit(ForNode *n){
         n->range->accept(*this);
+        newScope();
         {
             TMP_SET(autoDeclare, true);
             n->pattern->accept(*this);
         }
-        newScope();
         n->child->accept(*this);
         exitScope();
     }
