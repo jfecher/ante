@@ -77,9 +77,17 @@ namespace ante {
         n->setType(applySubstitutions(substitutions, n->getType()));
     }
 
-    void checkTypeClassConstraints(AnFunctionType *fnty){
+    AnFunctionType* checkTypeClassConstraints(AnFunctionType *fnty){
+        std::vector<AnTraitType*> constraints;
         for(auto *tt : fnty->typeClassConstraints){
-            // TODO
+            if(!tt->implemented()){
+                constraints.push_back(tt);
+            }
+        }
+        if(constraints.size() != fnty->typeClassConstraints.size()){
+            return AnFunctionType::get(fnty->retTy, fnty->extTys, constraints);
+        }else{
+            return fnty;
         }
     }
 
@@ -90,7 +98,7 @@ namespace ante {
 
         // type class constraints are now fully substituted and ready to be checked
         if(AnFunctionType *fnty = try_cast<AnFunctionType>(n->lval->getType())){
-            checkTypeClassConstraints(fnty);
+            n->lval->setType(checkTypeClassConstraints(fnty));
         }
     }
 
