@@ -611,14 +611,7 @@ namespace ante {
             compUnit->imports.push_back(import);
         }else{
             //module not found
-            size_t oldErrCount = errorCount();
             NameResolutionVisitor newVisitor = visitImport(fullPath, modPath);
-
-            //more errors occurred since visiting the import
-            if(oldErrCount != errorCount()){
-                error("Error when importing '" + string(fName) + "'", loc);
-            }
-
             compUnit->imports.push_back(newVisitor.compUnit);
         }
     }
