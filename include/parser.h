@@ -298,12 +298,12 @@ namespace ante {
 
         struct ExtNode : public ModifiableNode{
             std::unique_ptr<TypeNode> typeExpr;
-            std::unique_ptr<TypeNode> traits;
+            std::unique_ptr<TypeNode> trait;
             std::unique_ptr<Node> methods;
 
             void accept(NodeVisitor& v){ v.visit(this); }
             ExtNode(LOC_TY& loc, TypeNode *ty, Node *m, TypeNode *tr)
-                : ModifiableNode(loc), typeExpr(ty), traits(tr), methods(m){}
+                : ModifiableNode(loc), typeExpr(ty), trait(tr), methods(m){}
             ~ExtNode(){}
         };
 

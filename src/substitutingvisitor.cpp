@@ -77,10 +77,21 @@ namespace ante {
         n->setType(applySubstitutions(substitutions, n->getType()));
     }
 
+    void checkTypeClassConstraints(AnFunctionType *fnty){
+        for(auto *tt : fnty->typeClassConstraints){
+            // TODO
+        }
+    }
+
     void SubstitutingVisitor::visit(BinOpNode *n){
         n->lval->accept(*this);
         n->rval->accept(*this);
         n->setType(applySubstitutions(substitutions, n->getType()));
+
+        // type class constraints are now fully substituted and ready to be checked
+        if(AnFunctionType *fnty = try_cast<AnFunctionType>(n->lval->getType())){
+            checkTypeClassConstraints(fnty);
+        }
     }
 
     void SubstitutingVisitor::visit(BlockNode *n){

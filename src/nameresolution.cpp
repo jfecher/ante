@@ -180,6 +180,18 @@ namespace ante {
             tryTo([&](){ submoduleVisitor.importFile("stdlib/prelude.an", n->loc); });
             for(auto *m : *n->methods)
                 tryTo([&](){ submoduleVisitor.declare((FuncDeclNode*)m); });
+        }else{
+            // remember this trait has an impl
+            AnType *preTrait = toAnType(n->trait.get());
+            AnTraitType *trait = try_cast<AnTraitType>(preTrait);
+            if(!try_cast<AnTraitType>(preTrait))
+                error(anTypeToColoredStr(preTrait) + " is not a trait", n->trait->loc);
+
+            if(trait->implemented()){
+                showError(anTypeToColoredStr(trait) + " has already been implemented", n->loc);
+                error("Previously implemented here", trait->impl->loc, ErrorType::Note);
+            }
+            trait->impl = n;
         }
     }
 

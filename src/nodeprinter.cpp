@@ -254,7 +254,7 @@ void PrintingVisitor::visit(ExtNode *n){
         n->typeExpr->accept(*this);
     }else{
         cout << "impl ";
-        n->traits->accept(*this);
+        n->trait->accept(*this);
     }
     cout << "\n";
     printBlock(n->methods.get(), this->indent_level);

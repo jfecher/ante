@@ -716,7 +716,10 @@ string anTypeToStr(const AnType *t){
         string n = dt->name;
 
         if(auto *tt = try_cast<AnTraitType>(t)){
-            n += ' ' + anTypeToStr(tt->selfType);
+            if(shouldWrapInParenthesis(tt->selfType))
+                n += " (" + anTypeToStr(tt->selfType) + ')';
+            else
+                n += ' ' + anTypeToStr(tt->selfType);
         }
 
         for(auto &a : dt->typeArgs){

@@ -524,14 +524,15 @@ namespace ante {
                 size_t i = 0;
                 if(!tn->params.empty()){
                     Substitutions subs;
+                    size_t offset = 0;
                     if(auto *tt = try_cast<AnTraitType>(basety)){
                         subs.emplace_back(tt->selfType, toAnType(tn->params[0].get()));
-                        i++;
+                        offset = 1;
                     }
 
-                    for(; i < tn->params.size() && i < basety->typeArgs.size(); i++){
+                    for(i = offset; i < tn->params.size() && i < basety->typeArgs.size() + offset; i++){
                         auto *b = static_cast<AnTypeVarType*>(toAnType(tn->params[i].get()));
-                        auto *basetyTypeArg = try_cast<AnTypeVarType>(basety->typeArgs[i]);
+                        auto *basetyTypeArg = try_cast<AnTypeVarType>(basety->typeArgs[i - offset]);
                         subs.emplace_back(basetyTypeArg, b);
                     }
                     ret = applySubstitutions(subs, ret);
