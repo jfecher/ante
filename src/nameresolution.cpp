@@ -168,20 +168,59 @@ namespace ante {
         n->decl = fd;
     }
 
+    inline bool fileExists(const string &fName){
+        if(FILE *f = fopen(fName.c_str(), "r")){
+            fclose(f);
+            return true;
+        }
+        return false;
+    }
+
+    /** add ".an" if string does not end with it already */
+    std::string addAnSuffix(std::string const& s){
+        if(s.empty() || (s.length() >= 3 && s.substr(s.length()-3) == ".an")){
+            return s;
+        }else{
+            return s + ".an";
+        }
+    }
+
+    /**
+    * Returns the first path to a given filename
+    * matched within the relative root directories.
+    * If no file is found then the empty string is returned.
+    */
+    string findFile(string const& fName){
+        for(auto &root : {AN_EXEC_STR, AN_LIB_DIR}){
+            string f = root + addAnSuffix(fName);
+            if(fileExists(f)){
+                return f;
+            }
+        }
+        return "";
+    }
+
+    /** Return true if the given file has already been imported into the current module. */
+    bool alreadyImported(NameResolutionVisitor &v, std::string const& name){
+        return std::any_of(v.compUnit->imports.begin(), v.compUnit->imports.end(), [&](auto mod){
+            return mod->name == name;
+        });
+    }
+
     void NameResolutionVisitor::declare(ExtNode *n){
-        // Only declare methods if this is a module, not an impl
-        if(n->typeExpr){
+        if(n->typeExpr){ // module Mod
             string name = typeNodeToStr(n->typeExpr.get());
             Module &submodule = compUnit->addChild(name);
 
             NameResolutionVisitor submoduleVisitor;
             submoduleVisitor.compUnit = &submodule;
 
-            tryTo([&](){ submoduleVisitor.importFile("stdlib/prelude.an", n->loc); });
+            if(!alreadyImported(submoduleVisitor, "Prelude"))
+                tryTo([&](){ submoduleVisitor.importFile("stdlib/prelude.an", n->loc); });
+
             for(auto *m : *n->methods)
                 tryTo([&](){ submoduleVisitor.declare((FuncDeclNode*)m); });
-        }else{
-            // remember this trait has an impl
+        }else{ // impl Trait
             AnType *preTrait = toAnType(n->trait.get());
             AnTraitType *trait = try_cast<AnTraitType>(preTrait);
             if(!try_cast<AnTraitType>(preTrait))
@@ -483,39 +522,6 @@ namespace ante {
 
     void NameResolutionVisitor::visit(RetNode *n){
         n->expr->accept(*this);
-    }
-
-    inline bool fileExists(const string &fName){
-        if(FILE *f = fopen(fName.c_str(), "r")){
-            fclose(f);
-            return true;
-        }
-        return false;
-    }
-
-    /** add ".an" if string does not end with it already */
-    std::string addAnSuffix(std::string const& s){
-        if(s.empty() || (s.length() >= 3 && s.substr(s.length()-3) == ".an")){
-            return s;
-        }else{
-            return s + ".an";
-        }
-    }
-
-
-    /**
-    * Returns the first path to a given filename
-    * matched within the relative root directories.
-    * If no file is found then the empty string is returned.
-    */
-    string findFile(string const& fName){
-        for(auto &root : {AN_EXEC_STR, AN_LIB_DIR}){
-            string f = root + addAnSuffix(fName);
-            if(fileExists(f)){
-                return f;
-            }
-        }
-        return "";
     }
 
 
