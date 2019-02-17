@@ -1106,23 +1106,20 @@ TypedValue tryImplicitCast(Compiler *c, TypedValue &arg, AnType *castTy){
 void showNoMatchingCandidateError(Compiler *c, const vector<shared_ptr<FuncDecl>> &candidates,
         const vector<AnType*> &argTys, LOC_TY &loc){
 
-    try {
-        lazy_printer msg = "No matching candidates for call to " + candidates[0]->getName();
-        if(!argTys.empty())
-            msg = msg + " with args " + anTypeToColoredStr(AnAggregateType::get(TT_Tuple, argTys));
+    lazy_printer msg = "No matching candidates for call to " + candidates[0]->getName();
+    if(!argTys.empty())
+        msg = msg + " with args " + anTypeToColoredStr(AnAggregateType::get(TT_Tuple, argTys));
 
-        error(msg, loc);
-    }catch(CtError e){
-        for(auto &fd : candidates){
-            auto *fnty = fd->type ? fd->type
-                : AnFunctionType::get(AnType::getVoid(), fd->getFDN()->params.get());
-            auto *params = AnAggregateType::get(TT_Tuple, fnty->extTys);
+    showError(msg, loc);
+    for(auto &fd : candidates){
+        auto *fnty = fd->type ? fd->type
+            : AnFunctionType::get(AnType::getVoid(), fd->getFDN()->params.get());
+        auto *params = AnAggregateType::get(TT_Tuple, fnty->extTys);
 
-            error("Candidate function with params "+anTypeToColoredStr(params),
-                    fd->getFDN()->loc, ErrorType::Note);
-        }
-        throw e;
+        error("Candidate function with params "+anTypeToColoredStr(params),
+                fd->getFDN()->loc, ErrorType::Note);
     }
+    throw CtError();
 }
 
 Value* Compiler::tupleOf(vector<Value*> const& elems, bool packed){
