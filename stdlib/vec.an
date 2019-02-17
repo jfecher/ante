@@ -149,7 +149,7 @@ impl Iterator (VecIter 't)
     fun next: VecIter 't v -> VecIter 't
         VecIter(v.view, v.idx + 1, v.len)
 
-impl Printne (Vec 't)
+impl Print (Vec 't)
     fun printne: Vec 't v
         printne "{ "
 

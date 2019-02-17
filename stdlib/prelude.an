@@ -128,11 +128,26 @@ trait Eq 't
     fun (=): 't l r -> bool
     // fun (!=): 't l r = not (l = r)
 
+trait Is 't
+    fun (is): 't l r -> bool
+
+trait Append 't
+    fun (++): 't l r -> 't
+
 trait Extract 'col 'elem
     fun (#): 'col collection, usz index -> 'elem
 
+trait Insert 'col 'elem
+    // temporary until functions with the same name and
+    // a differing number of parameters can be declared.
+    fun insert: mut 'col collection, usz idx, 'elem elem
+
 trait In 'col 'elem
     fun (in): 'col collection, 'elem elem -> bool
+
+trait Range 't
+    type Result
+    fun (..): 't l r -> Res
 
 
 trait Print 't
@@ -366,11 +381,11 @@ trait Iterator 'i
     fun has_next: 'i i -> bool
 
 
-type Range = i32 start end step
+type LazyRange = i32 start end step
 
 //returns true if a is in the range r
-impl In Range i32
-    fun (in): i32 a, Range r -> bool
+impl In LazyRange i32
+    fun (in): i32 a, LazyRange r -> bool
         if r.step = 1 then
             r.start <= a and a < r.end
         else
@@ -379,28 +394,28 @@ impl In Range i32
 
             a_adj = s_adj and r.start <= a and a < r.end
 
-//creates an inclusive range
+//creates an end-exclusive range
 impl Range i32
-    type Result = Range
-    fun (..): i32 start end -> Range
-        Range(start, end, 1)
+    type Result = LazyRange
+    fun (..): i32 start end -> LazyRange
+        LazyRange(start, end, 1)
 
 //Takes a tuple of the first two integers and calculates the step by their difference
 impl Range (i32,i32) i32
-    type Result = Range
-    fun (..): i32,i32 first_two, i32 end -> Range
-        Range(first_two#0, end, first_two#1 - first_two#0)
+    type Result = LazyRange
+    fun (..): i32,i32 first_two, i32 end -> LazyRange
+        LazyRange(first_two#0, end, first_two#1 - first_two#0)
 
-impl Iterator Range
+impl Iterator LazyRange
     type Elem = i32
 
-    fun next: Range r -> Range
-        Range(r.start+r.step, r.end, r.step)
+    fun next: LazyRange r -> LazyRange
+        LazyRange(r.start+r.step, r.end, r.step)
 
-    fun unwrap: Range r =
+    fun unwrap: LazyRange r =
         r.start
 
-    fun has_next: Range r =
+    fun has_next: LazyRange r =
         if r.step > 0 then
             r.start < r.end
         elif r.step < 0 then
@@ -419,17 +434,11 @@ impl Iterator InFile
     fun unwrap: InFile f = next_line f
 
 
-impl OutFile
-    fun write: OutFile f, ref c8 cStr
-        fputs cStr f
-
-    fun write: OutFile f, c8 c
-        fputc c f
-
+module OutFile
     fun write: OutFile f, Str s
         fputs (s.cStr) f
 
-impl Str
+module Str
     fun print: Str s
         puts s.cStr
 
