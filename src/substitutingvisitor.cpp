@@ -77,11 +77,12 @@ namespace ante {
         n->setType(applySubstitutions(substitutions, n->getType()));
     }
 
-    AnFunctionType* checkTypeClassConstraints(AnFunctionType *fnty){
+    AnFunctionType* checkTypeClassConstraints(AnFunctionType *fnty, LOC_TY &loc){
         std::vector<AnTraitType*> constraints;
         for(auto *tt : fnty->typeClassConstraints){
             if(!tt->implemented()){
                 constraints.push_back(tt);
+                showError("No trait implementation for " + anTypeToColoredStr(tt) + " found", loc);
             }
         }
         if(constraints.size() != fnty->typeClassConstraints.size()){
@@ -98,7 +99,7 @@ namespace ante {
 
         // type class constraints are now fully substituted and ready to be checked
         if(AnFunctionType *fnty = try_cast<AnFunctionType>(n->lval->getType())){
-            n->lval->setType(checkTypeClassConstraints(fnty));
+            n->lval->setType(checkTypeClassConstraints(fnty, n->loc));
         }
     }
 
