@@ -394,62 +394,19 @@ namespace ante {
     AnTraitType* AnTraitType::getOrCreateVariant(AnTraitType *parent,
             AnType *self, TypeArgs const& generics){
 
-        //TODO: create traitvariants field to store these permanently in
-        auto ret = new AnTraitType({parent}, parent->traits, self, generics);
-        ret->composedTraitTypes[0] = ret;
-        return ret;
+        std::pair<std::string, std::pair<AnType*, TypeArgs>> key{parent->name(), {self, generics}};
+        auto t = search(typeArena.traitTraitVariants, key);
+        if(t) return t;
+
+        t = new AnTraitType(parent->trait, self, generics);
+        typeArena.traitTraitVariants.try_emplace(key, t);
+        return t;
     }
 
 
     AnTraitType* AnTraitType::create(Trait *trait, AnType *self, TypeArgs const& tArgs){
         auto ret = new AnTraitType(trait, self, tArgs);
         typeArena.dataTypes.try_emplace(trait->name, ret);
-        return ret;
-    }
-
-
-    template<typename T>
-    vector<T> union_of(vector<T> const& l, vector<T> const& r){
-        vector<T> unionVec{l.size() + r.size()};
-
-        /* TODO: find a simpler set union method.
-         * we are more concerned with constant factors
-         * than asymptotic behaviour */
-        auto it = std::set_union(l.begin(), l.end(),
-                r.begin(), r.end(), unionVec.begin());
-        unionVec.resize(it - unionVec.begin());
-        return unionVec;
-    }
-
-
-    /** Creates a new TraitType that is a union of the 2 given. */
-    AnTraitType* AnTraitType::merge(AnTraitType *t){
-        auto unionVec = union_of(traits, t->traits);
-
-        auto existing_ty = search(typeArena.multiTraitTypes, unionVec);
-        if(existing_ty) return existing_ty;
-
-        //merge all typeArgs, save for the shared 'self' type arg
-        TypeArgs typeArgs = this->typeArgs;
-
-        // If either typeArg is bound and different from the other they can't be merged.
-        // FIXME: This will fail when checking eg.  Eq (Show 'a) = Eq (Other 'b)
-        //        Resulting in a merge of Eq (Other 'b) instead of Eq (Show+Other 'b)
-        if(this->selfType != t->selfType &&
-                (!selfType->isGeneric || !t->selfType->isGeneric)){
-
-            cerr << "ERROR: Union of two incompatible trait types: " << anTypeToColoredStr(this)
-                 << " and " << anTypeToColoredStr(t) << endl
-                 << "NOTE: Cause is the type implementing the trait differs: " << anTypeToColoredStr(selfType)
-                 << " != " << anTypeToColoredStr(selfType) << endl;
-        }
-
-        typeArgs.insert(typeArgs.end(), t->typeArgs.begin(), t->typeArgs.end());
-
-        auto newTraitTypes = union_of(composedTraitTypes, t->composedTraitTypes);
-
-        auto ret = new AnTraitType(newTraitTypes, unionVec, selfType, typeArgs);
-        typeArena.multiTraitTypes.try_emplace(unionVec, ret);
         return ret;
     }
 
@@ -489,20 +446,6 @@ namespace ante {
 
     AnType* AnType::getFunctionReturnType() const{
         return try_cast<AnFunctionType>(this)->retTy;
-    }
-
-
-    /**
-     * Return the names of all traits concatenated with '+'
-     */
-    string AnTraitType::combineNames(std::vector<AnTraitType*> const& traits){
-        string name = "";
-        for(const auto &trait : traits){
-            name += trait->name;
-            if(&trait != &traits.back())
-                name += "+";
-        }
-        return name;
     }
 
 

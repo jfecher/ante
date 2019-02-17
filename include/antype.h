@@ -579,34 +579,23 @@ namespace ante {
 
 
     class AnTraitType : public AnDataType {
-        private:
-        /** Return the names of all traits concatenated with '+' */
-        std::string combineNames(std::vector<AnTraitType*> const& traits);
-
         protected:
-        AnTraitType(Trait *t, AnType *self,  TypeArgs const& tArgs)
-                : AnDataType(t->name, TT_Trait), traits({t}), selfType(self) {
-            this->typeArgs = tArgs;
-            composedTraitTypes.push_back(this);
-            isGeneric = self->isGeneric || ante::isGeneric(tArgs);
-        }
-
-        AnTraitType(std::vector<AnTraitType*> t, std::vector<Trait*> traits,
-                AnType *self, TypeArgs const& tArgs)
-                : AnDataType(combineNames(t), TT_Trait), traits(traits),
-                  composedTraitTypes(t), selfType(self) {
+        AnTraitType(const Trait *t, AnType *self,  TypeArgs const& tArgs)
+                : AnDataType(t->name, TT_Trait), trait(t), selfType(self), impl(nullptr) {
             this->typeArgs = tArgs;
             isGeneric = self->isGeneric || ante::isGeneric(tArgs);
         }
 
         public:
-
-        const std::vector<Trait*> traits;
-        std::vector<AnTraitType*> composedTraitTypes;
+        const Trait* trait;
 
         /** Type type implementing this trait, eg i32 for Eq i32
          * or Vec for Collection Vec i32 */
         AnType *selfType;
+
+        /** Pointer to the ExtNode of where this trait instance is
+         *  implemented or nullptr if it is not implemented. */
+        parser::ExtNode *impl;
 
         ~AnTraitType() = default;
 
@@ -625,9 +614,6 @@ namespace ante {
         /** Creates a new trait type matching the given trait declaration. */
         static AnTraitType* create(Trait *trait, AnType *self, TypeArgs const& typeArgs);
 
-        /** Creates a new TraitType that is a union of the 2 given. */
-        AnTraitType* merge(AnTraitType *t);
-
         /** Returns a new AnDataType* with the given modifier appended to the current type's modifiers. */
         const AnType* addModifier(TokenType m) const override;
 
@@ -635,8 +621,16 @@ namespace ante {
             return false;
         }
 
+        bool implemented() const noexcept {
+            return impl;
+        }
+
+        const std::string& name() const noexcept {
+            return trait->name;
+        }
+
         bool operator==(AnTraitType const& r){
-            return selfType == r.selfType && typeArgs == r.typeArgs && traits == r.traits;
+            return selfType == r.selfType && typeArgs == r.typeArgs;
         }
     };
 
@@ -691,8 +685,8 @@ namespace ante {
 
         using FnTypeKey = std::pair<AnType*, std::pair<std::vector<AnType*>, std::pair<std::vector<AnTraitType*>, bool>>>;
         using AggTypeKey = std::pair<TypeTag, std::vector<AnType*>>;
-        using PSVariantTypeKey = std::pair<std::string, std::vector<AnType*>>;
-        using MultiTraitTypeKey = std::vector<Trait*>;
+        using PSVariantTypeKey = std::pair<std::string, TypeArgs>;
+        using TtVariantTypeKey = std::pair<std::string, std::pair<AnType*, TypeArgs>>;
 
         std::unordered_map<TypeTag, std::unique_ptr<AnType>> primitiveTypes;
         std::unordered_map<std::pair<AnType*, TokenType>, std::unique_ptr<AnModifier>> basicModifiers;
@@ -708,7 +702,7 @@ namespace ante {
          * never directly through the map of declaredTypes.  Keeping
          * all variants here avoids having to sift through every variant
          * of a type and makes ownership simpler. */
-        std::unordered_map<MultiTraitTypeKey, std::unique_ptr<AnTraitType>> multiTraitTypes;
+        std::unordered_map<TtVariantTypeKey, std::unique_ptr<AnTraitType>> traitTraitVariants;
         std::unordered_map<PSVariantTypeKey, std::unique_ptr<AnType>> dataTypeVariants;
 
     public:

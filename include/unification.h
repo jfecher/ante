@@ -58,8 +58,8 @@ namespace ante {
 
     AnType* copyWithNewTypeVars(AnType *t);
 
-    AnFunctionType* removeDuplicateTypeClassConstraints(AnFunctionType *t);
-    void checkTypeClassImplExists(AnFunctionType *ft);
+    /** Remove any duplicate type class constraints and any constraints that are known to exist. */
+    AnFunctionType* cleanTypeClassConstraints(AnFunctionType *t);
 }
 
 #endif /* end of include guard: AN_UNIFICATION_H */

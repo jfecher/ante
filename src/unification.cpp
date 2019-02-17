@@ -164,7 +164,7 @@ namespace ante {
     }
 
 
-    AnFunctionType* removeDuplicateTypeClassConstraints(AnFunctionType *t){
+    AnFunctionType* cleanTypeClassConstraints(AnFunctionType *t){
         std::vector<AnTraitType*> c;
         c.reserve(t->typeClassConstraints.size());
 
@@ -178,11 +178,6 @@ namespace ante {
         }
 
         return AnFunctionType::get(t->retTy, t->extTys, c);
-    }
-
-
-    void checkTypeClassImplExists(AnFunctionType *ft){
-        // TODO: ensure a given impl exists for each finished type class constraint
     }
 
 
@@ -213,32 +208,6 @@ namespace ante {
     bool implements(AnType *type, AnTraitType *trait){
         return true;
     }
-
-
-    /** True if the trait t1 is contained within trait t2 */
-    UnificationList intersection(AnTraitType *t1, AnTraitType *t2, LOC_TY loc){
-        UnificationList pairs;
-        for(auto *l : t1->composedTraitTypes){
-            auto &ct = t2->composedTraitTypes;
-            auto it = std::find_if(ct.begin(), ct.end(), [&](auto ty){
-                return l->traits == ty->traits;
-            });
-            if(it != ct.end()){
-                if(l->typeArgs.size() != (*it)->typeArgs.size()){
-                    showError("Mismatched type sizes " + anTypeToColoredStr(l)
-                    + " and " + anTypeToColoredStr(*it), loc);
-                    return {};
-                }
-
-                for(size_t i = 0; i < l->typeArgs.size(); i++){
-                    pairs.emplace_back(l->typeArgs[i], (*it)->typeArgs[i], loc);
-                }
-                pairs.emplace_back(l->selfType, (*it)->selfType, loc);
-            }
-        }
-        return pairs;
-    }
-
 
     Substitutions unifyOne(AnType *t1, AnType *t2, LOC_TY const& loc){
         auto tv1 = try_cast<AnTypeVarType>(t1);
