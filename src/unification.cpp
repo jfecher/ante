@@ -173,7 +173,7 @@ namespace ante {
             auto elemit = std::find_if(it1 + 1, tEnd, [&](AnTraitType *elem){
                 return *elem == **it1;
             });
-            if(elemit == tEnd)
+            if(elemit == tEnd && !(*it1)->implemented())
                 c.push_back(*it1);
         }
 
