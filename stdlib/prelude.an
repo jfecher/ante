@@ -162,6 +162,21 @@ trait To 't 'u
     fun to: Type 'u to, 't from -> 'u
 
 
+//intrinsics for numeric types
+impl Cmp usz
+    fun (<): a, b = ()
+    fun (>): a, b = ()
+
+impl Add i32
+    fun (+): i32 a b = a + b
+
+impl Add usz
+    fun (+): usz a b = a + b
+
+impl Extract (ref 't) 't
+    fun (#): ref 't c, usz i = c#i
+
+
 //numerical print functions
 impl Print i8
     fun printne: i8 x
