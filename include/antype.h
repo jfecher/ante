@@ -630,7 +630,7 @@ namespace ante {
         }
 
         bool operator==(AnTraitType const& r){
-            return selfType == r.selfType && typeArgs == r.typeArgs;
+            return name() == r.name() && selfType == r.selfType && typeArgs == r.typeArgs;
         }
     };
 
