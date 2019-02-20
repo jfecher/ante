@@ -239,7 +239,6 @@ namespace ante {
         if(compUnit->name != "Prelude"){
             tryTo([&](){ importFile("stdlib/prelude.an", n->loc); });
         }
-
         for(auto &m : n->imports)
             tryTo([&](){ m->accept(*this); });
         for(auto &m : n->types)
@@ -255,7 +254,6 @@ namespace ante {
 
             tryTo([&](){ declare(static_cast<ExtNode*>(mn)); });
         }
-
         for(auto &m : n->funcs){
             auto mn = m.get();
             while(dynamic_cast<ModNode*>(mn))
@@ -263,7 +261,6 @@ namespace ante {
 
             tryTo([&](){ declare(static_cast<FuncDeclNode*>(mn)); });
         }
-
         for(auto &m : n->extensions)
             tryTo([&](){ m->accept(*this); });
         for(auto &m : n->funcs)
@@ -528,7 +525,6 @@ namespace ante {
     template<class StringIt>
     NameResolutionVisitor visitImport(string const& filename, StringIt path){
         NameResolutionVisitor newVisitor;
-
         //The lexer stores the fileName in the loc field of all Nodes. The fileName is copied
         //to let Node's outlive the context they were made in, ensuring they work with imports.
         fileNames.emplace_back(filename);
@@ -545,13 +541,10 @@ namespace ante {
             cerr << "Syntax error, aborting.\n";
             exit(flag);
         }
-
         //Add this module to the cache first to ensure it is not compiled twice
         newVisitor.compUnit = &Module::getRoot().addPath(path);
-
         RootNode *root = parser::getRootNode();
         newVisitor.compUnit->ast.reset(root);
-
         root->accept(newVisitor);
         return newVisitor;
     }
@@ -597,15 +590,12 @@ namespace ante {
         if(fullPath.empty()){
             error("No file named '" + string(fName) + "' was found.", loc);
         }
-
         auto modPath = ModulePath(fName);
-
         Module &root = Module::getRoot();
         auto it = root.findPath(modPath);
         if(it != root.childrenEnd()){
             //module already compiled
             Module *import = &it->getValue();
-
             for(auto *mod : compUnit->imports){
                 if(mod->name == import->name){
                     error("Module " + lazy_str(import->name, AN_TYPE_COLOR) + " has already been imported", loc, ErrorType::Warning);

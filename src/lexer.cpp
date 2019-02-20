@@ -401,7 +401,9 @@ int Lexer::handleComment(yy::parser::location_type* loc){
             incPos();
         }
     }
-    setTermFGColor(AN_CONSOLE_RESET);
+
+	if(printInput)
+		setTermFGColor(AN_CONSOLE_RESET);
 
     if(!cur) return 0;
     return next(loc);
@@ -635,7 +637,6 @@ int Lexer::skipWsAndReturnNext(yy::parser::location_type* loc){
 int Lexer::genStrLitTok(yy::parser::location_type* loc){
     string s = "";
     loc->begin = getPos();
-
     incPos();
 
     if(!cur){
@@ -720,7 +721,6 @@ int Lexer::genStrLitTok(yy::parser::location_type* loc){
 
 int Lexer::genTypeVarTok(yy::parser::location_type* loc, string &s){
     s = '\'' + s;
-
     while(IS_ALPHANUM(cur)){
         s += cur;
         incPos();

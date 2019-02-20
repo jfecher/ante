@@ -82,7 +82,7 @@ namespace ante {
         for(auto *tt : fnty->typeClassConstraints){
             if(!tt->implemented()){
                 constraints.push_back(tt);
-                showError("No trait implementation for " + anTypeToColoredStr(tt) + " found", loc);
+                // showError("No trait implementation for " + anTypeToColoredStr(tt) + " found", loc);
             }
         }
         if(constraints.size() != fnty->typeClassConstraints.size()){

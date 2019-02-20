@@ -8,6 +8,8 @@
 #  include <unistd.h>
 #  include <termios.h>
 #  include <sys/ioctl.h>
+#elif defined(WIN32)
+#  include <windows.h>
 #endif
 
 using namespace std;
@@ -45,7 +47,6 @@ namespace ante {
     }
 
 #elif defined(WIN32)
-#  include <windows.h>
 #  define getchar getchar_windows
 
 	HANDLE h_in, h_out;
@@ -92,8 +93,6 @@ namespace ante {
 
 		SetConsoleCursorPosition(h_out, homeCoords);
 	}
-
-    void moveToPos(unsigned int pos, unsigned int cur_pos, string &line){}
 
     void clearScreen(){}
 

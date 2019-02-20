@@ -74,14 +74,11 @@ int main(int argc, const char **argv){
         if(args->hasArg(Args::Parse)){
             showParseTree(ante.getAST());
         }
-
         ante.processArgs(args);
         typeArena.clearDeclaredTypes();
     }
-
     if(args->hasArg(Args::Eval) || (args->args.empty() && args->inputFiles.empty()))
         Compiler(0).eval();
-
     if(yylexer)
         delete yylexer;
     //delete args;

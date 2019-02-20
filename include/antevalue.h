@@ -9,6 +9,12 @@
 #include "error.h"
 #include "parser.h"
 
+#ifdef _MSC_VER
+#  define PACKED
+#else
+#  define PACKED __attribute__((__packed__))
+#endif
+
 namespace ante {
     struct Compiler;
 
@@ -97,7 +103,7 @@ namespace ante {
             /** Implementation of print function. */
             void printUnion(Compiler *c, std::ostream &os) const;
 
-    }__attribute__((__packed__));
+    } PACKED;
 
     /**
      * Ensures the contents of an expression is able to be evaluated

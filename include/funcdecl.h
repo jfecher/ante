@@ -50,7 +50,7 @@ namespace ante {
          * This indicates the function is extern and (usually) C FFI.
          */
         bool isDecl() const noexcept {
-            return getFDN()->name.back() == ';' or this->name == getFDN()->name;
+            return getFDN()->name.back() == ';' || this->name == getFDN()->name;
         }
 
         TypedValue getOrCompileFn(Compiler *c);

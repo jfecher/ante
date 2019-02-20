@@ -1,5 +1,6 @@
 #include "module.h"
 #include <algorithm>
+#include <cctype>
 
 namespace ante {
     Module rootModule{""};

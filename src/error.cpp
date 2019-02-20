@@ -51,7 +51,8 @@ void clearColor(){
 
 
 void setTermFGColor(AN_COLOR_TYPE fg){
-    cout << fg;
+	if(colored_output)
+        cout << fg;
 }
 
 /*
