@@ -223,6 +223,7 @@ namespace ante {
             auto fnty = try_cast<AnFunctionType>(n->lval->getType());
             if(!fnty){
                 auto args = try_cast<AnAggregateType>(n->rval->getType());
+				if (!args) args = AnAggregateType::get(TT_Tuple, {n->rval->getType()});
                 auto params = vecOf<AnType*>(args->extTys.size());
 
                 for(size_t i = 0; i < args->extTys.size(); i++){
@@ -237,6 +238,7 @@ namespace ante {
                 addConstraint(n->lval->getType(), fnty, n->loc);
             }else{
                 auto args = try_cast<AnAggregateType>(n->rval->getType());
+				if (!args) args = AnAggregateType::get(TT_Tuple, { n->rval->getType() });
 
                 size_t paramc = fnty->extTys.size();
                 size_t argc = args->extTys.size();
@@ -245,6 +247,7 @@ namespace ante {
                     // If this is not a single () being applied to a no-parameter function
                     if(!(argc == 1 && paramc == 0 && args->extTys[0]->typeTag == TT_Void)){
                         string weregiven = argc == 1 ? " was given" : " were given";
+						PrintingVisitor::print(n);
                         error("Function takes " + to_string(paramc)
                                 + " argument(s) but " + to_string(argc)
                                 + weregiven, n->lval->loc);

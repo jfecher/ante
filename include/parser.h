@@ -252,7 +252,7 @@ namespace ante {
         struct NamedValNode : public Node{
             std::string name;
             std::unique_ptr<Node> typeExpr;
-            Declaration* decl;
+            Declaration* decl = 0;
             void accept(NodeVisitor& v){ v.visit(this); }
             NamedValNode(LOC_TY& loc, std::string s, Node* t) : Node(loc), name(s), typeExpr(t){}
             ~NamedValNode(){ if(typeExpr.get() == (void*)1) typeExpr.release(); }

@@ -148,6 +148,7 @@ namespace ante {
             }else{
                 // type of field found during name resolution
                 if(n->rval->getType()){
+					n->lval->accept(*this);
                     n->setType(n->rval->getType());
                     return;
                 }
@@ -332,6 +333,14 @@ namespace ante {
         n->setType(AnType::getVoid());
         for(auto *node : *n->child){
             node->accept(*this);
+			auto fdn = dynamic_cast<FuncDeclNode*>(node);
+			if (fdn) {
+				auto fdty = try_cast<AnFunctionType>(fdn->getType());
+				auto traits = fdty->typeClassConstraints; // copy the vec so the old one isn't pushed to
+				traits.push_back(AnTraitType::get(n->name));
+				node->setType(AnFunctionType::get(fdty->retTy, fdty->extTys, traits));
+				cout << "typeof " << fdn->name << " = " << anTypeToColoredStr(fdn->getType()) << endl;
+			}
         }
     }
 }
