@@ -879,7 +879,8 @@ TypedValue compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
 
             //see if insert operator # = is overloaded already
             string op = "#";
-            string mangledfn = mangle(op, {tyn, AnType::getI32(), newval.type});
+            vector<AnType*> argTys = {tyn, AnType::getI32(), newval.type};
+            string mangledfn = mangle(op, argTys);
             auto fn = c->getFunction(op, mangledfn);
             if(fn)
                 return TypedValue(c->builder.CreateCall(fn.val, vector<Value*>{
@@ -1662,7 +1663,7 @@ Function* Compiler::createMainFn(){
         AnType *argcAnty = BasicModifier::get(AnType::getPrimitive(TT_I32), Tok_Global);
         AnType *argvAnty = BasicModifier::get(AnPtrType::get(AnPtrType::get(AnType::getPrimitive(TT_C8))), Tok_Global);
 
-        Assignment assignment{Assignment::Parameter, std::nullopt};
+        Assignment assignment{Assignment::Parameter, nullptr};
 
         stoVar("argc", new Variable("argc", TypedValue(builder.CreateLoad(argc), argcAnty), 1, assignment));
         stoVar("argv", new Variable("argv", TypedValue(builder.CreateLoad(argv), argvAnty), 1, assignment));
@@ -2038,7 +2039,7 @@ Value* mkPtrInt(Compiler *c, void *addr){
 void Compiler::stoTypeVar(string const& name, AnType *ty){
     Value *addr = builder.getInt64((unsigned long)ty);
     TypedValue tv = TypedValue(addr, AnType::getPrimitive(TT_Type));
-    Assignment a{Assignment::TypeVar, std::nullopt};
+    Assignment a{Assignment::TypeVar, nullptr};
     Variable *var = new Variable(name, tv, scope, a);
     stoVar(name, var);
 }

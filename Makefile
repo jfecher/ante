@@ -6,7 +6,7 @@ WARNINGS  := -Wall -Wpedantic -Wsign-compare
 
 #Required for ubuntu and other distros with outdated llvm packages
 LLVMCFG := $(shell if command -v llvm-config-5.0 >/dev/null 2>&1; then echo 'llvm-config-5.0'; else echo 'llvm-config'; fi)
-LLVMFLAGS := `$(LLVMCFG) --cflags --cppflags --libs Core mcjit interpreter native BitWriter Passes Target --ldflags --system-libs` -lffi
+LLVMFLAGS := `$(LLVMCFG) --cppflags --libs Core mcjit interpreter native BitWriter Passes Target --ldflags --system-libs` -lffi
 
 # Change this to change the location of the stdlib
 # Expects the stdlib/*.an to be located in this dirirectory
@@ -15,7 +15,7 @@ ANLIBDIR := "\"$(shell pwd)/stdlib/\""
 
 LIBFILES := $(shell find stdlib -type f -name "*.an")
 
-CPPFLAGS  := -g -std=c++17 `$(LLVMCFG) --cflags --cppflags` -O0 $(WARNINGS)
+CPPFLAGS  := -g -std=c++11 `$(LLVMCFG) --cppflags` -O0 $(WARNINGS)
 
 PARSERSRC := src/parser.cpp
 YACCFLAGS := -Lc++ -o$(PARSERSRC) --defines=include/yyparser.h

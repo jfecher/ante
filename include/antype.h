@@ -556,6 +556,20 @@ namespace std {
     };
 
     template<>
+    struct hash<ante::TypeTag> {
+        size_t operator()(ante::TypeTag tt) const {
+            return tt;
+        }
+    };
+
+    template<>
+    struct hash<ante::TokenType> {
+        size_t operator()(ante::TokenType tt) const {
+            return tt;
+        }
+    };
+
+    template<>
     struct hash<ante::TypeBinding> {
         size_t operator()(ante::TypeBinding const& binding) const {
             if(binding.isNominalBinding()){

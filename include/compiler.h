@@ -12,7 +12,6 @@
 #include <string>
 #include <memory>
 #include <list>
-#include <optional>
 
 #include "parser.h"
 #include "args.h"
@@ -224,10 +223,10 @@ namespace ante {
             ForLoop, Parameter, TypeVar, Normal
         } assignmentType;
 
-        std::optional<parser::Node*> assignmentExpr;
+        parser::Node* assignmentExpr;
 
         Assignment() = delete;
-        Assignment(Assignment::Type t, std::optional<parser::Node*> expr) :
+        Assignment(Assignment::Type t, parser::Node* expr) :
             assignmentType{t}, assignmentExpr{expr}{}
     };
 

@@ -327,12 +327,12 @@ vector<AnType*> toTuple(AnType *ty){
 /*
  * Finds a GenericTypeParam by name, even if it is a nominal param.
  */
-optional<GenericTypeParam> findBindingByName(vector<GenericTypeParam> const& params, string const& name){
+llvm::Optional<GenericTypeParam> findBindingByName(vector<GenericTypeParam> const& params, string const& name){
     for(auto &p : params){
         if(p.typeVarName == name)
-            return optional(p);
+            return p;
     }
-    return {};
+    return Optional<GenericTypeParam>();
 }
 
 
@@ -1068,7 +1068,11 @@ void insertDependencies(CompilingVisitor &cv, Function *f,
     cv.c->builder.SetInsertPoint(&f->getBasicBlockList().back());
 
     //compile a let-binding for each dependency
-    for(auto [name, type, expr] : deps){
+    for(auto &tup : deps){
+        auto   &name = get<0>(tup);
+        AnType *type = get<1>(tup);
+        Node   *expr = get<2>(tup);
+
         Compiler *c = cv.c;
         TypedValue val = CompilingVisitor::compile(c, expr);
 
@@ -1799,10 +1803,10 @@ TypedValue typeCheckWithImplicitCasts(Compiler *c, TypedValue &arg, AnType *ty){
 
 TypedValue checkForOperatorOverload(Compiler *c, TypedValue &lhs, int op, TypedValue rhs){
     string basefn = Lexer::getTokStr(op);
-    string mangledfn = mangle(basefn, {lhs.type, rhs.type});
+    vector<AnType*> argtys = {lhs.type, rhs.type};
+    string mangledfn = mangle(basefn, argtys);
 
     //now look for the function
-    vector<AnType*> argtys = {lhs.type, rhs.type};
     auto fn = c->getMangledFn(basefn, argtys);
     if(!fn) return fn;
 

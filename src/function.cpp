@@ -663,12 +663,6 @@ TypedValue Compiler::compFn(FuncDecl *fd){
     compCtxt->continueLabels = llvm::make_unique<vector<BasicBlock*>>();
     compCtxt->breakLabels = llvm::make_unique<vector<BasicBlock*>>();
 
-    DEFER(
-        compCtxt->callStack.pop_back();
-        compCtxt->continueLabels.reset(continueLabels);
-        compCtxt->breakLabels.reset(breakLabels);
-    );
-
     enterNewScope();
     auto ts = tmpSet(this->fnScope, this->scope);
 
@@ -683,10 +677,16 @@ TypedValue Compiler::compFn(FuncDecl *fd){
         while(scope > ts.getOldVal())
             exitScope();
 
+        compCtxt->callStack.pop_back();
+        compCtxt->continueLabels.reset(continueLabels);
+        compCtxt->breakLabels.reset(breakLabels);
         throw e;
     }
 
     exitScope();
+    compCtxt->callStack.pop_back();
+    compCtxt->continueLabels.reset(continueLabels);
+    compCtxt->breakLabels.reset(breakLabels);
     return ret;
 }
 

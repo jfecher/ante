@@ -145,7 +145,7 @@ namespace ante {
                     if(v->tval.type->hasModifier(Tok_Mut) && !v->tval.type->hasModifier(Tok_Ante)){
                         c->compErr("Cannot evaluate a mutable variable during compile-time.  Use 'ante mut' in its declaration instead if you wish to evaluate it.", n->loc);
                     }else if(v->assignments.back().assignmentExpr){
-                        visitExternalDecl(n->name, v->tval.type, *v->assignments.back().assignmentExpr);
+                        visitExternalDecl(n->name, v->tval.type, v->assignments.back().assignmentExpr);
                     }else{
                         c->compErr("Cannot find last assignment to variable used in ante expression.", n->loc);
                     }
