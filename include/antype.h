@@ -655,6 +655,33 @@ namespace std {
             return ret;
         }
     };
+
+    template<>
+    struct hash<ante::TypeTag> {
+        size_t operator()(ante::TypeTag tt) const {
+            return tt;
+        }
+    };
+
+    template<>
+    struct hash<ante::TokenType> {
+        size_t operator()(ante::TokenType tt) const {
+            return tt;
+        }
+    };
+
+    template<>
+    struct hash<ante::TypeBinding> {
+        size_t operator()(ante::TypeBinding const& binding) const {
+            if(binding.isNominalBinding()){
+                return ante::hashCombine(std::hash<std::string>()(binding.getTypeVarName()),
+                        std::hash<ante::AnType*>()(binding.getBinding()));
+            }else{
+                return ante::hashCombine(std::hash<size_t>()(binding.getIndex()),
+                        std::hash<ante::AnType*>()(binding.getBinding()));
+            }
+        }
+    };
 }
 
 namespace ante {

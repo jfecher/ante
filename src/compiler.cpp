@@ -708,7 +708,8 @@ TypedValue compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
 
             //see if insert operator # = is overloaded already
             string op = "#";
-            string mangledfn = mangle(op, {tyn, AnType::getI32(), newval.type});
+            vector<AnType*> argTys = {tyn, AnType::getI32(), newval.type};
+            string mangledfn = mangle(op, argTys);
             auto fn = c->getFunction(op, mangledfn);
             if(fn)
                 return TypedValue(c->builder.CreateCall(fn.val, vector<Value*>{

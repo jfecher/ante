@@ -824,7 +824,11 @@ void insertDependencies(CompilingVisitor &cv, Function *f,
     cv.c->builder.SetInsertPoint(&f->getBasicBlockList().back());
 
     //compile a let-binding for each dependency
-    for(auto [name, type, expr] : deps){
+    for(auto &tup : deps){
+        auto   &name = get<0>(tup);
+        AnType *type = get<1>(tup);
+        Node   *expr = get<2>(tup);
+
         Compiler *c = cv.c;
         TypedValue val = CompilingVisitor::compile(c, expr);
 

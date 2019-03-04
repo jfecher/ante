@@ -359,14 +359,13 @@ TypedValue Compiler::compFn(FuncDecl *fd){
     compCtxt->continueLabels = llvm::make_unique<vector<BasicBlock*>>();
     compCtxt->breakLabels = llvm::make_unique<vector<BasicBlock*>>();
 
-    DEFER(
-        compCtxt->callStack.pop_back();
-        compCtxt->continueLabels.reset(continueLabels);
-        compCtxt->breakLabels.reset(breakLabels);
-    );
-
     TMP_SET(this->fnScope, this->scope);
-    return compFnHelper(this, fd);
+    TypedValue ret = compFnHelper(this, fd);
+
+    compCtxt->callStack.pop_back();
+    compCtxt->continueLabels.reset(continueLabels);
+    compCtxt->breakLabels.reset(breakLabels);
+    return ret;
 }
 
 

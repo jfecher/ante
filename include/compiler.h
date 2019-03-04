@@ -11,7 +11,6 @@
 #include <string>
 #include <memory>
 #include <list>
-#include <optional>
 
 #include "parser.h"
 #include "args.h"
