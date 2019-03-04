@@ -175,7 +175,7 @@ namespace ante {
             Declaration* decl;
 
             void accept(NodeVisitor& v){ v.visit(this); }
-            BinOpNode(LOC_TY& loc, int s, Node *lv, Node *rv) : Node(loc), op(s), lval(lv), rval(rv){}
+            BinOpNode(LOC_TY& loc, int s, Node *lv, Node *rv) : Node(loc), op(s), lval(lv), rval(rv), decl(0){}
             ~BinOpNode(){}
         };
 
@@ -254,7 +254,7 @@ namespace ante {
             std::unique_ptr<Node> typeExpr;
             Declaration* decl;
             void accept(NodeVisitor& v){ v.visit(this); }
-            NamedValNode(LOC_TY& loc, std::string s, Node* t) : Node(loc), name(s), typeExpr(t){}
+            NamedValNode(LOC_TY& loc, std::string s, Node* t) : Node(loc), name(s), typeExpr(t), decl(0){}
             ~NamedValNode(){ if(typeExpr.get() == (void*)1) typeExpr.release(); }
 
             virtual AnType* getType() const {
@@ -272,7 +272,7 @@ namespace ante {
             std::string name;
             Declaration* decl;
             void accept(NodeVisitor& v){ v.visit(this); }
-            VarNode(LOC_TY& loc, std::string s) : Node(loc), name(s){}
+            VarNode(LOC_TY& loc, std::string s) : Node(loc), name(s), decl(0){}
             ~VarNode(){}
 
             AnType* getType() const;
