@@ -355,7 +355,6 @@ namespace ante {
 				auto traits = fdty->typeClassConstraints; // copy the vec so the old one isn't pushed to
 				traits.push_back(AnTraitType::get(n->name));
 				node->setType(AnFunctionType::get(fdty->retTy, fdty->extTys, traits));
-				cout << "typeof " << fdn->name << " = " << anTypeToColoredStr(fdn->getType()) << endl;
 			}
         }
     }

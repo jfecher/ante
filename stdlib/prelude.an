@@ -308,7 +308,7 @@ impl To i64 Str
             len += 1
             buf#(20 - len) := '-'
 
-        Str (buf + (20 - len) len
+        Str(buf + (20 - len), len)
 
 
 impl To u64 Str
@@ -324,7 +324,7 @@ impl To u64 Str
             buf#(20 - len) := '0' + c8(x % 10)
             x /= 10
 
-        Str (buf + (20 - len) len
+        Str(buf + (20 - len), len)
 
 
 // convert all other numeric types to strings by widening first
