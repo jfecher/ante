@@ -49,50 +49,50 @@ namespace ante {
 #elif defined(WIN32)
 #  define getchar getchar_windows
 
-	HANDLE h_in, h_out;
-	DWORD cc, normal_mode, getch_mode;
+    HANDLE h_in, h_out;
+    DWORD cc, normal_mode, getch_mode;
 
-	TCHAR getchar_windows() {
-		TCHAR c = 0;
-		SetConsoleMode(h_in, getch_mode);
-		ReadConsole(h_in, &c, 1, &cc, NULL);
-		SetConsoleMode(h_in, normal_mode);
-		return c;
-	}
+    TCHAR getchar_windows() {
+        TCHAR c = 0;
+        SetConsoleMode(h_in, getch_mode);
+        ReadConsole(h_in, &c, 1, &cc, NULL);
+        SetConsoleMode(h_in, normal_mode);
+        return c;
+    }
 
-	void clearLine() {
-		DWORD numCharsWritten;
-		CONSOLE_SCREEN_BUFFER_INFO csbi;
+    void clearLine() {
+        DWORD numCharsWritten;
+        CONSOLE_SCREEN_BUFFER_INFO csbi;
 
-		// Get the number of character cells in the current buffer.
-		if (!GetConsoleScreenBufferInfo(h_out, &csbi)){
-			cerr << "Cannot get screen buffer info" << endl;
-			return;
-		}
+        // Get the number of character cells in the current buffer.
+        if (!GetConsoleScreenBufferInfo(h_out, &csbi)){
+            cerr << "Cannot get screen buffer info" << endl;
+            return;
+        }
 
-		COORD homeCoords = { 0, csbi.dwCursorPosition.Y };
-		DWORD cellsToWrite = csbi.dwSize.X;
+        COORD homeCoords = { 0, csbi.dwCursorPosition.Y };
+        DWORD cellsToWrite = csbi.dwSize.X;
 
-		// Fill the entire screen with blanks.
-		if (!FillConsoleOutputCharacter(h_out, (TCHAR) ' ', cellsToWrite, homeCoords, &numCharsWritten)) {
-			cerr << "Error when attempting to clear screen" << endl;
-			return;
-		}
+        // Fill the entire screen with blanks.
+        if (!FillConsoleOutputCharacter(h_out, (TCHAR) ' ', cellsToWrite, homeCoords, &numCharsWritten)) {
+            cerr << "Error when attempting to clear screen" << endl;
+            return;
+        }
 
-		// Get the current text attribute.
-		if (!GetConsoleScreenBufferInfo(h_out, &csbi)) {
-			cerr << "Error when getting screen buffer info" << endl;
-			return;
-		}
+        // Get the current text attribute.
+        if (!GetConsoleScreenBufferInfo(h_out, &csbi)) {
+            cerr << "Error when getting screen buffer info" << endl;
+            return;
+        }
 
-		// Set the buffer's attributes accordingly.
-		if (!FillConsoleOutputAttribute(h_out, csbi.wAttributes, cellsToWrite, homeCoords, &numCharsWritten)) {
-			cerr << "Error when attempting to fill attributes" << endl;
-			return;
-		}
+        // Set the buffer's attributes accordingly.
+        if (!FillConsoleOutputAttribute(h_out, csbi.wAttributes, cellsToWrite, homeCoords, &numCharsWritten)) {
+            cerr << "Error when attempting to fill attributes" << endl;
+            return;
+        }
 
-		SetConsoleCursorPosition(h_out, homeCoords);
-	}
+        SetConsoleCursorPosition(h_out, homeCoords);
+    }
 
     void clearScreen(){}
 
@@ -326,8 +326,8 @@ namespace ante {
 #if defined(unix) || defined(_WIN32)
             //use lexer for syntax highlighting
             LOC_TY loc;
-			auto l = Lexer(nullptr, line, 1, 1, true);
-			while (l.next(&loc)){ /* do nothing*/ };
+            auto l = Lexer(nullptr, line, 1, 1, true);
+            while (l.next(&loc)){ /* do nothing*/ };
 
             //move cursor from end of text to the current pos
             moveToPos(sl_pos, line.length(), line);
@@ -347,8 +347,8 @@ namespace ante {
 
 #if defined(unix) || defined(_WIN32)
             LOC_TY loc;
-			auto l = Lexer(nullptr, line, 1, 1, true);
-			while (l.next(&loc)){ /* do nothing*/ };
+            auto l = Lexer(nullptr, line, 1, 1, true);
+            while (l.next(&loc)){ /* do nothing*/ };
 #endif
         return line;
     }
@@ -364,14 +364,14 @@ namespace ante {
         tcsetattr(STDIN_FILENO, TCSANOW, &newt);
         ioctl(0, TIOCGWINSZ, &termSize);
 #elif defined WIN32
-		h_in = GetStdHandle(STD_INPUT_HANDLE);
-		h_out = GetStdHandle(STD_OUTPUT_HANDLE);
-		if (!h_in or !h_out) {
-			fputs("Error when attempting to access windows terminal\n", stderr);
-			exit(1);
-		}
-		GetConsoleMode(h_in, &normal_mode);
-		getch_mode = normal_mode & ~(ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT);
+        h_in = GetStdHandle(STD_INPUT_HANDLE);
+        h_out = GetStdHandle(STD_OUTPUT_HANDLE);
+        if (!h_in or !h_out) {
+            fputs("Error when attempting to access windows terminal\n", stderr);
+            exit(1);
+        }
+        GetConsoleMode(h_in, &normal_mode);
+        getch_mode = normal_mode & ~(ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT);
 #endif
     }
 
@@ -384,14 +384,14 @@ namespace ante {
         tcsetattr(STDIN_FILENO, TCSANOW, &newt);
         ioctl(0, TIOCGWINSZ, &termSize);
 #elif defined WIN32
-		h_in = GetStdHandle(STD_INPUT_HANDLE);
-		h_out = GetStdHandle(STD_OUTPUT_HANDLE);
-		if (!h_in or !h_out) {
-			fputs("Error when attempting to access windows terminal\n", stderr);
-			exit(1);
-		}
-		GetConsoleMode(h_in, &normal_mode);
-		getch_mode = normal_mode | (ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT);
+        h_in = GetStdHandle(STD_INPUT_HANDLE);
+        h_out = GetStdHandle(STD_OUTPUT_HANDLE);
+        if (!h_in or !h_out) {
+            fputs("Error when attempting to access windows terminal\n", stderr);
+            exit(1);
+        }
+        GetConsoleMode(h_in, &normal_mode);
+        getch_mode = normal_mode | (ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT);
 #endif
     }
 

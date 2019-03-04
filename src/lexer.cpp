@@ -296,9 +296,9 @@ yy::position Lexer::getPos(bool inclusiveEnd) const{
 
 bool isKeywordAType(int tok){
     return tok == Tok_I8 || tok == Tok_I16 || tok == Tok_I32 || tok == Tok_I64 || tok == Tok_Isz
-		|| tok == Tok_U8 || tok == Tok_U16 || tok == Tok_U32 || tok == Tok_U64 || tok == Tok_Usz
-		|| tok == Tok_F16 || tok == Tok_F32 || tok == Tok_F64
-		|| tok == Tok_C8 || tok == Tok_C32 || tok == Tok_Bool || tok == Tok_Void;
+        || tok == Tok_U8 || tok == Tok_U16 || tok == Tok_U32 || tok == Tok_U64 || tok == Tok_Usz
+        || tok == Tok_F16 || tok == Tok_F32 || tok == Tok_F64
+        || tok == Tok_C8 || tok == Tok_C32 || tok == Tok_Bool || tok == Tok_Void;
 }
 
 /*
@@ -330,13 +330,13 @@ inline void Lexer::incPos(){
     }else{
         if(in->good())
             in->get(nxt);
-		else {
+        else {
 //fix a windows lexing bug where the last character is duplicated before an eof
 #ifdef _WIN32
-			cur = 0;
+            cur = 0;
 #endif
-			nxt = 0;
-		}
+            nxt = 0;
+        }
     }
 }
 
@@ -402,8 +402,8 @@ int Lexer::handleComment(yy::parser::location_type* loc){
         }
     }
 
-	if(printInput)
-		setTermFGColor(AN_CONSOLE_RESET);
+    if(printInput)
+        setTermFGColor(AN_CONSOLE_RESET);
 
     if(!cur) return 0;
     return next(loc);
@@ -710,8 +710,8 @@ int Lexer::genStrLitTok(yy::parser::location_type* loc){
         cout << AN_CONSOLE_RESET;
     }
 
-	if(cur != '"')
-		lexErr("Missing closing string delimiter", loc);
+    if(cur != '"')
+        lexErr("Missing closing string delimiter", loc);
 
     incPos(); //consume ending delim
     setlextxt(s);

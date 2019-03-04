@@ -50,14 +50,14 @@
 
 //thanks to Eklavya Sharma: http://www.cplusplus.com/articles/2ywTURfi/
 namespace ante {
-	enum class win_console_color {
-		black = 0, darkblue = 1, darkgreen = 2, darkcyan = 3, darkred = 4, darkmagenta = 5, darkyellow = 6, darkwhite = 7,
-		gray = 8,      blue = 9,     green = 10,    cyan = 11,    red = 12,    magenta = 13,    yellow = 14,    white = 15
-	};
+    enum class win_console_color {
+        black = 0, darkblue = 1, darkgreen = 2, darkcyan = 3, darkred = 4, darkmagenta = 5, darkyellow = 6, darkwhite = 7,
+        gray = 8,      blue = 9,     green = 10,    cyan = 11,    red = 12,    magenta = 13,    yellow = 14,    white = 15
+    };
 
-	win_console_color getBackgroundColor();
+    win_console_color getBackgroundColor();
 
-	std::ostream& operator<<(std::ostream& os, win_console_color color);
+    std::ostream& operator<<(std::ostream& os, win_console_color color);
 }
 
 #endif

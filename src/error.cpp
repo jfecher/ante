@@ -51,7 +51,7 @@ void clearColor(){
 
 
 void setTermFGColor(AN_COLOR_TYPE fg){
-	if(colored_output)
+    if(colored_output)
         cout << fg;
 }
 
@@ -99,8 +99,8 @@ void printErrLine(const yy::location& loc, ErrorType t){
 void printFileNameAndLineNumber(const yy::location& loc){
     if(colored_output) cout << AN_CONSOLE_ITALICS;
 
-	if (loc.begin.filename) cout << *loc.begin.filename;
-	else cout << "(unknown file)";
+    if (loc.begin.filename) cout << *loc.begin.filename;
+    else cout << "(unknown file)";
 
     clearColor();
     cout << ": ";

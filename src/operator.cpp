@@ -151,7 +151,7 @@ TypedValue Compiler::compExtract(TypedValue &l, TypedValue &r, BinOpNode *op){
         return TypedValue(builder.CreateLoad(builder.CreateGEP(l.val, r.val)), retty);
 
     }else if(l.type->typeTag == TT_Tuple || l.type->typeTag == TT_Data){
-		auto indexval = dyn_cast<ConstantInt>(r.val);
+        auto indexval = dyn_cast<ConstantInt>(r.val);
         if(!indexval)
             error("Tuple indices must always be known at compile time.", op->loc);
 
@@ -394,7 +394,7 @@ TypedValue createCast(Compiler *c, AnType *castTy, TypedValue &valToCast, Node *
         if(valToCast.type->typeTag == TT_Ptr){
             return TypedValue(c->builder.CreatePointerCast(valToCast.val, llvmCastTy), castTy);
 
-		// int -> ptr
+        // int -> ptr
         }else if(isIntTypeTag(valToCast.type->typeTag)){
             return TypedValue(c->builder.CreateIntToPtr(valToCast.val, llvmCastTy), castTy);
         }
@@ -1261,9 +1261,9 @@ TypedValue compFnCall(Compiler *c, BinOpNode *bop){
             args[i] = addrOf(c, tArg).val;
         }
 
-		if(tvf.val && args[i]->getType() != tvf.getType()->getPointerElementType()->getFunctionParamType(i) && paramTy->typeTag == TT_Ptr){
-			args[i] = c->builder.CreateBitCast(args[i], tvf.getType()->getPointerElementType()->getFunctionParamType(i));
-		}
+        if(tvf.val && args[i]->getType() != tvf.getType()->getPointerElementType()->getFunctionParamType(i) && paramTy->typeTag == TT_Ptr){
+            args[i] = c->builder.CreateBitCast(args[i], tvf.getType()->getPointerElementType()->getFunctionParamType(i));
+        }
     }
 
     //if tvf is a ante function or similar MetaFunction, then compile it in a separate

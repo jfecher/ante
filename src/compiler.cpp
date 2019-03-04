@@ -183,7 +183,7 @@ TypedValue compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
 
     //make a new sub-location for it
     yy::location lloc = mkLoc(mkPos(sln->loc.begin.filename, sln->loc.begin.line, sln->loc.begin.column),
-		                mkPos(sln->loc.end.filename,   sln->loc.end.line,   sln->loc.begin.column + pos-1));
+                        mkPos(sln->loc.end.filename,   sln->loc.end.line,   sln->loc.begin.column + pos-1));
     auto *ls = new StrLitNode(lloc, l);
 
 
@@ -196,7 +196,7 @@ TypedValue compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
 
     string r = sln->val.substr(posEnd+1);
     yy::location rloc = mkLoc(mkPos(sln->loc.begin.filename, sln->loc.begin.line, sln->loc.begin.column + posEnd + 1),
-							  mkPos(sln->loc.end.filename,   sln->loc.end.line,   sln->loc.end.column));
+                              mkPos(sln->loc.end.filename,   sln->loc.end.line,   sln->loc.end.column));
     auto *rs = new StrLitNode(rloc, r);
 
     //now that the string is separated, begin interpolation preparation
@@ -261,14 +261,14 @@ void CompilingVisitor::visit(StrLitNode *n){
 
     auto *ptr = c->builder.CreateGlobalStringPtr(n->val, "_strlit");
 
-	//get the llvm Str data type from a fake type node in case we are compiling
-	//the prelude && the Str data type isnt translated into an llvmty yet
+    //get the llvm Str data type from a fake type node in case we are compiling
+    //the prelude && the Str data type isnt translated into an llvmty yet
     auto *tupleTy = cast<StructType>(c->anTypeToLlvmType(strty));
 
-	vector<Constant*> strarr = {
-		UndefValue::get(Type::getInt8PtrTy(*c->ctxt)),
-		ConstantInt::get(*c->ctxt, APInt(AN_USZ_SIZE, n->val.length(), true))
-	};
+    vector<Constant*> strarr = {
+        UndefValue::get(Type::getInt8PtrTy(*c->ctxt)),
+        ConstantInt::get(*c->ctxt, APInt(AN_USZ_SIZE, n->val.length(), true))
+    };
 
     auto *uninitStr = ConstantStruct::get(tupleTy, strarr);
     auto *str = c->builder.CreateInsertValue(uninitStr, ptr, 0);
@@ -1110,10 +1110,10 @@ const Target* getTarget(){
 
     if(!err.empty()){
         cerr << err << endl;
-		cerr << "Selected triple: " << AN_NATIVE_ARCH ", " AN_NATIVE_VENDOR ", " AN_NATIVE_OS << endl;
-		cerr << "\nRegistered targets:\n";
+        cerr << "Selected triple: " << AN_NATIVE_ARCH ", " AN_NATIVE_VENDOR ", " AN_NATIVE_OS << endl;
+        cerr << "\nRegistered targets:\n";
         llvm::raw_os_ostream os{std::cout};
-		TargetRegistry::printRegisteredTargetsForVersion(os);
+        TargetRegistry::printRegisteredTargetsForVersion(os);
         exit(1);
     }
 
@@ -1165,13 +1165,13 @@ void Compiler::jitFunction(Function *f){
 int Compiler::compileIRtoObj(llvm::Module *mod, string outFile){
     auto *tm = getTargetMachine();
 
-	char **err = nullptr;
-	char *filename = (char*)outFile.c_str();
-	int res = LLVMTargetMachineEmitToFile(
-		(LLVMTargetMachineRef)tm,
-		(LLVMModuleRef)mod,
-		filename,
-		(LLVMCodeGenFileType)llvm::TargetMachine::CGFT_ObjectFile, err);
+    char **err = nullptr;
+    char *filename = (char*)outFile.c_str();
+    int res = LLVMTargetMachineEmitToFile(
+        (LLVMTargetMachineRef)tm,
+        (LLVMModuleRef)mod,
+        filename,
+        (LLVMCodeGenFileType)llvm::TargetMachine::CGFT_ObjectFile, err);
 
     delete tm;
     return res;
@@ -1288,8 +1288,8 @@ Compiler::Compiler(const char *_fileName, bool lib, shared_ptr<LLVMContext> llvm
 
     //Add this module to the cache to ensure it is not compiled twice
     outFile = fileNameWithoutExt;
-	if (outFile.empty())
-		outFile = "a.out";
+    if (outFile.empty())
+        outFile = "a.out";
 
     module.reset(new llvm::Module(outFile, *ctxt));
 }
