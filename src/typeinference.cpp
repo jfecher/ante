@@ -83,7 +83,18 @@ namespace ante {
         n->setType(nextTypeVar());
     }
 
+    /**
+     * If the type T is a variant, return its parent Sum type
+     * Otherwise, return Type T
+     */
     void TypeInferenceVisitor::visit(TypeNode *n){
+        auto repl = toAnType(n);
+        auto variant = try_cast<AnProductType>(repl);
+        if(variant && variant->parentUnionType){
+            n->setType(variant->parentUnionType);
+            return;
+        }
+
         //Type 't
         auto type = AnProductType::get("Type");
         if(!type || type->typeArgs.size() != 1){
@@ -91,7 +102,6 @@ namespace ante {
         }
 
         auto tvar = type->typeArgs[0];
-        auto repl = toAnType(n);
         auto type_n = applySubstitutions({{tvar, repl}}, type);
         n->setType(type_n);
     }
@@ -101,7 +111,13 @@ namespace ante {
         n->typeExpr->setType(ty);
 
         n->rval->accept(*this);
-        n->setType(n->typeExpr->getType());
+
+        auto variant = try_cast<AnProductType>(ty);
+        if(variant && variant->parentUnionType){
+            n->setType(variant->parentUnionType);
+        }else{
+            n->setType(ty);
+        }
     }
 
     void TypeInferenceVisitor::visit(UnOpNode *n){
