@@ -284,11 +284,11 @@ namespace ante {
             addConstraint(n->rval->getType(), numTy, n->loc);
             addConstraint(n->getType(), AnType::getBool(), n->loc);
         }else if(n->op == '#'){
-            auto [collectionTy, elemTy] = getCollectionOpTraitType(n->op);
+            auto collectionTy_elemTy = getCollectionOpTraitType(n->op);
 
-            addConstraint(n->lval->getType(), collectionTy, n->loc);
+            addConstraint(n->lval->getType(), collectionTy_elemTy.first, n->loc);
             addConstraint(n->rval->getType(), AnType::getUsz(), n->loc);
-            addConstraint(n->getType(), elemTy, n->loc);
+            addConstraint(n->getType(), collectionTy_elemTy.second, n->loc);
         }else if(n->op == Tok_Or || n->op == Tok_And){
             addConstraint(n->lval->getType(), AnType::getBool(), n->loc);
             addConstraint(n->rval->getType(), AnType::getBool(), n->loc);
@@ -300,10 +300,10 @@ namespace ante {
             addConstraint(n->lval->getType(), AnType::getI32(), n->loc);
             addConstraint(n->rval->getType(), AnType::getI32(), n->loc);
         }else if(n->op == Tok_In){
-            auto [collectionTy, elemTy] = getCollectionOpTraitType(n->op);
+            auto collectionTy_elemTy = getCollectionOpTraitType(n->op);
 
-            addConstraint(n->lval->getType(), elemTy, n->loc);
-            addConstraint(n->rval->getType(), collectionTy, n->loc);
+            addConstraint(n->lval->getType(), collectionTy_elemTy.second, n->loc);
+            addConstraint(n->rval->getType(), collectionTy_elemTy.first, n->loc);
             addConstraint(n->getType(), AnType::getBool(), n->loc);
         }
     }

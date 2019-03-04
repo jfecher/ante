@@ -96,7 +96,7 @@ namespace ante {
     }
 
 
-    std::optional<Variable*> NameResolutionVisitor::lookupVar(std::string const& name) const {
+    Variable* NameResolutionVisitor::lookupVar(std::string const& name) const {
         if(!varTable.empty()){
             auto &context = varTable.top();
             for(auto it = context.rbegin(); it != context.rend(); it++){
@@ -112,7 +112,7 @@ namespace ante {
             if(v->tval.type->hasModifier(Tok_Global))
                 return v;
         }
-        return std::nullopt;
+        return nullptr;
     }
 
 
@@ -202,7 +202,7 @@ namespace ante {
 
     /** Return true if the given file has already been imported into the current module. */
     bool alreadyImported(NameResolutionVisitor &v, std::string const& name){
-        return std::any_of(v.compUnit->imports.begin(), v.compUnit->imports.end(), [&](auto mod){
+        return std::any_of(v.compUnit->imports.begin(), v.compUnit->imports.end(), [&](Module *mod){
             return mod->name == name;
         });
     }
@@ -359,27 +359,29 @@ namespace ante {
     }
 
 
-    optional<string> getIdentifier(Node *n){
-        if(BinOpNode *bop = dynamic_cast<BinOpNode*>(n); bop && bop->op == '.'){
+    llvm::Optional<string> getIdentifier(Node *n){
+        BinOpNode *bop = dynamic_cast<BinOpNode*>(n);
+        if(bop && bop->op == '.'){
             auto l = getIdentifier(bop->lval.get());
             auto r = getIdentifier(bop->rval.get());
-            if(!l || !r) return std::nullopt;
+            if(!l || !r) return llvm::Optional<string>();
             return *l + "." + *r;
         }else if(VarNode *vn = dynamic_cast<VarNode*>(n)){
             return vn->name;
         }else if(TypeNode *tn = dynamic_cast<TypeNode*>(n)){
             return typeNodeToStr(tn);
         }else{
-            return std::nullopt;
+            return llvm::Optional<string>();
         }
     }
 
 
     Declaration* NameResolutionVisitor::findCandidate(Node *n) const {
         auto name = getIdentifier(n);
+        auto vn = dynamic_cast<VarNode*>(n);
         if(!name){
             return new NoDecl(n);
-        }else if(auto vn = dynamic_cast<VarNode*>(n); vn && !vn->decl->isFuncDecl()){
+        }else if(vn && !vn->decl->isFuncDecl()){
             return vn->decl;
         }else{
             return getFunction(*name);
@@ -478,8 +480,10 @@ namespace ante {
 
     void NameResolutionVisitor::visit(BinOpNode *n){
         if(n->op == '.' && dynamic_cast<TypeNode*>(n->lval.get())){
-            auto [mod, node] = handleImplicitModuleImport(this, n);
-            if(VarNode *vn = dynamic_cast<VarNode*>(node)){
+            auto modAndNode = handleImplicitModuleImport(this, n);
+            Module *mod = modAndNode.first;
+
+            if(VarNode *vn = dynamic_cast<VarNode*>(modAndNode.second)){
                 auto fn = mod->fnDecls.find(vn->name);
                 if(fn == mod->fnDecls.end()){
                     error("No function named '" + vn->name + "' has not been declared in "
@@ -695,7 +699,7 @@ namespace ante {
 
         auto maybeVar = lookupVar(n->name);
         if(maybeVar){
-            n->decl = *maybeVar;
+            n->decl = maybeVar;
         }else if(FuncDecl *fn = getFunction(n->name)){
             n->decl = fn;
         }else{

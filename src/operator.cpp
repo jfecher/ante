@@ -335,9 +335,8 @@ bool shouldCastToWrapperType(AnType *from, AnProductType *wrapper){
 }
 
 TypedValue doReinterpretCast(Compiler *c, AnType *castTy, TypedValue &valToCast){
-    if(auto *dt = try_cast<AnProductType>(castTy);
-            dt && shouldCastToWrapperType(valToCast.type, dt)){
-
+    auto *dt = try_cast<AnProductType>(castTy);
+    if(dt && shouldCastToWrapperType(valToCast.type, dt)){
         if(dt->parentUnionType){
             return createUnionVariantCast(c, valToCast, dt->name, dt->parentUnionType);
         }else{

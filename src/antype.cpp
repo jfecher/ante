@@ -361,7 +361,7 @@ namespace ante {
         ret->isGeneric = ante::isGeneric(typeArgs);
         ret->fields = parent->fields;
         ret->parentUnionType = parent->parentUnionType; //Will never bind the parent union type!
-        typeArena.dataTypeVariants.try_emplace(key, ret);
+        typeArena.dataTypeVariants[key].reset(ret);
         return ret;
     }
 
@@ -378,7 +378,7 @@ namespace ante {
 
         auto ret = new AnSumType(parent->name, elems);
         ret->typeArgs = typeArgs;
-        typeArena.dataTypeVariants.try_emplace(key, ret);
+        typeArena.dataTypeVariants[key].reset(ret);
         return ret;
     }
 
@@ -399,14 +399,14 @@ namespace ante {
         if(t) return t;
 
         t = new AnTraitType(parent->trait, self, generics);
-        typeArena.traitTraitVariants.try_emplace(key, t);
+        typeArena.traitTraitVariants[key].reset(t);
         return t;
     }
 
 
     AnTraitType* AnTraitType::create(Trait *trait, AnType *self, TypeArgs const& tArgs){
         auto ret = new AnTraitType(trait, self, tArgs);
-        typeArena.dataTypes.try_emplace(trait->name, ret);
+        typeArena.dataTypes[trait->name].reset(ret);
         return ret;
     }
 

@@ -5,7 +5,7 @@ set(PROJECT_VERSION_MAJOR 0)
 set(PROJECT_VERSION_MINOR 9)
 set(PROJECT_VERSION_PATCH 0)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 11)
 
 include_directories(include)
 include_directories(src)

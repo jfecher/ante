@@ -167,14 +167,27 @@ impl Cmp usz
     fun (<): a, b = ()
     fun (>): a, b = ()
 
+impl Cmp i32
+    fun (<): a, b = ()
+    fun (>): a, b = ()
+
 impl Add i32
-    fun (+): i32 a b = a + b
+    fun (+): a, b = a + b
+
+impl Sub i32
+    fun (-): a, b = a - b
+
+impl Mul i32
+    fun (*): a, b = a * b
 
 impl Add usz
-    fun (+): usz a b = a + b
+    fun (+): a, b = a + b
+
+impl Sub usz
+    fun (-): a, b = a - b
 
 impl Extract (ref 't) 't
-    fun (#): ref 't c, usz i = c#i
+    fun (#): c, i = c#i
 
 
 //numerical print functions

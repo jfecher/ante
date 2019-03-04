@@ -3,7 +3,6 @@
 
 #include <string>
 #include <list>
-#include <optional>
 #include "llvm/IR/Value.h"
 
 #include "parser.h"

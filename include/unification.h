@@ -3,7 +3,6 @@
 
 #include "antype.h"
 #include <tuple>
-#include <variant>
 
 namespace ante {
     using Substitutions = std::list<std::pair<AnType*, AnType*>>;
@@ -12,29 +11,37 @@ namespace ante {
         using EqConstraint = std::pair<AnType*, AnType*>;
         using TypeClassConstraint = AnTraitType*;
 
-        std::variant<EqConstraint, TypeClassConstraint> constraint;
+        union U {
+            EqConstraint eqConstraint;
+            TypeClassConstraint typeClassConstraint;
+
+            U(AnType *a, AnType *b) : eqConstraint{a, b}{}
+            U(AnTraitType *tc) : typeClassConstraint{tc}{}
+        } u;
+
+        bool eqConstraint;
 
         public:
             const LOC_TY &loc;
 
             /** Eq constructor, enforce a = b */
             UnificationConstraint(AnType *a, AnType *b, LOC_TY const& loc)
-                : constraint{EqConstraint{a, b}}, loc{loc}{}
+                : u{a, b}, eqConstraint{true}, loc{loc}{}
 
             /** Typeclass constructor, enforce impl typeclass args exists */
             UnificationConstraint(AnTraitType *typeclass, LOC_TY const& loc)
-                : constraint{TypeClassConstraint{typeclass}}, loc{loc}{}
+                : u{typeclass}, eqConstraint{false}, loc{loc}{}
 
             bool isEqConstraint() const noexcept {
-                return std::holds_alternative<EqConstraint>(constraint);
+                return eqConstraint;
             }
 
             EqConstraint asEqConstraint() const {
-                return std::get<EqConstraint>(constraint);
+                return u.eqConstraint;
             }
 
             TypeClassConstraint asTypeClassConstraint() const {
-                return std::get<TypeClassConstraint>(constraint);
+                return u.typeClassConstraint;
             }
     };
 
