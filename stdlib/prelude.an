@@ -147,13 +147,13 @@ trait In 'col 'elem
 
 trait Range 't
     type Result
-    fun (..): 't l r -> Res
+    fun (..): 't l r -> 'result
 
 
 trait Print 't
     fun printne: 't x
     
-fun print: Print x
+fun print: x
     printne x
     puts "".cStr
 
@@ -286,7 +286,7 @@ module Str
             i += 1
 
         buf#i := '\0'
-        Str(buf, i)
+        Str buf i
 
 
 impl To i64 Str
@@ -308,7 +308,7 @@ impl To i64 Str
             len += 1
             buf#(20 - len) := '-'
 
-        Str(buf + (20 - len), len)
+        Str (buf + (20 - len) len
 
 
 impl To u64 Str
@@ -324,7 +324,7 @@ impl To u64 Str
             buf#(20 - len) := '0' + c8(x % 10)
             x /= 10
 
-        Str(buf + (20 - len), len)
+        Str (buf + (20 - len) len
 
 
 // convert all other numeric types to strings by widening first
@@ -400,12 +400,12 @@ impl Eq (ref (Eq 't))
 //For-loops work over any range that is Iterable
 trait Iterable 'i
     type Iter
-    fun into_iter: 'i i -> Iter
+    fun into_iter: 'i i -> 'iter
 
 trait Iterator 'i
     type Elem
     fun next: 'i i -> 'i
-    fun unwrap: 'i i -> Elem
+    fun unwrap: 'i i -> 'elem
     fun has_next: 'i i -> bool
 
 
@@ -459,7 +459,7 @@ impl Iterator InFile
 
     fun next: InFile f = f
 
-    fun unwrap: InFile f = next_line f
+    fun unwrap: InFile f = InFile.next_line f
 
 
 module OutFile
