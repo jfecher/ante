@@ -10,6 +10,7 @@ antetests
 bootante
 unittest
 syntax.tab.c
+Makefile
 .clang_complete
 src/parser.output
 src/parser.cpp
