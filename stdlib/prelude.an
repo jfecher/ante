@@ -149,6 +149,16 @@ trait Range 't
     type Result
     fun (..): 't l r -> 'result
 
+trait Deref 't
+    type Result
+    fun (@): 't t -> 'result
+
+trait Neg 't
+    fun neg: 't t -> 't
+
+trait Not 't
+    fun (not): 't t -> 't
+
 
 trait Print 't
     fun printne: 't x

@@ -428,12 +428,12 @@ op: '+'    {$$ = (Node*)"+";}
   | '.'    {$$ = (Node*)".";}
   | ';'    {$$ = (Node*)";";}
   | '#'    {$$ = (Node*)"#";}
+  | '@'    {$$ = (Node*)"@";}
+  | Not    {$$ = (Node*)"not";}
   | Assign {$$ = (Node*)":=";}
   | NotEq  {$$ = (Node*)"!=";}
   | GrtrEq {$$ = (Node*)">=";}
   | LesrEq {$$ = (Node*)"<=";}
-  | Or     {$$ = (Node*)"or";}
-  | And    {$$ = (Node*)"and";}
   | '='    {$$ = (Node*)"=";}
   | AddEq  {$$ = (Node*)"+=";}
   | SubEq  {$$ = (Node*)"-=";}

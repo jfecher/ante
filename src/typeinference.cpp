@@ -2,7 +2,7 @@
 #include "antype.h"
 #include "compiler.h"
 #include "types.h"
-
+#include "util.h"
 #include "constraintfindingvisitor.h"
 #include "unification.h"
 
@@ -327,18 +327,20 @@ namespace ante {
 
         // finish inference for functions early
         ConstraintFindingVisitor step2;
-        n->accept(step2);
-        auto constraints = step2.getConstraints();
-        auto substitutions = unify(constraints);
-        SubstitutingVisitor::substituteIntoAst(n, substitutions);
+        tryTo([&]{
+            n->accept(step2);
+            auto constraints = step2.getConstraints();
+            auto substitutions = unify(constraints);
+            SubstitutingVisitor::substituteIntoAst(n, substitutions);
 
-        // apply typeclass constraints to function
-        auto fnTy = try_cast<AnFunctionType>(n->getType());
-        auto tcConstraints = getAllTcConstraints(fnTy, constraints, substitutions);
-        auto newFnTy = AnFunctionType::get(fnTy->retTy, fnTy->extTys, tcConstraints,
-                fnTy->typeTag == TT_MetaFunction);
-        newFnTy = cleanTypeClassConstraints(newFnTy);
-        n->setType(newFnTy);
+            // apply typeclass constraints to function
+            auto fnTy = try_cast<AnFunctionType>(n->getType());
+            auto tcConstraints = getAllTcConstraints(fnTy, constraints, substitutions);
+            auto newFnTy = AnFunctionType::get(fnTy->retTy, fnTy->extTys, tcConstraints,
+                    fnTy->typeTag == TT_MetaFunction);
+            newFnTy = cleanTypeClassConstraints(newFnTy);
+            n->setType(newFnTy);
+        });
     }
 
     void TypeInferenceVisitor::visit(DataDeclNode *n){

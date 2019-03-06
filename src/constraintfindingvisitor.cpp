@@ -4,6 +4,7 @@
 #include "funcdecl.h"
 #include "compiler.h"
 #include "types.h"
+#include "util.h"
 
 using namespace std;
 
@@ -76,22 +77,20 @@ namespace ante {
         constraints.emplace_back(a, b, loc);
     }
 
+    template<typename T>
+    inline void acceptAll(ConstraintFindingVisitor &v, std::vector<T> const& nodes){
+        for(auto &n : nodes){
+            tryTo([&]{ n->accept(v); });
+        }
+    }
+
     /** Annotate all nodes with placeholder types */
     void ConstraintFindingVisitor::visit(RootNode *n){
-        for(auto &m : n->imports)
-            m->accept(*this);
-        for(auto &m : n->types)
-            m->accept(*this);
-        for(auto &m : n->traits)
-            m->accept(*this);
-        for(auto &m : n->extensions)
-            m->accept(*this);
-        //for(auto &m : n->funcs)
-        //    m->accept(*this);
-
-        for(auto &m : n->main){
-            m->accept(*this);
-        }
+        acceptAll(*this, n->imports);
+        acceptAll(*this, n->types);
+        acceptAll(*this, n->traits);
+        acceptAll(*this, n->extensions);
+        acceptAll(*this, n->main);
     }
 
     void ConstraintFindingVisitor::visit(IntLitNode *n){}
@@ -133,11 +132,56 @@ namespace ante {
     void ConstraintFindingVisitor::visit(TypeCastNode *n){
         n->rval->accept(*this);
         //addConstraint(n->typeExpr->getType(), n->rval->getType(), n->loc);
+
+        auto sumTy = try_cast<AnSumType>(n->getType());
+        if(sumTy){
+            auto variant = try_cast<AnProductType>(n->typeExpr->getType());
+            TupleNode *tn = dynamic_cast<TupleNode*>(n->rval.get());
+            auto variantFields = try_cast<AnAggregateType>(variant->fields[1]);
+
+            if(tn){
+                if(variantFields->extTys.size() != tn->exprs.size()){
+                    auto lplural = variantFields->extTys.size() == 1 ? " argument, but " : " arguments, but ";
+                    auto rplural = tn->exprs.size() == 1 ? " was given instead" : " were given instead";
+                    error(anTypeToColoredStr(variant) + " requires " + to_string(variantFields->extTys.size())
+                            + lplural + to_string(tn->exprs.size()) + rplural, n->loc);
+                }
+
+                for(size_t i = 0; i < variant->fields.size(); i++){
+                    addConstraint(tn->exprs[i]->getType(), variantFields->extTys[i], n->loc);
+                }
+            }else{
+                //variantFields should not be a tuple type if there is only 1 field
+                if(variantFields){
+                    error(anTypeToColoredStr(variant) + " requires " + to_string(variantFields->extTys.size())
+                            + " arguments, but only 1 was given", n->loc);
+                }
+                addConstraint(n->rval->getType(), variant->fields[1], n->loc);
+            }
+        }
+    }
+
+    AnType* getUnOpTraitType(int op){
+        AnTraitType *parent;
+        switch(op){
+            case '@': parent = AnTraitType::get("Deref"); break;
+            case '-': parent = AnTraitType::get("Neg"); break;
+            case Tok_Not: parent = AnTraitType::get("Not"); break;
+            default:
+                cerr << "getUnOpTraitType: unknown op '" << (char)op << "' (" << (int)op << ") given.  ";
+                exit(1);
+        }
+        if(!parent){
+            cerr << "getUnOpTraitType: numeric trait for op '" << (char)op << "' (" << (int)op << ") not found.  The stdlib may not have been imported properly.\n";
+            exit(1);
+        }
+        return AnTraitType::getOrCreateVariant(parent, nextTypeVar(), {});
     }
 
     void ConstraintFindingVisitor::visit(UnOpNode *n){
         n->rval->accept(*this);
         auto tv = nextTypeVar();
+        AnType *trait;
         switch(n->op){
         case '@':
             addConstraint(n->rval->getType(), AnPtrType::get(tv), n->loc);
@@ -148,12 +192,14 @@ namespace ante {
             addConstraint(n->rval->getType(), tv, n->loc);
             break;
         case '-': //negation
-            addConstraint(n->getType(), AnType::getI32(), n->loc);
-            addConstraint(n->rval->getType(), AnType::getI32(), n->loc);
+            trait = getUnOpTraitType(n->op);
+            addConstraint(n->getType(), trait, n->loc);
+            addConstraint(n->rval->getType(), trait, n->loc);
             break;
         case Tok_Not:
-            addConstraint(n->rval->getType(), AnType::getBool(), n->loc);
-            addConstraint(n->getType(), AnType::getBool(), n->loc);
+            trait = getUnOpTraitType(n->op);
+            addConstraint(n->rval->getType(), trait, n->loc);
+            addConstraint(n->getType(), trait, n->loc);
             break;
         case Tok_New:
             addConstraint(n->getType(), AnPtrType::get(tv), n->loc);
@@ -163,11 +209,8 @@ namespace ante {
     }
 
     void ConstraintFindingVisitor::visit(SeqNode *n){
-        for(auto &stmt : n->sequence){
-            stmt->accept(*this);
-        }
+        acceptAll(*this, n->sequence);
     }
-
 
     AnType* getOpTraitType(int op){
         AnTraitType *parent;
@@ -197,18 +240,19 @@ namespace ante {
 
 
     pair<AnTraitType*, AnTypeVarType*> getCollectionOpTraitType(int op){
-        AnTraitType *parent;
         auto collectionTyVar = nextTypeVar();
         auto elemTy = nextTypeVar();
-        switch(op){
-            case '#':     parent = AnTraitType::get("Extract"); break;
-            case Tok_In:  parent = AnTraitType::get("In"); break;
-            default:
-                cerr << "getCollectionOpTraitType: unknown op '" << (char)op << "' (" << (int)op << ") given.  ";
-                exit(1);
+
+        if(op != '#' && op != Tok_In){
+            cerr << "getCollectionOpTraitType: unknown op '" << (char)op << "' (" << (int)op << ") given.  ";
+            exit(1);
         }
+
+        string traitName = op == '#' ? "Extract" : "In";
+        AnTraitType *parent = AnTraitType::get(traitName);
+
         if(!parent){
-            cerr << "Cannot find Extract trait.  The prelude may not have been imported properly.\n";
+            cerr << "Cannot find the trait" << traitName << ". The prelude may not have been imported properly.\n";
             exit(1);
         }
         return {AnTraitType::getOrCreateVariant(parent, collectionTyVar, {elemTy}), elemTy};

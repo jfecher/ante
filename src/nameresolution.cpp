@@ -8,6 +8,7 @@
 #include "types.h"
 #include "moduletree.h"
 #include "typeinference.h"
+#include "util.h"
 
 using namespace std;
 
@@ -20,13 +21,6 @@ list<string> fileNames;
 
 namespace ante {
     using namespace parser;
-
-    template<typename F>
-    void tryTo(F f){
-        try{
-            f();
-        }catch(CtError e){}
-    }
 
     TypeArgs convertToTypeArgs(vector<unique_ptr<TypeNode>> const& types){
         TypeArgs ret;
