@@ -359,8 +359,8 @@ namespace ante {
         auto ret = new AnProductType(parent->name, elems);
         ret->typeArgs = typeArgs;
         ret->isGeneric = ante::isGeneric(typeArgs);
-        ret->fields = parent->fields;
-        ret->parentUnionType = parent->parentUnionType; //Will never bind the parent union type!
+        ret->fieldNames = parent->fieldNames;
+        ret->parentUnionType = nullptr; //parentUnionType needs to be bound separately
         typeArena.dataTypeVariants[key].reset(ret);
         return ret;
     }
@@ -378,6 +378,7 @@ namespace ante {
 
         auto ret = new AnSumType(parent->name, elems);
         ret->typeArgs = typeArgs;
+        ret->isGeneric = ante::isGeneric(typeArgs);
         typeArena.dataTypeVariants[key].reset(ret);
         return ret;
     }

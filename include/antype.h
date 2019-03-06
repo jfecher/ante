@@ -556,6 +556,13 @@ namespace ante {
         */
         size_t getTagVal(std::string const& name);
 
+        AnProductType* getTagByName(std::string const& name) const {
+            for(AnProductType *t : tags){
+                if(t->name == name) return t;
+            }
+            return nullptr;
+        }
+
         /** Search for a data type by name.
          * Returns null if no type with a matching name is found. */
         static AnSumType* get(std::string const& name);

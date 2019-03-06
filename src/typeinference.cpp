@@ -91,7 +91,7 @@ namespace ante {
         auto repl = toAnType(n);
         auto variant = try_cast<AnProductType>(repl);
         if(variant && variant->parentUnionType){
-            n->setType(variant->parentUnionType);
+            n->setType(copyWithNewTypeVars(variant->parentUnionType));
             return;
         }
 
@@ -107,7 +107,7 @@ namespace ante {
     }
 
     void TypeInferenceVisitor::visit(TypeCastNode *n){
-        auto ty = toAnType(n->typeExpr.get());
+        auto ty = copyWithNewTypeVars(toAnType(n->typeExpr.get()));
         n->typeExpr->setType(ty);
 
         n->rval->accept(*this);

@@ -247,7 +247,6 @@ namespace ante {
                     // If this is not a single () being applied to a no-parameter function
                     if(!(argc == 1 && paramc == 0 && args->extTys[0]->typeTag == TT_Void)){
                         string weregiven = argc == 1 ? " was given" : " were given";
-						PrintingVisitor::print(n);
                         error("Function takes " + to_string(paramc)
                                 + " argument(s) but " + to_string(argc)
                                 + weregiven, n->lval->loc);

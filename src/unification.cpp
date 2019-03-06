@@ -32,18 +32,22 @@ namespace ante {
         }else if(auto pt = try_cast<AnProductType>(t)){
             auto exts = copyWithNewTypeVars(pt->fields, map);
             auto typeVars = copyWithNewTypeVars(pt->typeArgs, map);
-            if(exts == pt->fields && typeVars == pt->typeArgs)
+            if(exts == pt->fields && typeVars == pt->typeArgs){
                 return pt;
-            else
+            }else{
                 return AnProductType::getOrCreateVariant(pt, exts, typeVars);
+            }
 
         }else if(auto st = try_cast<AnSumType>(t)){
             auto exts = copyWithNewTypeVars(st->tags, map);
             auto typeVars = copyWithNewTypeVars(st->typeArgs, map);
-            if(exts == st->tags && typeVars == st->typeArgs)
+            if(exts == st->tags && typeVars == st->typeArgs){
                 return st;
-            else
-                return AnSumType::getOrCreateVariant(st, exts, typeVars);
+            }else{
+                auto ret = AnSumType::getOrCreateVariant(st, exts, typeVars);
+                for(auto e : exts) e->parentUnionType = ret;
+                return ret;
+            }
 
         }else if(auto tt = try_cast<AnTraitType>(t)){
             auto typeVars = copyWithNewTypeVars(tt->typeArgs, map);
@@ -88,7 +92,13 @@ namespace ante {
             return t;
 
         std::unordered_map<std::string, AnTypeVarType*> map;
-        return copyWithNewTypeVars(t, map);
+        auto variant = try_cast<AnProductType>(t);
+        if(variant && variant->parentUnionType){
+            auto st = (AnSumType*)copyWithNewTypeVars(variant->parentUnionType, map);
+            return st->getTagByName(variant->name);
+        }else{
+            return copyWithNewTypeVars(t, map);
+        }
     }
 
 
@@ -130,10 +140,13 @@ namespace ante {
             auto exts = substituteIntoAll(u, subType, st->tags);;
             auto generics = substituteIntoAll(u, subType, st->typeArgs);;
 
-            if(exts == st->tags && generics == st->typeArgs)
+            if(exts == st->tags && generics == st->typeArgs){
                 return st;
-            else
-                return AnSumType::getOrCreateVariant(st, exts, generics);
+            }else{
+                auto ret = AnSumType::getOrCreateVariant(st, exts, generics);
+                for(auto e : exts) e->parentUnionType = ret;
+                return ret;
+            }
 
         }else if(auto tt = try_cast<AnTraitType>(t)){
             if(tt == subType){
@@ -183,7 +196,13 @@ namespace ante {
 
     AnType* applySubstitutions(Substitutions const& substitutions, AnType *t){
         for(auto it = substitutions.rbegin(); it != substitutions.rend(); it++){
-            t = substitute(it->second, it->first, t);
+            auto variant = try_cast<AnProductType>(t);
+            if(variant && variant->parentUnionType){
+                auto st = (AnSumType*)applySubstitutions(substitutions, variant->parentUnionType);
+                t = st->getTagByName(variant->name);
+            }else{
+                t = substitute(it->second, it->first, t);
+            }
         }
         return t;
     }
