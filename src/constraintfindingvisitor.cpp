@@ -131,31 +131,26 @@ namespace ante {
 
     void ConstraintFindingVisitor::visit(TypeCastNode *n){
         n->rval->accept(*this);
-        //addConstraint(n->typeExpr->getType(), n->rval->getType(), n->loc);
 
         auto sumTy = try_cast<AnSumType>(n->getType());
         if(sumTy){
             auto variant = try_cast<AnProductType>(n->typeExpr->getType());
             TupleNode *tn = dynamic_cast<TupleNode*>(n->rval.get());
-            auto variantFields = try_cast<AnAggregateType>(variant->fields[1]);
+
+            size_t argc = tn ? tn->exprs.size() : 1;
+
+            if(variant->fields.size() - 1 != argc){
+                auto lplural = variant->fields.size() == 2 ? " argument, but " : " arguments, but ";
+                auto rplural = argc == 1 ? " was given instead" : " were given instead";
+                error(anTypeToColoredStr(variant) + " requires " + to_string(variant->fields.size()-1)
+                        + lplural + to_string(argc) + rplural, n->loc);
+            }
 
             if(tn){
-                if(variantFields->extTys.size() != tn->exprs.size()){
-                    auto lplural = variantFields->extTys.size() == 1 ? " argument, but " : " arguments, but ";
-                    auto rplural = tn->exprs.size() == 1 ? " was given instead" : " were given instead";
-                    error(anTypeToColoredStr(variant) + " requires " + to_string(variantFields->extTys.size())
-                            + lplural + to_string(tn->exprs.size()) + rplural, n->loc);
-                }
-
-                for(size_t i = 0; i < variant->fields.size(); i++){
-                    addConstraint(tn->exprs[i]->getType(), variantFields->extTys[i], n->loc);
+                for(size_t i = 0; i < argc; i++){
+                    addConstraint(tn->exprs[i]->getType(), variant->fields[i+1], n->loc);
                 }
             }else{
-                //variantFields should not be a tuple type if there is only 1 field
-                if(variantFields){
-                    error(anTypeToColoredStr(variant) + " requires " + to_string(variantFields->extTys.size())
-                            + " arguments, but only 1 was given", n->loc);
-                }
                 addConstraint(n->rval->getType(), variant->fields[1], n->loc);
             }
         }
