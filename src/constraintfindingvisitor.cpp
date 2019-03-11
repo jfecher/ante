@@ -132,26 +132,26 @@ namespace ante {
     void ConstraintFindingVisitor::visit(TypeCastNode *n){
         n->rval->accept(*this);
 
-        auto sumTy = try_cast<AnSumType>(n->getType());
-        if(sumTy){
-            auto variant = try_cast<AnProductType>(n->typeExpr->getType());
+        auto variant = try_cast<AnProductType>(n->typeExpr->getType());
+        if(variant){
             TupleNode *tn = dynamic_cast<TupleNode*>(n->rval.get());
 
             size_t argc = tn ? tn->exprs.size() : 1;
+            size_t offset = variant->parentUnionType ? 1 : 0;
 
-            if(variant->fields.size() - 1 != argc){
-                auto lplural = variant->fields.size() == 2 ? " argument, but " : " arguments, but ";
+            if(variant->fields.size() - offset != argc){
+                auto lplural = variant->fields.size() == 1 + offset ? " argument, but " : " arguments, but ";
                 auto rplural = argc == 1 ? " was given instead" : " were given instead";
-                error(anTypeToColoredStr(variant) + " requires " + to_string(variant->fields.size()-1)
+                error(anTypeToColoredStr(variant) + " requires " + to_string(variant->fields.size()-offset)
                         + lplural + to_string(argc) + rplural, n->loc);
             }
 
             if(tn){
                 for(size_t i = 0; i < argc; i++){
-                    addConstraint(tn->exprs[i]->getType(), variant->fields[i+1], n->loc);
+                    addConstraint(tn->exprs[i]->getType(), variant->fields[i+offset], tn->exprs[i]->loc);
                 }
             }else{
-                addConstraint(n->rval->getType(), variant->fields[1], n->loc);
+                addConstraint(n->rval->getType(), variant->fields[offset], n->rval->loc);
             }
         }
     }
