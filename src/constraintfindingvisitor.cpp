@@ -89,7 +89,6 @@ namespace ante {
         acceptAll(*this, n->imports);
         acceptAll(*this, n->types);
         acceptAll(*this, n->traits);
-        acceptAll(*this, n->extensions);
         acceptAll(*this, n->main);
     }
 
@@ -383,10 +382,9 @@ namespace ante {
         n->ref_expr->accept(*this);
     }
 
-    void ConstraintFindingVisitor::visit(ExtNode *n){
-        for(auto *m : *n->methods)
-            m->accept(*this);
-    }
+    // constraints should already be collected
+    // directly in TypeInferenceVisitor::visit(FuncDeclNode*)
+    void ConstraintFindingVisitor::visit(ExtNode *n){}
 
     void ConstraintFindingVisitor::visit(JumpNode *n){
         n->expr->accept(*this);

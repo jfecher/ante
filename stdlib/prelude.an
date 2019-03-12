@@ -201,84 +201,84 @@ impl Extract (ref 't) 't
 
 
 //numerical print functions
-// impl Print i8
-//     fun printne: i8 x
-//         printf "%hhd".cStr x
-// 
-// impl Print i16
-//     fun printne: i16 x
-//         printf "%hd".cStr x
-// 
-// impl Print i32
-//     fun printne: i32 x
-//         printf "%d".cStr x
-// 
-// impl Print i64
-//     fun printne: i64 x
-//         printf "%ld".cStr x
-// 
-// impl Print isz
-//     fun printne: isz x
-//         printf "%zi".cStr x
-// 
-// //unsigned
-// impl Print u8
-//     fun printne: u8 x
-//         printf "%hhu".cStr x
-// 
-// impl Print u16
-//     fun printne: u16 x
-//         printf "%hu".cStr x
-// 
-// impl Print u32
-//     fun printne: u32 x
-//         printf "%u".cStr x
-// 
-// impl Print u64
-//     fun printne: u64 x
-//         printf "%lu".cStr x
-// 
-// impl Print usz
-//     fun printne: usz x
-//         printf "%zu".cStr x
-// 
-// //floats
-// impl Print f16
-//     fun printne: f16 x
-//         printf "%.2f".cStr (f64 x)
-// 
-// impl Print f32
-//     fun printne: f32 x
-//         printf "%f".cStr (f64 x)
-// 
-// impl Print f64
-//     fun printne: f64 x
-//         printf "%.14f".cStr x
-// 
-// //char
-// impl Print c8
-//     fun printne: c8 x
-//         printf "%c".cStr x
-// 
-// //bool
-// impl Print bool
-//     fun printne: bool b
-//         if b then printf "true".cStr
-//         else printf "false".cStr
-// 
-// //c-string
-// impl Print (ref c8)
-//     fun printne: ref c8 s
-//         printf "%s".cStr s
-// 
-// 
-// impl Print Str
-//     fun printne: Str s
-//         printne s.cStr
-// 
-// 
-// impl To Str c8
-//     fun to: _, Str s = s.cStr
+impl Print i8
+    fun printne: i8 x
+        printf "%hhd".cStr x
+
+impl Print i16
+    fun printne: i16 x
+        printf "%hd".cStr x
+
+impl Print i32
+    fun printne: i32 x
+        printf "%d".cStr x
+
+impl Print i64
+    fun printne: i64 x
+        printf "%ld".cStr x
+
+impl Print isz
+    fun printne: isz x
+        printf "%zi".cStr x
+
+//unsigned
+impl Print u8
+    fun printne: u8 x
+        printf "%hhu".cStr x
+
+impl Print u16
+    fun printne: u16 x
+        printf "%hu".cStr x
+
+impl Print u32
+    fun printne: u32 x
+        printf "%u".cStr x
+
+impl Print u64
+    fun printne: u64 x
+        printf "%lu".cStr x
+
+impl Print usz
+    fun printne: usz x
+        printf "%zu".cStr x
+
+//floats
+impl Print f16
+    fun printne: f16 x
+        printf "%.2f".cStr (f64 x)
+
+impl Print f32
+    fun printne: f32 x
+        printf "%f".cStr (f64 x)
+
+impl Print f64
+    fun printne: f64 x
+        printf "%.14f".cStr x
+
+//char
+impl Print c8
+    fun printne: c8 x
+        printf "%c".cStr x
+
+//bool
+impl Print bool
+    fun printne: bool b
+        if b then printf "true".cStr
+        else printf "false".cStr
+
+//c-string
+impl Print (ref c8)
+    fun printne: ref c8 s
+        printf "%s".cStr s
+
+
+impl Print Str
+    fun printne: Str s
+        printne s.cStr
+
+
+impl To Str c8
+    fun to: _, Str s = s.cStr
 
 
 module Str
@@ -313,7 +313,8 @@ impl To i64 Str
             len += 1usz
             buf#(20usz - len) := '-'
 
-        Str(buf /*+ (20usz - len)*/, len)
+        let offset = usz buf + (20usz - len)
+        Str(ref c8 offset, len)
 
 
 impl To u64 Str
@@ -329,7 +330,8 @@ impl To u64 Str
             buf#(20usz - len) := '0' + c8(x % 10u64)
             x /= 10u64
 
-        Str(buf /*+ (20usz - len)*/, len)
+        let offset = usz buf + (20usz - len)
+        Str(ref c8 offset, len)
 
 
 // convert all other numeric types to strings by widening first

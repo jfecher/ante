@@ -669,23 +669,6 @@ bool shouldWrapInParenthesis(AnType *type){
     return !adt->typeArgs.empty() || try_cast<AnTraitType>(type);
 }
 
-/**
- * true if the type should be wrapped in parenthesis
- * when being outputted as a string as a tuple member
- *
- * eg.  in  (Vec i32, i32, (i32, Str))
- * type = any element of the three element tuple above
- * and the return value should be true only for the contained
- * tuple (in this case)
- */
-bool shouldWrapInParenthesisWhenInTuple(AnType *type){
-    //Quick and dirty checks just to see if we need parenthesis wrapping the type or not
-    if(ante::isPrimitiveTypeTag(type->typeTag) || type->typeTag == TT_TypeVar || type->typeTag == TT_Array)
-        return false;
-
-    return type->typeTag == TT_Tuple;
-}
-
 
 string commaSeparated(std::vector<AnTraitType*> const& types){
     string ret = "";
@@ -751,13 +734,13 @@ string anTypeToStr(const AnType *t){
         string ret = "(";
 
         for(const auto &ext : tup->extTys){
-            if(shouldWrapInParenthesisWhenInTuple(ext))
-                ret += '(' + anTypeToStr(ext) + ')';
-            else
-                ret += anTypeToStr(ext);
+            ret += anTypeToStr(ext);
 
-            if(&ext != &tup->extTys.back())
+            if(&ext != &tup->extTys.back()){
                 ret += ", ";
+            }else if(tup->extTys.size() == 1){
+                ret += ',';
+            }
         }
         return ret + ")";
     }else if(auto *arr = try_cast<AnArrayType>(t)){
