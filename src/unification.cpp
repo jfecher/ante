@@ -254,8 +254,12 @@ namespace ante {
 
         UnificationList ret;
 
-        if(!t1->isGeneric && !t2->isGeneric)
+        if(!t1->isGeneric && !t2->isGeneric){
+            if(t1 != t2){
+                showError("Mismatched types " + anTypeToColoredStr(t1) + " and " + anTypeToColoredStr(t2), loc);
+            }
             return {};
+        }
 
         if(auto ptr1 = try_cast<AnPtrType>(t1)){
             auto ptr2 = try_cast<AnPtrType>(t2);

@@ -379,12 +379,27 @@ namespace ante {
         n->ref_expr->accept(*this);
     }
 
-    void ConstraintFindingVisitor::addConstraintsFromTCDecl(FuncDeclNode *fdn, AnTraitType *tr){
+    void ConstraintFindingVisitor::addConstraintsFromTCDecl(FuncDeclNode *fdn, AnTraitType *tr, FuncDeclNode *decl){
         auto parent = try_cast<AnTraitType>(tr->unboundType);
         addConstraint(parent->selfType, tr->selfType, fdn->params->loc);
         for(size_t i = 0; i < parent->typeArgs.size(); i++){
             addConstraint(parent->typeArgs[i], tr->typeArgs[i], fdn->params->loc);
         }
+
+        NamedValNode *declParam = decl->params.get();
+        NamedValNode *fdnParam = fdn->params.get();
+        while(declParam){
+            addConstraint(declParam->getType(), fdnParam->getType(), fdnParam->loc);
+            declParam = (NamedValNode*)declParam->next.get();
+            fdnParam = (NamedValNode*)fdnParam->next.get();
+        }
+    }
+
+    FuncDeclNode* getDecl(string const& name, const Trait *t){
+        for(auto &fd : t->funcs){
+            if(fd->getName() == name) return fd->getFDN();
+        }
+        return nullptr;
     }
 
     void ConstraintFindingVisitor::visit(ExtNode *n){
@@ -393,7 +408,9 @@ namespace ante {
             for(auto *m : *n->methods){
                 auto fdn = dynamic_cast<FuncDeclNode*>(m);
                 if(fdn){
-                    addConstraintsFromTCDecl(fdn, tr);
+                    auto *decl = getDecl(fdn->name, tr->trait);
+                    fdn->setType(decl->getType());
+                    addConstraintsFromTCDecl(fdn, tr, decl);
                     visit(fdn); // visit the node directly since we know its type
                 }
             }

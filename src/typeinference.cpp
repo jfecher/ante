@@ -243,24 +243,6 @@ namespace ante {
         }
     }
 
-    FuncDeclNode* getDecl(string const& name, const Trait *t){
-        for(auto &fd : t->funcs){
-            if(fd->getName() == name) return fd->getFDN();
-        }
-        return nullptr;
-    }
-
-    void copyTypeFromTo(FuncDeclNode *decl, FuncDeclNode *fdn){
-        fdn->setType(decl->getType());
-        NamedValNode *declParam = decl->params.get();
-        NamedValNode *fdnParam = fdn->params.get();
-        while(declParam){
-            fdnParam->setType(declParam->getType());
-            declParam = (NamedValNode*)declParam->next.get();
-            fdnParam = (NamedValNode*)fdnParam->next.get();
-        }
-    }
-
     vector<AnTraitType*> getAllTcConstraints(AnFunctionType *fn, UnificationList const& constraints,
             Substitutions const& substitutions){
 
@@ -280,9 +262,12 @@ namespace ante {
             for(auto *m : *n->methods){
                 auto fdn = dynamic_cast<FuncDeclNode*>(m);
                 if(fdn){
-                    auto *decl = getDecl(fdn->name, tr->trait);
-                    copyTypeFromTo(decl, fdn);
                     fdn->child->accept(*this);
+                    for(auto param : *fdn->params){
+                        param->accept(*this);
+                    }
+                }else{
+                    m->accept(*this);
                 }
             }
             ConstraintFindingVisitor step2;

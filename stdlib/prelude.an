@@ -72,7 +72,7 @@ impl Eq (Maybe (Eq 'e))
         
 
 
-impl To Str (Maybe (To Str 'm))
+impl To (Maybe (To Str 'm)) Str
     fun to: Type Str _, Maybe 'm l -> Str
         match l with
         | Some val -> "tmp" //Str val
