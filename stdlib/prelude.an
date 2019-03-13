@@ -72,7 +72,7 @@ impl Eq (Maybe (Eq 'e))
         
 
 
-impl To (Maybe (To Str 'm)) Str
+impl To Str (Maybe (To Str 'm))
     fun to: Type Str _, Maybe 'm l -> Str
         match l with
         | Some val -> "tmp" //Str val
@@ -168,8 +168,8 @@ fun print: x
     puts "".cStr
 
 
-trait To 't 'u
-    fun to: Type 'u to, 't from -> 'u
+trait To 't /*from*/ 'u
+    fun to: Type 't to, 'u from -> 't
 
 
 //intrinsics for numeric types
@@ -277,7 +277,7 @@ impl Print Str
         printne s.cStr
 
 
-impl To Str (ref c8)
+impl To (ref c8) Str
     fun to: _, Str s = s.cStr
 
 
@@ -294,7 +294,7 @@ module Str
         Str(buf, i)
 
 
-impl To i64 Str
+impl To Str i64
     fun to: _, i64 i -> Str
         if i = 0i64 then return "0"
         mut len = 0usz
@@ -317,7 +317,7 @@ impl To i64 Str
         Str(ref c8 offset, len)
 
 
-impl To u64 Str
+impl To Str u64
     fun to: _, u64 i -> Str
         if i = 0u64 then return "0"
         mut len = 0usz
@@ -477,7 +477,7 @@ module Str
     fun print: Str s
         puts s.cStr
 
-impl To (ref c8) Str
+impl To Str (ref c8)
     fun to: t, ref c8 cStr -> Str
         Str(cStr, usz strlen cStr)
 
