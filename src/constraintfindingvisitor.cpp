@@ -410,8 +410,9 @@ namespace ante {
                 if(fdn){
                     auto *decl = getDecl(fdn->name, tr->trait);
                     fdn->setType(decl->getType());
+                    visit(fdn);
+                    // adding the constraints from the trait decl last gives better error messages
                     addConstraintsFromTCDecl(fdn, tr, decl);
-                    visit(fdn); // visit the node directly since we know its type
                 }
             }
         }
