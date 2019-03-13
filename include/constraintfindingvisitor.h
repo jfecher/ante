@@ -21,8 +21,12 @@ namespace ante {
             void addConstraint(AnType *a, AnType *b, LOC_TY &loc);
 
             /** Searches type for typeclasses, removes them from the type, and adds them
-             * as a separate constraint.  Returns a new type with type classes removed. */
+             *  as a separate constraint.  Returns a new type with type classes removed. */
             AnType* handleTypeClassConstraints(AnType *t, LOC_TY const& loc);
+
+            /** Add bindings from a trait's declaration to the scope of
+             *  the trait's implementation to better infer parameter/return types. */
+            void addConstraintsFromTCDecl(parser::FuncDeclNode *fdn, AnTraitType *tr);
     };
 }
 

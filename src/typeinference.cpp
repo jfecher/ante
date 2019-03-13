@@ -164,7 +164,7 @@ namespace ante {
             }else{
                 // type of field found during name resolution
                 if(n->rval->getType()){
-					n->lval->accept(*this);
+                    n->lval->accept(*this);
                     n->setType(n->rval->getType());
                     return;
                 }
@@ -243,9 +243,70 @@ namespace ante {
         }
     }
 
+    FuncDeclNode* getDecl(string const& name, const Trait *t){
+        for(auto &fd : t->funcs){
+            if(fd->getName() == name) return fd->getFDN();
+        }
+        return nullptr;
+    }
+
+    void copyTypeFromTo(FuncDeclNode *decl, FuncDeclNode *fdn){
+        fdn->setType(decl->getType());
+        NamedValNode *declParam = decl->params.get();
+        NamedValNode *fdnParam = fdn->params.get();
+        while(declParam){
+            fdnParam->setType(declParam->getType());
+            declParam = (NamedValNode*)declParam->next.get();
+            fdnParam = (NamedValNode*)fdnParam->next.get();
+        }
+    }
+
+    vector<AnTraitType*> getAllTcConstraints(AnFunctionType *fn, UnificationList const& constraints,
+            Substitutions const& substitutions){
+
+        auto tcConstraints = fn->typeClassConstraints;
+        for(auto &c : constraints){
+            if(!c.isEqConstraint()){
+                auto resolved = applySubstitutions(substitutions, c.asTypeClassConstraint());
+                tcConstraints.push_back((AnTraitType*)resolved);
+            }
+        }
+        return tcConstraints;
+    }
+
     void TypeInferenceVisitor::visit(ExtNode *n){
-        for(auto *m : *n->methods)
-            m->accept(*this);
+        if(n->trait){
+            auto tr = try_cast<AnTraitType>(toAnType(n->trait.get()));
+            for(auto *m : *n->methods){
+                auto fdn = dynamic_cast<FuncDeclNode*>(m);
+                if(fdn){
+                    auto *decl = getDecl(fdn->name, tr->trait);
+                    copyTypeFromTo(decl, fdn);
+                    fdn->child->accept(*this);
+                }
+            }
+            ConstraintFindingVisitor step2;
+            tryTo([&]{
+                n->accept(step2);
+                auto constraints = step2.getConstraints();
+                auto substitutions = unify(constraints);
+                SubstitutingVisitor::substituteIntoAst(n, substitutions);
+
+                // apply typeclass constraints to function
+                // auto fnTy = try_cast<AnFunctionType>(n->getType());
+                // auto tcConstraints = getAllTcConstraints(fnTy, constraints, substitutions);
+                // auto newFnTy = AnFunctionType::get(fnTy->retTy, fnTy->extTys, tcConstraints,
+                //         fnTy->typeTag == TT_MetaFunction);
+                // newFnTy = cleanTypeClassConstraints(newFnTy);
+                // n->setType(newFnTy);
+            });
+        }else{
+            for(auto *m : *n->methods){
+                if(!n->typeExpr){
+                    m->accept(*this);
+                }
+            }
+        }
         n->setType(AnType::getVoid());
     }
 
@@ -282,20 +343,6 @@ namespace ante {
     }
 
 
-    vector<AnTraitType*> getAllTcConstraints(AnFunctionType *fn, UnificationList const& constraints,
-            Substitutions const& substitutions){
-
-        auto tcConstraints = fn->typeClassConstraints;
-        for(auto &c : constraints){
-            if(!c.isEqConstraint()){
-                auto resolved = applySubstitutions(substitutions, c.asTypeClassConstraint());
-                tcConstraints.push_back((AnTraitType*)resolved);
-            }
-        }
-        return tcConstraints;
-    }
-
-
     vector<AnTraitType*> toTraitTypeVec(std::unique_ptr<TypeNode> const& tn){
         vector<AnTraitType*> ret;
         for(Node *n : *tn){
@@ -303,7 +350,6 @@ namespace ante {
         }
         return ret;
     }
-
 
     void TypeInferenceVisitor::visit(FuncDeclNode *n){
         if(n->getType())
@@ -351,13 +397,13 @@ namespace ante {
         n->setType(AnType::getVoid());
         for(auto *node : *n->child){
             node->accept(*this);
-			auto fdn = dynamic_cast<FuncDeclNode*>(node);
-			if (fdn) {
-				auto fdty = try_cast<AnFunctionType>(fdn->getType());
-				auto traits = fdty->typeClassConstraints; // copy the vec so the old one isn't pushed to
-				traits.push_back(AnTraitType::get(n->name));
-				node->setType(AnFunctionType::get(fdty->retTy, fdty->extTys, traits));
-			}
+            auto fdn = dynamic_cast<FuncDeclNode*>(node);
+            if (fdn) {
+                auto fdty = try_cast<AnFunctionType>(fdn->getType());
+                auto traits = fdty->typeClassConstraints; // copy the vec so the old one isn't pushed to
+                traits.push_back(AnTraitType::get(n->name));
+                node->setType(AnFunctionType::get(fdty->retTy, fdty->extTys, traits));
+            }
         }
     }
 }

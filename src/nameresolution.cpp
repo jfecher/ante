@@ -218,7 +218,7 @@ namespace ante {
         }else{ // impl Trait
             AnType *preTrait = toAnType(n->trait.get());
             AnTraitType *trait = try_cast<AnTraitType>(preTrait);
-            if(!try_cast<AnTraitType>(preTrait))
+            if(!trait)
                 error(anTypeToColoredStr(preTrait) + " is not a trait", n->trait->loc);
 
             if(trait->implemented()){
@@ -226,13 +226,13 @@ namespace ante {
                 error("Previously implemented here", trait->impl->loc, ErrorType::Note);
             }
 
-			for (auto *m : *n->methods) {
-				auto fdn = dynamic_cast<FuncDeclNode*>(m);
-				if (fdn) {
-					auto *fd = new FuncDecl(fdn, fdn->name, this->compUnit);
-					fdn->decl = fd;
-				}
-			}
+            for (auto *m : *n->methods) {
+                auto fdn = dynamic_cast<FuncDeclNode*>(m);
+                if (fdn) {
+                    auto *fd = new FuncDecl(fdn, fdn->name, this->compUnit);
+                    fdn->decl = fd;
+                }
+            }
 
             trait->impl = n;
         }
@@ -549,14 +549,14 @@ namespace ante {
             exit(flag);
         }
         //Add this module to the cache first to ensure it is not compiled twice
-		NameResolutionVisitor newVisitor;
+        NameResolutionVisitor newVisitor;
         newVisitor.compUnit = &Module::getRoot().addPath(path);
         RootNode *root = parser::getRootNode();
         newVisitor.compUnit->ast.reset(root);
         root->accept(newVisitor);
 
-		if (errorCount()) return newVisitor;
-		TypeInferenceVisitor::infer(root);
+        if (errorCount()) return newVisitor;
+        TypeInferenceVisitor::infer(root);
         return newVisitor;
     }
 
@@ -740,12 +740,12 @@ namespace ante {
 
             for(auto *m : *n->methods)
                 tryTo([&](){ m->accept(submodule); });
-		} else {
-			if (!alreadyImported(*this, "Prelude"))
-				tryTo([&]() { importFile("stdlib/prelude.an", n->loc); });
-			for (auto *m : *n->methods)
-				tryTo([&]() { m->accept(*this); });
-		}
+        } else {
+            if (!alreadyImported(*this, "Prelude"))
+                tryTo([&]() { importFile("stdlib/prelude.an", n->loc); });
+            for (auto *m : *n->methods)
+                tryTo([&]() { m->accept(*this); });
+        }
     }
 
     void NameResolutionVisitor::visit(JumpNode *n){

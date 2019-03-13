@@ -632,12 +632,8 @@ namespace ante {
             return impl;
         }
 
-        const std::string& name() const noexcept {
-            return trait->name;
-        }
-
         bool operator==(AnTraitType const& r){
-            return name() == r.name() && selfType == r.selfType && typeArgs == r.typeArgs;
+            return name == r.name && selfType == r.selfType && typeArgs == r.typeArgs;
         }
     };
 

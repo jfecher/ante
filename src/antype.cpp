@@ -345,6 +345,12 @@ namespace ante {
         return search(typeArena.dataTypes, name);
     }
 
+    AnDataType* getRootUnboundType(AnDataType *dt){
+        AnDataType *ret = dt;
+        while(ret->unboundType) ret = ret->unboundType;
+        return ret;
+    }
+
     /**
      * Search for a data type generic variant by name.
      * Returns it if found, or creates it otherwise.
@@ -361,6 +367,7 @@ namespace ante {
         ret->isGeneric = ante::isGeneric(typeArgs);
         ret->fieldNames = parent->fieldNames;
         ret->parentUnionType = nullptr; //parentUnionType needs to be bound separately
+        ret->unboundType = getRootUnboundType(parent);
         typeArena.dataTypeVariants[key].reset(ret);
         return ret;
     }
@@ -379,6 +386,7 @@ namespace ante {
         auto ret = new AnSumType(parent->name, elems);
         ret->typeArgs = typeArgs;
         ret->isGeneric = ante::isGeneric(typeArgs);
+        ret->unboundType = getRootUnboundType(parent);
         typeArena.dataTypeVariants[key].reset(ret);
         return ret;
     }
@@ -395,11 +403,12 @@ namespace ante {
     AnTraitType* AnTraitType::getOrCreateVariant(AnTraitType *parent,
             AnType *self, TypeArgs const& generics){
 
-        std::pair<std::string, std::pair<AnType*, TypeArgs>> key{parent->name(), {self, generics}};
+        std::pair<std::string, std::pair<AnType*, TypeArgs>> key{parent->name, {self, generics}};
         auto t = search(typeArena.traitTraitVariants, key);
         if(t) return t;
 
         t = new AnTraitType(parent->trait, self, generics);
+        t->unboundType = getRootUnboundType(parent);
         typeArena.traitTraitVariants[key].reset(t);
         return t;
     }

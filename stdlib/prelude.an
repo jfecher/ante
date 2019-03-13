@@ -174,12 +174,12 @@ trait To 't 'u
 
 //intrinsics for numeric types
 impl Cmp usz
-    fun (<): a, b = ()
-    fun (>): a, b = ()
+    fun (<): a, b = true
+    fun (>): a, b = true
 
 impl Cmp i32
-    fun (<): a, b = ()
-    fun (>): a, b = ()
+    fun (<): a, b = true
+    fun (>): a, b = true
 
 impl Add i32
     fun (+): a, b = a + b
@@ -277,7 +277,7 @@ impl Print Str
         printne s.cStr
 
 
-impl To Str c8
+impl To Str (ref c8)
     fun to: _, Str s = s.cStr
 
 
@@ -477,7 +477,7 @@ module Str
     fun print: Str s
         puts s.cStr
 
-impl To Str (ref c8)
+impl To (ref c8) Str
     fun to: t, ref c8 cStr -> Str
         Str(cStr, usz strlen cStr)
 

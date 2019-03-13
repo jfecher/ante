@@ -261,7 +261,7 @@ namespace ante {
             auto fnty = try_cast<AnFunctionType>(n->lval->getType());
             if(!fnty){
                 auto args = try_cast<AnAggregateType>(n->rval->getType());
-				if (!args) args = AnAggregateType::get(TT_Tuple, {n->rval->getType()});
+                if (!args) args = AnAggregateType::get(TT_Tuple, {n->rval->getType()});
                 auto params = vecOf<AnType*>(args->extTys.size());
 
                 for(size_t i = 0; i < args->extTys.size(); i++){
@@ -276,7 +276,7 @@ namespace ante {
                 addConstraint(n->lval->getType(), fnty, n->loc);
             }else{
                 auto args = try_cast<AnAggregateType>(n->rval->getType());
-				if (!args) args = AnAggregateType::get(TT_Tuple, { n->rval->getType() });
+                if (!args) args = AnAggregateType::get(TT_Tuple, { n->rval->getType() });
 
                 size_t paramc = fnty->extTys.size();
                 size_t argc = args->extTys.size();
@@ -369,10 +369,7 @@ namespace ante {
         }
     }
 
-    void ConstraintFindingVisitor::visit(NamedValNode *n){
-        if(n->typeExpr)
-            n->typeExpr->accept(*this);
-    }
+    void ConstraintFindingVisitor::visit(NamedValNode *n){}
 
     void ConstraintFindingVisitor::visit(VarNode *n){}
 
@@ -382,9 +379,26 @@ namespace ante {
         n->ref_expr->accept(*this);
     }
 
-    // constraints should already be collected
-    // directly in TypeInferenceVisitor::visit(FuncDeclNode*)
-    void ConstraintFindingVisitor::visit(ExtNode *n){}
+    void ConstraintFindingVisitor::addConstraintsFromTCDecl(FuncDeclNode *fdn, AnTraitType *tr){
+        auto parent = try_cast<AnTraitType>(tr->unboundType);
+        addConstraint(parent->selfType, tr->selfType, fdn->params->loc);
+        for(size_t i = 0; i < parent->typeArgs.size(); i++){
+            addConstraint(parent->typeArgs[i], tr->typeArgs[i], fdn->params->loc);
+        }
+    }
+
+    void ConstraintFindingVisitor::visit(ExtNode *n){
+        if(n->trait){
+            auto tr = try_cast<AnTraitType>(toAnType(n->trait.get()));
+            for(auto *m : *n->methods){
+                auto fdn = dynamic_cast<FuncDeclNode*>(m);
+                if(fdn){
+                    addConstraintsFromTCDecl(fdn, tr);
+                    visit(fdn); // visit the node directly since we know its type
+                }
+            }
+        }
+    }
 
     void ConstraintFindingVisitor::visit(JumpNode *n){
         n->expr->accept(*this);
@@ -416,10 +430,6 @@ namespace ante {
     }
 
     void ConstraintFindingVisitor::visit(FuncDeclNode *n){
-        for(auto *p : *n->params){
-            p->accept(*this);
-        }
-
         if(n->child){
             n->child->accept(*this);
 
