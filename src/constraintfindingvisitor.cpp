@@ -405,8 +405,8 @@ namespace ante {
     void ConstraintFindingVisitor::visit(ExtNode *n){
         if(n->trait){
             auto tr = try_cast<AnTraitType>(toAnType(n->trait.get()));
-            for(auto *m : *n->methods){
-                auto fdn = dynamic_cast<FuncDeclNode*>(m);
+            for(Node &m : *n->methods){
+                auto fdn = dynamic_cast<FuncDeclNode*>(&m);
                 if(fdn){
                     auto *decl = getDecl(fdn->name, tr->trait);
                     fdn->setType(decl->getType());

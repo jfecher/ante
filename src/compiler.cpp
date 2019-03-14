@@ -74,8 +74,8 @@ Node* getNthNode(Node *node, size_t n){
  */
 TypedValue compileStmtList(Node *nList, Compiler *c){
     TypedValue ret;
-    for(Node *n : *nList){
-        ret = CompilingVisitor::compile(c, n);
+    for(Node &n : *nList){
+        ret = CompilingVisitor::compile(c, &n);
     }
     return ret;
 }
@@ -898,8 +898,8 @@ string mangle(string const& base, TypeNode *p1, TypeNode *p2, TypeNode *p3){
  *         functions were found.
  */
 FuncDeclNode* findFDN(Node *list, string const& basename){
-    for(Node *n : *list){
-        auto *fdn = (FuncDeclNode*)n;
+    for(Node &n : *list){
+        auto *fdn = (FuncDeclNode*)&n;
 
         if(fdn->name == basename){
             return fdn;

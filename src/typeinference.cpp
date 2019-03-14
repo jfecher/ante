@@ -259,15 +259,15 @@ namespace ante {
     void TypeInferenceVisitor::visit(ExtNode *n){
         if(n->trait){
             auto tr = try_cast<AnTraitType>(toAnType(n->trait.get()));
-            for(auto *m : *n->methods){
-                auto fdn = dynamic_cast<FuncDeclNode*>(m);
+            for(Node &m : *n->methods){
+                auto fdn = dynamic_cast<FuncDeclNode*>(&m);
                 if(fdn){
                     fdn->child->accept(*this);
-                    for(auto param : *fdn->params){
-                        param->accept(*this);
+                    for(Node &param : *fdn->params){
+                        param.accept(*this);
                     }
                 }else{
-                    m->accept(*this);
+                    m.accept(*this);
                 }
             }
             ConstraintFindingVisitor step2;
@@ -286,9 +286,9 @@ namespace ante {
                 // n->setType(newFnTy);
             });
         }else{
-            for(auto *m : *n->methods){
+            for(Node &m : *n->methods){
                 if(!n->typeExpr){
-                    m->accept(*this);
+                    m.accept(*this);
                 }
             }
         }
@@ -330,8 +330,8 @@ namespace ante {
 
     vector<AnTraitType*> toTraitTypeVec(std::unique_ptr<TypeNode> const& tn){
         vector<AnTraitType*> ret;
-        for(Node *n : *tn){
-            ret.push_back((AnTraitType*)toAnType((TypeNode*)n));
+        for(Node &n : *tn){
+            ret.push_back((AnTraitType*)toAnType((TypeNode*)&n));
         }
         return ret;
     }
@@ -341,9 +341,9 @@ namespace ante {
             return;
 
         vector<AnType*> paramTypes;
-        for(auto *p : *n->params){
-            p->accept(*this);
-            paramTypes.push_back(p->getType());
+        for(Node &p : *n->params){
+            p.accept(*this);
+            paramTypes.push_back(p.getType());
         }
 
         auto typeClassConstraints = toTraitTypeVec(n->typeClassConstraints);
@@ -380,14 +380,14 @@ namespace ante {
 
     void TypeInferenceVisitor::visit(TraitNode *n){
         n->setType(AnType::getVoid());
-        for(auto *node : *n->child){
-            node->accept(*this);
-            auto fdn = dynamic_cast<FuncDeclNode*>(node);
+        for(Node &node : *n->child){
+            node.accept(*this);
+            auto fdn = dynamic_cast<FuncDeclNode*>(&node);
             if (fdn) {
                 auto fdty = try_cast<AnFunctionType>(fdn->getType());
                 auto traits = fdty->typeClassConstraints; // copy the vec so the old one isn't pushed to
                 traits.push_back(AnTraitType::get(n->name));
-                node->setType(AnFunctionType::get(fdty->retTy, fdty->extTys, traits));
+                node.setType(AnFunctionType::get(fdty->retTy, fdty->extTys, traits));
             }
         }
     }

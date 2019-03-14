@@ -144,8 +144,8 @@ namespace ante {
     }
 
     void SubstitutingVisitor::visit(ExtNode *n){
-        for(auto *m : *n->methods)
-            m->accept(*this);
+        for(Node &m : *n->methods)
+            m.accept(*this);
     }
 
     void SubstitutingVisitor::visit(JumpNode *n){
@@ -178,8 +178,8 @@ namespace ante {
     }
 
     void SubstitutingVisitor::visit(FuncDeclNode *n){
-        for(auto *p : *n->params){
-            p->accept(*this);
+        for(Node &p : *n->params){
+            p.accept(*this);
         }
 
         if(n->child)

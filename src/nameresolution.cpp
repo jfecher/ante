@@ -216,11 +216,24 @@ namespace ante {
         });
     }
 
+    void checkParamCountMatches(FuncDeclNode *decl, FuncDeclNode *def){
+        size_t expectedParams = ante::count(*decl->params);
+        size_t numParams = ante::count(*def->params);
+        if(expectedParams != numParams){
+            string part1 = to_string(expectedParams) + (expectedParams == 1 ? " parameter" : " parameters");
+            string part2 = to_string(numParams) + (numParams == 1 ? " was" : " were");
+            showError(def->name + " was declared to take " + part1 + " but " + part2 + " given here", def->loc);
+        }
+    }
+
     bool checkFnInTraitDecl(vector<shared_ptr<FuncDecl>> const& traitDeclFns,
             vector<FuncDecl*> const& traitImplFns, FuncDeclNode *fdn, AnTraitType *trait){
 
-        if(hasFunction(traitDeclFns, fdn->name))
+        auto decl = getFunction(traitDeclFns, fdn->name);
+        if(decl != traitDeclFns.cend()){
+            checkParamCountMatches((*decl)->getFDN(), fdn);
             return true;
+        }
 
         auto original = getFunction(traitImplFns, fdn->name);
         if(original != traitImplFns.cend()){
@@ -256,8 +269,8 @@ namespace ante {
         auto traitDeclFns = trait->trait->funcs;
         auto traitImplFns = vecOf<FuncDecl*>(traitDeclFns.size());
 
-        for (auto *m : *n->methods) {
-            auto fdn = dynamic_cast<FuncDeclNode*>(m);
+        for (Node &m : *n->methods) {
+            auto fdn = dynamic_cast<FuncDeclNode*>(&m);
             if (fdn) {
                 auto *fd = new FuncDecl(fdn, fdn->name, v.compUnit);
                 fdn->decl = fd;
@@ -283,8 +296,8 @@ namespace ante {
             if(!alreadyImported(submoduleVisitor, "Prelude"))
                 tryTo([&](){ submoduleVisitor.importFile("stdlib/prelude.an", n->loc); });
 
-            for(auto *m : *n->methods)
-                tryTo([&](){ submoduleVisitor.declare((FuncDeclNode*)m); });
+            for(Node &m : *n->methods)
+                tryTo([&](){ submoduleVisitor.declare((FuncDeclNode*)&m); });
         }else{ // impl Trait
             handleTraitImpl(*this, n);
         }
@@ -790,13 +803,13 @@ namespace ante {
 
             assert(submodule.compUnit && ("Could not find submodule " + name).c_str());
 
-            for(auto *m : *n->methods)
-                tryTo([&](){ m->accept(submodule); });
+            for(Node &m : *n->methods)
+                tryTo([&](){ m.accept(submodule); });
         } else {
             if (!alreadyImported(*this, "Prelude"))
                 tryTo([&]() { importFile("stdlib/prelude.an", n->loc); });
-            for (auto *m : *n->methods)
-                tryTo([&]() { m->accept(*this); });
+            for (Node &m : *n->methods)
+                tryTo([&]() { m.accept(*this); });
         }
     }
 
@@ -845,8 +858,8 @@ namespace ante {
         }
 
         enterFunction();
-        for(auto *p : *n->params){
-            p->accept(*this);
+        for(Node &p : *n->params){
+            p.accept(*this);
         }
 
         if(n->child)
@@ -1005,10 +1018,10 @@ namespace ante {
         // tr will still be mutated with additional methods after
         AnTraitType::create(tr, genericSelfParam, convertToTypeArgs(n->generics));
 
-        for(auto *fn : *n->child){
-            fn->accept(*this);
+        for(Node &fn : *n->child){
+            fn.accept(*this);
 
-            auto *fdn = dynamic_cast<FuncDeclNode*>(fn);
+            auto *fdn = dynamic_cast<FuncDeclNode*>(&fn);
             if(fdn){
                 auto *fd = static_cast<FuncDecl*>(fdn->decl);
                 compUnit->fnDecls[fdn->name] = fd;

@@ -18,6 +18,16 @@ namespace ante {
         return vec;
     }
 
+    /** Perform an element count in linear time for lists or similar data structures. */
+    template<typename T>
+    size_t count(T& collection){
+        size_t i = 0;
+        for(auto &_unused : collection){
+            i++;
+        }
+        return i;
+    }
+
     template<typename T, typename E>
     typename T::const_iterator find(T const& collection, E const& elem){
         auto it = collection.cbegin();

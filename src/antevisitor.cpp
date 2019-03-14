@@ -176,8 +176,8 @@ namespace ante {
     }
 
     void AnteVisitor::visit(parser::ExtNode *n){
-        for(auto fn : *n->methods)
-            fn->accept(*this);
+        for(auto &fn : *n->methods)
+            fn.accept(*this);
     }
 
     void AnteVisitor::visit(parser::ImportNode *n){

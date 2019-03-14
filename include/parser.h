@@ -42,7 +42,7 @@ namespace ante {
             Node *cur;
 
             NodeIterator operator++();
-            Node* operator*();
+            Node& operator*();
             bool operator==(NodeIterator r);
             bool operator!=(NodeIterator r);
         };

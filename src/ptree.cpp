@@ -134,8 +134,8 @@ namespace ante {
         void copyModsToContainedNodes(ModNode *m, ModifiableNode *n){
             if(!m->isCompilerDirective()){
                 if(ExtNode *en = dynamic_cast<ExtNode*>(n)){
-                    for(auto *f : *en->methods){
-                        if(ModifiableNode *fmn = dynamic_cast<ModifiableNode*>(f)){
+                    for(Node &f : *en->methods){
+                        if(ModifiableNode *fmn = dynamic_cast<ModifiableNode*>(&f)){
                             ModNode *cpy = new ModNode(m->loc, m->mod, nullptr);
                             fmn->modifiers.emplace_back(cpy);
                         }
@@ -181,8 +181,8 @@ namespace ante {
             return *this;
         }
 
-        Node* NodeIterator::operator*(){
-            return cur;
+        Node& NodeIterator::operator*(){
+            return *cur;
         }
 
         bool NodeIterator::operator==(NodeIterator r){
