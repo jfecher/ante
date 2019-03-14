@@ -1,6 +1,7 @@
 #include "function.h"
 #include "compapi.h"
 #include "scopeguard.h"
+#include "util.h"
 
 using namespace std;
 using namespace llvm;

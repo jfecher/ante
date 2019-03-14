@@ -28,6 +28,7 @@
 #include "target.h"
 #include "nameresolution.h"
 #include "typeinference.h"
+#include "util.h"
 
 using namespace std;
 using namespace llvm;

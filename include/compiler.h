@@ -483,13 +483,6 @@ namespace ante {
 
     TypedValue compileRefExpr(CompilingVisitor &cv, parser::Node *refExpr, parser::Node *assignExpr);
 
-    /** @brief Create a vector with a capacity of at least cap elements. */
-    template<typename T> std::vector<T> vecOf(size_t cap){
-        std::vector<T> vec;
-        vec.reserve(cap);
-        return vec;
-    }
-
     /** @brief Converts the Node list argument into a vector */
     template<typename T> std::vector<T*> vectorize(T *args);
 

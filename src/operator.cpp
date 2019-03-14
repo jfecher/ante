@@ -9,6 +9,7 @@
 #include "antevalue.h"
 #include "compapi.h"
 #include "target.h"
+#include "util.h"
 
 using namespace std;
 using namespace llvm;

@@ -202,6 +202,76 @@ namespace ante {
         });
     }
 
+    template<typename T>
+    bool hasFunction(vector<T> const& fns, string const& name){
+        return ante::any(fns, [&](T const& declFn){
+            return declFn->name == name;
+        });
+    }
+
+    template<typename T>
+    typename vector<T>::const_iterator getFunction(vector<T> const& fns, string const& name){
+        return ante::find_if(fns, [&](T const& declFn){
+            return declFn->name == name;
+        });
+    }
+
+    bool checkFnInTraitDecl(vector<shared_ptr<FuncDecl>> const& traitDeclFns,
+            vector<FuncDecl*> const& traitImplFns, FuncDeclNode *fdn, AnTraitType *trait){
+
+        if(hasFunction(traitDeclFns, fdn->name))
+            return true;
+
+        auto original = getFunction(traitImplFns, fdn->name);
+        if(original != traitImplFns.cend()){
+            showError("Duplicate function " + fdn->name + " in trait impl", fdn->loc);
+            showError(fdn->name + " previously defined here", (*original)->getFDN()->loc, ErrorType::Note);
+        }else{
+            showError("No function named " + fdn->name + " in trait " + trait->name, fdn->loc);
+        }
+        return false;
+    }
+
+    void checkForUnimplementedFunctions(vector<shared_ptr<FuncDecl>> const& traitDeclFns, AnTraitType *trait){
+        if(!traitDeclFns.empty()){
+            for(auto &fn : traitDeclFns){
+                showError("impl " + anTypeToColoredStr(trait) + " missing implementation of " + fn->getName(), trait->impl->loc);
+                showError(fn->getName() + " declared here", fn->getFDN()->loc, ErrorType::Note);
+            }
+            throw CtError();
+        }
+    }
+
+    void handleTraitImpl(NameResolutionVisitor &v, ExtNode *n){
+        AnType *preTrait = toAnType(n->trait.get());
+        AnTraitType *trait = try_cast<AnTraitType>(preTrait);
+        if(!trait)
+            error(anTypeToColoredStr(preTrait) + " is not a trait", n->trait->loc);
+
+        if(trait->implemented()){
+            showError(anTypeToColoredStr(trait) + " has already been implemented", n->loc);
+            error("Previously implemented here", trait->impl->loc, ErrorType::Note);
+        }
+
+        auto traitDeclFns = trait->trait->funcs;
+        auto traitImplFns = vecOf<FuncDecl*>(traitDeclFns.size());
+
+        for (auto *m : *n->methods) {
+            auto fdn = dynamic_cast<FuncDeclNode*>(m);
+            if (fdn) {
+                auto *fd = new FuncDecl(fdn, fdn->name, v.compUnit);
+                fdn->decl = fd;
+                if(checkFnInTraitDecl(traitDeclFns, traitImplFns, fdn, trait)){
+                    ante::remove_if(traitDeclFns, [&](shared_ptr<FuncDecl> &declFn){ return declFn->name == fd->name; });
+                    traitImplFns.push_back(fd);
+                }
+            }
+        }
+
+        trait->impl = n;
+        checkForUnimplementedFunctions(traitDeclFns, trait);
+    }
+
     void NameResolutionVisitor::declare(ExtNode *n){
         if(n->typeExpr){ // module Mod
             string name = typeNodeToStr(n->typeExpr.get());
@@ -216,25 +286,7 @@ namespace ante {
             for(auto *m : *n->methods)
                 tryTo([&](){ submoduleVisitor.declare((FuncDeclNode*)m); });
         }else{ // impl Trait
-            AnType *preTrait = toAnType(n->trait.get());
-            AnTraitType *trait = try_cast<AnTraitType>(preTrait);
-            if(!trait)
-                error(anTypeToColoredStr(preTrait) + " is not a trait", n->trait->loc);
-
-            if(trait->implemented()){
-                showError(anTypeToColoredStr(trait) + " has already been implemented", n->loc);
-                error("Previously implemented here", trait->impl->loc, ErrorType::Note);
-            }
-
-            for (auto *m : *n->methods) {
-                auto fdn = dynamic_cast<FuncDeclNode*>(m);
-                if (fdn) {
-                    auto *fd = new FuncDecl(fdn, fdn->name, this->compUnit);
-                    fdn->decl = fd;
-                }
-            }
-
-            trait->impl = n;
+            handleTraitImpl(*this, n);
         }
     }
 
