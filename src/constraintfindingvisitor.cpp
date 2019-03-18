@@ -450,7 +450,7 @@ namespace ante {
 
     AnType* variantTyWithoutTag(AnType *t){
         auto pt = try_cast<AnProductType>(t);
-        return pt->fields.size() != 2 ? AnType::getVoid() : pt->fields[1];
+        return pt->fields[1];
     }
 
     void ConstraintFindingVisitor::handlePattern(MatchNode *n, Node *pattern, AnType *expectedType){
@@ -492,6 +492,9 @@ namespace ante {
             }else{
                 firstBranchTy = b->branch->getType();
             }
+        }
+        if(firstBranchTy){
+            addConstraint(firstBranchTy, n->getType(), n->loc);
         }
     }
 
