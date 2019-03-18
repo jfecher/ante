@@ -12,11 +12,7 @@ namespace ante {
 
     void AnType::dump() const{
         if(auto *dt = try_cast<AnDataType>(this)){
-            cout << dt->name;
-            for(auto &arg : dt->typeArgs){
-                cout << ' ' << anTypeToStr(arg);
-            }
-            cout << " = ";
+            cout << anTypeToStr(dt) << " = ";
             if(auto *pt = try_cast<AnProductType>(this)){
                 if(pt->fields.empty()){
                     cout << "()";

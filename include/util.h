@@ -2,6 +2,7 @@
 #define AN_UTIL_H
 
 #include "error.h"
+#include <memory>
 
 namespace ante {
     template<typename F>
@@ -74,6 +75,21 @@ namespace ante {
     bool any(T const& collection, F fn){
         return ante::find_if(collection, fn) != collection.cend();
     }
+
+    template<typename T>
+    std::ostream& operator<<(std::ostream &o, std::vector<T> const& vec){
+        o << '[';
+        for(auto &elem : vec){
+            o << elem;
+            if(&elem != &vec.back())
+                o << elem << ", ";
+        }
+        o << ']';
+    }
+
+    void print(parser::Node *n);
+    void print(std::shared_ptr<parser::Node> const& n);
+    void print(std::unique_ptr<parser::Node> const& n);
 }
 
 #endif

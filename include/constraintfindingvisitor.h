@@ -27,6 +27,12 @@ namespace ante {
             /** Add bindings from a trait's declaration to the scope of
              *  the trait's implementation to better infer parameter/return types. */
             void addConstraintsFromTCDecl(parser::FuncDeclNode *fdn, AnTraitType *tr, parser::FuncDeclNode *decl);
+
+            void handlePattern(parser::MatchNode *n, parser::Node *pat, AnType *expectedType);
+
+            void handleTuplePattern(parser::MatchNode *n, parser::TupleNode *pat, AnType *expectedType);
+
+            void handleUnionVariantPattern(parser::MatchNode *n, parser::Node *typecastRhs, AnType *variantTy, AnType *expectedType);
     };
 }
 
