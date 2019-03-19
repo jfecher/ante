@@ -20,6 +20,14 @@ namespace ante {
         return ret;
     }
 
+    void setExtsParentUnionTypeIfNotSet(AnSumType *parentUnion, std::vector<AnProductType*> &exts){
+        for(auto e : exts){
+            if(!e->parentUnionType){
+                e->parentUnionType = parentUnion;
+            }
+        }
+    }
+
     AnType* copyWithNewTypeVars(AnType *t, std::unordered_map<std::string, AnTypeVarType*> &map){
         if(!t->isGeneric)
             return t;
@@ -45,7 +53,7 @@ namespace ante {
                 return st;
             }else{
                 auto ret = AnSumType::getOrCreateVariant(st, exts, typeVars);
-                for(auto e : exts) e->parentUnionType = ret;
+                setExtsParentUnionTypeIfNotSet(ret, exts);
                 return ret;
             }
 
@@ -144,7 +152,7 @@ namespace ante {
                 return st;
             }else{
                 auto ret = AnSumType::getOrCreateVariant(st, exts, generics);
-                for(auto e : exts) e->parentUnionType = ret;
+                setExtsParentUnionTypeIfNotSet(ret, exts);
                 return ret;
             }
 
