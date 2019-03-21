@@ -63,15 +63,16 @@ set(AN_YYPARSER_H ${CMAKE_SOURCE_DIR}/include/yyparser.h)
 set(AN_SYNTAX_Y ${CMAKE_SOURCE_DIR}/src/syntax.y)
 bison_target(parser ${AN_SYNTAX_Y} ${AN_PARSER_SRC} COMPILE_FLAGS "-Lc++ -o${AN_PARSER_SRC} --defines=${AN_YYPARSER_H}")
 
-set_source_files_properties(include/lexer.cpp include/compiler.cpp
-    PROPERTIES OBJECT_DEPENDS ${AN_PARSER_SRC})
-
 include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
 
 add_definitions(-DAN_LIB_DIR="${PROJECT_SOURCE_DIR}/stdlib/")
 
-add_library(antecommon SHARED
+# Find the libraries that correspond to the LLVM components
+# that we wish to use
+llvm_map_components_to_libnames(llvm_libs core orcjit native bitwriter passes target)
+
+add_library(antecommon STATIC
         include/antevalue.h
         include/antype.h
         include/args.h
@@ -104,7 +105,6 @@ add_library(antecommon SHARED
         include/unification.h
         include/uniontag.h
         include/variable.h
-        ${BISON_parser_OUTPUT_HEADER}
         src/antevalue.cpp
         src/antevisitor.cpp
         src/antype.cpp
@@ -121,6 +121,7 @@ add_library(antecommon SHARED
         src/nodeprinter.cpp
         src/operator.cpp
         ${BISON_parser_OUTPUT_SOURCE}
+        src/parser.cpp
         src/pattern.cpp
         src/ptree.cpp
         src/repl.cpp
@@ -129,12 +130,10 @@ add_library(antecommon SHARED
         src/types.cpp
         src/unification.cpp)
 
-# Find the libraries that correspond to the LLVM components
-# that we wish to use
-llvm_map_components_to_libnames(llvm_libs core orcjit native bitwriter passes target)
 target_link_libraries(antecommon ${llvm_libs})
 
 add_executable(ante src/ante.cpp)
+
 target_link_libraries(ante antecommon)
 
 add_executable(antetests
