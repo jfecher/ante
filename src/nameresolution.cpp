@@ -294,7 +294,7 @@ namespace ante {
             submoduleVisitor.compUnit = &submodule;
 
             if(!alreadyImported(submoduleVisitor, "Prelude"))
-                tryTo([&](){ submoduleVisitor.importFile("stdlib/prelude.an", n->loc); });
+                tryTo([&](){ submoduleVisitor.importFile(AN_PRELUDE_FILE, n->loc); });
 
             for(Node &m : *n->methods)
                 tryTo([&](){ submoduleVisitor.declare((FuncDeclNode*)&m); });
@@ -306,7 +306,7 @@ namespace ante {
 
     void NameResolutionVisitor::visit(RootNode *n){
         if(compUnit->name != "Prelude"){
-            tryTo([&](){ importFile("stdlib/prelude.an", n->loc); });
+            tryTo([&](){ importFile(AN_PRELUDE_FILE, n->loc); });
         }
         for(auto &m : n->imports)
             tryTo([&](){ m->accept(*this); });
@@ -807,7 +807,7 @@ namespace ante {
                 tryTo([&](){ m.accept(submodule); });
         } else {
             if (!alreadyImported(*this, "Prelude"))
-                tryTo([&]() { importFile("stdlib/prelude.an", n->loc); });
+                tryTo([&]() { importFile(AN_PRELUDE_FILE, n->loc); });
             for (Node &m : *n->methods)
                 tryTo([&]() { m.accept(*this); });
         }
