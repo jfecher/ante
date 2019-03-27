@@ -3,6 +3,8 @@
 
 //Triple: Arch, Vendor, OS, Env=0
 
+#define AN_PRELUDE_FILE "prelude.an"
+
 /*
  *  Evaluate several macros to determine host OS and architecture.
  */

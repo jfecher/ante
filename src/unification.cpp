@@ -32,6 +32,11 @@ namespace ante {
         if(!t->isGeneric)
             return t;
 
+        if(t->isModifierType()){
+            auto modTy = static_cast<AnModifier*>(t);
+            return (AnType*)modTy->addModifiersTo(copyWithNewTypeVars((AnType*)modTy->extTy, map));
+        }
+
         if(auto fn = try_cast<AnFunctionType>(t)){
             return AnFunctionType::get(copyWithNewTypeVars(fn->retTy, map),
                     copyWithNewTypeVars(fn->extTys, map),
@@ -125,6 +130,11 @@ namespace ante {
     AnType* substitute(AnType *u, AnType* subType, AnType *t){
         if(!t->isGeneric)
             return t;
+
+        if(t->isModifierType()){
+            auto modTy = static_cast<AnModifier*>(t);
+            return (AnType*)modTy->addModifiersTo(substitute(u, subType, (AnType*)modTy->extTy));
+        }
 
         if(auto ptr = try_cast<AnPtrType>(t)){
             return AnPtrType::get(substitute(u, subType, ptr->extTy));
