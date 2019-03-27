@@ -51,8 +51,8 @@ namespace ante {
         friend AnTypeContainer;
 
     protected:
-        AnType(TypeTag id, bool ig, size_t mt) :
-            typeTag(id), isGeneric(ig), numMatchedTys(mt){}
+        AnType(TypeTag id, bool ig) :
+            typeTag(id), isGeneric(ig){}
 
     public:
 
@@ -60,11 +60,6 @@ namespace ante {
 
         TypeTag typeTag;
         bool isGeneric;
-
-        /** The number of types contained within this AnType, including itself.
-         * This is the number of types "matched" during type checking when this
-         * type is equal to another. */
-        size_t numMatchedTys;
 
         virtual bool hasModifier(TokenType m) const;
 
@@ -129,8 +124,7 @@ namespace ante {
     class AnModifier : public AnType {
         protected:
         AnModifier(const AnType *modifiedType) :
-            AnType(modifiedType->typeTag, modifiedType->isGeneric,
-                    modifiedType->numMatchedTys+1), extTy(modifiedType){}
+            AnType(modifiedType->typeTag, modifiedType->isGeneric), extTy(modifiedType){}
 
         public:
         const AnType *extTy;
@@ -221,16 +215,14 @@ namespace ante {
     };
 
 
-    size_t getNumMatchedTys(const std::vector<AnType*> &types);
-
     /** Tuple types */
     class AnAggregateType : public AnType {
         protected:
         AnAggregateType(TypeTag ty, const std::vector<AnType*> exts) :
-                AnType(ty, ante::isGeneric(exts), getNumMatchedTys(exts)+1), extTys(exts) {}
+                AnType(ty, ante::isGeneric(exts)), extTys(exts) {}
 
         AnAggregateType(TypeTag ty, const std::vector<AnType*> exts, bool isGeneric) :
-                AnType(ty, isGeneric, getNumMatchedTys(exts)+1), extTys(exts) {}
+                AnType(ty, isGeneric), extTys(exts) {}
         public:
 
         ~AnAggregateType() = default;
@@ -263,7 +255,7 @@ namespace ante {
     class AnArrayType : public AnType {
         protected:
         AnArrayType(AnType* ext, size_t l) :
-            AnType(TT_Array, ext->isGeneric, ext->numMatchedTys + (l == 0 ? 1 : 2)), extTy(ext), len(l) {}
+            AnType(TT_Array, ext->isGeneric), extTy(ext), len(l) {}
 
         public:
 
@@ -293,7 +285,7 @@ namespace ante {
     class AnPtrType : public AnType {
         protected:
         AnPtrType(AnType* ext) :
-            AnType(TT_Ptr, ext->isGeneric, ext->numMatchedTys + 2), extTy(ext){}
+            AnType(TT_Ptr, ext->isGeneric), extTy(ext){}
 
         public:
 
@@ -321,7 +313,7 @@ namespace ante {
     class AnTypeVarType : public AnType {
         protected:
         AnTypeVarType(std::string const& n) :
-            AnType(TT_TypeVar, true, 1), name(n){}
+            AnType(TT_TypeVar, true), name(n){}
 
         public:
 
@@ -357,9 +349,6 @@ namespace ante {
                 : AnAggregateType(isMetaFunction ? TT_MetaFunction : TT_Function, elems,
                         ret->isGeneric || ante::isGeneric(elems)),
                   retTy(ret), typeClassConstraints(tcConstrains){
-
-            //numMatchedTys = #params + 1 ret ty + 1 fn ty itself
-            numMatchedTys = elems.size() + 2;
         }
 
         public:
@@ -405,7 +394,7 @@ namespace ante {
 
         protected:
         AnDataType(std::string const& n, TypeTag tt) :
-                AnType(tt, false, 1), name(n), traitImpls(),
+                AnType(tt, false), name(n), traitImpls(),
                 unboundType(0), llvmType(0), isAlias(false){}
 
         public:
