@@ -168,31 +168,6 @@ namespace ante {
                         mkPos(loc.end.filename,   loc.end.line,   loc.end.column));
         }
 
-        NodeIterator Node::begin(){
-            return {this};
-        }
-
-        NodeIterator Node::end(){
-            return {nullptr};
-        }
-
-        NodeIterator NodeIterator::operator++(){
-            cur = cur->next.get();
-            return *this;
-        }
-
-        Node& NodeIterator::operator*(){
-            return *cur;
-        }
-
-        bool NodeIterator::operator==(NodeIterator r){
-            return cur == r.cur;
-        }
-
-        bool NodeIterator::operator!=(NodeIterator r){
-            return cur != r.cur;
-        }
-
         /*
         *  Saves the root of a new block and returns it.
         */

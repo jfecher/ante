@@ -38,24 +38,37 @@ namespace ante {
 
         struct Node;
 
+        template<typename T>
         struct NodeIterator {
-            Node *cur;
+            T *cur;
 
-            NodeIterator operator++();
-            Node& operator*();
-            bool operator==(NodeIterator r);
-            bool operator!=(NodeIterator r);
+            NodeIterator<T> operator++(){
+                cur = cur->next.get();
+                return *this;
+            }
+            T& operator*(){ return *cur; }
+            bool operator==(NodeIterator<T> r){ return cur == r.cur; }
+            bool operator!=(NodeIterator<T> r){ return cur != r.cur; }
         };
 
         /* Base class for all nodes */
         struct Node{
+            typedef NodeIterator<const Node> const_iterator;
+            typedef const Node* const_pointer;
+            typedef const Node& const_reference;
+            typedef NodeIterator<Node> iterator;
+            typedef Node* pointer;
+            typedef Node& reference;
+
             std::unique_ptr<Node> next;
             LOC_TY loc;
 
             virtual void accept(NodeVisitor& v) = 0;
 
-            NodeIterator begin();
-            NodeIterator end();
+            NodeIterator<const Node> begin() const { return {this}; }
+            NodeIterator<const Node> end() const   { return {nullptr}; }
+            NodeIterator<Node> begin()             { return {this}; }
+            NodeIterator<Node> end()               { return {nullptr}; }
 
             /** Nodes with a declaration store their type in a shared Declaration so these
              * get/set helpers are provided for uniform access. */

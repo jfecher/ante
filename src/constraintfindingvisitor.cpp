@@ -15,17 +15,6 @@ namespace ante {
         return constraints;
     }
 
-    template<typename T, typename F,
-        typename U = typename std::decay<typename std::result_of<F&(typename std::vector<T>::const_reference)>::type>::type>
-    std::vector<U> fnMap(std::vector<T> const& vec, F f){
-        std::vector<U> result;
-        result.reserve(vec.size());
-        for(const auto& elem : vec){
-            result.emplace_back(f(elem));
-        }
-        return result;
-    }
-
     AnType* ConstraintFindingVisitor::handleTypeClassConstraints(AnType *t, LOC_TY const& loc){
         if(!t->isGeneric)
             return t;
@@ -44,28 +33,28 @@ namespace ante {
             return AnArrayType::get(handleTypeClassConstraints(arr->extTy, loc), arr->len);
 
         }else if(auto pt = try_cast<AnProductType>(t)){
-            auto tArgs = fnMap(pt->typeArgs, handleExt);
+            auto tArgs = applyToAll(pt->typeArgs, handleExt);
             return AnProductType::getOrCreateVariant(pt, pt->fields, tArgs);
 
         }else if(auto st = try_cast<AnSumType>(t)){
-            auto tArgs = fnMap(st->typeArgs, handleExt);
+            auto tArgs = applyToAll(st->typeArgs, handleExt);
             return AnSumType::getOrCreateVariant(st, st->tags, tArgs);
 
         }else if(auto tt = try_cast<AnTraitType>(t)){
-            auto tArgs = fnMap(tt->typeArgs, handleExt);
+            auto tArgs = applyToAll(tt->typeArgs, handleExt);
             auto self = handleTypeClassConstraints(tt->selfType, loc);
 
             constraints.emplace_back(tt, loc);
             return self;
 
         }else if(auto fn = try_cast<AnFunctionType>(t)){
-            auto params = fnMap(fn->extTys, handleExt);
+            auto params = applyToAll(fn->extTys, handleExt);
             auto retty = handleTypeClassConstraints(fn->retTy, loc);
-            auto tcc = fnMap(fn->typeClassConstraints, handleTcExt);
+            auto tcc = applyToAll(fn->typeClassConstraints, handleTcExt);
             return AnFunctionType::get(retty, params, tcc);
 
         }else if(auto tup = try_cast<AnAggregateType>(t)){
-            return AnAggregateType::get(tup->typeTag, fnMap(tup->extTys, handleExt));
+            return AnAggregateType::get(tup->typeTag, applyToAll(tup->extTys, handleExt));
         }else{
             return t;
         }

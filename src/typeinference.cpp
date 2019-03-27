@@ -336,22 +336,23 @@ namespace ante {
         return ret;
     }
 
+    vector<AnType*> setParamTypes(TypeInferenceVisitor &v, NamedValNode *params){
+        return collect(*params, [&](const Node &n) {
+            auto p = (NamedValNode*)&n;
+            v.visit(p);
+            return p->getType();
+        });
+    }
+
     void TypeInferenceVisitor::visit(FuncDeclNode *n){
         if(n->getType())
             return;
 
-        vector<AnType*> paramTypes;
-        for(Node &p : *n->params){
-            p.accept(*this);
-            paramTypes.push_back(p.getType());
-        }
+        auto paramTypes = setParamTypes(*this, n->params.get());
 
         auto typeClassConstraints = toTraitTypeVec(n->typeClassConstraints);
-        if(n->returnType){
-            n->setType(AnFunctionType::get(toAnType(n->returnType.get()), paramTypes, typeClassConstraints));
-        }else{
-            n->setType(AnFunctionType::get(nextTypeVar(), paramTypes, typeClassConstraints));
-        }
+        AnType *retTy = n->returnType ? toAnType(n->returnType.get()) : nextTypeVar();
+        n->setType(AnFunctionType::get(retTy, paramTypes, typeClassConstraints));
 
         if(n->child)
             n->child->accept(*this);
