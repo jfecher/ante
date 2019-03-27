@@ -69,7 +69,7 @@ impl Eq (Maybe (Eq 'e))
             match r with
             | Some rv -> false
             | None -> true
-        
+
 
 
 impl To Str (Maybe (To Str 'm))
@@ -134,13 +134,14 @@ trait Is 't
 trait Append 't
     fun (++): 't l r -> 't
 
-trait Extract 'col 'elem
-    fun (#): 'col collection, usz index -> 'elem
+trait Extract 'col 'index
+    // type Elem
+    fun (#): 'col collection, 'index index -> 'elem
 
-trait Insert 'col 'elem
+trait Insert 'col 'index 'elem
     // temporary until functions with the same name and
     // a differing number of parameters can be declared.
-    fun insert: mut 'col collection, usz idx, 'elem elem
+    fun insert: mut 'col collection, 'index idx, 'elem elem
 
 trait In 'col 'elem
     fun (in): 'col collection, 'elem elem -> bool
@@ -162,7 +163,7 @@ trait Not 't
 
 trait Print 't
     fun printne: 't x
-    
+
 fun print: x
     printne x
     puts "".cStr
@@ -337,25 +338,25 @@ impl To Str u64
 // convert all other numeric types to strings by widening first
 // impl To i8 Str
 //     fun to: _, i8 x = to Str (i64 x)
-// 
+//
 // impl To i16 Str
 //     fun to: _, i16 x = to Str (i64 x)
-// 
+//
 // impl To i32 Str
 //     fun to: _, i32 x = to Str (i64 x)
-// 
+//
 // impl To isz Str
 //     fun to: _, isz x = to Str (i64 x)
-// 
+//
 // impl To u8 Str
 //     fun to: _, u8 x = to Str (u64 x)
-// 
+//
 // impl To u16 Str
 //     fun to: _, u16 x = to Str (u64 x)
-// 
+//
 // impl To u32 Str
 //     fun to: _, u32 x = to Str (u64 x)
-// 
+//
 // impl To usz Str
 //     fun to: _, usz x = to Str (u64 x)
 
@@ -364,7 +365,7 @@ impl To Str u64
 //     fun parse: Str s -> Maybe u64
 //         mut i = 0
 //         mut sum = 0u64
-// 
+//
 //         while s#i != '\0' do
 //             let c = s#i
 //             if c >= '0' and c <= '9' then
@@ -373,9 +374,9 @@ impl To Str u64
 //                 i += 1
 //             else
 //                 return None
-// 
+//
 //         Some sum
-// 
+//
 // module i64
 //     fun parse: Str s -> Maybe i64
 //         mut i = 0
@@ -385,7 +386,7 @@ impl To Str u64
 //                 i += 1
 //                 true
 //             else false
-// 
+//
 //         while s#i != '\0' do
 //             let c = s#i
 //             if c >= '0' and c <= '9' then
@@ -394,7 +395,7 @@ impl To Str u64
 //                 i += 1
 //             else
 //                 return None
-// 
+//
 //         Some (if isNeg then -1 * sum else sum)
 
 
@@ -417,7 +418,7 @@ trait Iterator 'i
 
 
 // type LazyRange = i32 start end step
-// 
+//
 // //returns true if a is in the range r
 // impl In LazyRange i32
 //     fun (in): i32 a, LazyRange r -> bool
@@ -426,7 +427,7 @@ trait Iterator 'i
 //         else
 //             let a_adj = a % r.step
 //             let s_adj = r.start % r.step
-// 
+//
 //             a_adj = s_adj and r.start <= a and a < r.end
 
 //creates an end-exclusive range
@@ -434,22 +435,22 @@ trait Iterator 'i
 //     type Result = LazyRange
 //     fun (..): i32 start end -> LazyRange
 //         LazyRange(start, end, 1)
-// 
+//
 // //Takes a tuple of the first two integers and calculates the step by their difference
 // impl Range (i32,i32) i32
 //     type Result = LazyRange
 //     fun (..): i32,i32 first_two, i32 end -> LazyRange
 //         LazyRange(first_two#0, end, first_two#1 - first_two#0)
-// 
+//
 // impl Iterator LazyRange
 //     type Elem = i32
-// 
+//
 //     fun next: LazyRange r -> LazyRange
 //         LazyRange(r.start+r.step, r.end, r.step)
-// 
+//
 //     fun unwrap: LazyRange r =
 //         r.start
-// 
+//
 //     fun has_next: LazyRange r =
 //         if r.step > 0 then
 //             r.start < r.end
@@ -461,11 +462,11 @@ trait Iterator 'i
 //Iterating through an InFile iterates through each line
 // impl Iterator InFile
 //     type Elem = Str
-// 
+//
 //     fun has_next: InFile f = not feof f
-// 
+//
 //     fun next: InFile f = f
-// 
+//
 //     fun unwrap: InFile f = InFile.next_line f
 
 
@@ -499,86 +500,86 @@ impl Is Str
 //     fun (++): Str s1 s2 -> Str
 //         if s1.len = 0 then return s2
 //         if s2.len = 0 then return s1
-// 
+//
 //         let len = s1.len + s2.len
 //         mut buf = malloc (len+1)
-// 
+//
 //         memcpy buf (ref void s1.cStr) s1.len
-// 
+//
 //         mut buf_offset = (usz buf + s1.len) as ref void
 //         memcpy buf_offset (ref void s2.cStr) (s2.len+1) //copy terminating null too
-// 
+//
 //         Str(ref c8 buf, len)
-// 
+//
 // impl Extract Str i32
 //     type Elem = c8
-// 
+//
 //     fun (#): Str s, i32 index = s.cStr#index
-// 
+//
 //     fun (#): Str s, i32 i, c8 c
 //         s.cStr#i := c
-// 
-// 
+//
+//
 // impl To InFile Str
 //     fun to: t, Str fName -> InFile
 //         InFile fopen (fName.cStr) "r".cStr
-// 
-// 
+//
+//
 // impl To OutFile Str
 //     fun to: t, Str fName -> OutFile
 //         OutFile fopen (fName.cStr) "w".cStr
-// 
-// 
+//
+//
 // module InFile
 //     fun next_line: InFile f -> Str
 //         if feof f then return ""
 //         let eof = c8 255
-// 
+//
 //         mut len = 0usz
 //         mut cap = 64usz
 //         mut cstr = ref c8 malloc cap
-// 
+//
 //         while
 //             let c = fgetc f
-// 
+//
 //             if c = eof then break
-// 
+//
 //             //Flag feof if eof occurs after terminating newline
 //             if c = '\n' then
 //                 let peek = fgetc f
 //                 if peek != eof then ungetc peek f
 //                 break
-// 
+//
 //             if len+1 >= cap then
 //                 cap *= 2
 //                 cstr := ref c8 realloc (ref void cstr) cap
-// 
+//
 //             cstr#len := c
 //             len += 1
 //             true
 //         do ()
-// 
+//
 //         cstr#len := '\0'
 //         Str(cstr, len)
-// 
-// 
+//
+//
 // //print a message then return user input
 // fun input: ref c8 msg -> Str
 //     mut len = 0usz
 //     mut cstr = ref c8 0
-// 
+//
 //     printne msg
-// 
+//
 //     while
 //         let c = getchar ()
 //         if len % 32 = 0 then
 //             cstr := ref c8 realloc (ref void cstr) (len+32)
-// 
+//
 //         cstr#len := c
 //         len += 1
 //         c != '\n'
 //     do ()
-// 
+//
 //     len -= 1
 //     cstr#len := '\0'
 //     Str(cstr, len)
