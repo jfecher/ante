@@ -120,7 +120,6 @@ add_library(antecommon STATIC
         src/nameresolution.cpp
         src/nodeprinter.cpp
         src/operator.cpp
-        ${BISON_parser_OUTPUT_SOURCE}
         src/parser.cpp
         src/pattern.cpp
         src/ptree.cpp
@@ -128,7 +127,8 @@ add_library(antecommon STATIC
         src/substitutingvisitor.cpp
         src/typeinference.cpp
         src/types.cpp
-        src/unification.cpp)
+        src/unification.cpp
+        src/util.cpp)
 
 target_link_libraries(antecommon ${llvm_libs})
 
