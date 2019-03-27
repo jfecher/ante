@@ -457,41 +457,37 @@ namespace ante {
         }
     }
 
-
-    void NameResolutionVisitor::searchForField(Node *n){
-        VarNode *vn = dynamic_cast<VarNode*>(n);
-        if(!vn){
-            error("RHS of . operator must be an identifier", n->loc);
-        }
-
-        for(auto &p : compUnit->userTypes){
+    bool findFieldInTypeList(llvm::StringMap<AnDataType*> const& m, Node *lval, VarNode *rval) {
+        for(auto &p : m){
             if(auto *pt = try_cast<AnProductType>(p.second)){
                 for(size_t i = 0; i < pt->fieldNames.size(); i++){
                     auto &field = pt->fieldNames[i];
-                    if(field == vn->name){
-                        auto *fakeDecl = new Variable(field, vn);
-                        fakeDecl->tval.type = pt->fields[i];
-                        vn->decl = fakeDecl;
-                        return;
+                    if(field == rval->name){
+                        auto ty = static_cast<AnProductType*>(copyWithNewTypeVars(pt));
+                        lval->setType(ty);
+                        auto *fakeDecl = new Variable(field, rval);
+                        rval->decl = fakeDecl;
+                        rval->setType(ty->fields[i]);
+                        return true;
                     }
                 }
             }
         }
+        return false;
+    }
+
+    void NameResolutionVisitor::searchForField(BinOpNode *op){
+        VarNode *vn = dynamic_cast<VarNode*>(op->rval.get());
+        if(!vn){
+            error("RHS of . operator must be an identifier", op->rval->loc);
+        }
+
+        if(findFieldInTypeList(compUnit->userTypes, op->lval.get(), vn))
+            return;
 
         for(Module *m : compUnit->imports){
-            for(auto &p : m->userTypes){
-                if(auto *pt = try_cast<AnProductType>(p.second)){
-                    for(size_t i = 0; i < pt->fieldNames.size(); i++){
-                        auto &field = pt->fieldNames[i];
-                        if(field == vn->name){
-                            auto *fakeDecl = new Variable(field, vn);
-                            fakeDecl->tval.type = pt->fields[i];
-                            vn->decl = fakeDecl;
-                            return;
-                        }
-                    }
-                }
-            }
+            if(findFieldInTypeList(m->userTypes, op->lval.get(), vn))
+                return;
         }
 
         error("No field named " + vn->name + " found for any type", vn->loc);
@@ -548,7 +544,7 @@ namespace ante {
 
 
     void NameResolutionVisitor::visit(BinOpNode *n){
-        if(n->op == '.' && dynamic_cast<TypeNode*>(n->lval.get())){
+        if(isImplicitImportExpr(n)){
             auto modAndNode = handleImplicitModuleImport(this, n);
             Module *mod = modAndNode.first;
 
@@ -566,8 +562,8 @@ namespace ante {
 
         n->lval->accept(*this);
 
-        if(n->op == '.' && !dynamic_cast<TypeNode*>(n->lval.get())){
-            searchForField(n->rval.get());
+        if(n->op == '.'){
+            searchForField(n);
             return;
         }
 

@@ -164,7 +164,6 @@ namespace ante {
             }else{
                 // type of field found during name resolution
                 if(n->rval->getType()){
-                    n->lval->accept(*this);
                     n->setType(n->rval->getType());
                     return;
                 }

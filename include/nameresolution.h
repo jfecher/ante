@@ -80,7 +80,7 @@ namespace ante {
             /** Lookup the variable name and return it if found or null otherwise */
             Variable* lookupVar(std::string const& name) const;
 
-            void searchForField(parser::Node *n);
+            void searchForField(parser::BinOpNode *op);
 
             void validateType(const AnType *tn, const parser::DataDeclNode *decl);
 
