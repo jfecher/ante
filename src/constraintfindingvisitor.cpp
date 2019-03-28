@@ -3,6 +3,7 @@
 #include "antype.h"
 #include "funcdecl.h"
 #include "compiler.h"
+#include "pattern.h"
 #include "types.h"
 #include "util.h"
 
@@ -424,46 +425,74 @@ namespace ante {
         n->child->accept(*this);
     }
 
-    void ConstraintFindingVisitor::handleTuplePattern(parser::MatchNode *n, parser::TupleNode *pat, AnType *expectedType){
+    void ConstraintFindingVisitor::handleTuplePattern(parser::MatchNode *n,
+                parser::TupleNode *pat, AnType *expectedType, Pattern &patChecker){
+
         auto fieldTys = vecOf<AnType*>(pat->exprs.size());
         for(size_t i = 0; i < pat->exprs.size(); i++){
             fieldTys.push_back(nextTypeVar());
         }
         auto tupTy = AnAggregateType::get(TT_Tuple, fieldTys);
         addConstraint(tupTy, expectedType, pat->loc);
+        patChecker.overwrite(Pattern::fromTuple(fieldTys), pat->loc);
 
         for(size_t i = 0; i < pat->exprs.size(); i++){
-            handlePattern(n, pat->exprs[i].get(), fieldTys[i]);
+            handlePattern(n, pat->exprs[i].get(), fieldTys[i], patChecker.getChild(i));
         }
     }
 
-    AnType* variantTyWithoutTag(AnType *t){
-        auto pt = try_cast<AnProductType>(t);
-        return pt->fields[1];
+    void ConstraintFindingVisitor::handleUnionVariantPattern(parser::MatchNode *n,
+                parser::TypeCastNode *pat, AnType *expectedType, Pattern &patChecker){
+
+        addConstraint(pat->getType(), expectedType, pat->loc);
+        auto sumType = try_cast<AnSumType>(pat->getType());
+        auto variantType = try_cast<AnProductType>(pat->typeExpr->getType());
+
+        patChecker.overwrite(Pattern::fromSumType(sumType), pat->loc);
+        auto agg = variantType->getVariantWithoutTag();
+        Pattern& child = patChecker.getChild(sumType->getTagVal(variantType->name));
+
+        // auto-unwrap 1-element tuples to allow Some n instead of forcing Some (n,)
+        bool shouldUnwrap = agg->extTys.size() == 1;
+        if(shouldUnwrap){
+            handlePattern(n, pat->rval.get(), agg->extTys[0], child.getChild(0));
+        }else{
+            handlePattern(n, pat->rval.get(), agg, child);
+        }
     }
 
-    void ConstraintFindingVisitor::handlePattern(MatchNode *n, Node *pattern, AnType *expectedType){
+    void ConstraintFindingVisitor::handlePattern(MatchNode *n, Node *pattern, AnType *expectedType, Pattern &patChecker){
         if(TupleNode *tn = dynamic_cast<TupleNode*>(pattern)){
-            handleTuplePattern(n, tn, expectedType);
+            handleTuplePattern(n, tn, expectedType, patChecker);
 
         }else if(TypeCastNode *tcn = dynamic_cast<TypeCastNode*>(pattern)){
-            addConstraint(tcn->getType(), expectedType, pattern->loc);
-            handlePattern(n, tcn->rval.get(), variantTyWithoutTag(tcn->typeExpr->getType()));
+            handleUnionVariantPattern(n, tcn, expectedType, patChecker);
 
         }else if(TypeNode *tn = dynamic_cast<TypeNode*>(pattern)){
+            auto sumType = try_cast<AnSumType>(tn->getType());
+            patChecker.overwrite(Pattern::fromSumType(sumType), tcn->loc);
+            auto idx = sumType->getTagVal(tn->typeName);
+            patChecker.getChild(idx).setMatched();
             addConstraint(tn->getType(), expectedType, pattern->loc);
 
         }else if(VarNode *vn = dynamic_cast<VarNode*>(pattern)){
             addConstraint(expectedType, vn->getType(), pattern->loc);
+            patChecker.setMatched();
 
-        }else if(dynamic_cast<IntLitNode*>(pattern)){
-            addConstraint(AnType::getI32(), expectedType, pattern->loc);
+        }else if(IntLitNode *iln = dynamic_cast<IntLitNode*>(pattern)){
+            auto ty = AnType::getPrimitive(iln->typeTag);
+            patChecker.overwrite(Pattern::fromType(ty), iln->loc);
+            addConstraint(ty, expectedType, pattern->loc);
 
-        }else if(dynamic_cast<FltLitNode*>(pattern)){
-            addConstraint(AnType::getF64(), expectedType, pattern->loc);
+        }else if(FltLitNode *fln = dynamic_cast<FltLitNode*>(pattern)){
+            auto ty = AnType::getPrimitive(fln->typeTag);
+            patChecker.overwrite(Pattern::fromType(ty), fln->loc);
+            addConstraint(ty, expectedType, pattern->loc);
 
         }else if(dynamic_cast<StrLitNode*>(pattern)){
-            addConstraint(AnDataType::get("Str"), expectedType, pattern->loc);
+            auto str = AnDataType::get("Str");
+            patChecker.overwrite(Pattern::fromType(str), pattern->loc);
+            addConstraint(str, expectedType, pattern->loc);
 
         }else{
             error("Invalid pattern syntax", pattern->loc);
@@ -473,8 +502,10 @@ namespace ante {
     void ConstraintFindingVisitor::visit(MatchNode *n){
         n->expr->accept(*this);
         AnType *firstBranchTy = nullptr;
+        Pattern pattern = Pattern::getFillerPattern();
+
         for(auto &b : n->branches){
-            handlePattern(n, b->pattern.get(), n->expr->getType());
+            handlePattern(n, b->pattern.get(), n->expr->getType(), pattern);
             b->branch->accept(*this);
             if(firstBranchTy){
                 addConstraint(firstBranchTy, b->branch->getType(), b->branch->loc);
@@ -484,6 +515,9 @@ namespace ante {
         }
         if(firstBranchTy){
             addConstraint(firstBranchTy, n->getType(), n->loc);
+        }
+        if(!pattern.irrefutable()){
+            error("Match is not exhaustive, " + pattern.constructMissedCase() + " is not matched", n->loc);
         }
     }
 

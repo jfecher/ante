@@ -362,7 +362,9 @@ namespace ante {
             n->accept(step2);
             auto constraints = step2.getConstraints();
             auto substitutions = unify(constraints);
-            SubstitutingVisitor::substituteIntoAst(n, substitutions);
+            if(!substitutions.empty()){
+                SubstitutingVisitor::substituteIntoAst(n, substitutions);
+            }
 
             // apply typeclass constraints to function
             auto fnTy = try_cast<AnFunctionType>(n->getType());

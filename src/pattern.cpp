@@ -1,5 +1,6 @@
 #include "pattern.h"
 #include "types.h"
+#include "util.h"
 
 using namespace std;
 using namespace llvm;
@@ -260,5 +261,122 @@ namespace ante {
         }
         //phi->addIncoming(UndefValue::get(merges[0].second.getType()), matchbb);
         this->val = TypedValue(phi, merges[0].second.type);
+    }
+
+
+    Pattern Pattern::getFillerPattern(){
+        return Pattern{TT_TypeVar};
+    }
+
+    Pattern Pattern::fromSumType(const AnSumType *t){
+        Pattern p{TT_Data};
+        p.name = t->name;
+        for(AnProductType *variant : t->tags){
+            Pattern pat = Pattern::fromType(variant->getVariantWithoutTag());
+            pat.name = variant->name;
+            p.children.push_back(pat);
+        }
+        return p;
+    }
+
+    Pattern Pattern::fromTuple(std::vector<AnType*> const& types){
+        Pattern p{TT_Tuple};
+        for(AnType *t : types){
+            p.children.push_back(Pattern::fromType(t));
+        }
+        return p;
+    }
+
+    Pattern Pattern::fromType(const AnType *t){
+        auto st = try_cast<AnSumType>(t);
+        if(st) return Pattern::fromSumType(st);
+
+        auto pt = try_cast<AnProductType>(t);
+        if(pt) {
+          auto pat = Pattern::fromTuple(pt->fields);
+          pat.name = pt->name;
+          return pat;
+        }
+
+        auto ag = try_cast<AnAggregateType>(t);
+        if(ag) return Pattern::fromTuple(ag->extTys);
+
+        auto tv = try_cast<AnTypeVarType>(t);
+        if(tv) return Pattern::getFillerPattern();
+
+        return {t->typeTag};
+    }
+
+    void Pattern::overwrite(Pattern const& other, LOC_TY &loc){
+        if(type == other.type && (name == other.name || other.name.empty()))
+            return;
+
+        if(type == TT_TypeVar){
+            this->type = other.type;
+            this->name = other.name;
+            this->children = other.children;
+        }else{
+            lazy_str typeA{name.empty() ? typeTagToStr(type) : name, AN_TYPE_COLOR};
+            lazy_str typeB{other.name.empty() ? typeTagToStr(other.type) : other.name, AN_TYPE_COLOR};
+            error("Conflicting types in pattern, inferenced is " +
+                typeA + ", but found here is " + typeB, loc);
+        }
+    }
+
+    void Pattern::setMatched(){
+        matched = true;
+    }
+
+    bool Pattern::irrefutable() const {
+        if(matched) return matched;
+        if(children.empty()) return false;
+
+        for(auto &child : children){
+            if(!child.irrefutable())
+              return false;
+        }
+        return true;
+    }
+
+    Pattern& Pattern::getChild(size_t idx) {
+        return children[idx];
+    }
+
+    lazy_printer Pattern::constructMissedCase() const {
+        if(irrefutable()){
+            std::cerr << "error in Pattern::constructMissedCase: No missed cases in an irrefutable pattern.\n";
+            exit(2);
+        }
+
+        if(type == TT_Data){
+            for(auto &p : children){
+                if(!p.irrefutable()){
+                    return p.constructMissedCase();
+                }
+            }
+            assert_unreachable();
+        }
+
+        if(type == TT_Tuple){
+            lazy_printer args = "(";
+            for(auto &p : children){
+                if(!p.irrefutable()){
+                    args = args + p.constructMissedCase();
+                }else{
+                    args = args + '_';
+                }
+                if(&p != &children.back())
+                    args = args + ", ";
+            }
+            args = args + ')';
+            lazy_str ret{name, AN_TYPE_COLOR};
+            return ret + (!name.empty() && children.empty() ? "" : args);
+        }
+
+        if(type == TT_TypeVar){
+            return "_";
+        }
+
+        return lazy_str("0_" + typeTagToStr(type), AN_CONSTANT_COLOR) + "";
     }
 }

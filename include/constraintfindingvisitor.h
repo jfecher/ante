@@ -3,6 +3,7 @@
 
 #include "parser.h"
 #include "antype.h"
+#include "pattern.h"
 #include "unification.h"
 #include <tuple>
 
@@ -28,11 +29,11 @@ namespace ante {
              *  the trait's implementation to better infer parameter/return types. */
             void addConstraintsFromTCDecl(parser::FuncDeclNode *fdn, AnTraitType *tr, parser::FuncDeclNode *decl);
 
-            void handlePattern(parser::MatchNode *n, parser::Node *pat, AnType *expectedType);
+            void handlePattern(parser::MatchNode *n, parser::Node *pat, AnType *expectedType, Pattern &patChecker);
 
-            void handleTuplePattern(parser::MatchNode *n, parser::TupleNode *pat, AnType *expectedType);
+            void handleTuplePattern(parser::MatchNode *n, parser::TupleNode *pat, AnType *expectedType, Pattern &patChecker);
 
-            void handleUnionVariantPattern(parser::MatchNode *n, parser::Node *typecastRhs, AnType *variantTy, AnType *expectedType);
+            void handleUnionVariantPattern(parser::MatchNode *n, parser::TypeCastNode *pat, AnType *expectedType, Pattern &patChecker);
     };
 }
 

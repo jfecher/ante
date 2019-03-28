@@ -291,6 +291,23 @@ namespace ante {
         return tvar;
     }
 
+    AnAggregateType* AnProductType::getVariantWithoutTag() const {
+        if(!parentUnionType){
+            std::cerr << "AnProductType::getVariantWithoutTag(): " << anTypeToColoredStr(this) << " is not a variant\n";
+        }
+        if(fields.size() == 2 && fields[1]->typeTag == TT_Void){
+            return AnAggregateType::get(TT_Tuple, {});
+        }
+
+        std::vector<AnType*> result;
+        result.reserve(fields.size() - 1);
+        auto it = ++fields.begin();
+        for(; it != fields.end(); ++it){
+            result.push_back(*it);
+        }
+        return AnAggregateType::get(TT_Tuple, result);
+    }
+
     AnProductType* AnProductType::create(string const& name, std::vector<AnType*> const& elems,
             TypeArgs const& typeArgs){
 

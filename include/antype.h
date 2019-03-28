@@ -489,6 +489,8 @@ namespace ante {
             return false;
         }
 
+        AnAggregateType* getVariantWithoutTag() const;
+
         /** Search for a data type by name.
          * Returns null if no type with a matching name is found. */
         static AnProductType* get(std::string const& name);

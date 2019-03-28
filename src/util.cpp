@@ -2,17 +2,17 @@
 #include "compiler.h"
 
 namespace ante {
-    void print(parser::Node *n){
+    void show(parser::Node *n){
         PrintingVisitor::print(n);
         puts("");
     }
 
-    void print(std::shared_ptr<parser::Node> const& n){
-        print(n.get());
+    void show(std::shared_ptr<parser::Node> const& n){
+        show(n.get());
     }
 
-    void print(std::unique_ptr<parser::Node> const& n){
-        print(n.get());
+    void show(std::unique_ptr<parser::Node> const& n){
+        show(n.get());
     }
 
     std::ostream& operator<<(std::ostream &out, parser::Node &n){
@@ -20,5 +20,9 @@ namespace ante {
         PrintingVisitor::print(&n);
         out << std::flush;
         return out;
+    }
+
+    std::ostream& operator<<(std::ostream &out, AnType &n){
+        return out << anTypeToColoredStr(&n);
     }
 }

@@ -3,6 +3,7 @@
 
 #include "error.h"
 #include "compiler.h"
+#include "types.h"
 #include <memory>
 
 namespace ante {
@@ -12,8 +13,6 @@ namespace ante {
             f();
         }catch(CtError){}
     }
-
-    std::ostream& operator<<(std::ostream &out, parser::Node &n);
 
     /** @brief Create a vector with a capacity of at least cap elements. */
     template<typename T> std::vector<T> vecOf(size_t cap){
@@ -116,9 +115,11 @@ namespace ante {
         o << ']';
     }
 
-    void print(parser::Node *n);
-    void print(std::shared_ptr<parser::Node> const& n);
-    void print(std::unique_ptr<parser::Node> const& n);
+    void show(parser::Node *n);
+    void show(std::shared_ptr<parser::Node> const& n);
+    void show(std::unique_ptr<parser::Node> const& n);
+    std::ostream& operator<<(std::ostream &out, parser::Node &n);
+    std::ostream& operator<<(std::ostream &out, AnType &n);
 }
 
 #endif
