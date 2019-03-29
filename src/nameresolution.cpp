@@ -49,10 +49,15 @@ namespace ante {
 
 
     void NameResolutionVisitor::declare(string const& name, VarNode *decl){
-        checkForPreviousDecl(this, name, varTable.top().back(), decl->loc, "Variable");
-        auto var = new Variable(name, decl);
-        decl->decl = var;
-        varTable.top().back().try_emplace(name, var);
+        if(name != "_"){
+            checkForPreviousDecl(this, name, varTable.top().back(), decl->loc, "Variable");
+            auto var = new Variable(name, decl);
+            decl->decl = var;
+            varTable.top().back().try_emplace(name, var);
+        }else{
+            auto var = new Variable(name, decl);
+            decl->decl = var;
+        }
     }
 
 
