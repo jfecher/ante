@@ -430,7 +430,7 @@ namespace ante {
         /** Returns true if the given AnType is an AnDataType */
         static bool istype(const AnType *t){
             return t->typeTag == TT_Data || t->typeTag == TT_TaggedUnion
-                || t->typeTag == TT_Trait;
+                || t->typeTag == TT_Trait || t->typeTag == TT_TypeFamily;
         }
 
         /** Returns true if this DataType is a bound generic variant of another */
@@ -444,6 +444,18 @@ namespace ante {
 
         /** Returns the type this type is aliased to */
         AnType* getAliasedType() const;
+
+        /** Search for a data type by name.
+         * Returns null if no type with a matching name is found. */
+        static AnDataType* getTypeFamily(std::string const& name);
+
+        /** Search for a data type generic variant by name.
+         * Returns it if found, or creates it otherwise. */
+        static AnDataType* getOrCreateTypeFamilyVariant(AnDataType *parent,
+                TypeArgs const& generics);
+
+        /** Creates or overwrites the type specified by name. */
+        static AnDataType* createTypeFamily(std::string const& name, TypeArgs const& generics);
     };
 
     class AnSumType;
@@ -497,12 +509,12 @@ namespace ante {
 
         /** Search for a data type generic variant by name.
          * Returns it if found, or creates it otherwise. */
-        static AnProductType* getOrCreateVariant(AnProductType *parent, std::vector<AnType*> const& elems,
-                TypeArgs const& generics);
+        static AnProductType* getOrCreateVariant(AnProductType *parent,
+                std::vector<AnType*> const& elems, TypeArgs const& generics);
 
         /** Creates or overwrites the type specified by name. */
-        static AnProductType* create(std::string const& name, std::vector<AnType*> const& elems,
-                TypeArgs const& generics);
+        static AnProductType* create(std::string const& name,
+                std::vector<AnType*> const& elems, TypeArgs const& generics);
     };
 
 
@@ -560,12 +572,12 @@ namespace ante {
 
         /** Search for a data type generic variant by name.
          * Returns it if found, or creates it otherwise. */
-        static AnSumType* getOrCreateVariant(AnSumType *parent, std::vector<AnProductType*> const& elems,
-                TypeArgs const& generics);
+        static AnSumType* getOrCreateVariant(AnSumType *parent,
+                std::vector<AnProductType*> const& elems, TypeArgs const& generics);
 
         /** Creates or overwrites the type specified by name. */
-        static AnSumType* create(std::string const& name, std::vector<AnProductType*> const& elems,
-                TypeArgs const& generics);
+        static AnSumType* create(std::string const& name,
+                std::vector<AnProductType*> const& elems, TypeArgs const& generics);
 
         /** Returns a new AnDataType* with the given modifier appended to the current type's modifiers. */
         const AnType* addModifier(TokenType m) const override;
@@ -607,7 +619,8 @@ namespace ante {
         static AnTraitType* get(std::string const& name);
 
         /** Get an existing generic variant or create one if it does not yet exist */
-        static AnTraitType* getOrCreateVariant(AnTraitType *parent, AnType *self, TypeArgs const& generics);
+        static AnTraitType* getOrCreateVariant(AnTraitType *parent, AnType *self,
+                TypeArgs const& generics);
 
         /** Creates a new trait type matching the given trait declaration. */
         static AnTraitType* create(Trait *trait, AnType *self, TypeArgs const& typeArgs);

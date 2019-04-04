@@ -135,24 +135,24 @@ trait Append 't
     fun (++): 't l r -> 't
 
 trait Extract 'col 'index
-    // type Elem
-    fun (#): 'col collection, 'index index -> 'elem
+    type Elem
+    fun (#): 'col collection, 'index index -> Elem
 
 trait Insert 'col 'index 'elem
     // temporary until functions with the same name and
     // a differing number of parameters can be declared.
     fun insert: mut 'col collection, 'index idx, 'elem elem
 
-trait In 'col 'elem
-    fun (in): 'col collection, 'elem elem -> bool
+trait In 'elem 'col
+    fun (in): 'elem elem, 'col collection -> bool
 
 trait Range 't
     type Result
-    fun (..): 't l r -> 'result
+    fun (..): 't l r -> Result
 
 trait Deref 't
     type Result
-    fun (@): 't t -> 'result
+    fun (@): 't t -> Result
 
 trait Neg 't
     fun neg: 't t -> 't
@@ -407,13 +407,12 @@ impl Eq (ref (Eq 't))
 
 //For-loops work over any range that is Iterable
 trait Iterable 'i
-    type Iter
-    fun into_iter: 'i i -> 'iter
+    fun into_iter: 'i i -> Iterator
 
 trait Iterator 'i
     type Elem
     fun next: 'i i -> 'i
-    fun unwrap: 'i i -> 'elem
+    fun unwrap: 'i i -> Elem
     fun has_next: 'i i -> bool
 
 

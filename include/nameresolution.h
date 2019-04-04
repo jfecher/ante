@@ -20,7 +20,7 @@ namespace ante {
         std::stack<std::vector<llvm::StringMap<Variable*>>> varTable;
 
         /** Any non-global types that may have been declared. */
-        std::stack<std::vector<llvm::StringMap<AnDataType*>>> typeTable;
+        std::stack<std::vector<llvm::StringMap<TypeDecl>>> typeTable;
 
         /** Globals may be accessed from any scope but can be shadowed by any scope as well. */
         llvm::StringMap<std::unique_ptr<Variable>> globals;
@@ -75,10 +75,13 @@ namespace ante {
             void declareSumType(parser::DataDeclNode *n);
 
             /** Define a type with the given contents. */
-            void define(std::string const& name, AnDataType *type);
+            void define(std::string const& name, AnDataType *type, LOC_TY &loc);
 
             /** Lookup the variable name and return it if found or null otherwise */
             Variable* lookupVar(std::string const& name) const;
+
+            /** Lookup the type by name and return it if found or null otherwise */
+            TypeDecl* lookupType(std::string const& name) const;
 
             void searchForField(parser::BinOpNode *op);
 
@@ -97,6 +100,8 @@ namespace ante {
             void exitFunction();
 
             void visitUnionDecl(parser::DataDeclNode *decl);
+
+            void visitTypeFamily(parser::DataDeclNode *n);
 
             /** A safe wrapper around toAnType that catches any exceptions and
              * sets error flags to let the compiler know it cannot continue to

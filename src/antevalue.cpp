@@ -126,6 +126,7 @@ namespace ante {
             case TT_FunctionList:
             case TT_Type:
             case TT_Trait:
+            case TT_TypeFamily:
                 break;
             case TT_Void:
                 return c->getVoidLiteral();
@@ -326,6 +327,7 @@ namespace ante {
                 return;
             case TT_FunctionList:
             case TT_Trait:
+            case TT_TypeFamily:
                 break;
             case TT_Void:
                 return;
@@ -413,6 +415,7 @@ namespace ante {
             case TT_FunctionList: os << "function list\n"; break;
             case TT_Trait: os << "trait\n"; break;
             case TT_TypeVar: os << "?"; break; //compile-time value with unknown type, something went wrong.
+            case TT_TypeFamily: os << "<(TypeFamily)>"; break;
             case TT_Void: os << "()"; break;
         }
     }

@@ -27,6 +27,7 @@ namespace ante {
         TT_MetaFunction,
         TT_Type, //The type for types
         TT_Trait,
+        TT_TypeFamily,
         TT_Void
     };
 

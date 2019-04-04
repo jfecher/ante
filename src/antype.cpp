@@ -81,7 +81,7 @@ namespace ante {
     }
 
     template<typename Key, typename Val>
-    Val* search(std::unordered_map<Key, unique_ptr<Val>> &map, Key const& key){
+    Val* search(unordered_map<Key, unique_ptr<Val>> &map, Key const& key){
         auto it = map.find(key);
         if(it != map.end())
             return it->second.get();
@@ -89,7 +89,7 @@ namespace ante {
     }
 
     template<typename Key, typename Val>
-    void addKVPair(std::unordered_map<Key, unique_ptr<Val>> &map, Key const& key, Val* val){
+    void addKVPair(unordered_map<Key, unique_ptr<Val>> &map, Key const& key, Val* val){
         if(map[key]){
             cerr << lazy_str("WARNING", AN_WARN_COLOR) << ": Hash collision between "
                 << anTypeToColoredStr(map[key].get()) << " and " << anTypeToColoredStr(val) << endl;
@@ -235,11 +235,11 @@ namespace ante {
         return arr;
     }
 
-    AnAggregateType* AnType::getAggregate(TypeTag t, const std::vector<AnType*> exts){
+    AnAggregateType* AnType::getAggregate(TypeTag t, const vector<AnType*> exts){
         return AnAggregateType::get(t, exts);
     }
 
-    AnAggregateType* AnAggregateType::get(TypeTag t, const std::vector<AnType*> exts){
+    AnAggregateType* AnAggregateType::get(TypeTag t, const vector<AnType*> exts){
         auto key = make_pair(t, exts);
 
         auto existing_ty = search(typeArena.aggregateTypes, key);
@@ -262,8 +262,8 @@ namespace ante {
         return AnFunctionType::get(retty, extTys, {}, isMetaFunction);
     }
 
-    AnFunctionType* AnFunctionType::get(AnType *retTy, std::vector<AnType*> const& elems,
-            std::vector<AnTraitType*> const& tcConstrains, bool isMetaFunction){
+    AnFunctionType* AnFunctionType::get(AnType *retTy, vector<AnType*> const& elems,
+            vector<AnTraitType*> const& tcConstrains, bool isMetaFunction){
         auto key = make_pair(retTy, make_pair(elems, make_pair(tcConstrains, isMetaFunction)));
 
         auto existing_ty = search(typeArena.functionTypes, key);
@@ -276,11 +276,11 @@ namespace ante {
     }
 
 
-    AnTypeVarType* AnType::getTypeVar(std::string const& name){
+    AnTypeVarType* AnType::getTypeVar(string const& name){
         return AnTypeVarType::get(name);
     }
 
-    AnTypeVarType* AnTypeVarType::get(std::string const& name){
+    AnTypeVarType* AnTypeVarType::get(string const& name){
         auto key = name;
 
         auto existing_ty = search(typeArena.typeVarTypes, key);
@@ -291,15 +291,56 @@ namespace ante {
         return tvar;
     }
 
+
+    AnDataType* getRootUnboundType(AnDataType *dt){
+        while(dt->unboundType) dt = dt->unboundType;
+        return dt;
+    }
+
+
+    /** Search for a data type by name.
+      * Returns null if no type with a matching name is found. */
+    AnDataType* AnDataType::getTypeFamily(string const& name){
+        auto existing_ty = search(typeArena.dataTypes, name);
+        return (existing_ty && existing_ty->typeTag == TT_TypeFamily) ? existing_ty : nullptr;
+    }
+
+    /** Search for a data type generic variant by name.
+      * Returns it if found, or creates it otherwise. */
+    AnDataType* AnDataType::getOrCreateTypeFamilyVariant(AnDataType *parent, TypeArgs const& typeArgs){
+        pair<string, vector<AnType*>> key{parent->name, typeArgs};
+        auto t = search(typeArena.dataTypeVariants, key);
+        if(t) return try_cast<AnDataType>(t);
+
+        auto ret = new AnDataType(parent->name, TT_TypeFamily);
+        ret->typeArgs = typeArgs;
+        ret->isGeneric = ante::isGeneric(typeArgs);
+        ret->unboundType = getRootUnboundType(parent);
+        typeArena.dataTypeVariants[key].reset(ret);
+        return ret;
+    }
+
+    /** Creates or overwrites the type specified by name. */
+    AnDataType* AnDataType::createTypeFamily(string const& name, TypeArgs const& typeArgs){
+        auto existing_ty = search(typeArena.dataTypes, name);
+        if(existing_ty) return existing_ty;
+
+        auto family = new AnDataType(name, TT_TypeFamily);
+        family->typeArgs = typeArgs;
+        family->isGeneric = ante::isGeneric(typeArgs);
+        addKVPair(typeArena.dataTypes, name, family);
+        return family;
+    }
+
     AnAggregateType* AnProductType::getVariantWithoutTag() const {
         if(!parentUnionType){
-            std::cerr << "AnProductType::getVariantWithoutTag(): " << anTypeToColoredStr(this) << " is not a variant\n";
+            cerr << "AnProductType::getVariantWithoutTag(): " << anTypeToColoredStr(this) << " is not a variant\n";
         }
         if(fields.size() == 2 && fields[1]->typeTag == TT_Void){
             return AnAggregateType::get(TT_Tuple, {});
         }
 
-        std::vector<AnType*> result;
+        vector<AnType*> result;
         result.reserve(fields.size() - 1);
         auto it = ++fields.begin();
         for(; it != fields.end(); ++it){
@@ -308,7 +349,7 @@ namespace ante {
         return AnAggregateType::get(TT_Tuple, result);
     }
 
-    AnProductType* AnProductType::create(string const& name, std::vector<AnType*> const& elems,
+    AnProductType* AnProductType::create(string const& name, vector<AnType*> const& elems,
             TypeArgs const& typeArgs){
 
         auto existing_ty = AnProductType::get(name);
@@ -328,7 +369,7 @@ namespace ante {
         return t->typeTag == TT_Data ? static_cast<AnProductType*>(t) : nullptr;
     }
 
-    AnSumType* AnSumType::create(string const& name, std::vector<AnProductType*> const& unionMembers,
+    AnSumType* AnSumType::create(string const& name, vector<AnProductType*> const& unionMembers,
             TypeArgs const& typeArgs){
 
         auto existing_ty = AnSumType::get(name);
@@ -352,18 +393,12 @@ namespace ante {
         return search(typeArena.dataTypes, name);
     }
 
-    AnDataType* getRootUnboundType(AnDataType *dt){
-        AnDataType *ret = dt;
-        while(ret->unboundType) ret = ret->unboundType;
-        return ret;
-    }
-
     /**
      * Search for a data type generic variant by name.
      * Returns it if found, or creates it otherwise.
      */
     AnProductType* AnProductType::getOrCreateVariant(AnProductType *parent,
-            std::vector<AnType*> const& elems, TypeArgs const& typeArgs){
+            vector<AnType*> const& elems, TypeArgs const& typeArgs){
 
         pair<string, vector<AnType*>> key{parent->name, typeArgs};
         auto t = search(typeArena.dataTypeVariants, key);
@@ -384,7 +419,7 @@ namespace ante {
      * Returns it if found, or creates it otherwise.
      */
     AnSumType* AnSumType::getOrCreateVariant(AnSumType *parent,
-            std::vector<AnProductType*> const& elems, TypeArgs const& typeArgs){
+            vector<AnProductType*> const& elems, TypeArgs const& typeArgs){
 
         pair<string, vector<AnType*>> key{parent->name, typeArgs};
         auto t = search(typeArena.dataTypeVariants, key);
@@ -410,7 +445,7 @@ namespace ante {
     AnTraitType* AnTraitType::getOrCreateVariant(AnTraitType *parent,
             AnType *self, TypeArgs const& generics){
 
-        std::pair<std::string, std::pair<AnType*, TypeArgs>> key{parent->name, {self, generics}};
+        pair<string, pair<AnType*, TypeArgs>> key{parent->name, {self, generics}};
         auto t = search(typeArena.traitTraitVariants, key);
         if(t) return t;
 
@@ -645,7 +680,7 @@ namespace ante {
     *
     * @return the value of the tag found, or 0 on failure
     */
-    size_t AnSumType::getTagVal(std::string const& name){
+    size_t AnSumType::getTagVal(string const& name){
         for(size_t i = 0; i < tags.size(); i++){
             if(tags[i]->name == name)
                 return i;

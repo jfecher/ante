@@ -7,6 +7,12 @@
 #include "antype.h"
 
 namespace ante {
+    /** A simple pair type for holding an AnType and the location it was declared. */
+    struct TypeDecl {
+        AnType *type;
+        LOC_TY &loc;
+        TypeDecl(AnType *type, LOC_TY &loc) : type{type}, loc{loc}{}
+    };
     /**
      * A virtual filesystem tree node containing information on
      * types, functions, imports, and traits of the current module.
@@ -40,7 +46,7 @@ namespace ante {
         /**
          * @brief Each declared DataType in the module
          */
-        llvm::StringMap<AnDataType*> userTypes;
+        llvm::StringMap<TypeDecl> userTypes;
 
         /**
          * @brief Map of all declared traits; not including their implementations for a given type
@@ -58,6 +64,11 @@ namespace ante {
 
             /** Return the root of the virtual file/module system. */
             static Module& getRoot();
+
+            /** Return a declared type if it is visible to the current module.
+             *  This is usually an AnDataType, but may be any type if the
+             *  named type is an alias to a primitive type. */
+            AnType* lookupType(std::string const& name) const;
 
             /** Find a single direct child with the given name */
             llvm::StringMap<Module>::iterator findChild(std::string const& name);

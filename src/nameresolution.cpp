@@ -85,16 +85,33 @@ namespace ante {
         AnSumType::create(n->name, {}, convertToTypeArgs(n->generics));
     }
 
+    void NameResolutionVisitor::define(string const& name, AnDataType *dt, LOC_TY &loc){
+        TypeDecl *existingTy = lookupType(name);
+        if(existingTy){
+            showError(name + " was already declared", loc);
+            error(name + " was previously declared here", existingTy->loc, ErrorType::Note);
+        }
 
-    void NameResolutionVisitor::define(string const& name, AnDataType *dt){
+        TypeDecl decl{static_cast<AnType*>(dt), loc};
         if(typeTable.size() == 1){
-            //TODO: Check for redeclaration
-            compUnit->userTypes.try_emplace(name, dt);
+            compUnit->userTypes.try_emplace(name, decl);
         }else{
-            typeTable.top().back().try_emplace(name, dt);
+            typeTable.top().back().try_emplace(name, decl);
         }
     }
 
+    TypeDecl* NameResolutionVisitor::lookupType(string const& name) const {
+        auto it = compUnit->userTypes.find(name);
+        if(it != compUnit->userTypes.end())
+            return &it->second;
+
+        for(auto& scope : typeTable.top()){
+            auto it = scope.find(name);
+            if(it != scope.end())
+                return (TypeDecl*)&it->second;
+        }
+        return nullptr;
+    }
 
     Variable* NameResolutionVisitor::lookupVar(std::string const& name) const {
         if(!varTable.empty()){
@@ -462,9 +479,9 @@ namespace ante {
         }
     }
 
-    bool findFieldInTypeList(llvm::StringMap<AnDataType*> const& m, Node *lval, VarNode *rval) {
+    bool findFieldInTypeList(llvm::StringMap<TypeDecl> const& m, Node *lval, VarNode *rval) {
         for(auto &p : m){
-            if(auto *pt = try_cast<AnProductType>(p.second)){
+            if(auto *pt = try_cast<AnProductType>(p.second.type)){
                 for(size_t i = 0; i < pt->fieldNames.size(); i++){
                     auto &field = pt->fieldNames[i];
                     if(field == rval->name){
@@ -964,20 +981,29 @@ namespace ante {
             data->tags.emplace_back(tagdt);
 
             validateType(tagTy, decl);
-            define(nvn->name, tagdt);
+            define(nvn->name, tagdt, nvn->loc);
 
             nvn = (NamedValNode*)nvn->next.get();
         }
 
         data->typeTag = TT_TaggedUnion;
         data->isAlias = decl->isAlias;
-        define(decl->name, data);
+        define(decl->name, data, decl->loc);
+    }
+
+
+    void NameResolutionVisitor::visitTypeFamily(DataDeclNode *n){
+        AnDataType *family = AnDataType::getTypeFamily(n->name);
+        if(!family)
+            family = AnDataType::createTypeFamily(n->name, convertToTypeArgs(n->generics));
+
+        define(n->name, family, n->loc);
     }
 
 
     void NameResolutionVisitor::visit(DataDeclNode *n){
         auto *nvn = (NamedValNode*)n->child.get();
-        if(!nvn) return; //type family
+        if(!nvn) return visitTypeFamily(n);
 
         if(((TypeNode*) nvn->typeExpr.get())->typeTag == TT_TaggedUnion){
             visitUnionDecl(n);
@@ -988,7 +1014,7 @@ namespace ante {
         if(!data)
             data = AnProductType::create(n->name, {}, convertToTypeArgs(n->generics));
 
-        define(n->name, data);
+        define(n->name, data, n->loc);
         data->fields.reserve(n->fields);
         data->fieldNames.reserve(n->fields);
         data->isAlias = n->isAlias;
@@ -1019,15 +1045,18 @@ namespace ante {
         // tr will still be mutated with additional methods after
         AnTraitType::create(tr, genericSelfParam, convertToTypeArgs(n->generics));
 
-        for(Node &fn : *n->child){
-            fn.accept(*this);
+        enterFunction();
+        for(Node &child : *n->child){
+            child.accept(*this);
 
-            auto *fdn = dynamic_cast<FuncDeclNode*>(&fn);
-            if(fdn){
+            if(FuncDeclNode *fdn = dynamic_cast<FuncDeclNode*>(&child)){
                 auto *fd = static_cast<FuncDecl*>(fdn->decl);
                 compUnit->fnDecls[fdn->name] = fd;
                 tr->funcs.emplace_back(fd);
+            }else if(DataDeclNode *type = dynamic_cast<DataDeclNode*>(&child)){
+                tr->typeFamilies.emplace_back(type->name, convertToTypeArgs(type->generics));
             }
         }
+        exitFunction();
     }
 }
