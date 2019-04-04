@@ -353,20 +353,20 @@ void PrintingVisitor::visit(DataDeclNode *n){
         }
         cout << ">";
     }
-    cout << " = ";
-
     auto *nvn = (NamedValNode*)n->child.get();
+    if(nvn){
+        cout << " = ";
+        if(((TypeNode*)nvn->typeExpr.get())->typeTag == TT_TaggedUnion){
+            cout << endl;
+            while(nvn && ((TypeNode*)nvn->typeExpr.get())->typeTag == TT_TaggedUnion){
+                auto *ty = (TypeNode*)nvn->typeExpr.get();
 
-    if(((TypeNode*)nvn->typeExpr.get())->typeTag == TT_TaggedUnion){
-        cout << endl;
-        while(nvn && ((TypeNode*)nvn->typeExpr.get())->typeTag == TT_TaggedUnion){
-            auto *ty = (TypeNode*)nvn->typeExpr.get();
-
-            cout << "| " << nvn->name << " " << (ty->extTy.get() ? typeNodeToStr(ty->extTy.get()) : "") << endl;
-            nvn = (NamedValNode*)nvn->next.get();
+                cout << "| " << nvn->name << " " << (ty->extTy.get() ? typeNodeToStr(ty->extTy.get()) : "") << endl;
+                nvn = (NamedValNode*)nvn->next.get();
+            }
+        }else{
+            n->child->accept(*this);
         }
-    }else{
-        n->child->accept(*this);
     }
 }
 
