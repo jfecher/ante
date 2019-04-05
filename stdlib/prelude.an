@@ -197,7 +197,8 @@ impl Add usz
 impl Sub usz
     fun (-): a, b = a - b
 
-impl Extract (ref 't) 't
+impl Extract (ref 't) usz
+    type Elem = void
     fun (#): c, i = c#i
 
 

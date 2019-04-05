@@ -248,6 +248,16 @@ namespace ante {
         }
     }
 
+    void checkParamCountMatches(TypeFamily const& decl, DataDeclNode *def){
+        size_t expectedParams = decl.typeArgs.size();
+        size_t numParams = def->generics.size();
+        if(expectedParams != numParams){
+            string part1 = to_string(expectedParams) + " type parameter" + (expectedParams == 1 ? "" : "s");
+            string part2 = to_string(numParams) + (numParams == 1 ? " was" : " were");
+            showError(def->name + " was declared to take " + part1 + " but " + part2 + " given here", def->loc);
+        }
+    }
+
     bool checkFnInTraitDecl(vector<shared_ptr<FuncDecl>> const& traitDeclFns,
             vector<FuncDecl*> const& traitImplFns, FuncDeclNode *fdn, AnTraitType *trait){
 
@@ -277,6 +287,40 @@ namespace ante {
         }
     }
 
+    vector<TypeFamily>::const_iterator getType(vector<TypeFamily> const& decls, string const& name){
+        return ante::find_if(decls, [&](TypeFamily const& decl){
+            return decl.name == name;
+        });
+    }
+
+    bool checkTyInTraitDecl(vector<TypeFamily> const& traitDeclTys,
+            vector<TypeFamily> const& traitImplTys, DataDeclNode *ddn, AnTraitType *trait){
+
+        auto decl = getType(traitDeclTys, ddn->name);
+        if(decl != traitDeclTys.end()){
+            checkParamCountMatches(*decl, ddn);
+            return true;
+        }
+
+        auto duplicate = getType(traitImplTys, ddn->name);
+        if(duplicate != traitImplTys.end()){
+            showError("Duplicate type " + ddn->name + " in trait impl", ddn->loc);
+            //showError(fdn->name + " previously defined here", (*duplicate)->getFDN()->loc, ErrorType::Note);
+        }else{
+            showError("No type named " + ddn->name + " in trait " + trait->name, ddn->loc);
+        }
+        return false;
+    }
+
+    void checkForUnimplementedTypes(vector<TypeFamily> const& traitDeclTys, AnTraitType *trait){
+        if(!traitDeclTys.empty()){
+            for(auto &ty : traitDeclTys){
+                showError("impl " + anTypeToColoredStr(trait) + " missing implementation of type " + ty.name, trait->impl->loc);
+            }
+            throw CtError();
+        }
+    }
+
     void handleTraitImpl(NameResolutionVisitor &v, ExtNode *n){
         AnType *preTrait = toAnType(n->trait.get());
         AnTraitType *trait = try_cast<AnTraitType>(preTrait);
@@ -291,20 +335,28 @@ namespace ante {
         auto traitDeclFns = trait->trait->funcs;
         auto traitImplFns = vecOf<FuncDecl*>(traitDeclFns.size());
 
-        for (Node &m : *n->methods) {
-            auto fdn = dynamic_cast<FuncDeclNode*>(&m);
-            if (fdn) {
+        auto traitDeclTys = trait->trait->typeFamilies;
+        auto traitImplTys = vecOf<TypeFamily>(traitDeclTys.size());
+
+        for(Node &m : *n->methods){
+            if(FuncDeclNode *fdn = dynamic_cast<FuncDeclNode*>(&m)){
                 auto *fd = new FuncDecl(fdn, fdn->name, v.compUnit);
                 fdn->decl = fd;
                 if(checkFnInTraitDecl(traitDeclFns, traitImplFns, fdn, trait)){
                     ante::remove_if(traitDeclFns, [&](shared_ptr<FuncDecl> &declFn){ return declFn->name == fd->name; });
                     traitImplFns.push_back(fd);
                 }
+            }else if(DataDeclNode *ddn = dynamic_cast<DataDeclNode*>(&m)){
+                if(checkTyInTraitDecl(traitDeclTys, traitImplTys, ddn, trait)){
+                    ante::remove_if(traitDeclTys, [&](TypeFamily &decl){ return decl.name == ddn->name; });
+                    traitImplTys.emplace_back(ddn->name, convertToTypeArgs(ddn->generics));
+                }
             }
         }
 
         trait->impl = n;
         checkForUnimplementedFunctions(traitDeclFns, trait);
+        checkForUnimplementedTypes(traitDeclTys, trait);
     }
 
     void NameResolutionVisitor::declare(ExtNode *n){
