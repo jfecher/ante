@@ -10,13 +10,15 @@
 namespace ante {
     
     struct ConstraintFindingVisitor : public NodeVisitor {
-        ConstraintFindingVisitor(){}
+        ConstraintFindingVisitor(Module *module) : module{module}{}
 
         DECLARE_NODE_VISIT_METHODS();
 
         UnificationList getConstraints() const;
 
         private:
+            Module *module;
+
             UnificationList constraints;
 
             void addConstraint(AnType *a, AnType *b, LOC_TY &loc);

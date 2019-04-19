@@ -81,7 +81,6 @@ namespace ante {
             compapi.emplace("Ante_error",       U(new CtFunc((void*)Ante_error,       AnType::getVoid(), {AnPtrType::get(AnType::getPrimitive(TT_C8))})));
             compapi.emplace("Ante_emit_ir",     U(new CtFunc((void*)Ante_emit_ir,     AnType::getVoid())));
             compapi.emplace("Ante_forget",      U(new CtFunc((void*)Ante_forget,      AnType::getVoid(), {AnPtrType::get(AnType::getPrimitive(TT_C8))})));
-            compapi.emplace("FuncDecl_getName", U(new CtFunc((void*)FuncDecl_getName, AnDataType::get("Str"), {AnDataType::get("Ante.FuncDecl")})));
         }
 
         CtFunc* lookup(string const& fn){

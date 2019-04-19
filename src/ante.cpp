@@ -23,7 +23,7 @@ void showParseTree(RootNode *root){
         NameResolutionVisitor v;
         v.visit(root);
         if(errorCount()) return;
-        TypeInferenceVisitor::infer(root);
+        TypeInferenceVisitor::infer(root, v.compUnit);
         parser::printBlock(root, 0);
     }catch(...){
         /* User should already be notified if an error occurred */
@@ -75,7 +75,6 @@ int main(int argc, const char **argv){
             showParseTree(ante.getAST());
         }
         ante.processArgs(args);
-        typeArena.clearDeclaredTypes();
     }
     if(args->hasArg(Args::Eval) || (args->args.empty() && args->inputFiles.empty()))
         Compiler(0).eval();

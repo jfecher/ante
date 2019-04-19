@@ -250,12 +250,12 @@ namespace ante {
         return agg;
     }
 
-    AnFunctionType* AnFunctionType::get(AnType* retty, NamedValNode* params, bool isMetaFunction){
+    AnFunctionType* AnFunctionType::get(AnType* retty, NamedValNode* params, Module *module, bool isMetaFunction){
         vector<AnType*> extTys;
 
         while(params && params->typeExpr.get()){
             TypeNode *pty = (TypeNode*)params->typeExpr.get();
-            auto *aty = toAnType(pty);
+            auto *aty = toAnType(pty, module);
             extTys.push_back(aty);
             params = (NamedValNode*)params->next.get();
         }
@@ -298,37 +298,21 @@ namespace ante {
     }
 
 
-    /** Search for a data type by name.
-      * Returns null if no type with a matching name is found. */
-    AnDataType* AnDataType::getTypeFamily(string const& name){
-        auto existing_ty = search(typeArena.dataTypes, name);
-        return (existing_ty && existing_ty->typeTag == TT_TypeFamily) ? existing_ty : nullptr;
-    }
-
     /** Search for a data type generic variant by name.
       * Returns it if found, or creates it otherwise. */
-    AnDataType* AnDataType::getOrCreateTypeFamilyVariant(AnDataType *parent, TypeArgs const& typeArgs){
-        pair<string, vector<AnType*>> key{parent->name, typeArgs};
-        auto t = search(typeArena.dataTypeVariants, key);
-        if(t) return try_cast<AnDataType>(t);
-
+    AnDataType* AnDataType::createTypeFamilyVariant(AnDataType *parent, TypeArgs const& typeArgs){
         auto ret = new AnDataType(parent->name, TT_TypeFamily);
         ret->typeArgs = typeArgs;
         ret->isGeneric = ante::isGeneric(typeArgs);
         ret->unboundType = getRootUnboundType(parent);
-        typeArena.dataTypeVariants[key].reset(ret);
         return ret;
     }
 
     /** Creates or overwrites the type specified by name. */
     AnDataType* AnDataType::createTypeFamily(string const& name, TypeArgs const& typeArgs){
-        auto existing_ty = search(typeArena.dataTypes, name);
-        if(existing_ty) return existing_ty;
-
         auto family = new AnDataType(name, TT_TypeFamily);
         family->typeArgs = typeArgs;
         family->isGeneric = ante::isGeneric(typeArgs);
-        addKVPair(typeArena.dataTypes, name, family);
         return family;
     }
 
@@ -352,57 +336,27 @@ namespace ante {
     AnProductType* AnProductType::create(string const& name, vector<AnType*> const& elems,
             TypeArgs const& typeArgs){
 
-        auto existing_ty = AnProductType::get(name);
-        if(existing_ty) return existing_ty;
-
         AnDataType* decl = new AnProductType(name, elems);
         decl->typeArgs = typeArgs;
         decl->isGeneric = !typeArgs.empty();
-
-        addKVPair(typeArena.dataTypes, name, decl);
         return static_cast<AnProductType*>(decl);
-    }
-
-    AnProductType* AnProductType::get(string const& name){
-        auto t = search(typeArena.dataTypes, name);
-        if(!t) return nullptr;
-        return t->typeTag == TT_Data ? static_cast<AnProductType*>(t) : nullptr;
     }
 
     AnSumType* AnSumType::create(string const& name, vector<AnProductType*> const& unionMembers,
             TypeArgs const& typeArgs){
 
-        auto existing_ty = AnSumType::get(name);
-        if(existing_ty) return existing_ty;
-
         AnDataType* decl = new AnSumType(name, unionMembers);
         decl->typeArgs = typeArgs;
         decl->isGeneric = !typeArgs.empty();
-
-        addKVPair(typeArena.dataTypes, name, decl);
         return static_cast<AnSumType*>(decl);
-    }
-
-    AnSumType* AnSumType::get(string const& name){
-        auto t = search(typeArena.dataTypes, name);
-        if(!t) return nullptr;
-        return t->typeTag == TT_TaggedUnion ? static_cast<AnSumType*>(t) : nullptr;
-    }
-
-    AnDataType* AnDataType::get(string const& name){
-        return search(typeArena.dataTypes, name);
     }
 
     /**
      * Search for a data type generic variant by name.
      * Returns it if found, or creates it otherwise.
      */
-    AnProductType* AnProductType::getOrCreateVariant(AnProductType *parent,
+    AnProductType* AnProductType::createVariant(AnProductType *parent,
             vector<AnType*> const& elems, TypeArgs const& typeArgs){
-
-        pair<string, vector<AnType*>> key{parent->name, typeArgs};
-        auto t = search(typeArena.dataTypeVariants, key);
-        if(t) return try_cast<AnProductType>(t);
 
         auto ret = new AnProductType(parent->name, elems);
         ret->typeArgs = typeArgs;
@@ -410,7 +364,6 @@ namespace ante {
         ret->fieldNames = parent->fieldNames;
         ret->parentUnionType = nullptr; //parentUnionType needs to be bound separately
         ret->unboundType = getRootUnboundType(parent);
-        typeArena.dataTypeVariants[key].reset(ret);
         return ret;
     }
 
@@ -418,48 +371,28 @@ namespace ante {
      * Search for a data type generic variant by name.
      * Returns it if found, or creates it otherwise.
      */
-    AnSumType* AnSumType::getOrCreateVariant(AnSumType *parent,
+    AnSumType* AnSumType::createVariant(AnSumType *parent,
             vector<AnProductType*> const& elems, TypeArgs const& typeArgs){
-
-        pair<string, vector<AnType*>> key{parent->name, typeArgs};
-        auto t = search(typeArena.dataTypeVariants, key);
-        if(t) return try_cast<AnSumType>(t);
 
         auto ret = new AnSumType(parent->name, elems);
         ret->typeArgs = typeArgs;
         ret->isGeneric = ante::isGeneric(typeArgs);
         ret->unboundType = getRootUnboundType(parent);
-        typeArena.dataTypeVariants[key].reset(ret);
         return ret;
     }
 
 
-    /** Search for a data type by name.
-        * Returns null if no type with a matching name is found. */
-    AnTraitType* AnTraitType::get(string const& name){
-        auto t = search(typeArena.dataTypes, name);
-        return try_cast<AnTraitType>(t);
-    }
-
-
-    AnTraitType* AnTraitType::getOrCreateVariant(AnTraitType *parent,
+    AnTraitType* AnTraitType::createVariant(AnTraitType *parent,
             AnType *self, TypeArgs const& generics){
 
-        pair<string, pair<AnType*, TypeArgs>> key{parent->name, {self, generics}};
-        auto t = search(typeArena.traitTraitVariants, key);
-        if(t) return t;
-
-        t = new AnTraitType(parent->trait, self, generics);
-        t->unboundType = getRootUnboundType(parent);
-        typeArena.traitTraitVariants[key].reset(t);
-        return t;
+        auto ret = new AnTraitType(parent->trait, self, generics);
+        ret->unboundType = getRootUnboundType(parent);
+        return ret;
     }
 
 
     AnTraitType* AnTraitType::create(Trait *trait, AnType *self, TypeArgs const& tArgs){
-        auto ret = new AnTraitType(trait, self, tArgs);
-        typeArena.dataTypes[trait->name].reset(ret);
-        return ret;
+        return new AnTraitType(trait, self, tArgs);
     }
 
     bool AnDataType::isVariantOf(const AnDataType *dt) const {
@@ -501,7 +434,7 @@ namespace ante {
     }
 
 
-    AnType* toAnType(const TypeNode *tn){
+    AnType* toAnType(const TypeNode *tn, Module *module){
         if(!tn) return AnType::getVoid();
         AnType *ret;
 
@@ -534,9 +467,9 @@ namespace ante {
                 vector<AnType*> tys;
                 while(ext){
                     if(retty){
-                        tys.push_back(toAnType(ext));
+                        tys.push_back(toAnType(ext, module));
                     }else{
-                        retty = toAnType(ext);
+                        retty = toAnType(ext, module);
                     }
                     ext = (TypeNode*)ext->next.get();
                 }
@@ -547,7 +480,7 @@ namespace ante {
                 TypeNode *ext = tn->extTy.get();
                 vector<AnType*> tys;
                 while(ext){
-                    tys.push_back(toAnType(ext));
+                    tys.push_back(toAnType(ext, module));
                     ext = (TypeNode*)ext->next.get();
                 }
                 ret = AnAggregateType::get(TT_Tuple, tys);
@@ -557,16 +490,16 @@ namespace ante {
             case TT_Array: {
                 TypeNode *elemTy = tn->extTy.get();
                 IntLitNode *len = (IntLitNode*)elemTy->next.get();
-                ret = AnArrayType::get(toAnType(elemTy), len ? stoi(len->val) : 0);
+                ret = AnArrayType::get(toAnType(elemTy, module), len ? stoi(len->val) : 0);
                 break;
             }
             case TT_Ptr:
-                ret = AnPtrType::get(toAnType(tn->extTy.get()));
+                ret = AnPtrType::get(toAnType(tn->extTy.get(), module));
                 break;
             case TT_Data:
             case TT_Trait:
             case TT_TaggedUnion: {
-                AnDataType *basety = AnDataType::get(tn->typeName);
+                AnDataType *basety = try_cast<AnDataType>(module->lookupType(tn->typeName));
                 if(!basety){
                     ante::error("Use of undeclared type " + lazy_str(tn->typeName, AN_TYPE_COLOR), tn->loc);
                 }
@@ -578,12 +511,12 @@ namespace ante {
                     Substitutions subs;
                     size_t offset = 0;
                     if(auto *tt = try_cast<AnTraitType>(basety)){
-                        subs.emplace_back(tt->selfType, toAnType(tn->params[0].get()));
+                        subs.emplace_back(tt->selfType, toAnType(tn->params[0].get(), module));
                         offset = 1;
                     }
 
                     for(i = offset; i < tn->params.size() && i < basety->typeArgs.size() + offset; i++){
-                        auto *b = static_cast<AnTypeVarType*>(toAnType(tn->params[i].get()));
+                        auto *b = static_cast<AnTypeVarType*>(toAnType(tn->params[i].get(), module));
                         auto *basetyTypeArg = try_cast<AnTypeVarType>(basety->typeArgs[i - offset]);
                         subs.emplace_back(basetyTypeArg, b);
                     }

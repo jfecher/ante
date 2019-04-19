@@ -180,7 +180,7 @@ TypedValue compFnWithModifiers(Compiler *c, FuncDecl *fd, ModNode *mod){
                 c->module.reset(mod);
             }else if(vn->name == "on_fn_decl"){
                 auto *rettn = (TypeNode*)fdn->returnType.get();
-                auto *fnty = AnFunctionType::get(toAnType(rettn), fdn->params.get(), true);
+                auto *fnty = AnFunctionType::get(toAnType(rettn, c->compUnit), fdn->params.get(), c->compUnit, true);
                 fn = TypedValue(nullptr, fnty);
             }else{
                 fdn->modifiers.emplace_back(mod);
@@ -208,9 +208,9 @@ TypedValue compFnWithModifiers(Compiler *c, FuncDecl *fd, ModNode *mod){
                 auto *rettn = (TypeNode*)fdn->returnType.get();
                 AnType *fnty;
                 if(capi::lookup(fd->getName())){
-                    fnty = AnFunctionType::get(toAnType(rettn), fdn->params.get(), true);
+                    fnty = AnFunctionType::get(toAnType(rettn, c->compUnit), fdn->params.get(), c->compUnit, true);
                 }else{
-                    fnty = AnFunctionType::get(toAnType(rettn), fdn->params.get(), false);
+                    fnty = AnFunctionType::get(toAnType(rettn, c->compUnit), fdn->params.get(), c->compUnit, false);
                     fnty = (AnType*)fnty->addModifier(Tok_Ante);
                 }
                 fn = TypedValue(nullptr, fnty);

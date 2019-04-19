@@ -70,6 +70,9 @@ namespace ante {
              *  named type is an alias to a primitive type. */
             AnType* lookupType(std::string const& name) const;
 
+            /** Lookup the given type and return it and its location. */
+            TypeDecl* lookupTypeDecl(std::string const& name) const;
+
             /** Find a single direct child with the given name */
             llvm::StringMap<Module>::iterator findChild(std::string const& name);
 

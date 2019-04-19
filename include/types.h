@@ -3,6 +3,7 @@
 
 #include "compiler.h"
 #include "result.h"
+#include "module.h"
 
 #ifndef AN_USZ_SIZE
 #define AN_USZ_SIZE (8*sizeof(void*))
@@ -24,7 +25,7 @@ namespace ante {
     bool isCompileTimeOnlyParamType(AnType *ty);
 
     //conversions
-    AnType* toAnType(const parser::TypeNode *tn);
+    AnType* toAnType(const parser::TypeNode *tn, Module *module);
 
     llvm::Type* typeTagToLlvmType(TypeTag tagTy, llvm::LLVMContext &c);
     TypeTag llvmTypeToTypeTag(llvm::Type *t);

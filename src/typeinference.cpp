@@ -1,10 +1,11 @@
+#include "constraintfindingvisitor.h"
 #include "typeinference.h"
-#include "antype.h"
+#include "unification.h"
 #include "compiler.h"
+#include "antype.h"
+#include "module.h"
 #include "types.h"
 #include "util.h"
-#include "constraintfindingvisitor.h"
-#include "unification.h"
 
 using namespace std;
 
@@ -45,7 +46,7 @@ namespace ante {
     }
 
     void TypeInferenceVisitor::visit(StrLitNode *n){
-        auto strty = AnDataType::get("Str");
+        auto strty = module->lookupType("Str");
         if(!strty){
             strty = AnProductType::create("Str", {}, {});
         }
@@ -88,7 +89,7 @@ namespace ante {
      * Otherwise, return Type T
      */
     void TypeInferenceVisitor::visit(TypeNode *n){
-        auto repl = toAnType(n);
+        auto repl = toAnType(n, module);
         auto variant = try_cast<AnProductType>(repl);
         if(variant && variant->parentUnionType){
             n->setType(copyWithNewTypeVars(variant->parentUnionType));
@@ -96,7 +97,7 @@ namespace ante {
         }
 
         //Type 't
-        auto type = AnProductType::get("Type");
+        auto type = try_cast<AnProductType>(module->lookupType("Type"));
         if(!type || type->typeArgs.size() != 1){
             ante::error("type `Type 't` in the prelude was redefined or removed sometime before translation of this type", n->loc);
         }
@@ -107,7 +108,7 @@ namespace ante {
     }
 
     void TypeInferenceVisitor::visit(TypeCastNode *n){
-        auto ty = copyWithNewTypeVars(toAnType(n->typeExpr.get()));
+        auto ty = copyWithNewTypeVars(toAnType(n->typeExpr.get(), module));
         n->typeExpr->setType(ty);
 
         n->rval->accept(*this);
@@ -202,7 +203,7 @@ namespace ante {
 
     void TypeInferenceVisitor::visit(NamedValNode *n){
         if(n->typeExpr){
-            auto ty = toAnType((TypeNode*)n->typeExpr.get());
+            auto ty = toAnType((TypeNode*)n->typeExpr.get(), module);
             n->typeExpr->setType(ty);
             n->setType(ty);
         }else{ // type field is null if this is a variadic parameter ie the '...' in printf: Str a, ... -> i32
@@ -257,7 +258,7 @@ namespace ante {
 
     void TypeInferenceVisitor::visit(ExtNode *n){
         if(n->trait){
-            auto tr = try_cast<AnTraitType>(toAnType(n->trait.get()));
+            auto tr = try_cast<AnTraitType>(toAnType(n->trait.get(), module));
             for(Node &m : *n->methods){
                 auto fdn = dynamic_cast<FuncDeclNode*>(&m);
                 if(fdn){
@@ -269,7 +270,7 @@ namespace ante {
                     m.accept(*this);
                 }
             }
-            ConstraintFindingVisitor step2;
+            ConstraintFindingVisitor step2{this->module};
             tryTo([&]{
                 n->accept(step2);
                 auto constraints = step2.getConstraints();
@@ -327,10 +328,10 @@ namespace ante {
     }
 
 
-    vector<AnTraitType*> toTraitTypeVec(std::unique_ptr<TypeNode> const& tn){
+    vector<AnTraitType*> toTraitTypeVec(std::unique_ptr<TypeNode> const& tn, Module *module){
         vector<AnTraitType*> ret;
         for(Node &n : *tn){
-            ret.push_back((AnTraitType*)toAnType((TypeNode*)&n));
+            ret.push_back((AnTraitType*)toAnType((TypeNode*)&n, module));
         }
         return ret;
     }
@@ -349,15 +350,15 @@ namespace ante {
 
         auto paramTypes = setParamTypes(*this, n->params.get());
 
-        auto typeClassConstraints = toTraitTypeVec(n->typeClassConstraints);
-        AnType *retTy = n->returnType ? toAnType(n->returnType.get()) : nextTypeVar();
+        auto typeClassConstraints = toTraitTypeVec(n->typeClassConstraints, this->module);
+        AnType *retTy = n->returnType ? toAnType(n->returnType.get(), module) : nextTypeVar();
         n->setType(AnFunctionType::get(retTy, paramTypes, typeClassConstraints));
 
         if(n->child)
             n->child->accept(*this);
 
         // finish inference for functions early
-        ConstraintFindingVisitor step2;
+        ConstraintFindingVisitor step2{this->module};
         tryTo([&]{
             n->accept(step2);
             auto constraints = step2.getConstraints();
@@ -388,7 +389,7 @@ namespace ante {
             if (fdn) {
                 auto fdty = try_cast<AnFunctionType>(fdn->getType());
                 auto traits = fdty->typeClassConstraints; // copy the vec so the old one isn't pushed to
-                traits.push_back(AnTraitType::get(n->name));
+                traits.push_back(try_cast<AnTraitType>(module->lookupType(n->name)));
                 node.setType(AnFunctionType::get(fdty->retTy, fdty->extTys, traits));
             }
         }

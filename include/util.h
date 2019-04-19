@@ -14,6 +14,8 @@ namespace ante {
         }catch(CtError){}
     }
 
+#   define TRY_TO(f) ante::tryTo([&](){ f; })
+
     /** @brief Create a vector with a capacity of at least cap elements. */
     template<typename T> std::vector<T> vecOf(size_t cap){
         std::vector<T> vec;

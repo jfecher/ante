@@ -19,9 +19,6 @@ namespace ante {
          *  which are all contained within the top of the stack. */
         std::stack<std::vector<llvm::StringMap<Variable*>>> varTable;
 
-        /** Any non-global types that may have been declared. */
-        std::stack<std::vector<llvm::StringMap<TypeDecl>>> typeTable;
-
         /** Globals may be accessed from any scope but can be shadowed by any scope as well. */
         llvm::StringMap<std::unique_ptr<Variable>> globals;
 
@@ -31,6 +28,9 @@ namespace ante {
 
         /** @brief functions and type definitions of current module */
         Module *compUnit;
+
+        /** Set to the current trait if we're inside a trait decl.  Allows shadowing of outside types. */
+        Trait *curTrait = nullptr;
 
         /** Construct a new NameResolutionVisitor */
         NameResolutionVisitor(){

@@ -362,7 +362,7 @@ namespace ante {
         static AnFunctionType* get(AnType *retTy, std::vector<AnType*> const& elems,
                 std::vector<AnTraitType*> const& tcConstrains, bool isMetaFunction = false);
 
-        static AnFunctionType* get(AnType* retty, parser::NamedValNode* params,
+        static AnFunctionType* get(AnType* retty, parser::NamedValNode* params, Module *module,
                 bool isMetaFunction = false);
 
         /** Returns a version of the current type with an additional modifier m. */
@@ -423,10 +423,6 @@ namespace ante {
          *  rather than an entirely new type */
         bool isAlias;
 
-        /** Search for a data type by name.
-         * Returns null if no type with a matching name is found. */
-        static AnDataType* get(std::string const& name);
-
         /** Returns true if the given AnType is an AnDataType */
         static bool istype(const AnType *t){
             return t->typeTag == TT_Data || t->typeTag == TT_TaggedUnion
@@ -445,13 +441,9 @@ namespace ante {
         /** Returns the type this type is aliased to */
         AnType* getAliasedType() const;
 
-        /** Search for a data type by name.
-         * Returns null if no type with a matching name is found. */
-        static AnDataType* getTypeFamily(std::string const& name);
-
         /** Search for a data type generic variant by name.
          * Returns it if found, or creates it otherwise. */
-        static AnDataType* getOrCreateTypeFamilyVariant(AnDataType *parent,
+        static AnDataType* createTypeFamilyVariant(AnDataType *parent,
                 TypeArgs const& generics);
 
         /** Creates or overwrites the type specified by name. */
@@ -503,13 +495,9 @@ namespace ante {
 
         AnAggregateType* getVariantWithoutTag() const;
 
-        /** Search for a data type by name.
-         * Returns null if no type with a matching name is found. */
-        static AnProductType* get(std::string const& name);
-
         /** Search for a data type generic variant by name.
          * Returns it if found, or creates it otherwise. */
-        static AnProductType* getOrCreateVariant(AnProductType *parent,
+        static AnProductType* createVariant(AnProductType *parent,
                 std::vector<AnType*> const& elems, TypeArgs const& generics);
 
         /** Creates or overwrites the type specified by name. */
@@ -566,13 +554,9 @@ namespace ante {
             return nullptr;
         }
 
-        /** Search for a data type by name.
-         * Returns null if no type with a matching name is found. */
-        static AnSumType* get(std::string const& name);
-
         /** Search for a data type generic variant by name.
          * Returns it if found, or creates it otherwise. */
-        static AnSumType* getOrCreateVariant(AnSumType *parent,
+        static AnSumType* createVariant(AnSumType *parent,
                 std::vector<AnProductType*> const& elems, TypeArgs const& generics);
 
         /** Creates or overwrites the type specified by name. */
@@ -614,12 +598,8 @@ namespace ante {
             return t->typeTag == TT_Trait;
         }
 
-        /** Search for a data type by name.
-         * Returns null if no type with a matching name is found. */
-        static AnTraitType* get(std::string const& name);
-
         /** Get an existing generic variant or create one if it does not yet exist */
-        static AnTraitType* getOrCreateVariant(AnTraitType *parent, AnType *self,
+        static AnTraitType* createVariant(AnTraitType *parent, AnType *self,
                 TypeArgs const& generics);
 
         /** Creates a new trait type matching the given trait declaration. */
@@ -699,15 +679,9 @@ namespace ante {
         friend AnPtrType;
         friend AnTypeVarType;
         friend AnFunctionType;
-        friend AnDataType;
-        friend AnProductType;
-        friend AnSumType;
-        friend AnTraitType;
 
         using FnTypeKey = std::pair<AnType*, std::pair<std::vector<AnType*>, std::pair<std::vector<AnTraitType*>, bool>>>;
         using AggTypeKey = std::pair<TypeTag, std::vector<AnType*>>;
-        using PSVariantTypeKey = std::pair<std::string, TypeArgs>;
-        using TtVariantTypeKey = std::pair<std::string, std::pair<AnType*, TypeArgs>>;
 
         std::unordered_map<TypeTag, std::unique_ptr<AnType>> primitiveTypes;
         std::unordered_map<std::pair<AnType*, TokenType>, std::unique_ptr<AnModifier>> basicModifiers;
@@ -717,22 +691,10 @@ namespace ante {
         std::unordered_map<std::string, std::unique_ptr<AnTypeVarType>> typeVarTypes;
         std::unordered_map<AggTypeKey, std::unique_ptr<AnAggregateType>> aggregateTypes;
         std::unordered_map<FnTypeKey, std::unique_ptr<AnFunctionType>> functionTypes;
-        std::unordered_map<std::string, std::unique_ptr<AnDataType>> dataTypes;
-
-        /** generic variants are retrieved through their parent type,
-         * never directly through the map of declaredTypes.  Keeping
-         * all variants here avoids having to sift through every variant
-         * of a type and makes ownership simpler. */
-        std::unordered_map<TtVariantTypeKey, std::unique_ptr<AnTraitType>> traitTraitVariants;
-        std::unordered_map<PSVariantTypeKey, std::unique_ptr<AnType>> dataTypeVariants;
 
     public:
         AnTypeContainer();
         ~AnTypeContainer() = default;
-
-        void clearDeclaredTypes(){
-            dataTypes.clear();
-        }
     };
 }
 

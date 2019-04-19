@@ -70,4 +70,22 @@ namespace ante {
     bool ModulePath::operator!=(const iterator& rhs) const {
         return s != rhs.s || cur != rhs.cur || prev != rhs.prev;
     }
+
+    AnType* Module::lookupType(std::string const& name) const {
+        TypeDecl *typeDecl = lookupTypeDecl(name);
+        return typeDecl == nullptr ? nullptr : typeDecl->type;
+    }
+
+    TypeDecl* Module::lookupTypeDecl(std::string const& name) const {
+        auto it = userTypes.find(name);
+        if(it != userTypes.end())
+            return (TypeDecl*)&it->second;
+
+        for(auto &module : imports){
+            it = module->userTypes.find(name);
+            if(it != module->userTypes.end())
+                return (TypeDecl*)&it->second;
+        }
+        return nullptr;
+    }
 }

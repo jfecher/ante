@@ -542,7 +542,7 @@ TypedValue Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *binop
         //    return FunctionCandidates::getAsTypedValue(ctxt.get(), l, {});
 
         error("No static method called '" + field->name + "' was found in type " +
-                anTypeToColoredStr(toAnType(tn)), binop->loc);
+                anTypeToColoredStr(toAnType(tn, compUnit)), binop->loc);
         return {};
     }else{
         //ln is not a typenode, so this is not a static method call
@@ -1107,25 +1107,6 @@ TypedValue tryImplicitCast(Compiler *c, TypedValue &arg, AnType *castTy){
 }
 
 
-void showNoMatchingCandidateError(Compiler *c, const vector<shared_ptr<FuncDecl>> &candidates,
-        const vector<AnType*> &argTys, LOC_TY &loc){
-
-    lazy_printer msg = "No matching candidates for call to " + candidates[0]->getName();
-    if(!argTys.empty())
-        msg = msg + " with args " + anTypeToColoredStr(AnAggregateType::get(TT_Tuple, argTys));
-
-    showError(msg, loc);
-    for(auto &fd : candidates){
-        auto *fnty = fd->type ? fd->type
-            : AnFunctionType::get(AnType::getVoid(), fd->getFDN()->params.get());
-        auto *params = AnAggregateType::get(TT_Tuple, fnty->extTys);
-
-        error("Candidate function with params "+anTypeToColoredStr(params),
-                fd->getFDN()->loc, ErrorType::Note);
-    }
-    throw CtError();
-}
-
 Value* Compiler::tupleOf(vector<Value*> const& elems, bool packed){
     vector<int> nonConstIndices;
     auto constVals = vecOf<Constant*>(elems.size());
@@ -1503,7 +1484,7 @@ void CompilingVisitor::visit(BinOpNode *n){
     if(n->op == Tok_As){
         n->lval->accept(*this);
         auto ltval = this->val;
-        auto *ty = toAnType((TypeNode*)n->rval.get());
+        auto *ty = toAnType((TypeNode*)n->rval.get(), c->compUnit);
 
         this->val = createCast(c, ty, ltval, n);
 

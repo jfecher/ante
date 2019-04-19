@@ -1,9 +1,10 @@
 #include "constraintfindingvisitor.h"
 #include "unification.h"
-#include "antype.h"
 #include "funcdecl.h"
 #include "compiler.h"
 #include "pattern.h"
+#include "antype.h"
+#include "module.h"
 #include "types.h"
 #include "util.h"
 
@@ -35,11 +36,11 @@ namespace ante {
 
         }else if(auto pt = try_cast<AnProductType>(t)){
             auto tArgs = applyToAll(pt->typeArgs, handleExt);
-            return AnProductType::getOrCreateVariant(pt, pt->fields, tArgs);
+            return AnProductType::createVariant(pt, pt->fields, tArgs);
 
         }else if(auto st = try_cast<AnSumType>(t)){
             auto tArgs = applyToAll(st->typeArgs, handleExt);
-            return AnSumType::getOrCreateVariant(st, st->tags, tArgs);
+            return AnSumType::createVariant(st, st->tags, tArgs);
 
         }else if(auto tt = try_cast<AnTraitType>(t)){
             auto tArgs = applyToAll(tt->typeArgs, handleExt);
@@ -70,7 +71,7 @@ namespace ante {
     template<typename T>
     inline void acceptAll(ConstraintFindingVisitor &v, std::vector<T> const& nodes){
         for(auto &n : nodes){
-            tryTo([&]{ n->accept(v); });
+            TRY_TO(n->accept(v));
         }
     }
 
@@ -145,12 +146,12 @@ namespace ante {
         }
     }
 
-    AnType* getUnOpTraitType(int op){
-        AnTraitType *parent;
+    AnType* getUnOpTraitType(Module *module, int op){
+        AnType *parent;
         switch(op){
-            case '@': parent = AnTraitType::get("Deref"); break;
-            case '-': parent = AnTraitType::get("Neg"); break;
-            case Tok_Not: parent = AnTraitType::get("Not"); break;
+            case '@': parent = module->lookupType("Deref"); break;
+            case '-': parent = module->lookupType("Neg"); break;
+            case Tok_Not: parent = module->lookupType("Not"); break;
             default:
                 cerr << "getUnOpTraitType: unknown op '" << (char)op << "' (" << (int)op << ") given.  ";
                 exit(1);
@@ -159,7 +160,7 @@ namespace ante {
             cerr << "getUnOpTraitType: numeric trait for op '" << (char)op << "' (" << (int)op << ") not found.  The stdlib may not have been imported properly.\n";
             exit(1);
         }
-        return AnTraitType::getOrCreateVariant(parent, nextTypeVar(), {});
+        return AnTraitType::createVariant(static_cast<AnTraitType*>(parent), nextTypeVar(), {});
     }
 
     void ConstraintFindingVisitor::visit(UnOpNode *n){
@@ -176,12 +177,12 @@ namespace ante {
             addConstraint(n->rval->getType(), tv, n->loc);
             break;
         case '-': //negation
-            trait = getUnOpTraitType(n->op);
+            trait = getUnOpTraitType(module, n->op);
             addConstraint(n->getType(), trait, n->loc);
             addConstraint(n->rval->getType(), trait, n->loc);
             break;
         case Tok_Not:
-            trait = getUnOpTraitType(n->op);
+            trait = getUnOpTraitType(module, n->op);
             addConstraint(n->rval->getType(), trait, n->loc);
             addConstraint(n->getType(), trait, n->loc);
             break;
@@ -196,21 +197,21 @@ namespace ante {
         acceptAll(*this, n->sequence);
     }
 
-    AnType* getOpTraitType(int op){
-        AnTraitType *parent;
+    AnType* getOpTraitType(Module *module, int op){
+        AnType *parent;
         switch(op){
-            case '+': parent = AnTraitType::get("Add"); break;
-            case '-': parent = AnTraitType::get("Sub"); break;
-            case '*': parent = AnTraitType::get("Mul"); break;
-            case '/': parent = AnTraitType::get("Div"); break;
-            case '%': parent = AnTraitType::get("Mod"); break;
-            case '^': parent = AnTraitType::get("Pow"); break;
-            case '<': parent = AnTraitType::get("Cmp"); break;
-            case '>': parent = AnTraitType::get("Cmp"); break;
-            case Tok_GrtrEq: parent = AnTraitType::get("Cmp"); break;
-            case Tok_LesrEq: parent = AnTraitType::get("Cmp"); break;
-            case '=': parent = AnTraitType::get("Eq"); break;
-            case Tok_NotEq: parent = AnTraitType::get("Eq"); break;
+            case '+': parent = module->lookupType("Add"); break;
+            case '-': parent = module->lookupType("Sub"); break;
+            case '*': parent = module->lookupType("Mul"); break;
+            case '/': parent = module->lookupType("Div"); break;
+            case '%': parent = module->lookupType("Mod"); break;
+            case '^': parent = module->lookupType("Pow"); break;
+            case '<': parent = module->lookupType("Cmp"); break;
+            case '>': parent = module->lookupType("Cmp"); break;
+            case Tok_GrtrEq: parent = module->lookupType("Cmp"); break;
+            case Tok_LesrEq: parent = module->lookupType("Cmp"); break;
+            case '=': parent = module->lookupType("Eq"); break;
+            case Tok_NotEq: parent = module->lookupType("Eq"); break;
             default:
                 cerr << "getOpTraitType: unknown op '" << (char)op << "' (" << (int)op << ") given.  ";
                 exit(1);
@@ -219,11 +220,11 @@ namespace ante {
             cerr << "getOpTraitType: numeric trait for op '" << (char)op << "' (" << (int)op << ") not found.  The stdlib may not have been imported properly.\n";
             exit(1);
         }
-        return AnTraitType::getOrCreateVariant(parent, nextTypeVar(), {});
+        return AnTraitType::createVariant(static_cast<AnTraitType*>(parent), nextTypeVar(), {});
     }
 
 
-    pair<AnTraitType*, AnTypeVarType*> getCollectionOpTraitType(int op){
+    pair<AnTraitType*, AnTypeVarType*> getCollectionOpTraitType(Module *module, int op){
         auto collectionTyVar = nextTypeVar();
         auto elemTy = nextTypeVar();
 
@@ -233,13 +234,13 @@ namespace ante {
         }
 
         string traitName = op == '#' ? "Extract" : "In";
-        AnTraitType *parent = AnTraitType::get(traitName);
+        AnTraitType *parent = try_cast<AnTraitType>(module->lookupType(traitName));
 
         if(!parent){
             cerr << "Cannot find the trait" << traitName << ". The prelude may not have been imported properly.\n";
             exit(1);
         }
-        return {AnTraitType::getOrCreateVariant(parent, collectionTyVar, {elemTy}), elemTy};
+        return {AnTraitType::createVariant(parent, collectionTyVar, {elemTy}), elemTy};
     }
 
 
@@ -304,17 +305,17 @@ namespace ante {
                 addConstraint(n->getType(), fnty->retTy, n->loc);
             }
         }else if(n->op == '+' || n->op == '-' || n->op == '*' || n->op == '/' || n->op == '%' || n->op == '^'){
-            AnType *numTy = getOpTraitType(n->op);
+            AnType *numTy = getOpTraitType(module, n->op);
             addConstraint(n->lval->getType(), numTy, n->loc);
             addConstraint(n->rval->getType(), numTy, n->loc);
             addConstraint(n->getType(), numTy, n->loc);
         }else if(n->op == '<' || n->op == '>' || n->op == Tok_GrtrEq || n->op == Tok_LesrEq){
-            AnType *numTy = getOpTraitType(n->op);
+            AnType *numTy = getOpTraitType(module, n->op);
             addConstraint(n->lval->getType(), numTy, n->loc);
             addConstraint(n->rval->getType(), numTy, n->loc);
             addConstraint(n->getType(), AnType::getBool(), n->loc);
         }else if(n->op == '#'){
-            auto collectionTy_elemTy = getCollectionOpTraitType(n->op);
+            auto collectionTy_elemTy = getCollectionOpTraitType(module, n->op);
 
             addConstraint(n->lval->getType(), collectionTy_elemTy.first, n->loc);
             addConstraint(n->rval->getType(), AnType::getUsz(), n->loc);
@@ -330,7 +331,7 @@ namespace ante {
             addConstraint(n->lval->getType(), AnType::getI32(), n->loc);
             addConstraint(n->rval->getType(), AnType::getI32(), n->loc);
         }else if(n->op == Tok_In){
-            auto collectionTy_elemTy = getCollectionOpTraitType(n->op);
+            auto collectionTy_elemTy = getCollectionOpTraitType(module, n->op);
 
             addConstraint(n->lval->getType(), collectionTy_elemTy.second, n->loc);
             addConstraint(n->rval->getType(), collectionTy_elemTy.first, n->loc);
@@ -394,7 +395,7 @@ namespace ante {
 
     void ConstraintFindingVisitor::visit(ExtNode *n){
         if(n->trait){
-            auto tr = try_cast<AnTraitType>(toAnType(n->trait.get()));
+            auto tr = try_cast<AnTraitType>(toAnType(n->trait.get(), module));
             for(Node &m : *n->methods){
                 auto fdn = dynamic_cast<FuncDeclNode*>(&m);
                 if(fdn){
@@ -490,7 +491,7 @@ namespace ante {
             addConstraint(ty, expectedType, pattern->loc);
 
         }else if(dynamic_cast<StrLitNode*>(pattern)){
-            auto str = AnDataType::get("Str");
+            auto str = module->lookupType("Str");
             patChecker.overwrite(Pattern::fromType(str), pattern->loc);
             addConstraint(str, expectedType, pattern->loc);
 

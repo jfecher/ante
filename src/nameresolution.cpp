@@ -22,11 +22,11 @@ list<string> fileNames;
 namespace ante {
     using namespace parser;
 
-    TypeArgs convertToTypeArgs(vector<unique_ptr<TypeNode>> const& types){
+    TypeArgs convertToTypeArgs(vector<unique_ptr<TypeNode>> const& types, Module *module){
         TypeArgs ret;
         ret.reserve(types.size());
         for(auto &t : types){
-            ret.push_back(static_cast<AnTypeVarType*>(toAnType(t.get())));
+            ret.push_back(static_cast<AnTypeVarType*>(toAnType(t.get(), module)));
         }
         return ret;
     }
@@ -69,22 +69,6 @@ namespace ante {
     }
 
 
-    void NameResolutionVisitor::declareProductType(DataDeclNode *n){
-        if(AnProductType::get(n->name)){
-            error(n->name + " was already declared", n->loc);
-        }
-
-        AnProductType::create(n->name, {}, convertToTypeArgs(n->generics));
-    }
-
-    void NameResolutionVisitor::declareSumType(DataDeclNode *n){
-        if(AnProductType::get(n->name)){
-            error(n->name + " was already declared", n->loc);
-        }
-
-        AnSumType::create(n->name, {}, convertToTypeArgs(n->generics));
-    }
-
     void NameResolutionVisitor::define(string const& name, AnDataType *dt, LOC_TY &loc){
         TypeDecl *existingTy = lookupType(name);
         if(existingTy){
@@ -93,23 +77,13 @@ namespace ante {
         }
 
         TypeDecl decl{static_cast<AnType*>(dt), loc};
-        if(typeTable.size() == 1){
-            compUnit->userTypes.try_emplace(name, decl);
-        }else{
-            typeTable.top().back().try_emplace(name, decl);
-        }
+        compUnit->userTypes.try_emplace(name, decl);
     }
 
     TypeDecl* NameResolutionVisitor::lookupType(string const& name) const {
         auto it = compUnit->userTypes.find(name);
         if(it != compUnit->userTypes.end())
             return &it->second;
-
-        for(auto& scope : typeTable.top()){
-            auto it = scope.find(name);
-            if(it != scope.end())
-                return (TypeDecl*)&it->second;
-        }
         return nullptr;
     }
 
@@ -140,26 +114,22 @@ namespace ante {
 
     void NameResolutionVisitor::newScope(){
         varTable.top().emplace_back();
-        typeTable.top().emplace_back();
     }
 
 
     void NameResolutionVisitor::exitScope(){
         varTable.top().pop_back();
-        typeTable.top().pop_back();
     }
 
 
     void NameResolutionVisitor::enterFunction(){
         varTable.emplace();
-        typeTable.emplace();
         newScope();
     }
 
 
     void NameResolutionVisitor::exitFunction(){
         varTable.pop();
-        typeTable.pop();
     }
 
 
@@ -322,7 +292,7 @@ namespace ante {
     }
 
     void handleTraitImpl(NameResolutionVisitor &v, ExtNode *n){
-        AnType *preTrait = toAnType(n->trait.get());
+        AnType *preTrait = toAnType(n->trait.get(), v.compUnit);
         AnTraitType *trait = try_cast<AnTraitType>(preTrait);
         if(!trait)
             error(anTypeToColoredStr(preTrait) + " is not a trait", n->trait->loc);
@@ -349,7 +319,7 @@ namespace ante {
             }else if(DataDeclNode *ddn = dynamic_cast<DataDeclNode*>(&m)){
                 if(checkTyInTraitDecl(traitDeclTys, traitImplTys, ddn, trait)){
                     ante::remove_if(traitDeclTys, [&](TypeFamily &decl){ return decl.name == ddn->name; });
-                    traitImplTys.emplace_back(ddn->name, convertToTypeArgs(ddn->generics));
+                    traitImplTys.emplace_back(ddn->name, convertToTypeArgs(ddn->generics, v.compUnit));
                 }
             }
         }
@@ -368,10 +338,10 @@ namespace ante {
             submoduleVisitor.compUnit = &submodule;
 
             if(!alreadyImported(submoduleVisitor, "Prelude"))
-                tryTo([&](){ submoduleVisitor.importFile(AN_PRELUDE_FILE, n->loc); });
+                TRY_TO(submoduleVisitor.importFile(AN_PRELUDE_FILE, n->loc));
 
             for(Node &m : *n->methods)
-                tryTo([&](){ submoduleVisitor.declare((FuncDeclNode*)&m); });
+                TRY_TO(submoduleVisitor.declare((FuncDeclNode*)&m));
         }else{ // impl Trait
             handleTraitImpl(*this, n);
         }
@@ -380,14 +350,14 @@ namespace ante {
 
     void NameResolutionVisitor::visit(RootNode *n){
         if(compUnit->name != "Prelude"){
-            tryTo([&](){ importFile(AN_PRELUDE_FILE, n->loc); });
+            TRY_TO(importFile(AN_PRELUDE_FILE, n->loc));
         }
         for(auto &m : n->imports)
-            tryTo([&](){ m->accept(*this); });
+            TRY_TO(m->accept(*this));
         for(auto &m : n->types)
-            tryTo([&](){ m->accept(*this); });
+            TRY_TO(m->accept(*this));
         for(auto &m : n->traits)
-            tryTo([&](){ m->accept(*this); });
+            TRY_TO(m->accept(*this));
 
         // unwrap any surrounding modifiers then declare
         for(auto &m : n->extensions){
@@ -395,21 +365,21 @@ namespace ante {
             while(dynamic_cast<ModNode*>(mn))
                 mn = static_cast<ModNode*>(mn)->expr.get();
 
-            tryTo([&](){ declare(static_cast<ExtNode*>(mn)); });
+            TRY_TO(declare(static_cast<ExtNode*>(mn)));
         }
         for(auto &m : n->funcs){
             auto mn = m.get();
             while(dynamic_cast<ModNode*>(mn))
                 mn = static_cast<ModNode*>(mn)->expr.get();
 
-            tryTo([&](){ declare(static_cast<FuncDeclNode*>(mn)); });
+            TRY_TO(declare(static_cast<FuncDeclNode*>(mn)));
         }
         for(auto &m : n->extensions)
-            tryTo([&](){ m->accept(*this); });
+            TRY_TO(m->accept(*this));
         for(auto &m : n->funcs)
-            tryTo([&](){ m->accept(*this); });
+            TRY_TO(m->accept(*this));
         for(auto &m : n->main)
-            tryTo([&](){ m->accept(*this); });
+            TRY_TO(m->accept(*this));
     }
 
     void NameResolutionVisitor::visit(IntLitNode *n){}
@@ -438,7 +408,7 @@ namespace ante {
     }
 
     void NameResolutionVisitor::visit(TypeNode *n){
-        n->setType(toAnType(n));
+        n->setType(toAnType(n, compUnit));
     }
 
     void NameResolutionVisitor::visit(TypeCastNode *n){
@@ -457,7 +427,7 @@ namespace ante {
 
     void NameResolutionVisitor::visit(SeqNode *n){
         for(auto &e : n->sequence){
-            tryTo([&](){ e->accept(*this); });
+            TRY_TO(e->accept(*this));
         }
     }
 
@@ -691,7 +661,7 @@ namespace ante {
         root->accept(newVisitor);
 
         if (errorCount()) return newVisitor;
-        TypeInferenceVisitor::infer(root);
+        TypeInferenceVisitor::infer(root, newVisitor.compUnit);
         return newVisitor;
     }
 
@@ -874,12 +844,12 @@ namespace ante {
             assert(submodule.compUnit && ("Could not find submodule " + name).c_str());
 
             for(Node &m : *n->methods)
-                tryTo([&](){ m.accept(submodule); });
+                TRY_TO(m.accept(submodule));
         } else {
             if (!alreadyImported(*this, "Prelude"))
-                tryTo([&]() { importFile(AN_PRELUDE_FILE, n->loc); });
+                TRY_TO(importFile(AN_PRELUDE_FILE, n->loc));
             for (Node &m : *n->methods)
-                tryTo([&]() { m.accept(*this); });
+                TRY_TO(m.accept(*this));
         }
     }
 
@@ -1001,16 +971,15 @@ namespace ante {
 
 
     void NameResolutionVisitor::visitUnionDecl(parser::DataDeclNode *decl){
-        auto *nvn = (NamedValNode*)decl->child.get();
+        auto generics = convertToTypeArgs(decl->generics, compUnit);
+        AnSumType *data = AnSumType::create(decl->name, {}, generics);
+        data->isAlias = decl->isAlias;
+        define(decl->name, data, decl->loc);
 
-        auto generics = convertToTypeArgs(decl->generics);
-        AnSumType *data = AnSumType::get(decl->name);
-        if(!data)
-            data = AnSumType::create(decl->name, {}, generics);
-
-        while(nvn){
+        for(Node& child : *decl->child){
+            auto nvn = static_cast<NamedValNode*>(&child);
             TypeNode *tyn = (TypeNode*)nvn->typeExpr.get();
-            AnType *tagTy = tyn->extTy ? toAnType(tyn->extTy.get()) : AnType::getVoid();
+            AnType *tagTy = tyn->extTy ? toAnType(tyn->extTy.get(), compUnit) : AnType::getVoid();
 
             // fake var to make sure the field decl is not null
             auto var = new Variable(nvn->name, decl);
@@ -1034,22 +1003,13 @@ namespace ante {
 
             validateType(tagTy, decl);
             define(nvn->name, tagdt, nvn->loc);
-
-            nvn = (NamedValNode*)nvn->next.get();
         }
-
-        data->typeTag = TT_TaggedUnion;
-        data->isAlias = decl->isAlias;
-        define(decl->name, data, decl->loc);
     }
 
 
     void NameResolutionVisitor::visitTypeFamily(DataDeclNode *n){
-        AnDataType *family = AnDataType::getTypeFamily(n->name);
-        if(!family)
-            family = AnDataType::createTypeFamily(n->name, convertToTypeArgs(n->generics));
-
-        define(n->name, family, n->loc);
+        // AnDataType *family = AnDataType::createTypeFamily(n->name, convertToTypeArgs(n->generics, compUnit));
+        // define(n->name, family, n->loc);
     }
 
 
@@ -1062,9 +1022,7 @@ namespace ante {
             return;
         }
 
-        AnProductType *data = AnProductType::get(n->name);
-        if(!data)
-            data = AnProductType::create(n->name, {}, convertToTypeArgs(n->generics));
+        AnProductType *data = AnProductType::create(n->name, {}, convertToTypeArgs(n->generics, compUnit));
 
         define(n->name, data, n->loc);
         data->fields.reserve(n->fields);
@@ -1073,7 +1031,7 @@ namespace ante {
 
         while(nvn){
             TypeNode *tyn = (TypeNode*)nvn->typeExpr.get();
-            auto ty = toAnType(tyn);
+            auto ty = toAnType(tyn, compUnit);
 
             auto var = new Variable(nvn->name, n);
             nvn->decl = var;
@@ -1091,11 +1049,12 @@ namespace ante {
         auto tr = new Trait();
         tr->name = n->name;
 
-        AnType *genericSelfParam = toAnType(n->selfType.get());
+        AnType *genericSelfParam = toAnType(n->selfType.get(), compUnit);
 
         // trait type is created here but the internal trait
         // tr will still be mutated with additional methods after
-        AnTraitType::create(tr, genericSelfParam, convertToTypeArgs(n->generics));
+        auto trait = AnTraitType::create(tr, genericSelfParam, convertToTypeArgs(n->generics, compUnit));
+        define(n->name, trait, n->loc);
 
         enterFunction();
         for(Node &child : *n->child){
@@ -1106,7 +1065,7 @@ namespace ante {
                 compUnit->fnDecls[fdn->name] = fd;
                 tr->funcs.emplace_back(fd);
             }else if(DataDeclNode *type = dynamic_cast<DataDeclNode*>(&child)){
-                tr->typeFamilies.emplace_back(type->name, convertToTypeArgs(type->generics));
+                tr->typeFamilies.emplace_back(type->name, convertToTypeArgs(type->generics, compUnit));
             }
         }
         exitFunction();

@@ -20,15 +20,15 @@ namespace ante {
      * 4. Substitute any yet-unresolved types  (SubstitutingVisitor)
      */
     struct TypeInferenceVisitor : public NodeVisitor {
-        TypeInferenceVisitor(){}
+        TypeInferenceVisitor(Module *module) : module{module}{}
 
         /** Infer types of all expressions in parse tree and
         * mutate the ast with the inferred types. */
-        static void infer(parser::Node *n){
-            TypeInferenceVisitor step1;
+        static void infer(parser::Node *n, Module *module){
+            TypeInferenceVisitor step1{module};
             n->accept(step1);
 
-            ConstraintFindingVisitor step2;
+            ConstraintFindingVisitor step2{module};
             n->accept(step2);
 
             auto constraints = step2.getConstraints();
@@ -38,15 +38,18 @@ namespace ante {
         }
 
 
-        static void infer(std::unique_ptr<parser::Node> &n){
-            return infer(n.get());
+        static void infer(std::unique_ptr<parser::Node> &n, Module *module){
+            return infer(n.get(), module);
         }
 
-        static void infer(std::shared_ptr<parser::Node> &n){
-            return infer(n.get());
+        static void infer(std::shared_ptr<parser::Node> &n, Module *module){
+            return infer(n.get(), module);
         }
 
         DECLARE_NODE_VISIT_METHODS();
+
+        private:
+            Module *module;
     };
 }
 

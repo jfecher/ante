@@ -133,11 +133,10 @@ bool isSimpleTag(AnProductType *dt){
  */
 void CompilingVisitor::visit(TypeNode *n){
     //check for enum value
-    if(n->typeTag == TT_Data || n->typeTag == TT_TaggedUnion){
-        auto *dataTy = AnProductType::get(n->typeName);
-        if(!dataTy or !isSimpleTag(dataTy)) goto rettype;
-
-        auto *unionDataTy = dataTy->parentUnionType;
+    auto t = try_cast<AnProductType>(n->getType());
+    if(t && t->name != "Type"){
+        auto *unionDataTy = try_cast<AnSumType>(n->getType());
+        assert(unionDataTy);
 
         size_t tagIndex = unionDataTy->getTagVal(n->typeName);
         Value *tag = ConstantInt::get(*c->ctxt, APInt(8, tagIndex, true));
@@ -156,17 +155,15 @@ void CompilingVisitor::visit(TypeNode *n){
         //load the initial alloca, not the bitcasted one
         Value *unionVal = c->builder.CreateLoad(alloca);
         val = TypedValue(unionVal, unionDataTy);
-        return;
+    }else{
+        //return the type as a value
+        auto *ty = t->typeArgs[0];
+
+        //The TypeNode* address is wrapped in an llvm int so that llvm::Value methods can be called
+        //without crashing, even if their result is meaningless
+        Value *v = c->builder.getInt64((unsigned long)ty);
+        val = TypedValue(v, t);
     }
-
-rettype:
-    //return the type as a value
-    auto *ty = toAnType(n);
-
-    //The TypeNode* address is wrapped in an llvm int so that llvm::Value methods can be called
-    //without crashing, even if their result is meaningless
-    Value *v = c->builder.getInt64((unsigned long)ty);
-    val =TypedValue(v, AnType::getPrimitive(TT_Type));
 }
 
 /**
@@ -218,8 +215,9 @@ TypedValue compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
     TypedValue val;
 
     // errors may occur here but we cannot recover so let it throw
-    NameResolutionVisitor::resolve(expr);
-    TypeInferenceVisitor::infer(expr);
+    NameResolutionVisitor v;
+    expr->accept(v);
+    TypeInferenceVisitor::infer(expr, v.compUnit);
 
     //Compile main and hold onto the last value
     for(auto &n : expr->main){
@@ -258,7 +256,7 @@ void CompilingVisitor::visit(StrLitNode *n){
         return;
     }
 
-    AnType *strty = AnProductType::get("Str");
+    AnType *strty = c->compUnit->lookupType("Str");
 
     auto *ptr = c->builder.CreateGlobalStringPtr(n->val, "_strlit");
 
@@ -675,7 +673,7 @@ TypedValue compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
     //impossible to insert into a non-value so fail if the lvalue is one
     if(auto *tn = dynamic_cast<TypeNode*>(bop->lval.get()))
         error("Cannot insert value into static module '" +
-                anTypeToColoredStr(toAnType(tn)), tn->loc);
+                anTypeToColoredStr(toAnType(tn, c->compUnit)), tn->loc);
 
 
     Value *val;
@@ -967,9 +965,11 @@ void compileAll(Compiler *c, vector<T> &vec){
 
 
 bool Compiler::scanAllDecls(RootNode *root){
-    NameResolutionVisitor::resolve(root);
+    NameResolutionVisitor v;
+    this->compUnit = v.compUnit;
+    root->accept(v);
     if(!errorCount())
-        TypeInferenceVisitor::infer(root);
+        TypeInferenceVisitor::infer(root, compUnit);
     return errorCount();
 }
 

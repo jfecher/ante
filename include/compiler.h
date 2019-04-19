@@ -109,6 +109,8 @@ namespace ante {
         std::unique_ptr<llvm::Module> module;
         llvm::IRBuilder<> builder;
 
+        Module *compUnit;
+
         /** The abstract syntax tree.
          *  This is gradually filled with more information
          *  during each compilation phase. */

@@ -48,7 +48,7 @@ namespace ante {
             if(exts == pt->fields && typeVars == pt->typeArgs){
                 return pt;
             }else{
-                return AnProductType::getOrCreateVariant(pt, exts, typeVars);
+                return AnProductType::createVariant(pt, exts, typeVars);
             }
 
         }else if(auto st = try_cast<AnSumType>(t)){
@@ -57,7 +57,7 @@ namespace ante {
             if(exts == st->tags && typeVars == st->typeArgs){
                 return st;
             }else{
-                auto ret = AnSumType::getOrCreateVariant(st, exts, typeVars);
+                auto ret = AnSumType::createVariant(st, exts, typeVars);
                 setExtsParentUnionTypeIfNotSet(ret, exts);
                 return ret;
             }
@@ -68,7 +68,7 @@ namespace ante {
             if(selfType == tt->selfType && typeVars == tt->typeArgs)
                 return tt;
             else
-                return AnTraitType::getOrCreateVariant(tt, selfType, typeVars);
+                return AnTraitType::createVariant(tt, selfType, typeVars);
 
         }else if(auto tv = try_cast<AnTypeVarType>(t)){
             auto it = map.find(tv->name);
@@ -152,7 +152,7 @@ namespace ante {
             if(exts == dt->fields && generics == dt->typeArgs)
                 return t;
             else
-                return AnProductType::getOrCreateVariant(dt, exts, generics);
+                return AnProductType::createVariant(dt, exts, generics);
 
         }else if(auto st = try_cast<AnSumType>(t)){
             auto exts = substituteIntoAll(u, subType, st->tags);;
@@ -161,7 +161,7 @@ namespace ante {
             if(exts == st->tags && generics == st->typeArgs){
                 return st;
             }else{
-                auto ret = AnSumType::getOrCreateVariant(st, exts, generics);
+                auto ret = AnSumType::createVariant(st, exts, generics);
                 setExtsParentUnionTypeIfNotSet(ret, exts);
                 return ret;
             }
@@ -177,7 +177,7 @@ namespace ante {
             if(selfType == tt->selfType && generics == tt->typeArgs)
                 return tt;
             else
-                return AnTraitType::getOrCreateVariant(tt, selfType, generics);
+                return AnTraitType::createVariant(tt, selfType, generics);
 
         }else if(auto fn = try_cast<AnFunctionType>(t)){
             auto exts = substituteIntoAll(u, subType, fn->extTys);;

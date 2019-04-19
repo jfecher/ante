@@ -135,16 +135,10 @@ namespace ante {
 
         Compiler *c = cv.c;
 
-        auto *tagTy = AnProductType::get(pattern->typeName);
-        if(!tagTy)
-            error("No type " + typeNodeToColoredStr(pattern)
-                    + " found in scope", pattern->loc);
+        // TODO: Fix with new type information
+        auto *tagTy = static_cast<AnProductType*>(pattern->getType());
+        auto *parentTy = static_cast<AnSumType*>(pattern->getType()); //wrong
 
-        if(!tagTy->parentUnionType)
-            error(typeNodeToColoredStr(pattern)
-                    + " must be a union tag to be used in a pattern", pattern->loc);
-
-        auto *parentTy = tagTy->parentUnionType;
         ConstantInt *ci = ConstantInt::get(*c->ctxt,
                 APInt(8, parentTy->getTagVal(pattern->typeName), true));
 
