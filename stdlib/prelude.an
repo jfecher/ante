@@ -135,8 +135,8 @@ trait Append 't
     fun (++): 't l r -> 't
 
 trait Extract 'col 'index
-    type Elem
-    fun (#): 'col collection, 'index index -> Elem
+    type ExtractElem
+    fun (#): 'col collection, 'index index -> ExtractElem
 
 trait Insert 'col 'index 'elem
     // temporary until functions with the same name and
@@ -147,12 +147,12 @@ trait In 'elem 'col
     fun (in): 'elem elem, 'col collection -> bool
 
 trait Range 't
-    type Result
-    fun (..): 't l r -> Result
+    type RangeResult
+    fun (..): 't l r -> RangeResult
 
 trait Deref 't
-    type Result
-    fun (@): 't t -> Result
+    type DerefResult
+    fun (@): 't t -> DerefResult
 
 trait Neg 't
     fun neg: 't t -> 't
@@ -198,7 +198,7 @@ impl Sub usz
     fun (-): a, b = a - b
 
 impl Extract (ref 't) usz
-    type Elem = void
+    type ExtractElem = void
     fun (#): c, i = c#i
 
 
@@ -411,9 +411,9 @@ trait Iterable 'i
     fun into_iter: 'i i -> Iterator
 
 trait Iterator 'i
-    type Elem
+    type IteratorElem
     fun next: 'i i -> 'i
-    fun unwrap: 'i i -> Elem
+    fun unwrap: 'i i -> IteratorElem
     fun has_next: 'i i -> bool
 
 

@@ -92,7 +92,7 @@ namespace ante {
             if(dt->fields.size() == 1){
                 return dt->fields[0];
             }else{
-                return AnAggregateType::get(TT_Tuple, dt->fields);
+                return AnType::getTupleOf(dt->fields);
             }
         }
         return ty;

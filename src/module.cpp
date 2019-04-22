@@ -73,7 +73,14 @@ namespace ante {
 
     AnType* Module::lookupType(std::string const& name) const {
         TypeDecl *typeDecl = lookupTypeDecl(name);
-        return typeDecl == nullptr ? nullptr : typeDecl->type;
+        if(!typeDecl) return nullptr;
+
+        auto pt = try_cast<AnProductType>(typeDecl->type);
+        if(pt && pt->isAlias){
+            return pt->fields.size() == 1 ? pt->fields[0] : AnType::getTupleOf(pt->fields);
+        }else{
+            return typeDecl->type;
+        }
     }
 
     TypeDecl* Module::lookupTypeDecl(std::string const& name) const {

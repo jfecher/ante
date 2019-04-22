@@ -117,6 +117,12 @@ namespace ante {
         o << ']';
     }
 
+    /** @return n == 1 ? "" : pluralSuffix */
+    std::string plural(int n, std::string pluralSuffix = "s");
+
+    /** @return n == 1 ? "is" : "are" */
+    std::string pluralIsAre(int n);
+
     void show(parser::Node *n);
     void show(std::shared_ptr<parser::Node> const& n);
     void show(std::unique_ptr<parser::Node> const& n);

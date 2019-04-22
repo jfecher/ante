@@ -255,7 +255,7 @@ tuple_type: '(' type_expr ')'      {$$ = $2;}
           | '(' type_expr ',' ')'  {$$ = mkTypeNode(@$, TT_Tuple, (char*)"", $2);}
           ;
 
-type: type non_generic_type  %prec STMT  {$$ = $1; ((TypeNode*)$1)->params.emplace_back((TypeNode*)$2);}
+type: type non_generic_type  %prec STMT  {$$ = $1; ((TypeNode*)$1)->params.emplace_back((TypeNode*)$2); $1->loc = @$;}
     | non_generic_type       %prec STMT  {$$ = $1;}
     ;
 
@@ -554,7 +554,6 @@ var: ident  %prec Ident {$$ = mkVarNode(@$, (char*)$1); free($1);}
 val_no_decl: '(' expr ')'            {$$ = $2;}
            | tuple                   {$$ = $1;}
            | array                   {$$ = $1;}
-           | unary_op                {$$ = $1;}
            | var                     {$$ = $1;}
            | intlit                  {$$ = $1;}
            | fltlit                  {$$ = $1;}
@@ -668,6 +667,7 @@ expr_no_decl: expr_no_decl '+' maybe_newline expr_no_decl                      {
             | expr_no_decl fn_brackets                                         {$$ = mkBinOpNode(@$, '(', $1, $2);}
             | expr_no_decl arg_list                                            {$$ = mkBinOpNode(@$, '(', $1, $2);}
             | val_no_decl                                           %prec MED  {$$ = $1;}
+            | unary_op                                                         {$$ = $1;}
 
             | expr_no_decl AddEq maybe_newline expr_no_decl             {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '+', $1, $4), false);}
             | expr_no_decl SubEq maybe_newline expr_no_decl             {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '-', $1, $4), false);}
@@ -694,47 +694,48 @@ expr_or_jump: expr  %prec MEDIF
             | ret_expr
             ;
 
-expr: expr '+' maybe_newline expr                    {$$ = mkBinOpNode(@$, '+', $1, $4);}
-    | expr '-' expr                                  {$$ = mkBinOpNode(@$, '-', $1, $3);}
+expr: expr '+' maybe_newline expr                               {$$ = mkBinOpNode(@$, '+', $1, $4);}
+    | expr '-' expr                                             {$$ = mkBinOpNode(@$, '-', $1, $3);}
     | '-' expr                                                  {$$ = mkUnOpNode(@$, '-', $2);}
-    | expr '-' Newline expr                          {$$ = mkBinOpNode(@$, '-', $1, $4);}
-    | expr '*' maybe_newline expr                    {$$ = mkBinOpNode(@$, '*', $1, $4);}
-    | expr '/' maybe_newline expr                    {$$ = mkBinOpNode(@$, '/', $1, $4);}
-    | expr '%' maybe_newline expr                    {$$ = mkBinOpNode(@$, '%', $1, $4);}
-    | expr '^' maybe_newline expr                    {$$ = mkBinOpNode(@$, '^', $1, $4);}
-    | expr '<' maybe_newline expr                    {$$ = mkBinOpNode(@$, '<', $1, $4);}
-    | expr '>' maybe_newline expr                    {$$ = mkBinOpNode(@$, '>', $1, $4);}
-    | type_expr '.' maybe_newline var                                      {$$ = mkBinOpNode(@$, '.', $1, $4);}
-    | type_expr '.' maybe_newline type_expr                                {$$ = mkBinOpNode(@$, '.', $1, $4);}
+    | expr '-' Newline expr                                     {$$ = mkBinOpNode(@$, '-', $1, $4);}
+    | expr '*' maybe_newline expr                               {$$ = mkBinOpNode(@$, '*', $1, $4);}
+    | expr '/' maybe_newline expr                               {$$ = mkBinOpNode(@$, '/', $1, $4);}
+    | expr '%' maybe_newline expr                               {$$ = mkBinOpNode(@$, '%', $1, $4);}
+    | expr '^' maybe_newline expr                               {$$ = mkBinOpNode(@$, '^', $1, $4);}
+    | expr '<' maybe_newline expr                               {$$ = mkBinOpNode(@$, '<', $1, $4);}
+    | expr '>' maybe_newline expr                               {$$ = mkBinOpNode(@$, '>', $1, $4);}
+    | type_expr '.' maybe_newline var                           {$$ = mkBinOpNode(@$, '.', $1, $4);}
+    | type_expr '.' maybe_newline type_expr                     {$$ = mkBinOpNode(@$, '.', $1, $4);}
     | expr '.' maybe_newline var                                {$$ = mkBinOpNode(@$, '.', $1, $4);}
     | expr '.' maybe_newline type_expr                          {$$ = mkBinOpNode(@$, '.', $1, $4);}
-    | expr ';' maybe_newline expr                    {$$ = mkSeqNode(@$, $1, $4);}
-    | expr '#' maybe_newline expr                    {$$ = mkBinOpNode(@$, '#', $1, $4);}
-    | expr '=' maybe_newline expr                    {$$ = mkBinOpNode(@$, '=', $1, $4);}
-    | expr Is maybe_newline expr                     {$$ = mkBinOpNode(@$, Tok_Is, $1, $4);}
-    | expr Isnt maybe_newline expr                   {$$ = mkBinOpNode(@$, Tok_Isnt, $1, $4);}
-    | expr NotEq maybe_newline expr                  {$$ = mkBinOpNode(@$, Tok_NotEq, $1, $4);}
-    | expr GrtrEq maybe_newline expr                 {$$ = mkBinOpNode(@$, Tok_GrtrEq, $1, $4);}
-    | expr LesrEq maybe_newline expr                 {$$ = mkBinOpNode(@$, Tok_LesrEq, $1, $4);}
-    | expr Or maybe_newline expr                     {$$ = mkBinOpNode(@$, Tok_Or, $1, $4);}
-    | expr And maybe_newline expr                    {$$ = mkBinOpNode(@$, Tok_And, $1, $4);}
-    | expr ApplyR maybe_newline expr                 {$$ = mkBinOpNode(@$, '(', $4, mkTupleNode(@1, $1));}
-    | expr ApplyL maybe_newline expr                 {$$ = mkBinOpNode(@$, '(', $1, mkTupleNode(@4, $4));}
-    | expr Append maybe_newline expr                 {$$ = mkBinOpNode(@$, Tok_Append, $1, $4);}
-    | expr Range maybe_newline expr                  {$$ = mkBinOpNode(@$, Tok_Range, $1, $4);}
-    | expr In maybe_newline expr                     {$$ = mkBinOpNode(@$, Tok_In, $1, $4);}
-    | expr Not In maybe_newline expr                 {$$ = mkUnOpNode(@$, Tok_Not, mkBinOpNode(@$, Tok_In, $1, $5));}
+    | expr ';' maybe_newline expr                               {$$ = mkSeqNode(@$, $1, $4);}
+    | expr '#' maybe_newline expr                               {$$ = mkBinOpNode(@$, '#', $1, $4);}
+    | expr '=' maybe_newline expr                               {$$ = mkBinOpNode(@$, '=', $1, $4);}
+    | expr Is maybe_newline expr                                {$$ = mkBinOpNode(@$, Tok_Is, $1, $4);}
+    | expr Isnt maybe_newline expr                              {$$ = mkBinOpNode(@$, Tok_Isnt, $1, $4);}
+    | expr NotEq maybe_newline expr                             {$$ = mkBinOpNode(@$, Tok_NotEq, $1, $4);}
+    | expr GrtrEq maybe_newline expr                            {$$ = mkBinOpNode(@$, Tok_GrtrEq, $1, $4);}
+    | expr LesrEq maybe_newline expr                            {$$ = mkBinOpNode(@$, Tok_LesrEq, $1, $4);}
+    | expr Or maybe_newline expr                                {$$ = mkBinOpNode(@$, Tok_Or, $1, $4);}
+    | expr And maybe_newline expr                               {$$ = mkBinOpNode(@$, Tok_And, $1, $4);}
+    | expr ApplyR maybe_newline expr                            {$$ = mkBinOpNode(@$, '(', $4, mkTupleNode(@1, $1));}
+    | expr ApplyL maybe_newline expr                            {$$ = mkBinOpNode(@$, '(', $1, mkTupleNode(@4, $4));}
+    | expr Append maybe_newline expr                            {$$ = mkBinOpNode(@$, Tok_Append, $1, $4);}
+    | expr Range maybe_newline expr                             {$$ = mkBinOpNode(@$, Tok_Range, $1, $4);}
+    | expr In maybe_newline expr                                {$$ = mkBinOpNode(@$, Tok_In, $1, $4);}
+    | expr Not In maybe_newline expr                            {$$ = mkUnOpNode(@$, Tok_Not, mkBinOpNode(@$, Tok_In, $1, $5));}
     | expr As maybe_newline bounded_type_expr                   {$$ = mkBinOpNode(@$, Tok_As, $1, $4);}
     | expr fn_brackets                                          {$$ = mkBinOpNode(@$, '(', $1, $2);}
     | expr arg_list                                             {$$ = mkBinOpNode(@$, '(', $1, $2);}
-    | val                                                       %prec MED  {$$ = $1;}
+    | val                                            %prec MED  {$$ = $1;}
+    | unary_op                                                  {$$ = $1;}
 
-    | expr AddEq maybe_newline expr             {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '+', $1, $4), false);}
-    | expr SubEq maybe_newline expr             {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '-', $1, $4), false);}
-    | expr MulEq maybe_newline expr             {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '*', $1, $4), false);}
-    | expr DivEq maybe_newline expr             {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '/', $1, $4), false);}
-    | expr Assign maybe_newline expr            {$$ = mkVarAssignNode(@$, $1, $4);} /* All VarAssignNodes return void values */
-    | modifier maybe_newline expr  %prec Newline        {$$ = append_modifier($1, $3);}
+    | expr AddEq maybe_newline expr                             {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '+', $1, $4), false);}
+    | expr SubEq maybe_newline expr                             {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '-', $1, $4), false);}
+    | expr MulEq maybe_newline expr                             {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '*', $1, $4), false);}
+    | expr DivEq maybe_newline expr                             {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '/', $1, $4), false);}
+    | expr Assign maybe_newline expr                            {$$ = mkVarAssignNode(@$, $1, $4);} /* All VarAssignNodes return void values */
+    | modifier maybe_newline expr  %prec Newline                {$$ = append_modifier($1, $3);}
 
     /* this rule returns the original If for precedence reasons compared to its mirror rule in if_expr
      * that returns the elif node itself.  The former necessitates setElse to travel through the first IfNode's
@@ -743,9 +744,9 @@ expr: expr '+' maybe_newline expr                    {$$ = mkBinOpNode(@$, '+', 
     | expr Else expr_or_jump                                    {$$ = setElse($1, $3);}
 
     | match_expr Newline expr                      %prec Match  {$$ = mkSeqNode(@$, $1, $3);}
-    | match_expr Newline                                                   {$$ = $1;}
+    | match_expr Newline                                        {$$ = $1;}
     | expr Newline                                              {$$ = $1;}
-    | expr Newline expr                              {$$ = mkSeqNode(@$, $1, $3);}
+    | expr Newline expr                                         {$$ = mkSeqNode(@$, $1, $3);}
     ;
 
 %%

@@ -187,7 +187,7 @@ namespace ante {
 
         }else if(auto tup = try_cast<AnAggregateType>(t)){
             auto exts = substituteIntoAll(u, subType, tup->extTys);;
-            return AnAggregateType::get(TT_Tuple, exts);
+            return AnType::getTupleOf(exts);
 
         }else{
             return t;

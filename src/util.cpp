@@ -25,4 +25,14 @@ namespace ante {
     std::ostream& operator<<(std::ostream &out, AnType &n){
         return out << anTypeToColoredStr(&n);
     }
+
+    /** @return n == 1 ? "" : pluralSuffix */
+    std::string plural(int n, std::string pluralSuffix){
+        return n == 1 ? "" : pluralSuffix;
+    }
+
+    /** @return n == 1 ? "is" : "are" */
+    std::string pluralIsAre(int n){
+        return n == 1 ? "is" : "are";
+    }
 }

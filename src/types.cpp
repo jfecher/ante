@@ -728,7 +728,7 @@ string anTypeToStr(const AnType *t){
                 return anTypeToStr(f->extTys[0]) + " -> " + retTy + tcConstraints;
         }
 
-        auto paramTypes = AnAggregateType::get(TT_Tuple, f->extTys);
+        auto paramTypes = AnType::getTupleOf(f->extTys);
         return anTypeToStr(paramTypes) + " -> " + retTy + tcConstraints;
     }else if(auto *tup = try_cast<AnAggregateType>(t)){
         string ret = "(";

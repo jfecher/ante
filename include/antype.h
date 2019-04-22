@@ -109,6 +109,7 @@ namespace ante {
         static AnTypeVarType* getTypeVar(std::string const& name);
         static AnFunctionType* getFunction(AnType *r, const std::vector<AnType*>);
         static AnAggregateType* getAggregate(TypeTag t, const std::vector<AnType*>);
+        static AnAggregateType* getTupleOf(const std::vector<AnType*>);
     };
 
     class AnProductType;

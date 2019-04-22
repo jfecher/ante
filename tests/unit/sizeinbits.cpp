@@ -82,10 +82,10 @@ TEST_CASE("Size in bits of function type", "[getSizeInBits]"){
 }
 
 TEST_CASE("Size in bits of aggregate (tuple) type", "[getSizeInBits]"){
-    auto aggTy1 = AnAggregateType::get(TT_Tuple, {});
-    auto aggTy2 = AnAggregateType::get(TT_Tuple, {AnType::getI32()});
-    auto aggTy3 = AnAggregateType::get(TT_Tuple, {AnType::getU64(), AnType::getBool()});
-    auto aggTy4 = AnAggregateType::get(TT_Tuple, {aggTy3, AnPtrType::get(AnType::getVoid())});
+    auto aggTy1 = AnType::getTupleOf({});
+    auto aggTy2 = AnType::getTupleOf({AnType::getI32()});
+    auto aggTy3 = AnType::getTupleOf({AnType::getU64(), AnType::getBool()});
+    auto aggTy4 = AnType::getTupleOf({aggTy3, AnPtrType::get(AnType::getVoid())});
 
     REQUIRE(aggTy1->getSizeInBits(c).getVal() == 0);
     REQUIRE(aggTy2->getSizeInBits(c).getVal() == 32);
@@ -98,7 +98,7 @@ TEST_CASE("Size in bits of generic type", "[getSizeInBits]"){
     auto u = AnTypeVarType::get("'u");
     auto ptr_t = AnPtrType::get(t);
     auto arr_u = AnArrayType::get(u, 5);
-    auto tup = AnAggregateType::get(TT_Tuple, {AnType::getI32(), t});
+    auto tup = AnType::getTupleOf({AnType::getI32(), t});
     auto fn = AnFunctionType::get(u, {AnType::getI32(), t}, {}, false);
 
     //All non-ptr types should return an error instead of a size
@@ -115,7 +115,7 @@ TEST_CASE("Force size in bits of generic type", "[getSizeInBits]"){
     auto u = AnTypeVarType::get("'u");
     auto ptr_t = AnPtrType::get(t);
     auto arr_u = AnArrayType::get(u, 5);
-    auto tup = AnAggregateType::get(TT_Tuple, {AnType::getI32(), t});
+    auto tup = AnType::getTupleOf({AnType::getI32(), t});
     auto fn = AnFunctionType::get(u, {AnType::getI32(), t}, {}, false);
 
     //All typevars are guessed to be a ptr's size when getSizeInBits is forced

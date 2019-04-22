@@ -71,7 +71,7 @@ namespace ante {
 
     void NameResolutionVisitor::define(string const& name, AnDataType *dt, LOC_TY &loc){
         TypeDecl *existingTy = lookupType(name);
-        if(existingTy){
+        if(existingTy && existingTy->type->typeTag != TT_TypeFamily){
             showError(name + " was already declared", loc);
             error(name + " was previously declared here", existingTy->loc, ErrorType::Note);
         }
@@ -1008,8 +1008,8 @@ namespace ante {
 
 
     void NameResolutionVisitor::visitTypeFamily(DataDeclNode *n){
-        // AnDataType *family = AnDataType::createTypeFamily(n->name, convertToTypeArgs(n->generics, compUnit));
-        // define(n->name, family, n->loc);
+      AnDataType *family = AnDataType::createTypeFamily(n->name, convertToTypeArgs(n->generics, compUnit));
+      define(n->name, family, n->loc);
     }
 
 

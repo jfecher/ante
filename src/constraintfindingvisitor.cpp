@@ -143,6 +143,10 @@ namespace ante {
             }else{
                 addConstraint(n->rval->getType(), variant->fields[offset], n->rval->loc);
             }
+        }else{
+            AnTraitType *trait = static_cast<AnTraitType*>(module->lookupType("To"));
+            trait = AnTraitType::createVariant(trait, n->typeExpr->getType(), {n->rval->getType()});
+            addConstraint(n->typeExpr->getType(), trait, n->loc);
         }
     }
 
@@ -252,7 +256,7 @@ namespace ante {
             auto fnty = try_cast<AnFunctionType>(n->lval->getType());
             if(!fnty){
                 auto args = try_cast<AnAggregateType>(n->rval->getType());
-                if (!args) args = AnAggregateType::get(TT_Tuple, {n->rval->getType()});
+                if (!args) args = AnType::getTupleOf({n->rval->getType()});
                 auto params = vecOf<AnType*>(args->extTys.size());
 
                 for(size_t i = 0; i < args->extTys.size(); i++){
@@ -267,7 +271,7 @@ namespace ante {
                 addConstraint(n->lval->getType(), fnty, n->loc);
             }else{
                 auto args = try_cast<AnAggregateType>(n->rval->getType());
-                if (!args) args = AnAggregateType::get(TT_Tuple, { n->rval->getType() });
+                if (!args) args = AnType::getTupleOf({ n->rval->getType() });
 
                 size_t paramc = fnty->extTys.size();
                 size_t argc = args->extTys.size();
@@ -300,7 +304,7 @@ namespace ante {
                     for(; i < args->extTys.size(); i++){
                         varargs.push_back(args->extTys[i]);
                     }
-                    addConstraint(AnAggregateType::get(TT_Tuple, varargs), fnty->extTys.back(), n->loc);
+                    addConstraint(AnType::getTupleOf(varargs), fnty->extTys.back(), n->loc);
                 }
                 addConstraint(n->getType(), fnty->retTy, n->loc);
             }
@@ -433,7 +437,7 @@ namespace ante {
         for(size_t i = 0; i < pat->exprs.size(); i++){
             fieldTys.push_back(nextTypeVar());
         }
-        auto tupTy = AnAggregateType::get(TT_Tuple, fieldTys);
+        auto tupTy = AnType::getTupleOf(fieldTys);
         addConstraint(tupTy, expectedType, pat->loc);
         patChecker.overwrite(Pattern::fromTuple(fieldTys), pat->loc);
 

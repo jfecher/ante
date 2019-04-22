@@ -42,8 +42,6 @@ void PrintingVisitor::visit(RootNode *n){
 
     for(auto& f : n->funcs){
         f->accept(*this); 
-        if(static_cast<FuncDeclNode*>(f.get())->decl)
-            cout << "  :  " << anTypeToColoredStr(f->getType());
         puts("\n");
     }
 
@@ -311,6 +309,11 @@ void PrintingVisitor::visit(MatchBranchNode *n){
 void PrintingVisitor::visit(FuncDeclNode *n){
     printModifiers(*this, n);
     bool isExtern = false;
+
+    if(n->getType()){
+        cout << "![type = " << anTypeToColoredStr(n->getType()) << "]\n";
+
+    }
     cout << "fun ";
 
     if(!n->name.empty() && n->name[n->name.size()-1] == ';'){
@@ -332,6 +335,7 @@ void PrintingVisitor::visit(FuncDeclNode *n){
         cout << " : ";
         n->typeClassConstraints->accept(*this);
     }
+
     if(n->child.get()){
         cout << " = ";
         n->child->accept(*this);

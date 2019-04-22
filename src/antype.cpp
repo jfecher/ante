@@ -2,6 +2,7 @@
 #include "types.h"
 #include "uniontag.h"
 #include "unification.h"
+#include "util.h"
 
 using namespace std;
 using namespace ante::parser;
@@ -239,6 +240,10 @@ namespace ante {
         return AnAggregateType::get(t, exts);
     }
 
+    AnAggregateType* AnType::getTupleOf(const std::vector<AnType*> exts){
+        return AnAggregateType::get(TT_Tuple, exts);
+    }
+
     AnAggregateType* AnAggregateType::get(TypeTag t, const vector<AnType*> exts){
         auto key = make_pair(t, exts);
 
@@ -321,7 +326,7 @@ namespace ante {
             cerr << "AnProductType::getVariantWithoutTag(): " << anTypeToColoredStr(this) << " is not a variant\n";
         }
         if(fields.size() == 2 && fields[1]->typeTag == TT_Void){
-            return AnAggregateType::get(TT_Tuple, {});
+            return AnType::getTupleOf({});
         }
 
         vector<AnType*> result;
@@ -330,7 +335,7 @@ namespace ante {
         for(; it != fields.end(); ++it){
             result.push_back(*it);
         }
-        return AnAggregateType::get(TT_Tuple, result);
+        return AnType::getTupleOf(result);
     }
 
     AnProductType* AnProductType::create(string const& name, vector<AnType*> const& elems,
@@ -483,7 +488,7 @@ namespace ante {
                     tys.push_back(toAnType(ext, module));
                     ext = (TypeNode*)ext->next.get();
                 }
-                ret = AnAggregateType::get(TT_Tuple, tys);
+                ret = AnType::getTupleOf(tys);
                 break;
             }
 
@@ -499,12 +504,24 @@ namespace ante {
             case TT_Data:
             case TT_Trait:
             case TT_TaggedUnion: {
-                AnDataType *basety = try_cast<AnDataType>(module->lookupType(tn->typeName));
+                AnType *type = module->lookupType(tn->typeName);
+                AnDataType *basety = try_cast<AnDataType>(type);
                 if(!basety){
-                    ante::error("Use of undeclared type " + lazy_str(tn->typeName, AN_TYPE_COLOR), tn->loc);
+                    if(type){
+                        return type; // type alias
+                    }else{
+                        error("Use of undeclared type " + lazy_str(tn->typeName, AN_TYPE_COLOR), tn->loc);
+                    }
                 }
 
                 ret = basety;
+                size_t tnpSize = tn->params.size();
+                size_t btaSize = basety->typeArgs.size() + (try_cast<AnTraitType>(basety) ? 1 : 0);
+                if(tnpSize > btaSize){
+                    error(anTypeToColoredStr(basety) + " takes " + to_string(btaSize)
+                        + " argument" + plural(btaSize) + ", but " + to_string(tnpSize) + ' '
+                        + pluralIsAre(tnpSize) + " given here", tn->loc);
+                }
 
                 size_t i = 0;
                 if(!tn->params.empty()){
