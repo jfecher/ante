@@ -71,7 +71,10 @@ namespace ante {
 
     void NameResolutionVisitor::define(string const& name, AnDataType *dt, LOC_TY &loc){
         TypeDecl *existingTy = lookupType(name);
-        if(existingTy && existingTy->type->typeTag != TT_TypeFamily){
+        if(existingTy){
+            auto pt = try_cast<AnProductType>(existingTy->type);
+            if(pt->isTypeFamily()) return;
+
             showError(name + " was already declared", loc);
             error(name + " was previously declared here", existingTy->loc, ErrorType::Note);
         }
@@ -81,10 +84,7 @@ namespace ante {
     }
 
     TypeDecl* NameResolutionVisitor::lookupType(string const& name) const {
-        auto it = compUnit->userTypes.find(name);
-        if(it != compUnit->userTypes.end())
-            return &it->second;
-        return nullptr;
+        return compUnit->lookupTypeDecl(name);
     }
 
     Variable* NameResolutionVisitor::lookupVar(std::string const& name) const {
@@ -325,6 +325,7 @@ namespace ante {
         }
 
         trait->impl = n;
+        n->traitType = trait;
         checkForUnimplementedFunctions(traitDeclFns, trait);
         checkForUnimplementedTypes(traitDeclTys, trait);
     }
@@ -973,7 +974,6 @@ namespace ante {
     void NameResolutionVisitor::visitUnionDecl(parser::DataDeclNode *decl){
         auto generics = convertToTypeArgs(decl->generics, compUnit);
         AnSumType *data = AnSumType::create(decl->name, {}, generics);
-        data->isAlias = decl->isAlias;
         define(decl->name, data, decl->loc);
 
         for(Node& child : *decl->child){
@@ -1008,8 +1008,8 @@ namespace ante {
 
 
     void NameResolutionVisitor::visitTypeFamily(DataDeclNode *n){
-      AnDataType *family = AnDataType::createTypeFamily(n->name, convertToTypeArgs(n->generics, compUnit));
-      define(n->name, family, n->loc);
+        auto *family = AnProductType::createTypeFamily(n->name, convertToTypeArgs(n->generics, compUnit));
+        define(n->name, family, n->loc);
     }
 
 

@@ -303,22 +303,37 @@ namespace ante {
     }
 
 
+    bool AnProductType::isTypeFamily() const noexcept {
+        if(!isAlias || fields.size() != 1) return false;
+        auto tv = try_cast<AnTypeVarType>(fields[0]);
+        return tv->name[1] >= 'A' && tv->name[1] <= 'Z';
+    }
+
+
     /** Search for a data type generic variant by name.
       * Returns it if found, or creates it otherwise. */
-    AnDataType* AnDataType::createTypeFamilyVariant(AnDataType *parent, TypeArgs const& typeArgs){
-        auto ret = new AnDataType(parent->name, TT_TypeFamily);
+    AnProductType* AnProductType::createTypeFamilyVariant(AnProductType *parent, TypeArgs const& typeArgs){
+        auto ret = new AnProductType(parent->name, {parent->fields[0]});
         ret->typeArgs = typeArgs;
         ret->isGeneric = ante::isGeneric(typeArgs);
         ret->unboundType = getRootUnboundType(parent);
+        ret->isAlias = true;
         return ret;
     }
 
     /** Creates or overwrites the type specified by name. */
-    AnDataType* AnDataType::createTypeFamily(string const& name, TypeArgs const& typeArgs){
-        auto family = new AnDataType(name, TT_TypeFamily);
+    AnProductType* AnProductType::createTypeFamily(string const& name, TypeArgs const& typeArgs){
+        auto typeFamilyTypeVar = AnTypeVarType::get("'" + name);
+        auto family = new AnProductType(name, {typeFamilyTypeVar});
         family->typeArgs = typeArgs;
         family->isGeneric = ante::isGeneric(typeArgs);
+        family->isAlias = true;
         return family;
+    }
+
+    AnType* AnProductType::getAliasedType() const {
+        if(fields.empty()) return AnType::getVoid();
+        return fields.size() == 1 ? fields[0] : AnType::getTupleOf(fields);
     }
 
     AnAggregateType* AnProductType::getVariantWithoutTag() const {

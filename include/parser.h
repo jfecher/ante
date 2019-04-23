@@ -20,6 +20,7 @@ namespace ante {
     struct Compiler;
     struct Declaration;
     class AnType;
+    class AnTraitType;
 
     namespace parser {
 
@@ -314,9 +315,12 @@ namespace ante {
             std::unique_ptr<TypeNode> trait;
             std::unique_ptr<Node> methods;
 
+            /** Set to (trait?toAnType(trait):nullptr) to hold onto a traits impl. */
+            AnTraitType *traitType;
+
             void accept(NodeVisitor& v){ v.visit(this); }
             ExtNode(LOC_TY& loc, TypeNode *ty, Node *m, TypeNode *tr)
-                : ModifiableNode(loc), typeExpr(ty), trait(tr), methods(m){}
+                : ModifiableNode(loc), typeExpr(ty), trait(tr), methods(m), traitType(0){}
             ~ExtNode(){}
         };
 

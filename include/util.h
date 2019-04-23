@@ -16,6 +16,11 @@ namespace ante {
 
 #   define TRY_TO(f) ante::tryTo([&](){ f; })
 
+    //Define a new assert macro so it remains in the binary even if NDEBUG is defined.
+    //Implement on one line to keep __LINE__ referring to the correct assertion line.
+    #define ASSERT_UNREACHABLE() { fprintf(stderr, "assert_unreachable failed on line %d of file '%s'", __LINE__, \
+                                        __FILE__); exit(1); }
+
     /** @brief Create a vector with a capacity of at least cap elements. */
     template<typename T> std::vector<T> vecOf(size_t cap){
         std::vector<T> vec;

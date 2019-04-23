@@ -396,7 +396,7 @@ namespace ante {
         protected:
         AnDataType(std::string const& n, TypeTag tt) :
                 AnType(tt, false), name(n), traitImpls(),
-                unboundType(0), llvmType(0), isAlias(false){}
+                unboundType(0), llvmType(0){}
 
         public:
 
@@ -420,10 +420,6 @@ namespace ante {
          * May be nullptr if this type has not yet been translated. */
         llvm::Type* llvmType;
 
-        /** True if this type is just an alias for its contents
-         *  rather than an entirely new type */
-        bool isAlias;
-
         /** Returns true if the given AnType is an AnDataType */
         static bool istype(const AnType *t){
             return t->typeTag == TT_Data || t->typeTag == TT_TaggedUnion
@@ -438,17 +434,6 @@ namespace ante {
         /** Returns true if this type is a bound variant of the generic type dt.
          *  If dt is not a generic type, this function will always return false. */
         bool isVariantOf(const AnDataType *dt) const;
-
-        /** Returns the type this type is aliased to */
-        AnType* getAliasedType() const;
-
-        /** Search for a data type generic variant by name.
-         * Returns it if found, or creates it otherwise. */
-        static AnDataType* createTypeFamilyVariant(AnDataType *parent,
-                TypeArgs const& generics);
-
-        /** Creates or overwrites the type specified by name. */
-        static AnDataType* createTypeFamily(std::string const& name, TypeArgs const& generics);
     };
 
     class AnSumType;
@@ -457,7 +442,8 @@ namespace ante {
 
         protected:
         AnProductType(std::string const& n, std::vector<AnType*> const& elems) :
-                AnDataType(n, TT_Data), fields(elems), parentUnionType(nullptr) {}
+                AnDataType(n, TT_Data), fields(elems),
+                parentUnionType(nullptr), isAlias(false){}
 
         public:
 
@@ -471,10 +457,16 @@ namespace ante {
         /** The parent union type of this type if it is a union tag */
         AnSumType *parentUnionType;
 
+        /** True if this type is just an alias for its contents
+         *  rather than an entirely new type */
+        bool isAlias;
+
         /** Returns true if the given AnType is an AnDataType */
         static bool istype(const AnType *t){
             return t->typeTag == TT_Data;
         }
+
+        bool isTypeFamily() const noexcept;
 
         /** Returns the given field index or found, or -1 otherwise
         * @param field Name of the field to search for
@@ -494,6 +486,9 @@ namespace ante {
             return false;
         }
 
+        /** Returns the type this type is aliased to */
+        AnType* getAliasedType() const;
+
         AnAggregateType* getVariantWithoutTag() const;
 
         /** Search for a data type generic variant by name.
@@ -504,6 +499,14 @@ namespace ante {
         /** Creates or overwrites the type specified by name. */
         static AnProductType* create(std::string const& name,
                 std::vector<AnType*> const& elems, TypeArgs const& generics);
+
+        /** Search for a data type generic variant by name.
+         * Returns it if found, or creates it otherwise. */
+        static AnProductType* createTypeFamilyVariant(AnProductType *parent,
+                TypeArgs const& generics);
+
+        /** Creates or overwrites the type specified by name. */
+        static AnProductType* createTypeFamily(std::string const& name, TypeArgs const& generics);
     };
 
 

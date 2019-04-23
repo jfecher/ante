@@ -77,7 +77,7 @@ namespace ante {
 
         auto pt = try_cast<AnProductType>(typeDecl->type);
         if(pt && pt->isAlias){
-            return pt->fields.size() == 1 ? pt->fields[0] : AnType::getTupleOf(pt->fields);
+            return pt->getAliasedType();
         }else{
             return typeDecl->type;
         }

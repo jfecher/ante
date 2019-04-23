@@ -12,11 +12,6 @@ namespace ante {
         Int, Flt, Str
     };
 
-    //Define a new assert macro so it remains in the binary even if NDEBUG is defined.
-    //Implement on one line to keep __LINE__ referring to the correct assertion line.
-    #define assert_unreachable() { fprintf(stderr, "assert_unreachable failed on line %d of file '%s'", __LINE__, \
-                                        __FILE__); exit(1); }
-
     Function* getCurFunction(Compiler *c){
         return c->builder.GetInsertBlock()->getParent();
     }
@@ -34,7 +29,7 @@ namespace ante {
         }else if(literalType == Str){
             eq = cv.c->callFn("==", {cv.val, valToMatch}).val;
         }else{
-            assert_unreachable();
+            ASSERT_UNREACHABLE();
         }
 
         BasicBlock *jmpOnSuccess = BasicBlock::Create(*cv.c->ctxt, "match", getCurFunction(cv.c));
@@ -151,7 +146,7 @@ namespace ante {
             eq = c->builder.CreateICmpEQ(valToMatch.val, ci);
         }else{
             //all tagged unions are either just their tag (enum) or a tag and value.
-            assert_unreachable();
+            ASSERT_UNREACHABLE();
         }
 
         BasicBlock *jmpOnSuccess = BasicBlock::Create(*cv.c->ctxt, "match", getCurFunction(cv.c));
@@ -167,7 +162,7 @@ namespace ante {
                 variant = c->getVoidLiteral();
             }else{
                 //all tagged unions are either just their tag (enum) or a tag and value.
-                assert_unreachable();
+                ASSERT_UNREACHABLE();
             }
             handlePattern(cv, n, bindExpr, jmpOnFail, variant);
         }
@@ -348,7 +343,7 @@ namespace ante {
                     return p.constructMissedCase();
                 }
             }
-            assert_unreachable();
+            ASSERT_UNREACHABLE();
         }
 
         if(type == TT_Tuple){

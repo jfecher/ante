@@ -397,9 +397,36 @@ namespace ante {
         return nullptr;
     }
 
+
+    //TODO: Hold on to AnType of a DataDeclNode when it is first made
+    //      or better sort out nameresolution for type family instances
+    AnType* anTypeFromDataDecl(DataDeclNode *n, Module *m){
+        AnProductType *data = AnProductType::create(n->name, {}, {});
+        data->fields.reserve(n->fields);
+
+        for(auto& n : *n->child){
+            auto nvn = static_cast<NamedValNode*>(&n);
+            TypeNode *tyn = (TypeNode*)nvn->typeExpr.get();
+            auto ty = toAnType(tyn, m);
+            data->fields.push_back(ty);
+        }
+        return data->getAliasedType();
+    }
+
+
+    AnType* findTypeFamilyImpl(ExtNode *en, string const& name, Module *m){
+        for(auto &n : *en->methods){
+            auto ddn = dynamic_cast<DataDeclNode*>(&n);
+            if(ddn && ddn->name == name){
+                return anTypeFromDataDecl(ddn, m);
+            }
+        }
+        ASSERT_UNREACHABLE();
+    }
+
     void ConstraintFindingVisitor::visit(ExtNode *n){
         if(n->trait){
-            auto tr = try_cast<AnTraitType>(toAnType(n->trait.get(), module));
+            auto tr = n->traitType;
             for(Node &m : *n->methods){
                 auto fdn = dynamic_cast<FuncDeclNode*>(&m);
                 if(fdn){
@@ -409,6 +436,14 @@ namespace ante {
                     // adding the constraints from the trait decl last gives better error messages
                     addConstraintsFromTCDecl(fdn, tr, decl);
                 }
+            }
+
+            // Add the type family impls later otherwise it errors at type family definition instead
+            // of in the function that is inconsistent with this definition
+            for(auto &family : tr->trait->typeFamilies){
+                auto typeFamilyTypeVar = AnTypeVarType::get("'" + family.name);
+                auto typeFamilyImpl = findTypeFamilyImpl(tr->impl, family.name, module);
+                addConstraint(typeFamilyTypeVar, typeFamilyImpl, n->loc);
             }
         }
     }
