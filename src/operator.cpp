@@ -1037,8 +1037,8 @@ TypedValue compMetaFunctionResult(Compiler *c, LOC_TY const& loc, string const& 
     }
 
     if(ta.size() != fn->params.size())
-        error("Called function was given " + to_string(ta.size()) +
-                " argument(s) but was declared to take " + to_string(fn->params.size()), loc);
+        error("Called function was given " + to_string(ta.size()) + " argument"
+            + plural(ta.size()) + " but was declared to take " + to_string(fn->params.size()), loc);
 
     using A = AnteValue;
 
