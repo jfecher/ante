@@ -248,6 +248,19 @@ namespace ante {
     }
 
 
+    AnTraitType* getRangeTraitType(Module *module){
+        auto range = try_cast<AnTraitType>(module->lookupType("Range"));
+        if(!range){
+            cerr << "Cannot find the trait Range. The prelude may not have been imported properly.\n";
+            exit(1);
+        }
+
+        auto elem1 = nextTypeVar();
+        auto elem2 = nextTypeVar();
+        return AnTraitType::createVariant(range, elem1, {elem2});
+    }
+
+
     void ConstraintFindingVisitor::visit(BinOpNode *n){
         n->lval->accept(*this);
         n->rval->accept(*this);
@@ -333,8 +346,9 @@ namespace ante {
             addConstraint(n->lval->getType(), n->rval->getType(), n->loc);
             addConstraint(n->getType(), AnType::getBool(), n->loc);
         }else if(n->op == Tok_Range){
-            addConstraint(n->lval->getType(), AnType::getI32(), n->loc);
-            addConstraint(n->rval->getType(), AnType::getI32(), n->loc);
+            auto range = getRangeTraitType(module);
+            addConstraint(n->lval->getType(), range, n->loc);
+            addConstraint(n->rval->getType(), range->typeArgs[0], n->loc);
         }else if(n->op == Tok_In){
             auto collectionTy_elemTy = getCollectionOpTraitType(module, n->op);
 

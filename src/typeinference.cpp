@@ -262,29 +262,11 @@ namespace ante {
             for(Node &m : *n->methods){
                 auto fdn = dynamic_cast<FuncDeclNode*>(&m);
                 if(fdn){
-                    fdn->child->accept(*this);
-                    for(Node &param : *fdn->params){
-                        param.accept(*this);
-                    }
+                    fdn->accept(*this);
                 }else{
                     m.accept(*this);
                 }
             }
-            ConstraintFindingVisitor step2{this->module};
-            tryTo([&]{
-                n->accept(step2);
-                auto constraints = step2.getConstraints();
-                auto substitutions = unify(constraints);
-                SubstitutingVisitor::substituteIntoAst(n, substitutions);
-
-                // apply typeclass constraints to function
-                // auto fnTy = try_cast<AnFunctionType>(n->getType());
-                // auto tcConstraints = getAllTcConstraints(fnTy, constraints, substitutions);
-                // auto newFnTy = AnFunctionType::get(fnTy->retTy, fnTy->extTys, tcConstraints,
-                //         fnTy->typeTag == TT_MetaFunction);
-                // newFnTy = cleanTypeClassConstraints(newFnTy);
-                // n->setType(newFnTy);
-            });
         }else{
             for(Node &m : *n->methods){
                 if(!n->typeExpr){
