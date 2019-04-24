@@ -273,22 +273,23 @@ namespace ante {
                 auto args = try_cast<AnAggregateType>(n->rval->getType());
                 if (!args) args = AnType::getTupleOf({ n->rval->getType() });
 
-                size_t paramc = fnty->extTys.size();
+                bool isVA = fnty->isVarArgs();
+                size_t paramc = fnty->extTys.size() - (isVA ? 1 : 0);
                 size_t argc = args->extTys.size();
 
-                if(argc != paramc && !fnty->isVarArgs()){
+                if(argc != paramc && !(isVA && argc >= paramc)){
                     // If this is not a single () being applied to a no-parameter function
                     if(!(argc == 1 && paramc == 0 && args->extTys[0]->typeTag == TT_Void)){
                         string weregiven = argc == 1 ? " was given" : " were given";
-                        error("Function takes " + to_string(paramc) + " argument"
-                                + plural(paramc) + " but " + to_string(argc)
+                        error("Function takes " + to_string(paramc) + (isVA ? "+" : "")
+                                + " argument" + plural(paramc) + " but " + to_string(argc)
                                 + weregiven, n->lval->loc);
                     }
                 }
 
                 auto argtup = static_cast<parser::TupleNode*>(n->rval.get());
 
-                if(!fnty->isVarArgs()){
+                if(!isVA){
                     for(size_t i = 0; i < fnty->extTys.size(); i++){
                         addConstraint(args->extTys[i], fnty->extTys[i], argtup->exprs[i]->loc);
                     }
