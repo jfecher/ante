@@ -20,6 +20,8 @@ namespace ante {
      * 4. Substitute any yet-unresolved types  (SubstitutingVisitor)
      */
     struct TypeInferenceVisitor : public NodeVisitor {
+        Module *module;
+
         TypeInferenceVisitor(Module *module) : module{module}{}
 
         /** Infer types of all expressions in parse tree and
@@ -47,9 +49,6 @@ namespace ante {
         }
 
         DECLARE_NODE_VISIT_METHODS();
-
-        private:
-            Module *module;
     };
 }
 

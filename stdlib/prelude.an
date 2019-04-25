@@ -370,9 +370,10 @@ module u64
         while s#i != '\0' do
             let c = s#i
             if c >= '0' and c <= '9' then
-                sum *= 10
-                sum += c - '0'
-                i += 1
+                sum *= 10u64
+                sum += u64(c - '0')
+                i += 1usz
+                None
             else
                 return None
 
@@ -380,24 +381,25 @@ module u64
 
 module i64
     fun parse: Str s -> Maybe i64
-        mut i = 0
+        mut i = 0usz
         mut sum = 0i64
         let isNeg =
-            if s.len != 0 and s#0 = '-' then
-                i += 1
+            if s.len != 0usz and s#0usz = '-' then
+                i += 1usz
                 true
             else false
 
         while s#i != '\0' do
             let c = s#i
             if c >= '0' and c <= '9' then
-                sum *= 10
-                sum += c - '0'
-                i += 1
+                sum *= 10i64
+                sum += i64(c - '0')
+                i += 1usz
+                None
             else
                 return None
 
-        Some (if isNeg then -1 * sum else sum)
+        Some (if isNeg then -1i64 * sum else sum)
 
 
 //Pointer Equivalence

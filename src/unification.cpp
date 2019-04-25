@@ -1,11 +1,12 @@
 #include "unification.h"
 #include "types.h"
+#include "util.h"
 
 namespace ante {
     size_t curTypeVar = 0;
 
     AnTypeVarType* nextTypeVar(){
-        return AnTypeVarType::get("'" + std::to_string(++curTypeVar));
+        return AnTypeVarType::get('\'' + std::to_string(++curTypeVar));
     }
 
     template<typename T>
@@ -195,6 +196,68 @@ namespace ante {
     }
 
 
+    bool containsTypeVarHelper(const AnType *t, AnTypeVarType *typeVar){
+        if(!t->isGeneric)
+            return false;
+
+        if(t->isModifierType()){
+            auto modTy = (AnModifier*)t;
+            return containsTypeVarHelper(modTy->extTy, typeVar);
+        }
+
+        if(auto ptr = try_cast<AnPtrType>(t)){
+            return containsTypeVarHelper(ptr->extTy, typeVar);
+
+        }else if(auto arr = try_cast<AnArrayType>(t)){
+            return containsTypeVarHelper(arr->extTy, typeVar);
+
+        }else if(auto tv = try_cast<AnTypeVarType>(t)){
+            return tv == typeVar;
+
+        }else if(auto dt = try_cast<AnProductType>(t)){
+            if(ante::any(dt->typeArgs, [&](AnType *f){ return containsTypeVarHelper(f, typeVar); }))
+                return true;
+
+            return ante::any(dt->fields, [&](AnType *f){ return containsTypeVarHelper(f, typeVar); });
+
+        }else if(auto st = try_cast<AnSumType>(t)){
+            if(ante::any(st->typeArgs, [&](AnType *f){ return containsTypeVarHelper(f, typeVar); }))
+                return true;
+
+            return ante::any(st->tags, [&](AnProductType *f){ return containsTypeVarHelper(f, typeVar); });
+
+        }else if(auto tt = try_cast<AnTraitType>(t)){
+            if(containsTypeVarHelper(tt->selfType, typeVar))
+                return true;
+
+            return ante::any(tt->typeArgs, [&](AnType *f){ return containsTypeVarHelper(f, typeVar); });
+
+        }else if(auto fn = try_cast<AnFunctionType>(t)){
+            if(ante::any(fn->extTys, [&](AnType *f){ return containsTypeVarHelper(f, typeVar); }))
+                return true;
+
+            if(containsTypeVarHelper(fn->retTy, typeVar))
+                return true;
+
+            return ante::any(fn->typeClassConstraints, [&](AnType *f){ return containsTypeVarHelper(f, typeVar); });
+
+        }else if(auto tup = try_cast<AnAggregateType>(t)){
+            return ante::any(tup->extTys, [&](AnType *f){ return containsTypeVarHelper(f, typeVar); });
+
+        }else{
+            return false;
+        }
+    }
+
+    bool containsTypeVar(AnType *t, AnTypeVarType *typeVar){
+        if(t == typeVar) return false;
+        if(auto tt = try_cast<AnTraitType>(t)){
+            if(tt->selfType == typeVar) return false;
+        }
+        return containsTypeVarHelper(t, typeVar);
+    }
+
+
     AnFunctionType* cleanTypeClassConstraints(AnFunctionType *t){
         std::vector<AnTraitType*> c;
         c.reserve(t->typeClassConstraints.size());
@@ -251,8 +314,14 @@ namespace ante {
         auto tv2 = try_cast<AnTypeVarType>(t2);
 
         if(tv1){
+            if(containsTypeVar(t2, tv1)){
+                error("Mismatched types, " + anTypeToColoredStr(tv1) + " occurs inside " + anTypeToColoredStr(t2), loc);
+            }
             return {{tv1, t2}};
         }else if(tv2){
+            if(containsTypeVar(t1, tv2)){
+                error("Mismatched types, " + anTypeToColoredStr(tv2) + " occurs inside " + anTypeToColoredStr(t1), loc);
+            }
             return {{tv2, t1}};
         }
 

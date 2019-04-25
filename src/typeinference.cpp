@@ -256,25 +256,55 @@ namespace ante {
         return tcConstraints;
     }
 
+    vector<AnTraitType*> toTraitTypeVec(std::unique_ptr<TypeNode> const& tn, Module *module){
+        vector<AnTraitType*> ret;
+        for(Node &n : *tn){
+            ret.push_back((AnTraitType*)toAnType((TypeNode*)&n, module));
+        }
+        return ret;
+    }
+
+    vector<AnType*> setParamTypes(TypeInferenceVisitor &v, NamedValNode *params){
+        return collect(*params, [&](const Node &n) {
+            auto p = (NamedValNode*)&n;
+            v.visit(p);
+            return p->getType();
+        });
+    }
+
+
+    void fillInFunctionParamsAndBodyTypes(TypeInferenceVisitor &v, FuncDeclNode *n){
+        auto paramTypes = setParamTypes(v, n->params.get());
+
+        auto typeClassConstraints = toTraitTypeVec(n->typeClassConstraints, v.module);
+        AnType *retTy = n->returnType ? toAnType(n->returnType.get(), v.module) : nextTypeVar();
+        n->setType(AnFunctionType::get(retTy, paramTypes, typeClassConstraints));
+
+        if(n->child){
+            n->child->accept(v);
+        }
+    }
+
+
     void TypeInferenceVisitor::visit(ExtNode *n){
         if(n->trait){
-            auto tr = try_cast<AnTraitType>(toAnType(n->trait.get(), module));
             for(Node &m : *n->methods){
-                auto fdn = dynamic_cast<FuncDeclNode*>(&m);
-                if(fdn){
-                    fdn->accept(*this);
-                }else{
-                    m.accept(*this);
-                }
+                FuncDeclNode *fdn = dynamic_cast<FuncDeclNode*>(&m);
+                if(fdn) fillInFunctionParamsAndBodyTypes(*this, fdn);
+            }
+            n->setType(AnType::getVoid());
+            ConstraintFindingVisitor step2{module};
+            step2.visit(n);
+            auto constraints = step2.getConstraints();
+            auto substitutions = unify(constraints);
+            if(!substitutions.empty()){
+                SubstitutingVisitor::substituteIntoAst(n, substitutions);
             }
         }else{
             for(Node &m : *n->methods){
-                if(!n->typeExpr){
-                    m.accept(*this);
-                }
+                m.accept(*this);
             }
         }
-        n->setType(AnType::getVoid());
     }
 
     void TypeInferenceVisitor::visit(JumpNode *n){
@@ -309,35 +339,11 @@ namespace ante {
         n->setType(n->branch->getType());
     }
 
-
-    vector<AnTraitType*> toTraitTypeVec(std::unique_ptr<TypeNode> const& tn, Module *module){
-        vector<AnTraitType*> ret;
-        for(Node &n : *tn){
-            ret.push_back((AnTraitType*)toAnType((TypeNode*)&n, module));
-        }
-        return ret;
-    }
-
-    vector<AnType*> setParamTypes(TypeInferenceVisitor &v, NamedValNode *params){
-        return collect(*params, [&](const Node &n) {
-            auto p = (NamedValNode*)&n;
-            v.visit(p);
-            return p->getType();
-        });
-    }
-
     void TypeInferenceVisitor::visit(FuncDeclNode *n){
         if(n->getType())
             return;
 
-        auto paramTypes = setParamTypes(*this, n->params.get());
-
-        auto typeClassConstraints = toTraitTypeVec(n->typeClassConstraints, this->module);
-        AnType *retTy = n->returnType ? toAnType(n->returnType.get(), module) : nextTypeVar();
-        n->setType(AnFunctionType::get(retTy, paramTypes, typeClassConstraints));
-
-        if(n->child)
-            n->child->accept(*this);
+        fillInFunctionParamsAndBodyTypes(*this, n);
 
         // finish inference for functions early
         ConstraintFindingVisitor step2{this->module};
