@@ -8,6 +8,7 @@
 #include "types.h"
 #include "moduletree.h"
 #include "typeinference.h"
+#include "trait.h"
 #include "util.h"
 
 using namespace std;
@@ -66,6 +67,15 @@ namespace ante {
         auto var = new Variable(name, decl);
         decl->decl = var;
         varTable.top().back().try_emplace(name, var);
+    }
+
+
+    void NameResolutionVisitor::declare(TraitDecl *decl, LOC_TY &loc){
+        auto prevDecl = compUnit->traitDecls.find(decl->name);
+        if(prevDecl != compUnit->traitDecls.end()){
+            error("Trait " + decl->name + " has already been declared", loc);
+        }
+        compUnit->traitDecls.try_emplace(decl->name, decl);
     }
 
 
@@ -229,7 +239,7 @@ namespace ante {
     }
 
     bool checkFnInTraitDecl(vector<shared_ptr<FuncDecl>> const& traitDeclFns,
-            vector<FuncDecl*> const& traitImplFns, FuncDeclNode *fdn, AnTraitType *trait){
+            vector<FuncDecl*> const& traitImplFns, FuncDeclNode *fdn, TraitImpl *trait){
 
         auto decl = getFunction(traitDeclFns, fdn->name);
         if(decl != traitDeclFns.cend()){
@@ -247,10 +257,10 @@ namespace ante {
         return false;
     }
 
-    void checkForUnimplementedFunctions(vector<shared_ptr<FuncDecl>> const& traitDeclFns, AnTraitType *trait){
+    void checkForUnimplementedFunctions(vector<shared_ptr<FuncDecl>> const& traitDeclFns, TraitImpl *trait){
         if(!traitDeclFns.empty()){
             for(auto &fn : traitDeclFns){
-                showError("impl " + anTypeToColoredStr(trait) + " missing implementation of " + fn->getName(), trait->impl->loc);
+                showError("impl " + traitToColoredStr(trait) + " missing implementation of " + fn->getName(), trait->impl->loc);
                 showError(fn->getName() + " declared here", fn->getFDN()->loc, ErrorType::Note);
             }
             throw CtError();
@@ -264,7 +274,7 @@ namespace ante {
     }
 
     bool checkTyInTraitDecl(vector<TypeFamily> const& traitDeclTys,
-            vector<TypeFamily> const& traitImplTys, DataDeclNode *ddn, AnTraitType *trait){
+            vector<TypeFamily> const& traitImplTys, DataDeclNode *ddn, TraitImpl *trait){
 
         auto decl = getType(traitDeclTys, ddn->name);
         if(decl != traitDeclTys.end()){
@@ -282,30 +292,39 @@ namespace ante {
         return false;
     }
 
-    void checkForUnimplementedTypes(vector<TypeFamily> const& traitDeclTys, AnTraitType *trait){
+    void checkForUnimplementedTypes(vector<TypeFamily> const& traitDeclTys, TraitImpl *trait){
         if(!traitDeclTys.empty()){
             for(auto &ty : traitDeclTys){
-                showError("impl " + anTypeToColoredStr(trait) + " missing implementation of type " + ty.name, trait->impl->loc);
+                showError("impl " + traitToColoredStr(trait) + " missing implementation of type " + ty.name, trait->impl->loc);
             }
             throw CtError();
         }
     }
 
+    TraitImpl* toTrait(TypeNode *tn, Module *m){
+        auto decl = m->lookupTraitDecl(tn->typeName);
+        if(!decl) return nullptr;
+
+        auto typeArgs = ante::applyToAll(tn->params, [m](unique_ptr<TypeNode> const& tn) -> AnType*{
+            return toAnType(tn.get(), m);
+        });
+        return new TraitImpl(decl, typeArgs);
+    }
+
     void handleTraitImpl(NameResolutionVisitor &v, ExtNode *n){
-        AnType *preTrait = toAnType(n->trait.get(), v.compUnit);
-        AnTraitType *trait = try_cast<AnTraitType>(preTrait);
+        TraitImpl *trait = toTrait(n->trait.get(), v.compUnit);
         if(!trait)
-            error(anTypeToColoredStr(preTrait) + " is not a trait", n->trait->loc);
+            error(lazy_str(n->trait->typeName, AN_TYPE_COLOR) + " is not a trait", n->trait->loc);
 
         if(trait->implemented()){
-            showError(anTypeToColoredStr(trait) + " has already been implemented", n->loc);
+            showError(traitToColoredStr(trait) + " has already been implemented", n->loc);
             error("Previously implemented here", trait->impl->loc, ErrorType::Note);
         }
 
-        auto traitDeclFns = trait->trait->funcs;
+        auto traitDeclFns = trait->decl->funcs;
         auto traitImplFns = vecOf<FuncDecl*>(traitDeclFns.size());
 
-        auto traitDeclTys = trait->trait->typeFamilies;
+        auto traitDeclTys = trait->decl->typeFamilies;
         auto traitImplTys = vecOf<TypeFamily>(traitDeclTys.size());
 
         for(Node &m : *n->methods){
@@ -681,8 +700,8 @@ namespace ante {
             }
         }
 
-        for(const auto& tr : import->traits){
-            if(other->traits.find(tr.getKey()) != other->traits.end()){
+        for(const auto& tr : import->traitDecls){
+            if(other->traitDecls.find(tr.getKey()) != other->traitDecls.end()){
                 error(lazy_str(tr.getKey().str(), AN_TYPE_COLOR) +  " in module "
                         + lazy_str(import->name, AN_TYPE_COLOR) + " conflicts with "
                         + lazy_str(tr.getKey().str(), AN_TYPE_COLOR)
@@ -1046,15 +1065,12 @@ namespace ante {
     }
 
     void NameResolutionVisitor::visit(TraitNode *n){
-        auto tr = new Trait();
-        tr->name = n->name;
-
-        AnType *genericSelfParam = toAnType(n->selfType.get(), compUnit);
+        auto typeArgs = convertToTypeArgs(n->generics, compUnit);
+        auto decl = new TraitDecl(n->name, typeArgs);
 
         // trait type is created here but the internal trait
         // tr will still be mutated with additional methods after
-        auto trait = AnTraitType::create(tr, genericSelfParam, convertToTypeArgs(n->generics, compUnit));
-        define(n->name, trait, n->loc);
+        declare(decl, n->loc);
 
         enterFunction();
         for(Node &child : *n->child){
@@ -1063,9 +1079,9 @@ namespace ante {
             if(FuncDeclNode *fdn = dynamic_cast<FuncDeclNode*>(&child)){
                 auto *fd = static_cast<FuncDecl*>(fdn->decl);
                 compUnit->fnDecls[fdn->name] = fd;
-                tr->funcs.emplace_back(fd);
+                decl->funcs.emplace_back(fd);
             }else if(DataDeclNode *type = dynamic_cast<DataDeclNode*>(&child)){
-                tr->typeFamilies.emplace_back(type->name, convertToTypeArgs(type->generics, compUnit));
+                decl->typeFamilies.emplace_back(type->name, convertToTypeArgs(type->generics, compUnit));
             }
         }
         exitFunction();

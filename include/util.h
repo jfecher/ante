@@ -32,8 +32,8 @@ namespace ante {
     template<typename T>
     size_t count(T& collection){
         size_t i = 0;
-        for(auto &_unused : collection){
-            i++;
+        for(auto it = collection.begin(), end = collection.end(); it != end; ++it){
+            ++i;
         }
         return i;
     }

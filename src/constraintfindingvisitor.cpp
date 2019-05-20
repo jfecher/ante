@@ -5,6 +5,7 @@
 #include "pattern.h"
 #include "antype.h"
 #include "module.h"
+#include "trait.h"
 #include "types.h"
 #include "util.h"
 
@@ -17,55 +18,12 @@ namespace ante {
         return constraints;
     }
 
-    AnType* ConstraintFindingVisitor::handleTypeClassConstraints(AnType *t, LOC_TY const& loc){
-        if(!t->isGeneric)
-            return t;
-
-        auto handleExt = [&](AnType* ext){
-            return handleTypeClassConstraints(ext, loc);
-        };
-        auto handleTcExt = [&](AnTraitType* ext){
-            return (AnTraitType*)handleTypeClassConstraints(ext, loc);
-        };
-
-        if(auto ptr = try_cast<AnPtrType>(t)){
-            return AnPtrType::get(handleTypeClassConstraints(ptr->extTy, loc));
-
-        }else if(auto arr = try_cast<AnArrayType>(t)){
-            return AnArrayType::get(handleTypeClassConstraints(arr->extTy, loc), arr->len);
-
-        }else if(auto pt = try_cast<AnProductType>(t)){
-            auto tArgs = applyToAll(pt->typeArgs, handleExt);
-            return AnProductType::createVariant(pt, pt->fields, tArgs);
-
-        }else if(auto st = try_cast<AnSumType>(t)){
-            auto tArgs = applyToAll(st->typeArgs, handleExt);
-            return AnSumType::createVariant(st, st->tags, tArgs);
-
-        }else if(auto tt = try_cast<AnTraitType>(t)){
-            auto tArgs = applyToAll(tt->typeArgs, handleExt);
-            auto self = handleTypeClassConstraints(tt->selfType, loc);
-
-            constraints.emplace_back(tt, loc);
-            return self;
-
-        }else if(auto fn = try_cast<AnFunctionType>(t)){
-            auto params = applyToAll(fn->extTys, handleExt);
-            auto retty = handleTypeClassConstraints(fn->retTy, loc);
-            auto tcc = applyToAll(fn->typeClassConstraints, handleTcExt);
-            return AnFunctionType::get(retty, params, tcc);
-
-        }else if(auto tup = try_cast<AnAggregateType>(t)){
-            return AnAggregateType::get(tup->typeTag, applyToAll(tup->extTys, handleExt));
-        }else{
-            return t;
-        }
+    void ConstraintFindingVisitor::addConstraint(AnType *a, AnType *b, LOC_TY &loc){
+        constraints.emplace_back(a, b, loc);
     }
 
-    void ConstraintFindingVisitor::addConstraint(AnType *a, AnType *b, LOC_TY &loc){
-        a = handleTypeClassConstraints(a, loc);
-        b = handleTypeClassConstraints(b, loc);
-        constraints.emplace_back(a, b, loc);
+    void ConstraintFindingVisitor::addTypeClassConstraint(TraitImpl *constraint, LOC_TY &loc){
+        constraints.emplace_back(constraint, loc);
     }
 
     template<typename T>
@@ -144,33 +102,33 @@ namespace ante {
                 addConstraint(n->rval->getType(), variant->fields[offset], n->rval->loc);
             }
         }else{
-            AnTraitType *trait = static_cast<AnTraitType*>(module->lookupType("To"));
-            trait = AnTraitType::createVariant(trait, n->typeExpr->getType(), {n->rval->getType()});
-            addConstraint(n->typeExpr->getType(), trait, n->loc);
+            TraitDecl *decl = module->lookupTraitDecl("To");
+            TraitImpl *impl = new TraitImpl(decl, {n->typeExpr->getType(), n->rval->getType()});
+            addTypeClassConstraint(impl, n->loc);
         }
     }
 
-    AnType* getUnOpTraitType(Module *module, int op){
-        AnType *parent;
+    TraitImpl* getUnOpTraitType(Module *module, int op){
+        TraitImpl *impl;
         switch(op){
-            case '@': parent = module->lookupType("Deref"); break;
-            case '-': parent = module->lookupType("Neg"); break;
-            case Tok_Not: parent = module->lookupType("Not"); break;
+            case '@': impl = module->freshTraitImpl("Deref"); break;
+            case '-': impl = module->freshTraitImpl("Neg"); break;
+            case Tok_Not: impl = module->freshTraitImpl("Not"); break;
             default:
                 cerr << "getUnOpTraitType: unknown op '" << (char)op << "' (" << (int)op << ") given.  ";
                 exit(1);
         }
-        if(!parent){
+        if(!impl){
             cerr << "getUnOpTraitType: numeric trait for op '" << (char)op << "' (" << (int)op << ") not found.  The stdlib may not have been imported properly.\n";
             exit(1);
         }
-        return AnTraitType::createVariant(static_cast<AnTraitType*>(parent), nextTypeVar(), {});
+        return impl;
     }
 
     void ConstraintFindingVisitor::visit(UnOpNode *n){
         n->rval->accept(*this);
         auto tv = nextTypeVar();
-        AnType *trait;
+        TraitImpl *trait;
         switch(n->op){
         case '@':
             addConstraint(n->rval->getType(), AnPtrType::get(tv), n->loc);
@@ -182,13 +140,13 @@ namespace ante {
             break;
         case '-': //negation
             trait = getUnOpTraitType(module, n->op);
-            addConstraint(n->getType(), trait, n->loc);
-            addConstraint(n->rval->getType(), trait, n->loc);
+            addTypeClassConstraint(trait, n->loc);
+            addConstraint(n->getType(), n->rval->getType(), n->loc);
             break;
         case Tok_Not:
             trait = getUnOpTraitType(module, n->op);
-            addConstraint(n->rval->getType(), trait, n->loc);
-            addConstraint(n->getType(), trait, n->loc);
+            addTypeClassConstraint(trait, n->loc);
+            addConstraint(n->getType(), n->rval->getType(), n->loc);
             break;
         case Tok_New:
             addConstraint(n->getType(), AnPtrType::get(tv), n->loc);
@@ -201,21 +159,21 @@ namespace ante {
         acceptAll(*this, n->sequence);
     }
 
-    AnType* getOpTraitType(Module *module, int op){
-        AnType *parent;
+    TraitImpl* getOpTraitType(Module *module, int op){
+        TraitImpl *parent;
         switch(op){
-            case '+': parent = module->lookupType("Add"); break;
-            case '-': parent = module->lookupType("Sub"); break;
-            case '*': parent = module->lookupType("Mul"); break;
-            case '/': parent = module->lookupType("Div"); break;
-            case '%': parent = module->lookupType("Mod"); break;
-            case '^': parent = module->lookupType("Pow"); break;
-            case '<': parent = module->lookupType("Cmp"); break;
-            case '>': parent = module->lookupType("Cmp"); break;
-            case Tok_GrtrEq: parent = module->lookupType("Cmp"); break;
-            case Tok_LesrEq: parent = module->lookupType("Cmp"); break;
-            case '=': parent = module->lookupType("Eq"); break;
-            case Tok_NotEq: parent = module->lookupType("Eq"); break;
+            case '+': parent = module->freshTraitImpl("Add"); break;
+            case '-': parent = module->freshTraitImpl("Sub"); break;
+            case '*': parent = module->freshTraitImpl("Mul"); break;
+            case '/': parent = module->freshTraitImpl("Div"); break;
+            case '%': parent = module->freshTraitImpl("Mod"); break;
+            case '^': parent = module->freshTraitImpl("Pow"); break;
+            case '<': parent = module->freshTraitImpl("Cmp"); break;
+            case '>': parent = module->freshTraitImpl("Cmp"); break;
+            case Tok_GrtrEq: parent = module->freshTraitImpl("Cmp"); break;
+            case Tok_LesrEq: parent = module->freshTraitImpl("Cmp"); break;
+            case '=': parent = module->freshTraitImpl("Eq"); break;
+            case Tok_NotEq: parent = module->freshTraitImpl("Eq"); break;
             default:
                 cerr << "getOpTraitType: unknown op '" << (char)op << "' (" << (int)op << ") given.  ";
                 exit(1);
@@ -224,11 +182,11 @@ namespace ante {
             cerr << "getOpTraitType: numeric trait for op '" << (char)op << "' (" << (int)op << ") not found.  The stdlib may not have been imported properly.\n";
             exit(1);
         }
-        return AnTraitType::createVariant(static_cast<AnTraitType*>(parent), nextTypeVar(), {});
+        return parent;
     }
 
 
-    pair<AnTraitType*, AnTypeVarType*> getCollectionOpTraitType(Module *module, int op){
+    pair<TraitImpl*, AnTypeVarType*> getCollectionOpTraitType(Module *module, int op){
         auto collectionTyVar = nextTypeVar();
         auto elemTy = nextTypeVar();
 
@@ -238,26 +196,23 @@ namespace ante {
         }
 
         string traitName = op == '#' ? "Extract" : "In";
-        AnTraitType *parent = try_cast<AnTraitType>(module->lookupType(traitName));
+        TraitDecl *parent = module->lookupTraitDecl(traitName);
 
         if(!parent){
             cerr << "Cannot find the trait" << traitName << ". The prelude may not have been imported properly.\n";
             exit(1);
         }
-        return {AnTraitType::createVariant(parent, collectionTyVar, {elemTy}), elemTy};
+        return {new TraitImpl(parent, {collectionTyVar, elemTy}), elemTy};
     }
 
 
-    AnTraitType* getRangeTraitType(Module *module){
-        auto range = try_cast<AnTraitType>(module->lookupType("Range"));
+    TraitImpl* getRangeTraitType(Module *module){
+        auto range = module->freshTraitImpl("Range");
         if(!range){
             cerr << "Cannot find the trait Range. The prelude may not have been imported properly.\n";
             exit(1);
         }
-
-        auto elem1 = nextTypeVar();
-        auto elem2 = nextTypeVar();
-        return AnTraitType::createVariant(range, elem1, {elem2});
+        return range;
     }
 
 
@@ -289,6 +244,56 @@ namespace ante {
         error("Function takes " + to_string(paramc) + (isVA ? "+" : "")
                 + " argument" + plural(paramc) + " but " + to_string(argc)
                 + weregiven, loc);
+    }
+
+
+    void ConstraintFindingVisitor::fnCallConstraints(BinOpNode *n){
+        auto fnty = try_cast<AnFunctionType>(n->lval->getType());
+        if(!fnty){
+            auto args = try_cast<AnAggregateType>(n->rval->getType());
+            if (!args) args = AnType::getTupleOf({n->rval->getType()});
+            auto params = vecOf<AnType*>(args->extTys.size());
+
+            for(size_t i = 0; i < args->extTys.size(); i++){
+                auto param = nextTypeVar();
+                addConstraint(args->extTys[i], param, n->loc);
+                params.push_back(param);
+            }
+            auto retTy = nextTypeVar();
+            addConstraint(n->getType(), retTy, n->loc);
+
+            fnty = AnFunctionType::get(retTy, params, {});
+            addConstraint(n->lval->getType(), fnty, n->loc);
+        }else{
+            auto args = try_cast<AnAggregateType>(n->rval->getType());
+            if (!args) args = AnType::getTupleOf({ n->rval->getType() });
+
+            if(invalidNumArguments(fnty, args)){
+                issueInvalidArgCountError(fnty, args, n->lval->loc);
+            }
+
+            auto argtup = static_cast<parser::TupleNode*>(n->rval.get());
+
+            if(!fnty->isVarArgs()){
+                for(size_t i = 0; i < fnty->extTys.size(); i++){
+                    addConstraint(args->extTys[i], fnty->extTys[i], argtup->exprs[i]->loc);
+                }
+            }else{
+                size_t i = 0;
+                for(; i < fnty->extTys.size() - 1; i++){
+                    addConstraint(args->extTys[i], fnty->extTys[i], argtup->exprs[i]->loc);
+                }
+
+                // typecheck var args as a tuple of additional arguments, though they should always be
+                // matched against a typevar anyway so these constraints should never fail.
+                vector<AnType*> varargs;
+                for(; i < args->extTys.size(); i++){
+                    varargs.push_back(args->extTys[i]);
+                }
+                addConstraint(AnType::getTupleOf(varargs), fnty->extTys.back(), n->loc);
+            }
+            addConstraint(n->getType(), fnty->retTy, n->loc);
+        }
     }
 
 
@@ -344,21 +349,24 @@ namespace ante {
                 addConstraint(n->getType(), fnty->retTy, n->loc);
             }
         }else if(n->op == '+' || n->op == '-' || n->op == '*' || n->op == '/' || n->op == '%' || n->op == '^'){
-            AnType *numTy = getOpTraitType(module, n->op);
-            addConstraint(n->lval->getType(), numTy, n->loc);
-            addConstraint(n->rval->getType(), numTy, n->loc);
-            addConstraint(n->getType(), numTy, n->loc);
+            TraitImpl *num = getOpTraitType(module, n->op);
+            addTypeClassConstraint(num, n->loc);
+            addConstraint(n->lval->getType(), num->typeArgs[0], n->loc);
+            addConstraint(n->rval->getType(), num->typeArgs[0], n->loc);
+            addConstraint(n->getType(), num->typeArgs[0], n->loc);
         }else if(n->op == '<' || n->op == '>' || n->op == Tok_GrtrEq || n->op == Tok_LesrEq){
-            AnType *numTy = getOpTraitType(module, n->op);
-            addConstraint(n->lval->getType(), numTy, n->loc);
-            addConstraint(n->rval->getType(), numTy, n->loc);
+            TraitImpl *num = getOpTraitType(module, n->op);
+            addTypeClassConstraint(num, n->loc);
+            addConstraint(n->lval->getType(), num->typeArgs[0], n->loc);
+            addConstraint(n->rval->getType(), num->typeArgs[0], n->loc);
             addConstraint(n->getType(), AnType::getBool(), n->loc);
         }else if(n->op == '#'){
-            auto collectionTy_elemTy = getCollectionOpTraitType(module, n->op);
+            auto collection_elemTy = getCollectionOpTraitType(module, n->op);
+            auto collection = collection_elemTy.first;
 
-            addConstraint(n->lval->getType(), collectionTy_elemTy.first, n->loc);
+            addConstraint(n->lval->getType(), collection->typeArgs[0], n->loc);
             addConstraint(n->rval->getType(), AnType::getUsz(), n->loc);
-            addConstraint(n->getType(), collectionTy_elemTy.second, n->loc);
+            addConstraint(n->getType(), collection_elemTy.second, n->loc);
         }else if(n->op == Tok_Or || n->op == Tok_And){
             addConstraint(n->lval->getType(), AnType::getBool(), n->loc);
             addConstraint(n->rval->getType(), AnType::getBool(), n->loc);
@@ -368,13 +376,16 @@ namespace ante {
             addConstraint(n->getType(), AnType::getBool(), n->loc);
         }else if(n->op == Tok_Range){
             auto range = getRangeTraitType(module);
-            addConstraint(n->lval->getType(), range, n->loc);
-            addConstraint(n->rval->getType(), range->typeArgs[0], n->loc);
+            addTypeClassConstraint(range, n->loc);
+            addConstraint(n->lval->getType(), range->typeArgs[0], n->loc);
+            addConstraint(n->rval->getType(), range->typeArgs[1], n->loc);
         }else if(n->op == Tok_In){
-            auto collectionTy_elemTy = getCollectionOpTraitType(module, n->op);
+            auto collection_elemTy = getCollectionOpTraitType(module, n->op);
+            auto collection = collection_elemTy.first;
 
-            addConstraint(n->lval->getType(), collectionTy_elemTy.second, n->loc);
-            addConstraint(n->rval->getType(), collectionTy_elemTy.first, n->loc);
+            addTypeClassConstraint(collection, n->loc);
+            addConstraint(n->lval->getType(), collection_elemTy.second, n->loc);
+            addConstraint(n->rval->getType(), collection->typeArgs[0], n->loc);
             addConstraint(n->getType(), AnType::getBool(), n->loc);
         }
     }
@@ -410,9 +421,8 @@ namespace ante {
         n->ref_expr->accept(*this);
     }
 
-    void ConstraintFindingVisitor::addConstraintsFromTCDecl(FuncDeclNode *fdn, AnTraitType *tr, FuncDeclNode *decl){
-        auto parent = try_cast<AnTraitType>(tr->unboundType);
-        addConstraint(parent->selfType, tr->selfType, fdn->params->loc);
+    void ConstraintFindingVisitor::addConstraintsFromTCDecl(FuncDeclNode *fdn, TraitImpl *tr, FuncDeclNode *decl){
+        TraitDecl *parent = tr->decl;
         for(size_t i = 0; i < parent->typeArgs.size(); i++){
             addConstraint(parent->typeArgs[i], tr->typeArgs[i], fdn->params->loc);
         }
@@ -426,7 +436,7 @@ namespace ante {
         }
     }
 
-    FuncDeclNode* getDecl(string const& name, const Trait *t){
+    FuncDeclNode* getDecl(string const& name, const TraitDecl *t){
         for(auto &fd : t->funcs){
             if(fd->getName() == name) return fd->getFDN();
         }
@@ -466,7 +476,7 @@ namespace ante {
             for(Node &m : *n->methods){
                 auto fdn = dynamic_cast<FuncDeclNode*>(&m);
                 if(fdn){
-                    auto *decl = getDecl(fdn->name, tr->trait);
+                    auto *decl = getDecl(fdn->name, tr->decl);
                     fdn->setType(decl->getType());
                     visit(fdn);
                     // adding the constraints from the trait decl last gives better error messages
@@ -476,7 +486,7 @@ namespace ante {
 
             // Add the type family impls later otherwise it errors at type family definition instead
             // of in the function that is inconsistent with this definition
-            for(auto &family : tr->trait->typeFamilies){
+            for(auto &family : tr->decl->typeFamilies){
                 auto typeFamilyTypeVar = AnTypeVarType::get("'" + family.name);
                 auto typeFamilyImpl = findTypeFamilyImpl(tr->impl, family.name, module);
                 addConstraint(typeFamilyTypeVar, typeFamilyImpl, n->loc);

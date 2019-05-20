@@ -9,14 +9,14 @@ namespace ante {
 
     class UnificationConstraint {
         using EqConstraint = std::pair<AnType*, AnType*>;
-        using TypeClassConstraint = AnTraitType*;
+        using TypeClassConstraint = TraitImpl*;
 
         union U {
             EqConstraint eqConstraint;
             TypeClassConstraint typeClassConstraint;
 
             U(AnType *a, AnType *b) : eqConstraint{a, b}{}
-            U(AnTraitType *tc) : typeClassConstraint{tc}{}
+            U(TraitImpl *tc) : typeClassConstraint{tc}{}
         } u;
 
         bool eqConstraint;
@@ -29,7 +29,7 @@ namespace ante {
                 : u{a, b}, eqConstraint{true}, loc{loc}{}
 
             /** Typeclass constructor, enforce impl typeclass args exists */
-            UnificationConstraint(AnTraitType *typeclass, LOC_TY const& loc)
+            UnificationConstraint(TraitImpl *typeclass, LOC_TY const& loc)
                 : u{typeclass}, eqConstraint{false}, loc{loc}{}
 
             bool isEqConstraint() const noexcept {
@@ -55,6 +55,7 @@ namespace ante {
     Substitutions unify(UnificationList const& list);
 
     AnType* applySubstitutions(Substitutions const& substitutions, AnType *t);
+    TraitImpl* applySubstitutions(Substitutions const& substitutions, TraitImpl *t);
 
     AnTypeVarType* nextTypeVar();
 

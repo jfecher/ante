@@ -13,14 +13,13 @@
 #include "tokens.h"
 #include "parser.h"
 #include "result.h"
-#include "trait.h"
 
 #define AN_HASH_PRIME 0x9e3779e9
 
 namespace ante {
     struct Compiler;
     struct UnionTag;
-    struct Trait;
+    struct Module;
 
     class BasicModifier;
     class AnModifier;
@@ -31,7 +30,8 @@ namespace ante {
     class AnDataType;
     class AnFunctionType;
     class AnTypeContainer;
-    class AnTraitType;
+
+    struct TraitImpl;
 
     /** A primitive type
      *
@@ -346,7 +346,7 @@ namespace ante {
     class AnFunctionType : public AnAggregateType {
         protected:
         AnFunctionType(AnType *ret, std::vector<AnType*> elems,
-                std::vector<AnTraitType*> tcConstrains, bool isMetaFunction)
+                std::vector<TraitImpl*> tcConstrains, bool isMetaFunction)
                 : AnAggregateType(isMetaFunction ? TT_MetaFunction : TT_Function, elems,
                         ret->isGeneric || ante::isGeneric(elems)),
                   retTy(ret), typeClassConstraints(tcConstrains){
@@ -358,10 +358,10 @@ namespace ante {
 
         AnType *retTy;
 
-        std::vector<AnTraitType*> typeClassConstraints;
+        std::vector<TraitImpl*> typeClassConstraints;
 
         static AnFunctionType* get(AnType *retTy, std::vector<AnType*> const& elems,
-                std::vector<AnTraitType*> const& tcConstrains, bool isMetaFunction = false);
+                std::vector<TraitImpl*> const& tcConstrains, bool isMetaFunction = false);
 
         static AnFunctionType* get(AnType* retty, parser::NamedValNode* params, Module *module,
                 bool isMetaFunction = false);
@@ -395,7 +395,7 @@ namespace ante {
 
         protected:
         AnDataType(std::string const& n, TypeTag tt) :
-                AnType(tt, false), name(n), traitImpls(),
+                AnType(tt, false), name(n),
                 unboundType(0), llvmType(0){}
 
         public:
@@ -403,9 +403,6 @@ namespace ante {
         ~AnDataType() = default;
 
         std::string name;
-
-        /** The traits this data type implements. */
-        std::vector<std::shared_ptr<Trait>> traitImpls;
 
         /** The unbound parent type of this generic type.
          * If this type is a bound version (eg. Maybe<i32>) of some generic
@@ -575,56 +572,6 @@ namespace ante {
         }
     };
 
-
-    class AnTraitType : public AnDataType {
-        protected:
-        AnTraitType(const Trait *t, AnType *self,  TypeArgs const& tArgs)
-                : AnDataType(t->name, TT_Trait), trait(t), selfType(self), impl(nullptr) {
-            this->typeArgs = tArgs;
-            isGeneric = self->isGeneric || ante::isGeneric(tArgs);
-        }
-
-        public:
-        const Trait* trait;
-
-        /** Type type implementing this trait, eg i32 for Eq i32
-         * or Vec for Collection Vec i32 */
-        AnType *selfType;
-
-        /** Pointer to the ExtNode of where this trait instance is
-         *  implemented or nullptr if it is not implemented. */
-        parser::ExtNode *impl;
-
-        ~AnTraitType() = default;
-
-        /** Returns true if the given AnType is an AnDataType */
-        static bool istype(const AnType *t){
-            return t->typeTag == TT_Trait;
-        }
-
-        /** Get an existing generic variant or create one if it does not yet exist */
-        static AnTraitType* createVariant(AnTraitType *parent, AnType *self,
-                TypeArgs const& generics);
-
-        /** Creates a new trait type matching the given trait declaration. */
-        static AnTraitType* create(Trait *trait, AnType *self, TypeArgs const& typeArgs);
-
-        /** Returns a new AnDataType* with the given modifier appended to the current type's modifiers. */
-        const AnType* addModifier(TokenType m) const override;
-
-        bool isModifierType() const noexcept override {
-            return false;
-        }
-
-        bool implemented() const noexcept {
-            return impl;
-        }
-
-        bool operator==(AnTraitType const& r){
-            return name == r.name && selfType == r.selfType && typeArgs == r.typeArgs;
-        }
-    };
-
     size_t hashCombine(size_t l, size_t r);
 }
 
@@ -684,7 +631,7 @@ namespace ante {
         friend AnTypeVarType;
         friend AnFunctionType;
 
-        using FnTypeKey = std::pair<AnType*, std::pair<std::vector<AnType*>, std::pair<std::vector<AnTraitType*>, bool>>>;
+        using FnTypeKey = std::pair<AnType*, std::pair<std::vector<AnType*>, std::pair<std::vector<TraitImpl*>, bool>>>;
         using AggTypeKey = std::pair<TypeTag, std::vector<AnType*>>;
 
         std::unordered_map<TypeTag, std::unique_ptr<AnType>> primitiveTypes;

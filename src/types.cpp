@@ -126,12 +126,6 @@ Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt, bool force){
         error("Type " + anTypeToColoredStr(dt) + " is generic and cannot be translated", unknownLoc());
     }
 
-    if(auto *tt = try_cast<AnTraitType>(dt)){
-        auto llvmty = c->anTypeToLlvmType(tt->typeArgs.back());
-        dt->llvmType = llvmty;
-        return llvmty;
-    }
-
     //create an empty type first so we dont end up with infinite recursion
     bool isPacked = dt->typeTag == TT_TaggedUnion;
     auto* structTy = dt->llvmType ? (StructType*)dt->llvmType
@@ -537,14 +531,6 @@ bool llvmTypeEq(Type *l, Type *r){
 }
 
 
-bool dataTypeImplementsTrait(AnDataType *dt, string trait){
-    for(auto traitImpl : dt->traitImpls){
-        if(traitImpl->name == trait)
-            return true;
-    }
-    return false;
-}
-
 /*
  *  Returns true if the given typetag is a primitive type, and thus
  *  accurately represents the entire type without information loss.
@@ -666,15 +652,33 @@ bool shouldWrapInParenthesis(AnType *type){
 
     auto adt = try_cast<AnDataType>(type);
     if (!adt) return false;
-    return !adt->typeArgs.empty() || try_cast<AnTraitType>(type);
+    return !adt->typeArgs.empty();
 }
 
 
-string commaSeparated(std::vector<AnTraitType*> const& types){
+string traitToStr(const TraitImpl *trait){
+    string ret = trait->getName();
+
+    for(auto &type : trait->typeArgs){
+        if(shouldWrapInParenthesis(type))
+            ret += " (" + anTypeToStr(type) + ')';
+        else
+            ret += ' ' + anTypeToStr(type);
+    }
+    return ret;
+}
+
+
+lazy_str traitToColoredStr(const TraitImpl *trait){
+    return lazy_str(traitToStr(trait), AN_TYPE_COLOR);
+}
+
+
+string commaSeparated(std::vector<TraitImpl*> const& traits){
     string ret = "";
-    for(const auto &ty : types){
-        ret += anTypeToStr(ty);
-        if(&ty != &types.back())
+    for(const auto &tr : traits){
+        ret += traitToStr(tr);
+        if(&tr != &traits.back())
             ret += ", ";
     }
     return ret;
@@ -698,13 +702,6 @@ string anTypeToStr(const AnType *t){
         }
     }else if(auto *dt = try_cast<AnDataType>(t)){
         string n = dt->name;
-
-        if(auto *tt = try_cast<AnTraitType>(t)){
-            if(shouldWrapInParenthesis(tt->selfType))
-                n += " (" + anTypeToStr(tt->selfType) + ')';
-            else
-                n += ' ' + anTypeToStr(tt->selfType);
-        }
 
         for(auto &a : dt->typeArgs){
             if(shouldWrapInParenthesis(a))

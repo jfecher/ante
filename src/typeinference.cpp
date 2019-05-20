@@ -5,6 +5,7 @@
 #include "antype.h"
 #include "module.h"
 #include "types.h"
+#include "trait.h"
 #include "util.h"
 
 using namespace std;
@@ -243,23 +244,23 @@ namespace ante {
         }
     }
 
-    vector<AnTraitType*> getAllTcConstraints(AnFunctionType *fn, UnificationList const& constraints,
+    vector<TraitImpl*> getAllTcConstraints(AnFunctionType *fn, UnificationList const& constraints,
             Substitutions const& substitutions){
 
         auto tcConstraints = fn->typeClassConstraints;
         for(auto &c : constraints){
             if(!c.isEqConstraint()){
                 auto resolved = applySubstitutions(substitutions, c.asTypeClassConstraint());
-                tcConstraints.push_back((AnTraitType*)resolved);
+                tcConstraints.push_back(resolved);
             }
         }
         return tcConstraints;
     }
 
-    vector<AnTraitType*> toTraitTypeVec(std::unique_ptr<TypeNode> const& tn, Module *module){
-        vector<AnTraitType*> ret;
+    vector<TraitImpl*> toTraitTypeVec(std::unique_ptr<TypeNode> const& tn, Module *module){
+        vector<TraitImpl*> ret;
         for(Node &n : *tn){
-            ret.push_back((AnTraitType*)toAnType((TypeNode*)&n, module));
+            ret.push_back(toTrait((TypeNode*)&n, module));
         }
         return ret;
     }
@@ -377,7 +378,9 @@ namespace ante {
             if (fdn) {
                 auto fdty = try_cast<AnFunctionType>(fdn->getType());
                 auto traits = fdty->typeClassConstraints; // copy the vec so the old one isn't pushed to
-                traits.push_back(try_cast<AnTraitType>(module->lookupType(n->name)));
+
+                //TODO synchronize this fresh trait with the actual trait of the TraitNode from name resolution?
+                traits.push_back(module->freshTraitImpl(n->name));
                 node.setType(AnFunctionType::get(fdty->retTy, fdty->extTys, traits));
             }
         }

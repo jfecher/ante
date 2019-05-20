@@ -1,6 +1,7 @@
 #include "substitutingvisitor.h"
 #include "antype.h"
 #include "compiler.h"
+#include "trait.h"
 #include "types.h"
 
 using namespace std;
@@ -78,7 +79,7 @@ namespace ante {
     }
 
     AnFunctionType* checkTypeClassConstraints(AnFunctionType *fnty, LOC_TY &loc){
-        std::vector<AnTraitType*> constraints;
+        std::vector<TraitImpl*> constraints;
         for(auto *tt : fnty->typeClassConstraints){
             if(!tt->implemented()){
                 constraints.push_back(tt);

@@ -915,10 +915,7 @@ void CompilingVisitor::visit(ExtNode *n){
  * @return True if a DataType implements the specified trait
  */
 bool Compiler::typeImplementsTrait(AnDataType* dt, string traitName) const{
-    for(auto& tr : dt->traitImpls)
-        if(tr->name == traitName)
-            return true;
-    return false;
+    return true;
 }
 
 

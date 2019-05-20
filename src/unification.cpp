@@ -1,5 +1,6 @@
 #include "unification.h"
 #include "types.h"
+#include "trait.h"
 #include "util.h"
 
 namespace ante {
@@ -13,12 +14,15 @@ namespace ante {
     std::vector<T*> copyWithNewTypeVars(std::vector<T*> tys,
             std::unordered_map<std::string, AnTypeVarType*> &map){
 
-        std::vector<T*> ret;
-        ret.reserve(tys.size());
-        for(auto &t : tys){
-            ret.push_back((T*)copyWithNewTypeVars(t, map));
-        }
-        return ret;
+        return ante::applyToAll(tys, [&](T* type){
+            return (T*)copyWithNewTypeVars(type, map);
+        });
+    }
+
+    TraitImpl* copyWithNewTypeVars(TraitImpl* impl,
+            std::unordered_map<std::string, AnTypeVarType*> &map){
+
+        return new TraitImpl(impl->name, copyWithNewTypeVars(impl->typeArgs, map));
     }
 
     void setExtsParentUnionTypeIfNotSet(AnSumType *parentUnion, std::vector<AnProductType*> &exts){
@@ -62,14 +66,6 @@ namespace ante {
                 setExtsParentUnionTypeIfNotSet(ret, exts);
                 return ret;
             }
-
-        }else if(auto tt = try_cast<AnTraitType>(t)){
-            auto typeVars = copyWithNewTypeVars(tt->typeArgs, map);
-            auto selfType = copyWithNewTypeVars(tt->selfType, map);
-            if(selfType == tt->selfType && typeVars == tt->typeArgs)
-                return tt;
-            else
-                return AnTraitType::createVariant(tt, selfType, typeVars);
 
         }else if(auto tv = try_cast<AnTypeVarType>(t)){
             auto it = map.find(tv->name);
@@ -120,12 +116,13 @@ namespace ante {
     std::vector<T*> substituteIntoAll(AnType *u, AnType *subType,
             std::vector<T*> const& vec){
 
-        std::vector<T*> ret;
-        ret.reserve(vec.size());
-        for(auto &elem : vec){
-            ret.push_back(static_cast<T*>(substitute(u, subType, elem)));
-        }
-        return ret;
+        return ante::applyToAll(vec, [&](T *elem){
+            return (T*)substitute(u, subType, elem);
+        });
+    }
+
+    TraitImpl* substitute(AnType *u, AnType* subType, TraitImpl *impl){
+        return new TraitImpl(impl->name, substituteIntoAll(u, subType, impl->typeArgs));
     }
 
     AnType* substitute(AnType *u, AnType* subType, AnType *t){
@@ -166,19 +163,6 @@ namespace ante {
                 setExtsParentUnionTypeIfNotSet(ret, exts);
                 return ret;
             }
-
-        }else if(auto tt = try_cast<AnTraitType>(t)){
-            if(tt == subType){
-                return u;
-            }
-
-            auto generics = substituteIntoAll(u, subType, tt->typeArgs);;
-            auto selfType = substitute(u, subType, tt->selfType);
-
-            if(selfType == tt->selfType && generics == tt->typeArgs)
-                return tt;
-            else
-                return AnTraitType::createVariant(tt, selfType, generics);
 
         }else if(auto fn = try_cast<AnFunctionType>(t)){
             auto exts = substituteIntoAll(u, subType, fn->extTys);;
@@ -226,12 +210,6 @@ namespace ante {
 
             return ante::any(st->tags, [&](AnProductType *f){ return containsTypeVarHelper(f, typeVar); });
 
-        }else if(auto tt = try_cast<AnTraitType>(t)){
-            if(containsTypeVarHelper(tt->selfType, typeVar))
-                return true;
-
-            return ante::any(tt->typeArgs, [&](AnType *f){ return containsTypeVarHelper(f, typeVar); });
-
         }else if(auto fn = try_cast<AnFunctionType>(t)){
             if(ante::any(fn->extTys, [&](AnType *f){ return containsTypeVarHelper(f, typeVar); }))
                 return true;
@@ -239,7 +217,11 @@ namespace ante {
             if(containsTypeVarHelper(fn->retTy, typeVar))
                 return true;
 
-            return ante::any(fn->typeClassConstraints, [&](AnType *f){ return containsTypeVarHelper(f, typeVar); });
+            auto tccContainsTypeVar = [&](TraitImpl *t){
+                return ante::any(t->typeArgs, [&](AnType *t){ return containsTypeVarHelper(t, typeVar); });
+            };
+
+            return ante::any(fn->typeClassConstraints, tccContainsTypeVar);
 
         }else if(auto tup = try_cast<AnAggregateType>(t)){
             return ante::any(tup->extTys, [&](AnType *f){ return containsTypeVarHelper(f, typeVar); });
@@ -251,20 +233,17 @@ namespace ante {
 
     bool containsTypeVar(AnType *t, AnTypeVarType *typeVar){
         if(t == typeVar) return false;
-        if(auto tt = try_cast<AnTraitType>(t)){
-            if(tt->selfType == typeVar) return false;
-        }
         return containsTypeVarHelper(t, typeVar);
     }
 
 
     AnFunctionType* cleanTypeClassConstraints(AnFunctionType *t){
-        std::vector<AnTraitType*> c;
+        std::vector<TraitImpl*> c;
         c.reserve(t->typeClassConstraints.size());
 
         auto tEnd = t->typeClassConstraints.end();
         for(auto it1 = t->typeClassConstraints.begin(); it1 != tEnd; ++it1){
-            auto elemit = std::find_if(it1 + 1, tEnd, [&](AnTraitType *elem){
+            auto elemit = std::find_if(it1 + 1, tEnd, [&](TraitImpl *elem){
                 return *elem == **it1;
             });
             if(elemit == tEnd && !(*it1)->implemented())
@@ -288,6 +267,16 @@ namespace ante {
         return t;
     }
 
+    TraitImpl* applySubstitutions(Substitutions const& substitutions, TraitImpl *t){
+        auto ret = new TraitImpl(t->name, t->typeArgs);
+        for(auto it = substitutions.rbegin(); it != substitutions.rend(); it++){
+            ret->typeArgs = ante::applyToAll(ret->typeArgs, [it](AnType *type){
+                return substitute(it->second, it->first, type);
+            });
+        }
+        return t;
+    }
+
     template<class T>
     Substitutions unifyExts(std::vector<T*> const& exts1, std::vector<T*> const& exts2,
             LOC_TY const& loc, AnType *t1, AnType *t2){
@@ -304,10 +293,6 @@ namespace ante {
         return unify(ret);
     }
 
-
-    bool implements(AnType *type, AnTraitType *trait){
-        return true;
-    }
 
     Substitutions unifyOne(AnType *t1, AnType *t2, LOC_TY const& loc){
         auto tv1 = try_cast<AnTypeVarType>(t1);
@@ -326,15 +311,6 @@ namespace ante {
         }
 
         if(t1->typeTag != t2->typeTag){
-            auto trait = try_cast<AnTraitType>(t1);
-            if(trait){
-                return unifyOne(trait->selfType, t2, loc);
-            }
-
-            trait = try_cast<AnTraitType>(t2);
-            if(trait){
-                return unifyOne(t1, trait->selfType, loc);
-            }
             showError("Mismatched types " + anTypeToColoredStr(t1) + " and " + anTypeToColoredStr(t2), loc);
             return {};
         }
@@ -371,11 +347,6 @@ namespace ante {
             auto l2 = unifyExts(st1->typeArgs, st2->typeArgs, loc, st1, st2);
             l1.merge(l2);
             return l1;
-
-        }else if(auto tt1 = try_cast<AnTraitType>(t1)){
-            auto tt2 = try_cast<AnTraitType>(t2);
-            ret.emplace_back(tt1->selfType, tt2->selfType, loc);
-            return unify(ret);
 
         }else if(auto fn1 = try_cast<AnFunctionType>(t1)){
             auto fn2 = try_cast<AnFunctionType>(t2);

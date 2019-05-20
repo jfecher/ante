@@ -3,16 +3,23 @@
 
 #include <string>
 #include <memory>
-#include "trait.h"
-#include "antype.h"
+#include <llvm/ADT/StringMap.h>
+#include "funcdecl.h"
 
 namespace ante {
+    struct TraitDecl;
+    struct TraitImpl;
+    class AnType;
+
+    using TypeArgs = std::vector<AnType*>;
+
     /** A simple pair type for holding an AnType and the location it was declared. */
     struct TypeDecl {
         AnType *type;
         LOC_TY &loc;
         TypeDecl(AnType *type, LOC_TY &loc) : type{type}, loc{loc}{}
     };
+
     /**
      * A virtual filesystem tree node containing information on
      * types, functions, imports, and traits of the current module.
@@ -50,9 +57,13 @@ namespace ante {
 
         /**
          * @brief Map of all declared traits; not including their implementations for a given type
-         * Each DataType is reponsible for holding its own trait implementations
          */
-        llvm::StringMap<std::shared_ptr<Trait>> traits;
+        llvm::StringMap<TraitDecl*> traitDecls;
+
+        /**
+         * @brief Map of all trait implementations keyed by name.
+         */
+        llvm::StringMap<std::vector<TraitImpl*>> traitImpls;
 
         private:
         /** The submodules of the current node */
@@ -72,6 +83,15 @@ namespace ante {
 
             /** Lookup the given type and return it and its location. */
             TypeDecl* lookupTypeDecl(std::string const& name) const;
+
+            /** Lookup the given TraitDecl* and return it if found, null otherwise */
+            TraitDecl* lookupTraitDecl(std::string const& name) const;
+
+            /** Lookup the given TraitInstance* and return it if found, null otherwise */
+            TraitImpl* lookupTraitImpl(std::string const& name, TypeArgs const& typeArgs) const;
+
+            /** Lookup the TraitDecl and return a new, unimplemented instance of it */
+            TraitImpl* freshTraitImpl(std::string const& name) const;
 
             /** Find a single direct child with the given name */
             llvm::StringMap<Module>::iterator findChild(std::string const& name);
@@ -127,8 +147,7 @@ namespace ante {
      * as directory separators, regardless of OS.  Furthermore, the file named '.'
      * will be skipped, so both stdlib/prelude.an and ./stdlib/prelude.an are equivalent.
      */
-    class ModulePath
-    {
+    class ModulePath {
         typedef ModulePath iterator;
         typedef std::string const& reference;
         typedef std::string const* pointer;

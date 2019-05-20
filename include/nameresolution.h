@@ -5,6 +5,7 @@
 #include "parser.h"
 #include "variable.h"
 #include "module.h"
+#include "antype.h"
 
 namespace ante {
 
@@ -28,9 +29,6 @@ namespace ante {
 
         /** @brief functions and type definitions of current module */
         Module *compUnit;
-
-        /** Set to the current trait if we're inside a trait decl.  Allows shadowing of outside types. */
-        Trait *curTrait = nullptr;
 
         /** Construct a new NameResolutionVisitor */
         NameResolutionVisitor(){
@@ -69,6 +67,9 @@ namespace ante {
             /** Declare functions but do not define them */
             void declare(parser::FuncDeclNode *decl);
             void declare(parser::ExtNode *decl);
+
+            /** Declare/Register a trait declaration */
+            void declare(TraitDecl *decl, LOC_TY &loc);
 
             /** Declare a type with its contents unknown */
             void declareProductType(parser::DataDeclNode *n);

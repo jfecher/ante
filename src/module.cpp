@@ -1,6 +1,10 @@
-#include "module.h"
 #include <algorithm>
 #include <cctype>
+#include "module.h"
+#include "antype.h"
+#include "trait.h"
+#include "unification.h"
+#include "util.h"
 
 namespace ante {
     Module rootModule{""};
@@ -94,5 +98,36 @@ namespace ante {
                 return (TypeDecl*)&it->second;
         }
         return nullptr;
+    }
+
+    /** Lookup the given Trait* and return it if found, null otherwise */
+    TraitDecl* Module::lookupTraitDecl(std::string const& name) const {
+        auto it = traitDecls.find(name);
+        if(it != traitDecls.end()){
+            return it->getValue();
+        }
+        return nullptr;
+    }
+
+    /** Lookup the given TraitInstance* and return it if found, null otherwise */
+    TraitImpl* Module::lookupTraitImpl(std::string const& name, TypeArgs const& typeArgs) const {
+        auto it = traitImpls.find(name);
+        if(it != traitImpls.end()){
+            for(auto *impl : it->getValue()){
+                if(impl->typeArgs == typeArgs){
+                    return impl;
+                }
+            }
+        }
+        return nullptr;
+    }
+
+    /** Lookup the TraitDecl and return a new, unimplemented instance of it */
+    TraitImpl* Module::freshTraitImpl(std::string const& name) const {
+        TraitDecl *decl = Module::lookupTraitDecl(name);
+        auto typeArgs = ante::applyToAll(decl->typeArgs, [](AnType *a) -> AnType* {
+            return nextTypeVar();
+        });
+        return new TraitImpl(decl, typeArgs);
     }
 }

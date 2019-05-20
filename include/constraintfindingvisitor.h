@@ -23,13 +23,17 @@ namespace ante {
 
             void addConstraint(AnType *a, AnType *b, LOC_TY &loc);
 
+            void addTypeClassConstraint(TraitImpl *typeclass, LOC_TY &loc);
+
+            void fnCallConstraints(parser::BinOpNode *n);
+
             /** Searches type for typeclasses, removes them from the type, and adds them
              *  as a separate constraint.  Returns a new type with type classes removed. */
             AnType* handleTypeClassConstraints(AnType *t, LOC_TY const& loc);
 
             /** Add bindings from a trait's declaration to the scope of
              *  the trait's implementation to better infer parameter/return types. */
-            void addConstraintsFromTCDecl(parser::FuncDeclNode *fdn, AnTraitType *tr, parser::FuncDeclNode *decl);
+            void addConstraintsFromTCDecl(parser::FuncDeclNode *fdn, TraitImpl *tr, parser::FuncDeclNode *decl);
 
             void handlePattern(parser::MatchNode *n, parser::Node *pat, AnType *expectedType, Pattern &patChecker);
 

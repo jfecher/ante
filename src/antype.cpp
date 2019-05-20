@@ -1,4 +1,5 @@
 #include "antype.h"
+#include "trait.h"
 #include "types.h"
 #include "uniontag.h"
 #include "unification.h"
@@ -268,7 +269,7 @@ namespace ante {
     }
 
     AnFunctionType* AnFunctionType::get(AnType *retTy, vector<AnType*> const& elems,
-            vector<AnTraitType*> const& tcConstrains, bool isMetaFunction){
+            vector<TraitImpl*> const& tcConstrains, bool isMetaFunction){
         auto key = make_pair(retTy, make_pair(elems, make_pair(tcConstrains, isMetaFunction)));
 
         auto existing_ty = search(typeArena.functionTypes, key);
@@ -402,19 +403,6 @@ namespace ante {
     }
 
 
-    AnTraitType* AnTraitType::createVariant(AnTraitType *parent,
-            AnType *self, TypeArgs const& generics){
-
-        auto ret = new AnTraitType(parent->trait, self, generics);
-        ret->unboundType = getRootUnboundType(parent);
-        return ret;
-    }
-
-
-    AnTraitType* AnTraitType::create(Trait *trait, AnType *self, TypeArgs const& tArgs){
-        return new AnTraitType(trait, self, tArgs);
-    }
-
     bool AnDataType::isVariantOf(const AnDataType *dt) const {
         AnDataType *unbound = this->unboundType;
         while(unbound){
@@ -531,7 +519,7 @@ namespace ante {
 
                 ret = basety;
                 size_t tnpSize = tn->params.size();
-                size_t btaSize = basety->typeArgs.size() + (try_cast<AnTraitType>(basety) ? 1 : 0);
+                size_t btaSize = basety->typeArgs.size();
                 if(tnpSize > btaSize){
                     error(anTypeToColoredStr(basety) + " takes " + to_string(btaSize)
                         + " argument" + plural(btaSize) + ", but " + to_string(tnpSize) + ' '
@@ -541,15 +529,9 @@ namespace ante {
                 size_t i = 0;
                 if(!tn->params.empty()){
                     Substitutions subs;
-                    size_t offset = 0;
-                    if(auto *tt = try_cast<AnTraitType>(basety)){
-                        subs.emplace_back(tt->selfType, toAnType(tn->params[0].get(), module));
-                        offset = 1;
-                    }
-
-                    for(i = offset; i < tn->params.size() && i < basety->typeArgs.size() + offset; i++){
+                    for(i = 0; i < tn->params.size() && i < basety->typeArgs.size(); i++){
                         auto *b = static_cast<AnTypeVarType*>(toAnType(tn->params[i].get(), module));
-                        auto *basetyTypeArg = try_cast<AnTypeVarType>(basety->typeArgs[i - offset]);
+                        auto *basetyTypeArg = try_cast<AnTypeVarType>(basety->typeArgs[i]);
                         subs.emplace_back(basetyTypeArg, b);
                     }
                     ret = applySubstitutions(subs, ret);
@@ -627,11 +609,6 @@ namespace ante {
     }
 
     const AnType* AnSumType::addModifier(TokenType m) const{
-        if(m == Tok_Let) return this;
-        return BasicModifier::get(this, m);
-    }
-
-    const AnType* AnTraitType::addModifier(TokenType m) const {
         if(m == Tok_Let) return this;
         return BasicModifier::get(this, m);
     }
