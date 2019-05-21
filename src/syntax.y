@@ -450,11 +450,7 @@ op: '+'    {$$ = (Node*)"+";}
   ;
 
 
-typeclass_constraints_: usertype generic_params                                {$$ = setRoot(mkTypeNode(@$, TT_Data, (char*)$1, $2)); ((TypeNode*)$$)->params = toOwnedVec($2);}
-                      | typeclass_constraints_ ',' usertype generic_params     {$$ = setNext($1, mkTypeNode(@3, TT_Data, (char*)$3, $4)); ((TypeNode*)$$)->params = toOwnedVec($4);}
-                      ;
-
-tc_constraints: typeclass_constraints_  %prec LOW  {$$ = getRoot();}
+tc_constraints: type  %prec LOW
               ;
 
 /* NOTE: lextxt contents from fn_name and the mangleFn result are freed in the call to mkFuncDeclNode */
@@ -482,8 +478,8 @@ fn_decl: Fun fn_name ':' params RArrow bounded_type_expr '|' tc_constraints   %p
        | Fun fn_name ':'                                                      %prec Fun  {$$ = mkFuncDeclNode(@2, /*fn_name*/$2, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/0,  /*constraints*/0,  /*body*/0);}
        ;
 
-fn_lambda: Fun params '=' expr                              %prec Fun  {$$ = mkFuncDeclNode(@$, /*fn_name*/(Node*)strdup(""), /*ret_ty*/0,  /*params*/$2, /*constraints*/0, /*body*/$4);}
-         | Fun '=' expr                                     %prec Fun  {$$ = mkFuncDeclNode(@$, /*fn_name*/(Node*)strdup(""), /*ret_ty*/0,  /*params*/0,  /*constraints*/0, /*body*/$3);}
+fn_lambda: Fun params '=' expr  %prec Fun  {$$ = mkFuncDeclNode(@$, /*fn_name*/(Node*)strdup(""), /*ret_ty*/0,  /*params*/$2, /*constraints*/0, /*body*/$4);}
+         | Fun '=' expr         %prec Fun  {$$ = mkFuncDeclNode(@$, /*fn_name*/(Node*)strdup(""), /*ret_ty*/0,  /*params*/0,  /*constraints*/0, /*body*/$3);}
          ;
 
 
@@ -491,9 +487,9 @@ ret_expr: Return expr {$$ = mkRetNode(@$, $2);}
         ;
 
 
-extension: Module bounded_type_expr Indent ext_list Unindent  {$$ = mkExtNode(@$, $2, $4, 0);}
-         | Impl   bounded_type_expr Indent ext_list Unindent  {$$ = mkExtNode(@$,  0, $4, $2);}
-         | Impl   bounded_type_expr '|' tc_constraints Indent ext_list Unindent  {$$ = mkExtNode(@$,  0, $4, $2);}
+extension: Module bounded_type_expr Indent ext_list Unindent                     {$$ = mkExtNode(@$, $2, $4, 0);}
+         | Impl   bounded_type_expr Indent ext_list Unindent                     {$$ = mkExtNode(@$,  0, $4, $2);}
+         | Impl   bounded_type_expr '|' tc_constraints Indent ext_list Unindent  {$$ = mkExtNode(@$,  0, $6, $2);}
          ;
 
 ext_list: fn_list_ {$$ = getRoot();}

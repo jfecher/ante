@@ -376,8 +376,7 @@ void PrintingVisitor::visit(DataDeclNode *n){
 
 void PrintingVisitor::visit(TraitNode *n){
     printModifiers(*this, n);
-    cout << "trait " << n->name << ' ';
-    n->selfType->accept(*this);
+    cout << "trait " << n->name;
     for(auto &tv : n->generics){
         putchar(' ');
         tv->accept(*this);

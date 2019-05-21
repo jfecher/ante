@@ -332,12 +332,16 @@ namespace ante {
                 auto *fd = new FuncDecl(fdn, fdn->name, v.compUnit);
                 fdn->decl = fd;
                 if(checkFnInTraitDecl(traitDeclFns, traitImplFns, fdn, trait)){
-                    ante::remove_if(traitDeclFns, [&](shared_ptr<FuncDecl> &declFn){ return declFn->name == fd->name; });
+                    ante::remove_if(traitDeclFns, [&](shared_ptr<FuncDecl> const& declFn){
+                        return declFn->name == fd->name;
+                    });
                     traitImplFns.push_back(fd);
                 }
             }else if(DataDeclNode *ddn = dynamic_cast<DataDeclNode*>(&m)){
                 if(checkTyInTraitDecl(traitDeclTys, traitImplTys, ddn, trait)){
-                    ante::remove_if(traitDeclTys, [&](TypeFamily &decl){ return decl.name == ddn->name; });
+                    ante::remove_if(traitDeclTys, [&](TypeFamily &decl){
+                        return decl.name == ddn->name;
+                    });
                     traitImplTys.emplace_back(ddn->name, convertToTypeArgs(ddn->generics, v.compUnit));
                 }
             }

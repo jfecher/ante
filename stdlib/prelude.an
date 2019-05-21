@@ -58,7 +58,7 @@ trait Empty 't
     fun empty: Type 't ty -> 't
 
 
-impl Eq (Maybe (Eq 'e))
+impl Eq (Maybe 'e) | Eq 'e
     fun (=): Maybe 'e l r -> bool
         match l with
         | Some lv ->
@@ -72,9 +72,9 @@ impl Eq (Maybe (Eq 'e))
 
 
 
-impl To Str (Maybe (To Str 'm))
-    fun to: Type Str _, Maybe 'm l -> Str
-        match l with
+impl To Str (Maybe 'm) | To Str 'm
+    fun to: _, maybe =
+        match maybe with
         | Some val -> "tmp" //Str val
         | None -> "None"
 
@@ -403,14 +403,14 @@ module i64
 
 
 //Pointer Equivalence
-impl Eq (ref (Eq 't))
-    fun (=): ref 't l r =
+impl Eq (ref 'q) | Eq 'q
+    fun (=): ref 'q l r =
         @l = @r
 
 
 //For-loops work over any range that is Iterable
 trait Iterable 'i
-    fun into_iter: 'i i -> Iterator
+    fun into_iter: 'i i -> 'it | Iterator 'it
 
 trait Iterator 'i
     type IteratorElem

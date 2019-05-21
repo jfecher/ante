@@ -505,17 +505,12 @@ namespace ante {
 
         Node* mkTraitNode(LOC_TY loc, char* s, Node* generics, Node* fns){
             vector<unique_ptr<TypeNode>> genericsVec;
-            TypeNode *selfType = 0;
 
             while(generics){
-                if(selfType){
-                    genericsVec.emplace_back((TypeNode*)generics);
-                }else{
-                    selfType = (TypeNode*)generics;
-                }
+                genericsVec.emplace_back((TypeNode*)generics);
                 generics = generics->next.release();
             }
-            return new TraitNode(loc, s, selfType, move(genericsVec), fns);
+            return new TraitNode(loc, s, move(genericsVec), fns);
         }
     } //end of namespace ante::parser
 } //end of namespace ante
