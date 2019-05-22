@@ -469,8 +469,8 @@ namespace ante {
             return {};
         }
 
-        NameResolutionVisitor v;
-        v.resolve(rn);
+        NameResolutionVisitor v{"repl"};
+        rn->accept(v);
 
         move(rn->imports.begin(),
             next(rn->imports.begin(), rn->imports.size()),

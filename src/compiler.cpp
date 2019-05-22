@@ -215,7 +215,7 @@ TypedValue compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
     TypedValue val;
 
     // errors may occur here but we cannot recover so let it throw
-    NameResolutionVisitor v;
+    NameResolutionVisitor v{c->getModuleName()};
     expr->accept(v);
     TypeInferenceVisitor::infer(expr, v.compUnit);
 
@@ -949,6 +949,10 @@ string removeFileExt(string file){
     return index == string::npos ? file : file.substr(0, index);
 }
 
+string Compiler::getModuleName() const {
+    return removeFileExt(this->fileName);
+}
+
 
 template<typename T>
 void compileAll(Compiler *c, vector<T> &vec){
@@ -962,7 +966,7 @@ void compileAll(Compiler *c, vector<T> &vec){
 
 
 bool Compiler::scanAllDecls(RootNode *root){
-    NameResolutionVisitor v;
+    NameResolutionVisitor v{getModuleName()};
     this->compUnit = v.compUnit;
     root->accept(v);
     if(!errorCount())
@@ -1091,7 +1095,7 @@ void Compiler::compileNative(){
 int Compiler::compileObj(string &outName){
     if(!compiled) compile();
 
-    string modName = removeFileExt(fileName);
+    string modName = getModuleName();
     string objFile = outName.length() > 0 ? outName : modName + ".o";
 
     return compileIRtoObj(module.get(), objFile);
@@ -1177,7 +1181,7 @@ int Compiler::compileIRtoObj(llvm::Module *mod, string outFile){
 
 
 int Compiler::linkObj(string inFiles, string outFile){
-    string cmd = AN_LINKER " " + inFiles + " -static -o " + outFile;
+    string cmd = AN_LINKER " " + inFiles + " -o " + outFile;
     return system(cmd.c_str());
 }
 
@@ -1282,10 +1286,8 @@ Compiler::Compiler(const char *_fileName, bool lib, shared_ptr<LLVMContext> llvm
         this->ast = root;
     }
 
-    auto fileNameWithoutExt = removeFileExt(fileName);
-
     //Add this module to the cache to ensure it is not compiled twice
-    outFile = fileNameWithoutExt;
+    outFile = getModuleName();
     if (outFile.empty())
         outFile = "a.out";
 

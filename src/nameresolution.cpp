@@ -369,7 +369,7 @@ namespace ante {
             string name = typeNodeToStr(n->typeExpr.get());
             Module &submodule = compUnit->addChild(name);
 
-            NameResolutionVisitor submoduleVisitor;
+            NameResolutionVisitor submoduleVisitor{name};
             submoduleVisitor.compUnit = &submodule;
 
             if(!alreadyImported(submoduleVisitor, "Prelude"))
@@ -384,6 +384,11 @@ namespace ante {
 
 
     void NameResolutionVisitor::visit(RootNode *n){
+        if(compUnit->ast){
+            ASSERT_UNREACHABLE()
+        }
+        compUnit->ast.reset(n);
+
         if(compUnit->name != "Prelude"){
             TRY_TO(importFile(AN_PRELUDE_FILE, n->loc));
         }
@@ -688,11 +693,13 @@ namespace ante {
             cerr << "Syntax error, aborting.\n";
             exit(flag);
         }
+        string modName = "";
+        for(string s : path) modName = s;
+
         //Add this module to the cache first to ensure it is not compiled twice
-        NameResolutionVisitor newVisitor;
+        NameResolutionVisitor newVisitor{modName};
         newVisitor.compUnit = &Module::getRoot().addPath(path);
         RootNode *root = parser::getRootNode();
-        newVisitor.compUnit->ast.reset(root);
         root->accept(newVisitor);
 
         if (errorCount()) return newVisitor;
@@ -873,7 +880,7 @@ namespace ante {
     void NameResolutionVisitor::visit(ExtNode *n){
         if(n->typeExpr){
             string name = typeNodeToStr(n->typeExpr.get());
-            NameResolutionVisitor submodule;
+            NameResolutionVisitor submodule{name};
             submodule.compUnit = &compUnit->findChild(name)->second;
 
             assert(submodule.compUnit && ("Could not find submodule " + name).c_str());

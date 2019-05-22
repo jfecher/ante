@@ -17,10 +17,10 @@ using namespace ante::parser;
  *
  * @param root The RootNode of the parse tree to print out
  */
-void showParseTree(RootNode *root){
+void showParseTree(RootNode *root, string const& fileName){
     // Must annotate parse tree with name/type information first
     try{
-        NameResolutionVisitor v;
+        NameResolutionVisitor v{fileName};
         v.visit(root);
         if(errorCount()) return;
         TypeInferenceVisitor::infer(root, v.compUnit);
@@ -72,7 +72,7 @@ int main(int argc, const char **argv){
     for(auto input : args->inputFiles){
         Compiler ante{input.c_str()};
         if(args->hasArg(Args::Parse)){
-            showParseTree(ante.getAST());
+            showParseTree(ante.getAST(), ante.getModuleName());
         }
         ante.processArgs(args);
     }

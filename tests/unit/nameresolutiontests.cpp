@@ -24,8 +24,8 @@ TEST_CASE("Sequence Resolution", "[nameResolution]"){
     REQUIRE(!var1->decl);
     REQUIRE(!var1Cpy->decl);
 
-    NameResolutionVisitor v;
-    v.resolve(declThenReference);
+    NameResolutionVisitor v{"SequenceResolutionTest"};
+    declThenReference->accept(v);
 
     REQUIRE(var1->decl);
     REQUIRE(var1Cpy->decl);
@@ -75,8 +75,8 @@ TEST_CASE("Mutability Resolution", "[nameResolution]"){
     seq->sequence.emplace_back(var2c);
     seq->sequence.emplace_back(assign1);
 
-    NameResolutionVisitor v;
-    v.resolve(seq);
+    NameResolutionVisitor v{"Mutability Resolution Test"};
+    seq->accept(v);
 
     REQUIRE(var1a->decl);
     REQUIRE(var1b->decl);
@@ -128,8 +128,8 @@ TEST_CASE("Shadowing Resolution", "[nameResolution]"){
     seq->sequence.emplace_back(block);
     seq->sequence.emplace_back(var1d);
 
-    NameResolutionVisitor v;
-    v.resolve(seq);
+    NameResolutionVisitor v{"ShadowingResolutionTest"};
+    seq->accept(v);
 
     REQUIRE(var1a->decl);
     REQUIRE(var1b->decl);
@@ -195,8 +195,8 @@ TEST_CASE("Function Resolution", "[nameResolution]"){
     root->main.emplace_back(call);
     root->main.emplace_back(p1d);
 
-
-    NameResolutionVisitor::resolve(root);
+    NameResolutionVisitor visitor{"FunctionResolutionTest"};
+    root->accept(visitor);
 
     REQUIRE(funcA->decl);
     REQUIRE(funcB->decl);
@@ -228,7 +228,7 @@ TEST_CASE("Integer Type Resolution", "[typeResolution]"){
     LOC_TY loc;
     auto i32 = new TypeNode(loc, TT_I32, "", nullptr);
     
-    NameResolutionVisitor::resolve(i32);
+    NameResolutionVisitor{"IntTypeResolutionTest"}.visit(i32);
 
     REQUIRE(i32->getType() == AnType::getI32());
 }
@@ -241,7 +241,7 @@ TEST_CASE("Array Type Resolution", "[typeResolution]"){
     auto uszPtr = new TypeNode(loc, TT_Ptr, "", usz);
     auto arrOfUszPtr = new TypeNode(loc, TT_Array, "", uszPtr);
     
-    NameResolutionVisitor::resolve(arrOfUszPtr);
+    NameResolutionVisitor{"ArrayTypeResolutionTest"}.visit(arrOfUszPtr);
 
     REQUIRE(arrOfUszPtr->getType() == AnArrayType::get(AnPtrType::get(AnType::getUsz())));
 

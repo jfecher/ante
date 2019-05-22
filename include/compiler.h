@@ -350,7 +350,7 @@ namespace ante {
          * Returns the name of the singular ante::Module this
          * Compiler is in charge of compiling.
          */
-        std::string& getModuleName() const;
+        std::string getModuleName() const;
 
         /**
          * @brief Returns true if the given AnDataType implements

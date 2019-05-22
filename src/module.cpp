@@ -106,6 +106,12 @@ namespace ante {
         if(it != traitDecls.end()){
             return it->getValue();
         }
+        for(Module *module : this->imports){
+            auto it = module->traitDecls.find(name);
+            if(it != module->traitDecls.end()){
+                return it->getValue();
+            }
+        }
         return nullptr;
     }
 
@@ -123,8 +129,12 @@ namespace ante {
     }
 
     /** Lookup the TraitDecl and return a new, unimplemented instance of it */
-    TraitImpl* Module::freshTraitImpl(std::string const& name) const {
-        TraitDecl *decl = Module::lookupTraitDecl(name);
+    TraitImpl* Module::freshTraitImpl(std::string const& traitName) const {
+        TraitDecl *decl = Module::lookupTraitDecl(traitName);
+        if(!decl){
+            yy::location loc;
+            error("Could not find trait " + lazy_str(traitName, AN_TYPE_COLOR) + " in module " + this->name, loc);
+        }
         auto typeArgs = ante::applyToAll(decl->typeArgs, [](AnType *a) -> AnType* {
             return nextTypeVar();
         });

@@ -31,30 +31,9 @@ namespace ante {
         Module *compUnit;
 
         /** Construct a new NameResolutionVisitor */
-        NameResolutionVisitor(){
-            compUnit = new Module("");
+        NameResolutionVisitor(std::string const& moduleName){
+            compUnit = new Module(moduleName);
             enterFunction();
-        }
-
-        /**
-         * Perform name resolution for each module and
-         * imported module.
-         *
-         * This will not resolve which version of a function
-         * to use based on best match of types, that is the
-         * job of the typeinference visitor.
-         */
-        static void resolve(parser::Node *n){
-            NameResolutionVisitor v;
-            n->accept(v);
-        }
-
-        static void resolve(std::unique_ptr<parser::Node> &n){
-            return resolve(n.get());
-        }
-
-        static void resolve(std::shared_ptr<parser::Node> &n){
-            return resolve(n.get());
         }
 
         DECLARE_NODE_VISIT_METHODS();
