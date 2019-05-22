@@ -32,6 +32,17 @@ namespace ante {
         return ret;
     }
 
+    TypeArgs convertToNewTypeArgs(vector<unique_ptr<TypeNode>> const& types, Module *module,
+            unordered_map<string, AnTypeVarType*> &mapping){
+
+        TypeArgs ret;
+        ret.reserve(types.size());
+        for(auto &t : types){
+            ret.push_back(copyWithNewTypeVars(static_cast<AnTypeVarType*>(toAnType(t.get(), module)), mapping));
+        }
+        return ret;
+    }
+
     /** Check if a name was declared previously in the given table.
      * Throw an appropriate error if it was. */
     template<typename T>
@@ -1068,8 +1079,38 @@ namespace ante {
         }
     }
 
+    void mutateWithNewTypeVarNodes(TypeNode *ty, unordered_map<string, AnTypeVarType*> &map){
+        if(ty->extTy){
+            for(Node &node : *ty->extTy){
+                if(TypeNode *ext = dynamic_cast<TypeNode*>(&node)){
+                    mutateWithNewTypeVarNodes((TypeNode*)ext, map);
+                }
+            }
+        }else if(ty->typeTag == TT_TypeVar){
+            auto it = map.find(ty->typeName);
+            if(it != map.end()){
+                ty->typeName = it->second->name;
+            }else{
+                auto newTypeVar = nextTypeVar();
+                map[ty->typeName] = newTypeVar;
+                ty->typeName = newTypeVar->name;
+            }
+        }
+    }
+
+    void mutateWithNewTypeVarNodes(FuncDeclNode *fdn, unordered_map<string, AnTypeVarType*> &map){
+        if(fdn->returnType) mutateWithNewTypeVarNodes(fdn->returnType.get(), map);
+        for(Node& node : *fdn->params){
+            auto nvn = static_cast<NamedValNode*>(&node);
+            if(nvn->typeExpr){
+                mutateWithNewTypeVarNodes(static_cast<TypeNode*>(nvn->typeExpr.get()), map);
+            }
+        }
+    }
+
     void NameResolutionVisitor::visit(TraitNode *n){
-        auto typeArgs = convertToTypeArgs(n->generics, compUnit);
+        unordered_map<string, AnTypeVarType*> map;
+        auto typeArgs = convertToNewTypeArgs(n->generics, compUnit, map);
         auto decl = new TraitDecl(n->name, typeArgs);
 
         // trait type is created here but the internal trait
@@ -1078,14 +1119,15 @@ namespace ante {
 
         enterFunction();
         for(Node &child : *n->child){
-            child.accept(*this);
-
             if(FuncDeclNode *fdn = dynamic_cast<FuncDeclNode*>(&child)){
+                mutateWithNewTypeVarNodes(fdn, map);
+                child.accept(*this);
                 auto *fd = static_cast<FuncDecl*>(fdn->decl);
                 compUnit->fnDecls[fdn->name] = fd;
                 decl->funcs.emplace_back(fd);
             }else if(DataDeclNode *type = dynamic_cast<DataDeclNode*>(&child)){
-                decl->typeFamilies.emplace_back(type->name, convertToTypeArgs(type->generics, compUnit));
+                child.accept(*this);
+                decl->typeFamilies.emplace_back(type->name, convertToNewTypeArgs(type->generics, compUnit, map));
             }
         }
         exitFunction();

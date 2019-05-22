@@ -403,7 +403,7 @@ module i64
 
 
 //Pointer Equivalence
-impl Eq (ref 'q) | Eq 'q
+impl Eq (ref 't) | Eq 't
     fun (=): ref 'q l r =
         @l = @r
 
