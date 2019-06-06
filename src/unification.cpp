@@ -255,7 +255,7 @@ namespace ante {
 
 
     AnType* applySubstitutions(Substitutions const& substitutions, AnType *t){
-        for(auto it = substitutions.rbegin(); it != substitutions.rend(); it++){
+        for(auto it = substitutions.rbegin(); it != substitutions.rend(); ++it){
             auto variant = try_cast<AnProductType>(t);
             if(variant && variant->parentUnionType){
                 auto st = (AnSumType*)applySubstitutions(substitutions, variant->parentUnionType);

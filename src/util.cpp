@@ -15,6 +15,10 @@ namespace ante {
         show(n.get());
     }
 
+    std::ostream& operator<<(std::ostream &o, AnType *t){
+        return o << anTypeToColoredStr(t);
+    }
+
     std::ostream& operator<<(std::ostream &out, parser::Node &n){
         out << std::flush;
         PrintingVisitor::print(&n);

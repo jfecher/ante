@@ -111,6 +111,13 @@ namespace ante {
         return ante::find_if(collection, fn) != collection.cend();
     }
 
+    std::ostream& operator<<(std::ostream &o, AnType *t);
+
+    template<typename A, typename B>
+    std::ostream& operator<<(std::ostream &o, std::pair<A, B> const& p){
+        return o << '(' << p.first << ", " << p.second << ')';
+    }
+
     template<typename T>
     std::ostream& operator<<(std::ostream &o, std::vector<T> const& vec){
         o << '[';
@@ -119,7 +126,20 @@ namespace ante {
             if(&elem != &vec.back())
                 o << ", ";
         }
-        o << ']';
+        return o << ']';
+    }
+
+    template<typename T>
+    std::ostream& operator<<(std::ostream &o, std::list<T> const& l){
+        o << '[';
+        auto it = l.begin(), end = l.end();
+        while(it != end){
+            o << *it;
+            ++it;
+            if(it != end)
+                o << ", ";
+        }
+        return o << ']';
     }
 
     /** @return n == 1 ? "" : pluralSuffix */

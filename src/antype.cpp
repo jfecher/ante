@@ -47,6 +47,16 @@ namespace ante {
         return false;
     }
 
+    bool isGeneric(AnType *retTy, std::vector<AnType*> const& params, std::vector<TraitImpl*> const& traits){
+        if(retTy->isGeneric || isGeneric(params))
+            return true;
+
+        for(auto *t : traits)
+            if(isGeneric(t->typeArgs))
+                return true;
+        return false;
+    }
+
     bool AnType::hasModifier(TokenType m) const{
         return false;
     }

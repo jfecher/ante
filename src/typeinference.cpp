@@ -353,16 +353,17 @@ namespace ante {
             auto constraints = step2.getConstraints();
             auto substitutions = unify(constraints);
             if(!substitutions.empty()){
+                // apply typeclass constraints to function before substitution.
+                // it may save some time for non-generic functions to apply them afterward separately.
+                auto fnTy = try_cast<AnFunctionType>(n->getType());
+                auto tcConstraints = getAllTcConstraints(fnTy, constraints, substitutions);
+                auto newFnTy = AnFunctionType::get(fnTy->retTy, fnTy->extTys, tcConstraints,
+                        fnTy->typeTag == TT_MetaFunction);
+                newFnTy = cleanTypeClassConstraints(newFnTy);
+                n->setType(newFnTy);
+
                 SubstitutingVisitor::substituteIntoAst(n, substitutions);
             }
-
-            // apply typeclass constraints to function
-            auto fnTy = try_cast<AnFunctionType>(n->getType());
-            auto tcConstraints = getAllTcConstraints(fnTy, constraints, substitutions);
-            auto newFnTy = AnFunctionType::get(fnTy->retTy, fnTy->extTys, tcConstraints,
-                    fnTy->typeTag == TT_MetaFunction);
-            newFnTy = cleanTypeClassConstraints(newFnTy);
-            n->setType(newFnTy);
         });
     }
 

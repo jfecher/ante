@@ -115,6 +115,7 @@ namespace ante {
     class AnProductType;
     bool isGeneric(const std::vector<AnType*> &vec);
     bool isGeneric(const std::vector<AnProductType*> &vec);
+    bool isGeneric(AnType *retTy, std::vector<AnType*> const& params, std::vector<TraitImpl*> const& traits);
 
     /**
      *  Virtual base class for modifier types.
@@ -346,10 +347,10 @@ namespace ante {
     class AnFunctionType : public AnAggregateType {
         protected:
         AnFunctionType(AnType *ret, std::vector<AnType*> elems,
-                std::vector<TraitImpl*> tcConstrains, bool isMetaFunction)
+                std::vector<TraitImpl*> tcConstraints, bool isMetaFunction)
                 : AnAggregateType(isMetaFunction ? TT_MetaFunction : TT_Function, elems,
-                        ret->isGeneric || ante::isGeneric(elems)),
-                  retTy(ret), typeClassConstraints(tcConstrains){
+                        ante::isGeneric(ret, elems, tcConstraints)),
+                  retTy(ret), typeClassConstraints(tcConstraints){
         }
 
         public:
@@ -361,7 +362,7 @@ namespace ante {
         std::vector<TraitImpl*> typeClassConstraints;
 
         static AnFunctionType* get(AnType *retTy, std::vector<AnType*> const& elems,
-                std::vector<TraitImpl*> const& tcConstrains, bool isMetaFunction = false);
+                std::vector<TraitImpl*> const& tcConstraints, bool isMetaFunction = false);
 
         static AnFunctionType* get(AnType* retty, parser::NamedValNode* params, Module *module,
                 bool isMetaFunction = false);

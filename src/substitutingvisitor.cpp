@@ -3,6 +3,7 @@
 #include "compiler.h"
 #include "trait.h"
 #include "types.h"
+#include "util.h"
 
 using namespace std;
 
