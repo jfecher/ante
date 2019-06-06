@@ -15,9 +15,9 @@ namespace ante {
  * - wraps mutable types in pointers
  */
 Type* parameterize(Compiler *c, AnType *t){
-    if(t->typeTag == TT_Array) return c->anTypeToLlvmType(t)->getPointerTo();
-    if(t->hasModifier(Tok_Mut)) return c->anTypeToLlvmType(t)->getPointerTo();
-    return c->anTypeToLlvmType(t);
+    return implicitPassByRef(t) ?
+        c->anTypeToLlvmType(t)->getPointerTo() :
+        c->anTypeToLlvmType(t);
 }
 
 bool implicitPassByRef(AnType* t){

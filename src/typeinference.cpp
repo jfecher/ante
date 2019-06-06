@@ -370,17 +370,19 @@ namespace ante {
         n->setType(AnType::getVoid());
     }
 
+
     void TypeInferenceVisitor::visit(TraitNode *n){
         n->setType(AnType::getVoid());
         for(Node &node : *n->child){
             node.accept(*this);
+
             auto fdn = dynamic_cast<FuncDeclNode*>(&node);
             if (fdn) {
                 auto fdty = try_cast<AnFunctionType>(fdn->getType());
                 auto traits = fdty->typeClassConstraints; // copy the vec so the old one isn't pushed to
 
                 //TODO synchronize this fresh trait with the actual trait of the TraitNode from name resolution?
-                traits.push_back(module->freshTraitImpl(n->name));
+                traits.push_back(module->createTraitImplFromDecl(n->name));
                 node.setType(AnFunctionType::get(fdty->retTy, fdty->extTys, traits));
             }
         }

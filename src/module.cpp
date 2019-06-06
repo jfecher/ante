@@ -140,4 +140,14 @@ namespace ante {
         });
         return new TraitImpl(decl, typeArgs);
     }
+
+    /** Create a TraitImpl with the same type args as its TraitDecl */
+    TraitImpl* Module::createTraitImplFromDecl(std::string const& traitName) const {
+        TraitDecl *decl = lookupTraitDecl(traitName);
+        if(!decl){
+            yy::location loc;
+            error("Could not find trait " + lazy_str(traitName, AN_TYPE_COLOR) + " in module " + this->name, loc);
+        }
+        return new TraitImpl(decl, decl->typeArgs);
+    }
 }

@@ -117,7 +117,7 @@ namespace ante {
         for(auto &elem : vec){
             o << elem;
             if(&elem != &vec.back())
-                o << elem << ", ";
+                o << ", ";
         }
         o << ']';
     }

@@ -93,6 +93,9 @@ namespace ante {
             /** Lookup the TraitDecl and return a new, unimplemented instance of it */
             TraitImpl* freshTraitImpl(std::string const& name) const;
 
+            /** For some TraitDecl  D 'a 'b  create a TraitImpl exactly matching it with no fresh typevars */
+            TraitImpl* createTraitImplFromDecl(std::string const& traitName) const;
+
             /** Find a single direct child with the given name */
             llvm::StringMap<Module>::iterator findChild(std::string const& name);
 
