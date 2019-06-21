@@ -59,7 +59,13 @@ namespace ante {
 
     AnTypeVarType* nextTypeVar();
 
+    bool hasTypeVarNotInMap(const AnType *t, llvm::StringMap<const AnTypeVarType*> &map);
+
     AnType* copyWithNewTypeVars(AnType *t, std::unordered_map<std::string, AnTypeVarType*> &map);
+
+    llvm::StringMap<const AnTypeVarType*> getAllContainedTypeVars(const AnType *t);
+
+    void getAllContainedTypeVarsHelper(const AnType *t, llvm::StringMap<const AnTypeVarType*> &map);
 
     template<typename T>
     std::vector<T*> copyWithNewTypeVars(std::vector<T*> tys, std::unordered_map<std::string, AnTypeVarType*> &map);

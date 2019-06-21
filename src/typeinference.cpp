@@ -340,6 +340,24 @@ namespace ante {
         n->setType(n->branch->getType());
     }
 
+    void checkTraitImpls(Module *m, AnFunctionType *f){
+        llvm::StringMap<const AnTypeVarType*> map;
+        getAllContainedTypeVarsHelper(f->retTy, map);
+        for(auto *paramTy : f->extTys){
+            getAllContainedTypeVarsHelper(paramTy, map);
+        }
+
+        for(TraitImpl *trait : f->typeClassConstraints){
+            for(auto *ty : trait->typeArgs){
+                if(hasTypeVarNotInMap(ty, map)){
+                    std::cout << "trait " << traitToColoredStr(trait) << " has tv not in map\n";
+                    exit(1);
+                }
+            }
+        }
+    }
+
+
     void TypeInferenceVisitor::visit(FuncDeclNode *n){
         if(n->getType())
             return;
@@ -359,10 +377,13 @@ namespace ante {
                 auto tcConstraints = getAllTcConstraints(fnTy, constraints, substitutions);
                 auto newFnTy = AnFunctionType::get(fnTy->retTy, fnTy->extTys, tcConstraints,
                         fnTy->typeTag == TT_MetaFunction);
+
+                std::cout << n->name << '\n';
                 newFnTy = cleanTypeClassConstraints(newFnTy);
                 n->setType(newFnTy);
 
                 SubstitutingVisitor::substituteIntoAst(n, substitutions);
+                checkTraitImpls(this->module, newFnTy);
             }
         });
     }

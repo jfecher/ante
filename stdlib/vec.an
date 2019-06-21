@@ -1,149 +1,149 @@
 type Vec 't = ref 't _data, usz len cap
 
-// impl Empty (Vec 'e)
-//     fun empty: ty =
-//         Vec(ref 'e 0, 0usz, 0usz)
-// 
-// fun of: Range r -> Vec i32
-//     fill (empty Vec) r
-// 
-// fun is_empty: Vec v =
-//     v.len = 0usz
-// 
-// fun indices: Vec v -> LazyRange
-//     Range(0, i32 v.len, 1)
-// 
-// fun len: Vec v = v.len
-// 
-// fun capacity: Vec v = v.cap
-// 
-// //Fill Vec with items from the Range
-// fun fill: mut Vec 't v, Range r -> Vec 't
-//     for e in r do
-//         push v e
-//     v
-// 
-// //reserve numElements in Vec v, elements will be uninitialized
-// fun reserve: mut Vec 't v, usz numElems
-//     if v.len + numElems > v.cap then
-//         let size = (v.cap + numElems) * Ante.sizeof 't
-//         let ptr = realloc (ref void v._data) size
-// 
-//         if ptr is ref void 0 then
-//             printf ("Error in reserving %u elements for Vec\n".cStr) numElems
-//             return ()
-// 
-//         v._data := ref 't ptr
-//         v.cap += numElems
-// 
-// //push an element onto the end of the vector.
-// //resizes if necessary
-// fun push: mut Vec 't v, 't elem
-//     if v.len >= v.cap then
-//         reserve v v.cap
-// 
-//     v._data#v.len := elem
-//     v.len += 1usz
-// 
-// //pop the last element off if it exists
-// //this will never resize the vector.
-// fun pop: mut Vec 't v -> Maybe 't
-//     if v.len > 0usz then
-//         v.len -= 1usz
-//         Some (v._data#v.len)
-//     else None
-// 
-// //remove the element at the given index and return it.
-// //will error if the index is out of bounds.
-// fun remove_index: mut Vec 't v, usz idx -> 't
-//     if idx = v.len - 1usz then
-//         v.len -= 1usz
-//     elif idx >= 0usz and idx < v.len - 1usz then
-//         for i in idx .. v.len do
-//             v._data#i := v._data#(i+1usz)
-// 
-//         v.len -= 1usz
-//     else
-//         print "Vec.remove_index: index ${idx} out of bounds for Vec of length ${v.len}"
-//         exit 1
-// 
-//     v._data#v.len
-// 
-// //remove the first instance of the given element from
-// //the vector or none if the element was not found.
-// //Uses = to determine element equality.
-// //returns the index where the element was found.
-// fun remove_first: mut Vec 't v, 't elem -> Maybe i32
-//     for i in indices v do
-//         if elem = v._data#i then
-//             remove_index v i
-//             return Some i
-//     None
-// 
-// //Remove the given indices from the vector
-// //Expects the indices to be in sorted order.
-// //Will error if any index is out of bounds.
-// fun remove_indices: mut Vec 't v, Vec usz idxs
-//     mut moved = 0usz
-//     for i in indices idxs do
-//         let cur = idxs#i
-// 
-//         if cur < 0usz or cur >= v.len then
-//             print "Vec.remove: index ${cur} out of bounds for Vec of length ${v.len}"
-//             exit 1
-// 
-//         moved += 1usz
-//         if i != idxs.len - 1usz then
-//             let nxt = idxs#(i+1usz)
-//             for j in cur+1usz .. nxt do
-//                 v._data#(j-moved) := v._data#j
-//         else
-//             for j in cur+1usz .. v.len do
-//                 v._data#(j-moved) := v._data#j
-// 
-//     v.len -= moved
-// 
-// 
-// //remove all matching elements from the vector and
-// //return the number of elements removed.
-// //Uses = to determine element equality.
-// fun remove_all: mut Vec 't v, 't elem -> usz
-//     mut idxs = empty Vec
-//     for i in indices v do
-//         if elem = v._data#i then
-//             push idxs i
-// 
-//     remove_indices v idxs
-//     idxs.len
-// 
-// 
-// //Remove an element by swapping it with the last element in O(1) time.
-// //Returns true if a swap was performed or false otherwise.
-// //Will not swap if the given index is the index of the last element.
-// fun swap_last: mut Vec 't v, usz idx -> bool
-//     if idx >= v.len or (v.len != 0usz and idx = v.len - 1usz) then false
-//     else
-//         v.len -= 1usz
-//         v._data#idx := v._data#v.len
-//         true
-// 
-// 
-// type VecIter 't = ref 't view, usz idx len
-// 
-// impl Iterable Vec
-//     fun into_iter: Vec v =
-//         VecIter(v._data, 0usz, v.len)
-// 
-// impl Iterator (VecIter 't)
-//     type IteratorElem = void
-//     fun has_next: VecIter v =
-//         v.idx < v.len
-// 
-//     fun unwrap: VecIter 't v -> 't
-//         v.view#v.idx
-// 
-//     fun next: VecIter 't v -> VecIter 't
-//         VecIter(v.view, v.idx + 1usz, v.len)
+impl Empty (Vec 'e)
+    fun empty: ty =
+        Vec(ref 'e 0, 0usz, 0usz)
+
+fun of: LazyRange r -> Vec i32
+    fill (empty Vec) r
+
+fun is_empty: Vec v =
+    v.len = 0usz
+
+fun indices: Vec v -> LazyRange
+    LazyRange(0, i32 v.len, 1)
+
+fun len: Vec v = v.len
+
+fun capacity: Vec v = v.cap
+
+//Fill Vec with items from the Range
+fun fill: mut Vec 't v, LazyRange r -> Vec 't
+    for e in r do
+        push v e
+    v
+
+//reserve numElements in Vec v, elements will be uninitialized
+fun reserve: mut Vec 't v, usz numElems
+    if v.len + numElems > v.cap then
+        let size = (v.cap + numElems) * Ante.sizeof 't
+        let ptr = realloc (ref void v._data) size
+
+        if ptr is ref void 0 then
+            printf ("Error in reserving %u elements for Vec\n".cStr) numElems
+            return ()
+
+        v._data := ref 't ptr
+        v.cap += numElems
+
+//push an element onto the end of the vector.
+//resizes if necessary
+fun push: mut Vec 't v, 't elem
+    if v.len >= v.cap then
+        reserve v v.cap
+
+    v._data#v.len := elem
+    v.len += 1usz
+
+//pop the last element off if it exists
+//this will never resize the vector.
+fun pop: mut Vec 't v -> Maybe 't
+    if v.len > 0usz then
+        v.len -= 1usz
+        Some (v._data#v.len)
+    else None
+
+//remove the element at the given index and return it.
+//will error if the index is out of bounds.
+fun remove_index: mut Vec 't v, usz idx -> 't
+    if idx = v.len - 1usz then
+        v.len -= 1usz
+    elif idx >= 0usz and idx < v.len - 1usz then
+        for i in idx .. v.len do
+            v._data#i := v._data#(i+1usz)
+
+        v.len -= 1usz
+    else
+        print "Vec.remove_index: index ${idx} out of bounds for Vec of length ${v.len}"
+        exit 1
+
+    v._data#v.len
+
+//remove the first instance of the given element from
+//the vector or none if the element was not found.
+//Uses = to determine element equality.
+//returns the index where the element was found.
+fun remove_first: mut Vec 't v, 't elem -> Maybe i32
+    for i in indices v do
+        if elem = v._data#i then
+            remove_index v i
+            return Some i
+    None
+
+//Remove the given indices from the vector
+//Expects the indices to be in sorted order.
+//Will error if any index is out of bounds.
+fun remove_indices: mut Vec 't v, Vec usz idxs
+    mut moved = 0usz
+    for i in indices idxs do
+        let cur = idxs#i
+
+        if cur < 0usz or cur >= v.len then
+            print "Vec.remove: index ${cur} out of bounds for Vec of length ${v.len}"
+            exit 1
+
+        moved += 1usz
+        if i != idxs.len - 1usz then
+            let nxt = idxs#(i+1usz)
+            for j in cur+1usz .. nxt do
+                v._data#(j-moved) := v._data#j
+        else
+            for j in cur+1usz .. v.len do
+                v._data#(j-moved) := v._data#j
+
+    v.len -= moved
+
+
+//remove all matching elements from the vector and
+//return the number of elements removed.
+//Uses = to determine element equality.
+fun remove_all: mut Vec 't v, 't elem -> usz
+    mut idxs = empty Vec
+    for i in indices v do
+        if elem = v._data#i then
+            push idxs i
+
+    remove_indices v idxs
+    idxs.len
+
+
+//Remove an element by swapping it with the last element in O(1) time.
+//Returns true if a swap was performed or false otherwise.
+//Will not swap if the given index is the index of the last element.
+fun swap_last: mut Vec 't v, usz idx -> bool
+    if idx >= v.len or (v.len != 0usz and idx = v.len - 1usz) then false
+    else
+        v.len -= 1usz
+        v._data#idx := v._data#v.len
+        true
+
+
+type VecIter 't = ref 't view, usz idx len
+
+impl Iterable Vec
+    fun into_iter: Vec v =
+        VecIter(v._data, 0usz, v.len)
+
+impl Iterator (VecIter 't)
+    type IteratorElem = void
+    fun has_next: VecIter v =
+        v.idx < v.len
+
+    fun unwrap: VecIter 't v -> 't
+        v.view#v.idx
+
+    fun next: VecIter 't v -> VecIter 't
+        VecIter(v.view, v.idx + 1usz, v.len)
 
 impl Print (Vec 't)
     fun printne: Vec 't v
@@ -159,28 +159,28 @@ impl Print (Vec 't)
 
         printne " }"
 
-// impl Extract (Vec 't) usz
-//     type ExtractElem = void
-//     fun (#): Vec 't v, usz i -> 't
-//         v._data#i
-// 
-// impl Insert (Vec 't) usz 't
-//     fun insert: v, i, x
-//         v._data#i := x
-// 
-// impl In 't (Vec 't)
-//     fun (in): 't elem, Vec 't v -> bool
-//         for e in v do
-//             if e = elem then
-//                 return true
-//         false
-// 
-// impl Eq (Vec 't)
-//     fun (=): l, r -> bool
-//         if l.len != r.len then
-//             return false
-// 
-//         for i in 0 .. i32 l.len do
-//             if l._data#i != r._data#i then
-//                 return false
-//         true
+impl Extract (Vec 't) usz
+    type ExtractElem = void
+    fun (#): Vec 't v, usz i -> 't
+        v._data#i
+
+impl Insert (Vec 't) usz 't
+    fun insert: v, i, x
+        v._data#i := x
+
+impl In 't (Vec 't)
+    fun (in): 't elem, Vec 't v -> bool
+        for e in v do
+            if e = elem then
+                return true
+        false
+
+impl Eq (Vec 't)
+    fun (=): l, r -> bool
+        if l.len != r.len then
+            return false
+
+        for i in 0 .. i32 l.len do
+            if l._data#i != r._data#i then
+                return false
+        true

@@ -236,6 +236,103 @@ namespace ante {
         return containsTypeVarHelper(t, typeVar);
     }
 
+    bool hasTypeVarNotInMap(const AnType *t, llvm::StringMap<const AnTypeVarType*> &map){
+        if(!t->isGeneric)
+            return false;
+
+        if(t->isModifierType()){
+            auto modTy = (AnModifier*)t;
+            return hasTypeVarNotInMap(modTy->extTy, map);
+        }
+
+        if(auto tv = try_cast<AnTypeVarType>(t)){
+            return map.find(tv->name) == map.end();
+
+        }else if(auto ptr = try_cast<AnPtrType>(t)){
+            return hasTypeVarNotInMap(ptr->extTy, map);
+
+        }else if(auto arr = try_cast<AnArrayType>(t)){
+            return hasTypeVarNotInMap(arr->extTy, map);
+
+        }else if(auto dt = try_cast<AnProductType>(t)){
+            return ante::any(dt->typeArgs, [&](AnType *f){ return hasTypeVarNotInMap(f, map); })
+                || ante::any(dt->fields, [&](AnType *f){ return hasTypeVarNotInMap(f, map); });
+
+        }else if(auto st = try_cast<AnSumType>(t)){
+            return ante::any(st->typeArgs, [&](AnType *f){ return hasTypeVarNotInMap(f, map); })
+                || ante::any(st->tags, [&](AnProductType *f){ return hasTypeVarNotInMap(f, map); });
+
+        }else if(auto fn = try_cast<AnFunctionType>(t)){
+            auto tccContainsTypeVar = [&](TraitImpl *t){
+                return ante::any(t->typeArgs, [&](AnType *t){ return hasTypeVarNotInMap(t, map); });
+            };
+
+            return ante::any(fn->extTys, [&](AnType *f){ return hasTypeVarNotInMap(f, map); })
+                || hasTypeVarNotInMap(fn->retTy, map)
+                || ante::any(fn->typeClassConstraints, tccContainsTypeVar);
+
+        }else if(auto tup = try_cast<AnAggregateType>(t)){
+            return ante::any(tup->extTys, [&](AnType *f){ return hasTypeVarNotInMap(f, map); });
+
+        }else{
+            return false;
+        }
+    }
+
+    void getAllContainedTypeVarsHelper(const AnType *t, llvm::StringMap<const AnTypeVarType*> &map);
+
+    void getAllContainedTypeVarsHelper(const TraitImpl *impl, llvm::StringMap<const AnTypeVarType*> &map){
+        for(AnType *t : impl->typeArgs){
+            getAllContainedTypeVarsHelper(t, map);
+        }
+    }
+
+    void getAllContainedTypeVarsHelper(const AnType *t, llvm::StringMap<const AnTypeVarType*> &map){
+        if(!t->isGeneric)
+            return;
+
+        if(t->isModifierType()){
+            getAllContainedTypeVarsHelper(static_cast<const AnModifier*>(t)->extTy, map);
+            return;
+        }
+
+        if(auto fn = try_cast<AnFunctionType>(t)){
+            getAllContainedTypeVarsHelper(fn->retTy, map);
+            for(AnType *paramTy : fn->extTys){ getAllContainedTypeVarsHelper(paramTy, map); }
+            for(TraitImpl *tcc : fn->typeClassConstraints){ getAllContainedTypeVarsHelper(tcc, map); }
+
+        }else if(auto pt = try_cast<AnProductType>(t)){
+            for(AnType *fieldTy : pt->fields){ getAllContainedTypeVarsHelper(fieldTy, map); }
+            for(AnType *typeArg : pt->typeArgs){ getAllContainedTypeVarsHelper(typeArg, map); }
+
+        }else if(auto st = try_cast<AnSumType>(t)){
+            for(AnType *tagTy : st->tags){ getAllContainedTypeVarsHelper(tagTy, map); }
+            for(AnType *typeArg : st->typeArgs){ getAllContainedTypeVarsHelper(typeArg, map); }
+
+        }else if(auto tv = try_cast<AnTypeVarType>(t)){
+            map[tv->name] = tv;
+
+        }else if(auto tup = try_cast<AnAggregateType>(t)){
+            for(AnType *extTy : tup->extTys){ getAllContainedTypeVarsHelper(extTy, map); }
+
+        }else if(auto ptr = try_cast<AnPtrType>(t)){
+            getAllContainedTypeVarsHelper(ptr->extTy, map);
+
+        }else if(auto arr = try_cast<AnArrayType>(t)){
+            getAllContainedTypeVarsHelper(arr->extTy, map);
+
+        }else{
+            std::cerr << "Unknown type: " << anTypeToColoredStr(t) << std::endl;
+            ASSERT_UNREACHABLE();
+        }
+    }
+
+    llvm::StringMap<const AnTypeVarType*> getAllContainedTypeVars(const AnType *t){
+        llvm::StringMap<const AnTypeVarType*> ret;
+        getAllContainedTypeVarsHelper(t, ret);
+        return ret;
+    }
+
 
     AnFunctionType* cleanTypeClassConstraints(AnFunctionType *t){
         std::vector<TraitImpl*> c;
@@ -246,8 +343,9 @@ namespace ante {
             auto elemit = std::find_if(it1 + 1, tEnd, [&](TraitImpl *elem){
                 return *elem == **it1;
             });
-            if(elemit == tEnd && !(*it1)->implemented())
+            if(elemit == tEnd){
                 c.push_back(*it1);
+            }
         }
 
         return AnFunctionType::get(t->retTy, t->extTys, c);

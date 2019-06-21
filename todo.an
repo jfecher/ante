@@ -1,0 +1,12 @@
+// refactor checkTyInTraitDecl + fn version of functions
+// big code cleanup
+// error if creating a new type with same name as type family, but not implementing type family
+// parsing error:  Str (i32 x)
+// Check varargs functions have at least n args, currently are exempt completely
+// How does this typecheck:
+//    fun indices: Vec v -> LazyRange
+//        Range(0, i32 v.len, 1)
+//
+// Reimplement trait->implemented
+// impl In (Vec 't) 't  should type error  (should be In 't (Vec 't))
+// copyWithNewTypeVars(traittype and trait decls) before constraintfindingisitor::visit(ExtNode)
