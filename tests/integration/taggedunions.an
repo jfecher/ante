@@ -1,10 +1,10 @@
 
-fun parse_int: Str str -> Maybe i32
+parse_int str:Str -> Maybe i32 =
     mut i = 0
     mut sum = 0
 
     while str.cStr#i != '\0' do
-        let c = str.cStr#i
+        c = str.cStr#i
         if c >= '0' and c <= '9' then
             sum *= 10
             sum += c - '0'
@@ -15,7 +15,7 @@ fun parse_int: Str str -> Maybe i32
     Some sum
 
 
-fun parse_int_str: Str s
+parse_int_str s:Str =
     match parse_int s with
     | Some n -> print n
     | None ->

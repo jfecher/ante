@@ -3,10 +3,9 @@ mut global col = 3
 global step = 2
 
 
-fun b:
+b unit =
     print col
-
     col += step
     print col
 
-b()
+b ()

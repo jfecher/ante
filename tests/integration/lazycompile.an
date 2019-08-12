@@ -7,20 +7,18 @@
 
 //Since unusedFn should not be compiled, puts will not
 //end up in the binary either.
-fun unusedFn := puts "unusedFn"
+unusedFn unit = puts "unusedFn"
 
-
-fun mul: i32 a b -> i32
+mul a:i32 b:i32 -> i32 =
     a * b
 
 
-let x = 8
-let y = 7
+x = 8
+y = 7
 printf "mul(%d, %d) = %d\n" x y (mul x y)
 
-if x + y = mul x y then
+if x + y == mul x y then
     exit 5
-
 
 /*Compiled functions:
 printf

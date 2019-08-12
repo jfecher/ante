@@ -4,17 +4,17 @@
     let bindings.
 */
 
-let five_i32 = 5_i32
+five_i32 = 5_i32
 
-let five_point_zero = 5.0
+five_point_zero = 5.0
 
-let four = 4
+four = 4
 
-let four_u8 = 4_u8
+four_u8 = 4_u8
 
-let five =
-    let four = 4
-    let one = 1
+five =
+    four = 4
+    one = 1
     four + one
 
 printf "four + five = %d\n" (four + five)

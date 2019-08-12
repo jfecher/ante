@@ -24,19 +24,21 @@ extern int yylex(yy::parser::semantic_type*, yy::location*);
 namespace ante {
     extern string typeNodeToStr(const TypeNode*);
     extern string mangle(std::string const& base, NamedValNode *paramTys);
+    static size_t ante_parser_errcount = 0;
 
     namespace parser {
         struct TypeNode;
 
         vector<unique_ptr<TypeNode>> toOwnedVec(Node *tn);
         vector<unique_ptr<TypeNode>> concat(vector<unique_ptr<TypeNode>>&& l, Node *tn);
+        Node* name(Node *varNode);
     }
 }
 
 %}
 
 %locations
-%error-verbose
+%define parse.error verbose
 
 %token Ident UserType TypeVar
 
@@ -44,11 +46,11 @@ namespace ante {
 %token I8 I16 I32 I64
 %token U8 U16 U32 U64
 %token Isz Usz F16 F32 F64
-%token C8 C32 Bool Void
+%token C8 C32 Bool Unit
 
 /* operators */
-%token Assign NotEq AddEq SubEq MulEq DivEq GrtrEq LesrEq
-%token Or And Range RArrow ApplyL ApplyR Append New Not Is Isnt
+%token EqEq Assign NotEq AddEq SubEq MulEq DivEq GrtrEq LesrEq
+%token Or And Range VarArgs RArrow ApplyL ApplyR Append New Not Is Isnt
 
 /* literals */
 %token True False
@@ -60,7 +62,7 @@ namespace ante {
 %token For While Do In
 %token Continue Break Import Let
 %token Match With Ref Type Trait
-%token Fun Module Impl Block As Self
+%token Given Module Impl Block As Self
 
 /* modifiers */
 %token Pub Pri Pro Const
@@ -87,7 +89,7 @@ namespace ante {
 
 %left Newline
 %left STMT Fun Let Import Return Module Impl While For Match Trait If Break Continue Type
-%right RArrow
+%right RArrow Given
 
 %left ENDIF
 %left Else Elif
@@ -102,7 +104,7 @@ namespace ante {
 
 %nonassoc Indent Unindent
 
-%left MED
+%left MED '=' '\\'
 
 %left ','
 %left Assign AddEq SubEq MulEq DivEq
@@ -117,22 +119,22 @@ namespace ante {
 %left Or
 %left And
 %left Not
-%left '=' Is Isnt NotEq GrtrEq LesrEq '<' '>'
+%left EqEq Is Isnt NotEq GrtrEq LesrEq '<' '>'
 
 %left In
 %left Append
 %left Range
 
-%left ':'
-
 %left '+' '-'
 %left '*' '/' '%'
 %right '^'
 
+%left ':'
+
 %left As
 %left '#'
 %left '@' New '&' Ref
-%left TYPE UserType TypeVar I8 I16 I32 I64 U8 U16 U32 U64 Isz Usz F16 F32 F64 C8 C32 Bool Void
+%left TYPE UserType TypeVar I8 I16 I32 I64 U8 U16 U32 U64 Isz Usz F16 F32 F64 C8 C32 Bool Unit VarArgs
 %nonassoc FUNC
 %left Block
 
@@ -150,7 +152,7 @@ namespace ante {
 %nonassoc HIGH
 %nonassoc '{'
 
-%expect 0
+//%expect 0
 %start begin
 %%
 
@@ -168,7 +170,7 @@ top_level_expr_list: top_level_expr_list top_level_expr  %prec Newline
                    | top_level_expr_list Else expr_no_decl_or_jump                    %prec Else  {$$ = setElse($1, $3);}
                    ;
 
-top_level_expr: modifier maybe_newline top_level_expr     {$$ = append_modifier($1, $3);}
+top_level_expr: modifiers top_level_expr_nm     {$$ = append_modifiers($1, $2);}
               | top_level_expr_nm
               ;
 
@@ -201,16 +203,16 @@ usertype: UserType {$$ = (Node*)lextxt;}
 typevar: TypeVar {$$ = (Node*)lextxt;}
        ;
 
-intlit: IntLit {$$ = mkIntLitNode(@$, lextxt); free(lextxt);}
+intlit: IntLit {$$ = mkIntLitNode(@$, lextxt);}
       ;
 
-fltlit: FltLit {$$ = mkFltLitNode(@$, lextxt); free(lextxt);}
+fltlit: FltLit {$$ = mkFltLitNode(@$, lextxt);}
       ;
 
-strlit: StrLit {$$ = mkStrLitNode(@$, lextxt); free(lextxt);}
+strlit: StrLit {$$ = mkStrLitNode(@$, lextxt);}
       ;
 
-charlit: CharLit {$$ = mkCharLitNode(@$, lextxt); free(lextxt);}
+charlit: CharLit {$$ = mkCharLitNode(@$, lextxt);}
       ;
 
 lit_type: I8                  {$$ = mkTypeNode(@$, TT_I8,  (char*)"");}
@@ -229,61 +231,55 @@ lit_type: I8                  {$$ = mkTypeNode(@$, TT_I8,  (char*)"");}
         | C8                  {$$ = mkTypeNode(@$, TT_C8,  (char*)"");}
         | C32                 {$$ = mkTypeNode(@$, TT_C32, (char*)"");}
         | Bool                {$$ = mkTypeNode(@$, TT_Bool, (char*)"");}
-        | Void                {$$ = mkTypeNode(@$, TT_Void, (char*)"");}
-        | usertype  %prec LOW {$$ = mkTypeNode(@$, TT_Data, (char*)$1); free($1);}
-        | typevar             {$$ = mkTypeNode(@$, TT_TypeVar, (char*)$1); free($1);}
+        | Unit                {$$ = mkTypeNode(@$, TT_Unit, (char*)"");}
+        | VarArgs             {$$ = mkTypeNode(@$, TT_TypeVar, (char*)"'...");}
+        | usertype  %prec LOW {$$ = mkTypeNode(@$, TT_Data, (char*)$1);}
+        | typevar             {$$ = mkTypeNode(@$, TT_TypeVar, (char*)$1);}
         ;
 
-pointer_type: Ref bounded_type_expr  {$$ = mkTypeNode(@$, TT_Ptr, (char*)"", $2);}
+pointer_type: Ref type     {$$ = mkTypeNode(@$, TT_Ptr, (char*)"", $2);}
             ;
 
-fn_type: '(' ')'       RArrow bounded_type_expr  {$$ = mkTypeNode(@$, TT_Function, (char*)"", $4);}
-       | tuple_type    RArrow bounded_type_expr  {setNext($3, $1); $$ = mkTypeNode(@$, TT_Function, (char*)"", $3);}
-       | lit_type      RArrow bounded_type_expr  {setNext($3, $1); $$ = mkTypeNode(@$, TT_Function, (char*)"", $3);}
-       | pointer_type  RArrow bounded_type_expr  {setNext($3, $1); $$ = mkTypeNode(@$, TT_Function, (char*)"", $3);}
-       | arr_type      RArrow bounded_type_expr  {setNext($3, $1); $$ = mkTypeNode(@$, TT_Function, (char*)"", $3);}
+fn_type: small_type RArrow type    {setNext($3, $1); $$ = mkTypeNode(@$, TT_Function, (char*)"", $3);}
        ;
 
 /* val is used here instead of intlit due to parse conflicts, but only intlit is allowed */
-arr_type: '[' val bounded_type_expr ']' {$3->next.reset($2);
+arr_type: '[' val small_type ']' {$3->next.reset($2);
                                  $$ = mkTypeNode(@$, TT_Array, (char*)"", $3);}
-        | '[' type_expr ']'     {$2->next.reset(mkIntLitNode(@$, (char*)"0"));
+        | '[' small_type ']'     {$2->next.reset(mkIntLitNode(@$, (char*)"0"));
                                  $$ = mkTypeNode(@$, TT_Array, (char*)"", $2);}
         ;
 
-tuple_type: '(' type_expr ')'      {$$ = $2;}
-          | '(' type_expr ',' ')'  {$$ = mkTypeNode(@$, TT_Tuple, (char*)"", $2);}
+tuple_type: '(' comma_delimited_types ')'      {$$ = mkTypeNode(@$, TT_Tuple, (char*)"", getRoot());}
+          | '(' comma_delimited_types ',' ')'  {$$ = mkTypeNode(@$, TT_Tuple, (char*)"", getRoot());}
           ;
 
-type: type non_generic_type  %prec STMT  {$$ = $1; ((TypeNode*)$1)->params.emplace_back((TypeNode*)$2); $1->loc = @$;}
-    | non_generic_type       %prec STMT  {$$ = $1;}
-    ;
+comma_delimited_types: comma_delimited_types ',' type      {$$ = setNext($1, $3);}
+                     | type                                {$$ = setRoot($1);}
+                     ;
 
-non_generic_type: pointer_type  %prec STMT  {$$ = $1;}
-                | arr_type      %prec STMT  {$$ = $1;}
-                | fn_type       %prec STMT  {$$ = $1;}
-                | lit_type      %prec STMT  {$$ = $1;}
-                | tuple_type    %prec STMT  {$$ = $1;}
-                ;
+type_with_generics: type_with_generics small_type   %prec STMT  {$$ = $1; ((TypeNode*)$1)->params.emplace_back((TypeNode*)$2); $1->loc = @$;}
+                  | small_type                      %prec STMT  {$$ = $1;}
+                  ;
 
-bounded_type_expr: modifier bounded_type_expr   {$$ = append_modifier($1, $2);}
-                 | type_expr  {$$ = $1;}
-                 ;
-
-type_expr_: type_expr_ ',' type  %prec '*' {$$ = setNext($1, $3);}
-          | type                 %prec '*' {$$ = setRoot($1);}
+small_type: lit_type
+          | tuple_type
+          | arr_type
+          | pointer_type
+          | '(' modified_type ')'   {$$ = $2;}
+          | '(' fn_type ')'        {$$ = $2;}
           ;
 
-type_expr__: type_expr_  %prec MED {Node* tmp = getRoot();
-                          if(tmp == $1){//singular type, first type in list equals the last
-                              $$ = tmp;
-                          }else{ //tuple type
-                              $$ = mkTypeNode(@$, TT_Tuple, (char*)"", tmp);
-                          }
-                         }
-
-type_expr: type_expr__    {$$ = $1;}
+modifiers: modifiers modifier maybe_newline   %prec MEDLOW   {$$ = setNext($1, $2);}
+         | modifier maybe_newline             %prec LOW      {$$ = setRoot($1);}
          ;
+
+modified_type: modifiers type_with_generics %prec MEDLOW  {$$ = append_modifiers(getRoot(), $2);}
+             | type_with_generics           %prec LOW     {$$ = $1;}
+             ;
+
+type: modified_type     %prec LOW
+    ;
 
 preproc: '!' '[' expr ']'         {$$ = mkCompilerDirective(@$, $3);}
        | '!' var                  {$$ = mkCompilerDirective(@$, $2);}
@@ -301,7 +297,7 @@ modifier: Pub      {$$ = mkModNode(@$, Tok_Pub);}
         ;
 
 
-trait_decl: Trait usertype generic_params Indent trait_fn_list Unindent  {$$ = mkTraitNode(@$, (char*)$2, $3, $5); free($2);}
+trait_decl: Trait usertype generic_params Indent trait_fn_list Unindent  {$$ = mkTraitNode(@$, (char*)$2, $3, $5);}
           ;
 
 trait_fn_list: _trait_fn_list maybe_newline {$$ = getRoot();}
@@ -313,54 +309,63 @@ _trait_fn_list: _trait_fn_list Newline trait_fn    {$$ = setNext($1, $3);}
               ;
 
 
-type_family: Type usertype                  {$$ = mkDataDeclNode(@2, (char*)$2,  0, 0, false); free($2);}
-           | Type usertype generic_params   {$$ = mkDataDeclNode(@2, (char*)$2, $3, 0, false); free($2);}
+type_family: Type usertype                  {$$ = mkDataDeclNode(@2, (char*)$2,  0, 0, false);}
+           | Type usertype generic_params   {$$ = mkDataDeclNode(@2, (char*)$2, $3, 0, false);}
            ;
 
 
-trait_fn_no_mods: Fun fn_name ':' params RArrow bounded_type_expr '|' tc_constraints  {$$ = mkFuncDeclNode(@2, /*fn_name*/$2, /*ret_ty*/$6,                                  /*params*/$4, /*constraints*/$8, /*body*/0);}
-                | Fun fn_name ':' RArrow bounded_type_expr '|' tc_constraints         {$$ = mkFuncDeclNode(@2, /*fn_name*/$2, /*ret_ty*/$5,                                  /*params*/0,  /*constraints*/$7, /*body*/0);}
-                | Fun fn_name ':' params '|' tc_constraints                           {$$ = mkFuncDeclNode(@2, /*fn_name*/$2, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/$4, /*constraints*/$6, /*body*/0);}
-                | Fun fn_name ':' params RArrow bounded_type_expr                     {$$ = mkFuncDeclNode(@2, /*fn_name*/$2, /*ret_ty*/$6,                                  /*params*/$4, /*constraints*/0,  /*body*/0);}
-                | Fun fn_name ':' RArrow bounded_type_expr                            {$$ = mkFuncDeclNode(@2, /*fn_name*/$2, /*ret_ty*/$5,                                  /*params*/0,  /*constraints*/0,  /*body*/0);}
-                | Fun fn_name ':' params                                              {$$ = mkFuncDeclNode(@2, /*fn_name*/$2, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/$4, /*constraints*/0,  /*body*/0);}
-                | Fun fn_name ':'                                                     {$$ = mkFuncDeclNode(@2, /*fn_name*/$2, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/0,  /*constraints*/0,  /*body*/0);}
+params: params var ':' small_type          {$$ = setNext($1, mkNamedValNode(@2, $2, $4));}
+      | params '(' var ':' type ')'        {$$ = setNext($1, mkNamedValNode(@3, $3, $5));}
+      | params small_type                  {$$ = setNext($1, mkNamedValNode(@2, mkVarNode(@2, (char*)""), $2));}
+      | var ':' small_type                 {$$ = setRoot(mkNamedValNode(@$, $1, $3));}
+      | '(' var ':' type ')'               {$$ = setRoot(mkNamedValNode(@$, $2, $4));}
+      | small_type                         {$$ = setRoot(mkNamedValNode(@$, mkVarNode(@1, (char*)""), $1));}
+      ;
+
+
+trait_fn_no_mods: var params RArrow type Given tc_constraints  {setNext($1, getRoot()); $$ = mkFuncDeclNode(@2, /*fn_name*/$1, /*ret_ty*/$4, /*constraints*/$6, /*body*/0);}
+                | var params RArrow type                       {setNext($1, getRoot()); $$ = mkFuncDeclNode(@2, /*fn_name*/$1, /*ret_ty*/$4, /*constraints*/0,  /*body*/0);}
                 ;
 
-trait_fn: modifier maybe_newline trait_fn  {$$ = append_modifier($1, $3);}
+trait_fn: modifiers trait_fn_no_mods  {$$ = append_modifiers(getRoot(), $2);}
         | trait_fn_no_mods
         ;
 
 
-typevar_list: typevar_list typevar  %prec LOW  {$$ = setNext($1, mkTypeNode(@$, TT_TypeVar, (char*)$2)); free($2);}
-            | typevar               %prec LOW  {$$ = setRoot(mkTypeNode(@$, TT_TypeVar, (char*)$1)); free($1);}
+typevar_list: typevar_list typevar  %prec LOW  {$$ = setNext($1, mkTypeNode(@$, TT_TypeVar, (char*)$2)); }
+            | typevar               %prec LOW  {$$ = setRoot(mkTypeNode(@$, TT_TypeVar, (char*)$1)); }
             ;
 
 generic_params: typevar_list  %prec LOW {$$ = getRoot();}
               ;
 
 
-data_decl: Type usertype generic_params '=' type_decl_block                 {$$ = mkDataDeclNode(@$, (char*)$2, $3, $5, false); free($2);}
-         | Type usertype '=' type_decl_block                                {$$ = mkDataDeclNode(@$, (char*)$2,  0, $4, false); free($2);}
-         | Type usertype generic_params Is type_decl_block                  {$$ = mkDataDeclNode(@$, (char*)$2, $3, $5, true); free($2);}
-         | Type usertype Is type_decl_block                                 {$$ = mkDataDeclNode(@$, (char*)$2,  0, $4, true); free($2);}
+data_decl: Type usertype generic_params '=' type_decl_block                 {$$ = mkDataDeclNode(@$, (char*)$2, $3, $5, false);}
+         | Type usertype '=' type_decl_block                                {$$ = mkDataDeclNode(@$, (char*)$2,  0, $4, false);}
+         | Type usertype generic_params Is type_decl_block                  {$$ = mkDataDeclNode(@$, (char*)$2, $3, $5, true);}
+         | Type usertype Is type_decl_block                                 {$$ = mkDataDeclNode(@$, (char*)$2,  0, $4, true);}
          ;
 
-type_decl_list: type_decl_list Newline params                       {$$ = setNext($1, $3);}
+typedef_oneline: typedef_oneline var ':' small_type     {$$ = setNext($1, mkNamedValNode(@$, $2, $4));}
+               | typedef_oneline '(' var ':' type ')'   {$$ = setNext($1, mkNamedValNode(@$, $3, $5));}
+               | var ':' small_type                     {$$ = setRoot(mkNamedValNode(@$, $1, $3));}
+               | '(' var ':' type ')'                   {$$ = setRoot(mkNamedValNode(@$, $2, $4));}
+               ;
+
+type_decl_list: type_decl_list Newline params                       {$$ = setNext($1, getRoot());}
               | type_decl_list Newline explicit_tagged_union_list   {$$ = setNext($1, getRoot());}
-              | params                                              {$$ = setRoot($1);}
+              | typedef_oneline                                     {$$ = $1;}
               | explicit_tagged_union_list                          {$$ = $1;} /* leave root set */
               ;
 
 /* tagged union list with mandatory '|' before first element */
-explicit_tagged_union_list: explicit_tagged_union_list '|' usertype bounded_type_expr   %prec STMT  {$$ = mkNamedValNode(@$, mkVarNode(@3, (char*)$3), mkTypeNode(@4, TT_TaggedUnion, (char*)"", $4), $1); free($3);}
-                          | explicit_tagged_union_list '|' usertype             %prec STMT  {$$ = mkNamedValNode(@$, mkVarNode(@3, (char*)$3), mkTypeNode(@3, TT_TaggedUnion, (char*)"",  0), $1); free($3);}
-                          | '|' usertype bounded_type_expr                              %prec STMT  {$$ = mkNamedValNode(@$, mkVarNode(@2, (char*)$2), mkTypeNode(@3, TT_TaggedUnion, (char*)"", $3),  0); free($2);}
-                          | '|' usertype                                        %prec STMT  {$$ = mkNamedValNode(@$, mkVarNode(@2, (char*)$2), mkTypeNode(@2, TT_TaggedUnion, (char*)"",  0),  0); free($2);}
+explicit_tagged_union_list: explicit_tagged_union_list '|' usertype type                %prec STMT  {$$ = setNext($1, mkNamedValNode(@$, mkVarNode(@3, (char*)$3), mkTypeNode(@4, TT_TaggedUnion, (char*)"", $4)));}
+                          | explicit_tagged_union_list '|' usertype                     %prec STMT  {$$ = setNext($1, mkNamedValNode(@$, mkVarNode(@3, (char*)$3), mkTypeNode(@3, TT_TaggedUnion, (char*)"",  0)));}
+                          | '|' usertype type                                           %prec STMT  {$$ = setRoot(mkNamedValNode(@$, mkVarNode(@2, (char*)$2), mkTypeNode(@3, TT_TaggedUnion, (char*)"", $3)));}
+                          | '|' usertype                                                %prec STMT  {$$ = setRoot(mkNamedValNode(@$, mkVarNode(@2, (char*)$2), mkTypeNode(@2, TT_TaggedUnion, (char*)"",  0)));}
 
-type_decl_block: Indent type_decl_list Unindent  {$$ = getRoot();}
-               | params               %prec STMT  {$$ = $1;}
-               | bounded_type_expr            %prec STMT  {$$ = mkNamedValNode(@$, mkVarNode(@$, (char*)""), $1, 0);}
+type_decl_block: Indent type_decl_list Unindent   {$$ = getRoot();}
+               | typedef_oneline     %prec LOW    {$$ = getRoot();}
                | explicit_tagged_union_list    %prec STMT  {$$ = getRoot();}
                ;
 
@@ -377,45 +382,11 @@ block: Indent expr Unindent                   {$$ = mkBlockNode(@$, $2);}
 
 explicit_block: Block block  {$$ = $2;}
 
-
-raw_ident_list: raw_ident_list ident  {$$ = setNext($1, mkVarNode(@2, (char*)$2)); free($2);}
-              | ident                 {$$ = setRoot(mkVarNode(@$, (char*)$1)); free($1);}
-              ;
-
-ident_list: raw_ident_list  %prec MED {$$ = getRoot();}
-
-
-/*
- * In case of multiple parameters declared with a single type, eg i32 a b c
- * The next parameter should be set to the first in the list, (the one returned by getRoot()),
- * but the variable returned must be the last in the last, in this case $4
- */
-
-
-/* NOTE: mkNamedValNode takes care of setNext and setRoot
-        for lists automatically in case the shortcut syntax
-        is used and multiple NamedValNodes are made */
-_params: _params ',' bounded_type_expr ident_list {$$ = mkNamedValNode(@$, $4, $3, $1);}
-       | _params ',' ident_list                   {$$ = mkNamedValNode(@$, $3, mkInferredTypeNode(@3), $1);}
-       | bounded_type_expr ident_list             {$$ = mkNamedValNode(@$, $2, $1, 0);}
-       | ident_list                               {$$ = mkNamedValNode(@$, $1, mkInferredTypeNode(@$), 0);}
-//       | Self                                     {$$ = mkNamedValNode(@$, mkVarNode(@$, (char*)"self"), (Node*)1, 0);}
-       ;
-
-                          /* varargs function .. (Range) followed by . */
-params: _params ',' Range '.' {mkNamedValNode(@$, mkVarNode(@$, (char*)""), 0, $1); $$ = getRoot();}
-      | _params               %prec LOW {$$ = getRoot();}
-      ;
-
 function: fn_def
         | fn_decl
         | fn_inferredRet
         | fn_lambda
         ;
-
-fn_name: ident       /* most functions */      {$$ = $1;}
-       | '(' op ')'  /* operator overloads */  {$$ = (Node*)strdup((char*)$2);}
-       ;
 
 op: '+'    {$$ = (Node*)"+";}
   | '-'    {$$ = (Node*)"-";}
@@ -434,7 +405,7 @@ op: '+'    {$$ = (Node*)"+";}
   | NotEq  {$$ = (Node*)"!=";}
   | GrtrEq {$$ = (Node*)">=";}
   | LesrEq {$$ = (Node*)"<=";}
-  | '='    {$$ = (Node*)"=";}
+  | EqEq   {$$ = (Node*)"==";}
   | AddEq  {$$ = (Node*)"+=";}
   | SubEq  {$$ = (Node*)"-=";}
   | MulEq  {$$ = (Node*)"*=";}
@@ -453,43 +424,34 @@ op: '+'    {$$ = (Node*)"+";}
 tc_constraints: type  %prec LOW
               ;
 
+function_call: function_call val_no_decl    %prec LOW   {$$ = setNext($1, $2);}
+             | val_no_decl val_no_decl      %prec LOW   {setRoot($1); $$ = setNext($1, $2);}
+             ;
+
 /* NOTE: lextxt contents from fn_name and the mangleFn result are freed in the call to mkFuncDeclNode */
-fn_def: Fun fn_name ':' params RArrow bounded_type_expr '|' tc_constraints block   {$$ = mkFuncDeclNode(@2, /*fn_name*/$2, /*ret_ty*/$6, /*params*/$4, /*constraints*/$8, /*body*/$9);}
-      | Fun fn_name ':' RArrow bounded_type_expr '|' tc_constraints block          {$$ = mkFuncDeclNode(@2, /*fn_name*/$2, /*ret_ty*/$5, /*params*/0,  /*constraints*/$7, /*body*/$8);}
-      | Fun fn_name ':' params '|' tc_constraints block                            {$$ = mkFuncDeclNode(@2, /*fn_name*/$2, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/$4, /*constraints*/$6, /*body*/$7);}
-      | Fun fn_name ':' params RArrow bounded_type_expr block                      {$$ = mkFuncDeclNode(@2, /*fn_name*/$2, /*ret_ty*/$6, /*params*/$4, /*constraints*/0, /*body*/$7);}
-      | Fun fn_name ':' RArrow bounded_type_expr block                             {$$ = mkFuncDeclNode(@2, /*fn_name*/$2, /*ret_ty*/$5, /*params*/0,  /*constraints*/0, /*body*/$6);}
-      | Fun fn_name ':' params block                                               {$$ = mkFuncDeclNode(@2, /*fn_name*/$2, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/$4, /*constraints*/0, /*body*/$5);}
-      | Fun fn_name ':' block                                                      {$$ = mkFuncDeclNode(@2, /*fn_name*/$2, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/0,  /*constraints*/0,  /*body*/$4);}
+fn_def: function_call RArrow type Given tc_constraints '=' expr  {$$ = mkFuncDeclNode(@1, /*name and params*/getRoot(), /*ret_ty*/$3, /*constraints*/$5, /*body*/$7);}
+      | function_call RArrow type '=' expr                       {$$ = mkFuncDeclNode(@1, /*name and params*/getRoot(), /*ret_ty*/$3, /*constraints*/0, /*body*/$5);}
       ;
 
-fn_inferredRet: Fun fn_name ':' params '|' tc_constraints '=' expr  %prec Newline  {$$ = mkFuncDeclNode(@2, /*fn_name*/$2, /*ret_ty*/0, /*params*/$4, /*constraints*/$6, /*body*/$8);}
-              | Fun fn_name ':' params '=' expr     %prec Newline                  {$$ = mkFuncDeclNode(@2, /*fn_name*/$2, /*ret_ty*/0, /*params*/$4, /*constraints*/0,  /*body*/$6);}
-              | Fun fn_name ':' '=' expr            %prec Newline                  {$$ = mkFuncDeclNode(@2, /*fn_name*/$2, /*ret_ty*/0, /*params*/0,  /*constraints*/0,  /*body*/$5);}
-              | Fun fn_name Assign  expr            %prec Newline                  {$$ = mkFuncDeclNode(@2, /*fn_name*/$2, /*ret_ty*/0, /*params*/0,  /*constraints*/0,  /*body*/$4);}
+fn_inferredRet: function_call Given tc_constraints '=' expr  %prec Newline  {$$ = mkFuncDeclNode(@1, /*name and params*/getRoot(), /*ret_ty*/0, /*constraints*/$3, /*body*/$5);}
+              | function_call '=' expr                       %prec Newline  {$$ = mkFuncDeclNode(@1, /*name and params*/getRoot(), /*ret_ty*/0, /*constraints*/0,  /*body*/$3);}
               ;
 
-fn_decl: Fun fn_name ':' params RArrow bounded_type_expr '|' tc_constraints   %prec Fun  {$$ = mkFuncDeclNode(@2, /*fn_name*/$2, /*ret_ty*/$6,                                  /*params*/$4, /*constraints*/$8, /*body*/0);}
-       | Fun fn_name ':' RArrow bounded_type_expr '|' tc_constraints          %prec Fun  {$$ = mkFuncDeclNode(@2, /*fn_name*/$2, /*ret_ty*/$5,                                  /*params*/0,  /*constraints*/$7, /*body*/0);}
-       | Fun fn_name ':' params '|' tc_constraints                            %prec Fun  {$$ = mkFuncDeclNode(@2, /*fn_name*/$2, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/$4, /*constraints*/$6, /*body*/0);}
-       | Fun fn_name ':' params RArrow bounded_type_expr                      %prec Fun  {$$ = mkFuncDeclNode(@2, /*fn_name*/$2, /*ret_ty*/$6,                                  /*params*/$4, /*constraints*/0,  /*body*/0);}
-       | Fun fn_name ':' RArrow bounded_type_expr                             %prec Fun  {$$ = mkFuncDeclNode(@2, /*fn_name*/$2, /*ret_ty*/$5,                                  /*params*/0,  /*constraints*/0,  /*body*/0);}
-       | Fun fn_name ':' params                                               %prec Fun  {$$ = mkFuncDeclNode(@2, /*fn_name*/$2, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/$4, /*constraints*/0,  /*body*/0);}
-       | Fun fn_name ':'                                                      %prec Fun  {$$ = mkFuncDeclNode(@2, /*fn_name*/$2, /*ret_ty*/mkTypeNode(@$, TT_Void, (char*)""),  /*params*/0,  /*constraints*/0,  /*body*/0);}
+fn_decl: function_call RArrow type Given tc_constraints  %prec Fun  {$$ = mkFuncDeclNode(@1, /*name and params*/getRoot(), /*ret_ty*/$3, /*constraints*/$5, /*body*/0);}
+       | function_call RArrow type                       %prec Fun  {$$ = mkFuncDeclNode(@1, /*name and params*/getRoot(), /*ret_ty*/$3, /*constraints*/0,  /*body*/0);}
        ;
 
-fn_lambda: Fun params '=' expr  %prec Fun  {$$ = mkFuncDeclNode(@$, /*fn_name*/(Node*)strdup(""), /*ret_ty*/0,  /*params*/$2, /*constraints*/0, /*body*/$4);}
-         | Fun '=' expr         %prec Fun  {$$ = mkFuncDeclNode(@$, /*fn_name*/(Node*)strdup(""), /*ret_ty*/0,  /*params*/0,  /*constraints*/0, /*body*/$3);}
+fn_lambda: '\\' params '=' expr  %prec Fun  {auto name = new VarNode(@1, ""); setNext(name, getRoot()); $$ = mkFuncDeclNode(@$, /*name and params*/name, /*ret_ty*/0,  /*constraints*/0, /*body*/$4);}
+         | '\\' '=' expr         %prec Fun  {auto name = new VarNode(@1, "");                           $$ = mkFuncDeclNode(@$, /*name and params*/name, /*ret_ty*/0,  /*constraints*/0, /*body*/$3);}
          ;
-
 
 ret_expr: Return expr {$$ = mkRetNode(@$, $2);}
         ;
 
 
-extension: Module bounded_type_expr Indent ext_list Unindent                     {$$ = mkExtNode(@$, $2, $4, 0);}
-         | Impl   bounded_type_expr Indent ext_list Unindent                     {$$ = mkExtNode(@$,  0, $4, $2);}
-         | Impl   bounded_type_expr '|' tc_constraints Indent ext_list Unindent  {$$ = mkExtNode(@$,  0, $6, $2);}
+extension: Module type Indent ext_list Unindent                     {$$ = mkExtNode(@$, $2, $4, 0);}
+         | Impl   type Indent ext_list Unindent                     {$$ = mkExtNode(@$,  0, $4, $2);}
+         | Impl   type Given tc_constraints Indent ext_list Unindent  {$$ = mkExtNode(@$,  0, $6, $2);}
          ;
 
 ext_list: fn_list_ {$$ = getRoot();}
@@ -500,11 +462,11 @@ fn_list_: fn_list_ ext_fn maybe_newline  {$$ = setNext($1, $2);}
         | ext_dd maybe_newline           {$$ = setRoot($1);}
         ;
 
-ext_fn: modifier maybe_newline function  {$$ = append_modifier($1, $3);}
+ext_fn: modifiers function  {$$ = append_modifiers(getRoot(), $2);}
       | function
       ;
 
-ext_dd: modifier maybe_newline data_decl  {$$ = append_modifier($1, $3);}
+ext_dd: modifiers data_decl  {$$ = append_modifiers(getRoot(), $2);}
       | data_decl
       ;
 
@@ -513,7 +475,7 @@ while_loop: While expr Do expr  %prec While  {$$ = mkWhileNode(@$, $2, $4);}
           ;
 
 /*            v---v this should be later changed to pattern  */
-for_loop: For ident In expr Do expr  %prec For  {$$ = mkForNode(@$, $2, $4, $6); free($2);}
+for_loop: For ident In expr Do expr  %prec For  {$$ = mkForNode(@$, $2, $4, $6);}
 
 
 break: Break expr  %prec Break  {$$ = mkJumpNode(@$, Tok_Break, $2);}
@@ -527,7 +489,7 @@ continue: Continue expr  %prec Continue  {$$ = mkJumpNode(@$, Tok_Continue, $2);
 
 
 match: '|' expr RArrow expr              {$$ = mkMatchBranchNode(@$, $2, $4);}
-     | '|' usertype RArrow expr  %prec Match {$$ = mkMatchBranchNode(@$, mkTypeNode(@2, TT_Data, (char*)$2), $4); free($2);}
+     | '|' usertype RArrow expr  %prec Match {$$ = mkMatchBranchNode(@$, mkTypeNode(@2, TT_Data, (char*)$2), $4);}
      ;
 
 
@@ -535,23 +497,20 @@ match_expr: Match expr With Newline match  {$$ = mkMatchNode(@$, $2, $5);}
           | match_expr Newline match       {$$ = addMatch($1, $3);}
           ;
 
-fn_brackets: '{' expr_list '}' {$$ = mkTupleNode(@$, $2);}
-           | '{' '}'           {$$ = mkTupleNode(@$, 0);}
-           ;
-
 if_expr: If expr Then expr_or_jump                %prec MEDIF  {$$ = mkIfNode(@$, $2, $4, 0);}
        | if_expr Elif expr Then expr_or_jump      %prec MEDIF  {auto*elif = mkIfNode(@$, $3, $5, 0); setElse($1, elif); $$ = elif;}
        | if_expr Else expr_or_jump                             {$$ = setElse($1, $3);}
        ;
 
-var: ident  %prec Ident {$$ = mkVarNode(@$, (char*)$1); free($1);}
+var: ident  %prec Ident {$$ = mkVarNode(@$, (char*)$1);}
+   | '(' op ')'         {$$ = mkVarNode(@$, strdup((char*)$2));}
    ;
 
 
 val_no_decl: '(' expr ')'            {$$ = $2;}
            | tuple                   {$$ = $1;}
            | array                   {$$ = $1;}
-           | var                     {$$ = $1;}
+           | var      %prec LOW      {$$ = $1;}
            | intlit                  {$$ = $1;}
            | fltlit                  {$$ = $1;}
            | strlit                  {$$ = $1;}
@@ -563,22 +522,14 @@ val_no_decl: '(' expr ')'            {$$ = $2;}
            | if_expr     %prec STMT  {$$ = $1;}
            | match_expr  %prec LOW   {$$ = $1;}
            | explicit_block          {$$ = $1;}
-           | type_expr  %prec LOW
+           | small_type   %prec LOW
            | block
-           | Let var '=' maybe_newline var_decl_expr      %prec Newline   {$$ = mkVarAssignNode(@$, $2, $5); append_modifier(mkModNode(@1, Tok_Let), $$);}
-           | Mut var '=' maybe_newline var_decl_expr      %prec Newline   {$$ = mkVarAssignNode(@$, $2, $5); append_modifier(mkModNode(@1, Tok_Mut), $$);}
-           | Global var '=' maybe_newline var_decl_expr   %prec Newline   {$$ = mkVarAssignNode(@$, $2, $5); append_modifier(mkModNode(@1, Tok_Global), $$);}
-           | Ante var '=' maybe_newline var_decl_expr     %prec Newline   {$$ = mkVarAssignNode(@$, $2, $5); append_modifier(mkModNode(@1, Tok_Ante), $$);}
-           | Pub var '=' maybe_newline var_decl_expr      %prec Newline   {$$ = mkVarAssignNode(@$, $2, $5); append_modifier(mkModNode(@1, Tok_Pub), $$);}
-           | Pri var '=' maybe_newline var_decl_expr      %prec Newline   {$$ = mkVarAssignNode(@$, $2, $5); append_modifier(mkModNode(@1, Tok_Pri), $$);}
-           | Pro var '=' maybe_newline var_decl_expr      %prec Newline   {$$ = mkVarAssignNode(@$, $2, $5); append_modifier(mkModNode(@1, Tok_Pro), $$);}
-           | Const var '=' maybe_newline var_decl_expr    %prec Newline   {$$ = mkVarAssignNode(@$, $2, $5); append_modifier(mkModNode(@1, Tok_Const), $$);}
-           | preproc var '=' maybe_newline var_decl_expr  %prec Newline   {$$ = mkVarAssignNode(@$, $2, $5); append_modifier($1, $$);}
+           | val_no_decl '.' maybe_newline var          {$$ = mkBinOpNode(@$, '.', $1, $4);}
+           | val_no_decl '.' maybe_newline small_type   {$$ = mkBinOpNode(@$, '.', $1, $4);}
+           | val_no_decl ':' maybe_newline small_type   {$$ = mkBinOpNode(@$, ':', $1, $4);}
            ;
 
-var_decl_expr: expr   %prec Newline
-
-val: val_no_decl
+val: val_no_decl   %prec LOW
    | data_decl
    | trait_decl
    | function
@@ -599,21 +550,8 @@ unary_op: '@' expr                              {$$ = mkUnOpNode(@$, '@', $2);}
         | '&' expr                              {$$ = mkUnOpNode(@$, '&', $2);}
         | New expr                              {$$ = mkUnOpNode(@$, Tok_New, $2);}
         | Not expr                              {$$ = mkUnOpNode(@$, Tok_Not, $2);}
-        | non_generic_type expr      %prec TYPE {$$ = mkTypeCastNode(@$, $1, $2);}
+        | small_type expr            %prec TYPE {$$ = mkTypeCastNode(@$, $1, $2);}
         ;
-
-arg_list: arg_list_p  %prec FUNC {$$ = mkTupleNode(@$, getRoot());}
-        ;
-
-arg_list_p: arg_list_p arg        %prec FUNC {$$ = setNext($1, $2);}
-          | arg                   %prec FUNC {$$ = setRoot($1);}
-          ;
-
-arg: val
-   | arg '.' var        {$$ = mkBinOpNode(@$, '.', $1, $3);}
-   | type_expr '.' var  {$$ = mkBinOpNode(@$, '.', $1, $3);}
-   | arg fn_brackets    {$$ = mkBinOpNode(@$, '(', $1, $2);}
-   ;
 
 /* expr is used in expression blocks and can span multiple lines */
 expr_list: expr_list_p {$$ = getRoot();}
@@ -640,13 +578,9 @@ expr_no_decl: expr_no_decl '+' maybe_newline expr_no_decl                      {
             | expr_no_decl '^' maybe_newline expr_no_decl                      {$$ = mkBinOpNode(@$, '^', $1, $4);}
             | expr_no_decl '<' maybe_newline expr_no_decl                      {$$ = mkBinOpNode(@$, '<', $1, $4);}
             | expr_no_decl '>' maybe_newline expr_no_decl                      {$$ = mkBinOpNode(@$, '>', $1, $4);}
-            | type_expr '.' maybe_newline var                                  {$$ = mkBinOpNode(@$, '.', $1, $4);}
-            | type_expr '.' maybe_newline type_expr                            {$$ = mkBinOpNode(@$, '.', $1, $4);}
-            | expr_no_decl '.' maybe_newline var                               {$$ = mkBinOpNode(@$, '.', $1, $4);}
-            | expr_no_decl '.' maybe_newline type_expr                         {$$ = mkBinOpNode(@$, '.', $1, $4);}
             | expr_no_decl ';' maybe_newline expr_no_decl                      {$$ = mkSeqNode(@$, $1, $4);}
             | expr_no_decl '#' maybe_newline expr_no_decl                      {$$ = mkBinOpNode(@$, '#', $1, $4);}
-            | expr_no_decl '=' maybe_newline expr_no_decl                      {$$ = mkBinOpNode(@$, '=', $1, $4);}
+            | expr_no_decl EqEq maybe_newline expr_no_decl                     {$$ = mkBinOpNode(@$, Tok_EqEq, $1, $4);}
             | expr_no_decl Is maybe_newline expr_no_decl                       {$$ = mkBinOpNode(@$, Tok_Is, $1, $4);}
             | expr_no_decl Isnt maybe_newline expr_no_decl                     {$$ = mkBinOpNode(@$, Tok_Isnt, $1, $4);}
             | expr_no_decl NotEq maybe_newline expr_no_decl                    {$$ = mkBinOpNode(@$, Tok_NotEq, $1, $4);}
@@ -660,18 +594,27 @@ expr_no_decl: expr_no_decl '+' maybe_newline expr_no_decl                      {
             | expr_no_decl Range maybe_newline expr_no_decl                    {$$ = mkBinOpNode(@$, Tok_Range, $1, $4);}
             | expr_no_decl In maybe_newline expr_no_decl                       {$$ = mkBinOpNode(@$, Tok_In, $1, $4);}
             | expr_no_decl Not In maybe_newline expr_no_decl                   {$$ = mkUnOpNode(@$, Tok_Not, mkBinOpNode(@$, Tok_In, $1, $5));}
-            | expr_no_decl As maybe_newline bounded_type_expr                  {$$ = mkBinOpNode(@$, Tok_As, $1, $4);}
-            | expr_no_decl fn_brackets                                         {$$ = mkBinOpNode(@$, '(', $1, $2);}
-            | expr_no_decl arg_list                                            {$$ = mkBinOpNode(@$, '(', $1, $2);}
+            | expr_no_decl As maybe_newline small_type                         {$$ = mkBinOpNode(@$, Tok_As, $1, $4);}
             | val_no_decl                                           %prec MED  {$$ = $1;}
             | unary_op                                                         {$$ = $1;}
+
+            | function_call                                         %prec LOW  {$$ = mkFuncCallNode(@$, getRoot());}
+            | var '=' maybe_newline expr_no_decl                               {$$ = mkVarAssignNode(@$, $1, $4); append_modifiers(mkModNode(@1, Tok_Let), $$);}
+            | var Mut '=' maybe_newline expr_no_decl                           {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Mut), $$);}
+            | var Global '=' maybe_newline expr_no_decl                        {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Global), $$);}
+            | var Ante '=' maybe_newline expr_no_decl                          {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Ante), $$);}
+            | var Pub '=' maybe_newline expr_no_decl                           {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Pub), $$);}
+            | var Pri '=' maybe_newline expr_no_decl                           {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Pri), $$);}
+            | var Pro '=' maybe_newline expr_no_decl                           {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Pro), $$);}
+            | var Const '=' maybe_newline expr_no_decl                         {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Const), $$);}
+            | var preproc '=' maybe_newline expr_no_decl                       {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers($1, $$);}
 
             | expr_no_decl AddEq maybe_newline expr_no_decl             {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '+', $1, $4), false);}
             | expr_no_decl SubEq maybe_newline expr_no_decl             {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '-', $1, $4), false);}
             | expr_no_decl MulEq maybe_newline expr_no_decl             {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '*', $1, $4), false);}
             | expr_no_decl DivEq maybe_newline expr_no_decl             {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '/', $1, $4), false);}
-            | expr_no_decl Assign maybe_newline expr_no_decl            {$$ = mkVarAssignNode(@$, $1, $4);} /* All VarAssignNodes return void values */
-            | modifier maybe_newline expr_no_decl  %prec Newline        {$$ = append_modifier($1, $3);}
+            | expr_no_decl Assign maybe_newline expr_no_decl            {$$ = mkVarAssignNode(@$, $1, $4);} /* All VarAssignNodes return unit values */
+//            | modifiers expr_no_decl  %prec Newline       {$$ = append_modifiers($1, $2);}
 
 
             /* this rule returns the original If for precedence reasons compared to its mirror rule in if_expr
@@ -701,13 +644,9 @@ expr: expr '+' maybe_newline expr                               {$$ = mkBinOpNod
     | expr '^' maybe_newline expr                               {$$ = mkBinOpNode(@$, '^', $1, $4);}
     | expr '<' maybe_newline expr                               {$$ = mkBinOpNode(@$, '<', $1, $4);}
     | expr '>' maybe_newline expr                               {$$ = mkBinOpNode(@$, '>', $1, $4);}
-    | type_expr '.' maybe_newline var                           {$$ = mkBinOpNode(@$, '.', $1, $4);}
-    | type_expr '.' maybe_newline type_expr                     {$$ = mkBinOpNode(@$, '.', $1, $4);}
-    | expr '.' maybe_newline var                                {$$ = mkBinOpNode(@$, '.', $1, $4);}
-    | expr '.' maybe_newline type_expr                          {$$ = mkBinOpNode(@$, '.', $1, $4);}
     | expr ';' maybe_newline expr                               {$$ = mkSeqNode(@$, $1, $4);}
     | expr '#' maybe_newline expr                               {$$ = mkBinOpNode(@$, '#', $1, $4);}
-    | expr '=' maybe_newline expr                               {$$ = mkBinOpNode(@$, '=', $1, $4);}
+    | expr EqEq maybe_newline expr                              {$$ = mkBinOpNode(@$, Tok_EqEq, $1, $4);}
     | expr Is maybe_newline expr                                {$$ = mkBinOpNode(@$, Tok_Is, $1, $4);}
     | expr Isnt maybe_newline expr                              {$$ = mkBinOpNode(@$, Tok_Isnt, $1, $4);}
     | expr NotEq maybe_newline expr                             {$$ = mkBinOpNode(@$, Tok_NotEq, $1, $4);}
@@ -721,18 +660,27 @@ expr: expr '+' maybe_newline expr                               {$$ = mkBinOpNod
     | expr Range maybe_newline expr                             {$$ = mkBinOpNode(@$, Tok_Range, $1, $4);}
     | expr In maybe_newline expr                                {$$ = mkBinOpNode(@$, Tok_In, $1, $4);}
     | expr Not In maybe_newline expr                            {$$ = mkUnOpNode(@$, Tok_Not, mkBinOpNode(@$, Tok_In, $1, $5));}
-    | expr As maybe_newline bounded_type_expr                   {$$ = mkBinOpNode(@$, Tok_As, $1, $4);}
-    | expr fn_brackets                                          {$$ = mkBinOpNode(@$, '(', $1, $2);}
-    | expr arg_list                                             {$$ = mkBinOpNode(@$, '(', $1, $2);}
+    | expr As maybe_newline small_type                          {$$ = mkBinOpNode(@$, Tok_As, $1, $4);}
     | val                                            %prec MED  {$$ = $1;}
     | unary_op                                                  {$$ = $1;}
+
+    | function_call                                  %prec LOW  {$$ = mkFuncCallNode(@$, getRoot());}
+    | var '=' maybe_newline expr                                {$$ = mkVarAssignNode(@$, $1, $4); append_modifiers(mkModNode(@1, Tok_Let), $$);}
+    | var Mut '=' maybe_newline expr                            {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Mut), $$);}
+    | var Global '=' maybe_newline expr                         {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Global), $$);}
+    | var Ante '=' maybe_newline expr                           {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Ante), $$);}
+    | var Pub '=' maybe_newline expr                            {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Pub), $$);}
+    | var Pri '=' maybe_newline expr                            {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Pri), $$);}
+    | var Pro '=' maybe_newline expr                            {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Pro), $$);}
+    | var Const '=' maybe_newline expr                          {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Const), $$);}
+    | var preproc '=' maybe_newline expr                        {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers($1, $$);}
 
     | expr AddEq maybe_newline expr                             {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '+', $1, $4), false);}
     | expr SubEq maybe_newline expr                             {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '-', $1, $4), false);}
     | expr MulEq maybe_newline expr                             {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '*', $1, $4), false);}
     | expr DivEq maybe_newline expr                             {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '/', $1, $4), false);}
-    | expr Assign maybe_newline expr                            {$$ = mkVarAssignNode(@$, $1, $4);} /* All VarAssignNodes return void values */
-    | modifier maybe_newline expr  %prec Newline                {$$ = append_modifier($1, $3);}
+    | expr Assign maybe_newline expr                            {$$ = mkVarAssignNode(@$, $1, $4);} /* All VarAssignNodes return unit values */
+//    | modifiers expr  %prec Newline                {$$ = append_modifiers($1, $2);}
 
     /* this rule returns the original If for precedence reasons compared to its mirror rule in if_expr
      * that returns the elif node itself.  The former necessitates setElse to travel through the first IfNode's
@@ -750,6 +698,10 @@ expr: expr '+' maybe_newline expr                               {$$ = mkBinOpNod
 
 /* location parser error */
 void yy::parser::error(const location& loc, const string& msg){
+    if(++ante_parser_errcount > 5){
+        std::cerr << "Too many errors, exiting.\n";
+        exit(2);
+    }
     location l = loc;
     ante::showError(msg.c_str(), l);
 }
@@ -772,6 +724,12 @@ namespace ante {
             for(auto &&e : l) ret.insert(ret.end(), move(e));
             for(auto &&e : r) ret.insert(ret.end(), move(e));
             return ret;
+        }
+
+        Node* name(Node *varNode){
+            char* name = strdup(((VarNode*)varNode)->name.c_str());
+            delete varNode;
+            return (Node*)name;
         }
     }
 }

@@ -28,7 +28,7 @@ namespace ante {
         TT_Type, //The type for types
         TT_Trait,
         TT_TypeFamily,
-        TT_Void
+        TT_Unit,
     };
 
     enum TokenType {
@@ -53,10 +53,11 @@ namespace ante {
         Tok_C8,
         Tok_C32,
         Tok_Bool,
-        Tok_Void,
+        Tok_Unit,
 
         /*operators*/
         Tok_Assign,
+        Tok_EqEq,
         Tok_NotEq,
         Tok_AddEq,
         Tok_SubEq,
@@ -67,6 +68,7 @@ namespace ante {
         Tok_Or,
         Tok_And,
         Tok_Range,
+        Tok_VarArgs,
         Tok_RArrow,
         Tok_ApplyL,
         Tok_ApplyR,
@@ -104,7 +106,7 @@ namespace ante {
         Tok_Ref,
         Tok_Type,
         Tok_Trait,
-        Tok_Fun,
+        Tok_Given,
         Tok_Module,
         Tok_Impl,
         Tok_Block,

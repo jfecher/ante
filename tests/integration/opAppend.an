@@ -1,6 +1,6 @@
 
 //Reverse a string
-fun reverse: Str s -> Str
+reverse s:Str -> Str =
     mut buf = ref c8 malloc s.len
 
     mut i = 0usz
@@ -13,10 +13,9 @@ fun reverse: Str s -> Str
 
 
 //append an integer to a string
-fun (++): Str l, i32 r -> Str
-  
+(++) l:Str r:i32 -> Str =
     //get the string form of an integer, but in reverse
-    fun rev_str: i32 x -> Str
+    rev_str x:i32 -> Str =
         mut buf = ref c8 malloc 12
         mut i = 0usz
         mut n = x
@@ -32,8 +31,8 @@ fun (++): Str l, i32 r -> Str
     l ++ reverse (rev_str r)
 
 
-let s1 = "Hello "
-let s2 = "World"
+s1 = "Hello "
+s2 = "World"
 
 print (s1 ++ s2)
 

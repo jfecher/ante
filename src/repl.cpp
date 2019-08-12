@@ -446,7 +446,7 @@ namespace ante {
                 }
 
                 //print val if it's not an error
-                if(!!val and val.type->typeTag != TT_Void)
+                if(!!val and val.type->typeTag != TT_Unit)
                     output(c, val, c->getAST());
             }
 

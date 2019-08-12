@@ -1,34 +1,33 @@
 
-fun id: x = x
+id x = x
 
 
-fun min: a, b =
+min a b =
     if a < b then a
     else b
 
 
-fun implies: c, d = not c or d
+implies c d = not c or d
 
 
-let lamb = fun a, b = a + b
+lamb = \a b = a + b
 
 
-fun add1: n =
-    n + 1
+add1 n = n + 1
 
 
-let res1 = id 1
+res1 = id 1
 
-let res2 = id "two"
+res2 = id "two"
 
-let res3 = id 4.4
+res3 = id 4.4
 
-let res4 = min 5 3
+res4 = min 5 3
 
-let lamb2 = lamb
+lamb2 = lamb
 
-let res5 = lamb2 55 23
+res5 = lamb2 55 23
 
-let res6 = add1 3
+res6 = add1 3
 
-let res7 = implies false true
+res7 = implies false true

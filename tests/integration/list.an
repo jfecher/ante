@@ -1,17 +1,22 @@
-type List 't = Maybe (ref Node 't) first last
+type List 't =
+    first: Maybe (ref Node 't)
+    last:  Maybe (ref Node 't)
 
-type Node 't = 't elem, Maybe (ref Node 't) next
+type Node 't =
+    elem: 't
+    next: Maybe (ref Node 't)
 
-fun Node 't.init: 't elem -> Node 't
-    Node(elem, None)
+module Node
+    of elem = Node(elem, None)
 
-fun List 't.init: 't elem -> List 't
-    let n = new Node elem
-    List(Some n, Some n)
+module List
+    of elem =
+        n = new Node.of elem
+        List(Some n, Some n)
 
 
-fun append: mut List 't l, 't elem
-    let n = new Node elem
+append (l:mut List 't) elem:'t =
+    n = new Node elem
 
     match l.last with
     | Some last ->
@@ -22,25 +27,27 @@ fun append: mut List 't l, 't elem
         l.last := Some n
 
 
-fun printne: List l
-    match l.first with
-    | Some n -> printne "[ "; printne n
-    | None -> printne "[ ]"
+impl Print (List 't)
+    printne l =
+        match l.first with
+        | Some n -> printne "[ "; printne n
+        | None -> printne "[ ]"
 
 
-fun printne: ref Node l
-    printne l.elem
-    match l.next with
-    | Some n -> printne ", "; printne n
-    | None -> printne " ]"
+impl Print (Node 't)
+    printne n =
+        printne n.elem
+        match n.next with
+        | Some rest -> printne ", "; printne rest
+        | None -> printne " ]"
 
 
-fun (++): i32 l r =
-    mut list = List l
+(++) l:i32 r:i32 -> List i32 =
+    mut list = List.of l
     append list r
     list
 
-fun (++): mut List i32 l, i32 r =
+(++) (l:mut List i32) r:i32 -> List i32 =
     append l r
     l
 
@@ -54,5 +61,5 @@ append head 3
 print head
 
 //Same as above, but using ++
-let l = 0 ++ 1 ++ 2 ++ 3
+l = 0 ++ 1 ++ 2 ++ 3
 print l

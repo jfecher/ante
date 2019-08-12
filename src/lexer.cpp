@@ -32,9 +32,10 @@ map<int, const char*> tokDict = {
     {Tok_C8, "c8"},
     {Tok_C32, "c32"},
     {Tok_Bool, "bool"},
-    {Tok_Void, "void"},
+    {Tok_Unit, "unit"},
 
     {Tok_Assign, ":="},
+    {Tok_EqEq, "=="},
     {Tok_NotEq, "!="},
     {Tok_AddEq, "+="},
     {Tok_SubEq, "-="},
@@ -45,6 +46,7 @@ map<int, const char*> tokDict = {
     {Tok_Or, "or"},
     {Tok_And, "and"},
     {Tok_Range, ".."},
+    {Tok_VarArgs, "..."},
     {Tok_RArrow, "->"},
     {Tok_ApplyL, "<|"},
     {Tok_ApplyR, "|>"},
@@ -81,7 +83,7 @@ map<int, const char*> tokDict = {
     {Tok_Ref, "ref"},
     {Tok_Type, "type"},
     {Tok_Trait, "trait"},
-    {Tok_Fun, "fun"},
+    {Tok_Given, "given"},
     {Tok_Module, "module"},
     {Tok_Impl, "impl"},
     {Tok_Block, "block"},
@@ -127,7 +129,7 @@ map<string, int> keywords = {
     {"c8",       Tok_C8},
     {"c32",      Tok_C32},
     {"bool",     Tok_Bool},
-    {"void",     Tok_Void},
+    {"unit",     Tok_Unit},
 
     {"or",       Tok_Or},
     {"and",      Tok_And},
@@ -156,7 +158,7 @@ map<string, int> keywords = {
     {"ref",      Tok_Ref},
     {"type",     Tok_Type},
     {"trait",    Tok_Trait},
-    {"fun",      Tok_Fun},
+    {"given",    Tok_Given},
     {"module",   Tok_Module},
     {"impl",     Tok_Impl},
     {"block",    Tok_Block},
@@ -298,7 +300,7 @@ bool isKeywordAType(int tok){
     return tok == Tok_I8 || tok == Tok_I16 || tok == Tok_I32 || tok == Tok_I64 || tok == Tok_Isz
         || tok == Tok_U8 || tok == Tok_U16 || tok == Tok_U32 || tok == Tok_U64 || tok == Tok_Usz
         || tok == Tok_F16 || tok == Tok_F32 || tok == Tok_F64
-        || tok == Tok_C8 || tok == Tok_C32 || tok == Tok_Bool || tok == Tok_Void;
+        || tok == Tok_C8 || tok == Tok_C32 || tok == Tok_Bool || tok == Tok_Unit;
 }
 
 /*
@@ -855,7 +857,26 @@ int Lexer::genOpTok(yy::parser::location_type* loc){
         return next(loc);
     }
 
-    if(cur == '.' && nxt == '.') RETURN_PAIR(Tok_Range);
+    //.. can mean a range or varargs
+    if(cur == '.' && nxt == '.'){
+        if(printInput){
+            putchar('.');
+            putchar('.');
+        }
+        incPos();
+
+        if(nxt == '.'){
+            if(printInput) putchar('.');
+            incPos(2);
+            loc->end = getPos();
+            return Tok_VarArgs;
+        }else{
+            incPos();
+            loc->end = getPos();
+            return Tok_Range;
+        }
+    }
+
     if(cur == '-' && nxt == '>') RETURN_PAIR(Tok_RArrow);
 
     if(cur == '<' && nxt == '|') RETURN_PAIR(Tok_ApplyL);
@@ -865,6 +886,7 @@ int Lexer::genOpTok(yy::parser::location_type* loc){
 
     if(nxt == '='){
         switch(cur){
+            case '=': RETURN_PAIR(Tok_EqEq);
             case ':': RETURN_PAIR(Tok_Assign);
             case '+': RETURN_PAIR(Tok_AddEq);
             case '-': RETURN_PAIR(Tok_SubEq);

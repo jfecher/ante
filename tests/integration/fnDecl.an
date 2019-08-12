@@ -2,24 +2,24 @@
     fnDecl.an
         test function declarations and calls
 */
-fun printMsg: bool b
+printMsg b:bool =
     if b then
         puts "Hello World!".cStr
     else
         puts "Goodbye World!".cStr
 
 
-fun divisibleByThree: i32 i =
-    i % 3 = 0
+divisibleByThree i:i32 =
+    i % 3 == 0
 
 
-fun isEven: i32 x =
-    x % 2 = 0
+isEven x:i32 =
+    x % 2 == 0
 
 
-fun fact: i32 x =
+fact x:i32 =
     if x <= 1 then 1
-    else x * fact(x-1)
+    else x * fact (x-1)
 
 
 printMsg true

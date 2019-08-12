@@ -4,7 +4,7 @@
     tail recursion.
 */
 
-fun f: i32 x
+f x:i32 =
     print x
 
     //Loop to ten thousand

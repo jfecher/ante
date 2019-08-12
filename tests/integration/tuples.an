@@ -2,21 +2,21 @@
         tuples.an
 */
 
-let tup = (1, 2, "three")
+tup = (1, 2, "three")
 printf "tup: %d, %d, %s\n" (tup#0) (tup#1) (tup#2)
 
 
-fun getCoords := (2, 3)
+getCoords unit = (2, 3)
 
-//Pack two i32 params into a tuple
-fun toTuple: i32 a b = (a, b)
+//Pack two params into a tuple
+toTuple a b = (a, b)
 
 
-fun printTuple: Str name, i32,i32 t
+printTuple name:Str t:(i32,i32) =
     printf "%s = (%d, %d)\n" (name.cStr) (t#0) (t#1)
 
 
-let coords = getCoords()
+coords = getCoords ()
 printTuple "coords" coords
 
 printTuple "toTuple(3, 2)" (toTuple 3 2)
@@ -28,7 +28,7 @@ mutTup#1 := 6
 printf "mutTup = %d, %d, %d\n" (mutTup#0) (mutTup#1) (mutTup#2)
 
 
-let test = (
+test = (
     432,
     43214312
 )

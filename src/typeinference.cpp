@@ -351,7 +351,6 @@ namespace ante {
             for(auto *ty : trait->typeArgs){
                 if(hasTypeVarNotInMap(ty, map)){
                     std::cout << "trait " << traitToColoredStr(trait) << " has tv not in map\n";
-                    exit(1);
                 }
             }
         }

@@ -234,7 +234,7 @@ namespace ante {
         }
 
         //merges can be empty if each branch has an early return
-        if(merges.empty() or merges[0].second.type->typeTag == TT_Void){
+        if(merges.empty() or merges[0].second.type->typeTag == TT_Unit){
             this->val = c->getVoidLiteral();
             return;
         }

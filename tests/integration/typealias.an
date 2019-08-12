@@ -1,13 +1,13 @@
 type U is Str
 
-fun f: Str s
+f s:Str =
     print s
 
-fun g: U s
+g s:U =
     print s
 
-let s = "test"
-let u = U "test"
+s = "test"
+u = U "test"
 
 f s
 f u

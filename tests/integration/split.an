@@ -1,14 +1,14 @@
 import Vec
 
-fun split: Str s = split s ' '
+split s:Str = split s ' '
 
-fun split: Str s, c8 c -> Vec Str
+split s:Str c:c8 -> Vec Str =
     mut v = Vec<Str>()
 
     mut i = 0
     mut j = 0
     while i < s.len do
-        if s.cStr#i = c then
+        if s.cStr#i == c then
             v.push <| substr s j i
             j := i + 1
 
@@ -18,11 +18,11 @@ fun split: Str s, c8 c -> Vec Str
     v
 
 
-fun substr: Str s, i32 begin end -> Str
+substr s:Str begin:i32 end:i32 -> Str =
     if end > s.len or begin >= s.len then
         return ""
 
-    let len = end - begin
+    len = end - begin
     mut buf = ref c8 malloc(len + 1)
     buf#end := '\0'
 
@@ -36,8 +36,8 @@ fun substr: Str s, i32 begin end -> Str
     Str(buf, usz len)
 
 
-let str = "test1 test2 test3"
+str = "test1 test2 test3"
 
-print(split str)
-print(split str 't')
-print(split str 'e')
+print <| split str
+print <| split str 't'
+print <| split str 'e'

@@ -1,8 +1,8 @@
 
 
-let ints = [0, 1, 2, 3, 4]
+ints = [0, 1, 2, 3, 4]
 
-let msgs = ["Hello", "Greetings", "Hi"]
+msgs = ["Hello", "Greetings", "Hi"]
 
 puts (msgs#2)
 printf "ints[3] = %d\n" (ints#3)
@@ -15,8 +15,7 @@ arr#2 := 5
 printf "arr[2] = %d\n" (arr#2)
 
 
-
-fun print: [4 i32] arr
+print arr:[4 i32] =
     printf "arr = [%d, %d, %d, %d]\n" (arr#0) (arr#1) (arr#2) (arr#3)
 
 print arr

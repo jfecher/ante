@@ -1,0 +1,16 @@
+
+trait Second 'a 'b
+    sec 'a 'b -> unit
+
+
+foo x y = sec x y
+
+bar x y =
+    sec x y
+    sec y x
+
+baz x:'a x y:'b -> unit given Second 'a 'b =
+    sec x y
+    sec y x
+    sec x x
+    sec y y

@@ -10,10 +10,10 @@
 
   $ ante -c -lib tests/moduleLib.an
 */
-module i32,i32
+module (i32, i32)
     //Return the dotproduct of two double-length 'vectors'
-    fun dotProduct: i32,i32 l r =
+    dotProduct l:(i32,i32) r:(i32,i32) =
         (l#0) * (r#0) + (l#1) * (r#1)
 
-    fun print: i32,i32 tup
+    print tup:(i32,i32) =
         printf "(%d, %d)\n" (tup#0) (tup#1)

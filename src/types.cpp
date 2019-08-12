@@ -27,7 +27,7 @@ char getBitWidthOfTypeTag(const TypeTag ty){
 
 
 bool isCompileTimeOnlyParamType(AnType *ty){
-    return ty->typeTag == TT_Type || ty->typeTag == TT_Void || ty->hasModifier(Tok_Ante);
+    return ty->typeTag == TT_Type || ty->typeTag == TT_Unit || ty->hasModifier(Tok_Ante);
 }
 
 
@@ -357,7 +357,7 @@ Type* typeTagToLlvmType(TypeTag ty, LLVMContext &ctxt){
         case TT_C8:     return Type::getInt8Ty(ctxt);
         case TT_C32:    return Type::getInt32Ty(ctxt);
         case TT_Bool:   return Type::getInt1Ty(ctxt);
-        case TT_Void:   return Type::getVoidTy(ctxt);
+        case TT_Unit:   return Type::getVoidTy(ctxt);
         case TT_TypeVar:
             throw new TypeVarError();
         default:
@@ -410,7 +410,7 @@ TypeTag llvmTypeToTypeTag(Type *t){
     if(t->isPointerTy()) return TT_Ptr;
     if(t->isFunctionTy()) return TT_Function;
 
-    return TT_Void;
+    return TT_Unit;
 }
 
 /*
@@ -424,7 +424,7 @@ Type* Compiler::anTypeToLlvmType(const AnType *ty, bool force){
     switch(ty->typeTag){
         case TT_Ptr: {
             auto *ptr = try_cast<AnPtrType>(ty);
-            return ptr->extTy->typeTag != TT_Void ?
+            return ptr->extTy->typeTag != TT_Unit ?
                 anTypeToLlvmType(ptr->extTy, force)->getPointerTo()
                 : Type::getInt8Ty(*ctxt)->getPointerTo();
         }
@@ -566,7 +566,7 @@ string typeTagToStr(TypeTag ty){
         case TT_C8:    return "c8" ;
         case TT_C32:   return "c32";
         case TT_Bool:  return "bool";
-        case TT_Void:  return "void";
+        case TT_Unit:  return "unit";
         case TT_Type:  return "Type";
 
         /*
@@ -792,8 +792,8 @@ string llvmTypeToStr(Type *ty){
         return ret;
     }else if(tt == TT_TypeVar){
         return "(typevar)";
-    }else if(tt == TT_Void){
-        return "void";
+    }else if(tt == TT_Unit){
+        return "unit";
     }
     return "(Unknown type)";
 }

@@ -1,7 +1,7 @@
 
 
-fun (+): Str l r -> Str
-    let len = l.len + r.len
+(+) l:Str r:Str -> Str =
+    len = l.len + r.len
     mut buf = malloc len
 
     memcpy buf (ref void l.cStr) l.len
@@ -16,10 +16,10 @@ print <| "Hello " + "W" + "orld" + "!"
 
 
 
-let s1 = "hello"
-let s2 = "hello"
+s1 = "hello"
+s2 = "hello"
 
-if s1 = s2 then
+if s1 == s2 then
     print "Strings are equal!"
 else
     print "Strings are not equal."

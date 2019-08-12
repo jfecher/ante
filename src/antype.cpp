@@ -127,7 +127,7 @@ namespace ante {
             case TT_C8:           return typeArena.primitiveTypes[tag].get();
             case TT_C32:          return typeArena.primitiveTypes[tag].get();
             case TT_Bool:         return typeArena.primitiveTypes[tag].get();
-            case TT_Void:         return typeArena.primitiveTypes[tag].get();
+            case TT_Unit:         return typeArena.primitiveTypes[tag].get();
             case TT_Type:         return typeArena.primitiveTypes[tag].get();
             case TT_FunctionList: return typeArena.primitiveTypes[tag].get();
             default:
@@ -194,7 +194,7 @@ namespace ante {
     }
 
     AnType* AnType::getVoid(){
-        return typeArena.primitiveTypes[TT_Void].get();
+        return typeArena.primitiveTypes[TT_Unit].get();
     }
 
     BasicModifier* BasicModifier::get(const AnType *modifiedType, TokenType mod){
@@ -351,7 +351,7 @@ namespace ante {
         if(!parentUnionType){
             cerr << "AnProductType::getVariantWithoutTag(): " << anTypeToColoredStr(this) << " is not a variant\n";
         }
-        if(fields.size() == 2 && fields[1]->typeTag == TT_Void){
+        if(fields.size() == 2 && fields[1]->typeTag == TT_Unit){
             return AnType::getTupleOf({});
         }
 
@@ -439,7 +439,7 @@ namespace ante {
         primitiveTypes[TT_F32].reset(new AnType(TT_F32, false));
         primitiveTypes[TT_F64].reset(new AnType(TT_F64, false));
         primitiveTypes[TT_Bool].reset(new AnType(TT_Bool, false));
-        primitiveTypes[TT_Void].reset(new AnType(TT_Void, false));
+        primitiveTypes[TT_Unit].reset(new AnType(TT_Unit, false));
         primitiveTypes[TT_C8].reset(new AnType(TT_C8, false));
         primitiveTypes[TT_C32].reset(new AnType(TT_C32, false));
         primitiveTypes[TT_Type].reset(new AnType(TT_Type, false));
@@ -473,7 +473,7 @@ namespace ante {
             case TT_C8:
             case TT_C32:
             case TT_Bool:
-            case TT_Void:
+            case TT_Unit:
                 ret = AnType::getPrimitive(tn->typeTag);
                 break;
 

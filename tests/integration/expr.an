@@ -5,20 +5,20 @@ type Expr =
    | Num i32
 
 
-fun eval: ref Expr e -> i32
+eval (e:ref Expr) -> i32 =
     match @e with
     | Add(l, r) -> eval l + eval r
     | Sub(l, r) -> eval l - eval r
     | Num n -> n
 
 
-let five = new Num 5
-let two = new Num 2
-let seven = new Num 7
+five = new Num 5
+two = new Num 2
+seven = new Num 7
 
-let sub = new Sub(five, two)
+sub = new Sub(five, two)
 
-let add = new Add(sub, seven)
+add = new Add(sub, seven)
 
 print <| eval five
 print <| eval two

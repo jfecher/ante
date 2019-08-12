@@ -1,17 +1,17 @@
 
 
-fun pow: i32 base exponent -> i32
-    if exponent = 0 then
+pow base:i32 exponent:i32 -> i32 =
+    if exponent == 0 then
         1
     elif exponent % 2 = 0 then
-        let v = pow base (exponent / 2)
+        v = pow base (exponent / 2)
         v * v
     else
         base * pow base (exponent - 1)
 
 
 mut i = 0
-let base = 2
+base = 2
 
 while i < 16 do
     printf "%d^%d = %d\n" base i (pow base i)

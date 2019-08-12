@@ -283,7 +283,7 @@ string getCastFnBaseName(AnType *t){
 vector<AnType*> toTuple(AnType *ty){
     if(ty->typeTag == TT_Tuple){
         return try_cast<AnAggregateType>(ty)->extTys;
-    }else if(ty->typeTag == TT_Void){
+    }else if(ty->typeTag == TT_Unit){
         return {};
     }else{
         return {ty};
@@ -331,7 +331,7 @@ bool shouldCastToWrapperType(AnType *from, AnProductType *wrapper){
     }else if(wrapper->fields.size() == 1){
         return from == wrapper->fields[0];
     }else{
-        return from->typeTag == TT_Void;
+        return from->typeTag == TT_Unit;
     }
 }
 
@@ -491,7 +491,7 @@ TypedValue compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Typ
         c->builder.SetInsertPoint(mergebb);
 
         //finally, create the ret value of this if expr, unless it is of void type
-        if(thenVal.type->typeTag != TT_Void){
+        if(thenVal.type->typeTag != TT_Unit){
             auto *phi = c->builder.CreatePHI(thenVal.getType(), branches.size());
 
             for(auto &pair : branches){
@@ -749,7 +749,7 @@ void createDriverFunction(Compiler *c, FuncDecl *fd, vector<TypedValue> const& t
 
     Value *call = c->builder.CreateCall(fd->tval.val, args);
     AnType *retTy = fd->tval.type->getFunctionReturnType();
-    if(retTy->typeTag == TT_Void){
+    if(retTy->typeTag == TT_Unit){
         c->builder.CreateRetVoid();
     }else{
         auto callTv = TypedValue(call, fd->tval.type->getFunctionReturnType());
@@ -775,7 +775,7 @@ void createDriverFunction(Compiler *c, Function *f, AnType *retTy){
 
     Value *call = c->builder.CreateCall(f, {});
 
-    if(retTy->typeTag == TT_Void){
+    if(retTy->typeTag == TT_Unit){
         c->builder.CreateRetVoid();
     }else{
         auto callTv = TypedValue(call, retTy);
@@ -864,7 +864,7 @@ pair<Function*, AnType*> compileShellFunction(CompilingVisitor &cv, Function *f,
     }
 
     if(!dyn_cast<ReturnInst>(cv.val.val)){
-        if(cv.val.type->typeTag == TT_Void)
+        if(cv.val.type->typeTag == TT_Unit)
             cv.c->builder.CreateRetVoid();
         else
             cv.c->builder.CreateRet(cv.val.val);

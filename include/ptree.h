@@ -29,7 +29,7 @@ namespace ante {
         Node* append_extension(Node *n);
         Node* append_trait(Node *n);
         Node* append_import(Node *n);
-        Node* append_modifier(Node *modifier, Node *modifiableNode);
+        Node* append_modifiers(Node *modifiers, Node *modifiableNode);
 
         Node* mkIntLitNode(LOC_TY loc, char* s);
         Node* mkFltLitNode(LOC_TY loc, char* s);
@@ -53,7 +53,7 @@ namespace ante {
         Node* mkBinOpNode(LOC_TY loc, int op, Node* l, Node* r);
         Node* mkSeqNode(LOC_TY loc, Node *l, Node *r);
         Node* mkBlockNode(LOC_TY loc, Node* b);
-        Node* mkNamedValNode(LOC_TY loc, Node* nodes, Node* tExpr, Node* prev);
+        Node* mkNamedValNode(LOC_TY loc, Node* nodes, Node* tExpr);
         Node* mkVarNode(LOC_TY loc, char* s);
         Node* mkRetNode(LOC_TY loc, Node* expr);
         Node* mkImportNode(LOC_TY loc, Node* expr);
@@ -66,7 +66,8 @@ namespace ante {
         Node* mkIfNode(LOC_TY loc, Node* con, Node* body, Node* els);
         Node* mkWhileNode(LOC_TY loc, Node* con, Node* body);
         Node* mkForNode(LOC_TY loc, Node* var, Node* range, Node* body);
-        Node* mkFuncDeclNode(LOC_TY loc, Node* s, Node* tExpr, Node* p, Node* tcc, Node* body);
+        Node* mkFuncCallNode(LOC_TY loc, Node* nameAndArgs);
+        Node* mkFuncDeclNode(LOC_TY loc, Node* nameAndParams, Node* tExpr, Node* tcc, Node* body);
         Node* mkDataDeclNode(LOC_TY loc, char* s, Node *p, Node* b, bool isAlias);
         Node* mkTraitNode(LOC_TY loc, char* s, Node* generics, Node* fns);
 

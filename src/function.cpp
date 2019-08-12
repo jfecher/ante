@@ -295,7 +295,7 @@ TypedValue compFnHelper(Compiler *c, FuncDecl *fd){
         if(!dyn_cast<ReturnInst>(v.val)){
             auto loc = getFinalLoc(fdn->child.get());
 
-            if(fnTy->retTy->typeTag == TT_Void){
+            if(fnTy->retTy->typeTag == TT_Unit){
                 c->builder.CreateRetVoid();
                 fd->returns.push_back({c->getVoidLiteral(), loc});
             }else{

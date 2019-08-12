@@ -26,12 +26,12 @@ every time it is called with a given input.
 */
 
 
-fun fib: i32 n -> i32
+fib n:i32 -> i32 =
     if n <= 3 then 
         (n+1)/2
     else
-        let x1 = fib(n-2)
-        let x2 = x1 + fib(n-3)
+        x1 = fib(n-2)
+        x2 = x1 + fib(n-3)
         x1 + x2
 
 

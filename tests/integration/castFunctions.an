@@ -3,16 +3,9 @@
     overloads the typecast operator for a given type.
 */
 
-
 //handles conversion of i32 -> bool
-module bool
-    fun init: i32 x =
-        x != 0
-
-
-fun print: bool b
-    if b then puts "true"
-    else puts "false"
+impl To bool i32
+    to _ x:i32 = x != 0
 
 //test cast of i32 -> bool
-print bool 2
+print (bool 2)

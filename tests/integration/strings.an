@@ -1,17 +1,17 @@
 
-let openingMsg = "Hello World!"
+openingMsg = "Hello World!"
 
-fun getClosingMsg := "Goodbye World!\n"
+getClosingMsg unit = "Goodbye World!\n"
 
 
-printf "%s\n%s" openingMsg.cStr (getClosingMsg()).cStr
+printf "%s\n%s" (openingMsg.cStr) ((getClosingMsg ()).cStr)
 
 //string literals are of type Str by default (not ref c8 or [c8])
-let str = "test"
+str = "test"
 print str
 
 print "str"
 
 printf "len(\"%s\") = %d\n" openingMsg openingMsg.len
 
-print(str#3)
+print (str#3)

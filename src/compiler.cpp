@@ -118,13 +118,6 @@ void CompilingVisitor::visit(BoolLitNode *n){
 }
 
 
-/** returns true if this tag type does not have any associated types. */
-bool isSimpleTag(AnProductType *dt){
-    return dt->parentUnionType && dt->fields.size() == 1
-        && dt->fields[0] == AnType::getVoid();
-}
-
-
 /**
  * @brief Compiles a TypeNode
  *
@@ -341,7 +334,7 @@ vector<TypedValue> TupleNode::unpack(Compiler *c){
     for(auto& n : exprs){
         auto tv = CompilingVisitor::compile(c, n);
 
-        if(tv && tv.type->typeTag != TT_Void)
+        if(tv && tv.type->typeTag != TT_Unit)
             ret.push_back(tv);
     }
     return ret;
@@ -356,7 +349,7 @@ void CompilingVisitor::visit(RetNode *n){
     n->expr->accept(*this);
     TypedValue ret = val;
 
-    auto retInst = ret.type->typeTag == TT_Void ?
+    auto retInst = ret.type->typeTag == TT_Unit ?
                  TypedValue(c->builder.CreateRetVoid(), ret.type) :
                  TypedValue(c->builder.CreateRet(ret.val), ret.type);
 
@@ -823,7 +816,7 @@ void CompilingVisitor::visit(VarAssignNode *n){
 string mangle(string const& base, vector<AnType*> const& params){
     string name = base;
     for(auto *tv : params){
-        if(tv->typeTag != TT_Void)
+        if(tv->typeTag != TT_Unit)
             name += "_" + anTypeToStr(tv);
     }
     return name;
@@ -835,7 +828,7 @@ string mangle(FuncDecl *fd, vector<AnType*> const& params){
 
     string name = fd->getName();
     for(auto *tv : params)
-        if(tv->typeTag != TT_Void)
+        if(tv->typeTag != TT_Unit)
             name += "_" + anTypeToStr(tv);
     return name;
 }
@@ -850,7 +843,7 @@ string mangle(string const& base, shared_ptr<NamedValNode> const& paramTys){
             name += "...";
         else if(tn == (void*)1)
             name += AN_MANGLED_SELF;
-        else if(tn->typeTag != TT_Void)
+        else if(tn->typeTag != TT_Unit)
             name += "_" + typeNodeToStr(tn);
 
         cur = (NamedValNode*)cur->next.get();
@@ -861,7 +854,7 @@ string mangle(string const& base, shared_ptr<NamedValNode> const& paramTys){
 string mangle(string const& base, TypeNode *paramTys){
     string name = base;
     while(paramTys){
-        if(paramTys->typeTag != TT_Void)
+        if(paramTys->typeTag != TT_Unit)
             name += "_" + typeNodeToStr(paramTys);
         paramTys = (TypeNode*)paramTys->next.get();
     }
@@ -1207,7 +1200,7 @@ void TypedValue::dump() const{
     cout << "type:\t" << anTypeToStr(type) << endl
          << "val:\t" << flush;
 
-    if(type->typeTag == TT_Void)
+    if(type->typeTag == TT_Unit)
         puts("void ()");
     else if(type->typeTag == TT_Type)
         cout << anTypeToStr(extractTypeValue(*this)) << endl;

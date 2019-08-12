@@ -5,19 +5,19 @@
 */
 
 //IEEE double
-let f1 = 0.125
-let f2 = 1.0 / 8.0 * 6.0
+f1 = 0.125
+f2 = 1.0 / 8.0 * 6.0
 
 printf "%.3f + %.3f = %.3f\n" f1 f2 (f1 + f2)
 
 //IEEE single
-let s1 = 0.6f32
-let s2 = 0.2f32 * 2.0f32
+s1 = 0.6f32
+s2 = 0.2f32 * 2.0f32
 printf "%.2f * %.2f = %.2f\n" (f64 s1) (f64 s2) (f64 s1 * f64 s2)
 
 //IEEE half
-let h1 = 0.5f16
-let h2 = 1.5f16
+h1 = 0.5f16
+h2 = 1.5f16
 
 printf "%.1f + %.1f = %.1f\n" (f64 h1) (f64 h2) (f64 h1 + f64 h2)
 

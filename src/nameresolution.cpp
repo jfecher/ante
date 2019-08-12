@@ -74,10 +74,15 @@ namespace ante {
 
 
     void NameResolutionVisitor::declare(string const& name, NamedValNode *decl){
-        checkForPreviousDecl(this, name, varTable.top().back(), decl->loc, "Parameter");
-        auto var = new Variable(name, decl);
-        decl->decl = var;
-        varTable.top().back().try_emplace(name, var);
+        if(name != "_" && name != ""){
+            checkForPreviousDecl(this, name, varTable.top().back(), decl->loc, "Parameter");
+            auto var = new Variable(name, decl);
+            decl->decl = var;
+            varTable.top().back().try_emplace(name, var);
+        }else{
+            auto var = new Variable(name, decl);
+            decl->decl = var;
+        }
     }
 
 
@@ -1087,6 +1092,12 @@ namespace ante {
     }
 
     void mutateWithNewTypeVarNodes(TypeNode *ty, unordered_map<string, AnTypeVarType*> &map){
+        auto mn = dynamic_cast<ModNode*>(ty);
+        if(mn){
+            mutateWithNewTypeVarNodes(static_cast<TypeNode*>(mn->expr.get()), map);
+            return;
+        }
+
         if(ty->extTy){
             for(Node &node : *ty->extTy){
                 if(TypeNode *ext = dynamic_cast<TypeNode*>(&node)){

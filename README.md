@@ -34,16 +34,16 @@ the ability to interact at a lower level if needed.
 ```go
 //The 'ante' keyword declares compile-time values
 ante
-    global mut labels = Map.empty ()
+    global mut labels = empty Map
 
-    fun goto: VarNode vn
-        let label = labels.lookup vn.name ?
+    goto vn:VarNode =
+        label = labels.lookup vn.name ?
             None -> Ante.error "Cannot goto undefined label ${vn}"
 
         Llvm.setInsertPoint (getCallSiteBlock ())
         Llvm.createBr label
 
-    fun label: VarNode vn
+    label vn:VarNode =
         let callingFn = getParentFn (getCallSiteBlock ())
         let lbl = Llvm.BasicBlock(Ante.llvm_ctxt, callingFn)
         labels#vn.name := lbl

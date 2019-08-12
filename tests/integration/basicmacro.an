@@ -1,16 +1,15 @@
 
 //The following function prints "three called!"
 //while compiling and is not included in the binary
-ante
-fun three :=
+ante three unit =
     puts "three called!".cStr
     3
 
 //test compile-time evaluation of user defined functions
-print <| three()
+print <| three ()
 
 //test it again to ensure it is re-evaluated completely
-let res = three()
+res = three ()
 
 //test compapi function Ante.debug which prints type and value of any value
 //In this case it should print i32 for the type and show its value as the intlit 3,

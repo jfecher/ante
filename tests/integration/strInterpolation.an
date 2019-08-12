@@ -1,11 +1,10 @@
 
-let f = "friend"
+f = "friend"
 
 print "Hello, ${f}!"
 
+getMyString unit = "my string"
 
-fun getMyString := "my string"
+print "Hello, ${getMyString ()}!"
 
-print "Hello, ${getMyString()}!"
-
-print( "Hello, " ++ getMyString() ++ "!")
+print <| "Hello, " ++ getMyString () ++ "!"

@@ -5,22 +5,16 @@
 */
 
 //explicit list of parameters
-fun add: i32 a, i32 b -> i32
+add a:i32 b:i32 -> i32 =
     return a + b
 
-//shorthand parameter list
-fun mul: i32 a b -> i32
+mul a:i32 b:i32 -> i32 =
     return a * b
 
-
-let n1 = 3
-let n2 = 4
-
+n1 = 3
+n2 = 4
 printf "%d + %d = %d\n".cStr n1 n2 (add n1 n2)
 printf "%d * %d = %d\n".cStr n1 n2 (mul n1 n2)
 
-//Void values can be used in expressions if they are followed by
-//the sequencing operator ;
-
 //print out 5 and set n3 to 5
-let n3 = print 5; 5
+n3 = print 5; 5

@@ -2,7 +2,7 @@
 type Day = | Mon | Tue | Wed | Thu | Fri | Sat | Sun
 
 
-fun getDay := Sat
+getDay unit = Sat
 
 
 match getDay () with

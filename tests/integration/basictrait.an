@@ -1,54 +1,45 @@
 
 type Holder = i32
 
-fun Holder.init := Holder 0
-
 type Container =
    | Item i32
    | Empty
 
 //Declare the trait NumStore
 trait NumStore 't
-    fun get: 't ng -> i32
+    get 't -> i32
 
-    fun store: mut 't ng, i32 n
+    store (mut 't) i32 -> unit
 
 
 //Implement NumStore for Holder
 impl NumStore Holder
-    fun get: Holder h =
-        i32 h
+    get h = i32 h
 
-    fun store: mut Holder h, i32 n
-        h := Holder n
+    store h n = h := Holder n
 
 
 //Implement NumStore for Container
 impl NumStore Container
-    fun get: Container c =
+    get c =
         match c with
         | Item i -> i
         | Empty -> print "warning: empty"; 0
     
-    fun store: mut Container c, i32 n
-        c := Item n
-
-//define function to work on any Holder
-fun print: ref Holder h
-    print <| get (@h)
+    store c n = c := Item n
 
 
-fun print: Container c
+print h:Holder =
+    print <| get h
+
+
+print c:Container =
     match c with
     | Item i -> printf "Container { %d }\n" i;()
     | Empty -> print "Container {}"
 
 
-fun print: Holder h
-    print <| get h
-
-
-mut h = Holder()
+mut h = Holder 0
 
 store h 5
 print h

@@ -28,7 +28,7 @@ namespace ante {
             AnteValue elemTup{(void*)elem, tn->extTys[i]};
             TypedValue tval = elemTup.asTypedValue(c);
 
-            if(Constant *elem = dyn_cast<Constant>(tval.val)){
+            if(auto elem = dyn_cast<Constant>(tval.val)){
                 elems.push_back(elem);
             }else{
                 nonConstants[i] = tval.val;
@@ -128,7 +128,7 @@ namespace ante {
             case TT_Trait:
             case TT_TypeFamily:
                 break;
-            case TT_Void:
+            case TT_Unit:
                 return c->getVoidLiteral();
         }
 
@@ -329,7 +329,7 @@ namespace ante {
             case TT_Trait:
             case TT_TypeFamily:
                 break;
-            case TT_Void:
+            case TT_Unit:
                 return;
         }
 
@@ -416,7 +416,7 @@ namespace ante {
             case TT_Trait: os << "trait\n"; break;
             case TT_TypeVar: os << "?"; break; //compile-time value with unknown type, something went wrong.
             case TT_TypeFamily: os << "<(TypeFamily)>"; break;
-            case TT_Void: os << "()"; break;
+            case TT_Unit: os << "()"; break;
         }
     }
 

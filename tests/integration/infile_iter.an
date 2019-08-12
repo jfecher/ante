@@ -1,5 +1,5 @@
 
-let f = InFile "tests/infile_iter.an"
+f = InFile "tests/infile_iter.an"
 
 //print every line in this file
 for line in f do

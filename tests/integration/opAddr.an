@@ -1,5 +1,5 @@
 
-fun modify: mut i32 x
+modify (x:mut i32) =
     x := x * 2
 
 mut t = 32
@@ -7,7 +7,7 @@ print t
 modify t
 print t
 
-let t = 3
+t = 3
 print t
 modify t
 print t

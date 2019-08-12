@@ -222,10 +222,10 @@ namespace ante {
         if(argc == paramc)
             return false;
 
-        if(argc == paramc + 1 && args->extTys.back()->typeTag == TT_Void)
+        if(argc == paramc + 1 && args->extTys.back()->typeTag == TT_Unit)
             return false;
 
-        if(argc + 1 == paramc && fnty->extTys.back()->typeTag == TT_Void)
+        if(argc + 1 == paramc && fnty->extTys.back()->typeTag == TT_Unit)
             return false;
 
         if(fnty->isVarArgs() && argc >= paramc - 1)
@@ -614,7 +614,7 @@ namespace ante {
             n->child->accept(*this);
 
             auto fnty = try_cast<AnFunctionType>(n->getType());
-            if(fnty->retTy->typeTag != TT_Void)
+            if(fnty->retTy->typeTag != TT_Unit)
                 addConstraint(fnty->retTy, n->child->getType(), n->loc);
         }
     }

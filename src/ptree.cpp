@@ -6,6 +6,7 @@
 #include "compiler.h"
 #include "yyparser.h"
 #include "unification.h"
+#include "util.h"
 #include <stack>
 
 #include <compiler.h>
@@ -161,6 +162,13 @@ namespace ante {
             }
             m->expr.reset(modifiableNode);
             return m;
+        }
+
+        Node* append_modifiers(Node *modifiers, Node *modifiableNode){
+            for(Node &mod : *modifiers){
+                modifiableNode = append_modifier(&mod, modifiableNode);
+            }
+            return modifiableNode;
         }
 
         LOC_TY copyLoc(const LOC_TY &loc){
@@ -329,7 +337,15 @@ namespace ante {
         }
 
         Node* mkTypeCastNode(LOC_TY loc, Node *l, Node *r){
-            return new TypeCastNode(loc, static_cast<TypeNode*>(l), r);
+            auto type = static_cast<TypeNode*>(l);
+            auto arg  = dynamic_cast<TypeNode*>(r);
+            //TODO: Fix this parse conflict
+            if(arg){
+                type->params.emplace_back(arg);
+                return type;
+            }else{
+                return new TypeCastNode(loc, type, r);
+            }
         }
 
         Node* mkUnOpNode(LOC_TY loc, int op, Node* r){
@@ -361,85 +377,10 @@ namespace ante {
         }
 
 
-        //returns true if type->extTy should be defined
-        bool typeHasExtData(TypeTag t){
-            return t == TT_Tuple or t == TT_Array or t == TT_Ptr or t == TT_Data or t == TT_Function
-                or t == TT_TaggedUnion or t == TT_MetaFunction;
-
-        }
-
-        TypeNode* copy(const unique_ptr<TypeNode> &n);
-
-        //helper function to deep-copy TypeNodes.  Used in mkNamedValNode
-        TypeNode* copy(const TypeNode *n){
-            if(!n or n == (void*)1) return 0;
-
-            auto loc = copyLoc(n->loc);
-            TypeNode *cpy = new TypeNode(loc, n->typeTag, n->typeName, nullptr);
-
-            //arrays can have an IntLit in their extTy so handle them specially
-            if(n->typeTag == TT_Array){
-                cpy->extTy.reset(copy(n->extTy));
-
-                auto *len = (IntLitNode*)n->extTy->next.get();
-                if(len){
-                    auto loc_cpy = copyLoc(len->loc);
-                    auto *len_cpy = new IntLitNode(loc_cpy, len->val, len->typeTag);
-                    cpy->extTy->next.reset(len_cpy);
-                }
-            }else if(n->extTy.get()){
-                TypeNode *nxt = n->extTy.get();
-
-                TypeNode *ext = copy(nxt);
-                cpy->extTy.reset(ext);
-
-                while((nxt = static_cast<TypeNode*>(nxt->next.get()))){
-                    ext->next.reset(copy(nxt));
-                    ext = static_cast<TypeNode*>(ext->next.get());
-                }
-            }
-
-            cpy->typeName = n->typeName;
-
-            //if n has type params, copy them too
-            if(!n->params.empty()){
-                for(auto& tn : n->params){
-                    cpy->params.emplace_back(copy(tn));
-                }
-            }
-            return cpy;
-        }
-
-        TypeNode* copy(const unique_ptr<TypeNode> &n){
-            return copy(n.get());
-        }
-
-
-        /*
-        *  This may create several NamedVal nodes depending on the
-        *  number of VarNodes contained within varNodes.
-        *  This is used for the shortcut when declaring multiple
-        *  variables of the same type, e.g. i32 a b c
-        */
-        Node* mkNamedValNode(LOC_TY loc, Node* varNodes, Node* tExpr, Node* prev){
-            //Note: there will always be at least one varNode
+        Node* mkNamedValNode(LOC_TY loc, Node* varNode, Node* tExpr){
             const TypeNode* ty = (TypeNode*)tExpr;
-            VarNode* vn = (VarNode*)varNodes;
-            Node *first = new NamedValNode(loc, vn->name, tExpr);
-            Node *nxt = first;
-
-            if(!prev) setRoot(first);
-            else setNext(prev, first);
-
-            while((vn = (VarNode*)vn->next.get())){
-                TypeNode *tyNode = copy(ty);
-                LOC_TY loccpy = copyLoc(vn->loc);
-
-                nxt->next.reset(new NamedValNode(loccpy, vn->name, tyNode));
-                nxt = nxt->next.get();
-            }
-            delete varNodes;
-            return nxt;
+            VarNode* vn = (VarNode*)varNode;
+            return new NamedValNode(loc, vn->name, tExpr);
         }
 
         Node* mkVarNode(LOC_TY loc, char* s){
@@ -474,12 +415,83 @@ namespace ante {
             return new ForNode(loc, new VarNode(loc, (char*)var), range, body);
         }
 
-        Node* mkFuncDeclNode(LOC_TY loc, Node* s, Node* tExpr, Node* p, Node* tcc, Node* b){
-            auto ret = new FuncDeclNode(loc, (char*)s, (TypeNode*)tExpr, (NamedValNode*)p, (TypeNode*)tcc, b);
+        NamedValNode* convertParam(Node *param){
+            TypeNode *tn = dynamic_cast<TypeNode*>(param);
+            if(tn){
+                return new NamedValNode(tn->loc, "_", tn);
+            }
+            VarNode *vn = dynamic_cast<VarNode*>(param);
+            if(vn){
+                return new NamedValNode(vn->loc, vn->name, 0);
+            }
+            BinOpNode *bop = dynamic_cast<BinOpNode*>(param);
+            if(bop){
+                if(bop->op == ':'){
+                    VarNode *vn = dynamic_cast<VarNode*>(bop->lval.get());
+                    TypeNode *tn = dynamic_cast<TypeNode*>(bop->rval.get());
+                    if(!vn || !tn){
+                        ante::error("Invalid syntax in type ascription", bop->loc);
+                    }
+                    return new NamedValNode(bop->loc, vn->name, tn);
 
-            //s is copied from lextxt, and may or may not be equal
-            if(s) free(s);
-            return ret;
+                //manually fix a parsing glitch that causes (var: Type TypeArg TypeArg) to be parsed as ((var:Type) TypeArg TypeArg)
+                }else if(bop->op == '('){
+                    BinOpNode *l = dynamic_cast<BinOpNode*>(bop->lval.get());
+                    TupleNode *typeargs = dynamic_cast<TupleNode*>(bop->rval.get());
+                    if(l && typeargs && l->op == ':'){
+                        VarNode *var = dynamic_cast<VarNode*>(l->lval.get());
+                        TypeNode *basety = dynamic_cast<TypeNode*>(l->rval.get());
+                        if(var && basety){
+                            for(auto &expr : typeargs->exprs){
+                                auto tn = dynamic_cast<TypeNode*>(expr.get());
+                                if(!tn){
+                                    ante::error("Expected a typearg here", expr->loc);
+                                }
+                                basety->params.emplace_back(tn);
+                            }
+                            return new NamedValNode(bop->loc, var->name, basety);
+                        }
+                    }
+                }
+            }
+            ante::error("Function parameter should be an identifier, type, or identifier:type", param->loc);
+            return nullptr;
+        }
+
+        NamedValNode* convertParams(Node *params){
+            NamedValNode *nvn = dynamic_cast<NamedValNode*>(params);
+            if(nvn) return nvn;
+
+            NamedValNode *cur = 0;
+            NamedValNode *first = 0;
+            while(params){
+                NamedValNode *tmp = convertParam(params);
+                if(!first){
+                    first = tmp;
+                    cur = tmp;
+                }else{
+                    cur->next.reset(tmp);
+                    cur = tmp;
+                }
+                params = params->next.get();
+            }
+            return first;
+        }
+
+        Node* mkFuncDeclNode(LOC_TY loc, Node* nameAndParams, Node* tExpr, Node* tcc, Node* body){
+            VarNode *name = dynamic_cast<VarNode*>(nameAndParams);
+            if(!name){
+                ante::error("Expected function name here to start function declaration", nameAndParams->loc);
+            }
+            auto params = convertParams(name->next.release());
+            return new FuncDeclNode(loc, name->name.c_str(), (TypeNode*)tExpr, params, (TypeNode*)tcc, body);
+        }
+
+        Node* mkFuncCallNode(LOC_TY loc, Node* nameAndArgs){
+            Node *fn = nameAndArgs;
+            Node *args = nameAndArgs->next.release();
+            Node *argTup = mkTupleNode(loc, args);
+            return new BinOpNode(loc, '(', fn, argTup);
         }
 
         Node* mkDataDeclNode(LOC_TY loc, char* s, Node *p, Node* b, bool isAlias){

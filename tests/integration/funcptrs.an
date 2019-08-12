@@ -1,4 +1,4 @@
-fun loop: i32 n, i32->void f
+loop n:i32 (f:i32->unit) =
     mut i = 0
     while i < n do
         f i

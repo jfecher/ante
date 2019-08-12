@@ -5,65 +5,67 @@
 */
 
 //C functions
-fun printf: ref c8 fmt, ... -> i32
-fun puts: ref c8 str -> i32
-fun putchar: c8 char
-fun getchar: -> c8
-fun exit: i32 status
-fun malloc: usz size -> ref void
-fun calloc: usz num size -> ref void
-fun realloc: ref void ptr, usz size -> ref void
-fun free: ref void mem
-fun memcpy: ref void dest src, usz bytes -> ref void /*dest*/
-fun system: ref c8 cmd -> i32
-fun strlen: ref c8 str -> usz
+printf (ref c8) ... -> i32
+puts (ref c8) -> i32
+putchar c8 -> unit
+getchar unit -> c8
+exit i32 -> 'never_returns
+malloc usz -> ref unit
+calloc usz usz -> ref unit
+realloc (ref unit) usz -> ref unit
+free (ref unit) -> unit
+memcpy (dest:ref unit) (src:ref unit) usz -> ref unit //dest
+system (ref c8) -> i32
+strlen (ref c8) -> usz
 
 //C stdio
-type File = ref void
-type FilePos = ref void
+type File = (f:ref unit)
+type FilePos = (f:ref unit)
 
-type InFile = File
-type OutFile = File
+type InFile = f:File
+type OutFile = f:File
 
-fun fopen: ref c8 fName, ref c8 mode -> File
-fun fclose: File file
+fopen (name:ref c8) (mode:ref c8) -> File
+fclose File -> unit
 
-fun fputs: ref c8 str, OutFile file
-fun fputc: c8 char, OutFile file
-fun fgetc: InFile file -> c8
-fun fgets: ref c8 str, i32 numBytes, InFile file -> ref c8
-fun ungetc: c8 c, InFile file -> i32
+fputs (ref c8) OutFile -> unit
+fputc c8 OutFile -> unit
+fgetc InFile -> c8
+fgets (ref c8) i32 InFile -> ref c8
+ungetc c8 InFile -> i32
 
-fun fgetpos: File f, FilePos fp
-fun ftell: File f -> i64
-fun fsetpos: File f, FilePos fp
-fun fseek: File f, i64 offset, i32 origin
+fgetpos File FilePos -> unit
+ftell File -> i64
+fsetpos File FilePos -> unit
+fseek File i64 i32 -> unit
 
-fun feof: InFile f -> bool
-fun ferror: File f -> bool
+feof InFile -> bool
+ferror File -> bool
 
 
 
 //Ante datatypes
-type Str = ref c8 cStr, usz len
+type Str =
+    cStr: (ref c8)
+    len: usz
 
 type Maybe 't =
    | Some 't
    | None
 
-type Type 't = void
+type Type 't = none:unit
 
 
 trait Empty 't
-    fun empty: Type 't ty -> 't
+    empty (Type 't) -> 't
 
 
-impl Eq (Maybe 'e) | Eq 'e
-    fun (=): Maybe 'e l r -> bool
+impl Eq (Maybe 'e) given Eq 'e
+    (==) l r =
         match l with
         | Some lv ->
             match r with
-            | Some rv -> lv = rv
+            | Some rv -> lv == rv
             | None -> false
         | None ->
             match r with
@@ -72,8 +74,8 @@ impl Eq (Maybe 'e) | Eq 'e
 
 
 
-impl To Str (Maybe 'm) | To Str 'm
-    fun to: _, maybe =
+impl To Str (Maybe 'm) given To Str 'm
+    to _ maybe =
         match maybe with
         | Some val -> "tmp" //Str val
         | None -> "None"
@@ -82,212 +84,196 @@ impl To Str (Maybe 'm) | To Str 'm
 //Compile-time functions
 module Ante
     //prints type and value (llvm dump) of variable while compiling
-    ante fun debug: 't t
+    ante debug 't -> unit
 
     //returns the size of a type in Bytes.  Accepts types or values as an argument
-    ante fun sizeof: 't t -> usz
+    ante sizeof 't -> usz
 
     //return the type of an expression.  Note: Type is an ante type (compile-time only)
-    ante fun typeof: 't t -> Type 't
+    ante typeof 't -> Type 't
 
-    //Note: error never returns
-    ante fun error: ref c8 msg
+    //Issue an error message during compile-time and stop compiling the current function
+    ante error (ref c8) -> 'never_returns
 
     //dumps llvm-ir to stdout
-    ante fun emit_ir:
+    ante emit_ir unit -> unit
 
     //useful in the repl to redefine functions
-    ante fun forget: ref c8 function_name
+    ante forget (name: ref c8) -> unit
 
 
 trait Add 'n
-    fun (+): 'n l r -> 'n
+    (+) 'n 'n -> 'n
 
 trait Sub 'n
-    fun (-): 'n l r -> 'n
+    (-) 'n 'n -> 'n
 
 trait Mul 'n
-    fun (*): 'n l r -> 'n
+    (*) 'n 'n -> 'n
 
 trait Div 'n
-    fun (/): 'n l r -> 'n
+    (/) 'n 'n -> 'n
 
 trait Mod 'n
-    fun (%): 'n l r -> 'n
+    (%) 'n 'n -> 'n
 
 trait Pow 'n
-    fun (^): 'n l r -> 'n
+    (^) 'n 'n -> 'n
 
 trait Cmp 'n
-    fun (<): 'n l r -> bool
-    fun (>): 'n l r -> bool
-    // fun(<=): 'n l r = not (n > r)
-    // fun(>=): 'n l r = not (n < r)
+    (<) 'n 'n -> bool
+    (>) 'n 'n -> bool
+    //(<=) l:'n r:'n = not (l > r)
+    //(>=) l:'n r:'n = not (l < r)
 
 trait Eq 't
-    fun (=): 't l r -> bool
-    // fun (!=): 't l r = not (l = r)
+    (==) 't 't -> bool
+    // (!=) l:'t r:'t = not (l == r)
 
 trait Is 't
-    fun (is): 't l r -> bool
+    (is) 't 't -> bool
 
 trait Append 't
-    fun (++): 't l r -> 't
+    (++) 't 't -> 't
 
 trait Extract 'col 'index
     type ExtractElem
-    fun (#): 'col collection, 'index index -> ExtractElem
+    (#) 'col 'index -> ExtractElem
 
 trait Insert 'col 'index 'elem
     // temporary until functions with the same name and
     // a differing number of parameters can be declared.
-    fun insert: mut 'col collection, 'index idx, 'elem elem
+    insert (mut 'col) 'index 'elem -> unit
 
 trait In 'elem 'col
-    fun (in): 'elem elem, 'col collection -> bool
+    (in) 'elem 'col -> bool
 
 trait Range 'l 'r
     type RangeResult
-    fun (..): 'l l, 'r r -> RangeResult
+    (..) 'l 'r -> RangeResult
 
 trait Deref 't
     type DerefResult
-    fun (@): 't t -> DerefResult
+    (@) 't -> DerefResult
 
 trait Neg 't
-    fun neg: 't t -> 't
+    neg 't -> 't
 
 trait Not 't
-    fun (not): 't t -> 't
+    (not) 't -> 't
 
 
 trait Print 't
-    fun printne: 't x
+    printne 't -> unit
 
-fun print: x
+print x =
     printne x
     puts "".cStr
 
 
 trait To 't /*from*/ 'u
-    fun to: Type 't to, 'u from -> 't
+    to (Type 't) 'u -> 't
 
 
 //intrinsics for numeric types
 impl Cmp usz
-    fun (<): a, b = true
-    fun (>): a, b = true
+    (<) a b = true
+    (>) a b = true
 
 impl Cmp i32
-    fun (<): a, b = true
-    fun (>): a, b = true
+    (<) a b = true
+    (>) a b = true
 
 impl Add i32
-    fun (+): a, b = a + b
+    (+) a b = a + b
 
 impl Sub i32
-    fun (-): a, b = a - b
+    (-) a b = a - b
 
 impl Mul i32
-    fun (*): a, b = a * b
+    (*) a b = a * b
 
 impl Add usz
-    fun (+): a, b = a + b
+    (+) a b = a + b
 
 impl Sub usz
-    fun (-): a, b = a - b
+    (-) a b = a - b
 
 impl Extract (ref 't) usz
-    type ExtractElem = void
-    fun (#): c, i = c#i
+    type ExtractElem = none:unit
+    (#) c i = c#i
 
 
 //numerical print functions
 impl Print i8
-    fun printne: i8 x
-        printf "%hhd".cStr x
+    printne x = printf ("%hhd".cStr) x
 
 impl Print i16
-    fun printne: i16 x
-        printf "%hd".cStr x
+    printne x = printf ("%hd".cStr) x
 
 impl Print i32
-    fun printne: i32 x
-        printf "%d".cStr x
+    printne x = printf ("%d".cStr) x
 
 impl Print i64
-    fun printne: i64 x
-        printf "%ld".cStr x
+    printne x = printf ("%ld".cStr) x
 
 impl Print isz
-    fun printne: isz x
-        printf "%zi".cStr x
+    printne x = printf ("%zi".cStr) x
 
 //unsigned
 impl Print u8
-    fun printne: u8 x
-        printf "%hhu".cStr x
+    printne x = printf ("%hhu".cStr) x
 
 impl Print u16
-    fun printne: u16 x
-        printf "%hu".cStr x
+    printne x = printf ("%hu".cStr) x
 
 impl Print u32
-    fun printne: u32 x
-        printf "%u".cStr x
+    printne x = printf ("%u".cStr) x
 
 impl Print u64
-    fun printne: u64 x
-        printf "%lu".cStr x
+    printne x = printf ("%lu".cStr) x
 
 impl Print usz
-    fun printne: usz x
-        printf "%zu".cStr x
+    printne x = printf ("%zu".cStr) x
 
 //floats
 impl Print f16
-    fun printne: f16 x
-        printf "%.2f".cStr (f64 x)
+    printne x = printf ("%.2f".cStr) (f64 x)
 
 impl Print f32
-    fun printne: f32 x
-        printf "%f".cStr (f64 x)
+    printne x = printf ("%f".cStr) (f64 x)
 
 impl Print f64
-    fun printne: f64 x
-        printf "%.14f".cStr x
+    printne x = printf ("%.14f".cStr) x
 
 //char
 impl Print c8
-    fun printne: c8 x
-        printf "%c".cStr x
+    printne x = printf ("%c".cStr) x
 
 //bool
 impl Print bool
-    fun printne: bool b
-        if b then printf "true".cStr
-        else printf "false".cStr
+    printne b =
+        if b then printf ("true".cStr)
+        else printf ("false".cStr)
 
 //c-string
 impl Print (ref c8)
-    fun printne: ref c8 s
-        printf "%s".cStr s
+    printne s = printf ("%s".cStr) s
 
 
 impl Print Str
-    fun printne: Str s
-        printne s.cStr
+    printne s = printne (s.cStr)
 
 
 impl To (ref c8) Str
-    fun to: _, Str s = s.cStr
+    to _ s = s.cStr
 
 
 module Str
-    fun reverse: Str s -> Str
-        mut buf = ref c8 malloc (s.len + 1usz)
+    reverse s:Str -> Str =
+        buf mut = ref c8 malloc (s.len + 1usz)
 
-        mut i = 0usz
+        i mut = 0usz
         while i < s.len do
             buf#i := s.cStr#(s.len - i - 1usz)
             i += 1usz
@@ -297,14 +283,14 @@ module Str
 
 
 impl To Str i64
-    fun to: _, i64 i -> Str
-        if i = 0i64 then return "0"
-        mut len = 0usz
-        mut buf = ref c8 malloc 21usz
+    to _ i =
+        if i == 0i64 then return "0"
+        len mut = 0usz
+        buf mut = ref c8 malloc 21usz
         buf#20usz := '\0'
 
-        mut x = i
-        let isNeg = i < 0i64 and ((x *= -1i64); true)
+        x mut = i
+        isNeg = i < 0i64 and ((x *= -1i64); true)
 
         while x != 0i64 do
             len += 1usz
@@ -315,60 +301,60 @@ impl To Str i64
             len += 1usz
             buf#(20usz - len) := '-'
 
-        let offset = usz buf + (20usz - len)
+        offset = usz buf + (20usz - len)
         Str(ref c8 offset, len)
 
 
 impl To Str u64
-    fun to: _, u64 i -> Str
-        if i = 0u64 then return "0"
-        mut len = 0usz
-        mut buf = ref c8 malloc 21usz
+    to _ i =
+        if i == 0u64 then return "0"
+        len mut = 0usz
+        buf mut = ref c8 malloc 21usz
         buf#20usz := '\0'
 
-        mut x = i
+        x mut = i
         while x != 0u64 do
             len += 1usz
             buf#(20usz - len) := '0' + c8(x % 10u64)
             x /= 10u64
 
-        let offset = usz buf + (20usz - len)
+        offset = usz buf + (20usz - len)
         Str(ref c8 offset, len)
 
 
 // convert all other numeric types to strings by widening first
 impl To Str i8
-    fun to: _, i8 x = i64 x as Str
+    to _ x = i64 x as Str
 
 impl To Str i16
-    fun to: _, i16 x = i64 x as Str
+    to _ x = i64 x as Str
 
 impl To Str i32
-    fun to: _, i32 x = i64 x as Str
+    to _ x = i64 x as Str
 
 impl To Str isz
-    fun to: _, isz x = i64 x as Str
+    to _ x = i64 x as Str
 
 impl To Str u8
-    fun to: _, u8 x = u64 x as Str
+    to _ x = u64 x as Str
 
 impl To Str u16
-    fun to: _, u16 x = u64 x as Str
+    to _ x = u64 x as Str
 
 impl To Str u32
-    fun to: _, u32 x = u64 x as Str
+    to _ x = u64 x as Str
 
 impl To Str usz
-    fun to: _, usz x = u64 x as Str
+    to _ x = u64 x as Str
 
 
 module u64
-    fun parse: Str s -> Maybe u64
-        mut i = 0
-        mut sum = 0u64
+    parse s:Str -> Maybe u64 =
+        i mut = 0
+        sum mut = 0u64
 
         while s#i != '\0' do
-            let c = s#i
+            c = s#i
             if c >= '0' and c <= '9' then
                 sum *= 10u64
                 sum += u64(c - '0')
@@ -380,17 +366,15 @@ module u64
         Some sum
 
 module i64
-    fun parse: Str s -> Maybe i64
-        mut i = 0usz
-        mut sum = 0i64
-        let isNeg =
-            if s.len != 0usz and s#0usz = '-' then
-                i += 1usz
-                true
-            else false
+    parse s:Str -> Maybe i64 =
+        i mut = 0usz
+        sum mut = 0i64
+        isNeg =
+            if s.len == 0usz or s#0usz == '-' then false
+            else ((i += 1usz); true)
 
         while s#i != '\0' do
-            let c = s#i
+            c = s#i
             if c >= '0' and c <= '9' then
                 sum *= 10i64
                 sum += i64(c - '0')
@@ -402,56 +386,54 @@ module i64
         Some (if isNeg then -1i64 * sum else sum)
 
 
-//Pointer Equivalence
-impl Eq (ref 't) | Eq 't
-    fun (=): ref 'q l r =
-        @l = @r
+impl Eq (ref 't) given Eq 't
+    (==) l r = @l == @r
 
 
 //For-loops work over any range that is Iterable
 trait Iterable 'i
-    fun into_iter: 'i i -> 'it | Iterator 'it
+    into_iter 'i -> 'it given Iterator 'it
 
 trait Iterator 'i
     type IteratorElem
-    fun next: 'i i -> 'i
-    fun unwrap: 'i i -> IteratorElem
-    fun has_next: 'i i -> bool
+    next 'i -> 'i
+    unwrap 'i -> IteratorElem
+    has_next 'i -> bool
 
 
-type LazyRange = i32 start end step
+type LazyRange = start:i32 end:i32 step:i32
 
 //returns true if a is in the range r
 impl In i32 LazyRange
-    fun (in): i32 a, LazyRange r -> bool
-        if r.step = 1 then
+    (in) a r =
+        if r.step == 1 then
             r.start <= a and a < r.end
         else
-            let a_adj = a % r.step
-            let s_adj = r.start % r.step
+            a_adj = a % r.step
+            s_adj = r.start % r.step
 
-            a_adj = s_adj and r.start <= a and a < r.end
+            a_adj == s_adj and r.start <= a and a < r.end
 
 //creates an end-exclusive range
 impl Range i32 i32
-    type RangeResult = LazyRange
-    fun (..): i32 start end -> LazyRange
+    type RangeResult = r:LazyRange
+    (..) start end =
         LazyRange(start, end, 1)
 
 //Takes a tuple of the first two integers and calculates the step by their difference
 impl Range (i32,i32) i32
-    type RangeResult = LazyRange
-    fun (..): i32,i32 first_two, i32 end -> LazyRange
+    type RangeResult = f:LazyRange
+    (..) first_two end =
         LazyRange(first_two#0usz, end, first_two#1usz - first_two#0usz)
 
 impl Iterator LazyRange
-    type IteratorElem = i32
+    type IteratorElem = e:i32
 
-    fun next: r = LazyRange(r.start+r.step, r.end, r.step)
+    next r = LazyRange(r.start+r.step, r.end, r.step)
 
-    fun unwrap: r = r.start
+    unwrap r = r.start
 
-    fun has_next: r =
+    has_next r =
         if r.step > 0 then
             r.start < r.end
         elif r.step < 0 then
@@ -461,26 +443,25 @@ impl Iterator LazyRange
 
 //Iterating through an InFile iterates through each line
 impl Iterator InFile
-    type IteratorElem = Str
-    fun has_next: f = not feof f
-    fun next: f = f
-    fun unwrap: f = InFile.next_line f
+    type IteratorElem = s:Str
+    has_next f = not feof f
+    next f = f
+    unwrap f = InFile.next_line f
 
 
 module OutFile
-    fun write: OutFile f, Str s
+    write f:OutFile s:Str =
         fputs (s.cStr) f
 
 module Str
-    fun print: Str s
+    print s:Str =
         puts s.cStr
 
 impl To Str (ref c8)
-    fun to: t, ref c8 cStr -> Str
-        Str(cStr, usz strlen cStr)
+    to t cStr = Str(cStr, usz strlen cStr)
 
 impl Eq Str
-    fun (=): Str l r -> bool
+    (==) l r =
         if l.len != r.len then
             return false
 
@@ -490,66 +471,64 @@ impl Eq Str
         true
 
 impl Is Str
-    fun (is): Str l r = l.cStr is r.cStr
+    (is) l r = l.cStr is r.cStr
 
 
 impl Append Str
-    fun (++): Str s1 s2 -> Str
-        if s1.len = 0usz then return s2
-        if s2.len = 0usz then return s1
+    (++) s1 s2 =
+        if s1.len == 0usz then return s2
+        if s2.len == 0usz then return s1
 
-        let len = s1.len + s2.len
-        mut buf = malloc (len+1usz)
+        len = s1.len + s2.len
+        buf mut = malloc (len+1usz)
 
-        memcpy buf (ref void s1.cStr) s1.len
+        memcpy buf (ref unit s1.cStr) s1.len
 
-        mut buf_offset = (usz buf + s1.len) as ref void
-        memcpy buf_offset (ref void s2.cStr) (s2.len+1usz) //copy terminating null too
+        buf_offset mut = (usz buf + s1.len) as (ref unit)
+        memcpy buf_offset (ref unit s2.cStr) (s2.len+1usz) //copy terminating null too
 
         Str(ref c8 buf, len)
 
 impl Extract Str usz
-    type ExtractElem = c8
-    fun (#): Str s, usz index = s.cStr#index
+    type ExtractElem = c:c8
+    (#) s index = s.cStr#index
 
 
 impl Insert Str usz c8
-    fun insert: str, index, char
+    insert str index char =
         str.cStr#index := char
 
 impl To InFile Str
-    fun to: t, Str fName -> InFile
-        InFile fopen (fName.cStr) "r".cStr
+    to t fName = InFile fopen (fName.cStr) ("r".cStr)
 
 
 impl To OutFile Str
-    fun to: t, Str fName -> OutFile
-        OutFile fopen (fName.cStr) "w".cStr
+    to t fName = OutFile fopen (fName.cStr) ("w".cStr)
 
 
 module InFile
-    fun next_line: InFile f -> Str
+    next_line f:InFile -> Str =
         if feof f then return ""
-        let eof = c8 255
+        eof = c8 255
 
-        mut len = 0usz
-        mut cap = 64usz
-        mut cstr = ref c8 malloc cap
+        len mut = 0usz
+        cap mut = 64usz
+        cstr mut = ref c8 malloc cap
 
         while
-            let c = fgetc f
+            c = fgetc f
 
-            if c = eof then break
+            if c == eof then break
 
             //Flag feof if eof occurs after terminating newline
-            if c = '\n' then
-                let peek = fgetc f
+            if c == '\n' then
+                peek = fgetc f
                 if peek != eof then ungetc peek f
                 break
 
             if len+1usz >= cap then
                 cap *= 2usz
-                cstr := ref c8 realloc (ref void cstr) cap
+                cstr := ref c8 realloc (ref unit cstr) cap
 
             cstr#len := c
             len += 1usz
@@ -561,16 +540,16 @@ module InFile
 
 
 //print a message then return user input
-fun input: ref c8 msg -> Str
-    mut len = 0usz
-    mut cstr = ref c8 0
+input (msg:ref c8) -> Str =
+    len mut = 0usz
+    cstr mut = ref c8 0
 
     printne msg
 
     while
-        let c = getchar ()
-        if len % 32usz = 0usz then
-            cstr := ref c8 realloc (ref void cstr) (len+32usz)
+        c = getchar ()
+        if len % 32usz == 0usz then
+            cstr := ref c8 realloc (ref unit cstr) (len+32usz)
 
         cstr#len := c
         len += 1usz

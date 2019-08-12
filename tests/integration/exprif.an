@@ -10,7 +10,7 @@
     in type.
 */
 
-let n = if true then 2 else 3
+n = if true then 2 else 3
 
 print n
 

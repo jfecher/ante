@@ -1,12 +1,12 @@
 
-ante fun get_val :=
+ante get_val unit =
     Ante.debug "test"
     3
 
-let v = get_val ()
+v = get_val ()
 Ante.debug v
 
-let q = get_val ()
+q = get_val ()
 Ante.debug q
 
 print q
