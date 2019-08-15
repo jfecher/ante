@@ -587,6 +587,10 @@ string typeTagToStr(TypeTag ty){
     }
 }
 
+bool shouldWrapInParenthesis(TypeNode *type){
+    return !type->params.empty() || type->typeTag == TT_Array;
+}
+
 /*
  *  Converts a typeNode directly to a string with no information loss.
  *  Used in ExtNode::compile
@@ -608,13 +612,11 @@ string typeNodeToStr(const TypeNode *t){
     }else if(t->typeTag == TT_Data or t->typeTag == TT_TaggedUnion or t->typeTag == TT_TypeVar){
         string name = t->typeName;
         if(!t->params.empty()){
-            name += "<";
-            name += typeNodeToStr(t->params[0].get());
-            for(unsigned i = 1; i < t->params.size(); i++){
-                name += ", ";
-                name += typeNodeToStr(t->params[i].get());
+            for(auto &param : t->params){
+                auto pstr = typeNodeToStr(param.get());
+                if(shouldWrapInParenthesis(param.get())) name += " (" + pstr + ")";
+                else name += ' ' + pstr;
             }
-            name += ">";
         }
         return name;
     }else if(t->typeTag == TT_Array){
@@ -623,15 +625,16 @@ string typeNodeToStr(const TypeNode *t){
     }else if(t->typeTag == TT_Ptr){
         return typeNodeToStr(t->extTy.get()) + "*";
     }else if(t->typeTag == TT_Function or t->typeTag == TT_MetaFunction){
-        string ret = "(";
+        string ret = "";
         string retTy = typeNodeToStr(t->extTy.get());
         TypeNode *cur = (TypeNode*)t->extTy->next.get();
         while(cur){
-            ret += typeNodeToStr(cur);
+            auto pstr = typeNodeToStr(cur);
+            if(shouldWrapInParenthesis(cur)) ret += "(" + pstr + ") ";
+            else ret += pstr + ' ';
             cur = (TypeNode*)cur->next.get();
-            if(cur) ret += ",";
         }
-        return ret + ")->" + retTy;
+        return ret + "-> " + retTy;
     }else{
         return typeTagToStr(t->typeTag);
     }
@@ -713,20 +716,16 @@ string anTypeToStr(const AnType *t){
     }else if(auto *tvt = try_cast<AnTypeVarType>(t)){
         return tvt->name;
     }else if(auto *f = try_cast<AnFunctionType>(t)){
-        string ret = "(";
-        string retTy = anTypeToStr(f->retTy);
-        string tcConstraints = f->typeClassConstraints.empty() ? ""
-            : " : " + commaSeparated(f->typeClassConstraints);
-
-        if(f->extTys.size() == 1){
-            if(f->extTys[0]->typeTag == TT_Function || f->extTys[0]->typeTag == TT_Tuple)
-                return '(' + anTypeToStr(f->extTys[0]) + ") -> " + retTy + tcConstraints;
-            else
-                return anTypeToStr(f->extTys[0]) + " -> " + retTy + tcConstraints;
+        string ret = "";
+        for(auto &param : f->extTys){
+            auto pstr = anTypeToStr(param);
+            ret += (shouldWrapInParenthesis(param) ? '(' + pstr + ')' : pstr) + ' ';
         }
 
-        auto paramTypes = AnType::getTupleOf(f->extTys);
-        return anTypeToStr(paramTypes) + " -> " + retTy + tcConstraints;
+        string tcConstraints = f->typeClassConstraints.empty() ? ""
+            : " given " + commaSeparated(f->typeClassConstraints);
+
+        return ret + "-> " + anTypeToStr(f->retTy) + tcConstraints;
     }else if(auto *tup = try_cast<AnAggregateType>(t)){
         string ret = "(";
 

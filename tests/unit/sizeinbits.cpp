@@ -24,7 +24,7 @@ TEST_CASE("Size in bits of primitive type", "[getSizeInBits]"){
     auto f32 = AnType::getF32();
     auto f64 = AnType::getF64();
 
-    auto voidTy = AnType::getVoid();
+    auto voidTy = AnType::getUnit();
     auto boolTy = AnType::getBool();
 
     REQUIRE(i8->getSizeInBits(c).getVal() == 8);
@@ -51,7 +51,7 @@ TEST_CASE("Size in bits of primitive type", "[getSizeInBits]"){
 }
 
 TEST_CASE("Size in bits of pointer type", "[getSizeInBits]"){
-    auto ptrTy1 = AnPtrType::get(AnType::getVoid());
+    auto ptrTy1 = AnPtrType::get(AnType::getUnit());
     auto ptrTy2 = AnPtrType::get(AnType::getBool());
     auto ptrTy3 = AnPtrType::get(AnTypeVarType::get("'t"));
 
@@ -69,10 +69,10 @@ TEST_CASE("Size in bits of array type", "[getSizeInBits]"){
 }
     
 TEST_CASE("Size in bits of function type", "[getSizeInBits]"){
-    auto ptrTy1 = AnPtrType::get(AnType::getVoid());
+    auto ptrTy1 = AnPtrType::get(AnType::getUnit());
     auto arrTy1 = AnArrayType::get(AnType::getI16(), 3);
 
-    auto fnTy1 = AnFunctionType::get(AnType::getVoid(), {}, {}, false);
+    auto fnTy1 = AnFunctionType::get(AnType::getUnit(), {}, {}, false);
     auto fnTy2 = AnFunctionType::get(AnType::getU16(), {AnType::getI32(), ptrTy1}, {}, false);
     auto fnTy3 = AnFunctionType::get(AnType::getUsz(), {AnType::getUsz(), arrTy1}, {}, true);
 
@@ -85,7 +85,7 @@ TEST_CASE("Size in bits of aggregate (tuple) type", "[getSizeInBits]"){
     auto aggTy1 = AnType::getTupleOf({});
     auto aggTy2 = AnType::getTupleOf({AnType::getI32()});
     auto aggTy3 = AnType::getTupleOf({AnType::getU64(), AnType::getBool()});
-    auto aggTy4 = AnType::getTupleOf({aggTy3, AnPtrType::get(AnType::getVoid())});
+    auto aggTy4 = AnType::getTupleOf({aggTy3, AnPtrType::get(AnType::getUnit())});
 
     REQUIRE(aggTy1->getSizeInBits(c).getVal() == 0);
     REQUIRE(aggTy2->getSizeInBits(c).getVal() == 32);

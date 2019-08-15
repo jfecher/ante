@@ -49,7 +49,7 @@ namespace ante {
 %token C8 C32 Bool Unit
 
 /* operators */
-%token EqEq Assign NotEq AddEq SubEq MulEq DivEq GrtrEq LesrEq
+%token Assign EqEq NotEq AddEq SubEq MulEq DivEq GrtrEq LesrEq
 %token Or And Range VarArgs RArrow ApplyL ApplyR Append New Not Is Isnt
 
 /* literals */
@@ -232,7 +232,7 @@ lit_type: I8                  {$$ = mkTypeNode(@$, TT_I8,  (char*)"");}
         | C32                 {$$ = mkTypeNode(@$, TT_C32, (char*)"");}
         | Bool                {$$ = mkTypeNode(@$, TT_Bool, (char*)"");}
         | Unit                {$$ = mkTypeNode(@$, TT_Unit, (char*)"");}
-        | VarArgs             {$$ = mkTypeNode(@$, TT_TypeVar, (char*)"'...");}
+        | VarArgs             {$$ = mkTypeNode(@$, TT_TypeVar, nextVarArgsTVName());}
         | usertype  %prec LOW {$$ = mkTypeNode(@$, TT_Data, (char*)$1);}
         | typevar             {$$ = mkTypeNode(@$, TT_TypeVar, (char*)$1);}
         ;
@@ -346,15 +346,9 @@ data_decl: Type usertype generic_params '=' type_decl_block                 {$$ 
          | Type usertype Is type_decl_block                                 {$$ = mkDataDeclNode(@$, (char*)$2,  0, $4, true);}
          ;
 
-typedef_oneline: typedef_oneline var ':' small_type     {$$ = setNext($1, mkNamedValNode(@$, $2, $4));}
-               | typedef_oneline '(' var ':' type ')'   {$$ = setNext($1, mkNamedValNode(@$, $3, $5));}
-               | var ':' small_type                     {$$ = setRoot(mkNamedValNode(@$, $1, $3));}
-               | '(' var ':' type ')'                   {$$ = setRoot(mkNamedValNode(@$, $2, $4));}
-               ;
-
 type_decl_list: type_decl_list Newline params                       {$$ = setNext($1, getRoot());}
               | type_decl_list Newline explicit_tagged_union_list   {$$ = setNext($1, getRoot());}
-              | typedef_oneline                                     {$$ = $1;}
+              | params                                              {$$ = $1;} /* leave root set */
               | explicit_tagged_union_list                          {$$ = $1;} /* leave root set */
               ;
 
@@ -365,7 +359,7 @@ explicit_tagged_union_list: explicit_tagged_union_list '|' usertype type        
                           | '|' usertype                                                %prec STMT  {$$ = setRoot(mkNamedValNode(@$, mkVarNode(@2, (char*)$2), mkTypeNode(@2, TT_TaggedUnion, (char*)"",  0)));}
 
 type_decl_block: Indent type_decl_list Unindent   {$$ = getRoot();}
-               | typedef_oneline     %prec LOW    {$$ = getRoot();}
+               | params              %prec LOW    {$$ = getRoot();}
                | explicit_tagged_union_list    %prec STMT  {$$ = getRoot();}
                ;
 
@@ -385,7 +379,6 @@ explicit_block: Block block  {$$ = $2;}
 function: fn_def
         | fn_decl
         | fn_inferredRet
-        | fn_lambda
         ;
 
 op: '+'    {$$ = (Node*)"+";}
@@ -427,6 +420,16 @@ tc_constraints: type  %prec LOW
 function_call: function_call val_no_decl    %prec LOW   {$$ = setNext($1, $2);}
              | val_no_decl val_no_decl      %prec LOW   {setRoot($1); $$ = setNext($1, $2);}
              ;
+             
+lambda_params: lambda_params var ':' small_type     {$$ = setNext($1, mkNamedValNode(@2, $2, $4));}
+             | lambda_params '(' var ':' type ')'   {$$ = setNext($1, mkNamedValNode(@3, $3, $5));}
+             | lambda_params small_type             {$$ = setNext($1, mkNamedValNode(@2, mkVarNode(@2, (char*)""), $2));}
+             | lambda_params var                    {$$ = setNext($1, mkNamedValNode(@2, $2, mkTypeNode(@2, TT_TypeVar, (char*)"'_")));}
+             | var ':' small_type                   {$$ = setRoot(mkNamedValNode(@$, $1, $3));}
+             | '(' var ':' type ')'                 {$$ = setRoot(mkNamedValNode(@$, $2, $4));}
+             | small_type                           {$$ = setRoot(mkNamedValNode(@$, mkVarNode(@1, (char*)""), $1));}
+             | var                                  {$$ = setRoot(mkNamedValNode(@$, $1, mkTypeNode(@1, TT_TypeVar, (char*)"'_")));}
+             ;
 
 /* NOTE: lextxt contents from fn_name and the mangleFn result are freed in the call to mkFuncDeclNode */
 fn_def: function_call RArrow type Given tc_constraints '=' expr  {$$ = mkFuncDeclNode(@1, /*name and params*/getRoot(), /*ret_ty*/$3, /*constraints*/$5, /*body*/$7);}
@@ -441,8 +444,8 @@ fn_decl: function_call RArrow type Given tc_constraints  %prec Fun  {$$ = mkFunc
        | function_call RArrow type                       %prec Fun  {$$ = mkFuncDeclNode(@1, /*name and params*/getRoot(), /*ret_ty*/$3, /*constraints*/0,  /*body*/0);}
        ;
 
-fn_lambda: '\\' params '=' expr  %prec Fun  {auto name = new VarNode(@1, ""); setNext(name, getRoot()); $$ = mkFuncDeclNode(@$, /*name and params*/name, /*ret_ty*/0,  /*constraints*/0, /*body*/$4);}
-         | '\\' '=' expr         %prec Fun  {auto name = new VarNode(@1, "");                           $$ = mkFuncDeclNode(@$, /*name and params*/name, /*ret_ty*/0,  /*constraints*/0, /*body*/$3);}
+fn_lambda: '\\' lambda_params '=' expr  %prec Fun  {auto name = new VarNode(@1, ""); setNext(name, getRoot()); $$ = mkFuncDeclNode(@$, /*name and params*/name, /*ret_ty*/0,  /*constraints*/0, /*body*/$4);}
+         | '\\' '=' expr                %prec Fun  {auto name = new VarNode(@1, "");                           $$ = mkFuncDeclNode(@$, /*name and params*/name, /*ret_ty*/0,  /*constraints*/0, /*body*/$3);}
          ;
 
 ret_expr: Return expr {$$ = mkRetNode(@$, $2);}
@@ -524,9 +527,10 @@ val_no_decl: '(' expr ')'            {$$ = $2;}
            | explicit_block          {$$ = $1;}
            | small_type   %prec LOW
            | block
+           | fn_lambda
            | val_no_decl '.' maybe_newline var          {$$ = mkBinOpNode(@$, '.', $1, $4);}
            | val_no_decl '.' maybe_newline small_type   {$$ = mkBinOpNode(@$, '.', $1, $4);}
-           | val_no_decl ':' maybe_newline small_type   {$$ = mkBinOpNode(@$, ':', $1, $4);}
+           | val_no_decl ':' maybe_newline type         {$$ = mkBinOpNode(@$, ':', $1, $4);}
            ;
 
 val: val_no_decl   %prec LOW

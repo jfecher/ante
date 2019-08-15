@@ -24,10 +24,10 @@ void showParseTree(RootNode *root, string const& fileName){
         v.visit(root);
         if(errorCount()) return;
         TypeInferenceVisitor::infer(root, v.compUnit);
-        parser::printBlock(root, 0);
     }catch(...){
         /* User should already be notified if an error occurred */
     }
+    parser::printBlock(root, 0);
 }
 
 /**

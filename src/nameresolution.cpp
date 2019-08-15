@@ -1025,7 +1025,7 @@ namespace ante {
         for(Node& child : *decl->child){
             auto nvn = static_cast<NamedValNode*>(&child);
             TypeNode *tyn = (TypeNode*)nvn->typeExpr.get();
-            AnType *tagTy = tyn->extTy ? toAnType(tyn->extTy.get(), compUnit) : AnType::getVoid();
+            AnType *tagTy = tyn->extTy ? toAnType(tyn->extTy.get(), compUnit) : AnType::getUnit();
 
             // fake var to make sure the field decl is not null
             auto var = new Variable(nvn->name, decl);

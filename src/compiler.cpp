@@ -298,7 +298,7 @@ void CompilingVisitor::visit(ArrayNode *n){
  * @return A void literal
  */
 TypedValue Compiler::getVoidLiteral(){
-    return TypedValue(UndefValue::get(Type::getInt8Ty(*ctxt)), AnType::getVoid());
+    return TypedValue(UndefValue::get(Type::getInt8Ty(*ctxt)), AnType::getUnit());
 }
 
 void CompilingVisitor::visit(TupleNode *n){
@@ -533,7 +533,7 @@ void CompilingVisitor::visit(JumpNode *n){
         c->builder.CreateBr( c->compCtxt->breakLabels->at(loopCount - jumpCount) );
 
     //Although returning a void, use the br as the value so loops know the last instruction was a br and not to insert another
-    this->val = TypedValue(br, AnType::getVoid());
+    this->val = TypedValue(br, AnType::getUnit());
 }
 
 

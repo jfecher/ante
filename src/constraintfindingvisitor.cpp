@@ -61,7 +61,7 @@ namespace ante {
             }
             addConstraint(arrty->extTy, t1, n->loc);
         }else{
-            addConstraint(arrty->extTy, AnType::getVoid(), n->loc);
+            addConstraint(arrty->extTy, AnType::getUnit(), n->loc);
         }
     }
 
@@ -172,7 +172,7 @@ namespace ante {
             case '>': parent = module->freshTraitImpl("Cmp"); break;
             case Tok_GrtrEq: parent = module->freshTraitImpl("Cmp"); break;
             case Tok_LesrEq: parent = module->freshTraitImpl("Cmp"); break;
-            case '=': parent = module->freshTraitImpl("Eq"); break;
+            case Tok_EqEq: parent = module->freshTraitImpl("Eq"); break;
             case Tok_NotEq: parent = module->freshTraitImpl("Eq"); break;
             default:
                 cerr << "getOpTraitType: unknown op '" << (char)op << "' (" << (int)op << ") given.  ";
@@ -371,7 +371,7 @@ namespace ante {
             addConstraint(n->lval->getType(), AnType::getBool(), n->loc);
             addConstraint(n->rval->getType(), AnType::getBool(), n->loc);
             addConstraint(n->getType(), AnType::getBool(), n->loc);
-        }else if(n->op == Tok_Is || n->op == Tok_Isnt || n->op == '=' || n->op == Tok_NotEq){
+        }else if(n->op == Tok_Is || n->op == Tok_Isnt || n->op == Tok_EqEq || n->op == Tok_NotEq){
             addConstraint(n->lval->getType(), n->rval->getType(), n->loc);
             addConstraint(n->getType(), AnType::getBool(), n->loc);
         }else if(n->op == Tok_Range){
@@ -387,6 +387,10 @@ namespace ante {
             addConstraint(n->lval->getType(), collection_elemTy.second, n->loc);
             addConstraint(n->rval->getType(), collection->typeArgs[0], n->loc);
             addConstraint(n->getType(), AnType::getBool(), n->loc);
+        }else if(n->op == '.' || n->op == Tok_As){
+            // intentionally empty
+        }else{
+            ante::error("Internal compiler error, unrecognized op " + string(1, n->op) + " (" + to_string(n->op) + ")", n->loc);
         }
     }
 

@@ -103,7 +103,7 @@ namespace ante {
         static AnType* getF32();
         static AnType* getF64();
         static AnType* getBool();
-        static AnType* getVoid();
+        static AnType* getUnit();
         static AnPtrType* getPtr(AnType*);
         static AnArrayType* getArray(AnType*, size_t len = 0);
         static AnTypeVarType* getTypeVar(std::string const& name);

@@ -193,7 +193,7 @@ namespace ante {
         return typeArena.primitiveTypes[TT_Bool].get();
     }
 
-    AnType* AnType::getVoid(){
+    AnType* AnType::getUnit(){
         return typeArena.primitiveTypes[TT_Unit].get();
     }
 
@@ -343,7 +343,7 @@ namespace ante {
     }
 
     AnType* AnProductType::getAliasedType() const {
-        if(fields.empty()) return AnType::getVoid();
+        if(fields.empty()) return AnType::getUnit();
         return fields.size() == 1 ? fields[0] : AnType::getTupleOf(fields);
     }
 
@@ -453,7 +453,7 @@ namespace ante {
 
 
     AnType* toAnType(const TypeNode *tn, Module *module){
-        if(!tn) return AnType::getVoid();
+        if(!tn) return AnType::getUnit();
         AnType *ret;
 
         switch(tn->typeTag){

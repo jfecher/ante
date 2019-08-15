@@ -26,7 +26,7 @@ namespace ante {
         for(auto &m : n->funcs)
             m->accept(*this);
 
-        auto lastType = AnType::getVoid();
+        auto lastType = AnType::getUnit();
         for(auto &m : n->main){
             m->accept(*this);
             lastType = m->getType();
@@ -74,7 +74,7 @@ namespace ante {
         }
 
         if(n->exprs.empty())
-            n->setType(AnType::getVoid());
+            n->setType(AnType::getUnit());
         else
             n->setType(AnType::getAggregate(TT_Tuple, types));
     }
@@ -128,7 +128,7 @@ namespace ante {
     }
 
     void TypeInferenceVisitor::visit(SeqNode *n){
-        auto lastType = AnType::getVoid();
+        auto lastType = AnType::getUnit();
         for(auto &stmt : n->sequence){
             stmt->accept(*this);
             lastType = stmt->getType();
@@ -188,7 +188,7 @@ namespace ante {
     }
 
     void TypeInferenceVisitor::visit(ImportNode *n){
-        n->setType(AnType::getVoid());
+        n->setType(AnType::getUnit());
     }
 
     void TypeInferenceVisitor::visit(IfNode *n){
@@ -198,20 +198,14 @@ namespace ante {
             n->elseN->accept(*this);
             n->setType(nextTypeVar());
         }else{
-            n->setType(AnType::getVoid());
+            n->setType(AnType::getUnit());
         }
     }
 
     void TypeInferenceVisitor::visit(NamedValNode *n){
-        if(n->typeExpr){
-            auto ty = toAnType((TypeNode*)n->typeExpr.get(), module);
-            n->typeExpr->setType(ty);
-            n->setType(ty);
-        }else{ // type field is null if this is a variadic parameter ie the '...' in printf: Str a, ... -> i32
-            auto tv = nextTypeVar();
-            auto va = AnTypeVarType::get(tv->name + "...");
-            n->setType(va);
-        }
+        auto ty = toAnType((TypeNode*)n->typeExpr.get(), module);
+        n->typeExpr->setType(ty);
+        n->setType(ty);
     }
 
     void TypeInferenceVisitor::visit(VarNode *n){
@@ -238,7 +232,7 @@ namespace ante {
 
         n->ref_expr->setType(n->expr->getType());
         if(n->modifiers.empty()){
-            n->setType(AnType::getVoid());
+            n->setType(AnType::getUnit());
         }else{
             n->setType(n->expr->getType());
         }
@@ -293,7 +287,7 @@ namespace ante {
                 FuncDeclNode *fdn = dynamic_cast<FuncDeclNode*>(&m);
                 if(fdn) fillInFunctionParamsAndBodyTypes(*this, fdn);
             }
-            n->setType(AnType::getVoid());
+            n->setType(AnType::getUnit());
             ConstraintFindingVisitor step2{module};
             step2.visit(n);
             auto constraints = step2.getConstraints();
@@ -310,20 +304,20 @@ namespace ante {
 
     void TypeInferenceVisitor::visit(JumpNode *n){
         n->expr->accept(*this);
-        n->setType(AnType::getVoid());
+        n->setType(AnType::getUnit());
     }
 
     void TypeInferenceVisitor::visit(WhileNode *n){
         n->condition->accept(*this);
         n->child->accept(*this);
-        n->setType(AnType::getVoid());
+        n->setType(AnType::getUnit());
     }
 
     void TypeInferenceVisitor::visit(ForNode *n){
         n->range->accept(*this);
         n->pattern->accept(*this);
         n->child->accept(*this);
-        n->setType(AnType::getVoid());
+        n->setType(AnType::getUnit());
     }
 
     void TypeInferenceVisitor::visit(MatchNode *n){
@@ -347,13 +341,13 @@ namespace ante {
             getAllContainedTypeVarsHelper(paramTy, map);
         }
 
-        for(TraitImpl *trait : f->typeClassConstraints){
-            for(auto *ty : trait->typeArgs){
-                if(hasTypeVarNotInMap(ty, map)){
-                    std::cout << "trait " << traitToColoredStr(trait) << " has tv not in map\n";
-                }
-            }
-        }
+        //for(TraitImpl *trait : f->typeClassConstraints){
+        //    for(auto *ty : trait->typeArgs){
+        //        if(hasTypeVarNotInMap(ty, map)){
+        //            std::cerr << "in fntype " << anTypeToColoredStr(f) << " trait " << traitToColoredStr(trait) << " has tv not in map\n";
+        //        }
+        //    }
+        //}
     }
 
 
@@ -377,7 +371,6 @@ namespace ante {
                 auto newFnTy = AnFunctionType::get(fnTy->retTy, fnTy->extTys, tcConstraints,
                         fnTy->typeTag == TT_MetaFunction);
 
-                std::cout << n->name << '\n';
                 newFnTy = cleanTypeClassConstraints(newFnTy);
                 n->setType(newFnTy);
 
@@ -388,12 +381,12 @@ namespace ante {
     }
 
     void TypeInferenceVisitor::visit(DataDeclNode *n){
-        n->setType(AnType::getVoid());
+        n->setType(AnType::getUnit());
     }
 
 
     void TypeInferenceVisitor::visit(TraitNode *n){
-        n->setType(AnType::getVoid());
+        n->setType(AnType::getUnit());
         for(Node &node : *n->child){
             node.accept(*this);
 

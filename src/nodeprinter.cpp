@@ -215,19 +215,22 @@ void PrintingVisitor::visit(IfNode *n){
 }
 
 void PrintingVisitor::visit(NamedValNode *n){
-    if(n->typeExpr.get() == (void*)1)
-        cout << "self";
-    else if(n->typeExpr.get())
-        n->typeExpr->accept(*this);
-    else
-        cout << "..."; //varargs
+    cout << '(' << n->name;
 
-    putchar(' ');
+    if(!n->name.empty() && n->typeExpr)
+        cout << ": ";
+
+    if(n->typeExpr)
+        n->typeExpr->accept(*this);
 
     if(n->decl && n->getType())
-        cout << n->name << ": " << anTypeToColoredStr(n->getType()) << flush;
+        cout << ": " << anTypeToColoredStr(n->getType());
 
-    maybePrintArr(n->next.get());
+    cout << ')';
+    if(n->next){
+        cout << ' ';
+        n->next->accept(*this);
+    }
 }
 
 void PrintingVisitor::visit(VarNode *n){
@@ -312,19 +315,17 @@ void PrintingVisitor::visit(FuncDeclNode *n){
 
     if(n->getType()){
         cout << "![type = " << anTypeToColoredStr(n->getType()) << "]\n";
-
     }
-    cout << "fun ";
 
     if(!n->name.empty() && n->name[n->name.size()-1] == ';'){
         isExtern = true;
         cout << n->name.substr(0, n->name.size()-1);
     }else{
-        cout << n->name;
+        cout << (n->name.empty() ? "\\" : n->name.c_str());
     }
 
     if(n->params){
-        cout << ": ";
+        cout << " ";
         n->params->accept(*this);
     }
     if(n->returnType){
@@ -332,7 +333,7 @@ void PrintingVisitor::visit(FuncDeclNode *n){
         n->returnType->accept(*this);
     }
     if(n->typeClassConstraints){
-        cout << " : ";
+        cout << " given ";
         n->typeClassConstraints->accept(*this);
     }
 

@@ -370,7 +370,7 @@ module i64
         i mut = 0usz
         sum mut = 0i64
         isNeg =
-            if s.len == 0usz or s#0usz == '-' then false
+            if (s.len == 0usz) or (s#0usz == '-') then false
             else ((i += 1usz); true)
 
         while s#i != '\0' do

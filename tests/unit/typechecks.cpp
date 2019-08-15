@@ -7,7 +7,7 @@ using namespace std;
 TEST_CASE("Type Checks", "[typeEq]"){
     auto&& c = Compiler(nullptr);
 
-    auto voidTy = AnType::getVoid();
+    auto voidTy = AnType::getUnit();
     auto intTy = AnType::getIsz();
     auto boolTy = AnType::getBool();
 
@@ -21,10 +21,10 @@ TEST_CASE("Type Checks", "[typeEq]"){
     //pointer equality of exactly equal types
     REQUIRE(AnType::getI32() == AnType::getI32());
     
-    REQUIRE(voidPtr == AnPtrType::get(AnType::getVoid()));
+    REQUIRE(voidPtr == AnPtrType::get(AnType::getUnit()));
 
     //basic equality
-    REQUIRE(voidTy == AnType::getVoid());
+    REQUIRE(voidTy == AnType::getUnit());
 
     REQUIRE(voidTy == voidPtr->extTy);
 

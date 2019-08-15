@@ -415,6 +415,10 @@ namespace ante {
             return new ForNode(loc, new VarNode(loc, (char*)var), range, body);
         }
 
+        char* nextVarArgsTVName(){
+            return strdup((ante::nextTypeVar()->name + "...").c_str());
+        }
+
         NamedValNode* convertParam(Node *param){
             TypeNode *tn = dynamic_cast<TypeNode*>(param);
             if(tn){
@@ -422,7 +426,10 @@ namespace ante {
             }
             VarNode *vn = dynamic_cast<VarNode*>(param);
             if(vn){
-                return new NamedValNode(vn->loc, vn->name, 0);
+                auto tv = nextTypeVar();
+                string name = tv->name;
+                delete tv;
+                return new NamedValNode(vn->loc, vn->name, new TypeNode(vn->loc, TT_TypeVar, name, nullptr));
             }
             BinOpNode *bop = dynamic_cast<BinOpNode*>(param);
             if(bop){
@@ -473,7 +480,7 @@ namespace ante {
                     cur->next.reset(tmp);
                     cur = tmp;
                 }
-                params = params->next.get();
+                params = params->next.release();
             }
             return first;
         }

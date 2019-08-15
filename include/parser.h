@@ -269,7 +269,7 @@ namespace ante {
             Declaration* decl = 0;
             void accept(NodeVisitor& v){ v.visit(this); }
             NamedValNode(LOC_TY& loc, std::string s, Node* t) : Node(loc), name(s), typeExpr(t), decl(0){}
-            ~NamedValNode(){ if(typeExpr.get() == (void*)1) typeExpr.release(); }
+            ~NamedValNode(){}
 
             virtual AnType* getType() const {
                 assert(decl);

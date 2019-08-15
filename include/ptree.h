@@ -31,6 +31,8 @@ namespace ante {
         Node* append_import(Node *n);
         Node* append_modifiers(Node *modifiers, Node *modifiableNode);
 
+        char* nextVarArgsTVName();
+
         Node* mkIntLitNode(LOC_TY loc, char* s);
         Node* mkFltLitNode(LOC_TY loc, char* s);
         Node* mkStrLitNode(LOC_TY loc, char* s);
