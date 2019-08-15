@@ -368,7 +368,7 @@ int Lexer::handleComment(yy::parser::location_type* loc){
             if(!cur){
                 if(printInput)
                     setTermFGColor(AN_CONSOLE_RESET);
-                return 0;
+                return genEndOfInputTok();
             }
 
             if(printInput)
@@ -407,7 +407,7 @@ int Lexer::handleComment(yy::parser::location_type* loc){
     if(printInput)
         setTermFGColor(AN_CONSOLE_RESET);
 
-    if(!cur) return 0;
+    if(!cur) return genEndOfInputTok();
     return next(loc);
 }
 
@@ -606,7 +606,7 @@ int Lexer::genWsTok(yy::parser::location_type* loc){
 
         if(!scopes->empty() && newScope == scopes->top()){
             //do not return an end-of-file Newline
-            if(!nxt) return 0;
+            if(!nxt) return genEndOfInputTok();
 
             //the row is not set to row for newline tokens in case there are several newlines.
             //In this case, if set to row, it would become the row of the last newline.
@@ -900,7 +900,7 @@ int Lexer::genOpTok(yy::parser::location_type* loc){
 
     loc->end = getPos();
 
-    if(cur == 0) return 0; //End of input
+    if(cur == 0) return genEndOfInputTok();
 
     //If the character is nota, assume it is an operator and return it by value.
     char ret = cur;
@@ -950,13 +950,7 @@ int Lexer::genOpTok(yy::parser::location_type* loc){
     }                                                           \
 }
 
-
-int Lexer::next(yy::parser::location_type* loc){
-    if(shouldReturnNewline){
-        shouldReturnNewline = false;
-        return Tok_Newline;
-    }
-
+int Lexer::handlePossibleScopeChange(){
     if(scopes->top() != cscope){
         if(cscope > scopes->top()){
             scopes->push(cscope);
@@ -969,6 +963,22 @@ int Lexer::next(yy::parser::location_type* loc){
             return Tok_Unindent;
         }
     }
+    return 0;
+}
+
+int Lexer::genEndOfInputTok(){
+    this->cscope = 0;
+    return handlePossibleScopeChange();
+}
+
+int Lexer::next(yy::parser::location_type* loc){
+    if(shouldReturnNewline){
+        shouldReturnNewline = false;
+        return Tok_Newline;
+    }
+
+    int change = handlePossibleScopeChange();
+    if(change) return change;
 
     if(IS_COMMENT(cur, nxt)) return handleComment(loc);
     if(IS_NUMERICAL(cur))    return genNumLitTok(loc);

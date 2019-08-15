@@ -98,6 +98,8 @@ namespace ante{
 
         void setlextxt(std::string &str);
         int handleComment(yy::parser::location_type* loc);
+        int handlePossibleScopeChange();
+        int genEndOfInputTok();
         int genWsTok(yy::parser::location_type* loc);
         int genNumLitTok(yy::parser::location_type* loc);
         int genAlphaNumTok(yy::parser::location_type* loc);
