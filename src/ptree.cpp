@@ -426,10 +426,7 @@ namespace ante {
             }
             VarNode *vn = dynamic_cast<VarNode*>(param);
             if(vn){
-                auto tv = nextTypeVar();
-                string name = tv->name;
-                delete tv;
-                return new NamedValNode(vn->loc, vn->name, new TypeNode(vn->loc, TT_TypeVar, name, nullptr));
+                return new NamedValNode(vn->loc, vn->name, mkInferredTypeNode(vn->loc));
             }
             BinOpNode *bop = dynamic_cast<BinOpNode*>(param);
             if(bop){

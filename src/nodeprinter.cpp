@@ -160,9 +160,10 @@ void PrintingVisitor::visit(SeqNode *n){
 }
 
 void PrintingVisitor::visit(BinOpNode *n){
+    putchar('(');
     if(n->op == '('){
         n->lval->accept(*this);
-
+        cout << " with args ";
         n->rval->accept(*this);
     }else{
         n->lval->accept(*this);
@@ -171,6 +172,7 @@ void PrintingVisitor::visit(BinOpNode *n){
         putchar(' ');
         n->rval->accept(*this);
     }
+    putchar(')');
 }
 
 void PrintingVisitor::visit(BlockNode *n){

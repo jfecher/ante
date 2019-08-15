@@ -330,14 +330,10 @@ inline void Lexer::incPos(){
     if(isPseudoFile){
         nxt = !nxt ? 0 : *(pseudoFile++);
     }else{
-        if(in->good())
+        if(in->good()){
             in->get(nxt);
-        else {
-//fix a windows lexing bug where the last character is duplicated before an eof
-#ifdef _WIN32
-            cur = 0;
-#endif
-            nxt = 0;
+        }else {
+            cur = nxt = 0;
         }
     }
 }
