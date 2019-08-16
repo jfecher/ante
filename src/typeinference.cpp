@@ -161,14 +161,8 @@ namespace ante {
         if(n->op == '.'){
             if(dynamic_cast<TypeNode*>(n->lval.get())){
                 n->rval->accept(*this);
-                n->setType(nextTypeVar());
+                n->setType(n->rval->getType());
                 return;
-            }else{
-                // type of field found during name resolution
-                if(n->rval->getType()){
-                    n->setType(n->rval->getType());
-                    return;
-                }
             }
         }
 
