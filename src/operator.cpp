@@ -186,7 +186,7 @@ TypedValue Compiler::compInsert(BinOpNode *op, Node *assignExpr){
     CompilingVisitor cv{this};
     auto tmp = compileRefExpr(cv, op->lval.get(), assignExpr);
 
-    Value *var = static_cast<LoadInst*>(tmp.val)->getPointerOperand();
+    Value *var = static_cast<LoadInst*>(tmp.val);
 
     auto index =  CompilingVisitor::compile(this, op->rval);
     auto newVal = CompilingVisitor::compile(this, assignExpr);
@@ -210,7 +210,7 @@ TypedValue Compiler::compInsert(BinOpNode *op, Node *assignExpr){
             return getVoidLiteral();
         }
         case TT_Ptr: {
-            Value *dest = builder.CreateInBoundsGEP(/*tmp->getType()->getPointerElementType(),*/ tmp.val, index.val);
+            Value *dest = builder.CreateInBoundsGEP(builder.CreateLoad(var), index.val);
             builder.CreateStore(newVal.val, dest);
             return getVoidLiteral();
         }
@@ -226,7 +226,7 @@ TypedValue Compiler::compInsert(BinOpNode *op, Node *assignExpr){
                     error("Index of " + to_string(tupIndex) + " exceeds the maximum index of the tuple, "
                             + to_string(aggty->extTys.size()-1), op->loc);
 
-                auto *ins = builder.CreateInsertValue(tmp.val, newVal.val, tupIndex);
+                auto *ins = builder.CreateInsertValue(builder.CreateLoad(var), newVal.val, tupIndex);
                 builder.CreateStore(ins, var);
                 return getVoidLiteral();
             }
@@ -323,15 +323,9 @@ bool shouldCastToWrapperType(AnType *from, AnProductType *wrapper){
         if(!tup || tup->extTys.size() != wrapper->fields.size())
             return false;
 
-        for(size_t i = 0; i < tup->extTys.size(); i++){
-            if(tup->extTys[i] != wrapper->fields[i])
-                return false;
-        }
         return true;
-    }else if(wrapper->fields.size() == 1){
-        return from == wrapper->fields[0];
     }else{
-        return from->typeTag == TT_Unit;
+        return wrapper->fields.size() == 1 || from->typeTag == TT_Unit;
     }
 }
 
@@ -532,79 +526,54 @@ string toModuleName(const AnType *t){
 TypedValue Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *binop){
     if(!ln) throw CtError();
 
-    if(auto *tn = dynamic_cast<TypeNode*>(ln)){
-        //since ln is a typenode, this is a static field/method access, eg Math.rand
-        string valName = typeNodeToStr(tn) + "_" + field->name;
+    if(binop->decl){
+        return binop->decl->tval;
+    }
 
-        auto l = getFunctionList(valName);
+    Value *val;
+    AnType *ltyn;
+    AnType *tyn;
 
-        //if(!l.empty())
-        //    return FunctionCandidates::getAsTypedValue(ctxt.get(), l, {});
+    //prevent l from being used after this scope; only val and tyn should be used as only they
+    //are updated with the automatic pointer dereferences.
+    {
+        auto l = CompilingVisitor::compile(this, ln);
+        if(!l) return {};
 
-        error("No static method called '" + field->name + "' was found in type " +
-                anTypeToColoredStr(toAnType(tn, compUnit)), binop->loc);
-        return {};
-    }else{
-        //ln is not a typenode, so this is not a static method call
-        Value *val;
-        AnType *ltyn;
-        AnType *tyn;
+        val = l.val;
+        tyn = ltyn = l.type;
+    }
 
-        //prevent l from being used after this scope; only val and tyn should be used as only they
-        //are updated with the automatic pointer dereferences.
-        {
-            auto l = CompilingVisitor::compile(this, ln);
-            if(!l) return {};
+    //the . operator automatically dereferences pointers, so update val and tyn accordingly.
+    while(tyn->typeTag == TT_Ptr){
+        val = builder.CreateLoad(val);
+        tyn = try_cast<AnPtrType>(tyn)->extTy;
+    }
 
-            val = l.val;
-            tyn = ltyn = l.type;
-        }
+    //check to see if this is a field index
+    if(auto *dataTy = try_cast<AnProductType>(tyn)){
+        auto index = dataTy->getFieldIndex(field->name);
 
-        //the . operator automatically dereferences pointers, so update val and tyn accordingly.
-        while(tyn->typeTag == TT_Ptr){
-            val = builder.CreateLoad(val);
-            tyn = try_cast<AnPtrType>(tyn)->extTy;
-        }
+        if(index != -1){
+            AnType *retTy = dataTy->fields[index];
 
-        //check to see if this is a field index
-        if(auto *dataTy = try_cast<AnProductType>(tyn)){
-            auto index = dataTy->getFieldIndex(field->name);
-
-            if(index != -1){
-                AnType *retTy = dataTy->fields[index];
-
-                if(!dataTy->llvmType){
-                    updateLlvmTypeBinding(this, dataTy, false);
-                }
-
-                retTy = (AnType*)tyn->addModifiersTo(retTy);
-
-                //If dataTy is a single value tuple then val may not be a tuple at all. In this
-                //case, val should be returned without being extracted from a nonexistant tuple
-                if(index == 0 && !val->getType()->isStructTy())
-                    return TypedValue(val, retTy);
-
-                auto ev = builder.CreateExtractValue(val, index);
-                auto ret = TypedValue(ev, retTy);
-                return ret;
+            if(!dataTy->llvmType){
+                updateLlvmTypeBinding(this, dataTy, false);
             }
-        }
 
-        //not a field, so look for a method.
-        //TODO: perhaps create a calling convention function
-        string funcName = toModuleName(tyn) + "_" + field->name;
-        auto l = getFunctionList(funcName);
+            retTy = (AnType*)tyn->addModifiersTo(retTy);
 
-        //TODO: return compile(op->decl)
-        if(!l.empty()){
-            TypedValue obj = {val, tyn};
-            return obj;
-            //return FunctionCandidates::getAsTypedValue(ctxt.get(), l, obj);
-        }else{
-            error("Method/Field " + field->name + " not found in type " + anTypeToColoredStr(tyn), binop->loc);
-            return {};
+            //If dataTy is a single value tuple then val may not be a tuple at all. In this
+            //case, val should be returned without being extracted from a nonexistant tuple
+            if(index == 0 && !val->getType()->isStructTy())
+                return TypedValue(val, retTy);
+
+            auto ev = builder.CreateExtractValue(val, index);
+            auto ret = TypedValue(ev, retTy);
+            return ret;
         }
     }
+    ASSERT_UNREACHABLE();
 }
 
 
@@ -1474,38 +1443,6 @@ void CompilingVisitor::visit(BinOpNode *n){
     TypedValue lhs = CompilingVisitor::compile(c, n->lval);
     TypedValue rhs = CompilingVisitor::compile(c, n->rval);
 
-    if(n->decl->isFuncDecl()){
-        //call function
-        Value *call = c->builder.CreateCall(n->decl->tval.val, {lhs.val, rhs.val});
-        this->val = {call, n->getType()};
-        return;
-    }
-
-    if(n->op == Tok_As){
-        n->lval->accept(*this);
-        auto ltval = this->val;
-        auto *ty = toAnType((TypeNode*)n->rval.get(), c->compUnit);
-
-        this->val = createCast(c, ty, ltval, n);
-
-        if(!val){
-            error("Invalid type cast " + anTypeToColoredStr(ltval.type) +
-                    " -> " + anTypeToColoredStr(ty), n->loc);
-        }
-        return;
-    }
-
-    if(n->op == '#'){
-        this->val = c->compExtract(lhs, rhs, n);
-        return;
-    }
-
-
-    //Check if both Values are numeric, and if so, check if their types match.
-    //If not, do an implicit conversion (usually a widening) to match them.
-    c->handleImplicitConversion(&lhs, &rhs);
-
-
     //first, if both operands are primitive numeric types, use the default ops
     if(isNumericTypeTag(lhs.type->typeTag) && isNumericTypeTag(rhs.type->typeTag)){
         this->val = handlePrimitiveNumericOp(n, c, lhs, rhs);
@@ -1537,6 +1474,36 @@ void CompilingVisitor::visit(BinOpNode *n){
             return;
         }
     }
+
+    if(n->op == Tok_As){
+        n->lval->accept(*this);
+        auto ltval = this->val;
+        auto *ty = toAnType((TypeNode*)n->rval.get(), c->compUnit);
+
+        this->val = createCast(c, ty, ltval, n);
+
+        if(!val){
+            error("Invalid type cast " + anTypeToColoredStr(ltval.type) +
+                    " -> " + anTypeToColoredStr(ty), n->loc);
+        }
+        return;
+    }
+
+    if(n->op == '#'){
+        this->val = c->compExtract(lhs, rhs, n);
+        return;
+    }
+
+    if(n->decl->isFuncDecl()){
+        //call function
+        Value *call = c->builder.CreateCall(n->decl->tval.val, {lhs.val, rhs.val});
+        this->val = {call, n->getType()};
+        return;
+    }
+
+    //Check if both Values are numeric, and if so, check if their types match.
+    //If not, do an implicit conversion (usually a widening) to match them.
+    // c->handleImplicitConversion(&lhs, &rhs);
 
     error("Operator " + Lexer::getTokStr(n->op) + " is not overloaded for types "
             + anTypeToColoredStr(lhs.type) + " and " + anTypeToColoredStr(rhs.type), n->loc);

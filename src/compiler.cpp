@@ -559,7 +559,12 @@ void CompilingVisitor::visit(NamedValNode *n)
  */
 void CompilingVisitor::visit(VarNode *n){
     if(n->decl->tval){
-        val = n->decl->tval;
+        if(n->decl->tval.type->hasModifier(Tok_Mut)){
+            val = n->decl->tval;
+            val.val = c->builder.CreateLoad(val.val, n->name);
+        }else{
+            val = n->decl->tval;
+        }
     }else{
         n->decl->definition->accept(*this);
     }
@@ -734,27 +739,12 @@ TypedValue compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
  * This will fail if the assignment is not in the form: ident := expr
  */
 TypedValue compileRefExpr(CompilingVisitor &cv, Node *refExpr, Node *assignExpr){
-    if(VarNode *vn = dynamic_cast<VarNode*>(refExpr)){
-        auto *decl = vn->decl;
-
-        if(!decl->tval.type->hasModifier(Tok_Mut))
-            error("Variable must be mutable to be assigned to, but instead is an immutable " +
-                    anTypeToColoredStr(decl->tval.type), refExpr->loc);
-
-
-        TypedValue ret;
-        if(decl->shouldAutoDeref()){
-            auto *load = cv.c->builder.CreateLoad(decl->tval.val, vn->name);
-            ret = TypedValue(load, decl->tval.type);
-        }else{
-            ret = decl->tval;
-        }
-
-        return ret;
-    }else{
-        refExpr->accept(cv);
-        return cv.val;
+    refExpr->accept(cv);
+    auto li = dyn_cast<LoadInst>(cv.val.val);
+    if(!li){
+        ASSERT_UNREACHABLE();
     }
+    return {li->getPointerOperand(), cv.val.type};
 }
 
 /**

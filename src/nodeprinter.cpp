@@ -316,7 +316,7 @@ void PrintingVisitor::visit(FuncDeclNode *n){
     bool isExtern = false;
 
     if(n->getType()){
-        cout << "![type = " << anTypeToColoredStr(n->getType()) << "]\n";
+        cout << n->name << ": " << anTypeToColoredStr(n->getType()) << '\n';
     }
 
     if(!n->name.empty() && n->name[n->name.size()-1] == ';'){

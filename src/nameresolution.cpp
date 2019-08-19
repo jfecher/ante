@@ -541,6 +541,11 @@ namespace ante {
             return new NoDecl(n);
         }else if(vn && !vn->decl->isFuncDecl()){
             return vn->decl;
+        }
+        
+        auto bop = dynamic_cast<BinOpNode*>(n);
+        if(bop && bop->decl){
+            return bop->decl;
         }else{
             return getFunction(*name);
         }
@@ -645,8 +650,8 @@ namespace ante {
                 }
                 vn->decl = fn->second;
                 n->decl = fn->second;
+                return;
             }
-            return;
         }
 
         n->lval->accept(*this);
