@@ -883,6 +883,7 @@ namespace ante {
 
             TMP_SET(autoDeclare, true);
             n->ref_expr->accept(*this);
+            static_cast<VarNode*>(n->ref_expr)->decl->definition = n->expr.get();
         }
         n->expr->accept(*this);
     }

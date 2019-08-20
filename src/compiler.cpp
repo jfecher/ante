@@ -558,7 +558,8 @@ void CompilingVisitor::visit(NamedValNode *n)
  * @return The value of the variable
  */
 void CompilingVisitor::visit(VarNode *n){
-    if(n->decl->tval){
+    static int i = 0;
+    if(n->decl->tval.val){
         if(n->decl->tval.type->hasModifier(Tok_Mut)){
             val = n->decl->tval;
             val.val = c->builder.CreateLoad(val.val, n->name);
@@ -566,6 +567,10 @@ void CompilingVisitor::visit(VarNode *n){
             val = n->decl->tval;
         }
     }else{
+        ++i;
+        if(i > 1000){
+            // break;
+        }
         n->decl->definition->accept(*this);
     }
 }

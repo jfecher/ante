@@ -18,7 +18,7 @@ namespace ante {
         TypedValue() : val(nullptr), type(nullptr){}
         TypedValue(llvm::Value *v, AnType *ty) : val(v), type(ty){}
 
-        bool operator!() const{ return !type; }
+        bool operator!() const{ return !type || !val; }
 
         explicit operator bool() const{ return type; }
 

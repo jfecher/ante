@@ -520,6 +520,20 @@ string toModuleName(const AnType *t){
     }
 }
 
+
+TypedValue getFunction(Compiler *c, BinOpNode *bop){
+    Declaration *decl = bop->decl;
+    if(decl->tval.val){
+        return decl->tval;
+    }else if(decl->isFuncDecl()){
+        auto res = c->compFn(static_cast<FuncDecl*>(decl));
+        decl->tval.val = res.val;
+        return res;
+    }else{
+        return CompilingVisitor::compile(c, decl->definition);
+    }
+}
+
 /*
  *  Compiles the member access operator, .  eg. struct.field
  */
@@ -527,7 +541,11 @@ TypedValue Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *binop
     if(!ln) throw CtError();
 
     if(binop->decl){
-        return binop->decl->tval;
+        if(binop->decl->tval.type->typeTag == TT_Function){
+            return ante::getFunction(this, binop);
+        }else{
+            return binop->decl->tval;
+        }
     }
 
     Value *val;
@@ -1124,20 +1142,6 @@ vector<Value*> adaptArgsToCompilerAPIFn(Compiler *c, vector<Value*> &args, vecto
         ret.push_back(argref);
     }
     return ret;
-}
-
-
-TypedValue getFunction(Compiler *c, BinOpNode *bop){
-    Declaration *decl = bop->decl;
-    if(decl->tval.val){
-        return decl->tval;
-    }else if(decl->isFuncDecl()){
-        auto res = c->compFn(static_cast<FuncDecl*>(decl));
-        decl->tval.val = res.val;
-        return res;
-    }else{
-        return CompilingVisitor::compile(c, decl->definition);
-    }
 }
 
 
