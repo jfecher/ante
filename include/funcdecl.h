@@ -20,12 +20,20 @@ namespace ante {
     * instance for type checking.
     */
     struct FuncDecl : public Declaration {
+        /** object of this method, if available.  Currently unused */
         AnType *obj;
 
+        /** The type of this function */
         AnFunctionType *type;
 
+        /** The module this function was declared in */
         Module *module;
+
+        /** Each return of this function.  TODO: remove */
         std::vector<std::pair<TypedValue,LOC_TY>> returns;
+
+        /** True if this is a decl from a trait, used as a flag to swap with impl later */
+        bool traitFuncDecl = false;
 
         parser::FuncDeclNode* getFDN() const noexcept {
             return static_cast<parser::FuncDeclNode*>(this->definition);
@@ -37,10 +45,6 @@ namespace ante {
 
         /** Gets the unmangled name. */
         const std::string& getName() const noexcept {
-            return getFDN()->name;
-        }
-
-        const std::string& getMangledName() const noexcept {
             return name;
         }
 
@@ -53,15 +57,17 @@ namespace ante {
             return getFDN()->name.back() == ';' || this->name == getFDN()->name;
         }
 
-        TypedValue getOrCompileFn(Compiler *c);
-
-        bool isFuncDecl() override {
+        virtual bool isFuncDecl() const override {
             return true;
+        }
+
+        virtual bool isTraitFuncDecl() const override {
+            return traitFuncDecl;
         }
 
         FuncDecl(parser::FuncDeclNode *fn, std::string const& n, Module *mod, TypedValue f)
             : Declaration(n, fn), type(0), module(mod), returns(){ tval = f; }
-        FuncDecl(parser::FuncDeclNode *fn, std::string &n, Module *mod)
+        FuncDecl(parser::FuncDeclNode *fn, std::string const& n, Module *mod)
             : Declaration(n, fn), type(0), module(mod), returns(){}
         virtual ~FuncDecl(){}
     };

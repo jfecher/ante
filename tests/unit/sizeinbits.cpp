@@ -18,7 +18,6 @@ TEST_CASE("Size in bits of primitive type", "[getSizeInBits]"){
     auto usz = AnType::getUsz();
 
     auto c8 = AnType::getPrimitive(TT_C8);
-    auto c32 = AnType::getPrimitive(TT_C32);
 
     auto f16 = AnType::getF16();
     auto f32 = AnType::getF32();
@@ -40,7 +39,6 @@ TEST_CASE("Size in bits of primitive type", "[getSizeInBits]"){
     REQUIRE(isz->getSizeInBits(c).getVal() == 8*sizeof(void*));
 
     REQUIRE(c8->getSizeInBits(c).getVal() == 8);
-    REQUIRE(c32->getSizeInBits(c).getVal() == 32);
 
     REQUIRE(f16->getSizeInBits(c).getVal() == 16);
     REQUIRE(f32->getSizeInBits(c).getVal() == 32);

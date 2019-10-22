@@ -18,8 +18,10 @@ namespace ante {
             m->accept(*this);
         for(auto &m : n->traits)
             m->accept(*this);
-        for(auto &m : n->extensions)
-            m->accept(*this);
+
+        // trait impls, submodules, and functions should already be substituted into
+        //for(auto &m : n->extensions)
+        //    m->accept(*this);
         //for(auto &m : n->funcs)
         //    m->accept(*this);
 
@@ -60,7 +62,11 @@ namespace ante {
         n->setType(applySubstitutions(substitutions, n->getType()));
     }
 
-    void SubstitutingVisitor::visit(TypeNode *n){}
+    void SubstitutingVisitor::visit(TypeNode *n){
+        if(n->getType()){
+            n->setType(applySubstitutions(substitutions, n->getType()));
+        }
+    }
 
     void SubstitutingVisitor::visit(TypeCastNode *n){
         n->rval->accept(*this);
@@ -79,30 +85,14 @@ namespace ante {
         n->setType(applySubstitutions(substitutions, n->getType()));
     }
 
-    AnFunctionType* checkTypeClassConstraints(AnFunctionType *fnty, LOC_TY &loc){
-        std::vector<TraitImpl*> constraints;
-        for(auto *tt : fnty->typeClassConstraints){
-            if(!tt->implemented()){
-                constraints.push_back(tt);
-                // showError("No trait implementation for " + anTypeToColoredStr(tt) + " found", loc);
-            }
-        }
-        if(constraints.size() != fnty->typeClassConstraints.size()){
-            return AnFunctionType::get(fnty->retTy, fnty->extTys, constraints);
-        }else{
-            return fnty;
-        }
+    void SubstitutingVisitor::visit(VarNode *n){
+        n->setType(applySubstitutions(substitutions, n->getType()));
     }
 
     void SubstitutingVisitor::visit(BinOpNode *n){
         n->lval->accept(*this);
         n->rval->accept(*this);
         n->setType(applySubstitutions(substitutions, n->getType()));
-
-        // type class constraints are now fully substituted and ready to be checked
-        if(AnFunctionType *fnty = try_cast<AnFunctionType>(n->lval->getType())){
-            n->lval->setType(checkTypeClassConstraints(fnty, n->loc));
-        }
     }
 
     void SubstitutingVisitor::visit(BlockNode *n){
@@ -132,11 +122,6 @@ namespace ante {
         n->setType(applySubstitutions(substitutions, n->getType()));
     }
 
-    void SubstitutingVisitor::visit(VarNode *n){
-        n->setType(applySubstitutions(substitutions, n->getType()));
-    }
-
-
     void SubstitutingVisitor::visit(VarAssignNode *n){
         n->expr->accept(*this);
         n->ref_expr->accept(*this);
@@ -163,6 +148,7 @@ namespace ante {
         n->range->accept(*this);
         n->pattern->accept(*this);
         n->child->accept(*this);
+        n->iterableInstance = applySubstitutions(substitutions, n->iterableInstance);
     }
 
     void SubstitutingVisitor::visit(MatchNode *n){

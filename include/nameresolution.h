@@ -63,8 +63,6 @@ namespace ante {
             /** Lookup the type by name and return it if found or null otherwise */
             TypeDecl* lookupType(std::string const& name) const;
 
-            void searchForField(parser::BinOpNode *op);
-
             void validateType(const AnType *tn, const parser::DataDeclNode *decl);
 
             size_t getScope() const;

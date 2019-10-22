@@ -63,8 +63,7 @@ TEST_CASE("Type Checks", "[typeEq]"){
     }
 }
 
-/*
-TEST_CASE("TypeVarType Checks", "[typeEq]"){
+TEST_CASE("Type Uniqueness", "[typeEq]"){
     auto&& c = Compiler(nullptr);
     auto t = AnTypeVarType::get("'t");
     auto u = AnTypeVarType::get("'u");
@@ -72,33 +71,19 @@ TEST_CASE("TypeVarType Checks", "[typeEq]"){
     auto empty = AnProductType::create("Empty", {}, {t});
 
     //'t -> 't
-    auto empty_t = AnDataType::getVariant(empty, {{"'t", empty, 0, t}});
+    auto empty_t = AnProductType::createVariant(empty, {}, {t});
+    auto empty_t2 = AnProductType::createVariant(empty, {}, {t});
 
     //'t -> 'u
-    auto empty_u = AnDataType::getVariant(empty, {{"'t", empty, 0, u}});
+    auto empty_u = AnProductType::createVariant(empty, {}, {u});
 
     REQUIRE(empty != nullptr);
 
     REQUIRE(empty_t != empty);
-
     REQUIRE(empty_t != empty_u);
-    
-    REQUIRE(typeEq(empty_t, empty));
 
-    REQUIRE(typeEq(empty_t, empty_u));
-
-    REQUIRE(typeEq(empty, empty_u));
-
-    //both typevars must be bound, solution:
-    //solution: bind 't and 'u to new typevar 'Tu
-    //REQUIRE(typeEq(empty_t, empty_u)->bindings.size() == 2);
-
-    //When matching an unbound type against a type bound to a
-    //type variable, the only binding should be a positional binding
-    //of (pos 0) => 'u
-    REQUIRE(typeEq(empty, empty_u)->bindings.size() == 1);
+    REQUIRE(empty_t == empty_t2);
 }
-*/
 
 /*
 TEST_CASE("Datatype partial bindings"){
@@ -130,36 +115,5 @@ TEST_CASE("Datatype partial bindings"){
 
     //should still have 1 (curried) generic param
     REQUIRE(ta_tb->generics.size() == 1);
-}
- */
-
-/*
-TEST_CASE("Best Match", "[typeEq]"){
-    auto&& c = Compiler(nullptr);
- 
-    auto i = AnType::getI32();
-    auto t = AnTypeVarType::get("'t");
-
-    auto tup1 = AnType::getTupleOf({i, i});
-    
-    auto tup2 = AnType::getTupleOf({t, i});
-    auto tup3 = AnType::getTupleOf({i, t});
-    auto tup4 = AnType::getTupleOf({t, t});
-
-    auto tc1 = typeEq(tup1, tup1);
-    auto tc2 = typeEq(tup1, tup2);
-    auto tc3 = typeEq(tup1, tup3);
-    auto tc4 = typeEq(tup1, tup4);
-
-    REQUIRE(tc1->res == TypeCheckResult::Success);
-    REQUIRE(tc2->res == TypeCheckResult::SuccessWithTypeVars);
-    REQUIRE(tc3->res == TypeCheckResult::SuccessWithTypeVars);
-    REQUIRE(tc4->res == TypeCheckResult::SuccessWithTypeVars);
-
-    REQUIRE(tc1->matches > tc2->matches);
-
-    REQUIRE(tc2->matches == tc3->matches);
-    
-    REQUIRE(tc3->matches > tc4->matches);
 }
  */

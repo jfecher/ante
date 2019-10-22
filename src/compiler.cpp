@@ -159,96 +159,8 @@ void CompilingVisitor::visit(TypeNode *n){
     }
 }
 
-/**
- * @brief Compiles a Str literal that contains 1+ sites of string interpolation.
- * Concatenates
- *
- * @param sln The string literal to compile
- * @param pos The index of the first instance of ${ in the string
- *
- * @return The resulting concatenated Str
- */
-TypedValue compStrInterpolation(Compiler *c, StrLitNode *sln, int pos){
-    //get the left part of the string
-    string l = sln->val.substr(0, pos);
-
-    //make a new sub-location for it
-    yy::location lloc = mkLoc(mkPos(sln->loc.begin.filename, sln->loc.begin.line, sln->loc.begin.column),
-                        mkPos(sln->loc.end.filename,   sln->loc.end.line,   sln->loc.begin.column + pos-1));
-    auto *ls = new StrLitNode(lloc, l);
-
-
-    auto posEnd = sln->val.find("}", pos);
-    if(posEnd == string::npos)
-        error("Interpolated string must have a closing bracket", sln->loc);
-
-    //this is the ${...} part of the string without the ${ and }
-    string m = sln->val.substr(pos+2, posEnd - (pos+2));
-
-    string r = sln->val.substr(posEnd+1);
-    yy::location rloc = mkLoc(mkPos(sln->loc.begin.filename, sln->loc.begin.line, sln->loc.begin.column + posEnd + 1),
-                              mkPos(sln->loc.end.filename,   sln->loc.end.line,   sln->loc.end.column));
-    auto *rs = new StrLitNode(rloc, r);
-
-    //now that the string is separated, begin interpolation preparation
-
-    //lex and parse
-    auto *lex = new Lexer(sln->loc.begin.filename, m,
-            sln->loc.begin.line-1, sln->loc.begin.column + pos);
-    setLexer(lex);
-    yy::parser p{};
-    int flag = p.parse();
-    if(flag != PE_OK){ //parsing error, cannot procede
-        fputs("Syntax error in string interpolation, aborting.\n", stderr);
-        exit(flag);
-    }
-
-    //TODO: abstract the following into compile() or similar
-    RootNode *expr = parser::getRootNode();
-    TypedValue val;
-
-    // errors may occur here but we cannot recover so let it throw
-    NameResolutionVisitor v{c->getModuleName()};
-    expr->accept(v);
-    TypeInferenceVisitor::infer(expr, v.compUnit);
-
-    //Compile main and hold onto the last value
-    for(auto &n : expr->main){
-        try{
-            val = CompilingVisitor::compile(c, n.get());
-        }catch(CtError e){}
-    }
-
-    if(!val) return val;
-
-    //Finally, the interpolation is done.  Now just combine the three strings
-    //get the ++_Str_Str function
-    string appendFn = "++";
-    string mangledAppendFn = "++_Str_Str";
-    auto lstr = CompilingVisitor::compile(c, ls);
-    auto rstr = CompilingVisitor::compile(c, rs);
-
-    auto fn = c->getFunction(appendFn, mangledAppendFn);
-    if(!fn) error("++ overload for Str and Str not found while performing Str interpolation."
-            "  The prelude may not be imported correctly.", sln->loc);
-
-    //call the ++ function to combine the three strings
-    auto *appendL = c->builder.CreateCall(fn.val, vector<Value*>{lstr.val, val.val});
-    auto *appendR = c->builder.CreateCall(fn.val, vector<Value*>{appendL, rstr.val});
-
-    //create the returning typenode
-    return TypedValue(appendR, val.type);
-}
-
-
 void CompilingVisitor::visit(StrLitNode *n){
     auto idx = n->val.find("${");
-
-    if(idx != string::npos && (idx == 0 or n->val.find("\\${") != idx - 1)){
-        this->val = compStrInterpolation(c, n, idx);
-        return;
-    }
-
     AnType *strty = c->compUnit->lookupType("Str");
 
     auto *ptr = c->builder.CreateGlobalStringPtr(n->val, "_strlit");
@@ -406,6 +318,19 @@ void CompilingVisitor::visit(WhileNode *n){
     this->val = c->getVoidLiteral();
 }
 
+TypedValue compForLoopTraitFn(Compiler *c, string const& fnName, TraitImpl *impl, AnType *argTy, LOC_TY &loc);
+
+TypedValue callForLoopTraitFn(Compiler *c, string const& fnName, TypedValue const& arg, LOC_TY &loc){
+    TraitImpl *impl = fnName == "into_iter" ?
+        c->compUnit->lookupTraitImpl("Iterable", {arg.type}):
+        c->compUnit->lookupTraitImpl("Iterator", {arg.type});
+
+    TypedValue fn = compForLoopTraitFn(c, fnName, impl, arg.type, loc);
+
+    Value *call = c->builder.CreateCall(fn.val, {arg.val});
+    return {call, fn.type->getFunctionReturnType()};
+}
+
 
 void CompilingVisitor::visit(ForNode *n){
     Function *f = c->builder.GetInsertBlock()->getParent();
@@ -418,17 +343,11 @@ void CompilingVisitor::visit(ForNode *n){
 
     //check if the range expression is its own iterator and thus implements Iterator
     //If it does not, see if it implements Iterable by attempting to call into_iter on it
-    auto *dt = try_cast<AnDataType>(rangev.type);
-    if(!dt or !c->typeImplementsTrait(dt, "Iterator")){
-        auto res = c->callFn("into_iter", {rangev});
-
-        if(!res)
-            error("Range expression of type " + anTypeToColoredStr(rangev.type) + " needs to implement " +
-                lazy_str("Iterable", AN_TYPE_COLOR) + " or " + lazy_str("Iterator", AN_TYPE_COLOR) +
-                " to be used in a for loop", n->range->loc);
-
-        rangev = res;
-    }
+    rangev = callForLoopTraitFn(c, "into_iter", rangev, n->range->loc);
+    if(!rangev)
+        error("Range expression of type " + anTypeToColoredStr(rangev.type) + " needs to implement " +
+            lazy_str("Iterable", AN_TYPE_COLOR) + " and " + lazy_str("Iterator", AN_TYPE_COLOR) +
+            " to be used in a for loop", n->range->loc);
 
     //by this point, rangev now properly stores the range information,
     //so store it on the stack and insert calls to unwrap, has_next,
@@ -439,12 +358,11 @@ void CompilingVisitor::visit(ForNode *n){
     c->builder.CreateBr(cond);
     c->builder.SetInsertPoint(cond);
 
-    //set var = unwrap range
-
+    //set var = cur_elem range
     //candval = is_done range
     auto rangeVal = TypedValue(c->builder.CreateLoad(alloca), rangev.type);
 
-    auto is_done = c->callFn("has_next", {rangeVal});
+    TypedValue is_done = callForLoopTraitFn(c, "has_next", rangeVal, n->range->loc);
     if(!is_done) error("Range expression of type " + anTypeToColoredStr(rangev.type) + " does not implement " +
             lazy_str("Iterable", AN_TYPE_COLOR) + ", which it needs to be used in a for loop", n->range->loc);
 
@@ -454,9 +372,14 @@ void CompilingVisitor::visit(ForNode *n){
     //call unwrap at start of loop
     //make sure to update rangeVal
     rangeVal = TypedValue(c->builder.CreateLoad(alloca), rangev.type);
-    auto uwrap = c->callFn("unwrap", {rangeVal});
+    TypedValue uwrap = callForLoopTraitFn(c, "cur_elem", rangeVal, n->range->loc);
     if(!uwrap) error("Range expression of type " + anTypeToColoredStr(rangev.type) + " does not implement " +
             lazy_str("Iterable", AN_TYPE_COLOR) + ", which it needs to be used in a for loop", n->range->loc);
+
+    auto vn = dynamic_cast<VarNode*>(n->pattern.get());
+    if(vn){
+        vn->decl->tval = uwrap;
+    }
 
     //TODO: handle arbitrary patterns
     // auto *decl = n->pattern->decls[0];
@@ -476,7 +399,7 @@ void CompilingVisitor::visit(ForNode *n){
         throw e;
     }
 
-    c->compCtxt->breakLabels->pop_back();;
+    c->compCtxt->breakLabels->pop_back();
     c->compCtxt->continueLabels->pop_back();
 
     if(!val) return;
@@ -486,7 +409,7 @@ void CompilingVisitor::visit(ForNode *n){
         c->builder.SetInsertPoint(incr);
 
         TypedValue arg = {c->builder.CreateLoad(alloca), rangev.type};
-        auto next = c->callFn("next", {arg});
+        TypedValue next = callForLoopTraitFn(c, "advance", arg, n->range->loc);
         if(!next) error("Range expression of type " + anTypeToColoredStr(rangev.type) + " does not implement "
                 + lazy_str("Iterable", AN_TYPE_COLOR) + ", which it needs to be used in a for loop", n->range->loc);
 
@@ -551,27 +474,18 @@ void CompilingVisitor::visit(NamedValNode *n)
     //STUB
 }
 
-
 /**
  * @brief Performs a lookup for an identifier and returns its value if found
  *
  * @return The value of the variable
  */
 void CompilingVisitor::visit(VarNode *n){
-    static int i = 0;
-    if(n->decl->tval.val){
-        if(n->decl->tval.type->hasModifier(Tok_Mut)){
-            val = n->decl->tval;
-            val.val = c->builder.CreateLoad(val.val, n->name);
-        }else{
-            val = n->decl->tval;
-        }
-    }else{
-        ++i;
-        if(i > 1000){
-            // break;
-        }
+    if(!n->decl->tval.val && n != n->decl->definition){
         n->decl->definition->accept(*this);
+    }
+    val = n->decl->tval;
+    if(n->decl->tval.type->hasModifier(Tok_Mut) && val.val->getType()->isPointerTy()){
+        val.val = c->builder.CreateLoad(val.val, n->name);
     }
 }
 
@@ -651,13 +565,9 @@ void compLetBinding(VarAssignNode *node, CompilingVisitor &cv){
 
 
 void CompilingVisitor::visit(ModNode *n){
-    if(n->mod == Tok_Ante){
-        val = compileAndCallAnteFunction(c, n);
-    }else{
-        cerr << "Warning: " << Lexer::getTokStr(n->mod) << " unimplemented in expr:\n";
-        PrintingVisitor::print(n);
-        n->expr->accept(*this);
-    }
+    cerr << "Warning: " << Lexer::getTokStr(n->mod) << " unimplemented in expr:\n";
+    PrintingVisitor::print(n);
+    n->expr->accept(*this);
 }
 
 
@@ -708,16 +618,6 @@ TypedValue compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
         if(index != -1){
             auto newval = CompilingVisitor::compile(c, expr);
 
-            //see if insert operator # = is overloaded already
-            string op = "#";
-            vector<AnType*> argTys = {tyn, AnType::getI32(), newval.type};
-            string mangledfn = mangle(op, argTys);
-            auto fn = c->getFunction(op, mangledfn);
-            if(fn)
-                return TypedValue(c->builder.CreateCall(fn.val, vector<Value*>{
-                            var, c->builder.getInt32(index), newval.val}),
-                        fn.type->getFunctionReturnType());
-
             Value *nv = newval.val;
             Type *nt = val->getType()->getStructElementType(index);
 
@@ -746,10 +646,18 @@ TypedValue compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
 TypedValue compileRefExpr(CompilingVisitor &cv, Node *refExpr, Node *assignExpr){
     refExpr->accept(cv);
     auto li = dyn_cast<LoadInst>(cv.val.val);
-    if(!li){
-        ASSERT_UNREACHABLE();
+
+    if(li){
+        return {li->getPointerOperand(), AnPtrType::get(cv.val.type)};
+    }else if(cv.val.getType()->isPointerTy()){
+        auto ptrty = try_cast<AnPtrType>(cv.val.type);
+        return {cv.c->builder.CreateLoad(cv.val.val), ptrty};
     }
-    return {li->getPointerOperand(), cv.val.type};
+
+    show(refExpr);
+    show(assignExpr);
+    cv.val.dump();
+    ASSERT_UNREACHABLE("Tried to mutate an immutable variable");
 }
 
 /**

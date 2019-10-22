@@ -61,6 +61,15 @@ namespace ante {
         TypeTag typeTag;
         bool isGeneric;
 
+        // Exact equality
+        // Matches typevars to only other typevars of the same name
+        bool operator==(AnType const& other) const noexcept;
+        bool operator!=(AnType const& other) const noexcept;
+
+        // Approximate equality, for finding matching typeclasses
+        // Matches typevars to any type
+        bool approxEq(const AnType *other) const noexcept;
+
         virtual bool hasModifier(TokenType m) const;
 
         virtual bool isModifierType() const noexcept {
@@ -87,6 +96,13 @@ namespace ante {
         /** Gets a function's return type.
          *  Assumes that this AnType is a AnFuncionType instance. */
         AnType* getFunctionReturnType() const;
+
+        bool isIntTy() const noexcept {
+            return typeTag == TT_I8 || typeTag == TT_I16 || typeTag == TT_I32 || typeTag == TT_I64
+                || typeTag == TT_U8 || typeTag == TT_U16 || typeTag == TT_U32 || typeTag == TT_U64
+                || typeTag == TT_F16 || typeTag == TT_F32 || typeTag == TT_F64
+                || typeTag == TT_Isz || typeTag == TT_Usz;
+        }
 
         static AnType* getPrimitive(TypeTag tag);
         static AnType* getI8();
@@ -386,6 +402,7 @@ namespace ante {
     };
 
     using TypeArgs = std::vector<AnType*>;
+    using Substitutions = std::list<std::pair<AnType*, AnType*>>;
 
     /**
      *  A base class for any user-declared data type.
@@ -414,9 +431,22 @@ namespace ante {
         /** Typevars this type is generic over */
         TypeArgs typeArgs;
 
-        /** The llvm Type corresponding to this data type.
-         * May be nullptr if this type has not yet been translated. */
-        llvm::Type* llvmType;
+        /** The llvm Type corresponding to each generic variant of this data type.
+         *  Set only in a type's unboundType so that two types, T '1, and T '2 with
+         *  '1 = '2 = i32, only have 1 llvm type created instead of two which conflict. */
+        std::vector<std::pair<TypeArgs, llvm::Type*>> llvmTypes;
+
+        /** The llvm type for this variant only. Note that setting this requires a lookup
+         *  in llvmTypes to avoid duplicating the type every time a similar type is monomorphised. */
+        llvm::Type *llvmType;
+
+        /** Sets the appropriate TypeArgs,Type* pair in llvmTypes to
+         *  the given type. */
+        void setLlvmType(llvm::Type *type, ante::Substitutions const& monomorphisationBindings);
+
+        /** Find the appropriate type in the parent type's llvmTypes list.  If one is not
+         *  found, nullptr is returned. */
+        llvm::Type* findLlvmType(ante::Substitutions const& monomorphisationBindings);
 
         /** Returns true if the given AnType is an AnDataType */
         static bool istype(const AnType *t){
@@ -448,6 +478,13 @@ namespace ante {
         ~AnProductType() = default;
 
         std::vector<AnType*> fields;
+
+        /**
+         * Each generic variant created from this parent type is stored inside the
+         * parent to avoid re-creating the same child.  This ensures each llvm type
+         * is not translated twice (thus creating 2 types) for a given type.
+         */
+        std::vector<AnProductType*> genericVariants;
 
         /** Names of each field. */
         std::vector<std::string> fieldNames;
@@ -534,6 +571,13 @@ namespace ante {
         /** Contains the UnionTag of each of the union's OR'd types. */
         std::vector<AnProductType*> tags;
 
+        /**
+         * Each generic variant created from this parent type is stored inside the
+         * parent to avoid re-creating the same child.  This ensures each llvm type
+         * is not translated twice (thus creating 2 types) for a given type.
+         */
+        std::vector<AnSumType*> genericVariants;
+
         /** Returns true if the given AnType is an AnDataType */
         static bool istype(const AnType *t){
             return t->typeTag == TT_TaggedUnion;
@@ -574,6 +618,8 @@ namespace ante {
     };
 
     size_t hashCombine(size_t l, size_t r);
+    bool allEq(std::vector<AnType*> const& l, std::vector<AnType*> const& r);
+    bool allApproxEq(std::vector<AnType*> const& l, std::vector<AnType*> const& r);
 }
 
 namespace std {

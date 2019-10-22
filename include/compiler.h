@@ -12,14 +12,15 @@
 #include <memory>
 #include <list>
 
-#include "parser.h"
 #include "args.h"
-#include "lazystr.h"
+#include "parser.h"
 #include "antype.h"
-#include "antevalue.h"
+#include "lazystr.h"
 #include "funcdecl.h"
 #include "variable.h"
+#include "antevalue.h"
 #include "typedvalue.h"
+#include "unification.h"
 
 #define AN_MANGLED_SELF "_$self$"
 
@@ -77,7 +78,8 @@ namespace ante {
         //Original object type node for managing self params and location info
         parser::TypeNode *objTn;
 
-        llvm::StringMap<AnType*> objBindings;
+        //Map of typevar names to concrete types whenever a generic funcion is monomorphised
+        Substitutions monomorphisationMappings;
 
         //the continue and break labels of each for/while loop to jump out of
         //the pointer is swapped/nullified when a function is called to prevent
@@ -272,56 +274,7 @@ namespace ante {
         */
         void jitFunction(llvm::Function *fnName);
 
-        /** @brief Sets the tv of the FuncDecl specified to the value of f */
-        void updateFn(TypedValue &f, FuncDecl *fd, std::string const& name, std::string const& mangledName);
         FuncDecl* getCurrentFunction() const;
-
-        /** @brief Returns the exact function specified if found or nullptr if not */
-        TypedValue getFunction(std::string const& name, std::string const& mangledName);
-
-        /** @brief Returns a vector of all functions with the specified baseName */
-        std::vector<std::shared_ptr<FuncDecl>> getFunctionList(std::string const& name) const;
-
-        /** @brief Returns the exact FuncDecl specified if found or nullptr if not */
-        FuncDecl* getFuncDecl(std::string bn, std::string mangledName);
-
-        /** @brief Emits and returns a function call */
-        TypedValue callFn(std::string fnBaseName, std::vector<TypedValue> args);
-
-        /**
-         * @brief Retrieves the function specified
-         *
-         * Automatically binds generic functions and
-         * Performs argument deduction if necessary
-         *
-         * @param name Basename of function to search for
-         * @param args Types of each argument in case multiple functions are found
-         *
-         * @return The specified function or nullptr
-         */
-        TypedValue getMangledFn(std::string name, std::vector<AnType*> &args);
-
-        /**
-         * @brief Returns the init method of a type
-         *
-         * @param from_ty Tuple of argument types
-         * @param to_ty Type to cast to
-         * @param fd Optional FuncDecl of cast function to use if already found
-         *
-         * @return The compiled cast function or nullptr if not found
-         */
-        TypedValue getCastFn(AnType *from_ty, AnType *to_ty, FuncDecl *fd = 0);
-
-        /**
-         * @brief Retrieves the FuncDecl specified
-         *
-         * @param name Basename of function to search for
-         * @param args Argument types if multiple functions are found
-         *
-         * @return The FuncDecl if found or nullptr if not
-         */
-        FuncDecl* getMangledFuncDecl(std::string name, std::vector<AnType*> &args);
-        FuncDecl* getCastFuncDecl(AnType *from_ty, AnType *to_ty);
 
         /**
          * @brief Compiles any non-generic function
@@ -331,15 +284,6 @@ namespace ante {
          * with compTemplateFn which calls this function internally.
          */
         TypedValue compFn(FuncDecl *fn);
-
-        /*
-         * @brief Registers a function for later compilation.
-         *
-         * Wraps the FuncDeclNode in a FuncDecl internally and
-         * stores that.  Will fail if there is another function
-         * with a matching mangledName declared.
-         */
-        void registerFunction(parser::FuncDeclNode *func, std::string &mangledName);
 
         /*
          * @brief Returns the current scope of the block compiling.
@@ -371,28 +315,6 @@ namespace ante {
          * fix the translated type.
          */
         llvm::Type* anTypeToLlvmType(const AnType *ty, bool force = false);
-
-        /**
-         * @brief Performs an implicit widening
-         *
-         * @param num Integer to widen
-         * @param castTy Type to widen to
-         *
-         * @return The widened integer
-         */
-        TypedValue implicitlyWidenNum(TypedValue &num, TypeTag castTy);
-
-        /** @brief Mutates numerical arguments to match types if possible */
-        void handleImplicitConversion(TypedValue *lhs, TypedValue *rhs);
-
-        /** @brief Mutates integer arguments to match types if not already */
-        void implicitlyCastIntToInt(TypedValue *lhs, TypedValue *rhs);
-
-        /** @brief Mutates floating-point arguments to match types if not already */
-        void implicitlyCastFltToFlt(TypedValue *lhs, TypedValue *rhs);
-
-        /** @brief Mutates an integer to a float */
-        void implicitlyCastIntToFlt(TypedValue *tval, llvm::Type *ty);
 
         /**
         * @brief Compiles a module into an obj file to be used for linking.

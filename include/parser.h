@@ -349,6 +349,8 @@ namespace ante {
 
         struct ForNode : public Node{
             std::unique_ptr<Node> pattern, range, child;
+            TraitImpl *iterableInstance = 0;
+
             void accept(NodeVisitor& v){ v.visit(this); }
             ForNode(LOC_TY& loc, Node *v, Node *r, Node *body) :
                 Node(loc), pattern(v), range(r), child(body){}

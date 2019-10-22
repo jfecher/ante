@@ -4,7 +4,9 @@
 #include "error.h"
 #include "compiler.h"
 #include "types.h"
+#include "types.h"
 #include <memory>
+#include <llvm/ADT/StringMap.h>
 
 namespace ante {
     template<typename F>
@@ -18,7 +20,7 @@ namespace ante {
 
     //Define a new assert macro so it remains in the binary even if NDEBUG is defined.
     //Implement on one line to keep __LINE__ referring to the correct assertion line.
-    #define ASSERT_UNREACHABLE() { fprintf(stderr, "assert_unreachable failed on line %d of file '%s'", __LINE__, \
+    #define ASSERT_UNREACHABLE(msg) { fprintf(stderr, "Internal compiler error: " msg "\nassert_unreachable failed on line %d of file '%s'\n", __LINE__, \
                                         __FILE__); exit(1); }
 
     /** @brief Create a vector with a capacity of at least cap elements. */
@@ -59,7 +61,7 @@ namespace ante {
     std::vector<U> collect(T const& iterable, F f){
         std::vector<U> result;
         for(const auto& elem : iterable){
-            result.emplace_back(f(elem));
+            result.push_back(f(elem));
         }
         return result;
     }
@@ -111,6 +113,11 @@ namespace ante {
         return ante::find_if(collection, fn) != collection.cend();
     }
 
+    template<typename F, typename T, typename E>
+    bool all(T const& collection, F fn){
+        return !ante::any(collection, [fn](E x){ return !fn(x); });
+    }
+
     std::ostream& operator<<(std::ostream &o, AnType *t);
 
     template<typename A, typename B>
@@ -138,6 +145,15 @@ namespace ante {
             ++it;
             if(it != end)
                 o << ", ";
+        }
+        return o << ']';
+    }
+
+    template<typename T>
+    std::ostream& operator<<(std::ostream &o, llvm::StringMap<T> const& map){
+        o << '[';
+        for(auto &pair : map){
+            o << pair.first().str() << " -> " << pair.second << ", ";
         }
         return o << ']';
     }

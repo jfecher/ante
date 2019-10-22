@@ -46,7 +46,7 @@ namespace ante {
 %token I8 I16 I32 I64
 %token U8 U16 U32 U64
 %token Isz Usz F16 F32 F64
-%token C8 C32 Bool Unit
+%token C8 Bool Unit
 
 /* operators */
 %token Assign EqEq NotEq AddEq SubEq MulEq DivEq GrtrEq LesrEq
@@ -133,8 +133,8 @@ namespace ante {
 
 %left As
 %left '#'
-%left '@' New '&' Ref
-%left TYPE UserType TypeVar I8 I16 I32 I64 U8 U16 U32 U64 Isz Usz F16 F32 F64 C8 C32 Bool Unit VarArgs
+%left UNARY '@' New '&' Ref
+%left TYPE UserType TypeVar I8 I16 I32 I64 U8 U16 U32 U64 Isz Usz F16 F32 F64 C8 Bool Unit VarArgs
 %nonassoc FUNC
 %left Block
 
@@ -229,7 +229,6 @@ lit_type: I8                  {$$ = mkTypeNode(@$, TT_I8,  (char*)"");}
         | F32                 {$$ = mkTypeNode(@$, TT_F32, (char*)"");}
         | F64                 {$$ = mkTypeNode(@$, TT_F64, (char*)"");}
         | C8                  {$$ = mkTypeNode(@$, TT_C8,  (char*)"");}
-        | C32                 {$$ = mkTypeNode(@$, TT_C32, (char*)"");}
         | Bool                {$$ = mkTypeNode(@$, TT_Bool, (char*)"");}
         | Unit                {$$ = mkTypeNode(@$, TT_Unit, (char*)"");}
         | VarArgs             {$$ = mkTypeNode(@$, TT_TypeVar, nextVarArgsTVName());}
@@ -292,7 +291,6 @@ modifier: Pub      {$$ = mkModNode(@$, Tok_Pub);}
         | Mut      {$$ = mkModNode(@$, Tok_Mut);}
         | Global   {$$ = mkModNode(@$, Tok_Global);}
         | Ante     {$$ = mkModNode(@$, Tok_Ante);}
-        | Let      {$$ = mkModNode(@$, Tok_Let);}
         | preproc  %prec MODIFIER {$$ = $1;}
         ;
 
@@ -574,7 +572,7 @@ expr_no_decl_or_jump: expr_no_decl  %prec MEDIF
 
 expr_no_decl: expr_no_decl '+' maybe_newline expr_no_decl                      {$$ = mkBinOpNode(@$, '+', $1, $4);}
             | expr_no_decl '-' expr_no_decl                                    {$$ = mkBinOpNode(@$, '-', $1, $3);}
-            | '-' expr_no_decl                                                 {$$ = mkUnOpNode(@$, '-', $2);}
+            | '-' expr_no_decl                               %prec UNARY       {$$ = mkUnOpNode(@$, '-', $2);}
             | expr_no_decl '-' Newline expr_no_decl                            {$$ = mkBinOpNode(@$, '-', $1, $4);}
             | expr_no_decl '*' maybe_newline expr_no_decl                      {$$ = mkBinOpNode(@$, '*', $1, $4);}
             | expr_no_decl '/' maybe_newline expr_no_decl                      {$$ = mkBinOpNode(@$, '/', $1, $4);}
@@ -604,14 +602,14 @@ expr_no_decl: expr_no_decl '+' maybe_newline expr_no_decl                      {
 
             | function_call                                         %prec LOW  {$$ = mkFuncCallNode(@$, getRoot());}
             | var '=' maybe_newline expr_no_decl                               {$$ = mkVarAssignNode(@$, $1, $4); append_modifiers(mkModNode(@1, Tok_Let), $$);}
-            | var Mut '=' maybe_newline expr_no_decl                           {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Mut), $$);}
-            | var Global '=' maybe_newline expr_no_decl                        {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Global), $$);}
-            | var Ante '=' maybe_newline expr_no_decl                          {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Ante), $$);}
-            | var Pub '=' maybe_newline expr_no_decl                           {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Pub), $$);}
-            | var Pri '=' maybe_newline expr_no_decl                           {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Pri), $$);}
-            | var Pro '=' maybe_newline expr_no_decl                           {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Pro), $$);}
-            | var Const '=' maybe_newline expr_no_decl                         {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Const), $$);}
-            | var preproc '=' maybe_newline expr_no_decl                       {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers($1, $$);}
+            | var '=' Mut maybe_newline expr_no_decl                           {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Mut), $$);}
+            | var '=' Global maybe_newline expr_no_decl                        {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Global), $$);}
+            | var '=' Ante maybe_newline expr_no_decl                          {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Ante), $$);}
+            | var '=' Pub maybe_newline expr_no_decl                           {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Pub), $$);}
+            | var '=' Pri maybe_newline expr_no_decl                           {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Pri), $$);}
+            | var '=' Pro maybe_newline expr_no_decl                           {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Pro), $$);}
+            | var '=' Const maybe_newline expr_no_decl                         {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Const), $$);}
+            | var '=' preproc maybe_newline expr_no_decl                       {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers($3, $$);}
 
             | expr_no_decl AddEq maybe_newline expr_no_decl             {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '+', $1, $4), false);}
             | expr_no_decl SubEq maybe_newline expr_no_decl             {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '-', $1, $4), false);}
@@ -640,7 +638,7 @@ expr_or_jump: expr  %prec MEDIF
 
 expr: expr '+' maybe_newline expr                               {$$ = mkBinOpNode(@$, '+', $1, $4);}
     | expr '-' expr                                             {$$ = mkBinOpNode(@$, '-', $1, $3);}
-    | '-' expr                                                  {$$ = mkUnOpNode(@$, '-', $2);}
+    | '-' expr                                     %prec UNARY  {$$ = mkUnOpNode(@$, '-', $2);}
     | expr '-' Newline expr                                     {$$ = mkBinOpNode(@$, '-', $1, $4);}
     | expr '*' maybe_newline expr                               {$$ = mkBinOpNode(@$, '*', $1, $4);}
     | expr '/' maybe_newline expr                               {$$ = mkBinOpNode(@$, '/', $1, $4);}
@@ -670,14 +668,14 @@ expr: expr '+' maybe_newline expr                               {$$ = mkBinOpNod
 
     | function_call                                  %prec LOW  {$$ = mkFuncCallNode(@$, getRoot());}
     | var '=' maybe_newline expr                                {$$ = mkVarAssignNode(@$, $1, $4); append_modifiers(mkModNode(@1, Tok_Let), $$);}
-    | var Mut '=' maybe_newline expr                            {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Mut), $$);}
-    | var Global '=' maybe_newline expr                         {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Global), $$);}
-    | var Ante '=' maybe_newline expr                           {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Ante), $$);}
-    | var Pub '=' maybe_newline expr                            {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Pub), $$);}
-    | var Pri '=' maybe_newline expr                            {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Pri), $$);}
-    | var Pro '=' maybe_newline expr                            {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Pro), $$);}
-    | var Const '=' maybe_newline expr                          {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Const), $$);}
-    | var preproc '=' maybe_newline expr                        {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers($1, $$);}
+    | var '=' Mut maybe_newline expr                            {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Mut), $$);}
+    | var '=' Global maybe_newline expr                         {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Global), $$);}
+    | var '=' Ante maybe_newline expr                           {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Ante), $$);}
+    | var '=' Pub maybe_newline expr                            {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Pub), $$);}
+    | var '=' Pri maybe_newline expr                            {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Pri), $$);}
+    | var '=' Pro maybe_newline expr                            {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Pro), $$);}
+    | var '=' Const maybe_newline expr                          {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Const), $$);}
+    | var '=' preproc maybe_newline expr                        {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers($3, $$);}
 
     | expr AddEq maybe_newline expr                             {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '+', $1, $4), false);}
     | expr SubEq maybe_newline expr                             {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '-', $1, $4), false);}

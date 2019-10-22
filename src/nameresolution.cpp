@@ -23,6 +23,19 @@ list<string> fileNames;
 namespace ante {
     using namespace parser;
 
+    bool Declaration::isParamDecl() const {
+        return dynamic_cast<NamedValNode*>(definition);
+    }
+
+    bool Declaration::isGlobal() const {
+        return tval.type->hasModifier(Tok_Global);
+    }
+
+    /** True if this is a mutable/global var. */
+    bool Declaration::shouldAutoDeref() const {
+        return isGlobal() || tval.type->hasModifier(Tok_Mut);
+    }
+
     TypeArgs convertToTypeArgs(vector<unique_ptr<TypeNode>> const& types, Module *module){
         TypeArgs ret;
         ret.reserve(types.size());
@@ -551,43 +564,6 @@ namespace ante {
         }
     }
 
-    bool findFieldInTypeList(llvm::StringMap<TypeDecl> const& m, Node *lval, VarNode *rval) {
-        for(auto &p : m){
-            if(auto *pt = try_cast<AnProductType>(p.second.type)){
-                for(size_t i = 0; i < pt->fieldNames.size(); i++){
-                    auto &field = pt->fieldNames[i];
-                    if(field == rval->name){
-                        auto ty = static_cast<AnProductType*>(copyWithNewTypeVars(pt));
-                        lval->setType(ty);
-                        auto *fakeDecl = new Variable(field, rval);
-                        rval->decl = fakeDecl;
-                        rval->setType(ty->fields[i]);
-                        return true;
-                    }
-                }
-            }
-        }
-        return false;
-    }
-
-    void NameResolutionVisitor::searchForField(BinOpNode *op){
-        VarNode *vn = dynamic_cast<VarNode*>(op->rval.get());
-        if(!vn){
-            error("RHS of . operator must be an identifier", op->rval->loc);
-        }
-
-        if(findFieldInTypeList(compUnit->userTypes, op->lval.get(), vn))
-            return;
-
-        for(Module *m : compUnit->imports){
-            if(findFieldInTypeList(m->userTypes, op->lval.get(), vn))
-                return;
-        }
-
-        error("No field named " + vn->name + " found for any type", vn->loc);
-    }
-
-
     bool isImplicitImportExpr(BinOpNode *bop){
         return bop && bop->op == '.' && dynamic_cast<TypeNode*>(bop->lval.get());
     }
@@ -657,7 +633,10 @@ namespace ante {
         n->lval->accept(*this);
 
         if(n->op == '.'){
-            searchForField(n);
+            auto vn = dynamic_cast<VarNode*>(n->rval.get());
+            if(vn && !vn->decl){
+                vn->decl = new NoDecl(vn);
+            }
             return;
         }
 
@@ -893,7 +872,6 @@ namespace ante {
             string name = typeNodeToStr(n->typeExpr.get());
             NameResolutionVisitor submodule{name};
             submodule.compUnit = &compUnit->findChild(name)->second;
-
             assert(submodule.compUnit && ("Could not find submodule " + name).c_str());
 
             for(Node &m : *n->methods)
@@ -903,6 +881,15 @@ namespace ante {
                 TRY_TO(importFile(AN_PRELUDE_FILE, n->loc));
             for (Node &m : *n->methods)
                 TRY_TO(m.accept(*this));
+
+            string traitName = n->trait->typeName;
+            auto args = ante::applyToAll(n->trait->params, [this](unique_ptr<TypeNode> const& param){
+                return toAnType(param.get(), this->compUnit);
+            });
+
+            auto impl = new TraitImpl(traitName, args);
+            impl->impl = n;
+            compUnit->traitImpls[traitName].push_back(impl);
         }
     }
 
@@ -1018,7 +1005,7 @@ namespace ante {
                 if(p->typeName == tvt->name) return;
             }
 
-            error("Lookup for " + tvt->name + " not found", rootTy->loc);
+            // error("Lookup for " + tvt->name + " not found", rootTy->loc);
         }
     }
 
@@ -1104,6 +1091,9 @@ namespace ante {
             return;
         }
 
+        for(auto &node : ty->params){
+            mutateWithNewTypeVarNodes(node.get(), map);
+        }
         if(ty->extTy){
             for(Node &node : *ty->extTy){
                 if(TypeNode *ext = dynamic_cast<TypeNode*>(&node)){
@@ -1147,6 +1137,7 @@ namespace ante {
                 mutateWithNewTypeVarNodes(fdn, map);
                 child.accept(*this);
                 auto *fd = static_cast<FuncDecl*>(fdn->decl);
+                fd->traitFuncDecl = true;
                 compUnit->fnDecls[fdn->name] = fd;
                 decl->funcs.emplace_back(fd);
             }else if(DataDeclNode *type = dynamic_cast<DataDeclNode*>(&child)){

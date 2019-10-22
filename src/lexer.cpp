@@ -30,7 +30,6 @@ map<int, const char*> tokDict = {
     {Tok_F32, "f32"},
     {Tok_F64, "f64"},
     {Tok_C8, "c8"},
-    {Tok_C32, "c32"},
     {Tok_Bool, "bool"},
     {Tok_Unit, "unit"},
 
@@ -127,7 +126,6 @@ map<string, int> keywords = {
     {"f32",      Tok_F32},
     {"f64",      Tok_F64},
     {"c8",       Tok_C8},
-    {"c32",      Tok_C32},
     {"bool",     Tok_Bool},
     {"unit",     Tok_Unit},
 
@@ -300,7 +298,7 @@ bool isKeywordAType(int tok){
     return tok == Tok_I8 || tok == Tok_I16 || tok == Tok_I32 || tok == Tok_I64 || tok == Tok_Isz
         || tok == Tok_U8 || tok == Tok_U16 || tok == Tok_U32 || tok == Tok_U64 || tok == Tok_Usz
         || tok == Tok_F16 || tok == Tok_F32 || tok == Tok_F64
-        || tok == Tok_C8 || tok == Tok_C32 || tok == Tok_Bool || tok == Tok_Unit;
+        || tok == Tok_C8 || tok == Tok_Bool || tok == Tok_Unit;
 }
 
 /*

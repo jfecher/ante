@@ -158,6 +158,9 @@ namespace ante {
     void TypeInferenceVisitor::visit(BinOpNode *n){
         // If we have a field access operator, we cannot try to
         // coerce the module name into a type
+        if(n->getType()) return;
+
+        // TODO: is this still necessary?
         if(n->op == '.'){
             if(dynamic_cast<TypeNode*>(n->lval.get())){
                 n->rval->accept(*this);
@@ -224,12 +227,8 @@ namespace ante {
         n->expr->accept(*this);
         n->ref_expr->accept(*this);
 
-        n->ref_expr->setType(n->expr->getType());
-        if(n->modifiers.empty()){
-            n->setType(AnType::getUnit());
-        }else{
-            n->setType(n->expr->getType());
-        }
+        // n->ref_expr->setType(n->expr->getType());
+        n->setType(AnType::getUnit());
     }
 
     vector<TraitImpl*> getAllTcConstraints(AnFunctionType *fn, UnificationList const& constraints,
@@ -287,7 +286,7 @@ namespace ante {
             auto constraints = step2.getConstraints();
             auto substitutions = unify(constraints);
             if(!substitutions.empty()){
-                SubstitutingVisitor::substituteIntoAst(n, substitutions);
+                SubstitutingVisitor::substituteIntoAst(n, substitutions, module);
             }
         }else{
             for(Node &m : *n->methods){
@@ -328,20 +327,21 @@ namespace ante {
         n->setType(n->branch->getType());
     }
 
-    void checkTraitImpls(Module *m, AnFunctionType *f){
+    void checkTraitImpls(Module *m, AnFunctionType *f, LOC_TY loc){
         llvm::StringMap<const AnTypeVarType*> map;
         getAllContainedTypeVarsHelper(f->retTy, map);
         for(auto *paramTy : f->extTys){
             getAllContainedTypeVarsHelper(paramTy, map);
         }
 
-        //for(TraitImpl *trait : f->typeClassConstraints){
-        //    for(auto *ty : trait->typeArgs){
-        //        if(hasTypeVarNotInMap(ty, map)){
-        //            std::cerr << "in fntype " << anTypeToColoredStr(f) << " trait " << traitToColoredStr(trait) << " has tv not in map\n";
-        //        }
-        //    }
-        //}
+        for(TraitImpl *trait : f->typeClassConstraints){
+            for(auto *ty : trait->typeArgs){
+                if(hasTypeVarNotInMap(ty, map)){
+                    std::cerr << "in fntype " << anTypeToColoredStr(f) << " trait "
+                        << traitToColoredStr(trait) << " has " << anTypeToColoredStr(ty) << " not in function signature\n";
+                }
+            }
+        }
     }
 
 
@@ -368,8 +368,7 @@ namespace ante {
                 newFnTy = cleanTypeClassConstraints(newFnTy);
                 n->setType(newFnTy);
 
-                SubstitutingVisitor::substituteIntoAst(n, substitutions);
-                checkTraitImpls(this->module, newFnTy);
+                SubstitutingVisitor::substituteIntoAst(n, substitutions, this->module);
             }
         });
     }

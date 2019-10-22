@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <cctype>
+#include "antype.h"
 #include "module.h"
 #include "antype.h"
 #include "trait.h"
@@ -120,8 +121,18 @@ namespace ante {
         auto it = traitImpls.find(name);
         if(it != traitImpls.end()){
             for(auto *impl : it->getValue()){
-                if(impl->typeArgs == typeArgs){
+                if(allApproxEq(impl->typeArgs, typeArgs)){
                     return impl;
+                }
+            }
+        }
+        for(Module *import : this->imports){
+            auto it = import->traitImpls.find(name);
+            if(it != import->traitImpls.end()){
+                for(auto *impl : it->getValue()){
+                    if(allApproxEq(impl->typeArgs, typeArgs)){
+                        return impl;
+                    }
                 }
             }
         }

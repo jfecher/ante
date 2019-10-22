@@ -15,7 +15,11 @@ namespace ante {
         Error, Warning, Note
     };
 
-    struct CtError {};
+    struct CtError {
+        CtError(){
+            puts("Constructing CtError");
+        }
+    };
 
     struct IncompleteTypeError : public CtError {};
 

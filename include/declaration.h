@@ -28,12 +28,19 @@ namespace ante {
 
         virtual ~Declaration(){};
 
-        bool isGlobal() const { return false; };
+        bool isGlobal() const;
 
         /** True if this is a mutable/global var. */
-        bool shouldAutoDeref() const { return false; };
+        bool shouldAutoDeref() const;
 
-        virtual bool isFuncDecl(){
+        bool isParamDecl() const;
+
+        virtual bool isFuncDecl() const {
+            return false;
+        }
+
+        /** True if this is a function stub from a trait rather than an impl */
+        virtual bool isTraitFuncDecl() const {
             return false;
         }
     };

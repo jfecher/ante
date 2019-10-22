@@ -36,7 +36,7 @@ namespace ante {
             auto constraints = step2.getConstraints();
             auto substitutions = unify(constraints);
 
-            SubstitutingVisitor::substituteIntoAst(n, substitutions);
+            SubstitutingVisitor::substituteIntoAst(n, substitutions, module);
         }
 
 

@@ -105,7 +105,6 @@ namespace ante {
             case TT_Isz:             return TypedValue(c->builder.getIntN(AN_USZ_SIZE, *(size_t*) data), type);
             case TT_Usz:             return TypedValue(c->builder.getIntN(AN_USZ_SIZE, *(size_t*) data), type);
             case TT_C8:              return TypedValue(c->builder.getInt8( *(uint8_t*) data), type);
-            case TT_C32:             return TypedValue(c->builder.getInt32(*(uint32_t*)data), type);
             case TT_F16:             return TypedValue(ConstantFP::get(*c->ctxt, APFloat(f32_from_f16(*(uint16_t*)data))), type);
             case TT_F32:             return TypedValue(ConstantFP::get(*c->ctxt, APFloat(*(float*)data)), type);
             case TT_F64:             return TypedValue(ConstantFP::get(*c->ctxt, APFloat(*(double*)data)), type);
@@ -261,7 +260,6 @@ namespace ante {
             case TT_U16:  *(uint16_t*)data = ci->getZExtValue(); return;
             case TT_I32:  *(uint32_t*)data = ci->getSExtValue(); return;
             case TT_U32:  *(uint32_t*)data = ci->getZExtValue(); return;
-            case TT_C32:  *(uint32_t*)data = ci->getZExtValue(); return;
             case TT_I64:  *(uint64_t*)data = ci->getSExtValue(); return;
             case TT_U64:  *(uint64_t*)data = ci->getZExtValue(); return;
             case TT_Isz:  *(size_t*)  data = ci->getSExtValue(); return;
@@ -290,7 +288,7 @@ namespace ante {
         switch(tv.type->typeTag){
             case TT_I8: case TT_U8: case TT_C8: case TT_Bool:
             case TT_I16: case TT_U16:
-            case TT_I32: case TT_U32: case TT_C32:
+            case TT_I32: case TT_U32:
             case TT_I64: case TT_U64: case TT_Isz: case TT_Usz:
                 storeInt(c, tv);
                 return;
@@ -388,7 +386,6 @@ namespace ante {
             case TT_U64: os << castTo<uint64_t>(); break;
             case TT_Usz: os << castTo<size_t>(); break;
             case TT_C8:  os << '\'' << castTo<char>() << '\''; break;
-            case TT_C32: os << '\'' << castTo<wchar_t>() << '\''; break;  /** TODO: wchar_t is 16 bits on windows, not 32 */
             case TT_Bool: os << (castTo<bool>() ? "true" : "false"); break;
             case TT_F16: os << castTo<float>(); break;
             case TT_F32: os << castTo<float>(); break;

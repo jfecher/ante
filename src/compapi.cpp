@@ -75,12 +75,12 @@ namespace ante {
 
         void init(){
             using U = std::unique_ptr<CtFunc>;
-            compapi.emplace("Ante_debug",       U(new CtFunc((void*)Ante_debug,       AnType::getUnit(), {AnTypeVarType::get("'t'")})));
-            compapi.emplace("Ante_sizeof",      U(new CtFunc((void*)Ante_sizeof,      AnType::getU32(),  {AnTypeVarType::get("'t'")})));
-            compapi.emplace("Ante_typeof",      U(new CtFunc((void*)Ante_typeof,      AnType::getPrimitive(TT_Type), {AnTypeVarType::get("'t")})));
-            compapi.emplace("Ante_error",       U(new CtFunc((void*)Ante_error,       AnType::getUnit(), {AnPtrType::get(AnType::getPrimitive(TT_C8))})));
-            compapi.emplace("Ante_emit_ir",     U(new CtFunc((void*)Ante_emit_ir,     AnType::getUnit())));
-            compapi.emplace("Ante_forget",      U(new CtFunc((void*)Ante_forget,      AnType::getUnit(), {AnPtrType::get(AnType::getPrimitive(TT_C8))})));
+            compapi.emplace("debug",       U(new CtFunc((void*)Ante_debug,       AnType::getUnit(), {AnTypeVarType::get("'t'")})));
+            compapi.emplace("sizeof",      U(new CtFunc((void*)Ante_sizeof,      AnType::getU32(),  {AnTypeVarType::get("'t'")})));
+            compapi.emplace("typeof",      U(new CtFunc((void*)Ante_typeof,      AnType::getPrimitive(TT_Type), {AnTypeVarType::get("'t")})));
+            compapi.emplace("error",       U(new CtFunc((void*)Ante_error,       AnType::getUnit(), {AnPtrType::get(AnType::getPrimitive(TT_C8))})));
+            compapi.emplace("emit_ir",     U(new CtFunc((void*)Ante_emit_ir,     AnType::getUnit())));
+            compapi.emplace("forget",      U(new CtFunc((void*)Ante_forget,      AnType::getUnit(), {AnPtrType::get(AnType::getPrimitive(TT_C8))})));
         }
 
         CtFunc* lookup(string const& fn){

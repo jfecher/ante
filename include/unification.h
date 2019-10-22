@@ -53,6 +53,7 @@ namespace ante {
     AnType* substitute(AnType *u, AnType *subType, AnType *t);
 
     Substitutions unify(UnificationList const& list);
+    Substitutions unifyOne(AnType *t1, AnType *t2, LOC_TY const& loc);
 
     AnType* applySubstitutions(Substitutions const& substitutions, AnType *t);
     TraitImpl* applySubstitutions(Substitutions const& substitutions, TraitImpl *t);

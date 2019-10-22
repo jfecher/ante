@@ -1,6 +1,7 @@
 #include <types.h>
 #include <trait.h>
 #include <nameresolution.h>
+#include <util.h>
 using namespace std;
 using namespace llvm;
 using namespace ante::parser;
@@ -11,7 +12,7 @@ char getBitWidthOfTypeTag(const TypeTag ty){
     switch(ty){
         case TT_I8:  case TT_U8: case TT_C8:  return 8;
         case TT_I16: case TT_U16: case TT_F16: return 16;
-        case TT_I32: case TT_U32: case TT_F32: case TT_C32: return 32;
+        case TT_I32: case TT_U32: case TT_F32: return 32;
         case TT_I64: case TT_U64: case TT_F64: return 64;
         case TT_Isz: case TT_Usz: return AN_USZ_SIZE;
         case TT_Bool: return 8;
@@ -26,8 +27,10 @@ char getBitWidthOfTypeTag(const TypeTag ty){
 }
 
 
+// TODO: Remove hardcoded check for Type type
 bool isCompileTimeOnlyParamType(AnType *ty){
-    return ty->typeTag == TT_Type || ty->typeTag == TT_Unit || ty->hasModifier(Tok_Ante);
+    return ty->typeTag == TT_Type || ty->typeTag == TT_Unit || ty->hasModifier(Tok_Ante)
+        || (ty->typeTag == TT_Data && try_cast<AnDataType>(ty)->name == "Type");
 }
 
 
@@ -37,6 +40,15 @@ bool isCompileTimeOnlyParamType(AnType *ty){
 AnType* extractTypeValue(const TypedValue &tv){
     auto zext = dyn_cast<ConstantInt>(tv.val)->getZExtValue();
     return (AnType*) zext;
+}
+
+AnType* findBinding(Substitutions const& subs, const AnType *key){
+    for(auto it = subs.rbegin(); it != subs.rend(); ++it){
+        if(it->first == key){
+            return it->second;
+        }
+    }
+    return nullptr;
 }
 
 Result<size_t, string> AnType::getSizeInBits(Compiler *c, string *incompleteType, bool force) const{
@@ -88,8 +100,8 @@ Result<size_t, string> AnType::getSizeInBits(Compiler *c, string *incompleteType
         return arr->len * val.getVal();
 
     }else if(auto *tvt = try_cast<AnTypeVarType>(this)){
-        if(force) return AN_USZ_SIZE;
-        else return "Lookup for typevar " + tvt->name + " not found";
+        AnType *lookup = findBinding(c->compCtxt->monomorphisationMappings, tvt);
+        return lookup->getSizeInBits(c);
     }
 
     return total;
@@ -121,17 +133,51 @@ string toLlvmTypeName(const AnDataType *dt){
     return name + ">";
 }
 
-Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt, bool force){
-    if(dt->isGeneric && !force){
-        error("Type " + anTypeToColoredStr(dt) + " is generic and cannot be translated", unknownLoc());
+AnDataType* getUnboundType(AnDataType *dt){
+    return dt->unboundType ? dt->unboundType : dt;
+}
+
+void AnDataType::setLlvmType(llvm::Type *type, ante::Substitutions const& monomorphisationBindings){
+    auto substitutedTA = ante::applyToAll(typeArgs, [&](AnType *typeArg){
+        return ante::applySubstitutions(monomorphisationBindings, typeArg);
+    });
+    auto unbound = getUnboundType(this);
+    for(auto &pair : unbound->llvmTypes){
+        if(allEq(pair.first, substitutedTA)){
+            this->llvmType = type;
+            pair.second = type;
+            return;
+        }
     }
 
+    unbound->llvmTypes.emplace_back(substitutedTA, type);
+}
+
+Type* AnDataType::findLlvmType(ante::Substitutions const& monomorphisationBindings){
+    auto substitutedTA = ante::applyToAll(typeArgs, [&](AnType *typeArg){
+        return ante::applySubstitutions(monomorphisationBindings, typeArg);
+    });
+    for(auto &pair : getUnboundType(this)->llvmTypes){
+        if(allEq(pair.first, substitutedTA))
+            return pair.second;
+    }
+    return nullptr;
+}
+
+Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt, bool force){
     //create an empty type first so we dont end up with infinite recursion
     bool isPacked = dt->typeTag == TT_TaggedUnion;
-    auto* structTy = dt->llvmType ? (StructType*)dt->llvmType
-        : StructType::create(*c->ctxt, toLlvmTypeName(dt));
+    StructType* structTy = static_cast<StructType*>(dt->llvmType);
+    
+    if(!structTy){
+        auto existing = dt->findLlvmType(c->compCtxt->monomorphisationMappings);
+        if(existing){
+            return existing;
+        }
+        structTy = StructType::create(*c->ctxt, toLlvmTypeName(dt));
+    }
 
-    dt->llvmType = structTy;
+    dt->setLlvmType(structTy, c->compCtxt->monomorphisationMappings);
 
     AnType *ext = dt;
     if(auto *st = try_cast<AnSumType>(dt))
@@ -152,94 +198,6 @@ Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt, bool force){
     return structTy;
 }
 
-/*
- *  Checks for, and implicitly widens an integer or float type.
- *  The original value of num is returned if no widening can be performed.
- */
-TypedValue Compiler::implicitlyWidenNum(TypedValue &num, TypeTag castTy){
-    bool lIsInt = isIntTypeTag(num.type->typeTag);
-    bool lIsFlt = isFPTypeTag(num.type->typeTag);
-
-    if(lIsInt or lIsFlt){
-        bool rIsInt = isIntTypeTag(castTy);
-        bool rIsFlt = isFPTypeTag(castTy);
-        if(!rIsInt && !rIsFlt){
-            cerr << "castTy argument of implicitlyWidenNum must be a numeric primitive type\n";
-            exit(1);
-        }
-
-        int lbw = getBitWidthOfTypeTag(num.type->typeTag);
-        int rbw = getBitWidthOfTypeTag(castTy);
-        Type *ty = typeTagToLlvmType(castTy, *ctxt);
-
-        //integer widening
-        if(lIsInt && rIsInt){
-            if(lbw <= rbw){
-                return TypedValue(
-                    builder.CreateIntCast(num.val, ty, !isUnsignedTypeTag(num.type->typeTag)),
-                    AnType::getPrimitive(castTy)
-                );
-            }
-
-        //int -> flt, (flt -> int is never implicit)
-        }else if(lIsInt && rIsFlt){
-            return TypedValue(
-                isUnsignedTypeTag(num.type->typeTag)
-                    ? builder.CreateUIToFP(num.val, ty)
-                    : builder.CreateSIToFP(num.val, ty),
-
-                AnType::getPrimitive(castTy)
-            );
-
-        //float widening
-        }else if(lIsFlt && rIsFlt){
-            if(lbw < rbw){
-                return TypedValue(
-                    builder.CreateFPExt(num.val, ty),
-                    AnType::getPrimitive(castTy)
-                );
-            }
-        }
-    }
-
-    return num;
-}
-
-
-/*
- *  Assures two IntegerType'd Values have the same bitwidth.
- *  If not, one is extended to the larger bitwidth and mutated appropriately.
- *  If the extended integer value is unsigned, it is zero extended, otherwise
- *  it is sign extended.
- *  Assumes the llvm::Type of both values to be an instance of IntegerType.
- */
-void Compiler::implicitlyCastIntToInt(TypedValue *lhs, TypedValue *rhs){
-    int lbw = getBitWidthOfTypeTag(lhs->type->typeTag);
-    int rbw = getBitWidthOfTypeTag(rhs->type->typeTag);
-
-    if(lbw != rbw){
-        //Cast the value with the smaller bitwidth to the type with the larger bitwidth
-        if(lbw < rbw){
-            auto ret = TypedValue(
-                builder.CreateIntCast(lhs->val, rhs->getType(),
-                    !isUnsignedTypeTag(lhs->type->typeTag)),
-                rhs->type
-            );
-
-            *lhs = ret;
-
-        }else{//lbw > rbw
-            auto ret = TypedValue(
-                builder.CreateIntCast(rhs->val, lhs->getType(),
-                    !isUnsignedTypeTag(rhs->type->typeTag)),
-                lhs->type
-            );
-
-            *rhs = ret;
-        }
-    }
-}
-
 bool isIntTypeTag(const TypeTag ty){
     return ty==TT_I8 or ty==TT_I16 or ty==TT_I32 or ty==TT_I64 or
            ty==TT_U8 or ty==TT_U16 or ty==TT_U32 or ty==TT_U64 or
@@ -253,73 +211,6 @@ bool isFPTypeTag(const TypeTag tt){
 bool isNumericTypeTag(const TypeTag ty){
     return isIntTypeTag(ty) or isFPTypeTag(ty);
 }
-
-/*
- *  Performs an implicit cast from a float to int.  Called in any operation
- *  involving an integer, a float, and a binop.  No matter the ints size,
- *  it is always casted to the (possibly smaller) float value.
- */
-void Compiler::implicitlyCastIntToFlt(TypedValue *lhs, Type *ty){
-    auto ret = TypedValue(
-        isUnsignedTypeTag(lhs->type->typeTag)
-            ? builder.CreateUIToFP(lhs->val, ty)
-            : builder.CreateSIToFP(lhs->val, ty),
-
-        AnType::getPrimitive(llvmTypeToTypeTag(ty))
-    );
-    *lhs = ret;
-}
-
-
-/*
- *  Performs an implicit cast from a float to float.
- */
-void Compiler::implicitlyCastFltToFlt(TypedValue *lhs, TypedValue *rhs){
-    int lbw = getBitWidthOfTypeTag(lhs->type->typeTag);
-    int rbw = getBitWidthOfTypeTag(rhs->type->typeTag);
-
-    if(lbw != rbw){
-        if(lbw < rbw){
-            auto ret = TypedValue(
-                builder.CreateFPExt(lhs->val, rhs->getType()),
-                rhs->type
-            );
-            *lhs = ret;
-        }else{//lbw > rbw
-            auto ret = TypedValue(
-                builder.CreateFPExt(rhs->val, lhs->getType()),
-                lhs->type
-            );
-            *rhs = ret;
-        }
-    }
-}
-
-
-/*
- *  Detects, and creates an implicit type conversion when necessary.
- */
-void Compiler::handleImplicitConversion(TypedValue *lhs, TypedValue *rhs){
-    bool lIsInt = isIntTypeTag(lhs->type->typeTag);
-    bool lIsFlt = isFPTypeTag(lhs->type->typeTag);
-    if(!lIsInt && !lIsFlt) return;
-
-    bool rIsInt = isIntTypeTag(rhs->type->typeTag);
-    bool rIsFlt = isFPTypeTag(rhs->type->typeTag);
-    if(!rIsInt && !rIsFlt) return;
-
-    //both values are numeric, so forward them to the relevant casting method
-    if(lIsInt && rIsInt){
-        implicitlyCastIntToInt(lhs, rhs);  //implicit int -> int (widening)
-    }else if(lIsInt && rIsFlt){
-        implicitlyCastIntToFlt(lhs, rhs->getType()); //implicit int -> flt
-    }else if(lIsFlt && rIsInt){
-        implicitlyCastIntToFlt(rhs, lhs->getType()); //implicit int -> flt
-    }else if(lIsFlt && rIsFlt){
-        implicitlyCastFltToFlt(lhs, rhs); //implicit int -> flt
-    }
-}
-
 
 bool containsTypeVar(const TypeNode *tn){
     auto tt = tn->typeTag;
@@ -355,7 +246,6 @@ Type* typeTagToLlvmType(TypeTag ty, LLVMContext &ctxt){
         case TT_F32:    return Type::getFloatTy(ctxt);
         case TT_F64:    return Type::getDoubleTy(ctxt);
         case TT_C8:     return Type::getInt8Ty(ctxt);
-        case TT_C32:    return Type::getInt32Ty(ctxt);
         case TT_Bool:   return Type::getInt1Ty(ctxt);
         case TT_Unit:   return Type::getVoidTy(ctxt);
         case TT_TypeVar:
@@ -413,6 +303,7 @@ TypeTag llvmTypeToTypeTag(Type *t){
     return TT_Unit;
 }
 
+
 /*
  *  Converts a TypeNode to an llvm::Type.  While much less information is lost than
  *  llvmTypeToTokType, information on signedness of integers is still lost, causing the
@@ -420,6 +311,11 @@ TypeTag llvmTypeToTypeTag(Type *t){
  */
 Type* Compiler::anTypeToLlvmType(const AnType *ty, bool force){
     vector<Type*> tys;
+
+    if(ty->hasModifier(Tok_Mut)){
+        auto bm = dynamic_cast<const BasicModifier*>(ty);
+        return anTypeToLlvmType(bm->extTy, force)->getPointerTo();
+    }
 
     switch(ty->typeTag){
         case TT_Ptr: {
@@ -443,8 +339,9 @@ Type* Compiler::anTypeToLlvmType(const AnType *ty, bool force){
             return StructType::get(*ctxt, tys);
         case TT_Data: case TT_TaggedUnion: case TT_Trait: {
             auto *dt = (AnDataType*)try_cast<AnDataType>(ty);
-            if(dt->llvmType)
-                return dt->llvmType;
+            auto existing = dt->llvmType;
+            if(existing)
+                return existing;
             else
                 return updateLlvmTypeBinding(this, dt, force);
         }
@@ -456,20 +353,21 @@ Type* Compiler::anTypeToLlvmType(const AnType *ty, bool force){
                         return FunctionType::get(anTypeToLlvmType(f->retTy, force), tys, true)->getPointerTo();
                     }
                 }
-                tys.push_back(anTypeToLlvmType(f->extTys[i], force));
+                // All Ante functions take at least 1 arg: (), which are ignored in llvm ir
+                // and translated to 0 arg functions instead
+                if(f->extTys[i]->typeTag != TT_Unit)
+                    tys.push_back(anTypeToLlvmType(f->extTys[i], force));
             }
 
             return FunctionType::get(anTypeToLlvmType(f->retTy, force), tys, false)->getPointerTo();
         }
         case TT_TypeVar: {
-            auto *tvt = try_cast<AnTypeVarType>(ty);
-            //error("Use of undeclared type variable " + ty->typeName, ty->loc);
-            //error("tn2llvmt: TypeVarError; lookup for "+ty->typeName+" not found", ty->loc);
-            //throw new TypeVarError();
-            if(!force)
-                cerr << "Warning: cannot translate undeclared typevar " << tvt->name << endl;
-
-            return Type::getInt64PtrTy(*ctxt);
+            auto binding = findBinding(compCtxt->monomorphisationMappings, ty); 
+            if(binding){
+                return anTypeToLlvmType(binding, force);
+            }
+            std::cerr << "Typevar: " << (AnType*)ty << '\n' << "Bindings: " << compCtxt->monomorphisationMappings << '\n';
+            ASSERT_UNREACHABLE("Unbound typevar found during monomorphisation");
         }
         default:
             return typeTagToLlvmType(ty->typeTag, *ctxt);
@@ -564,7 +462,6 @@ string typeTagToStr(TypeTag ty){
         case TT_Isz:   return "isz";
         case TT_Usz:   return "usz";
         case TT_C8:    return "c8" ;
-        case TT_C32:   return "c32";
         case TT_Bool:  return "bool";
         case TT_Unit:  return "unit";
         case TT_Type:  return "Type";
@@ -623,7 +520,7 @@ string typeNodeToStr(const TypeNode *t){
         auto *len = (IntLitNode*)t->extTy->next.get();
         return '[' + len->val + " " + typeNodeToStr(t->extTy.get()) + ']';
     }else if(t->typeTag == TT_Ptr){
-        return typeNodeToStr(t->extTy.get()) + "*";
+        return "ref " + typeNodeToStr(t->extTy.get());
     }else if(t->typeTag == TT_Function or t->typeTag == TT_MetaFunction){
         string ret = "";
         string retTy = typeNodeToStr(t->extTy.get());
@@ -652,6 +549,9 @@ bool shouldWrapInParenthesis(AnType *type){
     //Quick and dirty checks just to see if we need parenthesis wrapping the type or not
     if(ante::isPrimitiveTypeTag(type->typeTag) || type->typeTag == TT_TypeVar || type->typeTag == TT_Array)
         return false;
+
+    if(type->typeTag == TT_Ptr)
+        return true;
 
     auto adt = try_cast<AnDataType>(type);
     if (!adt) return false;
@@ -742,7 +642,7 @@ string anTypeToStr(const AnType *t){
     }else if(auto *arr = try_cast<AnArrayType>(t)){
         return '[' + to_string(arr->len) + " " + anTypeToStr(arr->extTy) + ']';
     }else if(auto *ptr = try_cast<AnPtrType>(t)){
-        return anTypeToStr(ptr->extTy) + "*";
+        return "ref " + anTypeToStr(ptr->extTy);
     }else{
         return typeTagToStr(t->typeTag);
     }

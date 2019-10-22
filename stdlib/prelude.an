@@ -73,7 +73,6 @@ impl Eq (Maybe 'e) given Eq 'e
             | None -> true
 
 
-
 impl To Str (Maybe 'm) given To Str 'm
     to _ maybe =
         match maybe with
@@ -175,35 +174,6 @@ trait To 't /*from*/ 'u
     to (Type 't) 'u -> 't
 
 
-//intrinsics for numeric types
-impl Cmp usz
-    (<) a b = true
-    (>) a b = true
-
-impl Cmp i32
-    (<) a b = true
-    (>) a b = true
-
-impl Add i32
-    (+) a b = a + b
-
-impl Sub i32
-    (-) a b = a - b
-
-impl Mul i32
-    (*) a b = a * b
-
-impl Add usz
-    (+) a b = a + b
-
-impl Sub usz
-    (-) a b = a - b
-
-impl Extract (ref 't) usz
-    type ExtractElem = none:unit
-    (#) c i = c#i
-
-
 //numerical print functions
 impl Print i8
     printne x = printf ("%hhd".cStr) x
@@ -271,9 +241,9 @@ impl To (ref c8) Str
 
 module Str
     reverse s:Str -> Str =
-        buf mut = ref c8 malloc (s.len + 1usz)
+        buf = mut ref c8 malloc (s.len + 1usz)
 
-        i mut = 0usz
+        i = mut 0usz
         while i < s.len do
             buf#i := s.cStr#(s.len - i - 1usz)
             i += 1usz
@@ -285,11 +255,11 @@ module Str
 impl To Str i64
     to _ i =
         if i == 0i64 then return "0"
-        len mut = 0usz
-        buf mut = ref c8 malloc 21usz
+        len = mut 0usz
+        buf = mut ref c8 malloc 21usz
         buf#20usz := '\0'
 
-        x mut = i
+        x = mut i
         isNeg = i < 0i64 and ((x *= -1i64); true)
 
         while x != 0i64 do
@@ -308,11 +278,11 @@ impl To Str i64
 impl To Str u64
     to _ i =
         if i == 0u64 then return "0"
-        len mut = 0usz
-        buf mut = ref c8 malloc 21usz
+        len = mut 0usz
+        buf = mut ref c8 malloc 21usz
         buf#20usz := '\0'
 
-        x mut = i
+        x = mut i
         while x != 0u64 do
             len += 1usz
             buf#(20usz - len) := '0' + c8(x % 10u64)
@@ -350,8 +320,8 @@ impl To Str usz
 
 module u64
     parse s:Str -> Maybe u64 =
-        i mut = 0
-        sum mut = 0u64
+        i = mut 0usz
+        sum = mut 0u64
 
         while s#i != '\0' do
             c = s#i
@@ -367,10 +337,10 @@ module u64
 
 module i64
     parse s:Str -> Maybe i64 =
-        i mut = 0usz
-        sum mut = 0i64
+        i = mut 0usz
+        sum = mut 0i64
         isNeg =
-            if (s.len == 0usz) or (s#0usz == '-') then false
+            if s.len == 0usz or s#0usz == '-' then false
             else ((i += 1usz); true)
 
         while s#i != '\0' do
@@ -396,9 +366,9 @@ trait Iterable 'i
 
 trait Iterator 'i
     type IteratorElem
-    next 'i -> 'i
-    unwrap 'i -> IteratorElem
     has_next 'i -> bool
+    cur_elem 'i -> IteratorElem
+    advance 'i -> 'i
 
 
 type LazyRange = start:i32 end:i32 step:i32
@@ -428,25 +398,17 @@ impl Range (i32,i32) i32
 
 impl Iterator LazyRange
     type IteratorElem = e:i32
-
-    next r = LazyRange(r.start+r.step, r.end, r.step)
-
-    unwrap r = r.start
-
-    has_next r =
-        if r.step > 0 then
-            r.start < r.end
-        elif r.step < 0 then
-            r.start > r.end
-        else false //step = 0
+    cur_elem r = r.start
+    advance r = LazyRange(r.start + r.step, r.end, r.step)
+    has_next r = (r.step > 0 and r.start < r.end) or (r.step < 0 and r.start > r.end)
 
 
 //Iterating through an InFile iterates through each line
 impl Iterator InFile
     type IteratorElem = s:Str
     has_next f = not feof f
-    next f = f
-    unwrap f = InFile.next_line f
+    cur_elem f = InFile.next_line f
+    advance f = f
 
 
 module OutFile
@@ -480,11 +442,11 @@ impl Append Str
         if s2.len == 0usz then return s1
 
         len = s1.len + s2.len
-        buf mut = malloc (len+1usz)
+        buf = mut malloc (len+1usz)
 
         memcpy buf (ref unit s1.cStr) s1.len
 
-        buf_offset mut = (usz buf + s1.len) as (ref unit)
+        buf_offset = mut (usz buf + s1.len) as ref unit
         memcpy buf_offset (ref unit s2.cStr) (s2.len+1usz) //copy terminating null too
 
         Str(ref c8 buf, len)
@@ -511,9 +473,9 @@ module InFile
         if feof f then return ""
         eof = c8 255
 
-        len mut = 0usz
-        cap mut = 64usz
-        cstr mut = ref c8 malloc cap
+        len = mut 0usz
+        cap = mut 64usz
+        cstr = mut ref c8 malloc cap
 
         while
             c = fgetc f
@@ -541,8 +503,8 @@ module InFile
 
 //print a message then return user input
 input (msg:ref c8) -> Str =
-    len mut = 0usz
-    cstr mut = ref c8 0
+    len = mut 0usz
+    cstr = mut ref c8 0
 
     printne msg
 

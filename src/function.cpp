@@ -46,32 +46,6 @@ vector<AnType*> toTypeVector(vector<TypedValue> const& tvs){
 }
 
 
-TypedValue Compiler::callFn(string name, vector<TypedValue> args){
-    auto typeVec = toTypeVector(args);
-    TypedValue fn = getMangledFn(name, typeVec);
-    if(!fn) return fn;
-
-    //vector of llvm::Value*s for the call to CreateCall at the end
-    auto vals = vecOf<Value*>(args.size());
-
-    //Loop through each arg, typecheck them, and build vals vector
-    //TODO: re-arrange all args into one tuple so that typevars
-    //      are matched correctly across parameters
-    auto *fnty = try_cast<AnFunctionType>(fn.type);
-    for(size_t i = 0; i < args.size(); i++){
-        auto arg = args[i];
-        if(!arg) return arg;
-        if(fnty->extTys[i]->hasModifier(Tok_Mut)){
-            arg = addrOf(this, arg);
-        }
-        vals.push_back(arg.val);
-    }
-
-    return TypedValue(builder.CreateCall(fn.val, vals), fnty->retTy);
-}
-
-
-
 /*
  * Translates a NamedValNode list to a vector
  * of the types it contains.  If the list contains
@@ -167,17 +141,6 @@ TypedValue compFnWithModifiers(Compiler *c, FuncDecl *fd, ModNode *mod){
                 fn = c->compFn(fd);
                 if(!fn) return fn;
                 ((Function*)fn.val)->addFnAttr(Attribute::AttrKind::AlwaysInline);
-            }else if(vn->name == "run"){
-                fn = c->compFn(fd);
-                if(!fn) return fn;
-
-                auto *mod = c->module.release();
-
-                c->module.reset(new llvm::Module(fd->getMangledName(), *c->ctxt));
-                auto recomp = c->compFn(fd);
-
-                c->jitFunction((Function*)recomp.val);
-                c->module.reset(mod);
             }else if(vn->name == "on_fn_decl"){
                 auto *rettn = (TypeNode*)fdn->returnType.get();
                 auto *fnty = AnFunctionType::get(toAnType(rettn, c->compUnit), fdn->params.get(), c->compUnit, true);
@@ -238,6 +201,15 @@ AnFunctionType* removeCompileTimeParams(AnType *functy){
 }
 
 
+vector<NamedValNode*> vectorize(NamedValNode *n){
+    std::vector<NamedValNode*> result;
+    for(auto& nvn : *n){
+        result.push_back(static_cast<NamedValNode*>(&nvn));
+    }
+    return result;
+}
+
+
 TypedValue compFnHelper(Compiler *c, FuncDecl *fd){
     BasicBlock *caller = c->builder.GetInsertBlock();
     auto *fdn = fd->getFDN();
@@ -248,11 +220,11 @@ TypedValue compFnHelper(Compiler *c, FuncDecl *fd){
         return ret;
     }
 
-    fdn->setType(removeCompileTimeParams(fdn->getType()));
     AnFunctionType *fnTy = try_cast<AnFunctionType>(fdn->getType());
+    auto fnTyNoCtParams = removeCompileTimeParams(fnTy);
 
-    FunctionType *ft = dyn_cast<FunctionType>(c->anTypeToLlvmType(fnTy)->getPointerElementType());
-    Function *f = Function::Create(ft, Function::ExternalLinkage, fd->getMangledName(), c->module.get());
+    FunctionType *ft = dyn_cast<FunctionType>(c->anTypeToLlvmType(fnTyNoCtParams)->getPointerElementType());
+    Function *f = Function::Create(ft, Function::ExternalLinkage, fd->getName(), c->module.get());
 
     TypedValue ret{f, fnTy};
     fd->tval.val = f;
@@ -310,44 +282,12 @@ TypedValue compFnHelper(Compiler *c, FuncDecl *fd){
 }
 
 
-TypedValue FuncDecl::getOrCompileFn(Compiler *c){
-    if(this->tval) return tval;
-    c->compFn(this);
-    return tval;
-}
-
-
-FuncDecl* shallow_copy(FuncDecl* fd, string &mangledName){
-    FuncDecl *cpy = new FuncDecl(fd->getFDN(), mangledName, fd->module);
-    cpy->obj = fd->obj;
-    return cpy;
-}
-
-
-/**
- * Returns true if the given function name is a declaration
- * and not a definition
- */
-bool isDecl(string &name){
-    return !name.empty() && name.back() == ';';
-}
-
-
 void CompilingVisitor::visit(FuncDeclNode *n){
     // Only lambdas need to be compiled immediately.
     // Other functions can be done lazily when called.
     if(n->name.empty() && n->decl->isFuncDecl()){
         val = c->compFn(static_cast<FuncDecl*>(n->decl));
     }
-}
-
-
-FuncDecl* getFuncDeclFromVec(vector<shared_ptr<FuncDecl>> &l, string const& mangledName){
-    for(auto& fd : l){
-        if(fd->getMangledName() == mangledName)
-            return fd.get();
-    }
-    return 0;
 }
 
 
@@ -372,136 +312,6 @@ TypedValue Compiler::compFn(FuncDecl *fd){
 
 FuncDecl* Compiler::getCurrentFunction() const{
     return compCtxt->callStack.back();
-}
-
-
-void Compiler::updateFn(TypedValue &f, FuncDecl *fd, string const& name, string const& mangledName){
-    //TODO: remove entirely
-}
-
-
-TypedValue Compiler::getFunction(string const& name, string const& mangledName){
-    auto list = getFunctionList(name);
-    if(list.empty()) return {};
-
-    auto *fd = getFuncDeclFromVec(list, mangledName);
-    if(!fd) return {};
-
-    if(fd->tval) return fd->tval;
-
-    //Function has been declared but not defined, so define it.
-    //fd->tv = compFn(fd);
-    return compFn(fd);
-}
-
-/*
- * Returns all FuncDecls from a list that have argc number of parameters
- * and can be accessed in the current scope.
- */
-vector<shared_ptr<FuncDecl>> filterByArgc(vector<shared_ptr<FuncDecl>> &l, size_t argc, unsigned int scope){
-    vector<shared_ptr<FuncDecl>> ret;
-    for(auto& fd : l){
-        if(getTupleSize(fd->getFDN()->params.get()) == argc){
-            ret.push_back(fd);
-        }
-    }
-    return ret;
-}
-
-
-template<typename T>
-vector<T*> vectorize(T *args){
-    vector<T*> ret;
-    while(args){
-        ret.push_back(args);
-        args = (T*)args->next.get();
-    }
-    return ret;
-}
-
-FuncDecl* Compiler::getMangledFuncDecl(string name, vector<AnType*> &args){
-    auto fnlist = getFunctionList(name);
-    if(fnlist.empty()) return 0;
-
-    auto candidates = filterByArgc(fnlist, args.size(), scope);
-    if(candidates.empty()) return 0;
-
-    //if there is only one function now, return it.  It will be typechecked later
-    if(candidates.size() == 1)
-        return candidates.front().get();
-
-    //check for an exact match on the remaining candidates.
-    string fnName = mangle(name, args);
-    auto *fd = getFuncDeclFromVec(candidates, fnName);
-    if(fd) //exact match
-        return fd;
-
-    throw CtError();
-    //TODO: possibly return all functions considered for better error checking
-    return nullptr;
-}
-
-
-/*
- * Compile a possibly-generic function with given arg types
- */
-TypedValue compFnWithArgs(Compiler *c, FuncDecl *fd, vector<AnType*> args){
-    if(fd->tval.val)
-        return fd->tval;
-    else{
-        TypedValue ret = c->compFn(fd);
-        fd->tval.val = ret.val;
-        return ret;
-    }
-}
-
-
-TypedValue Compiler::getMangledFn(string name, vector<AnType*> &args){
-    auto *fd = getMangledFuncDecl(name, args);
-    if(!fd) return {};
-
-    return compFnWithArgs(this, fd, args);
-}
-
-
-vector<shared_ptr<FuncDecl>> Compiler::getFunctionList(string const& name) const{
-    //TODO: remove entirely
-    // return mergedCompUnits->fnDecls[name];
-    return {};
-}
-
-/*
- * Returns the FuncDecl* of a given name/basename pair
- * returns nullptr if specified function is not found
- */
-FuncDecl* Compiler::getFuncDecl(string baseName, string mangledName){
-    auto list = getFunctionList(baseName);
-    if(list.empty()) return 0;
-
-    return getFuncDeclFromVec(list, mangledName);
-}
-
-/*
- *  Adds a function to the list of declared, but not defined functions.  A declared function's
- *  FuncDeclNode can be added to be compiled only when it is later called.  Useful to prevent pollution
- *  of a module with unneeded library functions.
- */
-void Compiler::registerFunction(FuncDeclNode *fn, string &mangledName){
-    //check for redeclaration
-    //TODO: remove entirely
-    auto *redecl = getFuncDecl(fn->name, mangledName);
-
-    if(redecl && redecl->getMangledName() == mangledName){
-        error("Function " + fn->name + " was redefined", fn->loc);
-        return;
-    }
-
-    //FuncDecl *fdRaw = new FuncDecl(fn, mangledName, scope, mergedCompUnits);
-    //shared_ptr<FuncDecl> fd{fdRaw};
-    //fd->obj = compCtxt->obj;
-
-    // compUnit->fnDecls[fn->name].push_back(fd);
-    // mergedCompUnits->fnDecls[fn->name].push_back(fd);
 }
 
 } //end of namespace ante

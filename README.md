@@ -31,28 +31,28 @@ the ability to interact at a lower level if needed.
     - Programmers have just as much power over their program as the compiler does.  As an example,
     here is an implementation of the goto construct in Ante:
 
-```go
+```haskell
 //The 'ante' keyword declares compile-time values
 ante
-    global mut labels = empty Map
+    labels = global mut empty Map
 
-    goto vn:VarNode =
-        label = labels.lookup vn.name ?
-            None -> Ante.error "Cannot goto undefined label ${vn}"
+    goto lbl =
+        label = lookup labels lbl ?
+            None -> Ante.error "Cannot goto undefined label ${lbl}"
 
         Llvm.setInsertPoint (getCallSiteBlock ())
         Llvm.createBr label
 
-    label vn:VarNode =
-        let callingFn = getParentFn (getCallSiteBlock ())
-        let lbl = Llvm.BasicBlock(Ante.llvm_ctxt, callingFn)
-        labels#vn.name := lbl
+    label name:Str =
+        callingFn = getParentFn (getCallSiteBlock ())
+        lbl = Llvm.BasicBlock(Ante.llvm_ctxt, callingFn)
+        labels#name := lbl
 
 
 //test it out
-label begin
+label "begin"
 print "hello!"
-goto begin
+goto "begin"
 ```
 
 ## Installation

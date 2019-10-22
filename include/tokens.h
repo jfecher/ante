@@ -14,7 +14,7 @@ namespace ante {
         TT_U8, TT_U16, TT_U32, TT_U64,
         TT_F16, TT_F32, TT_F64,
         TT_Isz, TT_Usz,
-        TT_C8, TT_C32,
+        TT_C8,
         TT_Bool,
         TT_Tuple,
         TT_Array,
@@ -51,7 +51,6 @@ namespace ante {
         Tok_F32,
         Tok_F64,
         Tok_C8,
-        Tok_C32,
         Tok_Bool,
         Tok_Unit,
 

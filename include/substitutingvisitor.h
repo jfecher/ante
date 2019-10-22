@@ -2,6 +2,7 @@
 #define AN_SUBSTITUTINGVISITOR_H
 
 #include "parser.h"
+#include "module.h"
 #include "unification.h"
 
 namespace ante {
@@ -9,16 +10,17 @@ namespace ante {
     struct SubstitutingVisitor : public NodeVisitor {
         DECLARE_NODE_VISIT_METHODS();
 
-        SubstitutingVisitor(Substitutions const& s)
-            : substitutions{s}{}
+        SubstitutingVisitor(Substitutions const& s, Module *module)
+            : substitutions{s}, module{module}{}
 
-        static void substituteIntoAst(parser::Node *ast, Substitutions const& subs){
-            SubstitutingVisitor v{subs};
+        static void substituteIntoAst(parser::Node *ast, Substitutions const& subs, Module *module){
+            SubstitutingVisitor v{subs, module};
             ast->accept(v);
         }
 
         private:
         Substitutions const& substitutions;
+        Module *module;
     };
 }
 

@@ -91,8 +91,7 @@ namespace ante {
 
         }else{
             std::cerr << "Unknown type: " << anTypeToColoredStr(t) << std::endl;
-            assert(false);
-            return t;
+            ASSERT_UNREACHABLE();
         }
     }
 
@@ -367,12 +366,12 @@ namespace ante {
 
     TraitImpl* applySubstitutions(Substitutions const& substitutions, TraitImpl *t){
         auto ret = new TraitImpl(t->name, t->typeArgs);
-        for(auto it = substitutions.rbegin(); it != substitutions.rend(); it++){
+        for(auto it = substitutions.rbegin(); it != substitutions.rend(); ++it){
             ret->typeArgs = ante::applyToAll(ret->typeArgs, [it](AnType *type){
                 return substitute(it->second, it->first, type);
             });
         }
-        return t;
+        return ret;
     }
 
     template<class T>
@@ -416,7 +415,7 @@ namespace ante {
         UnificationList ret;
 
         if(!t1->isGeneric && !t2->isGeneric){
-            if(t1 != t2){
+            if(!t1->approxEq(t2)){
                 showError("Mismatched types " + anTypeToColoredStr(t1) + " and " + anTypeToColoredStr(t2), loc);
             }
             return {};
@@ -449,7 +448,7 @@ namespace ante {
         }else if(auto fn1 = try_cast<AnFunctionType>(t1)){
             auto fn2 = try_cast<AnFunctionType>(t2);
             if(fn1->extTys.size() != fn2->extTys.size()){
-                error("Types are of varying sizes", loc);
+                error("Types " + anTypeToColoredStr(fn1) + " and " + anTypeToColoredStr(fn2) + " are of varying sizes", loc);
             }
 
             for(size_t i = 0; i < fn1->extTys.size(); i++)

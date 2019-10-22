@@ -5,6 +5,7 @@
 #include "antype.h"
 #include "pattern.h"
 #include "unification.h"
+#include "module.h"
 #include <tuple>
 
 namespace ante {
@@ -30,6 +31,10 @@ namespace ante {
             /** Searches type for typeclasses, removes them from the type, and adds them
              *  as a separate constraint.  Returns a new type with type classes removed. */
             AnType* handleTypeClassConstraints(AnType *t, LOC_TY const& loc);
+
+            bool findFieldInTypeList(llvm::StringMap<TypeDecl> const& m, parser::BinOpNode *op, parser::VarNode *rval);
+
+            void searchForField(parser::BinOpNode *op);
 
             /** Add bindings from a trait's declaration to the scope of
              *  the trait's implementation to better infer parameter/return types. */

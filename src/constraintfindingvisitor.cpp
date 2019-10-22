@@ -19,6 +19,9 @@ namespace ante {
     }
 
     void ConstraintFindingVisitor::addConstraint(AnType *a, AnType *b, LOC_TY &loc){
+        if(a == nullptr || b == nullptr){
+            puts("uh oh");
+        }
         constraints.emplace_back(a, b, loc);
     }
 
@@ -141,11 +144,13 @@ namespace ante {
         case '-': //negation
             trait = getUnOpTraitType(module, n->op);
             addTypeClassConstraint(trait, n->loc);
+            addConstraint(trait->typeArgs[0], n->rval->getType(), n->loc);
             addConstraint(n->getType(), n->rval->getType(), n->loc);
             break;
         case Tok_Not:
             trait = getUnOpTraitType(module, n->op);
             addTypeClassConstraint(trait, n->loc);
+            addConstraint(trait->typeArgs[0], n->rval->getType(), n->loc);
             addConstraint(n->getType(), n->rval->getType(), n->loc);
             break;
         case Tok_New:
@@ -246,6 +251,46 @@ namespace ante {
                 + weregiven, loc);
     }
 
+    bool ConstraintFindingVisitor::findFieldInTypeList(llvm::StringMap<TypeDecl> const& m, BinOpNode *op, VarNode *rval) {
+        for(auto &p : m){
+            if(auto *pt = try_cast<AnProductType>(p.second.type)){
+                for(size_t i = 0; i < pt->fieldNames.size(); i++){
+                    auto &field = pt->fieldNames[i];
+                    if(field == rval->name){
+                        auto ty = static_cast<AnProductType*>(copyWithNewTypeVars(pt));
+                        addConstraint(op->lval->getType(), ty, op->loc);
+                        addConstraint(rval->getType(), ty->fields[i], op->loc);
+                        addConstraint(op->getType(), ty->fields[i], op->loc);
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    void ConstraintFindingVisitor::searchForField(BinOpNode *op) {
+        if(dynamic_cast<TypeNode*>(op->lval.get())){
+            // not a field access, just qualified name resolution
+            return;
+        }
+
+        VarNode *vn = dynamic_cast<VarNode*>(op->rval.get());
+        if(!vn){
+            error("RHS of . operator must be an identifier", op->rval->loc);
+        }
+
+        if(findFieldInTypeList(module->userTypes, op, vn))
+            return;
+
+        for(Module *import : module->imports){
+            if(findFieldInTypeList(import->userTypes, op, vn))
+                return;
+        }
+
+        show(vn);
+        error("No field named " + vn->name + " found for any type", vn->loc);
+    }
 
     void ConstraintFindingVisitor::fnCallConstraints(BinOpNode *n){
         auto fnty = try_cast<AnFunctionType>(n->lval->getType());
@@ -387,7 +432,9 @@ namespace ante {
             addConstraint(n->lval->getType(), collection_elemTy.second, n->loc);
             addConstraint(n->rval->getType(), collection->typeArgs[0], n->loc);
             addConstraint(n->getType(), AnType::getBool(), n->loc);
-        }else if(n->op == '.' || n->op == Tok_As){
+        }else if(n->op == '.'){
+            searchForField(n);
+        }else if(n->op == Tok_As){
             // intentionally empty
         }else{
             ante::error("Internal compiler error, unrecognized op " + string(1, n->op) + " (" + to_string(n->op) + ")", n->loc);
@@ -417,16 +464,34 @@ namespace ante {
 
     void ConstraintFindingVisitor::visit(NamedValNode *n){}
 
-    void ConstraintFindingVisitor::visit(VarNode *n){}
+    void ConstraintFindingVisitor::visit(VarNode *n){
+        auto fnty = try_cast<AnFunctionType>(n->getType());
+        if(fnty && !fnty->typeClassConstraints.empty()){
+            for(auto constraint : fnty->typeClassConstraints){
+                addTypeClassConstraint(constraint, n->loc);
+            }
+        }
+    }
 
 
     void ConstraintFindingVisitor::visit(VarAssignNode *n){
         n->expr->accept(*this);
         n->ref_expr->accept(*this);
+
+        AnType *refty = n->expr->getType();
+        if(n->hasModifier(Tok_Mut)){
+            refty = (AnType*)refty->addModifier(Tok_Mut);
+        }
+        addConstraint(n->ref_expr->getType(), refty, n->loc);
     }
 
     void ConstraintFindingVisitor::addConstraintsFromTCDecl(FuncDeclNode *fdn, TraitImpl *tr, FuncDeclNode *decl){
         TraitDecl *parent = tr->decl;
+        if(parent->typeArgs.size() != tr->typeArgs.size()){
+            error("Impl has " + to_string(tr->typeArgs.size()) + " typeargs, but there are "
+                + to_string(parent->typeArgs.size()) + " typeargs in " + parent->name + "'s decl", fdn->loc);
+        }
+
         for(size_t i = 0; i < parent->typeArgs.size(); i++){
             addConstraint(parent->typeArgs[i], tr->typeArgs[i], fdn->params->loc);
         }
@@ -513,6 +578,11 @@ namespace ante {
         n->range->accept(*this);
         n->pattern->accept(*this);
         n->child->accept(*this);
+
+        TraitDecl *decl = module->lookupTraitDecl("Iterable");
+        TraitImpl *impl = new TraitImpl(decl, {n->range->getType()});
+        n->iterableInstance = impl;
+        addTypeClassConstraint(impl, n->loc);
     }
 
     void ConstraintFindingVisitor::handleTuplePattern(parser::MatchNode *n,

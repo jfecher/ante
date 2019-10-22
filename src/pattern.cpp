@@ -27,9 +27,10 @@ namespace ante {
         }else if(literalType == Flt){
             eq = cv.c->builder.CreateFCmpOEQ(cv.val.val, valToMatch.val);
         }else if(literalType == Str){
-            eq = cv.c->callFn("==", {cv.val, valToMatch}).val;
+            error("TODO: resolve == : Str Str -> bool within patterns", pattern->loc);
+            // eq = cv.c->callFn("==", {cv.val, valToMatch}).val;
         }else{
-            ASSERT_UNREACHABLE();
+            ASSERT_UNREACHABLE("Unknown literal pattern in match_literal");
         }
 
         BasicBlock *jmpOnSuccess = BasicBlock::Create(*cv.c->ctxt, "match", getCurFunction(cv.c));
@@ -146,7 +147,7 @@ namespace ante {
             eq = c->builder.CreateICmpEQ(valToMatch.val, ci);
         }else{
             //all tagged unions are either just their tag (enum) or a tag and value.
-            ASSERT_UNREACHABLE();
+            ASSERT_UNREACHABLE("Unknown sum-type in match_variant");
         }
 
         BasicBlock *jmpOnSuccess = BasicBlock::Create(*cv.c->ctxt, "match", getCurFunction(cv.c));
@@ -162,7 +163,7 @@ namespace ante {
                 variant = c->getVoidLiteral();
             }else{
                 //all tagged unions are either just their tag (enum) or a tag and value.
-                ASSERT_UNREACHABLE();
+                ASSERT_UNREACHABLE("Unknown variant in match_variant");
             }
             handlePattern(cv, n, bindExpr, jmpOnFail, variant);
         }
@@ -343,7 +344,7 @@ namespace ante {
                     return p.constructMissedCase();
                 }
             }
-            ASSERT_UNREACHABLE();
+            ASSERT_UNREACHABLE("Pattern has no missed cases");
         }
 
         if(type == TT_Tuple){

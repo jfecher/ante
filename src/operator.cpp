@@ -1,14 +1,15 @@
 #include <llvm/ExecutionEngine/Orc/LLJIT.h>
 #include <llvm/Transforms/Utils/Cloning.h>
-#include "compiler.h"
+#include "unification.h"
 #include "scopeguard.h"
-#include "types.h"
-#include "function.h"
-#include "tokens.h"
-#include "types.h"
 #include "antevalue.h"
+#include "compiler.h"
+#include "function.h"
 #include "compapi.h"
 #include "target.h"
+#include "tokens.h"
+#include "types.h"
+#include "trait.h"
 #include "util.h"
 
 using namespace std;
@@ -186,12 +187,13 @@ TypedValue Compiler::compInsert(BinOpNode *op, Node *assignExpr){
     CompilingVisitor cv{this};
     auto tmp = compileRefExpr(cv, op->lval.get(), assignExpr);
 
-    Value *var = static_cast<LoadInst*>(tmp.val);
+    auto *var = static_cast<LoadInst*>(tmp.val);
 
     auto index =  CompilingVisitor::compile(this, op->rval);
     auto newVal = CompilingVisitor::compile(this, assignExpr);
 
     //see if insert operator # = is overloaded already
+    /*
     string basefn = "#";
     vector<AnType*> args = {tmp.type, AnType::getI32(), newVal.type};
     auto fn = getMangledFn(basefn, args);
@@ -201,6 +203,7 @@ TypedValue Compiler::compInsert(BinOpNode *op, Node *assignExpr){
         auto *call = builder.CreateCall(fn.val, args);
         return TypedValue(call, retty);
     }
+    */
 
     switch(tmp.type->typeTag){
         case TT_Array: {
@@ -210,7 +213,7 @@ TypedValue Compiler::compInsert(BinOpNode *op, Node *assignExpr){
             return getVoidLiteral();
         }
         case TT_Ptr: {
-            Value *dest = builder.CreateInBoundsGEP(builder.CreateLoad(var), index.val);
+            Value *dest = builder.CreateInBoundsGEP(var->getPointerOperand(), index.val);
             builder.CreateStore(newVal.val, dest);
             return getVoidLiteral();
         }
@@ -520,15 +523,116 @@ string toModuleName(const AnType *t){
     }
 }
 
+bool hasTrivialImpl(TraitImpl *impl){
+    string const& n = impl->name;
+    if(n == "Add" || n == "Sub" || n == "Mul" || n == "Div" || n == "Mod" || n == "Cmp" || n == "Neg"){
+        return impl->typeArgs[0]->isIntTy() || impl->typeArgs[0]->typeTag == TT_C8;
+
+    }else if(n == "To"){
+        AnType *arg1 = impl->typeArgs[0];
+        AnType *arg2 = impl->typeArgs[1];
+        return (arg1->isIntTy() || arg1->typeTag == TT_Ptr || arg1->typeTag == TT_C8)
+            && (arg2->isIntTy() || arg2->typeTag == TT_Ptr || arg2->typeTag == TT_C8);
+
+    }else if(n == "Eq" || n == "Is"){
+        TypeTag tag = impl->typeArgs[0]->typeTag;
+        return impl->typeArgs[0]->isIntTy()
+            || tag == TT_C8 || tag == TT_Bool;
+
+    }else if(n == "Extract"){
+        return impl->typeArgs[0]->typeTag == TT_Ptr
+            && impl->typeArgs[1]->typeTag == TT_Usz;
+
+    }else if(n == "Insert"){
+        auto ptrty = try_cast<AnPtrType>(impl->typeArgs[0]);
+        return ptrty
+            && impl->typeArgs[1]->typeTag == TT_Usz
+            && *impl->typeArgs[2] == *ptrty->extTy;
+
+    }else if(n == "Deref"){
+        return impl->typeArgs[0]->typeTag == TT_Ptr;
+
+    }else if(n == "Not"){
+        return impl->typeArgs[0]->typeTag == TT_Bool;
+    }else{
+        return false;
+    }
+}
+
+void attachTraitImpl(Declaration *decl, AnType *fnTy, Module *m, LOC_TY &loc){
+    if(decl->isTraitFuncDecl()){
+        auto trait = try_cast<AnFunctionType>(fnTy)->typeClassConstraints.front();
+        if(!hasTrivialImpl(trait)){
+            auto impl = m->lookupTraitImpl(trait->name, trait->typeArgs);
+            if(!impl){
+                error("No impl for " + traitToColoredStr(trait) + " in scope", loc);
+            }else if(impl){
+                trait->impl = impl->impl;
+            }
+        }
+    }
+}
+
+Declaration* findFnInImpl(string const& fnName, TraitImpl *impl){
+    auto extNode = impl->impl;
+    if(extNode && extNode->methods){
+        for(Node& n : *extNode->methods){
+            if(auto fdn = dynamic_cast<FuncDeclNode*>(&n)){
+                if(fdn->name == fnName){
+                    return fdn->decl;
+                }
+            }
+        }
+    }
+    std::cerr << "Could not find " << fnName << " in impl " << traitToColoredStr(impl) << '\n';
+    ASSERT_UNREACHABLE();
+}
+
+TypedValue monomorphise(Compiler *c, FuncDecl *fd, AnFunctionType *boundType, LOC_TY &loc){
+    auto fnTy = try_cast<AnFunctionType>(fd->definition->getType());
+
+    //To be monomorphised, the function must be both generic and a definition, ie external
+    //decls like printf: (ref c8) ... -> i32  are generic but cannot be monomorphised.
+    auto isGenericDef = fnTy->isGeneric && static_cast<FuncDeclNode*>(fd->definition)->child;
+    if(isGenericDef){
+        auto subs = unifyOne(fnTy, boundType, loc);
+        c->compCtxt->monomorphisationMappings.insert(c->compCtxt->monomorphisationMappings.end(), subs.begin(), subs.end());
+    }
+    auto ret = c->compFn(fd);
+    fd->tval.val = isGenericDef ? nullptr : ret.val;
+    return ret;
+}
+
+AnFunctionType* applyMonomorphisationBindings(AnFunctionType *type, Substitutions const& bindings){
+    return static_cast<AnFunctionType*>(ante::applySubstitutions(bindings, type));
+}
+
+TypedValue compForLoopTraitFn(Compiler *c, string const& fnName, TraitImpl *impl, AnType *argTy, LOC_TY &loc){
+    FuncDecl *fn = static_cast<FuncDecl*>(findFnInImpl(fnName, impl));
+
+    auto fnTy = try_cast<AnFunctionType>(fn->tval.type);
+    auto subs = unifyOne(fnTy, AnFunctionType::get(fnTy->retTy, {argTy}, fnTy->typeClassConstraints), loc);
+    c->compCtxt->monomorphisationMappings.insert(c->compCtxt->monomorphisationMappings.end(), subs.begin(), subs.end());
+
+    fnTy = applyMonomorphisationBindings(fnTy, c->compCtxt->monomorphisationMappings);
+    return monomorphise(c, fn, fnTy, loc);
+}
 
 TypedValue getFunction(Compiler *c, BinOpNode *bop){
+    auto vn = dynamic_cast<VarNode*>(bop->lval.get());
     Declaration *decl = bop->decl;
     if(decl->tval.val){
         return decl->tval;
+    }else if(decl->isTraitFuncDecl()){
+        auto fnTy = try_cast<AnFunctionType>(bop->lval->getType());
+        fnTy = applyMonomorphisationBindings(fnTy, c->compCtxt->monomorphisationMappings);
+        attachTraitImpl(decl, fnTy, c->compUnit, bop->loc);
+        TraitImpl *trait = fnTy->typeClassConstraints.front();
+        Declaration *fn = findFnInImpl(static_cast<VarNode*>(bop->lval.get())->name, trait);
+        return monomorphise(c, static_cast<FuncDecl*>(fn), fnTy, bop->loc);
     }else if(decl->isFuncDecl()){
-        auto res = c->compFn(static_cast<FuncDecl*>(decl));
-        decl->tval.val = res.val;
-        return res;
+        auto fnTy = try_cast<AnFunctionType>(bop->lval->getType());
+        return monomorphise(c, static_cast<FuncDecl*>(decl), fnTy, bop->loc);
     }else{
         return CompilingVisitor::compile(c, decl->definition);
     }
@@ -909,6 +1013,7 @@ pair<Function*, AnType*> compileAnonAnteFunction(CompilingVisitor &cv, ModNode *
 }
 
 
+/*
 FuncDecl* compileAnteFunction(Compiler *c, string const& baseName, string const& mangledName,
         vector<TypedValue> const& typedArgs){
 
@@ -1003,6 +1108,7 @@ TypedValue compileAndCallAnteFunction(Compiler *c, string const& baseName,
     c->builder.SetInsertPoint(originalInsertPoint);
     return callAnteFunction(c, main, originalInsertPoint, typedArgs, argExprs, jit, retTy);
 }
+*/
 
 /*
  *  Compile a compile-time function/macro which should not return a function call,
@@ -1012,7 +1118,7 @@ TypedValue compileAndCallAnteFunction(Compiler *c, string const& baseName,
  *      to get the parse tree during runtime.
  *
  *  - Assumes arguments are already type-checked
- */
+ *
 TypedValue compMetaFunctionResult(Compiler *c, LOC_TY const& loc, string const& baseName,
         string const& mangledName, vector<TypedValue> const& ta, vector<unique_ptr<Node>> const& argExprs){
 
@@ -1051,6 +1157,7 @@ TypedValue compMetaFunctionResult(Compiler *c, LOC_TY const& loc, string const& 
         return c->getVoidLiteral();
     }
 }
+*/
 
 
 bool isInvalidParamType(Type *t){
@@ -1080,17 +1187,6 @@ TypedValue addrOf(Compiler *c, TypedValue &tv){
     auto *alloca = c->builder.CreateAlloca(tv.getType());
     c->builder.CreateStore(tv.val, alloca);
     return TypedValue(alloca, ptrTy);
-}
-
-
-TypedValue tryImplicitCast(Compiler *c, TypedValue &arg, AnType *castTy){
-    if(isNumericTypeTag(arg.type->typeTag) && isNumericTypeTag(castTy->typeTag)){
-        auto widen = c->implicitlyWidenNum(arg, castTy->typeTag);
-        if(widen.val != arg.val){
-            return widen;
-        }
-    }
-    return {};
 }
 
 
@@ -1144,6 +1240,18 @@ vector<Value*> adaptArgsToCompilerAPIFn(Compiler *c, vector<Value*> &args, vecto
     return ret;
 }
 
+TypedValue handleAnteFn(Compiler *c, BinOpNode *bop, vector<TypedValue> &typedArgs){
+    if(bop->decl->name == "sizeof" && typedArgs.size() == 1){
+        auto dt = try_cast<AnDataType>(typedArgs[0].type);
+        AnType *t = (dt && dt->name == "Type") ? dt->typeArgs[0] : typedArgs[0].type;
+
+        auto size = t->getSizeInBits(c);
+        Value *sizeVal = c->builder.getIntN(AN_USZ_SIZE, size.getVal() / 8);
+        return {sizeVal, AnType::getUsz()};
+    }
+    return {};
+}
+
 
 TypedValue compFnCall(Compiler *c, BinOpNode *bop){
     //used to type-check each parameter later
@@ -1182,6 +1290,9 @@ TypedValue compFnCall(Compiler *c, BinOpNode *bop){
         }
     }
 
+    auto ctval = handleAnteFn(c, bop, typedArgs);
+    if(ctval) return ctval;
+
     //try to compile the function now that the parameters are compiled.
     TypedValue tvf = getFunction(c, bop);
 
@@ -1205,9 +1316,16 @@ TypedValue compFnCall(Compiler *c, BinOpNode *bop){
         TypedValue tArg = typedArgs[i];
         AnType *paramTy = fty->extTys[i];
 
+        if(i >= typedArgs.size())
+            break;
+
+        if(isCompileTimeOnlyParamType(tArg.type)){
+            continue;
+        }
+
         if(!paramTy) break;
 
-        //Mutable parameters are implicitely passed by reference
+        //Mutable parameters are implicitly passed by reference
         //
         //Note that by getting the address of tArg (and not args[i-1])
         //any previous implicit references (like from the passing of an array type)
@@ -1223,7 +1341,7 @@ TypedValue compFnCall(Compiler *c, BinOpNode *bop){
 
     //if tvf is a ante function or similar MetaFunction, then compile it in a separate
     //module and JIT it instead of creating a call instruction
-    if(isCompileTimeFunction(tvf)){
+    /*if(isCompileTimeFunction(tvf)){
         if(c->isJIT && tvf.type->typeTag == TT_MetaFunction){
             args = adaptArgsToCompilerAPIFn(c, args, typedArgs);
         }else{
@@ -1240,7 +1358,7 @@ TypedValue compFnCall(Compiler *c, BinOpNode *bop){
                 return res;
             }
         }
-    }
+    }*/
 
     //Create the call to tvf.val, not f as if tvf is a function pointer,
     //passing it as f will fail.
@@ -1351,7 +1469,7 @@ TypedValue handlePrimitiveNumericOp(BinOpNode *bop, Compiler *c, TypedValue &lhs
                         return TypedValue(c->builder.CreateICmpUGT(lhs.val, rhs.val), AnType::getBool());
                     else
                         return TypedValue(c->builder.CreateICmpSGT(lhs.val, rhs.val), AnType::getBool());
-        case '=':
+        case Tok_EqEq:
         case Tok_Is:
                     if(isFPTypeTag(lhs.type->typeTag))
                         return TypedValue(c->builder.CreateFCmpOEQ(lhs.val, rhs.val), AnType::getBool());
@@ -1425,6 +1543,89 @@ TypedValue handlePointerOffset(BinOpNode *n, Compiler *c, TypedValue &lhs, Typed
     return {}; //unreachable
 }
 
+void handlePrimitiveOp(CompilingVisitor &cv, BinOpNode *n, TypedValue &lhs, TypedValue &rhs){
+    //first, if both operands are primitive numeric types, use the default ops
+    if(isNumericTypeTag(lhs.type->typeTag) && isNumericTypeTag(rhs.type->typeTag)){
+        cv.val = handlePrimitiveNumericOp(n, cv.c, lhs, rhs);
+        return;
+
+    //and bools/ptrs are only compatible with == and !=
+    }else if((lhs.type->typeTag == TT_Bool && rhs.type->typeTag == TT_Bool) or
+             (lhs.type->typeTag == TT_Ptr && rhs.type->typeTag == TT_Ptr)){
+
+        //= is no longer implemented for pointers by default
+        if(n->op == Tok_EqEq &&lhs.type->typeTag == TT_Bool && rhs.type->typeTag == TT_Bool){
+            cv.val = TypedValue(cv.c->builder.CreateICmpEQ(lhs.val, rhs.val), AnType::getBool());
+            return;
+        }
+
+        if(n->op == Tok_Is){
+            cv.val = TypedValue(cv.c->builder.CreateICmpEQ(lhs.val, rhs.val), AnType::getBool());
+            return;
+        }else if(n->op == Tok_NotEq || n->op == Tok_Isnt){
+            cv.val = TypedValue(cv.c->builder.CreateICmpNE(lhs.val, rhs.val), AnType::getBool());
+            return;
+        }
+    }
+
+    if(n->op == '+' or n->op == '-'){
+        if((lhs.type->typeTag == TT_Ptr or isNumericTypeTag(lhs.type->typeTag)) and
+           (rhs.type->typeTag == TT_Ptr or isNumericTypeTag(rhs.type->typeTag))){
+            cv.val = handlePointerOffset(n, cv.c, lhs, rhs);
+            return;
+        }
+    }
+
+    if(n->op == Tok_As){
+        n->lval->accept(cv);
+        auto ltval = cv.val;
+        auto *ty = toAnType((TypeNode*)n->rval.get(), cv.c->compUnit);
+
+        cv.val = createCast(cv.c, ty, ltval, n);
+
+        if(!cv.val){
+            error("Invalid type cast " + anTypeToColoredStr(ltval.type) +
+                    " -> " + anTypeToColoredStr(ty), n->loc);
+        }
+        return;
+    }
+
+    if(n->op == '#'){
+        cv.val = cv.c->compExtract(lhs, rhs, n);
+        return;
+    }
+}
+
+
+bool isPrimitiveOp(BinOpNode *n, AnType *l, AnType *r){
+    //first, if both operands are primitive numeric types, use the default ops
+    if(isNumericTypeTag(l->typeTag) && isNumericTypeTag(r->typeTag)){
+        return true;
+
+    //and bools/ptrs are only compatible with == and !=
+    }else if((l->typeTag == TT_Bool && r->typeTag == TT_Bool) or
+             (l->typeTag == TT_Ptr && r->typeTag == TT_Ptr)){
+
+        //== is no longer implemented for pointers by default
+        if(n->op == Tok_EqEq && l->typeTag == TT_Bool && r->typeTag == TT_Bool){
+            return true;
+        }
+
+        if(n->op == Tok_Is || n->op == Tok_NotEq || n->op == Tok_Isnt){
+            return true;
+        }
+    }
+
+    if(n->op == '+' || n->op == '-'){
+        if((l->typeTag == TT_Ptr or isNumericTypeTag(l->typeTag)) and
+           (r->typeTag == TT_Ptr or isNumericTypeTag(r->typeTag))){
+            return true;
+        }
+    }
+
+    return n->op == Tok_As || n->op == '#';
+}
+
 
 /*
  *  Compiles an operation along with its lhs and rhs
@@ -1447,67 +1648,38 @@ void CompilingVisitor::visit(BinOpNode *n){
     TypedValue lhs = CompilingVisitor::compile(c, n->lval);
     TypedValue rhs = CompilingVisitor::compile(c, n->rval);
 
-    //first, if both operands are primitive numeric types, use the default ops
-    if(isNumericTypeTag(lhs.type->typeTag) && isNumericTypeTag(rhs.type->typeTag)){
-        this->val = handlePrimitiveNumericOp(n, c, lhs, rhs);
-        return;
-
-    //and bools/ptrs are only compatible with == and !=
-    }else if((lhs.type->typeTag == TT_Bool && rhs.type->typeTag == TT_Bool) or
-             (lhs.type->typeTag == TT_Ptr && rhs.type->typeTag == TT_Ptr)){
-
-        //= is no longer implemented for pointers by default
-        if(n->op == '=' &&lhs.type->typeTag == TT_Bool && rhs.type->typeTag == TT_Bool){
-            this->val = TypedValue(c->builder.CreateICmpEQ(lhs.val, rhs.val), AnType::getBool());
-            return;
-        }
-
-        if(n->op == Tok_Is){
-            this->val = TypedValue(c->builder.CreateICmpEQ(lhs.val, rhs.val), AnType::getBool());
-            return;
-        }else if(n->op == Tok_NotEq || n->op == Tok_Isnt){
-            this->val = TypedValue(c->builder.CreateICmpNE(lhs.val, rhs.val), AnType::getBool());
-            return;
-        }
-    }
-
-    if(n->op == '+' or n->op == '-'){
-        if((lhs.type->typeTag == TT_Ptr or isNumericTypeTag(lhs.type->typeTag)) and
-           (rhs.type->typeTag == TT_Ptr or isNumericTypeTag(rhs.type->typeTag))){
-            this->val = handlePointerOffset(n, c, lhs, rhs);
-            return;
-        }
-    }
-
-    if(n->op == Tok_As){
-        n->lval->accept(*this);
-        auto ltval = this->val;
-        auto *ty = toAnType((TypeNode*)n->rval.get(), c->compUnit);
-
-        this->val = createCast(c, ty, ltval, n);
-
-        if(!val){
-            error("Invalid type cast " + anTypeToColoredStr(ltval.type) +
-                    " -> " + anTypeToColoredStr(ty), n->loc);
-        }
-        return;
-    }
-
-    if(n->op == '#'){
-        this->val = c->compExtract(lhs, rhs, n);
+    if(isPrimitiveOp(n, lhs.type, rhs.type)){
+        handlePrimitiveOp(*this, n, lhs, rhs);
         return;
     }
 
     if(n->decl->isFuncDecl()){
+        TypedValue fnVal = n->decl->tval;
+
+        if(!fnVal.val){
+            auto fnTy = try_cast<AnFunctionType>(n->decl->tval.type);
+            auto subs = unifyOne(fnTy, AnFunctionType::get(fnTy->retTy, {lhs.type, rhs.type}, fnTy->typeClassConstraints), n->loc);
+            c->compCtxt->monomorphisationMappings.insert(c->compCtxt->monomorphisationMappings.end(), subs.begin(), subs.end());
+
+            fnTy = applyMonomorphisationBindings(fnTy, c->compCtxt->monomorphisationMappings);
+            if(isPrimitiveOp(n, fnTy->extTys[0], fnTy->extTys[1])){
+                lhs.type = fnTy->extTys[0];
+                rhs.type = fnTy->extTys[1];
+                handlePrimitiveOp(*this, n, lhs, rhs);
+                return;
+            }
+
+            attachTraitImpl(n->decl, fnTy, c->compUnit, n->loc);
+            TraitImpl *trait = fnTy->typeClassConstraints.front();
+            Declaration *fn = findFnInImpl(Lexer::getTokStr(n->op), trait);
+            fnVal = monomorphise(c, static_cast<FuncDecl*>(fn), fnTy, n->loc);
+        }
+
         //call function
-        Value *call = c->builder.CreateCall(n->decl->tval.val, {lhs.val, rhs.val});
+        Value *call = c->builder.CreateCall(fnVal.val, {lhs.val, rhs.val});
         this->val = {call, n->getType()};
         return;
     }
-
-    //Check if both Values are numeric, and if so, check if their types match.
-    //If not, do an implicit conversion (usually a widening) to match them.
-    // c->handleImplicitConversion(&lhs, &rhs);
 
     error("Operator " + Lexer::getTokStr(n->op) + " is not overloaded for types "
             + anTypeToColoredStr(lhs.type) + " and " + anTypeToColoredStr(rhs.type), n->loc);

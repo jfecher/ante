@@ -134,6 +134,7 @@ void PrintingVisitor::visit(TypeCastNode *n){
     n->typeExpr->accept(*this);
     putchar(' ');
     n->rval->accept(*this);
+    std::cout << "  : " << anTypeToColoredStr(n->getType());
     putchar(')');
     maybePrintArr(n->next.get());
 }
@@ -172,6 +173,7 @@ void PrintingVisitor::visit(BinOpNode *n){
         putchar(' ');
         n->rval->accept(*this);
     }
+    std::cout << "  : " << anTypeToColoredStr(n->getType());
     putchar(')');
 }
 
