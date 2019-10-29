@@ -430,20 +430,20 @@ lambda_params: lambda_params var ':' small_type     {$$ = setNext($1, mkNamedVal
              ;
 
 /* NOTE: lextxt contents from fn_name and the mangleFn result are freed in the call to mkFuncDeclNode */
-fn_def: function_call RArrow type Given tc_constraints '=' expr  {$$ = mkFuncDeclNode(@1, /*name and params*/getRoot(), /*ret_ty*/$3, /*constraints*/$5, /*body*/$7);}
-      | function_call RArrow type '=' expr                       {$$ = mkFuncDeclNode(@1, /*name and params*/getRoot(), /*ret_ty*/$3, /*constraints*/0, /*body*/$5);}
+fn_def: function_call RArrow type Given tc_constraints '=' expr_or_block  {$$ = mkFuncDeclNode(@1, /*name and params*/getRoot(), /*ret_ty*/$3, /*constraints*/$5, /*body*/$7);}
+      | function_call RArrow type '=' expr_or_block                       {$$ = mkFuncDeclNode(@1, /*name and params*/getRoot(), /*ret_ty*/$3, /*constraints*/0, /*body*/$5);}
       ;
 
-fn_inferredRet: function_call Given tc_constraints '=' expr  %prec Newline  {$$ = mkFuncDeclNode(@1, /*name and params*/getRoot(), /*ret_ty*/0, /*constraints*/$3, /*body*/$5);}
-              | function_call '=' expr                       %prec Newline  {$$ = mkFuncDeclNode(@1, /*name and params*/getRoot(), /*ret_ty*/0, /*constraints*/0,  /*body*/$3);}
+fn_inferredRet: function_call Given tc_constraints '=' expr_or_block  %prec Newline  {$$ = mkFuncDeclNode(@1, /*name and params*/getRoot(), /*ret_ty*/0, /*constraints*/$3, /*body*/$5);}
+              | function_call '=' expr_or_block                       %prec Newline  {$$ = mkFuncDeclNode(@1, /*name and params*/getRoot(), /*ret_ty*/0, /*constraints*/0,  /*body*/$3);}
               ;
 
 fn_decl: function_call RArrow type Given tc_constraints  %prec Fun  {$$ = mkFuncDeclNode(@1, /*name and params*/getRoot(), /*ret_ty*/$3, /*constraints*/$5, /*body*/0);}
        | function_call RArrow type                       %prec Fun  {$$ = mkFuncDeclNode(@1, /*name and params*/getRoot(), /*ret_ty*/$3, /*constraints*/0,  /*body*/0);}
        ;
 
-fn_lambda: '\\' lambda_params '=' expr  %prec Fun  {auto name = new VarNode(@1, ""); setNext(name, getRoot()); $$ = mkFuncDeclNode(@$, /*name and params*/name, /*ret_ty*/0,  /*constraints*/0, /*body*/$4);}
-         | '\\' '=' expr                %prec Fun  {auto name = new VarNode(@1, "");                           $$ = mkFuncDeclNode(@$, /*name and params*/name, /*ret_ty*/0,  /*constraints*/0, /*body*/$3);}
+fn_lambda: '\\' lambda_params '=' expr_or_block  %prec Fun  {auto name = new VarNode(@1, ""); setNext(name, getRoot()); $$ = mkFuncDeclNode(@$, /*name and params*/name, /*ret_ty*/0,  /*constraints*/0, /*body*/$4);}
+         | '\\' '=' expr_or_block                %prec Fun  {auto name = new VarNode(@1, "");                           $$ = mkFuncDeclNode(@$, /*name and params*/name, /*ret_ty*/0,  /*constraints*/0, /*body*/$3);}
          ;
 
 ret_expr: Return expr {$$ = mkRetNode(@$, $2);}
@@ -472,11 +472,11 @@ ext_dd: modifiers data_decl  {$$ = append_modifiers(getRoot(), $2);}
       ;
 
 
-while_loop: While expr Do expr  %prec While  {$$ = mkWhileNode(@$, $2, $4);}
+while_loop: While expr_or_block maybe_newline Do expr_or_block  %prec While  {$$ = mkWhileNode(@$, $2, $5);}
           ;
 
 /*            v---v this should be later changed to pattern  */
-for_loop: For ident In expr Do expr  %prec For  {$$ = mkForNode(@$, $2, $4, $6);}
+for_loop: For ident In expr_or_block maybe_newline Do expr_or_block  %prec For  {$$ = mkForNode(@$, $2, $4, $7);}
 
 
 break: Break expr  %prec Break  {$$ = mkJumpNode(@$, Tok_Break, $2);}
@@ -489,17 +489,17 @@ continue: Continue expr  %prec Continue  {$$ = mkJumpNode(@$, Tok_Continue, $2);
         ;
 
 
-match: '|' expr RArrow expr              {$$ = mkMatchBranchNode(@$, $2, $4);}
-     | '|' usertype RArrow expr  %prec Match {$$ = mkMatchBranchNode(@$, mkTypeNode(@2, TT_Data, (char*)$2), $4);}
+match: '|' expr RArrow expr_or_block              {$$ = mkMatchBranchNode(@$, $2, $4);}
+     | '|' usertype RArrow expr_or_block  %prec Match {$$ = mkMatchBranchNode(@$, mkTypeNode(@2, TT_Data, (char*)$2), $4);}
      ;
 
 
-match_expr: Match expr With Newline match  {$$ = mkMatchNode(@$, $2, $5);}
+match_expr: Match expr_or_block maybe_newline With Newline match  {$$ = mkMatchNode(@$, $2, $6);}
           | match_expr Newline match       {$$ = addMatch($1, $3);}
           ;
 
-if_expr: If expr Then expr_or_jump                %prec MEDIF  {$$ = mkIfNode(@$, $2, $4, 0);}
-       | if_expr Elif expr Then expr_or_jump      %prec MEDIF  {auto*elif = mkIfNode(@$, $3, $5, 0); setElse($1, elif); $$ = elif;}
+if_expr: If expr_or_block maybe_newline Then expr_or_jump                %prec MEDIF  {$$ = mkIfNode(@$, $2, $5, 0);}
+       | if_expr Elif expr_or_block maybe_newline Then expr_or_jump      %prec MEDIF  {auto*elif = mkIfNode(@$, $3, $6, 0); setElse($1, elif); $$ = elif;}
        | if_expr Else expr_or_jump                             {$$ = setElse($1, $3);}
        ;
 
@@ -524,12 +524,15 @@ val_no_decl: '(' expr ')'            {$$ = $2;}
            | match_expr  %prec LOW   {$$ = $1;}
            | explicit_block          {$$ = $1;}
            | small_type   %prec LOW
-           | block
            | fn_lambda
            | val_no_decl '.' maybe_newline var          {$$ = mkBinOpNode(@$, '.', $1, $4);}
            | val_no_decl '.' maybe_newline small_type   {$$ = mkBinOpNode(@$, '.', $1, $4);}
            | val_no_decl ':' maybe_newline type         {$$ = mkBinOpNode(@$, ':', $1, $4);}
            ;
+
+expr_or_block: expr   %prec STMT
+             | block
+             ;
 
 val: val_no_decl   %prec LOW
    | data_decl
@@ -601,21 +604,22 @@ expr_no_decl: expr_no_decl '+' maybe_newline expr_no_decl                      {
             | unary_op                                                         {$$ = $1;}
 
             | function_call                                         %prec LOW  {$$ = mkFuncCallNode(@$, getRoot());}
-            | var '=' maybe_newline expr_no_decl                               {$$ = mkVarAssignNode(@$, $1, $4); append_modifiers(mkModNode(@1, Tok_Let), $$);}
-            | var '=' Mut maybe_newline expr_no_decl                           {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Mut), $$);}
-            | var '=' Global maybe_newline expr_no_decl                        {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Global), $$);}
-            | var '=' Ante maybe_newline expr_no_decl                          {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Ante), $$);}
-            | var '=' Pub maybe_newline expr_no_decl                           {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Pub), $$);}
-            | var '=' Pri maybe_newline expr_no_decl                           {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Pri), $$);}
-            | var '=' Pro maybe_newline expr_no_decl                           {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Pro), $$);}
-            | var '=' Const maybe_newline expr_no_decl                         {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Const), $$);}
-            | var '=' preproc maybe_newline expr_no_decl                       {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers($3, $$);}
+            | var '=' maybe_newline expr_or_block                              {$$ = mkVarAssignNode(@$, $1, $4); append_modifiers(mkModNode(@1, Tok_Let), $$);}
+            | var '=' Mut maybe_newline expr_or_block                          {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Mut), $$);}
+            | var '=' Global maybe_newline expr_or_block                       {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Global), $$);}
+            | var '=' Ante maybe_newline expr_or_block                         {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Ante), $$);}
+            | var '=' Pub maybe_newline expr_or_block                          {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Pub), $$);}
+            | var '=' Pri maybe_newline expr_or_block                          {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Pri), $$);}
+            | var '=' Pro maybe_newline expr_or_block                          {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Pro), $$);}
+            | var '=' Const maybe_newline expr_or_block                        {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Const), $$);}
+            | var '=' preproc maybe_newline expr_or_block                      {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers($3, $$);}
 
             | expr_no_decl AddEq maybe_newline expr_no_decl             {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '+', $1, $4), false);}
             | expr_no_decl SubEq maybe_newline expr_no_decl             {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '-', $1, $4), false);}
             | expr_no_decl MulEq maybe_newline expr_no_decl             {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '*', $1, $4), false);}
             | expr_no_decl DivEq maybe_newline expr_no_decl             {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '/', $1, $4), false);}
             | expr_no_decl Assign maybe_newline expr_no_decl            {$$ = mkVarAssignNode(@$, $1, $4);} /* All VarAssignNodes return unit values */
+            | expr_no_decl Assign maybe_newline block                   {$$ = mkVarAssignNode(@$, $1, $4);} /* All VarAssignNodes return unit values */
 //            | modifiers expr_no_decl  %prec Newline       {$$ = append_modifiers($1, $2);}
 
 
@@ -631,6 +635,7 @@ expr_no_decl: expr_no_decl '+' maybe_newline expr_no_decl                      {
 
 
 expr_or_jump: expr  %prec MEDIF
+            | block
             | break
             | continue
             | ret_expr
@@ -667,21 +672,22 @@ expr: expr '+' maybe_newline expr                               {$$ = mkBinOpNod
     | unary_op                                                  {$$ = $1;}
 
     | function_call                                  %prec LOW  {$$ = mkFuncCallNode(@$, getRoot());}
-    | var '=' maybe_newline expr                                {$$ = mkVarAssignNode(@$, $1, $4); append_modifiers(mkModNode(@1, Tok_Let), $$);}
-    | var '=' Mut maybe_newline expr                            {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Mut), $$);}
-    | var '=' Global maybe_newline expr                         {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Global), $$);}
-    | var '=' Ante maybe_newline expr                           {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Ante), $$);}
-    | var '=' Pub maybe_newline expr                            {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Pub), $$);}
-    | var '=' Pri maybe_newline expr                            {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Pri), $$);}
-    | var '=' Pro maybe_newline expr                            {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Pro), $$);}
-    | var '=' Const maybe_newline expr                          {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Const), $$);}
-    | var '=' preproc maybe_newline expr                        {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers($3, $$);}
+    | var '=' maybe_newline expr_or_block                       {$$ = mkVarAssignNode(@$, $1, $4); append_modifiers(mkModNode(@1, Tok_Let), $$);}
+    | var '=' Mut maybe_newline expr_or_block                   {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Mut), $$);}
+    | var '=' Global maybe_newline expr_or_block                {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Global), $$);}
+    | var '=' Ante maybe_newline expr_or_block                  {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Ante), $$);}
+    | var '=' Pub maybe_newline expr_or_block                   {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Pub), $$);}
+    | var '=' Pri maybe_newline expr_or_block                   {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Pri), $$);}
+    | var '=' Pro maybe_newline expr_or_block                   {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Pro), $$);}
+    | var '=' Const maybe_newline expr_or_block                 {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Const), $$);}
+    | var '=' preproc maybe_newline expr_or_block               {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers($3, $$);}
 
     | expr AddEq maybe_newline expr                             {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '+', $1, $4), false);}
     | expr SubEq maybe_newline expr                             {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '-', $1, $4), false);}
     | expr MulEq maybe_newline expr                             {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '*', $1, $4), false);}
     | expr DivEq maybe_newline expr                             {$$ = mkVarAssignNode(@$, $1, mkBinOpNode(@$, '/', $1, $4), false);}
     | expr Assign maybe_newline expr                            {$$ = mkVarAssignNode(@$, $1, $4);} /* All VarAssignNodes return unit values */
+    | expr Assign maybe_newline block                           {$$ = mkVarAssignNode(@$, $1, $4);} /* All VarAssignNodes return unit values */
 //    | modifiers expr  %prec Newline                {$$ = append_modifiers($1, $2);}
 
     /* this rule returns the original If for precedence reasons compared to its mirror rule in if_expr
