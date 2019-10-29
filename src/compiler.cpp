@@ -377,7 +377,7 @@ void CompilingVisitor::visit(ForNode *n){
             lazy_str("Iterable", AN_TYPE_COLOR) + ", which it needs to be used in a for loop", n->range->loc);
 
     auto subs = unifyOne(n->pattern->getType(), uwrap.type, n->pattern->loc);
-    c->compCtxt->monomorphisationMappings.insert(c->compCtxt->monomorphisationMappings.end(), subs.begin(), subs.end());
+    c->compCtxt->insertMonomorphisationMappings(subs);
 
     auto vn = dynamic_cast<VarNode*>(n->pattern.get());
     if(vn){

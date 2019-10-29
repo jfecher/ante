@@ -88,6 +88,14 @@ namespace ante {
         std::unique_ptr<std::vector<llvm::BasicBlock*>> breakLabels;
 
         CompilerCtxt() : callStack(), obj(0), continueLabels(new std::vector<llvm::BasicBlock*>()), breakLabels(new std::vector<llvm::BasicBlock*>()){}
+
+        void insertMonomorphisationMappings(Substitutions const& subs){
+            for(auto &sub : subs){
+                if(sub.first != sub.second){
+                    monomorphisationMappings.push_back(sub);
+                }
+            }
+        }
     };
 
     /**
@@ -314,7 +322,7 @@ namespace ante {
          * needed/guarenteed to be performed at a later step to retractively
          * fix the translated type.
          */
-        llvm::Type* anTypeToLlvmType(const AnType *ty, bool force = false);
+        llvm::Type* anTypeToLlvmType(const AnType *ty, int recursionLimit = 1000);
 
         /**
         * @brief Compiles a module into an obj file to be used for linking.

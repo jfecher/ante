@@ -51,7 +51,7 @@ AnType* findBinding(Substitutions const& subs, const AnType *key){
     return nullptr;
 }
 
-Result<size_t, string> AnType::getSizeInBits(Compiler *c, string *incompleteType, bool force) const{
+Result<size_t, string> AnType::getSizeInBits(Compiler *c, string *incompleteType) const{
     size_t total = 0;
 
     if(isPrimitiveTypeTag(this->typeTag))
@@ -64,7 +64,7 @@ Result<size_t, string> AnType::getSizeInBits(Compiler *c, string *incompleteType
         }
 
         for(auto *ext : dataTy->fields){
-            auto val = ext->getSizeInBits(c, incompleteType, force);
+            auto val = ext->getSizeInBits(c, incompleteType);
             if(!val) return val;
             total += val.getVal();
         }
@@ -76,7 +76,7 @@ Result<size_t, string> AnType::getSizeInBits(Compiler *c, string *incompleteType
         }
 
         for(auto *ext : sumTy->tags){
-            auto val = ext->getSizeInBits(c, incompleteType, force);
+            auto val = ext->getSizeInBits(c, incompleteType);
             if(!val) return val;
             if(val.getVal() > total)
                 total= val.getVal();
@@ -89,13 +89,13 @@ Result<size_t, string> AnType::getSizeInBits(Compiler *c, string *incompleteType
 
     }else if(auto *tup = try_cast<AnAggregateType>(this)){
         for(auto *ext : tup->extTys){
-            auto val = ext->getSizeInBits(c, incompleteType, force);
+            auto val = ext->getSizeInBits(c, incompleteType);
             if(!val) return val;
             total += val.getVal();
         }
 
     }else if(auto *arr = try_cast<AnArrayType>(this)){
-        auto val = arr->extTy->getSizeInBits(c, incompleteType, force);
+        auto val = arr->extTy->getSizeInBits(c, incompleteType);
         if(!val) return val;
         return arr->len * val.getVal();
 
@@ -164,7 +164,7 @@ Type* AnDataType::findLlvmType(ante::Substitutions const& monomorphisationBindin
     return nullptr;
 }
 
-Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt, bool force){
+Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt){
     //create an empty type first so we dont end up with infinite recursion
     bool isPacked = dt->typeTag == TT_TaggedUnion;
     StructType* structTy = static_cast<StructType*>(dt->llvmType);
@@ -181,17 +181,17 @@ Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt, bool force){
 
     AnType *ext = dt;
     if(auto *st = try_cast<AnSumType>(dt))
-        ext = getLargestExt(c, st, force);
+        ext = getLargestExt(c, st);
 
     vector<Type*> tys;
     if(auto *aggty = try_cast<AnProductType>(ext)){
         for(auto *e : aggty->fields){
-            auto *llvmTy = c->anTypeToLlvmType(e, force);
+            auto *llvmTy = c->anTypeToLlvmType(e);
             if(!llvmTy->isVoidTy())
                 tys.push_back(llvmTy);
         }
     }else{
-        tys.push_back(c->anTypeToLlvmType(ext, force));
+        tys.push_back(c->anTypeToLlvmType(ext));
     }
 
     structTy->setBody(tys, isPacked);
@@ -256,12 +256,12 @@ Type* typeTagToLlvmType(TypeTag ty, LLVMContext &ctxt){
     }
 }
 
-AnType* getLargestExt(Compiler *c, AnSumType *unionType, bool force){
+AnType* getLargestExt(Compiler *c, AnSumType *unionType){
     AnType *largest = 0;
     size_t largest_size = 0;
 
     for(auto *e : unionType->tags){
-        auto size = e->getSizeInBits(c, nullptr, force);
+        auto size = e->getSizeInBits(c, nullptr);
         if(!size){
             cerr << size.getErr() << endl;
             size = 0;
@@ -309,30 +309,33 @@ TypeTag llvmTypeToTypeTag(Type *t){
  *  llvmTypeToTokType, information on signedness of integers is still lost, causing the
  *  unfortunate necessity for the use of a TypedValue for the storage of this information.
  */
-Type* Compiler::anTypeToLlvmType(const AnType *ty, bool force){
+Type* Compiler::anTypeToLlvmType(const AnType *ty, int recursionLimit){
     vector<Type*> tys;
+    if(!recursionLimit){
+        ASSERT_UNREACHABLE("anTypeToLlvmType hit internal recursion limit");
+    }
 
     if(ty->hasModifier(Tok_Mut)){
         auto bm = dynamic_cast<const BasicModifier*>(ty);
-        return anTypeToLlvmType(bm->extTy, force)->getPointerTo();
+        return anTypeToLlvmType(bm->extTy, --recursionLimit)->getPointerTo();
     }
 
     switch(ty->typeTag){
         case TT_Ptr: {
             auto *ptr = try_cast<AnPtrType>(ty);
             return ptr->extTy->typeTag != TT_Unit ?
-                anTypeToLlvmType(ptr->extTy, force)->getPointerTo()
+                anTypeToLlvmType(ptr->extTy, --recursionLimit)->getPointerTo()
                 : Type::getInt8Ty(*ctxt)->getPointerTo();
         }
         case TT_Type:
             return Type::getInt8Ty(*ctxt)->getPointerTo();
         case TT_Array:{
             auto *arr = try_cast<AnArrayType>(ty);
-            return ArrayType::get(anTypeToLlvmType(arr->extTy, force), arr->len);
+            return ArrayType::get(anTypeToLlvmType(arr->extTy, --recursionLimit), arr->len);
         }
         case TT_Tuple:
             for(auto *e : try_cast<AnAggregateType>(ty)->extTys){
-                auto *ty = anTypeToLlvmType(e, force);
+                auto *ty = anTypeToLlvmType(e, --recursionLimit);
                 if(!ty->isVoidTy())
                     tys.push_back(ty);
             }
@@ -343,28 +346,28 @@ Type* Compiler::anTypeToLlvmType(const AnType *ty, bool force){
             if(existing)
                 return existing;
             else
-                return updateLlvmTypeBinding(this, dt, force);
+                return updateLlvmTypeBinding(this, dt);
         }
         case TT_Function: case TT_MetaFunction: {
             auto *f = try_cast<AnFunctionType>(ty);
             for(size_t i = 0; i < f->extTys.size(); i++){
                 if(auto *tvt = try_cast<AnTypeVarType>(f->extTys[i])){
                     if(tvt->isVarArgs()){
-                        return FunctionType::get(anTypeToLlvmType(f->retTy, force), tys, true)->getPointerTo();
+                        return FunctionType::get(anTypeToLlvmType(f->retTy, --recursionLimit), tys, true)->getPointerTo();
                     }
                 }
                 // All Ante functions take at least 1 arg: (), which are ignored in llvm ir
                 // and translated to 0 arg functions instead
                 if(f->extTys[i]->typeTag != TT_Unit)
-                    tys.push_back(anTypeToLlvmType(f->extTys[i], force));
+                    tys.push_back(anTypeToLlvmType(f->extTys[i], --recursionLimit));
             }
 
-            return FunctionType::get(anTypeToLlvmType(f->retTy, force), tys, false)->getPointerTo();
+            return FunctionType::get(anTypeToLlvmType(f->retTy, --recursionLimit), tys, false)->getPointerTo();
         }
         case TT_TypeVar: {
             auto binding = findBinding(compCtxt->monomorphisationMappings, ty); 
             if(binding){
-                return anTypeToLlvmType(binding, force);
+                return anTypeToLlvmType(binding, --recursionLimit);
             }
             std::cerr << "Typevar: " << (AnType*)ty << '\n' << "Bindings: " << compCtxt->monomorphisationMappings << '\n';
             ASSERT_UNREACHABLE("Unbound typevar found during monomorphisation");

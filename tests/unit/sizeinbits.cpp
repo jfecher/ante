@@ -107,20 +107,3 @@ TEST_CASE("Size in bits of generic type", "[getSizeInBits]"){
     REQUIRE(!tup->getSizeInBits(c));
     REQUIRE(fn->getSizeInBits(c).getVal() == 8*sizeof(void*));
 }
-
-TEST_CASE("Force size in bits of generic type", "[getSizeInBits]"){
-    auto t = AnTypeVarType::get("'t");
-    auto u = AnTypeVarType::get("'u");
-    auto ptr_t = AnPtrType::get(t);
-    auto arr_u = AnArrayType::get(u, 5);
-    auto tup = AnType::getTupleOf({AnType::getI32(), t});
-    auto fn = AnFunctionType::get(u, {AnType::getI32(), t}, {}, false);
-
-    //All typevars are guessed to be a ptr's size when getSizeInBits is forced
-    REQUIRE(t->getSizeInBits(c, nullptr, true).getVal() == 8*sizeof(void*));
-    REQUIRE(u->getSizeInBits(c, nullptr, true).getVal() == 8*sizeof(void*));
-    REQUIRE(ptr_t->getSizeInBits(c, nullptr, true).getVal() == 8*sizeof(void*));
-    REQUIRE(arr_u->getSizeInBits(c, nullptr, true).getVal() == 5 * 8*sizeof(void*));
-    REQUIRE(tup->getSizeInBits(c, nullptr, true).getVal() == 32 + 8*sizeof(void*));
-    REQUIRE(fn->getSizeInBits(c, nullptr, true).getVal() == 8*sizeof(void*));
-}

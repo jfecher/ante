@@ -85,10 +85,8 @@ namespace ante {
         /** Returns the size of this type in bits or an error message if the type is invalid.
          *  @param incompleteType The name of an undeclared type, used to issue an IncompleteTypeError if
          *                        it is found within the type being sized and not behind a pointer.
-         *  @param force Set to true if this type is known to be generic and although its size is technically
-         *               unknown, a guess for the size (by replacing unknown typevars with a pointer type)
-         *               should be given anyway. */
-        Result<size_t, std::string> getSizeInBits(Compiler *c, std::string *incompleteType = nullptr, bool force = false) const;
+         */
+        Result<size_t, std::string> getSizeInBits(Compiler *c, std::string *incompleteType = nullptr) const;
 
         /** Print the contents of this type to stdout. */
         void dump() const;

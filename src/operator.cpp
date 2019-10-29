@@ -596,7 +596,7 @@ TypedValue monomorphise(Compiler *c, FuncDecl *fd, AnFunctionType *boundType, LO
     auto isGenericDef = fnTy->isGeneric && static_cast<FuncDeclNode*>(fd->definition)->child;
     if(isGenericDef){
         auto subs = unifyOne(fnTy, boundType, loc);
-        c->compCtxt->monomorphisationMappings.insert(c->compCtxt->monomorphisationMappings.end(), subs.begin(), subs.end());
+        c->compCtxt->insertMonomorphisationMappings(subs);
     }
     auto ret = c->compFn(fd);
     fd->tval.val = isGenericDef ? nullptr : ret.val;
@@ -612,7 +612,7 @@ TypedValue compForLoopTraitFn(Compiler *c, string const& fnName, TraitImpl *impl
 
     auto fnTy = try_cast<AnFunctionType>(fn->tval.type);
     auto subs = unifyOne(fnTy, AnFunctionType::get(fnTy->retTy, {argTy}, fnTy->typeClassConstraints), loc);
-    c->compCtxt->monomorphisationMappings.insert(c->compCtxt->monomorphisationMappings.end(), subs.begin(), subs.end());
+    c->compCtxt->insertMonomorphisationMappings(subs);
 
     fnTy = applyMonomorphisationBindings(fnTy, c->compCtxt->monomorphisationMappings);
     return monomorphise(c, fn, fnTy, loc);
@@ -680,7 +680,7 @@ TypedValue Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *binop
             AnType *retTy = dataTy->fields[index];
 
             if(!dataTy->llvmType){
-                updateLlvmTypeBinding(this, dataTy, false);
+                updateLlvmTypeBinding(this, dataTy);
             }
 
             retTy = (AnType*)tyn->addModifiersTo(retTy);
@@ -1659,7 +1659,7 @@ void CompilingVisitor::visit(BinOpNode *n){
         if(!fnVal.val){
             auto fnTy = try_cast<AnFunctionType>(n->decl->tval.type);
             auto subs = unifyOne(fnTy, AnFunctionType::get(fnTy->retTy, {lhs.type, rhs.type}, fnTy->typeClassConstraints), n->loc);
-            c->compCtxt->monomorphisationMappings.insert(c->compCtxt->monomorphisationMappings.end(), subs.begin(), subs.end());
+            c->compCtxt->insertMonomorphisationMappings(subs);
 
             fnTy = applyMonomorphisationBindings(fnTy, c->compCtxt->monomorphisationMappings);
             if(isPrimitiveOp(n, fnTy->extTys[0], fnTy->extTys[1])){

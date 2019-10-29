@@ -20,7 +20,7 @@ namespace ante {
 
     AnAggregateType* flattenBoundTys(const Compiler *c, const AnDataType *dt);
 
-    llvm::Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt, bool force = false);
+    llvm::Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt);
 
     bool isCompileTimeOnlyParamType(AnType *ty);
 
@@ -39,7 +39,7 @@ namespace ante {
 
     std::string getCastFnBaseName(AnType *t);
 
-    AnType* getLargestExt(Compiler *c, AnSumType *tn, bool force = false);
+    AnType* getLargestExt(Compiler *c, AnSumType *tn);
     char getBitWidthOfTypeTag(const TypeTag tagTy);
     bool isPrimitiveTypeTag(TypeTag ty);
     bool isNumericTypeTag(const TypeTag ty);
