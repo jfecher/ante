@@ -3,6 +3,7 @@
 #include <vector>
 #include <string>
 #include <nameresolution.h>
+#include "typeinference.h"
 
 #ifdef unix
 #  include <unistd.h>
@@ -431,23 +432,12 @@ namespace ante {
                 expr->expr.release();
                 expr->expr.reset(root);
 
-                TypedValue val;
-                if(c->getAST()){
-                    val = mergeAndCompile(c, root, expr);
-                }else{
-                    //TODO: re-add
-                    // c->compUnit->ast.reset(root);
-                    try{
-                        val = CompilingVisitor::compile(c, expr);
-                    }catch(CtError err){
-                        // c->compUnit->ast.reset();
-                        val = {};
-                    }
-                }
+                TypedValue val = mergeAndCompile(c, root, expr);
 
-                //print val if it's not an error
-                if(!!val and val.type->typeTag != TT_Unit)
-                    output(c, val, c->getAST());
+                // Only print types until compile-time eval is setup again
+                if(val.type){
+                    val.type->dump();
+                }
             }
 
             cmd = getInputColorized();
@@ -463,37 +453,41 @@ namespace ante {
     TypedValue mergeAndCompile(Compiler *c, RootNode *rn, ModNode *anteExpr){
         TypedValue ret;
         try{
-            ret = CompilingVisitor::compile(c, anteExpr);
+            NameResolutionVisitor v{"repl"};
+            size_t errc = errorCount();
+            v.visit(rn);
+            if(errorCount() > errc) return {};
+            TypeInferenceVisitor::infer(rn, v.compUnit);
+            ret.type = rn->getType();
         }catch(...){
             // return before merging the error-ing expressions
             return {};
         }
 
-        NameResolutionVisitor v{"repl"};
-        rn->accept(v);
+        if(false){
+            move(rn->imports.begin(),
+                next(rn->imports.begin(), rn->imports.size()),
+                back_inserter(c->getAST()->imports));
 
-        move(rn->imports.begin(),
-            next(rn->imports.begin(), rn->imports.size()),
-            back_inserter(c->getAST()->imports));
+            for(auto &t : rn->types){
+                c->getAST()->types.emplace_back(move(t));
+            }
 
-        for(auto &t : rn->types){
-            c->getAST()->types.emplace_back(move(t));
-        }
+            for(auto &t : rn->traits){
+                c->getAST()->traits.emplace_back(move(t));
+            }
 
-        for(auto &t : rn->traits){
-            c->getAST()->traits.emplace_back(move(t));
-        }
+            for(auto &t : rn->extensions){
+                c->getAST()->extensions.emplace_back(move(t));
+            }
 
-        for(auto &t : rn->extensions){
-            c->getAST()->extensions.emplace_back(move(t));
-        }
+            for(auto &t : rn->funcs){
+                c->getAST()->funcs.emplace_back(move(t));
+            }
 
-        for(auto &t : rn->funcs){
-            c->getAST()->funcs.emplace_back(move(t));
-        }
-
-        for(auto &e : rn->main){
-            c->getAST()->main.emplace_back(move(e));
+            for(auto &e : rn->main){
+                c->getAST()->main.emplace_back(move(e));
+            }
         }
         return ret;
     }

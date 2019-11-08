@@ -160,7 +160,6 @@ void CompilingVisitor::visit(TypeNode *n){
 }
 
 void CompilingVisitor::visit(StrLitNode *n){
-    auto idx = n->val.find("${");
     AnType *strty = c->compUnit->lookupType("Str");
 
     auto *ptr = c->builder.CreateGlobalStringPtr(n->val, "_strlit");
@@ -188,8 +187,8 @@ void CompilingVisitor::visit(CharLitNode *n){
 void CompilingVisitor::visit(ArrayNode *n){
     vector<Constant*> arr;
 
-    for(auto& n : n->exprs){
-        auto tval = CompilingVisitor::compile(c, n);
+    for(auto& elem : n->exprs){
+        auto tval = CompilingVisitor::compile(c, elem);
         arr.push_back((Constant*)tval.val);
     }
 
@@ -275,7 +274,7 @@ void CompilingVisitor::visit(RetNode *n){
 /*
  * TODO: implement for abitrary compile-time Str expressions
  */
-void CompilingVisitor::visit(ImportNode *n){
+void CompilingVisitor::visit(ImportNode*){
     val = c->getVoidLiteral();
 }
 
@@ -472,7 +471,7 @@ void CompilingVisitor::visit(BlockNode *n){
 /**
  *  @brief This is a stub.  Compilation of parameters is handled within Compiler::compFn
  */
-void CompilingVisitor::visit(NamedValNode *n)
+void CompilingVisitor::visit(NamedValNode*)
 {
     //STUB
 }
@@ -806,17 +805,9 @@ FuncDeclNode* findFDN(Node *list, string const& basename){
 }
 
 
-void CompilingVisitor::visit(ExtNode *n){
+void CompilingVisitor::visit(ExtNode*){
     this->val = c->getVoidLiteral();
 }
-
-/**
- * @return True if a DataType implements the specified trait
- */
-bool Compiler::typeImplementsTrait(AnDataType* dt, string traitName) const{
-    return true;
-}
-
 
 void CompilingVisitor::visit(DataDeclNode *n){
     //updateLlvmTypeBinding(c, data, true);
@@ -875,7 +866,7 @@ bool Compiler::scanAllDecls(RootNode *root){
 
 void Compiler::eval(){
     //setup compiler
-    createMainFn();
+    // createMainFn();
     startRepl(this);
 }
 

@@ -31,6 +31,7 @@ namespace ante {
         Compiler *c;
 
         CompilingVisitor(Compiler *cc) : c(cc){}
+        virtual ~CompilingVisitor(){}
 
         static TypedValue compile(Compiler *c, std::unique_ptr<parser::Node> &n){
             return compile(c, n.get());
@@ -49,6 +50,8 @@ namespace ante {
 
     struct PrintingVisitor : public NodeVisitor {
         size_t indent_level = 0;
+
+        virtual ~PrintingVisitor(){}
 
         static void print(std::unique_ptr<parser::Node> &n){
             return print(n.get());
@@ -303,12 +306,6 @@ namespace ante {
          * Compiler is in charge of compiling.
          */
         std::string getModuleName() const;
-
-        /**
-         * @brief Returns true if the given AnDataType implements
-         * the trait with name traitName
-         */
-        bool typeImplementsTrait(AnDataType* dt, std::string traitName) const;
 
         /**
          * @brief Translates an AnType* to an llvm::Type*.
