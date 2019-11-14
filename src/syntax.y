@@ -422,11 +422,11 @@ function_call: function_call val_no_decl    %prec LOW   {$$ = setNext($1, $2);}
 lambda_params: lambda_params var ':' small_type     {$$ = setNext($1, mkNamedValNode(@2, $2, $4));}
              | lambda_params '(' var ':' type ')'   {$$ = setNext($1, mkNamedValNode(@3, $3, $5));}
              | lambda_params small_type             {$$ = setNext($1, mkNamedValNode(@2, mkVarNode(@2, (char*)""), $2));}
-             | lambda_params var                    {$$ = setNext($1, mkNamedValNode(@2, $2, mkTypeNode(@2, TT_TypeVar, (char*)"'_")));}
+             | lambda_params var                    {$$ = setNext($1, $2);}
              | var ':' small_type                   {$$ = setRoot(mkNamedValNode(@$, $1, $3));}
              | '(' var ':' type ')'                 {$$ = setRoot(mkNamedValNode(@$, $2, $4));}
              | small_type                           {$$ = setRoot(mkNamedValNode(@$, mkVarNode(@1, (char*)""), $1));}
-             | var                                  {$$ = setRoot(mkNamedValNode(@$, $1, mkTypeNode(@1, TT_TypeVar, (char*)"'_")));}
+             | var                                  {$$ = setRoot($1);}
              ;
 
 /* NOTE: lextxt contents from fn_name and the mangleFn result are freed in the call to mkFuncDeclNode */

@@ -113,26 +113,6 @@ size_t hashCombine(size_t l, size_t r){
 }
 
 
-string toLlvmTypeName(const AnDataType *dt){
-    auto &typeArgs = dt->typeArgs;
-    auto &baseName = dt->name;
-
-    if(typeArgs.empty())
-        return baseName;
-
-    string name = baseName + "<";
-    for(auto &b : typeArgs){
-        if(AnDataType *ext = try_cast<AnDataType>(b))
-            name += toLlvmTypeName(ext);
-        else
-            name += anTypeToStr(b);
-
-        if(&b != &typeArgs.back())
-            name += ",";
-    }
-    return name + ">";
-}
-
 AnDataType* getUnboundType(AnDataType *dt){
     return dt->unboundType ? dt->unboundType : dt;
 }
@@ -174,7 +154,7 @@ Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt){
         if(existing){
             return existing;
         }
-        structTy = StructType::create(*c->ctxt, toLlvmTypeName(dt));
+        structTy = StructType::create(*c->ctxt, anTypeToStr(dt));
     }
 
     dt->setLlvmType(structTy, c->compCtxt->monomorphisationMappings);
@@ -368,6 +348,10 @@ Type* Compiler::anTypeToLlvmType(const AnType *ty, int recursionLimit){
             auto binding = findBinding(compCtxt->monomorphisationMappings, ty); 
             if(binding){
                 return anTypeToLlvmType(binding, --recursionLimit);
+            }else{
+                auto unit = AnType::getUnit();
+                compCtxt->insertMonomorphisationMappings({{(AnType*)ty, unit}});
+                return anTypeToLlvmType(unit, --recursionLimit);
             }
             std::cerr << "Typevar: " << (AnType*)ty << '\n' << "Bindings: " << compCtxt->monomorphisationMappings << '\n';
             ASSERT_UNREACHABLE("Unbound typevar found during monomorphisation");
@@ -553,7 +537,7 @@ bool shouldWrapInParenthesis(AnType *type){
     if(ante::isPrimitiveTypeTag(type->typeTag) || type->typeTag == TT_TypeVar || type->typeTag == TT_Array)
         return false;
 
-    if(type->typeTag == TT_Ptr)
+    if(type->typeTag == TT_Ptr || type->typeTag == TT_Function)
         return true;
 
     auto adt = try_cast<AnDataType>(type);
