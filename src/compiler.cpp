@@ -258,15 +258,10 @@ vector<TypedValue> TupleNode::unpack(Compiler *c){
  */
 void CompilingVisitor::visit(RetNode *n){
     n->expr->accept(*this);
-    TypedValue ret = val;
 
-    auto retInst = ret.type->typeTag == TT_Unit ?
-                 TypedValue(c->builder.CreateRetVoid(), ret.type) :
-                 TypedValue(c->builder.CreateRet(ret.val), ret.type);
-
-    auto *f = c->getCurrentFunction();
-    f->returns.push_back({retInst, n->expr->loc});
-    this->val = retInst;
+    val = val.type->typeTag == TT_Unit ?
+        TypedValue(c->builder.CreateRetVoid(), val.type) :
+        TypedValue(c->builder.CreateRet(val.val), val.type);
 }
 
 

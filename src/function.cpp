@@ -93,16 +93,14 @@ void addAllArgAttrs(Function *f, NamedValNode *params){
 }
 
 LOC_TY getFinalLoc(Node *n){
-    auto *bop = dynamic_cast<BinOpNode*>(n);
-
-    if(!bop){
+    auto *seq = dynamic_cast<SeqNode*>(n);
+    if(!seq){
         if(BlockNode* bn = dynamic_cast<BlockNode*>(n)){
             n = bn->block.get();
-            bop = dynamic_cast<BinOpNode*>(n);
+            seq = dynamic_cast<SeqNode*>(n);
         }
     }
-
-    return (bop && bop->op == ';') ? bop->rval->loc : n->loc;
+    return seq ? seq->sequence.back()->loc : n->loc;
 }
 
 
@@ -236,22 +234,11 @@ TypedValue compFnHelper(Compiler *c, FuncDecl *fd){
         BasicBlock *bb = BasicBlock::Create(*c->ctxt, "entry", f);
         c->builder.SetInsertPoint(bb);
 
-        auto paramVec = vectorize(fdn->params.get());
-        size_t i = 0;
-
         //iterate through each parameter and add its value to the new scope.
+        auto curParam = fdn->params.get();
         for(auto &arg : f->args()){
-            NamedValNode *cParam = paramVec[i];
-
-            for(size_t j = 0; j < i; j++){
-                if(cParam->name == paramVec[j]->name){
-                    error("Parameter name '"+cParam->name+"' is repeated for parameters "+
-                            to_string(j+1)+" and "+to_string(i+1), cParam->loc);
-                }
-            }
-
-            cParam->decl->tval.val = &arg;
-            i++;
+            curParam->decl->tval.val = &arg;
+            curParam = static_cast<NamedValNode*>(curParam->next.get());
         }
 
         //Compile the function body, and hold onto the last value
@@ -269,10 +256,8 @@ TypedValue compFnHelper(Compiler *c, FuncDecl *fd){
 
             if(fnTy->retTy->typeTag == TT_Unit){
                 c->builder.CreateRetVoid();
-                fd->returns.push_back({c->getVoidLiteral(), loc});
             }else{
                 v.val = c->builder.CreateRet(v.val);
-                fd->returns.push_back({v, loc});
             }
         }
     }

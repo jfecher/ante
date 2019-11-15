@@ -227,7 +227,7 @@ Type* typeTagToLlvmType(TypeTag ty, LLVMContext &ctxt){
         case TT_F64:    return Type::getDoubleTy(ctxt);
         case TT_C8:     return Type::getInt8Ty(ctxt);
         case TT_Bool:   return Type::getInt1Ty(ctxt);
-        case TT_Unit:   return Type::getVoidTy(ctxt);
+        case TT_Unit:   return Type::getInt8Ty(ctxt); //return Type::getVoidTy(ctxt);
         case TT_TypeVar:
             throw new TypeVarError();
         default:

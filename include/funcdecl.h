@@ -29,9 +29,6 @@ namespace ante {
         /** The module this function was declared in */
         Module *module;
 
-        /** Each return of this function.  TODO: remove */
-        std::vector<std::pair<TypedValue,LOC_TY>> returns;
-
         /** True if this is a decl from a trait, used as a flag to swap with impl later */
         bool traitFuncDecl = false;
 
@@ -66,9 +63,9 @@ namespace ante {
         }
 
         FuncDecl(parser::FuncDeclNode *fn, std::string const& n, Module *mod, TypedValue f)
-            : Declaration(n, fn), type(0), module(mod), returns(){ tval = f; }
+            : Declaration(n, fn), type(0), module(mod){ tval = f; }
         FuncDecl(parser::FuncDeclNode *fn, std::string const& n, Module *mod)
-            : Declaration(n, fn), type(0), module(mod), returns(){}
+            : Declaration(n, fn), type(0), module(mod){}
         virtual ~FuncDecl(){}
     };
 }
