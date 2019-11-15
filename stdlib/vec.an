@@ -27,13 +27,13 @@ fill (v:mut Vec 't) r:LazyRange -> Vec 't =
 reserve (v:mut Vec 't) numElems:usz -> unit =
     if v.len + numElems > v.cap then
         size = (v.cap + numElems) * Ante.sizeof 't
-        ptr = realloc (ref unit v._data) size
+        ptr = realloc (v._data) size
 
-        if ptr is ref unit 0 then
+        if ptr is ref 't 0 then
             printf ("Error in reserving %u elements for Vec\n".cStr) numElems
             return ()
 
-        v._data := ref 't ptr
+        v._data := ptr
         v.cap += numElems
 
 //push an element onto the end of the vector.

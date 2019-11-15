@@ -10,11 +10,11 @@ puts (ref c8) -> i32
 putchar c8 -> unit
 getchar unit -> c8
 exit i32 -> 'never_returns
-malloc usz -> ref unit
-calloc usz usz -> ref unit
-realloc (ref unit) usz -> ref unit
-free (ref unit) -> unit
-memcpy (dest:ref unit) (src:ref unit) usz -> ref unit //dest
+malloc usz -> ref 'a
+calloc usz usz -> ref 'a
+realloc (ref 'a) usz -> ref 'a
+free (ref 'a) -> unit
+memcpy (dest:ref 'a) (src:ref 'b) usz -> ref 'a //dest
 system (ref c8) -> i32
 strlen (ref c8) -> usz
 
@@ -241,7 +241,7 @@ impl To (ref c8) Str
 
 module Str
     reverse s:Str -> Str =
-        buf = mut ref c8 malloc (s.len + 1usz)
+        buf = mut malloc (s.len + 1usz)
 
         i = mut 0usz
         while i < s.len do
@@ -256,7 +256,7 @@ impl To Str i64
     to _ i =
         if i == 0i64 then return "0"
         len = mut 0usz
-        buf = mut ref c8 malloc 21usz
+        buf = mut malloc 21usz
         buf#20usz := '\0'
 
         x = mut i
@@ -279,7 +279,7 @@ impl To Str u64
     to _ i =
         if i == 0u64 then return "0"
         len = mut 0usz
-        buf = mut ref c8 malloc 21usz
+        buf = mut malloc 21usz
         buf#20usz := '\0'
 
         x = mut i
@@ -444,12 +444,12 @@ impl Append Str
         len = s1.len + s2.len
         buf = mut malloc (len+1usz)
 
-        memcpy buf (ref unit s1.cStr) s1.len
+        memcpy buf (s1.cStr) s1.len
 
-        buf_offset = mut (usz buf + s1.len) as ref unit
-        memcpy buf_offset (ref unit s2.cStr) (s2.len+1usz) //copy terminating null too
+        buf_offset = (usz buf + s1.len) as ref unit
+        memcpy buf_offset (s2.cStr) (s2.len+1usz) //copy terminating null too
 
-        Str(ref c8 buf, len)
+        Str(buf, len)
 
 impl Extract Str usz
     type ExtractElem = c:c8
@@ -475,7 +475,7 @@ module InFile
 
         len = mut 0usz
         cap = mut 64usz
-        cstr = mut ref c8 malloc cap
+        cstr = mut malloc cap
 
         while
             c = fgetc f
@@ -490,7 +490,7 @@ module InFile
 
             if len+1usz >= cap then
                 cap *= 2usz
-                cstr := ref c8 realloc (ref unit cstr) cap
+                cstr := realloc cstr cap
 
             cstr#len := c
             len += 1usz
@@ -511,7 +511,7 @@ input (msg:ref c8) -> Str =
     while
         c = getchar ()
         if len % 32usz == 0usz then
-            cstr := ref c8 realloc (ref unit cstr) (len+32usz)
+            cstr := realloc cstr (len+32usz)
 
         cstr#len := c
         len += 1usz
