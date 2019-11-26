@@ -191,7 +191,7 @@ AnFunctionType* removeCompileTimeParams(AnType *functy){
     vector<AnType*> params;
     params.reserve(ft->extTys.size());
     for(auto &param : ft->extTys){
-        if(!isCompileTimeOnlyParamType(param)){
+        if(!isEmptyType(param)){
             params.push_back(param);
         }
     }

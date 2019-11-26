@@ -27,9 +27,13 @@ char getBitWidthOfTypeTag(const TypeTag ty){
 }
 
 
-// TODO: Remove hardcoded check for Type type
-bool isCompileTimeOnlyParamType(AnType *ty){
-    return ty->typeTag == TT_Type || ty->hasModifier(Tok_Ante)
+// TODO: Remove hardcoded check for Type type,
+//       Add check for if an entire tuple/record type is empty
+//       or full of only other empty types
+bool isEmptyType(AnType *ty){
+    return ty->typeTag == TT_Type
+        || ty->typeTag == TT_Unit
+        || ty->hasModifier(Tok_Ante)
         || (ty->typeTag == TT_Data && try_cast<AnDataType>(ty)->name == "Type");
 }
 
@@ -303,7 +307,7 @@ Type* Compiler::anTypeToLlvmType(const AnType *ty, int recursionLimit){
     switch(ty->typeTag){
         case TT_Ptr: {
             auto *ptr = try_cast<AnPtrType>(ty);
-            return ptr->extTy->typeTag != TT_Unit ?
+            return isEmptyType(ptr->extTy) ?
                 anTypeToLlvmType(ptr->extTy, --recursionLimit)->getPointerTo()
                 : Type::getInt8Ty(*ctxt)->getPointerTo();
         }
@@ -315,9 +319,8 @@ Type* Compiler::anTypeToLlvmType(const AnType *ty, int recursionLimit){
         }
         case TT_Tuple:
             for(auto *e : try_cast<AnAggregateType>(ty)->extTys){
-                auto *ty = anTypeToLlvmType(e, --recursionLimit);
-                if(!ty->isVoidTy())
-                    tys.push_back(ty);
+                if(!isEmptyType(e))
+                    tys.push_back(anTypeToLlvmType(e, --recursionLimit));
             }
             return StructType::get(*ctxt, tys);
         case TT_Data: case TT_TaggedUnion: case TT_Trait: {
@@ -338,7 +341,7 @@ Type* Compiler::anTypeToLlvmType(const AnType *ty, int recursionLimit){
                 }
                 // All Ante functions take at least 1 arg: (), which are ignored in llvm ir
                 // and translated to 0 arg functions instead
-                if(f->extTys[i]->typeTag != TT_Unit)
+                if(!isEmptyType(f->extTys[i]))
                     tys.push_back(anTypeToLlvmType(f->extTys[i], --recursionLimit));
             }
 

@@ -22,7 +22,7 @@ namespace ante {
 
     llvm::Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt);
 
-    bool isCompileTimeOnlyParamType(AnType *ty);
+    bool isEmptyType(AnType *ty);
 
     //conversions
     AnType* toAnType(const parser::TypeNode *tn, Module *module);

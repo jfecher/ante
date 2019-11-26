@@ -1160,7 +1160,7 @@ TypedValue compMetaFunctionResult(Compiler *c, LOC_TY const& loc, string const& 
 */
 
 
-bool isInvalidParamType(Type *t){
+bool isUnsizedType(Type *t){
     return t->isArrayTy();
 }
 
@@ -1267,10 +1267,10 @@ TypedValue compFnCall(Compiler *c, BinOpNode *bop){
 
         for(TypedValue v : typedArgs){
             auto arg = v;
-            if(isCompileTimeOnlyParamType(arg.type))
+            if(isEmptyType(arg.type))
                 continue;
 
-            if(isInvalidParamType(arg.getType()))
+            if(isUnsizedType(arg.getType()))
                 arg = addrOf(c, arg);
 
             args.push_back(arg.val);
@@ -1279,10 +1279,10 @@ TypedValue compFnCall(Compiler *c, BinOpNode *bop){
         auto param = CompilingVisitor::compile(c, r);
         if(!param) return param;
 
-        if(!isCompileTimeOnlyParamType(param.type)){
+        if(!isEmptyType(param.type)){
             auto arg = param;
 
-            if(isInvalidParamType(arg.getType()))
+            if(isUnsizedType(arg.getType()))
                 arg = addrOf(c, arg);
 
             typedArgs.push_back(arg);
@@ -1319,7 +1319,7 @@ TypedValue compFnCall(Compiler *c, BinOpNode *bop){
         if(i >= typedArgs.size())
             break;
 
-        if(isCompileTimeOnlyParamType(tArg.type)){
+        if(isEmptyType(tArg.type)){
             continue;
         }
 
@@ -1362,7 +1362,6 @@ TypedValue compFnCall(Compiler *c, BinOpNode *bop){
 
     //Create the call to tvf.val, not f as if tvf is a function pointer,
     //passing it as f will fail.
-    std::cout << "Calling fn(" << tvf.val->getType()->getFunctionNumParams() << ") with " << args.size() << " args\n";
     auto *call = c->builder.CreateCall(tvf.val, args);
     return TypedValue(call, tvf.type->getFunctionReturnType());
 }

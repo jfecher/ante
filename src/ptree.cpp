@@ -458,6 +458,15 @@ namespace ante {
                     }
                 }
             }
+            // hard coded case before full pattern matching is implemented for function parameters
+            TupleNode *tup = dynamic_cast<TupleNode*>(param);
+            if(tup){
+                if(tup->exprs.empty()){
+                    return new NamedValNode(tup->loc, "", new TypeNode(tup->loc, TT_Unit, "", nullptr));
+                }else{
+                    ante::error("Pattern matching on a function's parameters is currently unimplemented", param->loc);
+                }
+            }
             ante::error("Function parameter should be an identifier, type, or identifier:type", param->loc);
             return nullptr;
         }
