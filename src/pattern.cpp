@@ -117,7 +117,7 @@ namespace ante {
             auto *type = (AnType*)valToMatch.type->addModifiersTo(unionVariantToTupleTy(tagTy));
             return {deref, type};
         }else{
-            return c->getVoidLiteral();
+            return c->getUnitLiteral();
         }
     }
 
@@ -160,7 +160,7 @@ namespace ante {
             if(valToMatch.getType()->isStructTy()){
                 variant = unionDowncast(c, valToMatch, tagTy);
             }else if(valToMatch.getType()->isIntegerTy()){
-                variant = c->getVoidLiteral();
+                variant = c->getUnitLiteral();
             }else{
                 //all tagged unions are either just their tag (enum) or a tag and value.
                 ASSERT_UNREACHABLE("Unknown variant in match_variant");
@@ -236,7 +236,7 @@ namespace ante {
 
         //merges can be empty if each branch has an early return
         if(merges.empty() or merges[0].second.type->typeTag == TT_Unit){
-            this->val = c->getVoidLiteral();
+            this->val = c->getUnitLiteral();
             return;
         }
 

@@ -204,18 +204,22 @@ void CompilingVisitor::visit(ArrayNode *n){
 }
 
 /**
- * @brief Creates and returns a literal of type void
+ * @brief Creates and returns a literal of type unit
  *
- * @return A void literal
+ * Note that care must be taken not to accidentally pass this value
+ * to functions and elide it from tuple types such as (i32, unit, i8).
+ * Which are represented in memory as (i32, i8).
+ *
+ * @return A unit literal
  */
-TypedValue Compiler::getVoidLiteral(){
-    return TypedValue(UndefValue::get(Type::getInt8Ty(*ctxt)), AnType::getUnit());
+TypedValue Compiler::getUnitLiteral(){
+    return TypedValue(UndefValue::get(Type::getVoidTy(*ctxt)), AnType::getUnit());
 }
 
 void CompilingVisitor::visit(TupleNode *n){
     //A void value is represented by the empty tuple, ()
     if(n->exprs.empty()){
-        this->val = c->getVoidLiteral();
+        this->val = c->getUnitLiteral();
         return;
     }
 
@@ -245,7 +249,7 @@ vector<TypedValue> TupleNode::unpack(Compiler *c){
     for(auto& n : exprs){
         auto tv = CompilingVisitor::compile(c, n);
 
-        if(tv && tv.type->typeTag != TT_Unit)
+        if(tv)
             ret.push_back(tv);
     }
     return ret;
@@ -270,7 +274,7 @@ void CompilingVisitor::visit(RetNode *n){
  * TODO: implement for abitrary compile-time Str expressions
  */
 void CompilingVisitor::visit(ImportNode*){
-    val = c->getVoidLiteral();
+    val = c->getUnitLiteral();
 }
 
 
@@ -309,7 +313,7 @@ void CompilingVisitor::visit(WhileNode *n){
         c->builder.CreateBr(cond);
 
     c->builder.SetInsertPoint(end);
-    this->val = c->getVoidLiteral();
+    this->val = c->getUnitLiteral();
 }
 
 TypedValue compForLoopTraitFn(Compiler *c, string const& fnName, TraitImpl *impl, AnType *argTy, LOC_TY &loc);
@@ -415,7 +419,7 @@ void CompilingVisitor::visit(ForNode *n){
     }
 
     c->builder.SetInsertPoint(end);
-    this->val = c->getVoidLiteral();
+    this->val = c->getUnitLiteral();
 }
 
 
@@ -525,7 +529,7 @@ void compMutBinding(VarAssignNode *node, CompilingVisitor &cv){
     decl->tval = alloca;
 
     c->builder.CreateStore(val.val, alloca.val);
-    cv.val = c->getVoidLiteral();
+    cv.val = c->getUnitLiteral();
 }
 
 
@@ -627,7 +631,7 @@ TypedValue compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
             auto *ins = c->builder.CreateInsertValue(val, nv, index);
 
             c->builder.CreateStore(ins, var);
-            return c->getVoidLiteral();
+            return c->getUnitLiteral();
         }
     }
 
@@ -701,7 +705,7 @@ void CompilingVisitor::visit(VarAssignNode *n){
     c->builder.CreateStore(assignExpr.val, dest);
 
     //all assignments return a void value
-    this->val = c->getVoidLiteral();
+    this->val = c->getUnitLiteral();
 }
 
 
@@ -801,17 +805,17 @@ FuncDeclNode* findFDN(Node *list, string const& basename){
 
 
 void CompilingVisitor::visit(ExtNode*){
-    this->val = c->getVoidLiteral();
+    this->val = c->getUnitLiteral();
 }
 
 void CompilingVisitor::visit(DataDeclNode *n){
     //updateLlvmTypeBinding(c, data, true);
-    this->val = c->getVoidLiteral();
+    this->val = c->getUnitLiteral();
 }
 
 
 void CompilingVisitor::visit(TraitNode *n){
-    this->val = c->getVoidLiteral();
+    this->val = c->getUnitLiteral();
 }
 
 
@@ -909,7 +913,7 @@ void CompilingVisitor::visit(RootNode *n){
     }
 
     if(n->main.empty())
-        this->val = c->getVoidLiteral();
+        this->val = c->getUnitLiteral();
 }
 
 /**

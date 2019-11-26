@@ -13,7 +13,7 @@ namespace ante {
 
     TypedValue convertTupleToTypedValue(Compiler *c, AnteValue const& arg, AnAggregateType *tn){
         if(tn->extTys.empty()){
-            return c->getVoidLiteral();
+            return c->getUnitLiteral();
         }
 
         auto elems = vecOf<Constant*>(tn->extTys.size());
@@ -128,7 +128,7 @@ namespace ante {
             case TT_TypeFamily:
                 break;
             case TT_Unit:
-                return c->getVoidLiteral();
+                return c->getUnitLiteral();
         }
 
         error("Unknown/Unimplemented TypeTag " + typeTagToStr(type->typeTag), unknownLoc());

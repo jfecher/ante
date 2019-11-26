@@ -331,7 +331,7 @@ namespace ante {
         */
         int compileIRtoObj(llvm::Module *mod, std::string outFile);
 
-        TypedValue getVoidLiteral();
+        TypedValue getUnitLiteral();
 
         /**
         * @brief Invokes the linker specified by AN_LINKER (in target.h) to

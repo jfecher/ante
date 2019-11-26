@@ -210,12 +210,12 @@ TypedValue Compiler::compInsert(BinOpNode *op, Node *assignExpr){
             Value *cast = builder.CreateBitCast(var, var->getType()->getPointerElementType()->getArrayElementType()->getPointerTo());
             Value *dest = builder.CreateInBoundsGEP(cast, index.val);
             builder.CreateStore(newVal.val, dest);
-            return getVoidLiteral();
+            return getUnitLiteral();
         }
         case TT_Ptr: {
             Value *dest = builder.CreateInBoundsGEP(var->getPointerOperand(), index.val);
             builder.CreateStore(newVal.val, dest);
-            return getVoidLiteral();
+            return getUnitLiteral();
         }
         case TT_Tuple: case TT_Data: {
             ConstantInt *tupIndexVal = dyn_cast<ConstantInt>(index.val);
@@ -231,7 +231,7 @@ TypedValue Compiler::compInsert(BinOpNode *op, Node *assignExpr){
 
                 auto *ins = builder.CreateInsertValue(builder.CreateLoad(var), newVal.val, tupIndex);
                 builder.CreateStore(ins, var);
-                return getVoidLiteral();
+                return getUnitLiteral();
             }
         }
         default:
@@ -499,11 +499,11 @@ TypedValue compIf(Compiler *c, IfNode *ifn, BasicBlock *mergebb, vector<pair<Typ
 
             return TypedValue(phi, thenVal.type);
         }else{
-            return c->getVoidLiteral();
+            return c->getUnitLiteral();
         }
     }else{
         c->builder.SetInsertPoint(mergebb);
-        return c->getVoidLiteral();
+        return c->getUnitLiteral();
     }
 }
 
@@ -951,7 +951,7 @@ pair<Function*, AnType*> compileShellFunction(CompilingVisitor &cv, Function *f,
 
     // error in repl, caught by RootNode but must be handled again
     if(!cv.val.val){
-        cv.val = cv.c->getVoidLiteral();
+        cv.val = cv.c->getUnitLiteral();
     }
 
     if(!dyn_cast<ReturnInst>(cv.val.val)){
@@ -992,7 +992,7 @@ TypedValue callAnteFunction(Compiler *c, Function *main, BasicBlock *originalIns
         LOC_TY loc;
         if(!argExprs.empty()) loc = argExprs[0]->loc;
         error("Could not find entry symbol while JITing ante function", loc);
-        return c->getVoidLiteral(); //unreachable
+        return c->getUnitLiteral(); //unreachable
     }
 }
 
@@ -1362,6 +1362,7 @@ TypedValue compFnCall(Compiler *c, BinOpNode *bop){
 
     //Create the call to tvf.val, not f as if tvf is a function pointer,
     //passing it as f will fail.
+    std::cout << "Calling fn(" << tvf.val->getType()->getFunctionNumParams() << ") with " << args.size() << " args\n";
     auto *call = c->builder.CreateCall(tvf.val, args);
     return TypedValue(call, tvf.type->getFunctionReturnType());
 }

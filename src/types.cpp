@@ -29,7 +29,7 @@ char getBitWidthOfTypeTag(const TypeTag ty){
 
 // TODO: Remove hardcoded check for Type type
 bool isCompileTimeOnlyParamType(AnType *ty){
-    return ty->typeTag == TT_Type || ty->typeTag == TT_Unit || ty->hasModifier(Tok_Ante)
+    return ty->typeTag == TT_Type || ty->hasModifier(Tok_Ante)
         || (ty->typeTag == TT_Data && try_cast<AnDataType>(ty)->name == "Type");
 }
 
@@ -227,7 +227,7 @@ Type* typeTagToLlvmType(TypeTag ty, LLVMContext &ctxt){
         case TT_F64:    return Type::getDoubleTy(ctxt);
         case TT_C8:     return Type::getInt8Ty(ctxt);
         case TT_Bool:   return Type::getInt1Ty(ctxt);
-        case TT_Unit:   return Type::getInt8Ty(ctxt); //return Type::getVoidTy(ctxt);
+        case TT_Unit:   return Type::getVoidTy(ctxt); //return Type::getVoidTy(ctxt);
         case TT_TypeVar:
             throw new TypeVarError();
         default:
