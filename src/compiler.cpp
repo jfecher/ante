@@ -17,6 +17,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <chrono>
 
 #include "parser.h"
 #include "compiler.h"
@@ -926,6 +927,8 @@ void CompilingVisitor::visit(RootNode *n){
  * all passes.
  */
 void addPasses(llvm::Module *m, char optLvl){
+    using namespace std::chrono;
+    auto start = high_resolution_clock::now();
     if(optLvl > 0){
         llvm::verifyModule(*m, &dbgs());
 
@@ -935,6 +938,8 @@ void addPasses(llvm::Module *m, char optLvl){
         pmb.populateModulePassManager(pm);
         pm.run(*m);
     }
+    auto end = high_resolution_clock::now();
+    cout << "Llvm Optimizations: " << duration_cast<milliseconds>(end - start).count() << "ms\n";
 }
 
 
@@ -945,6 +950,9 @@ void Compiler::compile(){
         return;
     }
 
+    using namespace std::chrono;
+    auto start = high_resolution_clock::now();
+
     try {
         //create implicit main function and import the prelude
         createMainFn();
@@ -954,6 +962,9 @@ void Compiler::compile(){
         //always return 0
         builder.CreateRet(ConstantInt::get(*ctxt, APInt(32, 0)));
 
+
+        auto end = high_resolution_clock::now();
+        std::cout << "Compiling: " << duration_cast<milliseconds>(end - start).count() << "ms\n";
         if(!errorCount() && !isLib){
             addPasses(module.get(), optLvl);
         }
@@ -975,10 +986,14 @@ void Compiler::compileNative(){
     //this file will become the obj file before linking
     string objFile = outFile + ".o";
 
+    using namespace std::chrono;
+    auto start = high_resolution_clock::now();
     if(!compileIRtoObj(module.get(), objFile)){
         linkObj(objFile, outFile);
         remove(objFile.c_str());
     }
+    auto end = high_resolution_clock::now();
+    std::cout << "Linking: " << duration_cast<milliseconds>(end - start).count() << "ms\n";
 }
 
 int Compiler::compileObj(string &outName){
@@ -1070,8 +1085,15 @@ int Compiler::compileIRtoObj(llvm::Module *mod, string outFile){
 
 
 int Compiler::linkObj(string inFiles, string outFile){
+    using namespace std::chrono;
+    auto start = high_resolution_clock::now();
+
     string cmd = AN_LINKER " " + inFiles + " -o " + outFile;
-    return system(cmd.c_str());
+    int ret = system(cmd.c_str());
+
+    auto end = high_resolution_clock::now();
+    cout << "Linking: " << duration_cast<milliseconds>(end - start).count() << "ms\n";
+    return ret;
 }
 
 
