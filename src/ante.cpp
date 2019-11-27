@@ -1,14 +1,16 @@
 #define NOMINMAX
 
+#include <chrono>
+#include <llvm/Support/TargetRegistry.h>
+#include <llvm/Support/raw_os_ostream.h>
 #include "compapi.h"
 #include "target.h"
 #include "module.h"
 #include "typeinference.h"
 #include "nameresolution.h"
-#include <llvm/Support/TargetRegistry.h>
-#include <llvm/Support/raw_os_ostream.h>
 
 using namespace std;
+using namespace std::chrono;
 using namespace ante;
 using namespace ante::parser;
 
@@ -60,6 +62,8 @@ namespace ante {
 
 #ifndef NO_MAIN
 int main(int argc, const char **argv){
+    auto start = high_resolution_clock::now();
+
     LLVMInitializeNativeTarget();
     LLVMInitializeNativeAsmPrinter();
 
@@ -82,6 +86,8 @@ int main(int argc, const char **argv){
         delete yylexer;
     //delete args;
 
+    auto end = high_resolution_clock::now();
+    cout << "Total: " << duration_cast<milliseconds>(end - start).count() << "ms\n";
     return 0;
 }
 #endif

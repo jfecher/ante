@@ -986,14 +986,10 @@ void Compiler::compileNative(){
     //this file will become the obj file before linking
     string objFile = outFile + ".o";
 
-    using namespace std::chrono;
-    auto start = high_resolution_clock::now();
     if(!compileIRtoObj(module.get(), objFile)){
         linkObj(objFile, outFile);
         remove(objFile.c_str());
     }
-    auto end = high_resolution_clock::now();
-    std::cout << "Linking: " << duration_cast<milliseconds>(end - start).count() << "ms\n";
 }
 
 int Compiler::compileObj(string &outName){
@@ -1069,6 +1065,9 @@ void Compiler::jitFunction(Function *f){
 
 
 int Compiler::compileIRtoObj(llvm::Module *mod, string outFile){
+    using namespace std::chrono;
+    auto start = high_resolution_clock::now();
+
     auto *tm = getTargetMachine();
 
     char **err = nullptr;
@@ -1080,6 +1079,8 @@ int Compiler::compileIRtoObj(llvm::Module *mod, string outFile){
         (LLVMCodeGenFileType)llvm::TargetMachine::CGFT_ObjectFile, err);
 
     delete tm;
+    auto end = high_resolution_clock::now();
+    std::cout << "Writing .ll: " << duration_cast<milliseconds>(end - start).count() << "ms\n";
     return res;
 }
 
