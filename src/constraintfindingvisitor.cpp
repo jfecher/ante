@@ -296,7 +296,7 @@ namespace ante {
         auto fnty = try_cast<AnFunctionType>(n->lval->getType());
         if(!fnty){
             auto args = try_cast<AnTupleType>(n->rval->getType());
-            if (!args) args = AnType::getTupleOf({n->rval->getType()});
+            if (!args) args = AnTupleType::get({n->rval->getType()});
             auto params = vecOf<AnType*>(args->fields.size());
 
             for(size_t i = 0; i < args->fields.size(); i++){
@@ -311,7 +311,7 @@ namespace ante {
             addConstraint(n->lval->getType(), fnty, n->loc);
         }else{
             auto args = try_cast<AnTupleType>(n->rval->getType());
-            if (!args) args = AnType::getTupleOf({ n->rval->getType() });
+            if (!args) args = AnTupleType::get({ n->rval->getType() });
 
             if(invalidNumArguments(fnty, args)){
                 issueInvalidArgCountError(fnty, args, n->lval->loc);
@@ -335,7 +335,7 @@ namespace ante {
                 for(; i < args->fields.size(); i++){
                     varargs.push_back(args->fields[i]);
                 }
-                addConstraint(AnType::getTupleOf(varargs), fnty->paramTys.back(), n->loc);
+                addConstraint(AnTupleType::get(varargs), fnty->paramTys.back(), n->loc);
             }
             addConstraint(n->getType(), fnty->retTy, n->loc);
         }
@@ -350,7 +350,7 @@ namespace ante {
             auto fnty = try_cast<AnFunctionType>(n->lval->getType());
             if(!fnty){
                 auto args = try_cast<AnTupleType>(n->rval->getType());
-                if (!args) args = AnType::getTupleOf({n->rval->getType()});
+                if (!args) args = AnTupleType::get({n->rval->getType()});
                 auto params = vecOf<AnType*>(args->fields.size());
 
                 for(size_t i = 0; i < args->fields.size(); i++){
@@ -365,7 +365,7 @@ namespace ante {
                 addConstraint(n->lval->getType(), fnty, n->loc);
             }else{
                 auto args = try_cast<AnTupleType>(n->rval->getType());
-                if (!args) args = AnType::getTupleOf({ n->rval->getType() });
+                if (!args) args = AnTupleType::get({ n->rval->getType() });
 
                 if(invalidNumArguments(fnty, args)){
                     issueInvalidArgCountError(fnty, args, n->lval->loc);
@@ -389,7 +389,7 @@ namespace ante {
                     for(; i < args->fields.size(); i++){
                         varargs.push_back(args->fields[i]);
                     }
-                    addConstraint(AnType::getTupleOf(varargs), fnty->paramTys.back(), n->loc);
+                    addConstraint(AnTupleType::get(varargs), fnty->paramTys.back(), n->loc);
                 }
                 addConstraint(n->getType(), fnty->retTy, n->loc);
             }
@@ -592,7 +592,7 @@ namespace ante {
         for(size_t i = 0; i < pat->exprs.size(); i++){
             fieldTys.push_back(nextTypeVar());
         }
-        auto tupTy = AnType::getTupleOf(fieldTys);
+        auto tupTy = AnTupleType::get(fieldTys);
         addConstraint(tupTy, expectedType, pat->loc);
         patChecker.overwrite(Pattern::fromTuple(fieldTys), pat->loc);
 

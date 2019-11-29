@@ -31,8 +31,8 @@ TEST_CASE("Type Checks", "[typeEq]"){
     REQUIRE(voidPtr != intPtr);
 
     SECTION("('t, bool) == (isz, 'u)"){
-        auto tup1 = AnType::getTupleOf({t, boolTy});
-        auto tup2 = AnType::getTupleOf({intTy, u});
+        auto tup1 = AnTupleType::get({t, boolTy});
+        auto tup2 = AnTupleType::get({intTy, u});
         LOC_TY loc;
 
         UnificationList unificationList;

@@ -76,7 +76,6 @@ namespace ante {
         return extTy->hasModifier(m);
     }
 
-
     const AnType* AnType::addModifier(TokenType m) const {
         if(m == Tok_Let) return this;
         return BasicModifier::get((AnType*)this, m);
@@ -251,24 +250,24 @@ namespace ante {
         return arr;
     }
 
-    AnTupleType* AnType::getAggregate(TypeTag t, const vector<AnType*> exts){
-        return AnTupleType::get(t, exts, {});
-    }
+    AnTupleType* AnTupleType::get(vector<AnType*> const& fields){
 
-    AnTupleType* AnType::getTupleOf(const std::vector<AnType*> exts){
-        return AnTupleType::get(TT_Tuple, exts, {});
-    }
-
-    AnTupleType* AnTupleType::get(TypeTag t, vector<AnType*> const& fields,
-            vector<string> const& names){
-
-        auto key = make_pair(t, fields);
-
-        auto existing_ty = search(typeArena.aggregateTypes, key);
+        auto existing_ty = search(typeArena.aggregateTypes, fields);
         if(existing_ty) return existing_ty;
 
-        auto agg = new AnTupleType(t, fields, names);
-        addKVPair(typeArena.aggregateTypes, key, agg);
+        auto agg = new AnTupleType(fields, {});
+        addKVPair(typeArena.aggregateTypes, fields, agg);
+        return agg;
+    }
+
+    AnTupleType* AnTupleType::getAnonRecord(vector<AnType*> const& fields,
+            vector<string> const& fieldNames){
+
+        auto existing_ty = search(typeArena.aggregateTypes, fields);
+        if(existing_ty) return existing_ty;
+
+        auto agg = new AnTupleType(fields, fieldNames);
+        addKVPair(typeArena.aggregateTypes, fields, agg);
         return agg;
     }
 
@@ -359,7 +358,7 @@ namespace ante {
 
     AnType* AnProductType::getAliasedType() const {
         if(fields.empty()) return AnType::getUnit();
-        return fields.size() == 1 ? fields[0] : AnType::getTupleOf(fields);
+        return fields.size() == 1 ? fields[0] : AnTupleType::get(fields);
     }
 
     AnTupleType* AnProductType::getVariantWithoutTag() const {
@@ -367,7 +366,7 @@ namespace ante {
             cerr << "AnProductType::getVariantWithoutTag(): " << anTypeToColoredStr(this) << " is not a variant\n";
         }
         if(fields.size() == 2 && fields[1]->typeTag == TT_Unit){
-            return AnType::getTupleOf({});
+            return AnTupleType::get({});
         }
 
         vector<AnType*> result;
@@ -376,7 +375,7 @@ namespace ante {
         for(; it != fields.end(); ++it){
             result.push_back(*it);
         }
-        return AnType::getTupleOf(result);
+        return AnTupleType::get(result);
     }
 
     AnProductType* AnProductType::create(string const& name, vector<AnType*> const& elems,
@@ -541,7 +540,7 @@ namespace ante {
                     tys.push_back(toAnType(ext, module));
                     ext = (TypeNode*)ext->next.get();
                 }
-                ret = AnType::getTupleOf(tys);
+                ret = AnTupleType::get(tys);
                 break;
             }
 

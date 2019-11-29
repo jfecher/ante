@@ -125,8 +125,6 @@ namespace ante {
         static AnArrayType* getArray(AnType*, size_t len = 0);
         static AnTypeVarType* getTypeVar(std::string const& name);
         static AnFunctionType* getFunction(AnType *r, const std::vector<AnType*>);
-        static AnTupleType* getAggregate(TypeTag t, const std::vector<AnType*>);
-        static AnTupleType* getTupleOf(const std::vector<AnType*>);
     };
 
     class AnProductType;
@@ -237,13 +235,14 @@ namespace ante {
     /** Tuple types */
     class AnTupleType : public AnType {
         protected:
-        AnTupleType(TypeTag ty, std::vector<AnType*> const& fields,
+        AnTupleType(std::vector<AnType*> const& fields,
                     std::vector<std::string> const& fieldNames) :
-                AnType(ty, ante::isGeneric(fields)), fields(fields), fieldNames(fieldNames) {}
+                AnType(TT_Tuple, ante::isGeneric(fields)),
+                fields(fields), fieldNames(fieldNames) {}
 
-        AnTupleType(TypeTag ty, std::vector<AnType*> const& fields,
+        AnTupleType(std::vector<AnType*> const& fields,
                     std::vector<std::string> const& fieldNames, bool isGeneric) :
-                AnType(ty, isGeneric), fields(fields) {}
+                AnType(TT_Tuple, isGeneric), fields(fields), fieldNames(fieldNames) {}
         public:
 
         ~AnTupleType() = default;
@@ -258,8 +257,12 @@ namespace ante {
          *  */
         std::vector<std::string> fieldNames;
 
-        static AnTupleType* get(TypeTag t, std::vector<AnType*> const& types,
-                std::vector<std::string> const& names);
+        /** Get/Create a tuple type with fieldNames = {} */
+        static AnTupleType* get(std::vector<AnType*> const& types);
+
+        /** Get/Create an anonymous record  type with non-empty fieldNames */
+        static AnTupleType* getAnonRecord(std::vector<AnType*> const& types,
+                std::vector<std::string> const& fieldNames);
 
         /** Returns a version of the current type with an additional modifier m. */
         const AnType* addModifier(TokenType m) const override;
@@ -699,7 +702,7 @@ namespace ante {
         friend AnFunctionType;
 
         using FnTypeKey = std::pair<AnType*, std::pair<std::vector<AnType*>, std::pair<std::vector<TraitImpl*>, bool>>>;
-        using AggTypeKey = std::pair<TypeTag, std::vector<AnType*>>;
+        using AggTypeKey = std::vector<AnType*>;
 
         std::unordered_map<TypeTag, std::unique_ptr<AnType>> primitiveTypes;
         std::unordered_map<std::pair<AnType*, TokenType>, std::unique_ptr<AnModifier>> basicModifiers;

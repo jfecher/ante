@@ -235,7 +235,7 @@ void CompilingVisitor::visit(TupleNode *n){
 
     Value* tuple = c->tupleOf(vals, false);
 
-    auto *tupTy = AnType::getTupleOf(elemTys);
+    auto *tupTy = AnTupleType::get(elemTys);
     this->val = TypedValue(tuple, tupTy);
 }
 

@@ -88,7 +88,7 @@ namespace ante {
             if(dt->fields.size() == 1){
                 return dt->fields[0];
             }else{
-                return AnType::getTupleOf(dt->fields);
+                return AnTupleType::get(dt->fields);
             }
         }
         return ty;

@@ -80,10 +80,10 @@ TEST_CASE("Size in bits of function type", "[getSizeInBits]"){
 }
 
 TEST_CASE("Size in bits of aggregate (tuple) type", "[getSizeInBits]"){
-    auto aggTy1 = AnType::getTupleOf({});
-    auto aggTy2 = AnType::getTupleOf({AnType::getI32()});
-    auto aggTy3 = AnType::getTupleOf({AnType::getU64(), AnType::getBool()});
-    auto aggTy4 = AnType::getTupleOf({aggTy3, AnPtrType::get(AnType::getUnit())});
+    auto aggTy1 = AnTupleType::get({});
+    auto aggTy2 = AnTupleType::get({AnType::getI32()});
+    auto aggTy3 = AnTupleType::get({AnType::getU64(), AnType::getBool()});
+    auto aggTy4 = AnTupleType::get({aggTy3, AnPtrType::get(AnType::getUnit())});
 
     REQUIRE(aggTy1->getSizeInBits(c).getVal() == 0);
     REQUIRE(aggTy2->getSizeInBits(c).getVal() == 32);
@@ -96,7 +96,7 @@ TEST_CASE("Size in bits of generic type", "[getSizeInBits]"){
     auto u = AnTypeVarType::get("'u");
     auto ptr_t = AnPtrType::get(t);
     auto arr_u = AnArrayType::get(u, 5);
-    auto tup = AnType::getTupleOf({AnType::getI32(), t});
+    auto tup = AnTupleType::get({AnType::getI32(), t});
     auto fn = AnFunctionType::get(u, {AnType::getI32(), t}, {}, false);
 
     //All non-ptr types should return an error instead of a size

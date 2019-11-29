@@ -81,7 +81,7 @@ namespace ante {
             }
 
         }else if(auto tup = try_cast<AnTupleType>(t)){
-            return AnTupleType::get(t->typeTag, copyWithNewTypeVars(tup->fields, map), tup->fieldNames);
+            return AnTupleType::getAnonRecord(copyWithNewTypeVars(tup->fields, map), tup->fieldNames);
 
         }else if(auto ptr = try_cast<AnPtrType>(t)){
             return AnPtrType::get(copyWithNewTypeVars(ptr->extTy, map));
@@ -171,7 +171,7 @@ namespace ante {
 
         }else if(auto tup = try_cast<AnTupleType>(t)){
             auto exts = substituteIntoAll(u, subType, tup->fields);;
-            return AnTupleType::get(TT_Tuple, exts, tup->fieldNames);
+            return AnTupleType::getAnonRecord(exts, tup->fieldNames);
 
         }else{
             return t;

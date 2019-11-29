@@ -76,7 +76,7 @@ namespace ante {
         if(n->exprs.empty())
             n->setType(AnType::getUnit());
         else
-            n->setType(AnType::getAggregate(TT_Tuple, types));
+            n->setType(AnTupleType::get(types));
     }
 
     void TypeInferenceVisitor::visit(ModNode *n){
