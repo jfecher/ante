@@ -76,7 +76,7 @@ impl Eq (Maybe 'e) given Eq 'e
 impl To Str (Maybe 'm) given To Str 'm
     to _ maybe =
         match maybe with
-        | Some val -> "tmp" //Str val
+        | Some val -> to Str val
         | None -> "None"
 
 
@@ -369,7 +369,6 @@ trait Iterator 'i
     has_next 'i -> bool
     cur_elem 'i -> IteratorElem
     advance 'i -> 'i
-
 
 type LazyRange = start:i32 end:i32 step:i32
 
