@@ -70,12 +70,12 @@ namespace ante {
                 " to a pattern of size " + to_string(tupTy->getNumContainedTypes()), t->loc);
         }
 
-        auto *aggTy = try_cast<AnAggregateType>(valToMatch.type);
+        auto *aggTy = try_cast<AnTupleType>(valToMatch.type);
         size_t elementNo = 0;
 
         for(auto &e : t->exprs){
             Value *elem = cv.c->builder.CreateExtractValue(valToMatch.val, elementNo);
-            TypedValue elemTv{elem, (AnType*)valToMatch.type->addModifiersTo(aggTy->extTys[elementNo++])};
+            TypedValue elemTv{elem, (AnType*)valToMatch.type->addModifiersTo(aggTy->fields[elementNo++])};
 
             handlePattern(cv, n, e.get(), jmpOnFail, elemTv);
         }
@@ -288,8 +288,8 @@ namespace ante {
           return pat;
         }
 
-        auto ag = try_cast<AnAggregateType>(t);
-        if(ag) return Pattern::fromTuple(ag->extTys);
+        auto ag = try_cast<AnTupleType>(t);
+        if(ag) return Pattern::fromTuple(ag->fields);
 
         auto tv = try_cast<AnTypeVarType>(t);
         if(tv) return Pattern::getFillerPattern();

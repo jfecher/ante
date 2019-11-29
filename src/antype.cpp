@@ -40,6 +40,11 @@ namespace ante {
         cout << endl;
     }
 
+    bool AnType::isRhoVar() const {
+        auto tvt = try_cast<const AnTypeVarType>(this);
+        return tvt && tvt->isRhoVar();
+    }
+
     bool isGeneric(vector<AnType*> const& vec){
         for(auto *t : vec)
             if(t->isGeneric)
@@ -246,35 +251,39 @@ namespace ante {
         return arr;
     }
 
-    AnAggregateType* AnType::getAggregate(TypeTag t, const vector<AnType*> exts){
-        return AnAggregateType::get(t, exts);
+    AnTupleType* AnType::getAggregate(TypeTag t, const vector<AnType*> exts){
+        return AnTupleType::get(t, exts, {});
     }
 
-    AnAggregateType* AnType::getTupleOf(const std::vector<AnType*> exts){
-        return AnAggregateType::get(TT_Tuple, exts);
+    AnTupleType* AnType::getTupleOf(const std::vector<AnType*> exts){
+        return AnTupleType::get(TT_Tuple, exts, {});
     }
 
-    AnAggregateType* AnAggregateType::get(TypeTag t, const vector<AnType*> exts){
-        auto key = make_pair(t, exts);
+    AnTupleType* AnTupleType::get(TypeTag t, vector<AnType*> const& fields,
+            vector<string> const& names){
+
+        auto key = make_pair(t, fields);
 
         auto existing_ty = search(typeArena.aggregateTypes, key);
         if(existing_ty) return existing_ty;
 
-        auto agg = new AnAggregateType(t, exts);
+        auto agg = new AnTupleType(t, fields, names);
         addKVPair(typeArena.aggregateTypes, key, agg);
         return agg;
     }
 
-    AnFunctionType* AnFunctionType::get(AnType* retty, NamedValNode* params, Module *module, bool isMetaFunction){
-        vector<AnType*> extTys;
+    AnFunctionType* AnFunctionType::get(AnType* retty,
+            NamedValNode* params, Module *module, bool isMetaFunction){
+
+        vector<AnType*> paramTys;
 
         while(params && params->typeExpr.get()){
             TypeNode *pty = (TypeNode*)params->typeExpr.get();
             auto *aty = toAnType(pty, module);
-            extTys.push_back(aty);
+            paramTys.push_back(aty);
             params = (NamedValNode*)params->next.get();
         }
-        return AnFunctionType::get(retty, extTys, {}, isMetaFunction);
+        return AnFunctionType::get(retty, paramTys, {}, isMetaFunction);
     }
 
     AnFunctionType* AnFunctionType::get(AnType *retTy, vector<AnType*> const& elems,
@@ -353,7 +362,7 @@ namespace ante {
         return fields.size() == 1 ? fields[0] : AnType::getTupleOf(fields);
     }
 
-    AnAggregateType* AnProductType::getVariantWithoutTag() const {
+    AnTupleType* AnProductType::getVariantWithoutTag() const {
         if(!parentUnionType){
             cerr << "AnProductType::getVariantWithoutTag(): " << anTypeToColoredStr(this) << " is not a variant\n";
         }
@@ -619,7 +628,7 @@ namespace ante {
         return CompilerDirectiveModifier::get(extTy->addModifier(m), directive);
     }
 
-    const AnType* AnAggregateType::addModifier(TokenType m) const{
+    const AnType* AnTupleType::addModifier(TokenType m) const{
         if(m == Tok_Let) return this;
         return BasicModifier::get(this, m);
     }
@@ -675,13 +684,28 @@ namespace ante {
         return !(*this == other);
     }
 
+    bool allEq(vector<string> const& l, vector<string> const& r){
+        if(l.size() != r.size())
+            return false;
+
+        for(size_t i = 0; i < l.size(); ++i){
+            if(l[i] != r[i]){
+                return false;
+            }
+        }
+        return true;
+    }
+
     bool allEq(vector<AnType*> const& l, vector<AnType*> const& r){
+        if(l.size() != r.size())
+            return false;
+
         for(size_t i = 0; i < l.size(); ++i){
             if(*l[i] != *r[i]){
                 return false;
             }
         }
-        return l.size() == r.size();
+        return true;
     }
 
     bool AnType::operator==(AnType const& other) const noexcept {
@@ -701,9 +725,9 @@ namespace ante {
         }
 
         if(typeTag == TT_Tuple){
-            auto l = static_cast<const AnAggregateType*>(this);
-            auto r = static_cast<const AnAggregateType*>(&other);
-            return allEq(l->extTys, r->extTys);
+            auto l = static_cast<const AnTupleType*>(this);
+            auto r = static_cast<const AnTupleType*>(&other);
+            return allEq(l->fields, r->fields) && allEq(l->fieldNames, r->fieldNames);
 
         }else if(typeTag == TT_Data || typeTag == TT_TaggedUnion){
             auto l = static_cast<const AnDataType*>(this);
@@ -720,7 +744,7 @@ namespace ante {
         }else if(typeTag == TT_Function || typeTag == TT_MetaFunction){
             auto l = static_cast<const AnFunctionType*>(this);
             auto r = static_cast<const AnFunctionType*>(&other);
-            return *l->retTy == *r->retTy && allEq(l->extTys, r->extTys);
+            return *l->retTy == *r->retTy && allEq(l->paramTys, r->paramTys);
         }
         this->dump();
         other.dump();
@@ -752,9 +776,9 @@ namespace ante {
         }
 
         if(typeTag == TT_Tuple){
-            auto l = static_cast<const AnAggregateType*>(this);
-            auto r = static_cast<const AnAggregateType*>(other);
-            return allApproxEq(l->extTys, r->extTys);
+            auto l = static_cast<const AnTupleType*>(this);
+            auto r = static_cast<const AnTupleType*>(other);
+            return allApproxEq(l->fields, r->fields) && allEq(l->fieldNames, r->fieldNames);
 
         }else if(typeTag == TT_Data || typeTag == TT_TaggedUnion){
             auto l = static_cast<const AnDataType*>(this);
@@ -771,7 +795,7 @@ namespace ante {
         }else if(typeTag == TT_Function || typeTag == TT_MetaFunction){
             auto l = static_cast<const AnFunctionType*>(this);
             auto r = static_cast<const AnFunctionType*>(other);
-            return l->retTy->approxEq(r->retTy) && allApproxEq(l->extTys, r->extTys);
+            return l->retTy->approxEq(r->retTy) && allApproxEq(l->paramTys, r->paramTys);
         }
         ASSERT_UNREACHABLE("Unknown TypeTag in AnType::approxEq");
     }

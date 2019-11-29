@@ -44,7 +44,7 @@ namespace ante {
 
         if(auto fn = try_cast<AnFunctionType>(t)){
             return AnFunctionType::get(copyWithNewTypeVars(fn->retTy, map),
-                    copyWithNewTypeVars(fn->extTys, map),
+                    copyWithNewTypeVars(fn->paramTys, map),
                     copyWithNewTypeVars(fn->typeClassConstraints, map));
 
         }else if(auto pt = try_cast<AnProductType>(t)){
@@ -73,15 +73,15 @@ namespace ante {
                 return it->second;
             }else{
                 auto newtv = nextTypeVar();
-                if(tv->isVarArgs())
+                if(tv->isRhoVar())
                     newtv = AnTypeVarType::get(newtv->name + "...");
 
                 map[tv->name] = newtv;
                 return newtv;
             }
 
-        }else if(auto tup = try_cast<AnAggregateType>(t)){
-            return AnAggregateType::get(t->typeTag, copyWithNewTypeVars(tup->extTys, map));
+        }else if(auto tup = try_cast<AnTupleType>(t)){
+            return AnTupleType::get(t->typeTag, copyWithNewTypeVars(tup->fields, map), tup->fieldNames);
 
         }else if(auto ptr = try_cast<AnPtrType>(t)){
             return AnPtrType::get(copyWithNewTypeVars(ptr->extTy, map));
@@ -164,14 +164,14 @@ namespace ante {
             }
 
         }else if(auto fn = try_cast<AnFunctionType>(t)){
-            auto exts = substituteIntoAll(u, subType, fn->extTys);;
+            auto exts = substituteIntoAll(u, subType, fn->paramTys);;
             auto rett = substitute(u, subType, fn->retTy);
             auto tcc  = substituteIntoAll(u, subType, fn->typeClassConstraints);
             return AnFunctionType::get(rett, exts, tcc, t->typeTag == TT_MetaFunction);
 
-        }else if(auto tup = try_cast<AnAggregateType>(t)){
-            auto exts = substituteIntoAll(u, subType, tup->extTys);;
-            return AnType::getTupleOf(exts);
+        }else if(auto tup = try_cast<AnTupleType>(t)){
+            auto exts = substituteIntoAll(u, subType, tup->fields);;
+            return AnTupleType::get(TT_Tuple, exts, tup->fieldNames);
 
         }else{
             return t;
@@ -210,7 +210,7 @@ namespace ante {
             return ante::any(st->tags, [&](AnProductType *f){ return containsTypeVarHelper(f, typeVar); });
 
         }else if(auto fn = try_cast<AnFunctionType>(t)){
-            if(ante::any(fn->extTys, [&](AnType *f){ return containsTypeVarHelper(f, typeVar); }))
+            if(ante::any(fn->paramTys, [&](AnType *f){ return containsTypeVarHelper(f, typeVar); }))
                 return true;
 
             if(containsTypeVarHelper(fn->retTy, typeVar))
@@ -222,8 +222,8 @@ namespace ante {
 
             return ante::any(fn->typeClassConstraints, tccContainsTypeVar);
 
-        }else if(auto tup = try_cast<AnAggregateType>(t)){
-            return ante::any(tup->extTys, [&](AnType *f){ return containsTypeVarHelper(f, typeVar); });
+        }else if(auto tup = try_cast<AnTupleType>(t)){
+            return ante::any(tup->fields, [&](AnType *f){ return containsTypeVarHelper(f, typeVar); });
 
         }else{
             return false;
@@ -266,12 +266,12 @@ namespace ante {
                 return ante::any(t->typeArgs, [&](AnType *t){ return hasTypeVarNotInMap(t, map); });
             };
 
-            return ante::any(fn->extTys, [&](AnType *f){ return hasTypeVarNotInMap(f, map); })
+            return ante::any(fn->paramTys, [&](AnType *f){ return hasTypeVarNotInMap(f, map); })
                 || hasTypeVarNotInMap(fn->retTy, map)
                 || ante::any(fn->typeClassConstraints, tccContainsTypeVar);
 
-        }else if(auto tup = try_cast<AnAggregateType>(t)){
-            return ante::any(tup->extTys, [&](AnType *f){ return hasTypeVarNotInMap(f, map); });
+        }else if(auto tup = try_cast<AnTupleType>(t)){
+            return ante::any(tup->fields, [&](AnType *f){ return hasTypeVarNotInMap(f, map); });
 
         }else{
             return false;
@@ -297,7 +297,7 @@ namespace ante {
 
         if(auto fn = try_cast<AnFunctionType>(t)){
             getAllContainedTypeVarsHelper(fn->retTy, map);
-            for(AnType *paramTy : fn->extTys){ getAllContainedTypeVarsHelper(paramTy, map); }
+            for(AnType *paramTy : fn->paramTys){ getAllContainedTypeVarsHelper(paramTy, map); }
             for(TraitImpl *tcc : fn->typeClassConstraints){ getAllContainedTypeVarsHelper(tcc, map); }
 
         }else if(auto pt = try_cast<AnProductType>(t)){
@@ -311,8 +311,8 @@ namespace ante {
         }else if(auto tv = try_cast<AnTypeVarType>(t)){
             map[tv->name] = tv;
 
-        }else if(auto tup = try_cast<AnAggregateType>(t)){
-            for(AnType *extTy : tup->extTys){ getAllContainedTypeVarsHelper(extTy, map); }
+        }else if(auto tup = try_cast<AnTupleType>(t)){
+            for(AnType *extTy : tup->fields){ getAllContainedTypeVarsHelper(extTy, map); }
 
         }else if(auto ptr = try_cast<AnPtrType>(t)){
             getAllContainedTypeVarsHelper(ptr->extTy, map);
@@ -347,7 +347,7 @@ namespace ante {
             }
         }
 
-        return AnFunctionType::get(t->retTy, t->extTys, c);
+        return AnFunctionType::get(t->retTy, t->paramTys, c);
     }
 
 
@@ -447,19 +447,19 @@ namespace ante {
 
         }else if(auto fn1 = try_cast<AnFunctionType>(t1)){
             auto fn2 = try_cast<AnFunctionType>(t2);
-            if(fn1->extTys.size() != fn2->extTys.size()){
+            if(fn1->paramTys.size() != fn2->paramTys.size()){
                 error("Types " + anTypeToColoredStr(fn1) + " and " + anTypeToColoredStr(fn2) + " are of varying sizes", loc);
             }
 
-            for(size_t i = 0; i < fn1->extTys.size(); i++)
-                ret.emplace_back(fn1->extTys[i], fn2->extTys[i], loc);
+            for(size_t i = 0; i < fn1->paramTys.size(); i++)
+                ret.emplace_back(fn1->paramTys[i], fn2->paramTys[i], loc);
 
             ret.emplace_back(fn1->retTy, fn2->retTy, loc);
             return unify(ret);
 
-        }else if(auto tup1 = try_cast<AnAggregateType>(t1)){
-            auto tup2 = try_cast<AnAggregateType>(t2);
-            return unifyExts(tup1->extTys, tup2->extTys, loc, tup1, tup2);
+        }else if(auto tup1 = try_cast<AnTupleType>(t1)){
+            auto tup2 = try_cast<AnTupleType>(t2);
+            return unifyExts(tup1->fields, tup2->fields, loc, tup1, tup2);
 
         }else{
             return {};

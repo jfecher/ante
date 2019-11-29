@@ -4,6 +4,4 @@ import "tests/integration/moduleLib.an"
 tup1 = (2, 3)
 tup2 = (4, 2)
 
-print <| tup1.dotProduct tup2
-
-print "done!"
+print "${tup1} * ${tup2} = ${DP.dotProduct tup1 tup2}"

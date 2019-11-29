@@ -87,12 +87,12 @@ Result<size_t, string> AnType::getSizeInBits(Compiler *c, string *incompleteType
         }
 
     // function & metafunction are aggregate types but have different sizes than
-    // a tuple so this case must be checked for before AnAggregateType is
+    // a tuple so this case must be checked for before AnTupleType is
     }else if(typeTag == TT_Ptr or typeTag == TT_Function or typeTag == TT_MetaFunction){
         return AN_USZ_SIZE;
 
-    }else if(auto *tup = try_cast<AnAggregateType>(this)){
-        for(auto *ext : tup->extTys){
+    }else if(auto *tup = try_cast<AnTupleType>(this)){
+        for(auto *ext : tup->fields){
             auto val = ext->getSizeInBits(c, incompleteType);
             if(!val) return val;
             total += val.getVal();
@@ -318,7 +318,7 @@ Type* Compiler::anTypeToLlvmType(const AnType *ty, int recursionLimit){
             return ArrayType::get(anTypeToLlvmType(arr->extTy, --recursionLimit), arr->len);
         }
         case TT_Tuple:
-            for(auto *e : try_cast<AnAggregateType>(ty)->extTys){
+            for(auto *e : try_cast<AnTupleType>(ty)->fields){
                 if(!isEmptyType(e))
                     tys.push_back(anTypeToLlvmType(e, --recursionLimit));
             }
@@ -333,16 +333,16 @@ Type* Compiler::anTypeToLlvmType(const AnType *ty, int recursionLimit){
         }
         case TT_Function: case TT_MetaFunction: {
             auto *f = try_cast<AnFunctionType>(ty);
-            for(size_t i = 0; i < f->extTys.size(); i++){
-                if(auto *tvt = try_cast<AnTypeVarType>(f->extTys[i])){
-                    if(tvt->isVarArgs()){
+            for(size_t i = 0; i < f->paramTys.size(); i++){
+                if(auto *tvt = try_cast<AnTypeVarType>(f->paramTys[i])){
+                    if(tvt->isRhoVar()){
                         return FunctionType::get(anTypeToLlvmType(f->retTy, --recursionLimit), tys, true)->getPointerTo();
                     }
                 }
                 // All Ante functions take at least 1 arg: (), which are ignored in llvm ir
                 // and translated to 0 arg functions instead
-                if(!isEmptyType(f->extTys[i]))
-                    tys.push_back(anTypeToLlvmType(f->extTys[i], --recursionLimit));
+                if(!isEmptyType(f->paramTys[i]))
+                    tys.push_back(anTypeToLlvmType(f->paramTys[i], --recursionLimit));
             }
 
             return FunctionType::get(anTypeToLlvmType(f->retTy, --recursionLimit), tys, false)->getPointerTo();
@@ -607,7 +607,7 @@ string anTypeToStr(const AnType *t){
         return tvt->name;
     }else if(auto *f = try_cast<AnFunctionType>(t)){
         string ret = "";
-        for(auto &param : f->extTys){
+        for(auto &param : f->paramTys){
             auto pstr = anTypeToStr(param);
             ret += (shouldWrapInParenthesis(param) ? '(' + pstr + ')' : pstr) + ' ';
         }
@@ -616,15 +616,15 @@ string anTypeToStr(const AnType *t){
             : " given " + commaSeparated(f->typeClassConstraints);
 
         return ret + "-> " + anTypeToStr(f->retTy) + tcConstraints;
-    }else if(auto *tup = try_cast<AnAggregateType>(t)){
+    }else if(auto *tup = try_cast<AnTupleType>(t)){
         string ret = "(";
 
-        for(const auto &ext : tup->extTys){
+        for(const auto &ext : tup->fields){
             ret += anTypeToStr(ext);
 
-            if(&ext != &tup->extTys.back()){
+            if(&ext != &tup->fields.back()){
                 ret += ", ";
-            }else if(tup->extTys.size() == 1){
+            }else if(tup->fields.size() == 1){
                 ret += ',';
             }
         }

@@ -11,21 +11,21 @@ namespace ante {
         return f;
     }
 
-    TypedValue convertTupleToTypedValue(Compiler *c, AnteValue const& arg, AnAggregateType *tn){
-        if(tn->extTys.empty()){
+    TypedValue convertTupleToTypedValue(Compiler *c, AnteValue const& arg, AnTupleType *tn){
+        if(tn->fields.empty()){
             return c->getUnitLiteral();
         }
 
-        auto elems = vecOf<Constant*>(tn->extTys.size());
-        auto elemTys = vecOf<Type*>(tn->extTys.size());
-        auto anElemTys = vecOf<AnType*>(tn->extTys.size());
+        auto elems = vecOf<Constant*>(tn->fields.size());
+        auto elemTys = vecOf<Type*>(tn->fields.size());
+        auto anElemTys = vecOf<AnType*>(tn->fields.size());
 
         map<unsigned, Value*> nonConstants;
         size_t offset = 0;
 
-        for(unsigned i = 0; i < tn->extTys.size(); i++){
+        for(unsigned i = 0; i < tn->fields.size(); i++){
             char* elem = (char*)arg.asRawData() + offset;
-            AnteValue elemTup{(void*)elem, tn->extTys[i]};
+            AnteValue elemTup{(void*)elem, tn->fields[i]};
             TypedValue tval = elemTup.asTypedValue(c);
 
             if(auto elem = dyn_cast<Constant>(tval.val)){
@@ -35,7 +35,7 @@ namespace ante {
                 elems.push_back(UndefValue::get(tval.getType()));
             }
 
-            auto res = tn->extTys[i]->getSizeInBits(c);
+            auto res = tn->fields[i]->getSizeInBits(c);
             if(!res){
                 error("Unknown/Unimplemented TypeTag " + typeTagToStr(tn->typeTag), unknownLoc());
             }
@@ -117,7 +117,7 @@ namespace ante {
             }
             case TT_Data:
             case TT_Tuple:
-                return convertTupleToTypedValue(c, *this, try_cast<AnAggregateType>(type));
+                return convertTupleToTypedValue(c, *this, try_cast<AnTupleType>(type));
             case TT_TypeVar:
             case TT_Function:
             case TT_TaggedUnion:
@@ -213,12 +213,12 @@ namespace ante {
 
 
     void AnteValue::storeTuple(Compiler *c, TypedValue const& tup){
-        auto *sty = try_cast<AnAggregateType>(tup.type);
+        auto *sty = try_cast<AnTupleType>(tup.type);
         if(ConstantStruct *ca = dyn_cast<ConstantStruct>(tup.val)){
             void *orig_data = this->data;
             for(size_t i = 0; i < ca->getNumOperands(); i++){
                 Value *elem = ca->getAggregateElement(i);
-                AnType *ty = sty->extTys[i];
+                AnType *ty = sty->fields[i];
                 auto field = TypedValue(elem, ty);
                 storeValue(c, field);
 
@@ -231,7 +231,7 @@ namespace ante {
             data = orig_data;
         }else{
             //single-value "tuple"
-            AnType *ty = sty->extTys[0];
+            AnType *ty = sty->fields[0];
             auto field = TypedValue(tup.val, ty);
             storeValue(c, field);
         }
@@ -354,17 +354,17 @@ namespace ante {
             }
         }
         os << '(';
-        auto *agg = try_cast<AnAggregateType>(type);
+        auto *agg = try_cast<AnTupleType>(type);
         if(!agg){
             cerr << "printTupleOrData called on non-aggregate type\n";
             throw CtError();
         }
 
         char* dataptr = (char*)data;
-        for(auto &ty : agg->extTys){
+        for(auto &ty : agg->fields){
             auto size = ty->getSizeInBits(c);
             AnteValue(dataptr, ty).printCtVal(c, os);
-            if(&ty != &agg->extTys.back()){
+            if(&ty != &agg->fields.back()){
                 cout << ", ";
             }
             dataptr += size.getVal() / 8;

@@ -23,7 +23,7 @@ namespace ante {
 
     class BasicModifier;
     class AnModifier;
-    class AnAggregateType;
+    class AnTupleType;
     class AnArrayType;
     class AnPtrType;
     class AnTypeVarType;
@@ -102,6 +102,9 @@ namespace ante {
                 || typeTag == TT_Isz || typeTag == TT_Usz;
         }
 
+        /** Shortcut for casting to an AnTypeVarType and calling AnTypeVarType::isRhoVar */
+        bool isRhoVar() const;
+
         static AnType* getPrimitive(TypeTag tag);
         static AnType* getI8();
         static AnType* getI16();
@@ -122,8 +125,8 @@ namespace ante {
         static AnArrayType* getArray(AnType*, size_t len = 0);
         static AnTypeVarType* getTypeVar(std::string const& name);
         static AnFunctionType* getFunction(AnType *r, const std::vector<AnType*>);
-        static AnAggregateType* getAggregate(TypeTag t, const std::vector<AnType*>);
-        static AnAggregateType* getTupleOf(const std::vector<AnType*>);
+        static AnTupleType* getAggregate(TypeTag t, const std::vector<AnType*>);
+        static AnTupleType* getTupleOf(const std::vector<AnType*>);
     };
 
     class AnProductType;
@@ -232,24 +235,38 @@ namespace ante {
 
 
     /** Tuple types */
-    class AnAggregateType : public AnType {
+    class AnTupleType : public AnType {
         protected:
-        AnAggregateType(TypeTag ty, const std::vector<AnType*> exts) :
-                AnType(ty, ante::isGeneric(exts)), extTys(exts) {}
+        AnTupleType(TypeTag ty, std::vector<AnType*> const& fields,
+                    std::vector<std::string> const& fieldNames) :
+                AnType(ty, ante::isGeneric(fields)), fields(fields), fieldNames(fieldNames) {}
 
-        AnAggregateType(TypeTag ty, const std::vector<AnType*> exts, bool isGeneric) :
-                AnType(ty, isGeneric), extTys(exts) {}
+        AnTupleType(TypeTag ty, std::vector<AnType*> const& fields,
+                    std::vector<std::string> const& fieldNames, bool isGeneric) :
+                AnType(ty, isGeneric), fields(fields) {}
         public:
 
-        ~AnAggregateType() = default;
+        ~AnTupleType() = default;
 
-        /** The constituent types of this aggregate type. */
-        std::vector<AnType*> extTys;
+        /** The constituent types of this tuple/anonymous-record type. */
+        std::vector<AnType*> fields;
 
-        static AnAggregateType* get(TypeTag t, std::vector<AnType*> types);
+        /** Field names for each index.
+         *  - If this type is an anonymous record type, this vector matches the fields vector index-wise.
+         *      - If there is a rho variable in the type, the corresponding field name will be ""
+         *  - If this type is a normal tuple type, this vector will be empty
+         *  */
+        std::vector<std::string> fieldNames;
+
+        static AnTupleType* get(TypeTag t, std::vector<AnType*> const& types,
+                std::vector<std::string> const& names);
 
         /** Returns a version of the current type with an additional modifier m. */
         const AnType* addModifier(TokenType m) const override;
+
+        bool isAnonRecordType() const noexcept {
+            return !fieldNames.empty();
+        }
 
         virtual bool isModifierType() const noexcept override {
             return false;
@@ -257,8 +274,7 @@ namespace ante {
 
         /** Returns true if this type is a tuple, function, or (a declared) data type */
         static bool istype(const AnType *t){
-            return t->typeTag == TT_Tuple or t->typeTag == TT_Function
-                or t->typeTag == TT_MetaFunction;
+            return t->typeTag == TT_Tuple;
         }
     };
 
@@ -346,7 +362,7 @@ namespace ante {
             return false;
         }
 
-        bool isVarArgs() const noexcept {
+        bool isRhoVar() const noexcept {
             size_t len = name.size();
             // Using string::find would be more terse but would needlessly check the whole string
             return len > 3 && name[len-3] == '.' && name[len-2] == '.' && name[len-1] == '.';;
@@ -358,18 +374,25 @@ namespace ante {
     };
 
     /** A function type */
-    class AnFunctionType : public AnAggregateType {
+    class AnFunctionType : public AnType {
         protected:
-        AnFunctionType(AnType *ret, std::vector<AnType*> elems,
+        AnFunctionType(AnType *ret, std::vector<AnType*> params,
                 std::vector<TraitImpl*> tcConstraints, bool isMetaFunction)
-                : AnAggregateType(isMetaFunction ? TT_MetaFunction : TT_Function, elems,
-                        ante::isGeneric(ret, elems, tcConstraints)),
-                  retTy(ret), typeClassConstraints(tcConstraints){
+                : AnType(isMetaFunction ? TT_MetaFunction : TT_Function, ante::isGeneric(ret, params, tcConstraints)),
+                  paramTys(params), retTy(ret), typeClassConstraints(tcConstraints){
         }
 
         public:
 
         ~AnFunctionType() = default;
+
+        /**
+         * Contains the type of each parameter.
+         * Note that this is never empty as every function always takes
+         * at least unit as a parameter.  These unit values are later
+         * optimized away during code generation.
+         */
+        std::vector<AnType*> paramTys;
 
         AnType *retTy;
 
@@ -389,13 +412,12 @@ namespace ante {
         }
 
         bool isVarArgs() const noexcept {
-            return !extTys.empty() && extTys.back()->typeTag == TT_TypeVar
-                && try_cast<AnTypeVarType>(extTys.back())->isVarArgs();
+            return !paramTys.empty() && paramTys.back()->isRhoVar();
         }
 
         /** Returns true if this type is a TT_Function or TT_MetaFunction */
         static bool istype(const AnType *t){
-            return t->typeTag == TT_Function or t->typeTag == TT_MetaFunction;
+            return t->typeTag == TT_Function || t->typeTag == TT_MetaFunction;
         }
     };
 
@@ -522,7 +544,7 @@ namespace ante {
         /** Returns the type this type is aliased to */
         AnType* getAliasedType() const;
 
-        AnAggregateType* getVariantWithoutTag() const;
+        AnTupleType* getVariantWithoutTag() const;
 
         /** Search for a data type generic variant by name.
          * Returns it if found, or creates it otherwise. */
@@ -670,7 +692,7 @@ namespace ante {
         friend AnType;
         friend BasicModifier;
         friend CompilerDirectiveModifier;
-        friend AnAggregateType;
+        friend AnTupleType;
         friend AnArrayType;
         friend AnPtrType;
         friend AnTypeVarType;
@@ -685,7 +707,7 @@ namespace ante {
         std::unordered_map<AnType*, std::unique_ptr<AnPtrType>> ptrTypes;
         std::unordered_map<std::pair<AnType*, size_t>, std::unique_ptr<AnArrayType>> arrayTypes;
         std::unordered_map<std::string, std::unique_ptr<AnTypeVarType>> typeVarTypes;
-        std::unordered_map<AggTypeKey, std::unique_ptr<AnAggregateType>> aggregateTypes;
+        std::unordered_map<AggTypeKey, std::unique_ptr<AnTupleType>> aggregateTypes;
         std::unordered_map<FnTypeKey, std::unique_ptr<AnFunctionType>> functionTypes;
 
     public:

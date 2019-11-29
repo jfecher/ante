@@ -57,8 +57,8 @@ vector<Type*> getParamTypes(Compiler *c, FuncDecl *fd){
 
     auto fnty = try_cast<AnFunctionType>(fd->tval.type);
 
-    paramTys.reserve(fnty->extTys.size());
-    for(auto *paramTy : fnty->extTys){
+    paramTys.reserve(fnty->paramTys.size());
+    for(auto *paramTy : fnty->paramTys){
         auto *llvmty = parameterize(c, paramTy);
         paramTys.push_back(llvmty);
     }
@@ -189,8 +189,8 @@ AnFunctionType* removeCompileTimeParams(AnType *functy){
     auto ft = static_cast<AnFunctionType*>(functy);
 
     vector<AnType*> params;
-    params.reserve(ft->extTys.size());
-    for(auto &param : ft->extTys){
+    params.reserve(ft->paramTys.size());
+    for(auto &param : ft->paramTys){
         if(!isEmptyType(param)){
             params.push_back(param);
         }

@@ -159,12 +159,12 @@ TypedValue Compiler::compExtract(TypedValue &l, TypedValue &r, BinOpNode *op){
 
         auto index = indexval->getZExtValue();
 
-        auto *aggty = try_cast<AnAggregateType>(l.type);
+        auto *aggty = try_cast<AnTupleType>(l.type);
 
-        if(index >= aggty->extTys.size())
+        if(index >= aggty->fields.size())
             error("Index of " + to_string(index) + " exceeds number of fields in " + anTypeToColoredStr(l.type), op->loc);
 
-        AnType *indexTy = (AnType*)l.type->addModifiersTo(aggty->extTys[index]);
+        AnType *indexTy = (AnType*)l.type->addModifiersTo(aggty->fields[index]);
 
         Value *tup = l.getType()->isPointerTy() ? builder.CreateLoad(l.val) : l.val;
         return TypedValue(builder.CreateExtractValue(tup, index), indexTy);
@@ -223,11 +223,11 @@ TypedValue Compiler::compInsert(BinOpNode *op, Node *assignExpr){
                 error("Tuple indices must always be known at compile time", op->loc);
             }else{
                 auto tupIndex = tupIndexVal->getZExtValue();
-                auto *aggty = try_cast<AnAggregateType>(tmp.type);
+                auto *aggty = try_cast<AnTupleType>(tmp.type);
 
-                if(tupIndex >= aggty->extTys.size())
+                if(tupIndex >= aggty->fields.size())
                     error("Index of " + to_string(tupIndex) + " exceeds the maximum index of the tuple, "
-                            + to_string(aggty->extTys.size()-1), op->loc);
+                            + to_string(aggty->fields.size()-1), op->loc);
 
                 auto *ins = builder.CreateInsertValue(builder.CreateLoad(var), newVal.val, tupIndex);
                 builder.CreateStore(ins, var);
@@ -285,7 +285,7 @@ string getCastFnBaseName(AnType *t){
 
 vector<AnType*> toTuple(AnType *ty){
     if(ty->typeTag == TT_Tuple){
-        return try_cast<AnAggregateType>(ty)->extTys;
+        return try_cast<AnTupleType>(ty)->fields;
     }else if(ty->typeTag == TT_Unit){
         return {};
     }else{
@@ -322,8 +322,8 @@ TypedValue reinterpretTuple(Compiler *c, Value *from, AnType *to){
 
 bool shouldCastToWrapperType(AnType *from, AnProductType *wrapper){
     if(wrapper->fields.size() > 1){
-        auto tup = try_cast<AnAggregateType>(from);
-        if(!tup || tup->extTys.size() != wrapper->fields.size())
+        auto tup = try_cast<AnTupleType>(from);
+        if(!tup || tup->fields.size() != wrapper->fields.size())
             return false;
 
         return true;
@@ -1308,13 +1308,13 @@ TypedValue compFnCall(Compiler *c, BinOpNode *bop){
         error("Unknown error when attempting to call function", l->loc);
 
     //now that we assured it is a function, unwrap it
-    AnAggregateType *fty = try_cast<AnAggregateType>(tvf.type);
+    AnTupleType *fty = try_cast<AnTupleType>(tvf.type);
 
     //type check each parameter
-    size_t argc = fty->extTys.size();
+    size_t argc = fty->fields.size();
     for(size_t i = 0; i < argc; i++){
         TypedValue tArg = typedArgs[i];
-        AnType *paramTy = fty->extTys[i];
+        AnType *paramTy = fty->fields[i];
 
         if(i >= typedArgs.size())
             break;
@@ -1662,9 +1662,9 @@ void CompilingVisitor::visit(BinOpNode *n){
             c->compCtxt->insertMonomorphisationMappings(subs);
 
             fnTy = applyMonomorphisationBindings(fnTy, c->compCtxt->monomorphisationMappings);
-            if(isPrimitiveOp(n, fnTy->extTys[0], fnTy->extTys[1])){
-                lhs.type = fnTy->extTys[0];
-                rhs.type = fnTy->extTys[1];
+            if(isPrimitiveOp(n, fnTy->paramTys[0], fnTy->paramTys[1])){
+                lhs.type = fnTy->paramTys[0];
+                rhs.type = fnTy->paramTys[1];
                 handlePrimitiveOp(*this, n, lhs, rhs);
                 return;
             }

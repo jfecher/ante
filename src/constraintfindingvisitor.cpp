@@ -221,16 +221,16 @@ namespace ante {
     }
 
 
-    bool invalidNumArguments(AnFunctionType *fnty, AnAggregateType *args){
-        size_t argc = args->extTys.size();
-        size_t paramc = fnty->extTys.size();
+    bool invalidNumArguments(AnFunctionType *fnty, AnTupleType *args){
+        size_t argc = args->fields.size();
+        size_t paramc = fnty->paramTys.size();
         if(argc == paramc)
             return false;
 
-        if(argc == paramc + 1 && args->extTys.back()->typeTag == TT_Unit)
+        if(argc == paramc + 1 && args->fields.back()->typeTag == TT_Unit)
             return false;
 
-        if(argc + 1 == paramc && fnty->extTys.back()->typeTag == TT_Unit)
+        if(argc + 1 == paramc && fnty->paramTys.back()->typeTag == TT_Unit)
             return false;
 
         if(fnty->isVarArgs() && argc >= paramc - 1)
@@ -240,10 +240,10 @@ namespace ante {
     }
 
 
-    void issueInvalidArgCountError(AnFunctionType *fnty, AnAggregateType *args, LOC_TY &loc){
+    void issueInvalidArgCountError(AnFunctionType *fnty, AnTupleType *args, LOC_TY &loc){
         bool isVA = fnty->isVarArgs();
-        size_t paramc = fnty->extTys.size() - (isVA ? 1 : 0);
-        size_t argc = args->extTys.size();
+        size_t paramc = fnty->paramTys.size() - (isVA ? 1 : 0);
+        size_t argc = args->fields.size();
 
         string weregiven = argc == 1 ? " was given" : " were given";
         error("Function takes " + to_string(paramc) + (isVA ? "+" : "")
@@ -295,13 +295,13 @@ namespace ante {
     void ConstraintFindingVisitor::fnCallConstraints(BinOpNode *n){
         auto fnty = try_cast<AnFunctionType>(n->lval->getType());
         if(!fnty){
-            auto args = try_cast<AnAggregateType>(n->rval->getType());
+            auto args = try_cast<AnTupleType>(n->rval->getType());
             if (!args) args = AnType::getTupleOf({n->rval->getType()});
-            auto params = vecOf<AnType*>(args->extTys.size());
+            auto params = vecOf<AnType*>(args->fields.size());
 
-            for(size_t i = 0; i < args->extTys.size(); i++){
+            for(size_t i = 0; i < args->fields.size(); i++){
                 auto param = nextTypeVar();
-                addConstraint(args->extTys[i], param, n->loc);
+                addConstraint(args->fields[i], param, n->loc);
                 params.push_back(param);
             }
             auto retTy = nextTypeVar();
@@ -310,7 +310,7 @@ namespace ante {
             fnty = AnFunctionType::get(retTy, params, {});
             addConstraint(n->lval->getType(), fnty, n->loc);
         }else{
-            auto args = try_cast<AnAggregateType>(n->rval->getType());
+            auto args = try_cast<AnTupleType>(n->rval->getType());
             if (!args) args = AnType::getTupleOf({ n->rval->getType() });
 
             if(invalidNumArguments(fnty, args)){
@@ -320,22 +320,22 @@ namespace ante {
             auto argtup = static_cast<parser::TupleNode*>(n->rval.get());
 
             if(!fnty->isVarArgs()){
-                for(size_t i = 0; i < fnty->extTys.size(); i++){
-                    addConstraint(args->extTys[i], fnty->extTys[i], argtup->exprs[i]->loc);
+                for(size_t i = 0; i < fnty->paramTys.size(); i++){
+                    addConstraint(args->fields[i], fnty->paramTys[i], argtup->exprs[i]->loc);
                 }
             }else{
                 size_t i = 0;
-                for(; i < fnty->extTys.size() - 1; i++){
-                    addConstraint(args->extTys[i], fnty->extTys[i], argtup->exprs[i]->loc);
+                for(; i < fnty->paramTys.size() - 1; i++){
+                    addConstraint(args->fields[i], fnty->paramTys[i], argtup->exprs[i]->loc);
                 }
 
                 // typecheck var args as a tuple of additional arguments, though they should always be
                 // matched against a typevar anyway so these constraints should never fail.
                 vector<AnType*> varargs;
-                for(; i < args->extTys.size(); i++){
-                    varargs.push_back(args->extTys[i]);
+                for(; i < args->fields.size(); i++){
+                    varargs.push_back(args->fields[i]);
                 }
-                addConstraint(AnType::getTupleOf(varargs), fnty->extTys.back(), n->loc);
+                addConstraint(AnType::getTupleOf(varargs), fnty->paramTys.back(), n->loc);
             }
             addConstraint(n->getType(), fnty->retTy, n->loc);
         }
@@ -349,13 +349,13 @@ namespace ante {
         if(n->op == '('){
             auto fnty = try_cast<AnFunctionType>(n->lval->getType());
             if(!fnty){
-                auto args = try_cast<AnAggregateType>(n->rval->getType());
+                auto args = try_cast<AnTupleType>(n->rval->getType());
                 if (!args) args = AnType::getTupleOf({n->rval->getType()});
-                auto params = vecOf<AnType*>(args->extTys.size());
+                auto params = vecOf<AnType*>(args->fields.size());
 
-                for(size_t i = 0; i < args->extTys.size(); i++){
+                for(size_t i = 0; i < args->fields.size(); i++){
                     auto param = nextTypeVar();
-                    addConstraint(args->extTys[i], param, n->loc);
+                    addConstraint(args->fields[i], param, n->loc);
                     params.push_back(param);
                 }
                 auto retTy = nextTypeVar();
@@ -364,7 +364,7 @@ namespace ante {
                 fnty = AnFunctionType::get(retTy, params, {});
                 addConstraint(n->lval->getType(), fnty, n->loc);
             }else{
-                auto args = try_cast<AnAggregateType>(n->rval->getType());
+                auto args = try_cast<AnTupleType>(n->rval->getType());
                 if (!args) args = AnType::getTupleOf({ n->rval->getType() });
 
                 if(invalidNumArguments(fnty, args)){
@@ -374,22 +374,22 @@ namespace ante {
                 auto argtup = static_cast<parser::TupleNode*>(n->rval.get());
 
                 if(!fnty->isVarArgs()){
-                    for(size_t i = 0; i < fnty->extTys.size(); i++){
-                        addConstraint(args->extTys[i], fnty->extTys[i], argtup->exprs[i]->loc);
+                    for(size_t i = 0; i < fnty->paramTys.size(); i++){
+                        addConstraint(args->fields[i], fnty->paramTys[i], argtup->exprs[i]->loc);
                     }
                 }else{
                     size_t i = 0;
-                    for(; i < fnty->extTys.size() - 1; i++){
-                        addConstraint(args->extTys[i], fnty->extTys[i], argtup->exprs[i]->loc);
+                    for(; i < fnty->paramTys.size() - 1; i++){
+                        addConstraint(args->fields[i], fnty->paramTys[i], argtup->exprs[i]->loc);
                     }
 
                     // typecheck var args as a tuple of additional arguments, though they should always be
                     // matched against a typevar anyway so these constraints should never fail.
                     vector<AnType*> varargs;
-                    for(; i < args->extTys.size(); i++){
-                        varargs.push_back(args->extTys[i]);
+                    for(; i < args->fields.size(); i++){
+                        varargs.push_back(args->fields[i]);
                     }
-                    addConstraint(AnType::getTupleOf(varargs), fnty->extTys.back(), n->loc);
+                    addConstraint(AnType::getTupleOf(varargs), fnty->paramTys.back(), n->loc);
                 }
                 addConstraint(n->getType(), fnty->retTy, n->loc);
             }
@@ -613,9 +613,9 @@ namespace ante {
         Pattern& child = patChecker.getChild(sumType->getTagVal(variantType->name));
 
         // auto-unwrap 1-element tuples to allow Some n instead of forcing Some (n,)
-        bool shouldUnwrap = agg->extTys.size() == 1;
+        bool shouldUnwrap = agg->fields.size() == 1;
         if(shouldUnwrap){
-            handlePattern(n, pat->rval.get(), agg->extTys[0], child.getChild(0));
+            handlePattern(n, pat->rval.get(), agg->fields[0], child.getChild(0));
         }else{
             handlePattern(n, pat->rval.get(), agg, child);
         }

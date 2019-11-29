@@ -142,10 +142,10 @@ namespace ante {
 
         auto retTy = nextTypeVar();
         if(args->typeTag == TT_Tuple){
-            auto argsTup = try_cast<AnAggregateType>(args);
+            auto argsTup = try_cast<AnTupleType>(args);
             vector<AnType*> params;
-            params.reserve(argsTup->extTys.size());
-            for(size_t i = 0; i < argsTup->extTys.size(); i++)
+            params.reserve(argsTup->fields.size());
+            for(size_t i = 0; i < argsTup->fields.size(); i++)
                 params.push_back(nextTypeVar());
             decl->tval.type = AnFunctionType::get(retTy, params, {});
         }else{
@@ -330,7 +330,7 @@ namespace ante {
     void checkTraitImpls(Module *m, AnFunctionType *f, LOC_TY loc){
         llvm::StringMap<const AnTypeVarType*> map;
         getAllContainedTypeVarsHelper(f->retTy, map);
-        for(auto *paramTy : f->extTys){
+        for(auto *paramTy : f->paramTys){
             getAllContainedTypeVarsHelper(paramTy, map);
         }
 
@@ -362,7 +362,7 @@ namespace ante {
                 // it may save some time for non-generic functions to apply them afterward separately.
                 auto fnTy = try_cast<AnFunctionType>(n->getType());
                 auto tcConstraints = getAllTcConstraints(fnTy, constraints, substitutions);
-                auto newFnTy = AnFunctionType::get(fnTy->retTy, fnTy->extTys, tcConstraints,
+                auto newFnTy = AnFunctionType::get(fnTy->retTy, fnTy->paramTys, tcConstraints,
                         fnTy->typeTag == TT_MetaFunction);
 
                 newFnTy = cleanTypeClassConstraints(newFnTy);
@@ -390,7 +390,7 @@ namespace ante {
 
                 //TODO synchronize this fresh trait with the actual trait of the TraitNode from name resolution?
                 traits.push_back(module->createTraitImplFromDecl(n->name));
-                node.setType(AnFunctionType::get(fdty->retTy, fdty->extTys, traits));
+                node.setType(AnFunctionType::get(fdty->retTy, fdty->paramTys, traits));
             }
         }
     }

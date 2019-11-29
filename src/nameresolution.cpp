@@ -988,8 +988,8 @@ namespace ante {
                 validateType(t, rootTy);
 
         }else if(tn->typeTag == TT_Tuple){
-            auto *agg = try_cast<AnAggregateType>(tn);
-            for(auto *ext : agg->extTys){
+            auto *agg = try_cast<AnTupleType>(tn);
+            for(auto *ext : agg->fields){
                 validateType(ext, rootTy);
             }
         }else if(tn->typeTag == TT_Array){
@@ -1026,7 +1026,7 @@ namespace ante {
 
             vector<AnType*> exts = { AnType::getU8() }; //All variants are comprised of at least their tag value
             if(tagTy->typeTag == TT_Tuple){
-                auto &extTys = try_cast<AnAggregateType>(tagTy)->extTys;
+                auto &extTys = try_cast<AnTupleType>(tagTy)->fields;
                 exts.insert(exts.end(), extTys.begin(), extTys.end());
             }else{
                 exts.push_back(tagTy);

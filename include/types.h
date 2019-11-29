@@ -18,7 +18,7 @@ namespace ante {
     std::string typeNodeToStr(const parser::TypeNode *t);
     lazy_str typeNodeToColoredStr(const parser::TypeNode *t);
 
-    AnAggregateType* flattenBoundTys(const Compiler *c, const AnDataType *dt);
+    AnTupleType* flattenBoundTys(const Compiler *c, const AnDataType *dt);
 
     llvm::Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt);
 
