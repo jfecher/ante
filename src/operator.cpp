@@ -1308,13 +1308,13 @@ TypedValue compFnCall(Compiler *c, BinOpNode *bop){
         error("Unknown error when attempting to call function", l->loc);
 
     //now that we assured it is a function, unwrap it
-    AnTupleType *fty = try_cast<AnTupleType>(tvf.type);
+    AnFunctionType *fty = try_cast<AnFunctionType>(tvf.type);
 
     //type check each parameter
-    size_t argc = fty->fields.size();
+    size_t argc = fty->paramTys.size();
     for(size_t i = 0; i < argc; i++){
         TypedValue tArg = typedArgs[i];
-        AnType *paramTy = fty->fields[i];
+        AnType *paramTy = fty->paramTys[i];
 
         if(i >= typedArgs.size())
             break;

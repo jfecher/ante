@@ -433,16 +433,11 @@ namespace ante {
 
         }else if(auto pt1 = try_cast<AnProductType>(t1)){
             auto pt2 = try_cast<AnProductType>(t2);
-            // auto l1 = unifyExts(pt1->fields, pt2->fields, loc, pt1, pt2);
-            auto l2 = unifyExts(pt1->typeArgs, pt2->typeArgs, loc, pt1, pt2);
-            return l2;
+            return unifyExts(pt1->typeArgs, pt2->typeArgs, loc, pt1, pt2);
 
         }else if(auto st1 = try_cast<AnSumType>(t1)){
             auto st2 = try_cast<AnSumType>(t2);
-            auto l1 = unifyExts(st1->tags, st2->tags, loc, st1, st2);
-            auto l2 = unifyExts(st1->typeArgs, st2->typeArgs, loc, st1, st2);
-            l1.merge(l2);
-            return l1;
+            return unifyExts(st1->typeArgs, st2->typeArgs, loc, st1, st2);
 
         }else if(auto fn1 = try_cast<AnFunctionType>(t1)){
             auto fn2 = try_cast<AnFunctionType>(t2);

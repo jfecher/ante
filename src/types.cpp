@@ -33,6 +33,7 @@ char getBitWidthOfTypeTag(const TypeTag ty){
 bool isEmptyType(AnType *ty){
     return ty->typeTag == TT_Type
         || ty->typeTag == TT_Unit
+        || ty->typeTag == TT_TypeVar
         || ty->hasModifier(Tok_Ante)
         || (ty->typeTag == TT_Data && try_cast<AnDataType>(ty)->name == "Type");
 }
@@ -88,7 +89,7 @@ Result<size_t, string> AnType::getSizeInBits(Compiler *c, string *incompleteType
 
     // function & metafunction are aggregate types but have different sizes than
     // a tuple so this case must be checked for before AnTupleType is
-    }else if(typeTag == TT_Ptr or typeTag == TT_Function or typeTag == TT_MetaFunction){
+    }else if(typeTag == TT_Ptr || typeTag == TT_Function || typeTag == TT_MetaFunction){
         return AN_USZ_SIZE;
 
     }else if(auto *tup = try_cast<AnTupleType>(this)){
@@ -105,7 +106,10 @@ Result<size_t, string> AnType::getSizeInBits(Compiler *c, string *incompleteType
 
     }else if(auto *tvt = try_cast<AnTypeVarType>(this)){
         AnType *lookup = findBinding(c->compCtxt->monomorphisationMappings, tvt);
-        return lookup->getSizeInBits(c);
+        if(lookup)
+            return lookup->getSizeInBits(c);
+        else
+            return "Unknown typevar " + tvt->name;
     }
 
     return total;
@@ -308,8 +312,8 @@ Type* Compiler::anTypeToLlvmType(const AnType *ty, int recursionLimit){
         case TT_Ptr: {
             auto *ptr = try_cast<AnPtrType>(ty);
             return isEmptyType(ptr->extTy) ?
-                anTypeToLlvmType(ptr->extTy, --recursionLimit)->getPointerTo()
-                : Type::getInt8Ty(*ctxt)->getPointerTo();
+                Type::getInt8Ty(*ctxt)->getPointerTo() :
+                anTypeToLlvmType(ptr->extTy, --recursionLimit)->getPointerTo();
         }
         case TT_Type:
             return Type::getInt8Ty(*ctxt)->getPointerTo();
@@ -334,10 +338,8 @@ Type* Compiler::anTypeToLlvmType(const AnType *ty, int recursionLimit){
         case TT_Function: case TT_MetaFunction: {
             auto *f = try_cast<AnFunctionType>(ty);
             for(size_t i = 0; i < f->paramTys.size(); i++){
-                if(auto *tvt = try_cast<AnTypeVarType>(f->paramTys[i])){
-                    if(tvt->isRhoVar()){
-                        return FunctionType::get(anTypeToLlvmType(f->retTy, --recursionLimit), tys, true)->getPointerTo();
-                    }
+                if(f->paramTys[i]->isRhoVar()){
+                    return FunctionType::get(anTypeToLlvmType(f->retTy, --recursionLimit), tys, true)->getPointerTo();
                 }
                 // All Ante functions take at least 1 arg: (), which are ignored in llvm ir
                 // and translated to 0 arg functions instead
@@ -351,10 +353,10 @@ Type* Compiler::anTypeToLlvmType(const AnType *ty, int recursionLimit){
             auto binding = findBinding(compCtxt->monomorphisationMappings, ty); 
             if(binding){
                 return anTypeToLlvmType(binding, --recursionLimit);
-            }else{
-                auto unit = AnType::getUnit();
-                compCtxt->insertMonomorphisationMappings({{(AnType*)ty, unit}});
-                return anTypeToLlvmType(unit, --recursionLimit);
+            // }else{
+            //     auto unit = AnType::getUnit();
+            //     compCtxt->insertMonomorphisationMappings({{(AnType*)ty, unit}});
+            //     return anTypeToLlvmType(unit, --recursionLimit);
             }
             std::cerr << "Typevar: " << (AnType*)ty << '\n' << "Bindings: " << compCtxt->monomorphisationMappings << '\n';
             ASSERT_UNREACHABLE("Unbound typevar found during monomorphisation");

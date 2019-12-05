@@ -191,11 +191,12 @@ AnFunctionType* removeCompileTimeParams(AnType *functy){
     vector<AnType*> params;
     params.reserve(ft->paramTys.size());
     for(auto &param : ft->paramTys){
-        if(!isEmptyType(param)){
+        // remove empty params but include varargs
+        if(!isEmptyType(param) || param->isRhoVar()){
             params.push_back(param);
         }
     }
-    return AnFunctionType::get(ft->retTy, params, {});
+    return AnFunctionType::get(ft->retTy, params, {}, ft->isVarArgs());
 }
 
 

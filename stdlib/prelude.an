@@ -318,7 +318,7 @@ impl To Str usz
     to _ x = u64 x as Str
 
 
-module u64
+module U64
     parse s:Str -> Maybe u64 =
         i = mut 0usz
         sum = mut 0u64
@@ -335,7 +335,7 @@ module u64
 
         Some sum
 
-module i64
+module I64
     parse s:Str -> Maybe i64 =
         i = mut 0usz
         sum = mut 0i64
@@ -501,7 +501,7 @@ module InFile
 
 
 //print a message then return user input
-input (msg:ref c8) -> Str =
+input msg -> Str =
     len = mut 0usz
     cstr = mut ref c8 0
 
