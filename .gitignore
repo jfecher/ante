@@ -39,3 +39,4 @@ llvm_build/*
 *.obj
 *.pdb
 libantecommon.*
+.ccls-cache
