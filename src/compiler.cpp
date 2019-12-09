@@ -127,16 +127,12 @@ void CompilingVisitor::visit(BoolLitNode *n){
  */
 void CompilingVisitor::visit(TypeNode *n){
     //check for enum value
-    auto t = try_cast<AnProductType>(n->getType());
+    auto t = try_cast<AnSumType>(n->getType());
     if(t && t->name != "Type"){
-        auto *unionDataTy = try_cast<AnSumType>(n->getType());
-        assert(unionDataTy);
-
-        size_t tagIndex = unionDataTy->getTagVal(n->typeName);
+        size_t tagIndex = t->getTagVal(n->typeName);
         Value *tag = ConstantInt::get(*c->ctxt, APInt(8, tagIndex, true));
 
-        Type *unionTy = c->anTypeToLlvmType(unionDataTy, true);
-
+        Type *unionTy = c->anTypeToLlvmType(t);
         Type *curTy = tag->getType();
 
         //allocate for the largest possible union member
@@ -148,7 +144,7 @@ void CompilingVisitor::visit(TypeNode *n){
 
         //load the initial alloca, not the bitcasted one
         Value *unionVal = c->builder.CreateLoad(alloca);
-        val = TypedValue(unionVal, unionDataTy);
+        val = TypedValue(unionVal, t);
     }else{
         //return the type as a value
         auto *ty = t->typeArgs[0];

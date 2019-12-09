@@ -48,7 +48,7 @@ namespace ante {
 
         //Do not bind to _ to enforce convention of _ to indicate an unused value
         if(pattern->name != "_"){
-            pattern->decl->tval = valToMatch;
+            pattern->decl->tval.val = valToMatch.val;
         }
     }
 

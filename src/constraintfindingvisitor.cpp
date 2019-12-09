@@ -447,6 +447,7 @@ namespace ante {
 
     void ConstraintFindingVisitor::visit(RetNode *n){
         n->expr->accept(*this);
+        addConstraint(n->getType(), functionReturnTypes.top(), n->loc);
     }
 
     void ConstraintFindingVisitor::visit(ImportNode *n){}
@@ -685,9 +686,12 @@ namespace ante {
 
     void ConstraintFindingVisitor::visit(FuncDeclNode *n){
         if(n->child){
-            n->child->accept(*this);
-
             auto fnty = try_cast<AnFunctionType>(n->getType());
+
+            functionReturnTypes.push(fnty->retTy);
+            n->child->accept(*this);
+            functionReturnTypes.pop();
+
             if(fnty->retTy->typeTag != TT_Unit)
                 addConstraint(fnty->retTy, n->child->getType(), n->loc);
         }

@@ -90,8 +90,12 @@ namespace ante {
      * Otherwise, return Type T
      */
     void TypeInferenceVisitor::visit(TypeNode *n){
-        auto repl = toAnType(n, module);
-        auto variant = try_cast<AnProductType>(repl);
+        auto t = n->getType();
+        if(!t){
+            t = toAnType(n, module);
+            n->setType(t);
+        }
+        auto variant = try_cast<AnProductType>(t);
         if(variant && variant->parentUnionType){
             n->setType(copyWithNewTypeVars(variant->parentUnionType));
             return;
@@ -104,21 +108,24 @@ namespace ante {
         }
 
         auto tvar = type->typeArgs[0];
-        auto type_n = applySubstitutions({{tvar, repl}}, type);
+        auto type_n = applySubstitutions({{tvar, t}}, type);
         n->setType(type_n);
     }
 
     void TypeInferenceVisitor::visit(TypeCastNode *n){
-        auto ty = copyWithNewTypeVars(toAnType(n->typeExpr.get(), module));
-        n->typeExpr->setType(ty);
-
         n->rval->accept(*this);
 
-        auto variant = try_cast<AnProductType>(ty);
+        auto t = n->typeExpr->getType();
+        if(!t){
+            t = toAnType(n->typeExpr.get(), module);
+            n->typeExpr->setType(t);
+        }
+        auto variant = try_cast<AnProductType>(t);
         if(variant && variant->parentUnionType){
             n->setType(variant->parentUnionType);
+            return;
         }else{
-            n->setType(ty);
+            n->setType(t);
         }
     }
 

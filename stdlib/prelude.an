@@ -340,11 +340,11 @@ module I64
         i = mut 0usz
         sum = mut 0i64
         isNeg =
-            if s.len == 0usz or s#0usz == '-' then false
+            if s.len == 0usz or s.cStr#0usz == '-' then false
             else ((i += 1usz); true)
 
-        while s#i != '\0' do
-            c = s#i
+        while s.cStr#i != '\0' do
+            c = s.cStr#i
             if c >= '0' and c <= '9' then
                 sum *= 10i64
                 sum += i64(c - '0')
@@ -501,7 +501,7 @@ module InFile
 
 
 //print a message then return user input
-input msg -> Str =
+input msg:Str -> Str =
     len = mut 0usz
     cstr = mut ref c8 0
 

@@ -152,7 +152,7 @@ TypedValue Compiler::compExtract(TypedValue &l, TypedValue &r, BinOpNode *op){
         auto *retty = (AnType*)l.type->addModifiersTo(ptrty->extTy);
         return TypedValue(builder.CreateLoad(builder.CreateGEP(l.val, r.val)), retty);
 
-    }else if(l.type->typeTag == TT_Tuple || l.type->typeTag == TT_Data){
+    }else if(l.type->typeTag == TT_Tuple){
         auto indexval = dyn_cast<ConstantInt>(r.val);
         if(!indexval)
             error("Tuple indices must always be known at compile time.", op->loc);
@@ -187,7 +187,7 @@ TypedValue Compiler::compInsert(BinOpNode *op, Node *assignExpr){
     CompilingVisitor cv{this};
     auto tmp = compileRefExpr(cv, op->lval.get(), assignExpr);
 
-    auto *var = static_cast<LoadInst*>(tmp.val);
+    auto *var = dyn_cast<LoadInst>(tmp.val);
 
     auto index =  CompilingVisitor::compile(this, op->rval);
     auto newVal = CompilingVisitor::compile(this, assignExpr);
@@ -213,7 +213,8 @@ TypedValue Compiler::compInsert(BinOpNode *op, Node *assignExpr){
             return getUnitLiteral();
         }
         case TT_Ptr: {
-            Value *dest = builder.CreateInBoundsGEP(var->getPointerOperand(), index.val);
+            Value *load = builder.CreateLoad(tmp.val);
+            Value *dest = builder.CreateInBoundsGEP(load, index.val);
             builder.CreateStore(newVal.val, dest);
             return getUnitLiteral();
         }

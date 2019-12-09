@@ -70,6 +70,7 @@ namespace ante {
 
     void SubstitutingVisitor::visit(TypeCastNode *n){
         n->rval->accept(*this);
+        n->typeExpr->accept(*this);
         n->setType(applySubstitutions(substitutions, n->getType()));
     }
 
@@ -102,7 +103,7 @@ namespace ante {
 
     void SubstitutingVisitor::visit(RetNode *n){
         n->expr->accept(*this);
-        n->setType(applySubstitutions(substitutions, n->getType()));
+        n->setType(n->getType());
     }
 
     void SubstitutingVisitor::visit(ImportNode *n){}

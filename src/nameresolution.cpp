@@ -407,7 +407,7 @@ namespace ante {
         }
         compUnit->ast.reset(n);
 
-        if(compUnit->name != "Prelude"){
+        if(compUnit->name != "stdlib/prelude"){
             TRY_TO(importFile(AN_PRELUDE_FILE, n->loc));
         }
         for(auto &m : n->imports)
@@ -470,6 +470,7 @@ namespace ante {
     }
 
     void NameResolutionVisitor::visit(TypeCastNode *n){
+        n->typeExpr->accept(*this);
         n->rval->accept(*this);
 
         /*  Check for validity of cast

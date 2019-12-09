@@ -11,7 +11,9 @@
 namespace ante {
     
     struct ConstraintFindingVisitor : public NodeVisitor {
-        ConstraintFindingVisitor(Module *module) : module{module}{}
+        ConstraintFindingVisitor(Module *module) : module{module}{
+            functionReturnTypes.push(AnType::getUnit());
+        }
 
         DECLARE_NODE_VISIT_METHODS();
 
@@ -21,6 +23,17 @@ namespace ante {
             Module *module;
 
             UnificationList constraints;
+
+            /**
+             * This stack's structure is identical to the current function call stack,
+             * except that it only contains the return type of each respective function.
+             *
+             * - Used for constraing the type of RetNodes since the function return type
+             *   cant be found within the RetNode itself
+             * - This is always at least length 1, with the first element always being
+             *   the main function's return type of unit.
+             */
+            std::stack<AnType*> functionReturnTypes;
 
             void addConstraint(AnType *a, AnType *b, LOC_TY &loc);
 

@@ -127,6 +127,7 @@ void PrintingVisitor::visit(ModNode *n){
 void PrintingVisitor::visit(TypeNode *n){
     printModifiers(*this, n);
     cout << typeNodeToStr(n);
+    cout << " : " << anTypeToColoredStr(n->getType());
 }
 
 void PrintingVisitor::visit(TypeCastNode *n){
