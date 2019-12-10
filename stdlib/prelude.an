@@ -323,8 +323,8 @@ module U64
         i = mut 0usz
         sum = mut 0u64
 
-        while s#i != '\0' do
-            c = s#i
+        while s.cStr#i != '\0' do
+            c = s.cStr#i
             if c >= '0' and c <= '9' then
                 sum *= 10u64
                 sum += u64(c - '0')
