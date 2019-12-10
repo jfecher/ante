@@ -185,15 +185,22 @@ TypedValue compFnWithModifiers(Compiler *c, FuncDecl *fd, ModNode *mod){
 }
 
 
-AnFunctionType* removeCompileTimeParams(AnType *functy){
+/**
+ * Removes compile-time-only parameters and wraps each mut type in a pointer.
+ */
+AnFunctionType* removeCTParamsAndWrapMutParams(Compiler *c, AnType *functy){
     auto ft = static_cast<AnFunctionType*>(functy);
 
     vector<AnType*> params;
     params.reserve(ft->paramTys.size());
     for(auto &param : ft->paramTys){
         // remove empty params but include varargs
-        if(!isEmptyType(param) || param->isRhoVar()){
-            params.push_back(param);
+        if(!isEmptyType(c, param) || param->isRhoVar()){
+            if(param->hasModifier(Tok_Mut)){
+                params.push_back(AnPtrType::get(param));
+            }else{
+                params.push_back(param);
+            }
         }
     }
     return AnFunctionType::get(ft->retTy, params, {}, ft->isVarArgs());
@@ -220,7 +227,7 @@ TypedValue compFnHelper(Compiler *c, FuncDecl *fd){
     }
 
     AnFunctionType *fnTy = try_cast<AnFunctionType>(fdn->getType());
-    auto fnTyNoCtParams = removeCompileTimeParams(fnTy);
+    auto fnTyNoCtParams = removeCTParamsAndWrapMutParams(c, fnTy);
 
     FunctionType *ft = dyn_cast<FunctionType>(c->anTypeToLlvmType(fnTyNoCtParams)->getPointerElementType());
     Function *f = Function::Create(ft, Function::ExternalLinkage, fd->getName(), c->module.get());

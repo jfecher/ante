@@ -323,10 +323,6 @@ TypedValue reinterpretTuple(Compiler *c, Value *from, AnType *to){
 
 bool shouldCastToWrapperType(AnType *from, AnProductType *wrapper){
     if(wrapper->fields.size() > 1){
-        auto tup = try_cast<AnTupleType>(from);
-        if(!tup || tup->fields.size() != wrapper->fields.size())
-            return false;
-
         return true;
     }else{
         return wrapper->fields.size() == 1 || from->typeTag == TT_Unit;
@@ -407,7 +403,9 @@ TypedValue createCast(Compiler *c, AnType *castTy, TypedValue &valToCast, Node *
 
 void CompilingVisitor::visit(TypeCastNode *n){
     n->rval->accept(*this);
-    this->val = createCast(c, n->getType(), this->val, n);
+    //n->typeExpr->getType() is used here instead of n->getType() in case
+    //of union variants, only the typeExpr will have the specific variant used
+    this->val = createCast(c, n->typeExpr->getType(), this->val, n);
 }
 
 
@@ -1268,7 +1266,7 @@ TypedValue compFnCall(Compiler *c, BinOpNode *bop){
 
         for(TypedValue v : typedArgs){
             auto arg = v;
-            if(isEmptyType(arg.type))
+            if(isEmptyType(c, arg.type))
                 continue;
 
             if(isUnsizedType(arg.getType()))
@@ -1280,7 +1278,7 @@ TypedValue compFnCall(Compiler *c, BinOpNode *bop){
         auto param = CompilingVisitor::compile(c, r);
         if(!param) return param;
 
-        if(!isEmptyType(param.type)){
+        if(!isEmptyType(c, param.type)){
             auto arg = param;
 
             if(isUnsizedType(arg.getType()))
@@ -1320,7 +1318,7 @@ TypedValue compFnCall(Compiler *c, BinOpNode *bop){
         if(i >= typedArgs.size())
             break;
 
-        if(isEmptyType(tArg.type)){
+        if(isEmptyType(c, tArg.type)){
             continue;
         }
 

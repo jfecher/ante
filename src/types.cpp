@@ -26,14 +26,26 @@ char getBitWidthOfTypeTag(const TypeTag ty){
     }
 }
 
+AnType* findBinding(Substitutions const& subs, const AnType *key){
+    for(auto it = subs.rbegin(); it != subs.rend(); ++it){
+        if(it->first == key){
+            return it->second;
+        }
+    }
+    return nullptr;
+}
 
 // TODO: Remove hardcoded check for Type type,
 //       Add check for if an entire tuple/record type is empty
 //       or full of only other empty types
-bool isEmptyType(AnType *ty){
+bool isEmptyType(Compiler *c, AnType *ty){
+    auto tv = try_cast<AnTypeVarType>(ty);
+    if(tv){
+        auto binding = findBinding(c->compCtxt->monomorphisationMappings, tv);
+        return binding ? isEmptyType(c, binding) : true;
+    }
     return ty->typeTag == TT_Type
         || ty->typeTag == TT_Unit
-        || ty->typeTag == TT_TypeVar
         || ty->hasModifier(Tok_Ante)
         || (ty->typeTag == TT_Data && try_cast<AnDataType>(ty)->name == "Type");
 }
@@ -45,15 +57,6 @@ bool isEmptyType(AnType *ty){
 AnType* extractTypeValue(const TypedValue &tv){
     auto zext = dyn_cast<ConstantInt>(tv.val)->getZExtValue();
     return (AnType*) zext;
-}
-
-AnType* findBinding(Substitutions const& subs, const AnType *key){
-    for(auto it = subs.rbegin(); it != subs.rend(); ++it){
-        if(it->first == key){
-            return it->second;
-        }
-    }
-    return nullptr;
 }
 
 Result<size_t, string> AnType::getSizeInBits(Compiler *c, string *incompleteType) const{
@@ -154,7 +157,9 @@ Type* AnDataType::findLlvmType(ante::Substitutions const& monomorphisationBindin
 
 Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt){
     //create an empty type first so we dont end up with infinite recursion
-    bool isPacked = dt->typeTag == TT_TaggedUnion;
+    auto *aggty = try_cast<AnProductType>(dt);
+
+    bool isPacked = dt->typeTag == TT_TaggedUnion || (aggty && aggty->parentUnionType);
     StructType* structTy = static_cast<StructType*>(dt->llvmType);
     
     if(!structTy){
@@ -172,7 +177,8 @@ Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt){
         ext = getLargestExt(c, st);
 
     vector<Type*> tys;
-    if(auto *aggty = try_cast<AnProductType>(ext)){
+    aggty = try_cast<AnProductType>(ext);
+    if(aggty){
         for(auto *e : aggty->fields){
             auto *llvmTy = c->anTypeToLlvmType(e);
             if(!llvmTy->isVoidTy())
@@ -303,15 +309,17 @@ Type* Compiler::anTypeToLlvmType(const AnType *ty, int recursionLimit){
         ASSERT_UNREACHABLE("anTypeToLlvmType hit internal recursion limit");
     }
 
+    /*
     if(ty->hasModifier(Tok_Mut)){
         auto bm = dynamic_cast<const BasicModifier*>(ty);
         return anTypeToLlvmType(bm->extTy, --recursionLimit)->getPointerTo();
     }
+    */
 
     switch(ty->typeTag){
         case TT_Ptr: {
             auto *ptr = try_cast<AnPtrType>(ty);
-            return isEmptyType(ptr->extTy) ?
+            return isEmptyType(this, ptr->extTy) ?
                 Type::getInt8Ty(*ctxt)->getPointerTo() :
                 anTypeToLlvmType(ptr->extTy, --recursionLimit)->getPointerTo();
         }
@@ -323,7 +331,7 @@ Type* Compiler::anTypeToLlvmType(const AnType *ty, int recursionLimit){
         }
         case TT_Tuple:
             for(auto *e : try_cast<AnTupleType>(ty)->fields){
-                if(!isEmptyType(e))
+                if(!isEmptyType(this, e))
                     tys.push_back(anTypeToLlvmType(e, --recursionLimit));
             }
             return StructType::get(*ctxt, tys);
@@ -343,7 +351,7 @@ Type* Compiler::anTypeToLlvmType(const AnType *ty, int recursionLimit){
                 }
                 // All Ante functions take at least 1 arg: (), which are ignored in llvm ir
                 // and translated to 0 arg functions instead
-                if(!isEmptyType(f->paramTys[i]))
+                if(!isEmptyType(this, f->paramTys[i]))
                     tys.push_back(anTypeToLlvmType(f->paramTys[i], --recursionLimit));
             }
 
@@ -353,10 +361,10 @@ Type* Compiler::anTypeToLlvmType(const AnType *ty, int recursionLimit){
             auto binding = findBinding(compCtxt->monomorphisationMappings, ty); 
             if(binding){
                 return anTypeToLlvmType(binding, --recursionLimit);
-            // }else{
-            //     auto unit = AnType::getUnit();
-            //     compCtxt->insertMonomorphisationMappings({{(AnType*)ty, unit}});
-            //     return anTypeToLlvmType(unit, --recursionLimit);
+             }else{
+                 auto unit = AnType::getUnit();
+                 compCtxt->insertMonomorphisationMappings({{(AnType*)ty, unit}});
+                 return anTypeToLlvmType(unit, --recursionLimit);
             }
             std::cerr << "Typevar: " << (AnType*)ty << '\n' << "Bindings: " << compCtxt->monomorphisationMappings << '\n';
             ASSERT_UNREACHABLE("Unbound typevar found during monomorphisation");

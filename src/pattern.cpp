@@ -95,11 +95,14 @@ namespace ante {
     }
 
     Type* getUnionVariantType(Compiler *c, AnProductType *tagTy){
+        return c->anTypeToLlvmType(tagTy);
+        /*
         AnType *anTagData = unionVariantToTupleTy(tagTy);
         Type *tagData = c->anTypeToLlvmType(anTagData);
         return tagData->isVoidTy() ?
             StructType::get(*c->ctxt, {c->builder.getInt8Ty()}, true) :
             StructType::get(*c->ctxt, {c->builder.getInt8Ty(), tagData}, true);
+            */
     }
 
     TypedValue unionDowncast(Compiler *c, TypedValue valToMatch, AnProductType *tagTy){
@@ -107,7 +110,6 @@ namespace ante {
 
         //bitcast valToMatch* to (tag, tagData)*
         auto *castTy = getUnionVariantType(c, tagTy);
-
         if(castTy->getStructNumElements() != 1){
             auto *cast = c->builder.CreateBitCast(alloca.val, castTy->getPointerTo());
 
