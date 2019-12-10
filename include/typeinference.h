@@ -49,7 +49,7 @@ namespace ante {
             std::cout << "Module: " << module->name << '\n';
             std::cout << "Type inference: " << duration_cast<milliseconds>(end - tistart).count() << "ms\n";
             std::cout << "    Initialization:     " << duration_cast<milliseconds>(cfstart - tistart).count() << "ms\n";
-            std::cout << "    Constraing finding: " << duration_cast<milliseconds>(unifystart - cfstart).count() << "ms\n";
+            std::cout << "    Constraint finding: " << duration_cast<milliseconds>(unifystart - cfstart).count() << "ms\n";
             std::cout << "    Unification:        " << duration_cast<milliseconds>(substart - unifystart).count() << "ms\n";
             std::cout << "    Substitution:       " << duration_cast<milliseconds>(end - substart).count() << "ms\n";
         }
