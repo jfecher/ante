@@ -101,6 +101,7 @@ add_library(antecommon STATIC
         include/trait.h
         include/typedvalue.h
         include/typeinference.h
+        include/typeerror.h
         include/types.h
         include/unification.h
         include/uniontag.h
@@ -126,6 +127,7 @@ add_library(antecommon STATIC
         src/repl.cpp
         src/substitutingvisitor.cpp
         src/typeinference.cpp
+        src/typeerror.cpp
         src/types.cpp
         src/unification.cpp
         src/util.cpp)

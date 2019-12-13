@@ -127,7 +127,7 @@ trait Cmp 'n
 
 trait Eq 't
     (==) 't 't -> bool
-    // (!=) l:'t r:'t = not (l == r)
+    // (!=) l r = not (l == r)
 
 trait Is 't
     (is) 't 't -> bool
@@ -501,7 +501,7 @@ module InFile
 
 
 //print a message then return user input
-input msg:Str -> Str =
+input msg -> Str =
     len = mut 0usz
     cstr = mut ref c8 0
 

@@ -5,3 +5,7 @@
 //
 // impl In (Vec 't) 't  should type error  (should be In 't (Vec 't))
 // copyWithNewTypeVars(traittype and trait decls) before constraintfindingisitor::visit(ExtNode)
+
+// Stop duplicating print(Str) print.1(Str) print.2(Str) ...
+// Fix #  not overloadable
+// Fix != not overloadable

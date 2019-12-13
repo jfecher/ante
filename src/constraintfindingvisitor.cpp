@@ -18,15 +18,12 @@ namespace ante {
         return constraints;
     }
 
-    void ConstraintFindingVisitor::addConstraint(AnType *a, AnType *b, LOC_TY &loc){
-        if(a == nullptr || b == nullptr){
-            puts("uh oh");
-        }
-        constraints.emplace_back(a, b, loc);
+    void ConstraintFindingVisitor::addConstraint(AnType *a, AnType *b, LOC_TY &loc, TypeError const& errMsg){
+        constraints.emplace_back(a, b, loc, errMsg);
     }
 
     void ConstraintFindingVisitor::addTypeClassConstraint(TraitImpl *constraint, LOC_TY &loc){
-        constraints.emplace_back(constraint, loc);
+        constraints.emplace_back(constraint, loc, "");
     }
 
     template<typename T>
@@ -58,13 +55,17 @@ namespace ante {
         auto arrty = try_cast<AnArrayType>(n->getType());
         if(!n->exprs.empty()){
             auto t1 = n->exprs[0]->getType();
-            for(auto it = ++n->exprs.begin(); it != n->exprs.end(); it++){
-                (*it)->accept(*this);
-                addConstraint(t1, (*it)->getType(), (*it)->loc);
+            for(size_t i = 1; i < n->exprs.size(); i++){
+                n->exprs[i]->accept(*this);
+                auto tn = n->exprs[i]->getType();
+                addConstraint(t1, tn, n->exprs[i]->loc,
+                        "Array element " + to_string(i+1) + " has type $2 which does not match the first element's type of $1");
             }
-            addConstraint(arrty->extTy, t1, n->loc);
+            addConstraint(arrty->extTy, t1, n->loc,
+                    "Expected array's first element type $2 to match the overall array element type $1");
         }else{
-            addConstraint(arrty->extTy, AnType::getUnit(), n->loc);
+            addConstraint(arrty->extTy, AnType::getUnit(), n->loc,
+                    "Expected the empty array to be array of $2, but got array of $1");
         }
     }
 
@@ -99,10 +100,14 @@ namespace ante {
 
             if(tn){
                 for(size_t i = 0; i < argc; i++){
-                    addConstraint(tn->exprs[i]->getType(), variant->fields[i+offset], tn->exprs[i]->loc);
+                    auto tnty = tn->exprs[i]->getType();
+                    auto vty = variant->fields[i+offset];
+                    addConstraint(tnty, vty, tn->exprs[i]->loc,
+                            "Expected field " + to_string(i+1) + " of type $1 to be typecasted to the corresponding field type $2 from " + variant->name);
                 }
             }else{
-                addConstraint(n->rval->getType(), variant->fields[offset], n->rval->loc);
+                addConstraint(n->rval->getType(), variant->fields[offset], n->rval->loc,
+                        "Cannot cast $1 to $2 when trying to cast to " + variant->name);
             }
         }else{
             TraitDecl *decl = module->lookupTraitDecl("To");
@@ -134,28 +139,32 @@ namespace ante {
         TraitImpl *trait;
         switch(n->op){
         case '@':
-            addConstraint(n->rval->getType(), AnPtrType::get(tv), n->loc);
-            addConstraint(n->getType(), tv, n->loc);
+            addConstraint(n->rval->getType(), AnPtrType::get(tv), n->loc,
+                    "Expected $1 to be a $2 since it is dereferenced");
+            addConstraint(n->getType(), tv, n->loc,
+                    "Expected the result of this dereference to be the pointer's element type $2 but got $1");
             break;
         case '&':
-            addConstraint(n->getType(), AnPtrType::get(tv), n->loc);
-            addConstraint(n->rval->getType(), tv, n->loc);
+            addConstraint(n->getType(), AnPtrType::get(tv), n->loc,
+                    "Expected result of & to be a $2 but got $1");
+            addConstraint(n->rval->getType(), tv, n->loc, "Error: should never fail, line " + to_string(__LINE__));
             break;
         case '-': //negation
             trait = getUnOpTraitType(module, n->op);
             addTypeClassConstraint(trait, n->loc);
-            addConstraint(trait->typeArgs[0], n->rval->getType(), n->loc);
-            addConstraint(n->getType(), n->rval->getType(), n->loc);
+            addConstraint(trait->typeArgs[0], n->rval->getType(), n->loc, "Error: should never fail, line " + to_string(__LINE__));
+            addConstraint(n->getType(), n->rval->getType(), n->loc, "Error: should never fail, line " + to_string(__LINE__));
             break;
         case Tok_Not:
             trait = getUnOpTraitType(module, n->op);
             addTypeClassConstraint(trait, n->loc);
-            addConstraint(trait->typeArgs[0], n->rval->getType(), n->loc);
-            addConstraint(n->getType(), n->rval->getType(), n->loc);
+            addConstraint(trait->typeArgs[0], n->rval->getType(), n->loc, "Error: should never fail, line " + to_string(__LINE__));
+            addConstraint(n->getType(), n->rval->getType(), n->loc, "Error: should never fail, line " + to_string(__LINE__));
             break;
         case Tok_New:
-            addConstraint(n->getType(), AnPtrType::get(tv), n->loc);
-            addConstraint(n->rval->getType(), tv, n->loc);
+            addConstraint(n->getType(), AnPtrType::get(tv), n->loc,
+                    "Expected result of new to be a pointer type but got $1");
+            addConstraint(n->rval->getType(), tv, n->loc, "Error: should never fail, line " + to_string(__LINE__));
             break;
         }
     }
@@ -258,9 +267,12 @@ namespace ante {
                     auto &field = pt->fieldNames[i];
                     if(field == rval->name){
                         auto ty = static_cast<AnProductType*>(copyWithNewTypeVars(pt));
-                        addConstraint(op->lval->getType(), ty, op->loc);
-                        addConstraint(rval->getType(), ty->fields[i], op->loc);
-                        addConstraint(op->getType(), ty->fields[i], op->loc);
+                        addConstraint(op->lval->getType(), ty, op->loc,
+                                "Expected lval of . operation to be of type $2 but got $1");
+                        addConstraint(rval->getType(), ty->fields[i], op->loc,
+                                "Expected field '" + rval->name + "' to be of type $2 but got $1");
+                        addConstraint(op->getType(), ty->fields[i], op->loc,
+                                "Expected result of field access to be the type of the field, $2 but got $1");
                         return true;
                     }
                 }
@@ -301,14 +313,15 @@ namespace ante {
 
             for(size_t i = 0; i < args->fields.size(); i++){
                 auto param = nextTypeVar();
-                addConstraint(args->fields[i], param, n->loc);
+                addConstraint(args->fields[i], param, n->loc, "Error: should never fail, line " + to_string(__LINE__));
                 params.push_back(param);
             }
             auto retTy = nextTypeVar();
-            addConstraint(n->getType(), retTy, n->loc);
+            addConstraint(n->getType(), retTy, n->loc, "Error: should never fail, line " + to_string(__LINE__));
 
             fnty = AnFunctionType::get(retTy, params, {});
-            addConstraint(n->lval->getType(), fnty, n->loc);
+            addConstraint(n->lval->getType(), fnty, n->lval->loc,
+                    "Expected type of the function to be $2 from the arguments, but actual type is $1");
         }else{
             auto args = try_cast<AnTupleType>(n->rval->getType());
             if (!args) args = AnTupleType::get({ n->rval->getType() });
@@ -321,12 +334,14 @@ namespace ante {
 
             if(!fnty->isVarArgs()){
                 for(size_t i = 0; i < fnty->paramTys.size(); i++){
-                    addConstraint(args->fields[i], fnty->paramTys[i], argtup->exprs[i]->loc);
+                    addConstraint(args->fields[i], fnty->paramTys[i], argtup->exprs[i]->loc,
+                            "Expected parameter type of $2 but got argument of type $1");
                 }
             }else{
                 size_t i = 0;
                 for(; i < fnty->paramTys.size() - 1; i++){
-                    addConstraint(args->fields[i], fnty->paramTys[i], argtup->exprs[i]->loc);
+                    addConstraint(args->fields[i], fnty->paramTys[i], argtup->exprs[i]->loc,
+                            "Expected parameter type of $2 but got argument of type $1");
                 }
 
                 // typecheck var args as a tuple of additional arguments, though they should always be
@@ -335,9 +350,11 @@ namespace ante {
                 for(; i < args->fields.size(); i++){
                     varargs.push_back(args->fields[i]);
                 }
-                addConstraint(AnTupleType::get(varargs), fnty->paramTys.back(), n->loc);
+                addConstraint(AnTupleType::get(varargs), fnty->paramTys.back(), n->loc,
+                        "Error: should never fail, line " + to_string(__LINE__));
             }
-            addConstraint(n->getType(), fnty->retTy, n->loc);
+            addConstraint(n->getType(), fnty->retTy, n->loc,
+                    "Expected result of function call to match the function return type but got $1 and $2 respectively");
         }
     }
 
@@ -347,91 +364,65 @@ namespace ante {
         n->rval->accept(*this);
 
         if(n->op == '('){
-            auto fnty = try_cast<AnFunctionType>(n->lval->getType());
-            if(!fnty){
-                auto args = try_cast<AnTupleType>(n->rval->getType());
-                if (!args) args = AnTupleType::get({n->rval->getType()});
-                auto params = vecOf<AnType*>(args->fields.size());
-
-                for(size_t i = 0; i < args->fields.size(); i++){
-                    auto param = nextTypeVar();
-                    addConstraint(args->fields[i], param, n->loc);
-                    params.push_back(param);
-                }
-                auto retTy = nextTypeVar();
-                addConstraint(n->getType(), retTy, n->loc);
-
-                fnty = AnFunctionType::get(retTy, params, {});
-                addConstraint(n->lval->getType(), fnty, n->loc);
-            }else{
-                auto args = try_cast<AnTupleType>(n->rval->getType());
-                if (!args) args = AnTupleType::get({ n->rval->getType() });
-
-                if(invalidNumArguments(fnty, args)){
-                    issueInvalidArgCountError(fnty, args, n->lval->loc);
-                }
-
-                auto argtup = static_cast<parser::TupleNode*>(n->rval.get());
-
-                if(!fnty->isVarArgs()){
-                    for(size_t i = 0; i < fnty->paramTys.size(); i++){
-                        addConstraint(args->fields[i], fnty->paramTys[i], argtup->exprs[i]->loc);
-                    }
-                }else{
-                    size_t i = 0;
-                    for(; i < fnty->paramTys.size() - 1; i++){
-                        addConstraint(args->fields[i], fnty->paramTys[i], argtup->exprs[i]->loc);
-                    }
-
-                    // typecheck var args as a tuple of additional arguments, though they should always be
-                    // matched against a typevar anyway so these constraints should never fail.
-                    vector<AnType*> varargs;
-                    for(; i < args->fields.size(); i++){
-                        varargs.push_back(args->fields[i]);
-                    }
-                    addConstraint(AnTupleType::get(varargs), fnty->paramTys.back(), n->loc);
-                }
-                addConstraint(n->getType(), fnty->retTy, n->loc);
-            }
+            fnCallConstraints(n);
         }else if(n->op == '+' || n->op == '-' || n->op == '*' || n->op == '/' || n->op == '%' || n->op == '^'){
             TraitImpl *num = getOpTraitType(module, n->op);
             addTypeClassConstraint(num, n->loc);
-            addConstraint(n->lval->getType(), num->typeArgs[0], n->loc);
-            addConstraint(n->rval->getType(), num->typeArgs[0], n->loc);
-            addConstraint(n->getType(), num->typeArgs[0], n->loc);
+            addConstraint(n->lval->getType(), num->typeArgs[0], n->loc,
+                    "Operand types of '" + Lexer::getTokStr(n->op) + "' should match, but are $1 and $2 respectively");
+            addConstraint(n->rval->getType(), num->typeArgs[0], n->loc,
+                    "Operand types of '" + Lexer::getTokStr(n->op) + "' should match, but are $2 and $1 respectively");
+            addConstraint(n->getType(), num->typeArgs[0], n->loc,
+                    "Expected return type of operator to match the operand type $2, but found $1 instead");
         }else if(n->op == '<' || n->op == '>' || n->op == Tok_GrtrEq || n->op == Tok_LesrEq){
             TraitImpl *num = getOpTraitType(module, n->op);
             addTypeClassConstraint(num, n->loc);
-            addConstraint(n->lval->getType(), num->typeArgs[0], n->loc);
-            addConstraint(n->rval->getType(), num->typeArgs[0], n->loc);
-            addConstraint(n->getType(), AnType::getBool(), n->loc);
+            addConstraint(n->lval->getType(), num->typeArgs[0], n->loc,
+                    "Operand types of '" + Lexer::getTokStr(n->op) + "' should match, but are $1 and $2 respectively");
+            addConstraint(n->rval->getType(), num->typeArgs[0], n->loc,
+                    "Operand types of '" + Lexer::getTokStr(n->op) + "' should match, but are $2 and $1 respectively");
+            addConstraint(n->getType(), AnType::getBool(), n->loc,
+                    "Expected return type of logical operator to be $2, but found $1 instead");
         }else if(n->op == '#'){
             auto collection_elemTy = getCollectionOpTraitType(module, n->op);
             auto collection = collection_elemTy.first;
 
-            addConstraint(n->lval->getType(), collection->typeArgs[0], n->loc);
-            addConstraint(n->rval->getType(), AnType::getUsz(), n->loc);
-            addConstraint(n->getType(), collection_elemTy.second, n->loc);
+            addConstraint(n->lval->getType(), collection->typeArgs[0], n->loc,
+                    "Error: should never fail, line " + to_string(__LINE__));
+            addConstraint(n->rval->getType(), AnType::getUsz(), n->loc,
+                    "Expected index of subscript operator to be $2 but found $1 instead");
+            addConstraint(n->getType(), collection_elemTy.second, n->loc,
+                    "Error: should never fail, line " + to_string(__LINE__));
         }else if(n->op == Tok_Or || n->op == Tok_And){
-            addConstraint(n->lval->getType(), AnType::getBool(), n->loc);
-            addConstraint(n->rval->getType(), AnType::getBool(), n->loc);
-            addConstraint(n->getType(), AnType::getBool(), n->loc);
+            addConstraint(n->lval->getType(), AnType::getBool(), n->loc,
+                    "Left operand of " + Lexer::getTokStr(n->op) + " should always be $2 but here is $1");
+            addConstraint(n->rval->getType(), AnType::getBool(), n->loc,
+                    "Right operand of " + Lexer::getTokStr(n->op) + " should always be $2 but here is $1");
+            addConstraint(n->getType(), AnType::getBool(), n->loc,
+                    "Return type of " + Lexer::getTokStr(n->op) + " should always be $2 but here is $1");
         }else if(n->op == Tok_Is || n->op == Tok_Isnt || n->op == Tok_EqEq || n->op == Tok_NotEq){
-            addConstraint(n->lval->getType(), n->rval->getType(), n->loc);
-            addConstraint(n->getType(), AnType::getBool(), n->loc);
+            addConstraint(n->lval->getType(), n->rval->getType(), n->loc,
+                    "Operand types of '" + Lexer::getTokStr(n->op) + "' should match, but are $1 and $2 respectively");
+            addConstraint(n->getType(), AnType::getBool(), n->loc,
+                    "Return type of " + Lexer::getTokStr(n->op) + " should always be $2 but here is $1");
         }else if(n->op == Tok_Range){
             auto range = getRangeTraitType(module);
             addTypeClassConstraint(range, n->loc);
-            addConstraint(n->lval->getType(), range->typeArgs[0], n->loc);
-            addConstraint(n->rval->getType(), range->typeArgs[1], n->loc);
+            addConstraint(n->lval->getType(), range->typeArgs[0], n->loc,
+                    "Error: should never fail, line " + to_string(__LINE__));
+            addConstraint(n->rval->getType(), range->typeArgs[1], n->loc,
+                    "Error: should never fail, line " + to_string(__LINE__));
         }else if(n->op == Tok_In){
             auto collection_elemTy = getCollectionOpTraitType(module, n->op);
             auto collection = collection_elemTy.first;
 
             addTypeClassConstraint(collection, n->loc);
-            addConstraint(n->lval->getType(), collection_elemTy.second, n->loc);
-            addConstraint(n->rval->getType(), collection->typeArgs[0], n->loc);
-            addConstraint(n->getType(), AnType::getBool(), n->loc);
+            addConstraint(n->lval->getType(), collection_elemTy.second, n->loc,
+                    "Error: should never fail, line " + to_string(__LINE__));
+            addConstraint(n->rval->getType(), collection->typeArgs[0], n->loc,
+                    "Error: should never fail, line " + to_string(__LINE__));
+            addConstraint(n->getType(), AnType::getBool(), n->loc,
+                    "Return type of 'in' should always be $2 but here is $1");
         }else if(n->op == '.'){
             searchForField(n);
         }else if(n->op == Tok_As){
@@ -447,7 +438,8 @@ namespace ante {
 
     void ConstraintFindingVisitor::visit(RetNode *n){
         n->expr->accept(*this);
-        addConstraint(n->getType(), functionReturnTypes.top(), n->loc);
+        addConstraint(n->getType(), functionReturnTypes.top(), n->loc,
+                "The type of this explicit return, $1, does not match the type of the function's other returns or return type, $2");
     }
 
     void ConstraintFindingVisitor::visit(ImportNode *n){}
@@ -455,11 +447,14 @@ namespace ante {
     void ConstraintFindingVisitor::visit(IfNode *n){
         n->condition->accept(*this);
         n->thenN->accept(*this);
-        addConstraint(n->condition->getType(), AnType::getBool(), n->loc);
+        addConstraint(n->condition->getType(), AnType::getBool(), n->loc,
+                "Expected if condition to be a $2 but got $1");
         if(n->elseN){
             n->elseN->accept(*this);
-            addConstraint(n->thenN->getType(), n->elseN->getType(), n->loc);
-            addConstraint(n->thenN->getType(), n->getType(), n->loc);
+            addConstraint(n->thenN->getType(), n->elseN->getType(), n->loc,
+                    "Expected type of then and else branches to match, but got $1 and $2 respectively");
+            addConstraint(n->thenN->getType(), n->getType(), n->loc,
+                    "Error: should never fail, line " + to_string(__LINE__));
         }
     }
 
@@ -483,7 +478,8 @@ namespace ante {
         if(n->hasModifier(Tok_Mut)){
             refty = (AnType*)refty->addModifier(Tok_Mut);
         }
-        addConstraint(n->ref_expr->getType(), refty, n->loc);
+        addConstraint(n->ref_expr->getType(), refty, n->loc,
+                "Expected type of variable to match the type of its assignment expression, but got $1 and $2 respectively");
     }
 
     void ConstraintFindingVisitor::addConstraintsFromTCDecl(FuncDeclNode *fdn, TraitImpl *tr, FuncDeclNode *decl){
@@ -494,13 +490,15 @@ namespace ante {
         }
 
         for(size_t i = 0; i < parent->typeArgs.size(); i++){
-            addConstraint(parent->typeArgs[i], tr->typeArgs[i], fdn->params->loc);
+            addConstraint(parent->typeArgs[i], tr->typeArgs[i], fdn->params->loc,
+                    "Error: should never fail, line " + to_string(__LINE__)); //TODO: this line may fail (message may show)
         }
 
         NamedValNode *declParam = decl->params.get();
         NamedValNode *fdnParam = fdn->params.get();
         while(declParam){
-            addConstraint(declParam->getType(), fdnParam->getType(), fdnParam->loc);
+            addConstraint(declParam->getType(), fdnParam->getType(), fdnParam->loc,
+                    "Error: should never fail, line " + to_string(__LINE__)); //TODO: this line may fail (message may show)
             declParam = (NamedValNode*)declParam->next.get();
             fdnParam = (NamedValNode*)fdnParam->next.get();
         }
@@ -559,20 +557,23 @@ namespace ante {
             for(auto &family : tr->decl->typeFamilies){
                 auto typeFamilyTypeVar = AnTypeVarType::get("'" + family.name);
                 auto typeFamilyImpl = findTypeFamilyImpl(tr->impl, family.name, module);
-                addConstraint(typeFamilyTypeVar, typeFamilyImpl, n->loc);
+                addConstraint(typeFamilyTypeVar, typeFamilyImpl, n->loc,
+                    "Error: should never fail, line " + to_string(__LINE__)); //TODO: this line may fail (message may show)
             }
         }
     }
 
     void ConstraintFindingVisitor::visit(JumpNode *n){
         n->expr->accept(*this);
-        addConstraint(n->expr->getType(), AnType::getI32(), n->loc);
+        addConstraint(n->expr->getType(), AnType::getI32(), n->loc,
+                "Argument of break/continue should always be a $2 but here it is a $1 instead");
     }
 
     void ConstraintFindingVisitor::visit(WhileNode *n){
         n->condition->accept(*this);
         n->child->accept(*this);
-        addConstraint(n->condition->getType(), AnType::getBool(), n->loc);
+        addConstraint(n->condition->getType(), AnType::getBool(), n->loc,
+                "A while loop's condition should always be a $2 but here it is a $1 instead");
     }
 
     void ConstraintFindingVisitor::visit(ForNode *n){
@@ -594,7 +595,8 @@ namespace ante {
             fieldTys.push_back(nextTypeVar());
         }
         auto tupTy = AnTupleType::get(fieldTys);
-        addConstraint(tupTy, expectedType, pat->loc);
+        addConstraint(tupTy, expectedType, pat->loc,
+                "Expected a $2 here from the tuple destructuring, but found a $1 instead");
         patChecker.overwrite(Pattern::fromTuple(fieldTys), pat->loc);
 
         for(size_t i = 0; i < pat->exprs.size(); i++){
@@ -605,7 +607,8 @@ namespace ante {
     void ConstraintFindingVisitor::handleUnionVariantPattern(parser::MatchNode *n,
                 parser::TypeCastNode *pat, AnType *expectedType, Pattern &patChecker){
 
-        addConstraint(pat->getType(), expectedType, pat->loc);
+        addConstraint(pat->getType(), expectedType, pat->loc,
+                "Expected a $2 here from the union variant destructuring, but found a $1 instead");
         auto sumType = try_cast<AnSumType>(pat->getType());
         auto variantType = try_cast<AnProductType>(pat->typeExpr->getType());
 
@@ -634,26 +637,31 @@ namespace ante {
             patChecker.overwrite(Pattern::fromSumType(sumType), tcn->loc);
             auto idx = sumType->getTagVal(tn->typeName);
             patChecker.getChild(idx).setMatched();
-            addConstraint(tn->getType(), expectedType, pattern->loc);
+            addConstraint(tn->getType(), expectedType, pattern->loc,
+                "Expected a $2 here from the union variant pattern, but found a $1 instead");
 
         }else if(VarNode *vn = dynamic_cast<VarNode*>(pattern)){
-            addConstraint(expectedType, vn->getType(), pattern->loc);
+            addConstraint(expectedType, vn->getType(), pattern->loc,
+                "Expected the var pattern's type to be $1 from this match pattern but got $2 instead");
             patChecker.setMatched();
 
         }else if(IntLitNode *iln = dynamic_cast<IntLitNode*>(pattern)){
             auto ty = AnType::getPrimitive(iln->typeTag);
             patChecker.overwrite(Pattern::fromType(ty), iln->loc);
-            addConstraint(ty, expectedType, pattern->loc);
+            addConstraint(ty, expectedType, pattern->loc,
+                    "Expected this integer to be of type $2 from the match pattern, but got $1 instead");
 
         }else if(FltLitNode *fln = dynamic_cast<FltLitNode*>(pattern)){
             auto ty = AnType::getPrimitive(fln->typeTag);
             patChecker.overwrite(Pattern::fromType(ty), fln->loc);
-            addConstraint(ty, expectedType, pattern->loc);
+            addConstraint(ty, expectedType, pattern->loc,
+                    "Expected this float to be of type $2 from the match pattern, but got $1 instead");
 
         }else if(dynamic_cast<StrLitNode*>(pattern)){
             auto str = module->lookupType("Str");
             patChecker.overwrite(Pattern::fromType(str), pattern->loc);
-            addConstraint(str, expectedType, pattern->loc);
+            addConstraint(str, expectedType, pattern->loc,
+                    "Expected this to be of type $2 from the match pattern, but got $1 instead");
 
         }else{
             error("Invalid pattern syntax", pattern->loc);
@@ -665,17 +673,21 @@ namespace ante {
         AnType *firstBranchTy = nullptr;
         Pattern pattern = Pattern::getFillerPattern();
 
+        size_t i = 1;
         for(auto &b : n->branches){
             handlePattern(n, b->pattern.get(), n->expr->getType(), pattern);
             b->branch->accept(*this);
             if(firstBranchTy){
-                addConstraint(firstBranchTy, b->branch->getType(), b->branch->loc);
+                addConstraint(firstBranchTy, b->branch->getType(), b->branch->loc,
+                        "Expected the type of match branch " + to_string(i) + " to match the type of the first branch, but got $2 and $1 respectively");
             }else{
                 firstBranchTy = b->branch->getType();
             }
+            i++;
         }
         if(firstBranchTy){
-            addConstraint(firstBranchTy, n->getType(), n->loc);
+            addConstraint(firstBranchTy, n->getType(), n->loc,
+                    "Error: should never fail, line " + to_string(__LINE__));
         }
         if(!pattern.irrefutable()){
             error("Match is not exhaustive, " + pattern.constructMissedCase() + " is not matched", n->loc);
@@ -693,7 +705,8 @@ namespace ante {
             functionReturnTypes.pop();
 
             if(fnty->retTy->typeTag != TT_Unit)
-                addConstraint(fnty->retTy, n->child->getType(), n->loc);
+                addConstraint(fnty->retTy, n->child->getType(), n->loc,
+                        "Expected function return type $1 to match the type of its last expression, $2");
         }
     }
 

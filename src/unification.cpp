@@ -376,39 +376,40 @@ namespace ante {
 
     template<class T>
     Substitutions unifyExts(std::vector<T*> const& exts1, std::vector<T*> const& exts2,
-            LOC_TY const& loc, AnType *t1, AnType *t2){
+            LOC_TY const& loc, const AnType *t1, const AnType *t2, TypeError const& errMsg){
 
         if(exts1.size() != exts2.size()){
-            showError("Mismatched types " + anTypeToColoredStr(t1)
-                    + " and " + anTypeToColoredStr(t2), loc);
+            showError(errMsg.decode(t1, t2), loc);
             return {};
         }
 
         UnificationList ret;
         for(size_t i = 0; i < exts1.size(); i++)
-            ret.emplace_back(exts1[i], exts2[i], loc);
+            ret.emplace_back(exts1[i], exts2[i], loc, errMsg);
         return unify(ret);
     }
 
 
-    Substitutions unifyOne(AnType *t1, AnType *t2, LOC_TY const& loc){
+    Substitutions unifyOne(AnType *t1, AnType *t2, LOC_TY const& loc, TypeError const& errMsg){
         auto tv1 = try_cast<AnTypeVarType>(t1);
         auto tv2 = try_cast<AnTypeVarType>(t2);
 
         if(tv1){
             if(containsTypeVar(t2, tv1)){
-                error("Mismatched types, " + anTypeToColoredStr(tv1) + " occurs inside " + anTypeToColoredStr(t2), loc);
+                showError(errMsg.decode(t1, t2), loc);
+                error("Mismatched types, " + anTypeToColoredStr(tv1) + " occurs inside " + anTypeToColoredStr(t2), loc, ErrorType::Note);
             }
             return {{tv1, t2}};
         }else if(tv2){
             if(containsTypeVar(t1, tv2)){
-                error("Mismatched types, " + anTypeToColoredStr(tv2) + " occurs inside " + anTypeToColoredStr(t1), loc);
+                showError(errMsg.decode(t1, t2), loc);
+                error("Mismatched types, " + anTypeToColoredStr(tv2) + " occurs inside " + anTypeToColoredStr(t1), loc, ErrorType::Note);
             }
             return {{tv2, t1}};
         }
 
         if(t1->typeTag != t2->typeTag){
-            showError("Mismatched types " + anTypeToColoredStr(t1) + " and " + anTypeToColoredStr(t2), loc);
+            showError(errMsg.decode(t1, t2), loc);
             return {};
         }
 
@@ -416,44 +417,46 @@ namespace ante {
 
         if(!t1->isGeneric && !t2->isGeneric){
             if(!t1->approxEq(t2)){
-                showError("Mismatched types " + anTypeToColoredStr(t1) + " and " + anTypeToColoredStr(t2), loc);
+                showError(errMsg.decode(t1, t2), loc);
             }
             return {};
         }
 
         if(auto ptr1 = try_cast<AnPtrType>(t1)){
             auto ptr2 = try_cast<AnPtrType>(t2);
-            ret.emplace_back(ptr1->extTy, ptr2->extTy, loc);
+            ret.emplace_back(ptr1->extTy, ptr2->extTy, loc, errMsg);
             return unify(ret);
 
         }else if(auto arr1 = try_cast<AnArrayType>(t1)){
             auto arr2 = try_cast<AnArrayType>(t2);
-            ret.emplace_back(arr1->extTy, arr2->extTy, loc);
+            ret.emplace_back(arr1->extTy, arr2->extTy, loc, errMsg);
             return unify(ret);
 
         }else if(auto pt1 = try_cast<AnProductType>(t1)){
             auto pt2 = try_cast<AnProductType>(t2);
-            return unifyExts(pt1->typeArgs, pt2->typeArgs, loc, pt1, pt2);
+            return unifyExts(pt1->typeArgs, pt2->typeArgs, loc, pt1, pt2, errMsg);
 
         }else if(auto st1 = try_cast<AnSumType>(t1)){
             auto st2 = try_cast<AnSumType>(t2);
-            return unifyExts(st1->typeArgs, st2->typeArgs, loc, st1, st2);
+            return unifyExts(st1->typeArgs, st2->typeArgs, loc, st1, st2, errMsg);
 
         }else if(auto fn1 = try_cast<AnFunctionType>(t1)){
             auto fn2 = try_cast<AnFunctionType>(t2);
             if(fn1->paramTys.size() != fn2->paramTys.size()){
-                error("Types " + anTypeToColoredStr(fn1) + " and " + anTypeToColoredStr(fn2) + " are of varying sizes", loc);
+                showError(errMsg.decode(fn1, fn2), loc);
+                error("Types " + anTypeToColoredStr(fn1) + " and " + anTypeToColoredStr(fn2)
+                        + " have a different number of parameters", loc, ErrorType::Note);
             }
 
             for(size_t i = 0; i < fn1->paramTys.size(); i++)
-                ret.emplace_back(fn1->paramTys[i], fn2->paramTys[i], loc);
+                ret.emplace_back(fn1->paramTys[i], fn2->paramTys[i], loc, errMsg);
 
-            ret.emplace_back(fn1->retTy, fn2->retTy, loc);
+            ret.emplace_back(fn1->retTy, fn2->retTy, loc, errMsg);
             return unify(ret);
 
         }else if(auto tup1 = try_cast<AnTupleType>(t1)){
             auto tup2 = try_cast<AnTupleType>(t2);
-            return unifyExts(tup1->fields, tup2->fields, loc, tup1, tup2);
+            return unifyExts(tup1->fields, tup2->fields, loc, tup1, tup2, errMsg);
 
         }else{
             return {};
@@ -461,8 +464,8 @@ namespace ante {
     }
 
 
-    Substitutions unify(UnificationList const& list, UnificationList::const_iterator cur){
-        if(cur == list.end()){
+    Substitutions unify(UnificationList const& list, UnificationList::const_reverse_iterator cur){
+        if(cur == list.rend()){
             return {};
         }else{
             auto &p = *cur;
@@ -476,7 +479,7 @@ namespace ante {
                 auto eq = p.asEqConstraint();
 
                 auto t1 = unifyOne(applySubstitutions(t2, eq.first),
-                        applySubstitutions(t2, eq.second), p.loc);
+                        applySubstitutions(t2, eq.second), p.loc, p.message);
 
                 Substitutions ret = t1;
                 ret.insert(ret.end(), t2.begin(), t2.end());
@@ -488,6 +491,6 @@ namespace ante {
     }
 
     Substitutions unify(UnificationList const& cur){
-        return unify(cur, cur.begin());
+        return unify(cur, cur.rbegin());
     }
 }

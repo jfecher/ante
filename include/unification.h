@@ -2,6 +2,7 @@
 #define AN_UNIFICATION_H
 
 #include "antype.h"
+#include "typeerror.h"
 #include <tuple>
 
 namespace ante {
@@ -24,13 +25,15 @@ namespace ante {
         public:
             const LOC_TY &loc;
 
+            TypeError message;
+
             /** Eq constructor, enforce a = b */
-            UnificationConstraint(AnType *a, AnType *b, LOC_TY const& loc)
-                : u{a, b}, eqConstraint{true}, loc{loc}{}
+            UnificationConstraint(AnType *a, AnType *b, LOC_TY const& loc, TypeError const& message)
+                : u{a, b}, eqConstraint{true}, loc{loc}, message{message}{}
 
             /** Typeclass constructor, enforce impl typeclass args exists */
-            UnificationConstraint(TraitImpl *typeclass, LOC_TY const& loc)
-                : u{typeclass}, eqConstraint{false}, loc{loc}{}
+            UnificationConstraint(TraitImpl *typeclass, LOC_TY const& loc, TypeError const& message)
+                : u{typeclass}, eqConstraint{false}, loc{loc}, message{message}{}
 
             bool isEqConstraint() const noexcept {
                 return eqConstraint;
@@ -53,7 +56,7 @@ namespace ante {
     AnType* substitute(AnType *u, AnType *subType, AnType *t);
 
     Substitutions unify(UnificationList const& list);
-    Substitutions unifyOne(AnType *t1, AnType *t2, LOC_TY const& loc);
+    Substitutions unifyOne(AnType *t1, AnType *t2, LOC_TY const& loc, TypeError const& errMsg);
 
     AnType* applySubstitutions(Substitutions const& substitutions, AnType *t);
     TraitImpl* applySubstitutions(Substitutions const& substitutions, TraitImpl *t);
