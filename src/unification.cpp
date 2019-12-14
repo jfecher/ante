@@ -443,9 +443,7 @@ namespace ante {
         }else if(auto fn1 = try_cast<AnFunctionType>(t1)){
             auto fn2 = try_cast<AnFunctionType>(t2);
             if(fn1->paramTys.size() != fn2->paramTys.size()){
-                showError(errMsg.decode(fn1, fn2), loc);
-                error("Types " + anTypeToColoredStr(fn1) + " and " + anTypeToColoredStr(fn2)
-                        + " have a different number of parameters", loc, ErrorType::Note);
+                error(errMsg.decode(fn1, fn2), loc);
             }
 
             for(size_t i = 0; i < fn1->paramTys.size(); i++)

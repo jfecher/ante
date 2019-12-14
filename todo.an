@@ -9,3 +9,6 @@
 // Stop duplicating print(Str) print.1(Str) print.2(Str) ...
 // Fix #  not overloadable
 // Fix != not overloadable
+// Need dedicated operator for tuple member access
+// Expected parameter of type ...
+//   from function of type ...     <- new part

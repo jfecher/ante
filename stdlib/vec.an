@@ -73,7 +73,7 @@ remove_index (v:mut Vec 't) idx:usz -> 't =
 //the vector or none if the element was not found.
 //Uses = to determine element equality.
 //returns the index where the element was found.
-remove_first (v:mut Vec 't) elem:'t -> Maybe i32 =
+remove_first (v:mut Vec 't) elem:'t -> Maybe usz =
     for i in indices v do
         if elem == v._data#i then
             remove_index v i

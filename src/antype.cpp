@@ -745,9 +745,8 @@ namespace ante {
             auto r = static_cast<const AnFunctionType*>(&other);
             return *l->retTy == *r->retTy && allEq(l->paramTys, r->paramTys);
         }
-        this->dump();
-        other.dump();
-        ASSERT_UNREACHABLE("Unknown TypeTag in AnType::operator==");
+        /* Should only be reached with primitive types with modifiers, eg mut u64 == u64 */
+        return typeTag == other.typeTag;
     }
 
     bool allApproxEq(vector<AnType*> const& l, vector<AnType*> const& r){

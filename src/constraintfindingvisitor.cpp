@@ -268,7 +268,7 @@ namespace ante {
                     if(field == rval->name){
                         auto ty = static_cast<AnProductType*>(copyWithNewTypeVars(pt));
                         addConstraint(op->lval->getType(), ty, op->loc,
-                                "Expected lval of . operation to be of type $2 but got $1");
+                                "Expected lval of . operator to be of type $2 but got $1");
                         addConstraint(rval->getType(), ty->fields[i], op->loc,
                                 "Expected field '" + rval->name + "' to be of type $2 but got $1");
                         addConstraint(op->getType(), ty->fields[i], op->loc,
@@ -320,7 +320,7 @@ namespace ante {
             addConstraint(n->getType(), retTy, n->loc, "Error: should never fail, line " + to_string(__LINE__));
 
             fnty = AnFunctionType::get(retTy, params, {});
-            addConstraint(n->lval->getType(), fnty, n->lval->loc,
+            addConstraint(n->lval->getType(), fnty, n->loc,
                     "Expected type of the function to be $2 from the arguments, but actual type is $1");
         }else{
             auto args = try_cast<AnTupleType>(n->rval->getType());
