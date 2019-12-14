@@ -108,11 +108,9 @@ namespace ante {
             if(it != map.end()){
                 return it->second;
             }else{
-                auto newTv = AnTypeVarType::get(curName);
+                auto newTv = AnTypeVarType::get(tv->isRhoVar() ? (curName + "...") : curName);
                 map[tv] = newTv;
                 curName = nextLetter(curName);
-                if(tv->isRhoVar())
-                    curName = curName + "...";
                 return newTv;
             }
 

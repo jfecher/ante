@@ -527,6 +527,7 @@ val_no_decl: '(' expr ')'            {$$ = $2;}
            | fn_lambda
            | val_no_decl '.' maybe_newline var          {$$ = mkBinOpNode(@$, '.', $1, $4);}
            | val_no_decl '.' maybe_newline small_type   {$$ = mkBinOpNode(@$, '.', $1, $4);}
+           | val_no_decl '.' maybe_newline intlit       {$$ = mkBinOpNode(@$, '.', $1, $4);}
            | val_no_decl ':' maybe_newline type         {$$ = mkBinOpNode(@$, ':', $1, $4);}
            ;
 

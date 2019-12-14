@@ -289,7 +289,25 @@ namespace ante {
 
         VarNode *vn = dynamic_cast<VarNode*>(op->rval.get());
         if(!vn){
-            error("RHS of . operator must be an identifier", op->rval->loc);
+            auto tupleIndex = dynamic_cast<IntLitNode*>(op->rval.get());
+            if(tupleIndex){
+                size_t idx = atoi(tupleIndex->val.c_str());
+                auto fields = vecOf<AnType*>(idx + 2);
+                for(size_t i = 0; i <= idx; ++i){
+                    fields.push_back(nextTypeVar());
+                }
+                addConstraint(op->getType(), fields.back(), op->loc,
+                        "Expected result of tuple member access of index " + to_string(idx) + " to be $2 but got $1 instead");
+
+                auto rho = nextTypeVar();
+                rho = AnTypeVarType::get(rho->name + "...");
+                fields.push_back(rho);
+                addConstraint(op->lval->getType(), AnTupleType::get(fields), op->loc,
+                        "Expected lhs of . to be a tuple resembling $2 but found $1 instead");
+            }else{
+                error("RHS of . operator must be an identifier or natural number", op->rval->loc);
+            }
+            return;
         }
 
         if(findFieldInTypeList(module->userTypes, op, vn))
@@ -498,7 +516,7 @@ namespace ante {
         NamedValNode *fdnParam = fdn->params.get();
         while(declParam){
             addConstraint(declParam->getType(), fdnParam->getType(), fdnParam->loc,
-                    "Error: should never fail, line " + to_string(__LINE__)); //TODO: this line may fail (message may show)
+                    "Expected type of parameter to be $1 from the impl arguments, but its type as used in the function is $2");
             declParam = (NamedValNode*)declParam->next.get();
             fdnParam = (NamedValNode*)fdnParam->next.get();
         }
@@ -546,9 +564,8 @@ namespace ante {
                 if(fdn){
                     auto *decl = getDecl(fdn->name, tr->decl);
                     fdn->setType(decl->getType());
-                    visit(fdn);
-                    // adding the constraints from the trait decl last gives better error messages
                     addConstraintsFromTCDecl(fdn, tr, decl);
+                    visit(fdn);
                 }
             }
 

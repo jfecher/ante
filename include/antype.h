@@ -271,6 +271,10 @@ namespace ante {
             return !fieldNames.empty();
         }
 
+        bool hasRhoVar() const noexcept {
+            return !fields.empty() && fields.back()->isRhoVar();
+        }
+
         virtual bool isModifierType() const noexcept override {
             return false;
         }

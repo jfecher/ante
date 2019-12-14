@@ -389,6 +389,36 @@ namespace ante {
         return unify(ret);
     }
 
+    Substitutions unifyTuple(AnTupleType *tup1, AnTupleType *tup2, LOC_TY const& loc, TypeError const& errMsg){
+        auto len1 = tup1->fields.size();
+        auto len2 = tup2->fields.size();
+        if(tup1->hasRhoVar()) len1--;
+        if(tup2->hasRhoVar()) len2--;
+
+        if(len1 != len2){
+            if(len1 < len2){
+                if(tup1->hasRhoVar()){
+                    len2 = len1;
+                }else{
+                    showError(errMsg.decode(tup1, tup2), loc);
+                    return {};
+                }
+            }else{
+                if(tup2->hasRhoVar()){
+                    len1 = len2;
+                }else{
+                    showError(errMsg.decode(tup1, tup2), loc);
+                    return {};
+                }
+            }
+        }
+
+        UnificationList ret;
+        for(size_t i = 0; i < len1; i++)
+            ret.emplace_back(tup1->fields[i], tup2->fields[i], loc, errMsg);
+        return unify(ret);
+    }
+
 
     Substitutions unifyOne(AnType *t1, AnType *t2, LOC_TY const& loc, TypeError const& errMsg){
         auto tv1 = try_cast<AnTypeVarType>(t1);
@@ -454,7 +484,7 @@ namespace ante {
 
         }else if(auto tup1 = try_cast<AnTupleType>(t1)){
             auto tup2 = try_cast<AnTupleType>(t2);
-            return unifyExts(tup1->fields, tup2->fields, loc, tup1, tup2, errMsg);
+            return unifyTuple(tup1, tup2, loc, errMsg);
 
         }else{
             return {};

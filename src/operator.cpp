@@ -132,10 +132,6 @@ TypedValue Compiler::compRem(TypedValue &l, TypedValue &r, BinOpNode *op){
  *  Compiles the extract operator, #
  */
 TypedValue Compiler::compExtract(TypedValue &l, TypedValue &r, BinOpNode *op){
-    if(!isIntTypeTag(r.type->typeTag)){
-        error("Index of operator '#' must be an integer expression, got expression of type " + anTypeToColoredStr(r.type), op->loc);
-    }
-
     if(auto *arrty = try_cast<AnArrayType>(l.type)){
         //check for alloca
         Value *arr = dyn_cast<LoadInst>(l.val) ?
@@ -160,9 +156,6 @@ TypedValue Compiler::compExtract(TypedValue &l, TypedValue &r, BinOpNode *op){
         auto index = indexval->getZExtValue();
 
         auto *aggty = try_cast<AnTupleType>(l.type);
-
-        if(index >= aggty->fields.size())
-            error("Index of " + to_string(index) + " exceeds number of fields in " + anTypeToColoredStr(l.type), op->loc);
 
         AnType *indexTy = (AnType*)l.type->addModifiersTo(aggty->fields[index]);
 
@@ -1635,7 +1628,13 @@ bool isPrimitiveOp(BinOpNode *n, AnType *l, AnType *r){
  */
 void CompilingVisitor::visit(BinOpNode *n){
     if(n->op == '.'){
-        this->val = c->compMemberAccess(n->lval.get(), (VarNode*)n->rval.get(), n);
+        if(dynamic_cast<IntLitNode*>(n->rval.get())){
+            TypedValue l = CompilingVisitor::compile(c, n->lval);
+            TypedValue r = CompilingVisitor::compile(c, n->rval);
+            this->val = c->compExtract(l, r, n);
+        }else{
+            this->val = c->compMemberAccess(n->lval.get(), (VarNode*)n->rval.get(), n);
+        }
         return;
     }else if(n->op == '('){
         this->val = compFnCall(c, n);
