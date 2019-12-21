@@ -7,4 +7,4 @@ import Vec
 import Tests.Integration.FnDecl
 
 
-print Vec(1 .. fact 5 + 1)
+print <| Vec.of (1 .. fact 5 + 1)

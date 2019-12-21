@@ -3,17 +3,17 @@
 */
 
 tup = (1, 2, "three")
-printf "tup: %d, %d, %s\n" (tup#0) (tup#1) (tup#2)
+printf "tup: %d, %d, %s\n" tup.0 tup.1 tup.2
 
 
-getCoords unit = (2, 3)
+getCoords () = (2, 3)
 
 //Pack two params into a tuple
 toTuple a b = (a, b)
 
 
 printTuple name:Str t:(i32,i32) =
-    printf "%s = (%d, %d)\n" (name.cStr) (t#0) (t#1)
+    printf "%s = (%d, %d)\n" (name.cStr) t.0 t.1
 
 
 coords = getCoords ()
@@ -22,10 +22,10 @@ printTuple "coords" coords
 printTuple "toTuple(3, 2)" (toTuple 3 2)
 
 
-mut mutTup = (5_u8, 66, 7_i64)
-mutTup#1 := 6
+mutTup = mut (5_u8, 66, 7_i64)
+mutTup.1 := 6
 
-printf "mutTup = %d, %d, %d\n" (mutTup#0) (mutTup#1) (mutTup#2)
+printf "mutTup = %d, %d, %d\n" mutTup.0 mutTup.1 mutTup.2
 
 
 test = (

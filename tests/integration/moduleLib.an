@@ -13,8 +13,8 @@
 module DP
     //Return the dotproduct of two double-length 'vectors'
     dotProduct l:(i32,i32) r:(i32,i32) =
-        (l#0usz) * (r#0usz) + (l#1usz) * (r#1usz)
+        l.0 * r.0 + l.1 * r.1
 
 impl Print (i32, i32)
     printne tup =
-        printf ("(%d, %d)".cStr) (tup#0usz) (tup#1usz)
+        printf ("(%d, %d)".cStr) (tup.0) (tup.1)
