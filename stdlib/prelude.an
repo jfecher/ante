@@ -122,8 +122,8 @@ trait Pow 'n
 trait Cmp 'n
     (<) 'n 'n -> bool
     (>) 'n 'n -> bool
-    //(<=) l:'n r:'n = not (l > r)
-    //(>=) l:'n r:'n = not (l < r)
+    //(<=) l r = not (l > r)
+    //(>=) l r = not (l < r)
 
 trait Eq 't
     (==) 't 't -> bool
