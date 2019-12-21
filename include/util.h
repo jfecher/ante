@@ -23,6 +23,8 @@ namespace ante {
     #define ASSERT_UNREACHABLE(msg) { fprintf(stderr, "Internal compiler error: " msg "\nassert_unreachable failed on line %d of file '%s'\n", __LINE__, \
                                         __FILE__); exit(1); }
 
+    bool showTimingInformation();
+
     /** @brief Create a vector with a capacity of at least cap elements. */
     template<typename T> std::vector<T> vecOf(size_t cap){
         std::vector<T> vec;

@@ -6,35 +6,36 @@ using namespace ante;
 using namespace std;
 
 map<string, Args> argsMap = {
-    {"-O",         Args::OptLvl},
-    {"-o",         Args::OutputName},
-    {"-e",         Args::Eval},
-    {"-p",         Args::Parse},
     {"-check",     Args::Check},
     {"-c",         Args::CompileToObj},
     {"-r",         Args::CompileAndRun},
+    {"-emit-llvm", Args::EmitLLVM},
+    {"-e",         Args::Eval},
     {"-help",      Args::Help},
     {"-lib",       Args::Lib},
-    {"-emit-llvm", Args::EmitLLVM},
-    {"-no-color",  Args::NoColor}
+    {"-no-color",  Args::NoColor},
+    {"-O",         Args::OptLvl},
+    {"-o",         Args::OutputName},
+    {"-p",         Args::Parse},
+    {"-time",      Args::Time}
 };
 
-void CompilerArgs::addArg(Argument *a){
-    args.emplace_back(a);
+void CompilerArgs::addArg(Args &&a, string &&s){
+    args.emplace_back(a, s);
 }
 
 bool CompilerArgs::hasArg(Args a) const{
-    for(auto &arg : args)
-        if(arg->argTy == a)
+    for(auto const& arg : args)
+        if(arg.argTy == a)
             return true;
 
     return false;
 }
 
-ante::Argument* CompilerArgs::getArg(Args a) const{
+const ante::Argument* CompilerArgs::getArg(Args a) const{
     for(auto &arg : args)
-        if(arg->argTy == a)
-            return arg.get();
+        if(arg.argTy == a)
+            return &arg;
 
     return 0;
 }
@@ -84,7 +85,7 @@ CompilerArgs* ante::parseArgs(int argc, const char** argv){
                     }
                 }
 
-                ret->addArg(new Argument(a, s));
+                ret->addArg(move(a), move(s));
             }catch(out_of_range &r){
                 cerr << "Ante: argument '" << argv[i] << "' was not recognized.\n";
                 cerr << "      try -help for a list of options\n";

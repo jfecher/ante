@@ -938,7 +938,8 @@ void addPasses(llvm::Module *m, char optLvl){
         pm.run(*m);
     }
     auto end = high_resolution_clock::now();
-    cout << "Llvm Optimizations: " << duration_cast<milliseconds>(end - start).count() << "ms\n";
+    if(showTimingInformation())
+        cout << "Llvm Optimizations: " << duration_cast<milliseconds>(end - start).count() << "ms\n";
 }
 
 
@@ -963,7 +964,9 @@ void Compiler::compile(){
 
 
         auto end = high_resolution_clock::now();
-        std::cout << "Compiling: " << duration_cast<milliseconds>(end - start).count() << "ms\n";
+        if(showTimingInformation())
+            std::cout << "Compiling: " << duration_cast<milliseconds>(end - start).count() << "ms\n";
+
         if(!errorCount() && !isLib){
             addPasses(module.get(), optLvl);
         }
@@ -1079,7 +1082,8 @@ int Compiler::compileIRtoObj(llvm::Module *mod, string outFile){
 
     delete tm;
     auto end = high_resolution_clock::now();
-    std::cout << "Writing .ll: " << duration_cast<milliseconds>(end - start).count() << "ms\n";
+    if(showTimingInformation())
+        std::cout << "Writing .ll: " << duration_cast<milliseconds>(end - start).count() << "ms\n";
     return res;
 }
 
@@ -1092,7 +1096,8 @@ int Compiler::linkObj(string inFiles, string outFile){
     int ret = system(cmd.c_str());
 
     auto end = high_resolution_clock::now();
-    cout << "Linking: " << duration_cast<milliseconds>(end - start).count() << "ms\n";
+    if(showTimingInformation())
+        cout << "Linking: " << duration_cast<milliseconds>(end - start).count() << "ms\n";
     return ret;
 }
 
@@ -1232,10 +1237,17 @@ Compiler::Compiler(Compiler *c, Node *root, string modName, bool lib) :
     this->ast = (RootNode*)root;
 }
 
+// TODO: Have a Context or Config class that is passed around
+//       to each visitor instead of having globals
+bool showTimingInformationGlobal = false;
+bool showTimingInformation() {
+    return showTimingInformationGlobal;
+}
 
 void Compiler::processArgs(CompilerArgs *args){
     string out = "";
     bool shouldGenerateExecutable = true;
+    showTimingInformationGlobal = args->hasArg(Args::Time);
 
     if(auto *arg = args->getArg(Args::OutputName)){
         outFile = arg->arg;
