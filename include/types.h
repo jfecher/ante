@@ -40,12 +40,32 @@ namespace ante {
     std::string getCastFnBaseName(AnType *t);
 
     AnType* getLargestExt(Compiler *c, AnSumType *tn);
+
+    /** Return the size of the given type in bits. Only for use on
+     *  primitive, pointer, or function types.
+     *
+     * Note: Returns 0 for any aggregate type (sum/product types) that
+     *       can't be described by typetag alone.
+     */
     char getBitWidthOfTypeTag(const TypeTag tagTy);
+
+    /** True for any type that has no additional type arguments.
+     *  As a result, a primitive typetag will always be a base
+     *  case for recursion over AnTypes. */
     bool isPrimitiveTypeTag(TypeTag ty);
+
+    /** Shortcut for isIntTypeTag(t) || isFPTypeTag(t) */
     bool isNumericTypeTag(const TypeTag ty);
+
+    /** True if tagTy is an integer typetag, signed or unsigned.
+     *  Currently also returns true for c8 for purposes of integer
+     *  conversions, but this is subject to change. */
     bool isIntTypeTag(const TypeTag ty);
+
+    /** True if tagTy is floating point type (f16, f32, or f64) */
     bool isFPTypeTag(const TypeTag tt);
+
+    /** True if tagTy is an unsigned (integer) TypeTag */
     bool isUnsignedTypeTag(const TypeTag tagTy);
 }
-
 #endif

@@ -4,6 +4,7 @@
 #include <string>
 #include <nameresolution.h>
 #include "typeinference.h"
+#include "typeerror.h"
 
 #ifdef unix
 #  include <unistd.h>
@@ -436,7 +437,7 @@ namespace ante {
 
                 // Only print types until compile-time eval is setup again
                 if(val.type){
-                    val.type->dump();
+                    sanitize(val.type)->dump();
                 }
             }
 

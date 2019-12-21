@@ -36,7 +36,8 @@ TEST_CASE("Type Checks", "[typeEq]"){
         LOC_TY loc;
 
         UnificationList unificationList;
-        unificationList.emplace_back(tup1, tup2, loc, "");
+        TypeError noErr{"", loc};
+        unificationList.emplace_back(tup1, tup2, noErr);
         auto subs = ante::unify(unificationList);
 
         REQUIRE(subs.size() == 2);

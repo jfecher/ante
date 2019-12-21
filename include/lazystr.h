@@ -87,10 +87,12 @@ namespace ante {
         lazy_printer(std::string const&);
         lazy_printer(lazy_str const&);
         lazy_printer(char);
+        lazy_printer(lazy_printer const&);
         lazy_printer(){};
     };
 
     lazy_printer operator+(lazy_printer const&, lazy_printer const&);
+    lazy_printer& operator+=(lazy_printer&, lazy_printer const&);
     std::ostream& operator<<(std::ostream&, lazy_printer const&);
 }
 

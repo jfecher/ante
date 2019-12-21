@@ -35,7 +35,7 @@ namespace ante {
              */
             std::stack<AnType*> functionReturnTypes;
 
-            void addConstraint(AnType *a, AnType *b, LOC_TY &loc, TypeError const& errMsg);
+            void addConstraint(AnType *a, AnType *b, LOC_TY &loc, lazy_printer const& errMsg);
 
             void addTypeClassConstraint(TraitImpl *typeclass, LOC_TY &loc);
 

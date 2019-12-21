@@ -23,17 +23,15 @@ namespace ante {
         bool eqConstraint;
 
         public:
-            const LOC_TY &loc;
-
-            TypeError message;
+            TypeError error;
 
             /** Eq constructor, enforce a = b */
-            UnificationConstraint(AnType *a, AnType *b, LOC_TY const& loc, TypeError const& message)
-                : u{a, b}, eqConstraint{true}, loc{loc}, message{message}{}
+            UnificationConstraint(AnType *a, AnType *b, TypeError const& err)
+                : u{a, b}, eqConstraint{true}, error{err}{}
 
             /** Typeclass constructor, enforce impl typeclass args exists */
-            UnificationConstraint(TraitImpl *typeclass, LOC_TY const& loc, TypeError const& message)
-                : u{typeclass}, eqConstraint{false}, loc{loc}, message{message}{}
+            UnificationConstraint(TraitImpl *typeclass, TypeError const& err)
+                : u{typeclass}, eqConstraint{false}, error{err}{}
 
             bool isEqConstraint() const noexcept {
                 return eqConstraint;
@@ -56,7 +54,7 @@ namespace ante {
     AnType* substitute(AnType *u, AnType *subType, AnType *t);
 
     Substitutions unify(UnificationList const& list);
-    Substitutions unifyOne(AnType *t1, AnType *t2, LOC_TY const& loc, TypeError const& errMsg);
+    Substitutions unifyOne(AnType *t1, AnType *t2, TypeError const& errMsg);
 
     AnType* applySubstitutions(Substitutions const& substitutions, AnType *t);
     TraitImpl* applySubstitutions(Substitutions const& substitutions, TraitImpl *t);

@@ -18,12 +18,14 @@ namespace ante {
         return constraints;
     }
 
-    void ConstraintFindingVisitor::addConstraint(AnType *a, AnType *b, LOC_TY &loc, TypeError const& errMsg){
-        constraints.emplace_back(a, b, loc, errMsg);
+    void ConstraintFindingVisitor::addConstraint(AnType *a, AnType *b, LOC_TY &loc, lazy_printer const& errMsg){
+        TypeError err{errMsg, loc};
+        constraints.emplace_back(a, b, err);
     }
 
     void ConstraintFindingVisitor::addTypeClassConstraint(TraitImpl *constraint, LOC_TY &loc){
-        constraints.emplace_back(constraint, loc, "");
+        TypeError err{"", loc};
+        constraints.emplace_back(constraint, err);
     }
 
     template<typename T>

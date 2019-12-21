@@ -374,22 +374,44 @@ namespace ante {
         return ret;
     }
 
+    enum TypeErrorKind {
+        Mismatch, InfRecursion1, InfRecursion2
+    };
+
+    struct TypeErrorContext : public std::exception {
+        const AnType *t1, *t2;
+        const TypeErrorKind kind;
+        Substitutions subs;
+
+        TypeErrorContext(const AnType *t1, const AnType *t2, TypeErrorKind kind)
+            : t1{t1}, t2{t2}, kind{kind}, subs{}{}
+    };
+
+    Substitutions unify(UnificationList const& list, UnificationList::const_reverse_iterator cur, bool isTopLevel);
+
+    /**
+     * Helper for a recursive call to unify.
+     * Supplies arguments needed for good error messages.
+     */
+    Substitutions unifyRecursive(UnificationList const& list){
+        return unify(list, list.rbegin(), false);
+    }
+
     template<class T>
     Substitutions unifyExts(std::vector<T*> const& exts1, std::vector<T*> const& exts2,
-            LOC_TY const& loc, const AnType *t1, const AnType *t2, TypeError const& errMsg){
+            const AnType *t1, const AnType *t2, TypeError const& err){
 
         if(exts1.size() != exts2.size()){
-            showError(errMsg.decode(t1, t2), loc);
-            return {};
+            throw TypeErrorContext(t1, t2, Mismatch);
         }
 
         UnificationList ret;
         for(size_t i = 0; i < exts1.size(); i++)
-            ret.emplace_back(exts1[i], exts2[i], loc, errMsg);
-        return unify(ret);
+            ret.emplace_back(exts1[i], exts2[i], err);
+        return unifyRecursive(ret);
     }
 
-    Substitutions unifyTuple(AnTupleType *tup1, AnTupleType *tup2, LOC_TY const& loc, TypeError const& errMsg){
+    Substitutions unifyTuple(AnTupleType *tup1, AnTupleType *tup2, TypeError const& err){
         auto len1 = tup1->fields.size();
         auto len2 = tup2->fields.size();
         if(tup1->hasRhoVar()) len1--;
@@ -400,91 +422,86 @@ namespace ante {
                 if(tup1->hasRhoVar()){
                     len2 = len1;
                 }else{
-                    showError(errMsg.decode(tup1, tup2), loc);
-                    return {};
+                    throw TypeErrorContext(tup1, tup2, Mismatch);
                 }
             }else{
                 if(tup2->hasRhoVar()){
                     len1 = len2;
                 }else{
-                    showError(errMsg.decode(tup1, tup2), loc);
-                    return {};
+                    throw TypeErrorContext(tup1, tup2, Mismatch);
                 }
             }
         }
 
         UnificationList ret;
         for(size_t i = 0; i < len1; i++)
-            ret.emplace_back(tup1->fields[i], tup2->fields[i], loc, errMsg);
-        return unify(ret);
+            ret.emplace_back(tup1->fields[i], tup2->fields[i], err);
+        return unifyRecursive(ret);
     }
 
 
-    Substitutions unifyOne(AnType *t1, AnType *t2, LOC_TY const& loc, TypeError const& errMsg){
+    Substitutions unifyOne(AnType *t1, AnType *t2, TypeError const& err){
         auto tv1 = try_cast<AnTypeVarType>(t1);
         auto tv2 = try_cast<AnTypeVarType>(t2);
 
         if(tv1){
             if(containsTypeVar(t2, tv1)){
-                showError(errMsg.decode(t1, t2), loc);
-                error("Mismatched types, " + anTypeToColoredStr(tv1) + " occurs inside " + anTypeToColoredStr(t2), loc, ErrorType::Note);
+                throw TypeErrorContext(t1, t2, InfRecursion1);
             }
             return {{tv1, t2}};
         }else if(tv2){
             if(containsTypeVar(t1, tv2)){
-                showError(errMsg.decode(t1, t2), loc);
-                error("Mismatched types, " + anTypeToColoredStr(tv2) + " occurs inside " + anTypeToColoredStr(t1), loc, ErrorType::Note);
+                throw TypeErrorContext(t1, t2, InfRecursion2);
             }
             return {{tv2, t1}};
         }
 
         if(t1->typeTag != t2->typeTag){
-            showError(errMsg.decode(t1, t2), loc);
-            return {};
+            throw TypeErrorContext(t1, t2, Mismatch);
         }
 
         UnificationList ret;
 
         if(!t1->isGeneric && !t2->isGeneric){
             if(!t1->approxEq(t2)){
-                showError(errMsg.decode(t1, t2), loc);
+                throw TypeErrorContext(t1, t2, Mismatch);
             }
             return {};
         }
 
         if(auto ptr1 = try_cast<AnPtrType>(t1)){
             auto ptr2 = try_cast<AnPtrType>(t2);
-            ret.emplace_back(ptr1->extTy, ptr2->extTy, loc, errMsg);
-            return unify(ret);
+            ret.emplace_back(ptr1->extTy, ptr2->extTy, err);
+            return unifyRecursive(ret);
 
         }else if(auto arr1 = try_cast<AnArrayType>(t1)){
             auto arr2 = try_cast<AnArrayType>(t2);
-            ret.emplace_back(arr1->extTy, arr2->extTy, loc, errMsg);
-            return unify(ret);
+            ret.emplace_back(arr1->extTy, arr2->extTy, err);
+            return unifyRecursive(ret);
 
         }else if(auto pt1 = try_cast<AnProductType>(t1)){
             auto pt2 = try_cast<AnProductType>(t2);
-            return unifyExts(pt1->typeArgs, pt2->typeArgs, loc, pt1, pt2, errMsg);
+            return unifyExts(pt1->typeArgs, pt2->typeArgs, pt1, pt2, err);
 
         }else if(auto st1 = try_cast<AnSumType>(t1)){
             auto st2 = try_cast<AnSumType>(t2);
-            return unifyExts(st1->typeArgs, st2->typeArgs, loc, st1, st2, errMsg);
+            return unifyExts(st1->typeArgs, st2->typeArgs, st1, st2, err);
 
         }else if(auto fn1 = try_cast<AnFunctionType>(t1)){
             auto fn2 = try_cast<AnFunctionType>(t2);
             if(fn1->paramTys.size() != fn2->paramTys.size()){
-                error(errMsg.decode(fn1, fn2), loc);
+                throw TypeErrorContext(t1, t2, Mismatch);
             }
 
             for(size_t i = 0; i < fn1->paramTys.size(); i++)
-                ret.emplace_back(fn1->paramTys[i], fn2->paramTys[i], loc, errMsg);
+                ret.emplace_back(fn1->paramTys[i], fn2->paramTys[i], err);
 
-            ret.emplace_back(fn1->retTy, fn2->retTy, loc, errMsg);
-            return unify(ret);
+            ret.emplace_back(fn1->retTy, fn2->retTy, err);
+            return unifyRecursive(ret);
 
         }else if(auto tup1 = try_cast<AnTupleType>(t1)){
             auto tup2 = try_cast<AnTupleType>(t2);
-            return unifyTuple(tup1, tup2, loc, errMsg);
+            return unifyTuple(tup1, tup2, err);
 
         }else{
             return {};
@@ -492,12 +509,12 @@ namespace ante {
     }
 
 
-    Substitutions unify(UnificationList const& list, UnificationList::const_reverse_iterator cur){
+    Substitutions unify(UnificationList const& list, UnificationList::const_reverse_iterator cur, bool isTopLevel){
         if(cur == list.rend()){
             return {};
         }else{
             auto &p = *cur;
-            auto t2 = unify(list, ++cur);
+            auto t2 = unify(list, ++cur, isTopLevel);
 
             if(!p.isEqConstraint()){
                 return t2;
@@ -506,8 +523,23 @@ namespace ante {
             try{
                 auto eq = p.asEqConstraint();
 
-                auto t1 = unifyOne(applySubstitutions(t2, eq.first),
-                        applySubstitutions(t2, eq.second), p.loc, p.message);
+                Substitutions t1;
+                try {
+                    t1 = unifyOne(applySubstitutions(t2, eq.first),
+                                  applySubstitutions(t2, eq.second), p.error);
+                }catch(TypeErrorContext e){
+                    e.subs.insert(e.subs.end(), t2.begin(), t2.end());
+                    if(!isTopLevel){
+                        throw e;
+                    }
+
+                    p.error.show(applySubstitutions(e.subs, eq.first), applySubstitutions(e.subs, eq.second));
+                    if(e.kind == InfRecursion1)
+                        showError(anTypeToColoredStr(e.t1) + " occurs inside " + anTypeToColoredStr(e.t2), p.error.loc, ErrorType::Note);
+                    if(e.kind == InfRecursion2)
+                        showError(anTypeToColoredStr(e.t2) + " occurs inside " + anTypeToColoredStr(e.t1), p.error.loc, ErrorType::Note);
+                    return {};
+                }
 
                 Substitutions ret = t1;
                 ret.insert(ret.end(), t2.begin(), t2.end());
@@ -519,6 +551,6 @@ namespace ante {
     }
 
     Substitutions unify(UnificationList const& cur){
-        return unify(cur, cur.rbegin());
+        return unify(cur, cur.rbegin(), true);
     }
 }

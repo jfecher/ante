@@ -587,8 +587,9 @@ TypedValue monomorphise(Compiler *c, FuncDecl *fd, AnFunctionType *boundType, LO
     //decls like printf: (ref c8) ... -> i32  are generic but cannot be monomorphised.
     auto isGenericDef = fnTy->isGeneric && static_cast<FuncDeclNode*>(fd->definition)->child;
     if(isGenericDef){
-        auto subs = unifyOne(fnTy, boundType, loc, "Error in monorphisation of " + fd->name
-                + ", types are " + anTypeToColoredStr(fnTy) + " bound to " + anTypeToColoredStr(boundType));
+        TypeError err{"Error in monorphisation of " + fd->name + ", types are "
+            + anTypeToColoredStr(fnTy) + " bound to " + anTypeToColoredStr(boundType), loc};
+        auto subs = unifyOne(fnTy, boundType, err);
         c->compCtxt->insertMonomorphisationMappings(subs);
     }
     auto ret = c->compFn(fd);
@@ -605,8 +606,11 @@ TypedValue compForLoopTraitFn(Compiler *c, string const& fnName, TraitImpl *impl
 
     auto fnTy = try_cast<AnFunctionType>(fn->tval.type);
     auto boundTy = AnFunctionType::get(fnTy->retTy, {argTy}, fnTy->typeClassConstraints);
-    auto subs = unifyOne(fnTy, boundTy, loc, "Error in for loop monomorphisation of " + fnName + ", types are "
-            + anTypeToColoredStr(fnTy) + " bound to " + anTypeToColoredStr(boundTy));
+
+    TypeError err{"Error in for loop monomorphisation of " + fnName + ", types are "
+            + anTypeToColoredStr(fnTy) + " bound to " + anTypeToColoredStr(boundTy), loc};
+
+    auto subs = unifyOne(fnTy, boundTy, err);
 
     c->compCtxt->insertMonomorphisationMappings(subs);
 
@@ -1661,8 +1665,10 @@ void CompilingVisitor::visit(BinOpNode *n){
         if(!fnVal.val){
             auto fnTy = try_cast<AnFunctionType>(n->decl->tval.type);
             auto boundTy = AnFunctionType::get(fnTy->retTy, {lhs.type, rhs.type}, fnTy->typeClassConstraints);
-            auto subs = unifyOne(fnTy, boundTy, n->loc, "Error in operator monomorphisation with " +
-                    anTypeToColoredStr(fnTy) + " bound to " + anTypeToColoredStr(boundTy));
+
+            TypeError err{"Error in operator monomorphisation with " + anTypeToColoredStr(fnTy)
+                + " bound to " + anTypeToColoredStr(boundTy), n->loc};
+            auto subs = unifyOne(fnTy, boundTy, err);
 
             c->compCtxt->insertMonomorphisationMappings(subs);
 

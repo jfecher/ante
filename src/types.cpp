@@ -648,7 +648,6 @@ string anTypeToStr(const AnType *t){
     }
 }
 
-
 /*
  *  Returns a string representing the full type of ty.  Since it is converting
  *  from a llvm::Type, this will never return an unsigned integer type.

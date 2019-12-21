@@ -7,20 +7,24 @@ namespace ante {
     // Helper type to store whether a split happened and store each split part
     struct Split {
         bool split_occurred;
-        lazy_str a, b, c, d, e;
+        lazy_str a;
+        lazy_printer b;
+        lazy_str c;
+        lazy_printer d;
+        lazy_str e;
 
-        Split(lazy_str const& a, lazy_str const& b_, lazy_str const& c,
-                lazy_str const& d, lazy_str const& e)
-            : split_occurred{!b_.s.empty()}, a{a}, b{b_}, c{c}, d{d}, e{e}{}
+        Split(lazy_str const& a, lazy_printer const& b_, lazy_str const& c,
+                lazy_printer const& d, lazy_str const& e)
+            : split_occurred{!b_.strs.empty()}, a{a}, b{b_}, c{c}, d{d}, e{e}{}
     };
 
-    Split replace(lazy_str const& str, lazy_str const& replacement1, lazy_str const& replacement2){
+    Split replace(lazy_str const& str, lazy_printer const& replacement1, lazy_printer const& replacement2){
         size_t i = str.s.find("$1");
         size_t j = str.s.find("$2");
         size_t npos = std::string::npos;
 
         if(i == npos && j == npos){
-            return {str, "", "", "", ""};
+            return {str, {}, "", {}, ""};
         }else if(i != npos && j == npos){
             std::string prefix = str.s.substr(0, i);
             std::string suffix = str.s.substr(i+2);
@@ -145,6 +149,81 @@ namespace ante {
         return sanitize(t, map, cur);
     }
 
+    std::pair<lazy_printer, lazy_printer>
+    anTypesToErrorStrs(const AnType *t1, const AnType *t2){
+        return {anTypeToColoredStr(t1), anTypeToColoredStr(t2)};
+        /*
+        if(!t) return "(null)";
+
+        bool exists = path.exists;
+        lazy_printer s;
+        auto color = path.here() ? AN_ERR_COLOR : AN_TYPE_COLOR;
+
+        if(t->isModifierType()){
+            if(auto *mod = dynamic_cast<const BasicModifier*>(t)){
+                return Lexer::getTokStr(mod->mod) + ' ' + anTypeToErrorStr(mod->extTy, path);
+
+            }else if(auto *cdmod = dynamic_cast<const CompilerDirectiveModifier*>(t)){
+                //TODO: modify printingvisitor to print to streams
+                // PrintingVisitor::print(cdmod->directive.get());
+                return anTypeToErrorStr(cdmod->extTy, path);
+            }else{
+                return "(unknown modifier type)";
+            }
+        }else if(auto *dt = try_cast<AnDataType>(t)){
+            s.strs.emplace_back(dt->name, color);
+
+            size_t i = 0;
+            for(auto &a : dt->typeArgs){
+                if(shouldWrapInParenthesis(a)){
+                    s += lazy_str(" (", color) + anTypeToErrorStr(a, path.nextAt(exists, i)) + lazy_str(")", color);
+                }else{
+                    s += lazy_str(" ", color) + anTypeToErrorStr(a, path.nextAt(exists, i));
+                }
+                i++;
+            }
+            return s;
+        }else if(auto *tvt = try_cast<AnTypeVarType>(t)){
+            return s + lazy_str(tvt->name, color);
+        }else if(auto *f = try_cast<AnFunctionType>(t)){
+            size_t i = 0;
+            for(auto &param : f->paramTys){
+                auto pstr = anTypeToErrorStr(param, path.nextAt(exists, i));
+                s += (shouldWrapInParenthesis(param) ? '(' + pstr + ')' : pstr) + ' ';
+                i++;
+            }
+
+            lazy_printer retTy = anTypeToErrorStr(f->retTy, path.nextAt(exists, i));
+
+            string tcConstraints = f->typeClassConstraints.empty() ? ""
+                : " given " + commaSeparated(f->typeClassConstraints);
+
+            return s + lazy_str("-> ", color) + retTy + lazy_str(tcConstraints, color);
+        }else if(auto *tup = try_cast<AnTupleType>(t)){
+            s += lazy_str("(", color);
+            size_t i = 0;
+            for(const auto &ext : tup->fields){
+                s += anTypeToErrorStr(ext, path.nextAt(exists, i));
+
+                if(&ext != &tup->fields.back()){
+                    s += lazy_str(", ", color);
+                }else if(tup->fields.size() == 1){
+                    s += lazy_str(",", color);
+                }
+                i++;
+            }
+            return s + lazy_str(")");
+        }else if(auto *arr = try_cast<AnArrayType>(t)){
+            return lazy_str("[" + to_string(arr->len) + " ", color)
+                + anTypeToErrorStr(arr->extTy, path.nextAt(exists, 0)) + lazy_str("]", color);
+        }else if(auto *ptr = try_cast<AnPtrType>(t)){
+            return lazy_str("ref ", color) + anTypeToErrorStr(ptr->extTy, path.nextAt(exists, 0));
+        }else{
+            return lazy_str(typeTagToStr(t->typeTag), color);
+        }
+        */
+    }
+
     /**
      * Replace $1 and $2 in the lazy_printer with the relevant types from
      * the error. This will also format the types to make the typevars
@@ -152,20 +231,21 @@ namespace ante {
      */
     lazy_printer TypeError::decode(const AnType *a, const AnType *b) const {
         lazy_printer ret;
-        lazy_str astr = anTypeToColoredStr(sanitize((AnType*)a));
-        lazy_str bstr = anTypeToColoredStr(sanitize((AnType*)b));
+
+        auto strs = anTypesToErrorStrs(sanitize((AnType*)a), sanitize((AnType*)b));
+
         for(auto &s : this->encoded_msg.strs){
-            Split split = replace(s, astr, bstr);
+            Split split = replace(s, strs.first, strs.second);
             if(split.split_occurred){
-                ret.strs.push_back(split.a);
-                ret.strs.push_back(split.b);
-                ret.strs.push_back(split.c);
-                ret.strs.push_back(split.d);
-                ret.strs.push_back(split.e);
+                ret += split.a + split.b + split.c + split.d + split.e;
             }else{
-                ret.strs.push_back(split.a);
+                ret += split.a;
             }
         }
         return ret;
+    }
+
+    void TypeError::show(const AnType *a, const AnType *b) const {
+        ante::showError(decode(a, b), loc);
     }
 }

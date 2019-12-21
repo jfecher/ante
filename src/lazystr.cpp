@@ -53,6 +53,13 @@ namespace ante {
         return ret;
     }
 
+    lazy_printer& operator+=(lazy_printer &l, lazy_printer const& r) {
+        for(auto &str : r.strs){
+            l.strs.push_back(str);
+        }
+        return l;
+    }
+
     lazy_str::lazy_str(string const& str) : s(str), fmt(AN_CONSOLE_RESET) {}
 
     lazy_str::lazy_str(string const& str, AN_COLOR_TYPE fg) : s(str), fmt(fg) {}
@@ -75,6 +82,10 @@ namespace ante {
 
     lazy_printer::lazy_printer(char c) {
         strs.emplace_back(c);
+    }
+
+    lazy_printer::lazy_printer(lazy_printer const& r) {
+        strs = r.strs;
     }
 
 

@@ -371,9 +371,10 @@ void CompilingVisitor::visit(ForNode *n){
     if(!uwrap) error("Range expression of type " + anTypeToColoredStr(rangev.type) + " does not implement " +
             lazy_str("Iterable", AN_TYPE_COLOR) + ", which it needs to be used in a for loop", n->range->loc);
 
-    auto subs = unifyOne(n->pattern->getType(), uwrap.type, n->pattern->loc,
-            "A for-loop's binding pattern should match the return type of the iterator's unwrap function, but found " +
-            anTypeToColoredStr(n->pattern->getType()) + " and " + anTypeToColoredStr(uwrap.type) + " respectively");
+    TypeError err{"A for-loop's binding pattern should match the return type of the iterator's unwrap function, but found " +
+            anTypeToColoredStr(n->pattern->getType()) + " and " + anTypeToColoredStr(uwrap.type) + " respectively", n->pattern->loc};
+
+    auto subs = unifyOne(n->pattern->getType(), uwrap.type, err);
     c->compCtxt->insertMonomorphisationMappings(subs);
 
     auto vn = dynamic_cast<VarNode*>(n->pattern.get());
