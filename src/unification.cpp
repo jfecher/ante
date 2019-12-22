@@ -113,38 +113,44 @@ namespace ante {
 
     template<class T>
     std::vector<T*> substituteIntoAll(AnType *u, AnType *subType,
-            std::vector<T*> const& vec){
+            std::vector<T*> const& vec, int recursionLimit){
 
         return ante::applyToAll(vec, [&](T *elem){
-            return (T*)substitute(u, subType, elem);
+            return (T*)substitute(u, subType, elem, recursionLimit - 1);
         });
     }
 
-    TraitImpl* substitute(AnType *u, AnType* subType, TraitImpl *impl){
-        return new TraitImpl(impl->name, substituteIntoAll(u, subType, impl->typeArgs));
+    TraitImpl* substitute(AnType *u, AnType* subType, TraitImpl *impl, int recursionLimit){
+        return new TraitImpl(impl->name, substituteIntoAll(u, subType, impl->typeArgs, recursionLimit - 1));
     }
 
-    AnType* substitute(AnType *u, AnType* subType, AnType *t){
+    AnType* substitute(AnType *u, AnType* subType, AnType *t, int recursionLimit){
         if(!t->isGeneric)
             return t;
 
+        if(recursionLimit < 0){
+            std::cerr << "u = " << anTypeToColoredStr(u)<< ", subType = " << anTypeToColoredStr(subType)
+                      << ", t = " << anTypeToColoredStr(t) << '\n';
+            ASSERT_UNREACHABLE("internal recursion limit (10,000) reached in ante::substitute");
+        }
+
         if(t->isModifierType()){
             auto modTy = static_cast<AnModifier*>(t);
-            return (AnType*)modTy->addModifiersTo(substitute(u, subType, (AnType*)modTy->extTy));
+            return (AnType*)modTy->addModifiersTo(substitute(u, subType, (AnType*)modTy->extTy, recursionLimit - 1));
         }
 
         if(auto ptr = try_cast<AnPtrType>(t)){
-            return AnPtrType::get(substitute(u, subType, ptr->extTy));
+            return AnPtrType::get(substitute(u, subType, ptr->extTy, recursionLimit - 1));
 
         }else if(auto arr = try_cast<AnArrayType>(t)){
-            return AnArrayType::get(substitute(u, subType, arr->extTy), arr->len);
+            return AnArrayType::get(substitute(u, subType, arr->extTy, recursionLimit - 1), arr->len);
 
         }else if(auto tv = try_cast<AnTypeVarType>(t)){
             return tv == subType ? u : t;
 
         }else if(auto dt = try_cast<AnProductType>(t)){
-            auto exts = substituteIntoAll(u, subType, dt->fields);;
-            auto generics = substituteIntoAll(u, subType, dt->typeArgs);;
+            auto exts = substituteIntoAll(u, subType, dt->fields, recursionLimit - 1);
+            auto generics = substituteIntoAll(u, subType, dt->typeArgs, recursionLimit - 1);
 
             if(exts == dt->fields && generics == dt->typeArgs)
                 return t;
@@ -152,8 +158,8 @@ namespace ante {
                 return AnProductType::createVariant(dt, exts, generics);
 
         }else if(auto st = try_cast<AnSumType>(t)){
-            auto exts = substituteIntoAll(u, subType, st->tags);;
-            auto generics = substituteIntoAll(u, subType, st->typeArgs);;
+            auto exts = substituteIntoAll(u, subType, st->tags, recursionLimit - 1);
+            auto generics = substituteIntoAll(u, subType, st->typeArgs, recursionLimit - 1);
 
             if(exts == st->tags && generics == st->typeArgs){
                 return st;
@@ -164,13 +170,13 @@ namespace ante {
             }
 
         }else if(auto fn = try_cast<AnFunctionType>(t)){
-            auto exts = substituteIntoAll(u, subType, fn->paramTys);;
-            auto rett = substitute(u, subType, fn->retTy);
-            auto tcc  = substituteIntoAll(u, subType, fn->typeClassConstraints);
+            auto exts = substituteIntoAll(u, subType, fn->paramTys, recursionLimit - 1);
+            auto rett = substitute(u, subType, fn->retTy, recursionLimit - 1);
+            auto tcc  = substituteIntoAll(u, subType, fn->typeClassConstraints, recursionLimit - 1);
             return AnFunctionType::get(rett, exts, tcc, t->typeTag == TT_MetaFunction);
 
         }else if(auto tup = try_cast<AnTupleType>(t)){
-            auto exts = substituteIntoAll(u, subType, tup->fields);;
+            auto exts = substituteIntoAll(u, subType, tup->fields, recursionLimit - 1);
             return AnTupleType::getAnonRecord(exts, tup->fieldNames);
 
         }else{
