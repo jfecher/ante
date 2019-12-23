@@ -395,7 +395,7 @@ void CompilingVisitor::visit(ForNode *n){
     try{
         n->child->accept(*this);
     }catch(CtError e){
-        c->compCtxt->breakLabels->pop_back();;
+        c->compCtxt->breakLabels->pop_back();
         c->compCtxt->continueLabels->pop_back();
         throw e;
     }

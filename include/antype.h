@@ -372,7 +372,7 @@ namespace ante {
         bool isRhoVar() const noexcept {
             size_t len = name.size();
             // Using string::find would be more terse but would needlessly check the whole string
-            return len > 3 && name[len-3] == '.' && name[len-2] == '.' && name[len-1] == '.';;
+            return len > 3 && name[len-3] == '.' && name[len-2] == '.' && name[len-1] == '.';
         }
 
         static bool istype(const AnType *t){
