@@ -446,6 +446,11 @@ namespace ante {
             searchForField(n);
         }else if(n->op == Tok_As){
             // intentionally empty
+        }else if(n->op == Tok_Append){
+            addConstraint(n->lval->getType(), n->rval->getType(), n->loc,
+                    "Operand types of '" + Lexer::getTokStr(n->op) + "' should match, but are $1 and $2 respectively");
+            addConstraint(n->getType(), n->lval->getType(), n->loc,
+                    "Return type of " + Lexer::getTokStr(n->op) + " should always match the first argument's type but here is $1");
         }else{
             ante::error("Internal compiler error, unrecognized op " + string(1, n->op) + " (" + to_string(n->op) + ")", n->loc);
         }
