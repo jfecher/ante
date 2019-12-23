@@ -55,13 +55,22 @@ if (NOT LLVM_FOUND)
     endif()
 endif()
 
-
-# Add the parser generation step
-find_package(BISON)
+# Generate parser.cpp and headers if syntax.y changed
 set(AN_PARSER_SRC ${CMAKE_SOURCE_DIR}/src/parser.cpp)
 set(AN_YYPARSER_H ${CMAKE_SOURCE_DIR}/include/yyparser.h)
 set(AN_SYNTAX_Y ${CMAKE_SOURCE_DIR}/src/syntax.y)
-bison_target(parser ${AN_SYNTAX_Y} ${AN_PARSER_SRC} COMPILE_FLAGS "-Lc++ -o${AN_PARSER_SRC} --defines=${AN_YYPARSER_H}")
+add_custom_command(OUTPUT ${AN_PARSER_SRC}
+    COMMAND bison ${AN_SYNTAX_Y} -Lc++ -o${AN_PARSER_SRC} --defines=${AN_YYPARSER_H}
+    DEPENDS ${AN_SYNTAX_Y}
+)
+
+add_custom_target(anteparser ALL
+    DEPENDS ${AN_PARSER_SRC}
+)
+
+# The (old) parser generation step. Uses existing bison package but rebuilds parser every build
+# find_package(BISON)
+# bison_target(parser ${AN_SYNTAX_Y} ${AN_PARSER_SRC} COMPILE_FLAGS "-Lc++ -o${AN_PARSER_SRC} --defines=${AN_YYPARSER_H}")
 
 include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
@@ -131,6 +140,8 @@ add_library(antecommon STATIC
         src/types.cpp
         src/unification.cpp
         src/util.cpp)
+
+add_dependencies(antecommon anteparser)
 
 target_link_libraries(antecommon ${llvm_libs})
 
