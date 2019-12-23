@@ -112,9 +112,8 @@ namespace ante {
                         "Cannot cast $1 to $2 when trying to cast to " + variant->name);
             }
         }else{
-            TraitDecl *decl = module->lookupTraitDecl("To");
-            TraitImpl *impl = new TraitImpl(decl, {n->typeExpr->getType(), n->rval->getType()});
-            addTypeClassConstraint(impl, n->loc);
+            showError(anTypeToColoredStr(n->typeExpr->getType()) + " can't be constructed (with this syntax) because it is not a record", n->typeExpr->loc);
+            error("You can use the 'cast' function for casting one type to another", n->typeExpr->loc, ErrorType::Note);
         }
     }
 
