@@ -119,23 +119,23 @@ namespace ante {
             }
 
         }else if(auto dt = try_cast<AnProductType>(t)){
-            auto exts = sanitizeAll(dt->fields, map, curName);;
-            auto generics = sanitizeAll(dt->typeArgs, map, curName);;
+            auto exts = sanitizeAll(dt->fields, map, curName);
+            auto generics = sanitizeAll(dt->typeArgs, map, curName);
             return AnProductType::createVariant(dt, exts, generics);
 
         }else if(auto st = try_cast<AnSumType>(t)){
-            auto exts = sanitizeAll(st->tags, map, curName);;
-            auto generics = sanitizeAll(st->typeArgs, map, curName);;
+            auto exts = sanitizeAll(st->tags, map, curName);
+            auto generics = sanitizeAll(st->typeArgs, map, curName);
             return AnSumType::createVariant(st, exts, generics);
 
         }else if(auto fn = try_cast<AnFunctionType>(t)){
-            auto exts = sanitizeAll(fn->paramTys, map, curName);;
+            auto exts = sanitizeAll(fn->paramTys, map, curName);
             auto rett = sanitize(fn->retTy, map, curName);
             auto tcc  = sanitizeAll(fn->typeClassConstraints, map, curName);
             return AnFunctionType::get(rett, exts, tcc, t->typeTag == TT_MetaFunction);
 
         }else if(auto tup = try_cast<AnTupleType>(t)){
-            auto exts = sanitizeAll(tup->fields, map, curName);;
+            auto exts = sanitizeAll(tup->fields, map, curName);
             return AnTupleType::getAnonRecord(exts, tup->fieldNames);
 
         }else{

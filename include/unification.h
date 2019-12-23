@@ -51,7 +51,7 @@ namespace ante {
 
     /** Substitute all instances of a given type subType in t with u.
      * Returns a new substituted type or t if subType was not contained within */
-    AnType* substitute(AnType *u, AnType *subType, AnType *t);
+    AnType* substitute(AnType *u, AnType *subType, AnType *t, int recursionLimit = 10000);
 
     Substitutions unify(UnificationList const& list);
     Substitutions unifyOne(AnType *t1, AnType *t2, TypeError const& errMsg);
