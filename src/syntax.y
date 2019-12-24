@@ -585,6 +585,7 @@ expr_no_decl: expr_no_decl '+' maybe_newline expr_no_decl                      {
             | expr_no_decl '<' maybe_newline expr_no_decl                      {$$ = mkBinOpNode(@$, '<', $1, $4);}
             | expr_no_decl '>' maybe_newline expr_no_decl                      {$$ = mkBinOpNode(@$, '>', $1, $4);}
             | expr_no_decl ';' maybe_newline expr_no_decl                      {$$ = mkSeqNode(@$, $1, $4);}
+            | expr_no_decl ':' maybe_newline expr_no_decl                      {$$ = mkBinOpNode(@$, ':', $1, $4);}
             | expr_no_decl '#' maybe_newline expr_no_decl                      {$$ = mkBinOpNode(@$, '#', $1, $4);}
             | expr_no_decl EqEq maybe_newline expr_no_decl                     {$$ = mkBinOpNode(@$, Tok_EqEq, $1, $4);}
             | expr_no_decl Is maybe_newline expr_no_decl                       {$$ = mkBinOpNode(@$, Tok_Is, $1, $4);}
@@ -653,6 +654,7 @@ expr: expr '+' maybe_newline expr                               {$$ = mkBinOpNod
     | expr '<' maybe_newline expr                               {$$ = mkBinOpNode(@$, '<', $1, $4);}
     | expr '>' maybe_newline expr                               {$$ = mkBinOpNode(@$, '>', $1, $4);}
     | expr ';' maybe_newline expr                               {$$ = mkSeqNode(@$, $1, $4);}
+    | expr ':' maybe_newline expr                               {$$ = mkBinOpNode(@$, ':', $1, $4);}
     | expr '#' maybe_newline expr                               {$$ = mkBinOpNode(@$, '#', $1, $4);}
     | expr EqEq maybe_newline expr                              {$$ = mkBinOpNode(@$, Tok_EqEq, $1, $4);}
     | expr Is maybe_newline expr                                {$$ = mkBinOpNode(@$, Tok_Is, $1, $4);}
