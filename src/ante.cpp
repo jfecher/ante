@@ -8,6 +8,7 @@
 #include "module.h"
 #include "typeinference.h"
 #include "nameresolution.h"
+#include "util.h"
 
 using namespace std;
 using namespace std::chrono;
@@ -87,7 +88,8 @@ int main(int argc, const char **argv){
     //delete args;
 
     auto end = high_resolution_clock::now();
-    cout << "Total: " << duration_cast<milliseconds>(end - start).count() << "ms\n";
+    if(showTimingInformation())
+        cout << "Total: " << duration_cast<milliseconds>(end - start).count() << "ms\n";
     return 0;
 }
 #endif
