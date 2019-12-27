@@ -64,16 +64,23 @@ trait Empty 't
 
 impl Eq (Maybe 'e) given Eq 'e
     (==) l r =
-        match l with
-        | Some lv ->
-            match r with
-            | Some rv -> lv == rv
-            | None -> false
-        | None ->
-            match r with
-            | Some rv -> false
-            | None -> true
+        match (l, r) with
+        | (Some lv, Some rv) -> lv == rv
+        | (None, None) -> true
+        | _ -> false
 
+trait Cast 'a /*to*/ 'b
+    cast 'a -> 'b
+
+// (builtin operator)
+// (as) (a: 'a) (ty: Type 'b) -> 'b
+//      = cast a : 'b
+
+trait TryCast 'a 'b
+    try_cast 'a -> Maybe 'b
+
+impl TryCast 'a 'b given Cast 'a 'b
+    try_cast a = Some (cast a)
 
 impl Cast (Maybe 'm) Str given Cast 'm Str
     cast maybe =
@@ -172,16 +179,6 @@ print x =
     puts "".cStr
 
 
-trait Cast 'a /*to*/ 'b
-    cast 'a -> 'b
-
-trait TryCast 'a 'b
-    try_cast 'a -> Maybe 'b
-
-impl TryCast 'a 'b given Cast 'a 'b
-    try_cast a = Some (cast a)
-
-
 //numerical print functions
 impl Print i8
     printne x = printf ("%hhd".cStr) x
@@ -243,6 +240,10 @@ impl Print Str
     printne s = printne (s.cStr)
 
 
+impl Print 't given Cast 't Str
+    printne t = printne (cast t : Str)
+
+
 impl Cast Str (ref c8)
     cast s = s.cStr
 
@@ -273,15 +274,15 @@ impl Cast i64 Str
 
         while x != 0i64 do
             len += 1usz
-            buf#(alloc_size - len) := '0' + c8(x % 10i64)
+            buf#(alloc_size - len) := '0' + cast (x % 10i64)
             x /= 10i64
 
         if isNeg then
             len += 1usz
             buf#(alloc_size - len) := '-'
 
-        offset = usz buf + (alloc_size - len)
-        Str(ref c8 offset, len)
+        offset = cast buf + (alloc_size - len)
+        Str(cast offset, len)
 
 
 impl Cast u64 Str
@@ -295,37 +296,37 @@ impl Cast u64 Str
         x = mut i
         while x != 0u64 do
             len += 1usz
-            buf#(alloc_size - len) := '0' + c8(x % 10u64)
+            buf#(alloc_size - len) := '0' + cast (x % 10u64)
             x /= 10u64
 
-        offset = usz buf + (alloc_size - len)
-        Str(ref c8 offset, len)
+        offset = cast buf + (alloc_size - len)
+        Str(cast offset, len)
 
 
 // convert all other numeric types to strings by widening first
 impl Cast i8 Str
-    cast x = i64 x as Str
+    cast x = cast (cast x : i64)
 
 impl Cast i16 Str
-    cast x = i64 x as Str
+    cast x = cast (cast x : i64)
 
 impl Cast i32 Str
-    cast x = i64 x as Str
+    cast x = cast (cast x : i64)
 
 impl Cast isz Str
-    cast x = i64 x as Str
+    cast x = cast (cast x : i64)
 
 impl Cast u8 Str
-    cast x = u64 x as Str
+    cast x = cast (cast x : u64)
 
 impl Cast u16 Str
-    cast x = u64 x as Str
+    cast x = cast (cast x : u64)
 
 impl Cast u32 Str
-    cast x = u64 x as Str
+    cast x = cast (cast x : u64)
 
 impl Cast usz Str
-    cast x = u64 x as Str
+    cast x = cast (cast x : u64)
 
 
 module U64
@@ -337,7 +338,7 @@ module U64
             c = s.cStr#i
             if c >= '0' and c <= '9' then
                 sum *= 10u64
-                sum += u64(c - '0')
+                sum += cast (c - '0')
                 i += 1usz
                 None
             else
@@ -357,7 +358,7 @@ module I64
             c = s.cStr#i
             if c >= '0' and c <= '9' then
                 sum *= 10i64
-                sum += i64(c - '0')
+                sum += cast (c - '0')
                 i += 1usz
                 None
             else
@@ -415,7 +416,7 @@ impl Iterator LazyRange
 //Iterating through an InFile iterates through each line
 impl Iterator InFile
     type IteratorElem = s:Str
-    has_next f = not feof f
+    has_next f = not feofb f
     cur_elem f = InFile.next_line f
     advance f = f
 
@@ -429,14 +430,14 @@ module Str
         puts s.cStr
 
 impl Cast (ref c8) Str
-    cast cStr = Str(cStr, usz strlen cStr)
+    cast cStr = Str(cStr, cast (strlen cStr))
 
 impl Eq Str
     (==) l r =
         if l.len != r.len then
             return false
 
-        for i in 0 .. i32 l.len do
+        for i in 0 .. cast l.len do
             if l.cStr#i != r.cStr#i then
                 return false
         true
@@ -455,7 +456,7 @@ impl Append Str
 
         memcpy buf (s1.cStr) s1.len
 
-        buf_offset = (usz buf + s1.len) as ref unit
+        buf_offset = cast (cast buf + s1.len)
         memcpy buf_offset (s2.cStr) (s2.len+1usz) //copy terminating null too
 
         Str(buf, len)
@@ -479,22 +480,22 @@ impl Cast Str OutFile
 
 module InFile
     next_line f:InFile -> Str =
-        if feof f then return ""
-        eof = c8 255
+        if feofb f then return ""
+        eof = cast 255
 
         len = mut 0usz
         cap = mut 64usz
         cstr = mut malloc cap
 
         while
-            c = fgetc f
+            c = fgetc8 f
 
             if c == eof then break
 
             //Flag feof if eof occurs after terminating newline
             if c == '\n' then
-                peek = fgetc f
-                if peek != eof then ungetc peek f
+                peek = fgetc8 f
+                if peek != eof then ungetc (cast peek) f
                 break
 
             if len+1usz >= cap then
@@ -513,7 +514,7 @@ module InFile
 //print a message then return user input
 input msg -> Str =
     len = mut 0usz
-    cstr = mut ref c8 0
+    cstr = mut cast 0
 
     printne msg
 

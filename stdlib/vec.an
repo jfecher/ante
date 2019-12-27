@@ -4,14 +4,14 @@ type Vec 't =
     cap: usz
 
 impl Empty (Vec 'e)
-    empty vec = Vec(ref 'e 0, 0usz, 0usz)
+    empty vec = Vec(cast 0, 0usz, 0usz)
 
 of r:LazyRange =
     fill (empty Vec) r
 
 is_empty v = v.len == 0usz
 
-indices v:Vec = LazyRange(0, i32 v.len, 1)
+indices v:Vec = LazyRange(0, cast v.len, 1)
 
 len v = v.len
 
@@ -26,10 +26,10 @@ fill (v:mut Vec 't) r:LazyRange -> Vec 't =
 //reserve numElements in Vec v, elements will be uninitialized
 reserve (v:mut Vec 't) numElems:usz -> unit =
     if v.len + numElems > v.cap then
-        size = (v.cap + numElems) * Ante.sizeof 't
+        size = (v.cap + numElems) * Ante.sizeof (@v._data)
         ptr = realloc (v._data) size
 
-        if ptr is ref 't 0 then
+        if ptr is cast 0 then
             printf ("Error in reserving %u elements for Vec\n".cStr) numElems
             return ()
 
@@ -176,7 +176,7 @@ impl Eq (Vec 't)
         if l.len != r.len then
             return false
 
-        for i in 0 .. i32 l.len do
+        for i in 0 .. cast l.len do
             if l._data#i != r._data#i then
                 return false
         true
