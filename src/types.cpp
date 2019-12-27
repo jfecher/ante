@@ -111,8 +111,11 @@ Result<size_t, string> AnType::getSizeInBits(Compiler *c, string *incompleteType
         AnType *lookup = findBinding(c->compCtxt->monomorphisationMappings, tvt);
         if(lookup)
             return lookup->getSizeInBits(c);
-        else
-            return "Unknown typevar " + tvt->name;
+        else{
+            // typevars that survive monomorphisation are values that are never used,
+            // so we treat them as () here
+            return 0; //"Unknown typevar " + tvt->name;
+        }
     }
 
     return total;
@@ -362,6 +365,8 @@ Type* Compiler::anTypeToLlvmType(const AnType *ty, int recursionLimit){
             if(binding){
                 return anTypeToLlvmType(binding, --recursionLimit);
              }else{
+                 // typevars that survive monomorphisation are values that are never used,
+                 // so we treat them as () here
                  auto unit = AnType::getUnit();
                  compCtxt->insertMonomorphisationMappings({{(AnType*)ty, unit}});
                  return anTypeToLlvmType(unit, --recursionLimit);
