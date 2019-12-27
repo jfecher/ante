@@ -152,7 +152,7 @@ namespace ante {
 %nonassoc HIGH
 %nonassoc '{'
 
-//%expect 0
+%expect 0
 %start begin
 %%
 
@@ -200,6 +200,9 @@ ident: Ident {$$ = (Node*)lextxt;}
 usertype: UserType {$$ = (Node*)lextxt;}
         ;
 
+usertype_node: usertype {$$ = mkTypeNode(@$, TT_Data, (char*)$1);}
+             ;
+
 typevar: TypeVar {$$ = (Node*)lextxt;}
        ;
 
@@ -231,10 +234,11 @@ lit_type: I8                  {$$ = mkTypeNode(@$, TT_I8,  (char*)"");}
         | C8                  {$$ = mkTypeNode(@$, TT_C8,  (char*)"");}
         | Bool                {$$ = mkTypeNode(@$, TT_Bool, (char*)"");}
         | Unit                {$$ = mkTypeNode(@$, TT_Unit, (char*)"");}
-        | VarArgs             {$$ = mkTypeNode(@$, TT_TypeVar, nextVarArgsTVName());}
-        | usertype  %prec LOW {$$ = mkTypeNode(@$, TT_Data, (char*)$1);}
+        | usertype_node       {$$ = $1;}
         | typevar             {$$ = mkTypeNode(@$, TT_TypeVar, (char*)$1);}
         ;
+
+varargs: VarArgs    {$$ = mkTypeNode(@$, TT_TypeVar, nextVarArgsTVName());}
 
 pointer_type: Ref type     {$$ = mkTypeNode(@$, TT_Ptr, (char*)"", $2);}
             ;
@@ -242,11 +246,10 @@ pointer_type: Ref type     {$$ = mkTypeNode(@$, TT_Ptr, (char*)"", $2);}
 fn_type: small_type RArrow type    {setNext($3, $1); $$ = mkTypeNode(@$, TT_Function, (char*)"", $3);}
        ;
 
-/* val is used here instead of intlit due to parse conflicts, but only intlit is allowed */
-arr_type: '[' val small_type ']' {$3->next.reset($2);
-                                 $$ = mkTypeNode(@$, TT_Array, (char*)"", $3);}
-        | '[' small_type ']'     {$2->next.reset(mkIntLitNode(@$, (char*)"0"));
-                                 $$ = mkTypeNode(@$, TT_Array, (char*)"", $2);}
+arr_type: '[' intlit small_type ']' {$3->next.reset($2);
+                                     $$ = mkTypeNode(@$, TT_Array, (char*)"", $3);}
+        | '[' small_type ']'        {$2->next.reset(mkIntLitNode(@$, (char*)"0"));
+                                     $$ = mkTypeNode(@$, TT_Array, (char*)"", $2);}
         ;
 
 tuple_type: '(' comma_delimited_types ')'      {$$ = mkTypeNode(@$, TT_Tuple, (char*)"", getRoot());}
@@ -416,9 +419,11 @@ tc_constraints: type  %prec LOW
               ;
 
 function_call: function_call val_no_decl    %prec LOW   {$$ = setNext($1, $2);}
+             | function_call varargs        %prec LOW   {$$ = setNext($1, $2);}
              | val_no_decl val_no_decl      %prec LOW   {setRoot($1); $$ = setNext($1, $2);}
+             | val_no_decl varargs          %prec LOW   {setRoot($1); $$ = setNext($1, $2);}
              ;
-             
+
 lambda_params: lambda_params var ':' small_type     {$$ = setNext($1, mkNamedValNode(@2, $2, $4));}
              | lambda_params '(' var ':' type ')'   {$$ = setNext($1, mkNamedValNode(@3, $3, $5));}
              | lambda_params small_type             {$$ = setNext($1, mkNamedValNode(@2, mkVarNode(@2, (char*)""), $2));}
@@ -489,8 +494,7 @@ continue: Continue expr  %prec Continue  {$$ = mkJumpNode(@$, Tok_Continue, $2);
         ;
 
 
-match: '|' expr RArrow expr_or_block              {$$ = mkMatchBranchNode(@$, $2, $4);}
-     | '|' usertype RArrow expr_or_block  %prec Match {$$ = mkMatchBranchNode(@$, mkTypeNode(@2, TT_Data, (char*)$2), $4);}
+match: '|' expr RArrow expr_or_block  {$$ = mkMatchBranchNode(@$, $2, $4);}
      ;
 
 
@@ -523,12 +527,12 @@ val_no_decl: '(' expr ')'            {$$ = $2;}
            | if_expr     %prec STMT  {$$ = $1;}
            | match_expr  %prec LOW   {$$ = $1;}
            | explicit_block          {$$ = $1;}
-           | small_type   %prec LOW
+           | usertype_node  %prec LOW  {$$ = $1;} // Union variant
            | fn_lambda
-           | val_no_decl '.' maybe_newline var          {$$ = mkBinOpNode(@$, '.', $1, $4);}
-           | val_no_decl '.' maybe_newline small_type   {$$ = mkBinOpNode(@$, '.', $1, $4);}
-           | val_no_decl '.' maybe_newline intlit       {$$ = mkBinOpNode(@$, '.', $1, $4);}
-           | val_no_decl ':' maybe_newline type         {$$ = mkBinOpNode(@$, ':', $1, $4);}
+           | val_no_decl '.' maybe_newline var            {$$ = mkBinOpNode(@$, '.', $1, $4);}
+           | val_no_decl '.' maybe_newline usertype_node  {$$ = mkBinOpNode(@$, '.', $1, $4);}
+           | val_no_decl '.' maybe_newline intlit         {$$ = mkBinOpNode(@$, '.', $1, $4);}
+           | val_no_decl ':' maybe_newline type           {$$ = mkBinOpNode(@$, ':', $1, $4);}
            ;
 
 expr_or_block: expr   %prec STMT
@@ -556,7 +560,7 @@ unary_op: '@' expr                              {$$ = mkUnOpNode(@$, '@', $2);}
         | '&' expr                              {$$ = mkUnOpNode(@$, '&', $2);}
         | New expr                              {$$ = mkUnOpNode(@$, Tok_New, $2);}
         | Not expr                              {$$ = mkUnOpNode(@$, Tok_Not, $2);}
-        | small_type expr            %prec TYPE {$$ = mkTypeCastNode(@$, $1, $2);}
+        | usertype_node expr         %prec TYPE {$$ = mkTypeCastNode(@$, $1, $2);}
         ;
 
 /* expr is used in expression blocks and can span multiple lines */
