@@ -669,7 +669,7 @@ namespace ante {
 
         }else if(TypeNode *tn = dynamic_cast<TypeNode*>(pattern)){
             auto sumType = try_cast<AnSumType>(tn->getType());
-            patChecker.overwrite(Pattern::fromSumType(sumType), tcn->loc);
+            patChecker.overwrite(Pattern::fromSumType(sumType), tn->loc);
             auto idx = sumType->getTagVal(tn->typeName);
             patChecker.getChild(idx).setMatched();
             addConstraint(tn->getType(), expectedType, pattern->loc,

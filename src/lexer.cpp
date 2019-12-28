@@ -220,7 +220,7 @@ Lexer::Lexer(string* file) :
         in = new ifstream(*file);
         fileName = file;
     }else{
-        in = (ifstream*) &cin;
+        in = &cin;
         fileName = new string("stdin");
     }
 
@@ -229,8 +229,7 @@ Lexer::Lexer(string* file) :
         exit(EXIT_FAILURE);
     }
 
-    incPos();
-    incPos();
+    incPos(2);
     row = col = 1;
     scopes->push(0);
 
@@ -260,16 +259,7 @@ Lexer::Lexer(string* fName, string& pFile,
 {
     fileName = fName;
     pseudoFile = (char*)pFile.c_str();
-
-    if(pFile.length() >= 1){
-        col += 2;
-        cur = *(pseudoFile++);
-        nxt = *(pseudoFile++);
-    }else if(pFile.length() == 1){
-        col++;
-        cur = *(pseudoFile++);
-    }
-
+    incPos(2);
     scopes->push(0);
 }
 
@@ -386,8 +376,7 @@ int Lexer::handleComment(yy::parser::location_type* loc){
             setTermFGColor(AN_CONSOLE_RESET);
         }
 
-        incPos();
-        incPos();
+        incPos(2);
     }else{ //single line comment
         if(printInput)
             setTermFGColor(AN_COMMENT_COLOR);
@@ -496,20 +485,17 @@ int Lexer::genNumLitTok(yy::parser::location_type* loc){
                 if(printInput)
                     fputs("16", stdout);
                 s += "16";
-                incPos();
-                incPos();
+                incPos(2);
             }else if(cur == '3' && nxt == '2'){
                 if(printInput)
                     fputs("32", stdout);
                 s += "32";
-                incPos();
-                incPos();
+                incPos(2);
             }else if(cur == '6' && nxt == '4'){
                 if(printInput)
                     fputs("64", stdout);
                 s += "64";
-                incPos();
-                incPos();
+                incPos(2);
             }
 
             if(IS_NUMERICAL(cur)){
@@ -533,26 +519,22 @@ int Lexer::genNumLitTok(yy::parser::location_type* loc){
                 if(printInput)
                     fputs("16", stdout);
                 s += "16";
-                incPos();
-                incPos();
+                incPos(2);
             }else if(cur == '3' && nxt == '2'){
                 if(printInput)
                     fputs("32", stdout);
                 s += "32";
-                incPos();
-                incPos();
+                incPos(2);
             }else if(cur == '6' && nxt == '4'){
                 if(printInput)
                     fputs("64", stdout);
                 s += "64";
-                incPos();
-                incPos();
+                incPos(2);
             }else if(cur == 's' && nxt == 'z'){
                 if(printInput)
                     fputs("sz", stdout);
                 s += "sz";
-                incPos();
-                incPos();
+                incPos(2);
             }
 
             if(IS_NUMERICAL(cur)){
@@ -799,12 +781,9 @@ int Lexer::genCharLitTok(yy::parser::location_type* loc){
 
     if(printInput){
         if(!hasEscapeSequence){
-            if(printInput){
-                cout << AN_STRING_COLOR << '\'' << s[0];
-            }
+            cout << AN_STRING_COLOR << '\'' << s[0];
         }
-        if(cur == '\'')
-            putchar('\'');
+        putchar(cur);
         cout << AN_CONSOLE_RESET;
     }
 
@@ -900,7 +879,7 @@ int Lexer::genOpTok(yy::parser::location_type* loc){
     char ret = cur;
     incPos();
 
-    if(printInput && ret)
+    if(printInput)
         putchar(ret);
     return ret;
 }

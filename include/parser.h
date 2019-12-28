@@ -397,9 +397,7 @@ namespace ante {
                 TypeNode *tcc, Node* b, bool va=false)
                 : ModifiableNode(loc), name(s), child(b), returnType(t), params(p),
                   typeClassConstraints(tcc), varargs(va), decl(0){}
-            ~FuncDeclNode(){
-                typeClassConstraints.release();
-            }
+            ~FuncDeclNode(){}
 
             virtual AnType* getType() const {
                 return decl->tval.type;

@@ -1507,7 +1507,7 @@ void CompilingVisitor::visit(SeqNode *n){
     for(auto &node : n->sequence){
         try{
             node->accept(*this);
-        }catch(CtError e){
+        }catch(CtError const& e){
             //Unless the final value throws, delete the error
             if(&node == &n->sequence.back()) throw e;
         }

@@ -430,7 +430,7 @@ namespace ante {
             ModNode *expr = new ModNode(loc, Tok_Ante, nullptr);
             if(flag == PE_OK){
                 RootNode *root = parser::getRootNode();
-                expr->expr.release();
+                auto leak = expr->expr.release();
                 expr->expr.reset(root);
 
                 TypedValue val = mergeAndCompile(c, root, expr);

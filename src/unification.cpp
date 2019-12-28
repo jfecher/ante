@@ -533,7 +533,7 @@ namespace ante {
                 try {
                     t1 = unifyOne(applySubstitutions(t2, eq.first),
                                   applySubstitutions(t2, eq.second), p.error);
-                }catch(TypeErrorContext e){
+                }catch(TypeErrorContext& e){
                     e.subs.insert(e.subs.end(), t2.begin(), t2.end());
                     if(!isTopLevel){
                         throw e;

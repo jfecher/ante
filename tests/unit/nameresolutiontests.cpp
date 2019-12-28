@@ -16,7 +16,8 @@ TEST_CASE("Sequence Resolution", "[nameResolution]"){
     auto var1Cpy = new VarNode(loc, "var1");
     auto three = new IntLitNode(loc, "3", TT_I32);
     auto van = new VarAssignNode(loc, var1, three, false);
-    van->modifiers.emplace_back(new ModNode(loc, Tok_Mut, nullptr));
+    auto modNode = new ModNode(loc, Tok_Mut, nullptr);
+    van->modifiers.emplace_back(modNode);
 
     declThenReference->sequence.emplace_back(van);
     declThenReference->sequence.emplace_back(var1Cpy);
@@ -61,9 +62,11 @@ TEST_CASE("Mutability Resolution", "[nameResolution]"){
 
     auto decl1 = new VarAssignNode(loc, var1a, one, true);
     auto decl2 = new VarAssignNode(loc, var2a, two, true);
+    auto modNode1 = new ModNode(loc, Tok_Mut, nullptr);
+    auto modNode2 = new ModNode(loc, Tok_Mut, nullptr);
 
-    decl1->modifiers.emplace_back(new ModNode(loc, Tok_Mut, nullptr));
-    decl2->modifiers.emplace_back(new ModNode(loc, Tok_Mut, nullptr));
+    decl1->modifiers.emplace_back(modNode1);
+    decl2->modifiers.emplace_back(modNode2);
 
     auto assign1 = new VarAssignNode(loc, var1c, three, true);
     auto assign2 = new VarAssignNode(loc, var2b, four, true);
@@ -117,8 +120,11 @@ TEST_CASE("Shadowing Resolution", "[nameResolution]"){
     auto decl1 = new VarAssignNode(loc, var1a, one, false);
     auto decl2 = new VarAssignNode(loc, var1b, two, false);
 
-    decl1->modifiers.emplace_back(new ModNode(loc, Tok_Let, nullptr));
-    decl2->modifiers.emplace_back(new ModNode(loc, Tok_Let, nullptr));
+    auto modNode1 = new ModNode(loc, Tok_Let, nullptr);
+    auto modNode2 = new ModNode(loc, Tok_Let, nullptr);
+
+    decl1->modifiers.emplace_back(modNode1);
+    decl2->modifiers.emplace_back(modNode2);
 
     innerSeq->sequence.emplace_back(decl2);
     innerSeq->sequence.emplace_back(var1c);
@@ -181,7 +187,8 @@ TEST_CASE("Function Resolution", "[nameResolution]"){
 
     auto p1c = new VarNode(loc, "param1");
     auto param1Decl = new VarAssignNode(loc, p1c, one, false);
-    param1Decl->modifiers.emplace_back(new ModNode(loc, Tok_Let, nullptr));
+    auto modNode = new ModNode(loc, Tok_Let, nullptr);
+    param1Decl->modifiers.emplace_back(modNode);
     auto p1d = new VarNode(loc, "param1");
 
     std::vector<std::unique_ptr<Node>> argvec;

@@ -41,7 +41,7 @@ namespace ante{
 
     private:
         /* the ifstream to take from */
-        std::ifstream *in;
+        std::istream *in;
 
         /* If this is set to true then the psuedoFile string should be parsed
          * as a string containing ante src code.  Used for Str interpolation */

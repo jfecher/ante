@@ -20,7 +20,7 @@ void skipToLine(istream& ifs, unsigned int row){
     unsigned int line = 1;
     if(line != row){
         while(true){
-            char c = ifs.get();
+            int c = ifs.get();
             if(c == '\n'){
                 line++;
                 if(line >= row){

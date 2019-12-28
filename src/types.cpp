@@ -68,7 +68,7 @@ Result<size_t, string> AnType::getSizeInBits(Compiler *c, string *incompleteType
     if(auto *dataTy = try_cast<AnProductType>(this)){
         if(incompleteType && dataTy->name == *incompleteType){
             cerr << "Incomplete type " << anTypeToColoredStr(this) << endl;
-            throw new IncompleteTypeError();
+            throw IncompleteTypeError();
         }
 
         for(auto *ext : dataTy->fields){
@@ -80,7 +80,7 @@ Result<size_t, string> AnType::getSizeInBits(Compiler *c, string *incompleteType
     }else if(auto *sumTy = try_cast<AnSumType>(this)){
         if(incompleteType && sumTy->name == *incompleteType){
             cerr << "Incomplete type " << anTypeToColoredStr(this) << endl;
-            throw new IncompleteTypeError();
+            throw IncompleteTypeError();
         }
 
         for(auto *ext : sumTy->tags){
@@ -246,7 +246,7 @@ Type* typeTagToLlvmType(TypeTag ty, LLVMContext &ctxt){
         case TT_Bool:   return Type::getInt1Ty(ctxt);
         case TT_Unit:   return Type::getVoidTy(ctxt); //return Type::getVoidTy(ctxt);
         case TT_TypeVar:
-            throw new TypeVarError();
+            throw TypeVarError();
         default:
             cerr << "typeTagToLlvmType: Unknown/Unsupported TypeTag " << ty << ", exiting.\n";
             exit(1);

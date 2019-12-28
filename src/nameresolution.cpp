@@ -964,11 +964,7 @@ namespace ante {
             auto *dataTy = try_cast<AnProductType>(tn);
 
             if(dataTy->name == rootTy->name){
-                if(dataTy->name == rootTy->name){
-                    error("Recursive types are disallowed, wrap the type in a pointer instead", rootTy->loc);
-                }
-
-                error("Type "+dataTy->name+" has not been declared", rootTy->loc);
+                error("Recursive types are disallowed, wrap the type in a pointer instead", rootTy->loc);
             }
 
             for(auto *t : dataTy->fields)
@@ -978,11 +974,7 @@ namespace ante {
             auto *dataTy = try_cast<AnSumType>(tn);
 
             if(dataTy->name == rootTy->name){
-                if(dataTy->name == rootTy->name){
-                    error("Recursive types are disallowed, wrap the type in a pointer instead", rootTy->loc);
-                }
-
-                error("Type "+dataTy->name+" has not been declared", rootTy->loc);
+                error("Recursive types are disallowed, wrap the type in a pointer instead", rootTy->loc);
             }
 
             for(auto *t : dataTy->tags)

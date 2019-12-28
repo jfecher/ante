@@ -75,12 +75,6 @@ namespace ante {
         //Stack of each called function
         std::vector<FuncDecl*> callStack;
 
-        //Method object type
-        AnType *obj;
-
-        //Original object type node for managing self params and location info
-        parser::TypeNode *objTn;
-
         //Map of typevar names to concrete types whenever a generic funcion is monomorphised
         Substitutions monomorphisationMappings;
 
@@ -90,7 +84,7 @@ namespace ante {
         std::unique_ptr<std::vector<llvm::BasicBlock*>> continueLabels;
         std::unique_ptr<std::vector<llvm::BasicBlock*>> breakLabels;
 
-        CompilerCtxt() : callStack(), obj(0), continueLabels(new std::vector<llvm::BasicBlock*>()), breakLabels(new std::vector<llvm::BasicBlock*>()){}
+        CompilerCtxt() : callStack(), continueLabels(new std::vector<llvm::BasicBlock*>()), breakLabels(new std::vector<llvm::BasicBlock*>()){}
 
         void insertMonomorphisationMappings(Substitutions const& subs){
             for(auto &sub : subs){

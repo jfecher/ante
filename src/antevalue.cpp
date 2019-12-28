@@ -449,6 +449,9 @@ namespace ante {
             //we're reallocating the data manually here for the tuple
             //so storeValue must be used instead of allocAndStore
             void *dataBegin = realloc(data, size + elemSize.getVal());
+            if(!dataBegin){
+                ASSERT_UNREACHABLE("Out of memory, cannot realloc");
+            }
             data = (char*)dataBegin + size;
 
             if(tv.type->hasModifier(Tok_Mut)){

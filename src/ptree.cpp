@@ -519,7 +519,10 @@ namespace ante {
 
         Node* mkMatchNode(LOC_TY loc, Node* expr, Node* branch){
             vector<unique_ptr<MatchBranchNode>> branches;
-            branch->next.release();
+            auto nextBranch = branch->next.release();
+            if(nextBranch){
+                ASSERT_UNREACHABLE("error in parse logic, match branch should not have a ->next pointer")
+            }
             branches.emplace_back((MatchBranchNode*)branch);
             return new MatchNode(loc, expr, branches);
         }

@@ -566,6 +566,7 @@ namespace ante {
                     }
                 }
 
+                // TODO: This will fail if type is a type alias to another data type with differing type args
                 ret = basety;
                 size_t tnpSize = tn->params.size();
                 size_t btaSize = basety->typeArgs.size();
@@ -746,7 +747,7 @@ namespace ante {
             return *l->retTy == *r->retTy && allEq(l->paramTys, r->paramTys);
         }
         /* Should only be reached with primitive types with modifiers, eg mut u64 == u64 */
-        return typeTag == other.typeTag;
+        return true;
     }
 
     bool allApproxEq(vector<AnType*> const& l, vector<AnType*> const& r){

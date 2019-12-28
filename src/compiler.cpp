@@ -297,7 +297,7 @@ void CompilingVisitor::visit(WhileNode *n){
         c->builder.SetInsertPoint(begin);
 
         n->child->accept(*this);
-    }catch(CtError e){
+    }catch(CtError const& e){
         c->compCtxt->breakLabels->pop_back();
         c->compCtxt->continueLabels->pop_back();
         throw e;
@@ -394,7 +394,7 @@ void CompilingVisitor::visit(ForNode *n){
     //compile the rest of the loop's body
     try{
         n->child->accept(*this);
-    }catch(CtError e){
+    }catch(CtError const& e){
         c->compCtxt->breakLabels->pop_back();
         c->compCtxt->continueLabels->pop_back();
         throw e;
@@ -1173,6 +1173,7 @@ string dirprefix(string &f){
 Compiler::Compiler(const char *_fileName, bool lib, shared_ptr<LLVMContext> llvmCtxt) :
         ctxt(llvmCtxt ? llvmCtxt : shared_ptr<LLVMContext>(new LLVMContext())),
         builder(*ctxt),
+        compUnit(nullptr),
         compCtxt(new CompilerCtxt()),
         ctCtxt(new CompilerCtCtxt()),
         compiled(false),
@@ -1223,6 +1224,7 @@ Compiler::Compiler(const char *_fileName, bool lib, shared_ptr<LLVMContext> llvm
 Compiler::Compiler(Compiler *c, Node *root, string modName, bool lib) :
         ctxt(c->ctxt),
         builder(*ctxt),
+        compUnit(nullptr),
         compCtxt(new CompilerCtxt()),
         ctCtxt(c->ctCtxt),
         compiled(false),

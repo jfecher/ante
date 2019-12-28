@@ -20,9 +20,6 @@ namespace ante {
     * instance for type checking.
     */
     struct FuncDecl : public Declaration {
-        /** object of this method, if available.  Currently unused */
-        AnType *obj;
-
         /** The type of this function */
         AnFunctionType *type;
 

@@ -9,7 +9,7 @@ namespace ante {
         return a > b ? a : b;
     }
 
-    /** Holds either the templated value or an error string */
+    /** Tagged union of T or E, used for operations that can fail, like sizeinbits */
     template<typename T, typename E>
     class Result {
     private:

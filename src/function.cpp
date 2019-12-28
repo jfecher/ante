@@ -125,11 +125,11 @@ vector<llvm::Argument*> buildArguments(FunctionType *ft){
  *  Handles the modifiers or compiler directives (eg. ![inline]) then
  *  compiles the function fdn with either compFn or compLetBindingFn.
  */
-TypedValue compFnWithModifiers(Compiler *c, FuncDecl *fd, ModNode *mod){
+TypedValue compFnWithModifiers(Compiler *c, FuncDecl *fd){
     //remove the preproc node at the front of the modifier list so that the call to
     //compFn does not call this function in an infinite loop
     auto *fdn = fd->getFDN();
-    fdn->modifiers.back().release();
+    auto mod = fdn->modifiers.back().release();
     fdn->modifiers.pop_back();
 
     TypedValue fn;
@@ -221,7 +221,7 @@ TypedValue compFnHelper(Compiler *c, FuncDecl *fd){
     auto *fdn = fd->getFDN();
 
     if(!fdn->modifiers.empty()){
-        auto ret = compFnWithModifiers(c, fd, fdn->modifiers.back().get());
+        auto ret = compFnWithModifiers(c, fd);
         c->builder.SetInsertPoint(caller);
         return ret;
     }
@@ -253,7 +253,7 @@ TypedValue compFnHelper(Compiler *c, FuncDecl *fd){
         TypedValue v;
         try{
             v = CompilingVisitor::compile(c, fdn->child);
-        }catch(CtError e){
+        }catch(CtError const& e){
             c->builder.SetInsertPoint(caller);
             throw e;
         }
