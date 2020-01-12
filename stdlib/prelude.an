@@ -7,14 +7,14 @@
 //C functions
 printf (format: ref c8) ... -> i32
 puts (str: ref c8) -> i32
-putchar character:c8 -> unit
+putchar (character:c8) -> unit
 getchar () -> c8
-exit status:i32 -> 'never_returns
-malloc size:usz -> ref 'a
-calloc num:usz size:usz -> ref 'a
-realloc (ptr: ref 'a) size:usz -> ref 'a
+exit (status:i32) -> 'never_returns
+malloc (size:usz) -> ref 'a
+calloc (num:usz) (size:usz) -> ref 'a
+realloc (ptr: ref 'a) (size:usz) -> ref 'a
 free (ptr: ref 'a) -> unit
-memcpy (destination:ref 'a) (source:ref 'b) num:usz -> ref 'a //dest
+memcpy (destination:ref 'a) (source:ref 'b) (num:usz) -> ref 'a //dest
 system (command: ref c8) -> i32
 strlen (str: ref c8) -> usz
 
@@ -26,21 +26,21 @@ type InFile = f:File
 type OutFile = f:File
 
 fopen (filename:ref c8) (mode:ref c8) -> File
-fclose stream:File -> unit
+fclose (stream:File) -> unit
 
-fputs (str: ref c8) stream:OutFile -> i32
-fputc character:i32 stream:OutFile -> i32
-fgetc stream:InFile -> i32
-fgets (str: ref c8) num:i32 stream:InFile -> ref c8
-ungetc character:i32 stream:InFile -> i32
+fputs (str: ref c8) (stream:OutFile) -> i32
+fputc (character:i32) (stream:OutFile) -> i32
+fgetc (stream:InFile) -> i32
+fgets (str: ref c8) (num:i32) (stream:InFile) -> ref c8
+ungetc (character:i32) (stream:InFile) -> i32
 
-fgetpos stream:File pos:FilePos -> unit
-ftell stream:File -> i64
-fsetpos stream:File pos:FilePos -> unit
-fseek stream:File offset:i64 origin:i32 -> i32
+fgetpos (stream:File) (pos:FilePos) -> unit
+ftell (stream:File) -> i64
+fsetpos (stream:File) (pos:FilePos) -> unit
+fseek (stream:File) (offset:i64) (origin:i32) -> i32
 
-feof stream:InFile -> i32
-ferror stream:File -> i32
+feof (stream:InFile) -> i32
+ferror (stream:File) -> i32
 
 //Convenience function for using fgetc, and feof with better types
 fgetc8 f = cast (fgetc f) : c8
@@ -72,10 +72,6 @@ impl Eq (Maybe 'e) given Eq 'e
 trait Cast 'a /*to*/ 'b
     cast 'a -> 'b
 
-// (builtin operator)
-// (as) (a: 'a) (ty: Type 'b) -> 'b
-//      = cast a : 'b
-
 trait TryCast 'a 'b
     try_cast 'a -> Maybe 'b
 
@@ -92,13 +88,13 @@ impl Cast (Maybe 'm) Str given Cast 'm Str
 //Compile-time functions
 module Ante
     //prints type and value (llvm dump) of variable while compiling
-    ante debug val:'t -> unit
+    ante debug (val:'t) -> unit
 
     //returns the size of a type in Bytes.  Does not evaluate its argument
-    ante sizeof val:'t -> usz
+    ante sizeof (val:'t) -> usz
 
     //return the type of an expression.  Note: Type is an ante type (compile-time only)
-    ante typeof val:'t -> Type 't
+    ante typeof (val:'t) -> Type 't
 
     //Issue an error message during compile-time and stop compiling the current function
     ante error (msg: ref c8) -> 'never_returns
@@ -249,7 +245,7 @@ impl Cast Str (ref c8)
 
 
 module Str
-    reverse s:Str -> Str =
+    reverse (s:Str) -> Str =
         buf = mut malloc (s.len + 1usz)
 
         i = mut 0usz
@@ -330,7 +326,7 @@ impl Cast usz Str
 
 
 module U64
-    parse s:Str -> Maybe u64 =
+    parse (s:Str) -> Maybe u64 =
         i = mut 0usz
         sum = mut 0u64
 
@@ -347,7 +343,7 @@ module U64
         Some sum
 
 module I64
-    parse s:Str -> Maybe i64 =
+    parse (s:Str) -> Maybe i64 =
         i = mut 0usz
         sum = mut 0i64
         isNeg =
@@ -422,11 +418,11 @@ impl Iterator InFile
 
 
 module OutFile
-    write f:OutFile s:Str =
+    write (f:OutFile) (s:Str) =
         fputs (s.cStr) f
 
 module Str
-    print s:Str =
+    print (s:Str) =
         puts s.cStr
 
 impl Cast (ref c8) Str
@@ -479,7 +475,7 @@ impl Cast Str OutFile
 
 
 module InFile
-    next_line f:InFile -> Str =
+    next_line (f:InFile) -> Str =
         if feofb f then return ""
         eof = cast 255
 
