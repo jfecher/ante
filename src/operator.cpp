@@ -766,7 +766,8 @@ void* lookupCFn(string name){
 
 
 TypedValue createMallocAndStore(Compiler *c, TypedValue &val){
-    auto *mallocTy = FunctionType::get(Type::getIntNPtrTy(*c->ctxt, 8), {Type::getIntNTy(*c->ctxt, AN_USZ_SIZE)}, false);
+    array<Type*, 1> args{Type::getIntNTy(*c->ctxt, AN_USZ_SIZE)};
+    auto *mallocTy = FunctionType::get(Type::getIntNPtrTy(*c->ctxt, 8), args, false);
     Function* mallocFn = Function::Create(mallocTy, Function::ExternalLinkage, "malloc");
 
     auto size_result = val.type->getSizeInBits(c);
@@ -1687,7 +1688,8 @@ void CompilingVisitor::visit(BinOpNode *n){
         }
 
         //call function
-        Value *call = c->builder.CreateCall(fnVal.val, {lhs.val, rhs.val});
+        array<Value*, 2> args{lhs.val, rhs.val};
+        Value *call = c->builder.CreateCall(fnVal.val, args);
         this->val = {call, n->getType()};
         return;
     }

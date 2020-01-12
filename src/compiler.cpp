@@ -322,7 +322,8 @@ TypedValue callForLoopTraitFn(Compiler *c, string const& fnName, TypedValue cons
 
     TypedValue fn = compForLoopTraitFn(c, fnName, impl, arg.type, loc);
 
-    Value *call = c->builder.CreateCall(fn.val, {arg.val});
+    array<Value*, 1> args{arg.val};
+    Value *call = c->builder.CreateCall(fn.val, args);
     return {call, fn.type->getFunctionReturnType()};
 }
 
@@ -874,9 +875,10 @@ Function* Compiler::createMainFn(){
     Type* argvty = Type::getInt8Ty(*ctxt)->getPointerTo()->getPointerTo();
 
     //get or create the function type for the main method: (i32, c8**)->i32
+    array<Type*, 2> args{argcty, argvty};
     FunctionType *ft = isLib?
         FunctionType::get(Type::getInt32Ty(*ctxt), {}, false):
-        FunctionType::get(Type::getInt32Ty(*ctxt), {argcty, argvty}, false);
+        FunctionType::get(Type::getInt32Ty(*ctxt), args, false);
 
     //Actually create the function in module m
     string fnName = isLib ? "init_module" : "main";
