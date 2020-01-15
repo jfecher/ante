@@ -378,6 +378,14 @@ namespace ante {
     }
 
 
+    AnProductType* getTypeOfTypes(Module const& module, LOC_TY &errLoc){
+        auto type = try_cast<AnProductType>(module.lookupType("Type"));
+        if(!type || type->typeArgs.size() != 1){
+            ante::error("type `Type 't` in the prelude was redefined or removed sometime before translation of this operator", errLoc);
+        }
+        return static_cast<AnProductType*>(copyWithNewTypeVars(type));
+    }
+
     void ConstraintFindingVisitor::visit(BinOpNode *n){
         n->lval->accept(*this);
         n->rval->accept(*this);
@@ -446,17 +454,24 @@ namespace ante {
             searchForField(n);
         }else if(n->op == Tok_As){
             // intentionally empty
+            TraitImpl *impl = module->freshTraitImpl("Cast");
+            auto type = getTypeOfTypes(*module, n->loc);
+            addTypeClassConstraint(impl, n->loc);
+            addConstraint(n->rval->getType(), type, n->loc,
+                    "Right operand of 'as' operator should be a type, but got a value of type $1");
+            addConstraint(n->lval->getType(), impl->typeArgs.front(), n->loc,
+                    "Value is annotated to be of type $2, but it is of type $1");
+            addConstraint(type->typeArgs.front(), impl->typeArgs.back(), n->loc,
+                    "Error: should never fail, line " + to_string(__LINE__));
+            addConstraint(type->typeArgs.front(), n->getType(), n->loc,
+                    "Return value of 'as' operator should match the type used for casting, but found $2 and $1 respectively");
         }else if(n->op == Tok_Append){
             addConstraint(n->lval->getType(), n->rval->getType(), n->loc,
                     "Operand types of '" + Lexer::getTokStr(n->op) + "' should match, but are $1 and $2 respectively");
             addConstraint(n->getType(), n->lval->getType(), n->loc,
                     "Return type of " + Lexer::getTokStr(n->op) + " should always match the first argument's type but here is $1");
         }else if(n->op == ':'){
-            auto type = try_cast<AnProductType>(module->lookupType("Type"));
-            if(!type || type->typeArgs.size() != 1){
-                ante::error("type `Type 't` in the prelude was redefined or removed sometime before translation of this type", n->loc);
-            }
-            type = static_cast<AnProductType*>(copyWithNewTypeVars(type));
+            auto type = getTypeOfTypes(*module, n->loc);
             addConstraint(n->rval->getType(), type, n->loc,
                     "Right operand of ':' operator should be a type, but got a value of type $1");
             addConstraint(n->lval->getType(), type->typeArgs.front(), n->loc,
