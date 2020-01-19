@@ -175,8 +175,7 @@ trait Print 't
     printne 't -> unit
 
 print x =
-    printne x
-    puts "".cStr
+    printne "${x}\n"
 
 
 //numerical print functions
