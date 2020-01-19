@@ -187,11 +187,13 @@ namespace ante {
 
     /** Declare function but do not define it */
     void NameResolutionVisitor::declare(FuncDeclNode *n){
-        checkForPreviousDecl(this, n->name, this->compUnit->fnDecls, n->loc, "Function");
-
         auto *fd = new FuncDecl(n, n->name, this->compUnit);
-        compUnit->fnDecls[n->name] = fd;
         n->decl = fd;
+
+        if(!n->name.empty()){
+            checkForPreviousDecl(this, n->name, this->compUnit->fnDecls, n->loc, "Function");
+            compUnit->fnDecls[n->name] = fd;
+        }
     }
 
     inline bool fileExists(const string &fName){

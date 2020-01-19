@@ -452,15 +452,15 @@ namespace ante {
             addConstraint(n->getType(), n->lval->getType(), n->loc,
                     "Return type of " + Lexer::getTokStr(n->op) + " should always match the first argument's type but here is $1");
         }else if(n->op == ':'){
-            auto t = nextTypeVar();
             auto type = try_cast<AnProductType>(module->lookupType("Type"));
             if(!type || type->typeArgs.size() != 1){
                 ante::error("type `Type 't` in the prelude was redefined or removed sometime before translation of this type", n->loc);
             }
+            type = static_cast<AnProductType*>(copyWithNewTypeVars(type));
             addConstraint(n->rval->getType(), type, n->loc,
                     "Right operand of ':' operator should be a type, but got a value of type $1");
-            addConstraint(n->lval->getType(), t, n->loc,
-                    "Value is annotated to be of type $2 here, but instead is $1");
+            addConstraint(n->lval->getType(), type->typeArgs.front(), n->loc,
+                    "Value is annotated to be of type $2, but it is of type $1");
             addConstraint(n->lval->getType(), n->getType(), n->loc,
                     "Return value of ':' operator should match the type of its left operand, but instead found $2 and $1 respectively");
         }else{
