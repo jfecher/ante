@@ -589,7 +589,7 @@ TypedValue monomorphise(Compiler *c, FuncDecl *fd, AnFunctionType *boundType, LO
     if(isGenericDef){
         TypeError err{"Error in monorphisation of " + fd->name + ", types are "
             + anTypeToColoredStr(fnTy) + " bound to " + anTypeToColoredStr(boundType), loc};
-        auto subs = unifyOne(fnTy, boundType, err);
+        auto subs = unify({{fnTy, boundType, err}});
         c->compCtxt->insertMonomorphisationMappings(subs);
     }
     auto ret = c->compFn(fd);
@@ -610,7 +610,7 @@ TypedValue compForLoopTraitFn(Compiler *c, string const& fnName, TraitImpl *impl
     TypeError err{"Error in for loop monomorphisation of " + fnName + ", types are "
             + anTypeToColoredStr(fnTy) + " bound to " + anTypeToColoredStr(boundTy), loc};
 
-    auto subs = unifyOne(fnTy, boundTy, err);
+    auto subs = unify({{fnTy, boundTy, err}});
 
     c->compCtxt->insertMonomorphisationMappings(subs);
 
@@ -1659,7 +1659,7 @@ void CompilingVisitor::visit(BinOpNode *n){
 
             TypeError err{"Error in operator monomorphisation with " + anTypeToColoredStr(fnTy)
                 + " bound to " + anTypeToColoredStr(boundTy), n->loc};
-            auto subs = unifyOne(fnTy, boundTy, err);
+            auto subs = unify({{fnTy, boundTy, err}});
 
             c->compCtxt->insertMonomorphisationMappings(subs);
 

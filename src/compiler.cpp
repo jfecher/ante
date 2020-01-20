@@ -378,7 +378,7 @@ void CompilingVisitor::visit(ForNode *n){
     TypeError err{"A for-loop's binding pattern should match the return type of the iterator's unwrap function, but found " +
             anTypeToColoredStr(n->pattern->getType()) + " and " + anTypeToColoredStr(uwrap.type) + " respectively", n->pattern->loc};
 
-    auto subs = unifyOne(n->pattern->getType(), uwrap.type, err);
+    auto subs = unify({{n->pattern->getType(), uwrap.type, err}});
     c->compCtxt->insertMonomorphisationMappings(subs);
 
     auto vn = dynamic_cast<VarNode*>(n->pattern.get());

@@ -54,7 +54,6 @@ namespace ante {
     AnType* substitute(AnType *u, AnType *subType, AnType *t, int recursionLimit = 10000);
 
     Substitutions unify(UnificationList const& list);
-    Substitutions unifyOne(AnType *t1, AnType *t2, TypeError const& errMsg);
 
     AnType* applySubstitutions(Substitutions const& substitutions, AnType *t);
     TraitImpl* applySubstitutions(Substitutions const& substitutions, TraitImpl *t);
