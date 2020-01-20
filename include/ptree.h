@@ -42,6 +42,7 @@ namespace ante {
         Node* mkTupleNode(LOC_TY loc, Node *expr);
         Node* mkModNode(LOC_TY loc, ante::TokenType mod);
         Node* mkModExprNode(LOC_TY loc, ante::TokenType mod, Node *expr);
+        Node* mkAsNode(LOC_TY loc, Node *expr, Node *type);
 
         //A compiler directive is represented as a ModNode
         //internally, hence the omission of Node from the name below

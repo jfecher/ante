@@ -1577,20 +1577,6 @@ void handlePrimitiveOp(CompilingVisitor &cv, BinOpNode *n, TypedValue &lhs, Type
         }
     }
 
-    if(n->op == Tok_As){
-        n->lval->accept(cv);
-        auto ltval = cv.val;
-        auto *ty = toAnType((TypeNode*)n->rval.get(), cv.c->compUnit);
-
-        cv.val = createCast(cv.c, ty, ltval, n);
-
-        if(!cv.val){
-            error("Invalid type cast " + anTypeToColoredStr(ltval.type) +
-                    " -> " + anTypeToColoredStr(ty), n->loc);
-        }
-        return;
-    }
-
     if(n->op == '#'){
         cv.val = cv.c->compExtract(lhs, rhs, n);
         return;
@@ -1624,7 +1610,7 @@ bool isPrimitiveOp(BinOpNode *n, AnType *l, AnType *r){
         }
     }
 
-    return n->op == Tok_As || n->op == '#';
+    return n->op == '#';
 }
 
 
@@ -1649,6 +1635,10 @@ void CompilingVisitor::visit(BinOpNode *n){
         return;
     }else if(n->op == Tok_Or){
         this->val = c->compLogicalOr(n->lval.get(), n->rval.get(), n);
+        return;
+    }else if(n->op == ':'){
+        n->lval->accept(*this);
+        val.type = n->getType();
         return;
     }
 

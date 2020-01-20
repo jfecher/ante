@@ -356,6 +356,13 @@ namespace ante {
             return new BinOpNode(loc, op, l, r);
         }
 
+        Node* mkAsNode(LOC_TY loc, Node *expr, Node *type){
+            auto fn = new VarNode(loc, "cast");
+            auto args = mkTupleNode(loc, expr);
+            auto call = new BinOpNode(loc, '(', fn, args);
+            return new BinOpNode(loc, ':', call, type);
+        }
+
         Node* mkSeqNode(LOC_TY loc, Node *l, Node *r){
             if(SeqNode *seq = dynamic_cast<SeqNode*>(l)){
                 seq->sequence.emplace_back(r);

@@ -146,13 +146,16 @@ void CompilingVisitor::visit(TypeNode *n){
         Value *unionVal = c->builder.CreateLoad(alloca);
         val = TypedValue(unionVal, t);
     }else{
-        //return the type as a value
-        auto *ty = t->typeArgs[0];
+        ASSERT_UNREACHABLE("Cannot compile first-class types as values");
+        // auto dt = try_cast<AnDataType>(n->getType());
 
-        //The TypeNode* address is wrapped in an llvm int so that llvm::Value methods can be called
-        //without crashing, even if their result is meaningless
-        Value *v = c->builder.getInt64((unsigned long)ty);
-        val = TypedValue(v, t);
+        // //return the type as a value
+        // auto *ty = dt->typeArgs[0];
+
+        // //The TypeNode* address is wrapped in an llvm int so that llvm::Value methods can be called
+        // //without crashing, even if their result is meaningless
+        // Value *v = c->builder.getInt64((unsigned long)ty);
+        // val = TypedValue(v, t);
     }
 }
 
@@ -850,7 +853,7 @@ void compileAll(Compiler *c, vector<T> &vec){
     for(auto &elem : vec){
         try{
             elem->accept(v);
-        }catch(CtError err){}
+        }catch(CtError const& err){}
     }
 }
 
@@ -911,7 +914,7 @@ void CompilingVisitor::visit(RootNode *n){
         try{
             if(node)
                 node->accept(*this);
-        }catch(CtError e){}
+        }catch(CtError const& e){}
     }
 
     if(n->main.empty())
@@ -975,7 +978,11 @@ void Compiler::compile(){
 
         //flag this module as compiled.
         compiled = true;
-    }catch(...){}
+    }catch(CtError const& e){
+        if(!errorCount()){
+            ASSERT_UNREACHABLE("Top-level exception caught without an error");
+        }
+    }
 
     if(errorCount()){
         fputs("Compilation aborted.\n", stderr);

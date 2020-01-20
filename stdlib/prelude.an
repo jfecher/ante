@@ -300,28 +300,28 @@ impl Cast u64 Str
 
 // convert all other numeric types to strings by widening first
 impl Cast i8 Str
-    cast x = cast (cast x : i64)
+    cast x = x as i64 as Str
 
 impl Cast i16 Str
-    cast x = cast (cast x : i64)
+    cast x = x as i64 as Str
 
 impl Cast i32 Str
-    cast x = cast (cast x : i64)
+    cast x = x as i64 as Str
 
 impl Cast isz Str
-    cast x = cast (cast x : i64)
+    cast x = x as i64 as Str
 
 impl Cast u8 Str
-    cast x = cast (cast x : u64)
+    cast x = x as u64 as Str
 
 impl Cast u16 Str
-    cast x = cast (cast x : u64)
+    cast x = x as u64 as Str
 
 impl Cast u32 Str
-    cast x = cast (cast x : u64)
+    cast x = x as u64 as Str
 
 impl Cast usz Str
-    cast x = cast (cast x : u64)
+    cast x = x as u64 as Str
 
 
 module U64

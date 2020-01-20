@@ -215,7 +215,7 @@ fltlit: FltLit {$$ = mkFltLitNode(@$, lextxt);}
 
 strlit: StrLit                                       {$$ = mkStrLitNode(@$, lextxt);}
       | strlit UnfinishedStr                         {$$ = mkBinOpNode(@$, Tok_Append, $1, mkStrLitNode(@2, lextxt));}
-      | strlit InterpolateBegin expr InterpolateEnd  {$$ = mkBinOpNode(@$, Tok_Append, $1, mkBinOpNode(@2, Tok_As, $3, mkTypeNode(@2, TT_Data, (char*)"Str")));}
+      | strlit InterpolateBegin expr InterpolateEnd  {$$ = mkBinOpNode(@$, Tok_Append, $1, mkAsNode(@2, $3, mkTypeNode(@2, TT_Data, (char*)"Str")));}
       ;
 
 charlit: CharLit {$$ = mkCharLitNode(@$, lextxt);}
@@ -609,7 +609,7 @@ expr_no_decl: expr_no_decl '+' maybe_newline expr_no_decl                      {
             | expr_no_decl Range maybe_newline expr_no_decl                    {$$ = mkBinOpNode(@$, Tok_Range, $1, $4);}
             | expr_no_decl In maybe_newline expr_no_decl                       {$$ = mkBinOpNode(@$, Tok_In, $1, $4);}
             | expr_no_decl Not In maybe_newline expr_no_decl                   {$$ = mkUnOpNode(@$, Tok_Not, mkBinOpNode(@$, Tok_In, $1, $5));}
-            | expr_no_decl As maybe_newline small_type                         {$$ = mkBinOpNode(@$, Tok_As, $1, $4);}
+            | expr_no_decl As maybe_newline type                               {$$ = mkAsNode(@$, $1, $4);}
             | val_no_decl                                           %prec MED  {$$ = $1;}
             | unary_op                                                         {$$ = $1;}
 
@@ -679,7 +679,7 @@ expr: expr '+' maybe_newline expr                               {$$ = mkBinOpNod
     | expr Range maybe_newline expr                             {$$ = mkBinOpNode(@$, Tok_Range, $1, $4);}
     | expr In maybe_newline expr                                {$$ = mkBinOpNode(@$, Tok_In, $1, $4);}
     | expr Not In maybe_newline expr                            {$$ = mkUnOpNode(@$, Tok_Not, mkBinOpNode(@$, Tok_In, $1, $5));}
-    | expr As maybe_newline small_type                          {$$ = mkBinOpNode(@$, Tok_As, $1, $4);}
+    | expr As maybe_newline type                                {$$ = mkAsNode(@$, $1, $4);}
     | val                                            %prec MED  {$$ = $1;}
     | unary_op                                                  {$$ = $1;}
 

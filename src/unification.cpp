@@ -515,6 +515,11 @@ namespace ante {
     }
 
 
+    void unifyTypeClassConstraint(TraitImpl *constraint){
+
+    }
+
+
     Substitutions unify(UnificationList const& list, UnificationList::const_reverse_iterator cur, bool isTopLevel){
         if(cur == list.rend()){
             return {};
@@ -523,6 +528,8 @@ namespace ante {
             auto t2 = unify(list, ++cur, isTopLevel);
 
             if(!p.isEqConstraint()){
+                auto tc = p.asTypeClassConstraint();
+                unifyTypeClassConstraint(applySubstitutions(t2, tc));
                 return t2;
             }
 
