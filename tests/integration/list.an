@@ -7,15 +7,15 @@ type Node 't =
     next: Maybe (ref Node 't)
 
 module Node
-    of elem = Node(elem, None)
+    of elem = Node elem None
 
 module List
     of elem =
         n = new Node.of elem
-        List(Some n, Some n)
+        List (Some n) (Some n)
 
 
-append (l:mut List 't) elem:'t =
+append (l:mut List 't) (elem:'t) =
     n = new Node elem
 
     match l.last with
@@ -42,12 +42,12 @@ impl Print (Node 't)
         | None -> printne " ]"
 
 
-(++) l:i32 r:i32 -> List i32 =
+(++) (l:i32) (r:i32) -> List i32 =
     mut list = List.of l
     append list r
     list
 
-(++) (l:mut List i32) r:i32 -> List i32 =
+(++) (l:mut List i32) (r:i32) -> List i32 =
     append l r
     l
 

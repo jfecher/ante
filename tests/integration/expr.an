@@ -1,14 +1,14 @@
 
 type Expr =
-   | Add (ref Expr), (ref Expr)
-   | Sub (ref Expr), (ref Expr)
+   | Add (ref Expr) (ref Expr)
+   | Sub (ref Expr) (ref Expr)
    | Num i32
 
 
 eval (e:ref Expr) -> i32 =
     match @e with
-    | Add(l, r) -> eval l + eval r
-    | Sub(l, r) -> eval l - eval r
+    | Add l r -> eval l + eval r
+    | Sub l r -> eval l - eval r
     | Num n -> n
 
 
@@ -16,9 +16,9 @@ five = new Num 5
 two = new Num 2
 seven = new Num 7
 
-sub = new Sub(five, two)
+sub = new Sub five two
 
-add = new Add(sub, seven)
+add = new Add sub seven
 
 print <| eval five
 print <| eval two

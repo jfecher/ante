@@ -12,7 +12,7 @@
 */
 module DP
     //Return the dotproduct of two double-length 'vectors'
-    dotProduct l:(i32,i32) r:(i32,i32) =
+    dotProduct (l:(i32,i32)) (r:(i32,i32)) =
         l.0 * r.0 + l.1 * r.1
 
 impl Print (i32, i32)

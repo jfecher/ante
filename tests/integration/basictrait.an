@@ -14,7 +14,7 @@ trait NumStore 't
 
 //Implement NumStore for Holder
 impl NumStore Holder
-    get h = i32 h
+    get h = h as i32
 
     store h n = h := Holder n
 
@@ -29,17 +29,17 @@ impl NumStore Container
     store c n = c := Item n
 
 
-print h:Holder =
+print (h:Holder) =
     print <| get h
 
 
-print c:Container =
+print (c:Container) =
     match c with
     | Item i -> printf "Container { %d }\n" i;()
     | Empty -> print "Container {}"
 
 
-mut h = Holder 0
+h = mut Holder 0
 
 store h 5
 print h
@@ -49,7 +49,7 @@ print h
 
 
 
-mut c = Empty
+c = mut Empty
 print c
 
 store c 32

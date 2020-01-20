@@ -1,7 +1,7 @@
 
 openingMsg = "Hello World!"
 
-getClosingMsg unit = "Goodbye World!\n"
+getClosingMsg () = "Goodbye World!\n"
 
 
 printf "%s\n%s" (openingMsg.cStr) ((getClosingMsg ()).cStr)

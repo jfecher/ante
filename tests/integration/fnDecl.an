@@ -2,22 +2,22 @@
     fnDecl.an
         test function declarations and calls
 */
-printMsg b:bool =
+printMsg (b: bool) =
     if b then
         puts "Hello World!".cStr
     else
         puts "Goodbye World!".cStr
 
 
-divisibleByThree i:i32 =
+divisibleByThree (i: i32) =
     i % 3 == 0
 
 
-isEven x:i32 =
+isEven (x: i32) =
     x % 2 == 0
 
 
-fact x:i32 =
+fact (x: i32) =
     if x <= 1 then 1
     else x * fact (x-1)
 

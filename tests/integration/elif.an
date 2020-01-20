@@ -6,16 +6,16 @@
 
 i = (\= 4) ()
 
-if i = 3 then
+if i == 3 then
     print "three"
 
-elif i = 4 then
+elif i == 4 then
     print "four"
 
-elif i = 5 then
+elif i == 5 then
     print "five"
 
-elif i = 6 then
+elif i == 6 then
     print "six"
 
 else

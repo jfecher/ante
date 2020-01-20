@@ -1,12 +1,12 @@
 import Vec
 
-split s:Str = split s ' '
+split (s:Str) = split s ' '
 
-split s:Str c:c8 -> Vec Str =
-    mut v = Vec<Str>()
+split (s:Str) (c:c8) -> Vec Str =
+    v = mut Vec.empty ()
 
-    mut i = 0
-    mut j = 0
+    i = mut 0
+    j = mut 0
     while i < s.len do
         if s.cStr#i == c then
             v.push <| substr s j i
@@ -18,22 +18,22 @@ split s:Str c:c8 -> Vec Str =
     v
 
 
-substr s:Str begin:i32 end:i32 -> Str =
+substr (s:Str) (begin:i32) (end:i32) -> Str =
     if end > s.len or begin >= s.len then
         return ""
 
     len = end - begin
-    mut buf = ref c8 malloc(len + 1)
+    buf = mut malloc (len + 1)
     buf#end := '\0'
 
-    mut i = 0
-    mut b = begin
+    i = mut 0
+    b = mut begin
     while b < end do
         buf#i := s#b
         b += 1
         i += 1
 
-    Str(buf, usz len)
+    Str buf (len as usz)
 
 
 str = "test1 test2 test3"

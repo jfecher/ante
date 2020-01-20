@@ -1,13 +1,13 @@
 import Vec
 
-print Vec(1..26)
+print <| Vec.of (1..26)
 
-mut v2 = Vec<u8>()
-v2.push 0u8
-v2.push 2u8
+v2 = mut Vec.empty ()
+push v2 0u8
+push v2 2u8
 print v2
 
-mut vs = Vec<Str>()
+vs = mut Vec.empty ()
 push vs "One"
 push vs "Two"
 push vs "Three"

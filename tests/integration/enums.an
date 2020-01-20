@@ -2,7 +2,7 @@
 type Day = | Mon | Tue | Wed | Thu | Fri | Sat | Sun
 
 
-getDay unit = Sat
+getDay () = Sat
 
 
 match getDay () with

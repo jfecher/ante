@@ -1,7 +1,8 @@
 
 //The following function prints "three called!"
 //while compiling and is not included in the binary
-ante three unit =
+ante
+three () =
     puts "three called!".cStr
     3
 
