@@ -48,6 +48,12 @@ namespace ante{
         bool isPseudoFile;
         char* pseudoFile;
 
+        /* How many ${  } block's are we in? If >1 then convert } to Tok_InterpolateEnd */
+        unsigned int interpolationLevel;
+
+        /* flag used for going back into making a str literal after a Tok_InterpolateEnd */
+        bool unfinishedStrLiteral;
+
         /* Row and column number */
         unsigned int row, col;
 
@@ -104,6 +110,7 @@ namespace ante{
         int genNumLitTok(yy::parser::location_type* loc);
         int genAlphaNumTok(yy::parser::location_type* loc);
         int genStrLitTok(yy::parser::location_type* loc);
+        int genStrLitTokNoOpenQuotes(yy::parser::location_type* loc, TokenType tokenType);
         int genCharLitTok(yy::parser::location_type* loc);
         int genOpTok(yy::parser::location_type* loc);
         int genTypeVarTok(yy::parser::location_type* loc, std::string &s);

@@ -100,8 +100,11 @@ map<int, const char*> tokDict = {
     {Tok_Global, "global"},
     {Tok_Ante, "ante"},
 
-    //reserved
+    //other
     {Tok_Where, "where"},
+    {Tok_InterpolateBegin, "${"},
+    {Tok_InterpolateEnd, "}"},
+    {Tok_UnfinishedStr, "UStrLit"},
 
     {Tok_Newline, "Newline"},
     {Tok_Indent, "Indent"},
@@ -203,7 +206,9 @@ int yylex(yy::parser::semantic_type* st, yy::location* yyloc){
  * If file = nullptr then stdin will be opened instead
  */
 Lexer::Lexer(string* file) :
-    isPseudoFile(false),
+    isPseudoFile{false},
+    interpolationLevel{0},
+    unfinishedStrLiteral{false},
     row{1},
     col{1},
     rowOffset{0},
@@ -213,8 +218,8 @@ Lexer::Lexer(string* file) :
     scopes{new stack<unsigned int>()},
     cscope{0},
     manualScopeLevel{0},
-    shouldReturnNewline(false),
-    printInput(false)
+    shouldReturnNewline{false},
+    printInput{false}
 {
     if(file){
         in = new ifstream(*file);
@@ -244,7 +249,9 @@ Lexer::Lexer(string* file) :
  */
 Lexer::Lexer(string* fName, string& pFile,
         unsigned int ro, unsigned int co, bool pi) :
-    isPseudoFile(true),
+    isPseudoFile{true},
+    interpolationLevel{0},
+    unfinishedStrLiteral{false},
     row{1},
     col{1},
     rowOffset{ro},
@@ -254,8 +261,8 @@ Lexer::Lexer(string* fName, string& pFile,
     scopes{new stack<unsigned int>()},
     cscope{0},
     manualScopeLevel{0},
-    shouldReturnNewline(false),
-    printInput(pi)
+    shouldReturnNewline{false},
+    printInput{pi}
 {
     fileName = fName;
     pseudoFile = (char*)pFile.c_str();
@@ -612,39 +619,29 @@ int Lexer::skipWsAndReturnNext(yy::parser::location_type* loc){
     return next(loc);
 }
 
-int Lexer::genStrLitTok(yy::parser::location_type* loc){
+int Lexer::genStrLitTokNoOpenQuotes(yy::parser::location_type* loc, TokenType tokTy){
     string s = "";
-    loc->begin = getPos();
-    incPos();
-
-    if(!cur){
-        if(printInput)
-            putchar('"');
-        return '"';
-    }
-
-    if(printInput)
-        cout << AN_STRING_COLOR << '"';
-
     while(cur != '"' && cur != '\0'){
         if(cur == '\\'){
             if(printInput)
                 putchar('\\');
             switch(nxt){
-                case 'a': s += '\a'; break;
-                case 'b': s += '\b'; break;
-                case 'f': s += '\f'; break;
-                case 'n': s += '\n'; break;
-                case 'r': s += '\r'; break;
-                case 't': s += '\t'; break;
-                case 'v': s += '\v'; break;
+                case 'a':  s += '\a'; break;
+                case 'b':  s += '\b'; break;
+                case 'f':  s += '\f'; break;
+                case 'n':  s += '\n'; break;
+                case 'r':  s += '\r'; break;
+                case 't':  s += '\t'; break;
+                case 'v':  s += '\v'; break;
+                case '$':  s += '$';  break; //For escaping ${
+                case '\\': s += '\\'; break;
                 default:
                     if(!IS_NUMERICAL(nxt)){
-                        if(nxt == '\n'){
-                            col = 0;
-                            row++;
-                        }
-                        s += nxt;
+                        yy::parser::location_type errloc = *loc;
+                        auto pos = getPos();
+                        errloc.begin = yy::position{ pos.filename, pos.line, pos.column - 1 };
+                        errloc.end =   yy::position{ pos.filename, pos.line, pos.column };
+                        lexErr("Unknown escape sequence '\\$'", &errloc);
                     }else{
                         int cha = 0;
                         incPos();
@@ -669,9 +666,15 @@ int Lexer::genStrLitTok(yy::parser::location_type* loc){
 
             incPos();
         }else{
-            if(nxt == '\n'){
+            if(cur == '\n'){
                 col = 0;
                 row++;
+            }else if(cur == '$' && nxt == '{'){
+                loc->end = getPos();
+                loc->end.column--;
+                if(printInput) cout << AN_CONSOLE_RESET;
+                setlextxt(s);
+                return tokTy;
             }
             s += cur;
         }
@@ -693,7 +696,24 @@ int Lexer::genStrLitTok(yy::parser::location_type* loc){
 
     incPos(); //consume ending delim
     setlextxt(s);
-    return Tok_StrLit;
+    return tokTy;
+}
+
+int Lexer::genStrLitTok(yy::parser::location_type* loc){
+    loc->begin = getPos();
+    incPos();
+
+    if(!cur){
+        if(printInput)
+            putchar('"');
+        loc->end = getPos();
+        lexErr("Missing closing string delimiter", loc);
+    }
+
+    if(printInput)
+        cout << AN_STRING_COLOR << '"';
+
+    return genStrLitTokNoOpenQuotes(loc, Tok_StrLit);
 }
 
 
@@ -950,6 +970,15 @@ int Lexer::next(yy::parser::location_type* loc){
         return Tok_Newline;
     }
 
+    // Go back into the str literal after string interpolation ends
+    if(unfinishedStrLiteral){
+        unfinishedStrLiteral = false;
+        loc->begin = getPos();
+        if(printInput)
+            cout << AN_STRING_COLOR;
+        return genStrLitTokNoOpenQuotes(loc, Tok_UnfinishedStr);
+    }
+
     int change = handlePossibleScopeChange();
     if(change) return change;
 
@@ -969,6 +998,20 @@ int Lexer::next(yy::parser::location_type* loc){
         }else{
             return genWsTok(loc);
         }
+    }
+
+    // string interpolation
+    if(cur == '$' && nxt == '{'){
+        interpolationLevel++;
+        incPos(2);
+        return Tok_InterpolateBegin;
+    }
+
+    if(cur == '}' && interpolationLevel){
+        interpolationLevel--;
+        unfinishedStrLiteral = true;
+        incPos();
+        return Tok_InterpolateEnd;
     }
 
     CHECK_FOR_MATCHING_TOKS();

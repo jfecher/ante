@@ -70,6 +70,7 @@ namespace ante {
 
 /* other */
 %token Where
+%token InterpolateBegin InterpolateEnd UnfinishedStr
 
 /* whitespace */
 %token Newline Indent Unindent
@@ -212,7 +213,9 @@ intlit: IntLit {$$ = mkIntLitNode(@$, lextxt);}
 fltlit: FltLit {$$ = mkFltLitNode(@$, lextxt);}
       ;
 
-strlit: StrLit {$$ = mkStrLitNode(@$, lextxt);}
+strlit: StrLit                                       {$$ = mkStrLitNode(@$, lextxt);}
+      | strlit UnfinishedStr                         {$$ = mkBinOpNode(@$, Tok_Append, $1, mkStrLitNode(@2, lextxt));}
+      | strlit InterpolateBegin expr InterpolateEnd  {$$ = mkBinOpNode(@$, Tok_Append, $1, mkBinOpNode(@2, Tok_As, $3, mkTypeNode(@2, TT_Data, (char*)"Str")));}
       ;
 
 charlit: CharLit {$$ = mkCharLitNode(@$, lextxt);}

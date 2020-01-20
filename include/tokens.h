@@ -123,8 +123,14 @@ namespace ante {
         Tok_Global,
         Tok_Ante,
 
-        //reserved
+        //other
         Tok_Where,
+
+        //Interpolation is separated from the string by the lexer and handed off to
+        //the parser to parse the interpolated expr and desugar it to cast and append operators
+        Tok_InterpolateBegin,
+        Tok_InterpolateEnd,
+        Tok_UnfinishedStr, //the rest of the string after an interpolation
 
         Tok_Newline,
         Tok_Indent,
