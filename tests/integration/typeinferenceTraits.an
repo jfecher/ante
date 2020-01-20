@@ -9,7 +9,7 @@ bar x y =
     sec x y
     sec y x
 
-baz x:'a x y:'b -> unit given Second 'a 'b =
+baz (x:'a) (y:'b) -> unit given Second 'a 'b =
     sec x y
     sec y x
     sec x x

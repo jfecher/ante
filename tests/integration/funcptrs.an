@@ -1,7 +1,7 @@
-loop n:i32 (f:i32->unit) =
+loop (n:i32) (f:i32->unit) =
     mut i = 0
     while i < n do
         f i
         i += 1
 
-loop 20 (fun i32 x = print <| x+1)
+loop 20 (\(x:i32) = print <| x+1)

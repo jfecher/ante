@@ -7,9 +7,9 @@
 
 //Since unusedFn should not be compiled, puts will not
 //end up in the binary either.
-unusedFn unit = puts "unusedFn"
+unusedFn () = puts "unusedFn"
 
-mul a:i32 b:i32 -> i32 =
+mul (a:i32) (b:i32) -> i32 =
     a * b
 
 

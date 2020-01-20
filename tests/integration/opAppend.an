@@ -1,34 +1,8 @@
-
-//Reverse a string
-reverse s:Str -> Str =
-    mut buf = ref c8 malloc s.len
-
-    mut i = 0usz
-    while i < s.len do
-        buf#i = s.cStr#(s.len-i-1)
-        i += 1
-
-    buf#i := '\0'
-    Str(buf, i)
-
+// TODO: remove.  Not possible due to (++): a a -> a
 
 //append an integer to a string
 (++) l:Str r:i32 -> Str =
-    //get the string form of an integer, but in reverse
-    rev_str x:i32 -> Str =
-        mut buf = ref c8 malloc 12
-        mut i = 0usz
-        mut n = x
-
-        while n > 0 do
-            buf#i := c8(n %10) + '0'
-            i += 1
-            n /= 10
-
-        buf#i := '\0'
-        Str(buf, i)
-
-    l ++ reverse (rev_str r)
+    l ++ cast r
 
 
 s1 = "Hello "

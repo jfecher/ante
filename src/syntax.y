@@ -554,12 +554,14 @@ array: '[' expr_list ']' {$$ = mkArrayNode(@$, $2);}
      | '[' ']'           {$$ = mkArrayNode(@$, 0);}
      ;
 
+constructor_args: constructor_args val_no_decl   %prec LOW   {$$ = setNext($1, $2);}
+                | val_no_decl                    %prec LOW   {setRoot($1);}
+                ;
 
-unary_op: '@' expr                              {$$ = mkUnOpNode(@$, '@', $2);}
-        | '&' expr                              {$$ = mkUnOpNode(@$, '&', $2);}
-        | New expr                              {$$ = mkUnOpNode(@$, Tok_New, $2);}
-        | Not expr                              {$$ = mkUnOpNode(@$, Tok_Not, $2);}
-        | usertype_node expr         %prec TYPE {$$ = mkTypeCastNode(@$, $1, $2);}
+unary_op: '@' expr                                    {$$ = mkUnOpNode(@$, '@', $2);}
+        | '&' expr                                    {$$ = mkUnOpNode(@$, '&', $2);}
+        | New expr                                    {$$ = mkUnOpNode(@$, Tok_New, $2);}
+        | Not expr                                    {$$ = mkUnOpNode(@$, Tok_Not, $2);}
         ;
 
 /* expr is used in expression blocks and can span multiple lines */
@@ -609,6 +611,7 @@ expr_no_decl: expr_no_decl '+' maybe_newline expr_no_decl                      {
             | unary_op                                                         {$$ = $1;}
 
             | function_call                                         %prec LOW  {$$ = mkFuncCallNode(@$, getRoot());}
+            | usertype_node constructor_args                        %prec LOW  {$$ = mkTypeCastNode(@$, $1, mkTupleNode(@2, getRoot()));}
             | var '=' maybe_newline expr_or_block                              {$$ = mkVarAssignNode(@$, $1, $4); append_modifiers(mkModNode(@1, Tok_Let), $$);}
             | var '=' Mut maybe_newline expr_or_block                          {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Mut), $$);}
             | var '=' Global maybe_newline expr_or_block                       {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Global), $$);}
@@ -678,6 +681,7 @@ expr: expr '+' maybe_newline expr                               {$$ = mkBinOpNod
     | unary_op                                                  {$$ = $1;}
 
     | function_call                                  %prec LOW  {$$ = mkFuncCallNode(@$, getRoot());}
+    | usertype_node constructor_args                 %prec LOW  {$$ = mkTypeCastNode(@$, $1, mkTupleNode(@2, getRoot()));}
     | var '=' maybe_newline expr_or_block                       {$$ = mkVarAssignNode(@$, $1, $4); append_modifiers(mkModNode(@1, Tok_Let), $$);}
     | var '=' Mut maybe_newline expr_or_block                   {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Mut), $$);}
     | var '=' Global maybe_newline expr_or_block                {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Global), $$);}

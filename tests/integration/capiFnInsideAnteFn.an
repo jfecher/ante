@@ -1,5 +1,5 @@
 
-ante get_val unit =
+ante get_val () =
     Ante.debug "test"
     3
 

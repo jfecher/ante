@@ -254,7 +254,7 @@ module Str
             i += 1usz
 
         buf#i := '\0'
-        Str(buf, i)
+        Str buf i
 
 
 impl Cast i64 Str
@@ -278,7 +278,7 @@ impl Cast i64 Str
             buf#(alloc_size - len) := '-'
 
         offset = cast buf + (alloc_size - len)
-        Str(cast offset, len)
+        Str (cast offset) len
 
 
 impl Cast u64 Str
@@ -296,7 +296,7 @@ impl Cast u64 Str
             x /= 10u64
 
         offset = cast buf + (alloc_size - len)
-        Str(cast offset, len)
+        Str (cast offset) len
 
 
 // convert all other numeric types to strings by widening first
@@ -394,18 +394,18 @@ impl In i32 LazyRange
 impl Range i32 i32
     type RangeResult = r:LazyRange
     (..) start end =
-        LazyRange(start, end, 1)
+        LazyRange start end 1
 
 //Takes a tuple of the first two integers and calculates the step by their difference
 impl Range (i32,i32) i32
     type RangeResult = f:LazyRange
     (..) first_two end =
-        LazyRange(first_two#0usz, end, first_two#1usz - first_two#0usz)
+        LazyRange (first_two#0usz) end (first_two#1usz - first_two#0usz)
 
 impl Iterator LazyRange
     type IteratorElem = e:i32
     cur_elem r = r.start
-    advance r = LazyRange(r.start + r.step, r.end, r.step)
+    advance r = LazyRange (r.start + r.step) r.end r.step
     has_next r = (r.step > 0 and r.start < r.end) or (r.step < 0 and r.start > r.end)
 
 
@@ -426,7 +426,7 @@ module Str
         puts s.cStr
 
 impl Cast (ref c8) Str
-    cast cStr = Str(cStr, cast (strlen cStr))
+    cast cStr = Str cStr (cast (strlen cStr))
 
 impl Eq Str
     (==) l r =
@@ -455,7 +455,7 @@ impl Append Str
         buf_offset = cast (cast buf + s1.len)
         memcpy buf_offset (s2.cStr) (s2.len+1usz) //copy terminating null too
 
-        Str(buf, len)
+        Str buf len
 
 impl Extract Str usz
     type ExtractElem = c:c8
@@ -504,7 +504,7 @@ module InFile
         do ()
 
         cstr#len := '\0'
-        Str(cstr, len)
+        Str cstr len
 
 
 //print a message then return user input
@@ -526,4 +526,4 @@ input msg -> Str =
 
     len -= 1usz
     cstr#len := '\0'
-    Str(cstr, len)
+    Str cstr len

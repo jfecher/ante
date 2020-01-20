@@ -3,16 +3,14 @@ str = "Hello, pointer to world!".cStr
 
 intPtr = new 27
 
-mut longPtr = ref i64 malloc 8
+longPtr = mut malloc 8 as ref i64
 @longPtr := 5_i64
 
 fltPtr = new 5.9
-
 
 printf "%p -> %s\n" str str
 printf "%p -> %d\n" intPtr (@intPtr)
 printf "%p -> %d\n" longPtr (@longPtr)
 printf "%p -> %f\n" fltPtr (@fltPtr)
 
-
-free (ref void longPtr)
+free longPtr

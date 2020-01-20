@@ -1,9 +1,9 @@
 type U is Str
 
-f s:Str =
+f (s:Str) =
     print s
 
-g s:U =
+g (s:U) =
     print s
 
 s = "test"

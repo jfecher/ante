@@ -12,7 +12,7 @@ getCoords () = (2, 3)
 toTuple a b = (a, b)
 
 
-printTuple name:Str t:(i32,i32) =
+printTuple (name:Str) (t:(i32,i32)) =
     printf "%s = (%d, %d)\n" (name.cStr) t.0 t.1
 
 

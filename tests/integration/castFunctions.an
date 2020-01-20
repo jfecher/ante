@@ -1,11 +1,6 @@
-/*
-    Cast functions are are a type of operator overload that
-    overloads the typecast operator for a given type.
-*/
-
 //handles conversion of i32 -> bool
-impl To bool i32
-    to _ x:i32 = x != 0
+impl Cast i32 bool
+    cast (x:i32) = x != 0
 
 //test cast of i32 -> bool
-print (bool 2)
+print (2 as bool)
