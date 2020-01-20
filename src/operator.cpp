@@ -520,11 +520,11 @@ bool hasTrivialImpl(TraitImpl *impl){
     if(n == "Add" || n == "Sub" || n == "Mul" || n == "Div" || n == "Mod" || n == "Cmp" || n == "Neg"){
         return impl->typeArgs[0]->isIntTy() || impl->typeArgs[0]->typeTag == TT_C8;
 
-    }else if(n == "To"){
+    }else if(n == "Cast"){
         AnType *arg1 = impl->typeArgs[0];
         AnType *arg2 = impl->typeArgs[1];
-        return (arg1->isIntTy() || arg1->typeTag == TT_Ptr || arg1->typeTag == TT_C8)
-            && (arg2->isIntTy() || arg2->typeTag == TT_Ptr || arg2->typeTag == TT_C8);
+        return (arg1->isIntTy() || arg1->typeTag == TT_Ptr || arg1->typeTag == TT_C8 || arg1->typeTag == TT_Bool) &&
+               (arg2->isIntTy() || arg2->typeTag == TT_Ptr || arg2->typeTag == TT_C8 || arg2->typeTag == TT_Bool);
 
     }else if(n == "Eq" || n == "Is"){
         TypeTag tag = impl->typeArgs[0]->typeTag;
