@@ -83,7 +83,7 @@ add_definitions(-DAN_LIB_DIR="${PROJECT_SOURCE_DIR}/stdlib/")
 # that we wish to use
 llvm_map_components_to_libnames(llvm_libs core orcjit native bitwriter passes target)
 
-add_library(antecommon STATIC
+add_library(antecommon SHARED
         include/antevalue.h
         include/antype.h
         include/args.h
