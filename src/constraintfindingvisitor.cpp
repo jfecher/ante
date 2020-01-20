@@ -466,6 +466,10 @@ namespace ante {
             addConstraint(type->typeArgs.front(), n->getType(), n->loc,
                     "Return value of 'as' operator should match the type used for casting, but found $2 and $1 respectively");
         }else if(n->op == Tok_Append){
+            TraitImpl *impl = module->freshTraitImpl("Append");
+            addTypeClassConstraint(impl, n->loc);
+            addConstraint(impl->typeArgs[0], n->lval->getType(), n->loc,
+                    "Error: should never fail, line " + to_string(__LINE__));
             addConstraint(n->lval->getType(), n->rval->getType(), n->loc,
                     "Operand types of '" + Lexer::getTokStr(n->op) + "' should match, but are $1 and $2 respectively");
             addConstraint(n->getType(), n->lval->getType(), n->loc,
