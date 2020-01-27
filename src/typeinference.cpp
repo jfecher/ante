@@ -113,7 +113,9 @@ namespace ante {
     }
 
     void TypeInferenceVisitor::visit(TypeCastNode *n){
-        n->rval->accept(*this);
+        for(auto &arg : n->args){
+            arg->accept(*this);
+        }
 
         auto t = n->typeExpr->getType();
         if(!t){

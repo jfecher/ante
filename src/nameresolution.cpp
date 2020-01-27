@@ -473,13 +473,10 @@ namespace ante {
 
     void NameResolutionVisitor::visit(TypeCastNode *n){
         n->typeExpr->accept(*this);
-        n->rval->accept(*this);
 
-        /*  Check for validity of cast
-        if(!val){
-            error("Invalid type cast " + anTypeToColoredStr(rtval.type) +
-                    " -> " + anTypeToColoredStr(ty), n->loc);
-        }*/
+        for(auto &arg : n->args){
+            arg->accept(*this);
+        }
     }
 
     void NameResolutionVisitor::visit(UnOpNode *n){
@@ -624,7 +621,7 @@ namespace ante {
             if(VarNode *vn = dynamic_cast<VarNode*>(modAndNode.second)){
                 auto fn = mod->fnDecls.find(vn->name);
                 if(fn == mod->fnDecls.end()){
-                    error("No function named '" + vn->name + "' has not been declared in "
+                    error("No symbol named '" + vn->name + "' found in module "
                             + lazy_str(mod->name, AN_TYPE_COLOR), n->loc);
                 }
                 vn->decl = fn->second;
@@ -1013,18 +1010,18 @@ namespace ante {
         for(Node& child : *decl->child){
             auto nvn = static_cast<NamedValNode*>(&child);
             TypeNode *tyn = (TypeNode*)nvn->typeExpr.get();
-            AnType *tagTy = tyn->extTy ? toAnType(tyn->extTy.get(), compUnit) : AnType::getUnit();
 
             // fake var to make sure the field decl is not null
             auto var = new Variable(nvn->name, decl);
             nvn->decl = var;
 
             vector<AnType*> exts = { AnType::getU8() }; //All variants are comprised of at least their tag value
-            if(tagTy->typeTag == TT_Tuple){
-                auto &extTys = try_cast<AnTupleType>(tagTy)->fields;
-                exts.insert(exts.end(), extTys.begin(), extTys.end());
-            }else{
-                exts.push_back(tagTy);
+            TypeNode *field = tyn->extTy.get();
+            while(field){
+                AnType *f = toAnType(field, compUnit);
+                exts.push_back(f);
+                validateType(f, decl);
+                field = static_cast<TypeNode*>(field->next.get());
             }
 
             //Store the tag as a UnionTag and a AnDataType
@@ -1035,7 +1032,6 @@ namespace ante {
             tagdt->isGeneric = isGeneric(exts);
             data->tags.emplace_back(tagdt);
 
-            validateType(tagTy, decl);
             define(nvn->name, tagdt, nvn->loc);
         }
     }

@@ -4,14 +4,15 @@ type Vec 't =
     cap: usz
 
 impl Empty (Vec 'e)
-    empty vec = Vec(cast 0, 0usz, 0usz)
+    empty () = Vec (cast 0) 0usz 0usz
 
 of iterable =
-    fill (empty Vec) iterable
+    v = mut empty ()
+    fill v iterable
 
 is_empty v = v.len == 0usz
 
-indices (v:Vec) = LazyRange(0, cast v.len, 1)
+indices (v:Vec) = LazyRange 0 (cast v.len) 1
 
 len v = v.len
 
@@ -134,12 +135,12 @@ type VecIter 't =
     len: usz
 
 impl Iterable Vec
-    into_iter v = VecIter(v._data, 0usz, v.len)
+    into_iter v = VecIter v._data 0usz v.len
 
 impl Iterator (VecIter 't)
     type IteratorElem = 't
     cur_elem v = v.view#v.idx
-    advance v = VecIter(v.view, v.idx + 1usz, v.len)
+    advance v = VecIter v.view (v.idx + 1usz) v.len
     has_next v = v.idx < v.len
 
 

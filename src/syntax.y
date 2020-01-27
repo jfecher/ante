@@ -356,11 +356,16 @@ type_decl_list: type_decl_list Newline params                       {$$ = setNex
               | explicit_tagged_union_list                          {$$ = $1;} /* leave root set */
               ;
 
+small_type_list: small_type_list small_type   {$$ = setNext($1, $2);}
+               | small_type                   {$$ = setRoot($1);}
+               ;
+
 /* tagged union list with mandatory '|' before first element */
-explicit_tagged_union_list: explicit_tagged_union_list '|' usertype type    %prec STMT  {$$ = setNext($1, mkNamedValNode(@$, mkVarNode(@3, (char*)$3), mkTypeNode(@4, TT_TaggedUnion, (char*)"", $4)));}
-                          | explicit_tagged_union_list '|' usertype         %prec STMT  {$$ = setNext($1, mkNamedValNode(@$, mkVarNode(@3, (char*)$3), mkTypeNode(@3, TT_TaggedUnion, (char*)"",  0)));}
-                          | '|' usertype type                               %prec STMT  {$$ = setRoot(mkNamedValNode(@$, mkVarNode(@2, (char*)$2), mkTypeNode(@3, TT_TaggedUnion, (char*)"", $3)));}
-                          | '|' usertype                                    %prec STMT  {$$ = setRoot(mkNamedValNode(@$, mkVarNode(@2, (char*)$2), mkTypeNode(@2, TT_TaggedUnion, (char*)"",  0)));}
+explicit_tagged_union_list: explicit_tagged_union_list '|' usertype small_type_list    %prec STMT  {$$ = setNext($1, mkNamedValNode(@$, mkVarNode(@3, (char*)$3), mkTypeNode(@4, TT_TaggedUnion, (char*)"", getRoot())));}
+                          | explicit_tagged_union_list '|' usertype                    %prec STMT  {$$ = setNext($1, mkNamedValNode(@$, mkVarNode(@3, (char*)$3), mkTypeNode(@3, TT_TaggedUnion, (char*)"", 0)));}
+                          | '|' usertype small_type_list                               %prec STMT  {$$ = setRoot(mkNamedValNode(@$, mkVarNode(@2, (char*)$2), mkTypeNode(@3, TT_TaggedUnion, (char*)"", getRoot())));}
+                          | '|' usertype                                               %prec STMT  {$$ = setRoot(mkNamedValNode(@$, mkVarNode(@2, (char*)$2), mkTypeNode(@2, TT_TaggedUnion, (char*)"", 0)));}
+                          ;
 
 type_decl_block: Indent type_decl_list Unindent   {$$ = getRoot();}
                | params              %prec LOW    {$$ = getRoot();}
@@ -614,7 +619,7 @@ expr_no_decl: expr_no_decl '+' maybe_newline expr_no_decl                      {
             | unary_op                                                         {$$ = $1;}
 
             | function_call                                         %prec LOW  {$$ = mkFuncCallNode(@$, getRoot());}
-            | usertype_node constructor_args                        %prec LOW  {$$ = mkTypeCastNode(@$, $1, mkTupleNode(@2, getRoot()));}
+            | usertype_node constructor_args                        %prec LOW  {$$ = mkTypeCastNode(@$, $1, getRoot());}
             | var '=' maybe_newline expr_or_block                              {$$ = mkVarAssignNode(@$, $1, $4); append_modifiers(mkModNode(@1, Tok_Let), $$);}
             | var '=' Mut maybe_newline expr_or_block                          {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Mut), $$);}
             | var '=' Global maybe_newline expr_or_block                       {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Global), $$);}
@@ -684,7 +689,7 @@ expr: expr '+' maybe_newline expr                               {$$ = mkBinOpNod
     | unary_op                                                  {$$ = $1;}
 
     | function_call                                  %prec LOW  {$$ = mkFuncCallNode(@$, getRoot());}
-    | usertype_node constructor_args                 %prec LOW  {$$ = mkTypeCastNode(@$, $1, mkTupleNode(@2, getRoot()));}
+    | usertype_node constructor_args                 %prec LOW  {$$ = mkTypeCastNode(@$, $1, getRoot());}
     | var '=' maybe_newline expr_or_block                       {$$ = mkVarAssignNode(@$, $1, $4); append_modifiers(mkModNode(@1, Tok_Let), $$);}
     | var '=' Mut maybe_newline expr_or_block                   {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Mut), $$);}
     | var '=' Global maybe_newline expr_or_block                {$$ = mkVarAssignNode(@$, $1, $5); append_modifiers(mkModNode(@1, Tok_Global), $$);}

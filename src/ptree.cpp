@@ -338,14 +338,20 @@ namespace ante {
 
         Node* mkTypeCastNode(LOC_TY loc, Node *l, Node *r){
             auto type = static_cast<TypeNode*>(l);
-            auto arg  = dynamic_cast<TypeNode*>(r);
-            //TODO: Fix this parse conflict
-            if(arg){
-                type->params.emplace_back(arg);
-                return type;
-            }else{
-                return new TypeCastNode(loc, type, r);
+            vector<unique_ptr<Node>> args;
+            while(r){
+                args.emplace_back(r);
+                r = r->next.release();
             }
+
+            // auto arg  = dynamic_cast<TypeNode*>(r);
+            // //TODO: Fix this parse conflict
+            // if(arg){
+            //     type->params.emplace_back(arg);
+            //     return type;
+            // }else{
+            return new TypeCastNode(loc, type, move(args));
+            // }
         }
 
         Node* mkUnOpNode(LOC_TY loc, int op, Node* r){

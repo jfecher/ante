@@ -98,7 +98,9 @@ namespace ante {
     }
 
     void AnteVisitor::visit(parser::TypeCastNode *n){
-        n->rval->accept(*this);
+        for(auto &arg : n->args){
+            arg->accept(*this);
+        }
     }
 
     void AnteVisitor::visit(parser::RetNode *n){

@@ -84,13 +84,13 @@ namespace ante {
     void ConstraintFindingVisitor::visit(TypeNode *n){}
 
     void ConstraintFindingVisitor::visit(TypeCastNode *n){
-        n->rval->accept(*this);
+        for(auto &arg : n->args){
+            arg->accept(*this);
+        }
 
         auto variant = try_cast<AnProductType>(n->typeExpr->getType());
         if(variant){
-            TupleNode *tn = dynamic_cast<TupleNode*>(n->rval.get());
-
-            size_t argc = tn ? tn->exprs.size() : 1;
+            size_t argc = n->args.size();
             size_t offset = variant->parentUnionType ? 1 : 0;
 
             if(variant->fields.size() - offset != argc){
@@ -100,16 +100,11 @@ namespace ante {
                         + lplural + to_string(argc) + rplural, n->loc);
             }
 
-            if(tn){
-                for(size_t i = 0; i < argc; i++){
-                    auto tnty = tn->exprs[i]->getType();
-                    auto vty = variant->fields[i+offset];
-                    addConstraint(tnty, vty, tn->exprs[i]->loc,
-                            "Expected field " + to_string(i+1) + " of type $1 to be typecasted to the corresponding field type $2 from " + variant->name);
-                }
-            }else{
-                addConstraint(n->rval->getType(), variant->fields[offset], n->rval->loc,
-                        "Cannot cast $1 to $2 when trying to cast to " + variant->name);
+            for(size_t i = 0; i < argc; i++){
+                auto tnty = n->args[i]->getType();
+                auto vty = variant->fields[i+offset];
+                addConstraint(tnty, vty, n->args[i]->loc,
+                        "Expected field " + to_string(i+1) + " of type $1 to be typecasted to the corresponding field type $2 from " + variant->name);
             }
         }else{
             showError(anTypeToColoredStr(n->typeExpr->getType()) + " can't be constructed (with this syntax) because it is not a record", n->typeExpr->loc);
@@ -667,15 +662,10 @@ namespace ante {
         auto variantType = try_cast<AnProductType>(pat->typeExpr->getType());
 
         patChecker.overwrite(Pattern::fromSumType(sumType), pat->loc);
-        auto agg = variantType->getVariantWithoutTag();
         Pattern& child = patChecker.getChild(sumType->getTagVal(variantType->name));
 
-        // auto-unwrap 1-element tuples to allow Some n instead of forcing Some (n,)
-        bool shouldUnwrap = agg->fields.size() == 1;
-        if(shouldUnwrap){
-            handlePattern(n, pat->rval.get(), agg->fields[0], child.getChild(0));
-        }else{
-            handlePattern(n, pat->rval.get(), agg, child);
+        for(size_t i = 0; i < pat->args.size(); i++){
+            handlePattern(n, pat->args[i].get(), variantType->fields[i+1], child.getChild(i));
         }
     }
 

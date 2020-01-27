@@ -96,30 +96,28 @@ namespace ante {
 
     Type* getUnionVariantType(Compiler *c, AnProductType *tagTy){
         return c->anTypeToLlvmType(tagTy);
-        /*
-        AnType *anTagData = unionVariantToTupleTy(tagTy);
-        Type *tagData = c->anTypeToLlvmType(anTagData);
-        return tagData->isVoidTy() ?
-            StructType::get(*c->ctxt, {c->builder.getInt8Ty()}, true) :
-            StructType::get(*c->ctxt, {c->builder.getInt8Ty(), tagData}, true);
-            */
     }
 
-    TypedValue unionDowncast(Compiler *c, TypedValue valToMatch, AnProductType *tagTy){
+    vector<TypedValue> unionDowncast(Compiler *c, TypedValue valToMatch, AnProductType *tagTy){
         auto alloca = addrOf(c, valToMatch);
 
-        //bitcast valToMatch* to (tag, tagData)*
         auto *castTy = getUnionVariantType(c, tagTy);
         if(castTy->getStructNumElements() != 1){
+            //bitcast valToMatch* to (tag, fields)*
             auto *cast = c->builder.CreateBitCast(alloca.val, castTy->getPointerTo());
 
-            //extract tag_data from (tag, tagData)*
-            auto *gep = c->builder.CreateStructGEP(castTy, cast, 1);
-            auto *deref = c->builder.CreateLoad(gep);
-            auto *type = (AnType*)valToMatch.type->addModifiersTo(unionVariantToTupleTy(tagTy));
-            return {deref, type};
+            //extract tag_data from (tag, fields...)*
+            size_t len = castTy->getStructNumElements() - 1;
+            auto fields = vecOf<TypedValue>(len);
+            for(size_t i = 0; i < len; ++i){
+                auto *gep = c->builder.CreateStructGEP(castTy, cast, i + 1);
+                auto *deref = c->builder.CreateLoad(gep);
+                fields.emplace_back(deref, tagTy->fields[i + 1]);
+            }
+
+            return fields;
         }else{
-            return c->getUnitLiteral();
+            return {c->getUnitLiteral()};
         }
     }
 
@@ -129,7 +127,7 @@ namespace ante {
      * @param bindExpr The optional expr to bind params to, eg. x
      */
     void match_variant(CompilingVisitor &cv, MatchNode *n, TypeNode *pattern,
-            Node *bindExpr, BasicBlock *jmpOnFail, TypedValue &valToMatch){
+            vector<unique_ptr<Node>> const& bindExpr, BasicBlock *jmpOnFail, TypedValue &valToMatch){
 
         Compiler *c = cv.c;
 
@@ -157,17 +155,19 @@ namespace ante {
         c->builder.SetInsertPoint(jmpOnSuccess);
 
         //bind any identifiers and match remaining pattern
-        if(bindExpr){
-            TypedValue variant;
+        if(!bindExpr.empty()){
+            vector<TypedValue> variantArgs;
             if(valToMatch.getType()->isStructTy()){
-                variant = unionDowncast(c, valToMatch, tagTy);
-            }else if(valToMatch.getType()->isIntegerTy()){
-                variant = c->getUnitLiteral();
+                variantArgs = unionDowncast(c, valToMatch, tagTy);
+            }else if(valToMatch.getType()->isIntegerTy()){ //integer tag
+                variantArgs = {c->getUnitLiteral()};
             }else{
                 //all tagged unions are either just their tag (enum) or a tag and value.
                 ASSERT_UNREACHABLE("Unknown variant in match_variant");
             }
-            handlePattern(cv, n, bindExpr, jmpOnFail, variant);
+            for(size_t i = 0; i < bindExpr.size(); ++i){
+                handlePattern(cv, n, bindExpr[i].get(), jmpOnFail, variantArgs[i]);
+            }
         }
     }
 
@@ -178,10 +178,10 @@ namespace ante {
             match_tuple(cv, n, tn, jmpOnFail, valToMatch);
 
         }else if(TypeCastNode *tcn = dynamic_cast<TypeCastNode*>(pattern)){
-            match_variant(cv, n, tcn->typeExpr.get(), tcn->rval.get(), jmpOnFail, valToMatch);
+            match_variant(cv, n, tcn->typeExpr.get(), tcn->args, jmpOnFail, valToMatch);
 
         }else if(TypeNode *tn = dynamic_cast<TypeNode*>(pattern)){
-            match_variant(cv, n, tn, nullptr, jmpOnFail, valToMatch);
+            match_variant(cv, n, tn, {}, jmpOnFail, valToMatch);
 
         }else if(VarNode *vn = dynamic_cast<VarNode*>(pattern)){
             match_var(cv, n, vn, jmpOnFail, valToMatch);

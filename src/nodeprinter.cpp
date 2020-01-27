@@ -133,9 +133,10 @@ void PrintingVisitor::visit(TypeNode *n){
 void PrintingVisitor::visit(TypeCastNode *n){
     putchar('(');
     n->typeExpr->accept(*this);
-    putchar(' ');
-    n->rval->accept(*this);
-    std::cout << "  : " << anTypeToColoredStr(n->getType());
+    for(auto &arg : n->args){
+        putchar(' ');
+        arg->accept(*this);
+    }
     putchar(')');
     maybePrintArr(n->next.get());
 }

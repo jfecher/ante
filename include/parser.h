@@ -250,9 +250,10 @@ namespace ante {
 
         struct TypeCastNode : public Node{
             std::unique_ptr<TypeNode> typeExpr;
-            std::unique_ptr<Node> rval;
+            std::vector<std::unique_ptr<Node>> args;
             void accept(NodeVisitor& v){ v.visit(this); }
-            TypeCastNode(LOC_TY& loc, TypeNode *ty, Node *rv) : Node(loc), typeExpr(ty), rval(rv){}
+            TypeCastNode(LOC_TY& loc, TypeNode *ty, std::vector<std::unique_ptr<Node>> &&a)
+                : Node(loc), typeExpr(ty), args(std::move(a)){}
             ~TypeCastNode(){}
         };
 

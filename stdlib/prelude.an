@@ -59,7 +59,7 @@ type Type 't = none:unit
 
 
 trait Empty 't
-    empty (Type 't) -> 't
+    empty unit -> 't
 
 
 impl Eq (Maybe 'e) given Eq 'e
@@ -236,24 +236,11 @@ impl Print Str
 
 
 impl Print 't given Cast 't Str
-    printne t = printne (cast t : Str)
+    printne t = printne (t as Str)
 
 
 impl Cast Str (ref c8)
     cast s = s.cStr
-
-
-module Str
-    reverse (s:Str) -> Str =
-        buf = mut malloc (s.len + 1usz)
-
-        i = mut 0usz
-        while i < s.len do
-            buf#i := s.cStr#(s.len - i - 1usz)
-            i += 1usz
-
-        buf#i := '\0'
-        Str buf i
 
 
 impl Cast i64 Str

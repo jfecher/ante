@@ -236,25 +236,29 @@ TypedValue Compiler::compInsert(BinOpNode *op, Node *assignExpr){
 }
 
 
-TypedValue createUnionVariantCast(Compiler *c, TypedValue &valToCast,
+TypedValue createUnionVariantCast(Compiler *c, vector<TypedValue> const& args,
         string &tagName, AnSumType *unionDataTy){
 
-    Type *variantTy = c->anTypeToLlvmType(valToCast.type);
-    auto tagVal = unionDataTy->getTagVal(tagName);
-
     vector<Type*> unionTys;
-    unionTys.push_back(Type::getInt8Ty(*c->ctxt));
-    unionTys.push_back(variantTy);
-
     vector<Constant*> unionVals;
+
+    auto tagVal = unionDataTy->getTagVal(tagName);
+    unionTys.push_back(Type::getInt8Ty(*c->ctxt));
     unionVals.push_back(ConstantInt::get(*c->ctxt, APInt(8, tagVal, true))); //tag
-    unionVals.push_back(UndefValue::get(variantTy));
+
+    for(auto &tval : args){
+        unionTys.push_back(tval.getType());
+        unionVals.push_back(UndefValue::get(tval.getType()));
+    }
 
     Type *unionTy = c->anTypeToLlvmType(unionDataTy);
 
     //create a struct of (u8 tag, <union member type>)
-    auto *uninitUnion = ConstantStruct::get(StructType::get(*c->ctxt, unionTys, true), unionVals);
-    auto* taggedUnion = c->builder.CreateInsertValue(uninitUnion, valToCast.val, 1);
+    Value *taggedUnion = ConstantStruct::get(StructType::get(*c->ctxt, unionTys, true), unionVals);
+    size_t i = 0;
+    for(auto &arg : args){
+        taggedUnion = c->builder.CreateInsertValue(taggedUnion, arg.val, ++i);
+    }
 
     //allocate for the largest possible union member
     auto *alloca = c->builder.CreateAlloca(unionTy);
@@ -296,109 +300,99 @@ vector<AnType*> toTuple(AnType *ty){
  *  For example, given the definition type T = U and a variable u: U
  *  the cast T u will be managed by this function with from = u and to = T
  */
-TypedValue reinterpretTuple(Compiler *c, Value *from, AnType *to){
+TypedValue reinterpretTuple(Compiler *c, vector<TypedValue> const& args, AnType *to){
     auto *structTy = c->anTypeToLlvmType(to);
     Value *rstruct = UndefValue::get(structTy);
 
-    if(structTy->getStructElementType(0) == from->getType()){
-        rstruct = c->builder.CreateInsertValue(rstruct, from, 0);
-        return TypedValue(rstruct, to);
-    }
-
     auto nElems = rstruct->getType()->getStructNumElements();
     for(size_t i = 0; i < nElems; i++){
-        auto *elem = c->builder.CreateExtractValue(from, i);
-        rstruct = c->builder.CreateInsertValue(rstruct, elem, i);
+        rstruct = c->builder.CreateInsertValue(rstruct, args[i].val, i);
     }
 
     return TypedValue(rstruct, to);
 }
 
-bool shouldCastToWrapperType(AnType *from, AnProductType *wrapper){
-    if(wrapper->fields.size() > 1){
-        return true;
-    }else{
-        return wrapper->fields.size() == 1 || from->typeTag == TT_Unit;
-    }
-}
-
-TypedValue doReinterpretCast(Compiler *c, AnType *castTy, TypedValue &valToCast){
+TypedValue doReinterpretCast(Compiler *c, AnType *castTy, vector<TypedValue> const& args){
     auto *dt = try_cast<AnProductType>(castTy);
-    if(dt && shouldCastToWrapperType(valToCast.type, dt)){
+    if(dt){
         if(dt->parentUnionType){
-            return createUnionVariantCast(c, valToCast, dt->name, dt->parentUnionType);
+            return createUnionVariantCast(c, args, dt->name, dt->parentUnionType);
         }else{
-            return reinterpretTuple(c, valToCast.val, dt);
+            return reinterpretTuple(c, args, dt);
         }
     }
     // cast to primitive
-    return TypedValue(valToCast.val, castTy);
+    return TypedValue(args[0].val, castTy);
 }
 
 /*
  *  Creates a cast instruction appropriate for valToCast's type to castTy.
  */
-TypedValue createCast(Compiler *c, AnType *castTy, TypedValue &valToCast, Node *locNode){
-    if(isIntTypeTag(castTy->typeTag)){
-        Type *llvmCastTy = c->anTypeToLlvmType(castTy);
+TypedValue createCast(Compiler *c, AnType *castTy, vector<TypedValue> &args, Node *locNode){
+    // if(isIntTypeTag(castTy->typeTag)){
+    //     Type *llvmCastTy = c->anTypeToLlvmType(castTy);
 
-        // int -> int  (maybe unsigned)
-        if(isIntTypeTag(valToCast.type->typeTag)){
-            return TypedValue(c->builder.CreateIntCast(valToCast.val, llvmCastTy,
-                        !isUnsignedTypeTag(valToCast.type->typeTag)), castTy);
+    //     // int -> int  (maybe unsigned)
+    //     if(isIntTypeTag(valToCast.type->typeTag)){
+    //         return TypedValue(c->builder.CreateIntCast(valToCast.val, llvmCastTy,
+    //                     !isUnsignedTypeTag(valToCast.type->typeTag)), castTy);
 
-        // float -> int
-        }else if(isFPTypeTag(valToCast.type->typeTag)){
-            if(isUnsignedTypeTag(castTy->typeTag)){
-                return TypedValue(c->builder.CreateFPToUI(valToCast.val, llvmCastTy), castTy);
-            }else{
-                return TypedValue(c->builder.CreateFPToSI(valToCast.val, llvmCastTy), castTy);
-            }
+    //     // float -> int
+    //     }else if(isFPTypeTag(valToCast.type->typeTag)){
+    //         if(isUnsignedTypeTag(castTy->typeTag)){
+    //             return TypedValue(c->builder.CreateFPToUI(valToCast.val, llvmCastTy), castTy);
+    //         }else{
+    //             return TypedValue(c->builder.CreateFPToSI(valToCast.val, llvmCastTy), castTy);
+    //         }
 
-        // ptr -> int
-        }else if(valToCast.type->typeTag == TT_Ptr){
-            return TypedValue(c->builder.CreatePtrToInt(valToCast.val, llvmCastTy), castTy);
-        }
-    }else if(isFPTypeTag(castTy->typeTag)){
-        Type *llvmCastTy = c->anTypeToLlvmType(castTy);
+    //     // ptr -> int
+    //     }else if(valToCast.type->typeTag == TT_Ptr){
+    //         return TypedValue(c->builder.CreatePtrToInt(valToCast.val, llvmCastTy), castTy);
+    //     }
+    // }else if(isFPTypeTag(castTy->typeTag)){
+    //     Type *llvmCastTy = c->anTypeToLlvmType(castTy);
 
-        // int -> float
-        if(isIntTypeTag(valToCast.type->typeTag)){
-            if(isUnsignedTypeTag(valToCast.type->typeTag)){
-                return TypedValue(c->builder.CreateUIToFP(valToCast.val, llvmCastTy), castTy);
-            }else{
-                return TypedValue(c->builder.CreateSIToFP(valToCast.val, llvmCastTy), castTy);
-            }
+    //     // int -> float
+    //     if(isIntTypeTag(valToCast.type->typeTag)){
+    //         if(isUnsignedTypeTag(valToCast.type->typeTag)){
+    //             return TypedValue(c->builder.CreateUIToFP(valToCast.val, llvmCastTy), castTy);
+    //         }else{
+    //             return TypedValue(c->builder.CreateSIToFP(valToCast.val, llvmCastTy), castTy);
+    //         }
 
-        // float -> float
-        }else if(isFPTypeTag(valToCast.type->typeTag)){
-            return TypedValue(c->builder.CreateFPCast(valToCast.val, llvmCastTy), castTy);
-        }
+    //     // float -> float
+    //     }else if(isFPTypeTag(valToCast.type->typeTag)){
+    //         return TypedValue(c->builder.CreateFPCast(valToCast.val, llvmCastTy), castTy);
+    //     }
 
-    }else if(castTy->typeTag == TT_Ptr){
-        Type *llvmCastTy = c->anTypeToLlvmType(castTy);
+    // }else if(castTy->typeTag == TT_Ptr){
+    //     Type *llvmCastTy = c->anTypeToLlvmType(castTy);
 
-        // ptr -> ptr
-        if(valToCast.type->typeTag == TT_Ptr){
-            return TypedValue(c->builder.CreatePointerCast(valToCast.val, llvmCastTy), castTy);
+    //     // ptr -> ptr
+    //     if(valToCast.type->typeTag == TT_Ptr){
+    //         return TypedValue(c->builder.CreatePointerCast(valToCast.val, llvmCastTy), castTy);
 
-        // int -> ptr
-        }else if(isIntTypeTag(valToCast.type->typeTag)){
-            return TypedValue(c->builder.CreateIntToPtr(valToCast.val, llvmCastTy), castTy);
-        }
-    }
+    //     // int -> ptr
+    //     }else if(isIntTypeTag(valToCast.type->typeTag)){
+    //         return TypedValue(c->builder.CreateIntToPtr(valToCast.val, llvmCastTy), castTy);
+    //     }
+    // }
 
     //NOTE: doReinterpretCast only casts if a valid cast is found,
     //      if no valid cast is found nullptr is returned
-    return doReinterpretCast(c, castTy, valToCast);
+    return doReinterpretCast(c, castTy, args);
 }
 
 
 void CompilingVisitor::visit(TypeCastNode *n){
-    n->rval->accept(*this);
+    auto args = vecOf<TypedValue>(n->args.size());
+    for(auto &arg : n->args){
+        arg->accept(*this);
+        args.push_back(this->val);
+    }
     //n->typeExpr->getType() is used here instead of n->getType() in case
     //of union variants, only the typeExpr will have the specific variant used
-    this->val = createCast(c, n->typeExpr->getType(), this->val, n);
+    this->val = createCast(c, n->typeExpr->getType(), args, n);
 }
 
 

@@ -69,7 +69,9 @@ namespace ante {
     }
 
     void SubstitutingVisitor::visit(TypeCastNode *n){
-        n->rval->accept(*this);
+        for(auto &arg : n->args){
+            arg->accept(*this);
+        }
         n->typeExpr->accept(*this);
         n->setType(applySubstitutions(substitutions, n->getType()));
     }
