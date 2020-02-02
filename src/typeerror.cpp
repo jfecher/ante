@@ -81,9 +81,13 @@ namespace ante {
         return v;
     }
 
+    TraitImpl* sanitize(TraitImpl* v, std::unordered_map<AnTypeVarType*, AnTypeVarType*> &map, std::string &nextName){
+        return new TraitImpl(v->name, sanitizeAll(v->typeArgs, map, nextName));
+    }
+
     std::vector<TraitImpl*> sanitizeAll(std::vector<TraitImpl*> v, std::unordered_map<AnTypeVarType*, AnTypeVarType*> &map, std::string &nextName){
         for(size_t i = 0; i < v.size(); ++i){
-            v[i] = new TraitImpl(v[i]->name, sanitizeAll(v[i]->typeArgs, map, nextName));
+            v[i] = sanitize(v[i], map, nextName);
         }
         return v;
     }
@@ -141,6 +145,12 @@ namespace ante {
         }else{
             return t;
         }
+    }
+
+    TraitImpl* sanitize(TraitImpl* impl){
+        std::unordered_map<AnTypeVarType*, AnTypeVarType*> map;
+        std::string cur = "'a";
+        return sanitize(impl, map, cur);
     }
 
     AnType* sanitize(AnType *t){

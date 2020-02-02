@@ -161,4 +161,39 @@ namespace ante {
         }
         return new TraitImpl(decl, decl->typeArgs);
     }
+
+    bool TraitImpl::hasTrivialImpl() const {
+        if(name == "Add" || name == "Sub" || name == "Mul" || name == "Div" || name == "Mod" || name == "Cmp" || name == "Neg"){
+            return typeArgs[0]->isIntTy() || typeArgs[0]->typeTag == TT_C8;
+
+        }else if(name == "Cast"){
+            AnType *arg1 = typeArgs[0];
+            AnType *arg2 = typeArgs[1];
+            return (arg1->isIntTy() || arg1->typeTag == TT_Ptr || arg1->typeTag == TT_C8 || arg1->typeTag == TT_Bool) &&
+                (arg2->isIntTy() || arg2->typeTag == TT_Ptr || arg2->typeTag == TT_C8 || arg2->typeTag == TT_Bool);
+
+        }else if(name == "Eq" || name == "Is"){
+            TypeTag tag = typeArgs[0]->typeTag;
+            return typeArgs[0]->isIntTy()
+                || tag == TT_C8 || tag == TT_Bool;
+
+        }else if(name == "Extract"){
+            return typeArgs[0]->typeTag == TT_Ptr
+                && typeArgs[1]->typeTag == TT_Usz;
+
+        }else if(name == "Inamesert"){
+            auto ptrty = try_cast<AnPtrType>(typeArgs[0]);
+            return ptrty
+                && typeArgs[1]->typeTag == TT_Usz
+                && *typeArgs[2] == *ptrty->extTy;
+
+        }else if(name == "Deref"){
+            return typeArgs[0]->typeTag == TT_Ptr;
+
+        }else if(name == "Not"){
+            return typeArgs[0]->typeTag == TT_Bool;
+        }else{
+            return false;
+        }
+    }
 }

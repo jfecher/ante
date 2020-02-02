@@ -61,6 +61,8 @@ namespace ante {
         bool operator==(TraitImpl const& r){
             return name == r.name && typeArgs == r.typeArgs;
         }
+
+        bool hasTrivialImpl() const;
     };
 
     TraitImpl* toTrait(parser::TypeNode *tn, Module *m);

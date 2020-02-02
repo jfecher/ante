@@ -509,46 +509,10 @@ string toModuleName(const AnType *t){
     }
 }
 
-bool hasTrivialImpl(TraitImpl *impl){
-    string const& n = impl->name;
-    if(n == "Add" || n == "Sub" || n == "Mul" || n == "Div" || n == "Mod" || n == "Cmp" || n == "Neg"){
-        return impl->typeArgs[0]->isIntTy() || impl->typeArgs[0]->typeTag == TT_C8;
-
-    }else if(n == "Cast"){
-        AnType *arg1 = impl->typeArgs[0];
-        AnType *arg2 = impl->typeArgs[1];
-        return (arg1->isIntTy() || arg1->typeTag == TT_Ptr || arg1->typeTag == TT_C8 || arg1->typeTag == TT_Bool) &&
-               (arg2->isIntTy() || arg2->typeTag == TT_Ptr || arg2->typeTag == TT_C8 || arg2->typeTag == TT_Bool);
-
-    }else if(n == "Eq" || n == "Is"){
-        TypeTag tag = impl->typeArgs[0]->typeTag;
-        return impl->typeArgs[0]->isIntTy()
-            || tag == TT_C8 || tag == TT_Bool;
-
-    }else if(n == "Extract"){
-        return impl->typeArgs[0]->typeTag == TT_Ptr
-            && impl->typeArgs[1]->typeTag == TT_Usz;
-
-    }else if(n == "Insert"){
-        auto ptrty = try_cast<AnPtrType>(impl->typeArgs[0]);
-        return ptrty
-            && impl->typeArgs[1]->typeTag == TT_Usz
-            && *impl->typeArgs[2] == *ptrty->extTy;
-
-    }else if(n == "Deref"){
-        return impl->typeArgs[0]->typeTag == TT_Ptr;
-
-    }else if(n == "Not"){
-        return impl->typeArgs[0]->typeTag == TT_Bool;
-    }else{
-        return false;
-    }
-}
-
 void attachTraitImpl(Declaration *decl, AnType *fnTy, Module *m, LOC_TY &loc){
     if(decl->isTraitFuncDecl()){
         auto trait = try_cast<AnFunctionType>(fnTy)->typeClassConstraints.front();
-        if(!hasTrivialImpl(trait)){
+        if(!trait->hasTrivialImpl()){
             auto impl = m->lookupTraitImpl(trait->name, trait->typeArgs);
             if(!impl){
                 error("No impl for " + traitToColoredStr(trait) + " in scope", loc);

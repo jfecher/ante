@@ -4,6 +4,7 @@
 #include "parser.h"
 #include "module.h"
 #include "unification.h"
+#include <vector>
 
 namespace ante {
     
@@ -18,9 +19,14 @@ namespace ante {
             ast->accept(v);
         }
 
-        private:
+    private:
         Substitutions const& substitutions;
         Module *module;
+        std::vector<llvm::StringMap<const AnTypeVarType*>> typevarsInScope;
+
+        void checkTypeClassConstraints(AnFunctionType *t, LOC_TY &loc);
+        bool delayTraitCheck(TraitImpl *impl) const;
+        bool inScope(llvm::StringRef typevar) const;
     };
 }
 

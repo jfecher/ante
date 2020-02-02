@@ -52,6 +52,7 @@ namespace ante {
     * Keep track of already-seen typevars with map.
     */
     AnType* sanitize(AnType *t);
+    TraitImpl* sanitize(TraitImpl* impl);
 
     /**
     * Convert two AnType* to two string-like object usable in error messages.

@@ -88,8 +88,49 @@ namespace ante {
         n->setType(applySubstitutions(substitutions, n->getType()));
     }
 
+    bool SubstitutingVisitor::inScope(llvm::StringRef typevar) const {
+        for(auto it = typevarsInScope.rbegin(); it != typevarsInScope.rend(); it++){
+            auto item = it->find(typevar);
+            if(item != it->end()){
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool SubstitutingVisitor::delayTraitCheck(TraitImpl *impl) const {
+        for(auto arg : impl->typeArgs){
+            auto typevars = getAllContainedTypeVars(arg);
+            for(auto &pair : typevars){
+                if(inScope(pair.first())){
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    void SubstitutingVisitor::checkTypeClassConstraints(AnFunctionType *t, LOC_TY &loc){
+        for(auto *c : t->typeClassConstraints){
+            if(!c->hasTrivialImpl() && !delayTraitCheck(c)){
+                auto impl = module->lookupTraitImpl(c->name, c->typeArgs);
+                if(impl){
+                    c->impl = impl->impl;
+                }else{
+                    auto impl = ante::sanitize(c);
+                    showError("No impl for " + traitToColoredStr(impl) + " in scope", loc);
+                }
+            }
+        }
+    }
+
     void SubstitutingVisitor::visit(VarNode *n){
         n->setType(applySubstitutions(substitutions, n->getType()));
+
+        auto fn = try_cast<AnFunctionType>(n->getType());
+        if(fn){
+            checkTypeClassConstraints(fn, n->loc);
+        }
     }
 
     void SubstitutingVisitor::visit(BinOpNode *n){
@@ -173,10 +214,18 @@ namespace ante {
             p.accept(*this);
         }
 
+        n->setType(applySubstitutions(substitutions, n->getType()));
+
+        auto fn = try_cast<AnFunctionType>(n->getType());
+        assert(fn);
+        typevarsInScope.push_back(getAllContainedTypeVars(fn));
+
+        checkTypeClassConstraints(fn, n->loc);
+
         if(n->child)
             n->child->accept(*this);
 
-        n->setType(applySubstitutions(substitutions, n->getType()));
+        typevarsInScope.pop_back();
     }
 
     void SubstitutingVisitor::visit(DataDeclNode *n){}
