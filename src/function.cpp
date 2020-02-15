@@ -10,85 +10,27 @@ using namespace ante::parser;
 namespace ante {
 
 /*
- * Transforms t into a parameter type if need be.
- * - wraps array types in pointers
- * - wraps mutable types in pointers
- */
-Type* parameterize(Compiler *c, AnType *t){
-    return implicitPassByRef(t) ?
-        c->anTypeToLlvmType(t)->getPointerTo() :
-        c->anTypeToLlvmType(t);
-}
-
-bool implicitPassByRef(AnType* t){
-    return t->typeTag == TT_Array or t->hasModifier(Tok_Mut);
-}
-
-/*
- * Return true if the given function type
- * is a user-declared ante function or a
- * compiler-api function (TT_MetaFunction)
- */
-bool isCompileTimeFunction(AnType *fty){
-    return fty->typeTag == TT_MetaFunction or
-        (fty->typeTag == TT_Function && fty->hasModifier(Tok_Ante));
-}
-
-bool isCompileTimeFunction(TypedValue &tv){
-    return isCompileTimeFunction(tv.type);
-}
-
-vector<AnType*> toTypeVector(vector<TypedValue> const& tvs){
-    auto ret = vecOf<AnType*>(tvs.size());
-    for(const auto tv : tvs)
-        ret.push_back(tv.type);
-    return ret;
-}
-
-
-/*
- * Translates a NamedValNode list to a vector
- * of the types it contains.  If the list contains
- * a varargs type (represented by the absence of a type)
- * then a nullptr is inserted for that parameter.
- */
-vector<Type*> getParamTypes(Compiler *c, FuncDecl *fd){
-    vector<Type*> paramTys;
-
-    auto fnty = try_cast<AnFunctionType>(fd->tval.type);
-
-    paramTys.reserve(fnty->paramTys.size());
-    for(auto *paramTy : fnty->paramTys){
-        auto *llvmty = parameterize(c, paramTy);
-        paramTys.push_back(llvmty);
-    }
-    return paramTys;
-}
-
-/*
  *  Adds llvm attributes to an Argument based off the parameters type
  */
-void addArgAttrs(llvm::Argument &arg, TypeNode *paramTyNode){
-    if(paramTyNode->typeTag == TT_Function){
+void addArgAttrs(llvm::Argument &arg, AnType *argTy){
+    if(argTy->typeTag == TT_Function){
         arg.addAttr(Attribute::AttrKind::NoCapture);
+    }
 
-        //TODO: re-add
-        if(!paramTyNode->hasModifier(Tok_Mut)){
-            arg.addAttr(Attribute::AttrKind::ReadOnly);
-        }
+    if(arg.getType()->isPointerTy() && !argTy->hasModifier(Tok_Mut)){
+        arg.addAttr(Attribute::AttrKind::ReadOnly);
     }
 }
 
 /*
  *  Same as addArgAttrs, but for every parameter
  */
-void addAllArgAttrs(Function *f, NamedValNode *params){
+void addAllArgAttrs(Function *f, AnFunctionType *fnTy){
+    size_t i = 0;
     for(auto &arg : f->args()){
-        TypeNode *paramTyNode = (TypeNode*)params->typeExpr.get();
-
-        addArgAttrs(arg, paramTyNode);
-
-        if(!(params = (NamedValNode*)params->next.get())) break;
+        assert(i < fnTy->paramTys.size());
+        addArgAttrs(arg, fnTy->paramTys[i]);
+        i++;
     }
 }
 
@@ -231,6 +173,7 @@ TypedValue compFnHelper(Compiler *c, FuncDecl *fd){
 
     FunctionType *ft = dyn_cast<FunctionType>(c->anTypeToLlvmType(fnTyNoCtParams)->getPointerElementType());
     Function *f = Function::Create(ft, Function::ExternalLinkage, fd->getName(), c->module.get());
+    addAllArgAttrs(f, fnTy);
 
     TypedValue ret{f, fnTy};
     fd->tval.val = f;

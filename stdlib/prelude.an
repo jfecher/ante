@@ -419,7 +419,7 @@ impl Eq Str
         if l.len != r.len then
             return false
 
-        for i in 0 .. cast l.len do
+        for i in 0 .. l.len do
             if l.cStr#i != r.cStr#i then
                 return false
         true

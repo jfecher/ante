@@ -117,7 +117,7 @@ namespace ante {
                 if(impl){
                     c->impl = impl->impl;
                 }else{
-                    auto impl = ante::sanitize(c);
+                    auto impl = sanitize(c);
                     showError("No impl for " + traitToColoredStr(impl) + " in scope", loc);
                 }
             }

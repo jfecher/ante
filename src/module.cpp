@@ -181,7 +181,7 @@ namespace ante {
             return typeArgs[0]->typeTag == TT_Ptr
                 && typeArgs[1]->typeTag == TT_Usz;
 
-        }else if(name == "Inamesert"){
+        }else if(name == "Insert"){
             auto ptrty = try_cast<AnPtrType>(typeArgs[0]);
             return ptrty
                 && typeArgs[1]->typeTag == TT_Usz

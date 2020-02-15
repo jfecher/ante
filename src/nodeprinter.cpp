@@ -41,7 +41,7 @@ void PrintingVisitor::visit(RootNode *n){
     for(auto& f : n->types){ f->accept(*this); puts("\n"); }
 
     for(auto& f : n->funcs){
-        f->accept(*this); 
+        f->accept(*this);
         puts("\n");
     }
 
@@ -166,8 +166,13 @@ void PrintingVisitor::visit(BinOpNode *n){
     putchar('(');
     if(n->op == '('){
         n->lval->accept(*this);
-        cout << " with args ";
-        n->rval->accept(*this);
+
+        auto args = dynamic_cast<TupleNode*>(n->rval.get());
+        assert(args);
+        for(auto &arg : args->exprs){
+            putchar(' ');
+            arg->accept(*this);
+        }
     }else{
         n->lval->accept(*this);
         putchar(' ');

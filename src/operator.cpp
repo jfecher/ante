@@ -576,6 +576,142 @@ TypedValue compForLoopTraitFn(Compiler *c, string const& fnName, TraitImpl *impl
     return monomorphise(c, fn, fnTy, loc);
 }
 
+AnFunctionType* getBuiltinFnType(TraitImpl *trait){
+    auto argT = trait->typeArgs[0];
+    vector<TraitImpl*> traits = { trait };
+    vector<AnType*> args;
+
+    if(trait->name == "Add" || trait->name == "Sub" || trait->name == "Mul" || trait->name == "Div" || trait->name == "Mod"){
+        args.push_back(argT);
+        args.push_back(argT);
+        return AnFunctionType::get(argT, args, traits);
+
+    }else if(trait->name == "Cmp" || trait->name == "Eq" || trait->name == "Is"){
+        args.push_back(argT);
+        args.push_back(argT);
+        return AnFunctionType::get(AnType::getBool(), args, traits);
+
+    }else if(trait->name == "Neg"){
+        args.push_back(argT);
+        return AnFunctionType::get(argT, args, traits);
+
+    }else if(trait->name == "Cast"){
+        auto retT = trait->typeArgs[1];
+        args.push_back(argT);
+        return AnFunctionType::get(retT, args, traits);
+
+    }else if(trait->name == "Extract"){
+        auto uszT = AnType::getUsz();
+        auto ptrT = try_cast<AnPtrType>(argT);
+        args.push_back(ptrT);
+        args.push_back(uszT);
+        return AnFunctionType::get(ptrT->extTy, args, traits);
+
+    }else if(trait->name == "Insert"){
+        auto uszT = AnType::getUsz();
+        auto ptrT = try_cast<AnPtrType>(argT);
+        args.push_back(ptrT);
+        args.push_back(uszT);
+        args.push_back(ptrT->extTy);
+        return AnFunctionType::get(AnType::getUnit(), args, traits);
+
+    }else if(trait->name == "Deref"){
+        auto ptrT = try_cast<AnPtrType>(argT);
+        args.push_back(ptrT);
+        return AnFunctionType::get(ptrT->extTy, args, traits);
+
+    }else if(trait->name == "Not"){
+        args.push_back(argT);
+        return AnFunctionType::get(argT, args, traits);
+    }
+    ASSERT_UNREACHABLE("getBuiltinFnType called on a non-builtin trait");
+}
+
+TypedValue findBuiltinFn(Compiler *c, AnFunctionType *fnTy){
+    if(fnTy->typeClassConstraints.empty()){
+        return {};
+    }
+
+    TraitImpl *trait = fnTy->typeClassConstraints.front();
+    if(!trait->hasTrivialImpl()){
+        return {};
+    }
+
+    const auto &traitName = trait->name;
+    const auto &typeArgs = trait->typeArgs;
+
+    AnFunctionType *type = getBuiltinFnType(trait);
+    FunctionType *ft = dyn_cast<FunctionType>(c->anTypeToLlvmType(type)->getPointerElementType());
+
+    Function *f = Function::Create(ft, Function::ExternalLinkage, "Builtin", c->module.get());
+    BasicBlock *oldInsertBlock = c->builder.GetInsertBlock();
+    BasicBlock *newInsertBlock = BasicBlock::Create(*c->ctxt, "entry", f);
+    c->builder.SetInsertPoint(newInsertBlock);
+
+    Value *ret = nullptr;
+    std::array<Value*,3> args = {
+        f->args().begin(),
+        f->args().begin() + 1,
+        f->args().begin() + 2
+    };
+
+    int i = 0;
+    for(auto &arg : f->args()){
+        if(type->paramTys[i]->hasModifier(Tok_Mut)){
+            args[i] = c->builder.CreateLoad(&arg);
+        }
+        i++;
+    }
+
+    if(traitName == "Add" || traitName == "Sub" || traitName == "Mul" || traitName == "Div" || traitName == "Mod" || traitName == "Cmp" || traitName == "Neg"){
+        ret = c->builder.CreateAdd(args[0], args[1]);
+
+    }else if(traitName == "Cast"){
+        if(typeArgs[0]->typeTag == TT_Ptr && type->retTy->typeTag == TT_Ptr){
+            ret = c->builder.CreateBitCast(args[0], f->getReturnType());
+        }else if(typeArgs[0]->typeTag == TT_Ptr && isIntTypeTag(type->retTy->typeTag)){
+            ret = c->builder.CreatePtrToInt(args[0], f->getReturnType());
+        }else if(isIntTypeTag(typeArgs[0]->typeTag) && type->retTy->typeTag == TT_Ptr){
+            ret = c->builder.CreateIntToPtr(args[0], f->getReturnType());
+        }else if(isIntTypeTag(typeArgs[0]->typeTag) && isIntTypeTag(type->retTy->typeTag)){
+            ret = c->builder.CreateIntCast(args[0], f->getReturnType(), isUnsignedTypeTag(typeArgs[0]->typeTag));
+        }else{
+            typeArgs[0]->dump();
+            type->retTy->dump();
+            ASSERT_UNREACHABLE("Invalid types passed to Cast primitive");
+        }
+
+    }else if(traitName == "Eq" || traitName == "Is"){
+        if(isFPTypeTag(typeArgs[0]->typeTag)){
+            ret = c->builder.CreateFCmpOEQ(args[0], args[1]);
+        }else{
+            ret = c->builder.CreateICmpEQ(args[0], args[1]);
+        }
+
+    }else if(traitName == "Extract"){
+        ret = c->builder.CreateLoad(c->builder.CreateGEP(args[0], args[1]));
+
+    }else if(traitName == "Insert"){
+        c->builder.CreateStore(args[2], c->builder.CreateGEP(args[0], args[1]));
+
+    }else if(traitName == "Deref"){
+        ret = c->builder.CreateLoad(args[0]);
+
+    }else if(traitName == "Not"){
+        ret = c->builder.CreateNot(args[0]);
+    }else{
+        ASSERT_UNREACHABLE("Called findBuiltinFn on non-builtin trait");
+    }
+
+    if(ret){
+        c->builder.CreateRet(ret);
+    }else{
+        c->builder.CreateRetVoid();
+    }
+    c->builder.SetInsertPoint(oldInsertBlock);
+    return {f, type};
+}
+
 TypedValue getFunction(Compiler *c, BinOpNode *bop){
     auto vn = dynamic_cast<VarNode*>(bop->lval.get());
     Declaration *decl = bop->decl;
@@ -584,6 +720,10 @@ TypedValue getFunction(Compiler *c, BinOpNode *bop){
     }else if(decl->isTraitFuncDecl()){
         auto fnTy = try_cast<AnFunctionType>(bop->lval->getType());
         fnTy = applyMonomorphisationBindings(fnTy, c->compCtxt->monomorphisationMappings);
+        if(TypedValue f = findBuiltinFn(c, fnTy)){
+            return f;
+        }
+
         attachTraitImpl(decl, fnTy, c->compUnit, bop->loc);
         TraitImpl *trait = fnTy->typeClassConstraints.front();
         Declaration *fn = findFnInImpl(static_cast<VarNode*>(bop->lval.get())->name, trait);
@@ -1622,12 +1762,18 @@ void CompilingVisitor::visit(BinOpNode *n){
             c->compCtxt->insertMonomorphisationMappings(subs);
 
             fnTy = applyMonomorphisationBindings(fnTy, c->compCtxt->monomorphisationMappings);
-            if(isPrimitiveOp(n, fnTy->paramTys[0], fnTy->paramTys[1])){
-                lhs.type = fnTy->paramTys[0];
-                rhs.type = fnTy->paramTys[1];
-                handlePrimitiveOp(*this, n, lhs, rhs);
+            if(TypedValue f = findBuiltinFn(c, fnTy)){
+                array<Value*, 2> args{lhs.val, rhs.val};
+                Value *call = c->builder.CreateCall(f.val, args);
+                this->val = {call, n->getType()};
                 return;
             }
+            // if(isPrimitiveOp(n, fnTy->paramTys[0], fnTy->paramTys[1])){
+            //     lhs.type = fnTy->paramTys[0];
+            //     rhs.type = fnTy->paramTys[1];
+            //     handlePrimitiveOp(*this, n, lhs, rhs);
+            //     return;
+            // }
 
             attachTraitImpl(n->decl, fnTy, c->compUnit, n->loc);
             TraitImpl *trait = fnTy->typeClassConstraints.front();

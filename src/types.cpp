@@ -312,12 +312,10 @@ Type* Compiler::anTypeToLlvmType(const AnType *ty, int recursionLimit){
         ASSERT_UNREACHABLE("anTypeToLlvmType hit internal recursion limit");
     }
 
-    /*
     if(ty->hasModifier(Tok_Mut)){
         auto bm = dynamic_cast<const BasicModifier*>(ty);
         return anTypeToLlvmType(bm->extTy, --recursionLimit)->getPointerTo();
     }
-    */
 
     switch(ty->typeTag){
         case TT_Ptr: {
