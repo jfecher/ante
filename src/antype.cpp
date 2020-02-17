@@ -798,4 +798,28 @@ namespace ante {
         }
         ASSERT_UNREACHABLE("Unknown TypeTag in AnType::approxEq");
     }
+
+    bool AnType::isPrimitiveTy() const noexcept {
+        return isPrimitiveTypeTag(this->typeTag);
+    }
+
+    bool AnType::isSignedTy() const noexcept {
+        return isSignedTypeTag(this->typeTag);
+    }
+
+    bool AnType::isUnsignedTy() const noexcept {
+        return isUnsignedTypeTag(this->typeTag);
+    }
+
+    bool AnType::isFloatTy() const noexcept {
+        return isFloatTypeTag(this->typeTag);
+    }
+
+    bool AnType::isIntegerTy() const noexcept {
+        return isIntegerTypeTag(this->typeTag);
+    }
+
+    bool AnType::isNumericTy() const noexcept {
+        return isNumericTypeTag(this->typeTag);
+    }
 }

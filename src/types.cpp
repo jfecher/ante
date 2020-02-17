@@ -195,18 +195,34 @@ Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt){
     return structTy;
 }
 
-bool isIntTypeTag(const TypeTag ty){
-    return ty==TT_I8 or ty==TT_I16 or ty==TT_I32 or ty==TT_I64 or
-           ty==TT_U8 or ty==TT_U16 or ty==TT_U32 or ty==TT_U64 or
-           ty==TT_Isz or ty==TT_Usz or ty==TT_C8;
+bool isSignedTypeTag(const TypeTag tt){
+    return tt==TT_I8||tt==TT_I16||tt==TT_I32||tt==TT_I64||tt==TT_Isz;
 }
 
-bool isFPTypeTag(const TypeTag tt){
-    return tt==TT_F16 or tt==TT_F32 or tt==TT_F64;
+bool isUnsignedTypeTag(const TypeTag tt){
+    return tt==TT_U8||tt==TT_U16||tt==TT_U32||tt==TT_U64||tt==TT_Usz;
+}
+
+bool isIntegerTypeTag(const TypeTag ty){
+    return isSignedTypeTag(ty) || isUnsignedTypeTag(ty) || ty == TT_C8;
+}
+
+bool isFloatTypeTag(const TypeTag tt){
+    return tt == TT_F16 || tt == TT_F32 || tt == TT_F64;
 }
 
 bool isNumericTypeTag(const TypeTag ty){
-    return isIntTypeTag(ty) or isFPTypeTag(ty);
+    return isIntegerTypeTag(ty) || isFloatTypeTag(ty);
+}
+
+/*
+ *  Returns true if the given typetag is a primitive type, and thus
+ *  accurately represents the entire type without information loss.
+ *  NOTE: this function relies on the fact all primitive types are
+ *        declared before non-primitive types in the TypeTag definition.
+ */
+bool isPrimitiveTypeTag(TypeTag ty){
+    return ty >= TT_I8 && ty <= TT_Bool;
 }
 
 bool containsTypeVar(const TypeNode *tn){
@@ -429,17 +445,6 @@ bool llvmTypeEq(Type *l, Type *r){
     }else{ //primitive type
         return true; /* true since ltt != rtt check above is false */
     }
-}
-
-
-/*
- *  Returns true if the given typetag is a primitive type, and thus
- *  accurately represents the entire type without information loss.
- *  NOTE: this function relies on the fact all primitive types are
- *        declared before non-primitive types in the TypeTag definition.
- */
-bool isPrimitiveTypeTag(TypeTag ty){
-    return ty >= TT_I8 && ty <= TT_Bool;
 }
 
 

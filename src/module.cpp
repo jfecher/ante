@@ -166,18 +166,22 @@ namespace ante {
 
     bool TraitImpl::hasTrivialImpl() const {
         if(name == "Add" || name == "Sub" || name == "Mul" || name == "Div" || name == "Mod" || name == "Cmp" || name == "Neg"){
-            return typeArgs[0]->isIntTy() || typeArgs[0]->typeTag == TT_C8;
+            return typeArgs[0]->isNumericTy();
 
         }else if(name == "Cast"){
             AnType *arg1 = typeArgs[0];
             AnType *arg2 = typeArgs[1];
-            return (arg1->isIntTy() || arg1->typeTag == TT_Ptr || arg1->typeTag == TT_C8 || arg1->typeTag == TT_Bool) &&
-                (arg2->isIntTy() || arg2->typeTag == TT_Ptr || arg2->typeTag == TT_C8 || arg2->typeTag == TT_Bool);
+            if((arg1->isIntegerTy() || arg1->typeTag == TT_Ptr || arg1->typeTag == TT_Bool) &&
+               (arg2->isIntegerTy() || arg2->typeTag == TT_Ptr || arg2->typeTag == TT_Bool)){
+                return true;
+            }
+            // Don't implement casting between floats and pointers, thats only for integer types,
+            // but do implement casting between floats and integer types
+            return arg1->isNumericTy() && arg2->isNumericTy();
 
         }else if(name == "Eq" || name == "Is"){
             TypeTag tag = typeArgs[0]->typeTag;
-            return typeArgs[0]->isIntTy()
-                || tag == TT_C8 || tag == TT_Bool;
+            return typeArgs[0]->isNumericTy() || tag == TT_Bool;
 
         }else if(name == "Extract"){
             return typeArgs[0]->typeTag == TT_Ptr

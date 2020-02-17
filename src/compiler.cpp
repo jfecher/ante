@@ -82,14 +82,6 @@ TypedValue compileStmtList(Node *nList, Compiler *c){
 }
 
 
-/**
- * @return True if the TypeTag is an unsigned integer type
- */
-bool isUnsignedTypeTag(const TypeTag tt){
-    return tt==TT_U8||tt==TT_U16||tt==TT_U32||tt==TT_U64||tt==TT_Usz;
-}
-
-
 void CompilingVisitor::visit(IntLitNode *n){
     val = TypedValue(ConstantInt::get(*c->ctxt,
                     APInt(getBitWidthOfTypeTag(n->typeTag),

@@ -610,11 +610,11 @@ TypedValue findBuiltinFn(Compiler *c, AnFunctionType *fnTy){
     }else if(traitName == "Cast"){
         if(typeArgs[0]->typeTag == TT_Ptr && type->retTy->typeTag == TT_Ptr){
             ret = c->builder.CreateBitCast(args[0], f->getReturnType());
-        }else if(typeArgs[0]->typeTag == TT_Ptr && isIntTypeTag(type->retTy->typeTag)){
+        }else if(typeArgs[0]->typeTag == TT_Ptr && type->retTy->isIntegerTy()){
             ret = c->builder.CreatePtrToInt(args[0], f->getReturnType());
-        }else if(isIntTypeTag(typeArgs[0]->typeTag) && type->retTy->typeTag == TT_Ptr){
+        }else if(typeArgs[0]->isIntegerTy() && type->retTy->typeTag == TT_Ptr){
             ret = c->builder.CreateIntToPtr(args[0], f->getReturnType());
-        }else if(isIntTypeTag(typeArgs[0]->typeTag) && isIntTypeTag(type->retTy->typeTag)){
+        }else if(typeArgs[0]->isIntegerTy() && type->retTy->isIntegerTy()){
             ret = c->builder.CreateIntCast(args[0], f->getReturnType(), isUnsignedTypeTag(typeArgs[0]->typeTag));
         }else{
             typeArgs[0]->dump();
@@ -623,7 +623,7 @@ TypedValue findBuiltinFn(Compiler *c, AnFunctionType *fnTy){
         }
 
     }else if(traitName == "Eq" || traitName == "Is"){
-        if(isFPTypeTag(typeArgs[0]->typeTag)){
+        if(typeArgs[0]->isFloatTy()){
             ret = c->builder.CreateFCmpOEQ(args[0], args[1]);
         }else{
             ret = c->builder.CreateICmpEQ(args[0], args[1]);
@@ -1496,14 +1496,14 @@ TypedValue handlePrimitiveNumericOp(BinOpNode *bop, Compiler *c, TypedValue &lhs
         case '/': return c->compDiv(lhs, rhs, bop);
         case '%': return c->compRem(lhs, rhs, bop);
         case '<':
-                    if(isFPTypeTag(lhs.type->typeTag))
+                    if(lhs.type->isFloatTy())
                         return TypedValue(c->builder.CreateFCmpOLT(lhs.val, rhs.val), AnType::getBool());
                     else if(isUnsignedTypeTag(lhs.type->typeTag))
                         return TypedValue(c->builder.CreateICmpULT(lhs.val, rhs.val), AnType::getBool());
                     else
                         return TypedValue(c->builder.CreateICmpSLT(lhs.val, rhs.val), AnType::getBool());
         case '>':
-                    if(isFPTypeTag(lhs.type->typeTag))
+                    if(lhs.type->isFloatTy())
                         return TypedValue(c->builder.CreateFCmpOGT(lhs.val, rhs.val), AnType::getBool());
                     else if(isUnsignedTypeTag(lhs.type->typeTag))
                         return TypedValue(c->builder.CreateICmpUGT(lhs.val, rhs.val), AnType::getBool());
@@ -1511,25 +1511,25 @@ TypedValue handlePrimitiveNumericOp(BinOpNode *bop, Compiler *c, TypedValue &lhs
                         return TypedValue(c->builder.CreateICmpSGT(lhs.val, rhs.val), AnType::getBool());
         case Tok_EqEq:
         case Tok_Is:
-                    if(isFPTypeTag(lhs.type->typeTag))
+                    if(lhs.type->isFloatTy())
                         return TypedValue(c->builder.CreateFCmpOEQ(lhs.val, rhs.val), AnType::getBool());
                     else
                         return TypedValue(c->builder.CreateICmpEQ(lhs.val, rhs.val), AnType::getBool());
         case Tok_NotEq:
         case Tok_Isnt:
-                    if(isFPTypeTag(lhs.type->typeTag))
+                    if(lhs.type->isFloatTy())
                         return TypedValue(c->builder.CreateFCmpONE(lhs.val, rhs.val), AnType::getBool());
                     else
                         return TypedValue(c->builder.CreateICmpNE(lhs.val, rhs.val), AnType::getBool());
         case Tok_LesrEq:
-                    if(isFPTypeTag(lhs.type->typeTag))
+                    if(lhs.type->isFloatTy())
                         return TypedValue(c->builder.CreateFCmpOLE(lhs.val, rhs.val), AnType::getBool());
                     else if(isUnsignedTypeTag(lhs.type->typeTag))
                         return TypedValue(c->builder.CreateICmpULE(lhs.val, rhs.val), AnType::getBool());
                     else
                         return TypedValue(c->builder.CreateICmpSLE(lhs.val, rhs.val), AnType::getBool());
         case Tok_GrtrEq:
-                    if(isFPTypeTag(lhs.type->typeTag))
+                    if(lhs.type->isFloatTy())
                         return TypedValue(c->builder.CreateFCmpOGE(lhs.val, rhs.val), AnType::getBool());
                     else if(isUnsignedTypeTag(lhs.type->typeTag))
                         return TypedValue(c->builder.CreateICmpUGE(lhs.val, rhs.val), AnType::getBool());
@@ -1753,7 +1753,7 @@ void CompilingVisitor::visit(UnOpNode *n){
             if(!isNumericTypeTag(val.type->typeTag))
                 error("Cannot negate non-numeric type " + anTypeToColoredStr(val.type), n->loc);
 
-            if(isFPTypeTag(val.type->typeTag))
+            if(val.type->isFloatTy())
                 this->val = TypedValue(c->builder.CreateFNeg(val.val), val.type);
             else
                 this->val = TypedValue(c->builder.CreateNeg(val.val), val.type);

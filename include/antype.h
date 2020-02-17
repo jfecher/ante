@@ -95,12 +95,12 @@ namespace ante {
          *  Assumes that this AnType is a AnFuncionType instance. */
         AnType* getFunctionReturnType() const;
 
-        bool isIntTy() const noexcept {
-            return typeTag == TT_I8 || typeTag == TT_I16 || typeTag == TT_I32 || typeTag == TT_I64
-                || typeTag == TT_U8 || typeTag == TT_U16 || typeTag == TT_U32 || typeTag == TT_U64
-                || typeTag == TT_F16 || typeTag == TT_F32 || typeTag == TT_F64
-                || typeTag == TT_Isz || typeTag == TT_Usz;
-        }
+        bool isPrimitiveTy() const noexcept;
+        bool isSignedTy() const noexcept;
+        bool isUnsignedTy() const noexcept;
+        bool isFloatTy() const noexcept;
+        bool isIntegerTy() const noexcept;
+        bool isNumericTy() const noexcept;
 
         /** Shortcut for casting to an AnTypeVarType and calling AnTypeVarType::isRhoVar */
         bool isRhoVar() const;

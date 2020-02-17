@@ -60,12 +60,15 @@ namespace ante {
     /** True if tagTy is an integer typetag, signed or unsigned.
      *  Currently also returns true for c8 for purposes of integer
      *  conversions, but this is subject to change. */
-    bool isIntTypeTag(const TypeTag ty);
+    bool isIntegerTypeTag(const TypeTag ty);
 
     /** True if tagTy is floating point type (f16, f32, or f64) */
-    bool isFPTypeTag(const TypeTag tt);
+    bool isFloatTypeTag(const TypeTag tt);
 
     /** True if tagTy is an unsigned (integer) TypeTag */
     bool isUnsignedTypeTag(const TypeTag tagTy);
+
+    /** True if tagTy is a signed integer TypeTag */
+    bool isSignedTypeTag(const TypeTag tagTy);
 }
 #endif
