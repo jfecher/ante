@@ -325,65 +325,6 @@ TypedValue doReinterpretCast(Compiler *c, AnType *castTy, vector<TypedValue> con
     return TypedValue(args[0].val, castTy);
 }
 
-/*
- *  Creates a cast instruction appropriate for valToCast's type to castTy.
- */
-TypedValue createCast(Compiler *c, AnType *castTy, vector<TypedValue> &args, Node *locNode){
-    // if(isIntTypeTag(castTy->typeTag)){
-    //     Type *llvmCastTy = c->anTypeToLlvmType(castTy);
-
-    //     // int -> int  (maybe unsigned)
-    //     if(isIntTypeTag(valToCast.type->typeTag)){
-    //         return TypedValue(c->builder.CreateIntCast(valToCast.val, llvmCastTy,
-    //                     !isUnsignedTypeTag(valToCast.type->typeTag)), castTy);
-
-    //     // float -> int
-    //     }else if(isFPTypeTag(valToCast.type->typeTag)){
-    //         if(isUnsignedTypeTag(castTy->typeTag)){
-    //             return TypedValue(c->builder.CreateFPToUI(valToCast.val, llvmCastTy), castTy);
-    //         }else{
-    //             return TypedValue(c->builder.CreateFPToSI(valToCast.val, llvmCastTy), castTy);
-    //         }
-
-    //     // ptr -> int
-    //     }else if(valToCast.type->typeTag == TT_Ptr){
-    //         return TypedValue(c->builder.CreatePtrToInt(valToCast.val, llvmCastTy), castTy);
-    //     }
-    // }else if(isFPTypeTag(castTy->typeTag)){
-    //     Type *llvmCastTy = c->anTypeToLlvmType(castTy);
-
-    //     // int -> float
-    //     if(isIntTypeTag(valToCast.type->typeTag)){
-    //         if(isUnsignedTypeTag(valToCast.type->typeTag)){
-    //             return TypedValue(c->builder.CreateUIToFP(valToCast.val, llvmCastTy), castTy);
-    //         }else{
-    //             return TypedValue(c->builder.CreateSIToFP(valToCast.val, llvmCastTy), castTy);
-    //         }
-
-    //     // float -> float
-    //     }else if(isFPTypeTag(valToCast.type->typeTag)){
-    //         return TypedValue(c->builder.CreateFPCast(valToCast.val, llvmCastTy), castTy);
-    //     }
-
-    // }else if(castTy->typeTag == TT_Ptr){
-    //     Type *llvmCastTy = c->anTypeToLlvmType(castTy);
-
-    //     // ptr -> ptr
-    //     if(valToCast.type->typeTag == TT_Ptr){
-    //         return TypedValue(c->builder.CreatePointerCast(valToCast.val, llvmCastTy), castTy);
-
-    //     // int -> ptr
-    //     }else if(isIntTypeTag(valToCast.type->typeTag)){
-    //         return TypedValue(c->builder.CreateIntToPtr(valToCast.val, llvmCastTy), castTy);
-    //     }
-    // }
-
-    //NOTE: doReinterpretCast only casts if a valid cast is found,
-    //      if no valid cast is found nullptr is returned
-    return doReinterpretCast(c, castTy, args);
-}
-
-
 void CompilingVisitor::visit(TypeCastNode *n){
     auto args = vecOf<TypedValue>(n->args.size());
     for(auto &arg : n->args){
@@ -392,7 +333,7 @@ void CompilingVisitor::visit(TypeCastNode *n){
     }
     //n->typeExpr->getType() is used here instead of n->getType() in case
     //of union variants, only the typeExpr will have the specific variant used
-    this->val = createCast(c, n->typeExpr->getType(), args, n);
+    this->val = doReinterpretCast(c, n->typeExpr->getType(), args);
 }
 
 
@@ -545,7 +486,7 @@ TypedValue monomorphise(Compiler *c, FuncDecl *fd, AnFunctionType *boundType, LO
     //decls like printf: (ref c8) ... -> i32  are generic but cannot be monomorphised.
     auto isGenericDef = fnTy->isGeneric && static_cast<FuncDeclNode*>(fd->definition)->child;
     if(isGenericDef){
-        TypeError err{"Error in monorphisation of " + fd->name + ", types are "
+        TypeError err{"Error in monomorphisation of " + fd->name + ", types are "
             + anTypeToColoredStr(fnTy) + " bound to " + anTypeToColoredStr(boundType), loc};
         auto subs = unify({{fnTy, boundType, err}});
         c->compCtxt->insertMonomorphisationMappings(subs);

@@ -585,6 +585,7 @@ expr_no_decl_or_jump: expr_no_decl  %prec MEDIF
                     | break
                     | continue
                     | ret_expr
+                    | block
                     ;
 
 expr_no_decl: expr_no_decl '+' maybe_newline expr_no_decl                      {$$ = mkBinOpNode(@$, '+', $1, $4);}

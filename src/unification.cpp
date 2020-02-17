@@ -566,4 +566,35 @@ namespace ante {
     Substitutions unify(UnificationList const& cur){
         return unify(cur, cur.rbegin(), true);
     }
+
+    std::pair<bool, Substitutions> tryUnify(AnType *a, AnType *b){
+        yy::location loc;
+        TypeError empty{loc};
+        Substitutions subs;
+
+        // TODO: type errors were designed to be exceptional but we're using
+        // them as control-flow here.  Possible optimization point for traits
+        try {
+            subs = unifyOne(a, b, empty);
+            return {true, subs};
+        }catch(TypeErrorContext const& err){
+            return {false, subs};
+        }
+    }
+
+    std::pair<bool, Substitutions> tryUnify(std::vector<AnType*> const& a, std::vector<AnType*> const& b){
+        yy::location loc;
+        TypeError empty{loc};
+        Substitutions subs;
+
+        // TODO: type errors were designed to be exceptional but we're using
+        // them as control-flow here.  Possible optimization point for traits
+        try {
+            auto fakeTy = AnType::getUnit();
+            subs = unifyExts(a, b, fakeTy, fakeTy, empty);
+            return {true, subs};
+        }catch(TypeErrorContext const& err){
+            return {false, subs};
+        }
+    }
 }

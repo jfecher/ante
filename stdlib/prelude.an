@@ -72,17 +72,20 @@ impl Eq (Maybe 'e) given Eq 'e
 trait Cast 'a /*to*/ 'b
     cast 'a -> 'b
 
-trait TryCast 'a 'b
-    try_cast 'a -> Maybe 'b
-
-impl TryCast 'a 'b given Cast 'a 'b
-    try_cast a = Some (cast a)
+impl Cast 'a 'a
+    cast a = a
 
 impl Cast (Maybe 'm) Str given Cast 'm Str
     cast maybe =
         match maybe with
         | Some val -> "Some (" ++ cast val ++ ")"
         | None -> "None"
+
+trait TryCast 'a 'b
+    try_cast 'a -> Maybe 'b
+
+impl TryCast 'a 'b given Cast 'a 'b
+    try_cast a = Some (cast a)
 
 
 //Compile-time functions

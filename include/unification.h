@@ -55,6 +55,9 @@ namespace ante {
 
     Substitutions unify(UnificationList const& list);
 
+    std::pair<bool, Substitutions> tryUnify(AnType *a, AnType *b);
+    std::pair<bool, Substitutions> tryUnify(std::vector<AnType*> const& a, std::vector<AnType*> const& b);
+
     AnType* applySubstitutions(Substitutions const& substitutions, AnType *t);
     TraitImpl* applySubstitutions(Substitutions const& substitutions, TraitImpl *t);
 
