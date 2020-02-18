@@ -18,116 +18,6 @@ using namespace ante::parser;
 
 namespace ante {
 
-TypedValue Compiler::compAdd(TypedValue &l, TypedValue &r, BinOpNode *op){
-    switch(l.type->typeTag){
-        case TT_I8:  case TT_U8:  case TT_C8:
-        case TT_I16: case TT_U16:
-        case TT_I32: case TT_U32:
-        case TT_I64: case TT_U64:
-        case TT_Isz: case TT_Usz:
-        case TT_Ptr:
-            return TypedValue(builder.CreateAdd(l.val, r.val), l.type);
-        case TT_F16:
-        case TT_F32:
-        case TT_F64:
-            return TypedValue(builder.CreateFAdd(l.val, r.val), l.type);
-
-        default:
-            error("binary operator + is undefined for the type " + anTypeToColoredStr(l.type) + " and " + anTypeToColoredStr(r.type), op->loc);
-            return {};
-    }
-}
-
-TypedValue Compiler::compSub(TypedValue &l, TypedValue &r, BinOpNode *op){
-    switch(l.type->typeTag){
-        case TT_I8:  case TT_U8:  case TT_C8:
-        case TT_I16: case TT_U16:
-        case TT_I32: case TT_U32:
-        case TT_I64: case TT_U64:
-        case TT_Isz: case TT_Usz:
-        case TT_Ptr:
-            return TypedValue(builder.CreateSub(l.val, r.val), l.type);
-        case TT_F16:
-        case TT_F32:
-        case TT_F64:
-            return TypedValue(builder.CreateFSub(l.val, r.val), l.type);
-
-        default:
-            error("binary operator - is undefined for the type " + anTypeToColoredStr(l.type) + " and " + anTypeToColoredStr(r.type), op->loc);
-            return {};
-    }
-}
-
-TypedValue Compiler::compMul(TypedValue &l, TypedValue &r, BinOpNode *op){
-    switch(l.type->typeTag){
-        case TT_I8:  case TT_U8:  case TT_C8:
-        case TT_I16: case TT_U16:
-        case TT_I32: case TT_U32:
-        case TT_I64: case TT_U64:
-        case TT_Isz: case TT_Usz:
-            return TypedValue(builder.CreateMul(l.val, r.val), l.type);
-        case TT_F16:
-        case TT_F32:
-        case TT_F64:
-            return TypedValue(builder.CreateFMul(l.val, r.val), l.type);
-
-        default:
-            error("binary operator * is undefined for the type " + anTypeToColoredStr(l.type) + " and " + anTypeToColoredStr(r.type), op->loc);
-            return {};
-    }
-}
-
-TypedValue Compiler::compDiv(TypedValue &l, TypedValue &r, BinOpNode *op){
-    switch(l.type->typeTag){
-        case TT_I8:
-        case TT_I16:
-        case TT_I32:
-        case TT_I64:
-        case TT_Isz:
-            return TypedValue(builder.CreateSDiv(l.val, r.val), l.type);
-        case TT_U8: case TT_C8:
-        case TT_U16:
-        case TT_U32:
-        case TT_U64:
-        case TT_Usz:
-            return TypedValue(builder.CreateUDiv(l.val, r.val), l.type);
-        case TT_F16:
-        case TT_F32:
-        case TT_F64:
-            return TypedValue(builder.CreateFDiv(l.val, r.val), l.type);
-
-        default:
-            error("binary operator / is undefined for the type " + anTypeToColoredStr(l.type) + " and " + anTypeToColoredStr(r.type), op->loc);
-            return {};
-    }
-}
-
-TypedValue Compiler::compRem(TypedValue &l, TypedValue &r, BinOpNode *op){
-    switch(l.type->typeTag){
-        case TT_I8:
-        case TT_I16:
-        case TT_I32:
-        case TT_I64:
-        case TT_Isz:
-            return TypedValue(builder.CreateSRem(l.val, r.val), l.type);
-        case TT_U8: case TT_C8:
-        case TT_U16:
-        case TT_U32:
-        case TT_U64:
-        case TT_Usz:
-            return TypedValue(builder.CreateURem(l.val, r.val), l.type);
-        case TT_F16:
-        case TT_F32:
-        case TT_F64:
-            return TypedValue(builder.CreateFRem(l.val, r.val), l.type);
-
-        default:
-            error("binary operator % is undefined for the types " + anTypeToColoredStr(l.type) + " and " + anTypeToColoredStr(r.type), op->loc);
-            return {};
-    }
-}
-
-
 /*
  *  Compiles the extract operator, #
  */
@@ -517,6 +407,103 @@ TypedValue compForLoopTraitFn(Compiler *c, string const& fnName, TraitImpl *impl
     return monomorphise(c, fn, fnTy, loc);
 }
 
+
+TypedValue handlePrimitiveNumericOp(int opToken, Compiler *c, TypedValue const& lhs, TypedValue const& rhs){
+    switch(opToken){
+        case '+':
+            if(lhs.type->isIntegerTy() || lhs.type->typeTag == TT_Ptr)
+                return TypedValue(c->builder.CreateAdd(lhs.val, rhs.val), lhs.type);
+            else if(lhs.type->isFloatTy())
+                return TypedValue(c->builder.CreateFAdd(lhs.val, rhs.val), lhs.type);
+            break;
+
+        case '-':
+            if(lhs.type->isIntegerTy() || lhs.type->typeTag == TT_Ptr)
+                return TypedValue(c->builder.CreateSub(lhs.val, rhs.val), lhs.type);
+            else if(lhs.type->isFloatTy())
+                return TypedValue(c->builder.CreateFSub(lhs.val, rhs.val), lhs.type);
+            break;
+
+        case '*':
+            if(lhs.type->isIntegerTy())
+                return TypedValue(c->builder.CreateMul(lhs.val, rhs.val), lhs.type);
+            else if(lhs.type->isFloatTy())
+                return TypedValue(c->builder.CreateFMul(lhs.val, rhs.val), lhs.type);
+            break;
+
+        case '/':
+            if(lhs.type->isSignedTy())
+                return TypedValue(c->builder.CreateSDiv(lhs.val, rhs.val), lhs.type);
+            else if(lhs.type->isUnsignedTy())
+                return TypedValue(c->builder.CreateUDiv(lhs.val, rhs.val), lhs.type);
+            else if(lhs.type->isFloatTy())
+                return TypedValue(c->builder.CreateFDiv(lhs.val, rhs.val), lhs.type);
+            break;
+
+        case '%':
+            if(lhs.type->isSignedTy())
+                return TypedValue(c->builder.CreateSRem(lhs.val, rhs.val), lhs.type);
+            else if(lhs.type->isUnsignedTy())
+                return TypedValue(c->builder.CreateURem(lhs.val, rhs.val), lhs.type);
+            else if(lhs.type->isFloatTy())
+                return TypedValue(c->builder.CreateFRem(lhs.val, rhs.val), lhs.type);
+            break;
+
+        case '<':
+            if(lhs.type->isFloatTy())
+                return TypedValue(c->builder.CreateFCmpOLT(lhs.val, rhs.val), AnType::getBool());
+            else if(lhs.type->isUnsignedTy())
+                return TypedValue(c->builder.CreateICmpULT(lhs.val, rhs.val), AnType::getBool());
+            else if(lhs.type->isSignedTy())
+                return TypedValue(c->builder.CreateICmpSLT(lhs.val, rhs.val), AnType::getBool());
+            break;
+
+        case '>':
+            if(lhs.type->isFloatTy())
+                return TypedValue(c->builder.CreateFCmpOGT(lhs.val, rhs.val), AnType::getBool());
+            else if(isUnsignedTypeTag(lhs.type->typeTag))
+                return TypedValue(c->builder.CreateICmpUGT(lhs.val, rhs.val), AnType::getBool());
+            else
+                return TypedValue(c->builder.CreateICmpSGT(lhs.val, rhs.val), AnType::getBool());
+
+        case Tok_EqEq:
+        case Tok_Is:
+            if(lhs.type->isFloatTy())
+                return TypedValue(c->builder.CreateFCmpOEQ(lhs.val, rhs.val), AnType::getBool());
+            else
+                return TypedValue(c->builder.CreateICmpEQ(lhs.val, rhs.val), AnType::getBool());
+
+        case Tok_NotEq:
+        case Tok_Isnt:
+            if(lhs.type->isFloatTy())
+                return TypedValue(c->builder.CreateFCmpONE(lhs.val, rhs.val), AnType::getBool());
+            else
+                return TypedValue(c->builder.CreateICmpNE(lhs.val, rhs.val), AnType::getBool());
+
+        case Tok_LesrEq:
+            if(lhs.type->isFloatTy())
+                return TypedValue(c->builder.CreateFCmpOLE(lhs.val, rhs.val), AnType::getBool());
+            else if(lhs.type->isUnsignedTy())
+                return TypedValue(c->builder.CreateICmpULE(lhs.val, rhs.val), AnType::getBool());
+            else
+                return TypedValue(c->builder.CreateICmpSLE(lhs.val, rhs.val), AnType::getBool());
+
+        case Tok_GrtrEq:
+            if(lhs.type->isFloatTy())
+                return TypedValue(c->builder.CreateFCmpOGE(lhs.val, rhs.val), AnType::getBool());
+            else if(lhs.type->isUnsignedTy())
+                return TypedValue(c->builder.CreateICmpUGE(lhs.val, rhs.val), AnType::getBool());
+            else
+                return TypedValue(c->builder.CreateICmpSGE(lhs.val, rhs.val), AnType::getBool());
+    }
+
+    std::cerr << "Op: " << Lexer::getTokStr(opToken) << " with args "
+              << anTypeToColoredStr(lhs.type) << " and " << anTypeToColoredStr(rhs.type) << '\n';
+    ASSERT_UNREACHABLE("handlePrimitiveNumericOp called with non-builtin operator or arg types");
+    return {};
+}
+
+
 AnFunctionType* getBuiltinFnType(TraitImpl *trait){
     auto argT = trait->typeArgs[0];
     vector<TraitImpl*> traits = { trait };
@@ -568,7 +555,7 @@ AnFunctionType* getBuiltinFnType(TraitImpl *trait){
     ASSERT_UNREACHABLE("getBuiltinFnType called on a non-builtin trait");
 }
 
-TypedValue findBuiltinFn(Compiler *c, AnFunctionType *fnTy){
+TypedValue findBuiltinFn(Compiler *c, int op, AnFunctionType *fnTy){
     if(fnTy->typeClassConstraints.empty()){
         return {};
     }
@@ -584,7 +571,9 @@ TypedValue findBuiltinFn(Compiler *c, AnFunctionType *fnTy){
     AnFunctionType *type = getBuiltinFnType(trait);
     FunctionType *ft = dyn_cast<FunctionType>(c->anTypeToLlvmType(type)->getPointerElementType());
 
-    Function *f = Function::Create(ft, Function::ExternalLinkage, "Builtin", c->module.get());
+    Function *f = Function::Create(ft, Function::ExternalLinkage, "Builtin" + traitName, c->module.get());
+    f->addFnAttr(Attribute::AttrKind::AlwaysInline);
+
     BasicBlock *oldInsertBlock = c->builder.GetInsertBlock();
     BasicBlock *newInsertBlock = BasicBlock::Create(*c->ctxt, "entry", f);
     c->builder.SetInsertPoint(newInsertBlock);
@@ -604,8 +593,20 @@ TypedValue findBuiltinFn(Compiler *c, AnFunctionType *fnTy){
         i++;
     }
 
-    if(traitName == "Add" || traitName == "Sub" || traitName == "Mul" || traitName == "Div" || traitName == "Mod" || traitName == "Cmp" || traitName == "Neg"){
-        ret = c->builder.CreateAdd(args[0], args[1]);
+    // TODO: further unify handling of primitive operators with old code, eg handlePrimitiveOp
+    if(op == '+' || traitName == "Sub" || op == '*' || op == '/' || op == '%' || traitName == "Cmp"){
+        ret = handlePrimitiveNumericOp(op, c, {args[0], typeArgs[0]}, {args[1], typeArgs[0]}).val;
+
+    }else if(traitName == "Neg"){
+        if(typeArgs[0]->isIntegerTy()){
+            ret = c->builder.CreateNeg(args[0]);
+        }else if(typeArgs[0]->isFloatTy()){
+            ret = c->builder.CreateFNeg(args[0]);
+        }else{
+            typeArgs[0]->dump();
+            type->retTy->dump();
+            ASSERT_UNREACHABLE("Invalid types passed to Neg primitive");
+        }
 
     }else if(traitName == "Cast"){
         if(typeArgs[0]->typeTag == TT_Ptr && type->retTy->typeTag == TT_Ptr){
@@ -615,7 +616,7 @@ TypedValue findBuiltinFn(Compiler *c, AnFunctionType *fnTy){
         }else if(typeArgs[0]->isIntegerTy() && type->retTy->typeTag == TT_Ptr){
             ret = c->builder.CreateIntToPtr(args[0], f->getReturnType());
         }else if(typeArgs[0]->isIntegerTy() && type->retTy->isIntegerTy()){
-            ret = c->builder.CreateIntCast(args[0], f->getReturnType(), isUnsignedTypeTag(typeArgs[0]->typeTag));
+            ret = c->builder.CreateIntCast(args[0], f->getReturnType(), typeArgs[0]->isSignedTy());
         }else{
             typeArgs[0]->dump();
             type->retTy->dump();
@@ -661,7 +662,7 @@ TypedValue getFunction(Compiler *c, BinOpNode *bop){
     }else if(decl->isTraitFuncDecl()){
         auto fnTy = try_cast<AnFunctionType>(bop->lval->getType());
         fnTy = applyMonomorphisationBindings(fnTy, c->compCtxt->monomorphisationMappings);
-        if(TypedValue f = findBuiltinFn(c, fnTy)){
+        if(TypedValue f = findBuiltinFn(c, bop->op, fnTy)){
             return f;
         }
 
@@ -1488,61 +1489,6 @@ TypedValue Compiler::compLogicalAnd(Node *lexpr, Node *rexpr, BinOpNode *op){
 }
 
 
-TypedValue handlePrimitiveNumericOp(BinOpNode *bop, Compiler *c, TypedValue &lhs, TypedValue &rhs){
-    switch(bop->op){
-        case '+': return c->compAdd(lhs, rhs, bop);
-        case '-': return c->compSub(lhs, rhs, bop);
-        case '*': return c->compMul(lhs, rhs, bop);
-        case '/': return c->compDiv(lhs, rhs, bop);
-        case '%': return c->compRem(lhs, rhs, bop);
-        case '<':
-                    if(lhs.type->isFloatTy())
-                        return TypedValue(c->builder.CreateFCmpOLT(lhs.val, rhs.val), AnType::getBool());
-                    else if(isUnsignedTypeTag(lhs.type->typeTag))
-                        return TypedValue(c->builder.CreateICmpULT(lhs.val, rhs.val), AnType::getBool());
-                    else
-                        return TypedValue(c->builder.CreateICmpSLT(lhs.val, rhs.val), AnType::getBool());
-        case '>':
-                    if(lhs.type->isFloatTy())
-                        return TypedValue(c->builder.CreateFCmpOGT(lhs.val, rhs.val), AnType::getBool());
-                    else if(isUnsignedTypeTag(lhs.type->typeTag))
-                        return TypedValue(c->builder.CreateICmpUGT(lhs.val, rhs.val), AnType::getBool());
-                    else
-                        return TypedValue(c->builder.CreateICmpSGT(lhs.val, rhs.val), AnType::getBool());
-        case Tok_EqEq:
-        case Tok_Is:
-                    if(lhs.type->isFloatTy())
-                        return TypedValue(c->builder.CreateFCmpOEQ(lhs.val, rhs.val), AnType::getBool());
-                    else
-                        return TypedValue(c->builder.CreateICmpEQ(lhs.val, rhs.val), AnType::getBool());
-        case Tok_NotEq:
-        case Tok_Isnt:
-                    if(lhs.type->isFloatTy())
-                        return TypedValue(c->builder.CreateFCmpONE(lhs.val, rhs.val), AnType::getBool());
-                    else
-                        return TypedValue(c->builder.CreateICmpNE(lhs.val, rhs.val), AnType::getBool());
-        case Tok_LesrEq:
-                    if(lhs.type->isFloatTy())
-                        return TypedValue(c->builder.CreateFCmpOLE(lhs.val, rhs.val), AnType::getBool());
-                    else if(isUnsignedTypeTag(lhs.type->typeTag))
-                        return TypedValue(c->builder.CreateICmpULE(lhs.val, rhs.val), AnType::getBool());
-                    else
-                        return TypedValue(c->builder.CreateICmpSLE(lhs.val, rhs.val), AnType::getBool());
-        case Tok_GrtrEq:
-                    if(lhs.type->isFloatTy())
-                        return TypedValue(c->builder.CreateFCmpOGE(lhs.val, rhs.val), AnType::getBool());
-                    else if(isUnsignedTypeTag(lhs.type->typeTag))
-                        return TypedValue(c->builder.CreateICmpUGE(lhs.val, rhs.val), AnType::getBool());
-                    else
-                        return TypedValue(c->builder.CreateICmpSGE(lhs.val, rhs.val), AnType::getBool());
-        default:
-            error("Operator " + Lexer::getTokStr(bop->op) + " is not overloaded for types "
-                   + anTypeToColoredStr(lhs.type) + " and " + anTypeToColoredStr(rhs.type), bop->loc);
-            return {};
-    }
-}
-
-
 void CompilingVisitor::visit(SeqNode *n){
     for(auto &node : n->sequence){
         try{
@@ -1586,7 +1532,7 @@ TypedValue handlePointerOffset(BinOpNode *n, Compiler *c, TypedValue &lhs, Typed
 void handlePrimitiveOp(CompilingVisitor &cv, BinOpNode *n, TypedValue &lhs, TypedValue &rhs){
     //first, if both operands are primitive numeric types, use the default ops
     if(isNumericTypeTag(lhs.type->typeTag) && isNumericTypeTag(rhs.type->typeTag)){
-        cv.val = handlePrimitiveNumericOp(n, cv.c, lhs, rhs);
+        cv.val = handlePrimitiveNumericOp(n->op, cv.c, lhs, rhs);
         return;
 
     //and bools/ptrs are only compatible with == and !=
@@ -1703,7 +1649,7 @@ void CompilingVisitor::visit(BinOpNode *n){
             c->compCtxt->insertMonomorphisationMappings(subs);
 
             fnTy = applyMonomorphisationBindings(fnTy, c->compCtxt->monomorphisationMappings);
-            if(TypedValue f = findBuiltinFn(c, fnTy)){
+            if(TypedValue f = findBuiltinFn(c, n->op, fnTy)){
                 array<Value*, 2> args{lhs.val, rhs.val};
                 Value *call = c->builder.CreateCall(f.val, args);
                 this->val = {call, n->getType()};

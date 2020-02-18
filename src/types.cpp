@@ -200,11 +200,11 @@ bool isSignedTypeTag(const TypeTag tt){
 }
 
 bool isUnsignedTypeTag(const TypeTag tt){
-    return tt==TT_U8||tt==TT_U16||tt==TT_U32||tt==TT_U64||tt==TT_Usz;
+    return tt==TT_U8||tt==TT_U16||tt==TT_U32||tt==TT_U64||tt==TT_Usz||tt==TT_C8;
 }
 
 bool isIntegerTypeTag(const TypeTag ty){
-    return isSignedTypeTag(ty) || isUnsignedTypeTag(ty) || ty == TT_C8;
+    return isSignedTypeTag(ty) || isUnsignedTypeTag(ty);
 }
 
 bool isFloatTypeTag(const TypeTag tt){

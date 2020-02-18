@@ -85,8 +85,8 @@ TypedValue compileStmtList(Node *nList, Compiler *c){
 void CompilingVisitor::visit(IntLitNode *n){
     val = TypedValue(ConstantInt::get(*c->ctxt,
                     APInt(getBitWidthOfTypeTag(n->typeTag),
-                    atol(n->val.c_str()), isUnsignedTypeTag(n->typeTag))),
-            AnType::getPrimitive(n->typeTag));
+                    atol(n->val.c_str()), n->getType()->isSignedTy())),
+            n->getType());
 }
 
 
@@ -101,13 +101,13 @@ const fltSemantics& typeTagToFltSemantics(TypeTag tokTy){
 
 void CompilingVisitor::visit(FltLitNode *n){
     val = TypedValue(ConstantFP::get(*c->ctxt, APFloat(typeTagToFltSemantics(n->typeTag), n->val.c_str())),
-            AnType::getPrimitive(n->typeTag));
+            n->getType());
 }
 
 
 void CompilingVisitor::visit(BoolLitNode *n){
     val = TypedValue(ConstantInt::get(*c->ctxt, APInt(1, (bool)n->val, true)),
-            AnType::getBool());
+            n->getType());
 }
 
 
@@ -172,7 +172,7 @@ void CompilingVisitor::visit(StrLitNode *n){
 }
 
 void CompilingVisitor::visit(CharLitNode *n){
-    this->val = TypedValue(ConstantInt::get(*c->ctxt, APInt(8, n->val, true)), AnType::getPrimitive(TT_C8));
+    this->val = TypedValue(ConstantInt::get(*c->ctxt, APInt(8, n->val, true)), n->getType());
 }
 
 
@@ -215,19 +215,14 @@ void CompilingVisitor::visit(TupleNode *n){
         return;
     }
 
-    auto elemTys = vecOf<AnType*>(n->exprs.size());
     auto vals = vecOf<Value*>(n->exprs.size());
-
     for(auto &expr : n->exprs){
         expr->accept(*this);
         vals.push_back(this->val.val);
-        elemTys.push_back(this->val.type);
     }
 
     Value* tuple = c->tupleOf(vals, false);
-
-    auto *tupTy = AnTupleType::get(elemTys);
-    this->val = TypedValue(tuple, tupTy);
+    this->val = TypedValue(tuple, n->getType());
 }
 
 

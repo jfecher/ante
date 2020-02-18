@@ -221,22 +221,6 @@ namespace ante {
         llvm::Value* ptrTo(void* val);
 
         /**
-         * @brief Emits an add instruction
-         *
-         * Operator overloads are not taken into account and should be handled beforehand.
-         * l and r must be the same type.
-         *
-         * @param op The + Node used for error reporting
-         *
-         * @return The resulting add instruction
-         */
-        TypedValue compAdd(TypedValue &l, TypedValue &r, parser::BinOpNode *op);
-        TypedValue compSub(TypedValue &l, TypedValue &r, parser::BinOpNode *op);
-        TypedValue compMul(TypedValue &l, TypedValue &r, parser::BinOpNode *op);
-        TypedValue compDiv(TypedValue &l, TypedValue &r, parser::BinOpNode *op);
-        TypedValue compRem(TypedValue &l, TypedValue &r, parser::BinOpNode *op);
-
-        /**
          * @brief Compiles an extract operation such as array#index
          *
          * Operator overloads are not taken into account and should be handled beforehand.
