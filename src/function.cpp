@@ -83,7 +83,7 @@ TypedValue compFnWithModifiers(Compiler *c, FuncDecl *fd){
                 ((Function*)fn.val)->addFnAttr(Attribute::AttrKind::AlwaysInline);
             }else if(vn->name == "on_fn_decl"){
                 auto *rettn = (TypeNode*)fdn->returnType.get();
-                auto *fnty = AnFunctionType::get(toAnType(rettn, c->compUnit), fdn->params.get(), c->compUnit, true);
+                auto *fnty = AnFunctionType::get(toAnType(rettn, c->compUnit), fdn->params.get(), c->compUnit);
                 fn = TypedValue(nullptr, fnty);
             }else{
                 fdn->modifiers.emplace_back(mod);
@@ -110,10 +110,8 @@ TypedValue compFnWithModifiers(Compiler *c, FuncDecl *fd){
             }else{
                 auto *rettn = (TypeNode*)fdn->returnType.get();
                 AnType *fnty;
-                if(capi::lookup(fd->getName())){
-                    fnty = AnFunctionType::get(toAnType(rettn, c->compUnit), fdn->params.get(), c->compUnit, true);
-                }else{
-                    fnty = AnFunctionType::get(toAnType(rettn, c->compUnit), fdn->params.get(), c->compUnit, false);
+                fnty = AnFunctionType::get(toAnType(rettn, c->compUnit), fdn->params.get(), c->compUnit);
+                if(!capi::lookup(fd->getName())){
                     fnty = (AnType*)fnty->addModifier(Tok_Ante);
                 }
                 fn = TypedValue(nullptr, fnty);
@@ -137,7 +135,7 @@ AnFunctionType* removeCTParamsAndWrapMutParams(Compiler *c, AnType *functy){
     params.reserve(ft->paramTys.size());
     for(auto &param : ft->paramTys){
         // remove empty params but include varargs
-        if(!isEmptyType(c, param) || param->isRhoVar()){
+        if(!isEmptyType(c, param) || param->isRowVar()){
             if(param->hasModifier(Tok_Mut)){
                 params.push_back(AnPtrType::get(param));
             }else{
@@ -145,7 +143,7 @@ AnFunctionType* removeCTParamsAndWrapMutParams(Compiler *c, AnType *functy){
             }
         }
     }
-    return AnFunctionType::get(ft->retTy, params, {}, ft->isVarArgs());
+    return AnFunctionType::get(ft->retTy, params, {});
 }
 
 

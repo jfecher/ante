@@ -88,23 +88,25 @@ namespace ante {
             arg->accept(*this);
         }
 
-        auto variant = try_cast<AnProductType>(n->typeExpr->getType());
-        if(variant){
-            size_t argc = n->args.size();
-            size_t offset = variant->parentUnionType ? 1 : 0;
+        auto dt = try_cast<AnDataType>(n->typeExpr->getType());
+        if(dt && dt->decl->isUnionType){
+            size_t variantIndex = dt->decl->getTagIndex(n->typeExpr->typeName);
+            auto allVariants = dt->getBoundFieldTypes();
+            auto variant = cast<AnTupleType>(allVariants[variantIndex]);
 
-            if(variant->fields.size() - offset != argc){
-                auto lplural = variant->fields.size() == 1 + offset ? " argument, but " : " arguments, but ";
+            size_t argc = n->args.size();
+            if(variant->fields.size() != argc){
+                auto lplural = variant->fields.size() == 1 ? " argument, but " : " arguments, but ";
                 auto rplural = argc == 1 ? " was given instead" : " were given instead";
-                error(anTypeToColoredStr(variant) + " requires " + to_string(variant->fields.size()-offset)
+                error(anTypeToColoredStr(variant) + " requires " + to_string(variant->fields.size())
                         + lplural + to_string(argc) + rplural, n->loc);
             }
 
             for(size_t i = 0; i < argc; i++){
                 auto tnty = n->args[i]->getType();
-                auto vty = variant->fields[i+offset];
-                addConstraint(tnty, vty, n->args[i]->loc,
-                        "Expected field " + to_string(i+1) + " of type $1 to be typecasted to the corresponding field type $2 from " + variant->name);
+                auto vty = variant->fields[i];
+                addConstraint(tnty, vty, n->args[i]->loc, "Expected field " + to_string(i+1)
+                        + " of type $1 to be typecasted to the corresponding field type $2 from " + n->typeExpr->typeName);
             }
         }else{
             showError(anTypeToColoredStr(n->typeExpr->getType()) + " can't be constructed (with this syntax) because it is not a record", n->typeExpr->loc);
@@ -256,27 +258,6 @@ namespace ante {
                 + weregiven, loc);
     }
 
-    bool ConstraintFindingVisitor::findFieldInTypeList(llvm::StringMap<TypeDecl> const& m, BinOpNode *op, VarNode *rval) {
-        for(auto &p : m){
-            if(auto *pt = try_cast<AnProductType>(p.second.type)){
-                for(size_t i = 0; i < pt->fieldNames.size(); i++){
-                    auto &field = pt->fieldNames[i];
-                    if(field == rval->name){
-                        auto ty = static_cast<AnProductType*>(copyWithNewTypeVars(pt));
-                        addConstraint(op->lval->getType(), ty, op->loc,
-                                "Expected lval of . operator to be of type $2 but got $1");
-                        addConstraint(rval->getType(), ty->fields[i], op->loc,
-                                "Expected field '" + rval->name + "' to be of type $2 but got $1");
-                        addConstraint(op->getType(), ty->fields[i], op->loc,
-                                "Expected result of field access to be the type of the field, $2 but got $1");
-                        return true;
-                    }
-                }
-            }
-        }
-        return false;
-    }
-
     void ConstraintFindingVisitor::searchForField(BinOpNode *op) {
         if(dynamic_cast<TypeNode*>(op->lval.get())){
             // not a field access, just qualified name resolution
@@ -306,16 +287,8 @@ namespace ante {
             return;
         }
 
-        if(findFieldInTypeList(module->userTypes, op, vn))
-            return;
-
-        for(Module *import : module->imports){
-            if(findFieldInTypeList(import->userTypes, op, vn))
-                return;
-        }
-
-        show(vn);
-        error("No field named " + vn->name + " found for any type", vn->loc);
+        return; // TODO: row-polymorphism for struct fields
+        // error("No field named " + vn->name + " found for any type", vn->loc);
     }
 
     void ConstraintFindingVisitor::fnCallConstraints(BinOpNode *n){
@@ -372,14 +345,6 @@ namespace ante {
         }
     }
 
-
-    AnProductType* getTypeOfTypes(Module const& module, LOC_TY &errLoc){
-        auto type = try_cast<AnProductType>(module.lookupType("Type"));
-        if(!type || type->typeArgs.size() != 1){
-            ante::error("type `Type 't` in the prelude was redefined or removed sometime before translation of this operator", errLoc);
-        }
-        return static_cast<AnProductType*>(copyWithNewTypeVars(type));
-    }
 
     void ConstraintFindingVisitor::visit(BinOpNode *n){
         n->lval->accept(*this);
@@ -450,16 +415,13 @@ namespace ante {
         }else if(n->op == Tok_As){
             // intentionally empty
             TraitImpl *impl = module->freshTraitImpl("Cast");
-            auto type = getTypeOfTypes(*module, n->loc);
             addTypeClassConstraint(impl, n->loc);
-            addConstraint(n->rval->getType(), type, n->loc,
-                    "Right operand of 'as' operator should be a type, but got a value of type $1");
+            addConstraint(n->rval->getType(), impl->typeArgs.back(), n->loc,
+                    "Cannot cast to $1, variable is inferred to have type $2");
             addConstraint(n->lval->getType(), impl->typeArgs.front(), n->loc,
                     "Value is annotated to be of type $2, but it is of type $1");
-            addConstraint(type->typeArgs.front(), impl->typeArgs.back(), n->loc,
-                    "Error: should never fail, line " + to_string(__LINE__));
-            addConstraint(type->typeArgs.front(), n->getType(), n->loc,
-                    "Return value of 'as' operator should match the type used for casting, but found $2 and $1 respectively");
+            addConstraint(n->getType(), impl->typeArgs.back(), n->loc,
+                    "Return value of 'as' operator should match the type used for casting, but found $1 and $2 respectively");
         }else if(n->op == Tok_Append){
             TraitImpl *impl = module->freshTraitImpl("Append");
             addTypeClassConstraint(impl, n->loc);
@@ -470,10 +432,7 @@ namespace ante {
             addConstraint(n->getType(), n->lval->getType(), n->loc,
                     "Return type of " + Lexer::getTokStr(n->op) + " should always match the first argument's type but here is $1");
         }else if(n->op == ':'){
-            auto type = getTypeOfTypes(*module, n->loc);
-            addConstraint(n->rval->getType(), type, n->loc,
-                    "Right operand of ':' operator should be a type, but got a value of type $1");
-            addConstraint(n->lval->getType(), type->typeArgs.front(), n->loc,
+            addConstraint(n->lval->getType(), n->rval->getType(), n->loc,
                     "Value is annotated to be of type $2, but it is of type $1");
             addConstraint(n->lval->getType(), n->getType(), n->loc,
                     "Return value of ':' operator should match the type of its left operand, but instead found $2 and $1 respectively");
@@ -532,11 +491,11 @@ namespace ante {
                 "Expected type of variable to match the type of its assignment expression, but got $1 and $2 respectively");
     }
 
-    void ConstraintFindingVisitor::addConstraintsFromTCDecl(FuncDeclNode *fdn, TraitImpl *tr, FuncDeclNode *decl){
+    void ConstraintFindingVisitor::addConstraintsFromTCDecl(FuncDeclNode *fdn, TraitImpl *tr, FuncDeclNode *decl, LOC_TY &implLoc){
         TraitDecl *parent = tr->decl;
         if(parent->typeArgs.size() != tr->typeArgs.size()){
             error("Impl has " + to_string(tr->typeArgs.size()) + " typeargs, but there are "
-                + to_string(parent->typeArgs.size()) + " typeargs in " + parent->name + "'s decl", fdn->loc);
+                + to_string(parent->typeArgs.size()) + " typeargs in " + parent->name + "'s decl", implLoc);
         }
 
         for(size_t i = 0; i < parent->typeArgs.size(); i++){
@@ -562,32 +521,6 @@ namespace ante {
     }
 
 
-    //TODO: Hold on to AnType of a DataDeclNode when it is first made
-    //      or better sort out nameresolution for type family instances
-    AnType* anTypeFromDataDecl(DataDeclNode *n, Module *m){
-        AnProductType *data = AnProductType::create(n->name, {}, {});
-        data->fields.reserve(n->fields);
-
-        for(auto& n : *n->child){
-            auto nvn = static_cast<NamedValNode*>(&n);
-            TypeNode *tyn = (TypeNode*)nvn->typeExpr.get();
-            auto ty = toAnType(tyn, m);
-            data->fields.push_back(ty);
-        }
-        return data->getAliasedType();
-    }
-
-
-    AnType* findTypeFamilyImpl(ExtNode *en, string const& name, Module *m){
-        for(auto &n : *en->methods){
-            auto ddn = dynamic_cast<DataDeclNode*>(&n);
-            if(ddn && ddn->name == name){
-                return anTypeFromDataDecl(ddn, m);
-            }
-        }
-        ASSERT_UNREACHABLE();
-    }
-
     void ConstraintFindingVisitor::visit(ExtNode *n){
         if(n->trait){
             auto tr = n->traitType;
@@ -596,18 +529,9 @@ namespace ante {
                 if(fdn){
                     auto *decl = getDecl(fdn->name, tr->decl);
                     fdn->setType(decl->getType());
-                    addConstraintsFromTCDecl(fdn, tr, decl);
+                    addConstraintsFromTCDecl(fdn, tr, decl, n->loc);
                     visit(fdn);
                 }
-            }
-
-            // Add the type family impls later otherwise it errors at type family definition instead
-            // of in the function that is inconsistent with this definition
-            for(auto &family : tr->decl->typeFamilies){
-                auto typeFamilyTypeVar = AnTypeVarType::get("'" + family.name);
-                auto typeFamilyImpl = findTypeFamilyImpl(tr->impl, family.name, module);
-                addConstraint(typeFamilyTypeVar, typeFamilyImpl, n->loc,
-                    "Error: should never fail, line " + to_string(__LINE__)); //TODO: this line may fail (message may show)
             }
         }
     }
@@ -645,7 +569,7 @@ namespace ante {
         }
         auto tupTy = AnTupleType::get(fieldTys);
         addConstraint(tupTy, expectedType, pat->loc,
-                "Expected a $2 here from the tuple destructuring, but found a $1 instead");
+                "Expected a $1 here from the tuple destructuring, but found a $2 instead");
         patChecker.overwrite(Pattern::fromTuple(fieldTys), pat->loc);
 
         for(size_t i = 0; i < pat->exprs.size(); i++){
@@ -657,15 +581,17 @@ namespace ante {
                 parser::TypeCastNode *pat, AnType *expectedType, Pattern &patChecker){
 
         addConstraint(pat->getType(), expectedType, pat->loc,
-                "Expected a $2 here from the union variant destructuring, but found a $1 instead");
-        auto sumType = try_cast<AnSumType>(pat->getType());
-        auto variantType = try_cast<AnProductType>(pat->typeExpr->getType());
+                "Expected a $1 here from the union variant destructuring, but found a $2 instead");
+        auto sumType = try_cast<AnDataType>(pat->getType());
+        auto variantType = try_cast<AnDataType>(pat->typeExpr->getType());
 
         patChecker.overwrite(Pattern::fromSumType(sumType), pat->loc);
-        Pattern& child = patChecker.getChild(sumType->getTagVal(variantType->name));
+        string const& variantName = pat->typeExpr->typeName;
+        Pattern& child = patChecker.getChild(sumType->decl->getTagIndex(variantName));
+        auto variantFields = variantType->getBoundFieldTypes();
 
         for(size_t i = 0; i < pat->args.size(); i++){
-            handlePattern(n, pat->args[i].get(), variantType->fields[i+1], child.getChild(i));
+            handlePattern(n, pat->args[i].get(), variantFields[i], child.getChild(i));
         }
     }
 
@@ -677,35 +603,35 @@ namespace ante {
             handleUnionVariantPattern(n, tcn, expectedType, patChecker);
 
         }else if(TypeNode *tn = dynamic_cast<TypeNode*>(pattern)){
-            auto sumType = try_cast<AnSumType>(tn->getType());
+            auto sumType = try_cast<AnDataType>(tn->getType());
             patChecker.overwrite(Pattern::fromSumType(sumType), tn->loc);
-            auto idx = sumType->getTagVal(tn->typeName);
+            auto idx = sumType->decl->getTagIndex(tn->typeName);
             patChecker.getChild(idx).setMatched();
             addConstraint(tn->getType(), expectedType, pattern->loc,
-                "Expected a $2 here from the union variant pattern, but found a $1 instead");
+                "Expected a $1 here from the union variant pattern, but found a $2 instead");
 
         }else if(VarNode *vn = dynamic_cast<VarNode*>(pattern)){
             addConstraint(expectedType, vn->getType(), pattern->loc,
-                "Expected the var pattern's type to be $1 from this match pattern but got $2 instead");
+                "Expected the var pattern's type to be $2 from this match pattern but got $1 instead");
             patChecker.setMatched();
 
         }else if(IntLitNode *iln = dynamic_cast<IntLitNode*>(pattern)){
             auto ty = AnType::getPrimitive(iln->typeTag);
             patChecker.overwrite(Pattern::fromType(ty), iln->loc);
             addConstraint(ty, expectedType, pattern->loc,
-                    "Expected this integer to be of type $2 from the match pattern, but got $1 instead");
+                    "Expected this integer to be of type $1 from the match pattern, but got $2 instead");
 
         }else if(FltLitNode *fln = dynamic_cast<FltLitNode*>(pattern)){
             auto ty = AnType::getPrimitive(fln->typeTag);
             patChecker.overwrite(Pattern::fromType(ty), fln->loc);
             addConstraint(ty, expectedType, pattern->loc,
-                    "Expected this float to be of type $2 from the match pattern, but got $1 instead");
+                    "Expected this float to be of type $1 from the match pattern, but got $2 instead");
 
         }else if(dynamic_cast<StrLitNode*>(pattern)){
             auto str = module->lookupType("Str");
             patChecker.overwrite(Pattern::fromType(str), pattern->loc);
             addConstraint(str, expectedType, pattern->loc,
-                    "Expected this to be of type $2 from the match pattern, but got $1 instead");
+                    "Expected this to be of type $1 from the match pattern, but got $2 instead");
 
         }else{
             error("Invalid pattern syntax", pattern->loc);

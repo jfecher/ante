@@ -25,14 +25,6 @@ namespace ante {
         return new TraitImpl(impl->name, copyWithNewTypeVars(impl->typeArgs, map));
     }
 
-    void setExtsParentUnionTypeIfNotSet(AnSumType *parentUnion, std::vector<AnProductType*> &exts){
-        for(auto e : exts){
-            if(!e->parentUnionType){
-                e->parentUnionType = parentUnion;
-            }
-        }
-    }
-
     AnType* copyWithNewTypeVars(AnType *t, std::unordered_map<std::string, AnTypeVarType*> &map){
         if(!t->isGeneric)
             return t;
@@ -47,25 +39,9 @@ namespace ante {
                     copyWithNewTypeVars(fn->paramTys, map),
                     copyWithNewTypeVars(fn->typeClassConstraints, map));
 
-        }else if(auto pt = try_cast<AnProductType>(t)){
-            auto exts = copyWithNewTypeVars(pt->fields, map);
-            auto typeVars = copyWithNewTypeVars(pt->typeArgs, map);
-            if(exts == pt->fields && typeVars == pt->typeArgs){
-                return pt;
-            }else{
-                return AnProductType::createVariant(pt, exts, typeVars);
-            }
-
-        }else if(auto st = try_cast<AnSumType>(t)){
-            auto exts = copyWithNewTypeVars(st->tags, map);
-            auto typeVars = copyWithNewTypeVars(st->typeArgs, map);
-            if(exts == st->tags && typeVars == st->typeArgs){
-                return st;
-            }else{
-                auto ret = AnSumType::createVariant(st, exts, typeVars);
-                setExtsParentUnionTypeIfNotSet(ret, exts);
-                return ret;
-            }
+        }else if(auto dt = try_cast<AnDataType>(t)){
+            auto typeArgs = copyWithNewTypeVars(dt->typeArgs, map);
+            return AnDataType::get(dt->name, typeArgs, dt->decl);
 
         }else if(auto tv = try_cast<AnTypeVarType>(t)){
             auto it = map.find(tv->name);
@@ -73,8 +49,8 @@ namespace ante {
                 return it->second;
             }else{
                 auto newtv = nextTypeVar();
-                if(tv->isRhoVar())
-                    newtv = AnTypeVarType::get(newtv->name + "...");
+                if(tv->isRowVar())
+                    newtv->isRowVariable = true;
 
                 map[tv->name] = newtv;
                 return newtv;
@@ -84,7 +60,7 @@ namespace ante {
             return AnTupleType::getAnonRecord(copyWithNewTypeVars(tup->fields, map), tup->fieldNames);
 
         }else if(auto ptr = try_cast<AnPtrType>(t)){
-            return AnPtrType::get(copyWithNewTypeVars(ptr->extTy, map));
+            return AnPtrType::get(copyWithNewTypeVars(ptr->elemTy, map));
 
         }else if(auto arr = try_cast<AnArrayType>(t)){
             return AnArrayType::get(copyWithNewTypeVars(arr->extTy, map), arr->len);
@@ -97,17 +73,8 @@ namespace ante {
 
 
     AnType* copyWithNewTypeVars(AnType *t){
-        if(!t->isGeneric)
-            return t;
-
         std::unordered_map<std::string, AnTypeVarType*> map;
-        auto variant = try_cast<AnProductType>(t);
-        if(variant && variant->parentUnionType){
-            auto st = (AnSumType*)copyWithNewTypeVars(variant->parentUnionType, map);
-            return st->getTagByName(variant->name);
-        }else{
-            return copyWithNewTypeVars(t, map);
-        }
+        return copyWithNewTypeVars(t, map);
     }
 
 
@@ -140,7 +107,7 @@ namespace ante {
         }
 
         if(auto ptr = try_cast<AnPtrType>(t)){
-            return AnPtrType::get(substitute(u, subType, ptr->extTy, recursionLimit - 1));
+            return AnPtrType::get(substitute(u, subType, ptr->elemTy, recursionLimit - 1));
 
         }else if(auto arr = try_cast<AnArrayType>(t)){
             return AnArrayType::get(substitute(u, subType, arr->extTy, recursionLimit - 1), arr->len);
@@ -148,32 +115,15 @@ namespace ante {
         }else if(auto tv = try_cast<AnTypeVarType>(t)){
             return tv == subType ? u : t;
 
-        }else if(auto dt = try_cast<AnProductType>(t)){
-            auto exts = substituteIntoAll(u, subType, dt->fields, recursionLimit - 1);
+        }else if(auto dt = try_cast<AnDataType>(t)){
             auto generics = substituteIntoAll(u, subType, dt->typeArgs, recursionLimit - 1);
-
-            if(exts == dt->fields && generics == dt->typeArgs)
-                return t;
-            else
-                return AnProductType::createVariant(dt, exts, generics);
-
-        }else if(auto st = try_cast<AnSumType>(t)){
-            auto exts = substituteIntoAll(u, subType, st->tags, recursionLimit - 1);
-            auto generics = substituteIntoAll(u, subType, st->typeArgs, recursionLimit - 1);
-
-            if(exts == st->tags && generics == st->typeArgs){
-                return st;
-            }else{
-                auto ret = AnSumType::createVariant(st, exts, generics);
-                setExtsParentUnionTypeIfNotSet(ret, exts);
-                return ret;
-            }
+            return AnDataType::get(dt->name, generics, dt->decl);
 
         }else if(auto fn = try_cast<AnFunctionType>(t)){
             auto exts = substituteIntoAll(u, subType, fn->paramTys, recursionLimit - 1);
             auto rett = substitute(u, subType, fn->retTy, recursionLimit - 1);
             auto tcc  = substituteIntoAll(u, subType, fn->typeClassConstraints, recursionLimit - 1);
-            return AnFunctionType::get(rett, exts, tcc, t->typeTag == TT_MetaFunction);
+            return AnFunctionType::get(rett, exts, tcc);
 
         }else if(auto tup = try_cast<AnTupleType>(t)){
             auto exts = substituteIntoAll(u, subType, tup->fields, recursionLimit - 1);
@@ -195,7 +145,7 @@ namespace ante {
         }
 
         if(auto ptr = try_cast<AnPtrType>(t)){
-            return containsTypeVarHelper(ptr->extTy, typeVar);
+            return containsTypeVarHelper(ptr->elemTy, typeVar);
 
         }else if(auto arr = try_cast<AnArrayType>(t)){
             return containsTypeVarHelper(arr->extTy, typeVar);
@@ -203,17 +153,8 @@ namespace ante {
         }else if(auto tv = try_cast<AnTypeVarType>(t)){
             return tv == typeVar;
 
-        }else if(auto dt = try_cast<AnProductType>(t)){
-            if(ante::any(dt->typeArgs, [&](AnType *f){ return containsTypeVarHelper(f, typeVar); }))
-                return true;
-
-            return ante::any(dt->fields, [&](AnType *f){ return containsTypeVarHelper(f, typeVar); });
-
-        }else if(auto st = try_cast<AnSumType>(t)){
-            if(ante::any(st->typeArgs, [&](AnType *f){ return containsTypeVarHelper(f, typeVar); }))
-                return true;
-
-            return ante::any(st->tags, [&](AnProductType *f){ return containsTypeVarHelper(f, typeVar); });
+        }else if(auto dt = try_cast<AnDataType>(t)){
+            return ante::any(dt->typeArgs, [&](AnType *f){ return containsTypeVarHelper(f, typeVar); });
 
         }else if(auto fn = try_cast<AnFunctionType>(t)){
             if(ante::any(fn->paramTys, [&](AnType *f){ return containsTypeVarHelper(f, typeVar); }))
@@ -254,18 +195,13 @@ namespace ante {
             return map.find(tv->name) == map.end();
 
         }else if(auto ptr = try_cast<AnPtrType>(t)){
-            return hasTypeVarNotInMap(ptr->extTy, map);
+            return hasTypeVarNotInMap(ptr->elemTy, map);
 
         }else if(auto arr = try_cast<AnArrayType>(t)){
             return hasTypeVarNotInMap(arr->extTy, map);
 
-        }else if(auto dt = try_cast<AnProductType>(t)){
-            return ante::any(dt->typeArgs, [&](AnType *f){ return hasTypeVarNotInMap(f, map); })
-                || ante::any(dt->fields, [&](AnType *f){ return hasTypeVarNotInMap(f, map); });
-
-        }else if(auto st = try_cast<AnSumType>(t)){
-            return ante::any(st->typeArgs, [&](AnType *f){ return hasTypeVarNotInMap(f, map); })
-                || ante::any(st->tags, [&](AnProductType *f){ return hasTypeVarNotInMap(f, map); });
+        }else if(auto dt = try_cast<AnDataType>(t)){
+            return ante::any(dt->typeArgs, [&](AnType *f){ return hasTypeVarNotInMap(f, map); });
 
         }else if(auto fn = try_cast<AnFunctionType>(t)){
             auto tccContainsTypeVar = [&](TraitImpl *t){
@@ -306,13 +242,8 @@ namespace ante {
             for(AnType *paramTy : fn->paramTys){ getAllContainedTypeVarsHelper(paramTy, map); }
             for(TraitImpl *tcc : fn->typeClassConstraints){ getAllContainedTypeVarsHelper(tcc, map); }
 
-        }else if(auto pt = try_cast<AnProductType>(t)){
-            for(AnType *fieldTy : pt->fields){ getAllContainedTypeVarsHelper(fieldTy, map); }
-            for(AnType *typeArg : pt->typeArgs){ getAllContainedTypeVarsHelper(typeArg, map); }
-
-        }else if(auto st = try_cast<AnSumType>(t)){
-            for(AnType *tagTy : st->tags){ getAllContainedTypeVarsHelper(tagTy, map); }
-            for(AnType *typeArg : st->typeArgs){ getAllContainedTypeVarsHelper(typeArg, map); }
+        }else if(auto dt = try_cast<AnDataType>(t)){
+            for(AnType *typeArg : dt->typeArgs){ getAllContainedTypeVarsHelper(typeArg, map); }
 
         }else if(auto tv = try_cast<AnTypeVarType>(t)){
             map[tv->name] = tv;
@@ -321,7 +252,7 @@ namespace ante {
             for(AnType *extTy : tup->fields){ getAllContainedTypeVarsHelper(extTy, map); }
 
         }else if(auto ptr = try_cast<AnPtrType>(t)){
-            getAllContainedTypeVarsHelper(ptr->extTy, map);
+            getAllContainedTypeVarsHelper(ptr->elemTy, map);
 
         }else if(auto arr = try_cast<AnArrayType>(t)){
             getAllContainedTypeVarsHelper(arr->extTy, map);
@@ -359,13 +290,7 @@ namespace ante {
 
     AnType* applySubstitutions(Substitutions const& substitutions, AnType *t){
         for(auto it = substitutions.rbegin(); it != substitutions.rend(); ++it){
-            auto variant = try_cast<AnProductType>(t);
-            if(variant && variant->parentUnionType){
-                auto st = (AnSumType*)applySubstitutions(substitutions, variant->parentUnionType);
-                t = st->getTagByName(variant->name);
-            }else{
-                t = substitute(it->second, it->first, t);
-            }
+            t = substitute(it->second, it->first, t);
         }
         return t;
     }
@@ -420,18 +345,18 @@ namespace ante {
     Substitutions unifyTuple(AnTupleType *tup1, AnTupleType *tup2, TypeError const& err){
         auto len1 = tup1->fields.size();
         auto len2 = tup2->fields.size();
-        if(tup1->hasRhoVar()) len1--;
-        if(tup2->hasRhoVar()) len2--;
+        if(tup1->hasRowVar()) len1--;
+        if(tup2->hasRowVar()) len2--;
 
         if(len1 != len2){
             if(len1 < len2){
-                if(tup1->hasRhoVar()){
+                if(tup1->hasRowVar()){
                     len2 = len1;
                 }else{
                     throw TypeErrorContext(tup1, tup2, Mismatch);
                 }
             }else{
-                if(tup2->hasRhoVar()){
+                if(tup2->hasRowVar()){
                     len1 = len2;
                 }else{
                     throw TypeErrorContext(tup1, tup2, Mismatch);
@@ -477,7 +402,7 @@ namespace ante {
 
         if(auto ptr1 = try_cast<AnPtrType>(t1)){
             auto ptr2 = try_cast<AnPtrType>(t2);
-            ret.emplace_back(ptr1->extTy, ptr2->extTy, err);
+            ret.emplace_back(ptr1->elemTy, ptr2->elemTy, err);
             return unifyRecursive(ret);
 
         }else if(auto arr1 = try_cast<AnArrayType>(t1)){
@@ -485,13 +410,9 @@ namespace ante {
             ret.emplace_back(arr1->extTy, arr2->extTy, err);
             return unifyRecursive(ret);
 
-        }else if(auto pt1 = try_cast<AnProductType>(t1)){
-            auto pt2 = try_cast<AnProductType>(t2);
-            return unifyExts(pt1->typeArgs, pt2->typeArgs, pt1, pt2, err);
-
-        }else if(auto st1 = try_cast<AnSumType>(t1)){
-            auto st2 = try_cast<AnSumType>(t2);
-            return unifyExts(st1->typeArgs, st2->typeArgs, st1, st2, err);
+        }else if(auto dt1 = try_cast<AnDataType>(t1)){
+            auto dt2 = try_cast<AnDataType>(t2);
+            return unifyExts(dt1->typeArgs, dt2->typeArgs, dt1, dt2, err);
 
         }else if(auto fn1 = try_cast<AnFunctionType>(t1)){
             auto fn2 = try_cast<AnFunctionType>(t2);

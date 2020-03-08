@@ -7,14 +7,6 @@
 namespace ante {
     class AnTypeVarType;
 
-    /** A type with no definition that may be instantiated to any other type */
-    struct TypeFamily {
-        std::string name;
-        TypeArgs typeArgs;
-        TypeFamily(std::string const& name, std::vector<AnType*> typeArgs)
-            : name{name}, typeArgs{typeArgs}{}
-    };
-
     /** Abstract base class for TraitDecl, TraitImpl */
     struct TraitBase {
         std::string name;
@@ -26,7 +18,6 @@ namespace ante {
 
     struct TraitDecl : public TraitBase {
         std::vector<std::shared_ptr<FuncDecl>> funcs;
-        std::vector<TypeFamily> typeFamilies;
 
         TraitDecl(std::string const& name, TypeArgs const& typeArgs)
           : TraitBase(name, typeArgs){}

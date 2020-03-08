@@ -428,8 +428,11 @@ namespace ante {
             return new ForNode(loc, new VarNode(loc, (char*)var), range, body);
         }
 
-        char* nextVarArgsTVName(){
-            return strdup((ante::nextTypeVar()->name + "...").c_str());
+        Node* nextVarArgsTypeNode(LOC_TY loc){
+            auto name = strdup((ante::nextTypeVar()->name + "...").c_str());
+            auto node = new TypeNode(loc, TT_TypeVar, name, nullptr);
+            node->isRowVar = true;
+            return node;
         }
 
         NamedValNode* convertParam(Node *param){
@@ -520,13 +523,13 @@ namespace ante {
             return new BinOpNode(loc, '(', fn, argTup);
         }
 
-        Node* mkDataDeclNode(LOC_TY loc, char* s, Node *p, Node* b, bool isAlias){
+        Node* mkDataDeclNode(LOC_TY loc, char* s, Node *p, Node* b, bool isAlias, bool isUnion){
             vector<unique_ptr<TypeNode>> params;
             while(p){
                 params.emplace_back((TypeNode*)p);
                 p = p->next.release();
             }
-            return new DataDeclNode(loc, s, b, getTupleSize(b), move(params), isAlias);
+            return new DataDeclNode(loc, s, b, getTupleSize(b), move(params), isAlias, isUnion);
         }
 
 
@@ -544,7 +547,7 @@ namespace ante {
             return new MatchBranchNode(loc, pattern, branch);
         }
 
-        Node* mkTraitNode(LOC_TY loc, char* s, Node* generics, Node* fns){
+        Node* mkTraitNode(LOC_TY loc, char* s, Node* generics, Node* fundeps, Node* fns){
             vector<unique_ptr<TypeNode>> genericsVec;
 
             while(generics){

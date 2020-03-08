@@ -31,7 +31,7 @@ namespace ante {
         Node* append_import(Node *n);
         Node* append_modifiers(Node *modifiers, Node *modifiableNode);
 
-        char* nextVarArgsTVName();
+        Node* nextVarArgsTypeNode(LOC_TY loc);
 
         Node* mkIntLitNode(LOC_TY loc, char* s);
         Node* mkFltLitNode(LOC_TY loc, char* s);
@@ -71,9 +71,8 @@ namespace ante {
         Node* mkForNode(LOC_TY loc, Node* var, Node* range, Node* body);
         Node* mkFuncCallNode(LOC_TY loc, Node* nameAndArgs);
         Node* mkFuncDeclNode(LOC_TY loc, Node* nameAndParams, Node* tExpr, Node* tcc, Node* body);
-        Node* mkDataDeclNode(LOC_TY loc, char* s, Node *p, Node* b, bool isAlias);
-        Node* mkTraitNode(LOC_TY loc, char* s, Node* generics, Node* fns);
-
+        Node* mkDataDeclNode(LOC_TY loc, char* s, Node *p, Node* b, bool isAlias, bool isUnion);
+        Node* mkTraitNode(LOC_TY loc, char* s, Node* generics, Node* fundeps, Node* fns);
     }
 }
 

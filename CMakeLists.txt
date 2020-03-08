@@ -110,6 +110,7 @@ add_library(antecommon SHARED
         include/target.h
         include/tokens.h
         include/trait.h
+        include/typedecl.h
         include/typedvalue.h
         include/typeinference.h
         include/typeerror.h
@@ -137,6 +138,7 @@ add_library(antecommon SHARED
         src/ptree.cpp
         src/repl.cpp
         src/substitutingvisitor.cpp
+        src/typedecl.cpp
         src/typeinference.cpp
         src/typeerror.cpp
         src/types.cpp

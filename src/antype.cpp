@@ -9,40 +9,15 @@ using namespace std;
 using namespace ante::parser;
 
 namespace ante {
-
-    AnTypeContainer typeArena;
+    vector<AnType> AnType::typeContainer;
 
     void AnType::dump() const{
-        if(auto *dt = try_cast<AnDataType>(this)){
-            cout << anTypeToStr(dt) << " = ";
-            if(auto *pt = try_cast<AnProductType>(this)){
-                if(pt->fields.empty()){
-                    cout << "()";
-                }else{
-                    for(auto &ext : pt->fields){
-                        cout << anTypeToStr(ext);
-                        if(&ext != &pt->fields.back())
-                            cout << ", ";
-                    }
-                }
-            }else if(auto *st = try_cast<AnSumType>(this)){
-                for(auto &ext : st->tags){
-                    cout << anTypeToStr(ext);
-                    if(&ext != &st->tags.back())
-                        cout << " | ";
-                }
-            }else{
-                cout << "(unknown)";
-            }
-        }else{
-            cout << anTypeToStr(this);
-        }
-        cout << endl;
+        cout << anTypeToStr(this) << endl;
     }
 
-    bool AnType::isRhoVar() const {
+    bool AnType::isRowVar() const {
         auto tvt = try_cast<const AnTypeVarType>(this);
-        return tvt && tvt->isRhoVar();
+        return tvt && tvt->isRowVariable;
     }
 
     bool isGeneric(vector<AnType*> const& vec){
@@ -115,24 +90,22 @@ namespace ante {
 
     AnType* AnType::getPrimitive(TypeTag tag){
         switch(tag){
-            case TT_I8:           return typeArena.primitiveTypes[tag].get();
-            case TT_I16:          return typeArena.primitiveTypes[tag].get();
-            case TT_I32:          return typeArena.primitiveTypes[tag].get();
-            case TT_I64:          return typeArena.primitiveTypes[tag].get();
-            case TT_Isz:          return typeArena.primitiveTypes[tag].get();
-            case TT_U8:           return typeArena.primitiveTypes[tag].get();
-            case TT_U16:          return typeArena.primitiveTypes[tag].get();
-            case TT_U32:          return typeArena.primitiveTypes[tag].get();
-            case TT_U64:          return typeArena.primitiveTypes[tag].get();
-            case TT_Usz:          return typeArena.primitiveTypes[tag].get();
-            case TT_F16:          return typeArena.primitiveTypes[tag].get();
-            case TT_F32:          return typeArena.primitiveTypes[tag].get();
-            case TT_F64:          return typeArena.primitiveTypes[tag].get();
-            case TT_C8:           return typeArena.primitiveTypes[tag].get();
-            case TT_Bool:         return typeArena.primitiveTypes[tag].get();
-            case TT_Unit:         return typeArena.primitiveTypes[tag].get();
-            case TT_Type:         return typeArena.primitiveTypes[tag].get();
-            case TT_FunctionList: return typeArena.primitiveTypes[tag].get();
+            case TT_I8:           return &typeContainer[tag];
+            case TT_I16:          return &typeContainer[tag];
+            case TT_I32:          return &typeContainer[tag];
+            case TT_I64:          return &typeContainer[tag];
+            case TT_Isz:          return &typeContainer[tag];
+            case TT_U8:           return &typeContainer[tag];
+            case TT_U16:          return &typeContainer[tag];
+            case TT_U32:          return &typeContainer[tag];
+            case TT_U64:          return &typeContainer[tag];
+            case TT_Usz:          return &typeContainer[tag];
+            case TT_F16:          return &typeContainer[tag];
+            case TT_F32:          return &typeContainer[tag];
+            case TT_F64:          return &typeContainer[tag];
+            case TT_C8:           return &typeContainer[tag];
+            case TT_Bool:         return &typeContainer[tag];
+            case TT_Unit:         return &typeContainer[tag];
             default:
                 cerr << "error: AnType::getPrimitive: TypeTag " << typeTagToStr(tag) << " is not primitive!\n";
                 throw CtError();
@@ -141,138 +114,93 @@ namespace ante {
 
 
     AnType* AnType::getI8(){
-        return typeArena.primitiveTypes[TT_I8].get();
+        return &typeContainer[TT_I8];
     }
 
     AnType* AnType::getI16(){
-        return typeArena.primitiveTypes[TT_I16].get();
+        return &typeContainer[TT_I16];
     }
 
     AnType* AnType::getI32(){
-        return typeArena.primitiveTypes[TT_I32].get();
+        return &typeContainer[TT_I32];
     }
 
     AnType* AnType::getI64(){
-        return typeArena.primitiveTypes[TT_I64].get();
+        return &typeContainer[TT_I64];
     }
 
     AnType* AnType::getIsz(){
-        return typeArena.primitiveTypes[TT_Isz].get();
+        return &typeContainer[TT_Isz];
     }
 
     AnType* AnType::getU8(){
-        return typeArena.primitiveTypes[TT_U8].get();
+        return &typeContainer[TT_U8];
     }
 
     AnType* AnType::getU16(){
-        return typeArena.primitiveTypes[TT_U16].get();
+        return &typeContainer[TT_U16];
     }
 
     AnType* AnType::getU32(){
-        return typeArena.primitiveTypes[TT_U32].get();
+        return &typeContainer[TT_U32];
     }
 
     AnType* AnType::getU64(){
-        return typeArena.primitiveTypes[TT_U64].get();
+        return &typeContainer[TT_U64];
     }
 
     AnType* AnType::getUsz(){
-        return typeArena.primitiveTypes[TT_Usz].get();
+        return &typeContainer[TT_Usz];
     }
 
     AnType* AnType::getF16(){
-        return typeArena.primitiveTypes[TT_F16].get();
+        return &typeContainer[TT_F16];
     }
 
     AnType* AnType::getF32(){
-        return typeArena.primitiveTypes[TT_F32].get();
+        return &typeContainer[TT_F32];
     }
 
     AnType* AnType::getF64(){
-        return typeArena.primitiveTypes[TT_F64].get();
+        return &typeContainer[TT_F64];
     }
 
     AnType* AnType::getBool(){
-        return typeArena.primitiveTypes[TT_Bool].get();
+        return &typeContainer[TT_Bool];
     }
 
     AnType* AnType::getUnit(){
-        return typeArena.primitiveTypes[TT_Unit].get();
+        return &typeContainer[TT_Unit];
     }
 
     BasicModifier* BasicModifier::get(const AnType *modifiedType, TokenType mod){
-        auto key = make_pair((AnType*)modifiedType, mod);
-
-        auto *existing_ty = search(typeArena.basicModifiers, key);
-        if(existing_ty) return static_cast<BasicModifier*>(existing_ty);
-
-        auto ret = new BasicModifier(modifiedType, mod);
-        addKVPair(typeArena.basicModifiers, key, (AnModifier*)ret);
-        return ret;
+        return new BasicModifier(modifiedType, mod);
     }
 
-    /** NOTE: this treats all directives as different and will break
-     * reference equality for these types.  In practice this is not too
-     * problematic as it is impossible to compare the arbitrary expressions
-     * anyways. */
     CompilerDirectiveModifier* CompilerDirectiveModifier::get(const AnType *modifiedType, Node *directive){
-        auto key = make_pair((AnType*)modifiedType, (size_t)directive);
-
-        auto *existing_ty = search(typeArena.cdModifiers, key);
-        if(existing_ty) return static_cast<CompilerDirectiveModifier*>(existing_ty);
-
-        auto ret = new CompilerDirectiveModifier(modifiedType, directive);
-        addKVPair(typeArena.cdModifiers, key, (AnModifier*)ret);
-        return ret;
+        return new CompilerDirectiveModifier(modifiedType, directive);
     }
 
-    AnPtrType* AnType::getPtr(AnType* ext){ return AnPtrType::get(ext); }
     AnPtrType* AnPtrType::get(AnType* ext){
-        try{
-            auto *ptr = typeArena.ptrTypes.at(ext).get();
-            return ptr;
-        }catch(out_of_range &r){
-            auto ptr = new AnPtrType(ext);
-            typeArena.ptrTypes.emplace(ext, unique_ptr<AnPtrType>(ptr));
-            return ptr;
-        }
+        return new AnPtrType(ext);
     }
 
-    AnArrayType* AnType::getArray(AnType* t, size_t len){ return AnArrayType::get(t,len); }
     AnArrayType* AnArrayType::get(AnType* t, size_t len){
-        auto key = make_pair(t, len);
-
-        auto existing_ty = search(typeArena.arrayTypes, key);
-        if(existing_ty) return existing_ty;
-
-        auto arr = new AnArrayType(t, len);
-        addKVPair(typeArena.arrayTypes, key, arr);
-        return arr;
+        return new AnArrayType(t, len);
     }
 
     AnTupleType* AnTupleType::get(vector<AnType*> const& fields){
-
-        auto existing_ty = search(typeArena.aggregateTypes, fields);
-        if(existing_ty) return existing_ty;
-
-        auto agg = new AnTupleType(fields, {});
-        addKVPair(typeArena.aggregateTypes, fields, agg);
-        return agg;
+        return new AnTupleType(fields, {});
     }
 
     AnTupleType* AnTupleType::getAnonRecord(vector<AnType*> const& fields,
             vector<string> const& fieldNames){
 
-        auto existing_ty = search(typeArena.aggregateTypes, fields);
-        if(existing_ty) return existing_ty;
-
-        auto agg = new AnTupleType(fields, fieldNames);
-        addKVPair(typeArena.aggregateTypes, fields, agg);
-        return agg;
+        return new AnTupleType(fields, fieldNames);
     }
 
     AnFunctionType* AnFunctionType::get(AnType* retty,
-            NamedValNode* params, Module *module, bool isMetaFunction){
+            NamedValNode* params, Module *module){
 
         vector<AnType*> paramTys;
 
@@ -282,46 +210,23 @@ namespace ante {
             paramTys.push_back(aty);
             params = (NamedValNode*)params->next.get();
         }
-        return AnFunctionType::get(retty, paramTys, {}, isMetaFunction);
+        return AnFunctionType::get(retty, paramTys, {});
     }
 
     AnFunctionType* AnFunctionType::get(AnType *retTy, vector<AnType*> const& elems,
-            vector<TraitImpl*> const& tcConstrains, bool isMetaFunction){
+            vector<TraitImpl*> const& tcConstrains){
 
         auto const& params = elems.empty() ? vector<AnType*>{AnType::getUnit()} : elems;
-
-        auto key = make_pair(retTy, make_pair(params, make_pair(tcConstrains, isMetaFunction)));
-
-        auto existing_ty = search(typeArena.functionTypes, key);
-        if(existing_ty) return existing_ty;
-
-        auto f = new AnFunctionType(retTy, params, tcConstrains, isMetaFunction);
-
-        addKVPair(typeArena.functionTypes, key, f);
-        return f;
+        return new AnFunctionType(retTy, params, tcConstrains);
     }
 
-
-    AnTypeVarType* AnType::getTypeVar(string const& name){
-        return AnTypeVarType::get(name);
-    }
 
     AnTypeVarType* AnTypeVarType::get(string const& name){
-        auto key = name;
-
-        auto existing_ty = search(typeArena.typeVarTypes, key);
-        if(existing_ty) return existing_ty;
-
-        auto tvar = new AnTypeVarType(name);
-        addKVPair(typeArena.typeVarTypes, key, tvar);
-        return tvar;
+        return new AnTypeVarType(name);
     }
 
-
-    bool AnProductType::isTypeFamily() const noexcept {
-        if(!isAlias || fields.size() != 1) return false;
-        auto tv = try_cast<AnTypeVarType>(fields[0]);
-        return tv->name[1] >= 'A' && tv->name[1] <= 'Z';
+    AnDataType* AnDataType::get(std::string const& name, TypeArgs const& args, TypeDecl *decl){
+        return new AnDataType(name, args, decl);
     }
 
 
@@ -332,70 +237,6 @@ namespace ante {
     }
 
 
-    /** Search for a data type generic variant by name.
-      * Returns it if found, or creates it otherwise. */
-    AnProductType* AnProductType::createTypeFamilyVariant(AnProductType *parent, TypeArgs const& typeArgs){
-        if(parent->unboundType)
-            parent = static_cast<AnProductType*>(parent->unboundType);
-
-        auto ret = new AnProductType(parent->name, {parent->fields[0]});
-        ret->typeArgs = typeArgs;
-        ret->isGeneric = ante::isGeneric(typeArgs);
-        ret->isAlias = true;
-        addVariant(parent, ret);
-        return ret;
-    }
-
-    /** Creates or overwrites the type specified by name. */
-    AnProductType* AnProductType::createTypeFamily(string const& name, TypeArgs const& typeArgs){
-        auto typeFamilyTypeVar = AnTypeVarType::get("'" + name);
-        auto family = new AnProductType(name, {typeFamilyTypeVar});
-        family->typeArgs = typeArgs;
-        family->isGeneric = ante::isGeneric(typeArgs);
-        family->isAlias = true;
-        return family;
-    }
-
-    AnType* AnProductType::getAliasedType() const {
-        if(fields.empty()) return AnType::getUnit();
-        return fields.size() == 1 ? fields[0] : AnTupleType::get(fields);
-    }
-
-    AnTupleType* AnProductType::getVariantWithoutTag() const {
-        if(!parentUnionType){
-            cerr << "AnProductType::getVariantWithoutTag(): " << anTypeToColoredStr(this) << " is not a variant\n";
-        }
-        if(fields.size() == 2 && fields[1]->typeTag == TT_Unit){
-            return AnTupleType::get({});
-        }
-
-        vector<AnType*> result;
-        result.reserve(fields.size() - 1);
-        auto it = ++fields.begin();
-        for(; it != fields.end(); ++it){
-            result.push_back(*it);
-        }
-        return AnTupleType::get(result);
-    }
-
-    AnProductType* AnProductType::create(string const& name, vector<AnType*> const& elems,
-            TypeArgs const& typeArgs){
-
-        AnProductType* decl = new AnProductType(name, elems);
-        decl->typeArgs = typeArgs;
-        decl->isGeneric = !typeArgs.empty();
-        return decl;
-    }
-
-    AnSumType* AnSumType::create(string const& name, vector<AnProductType*> const& unionMembers,
-            TypeArgs const& typeArgs){
-
-        AnSumType* decl = new AnSumType(name, unionMembers);
-        decl->typeArgs = typeArgs;
-        decl->isGeneric = !typeArgs.empty();
-        return decl;
-    }
-
     template<typename T>
     typename vector<T*>::iterator findVariant(T* type, TypeArgs args){
         auto end = type->genericVariants.end();
@@ -405,52 +246,6 @@ namespace ante {
             }
         }
         return end;
-    }
-
-    /**
-     * Search for a data type generic variant by name.
-     * Returns it if found, or creates it otherwise.
-     */
-    AnProductType* AnProductType::createVariant(AnProductType *parent,
-            vector<AnType*> const& elems, TypeArgs const& typeArgs){
-
-        if(parent->unboundType)
-            parent = static_cast<AnProductType*>(parent->unboundType);
-
-        auto it = findVariant(parent, typeArgs);
-        if(it != parent->genericVariants.end()){
-            return *it;
-        }
-
-        auto ret = new AnProductType(parent->name, elems);
-        ret->typeArgs = typeArgs;
-        ret->isGeneric = ante::isGeneric(typeArgs);
-        ret->fieldNames = parent->fieldNames;
-        ret->parentUnionType = nullptr; //parentUnionType needs to be bound separately
-        addVariant(parent, ret);
-        return ret;
-    }
-
-    /**
-     * Search for a data type generic variant by name.
-     * Returns it if found, or creates it otherwise.
-     */
-    AnSumType* AnSumType::createVariant(AnSumType *parent,
-            vector<AnProductType*> const& elems, TypeArgs const& typeArgs){
-
-        if(parent->unboundType)
-            parent = static_cast<AnSumType*>(parent->unboundType);
-
-        auto it = findVariant(parent, typeArgs);
-        if(it != parent->genericVariants.end()){
-            return *it;
-        }
-
-        auto ret = new AnSumType(parent->name, elems);
-        ret->typeArgs = typeArgs;
-        ret->isGeneric = ante::isGeneric(typeArgs);
-        addVariant(parent, ret);
-        return ret;
     }
 
 
@@ -465,25 +260,25 @@ namespace ante {
     }
 
     //Constructor for AnTypeContainer, initializes all primitive types beforehand
-    AnTypeContainer::AnTypeContainer(){
-        primitiveTypes[TT_I8].reset(new AnType(TT_I8, false));
-        primitiveTypes[TT_I16].reset(new AnType(TT_I16, false));
-        primitiveTypes[TT_I32].reset(new AnType(TT_I32, false));
-        primitiveTypes[TT_I64].reset(new AnType(TT_I64, false));
-        primitiveTypes[TT_Isz].reset(new AnType(TT_Isz, false));
-        primitiveTypes[TT_U8].reset(new AnType(TT_U8, false));
-        primitiveTypes[TT_U16].reset(new AnType(TT_U16, false));
-        primitiveTypes[TT_U32].reset(new AnType(TT_U32, false));
-        primitiveTypes[TT_U64].reset(new AnType(TT_U64, false));
-        primitiveTypes[TT_Usz].reset(new AnType(TT_Usz, false));
-        primitiveTypes[TT_F16].reset(new AnType(TT_F16, false));
-        primitiveTypes[TT_F32].reset(new AnType(TT_F32, false));
-        primitiveTypes[TT_F64].reset(new AnType(TT_F64, false));
-        primitiveTypes[TT_Bool].reset(new AnType(TT_Bool, false));
-        primitiveTypes[TT_Unit].reset(new AnType(TT_Unit, false));
-        primitiveTypes[TT_C8].reset(new AnType(TT_C8, false));
-        primitiveTypes[TT_Type].reset(new AnType(TT_Type, false));
-        primitiveTypes[TT_FunctionList].reset(new AnType(TT_FunctionList, false));
+    void AnType::initTypeSystem(){
+        assert(typeContainer.empty());
+        typeContainer = vector<AnType>(numPrimitiveTypeTags, AnType(TT_I8, false));
+        typeContainer[TT_I8] = AnType(TT_I8, false);
+        typeContainer[TT_I16] = AnType(TT_I16, false);
+        typeContainer[TT_I32] = AnType(TT_I32, false);
+        typeContainer[TT_I64] = AnType(TT_I64, false);
+        typeContainer[TT_Isz] = AnType(TT_Isz, false);
+        typeContainer[TT_U8] = AnType(TT_U8, false);
+        typeContainer[TT_U16] = AnType(TT_U16, false);
+        typeContainer[TT_U32] = AnType(TT_U32, false);
+        typeContainer[TT_U64] = AnType(TT_U64, false);
+        typeContainer[TT_Usz] = AnType(TT_Usz, false);
+        typeContainer[TT_F16] = AnType(TT_F16, false);
+        typeContainer[TT_F32] = AnType(TT_F32, false);
+        typeContainer[TT_F64] = AnType(TT_F64, false);
+        typeContainer[TT_Bool] = AnType(TT_Bool, false);
+        typeContainer[TT_C8] = AnType(TT_C8, false);
+        typeContainer[TT_Unit] = AnType(TT_Unit, false);
     }
 
 
@@ -516,9 +311,7 @@ namespace ante {
                 ret = AnType::getPrimitive(tn->typeTag);
                 break;
 
-            case TT_Function:
-            case TT_MetaFunction:
-            case TT_FunctionList: {
+            case TT_Function: {
                 TypeNode *ext = tn->extTy.get();
                 AnType *retty = 0;
                 vector<AnType*> tys;
@@ -530,7 +323,7 @@ namespace ante {
                     }
                     ext = (TypeNode*)ext->next.get();
                 }
-                ret = AnFunctionType::get(retty, tys, {}, tn->typeTag == TT_MetaFunction);
+                ret = AnFunctionType::get(retty, tys, {});
                 break;
             }
             case TT_Tuple: {
@@ -553,18 +346,17 @@ namespace ante {
             case TT_Ptr:
                 ret = AnPtrType::get(toAnType(tn->extTy.get(), module));
                 break;
-            case TT_Data:
-            case TT_Trait:
-            case TT_TaggedUnion: {
-                AnType *type = module->lookupType(tn->typeName);
-                AnDataType *basety = try_cast<AnDataType>(type);
-                if(!basety){
-                    if(type){
-                        return type; // type alias
-                    }else{
-                        error("Use of undeclared type " + lazy_str(tn->typeName, AN_TYPE_COLOR), tn->loc);
-                    }
+            case TT_Data: {
+                TypeDecl *decl = module->lookupTypeDecl(tn->typeName);
+                if(!decl){
+                    error("Use of undeclared type " + lazy_str(tn->typeName, AN_TYPE_COLOR), tn->loc);
                 }
+
+                if(decl->isAlias){
+                    return decl->aliasedType;
+                }
+
+                auto basety = cast<AnDataType>(decl->type);
 
                 // TODO: This will fail if type is a type alias to another data type with differing type args
                 ret = basety;
@@ -597,9 +389,12 @@ namespace ante {
                 }
                 break;
             }
-            case TT_TypeVar:
-                ret = AnTypeVarType::get(tn->typeName);
+            case TT_TypeVar: {
+                auto tv = AnTypeVarType::get(tn->typeName);
+                tv->isRowVariable = tn->isRowVar;
+                ret = tv;
                 break;
+            }
             default:
                 cerr << "Unknown TypeTag " << typeTagToStr(tn->typeTag) << endl;
                 return nullptr;
@@ -653,33 +448,6 @@ namespace ante {
         return BasicModifier::get(this, m);
     }
 
-    const AnType* AnProductType::addModifier(TokenType m) const{
-        if(m == Tok_Let) return this;
-        return BasicModifier::get(this, m);
-    }
-
-    const AnType* AnSumType::addModifier(TokenType m) const{
-        if(m == Tok_Let) return this;
-        return BasicModifier::get(this, m);
-    }
-
-
-    /**
-    * Returns the UnionTag of a tag within the union type.
-    *
-    * If the given tag is not found, this function issues an
-    * error message and throws a CtError exception.
-    *
-    * @return the value of the tag found, or 0 on failure
-    */
-    size_t AnSumType::getTagVal(string const& name){
-        for(size_t i = 0; i < tags.size(); i++){
-            if(tags[i]->name == name)
-                return i;
-        }
-        return 0;
-    }
-
     bool AnType::operator!=(AnType const& other) const noexcept {
         return !(*this == other);
     }
@@ -729,7 +497,7 @@ namespace ante {
             auto r = static_cast<const AnTupleType*>(&other);
             return allEq(l->fields, r->fields) && allEq(l->fieldNames, r->fieldNames);
 
-        }else if(typeTag == TT_Data || typeTag == TT_TaggedUnion){
+        }else if(typeTag == TT_Data){
             auto l = static_cast<const AnDataType*>(this);
             auto r = static_cast<const AnDataType*>(&other);
             return l->name == r->name && allEq(l->typeArgs, r->typeArgs);
@@ -740,8 +508,8 @@ namespace ante {
         }else if(typeTag == TT_Ptr){
             auto l = static_cast<const AnPtrType*>(this);
             auto r = static_cast<const AnPtrType*>(&other);
-            return *l->extTy == *r->extTy;
-        }else if(typeTag == TT_Function || typeTag == TT_MetaFunction){
+            return *l->elemTy == *r->elemTy;
+        }else if(typeTag == TT_Function){
             auto l = static_cast<const AnFunctionType*>(this);
             auto r = static_cast<const AnFunctionType*>(&other);
             return *l->retTy == *r->retTy && allEq(l->paramTys, r->paramTys);
@@ -779,7 +547,7 @@ namespace ante {
             auto r = static_cast<const AnTupleType*>(other);
             return allApproxEq(l->fields, r->fields) && allEq(l->fieldNames, r->fieldNames);
 
-        }else if(typeTag == TT_Data || typeTag == TT_TaggedUnion){
+        }else if(typeTag == TT_Data){
             auto l = static_cast<const AnDataType*>(this);
             auto r = static_cast<const AnDataType*>(other);
             return l->name == r->name && allApproxEq(l->typeArgs, r->typeArgs);
@@ -790,8 +558,8 @@ namespace ante {
         }else if(typeTag == TT_Ptr){
             auto l = static_cast<const AnPtrType*>(this);
             auto r = static_cast<const AnPtrType*>(other);
-            return l->extTy->approxEq(r->extTy);
-        }else if(typeTag == TT_Function || typeTag == TT_MetaFunction){
+            return l->elemTy->approxEq(r->elemTy);
+        }else if(typeTag == TT_Function){
             auto l = static_cast<const AnFunctionType*>(this);
             auto r = static_cast<const AnFunctionType*>(other);
             return l->retTy->approxEq(r->retTy) && allApproxEq(l->paramTys, r->paramTys);
@@ -821,5 +589,25 @@ namespace ante {
 
     bool AnType::isNumericTy() const noexcept {
         return isNumericTypeTag(this->typeTag);
+    }
+
+    llvm::Type* AnDataType::toLlvmType(Compiler *c) const {
+        return decl->toLlvmType(c, this);
+    }
+
+    std::vector<AnType*> AnDataType::getBoundFieldTypes() const {
+        return decl->getBoundFieldTypes(this);
+    }
+
+    Result<size_t, std::string> AnDataType::getSizeInBits(Compiler *c,
+            std::string const& incompleteType) const {
+
+        return decl->getSizeInBits(c, incompleteType, this);
+    }
+
+    llvm::Value* AnDataType::getTagValue(Compiler *c, std::string const& variantName,
+            std::vector<TypedValue> const& args) const {
+
+        return decl->getTagValue(c, this, variantName, args);
     }
 }

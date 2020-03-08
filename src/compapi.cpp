@@ -34,9 +34,7 @@ extern "C" {
     }
 
     TypedValue* Ante_sizeof(Compiler *c, AnteValue &tv){
-        auto size = tv.getType()->typeTag == TT_Type
-                    ? tv.castTo<AnType*>()->getSizeInBits(c)
-                    : tv.getType()->getSizeInBits(c);
+        auto size = tv.getType()->getSizeInBits(c);
 
         if(!size){
             cerr << size.getErr() << endl;
@@ -49,7 +47,7 @@ extern "C" {
 
     TypedValue* Ante_typeof(Compiler *c, AnteValue &val){
         Value *addr = c->builder.getInt64((unsigned long) val.getType());
-        return new TypedValue(addr, BasicModifier::get(AnType::getPrimitive(TT_Type), Tok_Ante));
+        return new TypedValue(addr, BasicModifier::get(AnPtrType::get(AnType::getUnit()), Tok_Ante));
     }
 
     void* Ante_emit_ir(Compiler *c){
@@ -77,7 +75,7 @@ namespace ante {
             using U = std::unique_ptr<CtFunc>;
             compapi.emplace("debug",       U(new CtFunc((void*)Ante_debug,       AnType::getUnit(), {AnTypeVarType::get("'t'")})));
             compapi.emplace("sizeof",      U(new CtFunc((void*)Ante_sizeof,      AnType::getU32(),  {AnTypeVarType::get("'t'")})));
-            compapi.emplace("typeof",      U(new CtFunc((void*)Ante_typeof,      AnType::getPrimitive(TT_Type), {AnTypeVarType::get("'t")})));
+            compapi.emplace("typeof",      U(new CtFunc((void*)Ante_typeof,      AnPtrType::get(AnType::getUnit()), {AnTypeVarType::get("'t")})));
             compapi.emplace("error",       U(new CtFunc((void*)Ante_error,       AnType::getUnit(), {AnPtrType::get(AnType::getPrimitive(TT_C8))})));
             compapi.emplace("emit_ir",     U(new CtFunc((void*)Ante_emit_ir,     AnType::getUnit())));
             compapi.emplace("forget",      U(new CtFunc((void*)Ante_forget,      AnType::getUnit(), {AnPtrType::get(AnType::getPrimitive(TT_C8))})));

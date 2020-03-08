@@ -120,12 +120,6 @@ namespace ante {
                 return convertTupleToTypedValue(c, *this, try_cast<AnTupleType>(type));
             case TT_TypeVar:
             case TT_Function:
-            case TT_TaggedUnion:
-            case TT_MetaFunction:
-            case TT_FunctionList:
-            case TT_Type:
-            case TT_Trait:
-            case TT_TypeFamily:
                 break;
             case TT_Unit:
                 return c->getUnitLiteral();
@@ -161,7 +155,7 @@ namespace ante {
                 char *cstr = strdup(cda->getAsString().str().c_str());
                 *(void**)data = cstr;
             }else{
-                TypedValue tv = {v, ptrty->extTy};
+                TypedValue tv = {v, ptrty->elemTy};
                 void **oldData = (void**)data;
                 data = *oldData;
                 allocAndStoreValue(c, tv);
@@ -175,7 +169,7 @@ namespace ante {
                     //Its possible this is a store of the same type if the pointer is mutable,
                     //we want what is stored within only
                     if(si->getValueOperand()->getType() == tv.val->getType()->getPointerElementType()){
-                        TypedValue elem = {si->getValueOperand(), ptrty->extTy};
+                        TypedValue elem = {si->getValueOperand(), ptrty->elemTy};
                         void **data_ptr = (void**)data;
                         allocAndStoreValue(c, elem);
                         *data_ptr = data;
@@ -299,7 +293,6 @@ namespace ante {
                 return;
             case TT_Ptr:
             case TT_Function:
-            case TT_MetaFunction:
             case TT_Array: storePtr(c, tv); return;
             case TT_TypeVar: {
                 //TODO: re-add
@@ -316,17 +309,9 @@ namespace ante {
                 return;
             }
             case TT_Tuple:
-            case TT_TaggedUnion:
             case TT_Data:
                 storeTuple(c, tv);
                 return;
-            case TT_Type:
-                *(void**)data = extractTypeValue(tv);
-                return;
-            case TT_FunctionList:
-            case TT_Trait:
-            case TT_TypeFamily:
-                break;
             case TT_Unit:
                 return;
         }
@@ -335,17 +320,17 @@ namespace ante {
     }
 
     void AnteValue::printUnion(Compiler *c, std::ostream &os) const{
-        auto *dt = try_cast<AnSumType>(type);
+        auto *dt = try_cast<AnDataType>(type);
         char tag = castTo<char>();
 
-        auto &tagty = dt->tags[tag];
+        auto &tagty = dt->getBoundFieldTypes()[tag];
         AnteValue((char*)data + 1, tagty).printTupleOrData(c, os);
     }
 
     void AnteValue::printTupleOrData(Compiler *c, std::ostream &os) const{
         auto *dt = try_cast<AnDataType>(type);
         if(dt){
-            if(dt->typeTag == TT_TaggedUnion){
+            if(dt->decl->isUnionType){
                 printUnion(c, os);
                 return;
             }else if(dt->name == "Str"){
@@ -391,28 +376,22 @@ namespace ante {
             case TT_F32: os << castTo<float>(); break;
             case TT_F64: os << castTo<double>(); break;
             case TT_Ptr:
-                if(try_cast<AnPtrType>(type)->extTy->typeTag == TT_C8){
+                if(try_cast<AnPtrType>(type)->elemTy->typeTag == TT_C8){
                     os << '"' << castTo<char*>() << '"';
                 }else{
                     os << castTo<void*>() << " -> ";
-                    AnteValue(*(void**)data, try_cast<AnPtrType>(type)->extTy).printCtVal(c, os);
+                    AnteValue(*(void**)data, try_cast<AnPtrType>(type)->elemTy).printCtVal(c, os);
                 }
                 break;
             case TT_Array:
                 os << " [...]";
                 break;
-            case TT_TaggedUnion:
             case TT_Data:
             case TT_Tuple:
                 printTupleOrData(c, os);
                 break;
-            case TT_Type: cout << anTypeToStr(castTo<AnType*>()); break;
             case TT_Function: os << "fun @ " << castTo<void*>(); break;
-            case TT_MetaFunction: os << "compiler-api function\n"; break;
-            case TT_FunctionList: os << "function list\n"; break;
-            case TT_Trait: os << "trait\n"; break;
             case TT_TypeVar: os << "?"; break; //compile-time value with unknown type, something went wrong.
-            case TT_TypeFamily: os << "<(TypeFamily)>"; break;
             case TT_Unit: os << "()"; break;
         }
     }

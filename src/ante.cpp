@@ -57,10 +57,6 @@ void printHelp(){
     llvm::TargetRegistry::printRegisteredTargetsForVersion(os);
 }
 
-namespace ante {
-    extern AnTypeContainer typeArena;
-}
-
 #ifndef NO_MAIN
 int main(int argc, const char **argv){
     auto start = high_resolution_clock::now();
@@ -68,6 +64,7 @@ int main(int argc, const char **argv){
     LLVMInitializeNativeTarget();
     LLVMInitializeNativeAsmPrinter();
 
+    AnType::initTypeSystem();
     capi::init();
 
     auto *args = parseArgs(argc, argv);

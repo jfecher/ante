@@ -108,18 +108,15 @@ namespace ante {
     }
 
 
-    void NameResolutionVisitor::define(string const& name, AnDataType *dt, LOC_TY &loc){
+    TypeDecl& NameResolutionVisitor::define(string const& name, AnType *type, LOC_TY &loc){
         TypeDecl *existingTy = lookupType(name);
         if(existingTy){
-            auto pt = try_cast<AnProductType>(existingTy->type);
-            if(pt->isTypeFamily()) return;
-
             showError(name + " was already declared", loc);
             error(name + " was previously declared here", existingTy->loc, ErrorType::Note);
         }
 
-        TypeDecl decl{static_cast<AnType*>(dt), loc};
-        compUnit->userTypes.try_emplace(name, decl);
+        auto it = compUnit->userTypes.try_emplace(name, type, loc);
+        return it.first->second;
     }
 
     TypeDecl* NameResolutionVisitor::lookupType(string const& name) const {
@@ -259,16 +256,6 @@ namespace ante {
         }
     }
 
-    void checkParamCountMatches(TypeFamily const& decl, DataDeclNode *def){
-        size_t expectedParams = decl.typeArgs.size();
-        size_t numParams = def->generics.size();
-        if(expectedParams != numParams){
-            string part1 = to_string(expectedParams) + " type parameter" + (expectedParams == 1 ? "" : "s");
-            string part2 = to_string(numParams) + (numParams == 1 ? " was" : " were");
-            showError(def->name + " was declared to take " + part1 + " but " + part2 + " given here", def->loc);
-        }
-    }
-
     bool checkFnInTraitDecl(vector<shared_ptr<FuncDecl>> const& traitDeclFns,
             vector<FuncDecl*> const& traitImplFns, FuncDeclNode *fdn, TraitImpl *trait){
 
@@ -298,40 +285,6 @@ namespace ante {
         }
     }
 
-    vector<TypeFamily>::const_iterator getType(vector<TypeFamily> const& decls, string const& name){
-        return ante::find_if(decls, [&](TypeFamily const& decl){
-            return decl.name == name;
-        });
-    }
-
-    bool checkTyInTraitDecl(vector<TypeFamily> const& traitDeclTys,
-            vector<TypeFamily> const& traitImplTys, DataDeclNode *ddn, TraitImpl *trait){
-
-        auto decl = getType(traitDeclTys, ddn->name);
-        if(decl != traitDeclTys.end()){
-            checkParamCountMatches(*decl, ddn);
-            return true;
-        }
-
-        auto duplicate = getType(traitImplTys, ddn->name);
-        if(duplicate != traitImplTys.end()){
-            showError("Duplicate type " + ddn->name + " in trait impl", ddn->loc);
-            //showError(fdn->name + " previously defined here", (*duplicate)->getFDN()->loc, ErrorType::Note);
-        }else{
-            showError("No type named " + ddn->name + " in trait " + trait->name, ddn->loc);
-        }
-        return false;
-    }
-
-    void checkForUnimplementedTypes(vector<TypeFamily> const& traitDeclTys, TraitImpl *trait){
-        if(!traitDeclTys.empty()){
-            for(auto &ty : traitDeclTys){
-                showError("impl " + traitToColoredStr(trait) + " missing implementation of type " + ty.name, trait->impl->loc);
-            }
-            throw CtError();
-        }
-    }
-
     TraitImpl* toTrait(TypeNode *tn, Module *m){
         auto decl = m->lookupTraitDecl(tn->typeName);
         if(!decl) return nullptr;
@@ -355,9 +308,6 @@ namespace ante {
         auto traitDeclFns = trait->decl->funcs;
         auto traitImplFns = vecOf<FuncDecl*>(traitDeclFns.size());
 
-        auto traitDeclTys = trait->decl->typeFamilies;
-        auto traitImplTys = vecOf<TypeFamily>(traitDeclTys.size());
-
         for(Node &m : *n->methods){
             if(FuncDeclNode *fdn = dynamic_cast<FuncDeclNode*>(&m)){
                 auto *fd = new FuncDecl(fdn, fdn->name, v.compUnit);
@@ -368,20 +318,12 @@ namespace ante {
                     });
                     traitImplFns.push_back(fd);
                 }
-            }else if(DataDeclNode *ddn = dynamic_cast<DataDeclNode*>(&m)){
-                if(checkTyInTraitDecl(traitDeclTys, traitImplTys, ddn, trait)){
-                    ante::remove_if(traitDeclTys, [&](TypeFamily &decl){
-                        return decl.name == ddn->name;
-                    });
-                    traitImplTys.emplace_back(ddn->name, convertToTypeArgs(ddn->generics, v.compUnit));
-                }
             }
         }
 
         trait->impl = n;
         n->traitType = trait;
         checkForUnimplementedFunctions(traitDeclFns, trait);
-        checkForUnimplementedTypes(traitDeclTys, trait);
     }
 
     void NameResolutionVisitor::declare(ExtNode *n){
@@ -960,23 +902,13 @@ namespace ante {
         if(!tn) return;
 
         if(tn->typeTag == TT_Data){
-            auto *dataTy = try_cast<AnProductType>(tn);
+            auto *dataTy = try_cast<AnDataType>(tn);
 
             if(dataTy->name == rootTy->name){
                 error("Recursive types are disallowed, wrap the type in a pointer instead", rootTy->loc);
             }
 
-            for(auto *t : dataTy->fields)
-                validateType(t, rootTy);
-
-        }else if(tn->typeTag == TT_TaggedUnion){
-            auto *dataTy = try_cast<AnSumType>(tn);
-
-            if(dataTy->name == rootTy->name){
-                error("Recursive types are disallowed, wrap the type in a pointer instead", rootTy->loc);
-            }
-
-            for(auto *t : dataTy->tags)
+            for(auto *t : dataTy->decl->getUnboundFieldTypes())
                 validateType(t, rootTy);
 
         }else if(tn->typeTag == TT_Tuple){
@@ -987,7 +919,7 @@ namespace ante {
         }else if(tn->typeTag == TT_Array){
             auto *arr = try_cast<AnArrayType>(tn);
             validateType(arr->extTy, rootTy);
-        }else if(tn->typeTag == TT_Ptr or tn->typeTag == TT_Function or tn->typeTag == TT_MetaFunction){
+        }else if(tn->typeTag == TT_Ptr or tn->typeTag == TT_Function){
             return;
 
         }else if(tn->typeTag == TT_TypeVar){
@@ -1004,8 +936,10 @@ namespace ante {
 
     void NameResolutionVisitor::visitUnionDecl(parser::DataDeclNode *decl){
         auto generics = convertToTypeArgs(decl->generics, compUnit);
-        AnSumType *data = AnSumType::create(decl->name, {}, generics);
-        define(decl->name, data, decl->loc);
+        auto data = AnDataType::get(decl->name, generics, nullptr);
+        TypeDecl &typeDecl = define(decl->name, data, decl->loc);
+        typeDecl.isUnionType = true;
+        data->decl = &typeDecl;
 
         for(Node& child : *decl->child){
             auto nvn = static_cast<NamedValNode*>(&child);
@@ -1015,7 +949,7 @@ namespace ante {
             auto var = new Variable(nvn->name, decl);
             nvn->decl = var;
 
-            vector<AnType*> exts = { AnType::getU8() }; //All variants are comprised of at least their tag value
+            vector<AnType*> exts;
             TypeNode *field = tyn->extTy.get();
             while(field){
                 AnType *f = toAnType(field, compUnit);
@@ -1024,40 +958,29 @@ namespace ante {
                 field = static_cast<TypeNode*>(field->next.get());
             }
 
-            //Store the tag as a UnionTag and a AnDataType
-            //AnDataType *tagdt = AnDataType::create(nvn->name, exts, false, generics);
-            AnProductType *tagdt = AnProductType::create(nvn->name, exts, generics);
+            auto tuple = AnTupleType::get(exts);
+            typeDecl.addField(nvn->name, tuple);
 
-            tagdt->parentUnionType = data;
-            tagdt->isGeneric = isGeneric(exts);
-            data->tags.emplace_back(tagdt);
-
-            define(nvn->name, tagdt, nvn->loc);
+            TypeDecl &variantDecl = define(nvn->name, nullptr, tyn->loc);
+            variantDecl.isAlias = true;
+            variantDecl.aliasedType = data;
         }
-    }
-
-
-    void NameResolutionVisitor::visitTypeFamily(DataDeclNode *n){
-        auto *family = AnProductType::createTypeFamily(n->name, convertToTypeArgs(n->generics, compUnit));
-        define(n->name, family, n->loc);
     }
 
 
     void NameResolutionVisitor::visit(DataDeclNode *n){
-        auto *nvn = (NamedValNode*)n->child.get();
-        if(!nvn) return visitTypeFamily(n);
-
-        if(((TypeNode*) nvn->typeExpr.get())->typeTag == TT_TaggedUnion){
+        if(n->isUnion){
             visitUnionDecl(n);
             return;
         }
 
-        AnProductType *data = AnProductType::create(n->name, {}, convertToTypeArgs(n->generics, compUnit));
+        auto *nvn = (NamedValNode*)n->child.get();
+        assert(nvn);
 
-        define(n->name, data, n->loc);
-        data->fields.reserve(n->fields);
-        data->fieldNames.reserve(n->fields);
-        data->isAlias = n->isAlias;
+        auto data = AnDataType::get(n->name, convertToTypeArgs(n->generics, compUnit), nullptr);
+        TypeDecl &typeDecl = define(n->name, data, n->loc);
+        data->decl = &typeDecl;
+        // typeDecl->isAlias = n->isAlias;
 
         while(nvn){
             TypeNode *tyn = (TypeNode*)nvn->typeExpr.get();
@@ -1068,9 +991,7 @@ namespace ante {
 
             validateType(ty, n);
 
-            data->fields.push_back(ty);
-            data->fieldNames.push_back(nvn->name);
-
+            typeDecl.addField(nvn->name, ty);
             nvn = (NamedValNode*)nvn->next.get();
         }
     }
@@ -1131,9 +1052,6 @@ namespace ante {
                 fd->traitFuncDecl = true;
                 compUnit->fnDecls[fdn->name] = fd;
                 decl->funcs.emplace_back(fd);
-            }else if(DataDeclNode *type = dynamic_cast<DataDeclNode*>(&child)){
-                child.accept(*this);
-                decl->typeFamilies.emplace_back(type->name, convertToNewTypeArgs(type->generics, compUnit, map));
             }
         }
         exitFunction();

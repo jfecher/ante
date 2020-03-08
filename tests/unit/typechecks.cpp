@@ -26,7 +26,7 @@ TEST_CASE("Type Checks", "[typeEq]"){
     //basic equality
     REQUIRE(voidTy == AnType::getUnit());
 
-    REQUIRE(voidTy == voidPtr->extTy);
+    REQUIRE(voidTy == voidPtr->elemTy);
 
     REQUIRE(voidPtr != intPtr);
 
@@ -52,7 +52,7 @@ TEST_CASE("Type Checks", "[typeEq]"){
     SECTION("MyType isz == MyType isz"){
         //Empty 't
         auto tvar = AnTypeVarType::get("'t");
-        auto mytype = AnProductType::create("MyType", {}, {tvar});
+        auto mytype = AnDataType::get("MyType", {tvar}, nullptr);
 
         //Empty isz
         auto mytype_isz  = applySubstitutions({{tvar, intTy}}, mytype);
@@ -69,14 +69,14 @@ TEST_CASE("Type Uniqueness", "[typeEq]"){
     auto t = AnTypeVarType::get("'t");
     auto u = AnTypeVarType::get("'u");
 
-    auto empty = AnProductType::create("Empty", {}, {t});
+    auto empty = AnDataType::get("Empty", {t}, nullptr);
 
     //'t -> 't
-    auto empty_t = AnProductType::createVariant(empty, {}, {t});
-    auto empty_t2 = AnProductType::createVariant(empty, {}, {t});
+    auto empty_t = AnDataType::get("Empty", {t}, nullptr);
+    auto empty_t2 = AnDataType::get("Empty", {t}, nullptr);
 
     //'t -> 'u
-    auto empty_u = AnProductType::createVariant(empty, {}, {u});
+    auto empty_u = AnDataType::get("Empty", {u}, nullptr);
 
     REQUIRE(empty != nullptr);
 

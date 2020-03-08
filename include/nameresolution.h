@@ -55,7 +55,7 @@ namespace ante {
             void declareSumType(parser::DataDeclNode *n);
 
             /** Define a type with the given contents. */
-            void define(std::string const& name, AnDataType *type, LOC_TY &loc);
+            TypeDecl& define(std::string const& name, AnType *type, LOC_TY &loc);
 
             /** Lookup the variable name and return it if found or null otherwise */
             Variable* lookupVar(std::string const& name) const;
@@ -78,8 +78,6 @@ namespace ante {
             void exitFunction();
 
             void visitUnionDecl(parser::DataDeclNode *decl);
-
-            void visitTypeFamily(parser::DataDeclNode *n);
 
             /** A safe wrapper around toAnType that catches any exceptions and
              * sets error flags to let the compiler know it cannot continue to

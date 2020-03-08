@@ -70,9 +70,9 @@ TEST_CASE("Size in bits of function type", "[getSizeInBits]"){
     auto ptrTy1 = AnPtrType::get(AnType::getUnit());
     auto arrTy1 = AnArrayType::get(AnType::getI16(), 3);
 
-    auto fnTy1 = AnFunctionType::get(AnType::getUnit(), {}, {}, false);
-    auto fnTy2 = AnFunctionType::get(AnType::getU16(), {AnType::getI32(), ptrTy1}, {}, false);
-    auto fnTy3 = AnFunctionType::get(AnType::getUsz(), {AnType::getUsz(), arrTy1}, {}, true);
+    auto fnTy1 = AnFunctionType::get(AnType::getUnit(), {}, {});
+    auto fnTy2 = AnFunctionType::get(AnType::getU16(), {AnType::getI32(), ptrTy1}, {});
+    auto fnTy3 = AnFunctionType::get(AnType::getUsz(), {AnType::getUsz(), arrTy1}, {});
 
     REQUIRE(fnTy1->getSizeInBits(c).getVal() == 8*sizeof(void*));
     REQUIRE(fnTy2->getSizeInBits(c).getVal() == 8*sizeof(void*));
@@ -97,7 +97,7 @@ TEST_CASE("Size in bits of generic type", "[getSizeInBits]"){
     auto ptr_t = AnPtrType::get(t);
     auto arr_u = AnArrayType::get(u, 5);
     auto tup = AnTupleType::get({AnType::getI32(), t});
-    auto fn = AnFunctionType::get(u, {AnType::getI32(), t}, {}, false);
+    auto fn = AnFunctionType::get(u, {AnType::getI32(), t}, {});
 
     //All non-ptr types should return an error instead of a size
     REQUIRE(!t->getSizeInBits(c));

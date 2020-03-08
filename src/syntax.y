@@ -241,7 +241,8 @@ lit_type: I8                  {$$ = mkTypeNode(@$, TT_I8,  (char*)"");}
         | typevar             {$$ = mkTypeNode(@$, TT_TypeVar, (char*)$1);}
         ;
 
-varargs: VarArgs    {$$ = mkTypeNode(@$, TT_TypeVar, nextVarArgsTVName());}
+varargs: VarArgs    {$$ = nextVarArgsTypeNode(@$);}
+       ;
 
 pointer_type: Ref type     {$$ = mkTypeNode(@$, TT_Ptr, (char*)"", $2);}
             ;
@@ -300,8 +301,11 @@ modifier: Pub      {$$ = mkModNode(@$, Tok_Pub);}
         | preproc  %prec MODIFIER {$$ = $1;}
         ;
 
+maybe_fundeps: RArrow generic_params   {$$ = $2;}
+             |
+             ;
 
-trait_decl: Trait usertype generic_params Indent trait_fn_list Unindent  {$$ = mkTraitNode(@$, (char*)$2, $3, $5);}
+trait_decl: Trait usertype generic_params maybe_fundeps Indent trait_fn_list Unindent  {$$ = mkTraitNode(@$, (char*)$2, $3, $4, $6);}
           ;
 
 trait_fn_list: _trait_fn_list maybe_newline {$$ = getRoot();}
@@ -313,8 +317,8 @@ _trait_fn_list: _trait_fn_list Newline trait_fn    {$$ = setNext($1, $3);}
               ;
 
 
-type_family: Type usertype                  {$$ = mkDataDeclNode(@2, (char*)$2,  0, 0, false);}
-           | Type usertype generic_params   {$$ = mkDataDeclNode(@2, (char*)$2, $3, 0, false);}
+type_family: Type usertype                  {$$ = mkDataDeclNode(@2, (char*)$2,  0, 0, false, false);}
+           | Type usertype generic_params   {$$ = mkDataDeclNode(@2, (char*)$2, $3, 0, false, false);}
            ;
 
 
@@ -344,33 +348,41 @@ generic_params: typevar_list  %prec LOW {$$ = getRoot();}
               ;
 
 
-data_decl: Type usertype generic_params '=' type_decl_block                 {$$ = mkDataDeclNode(@$, (char*)$2, $3, $5, false);}
-         | Type usertype '=' type_decl_block                                {$$ = mkDataDeclNode(@$, (char*)$2,  0, $4, false);}
-         | Type usertype generic_params Is type_decl_block                  {$$ = mkDataDeclNode(@$, (char*)$2, $3, $5, true);}
-         | Type usertype Is type_decl_block                                 {$$ = mkDataDeclNode(@$, (char*)$2,  0, $4, true);}
+data_decl: Type usertype generic_params '=' union_rhs     {$$ = mkDataDeclNode(@$, (char*)$2, $3, $5, false, true);}
+         | Type usertype generic_params '=' struct_rhs    {$$ = mkDataDeclNode(@$, (char*)$2, $3, $5, false, false);}
+         | Type usertype '=' union_rhs                    {$$ = mkDataDeclNode(@$, (char*)$2,  0, $4, false, true);}
+         | Type usertype '=' struct_rhs                   {$$ = mkDataDeclNode(@$, (char*)$2,  0, $4, false, false);}
+         | Type usertype generic_params Is union_rhs      {$$ = mkDataDeclNode(@$, (char*)$2, $3, $5, true,  true);}
+         | Type usertype generic_params Is struct_rhs     {$$ = mkDataDeclNode(@$, (char*)$2, $3, $5, true,  false);}
+         | Type usertype Is union_rhs                     {$$ = mkDataDeclNode(@$, (char*)$2,  0, $4, true,  true);}
+         | Type usertype Is struct_rhs                    {$$ = mkDataDeclNode(@$, (char*)$2,  0, $4, true,  false);}
          ;
 
-type_decl_list: type_decl_list Newline params                       {$$ = setNext($1, getRoot());}
-              | type_decl_list Newline explicit_tagged_union_list   {$$ = setNext($1, getRoot());}
-              | params                                              {$$ = $1;} /* leave root set */
-              | explicit_tagged_union_list                          {$$ = $1;} /* leave root set */
-              ;
+union_rhs: Indent union_block Unindent              {$$ = getRoot();}
+         | explicit_tagged_union_list   %prec STMT  {$$ = getRoot();}
+         ;
+
+struct_rhs: Indent struct_block Unindent   {$$ = getRoot();}
+          | params            %prec LOW    {$$ = getRoot();}
+          ;
+
+union_block: union_block Newline explicit_tagged_union_list  {$$ = setNext($1, getRoot());}
+           | explicit_tagged_union_list                    {$$ = $1;}
+           ;
+
+struct_block: struct_block Newline params    {$$ = setNext($1, getRoot());}
+            | params                       {$$ = $1;} /* leave root set */
+            ;
 
 small_type_list: small_type_list small_type   {$$ = setNext($1, $2);}
                | small_type                   {$$ = setRoot($1);}
                ;
 
-/* tagged union list with mandatory '|' before first element */
-explicit_tagged_union_list: explicit_tagged_union_list '|' usertype small_type_list    %prec STMT  {$$ = setNext($1, mkNamedValNode(@$, mkVarNode(@3, (char*)$3), mkTypeNode(@4, TT_TaggedUnion, (char*)"", getRoot())));}
-                          | explicit_tagged_union_list '|' usertype                    %prec STMT  {$$ = setNext($1, mkNamedValNode(@$, mkVarNode(@3, (char*)$3), mkTypeNode(@3, TT_TaggedUnion, (char*)"", 0)));}
-                          | '|' usertype small_type_list                               %prec STMT  {$$ = setRoot(mkNamedValNode(@$, mkVarNode(@2, (char*)$2), mkTypeNode(@3, TT_TaggedUnion, (char*)"", getRoot())));}
-                          | '|' usertype                                               %prec STMT  {$$ = setRoot(mkNamedValNode(@$, mkVarNode(@2, (char*)$2), mkTypeNode(@2, TT_TaggedUnion, (char*)"", 0)));}
+explicit_tagged_union_list: explicit_tagged_union_list '|' usertype small_type_list    %prec STMT  {$$ = setNext($1, mkNamedValNode(@$, mkVarNode(@3, (char*)$3), mkTypeNode(@4, TT_Data, (char*)"", getRoot())));}
+                          | explicit_tagged_union_list '|' usertype                    %prec STMT  {$$ = setNext($1, mkNamedValNode(@$, mkVarNode(@3, (char*)$3), mkTypeNode(@3, TT_Data, (char*)"", 0)));}
+                          | '|' usertype small_type_list                               %prec STMT  {$$ = setRoot(mkNamedValNode(@$, mkVarNode(@2, (char*)$2), mkTypeNode(@3, TT_Data, (char*)"", getRoot())));}
+                          | '|' usertype                                               %prec STMT  {$$ = setRoot(mkNamedValNode(@$, mkVarNode(@2, (char*)$2), mkTypeNode(@2, TT_Data, (char*)"", 0)));}
                           ;
-
-type_decl_block: Indent type_decl_list Unindent   {$$ = getRoot();}
-               | params              %prec LOW    {$$ = getRoot();}
-               | explicit_tagged_union_list    %prec STMT  {$$ = getRoot();}
-               ;
 
 block: Indent expr Unindent                   {$$ = mkBlockNode(@$, $2);}
      | Indent break Unindent                  {$$ = mkBlockNode(@$, $2);}

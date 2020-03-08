@@ -79,13 +79,7 @@ namespace ante {
     AnType* Module::lookupType(std::string const& name) const {
         TypeDecl *typeDecl = lookupTypeDecl(name);
         if(!typeDecl) return nullptr;
-
-        auto pt = try_cast<AnProductType>(typeDecl->type);
-        if(pt && pt->isAlias){
-            return pt->getAliasedType();
-        }else{
-            return typeDecl->type;
-        }
+        return typeDecl->type;
     }
 
     TypeDecl* Module::lookupTypeDecl(std::string const& name) const {
@@ -191,7 +185,7 @@ namespace ante {
             auto ptrty = try_cast<AnPtrType>(typeArgs[0]);
             return ptrty
                 && typeArgs[1]->typeTag == TT_Usz
-                && *typeArgs[2] == *ptrty->extTy;
+                && *typeArgs[2] == *ptrty->elemTy;
 
         }else if(name == "Deref"){
             return typeArgs[0]->typeTag == TT_Ptr;

@@ -372,9 +372,9 @@ void PrintingVisitor::visit(DataDeclNode *n){
     auto *nvn = (NamedValNode*)n->child.get();
     if(nvn){
         cout << " = ";
-        if(((TypeNode*)nvn->typeExpr.get())->typeTag == TT_TaggedUnion){
+        if(n->isUnion){
             cout << endl;
-            while(nvn && ((TypeNode*)nvn->typeExpr.get())->typeTag == TT_TaggedUnion){
+            while(nvn){
                 auto *ty = (TypeNode*)nvn->typeExpr.get();
 
                 cout << "| " << nvn->name << " " << (ty->extTy.get() ? typeNodeToStr(ty->extTy.get()) : "") << endl;

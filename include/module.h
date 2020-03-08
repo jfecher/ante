@@ -5,6 +5,7 @@
 #include <memory>
 #include <llvm/ADT/StringMap.h>
 #include "funcdecl.h"
+#include "typedecl.h"
 
 namespace ante {
     struct TraitDecl;
@@ -12,13 +13,6 @@ namespace ante {
     class AnType;
 
     using TypeArgs = std::vector<AnType*>;
-
-    /** A simple pair type for holding an AnType and the location it was declared. */
-    struct TypeDecl {
-        AnType *type;
-        LOC_TY &loc;
-        TypeDecl(AnType *type, LOC_TY &loc) : type{type}, loc{loc}{}
-    };
 
     /**
      * A virtual filesystem tree node containing information on

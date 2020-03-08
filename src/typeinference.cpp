@@ -48,9 +48,7 @@ namespace ante {
 
     void TypeInferenceVisitor::visit(StrLitNode *n){
         auto strty = module->lookupType("Str");
-        if(!strty){
-            strty = AnProductType::create("Str", {}, {});
-        }
+        assert(strty);
         n->setType(strty);
     }
 
@@ -95,14 +93,14 @@ namespace ante {
             t = toAnType(n, module);
             n->setType(t);
         }
-        auto variant = try_cast<AnProductType>(t);
-        if(variant && variant->parentUnionType){
-            n->setType(copyWithNewTypeVars(variant->parentUnionType));
+        auto variant = try_cast<AnDataType>(t);
+        if(variant && variant->decl->isUnionType){
+            n->setType(copyWithNewTypeVars(variant));
             return;
         }
 
         //Type 't
-        auto type = try_cast<AnProductType>(module->lookupType("Type"));
+        auto type = try_cast<AnDataType>(module->lookupType("Type"));
         if(!type || type->typeArgs.size() != 1){
             ante::error("type `Type 't` in the prelude was redefined or removed sometime before translation of this type", n->loc);
         }
@@ -122,13 +120,8 @@ namespace ante {
             t = toAnType(n->typeExpr.get(), module);
             n->typeExpr->setType(t);
         }
-        auto variant = try_cast<AnProductType>(t);
-        if(variant && variant->parentUnionType){
-            n->setType(variant->parentUnionType);
-            return;
-        }else{
-            n->setType(t);
-        }
+
+        n->setType(t);
     }
 
     void TypeInferenceVisitor::visit(UnOpNode *n){
@@ -371,8 +364,7 @@ namespace ante {
                 // it may save some time for non-generic functions to apply them afterward separately.
                 auto fnTy = try_cast<AnFunctionType>(n->getType());
                 auto tcConstraints = getAllTcConstraints(fnTy, constraints, substitutions);
-                auto newFnTy = AnFunctionType::get(fnTy->retTy, fnTy->paramTys, tcConstraints,
-                        fnTy->typeTag == TT_MetaFunction);
+                auto newFnTy = AnFunctionType::get(fnTy->retTy, fnTy->paramTys, tcConstraints);
 
                 newFnTy = cleanTypeClassConstraints(newFnTy);
                 n->setType(newFnTy);

@@ -74,13 +74,6 @@ namespace ante {
         return v;
     }
 
-    std::vector<AnProductType*> sanitizeAll(std::vector<AnProductType*> v, std::unordered_map<AnTypeVarType*, AnTypeVarType*> &map, std::string &nextName){
-        for(size_t i = 0; i < v.size(); ++i){
-            v[i] = static_cast<AnProductType*>(sanitize(v[i], map, nextName));
-        }
-        return v;
-    }
-
     TraitImpl* sanitize(TraitImpl* v, std::unordered_map<AnTypeVarType*, AnTypeVarType*> &map, std::string &nextName){
         return new TraitImpl(v->name, sanitizeAll(v->typeArgs, map, nextName));
     }
@@ -106,7 +99,7 @@ namespace ante {
         }
 
         if(auto ptr = try_cast<AnPtrType>(t)){
-            return AnPtrType::get(sanitize(ptr->extTy, map, curName));
+            return AnPtrType::get(sanitize(ptr->elemTy, map, curName));
 
         }else if(auto arr = try_cast<AnArrayType>(t)){
             return AnArrayType::get(sanitize(arr->extTy, map, curName), arr->len);
@@ -116,27 +109,21 @@ namespace ante {
             if(it != map.end()){
                 return it->second;
             }else{
-                auto newTv = AnTypeVarType::get(tv->isRhoVar() ? (curName + "...") : curName);
+                auto newTv = AnTypeVarType::get(tv->isRowVar() ? (curName + "...") : curName);
                 map[tv] = newTv;
                 curName = nextLetter(curName);
                 return newTv;
             }
 
-        }else if(auto dt = try_cast<AnProductType>(t)){
-            auto exts = sanitizeAll(dt->fields, map, curName);
+        }else if(auto dt = try_cast<AnDataType>(t)){
             auto generics = sanitizeAll(dt->typeArgs, map, curName);
-            return AnProductType::createVariant(dt, exts, generics);
-
-        }else if(auto st = try_cast<AnSumType>(t)){
-            auto exts = sanitizeAll(st->tags, map, curName);
-            auto generics = sanitizeAll(st->typeArgs, map, curName);
-            return AnSumType::createVariant(st, exts, generics);
+            return AnDataType::get(dt->name, generics, dt->decl);
 
         }else if(auto fn = try_cast<AnFunctionType>(t)){
             auto exts = sanitizeAll(fn->paramTys, map, curName);
             auto rett = sanitize(fn->retTy, map, curName);
             auto tcc  = sanitizeAll(fn->typeClassConstraints, map, curName);
-            return AnFunctionType::get(rett, exts, tcc, t->typeTag == TT_MetaFunction);
+            return AnFunctionType::get(rett, exts, tcc);
 
         }else if(auto tup = try_cast<AnTupleType>(t)){
             auto exts = sanitizeAll(tup->fields, map, curName);

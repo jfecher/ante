@@ -106,12 +106,6 @@ namespace ante {
         };
 
 
-        struct FuncDeclNode;
-        struct TraitNode;
-        struct ExtNode;
-        struct DataDeclNode;
-        struct ImportNode;
-
         /*
         * Specialized Node to act as root
         * - Separates top-level definitions from code that is compiled
@@ -241,6 +235,7 @@ namespace ante {
             std::string typeName; //used for usertypes
             std::unique_ptr<TypeNode> extTy; //Used for pointers and non-single anonymous types.
             std::vector<std::unique_ptr<TypeNode>> params; //type parameters for generic types
+            bool isRowVar = false;
 
             void accept(NodeVisitor& v){ v.visit(this); }
             TypeNode(LOC_TY& loc, TypeTag ty, std::string tName, TypeNode* eTy)
@@ -415,14 +410,15 @@ namespace ante {
             size_t fields;
             std::vector<std::unique_ptr<TypeNode>> generics;
             bool isAlias;
+            bool isUnion;
 
             void accept(NodeVisitor& v){ v.visit(this); }
-            DataDeclNode(LOC_TY& loc, std::string s, Node* b, size_t f, bool a)
-                : ModifiableNode(loc), child(b), name(s), fields(f), isAlias(a){}
+            DataDeclNode(LOC_TY& loc, std::string s, Node* b, size_t f, bool a, bool u)
+                : ModifiableNode(loc), child(b), name(s), fields(f), isAlias(a), isUnion(u){}
 
             DataDeclNode(LOC_TY& loc, std::string s, Node* b, size_t f,
-                    std::vector<std::unique_ptr<TypeNode>> &&g, bool a)
-                : ModifiableNode(loc), child(b), name(s), fields(f), generics(move(g)), isAlias(a){}
+                    std::vector<std::unique_ptr<TypeNode>> &&g, bool a, bool u)
+                : ModifiableNode(loc), child(b), name(s), fields(f), generics(move(g)), isAlias(a), isUnion(u){}
             ~DataDeclNode(){}
         };
 

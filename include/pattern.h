@@ -66,7 +66,7 @@ namespace ante {
 
         static Pattern fromType(const AnType *t);
 
-        static Pattern fromSumType(const AnSumType *t);
+        static Pattern fromSumType(const AnDataType *t);
 
         static Pattern fromTuple(std::vector<AnType*> const& types);
     };

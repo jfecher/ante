@@ -114,41 +114,13 @@ void CompilingVisitor::visit(BoolLitNode *n){
 /**
  * @brief Compiles a TypeNode
  *
- * @return The tag value if this node is a union tag, otherwise it returns
- *         a compile-time value of type Type
+ * @return The tag value if this node is a union tag
  */
 void CompilingVisitor::visit(TypeNode *n){
     //check for enum value
-    auto t = try_cast<AnSumType>(n->getType());
-    if(t && t->name != "Type"){
-        size_t tagIndex = t->getTagVal(n->typeName);
-        Value *tag = ConstantInt::get(*c->ctxt, APInt(8, tagIndex, true));
-
-        Type *unionTy = c->anTypeToLlvmType(t);
-        Type *curTy = tag->getType();
-
-        //allocate for the largest possible union member
-        auto *alloca = c->builder.CreateAlloca(unionTy);
-
-        //but make sure to bitcast it to the current member before storing an incorrect type
-        Value *castTo = c->builder.CreateBitCast(alloca, curTy->getPointerTo());
-        c->builder.CreateStore(tag, castTo);
-
-        //load the initial alloca, not the bitcasted one
-        Value *unionVal = c->builder.CreateLoad(alloca);
-        val = TypedValue(unionVal, t);
-    }else{
-        ASSERT_UNREACHABLE("Cannot compile first-class types as values");
-        // auto dt = try_cast<AnDataType>(n->getType());
-
-        // //return the type as a value
-        // auto *ty = dt->typeArgs[0];
-
-        // //The TypeNode* address is wrapped in an llvm int so that llvm::Value methods can be called
-        // //without crashing, even if their result is meaningless
-        // Value *v = c->builder.getInt64((unsigned long)ty);
-        // val = TypedValue(v, t);
-    }
+    auto t = cast<AnDataType>(n->getType());
+    auto *tag = t->getTagValue(c, n->typeName, {});
+    val = TypedValue(tag, t);
 }
 
 void CompilingVisitor::visit(StrLitNode *n){
@@ -597,33 +569,32 @@ TypedValue compFieldInsert(Compiler *c, BinOpNode *bop, Node *expr){
     //the . operator automatically dereferences pointers, so update val and tyn accordingly.
     while(auto *ptr = try_cast<AnPtrType>(tyn)){
         val = c->builder.CreateLoad(val);
-        tyn = ptr->extTy;
+        tyn = ptr->elemTy;
     }
 
     //this is the variable that will store the changes after the later insertion
     Value *var = static_cast<LoadInst*>(val)->getPointerOperand();
 
     //check to see if this is a field index
-    if(auto dataTy = try_cast<AnProductType>(tyn)){
-        auto index = dataTy->getFieldIndex(field->name);
+    auto dataTy = try_cast<AnDataType>(tyn);
+    auto index = dataTy->decl->getFieldIndex(field->name);
 
-        if(index != -1){
-            auto newval = CompilingVisitor::compile(c, expr);
+    if(index != -1){
+        auto newval = CompilingVisitor::compile(c, expr);
 
-            Value *nv = newval.val;
-            Type *nt = val->getType()->getStructElementType(index);
+        Value *nv = newval.val;
+        Type *nt = val->getType()->getStructElementType(index);
 
-            //Type check may succeed if a void* is being inserted into any ptr slot,
-            //but llvm will still complain so we create a bit cast to appease it
-            if(nv->getType() != nt && newval.type->typeTag == TT_Ptr) {
-                nv = c->builder.CreateBitCast(nv, nt);
-            }
-
-            auto *ins = c->builder.CreateInsertValue(val, nv, index);
-
-            c->builder.CreateStore(ins, var);
-            return c->getUnitLiteral();
+        //Type check may succeed if a void* is being inserted into any ptr slot,
+        //but llvm will still complain so we create a bit cast to appease it
+        if(nv->getType() != nt && newval.type->typeTag == TT_Ptr) {
+            nv = c->builder.CreateBitCast(nv, nt);
         }
+
+        auto *ins = c->builder.CreateInsertValue(val, nv, index);
+
+        c->builder.CreateStore(ins, var);
+        return c->getUnitLiteral();
     }
 
     error("Method/Field " + field->name + " not found in type " + anTypeToColoredStr(tyn), bop->loc);
@@ -1119,13 +1090,9 @@ void TypedValue::dump() const{
     cout << "type:\t" << anTypeToStr(type) << endl
          << "val:\t" << flush;
 
-    if(type->typeTag == TT_Unit)
-        puts("void ()");
-    else if(type->typeTag == TT_Type)
-        cout << anTypeToStr(extractTypeValue(*this)) << endl;
-    else if(type->typeTag == TT_MetaFunction)
-        cout << "(compiler API function)\n";
-    else{
+    if(type->typeTag == TT_Unit){
+        puts("()");
+    }else{
         if(val){
             val->print(llvm::dbgs(), false);
             llvm::dbgs() << '\n';

@@ -43,8 +43,8 @@ feof (stream:InFile) -> i32
 ferror (stream:File) -> i32
 
 //Convenience function for using fgetc, and feof with better types
-fgetc8 f = cast (fgetc f) : c8
-feofb f = cast (feof f) : bool
+fgetc8 f = fgetc f as c8
+feofb f = feof f as bool
 
 //Ante datatypes
 type Str =
@@ -137,15 +137,16 @@ trait Eq 't
     (==) 't 't -> bool
     // (!=) l r = not (l == r)
 
+(!=) (a: Str) (b: Str) = not (a == b)
+
 trait Is 't
     (is) 't 't -> bool
 
 trait Append 't
     (++) 't 't -> 't
 
-trait Extract 'col 'index
-    type ExtractElem
-    (#) 'col 'index -> ExtractElem
+trait Extract 'col 'index -> 'elem
+    (#) 'col 'index -> 'elem
 
 trait Insert 'col 'index 'elem
     // temporary until functions with the same name and
@@ -155,13 +156,11 @@ trait Insert 'col 'index 'elem
 trait In 'elem 'col
     (in) 'elem 'col -> bool
 
-trait Range 'l 'r
-    type RangeResult
-    (..) 'l 'r -> RangeResult
+trait Range 'start 'end -> 'result
+    (..) 'start 'end -> 'result
 
-trait Deref 't
-    type DerefResult
-    (@) 't -> DerefResult
+trait Deref 'ptr -> 'elem
+    (@) 'ptr -> 'elem
 
 trait Neg 't
     neg 't -> 't
@@ -360,11 +359,13 @@ impl Eq (ref 't) given Eq 't
 trait Iterable 'i
     into_iter 'i -> 'it given Iterator 'it
 
-trait Iterator 'i
-    type IteratorElem
+trait Iterator 'i -> 'elem
     has_next 'i -> bool
-    cur_elem 'i -> IteratorElem
+    cur_elem 'i -> 'elem
     advance 'i -> 'i
+
+impl Iterable 'i given Iterator 'i
+    into_iter i = i
 
 type LazyRange = start:i32 end:i32 step:i32
 
@@ -380,27 +381,22 @@ impl In i32 LazyRange
             a_adj == s_adj and r.start <= a and a < r.end
 
 //creates an end-exclusive range
-impl Range i32 i32
-    type RangeResult = r:LazyRange
+impl Range i32 i32 LazyRange
     (..) start end =
         LazyRange start end 1
 
 //Takes a tuple of the first two integers and calculates the step by their difference
-impl Range (i32,i32) i32
-    type RangeResult = f:LazyRange
+impl Range (i32,i32) i32 LazyRange
     (..) first_two end =
         LazyRange (first_two#0usz) end (first_two#1usz - first_two#0usz)
 
-impl Iterator LazyRange
-    type IteratorElem = e:i32
+impl Iterator LazyRange i32
     cur_elem r = r.start
     advance r = LazyRange (r.start + r.step) r.end r.step
     has_next r = (r.step > 0 and r.start < r.end) or (r.step < 0 and r.start > r.end)
 
-
 //Iterating through an InFile iterates through each line
-impl Iterator InFile
-    type IteratorElem = s:Str
+impl Iterator InFile Str
     has_next f = not feofb f
     cur_elem f = InFile.next_line f
     advance f = f
@@ -446,8 +442,7 @@ impl Append Str
 
         Str buf len
 
-impl Extract Str usz
-    type ExtractElem = c:c8
+impl Extract Str usz c8
     (#) s index = s.cStr#index
 
 

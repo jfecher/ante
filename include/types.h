@@ -39,8 +39,6 @@ namespace ante {
 
     std::string getCastFnBaseName(AnType *t);
 
-    AnType* getLargestExt(Compiler *c, AnSumType *tn);
-
     /** Return the size of the given type in bits. Only for use on
      *  primitive, pointer, or function types.
      *

@@ -35,7 +35,7 @@ TypedValue Compiler::compExtract(TypedValue &l, TypedValue &r, BinOpNode *op){
         return TypedValue(builder.CreateLoad(builder.CreateGEP(arr, indices)), retty);
 
     }else if(auto *ptrty = try_cast<AnPtrType>(l.type)){
-        auto *retty = (AnType*)l.type->addModifiersTo(ptrty->extTy);
+        auto *retty = (AnType*)l.type->addModifiersTo(ptrty->elemTy);
         return TypedValue(builder.CreateLoad(builder.CreateGEP(l.val, r.val)), retty);
 
     }else if(l.type->typeTag == TT_Tuple){
@@ -126,44 +126,6 @@ TypedValue Compiler::compInsert(BinOpNode *op, Node *assignExpr){
 }
 
 
-TypedValue createUnionVariantCast(Compiler *c, vector<TypedValue> const& args,
-        string &tagName, AnSumType *unionDataTy){
-
-    vector<Type*> unionTys;
-    vector<Constant*> unionVals;
-
-    auto tagVal = unionDataTy->getTagVal(tagName);
-    unionTys.push_back(Type::getInt8Ty(*c->ctxt));
-    unionVals.push_back(ConstantInt::get(*c->ctxt, APInt(8, tagVal, true))); //tag
-
-    for(auto &tval : args){
-        unionTys.push_back(tval.getType());
-        unionVals.push_back(UndefValue::get(tval.getType()));
-    }
-
-    Type *unionTy = c->anTypeToLlvmType(unionDataTy);
-
-    //create a struct of (u8 tag, <union member type>)
-    Value *taggedUnion = ConstantStruct::get(StructType::get(*c->ctxt, unionTys, true), unionVals);
-    size_t i = 0;
-    for(auto &arg : args){
-        taggedUnion = c->builder.CreateInsertValue(taggedUnion, arg.val, ++i);
-    }
-
-    //allocate for the largest possible union member
-    auto *alloca = c->builder.CreateAlloca(unionTy);
-
-    //but bitcast it the the current member
-    auto *castTo = c->builder.CreateBitCast(alloca, taggedUnion->getType()->getPointerTo());
-    c->builder.CreateStore(taggedUnion, castTo);
-
-    //load the original alloca, not the bitcasted one
-    Value *unionVal = c->builder.CreateLoad(alloca);
-
-    return TypedValue(unionVal, unionDataTy);
-}
-
-
 string getCastFnBaseName(AnType *t){
     if(auto *dt = try_cast<AnDataType>(t)){
         return dt->name + "_init";
@@ -202,11 +164,11 @@ TypedValue reinterpretTuple(Compiler *c, vector<TypedValue> const& args, AnType 
     return TypedValue(rstruct, to);
 }
 
-TypedValue doReinterpretCast(Compiler *c, AnType *castTy, vector<TypedValue> const& args){
-    auto *dt = try_cast<AnProductType>(castTy);
+TypedValue doReinterpretCast(Compiler *c, std::string const& variantName, AnType *castTy, vector<TypedValue> const& args){
+    auto *dt = try_cast<AnDataType>(castTy);
     if(dt){
-        if(dt->parentUnionType){
-            return createUnionVariantCast(c, args, dt->name, dt->parentUnionType);
+        if(dt->decl->isUnionType){
+            return {dt->getTagValue(c, variantName, args), dt};
         }else{
             return reinterpretTuple(c, args, dt);
         }
@@ -221,9 +183,7 @@ void CompilingVisitor::visit(TypeCastNode *n){
         arg->accept(*this);
         args.push_back(this->val);
     }
-    //n->typeExpr->getType() is used here instead of n->getType() in case
-    //of union variants, only the typeExpr will have the specific variant used
-    this->val = doReinterpretCast(c, n->typeExpr->getType(), args);
+    this->val = doReinterpretCast(c, n->typeExpr->typeName, n->getType(), args);
 }
 
 
@@ -533,20 +493,20 @@ AnFunctionType* getBuiltinFnType(TraitImpl *trait){
         auto ptrT = try_cast<AnPtrType>(argT);
         args.push_back(ptrT);
         args.push_back(uszT);
-        return AnFunctionType::get(ptrT->extTy, args, traits);
+        return AnFunctionType::get(ptrT->elemTy, args, traits);
 
     }else if(trait->name == "Insert"){
         auto uszT = AnType::getUsz();
         auto ptrT = try_cast<AnPtrType>(argT);
         args.push_back(ptrT);
         args.push_back(uszT);
-        args.push_back(ptrT->extTy);
+        args.push_back(ptrT->elemTy);
         return AnFunctionType::get(AnType::getUnit(), args, traits);
 
     }else if(trait->name == "Deref"){
         auto ptrT = try_cast<AnPtrType>(argT);
         args.push_back(ptrT);
-        return AnFunctionType::get(ptrT->extTy, args, traits);
+        return AnFunctionType::get(ptrT->elemTy, args, traits);
 
     }else if(trait->name == "Not"){
         args.push_back(argT);
@@ -709,31 +669,14 @@ TypedValue Compiler::compMemberAccess(Node *ln, VarNode *field, BinOpNode *binop
     //the . operator automatically dereferences pointers, so update val and tyn accordingly.
     while(tyn->typeTag == TT_Ptr){
         val = builder.CreateLoad(val);
-        tyn = try_cast<AnPtrType>(tyn)->extTy;
+        tyn = try_cast<AnPtrType>(tyn)->elemTy;
     }
 
     //check to see if this is a field index
-    if(auto *dataTy = try_cast<AnProductType>(tyn)){
-        auto index = dataTy->getFieldIndex(field->name);
-
-        if(index != -1){
-            AnType *retTy = dataTy->fields[index];
-
-            if(!dataTy->llvmType){
-                updateLlvmTypeBinding(this, dataTy);
-            }
-
-            retTy = (AnType*)tyn->addModifiersTo(retTy);
-
-            //If dataTy is a single value tuple then val may not be a tuple at all. In this
-            //case, val should be returned without being extracted from a nonexistant tuple
-            if(index == 0 && !val->getType()->isStructTy())
-                return TypedValue(val, retTy);
-
-            auto ev = builder.CreateExtractValue(val, index);
-            auto ret = TypedValue(ev, retTy);
-            return ret;
-        }
+    if(auto *dataTy = try_cast<AnDataType>(tyn)){
+        auto index = dataTy->decl->getFieldIndex(field->name);
+        auto ev = builder.CreateExtractValue(val, index);
+        return {ev, binop->getType()};
     }
     ASSERT_UNREACHABLE();
 }
@@ -1690,7 +1633,7 @@ void CompilingVisitor::visit(UnOpNode *n){
             }
 
             this->val = TypedValue(c->builder.CreateLoad(val.val),
-                (AnType*)val.type->addModifiersTo(try_cast<AnPtrType>(val.type)->extTy));
+                (AnType*)val.type->addModifiersTo(try_cast<AnPtrType>(val.type)->elemTy));
             return;
         case '&': //address-of
             this->val = addrOf(c, val);

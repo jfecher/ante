@@ -81,29 +81,20 @@ namespace ante {
         }
     }
 
-    AnType* unionVariantToTupleTy(AnType *ty){
-        if(ty->typeTag == TT_Data){
-            AnProductType *dt = static_cast<AnProductType*>(ty);
-
-            if(dt->fields.size() == 1){
-                return dt->fields[0];
-            }else{
-                return AnTupleType::get(dt->fields);
-            }
-        }
-        return ty;
-    }
-
-    Type* getUnionVariantType(Compiler *c, AnProductType *tagTy){
-        return c->anTypeToLlvmType(tagTy);
-    }
-
-    vector<TypedValue> unionDowncast(Compiler *c, TypedValue valToMatch, AnProductType *tagTy){
+    vector<TypedValue> unionDowncast(Compiler *c, TypedValue valToMatch, vector<AnType*> const& variantFieldTypes){
         auto alloca = addrOf(c, valToMatch);
 
-        auto *castTy = getUnionVariantType(c, tagTy);
-        if(castTy->getStructNumElements() != 1){
+        if(variantFieldTypes.empty()){
+            // fast-return for simple enum-type unions, we don't need to bind anything
+            return {c->getUnitLiteral()};
+        }else{
             //bitcast valToMatch* to (tag, fields)*
+            auto tagAndFields = vecOf<AnType*>(variantFieldTypes.size() + 1);
+            tagAndFields.push_back(AnType::getU8());
+            tagAndFields.insert(tagAndFields.end(), variantFieldTypes.begin(), variantFieldTypes.end());
+            auto tagAndFieldsTy = AnTupleType::get(tagAndFields);
+
+            auto *castTy = c->anTypeToLlvmType(tagAndFieldsTy);
             auto *cast = c->builder.CreateBitCast(alloca.val, castTy->getPointerTo());
 
             //extract tag_data from (tag, fields...)*
@@ -112,12 +103,10 @@ namespace ante {
             for(size_t i = 0; i < len; ++i){
                 auto *gep = c->builder.CreateStructGEP(castTy, cast, i + 1);
                 auto *deref = c->builder.CreateLoad(gep);
-                fields.emplace_back(deref, tagTy->fields[i + 1]);
+                fields.emplace_back(deref, variantFieldTypes[i]);
             }
 
             return fields;
-        }else{
-            return {c->getUnitLiteral()};
         }
     }
 
@@ -132,11 +121,10 @@ namespace ante {
         Compiler *c = cv.c;
 
         // TODO: Fix with new type information
-        auto *tagTy = static_cast<AnProductType*>(pattern->getType());
-        auto *parentTy = static_cast<AnSumType*>(pattern->getType()); //wrong
+        auto *parentTy = static_cast<AnDataType*>(pattern->getType()); //wrong
 
         ConstantInt *ci = ConstantInt::get(*c->ctxt,
-                APInt(8, parentTy->getTagVal(pattern->typeName), true));
+                APInt(8, parentTy->decl->getTagIndex(pattern->typeName), true));
 
         //Extract tag value and check for equality
         Value *eq;
@@ -158,7 +146,8 @@ namespace ante {
         if(!bindExpr.empty()){
             vector<TypedValue> variantArgs;
             if(valToMatch.getType()->isStructTy()){
-                variantArgs = unionDowncast(c, valToMatch, tagTy);
+                auto variantFieldTypes = parentTy->getBoundFieldTypes();
+                variantArgs = unionDowncast(c, valToMatch, variantFieldTypes);
             }else if(valToMatch.getType()->isIntegerTy()){ //integer tag
                 variantArgs = {c->getUnitLiteral()};
             }else{
@@ -260,12 +249,14 @@ namespace ante {
         return Pattern{TT_TypeVar};
     }
 
-    Pattern Pattern::fromSumType(const AnSumType *t){
+    Pattern Pattern::fromSumType(const AnDataType *t){
         Pattern p{TT_Data};
         p.name = t->name;
-        for(AnProductType *variant : t->tags){
-            Pattern pat = Pattern::fromType(variant->getVariantWithoutTag());
-            pat.name = variant->name;
+        assert(t->decl->isUnionType);
+        auto variants = t->getBoundFieldTypes();
+        for(size_t i = 0; i < variants.size(); i++){
+            Pattern pat = Pattern::fromType(variants[i]);
+            pat.name = t->decl->fields[i];
             p.children.push_back(pat);
         }
         return p;
@@ -280,14 +271,16 @@ namespace ante {
     }
 
     Pattern Pattern::fromType(const AnType *t){
-        auto st = try_cast<AnSumType>(t);
-        if(st) return Pattern::fromSumType(st);
-
-        auto pt = try_cast<AnProductType>(t);
-        if(pt) {
-          auto pat = Pattern::fromTuple(pt->fields);
-          pat.name = pt->name;
-          return pat;
+        auto dt = try_cast<AnDataType>(t);
+        if(dt){
+            if(dt->decl->isUnionType){
+                return Pattern::fromSumType(dt);
+            }else{
+                auto fieldTypes = dt->getBoundFieldTypes();
+                auto pat = Pattern::fromTuple(fieldTypes);
+                pat.name = dt->name;
+                return pat;
+            }
         }
 
         auto ag = try_cast<AnTupleType>(t);

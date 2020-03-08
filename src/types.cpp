@@ -19,10 +19,10 @@ char getBitWidthOfTypeTag(const TypeTag ty){
 
         case TT_Ptr:
         case TT_Function:
-        case TT_MetaFunction:
-        case TT_FunctionList: return AN_USZ_SIZE;
+            return AN_USZ_SIZE;
 
-        default: return 0;
+        default:
+            return 0;
     }
 }
 
@@ -44,8 +44,7 @@ bool isEmptyType(Compiler *c, AnType *ty){
         auto binding = findBinding(c->compCtxt->monomorphisationMappings, tv);
         return binding ? isEmptyType(c, binding) : true;
     }
-    return ty->typeTag == TT_Type
-        || ty->typeTag == TT_Unit
+    return ty->typeTag == TT_Unit
         || ty->hasModifier(Tok_Ante)
         || (ty->typeTag == TT_Data && try_cast<AnDataType>(ty)->name == "Type");
 }
@@ -59,40 +58,23 @@ AnType* extractTypeValue(const TypedValue &tv){
     return (AnType*) zext;
 }
 
-Result<size_t, string> AnType::getSizeInBits(Compiler *c, string *incompleteType) const{
+Result<size_t, string> AnType::getSizeInBits(Compiler *c, string const& incompleteType) const{
     size_t total = 0;
 
     if(isPrimitiveTypeTag(this->typeTag))
         return getBitWidthOfTypeTag(this->typeTag);
 
-    if(auto *dataTy = try_cast<AnProductType>(this)){
-        if(incompleteType && dataTy->name == *incompleteType){
+    if(auto *dataTy = try_cast<AnDataType>(this)){
+        if(dataTy->name == incompleteType){
             cerr << "Incomplete type " << anTypeToColoredStr(this) << endl;
             throw IncompleteTypeError();
         }
 
-        for(auto *ext : dataTy->fields){
-            auto val = ext->getSizeInBits(c, incompleteType);
-            if(!val) return val;
-            total += val.getVal();
-        }
-
-    }else if(auto *sumTy = try_cast<AnSumType>(this)){
-        if(incompleteType && sumTy->name == *incompleteType){
-            cerr << "Incomplete type " << anTypeToColoredStr(this) << endl;
-            throw IncompleteTypeError();
-        }
-
-        for(auto *ext : sumTy->tags){
-            auto val = ext->getSizeInBits(c, incompleteType);
-            if(!val) return val;
-            if(val.getVal() > total)
-                total= val.getVal();
-        }
+        return dataTy->decl->getSizeInBits(c, incompleteType, dataTy);
 
     // function & metafunction are aggregate types but have different sizes than
     // a tuple so this case must be checked for before AnTupleType is
-    }else if(typeTag == TT_Ptr || typeTag == TT_Function || typeTag == TT_MetaFunction){
+    }else if(typeTag == TT_Ptr || typeTag == TT_Function){
         return AN_USZ_SIZE;
 
     }else if(auto *tup = try_cast<AnTupleType>(this)){
@@ -126,75 +108,6 @@ size_t hashCombine(size_t l, size_t r){
     return l ^ (r + AN_HASH_PRIME + (l << 6) + (l >> 2));
 }
 
-
-AnDataType* getUnboundType(AnDataType *dt){
-    return dt->unboundType ? dt->unboundType : dt;
-}
-
-void AnDataType::setLlvmType(llvm::Type *type, ante::Substitutions const& monomorphisationBindings){
-    auto substitutedTA = ante::applyToAll(typeArgs, [&](AnType *typeArg){
-        return ante::applySubstitutions(monomorphisationBindings, typeArg);
-    });
-    auto unbound = getUnboundType(this);
-    for(auto &pair : unbound->llvmTypes){
-        if(allEq(pair.first, substitutedTA)){
-            this->llvmType = type;
-            pair.second = type;
-            return;
-        }
-    }
-
-    unbound->llvmTypes.emplace_back(substitutedTA, type);
-}
-
-Type* AnDataType::findLlvmType(ante::Substitutions const& monomorphisationBindings){
-    auto substitutedTA = ante::applyToAll(typeArgs, [&](AnType *typeArg){
-        return ante::applySubstitutions(monomorphisationBindings, typeArg);
-    });
-    for(auto &pair : getUnboundType(this)->llvmTypes){
-        if(allEq(pair.first, substitutedTA))
-            return pair.second;
-    }
-    return nullptr;
-}
-
-Type* updateLlvmTypeBinding(Compiler *c, AnDataType *dt){
-    //create an empty type first so we dont end up with infinite recursion
-    auto *aggty = try_cast<AnProductType>(dt);
-
-    bool isPacked = dt->typeTag == TT_TaggedUnion || (aggty && aggty->parentUnionType);
-    StructType* structTy = static_cast<StructType*>(dt->llvmType);
-    
-    if(!structTy){
-        auto existing = dt->findLlvmType(c->compCtxt->monomorphisationMappings);
-        if(existing){
-            return existing;
-        }
-        structTy = StructType::create(*c->ctxt, anTypeToStr(dt));
-    }
-
-    dt->setLlvmType(structTy, c->compCtxt->monomorphisationMappings);
-
-    AnType *ext = dt;
-    if(auto *st = try_cast<AnSumType>(dt))
-        ext = getLargestExt(c, st);
-
-    vector<Type*> tys;
-    aggty = try_cast<AnProductType>(ext);
-    if(aggty){
-        for(auto *e : aggty->fields){
-            auto *llvmTy = c->anTypeToLlvmType(e);
-            if(!llvmTy->isVoidTy())
-                tys.push_back(llvmTy);
-        }
-    }else{
-        tys.push_back(c->anTypeToLlvmType(ext));
-    }
-
-    structTy->setBody(tys, isPacked);
-    return structTy;
-}
-
 bool isSignedTypeTag(const TypeTag tt){
     return tt==TT_I8||tt==TT_I16||tt==TT_I32||tt==TT_I64||tt==TT_Isz;
 }
@@ -222,24 +135,8 @@ bool isNumericTypeTag(const TypeTag ty){
  *        declared before non-primitive types in the TypeTag definition.
  */
 bool isPrimitiveTypeTag(TypeTag ty){
-    return ty >= TT_I8 && ty <= TT_Bool;
+    return ty >= 0 && ty <= numPrimitiveTypeTags;
 }
-
-bool containsTypeVar(const TypeNode *tn){
-    auto tt = tn->typeTag;
-    if(tt == TT_Array or tt == TT_Ptr){
-        return tn->extTy->typeTag == tt;
-    }else if(tt == TT_Tuple or tt == TT_Data or tt == TT_TaggedUnion or
-             tt == TT_Function or tt == TT_MetaFunction){
-        TypeNode *ext = tn->extTy.get();
-        while(ext){
-            if(containsTypeVar(ext))
-                return true;
-        }
-    }
-    return tt == TT_TypeVar;
-}
-
 
 /*
  *  Translates an individual TypeTag to an llvm::Type.
@@ -253,14 +150,14 @@ Type* typeTagToLlvmType(TypeTag ty, LLVMContext &ctxt){
         case TT_I16: case TT_U16: return Type::getInt16Ty(ctxt);
         case TT_I32: case TT_U32: return Type::getInt32Ty(ctxt);
         case TT_I64: case TT_U64: return Type::getInt64Ty(ctxt);
-        case TT_Isz:    return Type::getIntNTy(ctxt, AN_USZ_SIZE); //TODO: implement
-        case TT_Usz:    return Type::getIntNTy(ctxt, AN_USZ_SIZE); //TODO: implement
+        case TT_Isz:    return Type::getIntNTy(ctxt, AN_USZ_SIZE);
+        case TT_Usz:    return Type::getIntNTy(ctxt, AN_USZ_SIZE);
         case TT_F16:    return Type::getHalfTy(ctxt);
         case TT_F32:    return Type::getFloatTy(ctxt);
         case TT_F64:    return Type::getDoubleTy(ctxt);
         case TT_C8:     return Type::getInt8Ty(ctxt);
         case TT_Bool:   return Type::getInt1Ty(ctxt);
-        case TT_Unit:   return Type::getVoidTy(ctxt); //return Type::getVoidTy(ctxt);
+        case TT_Unit:   return Type::getVoidTy(ctxt);
         case TT_TypeVar:
             throw TypeVarError();
         default:
@@ -268,54 +165,6 @@ Type* typeTagToLlvmType(TypeTag ty, LLVMContext &ctxt){
             exit(1);
     }
 }
-
-AnType* getLargestExt(Compiler *c, AnSumType *unionType){
-    AnType *largest = 0;
-    size_t largest_size = 0;
-
-    for(auto *e : unionType->tags){
-        auto size = e->getSizeInBits(c, nullptr);
-        if(!size){
-            cerr << size.getErr() << endl;
-            size = 0;
-        }
-
-        if(size.getVal() > largest_size){
-            largest = e;
-            largest_size = size.getVal();
-        }
-    }
-    return largest;
-}
-
-
-
-/*
- *  Translates a llvm::Type to a TypeTag. Not intended for in-depth analysis
- *  as it loses data about the type and name of UserTypes, and cannot distinguish
- *  between signed and unsigned integer types.  As such, this should mainly be
- *  used for comparing primitive datatypes, or just to detect if something is a
- *  primitive.
- */
-TypeTag llvmTypeToTypeTag(Type *t){
-    if(t->isIntegerTy(1)) return TT_Bool;
-
-    if(t->isIntegerTy(8)) return TT_I8;
-    if(t->isIntegerTy(16)) return TT_I16;
-    if(t->isIntegerTy(32)) return TT_I32;
-    if(t->isIntegerTy(64)) return TT_I64;
-    if(t->isHalfTy()) return TT_F16;
-    if(t->isFloatTy()) return TT_F32;
-    if(t->isDoubleTy()) return TT_F64;
-
-    if(t->isArrayTy()) return TT_Array;
-    if(t->isStructTy() && !t->isEmptyTy()) return TT_Tuple; /* Could also be a TT_Data! */
-    if(t->isPointerTy()) return TT_Ptr;
-    if(t->isFunctionTy()) return TT_Function;
-
-    return TT_Unit;
-}
-
 
 /*
  *  Converts a TypeNode to an llvm::Type.  While much less information is lost than
@@ -335,35 +184,29 @@ Type* Compiler::anTypeToLlvmType(const AnType *ty, int recursionLimit){
 
     switch(ty->typeTag){
         case TT_Ptr: {
-            auto *ptr = try_cast<AnPtrType>(ty);
-            return isEmptyType(this, ptr->extTy) ?
+            auto *ptr = cast<AnPtrType>(ty);
+            return isEmptyType(this, ptr->elemTy) ?
                 Type::getInt8Ty(*ctxt)->getPointerTo() :
-                anTypeToLlvmType(ptr->extTy, --recursionLimit)->getPointerTo();
+                anTypeToLlvmType(ptr->elemTy, --recursionLimit)->getPointerTo();
         }
-        case TT_Type:
-            return Type::getInt8Ty(*ctxt)->getPointerTo();
         case TT_Array:{
-            auto *arr = try_cast<AnArrayType>(ty);
+            auto *arr = cast<AnArrayType>(ty);
             return ArrayType::get(anTypeToLlvmType(arr->extTy, --recursionLimit), arr->len);
         }
         case TT_Tuple:
-            for(auto *e : try_cast<AnTupleType>(ty)->fields){
+            for(auto *e : cast<AnTupleType>(ty)->fields){
                 if(!isEmptyType(this, e))
                     tys.push_back(anTypeToLlvmType(e, --recursionLimit));
             }
             return StructType::get(*ctxt, tys);
-        case TT_Data: case TT_TaggedUnion: case TT_Trait: {
-            auto *dt = (AnDataType*)try_cast<AnDataType>(ty);
-            auto existing = dt->llvmType;
-            if(existing)
-                return existing;
-            else
-                return updateLlvmTypeBinding(this, dt);
+        case TT_Data: {
+            auto *dt = cast<AnDataType>(ty);
+            return dt->decl->toLlvmType(this, dt);
         }
-        case TT_Function: case TT_MetaFunction: {
+        case TT_Function: {
             auto *f = try_cast<AnFunctionType>(ty);
             for(size_t i = 0; i < f->paramTys.size(); i++){
-                if(f->paramTys[i]->isRhoVar()){
+                if(f->paramTys[i]->isRowVar()){
                     return FunctionType::get(anTypeToLlvmType(f->retTy, --recursionLimit), tys, true)->getPointerTo();
                 }
                 // All Ante functions take at least 1 arg: (), which are ignored in llvm ir
@@ -393,68 +236,12 @@ Type* Compiler::anTypeToLlvmType(const AnType *ty, int recursionLimit){
     }
 }
 
-
-/*
- *  Returns true if two given types are approximately equal.  This will return
- *  true if they are the same primitive datatype, or are both pointers pointing
- *  to the same elementtype, or are both arrays of the same element type, even
- *  if the arrays differ in size.  If two types are needed to be exactly equal,
- *  pointer comparison can be used instead since llvm::Types are uniqued.
- */
-bool llvmTypeEq(Type *l, Type *r){
-    TypeTag ltt = llvmTypeToTypeTag(l);
-    TypeTag rtt = llvmTypeToTypeTag(r);
-
-    if(ltt != rtt) return false;
-
-    if(ltt == TT_Ptr){
-        Type *lty = l->getPointerElementType();
-        Type *rty = r->getPointerElementType();
-
-        if(lty->isVoidTy() or rty->isVoidTy()) return true;
-
-        return llvmTypeEq(lty, rty);
-    }else if(ltt == TT_Array){
-        return l->getArrayElementType() == r->getArrayElementType() and
-               l->getArrayNumElements() == r->getArrayNumElements();
-    }else if(ltt == TT_Function or ltt == TT_MetaFunction){
-        int lParamCount = l->getFunctionNumParams();
-        int rParamCount = r->getFunctionNumParams();
-
-        if(lParamCount != rParamCount)
-            return false;
-
-        for(int i = 0; i < lParamCount; i++){
-            if(!llvmTypeEq(l->getFunctionParamType(i), r->getFunctionParamType(i)))
-                return false;
-        }
-        return true;
-    }else if(ltt == TT_Tuple or ltt == TT_Data){
-        int lElemCount = l->getStructNumElements();
-        int rElemCount = r->getStructNumElements();
-
-        if(lElemCount != rElemCount)
-            return false;
-
-        for(int i = 0; i < lElemCount; i++){
-            if(!llvmTypeEq(l->getStructElementType(i), r->getStructElementType(i)))
-                return false;
-        }
-
-        return true;
-    }else{ //primitive type
-        return true; /* true since ltt != rtt check above is false */
-    }
-}
-
-
 /*
  *  Converts a TypeTag to its string equivalent for
  *  helpful error messages.  For most cases, llvmTypeToStr
  *  should be used instead to provide the full type.
  */
 string typeTagToStr(TypeTag ty){
-
     switch(ty){
         case TT_I8:    return "i8" ;
         case TT_I16:   return "i16";
@@ -472,7 +259,6 @@ string typeTagToStr(TypeTag ty){
         case TT_C8:    return "c8" ;
         case TT_Bool:  return "bool";
         case TT_Unit:  return "unit";
-        case TT_Type:  return "Type";
 
         /*
          * Because of the loss of specificity for these last types,
@@ -485,11 +271,10 @@ string typeTagToStr(TypeTag ty){
         case TT_Data:         return "Data" ;
         case TT_TypeVar:      return "'t";
         case TT_Function:     return "Function";
-        case TT_MetaFunction: return "Meta Function";
-        case TT_FunctionList: return "Function List";
-        case TT_TaggedUnion:  return "|";
-        default:              return "(Unknown TypeTag " + to_string(ty) + ")";
     }
+    cerr << "typeTag = " << ty << endl;
+    ASSERT_UNREACHABLE("Unhandled typetag in typeTagToStr");
+    return "";
 }
 
 bool shouldWrapInParenthesis(TypeNode *type){
@@ -514,7 +299,7 @@ string typeNodeToStr(const TypeNode *t){
             elem = (TypeNode*)elem->next.get();
         }
         return ret;
-    }else if(t->typeTag == TT_Data or t->typeTag == TT_TaggedUnion or t->typeTag == TT_TypeVar){
+    }else if(t->typeTag == TT_Data or t->typeTag == TT_TypeVar){
         string name = t->typeName;
         if(!t->params.empty()){
             for(auto &param : t->params){
@@ -529,7 +314,7 @@ string typeNodeToStr(const TypeNode *t){
         return '[' + len->val + " " + typeNodeToStr(t->extTy.get()) + ']';
     }else if(t->typeTag == TT_Ptr){
         return "ref " + typeNodeToStr(t->extTy.get());
-    }else if(t->typeTag == TT_Function or t->typeTag == TT_MetaFunction){
+    }else if(t->typeTag == TT_Function){
         string ret = "";
         string retTy = typeNodeToStr(t->extTy.get());
         TypeNode *cur = (TypeNode*)t->extTy->next.get();
@@ -637,10 +422,10 @@ string anTypeToStr(const AnType *t){
     }else if(auto *tup = try_cast<AnTupleType>(t)){
         string ret = "(";
 
-        for(const auto &ext : tup->fields){
-            ret += anTypeToStr(ext);
+        for(const auto &field : tup->fields){
+            ret += anTypeToStr(field);
 
-            if(&ext != &tup->fields.back()){
+            if(&field != &tup->fields.back()){
                 ret += ", ";
             }else if(tup->fields.size() == 1){
                 ret += ',';
@@ -650,58 +435,10 @@ string anTypeToStr(const AnType *t){
     }else if(auto *arr = try_cast<AnArrayType>(t)){
         return '[' + to_string(arr->len) + " " + anTypeToStr(arr->extTy) + ']';
     }else if(auto *ptr = try_cast<AnPtrType>(t)){
-        return "ref " + anTypeToStr(ptr->extTy);
+        return "ref " + anTypeToStr(ptr->elemTy);
     }else{
         return typeTagToStr(t->typeTag);
     }
-}
-
-/*
- *  Returns a string representing the full type of ty.  Since it is converting
- *  from a llvm::Type, this will never return an unsigned integer type.
- */
-string llvmTypeToStr(Type *ty){
-    if(!ty) return "(null)";
-
-    TypeTag tt = llvmTypeToTypeTag(ty);
-    if(isPrimitiveTypeTag(tt)){
-        return typeTagToStr(tt);
-    }else if(tt == TT_Tuple){
-        if(!ty->getStructName().empty())
-            return string(ty->getStructName());
-
-        string ret = "(";
-        const unsigned size = ty->getStructNumElements();
-
-        for(unsigned i = 0; i < size; i++){
-            if(i == size-1){
-                ret += llvmTypeToStr(ty->getStructElementType(i)) + ")";
-            }else{
-                ret += llvmTypeToStr(ty->getStructElementType(i)) + ", ";
-            }
-        }
-        return ret;
-    }else if(tt == TT_Array){
-        return "[" + to_string(ty->getArrayNumElements()) + " " + llvmTypeToStr(ty->getArrayElementType()) + "]";
-    }else if(tt == TT_Ptr){
-        return llvmTypeToStr(ty->getPointerElementType()) + "*";
-    }else if(tt == TT_Function){
-        string ret = "func("; //TODO: get function return type
-        const unsigned paramCount = ty->getFunctionNumParams();
-
-        for(unsigned i = 0; i < paramCount; i++){
-            if(i == paramCount-1)
-                ret += llvmTypeToStr(ty->getFunctionParamType(i)) + ")";
-            else
-                ret += llvmTypeToStr(ty->getFunctionParamType(i)) + ", ";
-        }
-        return ret;
-    }else if(tt == TT_TypeVar){
-        return "(typevar)";
-    }else if(tt == TT_Unit){
-        return "unit";
-    }
-    return "(Unknown type)";
 }
 
 } //end of namespace ante

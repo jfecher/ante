@@ -18,43 +18,24 @@
 
 namespace ante {
     struct Compiler;
-    struct UnionTag;
+    struct TypeDecl;
     struct Module;
-
-    class BasicModifier;
-    class AnModifier;
-    class AnTupleType;
-    class AnArrayType;
-    class AnPtrType;
-    class AnTypeVarType;
-    class AnDataType;
-    class AnFunctionType;
-    class AnTypeContainer;
-
     struct TraitImpl;
 
-    /** A primitive type
-     *
-     *  All AnTypes are uniqued and immutable.  Instances are created via
-     *  static methods and are uniqued, that is, no two perfectly equal
-     *  instances are created.  Any two perfectly equal types are also
-     *  equivalent using pointer equality.
-     *
-     *  Two types may still be equal even if their pointer comparison fails.
-     *  This occurs if the underlying types are equal but the modifiers
-     *  of the type are not.
-     *
-     *  No AnType should ever be manually allocated or freed, all construction
-     *  and destruction is handled by an external AnTypeContainer.
+    /**
+     * A primitive type
      */
     class AnType {
-        friend AnTypeContainer;
+        // primitive types are uniqued in this container
+        static std::vector<AnType> typeContainer;
 
     protected:
         AnType(TypeTag id, bool ig) :
             typeTag(id), isGeneric(ig){}
 
     public:
+        // Initialize typeContainer with all the primitive types
+        static void initTypeSystem();
 
         virtual ~AnType() = default;
 
@@ -84,9 +65,9 @@ namespace ante {
 
         /** Returns the size of this type in bits or an error message if the type is invalid.
          *  @param incompleteType The name of an undeclared type, used to issue an IncompleteTypeError if
-         *                        it is found within the type being sized and not behind a pointer.
+         *                        it is found within the type being sized.
          */
-        Result<size_t, std::string> getSizeInBits(Compiler *c, std::string *incompleteType = nullptr) const;
+        Result<size_t, std::string> getSizeInBits(Compiler *c, std::string const& incompleteType = "") const;
 
         /** Print the contents of this type to stdout. */
         void dump() const;
@@ -103,7 +84,7 @@ namespace ante {
         bool isNumericTy() const noexcept;
 
         /** Shortcut for casting to an AnTypeVarType and calling AnTypeVarType::isRhoVar */
-        bool isRhoVar() const;
+        bool isRowVar() const;
 
         static AnType* getPrimitive(TypeTag tag);
         static AnType* getI8();
@@ -121,15 +102,9 @@ namespace ante {
         static AnType* getF64();
         static AnType* getBool();
         static AnType* getUnit();
-        static AnPtrType* getPtr(AnType*);
-        static AnArrayType* getArray(AnType*, size_t len = 0);
-        static AnTypeVarType* getTypeVar(std::string const& name);
-        static AnFunctionType* getFunction(AnType *r, const std::vector<AnType*>);
     };
 
-    class AnProductType;
     bool isGeneric(const std::vector<AnType*> &vec);
-    bool isGeneric(const std::vector<AnProductType*> &vec);
     bool isGeneric(AnType *retTy, std::vector<AnType*> const& params, std::vector<TraitImpl*> const& traits);
 
     /**
@@ -178,6 +153,20 @@ namespace ante {
             type = mod->extTy;
         }
         return static_cast<const T*>(type);
+    }
+
+    template<typename T>
+    T* cast(AnType* type){
+        T *t = try_cast<T>(type);
+        assert(t);
+        return t;
+    }
+
+    template<typename T>
+    const T* cast(const AnType* type){
+        const T *t = try_cast<const T>(type);
+        assert(t);
+        return t;
     }
 
 
@@ -271,8 +260,8 @@ namespace ante {
             return !fieldNames.empty();
         }
 
-        bool hasRhoVar() const noexcept {
-            return !fields.empty() && fields.back()->isRhoVar();
+        bool hasRowVar() const noexcept {
+            return !fields.empty() && fields.back()->isRowVar();
         }
 
         virtual bool isModifierType() const noexcept override {
@@ -323,15 +312,15 @@ namespace ante {
     /** Pointer types */
     class AnPtrType : public AnType {
         protected:
-        AnPtrType(AnType* ext) :
-            AnType(TT_Ptr, ext->isGeneric), extTy(ext){}
+        AnPtrType(AnType *elem) :
+            AnType(TT_Ptr, elem->isGeneric), elemTy(elem){}
 
         public:
 
         ~AnPtrType() = default;
 
         /** The type being pointed to. */
-        AnType *extTy;
+        AnType *elemTy;
 
         static AnPtrType* get(AnType* l);
 
@@ -352,13 +341,15 @@ namespace ante {
     class AnTypeVarType : public AnType {
         protected:
         AnTypeVarType(std::string const& n) :
-            AnType(TT_TypeVar, true), name(n){}
+            AnType(TT_TypeVar, true), name(n), isRowVariable(false){}
 
         public:
 
         ~AnTypeVarType() = default;
 
         std::string name;
+
+        bool isRowVariable;
 
         static AnTypeVarType* get(std::string const& name);
 
@@ -367,12 +358,6 @@ namespace ante {
 
         virtual bool isModifierType() const noexcept override {
             return false;
-        }
-
-        bool isRhoVar() const noexcept {
-            size_t len = name.size();
-            // Using string::find would be more terse but would needlessly check the whole string
-            return len > 3 && name[len-3] == '.' && name[len-2] == '.' && name[len-1] == '.';
         }
 
         static bool istype(const AnType *t){
@@ -384,8 +369,8 @@ namespace ante {
     class AnFunctionType : public AnType {
         protected:
         AnFunctionType(AnType *ret, std::vector<AnType*> params,
-                std::vector<TraitImpl*> tcConstraints, bool isMetaFunction)
-                : AnType(isMetaFunction ? TT_MetaFunction : TT_Function, ante::isGeneric(ret, params, tcConstraints)),
+                std::vector<TraitImpl*> tcConstraints)
+                : AnType(TT_Function, ante::isGeneric(ret, params, tcConstraints)),
                   paramTys(params), retTy(ret), typeClassConstraints(tcConstraints){
         }
 
@@ -406,10 +391,9 @@ namespace ante {
         std::vector<TraitImpl*> typeClassConstraints;
 
         static AnFunctionType* get(AnType *retTy, std::vector<AnType*> const& elems,
-                std::vector<TraitImpl*> const& tcConstraints, bool isMetaFunction = false);
+                std::vector<TraitImpl*> const& tcConstraints);
 
-        static AnFunctionType* get(AnType* retty, parser::NamedValNode* params, Module *module,
-                bool isMetaFunction = false);
+        static AnFunctionType* get(AnType* retty, parser::NamedValNode* params, Module *module);
 
         /** Returns a version of the current type with an additional modifier m. */
         const AnType* addModifier(TokenType m) const override;
@@ -419,17 +403,16 @@ namespace ante {
         }
 
         bool isVarArgs() const noexcept {
-            return !paramTys.empty() && paramTys.back()->isRhoVar();
+            return !paramTys.empty() && paramTys.back()->isRowVar();
         }
 
         /** Returns true if this type is a TT_Function or TT_MetaFunction */
         static bool istype(const AnType *t){
-            return t->typeTag == TT_Function || t->typeTag == TT_MetaFunction;
+            return t->typeTag == TT_Function;
         }
     };
 
     using TypeArgs = std::vector<AnType*>;
-    using Substitutions = std::list<std::pair<AnType*, AnType*>>;
 
     /**
      *  A base class for any user-declared data type.
@@ -439,9 +422,8 @@ namespace ante {
     class AnDataType : public AnType {
 
         protected:
-        AnDataType(std::string const& n, TypeTag tt) :
-                AnType(tt, false), name(n),
-                unboundType(0), llvmType(0){}
+        AnDataType(std::string const& n, TypeArgs const& args, TypeDecl *decl) :
+                AnType(TT_Data, false), name(n), unboundType(0), typeArgs(args), decl(decl){}
 
         public:
 
@@ -458,27 +440,13 @@ namespace ante {
         /** Typevars this type is generic over */
         TypeArgs typeArgs;
 
-        /** The llvm Type corresponding to each generic variant of this data type.
-         *  Set only in a type's unboundType so that two types, T '1, and T '2 with
-         *  '1 = '2 = i32, only have 1 llvm type created instead of two which conflict. */
-        std::vector<std::pair<TypeArgs, llvm::Type*>> llvmTypes;
+        TypeDecl *decl;
 
-        /** The llvm type for this variant only. Note that setting this requires a lookup
-         *  in llvmTypes to avoid duplicating the type every time a similar type is monomorphised. */
-        llvm::Type *llvmType;
-
-        /** Sets the appropriate TypeArgs,Type* pair in llvmTypes to
-         *  the given type. */
-        void setLlvmType(llvm::Type *type, ante::Substitutions const& monomorphisationBindings);
-
-        /** Find the appropriate type in the parent type's llvmTypes list.  If one is not
-         *  found, nullptr is returned. */
-        llvm::Type* findLlvmType(ante::Substitutions const& monomorphisationBindings);
+        static AnDataType* get(std::string const& name, TypeArgs const& elems, TypeDecl *decl);
 
         /** Returns true if the given AnType is an AnDataType */
         static bool istype(const AnType *t){
-            return t->typeTag == TT_Data || t->typeTag == TT_TaggedUnion
-                || t->typeTag == TT_Trait || t->typeTag == TT_TypeFamily;
+            return t->typeTag == TT_Data;
         }
 
         /** Returns true if this DataType is a bound generic variant of another */
@@ -489,159 +457,12 @@ namespace ante {
         /** Returns true if this type is a bound variant of the generic type dt.
          *  If dt is not a generic type, this function will always return false. */
         bool isVariantOf(const AnDataType *dt) const;
-    };
 
-    class AnSumType;
-
-    class AnProductType : public AnDataType {
-
-        protected:
-        AnProductType(std::string const& n, std::vector<AnType*> const& elems) :
-                AnDataType(n, TT_Data), fields(elems),
-                parentUnionType(nullptr), isAlias(false){}
-
-        public:
-
-        ~AnProductType() = default;
-
-        std::vector<AnType*> fields;
-
-        /**
-         * Each generic variant created from this parent type is stored inside the
-         * parent to avoid re-creating the same child.  This ensures each llvm type
-         * is not translated twice (thus creating 2 types) for a given type.
-         */
-        std::vector<AnProductType*> genericVariants;
-
-        /** Names of each field. */
-        std::vector<std::string> fieldNames;
-
-        /** The parent union type of this type if it is a union tag */
-        AnSumType *parentUnionType;
-
-        /** True if this type is just an alias for its contents
-         *  rather than an entirely new type */
-        bool isAlias;
-
-        /** Returns true if the given AnType is an AnDataType */
-        static bool istype(const AnType *t){
-            return t->typeTag == TT_Data;
-        }
-
-        bool isTypeFamily() const noexcept;
-
-        /** Returns the given field index or found, or -1 otherwise
-        * @param field Name of the field to search for
-        * @return The index of the field on success, -1 on failure
-        */
-        int getFieldIndex(std::string const& field) const {
-            for(unsigned int i = 0; i < fields.size(); i++)
-                if(field == fieldNames[i])
-                    return i;
-            return -1;
-        }
-
-        /** Returns a new AnDataType* with the given modifier appended to the current type's modifiers. */
-        const AnType* addModifier(TokenType m) const override;
-
-        bool isModifierType() const noexcept override {
-            return false;
-        }
-
-        /** Returns the type this type is aliased to */
-        AnType* getAliasedType() const;
-
-        AnTupleType* getVariantWithoutTag() const;
-
-        /** Search for a data type generic variant by name.
-         * Returns it if found, or creates it otherwise. */
-        static AnProductType* createVariant(AnProductType *parent,
-                std::vector<AnType*> const& elems, TypeArgs const& generics);
-
-        /** Creates or overwrites the type specified by name. */
-        static AnProductType* create(std::string const& name,
-                std::vector<AnType*> const& elems, TypeArgs const& generics);
-
-        /** Search for a data type generic variant by name.
-         * Returns it if found, or creates it otherwise. */
-        static AnProductType* createTypeFamilyVariant(AnProductType *parent,
-                TypeArgs const& generics);
-
-        /** Creates or overwrites the type specified by name. */
-        static AnProductType* createTypeFamily(std::string const& name, TypeArgs const& generics);
-    };
-
-
-    /**
-     * Represents a tagged union or sum type.
-     *
-     * Any type declared in the form is a sum type
-     * and is therefore handled by this class:
-     *
-     * type T =
-     *    | C1 t
-     *    | C2 t
-     *    ...
-     *
-     * Is a sum type handled by this class.
-     */
-    class AnSumType : public AnDataType {
-
-        protected:
-        AnSumType(std::string const& n, std::vector<AnProductType*> const& elems) :
-                AnDataType(n, TT_TaggedUnion), tags(elems){}
-
-        public:
-
-        ~AnSumType() = default;
-
-        /** Contains the UnionTag of each of the union's OR'd types. */
-        std::vector<AnProductType*> tags;
-
-        /**
-         * Each generic variant created from this parent type is stored inside the
-         * parent to avoid re-creating the same child.  This ensures each llvm type
-         * is not translated twice (thus creating 2 types) for a given type.
-         */
-        std::vector<AnSumType*> genericVariants;
-
-        /** Returns true if the given AnType is an AnDataType */
-        static bool istype(const AnType *t){
-            return t->typeTag == TT_TaggedUnion;
-        }
-
-        /**
-        * Returns the UnionTag of a tag within the union type.
-        *
-        * If the given tag is not found, this function issues an
-        * error message and throws a CtError exception.
-        *
-        * @return the value of the tag found, or 0 on failure
-        */
-        size_t getTagVal(std::string const& name);
-
-        AnProductType* getTagByName(std::string const& name) const {
-            for(AnProductType *t : tags){
-                if(t->name == name) return t;
-            }
-            return nullptr;
-        }
-
-        /** Search for a data type generic variant by name.
-         * Returns it if found, or creates it otherwise. */
-        static AnSumType* createVariant(AnSumType *parent,
-                std::vector<AnProductType*> const& elems, TypeArgs const& generics);
-
-        /** Creates or overwrites the type specified by name. */
-        static AnSumType* create(std::string const& name,
-                std::vector<AnProductType*> const& elems, TypeArgs const& generics);
-
-        /** Returns a new AnDataType* with the given modifier appended to the current type's modifiers. */
-        const AnType* addModifier(TokenType m) const override;
-
-        bool isModifierType() const noexcept override {
-            return false;
-        }
+        // Forwards for convenience from this->decl
+        llvm::Type* toLlvmType(Compiler *c) const;
+        std::vector<AnType*> getBoundFieldTypes() const;
+        Result<size_t, std::string> getSizeInBits(Compiler *c, std::string const& incompleteType) const;
+        llvm::Value* getTagValue(Compiler *c, std::string const& variantName, std::vector<TypedValue> const& args) const;
     };
 
     size_t hashCombine(size_t l, size_t r);
@@ -680,46 +501,6 @@ namespace std {
         size_t operator()(ante::TokenType tt) const {
             return tt;
         }
-    };
-}
-
-namespace ante {
-    /**
-     *  An owning container for all AnTypes
-     *
-     *  Note that this class is a singleton, creating new instances
-     *  of this class would be meaningless as the AnTypeContainer
-     *  referenced by each AnType is unable to be swapped out.
-     *
-     *  Use of hashing to unique each AnType can also be quite inefficient
-     *  since most AnTypes will have short lifetimes in practice.  Future
-     *  optimizations can likely be made on the allocation patterns here.
-     */
-    class AnTypeContainer {
-        friend AnType;
-        friend BasicModifier;
-        friend CompilerDirectiveModifier;
-        friend AnTupleType;
-        friend AnArrayType;
-        friend AnPtrType;
-        friend AnTypeVarType;
-        friend AnFunctionType;
-
-        using FnTypeKey = std::pair<AnType*, std::pair<std::vector<AnType*>, std::pair<std::vector<TraitImpl*>, bool>>>;
-        using AggTypeKey = std::vector<AnType*>;
-
-        std::unordered_map<TypeTag, std::unique_ptr<AnType>> primitiveTypes;
-        std::unordered_map<std::pair<AnType*, TokenType>, std::unique_ptr<AnModifier>> basicModifiers;
-        std::unordered_map<std::pair<AnType*, size_t>, std::unique_ptr<AnModifier>> cdModifiers;
-        std::unordered_map<AnType*, std::unique_ptr<AnPtrType>> ptrTypes;
-        std::unordered_map<std::pair<AnType*, size_t>, std::unique_ptr<AnArrayType>> arrayTypes;
-        std::unordered_map<std::string, std::unique_ptr<AnTypeVarType>> typeVarTypes;
-        std::unordered_map<AggTypeKey, std::unique_ptr<AnTupleType>> aggregateTypes;
-        std::unordered_map<FnTypeKey, std::unique_ptr<AnFunctionType>> functionTypes;
-
-    public:
-        AnTypeContainer();
-        ~AnTypeContainer() = default;
     };
 }
 

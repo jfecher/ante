@@ -45,13 +45,11 @@ namespace ante {
              *  as a separate constraint.  Returns a new type with type classes removed. */
             AnType* handleTypeClassConstraints(AnType *t, LOC_TY const& loc);
 
-            bool findFieldInTypeList(llvm::StringMap<TypeDecl> const& m, parser::BinOpNode *op, parser::VarNode *rval);
-
             void searchForField(parser::BinOpNode *op);
 
             /** Add bindings from a trait's declaration to the scope of
              *  the trait's implementation to better infer parameter/return types. */
-            void addConstraintsFromTCDecl(parser::FuncDeclNode *fdn, TraitImpl *tr, parser::FuncDeclNode *decl);
+            void addConstraintsFromTCDecl(parser::FuncDeclNode *fdn, TraitImpl *tr, parser::FuncDeclNode *decl, LOC_TY &implLoc);
 
             void handlePattern(parser::MatchNode *n, parser::Node *pat, AnType *expectedType, Pattern &patChecker);
 
