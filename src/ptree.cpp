@@ -532,12 +532,11 @@ namespace ante {
             return new DataDeclNode(loc, s, b, getTupleSize(b), move(params), isAlias, isUnion);
         }
 
-
         Node* mkMatchNode(LOC_TY loc, Node* expr, Node* branch){
             vector<unique_ptr<MatchBranchNode>> branches;
             auto nextBranch = branch->next.release();
             if(nextBranch){
-                ASSERT_UNREACHABLE("error in parse logic, match branch should not have a ->next pointer")
+                ASSERT_UNREACHABLE("error in parse logic, match branch should not have a ->next pointer");
             }
             branches.emplace_back((MatchBranchNode*)branch);
             return new MatchNode(loc, expr, branches);
@@ -549,12 +548,18 @@ namespace ante {
 
         Node* mkTraitNode(LOC_TY loc, char* s, Node* generics, Node* fundeps, Node* fns){
             vector<unique_ptr<TypeNode>> genericsVec;
+            vector<unique_ptr<TypeNode>> fundepsVec;
 
             while(generics){
                 genericsVec.emplace_back((TypeNode*)generics);
                 generics = generics->next.release();
             }
-            return new TraitNode(loc, s, move(genericsVec), fns);
+
+            while(fundeps){
+                fundepsVec.emplace_back((TypeNode*)fundeps);
+                fundeps = fundeps->next.release();
+            }
+            return new TraitNode(loc, s, move(genericsVec), move(fundepsVec), fns);
         }
     } //end of namespace ante::parser
 } //end of namespace ante

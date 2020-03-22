@@ -23,6 +23,10 @@ namespace ante {
         /** Globals may be accessed from any scope but can be shadowed by any scope as well. */
         llvm::StringMap<std::unique_ptr<Variable>> globals;
 
+        /** Mappings of typevar source names e.g. 't to unique names e.g. '132 by scope */
+        /** This ensures that all 't within a trait are the same, but a 't used in a function is different */
+        std::vector<llvm::StringMap<AnTypeVarType*>> typeVarsInScope;
+
         /** When this is set to true all VarNodes will be automatically declared as new variables.
          * This is used inside of match patterns. */
         bool autoDeclare = false;

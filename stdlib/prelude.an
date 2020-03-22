@@ -55,8 +55,6 @@ type Maybe 't =
    | Some 't
    | None
 
-type Type 't = none:unit
-
 
 trait Empty 't
     empty unit -> 't
@@ -95,9 +93,6 @@ module Ante
 
     //returns the size of a type in Bytes.  Does not evaluate its argument
     ante sizeof (val:'t) -> usz
-
-    //return the type of an expression.  Note: Type is an ante type (compile-time only)
-    ante typeof (val:'t) -> Type 't
 
     //Issue an error message during compile-time and stop compiling the current function
     ante error (msg: ref c8) -> 'never_returns
@@ -356,15 +351,15 @@ impl Eq (ref 't) given Eq 't
 
 
 //For-loops work over any range that is Iterable
-trait Iterable 'i
-    into_iter 'i -> 'it given Iterator 'it
+trait Iterable 'i -> 'it 'e
+    into_iter 'i -> 'it given Iterator 'it 'e
 
 trait Iterator 'i -> 'elem
     has_next 'i -> bool
     cur_elem 'i -> 'elem
     advance 'i -> 'i
 
-impl Iterable 'i given Iterator 'i
+impl Iterable 'i 'i 'e given Iterator 'i
     into_iter i = i
 
 type LazyRange = start:i32 end:i32 step:i32

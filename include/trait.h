@@ -11,27 +11,45 @@ namespace ante {
     struct TraitBase {
         std::string name;
         TypeArgs typeArgs;
+        TypeArgs fundeps;
 
-        TraitBase(std::string const& name, TypeArgs const& typeArgs)
-          : name{name}, typeArgs{typeArgs}{}
+        TraitBase(std::string const& name, TypeArgs const& typeArgs, TypeArgs const& fundeps)
+          : name{name}, typeArgs{typeArgs}, fundeps{fundeps}{}
     };
 
     struct TraitDecl : public TraitBase {
         std::vector<std::shared_ptr<FuncDecl>> funcs;
 
-        TraitDecl(std::string const& name, TypeArgs const& typeArgs)
-          : TraitBase(name, typeArgs){}
+        TraitDecl(std::string const& name, TypeArgs const& typeArgs, TypeArgs const& fundeps)
+          : TraitBase(name, typeArgs, fundeps){}
     };
 
     /**
      * @brief Holds the name of a trait and the functions needed to implement it
      */
     struct TraitImpl : public TraitBase {
-        TraitImpl(std::string name, TypeArgs const& tArgs)
-                : TraitBase(name, tArgs) {}
+        TraitImpl(TraitDecl *decl, TypeArgs const& args)
+                : TraitBase(decl->name, {}, {}), decl{decl} {
 
-        TraitImpl(TraitDecl *decl, TypeArgs const& tArgs)
-                : TraitBase(decl->name, tArgs), decl{decl} {}
+            size_t lowerBound = decl->typeArgs.size();
+            size_t upperBound = decl->fundeps.size() + lowerBound;
+            assert(lowerBound <= args.size() && args.size() <= upperBound);
+
+            size_t i = 0;
+            for (; i < lowerBound; i++){
+                this->typeArgs.push_back(args[i]);
+            }
+            for (; i < upperBound; i++){
+                this->fundeps.push_back(args[i]);
+            }
+        }
+
+        TraitImpl(TraitDecl *decl, TypeArgs const& tArgs, TypeArgs const& fundeps)
+                : TraitBase(decl->name, tArgs, fundeps), decl{decl} {
+
+            assert(tArgs.size() == decl->typeArgs.size());
+            assert(fundeps.size() == decl->fundeps.size());
+        }
 
         /** Pointer to the ExtNode of where this trait instance is
          *  implemented or nullptr if it is not implemented. */

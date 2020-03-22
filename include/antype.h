@@ -461,6 +461,7 @@ namespace ante {
         // Forwards for convenience from this->decl
         llvm::Type* toLlvmType(Compiler *c) const;
         std::vector<AnType*> getBoundFieldTypes() const;
+        AnTupleType* getVariantType(size_t variantIndex) const;
         Result<size_t, std::string> getSizeInBits(Compiler *c, std::string const& incompleteType) const;
         llvm::Value* getTagValue(Compiler *c, std::string const& variantName, std::vector<TypedValue> const& args) const;
     };

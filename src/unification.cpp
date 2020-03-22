@@ -22,7 +22,9 @@ namespace ante {
     TraitImpl* copyWithNewTypeVars(TraitImpl* impl,
             std::unordered_map<std::string, AnTypeVarType*> &map){
 
-        return new TraitImpl(impl->name, copyWithNewTypeVars(impl->typeArgs, map));
+        return new TraitImpl(impl->decl,
+                copyWithNewTypeVars(impl->typeArgs, map),
+                copyWithNewTypeVars(impl->fundeps, map));
     }
 
     AnType* copyWithNewTypeVars(AnType *t, std::unordered_map<std::string, AnTypeVarType*> &map){
@@ -88,7 +90,9 @@ namespace ante {
     }
 
     TraitImpl* substitute(AnType *u, AnType* subType, TraitImpl *impl, int recursionLimit){
-        return new TraitImpl(impl->name, substituteIntoAll(u, subType, impl->typeArgs, recursionLimit - 1));
+        return new TraitImpl(impl->decl,
+                substituteIntoAll(u, subType, impl->typeArgs, recursionLimit - 1),
+                substituteIntoAll(u, subType, impl->fundeps,  recursionLimit - 1));
     }
 
     AnType* substitute(AnType *u, AnType* subType, AnType *t, int recursionLimit){
@@ -296,7 +300,7 @@ namespace ante {
     }
 
     TraitImpl* applySubstitutions(Substitutions const& substitutions, TraitImpl *t){
-        auto ret = new TraitImpl(t->name, t->typeArgs);
+        auto ret = new TraitImpl(t->decl, t->typeArgs, t->fundeps);
         for(auto it = substitutions.rbegin(); it != substitutions.rend(); ++it){
             ret->typeArgs = ante::applyToAll(ret->typeArgs, [it](AnType *type){
                 return substitute(it->second, it->first, type);

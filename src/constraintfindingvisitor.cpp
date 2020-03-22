@@ -89,22 +89,27 @@ namespace ante {
         }
 
         auto dt = try_cast<AnDataType>(n->typeExpr->getType());
-        if(dt && dt->decl->isUnionType){
-            size_t variantIndex = dt->decl->getTagIndex(n->typeExpr->typeName);
-            auto allVariants = dt->getBoundFieldTypes();
-            auto variant = cast<AnTupleType>(allVariants[variantIndex]);
+        if(dt){
+            AnType *t = dt;
+            vector<AnType*> fields = dt->getBoundFieldTypes();
+
+            if(dt->decl->isUnionType){
+                size_t variantIndex = dt->decl->getTagIndex(n->typeExpr->typeName);
+                t = fields[variantIndex];
+                fields = cast<AnTupleType>(t)->fields;
+            }
 
             size_t argc = n->args.size();
-            if(variant->fields.size() != argc){
-                auto lplural = variant->fields.size() == 1 ? " argument, but " : " arguments, but ";
+            if(fields.size() != argc){
+                auto lplural = fields.size() == 1 ? " argument, but " : " arguments, but ";
                 auto rplural = argc == 1 ? " was given instead" : " were given instead";
-                error(anTypeToColoredStr(variant) + " requires " + to_string(variant->fields.size())
+                error(anTypeToColoredStr(t) + " requires " + to_string(fields.size())
                         + lplural + to_string(argc) + rplural, n->loc);
             }
 
             for(size_t i = 0; i < argc; i++){
                 auto tnty = n->args[i]->getType();
-                auto vty = variant->fields[i];
+                auto vty = fields[i];
                 addConstraint(tnty, vty, n->args[i]->loc, "Expected field " + to_string(i+1)
                         + " of type $1 to be typecasted to the corresponding field type $2 from " + n->typeExpr->typeName);
             }
@@ -195,26 +200,6 @@ namespace ante {
             exit(1);
         }
         return parent;
-    }
-
-
-    pair<TraitImpl*, AnTypeVarType*> getCollectionOpTraitType(Module *module, int op){
-        auto collectionTyVar = nextTypeVar();
-        auto elemTy = nextTypeVar();
-
-        if(op != '#' && op != Tok_In){
-            cerr << "getCollectionOpTraitType: unknown op '" << (char)op << "' (" << (int)op << ") given.  ";
-            exit(1);
-        }
-
-        string traitName = op == '#' ? "Extract" : "In";
-        TraitDecl *parent = module->lookupTraitDecl(traitName);
-
-        if(!parent){
-            cerr << "Cannot find the trait" << traitName << ". The prelude may not have been imported properly.\n";
-            exit(1);
-        }
-        return {new TraitImpl(parent, {collectionTyVar, elemTy}), elemTy};
     }
 
 
@@ -371,14 +356,13 @@ namespace ante {
             addConstraint(n->getType(), AnType::getBool(), n->loc,
                     "Expected return type of logical operator to be $2, but found $1 instead");
         }else if(n->op == '#'){
-            auto collection_elemTy = getCollectionOpTraitType(module, n->op);
-            auto collection = collection_elemTy.first;
+            auto trait = module->freshTraitImpl("Extract"); // Extract 'col 'index -> 'elem
 
-            addConstraint(n->lval->getType(), collection->typeArgs[0], n->loc,
+            addConstraint(n->lval->getType(), trait->typeArgs[0], n->loc,
                     "Error: should never fail, line " + to_string(__LINE__));
-            addConstraint(n->rval->getType(), AnType::getUsz(), n->loc,
+            addConstraint(n->rval->getType(), trait->typeArgs[1], n->loc,
                     "Expected index of subscript operator to be $2 but found $1 instead");
-            addConstraint(n->getType(), collection_elemTy.second, n->loc,
+            addConstraint(n->getType(), trait->fundeps[0], n->loc,
                     "Error: should never fail, line " + to_string(__LINE__));
         }else if(n->op == Tok_Or || n->op == Tok_And){
             addConstraint(n->lval->getType(), AnType::getBool(), n->loc,
@@ -400,13 +384,12 @@ namespace ante {
             addConstraint(n->rval->getType(), range->typeArgs[1], n->loc,
                     "Error: should never fail, line " + to_string(__LINE__));
         }else if(n->op == Tok_In){
-            auto collection_elemTy = getCollectionOpTraitType(module, n->op);
-            auto collection = collection_elemTy.first;
+            auto trait = module->freshTraitImpl("In");
 
-            addTypeClassConstraint(collection, n->loc);
-            addConstraint(n->lval->getType(), collection_elemTy.second, n->loc,
+            addTypeClassConstraint(trait, n->loc);
+            addConstraint(n->lval->getType(), trait->typeArgs[0], n->loc,
                     "Error: should never fail, line " + to_string(__LINE__));
-            addConstraint(n->rval->getType(), collection->typeArgs[0], n->loc,
+            addConstraint(n->rval->getType(), trait->typeArgs[1], n->loc,
                     "Error: should never fail, line " + to_string(__LINE__));
             addConstraint(n->getType(), AnType::getBool(), n->loc,
                     "Return type of 'in' should always be $2 but here is $1");
@@ -493,13 +476,14 @@ namespace ante {
 
     void ConstraintFindingVisitor::addConstraintsFromTCDecl(FuncDeclNode *fdn, TraitImpl *tr, FuncDeclNode *decl, LOC_TY &implLoc){
         TraitDecl *parent = tr->decl;
-        if(parent->typeArgs.size() != tr->typeArgs.size()){
-            error("Impl has " + to_string(tr->typeArgs.size()) + " typeargs, but there are "
-                + to_string(parent->typeArgs.size()) + " typeargs in " + parent->name + "'s decl", implLoc);
-        }
 
         for(size_t i = 0; i < parent->typeArgs.size(); i++){
             addConstraint(parent->typeArgs[i], tr->typeArgs[i], fdn->params->loc,
+                    "Error: should never fail, line " + to_string(__LINE__)); //TODO: this line may fail (message may show)
+        }
+
+        for(size_t i = 0; i < tr->fundeps.size(); i++){
+            addConstraint(parent->fundeps[i], tr->fundeps[i], fdn->params->loc,
                     "Error: should never fail, line " + to_string(__LINE__)); //TODO: this line may fail (message may show)
         }
 
@@ -554,10 +538,14 @@ namespace ante {
         n->pattern->accept(*this);
         n->child->accept(*this);
 
-        TraitDecl *decl = module->lookupTraitDecl("Iterable");
-        TraitImpl *impl = new TraitImpl(decl, {n->range->getType()});
-        n->iterableInstance = impl;
-        addTypeClassConstraint(impl, n->loc);
+        // Iterable 'i -> 'it 'e
+        TraitImpl *iterable = module->freshTraitImpl("Iterable");
+        n->iterableInstance = iterable;
+        addTypeClassConstraint(iterable, n->loc);
+        addConstraint(iterable->typeArgs[0], n->range->getType(), n->loc,
+                "");
+        addConstraint(iterable->fundeps[1], n->pattern->getType(), n->loc,
+                "");
     }
 
     void ConstraintFindingVisitor::handleTuplePattern(parser::MatchNode *n,
@@ -583,15 +571,15 @@ namespace ante {
         addConstraint(pat->getType(), expectedType, pat->loc,
                 "Expected a $1 here from the union variant destructuring, but found a $2 instead");
         auto sumType = try_cast<AnDataType>(pat->getType());
-        auto variantType = try_cast<AnDataType>(pat->typeExpr->getType());
 
         patChecker.overwrite(Pattern::fromSumType(sumType), pat->loc);
         string const& variantName = pat->typeExpr->typeName;
-        Pattern& child = patChecker.getChild(sumType->decl->getTagIndex(variantName));
-        auto variantFields = variantType->getBoundFieldTypes();
+        size_t variantIndex = sumType->decl->getTagIndex(variantName);
+        Pattern& child = patChecker.getChild(variantIndex);
+        auto variantType = sumType->getVariantType(variantIndex);;
 
         for(size_t i = 0; i < pat->args.size(); i++){
-            handlePattern(n, pat->args[i].get(), variantFields[i], child.getChild(i));
+            handlePattern(n, pat->args[i].get(), variantType->fields[i], child.getChild(i));
         }
     }
 

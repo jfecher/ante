@@ -599,6 +599,13 @@ namespace ante {
         return decl->getBoundFieldTypes(this);
     }
 
+    AnTupleType* AnDataType::getVariantType(size_t variantIndex) const {
+        assert(decl->isUnionType);
+        auto variantTypes = getBoundFieldTypes();
+        assert(variantIndex < variantTypes.size());
+        return cast<AnTupleType>(variantTypes[variantIndex]);
+    }
+
     Result<size_t, std::string> AnDataType::getSizeInBits(Compiler *c,
             std::string const& incompleteType) const {
 

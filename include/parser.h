@@ -426,11 +426,13 @@ namespace ante {
             std::unique_ptr<Node> child;
             std::string name;
             std::vector<std::unique_ptr<TypeNode>> generics;
+            std::vector<std::unique_ptr<TypeNode>> fundeps;
 
             void accept(NodeVisitor& v){ v.visit(this); }
             TraitNode(LOC_TY& loc, std::string s,
-                    std::vector<std::unique_ptr<TypeNode>> &&g, Node* b)
-                : ModifiableNode(loc), child(b), name(s), generics(move(g)){}
+                    std::vector<std::unique_ptr<TypeNode>> &&g,
+                    std::vector<std::unique_ptr<TypeNode>> &&f, Node* b)
+                : ModifiableNode(loc), child(b), name(s), generics(move(g)), fundeps(move(f)){}
             ~TraitNode(){}
         };
 

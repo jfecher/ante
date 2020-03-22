@@ -292,6 +292,23 @@ namespace ante {
         auto typeArgs = ante::applyToAll(tn->params, [m](unique_ptr<TypeNode> const& tn) -> AnType*{
             return toAnType(tn.get(), m);
         });
+
+        size_t min = decl->typeArgs.size();
+        size_t max = min + decl->fundeps.size();
+        if(typeArgs.size() < min || typeArgs.size() > max){
+            string msg = decl->name + " takes " + to_string(min);
+
+            if(min != max){
+                msg += " arg(s) and " + to_string(max - min) + " optional arg(s), but ";
+            }else{
+                msg += " args(s), but ";
+            }
+
+            auto ending = typeArgs.size() == 1 ? " was given" : " were given";
+            msg += to_string(typeArgs.size()) + ending;
+            ante::error(msg, tn->loc);
+        }
+
         return new TraitImpl(decl, typeArgs);
     }
 
@@ -829,7 +846,12 @@ namespace ante {
                 return toAnType(param.get(), this->compUnit);
             });
 
-            auto impl = new TraitImpl(traitName, args);
+            auto decl = compUnit->lookupTraitDecl(traitName);
+            if(!decl){
+                error("Cannot find trait declaration for " + traitName + " impl", n->loc);
+            }
+
+            auto impl = new TraitImpl(decl, args);
             impl->impl = n;
             compUnit->traitImpls[traitName].push_back(impl);
         }
@@ -1037,7 +1059,8 @@ namespace ante {
     void NameResolutionVisitor::visit(TraitNode *n){
         unordered_map<string, AnTypeVarType*> map;
         auto typeArgs = convertToNewTypeArgs(n->generics, compUnit, map);
-        auto decl = new TraitDecl(n->name, typeArgs);
+        auto fundeps = convertToNewTypeArgs(n->fundeps, compUnit, map);
+        auto decl = new TraitDecl(n->name, typeArgs, fundeps);
 
         // trait type is created here but the internal trait
         // tr will still be mutated with additional methods after

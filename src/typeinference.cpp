@@ -91,23 +91,8 @@ namespace ante {
         auto t = n->getType();
         if(!t){
             t = toAnType(n, module);
-            n->setType(t);
+            n->setType(copyWithNewTypeVars(t));
         }
-        auto variant = try_cast<AnDataType>(t);
-        if(variant && variant->decl->isUnionType){
-            n->setType(copyWithNewTypeVars(variant));
-            return;
-        }
-
-        //Type 't
-        auto type = try_cast<AnDataType>(module->lookupType("Type"));
-        if(!type || type->typeArgs.size() != 1){
-            ante::error("type `Type 't` in the prelude was redefined or removed sometime before translation of this type", n->loc);
-        }
-
-        auto tvar = type->typeArgs[0];
-        auto type_n = applySubstitutions({{tvar, t}}, type);
-        n->setType(type_n);
     }
 
     void TypeInferenceVisitor::visit(TypeCastNode *n){

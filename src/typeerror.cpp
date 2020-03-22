@@ -75,7 +75,9 @@ namespace ante {
     }
 
     TraitImpl* sanitize(TraitImpl* v, std::unordered_map<AnTypeVarType*, AnTypeVarType*> &map, std::string &nextName){
-        return new TraitImpl(v->name, sanitizeAll(v->typeArgs, map, nextName));
+        return new TraitImpl(v->decl,
+                sanitizeAll(v->typeArgs, map, nextName),
+                sanitizeAll(v->fundeps, map, nextName));
     }
 
     std::vector<TraitImpl*> sanitizeAll(std::vector<TraitImpl*> v, std::unordered_map<AnTypeVarType*, AnTypeVarType*> &map, std::string &nextName){

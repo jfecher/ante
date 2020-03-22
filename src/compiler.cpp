@@ -128,8 +128,6 @@ void CompilingVisitor::visit(StrLitNode *n){
 
     auto *ptr = c->builder.CreateGlobalStringPtr(n->val, "_strlit");
 
-    //get the llvm Str data type from a fake type node in case we are compiling
-    //the prelude && the Str data type isnt translated into an llvmty yet
     auto *tupleTy = cast<StructType>(c->anTypeToLlvmType(strty));
 
     vector<Constant*> strarr = {

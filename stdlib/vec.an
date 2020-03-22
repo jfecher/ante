@@ -134,7 +134,7 @@ type VecIter 't =
     idx: usz
     len: usz
 
-impl Iterable Vec
+impl Iterable (Vec 't) (VecIter 't) 't
     into_iter v = VecIter v._data 0usz v.len
 
 impl Iterator (VecIter 't) 't

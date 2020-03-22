@@ -145,7 +145,10 @@ namespace ante {
         auto typeArgs = ante::applyToAll(decl->typeArgs, [](AnType *a) -> AnType* {
             return nextTypeVar();
         });
-        return new TraitImpl(decl, typeArgs);
+        auto fundeps = ante::applyToAll(decl->fundeps, [](AnType *a) -> AnType* {
+            return nextTypeVar();
+        });
+        return new TraitImpl(decl, typeArgs, fundeps);
     }
 
     /** Create a TraitImpl with the same type args as its TraitDecl */
@@ -155,7 +158,7 @@ namespace ante {
             yy::location loc;
             error("Could not find trait " + lazy_str(traitName, AN_TYPE_COLOR) + " in module " + this->name, loc);
         }
-        return new TraitImpl(decl, decl->typeArgs);
+        return new TraitImpl(decl, decl->typeArgs, decl->fundeps);
     }
 
     bool TraitImpl::hasTrivialImpl() const {

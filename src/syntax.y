@@ -301,11 +301,8 @@ modifier: Pub      {$$ = mkModNode(@$, Tok_Pub);}
         | preproc  %prec MODIFIER {$$ = $1;}
         ;
 
-maybe_fundeps: RArrow generic_params   {$$ = $2;}
-             |
-             ;
-
-trait_decl: Trait usertype generic_params maybe_fundeps Indent trait_fn_list Unindent  {$$ = mkTraitNode(@$, (char*)$2, $3, $4, $6);}
+trait_decl: Trait usertype generic_params RArrow generic_params Indent trait_fn_list Unindent  {$$ = mkTraitNode(@$, (char*)$2, $3, $5, $7);}
+          | Trait usertype generic_params Indent trait_fn_list Unindent                        {$$ = mkTraitNode(@$, (char*)$2, $3,  0, $5);}
           ;
 
 trait_fn_list: _trait_fn_list maybe_newline {$$ = getRoot();}
@@ -514,7 +511,7 @@ continue: Continue expr  %prec Continue  {$$ = mkJumpNode(@$, Tok_Continue, $2);
         ;
 
 
-match: '|' expr RArrow expr_or_block  {$$ = mkMatchBranchNode(@$, $2, $4);}
+match: '|' expr_no_decl RArrow expr_or_block  {$$ = mkMatchBranchNode(@$, $2, $4);}
      ;
 
 
@@ -532,22 +529,22 @@ var: ident  %prec Ident {$$ = mkVarNode(@$, (char*)$1);}
    ;
 
 
-val_no_decl: '(' expr ')'            {$$ = $2;}
-           | tuple                   {$$ = $1;}
-           | array                   {$$ = $1;}
-           | var      %prec LOW      {$$ = $1;}
-           | intlit                  {$$ = $1;}
-           | fltlit                  {$$ = $1;}
-           | strlit                  {$$ = $1;}
-           | charlit                 {$$ = $1;}
-           | True                    {$$ = mkBoolLitNode(@$, 1);}
-           | False                   {$$ = mkBoolLitNode(@$, 0);}
-           | while_loop              {$$ = $1;}
-           | for_loop                {$$ = $1;}
-           | if_expr     %prec STMT  {$$ = $1;}
-           | match_expr  %prec LOW   {$$ = $1;}
-           | explicit_block          {$$ = $1;}
-           | usertype_node  %prec LOW  {$$ = $1;} // Union variant
+val_no_decl: '(' expr ')'               {$$ = $2;}
+           | tuple                      {$$ = $1;}
+           | array                      {$$ = $1;}
+           | var      %prec LOW         {$$ = $1;}
+           | intlit                     {$$ = $1;}
+           | fltlit                     {$$ = $1;}
+           | strlit                     {$$ = $1;}
+           | charlit                    {$$ = $1;}
+           | True                       {$$ = mkBoolLitNode(@$, 1);}
+           | False                      {$$ = mkBoolLitNode(@$, 0);}
+           | while_loop                 {$$ = $1;}
+           | for_loop                   {$$ = $1;}
+           | if_expr     %prec STMT     {$$ = $1;}
+           | match_expr  %prec LOW      {$$ = $1;}
+           | explicit_block             {$$ = $1;}
+           | usertype_node  %prec LOW   {$$ = $1;} // Union variant
            | fn_lambda
            | val_no_decl '.' maybe_newline var            {$$ = mkBinOpNode(@$, '.', $1, $4);}
            | val_no_decl '.' maybe_newline usertype_node  {$$ = mkBinOpNode(@$, '.', $1, $4);}
