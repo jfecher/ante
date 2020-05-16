@@ -1,0 +1,181 @@
+type Vec 't =
+    data: ref 't
+    len: usz
+    cap: usz
+
+impl Empty (Vec 'e)
+    empty () = Vec (cast 0) 0usz 0usz
+
+of iterable =
+    v = mut empty ()
+    fill v iterable
+
+is_empty v = v.len == 0usz
+
+indices (v:Vec) = 0 .. cast v.len
+
+len v = v.len
+
+capacity v = v.cap
+
+//Fill Vec with items from the iterable
+fill (v: mut Vec 't) iterable -> Vec 't =
+    for e in iterable do
+        push v e
+    v
+
+//reserve numElements in Vec v, elements will be uninitialized
+reserve (v: mut Vec 't) (numElems:usz) -> unit =
+    if v.len + numElems > v.cap then
+        size = (v.cap + numElems) * Ante.sizeof (@v._data)
+        ptr = realloc (v._data) size
+
+        if ptr is cast 0 then
+            printf ("Error in reserving %u elements for Vec\n".cStr) numElems
+            return ()
+
+        v._data := ptr
+        v.cap += numElems
+
+//push an element onto the end of the vector.
+//resizes if necessary
+push (v: mut Vec 't) (elem:'t) -> unit =
+    if v.len >= v.cap then
+        reserve v (if v.cap == 0usz then 1usz else v.cap)
+
+    v._data#v.len := elem
+    v.len += 1usz
+
+//pop the last element off if it exists
+//this will never resize the vector.
+pop (v: mut Vec 't) -> Maybe 't =
+    if is_empty v then None
+    else
+        v.len -= 1usz
+        Some (v._data#v.len)
+
+//remove the element at the given index and return it.
+//will error if the index is out of bounds.
+remove_index (v: mut Vec 't) (idx:usz) -> 't =
+    if idx == v.len - 1usz then
+        v.len -= 1usz
+    elif idx >= 0usz and idx < v.len - 1usz then
+        for i in idx as i32 .. v.len as i32 do
+            v._data#i := v._data#(i+1usz)
+
+        v.len -= 1usz
+    else
+        print "Vec.remove_index: index ${idx} out of bounds for Vec of length ${v.len}"
+        exit 1
+
+    v._data#v.len
+
+//remove the first instance of the given element from
+//the vector or none if the element was not found.
+//Uses = to determine element equality.
+//returns the index where the element was found.
+remove_first (v: mut Vec 't) (elem:'t) -> Maybe usz =
+    for i in indices v do
+        if elem == v._data#i then
+            remove_index v i
+            return Some i
+    None
+
+//Remove the given indices from the vector
+//Expects the indices to be in sorted order.
+//Will error if any index is out of bounds.
+remove_indices (v: mut Vec 't) (idxs:Vec usz) -> unit =
+    moved = mut 0usz
+    for i in indices idxs do
+        cur = idxs#i
+
+        if cur < 0usz or cur >= v.len then
+            print "Vec.remove: index ${cur} out of bounds for Vec of length ${v.len}"
+            exit 1
+
+        moved += 1usz
+        if i != idxs.len - 1usz then
+            nxt = idxs#(i+1usz)
+            for j in (cur+1usz) as i32 .. nxt as i32 do
+                v._data#(j-moved) := v._data#j
+        else
+            for j in (cur+1usz) as i32 .. v.len as i32 do
+                v._data#(j-moved) := v._data#j
+
+    v.len -= moved
+
+
+//remove all matching elements from the vector and
+//return the number of elements removed.
+//Uses = to determine element equality.
+remove_all (v: mut Vec 't) (elem:'t) -> usz =
+    idxs = mut empty ()
+    for i in indices v do
+        if elem == v._data#i then
+            push idxs i
+
+    remove_indices v idxs
+    idxs.len
+
+
+//Remove an element by swapping it with the last element in O(1) time.
+//Returns true if a swap was performed or false otherwise.
+//Will not swap if the given index is the index of the last element.
+swap_last (v: mut Vec 't) (idx:usz) -> bool =
+    if idx >= v.len or (v.len != 0usz and idx == v.len - 1usz) then false
+    else
+        v.len -= 1usz
+        v._data#idx := v._data#v.len
+        true
+
+
+type VecIter 't =
+    view: ref 't 
+    idx: usz
+    len: usz
+
+impl Iterable (Vec 't) (VecIter 't) 't
+    into_iter v = VecIter v._data 0usz v.len
+
+impl Iterator (VecIter 't) 't
+    cur_elem v = v.view#v.idx
+    advance v = VecIter v.view (v.idx + 1usz) v.len
+    has_next v = v.idx < v.len
+
+
+impl Print (Vec 't)
+    printne v =
+        printne "{ "
+
+        i = mut 0usz
+        while i < v.len do
+            printne (v._data#i)
+            if i + 1usz != v.len then
+                printf ", ".cStr
+
+            i += 1usz
+
+        printne " }"
+
+impl Extract (Vec 't) usz 't
+    (#) v i = v._data#i
+
+impl Insert (Vec 't) usz 't
+    insert v i x = v._data#i := x
+
+impl In 't (Vec 't)
+    (in) elem v =
+        for e in v do
+            if e == elem then
+                return true
+        false
+
+impl Eq (Vec 't)
+    (==) l r =
+        if l.len != r.len then
+            return false
+
+        for i in 0 .. cast l.len do
+            if l._data#i != r._data#i then
+                return false
+        true

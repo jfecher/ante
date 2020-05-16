@@ -1,0 +1,11 @@
+[package]
+name = "ante-rs"
+version = "0.1.0"
+authors = ["Jake Fecher <jfecher11@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+clap = "2.33.1"
+nom = "5.1.1"
