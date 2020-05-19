@@ -4,6 +4,8 @@ use std::io::{BufReader, Read};
 
 mod parser;
 mod expr;
+mod lexer;
+mod token;
 
 #[derive(Debug)]
 enum Error {

@@ -15,6 +15,7 @@ pub struct Variable<T> {
 #[derive(Debug)]
 pub struct Lambda<T> {
     args: Vec<Expr<T>>,
+    body: Box<Expr<T>>,
     data: T,
 }
 
@@ -72,8 +73,8 @@ impl<T> Expr<T> {
         Expr::Variable(Variable { name, data })
     }
 
-    pub fn lambda(args: Vec<Expr<T>>, data: T) -> Expr<T> {
-        Expr::Lambda(Lambda { args, data })
+    pub fn lambda(args: Vec<Expr<T>>, body: Expr<T>, data: T) -> Expr<T> {
+        Expr::Lambda(Lambda { args, body: Box::new(body), data })
     }
 
     pub fn function_call(function: Expr<T>, args: Vec<Expr<T>>, data: T) -> Expr<T> {
