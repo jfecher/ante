@@ -1,20 +1,23 @@
+#[derive(Debug, PartialEq)]
 pub enum IntegerSize {
     I8, I16, I32, I64, Isz,
 }
 
+#[derive(Debug, PartialEq)]
 pub enum FloatSize {
     F16, F32, F64,
 }
 
-pub enum Token {
+#[derive(Debug, PartialEq)]
+pub enum Token<'a> {
     Invalid,
     EndOfFile,
     Newline,
     Indent,
     Unindent,
 
-    Identifier(String),
-    StringLiteral(String),
+    Identifier(&'a str),
+    StringLiteral(&'a str),
     IntegerLiteral(u64),
     FloatLiteral(f64),
     CharLiteral(char),
@@ -22,8 +25,8 @@ pub enum Token {
     UnitLiteral,
 
     // Types
-    TypeName(String),
-    TypeVariable(String),
+    TypeName(&'a str),
+    TypeVariable(&'a str),
     SignedType(IntegerSize),
     UnsignedType(IntegerSize),
     FloatType(FloatSize),

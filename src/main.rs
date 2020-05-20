@@ -40,7 +40,7 @@ fn main() -> Result<(), Error> {
     let mut contents = String::new();
     reader.read_to_string(&mut contents)?;
 
-    let result = parser::parse(&contents);
+    let result = lexer::lex(&contents);
     println!("{:#?}", result);
 
     Ok(())
