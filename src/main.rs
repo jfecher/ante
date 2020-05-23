@@ -3,9 +3,7 @@ use std::fs::File;
 use std::io::{BufReader, Read};
 
 mod parser;
-mod expr;
 mod lexer;
-mod token;
 
 #[derive(Debug)]
 enum Error {
@@ -40,7 +38,8 @@ fn main() -> Result<(), Error> {
     let mut contents = String::new();
     reader.read_to_string(&mut contents)?;
 
-    let result = lexer::lex(&contents);
+    let tokens = lexer::Lexer::new(&contents);
+    let result = parser::parse(tokens);
     println!("{:#?}", result);
 
     Ok(())

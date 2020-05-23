@@ -1,23 +1,22 @@
-#[derive(Debug, PartialEq)]
-pub enum IntegerSize {
-    I8, I16, I32, I64, Isz,
+#[derive(Debug, PartialEq, Copy, Clone)]
+pub enum LexerError {
+    InvalidCharacterInSignificantWhitespace(char), // Only spaces are allowed in significant whitespace
+    InvalidEscapeSequence(char),
+    IndentChangeTooSmall, // All indentation changes must be >= 2 spaces in size difference relative to the previous level
+    UnindentToNewLevel, // Unindented to a new indent level rather than returning to a previous one
+    Expected(char),
+    UnknownChar(char),
 }
 
-#[derive(Debug, PartialEq)]
-pub enum FloatSize {
-    F16, F32, F64,
-}
-
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Token<'a> {
-    Invalid,
-    EndOfFile,
+    Invalid(LexerError),
     Newline,
     Indent,
     Unindent,
 
     Identifier(&'a str),
-    StringLiteral(&'a str),
+    StringLiteral(String),
     IntegerLiteral(u64),
     FloatLiteral(f64),
     CharLiteral(char),
@@ -26,13 +25,12 @@ pub enum Token<'a> {
 
     // Types
     TypeName(&'a str),
-    TypeVariable(&'a str),
-    SignedType(IntegerSize),
-    UnsignedType(IntegerSize),
-    FloatType(FloatSize),
+    IntegerType,
+    FloatType,
     CharType,
     BooleanType,
     UnitType,
+    Ref,
     Mut,
 
     // Keywords
@@ -55,7 +53,6 @@ pub enum Token<'a> {
     Module,
     Not,
     Or,
-    Ref,
     Return,
     Then,
     Trait,
