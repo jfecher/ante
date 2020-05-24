@@ -11,7 +11,7 @@ type AstResult<'a> = ParseResult<'a, Ast<'a>>;
 
 type Ast<'a> = Expr<'a, ()>;
 
-pub fn parse<'a>(lexer: Lexer<'a>) -> Result<Ast<'a>, ()> {
+pub fn parse(lexer: Lexer) -> Result<Ast, ()> {
     let (lexer, ast) = expression(lexer)?;
     let (lexer, _) = many0(expect(Token::Newline))(lexer)?;
 

@@ -13,7 +13,7 @@ pub struct Lexer<'a> {
     indent_levels: Vec<usize>,
     current_indent_level: usize,
     indices: CharIndices<'a>,
-    keywords: HashMap<&'a str, Token<'a>>,
+    keywords: &'a HashMap<&'a str, Token<'a>>,
 }
 
 fn second<T, U>(tup: (T, U)) -> U {
@@ -21,8 +21,8 @@ fn second<T, U>(tup: (T, U)) -> U {
 }
 
 impl<'a> Lexer<'a> {
-    pub fn new(input: &'a str) -> Lexer<'a> {
-        let keywords = [
+    pub fn get_keywords() -> HashMap<&'a str, Token<'a>> {
+        [
             ("int", Token::IntegerType),
             ("float", Token::FloatType),
             ("char", Token::CharType),
@@ -59,8 +59,10 @@ impl<'a> Lexer<'a> {
             ("type", Token::Type),
             ("while", Token::While),
             ("with", Token::With),
-        ].iter().cloned().collect();
+        ].iter().cloned().collect()
+    }
 
+    pub fn new(input: &'a str, keywords: &'a HashMap<&'a str, Token<'a>>) -> Lexer<'a> {
         let mut indices = input.char_indices();
         let current = indices.next().map_or('\0', second);
         let next = indices.next().map_or('\0', second);
@@ -150,10 +152,9 @@ impl<'a> Lexer<'a> {
         self.advance();
         let mut contents = String::new();
         while self.current != '"' {
-            let mut current_char = self.current;
-            if self.current == '\\' {
+            let current_char = if self.current == '\\' {
                 self.advance();
-                current_char = match self.current {
+                match self.current {
                     '\\' | '\'' => self.current,
                     'n' => '\n',
                     'r' => '\r',
@@ -163,8 +164,10 @@ impl<'a> Lexer<'a> {
                         let error = LexerError::InvalidEscapeSequence(self.current);
                         return self.advance2_with(Token::Invalid(error));
                     },
-                };
-            }
+                }
+            } else {
+                self.current
+            };
             contents.push(current_char);
             self.advance();
         }
@@ -173,10 +176,9 @@ impl<'a> Lexer<'a> {
 
     fn lex_char_literal(&mut self) -> Option<Token<'a>> {
         self.advance();
-        let mut contents = self.current;
-        if self.current == '\\' {
+        let contents = if self.current == '\\' {
             self.advance();
-            contents = match self.current {
+            match self.current {
                 '\\' | '\'' => self.current,
                 'n' => '\n',
                 'r' => '\r',
@@ -186,8 +188,11 @@ impl<'a> Lexer<'a> {
                     let error = LexerError::InvalidEscapeSequence(self.current);
                     return self.advance2_with(Token::Invalid(error));
                 }
-            };
-        }
+            }
+        } else {
+            self.current
+        };
+
         self.advance();
         self.expect('\'', Token::CharLiteral(contents))
     }

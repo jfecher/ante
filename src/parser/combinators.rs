@@ -14,7 +14,7 @@ macro_rules! seq {
 
 macro_rules! parser {
     ( $name:ident = $($body:tt )* ) => {
-        fn $name<'a>(input: Lexer<'a>) -> AstResult<'a> {
+        fn $name(input: Lexer) -> AstResult {
             seq!(input => $($body)*)
         }
     };
@@ -26,9 +26,8 @@ pub fn or<'a, It, T, F>(functions: It) -> impl FnOnce(Lexer<'a>) -> ParseResult<
 {
     move |input| {
         for f in functions.into_iter() {
-            match f(input.clone()) {
-                Ok(c) => return Ok(c),
-                _ => (),
+            if let Ok(c) = f(input.clone()) {
+                return Ok(c);
             }
         }
         Err(())
@@ -37,7 +36,7 @@ pub fn or<'a, It, T, F>(functions: It) -> impl FnOnce(Lexer<'a>) -> ParseResult<
 
 macro_rules! choice {
     ( $name:ident = $($body:tt )|* ) => {
-        fn $name<'a>(input: Lexer<'a>) -> AstResult<'a> {
+        fn $name(input: Lexer) -> AstResult {
             self::or(&[
                 $($body),*
             ])(input)
@@ -93,42 +92,42 @@ pub fn many1<'a, T, F>(f: F) -> impl Fn(Lexer<'a>) -> ParseResult<'a, Vec<T>>
 }
 
 // Basic combinators for extracting the contents of a given token
-pub fn identifier<'a>(mut lexer: Lexer<'a>) -> ParseResult<'a, &'a str> {
+pub fn identifier(mut lexer: Lexer) -> ParseResult<&str> {
     match lexer.next() {
         Some(Token::Identifier(name)) => Ok((lexer, name)),
         _ => Err(()),
     }
 }
 
-pub fn string_literal_token<'a>(mut lexer: Lexer<'a>) -> ParseResult<'a, String> {
+pub fn string_literal_token(mut lexer: Lexer) -> ParseResult<String> {
     match lexer.next() {
         Some(Token::StringLiteral(contents)) => Ok((lexer, contents)),
         _ => Err(()),
     }
 }
 
-pub fn integer_literal_token<'a>(mut lexer: Lexer<'a>) -> ParseResult<'a, u64> {
+pub fn integer_literal_token(mut lexer: Lexer) -> ParseResult<u64> {
     match lexer.next() {
         Some(Token::IntegerLiteral(int)) => Ok((lexer, int)),
         _ => Err(()),
     }
 }
 
-pub fn float_literal_token<'a>(mut lexer: Lexer<'a>) -> ParseResult<'a, f64> {
+pub fn float_literal_token(mut lexer: Lexer) -> ParseResult<f64> {
     match lexer.next() {
         Some(Token::FloatLiteral(float)) => Ok((lexer, float)),
         _ => Err(()),
     }
 }
 
-pub fn char_literal_token<'a>(mut lexer: Lexer<'a>) -> ParseResult<'a, char> {
+pub fn char_literal_token(mut lexer: Lexer) -> ParseResult<char> {
     match lexer.next() {
         Some(Token::CharLiteral(contents)) => Ok((lexer, contents)),
         _ => Err(()),
     }
 }
 
-pub fn bool_literal_token<'a>(mut lexer: Lexer<'a>) -> ParseResult<'a, bool> {
+pub fn bool_literal_token(mut lexer: Lexer) -> ParseResult<bool> {
     match lexer.next() {
         Some(Token::BooleanLiteral(boolean)) => Ok((lexer, boolean)),
         _ => Err(()),

@@ -8,4 +8,3 @@ edition = "2018"
 
 [dependencies]
 clap = "2.33.1"
-nom = "5.1.1"

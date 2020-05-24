@@ -30,7 +30,7 @@ fn main() -> Result<(), Error> {
         Ok(file) => file,
         Err(_) => {
             println!("Could not open file {}", filename);
-            return Ok(());
+            return Err(Error::Unrecoverable);
         }
     };
 
@@ -38,7 +38,8 @@ fn main() -> Result<(), Error> {
     let mut contents = String::new();
     reader.read_to_string(&mut contents)?;
 
-    let tokens = lexer::Lexer::new(&contents);
+    let keywords = lexer::Lexer::get_keywords();
+    let tokens = lexer::Lexer::new(&contents, &keywords);
     let result = parser::parse(tokens);
     println!("{:#?}", result);
 
