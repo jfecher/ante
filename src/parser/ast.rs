@@ -1,3 +1,4 @@
+use crate::lexer::token::Token;
 
 #[derive(Debug)]
 pub enum Literal<T> {
@@ -9,9 +10,9 @@ pub enum Literal<T> {
 }
 
 #[derive(Debug)]
-pub struct Variable<'a, T> {
-    name: &'a str,
-    data: T,
+pub enum Variable<'a, T> {
+    Identifier(&'a str, T),
+    Operator(Token<'a>, T),
 }
 
 #[derive(Debug)]
@@ -66,7 +67,11 @@ impl<'a, T> Expr<'a, T> {
     }
 
     pub fn variable(name: &'a str, data: T) -> Expr<'a, T> {
-        Expr::Variable(Variable { name, data })
+        Expr::Variable(Variable::Identifier(name, data))
+    }
+
+    pub fn operator(operator: Token<'a>, data: T) -> Expr<'a, T> {
+        Expr::Variable(Variable::Operator(operator, data))
     }
 
     pub fn lambda(args: Vec<Expr<'a, T>>, body: Expr<'a, T>, data: T) -> Expr<'a, T> {

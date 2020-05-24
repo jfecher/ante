@@ -22,7 +22,7 @@ fn second<T, U>(tup: (T, U)) -> U {
 
 impl<'a> Lexer<'a> {
     pub fn get_keywords() -> HashMap<&'a str, Token<'a>> {
-        [
+        vec![
             ("int", Token::IntegerType),
             ("float", Token::FloatType),
             ("char", Token::CharType),
@@ -59,7 +59,7 @@ impl<'a> Lexer<'a> {
             ("type", Token::Type),
             ("while", Token::While),
             ("with", Token::With),
-        ].iter().cloned().collect()
+        ].into_iter().collect()
     }
 
     pub fn new(input: &'a str, keywords: &'a HashMap<&'a str, Token<'a>>) -> Lexer<'a> {
@@ -309,6 +309,7 @@ impl<'a> Iterator for Lexer<'a> {
             (']', _) => self.advance_with(Token::BracketRight),
             ('|', _) => self.advance_with(Token::Pipe),
             (':', _) => self.advance_with(Token::Colon),
+            (';', _) => self.advance_with(Token::Semicolon),
             (',', _) => self.advance_with(Token::Comma),
             ('.', _) => self.advance_with(Token::MemberAccess),
             ('<', _) => self.advance_with(Token::LessThan),

@@ -81,6 +81,7 @@ pub enum Token<'a> {
     BracketRight,       // ]
     Pipe,               // |
     Colon,              // :
+    Semicolon,          // ;
     Comma,              // ,
     MemberAccess,       // .
     LessThan,           // <

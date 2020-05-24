@@ -54,6 +54,26 @@ pub fn expect<'a>(expected: Token<'a>) -> impl Fn(Lexer<'a>) -> ParseResult<'a, 
     }
 }
 
+pub fn expect_any<'a>(expected: &'a [Token<'a>]) -> impl Fn(Lexer<'a>) -> ParseResult<'a, Token<'a>> {
+    move |mut input| {
+        match input.next() {
+            Some(token) if expected.into_iter().find(|tok| **tok == token).is_some() => Ok((input, token)),
+            _ => Err(()),
+        }
+    }
+}
+
+pub fn pair<'a, F, G, FResult, GResult>(f: F, g: G) -> impl Fn(Lexer<'a>) -> ParseResult<'a, (FResult, GResult)> where
+    F: Fn(Lexer<'a>) -> ParseResult<'a, FResult>,
+    G: Fn(Lexer<'a>) -> ParseResult<'a, GResult>
+{
+    move |input| {
+        let (input, fresult) = f(input)?;
+        let (input, gresult) = g(input)?;
+        Ok((input, (fresult, gresult)))
+    }
+}
+
 pub fn many0<'a, T, F>(f: F) -> impl Fn(Lexer<'a>) -> ParseResult<'a, Vec<T>>
     where F: Fn(Lexer<'a>) -> ParseResult<'a, T>
 {

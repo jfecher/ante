@@ -4,15 +4,33 @@ pub mod ast;
 
 use crate::lexer::{token::Token, Lexer};
 use ast::Expr;
-
 use combinators::*;
 
 type AstResult<'a> = ParseResult<'a, Ast<'a>>;
-
 type Ast<'a> = Expr<'a, ()>;
 
+// Operator precedence, lowest to highest
+const OPERATOR_PRECEDENCE: [&[Token]; 15] = [
+    &[Token::Semicolon],
+    &[Token::ApplyLeft],
+    &[Token::ApplyRight],
+    &[Token::Or],
+    &[Token::And],
+    &[Token::Not],
+    &[Token::EqualEqual, Token::Is, Token::Isnt, Token::NotEqual, Token::GreaterThan, Token::LessThan, Token::GreaterThanOrEqual, Token::LessThanOrEqual],
+    &[Token::In],
+    &[Token::Append],
+    &[Token::Range],
+    &[Token::Add, Token::Subtract],
+    &[Token::Multiply, Token::Divide, Token::Modulus],
+    &[Token::Colon],
+    &[Token::Index],
+    &[Token::As],
+];
+
 pub fn parse(lexer: Lexer) -> Result<Ast, ()> {
-    let (lexer, ast) = expression(lexer)?;
+    let (lexer, _) = many0(expect(Token::Newline))(lexer)?;
+    let (lexer, ast) = statement_list(lexer)?;
     let (lexer, _) = many0(expect(Token::Newline))(lexer)?;
 
     if let Some(token) = lexer.clone().next() {
@@ -25,9 +43,58 @@ pub fn parse(lexer: Lexer) -> Result<Ast, ()> {
     }
 }
 
-choice!(expression = function_definition
-                   | function_call
-                   | argument
+parser!(statement_list =
+    first <- statement;
+    rest <- many0(pair( expect(Token::Newline), statement ));
+    if rest.is_empty() {
+        first
+    } else {
+        let mut statements = vec![first];
+        for (_, b) in rest.into_iter() {
+            statements.push(b);
+        }
+        Expr::function_call(Expr::operator(Token::Semicolon, ()), statements, ())
+    }
+);
+
+choice!(statement = function_definition
+                  | expression
+);
+
+fn expression(input: Lexer) -> AstResult {
+    expression_chain(0)(input)
+}
+
+fn expression_chain(precedence: usize) -> impl Fn(Lexer) -> AstResult {
+    move |input| {
+        if precedence < OPERATOR_PRECEDENCE.len() - 1 {
+            let (input, lhs) = expression_chain(precedence + 1)(input)?;
+            let (input, rhs) = many0(pair(
+                expect_any(OPERATOR_PRECEDENCE[precedence]),
+                expression_chain(precedence + 1)
+            ))(input)?;
+
+            // Parsing the expression is done, now convert it into function calls
+            let mut expr = lhs;
+            for (op, rhs) in rhs {
+                expr = Expr::function_call(Expr::operator(op, ()), vec![expr, rhs], ());
+            }
+            Ok((input, expr))
+        } else {
+            or(&[
+                function_call,
+                parenthsized_expression,
+                argument
+            ])(input)
+        }
+    }
+}
+
+parser!(parenthsized_expression =
+    _ <- expect(Token::ParenthesisLeft);
+    expr <- expression;
+    _ <- expect(Token::ParenthesisRight);
+    expr
 );
 
 parser!(function_definition =
