@@ -41,7 +41,11 @@ fn main() -> Result<(), Error> {
     let keywords = lexer::Lexer::get_keywords();
     let tokens = lexer::Lexer::new(&contents, &keywords);
     let result = parser::parse(tokens);
-    println!("{:#?}", result);
+
+    match result {
+        Ok(tree) => println!("{}", tree),
+        Err(e) => println!("{:?}", e),
+    }
 
     Ok(())
 }

@@ -7,6 +7,7 @@ pub enum Literal<T> {
     String(String, T),
     Char(char, T),
     Bool(bool, T),
+    Unit(T),
 }
 
 #[derive(Debug)]
@@ -17,23 +18,23 @@ pub enum Variable<'a, T> {
 
 #[derive(Debug)]
 pub struct Lambda<'a, T> {
-    args: Vec<Expr<'a, T>>,
-    body: Box<Expr<'a, T>>,
-    data: T,
+    pub args: Vec<Expr<'a, T>>,
+    pub body: Box<Expr<'a, T>>,
+    pub data: T,
 }
 
 #[derive(Debug)]
 pub struct FunctionCall<'a, T> {
-    function: Box<Expr<'a, T>>,
-    args: Vec<Expr<'a, T>>,
-    data: T,
+    pub function: Box<Expr<'a, T>>,
+    pub args: Vec<Expr<'a, T>>,
+    pub data: T,
 }
 
 #[derive(Debug)]
 pub struct Definition<'a, T> {
-    pattern: Box<Expr<'a, T>>,
-    expr: Box<Expr<'a, T>>,
-    data: T,
+    pub pattern: Box<Expr<'a, T>>,
+    pub expr: Box<Expr<'a, T>>,
+    pub data: T,
 }
 
 #[derive(Debug)]
@@ -66,6 +67,10 @@ impl<'a, T> Expr<'a, T> {
         Expr::Literal(Literal::Bool(x, data))
     }
 
+    pub fn unit_literal(data: T) -> Expr<'a, T> {
+        Expr::Literal(Literal::Unit(data))
+    }
+
     pub fn variable(name: &'a str, data: T) -> Expr<'a, T> {
         Expr::Variable(Variable::Identifier(name, data))
     }
@@ -75,10 +80,12 @@ impl<'a, T> Expr<'a, T> {
     }
 
     pub fn lambda(args: Vec<Expr<'a, T>>, body: Expr<'a, T>, data: T) -> Expr<'a, T> {
+        assert!(!args.is_empty());
         Expr::Lambda(Lambda { args, body: Box::new(body), data })
     }
 
     pub fn function_call(function: Expr<'a, T>, args: Vec<Expr<'a, T>>, data: T) -> Expr<'a, T> {
+        assert!(!args.is_empty());
         Expr::FunctionCall(FunctionCall { function: Box::new(function), args, data })
     }
 

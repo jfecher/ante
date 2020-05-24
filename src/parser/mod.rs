@@ -1,6 +1,7 @@
 #[macro_use]
 mod combinators;
 pub mod ast;
+pub mod pretty_printer;
 
 use crate::lexer::{token::Token, Lexer};
 use ast::Expr;
@@ -81,14 +82,15 @@ fn expression_chain(precedence: usize) -> impl Fn(Lexer) -> AstResult {
             }
             Ok((input, expr))
         } else {
-            or(&[
-                function_call,
-                parenthsized_expression,
-                argument
-            ])(input)
+            expression_argument(input)
         }
     }
 }
+
+choice!(expression_argument = function_call
+                            | parenthsized_expression
+                            | function_argument
+);
 
 parser!(parenthsized_expression =
     _ <- expect(Token::ParenthesisLeft);
@@ -107,16 +109,17 @@ parser!(function_definition =
 
 parser!(function_call =
     function <- variable;
-    args <- many1(argument);
+    args <- many1(function_argument);
     Expr::function_call(function, args, ())
 );
 
-choice!(argument = variable
-                 | string
-                 | integer
-                 | float
-                 | parse_char
-                 | parse_bool
+choice!(function_argument = variable
+                          | string
+                          | integer
+                          | float
+                          | parse_char
+                          | parse_bool
+                          | unit
 );
 
 parser!(variable =
@@ -147,4 +150,9 @@ parser!(parse_char =
 parser!(parse_bool =
     value <- bool_literal_token;
     Expr::bool_literal(value, ())
+);
+
+parser!(unit =
+    _ <- expect(Token::UnitLiteral);
+    Expr::unit_literal(())
 );
