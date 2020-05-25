@@ -1,5 +1,6 @@
 use crate::lexer::{ File, Lexer };
 use std::fmt::Formatter;
+use colored::*;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Position {
@@ -65,12 +66,12 @@ impl<'a> Location<'a> {
     pub fn fmt_error(&self, fmt: &mut Formatter, msg: &'a str) -> Result<(), std::fmt::Error> {
         use std::cmp::{ min, max };
 
-        writeln!(fmt, "{}: {},{}\terror: {}", self.file.filename, self.start.line, self.start.column, msg)?;
+        writeln!(fmt, "{}: {},{}\t{}: {}", self.file.filename.italic(), self.start.line, self.start.column, "error".red(), msg)?;
         let line = self.file.contents.lines().nth(self.start.line as usize - 1).unwrap();
         writeln!(fmt, "{}", line)?;
         let padding = " ".repeat(self.start.column as usize - 1);
         let remaining_columns_after_padding = line.len() - padding.len();
-        let indicator = "^".repeat(max(1, min(self.len(), remaining_columns_after_padding)));
+        let indicator = "^".repeat(max(1, min(self.len(), remaining_columns_after_padding))).red();
         writeln!(fmt, "{}{}", padding, indicator)
     }
 }

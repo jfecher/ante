@@ -187,6 +187,11 @@ pub fn identifier(mut input: Lexer) -> ParseResult<&str> {
     let start = input.get_start_position();
     match input.next() {
         Some(Token::Identifier(name)) => Ok((input, name)),
+        Some(Token::Invalid(c)) => {
+            let end = input.get_end_position();
+            let location = Location::new(&input, start, end);
+            Err(ParseError::Fatal(Box::new(ParseError::LexerError(c, location))))
+        },
         _ => {
             let end = input.get_end_position();
             let location = Location::new(&input, start, end);
@@ -199,6 +204,11 @@ pub fn string_literal_token(mut input: Lexer) -> ParseResult<String> {
     let start = input.get_start_position();
     match input.next() {
         Some(Token::StringLiteral(contents)) => Ok((input, contents)),
+        Some(Token::Invalid(c)) => {
+            let end = input.get_end_position();
+            let location = Location::new(&input, start, end);
+            Err(ParseError::Fatal(Box::new(ParseError::LexerError(c, location))))
+        },
         _ => {
             let end = input.get_end_position();
             let location = Location::new(&input, start, end);
@@ -211,6 +221,11 @@ pub fn integer_literal_token(mut input: Lexer) -> ParseResult<u64> {
     let start = input.get_start_position();
     match input.next() {
         Some(Token::IntegerLiteral(int)) => Ok((input, int)),
+        Some(Token::Invalid(c)) => {
+            let end = input.get_end_position();
+            let location = Location::new(&input, start, end);
+            Err(ParseError::Fatal(Box::new(ParseError::LexerError(c, location))))
+        },
         _ => {
             let end = input.get_end_position();
             let location = Location::new(&input, start, end);
@@ -223,6 +238,11 @@ pub fn float_literal_token(mut input: Lexer) -> ParseResult<f64> {
     let start = input.get_start_position();
     match input.next() {
         Some(Token::FloatLiteral(float)) => Ok((input, float)),
+        Some(Token::Invalid(c)) => {
+            let end = input.get_end_position();
+            let location = Location::new(&input, start, end);
+            Err(ParseError::Fatal(Box::new(ParseError::LexerError(c, location))))
+        },
         _ => {
             let end = input.get_end_position();
             let location = Location::new(&input, start, end);
@@ -235,6 +255,11 @@ pub fn char_literal_token(mut input: Lexer) -> ParseResult<char> {
     let start = input.get_start_position();
     match input.next() {
         Some(Token::CharLiteral(contents)) => Ok((input, contents)),
+        Some(Token::Invalid(c)) => {
+            let end = input.get_end_position();
+            let location = Location::new(&input, start, end);
+            Err(ParseError::Fatal(Box::new(ParseError::LexerError(c, location))))
+        },
         _ => {
             let end = input.get_end_position();
             let location = Location::new(&input, start, end);
@@ -247,6 +272,11 @@ pub fn bool_literal_token(mut input: Lexer) -> ParseResult<bool> {
     let start = input.get_start_position();
     match input.next() {
         Some(Token::BooleanLiteral(boolean)) => Ok((input, boolean)),
+        Some(Token::Invalid(c)) => {
+            let end = input.get_end_position();
+            let location = Location::new(&input, start, end);
+            Err(ParseError::Fatal(Box::new(ParseError::LexerError(c, location))))
+        },
         _ => {
             let end = input.get_end_position();
             let location = Location::new(&input, start, end);

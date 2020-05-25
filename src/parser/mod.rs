@@ -109,7 +109,7 @@ fn expression_chain(precedence: usize) -> impl Fn(Lexer) -> AstResult {
             let (input, lhs) = expression_chain(precedence + 1)(input)?;
             let (input, rhs) = many0(pair(
                 expect_any(OPERATOR_PRECEDENCE[precedence]),
-                expression_chain(precedence + 1)
+                no_backtracking(expression_chain(precedence + 1))
             ))(input)?;
 
             // Parsing the expression is done, now convert it into function calls
@@ -121,12 +121,12 @@ fn expression_chain(precedence: usize) -> impl Fn(Lexer) -> AstResult {
             }
             Ok((input, expr))
         } else {
-            expression_argument(input)
+            term(input)
         }
     }
 }
 
-choice!(expression_argument = function_call
+choice!(term = function_call
                             | if_expr
                             | function_argument
 );

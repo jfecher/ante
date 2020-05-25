@@ -94,6 +94,27 @@ pub enum Token<'a> {
     Backslash,          // \
 }
 
+impl Display for LexerError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use LexerError::*;
+        match self {
+            InvalidCharacterInSignificantWhitespace(c) => {
+                let char_str = if *c == '\t' {
+                    "a tab".to_string()
+                } else {
+                    format!("U+{:x}", *c as u32)
+                };
+                write!(f, "Only spaces are allowed in significant whitespace, {} is not allowed here", char_str)
+            },
+            InvalidEscapeSequence(c) => write!(f, "Invalid character in escape sequence: '{}' (U+{:x})", c, *c as u32),
+            IndentChangeTooSmall => write!(f, "This indent/unindent is too small, it should be at least 2 spaces apart from the previous indentation level"),
+            UnindentToNewLevel => write!(f, "This unindent doesn't return to any previous indentation level"),
+            Expected(c) => write!(f, "Expected '{}' (U+{:x}) while lexing. This is likely an internal error, please report an issue if you see this", *c, *c as u32),
+            UnknownChar(c) => write!(f, "Unknown character '{}' (U+{:x}) in file", *c, *c as u32),
+        }
+    }
+}
+
 impl<'a> Display for Token<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use Token::*;
