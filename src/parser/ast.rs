@@ -51,6 +51,14 @@ pub struct If<'a, T> {
 }
 
 #[derive(Debug)]
+pub struct Match<'a, T> {
+    pub expression: Box<Expr<'a, T>>,
+    pub branches: Vec<(Expr<'a, T>, Expr<'a, T>)>,
+    pub location: Location<'a>,
+    pub data: T,
+}
+
+#[derive(Debug)]
 pub enum Expr<'a, T> {
     Literal(Literal<'a, T>),
     Variable(Variable<'a, T>),
@@ -58,6 +66,7 @@ pub enum Expr<'a, T> {
     FunctionCall(FunctionCall<'a, T>),
     Definition(Definition<'a, T>),
     If(If<'a, T>),
+    Match(Match<'a, T>),
 }
 
 impl<'a, T> Expr<'a, T> {
@@ -110,19 +119,29 @@ impl<'a, T> Expr<'a, T> {
     pub fn if_expr(condition: Expr<'a, T>, then: Expr<'a, T>, otherwise: Option<Expr<'a, T>>, location: Location<'a>, data: T) -> Expr<'a, T> {
         Expr::If(If { condition: Box::new(condition), then: Box::new(then), otherwise: otherwise.map(Box::new), location, data })
     }
+
+    pub fn match_expr(expression: Expr<'a, T>, branches: Vec<(Expr<'a, T>, Expr<'a, T>)>, location: Location<'a>, data: T) -> Expr<'a, T> {
+        Expr::Match(Match { expression: Box::new(expression), branches, location, data })
+    }
+}
+
+macro_rules! dispatch_on_expr {
+    ( $expr_name:expr, $function:expr $(, $($args:expr),* )? ) => ({
+        match $expr_name {
+            Expr::Literal(inner) =>      $function(inner $(, $($args),* )? ),
+            Expr::Variable(inner) =>     $function(inner $(, $($args),* )? ),
+            Expr::Lambda(inner) =>       $function(inner $(, $($args),* )? ),
+            Expr::FunctionCall(inner) => $function(inner $(, $($args),* )? ),
+            Expr::Definition(inner) =>   $function(inner $(, $($args),* )? ),
+            Expr::If(inner) =>           $function(inner $(, $($args),* )? ),
+            Expr::Match(inner) =>        $function(inner $(, $($args),* )? ),
+        }
+    });
 }
 
 impl<'a, T> Locatable<'a> for Expr<'a, T> {
     fn locate(&self) -> Location<'a> {
-        use Expr::*;
-        match self {
-            Literal(literal) => literal.locate(),
-            Variable(variable) => variable.locate(),
-            Lambda(lambda) => lambda.locate(),
-            FunctionCall(function_call) => function_call.locate(),
-            Definition(definition) => definition.locate(),
-            If(if_expr) => if_expr.locate(),
-        }
+        dispatch_on_expr!(self, Locatable::locate)
     }
 }
 
@@ -150,29 +169,19 @@ impl<'a, T> Locatable<'a> for Variable<'a, T> {
     }
 }
 
-impl<'a, T> Locatable<'a> for Lambda<'a, T> {
-    fn locate(&self) -> Location<'a> {
-        self.location
+macro_rules! impl_locatable_for {( $name:tt ) => {
+    impl<'a, T> Locatable<'a> for $name<'a, T> {
+        fn locate(&self) -> Location<'a> {
+            self.location
+        }
     }
-}
+};}
 
-impl<'a, T> Locatable<'a> for FunctionCall<'a, T> {
-    fn locate(&self) -> Location<'a> {
-        self.location
-    }
-}
-
-impl<'a, T> Locatable<'a> for Definition<'a, T> {
-    fn locate(&self) -> Location<'a> {
-        self.location
-    }
-}
-
-impl<'a, T> Locatable<'a> for If<'a, T> {
-    fn locate(&self) -> Location<'a> {
-        self.location
-    }
-}
+impl_locatable_for!(Lambda);
+impl_locatable_for!(FunctionCall);
+impl_locatable_for!(Definition);
+impl_locatable_for!(If);
+impl_locatable_for!(Match);
 
 // TODO:
 // Module = RootNode | ExtNode
@@ -185,6 +194,5 @@ impl<'a, T> Locatable<'a> for If<'a, T> {
 // JumpNode
 // Loop = WhileNode | ForNode
 // MatchNode (pattern -> expr*)
-// IfNode
 // DataDeclNode
 // TraitNode

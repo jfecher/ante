@@ -1,6 +1,8 @@
 #[macro_use]
 mod combinators;
 mod error;
+
+#[macro_use]
 pub mod ast;
 pub mod pretty_printer;
 
@@ -47,7 +49,7 @@ pub fn parse(lexer: Lexer) -> Result<Ast, ParseError> {
     }
 }
 
-fn maybe_newline(input: Lexer) -> Result<(Lexer, Option<Token>), ParseError> {
+fn maybe_newline(input: Lexer) -> error::ParseResult<Option<Token>> {
     maybe(expect(Token::Newline))(input)
 }
 
@@ -125,12 +127,13 @@ fn expression_chain(precedence: usize) -> impl Fn(Lexer) -> AstResult {
 }
 
 choice!(term = function_call
-                            | if_expr
-                            | function_argument
+             | if_expr
+             | match_expr
+             | function_argument
 );
 
 parser!(function_call loc =
-    function <- variable;
+    function <- function_argument;
     args <- many1(function_argument);
     Expr::function_call(function, args, loc, ())
 );
@@ -143,6 +146,24 @@ parser!(if_expr loc =
     then !<- block_or_expression;
     otherwise !<- maybe(else_expr);
     Expr::if_expr(condition, then, otherwise, loc, ())
+);
+
+parser!(match_expr loc =
+    _ <- expect(Token::Match);
+    expression !<- block_or_expression;
+    _ !<- maybe_newline;
+    _ !<- expect(Token::With);
+    branches !<- many0(match_branch);
+    Expr::match_expr(expression, branches, loc, ())
+);
+
+parser!(match_branch _ -> (Ast, Ast) =
+    _ <- maybe_newline;
+    _ <- expect(Token::Pipe);
+    pattern !<- expression;
+    _ !<- expect(Token::RightArrow);
+    branch !<- block_or_expression;
+    (pattern, branch)
 );
 
 parser!(else_expr _ =

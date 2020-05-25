@@ -2,6 +2,7 @@ use crate::lexer::{token::Token, Lexer};
 use crate::error::location::Locatable;
 use super::error::{ ParseError, ParseResult };
 
+/// Helper macro for parser!
 macro_rules! seq {
     // monadic bind:
     // 
@@ -35,15 +36,39 @@ macro_rules! seq {
     });
 }
 
+/// Defines a sequenced parser function with do-notation, threading
+/// the input at each step and unwrapping the result with `?`.
+/// In addition to `lhs <- rhs;` performing the monadic bind, there
+/// is `lhs !<- rhs;` which is equivalent to `lhs <- no_backtracking(rhs);`.
+/// The final expression given is wrapped in an `Ok((input, expr))`
+///
+/// for example:
+/// ```
+/// parser!(basic_definition loc =
+///     name <- variable;
+///     _ <- expect(Token::Equal);
+///     value !<- expression;
+///     Expr::definition(name, value, loc, ())
+/// )
+/// ```
 macro_rules! parser {
-    ( $name:ident $location:tt = $($body:tt )* ) => {
-        fn $name(input: Lexer) -> AstResult {
+    ( $name:ident $location:tt -> $return_type:ty = $($body:tt )* ) => {
+        fn $name(input: Lexer) -> error::ParseResult<$return_type> {
             let start = input.locate();
             seq!(input start $location => $($body)*)
         }
     };
+    // Variant with implicit return type of ParseResult<Ast>
+    ( $name:ident $location:tt = $($body:tt )* ) => {
+        parser!($name $location -> Ast = $($body)* );
+    };
 }
 
+/// Matches the input if any of the given parsers matches.
+/// This backtracks after each parse so for better error messages, no_backtracking
+/// should be used in each contained parser once it is sure that parser's rule
+/// should be matched. For example, in an if expression, everything after the initial `if`
+/// should be marked as no_backtracking.
 pub fn or<'a, It, T, F>(functions: It, rule: String) -> impl FnOnce(Lexer<'a>) -> ParseResult<'a, T> where
     It: IntoIterator<Item = F>,
     F: Fn(Lexer<'a>) -> ParseResult<'a, T>
@@ -60,6 +85,8 @@ pub fn or<'a, It, T, F>(functions: It, rule: String) -> impl FnOnce(Lexer<'a>) -
     }
 }
 
+/// Defines a parser that is just an `or` of other parsers, syntax is BNF:
+/// `choice!(a_b_or_c = a | b | c);`
 macro_rules! choice {
     ( $name:ident = $($body:tt )|* ) => {
         fn $name(input: Lexer) -> AstResult {
@@ -70,6 +97,7 @@ macro_rules! choice {
     };
 }
 
+/// Fail if the next token in the stream is not the given expected token
 pub fn expect<'a>(expected: Token<'a>) -> impl Fn(Lexer<'a>) -> ParseResult<'a, Token<'a>> {
     use std::mem::discriminant;
     move |mut input| {
@@ -83,6 +111,7 @@ pub fn expect<'a>(expected: Token<'a>) -> impl Fn(Lexer<'a>) -> ParseResult<'a, 
     }
 }
 
+/// Fail if the next token in the stream is not in the passed in array of expected tokens
 pub fn expect_any<'a>(expected: &'a [Token<'a>]) -> impl Fn(Lexer<'a>) -> ParseResult<'a, Token<'a>> {
     move |mut input| {
         match input.next() {
@@ -95,6 +124,7 @@ pub fn expect_any<'a>(expected: &'a [Token<'a>]) -> impl Fn(Lexer<'a>) -> ParseR
     }
 }
 
+/// Matches the input 0 or 1 times. Only fails if a ParseError::Fatal is found
 pub fn maybe<'a, F, T>(f: F) -> impl Fn(Lexer<'a>) -> ParseResult<'a, Option<T>>
     where F: Fn(Lexer<'a>) -> ParseResult<'a, T>
 {
@@ -107,6 +137,7 @@ pub fn maybe<'a, F, T>(f: F) -> impl Fn(Lexer<'a>) -> ParseResult<'a, Option<T>>
     }
 }
 
+/// Parse the two functions in a sequence, returning a pair of their results
 pub fn pair<'a, F, G, FResult, GResult>(f: F, g: G) -> impl Fn(Lexer<'a>) -> ParseResult<'a, (FResult, GResult)> where
     F: Fn(Lexer<'a>) -> ParseResult<'a, FResult>,
     G: Fn(Lexer<'a>) -> ParseResult<'a, GResult>
@@ -118,6 +149,8 @@ pub fn pair<'a, F, G, FResult, GResult>(f: F, g: G) -> impl Fn(Lexer<'a>) -> Par
     }
 }
 
+/// Runs the parser 0 or more times until it errors, then returns a Vec of the successes.
+/// Will only return Err when a ParseError::Fatal is found
 pub fn many0<'a, T, F>(f: F) -> impl Fn(Lexer<'a>) -> ParseResult<'a, Vec<T>>
     where F: Fn(Lexer<'a>) -> ParseResult<'a, T>
 {
@@ -138,6 +171,8 @@ pub fn many0<'a, T, F>(f: F) -> impl Fn(Lexer<'a>) -> ParseResult<'a, Vec<T>>
     }
 }
 
+/// Runs the parser 1 or more times until it errors, then returns a Vec of the successes.
+/// Will return Err if the parser fails the first time or a ParseError::Fatal is found
 pub fn many1<'a, T, F>(f: F) -> impl Fn(Lexer<'a>) -> ParseResult<'a, Vec<T>>
     where F: Fn(Lexer<'a>) -> ParseResult<'a, T>
 {
@@ -167,6 +202,8 @@ pub fn many1<'a, T, F>(f: F) -> impl Fn(Lexer<'a>) -> ParseResult<'a, Vec<T>>
     }
 }
 
+/// Wraps the parser in a ParseError::Fatal if it fails. Used for better error reporting
+/// around `or` and similar combinators to prevent backtracking away from an error.
 pub fn no_backtracking<'a, T, F>(f: F) -> impl Fn(Lexer<'a>) -> ParseResult<'a, T>
     where F: Fn(Lexer<'a>) -> ParseResult<'a, T>
 {
