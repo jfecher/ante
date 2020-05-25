@@ -91,6 +91,7 @@ pub enum Token<'a> {
     LessThanOrEqual,    // <=
     GreaterThanOrEqual, // >=
     Divide,             // /
+    Backslash,          // \
 }
 
 impl<'a> Display for Token<'a> {
@@ -176,6 +177,7 @@ impl<'a> Display for Token<'a> {
             LessThanOrEqual => write!(f, "<="),
             GreaterThanOrEqual => write!(f, ">="),
             Divide => write!(f, "/"),
+            Backslash => write!(f, "\\"),
         }
     }
 }

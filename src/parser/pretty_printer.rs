@@ -9,20 +9,21 @@ impl<'a, T: Debug> Display for Expr<'a, T> {
             Expr::Lambda(lambda) => Display::fmt(lambda, f),
             Expr::FunctionCall(function_call) => Display::fmt(function_call, f),
             Expr::Definition(definition) => Display::fmt(definition, f),
+            Expr::If(if_expr) => Display::fmt(if_expr, f),
         }
     }
 }
 
-impl<T: Debug> Display for ast::Literal<T> {
+impl<'a, T: Debug> Display for ast::Literal<'a, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use ast::Literal::*;
         match self {
-            Integer(x, _data) => write!(f, "{}", x),
-            Float(x, _data) => write!(f, "{}", x),
-            String(s, _data) => write!(f, "\"{}\"", s),
-            Char(c, _data) => write!(f, "'{}'", c),
-            Bool(b, _data) => write!(f, "{}", if *b { "true" } else { "false" }),
-            Unit(_data) => write!(f, "()"),
+            Integer(x, _, _) => write!(f, "{}", x),
+            Float(x, _, _) => write!(f, "{}", x),
+            String(s, _, _) => write!(f, "\"{}\"", s),
+            Char(c, _, _) => write!(f, "'{}'", c),
+            Bool(b, _, _) => write!(f, "{}", if *b { "true" } else { "false" }),
+            Unit(_, _) => write!(f, "()"),
         }
     }
 }
@@ -31,8 +32,8 @@ impl<'a, T: Debug> Display for ast::Variable<'a, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use ast::Variable::*;
         match self {
-            Identifier(name, _data) => write!(f, "{}", name),
-            Operator(token, _data) => write!(f, "{}", token),
+            Identifier(name, _, _) => write!(f, "{}", name),
+            Operator(token, _, _) => write!(f, "{}", token),
         }
     }
 }
@@ -54,7 +55,7 @@ impl<'a, T: Debug> Display for ast::FunctionCall<'a, T> {
 
         // pretty-print calls to ';' on separate lines
         match self.function.as_ref() {
-            Variable(Operator(Semicolon, _)) => {
+            Variable(Operator(Semicolon, _, _)) => {
                 for arg in self.args.iter() {
                     write!(f, "{};\n", arg)?;
                 }
@@ -74,5 +75,15 @@ impl<'a, T: Debug> Display for ast::FunctionCall<'a, T> {
 impl<'a, T: Debug> Display for ast::Definition<'a, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "({} = {})", self.pattern, self.expr)
+    }
+}
+
+impl<'a, T: Debug> Display for ast::If<'a, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(ref otherwise) = self.otherwise {
+            write!(f, "(if {} {} {})", self.condition, self.then, otherwise)
+        } else {
+            write!(f, "(if {} {})", self.condition, self.then)
+        }
     }
 }
