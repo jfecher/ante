@@ -41,9 +41,8 @@ fn main() -> Result<(), Error> {
     let mut contents = String::new();
     reader.read_to_string(&mut contents)?;
 
-    let file = lexer::File { filename, contents: &contents };
     let keywords = lexer::Lexer::get_keywords();
-    let tokens = lexer::Lexer::new(file, &keywords);
+    let tokens = lexer::Lexer::new(filename, &contents, &keywords);
 
     if args.is_present("lex") {
         tokens.for_each(|token| println!("{}", token));

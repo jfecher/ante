@@ -29,13 +29,18 @@ impl<'a> Display for ParseError<'a> {
         match self {
             ParseError::Fatal(error) => error.fmt(fmt),
             ParseError::Expected(tokens, location) => {
-                location.fmt_error(fmt, &format!("parser expected one of {:?}", tokens))
+                if tokens.len() == 1 {
+                    location.fmt_error(fmt, format!("parser expected {} here", tokens[0]))
+                } else {
+                    let expected = tokens.iter().map(|x| format!("{}", x)).collect::<Vec<_>>().join(", ");
+                    location.fmt_error(fmt, format!("parser expected one of {}", expected))
+                }
             },
             ParseError::InRule(rule, location) => {
-                location.fmt_error(fmt, &format!("failed trying to parse a {}", rule))
+                location.fmt_error(fmt, format!("failed trying to parse a {}", rule))
             },
             ParseError::LexerError(error, location) => {
-                location.fmt_error(fmt, &format!("{}", error))
+                location.fmt_error(fmt, format!("{}", error))
             },
         }
     }

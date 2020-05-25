@@ -5,7 +5,7 @@ pub mod ast;
 pub mod pretty_printer;
 
 use crate::lexer::{token::Token, Lexer};
-use crate::error::location::{ EndPosition, Location, Locatable };
+use crate::error::location::Locatable;
 use ast::Expr;
 use error::ParseError;
 use combinators::*;
@@ -35,9 +35,8 @@ const OPERATOR_PRECEDENCE: [&[Token]; 15] = [
 pub fn parse(lexer: Lexer) -> Result<Ast, ParseError> {
     let (lexer, _) = maybe_newline(lexer)?;
     let (lexer, ast) = statement_list(lexer)?;
-    let (lexer, _) = maybe_newline(lexer)?;
+    let (mut lexer, _) = maybe_newline(lexer)?;
 
-    let mut lexer = lexer.clone();
     if let Some(token) = lexer.next() {
         // unparsed input
         println!("Partial ast = {}", ast);
@@ -105,7 +104,7 @@ fn expression(input: Lexer) -> AstResult {
 fn expression_chain(precedence: usize) -> impl Fn(Lexer) -> AstResult {
     move |input| {
         if precedence < OPERATOR_PRECEDENCE.len() - 1 {
-            let start = input.get_start_position();
+            let mut location = input.locate();
             let (input, lhs) = expression_chain(precedence + 1)(input)?;
             let (input, rhs) = many0(pair(
                 expect_any(OPERATOR_PRECEDENCE[precedence]),
@@ -114,7 +113,6 @@ fn expression_chain(precedence: usize) -> impl Fn(Lexer) -> AstResult {
 
             // Parsing the expression is done, now convert it into function calls
             let mut expr = lhs;
-            let mut location = Location::new(&input, start, EndPosition::new(start.index));
             for (op, rhs) in rhs {
                 location = location.union(rhs.locate());
                 expr = Expr::function_call(Expr::operator(op, location, ()), vec![expr, rhs], location, ());
