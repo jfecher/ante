@@ -2,6 +2,8 @@
 
 A WIP rewrite of Ante's compiler in rust.
 
+---
+
 ### Why?
 
 The original c++ compiler was written as ante's
@@ -17,3 +19,25 @@ bugs.
 
 This new compiler to be built from the ground up with these
 features in mind - hopefully enabling a cleaner codebase.
+
+---
+
+### Progress
+
+Steps needed to get back in line with the C++ compiler:
+
+- [x] Lexer
+- [x] Error reporting
+- [ ] Parser
+- [ ] Name resolution
+- [ ] HM-type inference
+- [ ] Code generation (llvm)
+- [ ] REPL
+
+Future goals still unimplemented in the C++ compiler:
+
+- [ ] Refinement Types
+- [ ] More general trait support (C++ compiler has trait inference bugs)
+- [ ] Commit to having deterministic destruction w/ destructors, get rid of plans for optional GC as it would likely poison any libraries it touches.
+- [ ] Reasonable C/C++ interop with clang api (stretch goal)
+- [ ] Build system (stretch goal)
