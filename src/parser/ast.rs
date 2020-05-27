@@ -58,6 +58,46 @@ pub struct Match<'a, T> {
     pub data: T,
 }
 
+// Type nodes in the AST, different from the representation of types during type checking.
+// PointerType and potentially UserDefinedType are actually type constructors
+#[derive(Debug)]
+pub enum Type<'a> {
+    IntegerType(Location<'a>),
+    FloatType(Location<'a>),
+    CharType(Location<'a>),
+    StringType(Location<'a>),
+    BooleanType(Location<'a>),
+    UnitType(Location<'a>),
+    ReferenceType(Location<'a>),
+    TypeVariable(&'a str, Location<'a>),
+    UserDefinedType(&'a str, Location<'a>),
+    TypeApplication(Box<Type<'a>>, Vec<Type<'a>>, Location<'a>),
+}
+
+#[derive(Debug)]
+pub enum TypeDefinitionBody<'a> {
+    UnionOf(Vec<Type<'a>>),
+    StructOf(Vec<(&'a str, Type<'a>)>),
+    AliasOf(Type<'a>),
+}
+
+#[derive(Debug)]
+pub struct TypeDefinition<'a, T> {
+    pub name: &'a str,
+    pub args: Vec<&'a str>,
+    pub definition: TypeDefinitionBody<'a>,
+    pub location: Location<'a>,
+    pub data: T,
+}
+
+#[derive(Debug)]
+pub struct TypeAnnotation<'a, T> {
+    pub lhs: Box<Expr<'a, T>>,
+    pub rhs: Type<'a>,
+    pub location: Location<'a>,
+    pub data: T,
+}
+
 #[derive(Debug)]
 pub enum Expr<'a, T> {
     Literal(Literal<'a, T>),
@@ -67,6 +107,8 @@ pub enum Expr<'a, T> {
     Definition(Definition<'a, T>),
     If(If<'a, T>),
     Match(Match<'a, T>),
+    TypeDefinition(TypeDefinition<'a, T>),
+    TypeAnnotation(TypeAnnotation<'a, T>),
 }
 
 impl<'a, T> Expr<'a, T> {
@@ -123,18 +165,28 @@ impl<'a, T> Expr<'a, T> {
     pub fn match_expr(expression: Expr<'a, T>, branches: Vec<(Expr<'a, T>, Expr<'a, T>)>, location: Location<'a>, data: T) -> Expr<'a, T> {
         Expr::Match(Match { expression: Box::new(expression), branches, location, data })
     }
+
+    pub fn type_definition(name: &'a str, args: Vec<&'a str>, definition: TypeDefinitionBody<'a>, location: Location<'a>, data: T) -> Expr<'a, T> {
+        Expr::TypeDefinition(TypeDefinition { name, args, definition, location, data })
+    }
+
+    pub fn type_annotation(lhs: Expr<'a, T>, rhs: Type<'a>, location: Location<'a>, data: T) -> Expr<'a, T> {
+        Expr::TypeAnnotation(TypeAnnotation { lhs: Box::new(lhs), rhs, location, data })
+    }
 }
 
 macro_rules! dispatch_on_expr {
     ( $expr_name:expr, $function:expr $(, $($args:expr),* )? ) => ({
         match $expr_name {
-            Expr::Literal(inner) =>      $function(inner $(, $($args),* )? ),
-            Expr::Variable(inner) =>     $function(inner $(, $($args),* )? ),
-            Expr::Lambda(inner) =>       $function(inner $(, $($args),* )? ),
-            Expr::FunctionCall(inner) => $function(inner $(, $($args),* )? ),
-            Expr::Definition(inner) =>   $function(inner $(, $($args),* )? ),
-            Expr::If(inner) =>           $function(inner $(, $($args),* )? ),
-            Expr::Match(inner) =>        $function(inner $(, $($args),* )? ),
+            Expr::Literal(inner) =>        $function(inner $(, $($args),* )? ),
+            Expr::Variable(inner) =>       $function(inner $(, $($args),* )? ),
+            Expr::Lambda(inner) =>         $function(inner $(, $($args),* )? ),
+            Expr::FunctionCall(inner) =>   $function(inner $(, $($args),* )? ),
+            Expr::Definition(inner) =>     $function(inner $(, $($args),* )? ),
+            Expr::If(inner) =>             $function(inner $(, $($args),* )? ),
+            Expr::Match(inner) =>          $function(inner $(, $($args),* )? ),
+            Expr::TypeDefinition(inner) => $function(inner $(, $($args),* )? ),
+            Expr::TypeAnnotation(inner) => $function(inner $(, $($args),* )? ),
         }
     });
 }
@@ -182,17 +234,15 @@ impl_locatable_for!(FunctionCall);
 impl_locatable_for!(Definition);
 impl_locatable_for!(If);
 impl_locatable_for!(Match);
+impl_locatable_for!(TypeDefinition);
+impl_locatable_for!(TypeAnnotation);
 
 // TODO:
 // Module = RootNode | ExtNode
 // Collection = ArrayNode | TupleNode
-// FunctionCall = UnOpNode | BinOpNode | SeqNode? | TypeCastNode | NamedValNode
 // TraitImpl = ExtNode
-// TypeNode
 // RetNode
 // ImportNode
 // JumpNode
 // Loop = WhileNode | ForNode
-// MatchNode (pattern -> expr*)
-// DataDeclNode
 // TraitNode

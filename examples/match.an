@@ -1,0 +1,19 @@
+
+"before"
+
+match test "foo" "bar" with
+| 2 3 -> "foo"
+
+| "bar" -> "bar"
+| "block" ->
+    if true then 1 else 2
+
+| "last branch" ->
+    match "nested" with
+    | "hi!" -> "yo"
+
+"after"
+
+match "empty" with
+
+"done"

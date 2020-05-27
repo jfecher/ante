@@ -88,12 +88,15 @@ pub fn or<'a, It, T, F>(functions: It, rule: String) -> impl FnOnce(Lexer<'a>) -
 /// Defines a parser that is just an `or` of other parsers, syntax is BNF:
 /// `choice!(a_b_or_c = a | b | c);`
 macro_rules! choice {
-    ( $name:ident = $($body:tt )|* ) => {
-        fn $name(input: Lexer) -> AstResult {
+    ( $name:ident -> $return_type:ty = $($body:tt )|* ) => {
+        fn $name(input: Lexer) -> error::ParseResult<$return_type> {
             self::or(&[
                 $($body),*
             ], stringify!($name).to_string())(input)
         }
+    };
+    ( $name:ident = $($body:tt )|* ) => {
+        choice!($name -> Ast = $($body)|* );
     };
 }
 
@@ -148,14 +151,47 @@ pub fn pair<'a, F, G, FResult, GResult>(f: F, g: G) -> impl Fn(Lexer<'a>) -> Par
         Ok((input, (fresult, gresult)))
     }
 }
+/// Match f at least once, then match many0(g, f)
+pub fn delimited<'a, F, G, FResult, GResult>(f: F, g: G) -> impl Fn(Lexer<'a>) -> ParseResult<'a, Vec<FResult>> where
+    F: Fn(Lexer<'a>) -> ParseResult<'a, FResult>,
+    G: Fn(Lexer<'a>) -> ParseResult<'a, GResult>
+{
+    move |mut input| {
+        let mut results = Vec::new();
+
+        match f(input.clone()) {
+            Ok((lexer, t)) => {
+                input = lexer;
+                results.push(t);
+            },
+            Err(e) => return Err(e),
+        }
+
+        loop {
+            match g(input.clone()) {
+                Ok((lexer, _)) => input = lexer,
+                Err(ParseError::Fatal(token)) => return Err(ParseError::Fatal(token)),
+                Err(_) => break,
+            }
+            match f(input.clone()) {
+                Ok((lexer, t)) => {
+                    input = lexer;
+                    results.push(t);
+                },
+                Err(ParseError::Fatal(token)) => return Err(ParseError::Fatal(token)),
+                Err(_) => break,
+            }
+        }
+        Ok((input, results))
+    }
+}
 
 /// Runs the parser 0 or more times until it errors, then returns a Vec of the successes.
 /// Will only return Err when a ParseError::Fatal is found
 pub fn many0<'a, T, F>(f: F) -> impl Fn(Lexer<'a>) -> ParseResult<'a, Vec<T>>
     where F: Fn(Lexer<'a>) -> ParseResult<'a, T>
 {
-    move |initial_input| {
-        let mut input = initial_input.clone();
+    move |mut input| {
         let mut results = Vec::new();
         loop {
             match f(input.clone()) {
@@ -224,6 +260,18 @@ pub fn identifier(mut input: Lexer) -> ParseResult<&str> {
         },
         _ => {
             Err(ParseError::Expected(vec![Token::Identifier("")], input.locate()))
+        },
+    }
+}
+
+pub fn typename(mut input: Lexer) -> ParseResult<&str> {
+    match input.next() {
+        Some(Token::TypeName(name)) => Ok((input, name)),
+        Some(Token::Invalid(c)) => {
+            Err(ParseError::Fatal(Box::new(ParseError::LexerError(c, input.locate()))))
+        },
+        _ => {
+            Err(ParseError::Expected(vec![Token::TypeName("")], input.locate()))
         },
     }
 }

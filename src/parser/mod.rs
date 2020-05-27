@@ -8,7 +8,7 @@ pub mod pretty_printer;
 
 use crate::lexer::{token::Token, Lexer};
 use crate::error::location::Locatable;
-use ast::Expr;
+use ast::{ Expr, Type, TypeDefinitionBody };
 use error::ParseError;
 use combinators::*;
 
@@ -69,6 +69,8 @@ parser!(statement_list loc =
 
 choice!(statement = function_definition
                   | variable_definition
+                  | type_definition
+                  | type_alias
                   | expression
 );
 
@@ -85,6 +87,73 @@ parser!(variable_definition loc =
     _ <- expect(Token::Equal);
     body !<- block_or_expression;
     Expr::definition(name, body, loc, ())
+);
+
+parser!(type_definition loc =
+    _ <- expect(Token::Type);
+    name <- typename;
+    args <- many0(identifier);
+    _ <- expect(Token::Equal);
+    body !<- type_definition_body;
+    Expr::type_definition(name, args, body, loc, ())
+);
+
+parser!(type_alias loc =
+    _ <- expect(Token::Type);
+    name <- typename;
+    args <- many0(identifier);
+    _ <- expect(Token::Is);
+    body !<- parse_type;
+    Expr::type_definition(name, args, TypeDefinitionBody::AliasOf(body), loc, ())
+);
+
+choice!(type_definition_body -> ast::TypeDefinitionBody =
+    union_block_body
+    | union_inline_body
+    | struct_block_body
+    | struct_inline_body
+);
+
+parser!(union_variant loc -> Type =
+    _ <- expect(Token::Pipe);
+    variant !<- typename;
+    args !<- many0(parse_type);
+    if args.is_empty() {
+        Type::UserDefinedType(variant, loc)
+    } else {
+        Type::TypeApplication(Box::new(Type::UserDefinedType(variant, loc)), args, loc)
+    }
+);
+
+parser!(union_block_body _ -> ast::TypeDefinitionBody =
+    _ <- expect(Token::Indent);
+    variants <- delimited(union_variant, expect(Token::Newline));
+    _ !<- expect(Token::Unindent);
+    TypeDefinitionBody::UnionOf(variants)
+);
+
+parser!(union_inline_body _ -> ast::TypeDefinitionBody =
+    variants <- many1(union_variant);
+    TypeDefinitionBody::UnionOf(variants)
+);
+
+parser!(struct_field _ -> (&str, Type) =
+    field_name <- identifier;
+    _ !<- expect(Token::Colon);
+    field_type !<- parse_type;
+    (field_name, field_type)
+);
+
+parser!(struct_block_body _ -> ast::TypeDefinitionBody =
+    _ <- expect(Token::Indent);
+    fields <- delimited(struct_field, expect(Token::Newline));
+    _ !<- expect(Token::Unindent);
+    TypeDefinitionBody::StructOf(fields)
+);
+
+parser!(struct_inline_body _ -> ast::TypeDefinitionBody =
+    fields <- delimited(struct_field, expect(Token::Comma));
+    TypeDefinitionBody::StructOf(fields)
 );
 
 choice!(block_or_expression = block
@@ -129,6 +198,7 @@ fn expression_chain(precedence: usize) -> impl Fn(Lexer) -> AstResult {
 choice!(term = function_call
              | if_expr
              | match_expr
+             | type_annotation
              | function_argument
 );
 
@@ -155,6 +225,30 @@ parser!(match_expr loc =
     _ !<- expect(Token::With);
     branches !<- many0(match_branch);
     Expr::match_expr(expression, branches, loc, ())
+);
+
+parser!(type_annotation loc =
+    lhs <- function_argument;
+    _ <- expect(Token::Colon);
+    rhs <- parse_type;
+    Expr::type_annotation(lhs, rhs, loc, ())
+);
+
+choice!(parse_type -> ast::Type =
+    type_application | basic_type
+);
+
+choice!(basic_type -> ast::Type =
+    int_type
+    | float_type
+    | char_type
+    | string_type
+    | boolean_type
+    | unit_type
+    | reference_type
+    | type_variable
+    | user_defined_type
+    | parenthsized_type
 );
 
 parser!(match_branch _ -> (Ast, Ast) =
@@ -232,4 +326,62 @@ parser!(parse_bool loc =
 parser!(unit loc =
     _ <- expect(Token::UnitLiteral);
     Expr::unit_literal(loc, ())
+);
+
+parser!(type_application loc -> Type =
+    type_constructor <- basic_type;
+    args <- many1(basic_type);
+    Type::TypeApplication(Box::new(type_constructor), args, loc)
+);
+
+parser!(int_type loc -> Type =
+    _ <- expect(Token::IntegerType);
+    Type::IntegerType(loc)
+);
+
+parser!(float_type loc -> Type =
+    _ <- expect(Token::FloatType);
+    Type::FloatType(loc)
+);
+
+parser!(char_type loc -> Type =
+    _ <- expect(Token::CharType);
+    Type::CharType(loc)
+);
+
+parser!(string_type loc -> Type =
+    _ <- expect(Token::StringType);
+    Type::StringType(loc)
+);
+
+parser!(boolean_type loc -> Type =
+    _ <- expect(Token::BooleanType);
+    Type::BooleanType(loc)
+);
+
+parser!(unit_type loc -> Type =
+    _ <- expect(Token::UnitType);
+    Type::UnitType(loc)
+);
+
+parser!(reference_type loc -> Type =
+    _ <- expect(Token::Ref);
+    Type::ReferenceType(loc)
+);
+
+parser!(type_variable loc -> Type =
+    name <- identifier;
+    Type::TypeVariable(name, loc)
+);
+
+parser!(user_defined_type loc -> Type =
+    name <- typename;
+    Type::UserDefinedType(name, loc)
+);
+
+parser!(parenthsized_type _ -> Type =
+    _ <- expect(Token::ParenthesisLeft);
+    inner_type <- parse_type;
+    _ <- expect(Token::ParenthesisRight);
+    inner_type
 );

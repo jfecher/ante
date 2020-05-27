@@ -38,6 +38,11 @@ Future goals still unimplemented in the C++ compiler:
 
 - [ ] Refinement Types
 - [ ] More general trait support (C++ compiler has trait inference bugs)
-- [ ] Commit to having deterministic destruction w/ destructors, get rid of plans for optional GC as it would likely poison any libraries it touches.
+- [ ] Commit to having deterministic destruction w/ destructors
+    - get rid of plans for optional GC as it would likely poison any libraries it touches.
+
+Nice to have but not currently required:
+- [ ] Possibly re-add UFCS since it reduces the need to import everything.
+    - need to workout how this interacts when the types aren't known
 - [ ] Reasonable C/C++ interop with clang api (stretch goal)
 - [ ] Build system (stretch goal)

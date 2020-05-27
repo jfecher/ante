@@ -33,6 +33,7 @@ impl<'a> Lexer<'a> {
             ("int", Token::IntegerType),
             ("float", Token::FloatType),
             ("char", Token::CharType),
+            ("string", Token::StringType),
             ("bool", Token::BooleanType),
             ("unit", Token::UnitType),
             ("ref", Token::Ref),

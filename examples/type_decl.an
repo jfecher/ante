@@ -1,0 +1,15 @@
+
+type Struct1 = a:int, b:float, c:string
+
+type Struct2 t =
+    a: Thingy
+    b: Generic t Thingy
+
+type Union1 a b = | Variant1 | Variant2
+
+type Maybe a =
+   | Some a
+   | None
+
+
+type UniquePtr a is ref a

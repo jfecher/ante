@@ -87,3 +87,54 @@ impl<'a, T> Display for ast::Match<'a, T> {
         write!(f, ")")
     }
 }
+
+impl<'a> Display for ast::Type<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        use ast::Type::*;
+        match self {
+            IntegerType(_) => write!(f, "int"),
+            FloatType(_) => write!(f, "float"),
+            CharType(_) => write!(f, "char"),
+            StringType(_) => write!(f, "string"),
+            BooleanType(_) => write!(f, "bool"),
+            UnitType(_) => write!(f, "unit"),
+            ReferenceType(_) => write!(f, "ref"),
+            TypeVariable(name, _) => write!(f, "{}", name),
+            UserDefinedType(name, _) => write!(f, "{}", name),
+            TypeApplication(constructor, args, _) => {
+                let args = args.iter().map(|x| format!("{}", x)).collect::<Vec<_>>().join(" ");
+                write!(f, "({} {})", constructor, args)
+            },
+        }
+    }
+}
+
+impl<'a> Display for ast::TypeDefinitionBody<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        use ast::TypeDefinitionBody::*;
+        match self {
+            UnionOf(types) => {
+                let types = types.iter().map(|ty| format!("{}", ty)).collect::<Vec<_>>();
+                write!(f, "{}", types.join(" | "))
+            },
+            StructOf(types) => {
+                let types = types.iter().map(|(name, ty)| format!("{}: {}", name, ty));
+                write!(f, "{}", types.collect::<Vec<_>>().join(", "))
+            },
+            AliasOf(alias) => write!(f, "{}", alias),
+        }
+    }
+}
+
+impl<'a, T> Display for ast::TypeDefinition<'a, T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let args = self.args.iter().map(|s| format!("{} ", s)).collect::<Vec<_>>().join("");
+        write!(f, "(type {} {}= {})", self.name, args, self.definition)
+    }
+}
+
+impl<'a, T> Display for ast::TypeAnnotation<'a, T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "(: {} {})", self.lhs, self.rhs)
+    }
+}
