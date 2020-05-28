@@ -12,6 +12,9 @@ pub enum LexerError {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Token<'a> {
+    // Lexer sends an end of input token before stopping so we get a proper error location when
+    // reporting parsing errors that expect a token but found the end of a file instead.
+    EndOfInput, 
     Invalid(LexerError),
     Newline,
     Indent,
@@ -120,6 +123,7 @@ impl<'a> Display for Token<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use Token::*;
         match self {
+            EndOfInput => write!(f, "end of input"),
             Invalid(error) => write!(f, "{:?}", error),
             Newline => write!(f, "a newline"),
             Indent => write!(f, "an indent"),

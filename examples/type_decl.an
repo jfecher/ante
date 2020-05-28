@@ -13,3 +13,5 @@ type Maybe a =
 
 
 type UniquePtr a is ref a
+
+t = 3 : int

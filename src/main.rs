@@ -42,12 +42,12 @@ fn main() -> Result<(), Error> {
     reader.read_to_string(&mut contents)?;
 
     let keywords = lexer::Lexer::get_keywords();
-    let tokens = lexer::Lexer::new(filename, &contents, &keywords);
+    let tokens = lexer::Lexer::new(filename, &contents, &keywords).collect::<Vec<_>>();
 
     if args.is_present("lex") {
-        tokens.for_each(|token| println!("{}", token));
+        tokens.into_iter().for_each(|(token, _)| println!("{}", token));
     } else if args.is_present("parse") {
-        let result = parser::parse(tokens);
+        let result = parser::parse(&tokens);
         match result {
             Ok(tree) => println!("{}", tree),
             Err(e) => println!("{}", e),

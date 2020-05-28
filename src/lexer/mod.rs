@@ -27,6 +27,8 @@ impl<'a> Locatable<'a> for Lexer<'a> {
     }
 }
 
+type IterElem<'a> = Option<(Token<'a>, Location<'a>)>;
+
 impl<'a> Lexer<'a> {
     pub fn get_keywords() -> HashMap<&'a str, Token<'a>> {
         vec![
@@ -101,12 +103,12 @@ impl<'a> Lexer<'a> {
         ret
     }
 
-    fn advance_with(&mut self, token: Token<'a>) -> Option<Token<'a>> {
+    fn advance_with(&mut self, token: Token<'a>) -> IterElem<'a> {
         self.advance();
-        Some(token)
+        Some((token, self.locate()))
     }
 
-    fn advance2_with(&mut self, token: Token<'a>) -> Option<Token<'a>> {
+    fn advance2_with(&mut self, token: Token<'a>) -> IterElem<'a> {
         self.advance();
         self.advance_with(token)
     }
@@ -124,7 +126,7 @@ impl<'a> Lexer<'a> {
         self.get_slice_containing_current_token()
     }
 
-    fn expect(&mut self, expected: char, token: Token<'a>) -> Option<Token<'a>> {
+    fn expect(&mut self, expected: char, token: Token<'a>) -> IterElem<'a> {
         if self.current == expected {
             self.advance_with(token)
         } else {
@@ -132,7 +134,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn lex_number(&mut self) -> Option<Token<'a>> {
+    fn lex_number(&mut self) -> IterElem<'a> {
         let integer_string = self.advance_while(|current, _| current.is_digit(10));
 
         if self.current == '.' && self.next.is_digit(10) {
@@ -140,28 +142,28 @@ impl<'a> Lexer<'a> {
             self.advance_while(|current, _| current.is_digit(10));
             let float_string = self.get_slice_containing_current_token();
             let float = float_string.parse().unwrap();
-            Some(Token::FloatLiteral(float))
+            Some((Token::FloatLiteral(float), self.locate()))
         } else {
             let integer = integer_string.parse().unwrap();
-            Some(Token::IntegerLiteral(integer))
+            Some((Token::IntegerLiteral(integer), self.locate()))
         }
     }
 
-    fn lex_alphanumeric(&mut self) -> Option<Token<'a>> {
+    fn lex_alphanumeric(&mut self) -> IterElem<'a> {
         let is_type = self.current.is_uppercase();
         let word = self.advance_while(|current, _| current.is_alphanumeric());
 
         if is_type {
-            Some(Token::TypeName(word))
+            Some((Token::TypeName(word), self.locate()))
         } else {
             match self.keywords.get(word) {
-                Some(keyword) => Some(keyword.clone()),
-                None => Some(Token::Identifier(word)),
+                Some(keyword) => Some((keyword.clone(), self.locate())),
+                None => Some((Token::Identifier(word), self.locate())),
             }
         }
     }
 
-    fn lex_string(&mut self) -> Option<Token<'a>> {
+    fn lex_string(&mut self) -> IterElem<'a> {
         self.advance();
         let mut contents = String::new();
         while self.current != '"' {
@@ -187,7 +189,7 @@ impl<'a> Lexer<'a> {
         self.expect('"', Token::StringLiteral(contents))
     }
 
-    fn lex_char_literal(&mut self) -> Option<Token<'a>> {
+    fn lex_char_literal(&mut self) -> IterElem<'a> {
         self.advance();
         let contents = if self.current == '\\' {
             self.advance();
@@ -210,7 +212,7 @@ impl<'a> Lexer<'a> {
         self.expect('\'', Token::CharLiteral(contents))
     }
 
-    fn lex_newline(&mut self) -> Option<Token<'a>> {
+    fn lex_newline(&mut self) -> IterElem<'a> {
         self.advance();
 
         // Must advance start_position otherwise the slice returned by advance_while
@@ -228,27 +230,27 @@ impl<'a> Lexer<'a> {
             ('/', '*') => self.lex_multiline_comment(),
             _ if new_indent > self.current_indent_level => self.lex_indent(new_indent),
             _ if new_indent < self.current_indent_level => self.lex_unindent(new_indent),
-            _ => Some(Token::Newline)
+            _ => Some((Token::Newline, self.locate())),
         }
     }
 
-    fn lex_indent(&mut self, new_indent: usize) -> Option<Token<'a>> {
+    fn lex_indent(&mut self, new_indent: usize) -> IterElem<'a> {
         if new_indent == self.current_indent_level + 1 {
             self.indent_levels.push(new_indent);
             self.current_indent_level = new_indent;
-            Some(Token::Invalid(LexerError::IndentChangeTooSmall))
+            Some((Token::Invalid(LexerError::IndentChangeTooSmall), self.locate()))
         } else {
             debug_assert!(new_indent > self.current_indent_level);
             self.indent_levels.push(new_indent);
             self.current_indent_level = new_indent;
-            Some(Token::Indent)
+            Some((Token::Indent, self.locate()))
         }
     }
 
-    fn lex_unindent(&mut self, new_indent: usize) -> Option<Token<'a>> {
+    fn lex_unindent(&mut self, new_indent: usize) -> IterElem<'a> {
         if self.current_indent_level == new_indent + 1 {
             self.current_indent_level = new_indent;
-            Some(Token::Invalid(LexerError::IndentChangeTooSmall))
+            Some((Token::Invalid(LexerError::IndentChangeTooSmall), self.locate()))
         } else {
             debug_assert!(new_indent < self.current_indent_level);
             self.current_indent_level = new_indent;
@@ -256,12 +258,12 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn lex_singleline_comment(&mut self) -> Option<Token<'a>> {
+    fn lex_singleline_comment(&mut self) -> IterElem<'a> {
         self.advance_while(|current, _| current != '\n');
         self.next()
     }
 
-    fn lex_multiline_comment(&mut self) -> Option<Token<'a>> {
+    fn lex_multiline_comment(&mut self) -> IterElem<'a> {
         self.advance();
         self.advance();
         let mut comment_level = 1;
@@ -278,7 +280,7 @@ impl<'a> Lexer<'a> {
 }
 
 impl<'a> Iterator for Lexer<'a> {
-    type Item = Token<'a>;
+    type Item = (Token<'a>, Location<'a>);
 
     fn next(&mut self) -> Option<Self::Item> {
         let last_indent = self.indent_levels[self.indent_levels.len() - 1];
@@ -287,20 +289,26 @@ impl<'a> Iterator for Lexer<'a> {
         match (self.current, self.next) {
             _ if self.return_newline => {
                 self.return_newline = false;
-                Some(Token::Newline)
+                Some((Token::Newline, self.locate()))
             },
             _ if self.current_indent_level < last_indent => {
                 self.indent_levels.pop();
                 let last_indent = self.indent_levels[self.indent_levels.len() - 1];
                 if self.current_indent_level > last_indent {
                     self.current_indent_level = last_indent;
-                    Some(Token::Invalid(LexerError::UnindentToNewLevel))
+                    Some((Token::Invalid(LexerError::UnindentToNewLevel), self.locate()))
                 } else {
                     self.return_newline = true;
-                    Some(Token::Unindent)
+                    Some((Token::Unindent, self.locate()))
                 }
             },
-            ('\0', _) => None,
+            ('\0', _) => {
+                if self.current_position.index > self.file_contents.len() {
+                    None
+                } else {
+                    self.advance_with(Token::EndOfInput)
+                }
+            },
             ('\n', _) => self.lex_newline(),
             (c, _) if c.is_whitespace() => { self.advance(); self.next() }
             (c, _) if c.is_digit(10) => self.lex_number(),

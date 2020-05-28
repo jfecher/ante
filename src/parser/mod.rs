@@ -6,7 +6,7 @@ mod error;
 pub mod ast;
 pub mod pretty_printer;
 
-use crate::lexer::{token::Token, Lexer};
+use crate::lexer::token::Token;
 use crate::error::location::Locatable;
 use ast::{ Expr, Type, TypeDefinitionBody };
 use error::ParseError;
@@ -34,22 +34,15 @@ const OPERATOR_PRECEDENCE: [&[Token]; 15] = [
     &[Token::As],
 ];
 
-pub fn parse(lexer: Lexer) -> Result<Ast, ParseError> {
-    let (lexer, _) = maybe_newline(lexer)?;
-    let (lexer, ast) = statement_list(lexer)?;
-    let (mut lexer, _) = maybe_newline(lexer)?;
-
-    if let Some(token) = lexer.next() {
-        // unparsed input
-        println!("Partial ast = {}", ast);
-        println!("Failed on token: {:#?}", token);
-        Err(ParseError::Fatal(Box::new(ParseError::InRule("statement".to_string(), lexer.locate()))))
-    } else {
-        Ok(ast)
-    }
+pub fn parse(input: Input) -> Result<Ast, ParseError> {
+    let (input, _, _) = maybe_newline(input)?;
+    let (input, ast, _) = statement_list(input)?;
+    let (input, _, _) = maybe_newline(input)?;
+    let _ = expect(Token::EndOfInput)(input)?;
+    Ok(ast)
 }
 
-fn maybe_newline(input: Lexer) -> error::ParseResult<Option<Token>> {
+fn maybe_newline(input: Input) -> error::ParseResult<Option<Token>> {
     maybe(expect(Token::Newline))(input)
 }
 
@@ -125,33 +118,33 @@ parser!(union_variant loc -> Type =
     }
 );
 
-parser!(union_block_body _ -> ast::TypeDefinitionBody =
+parser!(union_block_body _loc -> ast::TypeDefinitionBody =
     _ <- expect(Token::Indent);
     variants <- delimited(union_variant, expect(Token::Newline));
     _ !<- expect(Token::Unindent);
     TypeDefinitionBody::UnionOf(variants)
 );
 
-parser!(union_inline_body _ -> ast::TypeDefinitionBody =
+parser!(union_inline_body _loc -> ast::TypeDefinitionBody =
     variants <- many1(union_variant);
     TypeDefinitionBody::UnionOf(variants)
 );
 
-parser!(struct_field _ -> (&str, Type) =
+parser!(struct_field _loc -> (&str, Type) =
     field_name <- identifier;
     _ !<- expect(Token::Colon);
     field_type !<- parse_type;
     (field_name, field_type)
 );
 
-parser!(struct_block_body _ -> ast::TypeDefinitionBody =
+parser!(struct_block_body _loc -> ast::TypeDefinitionBody =
     _ <- expect(Token::Indent);
     fields <- delimited(struct_field, expect(Token::Newline));
     _ !<- expect(Token::Unindent);
     TypeDefinitionBody::StructOf(fields)
 );
 
-parser!(struct_inline_body _ -> ast::TypeDefinitionBody =
+parser!(struct_inline_body _loc -> ast::TypeDefinitionBody =
     fields <- delimited(struct_field, expect(Token::Comma));
     TypeDefinitionBody::StructOf(fields)
 );
@@ -160,7 +153,7 @@ choice!(block_or_expression = block
                             | expression
 );
 
-parser!(block _ =
+parser!(block _loc =
     _ <- expect(Token::Indent);
     expr !<- statement_list;
     _ !<- maybe_newline;
@@ -168,16 +161,16 @@ parser!(block _ =
     expr
 );
 
-fn expression(input: Lexer) -> AstResult {
+fn expression(input: Input) -> AstResult {
     expression_chain(0)(input)
 }
 
-fn expression_chain(precedence: usize) -> impl Fn(Lexer) -> AstResult {
+fn expression_chain(precedence: usize) -> impl Fn(Input) -> AstResult {
     move |input| {
         if precedence < OPERATOR_PRECEDENCE.len() - 1 {
-            let mut location = input.locate();
-            let (input, lhs) = expression_chain(precedence + 1)(input)?;
-            let (input, rhs) = many0(pair(
+            let mut location = input[0].1;
+            let (input, lhs, _) = expression_chain(precedence + 1)(input)?;
+            let (input, rhs, _) = many0(pair(
                 expect_any(OPERATOR_PRECEDENCE[precedence]),
                 no_backtracking(expression_chain(precedence + 1))
             ))(input)?;
@@ -188,7 +181,7 @@ fn expression_chain(precedence: usize) -> impl Fn(Lexer) -> AstResult {
                 location = location.union(rhs.locate());
                 expr = Expr::function_call(Expr::operator(op, location, ()), vec![expr, rhs], location, ());
             }
-            Ok((input, expr))
+            Ok((input, expr, location))
         } else {
             term(input)
         }
@@ -251,7 +244,7 @@ choice!(basic_type -> ast::Type =
     | parenthsized_type
 );
 
-parser!(match_branch _ -> (Ast, Ast) =
+parser!(match_branch _loc -> (Ast, Ast) =
     _ <- maybe_newline;
     _ <- expect(Token::Pipe);
     pattern !<- expression;
@@ -260,7 +253,7 @@ parser!(match_branch _ -> (Ast, Ast) =
     (pattern, branch)
 );
 
-parser!(else_expr _ =
+parser!(else_expr _loc =
     _ <- maybe_newline;
     _ <- expect(Token::Else);
     otherwise !<- block_or_expression;
@@ -286,7 +279,7 @@ parser!(lambda loc =
     Expr::lambda(args, body, loc, ())
 );
 
-parser!(parenthsized_expression _ =
+parser!(parenthsized_expression _loc =
     _ <- expect(Token::ParenthesisLeft);
     expr <- expression;
     _ <- expect(Token::ParenthesisRight);
@@ -379,7 +372,7 @@ parser!(user_defined_type loc -> Type =
     Type::UserDefinedType(name, loc)
 );
 
-parser!(parenthsized_type _ -> Type =
+parser!(parenthsized_type _loc -> Type =
     _ <- expect(Token::ParenthesisLeft);
     inner_type <- parse_type;
     _ <- expect(Token::ParenthesisRight);

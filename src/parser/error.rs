@@ -1,6 +1,6 @@
-use crate::lexer::Lexer;
 use crate::lexer::token::{ Token, LexerError };
 use crate::error::location::{ Location, Locatable };
+use super::combinators::Input;
 use std::fmt::Display;
 
 #[derive(Debug)]
@@ -11,7 +11,7 @@ pub enum ParseError<'a> {
     LexerError(LexerError, Location<'a>),
 }
 
-pub type ParseResult<'a, T> = Result<(Lexer<'a>, T), ParseError<'a>>;
+pub type ParseResult<'a, T> = Result<(Input<'a>, T, Location<'a>), ParseError<'a>>;
 
 impl<'a> Locatable<'a> for ParseError<'a> {
     fn locate(&self) -> Location<'a> {
