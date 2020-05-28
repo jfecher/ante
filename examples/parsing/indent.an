@@ -1,6 +1,6 @@
 
 foo a b =
-    \c d =
+    \c d.
         3
 
 // These should all result in the same parse tree

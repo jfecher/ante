@@ -21,6 +21,10 @@ impl<'a, T> Display for ast::Literal<'a, T> {
     }
 }
 
+fn join_with<T: Display>(vec: &Vec<T>, delimiter: &str) -> String {
+    vec.iter().map(|t| format!("{}", t)).collect::<Vec<_>>().join(delimiter)
+}
+
 impl<'a, T> Display for ast::Variable<'a, T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         use ast::Variable::*;
@@ -37,7 +41,7 @@ impl<'a, T> Display for ast::Lambda<'a, T> {
         for arg in self.args.iter() {
             write!(f, " {}", arg)?;
         }
-        write!(f, " = {})", self.body)
+        write!(f, " . {})", self.body)
     }
 }
 
@@ -46,18 +50,10 @@ impl<'a, T> Display for ast::FunctionCall<'a, T> {
         use ast::{Expr::Variable, Variable::Operator};
         use crate::lexer::token::Token::Semicolon;
 
-        let args = self.args.iter()
-            .map(|arg| format!("{}", arg))
-            .collect::<Vec<_>>();
-
         // pretty-print calls to ';' on separate lines
         match self.function.as_ref() {
-            Variable(Operator(Semicolon, _, _)) => {
-                write!(f, "{}", args.join(";\n"))
-            },
-            _ => {
-                write!(f, "({} {})", self.function, args.join(" "))
-            },
+            Variable(Operator(Semicolon, _, _)) => write!(f, "{}", join_with(&self.args, ";\n")),
+            _ => write!(f, "({} {})", self.function, join_with(&self.args, " ")),
         }
     }
 }
@@ -101,9 +97,11 @@ impl<'a> Display for ast::Type<'a> {
             ReferenceType(_) => write!(f, "ref"),
             TypeVariable(name, _) => write!(f, "{}", name),
             UserDefinedType(name, _) => write!(f, "{}", name),
+            FunctionType(params, return_type, _) => {
+                write!(f, "({} -> {})", join_with(params, " "), return_type)
+            },
             TypeApplication(constructor, args, _) => {
-                let args = args.iter().map(|x| format!("{}", x)).collect::<Vec<_>>().join(" ");
-                write!(f, "({} {})", constructor, args)
+                write!(f, "({} {})", constructor, join_with(args, " "))
             },
         }
     }
@@ -114,8 +112,7 @@ impl<'a> Display for ast::TypeDefinitionBody<'a> {
         use ast::TypeDefinitionBody::*;
         match self {
             UnionOf(types) => {
-                let types = types.iter().map(|ty| format!("{}", ty)).collect::<Vec<_>>();
-                write!(f, "{}", types.join(" | "))
+                write!(f, "{}", join_with(types, " | "))
             },
             StructOf(types) => {
                 let types = types.iter().map(|(name, ty)| format!("{}: {}", name, ty));
@@ -128,7 +125,7 @@ impl<'a> Display for ast::TypeDefinitionBody<'a> {
 
 impl<'a, T> Display for ast::TypeDefinition<'a, T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let args = self.args.iter().map(|s| format!("{} ", s)).collect::<Vec<_>>().join("");
+        let args = join_with(&self.args, "");
         write!(f, "(type {} {}= {})", self.name, args, self.definition)
     }
 }
@@ -136,5 +133,29 @@ impl<'a, T> Display for ast::TypeDefinition<'a, T> {
 impl<'a, T> Display for ast::TypeAnnotation<'a, T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "(: {} {})", self.lhs, self.rhs)
+    }
+}
+
+impl<'a, T> Display for ast::Import<'a, T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "(import {})", join_with(&self.path, "."))
+    }
+}
+
+impl<'a, T> Display for ast::TraitDefinition<'a, T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "(trait {} {} ", self.name, join_with(&self.args, " "))?;
+        if !self.fundeps.is_empty() {
+            write!(f, "-> {} ", join_with(&self.fundeps, " "))?;
+        }
+        write!(f, "=\n    {}\n)", join_with(&self.declarations, "\n    "))
+    }
+}
+
+impl<'a, T> Display for ast::TraitImpl<'a, T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let args = join_with(&self.trait_args, " ");
+        let definitions = join_with(&self.definitions, "\n    ");
+        write!(f, "(impl {} {}\n    {}\n)", self.trait_name, args, definitions)
     }
 }

@@ -69,6 +69,7 @@ pub enum Type<'a> {
     BooleanType(Location<'a>),
     UnitType(Location<'a>),
     ReferenceType(Location<'a>),
+    FunctionType(Vec<Type<'a>>, Box<Type<'a>>, Location<'a>),
     TypeVariable(&'a str, Location<'a>),
     UserDefinedType(&'a str, Location<'a>),
     TypeApplication(Box<Type<'a>>, Vec<Type<'a>>, Location<'a>),
@@ -99,6 +100,37 @@ pub struct TypeAnnotation<'a, T> {
 }
 
 #[derive(Debug)]
+pub struct Import<'a, T> {
+    pub path: Vec<&'a str>,
+    pub location: Location<'a>,
+    pub data: T,
+}
+
+#[derive(Debug)]
+pub struct TraitDefinition<'a, T> {
+    pub name: &'a str,
+    pub args: Vec<&'a str>,
+    pub fundeps: Vec<&'a str>,
+
+    // Storing function declarations as TypeAnnotations here
+    // throws away any names given to parameters. In practice
+    // this shouldn't matter until refinement types are implemented
+    // that can depend upon these names.
+    pub declarations: Vec<TypeAnnotation<'a, T>>,
+    pub location: Location<'a>,
+    pub data: T,
+}
+
+#[derive(Debug)]
+pub struct TraitImpl<'a, T> {
+    pub trait_name: &'a str,
+    pub trait_args: Vec<Type<'a>>,
+    pub definitions: Vec<Definition<'a, T>>,
+    pub location: Location<'a>,
+    pub data: T,
+}
+
+#[derive(Debug)]
 pub enum Expr<'a, T> {
     Literal(Literal<'a, T>),
     Variable(Variable<'a, T>),
@@ -109,6 +141,9 @@ pub enum Expr<'a, T> {
     Match(Match<'a, T>),
     TypeDefinition(TypeDefinition<'a, T>),
     TypeAnnotation(TypeAnnotation<'a, T>),
+    Import(Import<'a, T>),
+    TraitDefinition(TraitDefinition<'a, T>),
+    TraitImpl(TraitImpl<'a, T>),
 }
 
 impl<'a, T> Expr<'a, T> {
@@ -173,20 +208,35 @@ impl<'a, T> Expr<'a, T> {
     pub fn type_annotation(lhs: Expr<'a, T>, rhs: Type<'a>, location: Location<'a>, data: T) -> Expr<'a, T> {
         Expr::TypeAnnotation(TypeAnnotation { lhs: Box::new(lhs), rhs, location, data })
     }
+
+    pub fn import(path: Vec<&'a str>, location: Location<'a>, data: T) -> Expr<'a, T> {
+        Expr::Import(Import { path, location, data })
+    }
+
+    pub fn trait_definition(name: &'a str, args: Vec<&'a str>, fundeps: Vec<&'a str>, declarations: Vec<TypeAnnotation<'a, T>>, location: Location<'a>, data: T) -> Expr<'a, T> {
+        Expr::TraitDefinition(TraitDefinition { name, args, fundeps, declarations, location, data })
+    }
+
+    pub fn trait_impl(trait_name: &'a str, trait_args: Vec<Type<'a>>, definitions: Vec<Definition<'a, T>>, location: Location<'a>, data: T) -> Expr<'a, T> {
+        Expr::TraitImpl(TraitImpl { trait_name, trait_args, definitions, location, data })
+    }
 }
 
 macro_rules! dispatch_on_expr {
     ( $expr_name:expr, $function:expr $(, $($args:expr),* )? ) => ({
         match $expr_name {
-            Expr::Literal(inner) =>        $function(inner $(, $($args),* )? ),
-            Expr::Variable(inner) =>       $function(inner $(, $($args),* )? ),
-            Expr::Lambda(inner) =>         $function(inner $(, $($args),* )? ),
-            Expr::FunctionCall(inner) =>   $function(inner $(, $($args),* )? ),
-            Expr::Definition(inner) =>     $function(inner $(, $($args),* )? ),
-            Expr::If(inner) =>             $function(inner $(, $($args),* )? ),
-            Expr::Match(inner) =>          $function(inner $(, $($args),* )? ),
-            Expr::TypeDefinition(inner) => $function(inner $(, $($args),* )? ),
-            Expr::TypeAnnotation(inner) => $function(inner $(, $($args),* )? ),
+            Expr::Literal(inner) =>         $function(inner $(, $($args),* )? ),
+            Expr::Variable(inner) =>        $function(inner $(, $($args),* )? ),
+            Expr::Lambda(inner) =>          $function(inner $(, $($args),* )? ),
+            Expr::FunctionCall(inner) =>    $function(inner $(, $($args),* )? ),
+            Expr::Definition(inner) =>      $function(inner $(, $($args),* )? ),
+            Expr::If(inner) =>              $function(inner $(, $($args),* )? ),
+            Expr::Match(inner) =>           $function(inner $(, $($args),* )? ),
+            Expr::TypeDefinition(inner) =>  $function(inner $(, $($args),* )? ),
+            Expr::TypeAnnotation(inner) =>  $function(inner $(, $($args),* )? ),
+            Expr::Import(inner) =>          $function(inner $(, $($args),* )? ),
+            Expr::TraitDefinition(inner) => $function(inner $(, $($args),* )? ),
+            Expr::TraitImpl(inner) =>       $function(inner $(, $($args),* )? ),
         }
     });
 }
@@ -236,13 +286,14 @@ impl_locatable_for!(If);
 impl_locatable_for!(Match);
 impl_locatable_for!(TypeDefinition);
 impl_locatable_for!(TypeAnnotation);
+impl_locatable_for!(Import);
+impl_locatable_for!(TraitDefinition);
+impl_locatable_for!(TraitImpl);
 
 // TODO:
 // Module = RootNode | ExtNode
 // Collection = ArrayNode | TupleNode
-// TraitImpl = ExtNode
 // RetNode
-// ImportNode
 // JumpNode
 // Loop = WhileNode | ForNode
 // TraitNode

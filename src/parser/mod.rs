@@ -60,26 +60,45 @@ parser!(statement_list loc =
     }
 );
 
-choice!(statement = function_definition
-                  | variable_definition
+choice!(statement = definition
                   | type_definition
                   | type_alias
+                  | import
+                  | trait_definition
+                  | trait_impl
                   | expression
 );
 
-parser!(function_definition loc =
+fn definition(input: Input) -> AstResult {
+    raw_definition(input).map(|(input, definition, location)|
+            (input, Expr::Definition(definition), location))
+}
+
+choice!(raw_definition -> ast::Definition<()> = function_definition | variable_definition);
+
+parser!(function_definition location -> ast::Definition<()> =
     name <- variable;
     args <- many1(variable);
     _ <- expect(Token::Equal);
     body !<- block_or_expression;
-    Expr::definition(name, Expr::lambda(args, body, loc, ()), loc, ())
+    ast::Definition {
+        pattern: Box::new(name),
+        expr: Box::new(Expr::lambda(args, body, location, ())),
+        location,
+        data: ()
+    }
 );
 
-parser!(variable_definition loc =
+parser!(variable_definition location -> ast::Definition<()> =
     name <- variable;
     _ <- expect(Token::Equal);
-    body !<- block_or_expression;
-    Expr::definition(name, body, loc, ())
+    expr !<- block_or_expression;
+    ast::Definition {
+        pattern: Box::new(name),
+        expr: Box::new(expr),
+        location,
+        data: ()
+    }
 );
 
 parser!(type_definition loc =
@@ -147,6 +166,41 @@ parser!(struct_block_body _loc -> ast::TypeDefinitionBody =
 parser!(struct_inline_body _loc -> ast::TypeDefinitionBody =
     fields <- delimited(struct_field, expect(Token::Comma));
     TypeDefinitionBody::StructOf(fields)
+);
+
+parser!(import loc =
+    _ <- expect(Token::Import);
+    path <- delimited(typename, expect(Token::MemberAccess));
+    Expr::import(path, loc, ())
+);
+
+parser!(trait_definition loc =
+    _ <- expect(Token::Trait);
+    name !<- typename;
+    args !<- many1(identifier);
+    _ !<- maybe(expect(Token::RightArrow));
+    fundeps !<- many0(identifier);
+    _ !<- expect(Token::Indent);
+    body !<- delimited(trait_function_definition, expect(Token::Newline));
+    _ !<- expect(Token::Unindent);
+    Expr::trait_definition(name, args, fundeps, body, loc, ())
+);
+
+parser!(trait_function_definition loc -> ast::TypeAnnotation<()> =
+    lhs <- function_argument;
+    _ <- expect(Token::Colon);
+    rhs <- parse_type;
+    ast::TypeAnnotation { lhs: Box::new(lhs), rhs, location: loc, data: () }
+);
+
+parser!(trait_impl loc =
+    _ <- expect(Token::Impl);
+    name !<- typename;
+    args !<- many1(parse_type);
+    _ !<- expect(Token::Indent);
+    definitions !<- delimited(raw_definition, expect(Token::Newline));
+    _ !<- expect(Token::Unindent);
+    Expr::trait_impl(name, args, definitions, loc, ())
 );
 
 choice!(block_or_expression = block
@@ -228,7 +282,9 @@ parser!(type_annotation loc =
 );
 
 choice!(parse_type -> ast::Type =
-    type_application | basic_type
+    function_type
+    | type_application
+    | basic_type
 );
 
 choice!(basic_type -> ast::Type =
@@ -274,7 +330,7 @@ choice!(function_argument = variable
 parser!(lambda loc =
     _ <- expect(Token::Backslash);
     args <- many1(variable);
-    _ <- expect(Token::Equal);
+    _ <- expect(Token::MemberAccess);
     body <- block_or_expression;
     Expr::lambda(args, body, loc, ())
 );
@@ -319,6 +375,13 @@ parser!(parse_bool loc =
 parser!(unit loc =
     _ <- expect(Token::UnitLiteral);
     Expr::unit_literal(loc, ())
+);
+
+parser!(function_type loc -> Type =
+    args <- many1(basic_type);
+    _ <- expect(Token::RightArrow);
+    return_type <- parse_type;
+    Type::FunctionType(args, Box::new(return_type), loc)
 );
 
 parser!(type_application loc -> Type =
