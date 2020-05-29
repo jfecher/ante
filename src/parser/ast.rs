@@ -189,10 +189,6 @@ impl<'a, T> Expr<'a, T> {
         Expr::FunctionCall(FunctionCall { function: Box::new(function), args, location, data })
     }
 
-    pub fn definition(pattern: Expr<'a, T>, expr: Expr<'a, T>, location: Location<'a>, data: T) -> Expr<'a, T> {
-        Expr::Definition(Definition { pattern: Box::new(pattern), expr: Box::new(expr), location, data })
-    }
-
     pub fn if_expr(condition: Expr<'a, T>, then: Expr<'a, T>, otherwise: Option<Expr<'a, T>>, location: Location<'a>, data: T) -> Expr<'a, T> {
         Expr::If(If { condition: Box::new(condition), then: Box::new(then), otherwise: otherwise.map(Box::new), location, data })
     }
@@ -296,4 +292,3 @@ impl_locatable_for!(TraitImpl);
 // RetNode
 // JumpNode
 // Loop = WhileNode | ForNode
-// TraitNode

@@ -91,40 +91,14 @@ pub fn or<'a, It, T, F>(functions: It, rule: String) -> impl FnOnce(Input<'a>) -
     }
 }
 
-/// Defines a parser that is just an `or` of other parsers, syntax is BNF:
-/// `choice!(a_b_or_c = a | b | c);`
-macro_rules! choice {
-    ( $name:ident -> $return_type:ty = $($body:tt )|* ) => {
-        fn $name(input: crate::parser::combinators::Input) -> error::ParseResult<$return_type> {
-            self::or(&[
-                $($body),*
-            ], stringify!($name).to_string())(input)
-        }
-    };
-    ( $name:ident = $($body:tt )|* ) => {
-        choice!($name -> Ast = $($body)|* );
-    };
-}
-
 /// Fail if the next token in the stream is not the given expected token
-pub fn expect<'a>(expected: Token<'a>) -> impl Fn(Input<'a>) -> ParseResult<'a, Token<'a>> {
+pub fn expect<'a>(expected: Token<'a>) -> impl Fn(Input<'a>) -> ParseResult<'a, Token> {
     use std::mem::discriminant;
     move |input| {
         if discriminant(&expected) == discriminant(&input[0].0) {
             Ok((&input[1..], input[0].0.clone(), input[0].1))
         } else {
             Err(ParseError::Expected(vec![expected.clone()], input[0].1))
-        }
-    }
-}
-
-/// Fail if the next token in the stream is not in the passed in array of expected tokens
-pub fn expect_any<'a>(expected: &'a [Token<'a>]) -> impl Fn(Input<'a>) -> ParseResult<'a, Token<'a>> {
-    move |input| {
-        if expected.into_iter().find(|tok| **tok == input[0].0).is_some() {
-            Ok((&input[1..], input[0].0.clone(), input[0].1))
-        } else {
-            Err(ParseError::Expected(expected.iter().cloned().collect(), input[0].1))
         }
     }
 }

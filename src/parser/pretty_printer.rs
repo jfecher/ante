@@ -21,7 +21,7 @@ impl<'a, T> Display for ast::Literal<'a, T> {
     }
 }
 
-fn join_with<T: Display>(vec: &Vec<T>, delimiter: &str) -> String {
+fn join_with<T: Display>(vec: &[T], delimiter: &str) -> String {
     vec.iter().map(|t| format!("{}", t)).collect::<Vec<_>>().join(delimiter)
 }
 

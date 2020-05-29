@@ -7,32 +7,12 @@ pub mod ast;
 pub mod pretty_printer;
 
 use crate::lexer::token::Token;
-use crate::error::location::Locatable;
 use ast::{ Expr, Type, TypeDefinitionBody };
-use error::ParseError;
+use error::{ ParseError, ParseResult };
 use combinators::*;
 
-type AstResult<'a> = error::ParseResult<'a, Ast<'a>>;
+type AstResult<'a> = ParseResult<'a, Ast<'a>>;
 type Ast<'a> = Expr<'a, ()>;
-
-// Operator precedence, lowest to highest
-const OPERATOR_PRECEDENCE: [&[Token]; 15] = [
-    &[Token::Semicolon],
-    &[Token::ApplyLeft],
-    &[Token::ApplyRight],
-    &[Token::Or],
-    &[Token::And],
-    &[Token::Not],
-    &[Token::EqualEqual, Token::Is, Token::Isnt, Token::NotEqual, Token::GreaterThan, Token::LessThan, Token::GreaterThanOrEqual, Token::LessThanOrEqual],
-    &[Token::In],
-    &[Token::Append],
-    &[Token::Range],
-    &[Token::Add, Token::Subtract],
-    &[Token::Multiply, Token::Divide, Token::Modulus],
-    &[Token::Colon],
-    &[Token::Index],
-    &[Token::As],
-];
 
 pub fn parse(input: Input) -> Result<Ast, ParseError> {
     let (input, _, _) = maybe_newline(input)?;
@@ -42,7 +22,7 @@ pub fn parse(input: Input) -> Result<Ast, ParseError> {
     Ok(ast)
 }
 
-fn maybe_newline(input: Input) -> error::ParseResult<Option<Token>> {
+fn maybe_newline(input: Input) -> ParseResult<Option<Token>> {
     maybe(expect(Token::Newline))(input)
 }
 
@@ -60,21 +40,25 @@ parser!(statement_list loc =
     }
 );
 
-choice!(statement = definition
-                  | type_definition
-                  | type_alias
-                  | import
-                  | trait_definition
-                  | trait_impl
-                  | expression
-);
+fn statement(input: Input) -> AstResult {
+    match input[0].0 {
+        Token::Identifier(_) => or(&[definition, expression], "statement".to_string())(input),
+        Token::Type => or(&[type_definition, type_alias], "statement".to_string())(input),
+        Token::Import => import(input),
+        Token::Trait => trait_definition(input),
+        Token::Impl => trait_impl(input),
+        _ => expression(input),
+    }
+}
 
 fn definition(input: Input) -> AstResult {
     raw_definition(input).map(|(input, definition, location)|
             (input, Expr::Definition(definition), location))
 }
 
-choice!(raw_definition -> ast::Definition<()> = function_definition | variable_definition);
+fn raw_definition(input: Input) -> ParseResult<ast::Definition<()>> {
+    or(&[function_definition, variable_definition], "definition".to_string())(input)
+}
 
 parser!(function_definition location -> ast::Definition<()> =
     name <- variable;
@@ -119,12 +103,13 @@ parser!(type_alias loc =
     Expr::type_definition(name, args, TypeDefinitionBody::AliasOf(body), loc, ())
 );
 
-choice!(type_definition_body -> ast::TypeDefinitionBody =
-    union_block_body
-    | union_inline_body
-    | struct_block_body
-    | struct_inline_body
-);
+fn type_definition_body(input: Input) -> ParseResult<ast::TypeDefinitionBody> {
+    match input[0].0 {
+        Token::Indent => or(&[union_block_body, struct_block_body], "type_definition_body".to_string())(input),
+        Token::Pipe => union_inline_body(input),
+        _ => struct_inline_body(input),
+    }
+}
 
 parser!(union_variant loc -> Type =
     _ <- expect(Token::Pipe);
@@ -203,9 +188,12 @@ parser!(trait_impl loc =
     Expr::trait_impl(name, args, definitions, loc, ())
 );
 
-choice!(block_or_expression = block
-                            | expression
-);
+fn block_or_expression(input: Input) -> AstResult {
+    match input[0].0 {
+        Token::Indent => block(input),
+        _ => expression(input),
+    }
+}
 
 parser!(block _loc =
     _ <- expect(Token::Indent);
@@ -216,38 +204,102 @@ parser!(block _loc =
 );
 
 fn expression(input: Input) -> AstResult {
-    expression_chain(0)(input)
+    shunting_yard(input)
 }
 
-fn expression_chain(precedence: usize) -> impl Fn(Input) -> AstResult {
-    move |input| {
-        if precedence < OPERATOR_PRECEDENCE.len() - 1 {
-            let mut location = input[0].1;
-            let (input, lhs, _) = expression_chain(precedence + 1)(input)?;
-            let (input, rhs, _) = many0(pair(
-                expect_any(OPERATOR_PRECEDENCE[precedence]),
-                no_backtracking(expression_chain(precedence + 1))
-            ))(input)?;
-
-            // Parsing the expression is done, now convert it into function calls
-            let mut expr = lhs;
-            for (op, rhs) in rhs {
-                location = location.union(rhs.locate());
-                expr = Expr::function_call(Expr::operator(op, location, ()), vec![expr, rhs], location, ());
-            }
-            Ok((input, expr, location))
-        } else {
-            term(input)
-        }
+fn precedence(token: &Token) -> Option<i8> {
+    match token {
+        Token::Semicolon => Some(0),
+        Token::ApplyLeft => Some(1),
+        Token::ApplyRight => Some(2),
+        Token::Or => Some(3),
+        Token::And => Some(4),
+        Token::Not => Some(5),
+        Token::EqualEqual | Token::Is | Token::Isnt | Token::NotEqual | Token::GreaterThan | Token::LessThan | Token::GreaterThanOrEqual | Token::LessThanOrEqual => Some(6),
+        Token::In => Some(7),
+        Token::Append => Some(8),
+        Token::Range => Some(9),
+        Token::Add | Token::Subtract => Some(10),
+        Token::Multiply | Token::Divide | Token::Modulus => Some(11),
+        Token::Colon => Some(12),
+        Token::Index => Some(13),
+        Token::As => Some(14),
+        _ => None,
     }
 }
 
-choice!(term = function_call
-             | if_expr
-             | match_expr
-             | type_annotation
-             | function_argument
-);
+fn shunting_yard(input: Input) -> AstResult {
+    let (mut input, value, location) = term(input)?;
+
+    let mut operator_stack = vec![];
+    let mut results = vec![(value, location)];
+
+    // loop while the next token is an operator
+    while let Some(prec) = precedence(&input[0].0) {
+        while !operator_stack.is_empty() && precedence(operator_stack[operator_stack.len()- 1]).unwrap() >= prec {
+            let (rhs, rhs_location) = results.pop().unwrap();
+            let (lhs, lhs_location) = results.pop().unwrap();
+            let location = lhs_location.union(rhs_location);
+            let operator = Expr::operator(operator_stack.pop().unwrap().clone(), location, ());
+            let call = Expr::function_call(operator, vec![lhs, rhs], location, ());
+            results.push((call, location));
+        }
+
+        operator_stack.push(&input[0].0);
+        input = &input[1..];
+
+        let (new_input, value, location) = no_backtracking(term)(input)?;
+        results.push((value, location));
+        input = new_input;
+    }
+
+    while !operator_stack.is_empty() {
+        assert!(results.len() >= 2);
+        let (rhs, rhs_location) = results.pop().unwrap();
+        let (lhs, lhs_location) = results.pop().unwrap();
+        let location = lhs_location.union(rhs_location);
+        let operator = Expr::operator(operator_stack.pop().unwrap().clone(), location, ());
+        let call = Expr::function_call(operator, vec![lhs, rhs], location, ());
+        results.push((call, location));
+    }
+
+    assert!(operator_stack.is_empty());
+    assert!(results.len() == 1);
+    let (value, location) = results.pop().unwrap();
+    Ok((input, value, location))
+
+    // let mut lhs_precedence = 0;
+    // if precedence < OPERATOR_PRECEDENCE.len() - 1 {
+    //     let mut location = input[0].1;
+    //     let (input, lhs, _) = expression_chain(precedence + 1)(input)?;
+    //     let (input, rhs, _) = many0(pair(
+    //         expect_any(OPERATOR_PRECEDENCE[precedence]),
+    //         no_backtracking(expression_chain(precedence + 1))
+    //     ))(input)?;
+
+    //     // Parsing the expression is done, now convert it into function calls
+    //     let mut expr = lhs;
+    //     for (op, rhs) in rhs {
+    //         location = location.union(rhs.locate());
+    //         expr = Expr::function_call(Expr::operator(op, location, ()), vec![expr, rhs], location, ());
+    //     }
+    //     Ok((input, expr, location))
+    // } else {
+    //     term(input)
+    // }
+}
+
+fn term(input: Input) -> AstResult {
+    match input[0].0 {
+        Token::If => if_expr(input),
+        Token::Match => match_expr(input),
+        _ => or(&[
+            function_call,
+            type_annotation,
+            function_argument
+        ], "term".to_string())(input),
+    }
+}
 
 parser!(function_call loc =
     function <- function_argument;
@@ -281,24 +333,29 @@ parser!(type_annotation loc =
     Expr::type_annotation(lhs, rhs, loc, ())
 );
 
-choice!(parse_type -> ast::Type =
-    function_type
-    | type_application
-    | basic_type
-);
+fn parse_type(input: Input) -> ParseResult<ast::Type> {
+    or(&[
+        function_type,
+        type_application,
+        basic_type
+    ], "type".to_string())(input)
+}
 
-choice!(basic_type -> ast::Type =
-    int_type
-    | float_type
-    | char_type
-    | string_type
-    | boolean_type
-    | unit_type
-    | reference_type
-    | type_variable
-    | user_defined_type
-    | parenthsized_type
-);
+fn basic_type(input: Input) -> ParseResult<ast::Type> {
+    match input[0].0 {
+        Token::IntegerType => int_type(input),
+        Token::FloatType => float_type(input),
+        Token::CharType => char_type(input),
+        Token::StringType => string_type(input),
+        Token::BooleanType => boolean_type(input),
+        Token::UnitType => unit_type(input),
+        Token::Ref => reference_type(input),
+        Token::Identifier(_) => type_variable(input),
+        Token::TypeName(_) => user_defined_type(input),
+        Token::ParenthesisLeft => parenthsized_type(input),
+        _ => Err(ParseError::InRule("type".to_string(), input[0].1)),
+    }
+}
 
 parser!(match_branch _loc -> (Ast, Ast) =
     _ <- maybe_newline;
@@ -316,16 +373,20 @@ parser!(else_expr _loc =
     otherwise
 );
 
-choice!(function_argument = variable
-                          | string
-                          | integer
-                          | float
-                          | parse_char
-                          | parse_bool
-                          | unit
-                          | parenthsized_expression
-                          | lambda
-);
+fn function_argument(input: Input) -> AstResult {
+    match input[0].0 {
+        Token::Identifier(_) => variable(input),
+        Token::StringLiteral(_) => string(input),
+        Token::IntegerLiteral(_) => integer(input),
+        Token::FloatLiteral(_) => float(input),
+        Token::CharLiteral(_) => parse_char(input),
+        Token::BooleanLiteral(_) => parse_bool(input),
+        Token::UnitLiteral => unit(input),
+        Token::ParenthesisLeft => parenthsized_expression(input),
+        Token::Backslash => lambda(input),
+        _ => Err(ParseError::InRule("argument".to_string(), input[0].1)),
+    }
+}
 
 parser!(lambda loc =
     _ <- expect(Token::Backslash);
