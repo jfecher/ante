@@ -47,6 +47,7 @@ fn statement(input: Input) -> AstResult {
         Token::Import => import(input),
         Token::Trait => trait_definition(input),
         Token::Impl => trait_impl(input),
+        Token::Return => return_expr(input),
         _ => expression(input),
     }
 }
@@ -186,6 +187,12 @@ parser!(trait_impl loc =
     definitions !<- delimited(raw_definition, expect(Token::Newline));
     _ !<- expect(Token::Unindent);
     Expr::trait_impl(name, args, definitions, loc, ())
+);
+
+parser!(return_expr loc =
+    _ <- expect(Token::Return);
+    expr !<- expression;
+    Expr::return_expr(expr, loc, ())
 );
 
 fn block_or_expression(input: Input) -> AstResult {

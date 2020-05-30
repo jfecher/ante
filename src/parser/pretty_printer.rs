@@ -159,3 +159,9 @@ impl<'a, T> Display for ast::TraitImpl<'a, T> {
         write!(f, "(impl {} {}\n    {}\n)", self.trait_name, args, definitions)
     }
 }
+
+impl<'a, T> Display for ast::Return<'a, T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "(return {})", self.expression)
+    }
+}

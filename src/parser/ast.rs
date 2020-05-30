@@ -131,6 +131,13 @@ pub struct TraitImpl<'a, T> {
 }
 
 #[derive(Debug)]
+pub struct Return<'a, T> {
+    pub expression: Box<Expr<'a, T>>,
+    pub location: Location<'a>,
+    pub data: T,
+}
+
+#[derive(Debug)]
 pub enum Expr<'a, T> {
     Literal(Literal<'a, T>),
     Variable(Variable<'a, T>),
@@ -144,6 +151,7 @@ pub enum Expr<'a, T> {
     Import(Import<'a, T>),
     TraitDefinition(TraitDefinition<'a, T>),
     TraitImpl(TraitImpl<'a, T>),
+    Return(Return<'a, T>),
 }
 
 impl<'a, T> Expr<'a, T> {
@@ -216,6 +224,10 @@ impl<'a, T> Expr<'a, T> {
     pub fn trait_impl(trait_name: &'a str, trait_args: Vec<Type<'a>>, definitions: Vec<Definition<'a, T>>, location: Location<'a>, data: T) -> Expr<'a, T> {
         Expr::TraitImpl(TraitImpl { trait_name, trait_args, definitions, location, data })
     }
+
+    pub fn return_expr(expression: Expr<'a, T>, location: Location<'a>, data: T) -> Expr<'a, T> {
+        Expr::Return(Return { expression: Box::new(expression), location, data })
+    }
 }
 
 macro_rules! dispatch_on_expr {
@@ -233,6 +245,7 @@ macro_rules! dispatch_on_expr {
             Expr::Import(inner) =>          $function(inner $(, $($args),* )? ),
             Expr::TraitDefinition(inner) => $function(inner $(, $($args),* )? ),
             Expr::TraitImpl(inner) =>       $function(inner $(, $($args),* )? ),
+            Expr::Return(inner) =>          $function(inner $(, $($args),* )? ),
         }
     });
 }
@@ -285,10 +298,10 @@ impl_locatable_for!(TypeAnnotation);
 impl_locatable_for!(Import);
 impl_locatable_for!(TraitDefinition);
 impl_locatable_for!(TraitImpl);
+impl_locatable_for!(Return);
 
 // TODO:
 // Module = RootNode | ExtNode
 // Collection = ArrayNode | TupleNode
-// RetNode
 // JumpNode
 // Loop = WhileNode | ForNode
