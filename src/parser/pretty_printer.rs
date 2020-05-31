@@ -126,7 +126,7 @@ impl<'a> Display for ast::TypeDefinitionBody<'a> {
 impl<'a> Display for ast::TypeDefinition<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let args = join_with(&self.args, "");
-        write!(f, "(type {} {}= {})", self.name, args, self.definition)
+        write!(f, "(type {} {} = {})", self.name, args, self.definition)
     }
 }
 

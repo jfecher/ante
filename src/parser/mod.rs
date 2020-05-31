@@ -27,7 +27,7 @@ fn maybe_newline(input: Input) -> ParseResult<Option<Token>> {
 
 parser!(statement_list loc =
     first <- statement;
-    rest <- many0(pair( expect(Token::Newline), statement ));
+    rest <- many0(pair( expect(Token::Newline), no_backtracking(statement) ));
     if rest.is_empty() {
         first
     } else {
@@ -69,6 +69,7 @@ parser!(function_definition location -> ast::Definition =
         pattern: Box::new(name),
         expr: Box::new(Ast::lambda(args, body, location)),
         location,
+        info: None,
         typ: None,
     }
 );
@@ -81,6 +82,7 @@ parser!(variable_definition location -> ast::Definition =
         pattern: Box::new(name),
         expr: Box::new(expr),
         location,
+        info: None,
         typ: None,
     }
 );

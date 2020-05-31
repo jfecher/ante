@@ -1,5 +1,6 @@
 use crate::lexer::token::{ Token, LexerError };
 use crate::error::location::{ Location, Locatable };
+use crate::error::ErrorMessage;
 use super::combinators::Input;
 use std::fmt::Display;
 
@@ -30,17 +31,20 @@ impl<'a> Display for ParseError<'a> {
             ParseError::Fatal(error) => error.fmt(fmt),
             ParseError::Expected(tokens, location) => {
                 if tokens.len() == 1 {
-                    location.fmt_error(fmt, format!("parser expected {} here", tokens[0]))
+                    let msg = format!("parser expected {} here", tokens[0]);
+                    write!(fmt, "{}", ErrorMessage::error(&msg[..], *location))
                 } else {
                     let expected = tokens.iter().map(|x| format!("{}", x)).collect::<Vec<_>>().join(", ");
-                    location.fmt_error(fmt, format!("parser expected one of {}", expected))
+                    let msg = format!("parser expected one of {}", expected);
+                    write!(fmt, "{}", ErrorMessage::error(&msg[..], *location))
                 }
             },
             ParseError::InRule(rule, location) => {
-                location.fmt_error(fmt, format!("failed trying to parse a {}", rule))
+                let msg = format!("failed trying to parse a {}", rule);
+                write!(fmt, "{}", ErrorMessage::error(&msg[..], *location))
             },
             ParseError::LexerError(error, location) => {
-                location.fmt_error(fmt, format!("{}", error))
+                write!(fmt, "{}", ErrorMessage::error(&error.to_string()[..], *location))
             },
         }
     }

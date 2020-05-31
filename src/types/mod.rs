@@ -3,9 +3,6 @@
 pub struct TypeVariableId(usize);
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub struct TypeInfoId(usize);
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum PrimitiveType {
     IntegerType,      // : *
     FloatType,        // : *
@@ -41,16 +38,22 @@ pub enum Type {
     ForAll(Vec<TypeVariableId>, Box<Type>),
 }
 
+#[derive(Debug)]
 pub struct TypeConstructor<'a> {
     pub name: &'a str,
     pub args: Vec<Type>,
 }
 
+#[derive(Debug)]
 pub struct Field<'a> {
     pub name: &'a str,
     pub field_type: Type,
 }
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct TypeInfoId(usize);
+
+#[derive(Debug)]
 pub enum TypeInfo<'a> {
     Union(&'a str, Vec<TypeConstructor<'a>>),
     Struct(&'a str, Vec<Field<'a>>),

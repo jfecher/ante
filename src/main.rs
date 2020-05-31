@@ -6,9 +6,14 @@ use std::io::{BufReader, Read};
 #[macro_use]
 mod parser;
 mod lexer;
+
+#[macro_use]
 mod error;
 mod nameresolution;
 mod types;
+
+use lexer::Lexer;
+use nameresolution::{ NameResolver, modulecache::ModuleCache };
 
 #[derive(Debug)]
 enum Error {
@@ -26,7 +31,7 @@ fn main() -> Result<(), Error> {
         .version("0.0.1")
         .author("Jake Fecher <jfecher11@gmail.com>")
         .about("Compiler for the Ante programming language")
-        .arg(Arg::with_name("lex").long("lex").help("Lex the file and output the lexed tokens"))
+        .arg(Arg::with_name("lex").long("lex").help("Parse the file and output the resulting Ast"))
         .arg(Arg::with_name("parse").long("parse").help("Parse the file and output the resulting Ast"))
         .arg(Arg::with_name("file").help("The file to compile").required(true))
         .get_matches();
@@ -45,11 +50,11 @@ fn main() -> Result<(), Error> {
     let mut contents = String::new();
     reader.read_to_string(&mut contents)?;
 
-    let keywords = lexer::Lexer::get_keywords();
-    let tokens = lexer::Lexer::new(filename, &contents, &keywords).collect::<Vec<_>>();
+    let keywords = Lexer::get_keywords();
+    let tokens = Lexer::new(filename, &contents, &keywords).collect::<Vec<_>>();
 
     if args.is_present("lex") {
-        tokens.into_iter().for_each(|(token, _)| println!("{}", token));
+        tokens.iter().for_each(|(token, _)| println!("{}", token));
     } else if args.is_present("parse") {
         let result = parser::parse(&tokens);
         match result {
@@ -58,11 +63,15 @@ fn main() -> Result<(), Error> {
         }
     } else {
         let result = parser::parse(&tokens);
-        let mut cache = nameresolution::ModuleCache::default();
-        let result = result.map(|root| nameresolution::NameResolver::resolve(&root, &mut cache));
+        let mut cache = ModuleCache::default();
         match result {
-            Ok(module) => println!("{:?}", module),
-            Err(e) => println!("{}", e),
+            Ok(mut root) => {
+                NameResolver::resolve(&mut root, &mut cache);
+                println!("{:#?}", cache);
+            },
+            Err(e) => {
+                println!("{}", e);
+            },
         }
     }
 

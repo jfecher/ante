@@ -1,0 +1,10 @@
+
+loop n f =
+    if n > 0 then
+        f ()
+        loop (n - 1) f
+
+map l f =
+    match l with
+    | nil -> nil
+    | cons x xs -> cons (f x) (map xs f)

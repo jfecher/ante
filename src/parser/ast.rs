@@ -1,7 +1,7 @@
 use crate::lexer::token::Token;
 use crate::error::location::{ Location, Locatable };
-use crate::nameresolution::DefinitionInfoId;
-use crate::types;
+use crate::nameresolution::modulecache::{ DefinitionInfoId, TraitInfoId };
+use crate::types::{ self, TypeInfoId };
 
 #[derive(Debug)]
 pub enum Literal<'a> {
@@ -40,6 +40,7 @@ pub struct Definition<'a> {
     pub pattern: Box<Ast<'a>>,
     pub expr: Box<Ast<'a>>,
     pub location: Location<'a>,
+    pub info: Option<DefinitionInfoId>,
     pub typ: Option<types::Type>,
 }
 
@@ -90,6 +91,7 @@ pub struct TypeDefinition<'a> {
     pub args: Vec<&'a str>,
     pub definition: TypeDefinitionBody<'a>,
     pub location: Location<'a>,
+    pub type_info: Option<TypeInfoId>,
     pub typ: Option<types::Type>,
 }
 
@@ -120,6 +122,7 @@ pub struct TraitDefinition<'a> {
     // that can depend upon these names.
     pub declarations: Vec<TypeAnnotation<'a>>,
     pub location: Location<'a>,
+    pub trait_info: Option<TraitInfoId>,
     pub typ: Option<types::Type>,
 }
 
@@ -129,6 +132,7 @@ pub struct TraitImpl<'a> {
     pub trait_args: Vec<Type<'a>>,
     pub definitions: Vec<Definition<'a>>,
     pub location: Location<'a>,
+    pub trait_info: Option<TraitInfoId>,
     pub typ: Option<types::Type>,
 }
 
@@ -208,7 +212,7 @@ impl<'a> Ast<'a> {
     }
 
     pub fn type_definition(name: &'a str, args: Vec<&'a str>, definition: TypeDefinitionBody<'a>, location: Location<'a>) -> Ast<'a> {
-        Ast::TypeDefinition(TypeDefinition { name, args, definition, location, typ: None })
+        Ast::TypeDefinition(TypeDefinition { name, args, definition, location, type_info: None, typ: None })
     }
 
     pub fn type_annotation(lhs: Ast<'a>, rhs: Type<'a>, location: Location<'a>) -> Ast<'a> {
@@ -220,11 +224,11 @@ impl<'a> Ast<'a> {
     }
 
     pub fn trait_definition(name: &'a str, args: Vec<&'a str>, fundeps: Vec<&'a str>, declarations: Vec<TypeAnnotation<'a>>, location: Location<'a>) -> Ast<'a> {
-        Ast::TraitDefinition(TraitDefinition { name, args, fundeps, declarations, location, typ: None })
+        Ast::TraitDefinition(TraitDefinition { name, args, fundeps, declarations, location, trait_info: None, typ: None })
     }
 
     pub fn trait_impl(trait_name: &'a str, trait_args: Vec<Type<'a>>, definitions: Vec<Definition<'a>>, location: Location<'a>) -> Ast<'a> {
-        Ast::TraitImpl(TraitImpl { trait_name, trait_args, definitions, location, typ: None })
+        Ast::TraitImpl(TraitImpl { trait_name, trait_args, definitions, location, trait_info: None, typ: None })
     }
 
     pub fn return_expr(expression: Ast<'a>, location: Location<'a>) -> Ast<'a> {

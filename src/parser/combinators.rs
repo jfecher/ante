@@ -97,6 +97,8 @@ pub fn expect<'a>(expected: Token<'a>) -> impl Fn(Input<'a>) -> ParseResult<'a, 
     move |input| {
         if discriminant(&expected) == discriminant(&input[0].0) {
             Ok((&input[1..], input[0].0.clone(), input[0].1))
+        } else if let Token::Invalid(err) = input[0].0 {
+            Err(ParseError::Fatal(Box::new(ParseError::LexerError(err, input[0].1))))
         } else {
             Err(ParseError::Expected(vec![expected.clone()], input[0].1))
         }

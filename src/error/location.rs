@@ -1,13 +1,13 @@
 use std::fmt::Formatter;
 use std::path::Path;
-use super::ErrorMessage;
+use super::{ ErrorType, ErrorMessage };
 use colored::*;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Position {
     pub index: usize,
-    line: u32,
-    column: u16,
+    pub line: u32,
+    pub column: u16,
 }
 
 impl Position {
@@ -74,31 +74,6 @@ impl<'a> Location<'a> {
             start,
             end
         }
-    }
-
-    pub fn fmt_error<Msg>(&self, f: &mut Formatter, msg: Msg) -> Result<(), std::fmt::Error>
-        where Msg: Into<ErrorMessage>
-    {
-        use std::cmp::{ min, max };
-
-        writeln!(f, "{}: {},{}\t{}: {}", self.filename.to_string_lossy().italic(), self.start.line, self.start.column, "error".red(), msg.into().0)?;
-        let line = self.file_contents.lines().nth(self.start.line as usize - 1).unwrap();
-
-        let start_column = self.start.column as usize - 1;
-        let actual_len = min(self.len(), line.len() - start_column);
-
-        // In case we have an odd Location that has start.index = end.index,
-        // we show a minimum of one indicator (^) to show where the error is.
-        let adjusted_len = max(1, actual_len);
-
-        // write the first part of the line, then the erroring part in red, then the rest
-        write!(f, "{}", &line[0 .. start_column])?;
-        write!(f, "{}", &line[start_column .. start_column + actual_len].red())?;
-        writeln!(f, "{}", &line[start_column + actual_len ..])?;
-
-        let padding = " ".repeat(start_column);
-        let indicator = "^".repeat(adjusted_len).red();
-        writeln!(f, "{}{}", padding, indicator)
     }
 }
 
