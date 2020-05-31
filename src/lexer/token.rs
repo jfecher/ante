@@ -96,6 +96,7 @@ pub enum Token<'a> {
     GreaterThanOrEqual, // >=
     Divide,             // /
     Backslash,          // \
+    Ampersand,          // &
 }
 
 impl Display for LexerError {
@@ -205,6 +206,7 @@ impl<'a> Display for Token<'a> {
             GreaterThanOrEqual => write!(f, "'>='"),
             Divide => write!(f, "'/'"),
             Backslash => write!(f, "'\\'"),
+            Ampersand => write!(f, "'&'"),
         }
     }
 }

@@ -87,7 +87,11 @@ pub fn or<'a, It, T, F>(functions: It, rule: String) -> impl FnOnce(Input<'a>) -
         }
 
         assert!(!input.is_empty());
-        Err(ParseError::InRule(rule, input[0].1))
+
+        match input[0] {
+            (Token::Invalid(err), location) => Err(ParseError::Fatal(Box::new(ParseError::LexerError(err, location)))),
+            (_, location) => Err(ParseError::InRule(rule, location))
+        }
     }
 }
 

@@ -27,7 +27,7 @@ fn maybe_newline(input: Input) -> ParseResult<Option<Token>> {
 
 parser!(statement_list loc =
     first <- statement;
-    rest <- many0(pair( expect(Token::Newline), no_backtracking(statement) ));
+    rest <- many0(pair( expect(Token::Newline), statement ));
     if rest.is_empty() {
         first
     } else {
@@ -301,6 +301,8 @@ fn term(input: Input) -> AstResult {
     match input[0].0 {
         Token::If => if_expr(input),
         Token::Match => match_expr(input),
+        Token::Not => not_expr(input),
+        Token::Ampersand => ref_expr(input),
         _ => or(&[
             function_call,
             type_annotation,
@@ -332,6 +334,18 @@ parser!(match_expr loc =
     _ !<- expect(Token::With);
     branches !<- many0(match_branch);
     Ast::match_expr(expression, branches, loc)
+);
+
+parser!(not_expr loc =
+    not <- expect(Token::Not);
+    expr !<- term;
+    Ast::function_call(Ast::operator(not, loc), vec![expr], loc)
+);
+
+parser!(ref_expr loc =
+    token <- expect(Token::Ampersand);
+    expr !<- term;
+    Ast::function_call(Ast::operator(token, loc), vec![expr], loc)
 );
 
 parser!(type_annotation loc =

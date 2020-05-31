@@ -152,7 +152,7 @@ impl<'a> Lexer<'a> {
 
     fn lex_alphanumeric(&mut self) -> IterElem<'a> {
         let is_type = self.current.is_uppercase();
-        let word = self.advance_while(|current, _| current.is_alphanumeric());
+        let word = self.advance_while(|current, _| current.is_alphanumeric() || current == '_');
 
         if is_type {
             Some((Token::TypeName(word), self.locate()))
@@ -348,6 +348,7 @@ impl<'a> Iterator for Lexer<'a> {
             ('>', _) => self.advance_with(Token::GreaterThan),
             ('/', _) => self.advance_with(Token::Divide),
             ('\\', _) => self.advance_with(Token::Backslash),
+            ('&', _) => self.advance_with(Token::Ampersand),
             (c, _) => self.advance_with(Token::Invalid(LexerError::UnknownChar(c))),
         }
     }
