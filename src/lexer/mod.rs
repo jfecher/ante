@@ -1,6 +1,7 @@
 pub mod token;
 
 use std::str::Chars;
+use std::path::Path;
 use std::collections::HashMap;
 use token::{ Token, LexerError };
 use crate::error::location::{ Position, EndPosition, Location, Locatable };
@@ -9,7 +10,7 @@ use crate::error::location::{ Position, EndPosition, Location, Locatable };
 pub struct Lexer<'a> {
     current: char,
     next: char,
-    filename: &'a str,
+    filename: &'a Path,
     file_contents: &'a str,
     token_start_position: Position,
     current_position: Position,
@@ -72,7 +73,7 @@ impl<'a> Lexer<'a> {
         ].into_iter().collect()
     }
 
-    pub fn new(filename: &'a str, file_contents: &'a str, keywords: &'a HashMap<&'a str, Token<'a>>) -> Lexer<'a> {
+    pub fn new(filename: &'a Path, file_contents: &'a str, keywords: &'a HashMap<&'a str, Token<'a>>) -> Lexer<'a> {
         let mut chars = file_contents.chars();
         let current = chars.next().unwrap_or('\0');
         let next = chars.next().unwrap_or('\0');

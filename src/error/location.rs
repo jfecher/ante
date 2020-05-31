@@ -1,4 +1,5 @@
 use std::fmt::Formatter;
+use std::path::Path;
 use super::ErrorMessage;
 use colored::*;
 
@@ -42,20 +43,20 @@ impl EndPosition {
 
 #[derive(Debug, Copy, Clone)]
 pub struct File<'a> {
-    pub filename: &'a str,
+    pub filename: &'a Path,
     pub contents: &'a str,
 }
 
 #[derive(Debug, Copy, Clone)]
 pub struct Location<'a> {
-    pub filename: &'a str,
+    pub filename: &'a Path,
     pub file_contents: &'a str,
     pub start: Position,
     pub end: EndPosition,
 }
 
 impl<'a> Location<'a> {
-    pub fn new(filename: &'a str, file_contents: &'a str, start: Position, end: EndPosition) -> Location<'a> {
+    pub fn new(filename: &'a Path, file_contents: &'a str, start: Position, end: EndPosition) -> Location<'a> {
         Location { filename, file_contents, start, end }
     }
 
@@ -80,7 +81,7 @@ impl<'a> Location<'a> {
     {
         use std::cmp::{ min, max };
 
-        writeln!(f, "{}: {},{}\t{}: {}", self.filename.italic(), self.start.line, self.start.column, "error".red(), msg.into().0)?;
+        writeln!(f, "{}: {},{}\t{}: {}", self.filename.to_string_lossy().italic(), self.start.line, self.start.column, "error".red(), msg.into().0)?;
         let line = self.file_contents.lines().nth(self.start.line as usize - 1).unwrap();
 
         let start_column = self.start.column as usize - 1;

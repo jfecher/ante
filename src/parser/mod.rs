@@ -7,12 +7,11 @@ pub mod ast;
 pub mod pretty_printer;
 
 use crate::lexer::token::Token;
-use ast::{ Expr, Type, TypeDefinitionBody };
+use ast::{ Ast, Type, TypeDefinitionBody };
 use error::{ ParseError, ParseResult };
 use combinators::*;
 
 type AstResult<'a> = ParseResult<'a, Ast<'a>>;
-type Ast<'a> = Expr<'a, ()>;
 
 pub fn parse(input: Input) -> Result<Ast, ParseError> {
     let (input, _, _) = maybe_newline(input)?;
@@ -36,7 +35,7 @@ parser!(statement_list loc =
         for (_, b) in rest.into_iter() {
             statements.push(b);
         }
-        Expr::function_call(Expr::operator(Token::Semicolon, loc, ()), statements, loc, ())
+        Ast::function_call(Ast::operator(Token::Semicolon, loc), statements, loc)
     }
 );
 
@@ -54,27 +53,27 @@ fn statement(input: Input) -> AstResult {
 
 fn definition(input: Input) -> AstResult {
     raw_definition(input).map(|(input, definition, location)|
-            (input, Expr::Definition(definition), location))
+            (input, Ast::Definition(definition), location))
 }
 
-fn raw_definition(input: Input) -> ParseResult<ast::Definition<()>> {
+fn raw_definition(input: Input) -> ParseResult<ast::Definition> {
     or(&[function_definition, variable_definition], "definition".to_string())(input)
 }
 
-parser!(function_definition location -> ast::Definition<()> =
+parser!(function_definition location -> ast::Definition =
     name <- variable;
     args <- many1(variable);
     _ <- expect(Token::Equal);
     body !<- block_or_expression;
     ast::Definition {
         pattern: Box::new(name),
-        expr: Box::new(Expr::lambda(args, body, location, ())),
+        expr: Box::new(Ast::lambda(args, body, location)),
         location,
-        data: ()
+        typ: None,
     }
 );
 
-parser!(variable_definition location -> ast::Definition<()> =
+parser!(variable_definition location -> ast::Definition =
     name <- variable;
     _ <- expect(Token::Equal);
     expr !<- block_or_expression;
@@ -82,7 +81,7 @@ parser!(variable_definition location -> ast::Definition<()> =
         pattern: Box::new(name),
         expr: Box::new(expr),
         location,
-        data: ()
+        typ: None,
     }
 );
 
@@ -92,7 +91,7 @@ parser!(type_definition loc =
     args <- many0(identifier);
     _ <- expect(Token::Equal);
     body !<- type_definition_body;
-    Expr::type_definition(name, args, body, loc, ())
+    Ast::type_definition(name, args, body, loc)
 );
 
 parser!(type_alias loc =
@@ -101,7 +100,7 @@ parser!(type_alias loc =
     args <- many0(identifier);
     _ <- expect(Token::Is);
     body !<- parse_type;
-    Expr::type_definition(name, args, TypeDefinitionBody::AliasOf(body), loc, ())
+    Ast::type_definition(name, args, TypeDefinitionBody::AliasOf(body), loc)
 );
 
 fn type_definition_body(input: Input) -> ParseResult<ast::TypeDefinitionBody> {
@@ -157,7 +156,7 @@ parser!(struct_inline_body _loc -> ast::TypeDefinitionBody =
 parser!(import loc =
     _ <- expect(Token::Import);
     path <- delimited(typename, expect(Token::MemberAccess));
-    Expr::import(path, loc, ())
+    Ast::import(path, loc)
 );
 
 parser!(trait_definition loc =
@@ -169,14 +168,14 @@ parser!(trait_definition loc =
     _ !<- expect(Token::Indent);
     body !<- delimited(trait_function_definition, expect(Token::Newline));
     _ !<- expect(Token::Unindent);
-    Expr::trait_definition(name, args, fundeps, body, loc, ())
+    Ast::trait_definition(name, args, fundeps, body, loc)
 );
 
-parser!(trait_function_definition loc -> ast::TypeAnnotation<()> =
+parser!(trait_function_definition loc -> ast::TypeAnnotation =
     lhs <- function_argument;
     _ <- expect(Token::Colon);
     rhs <- parse_type;
-    ast::TypeAnnotation { lhs: Box::new(lhs), rhs, location: loc, data: () }
+    ast::TypeAnnotation { lhs: Box::new(lhs), rhs, location: loc, typ: None }
 );
 
 parser!(trait_impl loc =
@@ -186,13 +185,13 @@ parser!(trait_impl loc =
     _ !<- expect(Token::Indent);
     definitions !<- delimited(raw_definition, expect(Token::Newline));
     _ !<- expect(Token::Unindent);
-    Expr::trait_impl(name, args, definitions, loc, ())
+    Ast::trait_impl(name, args, definitions, loc)
 );
 
 parser!(return_expr loc =
     _ <- expect(Token::Return);
     expr !<- expression;
-    Expr::return_expr(expr, loc, ())
+    Ast::return_expr(expr, loc)
 );
 
 fn block_or_expression(input: Input) -> AstResult {
@@ -247,8 +246,8 @@ fn shunting_yard(input: Input) -> AstResult {
             let (rhs, rhs_location) = results.pop().unwrap();
             let (lhs, lhs_location) = results.pop().unwrap();
             let location = lhs_location.union(rhs_location);
-            let operator = Expr::operator(operator_stack.pop().unwrap().clone(), location, ());
-            let call = Expr::function_call(operator, vec![lhs, rhs], location, ());
+            let operator = Ast::operator(operator_stack.pop().unwrap().clone(), location);
+            let call = Ast::function_call(operator, vec![lhs, rhs], location);
             results.push((call, location));
         }
 
@@ -265,8 +264,8 @@ fn shunting_yard(input: Input) -> AstResult {
         let (rhs, rhs_location) = results.pop().unwrap();
         let (lhs, lhs_location) = results.pop().unwrap();
         let location = lhs_location.union(rhs_location);
-        let operator = Expr::operator(operator_stack.pop().unwrap().clone(), location, ());
-        let call = Expr::function_call(operator, vec![lhs, rhs], location, ());
+        let operator = Ast::operator(operator_stack.pop().unwrap().clone(), location);
+        let call = Ast::function_call(operator, vec![lhs, rhs], location);
         results.push((call, location));
     }
 
@@ -288,7 +287,7 @@ fn shunting_yard(input: Input) -> AstResult {
     //     let mut expr = lhs;
     //     for (op, rhs) in rhs {
     //         location = location.union(rhs.locate());
-    //         expr = Expr::function_call(Expr::operator(op, location, ()), vec![expr, rhs], location, ());
+    //         expr = Expr::function_call(Expr::operator(op, location), vec![expr, rhs], location);
     //     }
     //     Ok((input, expr, location))
     // } else {
@@ -311,7 +310,7 @@ fn term(input: Input) -> AstResult {
 parser!(function_call loc =
     function <- function_argument;
     args <- many1(function_argument);
-    Expr::function_call(function, args, loc, ())
+    Ast::function_call(function, args, loc)
 );
 
 parser!(if_expr loc =
@@ -321,7 +320,7 @@ parser!(if_expr loc =
     _ !<- expect(Token::Then);
     then !<- block_or_expression;
     otherwise !<- maybe(else_expr);
-    Expr::if_expr(condition, then, otherwise, loc, ())
+    Ast::if_expr(condition, then, otherwise, loc)
 );
 
 parser!(match_expr loc =
@@ -330,14 +329,14 @@ parser!(match_expr loc =
     _ !<- maybe_newline;
     _ !<- expect(Token::With);
     branches !<- many0(match_branch);
-    Expr::match_expr(expression, branches, loc, ())
+    Ast::match_expr(expression, branches, loc)
 );
 
 parser!(type_annotation loc =
     lhs <- function_argument;
     _ <- expect(Token::Colon);
     rhs <- parse_type;
-    Expr::type_annotation(lhs, rhs, loc, ())
+    Ast::type_annotation(lhs, rhs, loc)
 );
 
 fn parse_type(input: Input) -> ParseResult<ast::Type> {
@@ -400,7 +399,7 @@ parser!(lambda loc =
     args <- many1(variable);
     _ <- expect(Token::MemberAccess);
     body <- block_or_expression;
-    Expr::lambda(args, body, loc, ())
+    Ast::lambda(args, body, loc)
 );
 
 parser!(parenthsized_expression _loc =
@@ -412,37 +411,37 @@ parser!(parenthsized_expression _loc =
 
 parser!(variable loc =
     name <- identifier;
-    Expr::variable(name, loc, ())
+    Ast::variable(name, loc)
 );
 
 parser!(string loc =
     contents <- string_literal_token;
-    Expr::string(contents, loc, ())
+    Ast::string(contents, loc)
 );
 
 parser!(integer loc =
     value <- integer_literal_token;
-    Expr::integer(value, loc, ())
+    Ast::integer(value, loc)
 );
 
 parser!(float loc =
     value <- float_literal_token;
-    Expr::float(value, loc, ())
+    Ast::float(value, loc)
 );
 
 parser!(parse_char loc =
     contents <- char_literal_token;
-    Expr::char_literal(contents, loc, ())
+    Ast::char_literal(contents, loc)
 );
 
 parser!(parse_bool loc =
     value <- bool_literal_token;
-    Expr::bool_literal(value, loc, ())
+    Ast::bool_literal(value, loc)
 );
 
 parser!(unit loc =
     _ <- expect(Token::UnitLiteral);
-    Expr::unit_literal(loc, ())
+    Ast::unit_literal(loc)
 );
 
 parser!(function_type loc -> Type =

@@ -1,61 +1,63 @@
 use crate::lexer::token::Token;
 use crate::error::location::{ Location, Locatable };
+use crate::nameresolution::DefinitionInfoId;
+use crate::types;
 
 #[derive(Debug)]
-pub enum Literal<'a, T> {
-    Integer(u64, Location<'a>, T),
-    Float(f64, Location<'a>, T),
-    String(String, Location<'a>, T),
-    Char(char, Location<'a>, T),
-    Bool(bool, Location<'a>, T),
-    Unit(Location<'a>, T),
+pub enum Literal<'a> {
+    Integer(u64, Location<'a>),
+    Float(f64, Location<'a>),
+    String(String, Location<'a>),
+    Char(char, Location<'a>),
+    Bool(bool, Location<'a>),
+    Unit(Location<'a>),
 }
 
 #[derive(Debug)]
-pub enum Variable<'a, T> {
-    Identifier(&'a str, Location<'a>, T),
-    Operator(Token<'a>, Location<'a>, T),
+pub enum Variable<'a> {
+    Identifier(&'a str, Location<'a>, Option<DefinitionInfoId>, Option<types::Type>),
+    Operator(Token<'a>, Location<'a>, Option<DefinitionInfoId>, Option<types::Type>),
 }
 
 #[derive(Debug)]
-pub struct Lambda<'a, T> {
-    pub args: Vec<Expr<'a, T>>,
-    pub body: Box<Expr<'a, T>>,
+pub struct Lambda<'a> {
+    pub args: Vec<Ast<'a>>,
+    pub body: Box<Ast<'a>>,
     pub location: Location<'a>,
-    pub data: T,
+    pub typ: Option<types::Type>,
 }
 
 #[derive(Debug)]
-pub struct FunctionCall<'a, T> {
-    pub function: Box<Expr<'a, T>>,
-    pub args: Vec<Expr<'a, T>>,
+pub struct FunctionCall<'a> {
+    pub function: Box<Ast<'a>>,
+    pub args: Vec<Ast<'a>>,
     pub location: Location<'a>,
-    pub data: T,
+    pub typ: Option<types::Type>,
 }
 
 #[derive(Debug)]
-pub struct Definition<'a, T> {
-    pub pattern: Box<Expr<'a, T>>,
-    pub expr: Box<Expr<'a, T>>,
+pub struct Definition<'a> {
+    pub pattern: Box<Ast<'a>>,
+    pub expr: Box<Ast<'a>>,
     pub location: Location<'a>,
-    pub data: T,
+    pub typ: Option<types::Type>,
 }
 
 #[derive(Debug)]
-pub struct If<'a, T> {
-    pub condition: Box<Expr<'a, T>>,
-    pub then: Box<Expr<'a, T>>,
-    pub otherwise: Option<Box<Expr<'a, T>>>,
+pub struct If<'a> {
+    pub condition: Box<Ast<'a>>,
+    pub then: Box<Ast<'a>>,
+    pub otherwise: Option<Box<Ast<'a>>>,
     pub location: Location<'a>,
-    pub data: T,
+    pub typ: Option<types::Type>,
 }
 
 #[derive(Debug)]
-pub struct Match<'a, T> {
-    pub expression: Box<Expr<'a, T>>,
-    pub branches: Vec<(Expr<'a, T>, Expr<'a, T>)>,
+pub struct Match<'a> {
+    pub expression: Box<Ast<'a>>,
+    pub branches: Vec<(Ast<'a>, Ast<'a>)>,
     pub location: Location<'a>,
-    pub data: T,
+    pub typ: Option<types::Type>,
 }
 
 // Type nodes in the AST, different from the representation of types during type checking.
@@ -83,31 +85,31 @@ pub enum TypeDefinitionBody<'a> {
 }
 
 #[derive(Debug)]
-pub struct TypeDefinition<'a, T> {
+pub struct TypeDefinition<'a> {
     pub name: &'a str,
     pub args: Vec<&'a str>,
     pub definition: TypeDefinitionBody<'a>,
     pub location: Location<'a>,
-    pub data: T,
+    pub typ: Option<types::Type>,
 }
 
 #[derive(Debug)]
-pub struct TypeAnnotation<'a, T> {
-    pub lhs: Box<Expr<'a, T>>,
+pub struct TypeAnnotation<'a> {
+    pub lhs: Box<Ast<'a>>,
     pub rhs: Type<'a>,
     pub location: Location<'a>,
-    pub data: T,
+    pub typ: Option<types::Type>,
 }
 
 #[derive(Debug)]
-pub struct Import<'a, T> {
+pub struct Import<'a> {
     pub path: Vec<&'a str>,
     pub location: Location<'a>,
-    pub data: T,
+    pub typ: Option<types::Type>,
 }
 
 #[derive(Debug)]
-pub struct TraitDefinition<'a, T> {
+pub struct TraitDefinition<'a> {
     pub name: &'a str,
     pub args: Vec<&'a str>,
     pub fundeps: Vec<&'a str>,
@@ -116,172 +118,172 @@ pub struct TraitDefinition<'a, T> {
     // throws away any names given to parameters. In practice
     // this shouldn't matter until refinement types are implemented
     // that can depend upon these names.
-    pub declarations: Vec<TypeAnnotation<'a, T>>,
+    pub declarations: Vec<TypeAnnotation<'a>>,
     pub location: Location<'a>,
-    pub data: T,
+    pub typ: Option<types::Type>,
 }
 
 #[derive(Debug)]
-pub struct TraitImpl<'a, T> {
+pub struct TraitImpl<'a> {
     pub trait_name: &'a str,
     pub trait_args: Vec<Type<'a>>,
-    pub definitions: Vec<Definition<'a, T>>,
+    pub definitions: Vec<Definition<'a>>,
     pub location: Location<'a>,
-    pub data: T,
+    pub typ: Option<types::Type>,
 }
 
 #[derive(Debug)]
-pub struct Return<'a, T> {
-    pub expression: Box<Expr<'a, T>>,
+pub struct Return<'a> {
+    pub expression: Box<Ast<'a>>,
     pub location: Location<'a>,
-    pub data: T,
+    pub typ: Option<types::Type>,
 }
 
 #[derive(Debug)]
-pub enum Expr<'a, T> {
-    Literal(Literal<'a, T>),
-    Variable(Variable<'a, T>),
-    Lambda(Lambda<'a, T>),
-    FunctionCall(FunctionCall<'a, T>),
-    Definition(Definition<'a, T>),
-    If(If<'a, T>),
-    Match(Match<'a, T>),
-    TypeDefinition(TypeDefinition<'a, T>),
-    TypeAnnotation(TypeAnnotation<'a, T>),
-    Import(Import<'a, T>),
-    TraitDefinition(TraitDefinition<'a, T>),
-    TraitImpl(TraitImpl<'a, T>),
-    Return(Return<'a, T>),
+pub enum Ast<'a> {
+    Literal(Literal<'a>),
+    Variable(Variable<'a>),
+    Lambda(Lambda<'a>),
+    FunctionCall(FunctionCall<'a>),
+    Definition(Definition<'a>),
+    If(If<'a>),
+    Match(Match<'a>),
+    TypeDefinition(TypeDefinition<'a>),
+    TypeAnnotation(TypeAnnotation<'a>),
+    Import(Import<'a>),
+    TraitDefinition(TraitDefinition<'a>),
+    TraitImpl(TraitImpl<'a>),
+    Return(Return<'a>),
 }
 
-impl<'a, T> Expr<'a, T> {
-    pub fn integer(x: u64, location: Location<'a>, data: T) -> Expr<'a, T> {
-        Expr::Literal(Literal::Integer(x, location, data))
+impl<'a> Ast<'a> {
+    pub fn integer(x: u64, location: Location<'a>) -> Ast<'a> {
+        Ast::Literal(Literal::Integer(x, location))
     }
 
-    pub fn float(x: f64, location: Location<'a>, data: T) -> Expr<'a, T> {
-        Expr::Literal(Literal::Float(x, location, data))
+    pub fn float(x: f64, location: Location<'a>) -> Ast<'a> {
+        Ast::Literal(Literal::Float(x, location))
     }
 
-    pub fn string(x: String, location: Location<'a>, data: T) -> Expr<'a, T> {
-        Expr::Literal(Literal::String(x, location, data))
+    pub fn string(x: String, location: Location<'a>) -> Ast<'a> {
+        Ast::Literal(Literal::String(x, location))
     }
 
-    pub fn char_literal(x: char, location: Location<'a>, data: T) -> Expr<'a, T> {
-        Expr::Literal(Literal::Char(x, location, data))
+    pub fn char_literal(x: char, location: Location<'a>) -> Ast<'a> {
+        Ast::Literal(Literal::Char(x, location))
     }
 
-    pub fn bool_literal(x: bool, location: Location<'a>, data: T) -> Expr<'a, T> {
-        Expr::Literal(Literal::Bool(x, location, data))
+    pub fn bool_literal(x: bool, location: Location<'a>) -> Ast<'a> {
+        Ast::Literal(Literal::Bool(x, location))
     }
 
-    pub fn unit_literal(location: Location<'a>, data: T) -> Expr<'a, T> {
-        Expr::Literal(Literal::Unit(location, data))
+    pub fn unit_literal(location: Location<'a>) -> Ast<'a> {
+        Ast::Literal(Literal::Unit(location))
     }
 
-    pub fn variable(name: &'a str, location: Location<'a>, data: T) -> Expr<'a, T> {
-        Expr::Variable(Variable::Identifier(name, location, data))
+    pub fn variable(name: &'a str, location: Location<'a>) -> Ast<'a> {
+        Ast::Variable(Variable::Identifier(name, location, None, None))
     }
 
-    pub fn operator(operator: Token<'a>, location: Location<'a>, data: T) -> Expr<'a, T> {
-        Expr::Variable(Variable::Operator(operator, location, data))
+    pub fn operator(operator: Token<'a>, location: Location<'a>) -> Ast<'a> {
+        Ast::Variable(Variable::Operator(operator, location, None, None))
     }
 
-    pub fn lambda(args: Vec<Expr<'a, T>>, body: Expr<'a, T>, location: Location<'a>, data: T) -> Expr<'a, T> {
+    pub fn lambda(args: Vec<Ast<'a>>, body: Ast<'a>, location: Location<'a>) -> Ast<'a> {
         assert!(!args.is_empty());
-        Expr::Lambda(Lambda { args, body: Box::new(body), location, data })
+        Ast::Lambda(Lambda { args, body: Box::new(body), location, typ: None })
     }
 
-    pub fn function_call(function: Expr<'a, T>, args: Vec<Expr<'a, T>>, location: Location<'a>, data: T) -> Expr<'a, T> {
+    pub fn function_call(function: Ast<'a>, args: Vec<Ast<'a>>, location: Location<'a>) -> Ast<'a> {
         assert!(!args.is_empty());
-        Expr::FunctionCall(FunctionCall { function: Box::new(function), args, location, data })
+        Ast::FunctionCall(FunctionCall { function: Box::new(function), args, location, typ: None })
     }
 
-    pub fn if_expr(condition: Expr<'a, T>, then: Expr<'a, T>, otherwise: Option<Expr<'a, T>>, location: Location<'a>, data: T) -> Expr<'a, T> {
-        Expr::If(If { condition: Box::new(condition), then: Box::new(then), otherwise: otherwise.map(Box::new), location, data })
+    pub fn if_expr(condition: Ast<'a>, then: Ast<'a>, otherwise: Option<Ast<'a>>, location: Location<'a>) -> Ast<'a> {
+        Ast::If(If { condition: Box::new(condition), then: Box::new(then), otherwise: otherwise.map(Box::new), location, typ: None })
     }
 
-    pub fn match_expr(expression: Expr<'a, T>, branches: Vec<(Expr<'a, T>, Expr<'a, T>)>, location: Location<'a>, data: T) -> Expr<'a, T> {
-        Expr::Match(Match { expression: Box::new(expression), branches, location, data })
+    pub fn match_expr(expression: Ast<'a>, branches: Vec<(Ast<'a>, Ast<'a>)>, location: Location<'a>) -> Ast<'a> {
+        Ast::Match(Match { expression: Box::new(expression), branches, location, typ: None })
     }
 
-    pub fn type_definition(name: &'a str, args: Vec<&'a str>, definition: TypeDefinitionBody<'a>, location: Location<'a>, data: T) -> Expr<'a, T> {
-        Expr::TypeDefinition(TypeDefinition { name, args, definition, location, data })
+    pub fn type_definition(name: &'a str, args: Vec<&'a str>, definition: TypeDefinitionBody<'a>, location: Location<'a>) -> Ast<'a> {
+        Ast::TypeDefinition(TypeDefinition { name, args, definition, location, typ: None })
     }
 
-    pub fn type_annotation(lhs: Expr<'a, T>, rhs: Type<'a>, location: Location<'a>, data: T) -> Expr<'a, T> {
-        Expr::TypeAnnotation(TypeAnnotation { lhs: Box::new(lhs), rhs, location, data })
+    pub fn type_annotation(lhs: Ast<'a>, rhs: Type<'a>, location: Location<'a>) -> Ast<'a> {
+        Ast::TypeAnnotation(TypeAnnotation { lhs: Box::new(lhs), rhs, location, typ: None })
     }
 
-    pub fn import(path: Vec<&'a str>, location: Location<'a>, data: T) -> Expr<'a, T> {
-        Expr::Import(Import { path, location, data })
+    pub fn import(path: Vec<&'a str>, location: Location<'a>) -> Ast<'a> {
+        Ast::Import(Import { path, location, typ: None })
     }
 
-    pub fn trait_definition(name: &'a str, args: Vec<&'a str>, fundeps: Vec<&'a str>, declarations: Vec<TypeAnnotation<'a, T>>, location: Location<'a>, data: T) -> Expr<'a, T> {
-        Expr::TraitDefinition(TraitDefinition { name, args, fundeps, declarations, location, data })
+    pub fn trait_definition(name: &'a str, args: Vec<&'a str>, fundeps: Vec<&'a str>, declarations: Vec<TypeAnnotation<'a>>, location: Location<'a>) -> Ast<'a> {
+        Ast::TraitDefinition(TraitDefinition { name, args, fundeps, declarations, location, typ: None })
     }
 
-    pub fn trait_impl(trait_name: &'a str, trait_args: Vec<Type<'a>>, definitions: Vec<Definition<'a, T>>, location: Location<'a>, data: T) -> Expr<'a, T> {
-        Expr::TraitImpl(TraitImpl { trait_name, trait_args, definitions, location, data })
+    pub fn trait_impl(trait_name: &'a str, trait_args: Vec<Type<'a>>, definitions: Vec<Definition<'a>>, location: Location<'a>) -> Ast<'a> {
+        Ast::TraitImpl(TraitImpl { trait_name, trait_args, definitions, location, typ: None })
     }
 
-    pub fn return_expr(expression: Expr<'a, T>, location: Location<'a>, data: T) -> Expr<'a, T> {
-        Expr::Return(Return { expression: Box::new(expression), location, data })
+    pub fn return_expr(expression: Ast<'a>, location: Location<'a>) -> Ast<'a> {
+        Ast::Return(Return { expression: Box::new(expression), location, typ: None })
     }
 }
 
 macro_rules! dispatch_on_expr {
     ( $expr_name:expr, $function:expr $(, $($args:expr),* )? ) => ({
         match $expr_name {
-            Expr::Literal(inner) =>         $function(inner $(, $($args),* )? ),
-            Expr::Variable(inner) =>        $function(inner $(, $($args),* )? ),
-            Expr::Lambda(inner) =>          $function(inner $(, $($args),* )? ),
-            Expr::FunctionCall(inner) =>    $function(inner $(, $($args),* )? ),
-            Expr::Definition(inner) =>      $function(inner $(, $($args),* )? ),
-            Expr::If(inner) =>              $function(inner $(, $($args),* )? ),
-            Expr::Match(inner) =>           $function(inner $(, $($args),* )? ),
-            Expr::TypeDefinition(inner) =>  $function(inner $(, $($args),* )? ),
-            Expr::TypeAnnotation(inner) =>  $function(inner $(, $($args),* )? ),
-            Expr::Import(inner) =>          $function(inner $(, $($args),* )? ),
-            Expr::TraitDefinition(inner) => $function(inner $(, $($args),* )? ),
-            Expr::TraitImpl(inner) =>       $function(inner $(, $($args),* )? ),
-            Expr::Return(inner) =>          $function(inner $(, $($args),* )? ),
+            crate::parser::ast::Ast::Literal(inner) =>         $function(inner $(, $($args),* )? ),
+            crate::parser::ast::Ast::Variable(inner) =>        $function(inner $(, $($args),* )? ),
+            crate::parser::ast::Ast::Lambda(inner) =>          $function(inner $(, $($args),* )? ),
+            crate::parser::ast::Ast::FunctionCall(inner) =>    $function(inner $(, $($args),* )? ),
+            crate::parser::ast::Ast::Definition(inner) =>      $function(inner $(, $($args),* )? ),
+            crate::parser::ast::Ast::If(inner) =>              $function(inner $(, $($args),* )? ),
+            crate::parser::ast::Ast::Match(inner) =>           $function(inner $(, $($args),* )? ),
+            crate::parser::ast::Ast::TypeDefinition(inner) =>  $function(inner $(, $($args),* )? ),
+            crate::parser::ast::Ast::TypeAnnotation(inner) =>  $function(inner $(, $($args),* )? ),
+            crate::parser::ast::Ast::Import(inner) =>          $function(inner $(, $($args),* )? ),
+            crate::parser::ast::Ast::TraitDefinition(inner) => $function(inner $(, $($args),* )? ),
+            crate::parser::ast::Ast::TraitImpl(inner) =>       $function(inner $(, $($args),* )? ),
+            crate::parser::ast::Ast::Return(inner) =>          $function(inner $(, $($args),* )? ),
         }
     });
 }
 
-impl<'a, T> Locatable<'a> for Expr<'a, T> {
+impl<'a> Locatable<'a> for Ast<'a> {
     fn locate(&self) -> Location<'a> {
         dispatch_on_expr!(self, Locatable::locate)
     }
 }
 
-impl<'a, T> Locatable<'a> for Literal<'a, T> {
+impl<'a> Locatable<'a> for Literal<'a> {
     fn locate(&self) -> Location<'a> {
         use Literal::*;
         match self {
-            Integer(_, loc, _) => *loc,
-            Float(_, loc, _) => *loc,
-            String(_, loc, _) => *loc,
-            Char(_, loc, _) => *loc,
-            Bool(_, loc, _) => *loc,
-            Unit(loc, _) => *loc,
+            Integer(_, loc) => *loc,
+            Float(_, loc) => *loc,
+            String(_, loc) => *loc,
+            Char(_, loc) => *loc,
+            Bool(_, loc) => *loc,
+            Unit(loc) => *loc,
         }
     }
 }
 
-impl<'a, T> Locatable<'a> for Variable<'a, T> {
+impl<'a> Locatable<'a> for Variable<'a> {
     fn locate(&self) -> Location<'a> {
         use Variable::*;
         match self {
-            Identifier(_, loc, _) => *loc,
-            Operator(_, loc, _) => *loc,
+            Identifier(_, loc, _, _) => *loc,
+            Operator(_, loc, _, _) => *loc,
         }
     }
 }
 
 macro_rules! impl_locatable_for {( $name:tt ) => {
-    impl<'a, T> Locatable<'a> for $name<'a, T> {
+    impl<'a> Locatable<'a> for $name<'a> {
         fn locate(&self) -> Location<'a> {
             self.location
         }

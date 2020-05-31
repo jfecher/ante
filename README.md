@@ -28,7 +28,7 @@ Steps needed to get back in line with the C++ compiler:
 
 - [x] Lexer
 - [x] Error reporting
-- [ ] Parser
+- [x] Parser
 - [ ] Name resolution
 - [ ] HM-type inference
 - [ ] Code generation (llvm)

@@ -1,22 +1,22 @@
-use super::ast::{ self, Expr };
+use super::ast::{ self, Ast };
 use std::fmt::{ self, Display, Formatter };
 
-impl<'a, T> Display for Expr<'a, T> {
+impl<'a> Display for Ast<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         dispatch_on_expr!(self, Display::fmt, f)
     }
 }
 
-impl<'a, T> Display for ast::Literal<'a, T> {
+impl<'a> Display for ast::Literal<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         use ast::Literal::*;
         match self {
-            Integer(x, _, _) => write!(f, "{}", x),
-            Float(x, _, _) => write!(f, "{}", x),
-            String(s, _, _) => write!(f, "\"{}\"", s),
-            Char(c, _, _) => write!(f, "'{}'", c),
-            Bool(b, _, _) => write!(f, "{}", if *b { "true" } else { "false" }),
-            Unit(_, _) => write!(f, "()"),
+            Integer(x, _) => write!(f, "{}", x),
+            Float(x, _) => write!(f, "{}", x),
+            String(s, _) => write!(f, "\"{}\"", s),
+            Char(c, _) => write!(f, "'{}'", c),
+            Bool(b, _) => write!(f, "{}", if *b { "true" } else { "false" }),
+            Unit(_) => write!(f, "()"),
         }
     }
 }
@@ -25,17 +25,17 @@ fn join_with<T: Display>(vec: &[T], delimiter: &str) -> String {
     vec.iter().map(|t| format!("{}", t)).collect::<Vec<_>>().join(delimiter)
 }
 
-impl<'a, T> Display for ast::Variable<'a, T> {
+impl<'a> Display for ast::Variable<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         use ast::Variable::*;
         match self {
-            Identifier(name, _, _) => write!(f, "{}", name),
-            Operator(token, _, _) => write!(f, "{}", token),
+            Identifier(name, _, _, _) => write!(f, "{}", name),
+            Operator(token, _, _, _) => write!(f, "{}", token),
         }
     }
 }
 
-impl<'a, T> Display for ast::Lambda<'a, T> {
+impl<'a> Display for ast::Lambda<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "(\\")?;
         for arg in self.args.iter() {
@@ -45,26 +45,26 @@ impl<'a, T> Display for ast::Lambda<'a, T> {
     }
 }
 
-impl<'a, T> Display for ast::FunctionCall<'a, T> {
+impl<'a> Display for ast::FunctionCall<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        use ast::{Expr::Variable, Variable::Operator};
+        use ast::{Ast::Variable, Variable::Operator};
         use crate::lexer::token::Token::Semicolon;
 
         // pretty-print calls to ';' on separate lines
         match self.function.as_ref() {
-            Variable(Operator(Semicolon, _, _)) => write!(f, "{}", join_with(&self.args, ";\n")),
+            Variable(Operator(Semicolon, _, _, _)) => write!(f, "{}", join_with(&self.args, ";\n")),
             _ => write!(f, "({} {})", self.function, join_with(&self.args, " ")),
         }
     }
 }
 
-impl<'a, T> Display for ast::Definition<'a, T> {
+impl<'a> Display for ast::Definition<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "({} = {})", self.pattern, self.expr)
     }
 }
 
-impl<'a, T> Display for ast::If<'a, T> {
+impl<'a> Display for ast::If<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         if let Some(ref otherwise) = self.otherwise {
             write!(f, "(if {} {} {})", self.condition, self.then, otherwise)
@@ -74,7 +74,7 @@ impl<'a, T> Display for ast::If<'a, T> {
     }
 }
 
-impl<'a, T> Display for ast::Match<'a, T> {
+impl<'a> Display for ast::Match<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "(match {}", self.expression)?;
         for (pattern, branch) in self.branches.iter() {
@@ -123,26 +123,26 @@ impl<'a> Display for ast::TypeDefinitionBody<'a> {
     }
 }
 
-impl<'a, T> Display for ast::TypeDefinition<'a, T> {
+impl<'a> Display for ast::TypeDefinition<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let args = join_with(&self.args, "");
         write!(f, "(type {} {}= {})", self.name, args, self.definition)
     }
 }
 
-impl<'a, T> Display for ast::TypeAnnotation<'a, T> {
+impl<'a> Display for ast::TypeAnnotation<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "(: {} {})", self.lhs, self.rhs)
     }
 }
 
-impl<'a, T> Display for ast::Import<'a, T> {
+impl<'a> Display for ast::Import<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "(import {})", join_with(&self.path, "."))
     }
 }
 
-impl<'a, T> Display for ast::TraitDefinition<'a, T> {
+impl<'a> Display for ast::TraitDefinition<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "(trait {} {} ", self.name, join_with(&self.args, " "))?;
         if !self.fundeps.is_empty() {
@@ -152,7 +152,7 @@ impl<'a, T> Display for ast::TraitDefinition<'a, T> {
     }
 }
 
-impl<'a, T> Display for ast::TraitImpl<'a, T> {
+impl<'a> Display for ast::TraitImpl<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let args = join_with(&self.trait_args, " ");
         let definitions = join_with(&self.definitions, "\n    ");
@@ -160,7 +160,7 @@ impl<'a, T> Display for ast::TraitImpl<'a, T> {
     }
 }
 
-impl<'a, T> Display for ast::Return<'a, T> {
+impl<'a> Display for ast::Return<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "(return {})", self.expression)
     }

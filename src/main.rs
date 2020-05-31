@@ -1,10 +1,14 @@
 use clap::{App, Arg};
 use std::fs::File;
+use std::path::Path;
 use std::io::{BufReader, Read};
 
+#[macro_use]
 mod parser;
 mod lexer;
 mod error;
+mod nameresolution;
+mod types;
 
 #[derive(Debug)]
 enum Error {
@@ -27,12 +31,12 @@ fn main() -> Result<(), Error> {
         .arg(Arg::with_name("file").help("The file to compile").required(true))
         .get_matches();
 
-    let filename = args.value_of("file").unwrap();
+    let filename = Path::new(args.value_of("file").unwrap());
 
     let file = match File::open(filename) {
         Ok(file) => file,
         Err(_) => {
-            println!("Could not open file {}", filename);
+            println!("Could not open file {}", filename.display());
             return Err(Error::Unrecoverable);
         }
     };
@@ -50,6 +54,14 @@ fn main() -> Result<(), Error> {
         let result = parser::parse(&tokens);
         match result {
             Ok(tree) => println!("{}", tree),
+            Err(e) => println!("{}", e),
+        }
+    } else {
+        let result = parser::parse(&tokens);
+        let mut cache = nameresolution::ModuleCache::default();
+        let result = result.map(|root| nameresolution::NameResolver::resolve(&root, &mut cache));
+        match result {
+            Ok(module) => println!("{:?}", module),
             Err(e) => println!("{}", e),
         }
     }
