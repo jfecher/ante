@@ -66,8 +66,7 @@ impl NameResolver {
     }
 
     pub fn pop_function(&mut self) {
-        let top = self.callstack.len() - 1;
-        self.callstack[top].pop();
+        self.callstack.pop();
     }
 
     pub fn current_scope(&mut self) -> &mut Scope {
@@ -75,15 +74,15 @@ impl NameResolver {
         self.callstack[top].top()
     }
 
-    pub fn push_definition<'a>(&mut self, name: &str, cache: &mut ModuleCache<'a>, location: Location<'a>) -> DefinitionInfoId {
-        if let Some(existing_definition) = self.lookup_definition(name) {
+    pub fn push_definition<'a>(&mut self, name: String, cache: &mut ModuleCache<'a>, location: Location<'a>) -> DefinitionInfoId {
+        if let Some(existing_definition) = self.lookup_definition(&name) {
             println!("{}", error!(location, "{} is already in scope", name));
             let previous_location = cache.definition_infos[existing_definition.0].location;
             println!("{}", note!(previous_location, "{} previously defined here", name));
         }
 
         let id = cache.push_definition(location);
-        self.current_scope().definitions.insert(name.to_string(), id);
+        self.current_scope().definitions.insert(name, id);
         id
     }
 }
@@ -105,6 +104,7 @@ impl<'a, 'b> NameResolver {
 
         cache.modules.insert(filepath.clone(), NameResolutionState::InProgress);
         ast.resolve(&mut resolver, cache);
+        resolver.callstack.pop();
         cache.modules.insert(filepath.clone(), NameResolutionState::Done(resolver));
 
         match &cache.modules[&filepath] {
@@ -135,7 +135,7 @@ impl<'a, 'b> Resolvable<'a, 'b> for ast::Variable<'a> {
             Operator(token, location, definition, _) => {
                 let name = token.to_string();
                 if resolver.auto_declare {
-                    *definition = Some(resolver.push_definition(&name, cache, *location));
+                    *definition = Some(resolver.push_definition(name.clone(), cache, *location));
                 } else {
                     *definition = resolver.lookup_definition(&token.to_string());
                 }
@@ -145,7 +145,7 @@ impl<'a, 'b> Resolvable<'a, 'b> for ast::Variable<'a> {
             },
             Identifier(name, location, definition, _) => {
                 if resolver.auto_declare {
-                    *definition = Some(resolver.push_definition(name, cache, *location));
+                    *definition = Some(resolver.push_definition(name.to_string(), cache, *location));
                 } else {
                     *definition = resolver.lookup_definition(name);
                 }
@@ -163,6 +163,7 @@ impl<'ast, 'cache> Resolvable<'ast, 'cache> for ast::Lambda<'ast> {
         resolver.auto_declare = true;
         self.args.iter_mut().for_each(|arg| arg.resolve(resolver, cache));
         resolver.auto_declare = false;
+        self.body.resolve(resolver, cache);
         resolver.pop_function();
     }
 }
@@ -176,9 +177,10 @@ impl<'ast, 'cache> Resolvable<'ast, 'cache> for ast::FunctionCall<'ast> {
 
 impl<'ast, 'cache> Resolvable<'ast, 'cache> for ast::Definition<'ast> {
     fn resolve(&'ast mut self, resolver: &'cache mut NameResolver, cache: &'cache mut ModuleCache<'ast>) {
-        use ast::{Ast::Variable, Variable::Identifier};
-        let name = match *self.pattern {
-            Variable(Identifier(name, _, _, _)) => name,
+        use ast::{Ast::Variable, Variable::*};
+        let name = match self.pattern.as_ref() {
+            Variable(Identifier(name, _, _, _)) => name.to_string(),
+            Variable(Operator(token, _, _, _)) => token.to_string(),
             _ => unimplemented!(),
         };
 

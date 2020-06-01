@@ -67,7 +67,6 @@ fn main() -> Result<(), Error> {
         match result {
             Ok(mut root) => {
                 NameResolver::resolve(&mut root, &mut cache);
-                println!("{:#?}", cache);
             },
             Err(e) => {
                 println!("{}", e);

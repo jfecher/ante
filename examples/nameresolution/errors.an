@@ -1,0 +1,17 @@
+(+) = 2
+
+not_an_error = 1
+
+
+not_an_error is_an_error
+
+\a b. a + c + b
+
+foo a b =
+    bar c d =
+        b
+
+    ()
+
+a = 2
+a = 3 // already declared

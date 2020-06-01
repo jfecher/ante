@@ -41,6 +41,7 @@ parser!(statement_list loc =
 
 fn statement(input: Input) -> AstResult {
     match input[0].0 {
+        Token::ParenthesisLeft |
         Token::Identifier(_) => or(&[definition, expression], "statement".to_string())(input),
         Token::Type => or(&[type_definition, type_alias], "statement".to_string())(input),
         Token::Import => import(input),
@@ -61,7 +62,7 @@ fn raw_definition(input: Input) -> ParseResult<ast::Definition> {
 }
 
 parser!(function_definition location -> ast::Definition =
-    name <- variable;
+    name <- irrefutable_pattern;
     args <- many1(variable);
     _ <- expect(Token::Equal);
     body !<- block_or_expression;
@@ -75,7 +76,7 @@ parser!(function_definition location -> ast::Definition =
 );
 
 parser!(variable_definition location -> ast::Definition =
-    name <- variable;
+    name <- irrefutable_pattern;
     _ <- expect(Token::Equal);
     expr !<- block_or_expression;
     ast::Definition {
@@ -86,6 +87,13 @@ parser!(variable_definition location -> ast::Definition =
         typ: None,
     }
 );
+
+fn irrefutable_pattern(input: Input) -> AstResult {
+    match input[0].0 {
+        Token::ParenthesisLeft => parenthsized_operator(input),
+        _ => variable(input),
+    }
+}
 
 parser!(type_definition loc =
     _ <- expect(Token::Type);
@@ -174,7 +182,7 @@ parser!(trait_definition loc =
 );
 
 parser!(trait_function_definition loc -> ast::TypeAnnotation =
-    lhs <- function_argument;
+    lhs <- irrefutable_pattern;
     _ <- expect(Token::Colon);
     rhs <- parse_type;
     ast::TypeAnnotation { lhs: Box::new(lhs), rhs, location: loc, typ: None }
@@ -404,8 +412,14 @@ fn function_argument(input: Input) -> AstResult {
         Token::CharLiteral(_) => parse_char(input),
         Token::BooleanLiteral(_) => parse_bool(input),
         Token::UnitLiteral => unit(input),
-        Token::ParenthesisLeft => parenthsized_expression(input),
         Token::Backslash => lambda(input),
+        Token::ParenthesisLeft => {
+            if input[1].0.is_overloadable_operator() {
+                parenthsized_operator(input)
+            } else {
+                parenthsized_expression(input)
+            }
+        },
         _ => Err(ParseError::InRule("argument".to_string(), input[0].1)),
     }
 }
@@ -418,7 +432,14 @@ parser!(lambda loc =
     Ast::lambda(args, body, loc)
 );
 
-parser!(parenthsized_expression _loc =
+parser!(parenthsized_operator loc =
+    _ <- expect(Token::ParenthesisLeft);
+    op <- expect_if("parenthsized_operator", |op| op.is_overloadable_operator());
+    _ <- expect(Token::ParenthesisRight);
+    Ast::operator(op, loc)
+);
+
+parser!(parenthsized_expression loc =
     _ <- expect(Token::ParenthesisLeft);
     expr <- expression;
     _ <- expect(Token::ParenthesisRight);

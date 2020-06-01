@@ -109,6 +109,21 @@ pub fn expect<'a>(expected: Token<'a>) -> impl Fn(Input<'a>) -> ParseResult<'a, 
     }
 }
 
+/// Fail if the next token in the stream is not the given expected token
+pub fn expect_if<'a, F>(rule: &'a str, f: F) -> impl Fn(Input<'a>) -> ParseResult<'a, Token>
+    where F: Fn(&Token<'a>) -> bool
+{
+    move |input| {
+        if f(&input[0].0) {
+            Ok((&input[1..], input[0].0.clone(), input[0].1))
+        } else if let Token::Invalid(err) = input[0].0 {
+            Err(ParseError::Fatal(Box::new(ParseError::LexerError(err, input[0].1))))
+        } else {
+            Err(ParseError::InRule(rule.to_string(), input[0].1))
+        }
+    }
+}
+
 /// Matches the input 0 or 1 times. Only fails if a ParseError::Fatal is found
 pub fn maybe<'a, F, T>(f: F) -> impl Fn(Input<'a>) -> ParseResult<'a, Option<T>>
     where F: Fn(Input<'a>) -> ParseResult<'a, T>

@@ -14,7 +14,7 @@ pub enum LexerError {
 pub enum Token<'a> {
     // Lexer sends an end of input token before stopping so we get a proper error location when
     // reporting parsing errors that expect a token but found the end of a file instead.
-    EndOfInput, 
+    EndOfInput,
     Invalid(LexerError),
     Newline,
     Indent,
@@ -65,7 +65,7 @@ pub enum Token<'a> {
     Type,
     While,
     With,
-    
+
     // Operators
     Equal,              // =
     Assignment,         // :=
@@ -97,6 +97,22 @@ pub enum Token<'a> {
     Divide,             // /
     Backslash,          // \
     Ampersand,          // &
+}
+
+impl<'a> Token<'a> {
+    pub fn is_overloadable_operator(&self) -> bool {
+        use Token::*;
+        match self {
+            And | As | In | Is | Isnt |
+            Not | Or | EqualEqual | NotEqual |
+            ApplyLeft | ApplyRight |Append |
+            Index | Modulus | Multiply |
+            Subtract | Add | LessThan | GreaterThan |
+            LessThanOrEqual | GreaterThanOrEqual |
+            Divide | Ampersand => true,
+            _ => false,
+        }
+    }
 }
 
 impl Display for LexerError {
@@ -175,7 +191,7 @@ impl<'a> Display for Token<'a> {
             Type => write!(f, "'type'"),
             While => write!(f, "'while'"),
             With => write!(f, "'with'"),
-            
+
             // Operators
             Equal => write!(f, "'='"),
             Assignment => write!(f, "':='"),

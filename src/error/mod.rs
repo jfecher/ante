@@ -33,21 +33,6 @@ pub enum ErrorType {
 }
 
 impl ErrorType {
-    fn marker(&self) -> ColoredString {
-        match self {
-            ErrorType::Error => self.color("error"),
-            ErrorType::Warning => self.color("warning"),
-            ErrorType::Note => self.color("note"),
-        }
-    }
-
-    fn color(&self, msg: &str) -> ColoredString {
-        match self {
-            ErrorType::Error => msg.red(),
-            ErrorType::Warning => msg.yellow(),
-            ErrorType::Note => msg.purple(),
-        }
-    }
 }
 
 pub struct ErrorMessage<'a> {
@@ -68,6 +53,22 @@ impl<'a> ErrorMessage<'a> {
     pub fn note<T: Into<ColoredString>>(msg: T, location: Location<'a>) -> ErrorMessage<'a> {
         ErrorMessage { msg: msg.into(), location, error_type: ErrorType::Note }
     }
+
+    fn marker(&self) -> ColoredString {
+        match self.error_type {
+            ErrorType::Error => self.color("error"),
+            ErrorType::Warning => self.color("warning"),
+            ErrorType::Note => self.color("note"),
+        }
+    }
+
+    fn color(&self, msg: &str) -> ColoredString {
+        match self.error_type {
+            ErrorType::Error => msg.red(),
+            ErrorType::Warning => msg.yellow(),
+            ErrorType::Note => msg.purple(),
+        }
+    }
 }
 
 impl<'a> Display for ErrorMessage<'a> {
@@ -77,8 +78,7 @@ impl<'a> Display for ErrorMessage<'a> {
         let start = self.location.start;
 
         writeln!(f, "{}: {},{}\t{}: {}", self.location.filename.to_string_lossy().italic(),
-            start.line, start.column,
-            self.error_type.marker(), self.msg)?;
+            start.line, start.column, self.marker(), self.msg)?;
 
         let line = self.location.file_contents.lines().nth(start.line as usize - 1).unwrap();
 
@@ -91,11 +91,11 @@ impl<'a> Display for ErrorMessage<'a> {
 
         // write the first part of the line, then the erroring part in red, then the rest
         write!(f, "{}", &line[0 .. start_column])?;
-        write!(f, "{}", &line[start_column .. start_column + actual_len].red())?;
+        write!(f, "{}", self.color(&line[start_column .. start_column + actual_len]))?;
         writeln!(f, "{}", &line[start_column + actual_len ..])?;
 
         let padding = " ".repeat(start_column);
-        let indicator = self.error_type.color(&"^".repeat(adjusted_len));
+        let indicator = self.color(&"^".repeat(adjusted_len));
         writeln!(f, "{}{}", padding, indicator)
     }
 }

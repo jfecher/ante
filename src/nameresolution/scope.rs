@@ -25,7 +25,7 @@ pub struct Scope {
 ///   { definitions: a, b },
 ///   { definitions: d, types: Tmp },
 /// ]
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct FunctionScope {
     scopes: Vec<Scope>,
 }
