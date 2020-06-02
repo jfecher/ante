@@ -12,7 +12,7 @@ pub enum ParseError<'a> {
     LexerError(LexerError, Location<'a>),
 }
 
-pub type ParseResult<'a, T> = Result<(Input<'a>, T, Location<'a>), ParseError<'a>>;
+pub type ParseResult<'local, 'cache, T> = Result<(Input<'local, 'cache>, T, Location<'cache>), ParseError<'cache>>;
 
 impl<'a> Locatable<'a> for ParseError<'a> {
     fn locate(&self) -> Location<'a> {

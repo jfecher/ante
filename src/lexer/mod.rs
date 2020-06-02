@@ -7,22 +7,22 @@ use token::{ Token, LexerError };
 use crate::error::location::{ Position, EndPosition, Location, Locatable };
 
 #[derive(Clone)]
-pub struct Lexer<'a> {
+pub struct Lexer<'cache, 'contents> {
     current: char,
     next: char,
-    filename: &'a Path,
-    file_contents: &'a str,
+    filename: &'cache Path,
+    file_contents: &'contents str,
     token_start_position: Position,
     current_position: Position,
     indent_levels: Vec<usize>,
     current_indent_level: usize,
     return_newline: bool, // Hack to always return a newline after an Unindent token
-    chars: Chars<'a>,
+    chars: Chars<'contents>,
     keywords: HashMap<&'static str, Token>,
 }
 
-impl<'a> Locatable<'a> for Lexer<'a> {
-    fn locate(&self) -> Location<'a> {
+impl<'cache, 'contents> Locatable<'cache> for Lexer<'cache, 'contents> {
+    fn locate(&self) -> Location<'cache> {
         let end = EndPosition::new(self.current_position.index);
         Location::new(self.filename, self.token_start_position, end)
     }
@@ -30,7 +30,7 @@ impl<'a> Locatable<'a> for Lexer<'a> {
 
 type IterElem<'a> = Option<(Token, Location<'a>)>;
 
-impl<'a> Lexer<'a> {
+impl<'cache, 'contents> Lexer<'cache, 'contents> {
     pub fn get_keywords() -> HashMap<&'static str, Token> {
         vec![
             ("int", Token::IntegerType),
@@ -73,7 +73,7 @@ impl<'a> Lexer<'a> {
         ].into_iter().collect()
     }
 
-    pub fn new(filename: &'a Path, file_contents: &'a str) -> Lexer<'a> {
+    pub fn new(filename: &'cache Path, file_contents: &'contents str) -> Lexer<'cache, 'contents> {
         let mut chars = file_contents.chars();
         let current = chars.next().unwrap_or('\0');
         let next = chars.next().unwrap_or('\0');
@@ -104,21 +104,21 @@ impl<'a> Lexer<'a> {
         ret
     }
 
-    fn advance_with(&mut self, token: Token) -> IterElem<'a> {
+    fn advance_with(&mut self, token: Token) -> IterElem<'cache> {
         self.advance();
         Some((token, self.locate()))
     }
 
-    fn advance2_with(&mut self, token: Token) -> IterElem<'a> {
+    fn advance2_with(&mut self, token: Token) -> IterElem<'cache> {
         self.advance();
         self.advance_with(token)
     }
 
-    fn get_slice_containing_current_token(&self) -> &'a str {
+    fn get_slice_containing_current_token(&self) -> &'contents str {
         &self.file_contents[self.token_start_position.index .. self.current_position.index]
     }
 
-    fn advance_while<F>(&mut self, mut f: F) -> &'a str
+    fn advance_while<F>(&mut self, mut f: F) -> &'contents str
         where F: FnMut(char, char) -> bool
     {
         while f(self.current, self.next) && !self.at_end_of_input() {
@@ -127,7 +127,7 @@ impl<'a> Lexer<'a> {
         self.get_slice_containing_current_token()
     }
 
-    fn expect(&mut self, expected: char, token: Token) -> IterElem<'a> {
+    fn expect(&mut self, expected: char, token: Token) -> IterElem<'cache> {
         if self.current == expected {
             self.advance_with(token)
         } else {
@@ -135,7 +135,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn lex_number(&mut self) -> IterElem<'a> {
+    fn lex_number(&mut self) -> IterElem<'cache> {
         let integer_string = self.advance_while(|current, _| current.is_digit(10));
 
         if self.current == '.' && self.next.is_digit(10) {
@@ -150,7 +150,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn lex_alphanumeric(&mut self) -> IterElem<'a> {
+    fn lex_alphanumeric(&mut self) -> IterElem<'cache> {
         let is_type = self.current.is_uppercase();
         let word = self.advance_while(|current, _| current.is_alphanumeric() || current == '_');
 
@@ -164,7 +164,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn lex_string(&mut self) -> IterElem<'a> {
+    fn lex_string(&mut self) -> IterElem<'cache> {
         self.advance();
         let mut contents = String::new();
         while self.current != '"' {
@@ -190,7 +190,7 @@ impl<'a> Lexer<'a> {
         self.expect('"', Token::StringLiteral(contents))
     }
 
-    fn lex_char_literal(&mut self) -> IterElem<'a> {
+    fn lex_char_literal(&mut self) -> IterElem<'cache> {
         self.advance();
         let contents = if self.current == '\\' {
             self.advance();
@@ -213,7 +213,7 @@ impl<'a> Lexer<'a> {
         self.expect('\'', Token::CharLiteral(contents))
     }
 
-    fn lex_newline(&mut self) -> IterElem<'a> {
+    fn lex_newline(&mut self) -> IterElem<'cache> {
         self.advance();
 
         // Must advance start_position otherwise the slice returned by advance_while
@@ -235,7 +235,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn lex_indent(&mut self, new_indent: usize) -> IterElem<'a> {
+    fn lex_indent(&mut self, new_indent: usize) -> IterElem<'cache> {
         if new_indent == self.current_indent_level + 1 {
             self.indent_levels.push(new_indent);
             self.current_indent_level = new_indent;
@@ -248,7 +248,7 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn lex_unindent(&mut self, new_indent: usize) -> IterElem<'a> {
+    fn lex_unindent(&mut self, new_indent: usize) -> IterElem<'cache> {
         if self.current_indent_level == new_indent + 1 {
             self.current_indent_level = new_indent;
             Some((Token::Invalid(LexerError::IndentChangeTooSmall), self.locate()))
@@ -259,12 +259,12 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    fn lex_singleline_comment(&mut self) -> IterElem<'a> {
+    fn lex_singleline_comment(&mut self) -> IterElem<'cache> {
         self.advance_while(|current, _| current != '\n');
         self.next()
     }
 
-    fn lex_multiline_comment(&mut self) -> IterElem<'a> {
+    fn lex_multiline_comment(&mut self) -> IterElem<'cache> {
         self.advance();
         self.advance();
         let mut comment_level = 1;
@@ -280,8 +280,8 @@ impl<'a> Lexer<'a> {
     }
 }
 
-impl<'a> Iterator for Lexer<'a> {
-    type Item = (Token, Location<'a>);
+impl<'cache, 'contents> Iterator for Lexer<'cache, 'contents> {
+    type Item = (Token, Location<'cache>);
 
     fn next(&mut self) -> Option<Self::Item> {
         let last_indent = self.indent_levels[self.indent_levels.len() - 1];
@@ -313,7 +313,7 @@ impl<'a> Iterator for Lexer<'a> {
             ('\n', _) => self.lex_newline(),
             (c, _) if c.is_whitespace() => { self.advance(); self.next() }
             (c, _) if c.is_digit(10) => self.lex_number(),
-            (c, _) if c.is_alphanumeric() => self.lex_alphanumeric(),
+            (c, _) if c.is_alphanumeric() || c == '_' => self.lex_alphanumeric(),
             ('"', _) => self.lex_string(),
             ('\'', _) => self.lex_char_literal(),
             ('/', '/') => self.lex_singleline_comment(),

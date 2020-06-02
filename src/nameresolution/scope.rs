@@ -1,12 +1,43 @@
 use std::collections::HashMap;
-use crate::nameresolution::modulecache::{ DefinitionInfoId, TraitInfoId };
+use std::path::Path;
+use crate::nameresolution::modulecache::{ DefinitionInfoId, TraitInfoId, ModuleCache };
+use crate::nameresolution::NameResolutionState::Done;
 use crate::types::TypeInfoId;
+use crate::error::location::{ Location, Locatable };
 
 #[derive(Debug, Default)]
 pub struct Scope {
     pub definitions: HashMap<String, DefinitionInfoId>,
     pub types: HashMap<String, TypeInfoId>,
     pub traits: HashMap<String, TraitInfoId>,
+}
+
+impl Scope {
+    pub fn import(&mut self, import_path: &Path, cache: &mut ModuleCache, location: Location) {
+        let other =
+            if let Done(r) = &cache.modules[import_path] {
+                &r.exports
+            } else {
+                unreachable!()
+            };
+
+        macro_rules! merge_table {
+            ( $field:tt , $cache_field:tt ) => ({
+                for (k, v) in other.$field.iter() {
+                    if let Some(existing) = self.$field.get(k) {
+                        let prev_loc = cache.$cache_field[existing.0].locate();
+                        error!(location, "import shadows previous definition of {}", k);
+                        note!(prev_loc, "{} was previously defined here", k);
+                    } else {
+                        self.$field.insert(k.clone(), *v);
+                    }
+                }
+            });
+        }
+
+        merge_table!(definitions, definition_infos);
+        merge_table!(types, type_info);
+    }
 }
 
 /// A FunctionScope contains all the names visible within a function

@@ -1,0 +1,4 @@
+
+library_int = 5
+
+library_fn _ = 2

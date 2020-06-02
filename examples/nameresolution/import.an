@@ -1,0 +1,7 @@
+import Library
+
+(+) = \a b. b
+
+4 + library_int
+
+5 + library_fn ()

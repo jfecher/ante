@@ -1,3 +1,4 @@
+use crate::error::location::{ Locatable, Location };
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct TypeVariableId(usize);
@@ -40,23 +41,34 @@ pub enum Type {
 
 #[derive(Debug)]
 pub struct TypeConstructor<'a> {
-    pub name: &'a str,
+    pub name: String,
     pub args: Vec<Type>,
+    pub location: Location<'a>,
 }
 
 #[derive(Debug)]
 pub struct Field<'a> {
-    pub name: &'a str,
+    pub name: String,
     pub field_type: Type,
+    pub location: Location<'a>,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub struct TypeInfoId(usize);
+pub struct TypeInfoId(pub usize);
 
 #[derive(Debug)]
 pub enum TypeInfo<'a> {
-    Union(&'a str, Vec<TypeConstructor<'a>>),
-    Struct(&'a str, Vec<Field<'a>>),
+    Union(String, Vec<TypeConstructor<'a>>, Location<'a>),
+    Struct(String, Vec<Field<'a>>, Location<'a>),
+}
+
+impl<'a> Locatable<'a> for TypeInfo<'a> {
+    fn locate(&self) -> Location<'a> {
+        match self {
+            TypeInfo::Union(_, _, location) => *location,
+            TypeInfo::Struct(_, _, location) => *location,
+        }
+    }
 }
 
 pub enum Kind {

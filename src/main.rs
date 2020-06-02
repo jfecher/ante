@@ -1,6 +1,6 @@
 use clap::{App, Arg};
 use std::fs::File;
-use std::path::Path;
+use std::path::{ Path, PathBuf };
 use std::io::{BufReader, Read};
 
 #[macro_use]
@@ -46,6 +46,8 @@ fn main() -> Result<(), Error> {
         }
     };
 
+    let mut cache = ModuleCache::new(filename.parent().unwrap());
+
     let mut reader = BufReader::new(file);
     let mut contents = String::new();
     reader.read_to_string(&mut contents)?;
@@ -62,7 +64,6 @@ fn main() -> Result<(), Error> {
         }
     } else {
         let result = parser::parse(&tokens);
-        let mut cache = ModuleCache::default();
         match result {
             Ok(mut root) => {
                 NameResolver::resolve(&mut root, &mut cache);
