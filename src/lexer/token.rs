@@ -11,7 +11,7 @@ pub enum LexerError {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum Token<'a> {
+pub enum Token {
     // Lexer sends an end of input token before stopping so we get a proper error location when
     // reporting parsing errors that expect a token but found the end of a file instead.
     EndOfInput,
@@ -20,7 +20,7 @@ pub enum Token<'a> {
     Indent,
     Unindent,
 
-    Identifier(&'a str),
+    Identifier(String),
     StringLiteral(String),
     IntegerLiteral(u64),
     FloatLiteral(f64),
@@ -29,7 +29,7 @@ pub enum Token<'a> {
     UnitLiteral,
 
     // Types
-    TypeName(&'a str),
+    TypeName(String),
     IntegerType,
     FloatType,
     CharType,
@@ -99,7 +99,7 @@ pub enum Token<'a> {
     Ampersand,          // &
 }
 
-impl<'a> Token<'a> {
+impl Token {
     pub fn is_overloadable_operator(&self) -> bool {
         use Token::*;
         match self {
@@ -136,7 +136,7 @@ impl Display for LexerError {
     }
 }
 
-impl<'a> Display for Token<'a> {
+impl Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use Token::*;
         match self {

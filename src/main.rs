@@ -50,8 +50,7 @@ fn main() -> Result<(), Error> {
     let mut contents = String::new();
     reader.read_to_string(&mut contents)?;
 
-    let keywords = Lexer::get_keywords();
-    let tokens = Lexer::new(filename, &contents, &keywords).collect::<Vec<_>>();
+    let tokens = Lexer::new(filename, &contents).collect::<Vec<_>>();
 
     if args.is_present("lex") {
         tokens.iter().for_each(|(token, _)| println!("{}", token));

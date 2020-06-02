@@ -18,20 +18,20 @@ pub struct Lexer<'a> {
     current_indent_level: usize,
     return_newline: bool, // Hack to always return a newline after an Unindent token
     chars: Chars<'a>,
-    keywords: &'a HashMap<&'a str, Token<'a>>,
+    keywords: HashMap<&'static str, Token>,
 }
 
 impl<'a> Locatable<'a> for Lexer<'a> {
     fn locate(&self) -> Location<'a> {
         let end = EndPosition::new(self.current_position.index);
-        Location::new(self.filename, self.file_contents, self.token_start_position, end)
+        Location::new(self.filename, self.token_start_position, end)
     }
 }
 
-type IterElem<'a> = Option<(Token<'a>, Location<'a>)>;
+type IterElem<'a> = Option<(Token, Location<'a>)>;
 
 impl<'a> Lexer<'a> {
-    pub fn get_keywords() -> HashMap<&'a str, Token<'a>> {
+    pub fn get_keywords() -> HashMap<&'static str, Token> {
         vec![
             ("int", Token::IntegerType),
             ("float", Token::FloatType),
@@ -73,7 +73,7 @@ impl<'a> Lexer<'a> {
         ].into_iter().collect()
     }
 
-    pub fn new(filename: &'a Path, file_contents: &'a str, keywords: &'a HashMap<&'a str, Token<'a>>) -> Lexer<'a> {
+    pub fn new(filename: &'a Path, file_contents: &'a str) -> Lexer<'a> {
         let mut chars = file_contents.chars();
         let current = chars.next().unwrap_or('\0');
         let next = chars.next().unwrap_or('\0');
@@ -88,7 +88,7 @@ impl<'a> Lexer<'a> {
             current_indent_level: 0,
             return_newline: false,
             chars,
-            keywords,
+            keywords: Lexer::get_keywords(),
         }
     }
 
@@ -104,12 +104,12 @@ impl<'a> Lexer<'a> {
         ret
     }
 
-    fn advance_with(&mut self, token: Token<'a>) -> IterElem<'a> {
+    fn advance_with(&mut self, token: Token) -> IterElem<'a> {
         self.advance();
         Some((token, self.locate()))
     }
 
-    fn advance2_with(&mut self, token: Token<'a>) -> IterElem<'a> {
+    fn advance2_with(&mut self, token: Token) -> IterElem<'a> {
         self.advance();
         self.advance_with(token)
     }
@@ -127,7 +127,7 @@ impl<'a> Lexer<'a> {
         self.get_slice_containing_current_token()
     }
 
-    fn expect(&mut self, expected: char, token: Token<'a>) -> IterElem<'a> {
+    fn expect(&mut self, expected: char, token: Token) -> IterElem<'a> {
         if self.current == expected {
             self.advance_with(token)
         } else {
@@ -155,11 +155,11 @@ impl<'a> Lexer<'a> {
         let word = self.advance_while(|current, _| current.is_alphanumeric() || current == '_');
 
         if is_type {
-            Some((Token::TypeName(word), self.locate()))
+            Some((Token::TypeName(word.to_owned()), self.locate()))
         } else {
             match self.keywords.get(word) {
                 Some(keyword) => Some((keyword.clone(), self.locate())),
-                None => Some((Token::Identifier(word), self.locate())),
+                None => Some((Token::Identifier(word.to_owned()), self.locate())),
             }
         }
     }
@@ -281,7 +281,7 @@ impl<'a> Lexer<'a> {
 }
 
 impl<'a> Iterator for Lexer<'a> {
-    type Item = (Token<'a>, Location<'a>);
+    type Item = (Token, Location<'a>);
 
     fn next(&mut self) -> Option<Self::Item> {
         let last_indent = self.indent_levels[self.indent_levels.len() - 1];

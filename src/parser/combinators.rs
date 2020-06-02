@@ -2,7 +2,7 @@ use crate::lexer::token::Token;
 use crate::error::location::Location;
 use super::error::{ ParseError, ParseResult };
 
-pub type Input<'a> = &'a[(Token<'a>, Location<'a>)];
+pub type Input<'a> = &'a[(Token, Location<'a>)];
 
 /// Helper macro for parser!
 macro_rules! seq {
@@ -96,7 +96,7 @@ pub fn or<'a, It, T, F>(functions: It, rule: String) -> impl FnOnce(Input<'a>) -
 }
 
 /// Fail if the next token in the stream is not the given expected token
-pub fn expect<'a>(expected: Token<'a>) -> impl Fn(Input<'a>) -> ParseResult<'a, Token> {
+pub fn expect<'a>(expected: Token) -> impl Fn(Input<'a>) -> ParseResult<'a, Token> {
     use std::mem::discriminant;
     move |input| {
         if discriminant(&expected) == discriminant(&input[0].0) {
@@ -111,7 +111,7 @@ pub fn expect<'a>(expected: Token<'a>) -> impl Fn(Input<'a>) -> ParseResult<'a, 
 
 /// Fail if the next token in the stream is not the given expected token
 pub fn expect_if<'a, F>(rule: &'a str, f: F) -> impl Fn(Input<'a>) -> ParseResult<'a, Token>
-    where F: Fn(&Token<'a>) -> bool
+    where F: Fn(&Token) -> bool
 {
     move |input| {
         if f(&input[0].0) {
@@ -262,26 +262,26 @@ pub fn no_backtracking<'a, T, F>(f: F) -> impl Fn(Input<'a>) -> ParseResult<'a, 
 }
 
 // Basic combinators for extracting the contents of a given token
-pub fn identifier(input: Input) -> ParseResult<&str> {
-    match input[0] {
-        (Token::Identifier(name), location) => Ok((&input[1..], name, location)),
+pub fn identifier(input: Input) -> ParseResult<String> {
+    match &input[0] {
+        (Token::Identifier(name), location) => Ok((&input[1..], name.clone(), *location)),
         (Token::Invalid(c), location) => {
-            Err(ParseError::Fatal(Box::new(ParseError::LexerError(c, location))))
+            Err(ParseError::Fatal(Box::new(ParseError::LexerError(*c, *location))))
         },
         (_, location) => {
-            Err(ParseError::Expected(vec![Token::Identifier("")], location))
+            Err(ParseError::Expected(vec![Token::Identifier("identifier".to_owned())], *location))
         },
     }
 }
 
-pub fn typename(input: Input) -> ParseResult<&str> {
-    match input[0] {
-        (Token::TypeName(name), location) => Ok((&input[1..], name, location)),
+pub fn typename(input: Input) -> ParseResult<String> {
+    match &input[0] {
+        (Token::TypeName(name), location) => Ok((&input[1..], name.clone(), *location)),
         (Token::Invalid(c), location) => {
-            Err(ParseError::Fatal(Box::new(ParseError::LexerError(c, location))))
+            Err(ParseError::Fatal(Box::new(ParseError::LexerError(*c, *location))))
         },
         (_, location) => {
-            Err(ParseError::Expected(vec![Token::TypeName("")], location))
+            Err(ParseError::Expected(vec![Token::TypeName("type name".to_owned())], *location))
         },
     }
 }

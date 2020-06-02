@@ -15,8 +15,8 @@ pub enum Literal<'a> {
 
 #[derive(Debug)]
 pub enum Variable<'a> {
-    Identifier(&'a str, Location<'a>, Option<DefinitionInfoId>, Option<types::Type>),
-    Operator(Token<'a>, Location<'a>, Option<DefinitionInfoId>, Option<types::Type>),
+    Identifier(String, Location<'a>, Option<DefinitionInfoId>, Option<types::Type>),
+    Operator(Token, Location<'a>, Option<DefinitionInfoId>, Option<types::Type>),
 }
 
 #[derive(Debug)]
@@ -73,22 +73,22 @@ pub enum Type<'a> {
     UnitType(Location<'a>),
     ReferenceType(Location<'a>),
     FunctionType(Vec<Type<'a>>, Box<Type<'a>>, Location<'a>),
-    TypeVariable(&'a str, Location<'a>),
-    UserDefinedType(&'a str, Location<'a>),
+    TypeVariable(String, Location<'a>),
+    UserDefinedType(String, Location<'a>),
     TypeApplication(Box<Type<'a>>, Vec<Type<'a>>, Location<'a>),
 }
 
 #[derive(Debug)]
 pub enum TypeDefinitionBody<'a> {
     UnionOf(Vec<Type<'a>>),
-    StructOf(Vec<(&'a str, Type<'a>)>),
+    StructOf(Vec<(String, Type<'a>)>),
     AliasOf(Type<'a>),
 }
 
 #[derive(Debug)]
 pub struct TypeDefinition<'a> {
-    pub name: &'a str,
-    pub args: Vec<&'a str>,
+    pub name: String,
+    pub args: Vec<String>,
     pub definition: TypeDefinitionBody<'a>,
     pub location: Location<'a>,
     pub type_info: Option<TypeInfoId>,
@@ -105,16 +105,16 @@ pub struct TypeAnnotation<'a> {
 
 #[derive(Debug)]
 pub struct Import<'a> {
-    pub path: Vec<&'a str>,
+    pub path: Vec<String>,
     pub location: Location<'a>,
     pub typ: Option<types::Type>,
 }
 
 #[derive(Debug)]
 pub struct TraitDefinition<'a> {
-    pub name: &'a str,
-    pub args: Vec<&'a str>,
-    pub fundeps: Vec<&'a str>,
+    pub name: String,
+    pub args: Vec<String>,
+    pub fundeps: Vec<String>,
 
     // Storing function declarations as TypeAnnotations here
     // throws away any names given to parameters. In practice
@@ -128,7 +128,7 @@ pub struct TraitDefinition<'a> {
 
 #[derive(Debug)]
 pub struct TraitImpl<'a> {
-    pub trait_name: &'a str,
+    pub trait_name: String,
     pub trait_args: Vec<Type<'a>>,
     pub definitions: Vec<Definition<'a>>,
     pub location: Location<'a>,
@@ -185,11 +185,11 @@ impl<'a> Ast<'a> {
         Ast::Literal(Literal::Unit(location))
     }
 
-    pub fn variable(name: &'a str, location: Location<'a>) -> Ast<'a> {
+    pub fn variable(name: String, location: Location<'a>) -> Ast<'a> {
         Ast::Variable(Variable::Identifier(name, location, None, None))
     }
 
-    pub fn operator(operator: Token<'a>, location: Location<'a>) -> Ast<'a> {
+    pub fn operator(operator: Token, location: Location<'a>) -> Ast<'a> {
         Ast::Variable(Variable::Operator(operator, location, None, None))
     }
 
@@ -211,7 +211,7 @@ impl<'a> Ast<'a> {
         Ast::Match(Match { expression: Box::new(expression), branches, location, typ: None })
     }
 
-    pub fn type_definition(name: &'a str, args: Vec<&'a str>, definition: TypeDefinitionBody<'a>, location: Location<'a>) -> Ast<'a> {
+    pub fn type_definition(name: String, args: Vec<String>, definition: TypeDefinitionBody<'a>, location: Location<'a>) -> Ast<'a> {
         Ast::TypeDefinition(TypeDefinition { name, args, definition, location, type_info: None, typ: None })
     }
 
@@ -219,15 +219,15 @@ impl<'a> Ast<'a> {
         Ast::TypeAnnotation(TypeAnnotation { lhs: Box::new(lhs), rhs, location, typ: None })
     }
 
-    pub fn import(path: Vec<&'a str>, location: Location<'a>) -> Ast<'a> {
+    pub fn import(path: Vec<String>, location: Location<'a>) -> Ast<'a> {
         Ast::Import(Import { path, location, typ: None })
     }
 
-    pub fn trait_definition(name: &'a str, args: Vec<&'a str>, fundeps: Vec<&'a str>, declarations: Vec<TypeAnnotation<'a>>, location: Location<'a>) -> Ast<'a> {
+    pub fn trait_definition(name: String, args: Vec<String>, fundeps: Vec<String>, declarations: Vec<TypeAnnotation<'a>>, location: Location<'a>) -> Ast<'a> {
         Ast::TraitDefinition(TraitDefinition { name, args, fundeps, declarations, location, trait_info: None, typ: None })
     }
 
-    pub fn trait_impl(trait_name: &'a str, trait_args: Vec<Type<'a>>, definitions: Vec<Definition<'a>>, location: Location<'a>) -> Ast<'a> {
+    pub fn trait_impl(trait_name: String, trait_args: Vec<Type<'a>>, definitions: Vec<Definition<'a>>, location: Location<'a>) -> Ast<'a> {
         Ast::TraitImpl(TraitImpl { trait_name, trait_args, definitions, location, trait_info: None, typ: None })
     }
 

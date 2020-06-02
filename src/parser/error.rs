@@ -7,7 +7,7 @@ use std::fmt::Display;
 #[derive(Debug)]
 pub enum ParseError<'a> {
     Fatal(Box<ParseError<'a>>),
-    Expected(Vec<Token<'a>>, Location<'a>),
+    Expected(Vec<Token>, Location<'a>),
     InRule(String, Location<'a>),
     LexerError(LexerError, Location<'a>),
 }

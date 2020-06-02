@@ -1,7 +1,4 @@
-use std::fmt::Formatter;
 use std::path::Path;
-use super::{ ErrorType, ErrorMessage };
-use colored::*;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Position {
@@ -50,14 +47,13 @@ pub struct File<'a> {
 #[derive(Debug, Copy, Clone)]
 pub struct Location<'a> {
     pub filename: &'a Path,
-    pub file_contents: &'a str,
     pub start: Position,
     pub end: EndPosition,
 }
 
 impl<'a> Location<'a> {
-    pub fn new(filename: &'a Path, file_contents: &'a str, start: Position, end: EndPosition) -> Location<'a> {
-        Location { filename, file_contents, start, end }
+    pub fn new(filename: &'a Path, start: Position, end: EndPosition) -> Location<'a> {
+        Location { filename, start, end }
     }
 
     pub fn len(&self) -> usize {
@@ -70,7 +66,6 @@ impl<'a> Location<'a> {
 
         Location {
             filename: self.filename,
-            file_contents: self.file_contents,
             start,
             end
         }

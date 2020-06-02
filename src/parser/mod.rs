@@ -144,7 +144,7 @@ parser!(union_inline_body _loc -> ast::TypeDefinitionBody =
     TypeDefinitionBody::UnionOf(variants)
 );
 
-parser!(struct_field _loc -> (&str, Type) =
+parser!(struct_field _loc -> (String, Type) =
     field_name <- identifier;
     _ !<- expect(Token::Colon);
     field_type !<- parse_type;
