@@ -1,6 +1,6 @@
 use crate::lexer::token::Token;
 use crate::error::location::{ Location, Locatable };
-use crate::nameresolution::modulecache::{ DefinitionInfoId, TraitInfoId };
+use crate::nameresolution::modulecache::{ DefinitionInfoId, TraitInfoId, ModuleId };
 use crate::types::{ self, TypeInfoId };
 
 #[derive(Debug)]
@@ -108,6 +108,7 @@ pub struct Import<'a> {
     pub path: Vec<String>,
     pub location: Location<'a>,
     pub typ: Option<types::Type>,
+    pub module_id: Option<ModuleId>,
 }
 
 #[derive(Debug)]
@@ -220,7 +221,7 @@ impl<'a> Ast<'a> {
     }
 
     pub fn import(path: Vec<String>, location: Location<'a>) -> Ast<'a> {
-        Ast::Import(Import { path, location, typ: None })
+        Ast::Import(Import { path, location, typ: None, module_id: None, })
     }
 
     pub fn trait_definition(name: String, args: Vec<String>, fundeps: Vec<String>, declarations: Vec<TypeAnnotation<'a>>, location: Location<'a>) -> Ast<'a> {

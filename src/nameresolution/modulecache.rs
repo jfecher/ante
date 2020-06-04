@@ -3,24 +3,8 @@ use std::path::{ Path, PathBuf };
 use std::collections::HashMap;
 use crate::types::{ TypeVariableId, TypeInfo, Type };
 use crate::error::location::{ Location, Locatable };
-
-/// There are three states for a module undergoing name resolution:
-/// NotStarted, InProgress, and Done. If a module is Done it can be
-/// retrieved from the ModuleCache with name information. If it is
-/// InProgress it is an error to import the module since the module
-/// graph must be acyclic.
-#[derive(Debug, PartialEq)]
-pub enum NameResolutionState {
-    NotStarted,
-    InProgress,
-    Done(NameResolver),
-}
-
-impl Default for NameResolutionState {
-    fn default() -> NameResolutionState {
-        NameResolutionState::NotStarted
-    }
-}
+use crate::parser::ast::Ast;
+use crate::nameresolution::unsafecache::UnsafeCache;
 
 #[derive(Debug)]
 pub struct ModuleCache<'a> {
@@ -29,9 +13,15 @@ pub struct ModuleCache<'a> {
     /// any libraries used by the program, including the standard library.
     pub relative_roots: Vec<PathBuf>,
 
-    /// The cache for each module that has undergone name resolution, used
-    /// to prevent cyclic module graphs and ensure the same module is not checked twice.
-    pub modules: HashMap<PathBuf, NameResolutionState>,
+    /// Maps ModuleId -> Ast
+    /// Contains all the parse trees parsed by the program.
+    pub parse_trees: UnsafeCache<'a, Ast<'a>>,
+
+    /// Used to map paths to parse trees or name resolvers
+    pub modules: HashMap<PathBuf, ModuleId>,
+
+    /// Maps ModuleId -> CompilationState
+    pub name_resolvers: UnsafeCache<'a, NameResolver>,
 
     /// Holds all the previously seen filenames referenced by Locations
     /// Used to lengthen the lifetime of Locations and the parse tree past
@@ -50,6 +40,9 @@ pub struct ModuleCache<'a> {
     /// Filled out during name resolution
     pub definition_infos: Vec<DefinitionInfo<'a>>,
 }
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct ModuleId(pub usize);
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct DefinitionInfoId(pub usize);
@@ -81,6 +74,8 @@ impl<'a> ModuleCache<'a> {
         ModuleCache {
             relative_roots: vec![project_directory.to_owned()],
             modules: HashMap::default(),
+            parse_trees: UnsafeCache::default(),
+            name_resolvers: UnsafeCache::default(),
             filepaths: Vec::default(),
             type_bindings: Vec::default(),
             type_info: Vec::default(),
@@ -100,5 +95,14 @@ impl<'a> ModuleCache<'a> {
         let id = DefinitionInfoId(self.definition_infos.len());
         self.definition_infos.push(DefinitionInfo { location });
         id
+    }
+
+    pub fn push_ast(&mut self, ast: Ast<'a>) -> ModuleId {
+        ModuleId(self.parse_trees.push(ast))
+    }
+
+    pub fn get_name_resolver_by_path(&self, path: &Path) -> Option<&mut NameResolver> {
+        let id = self.modules.get(path)?;
+        self.name_resolvers.get_mut(id.0)
     }
 }

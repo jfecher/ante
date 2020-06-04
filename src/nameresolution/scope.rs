@@ -1,7 +1,5 @@
 use std::collections::HashMap;
-use std::path::Path;
 use crate::nameresolution::modulecache::{ DefinitionInfoId, TraitInfoId, ModuleCache };
-use crate::nameresolution::NameResolutionState::Done;
 use crate::types::TypeInfoId;
 use crate::error::location::{ Location, Locatable };
 
@@ -13,14 +11,7 @@ pub struct Scope {
 }
 
 impl Scope {
-    pub fn import(&mut self, import_path: &Path, cache: &mut ModuleCache, location: Location) {
-        let other =
-            if let Done(r) = &cache.modules[import_path] {
-                &r.exports
-            } else {
-                unreachable!()
-            };
-
+    pub fn import(&mut self, other: &Scope, cache: &mut ModuleCache, location: Location) {
         macro_rules! merge_table {
             ( $field:tt , $cache_field:tt ) => ({
                 for (k, v) in other.$field.iter() {
@@ -83,5 +74,9 @@ impl FunctionScope {
     pub fn top(&mut self) -> &mut Scope {
         let top = self.scopes.len() - 1;
         &mut self.scopes[top]
+    }
+
+    pub fn bottom(&self) -> &Scope {
+        &self.scopes[0]
     }
 }

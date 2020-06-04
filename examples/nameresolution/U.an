@@ -1,0 +1,4 @@
+import T
+
+// Module imports can form a cycle!
+u x = t x

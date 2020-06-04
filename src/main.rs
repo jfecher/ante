@@ -1,6 +1,6 @@
 use clap::{App, Arg};
 use std::fs::File;
-use std::path::{ Path, PathBuf };
+use std::path::Path;
 use std::io::{BufReader, Read};
 
 #[macro_use]
@@ -27,7 +27,7 @@ impl From<std::io::Error> for Error {
 }
 
 fn main() -> Result<(), Error> {
-    let args = App::new("antec")
+    let args = App::new("ante")
         .version("0.0.1")
         .author("Jake Fecher <jfecher11@gmail.com>")
         .about("Compiler for the Ante programming language")
@@ -65,8 +65,8 @@ fn main() -> Result<(), Error> {
     } else {
         let result = parser::parse(&tokens);
         match result {
-            Ok(mut root) => {
-                NameResolver::resolve(&mut root, &mut cache);
+            Ok(root) => {
+                NameResolver::start(root, &mut cache);
             },
             Err(e) => {
                 println!("{}", e);
