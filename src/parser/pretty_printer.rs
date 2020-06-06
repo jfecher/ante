@@ -31,6 +31,7 @@ impl<'a> Display for ast::Variable<'a> {
         match self {
             Identifier(name, _, _, _) => write!(f, "{}", name),
             Operator(token, _, _, _) => write!(f, "{}", token),
+            TypeConstructor(name, _, _, _) => write!(f, "{}", name),
         }
     }
 }
@@ -112,10 +113,14 @@ impl<'a> Display for ast::TypeDefinitionBody<'a> {
         use ast::TypeDefinitionBody::*;
         match self {
             UnionOf(types) => {
-                write!(f, "{}", join_with(types, " | "))
+                for (name, variant_fields, _) in types {
+                    let s = join_with(variant_fields, " ");
+                    write!(f, "| {} {}", name, s)?;
+                }
+                Ok(())
             },
             StructOf(types) => {
-                let types = types.iter().map(|(name, ty)| format!("{}: {}", name, ty));
+                let types = types.iter().map(|(name, ty, _)| format!("{}: {}", name, ty));
                 write!(f, "{}", types.collect::<Vec<_>>().join(", "))
             },
             AliasOf(alias) => write!(f, "{}", alias),

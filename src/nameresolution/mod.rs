@@ -1,6 +1,7 @@
 use crate::parser::ast;
-use crate::parser::ast::{ Ast, Variable::* };
-use crate::types::TypeInfoId;
+use crate::parser::ast::{ Ast, Variable };
+use crate::types::{ TypeInfoId, TypeVariableId, Type, PrimitiveType, TypeInfoBody };
+use crate::types::{ TypeConstructor, Field };
 use crate::error::location::{ Location, Locatable };
 use crate::nameresolution::modulecache::{ ModuleCache, DefinitionInfoId, TraitInfoId, ModuleId };
 use crate::nameresolution::scope::{ Scope, FunctionScope };
@@ -68,6 +69,7 @@ macro_rules! lookup_fn {
 impl NameResolver {
     lookup_fn!(lookup_definition, definitions, DefinitionInfoId);
     lookup_fn!(lookup_type, types, TypeInfoId);
+    lookup_fn!(lookup_type_variable, type_variables, TypeVariableId);
     lookup_fn!(lookup_trait, traits, TraitInfoId);
 
     pub fn push_scope(&mut self) {
@@ -110,6 +112,38 @@ impl NameResolver {
         }
         self.current_scope().definitions.insert(name, id);
         id
+    }
+
+    pub fn push_type_info<'a, 'b>(&'a mut self, name: String, args: Vec<TypeVariableId>, cache: &'a mut ModuleCache<'b>, location: Location<'b>) ->  TypeInfoId {
+        if let Some(existing_definition) = self.lookup_type(&name) {
+            println!("{}", error!(location, "{} is already in scope", name));
+            let previous_location = cache.type_info[existing_definition.0].locate();
+            println!("{}", note!(previous_location, "{} previously defined here", name));
+        }
+
+        let id = cache.push_type_info(name.clone(), args, location);
+        if self.callstack.len() == 1 {
+            self.exports.types.insert(name.clone(), id);
+        }
+        self.current_scope().types.insert(name, id);
+        id
+    }
+
+    pub fn push_variant<'a, 'b>(&'a mut self, name: String, id: TypeInfoId, cache: &'a mut ModuleCache<'b>, location: Location<'b>) {
+        if let Some(existing_definition) = self.lookup_type(&name) {
+            println!("{}", error!(location, "{} is already in scope", name));
+            let previous_location = cache.type_info[existing_definition.0].locate();
+            println!("{}", note!(previous_location, "{} previously defined here", name));
+        }
+
+        if self.callstack.len() == 1 {
+            self.exports.types.insert(name.clone(), id);
+        }
+
+        // TODO: variants are currently declared in the scope above theirs so the typevars they use
+        // don't have to be declared globally. It'd be nice if there were a cleaner workaround for this.
+        let current_function = self.callstack.len() - 1;
+        self.callstack[current_function].second().types.insert(name, id);
     }
 }
 
@@ -162,6 +196,53 @@ impl<'a, 'b> NameResolver {
         self.state = NameResolutionState::Defined;
         self.callstack.pop();
     }
+
+    /// Converts an ast::Type to a types::Type. Will declare new typevars if
+    /// self.auto_declare is true, otherwise it will error that they are not in scope.
+    pub fn convert_type(&'a mut self, cache: &'a mut ModuleCache<'b>, ast_type: &'a ast::Type<'b>) -> Type {
+        match ast_type {
+            ast::Type::IntegerType(_) => Type::Primitive(PrimitiveType::IntegerType),
+            ast::Type::FloatType(_) => Type::Primitive(PrimitiveType::FloatType),
+            ast::Type::CharType(_) => Type::Primitive(PrimitiveType::CharType),
+            ast::Type::StringType(_) => Type::Primitive(PrimitiveType::StringType),
+            ast::Type::BooleanType(_) => Type::Primitive(PrimitiveType::BooleanType),
+            ast::Type::UnitType(_) => Type::Primitive(PrimitiveType::UnitType),
+            ast::Type::ReferenceType(_) => Type::Primitive(PrimitiveType::ReferenceType),
+            ast::Type::FunctionType(args, ret, _) => {
+                let args = args.iter().map(|arg| self.convert_type(cache, arg)).collect();
+                let ret = self.convert_type(cache, ret);
+                Type::Function(args, Box::new(ret))
+            },
+            ast::Type::TypeVariable(name, location) => {
+                if self.auto_declare {
+                    let id = cache.next_type_variable();
+                    Type::TypeVariable(id)
+                } else {
+                    match self.lookup_type_variable(name) {
+                        Some(id) => Type::TypeVariable(id),
+                        None => {
+                            println!("{}", error!(*location, "Type variable {} was not found in scope", name));
+                            Type::Primitive(PrimitiveType::IntegerType)
+                        },
+                    }
+                }
+            },
+            ast::Type::UserDefinedType(name, location) => {
+                match self.lookup_type(name) {
+                    Some(id) => Type::UserDefinedType(id),
+                    None => {
+                        println!("{}", error!(*location, "Type {} was not found in scope", name));
+                        Type::Primitive(PrimitiveType::IntegerType)
+                    },
+                }
+            },
+            ast::Type::TypeApplication(constructor, args, _) => {
+                let constructor = Box::new(self.convert_type(cache, constructor));
+                let args = args.iter().map(|arg| self.convert_type(cache, arg)).collect();
+                Type::TypeApplication(constructor, args)
+            },
+        }
+    }
 }
 
 pub trait Resolvable<'a, 'b: 'a> {
@@ -189,58 +270,58 @@ impl<'a, 'b: 'a> Resolvable<'a, 'b> for ast::Literal<'b> {
     fn define(&mut self, _: &mut NameResolver, _: &mut ModuleCache) {}
 }
 
+fn is_declared<'a, 'b>(var: &'a ast::Variable<'b>) -> bool {
+    match var {
+        Variable::Operator(token, _, declaration, _) => declaration.is_some() || *token == Token::Semicolon,
+        Variable::Identifier(_, _, declaration, _) => declaration.is_some(),
+        Variable::TypeConstructor(_, _, declaration, _) => declaration.is_some(),
+    }
+}
+
 impl<'a, 'b: 'a> Resolvable<'a, 'b> for ast::Variable<'b> {
     fn declare(&'a mut self, resolver: &'a mut NameResolver, cache: &'a mut ModuleCache<'b>) {
         match self {
-            Operator(Token::Semicolon, _, _, _) => {
+            Variable::Operator(Token::Semicolon, _, _, _) => {
                 // Ignore definition for the sequencing operator, its not a "true"
                 // operator since it cannot be redefined
             },
-            Operator(token, location, definition, _) => {
+            Variable::Operator(token, location, definition, _) => {
                 let name = token.to_string();
+                if resolver.auto_declare {
+                    *definition = Some(resolver.push_definition(name, cache, *location));
+                }
+            },
+            Variable::Identifier(name, location, definition, _) => {
                 if resolver.auto_declare {
                     *definition = Some(resolver.push_definition(name.clone(), cache, *location));
                 }
             },
-            Identifier(name, location, definition, _) => {
-                if resolver.auto_declare {
-                    *definition = Some(resolver.push_definition(name.to_string(), cache, *location));
-                }
-            },
+            Variable::TypeConstructor(..) => (), // Never need to auto-declare type constructors
         }
     }
 
-    fn define(&'a mut self, resolver: &'a mut NameResolver, cache: &'a mut ModuleCache<'b>) {
-        match self {
-            Operator(Token::Semicolon, _, _, _) => {
-                // Ignore definition for the sequencing operator, its not a "true"
-                // operator since it cannot be redefined
-            },
-            Operator(token, location, definition, _) => {
-                let name = token.to_string();
-                if definition.is_none() {
-                    if resolver.auto_declare {
-                        *definition = Some(resolver.push_definition(name.clone(), cache, *location));
-                    } else {
-                        *definition = resolver.lookup_definition(&token.to_string());
-                    }
-                }
-                if !definition.is_some() {
-                    println!("{}", error!(*location, "Operator {} was not found in scope", name));
-                }
-            },
-            Identifier(name, location, definition, _) => {
-                if definition.is_none() {
-                    if resolver.auto_declare {
-                        *definition = Some(resolver.push_definition(name.to_string(), cache, *location));
-                    } else {
-                        *definition = resolver.lookup_definition(name);
-                    }
-                }
-                if !definition.is_some() {
-                    println!("{}", error!(*location, "{} was not found in scope", name));
-                }
-            },
+    fn define(&'a mut self, resolver: &'a mut NameResolver, _cache: &'a mut ModuleCache<'b>) {
+        if !is_declared(self) {
+            match self {
+                Variable::Operator(Token::Semicolon, _, _, _) => {
+                    // Ignore definition for the sequencing operator, its not a "true"
+                    // operator since it cannot be redefined
+                },
+                Variable::Operator(token, _, definition, _) => {
+                    *definition = resolver.lookup_definition(&token.to_string());
+                },
+                Variable::Identifier(name, _, definition, _) => {
+                    *definition = resolver.lookup_definition(name);
+                },
+                Variable::TypeConstructor(name, _, definition, _) => {
+                    *definition = resolver.lookup_type(name);
+                },
+            }
+
+            // If it is still not declared, print an error
+            if !is_declared(self) {
+                println!("{}", error!(self.locate(), "No declaration for {} was found in scope", self));
+            }
         }
     }
 }
@@ -264,7 +345,7 @@ impl<'a, 'b: 'a> Resolvable<'a, 'b> for ast::FunctionCall<'b> {
     fn declare(&'a mut self, resolver: &'a mut NameResolver, cache: &'a mut ModuleCache<'b>) {
         // We only need to go through sequenced ; expressions to find all the top-level declarations.
         match self.function.as_ref() {
-            Ast::Variable(Operator(Token::Semicolon, _, _, _)) => {
+            Ast::Variable(Variable::Operator(Token::Semicolon, _, _, _)) => {
                 for arg in self.args.iter_mut() {
                     arg.declare(resolver, cache)
                 }
@@ -332,21 +413,84 @@ impl<'a, 'b: 'a> Resolvable<'a, 'b> for ast::Match<'b> {
     }
 }
 
+fn create_variants<'a, 'b>(id: TypeInfoId, vec: &'a Vec<(String, Vec<ast::Type<'b>>, Location<'b>)>, resolver: &'a mut NameResolver, cache: &'a mut ModuleCache<'b>) -> Vec<TypeConstructor<'b>> {
+    vec.iter().map(|(name, types, location)| {
+        let args = types.iter().map(|t|
+            resolver.convert_type(cache, t)
+        ).collect();
+
+        resolver.push_variant(name.clone(), id, cache, *location);
+        TypeConstructor { name: name.clone(), args, location: *location }
+    }).collect()
+}
+
+fn create_fields<'a, 'b>(vec: &'a Vec<(String, ast::Type<'b>, Location<'b>)>, resolver: &'a mut NameResolver, cache: &'a mut ModuleCache<'b>) -> Vec<Field<'b>> {
+    vec.iter().map(|(name, field_type, location)| {
+        let field_type = resolver.convert_type(cache, field_type);
+
+        Field { name: name.clone(), field_type, location: *location }
+    }).collect()
+}
+
 impl<'a, 'b: 'a> Resolvable<'a, 'b> for ast::TypeDefinition<'b> {
-    fn declare(&'a mut self, _resolver: &'a mut NameResolver, _cache: &'a mut ModuleCache<'b>) {
-        unimplemented!();
+    fn declare(&'a mut self, resolver: &'a mut NameResolver, cache: &'a mut ModuleCache<'b>) {
+        let args = self.args.iter().map(|_| cache.next_type_variable()).collect();
+        let id = resolver.push_type_info(self.name.clone(), args, cache, self.location);
+        self.type_info = Some(id);
     }
 
-    fn define(&'a mut self, _resolver: &'a mut NameResolver, _cache: &'a mut ModuleCache<'b>) {
-        unimplemented!();
+    fn define(&'a mut self, resolver: &'a mut NameResolver, cache: &'a mut ModuleCache<'b>) {
+        if self.type_info.is_none() {
+            self.declare(resolver, cache);
+        }
+
+        resolver.push_scope();
+        let id = self.type_info.unwrap();
+
+        {
+            let type_info = &mut cache.type_info[id.0];
+            // re-insert the typevars into scope.
+            // These names are guarenteed to not collide since we just pushed a new scope.
+            for (key, id) in self.args.iter().zip(type_info.args.iter()) {
+                let scope = resolver.current_scope();
+                scope.type_variables.insert(key.clone(), *id);
+            }
+        }
+
+        match &self.definition {
+            ast::TypeDefinitionBody::UnionOf(vec) => {
+                let variants = create_variants(id, vec, resolver, cache);
+                let type_info = &mut cache.type_info[self.type_info.unwrap().0];
+                type_info.body = TypeInfoBody::Union(variants);
+            },
+            ast::TypeDefinitionBody::StructOf(vec) => {
+                let fields = create_fields(vec, resolver, cache);
+                let type_info = &mut cache.type_info[self.type_info.unwrap().0];
+                type_info.body = TypeInfoBody::Struct(fields);
+            },
+            ast::TypeDefinitionBody::AliasOf(typ) => {
+                let typ = resolver.convert_type(cache, typ);
+                let type_info = &mut cache.type_info[self.type_info.unwrap().0];
+                type_info.body = TypeInfoBody::Alias(typ);
+            },
+        }
+
+        resolver.pop_scope();
     }
 }
 
 impl<'a, 'b: 'a> Resolvable<'a, 'b> for ast::TypeAnnotation<'b> {
     fn declare(&'a mut self, _resolver: &'a mut NameResolver, _cache: &'a mut ModuleCache<'b>) { }
 
+//  declare (self: Ast.TypeAnnotation) (resolver: mut NameResolver) (cache: mut ModuleCache) =
+//      self.rhs.define resolver cache
+//      rhs = resolver.convert_type cache self.rhs
+//      self.typ := Some rhs
+
     fn define(&'a mut self, resolver: &'a mut NameResolver, cache: &'a mut ModuleCache<'b>) {
         self.lhs.define(resolver, cache);
+        let rhs = resolver.convert_type(cache, &self.rhs);
+        self.typ = Some(rhs);
     }
 }
 

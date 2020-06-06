@@ -1,7 +1,7 @@
 use crate::error::location::{ Locatable, Location };
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub struct TypeVariableId(usize);
+pub struct TypeVariableId(pub usize);
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum PrimitiveType {
@@ -12,13 +12,15 @@ pub enum PrimitiveType {
     BooleanType,      // : *
     UnitType,         // : *
     ReferenceType,    // : * -> *
-    Function,         // : ? -> *
 }
 
 #[derive(Debug)]
 pub enum Type {
-    /// int, char, bool, functions, etc
+    /// int, char, bool, etc
     Primitive(PrimitiveType),
+
+    /// Any function type
+    Function(Vec<Type>, Box<Type>),
 
     /// Any stand-in type e.g. a in Vec a. The original names are
     /// translated into unique TypeIds during name resolution.
@@ -30,8 +32,8 @@ pub enum Type {
     /// not needed for most type checking.
     UserDefinedType(TypeInfoId),
 
-    /// Any type in the form `a b`
-    TypeApplication(Box<Type>, Box<Type>),
+    /// Any type in the form `constructor arg1 arg2 ... argN`
+    TypeApplication(Box<Type>, Vec<Type>),
 
     /// These are currently used internally to indicate polymorphic
     /// type variables for let-polymorphism. There is no syntax to
@@ -57,17 +59,24 @@ pub struct Field<'a> {
 pub struct TypeInfoId(pub usize);
 
 #[derive(Debug)]
-pub enum TypeInfo<'a> {
-    Union(String, Vec<TypeConstructor<'a>>, Location<'a>),
-    Struct(String, Vec<Field<'a>>, Location<'a>),
+pub enum TypeInfoBody<'a> {
+    Union(Vec<TypeConstructor<'a>>),
+    Struct(Vec<Field<'a>>),
+    Alias(Type),
+    Unknown,
+}
+
+#[derive(Debug)]
+pub struct TypeInfo<'a> {
+    pub args: Vec<TypeVariableId>,
+    pub name: String,
+    pub body: TypeInfoBody<'a>,
+    pub location: Location<'a>,
 }
 
 impl<'a> Locatable<'a> for TypeInfo<'a> {
     fn locate(&self) -> Location<'a> {
-        match self {
-            TypeInfo::Union(_, _, location) => *location,
-            TypeInfo::Struct(_, _, location) => *location,
-        }
+        self.location
     }
 }
 

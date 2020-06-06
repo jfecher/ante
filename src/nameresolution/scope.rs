@@ -1,12 +1,13 @@
 use std::collections::HashMap;
 use crate::nameresolution::modulecache::{ DefinitionInfoId, TraitInfoId, ModuleCache };
-use crate::types::TypeInfoId;
+use crate::types::{ TypeInfoId, TypeVariableId };
 use crate::error::location::{ Location, Locatable };
 
 #[derive(Debug, Default)]
 pub struct Scope {
     pub definitions: HashMap<String, DefinitionInfoId>,
     pub types: HashMap<String, TypeInfoId>,
+    pub type_variables: HashMap<String, TypeVariableId>,
     pub traits: HashMap<String, TraitInfoId>,
 }
 
@@ -74,6 +75,11 @@ impl FunctionScope {
     pub fn top(&mut self) -> &mut Scope {
         let top = self.scopes.len() - 1;
         &mut self.scopes[top]
+    }
+
+    pub fn second(&mut self) -> &mut Scope {
+        let i = self.scopes.len() - 2;
+        &mut self.scopes[i]
     }
 
     pub fn bottom(&self) -> &Scope {

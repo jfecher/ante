@@ -9,6 +9,7 @@ pub mod pretty_printer;
 use crate::lexer::token::Token;
 use ast::{ Ast, Type, TypeDefinitionBody };
 use error::{ ParseError, ParseResult };
+use crate::error::location::Location;
 use combinators::*;
 
 type AstResult<'a, 'b> = ParseResult<'a, 'b, Ast<'b>>;
@@ -121,15 +122,11 @@ fn type_definition_body<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, ast
     }
 }
 
-parser!(union_variant loc -> 'b Type<'b> =
+parser!(union_variant loc -> 'b (String, Vec<Type<'b>>, Location<'b>) =
     _ <- expect(Token::Pipe);
     variant !<- typename;
     args !<- many0(parse_type);
-    if args.is_empty() {
-        Type::UserDefinedType(variant, loc)
-    } else {
-        Type::TypeApplication(Box::new(Type::UserDefinedType(variant, loc)), args, loc)
-    }
+    (variant, args, loc)
 );
 
 parser!(union_block_body _loc -> 'b ast::TypeDefinitionBody<'b> =
@@ -144,11 +141,11 @@ parser!(union_inline_body _loc -> 'b ast::TypeDefinitionBody<'b> =
     TypeDefinitionBody::UnionOf(variants)
 );
 
-parser!(struct_field _loc -> 'b (String, Type<'b>) =
+parser!(struct_field loc -> 'b (String, Type<'b>, Location<'b>) =
     field_name <- identifier;
     _ !<- expect(Token::Colon);
     field_type !<- parse_type;
-    (field_name, field_type)
+    (field_name, field_type, loc)
 );
 
 parser!(struct_block_body _loc -> 'b ast::TypeDefinitionBody<'b> =
@@ -396,6 +393,7 @@ fn function_argument<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
                 parenthsized_expression(input)
             }
         },
+        Token::TypeName(_) => variant(input),
         _ => Err(ParseError::InRule("argument".to_string(), input[0].1)),
     }
 }
@@ -420,6 +418,11 @@ parser!(parenthsized_expression loc =
     expr <- expression;
     _ <- expect(Token::ParenthesisRight);
     expr
+);
+
+parser!(variant loc =
+    name <- typename;
+    Ast::type_constructor(name, loc)
 );
 
 parser!(variable loc =

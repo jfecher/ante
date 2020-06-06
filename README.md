@@ -28,8 +28,15 @@ Steps needed to get back in line with the C++ compiler:
 
 - [x] Lexer
 - [x] Error reporting
-- [x] Parser
+- [ ] Parser
+  - [x] Most things, except for:
+  - [ ] Tuples
+  - [ ] Loops
 - [ ] Name resolution
+  - [x] Variable definitions
+  - [x] Function definitions
+  - [x] Type definitions
+  - [ ] Trait definitions
 - [ ] HM-type inference
 - [ ] Code generation (llvm)
 - [ ] REPL

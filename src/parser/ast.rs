@@ -17,6 +17,7 @@ pub enum Literal<'a> {
 pub enum Variable<'a> {
     Identifier(String, Location<'a>, Option<DefinitionInfoId>, Option<types::Type>),
     Operator(Token, Location<'a>, Option<DefinitionInfoId>, Option<types::Type>),
+    TypeConstructor(String, Location<'a>, Option<TypeInfoId>, Option<types::Type>),
 }
 
 #[derive(Debug)]
@@ -80,8 +81,8 @@ pub enum Type<'a> {
 
 #[derive(Debug)]
 pub enum TypeDefinitionBody<'a> {
-    UnionOf(Vec<Type<'a>>),
-    StructOf(Vec<(String, Type<'a>)>),
+    UnionOf(Vec<(String, Vec<Type<'a>>, Location<'a>)>),
+    StructOf(Vec<(String, Type<'a>, Location<'a>)>),
     AliasOf(Type<'a>),
 }
 
@@ -194,6 +195,10 @@ impl<'a> Ast<'a> {
         Ast::Variable(Variable::Operator(operator, location, None, None))
     }
 
+    pub fn type_constructor(name: String, location: Location<'a>) -> Ast<'a> {
+        Ast::Variable(Variable::TypeConstructor(name, location, None, None))
+    }
+
     pub fn lambda(args: Vec<Ast<'a>>, body: Ast<'a>, location: Location<'a>) -> Ast<'a> {
         assert!(!args.is_empty());
         Ast::Lambda(Lambda { args, body: Box::new(body), location, typ: None })
@@ -221,14 +226,17 @@ impl<'a> Ast<'a> {
     }
 
     pub fn import(path: Vec<String>, location: Location<'a>) -> Ast<'a> {
+        assert!(!path.is_empty());
         Ast::Import(Import { path, location, typ: None, module_id: None, })
     }
 
     pub fn trait_definition(name: String, args: Vec<String>, fundeps: Vec<String>, declarations: Vec<TypeAnnotation<'a>>, location: Location<'a>) -> Ast<'a> {
+        assert!(!args.is_empty());
         Ast::TraitDefinition(TraitDefinition { name, args, fundeps, declarations, location, trait_info: None, typ: None })
     }
 
     pub fn trait_impl(trait_name: String, trait_args: Vec<Type<'a>>, definitions: Vec<Definition<'a>>, location: Location<'a>) -> Ast<'a> {
+        assert!(!trait_args.is_empty());
         Ast::TraitImpl(TraitImpl { trait_name, trait_args, definitions, location, trait_info: None, typ: None })
     }
 
@@ -283,6 +291,7 @@ impl<'a> Locatable<'a> for Variable<'a> {
         match self {
             Identifier(_, loc, _, _) => *loc,
             Operator(_, loc, _, _) => *loc,
+            TypeConstructor(_, loc, _, _) => *loc,
         }
     }
 }

@@ -1,7 +1,7 @@
 use super::NameResolver;
 use std::path::{ Path, PathBuf };
 use std::collections::HashMap;
-use crate::types::{ TypeVariableId, TypeInfo, Type };
+use crate::types::{ TypeVariableId, TypeInfoId, TypeInfo, Type, TypeInfoBody };
 use crate::error::location::{ Location, Locatable };
 use crate::parser::ast::Ast;
 use crate::nameresolution::unsafecache::UnsafeCache;
@@ -29,8 +29,9 @@ pub struct ModuleCache<'a> {
     pub filepaths: Vec<PathBuf>,
 
     /// Maps TypeVariableId -> Type
-    /// Filled out during type inference
-    pub type_bindings: Vec<Type>,
+    /// Unique TypeVariableIds are generated during name
+    /// resolution and are unified during type inference
+    pub type_bindings: Vec<Option<Type>>,
 
     /// Maps TypeInfoId -> TypeInfo
     /// Filled out during name resolution
@@ -92,17 +93,30 @@ impl<'a> ModuleCache<'a> {
     }
 
     pub fn push_definition(&mut self, location: Location<'a>) -> DefinitionInfoId {
-        let id = DefinitionInfoId(self.definition_infos.len());
+        let id = self.definition_infos.len();
         self.definition_infos.push(DefinitionInfo { location });
-        id
+        DefinitionInfoId(id)
     }
 
     pub fn push_ast(&mut self, ast: Ast<'a>) -> ModuleId {
         ModuleId(self.parse_trees.push(ast))
     }
 
+    pub fn push_type_info(&mut self, name: String, args: Vec<TypeVariableId>, location: Location<'a>) -> TypeInfoId {
+        let id = self.type_info.len();
+        let type_info = TypeInfo { name, args, location, body: TypeInfoBody::Unknown };
+        self.type_info.push(type_info);
+        TypeInfoId(id)
+    }
+
     pub fn get_name_resolver_by_path(&self, path: &Path) -> Option<&mut NameResolver> {
         let id = self.modules.get(path)?;
         self.name_resolvers.get_mut(id.0)
+    }
+
+    pub fn next_type_variable(&mut self) -> TypeVariableId {
+        let id = self.type_bindings.len();
+        self.type_bindings.push(None);
+        TypeVariableId(id)
     }
 }

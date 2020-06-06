@@ -84,7 +84,7 @@ fn read_file_or_panic(path: &Path) -> String {
 
 impl<'a> Display for ErrorMessage<'a> {
     fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
-        use std::cmp::{ min, max };
+        use std::cmp::min;
 
         let start = self.location.start;
 
@@ -99,15 +99,15 @@ impl<'a> Display for ErrorMessage<'a> {
 
         // In case we have an odd Location that has start.index = end.index,
         // we show a minimum of one indicator (^) to show where the error is.
-        let adjusted_len = max(1, actual_len);
+        // let adjusted_len = max(1, actual_len);
 
         // write the first part of the line, then the erroring part in red, then the rest
         write!(f, "{}", &line[0 .. start_column])?;
         write!(f, "{}", self.color(&line[start_column .. start_column + actual_len]))?;
-        writeln!(f, "{}", &line[start_column + actual_len ..])?;
+        writeln!(f, "{}", &line[start_column + actual_len ..])
 
-        let padding = " ".repeat(start_column);
-        let indicator = self.color(&"^".repeat(adjusted_len));
-        writeln!(f, "{}{}", padding, indicator)
+        // let padding = " ".repeat(start_column);
+        // let indicator = self.color(&"^".repeat(adjusted_len));
+        // writeln!(f, "{}{}", padding, indicator)
     }
 }
