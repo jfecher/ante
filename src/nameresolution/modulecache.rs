@@ -35,7 +35,7 @@ pub struct ModuleCache<'a> {
 
     /// Maps TypeInfoId -> TypeInfo
     /// Filled out during name resolution
-    pub type_info: Vec<TypeInfo<'a>>,
+    pub type_infos: Vec<TypeInfo<'a>>,
 
     /// Maps DefinitionInfoId -> DefinitionInfo
     /// Filled out during name resolution
@@ -51,6 +51,7 @@ pub struct DefinitionInfoId(pub usize);
 #[derive(Debug)]
 pub struct DefinitionInfo<'a> {
     pub location: Location<'a>,
+    pub uses: u32,
 }
 
 impl<'a> Locatable<'a> for DefinitionInfo<'a> {
@@ -79,7 +80,7 @@ impl<'a> ModuleCache<'a> {
             name_resolvers: UnsafeCache::default(),
             filepaths: Vec::default(),
             type_bindings: Vec::default(),
-            type_info: Vec::default(),
+            type_infos: Vec::default(),
             definition_infos: Vec::default(),
         }
     }
@@ -94,7 +95,7 @@ impl<'a> ModuleCache<'a> {
 
     pub fn push_definition(&mut self, location: Location<'a>) -> DefinitionInfoId {
         let id = self.definition_infos.len();
-        self.definition_infos.push(DefinitionInfo { location });
+        self.definition_infos.push(DefinitionInfo { location, uses: 0 });
         DefinitionInfoId(id)
     }
 
@@ -103,9 +104,9 @@ impl<'a> ModuleCache<'a> {
     }
 
     pub fn push_type_info(&mut self, name: String, args: Vec<TypeVariableId>, location: Location<'a>) -> TypeInfoId {
-        let id = self.type_info.len();
-        let type_info = TypeInfo { name, args, location, body: TypeInfoBody::Unknown };
-        self.type_info.push(type_info);
+        let id = self.type_infos.len();
+        let type_info = TypeInfo { name, args, location, uses: 0, body: TypeInfoBody::Unknown };
+        self.type_infos.push(type_info);
         TypeInfoId(id)
     }
 

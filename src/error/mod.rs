@@ -59,9 +59,9 @@ impl<'a> ErrorMessage<'a> {
 
     fn marker(&self) -> ColoredString {
         match self.error_type {
-            ErrorType::Error => self.color("error"),
-            ErrorType::Warning => self.color("warning"),
-            ErrorType::Note => self.color("note"),
+            ErrorType::Error => self.color("error:"),
+            ErrorType::Warning => self.color("warning:"),
+            ErrorType::Note => self.color("note:"),
         }
     }
 
@@ -88,7 +88,7 @@ impl<'a> Display for ErrorMessage<'a> {
 
         let start = self.location.start;
 
-        writeln!(f, "{}: {},{}\t{}: {}", self.location.filename.to_string_lossy().italic(),
+        writeln!(f, "{}: {},{}\t{} {}", self.location.filename.to_string_lossy().italic(),
             start.line, start.column, self.marker(), self.msg)?;
 
         let file_contents = read_file_or_panic(self.location.filename);

@@ -3,7 +3,7 @@ use crate::parser::ast::{ Ast, Variable };
 use crate::types::{ TypeInfoId, TypeVariableId, Type, PrimitiveType, TypeInfoBody };
 use crate::types::{ TypeConstructor, Field };
 use crate::error::location::{ Location, Locatable };
-use crate::nameresolution::modulecache::{ ModuleCache, DefinitionInfoId, TraitInfoId, ModuleId };
+use crate::nameresolution::modulecache::{ ModuleCache, DefinitionInfoId, ModuleId };
 use crate::nameresolution::scope::{ Scope, FunctionScope };
 use crate::lexer::{ Lexer, token::Token };
 use crate::parser;
@@ -47,17 +47,19 @@ impl PartialEq for NameResolver {
 }
 
 macro_rules! lookup_fn {
-    ( $name:ident , $stack_field:ident , $return_type:ty ) => {
-        fn $name<'a>(&self, name: &'a str) -> Option<$return_type> {
+    ( $name:ident , $stack_field:ident , $cache_field:ident, $return_type:ty ) => {
+        fn $name<'a, 'b>(&'a self, name: &'a str, cache: &'a mut ModuleCache<'b>) -> Option<$return_type> {
             let top = self.callstack.len() - 1;
             for stack in self.callstack[top].iter() {
                 if let Some(id) = stack.$stack_field.get(name) {
+                    cache.$cache_field[id.0].uses += 1;
                     return Some(*id);
                 }
             }
 
             // Check globals/imports in global scope
             if let Some(id) = self.global_scope().$stack_field.get(name) {
+                cache.$cache_field[id.0].uses += 1;
                 return Some(*id);
             }
 
@@ -67,26 +69,46 @@ macro_rules! lookup_fn {
 }
 
 impl NameResolver {
-    lookup_fn!(lookup_definition, definitions, DefinitionInfoId);
-    lookup_fn!(lookup_type, types, TypeInfoId);
-    lookup_fn!(lookup_type_variable, type_variables, TypeVariableId);
-    lookup_fn!(lookup_trait, traits, TraitInfoId);
+    lookup_fn!(lookup_definition, definitions, definition_infos, DefinitionInfoId);
+    lookup_fn!(lookup_type, types, type_infos, TypeInfoId);
+    // lookup_fn!(lookup_trait, traits, TraitInfoId);
+
+    fn lookup_type_variable(&self, name: &str) -> Option<TypeVariableId> {
+        let top = self.callstack.len() - 1;
+        for stack in self.callstack[top].iter() {
+            if let Some(id) = stack.type_variables.get(name) {
+                return Some(*id);
+            }
+        }
+
+        // Check globals/imports in global scope
+        if let Some(id) = self.global_scope().type_variables.get(name) {
+            return Some(*id);
+        }
+
+        None
+    }
 
     pub fn push_scope(&mut self) {
         let top = self.callstack.len() - 1;
         self.callstack[top].push();
     }
 
-    pub fn pop_scope(&mut self) {
-        let top = self.callstack.len() - 1;
-        self.callstack[top].pop();
-    }
-
     pub fn push_function(&mut self) {
         self.callstack.push(FunctionScope::new());
     }
 
-    pub fn pop_function(&mut self) {
+    pub fn pop_scope<'a, 'b>(&'a mut self, cache: &'a mut ModuleCache<'b>) {
+        let top = self.callstack.len() - 1;
+        self.current_scope().check_for_unused_definitions(cache);
+        self.callstack[top].pop();
+    }
+
+    pub fn pop_function<'a, 'b>(&'a mut self, cache: &'a mut ModuleCache<'b>) {
+        let top = self.callstack.len() - 1;
+        for scope in self.callstack[top].scopes() {
+            scope.check_for_unused_definitions(cache);
+        }
         self.callstack.pop();
     }
 
@@ -100,7 +122,7 @@ impl NameResolver {
     }
 
     pub fn push_definition<'a, 'b>(&'a mut self, name: String, cache: &'a mut ModuleCache<'b>, location: Location<'b>) -> DefinitionInfoId {
-        if let Some(existing_definition) = self.lookup_definition(&name) {
+        if let Some(existing_definition) = self.lookup_definition(&name, cache) {
             println!("{}", error!(location, "{} is already in scope", name));
             let previous_location = cache.definition_infos[existing_definition.0].location;
             println!("{}", note!(previous_location, "{} previously defined here", name));
@@ -115,9 +137,9 @@ impl NameResolver {
     }
 
     pub fn push_type_info<'a, 'b>(&'a mut self, name: String, args: Vec<TypeVariableId>, cache: &'a mut ModuleCache<'b>, location: Location<'b>) ->  TypeInfoId {
-        if let Some(existing_definition) = self.lookup_type(&name) {
+        if let Some(existing_definition) = self.lookup_type(&name, cache) {
             println!("{}", error!(location, "{} is already in scope", name));
-            let previous_location = cache.type_info[existing_definition.0].locate();
+            let previous_location = cache.type_infos[existing_definition.0].locate();
             println!("{}", note!(previous_location, "{} previously defined here", name));
         }
 
@@ -130,9 +152,9 @@ impl NameResolver {
     }
 
     pub fn push_variant<'a, 'b>(&'a mut self, name: String, id: TypeInfoId, cache: &'a mut ModuleCache<'b>, location: Location<'b>) {
-        if let Some(existing_definition) = self.lookup_type(&name) {
+        if let Some(existing_definition) = self.lookup_type(&name, cache) {
             println!("{}", error!(location, "{} is already in scope", name));
-            let previous_location = cache.type_info[existing_definition.0].locate();
+            let previous_location = cache.type_infos[existing_definition.0].locate();
             println!("{}", note!(previous_location, "{} previously defined here", name));
         }
 
@@ -228,7 +250,7 @@ impl<'a, 'b> NameResolver {
                 }
             },
             ast::Type::UserDefinedType(name, location) => {
-                match self.lookup_type(name) {
+                match self.lookup_type(name, cache) {
                     Some(id) => Type::UserDefinedType(id),
                     None => {
                         println!("{}", error!(*location, "Type {} was not found in scope", name));
@@ -245,12 +267,12 @@ impl<'a, 'b> NameResolver {
     }
 }
 
-pub trait Resolvable<'a, 'b: 'a> {
+pub trait Resolvable<'a, 'b> {
     fn declare(&'a mut self, resolver: &'a mut NameResolver, cache: &'a mut ModuleCache<'b>);
     fn define(&'a mut self, resolver: &'a mut NameResolver, cache: &'a mut ModuleCache<'b>);
 }
 
-impl<'a, 'b: 'a> Resolvable<'a, 'b> for Ast<'b> {
+impl<'a, 'b> Resolvable<'a, 'b> for Ast<'b> {
     fn declare(&'a mut self, resolver: &'a mut NameResolver, cache: &'a mut ModuleCache<'b>) {
         dispatch_on_expr!(self, Resolvable::declare, resolver, cache);
     }
@@ -260,7 +282,7 @@ impl<'a, 'b: 'a> Resolvable<'a, 'b> for Ast<'b> {
     }
 }
 
-impl<'a, 'b: 'a> Resolvable<'a, 'b> for ast::Literal<'b> {
+impl<'a, 'b> Resolvable<'a, 'b> for ast::Literal<'b> {
     /// Purpose of the declare pass is to collect all the names of publically exported symbols
     /// so the define pass can work in the presense of mutually recursive modules.
     fn declare(&mut self, _: &mut NameResolver, _: &mut ModuleCache) {}
@@ -278,7 +300,7 @@ fn is_declared<'a, 'b>(var: &'a ast::Variable<'b>) -> bool {
     }
 }
 
-impl<'a, 'b: 'a> Resolvable<'a, 'b> for ast::Variable<'b> {
+impl<'a, 'b> Resolvable<'a, 'b> for ast::Variable<'b> {
     fn declare(&'a mut self, resolver: &'a mut NameResolver, cache: &'a mut ModuleCache<'b>) {
         match self {
             Variable::Operator(Token::Semicolon, _, _, _) => {
@@ -300,22 +322,26 @@ impl<'a, 'b: 'a> Resolvable<'a, 'b> for ast::Variable<'b> {
         }
     }
 
-    fn define(&'a mut self, resolver: &'a mut NameResolver, _cache: &'a mut ModuleCache<'b>) {
+    fn define(&'a mut self, resolver: &'a mut NameResolver, cache: &'a mut ModuleCache<'b>) {
         if !is_declared(self) {
-            match self {
-                Variable::Operator(Token::Semicolon, _, _, _) => {
-                    // Ignore definition for the sequencing operator, its not a "true"
-                    // operator since it cannot be redefined
-                },
-                Variable::Operator(token, _, definition, _) => {
-                    *definition = resolver.lookup_definition(&token.to_string());
-                },
-                Variable::Identifier(name, _, definition, _) => {
-                    *definition = resolver.lookup_definition(name);
-                },
-                Variable::TypeConstructor(name, _, definition, _) => {
-                    *definition = resolver.lookup_type(name);
-                },
+            if resolver.auto_declare {
+                self.declare(resolver, cache);
+            } else {
+                match self {
+                    Variable::Operator(Token::Semicolon, _, _, _) => {
+                        // Ignore definition for the sequencing operator, its not a "true"
+                        // operator since it cannot be redefined
+                    },
+                    Variable::Operator(token, _, definition, _) => {
+                        *definition = resolver.lookup_definition(&token.to_string(), cache);
+                    },
+                    Variable::Identifier(name, _, definition, _) => {
+                        *definition = resolver.lookup_definition(name, cache);
+                    },
+                    Variable::TypeConstructor(name, _, definition, _) => {
+                        *definition = resolver.lookup_type(name, cache);
+                    },
+                }
             }
 
             // If it is still not declared, print an error
@@ -326,7 +352,7 @@ impl<'a, 'b: 'a> Resolvable<'a, 'b> for ast::Variable<'b> {
     }
 }
 
-impl<'a, 'b: 'a> Resolvable<'a, 'b> for ast::Lambda<'b> {
+impl<'a, 'b> Resolvable<'a, 'b> for ast::Lambda<'b> {
     fn declare(&'a mut self, _resolver: &'a mut NameResolver, _cache: &'a mut ModuleCache<'b>) { }
 
     fn define(&'a mut self, resolver: &'a mut NameResolver, cache: &'a mut ModuleCache<'b>) {
@@ -337,11 +363,11 @@ impl<'a, 'b: 'a> Resolvable<'a, 'b> for ast::Lambda<'b> {
         }
         resolver.auto_declare = false;
         self.body.define(resolver, cache);
-        resolver.pop_function();
+        resolver.pop_function(cache);
     }
 }
 
-impl<'a, 'b: 'a> Resolvable<'a, 'b> for ast::FunctionCall<'b> {
+impl<'a, 'b> Resolvable<'a, 'b> for ast::FunctionCall<'b> {
     fn declare(&'a mut self, resolver: &'a mut NameResolver, cache: &'a mut ModuleCache<'b>) {
         // We only need to go through sequenced ; expressions to find all the top-level declarations.
         match self.function.as_ref() {
@@ -362,7 +388,7 @@ impl<'a, 'b: 'a> Resolvable<'a, 'b> for ast::FunctionCall<'b> {
     }
 }
 
-impl<'a, 'b: 'a> Resolvable<'a, 'b> for ast::Definition<'b> {
+impl<'a, 'b> Resolvable<'a, 'b> for ast::Definition<'b> {
     fn declare(&'a mut self, resolver: &'a mut NameResolver, cache: &'a mut ModuleCache<'b>) {
         resolver.auto_declare = true;
         self.pattern.declare(resolver, cache);
@@ -377,7 +403,7 @@ impl<'a, 'b: 'a> Resolvable<'a, 'b> for ast::Definition<'b> {
     }
 }
 
-impl<'a, 'b: 'a> Resolvable<'a, 'b> for ast::If<'b> {
+impl<'a, 'b> Resolvable<'a, 'b> for ast::If<'b> {
     fn declare(&'a mut self, _resolver: &'a mut NameResolver, _cache: &'a mut ModuleCache<'b>) { }
 
     fn define(&'a mut self, resolver: &'a mut NameResolver, cache: &'a mut ModuleCache<'b>) {
@@ -385,17 +411,17 @@ impl<'a, 'b: 'a> Resolvable<'a, 'b> for ast::If<'b> {
         
         resolver.push_scope();
         self.then.define(resolver, cache);
-        resolver.pop_scope();
+        resolver.pop_scope(cache);
 
         if let Some(otherwise) = &mut self.otherwise {
             resolver.push_scope();
             otherwise.define(resolver, cache);
-            resolver.pop_scope();
+            resolver.pop_scope(cache);
         }
     }
 }
 
-impl<'a, 'b: 'a> Resolvable<'a, 'b> for ast::Match<'b> {
+impl<'a, 'b> Resolvable<'a, 'b> for ast::Match<'b> {
     fn declare(&'a mut self, _resolver: &'a mut NameResolver, _cache: &'a mut ModuleCache<'b>) { }
 
     fn define(&'a mut self, resolver: &'a mut NameResolver, cache: &'a mut ModuleCache<'b>) {
@@ -408,7 +434,7 @@ impl<'a, 'b: 'a> Resolvable<'a, 'b> for ast::Match<'b> {
             resolver.auto_declare = false;
 
             rhs.define(resolver, cache);
-            resolver.pop_scope();
+            resolver.pop_scope(cache);
         }
     }
 }
@@ -432,7 +458,7 @@ fn create_fields<'a, 'b>(vec: &'a Vec<(String, ast::Type<'b>, Location<'b>)>, re
     }).collect()
 }
 
-impl<'a, 'b: 'a> Resolvable<'a, 'b> for ast::TypeDefinition<'b> {
+impl<'a, 'b> Resolvable<'a, 'b> for ast::TypeDefinition<'b> {
     fn declare(&'a mut self, resolver: &'a mut NameResolver, cache: &'a mut ModuleCache<'b>) {
         let args = self.args.iter().map(|_| cache.next_type_variable()).collect();
         let id = resolver.push_type_info(self.name.clone(), args, cache, self.location);
@@ -448,7 +474,7 @@ impl<'a, 'b: 'a> Resolvable<'a, 'b> for ast::TypeDefinition<'b> {
         let id = self.type_info.unwrap();
 
         {
-            let type_info = &mut cache.type_info[id.0];
+            let type_info = &mut cache.type_infos[id.0];
             // re-insert the typevars into scope.
             // These names are guarenteed to not collide since we just pushed a new scope.
             for (key, id) in self.args.iter().zip(type_info.args.iter()) {
@@ -460,26 +486,26 @@ impl<'a, 'b: 'a> Resolvable<'a, 'b> for ast::TypeDefinition<'b> {
         match &self.definition {
             ast::TypeDefinitionBody::UnionOf(vec) => {
                 let variants = create_variants(id, vec, resolver, cache);
-                let type_info = &mut cache.type_info[self.type_info.unwrap().0];
+                let type_info = &mut cache.type_infos[self.type_info.unwrap().0];
                 type_info.body = TypeInfoBody::Union(variants);
             },
             ast::TypeDefinitionBody::StructOf(vec) => {
                 let fields = create_fields(vec, resolver, cache);
-                let type_info = &mut cache.type_info[self.type_info.unwrap().0];
+                let type_info = &mut cache.type_infos[self.type_info.unwrap().0];
                 type_info.body = TypeInfoBody::Struct(fields);
             },
             ast::TypeDefinitionBody::AliasOf(typ) => {
                 let typ = resolver.convert_type(cache, typ);
-                let type_info = &mut cache.type_info[self.type_info.unwrap().0];
+                let type_info = &mut cache.type_infos[self.type_info.unwrap().0];
                 type_info.body = TypeInfoBody::Alias(typ);
             },
         }
 
-        resolver.pop_scope();
+        resolver.pop_scope(cache);
     }
 }
 
-impl<'a, 'b: 'a> Resolvable<'a, 'b> for ast::TypeAnnotation<'b> {
+impl<'a, 'b> Resolvable<'a, 'b> for ast::TypeAnnotation<'b> {
     fn declare(&'a mut self, _resolver: &'a mut NameResolver, _cache: &'a mut ModuleCache<'b>) { }
 
 //  declare (self: Ast.TypeAnnotation) (resolver: mut NameResolver) (cache: mut ModuleCache) =
@@ -509,7 +535,7 @@ fn find_file<'a>(relative_import_path: &str, cache: &mut ModuleCache) -> Option<
     None
 }
 
-impl<'a, 'b: 'a> Resolvable<'a, 'b> for ast::Import<'b> {
+impl<'a, 'b> Resolvable<'a, 'b> for ast::Import<'b> {
     fn declare(&'a mut self, _resolver: &'a mut NameResolver, cache: &'a mut ModuleCache<'b>) {
         let relative_path = self.path.clone().join("/");
         let (file, path) = match find_file(&relative_path, cache) {
@@ -571,7 +597,7 @@ impl<'a, 'b: 'a> Resolvable<'a, 'b> for ast::Import<'b> {
     }
 }
 
-impl<'a, 'b: 'a> Resolvable<'a, 'b> for ast::TraitDefinition<'b> {
+impl<'a, 'b> Resolvable<'a, 'b> for ast::TraitDefinition<'b> {
     fn declare(&'a mut self, _resolver: &'a mut NameResolver, _cache: &'a mut ModuleCache<'b>) {
         unimplemented!();
     }
@@ -581,7 +607,7 @@ impl<'a, 'b: 'a> Resolvable<'a, 'b> for ast::TraitDefinition<'b> {
     }
 }
 
-impl<'a, 'b: 'a> Resolvable<'a, 'b> for ast::TraitImpl<'b> {
+impl<'a, 'b> Resolvable<'a, 'b> for ast::TraitImpl<'b> {
     fn declare(&'a mut self, _resolver: &'a mut NameResolver, _cache: &'a mut ModuleCache<'b>) {
         unimplemented!();
     }
@@ -591,7 +617,7 @@ impl<'a, 'b: 'a> Resolvable<'a, 'b> for ast::TraitImpl<'b> {
     }
 }
 
-impl<'a, 'b: 'a> Resolvable<'a, 'b> for ast::Return<'b> {
+impl<'a, 'b> Resolvable<'a, 'b> for ast::Return<'b> {
     fn declare(&'a mut self, _resolver: &'a mut NameResolver, _cache: &'a mut ModuleCache<'b>) { }
 
     fn define(&'a mut self, resolver: &'a mut NameResolver, cache: &'a mut ModuleCache<'b>) {

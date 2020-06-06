@@ -37,6 +37,8 @@ Steps needed to get back in line with the C++ compiler:
   - [x] Function definitions
   - [x] Type definitions
   - [ ] Trait definitions
+  - [x] Redefined warning
+  - [x] Never used warning
 - [ ] HM-type inference
 - [ ] Code generation (llvm)
 - [ ] REPL

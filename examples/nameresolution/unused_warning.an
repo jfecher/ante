@@ -1,0 +1,4 @@
+
+id x = x
+
+id x = error

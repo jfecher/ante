@@ -28,7 +28,23 @@ impl Scope {
         }
 
         merge_table!(definitions, definition_infos);
-        merge_table!(types, type_info);
+        merge_table!(types, type_infos);
+    }
+
+    pub fn check_for_unused_definitions(&self, cache: &ModuleCache) {
+        macro_rules! check {
+            ( $field:tt , $cache_field:tt ) => ({
+                for (name, id) in &self.$field {
+                    let definition = &cache.$cache_field[id.0];
+                    if definition.uses == 0 {
+                        println!("{}", warning!(definition.location, "{} is unused", name));
+                    }
+                }
+            });
+        }
+
+        check!(definitions, definition_infos);
+        check!(types, type_infos);
     }
 }
 
@@ -84,5 +100,9 @@ impl FunctionScope {
 
     pub fn bottom(&self) -> &Scope {
         &self.scopes[0]
+    }
+
+    pub fn scopes(&mut self) -> &mut Vec<Scope> {
+        &mut self.scopes
     }
 }

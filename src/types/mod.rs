@@ -71,6 +71,7 @@ pub struct TypeInfo<'a> {
     pub args: Vec<TypeVariableId>,
     pub name: String,
     pub body: TypeInfoBody<'a>,
+    pub uses: u32,
     pub location: Location<'a>,
 }
 
