@@ -11,21 +11,24 @@ use colored::*;
 macro_rules! error {
     ( $location:expr , $fmt_string:expr $( , $($msg:tt)* )? ) => ({
         let message = format!($fmt_string $( , $($msg)* )? );
-        crate::error::ErrorMessage::error(&message[..], $location)
+        let error = crate::error::ErrorMessage::error(&message[..], $location);
+        println!("{}", error);
     });
 }
 
 macro_rules! warning {
     ( $location:expr , $fmt_string:expr $( , $($msg:tt)* )? ) => ({
         let message = format!($fmt_string $( , $($msg)* )? );
-        crate::error::ErrorMessage::warning(&message[..], $location)
+        let warning = crate::error::ErrorMessage::warning(&message[..], $location);
+        println!("{}", warning);
     });
 }
 
 macro_rules! note {
     ( $location:expr , $fmt_string:expr $( , $($msg:tt)* )? ) => ({
         let message = format!($fmt_string $( , $($msg)* )? );
-        crate::error::ErrorMessage::note(&message[..], $location)
+        let note = crate::error::ErrorMessage::note(&message[..], $location);
+        println!("{}", note);
     });
 }
 
@@ -33,9 +36,6 @@ pub enum ErrorType {
     Error,
     Warning,
     Note,
-}
-
-impl ErrorType {
 }
 
 pub struct ErrorMessage<'a> {

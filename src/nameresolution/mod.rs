@@ -123,9 +123,9 @@ impl NameResolver {
 
     pub fn push_definition<'a, 'b>(&'a mut self, name: String, cache: &'a mut ModuleCache<'b>, location: Location<'b>) -> DefinitionInfoId {
         if let Some(existing_definition) = self.lookup_definition(&name, cache) {
-            println!("{}", error!(location, "{} is already in scope", name));
+            error!(location, "{} is already in scope", name);
             let previous_location = cache.definition_infos[existing_definition.0].location;
-            println!("{}", note!(previous_location, "{} previously defined here", name));
+            note!(previous_location, "{} previously defined here", name);
         }
 
         let id = cache.push_definition(location);
@@ -138,9 +138,9 @@ impl NameResolver {
 
     pub fn push_type_info<'a, 'b>(&'a mut self, name: String, args: Vec<TypeVariableId>, cache: &'a mut ModuleCache<'b>, location: Location<'b>) ->  TypeInfoId {
         if let Some(existing_definition) = self.lookup_type(&name, cache) {
-            println!("{}", error!(location, "{} is already in scope", name));
+            error!(location, "{} is already in scope", name);
             let previous_location = cache.type_infos[existing_definition.0].locate();
-            println!("{}", note!(previous_location, "{} previously defined here", name));
+            note!(previous_location, "{} previously defined here", name);
         }
 
         let id = cache.push_type_info(name.clone(), args, location);
@@ -153,9 +153,9 @@ impl NameResolver {
 
     pub fn push_variant<'a, 'b>(&'a mut self, name: String, id: TypeInfoId, cache: &'a mut ModuleCache<'b>, location: Location<'b>) {
         if let Some(existing_definition) = self.lookup_type(&name, cache) {
-            println!("{}", error!(location, "{} is already in scope", name));
+            error!(location, "{} is already in scope", name);
             let previous_location = cache.type_infos[existing_definition.0].locate();
-            println!("{}", note!(previous_location, "{} previously defined here", name));
+            note!(previous_location, "{} previously defined here", name);
         }
 
         if self.callstack.len() == 1 {
@@ -243,7 +243,7 @@ impl<'a, 'b> NameResolver {
                     match self.lookup_type_variable(name) {
                         Some(id) => Type::TypeVariable(id),
                         None => {
-                            println!("{}", error!(*location, "Type variable {} was not found in scope", name));
+                            error!(*location, "Type variable {} was not found in scope", name);
                             Type::Primitive(PrimitiveType::IntegerType)
                         },
                     }
@@ -253,7 +253,7 @@ impl<'a, 'b> NameResolver {
                 match self.lookup_type(name, cache) {
                     Some(id) => Type::UserDefinedType(id),
                     None => {
-                        println!("{}", error!(*location, "Type {} was not found in scope", name));
+                        error!(*location, "Type {} was not found in scope", name);
                         Type::Primitive(PrimitiveType::IntegerType)
                     },
                 }
@@ -346,7 +346,7 @@ impl<'a, 'b> Resolvable<'a, 'b> for ast::Variable<'b> {
 
             // If it is still not declared, print an error
             if !is_declared(self) {
-                println!("{}", error!(self.locate(), "No declaration for {} was found in scope", self));
+                error!(self.locate(), "No declaration for {} was found in scope", self);
             }
         }
     }
@@ -541,7 +541,7 @@ impl<'a, 'b> Resolvable<'a, 'b> for ast::Import<'b> {
         let (file, path) = match find_file(&relative_path, cache) {
             Some((f, p)) => (f, p),
             _ => {
-                println!("{}", error!(self.location, "Couldn't open file for import: {}.an", relative_path));
+                error!(self.location, "Couldn't open file for import: {}.an", relative_path);
                 return;
             },
         };
@@ -583,7 +583,7 @@ impl<'a, 'b> Resolvable<'a, 'b> for ast::Import<'b> {
         match import.state {
             NameResolutionState::NotStarted
             | NameResolutionState::DeclareInProgress => {
-                println!("{}", error!(self.location, "Internal compiler error: imported module has been defined but not declared"))
+                error!(self.location, "Internal compiler error: imported module has been defined but not declared")
             },
             | NameResolutionState::Declared => {
                 import.define(cache);

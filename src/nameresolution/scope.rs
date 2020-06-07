@@ -37,7 +37,7 @@ impl Scope {
                 for (name, id) in &self.$field {
                     let definition = &cache.$cache_field[id.0];
                     if definition.uses == 0 {
-                        println!("{}", warning!(definition.location, "{} is unused", name));
+                        warning!(definition.location, "{} is unused", name);
                     }
                 }
             });
