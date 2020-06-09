@@ -1,0 +1,11 @@
+trait Foo a b
+    foo: a -> b
+    bar: a
+
+impl Foo int string
+    foo _x = "test"
+    baz = 2  // error: baz not in foo
+    // error: missing definition of foo
+
+foo 3
+bar : unit

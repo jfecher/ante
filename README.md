@@ -32,11 +32,11 @@ Steps needed to get back in line with the C++ compiler:
   - [x] Most things, except for:
   - [ ] Tuples
   - [ ] Loops
-- [ ] Name resolution
+- [x] Name resolution
   - [x] Variable definitions
   - [x] Function definitions
   - [x] Type definitions
-  - [ ] Trait definitions
+  - [x] Trait definitions
   - [x] Redefined warning
   - [x] Never used warning
 - [ ] HM-type inference
@@ -51,6 +51,7 @@ Future goals still unimplemented in the C++ compiler:
     - get rid of plans for optional GC as it would likely poison any libraries it touches.
 
 Nice to have but not currently required:
+- [ ] Multiple backends, possibly GCCJIT/cranelift for faster debug builds?
 - [ ] Possibly re-add UFCS since it reduces the need to import everything.
     - need to workout how this interacts when the types aren't known
 - [ ] Reasonable C/C++ interop with clang api (stretch goal)

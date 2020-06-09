@@ -37,6 +37,10 @@ pub struct ModuleCache<'a> {
     /// Filled out during name resolution
     pub type_infos: Vec<TypeInfo<'a>>,
 
+    /// Maps TraitInfoId -> TraitInfo
+    /// Filled out during name resolution
+    pub trait_infos: Vec<TraitInfo<'a>>,
+
     /// Maps DefinitionInfoId -> DefinitionInfo
     /// Filled out during name resolution
     pub definition_infos: Vec<DefinitionInfo<'a>>,
@@ -50,7 +54,9 @@ pub struct DefinitionInfoId(pub usize);
 
 #[derive(Debug)]
 pub struct DefinitionInfo<'a> {
+    pub name: String,
     pub location: Location<'a>,
+    pub trait_id: Option<TraitInfoId>,
     pub uses: u32,
 }
 
@@ -61,13 +67,16 @@ impl<'a> Locatable<'a> for DefinitionInfo<'a> {
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub struct TraitInfoId(usize);
+pub struct TraitInfoId(pub usize);
 
 #[derive(Debug)]
 pub struct TraitInfo<'a> {
+    pub name: String,
     pub typeargs: Vec<TypeVariableId>,
     pub fundeps: Vec<TypeVariableId>,
     pub location: Location<'a>,
+    pub definitions: Vec<DefinitionInfoId>,
+    pub uses: u32,
 }
 
 
@@ -81,6 +90,7 @@ impl<'a> ModuleCache<'a> {
             filepaths: Vec::default(),
             type_bindings: Vec::default(),
             type_infos: Vec::default(),
+            trait_infos: Vec::default(),
             definition_infos: Vec::default(),
         }
     }
@@ -93,9 +103,9 @@ impl<'a> ModuleCache<'a> {
         unsafe { std::mem::transmute(path) }
     }
 
-    pub fn push_definition(&mut self, location: Location<'a>) -> DefinitionInfoId {
+    pub fn push_definition(&mut self, name: String, trait_id: Option<TraitInfoId>, location: Location<'a>) -> DefinitionInfoId {
         let id = self.definition_infos.len();
-        self.definition_infos.push(DefinitionInfo { location, uses: 0 });
+        self.definition_infos.push(DefinitionInfo { name, location, trait_id, uses: 0 });
         DefinitionInfoId(id)
     }
 
@@ -119,5 +129,18 @@ impl<'a> ModuleCache<'a> {
         let id = self.type_bindings.len();
         self.type_bindings.push(None);
         TypeVariableId(id)
+    }
+
+    pub fn push_trait_definition(&mut self, name: String, typeargs: Vec<TypeVariableId>, fundeps: Vec<TypeVariableId>,  location: Location<'a>) ->TraitInfoId {
+        let id = self.trait_infos.len();
+        self.trait_infos.push(TraitInfo {
+            name,
+            typeargs,
+            fundeps,
+            definitions: vec![],
+            location,
+            uses: 0,
+        });
+        TraitInfoId(id)
     }
 }

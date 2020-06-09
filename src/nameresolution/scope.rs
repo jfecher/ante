@@ -7,7 +7,6 @@ use crate::error::location::{ Location, Locatable };
 pub struct Scope {
     pub definitions: HashMap<String, DefinitionInfoId>,
     pub types: HashMap<String, TypeInfoId>,
-    pub type_variables: HashMap<String, TypeVariableId>,
     pub traits: HashMap<String, TraitInfoId>,
 }
 
@@ -36,8 +35,8 @@ impl Scope {
             ( $field:tt , $cache_field:tt ) => ({
                 for (name, id) in &self.$field {
                     let definition = &cache.$cache_field[id.0];
-                    if definition.uses == 0 {
-                        warning!(definition.location, "{} is unused", name);
+                    if definition.uses == 0 && definition.name.chars().next() != Some('_') {
+                        warning!(definition.location, "{} is unused (prefix name with _ to silence this warning)", name);
                     }
                 }
             });
@@ -93,16 +92,41 @@ impl FunctionScope {
         &mut self.scopes[top]
     }
 
-    pub fn second(&mut self) -> &mut Scope {
-        let i = self.scopes.len() - 2;
-        &mut self.scopes[i]
-    }
-
     pub fn bottom(&self) -> &Scope {
         &self.scopes[0]
     }
 
     pub fn scopes(&mut self) -> &mut Vec<Scope> {
         &mut self.scopes
+    }
+}
+
+
+/// Unlike FunctionScope, a TypeVariableScope is not a stack of scopes.
+/// Instead, its an alternative to "normal" scopes that other symbols live in.
+/// This is needed in general because type variables do not follow normal
+/// scoping rules. Consider the following trait definition:
+///
+/// trait Bar a
+///     bar a a -> a
+///
+/// In it, bar should be declared globally yet should also be able to reference
+/// the type variable a that any other global shouldn't be able to access. The
+/// solution to this used by this compiler is to give type variables different
+/// scoping rules that follow more closely how they're defined in a lexical scope.
+#[derive(Debug, Default)]
+pub struct TypeVariableScope {
+    type_variables: HashMap<String, TypeVariableId>,
+}
+
+impl TypeVariableScope {
+    pub fn push_existing_type_variable(&mut self, key: String, id: TypeVariableId) -> TypeVariableId {
+        let prev = self.type_variables.insert(key, id);
+        assert!(prev.is_none());
+        id
+    }
+
+    pub fn get(&self, key: &str) -> Option<&TypeVariableId> {
+        self.type_variables.get(key)
     }
 }
