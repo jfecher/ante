@@ -49,6 +49,7 @@ Future goals still unimplemented in the C++ compiler:
 - [ ] More general trait support (C++ compiler has trait inference bugs)
 - [ ] Commit to having deterministic destruction w/ destructors
     - get rid of plans for optional GC as it would likely poison any libraries it touches.
+- [ ] Better compiler tests e.g. golden tests
 
 Nice to have but not currently required:
 - [ ] Multiple backends, possibly GCCJIT/cranelift for faster debug builds?
