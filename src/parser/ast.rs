@@ -4,20 +4,44 @@ use crate::nameresolution::modulecache::{ DefinitionInfoId, TraitInfoId, ModuleI
 use crate::types::{ self, TypeInfoId };
 
 #[derive(Debug)]
-pub enum Literal<'a> {
-    Integer(u64, Location<'a>),
-    Float(f64, Location<'a>),
-    String(String, Location<'a>),
-    Char(char, Location<'a>),
-    Bool(bool, Location<'a>),
-    Unit(Location<'a>),
+pub enum LiteralKind {
+    Integer(u64),
+    Float(f64),
+    String(String),
+    Char(char),
+    Bool(bool),
+    Unit,
 }
 
 #[derive(Debug)]
-pub enum Variable<'a> {
-    Identifier(String, Location<'a>, Option<DefinitionInfoId>, Option<types::Type>),
-    Operator(Token, Location<'a>, Option<DefinitionInfoId>, Option<types::Type>),
-    TypeConstructor(String, Location<'a>, Option<TypeInfoId>, Option<types::Type>),
+pub struct Literal<'a> {
+    pub kind: LiteralKind,
+    pub location: Location<'a>,
+    pub typ: Option<types::Type>
+}
+
+#[derive(Debug, PartialEq)]
+pub enum VariableKind {
+    Identifier(String),
+    Operator(Token),
+    TypeConstructor(String),
+}
+
+#[derive(Debug)]
+pub struct Variable<'a> {
+    pub kind: VariableKind,
+    pub location: Location<'a>,
+    pub definition: Option<DefinitionInfoId>,
+    pub typ: Option<types::Type>,
+}
+
+impl<'a> Variable<'a> {
+    pub fn is_semicolon(&self) -> bool {
+        match &self.kind {
+            VariableKind::Operator(Token::Semicolon) => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -164,39 +188,39 @@ pub enum Ast<'a> {
 
 impl<'a> Ast<'a> {
     pub fn integer(x: u64, location: Location<'a>) -> Ast<'a> {
-        Ast::Literal(Literal::Integer(x, location))
+        Ast::Literal(Literal { kind: LiteralKind::Integer(x), location, typ: None })
     }
 
     pub fn float(x: f64, location: Location<'a>) -> Ast<'a> {
-        Ast::Literal(Literal::Float(x, location))
+        Ast::Literal(Literal { kind: LiteralKind::Float(x), location, typ: None })
     }
 
     pub fn string(x: String, location: Location<'a>) -> Ast<'a> {
-        Ast::Literal(Literal::String(x, location))
+        Ast::Literal(Literal { kind: LiteralKind::String(x), location, typ: None })
     }
 
     pub fn char_literal(x: char, location: Location<'a>) -> Ast<'a> {
-        Ast::Literal(Literal::Char(x, location))
+        Ast::Literal(Literal { kind: LiteralKind::Char(x), location, typ: None })
     }
 
     pub fn bool_literal(x: bool, location: Location<'a>) -> Ast<'a> {
-        Ast::Literal(Literal::Bool(x, location))
+        Ast::Literal(Literal { kind: LiteralKind::Bool(x), location, typ: None })
     }
 
     pub fn unit_literal(location: Location<'a>) -> Ast<'a> {
-        Ast::Literal(Literal::Unit(location))
+        Ast::Literal(Literal { kind: LiteralKind::Unit, location, typ: None })
     }
 
     pub fn variable(name: String, location: Location<'a>) -> Ast<'a> {
-        Ast::Variable(Variable::Identifier(name, location, None, None))
+        Ast::Variable(Variable { kind: VariableKind::Identifier(name), location, definition: None, typ: None })
     }
 
     pub fn operator(operator: Token, location: Location<'a>) -> Ast<'a> {
-        Ast::Variable(Variable::Operator(operator, location, None, None))
+        Ast::Variable(Variable { kind: VariableKind::Operator(operator), location, definition: None, typ: None })
     }
 
     pub fn type_constructor(name: String, location: Location<'a>) -> Ast<'a> {
-        Ast::Variable(Variable::TypeConstructor(name, location, None, None))
+        Ast::Variable(Variable { kind: VariableKind::TypeConstructor(name), location, definition: None, typ: None })
     }
 
     pub fn lambda(args: Vec<Ast<'a>>, body: Ast<'a>, location: Location<'a>) -> Ast<'a> {
@@ -271,31 +295,6 @@ impl<'a> Locatable<'a> for Ast<'a> {
     }
 }
 
-impl<'a> Locatable<'a> for Literal<'a> {
-    fn locate(&self) -> Location<'a> {
-        use Literal::*;
-        match self {
-            Integer(_, loc) => *loc,
-            Float(_, loc) => *loc,
-            String(_, loc) => *loc,
-            Char(_, loc) => *loc,
-            Bool(_, loc) => *loc,
-            Unit(loc) => *loc,
-        }
-    }
-}
-
-impl<'a> Locatable<'a> for Variable<'a> {
-    fn locate(&self) -> Location<'a> {
-        use Variable::*;
-        match self {
-            Identifier(_, loc, _, _) => *loc,
-            Operator(_, loc, _, _) => *loc,
-            TypeConstructor(_, loc, _, _) => *loc,
-        }
-    }
-}
-
 macro_rules! impl_locatable_for {( $name:tt ) => {
     impl<'a> Locatable<'a> for $name<'a> {
         fn locate(&self) -> Location<'a> {
@@ -304,6 +303,8 @@ macro_rules! impl_locatable_for {( $name:tt ) => {
     }
 };}
 
+impl_locatable_for!(Literal);
+impl_locatable_for!(Variable);
 impl_locatable_for!(Lambda);
 impl_locatable_for!(FunctionCall);
 impl_locatable_for!(Definition);

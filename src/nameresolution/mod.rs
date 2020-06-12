@@ -1,5 +1,5 @@
 use crate::parser::ast;
-use crate::parser::ast::{ Ast, Variable };
+use crate::parser::ast::Ast;
 use crate::types::{ TypeInfoId, TypeVariableId, Type, PrimitiveType, TypeInfoBody };
 use crate::types::{ TypeConstructor, Field };
 use crate::error::location::{ Location, Locatable };
@@ -7,6 +7,7 @@ use crate::nameresolution::modulecache::{ ModuleCache, DefinitionInfoId, ModuleI
 use crate::nameresolution::scope::{ Scope, FunctionScope };
 use crate::lexer::{ Lexer, token::Token };
 use crate::parser;
+use crate::util::fmap;
 
 use std::fs::File;
 use std::io::{ BufReader, Read };
@@ -144,7 +145,7 @@ impl NameResolver {
     }
 
     pub fn push_new_type_variable<'a, 'b>(&'a mut self, key: String, cache: &'a mut ModuleCache<'b>) -> TypeVariableId {
-        let id = cache.next_type_variable();
+        let id = cache.next_type_variable_id();
         self.push_existing_type_variable(key, id)
     }
 
@@ -246,20 +247,6 @@ impl NameResolver {
         id
     }
 
-    pub fn push_variant<'a, 'b>(&'a mut self, name: String, id: TypeInfoId, cache: &'a mut ModuleCache<'b>, location: Location<'b>) {
-        if let Some(existing_definition) = self.lookup_type(&name, cache) {
-            error!(location, "{} is already in scope", name);
-            let previous_location = cache.type_infos[existing_definition.0].locate();
-            note!(previous_location, "{} previously defined here", name);
-        }
-
-        if self.in_global_scope() {
-            self.exports.types.insert(name.clone(), id);
-        }
-
-        self.current_scope().types.insert(name, id);
-    }
-
     pub fn push_trait<'a, 'b>(&'a mut self, name: String, args: Vec<TypeVariableId>, fundeps: Vec<TypeVariableId>, cache: &'a mut ModuleCache<'b>, location: Location<'b>) -> TraitInfoId {
         if let Some(existing_definition) = self.lookup_trait(&name, cache) {
             error!(location, "{} is already in scope", name);
@@ -338,7 +325,7 @@ impl<'a, 'b> NameResolver {
             ast::Type::UnitType(_) => Type::Primitive(PrimitiveType::UnitType),
             ast::Type::ReferenceType(_) => Type::Primitive(PrimitiveType::ReferenceType),
             ast::Type::FunctionType(args, ret, _) => {
-                let args = args.iter().map(|arg| self.convert_type(cache, arg)).collect();
+                let args = fmap(args, |arg| self.convert_type(cache, arg));
                 let ret = self.convert_type(cache, ret);
                 Type::Function(args, Box::new(ret))
             },
@@ -363,7 +350,7 @@ impl<'a, 'b> NameResolver {
             },
             ast::Type::TypeApplication(constructor, args, _) => {
                 let constructor = Box::new(self.convert_type(cache, constructor));
-                let args = args.iter().map(|arg| self.convert_type(cache, arg)).collect();
+                let args = fmap(args, |arg| self.convert_type(cache, arg));
                 Type::TypeApplication(constructor, args)
             },
         }
@@ -396,32 +383,30 @@ impl<'a, 'b> Resolvable<'a, 'b> for ast::Literal<'b> {
 }
 
 fn is_declared<'a, 'b>(var: &'a ast::Variable<'b>) -> bool {
-    match var {
-        Variable::Operator(token, _, declaration, _) => declaration.is_some() || *token == Token::Semicolon,
-        Variable::Identifier(_, _, declaration, _) => declaration.is_some(),
-        Variable::TypeConstructor(_, _, declaration, _) => declaration.is_some(),
-    }
+    use ast::VariableKind::*;
+    var.definition.is_some() || var.kind == Operator(Token::Semicolon)
 }
 
 impl<'a, 'b> Resolvable<'a, 'b> for ast::Variable<'b> {
     fn declare(&'a mut self, resolver: &'a mut NameResolver, cache: &'a mut ModuleCache<'b>) {
-        match self {
-            Variable::Operator(Token::Semicolon, _, _, _) => {
-                // Ignore definition for the sequencing operator, its not a "true"
-                // operator since it cannot be redefined
-            },
-            Variable::Operator(token, location, definition, _) => {
-                let name = token.to_string();
-                if resolver.auto_declare {
-                    *definition = Some(resolver.push_definition(name, cache, *location));
-                }
-            },
-            Variable::Identifier(name, location, definition, _) => {
-                if resolver.auto_declare {
-                    *definition = Some(resolver.push_definition(name.clone(), cache, *location));
-                }
-            },
-            Variable::TypeConstructor(..) => (), // Never need to auto-declare type constructors
+        // Ignore definition for the sequencing operator, its not a "true"
+        // operator since it cannot be redefined and is always in scope
+        if !self.is_semicolon() {
+            use ast::VariableKind::*;
+            match &mut self.kind {
+                Operator(token) => {
+                    let name = token.to_string();
+                    if resolver.auto_declare {
+                        self.definition = Some(resolver.push_definition(name, cache, self.location));
+                    }
+                },
+                Identifier(name) => {
+                    if resolver.auto_declare {
+                        self.definition = Some(resolver.push_definition(name.clone(), cache, self.location));
+                    }
+                },
+                TypeConstructor(..) => unreachable!(), // Never need to auto-declare type constructors
+            }
         }
     }
 
@@ -429,20 +414,17 @@ impl<'a, 'b> Resolvable<'a, 'b> for ast::Variable<'b> {
         if !is_declared(self) {
             if resolver.auto_declare {
                 self.declare(resolver, cache);
-            } else {
-                match self {
-                    Variable::Operator(Token::Semicolon, _, _, _) => {
-                        // Ignore definition for the sequencing operator, its not a "true"
-                        // operator since it cannot be redefined
+            } else if !self.is_semicolon() {
+                use ast::VariableKind::*;
+                match &mut self.kind {
+                    Operator(token) => {
+                        self.definition = resolver.lookup_definition(&token.to_string(), cache);
                     },
-                    Variable::Operator(token, _, definition, _) => {
-                        *definition = resolver.lookup_definition(&token.to_string(), cache);
+                    Identifier(name) => {
+                        self.definition = resolver.lookup_definition(name, cache);
                     },
-                    Variable::Identifier(name, _, definition, _) => {
-                        *definition = resolver.lookup_definition(name, cache);
-                    },
-                    Variable::TypeConstructor(name, _, definition, _) => {
-                        *definition = resolver.lookup_type(name, cache);
+                    TypeConstructor(name) => {
+                        self.definition = resolver.lookup_definition(name, cache);
                     },
                 }
             }
@@ -474,7 +456,7 @@ impl<'a, 'b> Resolvable<'a, 'b> for ast::FunctionCall<'b> {
     fn declare(&'a mut self, resolver: &'a mut NameResolver, cache: &'a mut ModuleCache<'b>) {
         // We only need to go through sequenced ; expressions to find all the top-level declarations.
         match self.function.as_ref() {
-            Ast::Variable(Variable::Operator(Token::Semicolon, _, _, _)) => {
+            Ast::Variable(var) if var.is_semicolon() => {
                 for arg in self.args.iter_mut() {
                     arg.declare(resolver, cache)
                 }
@@ -542,13 +524,13 @@ impl<'a, 'b> Resolvable<'a, 'b> for ast::Match<'b> {
     }
 }
 
-fn create_variants<'a, 'b>(id: TypeInfoId, vec: &'a Vec<(String, Vec<ast::Type<'b>>, Location<'b>)>, resolver: &'a mut NameResolver, cache: &'a mut ModuleCache<'b>) -> Vec<TypeConstructor<'b>> {
+fn create_variants<'a, 'b>(vec: &'a Vec<(String, Vec<ast::Type<'b>>, Location<'b>)>, resolver: &'a mut NameResolver, cache: &'a mut ModuleCache<'b>) -> Vec<TypeConstructor<'b>> {
     vec.iter().map(|(name, types, location)| {
         let args = types.iter().map(|t|
             resolver.convert_type(cache, t)
         ).collect();
 
-        resolver.push_variant(name.clone(), id, cache, *location);
+        resolver.push_definition(name.clone(), cache, *location);
         TypeConstructor { name: name.clone(), args, location: *location }
     }).collect()
 }
@@ -563,7 +545,7 @@ fn create_fields<'a, 'b>(vec: &'a Vec<(String, ast::Type<'b>, Location<'b>)>, re
 
 impl<'a, 'b> Resolvable<'a, 'b> for ast::TypeDefinition<'b> {
     fn declare(&'a mut self, resolver: &'a mut NameResolver, cache: &'a mut ModuleCache<'b>) {
-        let args = self.args.iter().map(|_| cache.next_type_variable()).collect();
+        let args = self.args.iter().map(|_| cache.next_type_variable_id()).collect();
         let id = resolver.push_type_info(self.name.clone(), args, cache, self.location);
         self.type_info = Some(id);
     }
@@ -588,7 +570,7 @@ impl<'a, 'b> Resolvable<'a, 'b> for ast::TypeDefinition<'b> {
 
         match &self.definition {
             ast::TypeDefinitionBody::UnionOf(vec) => {
-                let variants = create_variants(id, vec, resolver, cache);
+                let variants = create_variants(vec, resolver, cache);
                 let type_info = &mut cache.type_infos[self.type_info.unwrap().0];
                 type_info.body = TypeInfoBody::Union(variants);
             },

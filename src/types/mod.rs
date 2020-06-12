@@ -1,6 +1,12 @@
 use crate::error::location::{ Locatable, Location };
+use crate::nameresolution::modulecache::ModuleCache;
+use std::collections::HashMap;
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub mod typed;
+pub mod typechecker;
+pub mod typeprinter;
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, PartialOrd, Ord)]
 pub struct TypeVariableId(pub usize);
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -14,7 +20,7 @@ pub enum PrimitiveType {
     ReferenceType,    // : * -> *
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     /// int, char, bool, etc
     Primitive(PrimitiveType),
@@ -39,6 +45,24 @@ pub enum Type {
     /// type variables for let-polymorphism. There is no syntax to
     /// specify these explicitly in ante code.
     ForAll(Vec<TypeVariableId>, Box<Type>),
+}
+
+impl Type {
+    pub fn display<'a, 'b>(&'a self, cache: &'a ModuleCache<'b>) -> typeprinter::TypePrinter<'a, 'b> {
+        let typevars = typechecker::find_all_typevars(self, false, cache);
+        let mut typevar_names = HashMap::new();
+        let mut current = 'a';
+
+        for typevar in typevars {
+            if typevar_names.get(&typevar).is_none() {
+                typevar_names.insert(typevar, current.to_string());
+                current = (current as u8 + 1) as char;
+                assert!(current != 'z'); // TODO: wrap to aa, ab, ac...
+            }
+        }
+
+        typeprinter::TypePrinter::new(self, typevar_names, cache)
+    }
 }
 
 #[derive(Debug)]

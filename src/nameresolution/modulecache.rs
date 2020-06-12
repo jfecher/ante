@@ -57,6 +57,7 @@ pub struct DefinitionInfo<'a> {
     pub name: String,
     pub location: Location<'a>,
     pub trait_id: Option<TraitInfoId>,
+    pub typ: Type,
     pub uses: u32,
 }
 
@@ -105,7 +106,14 @@ impl<'a> ModuleCache<'a> {
 
     pub fn push_definition(&mut self, name: String, trait_id: Option<TraitInfoId>, location: Location<'a>) -> DefinitionInfoId {
         let id = self.definition_infos.len();
-        self.definition_infos.push(DefinitionInfo { name, location, trait_id, uses: 0 });
+        let typ = self.next_type_variable();
+        self.definition_infos.push(DefinitionInfo {
+            name,
+            location,
+            trait_id,
+            typ,
+            uses: 0,
+        });
         DefinitionInfoId(id)
     }
 
@@ -125,10 +133,15 @@ impl<'a> ModuleCache<'a> {
         self.name_resolvers.get_mut(id.0)
     }
 
-    pub fn next_type_variable(&mut self) -> TypeVariableId {
+    pub fn next_type_variable_id(&mut self) -> TypeVariableId {
         let id = self.type_bindings.len();
         self.type_bindings.push(None);
         TypeVariableId(id)
+    }
+
+    pub fn next_type_variable(&mut self) -> Type {
+        let id = self.next_type_variable_id();
+        Type::TypeVariable(id)
     }
 
     pub fn push_trait_definition(&mut self, name: String, typeargs: Vec<TypeVariableId>, fundeps: Vec<TypeVariableId>,  location: Location<'a>) ->TraitInfoId {

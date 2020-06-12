@@ -6,6 +6,7 @@ use std::io::{BufReader, Read};
 #[macro_use]
 mod parser;
 mod lexer;
+mod util;
 
 #[macro_use]
 mod error;
@@ -67,6 +68,10 @@ fn main() -> Result<(), Error> {
         match result {
             Ok(root) => {
                 NameResolver::start(root, &mut cache);
+                let ast = cache.parse_trees.get_mut(0).unwrap();
+                println!("{}", ast);
+                let (typ, _) = types::typechecker::infer(ast, &mut cache);
+                println!("{}", typ.display(&mut cache));
             },
             Err(e) => {
                 println!("{}", e);

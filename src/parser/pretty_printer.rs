@@ -9,14 +9,14 @@ impl<'a> Display for Ast<'a> {
 
 impl<'a> Display for ast::Literal<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        use ast::Literal::*;
-        match self {
-            Integer(x, _) => write!(f, "{}", x),
-            Float(x, _) => write!(f, "{}", x),
-            String(s, _) => write!(f, "\"{}\"", s),
-            Char(c, _) => write!(f, "'{}'", c),
-            Bool(b, _) => write!(f, "{}", if *b { "true" } else { "false" }),
-            Unit(_) => write!(f, "()"),
+        use ast::LiteralKind::*;
+        match &self.kind {
+            Integer(x) => write!(f, "{}", x),
+            Float(x) => write!(f, "{}", x),
+            String(s) => write!(f, "\"{}\"", s),
+            Char(c) => write!(f, "'{}'", c),
+            Bool(b) => write!(f, "{}", if *b { "true" } else { "false" }),
+            Unit => write!(f, "()"),
         }
     }
 }
@@ -27,11 +27,11 @@ fn join_with<T: Display>(vec: &[T], delimiter: &str) -> String {
 
 impl<'a> Display for ast::Variable<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        use ast::Variable::*;
-        match self {
-            Identifier(name, _, _, _) => write!(f, "{}", name),
-            Operator(token, _, _, _) => write!(f, "{}", token),
-            TypeConstructor(name, _, _, _) => write!(f, "{}", name),
+        use ast::VariableKind::*;
+        match &self.kind {
+            Identifier(name) => write!(f, "{}", name),
+            Operator(token) => write!(f, "{}", token),
+            TypeConstructor(name) => write!(f, "{}", name),
         }
     }
 }
@@ -48,12 +48,10 @@ impl<'a> Display for ast::Lambda<'a> {
 
 impl<'a> Display for ast::FunctionCall<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        use ast::{Ast::Variable, Variable::Operator};
-        use crate::lexer::token::Token::Semicolon;
-
         // pretty-print calls to ';' on separate lines
         match self.function.as_ref() {
-            Variable(Operator(Semicolon, _, _, _)) => write!(f, "{}", join_with(&self.args, ";\n")),
+            ast::Ast::Variable(var) if var.is_semicolon() =>
+                 write!(f, "{}", join_with(&self.args, ";\n")),
             _ => write!(f, "({} {})", self.function, join_with(&self.args, " ")),
         }
     }
