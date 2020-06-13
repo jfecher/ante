@@ -48,12 +48,7 @@ impl<'a> Display for ast::Lambda<'a> {
 
 impl<'a> Display for ast::FunctionCall<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        // pretty-print calls to ';' on separate lines
-        match self.function.as_ref() {
-            ast::Ast::Variable(var) if var.is_semicolon() =>
-                 write!(f, "{}", join_with(&self.args, ";\n")),
-            _ => write!(f, "({} {})", self.function, join_with(&self.args, " ")),
-        }
+        write!(f, "({} {})", self.function, join_with(&self.args, " "))
     }
 }
 
@@ -166,5 +161,11 @@ impl<'a> Display for ast::TraitImpl<'a> {
 impl<'a> Display for ast::Return<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "(return {})", self.expression)
+    }
+}
+
+impl<'a> Display for ast::Sequence<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", join_with(&self.statements, ";\n"))
     }
 }

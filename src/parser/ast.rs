@@ -27,6 +27,7 @@ pub enum VariableKind {
     TypeConstructor(String),
 }
 
+/// a, b, (+), Some, etc.
 #[derive(Debug)]
 pub struct Variable<'a> {
     pub kind: VariableKind,
@@ -35,15 +36,8 @@ pub struct Variable<'a> {
     pub typ: Option<types::Type>,
 }
 
-impl<'a> Variable<'a> {
-    pub fn is_semicolon(&self) -> bool {
-        match &self.kind {
-            VariableKind::Operator(Token::Semicolon) => true,
-            _ => false,
-        }
-    }
-}
-
+/// \a b. expr
+/// Function definitions are also desugared to a ast::Definition with a ast::Lambda as its body
 #[derive(Debug)]
 pub struct Lambda<'a> {
     pub args: Vec<Ast<'a>>,
@@ -52,6 +46,7 @@ pub struct Lambda<'a> {
     pub typ: Option<types::Type>,
 }
 
+/// foo a b c
 #[derive(Debug)]
 pub struct FunctionCall<'a> {
     pub function: Box<Ast<'a>>,
@@ -60,6 +55,8 @@ pub struct FunctionCall<'a> {
     pub typ: Option<types::Type>,
 }
 
+/// foo = 23
+/// pattern a b = expr
 #[derive(Debug)]
 pub struct Definition<'a> {
     pub pattern: Box<Ast<'a>>,
@@ -69,6 +66,7 @@ pub struct Definition<'a> {
     pub typ: Option<types::Type>,
 }
 
+/// if condition then expression else expression
 #[derive(Debug)]
 pub struct If<'a> {
     pub condition: Box<Ast<'a>>,
@@ -78,6 +76,11 @@ pub struct If<'a> {
     pub typ: Option<types::Type>,
 }
 
+/// match expression with
+/// | pattern1 -> branch1
+/// | pattern2 -> branch2
+/// ...
+/// | patternN -> branchN
 #[derive(Debug)]
 pub struct Match<'a> {
     pub expression: Box<Ast<'a>>,
@@ -110,6 +113,7 @@ pub enum TypeDefinitionBody<'a> {
     AliasOf(Type<'a>),
 }
 
+/// type Name arg1 arg2 ... argN = definition
 #[derive(Debug)]
 pub struct TypeDefinition<'a> {
     pub name: String,
@@ -120,6 +124,7 @@ pub struct TypeDefinition<'a> {
     pub typ: Option<types::Type>,
 }
 
+/// lhs : rhs
 #[derive(Debug)]
 pub struct TypeAnnotation<'a> {
     pub lhs: Box<Ast<'a>>,
@@ -128,6 +133,7 @@ pub struct TypeAnnotation<'a> {
     pub typ: Option<types::Type>,
 }
 
+/// import Path1 . Path2 ... PathN
 #[derive(Debug)]
 pub struct Import<'a> {
     pub path: Vec<String>,
@@ -136,6 +142,11 @@ pub struct Import<'a> {
     pub module_id: Option<ModuleId>,
 }
 
+/// trait Name arg1 arg2 ... argN -> fundep1 fundep2 ... fundepN
+///     declaration1
+///     declaration2
+///     ...
+///     declarationN
 #[derive(Debug)]
 pub struct TraitDefinition<'a> {
     pub name: String,
@@ -152,6 +163,11 @@ pub struct TraitDefinition<'a> {
     pub typ: Option<types::Type>,
 }
 
+/// impl TraitName TraitArg1 TraitArg2 ... TraitArgN
+///     definition1
+///     definition2
+///     ...
+///     definitionN
 #[derive(Debug)]
 pub struct TraitImpl<'a> {
     pub trait_name: String,
@@ -162,9 +178,21 @@ pub struct TraitImpl<'a> {
     pub typ: Option<types::Type>,
 }
 
+/// return expression
 #[derive(Debug)]
 pub struct Return<'a> {
     pub expression: Box<Ast<'a>>,
+    pub location: Location<'a>,
+    pub typ: Option<types::Type>,
+}
+
+/// statement1
+/// statement2
+/// ...
+/// statementN
+#[derive(Debug)]
+pub struct Sequence<'a> {
+    pub statements: Vec<Ast<'a>>,
     pub location: Location<'a>,
     pub typ: Option<types::Type>,
 }
@@ -184,6 +212,7 @@ pub enum Ast<'a> {
     TraitDefinition(TraitDefinition<'a>),
     TraitImpl(TraitImpl<'a>),
     Return(Return<'a>),
+    Sequence(Sequence<'a>),
 }
 
 impl<'a> Ast<'a> {
@@ -267,6 +296,11 @@ impl<'a> Ast<'a> {
     pub fn return_expr(expression: Ast<'a>, location: Location<'a>) -> Ast<'a> {
         Ast::Return(Return { expression: Box::new(expression), location, typ: None })
     }
+
+    pub fn sequence(statements: Vec<Ast<'a>>, location: Location<'a>) -> Ast<'a> {
+        assert!(!statements.is_empty());
+        Ast::Sequence(Sequence { statements, location, typ: None })
+    }
 }
 
 macro_rules! dispatch_on_expr {
@@ -285,6 +319,7 @@ macro_rules! dispatch_on_expr {
             crate::parser::ast::Ast::TraitDefinition(inner) => $function(inner $(, $($args),* )? ),
             crate::parser::ast::Ast::TraitImpl(inner) =>       $function(inner $(, $($args),* )? ),
             crate::parser::ast::Ast::Return(inner) =>          $function(inner $(, $($args),* )? ),
+            crate::parser::ast::Ast::Sequence(inner) =>        $function(inner $(, $($args),* )? ),
         }
     });
 }
@@ -316,6 +351,7 @@ impl_locatable_for!(Import);
 impl_locatable_for!(TraitDefinition);
 impl_locatable_for!(TraitImpl);
 impl_locatable_for!(Return);
+impl_locatable_for!(Sequence);
 
 // TODO:
 // Module = RootNode | ExtNode

@@ -9,7 +9,7 @@ use std::collections::HashMap;
 // Note: most of this file is directly translated from:
 // https://github.com/jfecher/algorithm-j
 
-/// Replace any typevars found in the Hashtbl with the
+/// Replace any typevars found in typevars_to_replace with the
 /// associated value in the same table, leave them otherwise
 fn replace_typevars<'b>(typ: &Type, typevars_to_replace: &HashMap<TypeVariableId, TypeVariableId>, cache: &mut ModuleCache<'b>) -> Type {
     match typ {
@@ -27,12 +27,13 @@ fn replace_typevars<'b>(typ: &Type, typevars_to_replace: &HashMap<TypeVariableId
             let return_type = replace_typevars(return_type, typevars_to_replace, cache);
             Function(parameters, Box::new(return_type))
         },
-        ForAll(typevars, typ) => {
-            let mut table_copy = typevars_to_replace.clone();
-            for typevar in typevars.iter() {
-                table_copy.remove(typevar);
-            }
-            ForAll(typevars.clone(), Box::new(replace_typevars(typ, &table_copy, cache)))
+        ForAll(_typevars, _typ) => {
+            unreachable!("Ante does not support higher rank polymorphism");
+            // let mut table_copy = typevars_to_replace.clone();
+            // for typevar in typevars.iter() {
+            //     table_copy.remove(typevar);
+            // }
+            // ForAll(typevars.clone(), Box::new(replace_typevars(typ, &table_copy, cache)))
         }
         UserDefinedType(id) => UserDefinedType(*id),
 
@@ -51,6 +52,13 @@ fn instantiate<'b>(s: &Type, cache: &mut ModuleCache<'b>) -> Type {
     // Note that the returned type is no longer a PolyType,
     // this means it is now monomorphic and not forall-quantified
     match s {
+        TypeVariable(id) => {
+            if let Some(typ) = cache.type_bindings[id.0].as_ref() {
+                instantiate(&typ.clone(), cache)
+            } else {
+                TypeVariable(*id)
+            }
+        },
         ForAll(typevars, typ) => {
             let mut typevars_to_replace = HashMap::new();
             for var in typevars.iter().copied() {
@@ -129,18 +137,31 @@ fn unify<'b>(t1: &Type, t2: &Type, location: Location<'b>, cache: &mut ModuleCac
         },
 
         (Function(a_args, a_ret), Function(b_args, b_ret)) => {
+            if a_args.len() != b_args.len() {
+                error!(location, "Type mismatch between {} and {}", t1.display(cache), t2.display(cache));
+            }
+
             fmap2(a_args, b_args, |a_arg, b_arg| unify(a_arg, b_arg, location, cache));
             unify(a_ret, b_ret, location, cache);
         },
 
+        (TypeApplication(a_constructor, a_args), TypeApplication(b_constructor, b_args)) => {
+            if a_args.len() != b_args.len() {
+                error!(location, "Type mismatch between {} and {}", t1.display(cache), t2.display(cache));
+            }
+
+            unify(a_constructor, b_constructor, location, cache);
+            fmap2(a_args, b_args, |a_arg, b_arg| unify(a_arg, b_arg, location, cache));
+        },
+
         (ForAll(a_vars, a), ForAll(b_vars, b)) => {
             if a_vars.len() != b_vars.len() {
-                error!(location, "Type mismatch between {:?} and {:?}", a, b)
+                error!(location, "Type mismatch between {} and {}", a.display(cache), b.display(cache))
             }
             unify(a, b, location, cache);
         },
 
-        (a, b) => error!(location, "Type mismatch between {:?} and {:?}", a, b),
+        (a, b) => error!(location, "Type mismatch between {} and {}", a.display(cache), b.display(cache)),
     }
 }
 
@@ -197,6 +218,20 @@ fn create_polytype<'a>(typ: &Type, cache: &ModuleCache<'a>) -> Type {
     ForAll(typevars, Box::new(typ.clone()))
 }
 
+/// Returns true if we should generalize the given definition by wrapping
+/// it in a ForAll type. Currently only true for lambda definitions.
+fn should_generalize<'a>(definition: &ast::Definition<'a>) -> bool {
+    match definition.expr.as_ref() {
+        ast::Ast::Lambda(_) => {
+            match definition.pattern.as_ref() {
+                ast::Ast::Variable(_) => true,
+                _ => false,
+            }
+        },
+        _ => false,
+    }
+}
+
 
 type TraitList = Vec<(TraitInfoId, Vec<Type>)>;
 
@@ -241,11 +276,6 @@ impl<'a> Inferable<'a> for ast::Literal<'a> {
  */
 impl<'a> Inferable<'a> for ast::Variable<'a> {
     fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitList) {
-        match &self.kind {
-            _ if self.is_semicolon() => return (Type::Primitive(PrimitiveType::UnitType), vec![]),
-            _ => (),
-        }
-
         let s = cache.definition_infos[self.definition.unwrap().0].typ.clone();
         let t = instantiate(&s, cache);
         (t, vec![])
@@ -296,12 +326,18 @@ impl<'a> Inferable<'a> for ast::FunctionCall<'a> {
  */
 impl<'a> Inferable<'a> for ast::Definition<'a> {
     fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitList) {
-        let (typ, _) = infer(self.expr.as_mut(), cache);
-        let generalized = create_polytype(&typ, cache);
-        
-        let declared_type = &mut cache.definition_infos[self.info.unwrap().0].typ.clone();
-        unify(&declared_type, &generalized, self.location, cache);
-        (generalized, vec![])
+        let (rhs, _) = infer(self.expr.as_mut(), cache);
+        let (lhs, _) = infer(self.pattern.as_mut(), cache);
+
+        if should_generalize(self) {
+            let generalized = create_polytype(&rhs, cache);
+            unify(&lhs, &generalized, self.location, cache);
+        } else {
+            unify(&lhs, &rhs, self.location, cache);
+        }
+
+        let unit = Type::Primitive(PrimitiveType::UnitType);
+        (unit, vec![])
     }
 }
 
@@ -379,5 +415,16 @@ impl<'a> Inferable<'a> for ast::TraitImpl<'a> {
 impl<'a> Inferable<'a> for ast::Return<'a> {
     fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitList) {
         infer(self.expression.as_mut(), cache)
+    }
+}
+
+impl<'a> Inferable<'a> for ast::Sequence<'a> {
+    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitList) {
+        let ignore_len = self.statements.len() - 1;
+        for statement in self.statements.iter_mut().take(ignore_len) {
+            infer(statement, cache);
+        }
+        let (last_statement_type, _) = infer(self.statements.last_mut().unwrap(), cache);
+        (last_statement_type, vec![])
     }
 }

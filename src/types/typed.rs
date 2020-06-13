@@ -41,3 +41,4 @@ impl_typed_for!(Import);
 impl_typed_for!(TraitDefinition);
 impl_typed_for!(TraitImpl);
 impl_typed_for!(Return);
+impl_typed_for!(Sequence);

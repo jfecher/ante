@@ -4,8 +4,8 @@ use crate::types::{ TypeInfoId, TypeVariableId, Type, PrimitiveType, TypeInfoBod
 use crate::types::{ TypeConstructor, Field };
 use crate::error::location::{ Location, Locatable };
 use crate::nameresolution::modulecache::{ ModuleCache, DefinitionInfoId, ModuleId, TraitInfoId };
-use crate::nameresolution::scope::{ Scope, FunctionScope };
-use crate::lexer::{ Lexer, token::Token };
+use crate::nameresolution::scope::Scope;
+use crate::lexer::Lexer;
 use crate::parser;
 use crate::util::fmap;
 
@@ -42,13 +42,13 @@ pub struct NameResolver {
     ///     bar () + 2
     ///
     /// Our callstack would consist of [main/global scope, foo, bar]
-    callstack: Vec<scope::FunctionScope>,
+    scopes: Vec<Scope>,
 
     /// Contains all the publically exported symbols of the current module.
     /// The purpose of the 'declare' pass is to fill this field out for
     /// all modules used in the program. The exported symbols need not
     /// be defined until the 'define' pass later however.
-    exports: scope::Scope,
+    exports: Scope,
 
     /// Type variable scopes are separate from other scopes since in general
     /// type variables do not follow normal scoping rules. For example, in the trait:
@@ -92,8 +92,7 @@ impl PartialEq for NameResolver {
 macro_rules! lookup_fn {
     ( $name:ident , $stack_field:ident , $cache_field:ident, $return_type:ty ) => {
         fn $name<'a, 'b>(&'a self, name: &'a str, cache: &'a mut ModuleCache<'b>) -> Option<$return_type> {
-            let top = self.callstack.len() - 1;
-            for stack in self.callstack[top].iter() {
+            for stack in self.scopes.iter().rev() {
                 if let Some(id) = stack.$stack_field.get(name) {
                     cache.$cache_field[id.0].uses += 1;
                     return Some(*id);
@@ -127,12 +126,7 @@ impl NameResolver {
     }
 
     pub fn push_scope(&mut self) {
-        let top = self.callstack.len() - 1;
-        self.callstack[top].push();
-    }
-
-    pub fn push_function(&mut self) {
-        self.callstack.push(FunctionScope::new());
+        self.scopes.push(Scope::default());
     }
 
     pub fn push_type_variable_scope(&mut self) {
@@ -150,19 +144,10 @@ impl NameResolver {
     }
 
     pub fn pop_scope<'a, 'b>(&'a mut self, cache: &'a mut ModuleCache<'b>, warn_unused: bool) {
-        let top = self.callstack.len() - 1;
         if warn_unused {
             self.current_scope().check_for_unused_definitions(cache);
         }
-        self.callstack[top].pop();
-    }
-
-    pub fn pop_function<'a, 'b>(&'a mut self, cache: &'a mut ModuleCache<'b>) {
-        let top = self.callstack.len() - 1;
-        for scope in self.callstack[top].scopes() {
-            scope.check_for_unused_definitions(cache);
-        }
-        self.callstack.pop();
+        self.scopes.pop();
     }
 
     pub fn pop_type_variable_scope(&mut self) {
@@ -170,16 +155,16 @@ impl NameResolver {
     }
 
     pub fn current_scope(&mut self) -> &mut Scope {
-        let top = self.callstack.len() - 1;
-        self.callstack[top].top()
+        let top = self.scopes.len() - 1;
+        &mut self.scopes[top]
     }
 
     pub fn global_scope(&self) -> &Scope {
-        self.callstack[0].bottom()
+        &self.scopes[0]
     }
 
     fn in_global_scope(&self) -> bool {
-        self.callstack.len() == 1
+        self.scopes.len() == 1
     }
 
     fn check_required_definitions<'a, 'b>(&'a mut self, name: String, cache: &'a mut ModuleCache<'b>, location: Location<'b>) {
@@ -280,7 +265,7 @@ impl<'a, 'b> NameResolver {
 
         let resolver = NameResolver {
             filepath: filepath.to_owned(),
-            callstack: vec![FunctionScope::new()],
+            scopes: vec![Scope::default()],
             exports: Scope::default(),
             type_variable_scopes: vec![scope::TypeVariableScope::default()],
             state: NameResolutionState::DeclareInProgress,
@@ -382,39 +367,30 @@ impl<'a, 'b> Resolvable<'a, 'b> for ast::Literal<'b> {
     fn define(&mut self, _: &mut NameResolver, _: &mut ModuleCache) {}
 }
 
-fn is_declared<'a, 'b>(var: &'a ast::Variable<'b>) -> bool {
-    use ast::VariableKind::*;
-    var.definition.is_some() || var.kind == Operator(Token::Semicolon)
-}
-
 impl<'a, 'b> Resolvable<'a, 'b> for ast::Variable<'b> {
     fn declare(&'a mut self, resolver: &'a mut NameResolver, cache: &'a mut ModuleCache<'b>) {
-        // Ignore definition for the sequencing operator, its not a "true"
-        // operator since it cannot be redefined and is always in scope
-        if !self.is_semicolon() {
-            use ast::VariableKind::*;
-            match &mut self.kind {
-                Operator(token) => {
-                    let name = token.to_string();
-                    if resolver.auto_declare {
-                        self.definition = Some(resolver.push_definition(name, cache, self.location));
-                    }
-                },
-                Identifier(name) => {
-                    if resolver.auto_declare {
-                        self.definition = Some(resolver.push_definition(name.clone(), cache, self.location));
-                    }
-                },
-                TypeConstructor(..) => unreachable!(), // Never need to auto-declare type constructors
-            }
+        use ast::VariableKind::*;
+        match &mut self.kind {
+            Operator(token) => {
+                let name = token.to_string();
+                if resolver.auto_declare {
+                    self.definition = Some(resolver.push_definition(name, cache, self.location));
+                }
+            },
+            Identifier(name) => {
+                if resolver.auto_declare {
+                    self.definition = Some(resolver.push_definition(name.clone(), cache, self.location));
+                }
+            },
+            TypeConstructor(..) => unreachable!(), // Never need to auto-declare type constructors
         }
     }
 
     fn define(&'a mut self, resolver: &'a mut NameResolver, cache: &'a mut ModuleCache<'b>) {
-        if !is_declared(self) {
+        if self.definition.is_none() {
             if resolver.auto_declare {
                 self.declare(resolver, cache);
-            } else if !self.is_semicolon() {
+            } else {
                 use ast::VariableKind::*;
                 match &mut self.kind {
                     Operator(token) => {
@@ -430,7 +406,7 @@ impl<'a, 'b> Resolvable<'a, 'b> for ast::Variable<'b> {
             }
 
             // If it is still not declared, print an error
-            if !is_declared(self) {
+            if self.definition.is_none() {
                 error!(self.locate(), "No declaration for {} was found in scope", self);
             }
         }
@@ -441,29 +417,19 @@ impl<'a, 'b> Resolvable<'a, 'b> for ast::Lambda<'b> {
     fn declare(&'a mut self, _resolver: &'a mut NameResolver, _cache: &'a mut ModuleCache<'b>) { }
 
     fn define(&'a mut self, resolver: &'a mut NameResolver, cache: &'a mut ModuleCache<'b>) {
-        resolver.push_function();
+        resolver.push_scope();
         resolver.auto_declare = true;
         for arg in self.args.iter_mut() {
             arg.define(resolver, cache);
         }
         resolver.auto_declare = false;
         self.body.define(resolver, cache);
-        resolver.pop_function(cache);
+        resolver.pop_scope(cache, true);
     }
 }
 
 impl<'a, 'b> Resolvable<'a, 'b> for ast::FunctionCall<'b> {
-    fn declare(&'a mut self, resolver: &'a mut NameResolver, cache: &'a mut ModuleCache<'b>) {
-        // We only need to go through sequenced ; expressions to find all the top-level declarations.
-        match self.function.as_ref() {
-            Ast::Variable(var) if var.is_semicolon() => {
-                for arg in self.args.iter_mut() {
-                    arg.declare(resolver, cache)
-                }
-            },
-            _ => (),
-        }
-    }
+    fn declare(&'a mut self, _resolver: &'a mut NameResolver, _cache: &'a mut ModuleCache<'b>) { }
 
     fn define(&'a mut self, resolver: &'a mut NameResolver, cache: &'a mut ModuleCache<'b>) {
         self.function.define(resolver, cache);
@@ -758,5 +724,19 @@ impl<'a, 'b> Resolvable<'a, 'b> for ast::Return<'b> {
 
     fn define(&'a mut self, resolver: &'a mut NameResolver, cache: &'a mut ModuleCache<'b>) {
         self.expression.define(resolver, cache);
+    }
+}
+
+impl<'a, 'b> Resolvable<'a, 'b> for ast::Sequence<'b> {
+    fn declare(&'a mut self, resolver: &'a mut NameResolver, cache: &'a mut ModuleCache<'b>) {
+        for statement in self.statements.iter_mut() {
+            statement.declare(resolver, cache)
+        }
+    }
+
+    fn define(&'a mut self, resolver: &'a mut NameResolver, cache: &'a mut ModuleCache<'b>) {
+        for statement in self.statements.iter_mut() {
+            statement.define(resolver, cache)
+        }
     }
 }

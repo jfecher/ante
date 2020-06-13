@@ -32,11 +32,12 @@ parser!(statement_list loc =
     if rest.is_empty() {
         first
     } else {
-        let mut statements = vec![first];
+        let mut statements = Vec::with_capacity(rest.len() + 1);
+        statements.push(first);
         for (_, b) in rest.into_iter() {
             statements.push(b);
         }
-        Ast::function_call(Ast::operator(Token::Semicolon, loc), statements, loc)
+        Ast::sequence(statements, loc)
     }
 );
 
