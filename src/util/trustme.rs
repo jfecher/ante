@@ -4,3 +4,7 @@
 pub fn extend_lifetime_mut<'a, 'b, T>(x: &'a mut T) -> &'b mut T {
     unsafe { std::mem::transmute(x) }
 }
+
+pub fn make_mut<'a, 'b, T>(x: *const T) -> &'a mut T {
+    unsafe { std::mem::transmute(x) }
+}

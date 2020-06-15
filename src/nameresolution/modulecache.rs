@@ -3,7 +3,7 @@ use std::path::{ Path, PathBuf };
 use std::collections::HashMap;
 use crate::types::{ TypeVariableId, TypeInfoId, TypeInfo, Type, TypeInfoBody };
 use crate::error::location::{ Location, Locatable };
-use crate::parser::ast::{ Ast, Definition };
+use crate::parser::ast::{ Ast, Definition, TraitDefinition };
 use crate::nameresolution::unsafecache::UnsafeCache;
 
 #[derive(Debug)]
@@ -53,13 +53,19 @@ pub struct ModuleId(pub usize);
 pub struct DefinitionInfoId(pub usize);
 
 #[derive(Debug)]
+pub enum DefinitionNode<'a> {
+    Definition(&'a mut Definition<'a>),
+    TraitDefinition(&'a mut TraitDefinition<'a>),
+}
+
+#[derive(Debug)]
 pub struct DefinitionInfo<'a> {
     pub name: String,
     pub location: Location<'a>,
 
     /// Where this name was defined. It is expected that type checking
     /// this Definition node should result in self.typ being filled out.
-    pub definition: Option<&'a mut Definition<'a>>,
+    pub definition: Option<DefinitionNode<'a>>,
     pub trait_id: Option<TraitInfoId>,
     pub typ: Option<Type>,
     pub uses: u32,

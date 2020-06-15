@@ -1,4 +1,4 @@
-use crate::nameresolution::modulecache::{ ModuleCache, TraitInfoId };
+use crate::nameresolution::modulecache::{ ModuleCache, TraitInfoId, DefinitionInfoId, DefinitionNode };
 use crate::parser::ast;
 use crate::types::{ Type, Type::*, TypeVariableId, PrimitiveType };
 use crate::types::typed::Typed;
@@ -248,6 +248,28 @@ pub fn should_generalize_trait_fn<'a>(declaration: &ast::TypeAnnotation<'a>) -> 
     }
 }
 
+fn infer_nested_definition<'a>(definition_id: DefinitionInfoId, cache: &mut ModuleCache<'a>) -> Type {
+    let typevar = cache.next_type_variable();
+    let info = &mut cache.definition_infos[definition_id.0];
+    let definition = info.definition.as_mut().unwrap();
+    // Mark the definition with a fresh typevar for recursive references
+    info.typ = Some(typevar.clone());
+
+    match definition {
+        DefinitionNode::Definition(definition) => {
+            let definition = trustme::extend_lifetime_mut(*definition);
+            infer(definition, cache)
+        }
+        DefinitionNode::TraitDefinition(definition) => {
+            let definition = trustme::extend_lifetime_mut(*definition);
+            infer(definition, cache)
+        }
+    };
+
+    let info = &mut cache.definition_infos[definition_id.0];
+    info.typ.clone().unwrap()
+}
+
 
 type TraitList = Vec<(TraitInfoId, Vec<Type>)>;
 
@@ -258,9 +280,14 @@ pub trait Inferable<'a> {
 pub fn infer<'a, T>(ast: &mut T, cache: &mut ModuleCache<'a>) -> (Type, TraitList)
     where T: Inferable<'a> + Typed
 {
-    let (typ, traits) = ast.infer_impl(cache);
-    ast.set_type(typ.clone());
-    (typ, traits)
+    match ast.get_type() {
+        Some(typ) => (typ.clone(), vec![]),
+        None => {
+            let (typ, traits) = ast.infer_impl(cache);
+            ast.set_type(typ.clone());
+            (typ, traits)
+        },
+    }
 }
 
 /// Note: each Ast's inference rule is given above the impl if available.
@@ -303,18 +330,10 @@ impl<'a> Inferable<'a> for ast::Variable<'a> {
             None => {
                 // If the variable has a definition we can infer from then use that
                 // to determine the type, otherwise fill in a type variable for it.
-                let typ = if info.definition.is_none() {
-                    cache.next_type_variable()
+                let typ = if info.definition.is_some() {
+                    infer_nested_definition(self.definition.unwrap(), cache)
                 } else {
-                    let typevar = cache.next_type_variable();
-                    let info = &mut cache.definition_infos[self.definition.unwrap().0];
-                    let definition = info.definition.as_deref_mut().unwrap();
-                    // Mark the definition with a fresh typevar for recursive references
-                    info.typ = Some(typevar.clone());
-                    let ast = trustme::extend_lifetime_mut(definition);
-                    infer(ast, cache);
-                    let info = &mut cache.definition_infos[self.definition.unwrap().0];
-                    info.typ.clone().unwrap()
+                    cache.next_type_variable()
                 };
                 let info = &mut cache.definition_infos[self.definition.unwrap().0];
                 info.typ = Some(typ.clone());
@@ -445,8 +464,10 @@ impl<'a> Inferable<'a> for ast::TypeAnnotation<'a> {
 }
 
 impl<'a> Inferable<'a> for ast::Import<'a> {
+    /// Type checker doesn't need to follow imports.
+    /// It typechecks definitions as-needed when it finds a variable whose type is still unknown.
     fn infer_impl(&mut self, _cache: &mut ModuleCache<'a>) -> (Type, TraitList) {
-        unimplemented!();
+        (Type::Primitive(PrimitiveType::UnitType), vec![])
     }
 }
 

@@ -2,7 +2,7 @@ use crate::parser::{ self, ast, ast::Ast };
 use crate::types::{ TypeInfoId, TypeVariableId, Type, PrimitiveType, TypeInfoBody };
 use crate::types::{ TypeConstructor, Field };
 use crate::error::location::{ Location, Locatable };
-use crate::nameresolution::modulecache::{ ModuleCache, DefinitionInfoId, ModuleId, TraitInfoId };
+use crate::nameresolution::modulecache::{ ModuleCache, DefinitionInfoId, ModuleId, TraitInfoId, DefinitionNode };
 use crate::nameresolution::scope::Scope;
 use crate::lexer::Lexer;
 use crate::util::{ fmap, trustme };
@@ -466,7 +466,8 @@ impl<'a, 'b> Resolvable<'a, 'b> for ast::Definition<'b> {
         let declarations = resolver.collect_declarations(self.pattern.as_mut(), cache);
         for id in declarations.iter() {
             let info = &mut cache.definition_infos[id.0];
-            info.definition = Some(trustme::extend_lifetime_mut(self));
+            let definition = trustme::extend_lifetime_mut(self);
+            info.definition = Some(DefinitionNode::Definition(definition));
         }
     }
 
@@ -477,7 +478,8 @@ impl<'a, 'b> Resolvable<'a, 'b> for ast::Definition<'b> {
         // the symbol to its definition if it is undefined.
         for id in definitions.iter() {
             let info = &mut cache.definition_infos[id.0];
-            info.definition = Some(trustme::extend_lifetime_mut(self));
+            let definition = trustme::extend_lifetime_mut(self);
+            info.definition = Some(DefinitionNode::Definition(definition));
         }
 
         self.expr.define(resolver, cache);
@@ -700,13 +702,18 @@ impl<'a, 'b> Resolvable<'a, 'b> for ast::TraitDefinition<'b> {
         let trait_id = resolver.push_trait(self.name.clone(), args, fundeps, cache, self.location);
         resolver.current_trait = Some(trait_id);
 
-        resolver.auto_declare = true;
+        let self_pointer = self as *const _;
         for declaration in self.declarations.iter_mut() {
-            declaration.lhs.declare(resolver, cache);
+            let declarations = resolver.collect_declarations(declaration.lhs.as_mut(), cache);
+            for id in declarations.iter() {
+                let info = &mut cache.definition_infos[id.0];
+                let definition = trustme::extend_lifetime_mut(trustme::make_mut(self_pointer));
+                info.definition = Some(DefinitionNode::TraitDefinition(definition));
+            }
+
             let rhs = resolver.convert_type(cache, &declaration.rhs);
             declaration.typ = Some(rhs);
         }
-        resolver.auto_declare = false;
 
         resolver.current_trait = None;
         self.trait_info = Some(trait_id);
