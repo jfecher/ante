@@ -1,5 +1,6 @@
-use super::ast::{ self, Ast };
+use crate::parser::ast::{ self, Ast };
 use std::fmt::{ self, Display, Formatter };
+use crate::util::{ fmap, join_with };
 
 impl<'a> Display for Ast<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -19,10 +20,6 @@ impl<'a> Display for ast::Literal<'a> {
             Unit => write!(f, "()"),
         }
     }
-}
-
-fn join_with<T: Display>(vec: &[T], delimiter: &str) -> String {
-    vec.iter().map(|t| format!("{}", t)).collect::<Vec<_>>().join(delimiter)
 }
 
 impl<'a> Display for ast::Variable<'a> {
@@ -113,8 +110,8 @@ impl<'a> Display for ast::TypeDefinitionBody<'a> {
                 Ok(())
             },
             StructOf(types) => {
-                let types = types.iter().map(|(name, ty, _)| format!("{}: {}", name, ty));
-                write!(f, "{}", types.collect::<Vec<_>>().join(", "))
+                let types = fmap(&types, |(name, ty, _)| format!("{}: {}", name, ty));
+                write!(f, "{}", types.join(", "))
             },
             AliasOf(alias) => write!(f, "{}", alias),
         }

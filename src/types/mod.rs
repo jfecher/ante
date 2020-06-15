@@ -48,6 +48,7 @@ pub enum Type {
 }
 
 impl Type {
+    // Pretty-print each type with each typevar substituted for a, b, c, etc.
     pub fn display<'a, 'b>(&'a self, cache: &'a ModuleCache<'b>) -> typeprinter::TypePrinter<'a, 'b> {
         let typevars = typechecker::find_all_typevars(self, false, cache);
         let mut typevar_names = HashMap::new();
@@ -58,6 +59,21 @@ impl Type {
                 typevar_names.insert(typevar, current.to_string());
                 current = (current as u8 + 1) as char;
                 assert!(current != 'z'); // TODO: wrap to aa, ab, ac...
+            }
+        }
+
+        typeprinter::TypePrinter::new(self, typevar_names, cache)
+    }
+
+    // Like display but show the real unique TypeVariableId for each typevar instead
+    #[allow(dead_code)]
+    pub fn debug<'a, 'b>(&'a self, cache: &'a ModuleCache<'b>) -> typeprinter::TypePrinter<'a, 'b> {
+        let typevars = typechecker::find_all_typevars(self, false, cache);
+        let mut typevar_names = HashMap::new();
+
+        for typevar in typevars {
+            if typevar_names.get(&typevar).is_none() {
+                typevar_names.insert(typevar, typevar.0.to_string());
             }
         }
 
@@ -105,6 +121,7 @@ impl<'a> Locatable<'a> for TypeInfo<'a> {
     }
 }
 
+#[allow(dead_code)]
 pub enum Kind {
     /// usize is the number of type arguments it takes before it returns a type of kind *.
     /// For example, the kind Normal(2) : * -> * -> *

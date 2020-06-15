@@ -1,0 +1,18 @@
+one = \f.\x. f x  // (a -> b) -> a -> b
+two = \f.\x. f (f x) // (a -> a) -> a -> a
+add = \m.\n.\f.\x. m f (n f x)  // (a -> b -> c) -> (a -> d -> b) -> a -> d -> c
+succ = \n.\f.\x. f (n f x)  // ((a -> b) -> c -> a) -> (a -> b) -> c -> b
+mul = \m.\n.\f.\x. m (n f) x  // (a -> b -> c) -> (d -> a) -> d -> b -> c
+pred = \n.\f.\x. n (\g.\h. h (g f)) (\_.x) (\u.u)  // (((a -> b) -> (b -> c) -> c) -> (d -> e) -> (f -> f) -> g) -> a -> e -> g
+
+// These two 'one' instances should be instantiated from one's polytype
+one
+one
+
+foo x y = x + y
+3 + 2
+
+"four" + "five"
+
+trait Add t
+    (+): t t -> t

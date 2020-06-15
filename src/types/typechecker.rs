@@ -212,19 +212,35 @@ pub fn find_all_typevars<'a>(typ: &Type, monomorphic_only: bool, cache: &ModuleC
 /// e.g.  create_polytype (a -> b -> b) = forall a b. a -> b -> b
 fn create_polytype<'a>(typ: &Type, cache: &ModuleCache<'a>) -> Type {
     let mut typevars = find_all_typevars(typ, true, cache);
-    // TODO: This can be sped up, e.g. we wouldn't need to dedup at all if we didn't use a Vec
-    typevars.sort();
-    typevars.dedup();
-    ForAll(typevars, Box::new(typ.clone()))
+    if typevars.is_empty() {
+        typ.clone()
+    } else {
+        // TODO: This can be sped up, e.g. we wouldn't need to dedup at all if we didn't use a Vec
+        typevars.sort();
+        typevars.dedup();
+        ForAll(typevars, Box::new(typ.clone()))
+    }
 }
 
 /// Returns true if we should generalize the given definition by wrapping
 /// it in a ForAll type. Currently only true for lambda definitions.
-fn should_generalize<'a>(definition: &ast::Definition<'a>) -> bool {
+pub fn should_generalize<'a>(definition: &ast::Definition<'a>) -> bool {
     match definition.expr.as_ref() {
         ast::Ast::Lambda(_) => {
             match definition.pattern.as_ref() {
                 ast::Ast::Variable(_) => true,
+                _ => false,
+            }
+        },
+        _ => false,
+    }
+}
+
+pub fn should_generalize_trait_fn<'a>(declaration: &ast::TypeAnnotation<'a>) -> bool {
+    match declaration.lhs.as_ref() {
+        ast::Ast::Variable(_) => {
+            match &declaration.rhs {
+                ast::Type::FunctionType(..) => true,
                 _ => false,
             }
         },
@@ -276,7 +292,36 @@ impl<'a> Inferable<'a> for ast::Literal<'a> {
  */
 impl<'a> Inferable<'a> for ast::Variable<'a> {
     fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitList) {
-        let s = cache.definition_infos[self.definition.unwrap().0].typ.clone();
+        // TODO: we redeclare info 4 times in this function to get around single-mutability
+        // issues. This should be another way.
+        let info = &cache.definition_infos[self.definition.unwrap().0];
+
+        // Lookup the type of the definition.
+        // We'll need to recursively infer the type if it is not found
+        let s = match &info.typ {
+            Some(typ) => typ.clone(),
+            None => {
+                // If the variable has a definition we can infer from then use that
+                // to determine the type, otherwise fill in a type variable for it.
+                let typ = if info.definition.is_none() {
+                    cache.next_type_variable()
+                } else {
+                    let typevar = cache.next_type_variable();
+                    let info = &mut cache.definition_infos[self.definition.unwrap().0];
+                    let definition = info.definition.as_deref_mut().unwrap();
+                    // Mark the definition with a fresh typevar for recursive references
+                    info.typ = Some(typevar.clone());
+                    let ast = trustme::extend_lifetime_mut(definition);
+                    infer(ast, cache);
+                    let info = &mut cache.definition_infos[self.definition.unwrap().0];
+                    info.typ.clone().unwrap()
+                };
+                let info = &mut cache.definition_infos[self.definition.unwrap().0];
+                info.typ = Some(typ.clone());
+                typ
+            },
+        };
+
         let t = instantiate(&s, cache);
         (t, vec![])
     }
@@ -327,12 +372,18 @@ impl<'a> Inferable<'a> for ast::FunctionCall<'a> {
 impl<'a> Inferable<'a> for ast::Definition<'a> {
     fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitList) {
         let (rhs, _) = infer(self.expr.as_mut(), cache);
-        let (lhs, _) = infer(self.pattern.as_mut(), cache);
 
         if should_generalize(self) {
             let generalized = create_polytype(&rhs, cache);
-            unify(&lhs, &generalized, self.location, cache);
+            match self.pattern.as_ref() {
+                ast::Ast::Variable(variable) => {
+                    let info = &mut cache.definition_infos[variable.definition.unwrap().0];
+                    info.typ = Some(generalized);
+                },
+                _ => unreachable!(),
+            }
         } else {
+            let (lhs, _) = infer(self.pattern.as_mut(), cache);
             unify(&lhs, &rhs, self.location, cache);
         }
 
@@ -351,7 +402,6 @@ impl<'a> Inferable<'a> for ast::If<'a> {
         if let Some(otherwise) = &mut self.otherwise {
             let (otherwise, _) = infer(otherwise.as_mut(), cache);
             unify(&then, &otherwise, self.location, cache);
-
             (then, vec![])
         } else {
             (Type::Primitive(PrimitiveType::UnitType), vec![])
@@ -401,8 +451,25 @@ impl<'a> Inferable<'a> for ast::Import<'a> {
 }
 
 impl<'a> Inferable<'a> for ast::TraitDefinition<'a> {
-    fn infer_impl(&mut self, _cache: &mut ModuleCache<'a>) -> (Type, TraitList) {
-        unimplemented!();
+    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitList) {
+        for declaration in self.declarations.iter_mut() {
+            let rhs = declaration.typ.as_ref().unwrap();
+
+            if should_generalize_trait_fn(declaration) {
+                let generalized = create_polytype(rhs, cache);
+                match declaration.lhs.as_ref() {
+                    ast::Ast::Variable(variable) => {
+                        let info = &mut cache.definition_infos[variable.definition.unwrap().0];
+                        info.typ = Some(generalized);
+                    }
+                    _ => unreachable!(),
+                }
+            } else {
+                let (lhs, _) = infer(declaration.lhs.as_mut(), cache);
+                unify(&lhs, rhs, self.location, cache);
+            }
+        }
+        (Type::Primitive(PrimitiveType::UnitType), vec![])
     }
 }
 

@@ -1,3 +1,6 @@
+use std::fmt::Display;
+
+pub mod trustme;
 
 pub fn fmap<T, U, F>(array: &[T], mut f: F) -> Vec<U>
     where F: FnMut(&T) -> U
@@ -20,4 +23,8 @@ pub fn fmap2<Elem1, Elem2, Ret, F>(array1: &[Elem1], array2: &[Elem2], mut f: F)
 
 pub fn contains<T: PartialEq>(array: &[T], element: &T) -> bool {
     array.iter().find(|&x| x == element).is_some()
+}
+
+pub fn join_with<T: Display>(vec: &[T], delimiter: &str) -> String {
+    fmap(&vec, |t| format!("{}", t)).join(delimiter)
 }

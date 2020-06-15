@@ -1,13 +1,11 @@
-use crate::parser::ast;
-use crate::parser::ast::Ast;
+use crate::parser::{ self, ast, ast::Ast };
 use crate::types::{ TypeInfoId, TypeVariableId, Type, PrimitiveType, TypeInfoBody };
 use crate::types::{ TypeConstructor, Field };
 use crate::error::location::{ Location, Locatable };
 use crate::nameresolution::modulecache::{ ModuleCache, DefinitionInfoId, ModuleId, TraitInfoId };
 use crate::nameresolution::scope::Scope;
 use crate::lexer::Lexer;
-use crate::parser;
-use crate::util::fmap;
+use crate::util::{ fmap, trustme };
 
 use std::fs::File;
 use std::io::{ BufReader, Read };
@@ -81,6 +79,10 @@ pub struct NameResolver {
     /// after compiling the impl this list must be empty.  Otherwise, the user
     /// did not implement all the definitions of a trait.
     required_definitions: Option<Vec<String>>,
+
+    /// Keeps track of all the definitions collected within a pattern so they
+    /// can all be tagged with the expression they were defined as later
+    definitions_collected: Vec<DefinitionInfoId>,
 }
 
 impl PartialEq for NameResolver {
@@ -272,6 +274,7 @@ impl<'a, 'b> NameResolver {
             auto_declare: false,
             current_trait: None,
             required_definitions: None,
+            definitions_collected: vec![],
             module_id,
         };
 
@@ -315,7 +318,6 @@ impl<'a, 'b> NameResolver {
                 Type::Function(args, Box::new(ret))
             },
             ast::Type::TypeVariable(name, location) => {
-                assert!(!self.auto_declare);
                 match self.lookup_type_variable(name) {
                     Some(id) => Type::TypeVariable(id),
                     None => {
@@ -339,6 +341,22 @@ impl<'a, 'b> NameResolver {
                 Type::TypeApplication(constructor, args)
             },
         }
+    }
+
+    fn collect_declarations(&'a mut self, ast: &'a mut Ast<'b>, cache: &'a mut ModuleCache<'b>) -> Vec<DefinitionInfoId> {
+        self.definitions_collected.clear();
+        self.auto_declare = true;
+        ast.declare(self, cache);
+        self.auto_declare = false;
+        self.definitions_collected.clone()
+    }
+
+    fn collect_definitions(&'a mut self, ast: &'a mut Ast<'b>, cache: &'a mut ModuleCache<'b>) -> Vec<DefinitionInfoId> {
+        self.definitions_collected.clear();
+        self.auto_declare = true;
+        ast.define(self, cache);
+        self.auto_declare = false;
+        self.definitions_collected.clone()
     }
 }
 
@@ -374,12 +392,16 @@ impl<'a, 'b> Resolvable<'a, 'b> for ast::Variable<'b> {
             Operator(token) => {
                 let name = token.to_string();
                 if resolver.auto_declare {
-                    self.definition = Some(resolver.push_definition(name, cache, self.location));
+                    let id = resolver.push_definition(name, cache, self.location);
+                    resolver.definitions_collected.push(id);
+                    self.definition = Some(id);
                 }
             },
             Identifier(name) => {
                 if resolver.auto_declare {
-                    self.definition = Some(resolver.push_definition(name.clone(), cache, self.location));
+                    let id = resolver.push_definition(name.clone(), cache, self.location);
+                    resolver.definitions_collected.push(id);
+                    self.definition = Some(id);
                 }
             },
             TypeConstructor(..) => unreachable!(), // Never need to auto-declare type constructors
@@ -441,15 +463,23 @@ impl<'a, 'b> Resolvable<'a, 'b> for ast::FunctionCall<'b> {
 
 impl<'a, 'b> Resolvable<'a, 'b> for ast::Definition<'b> {
     fn declare(&'a mut self, resolver: &'a mut NameResolver, cache: &'a mut ModuleCache<'b>) {
-        resolver.auto_declare = true;
-        self.pattern.declare(resolver, cache);
-        resolver.auto_declare = false;
+        let declarations = resolver.collect_declarations(self.pattern.as_mut(), cache);
+        for id in declarations.iter() {
+            let info = &mut cache.definition_infos[id.0];
+            info.definition = Some(trustme::extend_lifetime_mut(self));
+        }
     }
 
     fn define(&'a mut self, resolver: &'a mut NameResolver, cache: &'a mut ModuleCache<'b>) {
-        resolver.auto_declare = true;
-        self.pattern.define(resolver, cache);
-        resolver.auto_declare = false;
+        let definitions = resolver.collect_definitions(self.pattern.as_mut(), cache);
+
+        // Tag the symbol with its definition so while type checking we can follow
+        // the symbol to its definition if it is undefined.
+        for id in definitions.iter() {
+            let info = &mut cache.definition_infos[id.0];
+            info.definition = Some(trustme::extend_lifetime_mut(self));
+        }
+
         self.expr.define(resolver, cache);
     }
 }
@@ -490,28 +520,41 @@ impl<'a, 'b> Resolvable<'a, 'b> for ast::Match<'b> {
     }
 }
 
-fn create_variants<'a, 'b>(vec: &'a Vec<(String, Vec<ast::Type<'b>>, Location<'b>)>, resolver: &'a mut NameResolver, cache: &'a mut ModuleCache<'b>) -> Vec<TypeConstructor<'b>> {
-    vec.iter().map(|(name, types, location)| {
-        let args = types.iter().map(|t|
-            resolver.convert_type(cache, t)
-        ).collect();
+/// Given "type T a b c = ..." return
+/// forall a b c. args -> T a b c
+fn create_variant_constructor_type<'a, 'b>(parent_type_id: TypeInfoId, args: Vec<Type>, cache: &'a ModuleCache<'b>) -> Type {
+    let info = &cache.type_infos[parent_type_id.0];
+    let user_defined_type = Box::new(Type::UserDefinedType(parent_type_id));
+    let type_application = Box::new(Type::TypeApplication(user_defined_type, args));
+    Type::ForAll(info.args.clone(), type_application)
+}
 
-        resolver.push_definition(name.clone(), cache, *location);
+/// Declare variants of a sum type given:
+/// vec: A vector of each variant. Has a tuple of the variant's name arguments, and location for each.
+/// parent_type_id: The TypeInfoId of the parent type.
+fn create_variants<'a, 'b>(vec: &'a Vec<(String, Vec<ast::Type<'b>>, Location<'b>)>, parent_type_id: TypeInfoId,
+        resolver: &'a mut NameResolver, cache: &'a mut ModuleCache<'b>) -> Vec<TypeConstructor<'b>> {
+
+    fmap(&vec, |(name, types, location)| {
+        let args = fmap(&types, |t| resolver.convert_type(cache, t));
+
+        let id = resolver.push_definition(name.clone(), cache, *location);
+        cache.definition_infos[id.0].typ = Some(create_variant_constructor_type(parent_type_id, args.clone(), cache));
         TypeConstructor { name: name.clone(), args, location: *location }
-    }).collect()
+    })
 }
 
 fn create_fields<'a, 'b>(vec: &'a Vec<(String, ast::Type<'b>, Location<'b>)>, resolver: &'a mut NameResolver, cache: &'a mut ModuleCache<'b>) -> Vec<Field<'b>> {
-    vec.iter().map(|(name, field_type, location)| {
+    fmap(&vec, |(name, field_type, location)| {
         let field_type = resolver.convert_type(cache, field_type);
 
         Field { name: name.clone(), field_type, location: *location }
-    }).collect()
+    })
 }
 
 impl<'a, 'b> Resolvable<'a, 'b> for ast::TypeDefinition<'b> {
     fn declare(&'a mut self, resolver: &'a mut NameResolver, cache: &'a mut ModuleCache<'b>) {
-        let args = self.args.iter().map(|_| cache.next_type_variable_id()).collect();
+        let args = fmap(&self.args, |_| cache.next_type_variable_id());
         let id = resolver.push_type_info(self.name.clone(), args, cache, self.location);
         self.type_info = Some(id);
     }
@@ -536,7 +579,7 @@ impl<'a, 'b> Resolvable<'a, 'b> for ast::TypeDefinition<'b> {
 
         match &self.definition {
             ast::TypeDefinitionBody::UnionOf(vec) => {
-                let variants = create_variants(vec, resolver, cache);
+                let variants = create_variants(vec, self.type_info.unwrap(), resolver, cache);
                 let type_info = &mut cache.type_infos[self.type_info.unwrap().0];
                 type_info.body = TypeInfoBody::Union(variants);
             },
@@ -647,13 +690,11 @@ impl<'a, 'b> Resolvable<'a, 'b> for ast::TraitDefinition<'b> {
     fn declare(&'a mut self, resolver: &'a mut NameResolver, cache: &'a mut ModuleCache<'b>) {
         resolver.push_type_variable_scope();
 
-        let args = self.args.iter().map(|arg| 
-            resolver.push_new_type_variable(arg.clone(), cache)
-        ).collect();
+        let args = fmap(&self.args, |arg|
+            resolver.push_new_type_variable(arg.clone(), cache));
 
-        let fundeps = self.fundeps.iter().map(|arg|
-            resolver.push_new_type_variable(arg.clone(), cache)
-        ).collect();
+        let fundeps = fmap(&self.fundeps, |arg|
+            resolver.push_new_type_variable(arg.clone(), cache));
 
         assert!(resolver.current_trait.is_none());
         let trait_id = resolver.push_trait(self.name.clone(), args, fundeps, cache, self.location);
@@ -662,6 +703,8 @@ impl<'a, 'b> Resolvable<'a, 'b> for ast::TraitDefinition<'b> {
         resolver.auto_declare = true;
         for declaration in self.declarations.iter_mut() {
             declaration.lhs.declare(resolver, cache);
+            let rhs = resolver.convert_type(cache, &declaration.rhs);
+            declaration.typ = Some(rhs);
         }
         resolver.auto_declare = false;
 
@@ -694,7 +737,7 @@ impl<'a, 'b> Resolvable<'a, 'b> for ast::TraitImpl<'b> {
         };
 
         let trait_info = &cache.trait_infos[trait_id.0];
-        resolver.required_definitions = Some(trait_info.definitions.iter().map(|id| cache.definition_infos[id.0].name.clone()).collect());
+        resolver.required_definitions = Some(fmap(&trait_info.definitions, |id| cache.definition_infos[id.0].name.clone()));
 
         resolver.auto_declare = true;
         resolver.push_scope();

@@ -3,7 +3,7 @@ use std::path::{ Path, PathBuf };
 use std::collections::HashMap;
 use crate::types::{ TypeVariableId, TypeInfoId, TypeInfo, Type, TypeInfoBody };
 use crate::error::location::{ Location, Locatable };
-use crate::parser::ast::Ast;
+use crate::parser::ast::{ Ast, Definition };
 use crate::nameresolution::unsafecache::UnsafeCache;
 
 #[derive(Debug)]
@@ -56,8 +56,12 @@ pub struct DefinitionInfoId(pub usize);
 pub struct DefinitionInfo<'a> {
     pub name: String,
     pub location: Location<'a>,
+
+    /// Where this name was defined. It is expected that type checking
+    /// this Definition node should result in self.typ being filled out.
+    pub definition: Option<&'a mut Definition<'a>>,
     pub trait_id: Option<TraitInfoId>,
-    pub typ: Type,
+    pub typ: Option<Type>,
     pub uses: u32,
 }
 
@@ -106,12 +110,12 @@ impl<'a> ModuleCache<'a> {
 
     pub fn push_definition(&mut self, name: String, trait_id: Option<TraitInfoId>, location: Location<'a>) -> DefinitionInfoId {
         let id = self.definition_infos.len();
-        let typ = self.next_type_variable();
         self.definition_infos.push(DefinitionInfo {
             name,
+            definition: None,
             location,
             trait_id,
-            typ,
+            typ: None,
             uses: 0,
         });
         DefinitionInfoId(id)
