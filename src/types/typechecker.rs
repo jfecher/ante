@@ -51,6 +51,17 @@ fn replace_typevars<'b>(typ: &Type, typevars_to_replace: &HashMap<TypeVariableId
     }
 }
 
+/// Helper function for getting the next type variable at the current level
+fn next_type_variable_id<'a>(cache: &mut ModuleCache<'a>) -> TypeVariableId {
+    let level = LetBindingLevel(CURRENT_LEVEL.fetch_or(0, Ordering::SeqCst));
+    cache.next_type_variable_id(level)
+}
+
+fn next_type_variable<'a>(cache: &mut ModuleCache<'a>) -> Type {
+    let level = LetBindingLevel(CURRENT_LEVEL.fetch_or(0, Ordering::SeqCst));
+    cache.next_type_variable(level)
+}
+
 /// specializes the polytype s by copying the term and replacing the
 /// bound type variables consistently by new monotype variables
 /// E.g.   instantiate (forall a b. a -> b -> a) = c -> d -> c
@@ -68,7 +79,7 @@ fn instantiate<'b>(s: &Type, cache: &mut ModuleCache<'b>) -> Type {
         ForAll(typevars, typ) => {
             let mut typevars_to_replace = HashMap::new();
             for var in typevars.iter().copied() {
-                typevars_to_replace.insert(var, cache.next_type_variable_id());
+                typevars_to_replace.insert(var, next_type_variable_id(cache));
             }
             replace_typevars(&typ, &typevars_to_replace, cache)
         },
@@ -201,6 +212,7 @@ pub fn find_all_typevars<'a>(typ: &Type, monomorphic_only: bool, cache: &ModuleC
                     if level.0 > CURRENT_LEVEL.fetch_or(0, Ordering::SeqCst) || !monomorphic_only {
                         vec![*id]
                     } else {
+                        println!("Not generalizing {}, because {} <= cur level of {}", id.0, level.0, CURRENT_LEVEL.fetch_or(0, Ordering::SeqCst));
                         vec![]
                     }
                 }
@@ -251,7 +263,8 @@ fn generalize<'a>(typ: &Type, cache: &ModuleCache<'a>) -> Type {
 }
 
 fn infer_nested_definition<'a>(definition_id: DefinitionInfoId, cache: &mut ModuleCache<'a>) -> Type {
-    let typevar = cache.next_type_variable();
+    let level = LetBindingLevel(CURRENT_LEVEL.fetch_or(0, Ordering::SeqCst));
+    let typevar = cache.next_type_variable(level);
     let info = &mut cache.definition_infos[definition_id.0];
     let definition = info.definition.as_mut().unwrap();
     // Mark the definition with a fresh typevar for recursive references
@@ -270,6 +283,47 @@ fn infer_nested_definition<'a>(definition_id: DefinitionInfoId, cache: &mut Modu
 
     let info = &mut cache.definition_infos[definition_id.0];
     info.typ.clone().unwrap()
+}
+
+/// Binds a given type to an irrefutable pattern, recursing on the pattern and verifying
+/// that it is indeed irrefutable. If should_generalize is true, this generalizes the type given
+/// to any variable encountered.
+fn bind_irrefutable_pattern<'a>(ast: &ast::Ast<'a>, typ: &Type, should_generalize: bool, cache: &mut ModuleCache<'a>) {
+    use ast::Ast::*;
+    use ast::LiteralKind;
+    match ast {
+        Literal(literal) => {
+            match literal.kind {
+                LiteralKind::Unit => unify(typ, &Type::Primitive(PrimitiveType::UnitType), ast.locate(), cache),
+                _ => error!(ast.locate(), "Pattern is not irrefutable"),
+            }
+        },
+        Variable(variable) => {
+            let typ = if should_generalize { generalize(typ, cache) } else { typ.clone() };
+            let info = &mut cache.definition_infos[variable.definition.unwrap().0];
+
+            // assert that the pattern doesn't yet have a type or that it is
+            // otherwise an unbound type variable.
+            match info.typ {
+                Some(TypeVariable(id)) => {
+                    match &cache.type_bindings[id.0] {
+                        Bound(_) => unreachable!(),
+                        _ => (),
+                    }
+                }
+                _ => (),
+            }
+
+            info.typ = Some(typ);
+        },
+        TypeAnnotation(annotation) => {
+            unify(typ, annotation.typ.as_ref().unwrap(), ast.locate(), cache);
+            bind_irrefutable_pattern(annotation.lhs.as_ref(), typ, should_generalize, cache);
+        },
+        _ => {
+            error!(ast.locate(), "Invalid syntax in irrefutable pattern");
+        }
+    }
 }
 
 
@@ -314,15 +368,15 @@ impl<'a> Inferable<'a> for ast::Literal<'a> {
 }
 
 /* Var
- *   x : s ∊ env
+ *   x : s ∊ cache
  *   t = instantiate s
  *   -----------
- *   infer env x = t
+ *   infer cache x = t
  */
 impl<'a> Inferable<'a> for ast::Variable<'a> {
     fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitList) {
         // TODO: we redeclare info 4 times in this function to get around single-mutability
-        // issues. This should be another way.
+        // issues. There should be another way.
         let info = &cache.definition_infos[self.definition.unwrap().0];
 
         // Lookup the type of the definition.
@@ -335,7 +389,7 @@ impl<'a> Inferable<'a> for ast::Variable<'a> {
                 let typ = if info.definition.is_some() {
                     infer_nested_definition(self.definition.unwrap(), cache)
                 } else {
-                    cache.next_type_variable()
+                    next_type_variable(cache)
                 };
                 let info = &mut cache.definition_infos[self.definition.unwrap().0];
                 info.typ = Some(typ.clone());
@@ -349,62 +403,57 @@ impl<'a> Inferable<'a> for ast::Variable<'a> {
 }
 
 /* Abs
- *   arg1 = newvar ()
- *   arg2 = newvar ()
+ *   arg_type1 = newvar ()
+ *   arg_type2 = newvar ()
  *   ...
- *   argN = newvar ()
- *   infer body (env with x1:arg1 x2:arg2 ... xN:argN) = return_type
+ *   arg_typeN = newvar ()
+ *   infer body (x1:arg_type1 x2:arg_type2 ... xN:arg_typeN :: cache) = return_type
  *   -------------
- *   infer (fun x1 x2 ... xN -> e) env = arg1 arg2 ... argN -> return_type
+ *   infer (\arg1 arg2 ... argN . body) cache = arg_type1 arg_type2 ... arg_typeN -> return_type
  */
 impl<'a> Inferable<'a> for ast::Lambda<'a> {
     fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitList) {
         // The newvars for the parameters are filled out during name resolution
-        let params = fmap_mut(&mut self.args, |arg| infer(arg, cache).0);
+        let arg_types = fmap_mut(&mut self.args, |arg| infer(arg, cache).0);
         let (return_type, _) = infer(self.body.as_mut(), cache);
-        (Function(params, Box::new(return_type)), vec![])
+        (Function(arg_types, Box::new(return_type)), vec![])
     }
 }
 
 /* App
- *   infer env f = t0
- *   infer env x = t1
- *   t' = newvar ()
- *   unify t0 (t1 -> t')
+ *   infer cache function = f
+ *   infer cache arg1 = t1
+ *   infer cache arg2 = t2
+ *   ...
+ *   infer cache argN = tN
+ *   return_type = newvar ()
+ *   unify f (t1 t2 ... tN -> return_type)
  *   ---------------
- *   infer env (f x) = t'
+ *   infer cache (function args) = return_type
  */
 impl<'a> Inferable<'a> for ast::FunctionCall<'a> {
     fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitList) {
         let (f, _) = infer(self.function.as_mut(), cache);
         let args = fmap_mut(&mut self.args, |arg| infer(arg, cache).0);
-        let return_type = cache.next_type_variable();
+        let return_type = next_type_variable(cache);
         unify(&f, &Function(args, Box::new(return_type.clone())), self.location, cache);
         (return_type, vec![])
     }
 }
 
 /* Let
- *   infer env e0 = t
- *   infer (SMap.add x (create_polytype t) env) e1 = t'
+ *   infer cache expr = t
+ *   infer (pattern:(generalize t) :: cache) rest = t'
  *   -----------------
- *   infer env (let x = e0 in e1) = t'
+ *   infer cache (let pattern = expr in rest) = t'
  */
 impl<'a> Inferable<'a> for ast::Definition<'a> {
     fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitList) {
         CURRENT_LEVEL.fetch_add(1, Ordering::SeqCst);
-        let (rhs, _) = infer(self.expr.as_mut(), cache);
+        let (t, _) = infer(self.expr.as_mut(), cache);
         CURRENT_LEVEL.fetch_sub(1, Ordering::SeqCst);
 
-        // TODO: recurse on irrefutable_pattern
-        let generalized = generalize(&rhs, cache);
-        match self.pattern.as_ref() {
-            ast::Ast::Variable(variable) => {
-                let info = &mut cache.definition_infos[variable.definition.unwrap().0];
-                info.typ = Some(generalized);
-            },
-            _ => unreachable!(),
-        }
+        bind_irrefutable_pattern(self.pattern.as_ref(), &t, true, cache);
 
         let unit = Type::Primitive(PrimitiveType::UnitType);
         (unit, vec![])
@@ -476,23 +525,19 @@ impl<'a> Inferable<'a> for ast::TraitDefinition<'a> {
         for declaration in self.declarations.iter_mut() {
             let rhs = declaration.typ.as_ref().unwrap();
 
-            // TODO: recurse unify on irrefutable_pattern
-            let generalized = generalize(rhs, cache);
-            match declaration.lhs.as_ref() {
-                ast::Ast::Variable(variable) => {
-                    let info = &mut cache.definition_infos[variable.definition.unwrap().0];
-                    info.typ = Some(generalized);
-                }
-                _ => unreachable!(),
-            }
+            bind_irrefutable_pattern(declaration.lhs.as_ref(), rhs, true, cache);
         }
         (Type::Primitive(PrimitiveType::UnitType), vec![])
     }
 }
 
 impl<'a> Inferable<'a> for ast::TraitImpl<'a> {
-    fn infer_impl(&mut self, _cache: &mut ModuleCache<'a>) -> (Type, TraitList) {
-        unimplemented!();
+    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitList) {
+        for definition in self.definitions.iter_mut() {
+            infer(definition, cache);
+            // TODO: unify with parent definition type
+        }
+        (Type::Primitive(PrimitiveType::UnitType), vec![])
     }
 }
 

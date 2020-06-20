@@ -1,13 +1,11 @@
 use crate::nameresolution::NameResolver;
 use crate::types::{ TypeVariableId, TypeInfoId, TypeInfo, Type, TypeInfoBody, TypeBinding, LetBindingLevel };
-use crate::types::typechecker::CURRENT_LEVEL;
 use crate::error::location::{ Location, Locatable };
 use crate::parser::ast::{ Ast, Definition, TraitDefinition };
 use crate::nameresolution::unsafecache::UnsafeCache;
 
 use std::path::{ Path, PathBuf };
 use std::collections::HashMap;
-use std::sync::atomic::Ordering;
 
 #[derive(Debug)]
 pub struct ModuleCache<'a> {
@@ -145,15 +143,14 @@ impl<'a> ModuleCache<'a> {
         self.name_resolvers.get_mut(id.0)
     }
 
-    pub fn next_type_variable_id(&mut self) -> TypeVariableId {
+    pub fn next_type_variable_id(&mut self, level: LetBindingLevel) -> TypeVariableId {
         let id = self.type_bindings.len();
-        let binding_level = LetBindingLevel(CURRENT_LEVEL.fetch_or(0, Ordering::SeqCst));
-        self.type_bindings.push(TypeBinding::Unbound(binding_level));
+        self.type_bindings.push(TypeBinding::Unbound(level));
         TypeVariableId(id)
     }
 
-    pub fn next_type_variable(&mut self) -> Type {
-        let id = self.next_type_variable_id();
+    pub fn next_type_variable(&mut self, level: LetBindingLevel) -> Type {
+        let id = self.next_type_variable_id(level);
         Type::TypeVariable(id)
     }
 

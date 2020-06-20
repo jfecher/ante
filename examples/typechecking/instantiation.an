@@ -9,6 +9,11 @@ pred = \n.\f.\x. n (\g.\h. h (g f)) (\_.x) (\u.u)  // (((a -> b) -> (b -> c) -> 
 one
 one
 
+id 3
+id "four"
+
+id x = x
+
 foo x y = x + y
 3 + 2
 

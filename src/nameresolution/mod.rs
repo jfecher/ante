@@ -1,6 +1,6 @@
 use crate::parser::{ self, ast, ast::Ast };
 use crate::types::{ TypeInfoId, TypeVariableId, Type, PrimitiveType, TypeInfoBody };
-use crate::types::{ TypeConstructor, Field };
+use crate::types::{ TypeConstructor, Field, LetBindingLevel };
 use crate::error::location::{ Location, Locatable };
 use crate::nameresolution::modulecache::{ ModuleCache, DefinitionInfoId, ModuleId, TraitInfoId, DefinitionNode };
 use crate::nameresolution::scope::Scope;
@@ -141,7 +141,14 @@ impl NameResolver {
     }
 
     pub fn push_new_type_variable<'a, 'b>(&'a mut self, key: String, cache: &'a mut ModuleCache<'b>) -> TypeVariableId {
-        let id = cache.next_type_variable_id();
+        // TODO: The LetBindingLevel needs to match 1-to-1 with the levels as incremented
+        // by the typechecker but can't since the type checker traverses the ast by skipping
+        // to definitions where the name resolver follows imports to resolve defintions.
+        //
+        // Having it as std::usize::MAX forces the trait typevars to always be polymorphic.
+        // This may be alright for traits (citation needed) but if it is not it is a soundness bug.
+        let level = LetBindingLevel(std::usize::MAX);
+        let id = cache.next_type_variable_id(level);
         self.push_existing_type_variable(key, id)
     }
 
@@ -556,7 +563,14 @@ fn create_fields<'a, 'b>(vec: &'a Vec<(String, ast::Type<'b>, Location<'b>)>, re
 
 impl<'a, 'b> Resolvable<'a, 'b> for ast::TypeDefinition<'b> {
     fn declare(&'a mut self, resolver: &'a mut NameResolver, cache: &'a mut ModuleCache<'b>) {
-        let args = fmap(&self.args, |_| cache.next_type_variable_id());
+        // TODO: The LetBindingLevel needs to match 1-to-1 with the levels as incremented
+        // by the typechecker but can't since the type checker traverses the ast by skipping
+        // to definitions where the name resolver follows imports to resolve defintions.
+        //
+        // Having it as std::usize::MAX forces the trait typevars to always be polymorphic.
+        // This may be alright for types (citation needed) but if it is not it is a soundness bug.
+        let level = LetBindingLevel(std::usize::MAX);
+        let args = fmap(&self.args, |_| cache.next_type_variable_id(level));
         let id = resolver.push_type_info(self.name.clone(), args, cache, self.location);
         self.type_info = Some(id);
     }
