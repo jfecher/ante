@@ -46,7 +46,7 @@ pub struct NameResolver {
     /// The purpose of the 'declare' pass is to fill this field out for
     /// all modules used in the program. The exported symbols need not
     /// be defined until the 'define' pass later however.
-    exports: Scope,
+    pub exports: Scope,
 
     /// Type variable scopes are separate from other scopes since in general
     /// type variables do not follow normal scoping rules. For example, in the trait:

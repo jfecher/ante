@@ -1,10 +1,13 @@
-use super::NameResolver;
-use std::path::{ Path, PathBuf };
-use std::collections::HashMap;
-use crate::types::{ TypeVariableId, TypeInfoId, TypeInfo, Type, TypeInfoBody };
+use crate::nameresolution::NameResolver;
+use crate::types::{ TypeVariableId, TypeInfoId, TypeInfo, Type, TypeInfoBody, TypeBinding, LetBindingLevel };
+use crate::types::typechecker::CURRENT_LEVEL;
 use crate::error::location::{ Location, Locatable };
 use crate::parser::ast::{ Ast, Definition, TraitDefinition };
 use crate::nameresolution::unsafecache::UnsafeCache;
+
+use std::path::{ Path, PathBuf };
+use std::collections::HashMap;
+use std::sync::atomic::Ordering;
 
 #[derive(Debug)]
 pub struct ModuleCache<'a> {
@@ -31,7 +34,7 @@ pub struct ModuleCache<'a> {
     /// Maps TypeVariableId -> Type
     /// Unique TypeVariableIds are generated during name
     /// resolution and are unified during type inference
-    pub type_bindings: Vec<Option<Type>>,
+    pub type_bindings: Vec<TypeBinding>,
 
     /// Maps TypeInfoId -> TypeInfo
     /// Filled out during name resolution
@@ -110,7 +113,6 @@ impl<'a> ModuleCache<'a> {
         let index = self.filepaths.len();
         self.filepaths.push(path);
         let path: &Path = &self.filepaths[index];
-        // TODO: Path should have 'a lifetime 
         unsafe { std::mem::transmute(path) }
     }
 
@@ -145,7 +147,8 @@ impl<'a> ModuleCache<'a> {
 
     pub fn next_type_variable_id(&mut self) -> TypeVariableId {
         let id = self.type_bindings.len();
-        self.type_bindings.push(None);
+        let binding_level = LetBindingLevel(CURRENT_LEVEL.fetch_or(0, Ordering::SeqCst));
+        self.type_bindings.push(TypeBinding::Unbound(binding_level));
         TypeVariableId(id)
     }
 

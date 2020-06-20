@@ -72,6 +72,16 @@ fn main() -> Result<(), Error> {
                 println!("{}", ast);
                 let (typ, _) = types::typechecker::infer(ast, &mut cache);
                 println!("{}", typ.display(&mut cache));
+                for defs in cache.definition_infos.iter().filter(|def| def.typ.is_none()) {
+                    warning!(defs.location, "{} is unused and was not typechecked", defs.name);
+                }
+                for (_, module_id) in cache.modules.iter() {
+                    let resolver = cache.name_resolvers.get_mut(module_id.0).unwrap();
+                    for (name, definition_id) in resolver.exports.definitions.iter() {
+                        let typ = cache.definition_infos[definition_id.0].typ.clone().unwrap();
+                        println!("{} : {}", name, typ.display(&cache));
+                    }
+                }
             },
             Err(e) => {
                 println!("{}", e);

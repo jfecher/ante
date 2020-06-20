@@ -1,0 +1,5 @@
+\x.
+    y = \_.x
+    y
+
+// type should be a -> (b -> a)

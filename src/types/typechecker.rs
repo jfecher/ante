@@ -1,13 +1,19 @@
 use crate::nameresolution::modulecache::{ ModuleCache, TraitInfoId, DefinitionInfoId, DefinitionNode };
 use crate::parser::ast;
-use crate::types::{ Type, Type::*, TypeVariableId, PrimitiveType };
+use crate::types::{ Type, Type::*, TypeVariableId, PrimitiveType, LetBindingLevel, TypeBinding::* };
 use crate::types::typed::Typed;
 use crate::util::*;
 use crate::error::location::{ Location, Locatable };
+
 use std::collections::HashMap;
+use std::sync::atomic::{ AtomicUsize, Ordering };
 
 // Note: most of this file is directly translated from:
 // https://github.com/jfecher/algorithm-j
+
+
+pub static CURRENT_LEVEL: AtomicUsize = AtomicUsize::new(1);
+
 
 /// Replace any typevars found in typevars_to_replace with the
 /// associated value in the same table, leave them otherwise
@@ -15,7 +21,7 @@ fn replace_typevars<'b>(typ: &Type, typevars_to_replace: &HashMap<TypeVariableId
     match typ {
         Primitive(p) => Primitive(*p),
         TypeVariable(id) => {
-            if let Some(typ) = cache.type_bindings[id.0].as_ref() {
+            if let Bound(typ) = &cache.type_bindings[id.0] {
                 replace_typevars(&typ.clone(), typevars_to_replace, cache)
             } else {
                 let new_id = typevars_to_replace.get(id).unwrap_or(id);
@@ -53,7 +59,7 @@ fn instantiate<'b>(s: &Type, cache: &mut ModuleCache<'b>) -> Type {
     // this means it is now monomorphic and not forall-quantified
     match s {
         TypeVariable(id) => {
-            if let Some(typ) = cache.type_bindings[id.0].as_ref() {
+            if let Bound(typ) = &cache.type_bindings[id.0] {
                 instantiate(&typ.clone(), cache)
             } else {
                 TypeVariable(*id)
@@ -71,29 +77,36 @@ fn instantiate<'b>(s: &Type, cache: &mut ModuleCache<'b>) -> Type {
 }
 
 /// Can a monomorphic TypeVariable(id) be found inside this type?
-fn occurs<'b>(id: TypeVariableId, typ: &Type, cache: &ModuleCache<'b>) -> bool {
+/// This will mutate any typevars found to increase their LetBindingLevel.
+/// Doing so increases the lifetime of the typevariable and lets us keep
+/// track of which type variables to generalize later on. It also means
+/// that occurs should only be called during unification however.
+fn occurs<'b>(id: TypeVariableId, level: LetBindingLevel, typ: &Type, cache: &mut ModuleCache<'b>) -> bool {
     match typ {
         Primitive(_) => false,
         UserDefinedType(_) => false,
 
         TypeVariable(var_id) => {
-            if let Some(binding) = cache.type_bindings[id.0].as_ref() {
-                occurs(id, binding, cache)
-            } else {
-                id == *var_id
+            match &cache.type_bindings[id.0] {
+                Bound(binding) => occurs(id, level, &binding.clone(), cache),
+                Unbound(original_level) => {
+                    let min_level = std::cmp::min(level, *original_level);
+                    cache.type_bindings[id.0] = Unbound(min_level);
+                    id == *var_id
+                }
             }
         },
         Function(parameters, return_type) => {
-            occurs(id, return_type, cache)
-            || parameters.iter().any(|parameter| occurs(id, parameter, cache))
+            occurs(id, level, return_type, cache)
+            || parameters.iter().any(|parameter| occurs(id, level, parameter, cache))
         },
         TypeApplication(typ, args) => {
-            occurs(id, typ, cache)
-            || args.iter().any(|arg| occurs(id, arg, cache))
+            occurs(id, level, typ, cache)
+            || args.iter().any(|arg| occurs(id, level, arg, cache))
         }
         ForAll(typevars, typ) => {
             !typevars.iter().any(|typevar| *typevar == id)
-            && occurs(id, typ, cache)
+            && occurs(id, level, typ, cache)
         },
     }
 }
@@ -102,36 +115,46 @@ fn unify<'b>(t1: &Type, t2: &Type, location: Location<'b>, cache: &mut ModuleCac
     match (t1, t2) {
         (Primitive(p1), Primitive(p2)) if p1 == p2 => (),
 
-        // These two recursive calls to the bound typevar replace
-        // the 'find' in the union-find algorithm 
-        (TypeVariable(id), b) if cache.type_bindings[id.0].is_some() => {
-            let a = cache.type_bindings[id.0].as_ref().unwrap().clone();
-            unify(&a, b, location, cache);
-        },
-        (a, TypeVariable(id)) if cache.type_bindings[id.0].is_some() => {
-            let b = cache.type_bindings[id.0].as_ref().unwrap().clone();
-            unify(a, &b, location, cache);
-        }
-
-        (TypeVariable(a), b) => {
-            // Create binding for boundTy that is currently empty.
-            // Ensure not to create recursive bindings to the same variable
-            if t1 != t2 { 
-                if occurs(*a, b, cache) {
-                    error!(location, "Cannot construct recursive type: {:?} = {:?}", t1, t2);
-                } else {
-                    cache.type_bindings[a.0] = Some(b.clone());
+        // Any type variable can be bound or unbound.
+        // - If bound: unify the bound type with the other type.
+        // - If unbound: 'unify' the LetBindingLevel of the type variable by setting
+        //   it to the minimum scope of type variables in b. This happens within the occurs check.
+        //   The unification of the LetBindingLevel here is a form of lifetime inference for the
+        //   typevar and is used during generalization to determine which variables to generalize.
+        (TypeVariable(id), b) => {
+            match &cache.type_bindings[id.0] {
+                Bound(a) => {
+                    unify(&a.clone(), b, location, cache);
+                },
+                Unbound(a_level) => {
+                    // Create binding for boundTy that is currently empty.
+                    // Ensure not to create recursive bindings to the same variable
+                    if t1 != t2 { 
+                        if occurs(*id, *a_level, b, cache) {
+                            error!(location, "Cannot construct recursive type: {:?} = {:?}", t1, t2);
+                        } else {
+                            cache.type_bindings[id.0] = Bound(b.clone());
+                        }
+                    }
                 }
             }
         },
-        (a, TypeVariable(b)) => {
-            // Create binding for boundTy that is currently empty.
-            // Ensure not to create recursive bindings to the same variable
-            if t1 != t2 { 
-                if occurs(*b, a, cache) {
-                    error!(location, "Cannot construct recursive type: {:?} = {:?}", t1, t2);
-                } else {
-                    cache.type_bindings[b.0] = Some(a.clone());
+
+        (a, TypeVariable(id)) => {
+            match &cache.type_bindings[id.0] {
+                Bound(b) => {
+                    unify(a, &b.clone(), location, cache);
+                },
+                Unbound(b_level) => {
+                    // Create binding for boundTy that is currently empty.
+                    // Ensure not to create recursive bindings to the same variable
+                    if t1 != t2 { 
+                        if occurs(*id, *b_level, a, cache) {
+                            error!(location, "Cannot construct recursive type: {:?} = {:?}", t1, t2);
+                        } else {
+                            cache.type_bindings[id.0] = Bound(a.clone());
+                        }
+                    }
                 }
             }
         },
@@ -172,10 +195,15 @@ pub fn find_all_typevars<'a>(typ: &Type, monomorphic_only: bool, cache: &ModuleC
         Primitive(_) => vec![],
         UserDefinedType(_) => vec![],
         TypeVariable(id) => {
-            if let Some(t) = &cache.type_bindings[id.0] {
-                find_all_typevars(t, monomorphic_only, cache)
-            } else {
-                vec![*id]
+            match &cache.type_bindings[id.0] {
+                Bound(t) => find_all_typevars(t, monomorphic_only, cache),
+                Unbound(level) => {
+                    if level.0 > CURRENT_LEVEL.fetch_or(0, Ordering::SeqCst) || !monomorphic_only {
+                        vec![*id]
+                    } else {
+                        vec![]
+                    }
+                }
             }
         },
         Function(parameters, return_type) => {
@@ -208,9 +236,9 @@ pub fn find_all_typevars<'a>(typ: &Type, monomorphic_only: bool, cache: &ModuleC
     }
 }
 
-/// Find all typevars and wrap the type in a PolyType
-/// e.g.  create_polytype (a -> b -> b) = forall a b. a -> b -> b
-fn create_polytype<'a>(typ: &Type, cache: &ModuleCache<'a>) -> Type {
+/// Find all typevars declared inside the current LetBindingLevel and wrap the type in a PolyType
+/// e.g.  generalize (a -> b -> b) = forall a b. a -> b -> b
+fn generalize<'a>(typ: &Type, cache: &ModuleCache<'a>) -> Type {
     let mut typevars = find_all_typevars(typ, true, cache);
     if typevars.is_empty() {
         typ.clone()
@@ -219,32 +247,6 @@ fn create_polytype<'a>(typ: &Type, cache: &ModuleCache<'a>) -> Type {
         typevars.sort();
         typevars.dedup();
         ForAll(typevars, Box::new(typ.clone()))
-    }
-}
-
-/// Returns true if we should generalize the given definition by wrapping
-/// it in a ForAll type. Currently only true for lambda definitions.
-pub fn should_generalize<'a>(definition: &ast::Definition<'a>) -> bool {
-    match definition.expr.as_ref() {
-        ast::Ast::Lambda(_) => {
-            match definition.pattern.as_ref() {
-                ast::Ast::Variable(_) => true,
-                _ => false,
-            }
-        },
-        _ => false,
-    }
-}
-
-pub fn should_generalize_trait_fn<'a>(declaration: &ast::TypeAnnotation<'a>) -> bool {
-    match declaration.lhs.as_ref() {
-        ast::Ast::Variable(_) => {
-            match &declaration.rhs {
-                ast::Type::FunctionType(..) => true,
-                _ => false,
-            }
-        },
-        _ => false,
     }
 }
 
@@ -390,20 +392,18 @@ impl<'a> Inferable<'a> for ast::FunctionCall<'a> {
  */
 impl<'a> Inferable<'a> for ast::Definition<'a> {
     fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitList) {
+        CURRENT_LEVEL.fetch_add(1, Ordering::SeqCst);
         let (rhs, _) = infer(self.expr.as_mut(), cache);
+        CURRENT_LEVEL.fetch_sub(1, Ordering::SeqCst);
 
-        if should_generalize(self) {
-            let generalized = create_polytype(&rhs, cache);
-            match self.pattern.as_ref() {
-                ast::Ast::Variable(variable) => {
-                    let info = &mut cache.definition_infos[variable.definition.unwrap().0];
-                    info.typ = Some(generalized);
-                },
-                _ => unreachable!(),
-            }
-        } else {
-            let (lhs, _) = infer(self.pattern.as_mut(), cache);
-            unify(&lhs, &rhs, self.location, cache);
+        // TODO: recurse on irrefutable_pattern
+        let generalized = generalize(&rhs, cache);
+        match self.pattern.as_ref() {
+            ast::Ast::Variable(variable) => {
+                let info = &mut cache.definition_infos[variable.definition.unwrap().0];
+                info.typ = Some(generalized);
+            },
+            _ => unreachable!(),
         }
 
         let unit = Type::Primitive(PrimitiveType::UnitType);
@@ -476,18 +476,14 @@ impl<'a> Inferable<'a> for ast::TraitDefinition<'a> {
         for declaration in self.declarations.iter_mut() {
             let rhs = declaration.typ.as_ref().unwrap();
 
-            if should_generalize_trait_fn(declaration) {
-                let generalized = create_polytype(rhs, cache);
-                match declaration.lhs.as_ref() {
-                    ast::Ast::Variable(variable) => {
-                        let info = &mut cache.definition_infos[variable.definition.unwrap().0];
-                        info.typ = Some(generalized);
-                    }
-                    _ => unreachable!(),
+            // TODO: recurse unify on irrefutable_pattern
+            let generalized = generalize(rhs, cache);
+            match declaration.lhs.as_ref() {
+                ast::Ast::Variable(variable) => {
+                    let info = &mut cache.definition_infos[variable.definition.unwrap().0];
+                    info.typ = Some(generalized);
                 }
-            } else {
-                let (lhs, _) = infer(declaration.lhs.as_mut(), cache);
-                unify(&lhs, rhs, self.location, cache);
+                _ => unreachable!(),
             }
         }
         (Type::Primitive(PrimitiveType::UnitType), vec![])

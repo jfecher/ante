@@ -81,6 +81,19 @@ impl Type {
     }
 }
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq, PartialOrd, Ord)]
+pub struct LetBindingLevel(pub usize);
+
+/// A given TypeVariableId is either bound to some type
+/// or is unbound and has a given LetBindingLevel as its lifetime.
+/// This LetBindingLevel is used to determine which type variables
+/// can be generalized.
+#[derive(Debug)]
+pub enum TypeBinding {
+    Bound(Type),
+    Unbound(LetBindingLevel),
+}
+
 #[derive(Debug)]
 pub struct TypeConstructor<'a> {
     pub name: String,

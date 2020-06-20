@@ -1,4 +1,4 @@
-use crate::types::{ Type, TypeVariableId, TypeInfoId, PrimitiveType };
+use crate::types::{ Type, TypeVariableId, TypeInfoId, PrimitiveType, TypeBinding };
 use crate::nameresolution::modulecache::ModuleCache;
 
 use std::collections::HashMap;
@@ -61,12 +61,12 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
     }
 
     fn fmt_type_variable(&self, id: TypeVariableId, f: &mut Formatter) -> std::fmt::Result {
-        if let Some(typ) = &self.cache.type_bindings[id.0] {
-            // Bound
-            self.fmt_type(typ, f)
-        } else { // Unbound
-            let name = self.typevar_names[&id].blue();
-            write!(f, "{}", name)
+        match &self.cache.type_bindings[id.0] {
+            TypeBinding::Bound(typ) => self.fmt_type(typ, f),
+            TypeBinding::Unbound(_) => {
+                let name = self.typevar_names[&id].blue();
+                write!(f, "{}", name)
+            }
         }
     }
 
