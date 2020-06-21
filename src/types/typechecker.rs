@@ -87,6 +87,29 @@ fn instantiate<'b>(s: &Type, cache: &mut ModuleCache<'b>) -> Type {
     }
 }
 
+/// Similar to instantiate but uses an explicitly passed map to map
+/// the old type variables to. This version is used during trait impl
+/// type inference to ensure all definitions in the trait impl are
+/// mapped to the same typevars, rather than each definition instantiated
+/// separately as is normal.
+fn instantiate_from_map<'b>(s: &Type, typevars_to_replace: &HashMap<TypeVariableId, TypeVariableId>, cache: &mut ModuleCache<'b>) -> Type {
+    // Note that the returned type is no longer a PolyType,
+    // this means it is now monomorphic and not forall-quantified
+    match s {
+        TypeVariable(id) => {
+            if let Bound(typ) = &cache.type_bindings[id.0] {
+                instantiate(&typ.clone(), cache)
+            } else {
+                TypeVariable(*id)
+            }
+        },
+        ForAll(_, typ) => {
+            replace_typevars(&typ, typevars_to_replace, cache)
+        },
+        other => other.clone(),
+    }
+}
+
 /// Can a monomorphic TypeVariable(id) be found inside this type?
 /// This will mutate any typevars found to increase their LetBindingLevel.
 /// Doing so increases the lifetime of the typevariable and lets us keep
@@ -212,7 +235,6 @@ pub fn find_all_typevars<'a>(typ: &Type, monomorphic_only: bool, cache: &ModuleC
                     if level.0 > CURRENT_LEVEL.fetch_or(0, Ordering::SeqCst) || !monomorphic_only {
                         vec![*id]
                     } else {
-                        println!("Not generalizing {}, because {} <= cur level of {}", id.0, level.0, CURRENT_LEVEL.fetch_or(0, Ordering::SeqCst));
                         vec![]
                     }
                 }
@@ -299,21 +321,16 @@ fn bind_irrefutable_pattern<'a>(ast: &ast::Ast<'a>, typ: &Type, should_generaliz
             }
         },
         Variable(variable) => {
-            let typ = if should_generalize { generalize(typ, cache) } else { typ.clone() };
             let info = &mut cache.definition_infos[variable.definition.unwrap().0];
 
-            // assert that the pattern doesn't yet have a type or that it is
-            // otherwise an unbound type variable.
-            match info.typ {
-                Some(TypeVariable(id)) => {
-                    match &cache.type_bindings[id.0] {
-                        Bound(_) => unreachable!(),
-                        _ => (),
-                    }
-                }
-                _ => (),
+            // The type may already be set (e.g. from a trait impl this definition belongs to).
+            // If it is, unify the existing type and new type before generalizing them.
+            if let Some(existing_type) = &info.typ {
+                unify(&existing_type.clone(), &typ, ast.locate(), cache);
             }
 
+            let typ = if should_generalize { generalize(typ, cache) } else { typ.clone() };
+            let info = &mut cache.definition_infos[variable.definition.unwrap().0];
             info.typ = Some(typ);
         },
         TypeAnnotation(annotation) => {
@@ -340,20 +357,32 @@ fn lookup_definition_type_in_trait<'a>(name: &str, trait_id: TraitInfoId, cache:
 /// Both this function and bind_irrefutable_pattern traverse an irrefutable pattern.
 /// The former traverses the pattern along with a type and unifies them. This one traverses
 /// the pattern and unifies any names it finds with matching names in the given TraitInfo.
-fn bind_irrefutable_pattern_in_impl<'a>(ast: &ast::Ast<'a>, trait_id: TraitInfoId, cache: &mut ModuleCache<'a>) {
+/// Additionally, instead of instantiating every definition separately this function receives the
+/// already-instantiated type variables from the trait impl.
+///
+/// Note: This function needs to be called before type inference on the trait impl definition
+/// for two reasons:
+///     1. Inference on Definitions performs generalization which would mean we'd otherwise need to
+///        forcibly remove the forall without instantiating it to unify with trait_type here.
+///     2. Binding the pattern to the definintion type from the parent trait here improves error
+///        messages! Binding it beforehand leads to error messages inside the function body where
+///        the e.g. return type conflicts. Binding it afterward would produce error messages with
+///        the location of the ast in this function, which would just be the entire Definition.
+///        Additionally, it would give the entire function type instead of just the return
+///        type or parameter type that was incorrect.
+fn bind_irrefutable_pattern_in_impl<'a>(ast: &ast::Ast<'a>, trait_id: TraitInfoId, typevars_to_replace: &HashMap<TypeVariableId, TypeVariableId>, cache: &mut ModuleCache<'a>) {
     use ast::Ast::*;
     match ast {
         Variable(variable) => {
             let name = variable.to_string();
             let trait_type = lookup_definition_type_in_trait(&name, trait_id, cache);
+            let trait_type = instantiate_from_map(&trait_type, typevars_to_replace, cache);
 
             let info = &mut cache.definition_infos[variable.definition.unwrap().0];
-            let impl_type = info.typ.clone().unwrap();
-            println!("Unifying {} = {}", trait_type.debug(cache), impl_type.debug(cache));
-            unify(&trait_type, &impl_type, ast.locate(), cache);
+            info.typ = Some(trait_type);
         },
         TypeAnnotation(annotation) => {
-            bind_irrefutable_pattern_in_impl(annotation.lhs.as_ref(), trait_id, cache);
+            bind_irrefutable_pattern_in_impl(annotation.lhs.as_ref(), trait_id, typevars_to_replace, cache);
         },
         _ => {
             error!(ast.locate(), "Invalid syntax in irrefutable pattern in trait impl, expected a name or a tuple of names");
@@ -567,9 +596,34 @@ impl<'a> Inferable<'a> for ast::TraitDefinition<'a> {
 
 impl<'a> Inferable<'a> for ast::TraitImpl<'a> {
     fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitList) {
+        let trait_info = &cache.trait_infos[self.trait_info.unwrap().0];
+
+        let mut typevars_to_replace = trait_info.typeargs.clone();
+        typevars_to_replace.append(&mut trait_info.fundeps.clone());
+
+        let typevar_bindings = fmap(&typevars_to_replace, |_| next_type_variable_id(cache));
+
+        // Bind each impl type argument to the corresponding trait type variable
+        for (type_variable, binding) in typevar_bindings.iter().copied().zip(self.trait_arg_types.iter()) {
+            // These bindings are all new type variables so this unification should never fail
+            unify(&TypeVariable(type_variable), binding, self.location, cache);
+        }
+
+        // Instantiate the typevars in the parent trait to bind their definition
+        // types against the types in this trait impl. This needs to be done once
+        // at the trait level rather than at each definition so that each definition
+        // refers to the same type variable instances/bindings.
+        //
+        // This is because only these bindings in trait_to_impl are unified against
+        // the types declared in self.typeargs
+        let mut trait_to_impl = HashMap::new();
+        for (trait_type_variable, impl_type_variable) in typevars_to_replace.into_iter().zip(typevar_bindings) {
+            trait_to_impl.insert(trait_type_variable, impl_type_variable);
+        }
+
         for definition in self.definitions.iter_mut() {
+            bind_irrefutable_pattern_in_impl(definition.pattern.as_ref(), self.trait_info.unwrap(), &trait_to_impl, cache);
             infer(definition, cache);
-            bind_irrefutable_pattern_in_impl(definition.pattern.as_ref(), self.trait_info.unwrap(), cache);
         }
 
         (Type::Primitive(PrimitiveType::UnitType), vec![])

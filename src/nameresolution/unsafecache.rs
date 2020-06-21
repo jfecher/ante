@@ -1,10 +1,14 @@
 use std::cell::UnsafeCell;
-use std::marker::PhantomData;
+use std::marker::{ PhantomData, PhantomPinned };
+use std::pin::Pin;
 
 #[derive(Debug)]
 pub struct UnsafeCache<'a, T: 'a>{
-    cache: Vec<Box<UnsafeCell<T>>>,
+    cache: Vec<Pin<Box<UnsafeCell<T>>>>,
     lifetime: PhantomData<&'a T>,
+
+    /// Ensures we cannot move out of the cache, this would invalidate existing references.
+    no_pin: PhantomPinned,
 }
 
 impl<'a, T> UnsafeCache<'a, T> {
@@ -20,7 +24,7 @@ impl<'a, T> UnsafeCache<'a, T> {
     /// Push a new element to the cache and return its index
     pub fn push(&mut self, t: T) -> usize {
         let len = self.cache.len();
-        self.cache.push(Box::new(UnsafeCell::new(t)));
+        self.cache.push(Box::pin(UnsafeCell::new(t)));
         len
     }
 }
@@ -30,6 +34,7 @@ impl<'a, T> Default for UnsafeCache<'a, T> {
         UnsafeCache {
             cache: vec![],
             lifetime: PhantomData,
+            no_pin: PhantomPinned,
         }
     }
 }
