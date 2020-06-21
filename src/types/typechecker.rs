@@ -326,6 +326,40 @@ fn bind_irrefutable_pattern<'a>(ast: &ast::Ast<'a>, typ: &Type, should_generaliz
     }
 }
 
+fn lookup_definition_type_in_trait<'a>(name: &str, trait_id: TraitInfoId, cache: &mut ModuleCache<'a>) -> Type {
+    let trait_info = &cache.trait_infos[trait_id.0];
+    for definition_id in trait_info.definitions.iter() {
+        let definition_info = &cache.definition_infos[definition_id.0];
+        if definition_info.name == name {
+            return definition_info.typ.clone().unwrap();
+        }
+    }
+    unreachable!();
+}
+
+/// Both this function and bind_irrefutable_pattern traverse an irrefutable pattern.
+/// The former traverses the pattern along with a type and unifies them. This one traverses
+/// the pattern and unifies any names it finds with matching names in the given TraitInfo.
+fn bind_irrefutable_pattern_in_impl<'a>(ast: &ast::Ast<'a>, trait_id: TraitInfoId, cache: &mut ModuleCache<'a>) {
+    use ast::Ast::*;
+    match ast {
+        Variable(variable) => {
+            let name = variable.to_string();
+            let trait_type = lookup_definition_type_in_trait(&name, trait_id, cache);
+
+            let info = &mut cache.definition_infos[variable.definition.unwrap().0];
+            let impl_type = info.typ.clone().unwrap();
+            println!("Unifying {} = {}", trait_type.debug(cache), impl_type.debug(cache));
+            unify(&trait_type, &impl_type, ast.locate(), cache);
+        },
+        TypeAnnotation(annotation) => {
+            bind_irrefutable_pattern_in_impl(annotation.lhs.as_ref(), trait_id, cache);
+        },
+        _ => {
+            error!(ast.locate(), "Invalid syntax in irrefutable pattern in trait impl, expected a name or a tuple of names");
+        }
+    }
+}
 
 type TraitList = Vec<(TraitInfoId, Vec<Type>)>;
 
@@ -535,8 +569,9 @@ impl<'a> Inferable<'a> for ast::TraitImpl<'a> {
     fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitList) {
         for definition in self.definitions.iter_mut() {
             infer(definition, cache);
-            // TODO: unify with parent definition type
+            bind_irrefutable_pattern_in_impl(definition.pattern.as_ref(), self.trait_info.unwrap(), cache);
         }
+
         (Type::Primitive(PrimitiveType::UnitType), vec![])
     }
 }

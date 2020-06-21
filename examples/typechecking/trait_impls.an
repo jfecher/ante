@@ -1,0 +1,13 @@
+
+trait Add a -> b
+    (+) : a a -> b
+
+
+impl Add int string
+    (+) _ _ = "good"
+
+impl Add int int
+    (+) _ _ = "bad return type"
+
+impl Add int char string float unit
+    (+) _ _ = "bad impl args"

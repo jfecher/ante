@@ -189,7 +189,7 @@ parser!(trait_function_definition loc -> 'b ast::TypeAnnotation<'b> =
 parser!(trait_impl loc =
     _ <- expect(Token::Impl);
     name !<- typename;
-    args !<- many1(parse_type);
+    args !<- many1(basic_type);
     _ !<- expect(Token::Indent);
     definitions !<- delimited(raw_definition, expect(Token::Newline));
     _ !<- expect(Token::Unindent);

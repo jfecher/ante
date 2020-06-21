@@ -176,6 +176,7 @@ pub struct TraitImpl<'a> {
     pub location: Location<'a>,
     pub trait_info: Option<TraitInfoId>,
     pub typ: Option<types::Type>,
+    pub trait_arg_types: Vec<types::Type>, // = fmap(trait_args, convert_type)
 }
 
 /// return expression
@@ -290,7 +291,7 @@ impl<'a> Ast<'a> {
 
     pub fn trait_impl(trait_name: String, trait_args: Vec<Type<'a>>, definitions: Vec<Definition<'a>>, location: Location<'a>) -> Ast<'a> {
         assert!(!trait_args.is_empty());
-        Ast::TraitImpl(TraitImpl { trait_name, trait_args, definitions, location, trait_info: None, typ: None })
+        Ast::TraitImpl(TraitImpl { trait_name, trait_args, definitions, location, trait_arg_types: vec![], trait_info: None, typ: None })
     }
 
     pub fn return_expr(expression: Ast<'a>, location: Location<'a>) -> Ast<'a> {

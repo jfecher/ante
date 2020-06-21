@@ -7,6 +7,8 @@ use crate::nameresolution::scope::Scope;
 use crate::lexer::Lexer;
 use crate::util::{ fmap, trustme };
 
+use colored::Colorize;
+
 use std::fs::File;
 use std::io::{ BufReader, Read };
 use std::path::{ Path, PathBuf };
@@ -210,10 +212,14 @@ impl NameResolver {
                 note!(previous_location, "{} previously defined here", name);
             }
 
-            if self.in_global_scope() {
-                self.exports.definitions.insert(name.clone(), id);
+            // Prevent _ from being referenced and allow it to be redefined as needed.
+            // This can be removed if ante ever allows shadowing by default.
+            if name != "_" {
+                if self.in_global_scope() {
+                    self.exports.definitions.insert(name.clone(), id);
+                }
+                self.current_scope().definitions.insert(name, id);
             }
-            self.current_scope().definitions.insert(name, id);
 
             // If we're currently in a trait, add this definition to the trait's list of definitions
             if let Some(trait_id) = self.current_trait {
@@ -757,8 +763,17 @@ impl<'a, 'b> Resolvable<'a, 'b> for ast::TraitImpl<'b> {
             },
         };
 
+        self.trait_arg_types = fmap(&self.trait_args, |arg| resolver.convert_type(cache, arg));
+
         let trait_info = &cache.trait_infos[trait_id.0];
         resolver.required_definitions = Some(fmap(&trait_info.definitions, |id| cache.definition_infos[id.0].name.clone()));
+
+        // The user is required to specify all of the trait's typeargs and functional dependencies.
+        let required_arg_count = trait_info.typeargs.len() + trait_info.fundeps.len();
+        if self.trait_args.len() != required_arg_count {
+            error!(self.location, "impl has {} type arguments but {} requires {}",
+                   self.trait_args.len(), self.trait_name.blue(), required_arg_count);
+        }
 
         resolver.auto_declare = true;
         resolver.push_scope();
