@@ -1,0 +1,17 @@
+type Maybe a =
+   | None
+   | Some a
+
+(+) (a: int) (b: int) = b
+
+bind opt f =
+    match opt with
+    | Some x -> Some (f x)
+    | None -> None
+
+ret x = Some x
+
+x = Some 10
+
+add_one x =
+    bind x (\x. ret (x + 1))

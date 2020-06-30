@@ -1,5 +1,7 @@
 use crate::nameresolution::NameResolver;
-use crate::types::{ TypeVariableId, TypeInfoId, TypeInfo, Type, TypeInfoBody, TypeBinding, LetBindingLevel };
+use crate::types::{ TypeVariableId, TypeInfoId, TypeInfo, Type, TypeInfoBody };
+use crate::types::{ TypeBinding, LetBindingLevel, traits::TraitList, Kind };
+use crate::types::traits::{ Impl, ImplPrinter };
 use crate::error::location::{ Location, Locatable };
 use crate::parser::ast::{ Ast, Definition, TraitDefinition };
 use crate::nameresolution::unsafecache::UnsafeCache;
@@ -42,6 +44,25 @@ pub struct ModuleCache<'a> {
     /// Filled out during name resolution
     pub trait_infos: Vec<TraitInfo<'a>>,
 
+    /// Maps ImplInfoId -> ImplInfo
+    /// Filled out during name resolution, though
+    /// definitions within impls aren't publically exposed.
+    pub impl_infos: Vec<ImplInfo<'a>>,
+
+    /// Maps ImplScopeId -> Vec<ImplInfo>
+    /// Name resolution needs to store the impls visible to
+    /// each variable so when any UnknownTraitImpls are resolved
+    /// during type inference the inferencer can quickly get the
+    /// impls that should be in scope and select an instance.
+    pub impl_scopes: Vec<Vec<ImplInfoId>>,
+
+    /// Maps ImplBindingId -> ImplInfo
+    /// Each ast::Variable node stores one ImplBindingId for
+    /// every trait that it must monomorphise during code generation.
+    /// These bindings are mapped and filled out during trait
+    /// resolution which occurs when type checking a ast::Definition node.
+    pub impl_bindings: Vec<Option<ImplInfoId>>,
+
     /// Maps DefinitionInfoId -> DefinitionInfo
     /// Filled out during name resolution
     pub definition_infos: Vec<DefinitionInfo<'a>>,
@@ -67,7 +88,9 @@ pub struct DefinitionInfo<'a> {
     /// Where this name was defined. It is expected that type checking
     /// this Definition node should result in self.typ being filled out.
     pub definition: Option<DefinitionNode<'a>>,
-    pub trait_id: Option<TraitInfoId>,
+
+    pub required_impls: TraitList,
+
     pub typ: Option<Type>,
     pub uses: u32,
 }
@@ -78,7 +101,7 @@ impl<'a> Locatable<'a> for DefinitionInfo<'a> {
     }
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct TraitInfoId(pub usize);
 
 #[derive(Debug)]
@@ -91,6 +114,29 @@ pub struct TraitInfo<'a> {
     pub uses: u32,
 }
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub struct ImplInfoId(pub usize);
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub struct ImplScopeId(pub usize);
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub struct ImplBindingId(pub usize);
+
+#[derive(Debug)]
+pub struct ImplInfo<'a> {
+    pub trait_id: TraitInfoId,
+    pub typeargs: Vec<Type>,
+    pub location: Location<'a>,
+    pub definitions: Vec<DefinitionInfoId>,
+}
+
+impl<'b> ImplInfo<'b> {
+    #[allow(dead_code)]
+    pub fn display<'a>(&self, cache: &'a ModuleCache<'b>) -> ImplPrinter<'a, 'b> {
+        Impl::new(self.trait_id, ImplScopeId(0), ImplBindingId(0), self.typeargs.clone()).display(cache)
+    }
+}
 
 impl<'a> ModuleCache<'a> {
     pub fn new(project_directory: &'a Path) -> ModuleCache<'a> {
@@ -103,6 +149,9 @@ impl<'a> ModuleCache<'a> {
             type_bindings: Vec::default(),
             type_infos: Vec::default(),
             trait_infos: Vec::default(),
+            impl_infos: Vec::default(),
+            impl_scopes: Vec::default(),
+            impl_bindings: Vec::default(),
             definition_infos: Vec::default(),
         }
     }
@@ -114,13 +163,13 @@ impl<'a> ModuleCache<'a> {
         unsafe { std::mem::transmute(path) }
     }
 
-    pub fn push_definition(&mut self, name: String, trait_id: Option<TraitInfoId>, location: Location<'a>) -> DefinitionInfoId {
+    pub fn push_definition(&mut self, name: String, location: Location<'a>) -> DefinitionInfoId {
         let id = self.definition_infos.len();
         self.definition_infos.push(DefinitionInfo {
             name,
             definition: None,
             location,
-            trait_id,
+            required_impls: vec![],
             typ: None,
             uses: 0,
         });
@@ -145,7 +194,7 @@ impl<'a> ModuleCache<'a> {
 
     pub fn next_type_variable_id(&mut self, level: LetBindingLevel) -> TypeVariableId {
         let id = self.type_bindings.len();
-        self.type_bindings.push(TypeBinding::Unbound(level));
+        self.type_bindings.push(TypeBinding::Unbound(level, Kind::Normal(0)));
         TypeVariableId(id)
     }
 
@@ -154,7 +203,9 @@ impl<'a> ModuleCache<'a> {
         Type::TypeVariable(id)
     }
 
-    pub fn push_trait_definition(&mut self, name: String, typeargs: Vec<TypeVariableId>, fundeps: Vec<TypeVariableId>,  location: Location<'a>) ->TraitInfoId {
+    pub fn push_trait_definition(&mut self, name: String, typeargs: Vec<TypeVariableId>,
+                fundeps: Vec<TypeVariableId>,  location: Location<'a>) -> TraitInfoId {
+
         let id = self.trait_infos.len();
         self.trait_infos.push(TraitInfo {
             name,
@@ -165,5 +216,28 @@ impl<'a> ModuleCache<'a> {
             uses: 0,
         });
         TraitInfoId(id)
+    }
+
+    pub fn push_trait_impl(&mut self, trait_id: TraitInfoId, typeargs: Vec<Type>, definitions: Vec<DefinitionInfoId>, location: Location<'a>) -> ImplInfoId {
+        let id = self.impl_infos.len();
+        self.impl_infos.push(ImplInfo {
+            trait_id,
+            typeargs,
+            definitions,
+            location,
+        });
+        ImplInfoId(id)
+    }
+
+    pub fn push_impl_scope(&mut self) -> ImplScopeId {
+        let id = self.impl_scopes.len();
+        self.impl_scopes.push(vec![]);
+        ImplScopeId(id)
+    }
+
+    pub fn push_impl_binding(&mut self) -> ImplBindingId {
+        let id = self.impl_bindings.len();
+        self.impl_bindings.push(None);
+        ImplBindingId(id)
     }
 }

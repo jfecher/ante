@@ -16,6 +16,9 @@ mod types;
 use lexer::Lexer;
 use nameresolution::{ NameResolver, modulecache::ModuleCache };
 
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 #[derive(Debug)]
 enum Error {
     Unrecoverable,
@@ -69,17 +72,24 @@ fn main() -> Result<(), Error> {
             Ok(root) => {
                 NameResolver::start(root, &mut cache);
                 let ast = cache.parse_trees.get_mut(0).unwrap();
-                println!("{}", ast);
-                let (typ, _) = types::typechecker::infer(ast, &mut cache);
-                println!("{}", typ.display(&mut cache));
+                types::typechecker::infer_ast(ast, &mut cache);
+
                 for defs in cache.definition_infos.iter().filter(|def| def.typ.is_none()) {
                     warning!(defs.location, "{} is unused and was not typechecked", defs.name);
                 }
                 for (_, module_id) in cache.modules.iter() {
                     let resolver = cache.name_resolvers.get_mut(module_id.0).unwrap();
                     for (name, definition_id) in resolver.exports.definitions.iter() {
-                        let typ = cache.definition_infos[definition_id.0].typ.clone().unwrap();
-                        println!("{} : {}", name, typ.display(&cache));
+                        let info = &cache.definition_infos[definition_id.0];
+                        let typ = info.typ.clone().unwrap();
+                        println!("{} : {}", name, typ.debug(&cache));
+                        if !info.required_impls.is_empty() {
+                            print!("  given");
+                            for trait_impl in info.required_impls.iter() {
+                                print!(", {}", trait_impl.debug(&cache));
+                            }
+                            println!("");
+                        }
                     }
                 }
             },

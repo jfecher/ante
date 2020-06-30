@@ -73,7 +73,7 @@ macro_rules! parser {
 /// should be used in each contained parser once it is sure that parser's rule
 /// should be matched. For example, in an if expression, everything after the initial `if`
 /// should be marked as no_backtracking.
-pub fn or<'local, 'cache: 'local, It, T, F>(functions: It, rule: String) -> impl FnOnce(Input<'local, 'cache>) -> ParseResult<'local, 'cache, T> where
+pub fn or<'local, 'cache: 'local, It, T, F>(functions: It, rule: &'static str) -> impl FnOnce(Input<'local, 'cache>) -> ParseResult<'local, 'cache, T> where
     It: IntoIterator<Item = F>,
     F: Fn(Input<'local, 'cache>) -> ParseResult<'local, 'cache, T>
 {
@@ -110,7 +110,7 @@ pub fn expect<'a, 'b: 'a>(expected: Token) -> impl Fn(Input<'a, 'b>) -> ParseRes
 }
 
 /// Fail if the next token in the stream is not the given expected token
-pub fn expect_if<'a, 'b: 'a, F>(rule: &'a str, f: F) -> impl Fn(Input<'a, 'b>) -> ParseResult<'a, 'b, Token>
+pub fn expect_if<'a, 'b: 'a, F>(rule: &'static str, f: F) -> impl Fn(Input<'a, 'b>) -> ParseResult<'a, 'b, Token>
     where F: Fn(&Token) -> bool
 {
     move |input| {
@@ -119,7 +119,7 @@ pub fn expect_if<'a, 'b: 'a, F>(rule: &'a str, f: F) -> impl Fn(Input<'a, 'b>) -
         } else if let Token::Invalid(err) = input[0].0 {
             Err(ParseError::Fatal(Box::new(ParseError::LexerError(err, input[0].1))))
         } else {
-            Err(ParseError::InRule(rule.to_string(), input[0].1))
+            Err(ParseError::InRule(rule, input[0].1))
         }
     }
 }
@@ -187,6 +187,25 @@ pub fn delimited<'a, 'b: 'a, F, G, FResult, GResult>(f: F, g: G) -> impl Fn(Inpu
         let location = start.union(end);
         Ok((input, results, location))
     }
+}
+
+/// Match begin, middle, then end in a sequence.
+pub fn bounded<'a, 'b: 'a, F, FResult>(begin: Token, f: F, end: Token) -> impl FnOnce(Input<'a, 'b>) -> ParseResult<'a, 'b, FResult> where
+    F: FnOnce(Input<'a, 'b>) -> ParseResult<'a, 'b, FResult>,
+{
+    move |input| {
+        let (input, _, _) = expect(begin)(input)?;
+        let (input, result, location) = f(input)?;
+        let (input, _, _) = expect(end)(input)?;
+        Ok((input, result, location))
+    }
+}
+
+/// parenthesized f = bounded '(' f ')'
+pub fn parenthesized<'a, 'b: 'a, F, FResult>(f: F) -> impl FnOnce(Input<'a, 'b>) -> ParseResult<'a, 'b, FResult> where
+    F: FnOnce(Input<'a, 'b>) -> ParseResult<'a, 'b, FResult>,
+{
+    bounded(Token::ParenthesisLeft, f, Token::ParenthesisRight)
 }
 
 /// Runs the parser 0 or more times until it errors, then returns a Vec of the successes.

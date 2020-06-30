@@ -5,6 +5,7 @@ use std::collections::HashMap;
 pub mod typed;
 pub mod typechecker;
 pub mod typeprinter;
+pub mod traits;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, PartialOrd, Ord)]
 pub struct TypeVariableId(pub usize);
@@ -91,7 +92,7 @@ pub struct LetBindingLevel(pub usize);
 #[derive(Debug)]
 pub enum TypeBinding {
     Bound(Type),
-    Unbound(LetBindingLevel),
+    Unbound(LetBindingLevel, Kind),
 }
 
 #[derive(Debug)]
@@ -134,7 +135,7 @@ impl<'a> Locatable<'a> for TypeInfo<'a> {
     }
 }
 
-#[allow(dead_code)]
+#[derive(Debug, Clone)]
 pub enum Kind {
     /// usize is the number of type arguments it takes before it returns a type of kind *.
     /// For example, the kind Normal(2) : * -> * -> *

@@ -9,3 +9,9 @@ edition = "2018"
 [dependencies]
 clap = "2.33"
 colored = "1.9"
+mimalloc = { version = "0.1.19", default-features = false }
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+panic = "abort"

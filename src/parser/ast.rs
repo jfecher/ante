@@ -1,6 +1,6 @@
 use crate::lexer::token::Token;
 use crate::error::location::{ Location, Locatable };
-use crate::nameresolution::modulecache::{ DefinitionInfoId, TraitInfoId, ModuleId };
+use crate::nameresolution::modulecache::{ DefinitionInfoId, TraitInfoId, ModuleId, ImplScopeId, ImplBindingId };
 use crate::types::{ self, TypeInfoId };
 
 #[derive(Debug)]
@@ -33,6 +33,12 @@ pub struct Variable<'a> {
     pub kind: VariableKind,
     pub location: Location<'a>,
     pub definition: Option<DefinitionInfoId>,
+
+    /// The trait impls in scope. Used during trait resolution.
+    pub impl_scope: Option<ImplScopeId>,
+
+    /// The list of traits to monomorphise when compiling this variable.
+    pub impl_bindings: Vec<ImplBindingId>,
     pub typ: Option<types::Type>,
 }
 
@@ -242,15 +248,15 @@ impl<'a> Ast<'a> {
     }
 
     pub fn variable(name: String, location: Location<'a>) -> Ast<'a> {
-        Ast::Variable(Variable { kind: VariableKind::Identifier(name), location, definition: None, typ: None })
+        Ast::Variable(Variable { kind: VariableKind::Identifier(name), location, definition: None, impl_scope: None, impl_bindings: vec![], typ: None })
     }
 
     pub fn operator(operator: Token, location: Location<'a>) -> Ast<'a> {
-        Ast::Variable(Variable { kind: VariableKind::Operator(operator), location, definition: None, typ: None })
+        Ast::Variable(Variable { kind: VariableKind::Operator(operator), location, definition: None, impl_scope: None, impl_bindings: vec![], typ: None })
     }
 
     pub fn type_constructor(name: String, location: Location<'a>) -> Ast<'a> {
-        Ast::Variable(Variable { kind: VariableKind::TypeConstructor(name), location, definition: None, typ: None })
+        Ast::Variable(Variable { kind: VariableKind::TypeConstructor(name), location, definition: None, impl_scope: None, impl_bindings: vec![], typ: None })
     }
 
     pub fn lambda(args: Vec<Ast<'a>>, body: Ast<'a>, location: Location<'a>) -> Ast<'a> {

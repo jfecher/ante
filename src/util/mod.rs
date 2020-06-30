@@ -14,11 +14,20 @@ pub fn fmap_mut<T, U, F>(array: &mut [T], mut f: F) -> Vec<U>
     array.iter_mut().map(|x| f(x)).collect()
 }
 
-pub fn fmap2<Elem1, Elem2, Ret, F>(array1: &[Elem1], array2: &[Elem2], mut f: F) -> Vec<Ret>
-    where F: FnMut(&Elem1, &Elem2) -> Ret
+/// What a name! Iterate the array, mapping each element with a function that returns a pair
+/// of a value and a vector. Accumulate the results in two separate vectors, the second of
+/// which is merged from all the second-element vectors found so far.
+pub fn fmap_mut_pair_merge_second<T, Ret1, Ret2, F>(array: &mut [T], mut f: F) -> (Vec<Ret1>, Vec<Ret2>)
+    where F: FnMut(&mut T) -> (Ret1, Vec<Ret2>)
 {
-    let second_iter = array2.iter();
-    array1.iter().zip(second_iter).map(|(x, y)| f(x, y)).collect()
+    let mut ret1 = Vec::with_capacity(array.len());
+    let mut ret2 = Vec::with_capacity(array.len());
+    for elem in array.iter_mut() {
+        let (elem1, mut vec) = f(elem);
+        ret1.push(elem1);
+        ret2.append(&mut vec);
+    }
+    (ret1, ret2)
 }
 
 pub fn contains<T: PartialEq>(array: &[T], element: &T) -> bool {

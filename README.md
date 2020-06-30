@@ -10,7 +10,7 @@ The original c++ compiler was written as ante's
 design was evolving quickly. In fact, the repository
 started as an interpreter for a gradually-typed scripting
 language by the name of Zy. Over the years, the
-compiler has had many features bolted on it wasn't defined
+compiler has had many features bolted on it wasn't designed
 for - including hindley-milner type inference, a REPL,
 and functional dependencies. This has resulted in not
 only many bugs but also the complexity has increased
@@ -39,7 +39,10 @@ Steps needed to get back in line with the C++ compiler:
   - [x] Trait definitions
   - [x] Redefined warning
   - [x] Never used warning
-- [ ] HM-type inference
+- [x] HM-type inference
+  - [x] Basic inference
+  - [x] Let generalization
+  - [x] Trait inference
 - [ ] Code generation (llvm)
 - [ ] REPL
 

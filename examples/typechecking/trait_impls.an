@@ -11,3 +11,6 @@ impl Add int int
 
 impl Add int char string float unit
     (+) _ _ = "bad impl args"
+
+
+foo a b = a + b

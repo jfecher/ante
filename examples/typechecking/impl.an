@@ -1,0 +1,14 @@
+
+trait Add a
+    (+): a a -> a
+
+impl Add int
+    (+) _a b = b
+
+impl Add float
+    (+) _a b = b
+
+
+a = 1 + 2
+b = 1.0 + 2.0
+c = "one" + "two"

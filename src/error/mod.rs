@@ -8,11 +8,16 @@ use std::io::{ BufReader, Read };
 use colored::ColoredString;
 use colored::*;
 
-macro_rules! error {
+macro_rules! error_message {
     ( $location:expr , $fmt_string:expr $( , $($msg:tt)* )? ) => ({
         let message = format!($fmt_string $( , $($msg)* )? );
-        let error = crate::error::ErrorMessage::error(&message[..], $location);
-        println!("{}", error);
+        crate::error::ErrorMessage::error(&message[..], $location)
+    });
+}
+
+macro_rules! error {
+    ( $location:expr , $fmt_string:expr $( , $($msg:tt)* )? ) => ({
+        println!("{}", error_message!($location, $fmt_string $( , $($msg)* )?));
     });
 }
 

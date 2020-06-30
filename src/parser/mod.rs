@@ -44,8 +44,8 @@ parser!(statement_list loc =
 fn statement<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
     match input[0].0 {
         Token::ParenthesisLeft |
-        Token::Identifier(_) => or(&[definition, expression], "statement".to_string())(input),
-        Token::Type => or(&[type_definition, type_alias], "statement".to_string())(input),
+        Token::Identifier(_) => or(&[definition, expression], &"statement")(input),
+        Token::Type => or(&[type_definition, type_alias], &"statement")(input),
         Token::Import => import(input),
         Token::Trait => trait_definition(input),
         Token::Impl => trait_impl(input),
@@ -60,12 +60,12 @@ fn definition<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
 }
 
 fn raw_definition<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, ast::Definition<'b>> {
-    or(&[function_definition, variable_definition], "definition".to_string())(input)
+    or(&[function_definition, variable_definition], &"definition")(input)
 }
 
 parser!(function_definition location -> 'b ast::Definition<'b> =
-    name <- irrefutable_pattern;
-    args <- many1(variable);
+    name <- irrefutable_pattern_argument;
+    args <- many1(irrefutable_pattern_argument);
     _ <- expect(Token::Equal);
     body !<- block_or_expression;
     ast::Definition {
@@ -90,9 +90,24 @@ parser!(variable_definition location -> 'b ast::Definition<'b> =
     }
 );
 
+parser!(type_annotation_pattern loc =
+    lhs <- irrefutable_pattern_argument;
+    _ <- expect(Token::Colon);
+    rhs <- parse_type;
+    Ast::type_annotation(lhs, rhs, loc)
+);
+
 fn irrefutable_pattern<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
+    or(&[
+       type_annotation_pattern,
+       irrefutable_pattern_argument
+    ], &"irrefutable_pattern")(input)
+}
+
+fn irrefutable_pattern_argument<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
     match input[0].0 {
-        Token::ParenthesisLeft => parenthsized_operator(input),
+        Token::ParenthesisLeft =>
+            parenthesized(or(&[operator, irrefutable_pattern], &"irrefutable pattern"))(input),
         _ => variable(input),
     }
 }
@@ -117,7 +132,7 @@ parser!(type_alias loc =
 
 fn type_definition_body<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, ast::TypeDefinitionBody<'b>> {
     match input[0].0 {
-        Token::Indent => or(&[union_block_body, struct_block_body], "type_definition_body".to_string())(input),
+        Token::Indent => or(&[union_block_body, struct_block_body], &"type_definition_body")(input),
         Token::Pipe => union_inline_body(input),
         _ => struct_inline_body(input),
     }
@@ -180,7 +195,7 @@ parser!(trait_definition loc =
 );
 
 parser!(trait_function_definition loc -> 'b ast::TypeAnnotation<'b> =
-    lhs <- irrefutable_pattern;
+    lhs <- irrefutable_pattern_argument;
     _ <- expect(Token::Colon);
     rhs <- parse_type;
     ast::TypeAnnotation { lhs: Box::new(lhs), rhs, location: loc, typ: None }
@@ -289,7 +304,7 @@ fn term<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
             function_call,
             type_annotation,
             function_argument
-        ], "term".to_string())(input),
+        ], &"term")(input),
     }
 }
 
@@ -342,7 +357,7 @@ fn parse_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
         function_type,
         type_application,
         basic_type
-    ], "type".to_string())(input)
+    ], &"type")(input)
 }
 
 fn basic_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
@@ -356,8 +371,8 @@ fn basic_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
         Token::Ref => reference_type(input),
         Token::Identifier(_) => type_variable(input),
         Token::TypeName(_) => user_defined_type(input),
-        Token::ParenthesisLeft => parenthsized_type(input),
-        _ => Err(ParseError::InRule("type".to_string(), input[0].1)),
+        Token::ParenthesisLeft => parenthesized(parse_type)(input),
+        _ => Err(ParseError::InRule(&"type", input[0].1)),
     }
 }
 
@@ -388,14 +403,10 @@ fn function_argument<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
         Token::UnitLiteral => unit(input),
         Token::Backslash => lambda(input),
         Token::ParenthesisLeft => {
-            if input[1].0.is_overloadable_operator() {
-                parenthsized_operator(input)
-            } else {
-                parenthsized_expression(input)
-            }
+            parenthesized(or(&[operator, expression], &"function_argument"))(input)
         },
         Token::TypeName(_) => variant(input),
-        _ => Err(ParseError::InRule("argument".to_string(), input[0].1)),
+        _ => Err(ParseError::InRule(&"argument", input[0].1)),
     }
 }
 
@@ -407,18 +418,9 @@ parser!(lambda loc =
     Ast::lambda(args, body, loc)
 );
 
-parser!(parenthsized_operator loc =
-    _ <- expect(Token::ParenthesisLeft);
-    op <- expect_if("parenthsized_operator", |op| op.is_overloadable_operator());
-    _ <- expect(Token::ParenthesisRight);
+parser!(operator loc =
+    op <- expect_if("operator", |op| op.is_overloadable_operator());
     Ast::operator(op, loc)
-);
-
-parser!(parenthsized_expression loc =
-    _ <- expect(Token::ParenthesisLeft);
-    expr <- expression;
-    _ <- expect(Token::ParenthesisRight);
-    expr
 );
 
 parser!(variant loc =
@@ -517,11 +519,4 @@ parser!(type_variable loc -> 'b Type<'b> =
 parser!(user_defined_type loc -> 'b Type<'b> =
     name <- typename;
     Type::UserDefinedType(name, loc)
-);
-
-parser!(parenthsized_type _loc -> 'b Type<'b> =
-    _ <- expect(Token::ParenthesisLeft);
-    inner_type <- parse_type;
-    _ <- expect(Token::ParenthesisRight);
-    inner_type
 );
