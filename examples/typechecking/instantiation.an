@@ -13,11 +13,3 @@ id 3
 id "four"
 
 id x = x
-
-foo x y = x + y
-3 + 2
-
-"four" + "five"
-
-trait Add t
-    (+): t t -> t

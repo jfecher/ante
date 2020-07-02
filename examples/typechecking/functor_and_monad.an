@@ -1,0 +1,26 @@
+
+trait Functor f
+    map: (f a) (a -> b) -> f b
+
+trait Monad m
+    wrap: a -> m a
+    bind: (m a) (a -> m b) -> m b
+
+
+type Maybe a =
+   | Some a
+   | None
+
+impl Functor Maybe
+    map m f =
+        match m with
+        | Some x -> Some (f x)
+        | None -> None
+
+impl Monad Maybe
+    wrap a = Some a
+    
+    bind m f =
+        match m with
+        | Some x -> f x
+        | None -> None

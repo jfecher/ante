@@ -13,4 +13,13 @@ impl Add int char string float unit
     (+) _ _ = "bad impl args"
 
 
+
+impl Add int float
+    (+) _ _ = 23.2 // Should be an error, we already have an Add int
+
 foo a b = a + b
+
+bar (x: string) y = x + y
+3 + 2
+
+"four" + "five"
