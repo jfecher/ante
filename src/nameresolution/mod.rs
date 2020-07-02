@@ -294,10 +294,9 @@ impl NameResolver {
         let id = cache.push_trait_impl(trait_id, args, definitions, location);
         if self.in_global_scope() {
             self.exports.impls.entry(trait_id).or_default().push(id);
-            println!("Pushing to impl scope {}", self.exports.impl_scope.0);
             cache.impl_scopes[self.exports.impl_scope.0].push(id);
         }
-            println!("Pushing to impl scope {}", self.current_scope().impl_scope.0);
+
         self.current_scope().impls.entry(trait_id).or_default().push(id);
         cache.impl_scopes[self.current_scope().impl_scope.0].push(id);
         id
@@ -377,8 +376,14 @@ impl<'a, 'b> NameResolver {
                 match self.lookup_type_variable(name) {
                     Some(id) => Type::TypeVariable(id),
                     None => {
-                        error!(*location, "Type variable {} was not found in scope", name);
-                        Type::Primitive(PrimitiveType::IntegerType)
+                        if self.auto_declare {
+                            // TODO: This usage of MAX_BINDING_LEVEL is definitely unsound
+                            let id = self.push_new_type_variable(name.clone(), cache);
+                            Type::TypeVariable(id)
+                        } else {
+                            error!(*location, "Type variable {} was not found in scope", name);
+                            Type::Primitive(PrimitiveType::IntegerType)
+                        }
                     },
                 }
             },
@@ -787,7 +792,9 @@ impl<'a, 'b> Resolvable<'a, 'b> for ast::TraitDefinition<'b> {
                 info.definition = Some(DefinitionNode::TraitDefinition(definition));
             }
 
+            resolver.auto_declare = true;
             let rhs = resolver.convert_type(cache, &declaration.rhs);
+            resolver.auto_declare = false;
             declaration.typ = Some(rhs);
         }
 

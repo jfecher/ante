@@ -92,14 +92,19 @@ impl<'a, 'b> Display for ImplPrinter<'a, 'b> {
         // Print the impl this impl is bound to
         if self.debug {
             write!(f, " => ")?;
-            if let Some(id) = &self.cache.impl_bindings[self.trait_impl.binding.0] {
-                // A ImplInfo can't be printed directly so its wrapped in
-                // an Impl here as a workaround
-                let impl_info = &self.cache.impl_infos[id.0];
-                let trait_impl = Impl::new(impl_info.trait_id, self.trait_impl.scope, ImplBindingId(0), impl_info.typeargs.clone());
-                write!(f, "{}", trait_impl.display(self.cache))?;
+            if !self.cache.impl_bindings.is_empty() {
+                if let Some(id) = &self.cache.impl_bindings[self.trait_impl.binding.0] {
+                    // A ImplInfo can't be printed directly so its wrapped in
+                    // an Impl here as a workaround
+                    let impl_info = &self.cache.impl_infos[id.0];
+                    let trait_impl = Impl::new(impl_info.trait_id, self.trait_impl.scope, ImplBindingId(0), impl_info.typeargs.clone());
+                    write!(f, "{}", trait_impl.display(self.cache))?;
+                } else {
+                    write!(f, "?")?;
+                }
             } else {
-                write!(f, "?")?;
+                // TODO: Remove ImplBindingId(0) usage
+                write!(f, "??")?;
             }
         }
         Ok(())

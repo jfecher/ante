@@ -141,41 +141,6 @@ fn instantiate_from_map<'b>(s: &Type, typevars_to_replace: &HashMap<TypeVariable
     }
 }
 
-/// Can a monomorphic TypeVariable(id) be found inside this type?
-/// This will mutate any typevars found to increase their LetBindingLevel.
-/// Doing so increases the lifetime of the typevariable and lets us keep
-/// track of which type variables to generalize later on. It also means
-/// that occurs should only be called during unification however.
-fn occurs<'b>(id: TypeVariableId, level: LetBindingLevel, typ: &Type, cache: &mut ModuleCache<'b>) -> bool {
-    match typ {
-        Primitive(_) => false,
-        UserDefinedType(_) => false,
-
-        TypeVariable(var_id) => {
-            match &cache.type_bindings[id.0] {
-                Bound(binding) => occurs(id, level, &binding.clone(), cache),
-                Unbound(original_level, kind) => {
-                    let min_level = std::cmp::min(level, *original_level);
-                    cache.type_bindings[id.0] = Unbound(min_level, kind.clone());
-                    id == *var_id
-                }
-            }
-        },
-        Function(parameters, return_type) => {
-            occurs(id, level, return_type, cache)
-            || parameters.iter().any(|parameter| occurs(id, level, parameter, cache))
-        },
-        TypeApplication(typ, args) => {
-            occurs(id, level, typ, cache)
-            || args.iter().any(|arg| occurs(id, level, arg, cache))
-        }
-        ForAll(typevars, typ) => {
-            !typevars.iter().any(|typevar| *typevar == id)
-            && occurs(id, level, typ, cache)
-        },
-    }
-}
-
 fn find_binding<'b>(id: TypeVariableId, map: &TypeBindings, cache: &ModuleCache<'b>) -> TypeBinding {
     match &cache.type_bindings[id.0] {
         Bound(typ) => Bound(typ.clone()),
@@ -185,6 +150,54 @@ fn find_binding<'b>(id: TypeVariableId, map: &TypeBindings, cache: &ModuleCache<
                 None => Unbound(*level, kind.clone()),
             }
         }
+    }
+}
+
+/// Can a monomorphic TypeVariable(id) be found inside this type?
+/// This will mutate any typevars found to increase their LetBindingLevel.
+/// Doing so increases the lifetime of the typevariable and lets us keep
+/// track of which type variables to generalize later on. It also means
+/// that occurs should only be called during unification however.
+fn occurs<'b>(id: TypeVariableId, level: LetBindingLevel, typ: &Type, bindings: &mut TypeBindings, cache: &mut ModuleCache<'b>) -> bool {
+    match typ {
+        Primitive(_) => false,
+        UserDefinedType(_) => false,
+
+        TypeVariable(var_id) => {
+            match find_binding(*var_id, bindings, cache) {
+                Bound(binding) => occurs(id, level, &binding, bindings, cache),
+                Unbound(original_level, kind) => {
+                    let min_level = std::cmp::min(level, original_level);
+                    cache.type_bindings[id.0] = Unbound(min_level, kind);
+                    id == *var_id
+                }
+            }
+        },
+        Function(parameters, return_type) => {
+            occurs(id, level, return_type, bindings, cache)
+            || parameters.iter().any(|parameter| occurs(id, level, parameter, bindings, cache))
+        },
+        TypeApplication(typ, args) => {
+            occurs(id, level, typ, bindings, cache)
+            || args.iter().any(|arg| occurs(id, level, arg, bindings, cache))
+        }
+        ForAll(typevars, typ) => {
+            !typevars.iter().any(|typevar| *typevar == id)
+            && occurs(id, level, typ, bindings, cache)
+        },
+    }
+}
+
+/// Returns what a given type is bound to, following all typevar links until it reaches an Unbound one.
+fn follow_bindings<'b>(typ: &Type, bindings: &TypeBindings, cache: &ModuleCache<'b>) -> Type {
+    match typ {
+        TypeVariable(id) => {
+            match find_binding(*id, bindings, cache) {
+                Bound(typ) => follow_bindings(&typ, bindings, cache),
+                Unbound(..) => typ.clone(),
+            }
+        }
+        _ => typ.clone(),
     }
 }
 
@@ -203,18 +216,19 @@ fn try_unify<'b>(t1: &Type, t2: &Type, bindings: &mut TypeBindings, location: Lo
         (TypeVariable(id), b) => {
             match find_binding(*id, bindings, &cache) {
                 Bound(a) => {
-                    try_unify(&a.clone(), b, bindings, location, cache)
+                    try_unify(&a, b, bindings, location, cache)
                 },
                 Unbound(a_level, a_kind) => {
                     // Create binding for boundTy that is currently empty.
                     // Ensure not to create recursive bindings to the same variable
-                    if t1 != t2 {
+                    let b = follow_bindings(b, bindings, cache);
+                    if *t1 != b {
                         // TODO: Can this occurs check not mutate the typevar levels until we
                         // return success?
-                        if occurs(*id, a_level, b, cache) {
-                            Err(error_message!(location, "Cannot construct recursive type: {:?} = {:?}", t1, t2))
+                        if occurs(*id, a_level, &b, bindings, cache) {
+                            Err(error_message!(location, "Cannot construct recursive type: {} = {}", t1.debug(cache), t2.debug(cache)))
                         } else {
-                            bindings.insert(*id, b.clone());
+                            bindings.insert(*id, b);
                             Ok(())
                         }
                     } else {
@@ -227,16 +241,17 @@ fn try_unify<'b>(t1: &Type, t2: &Type, bindings: &mut TypeBindings, location: Lo
         (a, TypeVariable(id)) => {
             match find_binding(*id, &bindings, &cache) {
                 Bound(b) => {
-                    try_unify(a, &b.clone(), bindings, location, cache)
+                    try_unify(a, &b, bindings, location, cache)
                 },
                 Unbound(b_level, b_kind) => {
                     // Create binding for boundTy that is currently empty.
                     // Ensure not to create recursive bindings to the same variable
-                    if t1 != t2 { 
-                        if occurs(*id, b_level, a, cache) {
-                            Err(error_message!(location, "Cannot construct recursive type: {:?} = {:?}", t1, t2))
+                    let a = follow_bindings(a, bindings, cache);
+                    if a != *t2 {
+                        if occurs(*id, b_level, &a, bindings, cache) {
+                            Err(error_message!(location, "Cannot construct recursive type: {} = {}", t1.debug(cache), t2.debug(cache)))
                         } else {
-                            bindings.insert(*id, a.clone());
+                            bindings.insert(*id, a);
                             Ok(())
                         }
                     } else {
@@ -685,8 +700,6 @@ impl<'a> Inferable<'a> for ast::Definition<'a> {
         CURRENT_LEVEL.fetch_add(1, Ordering::SeqCst);
         let (t, traits) = infer(self.expr.as_mut(), cache);
         CURRENT_LEVEL.fetch_sub(1, Ordering::SeqCst);
-
-        println!("Inferring {} as {}", self, t.display(cache));
 
         let exposed_traits = resolve_traits(traits, self.location, cache);
         bind_irrefutable_pattern(self.pattern.as_ref(), &t, &exposed_traits, true, cache);
