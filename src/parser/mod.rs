@@ -147,7 +147,7 @@ parser!(union_variant loc -> 'b (String, Vec<Type<'b>>, Location<'b>) =
 
 parser!(union_block_body _loc -> 'b ast::TypeDefinitionBody<'b> =
     _ <- expect(Token::Indent);
-    variants <- delimited(union_variant, expect(Token::Newline));
+    variants <- delimited_trailing(union_variant, expect(Token::Newline));
     _ !<- expect(Token::Unindent);
     TypeDefinitionBody::UnionOf(variants)
 );
@@ -166,7 +166,7 @@ parser!(struct_field loc -> 'b (String, Type<'b>, Location<'b>) =
 
 parser!(struct_block_body _loc -> 'b ast::TypeDefinitionBody<'b> =
     _ <- expect(Token::Indent);
-    fields <- delimited(struct_field, expect(Token::Newline));
+    fields <- delimited_trailing(struct_field, expect(Token::Newline));
     _ !<- expect(Token::Unindent);
     TypeDefinitionBody::StructOf(fields)
 );
@@ -189,7 +189,7 @@ parser!(trait_definition loc =
     _ !<- maybe(expect(Token::RightArrow));
     fundeps !<- many0(identifier);
     _ !<- expect(Token::Indent);
-    body !<- delimited(trait_function_definition, expect(Token::Newline));
+    body !<- delimited_trailing(trait_function_definition, expect(Token::Newline));
     _ !<- expect(Token::Unindent);
     Ast::trait_definition(name, args, fundeps, body, loc)
 );
@@ -206,7 +206,7 @@ parser!(trait_impl loc =
     name !<- typename;
     args !<- many1(basic_type);
     _ !<- expect(Token::Indent);
-    definitions !<- delimited(raw_definition, expect(Token::Newline));
+    definitions !<- delimited_trailing(raw_definition, expect(Token::Newline));
     _ !<- expect(Token::Unindent);
     Ast::trait_impl(name, args, definitions, loc)
 );
