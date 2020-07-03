@@ -2,3 +2,9 @@
 if true else
 
 bar a b = if then else
+
+// args: --parse --no-color
+// expected stdout:
+// examples/parsing/parse_error.an: 2,9	error: parser expected 'then' here
+// if true else
+//         ^^^^

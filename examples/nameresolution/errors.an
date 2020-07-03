@@ -15,3 +15,29 @@ foo a b =
 
 a = 2
 a = 3 // already declared
+
+// args: --check
+// expected stdout:
+// examples/nameresolution/errors.an: 17,1	error: a is already in scope
+// a = 3 // already declared
+// 
+// examples/nameresolution/errors.an: 16,1	note: a previously defined here
+// a = 2
+// 
+// examples/nameresolution/errors.an: 6,14	error: No declaration for is_an_error was found in scope
+// not_an_error is_an_error
+// 
+// examples/nameresolution/errors.an: 8,11	error: No declaration for c was found in scope
+// \a b. a + c + b
+// 
+// examples/nameresolution/errors.an: 11,9	warning: c is unused (prefix name with _ to silence this warning)
+//     bar c d =
+// 
+// examples/nameresolution/errors.an: 11,11	warning: d is unused (prefix name with _ to silence this warning)
+//     bar c d =
+// 
+// examples/nameresolution/errors.an: 10,5	warning: a is unused (prefix name with _ to silence this warning)
+// foo a b =
+// 
+// examples/nameresolution/errors.an: 11,5	warning: bar is unused (prefix name with _ to silence this warning)
+//     bar c d =

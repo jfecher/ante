@@ -24,3 +24,6 @@ impl Monad Maybe
         match m with
         | Some x -> f x
         | None -> None
+
+// args: --check
+// expected:

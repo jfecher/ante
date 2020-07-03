@@ -12,3 +12,8 @@ impl Add float
 a = 1 + 2
 b = 1.0 + 2.0
 c = "one" + "two"
+
+// args: --check
+// expected stdout:
+// examples/typechecking/impl.an: 14,1	error: No impl found for Add string
+// c = "one" + "two"

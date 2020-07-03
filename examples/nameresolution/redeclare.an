@@ -5,3 +5,20 @@ a = 3
 foo _ =
     a = 4
     ()
+
+// args: --check
+// expected stdout:
+// examples/nameresolution/redeclare.an: 2,1	error: a is already in scope
+// a = 2
+// 
+// examples/nameresolution/redeclare.an: 1,1	note: a previously defined here
+// a = 1
+// 
+// examples/nameresolution/redeclare.an: 3,1	error: a is already in scope
+// a = 3
+// 
+// examples/nameresolution/redeclare.an: 2,1	note: a previously defined here
+// a = 2
+// 
+// examples/nameresolution/redeclare.an: 6,5	warning: a is unused (prefix name with _ to silence this warning)
+//     a = 4

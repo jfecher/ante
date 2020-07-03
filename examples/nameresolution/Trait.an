@@ -9,3 +9,11 @@ impl Foo int string
 
 foo 3
 bar : unit
+
+// args: --check
+// expected stdout:
+// examples/nameresolution/Trait.an: 7,5	error: baz is not required by Foo
+//     baz = 2  // error: baz not in foo
+// 
+// examples/nameresolution/Trait.an: 5,1	error: impl is missing a definition for bar
+// impl Foo int string

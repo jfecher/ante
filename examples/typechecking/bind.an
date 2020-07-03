@@ -2,7 +2,7 @@ type Maybe a =
    | None
    | Some a
 
-(+) (a: int) (b: int) = b
+(+) (_: int) (b: int) = b
 
 bind opt f =
     match opt with
@@ -15,3 +15,6 @@ x = Some 10
 
 add_one x =
     bind x (\x. ret (x + 1))
+
+// args: --check
+// expected stdout:

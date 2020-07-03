@@ -13,3 +13,10 @@ when2 condition expr =
 when3 condition expr =
     if condition then
         expr
+
+// args: --parse
+// expected stdout:
+// (foo = (\ a b . (\ c d . 3)));
+// (when1 = (\ condition expr . (if condition expr)));
+// (when2 = (\ condition expr . (if condition expr)));
+// (when3 = (\ condition expr . (if condition expr)))

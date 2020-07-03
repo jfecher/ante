@@ -15,3 +15,12 @@ type Maybe a =
 type UniquePtr a is ref a
 
 t = 3 : int
+
+// args: --parse
+// expected stdout:
+// (type Struct1  = a: int, b: float, c: string);
+// (type Struct2 t = a: Thingy, b: (Generic t Thingy));
+// (type Union1 ab = | Variant1 | Variant2 );
+// (type Maybe a = | Some a| None );
+// (type UniquePtr a = (ref a));
+// (t = (: 3 int))

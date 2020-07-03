@@ -2,3 +2,6 @@
 library_int = 5
 
 library_fn _ = 2
+
+// args: --check
+// expected stdout:

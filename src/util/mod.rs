@@ -8,6 +8,7 @@ pub fn fmap<T, U, F>(array: &[T], mut f: F) -> Vec<U>
     array.iter().map(|x| f(x)).collect()
 }
 
+#[allow(dead_code)]
 pub fn fmap_mut<T, U, F>(array: &mut [T], mut f: F) -> Vec<U>
     where F: FnMut(&mut T) -> U
 {

@@ -17,3 +17,11 @@ match test "foo" "bar" with
 match "empty" with
 
 "done"
+
+// args: --parse
+// expected stdout:
+// "before";
+// (match (test "foo" "bar") ((2 3) "foo") ("bar" "bar") ("block" (if true 1 2)) ("last branch" (match "nested" ("hi!" "yo"))));
+// "after";
+// (match "empty");
+// "done"

@@ -13,3 +13,6 @@ id 3
 id "four"
 
 id x = x
+
+// args: --check
+// expected:

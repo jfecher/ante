@@ -1,12 +1,19 @@
 pub mod location;
 use crate::error::location::Location;
 
+use std::cmp::{min, max};
 use std::fmt::{ Display, Formatter };
-use std::path::Path;
 use std::fs::File;
 use std::io::{ BufReader, Read };
+use std::path::Path;
+use std::sync::atomic::{ AtomicBool, AtomicUsize };
+use std::sync::atomic::Ordering::SeqCst;
 use colored::ColoredString;
 use colored::*;
+
+static COLORED_OUTPUT: AtomicBool = AtomicBool::new(true);
+
+static ERROR_COUNT: AtomicUsize = AtomicUsize::new(0);
 
 macro_rules! error_message {
     ( $location:expr , $fmt_string:expr $( , $($msg:tt)* )? ) => ({
@@ -37,6 +44,7 @@ macro_rules! note {
     });
 }
 
+#[derive(Copy, Clone, PartialEq)]
 pub enum ErrorType {
     Error,
     Warning,
@@ -71,10 +79,11 @@ impl<'a> ErrorMessage<'a> {
     }
 
     fn color(&self, msg: &str) -> ColoredString {
-        match self.error_type {
-            ErrorType::Error => msg.red(),
-            ErrorType::Warning => msg.yellow(),
-            ErrorType::Note => msg.purple(),
+        match (COLORED_OUTPUT.load(SeqCst), self.error_type) {
+            (false, _) => msg.normal(),
+            (_, ErrorType::Error) => msg.red(),
+            (_, ErrorType::Warning) => msg.yellow(),
+            (_, ErrorType::Note) => msg.purple(),
         }
     }
 }
@@ -87,13 +96,32 @@ fn read_file_or_panic(path: &Path) -> String {
     contents
 }
 
+pub fn color_output(should_color: bool) {
+    COLORED_OUTPUT.store(should_color, SeqCst);
+}
+
+pub fn get_error_count() -> usize {
+    ERROR_COUNT.load(SeqCst)
+}
+
 impl<'a> Display for ErrorMessage<'a> {
     fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
-        use std::cmp::min;
-
         let start = self.location.start;
 
-        writeln!(f, "{}: {},{}\t{} {}", self.location.filename.to_string_lossy().italic(),
+        // An error isn't considered an error until it is actually printed out.
+        // That's why ERROR_COUNT is incremented here and not when ErrorMessage is constructed.
+        if self.error_type == ErrorType::Error {
+            ERROR_COUNT.fetch_add(1, SeqCst);
+        }
+
+        let filename = self.location.filename.to_string_lossy();
+        let filename = if COLORED_OUTPUT.load(SeqCst) {
+            filename.italic()
+        } else {
+            filename.normal()
+        };
+
+        writeln!(f, "{}: {},{}\t{} {}", filename,
             start.line, start.column, self.marker(), self.msg)?;
 
         let file_contents = read_file_or_panic(self.location.filename);
@@ -109,10 +137,13 @@ impl<'a> Display for ErrorMessage<'a> {
         // write the first part of the line, then the erroring part in red, then the rest
         write!(f, "{}", &line[0 .. start_column])?;
         write!(f, "{}", self.color(&line[start_column .. start_column + actual_len]))?;
-        writeln!(f, "{}", &line[start_column + actual_len ..])
+        writeln!(f, "{}", &line[start_column + actual_len ..])?;
 
-        // let padding = " ".repeat(start_column);
-        // let indicator = self.color(&"^".repeat(adjusted_len));
-        // writeln!(f, "{}{}", padding, indicator)
+        if !COLORED_OUTPUT.load(SeqCst) {
+            let padding = " ".repeat(start_column);
+            let indicator = self.color(&"^".repeat(max(1, actual_len)));
+            writeln!(f, "{}{}", padding, indicator)?;
+        }
+        Ok(())
     }
 }

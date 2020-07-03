@@ -218,7 +218,7 @@ fn try_unify<'b>(t1: &Type, t2: &Type, bindings: &mut TypeBindings, location: Lo
                 Bound(a) => {
                     try_unify(&a, b, bindings, location, cache)
                 },
-                Unbound(a_level, a_kind) => {
+                Unbound(a_level, _a_kind) => {
                     // Create binding for boundTy that is currently empty.
                     // Ensure not to create recursive bindings to the same variable
                     let b = follow_bindings(b, bindings, cache);
@@ -243,7 +243,7 @@ fn try_unify<'b>(t1: &Type, t2: &Type, bindings: &mut TypeBindings, location: Lo
                 Bound(b) => {
                     try_unify(a, &b, bindings, location, cache)
                 },
-                Unbound(b_level, b_kind) => {
+                Unbound(b_level, _b_kind) => {
                     // Create binding for boundTy that is currently empty.
                     // Ensure not to create recursive bindings to the same variable
                     let a = follow_bindings(a, bindings, cache);
@@ -327,7 +327,6 @@ fn unify<'b>(t1: &Type, t2: &Type, location: Location<'b>, cache: &mut ModuleCac
         },
         Err(message) => {
             println!("{}", message);
-            note!(location, "while checking {} and {}", t1.debug(cache), t2.debug(cache));
         }
     }
 }

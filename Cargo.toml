@@ -10,6 +10,7 @@ edition = "2018"
 clap = "2.33"
 colored = "1.9"
 mimalloc = { version = "0.1.19", default-features = false }
+difference = "2.0.0"
 
 [profile.release]
 lto = "fat"

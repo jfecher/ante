@@ -19,4 +19,5 @@ t = Some 1
 
 type UniquePtr a is ref a
 
-t = 3 : int
+// args: --check
+// expected stdout:

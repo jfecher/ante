@@ -2,3 +2,9 @@ import U
 
 // Recursive module imports are allowed!
 t x = u x
+
+// TODO: Fix the type mismatch here so we can clean up the expected output
+// args: --check
+// expected stdout:
+// examples/nameresolution/T.an: 4,1	error: Type mismatch between (forall c d. (c -> d)) and (a -> b)
+// t x = u x

@@ -144,5 +144,6 @@ pub enum Kind {
     /// A higher order kind where each element in the Vec is an argument. For example, the kind:
     /// HigherOrder(vec![ Normal(0), HigherOrder(vec![ Normal(0), Normal(1) ]), Normal(1) ])
     /// has kind: * -> (* -> (* -> *)) -> (* -> *)
+    #[allow(dead_code)]
     HigherOrder(Vec<Kind>),
 }
