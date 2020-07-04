@@ -1,8 +1,7 @@
-use goldentests::TestConfig;
-use std::error::Error;
+use goldentests::{ TestConfig, TestResult };
 
 #[test]
-fn goldentests() -> Result<(), Box<dyn Error>> {
+fn goldentests() -> TestResult<()> {
     let config = TestConfig::new("target/debug/ante", "examples", "// ");
     config.run_tests()
 }

@@ -1,6 +1,6 @@
 use std::path::Path;
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Position {
     pub index: usize,
     pub line: u32,
@@ -27,7 +27,7 @@ impl Position {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct EndPosition {
     pub index: usize,
 }
@@ -44,11 +44,23 @@ pub struct File<'a> {
     pub contents: &'a str,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Location<'a> {
     pub filename: &'a Path,
     pub start: Position,
     pub end: EndPosition,
+}
+
+impl<'a> Ord for Location<'a> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        (self.start, self.end).cmp(&(other.start, other.end))
+    }
+}
+
+impl<'a> PartialOrd for Location<'a> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 impl<'a> Location<'a> {

@@ -226,7 +226,7 @@ fn try_unify<'b>(t1: &Type, t2: &Type, bindings: &mut TypeBindings, location: Lo
                         // TODO: Can this occurs check not mutate the typevar levels until we
                         // return success?
                         if occurs(*id, a_level, &b, bindings, cache) {
-                            Err(error_message!(location, "Cannot construct recursive type: {} = {}", t1.debug(cache), t2.debug(cache)))
+                            Err(make_error!(location, "Cannot construct recursive type: {} = {}", t1.debug(cache), t2.debug(cache)))
                         } else {
                             bindings.insert(*id, b);
                             Ok(())
@@ -249,7 +249,7 @@ fn try_unify<'b>(t1: &Type, t2: &Type, bindings: &mut TypeBindings, location: Lo
                     let a = follow_bindings(a, bindings, cache);
                     if a != *t2 {
                         if occurs(*id, b_level, &a, bindings, cache) {
-                            Err(error_message!(location, "Cannot construct recursive type: {} = {}", t1.debug(cache), t2.debug(cache)))
+                            Err(make_error!(location, "Cannot construct recursive type: {} = {}", t1.debug(cache), t2.debug(cache)))
                         } else {
                             bindings.insert(*id, a);
                             Ok(())
@@ -263,7 +263,7 @@ fn try_unify<'b>(t1: &Type, t2: &Type, bindings: &mut TypeBindings, location: Lo
 
         (Function(a_args, a_ret), Function(b_args, b_ret)) => {
             if a_args.len() != b_args.len() {
-                return Err(error_message!(location, "Type mismatch between {} and {}", t1.display(cache), t2.display(cache)));
+                return Err(make_error!(location, "Type mismatch between {} and {}", t1.display(cache), t2.display(cache)));
             }
 
             for (a_arg, b_arg) in a_args.iter().zip(b_args.iter()) {
@@ -276,7 +276,7 @@ fn try_unify<'b>(t1: &Type, t2: &Type, bindings: &mut TypeBindings, location: Lo
 
         (TypeApplication(a_constructor, a_args), TypeApplication(b_constructor, b_args)) => {
             if a_args.len() != b_args.len() {
-                return Err(error_message!(location, "Type mismatch between {} and {}", t1.display(cache), t2.display(cache)));
+                return Err(make_error!(location, "Type mismatch between {} and {}", t1.display(cache), t2.display(cache)));
             }
 
             try_unify(a_constructor, b_constructor, bindings, location, cache)?;
@@ -290,12 +290,12 @@ fn try_unify<'b>(t1: &Type, t2: &Type, bindings: &mut TypeBindings, location: Lo
 
         (ForAll(a_vars, a), ForAll(b_vars, b)) => {
             if a_vars.len() != b_vars.len() {
-                return Err(error_message!(location, "Type mismatch between {} and {}", a.display(cache), b.display(cache)));
+                return Err(make_error!(location, "Type mismatch between {} and {}", a.display(cache), b.display(cache)));
             }
             try_unify(a, b, bindings, location, cache)
         },
 
-        (a, b) => Err(error_message!(location, "Type mismatch between {} and {}", a.display(cache), b.display(cache))),
+        (a, b) => Err(make_error!(location, "Type mismatch between {} and {}", a.display(cache), b.display(cache))),
     }
 }
 

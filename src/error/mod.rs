@@ -15,7 +15,7 @@ static COLORED_OUTPUT: AtomicBool = AtomicBool::new(true);
 
 static ERROR_COUNT: AtomicUsize = AtomicUsize::new(0);
 
-macro_rules! error_message {
+macro_rules! make_error {
     ( $location:expr , $fmt_string:expr $( , $($msg:tt)* )? ) => ({
         let message = format!($fmt_string $( , $($msg)* )? );
         crate::error::ErrorMessage::error(&message[..], $location)
@@ -24,37 +24,61 @@ macro_rules! error_message {
 
 macro_rules! error {
     ( $location:expr , $fmt_string:expr $( , $($msg:tt)* )? ) => ({
-        println!("{}", error_message!($location, $fmt_string $( , $($msg)* )?));
+        println!("{}", make_error!($location, $fmt_string $( , $($msg)* )?));
+    });
+}
+
+macro_rules! make_warning {
+    ( $location:expr , $fmt_string:expr $( , $($msg:tt)* )? ) => ({
+        let message = format!($fmt_string $( , $($msg)* )? );
+        crate::error::ErrorMessage::warning(&message[..], $location)
     });
 }
 
 macro_rules! warning {
     ( $location:expr , $fmt_string:expr $( , $($msg:tt)* )? ) => ({
+        println!("{}", make_warning!($location, $fmt_string $( , $($msg)* )?));
+    });
+}
+
+macro_rules! make_note {
+    ( $location:expr , $fmt_string:expr $( , $($msg:tt)* )? ) => ({
         let message = format!($fmt_string $( , $($msg)* )? );
-        let warning = crate::error::ErrorMessage::warning(&message[..], $location);
-        println!("{}", warning);
+        crate::error::ErrorMessage::note(&message[..], $location)
     });
 }
 
 macro_rules! note {
     ( $location:expr , $fmt_string:expr $( , $($msg:tt)* )? ) => ({
-        let message = format!($fmt_string $( , $($msg)* )? );
-        let note = crate::error::ErrorMessage::note(&message[..], $location);
-        println!("{}", note);
+        println!("{}", make_note!($location, $fmt_string $( , $($msg)* )?));
     });
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ErrorType {
     Error,
     Warning,
     Note,
 }
 
+#[derive(PartialEq, Eq)]
 pub struct ErrorMessage<'a> {
     msg: ColoredString,
     error_type: ErrorType,
     location: Location<'a>,
+}
+
+impl<'a> Ord for ErrorMessage<'a> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        use std::ops::Deref;
+        (self.location, self.error_type, self.msg.deref()).cmp(&(other.location, other.error_type, &other.msg))
+    }
+}
+
+impl<'a> PartialOrd for ErrorMessage<'a> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering>{
+        self.location.partial_cmp(&other.location)
+    }
 }
 
 impl<'a> ErrorMessage<'a> {

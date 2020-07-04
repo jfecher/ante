@@ -23,14 +23,15 @@ impl Scope {
         }
     }
 
-    pub fn import(&mut self, other: &Scope, cache: &mut ModuleCache, location: Location) {
+    fn check_for_shadowing_errors(&mut self, other: &Scope, cache: &mut ModuleCache, location: Location) {
         macro_rules! merge_table {
-            ( $field:tt , $cache_field:tt ) => ({
+            ( $field:tt , $cache_field:tt , $errors:tt ) => ({
                 for (k, v) in other.$field.iter() {
                     if let Some(existing) = self.$field.get(k) {
                         let prev_loc = cache.$cache_field[existing.0].locate();
-                        error!(location, "import shadows previous definition of {}", k);
-                        note!(prev_loc, "{} was previously defined here", k);
+                        let error = make_error!(location, "import shadows previous definition of {}", k);
+                        let note = make_note!(prev_loc, "{} was previously defined here", k);
+                        $errors.push((error, note));
                     } else {
                         self.$field.insert(k.clone(), *v);
                     }
@@ -38,8 +39,19 @@ impl Scope {
             });
         }
 
-        merge_table!(definitions, definition_infos);
-        merge_table!(types, type_infos);
+        let mut errors = vec![];
+        merge_table!(definitions, definition_infos, errors);
+        merge_table!(types, type_infos, errors);
+
+        if !errors.is_empty() {
+            // Using sort_by instead of sort_by_key here avoids cloning the ErrorMessage
+            errors.sort_by(|x, y| x.0.cmp(&y.0));
+            errors.into_iter().for_each(|(error, note)| println!("{}\n{}", error, note));
+        }
+    }
+
+    pub fn import(&mut self, other: &Scope, cache: &mut ModuleCache, location: Location) {
+        self.check_for_shadowing_errors(other, cache, location);
 
         for (k, v) in other.impls.iter() {
             if let Some(existing) = self.impls.get_mut(k) {
@@ -55,18 +67,24 @@ impl Scope {
 
     pub fn check_for_unused_definitions(&self, cache: &ModuleCache) {
         macro_rules! check {
-            ( $field:tt , $cache_field:tt ) => ({
+            ( $field:tt , $cache_field:tt, $warnings:tt ) => ({
                 for (name, id) in &self.$field {
                     let definition = &cache.$cache_field[id.0];
                     if definition.uses == 0 && definition.name.chars().next() != Some('_') {
-                        warning!(definition.location, "{} is unused (prefix name with _ to silence this warning)", name);
+                        $warnings.push(make_warning!(definition.location, "{} is unused (prefix name with _ to silence this warning)", name));
                     }
                 }
             });
         }
 
-        check!(definitions, definition_infos);
-        check!(types, type_infos);
+        let mut warnings = vec![];
+        check!(definitions, definition_infos, warnings);
+        check!(types, type_infos, warnings);
+
+        if !warnings.is_empty() {
+            warnings.sort();
+            warnings.into_iter().for_each(|warning| println!("{}", warning));
+        }
     }
 }
 
