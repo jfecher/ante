@@ -24,7 +24,7 @@ bar (x: string) y = x + y
 
 "four" + "five"
 
-// args: --check
+// args: --check --show-types
 // expected stdout:
 // examples/typechecking/trait_impls.an: 12,1	error: impl has 5 type arguments but Add requires 2
 // impl Add int char string float unit

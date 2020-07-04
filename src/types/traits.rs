@@ -44,6 +44,7 @@ impl Impl {
         ImplPrinter { trait_impl: self.clone(), debug: false, typevar_names, cache }
     }
 
+    #[allow(dead_code)]
     pub fn debug<'a, 'b>(&self, cache: &'a ModuleCache<'b>) -> ImplPrinter<'a, 'b> {
         let mut typevar_names = HashMap::new();
 

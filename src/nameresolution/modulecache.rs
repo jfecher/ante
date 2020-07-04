@@ -71,7 +71,7 @@ pub struct ModuleCache<'a> {
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct ModuleId(pub usize);
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, PartialOrd, Ord)]
 pub struct DefinitionInfoId(pub usize);
 
 #[derive(Debug)]

@@ -14,5 +14,12 @@ id "four"
 
 id x = x
 
-// args: --check
-// expected:
+// args: --check --show-types
+// expected stdout:
+// add : (forall a b c d. ((a c -> d) -> ((a b -> c) -> (a -> (b -> d)))))
+// id : (forall a. (a -> a))
+// mul : (forall a b c d. ((c b -> d) -> ((a -> c) -> (a -> (b -> d)))))
+// one : (forall a b. ((a -> b) -> (a -> b)))
+// pred : (forall a b c d e f g. ((((a -> c) -> ((c -> d) -> d)) (e -> b) (f -> f) -> g) -> (a -> (b -> g))))
+// succ : (forall a b c. (((b -> c) a -> b) -> ((b -> c) -> (a -> c))))
+// two : (forall a. ((a -> a) -> (a -> a)))

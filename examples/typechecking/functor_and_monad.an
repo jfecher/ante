@@ -25,5 +25,13 @@ impl Monad Maybe
         | Some x -> f x
         | None -> None
 
-// args: --check
-// expected:
+// args: --check --show-types
+// expected stdout:
+// None : (forall a. (Maybe a))
+// Some : (forall a. (a -> (Maybe a)))
+// bind : (forall a d e. ((a d) (d -> (a e)) -> (a e)))
+//   given, Monad a
+// map : (forall a d e. ((a d) (d -> e) -> (a e)))
+//   given, Functor a
+// wrap : (forall a c. (c -> (a c)))
+//   given, Monad a

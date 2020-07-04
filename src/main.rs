@@ -31,19 +31,26 @@ impl From<std::io::Error> for Error {
 }
 
 fn print_definition_types<'a>(cache: &ModuleCache<'a>) {
+    let mut definitions = vec![];
+
     for (_, module_id) in cache.modules.iter() {
         let resolver = cache.name_resolvers.get_mut(module_id.0).unwrap();
-        for (name, definition_id) in resolver.exports.definitions.iter() {
-            let info = &cache.definition_infos[definition_id.0];
-            let typ = info.typ.clone().unwrap();
-            println!("{} : {}", name, typ.debug(&cache));
-            if !info.required_impls.is_empty() {
-                print!("  given");
-                for trait_impl in info.required_impls.iter() {
-                    print!(", {}", trait_impl.debug(&cache));
-                }
-                println!("");
+        definitions.append(&mut resolver.exports.definitions.iter().collect());
+    }
+
+    // Make sure the output has a deterministic order for testing
+    definitions.sort();
+
+    for (name, definition_id) in definitions {
+        let info = &cache.definition_infos[definition_id.0];
+        let typ = info.typ.clone().unwrap();
+        println!("{} : {}", name, typ.display(&cache));
+        if !info.required_impls.is_empty() {
+            print!("  given");
+            for trait_impl in info.required_impls.iter() {
+                print!(", {}", trait_impl.display(&cache));
             }
+            println!("");
         }
     }
 }

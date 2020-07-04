@@ -13,7 +13,13 @@ a = 1 + 2
 b = 1.0 + 2.0
 c = "one" + "two"
 
-// args: --check
+// args: --check --show-types
 // expected stdout:
 // examples/typechecking/impl.an: 14,1	error: No impl found for Add string
 // c = "one" + "two"
+// 
+// '+' : (forall a. (a a -> a))
+//   given, Add a
+// a : int
+// b : float
+// c : string

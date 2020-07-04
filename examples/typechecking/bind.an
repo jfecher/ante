@@ -16,5 +16,12 @@ x = Some 10
 add_one x =
     bind x (\x. ret (x + 1))
 
-// args: --check
+// args: --check --show-types
 // expected stdout:
+// '+' : (int int -> int)
+// None : (forall a. (Maybe a))
+// Some : (forall a. (a -> (Maybe a)))
+// add_one : ((Maybe int) -> (Maybe (Maybe int)))
+// bind : (forall a b. ((Maybe a) (a -> b) -> (Maybe b)))
+// ret : (forall a. (a -> (Maybe a)))
+// x : (Maybe int)

@@ -1,8 +1,9 @@
-\x.
+foo x =
     y = \_.x
     y
 
 // type should be a -> (b -> a)
 
-// args: --check
-// expected:
+// args: --check --show-types
+// expected stdout:
+// foo : (forall a b. (a -> (b -> a)))
