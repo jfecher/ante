@@ -1,5 +1,7 @@
 # ante-rs
 
+[![Travis (.org)](https://img.shields.io/travis/jfecher/ante-rs)](https://travis-ci.org/github/jfecher/ante-rs)
+
 A WIP rewrite of Ante's compiler in rust.
 
 ---
