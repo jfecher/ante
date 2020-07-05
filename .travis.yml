@@ -7,3 +7,9 @@ jobs:
   allow_failures:
     - rust: nightly
   fast_finish: true
+before_install:
+  - cargo install llvmenv
+  - llvmenv init
+  - llvmenv build-entry -G Makefile -j7 10.0.0
+  - llvmenv global 10.0.0
+  - export LLVM_SYS_100_PREFIX=$(llvmenv prefix)

@@ -62,3 +62,35 @@ Nice to have but not currently required:
     - need to workout how this interacts when the types aren't known
 - [ ] Reasonable C/C++ interop with clang api (stretch goal)
 - [ ] Build system (stretch goal)
+
+---
+
+### Building
+
+ante currently requires llvm 10.0 while building. If you already have this installed with
+sources, you may be fine building with `cargo build` alone. If `cargo build` complains
+about not finding any suitable llvm version, the easiest way to build llvm is through `llvmenv`.
+In that case, you can build from source using the following:
+
+```bash
+$ cargo install llvmenv
+$ llvmenv init
+$ llvmenv build-entry -G Makefile -j7 10.0.0
+$ llvmenv global 10.0.0
+$ LLVM_SYS_100_PREFIX=$(llvmenv prefix)
+$ cargo build
+```
+
+or on windows:
+
+```shell
+$ cargo install llvmenv
+$ llvmenv init
+$ llvmenv build-entry -G VisualStudio -j7 10.0.0
+$ llvmenv global 10.0.0
+$ for /f "tokens=*" %a in ('llvmenv prefix') do (set LLVM_SYS_100_PREFIX=%a)
+$ cargo build
+```
+
+You can confirm your current version of llvm by running `llvmenv version`
+or `llvm-config`
