@@ -222,6 +222,7 @@ impl<'cache, 'contents> Lexer<'cache, 'contents> {
         let new_indent = self.advance_while(|current, _| current == ' ').len();
 
         match (self.current, self.next) {
+            ('\r', _) => self.lex_newline(),
             ('\n', _) => self.lex_newline(),
             (c, _) if c.is_whitespace() => {
                 let error = LexerError::InvalidCharacterInSignificantWhitespace(self.current);
@@ -310,6 +311,7 @@ impl<'cache, 'contents> Iterator for Lexer<'cache, 'contents> {
                     self.advance_with(Token::EndOfInput)
                 }
             },
+            ('\r', _) => self.lex_newline(),
             ('\n', _) => self.lex_newline(),
             (c, _) if c.is_whitespace() => { self.advance(); self.next() }
             (c, _) if c.is_digit(10) => self.lex_number(),

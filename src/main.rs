@@ -19,17 +19,6 @@ use std::io::{BufReader, Read};
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
-#[derive(Debug)]
-pub enum Error {
-    Unrecoverable,
-}
-
-impl From<std::io::Error> for Error {
-    fn from(_: std::io::Error) -> Self {
-        Error::Unrecoverable
-    }
-}
-
 fn print_definition_types<'a>(cache: &ModuleCache<'a>) {
     let mut definitions = vec![];
 
@@ -55,7 +44,19 @@ fn print_definition_types<'a>(cache: &ModuleCache<'a>) {
     }
 }
 
-pub fn main() -> Result<(), Error> {
+macro_rules! expect {
+    ( $result:expr , $fmt_string:expr $( , $($msg:tt)* )? ) => ({
+        match $result {
+            Ok(t) => t,
+            Err(_) => {
+                println!($fmt_string $( , $($msg)* )? );
+                return ();
+            },
+        }
+    });
+}
+
+pub fn main() {
     let args = App::new("ante")
         .version("0.0.1")
         .author("Jake Fecher <jfecher11@gmail.com>")
@@ -69,20 +70,13 @@ pub fn main() -> Result<(), Error> {
         .get_matches();
 
     let filename = Path::new(args.value_of("file").unwrap());
-
-    let file = match File::open(filename) {
-        Ok(file) => file,
-        Err(_) => {
-            println!("Could not open file {}", filename.display());
-            return Err(Error::Unrecoverable);
-        }
-    };
+    let file = expect!(File::open(filename), "Could not open file {}", filename.display());
 
     let mut cache = ModuleCache::new(filename.parent().unwrap());
 
     let mut reader = BufReader::new(file);
     let mut contents = String::new();
-    reader.read_to_string(&mut contents)?;
+    expect!(reader.read_to_string(&mut contents), "Failed to read {} into a string", filename.display());
 
     error::color_output(!args.is_present("no color"));
 
@@ -97,26 +91,21 @@ pub fn main() -> Result<(), Error> {
             Err(e) => println!("{}", e),
         }
     } else if args.is_present("check") {
-        let root = parser::parse(&tokens)
-            .map_err(|e| { println!("{}", e); Error::Unrecoverable })?;
+        let root = expect!(parser::parse(&tokens), "");
 
-        NameResolver::start(root, &mut cache);
+        expect!(NameResolver::start(root, &mut cache), "");
 
-        if error::get_error_count() == 0 {
-            let ast = cache.parse_trees.get_mut(0).unwrap();
-            types::typechecker::infer_ast(ast, &mut cache);
+        let ast = cache.parse_trees.get_mut(0).unwrap();
+        types::typechecker::infer_ast(ast, &mut cache);
 
-            for defs in cache.definition_infos.iter().filter(|def| def.typ.is_none()) {
-                warning!(defs.location, "{} is unused and was not typechecked", defs.name);
-            }
+        for defs in cache.definition_infos.iter().filter(|def| def.typ.is_none()) {
+            warning!(defs.location, "{} is unused and was not typechecked", defs.name);
+        }
 
-            if args.is_present("show types") {
-                print_definition_types(&cache);
-            }
+        if args.is_present("show types") {
+            print_definition_types(&cache);
         }
     } else {
         unimplemented!("Compiling is currently unimplemented")
     }
-
-    Ok(())
 }
