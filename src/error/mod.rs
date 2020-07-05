@@ -128,6 +128,38 @@ pub fn get_error_count() -> usize {
     ERROR_COUNT.load(SeqCst)
 }
 
+// Format the path in an OS-agnostic way. By default rust uses "/" on Unix
+// and "\" on windows as the path separator. This makes testing more
+// difficult and isn't needed for error reporting so we implement our own
+// path-Displaying here that is roughly the same as printing Unix paths.
+fn os_agnostic_display_path(path: &Path) -> ColoredString {
+    let mut ret = String::new();
+
+    for (i, component) in path.components().enumerate() {
+        use std::path::Component;
+
+        // Use / as the separator regardless of the host OS so
+        // we can use the same tests for Linux/Mac/Windows
+        if i != 0 && ret != "/" {
+            ret += "/";
+        }
+
+        ret += match component {
+            Component::CurDir => ".",
+            Component::Normal(s) => s.to_str().expect("Path contains invalid utf-8"),
+            Component::ParentDir => "..",
+            Component::Prefix(_) => "",
+            Component::RootDir => "/",
+        }
+    }
+
+    if COLORED_OUTPUT.load(SeqCst) {
+        ret.italic()
+    } else {
+        ret.normal()
+    }
+}
+
 impl<'a> Display for ErrorMessage<'a> {
     fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
         let start = self.location.start;
@@ -138,12 +170,7 @@ impl<'a> Display for ErrorMessage<'a> {
             ERROR_COUNT.fetch_add(1, SeqCst);
         }
 
-        let filename = self.location.filename.to_string_lossy();
-        let filename = if COLORED_OUTPUT.load(SeqCst) {
-            filename.italic()
-        } else {
-            filename.normal()
-        };
+        let filename = os_agnostic_display_path(&self.location.filename);
 
         writeln!(f, "{}: {},{}\t{} {}", filename,
             start.line, start.column, self.marker(), self.msg)?;

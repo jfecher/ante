@@ -304,9 +304,14 @@ impl NameResolver {
 }
 
 impl<'a, 'b> NameResolver {
-    pub fn start(ast: Ast<'b>, cache: &'a mut ModuleCache<'b>) {
+    pub fn start(ast: Ast<'b>, cache: &'a mut ModuleCache<'b>) -> Result<(), ()> {
         let resolver = NameResolver::declare(ast, cache);
         resolver.define(cache);
+        if crate::error::get_error_count() != 0 {
+            Err(())
+        } else {
+            Ok(())
+        }
     }
 
     pub fn declare(ast: Ast<'b>, cache: &'a mut ModuleCache<'b>) -> &'b mut NameResolver {

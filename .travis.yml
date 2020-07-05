@@ -8,8 +8,9 @@ jobs:
     - rust: nightly
   fast_finish: true
 before_install:
-  - cargo install llvmenv
-  - llvmenv init
-  - llvmenv build-entry -G Makefile -j7 10.0.0
-  - llvmenv global 10.0.0
-  - export LLVM_SYS_100_PREFIX=$(llvmenv prefix)
+  - wget https://apt.llvm.org/llvm.sh
+  - chmod +x llvm.sh
+  - sudo ./llvm.sh 10
+  - export CC=clang
+  - export CXX=clang++
+  - export LLVM_SYS_100_PREFIX=/usr
