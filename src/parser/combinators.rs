@@ -58,7 +58,7 @@ macro_rules! seq {
 /// ```
 macro_rules! parser {
     ( $name:ident $location:tt -> $lt:tt $return_type:ty = $($body:tt )* ) => {
-        fn $name<'a, $lt>(input: crate::parser::combinators::Input<'a, $lt>) -> error::ParseResult<'a, $lt, $return_type> {
+        fn $name<'a, $lt>(input: $crate::parser::combinators::Input<'a, $lt>) -> error::ParseResult<'a, $lt, $return_type> {
             seq!(input $location => $($body)*)
         }
     };

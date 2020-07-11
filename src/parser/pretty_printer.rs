@@ -166,3 +166,9 @@ impl<'a> Display for ast::Sequence<'a> {
         write!(f, "{}", join_with(&self.statements, ";\n"))
     }
 }
+
+impl<'a> Display for ast::Extern<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "(extern\n    {})", join_with(&self.declarations, "\n    "))
+    }
+}

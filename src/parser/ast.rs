@@ -1,9 +1,9 @@
 use crate::lexer::token::Token;
 use crate::error::location::{ Location, Locatable };
-use crate::nameresolution::modulecache::{ DefinitionInfoId, TraitInfoId, ModuleId, ImplScopeId, ImplBindingId };
+use crate::cache::{ DefinitionInfoId, TraitInfoId, ModuleId, ImplScopeId, ImplBindingId };
 use crate::types::{ self, TypeInfoId };
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum LiteralKind {
     Integer(u64),
     Float(f64),
@@ -204,6 +204,20 @@ pub struct Sequence<'a> {
     pub typ: Option<types::Type>,
 }
 
+/// extern declaration
+/// // or
+/// extern
+///     declaration1
+///     declaration2
+///     ...
+///     declarationN
+#[derive(Debug)]
+pub struct Extern<'a> {
+    pub declarations: Vec<IrrefutablePattern<'a>>,
+    pub location: Location<'a>,
+    pub typ: Option<types::Type>,
+}
+
 #[derive(Debug)]
 pub enum Ast<'a> {
     Literal(Literal<'a>),
@@ -220,6 +234,7 @@ pub enum Ast<'a> {
     TraitImpl(TraitImpl<'a>),
     Return(Return<'a>),
     Sequence(Sequence<'a>),
+    Extern(Extern<'a>),
 }
 
 impl<'a> Ast<'a> {
@@ -308,6 +323,10 @@ impl<'a> Ast<'a> {
         assert!(!statements.is_empty());
         Ast::Sequence(Sequence { statements, location, typ: None })
     }
+
+    pub fn extern_expr(declarations: Vec<IrrefutablePattern<'a>>, location: Location<'a>) -> Ast<'a> {
+        Ast::Extern(Extern { declarations, location, typ: None })
+    }
 }
 
 macro_rules! dispatch_on_expr {
@@ -327,6 +346,7 @@ macro_rules! dispatch_on_expr {
             crate::parser::ast::Ast::TraitImpl(inner) =>       $function(inner $(, $($args),* )? ),
             crate::parser::ast::Ast::Return(inner) =>          $function(inner $(, $($args),* )? ),
             crate::parser::ast::Ast::Sequence(inner) =>        $function(inner $(, $($args),* )? ),
+            crate::parser::ast::Ast::Extern(inner) =>          $function(inner $(, $($args),* )? ),
         }
     });
 }
@@ -359,6 +379,7 @@ impl_locatable_for!(TraitDefinition);
 impl_locatable_for!(TraitImpl);
 impl_locatable_for!(Return);
 impl_locatable_for!(Sequence);
+impl_locatable_for!(Extern);
 
 // TODO:
 // Module = RootNode | ExtNode

@@ -1,5 +1,5 @@
 use crate::error::location::{ Locatable, Location };
-use crate::nameresolution::modulecache::ModuleCache;
+use crate::cache::ModuleCache;
 use std::collections::HashMap;
 
 pub mod typed;
@@ -10,7 +10,7 @@ pub mod traits;
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, PartialOrd, Ord)]
 pub struct TypeVariableId(pub usize);
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum PrimitiveType {
     IntegerType,      // : *
     FloatType,        // : *
@@ -21,7 +21,9 @@ pub enum PrimitiveType {
     ReferenceType,    // : * -> *
 }
 
-#[derive(Debug, Clone, PartialEq)]
+// TODO: PartialEq and Hash need to be implemented with a ModuleCache to properly
+// follow typevar bindings
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Type {
     /// int, char, bool, etc
     Primitive(PrimitiveType),
@@ -109,7 +111,7 @@ pub struct Field<'a> {
     pub location: Location<'a>,
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct TypeInfoId(pub usize);
 
 #[derive(Debug)]

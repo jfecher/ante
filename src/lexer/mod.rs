@@ -52,6 +52,7 @@ impl<'cache, 'contents> Lexer<'cache, 'contents> {
             ("continue", Token::Continue),
             ("do", Token::Do),
             ("else", Token::Else),
+            ("extern", Token::Extern),
             ("for", Token::For),
             ("given", Token::Given),
             ("if", Token::If),

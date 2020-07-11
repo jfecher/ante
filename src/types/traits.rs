@@ -1,4 +1,4 @@
-use crate::nameresolution::modulecache::{ ModuleCache, TraitInfoId, ImplBindingId, ImplScopeId };
+use crate::cache::{ ModuleCache, TraitInfoId, ImplBindingId, ImplScopeId };
 use crate::types::{ Type, TypeVariableId, typeprinter::TypePrinter };
 use crate::types::typechecker::find_all_typevars;
 

@@ -1,5 +1,5 @@
 use crate::types::{ Type, TypeVariableId, TypeInfoId, PrimitiveType, TypeBinding };
-use crate::nameresolution::modulecache::ModuleCache;
+use crate::cache::ModuleCache;
 
 use std::collections::HashMap;
 use std::fmt::{ Display, Formatter };

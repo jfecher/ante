@@ -15,6 +15,14 @@ use combinators::*;
 type AstResult<'a, 'b> = ParseResult<'a, 'b, Ast<'b>>;
 
 pub fn parse<'a, 'b>(input: Input<'a, 'b>) -> Result<Ast<'b>, ParseError<'b>> {
+    let result = parse_file(input);
+    if let Err(error) = &result {
+        println!("{}", error);
+    }
+    result
+}
+
+pub fn parse_file<'a, 'b>(input: Input<'a, 'b>) -> Result<Ast<'b>, ParseError<'b>> {
     let (input, _, _) = maybe_newline(input)?;
     let (input, ast, _) = statement_list(input)?;
     let (input, _, _) = maybe_newline(input)?;
@@ -50,6 +58,7 @@ fn statement<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
         Token::Trait => trait_definition(input),
         Token::Impl => trait_impl(input),
         Token::Return => return_expr(input),
+        Token::Extern => parse_extern(input),
         _ => expression(input),
     }
 }
@@ -215,6 +224,24 @@ parser!(return_expr loc =
     _ <- expect(Token::Return);
     expr !<- expression;
     Ast::return_expr(expr, loc)
+);
+
+parser!(parse_extern loc =
+    _ <- expect(Token::Extern);
+    declarations <- or(&[extern_block, extern_single], "extern");
+    Ast::extern_expr(declarations, loc)
+);
+
+parser!(extern_block _loc -> 'b Vec<ast::IrrefutablePattern<'b>>=
+    _ <- expect(Token::Indent);
+    declarations !<- delimited_trailing(declaration, expect(Token::Newline));
+    _ <- expect(Token::Unindent);
+    declarations
+);
+
+parser!(extern_single _loc -> 'b Vec<ast::IrrefutablePattern<'b>> =
+    declaration <- declaration;
+    vec![declaration]
 );
 
 fn block_or_expression<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {

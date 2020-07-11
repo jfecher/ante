@@ -5,11 +5,14 @@ mod util;
 
 #[macro_use]
 mod error;
+mod cache;
 mod nameresolution;
 mod types;
+mod llvm;
 
 use lexer::Lexer;
-use nameresolution::{ NameResolver, modulecache::ModuleCache };
+use nameresolution::NameResolver;
+use cache::ModuleCache;
 
 use clap::{App, Arg};
 use std::fs::File;
@@ -32,7 +35,7 @@ fn print_definition_types<'a>(cache: &ModuleCache<'a>) {
 
     for (name, definition_id) in definitions {
         let info = &cache.definition_infos[definition_id.0];
-        let typ = info.typ.clone().unwrap();
+        let typ = info.typ.clone().unwrap_or(types::Type::Primitive(types::PrimitiveType::UnitType));
         println!("{} : {}", name, typ.display(&cache));
         if !info.required_impls.is_empty() {
             print!("  given");
@@ -49,7 +52,7 @@ macro_rules! expect {
         match $result {
             Ok(t) => t,
             Err(_) => {
-                println!($fmt_string $( , $($msg)* )? );
+                print!($fmt_string $( , $($msg)* )? );
                 return ();
             },
         }
@@ -70,13 +73,13 @@ pub fn main() {
         .get_matches();
 
     let filename = Path::new(args.value_of("file").unwrap());
-    let file = expect!(File::open(filename), "Could not open file {}", filename.display());
+    let file = expect!(File::open(filename), "Could not open file {}\n", filename.display());
 
     let mut cache = ModuleCache::new(filename.parent().unwrap());
 
     let mut reader = BufReader::new(file);
     let mut contents = String::new();
-    expect!(reader.read_to_string(&mut contents), "Failed to read {} into a string", filename.display());
+    expect!(reader.read_to_string(&mut contents), "Failed to read {} into a string\n", filename.display());
 
     error::color_output(!args.is_present("no color"));
 
@@ -84,28 +87,32 @@ pub fn main() {
 
     if args.is_present("lex") {
         tokens.iter().for_each(|(token, _)| println!("{}", token));
-    } else if args.is_present("parse") {
-        let result = parser::parse(&tokens);
-        match result {
-            Ok(tree) => println!("{}", tree),
-            Err(e) => println!("{}", e),
-        }
-    } else if args.is_present("check") {
-        let root = expect!(parser::parse(&tokens), "");
-
-        expect!(NameResolver::start(root, &mut cache), "");
-
-        let ast = cache.parse_trees.get_mut(0).unwrap();
-        types::typechecker::infer_ast(ast, &mut cache);
-
-        for defs in cache.definition_infos.iter().filter(|def| def.typ.is_none()) {
-            warning!(defs.location, "{} is unused and was not typechecked", defs.name);
-        }
-
-        if args.is_present("show types") {
-            print_definition_types(&cache);
-        }
-    } else {
-        unimplemented!("Compiling is currently unimplemented")
+        return;
     }
+
+    let root = expect!(parser::parse(&tokens), "");
+
+    if args.is_present("parse") {
+        println!("{}", root);
+        return;
+    }
+
+    expect!(NameResolver::start(root, &mut cache), "");
+
+    let ast = cache.parse_trees.get_mut(0).unwrap();
+    types::typechecker::infer_ast(ast, &mut cache);
+
+    for defs in cache.definition_infos.iter().filter(|def| def.typ.is_none()) {
+        warning!(defs.location, "{} is unused and was not typechecked", defs.name);
+    }
+
+    if args.is_present("show types") {
+        print_definition_types(&cache);
+    }
+
+    if args.is_present("check") {
+        return;
+    }
+
+    llvm::run(&filename, &ast, &mut cache);
 }

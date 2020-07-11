@@ -4,10 +4,12 @@ use crate::types::{ TypeBinding, LetBindingLevel, traits::TraitList, Kind };
 use crate::types::traits::{ Impl, ImplPrinter };
 use crate::error::location::{ Location, Locatable };
 use crate::parser::ast::{ Ast, Definition, TraitDefinition };
-use crate::nameresolution::unsafecache::UnsafeCache;
+use crate::cache::unsafecache::UnsafeCache;
 
 use std::path::{ Path, PathBuf };
 use std::collections::HashMap;
+
+mod unsafecache;
 
 #[derive(Debug)]
 pub struct ModuleCache<'a> {
@@ -71,13 +73,14 @@ pub struct ModuleCache<'a> {
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct ModuleId(pub usize);
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, PartialOrd, Ord)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, PartialOrd, Ord, Hash)]
 pub struct DefinitionInfoId(pub usize);
 
 #[derive(Debug)]
 pub enum DefinitionNode<'a> {
     Definition(&'a mut Definition<'a>),
     TraitDefinition(&'a mut TraitDefinition<'a>),
+    Extern,
 }
 
 #[derive(Debug)]

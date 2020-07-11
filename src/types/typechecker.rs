@@ -1,4 +1,4 @@
-use crate::nameresolution::modulecache::{ ModuleCache, TraitInfoId, DefinitionInfoId, ImplBindingId, DefinitionNode };
+use crate::cache::{ ModuleCache, TraitInfoId, DefinitionInfoId, ImplBindingId, DefinitionNode };
 use crate::parser::ast;
 use crate::types::{ Type, Type::*, TypeVariableId, PrimitiveType, LetBindingLevel, TypeBinding::* };
 use crate::types::TypeBinding;
@@ -18,7 +18,7 @@ use std::sync::atomic::{ AtomicUsize, Ordering };
 pub static CURRENT_LEVEL: AtomicUsize = AtomicUsize::new(1);
 
 /// A sparse set of type bindings, used by try_unify
-type TypeBindings = HashMap<TypeVariableId, Type>;
+pub type TypeBindings = HashMap<TypeVariableId, Type>;
 
 /// Replace any typevars found in typevars_to_replace with the
 /// associated value in the same table, leave them otherwise
@@ -201,7 +201,7 @@ fn follow_bindings<'b>(typ: &Type, bindings: &TypeBindings, cache: &ModuleCache<
     }
 }
 
-fn try_unify<'b>(t1: &Type, t2: &Type, bindings: &mut TypeBindings, location: Location<'b>, cache: &mut ModuleCache<'b>) -> Result<(), ErrorMessage<'b>> {
+pub fn try_unify<'b>(t1: &Type, t2: &Type, bindings: &mut TypeBindings, location: Location<'b>, cache: &mut ModuleCache<'b>) -> Result<(), ErrorMessage<'b>> {
     match (t1, t2) {
         (Primitive(p1), Primitive(p2)) if p1 == p2 => Ok(()),
 
@@ -414,12 +414,13 @@ fn infer_nested_definition<'a>(definition_id: DefinitionInfoId, cache: &mut Modu
     match definition {
         DefinitionNode::Definition(definition) => {
             let definition = trustme::extend_lifetime_mut(*definition);
-            infer(definition, cache)
+            infer(definition, cache);
         }
         DefinitionNode::TraitDefinition(definition) => {
             let definition = trustme::extend_lifetime_mut(*definition);
-            infer(definition, cache)
+            infer(definition, cache);
         }
+        DefinitionNode::Extern => {}
     };
 
     let info = &mut cache.definition_infos[definition_id.0];
@@ -846,5 +847,14 @@ impl<'a> Inferable<'a> for ast::Sequence<'a> {
         let (last_statement_type, mut statement_traits) = infer(self.statements.last_mut().unwrap(), cache);
         traits.append(&mut statement_traits);
         (last_statement_type, traits)
+    }
+}
+
+impl<'a> Inferable<'a> for ast::Extern<'a> {
+    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitList) {
+        for declaration in self.declarations.iter_mut() {
+            infer(declaration, cache);
+        }
+        (Type::Primitive(PrimitiveType::UnitType), vec![])
     }
 }

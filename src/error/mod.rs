@@ -18,7 +18,7 @@ static ERROR_COUNT: AtomicUsize = AtomicUsize::new(0);
 macro_rules! make_error {
     ( $location:expr , $fmt_string:expr $( , $($msg:tt)* )? ) => ({
         let message = format!($fmt_string $( , $($msg)* )? );
-        crate::error::ErrorMessage::error(&message[..], $location)
+        $crate::error::ErrorMessage::error(&message[..], $location)
     });
 }
 
@@ -31,7 +31,7 @@ macro_rules! error {
 macro_rules! make_warning {
     ( $location:expr , $fmt_string:expr $( , $($msg:tt)* )? ) => ({
         let message = format!($fmt_string $( , $($msg)* )? );
-        crate::error::ErrorMessage::warning(&message[..], $location)
+        $crate::error::ErrorMessage::warning(&message[..], $location)
     });
 }
 
@@ -44,7 +44,7 @@ macro_rules! warning {
 macro_rules! make_note {
     ( $location:expr , $fmt_string:expr $( , $($msg:tt)* )? ) => ({
         let message = format!($fmt_string $( , $($msg)* )? );
-        crate::error::ErrorMessage::note(&message[..], $location)
+        $crate::error::ErrorMessage::note(&message[..], $location)
     });
 }
 
@@ -54,14 +54,14 @@ macro_rules! note {
     });
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ErrorType {
     Error,
     Warning,
     Note,
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct ErrorMessage<'a> {
     msg: ColoredString,
     error_type: ErrorType,

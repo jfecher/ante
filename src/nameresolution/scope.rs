@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use crate::nameresolution::modulecache::{ DefinitionInfoId, TraitInfoId, ImplInfoId, ModuleCache, ImplScopeId };
+use crate::cache::{ DefinitionInfoId, TraitInfoId, ImplInfoId, ModuleCache, ImplScopeId };
 use crate::types::{ TypeInfoId, TypeVariableId };
 use crate::error::location::{ Location, Locatable };
 
