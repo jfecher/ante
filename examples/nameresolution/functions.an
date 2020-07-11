@@ -7,16 +7,12 @@ loop n f =
         f ()
         loop (n - 1) f
 
+type List a = | Nil | Cons a (List a)
+
 map l f =
     match l with
-    | nil -> nil
-    | cons x xs -> cons (f x) (map xs f)
+    | Nil -> Nil
+    | Cons x xs -> Cons (f x) (map xs f)
 
 // args: --check
-// TODO: This type mismatch with forall shouldn't be an error!
 // expected stdout:
-// examples/nameresolution/functions.an: 5,1	error: Type mismatch between (forall a. (a (unit -> b) -> unit)) and (a (unit -> b) -> unit)
-// loop n f =
-// 
-// examples/nameresolution/functions.an: 10,1	error: Type mismatch between (forall b. (b (c -> c) -> b)) and (a (b -> b) -> a)
-// map l f =

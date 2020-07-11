@@ -48,6 +48,7 @@ pub struct Variable<'a> {
 pub struct Lambda<'a> {
     pub args: Vec<Ast<'a>>,
     pub body: Box<Ast<'a>>,
+    pub return_type: Option<Type<'a>>,
     pub location: Location<'a>,
     pub typ: Option<types::Type>,
 }
@@ -213,7 +214,7 @@ pub struct Sequence<'a> {
 ///     declarationN
 #[derive(Debug)]
 pub struct Extern<'a> {
-    pub declarations: Vec<IrrefutablePattern<'a>>,
+    pub declarations: Vec<TypeAnnotation<'a>>,
     pub location: Location<'a>,
     pub typ: Option<types::Type>,
 }
@@ -274,9 +275,9 @@ impl<'a> Ast<'a> {
         Ast::Variable(Variable { kind: VariableKind::TypeConstructor(name), location, definition: None, impl_scope: None, impl_bindings: vec![], typ: None })
     }
 
-    pub fn lambda(args: Vec<Ast<'a>>, body: Ast<'a>, location: Location<'a>) -> Ast<'a> {
+    pub fn lambda(args: Vec<Ast<'a>>, return_type: Option<Type<'a>>, body: Ast<'a>, location: Location<'a>) -> Ast<'a> {
         assert!(!args.is_empty());
-        Ast::Lambda(Lambda { args, body: Box::new(body), location, typ: None })
+        Ast::Lambda(Lambda { args, body: Box::new(body), return_type, location, typ: None })
     }
 
     pub fn function_call(function: Ast<'a>, args: Vec<Ast<'a>>, location: Location<'a>) -> Ast<'a> {
@@ -324,7 +325,7 @@ impl<'a> Ast<'a> {
         Ast::Sequence(Sequence { statements, location, typ: None })
     }
 
-    pub fn extern_expr(declarations: Vec<IrrefutablePattern<'a>>, location: Location<'a>) -> Ast<'a> {
+    pub fn extern_expr(declarations: Vec<TypeAnnotation<'a>>, location: Location<'a>) -> Ast<'a> {
         Ast::Extern(Extern { declarations, location, typ: None })
     }
 }

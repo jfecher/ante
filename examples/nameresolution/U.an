@@ -3,8 +3,5 @@ import T
 // Module imports can form a cycle!
 u x = t x
 
-// TODO: Fix type mismatch
 // args: --check
 // expected stdout:
-// examples/nameresolution/U.an: 4,1	error: Type mismatch between (forall c d. (c -> d)) and (a -> b)
-// u x = t x

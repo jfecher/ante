@@ -75,15 +75,22 @@ fn raw_definition<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, ast::Defi
 parser!(function_definition location -> 'b ast::Definition<'b> =
     name <- irrefutable_pattern_argument;
     args <- many1(irrefutable_pattern_argument);
+    return_type <- maybe(function_return_type);
     _ <- expect(Token::Equal);
     body !<- block_or_expression;
     ast::Definition {
         pattern: Box::new(name),
-        expr: Box::new(Ast::lambda(args, body, location)),
+        expr: Box::new(Ast::lambda(args, return_type, body, location)),
         location,
         info: None,
         typ: None,
     }
+);
+
+parser!(function_return_type location -> 'b ast::Type<'b> =
+    _ <- expect(Token::RightArrow);
+    typ <- parse_type;
+    typ
 );
 
 parser!(variable_definition location -> 'b ast::Definition<'b> =
@@ -150,7 +157,7 @@ fn type_definition_body<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, ast
 parser!(union_variant loc -> 'b (String, Vec<Type<'b>>, Location<'b>) =
     _ <- expect(Token::Pipe);
     variant !<- typename;
-    args !<- many0(parse_type);
+    args !<- many0(basic_type);
     (variant, args, loc)
 );
 
@@ -198,12 +205,12 @@ parser!(trait_definition loc =
     _ !<- maybe(expect(Token::RightArrow));
     fundeps !<- many0(identifier);
     _ !<- expect(Token::Indent);
-    body !<- delimited_trailing(trait_function_definition, expect(Token::Newline));
+    body !<- delimited_trailing(declaration, expect(Token::Newline));
     _ !<- expect(Token::Unindent);
     Ast::trait_definition(name, args, fundeps, body, loc)
 );
 
-parser!(trait_function_definition loc -> 'b ast::TypeAnnotation<'b> =
+parser!(declaration loc -> 'b ast::TypeAnnotation<'b> =
     lhs <- irrefutable_pattern_argument;
     _ <- expect(Token::Colon);
     rhs <- parse_type;
@@ -232,14 +239,14 @@ parser!(parse_extern loc =
     Ast::extern_expr(declarations, loc)
 );
 
-parser!(extern_block _loc -> 'b Vec<ast::IrrefutablePattern<'b>>=
+parser!(extern_block _loc -> 'b Vec<ast::TypeAnnotation<'b>>=
     _ <- expect(Token::Indent);
     declarations !<- delimited_trailing(declaration, expect(Token::Newline));
     _ <- expect(Token::Unindent);
     declarations
 );
 
-parser!(extern_single _loc -> 'b Vec<ast::IrrefutablePattern<'b>> =
+parser!(extern_single _loc -> 'b Vec<ast::TypeAnnotation<'b>> =
     declaration <- declaration;
     vec![declaration]
 );
@@ -439,10 +446,11 @@ fn function_argument<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
 
 parser!(lambda loc =
     _ <- expect(Token::Backslash);
-    args <- many1(variable);
-    _ <- expect(Token::MemberAccess);
-    body <- block_or_expression;
-    Ast::lambda(args, body, loc)
+    args !<- many1(irrefutable_pattern_argument);
+    return_type <- maybe(function_return_type);
+    _ !<- expect(Token::MemberAccess);
+    body !<- block_or_expression;
+    Ast::lambda(args, return_type, body, loc)
 );
 
 parser!(operator loc =

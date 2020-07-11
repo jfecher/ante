@@ -1,0 +1,18 @@
+
+extern foo: a -> b
+
+extern
+    puts: string -> int
+    exit: int -> never_returns
+    add: int int -> int
+
+foo 1
+puts "test"
+exit 0
+
+// args: --check --show-types
+// expected stdout:
+// add : (int int -> int)
+// exit : (forall a. (int -> a))
+// foo : (forall a b. (a -> b))
+// puts : (string -> int)

@@ -902,6 +902,7 @@ impl<'b> Resolvable<'b> for ast::Extern<'b> {
     }
 
     fn define(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'b>) {
+        // Any extern in global scope should already be defined in the declaration pass
         if !resolver.in_global_scope() {
             self.declare(resolver, cache);
         }

@@ -11,6 +11,8 @@ type Maybe a =
    | Some a
    | None
 
+type List a = | Nil | Cons a (ref (List a))
+
 
 type UniquePtr a is ref a
 
@@ -22,5 +24,6 @@ t = 3 : int
 // (type Struct2 t = a: Thingy, b: (Generic t Thingy));
 // (type Union1 ab = | Variant1 | Variant2 );
 // (type Maybe a = | Some a| None );
+// (type List a = | Nil | Cons a (ref (List a)));
 // (type UniquePtr a = (ref a));
 // (t = (: 3 int))

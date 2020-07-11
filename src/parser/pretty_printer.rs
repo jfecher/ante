@@ -39,6 +39,9 @@ impl<'a> Display for ast::Lambda<'a> {
         for arg in self.args.iter() {
             write!(f, " {}", arg)?;
         }
+        if let Some(typ) = &self.return_type {
+            write!(f, " -> {}", typ)?;
+        }
         write!(f, " . {})", self.body)
     }
 }

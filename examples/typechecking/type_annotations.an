@@ -1,0 +1,24 @@
+
+foo (_: int) (_: string) -> char = 'a'
+
+bar: a a -> int =
+    \_ b. b
+
+extern
+    exit: int -> never_returns
+    puts: (ref char) -> int
+
+exit "test"
+puts
+
+// args: --check --show-types
+// TODO: bar should probably error that its annotated
+//       type is more general than its actual type
+// expected stdout:
+// examples/typechecking/type_annotations.an: 11,1	error: Type mismatch between int and string
+// exit "test"
+// 
+// bar : (int int -> int)
+// exit : (forall a. (int -> a))
+// foo : (int string -> char)
+// puts : ((ref char) -> int)

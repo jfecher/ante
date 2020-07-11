@@ -575,14 +575,9 @@ pub fn infer_ast<'a>(ast: &mut ast::Ast<'a>, cache: &mut ModuleCache<'a>) {
 pub fn infer<'a, T>(ast: &mut T, cache: &mut ModuleCache<'a>) -> (Type, TraitList)
     where T: Inferable<'a> + Typed
 {
-    match ast.get_type() {
-        Some(typ) => (typ.clone(), vec![]),
-        None => {
-            let (typ, traits) = ast.infer_impl(cache);
-            ast.set_type(typ.clone());
-            (typ, traits)
-        },
-    }
+    let (typ, traits) = ast.infer_impl(cache);
+    ast.set_type(typ.clone());
+    (typ, traits)
 }
 
 /// Note: each Ast's inference rule is given above the impl if available.
@@ -614,8 +609,6 @@ impl<'a> Inferable<'a> for ast::Literal<'a> {
  */
 impl<'a> Inferable<'a> for ast::Variable<'a> {
     fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitList) {
-        // TODO: we redeclare info 4 times in this function to get around single-mutability
-        // issues. There should be another way.
         let info = &cache.definition_infos[self.definition.unwrap().0];
 
         // Lookup the type of the definition.
@@ -697,6 +690,18 @@ impl<'a> Inferable<'a> for ast::FunctionCall<'a> {
  */
 impl<'a> Inferable<'a> for ast::Definition<'a> {
     fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitList) {
+        let unit = Type::Primitive(PrimitiveType::UnitType);
+
+        if self.typ.is_some() {
+            return (unit, vec![]);
+        } else {
+            // Without this self.typ wouldn't be set yet while inferring the type of self.expr
+            // if this definition is recursive. If this is removed we would recursively infer
+            // this definition repeatedly until eventually reaching an error when the previous type
+            // is generalized but the new one is not.
+            self.typ = Some(unit.clone());
+        }
+
         CURRENT_LEVEL.fetch_add(1, Ordering::SeqCst);
         let (t, traits) = infer(self.expr.as_mut(), cache);
         CURRENT_LEVEL.fetch_sub(1, Ordering::SeqCst);
@@ -704,7 +709,6 @@ impl<'a> Inferable<'a> for ast::Definition<'a> {
         let exposed_traits = resolve_traits(traits, self.location, cache);
         bind_irrefutable_pattern(self.pattern.as_ref(), &t, &exposed_traits, true, cache);
 
-        let unit = Type::Primitive(PrimitiveType::UnitType);
         (unit, vec![])
     }
 }
@@ -853,7 +857,7 @@ impl<'a> Inferable<'a> for ast::Sequence<'a> {
 impl<'a> Inferable<'a> for ast::Extern<'a> {
     fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitList) {
         for declaration in self.declarations.iter_mut() {
-            infer(declaration, cache);
+            bind_irrefutable_pattern(declaration.lhs.as_ref(), declaration.typ.as_ref().unwrap(), &vec![], true, cache);
         }
         (Type::Primitive(PrimitiveType::UnitType), vec![])
     }
