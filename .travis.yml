@@ -11,6 +11,7 @@ before_install:
   - wget https://apt.llvm.org/llvm.sh
   - chmod +x llvm.sh
   - sudo ./llvm.sh 10
-  - export CC=clang10
-  - export CXX=clang10++
+  - export CC=clang-10
+  - export CXX=clang-10
+  - export clang=clang-10
   - export LLVM_SYS_100_PREFIX=/usr
