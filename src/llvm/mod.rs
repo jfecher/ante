@@ -15,7 +15,8 @@ use inkwell::context::Context;
 use inkwell::values::{ BasicValueEnum, BasicValue, FunctionValue };
 use inkwell::types::{ BasicTypeEnum, BasicType };
 use inkwell::AddressSpace;
-use inkwell::OptimizationLevel::Aggressive;
+use inkwell::targets::{ RelocMode, CodeModel, FileType, TargetTriple };
+use inkwell::OptimizationLevel;
 use inkwell::passes::{PassManager, PassManagerBuilder};
 use inkwell::targets::{InitializationConfig, Target, TargetMachine };
 
@@ -51,7 +52,9 @@ pub fn run<'c>(path: &Path, ast: &ast::Ast<'c>, cache: &mut ModuleCache<'c>, sho
     let context = Context::create();
     let module_name = path_to_module_name(path);
     let module = context.create_module(&module_name);
-    module.set_triple(&TargetMachine::get_default_triple());
+
+    let target_triple = TargetMachine::get_default_triple();
+    module.set_triple(&target_triple);
     let mut codegen = Generator {
         context: &context,
         module,
@@ -80,7 +83,7 @@ pub fn run<'c>(path: &Path, ast: &ast::Ast<'c>, cache: &mut ModuleCache<'c>, sho
     }
 
     let binary_name = module_name_to_program_name(&module_name);
-    codegen.output(module_name, &binary_name);
+    codegen.output(module_name, &binary_name, &target_triple, &codegen.module);
 
     // --run: compile and run the program
     if run_program {
@@ -167,20 +170,24 @@ impl<'g> Generator<'g> {
         Target::initialize_native(&config).unwrap();
         let pass_manager_builder = PassManagerBuilder::create();
 
-        pass_manager_builder.set_optimization_level(Aggressive);
+        pass_manager_builder.set_optimization_level(OptimizationLevel::Aggressive);
         let pass_manager = PassManager::create(());
         pass_manager_builder.populate_module_pass_manager(&pass_manager);
         pass_manager.run_on(&self.module);
     }
 
-    fn output(&self, module_name: String, binary_name: &str) {
+    fn output(&self, module_name: String, binary_name: &str, target_triple: &TargetTriple, module: &Module) {
         // generate the bitcode to a .bc file
-        let path = Path::new(&module_name).with_extension("bc");
-        self.module.write_bitcode_to_path(&path);
+        let path = Path::new(&module_name).with_extension("o");
+        let target = Target::from_triple(&target_triple).unwrap();
+        let target_machine = target.create_target_machine(&target_triple, "x86-64", "+avx2",
+                OptimizationLevel::None, RelocMode::PIC, CodeModel::Default).unwrap();
 
-        // call clang to compile the bitcode to a binary
+        target_machine.write_to_file(&module, FileType::Object, &path).unwrap();
+
+        // call gcc to compile the bitcode to a binary
         let output = "-o".to_string() + binary_name;
-        let mut child = Command::new("clang")
+        let mut child = Command::new("gcc")
             .arg(path.to_string_lossy().as_ref())
             .arg("-Wno-everything")
             .arg("-O0")
