@@ -370,7 +370,7 @@ impl<'g> Generator<'g> {
             UserDefinedType(id) => {
                 let info = &cache.type_infos[id.0];
                 assert!(info.args.is_empty(), "Kind error during llvm code generation");
-                
+
                 use types::TypeInfoBody::*;
                 match &info.body {
                     Union(args) => self.convert_union_type(info, args, cache),

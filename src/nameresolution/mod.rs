@@ -590,7 +590,7 @@ impl<'b> Resolvable<'b> for ast::If<'b> {
 
     fn define(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'b>) {
         self.condition.define(resolver, cache);
-        
+
         resolver.push_scope(cache);
         self.then.define(resolver, cache);
         resolver.pop_scope(cache, true);

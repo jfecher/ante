@@ -130,7 +130,7 @@ swap_last (v: mut Vec 't) (idx:usz) -> bool =
 
 
 type VecIter 't =
-    view: ref 't 
+    view: ref 't
     idx: usz
     len: usz
 
