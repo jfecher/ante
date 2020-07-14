@@ -1,4 +1,6 @@
 use crate::types::{ Type, TypeVariableId, TypeInfoId, PrimitiveType, TypeBinding };
+use crate::types::traits::{ TraitList, ImplPrinter };
+use crate::types::typechecker::find_all_typevars;
 use crate::cache::ModuleCache;
 
 use std::collections::HashMap;
@@ -19,6 +21,41 @@ impl<'a, 'b> Display for TypePrinter<'a, 'b> {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         self.fmt_type(&self.typ, f)
     }
+}
+
+fn fill_typevar_map(map: &mut HashMap<TypeVariableId, String>, typevars: Vec<TypeVariableId>, current: &mut char) {
+    for typevar in typevars {
+        if !map.contains_key(&typevar) {
+            map.insert(typevar, current.to_string());
+            *current = (*current as u8 + 1) as char;
+            assert!(*current != 'z'); // TODO: wrap to aa, ab, ac...
+        }
+    }
+}
+
+pub fn show_type_and_traits<'b>(typ: &Type, traits: &TraitList, cache: &ModuleCache<'b>) {
+    let mut map = HashMap::new();
+    let mut current = 'a';
+
+    let typevars = find_all_typevars(typ, false, cache);
+    fill_typevar_map(&mut map, typevars, &mut current);
+
+    print!("{}", TypePrinter { typ, cache, typevar_names: map.clone() });
+
+    if !traits.is_empty() {
+        print!("\n  given ");
+
+        for (i, trait_impl) in traits.iter().enumerate() {
+            fill_typevar_map(&mut map, trait_impl.find_all_typevars(cache), &mut current);
+
+            if i != 0 {
+                print!(", ");
+            }
+
+            print!("{}", ImplPrinter { trait_impl: trait_impl.clone(), debug: false, cache, typevar_names: map.clone() });
+        }
+    }
+    println!("");
 }
 
 impl<'a, 'b> TypePrinter<'a, 'b> {
@@ -42,7 +79,6 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
             PrimitiveType::IntegerType => write!(f, "{}", "int".blue()),
             PrimitiveType::FloatType => write!(f, "{}", "float".blue()),
             PrimitiveType::CharType => write!(f, "{}", "char".blue()),
-            PrimitiveType::StringType => write!(f, "{}", "string".blue()),
             PrimitiveType::BooleanType => write!(f, "{}", "bool".blue()),
             PrimitiveType::UnitType => write!(f, "{}", "unit".blue()),
             PrimitiveType::ReferenceType => write!(f, "{}", "ref".blue()),

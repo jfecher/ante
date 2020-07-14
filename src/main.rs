@@ -20,7 +20,7 @@ use std::path::Path;
 use std::io::{BufReader, Read};
 
 #[global_allocator]
-static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 fn print_definition_types<'a>(cache: &ModuleCache<'a>) {
     let mut definitions = vec![];
@@ -36,39 +36,35 @@ fn print_definition_types<'a>(cache: &ModuleCache<'a>) {
     for (name, definition_id) in definitions {
         let info = &cache.definition_infos[definition_id.0];
         let typ = info.typ.clone().unwrap_or(types::Type::Primitive(types::PrimitiveType::UnitType));
-        println!("{} : {}", name, typ.display(&cache));
-        if !info.required_impls.is_empty() {
-            print!("  given");
-            for trait_impl in info.required_impls.iter() {
-                print!(", {}", trait_impl.display(&cache));
-            }
-            println!("");
-        }
+
+        print!("{} : ", name);
+        types::typeprinter::show_type_and_traits(&typ, &info.required_impls, cache);
     }
 }
 
-macro_rules! expect {
-    ( $result:expr , $fmt_string:expr $( , $($msg:tt)* )? ) => ({
-        match $result {
-            Ok(t) => t,
-            Err(_) => {
-                print!($fmt_string $( , $($msg)* )? );
-                return ();
-            },
-        }
-    });
-}
+macro_rules! expect {( $result:expr , $fmt_string:expr $( , $($msg:tt)* )? ) => ({
+    match $result {
+        Ok(t) => t,
+        Err(_) => {
+            print!($fmt_string $( , $($msg)* )? );
+            return ();
+        },
+    }
+});}
 
 pub fn main() {
     let args = App::new("ante")
-        .version("0.0.1")
+        .version("0.1.1")
         .author("Jake Fecher <jfecher11@gmail.com>")
         .about("Compiler for the Ante programming language")
-        .arg(Arg::with_name("lex").long("lex").help("Parse the file and output the resulting Ast"))
+        .arg(Arg::with_name("lex").long("lex").help("Lex the file and output the resulting list of tokens"))
         .arg(Arg::with_name("parse").long("parse").help("Parse the file and output the resulting Ast"))
         .arg(Arg::with_name("check").long("check").help("Check the file for errors without compiling"))
-        .arg(Arg::with_name("show types").long("show-types").help("Print out the type of each definition"))
-        .arg(Arg::with_name("no color").long("no-color").help("Use plaintext for errors and an indicator line instead of color for pointing out error locations"))
+        .arg(Arg::with_name("run").long("run").help("Run the resulting binary"))
+        .arg(Arg::with_name("no-color").long("no-color").help("Use plaintext and an indicator line instead of color for pointing out error locations"))
+        .arg(Arg::with_name("show-types").long("show-types").help("Print out the type of each definition"))
+        .arg(Arg::with_name("show-llvm-ir").long("show-llvm-ir").help("Print out the LLVM-IR of the compiled program"))
+        .arg(Arg::with_name("delete-binary").long("delete-binary").help("Delete the resulting binary after compiling. Useful for testing."))
         .arg(Arg::with_name("file").help("The file to compile").required(true))
         .get_matches();
 
@@ -81,7 +77,7 @@ pub fn main() {
     let mut contents = String::new();
     expect!(reader.read_to_string(&mut contents), "Failed to read {} into a string\n", filename.display());
 
-    error::color_output(!args.is_present("no color"));
+    error::color_output(!args.is_present("no-color"));
 
     let tokens = Lexer::new(filename, &contents).collect::<Vec<_>>();
 
@@ -106,7 +102,7 @@ pub fn main() {
         warning!(defs.location, "{} is unused and was not typechecked", defs.name);
     }
 
-    if args.is_present("show types") {
+    if args.is_present("show-types") {
         print_definition_types(&cache);
     }
 
@@ -114,5 +110,10 @@ pub fn main() {
         return;
     }
 
-    llvm::run(&filename, &ast, &mut cache);
+    if error::get_error_count() == 0 {
+        llvm::run(&filename, &ast, &mut cache,
+                args.is_present("show-llvm-ir"),
+                args.is_present("run"),
+                args.is_present("delete-binary"));
+    }
 }

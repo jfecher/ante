@@ -33,6 +33,10 @@ pub struct ModuleCache<'a> {
     /// the lifetime of the file that was read from.
     pub filepaths: Vec<PathBuf>,
 
+    /// Maps DefinitionInfoId -> DefinitionInfo
+    /// Filled out during name resolution
+    pub definition_infos: Vec<DefinitionInfo<'a>>,
+
     /// Maps TypeVariableId -> Type
     /// Unique TypeVariableIds are generated during name
     /// resolution and are unified during type inference
@@ -65,9 +69,9 @@ pub struct ModuleCache<'a> {
     /// resolution which occurs when type checking a ast::Definition node.
     pub impl_bindings: Vec<Option<ImplInfoId>>,
 
-    /// Maps DefinitionInfoId -> DefinitionInfo
-    /// Filled out during name resolution
-    pub definition_infos: Vec<DefinitionInfo<'a>>,
+    /// Ante represents each member access (foo.bar) as a trait (.foo)
+    /// that is generated for each new field name used globally.
+    pub member_access_traits: HashMap<String, TraitInfoId>,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -117,6 +121,12 @@ pub struct TraitInfo<'a> {
     pub uses: u32,
 }
 
+impl<'a> TraitInfo<'a> {
+    pub fn is_member_access(&self) -> bool {
+        self.name.starts_with(".")
+    }
+}
+
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct ImplInfoId(pub usize);
 
@@ -149,13 +159,14 @@ impl<'a> ModuleCache<'a> {
             parse_trees: UnsafeCache::default(),
             name_resolvers: UnsafeCache::default(),
             filepaths: Vec::default(),
+            definition_infos: Vec::default(),
             type_bindings: Vec::default(),
             type_infos: Vec::default(),
             trait_infos: Vec::default(),
             impl_infos: Vec::default(),
             impl_scopes: Vec::default(),
             impl_bindings: Vec::default(),
-            definition_infos: Vec::default(),
+            member_access_traits: HashMap::default(),
         }
     }
 
@@ -242,5 +253,20 @@ impl<'a> ModuleCache<'a> {
         let id = self.impl_bindings.len();
         self.impl_bindings.push(None);
         ImplBindingId(id)
+    }
+
+    /// Get or create an instance of the '.' trait family for the given field name
+    pub fn get_member_access_trait(&mut self, field_name: &str, level: LetBindingLevel) -> TraitInfoId {
+        match self.member_access_traits.get(field_name) {
+            Some(id) => *id,
+            None => {
+                let trait_name = ".".to_string() + field_name;
+                let collection_type = self.next_type_variable_id(level);
+                let field_type = self.next_type_variable_id(level);
+                let id = self.push_trait_definition(trait_name, vec![collection_type], vec![field_type], Location::builtin());
+                self.member_access_traits.insert(field_name.to_string(), id);
+                id
+            },
+        }
     }
 }

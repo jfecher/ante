@@ -15,7 +15,6 @@ pub enum PrimitiveType {
     IntegerType,      // : *
     FloatType,        // : *
     CharType,         // : *
-    StringType,       // : *
     BooleanType,      // : *
     UnitType,         // : *
     ReferenceType,    // : * -> *
@@ -114,6 +113,11 @@ pub struct Field<'a> {
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct TypeInfoId(pub usize);
 
+// The string type is a semi builting type in that it isn't a primitive
+// but all string literals will nevertheless have type "String" even if
+// the prelude isn't imported into scope.
+pub const STRING_TYPE: TypeInfoId = TypeInfoId(0);
+
 #[derive(Debug)]
 pub enum TypeInfoBody<'a> {
     Union(Vec<TypeConstructor<'a>>),
@@ -134,6 +138,19 @@ pub struct TypeInfo<'a> {
 impl<'a> Locatable<'a> for TypeInfo<'a> {
     fn locate(&self) -> Location<'a> {
         self.location
+    }
+}
+
+impl<'a> TypeInfo<'a> {
+    pub fn find_field<'b>(&'b self, field_name: &str) -> Option<(u32, &'b Field)> {
+        match &self.body {
+            TypeInfoBody::Struct(fields) => {
+                fields.iter().enumerate()
+                    .find(|(_, field)| field.name == field_name)
+                    .map(|(i, field)| (i as u32, field))
+            },
+            _ => None,
+        }
     }
 }
 

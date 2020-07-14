@@ -1,8 +1,8 @@
 use crate::parser::{ self, ast, ast::Ast, ast::Definition };
 use crate::types::{ TypeInfoId, TypeVariableId, Type, PrimitiveType, TypeInfoBody };
-use crate::types::{ TypeConstructor, Field, LetBindingLevel };
+use crate::types::{ TypeConstructor, Field, LetBindingLevel, STRING_TYPE };
 use crate::types::traits::Impl;
-use crate::error::location::{ Location, Locatable };
+use crate::error::{ self, location::{ Location, Locatable } };
 use crate::cache::{ ModuleCache, DefinitionInfoId, ModuleId };
 use crate::cache::{ TraitInfoId, ImplInfoId, ImplBindingId, DefinitionNode };
 use crate::nameresolution::scope::Scope;
@@ -303,9 +303,10 @@ impl NameResolver {
 
 impl<'b> NameResolver {
     pub fn start(ast: Ast<'b>, cache: &mut ModuleCache<'b>) -> Result<(), ()> {
+        NameResolver::define_builtins(cache);
         let resolver = NameResolver::declare(ast, cache);
         resolver.define(cache);
-        if crate::error::get_error_count() != 0 {
+        if error::get_error_count() != 0 {
             Err(())
         } else {
             Ok(())
@@ -360,13 +361,32 @@ impl<'b> NameResolver {
         self.state = NameResolutionState::Defined;
     }
 
+    /// Defines builtin types/functions. Currently this only defines string
+    fn define_builtins(cache: &mut ModuleCache<'b>) {
+        let location = Location::builtin();
+
+        let ref_type = Type::Primitive(PrimitiveType::ReferenceType);
+        let char_type = Type::Primitive(PrimitiveType::CharType);
+        let c_string_type = Type::TypeApplication(Box::new(ref_type), vec![char_type]);
+
+        let length_type = Type::Primitive(PrimitiveType::IntegerType);
+
+        let string = cache.push_type_info("string".into(), vec![], location);
+        assert!(string == STRING_TYPE);
+
+        cache.type_infos[string.0].body = TypeInfoBody::Struct(vec![
+            Field { name: "c_string".into(), field_type: c_string_type, location },
+            Field { name: "length".into(),   field_type: length_type,   location },
+        ]);
+    }
+
     /// Converts an ast::Type to a types::Type, expects all typevars to be in scope
     pub fn convert_type(&mut self, cache: &mut ModuleCache<'b>, ast_type: &ast::Type<'b>) -> Type {
         match ast_type {
             ast::Type::IntegerType(_) => Type::Primitive(PrimitiveType::IntegerType),
             ast::Type::FloatType(_) => Type::Primitive(PrimitiveType::FloatType),
             ast::Type::CharType(_) => Type::Primitive(PrimitiveType::CharType),
-            ast::Type::StringType(_) => Type::Primitive(PrimitiveType::StringType),
+            ast::Type::StringType(_) => Type::UserDefinedType(STRING_TYPE),
             ast::Type::BooleanType(_) => Type::Primitive(PrimitiveType::BooleanType),
             ast::Type::UnitType(_) => Type::Primitive(PrimitiveType::UnitType),
             ast::Type::ReferenceType(_) => Type::Primitive(PrimitiveType::ReferenceType),
@@ -605,22 +625,33 @@ impl<'b> Resolvable<'b> for ast::Match<'b> {
 /// forall a b c. args -> T a b c
 fn create_variant_constructor_type<'b>(parent_type_id: TypeInfoId, args: Vec<Type>, cache: &ModuleCache<'b>) -> Type {
     let info = &cache.type_infos[parent_type_id.0];
-    let user_defined_type = Box::new(Type::UserDefinedType(parent_type_id));
-    let type_variables = fmap(&info.args, |id| Type::TypeVariable(*id));
-    let type_application = Box::new(Type::TypeApplication(user_defined_type, type_variables));
+    let mut result = Type::UserDefinedType(parent_type_id);
 
-    if args.is_empty() {
-        Type::ForAll(info.args.clone(), type_application)
-    } else {
-        let function = Box::new(Type::Function(args, type_application));
-        Type::ForAll(info.args.clone(), function)
+    // Apply T to [a, b, c] if [a, b, c] is non-empty
+    if !info.args.is_empty() {
+        let type_variables = fmap(&info.args, |id| Type::TypeVariable(*id));
+        result = Type::TypeApplication(Box::new(result), type_variables);
     }
+
+    // Create the arguments to the function type if this type has arguments
+    if !args.is_empty() {
+        result = Type::Function(args, Box::new(result));
+    }
+
+    // finally, wrap the type in a forall if it has type variables
+    if !info.args.is_empty() {
+        result = Type::ForAll(info.args.clone(), Box::new(result))
+    }
+
+    result
 }
+
+type Variants<'b> = Vec<(String, Vec<ast::Type<'b>>, Location<'b>)>;
 
 /// Declare variants of a sum type given:
 /// vec: A vector of each variant. Has a tuple of the variant's name arguments, and location for each.
 /// parent_type_id: The TypeInfoId of the parent type.
-fn create_variants<'b>(vec: &Vec<(String, Vec<ast::Type<'b>>, Location<'b>)>, parent_type_id: TypeInfoId,
+fn create_variants<'b>(vec: &Variants<'b>, parent_type_id: TypeInfoId,
         resolver: &mut NameResolver, cache: &mut ModuleCache<'b>) -> Vec<TypeConstructor<'b>> {
 
     fmap(&vec, |(name, types, location)| {
@@ -632,7 +663,10 @@ fn create_variants<'b>(vec: &Vec<(String, Vec<ast::Type<'b>>, Location<'b>)>, pa
     })
 }
 
-fn create_fields<'b>(vec: &Vec<(String, ast::Type<'b>, Location<'b>)>, resolver: &mut NameResolver, cache: &mut ModuleCache<'b>) -> Vec<Field<'b>> {
+type Fields<'b> = Vec<(String, ast::Type<'b>, Location<'b>)>;
+
+fn create_fields<'b>(vec: &Fields<'b>, resolver: &mut NameResolver, cache: &mut ModuleCache<'b>) -> Vec<Field<'b>> {
+
     fmap(&vec, |(name, field_type, location)| {
         let field_type = resolver.convert_type(cache, field_type);
 
@@ -665,16 +699,24 @@ impl<'b> Resolvable<'b> for ast::TypeDefinition<'b> {
             }
         }
 
+        let type_id = self.type_info.unwrap();
         match &self.definition {
             ast::TypeDefinitionBody::UnionOf(vec) => {
-                let variants = create_variants(vec, self.type_info.unwrap(), resolver, cache);
-                let type_info = &mut cache.type_infos[self.type_info.unwrap().0];
+                let variants = create_variants(vec, type_id, resolver, cache);
+                let type_info = &mut cache.type_infos[type_id.0];
                 type_info.body = TypeInfoBody::Union(variants);
             },
             ast::TypeDefinitionBody::StructOf(vec) => {
                 let fields = create_fields(vec, resolver, cache);
-                let type_info = &mut cache.type_infos[self.type_info.unwrap().0];
+                let field_types = fmap(&fields, |field| field.field_type.clone());
+
+                let type_info = &mut cache.type_infos[type_id.0];
                 type_info.body = TypeInfoBody::Struct(fields);
+
+                // Create the constructor for this type.
+                // This is done inside create_variants for tagged union types
+                let id = resolver.push_definition(self.name.clone(), cache, self.location);
+                cache.definition_infos[id.0].typ = Some(create_variant_constructor_type(type_id, field_types, cache));
             },
             ast::TypeDefinitionBody::AliasOf(typ) => {
                 let typ = resolver.convert_type(cache, typ);
@@ -906,5 +948,13 @@ impl<'b> Resolvable<'b> for ast::Extern<'b> {
         if !resolver.in_global_scope() {
             self.declare(resolver, cache);
         }
+    }
+}
+
+impl<'b> Resolvable<'b> for ast::MemberAccess<'b> {
+    fn declare(&mut self, _resolver: &mut NameResolver, _cache: &mut ModuleCache<'b>) { }
+
+    fn define(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'b>) {
+        self.lhs.define(resolver, cache);
     }
 }

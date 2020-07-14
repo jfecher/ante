@@ -1,0 +1,32 @@
+type FooBar = foo:int, bar:string
+type Foo = foo:float
+type Bar = bar:char
+
+stringify (s: string) = s
+
+foo_and_bar a b =
+    a.foo
+    stringify b.bar
+
+foobar = FooBar 1 "one"
+foo = Foo 2.0
+bar = Bar '3'
+
+foo_and_bar foobar foobar
+foo_and_bar foo bar
+
+// args: --check --show-types
+// TODO: error location can be improved, should be at the callsite
+// expected stdout:
+// examples/typechecking/member_access.an: 1,1	error: Type mismatch between string and char
+// type FooBar = foo:int, bar:string
+// 
+// Bar : (char -> Bar)
+// Foo : (float -> Foo)
+// FooBar : (int string -> FooBar)
+// bar : Bar
+// foo : Foo
+// foo_and_bar : (forall a b. (a b -> string))
+//   given .foo a c, .bar b string
+// foobar : FooBar
+// stringify : (string -> string)

@@ -19,7 +19,7 @@ c = "one" + "two"
 // c = "one" + "two"
 // 
 // '+' : (forall a. (a a -> a))
-//   given, Add a
+//   given Add a
 // a : int
 // b : float
 // c : string

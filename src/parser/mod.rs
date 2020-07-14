@@ -213,7 +213,7 @@ parser!(trait_definition loc =
 parser!(declaration loc -> 'b ast::TypeAnnotation<'b> =
     lhs <- irrefutable_pattern_argument;
     _ <- expect(Token::Colon);
-    rhs <- parse_type;
+    rhs !<- parse_type;
     ast::TypeAnnotation { lhs: Box::new(lhs), rhs, location: loc, typ: None }
 );
 
@@ -242,7 +242,7 @@ parser!(parse_extern loc =
 parser!(extern_block _loc -> 'b Vec<ast::TypeAnnotation<'b>>=
     _ <- expect(Token::Indent);
     declarations !<- delimited_trailing(declaration, expect(Token::Newline));
-    _ <- expect(Token::Unindent);
+    _ !<- expect(Token::Unindent);
     declarations
 );
 
@@ -426,7 +426,23 @@ parser!(else_expr _loc =
     otherwise
 );
 
+// function_argument = argument ('.' identifier)*
 fn function_argument<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
+    let (mut input, mut arg, mut location) = argument(input)?;
+
+    while input[0].0 == Token::MemberAccess {
+        input = &input[1..];
+
+        let (new_input, field, field_location) = no_backtracking(identifier)(input)?;
+        input = new_input;
+        location = location.union(field_location);
+        arg = Ast::member_access(arg, field, location);
+    }
+
+    Ok((input, arg, location))
+}
+
+fn argument<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
     match input[0].0 {
         Token::Identifier(_) => variable(input),
         Token::StringLiteral(_) => string(input),
@@ -437,7 +453,7 @@ fn function_argument<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
         Token::UnitLiteral => unit(input),
         Token::Backslash => lambda(input),
         Token::ParenthesisLeft => {
-            parenthesized(or(&[operator, expression], &"function_argument"))(input)
+            parenthesized(or(&[operator, expression], &"argument"))(input)
         },
         Token::TypeName(_) => variant(input),
         _ => Err(ParseError::InRule(&"argument", input[0].1)),

@@ -1,0 +1,6 @@
+extern puts: (ref char) -> int
+
+puts "Hello, World!".c_string
+
+// args: --run --delete-binary
+// expected stdout: Hello, World!

@@ -175,3 +175,9 @@ impl<'a> Display for ast::Extern<'a> {
         write!(f, "(extern\n    {})", join_with(&self.declarations, "\n    "))
     }
 }
+
+impl<'a> Display for ast::MemberAccess<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "({}.{})", self.lhs, self.field)
+    }
+}

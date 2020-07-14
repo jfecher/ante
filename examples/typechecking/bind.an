@@ -6,7 +6,7 @@ type Maybe a =
 
 bind opt f =
     match opt with
-    | Some x -> Some (f x)
+    | Some x -> f x
     | None -> None
 
 ret x = Some x
@@ -21,7 +21,7 @@ add_one x =
 // '+' : (int int -> int)
 // None : (forall a. (Maybe a))
 // Some : (forall a. (a -> (Maybe a)))
-// add_one : ((Maybe int) -> (Maybe (Maybe int)))
-// bind : (forall a b. ((Maybe a) (a -> b) -> (Maybe b)))
+// add_one : ((Maybe int) -> (Maybe int))
+// bind : (forall a b. ((Maybe a) (a -> (Maybe b)) -> (Maybe b)))
 // ret : (forall a. (a -> (Maybe a)))
 // x : (Maybe int)

@@ -68,6 +68,16 @@ impl<'a> Location<'a> {
         Location { filename, start, end }
     }
 
+    /// Returns a location to an item that is built into the compiler and is not
+    /// actually present in any source code. Care should be taken when defining
+    /// these types to ensure errors presented to users don't point to the non-existant
+    /// source location. Example of builtins are the string type and the '.' trait family.
+    pub fn builtin() -> Location<'a> {
+        let start = Position { index: 0, line: 0, column: 0 };
+        let end = EndPosition { index: 0 };
+        Location::new(Path::new("stdlib/prelude.an"), start, end)
+    }
+
     pub fn len(&self) -> usize {
         self.end.index - self.start.index
     }

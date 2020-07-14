@@ -30,8 +30,8 @@ impl Monad Maybe
 // None : (forall a. (Maybe a))
 // Some : (forall a. (a -> (Maybe a)))
 // bind : (forall a d e. ((a d) (d -> (a e)) -> (a e)))
-//   given, Monad a
+//   given Monad a
 // map : (forall a d e. ((a d) (d -> e) -> (a e)))
-//   given, Functor a
+//   given Functor a
 // wrap : (forall a c. (c -> (a c)))
-//   given, Monad a
+//   given Monad a

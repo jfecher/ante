@@ -1,6 +1,6 @@
 [package]
 name = "ante"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Jake Fecher <jfecher11@gmail.com>"]
 edition = "2018"
 
@@ -11,7 +11,7 @@ clap = "2.33"
 colored = "1.9"
 mimalloc = { version = "0.1.19", default-features = false }
 difference = "2.0.0"
-goldentests = "0.3.3"
+goldentests = "0.3.4"
 inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "llvm10-0" }
 
 [profile.release]

@@ -25,19 +25,24 @@ impl Impl {
         Impl { trait_id, scope, args, binding }
     }
 
+    pub fn find_all_typevars<'b>(&self, cache: &ModuleCache<'b>) -> Vec<TypeVariableId> {
+        let mut typevars = vec![];
+        for typ in self.args.iter() {
+            typevars.append(&mut find_all_typevars(typ, false, cache));
+        }
+        typevars
+    }
+
     pub fn display<'a, 'b>(&self, cache: &'a ModuleCache<'b>) -> ImplPrinter<'a, 'b> {
         let mut typevar_names = HashMap::new();
         let mut current = 'a';
+        let typevars = self.find_all_typevars(cache);
 
-        for typ in self.args.iter() {
-            let typevars = find_all_typevars(typ, false, cache);
-
-            for typevar in typevars {
-                if typevar_names.get(&typevar).is_none() {
-                    typevar_names.insert(typevar, current.to_string());
-                    current = (current as u8 + 1) as char;
-                    assert!(current != 'z'); // TODO: wrap to aa, ab, ac...
-                }
+        for typevar in typevars {
+            if typevar_names.get(&typevar).is_none() {
+                typevar_names.insert(typevar, current.to_string());
+                current = (current as u8 + 1) as char;
+                assert!(current != 'z'); // TODO: wrap to aa, ab, ac...
             }
         }
 
@@ -63,15 +68,15 @@ impl Impl {
 }
 
 pub struct ImplPrinter<'a, 'b> {
-    trait_impl: Impl,
+    pub trait_impl: Impl,
 
     /// True if this should also print what this impl is bound to/if it has a binding.
-    debug: bool,
+    pub debug: bool,
 
     /// Maps unique type variable IDs to human readable names like a, b, c, etc.
-    typevar_names: HashMap<TypeVariableId, String>,
+    pub typevar_names: HashMap<TypeVariableId, String>,
 
-    cache: &'a ModuleCache<'b>
+    pub cache: &'a ModuleCache<'b>
 }
 
 impl<'a, 'b> Display for ImplPrinter<'a, 'b> {

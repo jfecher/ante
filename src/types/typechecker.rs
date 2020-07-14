@@ -1,7 +1,7 @@
 use crate::cache::{ ModuleCache, TraitInfoId, DefinitionInfoId, ImplBindingId, DefinitionNode };
 use crate::parser::ast;
 use crate::types::{ Type, Type::*, TypeVariableId, PrimitiveType, LetBindingLevel, TypeBinding::* };
-use crate::types::TypeBinding;
+use crate::types::{ TypeBinding, STRING_TYPE };
 use crate::types::typed::Typed;
 use crate::types::traits::{ TraitList, Impl };
 use crate::util::*;
@@ -430,9 +430,10 @@ fn infer_nested_definition<'a>(definition_id: DefinitionInfoId, cache: &mut Modu
 /// Binds a given type to an irrefutable pattern, recursing on the pattern and verifying
 /// that it is indeed irrefutable. If should_generalize is true, this generalizes the type given
 /// to any variable encountered.
-fn bind_irrefutable_pattern<'a>(ast: &ast::Ast<'a>, typ: &Type, traits: &Vec<Impl>, should_generalize: bool, cache: &mut ModuleCache<'a>) {
+fn bind_irrefutable_pattern<'a>(ast: &mut ast::Ast<'a>, typ: &Type, traits: &Vec<Impl>, should_generalize: bool, cache: &mut ModuleCache<'a>) {
     use ast::Ast::*;
     use ast::LiteralKind;
+
     match ast {
         Literal(literal) => {
             match literal.kind {
@@ -446,17 +447,18 @@ fn bind_irrefutable_pattern<'a>(ast: &ast::Ast<'a>, typ: &Type, traits: &Vec<Imp
             // The type may already be set (e.g. from a trait impl this definition belongs to).
             // If it is, unify the existing type and new type before generalizing them.
             if let Some(existing_type) = &info.typ {
-                unify(&existing_type.clone(), &typ, ast.locate(), cache);
+                unify(&existing_type.clone(), &typ, variable.location, cache);
             }
 
             let typ = if should_generalize { generalize(typ, cache) } else { typ.clone() };
             let info = &mut cache.definition_infos[variable.definition.unwrap().0];
             info.required_impls.append(&mut traits.clone());
+            variable.typ = Some(typ.clone());
             info.typ = Some(typ);
         },
         TypeAnnotation(annotation) => {
-            unify(typ, annotation.typ.as_ref().unwrap(), ast.locate(), cache);
-            bind_irrefutable_pattern(annotation.lhs.as_ref(), typ, traits, should_generalize, cache);
+            unify(typ, annotation.typ.as_ref().unwrap(), annotation.location, cache);
+            bind_irrefutable_pattern(annotation.lhs.as_mut(), typ, traits, should_generalize, cache);
         },
         _ => {
             error!(ast.locate(), "Invalid syntax in irrefutable pattern");
@@ -515,7 +517,35 @@ fn should_propagate<'a>(trait_impl: &Impl, cache: &ModuleCache<'a>) -> bool {
     trait_impl.args.iter().any(|arg| !find_all_typevars(arg, true, cache).is_empty())
 }
 
+fn check_member_access<'a>(trait_impl: &Impl, location: Location<'a>, cache: &mut ModuleCache<'a>) {
+    let empty_bindings = HashMap::new();
+    let collection = follow_bindings(&trait_impl.args[0], &empty_bindings, cache);
+
+    let field_name = &cache.trait_infos[trait_impl.trait_id.0].name[1..];
+
+    match collection {
+        Type::UserDefinedType(id) => {
+            let field_type = cache.type_infos[id.0].find_field(field_name)
+                .map(|(_, field)| field.field_type.clone());
+
+            match field_type {
+                Some(field_type) => {
+                    unify(&trait_impl.args[1], &field_type, location, cache);
+                },
+                _ => error!(location, "Type {} is not a struct type and has no field named {}", collection.display(cache), field_name),
+            }
+
+        },
+        _ => error!(location, "Type {} is not a struct type and has no field named {}", collection.display(cache), field_name),
+    }
+}
+
 fn find_impl<'a>(trait_impl: &mut Impl, location: Location<'a>, cache: &mut ModuleCache<'a>) {
+    if cache.trait_infos[trait_impl.trait_id.0].is_member_access() {
+        check_member_access(trait_impl, location, cache);
+        return;
+    }
+
     let scope = cache.impl_scopes[trait_impl.scope.0].clone();
     let mut found = vec![];
 
@@ -593,7 +623,7 @@ impl<'a> Inferable<'a> for ast::Literal<'a> {
         match self.kind {
             Integer(_) => (Type::Primitive(PrimitiveType::IntegerType), vec![]),
             Float(_) => (Type::Primitive(PrimitiveType::FloatType), vec![]),
-            String(_) => (Type::Primitive(PrimitiveType::StringType), vec![]),
+            String(_) => (Type::UserDefinedType(STRING_TYPE), vec![]),
             Char(_) => (Type::Primitive(PrimitiveType::CharType), vec![]),
             Bool(_) => (Type::Primitive(PrimitiveType::BooleanType), vec![]),
             Unit => (Type::Primitive(PrimitiveType::UnitType), vec![]),
@@ -707,7 +737,7 @@ impl<'a> Inferable<'a> for ast::Definition<'a> {
         CURRENT_LEVEL.fetch_sub(1, Ordering::SeqCst);
 
         let exposed_traits = resolve_traits(traits, self.location, cache);
-        bind_irrefutable_pattern(self.pattern.as_ref(), &t, &exposed_traits, true, cache);
+        bind_irrefutable_pattern(self.pattern.as_mut(), &t, &exposed_traits, true, cache);
 
         (unit, vec![])
     }
@@ -788,7 +818,7 @@ impl<'a> Inferable<'a> for ast::TraitDefinition<'a> {
         for declaration in self.declarations.iter_mut() {
             let rhs = declaration.typ.as_ref().unwrap();
 
-            bind_irrefutable_pattern(declaration.lhs.as_ref(), rhs, &vec![], true, cache);
+            bind_irrefutable_pattern(declaration.lhs.as_mut(), rhs, &vec![], true, cache);
         }
         (Type::Primitive(PrimitiveType::UnitType), vec![])
     }
@@ -857,8 +887,25 @@ impl<'a> Inferable<'a> for ast::Sequence<'a> {
 impl<'a> Inferable<'a> for ast::Extern<'a> {
     fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitList) {
         for declaration in self.declarations.iter_mut() {
-            bind_irrefutable_pattern(declaration.lhs.as_ref(), declaration.typ.as_ref().unwrap(), &vec![], true, cache);
+            bind_irrefutable_pattern(declaration.lhs.as_mut(), declaration.typ.as_ref().unwrap(), &vec![], true, cache);
         }
         (Type::Primitive(PrimitiveType::UnitType), vec![])
+    }
+}
+
+impl<'a> Inferable<'a> for ast::MemberAccess<'a> {
+    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitList) {
+        let (collection_type, mut traits) = infer(self.lhs.as_mut(), cache);
+
+        let level = LetBindingLevel(CURRENT_LEVEL.load(Ordering::SeqCst));
+        let trait_id = cache.get_member_access_trait(&self.field, level);
+
+        let field_type = cache.next_type_variable(level);
+
+        use crate::cache::ImplScopeId;
+        let trait_impl = Impl::new(trait_id, ImplScopeId(0), ImplBindingId(0), vec![collection_type, field_type.clone()]);
+        traits.push(trait_impl);
+
+        (field_type, traits)
     }
 }

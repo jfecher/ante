@@ -219,6 +219,15 @@ pub struct Extern<'a> {
     pub typ: Option<types::Type>,
 }
 
+/// lhs.field
+#[derive(Debug)]
+pub struct MemberAccess<'a> {
+    pub lhs: Box<Ast<'a>>,
+    pub field: String,
+    pub location: Location<'a>,
+    pub typ: Option<types::Type>,
+}
+
 #[derive(Debug)]
 pub enum Ast<'a> {
     Literal(Literal<'a>),
@@ -236,6 +245,7 @@ pub enum Ast<'a> {
     Return(Return<'a>),
     Sequence(Sequence<'a>),
     Extern(Extern<'a>),
+    MemberAccess(MemberAccess<'a>),
 }
 
 impl<'a> Ast<'a> {
@@ -328,26 +338,31 @@ impl<'a> Ast<'a> {
     pub fn extern_expr(declarations: Vec<TypeAnnotation<'a>>, location: Location<'a>) -> Ast<'a> {
         Ast::Extern(Extern { declarations, location, typ: None })
     }
+
+    pub fn member_access(lhs: Ast<'a>, field: String, location: Location<'a>) -> Ast<'a> {
+        Ast::MemberAccess(MemberAccess { lhs: Box::new(lhs), field, location, typ: None })
+    }
 }
 
 macro_rules! dispatch_on_expr {
     ( $expr_name:expr, $function:expr $(, $($args:expr),* )? ) => ({
         match $expr_name {
-            crate::parser::ast::Ast::Literal(inner) =>         $function(inner $(, $($args),* )? ),
-            crate::parser::ast::Ast::Variable(inner) =>        $function(inner $(, $($args),* )? ),
-            crate::parser::ast::Ast::Lambda(inner) =>          $function(inner $(, $($args),* )? ),
-            crate::parser::ast::Ast::FunctionCall(inner) =>    $function(inner $(, $($args),* )? ),
-            crate::parser::ast::Ast::Definition(inner) =>      $function(inner $(, $($args),* )? ),
-            crate::parser::ast::Ast::If(inner) =>              $function(inner $(, $($args),* )? ),
-            crate::parser::ast::Ast::Match(inner) =>           $function(inner $(, $($args),* )? ),
-            crate::parser::ast::Ast::TypeDefinition(inner) =>  $function(inner $(, $($args),* )? ),
-            crate::parser::ast::Ast::TypeAnnotation(inner) =>  $function(inner $(, $($args),* )? ),
-            crate::parser::ast::Ast::Import(inner) =>          $function(inner $(, $($args),* )? ),
-            crate::parser::ast::Ast::TraitDefinition(inner) => $function(inner $(, $($args),* )? ),
-            crate::parser::ast::Ast::TraitImpl(inner) =>       $function(inner $(, $($args),* )? ),
-            crate::parser::ast::Ast::Return(inner) =>          $function(inner $(, $($args),* )? ),
-            crate::parser::ast::Ast::Sequence(inner) =>        $function(inner $(, $($args),* )? ),
-            crate::parser::ast::Ast::Extern(inner) =>          $function(inner $(, $($args),* )? ),
+            $crate::parser::ast::Ast::Literal(inner) =>         $function(inner $(, $($args),* )? ),
+            $crate::parser::ast::Ast::Variable(inner) =>        $function(inner $(, $($args),* )? ),
+            $crate::parser::ast::Ast::Lambda(inner) =>          $function(inner $(, $($args),* )? ),
+            $crate::parser::ast::Ast::FunctionCall(inner) =>    $function(inner $(, $($args),* )? ),
+            $crate::parser::ast::Ast::Definition(inner) =>      $function(inner $(, $($args),* )? ),
+            $crate::parser::ast::Ast::If(inner) =>              $function(inner $(, $($args),* )? ),
+            $crate::parser::ast::Ast::Match(inner) =>           $function(inner $(, $($args),* )? ),
+            $crate::parser::ast::Ast::TypeDefinition(inner) =>  $function(inner $(, $($args),* )? ),
+            $crate::parser::ast::Ast::TypeAnnotation(inner) =>  $function(inner $(, $($args),* )? ),
+            $crate::parser::ast::Ast::Import(inner) =>          $function(inner $(, $($args),* )? ),
+            $crate::parser::ast::Ast::TraitDefinition(inner) => $function(inner $(, $($args),* )? ),
+            $crate::parser::ast::Ast::TraitImpl(inner) =>       $function(inner $(, $($args),* )? ),
+            $crate::parser::ast::Ast::Return(inner) =>          $function(inner $(, $($args),* )? ),
+            $crate::parser::ast::Ast::Sequence(inner) =>        $function(inner $(, $($args),* )? ),
+            $crate::parser::ast::Ast::Extern(inner) =>          $function(inner $(, $($args),* )? ),
+            $crate::parser::ast::Ast::MemberAccess(inner) =>    $function(inner $(, $($args),* )? ),
         }
     });
 }
@@ -381,9 +396,4 @@ impl_locatable_for!(TraitImpl);
 impl_locatable_for!(Return);
 impl_locatable_for!(Sequence);
 impl_locatable_for!(Extern);
-
-// TODO:
-// Module = RootNode | ExtNode
-// Collection = ArrayNode | TupleNode
-// JumpNode
-// Loop = WhileNode | ForNode
+impl_locatable_for!(MemberAccess);
