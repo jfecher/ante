@@ -86,13 +86,7 @@ impl<'a, 'b> Display for ImplPrinter<'a, 'b> {
         write!(f, "{}", trait_info.name.blue())?;
         for arg in self.trait_impl.args.iter() {
             let arg_printer =  TypePrinter::new(arg, self.typevar_names.clone(), self.cache);
-
-            let s = format!("{}", arg_printer);
-            if s.contains(" ") {
-                write!(f, " ({})", s)?;
-            } else {
-                write!(f, " {}", s)?;
-            }
+            write!(f, " {}", arg_printer)?;
         }
 
         // Print the impl this impl is bound to

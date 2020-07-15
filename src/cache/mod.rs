@@ -84,7 +84,9 @@ pub struct DefinitionInfoId(pub usize);
 pub enum DefinitionNode<'a> {
     Definition(&'a mut Definition<'a>),
     TraitDefinition(&'a mut TraitDefinition<'a>),
+    Parameter,
     Extern,
+    Impl,
 }
 
 #[derive(Debug)]

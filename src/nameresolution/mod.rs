@@ -1,4 +1,4 @@
-use crate::parser::{ self, ast, ast::Ast, ast::Definition };
+use crate::parser::{ self, ast, ast::Ast };
 use crate::types::{ TypeInfoId, TypeVariableId, Type, PrimitiveType, TypeInfoBody };
 use crate::types::{ TypeConstructor, Field, LetBindingLevel, STRING_TYPE };
 use crate::types::traits::Impl;
@@ -427,32 +427,52 @@ impl<'b> NameResolver {
         }
     }
 
-    fn collect_declarations(&mut self, ast: &mut Ast<'b>, cache: &mut ModuleCache<'b>) -> Vec<DefinitionInfoId> {
-        self.definitions_collected.clear();
-        self.auto_declare = true;
-        ast.declare(self, cache);
-        self.auto_declare = false;
-        self.definitions_collected.clone()
+    /// The collect* family of functions recurses over an irrefutable pattern, either declaring or
+    /// defining each node and tagging the declaration with the given DefinitionNode.
+    fn resolve_declarations<F>(&mut self, ast: &mut Ast<'b>, cache: &mut ModuleCache<'b>, definition: F)
+        where F: FnMut() -> DefinitionNode<'b>
+    {
+        self.resolve_all_declarations(vec![ast].into_iter(), cache, definition);
     }
 
-    fn collect_definitions<T>(&mut self, ast: &mut T, cache: &mut ModuleCache<'b>) -> Vec<DefinitionInfoId>
-        where T: Resolvable<'b>
+    fn resolve_definitions<T, F>(&mut self, ast: &mut T, cache: &mut ModuleCache<'b>, definition: F)
+        where T: Resolvable<'b>,
+              F: FnMut() -> DefinitionNode<'b>
+    {
+        self.resolve_all_definitions(vec![ast].into_iter(), cache, definition);
+    }
+
+    fn resolve_all_declarations<'a, T: 'a, It, F>(&mut self, patterns: It, cache: &mut ModuleCache<'b>, mut definition: F) -> Vec<DefinitionInfoId>
+        where It: Iterator<Item = &'a mut T>,
+              T: Resolvable<'b>,
+              F: FnMut() -> DefinitionNode<'b>
     {
         self.definitions_collected.clear();
         self.auto_declare = true;
-        ast.define(self, cache);
-        self.auto_declare = false;
-        self.definitions_collected.clone()
-    }
-
-    fn collect_all_declarations(&mut self, patterns: &mut Vec<Definition<'b>>, cache: &mut ModuleCache<'b>) -> Vec<DefinitionInfoId> {
-        self.definitions_collected.clear();
-        self.auto_declare = true;
-        for pattern in patterns.iter_mut() {
+        for pattern in patterns {
             pattern.declare(self, cache);
         }
         self.auto_declare = false;
+        for id in self.definitions_collected.iter() {
+            cache.definition_infos[id.0].definition = Some(definition());
+        }
         self.definitions_collected.clone()
+    }
+
+    fn resolve_all_definitions<'a, T: 'a, It, F>(&mut self, patterns: It, cache: &mut ModuleCache<'b>, mut definition: F)
+        where It: Iterator<Item = &'a mut T>,
+              T: Resolvable<'b>,
+              F: FnMut() -> DefinitionNode<'b>
+    {
+        self.definitions_collected.clear();
+        self.auto_declare = true;
+        for pattern in patterns {
+            pattern.define(self, cache);
+        }
+        self.auto_declare = false;
+        for id in self.definitions_collected.iter() {
+            cache.definition_infos[id.0].definition = Some(definition());
+        }
     }
 }
 
@@ -539,11 +559,7 @@ impl<'b> Resolvable<'b> for ast::Lambda<'b> {
 
     fn define(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'b>) {
         resolver.push_scope(cache);
-        resolver.auto_declare = true;
-        for arg in self.args.iter_mut() {
-            arg.define(resolver, cache);
-        }
-        resolver.auto_declare = false;
+        resolver.resolve_all_definitions(self.args.iter_mut(), cache, || DefinitionNode::Parameter);
         self.body.define(resolver, cache);
         resolver.pop_scope(cache, true);
     }
@@ -562,24 +578,17 @@ impl<'b> Resolvable<'b> for ast::FunctionCall<'b> {
 
 impl<'b> Resolvable<'b> for ast::Definition<'b> {
     fn declare(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'b>) {
-        let declarations = resolver.collect_declarations(self.pattern.as_mut(), cache);
-        for id in declarations.iter() {
-            let info = &mut cache.definition_infos[id.0];
-            let definition = trustme::extend_lifetime_mut(self);
-            info.definition = Some(DefinitionNode::Definition(definition));
-        }
+        let definition = self as *const Self;
+        let definition = || DefinitionNode::Definition(trustme::make_mut(definition));
+        resolver.resolve_declarations(self.pattern.as_mut(), cache, definition);
     }
 
     fn define(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'b>) {
-        let definitions = resolver.collect_definitions(self.pattern.as_mut(), cache);
-
         // Tag the symbol with its definition so while type checking we can follow
         // the symbol to its definition if it is undefined.
-        for id in definitions.iter() {
-            let info = &mut cache.definition_infos[id.0];
-            let definition = trustme::extend_lifetime_mut(self);
-            info.definition = Some(DefinitionNode::Definition(definition));
-        }
+        let definition = self as *const Self;
+        let definition = || DefinitionNode::Definition(trustme::make_mut(definition));
+        resolver.resolve_definitions(self.pattern.as_mut(), cache, definition);
 
         self.expr.define(resolver, cache);
     }
@@ -831,12 +840,8 @@ impl<'b> Resolvable<'b> for ast::TraitDefinition<'b> {
 
         let self_pointer = self as *const _;
         for declaration in self.declarations.iter_mut() {
-            let declarations = resolver.collect_declarations(declaration.lhs.as_mut(), cache);
-            for id in declarations.iter() {
-                let info = &mut cache.definition_infos[id.0];
-                let definition = trustme::extend_lifetime_mut(trustme::make_mut(self_pointer));
-                info.definition = Some(DefinitionNode::TraitDefinition(definition));
-            }
+            let definition = || DefinitionNode::TraitDefinition(trustme::make_mut(self_pointer));
+            resolver.resolve_declarations(declaration.lhs.as_mut(), cache, definition);
 
             resolver.auto_declare = true;
             let rhs = resolver.convert_type(cache, &declaration.rhs);
@@ -887,10 +892,10 @@ impl<'b> Resolvable<'b> for ast::TraitImpl<'b> {
         resolver.push_scope(cache);
 
         // Declare the names first so we can check them all against the required_definitions
-        let definitions = resolver.collect_all_declarations(&mut self.definitions, cache);
+        let definitions = resolver.resolve_all_declarations(self.definitions.iter_mut(), cache, || DefinitionNode::Impl);
 
         // TODO cleanup: is required_definitions still required since we can
-        // collect_all_definitions now? The checks in push_definition can probably
+        // resolve_all_definitions now? The checks in push_definition can probably
         // be moved here instead
         for required_definition in resolver.required_definitions.as_mut().unwrap() {
             error!(self.location, "impl is missing a definition for {}", required_definition);
@@ -934,12 +939,7 @@ impl<'b> Resolvable<'b> for ast::Sequence<'b> {
 impl<'b> Resolvable<'b> for ast::Extern<'b> {
     fn declare(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'b>) {
         for declaration in self.declarations.iter_mut() {
-            let declarations = resolver.collect_definitions(declaration, cache);
-
-            for id in declarations.iter() {
-                let info = &mut cache.definition_infos[id.0];
-                info.definition = Some(DefinitionNode::Extern);
-            }
+            resolver.resolve_definitions(declaration, cache, || DefinitionNode::Extern);
         }
     }
 

@@ -32,7 +32,7 @@ struct Generator<'context> {
 
     definitions: HashMap<(DefinitionInfoId, types::Type), BasicValueEnum<'context>>,
 
-    types: HashMap<(types::TypeInfoId, Vec<types::Type>), BasicValueEnum<'context>>,
+    types: HashMap<(types::TypeInfoId, Vec<types::Type>), BasicTypeEnum<'context>>,
 
     /// A stack of the current typevar bindings during monomorphisation. Unlike normal bindings,
     /// these are meant to be easily undone. Since ante doesn't support polymorphic recursion,
@@ -128,24 +128,6 @@ fn is_function_type(typ: &types::Type) -> bool {
     }
 }
 
-fn get_field_index<'c>(field_name: &str, typ: &types::Type, cache: &ModuleCache<'c>) -> u32 {
-    use types::Type::*;
-    match typ {
-        UserDefinedType(id) => {
-            cache.type_infos[id.0].find_field(field_name).map(|(i, _)| i).unwrap()
-        },
-        TypeVariable(id) => {
-            match &cache.type_bindings[id.0] {
-                TypeBinding::Bound(typ) => get_field_index(field_name, typ, cache),
-                TypeBinding::Unbound(..) => unreachable!(),
-            }
-        },
-        _ => {
-            unreachable!();
-        }
-    }
-}
-
 // TODO: remove
 const UNBOUND_TYPE: types::Type = types::Type::Primitive(types::PrimitiveType::UnitType);
 
@@ -207,7 +189,7 @@ impl<'g> Generator<'g> {
 
     fn monomorphise<'c>(&mut self, id: DefinitionInfoId, typ: &types::Type, cache: &mut ModuleCache<'c>) -> Option<BasicValueEnum<'g>> {
         let definition = &mut cache.definition_infos[id.0];
-        let definition = trustme::extend_lifetime_mut(definition);
+        let definition = trustme::extend_lifetime(definition);
         let definition_type = remove_forall(definition.typ.as_ref().unwrap());
 
         let mut bindings = HashMap::new();
@@ -228,9 +210,15 @@ impl<'g> Generator<'g> {
                 value = Some(self.codegen_extern(id, typ, cache));
             }
             Some(DefinitionNode::TraitDefinition(_)) => {
-                unimplemented!();
+                unreachable!("There is no code in a trait definition that can be codegen'd");
             },
-            _ => unreachable!("No definition for {}", definition.name),
+            Some(DefinitionNode::Impl) => {
+                unimplemented!("Codegen of impls is unimplemented");
+            },
+            Some(DefinitionNode::Parameter) => {
+                unreachable!("There is no code to (lazily) codegen for parameters");
+            },
+            None => unreachable!("No definition for {}", definition.name),
         }
 
         self.monomorphisation_bindings.pop();
@@ -299,7 +287,7 @@ impl<'g> Generator<'g> {
         }
     }
 
-    fn convert_struct_type<'c>(&self, info: &types::TypeInfo, args: &Vec<types::Field<'c>>, cache: &ModuleCache<'c>) -> BasicTypeEnum<'g> {
+    fn convert_struct_type<'c>(&mut self, info: &types::TypeInfo, args: &Vec<types::Field<'c>>, cache: &ModuleCache<'c>) -> BasicTypeEnum<'g> {
         // TODO: cache the struct type for recursive types.
         let typ = self.context.opaque_struct_type(&info.name);
 
@@ -309,7 +297,7 @@ impl<'g> Generator<'g> {
         typ.into()
     }
 
-    fn convert_union_type<'c>(&self, info: &types::TypeInfo, args: &Vec<types::TypeConstructor<'c>>, cache: &ModuleCache<'c>) -> BasicTypeEnum<'g> {
+    fn convert_union_type<'c>(&mut self, info: &types::TypeInfo, args: &Vec<types::TypeConstructor<'c>>, cache: &ModuleCache<'c>) -> BasicTypeEnum<'g> {
         // TODO: cache the struct type for recursive types. - possibly cache in convert_type
         // TypeApplication case
         let typ = self.context.opaque_struct_type(&info.name);
@@ -330,7 +318,7 @@ impl<'g> Generator<'g> {
         typ.into()
     }
 
-    fn convert_type_constructor<'c>(&self, typ: &types::Type, args: Vec<BasicTypeEnum<'g>>, cache: &ModuleCache<'c>) -> BasicTypeEnum<'g> {
+    fn convert_type_constructor<'c>(&mut self, typ: &types::Type, args: Vec<BasicTypeEnum<'g>>, cache: &ModuleCache<'c>) -> BasicTypeEnum<'g> {
         use types::Type::*;
         match typ {
             Primitive(primitive) => {
@@ -344,8 +332,8 @@ impl<'g> Generator<'g> {
             },
 
             TypeVariable(id) => {
-                let binding = self.find_binding(*id, cache);
-                self.convert_type_constructor(binding, args, cache)
+                let binding = self.find_binding(*id, cache).clone();
+                self.convert_type_constructor(&binding, args, cache)
             },
 
             UserDefinedType(id) => {
@@ -361,7 +349,7 @@ impl<'g> Generator<'g> {
         }
     }
 
-    fn convert_type<'c>(&self, typ: &types::Type, cache: &ModuleCache<'c>) -> BasicTypeEnum<'g> {
+    fn convert_type<'c>(&mut self, typ: &types::Type, cache: &ModuleCache<'c>) -> BasicTypeEnum<'g> {
         use types::Type::*;
         match typ {
             Primitive(primitive) => self.convert_primitive_type(primitive),
@@ -372,19 +360,26 @@ impl<'g> Generator<'g> {
                 return_type.fn_type(&args, false).ptr_type(AddressSpace::Global).into()
             },
 
-            TypeVariable(id) => self.convert_type(self.find_binding(*id, cache), cache),
+            TypeVariable(id) => self.convert_type(&self.find_binding(*id, cache).clone(), cache),
 
             UserDefinedType(id) => {
                 let info = &cache.type_infos[id.0];
                 assert!(info.args.is_empty(), "Kind error during llvm code generation");
 
+                if let Some(typ) = self.types.get(&(*id, vec![])) {
+                    return *typ;
+                }
+
                 use types::TypeInfoBody::*;
-                match &info.body {
+                let typ = match &info.body {
                     Union(args) => self.convert_union_type(info, args, cache),
                     Struct(fields) => self.convert_struct_type(info, fields, cache),
                     Alias(typ) => self.convert_type(typ, cache),
                     Unknown => unreachable!(),
-                }
+                };
+
+                self.types.insert((*id, vec![]), typ);
+                typ
             },
 
             TypeApplication(typ, args) => {
@@ -497,6 +492,24 @@ impl<'g> Generator<'g> {
         self.definitions.insert((id, UNBOUND_TYPE.clone()), global);
         global
     }
+
+    fn get_field_index<'c>(&self, field_name: &str, typ: &types::Type, cache: &ModuleCache<'c>) -> u32 {
+        use types::Type::*;
+        match self.follow_bindings(typ, cache) {
+            UserDefinedType(id) => {
+                cache.type_infos[id.0].find_field(field_name).map(|(i, _)| i).unwrap()
+            },
+            TypeVariable(id) => {
+                match &cache.type_bindings[id.0] {
+                    TypeBinding::Bound(_) => unreachable!("Type variable {} is bound but its binding wasn't found by follow_bindings", id.0),
+                    TypeBinding::Unbound(..) => unreachable!("Type variable {} is unbound", id.0),
+                }
+            },
+            _ => {
+                unreachable!("get_field_index called with a type that clearly doesn't have a {} field: {}", field_name, typ.display(cache));
+            }
+        }
+    }
 }
 
 trait CodeGen<'g, 'c> {
@@ -592,6 +605,12 @@ impl<'g, 'c> CodeGen<'g, 'c> for ast::Lambda<'c> {
         let caller_block = generator.builder.get_insert_block().unwrap();
         generator.builder.position_at_end(basic_block);
 
+        // Bind each parameter node to the nth parameter of `function`
+        for (i, parameter) in self.args.iter().enumerate() {
+            let value = function.get_nth_param(i as u32).unwrap();
+            generator.bind_irrefutable_pattern(parameter, value, cache);
+        }
+
         let return_value = self.body.codegen(generator, cache);
 
         generator.builder.build_return(return_value.as_ref().map(|x| x as &dyn BasicValue));
@@ -617,6 +636,9 @@ impl<'g, 'c> CodeGen<'g, 'c> for ast::Definition<'c> {
             generator.bind_irrefutable_pattern(self.pattern.as_ref(), value, cache);
             Some(value)
         } else {
+            // If the value is a function we can skip it and come back later to only compile it
+            // when it is actually used. This saves the optimizer some work since we won't ever
+            // have to search for and remove unused functions.
             None
         }
     }
@@ -728,7 +750,7 @@ impl<'g, 'c> CodeGen<'g, 'c> for ast::MemberAccess<'c> {
         let lhs = self.lhs.codegen(generator, cache).unwrap();
         let collection = lhs.into_struct_value();
 
-        let index = get_field_index(&self.field, self.lhs.get_type().unwrap(), cache);
+        let index = generator.get_field_index(&self.field, self.lhs.get_type().unwrap(), cache);
         generator.builder.build_extract_value(collection, index, &self.field)
     }
 }

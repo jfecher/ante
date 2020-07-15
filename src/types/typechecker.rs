@@ -413,14 +413,16 @@ fn infer_nested_definition<'a>(definition_id: DefinitionInfoId, cache: &mut Modu
 
     match definition {
         DefinitionNode::Definition(definition) => {
-            let definition = trustme::extend_lifetime_mut(*definition);
+            let definition = trustme::extend_lifetime(*definition);
             infer(definition, cache);
-        }
+        },
         DefinitionNode::TraitDefinition(definition) => {
-            let definition = trustme::extend_lifetime_mut(*definition);
+            let definition = trustme::extend_lifetime(*definition);
             infer(definition, cache);
-        }
-        DefinitionNode::Extern => {}
+        },
+        DefinitionNode::Extern => {},
+        DefinitionNode::Parameter => {},
+        DefinitionNode::Impl => unreachable!(),
     };
 
     let info = &mut cache.definition_infos[definition_id.0];
@@ -530,9 +532,12 @@ fn check_member_access<'a>(trait_impl: &Impl, location: Location<'a>, cache: &mu
 
             match field_type {
                 Some(field_type) => {
+                    // FIXME: this unifies the type variables from the definition of field_type
+                    // rather than the types it was instantiated to. This will be incorrect if
+                    // the user ever uses a generic field with two different types!
                     unify(&trait_impl.args[1], &field_type, location, cache);
                 },
-                _ => error!(location, "Type {} is not a struct type and has no field named {}", collection.display(cache), field_name),
+                _ => error!(location, "Type {} has no field named {}", collection.display(cache), field_name),
             }
 
         },
