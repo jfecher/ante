@@ -98,9 +98,9 @@ pub fn main() {
     let ast = cache.parse_trees.get_mut(0).unwrap();
     types::typechecker::infer_ast(ast, &mut cache);
 
-    for defs in cache.definition_infos.iter().filter(|def| def.typ.is_none()) {
-        warning!(defs.location, "{} is unused and was not typechecked", defs.name);
-    }
+    // for defs in cache.definition_infos.iter().filter(|def| def.typ.is_none()) {
+    //     warning!(defs.location, "{} is unused and was not typechecked", defs.name);
+    // }
 
     if args.is_present("show-types") {
         print_definition_types(&cache);

@@ -24,13 +24,21 @@ use std::collections::{ HashMap, HashSet };
 use std::path::{ Path, PathBuf };
 use std::process::Command;
 
+mod builtin;
+
 #[derive(Debug)]
-struct Generator<'context> {
+enum LazyValue<'g> {
+    Value(BasicValueEnum<'g>),
+    Thunk(builtin::BuiltinFunction),
+}
+
+#[derive(Debug)]
+pub struct Generator<'context> {
     context: &'context Context,
     module: Module<'context>,
     builder: Builder<'context>,
 
-    definitions: HashMap<(DefinitionInfoId, types::Type), BasicValueEnum<'context>>,
+    definitions: HashMap<(DefinitionInfoId, types::Type), LazyValue<'context>>,
 
     types: HashMap<(types::TypeInfoId, Vec<types::Type>), BasicTypeEnum<'context>>,
 
@@ -67,6 +75,7 @@ pub fn run<'c>(path: &Path, ast: &ast::Ast<'c>, cache: &mut ModuleCache<'c>, sho
         current_function_info: None,
     };
 
+    builtin::declare_builtin_functions(&mut codegen, cache);
     codegen.codegen_main(ast, cache);
 
     codegen.module.verify().map_err(|error| {
@@ -173,6 +182,7 @@ impl<'g> Generator<'g> {
             .arg(path.to_string_lossy().as_ref())
             .arg("-Wno-everything")
             .arg("-O0")
+            .arg("-lm")
             .arg(output)
             .spawn().unwrap();
 
@@ -181,10 +191,21 @@ impl<'g> Generator<'g> {
         std::fs::remove_file(path).unwrap();
     }
 
-    fn lookup<'c>(&self, id: DefinitionInfoId, typ: &types::Type, cache: &ModuleCache<'c>) -> Option<BasicValueEnum<'g>> {
+    fn lookup<'c>(&mut self, id: DefinitionInfoId, typ: &types::Type, cache: &mut ModuleCache<'c>) -> Option<BasicValueEnum<'g>> {
         let typ = self.follow_bindings(typ, cache);
-        let value = self.definitions.get(&(id, typ));
-        value.map(|x| *x)
+
+        // TODO: try to avoid cloning typ here. It is only needed for when we find a Thunk of a
+        // builtin function which should be the rare case.
+        match self.definitions.get(&(id, typ.clone())) {
+            None => None,
+            Some(LazyValue::Value(value)) => Some(*value),
+            Some(LazyValue::Thunk(thunk)) => {
+                let thunk = *thunk; // explicitly copy here so the 'self' borrow from the match ends
+                let value = thunk.eval(self);
+                self.definitions.insert((id, typ), LazyValue::Value(value));
+                Some(value)
+            }
+        }
     }
 
     fn monomorphise<'c>(&mut self, id: DefinitionInfoId, typ: &types::Type, cache: &mut ModuleCache<'c>) -> Option<BasicValueEnum<'g>> {
@@ -435,7 +456,7 @@ impl<'g> Generator<'g> {
             Variable(variable) => {
                 let id = variable.definition.unwrap();
                 let typ = self.follow_bindings(variable.typ.as_ref().unwrap(), cache);
-                self.definitions.insert((id, typ), value);
+                self.definitions.insert((id, typ), LazyValue::Value(value));
             },
             TypeAnnotation(annotation) => {
                 self.bind_irrefutable_pattern(annotation.lhs.as_ref(), value, cache);
@@ -472,7 +493,7 @@ impl<'g> Generator<'g> {
         // extern definitions should only be declared once - never duplicated & monomorphised.
         // For this reason their value is always stored with the Unit type in the definitions map.
         if let Some(value) = self.lookup(id, &UNBOUND_TYPE, cache) {
-            self.definitions.insert((id, typ.clone()), value);
+            self.definitions.insert((id, typ.clone()), LazyValue::Value(value));
             return value;
         }
 
@@ -488,8 +509,8 @@ impl<'g> Generator<'g> {
         };
 
         // Insert the global for both the current type and the unit type
-        self.definitions.insert((id, typ.clone()), global);
-        self.definitions.insert((id, UNBOUND_TYPE.clone()), global);
+        self.definitions.insert((id, typ.clone()), LazyValue::Value(global));
+        self.definitions.insert((id, UNBOUND_TYPE.clone()), LazyValue::Value(global));
         global
     }
 
@@ -594,7 +615,7 @@ impl<'g, 'c> CodeGen<'g, 'c> for ast::Lambda<'c> {
         let function_pointer = function.as_global_value().as_pointer_value().into();
         if let Some(id) = generator.current_function_info {
             let typ = generator.follow_bindings(self.typ.as_ref().unwrap(), cache);
-            generator.definitions.insert((id, typ), function_pointer);
+            generator.definitions.insert((id, typ), LazyValue::Value(function_pointer));
             generator.current_function_info = None;
         }
 

@@ -4,7 +4,7 @@ use crate::types::{ TypeConstructor, Field, LetBindingLevel, STRING_TYPE };
 use crate::types::traits::Impl;
 use crate::error::{ self, location::{ Location, Locatable } };
 use crate::cache::{ ModuleCache, DefinitionInfoId, ModuleId };
-use crate::cache::{ TraitInfoId, ImplInfoId, ImplBindingId, DefinitionNode };
+use crate::cache::{ TraitInfoId, ImplInfoId, DefinitionNode, ImplScopeId };
 use crate::nameresolution::scope::Scope;
 use crate::lexer::Lexer;
 use crate::util::{ fmap, trustme };
@@ -16,6 +16,7 @@ use std::io::{ BufReader, Read };
 use std::path::{ Path, PathBuf };
 
 mod scope;
+pub mod builtin;
 
 // TODO: The LetBindingLevel needs to match 1-to-1 with the levels as incremented
 // by the typechecker but can't since the type checker traverses the ast by skipping
@@ -72,6 +73,7 @@ pub struct NameResolver {
     type_variable_scopes: Vec<scope::TypeVariableScope>,
 
     state: NameResolutionState,
+
     module_id: ModuleId,
 
     // Implementation detail fields:
@@ -189,6 +191,20 @@ impl NameResolver {
         self.scopes.len() == 1
     }
 
+    pub fn attach_to_trait<'a>(definition_id: DefinitionInfoId, trait_id: TraitInfoId, impl_scope_id: ImplScopeId, cache: &mut ModuleCache<'a>) {
+        let trait_info = &mut cache.trait_infos[trait_id.0];
+        trait_info.definitions.push(definition_id);
+
+        // Tag the function with Trait a b c as the required impl using the original
+        // type arguments from the trait declaration.
+        let args = trait_info.typeargs.iter().chain(trait_info.fundeps.iter())
+            .copied().map(Type::TypeVariable).collect();
+
+        let binding_id = cache.push_impl_binding();
+        let def = &mut cache.definition_infos[definition_id.0];
+        def.required_impls.push(Impl::new(trait_id, impl_scope_id, binding_id, args));
+    }
+
     fn check_required_definitions<'b>(&mut self, name: String, cache: &mut ModuleCache<'b>, location: Location<'b>) {
         if let Some(existing_id) = self.current_scope().definitions.get(&name) {
             let existing_definition = &cache.definition_infos[existing_id.0];
@@ -236,18 +252,7 @@ impl NameResolver {
 
             // If we're currently in a trait, add this definition to the trait's list of definitions
             if let Some(trait_id) = self.current_trait {
-                let trait_info = &mut cache.trait_infos[trait_id.0];
-                trait_info.definitions.push(id);
-
-                // Tag the function with Trait a b c as the required impl using the original
-                // type arguments from the trait declaration.
-                let args = trait_info.typeargs.iter().chain(trait_info.fundeps.iter())
-                    .copied()
-                    .map(Type::TypeVariable)
-                    .collect();
-
-                let def = &mut cache.definition_infos[id.0];
-                def.required_impls.push(Impl::new(trait_id, self.current_scope().impl_scope, ImplBindingId(0), args));
+                NameResolver::attach_to_trait(id, trait_id, self.current_scope().impl_scope, cache);
             }
         }
         id
@@ -303,7 +308,7 @@ impl NameResolver {
 
 impl<'b> NameResolver {
     pub fn start(ast: Ast<'b>, cache: &mut ModuleCache<'b>) -> Result<(), ()> {
-        NameResolver::define_builtins(cache);
+        builtin::define_builtins(cache);
         let resolver = NameResolver::declare(ast, cache);
         resolver.define(cache);
         if error::get_error_count() != 0 {
@@ -336,6 +341,7 @@ impl<'b> NameResolver {
         };
 
         resolver.push_scope(cache);
+        cache.builtins.import_builtins(&mut resolver);
 
         let existing = cache.get_name_resolver_by_path(&filepath);
         let existing_state = existing.map_or(NameResolutionState::NotStarted, |x| x.state);
@@ -359,25 +365,6 @@ impl<'b> NameResolver {
         self.state = NameResolutionState::DefineInProgress;
         ast.define(self, cache);
         self.state = NameResolutionState::Defined;
-    }
-
-    /// Defines builtin types/functions. Currently this only defines string
-    fn define_builtins(cache: &mut ModuleCache<'b>) {
-        let location = Location::builtin();
-
-        let ref_type = Type::Primitive(PrimitiveType::ReferenceType);
-        let char_type = Type::Primitive(PrimitiveType::CharType);
-        let c_string_type = Type::TypeApplication(Box::new(ref_type), vec![char_type]);
-
-        let length_type = Type::Primitive(PrimitiveType::IntegerType);
-
-        let string = cache.push_type_info("string".into(), vec![], location);
-        assert!(string == STRING_TYPE);
-
-        cache.type_infos[string.0].body = TypeInfoBody::Struct(vec![
-            Field { name: "c_string".into(), field_type: c_string_type, location },
-            Field { name: "length".into(),   field_type: length_type,   location },
-        ]);
     }
 
     /// Converts an ast::Type to a types::Type, expects all typevars to be in scope

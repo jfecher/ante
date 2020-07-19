@@ -1,6 +1,5 @@
 
 (>) _ _ = true
-(-) a _ = a
 
 loop n f =
     if n > 0 then

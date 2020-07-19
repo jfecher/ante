@@ -557,10 +557,12 @@ fn find_impl<'a>(trait_impl: &mut Impl, location: Location<'a>, cache: &mut Modu
     for impl_id in scope.iter().copied() {
         let info = &cache.impl_infos[impl_id.0];
 
-        // TODO: remove excess cloning
-        match try_unify_all(&trait_impl.args, &info.typeargs.clone(), location, cache) {
-            Ok(()) => found.push(impl_id),
-            Err(()) => (),
+        if info.trait_id == trait_impl.trait_id {
+            // TODO: remove excess cloning
+            match try_unify_all(&trait_impl.args, &info.typeargs.clone(), location, cache) {
+                Ok(()) => found.push(impl_id),
+                Err(()) => (),
+            }
         }
     }
 
@@ -572,7 +574,7 @@ fn find_impl<'a>(trait_impl: &mut Impl, location: Location<'a>, cache: &mut Modu
         error!(location, "{} matching impls found for {}", found.len(), trait_impl.display(cache));
         for (i, id) in found.iter().enumerate() {
             let info = &cache.impl_infos[id.0];
-            note!(info.location, "Candidate {}", i + 1);
+            note!(info.location, "Candidate {} ({})", i + 1, id.0);
         }
     } else {
         error!(location, "No impl found for {}", trait_impl.display(cache));

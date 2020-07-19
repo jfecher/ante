@@ -2,8 +2,6 @@ type Maybe a =
    | None
    | Some a
 
-(+) (_: int) (b: int) = b
-
 bind opt f =
     match opt with
     | Some x -> f x
@@ -18,7 +16,6 @@ add_one x =
 
 // args: --check --show-types
 // expected stdout:
-// '+' : (int int -> int)
 // None : (forall a. (Maybe a))
 // Some : (forall a. (a -> (Maybe a)))
 // add_one : ((Maybe int) -> (Maybe int))

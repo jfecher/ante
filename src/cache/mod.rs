@@ -1,4 +1,4 @@
-use crate::nameresolution::NameResolver;
+use crate::nameresolution::{ NameResolver, builtin::Builtins };
 use crate::types::{ TypeVariableId, TypeInfoId, TypeInfo, Type, TypeInfoBody };
 use crate::types::{ TypeBinding, LetBindingLevel, traits::TraitList, Kind };
 use crate::types::traits::{ Impl, ImplPrinter };
@@ -72,6 +72,8 @@ pub struct ModuleCache<'a> {
     /// Ante represents each member access (foo.bar) as a trait (.foo)
     /// that is generated for each new field name used globally.
     pub member_access_traits: HashMap<String, TraitInfoId>,
+
+    pub builtins: Builtins,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -157,6 +159,7 @@ impl<'a> ModuleCache<'a> {
     pub fn new(project_directory: &'a Path) -> ModuleCache<'a> {
         ModuleCache {
             relative_roots: vec![project_directory.to_owned()],
+            // Really wish you could do ..Default::default() for each field
             modules: HashMap::default(),
             parse_trees: UnsafeCache::default(),
             name_resolvers: UnsafeCache::default(),
@@ -169,6 +172,7 @@ impl<'a> ModuleCache<'a> {
             impl_scopes: Vec::default(),
             impl_bindings: Vec::default(),
             member_access_traits: HashMap::default(),
+            builtins: Builtins::default(),
         }
     }
 

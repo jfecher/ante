@@ -1,25 +1,25 @@
 
-trait Add a
-    (+): a a -> a
+trait Foo a
+    foo: a a -> a
 
-impl Add int
-    (+) _a b = b
+impl Foo int
+    foo _a b = b
 
-impl Add float
-    (+) _a b = b
+impl Foo float
+    foo _a b = b
 
 
-a = 1 + 2
-b = 1.0 + 2.0
-c = "one" + "two"
+a = foo 1 2
+b = foo 1.0 2.0
+c = foo "one" "two"
 
 // args: --check --show-types
 // expected stdout:
-// examples/typechecking/impl.an: 14,1	error: No impl found for Add string
-// c = "one" + "two"
+// examples/typechecking/impl.an: 14,1	error: No impl found for Foo string
+// c = foo "one" "two"
 // 
-// '+' : (forall a. (a a -> a))
-//   given Add a
 // a : int
 // b : float
 // c : string
+// foo : (forall a. (a a -> a))
+//   given Foo a

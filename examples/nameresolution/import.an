@@ -1,10 +1,10 @@
 import Library
 
-(+) = \_ b. b
+foo = \_ b. b
 
-4 + library_int
+foo 4 library_int
 
-5 + library_fn ()
+foo 5 (library_fn ())
 
 // args: --check
 // expected stdout:

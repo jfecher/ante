@@ -35,6 +35,7 @@ macro_rules! make_warning {
     });
 }
 
+#[allow(unused_macros)]
 macro_rules! warning {
     ( $location:expr , $fmt_string:expr $( , $($msg:tt)* )? ) => ({
         println!("{}", make_warning!($location, $fmt_string $( , $($msg)* )?));
@@ -176,9 +177,9 @@ impl<'a> Display for ErrorMessage<'a> {
             start.line, start.column, self.marker(), self.msg)?;
 
         let file_contents = read_file_or_panic(self.location.filename);
-        let line = file_contents.lines().nth(start.line as usize - 1).unwrap();
+        let line = file_contents.lines().nth(max(1, start.line) as usize - 1).unwrap();
 
-        let start_column = start.column as usize - 1;
+        let start_column = max(1, start.column) as usize - 1;
         let actual_len = min(self.location.len(), line.len() - start_column);
 
         // In case we have an odd Location that has start.index = end.index,
