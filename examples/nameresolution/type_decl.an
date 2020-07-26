@@ -11,11 +11,11 @@ type Struct2 t =
 
 type Union1 a b = | Variant1 | Variant2
 
-type Maybe a =
-   | Some a
-   | None
+type Option a =
+   | Just a
+   | Nothing
 
-t = Some 1
+t = Just 1
 
 type UniquePtr a is ref a
 

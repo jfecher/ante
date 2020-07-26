@@ -5,6 +5,7 @@
 
 use crate::cache::{ ModuleCache, DefinitionInfoId, DefinitionNode };
 use crate::parser::ast;
+use crate::nameresolution::builtin::BUILTIN_ID;
 use crate::types::{ self, typechecker, TypeVariableId, TypeBinding };
 use crate::types::typed::Typed;
 use crate::util::{ fmap, trustme };
@@ -27,18 +28,12 @@ use std::process::Command;
 mod builtin;
 
 #[derive(Debug)]
-enum LazyValue<'g> {
-    Value(BasicValueEnum<'g>),
-    Thunk(builtin::BuiltinFunction),
-}
-
-#[derive(Debug)]
 pub struct Generator<'context> {
     context: &'context Context,
     module: Module<'context>,
     builder: Builder<'context>,
 
-    definitions: HashMap<(DefinitionInfoId, types::Type), LazyValue<'context>>,
+    definitions: HashMap<(DefinitionInfoId, types::Type), BasicValueEnum<'context>>,
 
     types: HashMap<(types::TypeInfoId, Vec<types::Type>), BasicTypeEnum<'context>>,
 
@@ -75,7 +70,6 @@ pub fn run<'c>(path: &Path, ast: &ast::Ast<'c>, cache: &mut ModuleCache<'c>, sho
         current_function_info: None,
     };
 
-    builtin::declare_builtin_functions(&mut codegen, cache);
     codegen.codegen_main(ast, cache);
 
     codegen.module.verify().map_err(|error| {
@@ -123,17 +117,6 @@ fn remove_forall(typ: &types::Type) -> &types::Type {
     match typ {
         types::Type::ForAll(_, t) => t,
         _ => typ,
-    }
-}
-
-// Is this a (possibly generalized) function type?
-// Used when to differentiate extern C functions/values when compiling Extern declarations.
-fn is_function_type(typ: &types::Type) -> bool {
-    use types::Type::*;
-    match typ {
-        Function(..) => true,
-        ForAll(_, typ) => is_function_type(typ),
-        _ => false,
     }
 }
 
@@ -193,19 +176,7 @@ impl<'g> Generator<'g> {
 
     fn lookup<'c>(&mut self, id: DefinitionInfoId, typ: &types::Type, cache: &mut ModuleCache<'c>) -> Option<BasicValueEnum<'g>> {
         let typ = self.follow_bindings(typ, cache);
-
-        // TODO: try to avoid cloning typ here. It is only needed for when we find a Thunk of a
-        // builtin function which should be the rare case.
-        match self.definitions.get(&(id, typ.clone())) {
-            None => None,
-            Some(LazyValue::Value(value)) => Some(*value),
-            Some(LazyValue::Thunk(thunk)) => {
-                let thunk = *thunk; // explicitly copy here so the 'self' borrow from the match ends
-                let value = thunk.eval(self);
-                self.definitions.insert((id, typ), LazyValue::Value(value));
-                Some(value)
-            }
-        }
+        self.definitions.get(&(id, typ)).map(|value| *value)
     }
 
     fn monomorphise<'c>(&mut self, id: DefinitionInfoId, typ: &types::Type, cache: &mut ModuleCache<'c>) -> Option<BasicValueEnum<'g>> {
@@ -227,14 +198,14 @@ impl<'g> Generator<'g> {
             Some(DefinitionNode::Definition(definition)) => {
                 value = Some(self.codegen_monomorphise(*definition, cache));
             }
-            Some(DefinitionNode::Extern) => {
+            Some(DefinitionNode::Extern(_)) => {
                 value = Some(self.codegen_extern(id, typ, cache));
             }
             Some(DefinitionNode::TraitDefinition(_)) => {
-                unreachable!("There is no code in a trait definition that can be codegen'd");
+                unreachable!("There is no code in a trait definition that can be codegen'd.\nNo cached impl for {}: {}", definition.name, typ.display(cache));
             },
             Some(DefinitionNode::Impl) => {
-                unimplemented!("Codegen of impls is unimplemented");
+                unreachable!("There is no code in a trait impl that can be codegen'd.\nNo cached impl for {}: {}", definition.name, typ.display(cache));
             },
             Some(DefinitionNode::Parameter) => {
                 unreachable!("There is no code to (lazily) codegen for parameters");
@@ -456,7 +427,16 @@ impl<'g> Generator<'g> {
             Variable(variable) => {
                 let id = variable.definition.unwrap();
                 let typ = self.follow_bindings(variable.typ.as_ref().unwrap(), cache);
-                self.definitions.insert((id, typ), LazyValue::Value(value));
+
+                // If this is an impl, insert the value with the trait's definition id as a key as
+                // well since this is what will be looked up at the call site.
+                // NOTE: this is done before inserting the value for the normal id so that
+                //       we don't have to always clone the typ for the common case
+                cache.definition_infos[id.0].trait_definition.map(|id| {
+                    self.definitions.insert((id, typ.clone()), value);
+                });
+
+                self.definitions.insert((id, typ), value);
             },
             TypeAnnotation(annotation) => {
                 self.bind_irrefutable_pattern(annotation.lhs.as_ref(), value, cache);
@@ -489,18 +469,30 @@ impl<'g> Generator<'g> {
         value
     }
 
+    // Is this a (possibly generalized) function type?
+    // Used when to differentiate extern C functions/values when compiling Extern declarations.
+    fn is_function_type<'c>(&self, typ: &types::Type, cache: &ModuleCache<'c>) -> bool {
+        use types::Type::*;
+        let typ = self.follow_bindings(typ, cache);
+        match typ {
+            Function(..) => true,
+            ForAll(_, typ) => self.is_function_type(typ.as_ref(), cache),
+            _ => false,
+        }
+    }
+
     fn codegen_extern<'c>(&mut self, id: DefinitionInfoId, typ: &types::Type, cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
         // extern definitions should only be declared once - never duplicated & monomorphised.
         // For this reason their value is always stored with the Unit type in the definitions map.
         if let Some(value) = self.lookup(id, &UNBOUND_TYPE, cache) {
-            self.definitions.insert((id, typ.clone()), LazyValue::Value(value));
+            self.definitions.insert((id, typ.clone()), value);
             return value;
         }
 
         let llvm_type = self.convert_type(typ, cache);
         let name = &cache.definition_infos[id.0].name;
 
-        let global = if is_function_type(typ) {
+        let global = if self.is_function_type(typ, cache) {
             let function_type = llvm_type.into_pointer_type().get_element_type().into_function_type();
             self.module.add_function(name, function_type, None).as_global_value().as_basic_value_enum()
         } else {
@@ -509,8 +501,8 @@ impl<'g> Generator<'g> {
         };
 
         // Insert the global for both the current type and the unit type
-        self.definitions.insert((id, typ.clone()), LazyValue::Value(global));
-        self.definitions.insert((id, UNBOUND_TYPE.clone()), LazyValue::Value(global));
+        self.definitions.insert((id, typ.clone()), global);
+        self.definitions.insert((id, UNBOUND_TYPE.clone()), global);
         global
     }
 
@@ -586,6 +578,16 @@ impl<'g, 'c> CodeGen<'g, 'c> for ast::Variable<'c> {
     fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> Option<BasicValueEnum<'g>> {
         let id = self.definition.unwrap();
 
+        for binding in self.impl_bindings.iter() {
+            // TODO: There are never any bindings for member access trait impls. Can we continue
+            // this loop for those but otherwise assert the binding is never None?
+            cache.impl_bindings[binding.0].map(|impl_id| {
+                let trait_impl = &mut cache.impl_infos[impl_id.0].trait_impl;
+                let trait_impl = trustme::extend_lifetime(trait_impl);
+                trait_impl.codegen(generator, cache);
+            });
+        }
+
         let mut value = match generator.lookup(id, self.typ.as_ref().unwrap(), cache) {
             Some(value) => value,
             None => generator.monomorphise(id, self.typ.as_ref().unwrap(), cache).unwrap(),
@@ -615,7 +617,7 @@ impl<'g, 'c> CodeGen<'g, 'c> for ast::Lambda<'c> {
         let function_pointer = function.as_global_value().as_pointer_value().into();
         if let Some(id) = generator.current_function_info {
             let typ = generator.follow_bindings(self.typ.as_ref().unwrap(), cache);
-            generator.definitions.insert((id, typ), LazyValue::Value(function_pointer));
+            generator.definitions.insert((id, typ), function_pointer);
             generator.current_function_info = None;
         }
 
@@ -643,10 +645,19 @@ impl<'g, 'c> CodeGen<'g, 'c> for ast::Lambda<'c> {
 
 impl<'g, 'c> CodeGen<'g, 'c> for ast::FunctionCall<'c> {
     fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> Option<BasicValueEnum<'g>> {
-        // TODO: lookup builtin functions
-        let function = self.function.codegen(generator, cache).unwrap();
-        let args = fmap(&self.args, |arg| arg.codegen(generator, cache).unwrap());
-        generator.builder.build_call(function.into_pointer_value(), &args, "").try_as_basic_value().left()
+        match self.function.as_ref() {
+            ast::Ast::Variable(variable) if variable.definition == Some(BUILTIN_ID) => {
+                // Builtin function
+                // TODO: improve this control flow so that the fast path of normal function calls
+                // doesn't have to check the rare case of a builtin function call.
+                builtin::call_builtin(&self.args, generator)
+            },
+            _ => {
+                let function = self.function.codegen(generator, cache).unwrap();
+                let args = fmap(&self.args, |arg| arg.codegen(generator, cache).unwrap());
+                generator.builder.build_call(function.into_pointer_value(), &args, "").try_as_basic_value().left()
+            },
+        }
     }
 }
 
@@ -737,7 +748,10 @@ impl<'g, 'c> CodeGen<'g, 'c> for ast::TraitDefinition<'c> {
 }
 
 impl<'g, 'c> CodeGen<'g, 'c> for ast::TraitImpl<'c> {
-    fn codegen(&self, _generator: &mut Generator<'g>, _cache: &mut ModuleCache<'c>) -> Option<BasicValueEnum<'g>> {
+    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> Option<BasicValueEnum<'g>> {
+        for definition in self.definitions.iter() {
+            generator.codegen_monomorphise(definition, cache);
+        }
         None
     }
 }

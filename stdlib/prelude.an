@@ -6,504 +6,427 @@
 */
 
 //C functions
-printf (format: ref c8) ... -> i32
-puts (str: ref c8) -> i32
-putchar (character:c8) -> unit
-getchar () -> c8
-exit (status:i32) -> 'never_returns
-malloc (size:usz) -> ref 'a
-calloc (num:usz) (size:usz) -> ref 'a
-realloc (ptr: ref 'a) (size:usz) -> ref 'a
-free (ptr: ref 'a) -> unit
-memcpy (destination:ref 'a) (source:ref 'b) (num:usz) -> ref 'a //dest
-system (command: ref c8) -> i32
-strlen (str: ref c8) -> usz
+extern 
+    // printf (format: ref char) ... -> int
+    puts: (ref char) -> int
+    putchar: char -> unit
+    getchar: unit -> char
+    exit: int -> never_returns
+    malloc: int -> ref a
+    calloc: int int -> ref a
+    realloc: (ref a) int -> ref a
+    free: (ref a) -> unit
+    memcpy: (ref a) (ref b) int -> ref a //dest
+    system: (ref char) -> int
+    strlen: (ref char) -> int
 
 //C stdio
-type File = (f:ref unit)
-type FilePos = (f:ref unit)
+type File = f: ref unit
+type FilePos = f: ref unit
 
 type InFile = f:File
 type OutFile = f:File
 
-fopen (filename:ref c8) (mode:ref c8) -> File
-fclose (stream:File) -> unit
+extern 
+    fopen: (ref char) (ref char) -> File
+    fclose: File -> unit
 
-fputs (str: ref c8) (stream:OutFile) -> i32
-fputc (character:i32) (stream:OutFile) -> i32
-fgetc (stream:InFile) -> i32
-fgets (str: ref c8) (num:i32) (stream:InFile) -> ref c8
-ungetc (character:i32) (stream:InFile) -> i32
+    fputs: (ref char) OutFile -> int
+    fputc: int OutFile -> int
+    fgetc: InFile -> int
+    fgets: (ref char) int InFile -> ref char
+    ungetc: int InFile -> int
 
-fgetpos (stream:File) (pos:FilePos) -> unit
-ftell (stream:File) -> i64
-fsetpos (stream:File) (pos:FilePos) -> unit
-fseek (stream:File) (offset:i64) (origin:i32) -> i32
+    fgetpos: File FilePos -> unit
+    ftell: File -> int
+    fsetpos: File FilePos -> unit
+    fseek: File int int -> int
 
-feof (stream:InFile) -> i32
-ferror (stream:File) -> i32
+    feof: InFile -> int
+    ferror: File -> int
 
 //Convenience function for using fgetc, and feof with better types
-fgetc8 f = fgetc f as c8
-feofb f = feof f as bool
+// TODO: builtin casting between primitives
+// fgetchar f = fgetc f as char
+// feofb f = feof f as bool
 
 //Ante datatypes
-type Str =
-    cStr: (ref c8)
-    len: usz
-
-type Maybe 't =
-   | Some 't
+type Maybe t =
+   | Some t
    | None
 
 
-trait Empty 't
-    empty unit -> 't
+trait Empty t
+    empty: unit -> t
 
+// TODO: trait impls with 'given' clauses
+// impl Eq (Maybe 'e) given Eq 'e
+//     (==) l r =
+//         match (l, r) with
+//         | (Some lv, Some rv) -> lv == rv
+//         | (None, None) -> true
+//         | _ -> false
 
-impl Eq (Maybe 'e) given Eq 'e
-    (==) l r =
-        match (l, r) with
-        | (Some lv, Some rv) -> lv == rv
-        | (None, None) -> true
-        | _ -> false
+trait Cast a /*to*/ b
+    cast: a -> b
 
-trait Cast 'a /*to*/ 'b
-    cast 'a -> 'b
-
-impl Cast 'a 'a
+impl Cast a a
     cast a = a
 
-impl Cast (Maybe 'm) Str given Cast 'm Str
-    cast maybe =
-        match maybe with
-        | Some val -> "Some (" ++ cast val ++ ")"
-        | None -> "None"
+// TODO: trait impls with 'given' clauses
+// impl Cast (Maybe 'm) string given Cast 'm string
+//     cast maybe =
+//         match maybe with
+//         | Some val -> "Some (" ++ cast val ++ ")"
+//         | None -> "None"
 
-trait TryCast 'a 'b
-    try_cast 'a -> Maybe 'b
+trait TryCast a b
+    try_cast: a -> Maybe b
 
-impl TryCast 'a 'b given Cast 'a 'b
-    try_cast a = Some (cast a)
-
-
-//Compile-time functions
-module Ante
-    //prints type and value (llvm dump) of variable while compiling
-    ante debug (val:'t) -> unit
-
-    //returns the size of a type in Bytes.  Does not evaluate its argument
-    ante sizeof (val:'t) -> usz
-
-    //Issue an error message during compile-time and stop compiling the current function
-    ante error (msg: ref c8) -> 'never_returns
-
-    //dumps llvm-ir to stdout
-    ante emit_ir () -> unit
-
-    //useful in the repl to redefine functions
-    ante forget (name: ref c8) -> unit
+// TODO: trait impls with 'given' clauses
+// impl TryCast 'a 'b given Cast 'a 'b
+//     try_cast a = Some (cast a)
 
 
-trait Add 'n
-    (+) 'n 'n -> 'n
+trait Add n
+    (+): n n -> n
 
-trait Sub 'n
-    (-) 'n 'n -> 'n
+impl Add int
+    (+) (_: int) (_: int) -> int = builtin "AddInt"
 
-trait Mul 'n
-    (*) 'n 'n -> 'n
-
-trait Div 'n
-    (/) 'n 'n -> 'n
-
-trait Mod 'n
-    (%) 'n 'n -> 'n
-
-trait Pow 'n
-    (^) 'n 'n -> 'n
-
-trait Cmp 'n
-    (<) 'n 'n -> bool
-    (>) 'n 'n -> bool
-    //(<=) l r = not (l > r)
-    //(>=) l r = not (l < r)
-
-trait Eq 't
-    (==) 't 't -> bool
-    // (!=) l r = not (l == r)
-
-(!=) (a: Str) (b: Str) = not (a == b)
-
-trait Is 't
-    (is) 't 't -> bool
-
-trait Append 't
-    (++) 't 't -> 't
-
-trait Extract 'col 'index -> 'elem
-    (#) 'col 'index -> 'elem
-
-trait Insert 'col 'index 'elem
-    // temporary until functions with the same name and
-    // a differing number of parameters can be declared.
-    insert (mut 'col) 'index 'elem -> unit
-
-trait In 'elem 'col
-    (in) 'elem 'col -> bool
-
-trait Range 'start 'end -> 'result
-    (..) 'start 'end -> 'result
-
-trait Deref 'ptr -> 'elem
-    (@) 'ptr -> 'elem
-
-trait Neg 't
-    neg 't -> 't
-
-trait Not 't
-    (not) 't -> 't
+impl Add float
+    (+) (_: float) (_: float) -> float = builtin "AddFloat"
 
 
-trait Print 't
-    printne 't -> unit
+trait Sub n
+    (-): n n -> n
+
+impl Sub int
+    (-) (_: int) (_: int) -> int = builtin "SubInt"
+
+impl Sub float
+    (-) (_: float) (_: float) -> float = builtin "SubFloat"
+
+
+trait Mul n
+    (*): n n -> n
+
+impl Mul int
+    (*) (_: int) (_: int) -> int = builtin "MulInt"
+
+impl Mul float
+    (*) (_: float) (_: float) -> float = builtin "MulFloat"
+
+
+trait Div n
+    (/): n n -> n
+
+impl Div int
+    (/) (_: int) (_: int) -> int = builtin "DivInt"
+
+impl Div float
+    (/) (_: float) (_: float) -> float = builtin "DivFloat"
+
+
+trait Mod n
+    (%): n n -> n
+
+impl Mod int
+    (%) (_: int) (_: int) -> int = builtin "ModInt"
+
+impl Mod float
+    (%) (_: float) (_: float) -> float = builtin "ModFloat"
+
+
+trait Eq t
+    (==): t t -> bool
+
+(not) a = if a then false else true
+(!=) l r = not (l == r)
+
+impl Eq int
+    (==) (_: int) (_: int) -> bool =
+        builtin "EqInt"
+
+impl Eq float
+    (==) (_: float) (_: float) -> bool =
+        builtin "EqFloat"
+
+type Ordering = | Less | Equal | Greater
+
+impl Eq Ordering
+    (==) (a: Ordering) (b: Ordering) -> bool =
+        match a with
+        | Less ->
+            match b with
+            | Less -> true
+            | _ -> false
+        | Equal ->
+            match b with
+            | Equal -> true
+            | _ -> false
+        | Greater ->
+            match b with
+            | Greater -> true
+            | _ -> false
+
+trait Cmp a
+    compare: a a -> Ordering
+
+(<) a b = compare a b == Less
+(>) a b = compare a b == Greater
+(<=) a b = compare a b != Greater
+(>=) a b = compare a b != Less
+
+impl Cmp int
+    compare (_: int) (_: int) -> int =
+        if builtin "LessInt" then Less
+        else if builtin "GreaterInt" then Greater
+        else Equal
+
+impl Cmp float
+    compare (_: int) (_: int) -> int =
+        if builtin "LessFloat" then Less
+        else if builtin "GreaterFloat" then Greater
+        else Equal
+
+// TODO: 'is' operator for identity/referential equality
+// trait Is 't
+//     (is) 't 't -> bool
+
+trait Append t
+    (++): t t -> t
+
+trait Extract col index -> elem
+    (#): col index -> elem
+
+// TODO: 'mut' and special-case extract versus append
+// trait Insert col index elem
+//     // temporary until functions with the same name and
+//     // a differing number of parameters can be declared.
+//     insert (mut col) index elem -> unit
+
+trait In elem col
+    (in): elem col -> bool
+
+// trait Deref ptr -> elem
+//     (@): ptr -> elem
+
+// TODO: Do we need a separate trait for unary '-'?
+// trait Neg t
+//     neg t -> t
+
+// TODO: Is a trait for unary 'Not' needed or can it just be a normal function?
+// trait Not t
+//     (not) t -> t
+
+
+trait Print t
+    printne: t -> unit
 
 print x =
-    printne "${x}\n"
+    printne x
+    putchar '\n'
 
 
-//numerical print functions
-impl Print i8
-    printne x = printf ("%hhd".cStr) x
+// TODO: need varargs support for printf
+// impl Print int
+//     printne x = printf ("%d".cStr) x
+// 
+// impl Print float
+//     printne x = printf ("%.14f".cStr) x
+// 
+// impl Print char
+//     printne x = printf ("%c".cStr) x
+// 
+// impl Print bool
+//     printne b =
+//         if b then printf ("true".cStr)
+//         else printf ("false".cStr)
+// 
+// impl Print (ref char)
+//     printne s = printf ("%s".cStr) s
+// 
+// impl Print string
+//     printne s = printne (s.cStr)
 
-impl Print i16
-    printne x = printf ("%hd".cStr) x
-
-impl Print i32
-    printne x = printf ("%d".cStr) x
-
-impl Print i64
-    printne x = printf ("%ld".cStr) x
-
-impl Print isz
-    printne x = printf ("%zi".cStr) x
-
-//unsigned
-impl Print u8
-    printne x = printf ("%hhu".cStr) x
-
-impl Print u16
-    printne x = printf ("%hu".cStr) x
-
-impl Print u32
-    printne x = printf ("%u".cStr) x
-
-impl Print u64
-    printne x = printf ("%lu".cStr) x
-
-impl Print usz
-    printne x = printf ("%zu".cStr) x
-
-//floats
-impl Print f16
-    printne x = printf ("%.2f".cStr) (cast x : f64)
-
-impl Print f32
-    printne x = printf ("%f".cStr) (cast x : f64)
-
-impl Print f64
-    printne x = printf ("%.14f".cStr) x
-
-//char
-impl Print c8
-    printne x = printf ("%c".cStr) x
-
-//bool
-impl Print bool
-    printne b =
-        if b then printf ("true".cStr)
-        else printf ("false".cStr)
-
-//c-string
-impl Print (ref c8)
-    printne s = printf ("%s".cStr) s
+// TODO: impls with 'given' clauses
+// impl Print 't given Cast 't string
+//     printne t = printne (t as string)
 
 
-impl Print Str
-    printne s = printne (s.cStr)
+impl Cast string (ref char)
+    cast s = s.c_string
+
+// TODO: 'mut'
+// impl Cast int string
+//     cast i =
+//         if i == 0 then return "0"
+//         len = mut 0
+//         alloc_size = 20
+//         buf = mut malloc (alloc_size + 1)
+//         buf#alloc_size := '\0'
+// 
+//         x = mut i
+//         isNeg = i < 0 and ((x *= -1); true)
+// 
+//         while x != 0 do
+//             len += 1
+//             buf#(alloc_size - len) := '0' + cast (x % 10)
+//             x /= 10
+// 
+//         if isNeg then
+//             len += 1
+//             buf#(alloc_size - len) := '-'
+// 
+//         offset = cast buf + (alloc_size - len)
+//         string (cast offset) len
 
 
-impl Print 't given Cast 't Str
-    printne t = printne (t as Str)
+// TODO: mut
+// parse (s: string) -> Maybe int =
+//     i = mut 0
+//     sum = mut 0
+//     isNeg =
+//         if s.len == 0 or s.cStr#0 == '-' then false
+//         else ((i += 1); true)
+// 
+//     while s.cStr#i != '\0' do
+//         c = s.cStr#i
+//         if c >= '0' and c <= '9' then
+//             sum *= 10
+//             sum += cast (c - '0')
+//             i += 1
+//             None
+//         else
+//             return None
+// 
+//     Some (if isNeg then -1 * sum else sum)
 
-
-impl Cast Str (ref c8)
-    cast s = s.cStr
-
-
-impl Cast i64 Str
-    cast i =
-        if i == 0i64 then return "0"
-        len = mut 0usz
-        alloc_size = 20usz
-        buf = mut malloc (alloc_size + 1usz)
-        buf#alloc_size := '\0'
-
-        x = mut i
-        isNeg = i < 0i64 and ((x *= -1i64); true)
-
-        while x != 0i64 do
-            len += 1usz
-            buf#(alloc_size - len) := '0' + cast (x % 10i64)
-            x /= 10i64
-
-        if isNeg then
-            len += 1usz
-            buf#(alloc_size - len) := '-'
-
-        offset = cast buf + (alloc_size - len)
-        Str (cast offset) len
-
-
-impl Cast u64 Str
-    cast i =
-        if i == 0u64 then return "0"
-        len = mut 0usz
-        alloc_size = 20usz
-        buf = mut malloc (alloc_size + 1usz)
-        buf#alloc_size := '\0'
-
-        x = mut i
-        while x != 0u64 do
-            len += 1usz
-            buf#(alloc_size - len) := '0' + cast (x % 10u64)
-            x /= 10u64
-
-        offset = cast buf + (alloc_size - len)
-        Str (cast offset) len
-
-
-// convert all other numeric types to strings by widening first
-impl Cast i8 Str
-    cast x = x as i64 as Str
-
-impl Cast i16 Str
-    cast x = x as i64 as Str
-
-impl Cast i32 Str
-    cast x = x as i64 as Str
-
-impl Cast isz Str
-    cast x = x as i64 as Str
-
-impl Cast u8 Str
-    cast x = x as u64 as Str
-
-impl Cast u16 Str
-    cast x = x as u64 as Str
-
-impl Cast u32 Str
-    cast x = x as u64 as Str
-
-impl Cast usz Str
-    cast x = x as u64 as Str
-
-
-module U64
-    parse (s:Str) -> Maybe u64 =
-        i = mut 0usz
-        sum = mut 0u64
-
-        while s.cStr#i != '\0' do
-            c = s.cStr#i
-            if c >= '0' and c <= '9' then
-                sum *= 10u64
-                sum += cast (c - '0')
-                i += 1usz
-                None
-            else
-                return None
-
-        Some sum
-
-module I64
-    parse (s:Str) -> Maybe i64 =
-        i = mut 0usz
-        sum = mut 0i64
-        isNeg =
-            if s.len == 0usz or s.cStr#0usz == '-' then false
-            else ((i += 1usz); true)
-
-        while s.cStr#i != '\0' do
-            c = s.cStr#i
-            if c >= '0' and c <= '9' then
-                sum *= 10i64
-                sum += cast (c - '0')
-                i += 1usz
-                None
-            else
-                return None
-
-        Some (if isNeg then -1i64 * sum else sum)
-
-
-impl Eq (ref 't) given Eq 't
-    (==) l r = @l == @r
+// TODO: impls with 'given' clauses
+// impl Eq (ref 't) given Eq 't
+//     (==) l r = @l == @r
 
 
 //For-loops work over any range that is Iterable
-trait Iterable 'i -> 'it 'e
-    into_iter 'i -> 'it given Iterator 'it 'e
+trait Iterable i -> it
+    into_iter: i -> it
 
-trait Iterator 'i -> 'elem
-    has_next 'i -> bool
-    cur_elem 'i -> 'elem
-    advance 'i -> 'i
+trait Iterator i -> elem
+    has_next: i -> bool
+    cur_elem: i -> elem
+    advance: i -> i
 
-impl Iterable 'i 'i 'e given Iterator 'i
-    into_iter i = i
+// TODO: impls with 'given' clauses
+// impl Iterable 'i 'i 'e given Iterator 'i
+//     into_iter i = i
 
-type LazyRange = start:i32 end:i32 step:i32
-
-//returns true if a is in the range r
-impl In i32 LazyRange
-    (in) a r =
-        if r.step == 1 then
-            r.start <= a and a < r.end
-        else
-            a_adj = a % r.step
-            s_adj = r.start % r.step
-
-            a_adj == s_adj and r.start <= a and a < r.end
-
-//creates an end-exclusive range
-impl Range i32 i32 LazyRange
-    (..) start end =
-        LazyRange start end 1
-
-//Takes a tuple of the first two integers and calculates the step by their difference
-impl Range (i32,i32) i32 LazyRange
-    (..) first_two end =
-        LazyRange (first_two#0usz) end (first_two#1usz - first_two#0usz)
-
-impl Iterator LazyRange i32
-    cur_elem r = r.start
-    advance r = LazyRange (r.start + r.step) r.end r.step
-    has_next r = (r.step > 0 and r.start < r.end) or (r.step < 0 and r.start > r.end)
-
-//Iterating through an InFile iterates through each line
-impl Iterator InFile Str
-    has_next f = not feofb f
-    cur_elem f = InFile.next_line f
-    advance f = f
+// TODO: unary 'not'
+// //Iterating through an InFile iterates through each line
+// impl Iterator InFile string
+//     has_next f = not feofb f
+//     cur_elem f = InFile.next_line f
+//     advance f = f
 
 
-module OutFile
-    write (f:OutFile) (s:Str) =
-        fputs (s.cStr) f
-
-module Str
-    print (s:Str) =
-        puts s.cStr
-
-impl Cast (ref c8) Str
-    cast cStr = Str cStr (cast (strlen cStr))
-
-impl Eq Str
-    (==) l r =
-        if l.len != r.len then
-            return false
-
-        for i in 0 .. l.len do
-            if l.cStr#i != r.cStr#i then
-                return false
-        true
-
-impl Is Str
-    (is) l r = l.cStr is r.cStr
-
-
-impl Append Str
-    (++) s1 s2 =
-        if s1.len == 0usz then return s2
-        if s2.len == 0usz then return s1
-
-        len = s1.len + s2.len
-        buf = mut malloc (len+1usz)
-
-        memcpy buf (s1.cStr) s1.len
-
-        buf_offset = cast (cast buf + s1.len)
-        memcpy buf_offset (s2.cStr) (s2.len+1usz) //copy terminating null too
-
-        Str buf len
-
-impl Extract Str usz c8
-    (#) s index = s.cStr#index
-
-
-impl Insert Str usz c8
-    insert str index char =
-        str.cStr#index := char
-
-impl Cast Str InFile
-    cast fName = InFile (fopen fName.cStr "r".cStr)
-
-
-impl Cast Str OutFile
-    cast fName = OutFile (fopen fName.cStr "w".cStr)
-
-
-module InFile
-    next_line (f:InFile) -> Str =
-        if feofb f then return ""
-        eof = cast 255
-
-        len = mut 0usz
-        cap = mut 64usz
-        cstr = mut malloc cap
-
-        while
-            c = fgetc8 f
-
-            if c == eof then break
-
-            //Flag feof if eof occurs after terminating newline
-            if c == '\n' then
-                peek = fgetc8 f
-                if peek != eof then ungetc (cast peek) f
-                break
-
-            if len+1usz >= cap then
-                cap *= 2usz
-                cstr := realloc cstr cap
-
-            cstr#len := c
-            len += 1usz
-            true
-        do ()
-
-        cstr#len := '\0'
-        Str cstr len
-
-
-//print a message then return user input
-input msg -> Str =
-    len = mut 0usz
-    cstr = mut cast 0
-
-    printne msg
-
-    while
-        c = getchar ()
-        if len % 32usz == 0usz then
-            cstr := realloc cstr (len+32usz)
-
-        cstr#len := c
-        len += 1usz
-        c != '\n'
-    do ()
-
-    len -= 1usz
-    cstr#len := '\0'
-    Str cstr len
+// impl Cast (ref char) string
+//     cast cStr = string cStr (cast (strlen cStr))
+// 
+// impl Eq string
+//     (==) l r =
+//         if l.len != r.len then
+//             return false
+// 
+//         for i in 0 .. l.len do
+//             if l.cStr#i != r.cStr#i then
+//                 return false
+//         true
+// 
+// impl Is string
+//     (is) l r = l.cStr is r.cStr
+// 
+// 
+// impl Append string
+//     (++) s1 s2 =
+//         if s1.len == 0int then return s2
+//         if s2.len == 0int then return s1
+// 
+//         len = s1.len + s2.len
+//         buf = mut malloc (len+1int)
+// 
+//         memcpy buf (s1.cStr) s1.len
+// 
+//         buf_offset = cast (cast buf + s1.len)
+//         memcpy buf_offset (s2.cStr) (s2.len+1int) //copy terminating null too
+// 
+//         string buf len
+// 
+// impl Extract string int char
+//     (#) s index = s.cStr#index
+// 
+// 
+// impl Insert string int char
+//     insert str index char =
+//         str.cStr#index := char
+// 
+// impl Cast string InFile
+//     cast fName = InFile (fopen fName.cStr "r".cStr)
+// 
+// 
+// impl Cast string OutFile
+//     cast fName = OutFile (fopen fName.cStr "w".cStr)
+// 
+// 
+// module InFile
+//     next_line (f:InFile) -> string =
+//         if feofb f then return ""
+//         eof = cast 255
+// 
+//         len = mut 0int
+//         cap = mut 64int
+//         cstr = mut malloc cap
+// 
+//         while
+//             c = fgetchar f
+// 
+//             if c == eof then break
+// 
+//             //Flag feof if eof occurs after terminating newline
+//             if c == '\n' then
+//                 peek = fgetchar f
+//                 if peek != eof then ungetc (cast peek) f
+//                 break
+// 
+//             if len+1int >= cap then
+//                 cap *= 2int
+//                 cstr := realloc cstr cap
+// 
+//             cstr#len := c
+//             len += 1int
+//             true
+//         do ()
+// 
+//         cstr#len := '\0'
+//         string cstr len
+// 
+// 
+// //print a message then return user input
+// input msg -> string =
+//     len = mut 0int
+//     cstr = mut cast 0
+// 
+//     printne msg
+// 
+//     while
+//         c = getchar ()
+//         if len % 32int == 0int then
+//             cstr := realloc cstr (len+32int)
+// 
+//         cstr#len := c
+//         len += 1int
+//         c != '\n'
+//     do ()
+// 
+//     len -= 1int
+//     cstr#len := '\0'
+//     string cstr len

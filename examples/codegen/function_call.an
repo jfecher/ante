@@ -1,8 +1,6 @@
-extern puts: (ref char) -> int
+show x = puts x.c_string
 
-print x = puts x.c_string
-
-print "foo"
+show "foo"
 
 // args: --run --delete-binary
 // expected stdout: foo

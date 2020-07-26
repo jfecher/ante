@@ -13,6 +13,10 @@ mimalloc = { version = "0.1.19", default-features = false }
 difference = "2.0.0"
 goldentests = "0.3.4"
 inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "llvm10-0" }
+dirs = "3.0"
+
+[build-dependencies]
+dirs = "3.0"
 
 [profile.release]
 lto = "fat"

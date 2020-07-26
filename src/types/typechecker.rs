@@ -1,4 +1,4 @@
-use crate::cache::{ ModuleCache, TraitInfoId, DefinitionInfoId, ImplBindingId, DefinitionNode };
+use crate::cache::{ ModuleCache, TraitInfoId, DefinitionInfoId, ImplBindingId, DefinitionNode, ImplInfoId };
 use crate::parser::ast;
 use crate::types::{ Type, Type::*, TypeVariableId, PrimitiveType, LetBindingLevel, TypeBinding::* };
 use crate::types::{ TypeBinding, STRING_TYPE };
@@ -420,9 +420,12 @@ fn infer_nested_definition<'a>(definition_id: DefinitionInfoId, cache: &mut Modu
             let definition = trustme::extend_lifetime(*definition);
             infer(definition, cache);
         },
-        DefinitionNode::Extern => {},
+        DefinitionNode::Extern(declaration) => {
+            let definition = trustme::extend_lifetime(*declaration);
+            infer(definition, cache);
+        },
+        DefinitionNode::Impl => unreachable!("DefinitionNode::Impl shouldn't be reachable when inferring nested definitions. Only the TraitDefinition should be visible."),
         DefinitionNode::Parameter => {},
-        DefinitionNode::Impl => unreachable!(),
     };
 
     let info = &mut cache.definition_infos[definition_id.0];
@@ -559,14 +562,14 @@ fn find_impl<'a>(trait_impl: &mut Impl, location: Location<'a>, cache: &mut Modu
 
         if info.trait_id == trait_impl.trait_id {
             // TODO: remove excess cloning
-            match try_unify_all(&trait_impl.args, &info.typeargs.clone(), location, cache) {
-                Ok(()) => found.push(impl_id),
-                Err(()) => (),
+            if try_unify_all(&trait_impl.args, &info.typeargs.clone(), location, cache).is_ok() {
+                found.push(impl_id);
             }
         }
     }
 
     if found.len() == 1 {
+        infer_trait_impl(found[0], cache);
         let binding = &mut cache.impl_bindings[trait_impl.binding.0];
         assert!(binding.is_none());
         *binding = Some(found[0]);
@@ -615,6 +618,12 @@ pub fn infer<'a, T>(ast: &mut T, cache: &mut ModuleCache<'a>) -> (Type, TraitLis
     let (typ, traits) = ast.infer_impl(cache);
     ast.set_type(typ.clone());
     (typ, traits)
+}
+
+fn infer_trait_impl<'a>(id: ImplInfoId, cache: &mut ModuleCache<'a>) {
+    let info = &mut cache.impl_infos[id.0];
+    let trait_impl = trustme::extend_lifetime(info.trait_impl);
+    infer(trait_impl, cache);
 }
 
 /// Note: each Ast's inference rule is given above the impl if available.
@@ -666,7 +675,11 @@ impl<'a> Inferable<'a> for ast::Variable<'a> {
             },
         };
 
-        let (t, traits, impl_bindings) = instantiate(&s, traits, cache);
+        let (t, mut traits, impl_bindings) = instantiate(&s, traits, cache);
+        for trait_impl in traits.iter_mut() {
+            trait_impl.scope = self.impl_scope.unwrap();
+        }
+
         self.impl_bindings = impl_bindings;
         (t, traits)
     }

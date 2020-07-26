@@ -278,6 +278,8 @@ impl<'cache, 'contents> Lexer<'cache, 'contents> {
             }
             comment_level != 0
         });
+        self.advance();
+        self.advance();
         self.next()
     }
 }

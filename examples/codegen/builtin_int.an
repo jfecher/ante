@@ -1,0 +1,22 @@
+
+extern printf: (ref char) int -> int
+
+add_int = 1 + 2
+sub_int = 5 - 6
+mul_int = 9 * 10
+div_int = 60 / 12
+mod_int = 10 % 3
+
+printf "%d\n".c_string add_int
+printf "%d\n".c_string sub_int
+printf "%d\n".c_string mul_int
+printf "%d\n".c_string div_int
+printf "%d\n".c_string mod_int
+
+// args: --run --delete-binary
+// expected stdout:
+// 3
+// -1
+// 90
+// 5
+// 1

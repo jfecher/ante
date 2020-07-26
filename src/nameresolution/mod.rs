@@ -90,7 +90,7 @@ pub struct NameResolver {
     /// be implemented. A definition is removed from this list once defined and
     /// after compiling the impl this list must be empty.  Otherwise, the user
     /// did not implement all the definitions of a trait.
-    required_definitions: Option<Vec<String>>,
+    required_definitions: Option<Vec<DefinitionInfoId>>,
 
     /// Keeps track of all the definitions collected within a pattern so they
     /// can all be tagged with the expression they were defined as later
@@ -146,7 +146,7 @@ impl NameResolver {
         // TODO optimization: this really shouldn't be necessary to copy all the
         // trait impl ids for each scope just so Variables can store their scope
         // for the type checker to do trait resolution.
-        for scope in self.scopes.iter().rev().next() {
+        for scope in self.scopes.iter().rev() {
             for (_, impls) in scope.impls.iter() {
                 cache.impl_scopes[impl_scope.0].append(&mut impls.clone());
             }
@@ -205,8 +205,8 @@ impl NameResolver {
         def.required_impls.push(Impl::new(trait_id, impl_scope_id, binding_id, args));
     }
 
-    fn check_required_definitions<'b>(&mut self, name: String, cache: &mut ModuleCache<'b>, location: Location<'b>) {
-        if let Some(existing_id) = self.current_scope().definitions.get(&name) {
+    fn check_required_definitions<'b>(&mut self, name: &str, id: DefinitionInfoId, cache: &mut ModuleCache<'b>, location: Location<'b>) {
+        if let Some(existing_id) = self.current_scope().definitions.get(name) {
             let existing_definition = &cache.definition_infos[existing_id.0];
 
             // required_impls is only ever pushed to for trait functions during name resolution
@@ -219,7 +219,9 @@ impl NameResolver {
         }
 
         let required_definitions = self.required_definitions.as_mut().unwrap();
-        if let Some(index) = required_definitions.iter().position(|x| x == &name) {
+        if let Some(index) = required_definitions.iter().position(|id| &cache.definition_infos[id.0].name == name) {
+            let definition = required_definitions[index];
+            cache.definition_infos[id.0].trait_definition = Some(definition);
             required_definitions.swap_remove(index);
         } else {
             let trait_info = &cache.trait_infos[self.current_trait.unwrap().0];
@@ -227,15 +229,15 @@ impl NameResolver {
         }
     }
 
-    pub fn push_definition<'b>(&mut self, name: String, cache: &mut ModuleCache<'b>, location: Location<'b>) -> DefinitionInfoId {
-        let id = cache.push_definition(name.clone(), location);
+    pub fn push_definition<'b>(&mut self, name: &str, cache: &mut ModuleCache<'b>, location: Location<'b>) -> DefinitionInfoId {
+        let id = cache.push_definition(name.to_owned(), location);
         if self.required_definitions.is_some() {
             // We're inside a trait impl right now, any definitions shouldn't be put in scope
             // else they'd collide with the declaration from the trait. Additionally, we must
             // ensure the definition is one of the ones required by the trait in required_definitions.
-            self.check_required_definitions(name, cache, location);
+            self.check_required_definitions(name, id, cache, location);
         } else {
-            if let Some(existing_definition) = self.current_scope().definitions.get(&name) {
+            if let Some(existing_definition) = self.current_scope().definitions.get(name) {
                 error!(location, "{} is already in scope", name);
                 let previous_location = cache.definition_infos[existing_definition.0].location;
                 note!(previous_location, "{} previously defined here", name);
@@ -245,9 +247,9 @@ impl NameResolver {
             // This can be removed if ante ever allows shadowing by default.
             if name != "_" {
                 if self.in_global_scope() {
-                    self.exports.definitions.insert(name.clone(), id);
+                    self.exports.definitions.insert(name.to_owned(), id);
                 }
-                self.current_scope().definitions.insert(name, id);
+                self.current_scope().definitions.insert(name.to_owned(), id);
             }
 
             // If we're currently in a trait, add this definition to the trait's list of definitions
@@ -291,10 +293,11 @@ impl NameResolver {
     }
 
     pub fn push_trait_impl<'b>(&mut self, trait_id: TraitInfoId, args: Vec<Type>,
-                definitions: Vec<DefinitionInfoId>, cache: &mut ModuleCache<'b>, location: Location<'b>) -> ImplInfoId {
+                definitions: Vec<DefinitionInfoId>, trait_impl: &'b mut ast::TraitImpl<'b>,
+                cache: &mut ModuleCache<'b>, location: Location<'b>) -> ImplInfoId {
 
         // Any overlapping impls are only reported when they're used during typechecking
-        let id = cache.push_trait_impl(trait_id, args, definitions, location);
+        let id = cache.push_trait_impl(trait_id, args, definitions, trait_impl, location);
         if self.in_global_scope() {
             self.exports.impls.entry(trait_id).or_default().push(id);
             cache.impl_scopes[self.exports.impl_scope.0].push(id);
@@ -341,7 +344,6 @@ impl<'b> NameResolver {
         };
 
         resolver.push_scope(cache);
-        cache.builtins.import_builtins(&mut resolver);
 
         let existing = cache.get_name_resolver_by_path(&filepath);
         let existing_state = existing.map_or(NameResolutionState::NotStarted, |x| x.state);
@@ -349,6 +351,7 @@ impl<'b> NameResolver {
 
         cache.name_resolvers.push(resolver);
         let resolver = cache.name_resolvers.get_mut(module_id.0).unwrap();
+        builtin::import_prelude(resolver, cache);
 
         let ast = cache.parse_trees.get_mut(module_id.0).unwrap();
         ast.declare(resolver, cache);
@@ -416,10 +419,16 @@ impl<'b> NameResolver {
 
     /// The collect* family of functions recurses over an irrefutable pattern, either declaring or
     /// defining each node and tagging the declaration with the given DefinitionNode.
-    fn resolve_declarations<F>(&mut self, ast: &mut Ast<'b>, cache: &mut ModuleCache<'b>, definition: F)
+    fn resolve_declarations<F>(&mut self, ast: &mut Ast<'b>, cache: &mut ModuleCache<'b>, mut definition: F)
         where F: FnMut() -> DefinitionNode<'b>
     {
-        self.resolve_all_declarations(vec![ast].into_iter(), cache, definition);
+        self.definitions_collected.clear();
+        self.auto_declare = true;
+        ast.declare(self, cache);
+        self.auto_declare = false;
+        for id in self.definitions_collected.iter() {
+            cache.definition_infos[id.0].definition = Some(definition());
+        }
     }
 
     fn resolve_definitions<T, F>(&mut self, ast: &mut T, cache: &mut ModuleCache<'b>, definition: F)
@@ -429,10 +438,20 @@ impl<'b> NameResolver {
         self.resolve_all_definitions(vec![ast].into_iter(), cache, definition);
     }
 
-    fn resolve_all_declarations<'a, T: 'a, It, F>(&mut self, patterns: It, cache: &mut ModuleCache<'b>, mut definition: F) -> Vec<DefinitionInfoId>
+    fn resolve_extern_definitions(&mut self, declaration: &mut ast::TypeAnnotation<'b>, cache: &mut ModuleCache<'b>) {
+        self.definitions_collected.clear();
+        self.auto_declare = true;
+        declaration.define(self, cache);
+        self.auto_declare = false;
+        for id in self.definitions_collected.iter() {
+            let declaration = trustme::extend_lifetime(declaration);
+            cache.definition_infos[id.0].definition = Some(DefinitionNode::Extern(declaration));
+        }
+    }
+
+    fn resolve_trait_impl_declarations<'a, T: 'a, It>(&mut self, patterns: It, cache: &mut ModuleCache<'b>) -> Vec<DefinitionInfoId>
         where It: Iterator<Item = &'a mut T>,
               T: Resolvable<'b>,
-              F: FnMut() -> DefinitionNode<'b>
     {
         self.definitions_collected.clear();
         self.auto_declare = true;
@@ -441,7 +460,7 @@ impl<'b> NameResolver {
         }
         self.auto_declare = false;
         for id in self.definitions_collected.iter() {
-            cache.definition_infos[id.0].definition = Some(definition());
+            cache.definition_infos[id.0].definition = Some(DefinitionNode::Impl);
         }
         self.definitions_collected.clone()
     }
@@ -495,14 +514,14 @@ impl<'b> Resolvable<'b> for ast::Variable<'b> {
             Operator(token) => {
                 let name = token.to_string();
                 if resolver.auto_declare {
-                    let id = resolver.push_definition(name, cache, self.location);
+                    let id = resolver.push_definition(&name, cache, self.location);
                     resolver.definitions_collected.push(id);
                     self.definition = Some(id);
                 }
             },
             Identifier(name) => {
                 if resolver.auto_declare {
-                    let id = resolver.push_definition(name.clone(), cache, self.location);
+                    let id = resolver.push_definition(&name, cache, self.location);
                     resolver.definitions_collected.push(id);
                     self.definition = Some(id);
                 }
@@ -653,7 +672,7 @@ fn create_variants<'b>(vec: &Variants<'b>, parent_type_id: TypeInfoId,
     fmap(&vec, |(name, types, location)| {
         let args = fmap(&types, |t| resolver.convert_type(cache, t));
 
-        let id = resolver.push_definition(name.clone(), cache, *location);
+        let id = resolver.push_definition(&name, cache, *location);
         cache.definition_infos[id.0].typ = Some(create_variant_constructor_type(parent_type_id, args.clone(), cache));
         TypeConstructor { name: name.clone(), args, location: *location }
     })
@@ -711,7 +730,7 @@ impl<'b> Resolvable<'b> for ast::TypeDefinition<'b> {
 
                 // Create the constructor for this type.
                 // This is done inside create_variants for tagged union types
-                let id = resolver.push_definition(self.name.clone(), cache, self.location);
+                let id = resolver.push_definition(&self.name, cache, self.location);
                 cache.definition_infos[id.0].typ = Some(create_variant_constructor_type(type_id, field_types, cache));
             },
             ast::TypeDefinitionBody::AliasOf(typ) => {
@@ -735,8 +754,7 @@ impl<'b> Resolvable<'b> for ast::TypeAnnotation<'b> {
     }
 }
 
-fn find_file<'a>(relative_import_path: &str, cache: &mut ModuleCache) -> Option<(File, PathBuf)> {
-    let relative_path = Path::new(relative_import_path);
+fn find_file<'a>(relative_path: &Path, cache: &mut ModuleCache) -> Option<(File, PathBuf)> {
     for root in cache.relative_roots.iter() {
         let path = root.join(relative_path).with_extension("an");
 
@@ -750,64 +768,73 @@ fn find_file<'a>(relative_import_path: &str, cache: &mut ModuleCache) -> Option<
     None
 }
 
+pub fn declare_module<'a>(path: &Path, cache: &mut ModuleCache<'a>, error_location: Location) -> Option<ModuleId> {
+    let (file, path) = match find_file(path, cache) {
+        Some((f, p)) => (f, p),
+        _ => {
+            error!(error_location, "Couldn't open file for import: {}.an", path.display());
+            return None;
+        },
+    };
+
+    if let Some(module_id) = cache.modules.get(&path) {
+        let existing_resolver = cache.name_resolvers.get_mut(module_id.0).unwrap();
+        match existing_resolver.state {
+            NameResolutionState::NotStarted => (),
+            _ => {
+                return Some(existing_resolver.module_id); // already declared
+            },
+        }
+    }
+
+    let path = cache.push_filepath(PathBuf::from(&path));
+
+    let mut reader = BufReader::new(file);
+    let mut contents = String::new();
+    reader.read_to_string(&mut contents).unwrap();
+
+    let tokens = Lexer::new(&path, &contents).collect::<Vec<_>>();
+    let result = parser::parse(&tokens);
+
+    if result.is_err() {
+        return None;
+    }
+
+    let ast = result.unwrap();
+    let import_resolver = NameResolver::declare(ast, cache);
+    Some(import_resolver.module_id)
+}
+
+pub fn define_module<'a>(module_id: ModuleId, cache: &mut ModuleCache<'a>, error_location: Location) -> Option<&'a Scope> {
+    let import = cache.name_resolvers.get_mut(module_id.0).unwrap();
+    match import.state {
+        NameResolutionState::NotStarted
+        | NameResolutionState::DeclareInProgress => {
+            error!(error_location, "Internal compiler error: imported module has been defined but not declared");
+            return None;
+        },
+        | NameResolutionState::Declared => {
+            import.define(cache);
+        },
+        // Any module that is at least declared should already have its public exports available
+        | NameResolutionState::DefineInProgress
+        | NameResolutionState::Defined => (),
+    }
+
+    Some(&import.exports)
+}
+
 impl<'b> Resolvable<'b> for ast::Import<'b> {
     fn declare(&mut self, _resolver: &mut NameResolver, cache: &mut ModuleCache<'b>) {
         let relative_path = self.path.clone().join("/");
-        let (file, path) = match find_file(&relative_path, cache) {
-            Some((f, p)) => (f, p),
-            _ => {
-                error!(self.location, "Couldn't open file for import: {}.an", relative_path);
-                return;
-            },
-        };
-
-        if let Some(module_id) = cache.modules.get(&path) {
-            let existing_resolver = cache.name_resolvers.get_mut(module_id.0).unwrap();
-            match existing_resolver.state {
-                NameResolutionState::NotStarted => (),
-                _ => {
-                    self.module_id = Some(existing_resolver.module_id);
-                    return; // already declared
-                },
-            }
-        }
-
-        let path = cache.push_filepath(PathBuf::from(&path));
-
-        let mut reader = BufReader::new(file);
-        let mut contents = String::new();
-        reader.read_to_string(&mut contents).unwrap();
-
-        let tokens = Lexer::new(&path, &contents).collect::<Vec<_>>();
-        let result = parser::parse(&tokens);
-
-        if result.is_err() {
-            return;
-        }
-
-        let ast = result.unwrap();
-        let import_resolver = NameResolver::declare(ast, cache);
-        self.module_id = Some(import_resolver.module_id);
+        self.module_id = declare_module(Path::new(&relative_path), cache, self.location);
     }
 
     fn define(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'b>) {
-        // TODO: this will fail for non-top-level imports
-        let module_id = self.module_id.unwrap().0;
-        let import = cache.name_resolvers.get_mut(module_id).unwrap();
-        match import.state {
-            NameResolutionState::NotStarted
-            | NameResolutionState::DeclareInProgress => {
-                error!(self.location, "Internal compiler error: imported module has been defined but not declared")
-            },
-            | NameResolutionState::Declared => {
-                import.define(cache);
-            },
-            // Any module that is at least declared should already have its public exports available
-            | NameResolutionState::DefineInProgress
-            | NameResolutionState::Defined => (),
-        }
-
-        resolver.current_scope().import(&import.exports, cache, self.location);
+        let module_id = self.module_id.unwrap();
+        define_module(module_id, cache, self.location).map(|exports| {
+            resolver.current_scope().import(&exports, cache, self.location);
+        });
     }
 }
 
@@ -867,7 +894,7 @@ impl<'b> Resolvable<'b> for ast::TraitImpl<'b> {
         self.trait_arg_types = fmap(&self.trait_args, |arg| resolver.convert_type(cache, arg));
 
         let trait_info = &cache.trait_infos[trait_id.0];
-        resolver.required_definitions = Some(fmap(&trait_info.definitions, |id| cache.definition_infos[id.0].name.clone()));
+        resolver.required_definitions = Some(trait_info.definitions.clone());
 
         // The user is required to specify all of the trait's typeargs and functional dependencies.
         let required_arg_count = trait_info.typeargs.len() + trait_info.fundeps.len();
@@ -879,13 +906,13 @@ impl<'b> Resolvable<'b> for ast::TraitImpl<'b> {
         resolver.push_scope(cache);
 
         // Declare the names first so we can check them all against the required_definitions
-        let definitions = resolver.resolve_all_declarations(self.definitions.iter_mut(), cache, || DefinitionNode::Impl);
+        let definitions = resolver.resolve_trait_impl_declarations(self.definitions.iter_mut(), cache);
 
         // TODO cleanup: is required_definitions still required since we can
         // resolve_all_definitions now? The checks in push_definition can probably
         // be moved here instead
         for required_definition in resolver.required_definitions.as_mut().unwrap() {
-            error!(self.location, "impl is missing a definition for {}", required_definition);
+            error!(self.location, "impl is missing a definition for {}", cache.definition_infos[required_definition.0].name);
         }
 
         resolver.required_definitions = None;
@@ -897,7 +924,8 @@ impl<'b> Resolvable<'b> for ast::TraitImpl<'b> {
         }
         resolver.pop_scope(cache, false);
 
-        resolver.push_trait_impl(trait_id, self.trait_arg_types.clone(), definitions, cache, self.locate());
+        let trait_impl = trustme::extend_lifetime(self);
+        resolver.push_trait_impl(trait_id, self.trait_arg_types.clone(), definitions, trait_impl, cache, self.locate());
     }
 }
 
@@ -926,7 +954,7 @@ impl<'b> Resolvable<'b> for ast::Sequence<'b> {
 impl<'b> Resolvable<'b> for ast::Extern<'b> {
     fn declare(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'b>) {
         for declaration in self.declarations.iter_mut() {
-            resolver.resolve_definitions(declaration, cache, || DefinitionNode::Extern);
+            resolver.resolve_extern_definitions(declaration, cache);
         }
     }
 

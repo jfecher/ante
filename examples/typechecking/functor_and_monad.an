@@ -7,10 +7,6 @@ trait Monad m
     bind: (m a) (a -> m b) -> m b
 
 
-type Maybe a =
-   | Some a
-   | None
-
 impl Functor Maybe
     map m f =
         match m with
@@ -27,8 +23,6 @@ impl Monad Maybe
 
 // args: --check --show-types
 // expected stdout:
-// None : (forall a. (Maybe a))
-// Some : (forall a. (a -> (Maybe a)))
 // bind : (forall a d e. ((a d) (d -> (a e)) -> (a e)))
 //   given Monad a
 // map : (forall a d e. ((a d) (d -> e) -> (a e)))

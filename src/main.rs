@@ -23,12 +23,8 @@ use std::io::{BufReader, Read};
 static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 fn print_definition_types<'a>(cache: &ModuleCache<'a>) {
-    let mut definitions = vec![];
-
-    for (_, module_id) in cache.modules.iter() {
-        let resolver = cache.name_resolvers.get_mut(module_id.0).unwrap();
-        definitions.append(&mut resolver.exports.definitions.iter().collect());
-    }
+    let resolver = cache.name_resolvers.get_mut(0).unwrap();
+    let mut definitions = resolver.exports.definitions.iter().collect::<Vec<_>>();
 
     // Make sure the output has a deterministic order for testing
     definitions.sort();

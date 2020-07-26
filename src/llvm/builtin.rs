@@ -1,207 +1,156 @@
-use crate::llvm::{ Generator, LazyValue };
-use crate::cache::ModuleCache;
+use crate::llvm::Generator;
+use crate::parser::ast::{ Ast, LiteralKind };
 
-use inkwell::values::{ BasicValue, BasicValueEnum, IntValue, FloatValue };
+use inkwell::values::{ BasicValue, BasicValueEnum };
+use inkwell::{ IntPredicate, FloatPredicate };
 
-#[derive(Debug, Copy, Clone)]
-pub enum BuiltinFunction {
-    AddInt,
-    AddFloat,
+pub fn call_builtin<'g, 'c>(args: &[Ast<'c>], generator: &mut Generator<'g>) -> Option<BasicValueEnum<'g>> {
+    assert!(args.len() == 1);
+    
+    let arg = match &args[0] {
+        Ast::Literal(literal) => {
+            match &literal.kind {
+                LiteralKind::String(string) => string,
+                _ => unreachable!(),
+            }
+        },
+        _ => unreachable!(),
+    };
 
-    SubInt,
-    SubFloat,
+    Some(match arg.as_ref() {
+        "AddInt" => add_int(generator),
+        "AddFloat" => add_float(generator),
 
-    MulInt,
-    MulFloat,
+        "SubInt" => sub_int(generator),
+        "SubFloat" => sub_float(generator),
 
-    DivInt,
-    DivFloat,
+        "MulInt" => mul_int(generator),
+        "MulFloat" => mul_float(generator),
 
-    ModInt,
-    ModFloat,
+        "DivInt" => div_int(generator),
+        "DivFloat" => div_float(generator),
 
-    LessThanInt,
-    LessThanFloat,
+        "ModInt" => mod_int(generator),
+        "ModFloat" => mod_float(generator),
 
-    GreaterThanInt,
-    GreaterThanFloat,
+        "LessInt" => less_int(generator),
+        "LessFloat" => less_float(generator),
 
-    LessThanEqualInt,
-    LessThanEqualFloat,
+        "GreaterInt" => greater_int(generator),
+        "GreaterFloat" => greater_float(generator),
 
-    GreaterThanEqualInt,
-    GreaterThanEqualFloat,
-
-    EqualInt,
-    EqualFloat,
-    EqualChar,
-    EqualBoolean,
+        "EqInt" => eq_int(generator),
+        "EqFloat" => eq_float(generator),
+        "EqChar" => eq_char(generator),
+        "EqBool" => eq_bool(generator),
+        _ => unreachable!(),
+    })
 }
 
-pub fn declare_builtin_functions<'g, 'c>(generator: &mut Generator<'g>, cache: &ModuleCache<'c>) {
-    use crate::types::Type::*;
-    use crate::types::PrimitiveType::*;
-    use BuiltinFunction::*;
-
-    let int_function = Function(vec![Primitive(IntegerType), Primitive(IntegerType)], Box::new(Primitive(IntegerType)));
-    let float_function = Function(vec![Primitive(FloatType), Primitive(FloatType)], Box::new(Primitive(FloatType)));
-
-    let id = cache.builtins.definitions[0].1;
-    generator.definitions.insert((id, int_function.clone()), LazyValue::Thunk(AddInt));
-    generator.definitions.insert((id, float_function.clone()), LazyValue::Thunk(AddFloat));
-
-    let id = cache.builtins.definitions[1].1;
-    generator.definitions.insert((id, int_function.clone()), LazyValue::Thunk(SubInt));
-    generator.definitions.insert((id, float_function.clone()), LazyValue::Thunk(SubFloat));
-
-    let id = cache.builtins.definitions[2].1;
-    generator.definitions.insert((id, int_function.clone()), LazyValue::Thunk(MulInt));
-    generator.definitions.insert((id, float_function.clone()), LazyValue::Thunk(MulFloat));
-
-    let id = cache.builtins.definitions[3].1;
-    generator.definitions.insert((id, int_function.clone()), LazyValue::Thunk(DivInt));
-    generator.definitions.insert((id, float_function.clone()), LazyValue::Thunk(DivFloat));
-
-    let id = cache.builtins.definitions[4].1;
-    generator.definitions.insert((id, int_function.clone()), LazyValue::Thunk(ModInt));
-    generator.definitions.insert((id, float_function.clone()), LazyValue::Thunk(ModFloat));
+fn add_int<'g>(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+    let a = generator.current_function.unwrap().get_nth_param(0).unwrap().into_int_value();
+    let b = generator.current_function.unwrap().get_nth_param(1).unwrap().into_int_value();
+    generator.builder.build_int_add(a, b, "add").as_basic_value_enum()
 }
 
-impl<'g, 'c> BuiltinFunction {
-    pub fn eval(&self, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
-        use BuiltinFunction::*;
-        match self {
-            AddInt => BuiltinFunction::add_int(generator),
-            AddFloat => BuiltinFunction::add_float(generator),
+fn add_float<'g>(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+    let a = generator.current_function.unwrap().get_nth_param(0).unwrap().into_float_value();
+    let b = generator.current_function.unwrap().get_nth_param(1).unwrap().into_float_value();
+    generator.builder.build_float_add(a, b, "add").as_basic_value_enum()
+}
 
-            SubInt => BuiltinFunction::sub_int(generator),
-            SubFloat => BuiltinFunction::sub_float(generator),
+fn sub_int<'g>(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+    let a = generator.current_function.unwrap().get_nth_param(0).unwrap().into_int_value();
+    let b = generator.current_function.unwrap().get_nth_param(1).unwrap().into_int_value();
+    generator.builder.build_int_sub(a, b, "sub").as_basic_value_enum()
+}
 
-            MulInt => BuiltinFunction::mul_int(generator),
-            MulFloat => BuiltinFunction::mul_float(generator),
+fn sub_float<'g>(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+    let a = generator.current_function.unwrap().get_nth_param(0).unwrap().into_float_value();
+    let b = generator.current_function.unwrap().get_nth_param(1).unwrap().into_float_value();
+    generator.builder.build_float_sub(a, b, "sub").as_basic_value_enum()
+}
 
-            DivInt => BuiltinFunction::div_int(generator),
-            DivFloat => BuiltinFunction::div_float(generator),
+fn mul_int<'g>(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+    let a = generator.current_function.unwrap().get_nth_param(0).unwrap().into_int_value();
+    let b = generator.current_function.unwrap().get_nth_param(1).unwrap().into_int_value();
+    generator.builder.build_int_mul(a, b, "mul").as_basic_value_enum()
+}
 
-            ModInt => BuiltinFunction::mod_int(generator),
-            ModFloat => BuiltinFunction::mod_float(generator),
+fn mul_float<'g>(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+    let a = generator.current_function.unwrap().get_nth_param(0).unwrap().into_float_value();
+    let b = generator.current_function.unwrap().get_nth_param(1).unwrap().into_float_value();
+    generator.builder.build_float_mul(a, b, "mul").as_basic_value_enum()
+}
 
-            LessThanInt => unimplemented!(),
-            LessThanFloat => unimplemented!(),
+fn div_int<'g>(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+    let a = generator.current_function.unwrap().get_nth_param(0).unwrap().into_int_value();
+    let b = generator.current_function.unwrap().get_nth_param(1).unwrap().into_int_value();
+    generator.builder.build_int_signed_div(a, b, "div").as_basic_value_enum()
+}
 
-            GreaterThanInt => unimplemented!(),
-            GreaterThanFloat => unimplemented!(),
+fn div_float<'g>(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+    let a = generator.current_function.unwrap().get_nth_param(0).unwrap().into_float_value();
+    let b = generator.current_function.unwrap().get_nth_param(1).unwrap().into_float_value();
+    generator.builder.build_float_div(a, b, "div").as_basic_value_enum()
+}
 
-            LessThanEqualInt => unimplemented!(),
-            LessThanEqualFloat => unimplemented!(),
+fn mod_int<'g>(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+    let a = generator.current_function.unwrap().get_nth_param(0).unwrap().into_int_value();
+    let b = generator.current_function.unwrap().get_nth_param(1).unwrap().into_int_value();
+    generator.builder.build_int_signed_rem(a, b, "mod").as_basic_value_enum()
+}
 
-            GreaterThanEqualInt => unimplemented!(),
-            GreaterThanEqualFloat => unimplemented!(),
+fn mod_float<'g>(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+    let a = generator.current_function.unwrap().get_nth_param(0).unwrap().into_float_value();
+    let b = generator.current_function.unwrap().get_nth_param(1).unwrap().into_float_value();
+    generator.builder.build_float_rem(a, b, "mod").as_basic_value_enum()
+}
 
-            EqualInt => unimplemented!(),
-            EqualFloat => unimplemented!(),
-            EqualChar => unimplemented!(),
-            EqualBoolean => unimplemented!(),
-        }
-    }
+fn less_int<'g>(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+    let a = generator.current_function.unwrap().get_nth_param(0).unwrap().into_int_value();
+    let b = generator.current_function.unwrap().get_nth_param(1).unwrap().into_int_value();
+    generator.builder.build_int_compare(IntPredicate::SLT, a, b, "less").as_basic_value_enum()
+}
 
-    fn int_function<F>(name: &str, generator: &mut Generator<'g>, operation: F) -> BasicValueEnum<'g>
-        where F: FnOnce(&mut Generator<'g>, IntValue<'g>, IntValue<'g>) -> BasicValueEnum<'g>
-    {
-        let i32_type = generator.context.i32_type();
-        let function_type = i32_type.fn_type(&[i32_type.into(), i32_type.into()], false);
-        let function = generator.module.add_function(name, function_type, None);
-        let caller_block = generator.builder.get_insert_block().unwrap();
-        let basic_block = generator.context.append_basic_block(function, "entry");
+fn less_float<'g>(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+    let a = generator.current_function.unwrap().get_nth_param(0).unwrap().into_float_value();
+    let b = generator.current_function.unwrap().get_nth_param(1).unwrap().into_float_value();
+    generator.builder.build_float_compare(FloatPredicate::OLT, a, b, "less").as_basic_value_enum()
+}
 
-        generator.builder.position_at_end(basic_block);
+fn greater_int<'g>(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+    let a = generator.current_function.unwrap().get_nth_param(0).unwrap().into_int_value();
+    let b = generator.current_function.unwrap().get_nth_param(1).unwrap().into_int_value();
+    generator.builder.build_int_compare(IntPredicate::SGT, a, b, "greater").as_basic_value_enum()
+}
 
-        let arg1 = function.get_nth_param(0).unwrap().into_int_value();
-        let arg2 = function.get_nth_param(1).unwrap().into_int_value();
-        let value = operation(generator, arg1, arg2);
-        generator.builder.build_return(Some(&value));
+fn greater_float<'g>(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+    let a = generator.current_function.unwrap().get_nth_param(0).unwrap().into_float_value();
+    let b = generator.current_function.unwrap().get_nth_param(1).unwrap().into_float_value();
+    generator.builder.build_float_compare(FloatPredicate::OGT, a, b, "greater").as_basic_value_enum()
+}
 
-        generator.builder.position_at_end(caller_block);
-        function.as_global_value().as_basic_value_enum()
-    }
+fn eq_int<'g>(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+    let a = generator.current_function.unwrap().get_nth_param(0).unwrap().into_int_value();
+    let b = generator.current_function.unwrap().get_nth_param(1).unwrap().into_int_value();
+    generator.builder.build_int_compare(IntPredicate::EQ, a, b, "eq").as_basic_value_enum()
+}
 
-    fn float_function<F>(name: &str, generator: &mut Generator<'g>, operation: F) -> BasicValueEnum<'g>
-        where F: FnOnce(&mut Generator<'g>, FloatValue<'g>, FloatValue<'g>) -> BasicValueEnum<'g>
-    {
-        let f64_type = generator.context.f64_type();
-        let function_type = f64_type.fn_type(&[f64_type.into(), f64_type.into()], false);
-        let function = generator.module.add_function(name, function_type, None);
-        let caller_block = generator.builder.get_insert_block().unwrap();
-        let basic_block = generator.context.append_basic_block(function, "entry");
+fn eq_float<'g>(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+    let a = generator.current_function.unwrap().get_nth_param(0).unwrap().into_float_value();
+    let b = generator.current_function.unwrap().get_nth_param(1).unwrap().into_float_value();
+    generator.builder.build_float_compare(FloatPredicate::OEQ, a, b, "eq").as_basic_value_enum()
+}
 
-        generator.builder.position_at_end(basic_block);
+fn eq_char<'g>(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+    let a = generator.current_function.unwrap().get_nth_param(0).unwrap().into_int_value();
+    let b = generator.current_function.unwrap().get_nth_param(1).unwrap().into_int_value();
+    generator.builder.build_int_compare(IntPredicate::EQ, a, b, "eq").as_basic_value_enum()
+}
 
-        let arg1 = function.get_nth_param(0).unwrap().into_float_value();
-        let arg2 = function.get_nth_param(1).unwrap().into_float_value();
-        let value = operation(generator, arg1, arg2);
-        generator.builder.build_return(Some(&value));
-
-        generator.builder.position_at_end(caller_block);
-        function.as_global_value().as_basic_value_enum()
-    }
-
-    fn add_int(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
-        BuiltinFunction::int_function("+", generator, |generator, a, b|
-            generator.builder.build_int_add(a, b, "add").as_basic_value_enum()
-        )
-    }
-
-    fn add_float(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
-        BuiltinFunction::float_function("+", generator, |generator, a, b|
-            generator.builder.build_float_add(a, b, "add").as_basic_value_enum()
-        )
-    }
-
-    fn sub_int(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
-        BuiltinFunction::int_function("-", generator, |generator, a, b|
-            generator.builder.build_int_sub(a, b, "sub").as_basic_value_enum()
-        )
-    }
-
-    fn sub_float(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
-        BuiltinFunction::float_function("-", generator, |generator, a, b|
-            generator.builder.build_float_sub(a, b, "sub").as_basic_value_enum()
-        )
-    }
-
-    fn mul_int(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
-        BuiltinFunction::int_function("*", generator, |generator, a, b|
-            generator.builder.build_int_mul(a, b, "mul").as_basic_value_enum()
-        )
-    }
-
-    fn mul_float(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
-        BuiltinFunction::float_function("*", generator, |generator, a, b|
-            generator.builder.build_float_mul(a, b, "mul").as_basic_value_enum()
-        )
-    }
-
-    fn div_int(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
-        BuiltinFunction::int_function("/", generator, |generator, a, b|
-            generator.builder.build_int_signed_div(a, b, "div").as_basic_value_enum()
-        )
-    }
-
-    fn div_float(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
-        BuiltinFunction::float_function("/", generator, |generator, a, b|
-            generator.builder.build_float_div(a, b, "div").as_basic_value_enum()
-        )
-    }
-
-    fn mod_int(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
-        BuiltinFunction::int_function("%", generator, |generator, a, b|
-            generator.builder.build_int_signed_rem(a, b, "mod").as_basic_value_enum()
-        )
-    }
-
-    fn mod_float(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
-        BuiltinFunction::float_function("%", generator, |generator, a, b|
-            generator.builder.build_float_rem(a, b, "mod").as_basic_value_enum()
-        )
-    }
+fn eq_bool<'g>(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+    let a = generator.current_function.unwrap().get_nth_param(0).unwrap().into_int_value();
+    let b = generator.current_function.unwrap().get_nth_param(1).unwrap().into_int_value();
+    generator.builder.build_int_compare(IntPredicate::EQ, a, b, "eq").as_basic_value_enum()
 }

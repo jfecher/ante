@@ -1,0 +1,22 @@
+
+extern printf: (ref char) float -> int
+
+add_float = 3.0 + 4.0
+sub_float = 7.0 - 8.0
+mul_float = 11.0 * 12.0
+div_float = 15.0 / 16.0
+mod_float = 10.0 % 3.0
+
+printf "%.5f\n".c_string add_float
+printf "%.5f\n".c_string sub_float
+printf "%.5f\n".c_string mul_float
+printf "%.5f\n".c_string div_float
+printf "%.5f\n".c_string mod_float
+
+// args: --run --delete-binary
+// expected stdout:
+// 7.00000
+// -1.00000
+// 132.00000
+// 0.93750
+// 1.00000

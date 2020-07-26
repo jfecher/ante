@@ -75,6 +75,7 @@ impl<'a> Location<'a> {
     pub fn builtin() -> Location<'a> {
         let start = Position { index: 0, line: 0, column: 0 };
         let end = EndPosition { index: 0 };
+        // TODO: update to reference prelude_path with appropriate lifetimes
         Location::new(Path::new("stdlib/prelude.an"), start, end)
     }
 

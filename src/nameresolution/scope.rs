@@ -23,7 +23,7 @@ impl Scope {
         }
     }
 
-    fn check_for_shadowing_errors(&mut self, other: &Scope, cache: &mut ModuleCache, location: Location) {
+    fn import_definitions_types_and_traits(&mut self, other: &Scope, cache: &mut ModuleCache, location: Location) {
         macro_rules! merge_table {
             ( $field:tt , $cache_field:tt , $errors:tt ) => ({
                 for (k, v) in other.$field.iter() {
@@ -42,6 +42,7 @@ impl Scope {
         let mut errors = vec![];
         merge_table!(definitions, definition_infos, errors);
         merge_table!(types, type_infos, errors);
+        merge_table!(traits, trait_infos, errors);
 
         if !errors.is_empty() {
             // Using sort_by instead of sort_by_key here avoids cloning the ErrorMessage
@@ -51,7 +52,7 @@ impl Scope {
     }
 
     pub fn import(&mut self, other: &Scope, cache: &mut ModuleCache, location: Location) {
-        self.check_for_shadowing_errors(other, cache, location);
+        self.import_definitions_types_and_traits(other, cache, location);
 
         for (k, v) in other.impls.iter() {
             if let Some(existing) = self.impls.get_mut(k) {

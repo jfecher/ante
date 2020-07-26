@@ -1,9 +1,9 @@
-use crate::nameresolution::{ NameResolver, builtin::Builtins };
+use crate::nameresolution::NameResolver;
 use crate::types::{ TypeVariableId, TypeInfoId, TypeInfo, Type, TypeInfoBody };
 use crate::types::{ TypeBinding, LetBindingLevel, traits::TraitList, Kind };
 use crate::types::traits::{ Impl, ImplPrinter };
 use crate::error::location::{ Location, Locatable };
-use crate::parser::ast::{ Ast, Definition, TraitDefinition };
+use crate::parser::ast::{ Ast, Definition, TraitDefinition, TraitImpl, TypeAnnotation };
 use crate::cache::unsafecache::UnsafeCache;
 
 use std::path::{ Path, PathBuf };
@@ -73,7 +73,7 @@ pub struct ModuleCache<'a> {
     /// that is generated for each new field name used globally.
     pub member_access_traits: HashMap<String, TraitInfoId>,
 
-    pub builtins: Builtins,
+    pub prelude_path: PathBuf,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -87,7 +87,7 @@ pub enum DefinitionNode<'a> {
     Definition(&'a mut Definition<'a>),
     TraitDefinition(&'a mut TraitDefinition<'a>),
     Parameter,
-    Extern,
+    Extern(&'a mut TypeAnnotation<'a>),
     Impl,
 }
 
@@ -99,6 +99,11 @@ pub struct DefinitionInfo<'a> {
     /// Where this name was defined. It is expected that type checking
     /// this Definition node should result in self.typ being filled out.
     pub definition: Option<DefinitionNode<'a>>,
+
+    /// If this definition is from a trait impl then this will contain the
+    /// definition id from the trait's matching declaration. Used during
+    /// codegen to help retrieve the compiled function without the impl information.
+    pub trait_definition: Option<DefinitionInfoId>,
 
     pub required_impls: TraitList,
 
@@ -131,6 +136,12 @@ impl<'a> TraitInfo<'a> {
     }
 }
 
+impl<'a> Locatable<'a> for TraitInfo<'a> {
+    fn locate(&self) -> Location<'a> {
+        self.location
+    }
+}
+
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct ImplInfoId(pub usize);
 
@@ -146,6 +157,7 @@ pub struct ImplInfo<'a> {
     pub typeargs: Vec<Type>,
     pub location: Location<'a>,
     pub definitions: Vec<DefinitionInfoId>,
+    pub trait_impl: &'a mut TraitImpl<'a>,
 }
 
 impl<'b> ImplInfo<'b> {
@@ -158,7 +170,7 @@ impl<'b> ImplInfo<'b> {
 impl<'a> ModuleCache<'a> {
     pub fn new(project_directory: &'a Path) -> ModuleCache<'a> {
         ModuleCache {
-            relative_roots: vec![project_directory.to_owned()],
+            relative_roots: vec![project_directory.to_owned(), dirs::config_dir().unwrap().join("stdlib")],
             // Really wish you could do ..Default::default() for each field
             modules: HashMap::default(),
             parse_trees: UnsafeCache::default(),
@@ -172,7 +184,7 @@ impl<'a> ModuleCache<'a> {
             impl_scopes: Vec::default(),
             impl_bindings: Vec::default(),
             member_access_traits: HashMap::default(),
-            builtins: Builtins::default(),
+            prelude_path: dirs::config_dir().unwrap().join("stdlib/prelude"),
         }
     }
 
@@ -188,8 +200,9 @@ impl<'a> ModuleCache<'a> {
         self.definition_infos.push(DefinitionInfo {
             name,
             definition: None,
-            location,
+            trait_definition: None,
             required_impls: vec![],
+            location,
             typ: None,
             uses: 0,
         });
@@ -238,13 +251,16 @@ impl<'a> ModuleCache<'a> {
         TraitInfoId(id)
     }
 
-    pub fn push_trait_impl(&mut self, trait_id: TraitInfoId, typeargs: Vec<Type>, definitions: Vec<DefinitionInfoId>, location: Location<'a>) -> ImplInfoId {
+    pub fn push_trait_impl(&mut self, trait_id: TraitInfoId, typeargs: Vec<Type>,
+            definitions: Vec<DefinitionInfoId>, trait_impl: &'a mut TraitImpl<'a>, location: Location<'a>) -> ImplInfoId {
+
         let id = self.impl_infos.len();
         self.impl_infos.push(ImplInfo {
             trait_id,
             typeargs,
             definitions,
             location,
+            trait_impl,
         });
         ImplInfoId(id)
     }
