@@ -18,14 +18,6 @@ use std::path::{ Path, PathBuf };
 mod scope;
 pub mod builtin;
 
-// TODO: The LetBindingLevel needs to match 1-to-1 with the levels as incremented
-// by the typechecker but can't since the type checker traverses the ast by skipping
-// to definitions where the name resolver follows imports to resolve defintions.
-//
-// Having it as std::usize::MAX forces the trait typevars to always be polymorphic.
-// This may be alright for types/traits (citation needed) but if it is not it is a soundness bug.
-const MAX_BINDING_LEVEL: LetBindingLevel = LetBindingLevel(std::usize::MAX);
-
 /// Specifies how far a particular module is in name resolution.
 /// Keeping this properly up to date for each module is the
 /// key for preventing infinite recursion when declaring recursive imports.
@@ -75,6 +67,8 @@ pub struct NameResolver {
     state: NameResolutionState,
 
     module_id: ModuleId,
+
+    let_binding_level: LetBindingLevel,
 
     // Implementation detail fields:
 
@@ -163,7 +157,7 @@ impl NameResolver {
     }
 
     pub fn push_new_type_variable<'b>(&mut self, key: String, cache: &mut ModuleCache<'b>) -> TypeVariableId {
-        let id = cache.next_type_variable_id(MAX_BINDING_LEVEL);
+        let id = cache.next_type_variable_id(self.let_binding_level);
         self.push_existing_type_variable(key, id)
     }
 
@@ -340,6 +334,7 @@ impl<'b> NameResolver {
             current_trait: None,
             required_definitions: None,
             definitions_collected: vec![],
+            let_binding_level: LetBindingLevel(1),
             module_id,
         };
 
@@ -586,7 +581,11 @@ impl<'b> Resolvable<'b> for ast::Definition<'b> {
     fn declare(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'b>) {
         let definition = self as *const Self;
         let definition = || DefinitionNode::Definition(trustme::make_mut(definition));
+
+        resolver.let_binding_level = LetBindingLevel(resolver.let_binding_level.0 + 1);
         resolver.resolve_declarations(self.pattern.as_mut(), cache, definition);
+        self.level = Some(resolver.let_binding_level);
+        resolver.let_binding_level = LetBindingLevel(resolver.let_binding_level.0 - 1);
     }
 
     fn define(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'b>) {
@@ -594,9 +593,13 @@ impl<'b> Resolvable<'b> for ast::Definition<'b> {
         // the symbol to its definition if it is undefined.
         let definition = self as *const Self;
         let definition = || DefinitionNode::Definition(trustme::make_mut(definition));
+
+        resolver.let_binding_level = LetBindingLevel(resolver.let_binding_level.0 + 1);
         resolver.resolve_definitions(self.pattern.as_mut(), cache, definition);
+        self.level = Some(resolver.let_binding_level);
 
         self.expr.define(resolver, cache);
+        resolver.let_binding_level = LetBindingLevel(resolver.let_binding_level.0 - 1);
     }
 }
 
@@ -691,7 +694,7 @@ fn create_fields<'b>(vec: &Fields<'b>, resolver: &mut NameResolver, cache: &mut 
 
 impl<'b> Resolvable<'b> for ast::TypeDefinition<'b> {
     fn declare(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'b>) {
-        let args = fmap(&self.args, |_| cache.next_type_variable_id(MAX_BINDING_LEVEL));
+        let args = fmap(&self.args, |_| cache.next_type_variable_id(resolver.let_binding_level));
         let id = resolver.push_type_info(self.name.clone(), args, cache, self.location);
         self.type_info = Some(id);
     }
@@ -906,6 +909,7 @@ impl<'b> Resolvable<'b> for ast::TraitImpl<'b> {
         resolver.push_scope(cache);
 
         // Declare the names first so we can check them all against the required_definitions
+        resolver.let_binding_level = LetBindingLevel(resolver.let_binding_level.0 + 1);
         let definitions = resolver.resolve_trait_impl_declarations(self.definitions.iter_mut(), cache);
 
         // TODO cleanup: is required_definitions still required since we can
@@ -921,7 +925,9 @@ impl<'b> Resolvable<'b> for ast::TraitImpl<'b> {
         // All the names are present, now define them.
         for definition in self.definitions.iter_mut() {
             definition.expr.define(resolver, cache);
+            definition.level = Some(resolver.let_binding_level);
         }
+        resolver.let_binding_level = LetBindingLevel(resolver.let_binding_level.0 - 1);
         resolver.pop_scope(cache, false);
 
         let trait_impl = trustme::extend_lifetime(self);

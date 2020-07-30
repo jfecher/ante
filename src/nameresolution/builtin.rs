@@ -1,7 +1,7 @@
 use crate::cache::{ ModuleCache, DefinitionInfoId };
 use crate::error::location::Location;
-use crate::nameresolution::{ NameResolver, MAX_BINDING_LEVEL, declare_module, define_module };
-use crate::types::{ Type, PrimitiveType, TypeInfoBody, Field, STRING_TYPE };
+use crate::nameresolution::{ NameResolver, declare_module, define_module };
+use crate::types::{ Type, PrimitiveType, TypeInfoBody, Field, STRING_TYPE, LetBindingLevel };
 
 use std::path::PathBuf;
 
@@ -15,7 +15,7 @@ pub fn define_builtins<'a>(cache: &mut ModuleCache<'a>) {
     let id = cache.push_definition("builtin".into(), Location::builtin());
     assert!(id == BUILTIN_ID);
 
-    let a = cache.next_type_variable_id(MAX_BINDING_LEVEL);
+    let a = cache.next_type_variable_id(LetBindingLevel(1));
     let info = &mut cache.definition_infos[id.0];
     let typ = Type::ForAll(vec![a], Box::new(Type::Function(vec![string_type], Box::new(Type::TypeVariable(a)))));
     info.typ = Some(typ);

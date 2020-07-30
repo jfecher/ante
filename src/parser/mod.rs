@@ -82,6 +82,7 @@ parser!(function_definition location -> 'b ast::Definition<'b> =
         pattern: Box::new(name),
         expr: Box::new(Ast::lambda(args, return_type, body, location)),
         location,
+        level: None,
         info: None,
         typ: None,
     }
@@ -101,6 +102,7 @@ parser!(variable_definition location -> 'b ast::Definition<'b> =
         pattern: Box::new(name),
         expr: Box::new(expr),
         location,
+        level: None,
         info: None,
         typ: None,
     }

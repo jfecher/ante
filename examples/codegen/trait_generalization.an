@@ -1,0 +1,10 @@
+a = "test".c_string
+print a
+
+impl Print (ref char)
+    printne x =
+        puts x
+        ()
+
+// args: --run --delete-binary
+// expected stdout: test

@@ -1,7 +1,7 @@
 use crate::lexer::token::Token;
 use crate::error::location::{ Location, Locatable };
 use crate::cache::{ DefinitionInfoId, TraitInfoId, ModuleId, ImplScopeId, ImplBindingId };
-use crate::types::{ self, TypeInfoId };
+use crate::types::{ self, TypeInfoId, LetBindingLevel };
 
 #[derive(Debug, PartialEq)]
 pub enum LiteralKind {
@@ -69,6 +69,7 @@ pub struct Definition<'a> {
     pub pattern: Box<Ast<'a>>,
     pub expr: Box<Ast<'a>>,
     pub location: Location<'a>,
+    pub level: Option<LetBindingLevel>,
     pub info: Option<DefinitionInfoId>,
     pub typ: Option<types::Type>,
 }

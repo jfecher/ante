@@ -341,7 +341,7 @@ pub fn find_all_typevars<'a>(typ: &Type, monomorphic_only: bool, cache: &ModuleC
             match &cache.type_bindings[id.0] {
                 Bound(t) => find_all_typevars(t, monomorphic_only, cache),
                 Unbound(level, _) => {
-                    if level.0 > CURRENT_LEVEL.fetch_or(0, Ordering::SeqCst) || !monomorphic_only {
+                    if level.0 >= CURRENT_LEVEL.fetch_or(1, Ordering::SeqCst) || !monomorphic_only {
                         vec![*id]
                     } else {
                         vec![]
@@ -518,8 +518,13 @@ fn bind_irrefutable_pattern_in_impl<'a>(ast: &ast::Ast<'a>, trait_id: TraitInfoI
     }
 }
 
+// A trait should be propogated to the public signature of a Definition if any of its contained
+// type variables should be generalized. If the trait shouldn't be propogated then an impl
+// should be resolved instead.
 fn should_propagate<'a>(trait_impl: &Impl, cache: &ModuleCache<'a>) -> bool {
-    trait_impl.args.iter().any(|arg| !find_all_typevars(arg, true, cache).is_empty())
+    // Don't check the fundeps since only the typeargs proper are used to find impls
+    let arg_count = cache.trait_infos[trait_impl.trait_id.0].typeargs.len();
+    trait_impl.args.iter().take(arg_count).any(|arg| !find_all_typevars(arg, true, cache).is_empty())
 }
 
 fn check_member_access<'a>(trait_impl: &Impl, location: Location<'a>, cache: &mut ModuleCache<'a>) {
@@ -752,9 +757,11 @@ impl<'a> Inferable<'a> for ast::Definition<'a> {
             self.typ = Some(unit.clone());
         }
 
-        CURRENT_LEVEL.fetch_add(1, Ordering::SeqCst);
+        let previous_level = CURRENT_LEVEL.fetch_or(1, Ordering::SeqCst);
+
+        CURRENT_LEVEL.swap(self.level.unwrap().0, Ordering::SeqCst);
         let (t, traits) = infer(self.expr.as_mut(), cache);
-        CURRENT_LEVEL.fetch_sub(1, Ordering::SeqCst);
+        CURRENT_LEVEL.swap(previous_level, Ordering::SeqCst);
 
         let exposed_traits = resolve_traits(traits, self.location, cache);
         bind_irrefutable_pattern(self.pattern.as_mut(), &t, &exposed_traits, true, cache);
