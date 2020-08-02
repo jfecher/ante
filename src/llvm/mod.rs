@@ -6,7 +6,7 @@
 use crate::cache::{ ModuleCache, DefinitionInfoId, DefinitionNode };
 use crate::parser::ast;
 use crate::nameresolution::builtin::BUILTIN_ID;
-use crate::types::{ self, typechecker, TypeVariableId, TypeBinding };
+use crate::types::{ self, typechecker, TypeVariableId, TypeBinding, TypeInfoId };
 use crate::types::typed::Typed;
 use crate::util::{ fmap, trustme };
 
@@ -310,39 +310,29 @@ impl<'g> Generator<'g> {
         typ.into()
     }
 
-    fn convert_type_constructor<'c>(&mut self, typ: &types::Type, args: Vec<BasicTypeEnum<'g>>, cache: &ModuleCache<'c>) -> BasicTypeEnum<'g> {
-        use types::Type::*;
-        match typ {
-            Primitive(primitive) => {
-                // ref is the only primitive type constructor
-                assert!(*primitive == types::PrimitiveType::ReferenceType && args.len() == 1);
-                args[0].ptr_type(AddressSpace::Global).into()
-            },
+    fn convert_user_defined_type<'c>(&mut self, id: TypeInfoId, args: Vec<types::Type>, cache: &ModuleCache<'c>) -> BasicTypeEnum<'g> {
+        let info = &cache.type_infos[id.0];
+        assert!(info.args.is_empty(), "Kind error during llvm code generation");
 
-            Function(_arg_types, _return_type) => {
-                unimplemented!("function types cannot yet be used in a type constructor position")
-            },
-
-            TypeVariable(id) => {
-                let binding = self.find_binding(*id, cache).clone();
-                self.convert_type_constructor(&binding, args, cache)
-            },
-
-            UserDefinedType(id) => {
-                let _info = &cache.type_infos[id.0];
-                unimplemented!();
-            },
-
-            TypeApplication(_typ, _args) => {
-                unimplemented!();
-            },
-
-            ForAll(_, typ) => self.convert_type(typ, cache),
+        if let Some(typ) = self.types.get(&(id, args.clone())) {
+            return *typ;
         }
+
+        use types::TypeInfoBody::*;
+        let typ = match &info.body {
+            Union(args) => self.convert_union_type(info, args, cache),
+            Struct(fields) => self.convert_struct_type(info, fields, cache),
+            Alias(typ) => self.convert_type(typ, cache),
+            Unknown => unreachable!(),
+        };
+
+        self.types.insert((id, args), typ);
+        typ
     }
 
     fn convert_type<'c>(&mut self, typ: &types::Type, cache: &ModuleCache<'c>) -> BasicTypeEnum<'g> {
         use types::Type::*;
+        use types::PrimitiveType::ReferenceType;
         match typ {
             Primitive(primitive) => self.convert_primitive_type(primitive),
 
@@ -354,29 +344,22 @@ impl<'g> Generator<'g> {
 
             TypeVariable(id) => self.convert_type(&self.find_binding(*id, cache).clone(), cache),
 
-            UserDefinedType(id) => {
-                let info = &cache.type_infos[id.0];
-                assert!(info.args.is_empty(), "Kind error during llvm code generation");
-
-                if let Some(typ) = self.types.get(&(*id, vec![])) {
-                    return *typ;
-                }
-
-                use types::TypeInfoBody::*;
-                let typ = match &info.body {
-                    Union(args) => self.convert_union_type(info, args, cache),
-                    Struct(fields) => self.convert_struct_type(info, fields, cache),
-                    Alias(typ) => self.convert_type(typ, cache),
-                    Unknown => unreachable!(),
-                };
-
-                self.types.insert((*id, vec![]), typ);
-                typ
-            },
+            UserDefinedType(id) => self.convert_user_defined_type(*id, vec![], cache),
 
             TypeApplication(typ, args) => {
-                let args = fmap(args, |arg| self.convert_type(arg, cache));
-                self.convert_type_constructor(typ, args, cache)
+                let args = fmap(args, |arg| self.follow_bindings(arg, cache));
+                let typ = self.follow_bindings(typ, cache);
+
+                match &typ {
+                    Primitive(ReferenceType) => {
+                        assert!(args.len() == 1);
+                        self.convert_type(&args[0], cache).ptr_type(AddressSpace::Global).into()
+                    },
+                    UserDefinedType(id) => self.convert_user_defined_type(*id, args, cache),
+                    _ => {
+                        unreachable!("Type {} requires 0 type args but was applied to {:?}", typ.display(cache), args);
+                    }
+                }
             },
 
             ForAll(_, typ) => self.convert_type(typ, cache),

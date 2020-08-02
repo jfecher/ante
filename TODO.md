@@ -7,10 +7,6 @@
 - We have parsing for irrefutable patterns but the refutable patterns used in match expressions
   are just normal expressions. Ideally, invalid cases like an `a + b` pattern wouldn't be allowed
   by the parser at all.
-- Add "builtin function" support to convert operators like `+` and `-` to builtin functions when
-  possible. This is probably easy with reusing `Generator::definitions` to cache these functions
-  for given types beforehand. Harder part is trying to cache generic builtin functions like `& : a -> ref a`.
-  Its possible these may just be able to be special cased, but some investigation is needed.
 - Allocate all ast nodes in a pool, and change them to store node IDs instead of hard references
 - Variadic functions. Goal: support `extern printf: (ref char) ... -> int`
 - cleanup `resolve_definitions` and friends in name resolution. Their use of DefinitionNodes is

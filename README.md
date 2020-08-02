@@ -46,10 +46,17 @@ Steps needed to get back in line with the C++ compiler:
   - [x] Let generalization
   - [x] Trait inference
 - [ ] Code generation (llvm)
+  - [x] Builtin functions/operators
+  - [x] Monomorphisation
+  - [x] Extern functions
+  - [x] Trait Impls
+  - [ ] Match expressions
+  - [ ] Tuples and loops
 - [ ] REPL
 
 Future goals still unimplemented in the C++ compiler:
 
+- [ ] `given` clauses in traits/impls
 - [ ] Refinement Types
 - [x] More general trait support (C++ compiler has trait inference bugs)
 - [ ] Commit to having deterministic destruction w/ destructors
