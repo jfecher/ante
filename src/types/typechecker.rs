@@ -576,7 +576,9 @@ fn find_impl<'a>(trait_impl: &mut Impl, location: Location<'a>, cache: &mut Modu
     if found.len() == 1 {
         infer_trait_impl(found[0], cache);
         let binding = &mut cache.impl_bindings[trait_impl.binding.0];
-        assert!(binding.is_none());
+        // TODO: the 'binding == Some(found[0])' clause is likely indicative of another bug
+        //       since ImplBindings should be unique
+        assert!(binding.is_none() || *binding == Some(found[0]), "Binding {} for impl {} is not none", trait_impl.binding.0, trait_impl.debug(cache));
         *binding = Some(found[0]);
     } else if found.len() > 1 {
         error!(location, "{} matching impls found for {}", found.len(), trait_impl.display(cache));

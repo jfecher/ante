@@ -2,7 +2,6 @@ use goldentests::{ TestConfig, TestResult };
 
 #[test]
 fn goldentests() -> TestResult<()> {
-    let mut config = TestConfig::new("target/debug/ante", "examples", "// ")?;
-    config.verbose = true;
+    let config = TestConfig::new("target/debug/ante", "examples", "// ")?;
     config.run_tests()
 }
