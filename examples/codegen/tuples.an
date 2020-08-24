@@ -1,0 +1,16 @@
+
+foo (a, b, _) =
+    _: string = a
+    printf "%d\n".c_string b
+
+foo ("test", 2, 'c')
+foo ("hi", 7, 2.0)
+
+single = (7,)
+
+extern printf: (ref char) int -> int
+
+// args: --run --delete-binary
+// expected stdout:
+// 2
+// 7

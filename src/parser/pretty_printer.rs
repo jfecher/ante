@@ -181,3 +181,13 @@ impl<'a> Display for ast::MemberAccess<'a> {
         write!(f, "({}.{})", self.lhs, self.field)
     }
 }
+
+impl<'a> Display for ast::Tuple<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "(")?;
+        for element in self.elements.iter() {
+            write!(f, "{}, ", element)?;
+        }
+        write!(f, ")")
+    }
+}

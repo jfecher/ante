@@ -263,6 +263,10 @@ impl<'g> Generator<'g> {
                 unimplemented!();
             },
 
+            Tuple(elements) => {
+                elements.iter().map(|element| self.size_of_type(element, cache)).sum()
+            }
+
             ForAll(_, typ) => self.size_of_type(typ, cache),
         }
     }
@@ -346,6 +350,11 @@ impl<'g> Generator<'g> {
 
             UserDefinedType(id) => self.convert_user_defined_type(*id, vec![], cache),
 
+            Tuple(elements) => {
+                let element_types = fmap(elements, |element| self.convert_type(element, cache));
+                self.context.struct_type(&element_types, false).as_basic_type_enum()
+            },
+
             TypeApplication(typ, args) => {
                 let args = fmap(args, |arg| self.follow_bindings(arg, cache));
                 let typ = self.follow_bindings(typ, cache);
@@ -394,6 +403,10 @@ impl<'g> Generator<'g> {
                 TypeApplication(Box::new(typ), args)
             },
 
+            Tuple(elements) => {
+                Tuple(fmap(elements, |element| self.follow_bindings(element, cache)))
+            },
+
             // unwrap foralls
             ForAll(_, typ) => self.follow_bindings(typ, cache),
         }
@@ -423,6 +436,12 @@ impl<'g> Generator<'g> {
             },
             TypeAnnotation(annotation) => {
                 self.bind_irrefutable_pattern(annotation.lhs.as_ref(), value, cache);
+            },
+            Tuple(tuple) => {
+                for (i, element) in tuple.elements.iter().enumerate() {
+                    let element_value = self.builder.build_extract_value(value.into_struct_value(), i as u32, "extract").unwrap();
+                    self.bind_irrefutable_pattern(element, element_value, cache);
+                }
             },
             _ => {
                 unreachable!();
@@ -770,5 +789,27 @@ impl<'g, 'c> CodeGen<'g, 'c> for ast::MemberAccess<'c> {
 
         let index = generator.get_field_index(&self.field, self.lhs.get_type().unwrap(), cache);
         generator.builder.build_extract_value(collection, index, &self.field)
+    }
+}
+
+impl<'g, 'c> CodeGen<'g, 'c> for ast::Tuple<'c> {
+    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> Option<BasicValueEnum<'g>> {
+        let mut elements = vec![];
+        let mut element_types = vec![];
+
+        for element in self.elements.iter() {
+            let value = element.codegen(generator, cache).unwrap();
+            element_types.push(value.get_type());
+            elements.push(value);
+        }
+
+        let tuple_type = generator.context.struct_type(&element_types, false);
+        let mut tuple = tuple_type.const_zero().into();
+
+        for (i, element) in elements.into_iter().enumerate() {
+            tuple = generator.builder.build_insert_value(tuple, element, i as u32, "insert").unwrap();
+        }
+
+        Some(tuple.as_basic_value_enum())
     }
 }

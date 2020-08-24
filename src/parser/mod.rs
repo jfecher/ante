@@ -122,10 +122,20 @@ fn irrefutable_pattern<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
     ], &"irrefutable_pattern")(input)
 }
 
+parser!(irrefutable_tuple_pattern loc =
+    _ <- expect(Token::ParenthesisLeft);
+    elements <- delimited_trailing(irrefutable_pattern, expect(Token::Comma));
+    _ <- expect(Token::ParenthesisRight);
+    Ast::tuple(elements, loc)
+);
+
+fn parenthesized_irrefutable_pattern<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
+    parenthesized(or(&[operator, irrefutable_pattern], "irrefutable pattern"))(input)
+}
+
 fn irrefutable_pattern_argument<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
     match input[0].0 {
-        Token::ParenthesisLeft =>
-            parenthesized(or(&[operator, irrefutable_pattern], &"irrefutable pattern"))(input),
+        Token::ParenthesisLeft => or(&[parenthesized_irrefutable_pattern, irrefutable_tuple_pattern], "irrefutable_pattern_argument")(input),
         _ => variable(input),
     }
 }
@@ -454,9 +464,7 @@ fn argument<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
         Token::BooleanLiteral(_) => parse_bool(input),
         Token::UnitLiteral => unit(input),
         Token::Backslash => lambda(input),
-        Token::ParenthesisLeft => {
-            parenthesized(or(&[operator, expression], &"argument"))(input)
-        },
+        Token::ParenthesisLeft => or(&[parenthesized_expression, tuple], "argument")(input),
         Token::TypeName(_) => variant(input),
         _ => Err(ParseError::InRule(&"argument", input[0].1)),
     }
@@ -474,6 +482,17 @@ parser!(lambda loc =
 parser!(operator loc =
     op <- expect_if("operator", |op| op.is_overloadable_operator());
     Ast::operator(op, loc)
+);
+
+fn parenthesized_expression<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
+    parenthesized(or(&[operator, expression], &"argument"))(input)
+}
+
+parser!(tuple loc =
+    _ <- expect(Token::ParenthesisLeft);
+    elements <- delimited_trailing(expression, expect(Token::Comma));
+    _ <- expect(Token::ParenthesisRight);
+    Ast::tuple(elements, loc)
 );
 
 parser!(variant loc =

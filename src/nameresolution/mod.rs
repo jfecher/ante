@@ -979,3 +979,13 @@ impl<'b> Resolvable<'b> for ast::MemberAccess<'b> {
         self.lhs.define(resolver, cache);
     }
 }
+
+impl<'b> Resolvable<'b> for ast::Tuple<'b> {
+    fn declare(&mut self, _resolver: &mut NameResolver, _cache: &mut ModuleCache<'b>) { }
+
+    fn define(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'b>) {
+        for element in self.elements.iter_mut() {
+            element.define(resolver, cache);
+        }
+    }
+}

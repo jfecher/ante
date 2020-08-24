@@ -43,6 +43,9 @@ pub enum Type {
     /// Any type in the form `constructor arg1 arg2 ... argN`
     TypeApplication(Box<Type>, Vec<Type>),
 
+    /// Tuple types are always non-empty
+    Tuple(Vec<Type>),
+
     /// These are currently used internally to indicate polymorphic
     /// type variables for let-polymorphism. There is no syntax to
     /// specify these explicitly in ante code.

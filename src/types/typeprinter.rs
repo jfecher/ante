@@ -70,6 +70,7 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
             Type::TypeVariable(id) => self.fmt_type_variable(*id, f),
             Type::UserDefinedType(id) => self.fmt_user_defined_type(*id, f),
             Type::TypeApplication(constructor, args) => self.fmt_type_application(constructor, args, f),
+            Type::Tuple(elements) => self.fmt_tuple(elements, f),
             Type::ForAll(typevars, typ) => self.fmt_forall(typevars, typ, f),
         }
     }
@@ -117,6 +118,15 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
         for arg in args.iter() {
             write!(f, " ")?;
             self.fmt_type(arg, f)?;
+        }
+        write!(f, "{}", ")".blue())
+    }
+
+    fn fmt_tuple(&self, elements: &[Type], f: &mut Formatter) -> std::fmt::Result {
+        write!(f, "{}", "(".blue())?;
+        for arg in elements.iter() {
+            self.fmt_type(arg, f)?;
+            write!(f, ", ")?;
         }
         write!(f, "{}", ")".blue())
     }

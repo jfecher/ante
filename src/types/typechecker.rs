@@ -53,6 +53,9 @@ fn replace_typevars<'b>(typ: &Type, typevars_to_replace: &HashMap<TypeVariableId
             let args = fmap(args, |arg| replace_typevars(arg, typevars_to_replace, cache));
             TypeApplication(Box::new(typ), args)
         },
+        Tuple(elements) => {
+            Tuple(fmap(elements, |element| replace_typevars(element, typevars_to_replace, cache)))
+        }
     }
 }
 
@@ -180,7 +183,10 @@ fn occurs<'b>(id: TypeVariableId, level: LetBindingLevel, typ: &Type, bindings: 
         TypeApplication(typ, args) => {
             occurs(id, level, typ, bindings, cache)
             || args.iter().any(|arg| occurs(id, level, arg, bindings, cache))
-        }
+        },
+        Tuple(elements) => {
+            elements.iter().any(|element| occurs(id, level, element, bindings, cache))
+        },
         ForAll(typevars, typ) => {
             !typevars.iter().any(|typevar| *typevar == id)
             && occurs(id, level, typ, bindings, cache)
@@ -288,6 +294,18 @@ pub fn try_unify<'b>(t1: &Type, t2: &Type, bindings: &mut TypeBindings, location
             Ok(())
         },
 
+        (Tuple(a_elements), Tuple(b_elements)) => {
+            if a_elements.len() != b_elements.len() {
+                return Err(make_error!(location, "Type mismatch between {} and {}", t1.display(cache), t2.display(cache)));
+            }
+
+            for (a_element, b_element) in a_elements.iter().zip(b_elements.iter()) {
+                try_unify(a_element, b_element, bindings, location, cache)?;
+            }
+
+            Ok(())
+        },
+
         (ForAll(a_vars, a), ForAll(b_vars, b)) => {
             if a_vars.len() != b_vars.len() {
                 return Err(make_error!(location, "Type mismatch between {} and {}", a.display(cache), b.display(cache)));
@@ -363,6 +381,9 @@ pub fn find_all_typevars<'a>(typ: &Type, monomorphic_only: bool, cache: &ModuleC
                 type_variables.append(&mut find_all_typevars(&arg, monomorphic_only, cache));
             }
             type_variables
+        },
+        Tuple(elements) => {
+            elements.iter().flat_map(|element| find_all_typevars(element, monomorphic_only, cache)).collect()
         },
         ForAll(polymorphic_typevars, typ) => {
             if !monomorphic_only {
@@ -464,6 +485,19 @@ fn bind_irrefutable_pattern<'a>(ast: &mut ast::Ast<'a>, typ: &Type, traits: &Vec
         TypeAnnotation(annotation) => {
             unify(typ, annotation.typ.as_ref().unwrap(), annotation.location, cache);
             bind_irrefutable_pattern(annotation.lhs.as_mut(), typ, traits, should_generalize, cache);
+        },
+        Tuple(tuple) => {
+            let tuple_type = Type::Tuple(fmap(&tuple.elements, |_| next_type_variable(cache)));
+            unify(&typ, &tuple_type, tuple.location, cache);
+
+            match tuple_type {
+                Type::Tuple(elements) => {
+                    for (element, element_type) in tuple.elements.iter_mut().zip(elements) {
+                        bind_irrefutable_pattern(element, &element_type, traits, should_generalize, cache);
+                    }
+                },
+                _ => unreachable!(),
+            }
         },
         _ => {
             error!(ast.locate(), "Invalid syntax in irrefutable pattern");
@@ -936,5 +970,20 @@ impl<'a> Inferable<'a> for ast::MemberAccess<'a> {
         traits.push(trait_impl);
 
         (field_type, traits)
+    }
+}
+
+impl<'a> Inferable<'a> for ast::Tuple<'a> {
+    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitList) {
+        let mut elements = vec![];
+        let mut traits = vec![];
+
+        for element in self.elements.iter_mut() {
+            let (element_type, mut element_traits) = infer(element, cache);
+            elements.push(element_type);
+            traits.append(&mut element_traits);
+        }
+
+        (Tuple(elements), traits)
     }
 }

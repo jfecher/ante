@@ -229,6 +229,14 @@ pub struct MemberAccess<'a> {
     pub typ: Option<types::Type>,
 }
 
+/// (element1, element2, ..., elementN,) trailing comma is optional
+#[derive(Debug)]
+pub struct Tuple<'a> {
+    pub elements: Vec<Ast<'a>>,
+    pub location: Location<'a>,
+    pub typ: Option<types::Type>,
+}
+
 #[derive(Debug)]
 pub enum Ast<'a> {
     Literal(Literal<'a>),
@@ -247,6 +255,7 @@ pub enum Ast<'a> {
     Sequence(Sequence<'a>),
     Extern(Extern<'a>),
     MemberAccess(MemberAccess<'a>),
+    Tuple(Tuple<'a>),
 }
 
 impl<'a> Ast<'a> {
@@ -343,6 +352,10 @@ impl<'a> Ast<'a> {
     pub fn member_access(lhs: Ast<'a>, field: String, location: Location<'a>) -> Ast<'a> {
         Ast::MemberAccess(MemberAccess { lhs: Box::new(lhs), field, location, typ: None })
     }
+
+    pub fn tuple(elements: Vec<Ast<'a>>, location: Location<'a>) -> Ast<'a> {
+        Ast::Tuple(Tuple { elements, location, typ: None })
+    }
 }
 
 macro_rules! dispatch_on_expr {
@@ -364,6 +377,7 @@ macro_rules! dispatch_on_expr {
             $crate::parser::ast::Ast::Sequence(inner) =>        $function(inner $(, $($args),* )? ),
             $crate::parser::ast::Ast::Extern(inner) =>          $function(inner $(, $($args),* )? ),
             $crate::parser::ast::Ast::MemberAccess(inner) =>    $function(inner $(, $($args),* )? ),
+            $crate::parser::ast::Ast::Tuple(inner) =>           $function(inner $(, $($args),* )? ),
         }
     });
 }
@@ -398,3 +412,4 @@ impl_locatable_for!(Return);
 impl_locatable_for!(Sequence);
 impl_locatable_for!(Extern);
 impl_locatable_for!(MemberAccess);
+impl_locatable_for!(Tuple);
