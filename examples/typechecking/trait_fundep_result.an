@@ -1,0 +1,14 @@
+
+trait Foo a -> b
+    foo: a -> b
+
+impl Foo int string
+    foo _ = "hi"
+
+str = foo 0
+
+// args: --check --show-types
+// expected stdout:
+// foo : (forall a b. (a -> b))
+//   given Foo a b
+// str : string

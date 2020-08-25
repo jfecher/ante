@@ -320,7 +320,7 @@ pub fn try_unify<'b>(t1: &Type, t2: &Type, bindings: &mut TypeBindings, location
 /// Try to unify the types from all the given vectors. We only return success or failure since that
 /// is all that is needed during trait resultion. If this function is ever needed outside of trait
 /// resolution it can be altered to collect the appropriate bindings/error messages as well.
-fn try_unify_all<'b>(vec1: &Vec<Type>, vec2: &Vec<Type>, location: Location<'b>, cache: &mut ModuleCache<'b>) -> Result<(), ()> {
+fn try_unify_all<'b>(vec1: &Vec<Type>, vec2: &Vec<Type>, location: Location<'b>, cache: &mut ModuleCache<'b>) -> Result<TypeBindings, ()> {
     if vec1.len() != vec2.len() {
         return Err(());
     }
@@ -332,7 +332,7 @@ fn try_unify_all<'b>(vec1: &Vec<Type>, vec2: &Vec<Type>, location: Location<'b>,
             _ => (),
         }
     }
-    Ok(())
+    Ok(bindings)
 }
 
 fn unify<'b>(t1: &Type, t2: &Type, location: Location<'b>, cache: &mut ModuleCache<'b>) {
@@ -595,19 +595,27 @@ fn find_impl<'a>(trait_impl: &mut Impl, location: Location<'a>, cache: &mut Modu
 
     let scope = cache.impl_scopes[trait_impl.scope.0].clone();
     let mut found = vec![];
+    let mut bindings = HashMap::new();
 
     for impl_id in scope.iter().copied() {
         let info = &cache.impl_infos[impl_id.0];
 
         if info.trait_id == trait_impl.trait_id {
             // TODO: remove excess cloning
-            if try_unify_all(&trait_impl.args, &info.typeargs.clone(), location, cache).is_ok() {
+            if let Ok(map) = try_unify_all(&trait_impl.args, &info.typeargs.clone(), location, cache) {
                 found.push(impl_id);
+                bindings = map;
             }
         }
     }
 
     if found.len() == 1 {
+        // Actually bind the types from the impl.
+        // This lets us infer (e.g.) types from fundeps in an impl
+        for (id, binding) in bindings.into_iter() {
+            cache.type_bindings[id.0] = Bound(binding);
+        }
+
         infer_trait_impl(found[0], cache);
         let binding = &mut cache.impl_bindings[trait_impl.binding.0];
         // TODO: the 'binding == Some(found[0])' clause is likely indicative of another bug
