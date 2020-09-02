@@ -201,6 +201,9 @@ impl<'g> Generator<'g> {
             Some(DefinitionNode::Extern(_)) => {
                 value = Some(self.codegen_extern(id, typ, cache));
             }
+            Some(DefinitionNode::TypeConstructor { name, tag }) => {
+                value = Some(self.codegen_type_constructor(name, tag, typ, cache))
+            },
             Some(DefinitionNode::TraitDefinition(_)) => {
                 unreachable!("There is no code in a trait definition that can be codegen'd.\nNo cached impl for {}: {}", definition.name, typ.display(cache));
             },
@@ -256,11 +259,11 @@ impl<'g> Generator<'g> {
 
             UserDefinedType(id) => {
                 let _info = &cache.type_infos[id.0];
-                unimplemented!();
+                unimplemented!("size_of_type(UserDefinedType) is unimplemented");
             },
 
             TypeApplication(_typ, _args) => {
-                unimplemented!();
+                unimplemented!("size_of_type(TypeApplication) is unimplemented");
             },
 
             Tuple(elements) => {
@@ -316,7 +319,7 @@ impl<'g> Generator<'g> {
 
     fn convert_user_defined_type<'c>(&mut self, id: TypeInfoId, args: Vec<types::Type>, cache: &ModuleCache<'c>) -> BasicTypeEnum<'g> {
         let info = &cache.type_infos[id.0];
-        assert!(info.args.is_empty(), "Kind error during llvm code generation");
+        assert!(info.args.len() == args.len(), "Kind error during llvm code generation");
 
         if let Some(typ) = self.types.get(&(id, args.clone())) {
             return *typ;
@@ -506,6 +509,81 @@ impl<'g> Generator<'g> {
         self.definitions.insert((id, typ.clone()), global);
         self.definitions.insert((id, UNBOUND_TYPE.clone()), global);
         global
+    }
+
+    fn codegen_type_constructor<'c>(&mut self, name: &str, tag: &Option<u8>, typ: &types::Type, cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
+        use types::Type::*;
+        let typ = self.follow_bindings(typ, cache);
+        match &typ {
+            Function(_, return_type) => {
+                // TODO: refactor function creation code (here + ast::Lambda)
+                let llvm_type = self.convert_type(&typ, cache).into_pointer_type().get_element_type();
+
+                let function = self.module.add_function(name, llvm_type.into_function_type(), None);
+                let function_pointer = function.as_global_value().as_pointer_value().into();
+
+                let caller_block = self.builder.get_insert_block().unwrap();
+                let basic_block = self.context.append_basic_block(function, "entry");
+
+                self.current_function = Some(function);
+                self.builder.position_at_end(basic_block);
+
+                let mut elements = vec![];
+                let mut element_types = vec![];
+
+                if let Some(tag) = tag {
+                    let tag_value = self.tag_value(*tag);
+                    elements.push(tag_value);
+                    element_types.push(tag_value.get_type());
+                }
+
+                for parameter in function.get_param_iter() {
+                    elements.push(parameter);
+                    element_types.push(parameter.get_type());
+                }
+
+                let tuple = self.tuple(elements, element_types);
+                let value = self.reinterpret_cast(tuple, &return_type, cache);
+
+                self.builder.build_return(Some(&value));
+                self.builder.position_at_end(caller_block);
+
+                function_pointer
+            },
+            UserDefinedType(_) => {
+                let value = tag.map_or(self.unit_value(), |tag| self.tag_value(tag));
+                self.reinterpret_cast(value, &typ, cache)
+            },
+            ForAll(_, typ) => {
+                self.codegen_type_constructor(name, tag, &typ, cache)
+            },
+            _ => unreachable!("Type constructor's type is neither a Function or a  UserDefinedType, {}: {}", name, typ.display(cache)),
+        }
+    }
+
+    fn tag_value(&self, tag: u8) -> BasicValueEnum<'g> {
+        self.context.i8_type().const_int(tag as u64, false).as_basic_value_enum()
+    }
+
+    fn reinterpret_cast<'c>(&mut self, value: BasicValueEnum<'g>, target_type: &types::Type, cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
+        let source_type = value.get_type();
+        let alloca = self.builder.build_alloca(source_type, "alloca");
+        self.builder.build_store(alloca, value);
+
+        let target_type = self.convert_type(target_type, cache).ptr_type(AddressSpace::Global);
+        let cast = self.builder.build_pointer_cast(alloca, target_type, "cast");
+        self.builder.build_load(cast, "union_cast")
+    }
+
+    fn tuple<'c>(&mut self, elements: Vec<BasicValueEnum<'g>>, element_types: Vec<BasicTypeEnum<'g>>) -> BasicValueEnum<'g> {
+        let tuple_type = self.context.struct_type(&element_types, false);
+        let mut tuple = tuple_type.const_zero().into();
+
+        for (i, element) in elements.into_iter().enumerate() {
+            tuple = self.builder.build_insert_value(tuple, element, i as u32, "insert").unwrap();
+        }
+
+        tuple.as_basic_value_enum()
     }
 
     fn get_field_index<'c>(&self, field_name: &str, typ: &types::Type, cache: &ModuleCache<'c>) -> u32 {
@@ -721,7 +799,7 @@ impl<'g, 'c> CodeGen<'g, 'c> for ast::If<'c> {
 
 impl<'g, 'c> CodeGen<'g, 'c> for ast::Match<'c> {
     fn codegen(&self, _generator: &mut Generator<'g>, _cache: &mut ModuleCache<'c>) -> Option<BasicValueEnum<'g>> {
-        unimplemented!()
+        unimplemented!("Codegen for match is unimplemented")
     }
 }
 
@@ -803,13 +881,6 @@ impl<'g, 'c> CodeGen<'g, 'c> for ast::Tuple<'c> {
             elements.push(value);
         }
 
-        let tuple_type = generator.context.struct_type(&element_types, false);
-        let mut tuple = tuple_type.const_zero().into();
-
-        for (i, element) in elements.into_iter().enumerate() {
-            tuple = generator.builder.build_insert_value(tuple, element, i as u32, "insert").unwrap();
-        }
-
-        Some(tuple.as_basic_value_enum())
+        Some(generator.tuple(elements, element_types))
     }
 }

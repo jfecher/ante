@@ -447,6 +447,7 @@ fn infer_nested_definition<'a>(definition_id: DefinitionInfoId, cache: &mut Modu
         },
         DefinitionNode::Impl => unreachable!("DefinitionNode::Impl shouldn't be reachable when inferring nested definitions. Only the TraitDefinition should be visible."),
         DefinitionNode::Parameter => {},
+        DefinitionNode::TypeConstructor { .. } => {},
     };
 
     let info = &mut cache.definition_infos[definition_id.0];

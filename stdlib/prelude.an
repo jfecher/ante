@@ -156,19 +156,11 @@ type Ordering = | Less | Equal | Greater
 
 impl Eq Ordering
     (==) (a: Ordering) (b: Ordering) -> bool =
-        match a with
-        | Less ->
-            match b with
-            | Less -> true
-            | _ -> false
-        | Equal ->
-            match b with
-            | Equal -> true
-            | _ -> false
-        | Greater ->
-            match b with
-            | Greater -> true
-            | _ -> false
+        match (a, b) with
+        | (Less, Less) -> true
+        | (Equal, Equal) -> true
+        | (Greater, Greater) -> true
+        | _ -> false
 
 trait Cmp a
     compare: a a -> Ordering

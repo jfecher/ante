@@ -672,11 +672,14 @@ type Variants<'b> = Vec<(String, Vec<ast::Type<'b>>, Location<'b>)>;
 fn create_variants<'b>(vec: &Variants<'b>, parent_type_id: TypeInfoId,
         resolver: &mut NameResolver, cache: &mut ModuleCache<'b>) -> Vec<TypeConstructor<'b>> {
 
+    let mut index = 0;
     fmap(&vec, |(name, types, location)| {
         let args = fmap(&types, |t| resolver.convert_type(cache, t));
 
         let id = resolver.push_definition(&name, cache, *location);
         cache.definition_infos[id.0].typ = Some(create_variant_constructor_type(parent_type_id, args.clone(), cache));
+        cache.definition_infos[id.0].definition = Some(DefinitionNode::TypeConstructor { name: name.clone(), tag: Some(index) });
+        index += 1;
         TypeConstructor { name: name.clone(), args, location: *location }
     })
 }
@@ -735,6 +738,7 @@ impl<'b> Resolvable<'b> for ast::TypeDefinition<'b> {
                 // This is done inside create_variants for tagged union types
                 let id = resolver.push_definition(&self.name, cache, self.location);
                 cache.definition_infos[id.0].typ = Some(create_variant_constructor_type(type_id, field_types, cache));
+                cache.definition_infos[id.0].definition = Some(DefinitionNode::TypeConstructor { name: self.name.clone(), tag: None });
             },
             ast::TypeDefinitionBody::AliasOf(typ) => {
                 let typ = resolver.convert_type(cache, typ);
@@ -915,7 +919,7 @@ impl<'b> Resolvable<'b> for ast::TraitImpl<'b> {
         // TODO cleanup: is required_definitions still required since we can
         // resolve_all_definitions now? The checks in push_definition can probably
         // be moved here instead
-        for required_definition in resolver.required_definitions.as_mut().unwrap() {
+        for required_definition in resolver.required_definitions.as_ref().unwrap() {
             error!(self.location, "impl is missing a definition for {}", cache.definition_infos[required_definition.0].name);
         }
 

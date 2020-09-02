@@ -86,8 +86,9 @@ pub struct DefinitionInfoId(pub usize);
 pub enum DefinitionNode<'a> {
     Definition(&'a mut Definition<'a>),
     TraitDefinition(&'a mut TraitDefinition<'a>),
-    Parameter,
     Extern(&'a mut TypeAnnotation<'a>),
+    TypeConstructor { name: String, tag: Option<u8> },
+    Parameter,
     Impl,
 }
 
