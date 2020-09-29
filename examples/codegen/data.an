@@ -1,0 +1,20 @@
+type T = a: int, b: string
+
+t = T 1 "one"
+log "t = %d, " t.a
+
+puts t.b.c_string
+
+s = Some 2
+
+match s with
+| Some x -> log "s = %d\n" x
+| None -> log "s = None\n" 0
+
+log s x = printf s.c_string x
+extern printf: (ref char) int -> int
+
+// args: --run --delete-binary
+// expected stdout:
+// t = 1, one
+// s = 2

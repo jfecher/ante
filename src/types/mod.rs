@@ -1,7 +1,9 @@
 use crate::error::location::{ Locatable, Location };
-use crate::cache::ModuleCache;
+use crate::cache::{ ModuleCache, DefinitionInfoId };
+
 use std::collections::HashMap;
 
+pub mod pattern;
 pub mod typed;
 pub mod typechecker;
 pub mod typeprinter;
@@ -103,6 +105,7 @@ pub enum TypeBinding {
 pub struct TypeConstructor<'a> {
     pub name: String,
     pub args: Vec<Type>,
+    pub id: DefinitionInfoId,
     pub location: Location<'a>,
 }
 

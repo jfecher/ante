@@ -4,7 +4,7 @@
 //! so that new users won't have to subject themselves to building llvm.
 
 use crate::cache::{ ModuleCache, DefinitionInfoId, DefinitionNode };
-use crate::parser::ast;
+use crate::parser::{ ast, ast::Ast };
 use crate::nameresolution::builtin::BUILTIN_ID;
 use crate::types::{ self, typechecker, TypeVariableId, TypeBinding, TypeInfoId };
 use crate::types::typed::Typed;
@@ -51,7 +51,7 @@ pub struct Generator<'context> {
     current_function_info: Option<DefinitionInfoId>,
 }
 
-pub fn run<'c>(path: &Path, ast: &ast::Ast<'c>, cache: &mut ModuleCache<'c>, show_ir: bool, run_program: bool, delete_binary: bool) {
+pub fn run<'c>(path: &Path, ast: &Ast<'c>, cache: &mut ModuleCache<'c>, show_ir: bool, run_program: bool, delete_binary: bool) {
     let context = Context::create();
     let module_name = path_to_module_name(path);
     let module = context.create_module(&module_name);
@@ -124,7 +124,7 @@ fn remove_forall(typ: &types::Type) -> &types::Type {
 const UNBOUND_TYPE: types::Type = types::Type::Primitive(types::PrimitiveType::UnitType);
 
 impl<'g> Generator<'g> {
-    fn codegen_main<'c>(&mut self, ast: &ast::Ast<'c>, cache: &mut ModuleCache<'c>) {
+    fn codegen_main<'c>(&mut self, ast: &Ast<'c>, cache: &mut ModuleCache<'c>) {
         let i32_type = self.context.i32_type();
         let main_type = i32_type.fn_type(&[], false);
         let function = self.module.add_function("main", main_type, None);
@@ -415,9 +415,8 @@ impl<'g> Generator<'g> {
         }
     }
 
-    fn bind_irrefutable_pattern<'c>(&mut self, ast: &ast::Ast<'c>, value: BasicValueEnum<'g>, cache: &mut ModuleCache<'c>) {
-        use ast::Ast::*;
-        use ast::LiteralKind;
+    fn bind_irrefutable_pattern<'c>(&mut self, ast: &Ast<'c>, value: BasicValueEnum<'g>, cache: &mut ModuleCache<'c>) {
+        use { ast::LiteralKind, Ast::* };
         match ast {
             Literal(literal) => {
                 assert!(literal.kind == LiteralKind::Unit)
@@ -460,13 +459,11 @@ impl<'g> Generator<'g> {
         // If we're defining a lambda, give the lambda info on DefinitionInfoId so that it knows
         // what to name itself in the IR and so recursive functions can properly codegen without
         // attempting to re-compile themselves over and over.
-        if matches!(definition.expr.as_ref(), ast::Ast::Lambda(..)) {
-            match definition.pattern.as_ref() {
-                ast::Ast::Variable(variable) => {
-                    self.current_function_info = Some(variable.definition.unwrap());
-                }
-                _ => (),
+        match (definition.pattern.as_ref(), definition.expr.as_ref()) {
+            (Ast::Variable(variable), Ast::Lambda(_)) => {
+                self.current_function_info = Some(variable.definition.unwrap());
             }
+            _ => (),
         }
 
         let value = definition.expr.codegen(self, cache).unwrap();
@@ -609,7 +606,7 @@ trait CodeGen<'g, 'c> {
     fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> Option<BasicValueEnum<'g>>;
 }
 
-impl<'g, 'c> CodeGen<'g, 'c> for ast::Ast<'c> {
+impl<'g, 'c> CodeGen<'g, 'c> for Ast<'c> {
     fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> Option<BasicValueEnum<'g>> {
         dispatch_on_expr!(self, CodeGen::codegen, generator, cache)
     }
@@ -726,7 +723,7 @@ impl<'g, 'c> CodeGen<'g, 'c> for ast::Lambda<'c> {
 impl<'g, 'c> CodeGen<'g, 'c> for ast::FunctionCall<'c> {
     fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> Option<BasicValueEnum<'g>> {
         match self.function.as_ref() {
-            ast::Ast::Variable(variable) if variable.definition == Some(BUILTIN_ID) => {
+            Ast::Variable(variable) if variable.definition == Some(BUILTIN_ID) => {
                 // Builtin function
                 // TODO: improve this control flow so that the fast path of normal function calls
                 // doesn't have to check the rare case of a builtin function call.
@@ -743,15 +740,16 @@ impl<'g, 'c> CodeGen<'g, 'c> for ast::FunctionCall<'c> {
 
 impl<'g, 'c> CodeGen<'g, 'c> for ast::Definition<'c> {
     fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> Option<BasicValueEnum<'g>> {
-        if !matches!(self.expr.as_ref(), ast::Ast::Lambda(..)) {
-            let value = self.expr.codegen(generator, cache).unwrap();
-            generator.bind_irrefutable_pattern(self.pattern.as_ref(), value, cache);
-            Some(value)
-        } else {
+        match self.expr.as_ref() {
+            Ast::Lambda(_) => {
+                let value = self.expr.codegen(generator, cache).unwrap();
+                generator.bind_irrefutable_pattern(self.pattern.as_ref(), value, cache);
+                Some(value)
+            }
             // If the value is a function we can skip it and come back later to only compile it
             // when it is actually used. This saves the optimizer some work since we won't ever
             // have to search for and remove unused functions.
-            None
+            _ => None,
         }
     }
 }

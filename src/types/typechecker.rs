@@ -1,12 +1,13 @@
 use crate::cache::{ ModuleCache, TraitInfoId, DefinitionInfoId, ImplBindingId, DefinitionNode, ImplInfoId };
+use crate::error::location::{ Location, Locatable };
+use crate::error::ErrorMessage;
 use crate::parser::ast;
+use crate::types::pattern::PatternMatrix;
 use crate::types::{ Type, Type::*, TypeVariableId, PrimitiveType, LetBindingLevel, TypeBinding::* };
 use crate::types::{ TypeBinding, STRING_TYPE };
 use crate::types::typed::Typed;
 use crate::types::traits::{ TraitList, Impl };
 use crate::util::*;
-use crate::error::location::{ Location, Locatable };
-use crate::error::ErrorMessage;
 
 use std::collections::HashMap;
 use std::sync::atomic::{ AtomicUsize, Ordering };
@@ -859,6 +860,9 @@ impl<'a> Inferable<'a> for ast::Match<'a> {
                 traits.append(&mut branch_traits);
             }
         }
+
+        let _tree = PatternMatrix::from_ast(self, cache).compile(cache, self.location);
+
         (return_type, traits)
     }
 }

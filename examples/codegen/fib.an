@@ -1,0 +1,10 @@
+fib n =
+    if n < 2 then n
+    else fib (n - 2) + fib (n - 1)
+
+extern printf: (ref char) int -> int
+
+printf "%d\n".c_string (fib 10)
+
+// args: --run --delete-binary
+// expected stdout: 55

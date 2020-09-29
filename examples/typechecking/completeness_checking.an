@@ -1,0 +1,22 @@
+
+match (2, None) with
+| (0, None) -> ()
+| (_, Some _) -> ()
+// | (_, _) -> ()
+
+// match (2, 3) with
+// | (0, _) -> true
+// | (_, 1) -> false
+// 
+// match (true, true) with
+// | (false, true) -> 0
+// | (true, false) -> 1
+
+// match (1, 2, 3, 4) with
+// | (1, 2) -> 1
+// | (1, 2, 3) -> 2
+// | (_, _, _, _) -> 3
+
+// args: --check
+// expected stdout:
+// examples/typechecking/completeness_checking.an:2 error:	missing case (_, None)

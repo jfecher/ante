@@ -680,7 +680,7 @@ fn create_variants<'b>(vec: &Variants<'b>, parent_type_id: TypeInfoId,
         cache.definition_infos[id.0].typ = Some(create_variant_constructor_type(parent_type_id, args.clone(), cache));
         cache.definition_infos[id.0].definition = Some(DefinitionNode::TypeConstructor { name: name.clone(), tag: Some(index) });
         index += 1;
-        TypeConstructor { name: name.clone(), args, location: *location }
+        TypeConstructor { name: name.clone(), args, id, location: *location }
     })
 }
 

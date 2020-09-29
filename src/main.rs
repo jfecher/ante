@@ -64,6 +64,8 @@ pub fn main() {
         .arg(Arg::with_name("file").help("The file to compile").required(true))
         .get_matches();
 
+    // TODO: 
+
     let filename = Path::new(args.value_of("file").unwrap());
     let file = expect!(File::open(filename), "Could not open file {}\n", filename.display());
 
