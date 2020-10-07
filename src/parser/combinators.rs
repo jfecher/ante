@@ -1,6 +1,6 @@
 use crate::lexer::token::Token;
 use crate::error::location::Location;
-use super::error::{ ParseError, ParseResult };
+use crate::parser::error::{ ParseError, ParseResult };
 
 pub type Input<'local, 'cache> = &'local[(Token, Location<'cache>)];
 

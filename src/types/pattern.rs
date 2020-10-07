@@ -3,21 +3,44 @@ use crate::error::location::{ Location, Locatable };
 use crate::parser::ast::{ self, Ast };
 use crate::types::pattern::Constructor::*;
 use crate::types::{ Type, TypeInfoBody, TypeInfoId };
+use crate::util::join_with;
 
-use std::iter::repeat;
 use std::collections::{ HashMap, HashSet };
 
-#[derive(Debug, Copy, Clone, Eq, Hash)]
+/// Compiles the given match_expr to a DecisionTree, doing
+/// completeness and redundancy checking in the process.
+pub fn compile<'c>(match_expr: &ast::Match<'c>, cache: &mut ModuleCache<'c>) -> Option<DecisionTree> {
+    let mut matrix = PatternMatrix::from_ast(match_expr, cache, match_expr.location);
+    let result = matrix.compile(cache, match_expr.location);
+
+    if result.context.reachable_branches.len() != match_expr.branches.len() {
+        for (i, (pattern, _branch)) in match_expr.branches.iter().enumerate() {
+            if !result.context.reachable_branches.contains(&i) {
+                warning!(pattern.locate(), "Unreachable pattern");
+            }
+        }
+    }
+
+    if result.context.missed_case_count != 0 {
+        result.issue_inexhaustive_errors(cache, match_expr.location);
+        None
+    } else {
+        Some(result.tree)
+    }
+}
+
+#[derive(Debug, Clone, Eq, Hash)]
 pub enum VariantTag {
     True,
     False,
     Unit,
+    Tuple,
     UserDefined(DefinitionInfoId),
 
     /// This tag signals pattern matching should give up completeness checking
     /// for this constructor. Integers and floats are most notably translated to
     /// Fail rather than attempting to approximate the types' full ranges.
-    Fail,
+    Literal(ast::LiteralKind),
 }
 
 impl PartialEq for VariantTag {
@@ -28,50 +51,96 @@ impl PartialEq for VariantTag {
             (True, True) => true,
             (False, False) => true,
             (Unit, Unit) => true,
+            (Tuple, Tuple) => true,
+            (Literal(a), Literal(b)) => a == b,
             _ => false,
         }
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum Constructor {
-    MatchAll,
-    Variant { tag: VariantTag, fields: PatternStack },
+#[derive(Clone)]
+enum Constructor {
+    /// Any variable pattern, e.g. `a` `b` or `_`
+    MatchAll(DefinitionInfoId),
+
+    /// Any constructor followed by a field list.
+    /// e.g. `Some 2` -> Variant(1, `Some`, [2])
+    ///      `(1, "two")` -> Variant(1, `,`, [1, "two"])
+    Variant(VariantTag, PatternStack),
 }
 
 impl Constructor {
     fn is_wildcard(&self) -> bool {
         match self {
-            MatchAll => true,
+            MatchAll(_) => true,
             _ => false,
         }
     }
 
-    fn matches(&self, candidate: VariantTag) -> bool {
+    fn matches(&self, candidate: &VariantTag) -> bool {
         match self {
-            MatchAll => true,
-            Variant { tag, .. } => *tag == candidate,
+            MatchAll(_) => true,
+            Variant(tag, _) => tag == candidate,
         }
     }
 
-    fn take_n_fields(self, n: usize) -> Vec<Constructor> {
+    fn repeat_matchall<'c>(len: usize, fields: &Vec<Vec<DefinitionInfoId>>,
+        cache: &mut ModuleCache<'c>, location: Location<'c>) -> Vec<(Constructor, DefinitionInfoId)>
+    {
+        assert_eq!(fields.len(), len);
+
+        (0..len).map(|i| {
+            // Get the nth existing DefinitionInfoId from fields, or if it
+            // doesn't already exist, generate a fresh variable.
+            let id = fields[i].get(0).copied().unwrap_or_else(||
+                cache.push_definition(".repeat_matchall", location)
+            );
+            (MatchAll(id), id)
+        }).collect()
+    }
+
+    /// Set's the constructor's id to the first id in new_ids if new_ids is non-empty.
+    /// If new_ids is empty, push the constructor's current id instead.
+    fn set_id(pair: &mut (Constructor, DefinitionInfoId), new_ids: &mut Vec<DefinitionInfoId>) {
+        match new_ids.get_mut(0) {
+            Some(new_id) => {
+                if let MatchAll(ref mut id) = pair.0 {
+                    *id = *new_id;
+                }
+                pair.1 = *new_id;
+            },
+            None => new_ids.push(pair.1),
+        }
+    }
+
+    /// Takes n fields from the contained Variant's pattern stack, using the existing
+    /// DefinitionInfoIds from field_ids if possible for each field.
+    /// If self is a MatchAll instead, this will generate n MatchAll patterns, again
+    /// using the DefinitionInfoIds from field_ids if possible.
+    fn take_n_fields<'c>(self, n: usize, field_ids: &mut Vec<Vec<DefinitionInfoId>>,
+        cache: &mut ModuleCache<'c>, location: Location<'c>) -> Vec<(Constructor, DefinitionInfoId)>
+    {
         match self {
-            MatchAll => {
-                repeat(MatchAll).take(n).collect()
-            }
-            Variant { fields, .. } => {
+            MatchAll(_) => Constructor::repeat_matchall(n, field_ids, cache, location),
+            Variant(_, mut fields) => {
                 assert_eq!(fields.0.len(), n);
+                assert_eq!(field_ids.len(), n);
+
+                for (field, ids) in fields.0.iter_mut().zip(field_ids.iter_mut()) {
+                    Constructor::set_id(field, ids);
+                }
+
                 fields.0
             }
         }
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct PatternStack(pub Vec<Constructor>);
+#[derive(Clone)]
+struct PatternStack(Vec<(Constructor, DefinitionInfoId)>);
 
 impl IntoIterator for PatternStack {
-    type Item = Constructor;
+    type Item = (Constructor, DefinitionInfoId);
     type IntoIter = std::iter::Rev<std::vec::IntoIter<Self::Item>>;
 
     fn into_iter(self) -> Self::IntoIter {
@@ -84,17 +153,23 @@ impl PatternStack {
         self.0.len()
     }
 
-    fn from_ast<'c>(ast: &Ast<'c>, cache: &ModuleCache<'c>) -> PatternStack {
+    fn from_ast<'c>(ast: &Ast<'c>, cache: &mut ModuleCache<'c>, location: Location<'c>) -> PatternStack {
         match ast {
             Ast::Variable(variable) => {
-                let id = variable.definition.unwrap();
-
                 use ast::VariableKind::TypeConstructor;
-                let constructor = match variable.kind {
-                    TypeConstructor(_) => Variant { tag: VariantTag::UserDefined(id), fields: PatternStack(vec![]) },
-                    _ => MatchAll,
+                let constructor_and_id = match variable.kind {
+                    TypeConstructor(_) => {
+                        let tag = VariantTag::UserDefined(variable.definition.unwrap());
+                        let fields = PatternStack(vec![]);
+                        let variable = cache.push_definition(".from_ast.TypeConstructor", location);
+                        (Variant(tag, fields), variable)
+                    }
+                    _ => {
+                        let variable = variable.definition.unwrap();
+                        (MatchAll(variable), variable)
+                    },
                 };
-                PatternStack(vec![constructor])
+                PatternStack(vec![constructor_and_id])
             },
             Ast::Literal(literal) => {
                 let fields = PatternStack(vec![]);
@@ -104,28 +179,32 @@ impl PatternStack {
                 let tag = match literal.kind {
                     ast::LiteralKind::Bool(b) => if b { VariantTag::True } else { VariantTag::False },
                     ast::LiteralKind::Unit => VariantTag::Unit,
-                    _ => VariantTag::Fail,
+                    _ => VariantTag::Literal(literal.kind.clone()),
                 };
 
-                PatternStack(vec![Variant { tag, fields }])
+                let variable = cache.push_definition(".from_ast.Literal", location);
+                PatternStack(vec![(Variant(tag, fields), variable)])
             },
             Ast::Tuple(tuple) => {
-                let patterns = tuple.elements.iter().rev()
-                    .flat_map(|element| PatternStack::from_ast(element, cache))
+                let fields = tuple.elements.iter().rev()
+                    .flat_map(|element| PatternStack::from_ast(element, cache, location))
                     .collect();
 
-                PatternStack(patterns)
+                let pattern = Variant(VariantTag::Tuple, PatternStack(fields));
+                let variable = cache.push_definition(".from_ast.Tuple", location);
+                PatternStack(vec![(pattern, variable)])
             },
             Ast::FunctionCall(call) => {
                 match call.function.as_ref() {
                     Ast::Variable(variable) => {
                         let tag = VariantTag::UserDefined(variable.definition.unwrap());
                         let fields = call.args.iter().rev()
-                            .flat_map(|arg| PatternStack::from_ast(arg, cache))
+                            .flat_map(|arg| PatternStack::from_ast(arg, cache, location))
                             .collect();
 
                         let fields = PatternStack(fields);
-                        PatternStack(vec![Variant { tag, fields }])
+                        let variable = cache.push_definition(".from_ast.FunctionCall", location);
+                        PatternStack(vec![(Variant(tag, fields), variable)])
                     },
                     _ => {
                         error!(ast.locate(), "Invalid syntax used in pattern");
@@ -140,21 +219,18 @@ impl PatternStack {
         }
     }
 
-    fn head(&self) -> Option<&Constructor> {
+    fn head(&self) -> Option<&(Constructor, DefinitionInfoId)> {
         self.0.last()
     }
 
-    fn specialize_row(&self, tag: VariantTag, arity: usize) -> Option<Self> {
+    fn specialize_row<'c>(&self, tag: &VariantTag, arity: usize, fields: &mut Vec<Vec<DefinitionInfoId>>,
+                          cache: &mut ModuleCache<'c>, location: Location<'c>) -> Option<Self> {
         match self.head() {
-            Some(head) if head.matches(tag) => {
+            Some((head, _)) if head.matches(tag) => {
                 let mut new_stack = self.0.clone();
 
-                match new_stack.pop() {
-                    Some(head) => {
-                        new_stack.append(&mut head.take_n_fields(arity));
-                    }
-                    _ => unreachable!("Cannot specialize empty row"),
-                }
+                let (head, _) = new_stack.pop().unwrap();
+                new_stack.append(&mut head.take_n_fields(arity, fields, cache, location));
                 
                 Some(PatternStack(new_stack))
             }
@@ -165,13 +241,16 @@ impl PatternStack {
     /// Given self = [patternN, ..., pattern2, head]
     ///  Return Some [patternN, ..., pattern2]   if head == MatchAll
     ///         None                             otherwise
-    fn default_specialize_row(&self) -> Option<Self> {
-        self.head().filter(|constructor| constructor.is_wildcard())
-            .map(|_| PatternStack(self.0.iter().take(self.0.len() - 1).cloned().collect()))
-    }
+    fn default_specialize_row(&self) -> Option<(Self, DefinitionInfoId)> {
+        self.head().filter(|(constructor, _)| constructor.is_wildcard()).map(|constructor| {
+            // Since is_wildcard is true, this if let should always pass
+            if let MatchAll(id) = constructor.0 {
+                assert_eq!(id, constructor.1);
+            }
 
-    fn all_wildcards(&self) -> bool {
-        self.0.iter().all(|constructor| constructor.is_wildcard())
+            let stack = self.0.iter().take(self.0.len() - 1).cloned().collect();
+            (PatternStack(stack), constructor.1)
+        })
     }
 }
 
@@ -200,59 +279,61 @@ fn get_variant_type_from_constructor<'c>(constructor_id: DefinitionInfoId, cache
     }
 }
 
+fn insert_if<T: Eq + std::hash::Hash>(mut set: HashSet<T>, element: T, condition: bool) -> Option<HashSet<T>> {
+    if condition {
+        set.insert(element);
+    }
+    Some(set)
+}
+
 /// The builtin constructors true, false, and unit don't have DefinitionInfoIds
 /// so they must be manually handled here.
-fn builtin_is_exhastive(variants: &HashMap<VariantTag, usize>) -> Option<bool> {
-    let mut variants_iter = variants.iter().map(|(tag, _)| *tag);
+fn get_missing_builtin_cases<T>(variants: &HashMap<&VariantTag, T>) -> Option<HashSet<VariantTag>> {
+    let mut variants_iter = variants.iter().map(|(tag, _)| tag.clone());
     let (first, second) = (variants_iter.next(), variants_iter.next());
+    let missing_cases = HashSet::new();
 
     use VariantTag::*;
     match (first, second) {
-        (Some(True), second) => Some(second == Some(False)),
-        (Some(False), second) => Some(second == Some(True)),
-        (Some(Unit), _) => Some(true),
-        (Some(Fail), _) => Some(false),
+        (Some(True), second)  => insert_if(missing_cases, False, second != Some(&False)),
+        (Some(False), second) => insert_if(missing_cases, True,  second != Some(&True)),
+        (Some(Unit), _) => Some(missing_cases),
+        (Some(Tuple), _) => Some(missing_cases),
+        // Literals always require a match-all, so a missing case is always inserted here.
+        (Some(Literal(literal)), _) => insert_if(missing_cases, Literal(literal.clone()), true),
         _ => None,
     }
 }
 
-fn get_covered_constructors(variants: &HashMap<VariantTag, usize>) -> HashSet<DefinitionInfoId> {
-    variants.iter().filter_map(|(tag, _)| match tag {
-        VariantTag::UserDefined(id) => Some(*id),
-
-        // All constructors in a well-formed program should be user-defined.
-        // To give better errors in the presense of previous type errors though, its
-        // possible we do completeness checking with the cases false | None for example.
-        // In these cases the builtin variant tags are filtered out here.
-        _ => None,
-    }).collect()
+fn get_covered_constructors<T>(variants: &HashMap<&VariantTag, T>) -> HashSet<VariantTag> {
+    variants.iter().map(|(tag, _)| (*tag).clone()).collect()
 }
 
 /// Given a hashmap from variant tag -> arity,
 /// return true if the hashmap covers all constructors for its type.
-fn is_exhaustive<'c>(variants: &HashMap<VariantTag, usize>, cache: &ModuleCache<'c>) -> bool {
+fn get_missing_cases<'c, T>(variants: &HashMap<&VariantTag, T>, cache: &ModuleCache<'c>) -> HashSet<VariantTag> {
     use VariantTag::*;
 
-    if let Some(result) = builtin_is_exhastive(variants) {
+    if let Some(result) = get_missing_builtin_cases(variants) {
         return result;
     }
 
-    match variants.iter().nth(0).map(|(tag, _)| *tag).unwrap() {
-        True | False | Unit | Fail =>
+    match variants.iter().nth(0).map(|(tag, _)| tag.clone()).unwrap() {
+        True | False | Unit | Tuple | Literal(_) =>
             unreachable!("Found builtin constructor not covered by builtin_is_exhastive"),
 
         UserDefined(id) => {
-            let type_id = get_variant_type_from_constructor(id, cache);
+            let type_id = get_variant_type_from_constructor(*id, cache);
             match &cache.type_infos[type_id.0].body {
                 TypeInfoBody::Union(constructors) => {
-                    let all_constructors = constructors.iter().map(|constructor| constructor.id).collect();
+                    let all_constructors: HashSet<_> = constructors.iter().map(|constructor| VariantTag::UserDefined(constructor.id)).collect();
                     let covered_constructors = get_covered_constructors(variants);
-                    covered_constructors == all_constructors
+                    all_constructors.difference(&covered_constructors).cloned().collect()
                 },
 
                 // Structs only have one constructor anyway, so if
                 // we have a constructor its always exhaustive.
-                TypeInfoBody::Struct(_) => true,
+                TypeInfoBody::Struct(_) => HashSet::new(),
                 TypeInfoBody::Alias(_) => unimplemented!("Pattern matching on aliased types is unimplemented"),
                 TypeInfoBody::Unknown => unreachable!("Cannot pattern match on unknown type constructor"),
             }
@@ -260,17 +341,40 @@ fn is_exhaustive<'c>(variants: &HashMap<VariantTag, usize>, cache: &ModuleCache<
     }
 }
 
-#[derive(Debug, Default)]
-pub struct PatternMatrix {
+/// Given a set of matching constructors:
+///   C a b c
+///   C d (C2 e) f
+///   C () g 5
+/// collect the variables bound to each field:
+///   [ [a, d], [b, g], [c, f] ]
+fn collect_fields(rows: Vec<&PatternStack>) -> Vec<Vec<DefinitionInfoId>> {
+    let mut variables = vec![];
+
+    for col in 0 .. rows[0].len() {
+        variables.push(vec![]);
+
+        for row in rows.iter().copied() {
+            if let Some((MatchAll(id), _)) = row.0.get(col) {
+                variables[col].push(*id);
+            }
+        }
+    }
+
+    variables
+}
+
+#[derive(Default)]
+struct PatternMatrix {
     /// Each row holds the pattern stack of the pattern for a particular branch as
     /// well as the index of the branch that the pattern leads to in the source if matched.
     rows: Vec<(PatternStack, usize)>,
 }
 
 impl PatternMatrix {
-    pub fn from_ast<'c>(match_expr: &ast::Match<'c>, cache: &ModuleCache<'c>) -> PatternMatrix {
+    fn from_ast<'c>(match_expr: &ast::Match<'c>, cache: &mut ModuleCache<'c>, location: Location<'c>) -> PatternMatrix {
         let rows = match_expr.branches.iter().enumerate()
-            .map(|(branch_index, (pattern, _))| (PatternStack::from_ast(pattern, cache), branch_index))
+            .map(|(branch_index, (pattern, _))|
+                 (PatternStack::from_ast(pattern, cache, location), branch_index))
             .collect();
 
         PatternMatrix { rows }
@@ -292,11 +396,13 @@ impl PatternMatrix {
     ///     _ _ []      -> 2
     ///     _ _ (_::_)  -> 3
     ///
-    fn specialize(&self, tag: VariantTag, arity: usize) -> Self {
+    fn specialize<'c>(&self, tag: &VariantTag, arity: usize, fields: &mut Vec<Vec<DefinitionInfoId>>,
+        cache: &mut ModuleCache<'c>, location: Location<'c>) -> Self
+    {
         let mut matrix = PatternMatrix::default();
 
         for (row, branch) in self.rows.iter() {
-            match row.specialize_row(tag, arity) {
+            match row.specialize_row(tag, arity, fields, cache, location) {
                 Some(row) => matrix.rows.push((row, *branch)),
                 None => (),
             }
@@ -321,45 +427,77 @@ impl PatternMatrix {
     ///     [] -> 2
     ///     _  -> 3
     ///
-    fn default_specialize(&self) -> Self {
+    /// This function is changed slightly to also collect the
+    /// variables used, then compile the resulting matrix into
+    /// a decision tree.
+    fn default_specialize<'c>(&self, cache: &mut ModuleCache<'c>, location: Location<'c>) -> (DecisionTreeResult, Vec<DefinitionInfoId>) {
         let mut matrix = PatternMatrix::default();
+        let mut variables_to_bind = vec![];
 
         for (row, branch) in self.rows.iter() {
             match row.default_specialize_row() {
-                Some(row) => matrix.rows.push((row, *branch)),
+                Some((row, variable_id)) => {
+                    matrix.rows.push((row, *branch));
+                    variables_to_bind.push(variable_id);
+                },
                 None => (),
             }
         }
 
-        matrix
+        (matrix.compile(cache, location), variables_to_bind)
     }
 
     /// Generate a Switch branch covering each case of the top pattern on the stack.
     /// Handles exhaustiveness checking for the union internally.
-    fn switch_on_pattern<'c>(&self, cache: &ModuleCache<'c>, location: Location<'c>) -> DecisionTree {
+    fn switch_on_pattern<'c>(&mut self, cache: &mut ModuleCache<'c>, location: Location<'c>) -> DecisionTreeResult {
         // Generate the set of constructors appearing in the column
         let mut matched_variants = HashMap::new();
+        let mut switching_on = None;
+
         for (row, _) in self.rows.iter() {
-            if let Some(Variant { tag, fields }) = row.head() {
-                matched_variants.insert(*tag, fields.0.len());
+            if let Some((Variant(tag, fields), var)) = row.head() {
+                switching_on = Some(*var);
+
+                matched_variants.entry(tag)
+                    .or_insert(vec![])
+                    .push(fields);
             }
         }
 
-        let exhaustive = is_exhaustive(&matched_variants, cache);
+        let missed_cases = get_missing_cases(&matched_variants, cache);
+        let mut context = DecisionTreeContext::default();
 
-        let mut cases: Vec<_> = matched_variants.into_iter().map(|(tag, arity)| {
-            let mut branch = self.specialize(tag, arity);
-            let fields = PatternStack(repeat(MatchAll).take(arity).collect());
+        let mut cases: Vec<_> = matched_variants.into_iter().map(|(tag, fields)| {
+            let arity = fields[0].len();
+            let mut fields = collect_fields(fields);
 
-            (Variant { tag, fields }, branch.compile(cache, location))
+            let branch = self.specialize(tag, arity, &mut fields, cache, location)
+                .compile(cache, location);
+
+            // PatternStacks store patterns in reverse order for faster prepending.
+            // Reversing fields here undoes this so that only the natural order is
+            // stored in the DecisionTree.
+            fields.reverse();
+            Case {
+                tag: Some(tag.clone()),
+                fields,
+                branch: context.merge(branch),
+            }
         }).collect();
 
         // If we don't have an exhaustive match, generate a default matrix
-        if !exhaustive {
-            cases.push((MatchAll, self.default_specialize().compile(cache, location)));
+        if !missed_cases.is_empty() {
+            let (branch, fields) = self.default_specialize(cache, location);
+            switching_on = fields.get(0).copied().or(switching_on);
+            cases.push(Case {
+                tag: None,
+                fields: vec![fields],
+                branch: context.merge(branch),
+            });
         }
 
-        DecisionTree::Switch(cases)
+        let tree = DecisionTree::Switch(switching_on.unwrap(), cases);
+        DecisionTreeResult::new(tree, context)
     }
 
     fn find_first_non_default_column(&self) -> Option<usize> {
@@ -368,7 +506,7 @@ impl PatternMatrix {
         for col in (1 .. len).rev() {
             for (row, _) in self.rows.iter() {
                 match row.0.get(col) {
-                    Some(MatchAll) => continue,
+                    Some((MatchAll(_), _)) => continue,
                     _ => return Some(col),
                 }
             }
@@ -376,27 +514,32 @@ impl PatternMatrix {
         None
     }
 
-    fn swap_column(&mut self, column: usize) -> &mut Self {
+    fn swap_column<'c>(&mut self, column: usize, cache: &mut ModuleCache<'c>, location: Location<'c>) -> DecisionTreeResult {
         for (row, _) in self.rows.iter_mut() {
             row.0.swap(0, column);
         }
-        self
+
+        self.compile(cache, location)
     }
 
-    pub fn compile<'c>(&mut self, cache: &ModuleCache<'c>, location: Location<'c>) -> DecisionTree {
+    fn first_row_is_all_wildcards(&mut self) -> bool {
+        (self.rows[0].0).0.iter()
+            .all(|(constructor, _)| constructor.is_wildcard())
+    }
+
+    fn compile<'c>(&mut self, cache: &mut ModuleCache<'c>, location: Location<'c>) -> DecisionTreeResult {
         if self.rows.is_empty() {
             // We have an in-exhaustive case expression
-            error!(location, "Match is non-exhaustive");
-            DecisionTree::Fail
-        } else if self.rows.get(0).map_or(false, |(row, _)| row.all_wildcards()) {
+            DecisionTreeResult::fail()
+        } else if self.first_row_is_all_wildcards() {
             // If every pattern in the first row is a wildcard it must match.
-            DecisionTree::Leaf(self.rows[0].1)
+            DecisionTreeResult::leaf(self.rows[0].1)
         } else {
             // There's at least one non-wild pattern in the matrix somewhere
             for (row, _) in self.rows.iter() {
                 match row.head() {
-                    Some(Variant { .. }) => return self.switch_on_pattern(cache, location),
-                    Some(MatchAll) => continue,
+                    Some((Variant(..), _)) => return self.switch_on_pattern(cache, location),
+                    Some((MatchAll(_), _)) => continue,
                     None => unreachable!("PatternMatrix rows cannot be empty"),
                 }
             }
@@ -405,14 +548,152 @@ impl PatternMatrix {
             // matrix until we find a column that has a non-wildcard pattern,
             // and swap columns with column 0
             match self.find_first_non_default_column() {
-                Some(column) => self.swap_column(column).compile(cache, location),
-                None => self.default_specialize().compile(cache, location),
+                Some(column) => self.swap_column(column, cache, location),
+                None => self.default_specialize(cache, location).0,
             }
         }
     }
 }
 
-#[derive(Debug)]
+/// DecisionTreeResult augments a DecisionTree with information about which cases
+/// are redundant (can never be matched) and if the match as a whole is exhaustive or not.
+/// Since these extra properties are only used for error-reporting, they may safely be discarded
+/// for access to the tree if desired.
+struct DecisionTreeResult {
+    tree: DecisionTree,
+    context: DecisionTreeContext
+}
+
+#[derive(Default)]
+struct DecisionTreeContext {
+    reachable_branches: HashSet<usize>,
+    missed_case_count: usize,
+}
+
+impl DecisionTreeContext {
+    fn merge(&mut self, result: DecisionTreeResult) -> DecisionTree {
+        self.missed_case_count += result.context.missed_case_count;
+        self.reachable_branches =
+            self.reachable_branches.union(&result.context.reachable_branches)
+            .copied().collect();
+
+        result.tree
+    }
+}
+
+impl DecisionTreeResult {
+    fn new(tree: DecisionTree, context: DecisionTreeContext) -> DecisionTreeResult {
+        DecisionTreeResult { tree, context }
+    }
+
+    fn fail() -> DecisionTreeResult {
+        let mut context = DecisionTreeContext::default();
+        context.missed_case_count = 1;
+        DecisionTreeResult::new(DecisionTree::Fail, context)
+    }
+
+    fn leaf(branch: usize) -> DecisionTreeResult {
+        let mut context = DecisionTreeContext::default();
+        context.reachable_branches.insert(branch);
+        DecisionTreeResult::new(DecisionTree::Leaf(branch), context)
+    }
+
+    fn issue_inexhaustive_errors<'c>(&self, cache: &ModuleCache<'c>, location: Location<'c>){
+        let mut bindings = HashMap::new();
+        DecisionTreeResult::issue_inexhaustive_errors_helper(&self.tree, None, &mut bindings, cache, location);
+    }
+
+    fn issue_inexhaustive_errors_helper<'c>(tree: &DecisionTree, starting_id: Option<DefinitionInfoId>,
+        bindings: &mut DebugMatchBindings, cache: &ModuleCache<'c>, location: Location<'c>)
+    {
+        use DecisionTree::*;
+        match tree {
+            Leaf(_) => (),
+            Fail => unreachable!("DecisionTree::Fail case should be matched on within DecisionTree::Switch"),
+            Switch(id, cases) => {
+                for case in cases.iter() {
+                    match &case.branch {
+                        Fail => {
+                            let covered_cases = cases.iter()
+                                .filter_map(|case| case.tag.as_ref())
+                                .map(|tag| (tag, ()))
+                                .collect();
+
+                            for tag in get_missing_cases(&covered_cases, cache) {
+                                bindings.insert(*id, DebugConstructor::new(&Some(tag), cache));
+                                DecisionTreeResult::issue_inexhaustive_error(starting_id, bindings, location);
+                            }
+                        },
+                        _ => {
+                            bindings.insert(*id, DebugConstructor::from_case(case, cache));
+                            let starting_id = starting_id.or(Some(*id));
+                            DecisionTreeResult::issue_inexhaustive_errors_helper(
+                                &case.branch, starting_id, bindings, cache, location);
+                        }
+                    }
+                }
+                bindings.remove(id);
+            },
+        }
+    }
+
+    fn issue_inexhaustive_error<'c>(starting_id: Option<DefinitionInfoId>,
+        bindings: &DebugMatchBindings, location: Location<'c>)
+    {
+        let case = starting_id.map_or("_".to_string(), |id|
+            DecisionTreeResult::construct_missing_case_string(id, bindings));
+
+        error!(location, "Missing case {}", case);
+    }
+
+    fn construct_missing_case_string(id: DefinitionInfoId, bindings: &DebugMatchBindings) -> String {
+        match bindings.get(&id) {
+            None => "_".to_string(),
+            Some(case) => {
+                let mut case_string = case.tag.clone();
+                let case_is_tuple = case.tag == "(";
+
+                // Parenthesizes an argument string if it contains spaces and it's not a tuple field
+                let parenthesize = |field_string: String| {
+                    if field_string.contains(" ") && !case_is_tuple {
+                        format!("({})", field_string)
+                    } else {
+                        field_string
+                    }
+                };
+
+                // MatchAlls have fields referencing themselves, skip iterating on
+                // their fields to avoid infinite recursion
+                if case.tag != "_" {
+                    let fields: Vec<String> = case.fields.iter().map(|field| {
+                        field.iter()
+                            .map(|id| DecisionTreeResult::construct_missing_case_string(*id, bindings))
+                            .filter(|field_string| field_string != "_")
+                            .nth(0)
+                            .map(parenthesize)
+                            .unwrap_or("_".to_string())
+                    }).collect();
+
+                    if !case_is_tuple {
+                        if !fields.is_empty() {
+                            case_string = format!("{} {}", case_string, join_with(&fields, " "));
+                        } else {
+                            case_string = format!("{}", case_string);
+                        }
+                    } else if fields.len() == 1 {
+                        // single-arg tuple. Add trailing ,
+                        case_string = format!("({},)", fields[0]);
+                    } else {
+                        case_string = format!("({})", join_with(&fields, ", "));
+                    }
+                }
+
+                case_string
+            },
+        }
+    }
+}
+
 pub enum DecisionTree {
     /// Success! run the code at the given numerical branch
     Leaf(usize),
@@ -422,6 +703,148 @@ pub enum DecisionTree {
     /// that the match is non-exhaustive.
     Fail,
 
-    /// Multi-way test
-    Switch(Vec<(Constructor, DecisionTree)>),
+    /// Switch on the given pattern for each case of a tagged union or literal
+    Switch(DefinitionInfoId, Vec<Case>),
+}
+
+pub struct Case {
+    /// The constructor's tag to match on. If this is a match-all case, it is None.
+    tag: Option<VariantTag>,
+
+    /// Each field is a Vec of variables to bind to since their can potentially be multiple
+    /// names for the same field across different source branches while pattern matching.
+    fields: Vec<Vec<DefinitionInfoId>>,
+
+    /// The branch to take in this tree if this constructor's tag is matched.
+    branch: DecisionTree,
+}
+
+/// Used for bindings values to ids when constructing missing cases to use in errors
+type DebugMatchBindings = HashMap<DefinitionInfoId, DebugConstructor>;
+
+struct DebugConstructor {
+    /// String form of a Case.tag
+    tag: String,
+
+    /// Copied directly from Case.fields.
+    /// This could be a reference to avoid cloning, but DebugConstructors should only
+    /// be constructed in an error case when a match is inexhaustive anyway.
+    fields: Vec<Vec<DefinitionInfoId>>,
+}
+
+impl DebugConstructor {
+    fn new<'c>(tag: &Option<VariantTag>, cache: &ModuleCache<'c>) -> DebugConstructor {
+        use VariantTag::*;
+        use crate::parser::ast::LiteralKind;
+        let tag = match &tag {
+            Some(UserDefined(id)) => {
+                cache.definition_infos[id.0].name.clone()
+            },
+            Some(Literal(LiteralKind::Integer(_))) => "_ : int".to_string(),
+            Some(Literal(LiteralKind::Float(_))) => "_ : float".to_string(),
+            Some(Literal(LiteralKind::String(_))) => "_ : string".to_string(),
+            Some(Literal(LiteralKind::Char(_))) => "_ : char".to_string(),
+            Some(Literal(LiteralKind::Bool(_))) => unreachable!(),
+            Some(Literal(LiteralKind::Unit)) => unreachable!(),
+            Some(True) => "true".to_string(),
+            Some(False) => "false".to_string(),
+            Some(VariantTag::Unit) => "()".to_string(),
+            Some(Tuple) => "(".to_string(),
+            None => "_".to_string(),
+        };
+
+        DebugConstructor { tag, fields: vec![] }
+    }
+
+    fn from_case<'c>(case: &Case, cache: &ModuleCache<'c>) -> DebugConstructor {
+        let mut constructor = DebugConstructor::new(&case.tag, cache);
+        constructor.fields = case.fields.clone();
+        constructor
+    }
+}
+
+// The rest of the file is pretty-printing for debugging pattern trees.
+// Without these impls, DecisionTree's and PatternMatrices can be difficult
+// to debug since the naive derive(Debug) takes up to much space to be useful.
+
+impl std::fmt::Debug for DecisionTree {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        fmt_tree(self, f, 0)
+    }
+}
+
+fn fmt_tree(tree: &DecisionTree, f: &mut std::fmt::Formatter, indent_level: usize) -> Result<(), std::fmt::Error> {
+    use DecisionTree::*;
+    match tree {
+        Leaf(branch) => write!(f, "Leaf({})", branch),
+        Fail => write!(f, "Fail"),
+        Switch(id, cases) => {
+            write!(f, "match ${} with", id.0)?;
+            let spaces = " ".repeat(indent_level);
+            for case in cases.iter() {
+                write!(f, "\n{}| ", spaces)?;
+                match &case.tag {
+                    Some(VariantTag::Literal(literal)) => write!(f, "{:?}", literal)?,
+                    Some(tag) => write!(f, "{:?}", tag)?,
+                    None => write!(f, "_")?,
+                }
+
+                for field_ids in case.fields.iter() {
+                    write!(f, " {:?}", field_ids)?;
+                }
+
+                write!(f, " => ")?;
+                fmt_tree(&case.branch, f, indent_level + 2)?;
+            }
+            Ok(())
+        }
+    }
+}
+
+impl std::fmt::Debug for Constructor {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        match self {
+            MatchAll(id) => write!(f, "${}", id.0),
+            Variant(tag, stack) => {
+                if !stack.0.is_empty() {
+                    write!(f, "(")?;
+                }
+
+                match tag {
+                    VariantTag::UserDefined(id) => write!(f, "${}", id.0)?,
+                    _ => write!(f, "{:?}", tag)?,
+                }
+
+                for (constructor, _) in stack.0.iter().rev() {
+                    write!(f, " {:?}", constructor)?;
+                }
+
+                if !stack.0.is_empty() {
+                    write!(f, ")")?;
+                }
+
+                Ok(())
+            }
+        }
+    }
+}
+
+impl std::fmt::Debug for PatternMatrix {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        write!(f, "matrix = [")?;
+        for (row, branch) in self.rows.iter() {
+            write!(f, "\n| {:?} => {:?}", row, branch)?;
+        }
+        write!(f, "\n]")
+    }
+}
+
+impl std::fmt::Debug for PatternStack {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        write!(f, "[")?;
+        for (constructor, id) in self.0.iter().rev() {
+            write!(f, " ({:?} as ${})", constructor, id.0)?;
+        }
+        write!(f, " ]")
+    }
 }

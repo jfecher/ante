@@ -31,6 +31,14 @@ pub fn fmap_mut_pair_merge_second<T, Ret1, Ret2, F>(array: &mut [T], mut f: F) -
     (ret1, ret2)
 }
 
+pub fn reinterpret_as_bits(x: f64) -> u64 {
+    unsafe { std::mem::transmute(x) }
+}
+
+pub fn reinterpret_from_bits(x: u64) -> f64 {
+    unsafe { std::mem::transmute(x) }
+}
+
 pub fn contains<T: PartialEq>(array: &[T], element: &T) -> bool {
     array.iter().find(|&x| x == element).is_some()
 }

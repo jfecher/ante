@@ -79,8 +79,14 @@ pub struct ModuleCache<'a> {
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct ModuleId(pub usize);
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, PartialOrd, Ord, Hash)]
+#[derive(Copy, Clone, Eq, PartialEq, PartialOrd, Ord, Hash)]
 pub struct DefinitionInfoId(pub usize);
+
+impl std::fmt::Debug for DefinitionInfoId {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
+        write!(f, "${}", self.0)
+    }
+}
 
 #[derive(Debug)]
 pub enum DefinitionNode<'a> {
@@ -196,10 +202,10 @@ impl<'a> ModuleCache<'a> {
         unsafe { std::mem::transmute(path) }
     }
 
-    pub fn push_definition(&mut self, name: String, location: Location<'a>) -> DefinitionInfoId {
+    pub fn push_definition(&mut self, name: &str, location: Location<'a>) -> DefinitionInfoId {
         let id = self.definition_infos.len();
         self.definition_infos.push(DefinitionInfo {
-            name,
+            name: name.to_string(),
             definition: None,
             trait_definition: None,
             required_impls: vec![],

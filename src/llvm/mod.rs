@@ -8,7 +8,7 @@ use crate::parser::{ ast, ast::Ast };
 use crate::nameresolution::builtin::BUILTIN_ID;
 use crate::types::{ self, typechecker, TypeVariableId, TypeBinding, TypeInfoId };
 use crate::types::typed::Typed;
-use crate::util::{ fmap, trustme };
+use crate::util::{ fmap, trustme, reinterpret_from_bits };
 
 use inkwell::module::Module;
 use inkwell::builder::Builder;
@@ -625,7 +625,7 @@ impl<'g, 'c> CodeGen<'g, 'c> for ast::Literal<'c> {
             },
             ast::LiteralKind::Float(f) => {
                 let float = generator.context.f64_type();
-                Some(float.const_float(*f).into())
+                Some(float.const_float(reinterpret_from_bits(*f)).into())
             },
             ast::LiteralKind::Integer(i) => {
                 let int = generator.context.i32_type();

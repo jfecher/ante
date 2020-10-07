@@ -224,7 +224,7 @@ impl NameResolver {
     }
 
     pub fn push_definition<'b>(&mut self, name: &str, cache: &mut ModuleCache<'b>, location: Location<'b>) -> DefinitionInfoId {
-        let id = cache.push_definition(name.to_owned(), location);
+        let id = cache.push_definition(name, location);
         if self.required_definitions.is_some() {
             // We're inside a trait impl right now, any definitions shouldn't be put in scope
             // else they'd collide with the declaration from the trait. Additionally, we must

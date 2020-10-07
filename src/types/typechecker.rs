@@ -1,8 +1,8 @@
 use crate::cache::{ ModuleCache, TraitInfoId, DefinitionInfoId, ImplBindingId, DefinitionNode, ImplInfoId };
 use crate::error::location::{ Location, Locatable };
-use crate::error::ErrorMessage;
+use crate::error::{ ErrorMessage, get_error_count };
 use crate::parser::ast;
-use crate::types::pattern::PatternMatrix;
+use crate::types::pattern;
 use crate::types::{ Type, Type::*, TypeVariableId, PrimitiveType, LetBindingLevel, TypeBinding::* };
 use crate::types::{ TypeBinding, STRING_TYPE };
 use crate::types::typed::Typed;
@@ -839,10 +839,14 @@ impl<'a> Inferable<'a> for ast::If<'a> {
 
 impl<'a> Inferable<'a> for ast::Match<'a> {
     fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitList) {
+        let error_count = get_error_count();
+
         let (expression, mut traits) = infer(self.expression.as_mut(), cache);
         let mut return_type = Type::Primitive(PrimitiveType::UnitType);
 
         if self.branches.len() >= 1 {
+            // Unroll the first iteration of inferring (pattern, branch) types so each
+            // subsequent (pattern, branch) types can be unified against the first.
             let (pattern_type, mut pattern_traits) = infer(&mut self.branches[0].0, cache);
             traits.append(&mut pattern_traits);
             unify(&expression, &pattern_type, self.branches[0].0.locate(), cache);
@@ -861,7 +865,11 @@ impl<'a> Inferable<'a> for ast::Match<'a> {
             }
         }
 
-        let _tree = PatternMatrix::from_ast(self, cache).compile(cache, self.location);
+        // Compiling the decision tree for this pattern requires each pattern is well-typed.
+        // So skip this step if there was an error in inferring types for this match expression.
+        if get_error_count() == error_count {
+            self.decision_tree = pattern::compile(self, cache);
+        }
 
         (return_type, traits)
     }

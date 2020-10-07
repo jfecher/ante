@@ -2,11 +2,13 @@ use crate::lexer::token::Token;
 use crate::error::location::{ Location, Locatable };
 use crate::cache::{ DefinitionInfoId, TraitInfoId, ModuleId, ImplScopeId, ImplBindingId };
 use crate::types::{ self, TypeInfoId, LetBindingLevel };
+use crate::types::pattern::DecisionTree;
+use crate::util::reinterpret_as_bits;
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum LiteralKind {
     Integer(u64),
-    Float(f64),
+    Float(u64),
     String(String),
     Char(char),
     Bool(bool),
@@ -93,6 +95,11 @@ pub struct If<'a> {
 pub struct Match<'a> {
     pub expression: Box<Ast<'a>>,
     pub branches: Vec<(Ast<'a>, Ast<'a>)>,
+
+    /// The decision tree is outputted from the completeness checking
+    /// step and is used during codegen to efficiently compile each pattern branch.
+    pub decision_tree: Option<DecisionTree>,
+
     pub location: Location<'a>,
     pub typ: Option<types::Type>,
 }
@@ -264,7 +271,7 @@ impl<'a> Ast<'a> {
     }
 
     pub fn float(x: f64, location: Location<'a>) -> Ast<'a> {
-        Ast::Literal(Literal { kind: LiteralKind::Float(x), location, typ: None })
+        Ast::Literal(Literal { kind: LiteralKind::Float(reinterpret_as_bits(x)), location, typ: None })
     }
 
     pub fn string(x: String, location: Location<'a>) -> Ast<'a> {
@@ -310,7 +317,7 @@ impl<'a> Ast<'a> {
     }
 
     pub fn match_expr(expression: Ast<'a>, branches: Vec<(Ast<'a>, Ast<'a>)>, location: Location<'a>) -> Ast<'a> {
-        Ast::Match(Match { expression: Box::new(expression), branches, location, typ: None })
+        Ast::Match(Match { expression: Box::new(expression), branches, decision_tree: None, location, typ: None })
     }
 
     pub fn type_definition(name: String, args: Vec<String>, definition: TypeDefinitionBody<'a>, location: Location<'a>) -> Ast<'a> {

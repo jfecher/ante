@@ -2,16 +2,27 @@
 match (2, None) with
 | (0, None) -> ()
 | (_, Some _) -> ()
-// | (_, _) -> ()
+
+// match None with
+// | Some (Some a) -> 0
+// | Some b -> 1
+// | c -> 2
 
 // match (2, 3) with
 // | (0, _) -> true
 // | (_, 1) -> false
-// 
+
+// Redundant patterns
+// match (1, 2) with
+// | (1, _) -> 0
+// | (_, 2) -> 1
+// | (1, 2) -> 2
+ 
 // match (true, true) with
 // | (false, true) -> 0
 // | (true, false) -> 1
 
+// Type error before compiling pattern - skip completeness checking
 // match (1, 2, 3, 4) with
 // | (1, 2) -> 1
 // | (1, 2, 3) -> 2

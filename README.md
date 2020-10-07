@@ -32,7 +32,6 @@ Steps needed to get back in line with the C++ compiler:
 - [x] Error reporting
 - [ ] Parser
   - [x] Most things, except for:
-  - [ ] Tuples
   - [ ] Loops
 - [x] Name resolution
   - [x] Variable definitions
@@ -51,7 +50,7 @@ Steps needed to get back in line with the C++ compiler:
   - [x] Extern functions
   - [x] Trait Impls
   - [ ] Match expressions
-  - [ ] Tuples and loops
+  - [ ] Loops
 - [ ] REPL
 
 Future goals still unimplemented in the C++ compiler:

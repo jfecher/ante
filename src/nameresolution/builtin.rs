@@ -12,7 +12,7 @@ pub fn define_builtins<'a>(cache: &mut ModuleCache<'a>) {
 
     // Define builtin : forall a. string -> a imported only into the prelude to define
     // builtin operations by name. The specific string arguments are matched on in src/llvm/builtin.rs
-    let id = cache.push_definition("builtin".into(), Location::builtin());
+    let id = cache.push_definition("builtin", Location::builtin());
     assert!(id == BUILTIN_ID);
 
     let a = cache.next_type_variable_id(LetBindingLevel(1));
