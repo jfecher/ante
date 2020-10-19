@@ -5,7 +5,7 @@ use crate::types::{ self, TypeInfoId, LetBindingLevel };
 use crate::types::pattern::DecisionTree;
 use crate::util::reinterpret_as_bits;
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum LiteralKind {
     Integer(u64),
     Float(u64),

@@ -4,7 +4,7 @@ use crate::types::{ TypeConstructor, Field, LetBindingLevel, STRING_TYPE };
 use crate::types::traits::Impl;
 use crate::error::{ self, location::{ Location, Locatable } };
 use crate::cache::{ ModuleCache, DefinitionInfoId, ModuleId };
-use crate::cache::{ TraitInfoId, ImplInfoId, DefinitionNode, ImplScopeId };
+use crate::cache::{ TraitInfoId, ImplInfoId, DefinitionKind, ImplScopeId };
 use crate::nameresolution::scope::Scope;
 use crate::lexer::Lexer;
 use crate::util::{ fmap, trustme };
@@ -385,7 +385,6 @@ impl<'b> NameResolver {
                     Some(id) => Type::TypeVariable(id),
                     None => {
                         if self.auto_declare {
-                            // TODO: This usage of MAX_BINDING_LEVEL is definitely unsound
                             let id = self.push_new_type_variable(name.clone(), cache);
                             Type::TypeVariable(id)
                         } else {
@@ -415,7 +414,7 @@ impl<'b> NameResolver {
     /// The collect* family of functions recurses over an irrefutable pattern, either declaring or
     /// defining each node and tagging the declaration with the given DefinitionNode.
     fn resolve_declarations<F>(&mut self, ast: &mut Ast<'b>, cache: &mut ModuleCache<'b>, mut definition: F)
-        where F: FnMut() -> DefinitionNode<'b>
+        where F: FnMut() -> DefinitionKind<'b>
     {
         self.definitions_collected.clear();
         self.auto_declare = true;
@@ -428,7 +427,7 @@ impl<'b> NameResolver {
 
     fn resolve_definitions<T, F>(&mut self, ast: &mut T, cache: &mut ModuleCache<'b>, definition: F)
         where T: Resolvable<'b>,
-              F: FnMut() -> DefinitionNode<'b>
+              F: FnMut() -> DefinitionKind<'b>
     {
         self.resolve_all_definitions(vec![ast].into_iter(), cache, definition);
     }
@@ -440,7 +439,7 @@ impl<'b> NameResolver {
         self.auto_declare = false;
         for id in self.definitions_collected.iter() {
             let declaration = trustme::extend_lifetime(declaration);
-            cache.definition_infos[id.0].definition = Some(DefinitionNode::Extern(declaration));
+            cache.definition_infos[id.0].definition = Some(DefinitionKind::Extern(declaration));
         }
     }
 
@@ -455,7 +454,7 @@ impl<'b> NameResolver {
         }
         self.auto_declare = false;
         for id in self.definitions_collected.iter() {
-            cache.definition_infos[id.0].definition = Some(DefinitionNode::Impl);
+            cache.definition_infos[id.0].definition = Some(DefinitionKind::Impl);
         }
         self.definitions_collected.clone()
     }
@@ -463,7 +462,7 @@ impl<'b> NameResolver {
     fn resolve_all_definitions<'a, T: 'a, It, F>(&mut self, patterns: It, cache: &mut ModuleCache<'b>, mut definition: F)
         where It: Iterator<Item = &'a mut T>,
               T: Resolvable<'b>,
-              F: FnMut() -> DefinitionNode<'b>
+              F: FnMut() -> DefinitionKind<'b>
     {
         self.definitions_collected.clear();
         self.auto_declare = true;
@@ -560,7 +559,7 @@ impl<'b> Resolvable<'b> for ast::Lambda<'b> {
 
     fn define(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'b>) {
         resolver.push_scope(cache);
-        resolver.resolve_all_definitions(self.args.iter_mut(), cache, || DefinitionNode::Parameter);
+        resolver.resolve_all_definitions(self.args.iter_mut(), cache, || DefinitionKind::Parameter);
         self.body.define(resolver, cache);
         resolver.pop_scope(cache, true);
     }
@@ -580,7 +579,7 @@ impl<'b> Resolvable<'b> for ast::FunctionCall<'b> {
 impl<'b> Resolvable<'b> for ast::Definition<'b> {
     fn declare(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'b>) {
         let definition = self as *const Self;
-        let definition = || DefinitionNode::Definition(trustme::make_mut(definition));
+        let definition = || DefinitionKind::Definition(trustme::make_mut(definition));
 
         resolver.let_binding_level = LetBindingLevel(resolver.let_binding_level.0 + 1);
         resolver.resolve_declarations(self.pattern.as_mut(), cache, definition);
@@ -592,7 +591,7 @@ impl<'b> Resolvable<'b> for ast::Definition<'b> {
         // Tag the symbol with its definition so while type checking we can follow
         // the symbol to its definition if it is undefined.
         let definition = self as *const Self;
-        let definition = || DefinitionNode::Definition(trustme::make_mut(definition));
+        let definition = || DefinitionKind::Definition(trustme::make_mut(definition));
 
         resolver.let_binding_level = LetBindingLevel(resolver.let_binding_level.0 + 1);
         resolver.resolve_definitions(self.pattern.as_mut(), cache, definition);
@@ -629,9 +628,8 @@ impl<'b> Resolvable<'b> for ast::Match<'b> {
 
         for (pattern, rhs) in self.branches.iter_mut() {
             resolver.push_scope(cache);
-            resolver.auto_declare = true;
-            pattern.define(resolver, cache);
-            resolver.auto_declare = false;
+
+            resolver.resolve_definitions(pattern, cache, || DefinitionKind::MatchPattern);
 
             rhs.define(resolver, cache);
             resolver.pop_scope(cache, true);
@@ -678,7 +676,7 @@ fn create_variants<'b>(vec: &Variants<'b>, parent_type_id: TypeInfoId,
 
         let id = resolver.push_definition(&name, cache, *location);
         cache.definition_infos[id.0].typ = Some(create_variant_constructor_type(parent_type_id, args.clone(), cache));
-        cache.definition_infos[id.0].definition = Some(DefinitionNode::TypeConstructor { name: name.clone(), tag: Some(index) });
+        cache.definition_infos[id.0].definition = Some(DefinitionKind::TypeConstructor { name: name.clone(), tag: Some(index) });
         index += 1;
         TypeConstructor { name: name.clone(), args, id, location: *location }
     })
@@ -738,7 +736,7 @@ impl<'b> Resolvable<'b> for ast::TypeDefinition<'b> {
                 // This is done inside create_variants for tagged union types
                 let id = resolver.push_definition(&self.name, cache, self.location);
                 cache.definition_infos[id.0].typ = Some(create_variant_constructor_type(type_id, field_types, cache));
-                cache.definition_infos[id.0].definition = Some(DefinitionNode::TypeConstructor { name: self.name.clone(), tag: None });
+                cache.definition_infos[id.0].definition = Some(DefinitionKind::TypeConstructor { name: self.name.clone(), tag: None });
             },
             ast::TypeDefinitionBody::AliasOf(typ) => {
                 let typ = resolver.convert_type(cache, typ);
@@ -861,7 +859,7 @@ impl<'b> Resolvable<'b> for ast::TraitDefinition<'b> {
 
         let self_pointer = self as *const _;
         for declaration in self.declarations.iter_mut() {
-            let definition = || DefinitionNode::TraitDefinition(trustme::make_mut(self_pointer));
+            let definition = || DefinitionKind::TraitDefinition(trustme::make_mut(self_pointer));
             resolver.resolve_declarations(declaration.lhs.as_mut(), cache, definition);
 
             resolver.auto_declare = true;

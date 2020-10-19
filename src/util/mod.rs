@@ -17,8 +17,8 @@ pub fn fmap_mut<T, U, F>(array: &mut [T], mut f: F) -> Vec<U>
 
 /// What a name! Iterate the array, mapping each element with a function that returns a pair
 /// of a value and a vector. Accumulate the results in two separate vectors, the second of
-/// which is merged from all the second-element vectors found so far.
-pub fn fmap_mut_pair_merge_second<T, Ret1, Ret2, F>(array: &mut [T], mut f: F) -> (Vec<Ret1>, Vec<Ret2>)
+/// which is flattened from all the second-element vectors found so far.
+pub fn fmap_mut_pair_flatten_second<T, Ret1, Ret2, F>(array: &mut [T], mut f: F) -> (Vec<Ret1>, Vec<Ret2>)
     where F: FnMut(&mut T) -> (Ret1, Vec<Ret2>)
 {
     let mut ret1 = Vec::with_capacity(array.len());
@@ -29,6 +29,10 @@ pub fn fmap_mut_pair_merge_second<T, Ret1, Ret2, F>(array: &mut [T], mut f: F) -
         ret2.append(&mut vec);
     }
     (ret1, ret2)
+}
+
+pub fn unwrap_clone<T: Clone>(option: &Option<T>) -> T {
+    option.as_ref().unwrap().clone()
 }
 
 pub fn reinterpret_as_bits(x: f64) -> u64 {

@@ -1,4 +1,4 @@
-use crate::cache::{ ModuleCache, TraitInfoId, DefinitionInfoId, ImplBindingId, DefinitionNode, ImplInfoId };
+use crate::cache::{ ModuleCache, TraitInfoId, DefinitionInfoId, ImplBindingId, DefinitionKind, ImplInfoId };
 use crate::error::location::{ Location, Locatable };
 use crate::error::{ ErrorMessage, get_error_count };
 use crate::parser::ast;
@@ -78,7 +78,7 @@ fn collect_impl_bindings(impls: &Vec<Impl>) -> Vec<ImplBindingId> {
 /// specializes the polytype s by copying the term and replacing the
 /// bound type variables consistently by new monotype variables
 /// E.g.   instantiate (forall a b. a -> b -> a) = c -> d -> c
-fn instantiate<'b>(s: &Type, mut traits: Vec<Impl>, cache: &mut ModuleCache<'b>) -> (Type, TraitList, Vec<ImplBindingId>) {
+pub fn instantiate<'b>(s: &Type, mut traits: Vec<Impl>, cache: &mut ModuleCache<'b>) -> (Type, TraitList, Vec<ImplBindingId>) {
     // Note that the returned type is no longer a PolyType,
     // this means it is now monomorphic and not forall-quantified
     match s {
@@ -336,7 +336,7 @@ fn try_unify_all<'b>(vec1: &Vec<Type>, vec2: &Vec<Type>, location: Location<'b>,
     Ok(bindings)
 }
 
-fn unify<'b>(t1: &Type, t2: &Type, location: Location<'b>, cache: &mut ModuleCache<'b>) {
+pub fn unify<'b>(t1: &Type, t2: &Type, location: Location<'b>, cache: &mut ModuleCache<'b>) {
     let mut bindings = HashMap::new();
     match try_unify(t1, t2, &mut bindings, location, cache) {
         Ok(()) => {
@@ -413,7 +413,7 @@ fn find_all_typevars_in_traits<'a>(traits: &Vec<Impl>, monomorphic_only: bool, c
 
 /// Find all typevars declared inside the current LetBindingLevel and wrap the type in a PolyType
 /// e.g.  generalize (a -> b -> b) = forall a b. a -> b -> b
-fn generalize<'a>(typ: &Type, cache: &ModuleCache<'a>) -> Type {
+pub fn generalize<'a>(typ: &Type, cache: &ModuleCache<'a>) -> Type {
     let mut typevars = find_all_typevars(typ, true, cache);
     if typevars.is_empty() {
         typ.clone()
@@ -434,21 +434,22 @@ fn infer_nested_definition<'a>(definition_id: DefinitionInfoId, cache: &mut Modu
     info.typ = Some(typevar.clone());
 
     match definition {
-        DefinitionNode::Definition(definition) => {
+        DefinitionKind::Definition(definition) => {
             let definition = trustme::extend_lifetime(*definition);
             infer(definition, cache);
         },
-        DefinitionNode::TraitDefinition(definition) => {
+        DefinitionKind::TraitDefinition(definition) => {
             let definition = trustme::extend_lifetime(*definition);
             infer(definition, cache);
         },
-        DefinitionNode::Extern(declaration) => {
+        DefinitionKind::Extern(declaration) => {
             let definition = trustme::extend_lifetime(*declaration);
             infer(definition, cache);
         },
-        DefinitionNode::Impl => unreachable!("DefinitionNode::Impl shouldn't be reachable when inferring nested definitions. Only the TraitDefinition should be visible."),
-        DefinitionNode::Parameter => {},
-        DefinitionNode::TypeConstructor { .. } => {},
+        DefinitionKind::Impl => unreachable!("DefinitionNode::Impl shouldn't be reachable when inferring nested definitions. Only the TraitDefinition should be visible."),
+        DefinitionKind::Parameter => {},
+        DefinitionKind::MatchPattern => {},
+        DefinitionKind::TypeConstructor { .. } => {},
     };
 
     let info = &mut cache.definition_infos[definition_id.0];
@@ -773,7 +774,7 @@ impl<'a> Inferable<'a> for ast::Lambda<'a> {
 impl<'a> Inferable<'a> for ast::FunctionCall<'a> {
     fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitList) {
         let (f, mut traits) = infer(self.function.as_mut(), cache);
-        let (args, mut arg_traits) = fmap_mut_pair_merge_second(&mut self.args, |arg| infer(arg, cache));
+        let (args, mut arg_traits) = fmap_mut_pair_flatten_second(&mut self.args, |arg| infer(arg, cache));
 
         let return_type = next_type_variable(cache);
         traits.append(&mut arg_traits);
@@ -868,7 +869,11 @@ impl<'a> Inferable<'a> for ast::Match<'a> {
         // Compiling the decision tree for this pattern requires each pattern is well-typed.
         // So skip this step if there was an error in inferring types for this match expression.
         if get_error_count() == error_count {
-            self.decision_tree = pattern::compile(self, cache);
+            let mut tree = pattern::compile(self, cache);
+            // TODO: Infer new variables created by a decision tree within pattern::compile.
+            //       It is done separately currently only for convenience/ease of implementation.
+            tree.infer(self.expression.get_type().unwrap(), self.location, cache);
+            self.decision_tree = Some(tree);
         }
 
         (return_type, traits)

@@ -1,15 +1,15 @@
-use crate::cache::{ ModuleCache, DefinitionInfoId };
+use crate::cache::{ ModuleCache, DefinitionInfoId, DefinitionKind };
 use crate::error::location::{ Location, Locatable };
-use crate::parser::ast::{ self, Ast };
+use crate::parser::ast::{ self, Ast, LiteralKind };
 use crate::types::pattern::Constructor::*;
-use crate::types::{ Type, TypeInfoBody, TypeInfoId };
-use crate::util::join_with;
+use crate::types::{ typechecker, Type, TypeInfoBody, TypeInfoId, PrimitiveType, STRING_TYPE };
+use crate::util::{ join_with, unwrap_clone };
 
-use std::collections::{ HashMap, HashSet };
+use std::collections::{ BTreeMap, BTreeSet };
 
 /// Compiles the given match_expr to a DecisionTree, doing
 /// completeness and redundancy checking in the process.
-pub fn compile<'c>(match_expr: &ast::Match<'c>, cache: &mut ModuleCache<'c>) -> Option<DecisionTree> {
+pub fn compile<'c>(match_expr: &ast::Match<'c>, cache: &mut ModuleCache<'c>) -> DecisionTree {
     let mut matrix = PatternMatrix::from_ast(match_expr, cache, match_expr.location);
     let result = matrix.compile(cache, match_expr.location);
 
@@ -23,13 +23,12 @@ pub fn compile<'c>(match_expr: &ast::Match<'c>, cache: &mut ModuleCache<'c>) -> 
 
     if result.context.missed_case_count != 0 {
         result.issue_inexhaustive_errors(cache, match_expr.location);
-        None
-    } else {
-        Some(result.tree)
     }
+
+    result.tree
 }
 
-#[derive(Debug, Clone, Eq, Hash)]
+#[derive(Debug, Clone, Eq, Hash, PartialOrd, Ord)]
 pub enum VariantTag {
     True,
     False,
@@ -93,7 +92,7 @@ impl Constructor {
             // Get the nth existing DefinitionInfoId from fields, or if it
             // doesn't already exist, generate a fresh variable.
             let id = fields[i].get(0).copied().unwrap_or_else(||
-                cache.push_definition(".repeat_matchall", location)
+                new_pattern_variable(".repeat_matchall", location, cache)
             );
             (MatchAll(id), id)
         }).collect()
@@ -161,7 +160,7 @@ impl PatternStack {
                     TypeConstructor(_) => {
                         let tag = VariantTag::UserDefined(variable.definition.unwrap());
                         let fields = PatternStack(vec![]);
-                        let variable = cache.push_definition(".from_ast.TypeConstructor", location);
+                        let variable = new_pattern_variable(".from_ast.TypeConstructor", location, cache);
                         (Variant(tag, fields), variable)
                     }
                     _ => {
@@ -182,7 +181,7 @@ impl PatternStack {
                     _ => VariantTag::Literal(literal.kind.clone()),
                 };
 
-                let variable = cache.push_definition(".from_ast.Literal", location);
+                let variable = new_pattern_variable(".from_ast.Literal", location, cache);
                 PatternStack(vec![(Variant(tag, fields), variable)])
             },
             Ast::Tuple(tuple) => {
@@ -191,7 +190,7 @@ impl PatternStack {
                     .collect();
 
                 let pattern = Variant(VariantTag::Tuple, PatternStack(fields));
-                let variable = cache.push_definition(".from_ast.Tuple", location);
+                let variable = new_pattern_variable(".from_ast.Tuple", location, cache);
                 PatternStack(vec![(pattern, variable)])
             },
             Ast::FunctionCall(call) => {
@@ -203,7 +202,7 @@ impl PatternStack {
                             .collect();
 
                         let fields = PatternStack(fields);
-                        let variable = cache.push_definition(".from_ast.FunctionCall", location);
+                        let variable = new_pattern_variable(".from_ast.FunctionCall", location, cache);
                         PatternStack(vec![(Variant(tag, fields), variable)])
                     },
                     _ => {
@@ -254,6 +253,12 @@ impl PatternStack {
     }
 }
 
+fn new_pattern_variable<'c>(name: &str, location: Location<'c>, cache: &mut ModuleCache<'c>) -> DefinitionInfoId {
+    let id = cache.push_definition(name, location);
+    cache.definition_infos[id.0].definition = Some(DefinitionKind::Parameter);
+    id
+}
+
 fn get_type_info_id(typ: &Type) -> TypeInfoId {
     match typ {
         Type::UserDefinedType(id) => *id,
@@ -279,7 +284,7 @@ fn get_variant_type_from_constructor<'c>(constructor_id: DefinitionInfoId, cache
     }
 }
 
-fn insert_if<T: Eq + std::hash::Hash>(mut set: HashSet<T>, element: T, condition: bool) -> Option<HashSet<T>> {
+fn insert_if<T: Ord>(mut set: BTreeSet<T>, element: T, condition: bool) -> Option<BTreeSet<T>> {
     if condition {
         set.insert(element);
     }
@@ -288,10 +293,10 @@ fn insert_if<T: Eq + std::hash::Hash>(mut set: HashSet<T>, element: T, condition
 
 /// The builtin constructors true, false, and unit don't have DefinitionInfoIds
 /// so they must be manually handled here.
-fn get_missing_builtin_cases<T>(variants: &HashMap<&VariantTag, T>) -> Option<HashSet<VariantTag>> {
+fn get_missing_builtin_cases<T>(variants: &BTreeMap<&VariantTag, T>) -> Option<BTreeSet<VariantTag>> {
     let mut variants_iter = variants.iter().map(|(tag, _)| tag.clone());
     let (first, second) = (variants_iter.next(), variants_iter.next());
-    let missing_cases = HashSet::new();
+    let missing_cases = BTreeSet::new();
 
     use VariantTag::*;
     match (first, second) {
@@ -305,13 +310,13 @@ fn get_missing_builtin_cases<T>(variants: &HashMap<&VariantTag, T>) -> Option<Ha
     }
 }
 
-fn get_covered_constructors<T>(variants: &HashMap<&VariantTag, T>) -> HashSet<VariantTag> {
+fn get_covered_constructors<T>(variants: &BTreeMap<&VariantTag, T>) -> BTreeSet<VariantTag> {
     variants.iter().map(|(tag, _)| (*tag).clone()).collect()
 }
 
 /// Given a hashmap from variant tag -> arity,
 /// return true if the hashmap covers all constructors for its type.
-fn get_missing_cases<'c, T>(variants: &HashMap<&VariantTag, T>, cache: &ModuleCache<'c>) -> HashSet<VariantTag> {
+fn get_missing_cases<'c, T>(variants: &BTreeMap<&VariantTag, T>, cache: &ModuleCache<'c>) -> BTreeSet<VariantTag> {
     use VariantTag::*;
 
     if let Some(result) = get_missing_builtin_cases(variants) {
@@ -326,14 +331,14 @@ fn get_missing_cases<'c, T>(variants: &HashMap<&VariantTag, T>, cache: &ModuleCa
             let type_id = get_variant_type_from_constructor(*id, cache);
             match &cache.type_infos[type_id.0].body {
                 TypeInfoBody::Union(constructors) => {
-                    let all_constructors: HashSet<_> = constructors.iter().map(|constructor| VariantTag::UserDefined(constructor.id)).collect();
+                    let all_constructors: BTreeSet<_> = constructors.iter().map(|constructor| VariantTag::UserDefined(constructor.id)).collect();
                     let covered_constructors = get_covered_constructors(variants);
                     all_constructors.difference(&covered_constructors).cloned().collect()
                 },
 
                 // Structs only have one constructor anyway, so if
                 // we have a constructor its always exhaustive.
-                TypeInfoBody::Struct(_) => HashSet::new(),
+                TypeInfoBody::Struct(_) => BTreeSet::new(),
                 TypeInfoBody::Alias(_) => unimplemented!("Pattern matching on aliased types is unimplemented"),
                 TypeInfoBody::Unknown => unreachable!("Cannot pattern match on unknown type constructor"),
             }
@@ -451,7 +456,7 @@ impl PatternMatrix {
     /// Handles exhaustiveness checking for the union internally.
     fn switch_on_pattern<'c>(&mut self, cache: &mut ModuleCache<'c>, location: Location<'c>) -> DecisionTreeResult {
         // Generate the set of constructors appearing in the column
-        let mut matched_variants = HashMap::new();
+        let mut matched_variants = BTreeMap::new();
         let mut switching_on = None;
 
         for (row, _) in self.rows.iter() {
@@ -566,7 +571,7 @@ struct DecisionTreeResult {
 
 #[derive(Default)]
 struct DecisionTreeContext {
-    reachable_branches: HashSet<usize>,
+    reachable_branches: BTreeSet<usize>,
     missed_case_count: usize,
 }
 
@@ -599,7 +604,7 @@ impl DecisionTreeResult {
     }
 
     fn issue_inexhaustive_errors<'c>(&self, cache: &ModuleCache<'c>, location: Location<'c>){
-        let mut bindings = HashMap::new();
+        let mut bindings = BTreeMap::new();
         DecisionTreeResult::issue_inexhaustive_errors_helper(&self.tree, None, &mut bindings, cache, location);
     }
 
@@ -709,18 +714,18 @@ pub enum DecisionTree {
 
 pub struct Case {
     /// The constructor's tag to match on. If this is a match-all case, it is None.
-    tag: Option<VariantTag>,
+    pub tag: Option<VariantTag>,
 
     /// Each field is a Vec of variables to bind to since their can potentially be multiple
     /// names for the same field across different source branches while pattern matching.
-    fields: Vec<Vec<DefinitionInfoId>>,
+    pub fields: Vec<Vec<DefinitionInfoId>>,
 
     /// The branch to take in this tree if this constructor's tag is matched.
-    branch: DecisionTree,
+    pub branch: DecisionTree,
 }
 
 /// Used for bindings values to ids when constructing missing cases to use in errors
-type DebugMatchBindings = HashMap<DefinitionInfoId, DebugConstructor>;
+type DebugMatchBindings = BTreeMap<DefinitionInfoId, DebugConstructor>;
 
 struct DebugConstructor {
     /// String form of a Case.tag
@@ -735,7 +740,6 @@ struct DebugConstructor {
 impl DebugConstructor {
     fn new<'c>(tag: &Option<VariantTag>, cache: &ModuleCache<'c>) -> DebugConstructor {
         use VariantTag::*;
-        use crate::parser::ast::LiteralKind;
         let tag = match &tag {
             Some(UserDefined(id)) => {
                 cache.definition_infos[id.0].name.clone()
@@ -760,6 +764,118 @@ impl DebugConstructor {
         let mut constructor = DebugConstructor::new(&case.tag, cache);
         constructor.fields = case.fields.clone();
         constructor
+    }
+}
+
+impl DecisionTree {
+    /// Fill in the types of any DefinitionInfoIds created while compiling the decision
+    /// tree. This need not be a separate step, but is done here to simplify initial
+    /// creation of the tree.
+    pub fn infer<'c>(&mut self, typ: &Type, location: Location<'c>, cache: &mut ModuleCache<'c>) {
+        match self {
+            DecisionTree::Leaf(_) => (),
+            DecisionTree::Fail => (),
+            DecisionTree::Switch(id, _) => {
+                set_type(*id, typ, location, cache);
+                self.infer_impl(location, cache);
+            }
+        }
+    }
+
+    fn infer_impl<'c>(&mut self, location: Location<'c>, cache: &mut ModuleCache<'c>) {
+        match self {
+            DecisionTree::Leaf(_) => (),
+            DecisionTree::Fail => (),
+            DecisionTree::Switch(id, cases) => {
+                let typ = unwrap_clone(&cache.definition_infos[id.0].typ);
+
+                // Bind each the list of ids for each field to its corresponding field type
+                for case in cases.iter_mut() {
+                    // First get the type of the constructor, each field will be a parameter of the
+                    // constructor type unless the constructor is not a function type, then the
+                    // field must be a match-all field and will have the same type as the constructor.
+                    let constructor = case.get_constructor_type(&typ, cache);
+                    let field_types = fields_of_type(&constructor);
+
+                    // The constructor_return_type is the type we're currently matching on in this
+                    // case so it is also the expected type when we recurse in the case.branch below.
+                    unify_constructor_type(&constructor, &typ, location, cache);
+
+                    assert!(case.fields.len() <= field_types.len());
+
+                    for (field_ids, field_type) in case.fields.iter().zip(field_types.into_iter()) {
+                        for field_id in field_ids {
+                            set_type(*field_id, field_type, location, cache);
+                        }
+                    }
+
+                    // Finally, infer the rest of the tree the case leads to.
+                    case.branch.infer_impl(location, cache);
+                }
+            },
+        }
+    }
+}
+
+fn set_type<'c>(id: DefinitionInfoId, expected: &Type, location: Location<'c>, cache: &mut ModuleCache<'c>) {
+    let definition = &mut cache.definition_infos[id.0];
+    match &definition.typ {
+        Some(definition_type) => {
+            let definition_type = definition_type.clone();
+            typechecker::unify(&definition_type, expected, location, cache);
+        },
+        None => {
+            definition.typ = Some(expected.clone());
+        }
+    }
+}
+
+/// Unifies the variant type the constructor returns with the expected type given.
+/// Doing so ensures each sub-pattern in the constructor (e.g. the _ in (_, _, _))
+/// will have their type correctly inferenced.
+///
+/// Since this is only useful for type inference of arguments, if the constructor is
+/// not a function type like (Some : a -> Maybe a) (and thus has no arguments like None : Maybe a)
+/// then we can skip this step completely.
+fn unify_constructor_type<'c, 'a>(constructor: &'a Type, expected: &Type, location: Location<'c>, cache: &mut ModuleCache<'c>) {
+    match constructor {
+        Type::Function(_, return_type) => {
+            typechecker::unify(&return_type, expected, location, cache);
+        },
+        // There are no arguments, so there's no need to unify the type with the expected type.
+        // We could unify to assert they're equal but this would incur a runtime cost.
+        _ => (),
+    }
+}
+
+fn fields_of_type(typ: &Type) -> Vec<&Type> {
+    match typ {
+        Type::Function(fields, _) => fields.iter().collect(),
+        Type::Tuple(fields) => fields.iter().collect(),
+        _ => vec![typ],
+    }
+}
+
+impl Case {
+    fn get_constructor_type<'c>(&self, expected_type: &Type, cache: &mut ModuleCache<'c>) -> Type {
+        use VariantTag::*;
+        match self.tag {
+            Some(UserDefined(id)) => {
+                let constructor_type = unwrap_clone(&cache.definition_infos[id.0].typ);
+                typechecker::instantiate(&constructor_type, vec![], cache).0
+            },
+            Some(Literal(LiteralKind::Integer(_))) => Type::Primitive(PrimitiveType::IntegerType),
+            Some(Literal(LiteralKind::Float(_))) => Type::Primitive(PrimitiveType::FloatType),
+            Some(Literal(LiteralKind::String(_))) => Type::UserDefinedType(STRING_TYPE),
+            Some(Literal(LiteralKind::Char(_))) => Type::Primitive(PrimitiveType::CharType),
+            Some(Literal(LiteralKind::Bool(_))) => unreachable!(),
+            Some(Literal(LiteralKind::Unit)) => unreachable!(),
+            Some(True) => Type::Primitive(PrimitiveType::BooleanType),
+            Some(False) => Type::Primitive(PrimitiveType::BooleanType),
+            Some(VariantTag::Unit) => Type::Primitive(PrimitiveType::UnitType),
+            Some(Tuple) => expected_type.clone(),
+            None => expected_type.clone(),
+        }
     }
 }
 

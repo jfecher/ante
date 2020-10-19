@@ -4,7 +4,7 @@ use crate::types::typechecker::find_all_typevars;
 use crate::cache::ModuleCache;
 
 use std::collections::HashMap;
-use std::fmt::{ Display, Formatter };
+use std::fmt::{ Display, Debug, Formatter };
 
 use colored::*;
 
@@ -18,6 +18,12 @@ pub struct TypePrinter<'a, 'b> {
 }
 
 impl<'a, 'b> Display for TypePrinter<'a, 'b> {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        self.fmt_type(&self.typ, f)
+    }
+}
+
+impl<'a, 'b> Debug for TypePrinter<'a, 'b> {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
         self.fmt_type(&self.typ, f)
     }

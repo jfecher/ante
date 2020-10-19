@@ -89,12 +89,26 @@ impl std::fmt::Debug for DefinitionInfoId {
 }
 
 #[derive(Debug)]
-pub enum DefinitionNode<'a> {
+pub enum DefinitionKind<'a> {
     Definition(&'a mut Definition<'a>),
     TraitDefinition(&'a mut TraitDefinition<'a>),
     Extern(&'a mut TypeAnnotation<'a>),
+
+    /// A TypeConstructor function to construct a type.
+    /// If the constructed type is a tagged union, tag will
+    /// be Some, otherwise if it is a struct, tag is None.
     TypeConstructor { name: String, tag: Option<u8> },
+
     Parameter,
+
+    /// Any variable declared in a match pattern. E.g. 'a' in
+    /// match None with
+    /// | a -> ()
+    MatchPattern,
+
+    /// Functions defined in impls are only accessible through
+    /// usage of the trait they're implementing. They are tagged
+    /// via this Impl tag.
     Impl,
 }
 
@@ -104,8 +118,8 @@ pub struct DefinitionInfo<'a> {
     pub location: Location<'a>,
 
     /// Where this name was defined. It is expected that type checking
-    /// this Definition node should result in self.typ being filled out.
-    pub definition: Option<DefinitionNode<'a>>,
+    /// this Definition kind should result in self.typ being filled out.
+    pub definition: Option<DefinitionKind<'a>>,
 
     /// If this definition is from a trait impl then this will contain the
     /// definition id from the trait's matching declaration. Used during
