@@ -14,7 +14,7 @@ use inkwell::module::Module;
 use inkwell::builder::Builder;
 use inkwell::basic_block::BasicBlock;
 use inkwell::context::Context;
-use inkwell::values::{ BasicValueEnum, BasicValue, FunctionValue };
+use inkwell::values::{ AggregateValue, BasicValueEnum, BasicValue, FunctionValue };
 use inkwell::types::{ BasicTypeEnum, BasicType };
 use inkwell::AddressSpace;
 use inkwell::targets::{ RelocMode, CodeModel, FileType, TargetTriple };
@@ -141,12 +141,12 @@ impl<'g> Generator<'g> {
     fn optimize(&self) {
         let config = InitializationConfig::default();
         Target::initialize_native(&config).unwrap();
-        // let pass_manager_builder = PassManagerBuilder::create();
+        let pass_manager_builder = PassManagerBuilder::create();
 
-        // pass_manager_builder.set_optimization_level(OptimizationLevel::Aggressive);
-        // let pass_manager = PassManager::create(());
-        // pass_manager_builder.populate_module_pass_manager(&pass_manager);
-        // pass_manager.run_on(&self.module);
+        pass_manager_builder.set_optimization_level(OptimizationLevel::Aggressive);
+        let pass_manager = PassManager::create(());
+        pass_manager_builder.populate_module_pass_manager(&pass_manager);
+        pass_manager.run_on(&self.module);
     }
 
     fn output(&self, module_name: String, binary_name: &str, target_triple: &TargetTriple, module: &Module) {
@@ -330,37 +330,53 @@ impl<'g> Generator<'g> {
         }
     }
 
-    fn convert_struct_type<'c>(&mut self, info: &types::TypeInfo, args: &Vec<types::Field<'c>>, cache: &ModuleCache<'c>) -> BasicTypeEnum<'g> {
-        // TODO: cache the struct type for recursive types.
-        let typ = self.context.opaque_struct_type(&info.name);
+    fn convert_struct_type<'c>(&mut self, id: TypeInfoId, info: &types::TypeInfo, fields: &[types::Field<'c>],
+        args: Vec<types::Type>, cache: &ModuleCache<'c>) -> BasicTypeEnum<'g>
+    {
+        let bindings = info.args.iter().copied().zip(args.iter().cloned()).collect();
 
-        let fields = fmap(&args, |x| self.convert_type(&x.field_type, cache));
+        let typ = self.context.opaque_struct_type(&info.name);
+        self.types.insert((id, args), typ.into());
+
+        let fields = fmap(&fields, |field| {
+            let field_type = typechecker::bind_typevars(&field.field_type, &bindings, cache);
+            self.convert_type(&field_type, cache)
+        });
 
         typ.set_body(&fields, false);
         typ.into()
     }
 
-    fn convert_union_type<'c>(&mut self, info: &types::TypeInfo, args: &Vec<types::TypeConstructor<'c>>, cache: &ModuleCache<'c>) -> BasicTypeEnum<'g> {
-        // TODO: cache the struct type for recursive types. - possibly cache in convert_type
-        // TypeApplication case
-        let typ = self.context.opaque_struct_type(&info.name);
+    fn convert_union_type<'c>(&mut self, id: TypeInfoId, info: &types::TypeInfo, variants: &[types::TypeConstructor<'c>],
+        args: Vec<types::Type>, cache: &ModuleCache<'c>) -> BasicTypeEnum<'g>
+    {
+        let bindings = info.args.iter().copied().zip(args.iter().cloned()).collect();
 
-        let max_size = 0;
+        let typ = self.context.opaque_struct_type(&info.name);
+        self.types.insert((id, args), typ.into());
+
+        let variants: Vec<Vec<types::Type>> = fmap(&variants, |variant| {
+            fmap(&variant.args, |arg| typechecker::bind_typevars(arg, &bindings, cache))
+        });
+
+        let mut max_size = 0;
         let mut largest_variant = None;
-        for variant in args.iter() {
-            let size: usize = variant.args.iter().map(|arg| self.size_of_type(arg, cache)).sum();
+        for variant in variants.into_iter() {
+            let size: usize = variant.iter().map(|arg| self.size_of_type(arg, cache)).sum();
             if size >= max_size {
                 largest_variant = Some(variant);
+                max_size = size;
             }
         }
 
         if let Some(variant) = largest_variant {
             let mut fields = vec![self.tag_type()];
-            for typ in &variant.args {
-                fields.push(self.convert_type(typ, cache));
+            for typ in variant {
+                fields.push(self.convert_type(&typ, cache));
             }
             typ.set_body(&fields, false);
         }
+
         typ.into()
     }
 
@@ -374,13 +390,18 @@ impl<'g> Generator<'g> {
 
         use types::TypeInfoBody::*;
         let typ = match &info.body {
-            Union(args) => self.convert_union_type(info, args, cache),
-            Struct(fields) => self.convert_struct_type(info, fields, cache),
-            Alias(typ) => self.convert_type(typ, cache),
+            Union(variants) => self.convert_union_type(id, info, variants, args, cache),
+            Struct(fields) => self.convert_struct_type(id, info, fields, args, cache),
+
+            // TODO: handle aliases with type arguments
+            Alias(typ) => {
+                let converted = self.convert_type(typ, cache);
+                self.types.insert((id, args), converted);
+                converted
+            },
             Unknown => unreachable!(),
         };
 
-        self.types.insert((id, args), typ);
         typ
     }
 
@@ -657,13 +678,50 @@ impl<'g> Generator<'g> {
 
     fn tuple<'c>(&mut self, elements: Vec<BasicValueEnum<'g>>, element_types: Vec<BasicTypeEnum<'g>>) -> BasicValueEnum<'g> {
         let tuple_type = self.context.struct_type(&element_types, false);
-        let mut tuple = tuple_type.const_zero().into();
 
+        // LLVM wants the const elements to be included in the struct literal itself.
+        // Attempting to do build_insert_value would a const value will return the struct as-is
+        // without mutating the existing struct.
+        let const_elements = fmap(&elements, |element| {
+            if Self::is_const(*element) {
+                *element
+            } else {
+                Self::undef_value(element.get_type())
+            }
+        });
+
+        let mut tuple = tuple_type.const_named_struct(&const_elements).as_aggregate_value_enum();
+
+        // Now insert all the non-const values
         for (i, element) in elements.into_iter().enumerate() {
-            tuple = self.builder.build_insert_value(tuple, element, i as u32, "insert").unwrap();
+            if !Self::is_const(element) {
+                tuple = self.builder.build_insert_value(tuple, element, i as u32, "insert").unwrap();
+            }
         }
 
         tuple.as_basic_value_enum()
+    }
+
+    fn is_const(value: BasicValueEnum<'g>) -> bool {
+        match value {
+            BasicValueEnum::ArrayValue(array) => array.is_const(),
+            BasicValueEnum::FloatValue(float) => float.is_const(),
+            BasicValueEnum::IntValue(int) => int.is_const(),
+            BasicValueEnum::PointerValue(pointer) => pointer.is_const(),
+            BasicValueEnum::StructValue(_) => false,
+            BasicValueEnum::VectorValue(vector) => vector.is_const(),
+        }
+    }
+
+    fn undef_value(typ: BasicTypeEnum<'g>) -> BasicValueEnum<'g> {
+        match typ {
+            BasicTypeEnum::ArrayType(array) => array.get_undef().into(),
+            BasicTypeEnum::FloatType(float) => float.get_undef().into(),
+            BasicTypeEnum::IntType(int) => int.get_undef().into(),
+            BasicTypeEnum::PointerType(pointer) => pointer.get_undef().into(),
+            BasicTypeEnum::StructType(tuple) => tuple.get_undef().into(),
+            BasicTypeEnum::VectorType(vector) => vector.get_undef().into(),
+        }
     }
 
     fn get_field_index<'c>(&self, field_name: &str, typ: &types::Type, cache: &ModuleCache<'c>) -> u32 {

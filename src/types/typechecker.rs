@@ -23,20 +23,30 @@ pub type TypeBindings = HashMap<TypeVariableId, Type>;
 
 /// Replace any typevars found in typevars_to_replace with the
 /// associated value in the same table, leave them otherwise
-fn replace_typevars<'b>(typ: &Type, typevars_to_replace: &HashMap<TypeVariableId, TypeVariableId>, cache: &mut ModuleCache<'b>) -> Type {
+fn replace_typevars<'b>(typ: &Type, typevars_to_replace: &HashMap<TypeVariableId, TypeVariableId>, cache: &ModuleCache<'b>) -> Type {
+    let typevars_to_replace = typevars_to_replace.iter()
+        .map(|(key, id)| (*key, TypeVariable(*id)))
+        .collect();
+
+    bind_typevars(typ, &typevars_to_replace, cache)
+}
+
+/// Replace any typevars found with the given type bindings
+pub fn bind_typevars<'b>(typ: &Type, type_bindings: &TypeBindings, cache: &ModuleCache<'b>) -> Type {
     match typ {
         Primitive(p) => Primitive(*p),
         TypeVariable(id) => {
             if let Bound(typ) = &cache.type_bindings[id.0] {
-                replace_typevars(&typ.clone(), typevars_to_replace, cache)
+                bind_typevars(&typ.clone(), type_bindings, cache)
             } else {
-                let new_id = typevars_to_replace.get(id).unwrap_or(id);
-                TypeVariable(*new_id)
+                let original = TypeVariable(*id);
+                let replacement = type_bindings.get(id).unwrap_or(&original);
+                replacement.clone()
             }
         },
         Function(parameters, return_type) => {
-            let parameters = fmap(parameters, |parameter| replace_typevars(parameter, typevars_to_replace, cache));
-            let return_type = replace_typevars(return_type, typevars_to_replace, cache);
+            let parameters = fmap(parameters, |parameter| bind_typevars(parameter, type_bindings, cache));
+            let return_type = bind_typevars(return_type, type_bindings, cache);
             Function(parameters, Box::new(return_type))
         },
         ForAll(_typevars, _typ) => {
@@ -45,17 +55,17 @@ fn replace_typevars<'b>(typ: &Type, typevars_to_replace: &HashMap<TypeVariableId
             // for typevar in typevars.iter() {
             //     table_copy.remove(typevar);
             // }
-            // ForAll(typevars.clone(), Box::new(replace_typevars(typ, &table_copy, cache)))
+            // ForAll(typevars.clone(), Box::new(bind_typevars(typ, &table_copy, cache)))
         }
         UserDefinedType(id) => UserDefinedType(*id),
 
         TypeApplication(typ, args) => {
-            let typ = replace_typevars(typ, typevars_to_replace, cache);
-            let args = fmap(args, |arg| replace_typevars(arg, typevars_to_replace, cache));
+            let typ = bind_typevars(typ, type_bindings, cache);
+            let args = fmap(args, |arg| bind_typevars(arg, type_bindings, cache));
             TypeApplication(Box::new(typ), args)
         },
         Tuple(elements) => {
-            Tuple(fmap(elements, |element| replace_typevars(element, typevars_to_replace, cache)))
+            Tuple(fmap(elements, |element| bind_typevars(element, type_bindings, cache)))
         }
     }
 }
