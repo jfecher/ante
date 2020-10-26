@@ -1,6 +1,6 @@
 use crate::lexer::token::Token;
 use crate::error::location::{ Location, Locatable };
-use crate::cache::{ DefinitionInfoId, TraitInfoId, ModuleId, ImplScopeId, ImplBindingId };
+use crate::cache::{ DefinitionInfoId, TraitInfoId, ModuleId, ImplScopeId, TraitBindingId, VariableId };
 use crate::types::{ self, TypeInfoId, LetBindingLevel };
 use crate::types::pattern::DecisionTree;
 use crate::util::reinterpret_as_bits;
@@ -34,13 +34,26 @@ pub enum VariableKind {
 pub struct Variable<'a> {
     pub kind: VariableKind,
     pub location: Location<'a>,
+
+    /// A variable's definition is initially undefined.
+    /// During name resolution, every definition is filled
+    /// out - becoming Some(id)
     pub definition: Option<DefinitionInfoId>,
+
+    /// If the variable's definition refers to some trait value,
+    /// then this variable is generic over any matching
+    /// value in any impl of its trait since it may need to
+    /// be monomorphised to refer to any such impl.
+    /// This field is used during codegen to map this variable to
+    /// a given impl definition for static dispatch of traits.
+    pub trait_binding: Option<TraitBindingId>,
 
     /// The trait impls in scope. Used during trait resolution.
     pub impl_scope: Option<ImplScopeId>,
 
-    /// The list of traits to monomorphise when compiling this variable.
-    pub impl_bindings: Vec<ImplBindingId>,
+    /// A unique ID that can be used to identify this variable node
+    pub id: Option<VariableId>,
+
     pub typ: Option<types::Type>,
 }
 
@@ -291,15 +304,15 @@ impl<'a> Ast<'a> {
     }
 
     pub fn variable(name: String, location: Location<'a>) -> Ast<'a> {
-        Ast::Variable(Variable { kind: VariableKind::Identifier(name), location, definition: None, impl_scope: None, impl_bindings: vec![], typ: None })
+        Ast::Variable(Variable { kind: VariableKind::Identifier(name), location, definition: None, id: None, impl_scope: None, trait_binding: None, typ: None })
     }
 
     pub fn operator(operator: Token, location: Location<'a>) -> Ast<'a> {
-        Ast::Variable(Variable { kind: VariableKind::Operator(operator), location, definition: None, impl_scope: None, impl_bindings: vec![], typ: None })
+        Ast::Variable(Variable { kind: VariableKind::Operator(operator), location, definition: None, trait_binding: None, id: None, impl_scope: None, typ: None })
     }
 
     pub fn type_constructor(name: String, location: Location<'a>) -> Ast<'a> {
-        Ast::Variable(Variable { kind: VariableKind::TypeConstructor(name), location, definition: None, impl_scope: None, impl_bindings: vec![], typ: None })
+        Ast::Variable(Variable { kind: VariableKind::TypeConstructor(name), location, definition: None, trait_binding: None, id: None, impl_scope: None, typ: None })
     }
 
     pub fn lambda(args: Vec<Ast<'a>>, return_type: Option<Type<'a>>, body: Ast<'a>, location: Location<'a>) -> Ast<'a> {

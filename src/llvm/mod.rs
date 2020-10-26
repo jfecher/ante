@@ -3,10 +3,11 @@
 //! backend planned for faster debug build times and faster build times for the compiler itself
 //! so that new users won't have to subject themselves to building llvm.
 
-use crate::cache::{ ModuleCache, DefinitionInfoId, DefinitionKind };
+use crate::cache::{ ModuleCache, DefinitionInfoId, DefinitionKind, VariableId };
 use crate::parser::{ ast, ast::Ast };
 use crate::nameresolution::builtin::BUILTIN_ID;
 use crate::types::{ self, typechecker, TypeVariableId, TypeBinding, TypeInfoId };
+use crate::types::traits::RequiredImpl;
 use crate::types::typed::Typed;
 use crate::util::{ fmap, trustme, reinterpret_from_bits };
 
@@ -35,9 +36,16 @@ pub struct Generator<'context> {
     module: Module<'context>,
     builder: Builder<'context>,
 
+    /// Cache of already compiled, monomorphised definitions
     definitions: HashMap<(DefinitionInfoId, types::Type), BasicValueEnum<'context>>,
 
+    /// Cache of mappings from types::Type to LLVM types
     types: HashMap<(types::TypeInfoId, Vec<types::Type>), BasicTypeEnum<'context>>,
+
+    /// Compile-time mapping of variable -> definition for impls that were resolved
+    /// after type inference. This is needed for definitions that are polymorphic in
+    /// the impls they may use within.
+    impl_mappings: HashMap<VariableId, DefinitionInfoId>,
 
     /// A stack of the current typevar bindings during monomorphisation. Unlike normal bindings,
     /// these are meant to be easily undone. Since ante doesn't support polymorphic recursion,
@@ -65,6 +73,7 @@ pub fn run<'c>(path: &Path, ast: &Ast<'c>, cache: &mut ModuleCache<'c>, show_ir:
         builder: context.create_builder(),
         definitions: HashMap::new(),
         types: HashMap::new(),
+        impl_mappings: HashMap::new(),
         monomorphisation_bindings: vec![],
         auto_derefs: HashSet::new(),
         current_function_info: None,
@@ -147,6 +156,10 @@ impl<'g> Generator<'g> {
         let pass_manager = PassManager::create(());
         pass_manager_builder.populate_module_pass_manager(&pass_manager);
         pass_manager.run_on(&self.module);
+
+        let link_time_optimizations = PassManager::create(());
+        pass_manager_builder.populate_lto_pass_manager(&link_time_optimizations, false, true);
+        link_time_optimizations.run_on(&self.module);
     }
 
     fn output(&self, module_name: String, binary_name: &str, target_triple: &TargetTriple, module: &Module) {
@@ -217,6 +230,38 @@ impl<'g> Generator<'g> {
         (function, function_pointer)
     }
 
+    fn add_required_impls<'c>(&mut self, required_impls: &[RequiredImpl]) {
+        for required_impl in required_impls {
+            assert!(!self.impl_mappings.contains_key(&required_impl.origin));
+            self.impl_mappings.insert(required_impl.origin, required_impl.binding);
+        }
+    }
+
+    fn remove_required_impls<'c>(&mut self, required_impls: &[RequiredImpl]) {
+        for required_impl in required_impls {
+            self.impl_mappings.remove(&required_impl.origin);
+        }
+    }
+
+    /// Codegen a given definition unless it has been already.
+    /// If it has been already codegen'd, return the cached value instead.
+    fn codegen_definition<'c>(&mut self, id: DefinitionInfoId, typ: &types::Type, cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
+        match self.lookup(id, typ, cache) {
+            Some(value) => value,
+            None => self.monomorphise(id, typ, cache).unwrap()
+        }
+    }
+
+    /// Get the DefinitionInfoId this variable should point to. This is usually
+    /// given by variable.definition but in the case of static trait dispatch,
+    /// self.impl_mappings may be set to bind a given variable id to another
+    /// definition. This is currently only done for trait functions/values to
+    /// point them to impls that actually have definitions.
+    fn get_definition_id<'c>(&self, variable: &ast::Variable<'c>) -> DefinitionInfoId {
+        self.impl_mappings.get(&variable.id.unwrap())
+            .copied().unwrap_or(variable.definition.unwrap())
+    }
+
     fn monomorphise<'c>(&mut self, id: DefinitionInfoId, typ: &types::Type, cache: &mut ModuleCache<'c>) -> Option<BasicValueEnum<'g>> {
         let definition = &mut cache.definition_infos[id.0];
         let definition = trustme::extend_lifetime(definition);
@@ -243,10 +288,6 @@ impl<'g> Generator<'g> {
             },
             Some(DefinitionKind::TraitDefinition(_)) => {
                 unreachable!("There is no code in a trait definition that can be codegen'd.\n\
-                             No cached impl for {}: {}", definition.name, typ.display(cache))
-            },
-            Some(DefinitionKind::Impl) => {
-                unreachable!("There is no code in a trait impl that can be codegen'd.\n\
                              No cached impl for {}: {}", definition.name, typ.display(cache))
             },
             Some(DefinitionKind::Parameter) => {
@@ -524,15 +565,6 @@ impl<'g> Generator<'g> {
             Variable(variable) => {
                 let id = variable.definition.unwrap();
                 let typ = self.follow_bindings(variable.typ.as_ref().unwrap(), cache);
-
-                // If this is an impl, insert the value with the trait's definition id as a key as
-                // well since this is what will be looked up at the call site.
-                // NOTE: this is done before inserting the value for the normal id so that
-                //       we don't have to always clone the typ for the common case
-                cache.definition_infos[id.0].trait_definition.map(|id| {
-                    self.definitions.insert((id, typ.clone()), value);
-                });
-
                 self.definitions.insert((id, typ), value);
             },
             TypeAnnotation(annotation) => {
@@ -774,22 +806,15 @@ impl <'g, 'c> CodeGen<'g, 'c> for ast::LiteralKind {
 
 impl<'g, 'c> CodeGen<'g, 'c> for ast::Variable<'c> {
     fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> Option<BasicValueEnum<'g>> {
-        let id = self.definition.unwrap();
+        let required_impls = &cache.trait_bindings[self.trait_binding.unwrap().0].required_impls.clone();
+        generator.add_required_impls(&required_impls);
 
-        for binding in self.impl_bindings.iter() {
-            // TODO: There are never any bindings for member access trait impls. Can we continue
-            // this loop for those but otherwise assert the binding is never None?
-            cache.impl_bindings[binding.0].map(|impl_id| {
-                let trait_impl = &mut cache.impl_infos[impl_id.0].trait_impl;
-                let trait_impl = trustme::extend_lifetime(trait_impl);
-                trait_impl.codegen(generator, cache);
-            });
-        }
+        // The definition to compile is either the corresponding impl definition if this
+        // variable refers to a trait function, or otherwise it is the regular definition of this variable.
+        let id = generator.get_definition_id(self);
+        let mut value = generator.codegen_definition(id, self.typ.as_ref().unwrap(), cache);
 
-        let mut value = match generator.lookup(id, self.typ.as_ref().unwrap(), cache) {
-            Some(value) => value,
-            None => generator.monomorphise(id, self.typ.as_ref().unwrap(), cache).unwrap(),
-        };
+        generator.remove_required_impls(&required_impls);
 
         if generator.auto_derefs.contains(&id) {
             value = generator.builder.build_load(value.into_pointer_value(), &self.to_string());
@@ -829,7 +854,6 @@ impl<'g, 'c> CodeGen<'g, 'c> for ast::FunctionCall<'c> {
     fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> Option<BasicValueEnum<'g>> {
         match self.function.as_ref() {
             Ast::Variable(variable) if variable.definition == Some(BUILTIN_ID) => {
-                // Builtin function
                 // TODO: improve this control flow so that the fast path of normal function calls
                 // doesn't have to check the rare case of a builtin function call.
                 builtin::call_builtin(&self.args, generator)
@@ -934,6 +958,8 @@ impl<'g, 'c> CodeGen<'g, 'c> for ast::TraitImpl<'c> {
     fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> Option<BasicValueEnum<'g>> {
         for definition in self.definitions.iter() {
             generator.codegen_monomorphise(definition, cache);
+            // let value = definition.expr.codegen(generator, cache).unwrap();
+            // generator.bind_irrefutable_pattern(definition.pattern.as_ref(), value, cache);
         }
         None
     }

@@ -34,7 +34,7 @@ fn print_definition_types<'a>(cache: &ModuleCache<'a>) {
         let typ = info.typ.clone().unwrap_or(types::Type::Primitive(types::PrimitiveType::UnitType));
 
         print!("{} : ", name);
-        types::typeprinter::show_type_and_traits(&typ, &info.required_impls, cache);
+        types::typeprinter::show_type_and_traits(&typ, &info.required_traits, cache);
     }
 }
 

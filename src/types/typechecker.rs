@@ -1,4 +1,13 @@
-use crate::cache::{ ModuleCache, TraitInfoId, DefinitionInfoId, ImplBindingId, DefinitionKind, ImplInfoId };
+//! Passes over the ast, filling out the (typ: Type) field of each node.
+//! This uses algorithm j extended with let polymorphism and multi-parameter
+//! typeclasses (traits) with a very limited form of functional dependencies.
+//! For generalization this uses let binding levels to determine if types escape
+//! the current binding and should thus not be generalized.
+//!
+//! Note: most of this file is directly translated from:
+//! https://github.com/jfecher/algorithm-j
+use crate::cache::{ ModuleCache, TraitInfoId, DefinitionInfoId, DefinitionKind };
+use crate::cache::{ ImplInfoId, ImplScopeId, TraitBindingId, VariableId };
 use crate::error::location::{ Location, Locatable };
 use crate::error::{ ErrorMessage, get_error_count };
 use crate::parser::ast;
@@ -6,14 +15,11 @@ use crate::types::pattern;
 use crate::types::{ Type, Type::*, TypeVariableId, PrimitiveType, LetBindingLevel, TypeBinding::* };
 use crate::types::{ TypeBinding, STRING_TYPE };
 use crate::types::typed::Typed;
-use crate::types::traits::{ TraitList, Impl };
+use crate::types::traits::{ TraitConstraints, RequiredTrait, TraitConstraint };
 use crate::util::*;
 
 use std::collections::HashMap;
 use std::sync::atomic::{ AtomicUsize, Ordering };
-
-// Note: most of this file is directly translated from:
-// https://github.com/jfecher/algorithm-j
 
 
 pub static CURRENT_LEVEL: AtomicUsize = AtomicUsize::new(1);
@@ -81,53 +87,52 @@ fn next_type_variable<'a>(cache: &mut ModuleCache<'a>) -> Type {
     cache.next_type_variable(level)
 }
 
-fn collect_impl_bindings(impls: &Vec<Impl>) -> Vec<ImplBindingId> {
-    fmap(impls, |trait_impl| trait_impl.binding)
+fn to_trait_constraints(required_traits: &[RequiredTrait], scope: ImplScopeId,
+    callsite_id: VariableId, callsite: Option<TraitBindingId>) -> TraitConstraints
+{
+    fmap(required_traits, |required_trait| required_trait.as_constraint(scope, callsite_id, callsite.unwrap()))
 }
 
 /// specializes the polytype s by copying the term and replacing the
 /// bound type variables consistently by new monotype variables
 /// E.g.   instantiate (forall a b. a -> b -> a) = c -> d -> c
-pub fn instantiate<'b>(s: &Type, mut traits: Vec<Impl>, cache: &mut ModuleCache<'b>) -> (Type, TraitList, Vec<ImplBindingId>) {
+///
+/// This will also instantiate each given trait constraint, replacing
+/// each free typevar of the constraint's argument types.
+pub fn instantiate<'b>(s: &Type, mut constraints: TraitConstraints, cache: &mut ModuleCache<'b>) -> (Type, TraitConstraints) {
     // Note that the returned type is no longer a PolyType,
     // this means it is now monomorphic and not forall-quantified
     match s {
         TypeVariable(id) => {
             if let Bound(typ) = &cache.type_bindings[id.0] {
-                instantiate(&typ.clone(), traits, cache)
+                instantiate(&typ.clone(), constraints, cache)
             } else {
-                let bindings = collect_impl_bindings(&traits);
-                (TypeVariable(*id), traits, bindings)
+                (TypeVariable(*id), constraints)
             }
         },
         ForAll(typevars, typ) => {
+            // Must replace all typevars in typ and the required_traits list with new ones
             let mut typevars_to_replace = HashMap::new();
             for var in typevars.iter().copied() {
                 typevars_to_replace.insert(var, next_type_variable_id(cache));
             }
             let typ = replace_typevars(&typ, &typevars_to_replace, cache);
 
-            for var in find_all_typevars_in_traits(&traits, true, cache).iter().copied() {
+            for var in find_all_typevars_in_traits(&constraints, true, cache).iter().copied() {
                 if !typevars_to_replace.contains_key(&var) {
                     typevars_to_replace.insert(var, next_type_variable_id(cache));
                 }
             }
 
-            let mut bindings = vec![];
-            for trait_impl in traits.iter_mut() {
-                for typ in trait_impl.args.iter_mut() {
+            for constraint in constraints.iter_mut() {
+                for typ in constraint.args.iter_mut() {
                     *typ = replace_typevars(typ, &typevars_to_replace, cache);
                 }
-
-                let binding = cache.push_impl_binding();
-                trait_impl.binding = binding;
-                bindings.push(binding);
             }
-            (typ, traits, bindings)
+            (typ, constraints)
         },
         other => {
-            let bindings = collect_impl_bindings(&traits);
-            (other.clone(), traits, bindings)
+            (other.clone(), constraints)
         },
     }
 }
@@ -137,13 +142,15 @@ pub fn instantiate<'b>(s: &Type, mut traits: Vec<Impl>, cache: &mut ModuleCache<
 /// type inference to ensure all definitions in the trait impl are
 /// mapped to the same typevars, rather than each definition instantiated
 /// separately as is normal.
-fn instantiate_from_map<'b>(s: &Type, typevars_to_replace: &HashMap<TypeVariableId, TypeVariableId>, cache: &mut ModuleCache<'b>) -> Type {
+fn instantiate_from_map<'b>(s: &Type, typevars_to_replace: &HashMap<TypeVariableId, TypeVariableId>,
+    cache: &mut ModuleCache<'b>) -> Type
+{
     // Note that the returned type is no longer a PolyType,
     // this means it is now monomorphic and not forall-quantified
     match s {
         TypeVariable(id) => {
             if let Bound(typ) = &cache.type_bindings[id.0] {
-                instantiate(&typ.clone(), vec![], cache).0
+                instantiate_from_map(&typ.clone(), typevars_to_replace, cache)
             } else {
                 TypeVariable(*id)
             }
@@ -331,7 +338,7 @@ pub fn try_unify<'b>(t1: &Type, t2: &Type, bindings: &mut TypeBindings, location
 /// Try to unify the types from all the given vectors. We only return success or failure since that
 /// is all that is needed during trait resultion. If this function is ever needed outside of trait
 /// resolution it can be altered to collect the appropriate bindings/error messages as well.
-fn try_unify_all<'b>(vec1: &Vec<Type>, vec2: &Vec<Type>, location: Location<'b>, cache: &mut ModuleCache<'b>) -> Result<TypeBindings, ()> {
+pub fn try_unify_all<'b>(vec1: &Vec<Type>, vec2: &Vec<Type>, location: Location<'b>, cache: &mut ModuleCache<'b>) -> Result<TypeBindings, ()> {
     if vec1.len() != vec2.len() {
         return Err(());
     }
@@ -411,10 +418,10 @@ pub fn find_all_typevars<'a>(typ: &Type, monomorphic_only: bool, cache: &ModuleC
     }
 }
 
-fn find_all_typevars_in_traits<'a>(traits: &Vec<Impl>, monomorphic_only: bool, cache: &ModuleCache<'a>) -> Vec<TypeVariableId> {
+fn find_all_typevars_in_traits<'a>(traits: &TraitConstraints, monomorphic_only: bool, cache: &ModuleCache<'a>) -> Vec<TypeVariableId> {
     let mut typevars = vec![];
-    for trait_impl in traits.iter() {
-        for typ in trait_impl.args.iter() {
+    for constraint in traits.iter() {
+        for typ in constraint.args.iter() {
             typevars.append(&mut find_all_typevars(typ, monomorphic_only, cache));
         }
     }
@@ -435,7 +442,9 @@ pub fn generalize<'a>(typ: &Type, cache: &ModuleCache<'a>) -> Type {
     }
 }
 
-fn infer_nested_definition<'a>(definition_id: DefinitionInfoId, cache: &mut ModuleCache<'a>) -> (Type, TraitList) {
+fn infer_nested_definition<'a>(definition_id: DefinitionInfoId, impl_scope: ImplScopeId,
+    callsite_id: VariableId, callsite: Option<TraitBindingId>, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints)
+{
     let level = LetBindingLevel(CURRENT_LEVEL.fetch_or(0, Ordering::SeqCst));
     let typevar = cache.next_type_variable(level);
     let info = &mut cache.definition_infos[definition_id.0];
@@ -456,20 +465,23 @@ fn infer_nested_definition<'a>(definition_id: DefinitionInfoId, cache: &mut Modu
             let definition = trustme::extend_lifetime(*declaration);
             infer(definition, cache);
         },
-        DefinitionKind::Impl => unreachable!("DefinitionNode::Impl shouldn't be reachable when inferring nested definitions. Only the TraitDefinition should be visible."),
         DefinitionKind::Parameter => {},
         DefinitionKind::MatchPattern => {},
         DefinitionKind::TypeConstructor { .. } => {},
     };
 
     let info = &mut cache.definition_infos[definition_id.0];
-    (info.typ.clone().unwrap(), info.required_impls.clone())
+    let constraints = to_trait_constraints(&info.required_traits, impl_scope, callsite_id, callsite);
+    (info.typ.clone().unwrap(), constraints)
 }
 
 /// Binds a given type to an irrefutable pattern, recursing on the pattern and verifying
 /// that it is indeed irrefutable. If should_generalize is true, this generalizes the type given
-/// to any variable encountered.
-fn bind_irrefutable_pattern<'a>(ast: &mut ast::Ast<'a>, typ: &Type, traits: &Vec<Impl>, should_generalize: bool, cache: &mut ModuleCache<'a>) {
+/// to any variable encountered. Appends the given required_traits list in the DefinitionInfo's
+/// required_traits field.
+fn bind_irrefutable_pattern<'a>(ast: &mut ast::Ast<'a>, typ: &Type,
+    required_traits: &Vec<RequiredTrait>, should_generalize: bool, cache: &mut ModuleCache<'a>)
+{
     use ast::Ast::*;
     use ast::LiteralKind;
 
@@ -481,7 +493,8 @@ fn bind_irrefutable_pattern<'a>(ast: &mut ast::Ast<'a>, typ: &Type, traits: &Vec
             }
         },
         Variable(variable) => {
-            let info = &mut cache.definition_infos[variable.definition.unwrap().0];
+            let definition_id = variable.definition.unwrap();
+            let info = &mut cache.definition_infos[definition_id.0];
 
             // The type may already be set (e.g. from a trait impl this definition belongs to).
             // If it is, unify the existing type and new type before generalizing them.
@@ -490,14 +503,14 @@ fn bind_irrefutable_pattern<'a>(ast: &mut ast::Ast<'a>, typ: &Type, traits: &Vec
             }
 
             let typ = if should_generalize { generalize(typ, cache) } else { typ.clone() };
-            let info = &mut cache.definition_infos[variable.definition.unwrap().0];
-            info.required_impls.append(&mut traits.clone());
+            let info = &mut cache.definition_infos[definition_id.0];
+            info.required_traits.append(&mut required_traits.clone());
             variable.typ = Some(typ.clone());
             info.typ = Some(typ);
         },
         TypeAnnotation(annotation) => {
             unify(typ, annotation.typ.as_ref().unwrap(), annotation.location, cache);
-            bind_irrefutable_pattern(annotation.lhs.as_mut(), typ, traits, should_generalize, cache);
+            bind_irrefutable_pattern(annotation.lhs.as_mut(), typ, required_traits, should_generalize, cache);
         },
         Tuple(tuple) => {
             let tuple_type = Type::Tuple(fmap(&tuple.elements, |_| next_type_variable(cache)));
@@ -506,7 +519,7 @@ fn bind_irrefutable_pattern<'a>(ast: &mut ast::Ast<'a>, typ: &Type, traits: &Vec
             match tuple_type {
                 Type::Tuple(elements) => {
                     for (element, element_type) in tuple.elements.iter_mut().zip(elements) {
-                        bind_irrefutable_pattern(element, &element_type, traits, should_generalize, cache);
+                        bind_irrefutable_pattern(element, &element_type, required_traits, should_generalize, cache);
                     }
                 },
                 _ => unreachable!(),
@@ -553,7 +566,8 @@ fn bind_irrefutable_pattern_in_impl<'a>(ast: &ast::Ast<'a>, trait_id: TraitInfoI
             let trait_type = lookup_definition_type_in_trait(&name, trait_id, cache);
             let trait_type = instantiate_from_map(&trait_type, typevars_to_replace, cache);
 
-            let info = &mut cache.definition_infos[variable.definition.unwrap().0];
+            let definition_id = variable.definition.unwrap();
+            let info = &mut cache.definition_infos[definition_id.0];
             info.typ = Some(trait_type);
         },
         TypeAnnotation(annotation) => {
@@ -565,20 +579,20 @@ fn bind_irrefutable_pattern_in_impl<'a>(ast: &ast::Ast<'a>, trait_id: TraitInfoI
     }
 }
 
-// A trait should be propogated to the public signature of a Definition if any of its contained
-// type variables should be generalized. If the trait shouldn't be propogated then an impl
-// should be resolved instead.
-fn should_propagate<'a>(trait_impl: &Impl, cache: &ModuleCache<'a>) -> bool {
+/// A trait should be propogated to the public signature of a Definition if any of its contained
+/// type variables should be generalized. If the trait shouldn't be propogated then an impl
+/// should be resolved instead.
+fn should_propagate<'a>(constraint: &TraitConstraint, cache: &ModuleCache<'a>) -> bool {
     // Don't check the fundeps since only the typeargs proper are used to find impls
-    let arg_count = cache.trait_infos[trait_impl.trait_id.0].typeargs.len();
-    trait_impl.args.iter().take(arg_count).any(|arg| !find_all_typevars(arg, true, cache).is_empty())
+    let arg_count = cache.trait_infos[constraint.trait_id.0].typeargs.len();
+    constraint.args.iter().take(arg_count).any(|arg| !find_all_typevars(arg, true, cache).is_empty())
 }
 
-fn check_member_access<'a>(trait_impl: &Impl, location: Location<'a>, cache: &mut ModuleCache<'a>) {
+fn check_member_access<'a>(constraint: &TraitConstraint, location: Location<'a>, cache: &mut ModuleCache<'a>) {
     let empty_bindings = HashMap::new();
-    let collection = follow_bindings(&trait_impl.args[0], &empty_bindings, cache);
+    let collection = follow_bindings(&constraint.args[0], &empty_bindings, cache);
 
-    let field_name = &cache.trait_infos[trait_impl.trait_id.0].name[1..];
+    let field_name = &cache.trait_infos[constraint.trait_id.0].name[1..];
 
     match collection {
         Type::UserDefinedType(id) => {
@@ -590,7 +604,7 @@ fn check_member_access<'a>(trait_impl: &Impl, location: Location<'a>, cache: &mu
                     // FIXME: this unifies the type variables from the definition of field_type
                     // rather than the types it was instantiated to. This will be incorrect if
                     // the user ever uses a generic field with two different types!
-                    unify(&trait_impl.args[1], &field_type, location, cache);
+                    unify(&constraint.args[1], &field_type, location, cache);
                 },
                 _ => error!(location, "Type {} has no field named {}", collection.display(cache), field_name),
             }
@@ -600,22 +614,37 @@ fn check_member_access<'a>(trait_impl: &Impl, location: Location<'a>, cache: &mu
     }
 }
 
-fn find_impl<'a>(trait_impl: &mut Impl, location: Location<'a>, cache: &mut ModuleCache<'a>) {
-    if cache.trait_infos[trait_impl.trait_id.0].is_member_access() {
-        check_member_access(trait_impl, location, cache);
+fn find_definition_in_impl<'c>(origin: VariableId, impl_id: ImplInfoId, cache: &ModuleCache<'c>) -> DefinitionInfoId {
+    let name = &cache.variable_nodes[origin.0];
+
+    let impl_info = &cache.impl_infos[impl_id.0];
+    for definition in impl_info.definitions.iter().copied() {
+        let definition_name = &cache.definition_infos[definition.0].name;
+        if definition_name == name {
+            return definition;
+        }
+    }
+    unreachable!("Could not find definition for {} in impl at {:?}", name, impl_info.location);
+}
+
+/// Search for an impl for the given TraitConstraint or error if 0
+/// or >1 matching impls are found.
+fn find_impl<'c>(constraint: TraitConstraint, location: Location<'c>, cache: &mut ModuleCache<'c>) {
+    if cache.trait_infos[constraint.trait_id.0].is_member_access() {
+        check_member_access(&constraint, location, cache);
         return;
     }
 
-    let scope = cache.impl_scopes[trait_impl.scope.0].clone();
+    let scope = cache.impl_scopes[constraint.scope.0].clone();
     let mut found = vec![];
     let mut bindings = HashMap::new();
 
     for impl_id in scope.iter().copied() {
         let info = &cache.impl_infos[impl_id.0];
 
-        if info.trait_id == trait_impl.trait_id {
+        if info.trait_id == constraint.trait_id {
             // TODO: remove excess cloning
-            if let Ok(map) = try_unify_all(&trait_impl.args, &info.typeargs.clone(), location, cache) {
+            if let Ok(map) = try_unify_all(&constraint.args, &info.typeargs.clone(), location, cache) {
                 found.push(impl_id);
                 bindings = map;
             }
@@ -630,32 +659,37 @@ fn find_impl<'a>(trait_impl: &mut Impl, location: Location<'a>, cache: &mut Modu
         }
 
         infer_trait_impl(found[0], cache);
-        let binding = &mut cache.impl_bindings[trait_impl.binding.0];
-        // TODO: the 'binding == Some(found[0])' clause is likely indicative of another bug
-        //       since ImplBindings should be unique
-        assert!(binding.is_none() || *binding == Some(found[0]), "Binding {} for impl {} is not none", trait_impl.binding.0, trait_impl.debug(cache));
-        *binding = Some(found[0]);
+
+        // Now attach the RequiredImpl to the callsite variable it is used in
+        let binding = find_definition_in_impl(constraint.origin, found[0], cache);
+        let callsite = constraint.callsite;
+        let required_impl = constraint.as_required_impl(binding);
+
+        let callsite_info = &mut cache.trait_bindings[callsite.0];
+        callsite_info.required_impls.push(required_impl);
     } else if found.len() > 1 {
-        error!(location, "{} matching impls found for {}", found.len(), trait_impl.display(cache));
+        error!(location, "{} matching impls found for {}", found.len(), constraint.display(cache));
         for (i, id) in found.iter().enumerate() {
             let info = &cache.impl_infos[id.0];
             note!(info.location, "Candidate {} ({})", i + 1, id.0);
         }
     } else {
-        error!(location, "No impl found for {}", trait_impl.display(cache));
+        error!(location, "No impl found for {}", constraint.display(cache));
     }
 }
 
 /// Go through the given list of traits and determine if they should
 /// be propogated upward or if an impl should be searched for now.
 /// Returns the list of traits propogated upward.
-fn resolve_traits<'a>(traits: Vec<Impl>, location: Location<'a>, cache: &mut ModuleCache<'a>) -> Vec<Impl> {
-    let mut results = Vec::with_capacity(traits.len());
-    for mut trait_impl in traits {
-        if should_propagate(&trait_impl, cache) {
-            results.push(trait_impl);
+/// Binds the impls that were searched for and found to the required_impls
+/// in the callsite VariableInfo, and errors for any impls that couldn't be found.
+fn resolve_traits<'a>(constraints: TraitConstraints, location: Location<'a>, cache: &mut ModuleCache<'a>) -> Vec<RequiredTrait> {
+    let mut results = Vec::with_capacity(constraints.len());
+    for constraint in constraints {
+        if should_propagate(&constraint, cache) {
+            results.push(constraint.as_required_trait());
         } else {
-            find_impl(&mut trait_impl, location, cache);
+            find_impl(constraint, location, cache);
         }
     }
     results
@@ -663,7 +697,7 @@ fn resolve_traits<'a>(traits: Vec<Impl>, location: Location<'a>, cache: &mut Mod
 
 
 pub trait Inferable<'a> {
-    fn infer_impl(&mut self, checker: &mut ModuleCache<'a>) -> (Type, TraitList);
+    fn infer_impl(&mut self, checker: &mut ModuleCache<'a>) -> (Type, TraitConstraints);
 }
 
 pub fn infer_ast<'a>(ast: &mut ast::Ast<'a>, cache: &mut ModuleCache<'a>) {
@@ -674,7 +708,7 @@ pub fn infer_ast<'a>(ast: &mut ast::Ast<'a>, cache: &mut ModuleCache<'a>) {
     }
 }
 
-pub fn infer<'a, T>(ast: &mut T, cache: &mut ModuleCache<'a>) -> (Type, TraitList)
+pub fn infer<'a, T>(ast: &mut T, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints)
     where T: Inferable<'a> + Typed
 {
     let (typ, traits) = ast.infer_impl(cache);
@@ -690,13 +724,13 @@ fn infer_trait_impl<'a>(id: ImplInfoId, cache: &mut ModuleCache<'a>) {
 
 /// Note: each Ast's inference rule is given above the impl if available.
 impl<'a> Inferable<'a> for ast::Ast<'a> {
-    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitList) {
+    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
         dispatch_on_expr!(self, Inferable::infer_impl, cache)
     }
 }
 
 impl<'a> Inferable<'a> for ast::Literal<'a> {
-    fn infer_impl(&mut self, _cache: &mut ModuleCache<'a>) -> (Type, TraitList) {
+    fn infer_impl(&mut self, _cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
         use ast::LiteralKind::*;
         match self.kind {
             Integer(_) => (Type::Primitive(PrimitiveType::IntegerType), vec![]),
@@ -716,18 +750,25 @@ impl<'a> Inferable<'a> for ast::Literal<'a> {
  *   infer cache x = t
  */
 impl<'a> Inferable<'a> for ast::Variable<'a> {
-    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitList) {
+    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
         let info = &cache.definition_infos[self.definition.unwrap().0];
+
+        let impl_scope = self.impl_scope.unwrap();
+        let id = self.id.unwrap();
+        let trait_binding = self.trait_binding;
 
         // Lookup the type of the definition.
         // We'll need to recursively infer the type if it is not found
         let (s, traits) = match &info.typ {
-            Some(typ) => (typ.clone(), info.required_impls.clone()),
+            Some(typ) => {
+                let constraints = to_trait_constraints(&info.required_traits, impl_scope, id, trait_binding);
+                (typ.clone(), constraints)
+            },
             None => {
                 // If the variable has a definition we can infer from then use that
                 // to determine the type, otherwise fill in a type variable for it.
                 let (typ, traits) = if info.definition.is_some() {
-                    infer_nested_definition(self.definition.unwrap(), cache)
+                    infer_nested_definition(self.definition.unwrap(), impl_scope, id, trait_binding, cache)
                 } else {
                     (next_type_variable(cache), vec![])
                 };
@@ -737,13 +778,7 @@ impl<'a> Inferable<'a> for ast::Variable<'a> {
             },
         };
 
-        let (t, mut traits, impl_bindings) = instantiate(&s, traits, cache);
-        for trait_impl in traits.iter_mut() {
-            trait_impl.scope = self.impl_scope.unwrap();
-        }
-
-        self.impl_bindings = impl_bindings;
-        (t, traits)
+        instantiate(&s, traits, cache)
     }
 }
 
@@ -757,7 +792,7 @@ impl<'a> Inferable<'a> for ast::Variable<'a> {
  *   infer (\arg1 arg2 ... argN . body) cache = arg_type1 arg_type2 ... arg_typeN -> return_type
  */
 impl<'a> Inferable<'a> for ast::Lambda<'a> {
-    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitList) {
+    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
         // The newvars for the parameters are filled out during name resolution
         let arg_types = fmap(&self.args, |_| next_type_variable(cache));
 
@@ -782,7 +817,7 @@ impl<'a> Inferable<'a> for ast::Lambda<'a> {
  *   infer cache (function args) = return_type
  */
 impl<'a> Inferable<'a> for ast::FunctionCall<'a> {
-    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitList) {
+    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
         let (f, mut traits) = infer(self.function.as_mut(), cache);
         let (args, mut arg_traits) = fmap_mut_pair_flatten_second(&mut self.args, |arg| infer(arg, cache));
 
@@ -801,7 +836,7 @@ impl<'a> Inferable<'a> for ast::FunctionCall<'a> {
  *   infer cache (let pattern = expr in rest) = t'
  */
 impl<'a> Inferable<'a> for ast::Definition<'a> {
-    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitList) {
+    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
         let unit = Type::Primitive(PrimitiveType::UnitType);
 
         if self.typ.is_some() {
@@ -828,7 +863,7 @@ impl<'a> Inferable<'a> for ast::Definition<'a> {
 }
 
 impl<'a> Inferable<'a> for ast::If<'a> {
-    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitList) {
+    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
         let (condition, mut traits) = infer(self.condition.as_mut(), cache);
         let bool_type = Type::Primitive(PrimitiveType::BooleanType);
         unify(&condition, &bool_type, self.condition.locate(), cache);
@@ -849,7 +884,7 @@ impl<'a> Inferable<'a> for ast::If<'a> {
 }
 
 impl<'a> Inferable<'a> for ast::Match<'a> {
-    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitList) {
+    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
         let error_count = get_error_count();
 
         let (expression, mut traits) = infer(self.expression.as_mut(), cache);
@@ -891,13 +926,13 @@ impl<'a> Inferable<'a> for ast::Match<'a> {
 }
 
 impl<'a> Inferable<'a> for ast::TypeDefinition<'a> {
-    fn infer_impl(&mut self, _cache: &mut ModuleCache<'a>) -> (Type, TraitList) {
+    fn infer_impl(&mut self, _cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
         (Type::Primitive(PrimitiveType::UnitType), vec![])
     }
 }
 
 impl<'a> Inferable<'a> for ast::TypeAnnotation<'a> {
-    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitList) {
+    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
         let (typ, traits) = infer(self.lhs.as_mut(), cache);
         unify(&typ, self.typ.as_mut().unwrap(), self.location, cache);
         (typ, traits)
@@ -907,13 +942,13 @@ impl<'a> Inferable<'a> for ast::TypeAnnotation<'a> {
 impl<'a> Inferable<'a> for ast::Import<'a> {
     /// Type checker doesn't need to follow imports.
     /// It typechecks definitions as-needed when it finds a variable whose type is still unknown.
-    fn infer_impl(&mut self, _cache: &mut ModuleCache<'a>) -> (Type, TraitList) {
+    fn infer_impl(&mut self, _cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
         (Type::Primitive(PrimitiveType::UnitType), vec![])
     }
 }
 
 impl<'a> Inferable<'a> for ast::TraitDefinition<'a> {
-    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitList) {
+    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
         for declaration in self.declarations.iter_mut() {
             let rhs = declaration.typ.as_ref().unwrap();
 
@@ -924,7 +959,7 @@ impl<'a> Inferable<'a> for ast::TraitDefinition<'a> {
 }
 
 impl<'a> Inferable<'a> for ast::TraitImpl<'a> {
-    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitList) {
+    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
         let trait_info = &cache.trait_infos[self.trait_info.unwrap().0];
 
         let mut typevars_to_replace = trait_info.typeargs.clone();
@@ -962,13 +997,13 @@ impl<'a> Inferable<'a> for ast::TraitImpl<'a> {
 }
 
 impl<'a> Inferable<'a> for ast::Return<'a> {
-    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitList) {
+    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
         infer(self.expression.as_mut(), cache)
     }
 }
 
 impl<'a> Inferable<'a> for ast::Sequence<'a> {
-    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitList) {
+    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
         let ignore_len = self.statements.len() - 1;
         let mut traits = vec![];
 
@@ -984,7 +1019,7 @@ impl<'a> Inferable<'a> for ast::Sequence<'a> {
 }
 
 impl<'a> Inferable<'a> for ast::Extern<'a> {
-    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitList) {
+    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
         for declaration in self.declarations.iter_mut() {
             bind_irrefutable_pattern(declaration.lhs.as_mut(), declaration.typ.as_ref().unwrap(), &vec![], true, cache);
         }
@@ -993,7 +1028,21 @@ impl<'a> Inferable<'a> for ast::Extern<'a> {
 }
 
 impl<'a> Inferable<'a> for ast::MemberAccess<'a> {
-    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitList) {
+    /// Member access (e.g. foo.bar) in ante implies a corresponding trait constraint
+    /// that is automatically implemented by the compiler. This is to allow multiple
+    /// conflicting field names in a scope. For example a function:
+    ///
+    /// foo bar =
+    ///    bar.x + 2
+    /// 
+    /// Has the type
+    ///
+    /// bar : a -> int
+    ///   given .x a int
+    ///
+    /// This given trait constraint is a member access constraint denoting that
+    /// type a must have a field x of type int.
+    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
         let (collection_type, mut traits) = infer(self.lhs.as_mut(), cache);
 
         let level = LetBindingLevel(CURRENT_LEVEL.load(Ordering::SeqCst));
@@ -1001,8 +1050,8 @@ impl<'a> Inferable<'a> for ast::MemberAccess<'a> {
 
         let field_type = cache.next_type_variable(level);
 
-        use crate::cache::ImplScopeId;
-        let trait_impl = Impl::new(trait_id, ImplScopeId(0), ImplBindingId(0), vec![collection_type, field_type.clone()]);
+        let typeargs = vec![collection_type, field_type.clone()];
+        let trait_impl = TraitConstraint::member_access_constraint(trait_id, typeargs);
         traits.push(trait_impl);
 
         (field_type, traits)
@@ -1010,7 +1059,7 @@ impl<'a> Inferable<'a> for ast::MemberAccess<'a> {
 }
 
 impl<'a> Inferable<'a> for ast::Tuple<'a> {
-    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitList) {
+    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
         let mut elements = vec![];
         let mut traits = vec![];
 

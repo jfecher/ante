@@ -1,5 +1,5 @@
 use crate::types::{ Type, TypeVariableId, TypeInfoId, PrimitiveType, TypeBinding };
-use crate::types::traits::{ TraitList, ImplPrinter };
+use crate::types::traits::{ RequiredTrait, RequiredTraitPrinter };
 use crate::types::typechecker::find_all_typevars;
 use crate::cache::ModuleCache;
 
@@ -39,7 +39,7 @@ fn fill_typevar_map(map: &mut HashMap<TypeVariableId, String>, typevars: Vec<Typ
     }
 }
 
-pub fn show_type_and_traits<'b>(typ: &Type, traits: &TraitList, cache: &ModuleCache<'b>) {
+pub fn show_type_and_traits<'b>(typ: &Type, traits: &[RequiredTrait], cache: &ModuleCache<'b>) {
     let mut map = HashMap::new();
     let mut current = 'a';
 
@@ -58,7 +58,7 @@ pub fn show_type_and_traits<'b>(typ: &Type, traits: &TraitList, cache: &ModuleCa
                 print!(", ");
             }
 
-            print!("{}", ImplPrinter { trait_impl: trait_impl.clone(), debug: false, cache, typevar_names: map.clone() });
+            print!("{}", RequiredTraitPrinter { required_trait: trait_impl.clone(), cache, typevar_names: map.clone() });
         }
     }
     println!("");

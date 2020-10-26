@@ -85,7 +85,7 @@ impl<'a> Location<'a> {
 
     pub fn union(&self, other: Location<'a>) -> Location<'a> {
         let start = if self.start.index < other.start.index { self.start } else { other.start };
-        let end = if self.end.index < other.end.index { self.end } else { other.end };
+        let end = if self.end.index < other.end.index { other.end } else { self.end };
 
         Location {
             filename: self.filename,

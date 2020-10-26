@@ -3,6 +3,7 @@ use crate::parser::ast::{ Ast, LiteralKind };
 
 use inkwell::values::{ BasicValue, BasicValueEnum };
 use inkwell::{ IntPredicate, FloatPredicate };
+use inkwell::attributes::{ Attribute, AttributeLoc };
 
 pub fn call_builtin<'g, 'c>(args: &[Ast<'c>], generator: &mut Generator<'g>) -> Option<BasicValueEnum<'g>> {
     assert!(args.len() == 1);
@@ -16,6 +17,12 @@ pub fn call_builtin<'g, 'c>(args: &[Ast<'c>], generator: &mut Generator<'g>) -> 
         },
         _ => unreachable!(),
     };
+
+    let current_function = generator.current_function();
+    let always_inline = Attribute::get_named_enum_kind_id("alwaysinline");
+    assert_ne!(always_inline, 0);
+    let attribute = generator.context.create_enum_attribute(always_inline, 1);
+    current_function.add_attribute(AttributeLoc::Function, attribute);
 
     Some(match arg.as_ref() {
         "AddInt" => add_int(generator),

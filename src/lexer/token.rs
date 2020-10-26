@@ -106,7 +106,7 @@ impl Token {
         match self {
             And | As | In | Is | Isnt |
             Not | Or | EqualEqual | NotEqual |
-            ApplyLeft | ApplyRight |Append |
+            ApplyLeft | ApplyRight | Append |
             Index | Modulus | Multiply |
             Subtract | Add | LessThan | GreaterThan |
             LessThanOrEqual | GreaterThanOrEqual |
