@@ -24,39 +24,25 @@ features in mind - hopefully enabling a cleaner codebase.
 
 ---
 
-### Progress
+### Roadmap
 
 Steps needed to get back in line with the C++ compiler:
 
 - [x] Lexer
-- [x] Error reporting
-- [ ] Parser
-  - [x] Most things, except for:
-  - [ ] Loops
-- [x] Name resolution
-  - [x] Variable definitions
-  - [x] Function definitions
-  - [x] Type definitions
-  - [x] Trait definitions
-  - [x] Redefined warning
-  - [x] Never used warning
-- [x] HM-type inference
-  - [x] Basic inference
-  - [x] Let generalization
-  - [x] Trait inference
-- [ ] Code generation (llvm)
-  - [x] Builtin functions/operators
-  - [x] Monomorphisation
-  - [x] Extern functions
-  - [x] Trait Impls
-  - [ ] Match expressions
-  - [ ] Loops
+- [x] Parser
+- [x] Name Resolution
+- [x] Type Inference
+- [x] LLVM Codegen
 - [ ] REPL
+
+- [ ] Loops
+- [ ] Mutability
 
 Future goals still unimplemented in the C++ compiler:
 
 - [ ] `given` clauses in traits/impls
 - [ ] Refinement Types
+- [ ] Region inference memory management
 - [x] More general trait support (C++ compiler has trait inference bugs)
 - [ ] Commit to having deterministic destruction w/ destructors
     - get rid of plans for optional GC as it would likely poison any libraries it touches.
