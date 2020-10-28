@@ -15,7 +15,7 @@ use inkwell::module::Module;
 use inkwell::builder::Builder;
 use inkwell::basic_block::BasicBlock;
 use inkwell::context::Context;
-use inkwell::values::{ AggregateValue, BasicValueEnum, BasicValue, FunctionValue };
+use inkwell::values::{ AggregateValue, BasicValueEnum, BasicValue, FunctionValue, InstructionOpcode };
 use inkwell::types::{ BasicTypeEnum, BasicType };
 use inkwell::AddressSpace;
 use inkwell::targets::{ RelocMode, CodeModel, FileType, TargetTriple };
@@ -60,7 +60,9 @@ pub struct Generator<'context> {
     current_function_info: Option<DefinitionInfoId>,
 }
 
-pub fn run<'c>(path: &Path, ast: &Ast<'c>, cache: &mut ModuleCache<'c>, show_ir: bool, run_program: bool, delete_binary: bool) {
+pub fn run<'c>(path: &Path, ast: &Ast<'c>, cache: &mut ModuleCache<'c>, show_ir: bool,
+    run_program: bool, delete_binary: bool, optimization_level: &str)
+{
     let context = Context::create();
     let module_name = path_to_module_name(path);
     let module = context.create_module(&module_name);
@@ -86,7 +88,7 @@ pub fn run<'c>(path: &Path, ast: &Ast<'c>, cache: &mut ModuleCache<'c>, show_ir:
         println!("{}", error);
     }).unwrap();
 
-    codegen.optimize();
+    codegen.optimize(optimization_level);
 
     // --show-llvm-ir: Dump the LLVM-IR of the generated module to stderr.
     // Useful to debug codegen
@@ -132,6 +134,16 @@ fn remove_forall(typ: &types::Type) -> &types::Type {
 // TODO: remove
 const UNBOUND_TYPE: types::Type = types::Type::Primitive(types::PrimitiveType::UnitType);
 
+fn to_optimization_level(arg: &str) -> OptimizationLevel {
+    match arg {
+        "0" => OptimizationLevel::None,
+        "1" => OptimizationLevel::Less,
+        "2" => OptimizationLevel::Default,
+        "3" => OptimizationLevel::Aggressive,
+        _ => unreachable!("argument should already be validated by clap"),
+    }
+}
+
 impl<'g> Generator<'g> {
     fn codegen_main<'c>(&mut self, ast: &Ast<'c>, cache: &mut ModuleCache<'c>) {
         let i32_type = self.context.i32_type();
@@ -144,15 +156,16 @@ impl<'g> Generator<'g> {
         ast.codegen(self, cache);
 
         let success = i32_type.const_int(0, true);
-        self.builder.build_return(Some(&success));
+        self.build_return(success.into());
     }
 
-    fn optimize(&self) {
+    fn optimize(&self, optimization_level: &str) {
         let config = InitializationConfig::default();
         Target::initialize_native(&config).unwrap();
         let pass_manager_builder = PassManagerBuilder::create();
 
-        pass_manager_builder.set_optimization_level(OptimizationLevel::Aggressive);
+        let optimization_level = to_optimization_level(optimization_level);
+        pass_manager_builder.set_optimization_level(optimization_level);
         let pass_manager = PassManager::create(());
         pass_manager_builder.populate_module_pass_manager(&pass_manager);
         pass_manager.run_on(&self.module);
@@ -597,7 +610,7 @@ impl<'g> Generator<'g> {
             _ => (),
         }
 
-        let value = definition.expr.codegen(self, cache).unwrap();
+        let value = definition.expr.codegen(self, cache);
         self.bind_irrefutable_pattern(definition.pattern.as_ref(), value, cache);
         value
     }
@@ -664,7 +677,7 @@ impl<'g> Generator<'g> {
                 let tuple = self.tuple(elements, element_types);
                 let value = self.reinterpret_cast(tuple, &return_type, cache);
 
-                self.builder.build_return(Some(&value));
+                self.build_return(value);
                 self.builder.position_at_end(caller_block);
 
                 function_pointer
@@ -680,6 +693,44 @@ impl<'g> Generator<'g> {
                 self.codegen_type_constructor(name, tag, &typ, cache)
             },
             _ => unreachable!("Type constructor's type is neither a Function or a  UserDefinedType, {}: {}", name, typ.display(cache)),
+        }
+    }
+
+    /// Does the given llvm instruction terminate its BasicBlock?
+    /// This currently only checks for cases that can actually occur
+    /// while codegening an arbitrary Ast node.
+    fn current_instruction_is_block_terminator(&self) -> bool {
+        let instruction = self.current_block().get_last_instruction();
+        match instruction.map(|instruction| instruction.get_opcode()) {
+            Some(InstructionOpcode::Return) => true,
+            Some(InstructionOpcode::Unreachable) => true,
+            _ => false,
+        }
+    }
+
+    fn build_return(&mut self, return_value: BasicValueEnum<'g>) {
+        if !self.current_instruction_is_block_terminator() {
+            self.builder.build_return(Some(&return_value));
+        }
+    }
+
+    /// It is an error in llvm to insert a block terminator (like a br) after
+    /// the block has already ended from another block terminator (like a return).
+    ///
+    /// Since returns can happen within a branch, this function should be used to
+    /// check that the branch hasn't yet terminated before inserting a br after
+    /// a then/else branch, pattern match, or looping construct.
+    fn codegen_branch<'c>(&mut self, branch: &ast::Ast<'c>, end_block: BasicBlock<'g>,
+        cache: &mut ModuleCache<'c>) -> Option<(BasicBlock<'g>, BasicValueEnum<'g>)>
+    {
+        let branch_value = branch.codegen(self, cache);
+        let branch_block = self.current_block();
+
+        if self.current_instruction_is_block_terminator() {
+            None
+        } else {
+            self.builder.build_unconditional_branch(end_block);
+            Some((branch_block, branch_value))
         }
     }
 
@@ -776,36 +827,36 @@ impl<'g> Generator<'g> {
 }
 
 trait CodeGen<'g, 'c> {
-    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> Option<BasicValueEnum<'g>>;
+    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g>;
 }
 
 impl<'g, 'c> CodeGen<'g, 'c> for Ast<'c> {
-    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> Option<BasicValueEnum<'g>> {
+    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
         dispatch_on_expr!(self, CodeGen::codegen, generator, cache)
     }
 }
 
 impl<'g, 'c> CodeGen<'g, 'c> for ast::Literal<'c> {
-    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> Option<BasicValueEnum<'g>> {
+    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
         self.kind.codegen(generator, cache)
     }
 }
 
 impl <'g, 'c> CodeGen<'g, 'c> for ast::LiteralKind {
-    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> Option<BasicValueEnum<'g>> {
+    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
         match self {
-            ast::LiteralKind::Char(c) => Some(generator.char_value(*c as u64)),
-            ast::LiteralKind::Bool(b) => Some(generator.bool_value(*b)),
-            ast::LiteralKind::Float(f) => Some(generator.float_value(reinterpret_from_bits(*f))),
-            ast::LiteralKind::Integer(i) => Some(generator.integer_value(*i)),
-            ast::LiteralKind::String(s) => Some(generator.string_value(s, cache)),
-            ast::LiteralKind::Unit => Some(generator.unit_value()),
+            ast::LiteralKind::Char(c) => generator.char_value(*c as u64),
+            ast::LiteralKind::Bool(b) => generator.bool_value(*b),
+            ast::LiteralKind::Float(f) => generator.float_value(reinterpret_from_bits(*f)),
+            ast::LiteralKind::Integer(i) => generator.integer_value(*i),
+            ast::LiteralKind::String(s) => generator.string_value(s, cache),
+            ast::LiteralKind::Unit => generator.unit_value(),
         }
     }
 }
 
 impl<'g, 'c> CodeGen<'g, 'c> for ast::Variable<'c> {
-    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> Option<BasicValueEnum<'g>> {
+    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
         let required_impls = &cache.trait_bindings[self.trait_binding.unwrap().0].required_impls.clone();
         generator.add_required_impls(&required_impls);
 
@@ -820,12 +871,12 @@ impl<'g, 'c> CodeGen<'g, 'c> for ast::Variable<'c> {
             value = generator.builder.build_load(value.into_pointer_value(), &self.to_string());
         }
 
-        Some(value)
+        value
     }
 }
 
 impl<'g, 'c> CodeGen<'g, 'c> for ast::Lambda<'c> {
-    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> Option<BasicValueEnum<'g>> {
+    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
         let function_name = match &generator.current_function_info {
             Some(id) => &cache.definition_infos[id.0].name,
             None => "lambda",
@@ -843,15 +894,15 @@ impl<'g, 'c> CodeGen<'g, 'c> for ast::Lambda<'c> {
 
         let return_value = self.body.codegen(generator, cache);
 
-        generator.builder.build_return(return_value.as_ref().map(|x| x as &dyn BasicValue));
+        generator.build_return(return_value);
         generator.builder.position_at_end(caller_block);
 
-        Some(function_pointer)
+        function_pointer
     }
 }
 
 impl<'g, 'c> CodeGen<'g, 'c> for ast::FunctionCall<'c> {
-    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> Option<BasicValueEnum<'g>> {
+    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
         match self.function.as_ref() {
             Ast::Variable(variable) if variable.definition == Some(BUILTIN_ID) => {
                 // TODO: improve this control flow so that the fast path of normal function calls
@@ -859,157 +910,168 @@ impl<'g, 'c> CodeGen<'g, 'c> for ast::FunctionCall<'c> {
                 builtin::call_builtin(&self.args, generator)
             },
             _ => {
-                let function = self.function.codegen(generator, cache).unwrap();
-                let args = fmap(&self.args, |arg| arg.codegen(generator, cache).unwrap());
-                generator.builder.build_call(function.into_pointer_value(), &args, "").try_as_basic_value().left()
+                let function = self.function.codegen(generator, cache);
+                let args = fmap(&self.args, |arg| arg.codegen(generator, cache));
+                generator.builder.build_call(function.into_pointer_value(), &args, "")
+                    .try_as_basic_value().left().unwrap()
             },
         }
     }
 }
 
 impl<'g, 'c> CodeGen<'g, 'c> for ast::Definition<'c> {
-    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> Option<BasicValueEnum<'g>> {
+    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
         match self.expr.as_ref() {
             // If the value is a function we can skip it and come back later to only compile it
             // when it is actually used. This saves the optimizer some work since we won't ever
             // have to search for and remove unused functions.
             Ast::Lambda(_) => (),
             _ => {
-                let value = self.expr.codegen(generator, cache).unwrap();
+                let value = self.expr.codegen(generator, cache);
                 generator.bind_irrefutable_pattern(self.pattern.as_ref(), value, cache);
             },
         }
-        None
+        generator.unit_value()
     }
 }
 
 impl<'g, 'c> CodeGen<'g, 'c> for ast::If<'c> {
-    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> Option<BasicValueEnum<'g>> {
-        let condition = self.condition.codegen(generator, cache).unwrap();
+    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
+        let condition = self.condition.codegen(generator, cache);
 
         let current_function = generator.current_function();
         let then_block = generator.context.append_basic_block(current_function, "then");
         let end_block = generator.context.append_basic_block(current_function, "end_if");
 
-        // TODO: Cleanup
         if let Some(otherwise) = &self.otherwise {
+            // Setup conditional jump
             let else_block = generator.context.append_basic_block(current_function, "else");
             generator.builder.build_conditional_branch(condition.into_int_value(), then_block, else_block);
 
             generator.builder.position_at_end(then_block);
-            let then_value = self.then.codegen(generator, cache).unwrap();
-            let then_block = generator.current_block();
-            generator.builder.build_unconditional_branch(end_block);
+            let then_option = generator.codegen_branch(&self.then, end_block, cache);
 
             generator.builder.position_at_end(else_block);
-            let else_value = otherwise.codegen(generator, cache).unwrap();
-            let else_block = generator.current_block();
-            generator.builder.build_unconditional_branch(end_block);
+            let else_option = generator.codegen_branch(otherwise, end_block, cache);
 
+            // Create phi at the end of the if beforehand
             generator.builder.position_at_end(end_block);
 
-            let phi = generator.builder.build_phi(then_value.get_type(), "if_result");
-            phi.add_incoming(&[(&then_value, then_block), (&else_value, else_block)]);
-            Some(phi.as_basic_value())
+            // Some of the branches may have terminated early. We need to check each case to
+            // determine which we should add to the phi or if we should even create a phi at all.
+            match (then_option, else_option) {
+                (Some((then_branch, then_value)), Some((else_branch, else_value))) => {
+                    let phi = generator.builder.build_phi(then_value.get_type(), "if_result");
+                    phi.add_incoming(&[(&then_value, then_branch), (&else_value, else_branch)]);
+                    phi.as_basic_value()
+                }
+                (Some((_, then_value)), None) => then_value,
+                (None, Some((_, else_value))) => else_value,
+                (None, None) => {
+                    generator.builder.build_unreachable();
+
+                    // Block is unreachable but we still need to return an undef value.
+                    // If we return None the compiler would crash while compiling
+                    // `2 + if true return "uh" else return "oh"`
+                    let if_result_type = generator.convert_type(self.get_type().unwrap(), cache);
+                    Generator::undef_value(if_result_type)
+                },
+            }
         } else {
             generator.builder.build_conditional_branch(condition.into_int_value(), then_block, end_block);
 
             generator.builder.position_at_end(then_block);
-            self.then.codegen(generator, cache).unwrap();
-            generator.builder.build_unconditional_branch(end_block);
+            generator.codegen_branch(&self.then, end_block, cache);
 
             generator.builder.position_at_end(end_block);
-            Some(generator.unit_value())
+            generator.unit_value()
         }
     }
 }
 
 impl<'g, 'c> CodeGen<'g, 'c> for ast::Match<'c> {
-    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> Option<BasicValueEnum<'g>> {
+    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
         generator.codegen_tree(self.decision_tree.as_ref().unwrap(), self, cache)
     }
 }
 
 impl<'g, 'c> CodeGen<'g, 'c> for ast::TypeDefinition<'c> {
-    fn codegen(&self, _generator: &mut Generator<'g>, _cache: &mut ModuleCache<'c>) -> Option<BasicValueEnum<'g>> {
-        None
+    fn codegen(&self, generator: &mut Generator<'g>, _cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
+        generator.unit_value()
     }
 }
 
 impl<'g, 'c> CodeGen<'g, 'c> for ast::TypeAnnotation<'c> {
-    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> Option<BasicValueEnum<'g>> {
+    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
         self.lhs.codegen(generator, cache)
     }
 }
 
 impl<'g, 'c> CodeGen<'g, 'c> for ast::Import<'c> {
-    fn codegen(&self, _generator: &mut Generator<'g>, _cache: &mut ModuleCache<'c>) -> Option<BasicValueEnum<'g>> {
-        None
+    fn codegen(&self, generator: &mut Generator<'g>, _cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
+        generator.unit_value()
     }
 }
 
 impl<'g, 'c> CodeGen<'g, 'c> for ast::TraitDefinition<'c> {
-    fn codegen(&self, _generator: &mut Generator<'g>, _cache: &mut ModuleCache<'c>) -> Option<BasicValueEnum<'g>> {
-        None
+    fn codegen(&self, generator: &mut Generator<'g>, _cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
+        generator.unit_value()
     }
 }
 
 impl<'g, 'c> CodeGen<'g, 'c> for ast::TraitImpl<'c> {
-    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> Option<BasicValueEnum<'g>> {
-        for definition in self.definitions.iter() {
-            generator.codegen_monomorphise(definition, cache);
-            // let value = definition.expr.codegen(generator, cache).unwrap();
-            // generator.bind_irrefutable_pattern(definition.pattern.as_ref(), value, cache);
-        }
-        None
+    fn codegen(&self, generator: &mut Generator<'g>, _cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
+        generator.unit_value()
     }
 }
 
 impl<'g, 'c> CodeGen<'g, 'c> for ast::Return<'c> {
-    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> Option<BasicValueEnum<'g>> {
-        let value = self.expression.codegen(generator, cache).unwrap();
+    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
+        let value = self.expression.codegen(generator, cache);
         generator.builder.build_return(Some(&value));
-        Some(value)
+        value
     }
 }
 
 impl<'g, 'c> CodeGen<'g, 'c> for ast::Sequence<'c> {
-    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> Option<BasicValueEnum<'g>> {
-        let mut last_value = None;
-        for statement in self.statements.iter() {
-            last_value = statement.codegen(generator, cache);
+    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
+        assert!(!self.statements.is_empty());
+
+        for statement in self.statements.iter().take(self.statements.len() - 1) {
+            statement.codegen(generator, cache);
         }
-        last_value
+
+        self.statements.last().unwrap().codegen(generator, cache)
     }
 }
 
 impl<'g, 'c> CodeGen<'g, 'c> for ast::Extern<'c> {
-    fn codegen(&self, _generator: &mut Generator<'g>, _cache: &mut ModuleCache<'c>) -> Option<BasicValueEnum<'g>> {
-        None
+    fn codegen(&self, generator: &mut Generator<'g>, _cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
+        generator.unit_value()
     }
 }
 
 impl<'g, 'c> CodeGen<'g, 'c> for ast::MemberAccess<'c> {
-    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> Option<BasicValueEnum<'g>> {
-        let lhs = self.lhs.codegen(generator, cache).unwrap();
+    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
+        let lhs = self.lhs.codegen(generator, cache);
         let collection = lhs.into_struct_value();
 
         let index = generator.get_field_index(&self.field, self.lhs.get_type().unwrap(), cache);
-        generator.builder.build_extract_value(collection, index, &self.field)
+        generator.builder.build_extract_value(collection, index, &self.field).unwrap()
     }
 }
 
 impl<'g, 'c> CodeGen<'g, 'c> for ast::Tuple<'c> {
-    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> Option<BasicValueEnum<'g>> {
+    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
         let mut elements = vec![];
         let mut element_types = vec![];
 
         for element in self.elements.iter() {
-            let value = element.codegen(generator, cache).unwrap();
+            let value = element.codegen(generator, cache);
             element_types.push(value.get_type());
             elements.push(value);
         }
 
-        Some(generator.tuple(elements, element_types))
+        generator.tuple(elements, element_types)
     }
 }

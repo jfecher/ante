@@ -18,9 +18,9 @@ type SwitchCases<'g> = Vec<(IntValue<'g>, BasicBlock<'g>)>;
 
 impl<'g> Generator<'g> {
     pub fn codegen_tree<'c>(&mut self, tree: &DecisionTree, match_expr: &Match<'c>,
-        cache: &mut ModuleCache<'c>) -> Option<BasicValueEnum<'g>>
+        cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g>
     {
-        let value_to_match = match_expr.expression.codegen(self, cache).unwrap();
+        let value_to_match = match_expr.expression.codegen(self, cache);
 
         // Each Switch case in the tree works by switching on a given value in a DefinitionInfoId
         // then storing each part it extracted into other DefinitionInfoIds and recursing. Thus,
@@ -44,13 +44,13 @@ impl<'g> Generator<'g> {
         self.builder.position_at_end(starting_block);
 
         // Then codegen the decisiontree itself that will eventually lead to each branch.
-        self.codegen_subtree(tree, &mut branches, &phi, ending_block, match_expr, cache);
+        self.codegen_subtree(tree, &mut branches, phi, ending_block, match_expr, cache);
         self.builder.position_at_end(ending_block);
-        Some(phi.as_basic_value())
+        phi.as_basic_value()
     }
 
     fn codegen_subtree<'c>(&mut self, tree: &DecisionTree, branches: &mut [Option<BasicBlock<'g>>],
-        phi: &PhiValue<'g>, match_end: BasicBlock<'g>, match_expr: &Match<'c>, cache: &mut ModuleCache<'c>)
+        phi: PhiValue<'g>, match_end: BasicBlock<'g>, match_expr: &Match<'c>, cache: &mut ModuleCache<'c>)
     {
         match tree {
             DecisionTree::Leaf(n) => {
@@ -58,10 +58,8 @@ impl<'g> Generator<'g> {
                 match branches[*n] {
                     Some(_block) => (),
                     _ => {
-                        let branch_value = match_expr.branches[*n].1.codegen(self, cache).unwrap();
-                        self.builder.build_unconditional_branch(match_end);
-                        let branch_end = self.current_block();
-                        phi.add_incoming(&[(&branch_value, branch_end)]);
+                        self.codegen_branch(&match_expr.branches[*n].1, match_end, cache)
+                            .map(|(branch, value)| phi.add_incoming(&[(&value, branch)]));
                     }
                 }
             },
@@ -124,7 +122,7 @@ impl<'g> Generator<'g> {
         matched_value: BasicValueEnum<'g>,
         switch_cases: &mut SwitchCases<'g>,
         branches: &mut [Option<BasicBlock<'g>>],
-        phi: &PhiValue<'g>,
+        phi: PhiValue<'g>,
         match_end: BasicBlock<'g>,
         match_expr: &Match<'c>,
         cache: &mut ModuleCache<'c>)
@@ -165,7 +163,7 @@ impl<'g> Generator<'g> {
         case: &Case,
         matched_value: BasicValueEnum<'g>,
         branches: &mut [Option<BasicBlock<'g>>],
-        phi: &PhiValue<'g>,
+        phi: PhiValue<'g>,
         match_end: BasicBlock<'g>,
         match_expr: &Match<'c>,
         cache: &mut ModuleCache<'c>) -> BasicBlock<'g>
@@ -202,7 +200,7 @@ impl<'g> Generator<'g> {
                     _ => None,
                 }
             },
-            VariantTag::Literal(literal) => literal.codegen(self, cache),
+            VariantTag::Literal(literal) => Some(literal.codegen(self, cache)),
         }
     }
 
@@ -233,7 +231,7 @@ impl<'g> Generator<'g> {
         value_to_switch_on: BasicValueEnum<'g>,
         cases: &[Case],
         branches: &mut [Option<BasicBlock<'g>>],
-        phi: &PhiValue<'g>,
+        phi: PhiValue<'g>,
         match_end: BasicBlock<'g>,
         match_expr: &Match<'c>,
         cache: &mut ModuleCache<'c>) -> BasicBlock<'g>

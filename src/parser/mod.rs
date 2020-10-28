@@ -77,7 +77,7 @@ parser!(function_definition location -> 'b ast::Definition<'b> =
     args <- many1(irrefutable_pattern_argument);
     return_type <- maybe(function_return_type);
     _ <- expect(Token::Equal);
-    body !<- block_or_expression;
+    body !<- block_or_statement;
     ast::Definition {
         pattern: Box::new(name),
         expr: Box::new(Ast::lambda(args, return_type, body, location)),
@@ -97,7 +97,7 @@ parser!(function_return_type location -> 'b ast::Type<'b> =
 parser!(variable_definition location -> 'b ast::Definition<'b> =
     name <- irrefutable_pattern;
     _ <- expect(Token::Equal);
-    expr !<- block_or_expression;
+    expr !<- block_or_statement;
     ast::Definition {
         pattern: Box::new(name),
         expr: Box::new(expr),
@@ -263,10 +263,10 @@ parser!(extern_single _loc -> 'b Vec<ast::TypeAnnotation<'b>> =
     vec![declaration]
 );
 
-fn block_or_expression<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
+fn block_or_statement<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
     match input[0].0 {
         Token::Indent => block(input),
-        _ => expression(input),
+        _ => statement(input),
     }
 }
 
@@ -362,17 +362,17 @@ parser!(function_call loc =
 
 parser!(if_expr loc =
     _ <- expect(Token::If);
-    condition !<- block_or_expression;
+    condition !<- block_or_statement;
     _ !<- maybe_newline;
     _ !<- expect(Token::Then);
-    then !<- block_or_expression;
+    then !<- block_or_statement;
     otherwise !<- maybe(else_expr);
     Ast::if_expr(condition, then, otherwise, loc)
 );
 
 parser!(match_expr loc =
     _ <- expect(Token::Match);
-    expression !<- block_or_expression;
+    expression !<- block_or_statement;
     _ !<- maybe_newline;
     _ !<- expect(Token::With);
     branches !<- many0(match_branch);
@@ -427,14 +427,14 @@ parser!(match_branch _loc -> 'b (Ast<'b>, Ast<'b>) =
     _ <- expect(Token::Pipe);
     pattern !<- expression;
     _ !<- expect(Token::RightArrow);
-    branch !<- block_or_expression;
+    branch !<- block_or_statement;
     (pattern, branch)
 );
 
 parser!(else_expr _loc =
     _ <- maybe_newline;
     _ <- expect(Token::Else);
-    otherwise !<- block_or_expression;
+    otherwise !<- block_or_statement;
     otherwise
 );
 
@@ -475,7 +475,7 @@ parser!(lambda loc =
     args !<- many1(irrefutable_pattern_argument);
     return_type <- maybe(function_return_type);
     _ !<- expect(Token::MemberAccess);
-    body !<- block_or_expression;
+    body !<- block_or_statement;
     Ast::lambda(args, return_type, body, loc)
 );
 

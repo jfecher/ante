@@ -5,7 +5,7 @@ use inkwell::values::{ BasicValue, BasicValueEnum };
 use inkwell::{ IntPredicate, FloatPredicate };
 use inkwell::attributes::{ Attribute, AttributeLoc };
 
-pub fn call_builtin<'g, 'c>(args: &[Ast<'c>], generator: &mut Generator<'g>) -> Option<BasicValueEnum<'g>> {
+pub fn call_builtin<'g, 'c>(args: &[Ast<'c>], generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
     assert!(args.len() == 1);
     
     let arg = match &args[0] {
@@ -24,7 +24,7 @@ pub fn call_builtin<'g, 'c>(args: &[Ast<'c>], generator: &mut Generator<'g>) -> 
     let attribute = generator.context.create_enum_attribute(always_inline, 1);
     current_function.add_attribute(AttributeLoc::Function, attribute);
 
-    Some(match arg.as_ref() {
+    match arg.as_ref() {
         "AddInt" => add_int(generator),
         "AddFloat" => add_float(generator),
 
@@ -51,7 +51,7 @@ pub fn call_builtin<'g, 'c>(args: &[Ast<'c>], generator: &mut Generator<'g>) -> 
         "EqChar" => eq_char(generator),
         "EqBool" => eq_bool(generator),
         _ => unreachable!(),
-    })
+    }
 }
 
 fn add_int<'g>(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {

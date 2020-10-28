@@ -48,6 +48,13 @@ macro_rules! expect {( $result:expr , $fmt_string:expr $( , $($msg:tt)* )? ) => 
     }
 });}
 
+fn validate_opt_argument(arg: String) -> Result<(), String> {
+    match arg.as_str() {
+        "0" | "1" | "2" | "3" => Ok(()),
+        _ => Err("Argument to -O must be one of: 0, 1, 2, or 3".to_owned()),
+    }
+}
+
 pub fn main() {
     let args = App::new("ante")
         .version("0.1.1")
@@ -57,14 +64,13 @@ pub fn main() {
         .arg(Arg::with_name("parse").long("parse").help("Parse the file and output the resulting Ast"))
         .arg(Arg::with_name("check").long("check").help("Check the file for errors without compiling"))
         .arg(Arg::with_name("run").long("run").help("Run the resulting binary"))
+        .arg(Arg::with_name("O").short("O").value_name("level").default_value("0").validator(validate_opt_argument).help("Sets the current optimization level from 0 (no optimization) to 3 (aggressive optimization)"))
         .arg(Arg::with_name("no-color").long("no-color").help("Use plaintext and an indicator line instead of color for pointing out error locations"))
         .arg(Arg::with_name("show-types").long("show-types").help("Print out the type of each definition"))
         .arg(Arg::with_name("show-llvm-ir").long("show-llvm-ir").help("Print out the LLVM-IR of the compiled program"))
-        .arg(Arg::with_name("delete-binary").long("delete-binary").help("Delete the resulting binary after compiling. Useful for testing."))
+        .arg(Arg::with_name("delete-binary").long("delete-binary").help("Delete the resulting binary after compiling"))
         .arg(Arg::with_name("file").help("The file to compile").required(true))
         .get_matches();
-
-    // TODO: 
 
     let filename = Path::new(args.value_of("file").unwrap());
     let file = expect!(File::open(filename), "Could not open file {}\n", filename.display());
@@ -96,10 +102,6 @@ pub fn main() {
     let ast = cache.parse_trees.get_mut(0).unwrap();
     types::typechecker::infer_ast(ast, &mut cache);
 
-    // for defs in cache.definition_infos.iter().filter(|def| def.typ.is_none()) {
-    //     warning!(defs.location, "{} is unused and was not typechecked", defs.name);
-    // }
-
     if args.is_present("show-types") {
         print_definition_types(&cache);
     }
@@ -112,6 +114,7 @@ pub fn main() {
         llvm::run(&filename, &ast, &mut cache,
                 args.is_present("show-llvm-ir"),
                 args.is_present("run"),
-                args.is_present("delete-binary"));
+                args.is_present("delete-binary"),
+                args.value_of("O").unwrap());
     }
 }
