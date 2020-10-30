@@ -1,0 +1,11 @@
+extern printf : (ref char) int -> unit
+
+num = mut 32
+printf ("%d\n".c_string) num
+num := 7
+printf ("%d\n".c_string) num
+
+// args: --run --delete-binary
+// expected stdout:
+// 32
+// 7

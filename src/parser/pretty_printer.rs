@@ -191,3 +191,9 @@ impl<'a> Display for ast::Tuple<'a> {
         write!(f, ")")
     }
 }
+
+impl<'a> Display for ast::Assignment<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "({} := {})", self.lhs, self.rhs)
+    }
+}

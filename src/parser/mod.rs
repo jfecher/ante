@@ -52,7 +52,7 @@ parser!(statement_list loc =
 fn statement<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
     match input[0].0 {
         Token::ParenthesisLeft |
-        Token::Identifier(_) => or(&[definition, expression], &"statement")(input),
+        Token::Identifier(_) => or(&[definition, assignment, expression], &"statement")(input),
         Token::Type => or(&[type_definition, type_alias], &"statement")(input),
         Token::Import => import(input),
         Token::Trait => trait_definition(input),
@@ -81,6 +81,7 @@ parser!(function_definition location -> 'b ast::Definition<'b> =
     ast::Definition {
         pattern: Box::new(name),
         expr: Box::new(Ast::lambda(args, return_type, body, location)),
+        mutable: false,
         location,
         level: None,
         info: None,
@@ -97,15 +98,24 @@ parser!(function_return_type location -> 'b ast::Type<'b> =
 parser!(variable_definition location -> 'b ast::Definition<'b> =
     name <- irrefutable_pattern;
     _ <- expect(Token::Equal);
+    mutable <- maybe(expect(Token::Mut));
     expr !<- block_or_statement;
     ast::Definition {
         pattern: Box::new(name),
         expr: Box::new(expr),
+        mutable: mutable.is_some(),
         location,
         level: None,
         info: None,
         typ: None,
     }
+);
+
+parser!(assignment location =
+    lhs <- expression;
+    _ <- expect(Token::Assignment);
+    rhs !<- expression;
+    Ast::assignment(lhs, rhs, location)
 );
 
 parser!(type_annotation_pattern loc =

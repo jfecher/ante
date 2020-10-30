@@ -119,6 +119,9 @@ pub struct DefinitionInfo<'a> {
     /// this Definition kind should result in self.typ being filled out.
     pub definition: Option<DefinitionKind<'a>>,
 
+    /// True if this definition can be reassigned to.
+    pub mutable: bool,
+
     /// Some(trait_id) if this is a definition from a trait. Note that
     /// this is still None for definitions from trait impls.
     pub trait_info: Option<TraitInfoId>,
@@ -221,13 +224,14 @@ impl<'a> ModuleCache<'a> {
         unsafe { std::mem::transmute(path) }
     }
 
-    pub fn push_definition(&mut self, name: &str, location: Location<'a>) -> DefinitionInfoId {
+    pub fn push_definition(&mut self, name: &str, mutable: bool, location: Location<'a>) -> DefinitionInfoId {
         let id = self.definition_infos.len();
         self.definition_infos.push(DefinitionInfo {
             name: name.to_string(),
             definition: None,
             trait_info: None,
             required_traits: vec![],
+            mutable,
             location,
             typ: None,
             uses: 0,

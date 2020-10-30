@@ -998,7 +998,8 @@ impl<'a> Inferable<'a> for ast::TraitImpl<'a> {
 
 impl<'a> Inferable<'a> for ast::Return<'a> {
     fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
-        infer(self.expression.as_mut(), cache)
+        let traits = infer(self.expression.as_mut(), cache).1;
+        (next_type_variable(cache), traits)
     }
 }
 
@@ -1070,5 +1071,13 @@ impl<'a> Inferable<'a> for ast::Tuple<'a> {
         }
 
         (Tuple(elements), traits)
+    }
+}
+
+impl<'a> Inferable<'a> for ast::Assignment<'a> {
+    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
+        let mut traits = infer(self.lhs.as_mut(), cache).1;
+        traits.append(&mut infer(self.rhs.as_mut(), cache).1);
+        (Type::Primitive(PrimitiveType::UnitType), traits)
     }
 }

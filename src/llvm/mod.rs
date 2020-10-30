@@ -11,7 +11,7 @@ use crate::types::traits::RequiredImpl;
 use crate::types::typed::Typed;
 use crate::util::{ fmap, trustme, reinterpret_from_bits };
 
-use inkwell::module::Module;
+use inkwell::module::{ Module, Linkage };
 use inkwell::builder::Builder;
 use inkwell::basic_block::BasicBlock;
 use inkwell::context::Context;
@@ -134,13 +134,20 @@ fn remove_forall(typ: &types::Type) -> &types::Type {
 // TODO: remove
 const UNBOUND_TYPE: types::Type = types::Type::Primitive(types::PrimitiveType::UnitType);
 
-fn to_optimization_level(arg: &str) -> OptimizationLevel {
-    match arg {
-        "0" => OptimizationLevel::None,
+fn to_optimization_level(optimization_argument: &str) -> OptimizationLevel {
+    match optimization_argument {
         "1" => OptimizationLevel::Less,
         "2" => OptimizationLevel::Default,
         "3" => OptimizationLevel::Aggressive,
-        _ => unreachable!("argument should already be validated by clap"),
+        _ => OptimizationLevel::None,
+    }
+}
+
+fn to_size_level(optimization_argument: &str) -> u32 {
+    match optimization_argument {
+        "s" => 1,
+        "z" => 2,
+        _ => 0,
     }
 }
 
@@ -148,7 +155,7 @@ impl<'g> Generator<'g> {
     fn codegen_main<'c>(&mut self, ast: &Ast<'c>, cache: &mut ModuleCache<'c>) {
         let i32_type = self.context.i32_type();
         let main_type = i32_type.fn_type(&[], false);
-        let function = self.module.add_function("main", main_type, None);
+        let function = self.module.add_function("main", main_type, Some(Linkage::External));
         let basic_block = self.context.append_basic_block(function, "entry");
 
         self.builder.position_at_end(basic_block);
@@ -159,17 +166,22 @@ impl<'g> Generator<'g> {
         self.build_return(success.into());
     }
 
-    fn optimize(&self, optimization_level: &str) {
+    fn optimize(&self, optimization_argument: &str) {
         let config = InitializationConfig::default();
         Target::initialize_native(&config).unwrap();
         let pass_manager_builder = PassManagerBuilder::create();
 
-        let optimization_level = to_optimization_level(optimization_level);
+        let optimization_level = to_optimization_level(optimization_argument);
+        let size_level = to_size_level(optimization_argument);
         pass_manager_builder.set_optimization_level(optimization_level);
+        pass_manager_builder.set_size_level(size_level);
+
         let pass_manager = PassManager::create(());
         pass_manager_builder.populate_module_pass_manager(&pass_manager);
+        pass_manager.add_tail_call_elimination_pass();
         pass_manager.run_on(&self.module);
 
+        // Do LTO optimizations afterward mosty for function inlining
         let link_time_optimizations = PassManager::create(());
         pass_manager_builder.populate_lto_pass_manager(&link_time_optimizations, false, true);
         link_time_optimizations.run_on(&self.module);
@@ -229,7 +241,7 @@ impl<'g> Generator<'g> {
     fn function<'c>(&mut self, name: &str, typ: &types::Type, cache: &ModuleCache<'c>) -> (FunctionValue<'g>, BasicValueEnum<'g>) {
         let llvm_type = self.convert_type(&typ, cache).into_pointer_type().get_element_type();
 
-        let function = self.module.add_function(name, llvm_type.into_function_type(), None);
+        let function = self.module.add_function(name, llvm_type.into_function_type(), Some(Linkage::Internal));
         let function_pointer = function.as_global_value().as_pointer_value().into();
 
         if let Some(id) = self.current_function_info {
@@ -568,7 +580,7 @@ impl<'g> Generator<'g> {
         }
     }
 
-    fn bind_irrefutable_pattern<'c>(&mut self, ast: &Ast<'c>, value: BasicValueEnum<'g>, cache: &mut ModuleCache<'c>) {
+    fn bind_irrefutable_pattern<'c>(&mut self, ast: &Ast<'c>, mut value: BasicValueEnum<'g>, cache: &mut ModuleCache<'c>) {
         use { ast::LiteralKind, Ast::* };
         match ast {
             Literal(literal) => {
@@ -578,6 +590,19 @@ impl<'g> Generator<'g> {
             Variable(variable) => {
                 let id = variable.definition.unwrap();
                 let typ = self.follow_bindings(variable.typ.as_ref().unwrap(), cache);
+
+                let definition = &cache.definition_infos[id.0];
+                if definition.mutable {
+                    let alloca = self.builder.build_alloca(value.get_type(), &definition.name);
+                    self.builder.build_store(alloca, value);
+                    self.auto_derefs.insert(id);
+                    value = alloca.as_basic_value_enum();
+                } else {
+                    // This line isn't currently needed but will be if ante is ever
+                    // generic over mutability
+                    self.auto_derefs.remove(&id);
+                }
+
                 self.definitions.insert((id, typ), value);
             },
             TypeAnnotation(annotation) => {
@@ -640,7 +665,7 @@ impl<'g> Generator<'g> {
 
         let global = if self.is_function_type(typ, cache) {
             let function_type = llvm_type.into_pointer_type().get_element_type().into_function_type();
-            self.module.add_function(name, function_type, None).as_global_value().as_basic_value_enum()
+            self.module.add_function(name, function_type, Some(Linkage::External)).as_global_value().as_basic_value_enum()
         } else {
             self.auto_derefs.insert(id);
             self.module.add_global(llvm_type, None, name).as_basic_value_enum()
@@ -1073,5 +1098,19 @@ impl<'g, 'c> CodeGen<'g, 'c> for ast::Tuple<'c> {
         }
 
         generator.tuple(elements, element_types)
+    }
+}
+
+impl<'g, 'c> CodeGen<'g, 'c> for ast::Assignment<'c> {
+    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
+        let lhs = self.lhs.codegen(generator, cache);
+        let lhs_instruction = lhs.as_instruction_value().unwrap();
+
+        assert_eq!(lhs_instruction.get_opcode(), InstructionOpcode::Load);
+
+        let lhs = lhs_instruction.get_operand(0).unwrap().left().unwrap().into_pointer_value();
+        let rhs = self.rhs.codegen(generator, cache);
+        generator.builder.build_store(lhs, rhs);
+        generator.unit_value()
     }
 }

@@ -83,6 +83,7 @@ pub struct FunctionCall<'a> {
 pub struct Definition<'a> {
     pub pattern: Box<Ast<'a>>,
     pub expr: Box<Ast<'a>>,
+    pub mutable: bool,
     pub location: Location<'a>,
     pub level: Option<LetBindingLevel>,
     pub info: Option<DefinitionInfoId>,
@@ -257,6 +258,15 @@ pub struct Tuple<'a> {
     pub typ: Option<types::Type>,
 }
 
+/// lhs := rhs
+#[derive(Debug)]
+pub struct Assignment<'a> {
+    pub lhs: Box<Ast<'a>>,
+    pub rhs: Box<Ast<'a>>,
+    pub location: Location<'a>,
+    pub typ: Option<types::Type>,
+}
+
 #[derive(Debug)]
 pub enum Ast<'a> {
     Literal(Literal<'a>),
@@ -276,6 +286,7 @@ pub enum Ast<'a> {
     Extern(Extern<'a>),
     MemberAccess(MemberAccess<'a>),
     Tuple(Tuple<'a>),
+    Assignment(Assignment<'a>),
 }
 
 impl<'a> Ast<'a> {
@@ -376,6 +387,10 @@ impl<'a> Ast<'a> {
     pub fn tuple(elements: Vec<Ast<'a>>, location: Location<'a>) -> Ast<'a> {
         Ast::Tuple(Tuple { elements, location, typ: None })
     }
+
+    pub fn assignment(lhs: Ast<'a>, rhs: Ast<'a>, location: Location<'a>) -> Ast<'a> {
+        Ast::Assignment(Assignment { lhs: Box::new(lhs), rhs: Box::new(rhs), location, typ: None })
+    }
 }
 
 macro_rules! dispatch_on_expr {
@@ -398,6 +413,7 @@ macro_rules! dispatch_on_expr {
             $crate::parser::ast::Ast::Extern(inner) =>          $function(inner $(, $($args),* )? ),
             $crate::parser::ast::Ast::MemberAccess(inner) =>    $function(inner $(, $($args),* )? ),
             $crate::parser::ast::Ast::Tuple(inner) =>           $function(inner $(, $($args),* )? ),
+            $crate::parser::ast::Ast::Assignment(inner) =>      $function(inner $(, $($args),* )? ),
         }
     });
 }
@@ -433,3 +449,4 @@ impl_locatable_for!(Sequence);
 impl_locatable_for!(Extern);
 impl_locatable_for!(MemberAccess);
 impl_locatable_for!(Tuple);
+impl_locatable_for!(Assignment);

@@ -50,8 +50,8 @@ macro_rules! expect {( $result:expr , $fmt_string:expr $( , $($msg:tt)* )? ) => 
 
 fn validate_opt_argument(arg: String) -> Result<(), String> {
     match arg.as_str() {
-        "0" | "1" | "2" | "3" => Ok(()),
-        _ => Err("Argument to -O must be one of: 0, 1, 2, or 3".to_owned()),
+        "0" | "1" | "2" | "3" | "s" | "z" => Ok(()),
+        _ => Err("Argument to -O must be one of: 0, 1, 2, 3, s, or z".to_owned()),
     }
 }
 
@@ -64,7 +64,7 @@ pub fn main() {
         .arg(Arg::with_name("parse").long("parse").help("Parse the file and output the resulting Ast"))
         .arg(Arg::with_name("check").long("check").help("Check the file for errors without compiling"))
         .arg(Arg::with_name("run").long("run").help("Run the resulting binary"))
-        .arg(Arg::with_name("O").short("O").value_name("level").default_value("0").validator(validate_opt_argument).help("Sets the current optimization level from 0 (no optimization) to 3 (aggressive optimization)"))
+        .arg(Arg::with_name("O").short("O").value_name("level").default_value("0").validator(validate_opt_argument).help("Sets the current optimization level from 0 (no optimization) to 3 (aggressive optimization). Set to s or z to optimize for size."))
         .arg(Arg::with_name("no-color").long("no-color").help("Use plaintext and an indicator line instead of color for pointing out error locations"))
         .arg(Arg::with_name("show-types").long("show-types").help("Print out the type of each definition"))
         .arg(Arg::with_name("show-llvm-ir").long("show-llvm-ir").help("Print out the LLVM-IR of the compiled program"))
