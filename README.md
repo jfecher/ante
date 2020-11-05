@@ -22,7 +22,7 @@ the ability to interact at a lower level if needed.
 ## Features
 * Strong focus on readability
 * Expression-based syntax
-* Robust module system with integrated build system
+* Robust module system with an integrated build system
 * Immutable by default
 * Strongly typed with a detailed algebraic type system and type inferencing
 * Compile-time execution combined with an extensible compiler API
@@ -63,7 +63,7 @@ goto "begin"
 distro's package manager.
  * (Optional) `llvm` version >= 8.0.  There is no need to install llvm manually.  If you do not have it
  installed already, cmake will automatically use the version in ante's git submodule.  If you wish to
- install llvm system wide anyway, then make sure to check which version you have by running `$ lli --version`.
+ install llvm system-wide anyway, then make sure to check which version you have by running `$ lli --version`.
  To install a specific version of llvm, install the `llvm` package on your distro's package manager, eg. for
  Ubuntu: `$ sudo apt-get install llvm-8.0`.  Note that not all versions may be available on all systems
  without building from source.
@@ -74,7 +74,7 @@ distro's package manager.
 
 2. Run `$ git clone https://github.com/jfecher/ante.git`
 
-3. Run `$ cd ante && cmake .` This will generate your platform specific
+3. Run `$ cd ante && cmake .` This will generate your platform-specific
 build files.  Usually either a Makefile or Visual Studio solution file.
 You can also specify which to make manually by passing the appropriate
 arguments to cmake.
@@ -98,4 +98,4 @@ and then start it with:
 docker run -it ante
 ```
 
-At this point you can install an editor and use the compiler/REPL (in /home/ante/ante) to write some code and run it.
+At this point, you can install an editor and use the compiler/REPL (in /home/ante/ante) to write some code and run it.
