@@ -1,11 +1,11 @@
 
-foo (_: int) (_: string) -> char = 'a'
+foo (_: i32) (_: string) -> char = 'a'
 
-bar: a a -> int =
+bar: a a -> i32 =
     \_ b. b
 
 exit2 = exit
-puts2: (ref char) -> int = puts
+puts2: (ref char) -> i32 = puts
 
 exit2 "test"
 puts2
@@ -14,10 +14,10 @@ puts2
 // TODO: bar should probably error that its annotated
 //       type is more general than its actual type
 // expected stdout:
-// examples/typechecking/type_annotations.an: 10,1	error: Type mismatch between int and string
+// examples/typechecking/type_annotations.an: 10,1	error: Type mismatch between i32 and string
 // exit2 "test"
 // 
-// bar : (int int -> int)
-// exit2 : (forall a. (int -> a))
-// foo : (int string -> char)
-// puts2 : ((ref char) -> int)
+// bar : (i32 i32 -> i32)
+// exit2 : (forall a. (i32 -> a))
+// foo : (i32 string -> char)
+// puts2 : ((ref char) -> i32)

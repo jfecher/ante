@@ -1,13 +1,29 @@
 use std::fmt::{ self, Display };
+use crate::types::TypeVariableId;
 
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum LexerError {
     InvalidCharacterInSignificantWhitespace(char), // Only spaces are allowed in significant whitespace
     InvalidEscapeSequence(char),
+    InvalidIntegerSuffx,
     IndentChangeTooSmall, // All indentation changes must be >= 2 spaces in size difference relative to the previous level
     UnindentToNewLevel, // Unindented to a new indent level rather than returning to a previous one
     Expected(char),
     UnknownChar(char),
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum IntegerKind {
+    /// Unknown integer literals are mutated into Inferred integers
+    /// after undergoing type checking and being assigned a type variable.
+    Unknown,
+
+    /// Inferred integers use a type variable with the `Int a` constraint
+    /// to be generic over any of the below integer types
+    Inferred(TypeVariableId),
+
+    I8, I16, I32, I64, Isz,
+    U8, U16, U32, U64, Usz,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -22,7 +38,7 @@ pub enum Token {
 
     Identifier(String),
     StringLiteral(String),
-    IntegerLiteral(u64),
+    IntegerLiteral(u64, IntegerKind),
     FloatLiteral(f64),
     CharLiteral(char),
     BooleanLiteral(bool),
@@ -30,7 +46,7 @@ pub enum Token {
 
     // Types
     TypeName(String),
-    IntegerType,
+    IntegerType(IntegerKind),
     FloatType,
     CharType,
     StringType,
@@ -129,6 +145,7 @@ impl Display for LexerError {
                 write!(f, "Only spaces are allowed in significant whitespace, {} is not allowed here", char_str)
             },
             InvalidEscapeSequence(c) => write!(f, "Invalid character in escape sequence: '{}' (U+{:x})", c, *c as u32),
+            InvalidIntegerSuffx => write!(f, "Invalid suffix after integer literal (expected an integer type like i32 or a non-alphanumeric character)"),
             IndentChangeTooSmall => write!(f, "This indent/unindent is too small, it should be at least 2 spaces apart from the previous indentation level"),
             UnindentToNewLevel => write!(f, "This unindent doesn't return to any previous indentation level"),
             Expected(c) => write!(f, "Expected {} (U+{:x}) while lexing", *c, *c as u32),
@@ -137,7 +154,29 @@ impl Display for LexerError {
     }
 }
 
+impl Display for IntegerKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use IntegerKind::*;
+        match self {
+            I8 => write!(f, "i8"),
+            I16 => write!(f, "i16"),
+            I32 => write!(f, "i32"),
+            I64 => write!(f, "i64"),
+            Isz => write!(f, "isz"),
+            U8 => write!(f, "u8"),
+            U16 => write!(f, "u16"),
+            U32 => write!(f, "u32"),
+            U64 => write!(f, "u64"),
+            Usz => write!(f, "usz"),
+            Unknown => write!(f, "Int"),
+            Inferred(_) => write!(f, "Int"),
+        }
+    }
+}
+
 impl Display for Token {
+    /// This formatting is shown when the parser outputs its
+    /// "expected one of ..." tokens list after finding a syntax error.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use Token::*;
         match self {
@@ -149,7 +188,7 @@ impl Display for Token {
 
             Identifier(_) => write!(f, "an identifier"),
             StringLiteral(_) => write!(f, "a string literal"),
-            IntegerLiteral(_) => write!(f, "an integer literal"),
+            IntegerLiteral(_, _) => write!(f, "an integer literal"),
             FloatLiteral(_) => write!(f, "a float literal"),
             CharLiteral(_) => write!(f, "a char literal"),
             BooleanLiteral(_) => write!(f, "a boolean literal"),
@@ -157,7 +196,7 @@ impl Display for Token {
 
             // Types
             TypeName(_) => write!(f, "a typename"),
-            IntegerType => write!(f, "'int'"),
+            IntegerType(kind) => write!(f, "'{}'", kind),
             FloatType => write!(f, "'float'"),
             CharType => write!(f, "'char'"),
             StringType => write!(f, "'string'"),

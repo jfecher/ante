@@ -5,7 +5,7 @@ trait Foo a -> b
 impl Foo int string
     foo _ = "hi"
 
-str = foo 0
+str = foo 0i32
 
 // args: --check --show-types
 // expected stdout:

@@ -72,10 +72,16 @@ pub struct ModuleCache<'a> {
     /// that is generated for each new field name used globally.
     pub member_access_traits: HashMap<String, TraitInfoId>,
 
+    /// The builtin `Int a` trait that arises when using polymorphic
+    /// integer literals.
+    pub int_trait: TraitInfoId,
+
     /// Used to give a unique ID to each node so they can later be
     /// used during static trait dispatch.
     pub variable_nodes: Vec</* name: */String>,
 
+    /// The filepath to ante's stdlib/prelude.an file to be automatically
+    /// included when defining a new ante module.
     pub prelude_path: PathBuf,
 }
 
@@ -152,7 +158,7 @@ pub struct TraitBinding {
     pub required_impls: Vec<RequiredImpl>,
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, PartialOrd, Ord, Hash)]
 pub struct TraitInfoId(pub usize);
 
 #[derive(Debug)]
@@ -192,12 +198,12 @@ pub struct ImplInfo<'a> {
     pub trait_impl: &'a mut TraitImpl<'a>,
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, PartialOrd, Ord, Hash)]
 pub struct VariableId(pub usize);
 
 impl<'a> ModuleCache<'a> {
     pub fn new(project_directory: &'a Path) -> ModuleCache<'a> {
-        ModuleCache {
+        let mut cache = ModuleCache {
             relative_roots: vec![project_directory.to_owned(), dirs::config_dir().unwrap().join("stdlib")],
             // Really wish you could do ..Default::default() for each field
             modules: HashMap::default(),
@@ -212,9 +218,14 @@ impl<'a> ModuleCache<'a> {
             impl_infos: Vec::default(),
             impl_scopes: Vec::default(),
             member_access_traits: HashMap::default(),
+            int_trait: TraitInfoId(0), // Dummy value since we must have the cache to push a trait
             variable_nodes: vec![],
             prelude_path: dirs::config_dir().unwrap().join("stdlib/prelude"),
-        }
+        };
+
+        let a = cache.next_type_variable_id(LetBindingLevel(std::usize::MAX));
+        cache.push_trait_definition("Int".to_string(), vec![a], vec![], Location::builtin());
+        cache
     }
 
     pub fn push_filepath(&mut self, path: PathBuf) -> &'a Path {

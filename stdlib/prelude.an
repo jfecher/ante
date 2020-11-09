@@ -8,17 +8,16 @@
 //C functions
 extern 
     // printf (format: ref char) ... -> int
-    puts: (ref char) -> int
+    puts: (ref char) -> i32
     putchar: char -> unit
     getchar: unit -> char
-    exit: int -> never_returns
-    malloc: int -> ref a
-    calloc: int int -> ref a
-    realloc: (ref a) int -> ref a
+    exit: i32 -> never_returns
+    malloc: usz -> ref a
+    realloc: (ref a) usz -> ref a
     free: (ref a) -> unit
-    memcpy: (ref a) (ref b) int -> ref a //dest
-    system: (ref char) -> int
-    strlen: (ref char) -> int
+    memcpy: (ref a) (ref b) i32 -> ref a //dest
+    system: (ref char) -> i32
+    strlen: (ref char) -> i32
 
 //C stdio
 type File = f: ref unit
@@ -31,19 +30,19 @@ extern
     fopen: (ref char) (ref char) -> File
     fclose: File -> unit
 
-    fputs: (ref char) OutFile -> int
-    fputc: int OutFile -> int
-    fgetc: InFile -> int
-    fgets: (ref char) int InFile -> ref char
-    ungetc: int InFile -> int
+    fputs: (ref char) OutFile -> i32
+    fputc: i32 OutFile -> i32
+    fgetc: InFile -> i32
+    fgets: (ref char) i32 InFile -> ref char
+    ungetc: i32 InFile -> i32
 
     fgetpos: File FilePos -> unit
-    ftell: File -> int
+    ftell: File -> i32
     fsetpos: File FilePos -> unit
-    fseek: File int int -> int
+    fseek: File i32 i32 -> i32
 
-    feof: InFile -> int
-    ferror: File -> int
+    feof: InFile -> i32
+    ferror: File -> i32
 
 //Convenience function for using fgetc, and feof with better types
 // TODO: builtin casting between primitives
@@ -57,7 +56,7 @@ type Maybe t =
 
 
 trait Empty t
-    empty: unit -> t
+    empty: t
 
 // TODO: trait impls with 'given' clauses
 // impl Eq (Maybe 'e) given Eq 'e
@@ -72,6 +71,12 @@ trait Cast a /*to*/ b
 
 impl Cast a a
     cast a = a
+
+impl Cast (ref a) usz
+    cast (_ptr: ref a) = builtin "CastRefUsz"
+
+impl Cast usz (ref a)
+    cast (_address: usz) = builtin "CastRefUsz"
 
 // TODO: trait impls with 'given' clauses
 // impl Cast (Maybe 'm) string given Cast 'm string
@@ -91,8 +96,8 @@ trait TryCast a b
 trait Add n
     (+): n n -> n
 
-impl Add int
-    (+) (_: int) (_: int) -> int = builtin "AddInt"
+impl Add a given Int a
+    (+) _ _ = builtin "AddInt"
 
 impl Add float
     (+) (_: float) (_: float) -> float = builtin "AddFloat"
@@ -101,8 +106,8 @@ impl Add float
 trait Sub n
     (-): n n -> n
 
-impl Sub int
-    (-) (_: int) (_: int) -> int = builtin "SubInt"
+impl Sub a given Int a
+    (-) _ _ = builtin "SubInt"
 
 impl Sub float
     (-) (_: float) (_: float) -> float = builtin "SubFloat"
@@ -111,8 +116,8 @@ impl Sub float
 trait Mul n
     (*): n n -> n
 
-impl Mul int
-    (*) (_: int) (_: int) -> int = builtin "MulInt"
+impl Mul a given Int a
+    (*) _ _ = builtin "MulInt"
 
 impl Mul float
     (*) (_: float) (_: float) -> float = builtin "MulFloat"
@@ -121,8 +126,8 @@ impl Mul float
 trait Div n
     (/): n n -> n
 
-impl Div int
-    (/) (_: int) (_: int) -> int = builtin "DivInt"
+impl Div a given Int a
+    (/) _ _ = builtin "DivInt"
 
 impl Div float
     (/) (_: float) (_: float) -> float = builtin "DivFloat"
@@ -131,8 +136,9 @@ impl Div float
 trait Mod n
     (%): n n -> n
 
-impl Mod int
-    (%) (_: int) (_: int) -> int = builtin "ModInt"
+
+impl Mod a given Int a
+    (%) _ _ = builtin "ModInt"
 
 impl Mod float
     (%) (_: float) (_: float) -> float = builtin "ModFloat"
@@ -144,13 +150,11 @@ trait Eq t
 (not) a = if a then false else true
 (!=) l r = not (l == r)
 
-impl Eq int
-    (==) (_: int) (_: int) -> bool =
-        builtin "EqInt"
+impl Eq a given Int a
+    (==) _ _ = builtin "EqInt"
 
 impl Eq float
-    (==) (_: float) (_: float) -> bool =
-        builtin "EqFloat"
+    (==) (_: float) (_: float) -> bool = builtin "EqFloat"
 
 type Ordering = | Less | Equal | Greater
 
@@ -170,14 +174,14 @@ trait Cmp a
 (<=) a b = compare a b != Greater
 (>=) a b = compare a b != Less
 
-impl Cmp int
-    compare (_: int) (_: int) -> int =
+impl Cmp a given Int a
+    compare _ _ =
         if builtin "LessInt" then Less
         else if builtin "GreaterInt" then Greater
         else Equal
 
 impl Cmp float
-    compare (_: int) (_: int) -> int =
+    compare (_: float) (_: float) -> Ordering =
         if builtin "LessFloat" then Less
         else if builtin "GreaterFloat" then Greater
         else Equal
@@ -220,6 +224,10 @@ print x =
     printne x
     putchar '\n'
 
+impl Print i32
+    printne x =
+        extern printf : (ref char) i32 -> unit
+        printf ("%d".c_string) x
 
 // TODO: need varargs support for printf
 // impl Print int
@@ -240,7 +248,9 @@ print x =
 //     printne s = printf ("%s".cStr) s
 // 
 // impl Print string
-//     printne s = printne (s.cStr)
+//     printne s =
+//         extern printf : (ref char) (ref char) -> unit
+//         printf "%s".c_string s.c_string
 
 // TODO: impls with 'given' clauses
 // impl Print 't given Cast 't string

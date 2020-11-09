@@ -36,7 +36,6 @@ Steps needed to get back in line with the C++ compiler:
 - [ ] REPL
 
 - [ ] Loops
-- [ ] Mutability
 
 Future goals still unimplemented in the C++ compiler:
 

@@ -5,14 +5,14 @@ bind opt f =
 
 ret x = Some x
 
-x = Some 10
+x = Some 10i32
 
 add_one x =
-    bind x (\x. ret (x + 1))
+    bind x (\x. ret (x + 1i32))
 
 // args: --check --show-types
 // expected stdout:
-// add_one : ((Maybe int) -> (Maybe int))
+// add_one : ((Maybe i32) -> (Maybe i32))
 // bind : (forall a b. ((Maybe a) (a -> (Maybe b)) -> (Maybe b)))
 // ret : (forall a. (a -> (Maybe a)))
-// x : (Maybe int)
+// x : (Maybe i32)

@@ -11,7 +11,7 @@ use std::fmt::Display;
 /// The specific impl to use is unknown to the definition since
 /// different impls may be used at different callsites.
 /// RequiredImpls are the callsite version of this.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct RequiredTrait {
     pub trait_id: TraitInfoId,
     pub args: Vec<Type>,
@@ -180,6 +180,20 @@ impl TraitConstraint {
         }
     }
 
+    /// Each integer literal without a type suffix is given the generic type
+    /// "a given Int a". This function returns a TraitConstraint for this
+    /// builtin Int trait to be resolved later in typechecking to a specific
+    /// integer type or propagataed to the function signature to take any Int.
+    pub fn int_constraint<'c>(arg: TypeVariableId, cache: &ModuleCache<'c>) -> TraitConstraint {
+        TraitConstraint {
+            trait_id: cache.int_trait,
+            args: vec![Type::TypeVariable(arg)],
+            scope: ImplScopeId(0),
+            callsite: TraitBindingId(0),
+            origin: VariableId(0),
+        }
+    }
+
     pub fn as_required_trait(self) -> RequiredTrait {
         RequiredTrait {
             trait_id: self.trait_id,
@@ -188,9 +202,9 @@ impl TraitConstraint {
         }
     }
 
-    pub fn as_required_impl(self, binding: DefinitionInfoId) -> RequiredImpl {
+    pub fn as_required_impl(&self, binding: DefinitionInfoId) -> RequiredImpl {
         RequiredImpl {
-            args: self.args,
+            args: self.args.clone(),
             origin: self.origin,
             binding,
         }
@@ -198,5 +212,10 @@ impl TraitConstraint {
 
     pub fn display<'a, 'c>(&self, cache: &'a ModuleCache<'c>) -> RequiredTraitPrinter<'a, 'c> {
         self.clone().as_required_trait().display(cache)
+    }
+
+    #[allow(dead_code)]
+    pub fn debug<'a, 'c>(&self, cache: &'a ModuleCache<'c>) -> RequiredTraitPrinter<'a, 'c> {
+        self.clone().as_required_trait().debug(cache)
     }
 }

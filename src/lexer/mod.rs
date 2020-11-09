@@ -3,7 +3,7 @@ pub mod token;
 use std::str::Chars;
 use std::path::Path;
 use std::collections::HashMap;
-use token::{ Token, LexerError };
+use token::{ Token, LexerError, IntegerKind };
 use crate::error::location::{ Position, EndPosition, Location, Locatable };
 
 #[derive(Clone)]
@@ -33,7 +33,16 @@ type IterElem<'a> = Option<(Token, Location<'a>)>;
 impl<'cache, 'contents> Lexer<'cache, 'contents> {
     pub fn get_keywords() -> HashMap<&'static str, Token> {
         vec![
-            ("int", Token::IntegerType),
+            ("i8", Token::IntegerType(IntegerKind::I8)),
+            ("i16", Token::IntegerType(IntegerKind::I16)),
+            ("i32", Token::IntegerType(IntegerKind::I32)),
+            ("i64", Token::IntegerType(IntegerKind::I64)),
+            ("isz", Token::IntegerType(IntegerKind::Isz)),
+            ("u8", Token::IntegerType(IntegerKind::U8)),
+            ("u16", Token::IntegerType(IntegerKind::U16)),
+            ("u32", Token::IntegerType(IntegerKind::U32)),
+            ("u64", Token::IntegerType(IntegerKind::U64)),
+            ("usz", Token::IntegerType(IntegerKind::Usz)),
             ("float", Token::FloatType),
             ("char", Token::CharType),
             ("string", Token::StringType),
@@ -119,6 +128,14 @@ impl<'cache, 'contents> Lexer<'cache, 'contents> {
         &self.file_contents[self.token_start_position.index .. self.current_position.index]
     }
 
+    fn expect(&mut self, expected: char, token: Token) -> IterElem<'cache> {
+        if self.current == expected {
+            self.advance_with(token)
+        } else {
+            self.advance_with(Token::Invalid(LexerError::Expected(expected)))
+        }
+    }
+
     fn advance_while<F>(&mut self, mut f: F) -> &'contents str
         where F: FnMut(char, char) -> bool
     {
@@ -128,26 +145,56 @@ impl<'cache, 'contents> Lexer<'cache, 'contents> {
         self.get_slice_containing_current_token()
     }
 
-    fn expect(&mut self, expected: char, token: Token) -> IterElem<'cache> {
-        if self.current == expected {
-            self.advance_with(token)
-        } else {
-            self.advance_with(Token::Invalid(LexerError::Expected(expected)))
+    fn lex_integer<'a>(&'a mut self) -> String {
+        let start = self.current_position.index;
+
+        while !self.at_end_of_input() && (self.current.is_digit(10) || self.current == '_') {
+            self.advance();
+        }
+
+        let end = self.current_position.index;
+        self.file_contents[start .. end].replace('_', "")
+    }
+
+    fn lex_integer_suffix(&mut self) -> Result<IntegerKind, Token> {
+        let start = self.current_position.index;
+        while self.current.is_alphanumeric() || self.current == '_' {
+            self.advance();
+        }
+
+        let word = &self.file_contents[start .. self.current_position.index];
+        match word {
+            "i8" =>  Ok(IntegerKind::I8),
+            "u8" =>  Ok(IntegerKind::U8),
+            "i16" => Ok(IntegerKind::I16),
+            "u16" => Ok(IntegerKind::U16),
+            "i32" => Ok(IntegerKind::I32),
+            "u32" => Ok(IntegerKind::U32),
+            "i64" => Ok(IntegerKind::I64),
+            "u64" => Ok(IntegerKind::U64),
+            "isz" => Ok(IntegerKind::Isz),
+            "usz" => Ok(IntegerKind::Usz),
+            "" => Ok(IntegerKind::Unknown),
+            _ => Err(Token::Invalid(LexerError::InvalidIntegerSuffx)),
         }
     }
 
     fn lex_number(&mut self) -> IterElem<'cache> {
-        let integer_string = self.advance_while(|current, _| current.is_digit(10));
+        let integer_string = self.lex_integer();
 
         if self.current == '.' && self.next.is_digit(10) {
             self.advance();
-            self.advance_while(|current, _| current.is_digit(10));
-            let float_string = self.get_slice_containing_current_token();
+            let float_string = integer_string + "." + &self.lex_integer();
+
             let float = float_string.parse().unwrap();
             Some((Token::FloatLiteral(float), self.locate()))
         } else {
             let integer = integer_string.parse().unwrap();
-            Some((Token::IntegerLiteral(integer), self.locate()))
+            let location = self.locate();
+            match self.lex_integer_suffix() {
+                Ok(suffix) => Some((Token::IntegerLiteral(integer, suffix), location)),
+                Err(lexer_error) => Some((lexer_error, location)),
+            }
         }
     }
 

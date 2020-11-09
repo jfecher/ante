@@ -50,7 +50,7 @@ pub fn call_builtin<'g, 'c>(args: &[Ast<'c>], generator: &mut Generator<'g>) -> 
         "EqFloat" => eq_float(generator),
         "EqChar" => eq_char(generator),
         "EqBool" => eq_bool(generator),
-        _ => unreachable!(),
+        _ => unreachable!("Unknown builtin '{}'", arg),
     }
 }
 

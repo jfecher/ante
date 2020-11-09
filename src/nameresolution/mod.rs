@@ -1,6 +1,7 @@
 use crate::parser::{ self, ast, ast::Ast };
-use crate::types::{ TypeInfoId, TypeVariableId, Type, PrimitiveType, TypeInfoBody };
-use crate::types::{ TypeConstructor, Field, LetBindingLevel, STRING_TYPE };
+use crate::types::{ TypeInfoId, TypeVariableId, Type, PrimitiveType,
+                    TypeInfoBody, TypeConstructor, Field, LetBindingLevel,
+                    INITIAL_LEVEL, STRING_TYPE };
 use crate::types::traits::RequiredTrait;
 use crate::error::{ self, location::{ Location, Locatable } };
 use crate::cache::{ ModuleCache, DefinitionInfoId, ModuleId };
@@ -193,6 +194,14 @@ impl NameResolver {
         self.scopes.len() == 1
     }
 
+    fn push_let_binding_level(&mut self) {
+        self.let_binding_level = LetBindingLevel(self.let_binding_level.0 + 1);
+    }
+
+    fn pop_let_binding_level(&mut self) {
+        self.let_binding_level = LetBindingLevel(self.let_binding_level.0 - 1);
+    }
+
     fn check_required_definitions<'c>(&mut self, name: &str, cache: &mut ModuleCache<'c>, location: Location<'c>) {
         let required_definitions = self.required_definitions.as_mut().unwrap();
         if let Some(index) = required_definitions.iter().position(|id| &cache.definition_infos[id.0].name == name) {
@@ -272,7 +281,7 @@ impl NameResolver {
 
         if let Some(existing_definition) = self.current_scope().traits.get(&name) {
             error!(location, "{} is already in scope", name);
-            let previous_location = cache.type_infos[existing_definition.0].locate();
+            let previous_location = cache.trait_infos[existing_definition.0].locate();
             note!(previous_location, "{} previously defined here", name);
         }
 
@@ -334,7 +343,7 @@ impl<'c> NameResolver {
             current_trait: None,
             required_definitions: None,
             definitions_collected: vec![],
-            let_binding_level: LetBindingLevel(1),
+            let_binding_level: LetBindingLevel(INITIAL_LEVEL),
             module_id,
         };
 
@@ -368,7 +377,7 @@ impl<'c> NameResolver {
     /// Converts an ast::Type to a types::Type, expects all typevars to be in scope
     pub fn convert_type(&mut self, cache: &mut ModuleCache<'c>, ast_type: &ast::Type<'c>) -> Type {
         match ast_type {
-            ast::Type::IntegerType(_) => Type::Primitive(PrimitiveType::IntegerType),
+            ast::Type::IntegerType(kind, _) => Type::Primitive(PrimitiveType::IntegerType(*kind)),
             ast::Type::FloatType(_) => Type::Primitive(PrimitiveType::FloatType),
             ast::Type::CharType(_) => Type::Primitive(PrimitiveType::CharType),
             ast::Type::StringType(_) => Type::UserDefinedType(STRING_TYPE),
@@ -389,7 +398,7 @@ impl<'c> NameResolver {
                             Type::TypeVariable(id)
                         } else {
                             error!(*location, "Type variable {} was not found in scope", name);
-                            Type::Primitive(PrimitiveType::IntegerType)
+                            Type::Primitive(PrimitiveType::UnitType)
                         }
                     },
                 }
@@ -399,7 +408,7 @@ impl<'c> NameResolver {
                     Some(id) => Type::UserDefinedType(id),
                     None => {
                         error!(*location, "Type {} was not found in scope", name);
-                        Type::Primitive(PrimitiveType::IntegerType)
+                        Type::Primitive(PrimitiveType::UnitType)
                     },
                 }
             },
@@ -578,14 +587,14 @@ impl<'c> Resolvable<'c> for ast::Definition<'c> {
         let definition = self as *const Self;
         let definition = || DefinitionKind::Definition(trustme::make_mut(definition));
 
-        resolver.let_binding_level = LetBindingLevel(resolver.let_binding_level.0 + 1);
+        resolver.push_let_binding_level();
         resolver.in_mutable_context = self.mutable;
 
         resolver.resolve_declarations(self.pattern.as_mut(), cache, definition);
 
         resolver.in_mutable_context = false;
         self.level = Some(resolver.let_binding_level);
-        resolver.let_binding_level = LetBindingLevel(resolver.let_binding_level.0 - 1);
+        resolver.pop_let_binding_level();
     }
 
     fn define(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'c>) {
@@ -594,7 +603,7 @@ impl<'c> Resolvable<'c> for ast::Definition<'c> {
         let definition = self as *const Self;
         let definition = || DefinitionKind::Definition(trustme::make_mut(definition));
 
-        resolver.let_binding_level = LetBindingLevel(resolver.let_binding_level.0 + 1);
+        resolver.push_let_binding_level();
         resolver.in_mutable_context = self.mutable;
 
         resolver.resolve_definitions(self.pattern.as_mut(), cache, definition);
@@ -603,7 +612,7 @@ impl<'c> Resolvable<'c> for ast::Definition<'c> {
         self.level = Some(resolver.let_binding_level);
 
         self.expr.define(resolver, cache);
-        resolver.let_binding_level = LetBindingLevel(resolver.let_binding_level.0 - 1);
+        resolver.pop_let_binding_level();
     }
 }
 
@@ -852,6 +861,13 @@ impl<'c> Resolvable<'c> for ast::TraitDefinition<'c> {
     fn declare(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'c>) {
         resolver.push_type_variable_scope();
 
+        // A trait definition's level is the outer level. The `let_binding_level + 1` is
+        // only used while recurring _inside_ definitions, and trait definition's only
+        // contain declarations which have no rhs to recur into. Changing this to
+        // `let_binding_level + 1` will cause all trait functions to not be generalized.
+        self.level = Some(resolver.let_binding_level);
+        resolver.push_let_binding_level();
+
         let args = fmap(&self.args, |arg|
             resolver.push_new_type_variable(arg.clone(), cache));
 
@@ -876,6 +892,7 @@ impl<'c> Resolvable<'c> for ast::TraitDefinition<'c> {
         resolver.current_trait = None;
         self.trait_info = Some(trait_id);
         resolver.pop_type_variable_scope();
+        resolver.pop_let_binding_level();
     }
 
     fn define(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'c>) {
@@ -901,7 +918,10 @@ impl<'c> Resolvable<'c> for ast::TraitImpl<'c> {
             },
         };
 
+        resolver.push_type_variable_scope();
+        resolver.auto_declare = true;
         self.trait_arg_types = fmap(&self.trait_args, |arg| resolver.convert_type(cache, arg));
+        resolver.auto_declare = false;
 
         let trait_info = &cache.trait_infos[trait_id.0];
         resolver.required_definitions = Some(trait_info.definitions.clone());
@@ -914,9 +934,9 @@ impl<'c> Resolvable<'c> for ast::TraitImpl<'c> {
         }
 
         resolver.push_scope(cache);
+        resolver.push_let_binding_level();
 
         // Declare the names first so we can check them all against the required_definitions
-        resolver.let_binding_level = LetBindingLevel(resolver.let_binding_level.0 + 1);
         let definitions = resolver.resolve_trait_impl_declarations(self.definitions.iter_mut(), cache);
 
         // TODO cleanup: is required_definitions still required since we can
@@ -934,8 +954,9 @@ impl<'c> Resolvable<'c> for ast::TraitImpl<'c> {
             definition.expr.define(resolver, cache);
             definition.level = Some(resolver.let_binding_level);
         }
-        resolver.let_binding_level = LetBindingLevel(resolver.let_binding_level.0 - 1);
+        resolver.pop_let_binding_level();
         resolver.pop_scope(cache, false);
+        resolver.pop_type_variable_scope();
 
         let trait_impl = trustme::extend_lifetime(self);
         resolver.push_trait_impl(trait_id, self.trait_arg_types.clone(), definitions, trait_impl, cache, self.locate());
@@ -966,9 +987,18 @@ impl<'c> Resolvable<'c> for ast::Sequence<'c> {
 
 impl<'c> Resolvable<'c> for ast::Extern<'c> {
     fn declare(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'c>) {
+        // A trait definition's level is the outer level. The `let_binding_level + 1` is
+        // only used while recurring _inside_ definitions, and trait definition's only
+        // contain declarations which have no rhs to recur into. Changing this to
+        // `let_binding_level + 1` will cause all trait functions to not be generalized.
+        self.level = Some(resolver.let_binding_level);
+        resolver.push_let_binding_level();
+
         for declaration in self.declarations.iter_mut() {
             resolver.resolve_extern_definitions(declaration, cache);
         }
+
+        resolver.pop_let_binding_level();
     }
 
     fn define(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'c>) {

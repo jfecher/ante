@@ -43,10 +43,6 @@ pub fn reinterpret_from_bits(x: u64) -> f64 {
     unsafe { std::mem::transmute(x) }
 }
 
-pub fn contains<T: PartialEq>(array: &[T], element: &T) -> bool {
-    array.iter().find(|&x| x == element).is_some()
-}
-
 pub fn join_with<T: Display>(vec: &[T], delimiter: &str) -> String {
     fmap(&vec, |t| format!("{}", t)).join(delimiter)
 }

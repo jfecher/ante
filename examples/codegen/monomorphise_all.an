@@ -1,0 +1,11 @@
+
+foo x = x
+
+bar x = foo x
+
+baz x = bar x
+
+baz "hi"
+
+// args: --run --delete-binary
+// expected stdout:

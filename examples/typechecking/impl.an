@@ -2,14 +2,14 @@
 trait Foo a
     foo: a a -> a
 
-impl Foo int
+impl Foo i32
     foo _a b = b
 
 impl Foo float
     foo _a b = b
 
 
-a = foo 1 2
+a = foo 1 2i32
 b = foo 1.0 2.0
 c = foo "one" "two"
 
@@ -18,7 +18,7 @@ c = foo "one" "two"
 // examples/typechecking/impl.an: 14,1	error: No impl found for Foo string
 // c = foo "one" "two"
 // 
-// a : int
+// a : i32
 // b : float
 // c : string
 // foo : (forall a. (a a -> a))

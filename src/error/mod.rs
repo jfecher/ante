@@ -161,6 +161,13 @@ fn os_agnostic_display_path(path: &Path) -> ColoredString {
     }
 }
 
+impl<'a> Display for Location<'a> {
+    fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
+        let filename = os_agnostic_display_path(&self.filename);
+        write!(f, "{}: {},{}", filename, self.start.line, self.start.column)
+    }
+}
+
 impl<'a> Display for ErrorMessage<'a> {
     fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
         let start = self.location.start;
@@ -171,10 +178,7 @@ impl<'a> Display for ErrorMessage<'a> {
             ERROR_COUNT.fetch_add(1, SeqCst);
         }
 
-        let filename = os_agnostic_display_path(&self.location.filename);
-
-        writeln!(f, "{}: {},{}\t{} {}", filename,
-            start.line, start.column, self.marker(), self.msg)?;
+        writeln!(f, "{}\t{} {}", self.location, self.marker(), self.msg)?;
 
         let file_contents = read_file_or_panic(self.location.filename);
         let line = file_contents.lines().nth(max(1, start.line) as usize - 1).unwrap();

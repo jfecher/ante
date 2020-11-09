@@ -1,5 +1,6 @@
 use crate::cache::{ ModuleCache, DefinitionInfoId };
 use crate::error::location::Location;
+use crate::lexer::token::IntegerKind;
 use crate::nameresolution::{ NameResolver, declare_module, define_module };
 use crate::types::{ Type, PrimitiveType, TypeInfoBody, Field, STRING_TYPE, LetBindingLevel };
 
@@ -48,7 +49,7 @@ fn define_string<'a>(cache: &mut ModuleCache<'a>) -> Type {
     let char_type = Type::Primitive(PrimitiveType::CharType);
     let c_string_type = Type::TypeApplication(Box::new(ref_type), vec![char_type]);
 
-    let length_type = Type::Primitive(PrimitiveType::IntegerType);
+    let length_type = Type::Primitive(PrimitiveType::IntegerType(IntegerKind::Usz));
 
     let string = cache.push_type_info("string".into(), vec![], location);
     assert!(string == STRING_TYPE);

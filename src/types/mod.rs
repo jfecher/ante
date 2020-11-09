@@ -1,5 +1,6 @@
-use crate::error::location::{ Locatable, Location };
 use crate::cache::{ ModuleCache, DefinitionInfoId };
+use crate::error::location::{ Locatable, Location };
+use crate::lexer::token::IntegerKind;
 
 use std::collections::HashMap;
 
@@ -9,22 +10,28 @@ pub mod typechecker;
 pub mod typeprinter;
 pub mod traits;
 
+/// The type to default any Inferred integer types to that were
+/// not bound to any other concrete integer type (e.g. via `1 + 2u8`).
+pub const DEFAULT_INTEGER_TYPE: Type =
+    Type::Primitive(PrimitiveType::IntegerType(IntegerKind::I32));
+
+
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, PartialOrd, Ord)]
 pub struct TypeVariableId(pub usize);
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, PartialOrd, Ord)]
 pub enum PrimitiveType {
-    IntegerType,      // : *
-    FloatType,        // : *
-    CharType,         // : *
-    BooleanType,      // : *
-    UnitType,         // : *
-    ReferenceType,    // : * -> *
+    IntegerType(IntegerKind), // : *
+    FloatType,                // : *
+    CharType,                 // : *
+    BooleanType,              // : *
+    UnitType,                 // : *
+    ReferenceType,            // : * -> *
 }
 
 // TODO: PartialEq and Hash need to be implemented with a ModuleCache to properly
 // follow typevar bindings
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Type {
     /// int, char, bool, etc
     Primitive(PrimitiveType),
@@ -91,6 +98,23 @@ impl Type {
 #[derive(Debug, Copy, Clone, Eq, PartialEq, PartialOrd, Ord)]
 pub struct LetBindingLevel(pub usize);
 
+/// The initial LetBindingLevel used in nameresolution and typechecking.
+/// This must be at least 1 since typechecker::infer_ast will set the CURRENT_LEVEL
+/// to INITIAL_LEVEL - 1 when finishing type checking main to differentiate between
+/// traits used within main and traits propagated up into main's signature.
+/// Since the later case is an error (all traits must be resolved by the point
+/// we finish typechecking) typechecker::infer_ast and typechecker::should_propagate
+/// use this INITIAL_LEVEL - 1 to distinguish between the two cases. Note that since
+/// at each ast::Definition the current LetBindingLevel is incremented when recursing
+/// inside and decremented after finishing, this distinction is equivalent to if we
+/// manually forced users to wrap their program in the following:
+/// ```
+/// main () = ...
+/// ```
+/// See okmij.org/ftp/ML/generalization.html for more information on the levels
+/// algorithm used in the typechecker.
+pub const INITIAL_LEVEL: usize = 1;
+
 /// A given TypeVariableId is either bound to some type
 /// or is unbound and has a given LetBindingLevel as its lifetime.
 /// This LetBindingLevel is used to determine which type variables
@@ -116,7 +140,7 @@ pub struct Field<'a> {
     pub location: Location<'a>,
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, PartialOrd, Ord, Hash)]
 pub struct TypeInfoId(pub usize);
 
 // The string type is a semi builting type in that it isn't a primitive

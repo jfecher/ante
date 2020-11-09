@@ -24,7 +24,6 @@ match (true, true) with
 // Type error before compiling pattern - skip completeness checking
 match (1, 2, 3, 4) with
 | (1, 2) -> 1
-| (1, 2, 3) -> 2
 | (_, _, _, _) -> 3
 
 // args: --check
@@ -39,7 +38,7 @@ match (1, 2, 3, 4) with
 // examples/typechecking/completeness_checking.an: 18,3	warning: Unreachable pattern
 // | (1, 2) -> 1
 // 
-// examples/typechecking/completeness_checking.an: 16,1	error: Missing case (_ : int, _)
+// examples/typechecking/completeness_checking.an: 16,1	error: Missing case (_ : Int, _)
 // match (1, 2) with
 // 
 // examples/typechecking/completeness_checking.an: 20,1	error: Missing case (true, true)
@@ -48,8 +47,5 @@ match (1, 2, 3, 4) with
 // examples/typechecking/completeness_checking.an: 20,1	error: Missing case (false, false)
 // match (true, true) with
 // 
-// examples/typechecking/completeness_checking.an: 26,3	error: Type mismatch between (int, int, int, int, ) and (int, int, )
+// examples/typechecking/completeness_checking.an: 26,3	error: Type mismatch between (a, b, c, d) and (a, b)
 // | (1, 2) -> 1
-// 
-// examples/typechecking/completeness_checking.an: 27,3	error: Type mismatch between (int, int, int, int, ) and (int, int, int, )
-// | (1, 2, 3) -> 2

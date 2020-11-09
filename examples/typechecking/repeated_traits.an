@@ -1,0 +1,9 @@
+foo a =
+    print a
+    print a
+
+// Make sure output is not "... given Print a, Print a"
+// args: --check --show-types
+// expected stdout:
+// foo : (forall a. (a -> unit))
+//   given Print a

@@ -2,6 +2,7 @@ use crate::types::{ Type, TypeVariableId, TypeInfoId, PrimitiveType, TypeBinding
 use crate::types::traits::{ RequiredTrait, RequiredTraitPrinter };
 use crate::types::typechecker::find_all_typevars;
 use crate::cache::ModuleCache;
+use crate::util::join_with;
 
 use std::collections::HashMap;
 use std::fmt::{ Display, Debug, Formatter };
@@ -48,19 +49,22 @@ pub fn show_type_and_traits<'b>(typ: &Type, traits: &[RequiredTrait], cache: &Mo
 
     print!("{}", TypePrinter { typ, cache, typevar_names: map.clone() });
 
+    let mut traits = traits.iter().map(|required_trait| {
+        fill_typevar_map(&mut map, required_trait.find_all_typevars(cache), &mut current);
+        RequiredTraitPrinter { required_trait: required_trait.clone(), cache, typevar_names: map.clone() }
+            .to_string()
+    }).collect::<Vec<String>>();
+
+    // Remove "duplicate" traits so users don't see `given Add a, Add a`.
+    // These contain usage information that is different within them but this
+    // isn't used in their Display impl so they look like duplicates.
+    traits.sort();
+    traits.dedup();
+
     if !traits.is_empty() {
-        print!("\n  given ");
-
-        for (i, trait_impl) in traits.iter().enumerate() {
-            fill_typevar_map(&mut map, trait_impl.find_all_typevars(cache), &mut current);
-
-            if i != 0 {
-                print!(", ");
-            }
-
-            print!("{}", RequiredTraitPrinter { required_trait: trait_impl.clone(), cache, typevar_names: map.clone() });
-        }
+        print!("\n  given {}", join_with(&traits, ", "));
     }
+
     println!("");
 }
 
@@ -83,7 +87,7 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
 
     fn fmt_primitive(&self, primitive: &PrimitiveType, f: &mut Formatter) -> std::fmt::Result {
         match primitive {
-            PrimitiveType::IntegerType => write!(f, "{}", "int".blue()),
+            PrimitiveType::IntegerType(kind) => write!(f, "{}", kind.to_string().blue()),
             PrimitiveType::FloatType => write!(f, "{}", "float".blue()),
             PrimitiveType::CharType => write!(f, "{}", "char".blue()),
             PrimitiveType::BooleanType => write!(f, "{}", "bool".blue()),
@@ -107,7 +111,8 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
         match &self.cache.type_bindings[id.0] {
             TypeBinding::Bound(typ) => self.fmt_type(typ, f),
             TypeBinding::Unbound(..) => {
-                let name = self.typevar_names[&id].blue();
+                let default = "?".to_string();
+                let name = self.typevar_names.get(&id).unwrap_or(&default).blue();
                 write!(f, "{}", name)
             }
         }
@@ -130,9 +135,12 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
 
     fn fmt_tuple(&self, elements: &[Type], f: &mut Formatter) -> std::fmt::Result {
         write!(f, "{}", "(".blue())?;
-        for arg in elements.iter() {
+        for (i, arg) in elements.iter().enumerate() {
             self.fmt_type(arg, f)?;
-            write!(f, ", ")?;
+
+            if i + 1 < elements.len() {
+                write!(f, ", ")?;
+            }
         }
         write!(f, "{}", ")".blue())
     }

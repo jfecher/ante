@@ -4,9 +4,10 @@
 //! so that new users won't have to subject themselves to building llvm.
 
 use crate::cache::{ ModuleCache, DefinitionInfoId, DefinitionKind, VariableId };
-use crate::parser::{ ast, ast::Ast };
 use crate::nameresolution::builtin::BUILTIN_ID;
-use crate::types::{ self, typechecker, TypeVariableId, TypeBinding, TypeInfoId };
+use crate::lexer::token::IntegerKind;
+use crate::parser::{ ast, ast::Ast };
+use crate::types::{ self, typechecker, TypeVariableId, TypeBinding, TypeInfoId, DEFAULT_INTEGER_TYPE };
 use crate::types::traits::RequiredImpl;
 use crate::types::typed::Typed;
 use crate::util::{ fmap, trustme, reinterpret_from_bits };
@@ -76,7 +77,7 @@ pub fn run<'c>(path: &Path, ast: &Ast<'c>, cache: &mut ModuleCache<'c>, show_ir:
         definitions: HashMap::new(),
         types: HashMap::new(),
         impl_mappings: HashMap::new(),
-        monomorphisation_bindings: vec![],
+        monomorphisation_bindings: vec![HashMap::new()],
         auto_derefs: HashSet::new(),
         current_function_info: None,
     };
@@ -131,8 +132,9 @@ fn remove_forall(typ: &types::Type) -> &types::Type {
     }
 }
 
-// TODO: remove
-const UNBOUND_TYPE: types::Type = types::Type::Primitive(types::PrimitiveType::UnitType);
+/// The type to bind most typevars to if they are still unbound when we codegen them.
+const UNBOUND_TYPE: types::Type =
+    types::Type::Primitive(types::PrimitiveType::UnitType);
 
 fn to_optimization_level(optimization_argument: &str) -> OptimizationLevel {
     match optimization_argument {
@@ -178,7 +180,6 @@ impl<'g> Generator<'g> {
 
         let pass_manager = PassManager::create(());
         pass_manager_builder.populate_module_pass_manager(&pass_manager);
-        pass_manager.add_tail_call_elimination_pass();
         pass_manager.run_on(&self.module);
 
         // Do LTO optimizations afterward mosty for function inlining
@@ -292,8 +293,10 @@ impl<'g> Generator<'g> {
         let definition = trustme::extend_lifetime(definition);
         let definition_type = remove_forall(definition.typ.as_ref().unwrap());
 
+        let typ = self.follow_bindings(typ, cache);
+
         let mut bindings = HashMap::new();
-        typechecker::try_unify(typ, definition_type, &mut bindings, definition.location, cache)
+        typechecker::try_unify(&typ, definition_type, &mut bindings, definition.location, cache)
             .map_err(|error| println!("{}", error))
             .expect("Unification error during monomorphisation");
 
@@ -303,13 +306,14 @@ impl<'g> Generator<'g> {
         // add itself to Generator.definitions
         let value = match &definition.definition {
             Some(DefinitionKind::Definition(definition)) => {
-                Some(self.codegen_monomorphise(*definition, cache))
+                self.codegen_monomorphise(*definition, cache);
+                self.lookup(id, &typ, cache)
             }
             Some(DefinitionKind::Extern(_)) => {
-                Some(self.codegen_extern(id, typ, cache))
+                Some(self.codegen_extern(id, &typ, cache))
             }
             Some(DefinitionKind::TypeConstructor { name, tag }) => {
-                Some(self.codegen_type_constructor(name, tag, typ, cache))
+                Some(self.codegen_type_constructor(name, tag, &typ, cache))
             },
             Some(DefinitionKind::TraitDefinition(_)) => {
                 unreachable!("There is no code in a trait definition that can be codegen'd.\n\
@@ -343,28 +347,27 @@ impl<'g> Generator<'g> {
                         return binding;
                     }
                 }
-                // println!("Unbound type variable found during code generation");
                 &UNBOUND_TYPE
             },
         }
     }
 
-    fn size_of_type<'c>(&self, typ: &types::Type, cache: &ModuleCache<'c>) -> usize {
+    fn size_of_type<'c>(&mut self, typ: &types::Type, cache: &ModuleCache<'c>) -> usize {
         use types::Type::*;
         use types::PrimitiveType::*;
         match typ {
-            Primitive(IntegerType) => 4,
+            Primitive(IntegerType(kind)) => self.integer_bit_count(*kind, cache) as usize / 8,
             Primitive(FloatType) => 8,
             Primitive(CharType) => 1,
             Primitive(BooleanType) => 1,
             Primitive(UnitType) => 1,
-            Primitive(ReferenceType) => 8,
+            Primitive(ReferenceType) => Self::ptr_size(),
 
-            Function(..) => 8,
+            Function(..) => Self::ptr_size(),
 
             TypeVariable(id) => {
-                let binding = self.find_binding(*id, cache);
-                self.size_of_type(binding, cache)
+                let binding = self.find_binding(*id, cache).clone();
+                self.size_of_type(&binding, cache)
             },
 
             UserDefinedType(id) => {
@@ -384,10 +387,10 @@ impl<'g> Generator<'g> {
         }
     }
 
-    fn convert_primitive_type(&self, typ: &types::PrimitiveType) -> BasicTypeEnum<'g> {
+    fn convert_primitive_type<'c>(&mut self, typ: &types::PrimitiveType, cache: &ModuleCache<'c>) -> BasicTypeEnum<'g> {
         use types::PrimitiveType::*;
         match typ {
-            IntegerType => self.context.i32_type().into(),
+            IntegerType(kind) => self.context.custom_width_int_type(self.integer_bit_count(*kind, cache)).into(),
             FloatType => self.context.f64_type().into(),
             CharType => self.context.i8_type().into(),
             BooleanType => self.context.bool_type().into(),
@@ -474,8 +477,9 @@ impl<'g> Generator<'g> {
     fn convert_type<'c>(&mut self, typ: &types::Type, cache: &ModuleCache<'c>) -> BasicTypeEnum<'g> {
         use types::Type::*;
         use types::PrimitiveType::ReferenceType;
+
         match typ {
-            Primitive(primitive) => self.convert_primitive_type(primitive),
+            Primitive(primitive) => self.convert_primitive_type(primitive, cache),
 
             Function(arg_types, return_type) => {
                 let args = fmap(arg_types, |typ| self.convert_type(typ, cache));
@@ -519,16 +523,83 @@ impl<'g> Generator<'g> {
         i1.const_int(0, false).into()
     }
 
-    fn integer_value(&self, value: u64) -> BasicValueEnum<'g> {
-        self.context.i32_type().const_int(value, true).as_basic_value_enum()
+    fn ptr_size() -> usize {
+        std::mem::size_of::<*const i8>()
+    }
+
+    /// Returns the size in bits of this integer.
+    ///
+    /// Will bind the integer to an i32 if this integer is an IntegerKind::Inferred
+    /// that has not already been bound to a concrete type.
+    fn integer_bit_count<'c>(&mut self, int_kind: IntegerKind, cache: &ModuleCache<'c>) -> u32 {
+        use IntegerKind::*;
+        use types::{ Type::Primitive, PrimitiveType::IntegerType };
+
+        match int_kind {
+            I8 | U8 => 8,
+            I16 | U16 => 16,
+            I32 | U32 => 32,
+            I64 | U64 => 64,
+            Isz | Usz => Self::ptr_size() as u32 * 8,
+            Unknown => unreachable!("Unknown integer kind in integer_bit_count"),
+            Inferred(id) => {
+                match self.find_binding(id, cache) {
+                    Primitive(IntegerType(kind)) => {
+                        let kind = *kind;
+                        self.integer_bit_count(kind, cache)
+                    },
+                    typ if typ == &UNBOUND_TYPE => {
+                        // bind to i32 by default
+                        self.monomorphisation_bindings.last_mut().unwrap().insert(id, DEFAULT_INTEGER_TYPE);
+                        32
+                    }
+                    typ => unreachable!("Inferred integer is bound to non-integer type: {}", typ.display(cache)),
+                }
+            }
+        }
+    }
+
+    /// Returns whether this type is unsigned (and therefore whether it should be sign-extended).
+    ///
+    /// Will bind the integer to an i32 if this integer is an IntegerKind::Inferred
+    /// that has not already been bound to a concrete type.
+    fn is_unsigned_integer<'c>(&mut self, int_kind: IntegerKind, cache: &ModuleCache<'c>) -> bool {
+        use IntegerKind::*;
+        use types::{ Type::Primitive, PrimitiveType::IntegerType };
+
+        match int_kind {
+            I8 | I16 | I32 | I64 | Isz => false,
+            U8 | U16 | U32 | U64 | Usz => true,
+            Unknown => unreachable!("Unknown integer kind in is_unsigned_integer"),
+            Inferred(id) => {
+                match self.find_binding(id, cache) {
+                    Primitive(IntegerType(kind)) => {
+                        let kind = *kind;
+                        self.is_unsigned_integer(kind, cache)
+                    },
+                    typ if typ == &UNBOUND_TYPE => {
+                        // bind to i32 by default
+                        self.monomorphisation_bindings.last_mut().unwrap().insert(id, DEFAULT_INTEGER_TYPE);
+                        false
+                    }
+                    typ => unreachable!("Inferred integer is bound to non-integer type: {}", typ.display(cache)),
+                }
+            }
+        }
+    }
+
+    fn integer_value<'c>(&mut self, value: u64, kind: IntegerKind, cache: &ModuleCache<'c>) -> BasicValueEnum<'g> {
+        let bits = self.integer_bit_count(kind, cache);
+        let unsigned = self.is_unsigned_integer(kind, cache);
+        self.context.custom_width_int_type(bits).const_int(value, unsigned).as_basic_value_enum()
     }
 
     fn char_value(&self, value: u64) -> BasicValueEnum<'g> {
-        self.context.i8_type().const_int(value, false).into()
+        self.context.i8_type().const_int(value, true).into()
     }
 
     fn bool_value(&self, value: bool) -> BasicValueEnum<'g> {
-        self.context.bool_type().const_int(value as u64, false).into()
+        self.context.bool_type().const_int(value as u64, true).into()
     }
 
     fn float_value(&self, value: f64) -> BasicValueEnum<'g> {
@@ -597,10 +668,6 @@ impl<'g> Generator<'g> {
                     self.builder.build_store(alloca, value);
                     self.auto_derefs.insert(id);
                     value = alloca.as_basic_value_enum();
-                } else {
-                    // This line isn't currently needed but will be if ante is ever
-                    // generic over mutability
-                    self.auto_derefs.remove(&id);
                 }
 
                 self.definitions.insert((id, typ), value);
@@ -624,7 +691,14 @@ impl<'g> Generator<'g> {
     // Really all definitions should be monomorphised, this is just used as a wrapper so
     // we only compilie function definitions when they're used at their call sites so that
     // we have all the monomorphisation bindings in scope.
-    fn codegen_monomorphise<'c>(&mut self, definition: &ast::Definition<'c>, cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
+    //
+    // This function does not return the value of the definition to force callers to retrieve
+    // the value via the self.definitions map. This is because callers often call this to get
+    // the value for monomorphising a given variable a, but this variable may be defined in
+    // a definition like `(a, b) = ...` where the value returned by the definition is not actually
+    // the value of a. Since this function will bind each pattern the correct value, callers only
+    // need to retrieve this value from self.definitions themselves.
+    fn codegen_monomorphise<'c>(&mut self, definition: &ast::Definition<'c>, cache: &mut ModuleCache<'c>) {
         // If we're defining a lambda, give the lambda info on DefinitionInfoId so that it knows
         // what to name itself in the IR and so recursive functions can properly codegen without
         // attempting to re-compile themselves over and over.
@@ -637,7 +711,6 @@ impl<'g> Generator<'g> {
 
         let value = definition.expr.codegen(self, cache);
         self.bind_irrefutable_pattern(definition.pattern.as_ref(), value, cache);
-        value
     }
 
     // Is this a (possibly generalized) function type?
@@ -832,6 +905,18 @@ impl<'g> Generator<'g> {
         }
     }
 
+    #[allow(dead_code)]
+    fn print_to_stderr(value: BasicValueEnum<'g>) {
+        match value {
+            BasicValueEnum::ArrayValue(array) => array.print_to_stderr(),
+            BasicValueEnum::FloatValue(float) => float.print_to_stderr(),
+            BasicValueEnum::IntValue(int) => int.print_to_stderr(),
+            BasicValueEnum::PointerValue(pointer) => pointer.print_to_stderr(),
+            BasicValueEnum::StructValue(tuple) => tuple.print_to_stderr(),
+            BasicValueEnum::VectorValue(vector) => vector.print_to_stderr(),
+        }
+    }
+
     fn get_field_index<'c>(&self, field_name: &str, typ: &types::Type, cache: &ModuleCache<'c>) -> u32 {
         use types::Type::*;
         match self.follow_bindings(typ, cache) {
@@ -873,7 +958,7 @@ impl <'g, 'c> CodeGen<'g, 'c> for ast::LiteralKind {
             ast::LiteralKind::Char(c) => generator.char_value(*c as u64),
             ast::LiteralKind::Bool(b) => generator.bool_value(*b),
             ast::LiteralKind::Float(f) => generator.float_value(reinterpret_from_bits(*f)),
-            ast::LiteralKind::Integer(i) => generator.integer_value(*i),
+            ast::LiteralKind::Integer(i, kind) => generator.integer_value(*i, *kind, cache),
             ast::LiteralKind::String(s) => generator.string_value(s, cache),
             ast::LiteralKind::Unit => generator.unit_value(),
         }
@@ -935,8 +1020,13 @@ impl<'g, 'c> CodeGen<'g, 'c> for ast::FunctionCall<'c> {
                 builtin::call_builtin(&self.args, generator)
             },
             _ => {
-                let function = self.function.codegen(generator, cache);
+                // TODO: Code smell: args currently must be compiled before the function in case
+                // they contain polymorphic integer literals which still need to be defaulted
+                // to i32. This can happen if a top-level definition like `a = Some 2` is
+                // generalized.
                 let args = fmap(&self.args, |arg| arg.codegen(generator, cache));
+
+                let function = self.function.codegen(generator, cache);
                 generator.builder.build_call(function.into_pointer_value(), &args, "")
                     .try_as_basic_value().left().unwrap()
             },

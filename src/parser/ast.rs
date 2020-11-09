@@ -1,13 +1,13 @@
-use crate::lexer::token::Token;
+use crate::lexer::token::{ Token, IntegerKind };
 use crate::error::location::{ Location, Locatable };
 use crate::cache::{ DefinitionInfoId, TraitInfoId, ModuleId, ImplScopeId, TraitBindingId, VariableId };
 use crate::types::{ self, TypeInfoId, LetBindingLevel };
 use crate::types::pattern::DecisionTree;
 use crate::util::reinterpret_as_bits;
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Debug, Eq, Hash, PartialOrd, Ord)]
 pub enum LiteralKind {
-    Integer(u64),
+    Integer(u64, IntegerKind),
     Float(u64),
     String(String),
     Char(char),
@@ -122,7 +122,7 @@ pub struct Match<'a> {
 // PointerType and potentially UserDefinedType are actually type constructors
 #[derive(Debug)]
 pub enum Type<'a> {
-    IntegerType(Location<'a>),
+    IntegerType(IntegerKind, Location<'a>),
     FloatType(Location<'a>),
     CharType(Location<'a>),
     StringType(Location<'a>),
@@ -187,6 +187,7 @@ pub struct TraitDefinition<'a> {
     // this shouldn't matter until refinement types are implemented
     // that can depend upon these names.
     pub declarations: Vec<TypeAnnotation<'a>>,
+    pub level: Option<LetBindingLevel>,
     pub location: Location<'a>,
     pub trait_info: Option<TraitInfoId>,
     pub typ: Option<types::Type>,
@@ -237,6 +238,7 @@ pub struct Sequence<'a> {
 #[derive(Debug)]
 pub struct Extern<'a> {
     pub declarations: Vec<TypeAnnotation<'a>>,
+    pub level: Option<LetBindingLevel>,
     pub location: Location<'a>,
     pub typ: Option<types::Type>,
 }
@@ -289,9 +291,25 @@ pub enum Ast<'a> {
     Assignment(Assignment<'a>),
 }
 
+impl PartialEq for LiteralKind {
+    /// Ignoring any type tags, are these literals equal?
+    fn eq(&self, other: &Self) -> bool {
+        use LiteralKind::*;
+        match (self, other) {
+            (Integer(x, _), Integer(y, _)) => x == y,
+            (Float(x), Float(y)) => x == y,
+            (String(x), String(y)) => x == y,
+            (Char(x), Char(y)) => x == y,
+            (Bool(x), Bool(y)) => x == y,
+            (Unit, Unit) => true,
+            _ => false,
+        }
+    }
+}
+
 impl<'a> Ast<'a> {
-    pub fn integer(x: u64, location: Location<'a>) -> Ast<'a> {
-        Ast::Literal(Literal { kind: LiteralKind::Integer(x), location, typ: None })
+    pub fn integer(x: u64, kind: IntegerKind, location: Location<'a>) -> Ast<'a> {
+        Ast::Literal(Literal { kind: LiteralKind::Integer(x, kind), location, typ: None })
     }
 
     pub fn float(x: f64, location: Location<'a>) -> Ast<'a> {
@@ -359,7 +377,7 @@ impl<'a> Ast<'a> {
 
     pub fn trait_definition(name: String, args: Vec<String>, fundeps: Vec<String>, declarations: Vec<TypeAnnotation<'a>>, location: Location<'a>) -> Ast<'a> {
         assert!(!args.is_empty());
-        Ast::TraitDefinition(TraitDefinition { name, args, fundeps, declarations, location, trait_info: None, typ: None })
+        Ast::TraitDefinition(TraitDefinition { name, args, fundeps, declarations, location, level: None, trait_info: None, typ: None })
     }
 
     pub fn trait_impl(trait_name: String, trait_args: Vec<Type<'a>>, definitions: Vec<Definition<'a>>, location: Location<'a>) -> Ast<'a> {
@@ -377,7 +395,7 @@ impl<'a> Ast<'a> {
     }
 
     pub fn extern_expr(declarations: Vec<TypeAnnotation<'a>>, location: Location<'a>) -> Ast<'a> {
-        Ast::Extern(Extern { declarations, location, typ: None })
+        Ast::Extern(Extern { declarations, location, level: None, typ: None })
     }
 
     pub fn member_access(lhs: Ast<'a>, field: String, location: Location<'a>) -> Ast<'a> {

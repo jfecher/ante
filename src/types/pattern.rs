@@ -744,7 +744,7 @@ impl DebugConstructor {
             Some(UserDefined(id)) => {
                 cache.definition_infos[id.0].name.clone()
             },
-            Some(Literal(LiteralKind::Integer(_))) => "_ : int".to_string(),
+            Some(Literal(LiteralKind::Integer(_, kind))) => format!("_ : {}", kind),
             Some(Literal(LiteralKind::Float(_))) => "_ : float".to_string(),
             Some(Literal(LiteralKind::String(_))) => "_ : string".to_string(),
             Some(Literal(LiteralKind::Char(_))) => "_ : char".to_string(),
@@ -864,7 +864,7 @@ impl Case {
                 let constructor_type = unwrap_clone(&cache.definition_infos[id.0].typ);
                 typechecker::instantiate(&constructor_type, vec![], cache).0
             },
-            Some(Literal(LiteralKind::Integer(_))) => Type::Primitive(PrimitiveType::IntegerType),
+            Some(Literal(LiteralKind::Integer(_, kind))) => Type::Primitive(PrimitiveType::IntegerType(kind)),
             Some(Literal(LiteralKind::Float(_))) => Type::Primitive(PrimitiveType::FloatType),
             Some(Literal(LiteralKind::String(_))) => Type::UserDefinedType(STRING_TYPE),
             Some(Literal(LiteralKind::Char(_))) => Type::Primitive(PrimitiveType::CharType),

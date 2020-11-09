@@ -1,4 +1,4 @@
-use crate::lexer::token::Token;
+use crate::lexer::token::{ Token, IntegerKind };
 use crate::error::location::Location;
 use crate::parser::error::{ ParseError, ParseResult };
 
@@ -358,14 +358,14 @@ pub fn string_literal_token<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b,
     }
 }
 
-pub fn integer_literal_token<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, u64> {
+pub fn integer_literal_token<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, (u64, IntegerKind)> {
     match input[0] {
-        (Token::IntegerLiteral(int), location) => Ok((&input[1..], int, location)),
+        (Token::IntegerLiteral(int, kind), location) => Ok((&input[1..], (int, kind), location)),
         (Token::Invalid(c), location) => {
             Err(ParseError::Fatal(Box::new(ParseError::LexerError(c, location))))
         },
         (_, location) => {
-            Err(ParseError::Expected(vec![Token::IntegerLiteral(0)], location))
+            Err(ParseError::Expected(vec![Token::IntegerLiteral(0, IntegerKind::Unknown)], location))
         },
     }
 }
@@ -397,6 +397,18 @@ pub fn char_literal_token<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, c
 pub fn bool_literal_token<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, bool> {
     match input[0] {
         (Token::BooleanLiteral(boolean), location) => Ok((&input[1..], boolean, location)),
+        (Token::Invalid(c), location) => {
+            Err(ParseError::Fatal(Box::new(ParseError::LexerError(c, location))))
+        },
+        (_, location) => {
+            Err(ParseError::Expected(vec![Token::BooleanLiteral(true)], location))
+        },
+    }
+}
+
+pub fn int_type_token<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, IntegerKind> {
+    match input[0] {
+        (Token::IntegerType(kind), location) => Ok((&input[1..], kind, location)),
         (Token::Invalid(c), location) => {
             Err(ParseError::Fatal(Box::new(ParseError::LexerError(c, location))))
         },

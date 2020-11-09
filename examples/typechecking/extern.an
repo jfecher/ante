@@ -2,9 +2,9 @@
 extern foo: a -> b
 
 extern
-    add: int int -> int
+    add: i32 i32 -> i32
     puts2: string -> unit
-    exit2: int -> never_returns
+    exit2: i32 -> never_returns
 
 foo 1
 puts2 "test"
@@ -12,7 +12,7 @@ exit2 0
 
 // args: --check --show-types
 // expected stdout:
-// add : (int int -> int)
-// exit2 : (forall a. (int -> a))
+// add : (i32 i32 -> i32)
+// exit2 : (forall a. (i32 -> a))
 // foo : (forall a b. (a -> b))
 // puts2 : (string -> unit)

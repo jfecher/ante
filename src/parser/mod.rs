@@ -418,7 +418,7 @@ fn parse_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
 
 fn basic_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
     match input[0].0 {
-        Token::IntegerType => int_type(input),
+        Token::IntegerType(_) => int_type(input),
         Token::FloatType => float_type(input),
         Token::CharType => char_type(input),
         Token::StringType => string_type(input),
@@ -468,7 +468,7 @@ fn argument<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
     match input[0].0 {
         Token::Identifier(_) => variable(input),
         Token::StringLiteral(_) => string(input),
-        Token::IntegerLiteral(_) => integer(input),
+        Token::IntegerLiteral(_, _) => integer(input),
         Token::FloatLiteral(_) => float(input),
         Token::CharLiteral(_) => parse_char(input),
         Token::BooleanLiteral(_) => parse_bool(input),
@@ -522,7 +522,7 @@ parser!(string loc =
 
 parser!(integer loc =
     value <- integer_literal_token;
-    Ast::integer(value, loc)
+    Ast::integer(value.0, value.1, loc)
 );
 
 parser!(float loc =
@@ -559,8 +559,8 @@ parser!(type_application loc -> 'b Type<'b> =
 );
 
 parser!(int_type loc -> 'b Type<'b> =
-    _ <- expect(Token::IntegerType);
-    Type::IntegerType(loc)
+    kind <- int_type_token;
+    Type::IntegerType(kind, loc)
 );
 
 parser!(float_type loc -> 'b Type<'b> =

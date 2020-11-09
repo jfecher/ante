@@ -1,4 +1,4 @@
-type FooBar = foo:int, bar:string
+type FooBar = foo:i32, bar:string
 type Foo = foo:float
 type Bar = bar:char
 
@@ -19,14 +19,14 @@ foo_and_bar foo bar
 // TODO: error location can be improved, should be at the callsite
 // expected stdout:
 // examples/typechecking/member_access.an: 1,1	error: Type mismatch between string and char
-// type FooBar = foo:int, bar:string
+// type FooBar = foo:i32, bar:string
 // 
 // Bar : (char -> Bar)
 // Foo : (float -> Foo)
-// FooBar : (int string -> FooBar)
+// FooBar : (i32 string -> FooBar)
 // bar : Bar
 // foo : Foo
 // foo_and_bar : (forall a b. (a b -> string))
-//   given .foo a c, .bar b string
+//   given .bar b string, .foo a c
 // foobar : FooBar
 // stringify : (string -> string)

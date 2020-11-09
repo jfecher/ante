@@ -1,6 +1,6 @@
 use crate::parser::ast::{ self, Ast };
 use std::fmt::{ self, Display, Formatter };
-use crate::util::{ fmap, join_with };
+use crate::util::{ fmap, join_with, reinterpret_from_bits };
 
 impl<'a> Display for Ast<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -12,8 +12,8 @@ impl<'a> Display for ast::Literal<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         use ast::LiteralKind::*;
         match &self.kind {
-            Integer(x) => write!(f, "{}", x),
-            Float(x) => write!(f, "{}", x),
+            Integer(x, _) => write!(f, "{}", x),
+            Float(x) => write!(f, "{}", reinterpret_from_bits(*x)),
             String(s) => write!(f, "\"{}\"", s),
             Char(c) => write!(f, "'{}'", c),
             Bool(b) => write!(f, "{}", if *b { "true" } else { "false" }),
@@ -82,7 +82,7 @@ impl<'a> Display for ast::Type<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         use ast::Type::*;
         match self {
-            IntegerType(_) => write!(f, "int"),
+            IntegerType(kind, _) => write!(f, "{}", kind),
             FloatType(_) => write!(f, "float"),
             CharType(_) => write!(f, "char"),
             StringType(_) => write!(f, "string"),
