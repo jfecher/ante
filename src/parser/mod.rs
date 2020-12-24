@@ -146,6 +146,7 @@ fn parenthesized_irrefutable_pattern<'a, 'b>(input: Input<'a, 'b>) -> AstResult<
 fn irrefutable_pattern_argument<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
     match input[0].0 {
         Token::ParenthesisLeft => or(&[parenthesized_irrefutable_pattern, irrefutable_tuple_pattern], "irrefutable_pattern_argument")(input),
+        Token::UnitLiteral => unit(input),
         _ => variable(input),
     }
 }
