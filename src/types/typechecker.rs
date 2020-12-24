@@ -7,7 +7,7 @@
 //! Note: most of this file is directly translated from:
 //! https://github.com/jfecher/algorithm-j
 use crate::cache::{ ModuleCache, TraitInfoId, DefinitionInfoId, DefinitionKind };
-use crate::cache::{ ImplInfoId, ImplScopeId, TraitBindingId, VariableId };
+use crate::cache::{ ImplScopeId, TraitBindingId, VariableId };
 use crate::error::location::{ Location, Locatable };
 use crate::error::{ ErrorMessage, get_error_count };
 use crate::lexer::token::IntegerKind;
@@ -17,6 +17,7 @@ use crate::types::{ Type, Type::*, TypeVariableId, PrimitiveType, LetBindingLeve
 use crate::types::{ TypeBinding, STRING_TYPE };
 use crate::types::typed::Typed;
 use crate::types::traits::{ TraitConstraints, RequiredTrait, TraitConstraint };
+use crate::types::traitchecker;
 use crate::util::*;
 
 use std::collections::HashMap;
@@ -27,6 +28,10 @@ pub static CURRENT_LEVEL: AtomicUsize = AtomicUsize::new(INITIAL_LEVEL);
 
 /// A sparse set of type bindings, used by try_unify
 pub type TypeBindings = HashMap<TypeVariableId, Type>;
+
+/// The result of `try_unify`: either a set of type bindings to perform,
+/// or an error message of which types failed to unify.
+pub type UnificationResult<'c> = Result<TypeBindings, ErrorMessage<'c>>;
 
 /// Replace any typevars found in typevars_to_replace with the
 /// associated value in the same table, leave them otherwise
@@ -209,11 +214,11 @@ fn occurs<'b>(id: TypeVariableId, level: LetBindingLevel, typ: &Type, bindings: 
 }
 
 /// Returns what a given type is bound to, following all typevar links until it reaches an Unbound one.
-fn follow_bindings<'b>(typ: &Type, bindings: &TypeBindings, cache: &ModuleCache<'b>) -> Type {
+pub fn follow_bindings_in_cache_and_map<'b>(typ: &Type, bindings: &TypeBindings, cache: &ModuleCache<'b>) -> Type {
     match typ {
         TypeVariable(id) => {
             match find_binding(*id, bindings, cache) {
-                Bound(typ) => follow_bindings(&typ, bindings, cache),
+                Bound(typ) => follow_bindings_in_cache_and_map(&typ, bindings, cache),
                 Unbound(..) => typ.clone(),
             }
         }
@@ -221,7 +226,31 @@ fn follow_bindings<'b>(typ: &Type, bindings: &TypeBindings, cache: &ModuleCache<
     }
 }
 
-pub fn try_unify<'b>(t1: &Type, t2: &Type, bindings: &mut TypeBindings, location: Location<'b>, cache: &mut ModuleCache<'b>) -> Result<(), ErrorMessage<'b>> {
+/// Follow all typevar links stored in the cache, returning the resulting type that this type
+/// variable is bound to if there is one. If there is no such type, the given type is cloned.
+/// If the given type is not a type variable, it is cloned and returned as-is.
+pub fn follow_bindings_in_cache<'b>(typ: &Type, cache: &ModuleCache<'b>) -> Type {
+    match typ {
+        TypeVariable(id) => {
+            match &cache.type_bindings[id.0] {
+                Bound(typ) => follow_bindings_in_cache(&typ, cache),
+                Unbound(..) => typ.clone(),
+            }
+        }
+        _ => typ.clone(),
+    }
+}
+
+/// Try to unify the two given types, with the given addition set of type bindings.
+/// This will not perform any binding of type variables in-place, instead it will insert
+/// their mapping into the given set of bindings, letting the user of this function decide
+/// whether to use the unification results or not.
+///
+/// If there is an error during unification, an appropriate error message is returned,
+/// and the given bindings set may still be modified with prior type bindings.
+///
+/// This function performs the bulk of the work for the various unification functions.
+pub fn try_unify_with_bindings<'b>(t1: &Type, t2: &Type, bindings: &mut TypeBindings, location: Location<'b>, cache: &mut ModuleCache<'b>) -> Result<(), ErrorMessage<'b>> {
     match (t1, t2) {
         (Primitive(p1), Primitive(p2)) if p1 == p2 => Ok(()),
 
@@ -236,12 +265,12 @@ pub fn try_unify<'b>(t1: &Type, t2: &Type, bindings: &mut TypeBindings, location
         (TypeVariable(id), b) => {
             match find_binding(*id, bindings, &cache) {
                 Bound(a) => {
-                    try_unify(&a, b, bindings, location, cache)
+                    try_unify_with_bindings(&a, b, bindings, location, cache)
                 },
                 Unbound(a_level, _a_kind) => {
                     // Create binding for boundTy that is currently empty.
                     // Ensure not to create recursive bindings to the same variable
-                    let b = follow_bindings(b, bindings, cache);
+                    let b = follow_bindings_in_cache_and_map(b, bindings, cache);
                     if *t1 != b {
                         // TODO: Can this occurs check not mutate the typevar levels until we
                         // return success?
@@ -261,12 +290,12 @@ pub fn try_unify<'b>(t1: &Type, t2: &Type, bindings: &mut TypeBindings, location
         (a, TypeVariable(id)) => {
             match find_binding(*id, &bindings, &cache) {
                 Bound(b) => {
-                    try_unify(a, &b, bindings, location, cache)
+                    try_unify_with_bindings(a, &b, bindings, location, cache)
                 },
                 Unbound(b_level, _b_kind) => {
                     // Create binding for boundTy that is currently empty.
                     // Ensure not to create recursive bindings to the same variable
-                    let a = follow_bindings(a, bindings, cache);
+                    let a = follow_bindings_in_cache_and_map(a, bindings, cache);
                     if a != *t2 {
                         if occurs(*id, b_level, &a, bindings, cache) {
                             Err(make_error!(location, "Cannot construct recursive type: {} = {}", t1.debug(cache), t2.debug(cache)))
@@ -283,26 +312,27 @@ pub fn try_unify<'b>(t1: &Type, t2: &Type, bindings: &mut TypeBindings, location
 
         (Function(a_args, a_ret), Function(b_args, b_ret)) => {
             if a_args.len() != b_args.len() {
-                return Err(make_error!(location, "Type mismatch between {} and {}", t1.display(cache), t2.display(cache)));
+                return Err(make_error!(location, "Function types differ in argument count: {} ({} arg(s)) and {} ({} arg(s))",
+                    t1.display(cache), t2.display(cache), a_args.len(), b_args.len()));
             }
 
             for (a_arg, b_arg) in a_args.iter().zip(b_args.iter()) {
-                try_unify(a_arg, b_arg, bindings, location, cache)?;
+                try_unify_with_bindings(a_arg, b_arg, bindings, location, cache)?;
             }
 
-            try_unify(a_ret, b_ret, bindings, location, cache)?;
+            try_unify_with_bindings(a_ret, b_ret, bindings, location, cache)?;
             Ok(())
         },
 
         (TypeApplication(a_constructor, a_args), TypeApplication(b_constructor, b_args)) => {
             if a_args.len() != b_args.len() {
-                return Err(make_error!(location, "Type mismatch between {} and {}", t1.display(cache), t2.display(cache)));
+                return Err(make_error!(location, "Arity mismatch between {} and {}", t1.display(cache), t2.display(cache)));
             }
 
-            try_unify(a_constructor, b_constructor, bindings, location, cache)?;
+            try_unify_with_bindings(a_constructor, b_constructor, bindings, location, cache)?;
 
             for (a_arg, b_arg) in a_args.iter().zip(b_args.iter()) {
-                try_unify(a_arg, b_arg, bindings, location, cache)?;
+                try_unify_with_bindings(a_arg, b_arg, bindings, location, cache)?;
             }
 
             Ok(())
@@ -310,11 +340,11 @@ pub fn try_unify<'b>(t1: &Type, t2: &Type, bindings: &mut TypeBindings, location
 
         (Tuple(a_elements), Tuple(b_elements)) => {
             if a_elements.len() != b_elements.len() {
-                return Err(make_error!(location, "Type mismatch between {} and {}", t1.display(cache), t2.display(cache)));
+                return Err(make_error!(location, "{} differs in element count with {}", t1.display(cache), t2.display(cache)));
             }
 
             for (a_element, b_element) in a_elements.iter().zip(b_elements.iter()) {
-                try_unify(a_element, b_element, bindings, location, cache)?;
+                try_unify_with_bindings(a_element, b_element, bindings, location, cache)?;
             }
 
             Ok(())
@@ -324,42 +354,70 @@ pub fn try_unify<'b>(t1: &Type, t2: &Type, bindings: &mut TypeBindings, location
             if a_vars.len() != b_vars.len() {
                 return Err(make_error!(location, "Type mismatch between {} and {}", a.display(cache), b.display(cache)));
             }
-            try_unify(a, b, bindings, location, cache)
+            try_unify_with_bindings(a, b, bindings, location, cache)
         },
 
         (a, b) => Err(make_error!(location, "Type mismatch between {} and {}", a.display(cache), b.display(cache))),
     }
 }
 
+/// A convenience wrapper for try_unify_with_bindings, creating an empty
+/// set of type bindings, and returning all the newly-created bindings on success,
+/// or the unification error message on error.
+pub fn try_unify<'c>(t1: &Type, t2: &Type, location: Location<'c>, cache: &mut ModuleCache<'c>) -> UnificationResult<'c> {
+    let mut bindings = HashMap::new();
+    try_unify_with_bindings(t1, t2, &mut bindings, location, cache)
+        .map(|()| bindings)
+}
+
 /// Try to unify the types from all the given vectors. We only return success or failure since that
 /// is all that is needed during trait resultion. If this function is ever needed outside of trait
 /// resolution it can be altered to collect the appropriate bindings/error messages as well.
-pub fn try_unify_all<'b>(vec1: &Vec<Type>, vec2: &Vec<Type>, location: Location<'b>, cache: &mut ModuleCache<'b>) -> Result<TypeBindings, ()> {
+pub fn try_unify_all<'c>(vec1: &[Type], vec2: &[Type], location: Location<'c>, cache: &mut ModuleCache<'c>) -> UnificationResult<'c> {
     if vec1.len() != vec2.len() {
-        return Err(());
+        // This bad error message is the reason this function isn't used within
+        // try_unify_with_bindings! We'd need access to the full type to give better
+        // errors like the other function does.
+        return Err(make_error!(location, "Type-length mismatch: {} versus {} when unifying [{}] and [{}]",
+            vec1.len(), vec2.len(), concat_type_strings(vec1, cache), concat_type_strings(vec2, cache)));
     }
 
     let mut bindings = HashMap::new();
     for (t1, t2) in vec1.iter().zip(vec2.iter()) {
-        match try_unify(t1, t2, &mut bindings, location, cache) {
-            Err(_) => return Err(()),
-            _ => (),
-        }
+        try_unify_with_bindings(t1, t2, &mut bindings, location, cache)?;
     }
     Ok(bindings)
 }
 
-pub fn unify<'b>(t1: &Type, t2: &Type, location: Location<'b>, cache: &mut ModuleCache<'b>) {
-    let mut bindings = HashMap::new();
-    match try_unify(t1, t2, &mut bindings, location, cache) {
-        Ok(()) => {
-            for (id, binding) in bindings.into_iter() {
-                cache.type_bindings[id.0] = Bound(binding);
-            }
-        },
-        Err(message) => {
-            println!("{}", message);
-        }
+/// Concatenate all the types into a comma-separated string for error messages.
+fn concat_type_strings<'c>(types: &[Type], cache: &ModuleCache<'c>) -> String {
+    let types = fmap(types, |typ| typ.display(cache).to_string());
+    join_with(&types, ", ")
+}
+
+/// Unifies the two given types, remembering the unification results in the cache.
+/// If this operation fails, a user-facing error message is emitted.
+pub fn unify<'c>(t1: &Type, t2: &Type, location: Location<'c>, cache: &mut ModuleCache<'c>) {
+    perform_bindings_or_print_error(
+        try_unify(t1, t2, location, cache), cache
+    );
+}
+
+/// Helper for committing to the results of try_unify.
+/// Places all the typevar bindings in the cache to be remembered,
+/// or otherwise prints out the given error message.
+pub fn perform_bindings_or_print_error<'c>(unification_result: UnificationResult<'c>, cache: &mut ModuleCache<'c>) {
+    match unification_result {
+        Ok(bindings) => perform_type_bindings(bindings, cache),
+        Err(message) => println!("{}", message),
+    }
+}
+
+/// Remember all the given type bindings in the cache,
+/// permanently binding the given type variables to the given bindings.
+pub fn perform_type_bindings<'c>(bindings: TypeBindings, cache: &mut ModuleCache<'c>) {
+    for (id, binding) in bindings.into_iter() {
+        cache.type_bindings[id.0] = Bound(binding);
     }
 }
 
@@ -582,171 +640,6 @@ fn bind_irrefutable_pattern_in_impl<'a>(ast: &ast::Ast<'a>, trait_id: TraitInfoI
     }
 }
 
-/// A trait should be propogated to the public signature of a Definition if any of its contained
-/// type variables should be generalized. If the trait shouldn't be propogated then an impl
-/// should be resolved instead.
-fn should_propagate<'a>(constraint: &TraitConstraint, cache: &ModuleCache<'a>) -> bool {
-    // Don't check the fundeps since only the typeargs proper are used to find impls
-    let arg_count = cache.trait_infos[constraint.trait_id.0].typeargs.len();
-    constraint.args.iter().take(arg_count).any(|arg| !find_all_typevars(arg, true, cache).is_empty())
-        // Make sure we never propagate when we're already in top-level in main with nowhere to propagate to.
-        && CURRENT_LEVEL.load(Ordering::SeqCst) >= INITIAL_LEVEL
-}
-
-fn check_member_access<'a>(constraint: &TraitConstraint, location: Location<'a>, cache: &mut ModuleCache<'a>) -> Vec<ErrorMessage<'a>> {
-    let empty_bindings = HashMap::new();
-    let collection = follow_bindings(&constraint.args[0], &empty_bindings, cache);
-
-    let field_name = &cache.trait_infos[constraint.trait_id.0].name[1..];
-
-    match collection {
-        Type::UserDefinedType(id) => {
-            let field_type = cache.type_infos[id.0].find_field(field_name)
-                .map(|(_, field)| field.field_type.clone());
-
-            match field_type {
-                Some(field_type) => {
-                    // FIXME: this unifies the type variables from the definition of field_type
-                    // rather than the types it was instantiated to. This will be incorrect if
-                    // the user ever uses a generic field with two different types!
-                    unify(&constraint.args[1], &field_type, location, cache);
-                    vec![]
-                },
-                _ => vec![make_error!(location, "Type {} has no field named {}", collection.display(cache), field_name)],
-            }
-
-        },
-        _ => vec![make_error!(location, "Type {} is not a struct type and has no field named {}", collection.display(cache), field_name)],
-    }
-}
-
-fn check_int_trait<'a>(constraint: &TraitConstraint, location: Location<'a>, cache: &mut ModuleCache<'a>) -> Vec<ErrorMessage<'a>> {
-    let empty_bindings = HashMap::new();
-    let typ = follow_bindings(&constraint.args[0], &empty_bindings, cache);
-    
-    match &typ {
-        Type::Primitive(PrimitiveType::IntegerType(kind)) => {
-            // Any integer literal impls Int by default, though assert that none should
-            // be Unknown or Inferred at this point in type inference. Any Unknown literal
-            // is translated to Inferred in LiteralKind::infer_impl and the type of such
-            // a literal is always a TypeVariable rather than remaining an Inferred IntegerType.
-            match kind {
-                IntegerKind::Unknown => unreachable!(),
-                IntegerKind::Inferred(_) => unreachable!(),
-                _ => vec![],
-            }
-        },
-        Type::TypeVariable(_) => {
-            // If this is an inferred integer literal and we need to assign a type, just choose i32 by default
-            unify(&typ, &Type::Primitive(PrimitiveType::IntegerType(IntegerKind::I32)), location, cache);
-            vec![]
-        },
-        _ => vec![make_error!(location, "Expected a primitive integer type, but found {}", typ.display(cache))],
-    }
-}
-
-fn find_definition_in_impl<'c>(origin: VariableId, impl_id: ImplInfoId, cache: &ModuleCache<'c>) -> DefinitionInfoId {
-    let name = &cache.variable_nodes[origin.0];
-
-    let impl_info = &cache.impl_infos[impl_id.0];
-    for definition in impl_info.definitions.iter().copied() {
-        let definition_name = &cache.definition_infos[definition.0].name;
-        if definition_name == name {
-            return definition;
-        }
-    }
-    unreachable!("Could not find definition for {} in impl at {}", name, impl_info.location);
-}
-
-/// Search for an impl for the given TraitConstraint or error if 0
-/// or >1 matching impls are found.
-fn find_impl<'c>(constraint: &TraitConstraint, location: Location<'c>, cache: &mut ModuleCache<'c>) -> Vec<ErrorMessage<'c>> {
-    if cache.trait_infos[constraint.trait_id.0].is_member_access() {
-        return check_member_access(&constraint, location, cache);
-    } else if constraint.trait_id == cache.int_trait {
-        return check_int_trait(&constraint, location, cache);
-    }
-
-    let scope = cache.impl_scopes[constraint.scope.0].clone();
-    let mut found = vec![];
-    let mut bindings = HashMap::new();
-
-    for impl_id in scope.iter().copied() {
-        let info = &cache.impl_infos[impl_id.0];
-
-        if info.trait_id == constraint.trait_id {
-            // TODO: remove excess cloning
-            if let Ok(map) = try_unify_all(&constraint.args, &info.typeargs.clone(), location, cache) {
-                found.push(impl_id);
-                bindings = map;
-            }
-        }
-    }
-
-    if found.len() == 1 {
-        // Actually bind the types from the impl.
-        // This lets us infer (e.g.) types from fundeps in an impl
-        for (id, binding) in bindings.into_iter() {
-            cache.type_bindings[id.0] = Bound(binding);
-        }
-
-        infer_trait_impl(found[0], cache);
-
-        // Now attach the RequiredImpl to the callsite variable it is used in
-        let binding = find_definition_in_impl(constraint.origin, found[0], cache);
-        let callsite = constraint.callsite;
-        let required_impl = constraint.as_required_impl(binding);
-
-        let callsite_info = &mut cache.trait_bindings[callsite.0];
-        callsite_info.required_impls.push(required_impl);
-        vec![]
-    } else if found.len() > 1 {
-        let mut errors = vec![make_error!(location, "{} matching impls found for {}", found.len(), constraint.display(cache))];
-        for (i, id) in found.iter().enumerate() {
-            let info = &cache.impl_infos[id.0];
-            errors.push(make_note!(info.location, "Candidate {} ({})", i + 1, id.0));
-        }
-        errors
-    } else {
-        vec![make_error!(location, "No impl found for {}", constraint.display(cache))]
-    }
-}
-
-/// Go through the given list of traits and determine if they should
-/// be propogated upward or if an impl should be searched for now.
-/// Returns the list of traits propogated upward.
-/// Binds the impls that were searched for and found to the required_impls
-/// in the callsite VariableInfo, and errors for any impls that couldn't be found.
-fn resolve_traits<'a>(constraints: TraitConstraints, location: Location<'a>, cache: &mut ModuleCache<'a>) -> Vec<RequiredTrait> {
-    let mut results = Vec::with_capacity(constraints.len());
-    let mut erroring_constraints = vec![];
-
-    for constraint in constraints {
-        if should_propagate(&constraint, cache) {
-            results.push(constraint.as_required_trait());
-        } else {
-            let errors = find_impl(&constraint, location, cache);
-            if !errors.is_empty() {
-                erroring_constraints.push(constraint);
-            }
-        }
-    }
-
-    for constraint in erroring_constraints {
-        // Try to find the impl again. If any `Int a` constraints were automatically resolved
-        // to `i32` there's a chance an impl can be found now and no errors will be returned.
-        for error in find_impl(&constraint, location, cache) {
-            println!("{}", error);
-        }
-    }
-
-    // NOTE: 'duplicate' trait constraints like `given Print a, Print a` are NOT separated out here
-    // because they each point to different usages of the trait. They are only filtered out when
-    // displaying types to the user.
-    results
-}
-
-
 pub trait Inferable<'a> {
     fn infer_impl(&mut self, checker: &mut ModuleCache<'a>) -> (Type, TraitConstraints);
 }
@@ -758,7 +651,7 @@ pub fn infer_ast<'a>(ast: &mut ast::Ast<'a>, cache: &mut ModuleCache<'a>) {
     let (_, traits) = infer(ast, cache);
     CURRENT_LEVEL.store(INITIAL_LEVEL - 1, Ordering::SeqCst);
 
-    let exposed_traits = resolve_traits(traits, ast.locate(), cache);
+    let exposed_traits = traitchecker::resolve_traits(traits, ast.locate(), cache);
     // No traits should be propogated above the top-level main function
     assert!(exposed_traits.is_empty());
 }
@@ -769,12 +662,6 @@ pub fn infer<'a, T>(ast: &mut T, cache: &mut ModuleCache<'a>) -> (Type, TraitCon
     let (typ, traits) = ast.infer_impl(cache);
     ast.set_type(typ.clone());
     (typ, traits)
-}
-
-fn infer_trait_impl<'a>(id: ImplInfoId, cache: &mut ModuleCache<'a>) {
-    let info = &mut cache.impl_infos[id.0];
-    let trait_impl = trustme::extend_lifetime(info.trait_impl);
-    infer(trait_impl, cache);
 }
 
 /// Note: each Ast's inference rule is given above the impl if available.
@@ -927,7 +814,7 @@ impl<'a> Inferable<'a> for ast::Definition<'a> {
         CURRENT_LEVEL.store(level.0 - 1, Ordering::SeqCst);
 
         // Now infer the traits + type of the lhs
-        let exposed_traits = resolve_traits(traits, self.location, cache);
+        let exposed_traits = traitchecker::resolve_traits(traits, self.location, cache);
         bind_irrefutable_pattern(self.pattern.as_mut(), &t, &exposed_traits, true, cache);
 
         // And restore the previous LetBindingLevel.

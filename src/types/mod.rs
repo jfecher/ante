@@ -7,6 +7,7 @@ use std::collections::HashMap;
 pub mod pattern;
 pub mod typed;
 pub mod typechecker;
+pub mod traitchecker;
 pub mod typeprinter;
 pub mod traits;
 

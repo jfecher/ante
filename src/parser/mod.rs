@@ -7,7 +7,7 @@ pub mod ast;
 pub mod pretty_printer;
 
 use crate::lexer::token::Token;
-use ast::{ Ast, Type, TypeDefinitionBody };
+use ast::{ Ast, Type, Trait, TypeDefinitionBody };
 use error::{ ParseError, ParseResult };
 use crate::error::location::Location;
 use combinators::*;
@@ -243,10 +243,23 @@ parser!(trait_impl loc =
     _ <- expect(Token::Impl);
     name !<- typename;
     args !<- many1(basic_type);
+    given !<- maybe(given);
     _ !<- expect(Token::Indent);
     definitions !<- delimited_trailing(raw_definition, expect(Token::Newline));
     _ !<- expect(Token::Unindent);
-    Ast::trait_impl(name, args, definitions, loc)
+    Ast::trait_impl(name, args, given.unwrap_or(vec![]), definitions, loc)
+);
+
+parser!(given loc -> 'b Vec<Trait<'b>> =
+    _ <- expect(Token::Given);
+    traits <- delimited(required_trait, expect(Token::Comma));
+    traits
+);
+
+parser!(required_trait loc -> 'b Trait<'b> =
+    name <- typename;
+    args <- many1(basic_type);
+    Trait { name, args }
 );
 
 parser!(return_expr loc =

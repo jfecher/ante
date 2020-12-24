@@ -77,7 +77,8 @@ pub struct TraitConstraint {
     /// 4| foo 1
     ///
     /// The callsite variable is the `foo` on line 4 and the constraint arises from
-    /// the `+` on line 2.
+    /// the `+` on line 2. Callsites are where the compiler stores the trait information
+    /// needed to continue compiling that definition with the given types.
     pub callsite: TraitBindingId,
 
     /// The origin of this TraitConstraint, to be stored in RequiredImpl::origin
@@ -180,6 +181,10 @@ impl TraitConstraint {
         }
     }
 
+    pub fn is_member_access<'c>(&self, cache: &ModuleCache<'c>) -> bool {
+        cache.trait_infos[self.trait_id.0].is_member_access()
+    }
+
     /// Each integer literal without a type suffix is given the generic type
     /// "a given Int a". This function returns a TraitConstraint for this
     /// builtin Int trait to be resolved later in typechecking to a specific
@@ -192,6 +197,10 @@ impl TraitConstraint {
             callsite: TraitBindingId(0),
             origin: VariableId(0),
         }
+    }
+
+    pub fn is_int_constraint<'c>(&self, cache: &ModuleCache<'c>) -> bool {
+        self.trait_id == cache.int_trait
     }
 
     pub fn as_required_trait(self) -> RequiredTrait {

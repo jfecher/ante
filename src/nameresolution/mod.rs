@@ -295,10 +295,11 @@ impl NameResolver {
 
     fn push_trait_impl<'c>(&mut self, trait_id: TraitInfoId, args: Vec<Type>,
                 definitions: Vec<DefinitionInfoId>, trait_impl: &'c mut ast::TraitImpl<'c>,
-                cache: &mut ModuleCache<'c>, location: Location<'c>) -> ImplInfoId {
+                given: Vec<RequiredTrait>, cache: &mut ModuleCache<'c>,
+                location: Location<'c>) -> ImplInfoId {
 
         // Any overlapping impls are only reported when they're used during typechecking
-        let id = cache.push_trait_impl(trait_id, args, definitions, trait_impl, location);
+        let id = cache.push_trait_impl(trait_id, args, definitions, trait_impl, given, location);
         if self.in_global_scope() {
             self.exports.impls.entry(trait_id).or_default().push(id);
             cache.impl_scopes[self.exports.impl_scope.0].push(id);
@@ -479,6 +480,17 @@ impl<'c> NameResolver {
         for id in self.definitions_collected.iter() {
             cache.definition_infos[id.0].definition = Some(definition());
         }
+    }
+
+    fn resolve_required_traits(&mut self, given: &[ast::Trait<'c>], cache: &mut ModuleCache<'c>) -> Vec<RequiredTrait> {
+        let mut required_traits = vec![];
+        for trait_ in given {
+            if let Some(trait_id) = self.lookup_trait(&trait_.name, cache) {
+                let args = fmap(&trait_.args, |arg| self.convert_type(cache, arg));
+                required_traits.push(RequiredTrait { trait_id, args, origin: None });
+            }
+        }
+        required_traits
     }
 }
 
@@ -954,12 +966,15 @@ impl<'c> Resolvable<'c> for ast::TraitImpl<'c> {
             definition.expr.define(resolver, cache);
             definition.level = Some(resolver.let_binding_level);
         }
+
+        let given = resolver.resolve_required_traits(&self.given, cache);
+
         resolver.pop_let_binding_level();
         resolver.pop_scope(cache, false);
         resolver.pop_type_variable_scope();
 
         let trait_impl = trustme::extend_lifetime(self);
-        resolver.push_trait_impl(trait_id, self.trait_arg_types.clone(), definitions, trait_impl, cache, self.locate());
+        resolver.push_trait_impl(trait_id, self.trait_arg_types.clone(), definitions, trait_impl, given, cache, self.locate());
     }
 }
 

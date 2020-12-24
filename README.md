@@ -1,56 +1,41 @@
-# ante-rs
+# Ante
 
 [![Travis (.org)](https://img.shields.io/travis/jfecher/ante-rs)](https://travis-ci.org/github/jfecher/ante-rs)
 
-A WIP rewrite of Ante's compiler in rust.
-
 ---
 
-### Why?
+Ante is a low-level mostly functional programming language targetted
+at gamedev but is still applicable for most domains. Ante aims to
+make it easier to write faster, safer code through region-based
+memory management and refinement types.
 
-The original c++ compiler was written as ante's
-design was evolving quickly. In fact, the repository
-started as an interpreter for a gradually-typed scripting
-language by the name of Zy. Over the years, the
-compiler has had many features bolted on it wasn't designed
-for - including hindley-milner type inference, a REPL,
-and functional dependencies. This has resulted in not
-only many bugs but also the complexity has increased
-the difficulty of adding new features and fixing existing
-bugs.
+```rs
+get_fifth_elem array = array[4]
 
-This new compiler to be built from the ground up with these
-features in mind - hopefully enabling a cleaner codebase.
-
+vec = Vec.of (0..4)
+get_fifth_elem vec  // Compile-time error: get_fifth_elem requires
+                    // `len vec >= 5` but `len vec == 4` here
+```
 ---
 
-### Roadmap
+### Features/Roadmap
 
-Steps needed to get back in line with the C++ compiler:
-
-- [x] Lexer
-- [x] Parser
-- [x] Name Resolution
-- [x] Type Inference
+- [x] Full type inference
+    - [x] Traits with multiple parameters and a limited (friendlier) form of functional dependencies
+    - [ ] Write untyped code and have the compiler write in the types for you after a successful compilation
 - [x] LLVM Codegen
+- [x] No Garbage Collector
+    - [ ] Region-based deterministic memory management with region inference.
+        - Easily write safe code without memory leaks all while having it compiled into
+          fast pointer-bump allocators or even allocated on the stack for small regions.
+    - [ ] Don't want to use a pointer-bump allocator? Use a different pointer type
+          like `Rc t` or `Box t` to get reference-counted or uniquely owned pointer semantics.
+- [ ] Refinement Types
 - [ ] REPL
-
 - [ ] Loops
 
-Future goals still unimplemented in the C++ compiler:
-
-- [ ] `given` clauses in traits/impls
-- [ ] Refinement Types
-- [ ] Region inference memory management
-- [x] More general trait support (C++ compiler has trait inference bugs)
-- [ ] Commit to having deterministic destruction w/ destructors
-    - get rid of plans for optional GC as it would likely poison any libraries it touches.
-- [x] Better compiler tests e.g. golden tests
-
 Nice to have but not currently required:
-- [ ] Multiple backends, possibly GCCJIT/cranelift for faster debug builds?
-- [ ] Possibly re-add UFCS since it reduces the need to import everything.
-    - need to workout how this interacts when the types aren't known
+- [ ] Multiple backends, possibly GCCJIT/cranelift for faster debug builds
 - [ ] Reasonable C/C++ interop with clang api (stretch goal)
 - [ ] Build system (stretch goal)
 
@@ -58,7 +43,7 @@ Nice to have but not currently required:
 
 ### Building
 
-ante currently requires llvm 10.0 while building. If you already have this installed with
+Ante currently requires llvm 10.0 while building. If you already have this installed with
 sources, you may be fine building with `cargo build` alone. If `cargo build` complains
 about not finding any suitable llvm version, the easiest way to build llvm is through `llvmenv`.
 In that case, you can build from source using the following:

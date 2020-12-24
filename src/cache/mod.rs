@@ -175,6 +175,15 @@ impl<'a> TraitInfo<'a> {
     pub fn is_member_access(&self) -> bool {
         self.name.starts_with(".")
     }
+
+    /// The `name` of a member access trait is `.field`
+    /// where `field` is the name of the described field.
+    /// E.g. `.name Person string` is a trait constraining
+    /// the `Person` type to have a `name` field of type `string`.
+    pub fn get_field_name(&self) -> &str {
+        assert!(self.is_member_access());
+        &self.name[1..]
+    }
 }
 
 impl<'a> Locatable<'a> for TraitInfo<'a> {
@@ -195,6 +204,7 @@ pub struct ImplInfo<'a> {
     pub typeargs: Vec<Type>,
     pub location: Location<'a>,
     pub definitions: Vec<DefinitionInfoId>,
+    pub given: Vec<RequiredTrait>,
     pub trait_impl: &'a mut TraitImpl<'a>,
 }
 
@@ -293,7 +303,8 @@ impl<'a> ModuleCache<'a> {
     }
 
     pub fn push_trait_impl(&mut self, trait_id: TraitInfoId, typeargs: Vec<Type>,
-            definitions: Vec<DefinitionInfoId>, trait_impl: &'a mut TraitImpl<'a>, location: Location<'a>) -> ImplInfoId {
+            definitions: Vec<DefinitionInfoId>, trait_impl: &'a mut TraitImpl<'a>,
+            given: Vec<RequiredTrait>, location: Location<'a>) -> ImplInfoId {
 
         let id = self.impl_infos.len();
         self.impl_infos.push(ImplInfo {
@@ -301,6 +312,7 @@ impl<'a> ModuleCache<'a> {
             typeargs,
             definitions,
             location,
+            given,
             trait_impl,
         });
         ImplInfoId(id)

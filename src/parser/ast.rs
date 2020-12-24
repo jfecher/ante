@@ -118,8 +118,8 @@ pub struct Match<'a> {
     pub typ: Option<types::Type>,
 }
 
-// Type nodes in the AST, different from the representation of types during type checking.
-// PointerType and potentially UserDefinedType are actually type constructors
+/// Type nodes in the AST, different from the representation of types during type checking.
+/// PointerType and potentially UserDefinedType are actually type constructors
 #[derive(Debug)]
 pub enum Type<'a> {
     IntegerType(IntegerKind, Location<'a>),
@@ -133,6 +133,15 @@ pub enum Type<'a> {
     TypeVariable(String, Location<'a>),
     UserDefinedType(String, Location<'a>),
     TypeApplication(Box<Type<'a>>, Vec<Type<'a>>, Location<'a>),
+}
+
+/// The AST representation of a trait usage.
+/// A trait's definition would be a TraitDefinition node.
+/// This struct is used in e.g. `given` to list the required traits.
+#[derive(Debug)]
+pub struct Trait<'a> {
+    pub name: String,
+    pub args: Vec<Type<'a>>,
 }
 
 #[derive(Debug)]
@@ -202,6 +211,8 @@ pub struct TraitDefinition<'a> {
 pub struct TraitImpl<'a> {
     pub trait_name: String,
     pub trait_args: Vec<Type<'a>>,
+    pub given: Vec<Trait<'a>>,
+
     pub definitions: Vec<Definition<'a>>,
     pub location: Location<'a>,
     pub trait_info: Option<TraitInfoId>,
@@ -380,9 +391,9 @@ impl<'a> Ast<'a> {
         Ast::TraitDefinition(TraitDefinition { name, args, fundeps, declarations, location, level: None, trait_info: None, typ: None })
     }
 
-    pub fn trait_impl(trait_name: String, trait_args: Vec<Type<'a>>, definitions: Vec<Definition<'a>>, location: Location<'a>) -> Ast<'a> {
+    pub fn trait_impl(trait_name: String, trait_args: Vec<Type<'a>>, given: Vec<Trait<'a>>, definitions: Vec<Definition<'a>>, location: Location<'a>) -> Ast<'a> {
         assert!(!trait_args.is_empty());
-        Ast::TraitImpl(TraitImpl { trait_name, trait_args, definitions, location, trait_arg_types: vec![], trait_info: None, typ: None })
+        Ast::TraitImpl(TraitImpl { trait_name, trait_args, given, definitions, location, trait_arg_types: vec![], trait_info: None, typ: None })
     }
 
     pub fn return_expr(expression: Ast<'a>, location: Location<'a>) -> Ast<'a> {

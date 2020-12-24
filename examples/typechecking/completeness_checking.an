@@ -47,5 +47,5 @@ match (1, 2, 3, 4) with
 // examples/typechecking/completeness_checking.an: 20,1	error: Missing case (false, false)
 // match (true, true) with
 // 
-// examples/typechecking/completeness_checking.an: 26,3	error: Type mismatch between (a, b, c, d) and (a, b)
+// examples/typechecking/completeness_checking.an: 26,3	error: (a, b, c, d) differs in element count with (a, b)
 // | (1, 2) -> 1

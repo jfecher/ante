@@ -295,8 +295,7 @@ impl<'g> Generator<'g> {
 
         let typ = self.follow_bindings(typ, cache);
 
-        let mut bindings = HashMap::new();
-        typechecker::try_unify(&typ, definition_type, &mut bindings, definition.location, cache)
+        let bindings = typechecker::try_unify(&typ, definition_type, definition.location, cache)
             .map_err(|error| println!("{}", error))
             .expect("Unification error during monomorphisation");
 
