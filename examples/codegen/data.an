@@ -1,4 +1,4 @@
-type T = a: int, b: string
+type T = a: i32, b: string
 
 t = T 1 "one"
 log "t = %d, " t.a
@@ -12,7 +12,6 @@ match s with
 | None -> log "s = None\n" 0
 
 log s x = printf s.c_string x
-extern printf: (ref char) int -> int
 
 // args: --run --delete-binary
 // expected stdout:

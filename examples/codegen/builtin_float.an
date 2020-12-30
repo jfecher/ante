@@ -1,6 +1,4 @@
 
-extern printf: (ref char) float -> int
-
 add_float = 3.0 + 4.0
 sub_float = 7.0 - 8.0
 mul_float = 11.0 * 12.0

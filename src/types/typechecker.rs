@@ -35,7 +35,7 @@ pub type UnificationResult<'c> = Result<TypeBindings, ErrorMessage<'c>>;
 
 /// Replace any typevars found in typevars_to_replace with the
 /// associated value in the same table, leave them otherwise
-fn replace_typevars<'b>(typ: &Type, typevars_to_replace: &HashMap<TypeVariableId, TypeVariableId>, cache: &ModuleCache<'b>) -> Type {
+fn replace_typevars<'c>(typ: &Type, typevars_to_replace: &HashMap<TypeVariableId, TypeVariableId>, cache: &ModuleCache<'c>) -> Type {
     let typevars_to_replace = typevars_to_replace.iter()
         .map(|(key, id)| (*key, TypeVariable(*id)))
         .collect();
@@ -43,8 +43,58 @@ fn replace_typevars<'b>(typ: &Type, typevars_to_replace: &HashMap<TypeVariableId
     bind_typevars(typ, &typevars_to_replace, cache)
 }
 
+/// Return a new type with all typevars found in the given type
+/// replaced with fresh ones, along with the type bindings used.
+///
+/// Note that unlike `instantiate(generalize(typ))`, this will
+/// replace all type variables rather than only type variables
+/// that have not originated from an outer scope.
+pub fn replace_all_typevars<'c>(types: &[Type], cache: &mut ModuleCache<'c>) -> (Vec<Type>, TypeBindings) {
+    let mut bindings = HashMap::new();
+    let types = fmap(types, |typ| replace_all_typevars_with_bindings(typ, &mut bindings, cache));
+    (types, bindings)
+}
+
+/// Replace all type variables in the given type, using new_bindings
+/// to lookup what each variable should be bound to, inserting a
+/// fresh type variable into new_bindings if that type variable was not present.
+pub fn replace_all_typevars_with_bindings<'c>(typ: &Type, new_bindings: &mut TypeBindings, cache: &mut ModuleCache<'c>) -> Type {
+    match typ {
+        Primitive(p) => Primitive(*p),
+        TypeVariable(id) => {
+            if let Bound(typ) = &cache.type_bindings[id.0] {
+                replace_all_typevars_with_bindings(&typ.clone(), new_bindings, cache)
+            } else if let Some(var) = new_bindings.get(id) {
+                var.clone()
+            } else {
+                let new_typevar = next_type_variable(cache);
+                new_bindings.insert(*id, new_typevar.clone());
+                new_typevar
+            }
+        },
+        Function(parameters, return_type, varargs) => {
+            let parameters = fmap(parameters, |parameter| replace_all_typevars_with_bindings(parameter, new_bindings, cache));
+            let return_type = replace_all_typevars_with_bindings(return_type, new_bindings, cache);
+            Function(parameters, Box::new(return_type), *varargs)
+        },
+        ForAll(_typevars, _typ) => {
+            unreachable!("Ante does not support higher rank polymorphism");
+        }
+        UserDefinedType(id) => UserDefinedType(*id),
+
+        TypeApplication(typ, args) => {
+            let typ = replace_all_typevars_with_bindings(typ, new_bindings, cache);
+            let args = fmap(args, |arg| replace_all_typevars_with_bindings(arg, new_bindings, cache));
+            TypeApplication(Box::new(typ), args)
+        },
+        Tuple(elements) => {
+            Tuple(fmap(elements, |element| replace_all_typevars_with_bindings(element, new_bindings, cache)))
+        }
+    }
+}
+
 /// Replace any typevars found with the given type bindings
-pub fn bind_typevars<'b>(typ: &Type, type_bindings: &TypeBindings, cache: &ModuleCache<'b>) -> Type {
+pub fn bind_typevars<'c>(typ: &Type, type_bindings: &TypeBindings, cache: &ModuleCache<'c>) -> Type {
     match typ {
         Primitive(p) => Primitive(*p),
         TypeVariable(id) => {
@@ -56,10 +106,10 @@ pub fn bind_typevars<'b>(typ: &Type, type_bindings: &TypeBindings, cache: &Modul
                 replacement.clone()
             }
         },
-        Function(parameters, return_type) => {
+        Function(parameters, return_type, varargs) => {
             let parameters = fmap(parameters, |parameter| bind_typevars(parameter, type_bindings, cache));
             let return_type = bind_typevars(return_type, type_bindings, cache);
-            Function(parameters, Box::new(return_type))
+            Function(parameters, Box::new(return_type), *varargs)
         },
         ForAll(_typevars, _typ) => {
             unreachable!("Ante does not support higher rank polymorphism");
@@ -195,7 +245,7 @@ fn occurs<'b>(id: TypeVariableId, level: LetBindingLevel, typ: &Type, bindings: 
                 }
             }
         },
-        Function(parameters, return_type) => {
+        Function(parameters, return_type, _) => {
             occurs(id, level, return_type, bindings, cache)
             || parameters.iter().any(|parameter| occurs(id, level, parameter, bindings, cache))
         },
@@ -219,21 +269,6 @@ pub fn follow_bindings_in_cache_and_map<'b>(typ: &Type, bindings: &TypeBindings,
         TypeVariable(id) => {
             match find_binding(*id, bindings, cache) {
                 Bound(typ) => follow_bindings_in_cache_and_map(&typ, bindings, cache),
-                Unbound(..) => typ.clone(),
-            }
-        }
-        _ => typ.clone(),
-    }
-}
-
-/// Follow all typevar links stored in the cache, returning the resulting type that this type
-/// variable is bound to if there is one. If there is no such type, the given type is cloned.
-/// If the given type is not a type variable, it is cloned and returned as-is.
-pub fn follow_bindings_in_cache<'b>(typ: &Type, cache: &ModuleCache<'b>) -> Type {
-    match typ {
-        TypeVariable(id) => {
-            match &cache.type_bindings[id.0] {
-                Bound(typ) => follow_bindings_in_cache(&typ, cache),
                 Unbound(..) => typ.clone(),
             }
         }
@@ -310,10 +345,16 @@ pub fn try_unify_with_bindings<'b>(t1: &Type, t2: &Type, bindings: &mut TypeBind
             }
         },
 
-        (Function(a_args, a_ret), Function(b_args, b_ret)) => {
+        (Function(a_args, a_ret, a_is_varargs), Function(b_args, b_ret, b_is_varargs)) => {
             if a_args.len() != b_args.len() {
-                return Err(make_error!(location, "Function types differ in argument count: {} ({} arg(s)) and {} ({} arg(s))",
-                    t1.display(cache), t2.display(cache), a_args.len(), b_args.len()));
+                // Whether a function is varargs or not is never unified,
+                // so if one function is varargs, assume they both should be.
+                if !(*a_is_varargs && b_args.len() >= a_args.len()) &&
+                   !(*b_is_varargs && a_args.len() >= b_args.len()) {
+
+                    return Err(make_error!(location, "Function types differ in argument count: {} ({} arg(s)) and {} ({} arg(s))",
+                        t1.display(cache), t2.display(cache), a_args.len(), b_args.len()));
+                }
             }
 
             for (a_arg, b_arg) in a_args.iter().zip(b_args.iter()) {
@@ -370,10 +411,11 @@ pub fn try_unify<'c>(t1: &Type, t2: &Type, location: Location<'c>, cache: &mut M
         .map(|()| bindings)
 }
 
-/// Try to unify the types from all the given vectors. We only return success or failure since that
-/// is all that is needed during trait resultion. If this function is ever needed outside of trait
-/// resolution it can be altered to collect the appropriate bindings/error messages as well.
-pub fn try_unify_all<'c>(vec1: &[Type], vec2: &[Type], location: Location<'c>, cache: &mut ModuleCache<'c>) -> UnificationResult<'c> {
+/// Try to unify all the given type, with the given bindings in scope.
+/// Will add new bindings to the given TypeBindings and return them all on success.
+pub fn try_unify_all_with_bindings<'c>(vec1: &[Type], vec2: &[Type],
+    mut bindings: TypeBindings, location: Location<'c>, cache: &mut ModuleCache<'c>) -> UnificationResult<'c>
+{
     if vec1.len() != vec2.len() {
         // This bad error message is the reason this function isn't used within
         // try_unify_with_bindings! We'd need access to the full type to give better
@@ -382,7 +424,6 @@ pub fn try_unify_all<'c>(vec1: &[Type], vec2: &[Type], location: Location<'c>, c
             vec1.len(), vec2.len(), concat_type_strings(vec1, cache), concat_type_strings(vec2, cache)));
     }
 
-    let mut bindings = HashMap::new();
     for (t1, t2) in vec1.iter().zip(vec2.iter()) {
         try_unify_with_bindings(t1, t2, &mut bindings, location, cache)?;
     }
@@ -447,7 +488,7 @@ pub fn find_all_typevars<'a>(typ: &Type, polymorphic_only: bool, cache: &ModuleC
                 }
             }
         },
-        Function(parameters, return_type) => {
+        Function(parameters, return_type, _) => {
             let mut type_variables = vec![];
             for parameter in parameters {
                 type_variables.append(&mut find_all_typevars(&parameter, polymorphic_only, cache));
@@ -756,7 +797,7 @@ impl<'a> Inferable<'a> for ast::Lambda<'a> {
         }
 
         let (return_type, traits) = infer(self.body.as_mut(), cache);
-        (Function(arg_types, Box::new(return_type)), traits)
+        (Function(arg_types, Box::new(return_type), false), traits)
     }
 }
 
@@ -779,7 +820,7 @@ impl<'a> Inferable<'a> for ast::FunctionCall<'a> {
         let return_type = next_type_variable(cache);
         traits.append(&mut arg_traits);
 
-        unify(&f, &Function(args, Box::new(return_type.clone())), self.location, cache);
+        unify(&f, &Function(args, Box::new(return_type.clone()), false), self.location, cache);
         (return_type, traits)
     }
 }

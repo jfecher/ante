@@ -76,7 +76,7 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
     fn fmt_type(&self, typ: &Type, f: &mut Formatter) -> std::fmt::Result {
         match typ {
             Type::Primitive(primitive) => self.fmt_primitive(primitive, f),
-            Type::Function(params, ret) => self.fmt_function(params, ret, f),
+            Type::Function(params, ret, varargs) => self.fmt_function(params, ret, *varargs, f),
             Type::TypeVariable(id) => self.fmt_type_variable(*id, f),
             Type::UserDefinedType(id) => self.fmt_user_defined_type(*id, f),
             Type::TypeApplication(constructor, args) => self.fmt_type_application(constructor, args, f),
@@ -96,11 +96,14 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
         }
     }
 
-    fn fmt_function(&self, params: &Vec<Type>, ret: &Box<Type>, f: &mut Formatter) -> std::fmt::Result {
+    fn fmt_function(&self, params: &Vec<Type>, ret: &Box<Type>, varargs: bool, f: &mut Formatter) -> std::fmt::Result {
         write!(f, "{}", "(".blue())?;
         for param in params.iter() {
             self.fmt_type(param, f)?;
             write!(f, " ")?;
+        }
+        if varargs {
+            write!(f, "... ")?;
         }
         write!(f, "{}", "-> ".blue())?;
         self.fmt_type(ret.as_ref(), f)?;

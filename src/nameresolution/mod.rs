@@ -385,10 +385,10 @@ impl<'c> NameResolver {
             ast::Type::BooleanType(_) => Type::Primitive(PrimitiveType::BooleanType),
             ast::Type::UnitType(_) => Type::Primitive(PrimitiveType::UnitType),
             ast::Type::ReferenceType(_) => Type::Primitive(PrimitiveType::ReferenceType),
-            ast::Type::FunctionType(args, ret, _) => {
+            ast::Type::FunctionType(args, ret, varargs, _) => {
                 let args = fmap(args, |arg| self.convert_type(cache, arg));
                 let ret = self.convert_type(cache, ret);
-                Type::Function(args, Box::new(ret))
+                Type::Function(args, Box::new(ret), *varargs)
             },
             ast::Type::TypeVariable(name, location) => {
                 match self.lookup_type_variable(name) {
@@ -488,6 +488,8 @@ impl<'c> NameResolver {
             if let Some(trait_id) = self.lookup_trait(&trait_.name, cache) {
                 let args = fmap(&trait_.args, |arg| self.convert_type(cache, arg));
                 required_traits.push(RequiredTrait { trait_id, args, origin: None });
+            } else {
+                error!(trait_.location, "Could not find trait {} in scope", trait_.name.blue());
             }
         }
         required_traits
@@ -677,7 +679,7 @@ fn create_variant_constructor_type<'c>(parent_type_id: TypeInfoId, args: Vec<Typ
 
     // Create the arguments to the function type if this type has arguments
     if !args.is_empty() {
-        result = Type::Function(args, Box::new(result));
+        result = Type::Function(args, Box::new(result), false);
     }
 
     // finally, wrap the type in a forall if it has type variables

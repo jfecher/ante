@@ -1,15 +1,10 @@
 
-extern printf: (ref char) a -> unit
-
-print_int x =
-    printf ("%d\n".c_string) x
-
 test_int int =
-    print_int (int + int)
-    print_int (int - int - int)
-    print_int (int * int)
-    print_int (int / int)
-    print_int (int % int)
+    print (int + int)
+    print (int - int - int)
+    print (int * int)
+    print (int / int)
+    print (int % int)
 
 test_int 3_i8
 test_int 3_u8
@@ -24,57 +19,57 @@ test_int 3_i64
 test_int 3_u64
 
 test_int 3_isz
-test_int 3_isz
+test_int 3_usz
 
 // args: --run --delete-binary
 // expected stdout:
 // 6
-// -125
+// -3
 // 9
 // 1
 // 0
 // 6
-// -125
+// 253
 // 9
 // 1
 // 0
 // 6
-// -125
+// -3
 // 9
 // 1
 // 0
 // 6
-// -125
+// 65533
 // 9
 // 1
 // 0
 // 6
-// -125
+// -3
 // 9
 // 1
 // 0
 // 6
-// -125
+// 4294967293
 // 9
 // 1
 // 0
 // 6
-// -125
+// -3
 // 9
 // 1
 // 0
 // 6
-// -125
+// 18446744073709551613
 // 9
 // 1
 // 0
 // 6
-// -125
+// -3
 // 9
 // 1
 // 0
 // 6
-// -125
+// 18446744073709551613
 // 9
 // 1
 // 0

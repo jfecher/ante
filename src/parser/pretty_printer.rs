@@ -91,8 +91,9 @@ impl<'a> Display for ast::Type<'a> {
             ReferenceType(_) => write!(f, "ref"),
             TypeVariable(name, _) => write!(f, "{}", name),
             UserDefinedType(name, _) => write!(f, "{}", name),
-            FunctionType(params, return_type, _) => {
-                write!(f, "({} -> {})", join_with(params, " "), return_type)
+            FunctionType(params, return_type, varargs, _) => {
+                write!(f, "({} {}-> {})", join_with(params, " "),
+                    if *varargs { "... " } else { "" }, return_type)
             },
             TypeApplication(constructor, args, _) => {
                 write!(f, "({} {})", constructor, join_with(args, " "))

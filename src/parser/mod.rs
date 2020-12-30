@@ -89,6 +89,12 @@ parser!(function_definition location -> 'b ast::Definition<'b> =
     }
 );
 
+parser!(varargs location -> 'b () =
+    _ <- expect(Token::Range);
+    _ <- expect(Token::MemberAccess);
+    ()
+);
+
 parser!(function_return_type location -> 'b ast::Type<'b> =
     _ <- expect(Token::RightArrow);
     typ <- parse_type;
@@ -257,10 +263,10 @@ parser!(given loc -> 'b Vec<Trait<'b>> =
     traits
 );
 
-parser!(required_trait loc -> 'b Trait<'b> =
+parser!(required_trait location -> 'b Trait<'b> =
     name <- typename;
     args <- many1(basic_type);
-    Trait { name, args }
+    Trait { name, args, location }
 );
 
 parser!(return_expr loc =
@@ -561,9 +567,10 @@ parser!(unit loc =
 
 parser!(function_type loc -> 'b Type<'b> =
     args <- many1(basic_type);
+    varargs <- maybe(varargs);
     _ <- expect(Token::RightArrow);
     return_type <- parse_type;
-    Type::FunctionType(args, Box::new(return_type), loc)
+    Type::FunctionType(args, Box::new(return_type), varargs.is_some(), loc)
 );
 
 parser!(type_application loc -> 'b Type<'b> =

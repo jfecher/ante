@@ -38,7 +38,8 @@ pub enum Type {
     Primitive(PrimitiveType),
 
     /// Any function type
-    Function(Vec<Type>, Box<Type>),
+    /// Note that all functions in ante take at least 1 argument
+    Function(Vec<Type>, Box<Type>, /*varargs:*/ bool),
 
     /// Any stand-in type e.g. a in Vec a. The original names are
     /// translated into unique TypeIds during name resolution.

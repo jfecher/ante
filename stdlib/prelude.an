@@ -7,7 +7,7 @@
 
 //C functions
 extern 
-    // printf (format: ref char) ... -> int
+    printf: (ref char) ... -> unit
     puts: (ref char) -> i32
     putchar: char -> unit
     getchar: unit -> char
@@ -224,33 +224,52 @@ print x =
     printne x
     putchar '\n'
 
-impl Print i32
-    printne x =
-        extern printf : (ref char) i32 -> unit
-        printf ("%d".c_string) x
+impl Print i8
+    printne x = printf ("%hhd".c_string) x
 
-// TODO: need varargs support for printf
-// impl Print int
-//     printne x = printf ("%d".cStr) x
-// 
-// impl Print float
-//     printne x = printf ("%.14f".cStr) x
-// 
-// impl Print char
-//     printne x = printf ("%c".cStr) x
-// 
-// impl Print bool
-//     printne b =
-//         if b then printf ("true".cStr)
-//         else printf ("false".cStr)
-// 
-// impl Print (ref char)
-//     printne s = printf ("%s".cStr) s
-// 
-// impl Print string
-//     printne s =
-//         extern printf : (ref char) (ref char) -> unit
-//         printf "%s".c_string s.c_string
+impl Print i16
+    printne x = printf ("%hd".c_string) x
+
+impl Print i32
+    printne x = printf ("%d".c_string) x
+
+impl Print i64
+    printne x = printf ("%ld".c_string) x
+
+impl Print isz
+    printne x = printf ("%zi".c_string) x
+
+impl Print u8
+    printne x = printf ("%hhu".c_string) x
+
+impl Print u16
+    printne x = printf ("%hu".c_string) x
+
+impl Print u32
+    printne x = printf ("%u".c_string) x
+
+impl Print u64
+    printne x = printf ("%lu".c_string) x
+
+impl Print usz
+    printne x = printf ("%zu".c_string) x
+
+impl Print float
+    printne x = printf ("%.14f".c_string) x
+
+impl Print char
+    printne x = printf ("%c".c_string) x
+
+impl Print bool
+    printne b =
+        if b then printf ("true".c_string)
+        else printf ("false".c_string)
+
+impl Print (ref char)
+    printne s = printf ("%s".c_string) s
+
+impl Print string
+    printne s = printf "%s".c_string s.c_string
 
 // TODO: impls with 'given' clauses
 // impl Print 't given Cast 't string

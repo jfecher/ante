@@ -1,0 +1,45 @@
+
+type Thing = nothing: unit
+
+trait Foo a
+    foo : a -> unit
+
+trait Bar a
+    bar : a -> unit
+
+trait Baz a
+    baz : a -> unit
+
+// The call from which the `Foo a` constraint arises
+foo (Thing ())
+
+// Candidate 1
+impl Foo a given Bar a
+    foo a = bar a
+
+impl Bar a given Baz a
+    bar a = baz a
+
+impl Baz Thing
+    baz _ = ()
+
+
+// Does not match
+impl Foo a given Print a
+    foo _ = ()
+
+
+// Candidate 2
+impl Foo Thing
+    foo _ = ()
+
+// args: --check
+// expected stdout:
+// examples/typechecking/multiple_matching_impls.an: 2,1	error: 2 matching impls found for Foo Thing
+// type Thing = nothing: unit
+// 
+// examples/typechecking/multiple_matching_impls.an: 17,1	note: Candidate 1
+// impl Foo a given Bar a
+// 
+// examples/typechecking/multiple_matching_impls.an: 33,1	note: Candidate 2
+// impl Foo Thing

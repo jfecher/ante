@@ -129,7 +129,7 @@ pub enum Type<'a> {
     BooleanType(Location<'a>),
     UnitType(Location<'a>),
     ReferenceType(Location<'a>),
-    FunctionType(Vec<Type<'a>>, Box<Type<'a>>, Location<'a>),
+    FunctionType(Vec<Type<'a>>, Box<Type<'a>>, /*varargs:*/bool, Location<'a>),
     TypeVariable(String, Location<'a>),
     UserDefinedType(String, Location<'a>),
     TypeApplication(Box<Type<'a>>, Vec<Type<'a>>, Location<'a>),
@@ -142,6 +142,7 @@ pub enum Type<'a> {
 pub struct Trait<'a> {
     pub name: String,
     pub args: Vec<Type<'a>>,
+    pub location: Location<'a>,
 }
 
 #[derive(Debug)]

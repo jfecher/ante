@@ -238,7 +238,7 @@ impl Display for Token {
             Assignment => write!(f, "':='"),
             EqualEqual => write!(f, "'=='"),
             NotEqual => write!(f, "'!='"),
-            Range => write!(f, "'...'"),
+            Range => write!(f, "'..'"),
             RightArrow => write!(f, "'->'"),
             ApplyLeft => write!(f, "'<|'"),
             ApplyRight => write!(f, "'|>'"),

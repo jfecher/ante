@@ -18,8 +18,10 @@ pub fn define_builtins<'a>(cache: &mut ModuleCache<'a>) {
 
     let a = cache.next_type_variable_id(LetBindingLevel(1));
     let info = &mut cache.definition_infos[id.0];
-    let typ = Type::ForAll(vec![a], Box::new(Type::Function(vec![string_type], Box::new(Type::TypeVariable(a)))));
-    info.typ = Some(typ);
+
+    let builtin_fn_type = Type::Function(vec![string_type], Box::new(Type::TypeVariable(a)), false);
+    let builtin_type= Type::ForAll(vec![a], Box::new(builtin_fn_type));
+    info.typ = Some(builtin_type);
 }
 
 pub fn prelude_path() -> PathBuf {
@@ -38,6 +40,9 @@ pub fn import_prelude<'a>(resolver: &mut NameResolver, cache: &mut ModuleCache<'
         let exports = define_module(id, cache, Location::builtin()).unwrap();
         resolver.current_scope().import(exports, cache, Location::builtin());
     }
+
+    // Manually insert the Int trait as if it were defined in the prelude
+    resolver.current_scope().traits.insert("Int".into(), cache.int_trait);
 }
 
 /// Defining the 'string' type is a bit different than most other builtins. Since 'string' has

@@ -1,10 +1,10 @@
-use crate::types::traits::{ RequiredImpl, RequiredTrait, TraitConstraint, TraitConstraints };
-use crate::cache::{ ModuleCache, VariableId, ImplInfoId, DefinitionInfoId, TraitBindingId };
+use crate::types::traits::{ RequiredTrait, TraitConstraint, TraitConstraints };
+use crate::cache::{ ModuleCache, VariableId, ImplInfoId, DefinitionInfoId };
 use crate::types::typechecker::{ self, TypeBindings, UnificationResult };
-use crate::types::{ INITIAL_LEVEL, DEFAULT_INTEGER_TYPE, Type, PrimitiveType, TypeBinding::* };
+use crate::types::{ INITIAL_LEVEL, DEFAULT_INTEGER_TYPE, Type, PrimitiveType };
 use crate::error::location::Location;
 use crate::lexer::token::IntegerKind;
-use crate::util::trustme;
+use crate::util::{ trustme, fmap };
 
 use std::sync::atomic::Ordering;
 use std::collections::HashMap;
@@ -20,22 +20,23 @@ pub fn resolve_traits<'a>(constraints: TraitConstraints, location: Location<'a>,
          member_access_constraints,
          other_constraints) = sort_traits(constraints, cache);
 
+    let empty_bindings = HashMap::new();
     for constraint in int_constraints {
         typechecker::perform_bindings_or_print_error(
-            find_int_constraint_impl(&constraint, location, cache), cache
+            find_int_constraint_impl(&constraint, &empty_bindings, location, cache), cache
         );
     }
 
     for constraint in member_access_constraints {
         typechecker::perform_bindings_or_print_error(
-            find_member_access_impl(&constraint, location, cache), cache
+            find_member_access_impl(&constraint, &empty_bindings, location, cache), cache
         );
     }
 
     for constraint in other_constraints {
         // Normal constraints require special care since searching for an impl for them may require
         // recursively searching for more impls (due to `impl A given B` constraints) before finding a matching one.
-        solve_normal_constraint(&constraint, location, cache);
+        solve_normal_constraint(&constraint, &empty_bindings, location, cache);
     }
 
     // NOTE: 'duplicate' trait constraints like `given Print a, Print a` are NOT separated out here
@@ -104,8 +105,10 @@ fn should_propagate<'a>(constraint: &TraitConstraint, cache: &ModuleCache<'a>) -
 /// integer types. So instead of searching for an impl here, we simply check that the arg
 /// type `a` is a primitive integer type. If `a` is an unbound type variable, this will
 /// also bind `a` to `i32` by default.
-fn find_int_constraint_impl<'c>(constraint: &TraitConstraint, location: Location<'c>, cache: &mut ModuleCache<'c>) -> UnificationResult<'c> {
-    let typ = typechecker::follow_bindings_in_cache(&constraint.args[0], cache);
+fn find_int_constraint_impl<'c>(constraint: &TraitConstraint, bindings: &TypeBindings,
+    location: Location<'c>, cache: &mut ModuleCache<'c>) -> UnificationResult<'c>
+{
+    let typ = typechecker::follow_bindings_in_cache_and_map(&constraint.args[0], bindings, cache);
 
     match &typ {
         Type::Primitive(PrimitiveType::IntegerType(kind)) => {
@@ -134,8 +137,10 @@ fn find_int_constraint_impl<'c>(constraint: &TraitConstraint, location: Location
 /// A constraint `a.field: b` is satisfied iff the type `a` has a
 /// field named `field` which unifies with type `b`.
 /// If this is not the case, an appropriate error message is returned.
-fn find_member_access_impl<'c>(constraint: &TraitConstraint, location: Location<'c>, cache: &mut ModuleCache<'c>) -> UnificationResult<'c> {
-    let collection = typechecker::follow_bindings_in_cache(&constraint.args[0], cache);
+fn find_member_access_impl<'c>(constraint: &TraitConstraint, bindings: &TypeBindings,
+    location: Location<'c>, cache: &mut ModuleCache<'c>) -> UnificationResult<'c>
+{
+    let collection = typechecker::follow_bindings_in_cache_and_map(&constraint.args[0], bindings, cache);
 
     let field_name = cache.trait_infos[constraint.trait_id.0].get_field_name();
 
@@ -160,8 +165,10 @@ fn find_member_access_impl<'c>(constraint: &TraitConstraint, location: Location<
 
 /// Search and bind a specific impl to the given TraitConstraint, erroring if 0
 /// or >1 matching impls are found.
-fn solve_normal_constraint<'c>(constraint: &TraitConstraint, location: Location<'c>, cache: &mut ModuleCache<'c>) {
-    let mut matching_impls = find_matching_impls(constraint, location, cache);
+fn solve_normal_constraint<'c>(constraint: &TraitConstraint, bindings: &TypeBindings,
+    location: Location<'c>, cache: &mut ModuleCache<'c>)
+{
+    let mut matching_impls = find_matching_impls(constraint, bindings, location, cache);
 
     if matching_impls.len() == 1 {
         let (impls, bindings) = matching_impls.remove(0);
@@ -196,62 +203,78 @@ fn solve_normal_constraint<'c>(constraint: &TraitConstraint, location: Location<
 ///
 /// Note that any impls that are automatically impld by the compiler will not have their
 /// ImplInfoIds within the returned Vec (since they don't have any).
-fn find_matching_impls<'c>(constraint: &TraitConstraint, location: Location<'c>, cache: &mut ModuleCache<'c>) -> Vec<(Vec<(ImplInfoId, TraitConstraint)>, TypeBindings)> {
+fn find_matching_impls<'c>(constraint: &TraitConstraint, bindings: &TypeBindings,
+    location: Location<'c>, cache: &mut ModuleCache<'c>) -> Vec<(Vec<(ImplInfoId, TraitConstraint)>, TypeBindings)>
+{
     if constraint.is_int_constraint(cache) {
-        match find_int_constraint_impl(constraint, location, cache) {
+        match find_int_constraint_impl(constraint, bindings, location, cache) {
             Ok(bindings) => vec![(vec![], bindings)],
             Err(_) => vec![],
         }
     } else if constraint.is_member_access(cache) {
-        match find_member_access_impl(constraint, location, cache) {
+        match find_member_access_impl(constraint, bindings, location, cache) {
             Ok(bindings) => vec![(vec![], bindings)],
             Err(_) => vec![],
         }
     } else {
-        find_matching_normal_impls(constraint, location, cache)
+        find_matching_normal_impls(constraint, bindings, location, cache)
     }
 }
 
-fn find_matching_normal_impls<'c>(constraint: &TraitConstraint, location: Location<'c>, cache: &mut ModuleCache<'c>) -> Vec<(Vec<(ImplInfoId, TraitConstraint)>, TypeBindings)> {
+fn find_matching_normal_impls<'c>(constraint: &TraitConstraint, bindings: &TypeBindings,
+    location: Location<'c>, cache: &mut ModuleCache<'c>) -> Vec<(Vec<(ImplInfoId, TraitConstraint)>, TypeBindings)>
+{
     let scope = cache.impl_scopes[constraint.scope.0].clone();
 
-    // First, filter all the impls whose arguments typecheck against our constraint's arguments
-    let impls = scope.iter()
-        .filter_map(|&impl_id| {
-            if cache.impl_infos[impl_id.0].trait_id != constraint.trait_id {
-                return None;
-            }
-
-            let impl_typeargs = cache.impl_infos[impl_id.0].typeargs.clone();
-
-            match typechecker::try_unify_all(&impl_typeargs, &constraint.args, location, cache) {
-                Ok(type_bindings) => Some((impl_id, type_bindings)),
-                Err(_) => None,
-            }
-        }).collect::<Vec<_>>();
-
-    // Then, check any `given Trait2 a ...` clauses for our impls to further narrow them down
-    impls.into_iter().filter_map(|(impl_id, mut type_bindings)| {
-        let impl_info = &cache.impl_infos[impl_id.0];
-        let mut required_impls = vec![(impl_id, constraint.clone())];
-
-        // TODO: Remove need for cloning here.
-        // Needed because cache is borrowed mutably below.
-        for required_trait in impl_info.given.clone() {
-            let constraint = required_trait.as_constraint(constraint.scope, constraint.origin, constraint.callsite);
-            let mut matching_impls = find_matching_impls(&constraint, location, cache);
-
-            if matching_impls.len() == 1 {
-                let (mut impls, bindings) = matching_impls.remove(0);
-                type_bindings.extend(bindings);
-                required_impls.append(&mut impls);
-            } else {
-                return None;
-            }
+    scope.iter().filter_map(|&impl_id| {
+        // First, filter all the impls whose arguments typecheck against our constraint's arguments
+        if cache.impl_infos[impl_id.0].trait_id != constraint.trait_id {
+            return None;
         }
 
-        Some((required_impls, type_bindings))
+        // Replace all the type variables in the `impl Foo a` so when we unify later we don't
+        // bind to the original `a`, just one instantiation of it.
+        let (impl_typeargs, impl_bindings) =
+            typechecker::replace_all_typevars(&cache.impl_infos[impl_id.0].typeargs.clone(), cache);
+
+        let type_bindings = typechecker::try_unify_all_with_bindings(&impl_typeargs,
+            &constraint.args, bindings.clone(), location, cache).ok()?;
+
+        // Then, check any `given Trait2 a ...` clauses for our impls to further narrow them down
+        check_given_constraints(constraint, impl_id, type_bindings, impl_bindings, location, cache)
     }).collect()
+}
+
+fn check_given_constraints<'c>(constraint: &TraitConstraint, impl_id: ImplInfoId,
+    mut type_bindings: TypeBindings, mut impl_bindings: TypeBindings,
+    location: Location<'c>, cache: &mut ModuleCache<'c>) -> Option<(Vec<(ImplInfoId, TraitConstraint)>, TypeBindings)>
+{
+    let impl_info = &cache.impl_infos[impl_id.0];
+    let mut required_impls = vec![(impl_id, constraint.clone())];
+
+    // TODO: Remove need for cloning here.
+    // Needed because cache is borrowed mutably below.
+    for required_trait in impl_info.given.clone() {
+        let mut constraint = required_trait.as_constraint(constraint.scope, constraint.origin, constraint.callsite);
+
+        // Must carry forward the impl_bindings we got from find_matching_normal_impls
+        // manually since we don't want to insert them into the catch if this impl doesn't
+        // get selected to be used for the TraitConstraint.
+        constraint.args = fmap(&constraint.args,
+            |typ| typechecker::replace_all_typevars_with_bindings(typ, &mut impl_bindings, cache));
+
+        let mut matching_impls = find_matching_impls(&constraint, &type_bindings, location, cache);
+
+        if matching_impls.len() == 1 {
+            let (mut impls, bindings) = matching_impls.remove(0);
+            type_bindings.extend(bindings);
+            required_impls.append(&mut impls);
+        } else {
+            return None;
+        }
+    }
+
+    Some((required_impls, type_bindings))
 }
 
 fn bind_impl<'c>(impl_id: ImplInfoId, constraint: TraitConstraint, cache: &mut ModuleCache<'c>) {
