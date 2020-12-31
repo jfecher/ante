@@ -1,8 +1,8 @@
 
-trait Foo a -> b
+trait Foo a -> b with
     foo: a -> b
 
-impl Foo int string
+impl Foo int string with
     foo _ = "hi"
 
 str = foo 0i32

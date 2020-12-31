@@ -1,0 +1,31 @@
+
+// Most ante expressions end on the same line, but the
+// line is continued automatically if the next line is
+// indented. This rule does not occur if the parser
+// is expecting a block of code, e.g. after an `=`
+// or `then` token.
+
+normal = 1
+
+continued = 1
+    - 1
+
+precedence_works = 2 *
+    3 + 4
+    * 5
+
+foo
+    bar
+    baz
+    (if true then
+        2
+        3
+    else 4)
+
+// args: --parse
+// expected stdout:
+// (normal = 1);
+// (continued = ('-' 1 1));
+// (precedence_works = ('+' ('*' 2 3) ('*' 4 5)));
+// (foo bar baz (if true then 2;
+// 3 else 4))

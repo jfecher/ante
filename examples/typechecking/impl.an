@@ -1,11 +1,11 @@
 
-trait Foo a
+trait Foo a with
     foo: a a -> a
 
-impl Foo i32
+impl Foo i32 with
     foo _a b = b
 
-impl Foo float
+impl Foo float with
     foo _a b = b
 
 

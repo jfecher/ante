@@ -1,49 +1,49 @@
 
-trait Show a
+trait Show a with
     show: a -> string
 
-trait Cast a b
+trait Cast a b -> c with
     cast: a -> b
 
 // A collection c of elements of type e
 // The element type is uniquely determined by the collection's type c
-trait Collection c -> e
+trait Collection c -> e with
     push: c e -> c
     pop: c -> Maybe e
     empty: c
 
 
-impl Show string
+impl Show string with
     show s = s
 
-impl Cast string string
+impl Cast string string string given Show string with
     cast s = show s
 
-impl Collection (a -> a) unit
+impl Collection (a -> a) unit with
     push c e = c
     pop c = ()
     empty = \a.a
 
 // args: --parse
 // expected stdout:
-// (trait Show a =
+// (trait Show a with
 //     (: show (a -> string))
 // );
-// (trait Cast a b =
+// (trait Cast a b -> c with
 //     (: cast (a -> b))
 // );
-// (trait Collection c -> e =
+// (trait Collection c -> e with
 //     (: push (c e -> c))
 //     (: pop (c -> (Maybe e)))
 //     (: empty c)
 // );
-// (impl Show string
+// (impl Show string with
 //     (show = (\ s . s))
 // );
-// (impl Cast string string
+// (impl Cast string string string given (Show string) with
 //     (cast = (\ s . (show s)))
 // );
-// (impl Collection (a -> a) unit
+// (impl Collection (a -> a) unit with
 //     (push = (\ c e . c))
 //     (pop = (\ c . ()))
 //     (empty = (\ a . a))

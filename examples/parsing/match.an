@@ -21,7 +21,7 @@ match "empty" with
 // args: --parse
 // expected stdout:
 // "before";
-// (match (test "foo" "bar") ((2 3) "foo") ("bar" "bar") ("block" (if true 1 2)) ("last branch" (match "nested" ("hi!" "yo"))));
+// (match (test "foo" "bar") ((2 3) "foo") ("bar" "bar") ("block" (if true then 1 else 2)) ("last branch" (match "nested" ("hi!" "yo"))));
 // "after";
 // (match "empty");
 // "done"

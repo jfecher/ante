@@ -61,9 +61,9 @@ impl<'a> Display for ast::Definition<'a> {
 impl<'a> Display for ast::If<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         if let Some(ref otherwise) = self.otherwise {
-            write!(f, "(if {} {} {})", self.condition, self.then, otherwise)
+            write!(f, "(if {} then {} else {})", self.condition, self.then, otherwise)
         } else {
-            write!(f, "(if {} {})", self.condition, self.then)
+            write!(f, "(if {} then {})", self.condition, self.then)
         }
     }
 }
@@ -147,7 +147,7 @@ impl<'a> Display for ast::TraitDefinition<'a> {
         if !self.fundeps.is_empty() {
             write!(f, "-> {} ", join_with(&self.fundeps, " "))?;
         }
-        write!(f, "=\n    {}\n)", join_with(&self.declarations, "\n    "))
+        write!(f, "with\n    {}\n)", join_with(&self.declarations, "\n    "))
     }
 }
 
@@ -155,7 +155,16 @@ impl<'a> Display for ast::TraitImpl<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let args = join_with(&self.trait_args, " ");
         let definitions = join_with(&self.definitions, "\n    ");
-        write!(f, "(impl {} {}\n    {}\n)", self.trait_name, args, definitions)
+        let given = join_with(&self.given, " ");
+        write!(f, "(impl {} {}{}{} with\n    {}\n)", self.trait_name, args,
+            if !given.is_empty() { " given " } else { "" }, given, definitions)
+    }
+}
+
+impl<'a> Display for ast::Trait<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let args = join_with(&self.args, " ");
+        write!(f, "({} {})", self.name, args)
     }
 }
 

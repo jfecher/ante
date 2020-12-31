@@ -1,19 +1,19 @@
 
-trait Functor f
+trait Functor f with
     map: (f a) (a -> b) -> f b
 
-trait Monad m
+trait Monad m with
     wrap: a -> m a
     bind: (m a) (a -> m b) -> m b
 
 
-impl Functor Maybe
+impl Functor Maybe with
     map m f =
         match m with
         | Some x -> Some (f x)
         | None -> None
 
-impl Monad Maybe
+impl Monad Maybe with
     wrap a = Some a
     
     bind m f =

@@ -1,8 +1,8 @@
-trait Foo a b
+trait Foo a b with
     foo: a -> b
     bar: a
 
-impl Foo int string
+impl Foo int string with
     foo _x = "test"
     baz = 2  // error: baz not in foo
     // error: missing definition of foo
@@ -16,4 +16,4 @@ bar : unit
 //     baz = 2  // error: baz not in foo
 // 
 // examples/nameresolution/Trait.an: 5,1	error: impl is missing a definition for bar
-// impl Foo int string
+// impl Foo int string with

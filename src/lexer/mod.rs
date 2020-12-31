@@ -14,11 +14,33 @@ pub struct Lexer<'cache, 'contents> {
     file_contents: &'contents str,
     token_start_position: Position,
     current_position: Position,
-    indent_levels: Vec<usize>,
+    indent_levels: Vec<IndentLevel>,
     current_indent_level: usize,
     return_newline: bool, // Hack to always return a newline after an Unindent token
+    previous_token_expects_indent: bool,
     chars: Chars<'contents>,
     keywords: HashMap<&'static str, Token>,
+}
+
+/// The lexer maintains a stack of IndentLevels to remember
+/// how far each previous level was indented. An indent level
+/// may be ignored (no indent, newline, or unindent tokens issued)
+/// if an indentation is encountered that was not prefixed by a
+/// token that expects an indent afterward (like `then`, `do` or `=`).
+#[derive(Copy, Clone)]
+struct IndentLevel {
+    column: usize,
+    ignored: bool,
+}
+
+impl IndentLevel {
+    fn new(column: usize) -> IndentLevel {
+        IndentLevel { column, ignored: false }
+    }
+
+    fn ignored(column: usize) -> IndentLevel {
+        IndentLevel { column, ignored: true }
+    }
 }
 
 impl<'cache, 'contents> Locatable<'cache> for Lexer<'cache, 'contents> {
@@ -94,11 +116,29 @@ impl<'cache, 'contents> Lexer<'cache, 'contents> {
             file_contents,
             current_position: Position::begin(),
             token_start_position: Position::begin(),
-            indent_levels: vec![0],
+            indent_levels: vec![IndentLevel { column: 0, ignored: false }],
             current_indent_level: 0,
             return_newline: false,
+            previous_token_expects_indent: false,
             chars,
             keywords: Lexer::get_keywords(),
+        }
+    }
+
+    fn should_expect_indent_after_token(token: &Token) -> bool {
+        match token {
+            Token::Block => true,
+            Token::Do => true,
+            Token::Else => true,
+            Token::Extern => true,
+            Token::If => true,
+            Token::Match => true,
+            Token::Then => true,
+            Token::While => true,
+            Token::With => true,
+            Token::Equal => true,
+            Token::RightArrow => true,
+            _ => false,
         }
     }
 
@@ -206,7 +246,10 @@ impl<'cache, 'contents> Lexer<'cache, 'contents> {
             Some((Token::TypeName(word.to_owned()), self.locate()))
         } else {
             match self.keywords.get(word) {
-                Some(keyword) => Some((keyword.clone(), self.locate())),
+                Some(keyword) => {
+                    self.previous_token_expects_indent = Lexer::should_expect_indent_after_token(keyword);
+                    Some((keyword.clone(), self.locate()))
+                }
                 None => Some((Token::Identifier(word.to_owned()), self.locate())),
             }
         }
@@ -272,39 +315,59 @@ impl<'cache, 'contents> Lexer<'cache, 'contents> {
         match (self.current, self.next) {
             ('\r', _) => self.lex_newline(),
             ('\n', _) => self.lex_newline(),
+
             (c, _) if c.is_whitespace() => {
                 let error = LexerError::InvalidCharacterInSignificantWhitespace(self.current);
                 self.advance_with(Token::Invalid(error))
             },
+
             ('/', '/') => self.lex_singleline_comment(),
             ('/', '*') => self.lex_multiline_comment(),
+
             _ if new_indent > self.current_indent_level => self.lex_indent(new_indent),
             _ if new_indent < self.current_indent_level => self.lex_unindent(new_indent),
+
+            _ if self.newlines_ignored() => self.next(),
             _ => Some((Token::Newline, self.locate())),
         }
     }
 
+    fn newlines_ignored(&self) -> bool {
+        self.indent_levels.last().unwrap().ignored
+    }
+
     fn lex_indent(&mut self, new_indent: usize) -> IterElem<'cache> {
         if new_indent == self.current_indent_level + 1 {
-            self.indent_levels.push(new_indent);
+            self.indent_levels.push(IndentLevel::new(new_indent));
             self.current_indent_level = new_indent;
             Some((Token::Invalid(LexerError::IndentChangeTooSmall), self.locate()))
-        } else {
-            debug_assert!(new_indent > self.current_indent_level);
-            self.indent_levels.push(new_indent);
+        } else if self.previous_token_expects_indent {
+            self.indent_levels.push(IndentLevel::new(new_indent));
             self.current_indent_level = new_indent;
             Some((Token::Indent, self.locate()))
+        } else {
+            self.indent_levels.push(IndentLevel::ignored(new_indent));
+            self.current_indent_level = new_indent;
+            self.next()
         }
     }
 
     fn lex_unindent(&mut self, new_indent: usize) -> IterElem<'cache> {
-        if self.current_indent_level == new_indent + 1 {
-            self.current_indent_level = new_indent;
-            Some((Token::Invalid(LexerError::IndentChangeTooSmall), self.locate()))
-        } else {
-            debug_assert!(new_indent < self.current_indent_level);
-            self.current_indent_level = new_indent;
+        let last_indent = self.indent_levels.pop().unwrap();
+        self.current_indent_level = new_indent;
+
+        // The newline returned after an unindent 'belongs' to the
+        // previous indent level which is why we need to check if the
+        // now-current indent level has newlines ignored here instead
+        // of checking the last_indent level that was just popped.
+        self.return_newline = !self.newlines_ignored();
+
+        if new_indent > last_indent.column {
+            Some((Token::Invalid(LexerError::UnindentToNewLevel), self.locate()))
+        } else if last_indent.ignored {
             self.next()
+        } else {
+            Some((Token::Unindent, self.locate()))
         }
     }
 
@@ -335,25 +398,32 @@ impl<'cache, 'contents> Iterator for Lexer<'cache, 'contents> {
     type Item = (Token, Location<'cache>);
 
     fn next(&mut self) -> Option<Self::Item> {
-        let last_indent = self.indent_levels[self.indent_levels.len() - 1];
+        let last_indent = *self.indent_levels.last().unwrap();
         self.token_start_position = self.current_position;
 
+        if self.return_newline {
+            self.return_newline = false;
+            return Some((Token::Newline, self.locate()));
+        }
+
+        // May have to issue several consecutive unindent tokens, so check first
+        if self.current_indent_level < last_indent.column {
+            return self.lex_unindent(self.current_indent_level);
+        }
+
+        // Must check for whitespace changes before previous_token_expects_indent is reset.
+        if self.current == '\r' || self.current == '\n' {
+            return self.lex_newline();
+        } else if self.current.is_whitespace() {
+            self.advance();
+            return self.next();
+        }
+
+        self.previous_token_expects_indent = false;
+
         match (self.current, self.next) {
-            _ if self.return_newline => {
-                self.return_newline = false;
-                Some((Token::Newline, self.locate()))
-            },
-            _ if self.current_indent_level < last_indent => {
-                self.indent_levels.pop();
-                let last_indent = self.indent_levels[self.indent_levels.len() - 1];
-                if self.current_indent_level > last_indent {
-                    self.current_indent_level = last_indent;
-                    Some((Token::Invalid(LexerError::UnindentToNewLevel), self.locate()))
-                } else {
-                    self.return_newline = true;
-                    Some((Token::Unindent, self.locate()))
-                }
-            },
+            (c, _) if c.is_digit(10) => self.lex_number(),
+            (c, _) if c.is_alphanumeric() || c == '_' => self.lex_alphanumeric(),
             ('\0', _) => {
                 if self.current_position.index > self.file_contents.len() {
                     None
@@ -361,21 +431,17 @@ impl<'cache, 'contents> Iterator for Lexer<'cache, 'contents> {
                     self.advance_with(Token::EndOfInput)
                 }
             },
-            ('\r', _) => self.lex_newline(),
-            ('\n', _) => self.lex_newline(),
-            (c, _) if c.is_whitespace() => { self.advance(); self.next() }
-            (c, _) if c.is_digit(10) => self.lex_number(),
-            (c, _) if c.is_alphanumeric() || c == '_' => self.lex_alphanumeric(),
             ('"', _) => self.lex_string(),
             ('\'', _) => self.lex_char_literal(),
             ('/', '/') => self.lex_singleline_comment(),
             ('/', '*') => self.lex_multiline_comment(),
-            (':', '=') => self.advance2_with(Token::Assignment),
             ('=', '=') => self.advance2_with(Token::EqualEqual),
-            ('=', _) => self.advance_with(Token::Equal),
-            ('!', '=') => self.advance2_with(Token::NotEqual),
             ('.', '.') => self.advance2_with(Token::Range),
-            ('-', '>') => self.advance2_with(Token::RightArrow),
+            (':', '=') => { self.previous_token_expects_indent = true; self.advance2_with(Token::Assignment) },
+            ('=', _) => {   self.previous_token_expects_indent = true; self.advance_with(Token::Equal) },
+            ('-', '>') => { self.previous_token_expects_indent = true; self.advance2_with(Token::RightArrow) },
+            ('.', _) => {   self.previous_token_expects_indent = true; self.advance_with(Token::MemberAccess) },
+            ('!', '=') => self.advance2_with(Token::NotEqual),
             ('<', '|') => self.advance2_with(Token::ApplyLeft),
             ('|', '>') => self.advance2_with(Token::ApplyRight),
             ('+', '+') => self.advance2_with(Token::Append),
@@ -395,7 +461,6 @@ impl<'cache, 'contents> Iterator for Lexer<'cache, 'contents> {
             (':', _) => self.advance_with(Token::Colon),
             (';', _) => self.advance_with(Token::Semicolon),
             (',', _) => self.advance_with(Token::Comma),
-            ('.', _) => self.advance_with(Token::MemberAccess),
             ('<', _) => self.advance_with(Token::LessThan),
             ('>', _) => self.advance_with(Token::GreaterThan),
             ('/', _) => self.advance_with(Token::Divide),

@@ -14,9 +14,19 @@ when3 condition expr =
     if condition then
         expr
 
+when4 condition expr =
+    if condition
+    then expr
+
+when5 condition expr =
+    if condition
+        then expr
+
 // args: --parse
 // expected stdout:
 // (foo = (\ a b . (\ c d . 3)));
-// (when1 = (\ condition expr . (if condition expr)));
-// (when2 = (\ condition expr . (if condition expr)));
-// (when3 = (\ condition expr . (if condition expr)))
+// (when1 = (\ condition expr . (if condition then expr)));
+// (when2 = (\ condition expr . (if condition then expr)));
+// (when3 = (\ condition expr . (if condition then expr)));
+// (when4 = (\ condition expr . (if condition then expr)));
+// (when5 = (\ condition expr . (if condition then expr)))

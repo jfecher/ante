@@ -1,36 +1,36 @@
 
 type Thing = nothing: unit
 
-trait Foo a
+trait Foo a with
     foo : a -> unit
 
-trait Bar a
+trait Bar a with
     bar : a -> unit
 
-trait Baz a
+trait Baz a with
     baz : a -> unit
 
 // The call from which the `Foo a` constraint arises
 foo (Thing ())
 
 // Candidate 1
-impl Foo a given Bar a
+impl Foo a given Bar a with
     foo a = bar a
 
-impl Bar a given Baz a
+impl Bar a given Baz a with
     bar a = baz a
 
-impl Baz Thing
+impl Baz Thing with
     baz _ = ()
 
 
 // Does not match
-impl Foo a given Print a
+impl Foo a given Print a with
     foo _ = ()
 
 
 // Candidate 2
-impl Foo Thing
+impl Foo Thing with
     foo _ = ()
 
 // args: --check
@@ -39,7 +39,7 @@ impl Foo Thing
 // type Thing = nothing: unit
 // 
 // examples/typechecking/multiple_matching_impls.an: 17,1	note: Candidate 1
-// impl Foo a given Bar a
+// impl Foo a given Bar a with
 // 
 // examples/typechecking/multiple_matching_impls.an: 33,1	note: Candidate 2
-// impl Foo Thing
+// impl Foo Thing with

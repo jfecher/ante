@@ -55,9 +55,6 @@ type Maybe t =
    | None
 
 
-trait Empty t
-    empty: t
-
 // TODO: trait impls with 'given' clauses
 // impl Eq (Maybe 'e) given Eq 'e
 //     (==) l r =
@@ -66,16 +63,16 @@ trait Empty t
 //         | (None, None) -> true
 //         | _ -> false
 
-trait Cast a /*to*/ b
+trait Cast a /*to*/ b with
     cast: a -> b
 
-impl Cast a a
+impl Cast a a with
     cast a = a
 
-impl Cast (ref a) usz
+impl Cast (ref a) usz with
     cast (_ptr: ref a) = builtin "CastRefUsz"
 
-impl Cast usz (ref a)
+impl Cast usz (ref a) with
     cast (_address: usz) = builtin "CastRefUsz"
 
 // TODO: trait impls with 'given' clauses
@@ -85,7 +82,7 @@ impl Cast usz (ref a)
 //         | Some val -> "Some (" ++ cast val ++ ")"
 //         | None -> "None"
 
-trait TryCast a b
+trait TryCast a b with
     try_cast: a -> Maybe b
 
 // TODO: trait impls with 'given' clauses
@@ -93,72 +90,36 @@ trait TryCast a b
 //     try_cast a = Some (cast a)
 
 
-trait Add n
-    (+): n n -> n
+trait Add n with (+): n n -> n
+impl Add a given Int a with (+) _ _ = builtin "AddInt"
+impl Add float with (+) (_: float) (_: float) -> float = builtin "AddFloat"
 
-impl Add a given Int a
-    (+) _ _ = builtin "AddInt"
+trait Sub n with (-): n n -> n
+impl Sub a given Int a with (-) _ _ = builtin "SubInt"
+impl Sub float with (-) (_: float) (_: float) -> float = builtin "SubFloat"
 
-impl Add float
-    (+) (_: float) (_: float) -> float = builtin "AddFloat"
+trait Mul n with (*): n n -> n
+impl Mul a given Int a with (*) _ _ = builtin "MulInt"
+impl Mul float with (*) (_: float) (_: float) -> float = builtin "MulFloat"
 
+trait Div n with (/): n n -> n
+impl Div a given Int a with (/) _ _ = builtin "DivInt"
+impl Div float with (/) (_: float) (_: float) -> float = builtin "DivFloat"
 
-trait Sub n
-    (-): n n -> n
+trait Mod n with (%): n n -> n
+impl Mod a given Int a with (%) _ _ = builtin "ModInt"
+impl Mod float with (%) (_: float) (_: float) -> float = builtin "ModFloat"
 
-impl Sub a given Int a
-    (-) _ _ = builtin "SubInt"
-
-impl Sub float
-    (-) (_: float) (_: float) -> float = builtin "SubFloat"
-
-
-trait Mul n
-    (*): n n -> n
-
-impl Mul a given Int a
-    (*) _ _ = builtin "MulInt"
-
-impl Mul float
-    (*) (_: float) (_: float) -> float = builtin "MulFloat"
-
-
-trait Div n
-    (/): n n -> n
-
-impl Div a given Int a
-    (/) _ _ = builtin "DivInt"
-
-impl Div float
-    (/) (_: float) (_: float) -> float = builtin "DivFloat"
-
-
-trait Mod n
-    (%): n n -> n
-
-
-impl Mod a given Int a
-    (%) _ _ = builtin "ModInt"
-
-impl Mod float
-    (%) (_: float) (_: float) -> float = builtin "ModFloat"
-
-
-trait Eq t
-    (==): t t -> bool
+trait Eq t with (==): t t -> bool
+impl Eq a given Int a with (==) _ _ = builtin "EqInt"
+impl Eq float with (==) (_: float) (_: float) -> bool = builtin "EqFloat"
 
 (not) a = if a then false else true
 (!=) l r = not (l == r)
 
-impl Eq a given Int a
-    (==) _ _ = builtin "EqInt"
-
-impl Eq float
-    (==) (_: float) (_: float) -> bool = builtin "EqFloat"
-
 type Ordering = | Less | Equal | Greater
 
-impl Eq Ordering
+impl Eq Ordering with
     (==) (a: Ordering) (b: Ordering) -> bool =
         match (a, b) with
         | (Less, Less) -> true
@@ -166,7 +127,7 @@ impl Eq Ordering
         | (Greater, Greater) -> true
         | _ -> false
 
-trait Cmp a
+trait Cmp a with
     compare: a a -> Ordering
 
 (<) a b = compare a b == Less
@@ -174,13 +135,13 @@ trait Cmp a
 (<=) a b = compare a b != Greater
 (>=) a b = compare a b != Less
 
-impl Cmp a given Int a
+impl Cmp a given Int a with
     compare _ _ =
         if builtin "LessInt" then Less
         else if builtin "GreaterInt" then Greater
         else Equal
 
-impl Cmp float
+impl Cmp float with
     compare (_: float) (_: float) -> Ordering =
         if builtin "LessFloat" then Less
         else if builtin "GreaterFloat" then Greater
@@ -190,10 +151,10 @@ impl Cmp float
 // trait Is 't
 //     (is) 't 't -> bool
 
-trait Append t
+trait Append t with
     (++): t t -> t
 
-trait Extract col index -> elem
+trait Extract col index -> elem with
     (#): col index -> elem
 
 // TODO: 'mut' and special-case extract versus append
@@ -202,7 +163,7 @@ trait Extract col index -> elem
 //     // a differing number of parameters can be declared.
 //     insert (mut col) index elem -> unit
 
-trait In elem col
+trait In elem col with
     (in): elem col -> bool
 
 // trait Deref ptr -> elem
@@ -217,69 +178,42 @@ trait In elem col
 //     (not) t -> t
 
 
-trait Print t
+trait Print t with
     printne: t -> unit
 
 print x =
     printne x
     putchar '\n'
 
-impl Print i8
-    printne x = printf ("%hhd".c_string) x
+impl Print i8  with printne x = printf ("%hhd".c_string) x
+impl Print i16 with printne x = printf ("%hd".c_string) x
+impl Print i32 with printne x = printf ("%d".c_string) x
+impl Print i64 with printne x = printf ("%ld".c_string) x
+impl Print isz with printne x = printf ("%zi".c_string) x
+impl Print u8  with printne x = printf ("%hhu".c_string) x
+impl Print u16 with printne x = printf ("%hu".c_string) x
+impl Print u32 with printne x = printf ("%u".c_string) x
+impl Print u64 with printne x = printf ("%lu".c_string) x
+impl Print usz with printne x = printf ("%zu".c_string) x
+impl Print char with printne x = printf ("%c".c_string) x
+impl Print float with printne x = printf ("%.14f".c_string) x
+impl Print string with printne s = printf "%s".c_string s.c_string
+impl Print (ref char) with printne s = printf ("%s".c_string) s
 
-impl Print i16
-    printne x = printf ("%hd".c_string) x
-
-impl Print i32
-    printne x = printf ("%d".c_string) x
-
-impl Print i64
-    printne x = printf ("%ld".c_string) x
-
-impl Print isz
-    printne x = printf ("%zi".c_string) x
-
-impl Print u8
-    printne x = printf ("%hhu".c_string) x
-
-impl Print u16
-    printne x = printf ("%hu".c_string) x
-
-impl Print u32
-    printne x = printf ("%u".c_string) x
-
-impl Print u64
-    printne x = printf ("%lu".c_string) x
-
-impl Print usz
-    printne x = printf ("%zu".c_string) x
-
-impl Print float
-    printne x = printf ("%.14f".c_string) x
-
-impl Print char
-    printne x = printf ("%c".c_string) x
-
-impl Print bool
+impl Print bool with
     printne b =
         if b then printf ("true".c_string)
         else printf ("false".c_string)
 
-impl Print (ref char)
-    printne s = printf ("%s".c_string) s
-
-impl Print string
-    printne s = printf "%s".c_string s.c_string
-
-// TODO: impls with 'given' clauses
-// impl Print 't given Cast 't string
+// TODO: This impl would conflict with others
+// impl Print t given Cast t string
 //     printne t = printne (t as string)
 
 
-impl Cast string (ref char)
+impl Cast string (ref char) with
     cast s = s.c_string
 
-// TODO: 'mut'
+// TODO: loops
 // impl Cast int string
 //     cast i =
 //         if i == 0 then return "0"
@@ -324,23 +258,21 @@ impl Cast string (ref char)
 // 
 //     Some (if isNeg then -1 * sum else sum)
 
-// TODO: impls with 'given' clauses
-// impl Eq (ref 't) given Eq 't
+// impl Eq (ref t) given Eq t with
 //     (==) l r = @l == @r
 
 
 //For-loops work over any range that is Iterable
-trait Iterable i -> it
+trait Iterable i -> it with
     into_iter: i -> it
 
-trait Iterator i -> elem
+trait Iterator i -> elem with
     has_next: i -> bool
     cur_elem: i -> elem
     advance: i -> i
 
-// TODO: impls with 'given' clauses
-// impl Iterable 'i 'i 'e given Iterator 'i
-//     into_iter i = i
+impl Iterable i i given Iterator i with
+    into_iter i = i
 
 // TODO: unary 'not'
 // //Iterating through an InFile iterates through each line

@@ -233,10 +233,26 @@ parser!(trait_definition loc =
     args !<- many1(identifier);
     _ !<- maybe(expect(Token::RightArrow));
     fundeps !<- many0(identifier);
-    _ !<- expect(Token::Indent);
+    body <- maybe(trait_body);
+    Ast::trait_definition(name, args, fundeps, body.unwrap_or(vec![]), loc)
+);
+
+parser!(trait_body loc -> 'b Vec<ast::TypeAnnotation<'b>> =
+    _ <- expect(Token::With);
+    body <- or(&[trait_body_block, trait_body_single], "trait body");
+    body
+);
+
+parser!(trait_body_single loc -> 'b Vec<ast::TypeAnnotation<'b>> =
+    body <- declaration;
+    vec![body]
+);
+
+parser!(trait_body_block loc -> 'b Vec<ast::TypeAnnotation<'b>> =
+    _ <- expect(Token::Indent);
     body !<- delimited_trailing(declaration, expect(Token::Newline));
     _ !<- expect(Token::Unindent);
-    Ast::trait_definition(name, args, fundeps, body, loc)
+    body
 );
 
 parser!(declaration loc -> 'b ast::TypeAnnotation<'b> =
@@ -251,10 +267,26 @@ parser!(trait_impl loc =
     name !<- typename;
     args !<- many1(basic_type);
     given !<- maybe(given);
-    _ !<- expect(Token::Indent);
+    definitions !<- maybe(impl_body);
+    Ast::trait_impl(name, args, given.unwrap_or(vec![]), definitions.unwrap_or(vec![]), loc)
+);
+
+parser!(impl_body loc -> 'b Vec<ast::Definition<'b>> =
+    _ <- expect(Token::With);
+    definitions <- or(&[impl_body_block, impl_body_single], "impl body");
+    definitions
+);
+
+parser!(impl_body_single loc -> 'b Vec<ast::Definition<'b>> =
+    definition <- raw_definition;
+    vec![definition]
+);
+
+parser!(impl_body_block loc -> 'b Vec<ast::Definition<'b>> =
+    _ <- expect(Token::Indent);
     definitions !<- delimited_trailing(raw_definition, expect(Token::Newline));
     _ !<- expect(Token::Unindent);
-    Ast::trait_impl(name, args, given.unwrap_or(vec![]), definitions, loc)
+    definitions
 );
 
 parser!(given loc -> 'b Vec<Trait<'b>> =

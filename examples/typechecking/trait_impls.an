@@ -1,20 +1,20 @@
 
-trait Bar a -> b
+trait Bar a -> b with
     bar : a a -> b
 
 
-impl Bar int string
+impl Bar int string with
     bar _ _ = "good"
 
-impl Bar int int
+impl Bar int int with
     bar _ _ = "bad return type"
 
-impl Bar int char string float unit
+impl Bar int char string float unit with
     bar _ _ = "bad impl args"
 
 
 
-impl Bar int float
+impl Bar int float with
     bar _ _ = 23.2 // Should be an error, we already have a Bar int
 
 foo a b = bar a b
@@ -27,4 +27,4 @@ bar "four" "five"
 // args: --check --show-types
 // expected stdout:
 // examples/typechecking/trait_impls.an: 12,1	error: impl has 5 type arguments but Bar requires 2
-// impl Bar int char string float unit
+// impl Bar int char string float unit with
