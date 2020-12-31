@@ -1,6 +1,6 @@
 # Ante
 
-[![Travis (.org)](https://img.shields.io/travis/jfecher/ante-rs)](https://travis-ci.org/github/jfecher/ante-rs)
+[![Travis (.org)](https://img.shields.io/travis/jfecher/ante)](https://travis-ci.org/github/jfecher/ante)
 
 ---
 
@@ -9,7 +9,7 @@ at gamedev but is still applicable for most domains. Ante aims to
 make it easier to write faster, safer code through region-based
 memory management and refinement types.
 
-```rs
+```scala
 type Person =
     job: string
     name: ref string
