@@ -788,8 +788,10 @@ impl<'c> Resolvable<'c> for ast::TypeAnnotation<'c> {
 }
 
 fn find_file<'a>(relative_path: &Path, cache: &mut ModuleCache) -> Option<(File, PathBuf)> {
+    let relative_path = PathBuf::from(relative_path.to_string_lossy().to_lowercase());
+
     for root in cache.relative_roots.iter() {
-        let path = root.join(relative_path).with_extension("an");
+        let path = root.join(&relative_path).with_extension("an");
 
         let file = match File::open(&path) {
             Ok(file) => file,
@@ -864,10 +866,11 @@ impl<'c> Resolvable<'c> for ast::Import<'c> {
     }
 
     fn define(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'c>) {
-        let module_id = self.module_id.unwrap();
-        define_module(module_id, cache, self.location).map(|exports| {
-            resolver.current_scope().import(&exports, cache, self.location);
-        });
+        if let Some(module_id) = self.module_id {
+            define_module(module_id, cache, self.location).map(|exports| {
+                resolver.current_scope().import(&exports, cache, self.location);
+            });
+        }
     }
 }
 
