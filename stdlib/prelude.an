@@ -26,7 +26,7 @@ type FilePos = f: ref unit
 type InFile = f:File
 type OutFile = f:File
 
-extern 
+extern
     fopen: (ref char) (ref char) -> File
     fclose: File -> unit
 
@@ -49,21 +49,24 @@ extern
 // fgetchar f = fgetc f as char
 // feofb f = feof f as bool
 
-//Ante datatypes
 type Maybe t =
    | Some t
    | None
 
+type Result t e =
+   | Ok t
+   | Error e
 
-// TODO: trait impls with 'given' clauses
-// impl Eq (Maybe 'e) given Eq 'e
-//     (==) l r =
-//         match (l, r) with
-//         | (Some lv, Some rv) -> lv == rv
-//         | (None, None) -> true
-//         | _ -> false
 
-trait Cast a /*to*/ b with
+impl Eq (Maybe e) given Eq e with
+    (==) l r =
+        match (l, r) with
+        | (Some lv, Some rv) -> lv == rv
+        | (None, None) -> true
+        | _ -> false
+
+/// A type conversion from a to b
+trait Cast a b with
     cast: a -> b
 
 impl Cast a a with
@@ -73,23 +76,24 @@ impl Cast (ref a) usz with
     cast (_ptr: ref a) = builtin "CastRefUsz"
 
 impl Cast usz (ref a) with
-    cast (_address: usz) = builtin "CastRefUsz"
+    cast (_address: usz) = builtin "CastUszRef"
 
-// TODO: trait impls with 'given' clauses
-// impl Cast (Maybe 'm) string given Cast 'm string
-//     cast maybe =
-//         match maybe with
-//         | Some val -> "Some (" ++ cast val ++ ")"
-//         | None -> "None"
+impl Cast (Maybe m) string given Cast m string with
+    cast maybe =
+        match maybe with
+        | Some val -> "Some (" ++ cast val ++ ")"
+        | None -> "None"
 
+
+/// Represents a failable type cast from a to b
 trait TryCast a b with
     try_cast: a -> Maybe b
 
-// TODO: trait impls with 'given' clauses
-// impl TryCast 'a 'b given Cast 'a 'b
-//     try_cast a = Some (cast a)
+impl TryCast a b given Cast a b with
+    try_cast a = Some (cast a)
 
 
+// Huge block of builtin numeric operators incoming
 trait Add n with (+): n n -> n
 impl Add a given Int a with (+) _ _ = builtin "AddInt"
 impl Add float with (+) (_: float) (_: float) -> float = builtin "AddFloat"
@@ -147,21 +151,15 @@ impl Cmp float with
         else if builtin "GreaterFloat" then Greater
         else Equal
 
-// TODO: 'is' operator for identity/referential equality
-// trait Is 't
-//     (is) 't 't -> bool
-
 trait Append t with
     (++): t t -> t
 
-trait Extract col index -> elem with
-    (#): col index -> elem
+trait Extract collection index -> elem with
+    (#): collection index -> elem
 
 // TODO: 'mut' and special-case extract versus append
-// trait Insert col index elem
-//     // temporary until functions with the same name and
-//     // a differing number of parameters can be declared.
-//     insert (mut col) index elem -> unit
+// trait Insert collection index elem
+//     (#): (mut collection) index elem -> unit
 
 trait In elem col with
     (in): elem col -> bool
@@ -171,7 +169,7 @@ trait In elem col with
 
 // TODO: Do we need a separate trait for unary '-'?
 // trait Neg t
-//     neg t -> t
+//     (-): t -> t
 
 // TODO: Is a trait for unary 'Not' needed or can it just be a normal function?
 // trait Not t
