@@ -142,8 +142,11 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
             self.fmt_type(arg, f)?;
 
             if i + 1 < elements.len() {
-                write!(f, ", ")?;
+                write!(f, "{}", ", ".blue())?;
             }
+        }
+        if elements.len() == 1 {
+            write!(f, "{}", ",".blue())?;
         }
         write!(f, "{}", ")".blue())
     }

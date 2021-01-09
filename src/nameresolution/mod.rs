@@ -418,6 +418,9 @@ impl<'c> NameResolver {
                 let args = fmap(args, |arg| self.convert_type(cache, arg));
                 Type::TypeApplication(constructor, args)
             },
+            ast::Type::TupleType(args, _) => {
+                Type::Tuple(fmap(args, |arg| self.convert_type(cache, arg)))
+            }
         }
     }
 
@@ -803,7 +806,7 @@ fn find_file<'a>(relative_path: &Path, cache: &mut ModuleCache) -> Option<(File,
     None
 }
 
-pub fn declare_module<'a>(path: &Path, cache: &mut ModuleCache<'a>, error_location: Location) -> Option<ModuleId> {
+pub fn declare_module<'a>(path: &Path, cache: &mut ModuleCache<'a>, error_location: Location<'a>) -> Option<ModuleId> {
     let (file, path) = match find_file(path, cache) {
         Some((f, p)) => (f, p),
         _ => {

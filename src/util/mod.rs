@@ -1,5 +1,7 @@
 use std::fmt::Display;
 
+#[macro_use]
+pub mod logging;
 pub mod trustme;
 
 pub fn fmap<T, U, F>(array: &[T], mut f: F) -> Vec<U>

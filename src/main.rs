@@ -1,6 +1,8 @@
 #[macro_use]
 mod parser;
 mod lexer;
+
+#[macro_use]
 mod util;
 
 #[macro_use]
@@ -67,7 +69,7 @@ pub fn main() {
         .arg(Arg::with_name("O").short("O").value_name("level").default_value("0").validator(validate_opt_argument).help("Sets the current optimization level from 0 (no optimization) to 3 (aggressive optimization). Set to s or z to optimize for size."))
         .arg(Arg::with_name("no-color").long("no-color").help("Use plaintext and an indicator line instead of color for pointing out error locations"))
         .arg(Arg::with_name("show-types").long("show-types").help("Print out the type of each definition"))
-        .arg(Arg::with_name("show-llvm-ir").long("show-llvm-ir").help("Print out the LLVM-IR of the compiled program"))
+        .arg(Arg::with_name("emit-llvm").long("emit-llvm").help("Print out the LLVM-IR of the compiled program"))
         .arg(Arg::with_name("delete-binary").long("delete-binary").help("Delete the resulting binary after compiling"))
         .arg(Arg::with_name("file").help("The file to compile").required(true))
         .get_matches();
@@ -112,7 +114,7 @@ pub fn main() {
 
     if error::get_error_count() == 0 {
         llvm::run(&filename, &ast, &mut cache,
-                args.is_present("show-llvm-ir"),
+                args.is_present("emit-llvm"),
                 args.is_present("run"),
                 args.is_present("delete-binary"),
                 args.value_of("O").unwrap());

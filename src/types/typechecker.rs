@@ -854,6 +854,12 @@ impl<'a> Inferable<'a> for ast::Definition<'a> {
 
         CURRENT_LEVEL.store(level.0 - 1, Ordering::SeqCst);
 
+        // TODO: the inferred type t needs to be unified with the patterns type before
+        // resolve_traits is called. For now it is sufficient to call bind_irrefutable_pattern
+        // twice - the first time with no traits, however in the future bind_irrefutable_pattern
+        // should be split up into two parts.
+        bind_irrefutable_pattern(self.pattern.as_mut(), &t, &vec![], false, cache);
+
         // Now infer the traits + type of the lhs
         let exposed_traits = traitchecker::resolve_traits(traits, self.location, cache);
         bind_irrefutable_pattern(self.pattern.as_mut(), &t, &exposed_traits, true, cache);

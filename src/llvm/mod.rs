@@ -256,12 +256,11 @@ impl<'g> Generator<'g> {
         (function, function_pointer)
     }
 
-    fn add_required_impls<'c>(&mut self, required_impls: &[RequiredImpl]) {
+    fn add_required_impls(&mut self, required_impls: &[RequiredImpl]) {
         for required_impl in required_impls {
             // TODO: This assert is failing in builtin_int for some reason.
             // It may be the case that this assert was wrong to begin with and
             // there _should_ be multiple bindings for a given origin.
-
             // assert!(!self.impl_mappings.contains_key(&required_impl.origin), "impl_mappings already had a mapping for {:?}", required_impl.origin);
             self.impl_mappings.insert(required_impl.origin, required_impl.binding);
         }
@@ -492,7 +491,7 @@ impl<'g> Generator<'g> {
             Function(args, return_type, varargs) => {
                 let args = fmap(args, |typ| self.convert_type(typ, cache));
                 let return_type = self.convert_type(return_type, cache);
-                return_type.fn_type(&args, *varargs).ptr_type(AddressSpace::Global).into()
+                return_type.fn_type(&args, *varargs).ptr_type(AddressSpace::Generic).into()
             },
 
             TypeVariable(id) => self.convert_type(&self.find_binding(*id, cache).clone(), cache),
@@ -511,7 +510,7 @@ impl<'g> Generator<'g> {
                 match &typ {
                     Primitive(ReferenceType) => {
                         assert!(args.len() == 1);
-                        self.convert_type(&args[0], cache).ptr_type(AddressSpace::Global).into()
+                        self.convert_type(&args[0], cache).ptr_type(AddressSpace::Generic).into()
                     },
                     UserDefinedType(id) => self.convert_user_defined_type(*id, args, cache),
                     _ => {
@@ -619,7 +618,7 @@ impl<'g> Generator<'g> {
         let global = self.module.add_global(literal.get_type(), None, "string_literal");
         global.set_initializer(&literal);
         let value = global.as_pointer_value();
-        let cstring_type = self.context.i8_type().ptr_type(AddressSpace::Global);
+        let cstring_type = self.context.i8_type().ptr_type(AddressSpace::Generic);
         let cast = self.builder.build_pointer_cast(value, cstring_type, "string_cast");
 
         let string_type = types::Type::UserDefinedType(types::STRING_TYPE);
@@ -855,7 +854,7 @@ impl<'g> Generator<'g> {
         let alloca = self.builder.build_alloca(source_type, "alloca");
         self.builder.build_store(alloca, value);
 
-        let target_type = target_type.ptr_type(AddressSpace::Global);
+        let target_type = target_type.ptr_type(AddressSpace::Generic);
         let cast = self.builder.build_pointer_cast(alloca, target_type, "cast");
         self.builder.build_load(cast, "union_cast")
     }

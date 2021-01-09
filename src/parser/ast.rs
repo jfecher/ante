@@ -133,6 +133,7 @@ pub enum Type<'a> {
     TypeVariable(String, Location<'a>),
     UserDefinedType(String, Location<'a>),
     TypeApplication(Box<Type<'a>>, Vec<Type<'a>>, Location<'a>),
+    TupleType(Vec<Type<'a>>, Location<'a>),
 }
 
 /// The AST representation of a trait usage.

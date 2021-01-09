@@ -171,10 +171,6 @@ trait In elem col with
 // trait Neg t
 //     (-): t -> t
 
-// TODO: Is a trait for unary 'Not' needed or can it just be a normal function?
-// trait Not t
-//     (not) t -> t
-
 
 trait Print t with
     printne: t -> unit
@@ -241,11 +237,11 @@ impl Cast string (ref char) with
 //     i = mut 0
 //     sum = mut 0
 //     isNeg =
-//         if s.len == 0 or s.cStr#0 == '-' then false
+//         if s.len == 0 or s.c_string#0 == '-' then false
 //         else ((i += 1); true)
 // 
-//     while s.cStr#i != '\0' do
-//         c = s.cStr#i
+//     while s.c_string#i != '\0' do
+//         c = s.c_string#i
 //         if c >= '0' and c <= '9' then
 //             sum *= 10
 //             sum += cast (c - '0')
@@ -272,62 +268,58 @@ trait Iterator i -> elem with
 impl Iterable i i given Iterator i with
     into_iter i = i
 
-// TODO: unary 'not'
-// //Iterating through an InFile iterates through each line
+// Iterating through an InFile iterates through each line
 // impl Iterator InFile string
 //     has_next f = not feofb f
 //     cur_elem f = InFile.next_line f
 //     advance f = f
 
+// TODO: manually construct a string from parts
+// impl Cast (ref char) string with
+//     cast c_string = string c_string (cast (strlen c_string))
 
-// impl Cast (ref char) string
-//     cast cStr = string cStr (cast (strlen cStr))
-// 
 // impl Eq string
 //     (==) l r =
 //         if l.len != r.len then
 //             return false
 // 
 //         for i in 0 .. l.len do
-//             if l.cStr#i != r.cStr#i then
+//             if l.c_string#i != r.c_string#i then
 //                 return false
 //         true
-// 
-// impl Is string
-//     (is) l r = l.cStr is r.cStr
-// 
-// 
-// impl Append string
+
+// TODO: manually construct a string from parts
+// impl Append string with
 //     (++) s1 s2 =
-//         if s1.len == 0int then return s2
-//         if s2.len == 0int then return s1
+//         if s1.len == 0 then return s2
+//         if s2.len == 0 then return s1
 // 
 //         len = s1.len + s2.len
-//         buf = mut malloc (len+1int)
+//         buf = mut malloc (len + 1)
 // 
-//         memcpy buf (s1.cStr) s1.len
+//         memcpy buf (s1.c_string) (s1.len)
 // 
 //         buf_offset = cast (cast buf + s1.len)
-//         memcpy buf_offset (s2.cStr) (s2.len+1int) //copy terminating null too
+//         memcpy buf_offset (s2.c_string) (s2.len + 1) //copy terminating null too
 // 
 //         string buf len
-// 
-// impl Extract string int char
-//     (#) s index = s.cStr#index
-// 
-// 
+
+impl Extract string usz char with
+    (#) s index = s.c_string#index
+
+
 // impl Insert string int char
 //     insert str index char =
-//         str.cStr#index := char
-// 
-// impl Cast string InFile
-//     cast fName = InFile (fopen fName.cStr "r".cStr)
-// 
-// 
-// impl Cast string OutFile
-//     cast fName = OutFile (fopen fName.cStr "w".cStr)
-// 
-// 
+//         str.c_string#index := char
+
+impl Cast string InFile with
+    cast fName = InFile (fopen fName.c_string "r".c_string)
+
+
+impl Cast string OutFile with
+    cast fName = OutFile (fopen fName.c_string "w".c_string)
+
+
 // module InFile
 //     next_line (f:InFile) -> string =
 //         if feofb f then return ""

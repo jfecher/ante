@@ -3,7 +3,7 @@ use crate::error::location::{ Location, Locatable };
 use crate::parser::ast::{ self, Ast, LiteralKind };
 use crate::types::pattern::Constructor::*;
 use crate::types::{ typechecker, Type, TypeInfoBody, TypeInfoId, PrimitiveType, STRING_TYPE };
-use crate::util::{ join_with, unwrap_clone };
+use crate::util::{ join_with, fmap, unwrap_clone };
 
 use std::collections::{ BTreeMap, BTreeSet };
 
@@ -788,8 +788,9 @@ impl DecisionTree {
             DecisionTree::Fail => (),
             DecisionTree::Switch(id, cases) => {
                 let typ = unwrap_clone(&cache.definition_infos[id.0].typ);
+                let typ = typechecker::follow_bindings_in_cache_and_map(&typ, &std::collections::HashMap::new(), cache);
 
-                // Bind each the list of ids for each field to its corresponding field type
+                // Bind the id for each field to its corresponding field type
                 for case in cases.iter_mut() {
                     // First get the type of the constructor, each field will be a parameter of the
                     // constructor type unless the constructor is not a function type, then the
@@ -797,11 +798,14 @@ impl DecisionTree {
                     let constructor = case.get_constructor_type(&typ, cache);
                     let field_types = fields_of_type(&constructor);
 
+                    assert!(case.fields.len() <= field_types.len(),
+                        "Found case field count that did not match the field count of the constructor.\n\
+                        This should have been caught during typechecking.\ncase.fields = {:?}\nfield_types={:?}",
+                        case.fields, fmap(&field_types, |t| t.display(cache)));
+
                     // The constructor_return_type is the type we're currently matching on in this
                     // case so it is also the expected type when we recurse in the case.branch below.
                     unify_constructor_type(&constructor, &typ, location, cache);
-
-                    assert!(case.fields.len() <= field_types.len());
 
                     for (field_ids, field_type) in case.fields.iter().zip(field_types.into_iter()) {
                         for field_id in field_ids {

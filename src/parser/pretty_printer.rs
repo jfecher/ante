@@ -98,6 +98,9 @@ impl<'a> Display for ast::Type<'a> {
             TypeApplication(constructor, args, _) => {
                 write!(f, "({} {})", constructor, join_with(args, " "))
             },
+            TupleType(args, _) => {
+                write!(f, "({},)", join_with(args, ", "))
+            }
         }
     }
 }

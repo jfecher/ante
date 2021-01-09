@@ -36,9 +36,11 @@ pub fn import_prelude<'a>(resolver: &mut NameResolver, cache: &mut ModuleCache<'
         // Otherwise, import the prelude itself
         let prelude_dir = prelude_path();
         cache.prelude_path = prelude_dir.clone();
-        let id = declare_module(&prelude_dir, cache, Location::builtin()).unwrap();
-        let exports = define_module(id, cache, Location::builtin()).unwrap();
-        resolver.current_scope().import(exports, cache, Location::builtin());
+
+        if let Some(id) = declare_module(&prelude_dir, cache, Location::builtin()) {
+            let exports = define_module(id, cache, Location::builtin()).unwrap();
+            resolver.current_scope().import(exports, cache, Location::builtin());
+        }
     }
 
     // Manually insert the Int trait as if it were defined in the prelude

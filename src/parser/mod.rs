@@ -479,9 +479,13 @@ fn basic_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
         Token::Ref => reference_type(input),
         Token::Identifier(_) => type_variable(input),
         Token::TypeName(_) => user_defined_type(input),
-        Token::ParenthesisLeft => parenthesized(parse_type)(input),
+        Token::ParenthesisLeft => or(&[parenthesized_type, tuple_type], "parenthesized type")(input),
         _ => Err(ParseError::InRule(&"type", input[0].1)),
     }
+}
+
+fn parenthesized_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
+    parenthesized(parse_type)(input)
 }
 
 parser!(match_branch _loc -> 'b (Ast<'b>, Ast<'b>) =
@@ -609,6 +613,13 @@ parser!(type_application loc -> 'b Type<'b> =
     type_constructor <- basic_type;
     args <- many1(basic_type);
     Type::TypeApplication(Box::new(type_constructor), args, loc)
+);
+
+parser!(tuple_type loc -> 'b Type<'b> =
+    _ <- expect(Token::ParenthesisLeft);
+    args <- delimited_trailing(parse_type, expect(Token::Comma));
+    _ !<- expect(Token::ParenthesisRight);
+    Type::TupleType(args, loc)
 );
 
 parser!(int_type loc -> 'b Type<'b> =

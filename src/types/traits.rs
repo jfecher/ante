@@ -228,3 +228,12 @@ impl TraitConstraint {
         self.clone().as_required_trait().debug(cache)
     }
 }
+
+impl RequiredImpl {
+    #[allow(dead_code)]
+    pub fn debug<'c>(&self, cache: &ModuleCache<'c>) -> String {
+        let name = &cache.definition_infos[self.binding.0].name;
+        let args = Type::Tuple(self.args.clone());
+        format!("{} with args {}", name, args.display(cache))
+    }
+}

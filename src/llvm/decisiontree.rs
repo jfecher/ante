@@ -3,7 +3,6 @@ use crate::types::pattern::{ DecisionTree, Case, VariantTag };
 use crate::types::{ Type, typed::Typed };
 use crate::parser::ast::Match;
 use crate::cache::{ ModuleCache, DefinitionInfoId, DefinitionKind };
-use crate::util::unwrap_clone;
 
 use inkwell::values::{ BasicValueEnum, IntValue, PhiValue };
 use inkwell::types::BasicType;
@@ -27,7 +26,8 @@ impl<'g> Generator<'g> {
         // the initial value needs to be stored in the first id here since before this there was no
         // extract and store step that would have set the value beforehand.
         if let DecisionTree::Switch(id, _) = tree {
-            self.definitions.insert((*id, match_expr.expression.get_type().unwrap().clone()), value_to_match);
+            let typ = self.follow_bindings(match_expr.expression.get_type().unwrap(), cache);
+            self.definitions.insert((*id, typ), value_to_match);
         }
 
         let starting_block = self.current_block();
@@ -68,7 +68,9 @@ impl<'g> Generator<'g> {
             },
             DecisionTree::Switch(id, cases) => {
                 if !cases.is_empty() {
-                    let type_to_switch_on = unwrap_clone(&cache.definition_infos[id.0].typ);
+                    let type_to_switch_on = cache.definition_infos[id.0].typ.as_ref().unwrap();
+                    let type_to_switch_on = self.follow_bindings(type_to_switch_on, cache);
+
                     let value_to_switch_on = self.definitions[&(*id, type_to_switch_on)];
 
                     let starting_block = self.current_block();
@@ -86,7 +88,11 @@ impl<'g> Generator<'g> {
 
                     self.builder.position_at_end(starting_block);
 
-                    self.build_switch(*id, value_to_switch_on, else_block, switch_cases, cache);
+                    if cases.len() > 1 {
+                        self.build_switch(*id, value_to_switch_on, else_block, switch_cases, cache);
+                    } else if cases.len() == 1 {
+                        self.builder.build_unconditional_branch(switch_cases[0].1);
+                    }
                 }
             },
         }
@@ -141,7 +147,7 @@ impl<'g> Generator<'g> {
                 match &branches[*n] {
                     Some(block) => *block,
                     None => {
-                        // Codegening the branch also store's its starting_block in branches,
+                        // Codegening the branch also stores its starting_block in branches,
                         // so we can retrieve it here.
                         let branch_start = self.codegen_case_in_new_block(case,
                             matched_value, branches, phi, match_end, match_expr, cache);
@@ -224,6 +230,11 @@ impl<'g> Generator<'g> {
         }
     }
 
+    /// When creating a decision tree, any match all case is always last in the case list.
+    fn has_match_all_case(&self, cases: &[Case]) -> bool {
+        cases.last().unwrap().tag == None
+    }
+
     /// codegen an else/match-all case of a particular constructor in a DecisionTree.
     /// If there is no MatchAll case (represented by a None value for case.tag) then
     /// a block is created with an llvm unreachable assertion.
@@ -241,7 +252,7 @@ impl<'g> Generator<'g> {
 
         // If there's a catch-all case we can codegen the code there. Otherwise if this
         // constructor has no catchall the resulting code should be unreachable.
-        if last_case.tag == None {
+        if self.has_match_all_case(cases) {
             self.bind_pattern_field(value_to_switch_on, &last_case.fields[0], cache);
             self.codegen_subtree(&last_case.branch, branches, phi, match_end, match_expr, cache);
         } else {
