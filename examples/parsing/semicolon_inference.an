@@ -27,5 +27,7 @@ foo
 // (normal = 1);
 // (continued = ('-' 1 1));
 // (precedence_works = ('+' ('*' 2 3) ('*' 4 5)));
-// (foo bar baz (if true then 2;
-// 3 else 4))
+// (foo bar baz (if true then 
+//     2;
+//     3
+//  else 4))

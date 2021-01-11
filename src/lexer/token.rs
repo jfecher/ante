@@ -1,6 +1,21 @@
+//! token.rs - Defines the Token type which represents
+//! a single grammatical unit of ante source code. This
+//! can be an identifier, type name, string literal, integer
+//! literal, operator, etc.
+//!
+//! Converting a stream of characters into a Vec<Token> is the goal of
+//! the lexing phase of the compiler. The resulting tokens are then
+//! fed into the parser to verify the program's grammar and create
+//! an abstract syntax tree.
 use std::fmt::{ self, Display };
 use crate::types::TypeVariableId;
 
+/// Lexing can fail with these errors, though the Lexer just
+/// returns the LexerError inside of an Invalid token which
+/// the parser will fail on. Currently the parser fails immediately
+/// when it finds these tokens but in the future it may be able
+/// to issue the error then continue on to output as many errors
+/// as possible.
 #[derive(Debug, PartialEq, Copy, Clone)]
 pub enum LexerError {
     InvalidCharacterInSignificantWhitespace(char), // Only spaces are allowed in significant whitespace
@@ -12,6 +27,14 @@ pub enum LexerError {
     UnknownChar(char),
 }
 
+/// Each Token::IntegerLiteral and Ast::LiteralKind::Integer has
+/// an IntegerKind representing the size of the integer.
+///
+/// Integer literals in ante are polymorphic in the `Int a` trait. This
+/// is represented by IntegerKind::Unknown at first until type inference
+/// can give the Ast::LiteralKind::Integer a type variable to aid in
+/// unifying its size. When this happens the IntegerKind::Unknown is
+/// mutated into an IntegerKind::Inferred(id).
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum IntegerKind {
     /// Unknown integer literals are mutated into Inferred integers

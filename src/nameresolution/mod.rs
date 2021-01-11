@@ -1,3 +1,41 @@
+//! nameresolution/mod.rs - Defines the name resolution `declare` and
+//! `define` passes via the Resolvable trait. Name resolution follows
+//! parsing and is followed by type inference in the compiler pipeline.
+//!
+//! The goal of the name resolution passes are to handle Scopes + imports and link
+//! each variable to its definition (via setting its DefinitionInfoId field)
+//! so that no subsequent pass needs to care about scoping.
+//!
+//! Name resolution is split up into two passes:
+//! 1. `declare` collects the publically exported symbols of every module
+//!    to enable mutually recursive functions that may be defined in separate
+//!    modules. Since this pass only needs to collect these symbols, it skips
+//!    over most Ast node types, looking for only top-level Definition nodes.
+//! 2. `define` does the bulk of name resolution, creating DefinitionInfos for
+//!    each variable definition, linking each variable use to the corresponding
+//!    DefinitionInfo it was defined in, creating a TypeInfo for each type
+//!    definition, and a TraitInfo for each trait definition. This will also
+//!    issue unused variable warnings at the end of a scope for any unused symbols.
+//!
+//! Both of these passes walk the Ast in a flat manor compared to subsequent
+//! passes like codegen which uses the results of name resolution to walk the Ast
+//! and follow definition links to compile definitions lazily as they're used.
+//!
+//! The recommended start point when reading this file to understand how name
+//! resolution works is the `NameResolver::start` function. Which when called
+//! will resolve an entire program.
+//!
+//! The name resolution passes fill out the following fields in the Ast:
+//!   - For `ast::Variable`s:
+//!       `definition: Option<DefinitionInfoId>`,
+//!       `impl_scope: Option<ImplScopeId>,
+//!       `id: Option<VariableId>`,
+//!   - `level: Option<LetBindingLevel>` for
+//!       `ast::Definition`s, `ast::TraitDefinition`s, and `ast::Extern`s,
+//!   - `info: Option<DefinitionInfoId>` for `ast::Definition`s,
+//!   - `type_info: Option<TypeInfoId>` for `ast::TypeDefinition`s,
+//!   - `trait_info: Option<TraitInfoId>` for `ast::TraitDefinition`s and `ast::TraitImpl`s
+//!   - `module_id: Option<ModuleId>` for `ast::Import`s,
 use crate::parser::{ self, ast, ast::Ast };
 use crate::types::{ TypeInfoId, TypeVariableId, Type, PrimitiveType,
                     TypeInfoBody, TypeConstructor, Field, LetBindingLevel,
@@ -22,6 +60,13 @@ pub mod builtin;
 /// Specifies how far a particular module is in name resolution.
 /// Keeping this properly up to date for each module is the
 /// key for preventing infinite recursion when declaring recursive imports.
+///
+/// For example, if we're in the middle of defining a module, and we
+/// try to import another file that has DefineInProgress, we know not
+/// to recurse into that module. In this case, since the module has already
+/// finished the declare phase, we can still import any needed public symbols
+/// and continue resolving the current module. The other module will finish
+/// being defined sometime after the current one is since we detected a cycle.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum NameResolutionState {
     NotStarted,
@@ -31,6 +76,9 @@ pub enum NameResolutionState {
     Defined,
 }
 
+/// The NameResolver struct contains the context needed for resolving
+/// a single file of the program. There is 1 NameResolver per file, and
+/// different files may be in different `NameResolutionState`s.
 #[derive(Debug)]
 pub struct NameResolver {
     filepath: PathBuf,
@@ -202,6 +250,9 @@ impl NameResolver {
         self.let_binding_level = LetBindingLevel(self.let_binding_level.0 - 1);
     }
 
+    /// Checks that the given variable name is required by the trait for the impl we're currently resolving.
+    /// If it is not, an error is issued that the impl does not need to implement this function.
+    /// Otherwise, the name is removed from the list of required_definitions for the impl.
     fn check_required_definitions<'c>(&mut self, name: &str, cache: &mut ModuleCache<'c>, location: Location<'c>) {
         let required_definitions = self.required_definitions.as_mut().unwrap();
         if let Some(index) = required_definitions.iter().position(|id| &cache.definition_infos[id.0].name == name) {
@@ -212,6 +263,8 @@ impl NameResolver {
         }
     }
 
+    /// Add a DefinitionInfoId to a trait's list of required definitions and add
+    /// the trait to the DefinitionInfo's list of required traits.
     fn attach_to_trait<'c>(&mut self, id: DefinitionInfoId, trait_id: TraitInfoId, cache: &mut ModuleCache<'c>) {
         let trait_info = &mut cache.trait_infos[trait_id.0];
         trait_info.definitions.push(id);
@@ -229,6 +282,7 @@ impl NameResolver {
         });
     }
 
+    /// Push a new Definition onto the current scope.
     fn push_definition<'c>(&mut self, name: &str, mutable: bool, cache: &mut ModuleCache<'c>, location: Location<'c>) -> DefinitionInfoId {
         let id = cache.push_definition(name, mutable, location);
 
@@ -312,6 +366,8 @@ impl NameResolver {
 }
 
 impl<'c> NameResolver {
+    /// Performs name resolution on an entire program, starting from the
+    /// given Ast and all imports reachable from it.
     pub fn start(ast: Ast<'c>, cache: &mut ModuleCache<'c>) -> Result<(), ()> {
         builtin::define_builtins(cache);
         let resolver = NameResolver::declare(ast, cache);
@@ -323,6 +379,9 @@ impl<'c> NameResolver {
         }
     }
 
+    /// Creates a NameResolver and performs the declare pass on
+    /// the given ast, collecting all of its publically exported symbols
+    /// into the `exports` field.
     pub fn declare(ast: Ast<'c>, cache: &mut ModuleCache<'c>) -> &'c mut NameResolver {
         let filepath = ast.locate().filename;
 
@@ -365,6 +424,9 @@ impl<'c> NameResolver {
         resolver
     }
 
+    /// Performs the define pass on the current NameResolver, linking all
+    /// variables to their definition, filling in each XXXInfoId field, etc.
+    /// See the module-level comment for more details on the define pass.
     pub fn define(&mut self, cache: &mut ModuleCache<'c>) {
         let ast = cache.parse_trees.get_mut(self.module_id.0).unwrap();
 
@@ -543,7 +605,7 @@ impl<'c> Resolvable<'c> for ast::Variable<'c> {
                 self.definition = resolver.lookup_definition(name, cache);
             }
 
-            self.id = Some(cache.next_variable_node(name));
+            self.id = Some(cache.push_variable_node(name));
             self.impl_scope = Some(resolver.current_scope().impl_scope);
         }
     }
@@ -561,7 +623,7 @@ impl<'c> Resolvable<'c> for ast::Variable<'c> {
                     TypeConstructor(name) => name,
                 };
 
-                self.id = Some(cache.next_variable_node(name));
+                self.id = Some(cache.push_variable_node(name));
                 self.impl_scope = Some(resolver.current_scope().impl_scope);
                 self.definition = resolver.lookup_definition(name, cache);
                 self.trait_binding = Some(cache.push_trait_binding());

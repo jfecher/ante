@@ -1,3 +1,22 @@
+//! traitchecker.rs -
+//!
+//! Trait inference is a part of type inference which determines:
+//! 1. Which traits are required for a given Definition to be compiled
+//! 2. When a `ast::Variable` is encountered whose Definition has some required traits
+//!    whether these traits should be propagated up to be required for the current definition
+//!    or whether they should be solved in place instead.
+//! 3. Solving trait constraints, yielding the impl that should be used for that specific
+//!    constraint and attaching this impl to the relevant callsite variable.
+//!
+//! The only public function of this module is `resolve_traits`, which is meant to be
+//! called when an `ast::Definition` is finishes type inference on its expr rhs. This
+//! function will look at all the given `TraitConstraint`s and determine whether each
+//! depends on a parameter/return type and should thus be propogated up to the
+//! `ast::Definition` as part of its signature, or does not depend on either and should
+//! be solved in place instead. Any impl it solves in place it will attach the relevant
+//! impl to the `ast::Variable` the TraitConstraint originated from, so that variable
+//! has the correct definition to compile during codegen. For any impl it fails to solve,
+//! a compile-time error will be issued.
 use crate::types::traits::{ RequiredTrait, TraitConstraint, TraitConstraints };
 use crate::cache::{ ModuleCache, VariableId, ImplInfoId, DefinitionInfoId };
 use crate::types::typechecker::{ self, TypeBindings, UnificationResult };
@@ -21,12 +40,20 @@ pub fn resolve_traits<'a>(constraints: TraitConstraints, location: Location<'a>,
          other_constraints) = sort_traits(constraints, cache);
 
     let empty_bindings = HashMap::new();
+
+    // Int constraints need to be searched for first since they have defaulting rules to default
+    // `Int a` to `Int i32` if `a` is unbound. This can impact the remainder of the impl search
+    // if, for example, there is a `Cast a string` constraint this is solveable if `a = i32` is
+    // known, but not solveable otherwise (barring a user-defined impl).
     for constraint in int_constraints {
         typechecker::perform_bindings_or_print_error(
             find_int_constraint_impl(&constraint, &empty_bindings, location, cache), cache
         );
     }
 
+    // Member access constraints don't need to be searched for before normal constraints, but
+    // they're separated out anyway since searching for them is done differently since they're
+    // automatically impl'd by the compiler.
     for constraint in member_access_constraints {
         typechecker::perform_bindings_or_print_error(
             find_member_access_impl(&constraint, &empty_bindings, location, cache), cache
@@ -221,6 +248,11 @@ fn find_matching_impls<'c>(constraint: &TraitConstraint, bindings: &TypeBindings
     }
 }
 
+/// Searches for a non-Int, non-member-access impl for the given constraint.
+/// Returns each matching impl found in a Vec. Since each matching impl may have n
+/// required `given` constraints, these impls in the given constraints are also returned.
+/// Thus, each element of the returned Vec will contain a set of the original impl found
+/// and all impls it depends on (in practice this number is small, usually < 2).
 fn find_matching_normal_impls<'c>(constraint: &TraitConstraint, bindings: &TypeBindings,
     location: Location<'c>, cache: &mut ModuleCache<'c>) -> Vec<(Vec<(ImplInfoId, TraitConstraint)>, TypeBindings)>
 {
@@ -245,6 +277,11 @@ fn find_matching_normal_impls<'c>(constraint: &TraitConstraint, bindings: &TypeB
     }).collect()
 }
 
+/// Check whether the given constraint has any required `given` constraints for the impl to be
+/// valid. For example, the impl `impl Print a given Cast a string` has the given constraint
+/// `Cast a string` and is thus only valid if that impl can be found as well.
+/// If any of these given constraints cannot be solved then None is returned. Otherwise, the Vec
+/// of the original constraint and all its required given constraints are returned.
 fn check_given_constraints<'c>(constraint: &TraitConstraint, impl_id: ImplInfoId,
     mut type_bindings: TypeBindings, mut impl_bindings: TypeBindings,
     location: Location<'c>, cache: &mut ModuleCache<'c>) -> Option<(Vec<(ImplInfoId, TraitConstraint)>, TypeBindings)>
@@ -277,6 +314,8 @@ fn check_given_constraints<'c>(constraint: &TraitConstraint, impl_id: ImplInfoId
     Some((required_impls, type_bindings))
 }
 
+/// Binds a selected impl to its callsite. This attaches the relevant impl definition to the
+/// callsite variable so that static dispatch may occur during codegen.
 fn bind_impl<'c>(impl_id: ImplInfoId, constraint: TraitConstraint, cache: &mut ModuleCache<'c>) {
     // Make sure the definition of this impl undergoes type inference if it hasn't already
     infer_trait_impl(impl_id, cache);
@@ -290,6 +329,9 @@ fn bind_impl<'c>(impl_id: ImplInfoId, constraint: TraitConstraint, cache: &mut M
     callsite_info.required_impls.push(required_impl);
 }
 
+/// Returns the given definition from the given impl.
+/// This should always succeed (and thus panics if it does not) since all impls are validated
+/// during name resolution that they have definitions for every declaration in the corresponding trait.
 fn find_definition_in_impl<'c>(origin: VariableId, impl_id: ImplInfoId, cache: &ModuleCache<'c>) -> DefinitionInfoId {
     let name = &cache.variable_nodes[origin.0];
 
@@ -303,6 +345,10 @@ fn find_definition_in_impl<'c>(origin: VariableId, impl_id: ImplInfoId, cache: &
     unreachable!("Could not find definition for {} in impl at {}", name, impl_info.location);
 }
 
+/// Once an impl is selected, recur type inference on the impl's definitions to make
+/// sure it is well typed. This follows the recursion scheme used by the rest of the type
+/// inference pass: Definitions are lazily type inferenced when a variable using that defintion
+/// is found in the program.
 fn infer_trait_impl<'a>(id: ImplInfoId, cache: &mut ModuleCache<'a>) {
     let info = &mut cache.impl_infos[id.0];
     let trait_impl = trustme::extend_lifetime(info.trait_impl);

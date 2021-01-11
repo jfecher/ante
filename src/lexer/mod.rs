@@ -1,3 +1,41 @@
+//! lexer/mod.rs - Contains the Lexer struct and implements the
+//! first phase of the compiler: lexing.
+//!
+//! Lexing is the simplest compilation phase. Its goal is to convert
+//! a stream of characters into a Vec<Token> that can then be fed
+//! into the parser. Ante's lexer is somewhat more complex than other
+//! language's lexers since it must also handle whitespace sensitivity.
+//! 
+//! Aside from whitespace sensitivity, ante's lexer is fairly standard.
+//! It implements `Iterator<Item = (Token, Location)>` and on each step
+//! continues in the input until it can return the next full word, number,
+//! operator, etc. as a Token. When reading this file it is recomended
+//! to start with the Iterator impl as all Lexer methods are called from it.
+//!
+//! For whitespace, the lexer operates on a stack of indentation levels.
+//! For each indentation level, whitespace is either ignored or not ignored
+//! depending on which token came before the indent that started the block.
+//! These ignored indent levels are how ante handles "semicolon inference".
+//! In short, if you indent after an expression you continue the expression and
+//! any newlines on that indent level are ignored. If you indent after a token
+//! that expects an indent after it though, the indent is still issued and the
+//! indentation level is not ignored. See `Lexer::should_expect_indent_after_token`
+//! for a list of tokens after which indentation is not ignored.
+//!
+//! If indentation follows such a token:
+//!     - The Lexer pushes an indent level that is not ignored.
+//!     - An Indent token is issued and the lexer skips any subsequent empty
+//!       lines until the first non-whitespace token.
+//!     - Tokens are issued as normal, with Newline tokens being issued for
+//!       each newline (multiple consecutive newlines will only have 1 Newline token).
+//!     - An Unindent token is issued when the indentation level changes back down
+//!       and the current indentation level is popped off of the Lexer's `indent_levels`
+//!
+//! If an indent is not preceeded by such a token:
+//!     - The lexer pushes an ignored indent level.
+//!     - A newline is not issued, nor are any Newline tokens. This is so the parser
+//!       sees these tokens on this indent level as being on the same line. This
+//!       is how expressions can be continued in ante despite most ending on a Newline.
 pub mod token;
 
 use std::str::Chars;

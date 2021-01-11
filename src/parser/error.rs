@@ -1,3 +1,5 @@
+//! parser/error.rs - Defines the ParseError type and the formatting shown
+//! when printing this error to stderr.
 use crate::lexer::token::{ Token, LexerError };
 use crate::error::location::{ Location, Locatable };
 use crate::error::ErrorMessage;
@@ -7,9 +9,24 @@ use std::fmt::Display;
 
 #[derive(Debug)]
 pub enum ParseError<'a> {
+    /// A parsing error may not be fatal if it can be ignored because
+    /// e.g. the parser is currently within an `or([...])` combinator that
+    /// succeeds if any of the parsers in its array succeed.
     Fatal(Box<ParseError<'a>>),
+
+    /// Expected any of the given tokens, but found... whatever is at the
+    /// source Location instead
     Expected(Vec<Token>, Location<'a>),
+
+    /// Failed while in the given parsing rule. E.g. "failed to parse a type".
+    /// Due to backtracking this error is somewhat rare since the parser tends
+    /// to backtrack trying to parse something else instead of failing in the
+    /// rule that parsed the furthest. Proper usage of !<- (or `no_backtracking`)
+    /// helps mediate this somewhat.
     InRule(&'static str, Location<'a>),
+
+    /// Found a Token::Invalid issued by the lexer, containing some LexerError.
+    /// These errors are always wrapped in a Fatal.
     LexerError(LexerError, Location<'a>),
 }
 

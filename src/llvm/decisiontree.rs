@@ -1,6 +1,9 @@
+//! llvm/decisiontree.rs - Defines how to codegen a decision tree
+//! via `codegen_tree`. This decisiontree is the result of compiling
+//! a match expression into a decisiontree during type inference.
 use crate::llvm::{ Generator, CodeGen };
 use crate::types::pattern::{ DecisionTree, Case, VariantTag };
-use crate::types::{ Type, typed::Typed };
+use crate::types::typed::Typed;
 use crate::parser::ast::Match;
 use crate::cache::{ ModuleCache, DefinitionInfoId, DefinitionKind };
 
@@ -8,14 +11,14 @@ use inkwell::values::{ BasicValueEnum, IntValue, PhiValue };
 use inkwell::types::BasicType;
 use inkwell::basic_block::BasicBlock;
 
-use std::iter::repeat;
-
 /// This type alias is used for convenience in codegen_case
 /// for adding blocks and values to the switch cases
 /// while compiling a given case of a pattern match.
 type SwitchCases<'g> = Vec<(IntValue<'g>, BasicBlock<'g>)>;
 
 impl<'g> Generator<'g> {
+    /// Perform LLVM codegen for the given DecisionTree.
+    /// This roughly translates the tree into a series of switches and phi nodes.
     pub fn codegen_tree<'c>(&mut self, tree: &DecisionTree, match_expr: &Match<'c>,
         cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g>
     {
@@ -40,7 +43,7 @@ impl<'g> Generator<'g> {
 
         // branches may be repeated in the decision tree, so this Vec is used to store the block
         // of each branch if it was already codegen'd.
-        let mut branches: Vec<_> = repeat(None).take(match_expr.branches.len()).collect();
+        let mut branches: Vec<_> = vec![None; match_expr.branches.len()];
         self.builder.position_at_end(starting_block);
 
         // Then codegen the decisiontree itself that will eventually lead to each branch.
@@ -49,12 +52,15 @@ impl<'g> Generator<'g> {
         phi.as_basic_value()
     }
 
+    /// Recurse on the given DecisionTree, codegening each switch and remembering
+    /// all the Leaf nodes that have already been compiled, since these may be
+    /// repeated in the same DecisionTree.
     fn codegen_subtree<'c>(&mut self, tree: &DecisionTree, branches: &mut [Option<BasicBlock<'g>>],
         phi: PhiValue<'g>, match_end: BasicBlock<'g>, match_expr: &Match<'c>, cache: &mut ModuleCache<'c>)
     {
         match tree {
             DecisionTree::Leaf(n) => {
-                // If this leaf has been codegen'd already, branches[n] is set to Some in codegen_case
+                // If this leaf has been codegen'd already, branches[n] was already set to Some in codegen_case
                 match branches[*n] {
                     Some(_block) => (),
                     _ => {
@@ -89,8 +95,11 @@ impl<'g> Generator<'g> {
                     self.builder.position_at_end(starting_block);
 
                     if cases.len() > 1 {
-                        self.build_switch(*id, value_to_switch_on, else_block, switch_cases, cache);
+                        self.build_switch(value_to_switch_on, else_block, switch_cases);
                     } else if cases.len() == 1 {
+                        // If we only have 1 case we don't need to test anything, just forcibly
+                        // br to that case. This optimization is necessary for tuples since tuples
+                        // have no tag to check against.
                         self.builder.build_unconditional_branch(switch_cases[0].1);
                     }
                 }
@@ -99,28 +108,16 @@ impl<'g> Generator<'g> {
     }
 
     fn build_switch<'c>(&self,
-        id_to_switch_on: DefinitionInfoId,
         value_to_switch_on: BasicValueEnum<'g>,
         else_block: BasicBlock<'g>,
-        switch_cases: SwitchCases<'g>,
-        cache: &ModuleCache<'c>)
+        switch_cases: SwitchCases<'g>)
     {
-        match &cache.definition_infos[id_to_switch_on.0].typ {
-            // Skip the switch generation for tuples, they only have 1 variant.
-            // TODO: generalize this to all 1-variant tagged unions.
-            Some(Type::Tuple(_)) => {
-                assert_eq!(switch_cases.len(), 1);
-                self.builder.build_unconditional_branch(switch_cases[0].1);
-            },
-            _ => {
-                // TODO: Switch to if-else chains over a single switch block.
-                //       Currently this will fail at runtime when attempting to match
-                //       a constructor with a string value after trying to convert it into an
-                //       integer tag value.
-                let tag = self.extract_tag(value_to_switch_on);
-                self.builder.build_switch(tag, else_block, &switch_cases);
-            },
-        }
+        // TODO: Switch to if-else chains over a single switch block.
+        //       Currently this will fail at runtime when attempting to match
+        //       a constructor with a string value after trying to convert it into an
+        //       integer tag value.
+        let tag = self.extract_tag(value_to_switch_on);
+        self.builder.build_switch(tag, else_block, &switch_cases);
     }
 
     fn codegen_case<'c>(&mut self,
@@ -165,6 +162,8 @@ impl<'g> Generator<'g> {
         switch_cases.push((constructor_tag.into_int_value(), block));
     }
 
+    /// Creates a new llvm::BasicBlock to insert into, then binds the union downcast
+    /// from the current case, then compiles the rest of the subtree.
     fn codegen_case_in_new_block<'c>(&mut self,
         case: &Case,
         matched_value: BasicValueEnum<'g>,
@@ -191,6 +190,7 @@ impl<'g> Generator<'g> {
         }
     }
 
+    /// Get the tag value that identifies which constructor this is.
     fn get_constructor_tag<'c>(&mut self, tag: &VariantTag, cache: &mut ModuleCache<'c>) -> Option<BasicValueEnum<'g>> {
         match tag {
             VariantTag::True => Some(self.bool_value(true)),
@@ -275,6 +275,8 @@ impl<'g> Generator<'g> {
         }
     }
 
+    /// Performs the union downcast, binding each field of the downcasted variant
+    /// the the appropriate DefinitionInfoIds held within the given Case.
     fn bind_pattern_fields<'c>(&mut self, case: &Case, matched_value: BasicValueEnum<'g>, cache: &mut ModuleCache<'c>) {
         let variant = self.cast_to_variant_type(matched_value, &case, cache);
 

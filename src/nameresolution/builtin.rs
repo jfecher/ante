@@ -1,3 +1,9 @@
+//! nameresolution/builtin.rs - Helpers for importing the prelude
+//! and defining some builtin symbols such as the `string` type (which
+//! is builtin because otherwise string literals may be used before the
+//! actual string type is defined) and the `builtin` function which is
+//! used by codegen to stand in place of primitive operations like adding
+//! integers together.
 use crate::cache::{ ModuleCache, DefinitionInfoId };
 use crate::error::location::Location;
 use crate::lexer::token::IntegerKind;
@@ -6,8 +12,20 @@ use crate::types::{ Type, PrimitiveType, TypeInfoBody, Field, STRING_TYPE, LetBi
 
 use std::path::PathBuf;
 
+/// The DefinitionInfoId of the `builtin` symbol is defined to be
+/// the first id. This invariant needs to be maintained by the
+/// `define_builtins` function here being called before any other
+/// symbol is defined. This is asserted to be the case within that function.
 pub const BUILTIN_ID: DefinitionInfoId = DefinitionInfoId(0);
 
+/// Defines the builtin symbols:
+/// - `type string = c_string: ref char, len: usz`
+/// - `builtin : string -> a` used by the codegen pass to implement
+///   codegen of builtin operations such as adding integers.
+///
+/// This function needs to be called before any other DefinitionInfoId is
+/// created, otherwise the `builtin` symbol will have the wrong id. If this
+/// happens, this function will assert at runtime.
 pub fn define_builtins<'a>(cache: &mut ModuleCache<'a>) {
     let string_type = define_string(cache);
 
@@ -24,6 +42,9 @@ pub fn define_builtins<'a>(cache: &mut ModuleCache<'a>) {
     info.typ = Some(builtin_type);
 }
 
+/// The prelude is currently stored (along with the rest of the stdlib) in the
+/// user's config directory since it is a cross-platform concept that doesn't
+/// require administrator priviledges.
 pub fn prelude_path() -> PathBuf {
     dirs::config_dir().unwrap().join("ante/stdlib/prelude.an")
 }

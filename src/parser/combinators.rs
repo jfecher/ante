@@ -1,3 +1,14 @@
+//! parser/combinators.rs - Defines a core set of parser combinators
+//! used throughout the parser. Of particular note are:
+//! - The `expect(Token)` combinator is the most basic combinator. It
+//!   simply expects the given token to come next in the input and fails otherwise.
+//! - The `parser!` macro defines a syntax similar to haskell's do-notation
+//!   for parsing a sequence of parsers. This macro handles threading the
+//!   input through each step in addition to failing early if Err is ever
+//!   returned. The starting and end Location of the parse rule are also
+//!   automatically created and union'd, yielding the source Location that
+//!   encompasses the whole rule. Most usages of parser! in the parser module
+//!   store this Location in the Ast node they create.
 use crate::lexer::token::{ Token, IntegerKind };
 use crate::error::location::Location;
 use crate::parser::error::{ ParseError, ParseResult };
@@ -10,29 +21,34 @@ macro_rules! seq {
     // 
     // name <- parser;
     // rest
-    ( $input:ident $location:tt => $name:tt <- $y:expr ; $($rem:tt)* ) => ({
+    //
+    // This rule specifically is the first bind that occurs, hence why
+    // the location here is forwarded to the rest of the macro as the start location.
+    ( $input:ident $location:tt => $name:tt <- $y:expr ; $($rest:tt)* ) => ({
         let ($input, $name, start) = $y($input)?;
-        seq!($input start start $location => $($rem)*)
+        seq!($input start start $location => $($rest)*)
     });
-    ( $input:ident $start:ident $e:ident $location:tt => $name:tt <- $y:expr ; $($rem:tt)* ) => ({
+    // This rule is the nth+1 monadic bind which shadows the previous _end location
+    // with a new _end location.
+    ( $input:ident $start:ident $e:ident $location:tt => $name:tt <- $y:expr ; $($rest:tt)* ) => ({
         let ($input, $name, _end) = $y($input)?;
-        seq!($input $start _end $location => $($rem)*)
+        seq!($input $start _end $location => $($rest)*)
     });
     // trace point for debugging:
     // 
     // trace arg;
     // rest
-    ( $input:ident $start:ident $end:ident $location:tt => trace $arg:expr ; $($rem:tt)* ) => ({
+    ( $input:ident $start:ident $end:ident $location:tt => trace $arg:expr ; $($rest:tt)* ) => ({
         println!("trace {} - next = {:?}", $arg, $input[0].clone());
-        seq!($input $start $end $location => $($rem)*)
+        seq!($input $start $end $location => $($rest)*)
     });
-    // Mark the expression no backtracking for better errors:
+    // Mark the expression as no backtracking for better errors:
     // 
-    // name <-! parser;
+    // name !<- parser;
     // rest
-    ( $input:ident $start:ident $e:ident $location:tt => $name:tt !<- $y:expr ; $($rem:tt)* ) => ({
+    ( $input:ident $start:ident $e:ident $location:tt => $name:tt !<- $y:expr ; $($rest:tt)* ) => ({
         let ($input, $name, _end) = no_backtracking($y)($input)?;
-        seq!($input $start _end $location => $($rem)*)
+        seq!($input $start _end $location => $($rest)*)
     });
     // Finish the seq by wrapping in an Ok
     ( $input:ident $start:ident $end:ident $location:tt => $expr:expr ) => ({

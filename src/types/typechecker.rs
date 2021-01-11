@@ -1,11 +1,31 @@
-//! Passes over the ast, filling out the (typ: Type) field of each node.
+//! typechecker.rs - Defines the type inference pass used by the compiler.
+//! This pass comes after name resolution and is followed by the lifetime inference.
+//!
+//! This pass traverses over the ast, filling out the (typ: Option<Type>) field of each node.
+//! When this pass is finished, all such fields are guarenteed to be filled out. The formatting
+//! of this file begins with helper functions for type inference at the type, and ends with
+//! the actual AST pass defined in the `Inferable` trait. Note that this AST pass starts
+//! in the first module, and whenever it finds a variable using a definition that hasn't yet
+//! been typechecked, it delves into that definition to typecheck it. This means any variables
+//! that are unused are not typechecked by default.
+//!
 //! This uses algorithm j extended with let polymorphism and multi-parameter
 //! typeclasses (traits) with a very limited form of functional dependencies.
 //! For generalization this uses let binding levels to determine if types escape
 //! the current binding and should thus not be generalized.
 //!
-//! Note: most of this file is directly translated from:
-//! https://github.com/jfecher/algorithm-j
+//! Most of this file is translated from: https://github.com/jfecher/algorithm-j
+//! That repository may be a good starting place for those new to type inference.
+//! For those already familiar with type inference or more interested in ante's
+//! internals, the reccomended starting place while reading this file is the
+//! `Inferable` trait and its impls for each node. From there, you can see what
+//! type inference does for each node type and inspect any helpers that are used.
+//!
+//! Note that as a result of type inference, the following Optional fields in the
+//! Ast will be filled out:
+//! - `typ: Option<Type>` for all nodes,
+//! - `trait_binding: Option<TraitBindingId>` for `ast::Variable`s,
+//! - `decision_tree: Option<DecisionTree>` for `ast::Match`s
 use crate::cache::{ ModuleCache, TraitInfoId, DefinitionInfoId, DefinitionKind };
 use crate::cache::{ ImplScopeId, TraitBindingId, VariableId };
 use crate::error::location::{ Location, Locatable };
@@ -23,7 +43,11 @@ use crate::util::*;
 use std::collections::HashMap;
 use std::sync::atomic::{ AtomicUsize, Ordering };
 
-
+/// The current LetBindingLevel we are at.
+/// This increases by 1 whenever we enter the rhs of a `ast::Definition` and decreases
+/// by 1 whenever we exit this rhs. This helps keep track of which scope type variables
+/// arose from and whether they should be generalized or not. See
+/// http://okmij.org/ftp/ML/generalization.html for more information on let binding levels.
 pub static CURRENT_LEVEL: AtomicUsize = AtomicUsize::new(INITIAL_LEVEL);
 
 /// A sparse set of type bindings, used by try_unify

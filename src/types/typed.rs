@@ -1,3 +1,6 @@
+//! typed.rs - Defines a simple trait for getting and setting
+//! the type of something. Currently this is only implemented for
+//! AST nodes.
 use crate::types::Type;
 use crate::parser::ast::*;
 

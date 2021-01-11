@@ -1,8 +1,23 @@
-//! Llvm backend for ante.
-//! At the time of writing this is the only backend though in the future there is a cranelift
-//! backend planned for faster debug build times and faster build times for the compiler itself
-//! so that new users won't have to subject themselves to building llvm.
-
+//! llvm/mod.rs - Defines the LLVM backend for ante's codegen pass.
+//! Currently, there are no other backends, but in the future the codegen
+//! pass may have the choice between several backends for e.g. faster debug builds.
+//!
+//! The codegen pass follows the lifetime inference pass, and is the final pass of
+//! the compiler. The goal of this pass is to produce native code that is executable
+//! by a computer. The majority of this pass is implemented via the CodeGen trait
+//! which walks the Ast with a Generator for context. This walk starts in the main
+//! function and lazily codegens each Definition that is used so that only what is
+//! used is actually compiled into the resulting binary. Once this walk is finished
+//! the resulting inkwell::Module is optimized then linked with gcc.
+//!
+//! Note that ante currently does whole program compilation - the entire program
+//! is compiled into a single inkwell::Module which can then be optimized later.
+//! Any libraries need to have their source code included anyway since ante does
+//! not have a stable ABI.
+//!
+//! The reccomended starting point while reading through this pass is the `run`
+//! function which is called directly from `main`. This function sets up the
+//! Generator, walks the Ast, then optimizes and links the resulting Module.
 use crate::cache::{ ModuleCache, DefinitionInfoId, DefinitionKind, VariableId };
 use crate::nameresolution::builtin::BUILTIN_ID;
 use crate::lexer::token::IntegerKind;
@@ -31,6 +46,8 @@ use std::process::Command;
 mod builtin;
 mod decisiontree;
 
+/// The (code) Generator provides all the needed context for generating LLVM IR
+/// while walking the Ast.
 #[derive(Debug)]
 pub struct Generator<'context> {
     context: &'context Context,
@@ -61,6 +78,7 @@ pub struct Generator<'context> {
     current_function_info: Option<DefinitionInfoId>,
 }
 
+/// Codegen the given Ast, producing a binary file at the given path.
 pub fn run<'c>(path: &Path, ast: &Ast<'c>, cache: &mut ModuleCache<'c>, show_ir: bool,
     run_program: bool, delete_binary: bool, optimization_level: &str)
 {
@@ -82,6 +100,7 @@ pub fn run<'c>(path: &Path, ast: &Ast<'c>, cache: &mut ModuleCache<'c>, show_ir:
         current_function_info: None,
     };
 
+    // Codegen main, and all functions reachable from it
     codegen.codegen_main(ast, cache);
 
     codegen.module.verify().map_err(|error| {
@@ -91,7 +110,7 @@ pub fn run<'c>(path: &Path, ast: &Ast<'c>, cache: &mut ModuleCache<'c>, show_ir:
 
     codegen.optimize(optimization_level);
 
-    // --show-llvm-ir: Dump the LLVM-IR of the generated module to stderr.
+    // --emit-llvm: Dump the LLVM-IR of the generated module to stderr.
     // Useful to debug codegen
     if show_ir {
         codegen.module.print_to_stderr();
@@ -168,6 +187,8 @@ impl<'g> Generator<'g> {
         self.build_return(success.into());
     }
 
+    /// Optimize the current inkwell::Module.
+    /// optimization_argument is one of "0", "1", "2", "3", "s", or "z"
     fn optimize(&self, optimization_argument: &str) {
         let config = InitializationConfig::default();
         Target::initialize_native(&config).unwrap();
@@ -188,6 +209,7 @@ impl<'g> Generator<'g> {
         link_time_optimizations.run_on(&self.module);
     }
 
+    /// Output the current module to a file and link with gcc.
     fn output(&self, module_name: String, binary_name: &str, target_triple: &TargetTriple, module: &Module) {
         // generate the bitcode to a .bc file
         let path = Path::new(&module_name).with_extension("o");
@@ -212,6 +234,10 @@ impl<'g> Generator<'g> {
         std::fs::remove_file(path).unwrap();
     }
 
+    /// Returns the BasicValueEnum found for a given id, type pair.
+    /// Note that the Type is needed in addition to the DefinitionInfoId
+    /// since in the presence of monomorphisation the same DefinitionInfoId
+    /// can be monomorphised to several different values depending on the type needed.
     fn lookup<'c>(&mut self, id: DefinitionInfoId, typ: &types::Type, cache: &mut ModuleCache<'c>) -> Option<BasicValueEnum<'g>> {
         let typ = self.follow_bindings(typ, cache);
         self.definitions.get(&(id, typ)).map(|value| *value)
@@ -291,6 +317,9 @@ impl<'g> Generator<'g> {
             .copied().unwrap_or(variable.definition.unwrap())
     }
 
+    /// Monomorphise and compile the Definition for a given DefinitionInfoId.
+    /// This pushes the monomorphisation bindings to the context then simply
+    /// recurses into the definition node, popping the bindings when finished.
     fn monomorphise<'c>(&mut self, id: DefinitionInfoId, typ: &types::Type, cache: &mut ModuleCache<'c>) -> Option<BasicValueEnum<'g>> {
         let definition = &mut cache.definition_infos[id.0];
         let definition = trustme::extend_lifetime(definition);

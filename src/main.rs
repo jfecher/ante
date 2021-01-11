@@ -1,3 +1,17 @@
+//! main.rs - The entry point for the Ante compiler.
+//! Handles command-line argument parsing and dataflow between
+//! each compiler phase. The compiler as a whole is separated into
+//! the following phases (in order):
+//!
+//! lexing -> parsing -> name resolution -> type inference -> lifetime inference -> codegen
+//!
+//! Each phase corresponds to a source folder with roughly the same name (though the codegen
+//! folder is named "llvm"), and each phase after parsing operates by traversing the AST.
+//! This AST traversal is usually defined in the mod.rs file for that phase and is a good
+//! place to start if you're trying to learn how that phase works. An exception is type
+//! inference which has its AST pass defined in types/typechecker.rs rather than types/mod.rs.
+//! Note that sometimes "phases" are sometimes called "passes" and vice-versa - the terms are
+//! interchangeable.
 #[macro_use]
 mod parser;
 mod lexer;
@@ -24,6 +38,9 @@ use std::io::{BufReader, Read};
 #[global_allocator]
 static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
+/// Called when the "--check --show-types" command-line flags are given.
+/// Iterates through each Definition from the first compiled module (so excluding imports)
+/// and prints the type and required traits for each.
 fn print_definition_types<'a>(cache: &ModuleCache<'a>) {
     let resolver = cache.name_resolvers.get_mut(0).unwrap();
     let mut definitions = resolver.exports.definitions.iter().collect::<Vec<_>>();
@@ -40,6 +57,7 @@ fn print_definition_types<'a>(cache: &ModuleCache<'a>) {
     }
 }
 
+/// Convenience macro for unwrapping a Result or printing an error message and returning () on Err.
 macro_rules! expect {( $result:expr , $fmt_string:expr $( , $($msg:tt)* )? ) => ({
     match $result {
         Ok(t) => t,
@@ -74,6 +92,7 @@ pub fn main() {
         .arg(Arg::with_name("file").help("The file to compile").required(true))
         .get_matches();
 
+    // Setup the cache and read from the first file
     let filename = Path::new(args.value_of("file").unwrap());
     let file = expect!(File::open(filename), "Could not open file {}\n", filename.display());
 
@@ -85,6 +104,7 @@ pub fn main() {
 
     error::color_output(!args.is_present("no-color"));
 
+    // Phase 1: Lexing
     let tokens = Lexer::new(filename, &contents).collect::<Vec<_>>();
 
     if args.is_present("lex") {
@@ -92,6 +112,7 @@ pub fn main() {
         return;
     }
 
+    // Phase 2: Parsing
     let root = expect!(parser::parse(&tokens), "");
 
     if args.is_present("parse") {
@@ -99,8 +120,10 @@ pub fn main() {
         return;
     }
 
+    // Phase 3: Name resolution
     expect!(NameResolver::start(root, &mut cache), "");
 
+    // Phase 4: Type inference
     let ast = cache.parse_trees.get_mut(0).unwrap();
     types::typechecker::infer_ast(ast, &mut cache);
 
@@ -112,6 +135,10 @@ pub fn main() {
         return;
     }
 
+    // Phase 5: Lifetime inference
+    // TODO!
+
+    // Phase 6: Codegen
     if error::get_error_count() == 0 {
         llvm::run(&filename, &ast, &mut cache,
                 args.is_present("emit-llvm"),

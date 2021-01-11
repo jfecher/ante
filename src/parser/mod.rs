@@ -1,3 +1,19 @@
+//! parser/mod.rs - This file defines parsing, the second phase of the compiler.
+//! The goal of parsing is to take the `Vec<Token>` output from the lexing phase
+//! and validate the grammar/syntax of the program. If the syntax is invalid,
+//! a parse error is printed out. Otherwise, the resulting Ast is returned and
+//! the compiler moves onto the name resolution pass.
+//!
+//! This parser itself is built up from parser combinators. The basic combinators
+//! (as well as the parser! macro) are defined in the parser/combinators.rs module.
+//! These combinators backtrack by default though !<- can be used to prevent backtracking
+//! to speed up parsing.
+//!
+//! This file makes heavy use of the parser! macro which combines parsers in a
+//! sequence, threading the `input` parameter between each step, returning early if
+//! there was an error, and handles getting the starting and end Locations for the
+//! current parse rule, and union-ing them. This resulting Location for the whole
+//! rule is accessible via the location/loc parameter.
 #[macro_use]
 mod combinators;
 mod error;
@@ -14,6 +30,8 @@ use combinators::*;
 
 type AstResult<'a, 'b> = ParseResult<'a, 'b, Ast<'b>>;
 
+/// The entry point to parsing. Parses an entire file, printing any
+/// error found, or returns the Ast if there was no error.
 pub fn parse<'a, 'b>(input: Input<'a, 'b>) -> Result<Ast<'b>, ParseError<'b>> {
     let result = parse_file(input);
     if let Err(error) = &result {
@@ -22,6 +40,7 @@ pub fn parse<'a, 'b>(input: Input<'a, 'b>) -> Result<Ast<'b>, ParseError<'b>> {
     result
 }
 
+/// A file is a sequence of statements, separated by newlines.
 pub fn parse_file<'a, 'b>(input: Input<'a, 'b>) -> Result<Ast<'b>, ParseError<'b>> {
     let (input, _, _) = maybe_newline(input)?;
     let (input, ast, _) = statement_list(input)?;

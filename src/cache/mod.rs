@@ -1,3 +1,19 @@
+//! cache/mod.rs - Provides the ModuleCache struct which the ante compiler
+//! pervasively uses to cache and store results from various compiler phases.
+//! The most important things the cache stores are additional information about
+//! the parse tree. For example, for each variable definition, there is a corresponding
+//! `DefinitionInfo` struct and a `DefinitionInfoId` key that can be used on the
+//! cache to access this struct. The `DefinitionInfo` struct stores additional information
+//! about a definition like the `ast::Definition` node it was defined in, its name,
+//! whether it is mutable, and how many times it is referenced in the program.
+//! This XXXInfo and XXXInfoId pattern is also used for TraitDefinitions, TraitImpls, and Types.
+//! See the corresponding structs further down in this file for more information.
+//!
+//! The ModuleCache itself is kept the entirely of compilation - its contents may be
+//! used in any phase and thus nothing is freed until the program is fully linked.
+//! Any pass-specific information that isn't needed for later phases shouldn't be
+//! kept in the ModuleCache and instead should be in a special data structure for
+//! the relevant phase. An example is the `llvm::Generator` in the llvm codegen phase.
 use crate::nameresolution::NameResolver;
 use crate::types::{ TypeVariableId, TypeInfoId, TypeInfo, Type, TypeInfoBody };
 use crate::types::{ TypeBinding, LetBindingLevel, Kind };
@@ -11,6 +27,13 @@ use std::collections::HashMap;
 
 mod unsafecache;
 
+/// The ModuleCache is for information needed until compilation is completely finished
+/// (ie. not just for one phase). Accessing each `Vec` inside the `ModuleCache` is done
+/// only through the XXXInfoId keys returned as a result of each of the `push_xxx` methods
+/// on the `ModuleCache`. These keys are also often stored in the AST itself as a result
+/// of various passes. For example, name resolution will fill in the `definition: Option<DefinitionInfoId>`
+/// field of each `ast::Variable` node, which has the effect of pointing each variable to
+/// where it was defined.
 pub struct ModuleCache<'a> {
     /// All the 'root' directories for imports. In practice this will contain
     /// the directory of the driver module as well as all directories containing
@@ -24,7 +47,7 @@ pub struct ModuleCache<'a> {
     /// Used to map paths to parse trees or name resolvers
     pub modules: HashMap<PathBuf, ModuleId>,
 
-    /// Maps ModuleId -> CompilationState
+    /// Maps ModuleId -> NameResolver
     pub name_resolvers: UnsafeCache<'a, NameResolver>,
 
     /// Holds all the previously seen filenames referenced by Locations
@@ -85,6 +108,7 @@ pub struct ModuleCache<'a> {
     pub prelude_path: PathBuf,
 }
 
+/// The key for accessing parse trees or `NameResolver`s
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct ModuleId(pub usize);
 
@@ -99,8 +123,13 @@ impl std::fmt::Debug for DefinitionInfoId {
 
 #[derive(Debug)]
 pub enum DefinitionKind<'a> {
+    /// A variable/function definition in the form `a = b`
     Definition(&'a mut Definition<'a>),
+
+    /// A trait definition in the form `trait A a with ...`
     TraitDefinition(&'a mut TraitDefinition<'a>),
+
+    /// An extern FFI definition with no body
     Extern(&'a mut TypeAnnotation<'a>),
 
     /// A TypeConstructor function to construct a type.
@@ -116,6 +145,13 @@ pub enum DefinitionKind<'a> {
     MatchPattern,
 }
 
+/// Carries additional information about a variable's definition.
+/// Note that two variables defined in the same pattern, e.g: `(a, b) = c`
+/// will have their own unique `DefinitionInfo`s, but each DefinitionInfo
+/// will refer to the same `ast::Definition` in its definition field.
+///
+/// The corresponding DefinitionInfoId is attatched to each
+/// `ast::Variable` during name resolution.
 #[derive(Debug)]
 pub struct DefinitionInfo<'a> {
     pub name: String,
@@ -138,7 +174,12 @@ pub struct DefinitionInfo<'a> {
     /// required_traits is the "given ..." part of the signature
     pub required_traits: Vec<RequiredTrait>,
 
+    /// The type of this definition. Filled out during type inference,
+    /// and is guarenteed to be Some afterward.
     pub typ: Option<Type>,
+
+    /// A count of how many times was this variable referenced in the program.
+    /// Used primarily for issuing unused warnings.
     pub uses: u32,
 }
 
@@ -151,9 +192,9 @@ impl<'a> Locatable<'a> for DefinitionInfo<'a> {
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct TraitBindingId(pub usize);
 
-/// These are stored on ast::Variables and detail any
+/// TraitBindingIds are stored on ast::Variables and detail any
 /// required_impls needed to compile the definitions
-/// of these variables.
+/// of these variables. These are filled out during type inference.
 pub struct TraitBinding {
     pub required_impls: Vec<RequiredImpl>,
 }
@@ -161,17 +202,42 @@ pub struct TraitBinding {
 #[derive(Debug, Copy, Clone, Eq, PartialEq, PartialOrd, Ord, Hash)]
 pub struct TraitInfoId(pub usize);
 
+/// Additional information on the definition of a trait.
+/// The corresponding TraitInfoId is attatched to each
+/// `ast::TraitDefinition` during name resolution.
+///
+/// Note that the builtin `Int a` trait as well as the builtin
+/// member access family of traits also have their own TraitInfo.
 #[derive(Debug)]
 pub struct TraitInfo<'a> {
     pub name: String,
+
+    /// The type arguments of this trait. These are the
+    /// `a b c` in `trait Foo a b c -> d e f with ...`
+    /// Note that all traits must have at least 1 type
+    /// argument, otherwise there is no type to implement
+    /// the trait for.
     pub typeargs: Vec<TypeVariableId>,
+
+    /// The possibly-empty functional dependencies of this trait.
+    /// These are the `d e f` in `trait Foo a b c -> d e f with ...`
     pub fundeps: Vec<TypeVariableId>,
+
     pub location: Location<'a>,
+
+    /// The definitions included in this trait defintion.
+    /// The term `defintion` is used somewhat loosely here
+    /// since none of these functions/variables have bodies.
+    /// They're merely declarations that impl definitions will
+    /// later have to conform to.
     pub definitions: Vec<DefinitionInfoId>,
+
     pub uses: u32,
 }
 
 impl<'a> TraitInfo<'a> {
+    /// Member access traits are special in that they're automatically
+    /// defined and implemented by the compiler.
     pub fn is_member_access(&self) -> bool {
         self.name.starts_with(".")
     }
@@ -192,12 +258,20 @@ impl<'a> Locatable<'a> for TraitInfo<'a> {
     }
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub struct ImplInfoId(pub usize);
-
+/// An ImplScopeId is attached to an ast::Variable to remember
+/// the impls that were in scope when it was used since scopes are
+/// thrown away after name resolution but the impls in scope are still
+/// needed during type inference.
+/// TODO: The concept of an ImplScope is somewhat of a wart in the trait inference
+/// algorithm. Getting rid of them would likely make it both cleaner and faster.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct ImplScopeId(pub usize);
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub struct ImplInfoId(pub usize);
+
+/// Corresponds to a `ast::TraitImpl` node, carrying extra information
+/// on it. These are filled out during name resolution.
 #[derive(Debug)]
 pub struct ImplInfo<'a> {
     pub trait_id: TraitInfoId,
@@ -208,6 +282,12 @@ pub struct ImplInfo<'a> {
     pub trait_impl: &'a mut TraitImpl<'a>,
 }
 
+/// Each `ast::Variable` node corresponds to a VariableId that identifies it,
+/// filled out during name resolution. These are currently used to identify the
+/// origin/callsites of traits for trait dispatch.
+/// `TraitConstraints` are passed around during type inference carrying these so
+/// that once they're finally resolved, the correct variable can be linked to the
+/// correct impl definition.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, PartialOrd, Ord, Hash)]
 pub struct VariableId(pub usize);
 
@@ -215,7 +295,9 @@ impl<'a> ModuleCache<'a> {
     pub fn new(project_directory: &'a Path) -> ModuleCache<'a> {
         let mut cache = ModuleCache {
             relative_roots: vec![project_directory.to_owned(), dirs::config_dir().unwrap().join("stdlib")],
-            // Really wish you could do ..Default::default() for each field
+            int_trait: TraitInfoId(0), // Dummy value since we must have the cache to push a trait
+            prelude_path: dirs::config_dir().unwrap().join("stdlib/prelude"),
+            // Really wish you could do ..Default::default() for the remaining fields
             modules: HashMap::default(),
             parse_trees: UnsafeCache::default(),
             name_resolvers: UnsafeCache::default(),
@@ -228,13 +310,11 @@ impl<'a> ModuleCache<'a> {
             impl_infos: Vec::default(),
             impl_scopes: Vec::default(),
             member_access_traits: HashMap::default(),
-            int_trait: TraitInfoId(0), // Dummy value since we must have the cache to push a trait
-            variable_nodes: vec![],
-            prelude_path: dirs::config_dir().unwrap().join("stdlib/prelude"),
+            variable_nodes: Vec::default(),
         };
 
-        let a = cache.next_type_variable_id(LetBindingLevel(std::usize::MAX));
-        cache.push_trait_definition("Int".to_string(), vec![a], vec![], Location::builtin());
+        let new_typevar = cache.next_type_variable_id(LetBindingLevel(std::usize::MAX));
+        cache.push_trait_definition("Int".to_string(), vec![new_typevar], vec![], Location::builtin());
         cache
     }
 
@@ -347,7 +427,7 @@ impl<'a> ModuleCache<'a> {
         }
     }
 
-    pub fn next_variable_node(&mut self, name: &str) -> VariableId {
+    pub fn push_variable_node(&mut self, name: &str) -> VariableId {
         let id = VariableId(self.variable_nodes.len());
         self.variable_nodes.push(name.to_string());
         id

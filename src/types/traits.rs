@@ -1,3 +1,33 @@
+//! traits.rs - Defines the core data structures for trait inference.
+//!
+//! Trait inference is a part of type inference which determines:
+//! 1. Which traits are required for a given Definition to be compiled
+//! 2. When a `ast::Variable` is encountered whose Definition has some required traits
+//!    whether these traits should be propagated up to be required for the current definition
+//!    or whether they should be solved in place instead.
+//! 3. Solving trait constraints, yielding the impl that should be used for that specific
+//!    constraint and attaching this impl to the relevant callsite variable.
+//!
+//! For more information on the trait inference part of the type inference pass,
+//! see `types/traitchecker.rs` for the file defining the pass itself.
+//!
+//! This module defines the three types that are core to trait inference:
+//! 1. RequiredTrait - A trait required for a definition to be compiled. Note that required
+//!    traits are just that - they only require the trait is present for the definition to be
+//!    compiled, they do not require a specific impl to be used. For example the function
+//!    `my_print a = print a` would have the RequiredTrait `Print a` which could be given any
+//!    matching impl when `my_print` is later used at its callsite.
+//! 2. RequiredImpl - An instantiated version of a RequiredTrait stored at the callsite of a
+//!    function/variable that should point to a certain impl for a trait. When `my_print` is
+//!    later called with `my_print 3`, `Print i32` will be a RequiredImpl. Note that RequiredImpls
+//!    may still have type variables for blanket impls.
+//! 3. TraitConstraint - TraitConstraints are what are actually passed around during the majority
+//!    of the type inference pass, undergoing unification until the outer `ast::Definition`
+//!    finishes compiling and trait inference needs to decide if each TraitConstraint needs to be
+//!    propagated up to that `ast::Definition` as a RequiredTrait or solved in place.
+//!
+//! These types are mostly useful for their data they hold - they only have a few simple
+//! methods on them for displaying them or converting between them.
 use crate::cache::{ ModuleCache, TraitInfoId, DefinitionInfoId, ImplScopeId, TraitBindingId, VariableId };
 use crate::types::{ Type, TypeVariableId, typeprinter::TypePrinter };
 use crate::types::typechecker::find_all_typevars;
@@ -53,7 +83,7 @@ pub struct RequiredImpl {
 /// The trait/impl constrait passed around during type inference.
 /// - If at the end of a function an impl constraint contains a type
 ///   variable that escapes the current function (ie. is used in a
-///   parameter or return type of the function) then it turned into a
+///   parameter or return type of the function) then it is turned into a
 ///   RequiredTrait for the function's DefinitionInfo.
 /// - If no type variables escape outside of the current function then
 ///   an impl is searched for.
@@ -87,7 +117,6 @@ pub struct TraitConstraint {
 
 pub type TraitConstraints = Vec<TraitConstraint>;
 
-/// Provide some pretty-printing functionality for golden tests
 impl RequiredTrait {
     pub fn as_constraint(&self, scope: ImplScopeId, callsite_id: VariableId, callsite: TraitBindingId) -> TraitConstraint {
         TraitConstraint {

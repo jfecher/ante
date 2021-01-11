@@ -1,3 +1,11 @@
+//! error/mod.rs - Defines the error, warning, and note macros
+//! used to issue compiler errors. There is also an ErrorMessage type
+//! for storing messages that may be issued later. Note that all issuing
+//! an error does is print it to stderr and update the global ERROR_COUNT.
+//!
+//! Compiler passes are expected to continue even after issuing errors so
+//! that as many can be issued as possible. A possible future improvement
+//! would be to implement poisoning so that repeated errors are hidden.
 pub mod location;
 use crate::error::location::Location;
 
@@ -15,6 +23,7 @@ static COLORED_OUTPUT: AtomicBool = AtomicBool::new(true);
 
 static ERROR_COUNT: AtomicUsize = AtomicUsize::new(0);
 
+/// Return an error which may be issued later
 macro_rules! make_error {
     ( $location:expr , $fmt_string:expr $( , $($msg:tt)* )? ) => ({
         let message = format!($fmt_string $( , $($msg)* )? );
@@ -22,12 +31,14 @@ macro_rules! make_error {
     });
 }
 
+/// Issue an error message to stderr and increment the error count
 macro_rules! error {
     ( $location:expr , $fmt_string:expr $( , $($msg:tt)* )? ) => ({
         println!("{}", make_error!($location, $fmt_string $( , $($msg)* )?));
     });
 }
 
+/// Return a warning which may be issued later
 macro_rules! make_warning {
     ( $location:expr , $fmt_string:expr $( , $($msg:tt)* )? ) => ({
         let message = format!($fmt_string $( , $($msg)* )? );
@@ -35,13 +46,14 @@ macro_rules! make_warning {
     });
 }
 
-#[allow(unused_macros)]
+/// Issues a warning to stderr
 macro_rules! warning {
     ( $location:expr , $fmt_string:expr $( , $($msg:tt)* )? ) => ({
         println!("{}", make_warning!($location, $fmt_string $( , $($msg)* )?));
     });
 }
 
+/// Return a note which may be issued later
 macro_rules! make_note {
     ( $location:expr , $fmt_string:expr $( , $($msg:tt)* )? ) => ({
         let message = format!($fmt_string $( , $($msg)* )? );
@@ -49,6 +61,7 @@ macro_rules! make_note {
     });
 }
 
+/// Issues a note to stderr
 macro_rules! note {
     ( $location:expr , $fmt_string:expr $( , $($msg:tt)* )? ) => ({
         println!("{}", make_note!($location, $fmt_string $( , $($msg)* )?));
@@ -62,6 +75,7 @@ pub enum ErrorType {
     Note,
 }
 
+/// An error (or warning/note) message to be printed out on screen.
 #[derive(Debug, PartialEq, Eq)]
 pub struct ErrorMessage<'a> {
     msg: ColoredString,
@@ -69,6 +83,8 @@ pub struct ErrorMessage<'a> {
     location: Location<'a>,
 }
 
+/// ErrorMessages are ordered so we can issue them in a
+/// deterministic order for the golden tests.
 impl<'a> Ord for ErrorMessage<'a> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         use std::ops::Deref;
@@ -103,6 +119,7 @@ impl<'a> ErrorMessage<'a> {
         }
     }
 
+    /// Color the given string in either the error, warning, or note color
     fn color(&self, msg: &str) -> ColoredString {
         match (COLORED_OUTPUT.load(SeqCst), self.error_type) {
             (false, _) => msg.normal(),
@@ -113,6 +130,7 @@ impl<'a> ErrorMessage<'a> {
     }
 }
 
+/// Reads the given file, returning all of its contents
 fn read_file_or_panic(path: &Path) -> String {
     let file = File::open(path).unwrap();
     let mut reader = BufReader::new(file);
@@ -121,6 +139,7 @@ fn read_file_or_panic(path: &Path) -> String {
     contents
 }
 
+/// Sets whether error message output should be colored or not
 pub fn color_output(should_color: bool) {
     COLORED_OUTPUT.store(should_color, SeqCst);
 }
@@ -129,10 +148,10 @@ pub fn get_error_count() -> usize {
     ERROR_COUNT.load(SeqCst)
 }
 
-// Format the path in an OS-agnostic way. By default rust uses "/" on Unix
-// and "\" on windows as the path separator. This makes testing more
-// difficult and isn't needed for error reporting so we implement our own
-// path-Displaying here that is roughly the same as printing Unix paths.
+/// Format the path in an OS-agnostic way. By default rust uses "/" on Unix
+/// and "\" on windows as the path separator. This makes testing more
+/// difficult and isn't needed for error reporting so we implement our own
+/// path-Displaying here that is roughly the same as printing Unix paths.
 fn os_agnostic_display_path(path: &Path) -> ColoredString {
     let mut ret = String::new();
 

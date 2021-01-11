@@ -1,3 +1,8 @@
+//! typeprinter.rs - Utilities for printing out types and traits.
+//! Since a type may contain TypeVariables with their TypeBindings in the cache,
+//! printing out a bound type requires using the cache as well. Resultingly,
+//! types/traits are displayed via `type.display(cache)` rather than directly having
+//! a Display impl.
 use crate::types::{ Type, TypeVariableId, TypeInfoId, PrimitiveType, TypeBinding };
 use crate::types::traits::{ RequiredTrait, RequiredTraitPrinter };
 use crate::types::typechecker::find_all_typevars;
@@ -9,6 +14,7 @@ use std::fmt::{ Display, Debug, Formatter };
 
 use colored::*;
 
+/// Wrapper containing the information needed to print out a type
 pub struct TypePrinter<'a, 'b> {
     typ: &'a Type,
 
@@ -30,6 +36,9 @@ impl<'a, 'b> Debug for TypePrinter<'a, 'b> {
     }
 }
 
+/// Fill a HashMap with human readable names for each typevar in the given Vec.
+/// For example, given [TypeVariableId(53), TypeVariableId(92)] this may yield `a` and `b`
+/// respectively.
 fn fill_typevar_map(map: &mut HashMap<TypeVariableId, String>, typevars: Vec<TypeVariableId>, current: &mut char) {
     for typevar in typevars {
         if !map.contains_key(&typevar) {
@@ -40,6 +49,11 @@ fn fill_typevar_map(map: &mut HashMap<TypeVariableId, String>, typevars: Vec<Typ
     }
 }
 
+/// Prints out the given type and traits on screen. The type and traits are all taken in together
+/// so that any repeated typevariables e.g. `TypeVariableId(55)` that may be used in both the type
+/// and any traits are given the same name in both. Printing out the type separately from the
+/// traits would cause type variable naming to restart at `a` which may otherwise give them
+/// different names.
 pub fn show_type_and_traits<'b>(typ: &Type, traits: &[RequiredTrait], cache: &ModuleCache<'b>) {
     let mut map = HashMap::new();
     let mut current = 'a';

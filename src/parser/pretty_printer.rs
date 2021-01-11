@@ -1,6 +1,13 @@
+//! Defines a simple pretty printer to print the Ast to stdout.
+//! Used for the golden tests testing parsing to ensure there
+//! are no parsing regressions.
 use crate::parser::ast::{ self, Ast };
-use std::fmt::{ self, Display, Formatter };
 use crate::util::{ fmap, join_with, reinterpret_from_bits };
+use std::fmt::{ self, Display, Formatter };
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
+
+static INDENT_LEVEL: AtomicUsize = AtomicUsize::new(0);
 
 impl<'a> Display for Ast<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -178,8 +185,37 @@ impl<'a> Display for ast::Return<'a> {
 }
 
 impl<'a> Display for ast::Sequence<'a> {
+    /// Whenever printing out a Sequence, pretty-print the indented
+    /// block as well so that larger programs are easier to read.
+    ///
+    /// To do this, each Sequence prepends 4 spaces to each line of
+    /// the string form of its statements unless this is the top-level
+    /// Sequence, in which case we don't want any spaces before the
+    /// top-level definitions.
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", join_with(&self.statements, ";\n"))
+        let mut statements = String::new();
+        let indent_level = INDENT_LEVEL.fetch_add(1, Ordering::SeqCst);
+
+        for (i, statement) in self.statements.iter().enumerate() {
+            let statement = statement.to_string();
+
+            for line in statement.lines() {
+                statements += "\n";
+                if indent_level != 0 {
+                    statements += "    ";
+                }
+                statements += line;
+            }
+            
+            if i != self.statements.len() - 1 {
+                statements += ";"
+            }
+        }
+
+        INDENT_LEVEL.fetch_sub(1, Ordering::SeqCst);
+        statements += "\n";
+        write!(f, "{}", statements)?;
+        Ok(())
     }
 }
 

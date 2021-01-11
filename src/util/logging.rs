@@ -1,3 +1,5 @@
+//! logging.rs - Simple tree-based logging for debugging.
+//! Useful to trace the compiler's control flow through various programs.
 #![allow(dead_code)]
 #![allow(unused_macros)]
 
@@ -8,6 +10,7 @@ pub static LOG_LEVEL: AtomicUsize = AtomicUsize::new(0);
 
 pub struct Logger;
 
+/// Prints out a log line prepended with the current indent level
 macro_rules! log { ( $fmt_string:expr $( , $($msg:tt)* )? ) => ({
     let seq_cst = std::sync::atomic::Ordering::SeqCst;
 
@@ -17,6 +20,9 @@ macro_rules! log { ( $fmt_string:expr $( , $($msg:tt)* )? ) => ({
 });}
 
 impl Logger {
+    /// Starts a log block, causing all logs within the given function to be
+    /// indented more than the logs outside of it. Useful for tracing control
+    /// flow for recursive functions.
     pub fn block<F, T>(self, f: F) -> T
         where F: FnOnce() -> T
     {

@@ -1,3 +1,9 @@
+//! types/mod.rs - Unlike other modules for compiler passes,
+//! the type inference compiler pass is defined in types/typechecker.rs
+//! rather than the mod.rs file here. Instead, this file defines
+//! the representation of `Type`s - which represent any Type in ante's
+//! type system - and `TypeInfo`s - which hold more information about the
+//! definition of a user-defined type.
 use crate::cache::{ ModuleCache, DefinitionInfoId };
 use crate::error::location::{ Locatable, Location };
 use crate::lexer::token::IntegerKind;
@@ -20,6 +26,10 @@ pub const DEFAULT_INTEGER_TYPE: Type =
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, PartialOrd, Ord)]
 pub struct TypeVariableId(pub usize);
 
+/// Primitive types are the easy cases when unifying types.
+/// They're equal simply if the other type is also the same PrimitiveType variant,
+/// there is no recursion needed like with other Types. If the `Type`
+/// enum forms a tree, then these are the leaf nodes.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, PartialOrd, Ord)]
 pub enum PrimitiveType {
     IntegerType(IntegerKind), // : *
@@ -30,8 +40,14 @@ pub enum PrimitiveType {
     ReferenceType,            // : * -> *
 }
 
-// TODO: PartialEq and Hash need to be implemented with a ModuleCache to properly
-// follow typevar bindings
+/// Any type in ante. Note that a trait is not a type. Traits are
+/// relations between 1 or more types rather than being types themselves.
+///
+/// NOTE: PartialEq and Hash impls here are somewhat unsafe since any
+/// type variables will not have access to the cache to follow their bindings.
+/// Thus, PartialEq/Hash may think two types aren't equal when they otherwise
+/// would be. For this reason, these impls are currently only used after
+/// following all type bindings via `follow_bindings` or a similar function.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Type {
     /// int, char, bool, etc
@@ -41,8 +57,13 @@ pub enum Type {
     /// Note that all functions in ante take at least 1 argument
     Function(Vec<Type>, Box<Type>, /*varargs:*/ bool),
 
-    /// Any stand-in type e.g. a in Vec a. The original names are
-    /// translated into unique TypeIds during name resolution.
+    /// Any stand-in type e.g. `a` in `Vec a`. The original names are
+    /// translated into unique TypeVariableIds during name resolution.
+    /// Each TypeVariableId is either Bound or Unbound in the ModuleCache.
+    /// Bound type variables should be treated as equal to what they're bound
+    /// to. Unbound type variables may stand in for any type. During type
+    /// inference, the `unify` function may bind unbound type variables
+    /// into bound type variables when asserting two types are equal.
     TypeVariable(TypeVariableId),
 
     /// Any user defined type defined via the `type` keyword
@@ -54,17 +75,20 @@ pub enum Type {
     /// Any type in the form `constructor arg1 arg2 ... argN`
     TypeApplication(Box<Type>, Vec<Type>),
 
-    /// Tuple types are always non-empty
+    /// Tuple types are always non-empty since an empty tuple is the unit type.
     Tuple(Vec<Type>),
 
     /// These are currently used internally to indicate polymorphic
     /// type variables for let-polymorphism. There is no syntax to
-    /// specify these explicitly in ante code.
+    /// specify these explicitly in ante code. Each type variable in
+    /// the Vec is polymorphic in the Box<Type>. This differentiates
+    /// generic functions from normal functions whose arguments are
+    /// just type variables of unknown types yet to be inferenced.
     ForAll(Vec<TypeVariableId>, Box<Type>),
 }
 
 impl Type {
-    // Pretty-print each type with each typevar substituted for a, b, c, etc.
+    /// Pretty-print each type with each typevar substituted for a, b, c, etc.
     pub fn display<'a, 'b>(&'a self, cache: &'a ModuleCache<'b>) -> typeprinter::TypePrinter<'a, 'b> {
         let typevars = typechecker::find_all_typevars(self, false, cache);
         let mut typevar_names = HashMap::new();
@@ -81,7 +105,7 @@ impl Type {
         typeprinter::TypePrinter::new(self, typevar_names, cache)
     }
 
-    // Like display but show the real unique TypeVariableId for each typevar instead
+    /// Like display but show the real unique TypeVariableId for each typevar instead
     #[allow(dead_code)]
     pub fn debug<'a, 'b>(&'a self, cache: &'a ModuleCache<'b>) -> typeprinter::TypePrinter<'a, 'b> {
         let typevars = typechecker::find_all_typevars(self, false, cache);
@@ -145,9 +169,9 @@ pub struct Field<'a> {
 #[derive(Debug, Copy, Clone, Eq, PartialEq, PartialOrd, Ord, Hash)]
 pub struct TypeInfoId(pub usize);
 
-// The string type is a semi builting type in that it isn't a primitive
-// but all string literals will nevertheless have type "String" even if
-// the prelude isn't imported into scope.
+/// The string type is a semi builtin type in that it isn't a primitive
+/// but all string literals will nevertheless have type "string" even if
+/// the prelude isn't imported into scope.
 pub const STRING_TYPE: TypeInfoId = TypeInfoId(0);
 
 #[derive(Debug)]
@@ -158,6 +182,7 @@ pub enum TypeInfoBody<'a> {
     Unknown,
 }
 
+/// Holds additional information for a given `type T = ...` definition.
 #[derive(Debug)]
 pub struct TypeInfo<'a> {
     pub args: Vec<TypeVariableId>,

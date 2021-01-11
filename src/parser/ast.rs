@@ -1,3 +1,30 @@
+//! parser/ast.rs - Defines the abstract syntax tree (Ast)
+//! used to hold the source program. This syntax tree is
+//! produced as a result of parsing and is used in every
+//! subsequent pass.
+//!
+//! Design-wise, instead of producing a new Ast with the
+//! results of a given compiler pass (e.g. returning a TypedAst
+//! as the result of type inference that is the same as Ast but
+//! with an additional Type field for each node) ante instead
+//! uses Option fields and mutably fills in this missing values.
+//! For example:
+//! - Name resolution fills out all these fields for various types:
+//!   - For `ast::Variable`s:
+//!       `definition: Option<DefinitionInfoId>`,
+//!       `impl_scope: Option<ImplScopeId>,
+//!       `id: Option<VariableId>`,
+//!   - `level: Option<LetBindingLevel>` for
+//!       `ast::Definition`s, `ast::TraitDefinition`s, and `ast::Extern`s,
+//!   - `info: Option<DefinitionInfoId>` for `ast::Definition`s,
+//!   - `type_info: Option<TypeInfoId>` for `ast::TypeDefinition`s,
+//!   - `trait_info: Option<TraitInfoId>` for `ast::TraitDefinition`s and `ast::TraitImpl`s
+//!   - `module_id: Option<ModuleId>` for `ast::Import`s,
+//! 
+//! - Type inference fills out:
+//!   `typ: Option<Type>` for all nodes,
+//!   `trait_binding: Option<TraitBindingId>` for `ast::Variable`s,
+//!   `decision_tree: Option<DecisionTree>` for `ast::Match`s
 use crate::lexer::token::{ Token, IntegerKind };
 use crate::error::location::{ Location, Locatable };
 use crate::cache::{ DefinitionInfoId, TraitInfoId, ModuleId, ImplScopeId, TraitBindingId, VariableId };
@@ -320,6 +347,7 @@ impl PartialEq for LiteralKind {
     }
 }
 
+/// These are all convenience functions for creating various Ast nodes from the parser
 impl<'a> Ast<'a> {
     pub fn integer(x: u64, kind: IntegerKind, location: Location<'a>) -> Ast<'a> {
         Ast::Literal(Literal { kind: LiteralKind::Integer(x, kind), location, typ: None })
@@ -424,6 +452,9 @@ impl<'a> Ast<'a> {
     }
 }
 
+/// A macro for calling a method on every variant of an Ast node.
+/// Useful for implementing a trait for the Ast and every node inside.
+/// This is used for all compiler passes, as well as the Locatable trait below.
 macro_rules! dispatch_on_expr {
     ( $expr_name:expr, $function:expr $(, $($args:expr),* )? ) => ({
         match $expr_name {

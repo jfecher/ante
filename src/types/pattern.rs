@@ -1,3 +1,15 @@
+//! pattern.rs - Compiles pattern matching to good decision trees as defined in:
+//! http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.397.2937&rep=rep1&type=pdf
+//!
+//! This is done during type inference whenever a `match ... with ...` expression
+//! is encountered. The resulting decision tree is stored in the `decision_tree`
+//! field of the `ast::Match` node and is later used during codegen for efficient
+//! compilation of match expressions.
+//!
+//! The decision tree algorithm is centered around the `PatternMatrix` which holds a
+//! `PatternStack` for each pattern that can still be matched. See `PatternMatrix::from_ast`
+//! for how an `ast::Match` is converted into a `PatternMatrix` and `PatternMatrix::compile`
+//! for how a PatternMatrix is converted into a `DecisionTree`.
 use crate::cache::{ ModuleCache, DefinitionInfoId, DefinitionKind };
 use crate::error::location::{ Location, Locatable };
 use crate::parser::ast::{ self, Ast, LiteralKind };
@@ -28,7 +40,12 @@ pub fn compile<'c>(match_expr: &ast::Match<'c>, cache: &mut ModuleCache<'c>) -> 
     result.tree
 }
 
-#[derive(Debug, Clone, Eq, Hash, PartialOrd, Ord)]
+/// Represents the type of tag value of a matched-upon value. For example,
+/// tagged unions use the UserDefined variant, while boolean, unit, or tuple
+/// literals are handled specially. Other literals like integer and float literals
+/// are stored as the `Literal` variant. These other literals have too many variants
+/// to check for completeness, so a match-all pattern is required for them.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum VariantTag {
     True,
     False,
@@ -38,38 +55,26 @@ pub enum VariantTag {
 
     /// This tag signals pattern matching should give up completeness checking
     /// for this constructor. Integers and floats are most notably translated to
-    /// Fail rather than attempting to approximate the types' full ranges.
+    /// this rather than attempting to approximate the types' full ranges.
     Literal(ast::LiteralKind),
 }
 
-impl PartialEq for VariantTag {
-    fn eq(&self, other: &VariantTag) -> bool {
-        use VariantTag::*;
-        match (self, other) {
-            (UserDefined(a), UserDefined(b)) => a == b,
-            (True, True) => true,
-            (False, False) => true,
-            (Unit, Unit) => true,
-            (Tuple, Tuple) => true,
-            (Literal(a), Literal(b)) => a == b,
-            _ => false,
-        }
-    }
-}
-
+/// Every pattern in a match expression is represented as a Constructor which
+/// itself is either a match-all pattern or a VariantTag followed by 0 or more
+/// sub-patterns to recurse onto.
 #[derive(Clone)]
 enum Constructor {
     /// Any variable pattern, e.g. `a` `b` or `_`
     MatchAll(DefinitionInfoId),
 
     /// Any constructor followed by a field list.
-    /// e.g. `Some 2` -> Variant(1, `Some`, [2])
-    ///      `(1, "two")` -> Variant(1, `,`, [1, "two"])
+    /// e.g. `Some 2` -> Variant(UserDefined(`Some`), [2])
+    ///      `(1, "two")` -> Variant(Tuple, [1, "two"])
     Variant(VariantTag, PatternStack),
 }
 
 impl Constructor {
-    fn is_wildcard(&self) -> bool {
+    fn is_match_all(&self) -> bool {
         match self {
             MatchAll(_) => true,
             _ => false,
@@ -83,6 +88,8 @@ impl Constructor {
         }
     }
 
+    /// Returns a Vec of len MatchAll Constructors, along with the DefinitionInfoId
+    /// of the variable they bind to.
     fn repeat_matchall<'c>(len: usize, fields: &Vec<Vec<DefinitionInfoId>>,
         cache: &mut ModuleCache<'c>, location: Location<'c>) -> Vec<(Constructor, DefinitionInfoId)>
     {
@@ -135,6 +142,12 @@ impl Constructor {
     }
 }
 
+/// A stack of patterns representing what is left to be matched for one pattern
+/// of the original match expression. Note that each pattern in the match expression
+/// is translated to a separate PatternStack via `from_ast`, each of which are then
+/// stored in a PatternMatrix.
+///
+/// The most recent pattern is last for efficient push/popping.
 #[derive(Clone)]
 struct PatternStack(Vec<(Constructor, DefinitionInfoId)>);
 
@@ -152,6 +165,7 @@ impl PatternStack {
         self.0.len()
     }
 
+    /// Converts a given pattern of the match expression into a PatternStack
     fn from_ast<'c>(ast: &Ast<'c>, cache: &mut ModuleCache<'c>, location: Location<'c>) -> PatternStack {
         match ast {
             Ast::Variable(variable) => {
@@ -241,7 +255,7 @@ impl PatternStack {
     ///  Return Some [patternN, ..., pattern2]   if head == MatchAll
     ///         None                             otherwise
     fn default_specialize_row(&self) -> Option<(Self, DefinitionInfoId)> {
-        self.head().filter(|(constructor, _)| constructor.is_wildcard()).map(|constructor| {
+        self.head().filter(|(constructor, _)| constructor.is_match_all()).map(|constructor| {
             // Since is_wildcard is true, this if let should always pass
             if let MatchAll(id) = constructor.0 {
                 assert_eq!(id, constructor.1);
@@ -505,6 +519,9 @@ impl PatternMatrix {
         DecisionTreeResult::new(tree, context)
     }
 
+    /// Returns the index of the first column that does not
+    /// contain all "match-all" patterns. Note that since patterns within
+    /// each PatternStack are stored in reverse, this must search them in reverse.
     fn find_first_non_default_column(&self) -> Option<usize> {
         let len = self.rows[0].0.len();
 
@@ -529,9 +546,13 @@ impl PatternMatrix {
 
     fn first_row_is_all_wildcards(&mut self) -> bool {
         (self.rows[0].0).0.iter()
-            .all(|(constructor, _)| constructor.is_wildcard())
+            .all(|(constructor, _)| constructor.is_match_all())
     }
 
+    /// The 'entry point' to the PatternMatrix-compiling algorithm.
+    /// This will recurse on all contained PatternStacks, producing a DecisionTreeResult
+    /// which contains the resulting DecisionTree in addition to information on any patterns
+    /// that were unreachable or if the match was inexhaustive.
     fn compile<'c>(&mut self, cache: &mut ModuleCache<'c>, location: Location<'c>) -> DecisionTreeResult {
         if self.rows.is_empty() {
             // We have an in-exhaustive case expression
@@ -569,6 +590,11 @@ struct DecisionTreeResult {
     context: DecisionTreeContext
 }
 
+/// Holds all the reachable branch indices, as well as whether any cases were missed.
+/// The specific missed case strings are computed on demand for error messages rather than
+/// always being computed which would slow down the fast path. The missed_case_count is
+/// also the count of `Fail` nodes in the tree (which in a well-typed tree is 0).
+/// The tree must be recursed to find these Fail nodes later to regenerate the missing cases.
 #[derive(Default)]
 struct DecisionTreeContext {
     reachable_branches: BTreeSet<usize>,
@@ -608,6 +634,8 @@ impl DecisionTreeResult {
         DecisionTreeResult::issue_inexhaustive_errors_helper(&self.tree, None, &mut bindings, cache, location);
     }
 
+    /// Recurses the DecisionTree, searching for Fail nodes and reconstructing the data as it goes.
+    /// When this hits a Fail node, the reconstructed piece of data will be a missing case.
     fn issue_inexhaustive_errors_helper<'c>(tree: &DecisionTree, starting_id: Option<DefinitionInfoId>,
         bindings: &mut DebugMatchBindings, cache: &ModuleCache<'c>, location: Location<'c>)
     {
@@ -651,6 +679,9 @@ impl DecisionTreeResult {
         error!(location, "Missing case {}", case);
     }
 
+    /// Construct the string representation of the data defined by the starting DefinitionInfoId
+    /// and given DebugMatchBindings. This is recursive since the id may refer to a DebugConstructor
+    /// which itself has more DefinitionInfoId fields that need to be converted to Strings.
     fn construct_missing_case_string(id: DefinitionInfoId, bindings: &DebugMatchBindings) -> String {
         match bindings.get(&id) {
             None => "_".to_string(),
@@ -699,8 +730,12 @@ impl DecisionTreeResult {
     }
 }
 
+/// `ast::Match` nodes are compiled to DecisionTrees during type inference so that
+/// exhaustiveness and redundancy checking may occur. Additionally, codegen uses
+/// the resulting tree to efficiently compile pattern matching with the guarentee
+/// that no constructor is ever checked twice.
 pub enum DecisionTree {
-    /// Success! run the code at the given numerical branch
+    /// Success! run the code at the given branch index in the `ast::Match::branches`
     Leaf(usize),
 
     /// The pattern failed to match anything,
@@ -712,12 +747,16 @@ pub enum DecisionTree {
     Switch(DefinitionInfoId, Vec<Case>),
 }
 
+/// One Case of a DecisionTree::Switch, along with the branch of the DecisionTree to
+/// continue onto after this case is matched.
 pub struct Case {
     /// The constructor's tag to match on. If this is a match-all case, it is None.
     pub tag: Option<VariantTag>,
 
-    /// Each field is a Vec of variables to bind to since their can potentially be multiple
+    /// Each field is a Vec of variables to bind to since there can potentially be multiple
     /// names for the same field across different source branches while pattern matching.
+    /// These are used during codegen to bind get the variables to store each result of
+    /// the variant downcast to.
     pub fields: Vec<Vec<DefinitionInfoId>>,
 
     /// The branch to take in this tree if this constructor's tag is matched.
@@ -852,6 +891,8 @@ fn unify_constructor_type<'c, 'a>(constructor: &'a Type, expected: &Type, locati
     }
 }
 
+/// Returns the parameters or tuple fields of a type. If the type is not a Type::Function
+/// or Type::Tuple, this returns `vec![typ]`.
 fn fields_of_type(typ: &Type) -> Vec<&Type> {
     match typ {
         Type::Function(fields, _, _) => fields.iter().collect(),
@@ -885,7 +926,7 @@ impl Case {
 
 // The rest of the file is pretty-printing for debugging pattern trees.
 // Without these impls, DecisionTree's and PatternMatrices can be difficult
-// to debug since the naive derive(Debug) takes up to much space to be useful.
+// to debug since the naive derive(Debug) takes up too much space to be useful.
 
 impl std::fmt::Debug for DecisionTree {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> Result<(), std::fmt::Error> {
