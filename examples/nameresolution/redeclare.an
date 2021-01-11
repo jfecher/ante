@@ -7,7 +7,7 @@ foo _ =
     ()
 
 // args: --check
-// expected stdout:
+// expected stderr:
 // examples/nameresolution/redeclare.an: 2,1	error: a is already in scope
 // a = 2
 // 

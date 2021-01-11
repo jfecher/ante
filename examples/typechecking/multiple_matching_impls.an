@@ -34,7 +34,7 @@ impl Foo Thing with
     foo _ = ()
 
 // args: --check
-// expected stdout:
+// expected stderr:
 // examples/typechecking/multiple_matching_impls.an: 2,1	error: 2 matching impls found for Foo Thing
 // type Thing = nothing: unit
 // 

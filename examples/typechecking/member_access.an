@@ -17,10 +17,12 @@ foo_and_bar foo bar
 
 // args: --check --show-types
 // TODO: error location can be improved, should be at the callsite
-// expected stdout:
+// expected stderr:
 // examples/typechecking/member_access.an: 1,1	error: Type mismatch between string and char
 // type FooBar = foo:i32, bar:string
 // 
+
+// expected stdout:
 // Bar : (char -> Bar)
 // Foo : (float -> Foo)
 // FooBar : (i32 string -> FooBar)

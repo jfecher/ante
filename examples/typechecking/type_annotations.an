@@ -13,10 +13,12 @@ puts2
 // args: --check --show-types
 // TODO: bar should probably error that its annotated
 //       type is more general than its actual type
-// expected stdout:
+// expected stderr:
 // examples/typechecking/type_annotations.an: 10,1	error: Type mismatch between i32 and string
 // exit2 "test"
 // 
+
+// expected stdout:
 // bar : (i32 i32 -> i32)
 // exit2 : (forall a. (i32 -> a))
 // foo : (i32 string -> char)

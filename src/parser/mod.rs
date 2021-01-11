@@ -35,7 +35,7 @@ type AstResult<'a, 'b> = ParseResult<'a, 'b, Ast<'b>>;
 pub fn parse<'a, 'b>(input: Input<'a, 'b>) -> Result<Ast<'b>, ParseError<'b>> {
     let result = parse_file(input);
     if let Err(error) = &result {
-        println!("{}", error);
+        eprintln!("{}", error);
     }
     result
 }

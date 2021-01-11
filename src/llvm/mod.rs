@@ -105,7 +105,7 @@ pub fn run<'c>(path: &Path, ast: &Ast<'c>, cache: &mut ModuleCache<'c>, show_ir:
 
     codegen.module.verify().map_err(|error| {
         codegen.module.print_to_stderr();
-        println!("{}", error);
+        eprintln!("{}", error);
     }).unwrap();
 
     codegen.optimize(optimization_level);
@@ -328,7 +328,7 @@ impl<'g> Generator<'g> {
         let typ = self.follow_bindings(typ, cache);
 
         let bindings = typechecker::try_unify(&typ, definition_type, definition.location, cache)
-            .map_err(|error| println!("{}", error))
+            .map_err(|error| eprintln!("{}", error))
             .expect("Unification error during monomorphisation");
 
         self.monomorphisation_bindings.push(bindings);

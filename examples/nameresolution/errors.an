@@ -15,7 +15,7 @@ a = 2
 a = 3 // already declared
 
 // args: --check
-// expected stdout:
+// expected stderr:
 // examples/nameresolution/errors.an: 15,1	error: a is already in scope
 // a = 3 // already declared
 // 

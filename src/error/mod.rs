@@ -34,7 +34,7 @@ macro_rules! make_error {
 /// Issue an error message to stderr and increment the error count
 macro_rules! error {
     ( $location:expr , $fmt_string:expr $( , $($msg:tt)* )? ) => ({
-        println!("{}", make_error!($location, $fmt_string $( , $($msg)* )?));
+        eprintln!("{}", make_error!($location, $fmt_string $( , $($msg)* )?));
     });
 }
 
@@ -49,7 +49,7 @@ macro_rules! make_warning {
 /// Issues a warning to stderr
 macro_rules! warning {
     ( $location:expr , $fmt_string:expr $( , $($msg:tt)* )? ) => ({
-        println!("{}", make_warning!($location, $fmt_string $( , $($msg)* )?));
+        eprintln!("{}", make_warning!($location, $fmt_string $( , $($msg)* )?));
     });
 }
 
@@ -64,7 +64,7 @@ macro_rules! make_note {
 /// Issues a note to stderr
 macro_rules! note {
     ( $location:expr , $fmt_string:expr $( , $($msg:tt)* )? ) => ({
-        println!("{}", make_note!($location, $fmt_string $( , $($msg)* )?));
+        eprintln!("{}", make_note!($location, $fmt_string $( , $($msg)* )?));
     });
 }
 

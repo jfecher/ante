@@ -3,6 +3,6 @@ impl Print a given DoesNotExist a with
     printne _ = ()
 
 // args: --check
-// expected stdout:
+// expected stderr:
 // examples/typechecking/given_constraint_error.an: 2,20	error: Could not find trait DoesNotExist in scope
 // impl Print a given DoesNotExist a with

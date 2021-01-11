@@ -1,6 +1,6 @@
 3_2_fdsa
 
 // args: --check
-// expected stdout:
+// expected stderr:
 // examples/parsing/invalid_integer_literal_suffix.an: 1,1	error: Invalid suffix after integer literal (expected an integer type like i32 or a non-alphanumeric character)
 // 3_2_fdsa

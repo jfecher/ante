@@ -92,7 +92,7 @@ impl Scope {
         if !errors.is_empty() {
             // Using sort_by instead of sort_by_key here avoids cloning the ErrorMessage
             errors.sort_by(|x, y| x.0.cmp(&y.0));
-            errors.into_iter().for_each(|(error, note)| println!("{}\n{}", error, note));
+            errors.into_iter().for_each(|(error, note)| eprintln!("{}\n{}", error, note));
         }
     }
 
@@ -118,7 +118,7 @@ impl Scope {
 
         if !warnings.is_empty() {
             warnings.sort();
-            warnings.into_iter().for_each(|warning| println!("{}", warning));
+            warnings.into_iter().for_each(|warning| eprintln!("{}", warning));
         }
     }
 }

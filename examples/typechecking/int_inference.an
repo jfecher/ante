@@ -7,11 +7,8 @@ print 2
 // a "No impl found for Print a" error if the Print trait constraint is
 // resolved before the Int trait constraint is.
 //
-// The current solution of this is to collect trait errors separately and
-// re-check them again at the end if needed so we are agnostic of the actual
-// ordering the constraints are given in. Another nice property of this solution
-// is that we only re-check if there was an error so the happy path isn't
-// impacted much.
+// The current solution of this is to sort out Int trait constraints to solve
+// them before other trait constraints.
 
 // args: --check
 // expected stdout:

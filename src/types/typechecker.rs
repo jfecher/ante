@@ -474,7 +474,7 @@ pub fn unify<'c>(t1: &Type, t2: &Type, location: Location<'c>, cache: &mut Modul
 pub fn perform_bindings_or_print_error<'c>(unification_result: UnificationResult<'c>, cache: &mut ModuleCache<'c>) {
     match unification_result {
         Ok(bindings) => perform_type_bindings(bindings, cache),
-        Err(message) => println!("{}", message),
+        Err(message) => eprintln!("{}", message),
     }
 }
 

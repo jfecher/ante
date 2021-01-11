@@ -4,7 +4,7 @@ id x = x
 id x = error
 
 // args: --check
-// expected stdout:
+// expected stderr:
 // examples/nameresolution/unused_warning.an: 4,1	error: id is already in scope
 // id x = error
 // 

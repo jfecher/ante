@@ -28,7 +28,7 @@ match (1, 2, 3, 4) with
 
 // args: --check
 // TODO: First error can be improved. Should be "Missing case Some _"
-// expected stdout:
+// expected stderr:
 // examples/typechecking/completeness_checking.an: 2,1	error: Missing case _
 // match None with
 // 

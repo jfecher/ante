@@ -14,10 +14,12 @@ b = foo 1.0 2.0
 c = foo "one" "two"
 
 // args: --check --show-types
-// expected stdout:
+// expected stderr:
 // examples/typechecking/impl.an: 14,1	error: No impl found for Foo string
 // c = foo "one" "two"
 // 
+
+// expected stdout:
 // a : i32
 // b : float
 // c : string
