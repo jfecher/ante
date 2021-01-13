@@ -20,3 +20,4 @@ dirs = "3.0"
 lto = "fat"
 codegen-units = 1
 panic = "abort"
+debug = true

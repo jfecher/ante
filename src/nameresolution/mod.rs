@@ -369,9 +369,13 @@ impl<'c> NameResolver {
     /// Performs name resolution on an entire program, starting from the
     /// given Ast and all imports reachable from it.
     pub fn start(ast: Ast<'c>, cache: &mut ModuleCache<'c>) -> Result<(), ()> {
-        builtin::define_builtins(cache);
-        let resolver = NameResolver::declare(ast, cache);
-        resolver.define(cache);
+        let resolver = time!("declare", {
+            builtin::define_builtins(cache);
+            NameResolver::declare(ast, cache)
+        });
+
+        time!("define", resolver.define(cache));
+
         if error::get_error_count() != 0 {
             Err(())
         } else {

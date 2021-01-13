@@ -1,10 +1,13 @@
 //! util/mod.rs - Various utility functions used throughout the compiler.
 //! Mostly consists of convenience functions for iterators such as `fmap`.
 use std::fmt::Display;
+use std::sync::atomic::AtomicBool;
 
 #[macro_use]
 pub mod logging;
 pub mod trustme;
+
+pub static TIME_PASSES: AtomicBool = AtomicBool::new(false);
 
 /// Equivalent to .iter().map(f).collect()
 pub fn fmap<T, U, F>(array: &[T], f: F) -> Vec<U>
@@ -48,3 +51,19 @@ pub fn reinterpret_from_bits(x: u64) -> f64 {
 pub fn join_with<T: Display>(vec: &[T], delimiter: &str) -> String {
     fmap(&vec, |t| format!("{}", t)).join(delimiter)
 }
+
+/// Set whether the time! macro should print out the timings of each pass or not
+pub fn time_passes(should_time: bool) {
+    TIME_PASSES.store(should_time, std::sync::atomic::Ordering::SeqCst);
+}
+
+macro_rules! time {( $pass_name:expr, $pass:expr ) => ({
+    if $crate::util::TIME_PASSES.load(std::sync::atomic::Ordering::SeqCst) {
+        let start = std::time::Instant::now();
+        let result = $pass;
+        println!("{: <23} - {}us", $pass_name, start.elapsed().as_micros());
+        result
+    } else {
+        $pass
+    }
+});}

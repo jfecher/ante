@@ -84,31 +84,36 @@ pub fn run<'c>(path: &Path, ast: &Ast<'c>, cache: &mut ModuleCache<'c>, show_ir:
 {
     let context = Context::create();
     let module_name = path_to_module_name(path);
-    let module = context.create_module(&module_name);
 
-    let target_triple = TargetMachine::get_default_triple();
-    module.set_triple(&target_triple);
-    let mut codegen = Generator {
-        context: &context,
-        module,
-        builder: context.create_builder(),
-        definitions: HashMap::new(),
-        types: HashMap::new(),
-        impl_mappings: HashMap::new(),
-        monomorphisation_bindings: vec![HashMap::new()],
-        auto_derefs: HashSet::new(),
-        current_function_info: None,
-    };
+    let (codegen, target_triple) = time!("LLVM codegen", {
+        let module = context.create_module(&module_name);
 
-    // Codegen main, and all functions reachable from it
-    codegen.codegen_main(ast, cache);
+        let target_triple = TargetMachine::get_default_triple();
+        module.set_triple(&target_triple);
+        let mut codegen = Generator {
+            context: &context,
+            module,
+            builder: context.create_builder(),
+            definitions: HashMap::new(),
+            types: HashMap::new(),
+            impl_mappings: HashMap::new(),
+            monomorphisation_bindings: vec![HashMap::new()],
+            auto_derefs: HashSet::new(),
+            current_function_info: None,
+        };
 
-    codegen.module.verify().map_err(|error| {
-        codegen.module.print_to_stderr();
-        eprintln!("{}", error);
-    }).unwrap();
+        // Codegen main, and all functions reachable from it
+        codegen.codegen_main(ast, cache);
 
-    codegen.optimize(optimization_level);
+        codegen.module.verify().map_err(|error| {
+            codegen.module.print_to_stderr();
+            eprintln!("{}", error);
+        }).unwrap();
+
+        (codegen, target_triple)
+    });
+
+    time!("LLVM optimization", codegen.optimize(optimization_level));
 
     // --emit-llvm: Dump the LLVM-IR of the generated module to stderr.
     // Useful to debug codegen
@@ -117,7 +122,8 @@ pub fn run<'c>(path: &Path, ast: &Ast<'c>, cache: &mut ModuleCache<'c>, show_ir:
     }
 
     let binary_name = module_name_to_program_name(&module_name);
-    codegen.output(module_name, &binary_name, &target_triple, &codegen.module);
+
+    time!("Linking", codegen.output(module_name, &binary_name, &target_triple, &codegen.module));
 
     // --run: compile and run the program
     if run_program {

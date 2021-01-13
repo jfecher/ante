@@ -89,6 +89,7 @@ pub fn main() {
         .arg(Arg::with_name("show-types").long("show-types").help("Print out the type of each definition"))
         .arg(Arg::with_name("emit-llvm").long("emit-llvm").help("Print out the LLVM-IR of the compiled program"))
         .arg(Arg::with_name("delete-binary").long("delete-binary").help("Delete the resulting binary after compiling"))
+        .arg(Arg::with_name("time").long("time").help("Output the time each compiler pass takes for the given program"))
         .arg(Arg::with_name("file").help("The file to compile").required(true))
         .get_matches();
 
@@ -103,9 +104,11 @@ pub fn main() {
     expect!(reader.read_to_string(&mut contents), "Failed to read {} into a string\n", filename.display());
 
     error::color_output(!args.is_present("no-color"));
+    util::time_passes(args.is_present("time"));
 
     // Phase 1: Lexing
-    let tokens = Lexer::new(filename, &contents).collect::<Vec<_>>();
+    let tokens = time!("lexing",
+        Lexer::new(filename, &contents).collect::<Vec<_>>());
 
     if args.is_present("lex") {
         tokens.iter().for_each(|(token, _)| println!("{}", token));
@@ -113,7 +116,8 @@ pub fn main() {
     }
 
     // Phase 2: Parsing
-    let root = expect!(parser::parse(&tokens), "");
+    let root = time!("parsing",
+        expect!(parser::parse(&tokens), ""));
 
     if args.is_present("parse") {
         println!("{}", root);
@@ -121,11 +125,11 @@ pub fn main() {
     }
 
     // Phase 3: Name resolution
-    expect!(NameResolver::start(root, &mut cache), "");
+    time!("name resolution", expect!(NameResolver::start(root, &mut cache), ""));
 
     // Phase 4: Type inference
     let ast = cache.parse_trees.get_mut(0).unwrap();
-    types::typechecker::infer_ast(ast, &mut cache);
+    time!("type inference", types::typechecker::infer_ast(ast, &mut cache));
 
     if args.is_present("show-types") {
         print_definition_types(&cache);
