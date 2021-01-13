@@ -35,8 +35,8 @@ impl Foo Thing with
 
 // args: --check
 // expected stderr:
-// examples/typechecking/multiple_matching_impls.an: 2,1	error: 2 matching impls found for Foo Thing
-// type Thing = nothing: unit
+// examples/typechecking/multiple_matching_impls.an: 14,1	error: 2 matching impls found for Foo Thing
+// foo (Thing ())
 // 
 // examples/typechecking/multiple_matching_impls.an: 17,1	note: Candidate 1
 // impl Foo a given Bar a with

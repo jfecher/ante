@@ -662,7 +662,7 @@ fn lookup_definition_type_in_trait<'a>(name: &str, trait_id: TraitInfoId, cache:
     for definition_id in trait_info.definitions.iter() {
         let definition_info = &cache.definition_infos[definition_id.0];
         if definition_info.name == name {
-            return definition_info.typ.clone().unwrap();
+            return definition_info.typ.clone().expect(&format!("Type for {} has not been filled in yet", name));
         }
     }
     unreachable!();
@@ -716,7 +716,7 @@ pub fn infer_ast<'a>(ast: &mut ast::Ast<'a>, cache: &mut ModuleCache<'a>) {
     let (_, traits) = infer(ast, cache);
     CURRENT_LEVEL.store(INITIAL_LEVEL - 1, Ordering::SeqCst);
 
-    let exposed_traits = traitchecker::resolve_traits(traits, ast.locate(), cache);
+    let exposed_traits = traitchecker::resolve_traits(traits, cache);
     // No traits should be propogated above the top-level main function
     assert!(exposed_traits.is_empty());
 }
@@ -885,7 +885,7 @@ impl<'a> Inferable<'a> for ast::Definition<'a> {
         bind_irrefutable_pattern(self.pattern.as_mut(), &t, &vec![], false, cache);
 
         // Now infer the traits + type of the lhs
-        let exposed_traits = traitchecker::resolve_traits(traits, self.location, cache);
+        let exposed_traits = traitchecker::resolve_traits(traits, cache);
         bind_irrefutable_pattern(self.pattern.as_mut(), &t, &exposed_traits, true, cache);
 
         // And restore the previous LetBindingLevel.

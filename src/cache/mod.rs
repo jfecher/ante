@@ -64,7 +64,7 @@ pub struct ModuleCache<'a> {
     /// codegening the variable's definition. These impls are filled out
     /// during type inference (see typechecker::find_impl). Unlike
     /// DefinitionInfos, VariableInfos are per usage of the variable.
-    pub trait_bindings: Vec<TraitBinding>,
+    pub trait_bindings: Vec<TraitBinding<'a>>,
 
     /// Maps TypeVariableId -> Type
     /// Unique TypeVariableIds are generated during name
@@ -195,8 +195,9 @@ pub struct TraitBindingId(pub usize);
 /// TraitBindingIds are stored on ast::Variables and detail any
 /// required_impls needed to compile the definitions
 /// of these variables. These are filled out during type inference.
-pub struct TraitBinding {
+pub struct TraitBinding<'a> {
     pub required_impls: Vec<RequiredImpl>,
+    pub location: Location<'a>,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, PartialOrd, Ord, Hash)]
@@ -404,10 +405,11 @@ impl<'a> ModuleCache<'a> {
         ImplScopeId(id)
     }
 
-    pub fn push_trait_binding(&mut self) -> TraitBindingId {
+    pub fn push_trait_binding(&mut self, location: Location<'a>) -> TraitBindingId {
         let id = self.trait_bindings.len();
         self.trait_bindings.push(TraitBinding {
-            required_impls: vec![]
+            required_impls: vec![],
+            location,
         });
         TraitBindingId(id)
     }

@@ -626,7 +626,10 @@ impl<'c> Resolvable<'c> for ast::Variable<'c> {
                 self.id = Some(cache.push_variable_node(name));
                 self.impl_scope = Some(resolver.current_scope().impl_scope);
                 self.definition = resolver.lookup_definition(name, cache);
-                self.trait_binding = Some(cache.push_trait_binding());
+
+                // TODO: optimization - it would be faster and save more space if we only had
+                // to push trait binding IDs for variables that actually need trait bindings.
+                self.trait_binding = Some(cache.push_trait_binding(self.location));
             }
 
             // If it is still not declared, print an error

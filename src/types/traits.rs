@@ -31,6 +31,7 @@
 use crate::cache::{ ModuleCache, TraitInfoId, DefinitionInfoId, ImplScopeId, TraitBindingId, VariableId };
 use crate::types::{ Type, TypeVariableId, typeprinter::TypePrinter };
 use crate::types::typechecker::find_all_typevars;
+use crate::error::location::Location;
 
 use colored::Colorize;
 
@@ -246,6 +247,11 @@ impl TraitConstraint {
             origin: self.origin,
             binding,
         }
+    }
+
+    /// Get the location of the callsite where this TraitConstraint arose from
+    pub fn locate<'c>(&self, cache: &ModuleCache<'c>) -> Location<'c> {
+        cache.trait_bindings[self.callsite.0].location
     }
 
     pub fn display<'a, 'c>(&self, cache: &'a ModuleCache<'c>) -> RequiredTraitPrinter<'a, 'c> {
