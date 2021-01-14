@@ -46,7 +46,7 @@ use crate::cache::{ ModuleCache, DefinitionInfoId, ModuleId };
 use crate::cache::{ TraitInfoId, ImplInfoId, DefinitionKind };
 use crate::nameresolution::scope::Scope;
 use crate::lexer::Lexer;
-use crate::util::{ fmap, trustme };
+use crate::util::{ fmap, trustme, timing };
 
 use colored::Colorize;
 
@@ -369,12 +369,13 @@ impl<'c> NameResolver {
     /// Performs name resolution on an entire program, starting from the
     /// given Ast and all imports reachable from it.
     pub fn start(ast: Ast<'c>, cache: &mut ModuleCache<'c>) -> Result<(), ()> {
-        let resolver = time!("declare", {
-            builtin::define_builtins(cache);
-            NameResolver::declare(ast, cache)
-        });
+        timing::start_time("Name Resolution (Declare)");
 
-        time!("define", resolver.define(cache));
+        builtin::define_builtins(cache);
+        let resolver = NameResolver::declare(ast, cache);
+
+        timing::start_time("Name Resolution (Define)");
+        resolver.define(cache);
 
         if error::get_error_count() != 0 {
             Err(())
@@ -900,9 +901,13 @@ pub fn declare_module<'a>(path: &Path, cache: &mut ModuleCache<'a>, error_locati
     let mut contents = String::new();
     reader.read_to_string(&mut contents).unwrap();
 
+    timing::start_time("Lexing");
     let tokens = Lexer::new(&path, &contents).collect::<Vec<_>>();
+
+    timing::start_time("Parsing");
     let result = parser::parse(&tokens);
 
+    timing::start_time("Name Resolution (Declare)");
     if result.is_err() {
         return None;
     }

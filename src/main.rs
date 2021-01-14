@@ -89,7 +89,7 @@ pub fn main() {
         .arg(Arg::with_name("show-types").long("show-types").help("Print out the type of each definition"))
         .arg(Arg::with_name("emit-llvm").long("emit-llvm").help("Print out the LLVM-IR of the compiled program"))
         .arg(Arg::with_name("delete-binary").long("delete-binary").help("Delete the resulting binary after compiling"))
-        .arg(Arg::with_name("time").long("time").help("Output the time each compiler pass takes for the given program"))
+        .arg(Arg::with_name("show-time").long("show-time").help("Output the time each compiler pass takes for the given program"))
         .arg(Arg::with_name("file").help("The file to compile").required(true))
         .get_matches();
 
@@ -104,11 +104,11 @@ pub fn main() {
     expect!(reader.read_to_string(&mut contents), "Failed to read {} into a string\n", filename.display());
 
     error::color_output(!args.is_present("no-color"));
-    util::time_passes(args.is_present("time"));
+    util::timing::time_passes(args.is_present("show-time"));
 
     // Phase 1: Lexing
-    let tokens = time!("lexing",
-        Lexer::new(filename, &contents).collect::<Vec<_>>());
+    util::timing::start_time("Lexing");
+    let tokens = Lexer::new(filename, &contents).collect::<Vec<_>>();
 
     if args.is_present("lex") {
         tokens.iter().for_each(|(token, _)| println!("{}", token));
@@ -116,8 +116,8 @@ pub fn main() {
     }
 
     // Phase 2: Parsing
-    let root = time!("parsing",
-        expect!(parser::parse(&tokens), ""));
+    util::timing::start_time("Parsing");
+    let root = expect!(parser::parse(&tokens), "");
 
     if args.is_present("parse") {
         println!("{}", root);
@@ -125,11 +125,14 @@ pub fn main() {
     }
 
     // Phase 3: Name resolution
-    time!("name resolution", expect!(NameResolver::start(root, &mut cache), ""));
+    // Timing for name resolution is within the start method to
+    // break up the declare and define passes
+    expect!(NameResolver::start(root, &mut cache), "");
 
     // Phase 4: Type inference
+    util::timing::start_time("Type Inference");
     let ast = cache.parse_trees.get_mut(0).unwrap();
-    time!("type inference", types::typechecker::infer_ast(ast, &mut cache));
+    types::typechecker::infer_ast(ast, &mut cache);
 
     if args.is_present("show-types") {
         print_definition_types(&cache);
@@ -150,4 +153,7 @@ pub fn main() {
                 args.is_present("delete-binary"),
                 args.value_of("O").unwrap());
     }
+
+    // Print out the time each compiler pass took to complete if the --show-time flag was passed
+    util::timing::show_timings();
 }
