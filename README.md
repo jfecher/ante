@@ -61,6 +61,13 @@ Nice to have but not currently required:
 - [ ] Multiple backends, possibly GCCJIT/cranelift for faster debug builds
 - [ ] Reasonable C/C++ interop with clang api
 - [ ] Build system built into standard library
+
+Quick Tasks:
+- [ ] Desugar parsing for <| (Token::ApplyLeft) and |> (Token::ApplyRight) directly into function calls (#65)
+- [ ] Add support for explicit currying via `_` (#66)
+- [ ] Change the lambda syntax from `\a b.y` to `fn a b -> y` (#67)
+- [ ] Update the syntax for specifying the return type of a function from `->` to `:` (#68)
+
 ---
 
 ### Building
