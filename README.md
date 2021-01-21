@@ -63,10 +63,10 @@ Nice to have but not currently required:
 - [ ] Build system built into standard library
 
 Quick Tasks:
-- [ ] Desugar parsing for <| (Token::ApplyLeft) and |> (Token::ApplyRight) directly into function calls (#65)
-- [ ] Add support for explicit currying via `_` (#66)
-- [ ] Change the lambda syntax from `\a b.y` to `fn a b -> y` (#67)
-- [ ] Update the syntax for specifying the return type of a function from `->` to `:` (#68)
+- [ ] Desugar parsing for <| (Token::ApplyLeft) and |> (Token::ApplyRight) directly into function calls ([#65](https://github.com/jfecher/ante/issues/65))
+- [ ] Add support for explicit currying via `_` ([#66](https://github.com/jfecher/ante/issues/66))
+- [ ] Change the lambda syntax from `\a b.y` to `fn a b -> y` ([#67](https://github.com/jfecher/ante/issues/67))
+- [ ] Update the syntax for specifying the return type of a function from `->` to `:` ([#68](https://github.com/jfecher/ante/issues/68))
 
 ---
 
