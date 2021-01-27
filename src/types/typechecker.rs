@@ -1092,7 +1092,8 @@ impl<'a> Inferable<'a> for ast::MemberAccess<'a> {
         let field_type = cache.next_type_variable(level);
 
         let typeargs = vec![collection_type, field_type.clone()];
-        let trait_impl = TraitConstraint::member_access_constraint(trait_id, typeargs);
+        let callsite = cache.push_trait_binding(self.location);
+        let trait_impl = TraitConstraint::member_access_constraint(trait_id, typeargs, callsite);
         traits.push(trait_impl);
 
         (field_type, traits)

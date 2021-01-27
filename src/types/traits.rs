@@ -201,12 +201,12 @@ impl TraitConstraint {
     /// to compile. Since they essentially don't have scopes, callsites, or origins
     /// care must be taken inside find_impl and Variable::codegen to avoid referring
     /// to these invalid values.
-    pub fn member_access_constraint(trait_id: TraitInfoId, args: Vec<Type>) -> TraitConstraint {
+    pub fn member_access_constraint(trait_id: TraitInfoId, args: Vec<Type>, callsite: TraitBindingId) -> TraitConstraint {
         TraitConstraint {
             trait_id,
             args,
             scope: ImplScopeId(0),
-            callsite: TraitBindingId(0),
+            callsite,
             origin: VariableId(0),
         }
     }
