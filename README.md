@@ -40,6 +40,9 @@ regions tend to be small which helps reduce memory fragmentation.
 
 ### Features/Roadmap
 
+- [x] Whitespace-sensitive lexer
+- [x] Parser
+- [x] Name Resolution
 - [x] Full type inference
     - [x] Traits with multiple parameters and a limited (friendlier) form of functional dependencies
     - [ ] Write untyped code and have the compiler write in the types for you after a successful compilation
@@ -62,11 +65,22 @@ Nice to have but not currently required:
 - [ ] Reasonable C/C++ interop with clang api
 - [ ] Build system built into standard library
 
+---
+
+### Contributing
+
+The compiler is still in a rather early state so any contributors are greatly welcome.
+Feel free to contribute to either any known issues/improvements (some are listed in the
+"Quick Tasks" list below) or any standard library functions you think may be useful.
+
+Each file in the codebase is prefixed with a module comment explaining the purpose of
+the file and any algorithms used. `src/main.rs` is a good place to start reading.
+
 Quick Tasks:
-- [ ] Desugar parsing for <| (Token::ApplyLeft) and |> (Token::ApplyRight) directly into function calls ([#65](https://github.com/jfecher/ante/issues/65))
-- [ ] Add support for explicit currying via `_` ([#66](https://github.com/jfecher/ante/issues/66))
 - [ ] Change the lambda syntax from `\a b.y` to `fn a b -> y` ([#67](https://github.com/jfecher/ante/issues/67))
 - [ ] Update the syntax for specifying the return type of a function from `->` to `:` ([#68](https://github.com/jfecher/ante/issues/68))
+- [ ] Desugar parsing for <| (Token::ApplyLeft) and |> (Token::ApplyRight) directly into function calls ([#65](https://github.com/jfecher/ante/issues/65))
+- [ ] Add support for explicit currying via `_` ([#66](https://github.com/jfecher/ante/issues/66))
 
 ---
 
