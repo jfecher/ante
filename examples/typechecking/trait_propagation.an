@@ -1,0 +1,58 @@
+
+extern bar : a
+
+foo () = print bar
+
+// args: --check --show-types
+// expected stdout:
+// bar : (forall a. a)
+// foo : (unit -> unit)
+
+// expected stderr:
+// examples/typechecking/trait_propagation.an: 4,10	error: 15 matching impls found for Print a
+// foo () = print bar
+// 
+// /home/rndmprsn/.config/ante/stdlib/prelude.an: 182,1	note: Candidate 1
+// impl Print i8  with printne x = printf ("%hhd".c_string) x
+// 
+// /home/rndmprsn/.config/ante/stdlib/prelude.an: 183,1	note: Candidate 2
+// impl Print i16 with printne x = printf ("%hd".c_string) x
+// 
+// /home/rndmprsn/.config/ante/stdlib/prelude.an: 184,1	note: Candidate 3
+// impl Print i32 with printne x = printf ("%d".c_string) x
+// 
+// /home/rndmprsn/.config/ante/stdlib/prelude.an: 185,1	note: Candidate 4
+// impl Print i64 with printne x = printf ("%ld".c_string) x
+// 
+// /home/rndmprsn/.config/ante/stdlib/prelude.an: 186,1	note: Candidate 5
+// impl Print isz with printne x = printf ("%zi".c_string) x
+// 
+// /home/rndmprsn/.config/ante/stdlib/prelude.an: 187,1	note: Candidate 6
+// impl Print u8  with printne x = printf ("%hhu".c_string) x
+// 
+// /home/rndmprsn/.config/ante/stdlib/prelude.an: 188,1	note: Candidate 7
+// impl Print u16 with printne x = printf ("%hu".c_string) x
+// 
+// /home/rndmprsn/.config/ante/stdlib/prelude.an: 189,1	note: Candidate 8
+// impl Print u32 with printne x = printf ("%u".c_string) x
+// 
+// /home/rndmprsn/.config/ante/stdlib/prelude.an: 190,1	note: Candidate 9
+// impl Print u64 with printne x = printf ("%lu".c_string) x
+// 
+// /home/rndmprsn/.config/ante/stdlib/prelude.an: 191,1	note: Candidate 10
+// impl Print usz with printne x = printf ("%zu".c_string) x
+// 
+// /home/rndmprsn/.config/ante/stdlib/prelude.an: 192,1	note: Candidate 11
+// impl Print char with printne x = printf ("%c".c_string) x
+// 
+// /home/rndmprsn/.config/ante/stdlib/prelude.an: 193,1	note: Candidate 12
+// impl Print float with printne x = printf ("%.14f".c_string) x
+// 
+// /home/rndmprsn/.config/ante/stdlib/prelude.an: 194,1	note: Candidate 13
+// impl Print string with printne s = printf "%s".c_string s.c_string
+// 
+// /home/rndmprsn/.config/ante/stdlib/prelude.an: 195,1	note: Candidate 14
+// impl Print (ref char) with printne s = printf ("%s".c_string) s
+// 
+// /home/rndmprsn/.config/ante/stdlib/prelude.an: 197,1	note: Candidate 15
+// impl Print bool with

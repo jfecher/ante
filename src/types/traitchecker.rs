@@ -20,11 +20,10 @@
 use crate::types::traits::{ RequiredTrait, TraitConstraint, TraitConstraints };
 use crate::cache::{ ModuleCache, VariableId, ImplInfoId, DefinitionInfoId };
 use crate::types::typechecker::{ self, TypeBindings, UnificationResult };
-use crate::types::{ INITIAL_LEVEL, DEFAULT_INTEGER_TYPE, Type, PrimitiveType };
+use crate::types::{ DEFAULT_INTEGER_TYPE, Type, PrimitiveType, TypeVariableId };
 use crate::lexer::token::IntegerKind;
 use crate::util::{ trustme, fmap };
 
-use std::sync::atomic::Ordering;
 use std::collections::HashMap;
 
 /// Go through the given list of traits and determine if they should
@@ -32,11 +31,13 @@ use std::collections::HashMap;
 /// Returns the list of traits propogated upward.
 /// Binds the impls that were searched for and found to the required_impls
 /// in the callsite VariableInfo, and errors for any impls that couldn't be found.
-pub fn resolve_traits<'a>(constraints: TraitConstraints, cache: &mut ModuleCache<'a>) -> Vec<RequiredTrait> {
+pub fn resolve_traits<'a>(constraints: TraitConstraints, typevars_in_fn_signature: &[TypeVariableId],
+    cache: &mut ModuleCache<'a>) -> Vec<RequiredTrait>
+{
     let (propagated_traits,
          int_constraints,
          member_access_constraints,
-         other_constraints) = sort_traits(constraints, cache);
+         other_constraints) = sort_traits(constraints, typevars_in_fn_signature, cache);
 
     let empty_bindings = HashMap::new();
 
@@ -65,22 +66,11 @@ pub fn resolve_traits<'a>(constraints: TraitConstraints, cache: &mut ModuleCache
         solve_normal_constraint(&constraint, &empty_bindings, cache);
     }
 
-    // The final step of trait resolution is that if we have at least 1 propogated trait and we
-    // solved at least one trait then its possible we've performed some type bindings that can
-    // change our decision on which traits should be propagated. For example a trait `Print a`
-    // may be propagated, but if we later resolve `Int a` which sets `a = i32` then we will need
-    // to solve `Print (a=i32)` as well rather than propagating it.
-    if propagated_traits.is_empty() || (int_constraints.is_empty() && member_access_constraints.is_empty() && other_constraints.is_empty()) {
-        // base case: nothing else to do
-        propagated_traits.into_iter().map(TraitConstraint::as_required_trait).collect()
-    } else {
-        // recursive case: recurse until we have either 0 propagated_traits or 0 more traits to solve
-        resolve_traits(propagated_traits, cache)
-    }
+    propagated_traits
 }
 
 /// These just make the signature of sort_traits read better.
-type PropagatedTraits = Vec<TraitConstraint>;
+type PropagatedTraits = Vec<RequiredTrait>;
 type IntTraits = Vec<TraitConstraint>;
 type MemberAccessTraits = Vec<TraitConstraint>;
 
@@ -94,15 +84,17 @@ type MemberAccessTraits = Vec<TraitConstraint>;
 /// - All other constraints. This includes all other normal trait constraints like `Print a`
 ///   or `Cast a b` which should have an impl searched for now. Traits like this that shouldn't
 ///   have an impl searched for belong to the first category of propogated traits.
-fn sort_traits<'c>(constraints: TraitConstraints, cache: &ModuleCache<'c>) -> (PropagatedTraits, IntTraits, MemberAccessTraits, TraitConstraints) {
+fn sort_traits<'c>(constraints: TraitConstraints, typevars_in_fn_signature: &[TypeVariableId],
+    cache: &ModuleCache<'c>) -> (PropagatedTraits, IntTraits, MemberAccessTraits, TraitConstraints)
+{
     let mut propogated_traits = vec![];
     let mut int_constraints = vec![];
     let mut member_access_constraints = vec![];
     let mut other_constraints = Vec::with_capacity(constraints.len());
 
     for constraint in constraints {
-        if should_propagate(&constraint, cache) {
-            propogated_traits.push(constraint);
+        if should_propagate(&constraint, typevars_in_fn_signature, cache) {
+            propogated_traits.push(constraint.as_required_trait());
         } else if constraint.is_int_constraint(cache)  {
             int_constraints.push(constraint);
         } else if constraint.is_member_access(cache) {
@@ -121,12 +113,12 @@ fn sort_traits<'c>(constraints: TraitConstraints, cache: &ModuleCache<'c>) -> (P
 /// For example, the trait constraint `Print i32` should never be propogated because it doesn't
 /// contain any typevariables. A constraint like `Print a` may be propogated if `a` is a
 /// typevariable used in the signature of the current function.
-fn should_propagate<'a>(constraint: &TraitConstraint, cache: &ModuleCache<'a>) -> bool {
+fn should_propagate<'a>(constraint: &TraitConstraint, typevars_in_fn_signature: &[TypeVariableId], cache: &ModuleCache<'a>) -> bool {
     // Don't check the fundeps since only the typeargs proper are used to find impls
     let arg_count = cache.trait_infos[constraint.trait_id.0].typeargs.len();
-    constraint.args.iter().take(arg_count).any(|arg| !typechecker::find_all_typevars(arg, true, cache).is_empty())
-        // Make sure we never propagate when we're already in top-level in main with nowhere to propagate to.
-        && typechecker::CURRENT_LEVEL.load(Ordering::SeqCst) >= INITIAL_LEVEL
+
+    constraint.args.iter().take(arg_count).any(|arg|
+        typechecker::contains_any_typevars_from_list(arg, typevars_in_fn_signature, cache))
 }
 
 /// Checks if the given `Int a` constraint is satisfied. These impls don't correspond

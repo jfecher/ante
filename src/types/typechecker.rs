@@ -181,6 +181,45 @@ fn bind_typevar<'c>(id: TypeVariableId, type_bindings: &TypeBindings,
     }
 }
 
+/// Recurse on typ, returning true if it contains any of the TypeVariableIds
+/// contained within list.
+pub fn contains_any_typevars_from_list<'c>(typ: &Type, list: &[TypeVariableId], cache: &ModuleCache<'c>) -> bool {
+    match typ {
+        Primitive(_) => false,
+        UserDefinedType(_) => false,
+
+        TypeVariable(id) => type_variable_contains_any_typevars_from_list(*id, list, cache),
+
+        Function(parameters, return_type, _) => {
+            parameters.iter().any(|parameter| contains_any_typevars_from_list(parameter, list, cache))
+            || contains_any_typevars_from_list(return_type, list, cache)
+        },
+
+        ForAll(typevars, typ) => {
+            typevars.iter().any(|typevar| list.contains(typevar))
+            || contains_any_typevars_from_list(typ, list, cache)
+        }
+
+        Ref(lifetime) => type_variable_contains_any_typevars_from_list(*lifetime, list, cache),
+
+        TypeApplication(typ, args) => {
+            contains_any_typevars_from_list(typ, list, cache)
+            || args.iter().any(|arg| contains_any_typevars_from_list(arg, list, cache))
+        },
+        Tuple(elements) => {
+            elements.iter().any(|element| contains_any_typevars_from_list(element, list, cache))
+        }
+    }
+}
+
+fn type_variable_contains_any_typevars_from_list<'c>(id: TypeVariableId, list: &[TypeVariableId], cache: &ModuleCache<'c>) -> bool {
+    if let Bound(typ) = &cache.type_bindings[id.0] {
+        contains_any_typevars_from_list(typ, list, cache)
+    } else {
+        list.contains(&id)
+    }
+}
+
 /// Helper function for getting the next type variable at the current level
 fn next_type_variable_id<'a>(cache: &mut ModuleCache<'a>) -> TypeVariableId {
     let level = LetBindingLevel(CURRENT_LEVEL.load(Ordering::SeqCst));
@@ -778,7 +817,7 @@ pub fn infer_ast<'a>(ast: &mut ast::Ast<'a>, cache: &mut ModuleCache<'a>) {
     let (_, traits) = infer(ast, cache);
     CURRENT_LEVEL.store(INITIAL_LEVEL - 1, Ordering::SeqCst);
 
-    let exposed_traits = traitchecker::resolve_traits(traits, cache);
+    let exposed_traits = traitchecker::resolve_traits(traits, &[], cache);
     // No traits should be propogated above the top-level main function
     assert!(exposed_traits.is_empty());
 }
@@ -947,10 +986,10 @@ impl<'a> Inferable<'a> for ast::Definition<'a> {
         bind_irrefutable_pattern(self.pattern.as_mut(), &t, &vec![], false, cache);
 
         // Now infer the traits + type of the lhs
-        let exposed_traits = traitchecker::resolve_traits(traits, cache);
+        let typevars_in_fn = find_all_typevars(self.pattern.get_type().unwrap(), false, cache);
+        let exposed_traits = traitchecker::resolve_traits(traits, &typevars_in_fn, cache);
         bind_irrefutable_pattern(self.pattern.as_mut(), &t, &exposed_traits, true, cache);
 
-        // And restore the previous LetBindingLevel.
         // TODO: Can these operations on the LetBindingLevel be simplified?
         CURRENT_LEVEL.store(previous_level, Ordering::SeqCst);
 
