@@ -152,7 +152,7 @@ impl RequiredTrait {
             }
         }
 
-        RequiredTraitPrinter { required_trait: self.clone(), typevar_names, cache }
+        RequiredTraitPrinter { required_trait: self.clone(), typevar_names, debug: false, cache }
     }
 
     #[allow(dead_code)]
@@ -169,7 +169,7 @@ impl RequiredTrait {
             }
         }
 
-        RequiredTraitPrinter { required_trait: self.clone(), typevar_names, cache }
+        RequiredTraitPrinter { required_trait: self.clone(), typevar_names, debug: true, cache }
     }
 }
 
@@ -178,6 +178,9 @@ pub struct RequiredTraitPrinter<'a, 'b> {
 
     /// Maps unique type variable IDs to human readable names like a, b, c, etc.
     pub typevar_names: HashMap<TypeVariableId, String>,
+
+    /// Controls whether to show some hidden data, like lifetimes of each ref
+    pub debug: bool,
 
     pub cache: &'a ModuleCache<'b>
 }
@@ -188,7 +191,7 @@ impl<'a, 'b> Display for RequiredTraitPrinter<'a, 'b> {
 
         write!(f, "{}", trait_info.name.blue())?;
         for arg in self.required_trait.args.iter() {
-            let arg_printer =  TypePrinter::new(arg, self.typevar_names.clone(), self.cache);
+            let arg_printer =  TypePrinter::new(arg, self.typevar_names.clone(), self.debug, self.cache);
             write!(f, " {}", arg_printer)?;
         }
         Ok(())

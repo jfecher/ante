@@ -233,6 +233,10 @@ pub struct TraitInfo<'a> {
     /// later have to conform to.
     pub definitions: Vec<DefinitionInfoId>,
 
+    /// The Ast node that defines this trait.
+    /// A value of None means this trait was builtin to the compiler
+    pub trait_node: Option<&'a mut TraitDefinition<'a>>,
+
     pub uses: u32,
 }
 
@@ -315,7 +319,7 @@ impl<'a> ModuleCache<'a> {
         };
 
         let new_typevar = cache.next_type_variable_id(LetBindingLevel(std::usize::MAX));
-        cache.push_trait_definition("Int".to_string(), vec![new_typevar], vec![], Location::builtin());
+        cache.push_trait_definition("Int".to_string(), vec![new_typevar], vec![], None, Location::builtin());
         cache
     }
 
@@ -369,7 +373,9 @@ impl<'a> ModuleCache<'a> {
     }
 
     pub fn push_trait_definition(&mut self, name: String, typeargs: Vec<TypeVariableId>,
-                fundeps: Vec<TypeVariableId>,  location: Location<'a>) -> TraitInfoId {
+                fundeps: Vec<TypeVariableId>, trait_node: Option<&'a mut TraitDefinition<'a>>,
+                location: Location<'a>) -> TraitInfoId
+    {
 
         let id = self.trait_infos.len();
         self.trait_infos.push(TraitInfo {
@@ -377,6 +383,7 @@ impl<'a> ModuleCache<'a> {
             typeargs,
             fundeps,
             definitions: vec![],
+            trait_node,
             location,
             uses: 0,
         });
@@ -422,7 +429,7 @@ impl<'a> ModuleCache<'a> {
                 let trait_name = ".".to_string() + field_name;
                 let collection_type = self.next_type_variable_id(level);
                 let field_type = self.next_type_variable_id(level);
-                let id = self.push_trait_definition(trait_name, vec![collection_type], vec![field_type], Location::builtin());
+                let id = self.push_trait_definition(trait_name, vec![collection_type], vec![field_type], None, Location::builtin());
                 self.member_access_traits.insert(field_name.to_string(), id);
                 id
             },

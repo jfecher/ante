@@ -331,15 +331,16 @@ impl NameResolver {
     }
 
     fn push_trait<'c>(&mut self, name: String, args: Vec<TypeVariableId>,
-                fundeps: Vec<TypeVariableId>, cache: &mut ModuleCache<'c>, location: Location<'c>) -> TraitInfoId {
-
+                fundeps: Vec<TypeVariableId>, node: &'c mut ast::TraitDefinition<'c>,
+                cache: &mut ModuleCache<'c>, location: Location<'c>) -> TraitInfoId
+    {
         if let Some(existing_definition) = self.current_scope().traits.get(&name) {
             error!(location, "{} is already in scope", name);
             let previous_location = cache.trait_infos[existing_definition.0].locate();
             note!(previous_location, "{} previously defined here", name);
         }
 
-        let id = cache.push_trait_definition(name.clone(), args, fundeps, location);
+        let id = cache.push_trait_definition(name.clone(), args, fundeps, Some(node), location);
         if self.in_global_scope() {
             self.exports.traits.insert(name.clone(), id);
         }
@@ -451,7 +452,6 @@ impl<'c> NameResolver {
             ast::Type::StringType(_) => Type::UserDefinedType(STRING_TYPE),
             ast::Type::BooleanType(_) => Type::Primitive(PrimitiveType::BooleanType),
             ast::Type::UnitType(_) => Type::Primitive(PrimitiveType::UnitType),
-            ast::Type::ReferenceType(_) => Type::Primitive(PrimitiveType::ReferenceType),
             ast::Type::FunctionType(args, ret, varargs, _) => {
                 let args = fmap(args, |arg| self.convert_type(cache, arg));
                 let ret = self.convert_type(cache, ret);
@@ -487,7 +487,16 @@ impl<'c> NameResolver {
             },
             ast::Type::TupleType(args, _) => {
                 Type::Tuple(fmap(args, |arg| self.convert_type(cache, arg)))
-            }
+            },
+            ast::Type::ReferenceType(_) => {
+                // When translating ref types, all have a hidden lifetime variable that is unified
+                // under the hood by the compiler to determine the reference's stack lifetime.
+                // This is never able to be manually specified by the programmer, so we use
+                // next_type_variable_id on the cache rather than the NameResolver's version which
+                // would add a name into scope.
+                let lifetime_variable = cache.next_type_variable_id(self.let_binding_level);
+                Type::Ref(lifetime_variable)
+            },
         }
     }
 
@@ -969,7 +978,10 @@ impl<'c> Resolvable<'c> for ast::TraitDefinition<'c> {
             resolver.push_new_type_variable(arg.clone(), cache));
 
         assert!(resolver.current_trait.is_none());
-        let trait_id = resolver.push_trait(self.name.clone(), args, fundeps, cache, self.location);
+
+        let trait_id = resolver.push_trait(self.name.clone(), args, fundeps,
+            trustme::extend_lifetime(self), cache, self.location);
+
         resolver.current_trait = Some(trait_id);
 
         let self_pointer = self as *const _;

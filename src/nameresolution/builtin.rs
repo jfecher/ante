@@ -70,10 +70,17 @@ pub fn import_prelude<'a>(resolver: &mut NameResolver, cache: &mut ModuleCache<'
 
 /// Defining the 'string' type is a bit different than most other builtins. Since 'string' has
 /// its own dedicated keyword it need not be imported into scope like each impl of + or - does.
+///
+/// The builtin string type is defined here as:
+///
+/// type string = c_string: ref char, length: usz
+///
+/// TODO: The C-string field probably shouldn't be region-allocated with ref (?).
+///       This container type likely needs to change.
 fn define_string<'a>(cache: &mut ModuleCache<'a>) -> Type {
     let location = Location::builtin();
 
-    let ref_type = Type::Primitive(PrimitiveType::ReferenceType);
+    let ref_type = Type::Ref(cache.next_type_variable_id(LetBindingLevel(1)));
     let char_type = Type::Primitive(PrimitiveType::CharType);
     let c_string_type = Type::TypeApplication(Box::new(ref_type), vec![char_type]);
 

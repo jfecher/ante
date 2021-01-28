@@ -7,6 +7,7 @@
 use crate::cache::{ ModuleCache, DefinitionInfoId };
 use crate::error::location::{ Locatable, Location };
 use crate::lexer::token::IntegerKind;
+use crate::lifetimes;
 
 use std::collections::HashMap;
 
@@ -37,7 +38,6 @@ pub enum PrimitiveType {
     CharType,                 // : *
     BooleanType,              // : *
     UnitType,                 // : *
-    ReferenceType,            // : * -> *
 }
 
 /// Any type in ante. Note that a trait is not a type. Traits are
@@ -78,6 +78,11 @@ pub enum Type {
     /// Tuple types are always non-empty since an empty tuple is the unit type.
     Tuple(Vec<Type>),
 
+    /// A region-allocated reference to some data.
+    /// Contains a region variable that is unified with other refs during type
+    /// inference. All these refs will be allocated in the same region.
+    Ref(lifetimes::LifetimeVariableId),
+
     /// These are currently used internally to indicate polymorphic
     /// type variables for let-polymorphism. There is no syntax to
     /// specify these explicitly in ante code. Each type variable in
@@ -102,7 +107,7 @@ impl Type {
             }
         }
 
-        typeprinter::TypePrinter::new(self, typevar_names, cache)
+        typeprinter::TypePrinter::new(self, typevar_names, false, cache)
     }
 
     /// Like display but show the real unique TypeVariableId for each typevar instead
@@ -117,7 +122,7 @@ impl Type {
             }
         }
 
-        typeprinter::TypePrinter::new(self, typevar_names, cache)
+        typeprinter::TypePrinter::new(self, typevar_names, true, cache)
     }
 }
 

@@ -33,7 +33,7 @@ use std::collections::HashMap;
 /// Binds the impls that were searched for and found to the required_impls
 /// in the callsite VariableInfo, and errors for any impls that couldn't be found.
 pub fn resolve_traits<'a>(constraints: TraitConstraints, cache: &mut ModuleCache<'a>) -> Vec<RequiredTrait> {
-    let (propogated_traits,
+    let (propagated_traits,
          int_constraints,
          member_access_constraints,
          other_constraints) = sort_traits(constraints, cache);
@@ -44,7 +44,7 @@ pub fn resolve_traits<'a>(constraints: TraitConstraints, cache: &mut ModuleCache
     // `Int a` to `Int i32` if `a` is unbound. This can impact the remainder of the impl search
     // if, for example, there is a `Cast a string` constraint this is solveable if `a = i32` is
     // known, but not solveable otherwise (barring a user-defined impl).
-    for constraint in int_constraints {
+    for constraint in int_constraints.iter() {
         typechecker::perform_bindings_or_print_error(
             find_int_constraint_impl(&constraint, &empty_bindings, cache), cache
         );
@@ -53,31 +53,34 @@ pub fn resolve_traits<'a>(constraints: TraitConstraints, cache: &mut ModuleCache
     // Member access constraints don't need to be searched for before normal constraints, but
     // they're separated out anyway since searching for them is done differently since they're
     // automatically impl'd by the compiler.
-    for constraint in member_access_constraints {
+    for constraint in member_access_constraints.iter() {
         typechecker::perform_bindings_or_print_error(
             find_member_access_impl(&constraint, &empty_bindings, cache), cache
         );
     }
 
-    for constraint in other_constraints {
-        // Normal constraints require special care since searching for an impl for them may require
-        // recursively searching for more impls (due to `impl A given B` constraints) before finding a matching one.
+    for constraint in other_constraints.iter() {
+        // Searching for an impl for normal constraints may require recursively searching for
+        // more impls (due to `impl A given B` constraints) before finding a matching one.
         solve_normal_constraint(&constraint, &empty_bindings, cache);
     }
 
-    // NOTE: 'duplicate' trait constraints like `given Print a, Print a` are NOT separated out here
-    // because they each point to different usages of the trait. They are only filtered out when
-    // displaying types to the user.
-    propogated_traits
+    // The final step of trait resolution is that if we have at least 1 propogated trait and we
+    // solved at least one trait then its possible we've performed some type bindings that can
+    // change our decision on which traits should be propagated. For example a trait `Print a`
+    // may be propagated, but if we later resolve `Int a` which sets `a = i32` then we will need
+    // to solve `Print (a=i32)` as well rather than propagating it.
+    if propagated_traits.is_empty() || (int_constraints.is_empty() && member_access_constraints.is_empty() && other_constraints.is_empty()) {
+        // base case: nothing else to do
+        propagated_traits.into_iter().map(TraitConstraint::as_required_trait).collect()
+    } else {
+        // recursive case: recurse until we have either 0 propagated_traits or 0 more traits to solve
+        resolve_traits(propagated_traits, cache)
+    }
 }
 
 /// These just make the signature of sort_traits read better.
-///
-/// PropagatedTraits is a Vec of RequiredTraits rather than TraitConstraints
-/// since RequiredTraits are what are actually stored in DefinitionInfos to
-/// propogate trait constraints upward. The other aliases here aren't propogated
-/// so they don't need to be converted.
-type PropagatedTraits = Vec<RequiredTrait>;
+type PropagatedTraits = Vec<TraitConstraint>;
 type IntTraits = Vec<TraitConstraint>;
 type MemberAccessTraits = Vec<TraitConstraint>;
 
@@ -99,7 +102,7 @@ fn sort_traits<'c>(constraints: TraitConstraints, cache: &ModuleCache<'c>) -> (P
 
     for constraint in constraints {
         if should_propagate(&constraint, cache) {
-            propogated_traits.push(constraint.as_required_trait());
+            propogated_traits.push(constraint);
         } else if constraint.is_int_constraint(cache)  {
             int_constraints.push(constraint);
         } else if constraint.is_member_access(cache) {

@@ -371,12 +371,13 @@ impl<'g> Generator<'g> {
         value
     }
 
-    fn find_binding<'c, 'b>(&'b self, id: TypeVariableId, cache: &'b ModuleCache<'c>) -> &types::Type {
+    fn find_binding<'c, 'b, 'd>(&'b self, id: TypeVariableId, default: &'b types::Type, cache: &'b ModuleCache<'c>) -> &'b types::Type {
         use types::TypeBinding::*;
-        use types::Type::TypeVariable;
+        use types::Type::*;
 
         match &cache.type_bindings[id.0] {
-            Bound(TypeVariable(id)) => self.find_binding(*id, cache),
+            Bound(TypeVariable(id))
+            | Bound(Ref(id)) => self.find_binding(*id, default, cache),
             Bound(binding) => binding,
             Unbound(..) => {
                 for bindings in self.monomorphisation_bindings.iter().rev() {
@@ -384,7 +385,7 @@ impl<'g> Generator<'g> {
                         return binding;
                     }
                 }
-                &UNBOUND_TYPE
+                default
             },
         }
     }
@@ -398,12 +399,11 @@ impl<'g> Generator<'g> {
             Primitive(CharType) => 1,
             Primitive(BooleanType) => 1,
             Primitive(UnitType) => 1,
-            Primitive(ReferenceType) => Self::ptr_size(),
 
             Function(..) => Self::ptr_size(),
 
             TypeVariable(id) => {
-                let binding = self.find_binding(*id, cache).clone();
+                let binding = self.find_binding(*id, &UNBOUND_TYPE, cache).clone();
                 self.size_of_type(&binding, cache)
             },
 
@@ -420,6 +420,8 @@ impl<'g> Generator<'g> {
                 elements.iter().map(|element| self.size_of_type(element, cache)).sum()
             }
 
+            Ref(_) => Self::ptr_size(),
+
             ForAll(_, typ) => self.size_of_type(typ, cache),
         }
     }
@@ -432,7 +434,6 @@ impl<'g> Generator<'g> {
             CharType => self.context.i8_type().into(),
             BooleanType => self.context.bool_type().into(),
             UnitType => self.context.bool_type().into(),
-            ReferenceType => unreachable!("Kind error during code generation"),
         }
     }
 
@@ -518,7 +519,6 @@ impl<'g> Generator<'g> {
     /// struct type in the resulting LLVM IR.
     fn convert_type<'c>(&mut self, typ: &types::Type, cache: &ModuleCache<'c>) -> BasicTypeEnum<'g> {
         use types::Type::*;
-        use types::PrimitiveType::ReferenceType;
 
         match typ {
             Primitive(primitive) => self.convert_primitive_type(primitive, cache),
@@ -529,7 +529,7 @@ impl<'g> Generator<'g> {
                 return_type.fn_type(&args, *varargs).ptr_type(AddressSpace::Generic).into()
             },
 
-            TypeVariable(id) => self.convert_type(&self.find_binding(*id, cache).clone(), cache),
+            TypeVariable(id) => self.convert_type(&self.find_binding(*id, &UNBOUND_TYPE, cache).clone(), cache),
 
             UserDefinedType(id) => self.convert_user_defined_type(*id, vec![], cache),
 
@@ -543,7 +543,7 @@ impl<'g> Generator<'g> {
                 let typ = self.follow_bindings(typ, cache);
 
                 match &typ {
-                    Primitive(ReferenceType) => {
+                    Ref(_) => {
                         assert!(args.len() == 1);
                         self.convert_type(&args[0], cache).ptr_type(AddressSpace::Generic).into()
                     },
@@ -552,6 +552,10 @@ impl<'g> Generator<'g> {
                         unreachable!("Type {} requires 0 type args but was applied to {:?}", typ.display(cache), args);
                     }
                 }
+            },
+
+            Ref(_) => {
+                unreachable!("Kind error during llvm codegen. Attempted to translate a `ref` without a type argument into an llvm::Type")
             },
 
             ForAll(_, typ) => self.convert_type(typ, cache),
@@ -585,7 +589,7 @@ impl<'g> Generator<'g> {
             Isz | Usz => Self::ptr_size() as u32 * 8,
             Unknown => unreachable!("Unknown integer kind in integer_bit_count"),
             Inferred(id) => {
-                match self.find_binding(id, cache) {
+                match self.find_binding(id, &UNBOUND_TYPE, cache) {
                     Primitive(IntegerType(kind)) => {
                         let kind = *kind;
                         self.integer_bit_count(kind, cache)
@@ -614,7 +618,7 @@ impl<'g> Generator<'g> {
             U8 | U16 | U32 | U64 | Usz => true,
             Unknown => unreachable!("Unknown integer kind in is_unsigned_integer"),
             Inferred(id) => {
-                match self.find_binding(id, cache) {
+                match self.find_binding(id, &UNBOUND_TYPE, cache) {
                     Primitive(IntegerType(kind)) => {
                         let kind = *kind;
                         self.is_unsigned_integer(kind, cache)
@@ -648,6 +652,9 @@ impl<'g> Generator<'g> {
         self.context.f64_type().const_float(value).into()
     }
 
+    /// Perform codegen for a string literal. This will create a global
+    /// value for the string itself, and return a struct of the pointer
+    /// to this data and its length.
     fn string_value<'c>(&mut self, contents: &str, cache: &ModuleCache<'c>) -> BasicValueEnum<'g> {
         let literal = self.context.const_string(contents.as_bytes(), true);
         let global = self.module.add_global(literal.get_type(), None, "string_literal");
@@ -674,7 +681,7 @@ impl<'g> Generator<'g> {
                 Function(args, Box::new(return_type), *varargs)
             },
 
-            TypeVariable(id) => self.follow_bindings(self.find_binding(*id, cache), cache),
+            TypeVariable(id) => self.follow_bindings(self.find_binding(*id, &UNBOUND_TYPE, cache), cache),
 
             UserDefinedType(id) => UserDefinedType(*id),
 
@@ -687,6 +694,19 @@ impl<'g> Generator<'g> {
             Tuple(elements) => {
                 Tuple(fmap(elements, |element| self.follow_bindings(element, cache)))
             },
+
+            Ref(lifetime) => {
+                let default = Ref(*lifetime);
+                let binding = self.find_binding(*lifetime, &default, cache);
+
+                // Since we default to the same ref, recursing again can lead to infinte
+                // recursion if the binding returned was the default
+                if *binding != default {
+                    self.follow_bindings(binding, cache)
+                } else {
+                    default
+                }
+            }
 
             // unwrap foralls
             ForAll(_, typ) => self.follow_bindings(typ, cache),
@@ -976,6 +996,25 @@ impl<'g> Generator<'g> {
             }
         }
     }
+
+    /// Create an 'Extract' llvm instruction to extract the value of a field out of a
+    /// struct or tuple value
+    fn extract_field(&mut self, collection: BasicValueEnum<'g>, field_index: u32, field_name: &str) -> BasicValueEnum<'g> {
+        let collection = collection.into_struct_value();
+        self.builder.build_extract_value(collection, field_index, field_name).unwrap()
+    }
+
+    /// Creates a GEP instruction and Load which emulate a single Extract instruction but
+    /// delays the Load as long as possible to make assigning to this as an l-value easier later on.
+    fn gep_at_index(&mut self, load: BasicValueEnum<'g>, field_index: u32, field_name: &str) -> BasicValueEnum<'g> {
+        let instruction = load.as_instruction_value().unwrap();
+        assert_eq!(instruction.get_opcode(), InstructionOpcode::Load);
+
+        let pointer = instruction.get_operand(0).unwrap().left().unwrap().into_pointer_value();
+
+        let gep = self.builder.build_struct_gep(pointer, field_index, field_name).unwrap();
+        self.builder.build_load(gep, field_name)
+    }
 }
 
 trait CodeGen<'g, 'c> {
@@ -1211,10 +1250,15 @@ impl<'g, 'c> CodeGen<'g, 'c> for ast::Extern<'c> {
 impl<'g, 'c> CodeGen<'g, 'c> for ast::MemberAccess<'c> {
     fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
         let lhs = self.lhs.codegen(generator, cache);
-        let collection = lhs.into_struct_value();
-
         let index = generator.get_field_index(&self.field, self.lhs.get_type().unwrap(), cache);
-        generator.builder.build_extract_value(collection, index, &self.field).unwrap()
+
+        // If our lhs is a load from an alloca, create a GEP instead of extracting directly.
+        // This will delay the load as long as possible which makes this easier to detect
+        // as a valid l-value in ast::Assignment::codegen.
+        match lhs.as_instruction_value().map(|instr| instr.get_opcode()) {
+            Some(InstructionOpcode::Load) => generator.gep_at_index(lhs, index, &self.field),
+            _ => generator.extract_field(lhs, index, &self.field),
+        }
     }
 }
 

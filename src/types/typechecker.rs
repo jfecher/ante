@@ -85,17 +85,9 @@ pub fn replace_all_typevars<'c>(types: &[Type], cache: &mut ModuleCache<'c>) -> 
 pub fn replace_all_typevars_with_bindings<'c>(typ: &Type, new_bindings: &mut TypeBindings, cache: &mut ModuleCache<'c>) -> Type {
     match typ {
         Primitive(p) => Primitive(*p),
-        TypeVariable(id) => {
-            if let Bound(typ) = &cache.type_bindings[id.0] {
-                replace_all_typevars_with_bindings(&typ.clone(), new_bindings, cache)
-            } else if let Some(var) = new_bindings.get(id) {
-                var.clone()
-            } else {
-                let new_typevar = next_type_variable(cache);
-                new_bindings.insert(*id, new_typevar.clone());
-                new_typevar
-            }
-        },
+
+        TypeVariable(id) => replace_typevar_with_binding(*id, new_bindings, TypeVariable, cache),
+
         Function(parameters, return_type, varargs) => {
             let parameters = fmap(parameters, |parameter| replace_all_typevars_with_bindings(parameter, new_bindings, cache));
             let return_type = replace_all_typevars_with_bindings(return_type, new_bindings, cache);
@@ -105,6 +97,9 @@ pub fn replace_all_typevars_with_bindings<'c>(typ: &Type, new_bindings: &mut Typ
             unreachable!("Ante does not support higher rank polymorphism");
         }
         UserDefinedType(id) => UserDefinedType(*id),
+
+        // We must recurse on the lifetime variable since they are unified as normal type variables
+        Ref(lifetime) => replace_typevar_with_binding(*lifetime, new_bindings, Ref, cache),
 
         TypeApplication(typ, args) => {
             let typ = replace_all_typevars_with_bindings(typ, new_bindings, cache);
@@ -117,19 +112,36 @@ pub fn replace_all_typevars_with_bindings<'c>(typ: &Type, new_bindings: &mut Typ
     }
 }
 
+/// If the given TypeVariableId is unbound then return the matching binding in new_bindings.
+/// If there is no binding found, instantiate a new type variable and use that.
+///
+/// `default` should be either TypeVariable or Ref and controls which kind of type gets
+/// created that wraps the newly-instantiated TypeVariableId if one is made.
+fn replace_typevar_with_binding<'c>(id: TypeVariableId, new_bindings: &mut TypeBindings,
+    default: fn(TypeVariableId) -> Type,  cache: &mut ModuleCache<'c>) -> Type
+{
+    if let Bound(typ) = &cache.type_bindings[id.0] {
+        replace_all_typevars_with_bindings(&typ.clone(), new_bindings, cache)
+    } else if let Some(var) = new_bindings.get(&id) {
+        var.clone()
+    } else {
+        let new_typevar = next_type_variable_id(cache);
+        new_bindings.insert(id, default(new_typevar));
+        default(new_typevar)
+    }
+}
+
 /// Replace any typevars found with the given type bindings
+///
+/// Compared to `replace_all_typevars_with_bindings`, this function does not instantiate
+/// unbound type variables that were not in type_bindings. Thus if type_bindings is empty,
+/// this function will just clone the original Type.
 pub fn bind_typevars<'c>(typ: &Type, type_bindings: &TypeBindings, cache: &ModuleCache<'c>) -> Type {
     match typ {
         Primitive(p) => Primitive(*p),
-        TypeVariable(id) => {
-            if let Bound(typ) = &cache.type_bindings[id.0] {
-                bind_typevars(&typ.clone(), type_bindings, cache)
-            } else {
-                let original = TypeVariable(*id);
-                let replacement = type_bindings.get(id).unwrap_or(&original);
-                replacement.clone()
-            }
-        },
+
+        TypeVariable(id) => bind_typevar(*id, type_bindings, TypeVariable, cache),
+
         Function(parameters, return_type, varargs) => {
             let parameters = fmap(parameters, |parameter| bind_typevars(parameter, type_bindings, cache));
             let return_type = bind_typevars(return_type, type_bindings, cache);
@@ -140,6 +152,8 @@ pub fn bind_typevars<'c>(typ: &Type, type_bindings: &TypeBindings, cache: &Modul
         }
         UserDefinedType(id) => UserDefinedType(*id),
 
+        Ref(lifetime) => bind_typevar(*lifetime, type_bindings, Ref, cache),
+
         TypeApplication(typ, args) => {
             let typ = bind_typevars(typ, type_bindings, cache);
             let args = fmap(args, |arg| bind_typevars(arg, type_bindings, cache));
@@ -147,6 +161,22 @@ pub fn bind_typevars<'c>(typ: &Type, type_bindings: &TypeBindings, cache: &Modul
         },
         Tuple(elements) => {
             Tuple(fmap(elements, |element| bind_typevars(element, type_bindings, cache)))
+        }
+    }
+}
+
+/// Helper for bind_typevars which binds a single TypeVariableId if it is Unbound
+/// and it is found in the type_bindings. If a type_binding wasn't found, a
+/// default TypeVariable or Ref is constructed by passing the relevant constructor to `default`.
+fn bind_typevar<'c>(id: TypeVariableId, type_bindings: &TypeBindings,
+    default: fn(TypeVariableId) -> Type,  cache: &ModuleCache<'c>) -> Type
+{
+    if let Bound(typ) = &cache.type_bindings[id.0] {
+        bind_typevars(&typ.clone(), type_bindings, cache)
+    } else {
+        match type_bindings.get(&id) {
+            Some(binding) => binding.clone(),
+            None => default(id),
         }
     }
 }
@@ -260,14 +290,7 @@ fn occurs<'b>(id: TypeVariableId, level: LetBindingLevel, typ: &Type, bindings: 
         UserDefinedType(_) => false,
 
         TypeVariable(var_id) => {
-            match find_binding(*var_id, bindings, cache) {
-                Bound(binding) => occurs(id, level, &binding, bindings, cache),
-                Unbound(original_level, kind) => {
-                    let min_level = std::cmp::min(level, original_level);
-                    cache.type_bindings[id.0] = Unbound(min_level, kind);
-                    id == *var_id
-                }
-            }
+            typevars_match(id, level, *var_id, bindings, cache)
         },
         Function(parameters, return_type, _) => {
             occurs(id, level, return_type, bindings, cache)
@@ -280,6 +303,9 @@ fn occurs<'b>(id: TypeVariableId, level: LetBindingLevel, typ: &Type, bindings: 
         Tuple(elements) => {
             elements.iter().any(|element| occurs(id, level, element, bindings, cache))
         },
+        Ref(lifetime) => {
+            typevars_match(id, level, *lifetime, bindings, cache)
+        },
         ForAll(typevars, typ) => {
             !typevars.iter().any(|typevar| *typevar == id)
             && occurs(id, level, typ, bindings, cache)
@@ -287,10 +313,25 @@ fn occurs<'b>(id: TypeVariableId, level: LetBindingLevel, typ: &Type, bindings: 
     }
 }
 
+/// Helper function for the `occurs` check.
+///
+/// Recurse within `haystack` to try to find an Unbound typevar and check if it
+/// has the same Id as the needle TypeVariableId.
+fn typevars_match<'c>(needle: TypeVariableId, level: LetBindingLevel, haystack: TypeVariableId, bindings: &mut TypeBindings, cache: &mut ModuleCache<'c>) -> bool {
+    match find_binding(haystack, bindings, cache) {
+        Bound(binding) => occurs(needle, level, &binding, bindings, cache),
+        Unbound(original_level, kind) => {
+            let min_level = std::cmp::min(level, original_level);
+            cache.type_bindings[needle.0] = Unbound(min_level, kind);
+            needle == haystack
+        }
+    }
+}
+
 /// Returns what a given type is bound to, following all typevar links until it reaches an Unbound one.
 pub fn follow_bindings_in_cache_and_map<'b>(typ: &Type, bindings: &TypeBindings, cache: &ModuleCache<'b>) -> Type {
     match typ {
-        TypeVariable(id) => {
+        TypeVariable(id) | Ref(id) => {
             match find_binding(*id, bindings, cache) {
                 Bound(typ) => follow_bindings_in_cache_and_map(&typ, bindings, cache),
                 Unbound(..) => typ.clone(),
@@ -321,52 +362,12 @@ pub fn try_unify_with_bindings<'b>(t1: &Type, t2: &Type, bindings: &mut TypeBind
         //   it to the minimum scope of type variables in b. This happens within the occurs check.
         //   The unification of the LetBindingLevel here is a form of lifetime inference for the
         //   typevar and is used during generalization to determine which variables to generalize.
-        (TypeVariable(id), b) => {
-            match find_binding(*id, bindings, &cache) {
-                Bound(a) => {
-                    try_unify_with_bindings(&a, b, bindings, location, cache)
-                },
-                Unbound(a_level, _a_kind) => {
-                    // Create binding for boundTy that is currently empty.
-                    // Ensure not to create recursive bindings to the same variable
-                    let b = follow_bindings_in_cache_and_map(b, bindings, cache);
-                    if *t1 != b {
-                        // TODO: Can this occurs check not mutate the typevar levels until we
-                        // return success?
-                        if occurs(*id, a_level, &b, bindings, cache) {
-                            Err(make_error!(location, "Cannot construct recursive type: {} = {}", t1.debug(cache), t2.debug(cache)))
-                        } else {
-                            bindings.insert(*id, b);
-                            Ok(())
-                        }
-                    } else {
-                        Ok(())
-                    }
-                }
-            }
+        (TypeVariable(id), _) => {
+            try_unify_type_variable_with_bindings(*id, t1, t2, bindings, location, cache)
         },
 
-        (a, TypeVariable(id)) => {
-            match find_binding(*id, &bindings, &cache) {
-                Bound(b) => {
-                    try_unify_with_bindings(a, &b, bindings, location, cache)
-                },
-                Unbound(b_level, _b_kind) => {
-                    // Create binding for boundTy that is currently empty.
-                    // Ensure not to create recursive bindings to the same variable
-                    let a = follow_bindings_in_cache_and_map(a, bindings, cache);
-                    if a != *t2 {
-                        if occurs(*id, b_level, &a, bindings, cache) {
-                            Err(make_error!(location, "Cannot construct recursive type: {} = {}", t1.debug(cache), t2.debug(cache)))
-                        } else {
-                            bindings.insert(*id, a);
-                            Ok(())
-                        }
-                    } else {
-                        Ok(())
-                    }
-                }
-            }
+        (_, TypeVariable(id)) => {
+            try_unify_type_variable_with_bindings(*id, t2, t1, bindings, location, cache)
         },
 
         (Function(a_args, a_ret, a_is_varargs), Function(b_args, b_ret, b_is_varargs)) => {
@@ -415,6 +416,11 @@ pub fn try_unify_with_bindings<'b>(t1: &Type, t2: &Type, bindings: &mut TypeBind
             Ok(())
         },
 
+        // Refs have a hidden lifetime variable we need to unify here
+        (Ref(a_lifetime), Ref(_)) => {
+            try_unify_type_variable_with_bindings(*a_lifetime, t1, t2, bindings, location, cache)
+        },
+
         (ForAll(a_vars, a), ForAll(b_vars, b)) => {
             if a_vars.len() != b_vars.len() {
                 return Err(make_error!(location, "Type mismatch between {} and {}", a.display(cache), b.display(cache)));
@@ -423,6 +429,37 @@ pub fn try_unify_with_bindings<'b>(t1: &Type, t2: &Type, bindings: &mut TypeBind
         },
 
         (a, b) => Err(make_error!(location, "Type mismatch between {} and {}", a.display(cache), b.display(cache))),
+    }
+}
+
+/// Unify a single type variable (id arising from the type a) with an expected type b.
+/// Follows the given TypeBindings in bindings and the cache if a is Bound.
+fn try_unify_type_variable_with_bindings<'c>(id: TypeVariableId, a: &Type, b: &Type,
+    bindings: &mut TypeBindings,
+    location: Location<'c>,
+    cache: &mut ModuleCache<'c>) -> Result<(), ErrorMessage<'c>>
+{
+    match find_binding(id, bindings, &cache) {
+        Bound(a) => {
+            try_unify_with_bindings(&a, b, bindings, location, cache)
+        },
+        Unbound(a_level, _a_kind) => {
+            // Create binding for boundTy that is currently empty.
+            // Ensure not to create recursive bindings to the same variable
+            let b = follow_bindings_in_cache_and_map(b, bindings, cache);
+            if *a != b {
+                // TODO: Can this occurs check not mutate the typevar levels until we
+                // return success?
+                if occurs(id, a_level, &b, bindings, cache) {
+                    Err(make_error!(location, "Cannot construct recursive type: {} = {}", a.debug(cache), b.debug(cache)))
+                } else {
+                    bindings.insert(id, b);
+                    Ok(())
+                }
+            } else {
+                Ok(())
+            }
+        }
     }
 }
 
@@ -501,16 +538,7 @@ pub fn find_all_typevars<'a>(typ: &Type, polymorphic_only: bool, cache: &ModuleC
         Primitive(_) => vec![],
         UserDefinedType(_) => vec![],
         TypeVariable(id) => {
-            match &cache.type_bindings[id.0] {
-                Bound(t) => find_all_typevars(t, polymorphic_only, cache),
-                Unbound(level, _) => {
-                    if level_is_polymorphic(*level) || !polymorphic_only {
-                        vec![*id]
-                    } else {
-                        vec![]
-                    }
-                }
-            }
+            find_typevars_in_typevar_binding(*id, polymorphic_only, cache)
         },
         Function(parameters, return_type, _) => {
             let mut type_variables = vec![];
@@ -530,6 +558,9 @@ pub fn find_all_typevars<'a>(typ: &Type, polymorphic_only: bool, cache: &ModuleC
         Tuple(elements) => {
             elements.iter().flat_map(|element| find_all_typevars(element, polymorphic_only, cache)).collect()
         },
+        Ref(lifetime) => {
+            find_typevars_in_typevar_binding(*lifetime, polymorphic_only, cache)
+        }
         ForAll(polymorphic_typevars, typ) => {
             if polymorphic_only {
                 polymorphic_typevars.clone()
@@ -539,6 +570,21 @@ pub fn find_all_typevars<'a>(typ: &Type, polymorphic_only: bool, cache: &ModuleC
                 typevars
             }
         },
+    }
+}
+
+/// Helper for find_all_typevars which gets the TypeBinding for a given
+/// TypeVariableId and either recurses on it if it is bound or returns it.
+fn find_typevars_in_typevar_binding<'c>(id: TypeVariableId, polymorphic_only: bool, cache: &ModuleCache<'c>) -> Vec<TypeVariableId> {
+    match &cache.type_bindings[id.0] {
+        Bound(t) => find_all_typevars(t, polymorphic_only, cache),
+        Unbound(level, _) => {
+            if level_is_polymorphic(*level) || !polymorphic_only {
+                vec![id]
+            } else {
+                vec![]
+            }
+        }
     }
 }
 
@@ -630,8 +676,8 @@ fn bind_irrefutable_pattern<'a>(ast: &mut ast::Ast<'a>, typ: &Type,
 
             let info = &mut cache.definition_infos[definition_id.0];
             info.required_traits.append(&mut required_traits.clone());
-            variable.typ = Some(typ.clone());
 
+            variable.typ = Some(typ.clone());
             info.typ = Some(typ);
         },
         TypeAnnotation(annotation) => {
@@ -658,14 +704,30 @@ fn bind_irrefutable_pattern<'a>(ast: &mut ast::Ast<'a>, typ: &Type,
 }
 
 fn lookup_definition_type_in_trait<'a>(name: &str, trait_id: TraitInfoId, cache: &mut ModuleCache<'a>) -> Type {
-    let trait_info = &cache.trait_infos[trait_id.0];
+    let trait_info = &mut cache.trait_infos[trait_id.0];
     for definition_id in trait_info.definitions.iter() {
         let definition_info = &cache.definition_infos[definition_id.0];
         if definition_info.name == name {
-            return definition_info.typ.clone().expect(&format!("Type for {} has not been filled in yet", name));
+            match definition_info.typ.as_ref() {
+                Some(typ) => return typ.clone(),
+                None => return infer_trait_definition(name, trait_id, cache),
+            }
         }
     }
-    unreachable!();
+    unreachable!()
+}
+
+/// Perform type inference on the ast::TraitDefinition that defines the given trait function name.
+/// The type returned will be that of the named trait member rather than the trait as a whole.
+fn infer_trait_definition<'c>(name: &str, trait_id: TraitInfoId, cache: &mut ModuleCache<'c>) -> Type {
+    let trait_info = &mut cache.trait_infos[trait_id.0];
+    match &mut trait_info.trait_node {
+        Some(node) => {
+            infer(trustme::extend_lifetime(*node), cache);
+            return lookup_definition_type_in_trait(name, trait_id, cache);
+        },
+        None => unreachable!("Type for {} has not been filled in yet", name),
+    }
 }
 
 /// Both this function and bind_irrefutable_pattern traverse an irrefutable pattern.

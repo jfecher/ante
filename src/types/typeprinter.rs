@@ -21,6 +21,9 @@ pub struct TypePrinter<'a, 'b> {
     /// Maps unique type variable IDs to human readable names like a, b, c, etc.
     typevar_names: HashMap<TypeVariableId, String>,
 
+    /// Controls whether to show or hide some hidden data, like ref lifetimes
+    debug: bool,
+
     cache: &'a ModuleCache<'b>
 }
 
@@ -61,11 +64,12 @@ pub fn show_type_and_traits<'b>(typ: &Type, traits: &[RequiredTrait], cache: &Mo
     let typevars = find_all_typevars(typ, false, cache);
     fill_typevar_map(&mut map, typevars, &mut current);
 
-    print!("{}", TypePrinter { typ, cache, typevar_names: map.clone() });
+    let debug = true;
+    print!("{}", TypePrinter { typ, cache, debug, typevar_names: map.clone() });
 
     let mut traits = traits.iter().map(|required_trait| {
         fill_typevar_map(&mut map, required_trait.find_all_typevars(cache), &mut current);
-        RequiredTraitPrinter { required_trait: required_trait.clone(), cache, typevar_names: map.clone() }
+        RequiredTraitPrinter { required_trait: required_trait.clone(), cache, debug, typevar_names: map.clone() }
             .to_string()
     }).collect::<Vec<String>>();
 
@@ -83,8 +87,8 @@ pub fn show_type_and_traits<'b>(typ: &Type, traits: &[RequiredTrait], cache: &Mo
 }
 
 impl<'a, 'b> TypePrinter<'a, 'b> {
-    pub fn new(typ: &'a Type, typevar_names: HashMap<TypeVariableId, String>, cache: &'a ModuleCache<'b>) -> TypePrinter<'a, 'b> {
-        TypePrinter { typ, typevar_names, cache }
+    pub fn new(typ: &'a Type, typevar_names: HashMap<TypeVariableId, String>, debug: bool, cache: &'a ModuleCache<'b>) -> TypePrinter<'a, 'b> {
+        TypePrinter { typ, typevar_names, debug, cache }
     }
 
     fn fmt_type(&self, typ: &Type, f: &mut Formatter) -> std::fmt::Result {
@@ -95,6 +99,7 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
             Type::UserDefinedType(id) => self.fmt_user_defined_type(*id, f),
             Type::TypeApplication(constructor, args) => self.fmt_type_application(constructor, args, f),
             Type::Tuple(elements) => self.fmt_tuple(elements, f),
+            Type::Ref(lifetime) => self.fmt_ref(*lifetime, f),
             Type::ForAll(typevars, typ) => self.fmt_forall(typevars, typ, f),
         }
     }
@@ -106,7 +111,6 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
             PrimitiveType::CharType => write!(f, "{}", "char".blue()),
             PrimitiveType::BooleanType => write!(f, "{}", "bool".blue()),
             PrimitiveType::UnitType => write!(f, "{}", "unit".blue()),
-            PrimitiveType::ReferenceType => write!(f, "{}", "ref".blue()),
         }
     }
 
@@ -163,6 +167,23 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
             write!(f, "{}", ",".blue())?;
         }
         write!(f, "{}", ")".blue())
+    }
+
+    fn fmt_ref(&self, lifetime: TypeVariableId, f: &mut Formatter) -> std::fmt::Result {
+        match &self.cache.type_bindings[lifetime.0] {
+            TypeBinding::Bound(typ) => self.fmt_type(typ, f),
+            TypeBinding::Unbound(..) => {
+                write!(f, "{}", "ref".blue())?;
+
+                if self.debug {
+                    match self.typevar_names.get(&lifetime) {
+                        Some(name) => write!(f, "{{{}}}", name)?,
+                        None => write!(f, "{{?{}}}", lifetime.0)?,
+                    }
+                }
+                Ok(())
+            }
+        }
     }
 
     fn fmt_forall(&self, typevars: &Vec<TypeVariableId>, typ: &Box<Type>, f: &mut Formatter) -> std::fmt::Result {

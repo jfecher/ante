@@ -1,0 +1,25 @@
+type S = message: string
+
+impl Print S with
+    printne s = printne s.message
+
+// If the compiler decides to pass by reference, the code becomes:
+// void foo(const S *x, S *y) {
+//    ...
+// }
+// which can mutate x when x == y if not careful
+foo (x: S) (y: S) =
+    printne "x before: "
+    print x
+    z = mut y
+    z.message := "modifying y"
+    printne "x after:  "
+    print x
+
+x = mut S "original x string"
+foo x x
+
+// args: --run --delete-binary
+// expected stdout:
+// x before: original x string
+// x after:  original x string
