@@ -137,6 +137,7 @@ pub enum Token {
     Divide,             // /
     Backslash,          // \
     Ampersand,          // &
+    At,                 // @
 }
 
 impl Token {
@@ -287,6 +288,7 @@ impl Display for Token {
             Divide => write!(f, "'/'"),
             Backslash => write!(f, "'\\'"),
             Ampersand => write!(f, "'&'"),
+            At => write!(f, "'@'"),
         }
     }
 }

@@ -504,6 +504,7 @@ impl<'cache, 'contents> Iterator for Lexer<'cache, 'contents> {
             ('/', _) => self.advance_with(Token::Divide),
             ('\\', _) => self.advance_with(Token::Backslash),
             ('&', _) => self.advance_with(Token::Ampersand),
+            ('@', _) => self.advance_with(Token::At),
             (c, _) => self.advance_with(Token::Invalid(LexerError::UnknownChar(c))),
         }
     }

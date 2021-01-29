@@ -99,7 +99,13 @@ pub fn replace_all_typevars_with_bindings<'c>(typ: &Type, new_bindings: &mut Typ
         UserDefinedType(id) => UserDefinedType(*id),
 
         // We must recurse on the lifetime variable since they are unified as normal type variables
-        Ref(lifetime) => replace_typevar_with_binding(*lifetime, new_bindings, Ref, cache),
+        Ref(lifetime) => {
+            match replace_typevar_with_binding(*lifetime, new_bindings, Ref, cache) {
+                TypeVariable(new_lifetime) => Ref(new_lifetime),
+                Ref(new_lifetime) => Ref(new_lifetime),
+                _ => unreachable!("Bound Ref lifetime to non-lifetime type"),
+            }
+        }
 
         TypeApplication(typ, args) => {
             let typ = replace_all_typevars_with_bindings(typ, new_bindings, cache);
@@ -152,7 +158,13 @@ pub fn bind_typevars<'c>(typ: &Type, type_bindings: &TypeBindings, cache: &Modul
         }
         UserDefinedType(id) => UserDefinedType(*id),
 
-        Ref(lifetime) => bind_typevar(*lifetime, type_bindings, Ref, cache),
+        Ref(lifetime) => {
+            match bind_typevar(*lifetime, type_bindings, Ref, cache) {
+                TypeVariable(new_lifetime) => Ref(new_lifetime),
+                Ref(new_lifetime) => Ref(new_lifetime),
+                _ => unreachable!("Bound Ref lifetime to non-lifetime type"),
+            }
+        },
 
         TypeApplication(typ, args) => {
             let typ = bind_typevars(typ, type_bindings, cache);

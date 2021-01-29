@@ -366,7 +366,6 @@ fn precedence(token: &Token) -> Option<i8> {
         Token::ApplyRight => Some(2),
         Token::Or => Some(3),
         Token::And => Some(4),
-        Token::Not => Some(5),
         Token::EqualEqual | Token::Is | Token::Isnt | Token::NotEqual | Token::GreaterThan | Token::LessThan | Token::GreaterThanOrEqual | Token::LessThanOrEqual => Some(6),
         Token::In => Some(7),
         Token::Append => Some(8),
@@ -425,8 +424,6 @@ fn term<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
     match input[0].0 {
         Token::If => if_expr(input),
         Token::Match => match_expr(input),
-        Token::Not => not_expr(input),
-        Token::Ampersand => ref_expr(input),
         _ => or(&[
             function_call,
             type_annotation,
@@ -436,7 +433,7 @@ fn term<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
 }
 
 parser!(function_call loc =
-    function <- function_argument;
+    function <- member_access;
     args <- many1(function_argument);
     Ast::function_call(function, args, loc)
 );
@@ -468,6 +465,12 @@ parser!(not_expr loc =
 
 parser!(ref_expr loc =
     token <- expect(Token::Ampersand);
+    expr !<- term;
+    Ast::function_call(Ast::operator(token, loc), vec![expr], loc)
+);
+
+parser!(at_expr loc =
+    token <- expect(Token::At);
     expr !<- term;
     Ast::function_call(Ast::operator(token, loc), vec![expr], loc)
 );
@@ -523,8 +526,19 @@ parser!(else_expr _loc =
     otherwise
 );
 
-// function_argument = argument ('.' identifier)*
+/// A function_argument is a unary expr or a member_access of
+/// 1-n arguments.
 fn function_argument<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
+    match input[0].0 {
+        Token::Not => not_expr(input),
+        Token::Ampersand => ref_expr(input),
+        Token::At => at_expr(input),
+        _ => member_access(input),
+    }
+}
+
+/// member_access = argument ('.' identifier)*
+fn member_access<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
     let (mut input, mut arg, mut location) = argument(input)?;
 
     while input[0].0 == Token::MemberAccess {
@@ -570,7 +584,7 @@ parser!(operator loc =
 );
 
 fn parenthesized_expression<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
-    parenthesized(or(&[operator, expression], &"argument"))(input)
+    parenthesized(or(&[expression, operator], &"argument"))(input)
 }
 
 parser!(tuple loc =
