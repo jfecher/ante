@@ -57,13 +57,18 @@ type Result t e =
    | Ok t
    | Error e
 
-
 impl Eq (Maybe e) given Eq e with
     (==) l r =
-        match (l, r) with
-        | (Some lv, Some rv) -> lv == rv
-        | (None, None) -> true
+        match l, r with
+        | Some lv, Some rv -> lv == rv
+        | None, None -> true
         | _ -> false
+
+first (a, _) = a
+second (_, b) = b
+third (_, _, c) = c
+fourth (_, _, _, d) = d
+fifth (_, _, _, _, e) = e
 
 /// A type conversion from a to b
 trait Cast a b with
@@ -125,10 +130,10 @@ type Ordering = | Less | Equal | Greater
 
 impl Eq Ordering with
     (==) (a: Ordering) (b: Ordering) -> bool =
-        match (a, b) with
-        | (Less, Less) -> true
-        | (Equal, Equal) -> true
-        | (Greater, Greater) -> true
+        match a, b with
+        | Less, Less -> true
+        | Equal, Equal -> true
+        | Greater, Greater -> true
         | _ -> false
 
 trait Cmp a with
