@@ -153,15 +153,16 @@ parser!(type_annotation_pattern loc =
 fn irrefutable_pattern<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
     or(&[
        type_annotation_pattern,
+       irrefutable_pair_pattern,
        irrefutable_pattern_argument
     ], &"irrefutable_pattern")(input)
 }
 
-parser!(irrefutable_tuple_pattern loc =
-    _ <- expect(Token::ParenthesisLeft);
-    elements <- delimited_trailing(irrefutable_pattern, expect(Token::Comma));
-    _ <- expect(Token::ParenthesisRight);
-    Ast::tuple(elements, loc)
+parser!(irrefutable_pair_pattern loc =
+    first <- irrefutable_pattern_argument;
+    _ <- expect(Token::Comma);
+    rest !<- irrefutable_pattern;
+    Ast::function_call(Ast::operator(Token::Comma, loc), vec![first, rest], loc)
 );
 
 fn parenthesized_irrefutable_pattern<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
@@ -170,7 +171,7 @@ fn parenthesized_irrefutable_pattern<'a, 'b>(input: Input<'a, 'b>) -> AstResult<
 
 fn irrefutable_pattern_argument<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
     match input[0].0 {
-        Token::ParenthesisLeft => or(&[parenthesized_irrefutable_pattern, irrefutable_tuple_pattern], "irrefutable_pattern_argument")(input),
+        Token::ParenthesisLeft => parenthesized_irrefutable_pattern(input),
         Token::UnitLiteral => unit(input),
         _ => variable(input),
     }
@@ -224,7 +225,7 @@ parser!(union_inline_body _loc -> 'b ast::TypeDefinitionBody<'b> =
 parser!(struct_field loc -> 'b (String, Type<'b>, Location<'b>) =
     field_name <- identifier;
     _ !<- expect(Token::Colon);
-    field_type !<- parse_type;
+    field_type !<- parse_type_no_pair;
     (field_name, field_type, loc)
 );
 
@@ -359,26 +360,49 @@ parser!(block _loc =
     expr
 );
 
-fn precedence(token: &Token) -> Option<i8> {
+/// Returns the precedence of an operator along with
+/// whether or not it is right-associative.
+/// Returns None if the given Token is not an operator
+fn precedence(token: &Token) -> Option<(i8, bool)> {
     match token {
-        Token::Semicolon => Some(0),
-        Token::ApplyLeft => Some(1),
-        Token::ApplyRight => Some(2),
-        Token::Or => Some(3),
-        Token::And => Some(4),
-        Token::EqualEqual | Token::Is | Token::Isnt | Token::NotEqual | Token::GreaterThan | Token::LessThan | Token::GreaterThanOrEqual | Token::LessThanOrEqual => Some(6),
-        Token::In => Some(7),
-        Token::Append => Some(8),
-        Token::Range => Some(9),
-        Token::Add | Token::Subtract => Some(10),
-        Token::Multiply | Token::Divide | Token::Modulus => Some(11),
-        Token::Colon => Some(12),
-        Token::Index => Some(13),
-        Token::As => Some(14),
+        Token::Semicolon => Some((0, false)),
+        Token::Comma => Some((1, true)),
+        Token::ApplyLeft => Some((2, true)),
+        Token::ApplyRight => Some((3, false)),
+        Token::Or => Some((4, false)),
+        Token::And => Some((5, false)),
+        Token::EqualEqual | Token::Is | Token::Isnt | Token::NotEqual | Token::GreaterThan | Token::LessThan | Token::GreaterThanOrEqual | Token::LessThanOrEqual => Some((7, false)),
+        Token::In => Some((8, false)),
+        Token::Append => Some((9, false)),
+        Token::Range => Some((10, false)),
+        Token::Add | Token::Subtract => Some((11, false)),
+        Token::Multiply | Token::Divide | Token::Modulus => Some((12, false)),
+        Token::Colon => Some((13, false)),
+        Token::Index => Some((14, false)),
+        Token::As => Some((15, false)),
         _ => None,
     }
 }
 
+/// Should we push this operator onto our operator stack and keep parsing our expression?
+/// This handles the operator precedence and associativity parts of the shunting-yard algorithm.
+fn should_continue(operator_on_stack: &Token, r_prec: i8, r_is_right_assoc: bool) -> bool {
+    let (l_prec, _) = precedence(operator_on_stack).unwrap();
+
+    l_prec > r_prec
+    || (l_prec == r_prec && !r_is_right_assoc)
+}
+
+fn pop_operator<'c>(operator_stack: &mut Vec<&Token>, results: &mut Vec<(Ast<'c>, Location<'c>)>) {
+    let (rhs, rhs_location) = results.pop().unwrap();
+    let (lhs, lhs_location) = results.pop().unwrap();
+    let location = lhs_location.union(rhs_location);
+    let operator = Ast::operator(operator_stack.pop().unwrap().clone(), location);
+    let call = Ast::function_call(operator, vec![lhs, rhs], location);
+    results.push((call, location));
+}
+
+/// Parse an arbitrary expression using the shunting-yard algorithm
 fn expression<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
     let (mut input, value, location) = term(input)?;
 
@@ -386,14 +410,11 @@ fn expression<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
     let mut results = vec![(value, location)];
 
     // loop while the next token is an operator
-    while let Some(prec) = precedence(&input[0].0) {
-        while !operator_stack.is_empty() && precedence(operator_stack[operator_stack.len()- 1]).unwrap() >= prec {
-            let (rhs, rhs_location) = results.pop().unwrap();
-            let (lhs, lhs_location) = results.pop().unwrap();
-            let location = lhs_location.union(rhs_location);
-            let operator = Ast::operator(operator_stack.pop().unwrap().clone(), location);
-            let call = Ast::function_call(operator, vec![lhs, rhs], location);
-            results.push((call, location));
+    while let Some((prec, right_associative)) = precedence(&input[0].0) {
+        while !operator_stack.is_empty()
+            && should_continue(operator_stack[operator_stack.len()- 1], prec, right_associative)
+        {
+            pop_operator(&mut operator_stack, &mut results);
         }
 
         operator_stack.push(&input[0].0);
@@ -406,12 +427,7 @@ fn expression<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
 
     while !operator_stack.is_empty() {
         assert!(results.len() >= 2);
-        let (rhs, rhs_location) = results.pop().unwrap();
-        let (lhs, lhs_location) = results.pop().unwrap();
-        let location = lhs_location.union(rhs_location);
-        let operator = Ast::operator(operator_stack.pop().unwrap().clone(), location);
-        let call = Ast::function_call(operator, vec![lhs, rhs], location);
-        results.push((call, location));
+        pop_operator(&mut operator_stack, &mut results);
     }
 
     assert!(operator_stack.is_empty());
@@ -486,6 +502,15 @@ fn parse_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
     or(&[
         function_type,
         type_application,
+        pair_type,
+        basic_type
+    ], &"type")(input)
+}
+
+fn parse_type_no_pair<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
+    or(&[
+        function_type,
+        type_application,
         basic_type
     ], &"type")(input)
 }
@@ -501,7 +526,7 @@ fn basic_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
         Token::Ref => reference_type(input),
         Token::Identifier(_) => type_variable(input),
         Token::TypeName(_) => user_defined_type(input),
-        Token::ParenthesisLeft => or(&[parenthesized_type, tuple_type], "parenthesized type")(input),
+        Token::ParenthesisLeft => parenthesized_type(input),
         _ => Err(ParseError::InRule(&"type", input[0].1)),
     }
 }
@@ -563,7 +588,7 @@ fn argument<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
         Token::BooleanLiteral(_) => parse_bool(input),
         Token::UnitLiteral => unit(input),
         Token::Backslash => lambda(input),
-        Token::ParenthesisLeft => or(&[parenthesized_expression, tuple], "argument")(input),
+        Token::ParenthesisLeft => parenthesized_expression(input),
         Token::TypeName(_) => variant(input),
         _ => Err(ParseError::InRule(&"argument", input[0].1)),
     }
@@ -586,13 +611,6 @@ parser!(operator loc =
 fn parenthesized_expression<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
     parenthesized(or(&[expression, operator], &"argument"))(input)
 }
-
-parser!(tuple loc =
-    _ <- expect(Token::ParenthesisLeft);
-    elements <- delimited_trailing(expression, expect(Token::Comma));
-    _ <- expect(Token::ParenthesisRight);
-    Ast::tuple(elements, loc)
-);
 
 parser!(variant loc =
     name <- typename;
@@ -648,11 +666,11 @@ parser!(type_application loc -> 'b Type<'b> =
     Type::TypeApplication(Box::new(type_constructor), args, loc)
 );
 
-parser!(tuple_type loc -> 'b Type<'b> =
-    _ <- expect(Token::ParenthesisLeft);
-    args <- delimited_trailing(parse_type, expect(Token::Comma));
-    _ !<- expect(Token::ParenthesisRight);
-    Type::TupleType(args, loc)
+parser!(pair_type loc -> 'b Type<'b> =
+    first <- basic_type;
+    _ <- expect(Token::Comma);
+    rest !<- parse_type;
+    Type::PairType(Box::new(first), Box::new(rest), loc)
 );
 
 parser!(int_type loc -> 'b Type<'b> =

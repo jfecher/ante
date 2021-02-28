@@ -55,7 +55,8 @@ pub enum Type {
 
     /// Any function type
     /// Note that all functions in ante take at least 1 argument
-    Function(Vec<Type>, Box<Type>, /*varargs:*/ bool),
+    /// The boolean indicates whether this is a varargs function or not.
+    Function(Vec<Type>, Box<Type>, bool),
 
     /// Any stand-in type e.g. `a` in `Vec a`. The original names are
     /// translated into unique TypeVariableIds during name resolution.
@@ -75,9 +76,6 @@ pub enum Type {
     /// Any type in the form `constructor arg1 arg2 ... argN`
     TypeApplication(Box<Type>, Vec<Type>),
 
-    /// Tuple types are always non-empty since an empty tuple is the unit type.
-    Tuple(Vec<Type>),
-
     /// A region-allocated reference to some data.
     /// Contains a region variable that is unified with other refs during type
     /// inference. All these refs will be allocated in the same region.
@@ -93,6 +91,10 @@ pub enum Type {
 }
 
 impl Type {
+    pub fn is_pair_type(&self) -> bool {
+        self == &Type::UserDefinedType(PAIR_TYPE)
+    }
+
     /// Pretty-print each type with each typevar substituted for a, b, c, etc.
     pub fn display<'a, 'b>(&'a self, cache: &'a ModuleCache<'b>) -> typeprinter::TypePrinter<'a, 'b> {
         let typevars = typechecker::find_all_typevars(self, false, cache);
@@ -174,10 +176,16 @@ pub struct Field<'a> {
 #[derive(Debug, Copy, Clone, Eq, PartialEq, PartialOrd, Ord, Hash)]
 pub struct TypeInfoId(pub usize);
 
-/// The string type is a semi builtin type in that it isn't a primitive
-/// but all string literals will nevertheless have type "string" even if
-/// the prelude isn't imported into scope.
+/// The string type is semi builtin in that it isn't a primitive type
+/// but all string literals will nevertheless have the type `string`
+/// even if the prelude isn't imported into scope.
 pub const STRING_TYPE: TypeInfoId = TypeInfoId(0);
+
+/// The pair type is another semi builtin type. Its constructor (,)
+/// is also visible whether or not the prelude is imported.
+/// It is somewhat special in that it is the only type defined with
+/// an operator for its name, but it is otherwise a normal struct type.
+pub const PAIR_TYPE: TypeInfoId = TypeInfoId(1);
 
 #[derive(Debug)]
 pub enum TypeInfoBody<'a> {
@@ -204,6 +212,13 @@ impl<'a> Locatable<'a> for TypeInfo<'a> {
 }
 
 impl<'a> TypeInfo<'a> {
+    pub fn is_union(&self) -> bool {
+        match &self.body {
+            TypeInfoBody::Union(..) => true,
+            _ => false,
+        }
+    }
+
     pub fn find_field<'b>(&'b self, field_name: &str) -> Option<(u32, &'b Field)> {
         match &self.body {
             TypeInfoBody::Struct(fields) => {

@@ -29,7 +29,7 @@
 //! These types are mostly useful for their data they hold - they only have a few simple
 //! methods on them for displaying them or converting between them.
 use crate::cache::{ ModuleCache, TraitInfoId, DefinitionInfoId, ImplScopeId, TraitBindingId, VariableId };
-use crate::types::{ Type, TypeVariableId, typeprinter::TypePrinter };
+use crate::types::{ Type, TypeVariableId, typeprinter::TypePrinter, PrimitiveType };
 use crate::types::typechecker::find_all_typevars;
 use crate::error::location::Location;
 
@@ -222,12 +222,12 @@ impl TraitConstraint {
     /// "a given Int a". This function returns a TraitConstraint for this
     /// builtin Int trait to be resolved later in typechecking to a specific
     /// integer type or propagataed to the function signature to take any Int.
-    pub fn int_constraint<'c>(arg: TypeVariableId, cache: &ModuleCache<'c>) -> TraitConstraint {
+    pub fn int_constraint<'c>(arg: TypeVariableId, callsite: TraitBindingId, cache: &ModuleCache<'c>) -> TraitConstraint {
         TraitConstraint {
             trait_id: cache.int_trait,
             args: vec![Type::TypeVariable(arg)],
             scope: ImplScopeId(0),
-            callsite: TraitBindingId(0),
+            callsite,
             origin: VariableId(0),
         }
     }
@@ -271,7 +271,8 @@ impl RequiredImpl {
     #[allow(dead_code)]
     pub fn debug<'c>(&self, cache: &ModuleCache<'c>) -> String {
         let name = &cache.definition_infos[self.binding.0].name;
-        let args = Type::Tuple(self.args.clone());
+        let unit = Type::Primitive(PrimitiveType::UnitType);
+        let args = Type::TypeApplication(Box::new(unit), self.args.clone());
         format!("{} with args {}", name, args.display(cache))
     }
 }

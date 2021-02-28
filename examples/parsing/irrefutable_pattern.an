@@ -1,12 +1,12 @@
 
 foo () = ()
 
-bar (a, b, c) = ()
+bar (a, b, c) = (a, b, c)
 
-baz (a,) b = ()
+baz (a, b) c = ()
 
 // args: --parse
 // expected stdout:
 // (foo = (\ () . ()));
-// (bar = (\ (a, b, c, ) . ()));
-// (baz = (\ (a, ) b . ()))
+// (bar = (\ (',' a (',' b c)) . (',' a (',' b c))));
+// (baz = (\ (',' a b) c . ()))

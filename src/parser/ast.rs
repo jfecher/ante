@@ -104,6 +104,16 @@ pub struct FunctionCall<'a> {
     pub typ: Option<types::Type>,
 }
 
+impl<'a> FunctionCall<'a> {
+    pub fn is_pair_constructor(&self) -> bool {
+        if let Ast::Variable(variable) = self.function.as_ref() {
+            variable.kind == VariableKind::Operator(Token::Comma)
+        } else {
+            false
+        }
+    }
+}
+
 /// foo = 23
 /// pattern a b = expr
 #[derive(Debug)]
@@ -160,7 +170,7 @@ pub enum Type<'a> {
     TypeVariable(String, Location<'a>),
     UserDefinedType(String, Location<'a>),
     TypeApplication(Box<Type<'a>>, Vec<Type<'a>>, Location<'a>),
-    TupleType(Vec<Type<'a>>, Location<'a>),
+    PairType(Box<Type<'a>>, Box<Type<'a>>, Location<'a>),
 }
 
 /// The AST representation of a trait usage.
@@ -292,14 +302,6 @@ pub struct MemberAccess<'a> {
     pub typ: Option<types::Type>,
 }
 
-/// (element1, element2, ..., elementN,) trailing comma is optional
-#[derive(Debug)]
-pub struct Tuple<'a> {
-    pub elements: Vec<Ast<'a>>,
-    pub location: Location<'a>,
-    pub typ: Option<types::Type>,
-}
-
 /// lhs := rhs
 #[derive(Debug)]
 pub struct Assignment<'a> {
@@ -327,7 +329,6 @@ pub enum Ast<'a> {
     Sequence(Sequence<'a>),
     Extern(Extern<'a>),
     MemberAccess(MemberAccess<'a>),
-    Tuple(Tuple<'a>),
     Assignment(Assignment<'a>),
 }
 
@@ -443,10 +444,6 @@ impl<'a> Ast<'a> {
         Ast::MemberAccess(MemberAccess { lhs: Box::new(lhs), field, location, typ: None })
     }
 
-    pub fn tuple(elements: Vec<Ast<'a>>, location: Location<'a>) -> Ast<'a> {
-        Ast::Tuple(Tuple { elements, location, typ: None })
-    }
-
     pub fn assignment(lhs: Ast<'a>, rhs: Ast<'a>, location: Location<'a>) -> Ast<'a> {
         Ast::Assignment(Assignment { lhs: Box::new(lhs), rhs: Box::new(rhs), location, typ: None })
     }
@@ -474,7 +471,6 @@ macro_rules! dispatch_on_expr {
             $crate::parser::ast::Ast::Sequence(inner) =>        $function(inner $(, $($args),* )? ),
             $crate::parser::ast::Ast::Extern(inner) =>          $function(inner $(, $($args),* )? ),
             $crate::parser::ast::Ast::MemberAccess(inner) =>    $function(inner $(, $($args),* )? ),
-            $crate::parser::ast::Ast::Tuple(inner) =>           $function(inner $(, $($args),* )? ),
             $crate::parser::ast::Ast::Assignment(inner) =>      $function(inner $(, $($args),* )? ),
         }
     });
@@ -510,5 +506,4 @@ impl_locatable_for!(Return);
 impl_locatable_for!(Sequence);
 impl_locatable_for!(Extern);
 impl_locatable_for!(MemberAccess);
-impl_locatable_for!(Tuple);
 impl_locatable_for!(Assignment);

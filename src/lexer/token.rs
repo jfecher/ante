@@ -147,7 +147,7 @@ impl Token {
             And | As | In | Is | Isnt |
             Not | Or | EqualEqual | NotEqual |
             ApplyLeft | ApplyRight | Append |
-            Index | Modulus | Multiply |
+            Index | Modulus | Multiply | Comma |
             Subtract | Add | LessThan | GreaterThan |
             LessThanOrEqual | GreaterThanOrEqual |
             Divide | Ampersand => true,

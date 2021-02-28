@@ -1,4 +1,4 @@
-use crate::parser::ast::{ self, Ast };
+use crate::parser::ast::Ast;
 use crate::types::TypeVariableId;
 use crate::cache::ModuleCache;
 
@@ -16,7 +16,7 @@ pub type LifetimeVariableId = TypeVariableId;
 // 
 // struct StackFrameIndex(usize);
 
-pub fn infer<'c>(ast: &mut Ast<'c>, cache: &mut ModuleCache<'c>) {
+pub fn infer<'c>(_ast: &mut Ast<'c>, _cache: &mut ModuleCache<'c>) {
 
 }
 

@@ -34,7 +34,7 @@ use crate::lexer::token::IntegerKind;
 use crate::parser::ast;
 use crate::types::pattern;
 use crate::types::{ Type, Type::*, TypeVariableId, PrimitiveType, LetBindingLevel, INITIAL_LEVEL, TypeBinding::* };
-use crate::types::{ TypeBinding, STRING_TYPE };
+use crate::types::{ TypeBinding, TypeInfo, STRING_TYPE, PAIR_TYPE };
 use crate::types::typed::Typed;
 use crate::types::traits::{ TraitConstraints, RequiredTrait, TraitConstraint };
 use crate::types::traitchecker;
@@ -56,6 +56,15 @@ pub type TypeBindings = HashMap<TypeVariableId, Type>;
 /// The result of `try_unify`: either a set of type bindings to perform,
 /// or an error message of which types failed to unify.
 pub type UnificationResult<'c> = Result<TypeBindings, ErrorMessage<'c>>;
+
+/// Convert a TypeApplication(UserDefinedType(id), args) into the set of TypeBindings
+/// so that each mapping in the bindings is in the form `var -> arg` where each variable
+/// was one of the variables given in the definition of the user-defined-type:
+/// `type Foo var1 var2 ... varN = ...` and each `arg` corresponds to the generic argument
+/// of the type somewhere in the program, e.g: `foo : Foo arg1 arg2 ... argN`
+pub fn type_application_bindings<'c>(info: &TypeInfo<'c>, typeargs: &[Type]) -> TypeBindings {
+    info.args.iter().copied().zip(typeargs.iter().cloned()).collect()
+}
 
 /// Replace any typevars found in typevars_to_replace with the
 /// associated value in the same table, leave them otherwise
@@ -112,9 +121,6 @@ pub fn replace_all_typevars_with_bindings<'c>(typ: &Type, new_bindings: &mut Typ
             let args = fmap(args, |arg| replace_all_typevars_with_bindings(arg, new_bindings, cache));
             TypeApplication(Box::new(typ), args)
         },
-        Tuple(elements) => {
-            Tuple(fmap(elements, |element| replace_all_typevars_with_bindings(element, new_bindings, cache)))
-        }
     }
 }
 
@@ -171,9 +177,6 @@ pub fn bind_typevars<'c>(typ: &Type, type_bindings: &TypeBindings, cache: &Modul
             let args = fmap(args, |arg| bind_typevars(arg, type_bindings, cache));
             TypeApplication(Box::new(typ), args)
         },
-        Tuple(elements) => {
-            Tuple(fmap(elements, |element| bind_typevars(element, type_bindings, cache)))
-        }
     }
 }
 
@@ -218,9 +221,6 @@ pub fn contains_any_typevars_from_list<'c>(typ: &Type, list: &[TypeVariableId], 
             contains_any_typevars_from_list(typ, list, cache)
             || args.iter().any(|arg| contains_any_typevars_from_list(arg, list, cache))
         },
-        Tuple(elements) => {
-            elements.iter().any(|element| contains_any_typevars_from_list(element, list, cache))
-        }
     }
 }
 
@@ -351,9 +351,6 @@ fn occurs<'b>(id: TypeVariableId, level: LetBindingLevel, typ: &Type, bindings: 
             occurs(id, level, typ, bindings, cache)
             || args.iter().any(|arg| occurs(id, level, arg, bindings, cache))
         },
-        Tuple(elements) => {
-            elements.iter().any(|element| occurs(id, level, element, bindings, cache))
-        },
         Ref(lifetime) => {
             typevars_match(id, level, *lifetime, bindings, cache)
         },
@@ -450,18 +447,6 @@ pub fn try_unify_with_bindings<'b>(t1: &Type, t2: &Type, bindings: &mut TypeBind
 
             for (a_arg, b_arg) in a_args.iter().zip(b_args.iter()) {
                 try_unify_with_bindings(a_arg, b_arg, bindings, location, cache)?;
-            }
-
-            Ok(())
-        },
-
-        (Tuple(a_elements), Tuple(b_elements)) => {
-            if a_elements.len() != b_elements.len() {
-                return Err(make_error!(location, "{} differs in element count with {}", t1.display(cache), t2.display(cache)));
-            }
-
-            for (a_element, b_element) in a_elements.iter().zip(b_elements.iter()) {
-                try_unify_with_bindings(a_element, b_element, bindings, location, cache)?;
             }
 
             Ok(())
@@ -606,9 +591,6 @@ pub fn find_all_typevars<'a>(typ: &Type, polymorphic_only: bool, cache: &ModuleC
             }
             type_variables
         },
-        Tuple(elements) => {
-            elements.iter().flat_map(|element| find_all_typevars(element, polymorphic_only, cache)).collect()
-        },
         Ref(lifetime) => {
             find_typevars_in_typevar_binding(*lifetime, polymorphic_only, cache)
         }
@@ -735,13 +717,16 @@ fn bind_irrefutable_pattern<'a>(ast: &mut ast::Ast<'a>, typ: &Type,
             unify(typ, annotation.typ.as_ref().unwrap(), annotation.location, cache);
             bind_irrefutable_pattern(annotation.lhs.as_mut(), typ, required_traits, should_generalize, cache);
         },
-        Tuple(tuple) => {
-            let tuple_type = Type::Tuple(fmap(&tuple.elements, |_| next_type_variable(cache)));
-            unify(&typ, &tuple_type, tuple.location, cache);
+        FunctionCall(call) if call.is_pair_constructor() => {
+            let args = fmap(&call.args, |_| next_type_variable(cache));
+            let pair_type = Box::new(Type::UserDefinedType(PAIR_TYPE));
 
-            match tuple_type {
-                Type::Tuple(elements) => {
-                    for (element, element_type) in tuple.elements.iter_mut().zip(elements) {
+            let pair_type = Type::TypeApplication(pair_type, args);
+            unify(&typ, &pair_type, call.location, cache);
+
+            match pair_type {
+                Type::TypeApplication(_, args) => {
+                    for (element, element_type) in call.args.iter_mut().zip(args) {
                         bind_irrefutable_pattern(element, &element_type, required_traits, should_generalize, cache);
                     }
                 },
@@ -859,7 +844,8 @@ impl<'a> Inferable<'a> for ast::Literal<'a> {
                     // Also add `Int int_type` constraint to restrict this type variable to one
                     // of the native integer types.
                     let int_type = next_type_variable_id(cache);
-                    let trait_impl = TraitConstraint::int_constraint(int_type.clone(), cache);
+                    let callsite = cache.push_trait_binding(self.location);
+                    let trait_impl = TraitConstraint::int_constraint(int_type.clone(), callsite, cache);
                     self.kind = Integer(x, IntegerKind::Inferred(int_type));
                     (Type::TypeVariable(int_type), vec![trait_impl])
                 } else {
@@ -1210,21 +1196,6 @@ impl<'a> Inferable<'a> for ast::MemberAccess<'a> {
         traits.push(trait_impl);
 
         (field_type, traits)
-    }
-}
-
-impl<'a> Inferable<'a> for ast::Tuple<'a> {
-    fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
-        let mut elements = vec![];
-        let mut traits = vec![];
-
-        for element in self.elements.iter_mut() {
-            let (element_type, mut element_traits) = infer(element, cache);
-            elements.push(element_type);
-            traits.append(&mut element_traits);
-        }
-
-        (Tuple(elements), traits)
     }
 }
 

@@ -3,9 +3,11 @@
 //! a match expression into a decisiontree during type inference.
 use crate::llvm::{ Generator, CodeGen };
 use crate::types::pattern::{ DecisionTree, Case, VariantTag };
-use crate::types::typed::Typed;
+use crate::types::{ Type, typed::Typed };
 use crate::parser::ast::Match;
 use crate::cache::{ ModuleCache, DefinitionInfoId, DefinitionKind };
+
+use crate::nameresolution::builtin::PAIR_ID;
 
 use inkwell::values::{ BasicValueEnum, IntValue, PhiValue };
 use inkwell::types::BasicType;
@@ -98,7 +100,7 @@ impl<'g> Generator<'g> {
                         self.build_switch(value_to_switch_on, else_block, switch_cases);
                     } else if cases.len() == 1 {
                         // If we only have 1 case we don't need to test anything, just forcibly
-                        // br to that case. This optimization is necessary for tuples since tuples
+                        // br to that case. This optimization is necessary for structs since structs
                         // have no tag to check against.
                         self.builder.build_unconditional_branch(switch_cases[0].1);
                     }
@@ -196,8 +198,10 @@ impl<'g> Generator<'g> {
             VariantTag::True => Some(self.bool_value(true)),
             VariantTag::False => Some(self.bool_value(false)),
             VariantTag::Unit => Some(self.unit_value()),
-            // TODO: Remove tuple tag, it shouldn't need one
-            VariantTag::Tuple => Some(self.unit_value()),
+
+            // TODO: Remove pair tag, it shouldn't need one
+            VariantTag::UserDefined(PAIR_ID) => Some(self.unit_value()),
+
             VariantTag::UserDefined(id) => {
                 match &cache.definition_infos[id.0].definition {
                     Some(DefinitionKind::TypeConstructor { tag: Some(tag), .. }) => {
@@ -210,14 +214,33 @@ impl<'g> Generator<'g> {
         }
     }
 
+    fn is_union_constructor<'c>(typ: &Type, cache: &ModuleCache<'c>) -> bool {
+        use crate::types::Type::*;
+        match typ {
+            Primitive(_) => false,
+            Ref(_) => false,
+            Function(_, return_type, _) => Self::is_union_constructor(return_type, cache),
+            TypeApplication(typ, _) => Self::is_union_constructor(typ, cache),
+            ForAll(_, typ) => Self::is_union_constructor(typ, cache),
+            UserDefinedType(id) => cache.type_infos[id.0].is_union(),
+            TypeVariable(_) => unreachable!("Constructors should always have concrete types"),
+        }
+    }
+
     /// Cast the given value to the given tagged-union variant. Returns None if
     /// the given VariantTag is not a tagged-union tag.
     fn cast_to_variant_type<'c>(&mut self, value: BasicValueEnum<'g>, case: &Case,
         cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g>
     {
         match &case.tag {
-            Some(VariantTag::UserDefined(_)) => {
-                let mut field_types = vec![self.tag_type()];
+            Some(VariantTag::UserDefined(id)) => {
+                let mut field_types = vec![];
+
+                let constructor = &cache.definition_infos[id.0];
+                if Self::is_union_constructor(constructor.typ.as_ref().unwrap(), cache) {
+                    field_types.push(self.tag_type());
+                }
+
                 for field_ids in case.fields.iter() {
                     let typ = cache.definition_infos[field_ids[0].0].typ.as_ref().unwrap();
                     field_types.push(self.convert_type(typ, cache));
@@ -287,17 +310,15 @@ impl<'g> Generator<'g> {
         // 3. The tag is a primitive like true/false. In this case there is only 1 "field" and we
         //    bind it to the entire value.
         match &case.tag {
-            Some(VariantTag::UserDefined(_)) => {
+            Some(VariantTag::UserDefined(constructor)) => {
                 let variant = variant.into_struct_value();
+
+                // TODO: Stop special casing pairs and allow a 0 offset
+                // for every product type
+                let offset = if *constructor == PAIR_ID { 0 } else { 1 };
+
                 for (field_no, ids) in case.fields.iter().enumerate() {
-                    let field = self.builder.build_extract_value(variant, 1 + field_no as u32, "pattern_extract").unwrap();
-                    self.bind_pattern_field(field, ids, cache);
-                }
-            },
-            Some(VariantTag::Tuple) => {
-                let variant = variant.into_struct_value();
-                for (field_no, ids) in case.fields.iter().enumerate() {
-                    let field = self.builder.build_extract_value(variant, field_no as u32, "pattern_extract").unwrap();
+                    let field = self.builder.build_extract_value(variant, offset + field_no as u32, "pattern_extract").unwrap();
                     self.bind_pattern_field(field, ids, cache);
                 }
             },

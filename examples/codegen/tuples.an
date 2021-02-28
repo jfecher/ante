@@ -4,9 +4,8 @@ foo (a, b, _) =
     print b
 
 foo ("test", 2, 'c')
-foo ("hi", 7, 2.0)
 
-single = (7,)
+foo ("hi", 7, 2.0, 3, 4, 5)
 
 // args: --run --delete-binary
 // expected stdout:

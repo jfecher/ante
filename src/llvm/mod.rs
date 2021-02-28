@@ -22,7 +22,8 @@ use crate::cache::{ ModuleCache, DefinitionInfoId, DefinitionKind, VariableId };
 use crate::nameresolution::builtin::BUILTIN_ID;
 use crate::lexer::token::IntegerKind;
 use crate::parser::{ ast, ast::Ast };
-use crate::types::{ self, typechecker, TypeVariableId, TypeBinding, TypeInfoId, DEFAULT_INTEGER_TYPE };
+use crate::types::{ self, TypeVariableId, TypeBinding, TypeInfoId, DEFAULT_INTEGER_TYPE };
+use crate::types::typechecker::{ self, TypeBindings };
 use crate::types::traits::RequiredImpl;
 use crate::types::typed::Typed;
 use crate::util::{ fmap, trustme, reinterpret_from_bits, timing };
@@ -69,7 +70,7 @@ pub struct Generator<'context> {
     /// these are meant to be easily undone. Since ante doesn't support polymorphic recursion,
     /// we also don't have to worry about encountering the same typevar with a different
     /// monomorphisation binding.
-    monomorphisation_bindings: Vec<typechecker::TypeBindings>,
+    monomorphisation_bindings: Vec<TypeBindings>,
 
     /// Contains all the definition ids that should be automatically dereferenced because they're
     /// either stored locally in an alloca or in a global.
@@ -390,6 +391,46 @@ impl<'g> Generator<'g> {
         }
     }
 
+    fn size_of_struct_type<'c>(&mut self, info: &types::TypeInfo, fields: &[types::Field<'c>],
+        args: &[types::Type], cache: &ModuleCache<'c>) -> usize
+    {
+        let bindings = typechecker::type_application_bindings(info, args);
+
+        fields.iter().map(|field| {
+            let field_type = typechecker::bind_typevars(&field.field_type, &bindings, cache);
+            self.size_of_type(&field_type, cache)
+        }).sum()
+    }
+
+    fn size_of_union_type<'c>(&mut self, info: &types::TypeInfo, variants: &[types::TypeConstructor<'c>],
+        args: &[types::Type], cache: &ModuleCache<'c>) -> usize
+    {
+        let bindings = typechecker::type_application_bindings(info, args);
+
+        match self.find_largest_union_variant(variants, &bindings, cache) {
+            None => 0, // Void type
+            Some(variant) => {
+                // The size of a union is the size of its largest field, plus 1 byte for the tag
+                variant.iter().map(|field| self.size_of_type(field, cache)).sum::<usize>() + 1
+            }
+        }
+    }
+
+    fn size_of_user_defined_type<'c>(&mut self, id: TypeInfoId, args: &[types::Type], cache: &ModuleCache<'c>) -> usize {
+        let info = &cache.type_infos[id.0];
+        assert!(info.args.len() == args.len(), "Kind error during llvm code generation");
+
+        use types::TypeInfoBody::*;
+        match &info.body {
+            Union(variants) => self.size_of_union_type(info, variants, args, cache),
+            Struct(fields) => self.size_of_struct_type(info, fields, args, cache),
+
+            // Aliases should be desugared prior to codegen
+            Alias(_) => unreachable!(),
+            Unknown => unreachable!(),
+        }
+    }
+
     fn size_of_type<'c>(&mut self, typ: &types::Type, cache: &ModuleCache<'c>) -> usize {
         use types::Type::*;
         use types::PrimitiveType::*;
@@ -407,18 +448,14 @@ impl<'g> Generator<'g> {
                 self.size_of_type(&binding, cache)
             },
 
-            UserDefinedType(id) => {
-                let _info = &cache.type_infos[id.0];
-                unimplemented!("size_of_type(UserDefinedType) is unimplemented");
-            },
+            UserDefinedType(id) => self.size_of_user_defined_type(*id, &[], cache),
 
-            TypeApplication(_typ, _args) => {
-                unimplemented!("size_of_type(TypeApplication) is unimplemented");
+            TypeApplication(typ, args) => {
+                match typ.as_ref() {
+                    UserDefinedType(id) => self.size_of_user_defined_type(*id, args, cache),
+                    _ => unreachable!("Kind error inside size_of_type"),
+                }
             },
-
-            Tuple(elements) => {
-                elements.iter().map(|element| self.size_of_type(element, cache)).sum()
-            }
 
             Ref(_) => Self::ptr_size(),
 
@@ -440,7 +477,7 @@ impl<'g> Generator<'g> {
     fn convert_struct_type<'c>(&mut self, id: TypeInfoId, info: &types::TypeInfo, fields: &[types::Field<'c>],
         args: Vec<types::Type>, cache: &ModuleCache<'c>) -> BasicTypeEnum<'g>
     {
-        let bindings = info.args.iter().copied().zip(args.iter().cloned()).collect();
+        let bindings = typechecker::type_application_bindings(info, &args);
 
         let typ = self.context.opaque_struct_type(&info.name);
         self.types.insert((id, args), typ.into());
@@ -454,29 +491,29 @@ impl<'g> Generator<'g> {
         typ.into()
     }
 
-    fn convert_union_type<'c>(&mut self, id: TypeInfoId, info: &types::TypeInfo, variants: &[types::TypeConstructor<'c>],
-        args: Vec<types::Type>, cache: &ModuleCache<'c>) -> BasicTypeEnum<'g>
+    /// Given a list of TypeConstructors representing each variant of a sum type,
+    /// find the largest variant in memory (with the given type bindings for any type variables)
+    /// and return its field types.
+    fn find_largest_union_variant<'c>(&mut self, variants: &[types::TypeConstructor<'c>], bindings: &TypeBindings,
+        cache: &ModuleCache<'c>) -> Option<Vec<types::Type>>
     {
-        let bindings = info.args.iter().copied().zip(args.iter().cloned()).collect();
-
-        let typ = self.context.opaque_struct_type(&info.name);
-        self.types.insert((id, args), typ.into());
-
         let variants: Vec<Vec<types::Type>> = fmap(&variants, |variant| {
             fmap(&variant.args, |arg| typechecker::bind_typevars(arg, &bindings, cache))
         });
 
-        let mut max_size = 0;
-        let mut largest_variant = None;
-        for variant in variants.into_iter() {
-            let size: usize = variant.iter().map(|arg| self.size_of_type(arg, cache)).sum();
-            if size >= max_size {
-                largest_variant = Some(variant);
-                max_size = size;
-            }
-        }
+        variants.into_iter().max_by_key(|variant|
+            variant.iter().map(|arg| self.size_of_type(arg, cache)).sum::<usize>())
+    }
 
-        if let Some(variant) = largest_variant {
+    fn convert_union_type<'c>(&mut self, id: TypeInfoId, info: &types::TypeInfo, variants: &[types::TypeConstructor<'c>],
+        args: Vec<types::Type>, cache: &ModuleCache<'c>) -> BasicTypeEnum<'g>
+    {
+        let bindings = typechecker::type_application_bindings(info, &args);
+
+        let typ = self.context.opaque_struct_type(&info.name);
+        self.types.insert((id, args), typ.into());
+
+        if let Some(variant) = self.find_largest_union_variant(variants, &bindings, cache) {
             let mut fields = vec![self.tag_type()];
             for typ in variant {
                 fields.push(self.convert_type(&typ, cache));
@@ -500,12 +537,8 @@ impl<'g> Generator<'g> {
             Union(variants) => self.convert_union_type(id, info, variants, args, cache),
             Struct(fields) => self.convert_struct_type(id, info, fields, args, cache),
 
-            // TODO: handle aliases with type arguments
-            Alias(typ) => {
-                let converted = self.convert_type(typ, cache);
-                self.types.insert((id, args), converted);
-                converted
-            },
+            // Aliases should be desugared prior to codegen
+            Alias(_) => unreachable!(),
             Unknown => unreachable!(),
         };
 
@@ -533,11 +566,6 @@ impl<'g> Generator<'g> {
 
             UserDefinedType(id) => self.convert_user_defined_type(*id, vec![], cache),
 
-            Tuple(elements) => {
-                let element_types = fmap(elements, |element| self.convert_type(element, cache));
-                self.context.struct_type(&element_types, false).as_basic_type_enum()
-            },
-
             TypeApplication(typ, args) => {
                 let args = fmap(args, |arg| self.follow_bindings(arg, cache));
                 let typ = self.follow_bindings(typ, cache);
@@ -563,8 +591,8 @@ impl<'g> Generator<'g> {
     }
 
     fn unit_value(&self) -> BasicValueEnum<'g> {
-        // TODO: compile () to void, mainly higher-order functions and struct/tuple
-        // indexing need to be addressed for this.
+        // TODO: compile () to void, mainly higher-order functions, struct/tuple
+        // indexing, and pattern matching need to be addressed for this.
         let i1 = self.context.bool_type();
         i1.const_int(0, false).into()
     }
@@ -691,10 +719,6 @@ impl<'g> Generator<'g> {
                 TypeApplication(Box::new(typ), args)
             },
 
-            Tuple(elements) => {
-                Tuple(fmap(elements, |element| self.follow_bindings(element, cache)))
-            },
-
             Ref(lifetime) => {
                 let default = Ref(*lifetime);
                 let binding = self.find_binding(*lifetime, &default, cache);
@@ -737,8 +761,9 @@ impl<'g> Generator<'g> {
             TypeAnnotation(annotation) => {
                 self.bind_irrefutable_pattern(annotation.lhs.as_ref(), value, cache);
             },
-            Tuple(tuple) => {
-                for (i, element) in tuple.elements.iter().enumerate() {
+            // Match a pair pattern
+            FunctionCall(call) if call.is_pair_constructor() => {
+                for (i, element) in call.args.iter().enumerate() {
                     let element_value = self.builder.build_extract_value(value.into_struct_value(), i as u32, "extract").unwrap();
                     self.bind_irrefutable_pattern(element, element_value, cache);
                 }
@@ -1259,21 +1284,6 @@ impl<'g, 'c> CodeGen<'g, 'c> for ast::MemberAccess<'c> {
             Some(InstructionOpcode::Load) => generator.gep_at_index(lhs, index, &self.field),
             _ => generator.extract_field(lhs, index, &self.field),
         }
-    }
-}
-
-impl<'g, 'c> CodeGen<'g, 'c> for ast::Tuple<'c> {
-    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
-        let mut elements = vec![];
-        let mut element_types = vec![];
-
-        for element in self.elements.iter() {
-            let value = element.codegen(generator, cache);
-            element_types.push(value.get_type());
-            elements.push(value);
-        }
-
-        generator.tuple(elements, element_types)
     }
 }
 

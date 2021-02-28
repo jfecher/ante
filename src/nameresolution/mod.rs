@@ -45,7 +45,7 @@ use crate::error::{ self, location::{ Location, Locatable } };
 use crate::cache::{ ModuleCache, DefinitionInfoId, ModuleId };
 use crate::cache::{ TraitInfoId, ImplInfoId, DefinitionKind };
 use crate::nameresolution::scope::Scope;
-use crate::lexer::Lexer;
+use crate::lexer::{ Lexer, token::Token };
 use crate::util::{ fmap, trustme, timing };
 
 use colored::Colorize;
@@ -485,8 +485,18 @@ impl<'c> NameResolver {
                 let args = fmap(args, |arg| self.convert_type(cache, arg));
                 Type::TypeApplication(constructor, args)
             },
-            ast::Type::TupleType(args, _) => {
-                Type::Tuple(fmap(args, |arg| self.convert_type(cache, arg)))
+            ast::Type::PairType(first, rest, location) => {
+                let args = vec![self.convert_type(cache, first), self.convert_type(cache, rest)];
+
+                let pair = match self.lookup_type(&Token::Comma.to_string(), cache) {
+                    Some(id) => Type::UserDefinedType(id),
+                    None => {
+                        error!(*location, "The pair type (`,`) was not found in scope, there may have been a problem while importing the prelude");
+                        Type::Primitive(PrimitiveType::UnitType)
+                    },
+                };
+
+                Type::TypeApplication(Box::new(pair), args)
             },
             ast::Type::ReferenceType(_) => {
                 // When translating ref types, all have a hidden lifetime variable that is unified
@@ -516,6 +526,7 @@ impl<'c> NameResolver {
 
     fn resolve_definitions<T, F>(&mut self, ast: &mut T, cache: &mut ModuleCache<'c>, definition: F)
         where T: Resolvable<'c>,
+              T: std::fmt::Display,
               F: FnMut() -> DefinitionKind<'c>
     {
         self.resolve_all_definitions(vec![ast].into_iter(), cache, definition);
@@ -606,7 +617,12 @@ impl<'c> Resolvable<'c> for ast::Variable<'c> {
             use ast::VariableKind::*;
             let token_name;
             let (name, should_declare) = match &self.kind {
-                Operator(token) => ({token_name = token.to_string(); &token_name}, true),
+                Operator(token) => {
+                    token_name = token.to_string();
+                    // TODO: Disabling should_declare only for `,` is a hack to make tuple
+                    // patterns work without rebinding the `,` symbol.
+                    (&token_name, *token != Token::Comma)
+                }
                 Identifier(name) => (name, true),
                 TypeConstructor(name) => (name, false),
             };
@@ -1123,16 +1139,6 @@ impl<'c> Resolvable<'c> for ast::MemberAccess<'c> {
 
     fn define(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'c>) {
         self.lhs.define(resolver, cache);
-    }
-}
-
-impl<'c> Resolvable<'c> for ast::Tuple<'c> {
-    fn declare(&mut self, _resolver: &mut NameResolver, _cache: &mut ModuleCache<'c>) { }
-
-    fn define(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'c>) {
-        for element in self.elements.iter_mut() {
-            element.define(resolver, cache);
-        }
     }
 }
 

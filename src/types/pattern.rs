@@ -12,6 +12,7 @@
 //! for how a PatternMatrix is converted into a `DecisionTree`.
 use crate::cache::{ ModuleCache, DefinitionInfoId, DefinitionKind };
 use crate::error::location::{ Location, Locatable };
+use crate::lexer::token::Token;
 use crate::parser::ast::{ self, Ast, LiteralKind };
 use crate::types::pattern::Constructor::*;
 use crate::types::{ typechecker, Type, TypeInfoBody, TypeInfoId, PrimitiveType, STRING_TYPE };
@@ -50,7 +51,6 @@ pub enum VariantTag {
     True,
     False,
     Unit,
-    Tuple,
     UserDefined(DefinitionInfoId),
 
     /// This tag signals pattern matching should give up completeness checking
@@ -198,15 +198,6 @@ impl PatternStack {
                 let variable = new_pattern_variable(".from_ast.Literal", location, cache);
                 PatternStack(vec![(Variant(tag, fields), variable)])
             },
-            Ast::Tuple(tuple) => {
-                let fields = tuple.elements.iter().rev()
-                    .flat_map(|element| PatternStack::from_ast(element, cache, location))
-                    .collect();
-
-                let pattern = Variant(VariantTag::Tuple, PatternStack(fields));
-                let variable = new_pattern_variable(".from_ast.Tuple", location, cache);
-                PatternStack(vec![(pattern, variable)])
-            },
             Ast::FunctionCall(call) => {
                 match call.function.as_ref() {
                     Ast::Variable(variable) => {
@@ -317,7 +308,6 @@ fn get_missing_builtin_cases<T>(variants: &BTreeMap<&VariantTag, T>) -> Option<B
         (Some(True), second)  => insert_if(missing_cases, False, second != Some(&False)),
         (Some(False), second) => insert_if(missing_cases, True,  second != Some(&True)),
         (Some(Unit), _) => Some(missing_cases),
-        (Some(Tuple), _) => Some(missing_cases),
         // Literals always require a match-all, so a missing case is always inserted here.
         (Some(Literal(literal)), _) => insert_if(missing_cases, Literal(literal.clone()), true),
         _ => None,
@@ -338,7 +328,7 @@ fn get_missing_cases<'c, T>(variants: &BTreeMap<&VariantTag, T>, cache: &ModuleC
     }
 
     match variants.iter().nth(0).map(|(tag, _)| tag.clone()).unwrap() {
-        True | False | Unit | Tuple | Literal(_) =>
+        True | False | Unit | Literal(_) =>
             unreachable!("Found builtin constructor not covered by builtin_is_exhastive"),
 
         UserDefined(id) => {
@@ -687,7 +677,7 @@ impl DecisionTreeResult {
             None => "_".to_string(),
             Some(case) => {
                 let mut case_string = case.tag.clone();
-                let case_is_tuple = case.tag == "(";
+                let case_is_tuple = case.tag == Token::Comma.to_string();
 
                 // Parenthesizes an argument string if it contains spaces and it's not a tuple field
                 let parenthesize = |field_string: String| {
@@ -716,9 +706,6 @@ impl DecisionTreeResult {
                         } else {
                             case_string = format!("{}", case_string);
                         }
-                    } else if fields.len() == 1 {
-                        // single-arg tuple. Add trailing ,
-                        case_string = format!("({},)", fields[0]);
                     } else {
                         case_string = format!("({})", join_with(&fields, ", "));
                     }
@@ -787,12 +774,15 @@ impl DebugConstructor {
             Some(Literal(LiteralKind::Float(_))) => "_ : float".to_string(),
             Some(Literal(LiteralKind::String(_))) => "_ : string".to_string(),
             Some(Literal(LiteralKind::Char(_))) => "_ : char".to_string(),
+
+            // bool/unit constructors have their own VariantTags below,
+            // they're never represented with Literal VariantTags since Literal
+            // VariantTags would mean we should give up on completeness checking for them.
             Some(Literal(LiteralKind::Bool(_))) => unreachable!(),
             Some(Literal(LiteralKind::Unit)) => unreachable!(),
             Some(True) => "true".to_string(),
             Some(False) => "false".to_string(),
             Some(VariantTag::Unit) => "()".to_string(),
-            Some(Tuple) => "(".to_string(),
             None => "_".to_string(),
         };
 
@@ -835,7 +825,7 @@ impl DecisionTree {
                     // constructor type unless the constructor is not a function type, then the
                     // field must be a match-all field and will have the same type as the constructor.
                     let constructor = case.get_constructor_type(&typ, cache);
-                    let field_types = fields_of_type(&constructor);
+                    let field_types = parameters_of_type(&constructor);
 
                     assert!(case.fields.len() <= field_types.len(),
                         "Found case field count that did not match the field count of the constructor.\n\
@@ -891,12 +881,11 @@ fn unify_constructor_type<'c, 'a>(constructor: &'a Type, expected: &Type, locati
     }
 }
 
-/// Returns the parameters or tuple fields of a type. If the type is not a Type::Function
-/// or Type::Tuple, this returns `vec![typ]`.
-fn fields_of_type(typ: &Type) -> Vec<&Type> {
+/// Returns the parameters of a type. If the type is not a
+/// Type::Function then this returns `vec![typ]`.
+fn parameters_of_type(typ: &Type) -> Vec<&Type> {
     match typ {
         Type::Function(fields, _, _) => fields.iter().collect(),
-        Type::Tuple(fields) => fields.iter().collect(),
         _ => vec![typ],
     }
 }
@@ -904,12 +893,12 @@ fn fields_of_type(typ: &Type) -> Vec<&Type> {
 impl Case {
     fn get_constructor_type<'c>(&self, expected_type: &Type, cache: &mut ModuleCache<'c>) -> Type {
         use VariantTag::*;
-        match self.tag {
+        match &self.tag {
             Some(UserDefined(id)) => {
                 let constructor_type = unwrap_clone(&cache.definition_infos[id.0].typ);
                 typechecker::instantiate(&constructor_type, vec![], cache).0
             },
-            Some(Literal(LiteralKind::Integer(_, kind))) => Type::Primitive(PrimitiveType::IntegerType(kind)),
+            Some(Literal(LiteralKind::Integer(_, kind))) => Type::Primitive(PrimitiveType::IntegerType(*kind)),
             Some(Literal(LiteralKind::Float(_))) => Type::Primitive(PrimitiveType::FloatType),
             Some(Literal(LiteralKind::String(_))) => Type::UserDefinedType(STRING_TYPE),
             Some(Literal(LiteralKind::Char(_))) => Type::Primitive(PrimitiveType::CharType),
@@ -918,7 +907,6 @@ impl Case {
             Some(True) => Type::Primitive(PrimitiveType::BooleanType),
             Some(False) => Type::Primitive(PrimitiveType::BooleanType),
             Some(VariantTag::Unit) => Type::Primitive(PrimitiveType::UnitType),
-            Some(Tuple) => expected_type.clone(),
             None => expected_type.clone(),
         }
     }

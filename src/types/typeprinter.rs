@@ -98,7 +98,6 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
             Type::TypeVariable(id) => self.fmt_type_variable(*id, f),
             Type::UserDefinedType(id) => self.fmt_user_defined_type(*id, f),
             Type::TypeApplication(constructor, args) => self.fmt_type_application(constructor, args, f),
-            Type::Tuple(elements) => self.fmt_tuple(elements, f),
             Type::Ref(lifetime) => self.fmt_ref(*lifetime, f),
             Type::ForAll(typevars, typ) => self.fmt_forall(typevars, typ, f),
         }
@@ -146,27 +145,33 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
 
     fn fmt_type_application(&self, constructor: &Box<Type>, args: &Vec<Type>, f: &mut Formatter) -> std::fmt::Result {
         write!(f, "{}", "(".blue())?;
-        self.fmt_type(constructor.as_ref(), f)?;
-        for arg in args.iter() {
-            write!(f, " ")?;
-            self.fmt_type(arg, f)?;
+
+        if constructor.is_pair_type() {
+            self.fmt_pair(args, f)?;
+        } else {
+            self.fmt_type(constructor.as_ref(), f)?;
+            for arg in args.iter() {
+                write!(f, " ")?;
+                self.fmt_type(arg, f)?;
+            }
         }
+
         write!(f, "{}", ")".blue())
     }
 
-    fn fmt_tuple(&self, elements: &[Type], f: &mut Formatter) -> std::fmt::Result {
-        write!(f, "{}", "(".blue())?;
-        for (i, arg) in elements.iter().enumerate() {
-            self.fmt_type(arg, f)?;
+    fn fmt_pair(&self, args: &Vec<Type>, f: &mut Formatter) -> std::fmt::Result {
+        assert_eq!(args.len(), 2);
 
-            if i + 1 < elements.len() {
-                write!(f, "{}", ", ".blue())?;
-            }
+        self.fmt_type(&args[0], f)?;
+
+        write!(f, "{}", ", ".blue())?;
+
+        match &args[1] {
+            Type::TypeApplication(constructor, args) if constructor.is_pair_type() => {
+                self.fmt_pair(args, f)
+            },
+            other => self.fmt_type(other, f)
         }
-        if elements.len() == 1 {
-            write!(f, "{}", ",".blue())?;
-        }
-        write!(f, "{}", ")".blue())
     }
 
     fn fmt_ref(&self, lifetime: TypeVariableId, f: &mut Formatter) -> std::fmt::Result {

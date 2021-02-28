@@ -105,8 +105,8 @@ impl<'a> Display for ast::Type<'a> {
             TypeApplication(constructor, args, _) => {
                 write!(f, "({} {})", constructor, join_with(args, " "))
             },
-            TupleType(args, _) => {
-                write!(f, "({},)", join_with(args, ", "))
+            PairType(first, rest, _) => {
+                write!(f, "({}, {})", first, rest)
             }
         }
     }
@@ -228,16 +228,6 @@ impl<'a> Display for ast::Extern<'a> {
 impl<'a> Display for ast::MemberAccess<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "({}.{})", self.lhs, self.field)
-    }
-}
-
-impl<'a> Display for ast::Tuple<'a> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "(")?;
-        for element in self.elements.iter() {
-            write!(f, "{}, ", element)?;
-        }
-        write!(f, ")")
     }
 }
 

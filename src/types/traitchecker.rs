@@ -17,13 +17,15 @@
 //! impl to the `ast::Variable` the TraitConstraint originated from, so that variable
 //! has the correct definition to compile during codegen. For any impl it fails to solve,
 //! a compile-time error will be issued.
-use crate::types::traits::{ RequiredTrait, TraitConstraint, TraitConstraints };
 use crate::cache::{ ModuleCache, VariableId, ImplInfoId, DefinitionInfoId };
+use crate::error::location::Location;
+use crate::types::{ TypeInfoId, DEFAULT_INTEGER_TYPE, Type, PrimitiveType, TypeVariableId };
+use crate::types::traits::{ RequiredTrait, TraitConstraint, TraitConstraints };
 use crate::types::typechecker::{ self, TypeBindings, UnificationResult };
-use crate::types::{ DEFAULT_INTEGER_TYPE, Type, PrimitiveType, TypeVariableId };
 use crate::lexer::token::IntegerKind;
 use crate::util::{ trustme, fmap };
 
+use colored::Colorize;
 use std::collections::HashMap;
 
 /// Go through the given list of traits and determine if they should
@@ -162,25 +164,43 @@ fn find_member_access_impl<'c>(constraint: &TraitConstraint, bindings: &TypeBind
     cache: &mut ModuleCache<'c>) -> UnificationResult<'c>
 {
     let collection = typechecker::follow_bindings_in_cache_and_map(&constraint.args[0], bindings, cache);
-    let field_name = cache.trait_infos[constraint.trait_id.0].get_field_name();
+    let field_name = cache.trait_infos[constraint.trait_id.0].get_field_name().to_string();
+    let expected_field_type = &constraint.args[1];
     let location = constraint.locate(cache);
 
-    match collection {
-        Type::UserDefinedType(id) => {
-            let field_type = cache.type_infos[id.0].find_field(field_name)
-                .map(|(_, field)| field.field_type.clone());
-
-            match field_type {
-                Some(field_type) => {
-                    // FIXME: this unifies the type variables from the definition of field_type
-                    // rather than the types it was instantiated to. This will be incorrect if
-                    // the user ever uses a generic field with two different types!
-                    typechecker::try_unify(&constraint.args[1], &field_type, location, cache)
-                },
-                None => Err(make_error!(location, "Type {} has no field named {}", collection.display(cache), field_name)),
+    match &collection {
+        Type::UserDefinedType(id) => find_field(*id, &[], &field_name, expected_field_type, location, cache),
+        Type::TypeApplication(typ, args) => {
+            match typ.as_ref() {
+                Type::UserDefinedType(id) => find_field(*id, args, &field_name, expected_field_type, location, cache),
+                _ => Err(make_error!(location, "Type {} is not a struct type and has no field named {}", collection.display(cache), field_name)),
             }
         },
         _ => Err(make_error!(location, "Type {} is not a struct type and has no field named {}", collection.display(cache), field_name)),
+    }
+}
+
+fn find_field<'c>(id: TypeInfoId, args: &[Type], field_name: &str, expected_field_type: &Type,
+    location: Location<'c>, cache: &mut ModuleCache<'c>) -> UnificationResult<'c>
+{
+    let type_info = &cache.type_infos[id.0];
+    let bindings = typechecker::type_application_bindings(type_info, args);
+    let mut result_bindings = bindings.clone();
+
+    let field_type = type_info.find_field(field_name)
+        .map(|(_, field)| field.field_type.clone());
+
+    match field_type {
+        Some(field_type) => {
+            typechecker::try_unify_with_bindings(expected_field_type, &field_type, &mut result_bindings, location, cache)?;
+
+            // Filter out only the new bindings we did not start with since we started with
+            // local type bindings from the type arguments that should not be bound globally.
+            Ok(result_bindings.into_iter()
+                .filter(|(id, _)| !bindings.contains_key(&id))
+                .collect())
+        },
+        None => Err(make_error!(location, "Type {} has no field named {}", type_info.name.blue(), field_name)),
     }
 }
 
