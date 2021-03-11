@@ -53,9 +53,9 @@ regions tend to be small which helps reduce memory fragmentation.
           fast pointer-bump allocators or even allocated on the stack for small regions.
     - [ ] Opt-out of region inference by using a different pointer type
           like `Rc t` or `Box t` to get reference-counted or uniquely owned pointer semantics.
-- [ ] Language Documentation:
+- [x] Language [Documentation](https://antelang.org/docs/language/):
+    - [x] [Article on Ante's use of whitespace for line continuations.](https://antelang.org/docs/language/#line-continuations)
     - [ ] Article on interactions between `mut`, `ref`, and passing by reference.
-    - [ ] Article on Ante's use of whitespace for line continuations.
 - [ ] Refinement Types
 - [ ] REPL
 - [ ] Loops
