@@ -113,3 +113,29 @@ $ cargo build
 
 You can confirm your current version of llvm by running `llvmenv version`
 or `llvm-config`
+
+If the above steps don't work for you, you can try [building llvm from source
+with cmake](https://www.llvm.org/docs/CMake.html). If you're on windows this
+requires you to have Visual Studio 2017 or later installed already.
+
+```
+$ git clone https://github.com/llvm/llvm-project --branch=release/10.x
+$ mkdir llvm-build
+$ cd llvm-build
+$ cmake ../llvm-project/llvm
+```
+
+At this point, cmake may error that it failed to find z3, or the windows SDK in
+which case you may need to install them. For the windows SDK, you can install it
+via the Visual Studio Installer (under Modify -> Individual Components). I used
+version 10.0.17763.0, though it is likely newer versions will work as well. Rerun
+the last cmake command to test that everything is installed right. Once this is
+done, move on to compiling llvm and ante:
+
+```
+$ cmake --build .
+$ cmake --build . --target install
+$ cd ..
+$ set LLVM_SYS_100_PREFIX=/absolute/path/to/llvm-build
+$ cargo build
+```
