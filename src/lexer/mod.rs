@@ -123,6 +123,7 @@ impl<'cache, 'contents> Lexer<'cache, 'contents> {
             ("else", Token::Else),
             ("extern", Token::Extern),
             ("for", Token::For),
+            ("fn", Token::Fn),
             ("given", Token::Given),
             ("if", Token::If),
             ("impl", Token::Impl),

@@ -22,7 +22,7 @@ impl Cast string string string given Show string with
 impl Collection (a -> a) unit with
     push c e = c
     pop c = ()
-    empty = \a.a
+    empty = fn a.a
 
 // args: --parse
 // expected stdout:

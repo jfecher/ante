@@ -1,7 +1,7 @@
 
 foo a b =
-    \c d.
-        3
+    fn c d.
+         3
 
 // These should all result in the same parse tree
 when1 condition expr = if condition then

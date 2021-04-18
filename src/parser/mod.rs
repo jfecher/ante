@@ -587,7 +587,7 @@ fn argument<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
         Token::CharLiteral(_) => parse_char(input),
         Token::BooleanLiteral(_) => parse_bool(input),
         Token::UnitLiteral => unit(input),
-        Token::Backslash => lambda(input),
+        Token::Fn => lambda(input),
         Token::ParenthesisLeft => parenthesized_expression(input),
         Token::TypeName(_) => variant(input),
         _ => Err(ParseError::InRule(&"argument", input[0].1)),
@@ -595,7 +595,7 @@ fn argument<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
 }
 
 parser!(lambda loc =
-    _ <- expect(Token::Backslash);
+    _ <- expect(Token::Fn);
     args !<- many1(irrefutable_pattern_argument);
     return_type <- maybe(function_return_type);
     _ !<- expect(Token::MemberAccess);

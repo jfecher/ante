@@ -3,7 +3,7 @@ not_an_error = 1
 
 not_an_error is_an_error
 
-\a b. a + c + b
+fn a b. a + c + b
 
 foo a b =
     bar c d =
@@ -25,8 +25,8 @@ a = 3 // already declared
 // examples/nameresolution/errors.an: 4,14	error: No declaration for is_an_error was found in scope
 // not_an_error is_an_error
 // 
-// examples/nameresolution/errors.an: 6,11	error: No declaration for c was found in scope
-// \a b. a + c + b
+// examples/nameresolution/errors.an: 6,13	error: No declaration for c was found in scope
+// fn a b. a + c + b
 // 
 // examples/nameresolution/errors.an: 9,9	warning: c is unused (prefix name with _ to silence this warning)
 //     bar c d =

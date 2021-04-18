@@ -8,7 +8,7 @@ ret x = Some x
 x = Some 10i32
 
 add_one x =
-    bind x (\x. ret (x + 1i32))
+    bind x (fn x. ret (x + 1i32))
 
 // args: --check --show-types
 // expected stdout:
