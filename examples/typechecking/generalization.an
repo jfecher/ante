@@ -1,5 +1,5 @@
 foo x =
-    y = \_.x
+    y = fn _.x
     y
 
 // type should be a -> (b -> a)

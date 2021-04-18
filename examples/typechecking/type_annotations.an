@@ -2,7 +2,7 @@
 foo (_: i32) (_: string) -> char = 'a'
 
 bar: a a -> i32 =
-    \_ b. b
+    fn _ b. b
 
 exit2 = exit
 puts2: (ref char) -> i32 = puts
