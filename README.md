@@ -76,6 +76,11 @@ Feel free to contribute to either any known issues/improvements (some are listed
 Each file in the codebase is prefixed with a module comment explaining the purpose of
 the file and any algorithms used. `src/main.rs` is a good place to start reading.
 
+Make sure any PRs pass the tests in the `examples` directory. These tests have commands
+in them which the [goldentests](https://github.com/jfecher/golden-tests) library uses
+to run the ante compiler and check its output for each file against the expected output
+contained within comments of that file.
+
 Quick Tasks:
 - [ ] Change the lambda syntax from `\a b.y` to `fn a b -> y` ([#67](https://github.com/jfecher/ante/issues/67))
 - [ ] Update the syntax for specifying the return type of a function from `->` to `:` ([#68](https://github.com/jfecher/ante/issues/68))
