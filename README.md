@@ -14,12 +14,13 @@ type Person =
     job: string
     name: ref string
 
-// Ante uses region inference to infer the data allocated
-// via `new` should not be freed inside this function
+// Ante uses region inference to infer the data referenced
+// via `&` should not be freed inside this function
 make_person job =
-    Person job (new "bob")
+    Person job &"bob"
 
-// bob is only used at this scope, so it can be safely freed afterward.
+// bob is only used at this scope, so we can allocate it on the stack
+// here and pass this location to make_person to fill in the value "bob"
 bob = make_person "programmer"
 
 // unlike ownership systems, aliasing is allowed in region inference
@@ -35,6 +36,8 @@ double-free, or forget-to-free unless you explicitly opt-out by using a differen
 because lifetimes are completely inferred, you don't have to be aware of them while programming, making ante
 approachable even for developers used to garbage-collected languages. Memory within a region is often
 allocated on the stack, resembling destination passing style in C.
+
+See the [language tour](https://antelang.org/docs/language/) for more information.
 
 ---
 
