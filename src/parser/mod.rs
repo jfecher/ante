@@ -115,7 +115,7 @@ parser!(varargs location -> 'b () =
 );
 
 parser!(function_return_type location -> 'b ast::Type<'b> =
-    _ <- expect(Token::RightArrow);
+    _ <- expect(Token::Colon);
     typ <- parse_type;
     typ
 );

@@ -101,27 +101,27 @@ impl TryCast a b given Cast a b with
 // Huge block of builtin numeric operators incoming
 trait Add n with (+): n n -> n
 impl Add a given Int a with (+) _ _ = builtin "AddInt"
-impl Add float with (+) (_: float) (_: float) -> float = builtin "AddFloat"
+impl Add float with (+) (_: float) (_: float) : float = builtin "AddFloat"
 
 trait Sub n with (-): n n -> n
 impl Sub a given Int a with (-) _ _ = builtin "SubInt"
-impl Sub float with (-) (_: float) (_: float) -> float = builtin "SubFloat"
+impl Sub float with (-) (_: float) (_: float) : float = builtin "SubFloat"
 
 trait Mul n with (*): n n -> n
 impl Mul a given Int a with (*) _ _ = builtin "MulInt"
-impl Mul float with (*) (_: float) (_: float) -> float = builtin "MulFloat"
+impl Mul float with (*) (_: float) (_: float) : float = builtin "MulFloat"
 
 trait Div n with (/): n n -> n
 impl Div a given Int a with (/) _ _ = builtin "DivInt"
-impl Div float with (/) (_: float) (_: float) -> float = builtin "DivFloat"
+impl Div float with (/) (_: float) (_: float) : float = builtin "DivFloat"
 
 trait Mod n with (%): n n -> n
 impl Mod a given Int a with (%) _ _ = builtin "ModInt"
-impl Mod float with (%) (_: float) (_: float) -> float = builtin "ModFloat"
+impl Mod float with (%) (_: float) (_: float) : float = builtin "ModFloat"
 
 trait Eq t with (==): t t -> bool
 impl Eq a given Int a with (==) _ _ = builtin "EqInt"
-impl Eq float with (==) (_: float) (_: float) -> bool = builtin "EqFloat"
+impl Eq float with (==) (_: float) (_: float) : bool = builtin "EqFloat"
 
 (not) a = if a then false else true
 (!=) l r = not (l == r)
@@ -129,7 +129,7 @@ impl Eq float with (==) (_: float) (_: float) -> bool = builtin "EqFloat"
 type Ordering = | Less | Equal | Greater
 
 impl Eq Ordering with
-    (==) (a: Ordering) (b: Ordering) -> bool =
+    (==) (a: Ordering) (b: Ordering) : bool =
         match a, b with
         | Less, Less -> true
         | Equal, Equal -> true
@@ -151,7 +151,7 @@ impl Cmp a given Int a with
         else Equal
 
 impl Cmp float with
-    compare (_: float) (_: float) -> Ordering =
+    compare (_: float) (_: float) : Ordering =
         if builtin "LessFloat" then Less
         else if builtin "GreaterFloat" then Greater
         else Equal

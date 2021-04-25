@@ -1,5 +1,5 @@
 
-foo (_: i32) (_: string) -> char = 'a'
+foo (_: i32) (_: string) : char = 'a'
 
 bar: a a -> i32 =
     fn _ b. b
