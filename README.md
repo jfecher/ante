@@ -27,14 +27,14 @@ bob_twin = bob
 assert (bob.name == bob_twin.name)
 ```
 
-Ideally, idiomatic code should be easy to read _and_ run fast so that
-developers can spend as little time as possible optimizing and more time implementing new features. This
-is accomplished primarily through region inference, which automatically infers the lifetime of pointers
-and ensures you will never run into a use-after-free, double-free, or forget-to-free unless you explicitly
-opt-out by using a different pointer type. Moreover, because lifetimes are completely inferred, you don't
-have to be aware of them while programming, making ante approachable even for developers used to
-garbage-collected languages. Memory within a region is allocated in a pool for the best performance, and
-regions tend to be small which helps reduce memory fragmentation.
+In general, ante is low-level (no GC, values aren't boxed by default) while also trying to
+be as easy as possible by allowing these details to be gradually introduced into a codebase so that
+developers can spend more time adding new features. This is accomplished primarily through region inference,
+which automatically infers the lifetime of pointers and ensures you will never run into a use-after-free,
+double-free, or forget-to-free unless you explicitly opt-out by using a different pointer type. Moreover,
+because lifetimes are completely inferred, you don't have to be aware of them while programming, making ante
+approachable even for developers used to garbage-collected languages. Memory within a region is often
+allocated on the stack, resembling destination passing style in C.
 
 ---
 
@@ -48,14 +48,15 @@ regions tend to be small which helps reduce memory fragmentation.
     - [ ] Write untyped code and have the compiler write in the types for you after a successful compilation
 - [x] LLVM Codegen
 - [x] No Garbage Collector
-    - [ ] Region-based deterministic memory management with region inference.
+    - [ ] Region-based deterministic memory management with region inference
         - Easily write safe code without memory leaks all while having it compiled into
           fast pointer-bump allocators or even allocated on the stack for small regions.
     - [ ] Opt-out of region inference by using a different pointer type
-          like `Rc t` or `Box t` to get reference-counted or uniquely owned pointer semantics.
+          like `Rc t` or `Box t` to get reference-counted or uniquely owned pointer semantics
 - [x] Language [Documentation](https://antelang.org/docs/language/):
-    - [x] [Article on Ante's use of whitespace for line continuations.](https://antelang.org/docs/language/#line-continuations)
-    - [ ] Article on interactions between `mut`, `ref`, and passing by reference.
+    - [x] [Article on Ante's use of whitespace for line continuations](https://antelang.org/docs/language/#line-continuations)
+    - [ ] Article on interactions between `mut`, `ref`, and passing by reference
+    - [ ] Article on autoboxing for recursive types
 - [ ] Refinement Types
 - [ ] REPL
 - [ ] Loops
@@ -64,6 +65,7 @@ Nice to have but not currently required:
 - [ ] Multiple backends, possibly GCCJIT/cranelift for faster debug builds
 - [ ] Reasonable C/C++ interop with clang api
 - [ ] Build system built into standard library
+    - Ante should always be able to build itself along with any required libraries, the main question is how should a build system interact facilitate the more complex tasks of building other languages or running arbitrary programs like yacc/bison.
 
 ---
 
@@ -82,10 +84,16 @@ to run the ante compiler and check its output for each file against the expected
 contained within comments of that file.
 
 Quick Tasks:
-- [ ] Change the lambda syntax from `\a b.y` to `fn a b -> y` ([#67](https://github.com/jfecher/ante/issues/67))
-- [ ] Update the syntax for specifying the return type of a function from `->` to `:` ([#68](https://github.com/jfecher/ante/issues/68))
 - [ ] Desugar parsing for <| (Token::ApplyLeft) and |> (Token::ApplyRight) directly into function calls ([#65](https://github.com/jfecher/ante/issues/65))
 - [ ] Add support for explicit currying via `_` ([#66](https://github.com/jfecher/ante/issues/66))
+
+---
+
+### Community
+
+The best place to follow ante's development is in the #ante channel of the Programming Languages discord: https://discord.gg/4Kjt3ZE.
+There is also the subreddit at [/r/ante](https://reddit.com/r/ante) which is mainly used for questions about the language rather
+than development updates.
 
 ---
 
