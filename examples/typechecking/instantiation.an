@@ -1,9 +1,9 @@
-one = fn f.fn x. f x  // (a -> b) -> a -> b
-two = fn f.fn x. f (f x) // (a -> a) -> a -> a
-add = fn m.fn n.fn f.fn x. m f (n f x)  // (a -> b -> c) -> (a -> d -> b) -> a -> d -> c
-succ = fn n.fn f.fn x. f (n f x)  // ((a -> b) -> c -> a) -> (a -> b) -> c -> b
-mul = fn m.fn n.fn f.fn x. m (n f) x  // (a -> b -> c) -> (d -> a) -> d -> b -> c
-pred = fn n.fn f.fn x. n (fn g.fn h. h (g f)) (fn _.x) (fn u.u)  // (((a -> b) -> (b -> c) -> c) -> (d -> e) -> (f -> f) -> g) -> a -> e -> g
+one = fn f -> fn x -> f x  // (a -> b) -> a -> b
+two = fn f -> fn x -> f (f x) // (a -> a) -> a -> a
+add = fn m -> fn n -> fn f -> fn x -> m f (n f x)  // (a -> b -> c) -> (a -> d -> b) -> a -> d -> c
+succ = fn n -> fn f -> fn x -> f (n f x)  // ((a -> b) -> c -> a) -> (a -> b) -> c -> b
+mul = fn m -> fn n -> fn f -> fn x -> m (n f) x  // (a -> b -> c) -> (d -> a) -> d -> b -> c
+pred = fn n -> fn f -> fn x ->  n (fn g -> fn h -> h (g f)) (fn _ -> x) (fn u -> u)  // (((a -> b) -> (b -> c) -> c) -> (d -> e) -> (f -> f) -> g) -> a -> e -> g
 
 // These two 'one' instances should be instantiated from one's polytype
 one

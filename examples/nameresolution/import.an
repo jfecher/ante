@@ -1,6 +1,6 @@
 import Library
 
-foo = fn _ b. b
+foo = fn _ b -> b
 
 foo 4 library_int
 
