@@ -115,7 +115,7 @@ parser!(varargs location -> 'b () =
 );
 
 parser!(function_return_type location -> 'b ast::Type<'b> =
-    _ <- expect(Token::RightArrow);
+    _ <- expect(Token::Colon);
     typ <- parse_type;
     typ
 );
@@ -598,7 +598,7 @@ parser!(lambda loc =
     _ <- expect(Token::Fn);
     args !<- many1(irrefutable_pattern_argument);
     return_type <- maybe(function_return_type);
-    _ !<- expect(Token::MemberAccess);
+    _ !<- expect(Token::RightArrow);
     body !<- block_or_statement;
     Ast::lambda(args, return_type, body, loc)
 );
