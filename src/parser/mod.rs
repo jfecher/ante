@@ -367,14 +367,14 @@ fn precedence(token: &Token) -> Option<(i8, bool)> {
     match token {
         Token::Semicolon => Some((0, false)),
         Token::Comma => Some((1, true)),
-        Token::ApplyLeft => Some((2, true)),
-        Token::ApplyRight => Some((3, false)),
-        Token::Or => Some((4, false)),
-        Token::And => Some((5, false)),
-        Token::EqualEqual | Token::Is | Token::Isnt | Token::NotEqual | Token::GreaterThan | Token::LessThan | Token::GreaterThanOrEqual | Token::LessThanOrEqual => Some((7, false)),
-        Token::In => Some((8, false)),
-        Token::Append => Some((9, false)),
-        Token::Range => Some((10, false)),
+        Token::Or => Some((2, false)),
+        Token::And => Some((3, false)),
+        Token::EqualEqual | Token::Is | Token::Isnt | Token::NotEqual | Token::GreaterThan | Token::LessThan | Token::GreaterThanOrEqual | Token::LessThanOrEqual => Some((5, false)),
+        Token::In => Some((6, false)),
+        Token::Append => Some((7, false)),
+        Token::Range => Some((8, false)),
+        Token::ApplyRight => Some((9, false)),
+        Token::ApplyLeft => Some((10, true)),
         Token::Add | Token::Subtract => Some((11, false)),
         Token::Multiply | Token::Divide | Token::Modulus => Some((12, false)),
         Token::Colon => Some((13, false)),
@@ -397,9 +397,42 @@ fn pop_operator<'c>(operator_stack: &mut Vec<&Token>, results: &mut Vec<(Ast<'c>
     let (rhs, rhs_location) = results.pop().unwrap();
     let (lhs, lhs_location) = results.pop().unwrap();
     let location = lhs_location.union(rhs_location);
-    let operator = Ast::operator(operator_stack.pop().unwrap().clone(), location);
-    let call = Ast::function_call(operator, vec![lhs, rhs], location);
+    let operator = operator_stack.pop().unwrap().clone();
+    let call =  desugar_apply_operator(operator, lhs, rhs, location);
     results.push((call, location));
+}
+
+fn desugar_apply_operator<'a>(operator: Token, lhs: Ast<'a>, rhs: Ast<'a>, location: Location<'a>) -> Ast<'a> {
+    match operator {
+        Token::ApplyLeft => 
+            if let Ast::FunctionCall(fun) = lhs {
+                let mut args = vec![rhs];
+                args.extend(fun.args);
+
+                Ast::FunctionCall(ast::FunctionCall{
+                    args,
+                    ..fun
+                })
+            } else {
+                Ast::function_call(lhs, vec![rhs], location)
+            },
+        Token::ApplyRight => 
+            if let Ast::FunctionCall(fun) = rhs {
+                let mut args = vec![lhs];
+                args.extend(fun.args);
+
+                Ast::FunctionCall(ast::FunctionCall{
+                    args,
+                    ..fun
+                })
+            } else {
+                Ast::function_call(rhs, vec![lhs], location)
+            },
+        _ => {
+            let operator = Ast::operator(operator, location);
+            Ast::function_call(operator, vec![lhs, rhs], location)
+        }
+    }
 }
 
 /// Parse an arbitrary expression using the shunting-yard algorithm
