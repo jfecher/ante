@@ -5,13 +5,17 @@ b |> foo 2
 a |> foo b c |> bar d e
 bar d e <| foo b c <| a
 
-1 + 2 + 3 |> foo a + b
-foo a + b <| 1 + 2 + 3
+1, 2 |> baz
+baz <| 1, 2
+
+1, 2 |> baz <| 3, 4
+
 // args: --parse
 // expected stdout:
 // (foo a);
 // (foo b 2);
 // (bar (foo a b c) d e);
 // (bar (foo a b c) d e);
-// (foo ('+' ('+' 1 2) 3) ('+' a b));
-// (foo ('+' ('+' 1 2) 3) ('+' a b))
+// (baz (',' 1 2));
+// (baz (',' 1 2));
+// (baz (',' 1 2) (',' 3 4))
