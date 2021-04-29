@@ -87,7 +87,6 @@ to run the ante compiler and check its output for each file against the expected
 contained within comments of that file.
 
 Quick Tasks:
-- [ ] Desugar parsing for <| (Token::ApplyLeft) and |> (Token::ApplyRight) directly into function calls ([#65](https://github.com/jfecher/ante/issues/65))
 - [ ] Add support for explicit currying via `_` ([#66](https://github.com/jfecher/ante/issues/66))
 
 ---

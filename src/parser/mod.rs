@@ -366,9 +366,9 @@ parser!(block _loc =
 fn precedence(token: &Token) -> Option<(i8, bool)> {
     match token {
         Token::Semicolon => Some((0, false)),
-        Token::Comma => Some((1, true)),
+        Token::ApplyRight => Some((1, false)),
         Token::ApplyLeft => Some((2, true)),
-        Token::ApplyRight => Some((3, false)),
+        Token::Comma => Some((3, true)),
         Token::Or => Some((4, false)),
         Token::And => Some((5, false)),
         Token::EqualEqual | Token::Is | Token::Isnt | Token::NotEqual | Token::GreaterThan | Token::LessThan | Token::GreaterThanOrEqual | Token::LessThanOrEqual => Some((7, false)),
@@ -397,9 +397,29 @@ fn pop_operator<'c>(operator_stack: &mut Vec<&Token>, results: &mut Vec<(Ast<'c>
     let (rhs, rhs_location) = results.pop().unwrap();
     let (lhs, lhs_location) = results.pop().unwrap();
     let location = lhs_location.union(rhs_location);
-    let operator = Ast::operator(operator_stack.pop().unwrap().clone(), location);
-    let call = Ast::function_call(operator, vec![lhs, rhs], location);
+    let operator = operator_stack.pop().unwrap().clone();
+    let call =  desugar_apply_operator(operator, lhs, rhs, location);
     results.push((call, location));
+}
+
+fn desugar_apply_operator<'a>(operator: Token, lhs: Ast<'a>, rhs: Ast<'a>, location: Location<'a>) -> Ast<'a> {
+    match operator {
+        Token::ApplyLeft  => prepend_argument_to_function(lhs, rhs, location),
+        Token::ApplyRight => prepend_argument_to_function(rhs, lhs, location),
+        _ => {
+            let operator = Ast::operator(operator, location);
+            Ast::function_call(operator, vec![lhs, rhs], location)
+        }
+    }
+}
+
+fn prepend_argument_to_function<'a>(f: Ast<'a>, arg: Ast<'a>, location: Location<'a>) -> Ast<'a> {
+    if let Ast::FunctionCall(mut call) = f {
+        call.args.insert(0, arg);
+        Ast::FunctionCall(call)
+    } else {
+        Ast::function_call(f, vec![arg], location)
+    }
 }
 
 /// Parse an arbitrary expression using the shunting-yard algorithm
