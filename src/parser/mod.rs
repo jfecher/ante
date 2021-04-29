@@ -404,34 +404,21 @@ fn pop_operator<'c>(operator_stack: &mut Vec<&Token>, results: &mut Vec<(Ast<'c>
 
 fn desugar_apply_operator<'a>(operator: Token, lhs: Ast<'a>, rhs: Ast<'a>, location: Location<'a>) -> Ast<'a> {
     match operator {
-        Token::ApplyLeft => 
-            if let Ast::FunctionCall(fun) = lhs {
-                let mut args = vec![rhs];
-                args.extend(fun.args);
-
-                Ast::FunctionCall(ast::FunctionCall{
-                    args,
-                    ..fun
-                })
-            } else {
-                Ast::function_call(lhs, vec![rhs], location)
-            },
-        Token::ApplyRight => 
-            if let Ast::FunctionCall(fun) = rhs {
-                let mut args = vec![lhs];
-                args.extend(fun.args);
-
-                Ast::FunctionCall(ast::FunctionCall{
-                    args,
-                    ..fun
-                })
-            } else {
-                Ast::function_call(rhs, vec![lhs], location)
-            },
+        Token::ApplyLeft  => prepend_argument_to_function(lhs, rhs, location),
+        Token::ApplyRight => prepend_argument_to_function(rhs, lhs, location),
         _ => {
             let operator = Ast::operator(operator, location);
             Ast::function_call(operator, vec![lhs, rhs], location)
         }
+    }
+}
+
+fn prepend_argument_to_function<'a>(f: Ast<'a>, arg: Ast<'a>, location: Location<'a>) -> Ast<'a> {
+    if let Ast::FunctionCall(mut call) = f {
+        call.args.insert(0, arg);
+        Ast::FunctionCall(call)
+    } else {
+        Ast::function_call(f, vec![arg], location)
     }
 }
 
