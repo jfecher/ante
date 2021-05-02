@@ -491,7 +491,7 @@ fn curried_function_call<'a>(function: Ast<'a>, args: Vec<Ast<'a>>, loc: Locatio
         .map(|arg| {
             if matches_underscore(&arg) {
                 curried_arg_count += 1;
-                let curried_arg = format!("_${}", curried_arg_count);
+                let curried_arg = format!("${}", curried_arg_count);
                 curried_args.push(Ast::variable(curried_arg.clone(), arg.locate()));
                 Ast::variable(curried_arg, arg.locate())
             } else {
