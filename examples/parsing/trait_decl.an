@@ -38,13 +38,13 @@ impl Collection (a -> a) unit with
 //     (: empty c)
 // );
 // (impl Show string with
-//     (show = (\ s . s))
+//     (show = (fn s -> s))
 // );
 // (impl Cast string string string given (Show string) with
-//     (cast = (\ s . (show s)))
+//     (cast = (fn s -> (show s)))
 // );
 // (impl Collection (a -> a) unit with
-//     (push = (\ c e . c))
-//     (pop = (\ c . ()))
-//     (empty = (\ a . a))
+//     (push = (fn c e -> c))
+//     (pop = (fn c -> ()))
+//     (empty = (fn a -> a))
 // )

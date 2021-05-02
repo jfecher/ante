@@ -42,14 +42,14 @@ impl<'a> Display for ast::Variable<'a> {
 
 impl<'a> Display for ast::Lambda<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "(\\")?;
+        write!(f, "(fn")?;
         for arg in self.args.iter() {
             write!(f, " {}", arg)?;
         }
         if let Some(typ) = &self.return_type {
-            write!(f, " -> {}", typ)?;
+            write!(f, " : {}", typ)?;
         }
-        write!(f, " . {})", self.body)
+        write!(f, " -> {})", self.body)
     }
 }
 

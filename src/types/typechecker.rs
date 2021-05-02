@@ -908,7 +908,7 @@ impl<'a> Inferable<'a> for ast::Variable<'a> {
  *   arg_typeN = newvar ()
  *   infer body (x1:arg_type1 x2:arg_type2 ... xN:arg_typeN :: cache) = return_type
  *   -------------
- *   infer (\arg1 arg2 ... argN . body) cache = arg_type1 arg_type2 ... arg_typeN -> return_type
+ *   infer (fn arg1 arg2 ... argN -> body) cache = arg_type1 arg_type2 ... arg_typeN : return_type
  */
 impl<'a> Inferable<'a> for ast::Lambda<'a> {
     fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {

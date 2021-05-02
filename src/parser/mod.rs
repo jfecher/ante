@@ -474,7 +474,7 @@ parser!(function_call loc =
     desugar_explicit_currying(function, args, loc)
 );
 
-/// Turns (foo _  _ 2) into (\ _$1 _$2 . (foo _$1 _$2 2))
+/// Turns (foo _  _ 2) into (fn _$1 _$2 -> (foo _$1 _$2 2))
 fn desugar_explicit_currying<'a>(function: Ast<'a>, args: Vec<Ast<'a>>, loc: Location<'a>) -> Ast<'a> {
     if matches_not_typeconstructor(&function) && args.iter().any(matches_underscore) {
         return curried_function_call(function, args, loc)
