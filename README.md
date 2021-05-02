@@ -86,8 +86,8 @@ in them which the [goldentests](https://github.com/jfecher/golden-tests) library
 to run the ante compiler and check its output for each file against the expected output
 contained within comments of that file.
 
-Quick Tasks:
-- [ ] Add support for explicit currying via `_` ([#66](https://github.com/jfecher/ante/issues/66))
+[**Quick Tasks**](https://github.com/jfecher/ante/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
+to contribute to
 
 ---
 
