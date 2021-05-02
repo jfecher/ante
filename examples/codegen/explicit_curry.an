@@ -1,0 +1,14 @@
+
+foo a b c =
+    a + b + c
+
+plus2 = foo _ 2 _
+plus4 = foo 2 2 _
+
+print <| plus4 2
+print <| plus2 38 2
+
+// args: --run --delete-binary
+// expected stdout:
+// 6
+// 42
