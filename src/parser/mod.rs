@@ -471,8 +471,46 @@ fn term<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
 parser!(function_call loc =
     function <- member_access;
     args <- many1(function_argument);
-    Ast::function_call(function, args, loc)
+    desugar_explicit_currying(function, args, loc)
 );
+
+/// Turns (foo _  _ 2) into (\ _$1 _$2 . (foo _$1 _$2 2))
+fn desugar_explicit_currying<'a>(function: Ast<'a>, args: Vec<Ast<'a>>, loc: Location<'a>) -> Ast<'a> {
+    if matches_not_typeconstructor(&function) && args.iter().any(matches_underscore) {
+        return curried_function_call(function, args, loc)
+    }
+
+    Ast::function_call(function, args, loc)
+}
+
+fn curried_function_call<'a>(function: Ast<'a>, args: Vec<Ast<'a>>, loc: Location<'a>) -> Ast<'a> {
+    let mut curried_args = vec![];
+    let mut curried_arg_count = 0;
+    let args: Vec<Ast<'a>> = args
+        .into_iter()
+        .map(|arg| {
+            if matches_underscore(&arg) {
+                curried_arg_count += 1;
+                let curried_arg = format!("_${}", curried_arg_count);
+                curried_args.push(Ast::variable(curried_arg.clone(), loc));
+                Ast::variable(curried_arg, loc)
+            } else {
+                arg
+            }
+        })
+        .collect();
+
+    let function_call = Ast::function_call(function, args, loc);
+    Ast::lambda(curried_args, None, function_call, loc)
+}
+
+fn matches_underscore(arg: &Ast) -> bool {
+    matches!(arg, Ast::Variable(ast::Variable{ kind: ast::VariableKind::Identifier(x), ..}) if x == "_")
+}
+
+fn matches_not_typeconstructor(function: &Ast) -> bool {
+    !matches!(function, Ast::Variable(ast::Variable{ kind: ast::VariableKind::TypeConstructor(_), ..}))
+}
 
 parser!(if_expr loc =
     _ <- expect(Token::If);
