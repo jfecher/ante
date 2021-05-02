@@ -22,7 +22,7 @@ mod error;
 pub mod ast;
 pub mod pretty_printer;
 
-use crate::lexer::token::Token;
+use crate::{error::location::Locatable, lexer::token::Token};
 use ast::{ Ast, Type, Trait, TypeDefinitionBody };
 use error::{ ParseError, ParseResult };
 use crate::error::location::Location;
@@ -492,8 +492,8 @@ fn curried_function_call<'a>(function: Ast<'a>, args: Vec<Ast<'a>>, loc: Locatio
             if matches_underscore(&arg) {
                 curried_arg_count += 1;
                 let curried_arg = format!("_${}", curried_arg_count);
-                curried_args.push(Ast::variable(curried_arg.clone(), loc));
-                Ast::variable(curried_arg, loc)
+                curried_args.push(Ast::variable(curried_arg.clone(), arg.locate()));
+                Ast::variable(curried_arg, arg.locate())
             } else {
                 arg
             }
