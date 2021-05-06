@@ -8,10 +8,12 @@ pub mod timing;
 pub mod trustme;
 
 /// Equivalent to .iter().map(f).collect()
-pub fn fmap<T, U, F>(array: &[T], f: F) -> Vec<U>
-    where F: FnMut(&T) -> U
+pub fn fmap<T, U, F>(iterable: T, f: F) -> Vec<U>
+    where 
+    T: IntoIterator,
+    F: FnMut(T::Item) -> U
 {
-    array.iter().map(f).collect()
+    iterable.into_iter().map(f).collect()
 }
 
 /// What a name! Iterate the array, mapping each element with a function that returns a pair
@@ -47,5 +49,5 @@ pub fn reinterpret_from_bits(x: u64) -> f64 {
 
 /// Convert each element to a String and join them with the given delimiter
 pub fn join_with<T: Display>(vec: &[T], delimiter: &str) -> String {
-    fmap(&vec, |t| format!("{}", t)).join(delimiter)
+    fmap(vec, |t| format!("{}", t)).join(delimiter)
 }

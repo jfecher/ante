@@ -124,7 +124,7 @@ impl<'a> Display for ast::TypeDefinitionBody<'a> {
                 Ok(())
             },
             StructOf(types) => {
-                let types = fmap(&types, |(name, ty, _)| format!("{}: {}", name, ty));
+                let types = fmap(types, |(name, ty, _)| format!("{}: {}", name, ty));
                 write!(f, "{}", types.join(", "))
             },
             AliasOf(alias) => write!(f, "{}", alias),

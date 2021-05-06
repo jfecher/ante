@@ -482,7 +482,7 @@ impl<'g> Generator<'g> {
         let typ = self.context.opaque_struct_type(&info.name);
         self.types.insert((id, args), typ.into());
 
-        let fields = fmap(&fields, |field| {
+        let fields = fmap(fields, |field| {
             let field_type = typechecker::bind_typevars(&field.field_type, &bindings, cache);
             self.convert_type(&field_type, cache)
         });
@@ -497,7 +497,7 @@ impl<'g> Generator<'g> {
     fn find_largest_union_variant<'c>(&mut self, variants: &[types::TypeConstructor<'c>], bindings: &TypeBindings,
         cache: &ModuleCache<'c>) -> Option<Vec<types::Type>>
     {
-        let variants: Vec<Vec<types::Type>> = fmap(&variants, |variant| {
+        let variants: Vec<Vec<types::Type>> = fmap(variants, |variant| {
             fmap(&variant.args, |arg| typechecker::bind_typevars(arg, &bindings, cache))
         });
 

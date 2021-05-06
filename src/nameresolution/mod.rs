@@ -797,8 +797,8 @@ fn create_variants<'c>(vec: &Variants<'c>, parent_type_id: TypeInfoId,
         resolver: &mut NameResolver, cache: &mut ModuleCache<'c>) -> Vec<TypeConstructor<'c>> {
 
     let mut index = 0;
-    fmap(&vec, |(name, types, location)| {
-        let args = fmap(&types, |t| resolver.convert_type(cache, t));
+    fmap(vec, |(name, types, location)| {
+        let args = fmap(types, |t| resolver.convert_type(cache, t));
 
         let id = resolver.push_definition(&name, false, cache, *location);
         cache.definition_infos[id.0].typ = Some(create_variant_constructor_type(parent_type_id, args.clone(), cache));
@@ -812,7 +812,7 @@ type Fields<'c> = Vec<(String, ast::Type<'c>, Location<'c>)>;
 
 fn create_fields<'c>(vec: &Fields<'c>, resolver: &mut NameResolver, cache: &mut ModuleCache<'c>) -> Vec<Field<'c>> {
 
-    fmap(&vec, |(name, field_type, location)| {
+    fmap(vec, |(name, field_type, location)| {
         let field_type = resolver.convert_type(cache, field_type);
 
         Field { name: name.clone(), field_type, location: *location }
