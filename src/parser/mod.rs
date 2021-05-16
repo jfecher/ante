@@ -22,6 +22,8 @@ mod error;
 pub mod ast;
 pub mod pretty_printer;
 
+use std::mem;
+
 use crate::{error::location::Locatable, lexer::token::Token, util::fmap};
 use ast::{ Ast, Type, Trait, TypeDefinitionBody };
 use error::{ ParseError, ParseResult };
@@ -414,13 +416,67 @@ fn desugar_apply_operator<'a>(operator: Token, lhs: Ast<'a>, rhs: Ast<'a>, locat
 }
 
 fn prepend_argument_to_function<'a>(f: Ast<'a>, arg: Ast<'a>, location: Location<'a>) -> Ast<'a> {
-    if let Ast::FunctionCall(mut call) = f {
-        call.args.insert(0, arg);
-        Ast::FunctionCall(call)
-    } else {
-        Ast::function_call(f, vec![arg], location)
+    match f {
+        Ast::FunctionCall(mut call) => {
+            call.args.insert(0, arg);
+            Ast::FunctionCall(call)
+        },
+        Ast::Lambda(lambda @ ast::Lambda{..}) => {
+            apply_into_lambda(lambda, arg, location)
+        },
+        _ => Ast::function_call(f, vec![arg], location)
     }
 }
+
+fn apply_into_lambda<'a>(lambda: ast::Lambda<'a>, new_arg: Ast<'a>, location: Location<'a>) -> Ast<'a> {
+    let mut lambda = lambda;
+    match *lambda.body {
+        Ast::FunctionCall(mut fcall @ ast::FunctionCall{..}) => {
+            // Lambdas cant have 0 arguments
+            if lambda.args.len() > 1 {
+                let arg_to_replace =  lambda.args.remove(0);
+                replace_lambda_body(&mut fcall, new_arg, arg_to_replace);
+                Ast::lambda(lambda.args, None, Ast::FunctionCall(fcall), location)
+            } else {
+                let arg_to_replace =  lambda.args.remove(0);
+                replace_lambda_body(&mut fcall, new_arg, arg_to_replace);
+                Ast::FunctionCall(fcall)
+            }
+        },
+        _ => unimplemented!()
+    }
+}
+
+fn replace_lambda_body<'a>(f: &mut ast::FunctionCall<'a>, new_arg: Ast<'a>, arg_replace: Ast<'a>) {
+    let idxs: Vec<usize> = f.args
+                .iter()
+                .enumerate()
+                .filter(|(i, x)| name_matches(&arg_replace, x))
+                .map(|(i, _)| i).collect();
+    // dbg!(f, new_arg, arg_replace);
+    // dbg!(&idxs);
+
+    for idx in idxs {
+        let src = 
+        match &new_arg {
+            Ast::Literal(ast::Literal {kind,  location, ..}) => 
+            Some(Ast::Literal(ast::Literal { kind: kind.clone(), location : location.clone(), typ: None })),
+            _ => None
+        };
+        if let Some(src) = src {
+            let _ = mem::replace(&mut f.args[idx], src);
+        }
+    }
+}
+
+fn name_matches<'a>(matcher: &Ast<'a>, arg: &&Ast<'a>) -> bool {
+    match (matcher, arg) {
+        (Ast::Variable(ast::Variable{ kind: ast::VariableKind::Identifier(x), .. }), 
+        Ast::Variable(ast::Variable{ kind: ast::VariableKind::Identifier(y), .. })) if x == y => true,
+        _ => false
+    }
+}
+
 
 /// Parse an arbitrary expression using the shunting-yard algorithm
 fn expression<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {

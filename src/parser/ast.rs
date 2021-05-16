@@ -42,7 +42,7 @@ pub enum LiteralKind {
     Unit,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Literal<'a> {
     pub kind: LiteralKind,
     pub location: Location<'a>,
