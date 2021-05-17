@@ -49,7 +49,7 @@ pub struct Literal<'a> {
     pub typ: Option<types::Type>
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum VariableKind {
     Identifier(String),
     Operator(Token),
@@ -57,7 +57,7 @@ pub enum VariableKind {
 }
 
 /// a, b, (+), Some, etc.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Variable<'a> {
     pub kind: VariableKind,
     pub location: Location<'a>,

@@ -1,28 +1,30 @@
 
-// two = 3 |> second 2
-one = 3 |> (fn x -> x + x)
-too = 3 |> second _ 2
-three = 3 |> second 2 _
+zero = 3 |> (fn x -> x + x)
+one = 2 |> (fn x y -> x + y) <| 1
 
-four = second 4 <| 5
-fore = second _ 4 <| 5
+
+two = 3 |> second _ 2
+three = second _ 4 <| 5
+
+four = val |> second 2 _
 five = second 4 _ <| 5
+six = second 4 _ _ <| 5
 
-foo = second 4 _ _ <| 5
-
-bar = 3 |> (2 |> (1 |> count _ _ _))
-baz = ((count _ _ _ <| 1) <| 2) <| 3
-baz = (foo 2) |> count _ _ _ <| 1
+seven = 3 |> (2 |> (1 |> count _ _ _))
+eight = ((count _ _ _ <| 1) <| 2) <| 3
+nine = 2 |> count _ _ _ <| 1
+ten = (call "example") |> count _ _
 
 // args: --parse
 // expected stdout:
-// (one = ('+' 3 3));
-// (too = (second 3 2));
-// (three = (second 2 3));
-// (four = (second 5 4));
-// (fore = (second 5 4));
+// (zero = ('+' 3 3));
+// (one = ('+' 1 2));
+// (two = (second 3 2));
+// (three = (second 5 4));
+// (four = (second 2 val));
 // (five = (second 4 5));
-// (foo = (fn $2 -> (second 4 5 $2)));
-// (bar = (count 1 2 3));
-// (baz = (count 1 2 3));
-// (baz = (fn $1 $2 $3 -> (count $1 $2 $3)))
+// (six = (fn $2 -> (second 4 5 $2)));
+// (seven = (count 1 2 3));
+// (eight = (count 1 2 3));
+// (nine = (fn $3 -> (count 1 2 $3)));
+// (ten = ((fn $1 $2 -> (count $1 $2)) (call "example")))
