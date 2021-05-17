@@ -1,7 +1,9 @@
 
+foo = 1 |> b |> a _ _
+bar = 1 |> Some |> a _ _
+
 zero = 3 |> (fn x -> x + x)
 one = 2 |> (fn x y -> x + y) <| 1
-
 
 two = 3 |> second _ 2
 three = second _ 4 <| 5
@@ -17,6 +19,8 @@ ten = (call "example") |> count _ _
 
 // args: --parse
 // expected stdout:
+// (foo = ((fn $1 $2 -> (a $1 $2)) (b 1)));
+// (bar = ((fn $1 $2 -> (a $1 $2)) (Some 1)));
 // (zero = ('+' 3 3));
 // (one = ('+' 1 2));
 // (two = (second 3 2));
