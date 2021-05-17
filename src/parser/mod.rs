@@ -430,28 +430,32 @@ fn prepend_argument_to_function<'a>(f: Ast<'a>, arg: Ast<'a>, location: Location
 
 fn apply_into_lambda<'a>(lambda: ast::Lambda<'a>, new_arg: Ast<'a>, location: Location<'a>) -> Ast<'a> {
     let mut lambda = lambda;
-    match *lambda.body {
-        Ast::FunctionCall(mut fcall @ ast::FunctionCall{..}) => {
-            // Lambdas cant have 0 arguments
-            if lambda.args.len() > 1 {
-                let arg_to_replace =  lambda.args.remove(0);
-                replace_lambda_body(&mut fcall, new_arg, arg_to_replace);
-                Ast::lambda(lambda.args, None, Ast::FunctionCall(fcall), location)
-            } else {
-                let arg_to_replace =  lambda.args.remove(0);
-                replace_lambda_body(&mut fcall, new_arg, arg_to_replace);
-                Ast::FunctionCall(fcall)
+
+    if let Ast::FunctionCall(ast::FunctionCall{..}) = *lambda.body{
+        if matches!(new_arg, Ast::Literal(_) | Ast::Variable(_)) {
+            if let Ast::FunctionCall(mut fcall @ ast::FunctionCall{..}) = *lambda.body {
+                // Lambdas cant have 0 arguments
+                if lambda.args.len() > 1 {
+                    let arg_to_replace =  lambda.args.remove(0);
+                    replace_lambda_body(&mut fcall, new_arg, arg_to_replace);
+                    return Ast::lambda(lambda.args, None, Ast::FunctionCall(fcall), location)
+                } else {
+                    let arg_to_replace =  lambda.args.remove(0);
+                    replace_lambda_body(&mut fcall, new_arg, arg_to_replace);
+                    return Ast::FunctionCall(fcall)
+                }
             }
-        },
-        _ => unimplemented!()
+        }
     }
+
+    Ast::function_call(Ast::Lambda(lambda), vec![new_arg], location)
 }
 
 fn replace_lambda_body<'a>(f: &mut ast::FunctionCall<'a>, new_arg: Ast<'a>, arg_replace: Ast<'a>) {
     let idxs: Vec<usize> = f.args
                 .iter()
                 .enumerate()
-                .filter(|(i, x)| name_matches(&arg_replace, x))
+                .filter(|(_, x)| name_matches(&arg_replace, x))
                 .map(|(i, _)| i).collect();
     // dbg!(f, new_arg, arg_replace);
     // dbg!(&idxs);

@@ -1,0 +1,28 @@
+
+// two = 3 |> second 2
+one = 3 |> (fn x -> x + x)
+too = 3 |> second _ 2
+three = 3 |> second 2 _
+
+four = second 4 <| 5
+fore = second _ 4 <| 5
+five = second 4 _ <| 5
+
+foo = second 4 _ _ <| 5
+
+bar = 3 |> (2 |> (1 |> count _ _ _))
+baz = ((count _ _ _ <| 1) <| 2) <| 3
+baz = (foo 2) |> count _ _ _ <| 1
+
+// args: --parse
+// expected stdout:
+// (one = ('+' 3 3));
+// (too = (second 3 2));
+// (three = (second 2 3));
+// (four = (second 5 4));
+// (fore = (second 5 4));
+// (five = (second 4 5));
+// (foo = (fn $2 -> (second 4 5 $2)));
+// (bar = (count 1 2 3));
+// (baz = (count 1 2 3));
+// (baz = (fn $1 $2 $3 -> (count $1 $2 $3)))
