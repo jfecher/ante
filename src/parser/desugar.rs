@@ -1,5 +1,4 @@
 
-use std::mem;
 use crate::{error::location::Locatable, lexer::token::Token, parser::ast, util::fmap};
 use crate::parser::ast::Ast;
 use crate::error::location::Location;
