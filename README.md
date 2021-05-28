@@ -8,22 +8,22 @@ Ante is a low-level functional language for exploring refinement types, lifetime
 other fun features. Here's a quick taste:
 
 ```scala
-type Person = job: string, name: ref string
+type Person = name: string, job: ref string
 
-// the data referenced via `&` should not be freed inside this function
-make_person job =
-    Person job &"bob"
+// Infer that the data referenced via `&` should not be freed inside this function
+make_person name =
+    Person name &"programmer"
 
 // bob is only used at this scope, so it can be safely freed afterward
-bob = make_person "programmer"
+bob = make_person "bob"
 
-// unlike ownership systems, aliasing is allowed with region inference
+// unlike ownership systems, aliasing is allowed with lifetime inference
 bob_twin = bob
 assert (bob.name == bob_twin.name)
 ```
 
 In general, ante is low-level (no GC, values aren't boxed by default) while also trying to
-be as easy as possible by encouraging high-level approaches that can be optimized with
+be as readable as possible by encouraging high-level approaches that can be optimized with
 low-level details later on.
 
 See the [website](https://antelang.org) and [language tour](https://antelang.org/docs/language/) for more information.
@@ -44,6 +44,7 @@ See the [website](https://antelang.org) and [language tour](https://antelang.org
     - [ ] RAII to allow `Rc t` or `Box t` when necessary
 - [x] Language [Documentation](https://antelang.org/docs/language/):
     - [x] [Article on Ante's use of whitespace for line continuations](https://antelang.org/docs/language/#line-continuations)
+    - [ ] Article on the sugar for immediately invoked recursive functions
     - [ ] Article on interactions between `mut`, `ref`, and passing by reference
     - [ ] Article on autoboxing recursive types for polymorphic pointer types
 - [ ] Refinement Types
