@@ -8,7 +8,7 @@ use crate::cache::{ ModuleCache, DefinitionInfoId, DefinitionKind };
 use crate::error::location::Location;
 use crate::lexer::token::{ IntegerKind, Token };
 use crate::nameresolution::{ NameResolver, declare_module, define_module };
-use crate::types::{ Type, PrimitiveType, TypeInfoBody, Field, LetBindingLevel, STRING_TYPE, PAIR_TYPE };
+use crate::types::{ Type, PrimitiveType, TypeInfoBody, Field, LetBindingLevel, STRING_TYPE, PAIR_TYPE, PTR_TYPE };
 
 use std::path::PathBuf;
 
@@ -20,6 +20,9 @@ pub const PAIR_ID: DefinitionInfoId = DefinitionInfoId(0);
 /// `define_builtins` function here being called before any other
 /// symbol is defined. This is asserted to be the case within that function.
 pub const BUILTIN_ID: DefinitionInfoId = DefinitionInfoId(1);
+
+/// DefinitionInfoId for the Ptr constructor
+pub const PTR_ID: DefinitionInfoId = DefinitionInfoId(2);
 
 /// Defines the builtin symbols:
 /// - `type string = c_string: ref char, len: usz`
@@ -44,6 +47,10 @@ pub fn define_builtins<'a>(cache: &mut ModuleCache<'a>) {
     let builtin_fn_type = Type::Function(vec![string_type], Box::new(Type::TypeVariable(a)), false);
     let builtin_type= Type::ForAll(vec![a], Box::new(builtin_fn_type));
     info.typ = Some(builtin_type);
+
+    // TODO: Ptr shouldn't be as commonly used as string so we may want
+    // to in the future move it to another module so users have to explicitly import it. 
+    define_ptr(cache);
 }
 
 /// The prelude is currently stored (along with the rest of the stdlib) in the
@@ -70,8 +77,18 @@ pub fn import_prelude<'a>(resolver: &mut NameResolver, cache: &mut ModuleCache<'
 
     // Manually insert some builtins as if they were defined in the prelude
     resolver.current_scope().traits.insert("Int".into(), cache.int_trait);
+
+    // Add string to scope
+    resolver.current_scope().types.insert("string".to_string(), STRING_TYPE);
+    resolver.current_scope().definitions.insert("string".to_string(), BUILTIN_ID);
+
+    // Add pair (,) to scope
     resolver.current_scope().types.insert(Token::Comma.to_string(), PAIR_TYPE);
     resolver.current_scope().definitions.insert(Token::Comma.to_string(), PAIR_ID);
+
+    // Add Ptr to scope
+    resolver.current_scope().types.insert("Ptr".to_string(), PTR_TYPE);
+    resolver.current_scope().definitions.insert("Ptr".to_string(), PTR_ID);
 }
 
 /// Defining the 'string' type is a bit different than most other builtins. Since 'string' has
@@ -102,6 +119,35 @@ fn define_string<'a>(cache: &mut ModuleCache<'a>) -> Type {
 
     Type::UserDefinedType(STRING_TYPE)
 }
+
+/// Defining the 'Ptr' built in type
+///
+/// type Ptr a = Ptr a
+fn define_ptr<'a>(cache: &mut ModuleCache<'a>) {
+    let location = Location::builtin();
+
+    let a = cache.next_type_variable_id(LetBindingLevel(0));
+    let ptr = Type::Primitive(PrimitiveType::Ptr);
+    
+    let name = "Ptr".to_owned();
+    let ptr_id = cache.push_type_info(name.clone(), vec![a], location);
+    assert_eq!(ptr_id, PTR_TYPE);
+    
+    // Define constructor
+    let args = vec![Type::TypeVariable(a)];
+    let ptr = Box::new(ptr);
+    let ptr_a = Box::new(Type::TypeApplication(ptr, args.clone()));
+    let constructor_type = Box::new(Type::Function(args, ptr_a, false));
+    let constructor_type = Type::ForAll(vec![a], constructor_type);
+    
+    // Register new type constructor with the Ptr type
+    let id = cache.push_definition(&name, false, location);
+    let constructor = DefinitionKind::TypeConstructor { name, tag: None };
+
+    cache.definition_infos[id.0].typ = Some(constructor_type);
+    cache.definition_infos[id.0].definition = Some(constructor);
+}
+
 
 /// The builtin pair type is defined here as:
 ///

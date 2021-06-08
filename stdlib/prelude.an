@@ -12,9 +12,9 @@ extern
     putchar: char -> unit
     getchar: unit -> char
     exit: i32 -> never_returns
-    malloc: usz -> ref a
+    malloc: usz -> Ptr a
     realloc: (ref a) usz -> ref a
-    free: (ref a) -> unit
+    free: (Ptr a) -> i32
     memcpy: (ref a) (ref b) i32 -> ref a //dest
     system: (ref char) -> i32
     strlen: (ref char) -> i32

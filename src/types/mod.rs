@@ -38,6 +38,7 @@ pub enum PrimitiveType {
     CharType,                 // : *
     BooleanType,              // : *
     UnitType,                 // : *
+    Ptr,                      // : * -> *
 }
 
 /// Any type in ante. Note that a trait is not a type. Traits are
@@ -186,6 +187,9 @@ pub const STRING_TYPE: TypeInfoId = TypeInfoId(0);
 /// It is somewhat special in that it is the only type defined with
 /// an operator for its name, but it is otherwise a normal struct type.
 pub const PAIR_TYPE: TypeInfoId = TypeInfoId(1);
+
+/// The Ptr type is like the built in string type
+pub const PTR_TYPE: TypeInfoId = TypeInfoId(2);
 
 #[derive(Debug)]
 pub enum TypeInfoBody<'a> {

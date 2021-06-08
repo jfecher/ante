@@ -440,6 +440,7 @@ impl<'g> Generator<'g> {
             Primitive(CharType) => 1,
             Primitive(BooleanType) => 1,
             Primitive(UnitType) => 1,
+            Primitive(Ptr) => Self::ptr_size(),
 
             Function(..) => Self::ptr_size(),
 
@@ -471,6 +472,7 @@ impl<'g> Generator<'g> {
             CharType => self.context.i8_type().into(),
             BooleanType => self.context.bool_type().into(),
             UnitType => self.context.bool_type().into(),
+            Ptr => unreachable!("Kind error during code generation"),
         }
     }
 
@@ -552,6 +554,7 @@ impl<'g> Generator<'g> {
     /// struct type in the resulting LLVM IR.
     fn convert_type<'c>(&mut self, typ: &types::Type, cache: &ModuleCache<'c>) -> BasicTypeEnum<'g> {
         use types::Type::*;
+        use types::PrimitiveType::Ptr;
 
         match typ {
             Primitive(primitive) => self.convert_primitive_type(primitive, cache),
@@ -571,7 +574,8 @@ impl<'g> Generator<'g> {
                 let typ = self.follow_bindings(typ, cache);
 
                 match &typ {
-                    Ref(_) => {
+                    Primitive(Ptr) 
+                    | Ref(_) => {
                         assert!(args.len() == 1);
                         self.convert_type(&args[0], cache).ptr_type(AddressSpace::Generic).into()
                     },
