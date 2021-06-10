@@ -8,24 +8,27 @@ use crate::cache::{ ModuleCache, DefinitionInfoId, DefinitionKind };
 use crate::error::location::Location;
 use crate::lexer::token::{ IntegerKind, Token };
 use crate::nameresolution::{ NameResolver, declare_module, define_module };
-use crate::types::{ Type, PrimitiveType, TypeInfoBody, Field, LetBindingLevel, STRING_TYPE, PAIR_TYPE, PTR_TYPE };
+use crate::types::{ Type, PrimitiveType, TypeInfoBody, Field, LetBindingLevel, STRING_TYPE, PAIR_TYPE };
 
 use std::path::PathBuf;
-
-/// DefinitionInfoId for the pair constructor `,` to construct values like (1, 2)
-pub const PAIR_ID: DefinitionInfoId = DefinitionInfoId(0);
 
 /// The DefinitionInfoId of the `builtin` symbol is defined to be
 /// the first id. This invariant needs to be maintained by the
 /// `define_builtins` function here being called before any other
 /// symbol is defined. This is asserted to be the case within that function.
-pub const BUILTIN_ID: DefinitionInfoId = DefinitionInfoId(1);
+pub const BUILTIN_ID: DefinitionInfoId = DefinitionInfoId(0);
 
-/// DefinitionInfoId for the Ptr constructor
-pub const PTR_ID: DefinitionInfoId = DefinitionInfoId(2);
+/// DefinitionInfoId for the string constructor to construct a string from its raw parts
+pub const STRING_ID: DefinitionInfoId = DefinitionInfoId(1);
+
+/// DefinitionInfoId for the pair constructor `,` to construct values like (1, 2)
+pub const PAIR_ID: DefinitionInfoId = DefinitionInfoId(2);
+
+/// DefinitionInfoId for the ptr constructor to construct pointers without lifetimes
+pub const PTR_ID: DefinitionInfoId = DefinitionInfoId(3);
 
 /// Defines the builtin symbols:
-/// - `type string = c_string: ref char, len: usz`
+/// - `type string = c_string: ptr char, len: usz`
 /// - `builtin : string -> a` used by the codegen pass to implement
 ///   codegen of builtin operations such as adding integers.
 ///
@@ -33,13 +36,14 @@ pub const PTR_ID: DefinitionInfoId = DefinitionInfoId(2);
 /// created, otherwise the `builtin` symbol will have the wrong id. If this
 /// happens, this function will assert at runtime.
 pub fn define_builtins<'a>(cache: &mut ModuleCache<'a>) {
-    let string_type = define_string(cache);
-    define_pair(cache);
 
     // Define builtin : forall a. string -> a imported only into the prelude to define
     // builtin operations by name. The specific string arguments are matched on in src/llvm/builtin.rs
     let id = cache.push_definition("builtin", false, Location::builtin());
     assert!(id == BUILTIN_ID);
+
+    let string_type = define_string(cache);
+    define_pair(cache);
 
     let a = cache.next_type_variable_id(LetBindingLevel(1));
     let info = &mut cache.definition_infos[id.0];
@@ -77,18 +81,8 @@ pub fn import_prelude<'a>(resolver: &mut NameResolver, cache: &mut ModuleCache<'
 
     // Manually insert some builtins as if they were defined in the prelude
     resolver.current_scope().traits.insert("Int".into(), cache.int_trait);
-
-    // Add string to scope
-    resolver.current_scope().types.insert("string".to_string(), STRING_TYPE);
-    resolver.current_scope().definitions.insert("string".to_string(), BUILTIN_ID);
-
-    // Add pair (,) to scope
     resolver.current_scope().types.insert(Token::Comma.to_string(), PAIR_TYPE);
     resolver.current_scope().definitions.insert(Token::Comma.to_string(), PAIR_ID);
-
-    // Add Ptr to scope
-    resolver.current_scope().types.insert("Ptr".to_string(), PTR_TYPE);
-    resolver.current_scope().definitions.insert("Ptr".to_string(), PTR_ID);
 }
 
 /// Defining the 'string' type is a bit different than most other builtins. Since 'string' has
@@ -96,42 +90,47 @@ pub fn import_prelude<'a>(resolver: &mut NameResolver, cache: &mut ModuleCache<'
 ///
 /// The builtin string type is defined here as:
 ///
-/// type string = c_string: ref char, length: usz
-///
-/// TODO: The C-string field probably shouldn't be region-allocated with ref (?).
-///       This container type likely needs to change.
+/// type string = c_string: ptr char, length: usz
 fn define_string<'a>(cache: &mut ModuleCache<'a>) -> Type {
     let location = Location::builtin();
 
-    let ref_type = Type::Ref(cache.next_type_variable_id(LetBindingLevel(1)));
+    let ptr_type = Type::Primitive(PrimitiveType::Ptr);
     let char_type = Type::Primitive(PrimitiveType::CharType);
-    let c_string_type = Type::TypeApplication(Box::new(ref_type), vec![char_type]);
+    let c_string_type = Type::TypeApplication(Box::new(ptr_type), vec![char_type]);
 
     let length_type = Type::Primitive(PrimitiveType::IntegerType(IntegerKind::Usz));
 
-    let string = cache.push_type_info("string".into(), vec![], location);
-    assert_eq!(string, STRING_TYPE);
+    let name = "string".to_string();
+    let string_id = cache.push_type_info(name.clone(), vec![], location);
+    assert_eq!(string_id, STRING_TYPE);
+    let string = Type::UserDefinedType(STRING_TYPE);
 
-    cache.type_infos[string.0].body = TypeInfoBody::Struct(vec![
-        Field { name: "c_string".into(), field_type: c_string_type, location },
-        Field { name: "length".into(),   field_type: length_type,   location },
+    let fields = TypeInfoBody::Struct(vec![
+        Field { name: "c_string".into(), field_type: c_string_type.clone(), location },
+        Field { name: "length".into(),   field_type: length_type.clone(),   location },
     ]);
 
-    Type::UserDefinedType(STRING_TYPE)
+    let constructor = cache.push_definition(&name, false, Location::builtin());
+    assert_eq!(constructor, STRING_ID);
+    let constructor_type = Type::Function(vec![c_string_type, length_type], Box::new(string.clone()), false);
+
+    cache.definition_infos[constructor.0].typ = Some(constructor_type);
+    cache.definition_infos[constructor.0].definition = Some(DefinitionKind::TypeConstructor { name, tag: None });
+
+    cache.type_infos[string_id.0].body = fields;
+    string
 }
 
-/// Defining the 'Ptr' built in type
+/// Defining the 'ptr' builtin type
 ///
-/// type Ptr a = Ptr a
+/// type ptr a
 fn define_ptr<'a>(cache: &mut ModuleCache<'a>) {
     let location = Location::builtin();
 
     let a = cache.next_type_variable_id(LetBindingLevel(0));
     let ptr = Type::Primitive(PrimitiveType::Ptr);
     
-    let name = "Ptr".to_owned();
-    let ptr_id = cache.push_type_info(name.clone(), vec![a], location);
-    assert_eq!(ptr_id, PTR_TYPE);
+    let name = "ptr".to_string();
     
     // Define constructor
     let args = vec![Type::TypeVariable(a)];
@@ -142,6 +141,7 @@ fn define_ptr<'a>(cache: &mut ModuleCache<'a>) {
     
     // Register new type constructor with the Ptr type
     let id = cache.push_definition(&name, false, location);
+    assert_eq!(id, PTR_ID);
     let constructor = DefinitionKind::TypeConstructor { name, tag: None };
 
     cache.definition_infos[id.0].typ = Some(constructor_type);
@@ -179,6 +179,7 @@ fn define_pair<'a>(cache: &mut ModuleCache<'a>) {
 
     // and now register a new type constructor in the cache with the given type
     let id = cache.push_definition(&name, false, location);
+    assert_eq!(id, PAIR_ID);
     let constructor = DefinitionKind::TypeConstructor { name, tag: None };
 
     cache.definition_infos[id.0].typ = Some(constructor_type);

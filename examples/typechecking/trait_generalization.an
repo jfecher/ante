@@ -1,4 +1,4 @@
 a = "test".c_string
 
 // args: --check --show-types
-// expected stdout: a : (ref{a} char)
+// expected stdout: a : (ptr char)
