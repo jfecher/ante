@@ -188,9 +188,6 @@ pub const STRING_TYPE: TypeInfoId = TypeInfoId(0);
 /// an operator for its name, but it is otherwise a normal struct type.
 pub const PAIR_TYPE: TypeInfoId = TypeInfoId(1);
 
-/// The Ptr type is like the built in string type
-pub const PTR_TYPE: TypeInfoId = TypeInfoId(2);
-
 #[derive(Debug)]
 pub enum TypeInfoBody<'a> {
     Union(Vec<TypeConstructor<'a>>),

@@ -163,6 +163,7 @@ pub enum Type<'a> {
     FloatType(Location<'a>),
     CharType(Location<'a>),
     StringType(Location<'a>),
+    PointerType(Location<'a>),
     BooleanType(Location<'a>),
     UnitType(Location<'a>),
     ReferenceType(Location<'a>),

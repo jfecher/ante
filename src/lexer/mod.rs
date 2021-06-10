@@ -106,6 +106,7 @@ impl<'cache, 'contents> Lexer<'cache, 'contents> {
             ("float", Token::FloatType),
             ("char", Token::CharType),
             ("string", Token::StringType),
+            ("ptr", Token::PointerType),
             ("bool", Token::BooleanType),
             ("unit", Token::UnitType),
             ("ref", Token::Ref),

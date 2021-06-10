@@ -110,7 +110,7 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
             PrimitiveType::CharType => write!(f, "{}", "char".blue()),
             PrimitiveType::BooleanType => write!(f, "{}", "bool".blue()),
             PrimitiveType::UnitType => write!(f, "{}", "unit".blue()),
-            PrimitiveType::Ptr => write!(f, "{}", "Ptr".blue()),
+            PrimitiveType::Ptr => write!(f, "{}", "ptr".blue()),
         }
     }
 

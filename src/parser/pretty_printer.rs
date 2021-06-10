@@ -93,6 +93,7 @@ impl<'a> Display for ast::Type<'a> {
             FloatType(_) => write!(f, "float"),
             CharType(_) => write!(f, "char"),
             StringType(_) => write!(f, "string"),
+            PointerType(_) => write!(f, "ptr"),
             BooleanType(_) => write!(f, "bool"),
             UnitType(_) => write!(f, "unit"),
             ReferenceType(_) => write!(f, "ref"),
