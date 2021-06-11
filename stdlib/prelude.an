@@ -7,17 +7,17 @@
 
 //C functions
 extern 
-    printf: (ptr char) ... -> unit
-    puts: (ptr char) -> i32
+    printf: (Ptr char) ... -> unit
+    puts: (Ptr char) -> i32
     putchar: char -> unit
     getchar: unit -> char
     exit: i32 -> never_returns
-    malloc: usz -> ptr a
-    realloc: (ptr a) usz -> ptr a
-    free: (ptr a) -> i32
-    memcpy: (ptr a) (ref b) i32 -> ptr a //dest
-    system: (ptr char) -> i32
-    strlen: (ptr char) -> i32
+    malloc: usz -> Ptr a
+    realloc: (Ptr a) usz -> Ptr a
+    free: (Ptr a) -> i32
+    memcpy: (Ptr a) (ref b) i32 -> Ptr a //dest
+    system: (Ptr char) -> i32
+    strlen: (Ptr char) -> i32
 
 //C stdio
 type File = f: ref unit
