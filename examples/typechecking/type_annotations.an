@@ -5,7 +5,7 @@ bar: a a -> i32 =
     fn _ b -> b
 
 exit2 = exit
-puts2: (ptr char) -> i32 = puts
+puts2: (Ptr char) -> i32 = puts
 
 exit2 "test"
 puts2
