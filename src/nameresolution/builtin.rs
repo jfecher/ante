@@ -24,9 +24,6 @@ pub const STRING_ID: DefinitionInfoId = DefinitionInfoId(1);
 /// DefinitionInfoId for the pair constructor `,` to construct values like (1, 2)
 pub const PAIR_ID: DefinitionInfoId = DefinitionInfoId(2);
 
-/// DefinitionInfoId for the ptr constructor to construct pointers without lifetimes
-pub const PTR_ID: DefinitionInfoId = DefinitionInfoId(3);
-
 /// Defines the builtin symbols:
 /// - `type string = c_string: ptr char, len: usz`
 /// - `builtin : string -> a` used by the codegen pass to implement
@@ -36,11 +33,10 @@ pub const PTR_ID: DefinitionInfoId = DefinitionInfoId(3);
 /// created, otherwise the `builtin` symbol will have the wrong id. If this
 /// happens, this function will assert at runtime.
 pub fn define_builtins<'a>(cache: &mut ModuleCache<'a>) {
-
     // Define builtin : forall a. string -> a imported only into the prelude to define
     // builtin operations by name. The specific string arguments are matched on in src/llvm/builtin.rs
     let id = cache.push_definition("builtin", false, Location::builtin());
-    assert!(id == BUILTIN_ID);
+    assert_eq!(id, BUILTIN_ID);
 
     let string_type = define_string(cache);
     define_pair(cache);
@@ -51,10 +47,6 @@ pub fn define_builtins<'a>(cache: &mut ModuleCache<'a>) {
     let builtin_fn_type = Type::Function(vec![string_type], Box::new(Type::TypeVariable(a)), false);
     let builtin_type= Type::ForAll(vec![a], Box::new(builtin_fn_type));
     info.typ = Some(builtin_type);
-
-    // TODO: Ptr shouldn't be as commonly used as string so we may want
-    // to in the future move it to another module so users have to explicitly import it. 
-    define_ptr(cache);
 }
 
 /// The prelude is currently stored (along with the rest of the stdlib) in the
@@ -90,7 +82,7 @@ pub fn import_prelude<'a>(resolver: &mut NameResolver, cache: &mut ModuleCache<'
 ///
 /// The builtin string type is defined here as:
 ///
-/// type string = c_string: ptr char, length: usz
+/// type string = c_string: Ptr char, length: usz
 fn define_string<'a>(cache: &mut ModuleCache<'a>) -> Type {
     let location = Location::builtin();
 
@@ -120,34 +112,6 @@ fn define_string<'a>(cache: &mut ModuleCache<'a>) -> Type {
     cache.type_infos[string_id.0].body = fields;
     string
 }
-
-/// Defining the 'ptr' builtin type
-///
-/// type ptr a
-fn define_ptr<'a>(cache: &mut ModuleCache<'a>) {
-    let location = Location::builtin();
-
-    let a = cache.next_type_variable_id(LetBindingLevel(0));
-    let ptr = Type::Primitive(PrimitiveType::Ptr);
-    
-    let name = "ptr".to_string();
-    
-    // Define constructor
-    let args = vec![Type::TypeVariable(a)];
-    let ptr = Box::new(ptr);
-    let ptr_a = Box::new(Type::TypeApplication(ptr, args.clone()));
-    let constructor_type = Box::new(Type::Function(args, ptr_a, false));
-    let constructor_type = Type::ForAll(vec![a], constructor_type);
-    
-    // Register new type constructor with the Ptr type
-    let id = cache.push_definition(&name, false, location);
-    assert_eq!(id, PTR_ID);
-    let constructor = DefinitionKind::TypeConstructor { name, tag: None };
-
-    cache.definition_infos[id.0].typ = Some(constructor_type);
-    cache.definition_infos[id.0].definition = Some(constructor);
-}
-
 
 /// The builtin pair type is defined here as:
 ///
