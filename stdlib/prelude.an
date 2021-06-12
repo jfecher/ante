@@ -15,25 +15,25 @@ extern
     malloc: usz -> Ptr a
     realloc: (Ptr a) usz -> Ptr a
     free: (Ptr a) -> i32
-    memcpy: (Ptr a) (ref b) i32 -> Ptr a //dest
+    memcpy: (Ptr a) (Ptr b) i32 -> Ptr a //dest
     system: (Ptr char) -> i32
     strlen: (Ptr char) -> i32
 
 //C stdio
-type File = f: ref unit
-type FilePos = f: ref unit
+type File = f: Ptr unit
+type FilePos = f: Ptr unit
 
 type InFile = f:File
 type OutFile = f:File
 
 extern
-    fopen: (ref char) (ref char) -> File
+    fopen: (Ptr char) (Ptr char) -> File
     fclose: File -> unit
 
-    fputs: (ref char) OutFile -> i32
+    fputs: (Ptr char) OutFile -> i32
     fputc: i32 OutFile -> i32
     fgetc: InFile -> i32
-    fgets: (ref char) i32 InFile -> ref char
+    fgets: (Ptr char) i32 InFile -> Ptr char
     ungetc: i32 InFile -> i32
 
     fgetpos: File FilePos -> unit
@@ -77,10 +77,10 @@ trait Cast a b with
 impl Cast a a with
     cast a = a
 
-impl Cast (ref a) usz with
-    cast (_ptr: ref a) = builtin "CastRefUsz"
+impl Cast (Ptr a) usz with
+    cast (_ptr: Ptr a) = builtin "CastRefUsz"
 
-impl Cast usz (ref a) with
+impl Cast usz (Ptr a) with
     cast (_address: usz) = builtin "CastUszRef"
 
 impl Cast (Maybe m) string given Cast m string with
@@ -209,7 +209,7 @@ impl Print bool with
 //     printne t = printne (t as string)
 
 
-impl Cast string (ref char) with
+impl Cast string (Ptr char) with
     cast s = s.c_string
 
 // TODO: loops
