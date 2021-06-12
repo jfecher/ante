@@ -38,6 +38,7 @@ pub enum PrimitiveType {
     CharType,                 // : *
     BooleanType,              // : *
     UnitType,                 // : *
+    Ptr,                      // : * -> *
 }
 
 /// Any type in ante. Note that a trait is not a type. Traits are

@@ -106,6 +106,7 @@ impl<'cache, 'contents> Lexer<'cache, 'contents> {
             ("float", Token::FloatType),
             ("char", Token::CharType),
             ("string", Token::StringType),
+            ("Ptr", Token::PointerType),
             ("bool", Token::BooleanType),
             ("unit", Token::UnitType),
             ("ref", Token::Ref),
@@ -281,7 +282,7 @@ impl<'cache, 'contents> Lexer<'cache, 'contents> {
         let is_type = self.current.is_uppercase();
         let word = self.advance_while(|current, _| current.is_alphanumeric() || current == '_');
 
-        if is_type {
+        if !self.keywords.contains_key(word) && is_type {
             Some((Token::TypeName(word.to_owned()), self.locate()))
         } else {
             match self.keywords.get(word) {

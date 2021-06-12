@@ -523,6 +523,7 @@ fn basic_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
         Token::FloatType => float_type(input),
         Token::CharType => char_type(input),
         Token::StringType => string_type(input),
+        Token::PointerType => pointer_type(input),
         Token::BooleanType => boolean_type(input),
         Token::UnitType => unit_type(input),
         Token::Ref => reference_type(input),
@@ -693,6 +694,11 @@ parser!(char_type loc -> 'b Type<'b> =
 parser!(string_type loc -> 'b Type<'b> =
     _ <- expect(Token::StringType);
     Type::StringType(loc)
+);
+
+parser!(pointer_type loc -> 'b Type<'b> =
+    _ <- expect(Token::PointerType);
+    Type::PointerType(loc)
 );
 
 parser!(boolean_type loc -> 'b Type<'b> =

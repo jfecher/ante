@@ -450,6 +450,7 @@ impl<'c> NameResolver {
             ast::Type::FloatType(_) => Type::Primitive(PrimitiveType::FloatType),
             ast::Type::CharType(_) => Type::Primitive(PrimitiveType::CharType),
             ast::Type::StringType(_) => Type::UserDefinedType(STRING_TYPE),
+            ast::Type::PointerType(_) => Type::Primitive(PrimitiveType::Ptr),
             ast::Type::BooleanType(_) => Type::Primitive(PrimitiveType::BooleanType),
             ast::Type::UnitType(_) => Type::Primitive(PrimitiveType::UnitType),
             ast::Type::FunctionType(args, ret, varargs, _) => {
