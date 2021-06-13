@@ -1,6 +1,6 @@
 # Ante
 
-[![Travis (.org)](https://img.shields.io/travis/jfecher/ante)](https://travis-ci.org/github/jfecher/ante)
+[![Build Status](https://img.shields.io/endpoint.svg?url=https%3A%2F%2Factions-badge.atrox.dev%2Fjfecher%2Fante%2Fbadge&style=flat)](https://actions-badge.atrox.dev/jfecher/ante/goto)
 
 ---
 
