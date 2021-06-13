@@ -32,7 +32,7 @@ use inkwell::module::{ Module, Linkage };
 use inkwell::builder::Builder;
 use inkwell::basic_block::BasicBlock;
 use inkwell::context::Context;
-use inkwell::values::{ AggregateValue, BasicValueEnum, BasicValue, FunctionValue, InstructionOpcode };
+use inkwell::values::{ AggregateValue, BasicValueEnum, BasicValue, CallableValue, FunctionValue, InstructionOpcode };
 use inkwell::types::{ BasicTypeEnum, BasicType };
 use inkwell::AddressSpace;
 use inkwell::targets::{ RelocMode, CodeModel, FileType, TargetTriple };
@@ -41,6 +41,7 @@ use inkwell::passes::{PassManager, PassManagerBuilder};
 use inkwell::targets::{InitializationConfig, Target, TargetMachine };
 
 use std::collections::{ HashMap, HashSet };
+use std::convert::TryFrom;
 use std::path::{ Path, PathBuf };
 use std::process::Command;
 
@@ -1136,8 +1137,9 @@ impl<'g, 'c> CodeGen<'g, 'c> for ast::FunctionCall<'c> {
                 // generalized.
                 let args = fmap(&self.args, |arg| arg.codegen(generator, cache));
 
-                let function = self.function.codegen(generator, cache);
-                generator.builder.build_call(function.into_pointer_value(), &args, "")
+                let function_pointer = self.function.codegen(generator, cache).into_pointer_value();
+                let function = CallableValue::try_from(function_pointer).unwrap();
+                generator.builder.build_call(function, &args, "")
                     .try_as_basic_value().left().unwrap()
             },
         }
