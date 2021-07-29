@@ -10,7 +10,7 @@ colored = "1.9"
 mimalloc = { version = "0.1.19", default-features = false }
 difference = "2.0.0"
 goldentests = "0.3.8"
-inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm10-0"] }
+inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm12-0"] }
 dirs = "3.0"
 
 [build-dependencies]
