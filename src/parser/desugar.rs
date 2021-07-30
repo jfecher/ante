@@ -38,11 +38,16 @@ fn matches_not_typeconstructor(function: &Ast) -> bool {
     !matches!(function, Ast::Variable(ast::Variable{ kind: ast::VariableKind::TypeConstructor(_), ..}))
 }
 
-/// Turns `bar |> foo` into `foo bar`
-pub fn desugar_apply_operator<'a>(operator: Token, lhs: Ast<'a>, rhs: Ast<'a>, location: Location<'a>) -> Ast<'a> {
+/// Turns:
+/// - `bar |> foo` into `foo bar` (applies to <| as well)
+/// - `a and b` into `if a then b else false`
+/// - `a or b` into `if a then true else b`
+pub fn desugar_operators<'a>(operator: Token, lhs: Ast<'a>, rhs: Ast<'a>, location: Location<'a>) -> Ast<'a> {
     match operator {
         Token::ApplyLeft  => prepend_argument_to_function(lhs, rhs, location),
         Token::ApplyRight => prepend_argument_to_function(rhs, lhs, location),
+        Token::And => Ast::if_expr(lhs, rhs, Some(Ast::bool_literal(false, location)), location),
+        Token::Or => Ast::if_expr(lhs, Ast::bool_literal(true, location), Some(rhs), location),
         _ => {
             let operator = Ast::operator(operator, location);
             Ast::function_call(operator, vec![lhs, rhs], location)

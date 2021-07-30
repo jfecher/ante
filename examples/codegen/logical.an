@@ -1,0 +1,5 @@
+
+print (true and true or false and false)
+
+// args: --run --delete-binary
+// expected stdout: true

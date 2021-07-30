@@ -399,7 +399,7 @@ fn pop_operator<'c>(operator_stack: &mut Vec<&Token>, results: &mut Vec<(Ast<'c>
     let (lhs, lhs_location) = results.pop().unwrap();
     let location = lhs_location.union(rhs_location);
     let operator = operator_stack.pop().unwrap().clone();
-    let call =  desugar::desugar_apply_operator(operator, lhs, rhs, location);
+    let call = desugar::desugar_operators(operator, lhs, rhs, location);
     results.push((call, location));
 }
 
