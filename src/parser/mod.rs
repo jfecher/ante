@@ -509,6 +509,14 @@ fn parse_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
     ], &"type")(input)
 }
 
+fn function_arg_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
+    or(&[
+        type_application,
+        pair_type,
+        basic_type
+    ], &"type")(input)
+}
+
 fn parse_type_no_pair<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
     or(&[
         function_type,
@@ -656,7 +664,7 @@ parser!(unit loc =
 );
 
 parser!(function_type loc -> 'b Type<'b> =
-    args <- many1(basic_type);
+    args <- delimited_trailing(function_arg_type, expect(Token::Subtract));
     varargs <- maybe(varargs);
     _ <- expect(Token::RightArrow);
     return_type <- parse_type;

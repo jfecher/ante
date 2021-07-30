@@ -3,7 +3,7 @@ type Vec t =
     len: usz
     cap: usz
 
-impl Empty (Vec e)
+impl Empty (Vec e) with
     empty = Vec (cast 0) 0usz 0usz
 
 of iterable =
@@ -135,16 +135,16 @@ type VecIter t =
     idx: usz
     len: usz
 
-impl Iterable (Vec t) (VecIter t) t
+impl Iterable (Vec t) (VecIter t) t with
     into_iter v = VecIter v._data 0usz v.len
 
-impl Iterator (VecIter t) t
+impl Iterator (VecIter t) t with
     cur_elem v = v.view#v.idx
     advance v = VecIter v.view (v.idx + 1usz) v.len
     has_next v = v.idx < v.len
 
 
-impl Print (Vec t)
+impl Print (Vec t) with
     printne v =
         printne "{ "
 
@@ -158,20 +158,20 @@ impl Print (Vec t)
 
         printne " }"
 
-impl Extract (Vec t) usz t
+impl Extract (Vec t) usz t with
     (#) v i = v._data#i
 
-impl Insert (Vec t) usz t
+impl Insert (Vec t) usz t with
     insert v i x = v._data#i := x
 
-impl In t (Vec t)
+impl In t (Vec t) with
     (in) elem v =
         for e in v do
             if e == elem then
                 return true
         false
 
-impl Eq (Vec t)
+impl Eq (Vec t) with
     (==) l r =
         if l.len != r.len then
             return false

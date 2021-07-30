@@ -1,10 +1,10 @@
 
 trait Functor f with
-    map: (f a) (a -> b) -> f b
+    map: f a - (a -> b) -> f b
 
 trait Monad m with
     wrap: a -> m a
-    bind: (m a) (a -> m b) -> m b
+    bind: m a - (a -> m b) -> m b
 
 
 impl Functor Maybe with

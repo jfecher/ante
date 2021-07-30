@@ -1,6 +1,6 @@
 
 trait Foo a with
-    foo: a a -> a
+    foo: a - a -> a
 
 impl Foo i32 with
     foo _a b = b

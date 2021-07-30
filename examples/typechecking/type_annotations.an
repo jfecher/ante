@@ -1,7 +1,7 @@
 
 foo (_: i32) (_: string) : char = 'a'
 
-bar: a a -> i32 =
+bar: a - a -> i32 =
     fn _ b -> b
 
 exit2 = exit

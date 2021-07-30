@@ -8,7 +8,7 @@ trait Cast a b -> c with
 // A collection c of elements of type e
 // The element type is uniquely determined by the collection's type c
 trait Collection c -> e with
-    push: c e -> c
+    push: c - e -> c
     pop: c -> Maybe e
     empty: c
 

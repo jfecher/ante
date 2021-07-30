@@ -7,17 +7,17 @@
 
 //C functions
 extern 
-    printf: (Ptr char) ... -> unit
-    puts: (Ptr char) -> i32
+    printf: Ptr char - ... -> unit
+    puts: Ptr char -> i32
     putchar: char -> unit
     getchar: unit -> char
     exit: i32 -> never_returns
     malloc: usz -> Ptr a
-    realloc: (Ptr a) usz -> Ptr a
-    free: (Ptr a) -> i32
-    memcpy: (Ptr a) (Ptr b) i32 -> Ptr a //dest
-    system: (Ptr char) -> i32
-    strlen: (Ptr char) -> i32
+    realloc: Ptr a - usz -> Ptr a
+    free: Ptr a -> i32
+    memcpy: Ptr a - Ptr b - i32 -> Ptr a //dest
+    system: Ptr char -> i32
+    strlen: Ptr char -> i32
 
 //C stdio
 type File = f: Ptr unit
@@ -27,19 +27,19 @@ type InFile = f:File
 type OutFile = f:File
 
 extern
-    fopen: (Ptr char) (Ptr char) -> File
+    fopen: Ptr char - Ptr char -> File
     fclose: File -> unit
 
-    fputs: (Ptr char) OutFile -> i32
-    fputc: i32 OutFile -> i32
+    fputs: Ptr char - OutFile -> i32
+    fputc: i32 - OutFile -> i32
     fgetc: InFile -> i32
-    fgets: (Ptr char) i32 InFile -> Ptr char
-    ungetc: i32 InFile -> i32
+    fgets: Ptr char - i32 - InFile -> Ptr char
+    ungetc: i32 - InFile -> i32
 
-    fgetpos: File FilePos -> unit
+    fgetpos: File - FilePos -> unit
     ftell: File -> i32
-    fsetpos: File FilePos -> unit
-    fseek: File i32 i32 -> i32
+    fsetpos: File - FilePos -> unit
+    fseek: File - i32 - i32 -> i32
 
     feof: InFile -> i32
     ferror: File -> i32
@@ -99,27 +99,27 @@ impl TryCast a b given Cast a b with
 
 
 // Huge block of builtin numeric operators incoming
-trait Add n with (+): n n -> n
+trait Add n with (+): n - n -> n
 impl Add a given Int a with (+) _ _ = builtin "AddInt"
 impl Add float with (+) (_: float) (_: float) : float = builtin "AddFloat"
 
-trait Sub n with (-): n n -> n
+trait Sub n with (-): n - n -> n
 impl Sub a given Int a with (-) _ _ = builtin "SubInt"
 impl Sub float with (-) (_: float) (_: float) : float = builtin "SubFloat"
 
-trait Mul n with (*): n n -> n
+trait Mul n with (*): n - n -> n
 impl Mul a given Int a with (*) _ _ = builtin "MulInt"
 impl Mul float with (*) (_: float) (_: float) : float = builtin "MulFloat"
 
-trait Div n with (/): n n -> n
+trait Div n with (/): n - n -> n
 impl Div a given Int a with (/) _ _ = builtin "DivInt"
 impl Div float with (/) (_: float) (_: float) : float = builtin "DivFloat"
 
-trait Mod n with (%): n n -> n
+trait Mod n with (%): n - n -> n
 impl Mod a given Int a with (%) _ _ = builtin "ModInt"
 impl Mod float with (%) (_: float) (_: float) : float = builtin "ModFloat"
 
-trait Eq t with (==): t t -> bool
+trait Eq t with (==): t - t -> bool
 impl Eq a given Int a with (==) _ _ = builtin "EqInt"
 impl Eq float with (==) (_: float) (_: float) : bool = builtin "EqFloat"
 
@@ -137,7 +137,7 @@ impl Eq Ordering with
         | _ -> false
 
 trait Cmp a with
-    compare: a a -> Ordering
+    compare: a - a -> Ordering
 
 (<) a b = compare a b == Less
 (>) a b = compare a b == Greater
@@ -157,17 +157,17 @@ impl Cmp float with
         else Equal
 
 trait Append t with
-    (++): t t -> t
+    (++): t - t -> t
 
 trait Extract collection index -> elem with
-    (#): collection index -> elem
+    (#): collection - index -> elem
 
 // TODO: 'mut' and special-case extract versus append
 // trait Insert collection index elem
-//     (#): (mut collection) index elem -> unit
+//     (#): mut collection - index - elem -> unit
 
 trait In elem col with
-    (in): elem col -> bool
+    (in): elem - col -> bool
 
 // trait Deref ptr -> elem
 //     (@): ptr -> elem
@@ -261,17 +261,8 @@ impl Cast string (Ptr char) with
 //     (==) l r = @l == @r
 
 
-//For-loops work over any range that is Iterable
-trait Iterable i -> it with
-    into_iter: i -> it
-
-trait Iterator i -> elem with
-    has_next: i -> bool
-    cur_elem: i -> elem
-    advance: i -> i
-
-impl Iterable i i given Iterator i with
-    into_iter i = i
+trait Iterator it -> elem with
+    next: it -> Maybe (it, elem)
 
 // Iterating through an InFile iterates through each line
 // impl Iterator InFile string

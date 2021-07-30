@@ -2,7 +2,7 @@
 extern foo: a -> b
 
 extern
-    add: i32 i32 -> i32
+    add: i32 - i32 -> i32
     puts2: string -> unit
     exit2: i32 -> never_returns
 
