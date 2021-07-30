@@ -299,7 +299,7 @@ pub struct VariableId(pub usize);
 impl<'a> ModuleCache<'a> {
     pub fn new(project_directory: &'a Path) -> ModuleCache<'a> {
         let mut cache = ModuleCache {
-            relative_roots: vec![project_directory.to_owned(), dirs::config_dir().unwrap().join("stdlib")],
+            relative_roots: vec![project_directory.to_owned(), dirs::config_dir().unwrap().join("ante/stdlib")],
             int_trait: TraitInfoId(0), // Dummy value since we must have the cache to push a trait
             prelude_path: dirs::config_dir().unwrap().join("stdlib/prelude"),
             // Really wish you could do ..Default::default() for the remaining fields
