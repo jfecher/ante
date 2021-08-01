@@ -9,7 +9,7 @@ trait Monad m with
 
 impl Functor Maybe with
     map m f =
-        match m with
+        match m
         | Some x -> Some (f x)
         | None -> None
 
@@ -17,7 +17,7 @@ impl Monad Maybe with
     wrap a = Some a
     
     bind m f =
-        match m with
+        match m
         | Some x -> f x
         | None -> None
 

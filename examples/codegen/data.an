@@ -7,7 +7,7 @@ puts t.b.c_string
 
 s = Some 2
 
-match s with
+match s
 | Some x -> log "s = %d\n" x
 | None -> log "s = None\n" 0
 

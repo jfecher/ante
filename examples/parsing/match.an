@@ -1,7 +1,7 @@
 
 "before"
 
-match test "foo" "bar" with
+match test "foo" "bar"
 | 2 3 -> "foo"
 
 | "bar" -> "bar"
@@ -9,12 +9,12 @@ match test "foo" "bar" with
     if true then 1 else 2
 
 | "last branch" ->
-    match "nested" with
+    match "nested"
     | "hi!" -> "yo"
 
 "after"
 
-match "empty" with
+match "empty"
 
 "done"
 

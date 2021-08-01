@@ -9,7 +9,7 @@ impl MyIterable i32 i32 with
         else Some (x, x - 1)
 
 iter iterable f =
-    match mynext iterable with
+    match mynext iterable
     | None -> ()
     | Some (elem, rest) ->
         f elem

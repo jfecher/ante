@@ -469,8 +469,6 @@ parser!(if_expr loc =
 parser!(match_expr loc =
     _ <- expect(Token::Match);
     expression !<- block_or_statement;
-    _ !<- maybe_newline;
-    _ !<- expect(Token::With);
     branches !<- many0(match_branch);
     Ast::match_expr(expression, branches, loc)
 );

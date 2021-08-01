@@ -59,7 +59,7 @@ type Result t e =
 
 impl Eq (Maybe e) given Eq e with
     (==) l r =
-        match l, r with
+        match l, r
         | Some lv, Some rv -> lv == rv
         | None, None -> true
         | _ -> false
@@ -85,7 +85,7 @@ impl Cast usz (Ptr a) with
 
 impl Cast (Maybe m) string given Cast m string with
     cast maybe =
-        match maybe with
+        match maybe
         | Some val -> "Some (" ++ cast val ++ ")"
         | None -> "None"
 
@@ -130,7 +130,7 @@ type Ordering = | Less | Equal | Greater
 
 impl Eq Ordering with
     (==) (a: Ordering) (b: Ordering) : bool =
-        match a, b with
+        match a, b
         | Less, Less -> true
         | Equal, Equal -> true
         | Greater, Greater -> true
