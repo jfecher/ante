@@ -363,6 +363,20 @@ impl<'a> Ast<'a> {
         }
     }
 
+    /// True if this variable can be matched on, ie. it
+    /// is both a Variable node and is not a VariableKind::TypeConstructor
+    fn is_matchable_variable(&self) -> bool {
+        match self {
+            Ast::Variable(variable) => {
+                match variable.kind {
+                    VariableKind::TypeConstructor(..) => false,
+                    _ => true,
+                }
+            },
+            _ => false,
+        }
+    }
+
     pub fn integer(x: u64, kind: IntegerKind, location: Location<'a>) -> Ast<'a> {
         Ast::Literal(Literal { kind: LiteralKind::Integer(x, kind), location, typ: None })
     }
@@ -413,8 +427,26 @@ impl<'a> Ast<'a> {
         Ast::If(If { condition: Box::new(condition), then: Box::new(then), otherwise: otherwise.map(Box::new), location, typ: None })
     }
 
-    pub fn match_expr(expression: Ast<'a>, branches: Vec<(Ast<'a>, Ast<'a>)>, location: Location<'a>) -> Ast<'a> {
-        Ast::Match(Match { expression: Box::new(expression), branches, decision_tree: None, location, typ: None })
+    pub fn definition(pattern: Ast<'a>, expr: Ast<'a>, location: Location<'a>) -> Ast<'a> {
+        Ast::Definition(Definition { pattern: Box::new(pattern), expr: Box::new(expr), location, mutable: false, level: None, info: None, typ: None })
+    }
+
+    pub fn match_expr(expression: Ast<'a>, mut branches: Vec<(Ast<'a>, Ast<'a>)>, location: Location<'a>) -> Ast<'a> {
+        // (Issue #80) When compiling a match statement with a single variable branch e.g:
+        // `match ... | x -> ... ` a single Leaf node will be emitted as the decision tree
+        // after type checking which causes us to fail since `x` will not be bound to anything
+        // without a `Case` node being present. This is a hack to avoid this situation by compiling
+        // this class of expressions into let bindings instead.
+        if branches.len() == 1 && branches[0].0.is_matchable_variable() {
+            let (pattern, rest) = branches.pop().unwrap();
+            let definition = Ast::definition(pattern, expression, location);
+            // TODO: turning this into a sequence can leak names in the match branch to surrounding
+            // code. Soundness-wise this isn't an issue since in this case we know it will always
+            // match, but it is an inconsistency that should be fixed.
+            Ast::sequence(vec![definition, rest], location)
+        } else {
+            Ast::Match(Match { expression: Box::new(expression), branches, decision_tree: None, location, typ: None })
+        }
     }
 
     pub fn type_definition(name: String, args: Vec<String>, definition: TypeDefinitionBody<'a>, location: Location<'a>) -> Ast<'a> {

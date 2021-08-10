@@ -1,0 +1,8 @@
+// #80: match expression fails to assign variables when there are no constructors to match against
+// Before the fix this crashed during codegen with an internal error message
+
+match 3
+| x -> x
+
+// args: --run --delete-binary
+// expected stdout:
