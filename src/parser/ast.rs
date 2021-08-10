@@ -351,6 +351,18 @@ impl PartialEq for LiteralKind {
 
 /// These are all convenience functions for creating various Ast nodes from the parser
 impl<'a> Ast<'a> {
+    pub fn get_operator(self) -> Option<Token> {
+        match self {
+            Ast::Variable(variable) => {
+                match variable.kind {
+                    VariableKind::Operator(token) => Some(token),
+                    _ => None,
+                }
+            },
+            _ => None,
+        }
+    }
+
     pub fn integer(x: u64, kind: IntegerKind, location: Location<'a>) -> Ast<'a> {
         Ast::Literal(Literal { kind: LiteralKind::Integer(x, kind), location, typ: None })
     }

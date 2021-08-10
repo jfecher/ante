@@ -452,7 +452,7 @@ fn term<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
 parser!(function_call loc =
     function <- member_access;
     args <- many1(function_argument);
-    desugar::desugar_explicit_currying(function, args, loc)
+    desugar::desugar_explicit_currying(function, args, Ast::function_call, loc)
 );
 
 
