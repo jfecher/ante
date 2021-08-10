@@ -44,7 +44,7 @@ See the [website](https://antelang.org) and [language tour](https://antelang.org
     - [ ] RAII to allow `Rc t` or `Box t` when necessary
 - [x] Language [Documentation](https://antelang.org/docs/language/):
     - [x] [Article on Ante's use of whitespace for line continuations](https://antelang.org/docs/language/#line-continuations)
-    - [ ] Article on the sugar for immediately invoked recursive functions
+    - [x] [Article on the sugar for immediately invoked recursive functions (loop/recur)](https://antelang.org/docs/language/#loops)
     - [ ] Article on interactions between `mut`, `ref`, and passing by reference
     - [ ] Article on autoboxing recursive types for polymorphic pointer types
 - [ ] Refinement Types
