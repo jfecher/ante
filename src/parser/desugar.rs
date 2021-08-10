@@ -5,13 +5,13 @@ use crate::error::location::Location;
 
 /// Turns `(foo _  _ 2)` into `(fn $1 $2 -> (foo $1 $2 2))`
 pub fn desugar_explicit_currying<'a, F>(function: Ast<'a>, args: Vec<Ast<'a>>,
-        default: F, loc: Location<'a>) -> Ast<'a>
+        make_function_call: F, loc: Location<'a>) -> Ast<'a>
     where F: FnOnce(Ast<'a>, Vec<Ast<'a>>, Location<'a>) -> Ast<'a>
 {
-    if matches_not_typeconstructor(&function) && args.iter().any(matches_underscore) {
-        curried_function_call(function, args, default, loc)
+    if args.iter().any(matches_underscore) {
+        curried_function_call(function, args, make_function_call, loc)
     } else {
-        default(function, args, loc)
+        make_function_call(function, args, loc)
     }
 }
 
@@ -38,10 +38,6 @@ fn curried_function_call<'a, F>(function: Ast<'a>, args: Vec<Ast<'a>>,
 
 fn matches_underscore(arg: &Ast) -> bool {
     matches!(arg, Ast::Variable(ast::Variable{ kind: ast::VariableKind::Identifier(x), ..}) if x == "_")
-}
-
-fn matches_not_typeconstructor(function: &Ast) -> bool {
-    !matches!(function, Ast::Variable(ast::Variable{ kind: ast::VariableKind::TypeConstructor(_), ..}))
 }
 
 /// Turns:
