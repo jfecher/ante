@@ -91,6 +91,7 @@ pub struct Lambda<'a> {
     pub args: Vec<Ast<'a>>,
     pub body: Box<Ast<'a>>,
     pub return_type: Option<Type<'a>>,
+    pub closure_environment: Vec<DefinitionInfoId>,
     pub location: Location<'a>,
     pub typ: Option<types::Type>,
 }
@@ -415,7 +416,7 @@ impl<'a> Ast<'a> {
 
     pub fn lambda(args: Vec<Ast<'a>>, return_type: Option<Type<'a>>, body: Ast<'a>, location: Location<'a>) -> Ast<'a> {
         assert!(!args.is_empty());
-        Ast::Lambda(Lambda { args, body: Box::new(body), return_type, location, typ: None })
+        Ast::Lambda(Lambda { args, body: Box::new(body), closure_environment: vec![], return_type, location, typ: None })
     }
 
     pub fn function_call(function: Ast<'a>, args: Vec<Ast<'a>>, location: Location<'a>) -> Ast<'a> {

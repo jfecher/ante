@@ -12,6 +12,7 @@
 //! struct for more details on this.
 use std::collections::HashMap;
 use crate::cache::{ DefinitionInfoId, TraitInfoId, ImplInfoId, ModuleCache, ImplScopeId };
+use crate::parser::ast;
 use crate::types::{ TypeInfoId, TypeVariableId };
 use crate::error::location::{ Location, Locatable };
 
@@ -148,5 +149,61 @@ impl TypeVariableScope {
 
     pub fn get(&self, key: &str) -> Option<&TypeVariableId> {
         self.type_variables.get(key)
+    }
+}
+
+
+#[derive(Debug)]
+pub struct FunctionScopes {
+    pub function: Option<*mut ast::Lambda<'static>>,
+    pub scopes: Vec<Scope>,
+}
+
+impl FunctionScopes {
+    pub fn new() -> FunctionScopes {
+        FunctionScopes {
+            function: None,
+            scopes: vec![],
+        }
+    }
+
+    pub fn from_lambda<'c>(lambda: &mut ast::Lambda<'c>) -> FunctionScopes {
+        let function = Some(unsafe { std::mem::transmute(lambda) });
+        FunctionScopes {
+            function,
+            scopes: vec![],
+        }
+    }
+
+    pub fn iter(&self) -> std::slice::Iter<Scope> {
+        self.scopes.iter()
+    }
+
+    pub fn last_mut(&mut self) -> &mut Scope {
+        self.scopes.last_mut().unwrap()
+    }
+
+    pub fn first(&self) -> &Scope {
+        self.scopes.first().unwrap()
+    }
+
+    pub fn pop(&mut self) {
+        self.scopes.pop();
+    }
+
+    pub fn push_new_scope<'c>(&mut self, cache: &mut ModuleCache<'c>) {
+        self.scopes.push(Scope::new(cache));
+    }
+
+    pub fn add_closure_environment_variable(&mut self, variable: DefinitionInfoId) {
+        match self.function {
+            Some(function) => {
+                let function = unsafe { function.as_mut().unwrap() };
+                function.closure_environment.push(variable);
+                function.closure_environment.sort();
+                function.closure_environment.dedup();
+            },
+            None => unreachable!("Internal compiler error: attempted to create a closure without a current function")
+        }
     }
 }

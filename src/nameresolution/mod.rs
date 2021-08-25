@@ -44,7 +44,7 @@ use crate::types::traits::RequiredTrait;
 use crate::error::{ self, location::{ Location, Locatable } };
 use crate::cache::{ ModuleCache, DefinitionInfoId, ModuleId };
 use crate::cache::{ TraitInfoId, ImplInfoId, DefinitionKind };
-use crate::nameresolution::scope::Scope;
+use crate::nameresolution::scope::{ Scope, FunctionScopes };
 use crate::lexer::{ Lexer, token::Token };
 use crate::util::{ fmap, trustme, timing };
 
@@ -83,7 +83,7 @@ pub enum NameResolutionState {
 pub struct NameResolver {
     filepath: PathBuf,
 
-    /// The stack of functions we are currently compiling.
+    /// The stack of functions scopes we are currently compiling.
     /// Since we do not follow function calls, we are only inside multiple
     /// functions when their definitions are nested, e.g. in:
     ///
@@ -92,7 +92,7 @@ pub struct NameResolver {
     ///     bar () + 2
     ///
     /// Our callstack would consist of [main/global scope, foo, bar]
-    scopes: Vec<Scope>,
+    scopes: Vec<FunctionScopes>,
 
     /// Contains all the publically exported symbols of the current module.
     /// The purpose of the 'declare' pass is to fill this field out for
@@ -157,7 +157,8 @@ impl PartialEq for NameResolver {
 macro_rules! lookup_fn {
     ( $name:ident , $stack_field:ident , $cache_field:ident, $return_type:ty ) => {
         fn $name<'c>(&self, name: &str, cache: &mut ModuleCache<'c>) -> Option<$return_type> {
-            for stack in self.scopes.iter().rev() {
+            let function_scope = self.scopes.last().unwrap();
+            for stack in function_scope.iter().rev() {
                 if let Some(id) = stack.$stack_field.get(name) {
                     cache.$cache_field[id.0].uses += 1;
                     return Some(*id);
@@ -176,9 +177,45 @@ macro_rules! lookup_fn {
 }
 
 impl NameResolver {
-    lookup_fn!(lookup_definition, definitions, definition_infos, DefinitionInfoId);
+    // lookup_fn!(lookup_definition, definitions, definition_infos, DefinitionInfoId);
     lookup_fn!(lookup_type, types, type_infos, TypeInfoId);
     lookup_fn!(lookup_trait, traits, trait_infos, TraitInfoId);
+
+    /// Similar to the lookup functions above, but will also lookup variables that are
+    /// defined in a parent function to keep track of which variables closures
+    /// will need in their environment.
+    fn reference_definition<'c>(&mut self, name: &str, cache: &mut ModuleCache<'c>) -> Option<DefinitionInfoId> {
+        let current_function_scope = self.scopes.last().unwrap();
+
+        for stack in current_function_scope.iter().rev() {
+            if let Some(&id) = stack.definitions.get(name) {
+                cache.definition_infos[id.0].uses += 1;
+                return Some(id);
+            }
+        }
+
+        // If name wasn't found yet, try any parent function scopes.
+        // If we find it here, also mark the current lambda as a closure.
+        let range = 1 .. std::cmp::max(1, self.scopes.len() - 1);
+
+        for function_scope in self.scopes[range].iter().rev() {
+            for stack in function_scope.iter().rev() {
+                if let Some(&id) = stack.definitions.get(name) {
+                    cache.definition_infos[id.0].uses += 1;
+                    self.function_scopes().add_closure_environment_variable(id);
+                    return Some(id);
+                }
+            }
+        }
+
+        // Otherwise, check globals/imports
+        if let Some(id) = self.global_scope().definitions.get(name) {
+            cache.definition_infos[id.0].uses += 1;
+            return Some(*id);
+        }
+
+        None
+    }
 
     fn lookup_type_variable(&self, name: &str) -> Option<TypeVariableId> {
         for scope in self.type_variable_scopes.iter().rev() {
@@ -191,17 +228,22 @@ impl NameResolver {
     }
 
     fn push_scope(&mut self, cache: &mut ModuleCache) {
-        self.scopes.push(Scope::new(cache));
+        self.function_scopes().push_new_scope(cache);
         let impl_scope = self.current_scope().impl_scope;
 
         // TODO optimization: this really shouldn't be necessary to copy all the
         // trait impl ids for each scope just so Variables can store their scope
         // for the type checker to do trait resolution.
-        for scope in self.scopes.iter().rev() {
+        for scope in self.scopes[0].iter().rev() {
             for (_, impls) in scope.impls.iter() {
                 cache.impl_scopes[impl_scope.0].append(&mut impls.clone());
             }
         }
+    }
+
+    fn push_lambda<'c>(&mut self, lambda: &mut ast::Lambda<'c>, cache: &mut ModuleCache<'c>) {
+        self.scopes.push(FunctionScopes::from_lambda(lambda));
+        self.push_scope(cache);
     }
 
     fn push_type_variable_scope(&mut self) {
@@ -222,6 +264,11 @@ impl NameResolver {
         if warn_unused {
             self.current_scope().check_for_unused_definitions(cache);
         }
+        self.function_scopes().pop();
+    }
+
+    fn pop_lambda<'c>(&mut self, cache: &mut ModuleCache<'c>) {
+        self.pop_scope(cache, true);
         self.scopes.pop();
     }
 
@@ -229,13 +276,17 @@ impl NameResolver {
         self.type_variable_scopes.pop();
     }
 
+    fn function_scopes(&mut self) -> &mut FunctionScopes {
+        self.scopes.last_mut().unwrap()
+    }
+
     fn current_scope(&mut self) -> &mut Scope {
-        let top = self.scopes.len() - 1;
-        &mut self.scopes[top]
+        let function_scopes = self.function_scopes();
+        function_scopes.last_mut()
     }
 
     fn global_scope(&self) -> &Scope {
-        &self.scopes[0]
+        self.scopes[0].first()
     }
 
     fn in_global_scope(&self) -> bool {
@@ -399,7 +450,7 @@ impl<'c> NameResolver {
 
         let mut resolver = NameResolver {
             filepath: filepath.to_owned(),
-            scopes: vec![],
+            scopes: vec![FunctionScopes::new()],
             exports: Scope::new(cache),
             type_variable_scopes: vec![scope::TypeVariableScope::default()],
             state: NameResolutionState::DeclareInProgress,
@@ -633,7 +684,7 @@ impl<'c> Resolvable<'c> for ast::Variable<'c> {
                 resolver.definitions_collected.push(id);
                 self.definition = Some(id);
             } else {
-                self.definition = resolver.lookup_definition(name, cache);
+                self.definition = resolver.reference_definition(name, cache);
             }
 
             self.id = Some(cache.push_variable_node(name));
@@ -656,7 +707,7 @@ impl<'c> Resolvable<'c> for ast::Variable<'c> {
 
                 self.id = Some(cache.push_variable_node(name));
                 self.impl_scope = Some(resolver.current_scope().impl_scope);
-                self.definition = resolver.lookup_definition(name, cache);
+                self.definition = resolver.reference_definition(name, cache);
 
                 // TODO: optimization - it would be faster and save more space if we only had
                 // to push trait binding IDs for variables that actually need trait bindings.
@@ -677,10 +728,10 @@ impl<'c> Resolvable<'c> for ast::Lambda<'c> {
     fn declare(&mut self, _resolver: &mut NameResolver, _cache: &mut ModuleCache<'c>) { }
 
     fn define(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'c>) {
-        resolver.push_scope(cache);
+        resolver.push_lambda(self, cache);
         resolver.resolve_all_definitions(self.args.iter_mut(), cache, || DefinitionKind::Parameter);
         self.body.define(resolver, cache);
-        resolver.pop_scope(cache, true);
+        resolver.pop_lambda(cache);
     }
 }
 
