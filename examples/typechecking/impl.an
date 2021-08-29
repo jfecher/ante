@@ -23,5 +23,5 @@ c = foo "one" "two"
 // a : i32
 // b : float
 // c : string
-// foo : (forall a. (a a -> a))
+// foo : (forall a. (a - a -> a))
 //   given Foo a

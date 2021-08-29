@@ -1,14 +1,12 @@
-one = fn f -> fn x -> f x  // (a -> b) -> a -> b
-two = fn f -> fn x -> f (f x) // (a -> a) -> a -> a
-add = fn m -> fn n -> fn f -> fn x -> m f (n f x)  // (a -> b -> c) -> (a -> d -> b) -> a -> d -> c
-succ = fn n -> fn f -> fn x -> f (n f x)  // ((a -> b) -> c -> a) -> (a -> b) -> c -> b
-mul = fn m -> fn n -> fn f -> fn x -> m (n f) x  // (a -> b -> c) -> (d -> a) -> d -> b -> c
-pred = fn n -> fn f -> fn x ->  n (fn g -> fn h -> h (g f)) (fn _ -> x) (fn u -> u)  // (((a -> b) -> (b -> c) -> c) -> (d -> e) -> (f -> f) -> g) -> a -> e -> g
 
-// These two 'one' instances should be instantiated from one's polytype
-one
-one
+add m n = fn f -> fn x -> m f (n f x)  // (a -> b -> c) -> (a -> d -> b) -> a -> d -> c
 
+one f x = f x  // (a -> b) -> a -> b
+two1 f x = f (f x) // (a -> a) -> a -> a
+
+two2 = add one one
+
+// id is polymorphic, expect no error here
 id 3
 id "four"
 
@@ -16,10 +14,8 @@ id x = x
 
 // args: --check --show-types
 // expected stdout:
-// add : (forall a b c d. ((a c -> d) -> ((a b -> c) -> (a -> (b -> d)))))
+// add : (forall a b c d e f. ((a - c => e) - (a - b => c) -> (a -> (b => e))))
 // id : (forall a. (a -> a))
-// mul : (forall a b c d. ((c b -> d) -> ((a -> c) -> (a -> (b -> d)))))
-// one : (forall a b. ((a -> b) -> (a -> b)))
-// pred : (forall a b c d e f g. ((((a -> c) -> ((c -> d) -> d)) (e -> b) (f -> f) -> g) -> (a -> (b -> g))))
-// succ : (forall a b c. (((b -> c) a -> b) -> ((b -> c) -> (a -> c))))
-// two : (forall a. ((a -> a) -> (a -> a)))
+// one : (forall a b c. ((a => b) - a -> b))
+// two1 : (forall a b. ((a => a) - a -> a))
+// two2 : (forall a b. ((a => a) -> (a => a)))

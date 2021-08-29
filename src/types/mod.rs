@@ -24,14 +24,14 @@ pub const DEFAULT_INTEGER_TYPE: Type =
     Type::Primitive(PrimitiveType::IntegerType(IntegerKind::I32));
 
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct TypeVariableId(pub usize);
 
 /// Primitive types are the easy cases when unifying types.
 /// They're equal simply if the other type is also the same PrimitiveType variant,
 /// there is no recursion needed like with other Types. If the `Type`
 /// enum forms a tree, then these are the leaf nodes.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum PrimitiveType {
     IntegerType(IntegerKind), // : *
     FloatType,                // : *
@@ -39,6 +39,19 @@ pub enum PrimitiveType {
     BooleanType,              // : *
     UnitType,                 // : *
     Ptr,                      // : * -> *
+}
+
+/// Function or closure types.
+/// Functions with no environment (non-closures) are
+/// represented with `environment = unit`. This allows
+/// us to infer types for higher order functions that are
+/// polymorphic over raw function types and closures.
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct FunctionType {
+    pub parameters: Vec<Type>,
+    pub return_type: Box<Type>,
+    pub environment: Box<Type>,
+    pub is_varargs: bool,
 }
 
 /// Any type in ante. Note that a trait is not a type. Traits are
@@ -49,15 +62,14 @@ pub enum PrimitiveType {
 /// Thus, PartialEq/Hash may think two types aren't equal when they otherwise
 /// would be. For this reason, these impls are currently only used after
 /// following all type bindings via `follow_bindings` or a similar function.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum Type {
     /// int, char, bool, etc
     Primitive(PrimitiveType),
 
-    /// Any function type
-    /// Note that all functions in ante take at least 1 argument
-    /// The boolean indicates whether this is a varargs function or not.
-    Function(Vec<Type>, Box<Type>, bool),
+    /// Any function type (including closures)
+    /// Note that all functions in ante take at least 1 argument.
+    Function(FunctionType),
 
     /// Any stand-in type e.g. `a` in `Vec a`. The original names are
     /// translated into unique TypeVariableIds during name resolution.
@@ -94,6 +106,19 @@ pub enum Type {
 impl Type {
     pub fn is_pair_type(&self) -> bool {
         self == &Type::UserDefinedType(PAIR_TYPE)
+    }
+
+    pub fn is_unit<'c>(&self, cache: &ModuleCache<'c>) -> bool {
+        match self {
+            Type::Primitive(PrimitiveType::UnitType) => true,
+            Type::TypeVariable(id) => {
+                match &cache.type_bindings[id.0] {
+                    TypeBinding::Bound(typ) => typ.is_unit(cache),
+                    TypeBinding::Unbound(..) => false,
+                }
+            },
+            _ => false,
+        }
     }
 
     /// Pretty-print each type with each typevar substituted for a, b, c, etc.

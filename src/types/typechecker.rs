@@ -32,12 +32,11 @@ use crate::error::location::{ Location, Locatable };
 use crate::error::{ ErrorMessage, get_error_count };
 use crate::lexer::token::IntegerKind;
 use crate::parser::ast;
-use crate::types::pattern;
-use crate::types::{ Type, Type::*, TypeVariableId, PrimitiveType, LetBindingLevel, INITIAL_LEVEL, TypeBinding::* };
-use crate::types::{ TypeBinding, TypeInfo, STRING_TYPE, PAIR_TYPE };
+use crate::types::{ pattern, traitchecker, Type, Type::*, TypeVariableId, PrimitiveType,
+                    FunctionType, LetBindingLevel, INITIAL_LEVEL, TypeBinding::*,
+                    TypeBinding, TypeInfo, STRING_TYPE, PAIR_TYPE };
 use crate::types::typed::Typed;
 use crate::types::traits::{ TraitConstraints, RequiredTrait, TraitConstraint };
-use crate::types::traitchecker;
 use crate::util::*;
 
 use std::collections::HashMap;
@@ -97,10 +96,12 @@ pub fn replace_all_typevars_with_bindings<'c>(typ: &Type, new_bindings: &mut Typ
 
         TypeVariable(id) => replace_typevar_with_binding(*id, new_bindings, TypeVariable, cache),
 
-        Function(parameters, return_type, varargs) => {
-            let parameters = fmap(parameters, |parameter| replace_all_typevars_with_bindings(parameter, new_bindings, cache));
-            let return_type = replace_all_typevars_with_bindings(return_type, new_bindings, cache);
-            Function(parameters, Box::new(return_type), *varargs)
+        Function(function) => {
+            let parameters = fmap(&function.parameters, |parameter| replace_all_typevars_with_bindings(parameter, new_bindings, cache));
+            let return_type = Box::new(replace_all_typevars_with_bindings(&function.return_type, new_bindings, cache));
+            let environment = Box::new(replace_all_typevars_with_bindings(&function.environment, new_bindings, cache));
+            let is_varargs = function.is_varargs;
+            Function(FunctionType { parameters, return_type, environment, is_varargs })
         },
         ForAll(_typevars, _typ) => {
             unreachable!("Ante does not support higher rank polymorphism");
@@ -154,10 +155,12 @@ pub fn bind_typevars<'c>(typ: &Type, type_bindings: &TypeBindings, cache: &Modul
 
         TypeVariable(id) => bind_typevar(*id, type_bindings, TypeVariable, cache),
 
-        Function(parameters, return_type, varargs) => {
-            let parameters = fmap(parameters, |parameter| bind_typevars(parameter, type_bindings, cache));
-            let return_type = bind_typevars(return_type, type_bindings, cache);
-            Function(parameters, Box::new(return_type), *varargs)
+        Function(function) => {
+            let parameters = fmap(&function.parameters, |parameter| bind_typevars(parameter, type_bindings, cache));
+            let return_type = Box::new(bind_typevars(&function.return_type, type_bindings, cache));
+            let environment = Box::new(bind_typevars(&function.environment, type_bindings, cache));
+            let is_varargs = function.is_varargs;
+            Function(FunctionType { parameters, return_type, environment, is_varargs })
         },
         ForAll(_typevars, _typ) => {
             unreachable!("Ante does not support higher rank polymorphism");
@@ -205,9 +208,10 @@ pub fn contains_any_typevars_from_list<'c>(typ: &Type, list: &[TypeVariableId], 
 
         TypeVariable(id) => type_variable_contains_any_typevars_from_list(*id, list, cache),
 
-        Function(parameters, return_type, _) => {
-            parameters.iter().any(|parameter| contains_any_typevars_from_list(parameter, list, cache))
-            || contains_any_typevars_from_list(return_type, list, cache)
+        Function(function) => {
+            function.parameters.iter().any(|parameter| contains_any_typevars_from_list(parameter, list, cache))
+            || contains_any_typevars_from_list(&function.return_type, list, cache)
+            || contains_any_typevars_from_list(&function.environment, list, cache)
         },
 
         ForAll(typevars, typ) => {
@@ -343,9 +347,10 @@ fn occurs<'b>(id: TypeVariableId, level: LetBindingLevel, typ: &Type, bindings: 
         TypeVariable(var_id) => {
             typevars_match(id, level, *var_id, bindings, cache)
         },
-        Function(parameters, return_type, _) => {
-            occurs(id, level, return_type, bindings, cache)
-            || parameters.iter().any(|parameter| occurs(id, level, parameter, bindings, cache))
+        Function(function) => {
+            function.parameters.iter().any(|parameter| occurs(id, level, parameter, bindings, cache))
+            || occurs(id, level, &function.return_type, bindings, cache)
+            || occurs(id, level, &function.environment, bindings, cache)
         },
         TypeApplication(typ, args) => {
             occurs(id, level, typ, bindings, cache)
@@ -418,23 +423,24 @@ pub fn try_unify_with_bindings<'b>(t1: &Type, t2: &Type, bindings: &mut TypeBind
             try_unify_type_variable_with_bindings(*id, t2, t1, bindings, location, cache)
         },
 
-        (Function(a_args, a_ret, a_is_varargs), Function(b_args, b_ret, b_is_varargs)) => {
-            if a_args.len() != b_args.len() {
+        (Function(function1), Function(function2)) => {
+            if function1.parameters.len() != function2.parameters.len() {
                 // Whether a function is varargs or not is never unified,
                 // so if one function is varargs, assume they both should be.
-                if !(*a_is_varargs && b_args.len() >= a_args.len()) &&
-                   !(*b_is_varargs && a_args.len() >= b_args.len()) {
+                if !(function1.is_varargs && function2.parameters.len() >= function1.parameters.len()) &&
+                   !(function2.is_varargs && function1.parameters.len() >= function2.parameters.len()) {
 
                     return Err(make_error!(location, "Function types differ in argument count: {} ({} arg(s)) and {} ({} arg(s))",
-                        t1.display(cache), t2.display(cache), a_args.len(), b_args.len()));
+                        t1.display(cache), function1.parameters.len(), t2.display(cache), function2.parameters.len()));
                 }
             }
 
-            for (a_arg, b_arg) in a_args.iter().zip(b_args.iter()) {
+            for (a_arg, b_arg) in function1.parameters.iter().zip(function2.parameters.iter()) {
                 try_unify_with_bindings(a_arg, b_arg, bindings, location, cache)?;
             }
 
-            try_unify_with_bindings(a_ret, b_ret, bindings, location, cache)?;
+            try_unify_with_bindings(&function1.return_type, &function2.return_type, bindings, location, cache)?;
+            try_unify_with_bindings(&function1.environment, &function2.environment, bindings, location, cache)?;
             Ok(())
         },
 
@@ -576,12 +582,13 @@ pub fn find_all_typevars<'a>(typ: &Type, polymorphic_only: bool, cache: &ModuleC
         TypeVariable(id) => {
             find_typevars_in_typevar_binding(*id, polymorphic_only, cache)
         },
-        Function(parameters, return_type, _) => {
+        Function(function) => {
             let mut type_variables = vec![];
-            for parameter in parameters {
+            for parameter in &function.parameters {
                 type_variables.append(&mut find_all_typevars(&parameter, polymorphic_only, cache));
             }
-            type_variables.append(&mut find_all_typevars(return_type, polymorphic_only, cache));
+            type_variables.append(&mut find_all_typevars(&function.return_type, polymorphic_only, cache));
+            type_variables.append(&mut find_all_typevars(&function.environment, polymorphic_only, cache));
             type_variables
         },
         TypeApplication(constructor, args) => {
@@ -678,12 +685,46 @@ fn infer_nested_definition<'a>(definition_id: DefinitionInfoId, impl_scope: Impl
     (info.typ.clone().unwrap(), constraints)
 }
 
+fn infer_closure_environment<'c>(environment: &[DefinitionInfoId], cache: &ModuleCache<'c>) -> Type {
+    let mut environment = fmap(environment, |env_var| {
+        // TODO: Is this unwrap safe? We may need to infer_nested_definition
+        // on these environment variables if not
+        cache.definition_infos[env_var.0].typ.clone().unwrap()
+    });
+
+    if environment.is_empty() {
+        // Non-closure functions have an environment of type unit
+        Primitive(PrimitiveType::UnitType)
+    } else if environment.len() == 1 {
+        environment.pop().unwrap()
+    } else {
+        make_tuple_type(environment)
+    }
+}
+
+/// Makes a tuple out of nested pairs with elements from the
+/// given Vec of types. Since this is made from nested pairs
+/// and includes no type terminator, it requires at least 2
+/// types to be passed in.
+fn make_tuple_type(mut types: Vec<Type>) -> Type {
+    assert!(types.len() > 1);
+    let mut ret = types.pop().unwrap();
+
+    while !types.is_empty() {
+        let typ = types.pop().unwrap();
+        let pair = Box::new(Type::UserDefinedType(PAIR_TYPE));
+        ret = Type::TypeApplication(pair, vec![typ, ret]);
+    }
+
+    ret
+}
+
 /// Binds a given type to an irrefutable pattern, recursing on the pattern and verifying
 /// that it is indeed irrefutable. If should_generalize is true, this generalizes the type given
 /// to any variable encountered. Appends the given required_traits list in the DefinitionInfo's
 /// required_traits field.
-fn bind_irrefutable_pattern<'a>(ast: &mut ast::Ast<'a>, typ: &Type,
-    required_traits: &Vec<RequiredTrait>, should_generalize: bool, cache: &mut ModuleCache<'a>)
+fn bind_irrefutable_pattern<'c>(ast: &mut ast::Ast<'c>, typ: &Type,
+    required_traits: &Vec<RequiredTrait>, should_generalize: bool, cache: &mut ModuleCache<'c>)
 {
     use ast::Ast::*;
     use ast::LiteralKind;
@@ -913,14 +954,20 @@ impl<'a> Inferable<'a> for ast::Variable<'a> {
 impl<'a> Inferable<'a> for ast::Lambda<'a> {
     fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
         // The newvars for the parameters are filled out during name resolution
-        let arg_types = fmap(&self.args, |_| next_type_variable(cache));
+        let parameter_types = fmap(&self.args, |_| next_type_variable(cache));
 
-        for (arg, arg_type) in self.args.iter_mut().zip(arg_types.iter()) {
-            bind_irrefutable_pattern(arg, arg_type, &vec![], false, cache);
+        for (parameter, parameter_type) in self.args.iter_mut().zip(parameter_types.iter()) {
+            bind_irrefutable_pattern(parameter, parameter_type, &vec![], false, cache);
         }
 
         let (return_type, traits) = infer(self.body.as_mut(), cache);
-        (Function(arg_types, Box::new(return_type), false), traits)
+
+        (Function(FunctionType {
+            parameters: parameter_types,
+            return_type: Box::new(return_type),
+            environment: Box::new(infer_closure_environment(&self.closure_environment, cache)),
+            is_varargs: false,
+        }), traits)
     }
 }
 
@@ -938,12 +985,19 @@ impl<'a> Inferable<'a> for ast::Lambda<'a> {
 impl<'a> Inferable<'a> for ast::FunctionCall<'a> {
     fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
         let (f, mut traits) = infer(self.function.as_mut(), cache);
-        let (args, mut arg_traits) = fmap_mut_pair_flatten_second(&mut self.args, |arg| infer(arg, cache));
+        let (parameters, mut arg_traits) = fmap_mut_pair_flatten_second(&mut self.args, |arg| infer(arg, cache));
 
         let return_type = next_type_variable(cache);
         traits.append(&mut arg_traits);
 
-        unify(&f, &Function(args, Box::new(return_type.clone()), false), self.location, cache);
+        let new_function = Function(FunctionType {
+            parameters,
+            return_type: Box::new(return_type.clone()),
+            environment: Box::new(next_type_variable(cache)),
+            is_varargs: false,
+        });
+
+        unify(&f, &new_function, self.location, cache);
         (return_type, traits)
     }
 }

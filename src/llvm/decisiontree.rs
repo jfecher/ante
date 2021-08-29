@@ -219,7 +219,7 @@ impl<'g> Generator<'g> {
         match typ {
             Primitive(_) => false,
             Ref(_) => false,
-            Function(_, return_type, _) => Self::is_union_constructor(return_type, cache),
+            Function(function) => Self::is_union_constructor(&function.return_type, cache),
             TypeApplication(typ, _) => Self::is_union_constructor(typ, cache),
             ForAll(_, typ) => Self::is_union_constructor(typ, cache),
             UserDefinedType(id) => cache.type_infos[id.0].is_union(),

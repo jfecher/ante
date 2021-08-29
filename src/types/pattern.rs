@@ -279,11 +279,11 @@ fn get_variant_type_from_constructor<'c>(constructor_id: DefinitionInfoId, cache
     match constructor_type {
         Some(Type::ForAll(_, typ)) => {
             match typ.as_ref() {
-                Type::Function(_, return_type, _) => get_type_info_id(return_type.as_ref()),
+                Type::Function(function) => get_type_info_id(function.return_type.as_ref()),
                 typ => get_type_info_id(typ),
             }
         },
-        Some(Type::Function(_, return_type, _)) => get_type_info_id(return_type.as_ref()),
+        Some(Type::Function(function)) => get_type_info_id(function.return_type.as_ref()),
         Some(Type::UserDefinedType(id)) => *id,
         _ => unreachable!("get_variant_type_from_constructor called on invalid constructor of type: {:?}", constructor_type),
     }
@@ -872,8 +872,8 @@ fn set_type<'c>(id: DefinitionInfoId, expected: &Type, location: Location<'c>, c
 /// then we can skip this step completely.
 fn unify_constructor_type<'c, 'a>(constructor: &'a Type, expected: &Type, location: Location<'c>, cache: &mut ModuleCache<'c>) {
     match constructor {
-        Type::Function(_, return_type, _) => {
-            typechecker::unify(&return_type, expected, location, cache);
+        Type::Function(function) => {
+            typechecker::unify(&function.return_type, expected, location, cache);
         },
         // There are no arguments, so there's no need to unify the type with the expected type.
         // We could unify to assert they're equal but this would incur a runtime cost.
@@ -885,7 +885,7 @@ fn unify_constructor_type<'c, 'a>(constructor: &'a Type, expected: &Type, locati
 /// Type::Function then this returns `vec![typ]`.
 fn parameters_of_type(typ: &Type) -> Vec<&Type> {
     match typ {
-        Type::Function(fields, _, _) => fields.iter().collect(),
+        Type::Function(function) => function.parameters.iter().collect(),
         _ => vec![typ],
     }
 }

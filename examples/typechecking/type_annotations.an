@@ -19,7 +19,7 @@ puts2
 // 
 
 // expected stdout:
-// bar : (i32 i32 -> i32)
+// bar : (i32 - i32 -> i32)
 // exit2 : (forall a. (i32 -> a))
-// foo : (i32 string -> char)
+// foo : (i32 - string -> char)
 // puts2 : ((Ptr char) -> i32)

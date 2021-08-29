@@ -8,7 +8,7 @@ use crate::cache::{ ModuleCache, DefinitionInfoId, DefinitionKind };
 use crate::error::location::Location;
 use crate::lexer::token::{ IntegerKind, Token };
 use crate::nameresolution::{ NameResolver, declare_module, define_module };
-use crate::types::{ Type, PrimitiveType, TypeInfoBody, Field, LetBindingLevel, STRING_TYPE, PAIR_TYPE };
+use crate::types::{ Type, PrimitiveType, FunctionType, TypeInfoBody, Field, LetBindingLevel, STRING_TYPE, PAIR_TYPE };
 
 use std::path::PathBuf;
 
@@ -44,7 +44,13 @@ pub fn define_builtins<'a>(cache: &mut ModuleCache<'a>) {
     let a = cache.next_type_variable_id(LetBindingLevel(1));
     let info = &mut cache.definition_infos[id.0];
 
-    let builtin_fn_type = Type::Function(vec![string_type], Box::new(Type::TypeVariable(a)), false);
+    let builtin_fn_type = Type::Function(FunctionType {
+        parameters: vec![string_type],
+        return_type: Box::new(Type::TypeVariable(a)),
+        environment: Box::new(Type::Primitive(PrimitiveType::UnitType)),
+        is_varargs: false
+    });
+
     let builtin_type= Type::ForAll(vec![a], Box::new(builtin_fn_type));
     info.typ = Some(builtin_type);
 }
@@ -104,7 +110,12 @@ fn define_string<'a>(cache: &mut ModuleCache<'a>) -> Type {
 
     let constructor = cache.push_definition(&name, false, Location::builtin());
     assert_eq!(constructor, STRING_ID);
-    let constructor_type = Type::Function(vec![c_string_type, length_type], Box::new(string.clone()), false);
+    let constructor_type = Type::Function(FunctionType {
+        parameters: vec![c_string_type, length_type],
+        return_type: Box::new(string.clone()),
+        environment: Box::new(Type::Primitive(PrimitiveType::UnitType)),
+        is_varargs: false
+    });
 
     cache.definition_infos[constructor.0].typ = Some(constructor_type);
     cache.definition_infos[constructor.0].definition = Some(DefinitionKind::TypeConstructor { name, tag: None });
@@ -135,10 +146,17 @@ fn define_pair<'a>(cache: &mut ModuleCache<'a>) {
     cache.type_infos[pair.0].args = vec![a, b];
 
     // The type is defined, now we define the constructor
-    let args = vec![Type::TypeVariable(a), Type::TypeVariable(b)];
+    let parameters = vec![Type::TypeVariable(a), Type::TypeVariable(b)];
     let pair = Box::new(Type::UserDefinedType(pair));
-    let pair_a_b = Box::new(Type::TypeApplication(pair, args.clone()));
-    let constructor_type = Box::new(Type::Function(args, pair_a_b, false));
+    let pair_a_b = Box::new(Type::TypeApplication(pair, parameters.clone()));
+
+    let constructor_type = Box::new(Type::Function(FunctionType {
+        parameters,
+        return_type: pair_a_b,
+        environment: Box::new(Type::Primitive(PrimitiveType::UnitType)),
+        is_varargs: false
+    }));
+
     let constructor_type = Type::ForAll(vec![a, b], constructor_type);
 
     // and now register a new type constructor in the cache with the given type

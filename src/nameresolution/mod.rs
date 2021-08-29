@@ -39,7 +39,7 @@
 use crate::parser::{ self, ast, ast::Ast };
 use crate::types::{ TypeInfoId, TypeVariableId, Type, PrimitiveType,
                     TypeInfoBody, TypeConstructor, Field, LetBindingLevel,
-                    INITIAL_LEVEL, STRING_TYPE };
+                    FunctionType, INITIAL_LEVEL, STRING_TYPE };
 use crate::types::traits::RequiredTrait;
 use crate::error::{ self, location::{ Location, Locatable } };
 use crate::cache::{ ModuleCache, DefinitionInfoId, ModuleId };
@@ -504,10 +504,12 @@ impl<'c> NameResolver {
             ast::Type::PointerType(_) => Type::Primitive(PrimitiveType::Ptr),
             ast::Type::BooleanType(_) => Type::Primitive(PrimitiveType::BooleanType),
             ast::Type::UnitType(_) => Type::Primitive(PrimitiveType::UnitType),
-            ast::Type::FunctionType(args, ret, varargs, _) => {
-                let args = fmap(args, |arg| self.convert_type(cache, arg));
-                let ret = self.convert_type(cache, ret);
-                Type::Function(args, Box::new(ret), *varargs)
+            ast::Type::FunctionType(args, ret, is_varargs, _) => {
+                let parameters = fmap(args, |arg| self.convert_type(cache, arg));
+                let return_type = Box::new(self.convert_type(cache, ret));
+                let environment = Box::new(Type::Primitive(PrimitiveType::UnitType));
+                let is_varargs = *is_varargs;
+                Type::Function(FunctionType { parameters, return_type, environment, is_varargs })
             },
             ast::Type::TypeVariable(name, location) => {
                 match self.lookup_type_variable(name) {
@@ -829,7 +831,12 @@ fn create_variant_constructor_type<'c>(parent_type_id: TypeInfoId, args: Vec<Typ
 
     // Create the arguments to the function type if this type has arguments
     if !args.is_empty() {
-        result = Type::Function(args, Box::new(result), false);
+        result = Type::Function(FunctionType {
+            parameters: args,
+            return_type: Box::new(result),
+            environment: Box::new(Type::Primitive(PrimitiveType::UnitType)),
+            is_varargs: false
+        });
     }
 
     // finally, wrap the type in a forall if it has type variables

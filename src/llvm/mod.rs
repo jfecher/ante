@@ -560,10 +560,11 @@ impl<'g> Generator<'g> {
         match typ {
             Primitive(primitive) => self.convert_primitive_type(primitive, cache),
 
-            Function(args, return_type, varargs) => {
-                let args = fmap(args, |typ| self.convert_type(typ, cache));
-                let return_type = self.convert_type(return_type, cache);
-                return_type.fn_type(&args, *varargs).ptr_type(AddressSpace::Generic).into()
+            // TODO: Give closures a pair type
+            Function(function) => {
+                let parameters = fmap(&function.parameters, |typ| self.convert_type(typ, cache));
+                let return_type = self.convert_type(&function.return_type, cache);
+                return_type.fn_type(&parameters, function.is_varargs).ptr_type(AddressSpace::Generic).into()
             },
 
             TypeVariable(id) => self.convert_type(&self.find_binding(*id, &UNBOUND_TYPE, cache).clone(), cache),
@@ -708,10 +709,12 @@ impl<'g> Generator<'g> {
         match typ {
             Primitive(primitive) => Primitive(*primitive),
 
-            Function(arg_types, return_type, varargs) => {
-                let args = fmap(arg_types, |typ| self.follow_bindings(typ, cache));
-                let return_type = self.follow_bindings(return_type, cache);
-                Function(args, Box::new(return_type), *varargs)
+            Function(function) => {
+                let parameters = fmap(&function.parameters, |parameter| self.follow_bindings(parameter, cache));
+                let return_type = Box::new(self.follow_bindings(&function.return_type, cache));
+                let environment = Box::new(self.follow_bindings(&function.environment, cache));
+                let is_varargs = function.is_varargs;
+                Function(types::FunctionType { parameters, return_type, environment, is_varargs })
             },
 
             TypeVariable(id) => self.follow_bindings(self.find_binding(*id, &UNBOUND_TYPE, cache), cache),
@@ -846,7 +849,7 @@ impl<'g> Generator<'g> {
         use types::Type::*;
         let typ = self.follow_bindings(typ, cache);
         match &typ {
-            Function(_, return_type, _) => {
+            Function(function_type) => {
                 let caller_block = self.current_block();
                 let (function, function_pointer) = self.function(name, &typ, cache);
 
@@ -865,7 +868,7 @@ impl<'g> Generator<'g> {
                 }
 
                 let tuple = self.tuple(elements, element_types);
-                let value = self.reinterpret_cast(tuple, &return_type, cache);
+                let value = self.reinterpret_cast(tuple, &function_type.return_type, cache);
 
                 self.build_return(value);
                 self.builder.position_at_end(caller_block);

@@ -24,10 +24,10 @@ foo_and_bar foo bar
 // expected stdout:
 // Bar : (char -> Bar)
 // Foo : (float -> Foo)
-// FooBar : (i32 string -> FooBar)
+// FooBar : (i32 - string -> FooBar)
 // bar : Bar
 // foo : Foo
-// foo_and_bar : (forall a b. (a b -> string))
+// foo_and_bar : (forall a b. (a - b -> string))
 //   given .bar b string, .foo a c
 // foobar : FooBar
 // stringify : (string -> string)
