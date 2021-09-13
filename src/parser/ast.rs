@@ -31,6 +31,7 @@ use crate::cache::{ DefinitionInfoId, TraitInfoId, ModuleId, ImplScopeId, TraitB
 use crate::types::{ self, TypeInfoId, LetBindingLevel };
 use crate::types::pattern::DecisionTree;
 use crate::util::reinterpret_as_bits;
+use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, Eq, Hash, PartialOrd, Ord)]
 pub enum LiteralKind {
@@ -91,7 +92,13 @@ pub struct Lambda<'a> {
     pub args: Vec<Ast<'a>>,
     pub body: Box<Ast<'a>>,
     pub return_type: Option<Type<'a>>,
-    pub closure_environment: Vec<DefinitionInfoId>,
+
+    /// Maps DefinitionInfoIds closed over in the environment to their new
+    /// IDs within the closure which shadow their previous definition.
+    /// Needed because closure environment variables are converted to
+    /// parameters of the function which need separate IDs.
+    pub closure_environment: BTreeMap<DefinitionInfoId, DefinitionInfoId>,
+
     pub location: Location<'a>,
     pub typ: Option<types::Type>,
 }
@@ -416,7 +423,7 @@ impl<'a> Ast<'a> {
 
     pub fn lambda(args: Vec<Ast<'a>>, return_type: Option<Type<'a>>, body: Ast<'a>, location: Location<'a>) -> Ast<'a> {
         assert!(!args.is_empty());
-        Ast::Lambda(Lambda { args, body: Box::new(body), closure_environment: vec![], return_type, location, typ: None })
+        Ast::Lambda(Lambda { args, body: Box::new(body), closure_environment: BTreeMap::new(), return_type, location, typ: None })
     }
 
     pub fn function_call(function: Ast<'a>, args: Vec<Ast<'a>>, location: Location<'a>) -> Ast<'a> {

@@ -1,0 +1,10 @@
+main () =
+    foo = "hi there"
+    stuff () = print foo
+    stuff ()
+
+main ()
+
+// args: --run --delete-binary
+// expected stdout:
+// hi there

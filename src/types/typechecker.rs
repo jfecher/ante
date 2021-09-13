@@ -39,7 +39,7 @@ use crate::types::typed::Typed;
 use crate::types::traits::{ TraitConstraints, RequiredTrait, TraitConstraint };
 use crate::util::*;
 
-use std::collections::HashMap;
+use std::collections::{ HashMap, BTreeMap };
 use std::sync::atomic::{ AtomicUsize, Ordering };
 
 /// The current LetBindingLevel we are at.
@@ -587,8 +587,8 @@ pub fn find_all_typevars<'a>(typ: &Type, polymorphic_only: bool, cache: &ModuleC
             for parameter in &function.parameters {
                 type_variables.append(&mut find_all_typevars(&parameter, polymorphic_only, cache));
             }
-            type_variables.append(&mut find_all_typevars(&function.return_type, polymorphic_only, cache));
             type_variables.append(&mut find_all_typevars(&function.environment, polymorphic_only, cache));
+            type_variables.append(&mut find_all_typevars(&function.return_type, polymorphic_only, cache));
             type_variables
         },
         TypeApplication(constructor, args) => {
@@ -685,11 +685,22 @@ fn infer_nested_definition<'a>(definition_id: DefinitionInfoId, impl_scope: Impl
     (info.typ.clone().unwrap(), constraints)
 }
 
-fn infer_closure_environment<'c>(environment: &[DefinitionInfoId], cache: &ModuleCache<'c>) -> Type {
-    let mut environment = fmap(environment, |env_var| {
-        // TODO: Is this unwrap safe? We may need to infer_nested_definition
-        // on these environment variables if not
-        cache.definition_infos[env_var.0].typ.clone().unwrap()
+fn bind_closure_environment<'c>(environment: &BTreeMap<DefinitionInfoId, DefinitionInfoId>, cache: &mut ModuleCache<'c>) {
+    for (from, to) in environment {
+        let from = cache.definition_infos[from.0].typ.as_ref().unwrap().clone();
+        let (from, _) = instantiate(&from, vec![], cache);
+
+        let to = &mut cache.definition_infos[to.0].typ;
+        assert!(to.is_none());
+        *to = Some(from);
+    }
+}
+
+fn infer_closure_environment<'c>(environment: &BTreeMap<DefinitionInfoId, DefinitionInfoId>,
+    cache: &mut ModuleCache<'c>) -> Type
+{
+    let mut environment = fmap(environment, |(_from, to)| {
+        cache.definition_infos[to.0].typ.as_ref().unwrap().clone()
     });
 
     if environment.is_empty() {
@@ -959,6 +970,8 @@ impl<'a> Inferable<'a> for ast::Lambda<'a> {
         for (parameter, parameter_type) in self.args.iter_mut().zip(parameter_types.iter()) {
             bind_irrefutable_pattern(parameter, parameter_type, &vec![], false, cache);
         }
+
+        bind_closure_environment(&self.closure_environment, cache);
 
         let (return_type, traits) = infer(self.body.as_mut(), cache);
 

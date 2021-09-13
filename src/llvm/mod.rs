@@ -40,7 +40,7 @@ use inkwell::OptimizationLevel;
 use inkwell::passes::{PassManager, PassManagerBuilder};
 use inkwell::targets::{InitializationConfig, Target, TargetMachine };
 
-use std::collections::{ HashMap, HashSet };
+use std::collections::{ HashMap, HashSet, BTreeMap };
 use std::convert::TryFrom;
 use std::path::{ Path, PathBuf };
 use std::process::Command;
@@ -272,15 +272,27 @@ impl<'g> Generator<'g> {
 
     /// Create a new function with the given name and type and set
     /// its entry block as the current insert point. Returns the
-    /// function value as a pointer.
-    fn function<'c>(&mut self, name: &str, typ: &types::Type, cache: &ModuleCache<'c>) -> (FunctionValue<'g>, BasicValueEnum<'g>) {
-        let llvm_type = self.convert_type(&typ, cache).into_pointer_type().get_element_type();
+    /// pointer to the function.
+    fn function<'c>(&mut self, name: &str, typ: &types::Type,
+        environment: &BTreeMap<DefinitionInfoId, DefinitionInfoId>,
+        cache: &mut ModuleCache<'c>) -> (FunctionValue<'g>, BasicValueEnum<'g>)
+    {
+        let typ = self.follow_bindings(typ, cache);
+        let function_type = self.convert_type(&typ, cache); //.into_pointer_type().get_element_type();
 
-        let function = self.module.add_function(name, llvm_type.into_function_type(), Some(Linkage::Internal));
+        if self.is_closure_type(&typ, cache) {
+            return self.closure(name, typ, function_type, environment, cache)
+        }
+
+        // Functions in ante are usually represented as function pointers or
+        // a pair of a function pointer and its environment (in the case of a closure).
+        // This raw function type here is an actual llvm::FunctionType, not a pointer type.
+        let raw_function_type = function_type.into_pointer_type().get_element_type().into_function_type();
+
+        let function = self.module.add_function(name, raw_function_type, Some(Linkage::Internal));
         let function_pointer = function.as_global_value().as_pointer_value().into();
 
         if let Some(id) = self.current_function_info {
-            let typ = self.follow_bindings(typ, cache);
             self.definitions.insert((id, typ), function_pointer);
             self.current_function_info = None;
         }
@@ -288,6 +300,74 @@ impl<'g> Generator<'g> {
         let basic_block = self.context.append_basic_block(function, "entry");
         self.builder.position_at_end(basic_block);
         (function, function_pointer)
+    }
+
+    /// Create a new closure with the given name and type and set
+    /// its entry block as the current insert point. Returns the
+    /// function value - which is a pair of (function_pointer, environment).
+    fn closure<'c>(&mut self, name: &str, typ: types::Type, closure_type: BasicTypeEnum<'g>,
+        environment: &BTreeMap<DefinitionInfoId, DefinitionInfoId>, cache: &mut ModuleCache<'c>) -> (FunctionValue<'g>, BasicValueEnum<'g>)
+    {
+        // Extract the raw llvm::FunctionType, from a (llvm::FunctionType*, EnvironmentType) pair
+        let function_pointer_type = closure_type.into_struct_type().get_field_type_at_index(0).unwrap();
+        let raw_function_type = function_pointer_type.into_pointer_type().get_element_type().into_function_type();
+
+        let function = self.module.add_function(name, raw_function_type, Some(Linkage::Internal));
+        let function_pointer = function.as_global_value().as_pointer_value().into();
+
+        let function_value = self.construct_closure(function_pointer, environment, cache);
+
+        if let Some(id) = self.current_function_info {
+            self.definitions.insert((id, typ), function_value);
+            self.current_function_info = None;
+        }
+
+        let basic_block = self.context.append_basic_block(function, "entry");
+        self.builder.position_at_end(basic_block);
+        (function, function_value)
+    }
+
+    fn construct_closure<'c>(&mut self, function_pointer: BasicValueEnum<'g>,
+        environment: &BTreeMap<DefinitionInfoId, DefinitionInfoId>, cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g>
+    {
+        let mut types = vec![function_pointer.get_type()];
+        let mut values = vec![function_pointer];
+
+        for (&from, _) in environment {
+            let typ = cache.definition_infos[from.0].typ.as_ref().unwrap().clone();
+            let value = self.codegen_definition(from, &typ, cache);
+            types.push(value.get_type());
+            values.push(value);
+        }
+
+        self.tuple(values, types)
+    }
+
+    /// Inserts any required instructions at the beginning of a function before any of its
+    /// body is compiled. Currently, this only consists of unpacking a closure's environment
+    /// tuple parameter and binding the values to other variables for the body to use.
+    fn codegen_function_prelude<'c>(&mut self, function: FunctionValue<'g>, closure_environment: &BTreeMap<DefinitionInfoId, DefinitionInfoId>,
+        cache: &mut ModuleCache<'c>)
+    {
+        let mut environment_parameter = function.get_last_param().unwrap();
+
+        for (i, (_, &closure_parameter)) in closure_environment.iter().enumerate() {
+            if i == closure_environment.len() - 1 {
+                let typ = cache.definition_infos[closure_parameter.0].typ.clone().unwrap();
+                let typ = self.follow_bindings(&typ, cache);
+
+                self.bind_definition_pattern(closure_parameter, typ, environment_parameter, cache);
+            } else {
+                let name = &cache.definition_infos[closure_parameter.0].name;
+                let element_value = self.builder.build_extract_value(environment_parameter.into_struct_value(), 0, name).unwrap();
+
+                let typ = cache.definition_infos[closure_parameter.0].typ.clone().unwrap();
+                let typ = self.follow_bindings(&typ, cache);
+                self.bind_definition_pattern(closure_parameter, typ, element_value, cache);
+
+                environment_parameter = self.builder.build_extract_value(environment_parameter.into_struct_value(), 1, "environment").unwrap();
+            }
+        }
     }
 
     fn add_required_impls(&mut self, required_impls: &[RequiredImpl]) {
@@ -356,17 +436,17 @@ impl<'g> Generator<'g> {
             },
             Some(DefinitionKind::TraitDefinition(_)) => {
                 unreachable!("There is no code in a trait definition that can be codegen'd.\n\
-                             No cached impl for {}: {}", definition.name, typ.display(cache))
+                             No cached impl for {} {}: {}", definition.name, id.0, typ.display(cache))
             },
             Some(DefinitionKind::Parameter) => {
                 unreachable!("There is no code to (lazily) codegen for parameters.\n\
-                             Encountered while compiling {}: {}", definition.name, typ.display(cache))
+                             Encountered while compiling {} {}: {}", definition.name, id.0, typ.display(cache))
             },
             Some(DefinitionKind::MatchPattern) => {
                 unreachable!("There is no code to (lazily) codegen for match patterns.\n
-                             Encountered while compiling {}: {}", definition.name, typ.display(cache))
+                             Encountered while compiling {} {}: {}", definition.name, id.0, typ.display(cache))
             },
-            None => unreachable!("No definition for {}", definition.name),
+            None => unreachable!("No definition for {} {}", definition.name, id.0),
         };
 
         self.monomorphisation_bindings.pop();
@@ -389,6 +469,17 @@ impl<'g> Generator<'g> {
                 }
                 default
             },
+        }
+    }
+
+    fn empty_closure_environment<'c>(&self, environment: &types::Type, cache: &ModuleCache<'c>) -> bool {
+        self.follow_bindings(environment, cache).is_unit(cache)
+    }
+
+    fn is_closure_type<'c>(&self, typ: &types::Type, cache: &ModuleCache<'c>) -> bool {
+        match typ {
+            types::Type::Function(function) => !self.empty_closure_environment(&function.environment, cache),
+            _ => false,
         }
     }
 
@@ -560,11 +651,26 @@ impl<'g> Generator<'g> {
         match typ {
             Primitive(primitive) => self.convert_primitive_type(primitive, cache),
 
-            // TODO: Give closures a pair type
             Function(function) => {
-                let parameters = fmap(&function.parameters, |typ| self.convert_type(typ, cache));
+                let mut parameters = fmap(&function.parameters, |typ| self.convert_type(typ, cache));
                 let return_type = self.convert_type(&function.return_type, cache);
-                return_type.fn_type(&parameters, function.is_varargs).ptr_type(AddressSpace::Generic).into()
+                let mut environment = None;
+
+                if !self.empty_closure_environment(&function.environment, cache) {
+                    let environment_parameter = self.convert_type(&function.environment, cache);
+                    parameters.push(environment_parameter);
+                    environment = Some(environment_parameter);
+                }
+
+                let function_pointer = return_type.fn_type(&parameters, function.is_varargs)
+                    .ptr_type(AddressSpace::Generic).into();
+
+                match environment {
+                    None => function_pointer,
+                    Some(environment) => {
+                        self.context.struct_type(&[function_pointer, environment], false).into()
+                    }
+                }
             },
 
             TypeVariable(id) => self.convert_type(&self.find_binding(*id, &UNBOUND_TYPE, cache).clone(), cache),
@@ -745,7 +851,19 @@ impl<'g> Generator<'g> {
         }
     }
 
-    fn bind_irrefutable_pattern<'c>(&mut self, ast: &Ast<'c>, mut value: BasicValueEnum<'g>, cache: &mut ModuleCache<'c>) {
+    fn bind_definition_pattern<'c>(&mut self, id: DefinitionInfoId, typ: types::Type, mut value: BasicValueEnum<'g>, cache: &mut ModuleCache<'c>) {
+        let definition = &cache.definition_infos[id.0];
+        if definition.mutable {
+            let alloca = self.builder.build_alloca(value.get_type(), &definition.name);
+            self.builder.build_store(alloca, value);
+            self.auto_derefs.insert(id);
+            value = alloca.as_basic_value_enum();
+        }
+
+        self.definitions.insert((id, typ), value);
+    }
+
+    fn bind_irrefutable_pattern<'c>(&mut self, ast: &Ast<'c>, value: BasicValueEnum<'g>, cache: &mut ModuleCache<'c>) {
         use { ast::LiteralKind, Ast::* };
         match ast {
             Literal(literal) => {
@@ -755,16 +873,7 @@ impl<'g> Generator<'g> {
             Variable(variable) => {
                 let id = variable.definition.unwrap();
                 let typ = self.follow_bindings(variable.typ.as_ref().unwrap(), cache);
-
-                let definition = &cache.definition_infos[id.0];
-                if definition.mutable {
-                    let alloca = self.builder.build_alloca(value.get_type(), &definition.name);
-                    self.builder.build_store(alloca, value);
-                    self.auto_derefs.insert(id);
-                    value = alloca.as_basic_value_enum();
-                }
-
-                self.definitions.insert((id, typ), value);
+                self.bind_definition_pattern(id, typ, value, cache);
             },
             TypeAnnotation(annotation) => {
                 self.bind_irrefutable_pattern(annotation.lhs.as_ref(), value, cache);
@@ -851,7 +960,7 @@ impl<'g> Generator<'g> {
         match &typ {
             Function(function_type) => {
                 let caller_block = self.current_block();
-                let (function, function_pointer) = self.function(name, &typ, cache);
+                let (function, function_pointer) = self.function(name, &typ, &BTreeMap::new(), cache);
 
                 let mut elements = vec![];
                 let mut element_types = vec![];
@@ -1102,13 +1211,13 @@ impl<'g, 'c> CodeGen<'g, 'c> for ast::Variable<'c> {
 impl<'g, 'c> CodeGen<'g, 'c> for ast::Lambda<'c> {
     fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
         let function_name = match &generator.current_function_info {
-            Some(id) => &cache.definition_infos[id.0].name,
-            None => "lambda",
+            Some(id) => cache.definition_infos[id.0].name.clone(),
+            None => "lambda".to_string(),
         };
 
         let caller_block = generator.current_block();
         let function_type = self.typ.as_ref().unwrap();
-        let (function, function_pointer) = generator.function(&function_name, function_type, cache);
+        let (function, function_value) = generator.function(&function_name, function_type, &self.closure_environment, cache);
 
         // Bind each parameter node to the nth parameter of `function`
         for (i, parameter) in self.args.iter().enumerate() {
@@ -1116,12 +1225,14 @@ impl<'g, 'c> CodeGen<'g, 'c> for ast::Lambda<'c> {
             generator.bind_irrefutable_pattern(parameter, value, cache);
         }
 
+        generator.codegen_function_prelude(function, &self.closure_environment, cache);
+
         let return_value = self.body.codegen(generator, cache);
 
         generator.build_return(return_value);
         generator.builder.position_at_end(caller_block);
 
-        function_pointer
+        function_value
     }
 }
 
@@ -1138,9 +1249,16 @@ impl<'g, 'c> CodeGen<'g, 'c> for ast::FunctionCall<'c> {
                 // they contain polymorphic integer literals which still need to be defaulted
                 // to i32. This can happen if a top-level definition like `a = Some 2` is
                 // generalized.
-                let args = fmap(&self.args, |arg| arg.codegen(generator, cache));
+                let mut args = fmap(&self.args, |arg| arg.codegen(generator, cache));
+                let function = self.function.codegen(generator, cache);
 
-                let function_pointer = self.function.codegen(generator, cache).into_pointer_value();
+                let function_pointer = if function.is_struct_value() {
+                    args.push(generator.extract_field(function, 1, "environment"));
+                    generator.extract_field(function, 0, "closure")
+                } else {
+                    function
+                }.into_pointer_value();
+
                 let function = CallableValue::try_from(function_pointer).unwrap();
                 generator.builder.build_call(function, &args, "")
                     .try_as_basic_value().left().unwrap()

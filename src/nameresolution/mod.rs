@@ -184,7 +184,7 @@ impl NameResolver {
     /// Similar to the lookup functions above, but will also lookup variables that are
     /// defined in a parent function to keep track of which variables closures
     /// will need in their environment.
-    fn reference_definition<'c>(&mut self, name: &str, cache: &mut ModuleCache<'c>) -> Option<DefinitionInfoId> {
+    fn reference_definition<'c>(&mut self, name: &str, location: Location<'c>, cache: &mut ModuleCache<'c>) -> Option<DefinitionInfoId> {
         let current_function_scope = self.scopes.last().unwrap();
 
         for stack in current_function_scope.iter().rev() {
@@ -200,10 +200,15 @@ impl NameResolver {
 
         for function_scope in self.scopes[range].iter().rev() {
             for stack in function_scope.iter().rev() {
-                if let Some(&id) = stack.definitions.get(name) {
-                    cache.definition_infos[id.0].uses += 1;
-                    self.function_scopes().add_closure_environment_variable(id);
-                    return Some(id);
+                if let Some(&from) = stack.definitions.get(name) {
+                    // TODO: We'll need to do this transitively for each closure when a borrow
+                    // is used several closure layers deep.
+                    // E.g. in `a = 2; fn _ -> fn _ -> a` the inner lambda will have `a` added
+                    // as a closure parameter, but currently the outer lambda will not.
+                    cache.definition_infos[from.0].uses += 1;
+                    let to = self.add_closure_parameter_definition(name, location, cache);
+                    self.function_scopes().add_closure_environment_variable_mapping(from, to);
+                    return Some(to);
                 }
             }
         }
@@ -215,6 +220,21 @@ impl NameResolver {
         }
 
         None
+    }
+
+    fn add_closure_parameter_definition<'c>(&mut self, parameter: &str, location: Location<'c>, cache: &mut ModuleCache<'c>) -> DefinitionInfoId {
+        let function_scope = self.scopes.last_mut().unwrap();
+        let scope = function_scope.first_mut();
+
+        // TODO: set this to true for mutable closure parameters
+        let id = cache.push_definition(parameter, false, location);
+        cache.definition_infos[id.0].definition = Some(DefinitionKind::Parameter);
+        cache.definition_infos[id.0].uses = 1;
+
+        let existing = scope.definitions.insert(parameter.to_string(), id);
+        assert!(existing.is_none());
+
+        id
     }
 
     fn lookup_type_variable(&self, name: &str) -> Option<TypeVariableId> {
@@ -686,7 +706,7 @@ impl<'c> Resolvable<'c> for ast::Variable<'c> {
                 resolver.definitions_collected.push(id);
                 self.definition = Some(id);
             } else {
-                self.definition = resolver.reference_definition(name, cache);
+                self.definition = resolver.reference_definition(name, self.location, cache);
             }
 
             self.id = Some(cache.push_variable_node(name));
@@ -709,7 +729,7 @@ impl<'c> Resolvable<'c> for ast::Variable<'c> {
 
                 self.id = Some(cache.push_variable_node(name));
                 self.impl_scope = Some(resolver.current_scope().impl_scope);
-                self.definition = resolver.reference_definition(name, cache);
+                self.definition = resolver.reference_definition(name, self.location, cache);
 
                 // TODO: optimization - it would be faster and save more space if we only had
                 // to push trait binding IDs for variables that actually need trait bindings.

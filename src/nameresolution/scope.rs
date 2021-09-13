@@ -187,6 +187,10 @@ impl FunctionScopes {
         self.scopes.first().unwrap()
     }
 
+    pub fn first_mut(&mut self) -> &mut Scope {
+        self.scopes.first_mut().unwrap()
+    }
+
     pub fn pop(&mut self) {
         self.scopes.pop();
     }
@@ -195,15 +199,12 @@ impl FunctionScopes {
         self.scopes.push(Scope::new(cache));
     }
 
-    pub fn add_closure_environment_variable(&mut self, variable: DefinitionInfoId) {
-        match self.function {
-            Some(function) => {
-                let function = unsafe { function.as_mut().unwrap() };
-                function.closure_environment.push(variable);
-                function.closure_environment.sort();
-                function.closure_environment.dedup();
-            },
-            None => unreachable!("Internal compiler error: attempted to create a closure without a current function")
-        }
+    /// Within the current function, map an existing variable to a parameter variable
+    /// that is part of the closure's environment. This mapping is remembered for codegen
+    /// so we can store the existing variable along with the closure as part of its environment.
+    pub fn add_closure_environment_variable_mapping(&mut self, existing: DefinitionInfoId, parameter: DefinitionInfoId) {
+        let function = self.function.expect("Internal compiler error: attempted to create a closure without a current function");
+        let function = unsafe { function.as_mut().unwrap() };
+        function.closure_environment.insert(existing, parameter);
     }
 }

@@ -122,7 +122,7 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
             write!(f, " ")?;
 
             if i != function.parameters.len() - 1 {
-                write!(f, "- ")?;
+                write!(f, "{}", "- ".blue())?;
             }
         }
 
@@ -130,8 +130,11 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
             write!(f, "{}", "... ".blue())?;
         }
 
-        let is_closure = !function.environment.is_unit(&self.cache);
-        write!(f, "{}", if is_closure { "=> " } else { "-> " }.blue())?;
+        if function.environment.is_unit(&self.cache) {
+            write!(f, "{}", "-> ".blue())?;
+        } else {
+            write!(f, "{}", "=> ".blue())?;
+        }
 
         self.fmt_type(function.return_type.as_ref(), f)?;
         write!(f, "{}", ")".blue())
