@@ -1,0 +1,12 @@
+foo () =
+    x = "test"
+    bar () =
+        baz () = x
+        baz ()
+
+    bar ()
+
+print (foo ())
+
+// args: --run --delete-binary
+// expected stdout: test

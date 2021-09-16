@@ -198,17 +198,12 @@ impl NameResolver {
         // If we find it here, also mark the current lambda as a closure.
         let range = 1 .. std::cmp::max(1, self.scopes.len() - 1);
 
-        for function_scope in self.scopes[range].iter().rev() {
+        for function_scope_index in range.rev() {
+            let function_scope = &self.scopes[function_scope_index];
+
             for stack in function_scope.iter().rev() {
                 if let Some(&from) = stack.definitions.get(name) {
-                    // TODO: We'll need to do this transitively for each closure when a borrow
-                    // is used several closure layers deep.
-                    // E.g. in `a = 2; fn _ -> fn _ -> a` the inner lambda will have `a` added
-                    // as a closure parameter, but currently the outer lambda will not.
-                    cache.definition_infos[from.0].uses += 1;
-                    let to = self.add_closure_parameter_definition(name, location, cache);
-                    self.function_scopes().add_closure_environment_variable_mapping(from, to);
-                    return Some(to);
+                    return Some(self.create_closure(from, name, function_scope_index, location, cache));
                 }
             }
         }
@@ -222,8 +217,46 @@ impl NameResolver {
         None
     }
 
-    fn add_closure_parameter_definition<'c>(&mut self, parameter: &str, location: Location<'c>, cache: &mut ModuleCache<'c>) -> DefinitionInfoId {
-        let function_scope = self.scopes.last_mut().unwrap();
+    /// Adds a given environment variable (along with its name and the self.scopes index of the function it
+    /// was found in) to a function, thus marking that function as being a closure. This works by
+    /// creating a new parameter in the current function and creating a mapping between the
+    /// environment variable and that parameter slot so that codegen will know to automatically
+    /// pass in the required environment variable(s).
+    ///
+    /// This also handles the case of transitive closures. When we add an environment variable to
+    /// a closure, we may also need to create more closures along the way to be able to thread
+    /// through our environment variables to reach any closures within other closures.
+    fn create_closure<'c>(&mut self, mut environment: DefinitionInfoId, environment_name: &str,
+        environment_function_index: usize, location: Location<'c>, cache: &mut ModuleCache<'c>) -> DefinitionInfoId
+    {
+        let mut ret = None;
+        cache.definition_infos[environment.0].uses += 1;
+
+        // Traverse through each function from where the environment variable is defined
+        // to the closure that uses it, and add the environment variable to each closure.
+        // Usually, this is only one function but in cases like
+        //
+        // x = 2
+        // fn _ -> fn _ -> x
+        //
+        // we have to traverse multiple functions, marking them all as closures along
+        // the way while adding `x` as a parameter to each.
+        for origin_fn in environment_function_index .. self.scopes.len() - 1 {
+            let next_fn = origin_fn + 1;
+
+            let to = self.add_closure_parameter_definition(environment_name, next_fn, location, cache);
+            self.scopes[next_fn].add_closure_environment_variable_mapping(environment, to);
+            environment = to;
+            ret = Some(to);
+        }
+
+        ret.unwrap()
+    }
+
+    fn add_closure_parameter_definition<'c>(&mut self, parameter: &str, function_scope_index: usize,
+        location: Location<'c>, cache: &mut ModuleCache<'c>) -> DefinitionInfoId
+    {
+        let function_scope = &mut self.scopes[function_scope_index];
         let scope = function_scope.first_mut();
 
         // TODO: set this to true for mutable closure parameters

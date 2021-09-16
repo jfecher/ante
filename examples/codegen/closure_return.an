@@ -1,0 +1,11 @@
+get_closure () =
+    foo = "hi there"
+    stuff () = print foo
+    stuff
+
+foo = get_closure ()
+foo ()
+
+// args: --run --delete-binary
+// expected stdout:
+// hi there

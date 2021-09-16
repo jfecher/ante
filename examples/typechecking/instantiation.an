@@ -14,8 +14,8 @@ id x = x
 
 // args: --check --show-types
 // expected stdout:
-// add : (forall a b c d e f. ((a - c => e) - (a - b => c) -> (a -> (b => e))))
+// add : (forall a b c d e f. ((a - c => e) - (a - b => c) -> (a => (b => e))))
 // id : (forall a. (a -> a))
 // one : (forall a b c. ((a => b) - a -> b))
 // two1 : (forall a b. ((a => a) - a -> a))
-// two2 : (forall a b. ((a => a) -> (a => a)))
+// two2 : (forall a b. ((a => a) => (a => a)))
