@@ -1,0 +1,29 @@
+// #85: Compiler crash when compiling some polymorphic integer operations
+// Before the fix this crashed during codegen with:
+//   thread 'main' panicked at 'internal error: entered unreachable code: There is no code in a trait definition that can be codegen'd.
+//   No cached impl for printne 50: (unit -> unit)', src/llvm/mod.rs:438:17
+
+count_down n f =
+    if n > 0 then
+        f n
+        count_down (n - 1) f
+
+main () =
+    // Making this mutable helps prevent inlining
+    offset = mut 1
+    count_down 3 fn x ->
+        print (x + offset)
+
+    print_offset _ = print offset
+    closure = count_down _ print_offset
+    closure 2
+
+main ()
+
+// args: --run --delete-binary
+// expected stdout:
+// 4
+// 3
+// 2
+// 1
+// 1

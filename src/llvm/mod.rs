@@ -161,7 +161,8 @@ fn remove_forall(typ: &types::Type) -> &types::Type {
 
 /// The type to bind most typevars to if they are still unbound when we codegen them.
 const UNBOUND_TYPE: types::Type =
-    types::Type::Primitive(types::PrimitiveType::UnitType);
+    DEFAULT_INTEGER_TYPE;
+    // types::Type::Primitive(types::PrimitiveType::UnitType);
 
 fn to_optimization_level(optimization_argument: &str) -> OptimizationLevel {
     match optimization_argument {
@@ -389,10 +390,17 @@ impl<'g> Generator<'g> {
     /// Codegen a given definition unless it has been already.
     /// If it has been already codegen'd, return the cached value instead.
     fn codegen_definition<'c>(&mut self, id: DefinitionInfoId, typ: &types::Type, cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
-        match self.lookup(id, typ, cache) {
+        let mut value = match self.lookup(id, typ, cache) {
             Some(value) => value,
             None => self.monomorphise(id, typ, cache).unwrap()
+        };
+
+        if self.auto_derefs.contains(&id) {
+            let name = &cache.definition_infos[id.0].name;
+            value = self.builder.build_load(value.into_pointer_value(), name);
         }
+
+        value
     }
 
     /// Get the DefinitionInfoId this variable should point to. This is usually
@@ -1196,14 +1204,9 @@ impl<'g, 'c> CodeGen<'g, 'c> for ast::Variable<'c> {
         // The definition to compile is either the corresponding impl definition if this
         // variable refers to a trait function, or otherwise it is the regular definition of this variable.
         let id = generator.get_definition_id(self);
-        let mut value = generator.codegen_definition(id, self.typ.as_ref().unwrap(), cache);
+        let value = generator.codegen_definition(id, self.typ.as_ref().unwrap(), cache);
 
         generator.remove_required_impls(&required_impls);
-
-        if generator.auto_derefs.contains(&id) {
-            value = generator.builder.build_load(value.into_pointer_value(), &self.to_string());
-        }
-
         value
     }
 }
