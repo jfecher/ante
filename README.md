@@ -98,7 +98,7 @@ $ cargo install llvmenv
 $ llvmenv init
 $ llvmenv build-entry -G Makefile -j7 12.0.1
 $ llvmenv global 12.0.1
-$ LLVM_SYS_100_PREFIX=$(llvmenv prefix)
+$ LLVM_SYS_120_PREFIX=$(llvmenv prefix)
 $ cargo build
 ```
 
@@ -109,7 +109,7 @@ $ cargo install llvmenv
 $ llvmenv init
 $ llvmenv build-entry -G VisualStudio -j7 12.0.1
 $ llvmenv global 12.0.1
-$ for /f "tokens=*" %a in ('llvmenv prefix') do (set LLVM_SYS_100_PREFIX=%a)
+$ for /f "tokens=*" %a in ('llvmenv prefix') do (set LLVM_SYS_120_PREFIX=%a)
 $ cargo build
 ```
 
@@ -138,6 +138,6 @@ done, move on to compiling llvm and ante:
 $ cmake --build .
 $ cmake --build . --target install
 $ cd ..
-$ set LLVM_SYS_100_PREFIX=/absolute/path/to/llvm-build
+$ set LLVM_SYS_120_PREFIX=/absolute/path/to/llvm-build
 $ cargo build
 ```
