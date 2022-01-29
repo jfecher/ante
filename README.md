@@ -88,21 +88,28 @@ than development updates.
 
 ### Building
 
-Ante currently requires llvm 12.0 while building. If you already have this installed with
+Ante currently requires llvm 13.0 while building. If you already have this installed with
 sources, you may be fine building with `cargo build` alone. If `cargo build` complains
 about not finding any suitable llvm version, the easiest way to build llvm is through `llvmenv`.
 In that case, you can build from source using the following:
 
+#### Linux and Mac
+
 ```bash
 $ cargo install llvmenv
 $ llvmenv init
-$ llvmenv build-entry -G Makefile -j7 12.0.1
-$ llvmenv global 12.0.1
-$ LLVM_SYS_120_PREFIX=$(llvmenv prefix)
+$ llvmenv build-entry -G Makefile -j7 13.0.0
+$ llvmenv global 13.0.0
+$ LLVM_SYS_130_PREFIX=$(llvmenv prefix)
 $ cargo build
 ```
 
-or on windows:
+If `llvmenv prefix` defaults to a path with spaces in it, you may get an error during `cargo build`
+complaining it cannot find the path to llvm. If this happens, try manually moving the installation
+in `llvmenv prefix` to a new directory without spaces, updating `LLVM_SYS_130_PREFIX` to this new
+location and re-running `cargo build`.
+
+#### Windows
 
 ```shell
 $ cargo install llvmenv

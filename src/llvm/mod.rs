@@ -223,7 +223,7 @@ impl<'g> Generator<'g> {
         // generate the bitcode to a .bc file
         let path = Path::new(&module_name).with_extension("o");
         let target = Target::from_triple(&target_triple).unwrap();
-        let target_machine = target.create_target_machine(&target_triple, "x86-64", "+avx2",
+        let target_machine = target.create_target_machine(&target_triple, "", "",
                 OptimizationLevel::None, RelocMode::PIC, CodeModel::Default).unwrap();
 
         target_machine.write_to_file(&module, FileType::Object, &path).unwrap();
@@ -660,13 +660,16 @@ impl<'g> Generator<'g> {
             Primitive(primitive) => self.convert_primitive_type(primitive, cache),
 
             Function(function) => {
-                let mut parameters = fmap(&function.parameters, |typ| self.convert_type(typ, cache));
+                let mut parameters = fmap(&function.parameters, |typ| {
+                    self.convert_type(typ, cache).into()
+                });
+
                 let return_type = self.convert_type(&function.return_type, cache);
                 let mut environment = None;
 
                 if !self.empty_closure_environment(&function.environment, cache) {
                     let environment_parameter = self.convert_type(&function.environment, cache);
-                    parameters.push(environment_parameter);
+                    parameters.push(environment_parameter.into());
                     environment = Some(environment_parameter);
                 }
 
@@ -1252,11 +1255,11 @@ impl<'g, 'c> CodeGen<'g, 'c> for ast::FunctionCall<'c> {
                 // they contain polymorphic integer literals which still need to be defaulted
                 // to i32. This can happen if a top-level definition like `a = Some 2` is
                 // generalized.
-                let mut args = fmap(&self.args, |arg| arg.codegen(generator, cache));
+                let mut args = fmap(&self.args, |arg| arg.codegen(generator, cache).into());
                 let function = self.function.codegen(generator, cache);
 
                 let function_pointer = if function.is_struct_value() {
-                    args.push(generator.extract_field(function, 1, "environment"));
+                    args.push(generator.extract_field(function, 1, "environment").into());
                     generator.extract_field(function, 0, "closure")
                 } else {
                     function

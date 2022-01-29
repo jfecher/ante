@@ -15,6 +15,7 @@ pub struct UnsafeCache<'a, T: 'a>{
     lifetime: PhantomData<&'a T>,
 
     /// Ensures we cannot move out of the cache, this would invalidate existing references.
+    #[allow(dead_code)]
     no_pin: PhantomPinned,
 }
 

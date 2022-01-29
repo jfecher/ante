@@ -998,7 +998,7 @@ impl<'c> Resolvable<'c> for ast::TypeAnnotation<'c> {
 }
 
 fn find_file<'a>(relative_path: &Path, cache: &mut ModuleCache) -> Option<(File, PathBuf)> {
-    let relative_path = PathBuf::from(relative_path.to_string_lossy().to_lowercase());
+    let relative_path = PathBuf::from(relative_path);
 
     for root in cache.relative_roots.iter() {
         let path = root.join(&relative_path).with_extension("an");
