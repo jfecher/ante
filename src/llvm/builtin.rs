@@ -63,6 +63,9 @@ pub fn call_builtin<'g, 'c>(args: &[Ast<'c>], generator: &mut Generator<'g>) -> 
         "CastUszPtr" => cast_usz_ptr(generator),
         "CastPtrUsz" => cast_ptr_usz(generator),
 
+        "deref" => deref_ptr(generator),
+        "transmute" => transmute_value(generator),
+
         _ => unreachable!("Unknown builtin '{}'", arg),
     }
 }
@@ -187,4 +190,17 @@ fn cast_ptr_usz<'g>(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
     let ptr = current_function.get_nth_param(0).unwrap().into_pointer_value();
     let int_type = current_function.get_type().get_return_type().unwrap().into_int_type();
     generator.builder.build_ptr_to_int(ptr, int_type, "bitcast").as_basic_value_enum()
+}
+
+fn deref_ptr<'g>(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+    let current_function = generator.current_function();
+    let ptr = current_function.get_nth_param(0).unwrap().into_pointer_value();
+    generator.builder.build_load(ptr, "deref").as_basic_value_enum()
+}
+
+fn transmute_value<'g>(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+    let current_function = generator.current_function();
+    let x = current_function.get_nth_param(0).unwrap();
+    let ret = current_function.get_type().get_return_type().unwrap();
+    generator.builder.build_bitcast(x, ret, "transmute").as_basic_value_enum()
 }

@@ -1,12 +1,6 @@
 - Kind checking!
 - `llvm::Generator::convert_type` needs be fixed for generic types and possibly sum types as well
 - Locations should be stored in a `types::traits::Impl` for better error messages for trait errors
-- tuples! (parsing -> name resolution -> typechecking -> codegen)
-- Audit uses of `typechecker::unify` to maybe specialize them to improve error messages for type errors
-- Pattern matching completeness checking
-- We have parsing for irrefutable patterns but the refutable patterns used in match expressions
-  are just normal expressions. Ideally, invalid cases like an `a + b` pattern wouldn't be allowed
-  by the parser at all.
 - Allocate all ast nodes in a pool, and change them to store node IDs instead of hard references
 - Variadic functions. Goal: support `extern printf: (ref char) ... -> int`
 - cleanup `resolve_definitions` and friends in name resolution. Their use of DefinitionNodes is
@@ -16,3 +10,7 @@
 - cleanup `ast::If` codegen
 - cleanup `required_definitions` in name resolution (is it still needed?)
 - Move towards using the `salsa` library and possibly removing ModuleCache
+
+- Audit uses of `typechecker::unify` to maybe specialize them to improve error messages for type errors
+- Improve parser error messages
+- cranelift or c backend

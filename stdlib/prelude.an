@@ -163,15 +163,21 @@ trait Extract collection index -> elem with
     (#): collection - index -> elem
 
 impl Extract (Ptr t) usz t with
-    (#) ptr index = @offset ptr index
+    (#) ptr index = deref_ptr <| offset ptr index
 
 offset (_ptr: Ptr t) (_index: usz) : Ptr t =
     builtin "offset"
 
-(@) (_ptr: Ptr t) : t =
-    builtin "@"
+deref (_: ref t) : t =
+    builtin "deref"
+
+deref_ptr (p: Ptr t) : t =
+    deref <| cast p
 
 null = cast 0usz : Ptr a
+
+transmute (_: a) : b =
+    builtin "transmute"
 
 // TODO: 'mut' and special-case extract versus append
 // trait Insert collection index elem
@@ -181,7 +187,7 @@ trait In elem col with
     (in): elem - col -> bool
 
 // trait Deref ptr -> elem
-//     (@): ptr -> elem
+//     deref: ptr -> elem
 
 // TODO: Do we need a separate trait for unary '-'?
 // trait Neg t
@@ -269,7 +275,7 @@ impl Cast string (Ptr char) with
 //     Some (if isNeg then -1 * sum else sum)
 
 impl Eq (ref t) given Eq t with
-    (==) l r = @l == @r
+    (==) l r = deref l == deref r
 
 impl Eq (Ptr t) with
     (==) l r = (cast l : usz) == cast r

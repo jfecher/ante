@@ -23,7 +23,7 @@ fill (v: mut Vec t) iterable : Vec t =
     v
 
 //reserve numElements in Vec v, elements will be uninitialized
-reserve (v: mut Vec t) (numElems:usz) : unit =
+reserve (v: mut Vec t) (numElems: usz) : unit =
     if v.len + numElems > v.cap then
         size = (v.cap + numElems) * size_of (MkType: Type t)
         ptr = realloc (v.data) size
