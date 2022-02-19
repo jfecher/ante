@@ -20,14 +20,14 @@ mod error;
 
 #[macro_use]
 pub mod ast;
-pub mod pretty_printer;
 mod desugar;
+pub mod pretty_printer;
 
-use crate::lexer::token::Token;
-use ast::{ Ast, Type, Trait, TypeDefinitionBody };
-use error::{ ParseError, ParseResult };
 use crate::error::location::Location;
+use crate::lexer::token::Token;
+use ast::{Ast, Trait, Type, TypeDefinitionBody};
 use combinators::*;
+use error::{ParseError, ParseResult};
 
 type AstResult<'a, 'b> = ParseResult<'a, 'b, Ast<'b>>;
 
@@ -71,9 +71,10 @@ parser!(statement_list loc =
 
 fn statement<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
     match input[0].0 {
-        Token::ParenthesisLeft |
-        Token::Identifier(_) => or(&[definition, assignment, expression], &"statement")(input),
-        Token::Type => or(&[type_definition, type_alias], &"statement")(input),
+        Token::ParenthesisLeft | Token::Identifier(_) => {
+            or(&[definition, assignment, expression], "statement")(input)
+        },
+        Token::Type => or(&[type_definition, type_alias], "statement")(input),
         Token::Import => import(input),
         Token::Trait => trait_definition(input),
         Token::Impl => trait_impl(input),
@@ -84,12 +85,12 @@ fn statement<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
 }
 
 fn definition<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
-    raw_definition(input).map(|(input, definition, location)|
-            (input, Ast::Definition(definition), location))
+    raw_definition(input)
+        .map(|(input, definition, location)| (input, Ast::Definition(definition), location))
 }
 
 fn raw_definition<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, ast::Definition<'b>> {
-    or(&[function_definition, variable_definition], &"definition")(input)
+    or(&[function_definition, variable_definition], "definition")(input)
 }
 
 parser!(function_definition location -> 'b ast::Definition<'b> =
@@ -145,12 +146,15 @@ parser!(assignment location =
 );
 
 fn pattern<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
-    or(&[
-       pattern_pair,
-       type_annotation_pattern,
-       pattern_function_call,
-       pattern_argument,
-    ], &"pattern")(input)
+    or(
+        &[
+            pattern_pair,
+            type_annotation_pattern,
+            pattern_function_call,
+            pattern_argument,
+        ],
+        "pattern",
+    )(input)
 }
 
 // TODO: There's a lot of repeated parsing done in patterns due to or combinators
@@ -165,8 +169,9 @@ parser!(pattern_pair loc =
 parser!(type_annotation_pattern loc =
     lhs <- or(&[pattern_function_call, pattern_argument], "pattern");
     _ <- expect(Token::Colon);
-    rhs <- parse_type;
-    Ast::type_annotation(lhs, rhs, loc)
+    mutable <- maybe(expect(Token::Mut));
+    rhs !<- parse_type;
+    Ast::type_annotation(lhs, rhs, mutable.is_some(), loc)
 );
 
 fn parenthesized_irrefutable_pattern<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
@@ -191,9 +196,14 @@ parser!(type_alias loc =
     Ast::type_definition(name, args, TypeDefinitionBody::AliasOf(body), loc)
 );
 
-fn type_definition_body<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, ast::TypeDefinitionBody<'b>> {
+fn type_definition_body<'a, 'b>(
+    input: Input<'a, 'b>,
+) -> ParseResult<'a, 'b, ast::TypeDefinitionBody<'b>> {
     match input[0].0 {
-        Token::Indent => or(&[union_block_body, struct_block_body], &"type_definition_body")(input),
+        Token::Indent => or(
+            &[union_block_body, struct_block_body],
+            "type_definition_body",
+        )(input),
         Token::Pipe => union_inline_body(input),
         _ => struct_inline_body(input),
     }
@@ -275,7 +285,7 @@ parser!(declaration loc -> 'b ast::TypeAnnotation<'b> =
     lhs <- pattern_argument;
     _ <- expect(Token::Colon);
     rhs !<- parse_type;
-    ast::TypeAnnotation { lhs: Box::new(lhs), rhs, location: loc, typ: None }
+    ast::TypeAnnotation { lhs: Box::new(lhs), rhs, mutable: false, location: loc, typ: None }
 );
 
 parser!(trait_impl loc =
@@ -367,13 +377,19 @@ fn precedence(token: &Token) -> Option<(i8, bool)> {
         Token::Comma => Some((3, true)),
         Token::Or => Some((4, false)),
         Token::And => Some((5, false)),
-        Token::EqualEqual | Token::Is | Token::Isnt | Token::NotEqual | Token::GreaterThan | Token::LessThan | Token::GreaterThanOrEqual | Token::LessThanOrEqual => Some((7, false)),
+        Token::EqualEqual
+        | Token::Is
+        | Token::Isnt
+        | Token::NotEqual
+        | Token::GreaterThan
+        | Token::LessThan
+        | Token::GreaterThanOrEqual
+        | Token::LessThanOrEqual => Some((7, false)),
         Token::In => Some((8, false)),
         Token::Append => Some((9, false)),
         Token::Range => Some((10, false)),
         Token::Add | Token::Subtract => Some((11, false)),
         Token::Multiply | Token::Divide | Token::Modulus => Some((12, false)),
-        Token::Colon => Some((13, false)),
         Token::Index => Some((14, false)),
         Token::As => Some((15, false)),
         _ => None,
@@ -385,8 +401,7 @@ fn precedence(token: &Token) -> Option<(i8, bool)> {
 fn should_continue(operator_on_stack: &Token, r_prec: i8, r_is_right_assoc: bool) -> bool {
     let (l_prec, _) = precedence(operator_on_stack).unwrap();
 
-    l_prec > r_prec
-    || (l_prec == r_prec && !r_is_right_assoc)
+    l_prec > r_prec || (l_prec == r_prec && !r_is_right_assoc)
 }
 
 fn pop_operator<'c>(operator_stack: &mut Vec<&Token>, results: &mut Vec<(Ast<'c>, Location<'c>)>) {
@@ -408,7 +423,11 @@ fn expression<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
     // loop while the next token is an operator
     while let Some((prec, right_associative)) = precedence(&input[0].0) {
         while !operator_stack.is_empty()
-            && should_continue(operator_stack[operator_stack.len()- 1], prec, right_associative)
+            && should_continue(
+                operator_stack[operator_stack.len() - 1],
+                prec,
+                right_associative,
+            )
         {
             pop_operator(&mut operator_stack, &mut results);
         }
@@ -436,11 +455,7 @@ fn term<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
     match input[0].0 {
         Token::If => if_expr(input),
         Token::Match => match_expr(input),
-        _ => or(&[
-            function_call,
-            type_annotation,
-            function_argument
-        ], &"term")(input),
+        _ => or(&[type_annotation, function_call, function_argument], "term")(input),
     }
 }
 
@@ -449,7 +464,6 @@ parser!(function_call loc =
     args <- many1(function_argument);
     desugar::desugar_explicit_currying(function, args, Ast::function_call, loc)
 );
-
 
 parser!(pattern_function_call loc =
     function <- pattern_function_argument;
@@ -493,35 +507,26 @@ parser!(at_expr loc =
 );
 
 parser!(type_annotation loc =
-    lhs <- function_argument;
+    lhs <- or(&[function_call, function_argument], "term");
     _ <- expect(Token::Colon);
+    mutable <- maybe(expect(Token::Mut));
     rhs <- parse_type;
-    Ast::type_annotation(lhs, rhs, loc)
+    Ast::type_annotation(lhs, rhs, mutable.is_some(), loc)
 );
 
 fn parse_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
-    or(&[
-        function_type,
-        type_application,
-        pair_type,
-        basic_type
-    ], &"type")(input)
+    or(
+        &[function_type, type_application, pair_type, basic_type],
+        "type",
+    )(input)
 }
 
 fn function_arg_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
-    or(&[
-        type_application,
-        pair_type,
-        basic_type
-    ], &"type")(input)
+    or(&[type_application, pair_type, basic_type], "type")(input)
 }
 
 fn parse_type_no_pair<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
-    or(&[
-        function_type,
-        type_application,
-        basic_type
-    ], &"type")(input)
+    or(&[function_type, type_application, basic_type], "type")(input)
 }
 
 fn basic_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
@@ -537,7 +542,7 @@ fn basic_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
         Token::Identifier(_) => type_variable(input),
         Token::TypeName(_) => user_defined_type(input),
         Token::ParenthesisLeft => parenthesized_type(input),
-        _ => Err(ParseError::InRule(&"type", input[0].1)),
+        _ => Err(ParseError::InRule("type", input[0].1)),
     }
 }
 
@@ -608,7 +613,7 @@ fn argument<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
         Token::Fn => lambda(input),
         Token::ParenthesisLeft => parenthesized_expression(input),
         Token::TypeName(_) => variant(input),
-        _ => Err(ParseError::InRule(&"argument", input[0].1)),
+        _ => Err(ParseError::InRule("argument", input[0].1)),
     }
 }
 
@@ -623,7 +628,7 @@ fn pattern_argument<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
         Token::UnitLiteral => unit(input),
         Token::ParenthesisLeft => parenthesized_irrefutable_pattern(input),
         Token::TypeName(_) => variant(input),
-        _ => Err(ParseError::InRule(&"pattern argument", input[0].1)),
+        _ => Err(ParseError::InRule("pattern argument", input[0].1)),
     }
 }
 
@@ -642,7 +647,7 @@ parser!(operator loc =
 );
 
 fn parenthesized_expression<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
-    parenthesized(or(&[expression, operator], &"argument"))(input)
+    parenthesized(or(&[expression, operator], "operator or expression"))(input)
 }
 
 parser!(variant loc =

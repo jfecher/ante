@@ -59,6 +59,10 @@ pub fn call_builtin<'g, 'c>(args: &[Ast<'c>], generator: &mut Generator<'g>) -> 
         "EqFloat" => eq_float(generator),
         "EqChar" => eq_char(generator),
         "EqBool" => eq_bool(generator),
+
+        "CastUszPtr" => cast_usz_ptr(generator),
+        "CastPtrUsz" => cast_ptr_usz(generator),
+
         _ => unreachable!("Unknown builtin '{}'", arg),
     }
 }
@@ -169,4 +173,18 @@ fn eq_bool<'g>(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
     let a = current_function.get_nth_param(0).unwrap().into_int_value();
     let b = current_function.get_nth_param(1).unwrap().into_int_value();
     generator.builder.build_int_compare(IntPredicate::EQ, a, b, "eq").as_basic_value_enum()
+}
+
+fn cast_usz_ptr<'g>(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+    let current_function = generator.current_function();
+    let int = current_function.get_nth_param(0).unwrap().into_int_value();
+    let ptr_type = current_function.get_type().get_return_type().unwrap().into_pointer_type();
+    generator.builder.build_int_to_ptr(int, ptr_type, "bitcast").as_basic_value_enum()
+}
+
+fn cast_ptr_usz<'g>(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+    let current_function = generator.current_function();
+    let ptr = current_function.get_nth_param(0).unwrap().into_pointer_value();
+    let int_type = current_function.get_type().get_return_type().unwrap().into_int_type();
+    generator.builder.build_ptr_to_int(ptr, int_type, "bitcast").as_basic_value_enum()
 }

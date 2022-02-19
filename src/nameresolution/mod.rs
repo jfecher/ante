@@ -231,6 +231,7 @@ impl NameResolver {
     {
         let mut ret = None;
         cache.definition_infos[environment.0].uses += 1;
+        let mutable = cache.definition_infos[environment.0].mutable;
 
         // Traverse through each function from where the environment variable is defined
         // to the closure that uses it, and add the environment variable to each closure.
@@ -244,7 +245,7 @@ impl NameResolver {
         for origin_fn in environment_function_index .. self.scopes.len() - 1 {
             let next_fn = origin_fn + 1;
 
-            let to = self.add_closure_parameter_definition(environment_name, next_fn, location, cache);
+            let to = self.add_closure_parameter_definition(environment_name, mutable, next_fn, location, cache);
             self.scopes[next_fn].add_closure_environment_variable_mapping(environment, to);
             environment = to;
             ret = Some(to);
@@ -253,14 +254,14 @@ impl NameResolver {
         ret.unwrap()
     }
 
-    fn add_closure_parameter_definition<'c>(&mut self, parameter: &str, function_scope_index: usize,
+    fn add_closure_parameter_definition<'c>(&mut self, parameter: &str, mutable: bool, function_scope_index: usize,
         location: Location<'c>, cache: &mut ModuleCache<'c>) -> DefinitionInfoId
     {
         let function_scope = &mut self.scopes[function_scope_index];
         let scope = function_scope.first_mut();
 
         // TODO: set this to true for mutable closure parameters
-        let id = cache.push_definition(parameter, false, location);
+        let id = cache.push_definition(parameter, mutable, location);
         cache.definition_infos[id.0].definition = Some(DefinitionKind::Parameter);
         cache.definition_infos[id.0].uses = 1;
 
@@ -794,10 +795,16 @@ impl<'c> Resolvable<'c> for ast::FunctionCall<'c> {
     fn declare(&mut self, _resolver: &mut NameResolver, _cache: &mut ModuleCache<'c>) { }
 
     fn define(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'c>) {
+        let old_context = resolver.in_assignment_context;
+        resolver.in_assignment_context = false;
+
         self.function.define(resolver, cache);
+
         for arg in self.args.iter_mut() {
             arg.define(resolver, cache)
         }
+
+        resolver.in_assignment_context = old_context;
     }
 }
 
@@ -991,7 +998,11 @@ impl<'c> Resolvable<'c> for ast::TypeAnnotation<'c> {
     fn declare(&mut self, _resolver: &mut NameResolver, _cache: &mut ModuleCache<'c>) { }
 
     fn define(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'c>) {
+        let old_context = resolver.in_mutable_context;
+        resolver.in_mutable_context = self.mutable;
         self.lhs.define(resolver, cache);
+        resolver.in_mutable_context = old_context;
+
         let rhs = resolver.convert_type(cache, &self.rhs);
         self.typ = Some(rhs);
     }

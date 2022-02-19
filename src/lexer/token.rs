@@ -146,7 +146,7 @@ impl Token {
     pub fn is_overloadable_operator(&self) -> bool {
         use Token::*;
         match self {
-            And | As | In | Is | Isnt |
+            And | As | At | In | Is | Isnt |
             Not | Or | EqualEqual | NotEqual |
             ApplyLeft | ApplyRight | Append |
             Index | Modulus | Multiply | Comma |

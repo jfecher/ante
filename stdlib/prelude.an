@@ -78,10 +78,10 @@ impl Cast a a with
     cast a = a
 
 impl Cast (Ptr a) usz with
-    cast (_ptr: Ptr a) = builtin "CastRefUsz"
+    cast (_ptr: Ptr a) = builtin "CastPtrUsz"
 
 impl Cast usz (Ptr a) with
-    cast (_address: usz) = builtin "CastUszRef"
+    cast (_address: usz) = builtin "CastUszPtr"
 
 impl Cast (Maybe m) string given Cast m string with
     cast maybe =
@@ -161,6 +161,17 @@ trait Append t with
 
 trait Extract collection index -> elem with
     (#): collection - index -> elem
+
+impl Extract (Ptr t) usz t with
+    (#) ptr index = @offset ptr index
+
+offset (_ptr: Ptr t) (_index: usz) : Ptr t =
+    builtin "offset"
+
+(@) (_ptr: Ptr t) : t =
+    builtin "@"
+
+null = cast 0usz : Ptr a
 
 // TODO: 'mut' and special-case extract versus append
 // trait Insert collection index elem
@@ -257,12 +268,32 @@ impl Cast string (Ptr char) with
 // 
 //     Some (if isNeg then -1 * sum else sum)
 
-// impl Eq (ref t) given Eq t with
-//     (==) l r = @l == @r
+impl Eq (ref t) given Eq t with
+    (==) l r = @l == @r
+
+impl Eq (Ptr t) with
+    (==) l r = (cast l : usz) == cast r
 
 
 trait Iterator it -> elem with
     next: it -> Maybe (it, elem)
+
+iter iterable f =
+    match next iterable
+    | None -> ()
+    | Some (rest, elem) ->
+        f elem
+        iter rest
+
+type Range t = start: t, end: t
+
+impl Iterator (Range t) t given Int t with
+    next range =
+        if range.start >= range.end
+        then None
+        else
+            next = Range (range.start + 1) range.end
+            Some (next, range.start)
 
 // Iterating through an InFile iterates through each line
 // impl Iterator InFile string
@@ -300,8 +331,17 @@ trait Iterator it -> elem with
 // 
 //         string buf len
 
+panic msg =
+    print msg
+    exit 1
+
 impl Extract string usz char with
     (#) s index = s.c_string#index
+
+
+type Type t = | MkType
+
+size_of (_: Type t) : usz = builtin "size_of"
 
 
 // impl Insert string int char

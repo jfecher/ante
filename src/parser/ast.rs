@@ -215,6 +215,7 @@ pub struct TypeDefinition<'a> {
 pub struct TypeAnnotation<'a> {
     pub lhs: Box<Ast<'a>>,
     pub rhs: Type<'a>,
+    pub mutable: bool,
     pub location: Location<'a>,
     pub typ: Option<types::Type>,
 }
@@ -461,8 +462,8 @@ impl<'a> Ast<'a> {
         Ast::TypeDefinition(TypeDefinition { name, args, definition, location, type_info: None, typ: None })
     }
 
-    pub fn type_annotation(lhs: Ast<'a>, rhs: Type<'a>, location: Location<'a>) -> Ast<'a> {
-        Ast::TypeAnnotation(TypeAnnotation { lhs: Box::new(lhs), rhs, location, typ: None })
+    pub fn type_annotation(lhs: Ast<'a>, rhs: Type<'a>, mutable: bool, location: Location<'a>) -> Ast<'a> {
+        Ast::TypeAnnotation(TypeAnnotation { lhs: Box::new(lhs), rhs, mutable, location, typ: None })
     }
 
     pub fn import(path: Vec<String>, location: Location<'a>) -> Ast<'a> {
