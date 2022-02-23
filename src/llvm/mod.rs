@@ -18,31 +18,34 @@
 //! The reccomended starting point while reading through this pass is the `run`
 //! function which is called directly from `main`. This function sets up the
 //! Generator, walks the Ast, then optimizes and links the resulting Module.
-use crate::cache::{ ModuleCache, DefinitionInfoId, DefinitionKind, VariableId };
-use crate::nameresolution::builtin::BUILTIN_ID;
+use crate::args::Args;
+use crate::cache::{DefinitionInfoId, DefinitionKind, ModuleCache, VariableId};
 use crate::lexer::token::IntegerKind;
-use crate::parser::{ ast, ast::Ast };
-use crate::types::{ self, TypeVariableId, TypeBinding, TypeInfoId, DEFAULT_INTEGER_TYPE };
-use crate::types::typechecker::{ self, TypeBindings };
+use crate::nameresolution::builtin::BUILTIN_ID;
+use crate::parser::{ast, ast::Ast};
 use crate::types::traits::RequiredImpl;
+use crate::types::typechecker::{self, TypeBindings};
 use crate::types::typed::Typed;
-use crate::util::{ fmap, trustme, reinterpret_from_bits, timing };
+use crate::types::{self, TypeBinding, TypeInfoId, TypeVariableId, DEFAULT_INTEGER_TYPE};
+use crate::util::{fmap, reinterpret_from_bits, timing, trustme};
 
-use inkwell::module::{ Module, Linkage };
-use inkwell::builder::Builder;
 use inkwell::basic_block::BasicBlock;
+use inkwell::builder::Builder;
 use inkwell::context::Context;
-use inkwell::values::{ AggregateValue, BasicValueEnum, BasicValue, CallableValue, FunctionValue, InstructionOpcode };
-use inkwell::types::{ BasicTypeEnum, BasicType };
-use inkwell::AddressSpace;
-use inkwell::targets::{ RelocMode, CodeModel, FileType, TargetTriple };
-use inkwell::OptimizationLevel;
+use inkwell::module::{Linkage, Module};
 use inkwell::passes::{PassManager, PassManagerBuilder};
-use inkwell::targets::{InitializationConfig, Target, TargetMachine };
+use inkwell::targets::{CodeModel, FileType, RelocMode, TargetTriple};
+use inkwell::targets::{InitializationConfig, Target, TargetMachine};
+use inkwell::types::{BasicType, BasicTypeEnum};
+use inkwell::values::{
+    AggregateValue, BasicValue, BasicValueEnum, CallableValue, FunctionValue, InstructionOpcode,
+};
+use inkwell::AddressSpace;
+use inkwell::OptimizationLevel;
 
-use std::collections::{ HashMap, HashSet, BTreeMap };
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::convert::TryFrom;
-use std::path::{ Path, PathBuf };
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 mod builtin;
@@ -81,9 +84,7 @@ pub struct Generator<'context> {
 }
 
 /// Codegen the given Ast, producing a binary file at the given path.
-pub fn run<'c>(path: &Path, ast: &Ast<'c>, cache: &mut ModuleCache<'c>, show_ir: bool,
-    run_program: bool, delete_binary: bool, optimization_level: &str)
-{
+pub fn run<'c>(path: &Path, ast: &Ast<'c>, cache: &mut ModuleCache<'c>, args: &Args) {
     timing::start_time("LLVM codegen");
 
     let context = Context::create();
@@ -108,17 +109,21 @@ pub fn run<'c>(path: &Path, ast: &Ast<'c>, cache: &mut ModuleCache<'c>, show_ir:
     // Codegen main, and all functions reachable from it
     codegen.codegen_main(ast, cache);
 
-    codegen.module.verify().map_err(|error| {
-        codegen.module.print_to_stderr();
-        eprintln!("{}", error);
-    }).unwrap();
+    codegen
+        .module
+        .verify()
+        .map_err(|error| {
+            codegen.module.print_to_stderr();
+            eprintln!("{}", error);
+        })
+        .unwrap();
 
     timing::start_time("LLVM optimization");
-    codegen.optimize(optimization_level);
+    codegen.optimize(args.opt_level);
 
     // --emit-llvm: Dump the LLVM-IR of the generated module to stderr.
     // Useful to debug codegen
-    if show_ir {
+    if args.emit_llvm {
         codegen.module.print_to_stderr();
     }
 
@@ -128,14 +133,18 @@ pub fn run<'c>(path: &Path, ast: &Ast<'c>, cache: &mut ModuleCache<'c>, show_ir:
     codegen.output(module_name, &binary_name, &target_triple, &codegen.module);
 
     // --run: compile and run the program
-    if run_program {
+    if args.run {
         let program_command = PathBuf::from("./".to_string() + &binary_name);
-        Command::new(&program_command).spawn().unwrap().wait().unwrap();
+        Command::new(&program_command)
+            .spawn()
+            .unwrap()
+            .wait()
+            .unwrap();
     }
 
     // --delete-binary: remove the binary after running the program to
     // avoid littering a testing directory with temporary binaries
-    if delete_binary {
+    if args.delete_binary {
         std::fs::remove_file(binary_name).unwrap();
     }
 }
@@ -146,9 +155,15 @@ fn path_to_module_name(path: &Path) -> String {
 
 fn module_name_to_program_name(module: &str) -> String {
     if cfg!(target_os = "windows") {
-        PathBuf::from(module).with_extension("exe").to_string_lossy().into()
+        PathBuf::from(module)
+            .with_extension("exe")
+            .to_string_lossy()
+            .into()
     } else {
-        PathBuf::from(module).with_extension("").to_string_lossy().into()
+        PathBuf::from(module)
+            .with_extension("")
+            .to_string_lossy()
+            .into()
     }
 }
 
@@ -160,15 +175,14 @@ fn remove_forall(typ: &types::Type) -> &types::Type {
 }
 
 /// The type to bind most typevars to if they are still unbound when we codegen them.
-const UNBOUND_TYPE: types::Type =
-    DEFAULT_INTEGER_TYPE;
-    // types::Type::Primitive(types::PrimitiveType::UnitType);
+const UNBOUND_TYPE: types::Type = DEFAULT_INTEGER_TYPE;
+// types::Type::Primitive(types::PrimitiveType::UnitType);
 
-fn to_optimization_level(optimization_argument: &str) -> OptimizationLevel {
-    match optimization_argument {
-        "1" => OptimizationLevel::Less,
-        "2" => OptimizationLevel::Default,
-        "3" => OptimizationLevel::Aggressive,
+fn to_optimization_level(opt_level: char) -> OptimizationLevel {
+    match opt_level {
+        '1' => OptimizationLevel::Less,
+        '2' => OptimizationLevel::Default,
+        '3' => OptimizationLevel::Aggressive,
         _ => OptimizationLevel::None,
     }
 }
@@ -185,7 +199,9 @@ impl<'g> Generator<'g> {
     fn codegen_main<'c>(&mut self, ast: &Ast<'c>, cache: &mut ModuleCache<'c>) {
         let i32_type = self.context.i32_type();
         let main_type = i32_type.fn_type(&[], false);
-        let function = self.module.add_function("main", main_type, Some(Linkage::External));
+        let function = self
+            .module
+            .add_function("main", main_type, Some(Linkage::External));
         let basic_block = self.context.append_basic_block(function, "entry");
 
         self.builder.position_at_end(basic_block);
@@ -197,8 +213,8 @@ impl<'g> Generator<'g> {
     }
 
     /// Optimize the current inkwell::Module.
-    /// optimization_argument is one of "0", "1", "2", "3", "s", or "z"
-    fn optimize(&self, optimization_argument: &str) {
+    /// optimization_argument is one of '0', '1', '2', '3', 's', or 'z'
+    fn optimize(&self, optimization_argument: char) {
         let config = InitializationConfig::default();
         Target::initialize_native(&config).unwrap();
         let pass_manager_builder = PassManagerBuilder::create();
@@ -219,14 +235,27 @@ impl<'g> Generator<'g> {
     }
 
     /// Output the current module to a file and link with gcc.
-    fn output(&self, module_name: String, binary_name: &str, target_triple: &TargetTriple, module: &Module) {
+    fn output(
+        &self, module_name: String, binary_name: &str, target_triple: &TargetTriple,
+        module: &Module,
+    ) {
         // generate the bitcode to a .bc file
         let path = Path::new(&module_name).with_extension("o");
         let target = Target::from_triple(&target_triple).unwrap();
-        let target_machine = target.create_target_machine(&target_triple, "", "",
-                OptimizationLevel::None, RelocMode::PIC, CodeModel::Default).unwrap();
+        let target_machine = target
+            .create_target_machine(
+                &target_triple,
+                "",
+                "",
+                OptimizationLevel::None,
+                RelocMode::PIC,
+                CodeModel::Default,
+            )
+            .unwrap();
 
-        target_machine.write_to_file(&module, FileType::Object, &path).unwrap();
+        target_machine
+            .write_to_file(&module, FileType::Object, &path)
+            .unwrap();
 
         // call gcc to compile the bitcode to a binary
         let output = "-o".to_string() + binary_name;
@@ -236,7 +265,8 @@ impl<'g> Generator<'g> {
             .arg("-O0")
             .arg("-lm")
             .arg(output)
-            .spawn().unwrap();
+            .spawn()
+            .unwrap();
 
         // remove the temporary bitcode file
         child.wait().unwrap();
@@ -247,7 +277,9 @@ impl<'g> Generator<'g> {
     /// Note that the Type is needed in addition to the DefinitionInfoId
     /// since in the presence of monomorphisation the same DefinitionInfoId
     /// can be monomorphised to several different values depending on the type needed.
-    fn lookup<'c>(&mut self, id: DefinitionInfoId, typ: &types::Type, cache: &mut ModuleCache<'c>) -> Option<BasicValueEnum<'g>> {
+    fn lookup<'c>(
+        &mut self, id: DefinitionInfoId, typ: &types::Type, cache: &mut ModuleCache<'c>,
+    ) -> Option<BasicValueEnum<'g>> {
         let typ = self.follow_bindings(typ, cache);
         self.definitions.get(&(id, typ)).map(|value| *value)
     }
@@ -266,7 +298,9 @@ impl<'g> Generator<'g> {
     /// as the current insert point.
     fn insert_into_new_block(&self, block_name: &str) -> BasicBlock<'g> {
         let current_function = self.current_function();
-        let block = self.context.append_basic_block(current_function, block_name);
+        let block = self
+            .context
+            .append_basic_block(current_function, block_name);
         self.builder.position_at_end(block);
         block
     }
@@ -274,23 +308,28 @@ impl<'g> Generator<'g> {
     /// Create a new function with the given name and type and set
     /// its entry block as the current insert point. Returns the
     /// pointer to the function.
-    fn function<'c>(&mut self, name: &str, typ: &types::Type,
-        environment: &BTreeMap<DefinitionInfoId, DefinitionInfoId>,
-        cache: &mut ModuleCache<'c>) -> (FunctionValue<'g>, BasicValueEnum<'g>)
-    {
+    fn function<'c>(
+        &mut self, name: &str, typ: &types::Type,
+        environment: &BTreeMap<DefinitionInfoId, DefinitionInfoId>, cache: &mut ModuleCache<'c>,
+    ) -> (FunctionValue<'g>, BasicValueEnum<'g>) {
         let typ = self.follow_bindings(typ, cache);
         let function_type = self.convert_type(&typ, cache); //.into_pointer_type().get_element_type();
 
         if self.is_closure_type(&typ, cache) {
-            return self.closure(name, typ, function_type, environment, cache)
+            return self.closure(name, typ, function_type, environment, cache);
         }
 
         // Functions in ante are usually represented as function pointers or
         // a pair of a function pointer and its environment (in the case of a closure).
         // This raw function type here is an actual llvm::FunctionType, not a pointer type.
-        let raw_function_type = function_type.into_pointer_type().get_element_type().into_function_type();
+        let raw_function_type = function_type
+            .into_pointer_type()
+            .get_element_type()
+            .into_function_type();
 
-        let function = self.module.add_function(name, raw_function_type, Some(Linkage::Internal));
+        let function = self
+            .module
+            .add_function(name, raw_function_type, Some(Linkage::Internal));
         let function_pointer = function.as_global_value().as_pointer_value().into();
 
         if let Some(id) = self.current_function_info {
@@ -306,14 +345,23 @@ impl<'g> Generator<'g> {
     /// Create a new closure with the given name and type and set
     /// its entry block as the current insert point. Returns the
     /// function value - which is a pair of (function_pointer, environment).
-    fn closure<'c>(&mut self, name: &str, typ: types::Type, closure_type: BasicTypeEnum<'g>,
-        environment: &BTreeMap<DefinitionInfoId, DefinitionInfoId>, cache: &mut ModuleCache<'c>) -> (FunctionValue<'g>, BasicValueEnum<'g>)
-    {
+    fn closure<'c>(
+        &mut self, name: &str, typ: types::Type, closure_type: BasicTypeEnum<'g>,
+        environment: &BTreeMap<DefinitionInfoId, DefinitionInfoId>, cache: &mut ModuleCache<'c>,
+    ) -> (FunctionValue<'g>, BasicValueEnum<'g>) {
         // Extract the raw llvm::FunctionType, from a (llvm::FunctionType*, EnvironmentType) pair
-        let function_pointer_type = closure_type.into_struct_type().get_field_type_at_index(0).unwrap();
-        let raw_function_type = function_pointer_type.into_pointer_type().get_element_type().into_function_type();
+        let function_pointer_type = closure_type
+            .into_struct_type()
+            .get_field_type_at_index(0)
+            .unwrap();
+        let raw_function_type = function_pointer_type
+            .into_pointer_type()
+            .get_element_type()
+            .into_function_type();
 
-        let function = self.module.add_function(name, raw_function_type, Some(Linkage::Internal));
+        let function = self
+            .module
+            .add_function(name, raw_function_type, Some(Linkage::Internal));
         let function_pointer = function.as_global_value().as_pointer_value().into();
 
         let function_value = self.construct_closure(function_pointer, environment, cache);
@@ -328,9 +376,10 @@ impl<'g> Generator<'g> {
         (function, function_value)
     }
 
-    fn construct_closure<'c>(&mut self, function_pointer: BasicValueEnum<'g>,
-        environment: &BTreeMap<DefinitionInfoId, DefinitionInfoId>, cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g>
-    {
+    fn construct_closure<'c>(
+        &mut self, function_pointer: BasicValueEnum<'g>,
+        environment: &BTreeMap<DefinitionInfoId, DefinitionInfoId>, cache: &mut ModuleCache<'c>,
+    ) -> BasicValueEnum<'g> {
         let mut types = vec![function_pointer.get_type()];
         let mut values = vec![function_pointer];
 
@@ -347,26 +396,44 @@ impl<'g> Generator<'g> {
     /// Inserts any required instructions at the beginning of a function before any of its
     /// body is compiled. Currently, this only consists of unpacking a closure's environment
     /// tuple parameter and binding the values to other variables for the body to use.
-    fn codegen_function_prelude<'c>(&mut self, function: FunctionValue<'g>, closure_environment: &BTreeMap<DefinitionInfoId, DefinitionInfoId>,
-        cache: &mut ModuleCache<'c>)
-    {
+    fn codegen_function_prelude<'c>(
+        &mut self, function: FunctionValue<'g>,
+        closure_environment: &BTreeMap<DefinitionInfoId, DefinitionInfoId>,
+        cache: &mut ModuleCache<'c>,
+    ) {
         let mut environment_parameter = function.get_last_param().unwrap();
 
         for (i, (_, &closure_parameter)) in closure_environment.iter().enumerate() {
             if i == closure_environment.len() - 1 {
-                let typ = cache.definition_infos[closure_parameter.0].typ.clone().unwrap();
+                let typ = cache.definition_infos[closure_parameter.0]
+                    .typ
+                    .clone()
+                    .unwrap();
                 let typ = self.follow_bindings(&typ, cache);
 
                 self.bind_definition_pattern(closure_parameter, typ, environment_parameter, cache);
             } else {
                 let name = &cache.definition_infos[closure_parameter.0].name;
-                let element_value = self.builder.build_extract_value(environment_parameter.into_struct_value(), 0, name).unwrap();
+                let element_value = self
+                    .builder
+                    .build_extract_value(environment_parameter.into_struct_value(), 0, name)
+                    .unwrap();
 
-                let typ = cache.definition_infos[closure_parameter.0].typ.clone().unwrap();
+                let typ = cache.definition_infos[closure_parameter.0]
+                    .typ
+                    .clone()
+                    .unwrap();
                 let typ = self.follow_bindings(&typ, cache);
                 self.bind_definition_pattern(closure_parameter, typ, element_value, cache);
 
-                environment_parameter = self.builder.build_extract_value(environment_parameter.into_struct_value(), 1, "environment").unwrap();
+                environment_parameter = self
+                    .builder
+                    .build_extract_value(
+                        environment_parameter.into_struct_value(),
+                        1,
+                        "environment",
+                    )
+                    .unwrap();
             }
         }
     }
@@ -377,7 +444,8 @@ impl<'g> Generator<'g> {
             // It may be the case that this assert was wrong to begin with and
             // there _should_ be multiple bindings for a given origin.
             // assert!(!self.impl_mappings.contains_key(&required_impl.origin), "impl_mappings already had a mapping for {:?}", required_impl.origin);
-            self.impl_mappings.insert(required_impl.origin, required_impl.binding);
+            self.impl_mappings
+                .insert(required_impl.origin, required_impl.binding);
         }
     }
 
@@ -389,10 +457,12 @@ impl<'g> Generator<'g> {
 
     /// Codegen a given definition unless it has been already.
     /// If it has been already codegen'd, return the cached value instead.
-    fn codegen_definition<'c>(&mut self, id: DefinitionInfoId, typ: &types::Type, cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
+    fn codegen_definition<'c>(
+        &mut self, id: DefinitionInfoId, typ: &types::Type, cache: &mut ModuleCache<'c>,
+    ) -> BasicValueEnum<'g> {
         let mut value = match self.lookup(id, typ, cache) {
             Some(value) => value,
-            None => self.monomorphise(id, typ, cache).unwrap()
+            None => self.monomorphise(id, typ, cache).unwrap(),
         };
 
         if self.auto_derefs.contains(&id) {
@@ -409,14 +479,18 @@ impl<'g> Generator<'g> {
     /// definition. This is currently only done for trait functions/values to
     /// point them to impls that actually have definitions.
     fn get_definition_id<'c>(&self, variable: &ast::Variable<'c>) -> DefinitionInfoId {
-        self.impl_mappings.get(&variable.id.unwrap())
-            .copied().unwrap_or(variable.definition.unwrap())
+        self.impl_mappings
+            .get(&variable.id.unwrap())
+            .copied()
+            .unwrap_or(variable.definition.unwrap())
     }
 
     /// Monomorphise and compile the Definition for a given DefinitionInfoId.
     /// This pushes the monomorphisation bindings to the context then simply
     /// recurses into the definition node, popping the bindings when finished.
-    fn monomorphise<'c>(&mut self, id: DefinitionInfoId, typ: &types::Type, cache: &mut ModuleCache<'c>) -> Option<BasicValueEnum<'g>> {
+    fn monomorphise<'c>(
+        &mut self, id: DefinitionInfoId, typ: &types::Type, cache: &mut ModuleCache<'c>,
+    ) -> Option<BasicValueEnum<'g>> {
         let definition = &mut cache.definition_infos[id.0];
         let definition = trustme::extend_lifetime(definition);
         let definition_type = remove_forall(definition.typ.as_ref().unwrap());
@@ -435,24 +509,37 @@ impl<'g> Generator<'g> {
             Some(DefinitionKind::Definition(definition)) => {
                 self.codegen_monomorphise(*definition, cache);
                 self.lookup(id, &typ, cache)
-            }
-            Some(DefinitionKind::Extern(_)) => {
-                Some(self.codegen_extern(id, &typ, cache))
-            }
+            },
+            Some(DefinitionKind::Extern(_)) => Some(self.codegen_extern(id, &typ, cache)),
             Some(DefinitionKind::TypeConstructor { name, tag }) => {
                 Some(self.codegen_type_constructor(name, tag, &typ, cache))
             },
             Some(DefinitionKind::TraitDefinition(_)) => {
-                unreachable!("There is no code in a trait definition that can be codegen'd.\n\
-                             No cached impl for {} {}: {}", definition.name, id.0, typ.display(cache))
+                unreachable!(
+                    "There is no code in a trait definition that can be codegen'd.\n\
+                             No cached impl for {} {}: {}",
+                    definition.name,
+                    id.0,
+                    typ.display(cache)
+                )
             },
             Some(DefinitionKind::Parameter) => {
-                unreachable!("There is no code to (lazily) codegen for parameters.\n\
-                             Encountered while compiling {} {}: {}", definition.name, id.0, typ.display(cache))
+                unreachable!(
+                    "There is no code to (lazily) codegen for parameters.\n\
+                             Encountered while compiling {} {}: {}",
+                    definition.name,
+                    id.0,
+                    typ.display(cache)
+                )
             },
             Some(DefinitionKind::MatchPattern) => {
-                unreachable!("There is no code to (lazily) codegen for match patterns.\n
-                             Encountered while compiling {} {}: {}", definition.name, id.0, typ.display(cache))
+                unreachable!(
+                    "There is no code to (lazily) codegen for match patterns.\n
+                             Encountered while compiling {} {}: {}",
+                    definition.name,
+                    id.0,
+                    typ.display(cache)
+                )
             },
             None => unreachable!("No definition for {} {}", definition.name, id.0),
         };
@@ -461,13 +548,14 @@ impl<'g> Generator<'g> {
         value
     }
 
-    fn find_binding<'c, 'b, 'd>(&'b self, id: TypeVariableId, default: &'b types::Type, cache: &'b ModuleCache<'c>) -> &'b types::Type {
-        use types::TypeBinding::*;
+    fn find_binding<'c, 'b, 'd>(
+        &'b self, id: TypeVariableId, default: &'b types::Type, cache: &'b ModuleCache<'c>,
+    ) -> &'b types::Type {
         use types::Type::*;
+        use types::TypeBinding::*;
 
         match &cache.type_bindings[id.0] {
-            Bound(TypeVariable(id))
-            | Bound(Ref(id)) => self.find_binding(*id, default, cache),
+            Bound(TypeVariable(id)) | Bound(Ref(id)) => self.find_binding(*id, default, cache),
             Bound(binding) => binding,
             Unbound(..) => {
                 for bindings in self.monomorphisation_bindings.iter().rev() {
@@ -480,45 +568,63 @@ impl<'g> Generator<'g> {
         }
     }
 
-    fn empty_closure_environment<'c>(&self, environment: &types::Type, cache: &ModuleCache<'c>) -> bool {
+    fn empty_closure_environment<'c>(
+        &self, environment: &types::Type, cache: &ModuleCache<'c>,
+    ) -> bool {
         self.follow_bindings(environment, cache).is_unit(cache)
     }
 
     fn is_closure_type<'c>(&self, typ: &types::Type, cache: &ModuleCache<'c>) -> bool {
         match typ {
-            types::Type::Function(function) => !self.empty_closure_environment(&function.environment, cache),
+            types::Type::Function(function) => {
+                !self.empty_closure_environment(&function.environment, cache)
+            },
             _ => false,
         }
     }
 
-    fn size_of_struct_type<'c>(&mut self, info: &types::TypeInfo, fields: &[types::Field<'c>],
-        args: &[types::Type], cache: &ModuleCache<'c>) -> usize
-    {
+    fn size_of_struct_type<'c>(
+        &mut self, info: &types::TypeInfo, fields: &[types::Field<'c>], args: &[types::Type],
+        cache: &ModuleCache<'c>,
+    ) -> usize {
         let bindings = typechecker::type_application_bindings(info, args);
 
-        fields.iter().map(|field| {
-            let field_type = typechecker::bind_typevars(&field.field_type, &bindings, cache);
-            self.size_of_type(&field_type, cache)
-        }).sum()
+        fields
+            .iter()
+            .map(|field| {
+                let field_type = typechecker::bind_typevars(&field.field_type, &bindings, cache);
+                self.size_of_type(&field_type, cache)
+            })
+            .sum()
     }
 
-    fn size_of_union_type<'c>(&mut self, info: &types::TypeInfo, variants: &[types::TypeConstructor<'c>],
-        args: &[types::Type], cache: &ModuleCache<'c>) -> usize
-    {
+    fn size_of_union_type<'c>(
+        &mut self, info: &types::TypeInfo, variants: &[types::TypeConstructor<'c>],
+        args: &[types::Type], cache: &ModuleCache<'c>,
+    ) -> usize {
         let bindings = typechecker::type_application_bindings(info, args);
 
         match self.find_largest_union_variant(variants, &bindings, cache) {
             None => 0, // Void type
             Some(variant) => {
                 // The size of a union is the size of its largest field, plus 1 byte for the tag
-                variant.iter().map(|field| self.size_of_type(field, cache)).sum::<usize>() + 1
-            }
+                variant
+                    .iter()
+                    .map(|field| self.size_of_type(field, cache))
+                    .sum::<usize>()
+                    + 1
+            },
         }
     }
 
-    fn size_of_user_defined_type<'c>(&mut self, id: TypeInfoId, args: &[types::Type], cache: &ModuleCache<'c>) -> usize {
+    fn size_of_user_defined_type<'c>(
+        &mut self, id: TypeInfoId, args: &[types::Type], cache: &ModuleCache<'c>,
+    ) -> usize {
         let info = &cache.type_infos[id.0];
-        assert!(info.args.len() == args.len(), "Kind error during llvm code generation");
+        assert!(
+            info.args.len() == args.len(),
+            "Kind error during llvm code generation"
+        );
 
         use types::TypeInfoBody::*;
         match &info.body {
@@ -532,8 +638,8 @@ impl<'g> Generator<'g> {
     }
 
     fn size_of_type<'c>(&mut self, typ: &types::Type, cache: &ModuleCache<'c>) -> usize {
-        use types::Type::*;
         use types::PrimitiveType::*;
+        use types::Type::*;
         match typ {
             Primitive(IntegerType(kind)) => self.integer_bit_count(*kind, cache) as usize / 8,
             Primitive(FloatType) => 8,
@@ -551,11 +657,9 @@ impl<'g> Generator<'g> {
 
             UserDefinedType(id) => self.size_of_user_defined_type(*id, &[], cache),
 
-            TypeApplication(typ, args) => {
-                match typ.as_ref() {
-                    UserDefinedType(id) => self.size_of_user_defined_type(*id, args, cache),
-                    _ => unreachable!("Kind error inside size_of_type"),
-                }
+            TypeApplication(typ, args) => match typ.as_ref() {
+                UserDefinedType(id) => self.size_of_user_defined_type(*id, args, cache),
+                _ => unreachable!("Kind error inside size_of_type"),
             },
 
             Ref(_) => Self::ptr_size(),
@@ -564,10 +668,15 @@ impl<'g> Generator<'g> {
         }
     }
 
-    fn convert_primitive_type<'c>(&mut self, typ: &types::PrimitiveType, cache: &ModuleCache<'c>) -> BasicTypeEnum<'g> {
+    fn convert_primitive_type<'c>(
+        &mut self, typ: &types::PrimitiveType, cache: &ModuleCache<'c>,
+    ) -> BasicTypeEnum<'g> {
         use types::PrimitiveType::*;
         match typ {
-            IntegerType(kind) => self.context.custom_width_int_type(self.integer_bit_count(*kind, cache)).into(),
+            IntegerType(kind) => self
+                .context
+                .custom_width_int_type(self.integer_bit_count(*kind, cache))
+                .into(),
             FloatType => self.context.f64_type().into(),
             CharType => self.context.i8_type().into(),
             BooleanType => self.context.bool_type().into(),
@@ -576,9 +685,10 @@ impl<'g> Generator<'g> {
         }
     }
 
-    fn convert_struct_type<'c>(&mut self, id: TypeInfoId, info: &types::TypeInfo, fields: &[types::Field<'c>],
-        args: Vec<types::Type>, cache: &ModuleCache<'c>) -> BasicTypeEnum<'g>
-    {
+    fn convert_struct_type<'c>(
+        &mut self, id: TypeInfoId, info: &types::TypeInfo, fields: &[types::Field<'c>],
+        args: Vec<types::Type>, cache: &ModuleCache<'c>,
+    ) -> BasicTypeEnum<'g> {
         let bindings = typechecker::type_application_bindings(info, &args);
 
         let typ = self.context.opaque_struct_type(&info.name);
@@ -596,20 +706,28 @@ impl<'g> Generator<'g> {
     /// Given a list of TypeConstructors representing each variant of a sum type,
     /// find the largest variant in memory (with the given type bindings for any type variables)
     /// and return its field types.
-    fn find_largest_union_variant<'c>(&mut self, variants: &[types::TypeConstructor<'c>], bindings: &TypeBindings,
-        cache: &ModuleCache<'c>) -> Option<Vec<types::Type>>
-    {
+    fn find_largest_union_variant<'c>(
+        &mut self, variants: &[types::TypeConstructor<'c>], bindings: &TypeBindings,
+        cache: &ModuleCache<'c>,
+    ) -> Option<Vec<types::Type>> {
         let variants: Vec<Vec<types::Type>> = fmap(variants, |variant| {
-            fmap(&variant.args, |arg| typechecker::bind_typevars(arg, &bindings, cache))
+            fmap(&variant.args, |arg| {
+                typechecker::bind_typevars(arg, &bindings, cache)
+            })
         });
 
-        variants.into_iter().max_by_key(|variant|
-            variant.iter().map(|arg| self.size_of_type(arg, cache)).sum::<usize>())
+        variants.into_iter().max_by_key(|variant| {
+            variant
+                .iter()
+                .map(|arg| self.size_of_type(arg, cache))
+                .sum::<usize>()
+        })
     }
 
-    fn convert_union_type<'c>(&mut self, id: TypeInfoId, info: &types::TypeInfo, variants: &[types::TypeConstructor<'c>],
-        args: Vec<types::Type>, cache: &ModuleCache<'c>) -> BasicTypeEnum<'g>
-    {
+    fn convert_union_type<'c>(
+        &mut self, id: TypeInfoId, info: &types::TypeInfo, variants: &[types::TypeConstructor<'c>],
+        args: Vec<types::Type>, cache: &ModuleCache<'c>,
+    ) -> BasicTypeEnum<'g> {
         let bindings = typechecker::type_application_bindings(info, &args);
 
         let typ = self.context.opaque_struct_type(&info.name);
@@ -626,9 +744,14 @@ impl<'g> Generator<'g> {
         typ.into()
     }
 
-    fn convert_user_defined_type<'c>(&mut self, id: TypeInfoId, args: Vec<types::Type>, cache: &ModuleCache<'c>) -> BasicTypeEnum<'g> {
+    fn convert_user_defined_type<'c>(
+        &mut self, id: TypeInfoId, args: Vec<types::Type>, cache: &ModuleCache<'c>,
+    ) -> BasicTypeEnum<'g> {
         let info = &cache.type_infos[id.0];
-        assert!(info.args.len() == args.len(), "Kind error during llvm code generation");
+        assert!(
+            info.args.len() == args.len(),
+            "Kind error during llvm code generation"
+        );
 
         if let Some(typ) = self.types.get(&(id, args.clone())) {
             return *typ;
@@ -652,9 +775,11 @@ impl<'g> Generator<'g> {
     /// This needs to mutate self in order to remember each struct type that
     /// has been converted to avoid creating multiple versions of the same
     /// struct type in the resulting LLVM IR.
-    fn convert_type<'c>(&mut self, typ: &types::Type, cache: &ModuleCache<'c>) -> BasicTypeEnum<'g> {
-        use types::Type::*;
+    fn convert_type<'c>(
+        &mut self, typ: &types::Type, cache: &ModuleCache<'c>,
+    ) -> BasicTypeEnum<'g> {
         use types::PrimitiveType::Ptr;
+        use types::Type::*;
 
         match typ {
             Primitive(primitive) => self.convert_primitive_type(primitive, cache),
@@ -673,18 +798,23 @@ impl<'g> Generator<'g> {
                     environment = Some(environment_parameter);
                 }
 
-                let function_pointer = return_type.fn_type(&parameters, function.is_varargs)
-                    .ptr_type(AddressSpace::Generic).into();
+                let function_pointer = return_type
+                    .fn_type(&parameters, function.is_varargs)
+                    .ptr_type(AddressSpace::Generic)
+                    .into();
 
                 match environment {
                     None => function_pointer,
-                    Some(environment) => {
-                        self.context.struct_type(&[function_pointer, environment], false).into()
-                    }
+                    Some(environment) => self
+                        .context
+                        .struct_type(&[function_pointer, environment], false)
+                        .into(),
                 }
             },
 
-            TypeVariable(id) => self.convert_type(&self.find_binding(*id, &UNBOUND_TYPE, cache).clone(), cache),
+            TypeVariable(id) => {
+                self.convert_type(&self.find_binding(*id, &UNBOUND_TYPE, cache).clone(), cache)
+            },
 
             UserDefinedType(id) => self.convert_user_defined_type(*id, vec![], cache),
 
@@ -693,15 +823,20 @@ impl<'g> Generator<'g> {
                 let typ = self.follow_bindings(typ, cache);
 
                 match &typ {
-                    Primitive(Ptr) 
-                    | Ref(_) => {
+                    Primitive(Ptr) | Ref(_) => {
                         assert!(args.len() == 1);
-                        self.convert_type(&args[0], cache).ptr_type(AddressSpace::Generic).into()
+                        self.convert_type(&args[0], cache)
+                            .ptr_type(AddressSpace::Generic)
+                            .into()
                     },
                     UserDefinedType(id) => self.convert_user_defined_type(*id, args, cache),
                     _ => {
-                        unreachable!("Type {} requires 0 type args but was applied to {:?}", typ.display(cache), args);
-                    }
+                        unreachable!(
+                            "Type {} requires 0 type args but was applied to {:?}",
+                            typ.display(cache),
+                            args
+                        );
+                    },
                 }
             },
 
@@ -729,8 +864,8 @@ impl<'g> Generator<'g> {
     /// Will bind the integer to an i32 if this integer is an IntegerKind::Inferred
     /// that has not already been bound to a concrete type.
     fn integer_bit_count<'c>(&mut self, int_kind: IntegerKind, cache: &ModuleCache<'c>) -> u32 {
+        use types::{PrimitiveType::IntegerType, Type::Primitive};
         use IntegerKind::*;
-        use types::{ Type::Primitive, PrimitiveType::IntegerType };
 
         match int_kind {
             I8 | U8 => 8,
@@ -747,12 +882,18 @@ impl<'g> Generator<'g> {
                     },
                     typ if typ == &UNBOUND_TYPE => {
                         // bind to i32 by default
-                        self.monomorphisation_bindings.last_mut().unwrap().insert(id, DEFAULT_INTEGER_TYPE);
+                        self.monomorphisation_bindings
+                            .last_mut()
+                            .unwrap()
+                            .insert(id, DEFAULT_INTEGER_TYPE);
                         32
-                    }
-                    typ => unreachable!("Inferred integer is bound to non-integer type: {}", typ.display(cache)),
+                    },
+                    typ => unreachable!(
+                        "Inferred integer is bound to non-integer type: {}",
+                        typ.display(cache)
+                    ),
                 }
-            }
+            },
         }
     }
 
@@ -761,8 +902,8 @@ impl<'g> Generator<'g> {
     /// Will bind the integer to an i32 if this integer is an IntegerKind::Inferred
     /// that has not already been bound to a concrete type.
     fn is_unsigned_integer<'c>(&mut self, int_kind: IntegerKind, cache: &ModuleCache<'c>) -> bool {
+        use types::{PrimitiveType::IntegerType, Type::Primitive};
         use IntegerKind::*;
-        use types::{ Type::Primitive, PrimitiveType::IntegerType };
 
         match int_kind {
             I8 | I16 | I32 | I64 | Isz => false,
@@ -776,19 +917,30 @@ impl<'g> Generator<'g> {
                     },
                     typ if typ == &UNBOUND_TYPE => {
                         // bind to i32 by default
-                        self.monomorphisation_bindings.last_mut().unwrap().insert(id, DEFAULT_INTEGER_TYPE);
+                        self.monomorphisation_bindings
+                            .last_mut()
+                            .unwrap()
+                            .insert(id, DEFAULT_INTEGER_TYPE);
                         false
-                    }
-                    typ => unreachable!("Inferred integer is bound to non-integer type: {}", typ.display(cache)),
+                    },
+                    typ => unreachable!(
+                        "Inferred integer is bound to non-integer type: {}",
+                        typ.display(cache)
+                    ),
                 }
-            }
+            },
         }
     }
 
-    fn integer_value<'c>(&mut self, value: u64, kind: IntegerKind, cache: &ModuleCache<'c>) -> BasicValueEnum<'g> {
+    fn integer_value<'c>(
+        &mut self, value: u64, kind: IntegerKind, cache: &ModuleCache<'c>,
+    ) -> BasicValueEnum<'g> {
         let bits = self.integer_bit_count(kind, cache);
         let unsigned = self.is_unsigned_integer(kind, cache);
-        self.context.custom_width_int_type(bits).const_int(value, unsigned).as_basic_value_enum()
+        self.context
+            .custom_width_int_type(bits)
+            .const_int(value, unsigned)
+            .as_basic_value_enum()
     }
 
     fn char_value(&self, value: u64) -> BasicValueEnum<'g> {
@@ -796,7 +948,10 @@ impl<'g> Generator<'g> {
     }
 
     fn bool_value(&self, value: bool) -> BasicValueEnum<'g> {
-        self.context.bool_type().const_int(value as u64, true).into()
+        self.context
+            .bool_type()
+            .const_int(value as u64, true)
+            .into()
     }
 
     fn float_value(&self, value: f64) -> BasicValueEnum<'g> {
@@ -808,17 +963,26 @@ impl<'g> Generator<'g> {
     /// to this data and its length.
     fn string_value<'c>(&mut self, contents: &str, cache: &ModuleCache<'c>) -> BasicValueEnum<'g> {
         let literal = self.context.const_string(contents.as_bytes(), true);
-        let global = self.module.add_global(literal.get_type(), None, "string_literal");
+        let global = self
+            .module
+            .add_global(literal.get_type(), None, "string_literal");
         global.set_initializer(&literal);
         let value = global.as_pointer_value();
         let cstring_type = self.context.i8_type().ptr_type(AddressSpace::Generic);
-        let cast = self.builder.build_pointer_cast(value, cstring_type, "string_cast");
+        let cast = self
+            .builder
+            .build_pointer_cast(value, cstring_type, "string_cast");
 
         let string_type = types::Type::UserDefinedType(types::STRING_TYPE);
         let string_type = self.convert_type(&string_type, cache).into_struct_type();
-        let length = self.context.i32_type().const_int(contents.len() as u64, false);
+        let length = self
+            .context
+            .i32_type()
+            .const_int(contents.len() as u64, false);
 
-        string_type.const_named_struct(&[cast.into(), length.into()]).into()
+        string_type
+            .const_named_struct(&[cast.into(), length.into()])
+            .into()
     }
 
     fn follow_bindings<'c>(&self, typ: &types::Type, cache: &ModuleCache<'c>) -> types::Type {
@@ -827,14 +991,23 @@ impl<'g> Generator<'g> {
             Primitive(primitive) => Primitive(*primitive),
 
             Function(function) => {
-                let parameters = fmap(&function.parameters, |parameter| self.follow_bindings(parameter, cache));
+                let parameters = fmap(&function.parameters, |parameter| {
+                    self.follow_bindings(parameter, cache)
+                });
                 let return_type = Box::new(self.follow_bindings(&function.return_type, cache));
                 let environment = Box::new(self.follow_bindings(&function.environment, cache));
                 let is_varargs = function.is_varargs;
-                Function(types::FunctionType { parameters, return_type, environment, is_varargs })
+                Function(types::FunctionType {
+                    parameters,
+                    return_type,
+                    environment,
+                    is_varargs,
+                })
             },
 
-            TypeVariable(id) => self.follow_bindings(self.find_binding(*id, &UNBOUND_TYPE, cache), cache),
+            TypeVariable(id) => {
+                self.follow_bindings(self.find_binding(*id, &UNBOUND_TYPE, cache), cache)
+            },
 
             UserDefinedType(id) => UserDefinedType(*id),
 
@@ -855,17 +1028,22 @@ impl<'g> Generator<'g> {
                 } else {
                     default
                 }
-            }
+            },
 
             // unwrap foralls
             ForAll(_, typ) => self.follow_bindings(typ, cache),
         }
     }
 
-    fn bind_definition_pattern<'c>(&mut self, id: DefinitionInfoId, typ: types::Type, mut value: BasicValueEnum<'g>, cache: &mut ModuleCache<'c>) {
+    fn bind_definition_pattern<'c>(
+        &mut self, id: DefinitionInfoId, typ: types::Type, mut value: BasicValueEnum<'g>,
+        cache: &mut ModuleCache<'c>,
+    ) {
         let definition = &cache.definition_infos[id.0];
         if definition.mutable {
-            let alloca = self.builder.build_alloca(value.get_type(), &definition.name);
+            let alloca = self
+                .builder
+                .build_alloca(value.get_type(), &definition.name);
             self.builder.build_store(alloca, value);
             self.auto_derefs.insert(id);
             value = alloca.as_basic_value_enum();
@@ -874,8 +1052,10 @@ impl<'g> Generator<'g> {
         self.definitions.insert((id, typ), value);
     }
 
-    fn bind_irrefutable_pattern<'c>(&mut self, ast: &Ast<'c>, value: BasicValueEnum<'g>, cache: &mut ModuleCache<'c>) {
-        use { ast::LiteralKind, Ast::* };
+    fn bind_irrefutable_pattern<'c>(
+        &mut self, ast: &Ast<'c>, value: BasicValueEnum<'g>, cache: &mut ModuleCache<'c>,
+    ) {
+        use {ast::LiteralKind, Ast::*};
         match ast {
             Literal(literal) => {
                 assert!(literal.kind == LiteralKind::Unit)
@@ -892,13 +1072,16 @@ impl<'g> Generator<'g> {
             // Match a pair pattern
             FunctionCall(call) if call.is_pair_constructor() => {
                 for (i, element) in call.args.iter().enumerate() {
-                    let element_value = self.builder.build_extract_value(value.into_struct_value(), i as u32, "extract").unwrap();
+                    let element_value = self
+                        .builder
+                        .build_extract_value(value.into_struct_value(), i as u32, "extract")
+                        .unwrap();
                     self.bind_irrefutable_pattern(element, element_value, cache);
                 }
             },
             _ => {
                 unreachable!();
-            }
+            },
         }
     }
 
@@ -913,14 +1096,16 @@ impl<'g> Generator<'g> {
     // a definition like `(a, b) = ...` where the value returned by the definition is not actually
     // the value of a. Since this function will bind each pattern the correct value, callers only
     // need to retrieve this value from self.definitions themselves.
-    fn codegen_monomorphise<'c>(&mut self, definition: &ast::Definition<'c>, cache: &mut ModuleCache<'c>) {
+    fn codegen_monomorphise<'c>(
+        &mut self, definition: &ast::Definition<'c>, cache: &mut ModuleCache<'c>,
+    ) {
         // If we're defining a lambda, give the lambda info on DefinitionInfoId so that it knows
         // what to name itself in the IR and so recursive functions can properly codegen without
         // attempting to re-compile themselves over and over.
         match (definition.pattern.as_ref(), definition.expr.as_ref()) {
             (Ast::Variable(variable), Ast::Lambda(_)) => {
                 self.current_function_info = Some(variable.definition.unwrap());
-            }
+            },
             _ => (),
         }
 
@@ -940,7 +1125,9 @@ impl<'g> Generator<'g> {
         }
     }
 
-    fn codegen_extern<'c>(&mut self, id: DefinitionInfoId, typ: &types::Type, cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
+    fn codegen_extern<'c>(
+        &mut self, id: DefinitionInfoId, typ: &types::Type, cache: &mut ModuleCache<'c>,
+    ) -> BasicValueEnum<'g> {
         // extern definitions should only be declared once - never duplicated & monomorphised.
         // For this reason their value is always stored with the Unit type in the definitions map.
         if let Some(value) = self.lookup(id, &UNBOUND_TYPE, cache) {
@@ -952,11 +1139,19 @@ impl<'g> Generator<'g> {
         let name = &cache.definition_infos[id.0].name;
 
         let global = if self.is_function_type(typ, cache) {
-            let function_type = llvm_type.into_pointer_type().get_element_type().into_function_type();
-            self.module.add_function(name, function_type, Some(Linkage::External)).as_global_value().as_basic_value_enum()
+            let function_type = llvm_type
+                .into_pointer_type()
+                .get_element_type()
+                .into_function_type();
+            self.module
+                .add_function(name, function_type, Some(Linkage::External))
+                .as_global_value()
+                .as_basic_value_enum()
         } else {
             self.auto_derefs.insert(id);
-            self.module.add_global(llvm_type, None, name).as_basic_value_enum()
+            self.module
+                .add_global(llvm_type, None, name)
+                .as_basic_value_enum()
         };
 
         // Insert the global for both the current type and the unit type
@@ -965,13 +1160,16 @@ impl<'g> Generator<'g> {
         global
     }
 
-    fn codegen_type_constructor<'c>(&mut self, name: &str, tag: &Option<u8>, typ: &types::Type, cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
+    fn codegen_type_constructor<'c>(
+        &mut self, name: &str, tag: &Option<u8>, typ: &types::Type, cache: &mut ModuleCache<'c>,
+    ) -> BasicValueEnum<'g> {
         use types::Type::*;
         let typ = self.follow_bindings(typ, cache);
         match &typ {
             Function(function_type) => {
                 let caller_block = self.current_block();
-                let (function, function_pointer) = self.function(name, &typ, &BTreeMap::new(), cache);
+                let (function, function_pointer) =
+                    self.function(name, &typ, &BTreeMap::new(), cache);
 
                 let mut elements = vec![];
                 let mut element_types = vec![];
@@ -1002,10 +1200,12 @@ impl<'g> Generator<'g> {
                 let value = tag.map_or(self.unit_value(), |tag| self.tag_value(tag));
                 self.reinterpret_cast(value, &typ, cache)
             },
-            ForAll(_, typ) => {
-                self.codegen_type_constructor(name, tag, &typ, cache)
-            },
-            _ => unreachable!("Type constructor's type is neither a Function or a  UserDefinedType, {}: {}", name, typ.display(cache)),
+            ForAll(_, typ) => self.codegen_type_constructor(name, tag, &typ, cache),
+            _ => unreachable!(
+                "Type constructor's type is neither a Function or a  UserDefinedType, {}: {}",
+                name,
+                typ.display(cache)
+            ),
         }
     }
 
@@ -1033,9 +1233,9 @@ impl<'g> Generator<'g> {
     /// Since returns can happen within a branch, this function should be used to
     /// check that the branch hasn't yet terminated before inserting a br after
     /// a then/else branch, pattern match, or looping construct.
-    fn codegen_branch<'c>(&mut self, branch: &ast::Ast<'c>, end_block: BasicBlock<'g>,
-        cache: &mut ModuleCache<'c>) -> Option<(BasicBlock<'g>, BasicValueEnum<'g>)>
-    {
+    fn codegen_branch<'c>(
+        &mut self, branch: &ast::Ast<'c>, end_block: BasicBlock<'g>, cache: &mut ModuleCache<'c>,
+    ) -> Option<(BasicBlock<'g>, BasicValueEnum<'g>)> {
         let branch_value = branch.codegen(self, cache);
         let branch_block = self.current_block();
 
@@ -1054,10 +1254,15 @@ impl<'g> Generator<'g> {
 
     /// Returns the value of a tag for a given variant of a tagged union
     fn tag_value(&self, tag: u8) -> BasicValueEnum<'g> {
-        self.context.i8_type().const_int(tag as u64, false).as_basic_value_enum()
+        self.context
+            .i8_type()
+            .const_int(tag as u64, false)
+            .as_basic_value_enum()
     }
 
-    fn reinterpret_cast_llvm_type<'c>(&mut self, value: BasicValueEnum<'g>, target_type: BasicTypeEnum<'g>) -> BasicValueEnum<'g> {
+    fn reinterpret_cast_llvm_type<'c>(
+        &mut self, value: BasicValueEnum<'g>, target_type: BasicTypeEnum<'g>,
+    ) -> BasicValueEnum<'g> {
         let source_type = value.get_type();
         let alloca = self.builder.build_alloca(source_type, "alloca");
         self.builder.build_store(alloca, value);
@@ -1067,12 +1272,17 @@ impl<'g> Generator<'g> {
         self.builder.build_load(cast, "union_cast")
     }
 
-    fn reinterpret_cast<'c>(&mut self, value: BasicValueEnum<'g>, target_type: &types::Type, cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
+    fn reinterpret_cast<'c>(
+        &mut self, value: BasicValueEnum<'g>, target_type: &types::Type,
+        cache: &mut ModuleCache<'c>,
+    ) -> BasicValueEnum<'g> {
         let target_type = self.convert_type(target_type, cache);
         self.reinterpret_cast_llvm_type(value, target_type)
     }
 
-    fn tuple<'c>(&mut self, elements: Vec<BasicValueEnum<'g>>, element_types: Vec<BasicTypeEnum<'g>>) -> BasicValueEnum<'g> {
+    fn tuple<'c>(
+        &mut self, elements: Vec<BasicValueEnum<'g>>, element_types: Vec<BasicTypeEnum<'g>>,
+    ) -> BasicValueEnum<'g> {
         let tuple_type = self.context.struct_type(&element_types, false);
 
         // LLVM wants the const elements to be included in the struct literal itself.
@@ -1086,12 +1296,17 @@ impl<'g> Generator<'g> {
             }
         });
 
-        let mut tuple = tuple_type.const_named_struct(&const_elements).as_aggregate_value_enum();
+        let mut tuple = tuple_type
+            .const_named_struct(&const_elements)
+            .as_aggregate_value_enum();
 
         // Now insert all the non-const values
         for (i, element) in elements.into_iter().enumerate() {
             if !Self::is_const(element) {
-                tuple = self.builder.build_insert_value(tuple, element, i as u32, "insert").unwrap();
+                tuple = self
+                    .builder
+                    .build_insert_value(tuple, element, i as u32, "insert")
+                    .unwrap();
             }
         }
 
@@ -1132,62 +1347,92 @@ impl<'g> Generator<'g> {
         }
     }
 
-    fn get_field_index<'c>(&self, field_name: &str, typ: &types::Type, cache: &ModuleCache<'c>) -> u32 {
+    fn get_field_index<'c>(
+        &self, field_name: &str, typ: &types::Type, cache: &ModuleCache<'c>,
+    ) -> u32 {
         use types::Type::*;
         match self.follow_bindings(typ, cache) {
-            UserDefinedType(id) => {
-                cache.type_infos[id.0].find_field(field_name).map(|(i, _)| i).unwrap()
-            },
-            TypeVariable(id) => {
-                match &cache.type_bindings[id.0] {
-                    TypeBinding::Bound(_) => unreachable!("Type variable {} is bound but its binding wasn't found by follow_bindings", id.0),
-                    TypeBinding::Unbound(..) => unreachable!("Type variable {} is unbound", id.0),
-                }
+            UserDefinedType(id) => cache.type_infos[id.0]
+                .find_field(field_name)
+                .map(|(i, _)| i)
+                .unwrap(),
+            TypeVariable(id) => match &cache.type_bindings[id.0] {
+                TypeBinding::Bound(_) => unreachable!(
+                    "Type variable {} is bound but its binding wasn't found by follow_bindings",
+                    id.0
+                ),
+                TypeBinding::Unbound(..) => unreachable!("Type variable {} is unbound", id.0),
             },
             _ => {
-                unreachable!("get_field_index called with a type that clearly doesn't have a {} field: {}", field_name, typ.display(cache));
-            }
+                unreachable!(
+                    "get_field_index called with a type that clearly doesn't have a {} field: {}",
+                    field_name,
+                    typ.display(cache)
+                );
+            },
         }
     }
 
     /// Create an 'Extract' llvm instruction to extract the value of a field out of a
     /// struct or tuple value
-    fn extract_field(&mut self, collection: BasicValueEnum<'g>, field_index: u32, field_name: &str) -> BasicValueEnum<'g> {
+    fn extract_field(
+        &mut self, collection: BasicValueEnum<'g>, field_index: u32, field_name: &str,
+    ) -> BasicValueEnum<'g> {
         let collection = collection.into_struct_value();
-        self.builder.build_extract_value(collection, field_index, field_name).unwrap()
+        self.builder
+            .build_extract_value(collection, field_index, field_name)
+            .unwrap()
     }
 
     /// Creates a GEP instruction and Load which emulate a single Extract instruction but
     /// delays the Load as long as possible to make assigning to this as an l-value easier later on.
-    fn gep_at_index(&mut self, load: BasicValueEnum<'g>, field_index: u32, field_name: &str) -> BasicValueEnum<'g> {
+    fn gep_at_index(
+        &mut self, load: BasicValueEnum<'g>, field_index: u32, field_name: &str,
+    ) -> BasicValueEnum<'g> {
         let instruction = load.as_instruction_value().unwrap();
         assert_eq!(instruction.get_opcode(), InstructionOpcode::Load);
 
-        let pointer = instruction.get_operand(0).unwrap().left().unwrap().into_pointer_value();
+        let pointer = instruction
+            .get_operand(0)
+            .unwrap()
+            .left()
+            .unwrap()
+            .into_pointer_value();
 
-        let gep = self.builder.build_struct_gep(pointer, field_index, field_name).unwrap();
+        let gep = self
+            .builder
+            .build_struct_gep(pointer, field_index, field_name)
+            .unwrap();
         self.builder.build_load(gep, field_name)
     }
 }
 
 trait CodeGen<'g, 'c> {
-    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g>;
+    fn codegen(
+        &self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>,
+    ) -> BasicValueEnum<'g>;
 }
 
 impl<'g, 'c> CodeGen<'g, 'c> for Ast<'c> {
-    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
+    fn codegen(
+        &self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>,
+    ) -> BasicValueEnum<'g> {
         dispatch_on_expr!(self, CodeGen::codegen, generator, cache)
     }
 }
 
 impl<'g, 'c> CodeGen<'g, 'c> for ast::Literal<'c> {
-    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
+    fn codegen(
+        &self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>,
+    ) -> BasicValueEnum<'g> {
         self.kind.codegen(generator, cache)
     }
 }
 
-impl <'g, 'c> CodeGen<'g, 'c> for ast::LiteralKind {
-    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
+impl<'g, 'c> CodeGen<'g, 'c> for ast::LiteralKind {
+    fn codegen(
+        &self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>,
+    ) -> BasicValueEnum<'g> {
         match self {
             ast::LiteralKind::Char(c) => generator.char_value(*c as u64),
             ast::LiteralKind::Bool(b) => generator.bool_value(*b),
@@ -1200,8 +1445,12 @@ impl <'g, 'c> CodeGen<'g, 'c> for ast::LiteralKind {
 }
 
 impl<'g, 'c> CodeGen<'g, 'c> for ast::Variable<'c> {
-    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
-        let required_impls = &cache.trait_bindings[self.trait_binding.unwrap().0].required_impls.clone();
+    fn codegen(
+        &self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>,
+    ) -> BasicValueEnum<'g> {
+        let required_impls = &cache.trait_bindings[self.trait_binding.unwrap().0]
+            .required_impls
+            .clone();
         generator.add_required_impls(&required_impls);
 
         // The definition to compile is either the corresponding impl definition if this
@@ -1215,7 +1464,9 @@ impl<'g, 'c> CodeGen<'g, 'c> for ast::Variable<'c> {
 }
 
 impl<'g, 'c> CodeGen<'g, 'c> for ast::Lambda<'c> {
-    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
+    fn codegen(
+        &self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>,
+    ) -> BasicValueEnum<'g> {
         let function_name = match &generator.current_function_info {
             Some(id) => cache.definition_infos[id.0].name.clone(),
             None => "lambda".to_string(),
@@ -1223,7 +1474,12 @@ impl<'g, 'c> CodeGen<'g, 'c> for ast::Lambda<'c> {
 
         let caller_block = generator.current_block();
         let function_type = self.typ.as_ref().unwrap();
-        let (function, function_value) = generator.function(&function_name, function_type, &self.closure_environment, cache);
+        let (function, function_value) = generator.function(
+            &function_name,
+            function_type,
+            &self.closure_environment,
+            cache,
+        );
 
         // Bind each parameter node to the nth parameter of `function`
         for (i, parameter) in self.args.iter().enumerate() {
@@ -1243,7 +1499,9 @@ impl<'g, 'c> CodeGen<'g, 'c> for ast::Lambda<'c> {
 }
 
 impl<'g, 'c> CodeGen<'g, 'c> for ast::FunctionCall<'c> {
-    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
+    fn codegen(
+        &self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>,
+    ) -> BasicValueEnum<'g> {
         match self.function.as_ref() {
             Ast::Variable(variable) if variable.definition == Some(BUILTIN_ID) => {
                 // TODO: improve this control flow so that the fast path of normal function calls
@@ -1263,18 +1521,25 @@ impl<'g, 'c> CodeGen<'g, 'c> for ast::FunctionCall<'c> {
                     generator.extract_field(function, 0, "closure")
                 } else {
                     function
-                }.into_pointer_value();
+                }
+                .into_pointer_value();
 
                 let function = CallableValue::try_from(function_pointer).unwrap();
-                generator.builder.build_call(function, &args, "")
-                    .try_as_basic_value().left().unwrap()
+                generator
+                    .builder
+                    .build_call(function, &args, "")
+                    .try_as_basic_value()
+                    .left()
+                    .unwrap()
             },
         }
     }
 }
 
 impl<'g, 'c> CodeGen<'g, 'c> for ast::Definition<'c> {
-    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
+    fn codegen(
+        &self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>,
+    ) -> BasicValueEnum<'g> {
         match self.expr.as_ref() {
             // If the value is a function we can skip it and come back later to only compile it
             // when it is actually used. This saves the optimizer some work since we won't ever
@@ -1290,17 +1555,29 @@ impl<'g, 'c> CodeGen<'g, 'c> for ast::Definition<'c> {
 }
 
 impl<'g, 'c> CodeGen<'g, 'c> for ast::If<'c> {
-    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
+    fn codegen(
+        &self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>,
+    ) -> BasicValueEnum<'g> {
         let condition = self.condition.codegen(generator, cache);
 
         let current_function = generator.current_function();
-        let then_block = generator.context.append_basic_block(current_function, "then");
-        let end_block = generator.context.append_basic_block(current_function, "end_if");
+        let then_block = generator
+            .context
+            .append_basic_block(current_function, "then");
+        let end_block = generator
+            .context
+            .append_basic_block(current_function, "end_if");
 
         if let Some(otherwise) = &self.otherwise {
             // Setup conditional jump
-            let else_block = generator.context.append_basic_block(current_function, "else");
-            generator.builder.build_conditional_branch(condition.into_int_value(), then_block, else_block);
+            let else_block = generator
+                .context
+                .append_basic_block(current_function, "else");
+            generator.builder.build_conditional_branch(
+                condition.into_int_value(),
+                then_block,
+                else_block,
+            );
 
             generator.builder.position_at_end(then_block);
             let then_option = generator.codegen_branch(&self.then, end_block, cache);
@@ -1315,10 +1592,12 @@ impl<'g, 'c> CodeGen<'g, 'c> for ast::If<'c> {
             // determine which we should add to the phi or if we should even create a phi at all.
             match (then_option, else_option) {
                 (Some((then_branch, then_value)), Some((else_branch, else_value))) => {
-                    let phi = generator.builder.build_phi(then_value.get_type(), "if_result");
+                    let phi = generator
+                        .builder
+                        .build_phi(then_value.get_type(), "if_result");
                     phi.add_incoming(&[(&then_value, then_branch), (&else_value, else_branch)]);
                     phi.as_basic_value()
-                }
+                },
                 (Some((_, then_value)), None) => then_value,
                 (None, Some((_, else_value))) => else_value,
                 (None, None) => {
@@ -1332,7 +1611,11 @@ impl<'g, 'c> CodeGen<'g, 'c> for ast::If<'c> {
                 },
             }
         } else {
-            generator.builder.build_conditional_branch(condition.into_int_value(), then_block, end_block);
+            generator.builder.build_conditional_branch(
+                condition.into_int_value(),
+                then_block,
+                end_block,
+            );
 
             generator.builder.position_at_end(then_block);
             generator.codegen_branch(&self.then, end_block, cache);
@@ -1344,43 +1627,57 @@ impl<'g, 'c> CodeGen<'g, 'c> for ast::If<'c> {
 }
 
 impl<'g, 'c> CodeGen<'g, 'c> for ast::Match<'c> {
-    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
+    fn codegen(
+        &self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>,
+    ) -> BasicValueEnum<'g> {
         generator.codegen_tree(self.decision_tree.as_ref().unwrap(), self, cache)
     }
 }
 
 impl<'g, 'c> CodeGen<'g, 'c> for ast::TypeDefinition<'c> {
-    fn codegen(&self, generator: &mut Generator<'g>, _cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
+    fn codegen(
+        &self, generator: &mut Generator<'g>, _cache: &mut ModuleCache<'c>,
+    ) -> BasicValueEnum<'g> {
         generator.unit_value()
     }
 }
 
 impl<'g, 'c> CodeGen<'g, 'c> for ast::TypeAnnotation<'c> {
-    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
+    fn codegen(
+        &self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>,
+    ) -> BasicValueEnum<'g> {
         self.lhs.codegen(generator, cache)
     }
 }
 
 impl<'g, 'c> CodeGen<'g, 'c> for ast::Import<'c> {
-    fn codegen(&self, generator: &mut Generator<'g>, _cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
+    fn codegen(
+        &self, generator: &mut Generator<'g>, _cache: &mut ModuleCache<'c>,
+    ) -> BasicValueEnum<'g> {
         generator.unit_value()
     }
 }
 
 impl<'g, 'c> CodeGen<'g, 'c> for ast::TraitDefinition<'c> {
-    fn codegen(&self, generator: &mut Generator<'g>, _cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
+    fn codegen(
+        &self, generator: &mut Generator<'g>, _cache: &mut ModuleCache<'c>,
+    ) -> BasicValueEnum<'g> {
         generator.unit_value()
     }
 }
 
 impl<'g, 'c> CodeGen<'g, 'c> for ast::TraitImpl<'c> {
-    fn codegen(&self, generator: &mut Generator<'g>, _cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
+    fn codegen(
+        &self, generator: &mut Generator<'g>, _cache: &mut ModuleCache<'c>,
+    ) -> BasicValueEnum<'g> {
         generator.unit_value()
     }
 }
 
 impl<'g, 'c> CodeGen<'g, 'c> for ast::Return<'c> {
-    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
+    fn codegen(
+        &self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>,
+    ) -> BasicValueEnum<'g> {
         let value = self.expression.codegen(generator, cache);
         generator.builder.build_return(Some(&value));
         value
@@ -1388,7 +1685,9 @@ impl<'g, 'c> CodeGen<'g, 'c> for ast::Return<'c> {
 }
 
 impl<'g, 'c> CodeGen<'g, 'c> for ast::Sequence<'c> {
-    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
+    fn codegen(
+        &self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>,
+    ) -> BasicValueEnum<'g> {
         assert!(!self.statements.is_empty());
 
         for statement in self.statements.iter().take(self.statements.len() - 1) {
@@ -1400,13 +1699,17 @@ impl<'g, 'c> CodeGen<'g, 'c> for ast::Sequence<'c> {
 }
 
 impl<'g, 'c> CodeGen<'g, 'c> for ast::Extern<'c> {
-    fn codegen(&self, generator: &mut Generator<'g>, _cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
+    fn codegen(
+        &self, generator: &mut Generator<'g>, _cache: &mut ModuleCache<'c>,
+    ) -> BasicValueEnum<'g> {
         generator.unit_value()
     }
 }
 
 impl<'g, 'c> CodeGen<'g, 'c> for ast::MemberAccess<'c> {
-    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
+    fn codegen(
+        &self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>,
+    ) -> BasicValueEnum<'g> {
         let lhs = self.lhs.codegen(generator, cache);
         let index = generator.get_field_index(&self.field, self.lhs.get_type().unwrap(), cache);
 
@@ -1421,13 +1724,20 @@ impl<'g, 'c> CodeGen<'g, 'c> for ast::MemberAccess<'c> {
 }
 
 impl<'g, 'c> CodeGen<'g, 'c> for ast::Assignment<'c> {
-    fn codegen(&self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>) -> BasicValueEnum<'g> {
+    fn codegen(
+        &self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>,
+    ) -> BasicValueEnum<'g> {
         let lhs = self.lhs.codegen(generator, cache);
         let lhs_instruction = lhs.as_instruction_value().unwrap();
 
         assert_eq!(lhs_instruction.get_opcode(), InstructionOpcode::Load);
 
-        let lhs = lhs_instruction.get_operand(0).unwrap().left().unwrap().into_pointer_value();
+        let lhs = lhs_instruction
+            .get_operand(0)
+            .unwrap()
+            .left()
+            .unwrap()
+            .into_pointer_value();
         let rhs = self.rhs.codegen(generator, cache);
         generator.builder.build_store(lhs, rhs);
         generator.unit_value()

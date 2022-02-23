@@ -21,20 +21,24 @@ mod util;
 
 #[macro_use]
 mod error;
+mod args;
 mod cache;
+mod cranelift_backend;
+mod lifetimes;
 mod nameresolution;
 mod types;
-mod lifetimes;
+
+#[cfg(llvm)]
 mod llvm;
 
+use cache::ModuleCache;
 use lexer::Lexer;
 use nameresolution::NameResolver;
-use cache::ModuleCache;
 
-use clap::{App, Arg};
+use clap::StructOpt;
 use std::fs::File;
-use std::path::Path;
 use std::io::{BufReader, Read};
+use std::path::Path;
 
 #[global_allocator]
 static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
@@ -51,7 +55,10 @@ fn print_definition_types<'a>(cache: &ModuleCache<'a>) {
 
     for (name, definition_id) in definitions {
         let info = &cache.definition_infos[definition_id.0];
-        let typ = info.typ.clone().unwrap_or(types::Type::Primitive(types::PrimitiveType::UnitType));
+        let typ = info
+            .typ
+            .clone()
+            .unwrap_or(types::Type::Primitive(types::PrimitiveType::UnitType));
 
         print!("{} : ", name);
         types::typeprinter::show_type_and_traits(&typ, &info.required_traits, cache);
@@ -69,50 +76,32 @@ macro_rules! expect {( $result:expr , $fmt_string:expr $( , $($msg:tt)* )? ) => 
     }
 });}
 
-fn validate_opt_argument(arg: String) -> Result<(), String> {
-    match arg.as_str() {
-        "0" | "1" | "2" | "3" | "s" | "z" => Ok(()),
-        _ => Err("Argument to -O must be one of: 0, 1, 2, 3, s, or z".to_owned()),
-    }
-}
-
 pub fn main() {
-    let args = App::new("ante")
-        .version("0.1.1")
-        .author("Jake Fecher <jfecher11@gmail.com>")
-        .about("Compiler for the Ante programming language")
-        .arg(Arg::with_name("lex").long("lex").help("Lex the file and output the resulting list of tokens"))
-        .arg(Arg::with_name("parse").long("parse").help("Parse the file and output the resulting Ast"))
-        .arg(Arg::with_name("check").long("check").help("Check the file for errors without compiling"))
-        .arg(Arg::with_name("run").long("run").help("Run the resulting binary"))
-        .arg(Arg::with_name("O").short("O").value_name("level").default_value("0").validator(validate_opt_argument).help("Sets the current optimization level from 0 (no optimization) to 3 (aggressive optimization). Set to s or z to optimize for size."))
-        .arg(Arg::with_name("no-color").long("no-color").help("Use plaintext and an indicator line instead of color for pointing out error locations"))
-        .arg(Arg::with_name("emit-llvm").long("emit-llvm").help("Print out the LLVM-IR of the compiled program"))
-        .arg(Arg::with_name("delete-binary").long("delete-binary").help("Delete the resulting binary after compiling"))
-        .arg(Arg::with_name("show-time").long("show-time").help("Print out the time each compiler pass takes for the given program"))
-        .arg(Arg::with_name("show-types").long("show-types").help("Print out the type of each definition"))
-        .arg(Arg::with_name("show-lifetimes").long("show-lifetimes").help("Print out the input file annotated with inferred lifetimes of heap allocations"))
-        .arg(Arg::with_name("file").help("The file to compile").required(true))
-        .get_matches();
+    let args = args::Args::parse();
 
     // Setup the cache and read from the first file
-    let filename = Path::new(args.value_of("file").unwrap());
-    let file = expect!(File::open(filename), "Could not open file {}\n", filename.display());
+    let filename = Path::new(&args.file);
+    let file = File::open(filename);
+    let file = expect!(file, "Could not open file {}\n", filename.display());
 
     let mut cache = ModuleCache::new(filename.parent().unwrap());
 
     let mut reader = BufReader::new(file);
     let mut contents = String::new();
-    expect!(reader.read_to_string(&mut contents), "Failed to read {} into a string\n", filename.display());
+    expect!(
+        reader.read_to_string(&mut contents),
+        "Failed to read {} into a string\n",
+        filename.display()
+    );
 
-    error::color_output(!args.is_present("no-color"));
-    util::timing::time_passes(args.is_present("show-time"));
+    error::color_output(!args.no_color);
+    util::timing::time_passes(args.show_time);
 
     // Phase 1: Lexing
     util::timing::start_time("Lexing");
     let tokens = Lexer::new(filename, &contents).collect::<Vec<_>>();
 
-    if args.is_present("lex") {
+    if args.lex {
         tokens.iter().for_each(|(token, _)| println!("{}", token));
         return;
     }
@@ -121,7 +110,7 @@ pub fn main() {
     util::timing::start_time("Parsing");
     let root = expect!(parser::parse(&tokens), "");
 
-    if args.is_present("parse") {
+    if args.parse {
         println!("{}", root);
         return;
     }
@@ -136,11 +125,11 @@ pub fn main() {
     let ast = cache.parse_trees.get_mut(0).unwrap();
     types::typechecker::infer_ast(ast, &mut cache);
 
-    if args.is_present("show-types") {
+    if args.show_types {
         print_definition_types(&cache);
     }
 
-    if args.is_present("check") {
+    if args.check {
         return;
     }
 
@@ -148,17 +137,20 @@ pub fn main() {
     util::timing::start_time("Lifetime Inference");
     lifetimes::infer(ast, &mut cache);
 
-    if args.is_present("show-lifetimes") {
+    if args.show_lifetimes {
         println!("{}", ast);
     }
 
     // Phase 6: Codegen
     if error::get_error_count() == 0 {
-        llvm::run(&filename, ast, &mut cache,
-                args.is_present("emit-llvm"),
-                args.is_present("run"),
-                args.is_present("delete-binary"),
-                args.value_of("O").unwrap());
+        if args.opt_level == '0' {
+            cranelift_backend::run(&filename, ast, &mut cache, &args);
+        } else if cfg!(llvm) {
+            #[cfg(llvm)]
+            llvm::run(&filename, ast, &mut cache, &args);
+        } else {
+            eprintln!("The llvm backend is required for non-debug builds. Recompile ante with --features 'llvm' to enable optimized builds.");
+        }
     }
 
     // Print out the time each compiler pass took to complete if the --show-time flag was passed

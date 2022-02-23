@@ -78,10 +78,10 @@ impl Cast a a with
     cast a = a
 
 impl Cast (Ptr a) usz with
-    cast (_ptr: Ptr a) = builtin "CastPtrUsz"
+    cast ptr = transmute ptr
 
 impl Cast usz (Ptr a) with
-    cast (_address: usz) = builtin "CastUszPtr"
+    cast address = transmute address
 
 impl Cast (Maybe m) string given Cast m string with
     cast maybe =
