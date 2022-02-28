@@ -114,7 +114,7 @@ location and re-running `cargo build`.
 ```shell
 $ cargo install llvmenv
 $ llvmenv init
-$ llvmenv build-entry -G VisualStudio -j7 12.0.1
+$ llvmenv build-entry -G VisualStudio -j7 13.0.0
 $ llvmenv global 12.0.1
 $ for /f "tokens=*" %a in ('llvmenv prefix') do (set LLVM_SYS_120_PREFIX=%a)
 $ cargo build
