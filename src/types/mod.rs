@@ -31,6 +31,10 @@ pub struct TypeVariableId(pub usize);
 /// They're equal simply if the other type is also the same PrimitiveType variant,
 /// there is no recursion needed like with other Types. If the `Type`
 /// enum forms a tree, then these are the leaf nodes.
+///
+/// A restriction from the cranelift backend enforces primitive
+/// types must be of size <= a pointer size to be able to store them
+/// unboxed when all other values are boxed.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum PrimitiveType {
     IntegerType(IntegerKind), // : *
@@ -238,6 +242,7 @@ impl<'a> Locatable<'a> for TypeInfo<'a> {
 }
 
 impl<'a> TypeInfo<'a> {
+    #[allow(unused)]
     pub fn is_union(&self) -> bool {
         match &self.body {
             TypeInfoBody::Union(..) => true,

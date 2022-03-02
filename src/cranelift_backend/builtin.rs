@@ -17,7 +17,7 @@ pub fn call_builtin<'a, 'ast, 'c>(args: &[Ast<'c>], context: &mut Context<'a, 'a
         _ => unreachable!(),
     };
 
-    match arg.as_ref() {
+    let result = match arg.as_ref() {
         "AddInt" => add_int(context),
         "AddFloat" => add_float(context),
 
@@ -48,7 +48,9 @@ pub fn call_builtin<'a, 'ast, 'c>(args: &[Ast<'c>], context: &mut Context<'a, 'a
         "transmute" => transmute(context),
 
         _ => unreachable!("Unknown builtin '{}'", arg),
-    }
+    };
+
+    Value::Normal(result)
 }
 
 fn add_int<'a, 'ast, 'c>(context: &mut Context<'a, 'ast, 'c>) -> CraneliftValue {
