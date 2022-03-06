@@ -13,7 +13,7 @@ mod context;
 
 use context::{ Context, Value, FunctionValue };
 use cranelift::frontend::FunctionBuilder;
-use cranelift::prelude::InstBuilder;
+use cranelift::prelude::{InstBuilder, MemFlags};
 
 use self::context::BOXED_TYPE;
 
@@ -61,7 +61,7 @@ impl<'c> Codegen<'c> for ast::LiteralKind {
                 let value = ins.f64const(reinterpret_from_bits(*float));
                 builder.ins().bitcast(BOXED_TYPE, value)
             },
-            ast::LiteralKind::String(_) => todo!(),
+            ast::LiteralKind::String(s) => context.string_value(s, builder),
             ast::LiteralKind::Char(char) => {
                 builder.ins().iconst(cranelift_types::I64, *char as i64)
             },
@@ -199,8 +199,10 @@ impl<'c> Codegen<'c> for ast::Extern<'c> {
 }
 
 impl<'c> Codegen<'c> for ast::MemberAccess<'c> {
-    fn codegen<'a>(&'a self, _context: &mut Context<'a, 'c>, _builder: &mut FunctionBuilder) -> Value {
-        todo!()
+    fn codegen<'a>(&'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder) -> Value {
+        let lhs = context.codegen_eval(&self.lhs, builder);
+        let index = context.get_field_index(&self.field, self.lhs.get_type().unwrap());
+        Value::Normal(builder.ins().load(BOXED_TYPE, MemFlags::new(), lhs, index as i32))
     }
 }
 

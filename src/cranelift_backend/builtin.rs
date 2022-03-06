@@ -7,7 +7,7 @@ use crate::parser::ast::Ast;
 use super::{Context, Value};
 
 pub fn call_builtin<'c>(args: &[Ast<'c>], context: &mut Context, builder: &mut FunctionBuilder) -> Value {
-    assert!(args.len() == 1);
+    assert_eq!(args.len(), 1);
 
     use crate::parser::ast::{Literal, LiteralKind::String};
     let arg = match &args[0] {

@@ -13,7 +13,7 @@ use cranelift::frontend::{FunctionBuilderContext, FunctionBuilder, Variable};
 use cranelift::prelude::isa::{TargetFrontendConfig, CallConv, self};
 use cranelift::prelude::{ExtFuncData, Value as CraneliftValue, MemFlags, Signature, InstBuilder, AbiParam, ExternalName, EntityRef, settings, Configurable};
 use cranelift_jit::{JITBuilder, JITModule};
-use cranelift_module::{Linkage, FuncId, Module};
+use cranelift_module::{Linkage, FuncId, Module, DataContext};
 use cranelift::codegen::ir::{types as cranelift_types, Function};
 
 use super::Codegen;
@@ -28,6 +28,8 @@ pub struct Context<'ast, 'c> {
     pub definitions: HashMap<DefinitionInfoId, Value>,
     module: JITModule,
     unique_id: u32,
+
+    data_context: DataContext,
 
     pub current_function_name: String,
     pub current_function_parameters: Vec<CraneliftValue>,
@@ -83,6 +85,11 @@ fn declare_malloc_function(module: &mut dyn Module) -> FuncId {
     module.declare_function("malloc", Linkage::Import, &signature).unwrap()
 }
 
+enum FunctionOrGlobal {
+    Function(Signature),
+    Global(cranelift_types::Type),
+}
+
 impl<'local, 'c> Context<'local, 'c> {
     fn new(cache: &'local mut ModuleCache<'c>) -> (Self, FunctionBuilderContext) {
         let builder_context = FunctionBuilderContext::new();
@@ -114,6 +121,7 @@ impl<'local, 'c> Context<'local, 'c> {
             unique_id: 1, // alloc_fn is id 0
             alloc_fn,
             frontend_config,
+            data_context: DataContext::new(),
             function_queue: vec![],
             current_function_name: String::new(),
             current_function_parameters: vec![],
@@ -337,16 +345,28 @@ impl<'local, 'c> Context<'local, 'c> {
 
     /// Boxes a value at runtime.
     ///
+    /// This expects all `values` to be boxed types and thus
+    /// the total size of the allocation will be sizeof(usize) * values.len()
+    ///
     /// This will be called very often as the cranelift backend will perform
     /// boxing instead of monomorphisation to handle generics.
-    #[allow(unused)]
-    fn alloc(&mut self, value: Value, builder: &mut FunctionBuilder) -> CraneliftValue {
+    fn alloc(&mut self, values: &[CraneliftValue], builder: &mut FunctionBuilder) -> CraneliftValue {
         let function_ref = self.module.declare_func_in_func(self.alloc_fn, builder.func);
-        let arg = value.eval(builder);
-        let call = builder.ins().call(function_ref, &[arg]);
+
+        let size = self.pointer_size() as i64 * values.len() as i64;
+        let size = builder.ins().iconst(BOXED_TYPE, size);
+
+        let call = builder.ins().call(function_ref, &[size]);
         let results = builder.inst_results(call);
         assert_eq!(results.len(), 1);
-        results[0]
+        let allocated = results[0];
+
+        for (i, value) in values.into_iter().enumerate() {
+            let offset = self.pointer_size() * i as i32;
+            builder.ins().store(MemFlags::new(), *value, allocated, offset);
+        }
+
+        allocated
     }
 
     /// Binds the given pattern to the given value, recursively filling in
@@ -572,9 +592,49 @@ impl<'local, 'c> Context<'local, 'c> {
             Type::ForAll(_vars, typ) => self.convert_extern_type(typ.as_ref()),
         }
     }
-}
 
-enum FunctionOrGlobal {
-    Function(Signature),
-    Global(cranelift_types::Type),
+    /// Declare a string global value and get a reference to it
+    fn c_string_value(&mut self, value: &str, builder: &mut FunctionBuilder) -> CraneliftValue {
+        let mut value = value.to_owned();
+        assert!(!value.ends_with('\0'));
+        value.push('\0');
+
+        let value = value.into_bytes().into_boxed_slice();
+        self.data_context.define(value);
+
+        let name = format!("string{}", self.next_unique_id());
+        let data_id = self.module.declare_data(&name, Linkage::Local, true, false).unwrap();
+
+        self.module.define_data(data_id, &self.data_context).unwrap();
+        self.data_context.clear();
+        let global = self.module.declare_data_in_func(data_id, builder.func);
+
+        builder.ins().symbol_value(BOXED_TYPE, global)
+    }
+
+    pub fn string_value(&mut self, value: &str, builder: &mut FunctionBuilder) -> CraneliftValue {
+        let c_string = self.c_string_value(value, builder);
+        let length = builder.ins().iconst(BOXED_TYPE, value.len() as i64);
+        self.alloc(&[c_string, length], builder)
+    }
+
+    pub fn get_field_index(&self, field_name: &str, typ: &Type) -> u32 {
+        match typ {
+            Type::UserDefinedType(id) => self.cache.type_infos[id.0]
+                .find_field(field_name)
+                .map(|(i, _)| i)
+                .unwrap(),
+            Type::TypeVariable(id) => match &self.cache.type_bindings[id.0] {
+                TypeBinding::Bound(binding) => self.get_field_index(field_name, binding),
+                TypeBinding::Unbound(..) => unreachable!("Type variable {} is unbound", id.0),
+            },
+            _ => {
+                unreachable!(
+                    "get_field_index called with a type that clearly doesn't have a {} field: {}",
+                    field_name,
+                    typ.display(self.cache)
+                );
+            },
+        }
+    }
 }
