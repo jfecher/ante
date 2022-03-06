@@ -187,10 +187,10 @@ fn to_optimization_level(opt_level: char) -> OptimizationLevel {
     }
 }
 
-fn to_size_level(optimization_argument: &str) -> u32 {
+fn to_size_level(optimization_argument: char) -> u32 {
     match optimization_argument {
-        "s" => 1,
-        "z" => 2,
+        's' => 1,
+        'z' => 2,
         _ => 0,
     }
 }

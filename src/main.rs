@@ -28,7 +28,7 @@ mod lifetimes;
 mod nameresolution;
 mod types;
 
-#[cfg(llvm)]
+#[cfg(feature = "llvm")]
 mod llvm;
 
 use cache::ModuleCache;
@@ -145,8 +145,8 @@ pub fn main() {
     if error::get_error_count() == 0 {
         if args.opt_level == '0' {
             cranelift_backend::run(&filename, ast, &mut cache, &args);
-        } else if cfg!(llvm) {
-            #[cfg(llvm)]
+        } else if cfg!(feature = "llvm") {
+            #[cfg(feature = "llvm")]
             llvm::run(&filename, ast, &mut cache, &args);
         } else {
             eprintln!("The llvm backend is required for non-debug builds. Recompile ante with --features 'llvm' to enable optimized builds.");
