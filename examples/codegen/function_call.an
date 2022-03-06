@@ -2,5 +2,5 @@ show x = puts x.c_string
 
 show "foo"
 
-// args: --run --delete-binary
+// args: --delete-binary
 // expected stdout: foo

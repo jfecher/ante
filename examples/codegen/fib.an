@@ -4,5 +4,5 @@ fib n =
 
 printf "%d\n".c_string (fib 10)
 
-// args: --run --delete-binary
+// args: --delete-binary
 // expected stdout: 55

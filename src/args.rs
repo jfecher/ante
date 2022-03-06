@@ -28,8 +28,8 @@ pub struct Args {
     #[clap(long, help = "Check the file for errors without compiling")]
     pub check: bool,
 
-    #[clap(long, help = "Run the resulting binary")]
-    pub run: bool,
+    #[clap(long, help = "Build the resulting binary without running it afterward")]
+    pub build: bool,
 
     #[clap(
         short = 'O',
@@ -39,22 +39,16 @@ pub struct Args {
     )]
     pub opt_level: char,
 
-    #[clap(
-        long,
-        help = "Use plaintext and an indicator line instead of color for pointing out error locations"
-    )]
+    #[clap(long, help = "Use plaintext and an indicator line instead of color for pointing out error locations")]
     pub no_color: bool,
 
-    #[clap(long, help = "Print out the LLVM-IR of the compiled program")]
-    pub emit_llvm: bool,
+    #[clap(long, help = "Print out the LLVM-IR or Cranelift IR of the compiled program")]
+    pub emit_ir: bool,
 
     #[clap(long, help = "Delete the resulting binary after compiling")]
     pub delete_binary: bool,
 
-    #[clap(
-        long,
-        help = "Print out the time each compiler pass takes for the given program"
-    )]
+    #[clap(long, help = "Print out the time each compiler pass takes for the given program")]
     pub show_time: bool,
 
     #[clap(long, help = "Print out the type of each definition")]

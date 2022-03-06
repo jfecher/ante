@@ -17,7 +17,7 @@ iter iterable f =
 
 iter 10 print
 
-// args: --run --delete-binary
+// args: --delete-binary
 // expected stdout:
 // 10
 // 9

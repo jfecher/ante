@@ -11,7 +11,7 @@ printf "%.5f\n".c_string mul_float
 printf "%.5f\n".c_string div_float
 printf "%.5f\n".c_string mod_float
 
-// args: --run --delete-binary
+// args: --delete-binary
 // expected stdout:
 // 7.00000
 // -1.00000

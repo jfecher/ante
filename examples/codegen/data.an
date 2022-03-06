@@ -13,7 +13,7 @@ match s
 
 log s x = printf s.c_string x
 
-// args: --run --delete-binary
+// args: --delete-binary
 // expected stdout:
 // t = 1, one
 // s = 2

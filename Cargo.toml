@@ -13,6 +13,9 @@ inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", feat
 dirs = "4.0.0"
 cranelift = "0.81"
 cranelift-module = "0.81"
+cranelift-jit = "0.81"
+cranelift-faerie = "0.66"
+target-lexicon = "0.12.3"
 
 [dev-dependencies]
 goldentests = "1.1.0"
@@ -27,4 +30,5 @@ panic = "abort"
 debug = true
 
 [features]
+default = ["llvm"]
 llvm = ["inkwell"]

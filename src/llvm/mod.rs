@@ -121,9 +121,9 @@ pub fn run<'c>(path: &Path, ast: &Ast<'c>, cache: &mut ModuleCache<'c>, args: &A
     timing::start_time("LLVM optimization");
     codegen.optimize(args.opt_level);
 
-    // --emit-llvm: Dump the LLVM-IR of the generated module to stderr.
+    // --emit-ir: Dump the LLVM-IR of the generated module to stderr.
     // Useful to debug codegen
-    if args.emit_llvm {
+    if args.emit_ir {
         codegen.module.print_to_stderr();
     }
 
@@ -132,8 +132,8 @@ pub fn run<'c>(path: &Path, ast: &Ast<'c>, cache: &mut ModuleCache<'c>, args: &A
     timing::start_time("Linking");
     codegen.output(module_name, &binary_name, &target_triple, &codegen.module);
 
-    // --run: compile and run the program
-    if args.run {
+    // Run the program by default if --build was not passed
+    if !args.build {
         let program_command = PathBuf::from("./".to_string() + &binary_name);
         Command::new(&program_command)
             .spawn()

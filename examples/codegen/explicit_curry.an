@@ -10,7 +10,7 @@ print <| plus2 38 2
 
 4 |> ((+) _ 2) |> print
 
-// args: --run --delete-binary
+// args: --delete-binary
 // expected stdout:
 // 6
 // 42

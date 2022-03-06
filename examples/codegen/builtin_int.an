@@ -21,7 +21,7 @@ test_int 3_u64
 test_int 3_isz
 test_int 3_usz
 
-// args: --run --delete-binary
+// args: --delete-binary
 // expected stdout:
 // 6
 // -3

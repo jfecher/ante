@@ -132,11 +132,12 @@ impl<'local, 'c> Context<'local, 'c> {
         }
 
         context.module.finalize_definitions();
-        // We can now retrieve a pointer to the machine code.
-        let main = context.module.get_finalized_function(main);
 
-        let main: fn() -> i32 = unsafe { std::mem::transmute(main) };
-        main();
+        if !args.build {
+            let main = context.module.get_finalized_function(main);
+            let main: fn() -> i32 = unsafe { std::mem::transmute(main) };
+            main();
+        }
     }
 
     pub fn codegen_eval<T: Codegen<'c>>(&mut self, ast: &'local T, builder: &mut FunctionBuilder) -> CraneliftValue {
@@ -159,7 +160,7 @@ impl<'local, 'c> Context<'local, 'c> {
         let flags = settings::Flags::new(settings::builder());
         let res = verify_function(&module_context.func, &flags);
 
-        if args.emit_llvm {
+        if args.emit_ir {
             println!("{}", module_context.func.display());
         }
 
@@ -199,7 +200,7 @@ impl<'local, 'c> Context<'local, 'c> {
         let func = &module_context.func;
         let res = verify_function(&func, &flags);
 
-        if args.emit_llvm {
+        if args.emit_ir {
             println!("{}", func.display());
         }
 

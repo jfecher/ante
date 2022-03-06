@@ -5,6 +5,6 @@ main () =
 
 main ()
 
-// args: --run --delete-binary
+// args: --delete-binary
 // expected stdout:
 // hi there

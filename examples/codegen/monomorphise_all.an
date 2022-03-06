@@ -7,5 +7,5 @@ baz x = bar x
 
 baz "hi"
 
-// args: --run --delete-binary
+// args: --delete-binary
 // expected stdout:
