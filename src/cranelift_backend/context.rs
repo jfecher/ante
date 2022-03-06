@@ -21,7 +21,21 @@ use super::Codegen;
 pub const BOXED_TYPE: cranelift_types::Type = cranelift_types::I64;
 
 // TODO: Make this a threadsafe queue so we can compile functions in parallel
-type FunctionQueue<'ast, 'c> = Vec<(&'ast ast::Lambda<'c>, Signature, FuncId)>;
+type FunctionQueue<'ast, 'c> = Vec<(FunctionRef<'ast, 'c>, Signature, FuncId)>;
+
+enum FunctionRef<'a, 'c> {
+    Lambda(&'a ast::Lambda<'c>),
+    TypeConstructor { tag: &'a Option<u8>, typ: Type },
+}
+
+impl<'a, 'c> FunctionRef<'a, 'c> {
+    fn get_type(&self) -> &Type {
+        match self {
+            FunctionRef::Lambda(lambda) => lambda.get_type().unwrap(),
+            FunctionRef::TypeConstructor { typ, .. } => typ,
+        }
+    }
+}
 
 pub struct Context<'ast, 'c> {
     cache: &'ast mut ModuleCache<'c>,
@@ -31,7 +45,7 @@ pub struct Context<'ast, 'c> {
 
     data_context: DataContext,
 
-    pub current_function_name: String,
+    pub current_function_name: Option<String>,
     pub current_function_parameters: Vec<CraneliftValue>,
 
     alloc_fn: FuncId,
@@ -123,7 +137,7 @@ impl<'local, 'c> Context<'local, 'c> {
             frontend_config,
             data_context: DataContext::new(),
             function_queue: vec![],
-            current_function_name: String::new(),
+            current_function_name: None,
             current_function_parameters: vec![],
         }, builder_context)
     }
@@ -152,13 +166,21 @@ impl<'local, 'c> Context<'local, 'c> {
         ast.codegen(self, builder).eval(builder)
     }
 
-    fn codegen_function(&mut self, function: &'local ast::Lambda<'c>, context: &mut FunctionBuilderContext,
+    fn codegen_function(&mut self, function: FunctionRef<'local, 'c>, context: &mut FunctionBuilderContext,
         module_context: &mut cranelift::codegen::Context, signature: Signature, function_id: FuncId, args: &Args)
     {
         module_context.func = Function::with_name_signature(ExternalName::user(0, function_id.as_u32()), signature);
         let mut builder = FunctionBuilder::new(&mut module_context.func, context);
 
-        self.codegen_function_inner(function, &mut builder);
+        let entry = builder.create_block();
+        builder.switch_to_block(entry);
+        builder.seal_block(entry);
+
+        let body = self.codegen_function_inner(function, &mut builder);
+        self.create_return(body, &mut builder);
+
+        builder.append_block_params_for_function_params(entry);
+        builder.finalize();
 
         self
             .module
@@ -168,7 +190,7 @@ impl<'local, 'c> Context<'local, 'c> {
         let flags = settings::Flags::new(settings::builder());
         let res = verify_function(&module_context.func, &flags);
 
-        if args.emit_ir {
+        if args.show_ir {
             println!("{}", module_context.func.display());
         }
 
@@ -177,7 +199,7 @@ impl<'local, 'c> Context<'local, 'c> {
         }
     }
 
-    fn next_unique_id(&mut self) -> u32 {
+    pub fn next_unique_id(&mut self) -> u32 {
         self.unique_id += 1;
         self.unique_id
     }
@@ -208,7 +230,7 @@ impl<'local, 'c> Context<'local, 'c> {
         let func = &module_context.func;
         let res = verify_function(&func, &flags);
 
-        if args.emit_ir {
+        if args.show_ir {
             println!("{}", func.display());
         }
 
@@ -220,22 +242,66 @@ impl<'local, 'c> Context<'local, 'c> {
         main_id
     }
 
-    fn codegen_function_inner(&mut self, function: &'local ast::Lambda<'c>, builder: &mut FunctionBuilder) {
-        let entry = builder.create_block();
+    fn codegen_function_inner(&mut self, function: FunctionRef<'local, 'c>, builder: &mut FunctionBuilder) -> Value {
+        match function {
+            FunctionRef::Lambda(lambda) => self.codegen_lambda(lambda, builder),
+            FunctionRef::TypeConstructor { tag, typ } => self.codegen_type_constructor_function(tag, &typ, builder),
+        }
+    }
 
+    fn codegen_lambda(&mut self, lambda: &'local ast::Lambda<'c>, builder: &mut FunctionBuilder) -> Value {
         // TODO Parameter binding
-        for _parameter in &function.args {
+        for _parameter in &lambda.args {
             let x = Variable::new(self.next_unique_id() as usize);
             builder.declare_var(x, BOXED_TYPE);
         }
 
-        builder.append_block_params_for_function_params(entry);
-        builder.switch_to_block(entry);
-        builder.seal_block(entry);
+        lambda.body.codegen(self, builder)
+    }
 
-        let body = function.body.codegen(self, builder);
-        self.create_return(body, builder);
-        builder.finalize();
+    fn codegen_type_constructor(&mut self, tag: &'local Option<u8>, typ: &Type, name: &str, builder: &mut FunctionBuilder) -> Value {
+        match typ {
+            Type::Function(_) => self.add_type_constructor_to_queue(tag, typ.clone(), name, builder),
+            Type::TypeVariable(id) => {
+                match &self.cache.type_bindings[id.0] {
+                    TypeBinding::Bound(binding) => {
+                        // TODO: Can we remove the cloning here?
+                        let binding = binding.clone();
+                        self.codegen_type_constructor(tag, &binding, name, builder)
+                    }
+                    TypeBinding::Unbound(_, _) => unreachable!(),
+                }
+            },
+            Type::TypeApplication(typ, _args) => self.codegen_type_constructor(tag, typ, name, builder),
+            Type::ForAll(_, typ) => self.codegen_type_constructor(tag, typ, name, builder),
+            Type::UserDefinedType(_) => {
+                // This type constructor is not a function type, it is just a single tag value then
+                // TODO: What do we do for nullary struct values?
+                Value::Normal(builder.ins().iconst(BOXED_TYPE, tag.unwrap_or(0) as i64))
+            },
+            Type::Primitive(_) => unreachable!(),
+            Type::Ref(_) => unreachable!(),
+        }
+    }
+
+    fn codegen_type_constructor_function(&mut self, tag: &Option<u8>, typ: &Type, builder: &mut FunctionBuilder) -> Value {
+        let f = match typ {
+            Type::Function(f) => f,
+            _ => unreachable!(),
+        };
+
+        let mut params = Vec::with_capacity(f.parameters.len() + 1);
+        if let Some(tag) = tag {
+            params.push(builder.ins().iconst(BOXED_TYPE, *tag as i64));
+        }
+
+        for _ in &f.parameters {
+            let param = Variable::new(self.next_unique_id() as usize);
+            builder.declare_var(param, BOXED_TYPE);
+            params.push(builder.use_var(param));
+        }
+
+        Value::Normal(self.alloc(&params, builder))
     }
 
     fn resolve_type(&mut self, typ: &Type) -> Type {
@@ -308,7 +374,7 @@ impl<'local, 'c> Context<'local, 'c> {
         let value = match &definition.definition {
             Some(DefinitionKind::Definition(definition)) => definition.codegen(self, builder),
             Some(DefinitionKind::Extern(annotation)) => self.codegen_extern(*annotation, builder),
-            Some(DefinitionKind::TypeConstructor { .. }) => todo!(),
+            Some(DefinitionKind::TypeConstructor { name, tag }) => self.codegen_type_constructor(tag, definition.typ.as_ref().unwrap(), name, builder),
             Some(DefinitionKind::TraitDefinition(definition)) => unreachable!("No trait impl for trait {}", definition),
             Some(DefinitionKind::Parameter) => unreachable!("Parameter definitions should already be codegen'd"),
             Some(DefinitionKind::MatchPattern) => unreachable!("Pattern definitions should already be codegen'd"),
@@ -325,8 +391,8 @@ impl<'local, 'c> Context<'local, 'c> {
         builder.ins().return_(&[value]);
     }
 
-    pub fn add_function_to_queue(&mut self, function: &'local ast::Lambda<'c>, name: &'local  str, builder: &mut FunctionBuilder) -> Value {
-        let signature = self.convert_signature(function.get_type().unwrap());
+    fn add_function_to_queue(&mut self, function: FunctionRef<'local, 'c>, name: &str, builder: &mut FunctionBuilder) -> Value {
+        let signature = self.convert_signature(function.get_type());
         let function_id = self.module.declare_function(name, Linkage::Export, &signature).unwrap();
         self.function_queue.push((function, signature.clone(), function_id));
 
@@ -337,6 +403,14 @@ impl<'local, 'c> Context<'local, 'c> {
             signature,
             colocated: true,
         })
+    }
+
+    pub fn add_lambda_to_queue(&mut self, lambda: &'local ast::Lambda<'c>, name: &str, builder: &mut FunctionBuilder) -> Value {
+        self.add_function_to_queue(FunctionRef::Lambda(lambda), name, builder)
+    }
+
+    pub fn add_type_constructor_to_queue(&mut self, tag: &'local Option<u8>, typ: Type, name: &str, builder: &mut FunctionBuilder) -> Value {
+        self.add_function_to_queue(FunctionRef::TypeConstructor { tag, typ }, name, builder)
     }
 
     pub fn unit_value(&mut self, builder: &mut FunctionBuilder) -> Value {

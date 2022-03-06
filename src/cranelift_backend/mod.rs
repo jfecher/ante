@@ -83,7 +83,10 @@ impl<'c> Codegen<'c> for ast::Variable<'c> {
 
 impl<'c> Codegen<'c> for ast::Lambda<'c> {
     fn codegen<'a>(&'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder) -> Value {
-        context.add_function_to_queue(self, "lambda", builder)
+        let name = context.current_function_name.take()
+            .unwrap_or_else(|| format!("lambda{}", context.next_unique_id()));
+
+        context.add_lambda_to_queue(self, &name, builder)
     }
 }
 
@@ -123,7 +126,7 @@ impl<'c> Codegen<'c> for ast::FunctionCall<'c> {
 impl<'c> Codegen<'c> for ast::Definition<'c> {
     fn codegen<'a>(&'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder) -> Value {
         if let (Ast::Variable(variable), Ast::Lambda(_)) = (self.pattern.as_ref(), self.expr.as_ref()) {
-            context.current_function_name = variable.to_string();
+            context.current_function_name = Some(variable.to_string());
         }
 
         let value = context.codegen_eval(&self.expr, builder);

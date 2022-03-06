@@ -43,7 +43,7 @@ pub struct Args {
     pub no_color: bool,
 
     #[clap(long, help = "Print out the LLVM-IR or Cranelift IR of the compiled program")]
-    pub emit_ir: bool,
+    pub show_ir: bool,
 
     #[clap(long, help = "Delete the resulting binary after compiling")]
     pub delete_binary: bool,

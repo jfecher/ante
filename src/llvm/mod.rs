@@ -121,9 +121,9 @@ pub fn run<'c>(path: &Path, ast: &Ast<'c>, cache: &mut ModuleCache<'c>, args: &A
     timing::start_time("LLVM optimization");
     codegen.optimize(args.opt_level);
 
-    // --emit-ir: Dump the LLVM-IR of the generated module to stderr.
+    // --show-ir: Dump the LLVM-IR of the generated module to stderr.
     // Useful to debug codegen
-    if args.emit_ir {
+    if args.show_ir {
         codegen.module.print_to_stderr();
     }
 
