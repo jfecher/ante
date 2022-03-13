@@ -10,6 +10,7 @@ use cranelift::codegen::ir::types as cranelift_types;
 
 mod builtin;
 mod context;
+mod decisiontree;
 
 use context::{ Context, Value, FunctionValue };
 use cranelift::frontend::FunctionBuilder;
@@ -136,14 +137,48 @@ impl<'c> Codegen<'c> for ast::Definition<'c> {
 }
 
 impl<'c> Codegen<'c> for ast::If<'c> {
-    fn codegen<'a>(&'a self, _context: &mut Context<'a, 'c>, _builder: &mut FunctionBuilder) -> Value {
-        todo!()
+    fn codegen<'a>(&'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder) -> Value {
+        let cond = context.codegen_eval(&self.condition, builder);
+
+        let then = builder.create_block();
+        let if_false = builder.create_block();
+        builder.ins().brnz(cond, then, &[]);
+        builder.ins().jump(if_false, &[]);
+
+        builder.switch_to_block(then);
+        let then_value = context.codegen_eval(&self.then, builder);
+
+        let ret = if let Some(otherwise) = self.otherwise.as_ref() {
+            // If we have an 'else' then the if_false branch is our else branch
+            let end = builder.create_block();
+            builder.append_block_param(end, BOXED_TYPE);
+            builder.ins().jump(end, &[then_value]);
+
+            builder.switch_to_block(if_false);
+            let else_value = context.codegen_eval(otherwise, builder);
+            builder.ins().jump(end, &[else_value]);
+
+            builder.seal_block(end);
+            builder.switch_to_block(end);
+            let block_params = builder.block_params(end);
+            assert_eq!(block_params.len(), 1);
+            Value::Normal(block_params[0])
+        } else {
+            // If there is no 'else', then our if_false branch is the block after the if
+            builder.ins().jump(if_false, &[]);
+            builder.switch_to_block(if_false);
+            context.unit_value(builder)
+        };
+
+        builder.seal_block(then);
+        builder.seal_block(if_false);
+        ret
     }
 }
 
 impl<'c> Codegen<'c> for ast::Match<'c> {
-    fn codegen<'a>(&'a self, _context: &mut Context<'a, 'c>, _builder: &mut FunctionBuilder) -> Value {
-        todo!()
+    fn codegen<'a>(&'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder) -> Value {
+        decisiontree::codegen(self, context, builder)
     }
 }
 

@@ -38,7 +38,7 @@ impl<'a, 'c> FunctionRef<'a, 'c> {
 }
 
 pub struct Context<'ast, 'c> {
-    cache: &'ast mut ModuleCache<'c>,
+    pub cache: &'ast mut ModuleCache<'c>,
     pub definitions: HashMap<DefinitionInfoId, Value>,
     module: JITModule,
     unique_id: u32,
@@ -187,14 +187,12 @@ impl<'local, 'c> Context<'local, 'c> {
             .define_function(function_id, module_context)
             .unwrap();
 
-        let flags = settings::Flags::new(settings::builder());
-        let res = verify_function(&module_context.func, &flags);
-
         if args.show_ir {
             println!("{}", module_context.func.display());
         }
 
-        if let Err(errors) = res {
+        let flags = settings::Flags::new(settings::builder());
+        if let Err(errors) = verify_function(&module_context.func, &flags) {
             panic!("{}", errors);
         }
     }
@@ -208,14 +206,10 @@ impl<'local, 'c> Context<'local, 'c> {
         module_context: &mut cranelift::codegen::Context, args: &Args) -> FuncId
     {
         let func = &mut module_context.func;
-        // let mut signature = Signature::new(CallConv::SystemV);
         func.signature.returns.push(AbiParam::new(cranelift_types::I32));
 
         let main_id = self.module.declare_function("main", Linkage::Export, &func.signature).unwrap();
-
-        // let mut func = Function::with_name_signature(ExternalName::user(0, 0), signature);
         let mut builder = FunctionBuilder::new(func, builder_context);
-
         let entry = builder.create_block();
 
         builder.switch_to_block(entry);
@@ -224,6 +218,7 @@ impl<'local, 'c> Context<'local, 'c> {
         ast.codegen(self, &mut builder);
         let zero = builder.ins().iconst(cranelift_types::I32, 0);
         self.create_return(Value::Normal(zero), &mut builder);
+
         builder.finalize();
 
         let flags = settings::Flags::new(settings::builder());
@@ -376,8 +371,8 @@ impl<'local, 'c> Context<'local, 'c> {
             Some(DefinitionKind::Extern(annotation)) => self.codegen_extern(*annotation, builder),
             Some(DefinitionKind::TypeConstructor { name, tag }) => self.codegen_type_constructor(tag, definition.typ.as_ref().unwrap(), name, builder),
             Some(DefinitionKind::TraitDefinition(definition)) => unreachable!("No trait impl for trait {}", definition),
-            Some(DefinitionKind::Parameter) => unreachable!("Parameter definitions should already be codegen'd"),
-            Some(DefinitionKind::MatchPattern) => unreachable!("Pattern definitions should already be codegen'd"),
+            Some(DefinitionKind::Parameter) => unreachable!("Parameter definitions should already be codegen'd, {}, id = {}", definition.name, id.0),
+            Some(DefinitionKind::MatchPattern) => unreachable!("Pattern definitions should already be codegen'd, {}, id = {}", definition.name, id.0),
             None => unreachable!("Variable {} has no definition", id.0),
         };
 

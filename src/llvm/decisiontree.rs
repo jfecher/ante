@@ -3,7 +3,7 @@
 //! a match expression into a decisiontree during type inference.
 use crate::llvm::{ Generator, CodeGen };
 use crate::types::pattern::{ DecisionTree, Case, VariantTag };
-use crate::types::{ Type, typed::Typed };
+use crate::types::typed::Typed;
 use crate::parser::ast::Match;
 use crate::cache::{ ModuleCache, DefinitionInfoId, DefinitionKind };
 
@@ -214,18 +214,6 @@ impl<'g> Generator<'g> {
         }
     }
 
-    fn is_union_constructor<'c>(typ: &Type, cache: &ModuleCache<'c>) -> bool {
-        use crate::types::Type::*;
-        match typ {
-            Primitive(_) => false,
-            Ref(_) => false,
-            Function(function) => Self::is_union_constructor(&function.return_type, cache),
-            TypeApplication(typ, _) => Self::is_union_constructor(typ, cache),
-            ForAll(_, typ) => Self::is_union_constructor(typ, cache),
-            UserDefinedType(id) => cache.type_infos[id.0].is_union(),
-            TypeVariable(_) => unreachable!("Constructors should always have concrete types"),
-        }
-    }
 
     /// Cast the given value to the given tagged-union variant. Returns None if
     /// the given VariantTag is not a tagged-union tag.
@@ -237,7 +225,7 @@ impl<'g> Generator<'g> {
                 let mut field_types = vec![];
 
                 let constructor = &cache.definition_infos[id.0];
-                if Self::is_union_constructor(constructor.typ.as_ref().unwrap(), cache) {
+                if constructor.typ.as_ref().unwrap().is_union_constructor(cache) {
                     field_types.push(self.tag_type());
                 }
 

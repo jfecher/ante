@@ -125,6 +125,24 @@ impl Type {
         }
     }
 
+    pub fn is_union_constructor<'a, 'c>(&'a self, cache: &'a ModuleCache<'c>) -> bool {
+        self.union_constructor_variants(cache).is_some()
+    }
+
+    /// Returns Some(variants) if this is a union type constructor or union type itself.
+    pub fn union_constructor_variants<'a, 'c>(&'a self, cache: &'a ModuleCache<'c>) -> Option<&'a Vec<TypeConstructor>> {
+        use Type::*;
+        match self {
+            Primitive(_) => None,
+            Ref(_) => None,
+            Function(function) => function.return_type.union_constructor_variants(cache),
+            TypeApplication(typ, _) => typ.union_constructor_variants(cache),
+            ForAll(_, typ) => typ.union_constructor_variants(cache),
+            UserDefinedType(id) => cache.type_infos[id.0].union_variants(),
+            TypeVariable(_) => unreachable!("Constructors should always have concrete types"),
+        }
+    }
+
     /// Pretty-print each type with each typevar substituted for a, b, c, etc.
     pub fn display<'a, 'b>(&'a self, cache: &'a ModuleCache<'b>) -> typeprinter::TypePrinter<'a, 'b> {
         let typevars = typechecker::find_all_typevars(self, false, cache);
@@ -242,11 +260,10 @@ impl<'a> Locatable<'a> for TypeInfo<'a> {
 }
 
 impl<'a> TypeInfo<'a> {
-    #[allow(unused)]
-    pub fn is_union(&self) -> bool {
+    pub fn union_variants(&self) -> Option<&Vec<TypeConstructor>> {
         match &self.body {
-            TypeInfoBody::Union(..) => true,
-            _ => false,
+            TypeInfoBody::Union(variants) => Some(variants),
+            _ => None,
         }
     }
 
