@@ -11,10 +11,10 @@ mimalloc = { version = "0.1.19", default-features = false }
 difference = "2.0.0"
 inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm13-0"], optional = true }
 dirs = "4.0.0"
-cranelift = "0.81"
-cranelift-module = "0.81"
-cranelift-jit = "0.81"
-cranelift-faerie = "0.66"
+cranelift = "0.82"
+cranelift-module = "0.82"
+cranelift-jit = "0.82"
+cranelift-object = "0.82"
 target-lexicon = "0.12.3"
 
 [dev-dependencies]

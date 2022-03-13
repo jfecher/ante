@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::path::Path;
 
 use crate::args::Args;
 use crate::cache::{DefinitionInfoId, DefinitionKind, ModuleCache};
@@ -12,7 +13,6 @@ use cranelift::codegen::verify_function;
 use cranelift::frontend::{FunctionBuilderContext, FunctionBuilder, Variable};
 use cranelift::prelude::isa::{TargetFrontendConfig, CallConv, self};
 use cranelift::prelude::{ExtFuncData, Value as CraneliftValue, MemFlags, Signature, InstBuilder, AbiParam, ExternalName, EntityRef, settings, Configurable};
-use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{Linkage, FuncId, Module, DataContext};
 use cranelift::codegen::ir::{types as cranelift_types, Function};
 
@@ -40,7 +40,7 @@ impl<'a, 'c> FunctionRef<'a, 'c> {
 pub struct Context<'ast, 'c> {
     pub cache: &'ast mut ModuleCache<'c>,
     pub definitions: HashMap<DefinitionInfoId, Value>,
-    module: JITModule,
+    module: cranelift_object::ObjectModule, // JITModule,
     unique_id: u32,
 
     data_context: DataContext,
@@ -119,12 +119,15 @@ impl<'local, 'c> Context<'local, 'c> {
         let shared_flags = settings::Flags::new(settings);
 
         // TODO: Should we use cranelift_native here to get the native target instead?
-        let target_isa = isa::lookup(target_lexicon::Triple::host()).unwrap().finish(shared_flags);
+        let target_isa = isa::lookup(target_lexicon::Triple::host()).unwrap()
+            .finish(shared_flags).unwrap();
 
         let frontend_config = target_isa.frontend_config();
 
-        let jitbuilder = JITBuilder::with_isa(target_isa, cranelift_module::default_libcall_names());
-        let mut module = JITModule::new(jitbuilder);
+        // let jitbuilder = JITBuilder::with_isa(target_isa, cranelift_module::default_libcall_names());
+        // let mut module = JITModule::new(jitbuilder);
+        let jitbuilder = cranelift_object::ObjectBuilder::new(target_isa, "a.out", cranelift_module::default_libcall_names()).unwrap();
+        let mut module = cranelift_object::ObjectModule::new(jitbuilder);
 
         let alloc_fn = declare_malloc_function(&mut module);
 
@@ -142,24 +145,29 @@ impl<'local, 'c> Context<'local, 'c> {
         }, builder_context)
     }
 
-    pub fn codegen_all(ast: &'local Ast<'c>, cache: &'local mut ModuleCache<'c>, args: &Args) {
+    pub fn codegen_all(path: &Path, ast: &'local Ast<'c>, cache: &'local mut ModuleCache<'c>, args: &Args) {
         let (mut context, mut builder_context) = Context::new(cache);
         let mut module_context = context.module.make_context();
 
-        let main = Context::codegen_main(&mut context, ast, &mut builder_context, &mut module_context, args);
+        context.codegen_main(ast, &mut builder_context, &mut module_context, args);
 
         // Then codegen any functions used by main and so forth
         while let Some((function, signature, id)) = context.function_queue.pop() {
             context.codegen_function(function, &mut builder_context, &mut module_context, signature, id, args);
         }
 
-        context.module.finalize_definitions();
+        let product = context.module.finish();
+        let text = product.object.write().unwrap();
+        let output_file_name = path.with_extension("");
+        std::fs::write(output_file_name, text).unwrap();
 
-        if !args.build {
-            let main = context.module.get_finalized_function(main);
-            let main: fn() -> i32 = unsafe { std::mem::transmute(main) };
-            main();
-        }
+        // context.module.finalize_definitions();
+
+        // if !args.build {
+        //     let main = context.module.get_finalized_function(main);
+        //     let main: fn() -> i32 = unsafe { std::mem::transmute(main) };
+        //     main();
+        // }
     }
 
     pub fn codegen_eval<T: Codegen<'c>>(&mut self, ast: &'local T, builder: &mut FunctionBuilder) -> CraneliftValue {
@@ -182,11 +190,6 @@ impl<'local, 'c> Context<'local, 'c> {
         builder.append_block_params_for_function_params(entry);
         builder.finalize();
 
-        self
-            .module
-            .define_function(function_id, module_context)
-            .unwrap();
-
         if args.show_ir {
             println!("{}", module_context.func.display());
         }
@@ -195,6 +198,9 @@ impl<'local, 'c> Context<'local, 'c> {
         if let Err(errors) = verify_function(&module_context.func, &flags) {
             panic!("{}", errors);
         }
+
+        self.module.define_function(function_id, module_context).unwrap();
+        module_context.clear();
     }
 
     pub fn next_unique_id(&mut self) -> u32 {
@@ -216,6 +222,7 @@ impl<'local, 'c> Context<'local, 'c> {
         builder.seal_block(entry);
 
         ast.codegen(self, &mut builder);
+
         let zero = builder.ins().iconst(cranelift_types::I32, 0);
         self.create_return(Value::Normal(zero), &mut builder);
 
@@ -234,6 +241,7 @@ impl<'local, 'c> Context<'local, 'c> {
         }
 
         self.module.define_function(main_id, module_context).unwrap();
+        module_context.clear();
         main_id
     }
 
@@ -396,7 +404,8 @@ impl<'local, 'c> Context<'local, 'c> {
         Value::Function(ExtFuncData {
             name: ExternalName::user(0, function_id.as_u32()),
             signature,
-            colocated: true,
+            // Using 'true' here gives an unimplemented error on aarch64
+            colocated: false,
         })
     }
 

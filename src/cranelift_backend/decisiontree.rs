@@ -121,6 +121,7 @@ fn codegen_jump_table<'a, 'ast, 'c>(
     let data = make_jump_table_data(&cases, match_all, context);
     let jump_table = builder.create_jump_table(data);
     let trap_block = builder.create_block();
+
     builder.ins().br_table(tag_value, trap_block, jump_table);
 
     fill_trap_block(trap_block, builder);
@@ -204,7 +205,6 @@ fn bind_patterns<'ast, 'c>(value_to_match_on: CraneliftValue, case: &Case, conte
                 let field = builder.ins().load(BOXED_TYPE, MemFlags::new(), value_to_match_on, field_index);
 
                 for field_alias in field_aliases {
-                    println!("Binding pattern {}", field_alias.0);
                     context.definitions.insert(*field_alias, Value::Normal(field));
                 }
             }

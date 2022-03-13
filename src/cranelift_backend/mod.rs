@@ -18,9 +18,9 @@ use cranelift::prelude::{InstBuilder, MemFlags};
 
 use self::context::BOXED_TYPE;
 
-pub fn run<'c>(_path: &Path, ast: &Ast<'c>, cache: &mut ModuleCache<'c>, args: &Args) {
+pub fn run<'c>(path: &Path, ast: &Ast<'c>, cache: &mut ModuleCache<'c>, args: &Args) {
     timing::start_time("Cranelift codegen");
-    Context::codegen_all(ast, cache, args);
+    Context::codegen_all(path, ast, cache, args);
 }
 
 pub trait Codegen<'c> {
