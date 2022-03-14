@@ -11,8 +11,9 @@ use cranelift::codegen::ir::types as cranelift_types;
 mod builtin;
 mod context;
 mod decisiontree;
+mod module;
 
-use context::{ Context, Value, FunctionValue };
+use context::{Context, FunctionValue, Value};
 use cranelift::frontend::FunctionBuilder;
 use cranelift::prelude::{InstBuilder, MemFlags};
 
@@ -24,29 +25,39 @@ pub fn run<'c>(path: &Path, ast: &Ast<'c>, cache: &mut ModuleCache<'c>, args: &A
 }
 
 pub trait Codegen<'c> {
-    fn codegen<'local>(&'local self, context: &mut Context<'local, 'c>, builder: &mut FunctionBuilder) -> Value;
+    fn codegen<'local>(
+        &'local self, context: &mut Context<'local, 'c>, builder: &mut FunctionBuilder,
+    ) -> Value;
 }
 
 impl<'c> Codegen<'c> for Ast<'c> {
-    fn codegen<'a>(&'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder) -> Value {
+    fn codegen<'a>(
+        &'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder,
+    ) -> Value {
         dispatch_on_expr!(self, Codegen::codegen, context, builder)
     }
 }
 
 impl<'c> Codegen<'c> for Box<Ast<'c>> {
-    fn codegen<'a>(&'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder) -> Value {
+    fn codegen<'a>(
+        &'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder,
+    ) -> Value {
         self.as_ref().codegen(context, builder)
     }
 }
 
 impl<'c> Codegen<'c> for ast::Literal<'c> {
-    fn codegen<'a>(&'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder) -> Value {
+    fn codegen<'a>(
+        &'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder,
+    ) -> Value {
         self.kind.codegen(context, builder)
     }
 }
 
 impl<'c> Codegen<'c> for ast::LiteralKind {
-    fn codegen<'a>(&'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder) -> Value {
+    fn codegen<'a>(
+        &'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder,
+    ) -> Value {
         Value::Normal(match self {
             ast::LiteralKind::Integer(value, kind) => {
                 let typ = context.unboxed_integer_type(kind);
@@ -83,8 +94,12 @@ impl<'c> Codegen<'c> for ast::Variable<'c> {
 }
 
 impl<'c> Codegen<'c> for ast::Lambda<'c> {
-    fn codegen<'a>(&'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder) -> Value {
-        let name = context.current_function_name.take()
+    fn codegen<'a>(
+        &'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder,
+    ) -> Value {
+        let name = context
+            .current_function_name
+            .take()
             .unwrap_or_else(|| format!("lambda{}", context.next_unique_id()));
 
         context.add_lambda_to_queue(self, &name, builder)
@@ -92,7 +107,9 @@ impl<'c> Codegen<'c> for ast::Lambda<'c> {
 }
 
 impl<'c> Codegen<'c> for ast::FunctionCall<'c> {
-    fn codegen<'a>(&'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder) -> Value {
+    fn codegen<'a>(
+        &'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder,
+    ) -> Value {
         match self.function.as_ref() {
             Ast::Variable(variable) if variable.definition == Some(BUILTIN_ID) => {
                 builtin::call_builtin(&self.args, context, builder)
@@ -100,20 +117,21 @@ impl<'c> Codegen<'c> for ast::FunctionCall<'c> {
             _ => {
                 let f = self.function.codegen(context, builder).eval_function();
 
-                let args = fmap(&self.args, |arg| {
-                    context.codegen_eval(arg, builder)
-                });
+                let args = fmap(&self.args, |arg| context.codegen_eval(arg, builder));
 
                 let call = match f {
                     FunctionValue::Direct(function_data) => {
                         let function_ref = builder.import_function(function_data);
                         builder.ins().call(function_ref, &args)
-                    }
+                    },
                     FunctionValue::Indirect(function_pointer) => {
-                        let signature = context.convert_signature(self.function.get_type().unwrap());
+                        let signature =
+                            context.convert_signature(self.function.get_type().unwrap());
                         let signature = builder.import_signature(signature);
-                        builder.ins().call_indirect(signature, function_pointer, &args)
-                    }
+                        builder
+                            .ins()
+                            .call_indirect(signature, function_pointer, &args)
+                    },
                 };
 
                 let results = builder.inst_results(call);
@@ -125,8 +143,12 @@ impl<'c> Codegen<'c> for ast::FunctionCall<'c> {
 }
 
 impl<'c> Codegen<'c> for ast::Definition<'c> {
-    fn codegen<'a>(&'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder) -> Value {
-        if let (Ast::Variable(variable), Ast::Lambda(_)) = (self.pattern.as_ref(), self.expr.as_ref()) {
+    fn codegen<'a>(
+        &'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder,
+    ) -> Value {
+        if let (Ast::Variable(variable), Ast::Lambda(_)) =
+            (self.pattern.as_ref(), self.expr.as_ref())
+        {
             context.current_function_name = Some(variable.to_string());
         }
 
@@ -137,7 +159,9 @@ impl<'c> Codegen<'c> for ast::Definition<'c> {
 }
 
 impl<'c> Codegen<'c> for ast::If<'c> {
-    fn codegen<'a>(&'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder) -> Value {
+    fn codegen<'a>(
+        &'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder,
+    ) -> Value {
         let cond = context.codegen_eval(&self.condition, builder);
 
         let then = builder.create_block();
@@ -177,43 +201,57 @@ impl<'c> Codegen<'c> for ast::If<'c> {
 }
 
 impl<'c> Codegen<'c> for ast::Match<'c> {
-    fn codegen<'a>(&'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder) -> Value {
+    fn codegen<'a>(
+        &'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder,
+    ) -> Value {
         decisiontree::codegen(self, context, builder)
     }
 }
 
 impl<'c> Codegen<'c> for ast::TypeDefinition<'c> {
-    fn codegen<'a>(&'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder) -> Value {
+    fn codegen<'a>(
+        &'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder,
+    ) -> Value {
         context.unit_value(builder)
     }
 }
 
 impl<'c> Codegen<'c> for ast::TypeAnnotation<'c> {
-    fn codegen<'a>(&'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder) -> Value {
+    fn codegen<'a>(
+        &'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder,
+    ) -> Value {
         self.lhs.codegen(context, builder)
     }
 }
 
 impl<'c> Codegen<'c> for ast::Import<'c> {
-    fn codegen<'a>(&'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder) -> Value {
+    fn codegen<'a>(
+        &'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder,
+    ) -> Value {
         context.unit_value(builder)
     }
 }
 
 impl<'c> Codegen<'c> for ast::TraitDefinition<'c> {
-    fn codegen<'a>(&'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder) -> Value {
+    fn codegen<'a>(
+        &'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder,
+    ) -> Value {
         context.unit_value(builder)
     }
 }
 
 impl<'c> Codegen<'c> for ast::TraitImpl<'c> {
-    fn codegen<'a>(&'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder) -> Value {
+    fn codegen<'a>(
+        &'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder,
+    ) -> Value {
         context.unit_value(builder)
     }
 }
 
 impl<'c> Codegen<'c> for ast::Return<'c> {
-    fn codegen<'a>(&'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder) -> Value {
+    fn codegen<'a>(
+        &'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder,
+    ) -> Value {
         let value = self.expression.codegen(context, builder);
         context.create_return(value.clone(), builder);
         value
@@ -221,7 +259,9 @@ impl<'c> Codegen<'c> for ast::Return<'c> {
 }
 
 impl<'c> Codegen<'c> for ast::Sequence<'c> {
-    fn codegen<'a>(&'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder) -> Value {
+    fn codegen<'a>(
+        &'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder,
+    ) -> Value {
         let mut value = None;
         for statement in &self.statements {
             value = Some(statement.codegen(context, builder));
@@ -231,21 +271,31 @@ impl<'c> Codegen<'c> for ast::Sequence<'c> {
 }
 
 impl<'c> Codegen<'c> for ast::Extern<'c> {
-    fn codegen<'a>(&'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder) -> Value {
+    fn codegen<'a>(
+        &'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder,
+    ) -> Value {
         context.unit_value(builder)
     }
 }
 
 impl<'c> Codegen<'c> for ast::MemberAccess<'c> {
-    fn codegen<'a>(&'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder) -> Value {
+    fn codegen<'a>(
+        &'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder,
+    ) -> Value {
         let lhs = context.codegen_eval(&self.lhs, builder);
         let index = context.get_field_index(&self.field, self.lhs.get_type().unwrap());
-        Value::Normal(builder.ins().load(BOXED_TYPE, MemFlags::new(), lhs, index as i32))
+        Value::Normal(
+            builder
+                .ins()
+                .load(BOXED_TYPE, MemFlags::new(), lhs, index as i32),
+        )
     }
 }
 
 impl<'c> Codegen<'c> for ast::Assignment<'c> {
-    fn codegen<'a>(&'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder) -> Value {
+    fn codegen<'a>(
+        &'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder,
+    ) -> Value {
         let rhs = context.codegen_eval(&self.rhs, builder);
         let lhs = context.codegen_eval(&self.lhs, builder);
 

@@ -6,16 +6,20 @@ use crate::cache::{DefinitionInfoId, DefinitionKind, ModuleCache};
 use crate::lexer::token::IntegerKind;
 use crate::parser::ast::{self, Ast};
 use crate::types::typed::Typed;
-use crate::types::{Type, FunctionType, TypeBinding, TypeInfoBody, PrimitiveType, TypeConstructor};
+use crate::types::{FunctionType, PrimitiveType, Type, TypeBinding, TypeConstructor, TypeInfoBody};
 use crate::util::{fmap, trustme};
 use cranelift::codegen::ir::immediates::Offset32;
-use cranelift::codegen::verify_function;
-use cranelift::frontend::{FunctionBuilderContext, FunctionBuilder, Variable};
-use cranelift::prelude::isa::{TargetFrontendConfig, CallConv, self};
-use cranelift::prelude::{ExtFuncData, Value as CraneliftValue, MemFlags, Signature, InstBuilder, AbiParam, ExternalName, EntityRef, settings, Configurable};
-use cranelift_module::{Linkage, FuncId, Module, DataContext};
 use cranelift::codegen::ir::{types as cranelift_types, Function};
+use cranelift::codegen::verify_function;
+use cranelift::frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
+use cranelift::prelude::isa::{CallConv, TargetFrontendConfig};
+use cranelift::prelude::{
+    settings, AbiParam, EntityRef, ExtFuncData, ExternalName, InstBuilder, MemFlags, Signature,
+    Value as CraneliftValue,
+};
+use cranelift_module::{DataContext, FuncId, Linkage, Module};
 
+use super::module::DynModule;
 use super::Codegen;
 
 pub const BOXED_TYPE: cranelift_types::Type = cranelift_types::I64;
@@ -40,7 +44,7 @@ impl<'a, 'c> FunctionRef<'a, 'c> {
 pub struct Context<'ast, 'c> {
     pub cache: &'ast mut ModuleCache<'c>,
     pub definitions: HashMap<DefinitionInfoId, Value>,
-    module: cranelift_object::ObjectModule, // JITModule,
+    module: DynModule,
     unique_id: u32,
 
     data_context: DataContext,
@@ -76,7 +80,7 @@ impl Value {
             Value::Function(data) => {
                 let function_ref = builder.import_function(data);
                 builder.ins().func_addr(BOXED_TYPE, function_ref)
-            }
+            },
         }
     }
 
@@ -96,7 +100,9 @@ fn declare_malloc_function(module: &mut dyn Module) -> FuncId {
     // if we compile on 32-bit platforms.
     signature.params.push(AbiParam::new(BOXED_TYPE));
     signature.returns.push(AbiParam::new(BOXED_TYPE));
-    module.declare_function("malloc", Linkage::Import, &signature).unwrap()
+    module
+        .declare_function("malloc", Linkage::Import, &signature)
+        .unwrap()
 }
 
 enum FunctionOrGlobal {
@@ -105,79 +111,68 @@ enum FunctionOrGlobal {
 }
 
 impl<'local, 'c> Context<'local, 'c> {
-    fn new(cache: &'local mut ModuleCache<'c>) -> (Self, FunctionBuilderContext) {
+    fn new(
+        output_path: &Path, use_jit: bool, cache: &'local mut ModuleCache<'c>,
+    ) -> (Self, FunctionBuilderContext) {
         let builder_context = FunctionBuilderContext::new();
-        let mut settings = settings::builder();
-
-        // Cranelift-jit currently only supports PIC on x86-64 and
-        // will panic by default if it is enabled on other platforms
-        if cfg!(not(target_arch = "x86_64")) {
-            // flag_builder.set("use_colocated_libcalls", "false").unwrap();
-            settings.set("is_pic", "false").unwrap();
-        }
-
-        let shared_flags = settings::Flags::new(settings);
-
-        // TODO: Should we use cranelift_native here to get the native target instead?
-        let target_isa = isa::lookup(target_lexicon::Triple::host()).unwrap()
-            .finish(shared_flags).unwrap();
-
-        let frontend_config = target_isa.frontend_config();
-
-        // let jitbuilder = JITBuilder::with_isa(target_isa, cranelift_module::default_libcall_names());
-        // let mut module = JITModule::new(jitbuilder);
-        let jitbuilder = cranelift_object::ObjectBuilder::new(target_isa, "a.out", cranelift_module::default_libcall_names()).unwrap();
-        let mut module = cranelift_object::ObjectModule::new(jitbuilder);
-
+        let (mut module, frontend_config) =
+            DynModule::new(output_path.to_string_lossy().into_owned(), use_jit);
         let alloc_fn = declare_malloc_function(&mut module);
 
-        (Context {
-            cache,
-            definitions: HashMap::new(),
-            module,
-            unique_id: 1, // alloc_fn is id 0
-            alloc_fn,
-            frontend_config,
-            data_context: DataContext::new(),
-            function_queue: vec![],
-            current_function_name: None,
-            current_function_parameters: vec![],
-        }, builder_context)
+        (
+            Context {
+                cache,
+                definitions: HashMap::new(),
+                module,
+                unique_id: 1, // alloc_fn is id 0
+                alloc_fn,
+                frontend_config,
+                data_context: DataContext::new(),
+                function_queue: vec![],
+                current_function_name: None,
+                current_function_parameters: vec![],
+            },
+            builder_context,
+        )
     }
 
-    pub fn codegen_all(path: &Path, ast: &'local Ast<'c>, cache: &'local mut ModuleCache<'c>, args: &Args) {
-        let (mut context, mut builder_context) = Context::new(cache);
+    pub fn codegen_all(
+        path: &Path, ast: &'local Ast<'c>, cache: &'local mut ModuleCache<'c>, args: &Args,
+    ) {
+        let output_path = path.with_extension("");
+        let (mut context, mut builder_context) = Context::new(&output_path, !args.build, cache);
         let mut module_context = context.module.make_context();
 
-        context.codegen_main(ast, &mut builder_context, &mut module_context, args);
+        let main = context.codegen_main(ast, &mut builder_context, &mut module_context, args);
 
         // Then codegen any functions used by main and so forth
         while let Some((function, signature, id)) = context.function_queue.pop() {
-            context.codegen_function(function, &mut builder_context, &mut module_context, signature, id, args);
+            context.codegen_function(
+                function,
+                &mut builder_context,
+                &mut module_context,
+                signature,
+                id,
+                args,
+            );
         }
 
-        let product = context.module.finish();
-        let text = product.object.write().unwrap();
-        let output_file_name = path.with_extension("");
-        std::fs::write(output_file_name, text).unwrap();
-
-        // context.module.finalize_definitions();
-
-        // if !args.build {
-        //     let main = context.module.get_finalized_function(main);
-        //     let main: fn() -> i32 = unsafe { std::mem::transmute(main) };
-        //     main();
-        // }
+        context.module.finish(main, &output_path);
     }
 
-    pub fn codegen_eval<T: Codegen<'c>>(&mut self, ast: &'local T, builder: &mut FunctionBuilder) -> CraneliftValue {
+    pub fn codegen_eval<T: Codegen<'c>>(
+        &mut self, ast: &'local T, builder: &mut FunctionBuilder,
+    ) -> CraneliftValue {
         ast.codegen(self, builder).eval(builder)
     }
 
-    fn codegen_function(&mut self, function: FunctionRef<'local, 'c>, context: &mut FunctionBuilderContext,
-        module_context: &mut cranelift::codegen::Context, signature: Signature, function_id: FuncId, args: &Args)
-    {
-        module_context.func = Function::with_name_signature(ExternalName::user(0, function_id.as_u32()), signature);
+    fn codegen_function(
+        &mut self, function: FunctionRef<'local, 'c>, context: &mut FunctionBuilderContext,
+        module_context: &mut cranelift::codegen::Context, signature: Signature,
+        function_id: FuncId, args: &Args,
+    ) {
+        module_context.func =
+            Function::with_name_signature(ExternalName::user(0, function_id.as_u32()), signature);
         let mut builder = FunctionBuilder::new(&mut module_context.func, context);
 
         let entry = builder.create_block();
@@ -199,7 +194,9 @@ impl<'local, 'c> Context<'local, 'c> {
             panic!("{}", errors);
         }
 
-        self.module.define_function(function_id, module_context).unwrap();
+        self.module
+            .define_function(function_id, module_context)
+            .unwrap();
         module_context.clear();
     }
 
@@ -208,13 +205,19 @@ impl<'local, 'c> Context<'local, 'c> {
         self.unique_id
     }
 
-    fn codegen_main(&mut self, ast: &'local Ast<'c>, builder_context: &mut FunctionBuilderContext,
-        module_context: &mut cranelift::codegen::Context, args: &Args) -> FuncId
-    {
+    fn codegen_main(
+        &mut self, ast: &'local Ast<'c>, builder_context: &mut FunctionBuilderContext,
+        module_context: &mut cranelift::codegen::Context, args: &Args,
+    ) -> FuncId {
         let func = &mut module_context.func;
-        func.signature.returns.push(AbiParam::new(cranelift_types::I32));
+        func.signature
+            .returns
+            .push(AbiParam::new(cranelift_types::I32));
 
-        let main_id = self.module.declare_function("main", Linkage::Export, &func.signature).unwrap();
+        let main_id = self
+            .module
+            .declare_function("main", Linkage::Export, &func.signature)
+            .unwrap();
         let mut builder = FunctionBuilder::new(func, builder_context);
         let entry = builder.create_block();
 
@@ -240,19 +243,27 @@ impl<'local, 'c> Context<'local, 'c> {
             panic!("{}", errors);
         }
 
-        self.module.define_function(main_id, module_context).unwrap();
+        self.module
+            .define_function(main_id, module_context)
+            .unwrap();
         module_context.clear();
         main_id
     }
 
-    fn codegen_function_inner(&mut self, function: FunctionRef<'local, 'c>, builder: &mut FunctionBuilder) -> Value {
+    fn codegen_function_inner(
+        &mut self, function: FunctionRef<'local, 'c>, builder: &mut FunctionBuilder,
+    ) -> Value {
         match function {
             FunctionRef::Lambda(lambda) => self.codegen_lambda(lambda, builder),
-            FunctionRef::TypeConstructor { tag, typ } => self.codegen_type_constructor_function(tag, &typ, builder),
+            FunctionRef::TypeConstructor { tag, typ } => {
+                self.codegen_type_constructor_function(tag, &typ, builder)
+            },
         }
     }
 
-    fn codegen_lambda(&mut self, lambda: &'local ast::Lambda<'c>, builder: &mut FunctionBuilder) -> Value {
+    fn codegen_lambda(
+        &mut self, lambda: &'local ast::Lambda<'c>, builder: &mut FunctionBuilder,
+    ) -> Value {
         // TODO Parameter binding
         for _parameter in &lambda.args {
             let x = Variable::new(self.next_unique_id() as usize);
@@ -262,20 +273,26 @@ impl<'local, 'c> Context<'local, 'c> {
         lambda.body.codegen(self, builder)
     }
 
-    fn codegen_type_constructor(&mut self, tag: &'local Option<u8>, typ: &Type, name: &str, builder: &mut FunctionBuilder) -> Value {
+    fn codegen_type_constructor(
+        &mut self, tag: &'local Option<u8>, typ: &Type, name: &str, builder: &mut FunctionBuilder,
+    ) -> Value {
         match typ {
-            Type::Function(_) => self.add_type_constructor_to_queue(tag, typ.clone(), name, builder),
+            Type::Function(_) => {
+                self.add_type_constructor_to_queue(tag, typ.clone(), name, builder)
+            },
             Type::TypeVariable(id) => {
                 match &self.cache.type_bindings[id.0] {
                     TypeBinding::Bound(binding) => {
                         // TODO: Can we remove the cloning here?
                         let binding = binding.clone();
                         self.codegen_type_constructor(tag, &binding, name, builder)
-                    }
+                    },
                     TypeBinding::Unbound(_, _) => unreachable!(),
                 }
             },
-            Type::TypeApplication(typ, _args) => self.codegen_type_constructor(tag, typ, name, builder),
+            Type::TypeApplication(typ, _args) => {
+                self.codegen_type_constructor(tag, typ, name, builder)
+            },
             Type::ForAll(_, typ) => self.codegen_type_constructor(tag, typ, name, builder),
             Type::UserDefinedType(_) => {
                 // This type constructor is not a function type, it is just a single tag value then
@@ -287,7 +304,9 @@ impl<'local, 'c> Context<'local, 'c> {
         }
     }
 
-    fn codegen_type_constructor_function(&mut self, tag: &Option<u8>, typ: &Type, builder: &mut FunctionBuilder) -> Value {
+    fn codegen_type_constructor_function(
+        &mut self, tag: &Option<u8>, typ: &Type, builder: &mut FunctionBuilder,
+    ) -> Value {
         let f = match typ {
             Type::Function(f) => f,
             _ => unreachable!(),
@@ -323,12 +342,15 @@ impl<'local, 'c> Context<'local, 'c> {
                 TypeBinding::Bound(t) => {
                     let t = t.clone();
                     self.resolve_type(&t)
-                }
+                },
                 // Default to unit
                 TypeBinding::Unbound(_, _) => Type::Primitive(PrimitiveType::UnitType),
             },
             Type::UserDefinedType(id) => Type::UserDefinedType(*id),
-            Type::TypeApplication(c, args) => Type::TypeApplication(Box::new(self.resolve_type(c)), fmap(args, |arg| self.resolve_type(arg))),
+            Type::TypeApplication(c, args) => Type::TypeApplication(
+                Box::new(self.resolve_type(c)),
+                fmap(args, |arg| self.resolve_type(arg)),
+            ),
             Type::Ref(id) => Type::Ref(*id),
             Type::ForAll(_vars, typ) => self.resolve_type(typ.as_ref()),
         }
@@ -353,34 +375,49 @@ impl<'local, 'c> Context<'local, 'c> {
                 sig.returns.push(AbiParam::new(cranelift_type));
                 sig
             },
-            _ => unreachable!("called convert_signature with type {}", typ.display(self.cache)),
+            _ => unreachable!(
+                "called convert_signature with type {}",
+                typ.display(self.cache)
+            ),
         }
     }
 
     pub fn unboxed_integer_type(&mut self, kind: &IntegerKind) -> cranelift_types::Type {
         match kind {
             IntegerKind::Unknown => unreachable!("Unknown IntegerKind encountered during codegen"),
-            IntegerKind::Inferred(id) => {
-                self.convert_type(&Type::TypeVariable(*id))
-            },
+            IntegerKind::Inferred(id) => self.convert_type(&Type::TypeVariable(*id)),
             IntegerKind::I8 | IntegerKind::U8 => cranelift_types::I8,
             IntegerKind::I16 | IntegerKind::U16 => cranelift_types::I16,
             IntegerKind::I32 | IntegerKind::U32 => cranelift_types::I32,
-            IntegerKind::I64 | IntegerKind::Isz | IntegerKind::U64 | IntegerKind::Usz => cranelift_types::I64,
+            IntegerKind::I64 | IntegerKind::Isz | IntegerKind::U64 | IntegerKind::Usz => {
+                cranelift_types::I64
+            },
         }
     }
 
-    pub fn codegen_definition(&mut self, id: DefinitionInfoId, builder: &mut FunctionBuilder) -> Value {
+    pub fn codegen_definition(
+        &mut self, id: DefinitionInfoId, builder: &mut FunctionBuilder,
+    ) -> Value {
         let definition = &mut self.cache.definition_infos[id.0];
         let definition = trustme::extend_lifetime(definition);
 
         let value = match &definition.definition {
             Some(DefinitionKind::Definition(definition)) => definition.codegen(self, builder),
             Some(DefinitionKind::Extern(annotation)) => self.codegen_extern(*annotation, builder),
-            Some(DefinitionKind::TypeConstructor { name, tag }) => self.codegen_type_constructor(tag, definition.typ.as_ref().unwrap(), name, builder),
-            Some(DefinitionKind::TraitDefinition(definition)) => unreachable!("No trait impl for trait {}", definition),
-            Some(DefinitionKind::Parameter) => unreachable!("Parameter definitions should already be codegen'd, {}, id = {}", definition.name, id.0),
-            Some(DefinitionKind::MatchPattern) => unreachable!("Pattern definitions should already be codegen'd, {}, id = {}", definition.name, id.0),
+            Some(DefinitionKind::TypeConstructor { name, tag }) => {
+                self.codegen_type_constructor(tag, definition.typ.as_ref().unwrap(), name, builder)
+            },
+            Some(DefinitionKind::TraitDefinition(definition)) => {
+                unreachable!("No trait impl for trait {}", definition)
+            },
+            Some(DefinitionKind::Parameter) => unreachable!(
+                "Parameter definitions should already be codegen'd, {}, id = {}",
+                definition.name, id.0
+            ),
+            Some(DefinitionKind::MatchPattern) => unreachable!(
+                "Pattern definitions should already be codegen'd, {}, id = {}",
+                definition.name, id.0
+            ),
             None => unreachable!("Variable {} has no definition", id.0),
         };
 
@@ -394,10 +431,16 @@ impl<'local, 'c> Context<'local, 'c> {
         builder.ins().return_(&[value]);
     }
 
-    fn add_function_to_queue(&mut self, function: FunctionRef<'local, 'c>, name: &str, builder: &mut FunctionBuilder) -> Value {
+    fn add_function_to_queue(
+        &mut self, function: FunctionRef<'local, 'c>, name: &str, builder: &mut FunctionBuilder,
+    ) -> Value {
         let signature = self.convert_signature(function.get_type());
-        let function_id = self.module.declare_function(name, Linkage::Export, &signature).unwrap();
-        self.function_queue.push((function, signature.clone(), function_id));
+        let function_id = self
+            .module
+            .declare_function(name, Linkage::Export, &signature)
+            .unwrap();
+        self.function_queue
+            .push((function, signature.clone(), function_id));
 
         let signature = builder.import_signature(signature);
 
@@ -409,11 +452,15 @@ impl<'local, 'c> Context<'local, 'c> {
         })
     }
 
-    pub fn add_lambda_to_queue(&mut self, lambda: &'local ast::Lambda<'c>, name: &str, builder: &mut FunctionBuilder) -> Value {
+    pub fn add_lambda_to_queue(
+        &mut self, lambda: &'local ast::Lambda<'c>, name: &str, builder: &mut FunctionBuilder,
+    ) -> Value {
         self.add_function_to_queue(FunctionRef::Lambda(lambda), name, builder)
     }
 
-    pub fn add_type_constructor_to_queue(&mut self, tag: &'local Option<u8>, typ: Type, name: &str, builder: &mut FunctionBuilder) -> Value {
+    pub fn add_type_constructor_to_queue(
+        &mut self, tag: &'local Option<u8>, typ: Type, name: &str, builder: &mut FunctionBuilder,
+    ) -> Value {
         self.add_function_to_queue(FunctionRef::TypeConstructor { tag, typ }, name, builder)
     }
 
@@ -428,8 +475,12 @@ impl<'local, 'c> Context<'local, 'c> {
     ///
     /// This will be called very often as the cranelift backend will perform
     /// boxing instead of monomorphisation to handle generics.
-    fn alloc(&mut self, values: &[CraneliftValue], builder: &mut FunctionBuilder) -> CraneliftValue {
-        let function_ref = self.module.declare_func_in_func(self.alloc_fn, builder.func);
+    fn alloc(
+        &mut self, values: &[CraneliftValue], builder: &mut FunctionBuilder,
+    ) -> CraneliftValue {
+        let function_ref = self
+            .module
+            .declare_func_in_func(self.alloc_fn, builder.func);
 
         let size = self.pointer_size() as i64 * values.len() as i64;
         let size = builder.ins().iconst(BOXED_TYPE, size);
@@ -441,7 +492,9 @@ impl<'local, 'c> Context<'local, 'c> {
 
         for (i, value) in values.into_iter().enumerate() {
             let offset = self.pointer_size() * i as i32;
-            builder.ins().store(MemFlags::new(), *value, allocated, offset);
+            builder
+                .ins()
+                .store(MemFlags::new(), *value, allocated, offset);
         }
 
         allocated
@@ -452,7 +505,9 @@ impl<'local, 'c> Context<'local, 'c> {
     ///
     /// Like all values in this IR, `value` is expected to be boxed, so
     /// we must unbox the value and cast it at each step as we unwrap it.
-    pub fn bind_pattern(&mut self, pattern: &Ast, value: CraneliftValue, builder: &mut FunctionBuilder) {
+    pub fn bind_pattern(
+        &mut self, pattern: &Ast, value: CraneliftValue, builder: &mut FunctionBuilder,
+    ) {
         match pattern {
             Ast::Literal(_) => (), // Nothing to do
             Ast::Variable(variable) => {
@@ -461,7 +516,10 @@ impl<'local, 'c> Context<'local, 'c> {
                 // Unlike monomorphisation in the llvm pass, we should never expect to
                 // invalidate previous work by binding the same definition to a new value.
                 if let Some(old_value) = self.definitions.insert(id, Value::Normal(value)) {
-                    unreachable!("bind_pattern tried to bind to {}, but it was already bound to {:?}", pattern, old_value);
+                    unreachable!(
+                        "bind_pattern tried to bind to {}, but it was already bound to {:?}",
+                        pattern, old_value
+                    );
                 }
             },
             // This should be an irrefutable pattern (struct/tuple), arbitrary patterns
@@ -486,11 +544,9 @@ impl<'local, 'c> Context<'local, 'c> {
         match struct_type {
             Type::Primitive(_) => unreachable!(),
             Type::Function(_) => unreachable!(),
-            Type::TypeVariable(id) => {
-                match &self.cache.type_bindings[id.0] {
-                    TypeBinding::Bound(binding) => self.field_offsets(binding),
-                    TypeBinding::Unbound(..) => unreachable!(),
-                }
+            Type::TypeVariable(id) => match &self.cache.type_bindings[id.0] {
+                TypeBinding::Bound(binding) => self.field_offsets(binding),
+                TypeBinding::Unbound(..) => unreachable!(),
             },
             Type::Ref(_) => unreachable!(),
             Type::ForAll(_, _) => unreachable!(),
@@ -562,16 +618,11 @@ impl<'local, 'c> Context<'local, 'c> {
                             TypeBinding::Unbound(..) => std::mem::size_of::<i32>() as i32,
                         }
                     },
-                    IntegerKind::I8
-                    | IntegerKind::U8 => 1,
-                    IntegerKind::I16
-                    | IntegerKind::U16 => 2,
-                    IntegerKind::I32
-                    | IntegerKind::U32 => 4,
-                    IntegerKind::I64
-                    | IntegerKind::U64 => 8,
-                    IntegerKind::Isz
-                    | IntegerKind::Usz => self.pointer_size(),
+                    IntegerKind::I8 | IntegerKind::U8 => 1,
+                    IntegerKind::I16 | IntegerKind::U16 => 2,
+                    IntegerKind::I32 | IntegerKind::U32 => 4,
+                    IntegerKind::I64 | IntegerKind::U64 => 8,
+                    IntegerKind::Isz | IntegerKind::Usz => self.pointer_size(),
                 }
             },
             PrimitiveType::FloatType => 8,
@@ -585,9 +636,11 @@ impl<'local, 'c> Context<'local, 'c> {
     /// Returns the size of a sum type in bytes.
     /// This should match the size of its largest variant + an extra byte for the tag
     fn size_of_union(&self, variants: &[TypeConstructor]) -> i32 {
-        variants.iter().map(|variant| {
-            variant.args.len() as i32 * self.pointer_size() + 1
-        }).max().unwrap_or(1)
+        variants
+            .iter()
+            .map(|variant| variant.args.len() as i32 * self.pointer_size() + 1)
+            .max()
+            .unwrap_or(1)
     }
 
     /// Returns the size of a pointer in bytes.
@@ -596,18 +649,26 @@ impl<'local, 'c> Context<'local, 'c> {
         std::mem::size_of::<*const u8>() as i32
     }
 
-    fn codegen_extern(&mut self, annotation: &ast::TypeAnnotation, builder: &mut FunctionBuilder) -> Value {
+    fn codegen_extern(
+        &mut self, annotation: &ast::TypeAnnotation, builder: &mut FunctionBuilder,
+    ) -> Value {
         let name = match annotation.lhs.as_ref() {
             Ast::Variable(variable) => variable.to_string(),
-            other => unimplemented!("Extern declarations for '{}' patterns are unimplemented", other),
+            other => unimplemented!(
+                "Extern declarations for '{}' patterns are unimplemented",
+                other
+            ),
         };
 
         match self.convert_extern_signature(annotation.typ.as_ref().unwrap()) {
             FunctionOrGlobal::Global(_typ) => {
                 todo!("Extern globals")
-            }
+            },
             FunctionOrGlobal::Function(signature) => {
-                let id = self.module.declare_function(&name, Linkage::Import, &signature).unwrap();
+                let id = self
+                    .module
+                    .declare_function(&name, Linkage::Import, &signature)
+                    .unwrap();
                 let signature = builder.import_signature(signature);
 
                 Value::Function(ExtFuncData {
@@ -615,7 +676,7 @@ impl<'local, 'c> Context<'local, 'c> {
                     signature,
                     colocated: false,
                 })
-            }
+            },
         }
     }
 
@@ -627,7 +688,7 @@ impl<'local, 'c> Context<'local, 'c> {
                     // Technically valid, but very questionable if a user declares an
                     // extern global with an unbound type variable type
                     FunctionOrGlobal::Global(BOXED_TYPE)
-                }
+                },
             },
             Type::Function(f) => {
                 let mut signature = Signature::new(CallConv::SystemV);
@@ -640,9 +701,7 @@ impl<'local, 'c> Context<'local, 'c> {
                 FunctionOrGlobal::Function(signature)
             },
             Type::ForAll(_vars, typ) => self.convert_extern_signature(typ.as_ref()),
-            other => {
-                FunctionOrGlobal::Global(self.convert_extern_type(other))
-            }
+            other => FunctionOrGlobal::Global(self.convert_extern_type(other)),
         }
     }
 
@@ -681,9 +740,14 @@ impl<'local, 'c> Context<'local, 'c> {
         self.data_context.define(value);
 
         let name = format!("string{}", self.next_unique_id());
-        let data_id = self.module.declare_data(&name, Linkage::Local, true, false).unwrap();
+        let data_id = self
+            .module
+            .declare_data(&name, Linkage::Local, true, false)
+            .unwrap();
 
-        self.module.define_data(data_id, &self.data_context).unwrap();
+        self.module
+            .define_data(data_id, &self.data_context)
+            .unwrap();
         self.data_context.clear();
         let global = self.module.declare_data_in_func(data_id, builder.func);
 
