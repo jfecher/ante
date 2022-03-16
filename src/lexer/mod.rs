@@ -278,6 +278,25 @@ impl<'cache, 'contents> Lexer<'cache, 'contents> {
         }
     }
 
+    fn lex_negative(&mut self) -> IterElem<'cache> {
+        self.advance(); // consume '-'
+
+        if self.current.is_numeric() {
+            self.lex_number().map(|(token, location)| {
+                (match token {
+                    Token::IntegerLiteral(x, kind) => {
+                        let x = format!("-{}", x).parse::<i64>().unwrap();
+                        Token::IntegerLiteral(x as u64, kind)
+                    }
+                    Token::FloatLiteral(x) => Token::FloatLiteral(-x),
+                    _ => unreachable!(),
+                }, location)
+            })
+        } else {
+            Some((Token::Subtract, self.locate()))
+        }
+    }
+
     fn lex_alphanumeric(&mut self) -> IterElem<'cache> {
         let is_type = self.current.is_uppercase();
         let word = self.advance_while(|current, _| current.is_alphanumeric() || current == '_');
@@ -479,6 +498,7 @@ impl<'cache, 'contents> Iterator for Lexer<'cache, 'contents> {
             ('=', _) => {   self.previous_token_expects_indent = true; self.advance_with(Token::Equal) },
             ('-', '>') => { self.previous_token_expects_indent = true; self.advance2_with(Token::RightArrow) },
             ('.', _) => {   self.previous_token_expects_indent = true; self.advance_with(Token::MemberAccess) },
+            ('-', _) => self.lex_negative(),
             ('!', '=') => self.advance2_with(Token::NotEqual),
             ('<', '|') => self.advance2_with(Token::ApplyLeft),
             ('|', '>') => self.advance2_with(Token::ApplyRight),
@@ -491,7 +511,6 @@ impl<'cache, 'contents> Iterator for Lexer<'cache, 'contents> {
             ('*', _) => self.advance_with(Token::Multiply),
             ('(', _) => self.advance_with(Token::ParenthesisLeft),
             (')', _) => self.advance_with(Token::ParenthesisRight),
-            ('-', _) => self.advance_with(Token::Subtract),
             ('+', _) => self.advance_with(Token::Add),
             ('[', _) => self.advance_with(Token::BracketLeft),
             (']', _) => self.advance_with(Token::BracketRight),

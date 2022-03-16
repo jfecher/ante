@@ -803,12 +803,13 @@ fn bind_closure_environment<'c>(
     environment: &BTreeMap<DefinitionInfoId, DefinitionInfoId>, cache: &mut ModuleCache<'c>,
 ) {
     for (from, to) in environment {
-        let from = cache.definition_infos[from.0].typ.as_ref().unwrap().clone();
-        let (from, _) = instantiate(&from, vec![], cache);
+        if let Some(from) = cache.definition_infos[from.0].typ.as_ref() {
+            let (from, _) = instantiate(&from.clone(), vec![], cache);
 
-        let to = &mut cache.definition_infos[to.0].typ;
-        assert!(to.is_none());
-        *to = Some(from);
+            let to = &mut cache.definition_infos[to.0].typ;
+            assert!(to.is_none());
+            *to = Some(from);
+        }
     }
 }
 

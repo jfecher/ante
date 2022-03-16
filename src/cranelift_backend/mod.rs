@@ -86,6 +86,8 @@ impl<'c> Codegen<'c> for ast::LiteralKind {
 impl<'c> Codegen<'c> for ast::Variable<'c> {
     fn codegen<'a>(&self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder) -> Value {
         let id = self.definition.unwrap();
+        println!("{}, {:?}, {:?}", self, id, self.trait_binding);
+
         match context.definitions.get(&id) {
             Some(value) => value.clone(),
             None => context.codegen_definition(id, builder),
@@ -115,6 +117,8 @@ impl<'c> Codegen<'c> for ast::FunctionCall<'c> {
                 builtin::call_builtin(&self.args, context, builder)
             },
             _ => {
+                dbg!(&self.function.get_type().unwrap().display(context.cache));
+
                 let f = self.function.codegen(context, builder).eval_function();
 
                 let args = fmap(&self.args, |arg| context.codegen_eval(arg, builder));
