@@ -14,7 +14,7 @@ use cranelift::codegen::verify_function;
 use cranelift::frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use cranelift::prelude::isa::{CallConv, TargetFrontendConfig};
 use cranelift::prelude::{
-    settings, AbiParam, EntityRef, ExtFuncData, ExternalName, InstBuilder, MemFlags, Signature,
+    settings, AbiParam, ExtFuncData, ExternalName, InstBuilder, MemFlags, Signature,
     Value as CraneliftValue,
 };
 use cranelift_module::{DataContext, FuncId, Linkage, Module};
@@ -178,11 +178,11 @@ impl<'local, 'c> Context<'local, 'c> {
         let entry = builder.create_block();
         builder.switch_to_block(entry);
         builder.seal_block(entry);
+        builder.append_block_params_for_function_params(entry);
 
         let body = self.codegen_function_inner(function, &mut builder);
         self.create_return(body, &mut builder);
 
-        builder.append_block_params_for_function_params(entry);
         builder.finalize();
 
         if args.show_ir {
@@ -264,10 +264,10 @@ impl<'local, 'c> Context<'local, 'c> {
     fn codegen_lambda(
         &mut self, lambda: &'local ast::Lambda<'c>, builder: &mut FunctionBuilder,
     ) -> Value {
-        // TODO Parameter binding
-        for _parameter in &lambda.args {
-            let x = Variable::new(self.next_unique_id() as usize);
-            builder.declare_var(x, BOXED_TYPE);
+        for (i, parameter) in lambda.args.iter().enumerate() {
+            let block = builder.current_block().unwrap();
+            let arg = builder.block_params(block)[i];
+            self.bind_pattern(parameter, arg, builder);
         }
 
         lambda.body.codegen(self, builder)
@@ -317,10 +317,11 @@ impl<'local, 'c> Context<'local, 'c> {
             params.push(builder.ins().iconst(BOXED_TYPE, *tag as i64));
         }
 
-        for _ in &f.parameters {
-            let param = Variable::new(self.next_unique_id() as usize);
-            builder.declare_var(param, BOXED_TYPE);
-            params.push(builder.use_var(param));
+        let current_block = builder.current_block().unwrap();
+        let function_params = builder.block_params(current_block);
+
+        for param in function_params {
+            params.push(*param);
         }
 
         Value::Normal(self.alloc(&params, builder))
@@ -482,7 +483,7 @@ impl<'local, 'c> Context<'local, 'c> {
             .module
             .declare_func_in_func(self.alloc_fn, builder.func);
 
-        let size = self.pointer_size() as i64 * values.len() as i64;
+        let size = Self::pointer_size() as i64 * values.len() as i64;
         let size = builder.ins().iconst(BOXED_TYPE, size);
 
         let call = builder.ins().call(function_ref, &[size]);
@@ -491,7 +492,7 @@ impl<'local, 'c> Context<'local, 'c> {
         let allocated = results[0];
 
         for (i, value) in values.into_iter().enumerate() {
-            let offset = self.pointer_size() * i as i32;
+            let offset = Self::pointer_size() * i as i32;
             builder
                 .ins()
                 .store(MemFlags::new(), *value, allocated, offset);
@@ -582,7 +583,7 @@ impl<'local, 'c> Context<'local, 'c> {
     pub fn size_of_unboxed_type(&self, field_type: &Type) -> i32 {
         match field_type {
             Type::Primitive(primitive) => self.size_of_primitive(primitive),
-            Type::Function(_) => self.pointer_size(),
+            Type::Function(_) => Self::pointer_size(),
             Type::TypeVariable(id) => {
                 match &self.cache.type_bindings[id.0] {
                     TypeBinding::Bound(binding) => self.size_of_unboxed_type(binding),
@@ -596,12 +597,12 @@ impl<'local, 'c> Context<'local, 'c> {
                     TypeInfoBody::Unknown => unreachable!(),
                     TypeInfoBody::Alias(alias) => self.size_of_unboxed_type(alias),
                     // All fields are boxed
-                    TypeInfoBody::Struct(fields) => fields.len() as i32 * self.pointer_size(),
+                    TypeInfoBody::Struct(fields) => fields.len() as i32 * Self::pointer_size(),
                     TypeInfoBody::Union(variants) => self.size_of_union(variants),
                 }
             },
             Type::TypeApplication(base_type, _) => self.size_of_unboxed_type(base_type),
-            Type::Ref(_) => self.pointer_size(),
+            Type::Ref(_) => Self::pointer_size(),
             Type::ForAll(_, typ) => self.size_of_unboxed_type(typ),
         }
     }
@@ -622,14 +623,14 @@ impl<'local, 'c> Context<'local, 'c> {
                     IntegerKind::I16 | IntegerKind::U16 => 2,
                     IntegerKind::I32 | IntegerKind::U32 => 4,
                     IntegerKind::I64 | IntegerKind::U64 => 8,
-                    IntegerKind::Isz | IntegerKind::Usz => self.pointer_size(),
+                    IntegerKind::Isz | IntegerKind::Usz => Self::pointer_size(),
                 }
             },
             PrimitiveType::FloatType => 8,
             PrimitiveType::CharType => 1,
             PrimitiveType::BooleanType => 1,
             PrimitiveType::UnitType => 1,
-            PrimitiveType::Ptr => self.pointer_size(),
+            PrimitiveType::Ptr => Self::pointer_size(),
         }
     }
 
@@ -638,14 +639,14 @@ impl<'local, 'c> Context<'local, 'c> {
     fn size_of_union(&self, variants: &[TypeConstructor]) -> i32 {
         variants
             .iter()
-            .map(|variant| variant.args.len() as i32 * self.pointer_size() + 1)
+            .map(|variant| variant.args.len() as i32 * Self::pointer_size() + 1)
             .max()
             .unwrap_or(1)
     }
 
     /// Returns the size of a pointer in bytes.
     /// TODO: Adjust based on target platform
-    fn pointer_size(&self) -> i32 {
+    pub fn pointer_size() -> i32 {
         std::mem::size_of::<*const u8>() as i32
     }
 

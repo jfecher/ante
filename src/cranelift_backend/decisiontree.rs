@@ -201,7 +201,7 @@ fn bind_patterns<'ast, 'c>(value_to_match_on: CraneliftValue, case: &Case, conte
             let start_index = if info_type.is_union_constructor(context.cache) { 1 } else { 0 };
 
             for (i, field_aliases) in case.fields.iter().enumerate() {
-                let field_index = start_index + i as i32;
+                let field_index = (start_index + i as i32) * Context::pointer_size();
                 let field = builder.ins().load(BOXED_TYPE, MemFlags::new(), value_to_match_on, field_index);
 
                 for field_alias in field_aliases {
