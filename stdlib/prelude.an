@@ -90,6 +90,10 @@ impl Cast (Maybe m) string given Cast m string with
         | Some val -> "Some (" ++ cast val ++ ")"
         | None -> "None"
 
+// Incomplete list of int -> int casts. TODO: Add more as appropriate
+impl Cast u64 char with cast _ = builtin "truncate"
+
+impl Cast i32 i64 with cast _ = builtin "sign_extend"
 
 /// Represents a failable type cast from a to b
 trait TryCast a b with
@@ -99,14 +103,28 @@ impl TryCast a b given Cast a b with
     try_cast a = Some (cast a)
 
 
+impl TryCast i64 u64 with
+    try_cast x =
+        if x < 0 then None
+        else Some (transmute x)
+
+impl TryCast u64 i64 with
+    try_cast x =
+        if x > 9_223_372_036_854_775_807 then None
+        else Some (transmute x)
+        
+
+
 // Huge block of builtin numeric operators incoming
 trait Add n with (+): n - n -> n
 impl Add a given Int a with (+) _ _ = builtin "AddInt"
 impl Add float with (+) (_: float) (_: float) : float = builtin "AddFloat"
+impl Add char with (+) (_: char) (_: char) : char = builtin "AddInt"
 
 trait Sub n with (-): n - n -> n
 impl Sub a given Int a with (-) _ _ = builtin "SubInt"
 impl Sub float with (-) (_: float) (_: float) : float = builtin "SubFloat"
+impl Sub char with (-) (_: char) (_: char) : char = builtin "SubInt"
 
 trait Mul n with (*): n - n -> n
 impl Mul a given Int a with (*) _ _ = builtin "MulInt"
@@ -123,6 +141,9 @@ impl Mod float with (%) (_: float) (_: float) : float = builtin "ModFloat"
 trait Eq t with (==): t - t -> bool
 impl Eq a given Int a with (==) _ _ = builtin "EqInt"
 impl Eq float with (==) (_: float) (_: float) : bool = builtin "EqFloat"
+
+impl Eq char with (==) (_: char) (_: char) : bool = builtin "EqChar"
+impl Eq bool with (==) (_: bool) (_: bool) : bool = builtin "EqBool"
 
 (not) a = if a then false else true
 (!=) l r = not (l == r)
@@ -173,7 +194,7 @@ deref (_: ref t) : t =
     builtin "deref"
 
 deref_ptr (p: Ptr t) : t =
-    deref <| cast p
+    deref <| transmute p
 
 null = cast 0usz : Ptr a
 
@@ -233,6 +254,11 @@ impl Print float with printne _ = panic "float printing is currently disabled"
 impl Print string with printne s = print_c_string (s.c_string)
 impl Print (Ptr char) with printne s = print_c_string s
 
+unwrap (m: Maybe t) : t =
+    match m
+    | Some x -> x
+    | None -> panic "Tried to unwrap a None value"
+
 // Naive replacement for printf which isn't supported by the cranelift backend
 print_unsigned (x: u64) : unit =
     if x >= 10 then print_unsigned (x / 10)
@@ -245,9 +271,9 @@ print_signed (x: i64) (min: i64) (min_string: string) : unit =
             printne min_string
         else
             putchar '-'
-            print_unsigned <| cast (0-x)
+            print_unsigned <| unwrap <| try_cast (0-x)
     else
-        print_unsigned (cast x)
+        print_unsigned <| unwrap <| try_cast x
 
 print_c_string (s: Ptr char) : unit =
     go s i =

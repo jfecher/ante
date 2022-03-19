@@ -60,6 +60,11 @@ pub fn call_builtin<'g, 'c>(args: &[Ast<'c>], generator: &mut Generator<'g>) -> 
         "EqChar" => eq_char(generator),
         "EqBool" => eq_bool(generator),
 
+        "sign_extend" => sign_extend(generator),
+        "zero_extend" => zero_extend(generator),
+
+        "truncate" => truncate(generator),
+
         "deref" => deref_ptr(generator),
         "transmute" => transmute_value(generator),
 
@@ -187,4 +192,25 @@ fn transmute_value<'g>(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
     let x = current_function.get_nth_param(0).unwrap();
     let ret = current_function.get_type().get_return_type().unwrap();
     generator.builder.build_bitcast(x, ret, "transmute").as_basic_value_enum()
+}
+
+fn sign_extend<'g>(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+    let current_function = generator.current_function();
+    let x = current_function.get_nth_param(0).unwrap().as_basic_value_enum().into_int_value();
+    let ret = current_function.get_type().get_return_type().unwrap().into_int_type();
+    generator.builder.build_int_s_extend(x, ret, "sign_extend").as_basic_value_enum()
+}
+
+fn zero_extend<'g>(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+    let current_function = generator.current_function();
+    let x = current_function.get_nth_param(0).unwrap().as_basic_value_enum().into_int_value();
+    let ret = current_function.get_type().get_return_type().unwrap().into_int_type();
+    generator.builder.build_int_z_extend(x, ret, "zero_extend").as_basic_value_enum()
+}
+
+fn truncate<'g>(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+    let current_function = generator.current_function();
+    let x = current_function.get_nth_param(0).unwrap().as_basic_value_enum().into_int_value();
+    let ret = current_function.get_type().get_return_type().unwrap().into_int_type();
+    generator.builder.build_int_truncate(x, ret, "sign_extend").as_basic_value_enum()
 }

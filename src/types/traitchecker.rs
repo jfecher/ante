@@ -232,7 +232,7 @@ fn solve_normal_constraint<'c>(constraint: &TraitConstraint,
 /// Each matching impl will be returned along with all of its required impls from any `given`
 /// constraints it may have in an element of the returned `Vec`.
 ///
-/// For example, if our constraint is `Print i32` and we have he impls
+/// For example, if our constraint is `Print i32` and we have the impls
 /// `impl Print a given Cast a string` and
 /// `impl Print i32` in scope then our returned set of matching impls will be
 /// ```

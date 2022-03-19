@@ -45,6 +45,10 @@ pub fn call_builtin<'c>(args: &[Ast<'c>], context: &mut Context, builder: &mut F
         "EqChar" => eq_char(context, builder),
         "EqBool" => eq_bool(context, builder),
 
+        "sign_extend" => sign_extend(context, builder),
+        "zero_extend" => zero_extend(context, builder),
+        "truncate" => truncate(context, builder),
+
         "deref" => deref(context, builder),
         "transmute" => transmute(context, builder),
 
@@ -170,7 +174,24 @@ fn deref(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue
 
 fn transmute(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
     let param1 = context.current_function_parameters[0];
-    // TODO: multiple returns if argument is a struct
     let target_type = builder.func.signature.returns[0].value_type;
     builder.ins().bitcast(target_type, param1)
+}
+
+fn sign_extend(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
+    let param1 = context.current_function_parameters[0];
+    let target_type = builder.func.signature.returns[0].value_type;
+    builder.ins().sextend(target_type, param1)
+}
+
+fn zero_extend(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
+    let param1 = context.current_function_parameters[0];
+    let target_type = builder.func.signature.returns[0].value_type;
+    builder.ins().uextend(target_type, param1)
+}
+
+fn truncate(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
+    let param1 = context.current_function_parameters[0];
+    let target_type = builder.func.signature.returns[0].value_type;
+    builder.ins().ireduce(target_type, param1)
 }

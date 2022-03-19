@@ -8,14 +8,14 @@ impl MyIterable i32 i32 with
         if x <= 0 then None
         else Some (x, x - 1)
 
-iter iterable f =
+my_iter iterable f =
     match mynext iterable
     | None -> ()
     | Some (elem, rest) ->
         f elem
-        iter rest f
+        my_iter rest f
 
-iter 10 print
+my_iter 10 print
 
 // args: --delete-binary
 // expected stdout:
