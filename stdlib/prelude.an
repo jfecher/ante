@@ -103,18 +103,6 @@ impl TryCast a b given Cast a b with
     try_cast a = Some (cast a)
 
 
-impl TryCast i64 u64 with
-    try_cast x =
-        if x < 0 then None
-        else Some (transmute x)
-
-impl TryCast u64 i64 with
-    try_cast x =
-        if x > 9_223_372_036_854_775_807 then None
-        else Some (transmute x)
-        
-
-
 // Huge block of builtin numeric operators incoming
 trait Add n with (+): n - n -> n
 impl Add a given Int a with (+) _ _ = builtin "AddInt"
@@ -177,6 +165,16 @@ impl Cmp float with
         if builtin "LessFloat" then Less
         else if builtin "GreaterFloat" then Greater
         else Equal
+
+impl TryCast i64 u64 with
+    try_cast x =
+        if x < 0 then None
+        else Some (transmute x)
+
+impl TryCast u64 i64 with
+    try_cast x =
+        if x > 9_223_372_036_854_775_807 then None
+        else Some (transmute x)
 
 trait Append t with
     (++): t - t -> t
