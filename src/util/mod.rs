@@ -37,16 +37,6 @@ pub fn unwrap_clone<T: Clone>(option: &Option<T>) -> T {
     option.as_ref().unwrap().clone()
 }
 
-/// Transmute a f64 to a u64 so it can be hashed
-pub fn reinterpret_as_bits(x: f64) -> u64 {
-    unsafe { std::mem::transmute(x) }
-}
-
-/// Transmute a u64 back into a f64 to get the value of a FloatLiteral
-pub fn reinterpret_from_bits(x: u64) -> f64 {
-    unsafe { std::mem::transmute(x) }
-}
-
 /// Convert each element to a String and join them with the given delimiter
 pub fn join_with<T: Display>(vec: &[T], delimiter: &str) -> String {
     fmap(vec, |t| format!("{}", t)).join(delimiter)

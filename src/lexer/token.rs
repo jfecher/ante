@@ -145,16 +145,15 @@ pub enum Token {
 impl Token {
     pub fn is_overloadable_operator(&self) -> bool {
         use Token::*;
-        match self {
+        matches!(self,
             And | As | At | In | Is | Isnt |
             Not | Or | EqualEqual | NotEqual |
             ApplyLeft | ApplyRight | Append |
             Index | Modulus | Multiply | Comma |
             Subtract | Add | LessThan | GreaterThan |
             LessThanOrEqual | GreaterThanOrEqual |
-            Divide | Ampersand => true,
-            _ => false,
-        }
+            Divide | Ampersand
+        )
     }
 }
 

@@ -27,7 +27,7 @@ use crate::types::traits::RequiredImpl;
 use crate::types::typechecker::{self, TypeBindings};
 use crate::types::typed::Typed;
 use crate::types::{self, TypeBinding, TypeInfoId, TypeVariableId, DEFAULT_INTEGER_TYPE};
-use crate::util::{fmap, reinterpret_from_bits, timing, trustme};
+use crate::util::{fmap, timing, trustme};
 
 use inkwell::basic_block::BasicBlock;
 use inkwell::builder::Builder;
@@ -241,10 +241,10 @@ impl<'g> Generator<'g> {
     ) {
         // generate the bitcode to a .bc file
         let path = Path::new(&module_name).with_extension("o");
-        let target = Target::from_triple(&target_triple).unwrap();
+        let target = Target::from_triple(target_triple).unwrap();
         let target_machine = target
             .create_target_machine(
-                &target_triple,
+                target_triple,
                 "",
                 "",
                 OptimizationLevel::None,
@@ -254,7 +254,7 @@ impl<'g> Generator<'g> {
             .unwrap();
 
         target_machine
-            .write_to_file(&module, FileType::Object, &path)
+            .write_to_file(module, FileType::Object, &path)
             .unwrap();
 
         // call gcc to compile the bitcode to a binary
@@ -281,7 +281,7 @@ impl<'g> Generator<'g> {
         &mut self, id: DefinitionInfoId, typ: &types::Type, cache: &mut ModuleCache<'c>,
     ) -> Option<BasicValueEnum<'g>> {
         let typ = self.follow_bindings(typ, cache);
-        self.definitions.get(&(id, typ)).map(|value| *value)
+        self.definitions.get(&(id, typ)).copied()
     }
 
     /// Return the inkwell function we're currently inserting into
@@ -383,7 +383,7 @@ impl<'g> Generator<'g> {
         let mut types = vec![function_pointer.get_type()];
         let mut values = vec![function_pointer];
 
-        for (&from, _) in environment {
+        for &from in environment.keys() {
             let typ = cache.definition_infos[from.0].typ.as_ref().unwrap().clone();
             let value = self.codegen_definition(from, &typ, cache);
             types.push(value.get_type());
@@ -449,7 +449,7 @@ impl<'g> Generator<'g> {
         }
     }
 
-    fn remove_required_impls<'c>(&mut self, required_impls: &[RequiredImpl]) {
+    fn remove_required_impls(&mut self, required_impls: &[RequiredImpl]) {
         for required_impl in required_impls {
             self.impl_mappings.remove(&required_impl.origin);
         }
@@ -482,7 +482,7 @@ impl<'g> Generator<'g> {
         self.impl_mappings
             .get(&variable.id.unwrap())
             .copied()
-            .unwrap_or(variable.definition.unwrap())
+            .unwrap_or_else(|| variable.definition.unwrap())
     }
 
     /// Monomorphise and compile the Definition for a given DefinitionInfoId.
@@ -548,7 +548,7 @@ impl<'g> Generator<'g> {
         value
     }
 
-    fn find_binding<'c, 'b, 'd>(
+    fn find_binding<'c, 'b>(
         &'b self, id: TypeVariableId, default: &'b types::Type, cache: &'b ModuleCache<'c>,
     ) -> &'b types::Type {
         use types::Type::*;
@@ -655,10 +655,10 @@ impl<'g> Generator<'g> {
                 self.size_of_type(&binding, cache)
             },
 
-            UserDefinedType(id) => self.size_of_user_defined_type(*id, &[], cache),
+            UserDefined(id) => self.size_of_user_defined_type(*id, &[], cache),
 
             TypeApplication(typ, args) => match typ.as_ref() {
-                UserDefinedType(id) => self.size_of_user_defined_type(*id, args, cache),
+                UserDefined(id) => self.size_of_user_defined_type(*id, args, cache),
                 _ => unreachable!("Kind error inside size_of_type"),
             },
 
@@ -712,7 +712,7 @@ impl<'g> Generator<'g> {
     ) -> Option<Vec<types::Type>> {
         let variants: Vec<Vec<types::Type>> = fmap(variants, |variant| {
             fmap(&variant.args, |arg| {
-                typechecker::bind_typevars(arg, &bindings, cache)
+                typechecker::bind_typevars(arg, bindings, cache)
             })
         });
 
@@ -816,7 +816,7 @@ impl<'g> Generator<'g> {
                 self.convert_type(&self.find_binding(*id, &UNBOUND_TYPE, cache).clone(), cache)
             },
 
-            UserDefinedType(id) => self.convert_user_defined_type(*id, vec![], cache),
+            UserDefined(id) => self.convert_user_defined_type(*id, vec![], cache),
 
             TypeApplication(typ, args) => {
                 let args = fmap(args, |arg| self.follow_bindings(arg, cache));
@@ -829,7 +829,7 @@ impl<'g> Generator<'g> {
                             .ptr_type(AddressSpace::Generic)
                             .into()
                     },
-                    UserDefinedType(id) => self.convert_user_defined_type(*id, args, cache),
+                    UserDefined(id) => self.convert_user_defined_type(*id, args, cache),
                     _ => {
                         unreachable!(
                             "Type {} requires 0 type args but was applied to {:?}",
@@ -973,7 +973,7 @@ impl<'g> Generator<'g> {
             .builder
             .build_pointer_cast(value, cstring_type, "string_cast");
 
-        let string_type = types::Type::UserDefinedType(types::STRING_TYPE);
+        let string_type = types::Type::UserDefined(types::STRING_TYPE);
         let string_type = self.convert_type(&string_type, cache).into_struct_type();
         let length = self
             .context
@@ -1009,7 +1009,7 @@ impl<'g> Generator<'g> {
                 self.follow_bindings(self.find_binding(*id, &UNBOUND_TYPE, cache), cache)
             },
 
-            UserDefinedType(id) => UserDefinedType(*id),
+            UserDefined(id) => UserDefined(*id),
 
             TypeApplication(typ, args) => {
                 let typ = self.follow_bindings(typ, cache);
@@ -1102,11 +1102,10 @@ impl<'g> Generator<'g> {
         // If we're defining a lambda, give the lambda info on DefinitionInfoId so that it knows
         // what to name itself in the IR and so recursive functions can properly codegen without
         // attempting to re-compile themselves over and over.
-        match (definition.pattern.as_ref(), definition.expr.as_ref()) {
-            (Ast::Variable(variable), Ast::Lambda(_)) => {
-                self.current_function_info = Some(variable.definition.unwrap());
-            },
-            _ => (),
+        if let (Ast::Variable(variable), Ast::Lambda(_)) =
+            (definition.pattern.as_ref(), definition.expr.as_ref())
+        {
+            self.current_function_info = Some(variable.definition.unwrap());
         }
 
         let value = definition.expr.codegen(self, cache);
@@ -1196,11 +1195,11 @@ impl<'g> Generator<'g> {
             // Since this is not a function type, we know it has no bundled data and we can
             // thus ignore the additional type arguments, extract the tag value, and
             // reinterpret_cast to the appropriate type.
-            UserDefinedType(_) | TypeApplication(_, _) => {
+            UserDefined(_) | TypeApplication(_, _) => {
                 let value = tag.map_or(self.unit_value(), |tag| self.tag_value(tag));
                 self.reinterpret_cast(value, &typ, cache)
             },
-            ForAll(_, typ) => self.codegen_type_constructor(name, tag, &typ, cache),
+            ForAll(_, typ) => self.codegen_type_constructor(name, tag, typ, cache),
             _ => unreachable!(
                 "Type constructor's type is neither a Function or a  UserDefinedType, {}: {}",
                 name,
@@ -1214,11 +1213,9 @@ impl<'g> Generator<'g> {
     /// while codegening an arbitrary Ast node.
     fn current_instruction_is_block_terminator(&self) -> bool {
         let instruction = self.current_block().get_last_instruction();
-        match instruction.map(|instruction| instruction.get_opcode()) {
-            Some(InstructionOpcode::Return) => true,
-            Some(InstructionOpcode::Unreachable) => true,
-            _ => false,
-        }
+        matches!(instruction.map(|instruction| instruction.get_opcode()),
+            Some(InstructionOpcode::Return | InstructionOpcode::Unreachable)
+        )
     }
 
     fn build_return(&mut self, return_value: BasicValueEnum<'g>) {
@@ -1260,7 +1257,7 @@ impl<'g> Generator<'g> {
             .as_basic_value_enum()
     }
 
-    fn reinterpret_cast_llvm_type<'c>(
+    fn reinterpret_cast_llvm_type(
         &mut self, value: BasicValueEnum<'g>, target_type: BasicTypeEnum<'g>,
     ) -> BasicValueEnum<'g> {
         let source_type = value.get_type();
@@ -1280,7 +1277,7 @@ impl<'g> Generator<'g> {
         self.reinterpret_cast_llvm_type(value, target_type)
     }
 
-    fn tuple<'c>(
+    fn tuple(
         &mut self, elements: Vec<BasicValueEnum<'g>>, element_types: Vec<BasicTypeEnum<'g>>,
     ) -> BasicValueEnum<'g> {
         let tuple_type = self.context.struct_type(&element_types, false);
@@ -1352,7 +1349,7 @@ impl<'g> Generator<'g> {
     ) -> u32 {
         use types::Type::*;
         match self.follow_bindings(typ, cache) {
-            UserDefinedType(id) => cache.type_infos[id.0]
+            UserDefined(id) => cache.type_infos[id.0]
                 .find_field(field_name)
                 .map(|(i, _)| i)
                 .unwrap(),
@@ -1436,7 +1433,7 @@ impl<'g, 'c> CodeGen<'g, 'c> for ast::LiteralKind {
         match self {
             ast::LiteralKind::Char(c) => generator.char_value(*c as u64),
             ast::LiteralKind::Bool(b) => generator.bool_value(*b),
-            ast::LiteralKind::Float(f) => generator.float_value(reinterpret_from_bits(*f)),
+            ast::LiteralKind::Float(f) => generator.float_value(f64::from_bits(*f)),
             ast::LiteralKind::Integer(i, kind) => generator.integer_value(*i, *kind, cache),
             ast::LiteralKind::String(s) => generator.string_value(s, cache),
             ast::LiteralKind::Unit => generator.unit_value(),
@@ -1448,7 +1445,7 @@ impl<'g, 'c> CodeGen<'g, 'c> for ast::Variable<'c> {
     fn codegen(
         &self, generator: &mut Generator<'g>, cache: &mut ModuleCache<'c>,
     ) -> BasicValueEnum<'g> {
-        let required_impls = &cache.trait_bindings[self.trait_binding.unwrap().0]
+        let required_impls = cache.trait_bindings[self.trait_binding.unwrap().0]
             .required_impls
             .clone();
         generator.add_required_impls(&required_impls);

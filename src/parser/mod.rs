@@ -193,7 +193,7 @@ parser!(type_alias loc =
     args <- many0(identifier);
     _ <- expect(Token::Is);
     body !<- parse_type;
-    Ast::type_definition(name, args, TypeDefinitionBody::AliasOf(body), loc)
+    Ast::type_definition(name, args, TypeDefinitionBody::Alias(body), loc)
 );
 
 fn type_definition_body<'a, 'b>(
@@ -220,12 +220,12 @@ parser!(union_block_body _loc -> 'b ast::TypeDefinitionBody<'b> =
     _ <- expect(Token::Indent);
     variants <- delimited_trailing(union_variant, expect(Token::Newline));
     _ !<- expect(Token::Unindent);
-    TypeDefinitionBody::UnionOf(variants)
+    TypeDefinitionBody::Union(variants)
 );
 
 parser!(union_inline_body _loc -> 'b ast::TypeDefinitionBody<'b> =
     variants <- many1(union_variant);
-    TypeDefinitionBody::UnionOf(variants)
+    TypeDefinitionBody::Union(variants)
 );
 
 parser!(struct_field loc -> 'b (String, Type<'b>, Location<'b>) =
@@ -239,12 +239,12 @@ parser!(struct_block_body _loc -> 'b ast::TypeDefinitionBody<'b> =
     _ <- expect(Token::Indent);
     fields <- delimited_trailing(struct_field, expect(Token::Newline));
     _ !<- expect(Token::Unindent);
-    TypeDefinitionBody::StructOf(fields)
+    TypeDefinitionBody::Struct(fields)
 );
 
 parser!(struct_inline_body _loc -> 'b ast::TypeDefinitionBody<'b> =
     fields <- delimited(struct_field, expect(Token::Comma));
-    TypeDefinitionBody::StructOf(fields)
+    TypeDefinitionBody::Struct(fields)
 );
 
 parser!(import loc =
@@ -260,7 +260,7 @@ parser!(trait_definition loc =
     _ !<- maybe(expect(Token::RightArrow));
     fundeps !<- many0(identifier);
     body <- maybe(trait_body);
-    Ast::trait_definition(name, args, fundeps, body.unwrap_or(vec![]), loc)
+    Ast::trait_definition(name, args, fundeps, body.unwrap_or_default(), loc)
 );
 
 parser!(trait_body loc -> 'b Vec<ast::TypeAnnotation<'b>> =
@@ -294,7 +294,7 @@ parser!(trait_impl loc =
     args !<- many1(basic_type);
     given !<- maybe(given);
     definitions !<- maybe(impl_body);
-    Ast::trait_impl(name, args, given.unwrap_or(vec![]), definitions.unwrap_or(vec![]), loc)
+    Ast::trait_impl(name, args, given.unwrap_or_default(), definitions.unwrap_or_default(), loc)
 );
 
 parser!(impl_body loc -> 'b Vec<ast::Definition<'b>> =
@@ -695,7 +695,7 @@ parser!(function_type loc -> 'b Type<'b> =
     varargs <- maybe(varargs);
     _ <- expect(Token::RightArrow);
     return_type <- parse_type;
-    Type::FunctionType(args, Box::new(return_type), varargs.is_some(), loc)
+    Type::Function(args, Box::new(return_type), varargs.is_some(), loc)
 );
 
 parser!(type_application loc -> 'b Type<'b> =
@@ -708,47 +708,47 @@ parser!(pair_type loc -> 'b Type<'b> =
     first <- basic_type;
     _ <- expect(Token::Comma);
     rest !<- parse_type;
-    Type::PairType(Box::new(first), Box::new(rest), loc)
+    Type::Pair(Box::new(first), Box::new(rest), loc)
 );
 
 parser!(int_type loc -> 'b Type<'b> =
     kind <- int_type_token;
-    Type::IntegerType(kind, loc)
+    Type::Integer(kind, loc)
 );
 
 parser!(float_type loc -> 'b Type<'b> =
     _ <- expect(Token::FloatType);
-    Type::FloatType(loc)
+    Type::Float(loc)
 );
 
 parser!(char_type loc -> 'b Type<'b> =
     _ <- expect(Token::CharType);
-    Type::CharType(loc)
+    Type::Char(loc)
 );
 
 parser!(string_type loc -> 'b Type<'b> =
     _ <- expect(Token::StringType);
-    Type::StringType(loc)
+    Type::String(loc)
 );
 
 parser!(pointer_type loc -> 'b Type<'b> =
     _ <- expect(Token::PointerType);
-    Type::PointerType(loc)
+    Type::Pointer(loc)
 );
 
 parser!(boolean_type loc -> 'b Type<'b> =
     _ <- expect(Token::BooleanType);
-    Type::BooleanType(loc)
+    Type::Boolean(loc)
 );
 
 parser!(unit_type loc -> 'b Type<'b> =
     _ <- expect(Token::UnitType);
-    Type::UnitType(loc)
+    Type::Unit(loc)
 );
 
 parser!(reference_type loc -> 'b Type<'b> =
     _ <- expect(Token::Ref);
-    Type::ReferenceType(loc)
+    Type::Reference(loc)
 );
 
 parser!(type_variable loc -> 'b Type<'b> =
@@ -758,5 +758,5 @@ parser!(type_variable loc -> 'b Type<'b> =
 
 parser!(user_defined_type loc -> 'b Type<'b> =
     name <- typename;
-    Type::UserDefinedType(name, loc)
+    Type::UserDefined(name, loc)
 );

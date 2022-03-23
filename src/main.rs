@@ -46,7 +46,7 @@ static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
 /// Called when the "--check --show-types" command-line flags are given.
 /// Iterates through each Definition from the first compiled module (so excluding imports)
 /// and prints the type and required traits for each.
-fn print_definition_types<'a>(cache: &ModuleCache<'a>) {
+fn print_definition_types(cache: &ModuleCache) {
     let resolver = cache.name_resolvers.get_mut(0).unwrap();
     let mut definitions = resolver.exports.definitions.iter().collect::<Vec<_>>();
 
@@ -144,10 +144,10 @@ pub fn main() {
     // Phase 6: Codegen
     if error::get_error_count() == 0 {
         if args.opt_level == '0' {
-            cranelift_backend::run(&filename, ast, &mut cache, &args);
+            cranelift_backend::run(filename, ast, &mut cache, &args);
         } else if cfg!(feature = "llvm") {
             #[cfg(feature = "llvm")]
-            llvm::run(&filename, ast, &mut cache, &args);
+            llvm::run(filename, ast, &mut cache, &args);
         } else {
             eprintln!("The llvm backend is required for non-debug builds. Recompile ante with --features 'llvm' to enable optimized builds.");
         }

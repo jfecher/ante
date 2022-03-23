@@ -11,6 +11,7 @@ pub fn extend_lifetime<'a, 'b, T>(x: &'a mut T) -> &'b mut T {
     unsafe { std::mem::transmute(x) }
 }
 
-pub fn make_mut<'a, 'b, T>(x: *const T) -> &'a mut T {
+pub fn make_mut<'a, T>(x: *const T) -> &'a mut T {
+    #[allow(clippy::transmute_ptr_to_ref)]
     unsafe { std::mem::transmute(x) }
 }

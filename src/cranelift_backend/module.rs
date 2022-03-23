@@ -8,6 +8,7 @@ use cranelift_jit::JITBuilder;
 use cranelift_module::{DataContext, FuncId, Linkage, Module};
 use cranelift_object::ObjectBuilder;
 
+#[allow(clippy::large_enum_variant)]
 pub enum DynModule {
     Jit(cranelift_jit::JITModule),
     Static(cranelift_object::ObjectModule),

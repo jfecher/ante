@@ -49,7 +49,7 @@ pub fn resolve_traits<'a>(constraints: TraitConstraints, typevars_in_fn_signatur
     // known, but not solveable otherwise (barring a user-defined impl).
     for constraint in int_constraints.iter() {
         typechecker::perform_bindings_or_print_error(
-            find_int_constraint_impl(&constraint, &empty_bindings, cache), cache
+            find_int_constraint_impl(constraint, &empty_bindings, cache), cache
         );
     }
 
@@ -58,14 +58,14 @@ pub fn resolve_traits<'a>(constraints: TraitConstraints, typevars_in_fn_signatur
     // automatically impl'd by the compiler.
     for constraint in member_access_constraints.iter() {
         typechecker::perform_bindings_or_print_error(
-            find_member_access_impl(&constraint, &empty_bindings, cache), cache
+            find_member_access_impl(constraint, &empty_bindings, cache), cache
         );
     }
 
     for constraint in other_constraints.iter() {
         // Searching for an impl for normal constraints may require recursively searching for
         // more impls (due to `impl A given B` constraints) before finding a matching one.
-        solve_normal_constraint(&constraint, &empty_bindings, cache);
+        solve_normal_constraint(constraint, &empty_bindings, cache);
     }
 
     propagated_traits
@@ -96,7 +96,7 @@ fn sort_traits<'c>(constraints: TraitConstraints, typevars_in_fn_signature: &[Ty
 
     for constraint in constraints {
         if should_propagate(&constraint, typevars_in_fn_signature, cache) {
-            propogated_traits.push(constraint.as_required_trait());
+            propogated_traits.push(constraint.into_required_trait());
         } else if constraint.is_int_constraint(cache)  {
             int_constraints.push(constraint);
         } else if constraint.is_member_access(cache) {
@@ -169,10 +169,10 @@ fn find_member_access_impl<'c>(constraint: &TraitConstraint, bindings: &TypeBind
     let location = constraint.locate(cache);
 
     match &collection {
-        Type::UserDefinedType(id) => find_field(*id, &[], &field_name, expected_field_type, location, cache),
+        Type::UserDefined(id) => find_field(*id, &[], &field_name, expected_field_type, location, cache),
         Type::TypeApplication(typ, args) => {
             match typ.as_ref() {
-                Type::UserDefinedType(id) => find_field(*id, args, &field_name, expected_field_type, location, cache),
+                Type::UserDefined(id) => find_field(*id, args, &field_name, expected_field_type, location, cache),
                 _ => Err(make_error!(location, "Type {} is not a struct type and has no field named {}", collection.display(cache), field_name)),
             }
         },
@@ -197,7 +197,7 @@ fn find_field<'c>(id: TypeInfoId, args: &[Type], field_name: &str, expected_fiel
             // Filter out only the new bindings we did not start with since we started with
             // local type bindings from the type arguments that should not be bound globally.
             Ok(result_bindings.into_iter()
-                .filter(|(id, _)| !bindings.contains_key(&id))
+                .filter(|(id, _)| !bindings.contains_key(id))
                 .collect())
         },
         None => Err(make_error!(location, "Type {} has no field named {}", type_info.name.blue(), field_name)),
@@ -211,6 +211,7 @@ fn solve_normal_constraint<'c>(constraint: &TraitConstraint,
 {
     let mut matching_impls = find_matching_impls(constraint, bindings, cache);
 
+    #[allow(clippy::comparison_chain)]
     if matching_impls.len() == 1 {
         let (impls, bindings) = matching_impls.remove(0);
         typechecker::perform_type_bindings(bindings, cache);
@@ -331,14 +332,14 @@ fn check_given_constraints<'c>(constraint: &TraitConstraint, impl_id: ImplInfoId
 
 /// Binds a selected impl to its callsite. This attaches the relevant impl definition to the
 /// callsite variable so that static dispatch may occur during codegen.
-fn bind_impl<'c>(impl_id: ImplInfoId, constraint: TraitConstraint, cache: &mut ModuleCache<'c>) {
+fn bind_impl(impl_id: ImplInfoId, constraint: TraitConstraint, cache: &mut ModuleCache) {
     // Make sure the definition of this impl undergoes type inference if it hasn't already
     infer_trait_impl(impl_id, cache);
 
     // Now attach the RequiredImpl to the callsite variable it is used in
     let binding = find_definition_in_impl(constraint.origin, impl_id, cache);
     let callsite = constraint.callsite;
-    let required_impl = constraint.as_required_impl(binding);
+    let required_impl = constraint.into_required_impl(binding);
 
     let callsite_info = &mut cache.trait_bindings[callsite.0];
     callsite_info.required_impls.push(required_impl);
@@ -347,7 +348,7 @@ fn bind_impl<'c>(impl_id: ImplInfoId, constraint: TraitConstraint, cache: &mut M
 /// Returns the given definition from the given impl.
 /// This should always succeed (and thus panics if it does not) since all impls are validated
 /// during name resolution that they have definitions for every declaration in the corresponding trait.
-fn find_definition_in_impl<'c>(origin: VariableId, impl_id: ImplInfoId, cache: &ModuleCache<'c>) -> DefinitionInfoId {
+fn find_definition_in_impl(origin: VariableId, impl_id: ImplInfoId, cache: &ModuleCache) -> DefinitionInfoId {
     let name = &cache.variable_nodes[origin.0];
 
     let impl_info = &cache.impl_infos[impl_id.0];
@@ -364,7 +365,7 @@ fn find_definition_in_impl<'c>(origin: VariableId, impl_id: ImplInfoId, cache: &
 /// sure it is well typed. This follows the recursion scheme used by the rest of the type
 /// inference pass: Definitions are lazily type inferenced when a variable using that defintion
 /// is found in the program.
-fn infer_trait_impl<'a>(id: ImplInfoId, cache: &mut ModuleCache<'a>) {
+fn infer_trait_impl(id: ImplInfoId, cache: &mut ModuleCache) {
     let info = &mut cache.impl_infos[id.0];
     let trait_impl = trustme::extend_lifetime(info.trait_impl);
     typechecker::infer(trait_impl, cache);

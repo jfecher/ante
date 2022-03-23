@@ -167,7 +167,7 @@ impl FunctionScopes {
         }
     }
 
-    pub fn from_lambda<'c>(lambda: &mut ast::Lambda<'c>) -> FunctionScopes {
+    pub fn from_lambda(lambda: &mut ast::Lambda) -> FunctionScopes {
         let function = Some(unsafe { std::mem::transmute(lambda) });
         FunctionScopes {
             function,

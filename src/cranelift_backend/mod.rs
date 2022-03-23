@@ -1,9 +1,9 @@
 use std::path::Path;
 
 use crate::nameresolution::builtin::BUILTIN_ID;
-use crate::parser::ast;
+use crate::parser::ast::{self, Variable};
 use crate::types::typed::Typed;
-use crate::util::{fmap, reinterpret_from_bits, timing};
+use crate::util::{fmap, timing};
 use crate::{args::Args, cache::ModuleCache, parser::ast::Ast};
 
 use cranelift::codegen::ir::types as cranelift_types;
@@ -70,7 +70,7 @@ impl<'c> Codegen<'c> for ast::LiteralKind {
             },
             ast::LiteralKind::Float(float) => {
                 let ins = builder.ins();
-                let value = ins.f64const(reinterpret_from_bits(*float));
+                let value = ins.f64const(f64::from_bits(*float));
                 builder.ins().bitcast(BOXED_TYPE, value)
             },
             ast::LiteralKind::String(s) => context.string_value(s, builder),
@@ -85,12 +85,17 @@ impl<'c> Codegen<'c> for ast::LiteralKind {
 
 impl<'c> Codegen<'c> for ast::Variable<'c> {
     fn codegen<'a>(&self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder) -> Value {
-        let id = self.definition.unwrap();
+        let trait_id = self.trait_binding.unwrap();
+        let required_impls = &context.cache.trait_bindings[trait_id.0].required_impls;
+        let required_bindings = fmap(required_impls, |impl_| impl_.binding);
+        println!("{} has {} required_bindings", self, required_bindings.len());
 
-        match context.definitions.get(&id) {
-            Some(value) => value.clone(),
-            None => context.codegen_definition(id, builder),
+        for binding in required_bindings {
+             context.codegen_definition(binding, builder);
         }
+
+        let id = self.definition.unwrap();
+        context.codegen_definition(id, builder)
     }
 }
 
@@ -111,35 +116,32 @@ impl<'c> Codegen<'c> for ast::FunctionCall<'c> {
     fn codegen<'a>(
         &'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder,
     ) -> Value {
-        match self.function.as_ref() {
-            Ast::Variable(variable) if variable.definition == Some(BUILTIN_ID) => {
-                builtin::call_builtin(&self.args, context, builder)
-            },
-            _ => {
-                let f = self.function.codegen(context, builder).eval_function();
-
-                let args = fmap(&self.args, |arg| context.codegen_eval(arg, builder));
-
-                let call = match f {
-                    FunctionValue::Direct(function_data) => {
-                        let function_ref = builder.import_function(function_data);
-                        builder.ins().call(function_ref, &args)
-                    },
-                    FunctionValue::Indirect(function_pointer) => {
-                        let signature =
-                            context.convert_signature(self.function.get_type().unwrap());
-                        let signature = builder.import_signature(signature);
-                        builder
-                            .ins()
-                            .call_indirect(signature, function_pointer, &args)
-                    },
-                };
-
-                let results = builder.inst_results(call);
-                assert_eq!(results.len(), 1);
-                Value::Normal(results[0])
-            },
+        if let Ast::Variable(Variable { definition: Some(BUILTIN_ID), .. }) = self.function.as_ref() {
+            return builtin::call_builtin(&self.args, context, builder);
         }
+
+        let f = self.function.codegen(context, builder).eval_function();
+
+        let args = fmap(&self.args, |arg| context.codegen_eval(arg, builder));
+
+        let call = match f {
+            FunctionValue::Direct(function_data) => {
+                let function_ref = builder.import_function(function_data);
+                builder.ins().call(function_ref, &args)
+            },
+            FunctionValue::Indirect(function_pointer) => {
+                let signature =
+                    context.convert_signature(self.function.get_type().unwrap());
+                let signature = builder.import_signature(signature);
+                builder
+                    .ins()
+                    .call_indirect(signature, function_pointer, &args)
+            },
+        };
+
+        let results = builder.inst_results(call);
+        assert_eq!(results.len(), 1);
+        Value::Normal(results[0])
     }
 }
 

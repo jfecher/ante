@@ -126,7 +126,10 @@ fn codegen_jump_table<'a, 'ast, 'c>(
 
     fill_trap_block(trap_block, builder);
 
-    match_all.map(|case| cases.push(case));
+    if let Some(case) = match_all {
+        cases.push(case);
+    }
+
     for (_, block) in &cases {
         builder.seal_block(*block);
     }
@@ -134,7 +137,7 @@ fn codegen_jump_table<'a, 'ast, 'c>(
     cases
 }
 
-fn get_tag_value<'a, 'ast, 'c>(case: &'a Case, context: &Context<'ast, 'c>) -> u8 {
+fn get_tag_value(case: &Case, context: &Context) -> u8 {
     match case.tag.as_ref().unwrap() {
         VariantTag::True => 1,
         VariantTag::False => 0,

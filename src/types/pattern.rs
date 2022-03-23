@@ -75,10 +75,7 @@ enum Constructor {
 
 impl Constructor {
     fn is_match_all(&self) -> bool {
-        match self {
-            MatchAll(_) => true,
-            _ => false,
-        }
+        matches!(self, MatchAll(_))
     }
 
     fn matches(&self, candidate: &VariantTag) -> bool {
@@ -90,7 +87,7 @@ impl Constructor {
 
     /// Returns a Vec of len MatchAll Constructors, along with the DefinitionInfoId
     /// of the variable they bind to.
-    fn repeat_matchall<'c>(len: usize, fields: &Vec<Vec<DefinitionInfoId>>,
+    fn repeat_matchall<'c>(len: usize, fields: &[Vec<DefinitionInfoId>],
         cache: &mut ModuleCache<'c>, location: Location<'c>) -> Vec<(Constructor, DefinitionInfoId)>
     {
         assert_eq!(fields.len(), len);
@@ -266,7 +263,7 @@ fn new_pattern_variable<'c>(name: &str, location: Location<'c>, cache: &mut Modu
 
 fn get_type_info_id(typ: &Type) -> TypeInfoId {
     match typ {
-        Type::UserDefinedType(id) => *id,
+        Type::UserDefined(id) => *id,
         Type::TypeApplication(typ, _) => get_type_info_id(typ.as_ref()),
         _ => unreachable!("get_type_info_id called on non-sum-type: {:?}", typ),
     }
@@ -274,7 +271,7 @@ fn get_type_info_id(typ: &Type) -> TypeInfoId {
 
 /// Returns the type that a constructor constructs.
 /// Used as a helper function when checking exhaustiveness.
-fn get_variant_type_from_constructor<'c>(constructor_id: DefinitionInfoId, cache: &ModuleCache<'c>) -> TypeInfoId {
+fn get_variant_type_from_constructor(constructor_id: DefinitionInfoId, cache: &ModuleCache) -> TypeInfoId {
     let constructor_type = &cache.definition_infos[constructor_id.0].typ;
     match constructor_type {
         Some(Type::ForAll(_, typ)) => {
@@ -284,7 +281,7 @@ fn get_variant_type_from_constructor<'c>(constructor_id: DefinitionInfoId, cache
             }
         },
         Some(Type::Function(function)) => get_type_info_id(function.return_type.as_ref()),
-        Some(Type::UserDefinedType(id)) => *id,
+        Some(Type::UserDefined(id)) => *id,
         _ => unreachable!("get_variant_type_from_constructor called on invalid constructor of type: {:?}", constructor_type),
     }
 }
@@ -299,7 +296,7 @@ fn insert_if<T: Ord>(mut set: BTreeSet<T>, element: T, condition: bool) -> Optio
 /// The builtin constructors true, false, and unit don't have DefinitionInfoIds
 /// so they must be manually handled here.
 fn get_missing_builtin_cases<T>(variants: &BTreeMap<&VariantTag, T>) -> Option<BTreeSet<VariantTag>> {
-    let mut variants_iter = variants.iter().map(|(tag, _)| tag.clone());
+    let mut variants_iter = variants.iter().map(|(tag, _)| *tag);
     let (first, second) = (variants_iter.next(), variants_iter.next());
     let missing_cases = BTreeSet::new();
 
@@ -327,7 +324,7 @@ fn get_missing_cases<'c, T>(variants: &BTreeMap<&VariantTag, T>, cache: &ModuleC
         return result;
     }
 
-    match variants.iter().nth(0).map(|(tag, _)| tag.clone()).unwrap() {
+    match variants.iter().next().map(|(tag, _)| *tag).unwrap() {
         True | False | Unit | Literal(_) =>
             unreachable!("Found builtin constructor not covered by builtin_is_exhastive"),
 
@@ -411,9 +408,8 @@ impl PatternMatrix {
         let mut matrix = PatternMatrix::default();
 
         for (row, branch) in self.rows.iter() {
-            match row.specialize_row(tag, arity, fields, cache, location) {
-                Some(row) => matrix.rows.push((row, *branch)),
-                None => (),
+            if let Some(row) = row.specialize_row(tag, arity, fields, cache, location) {
+                matrix.rows.push((row, *branch));
             }
         }
 
@@ -444,12 +440,9 @@ impl PatternMatrix {
         let mut variables_to_bind = vec![];
 
         for (row, branch) in self.rows.iter() {
-            match row.default_specialize_row() {
-                Some((row, variable_id)) => {
-                    matrix.rows.push((row, *branch));
-                    variables_to_bind.push(variable_id);
-                },
-                None => (),
+            if let Some((row, variable_id)) = row.default_specialize_row() {
+                matrix.rows.push((row, *branch));
+                variables_to_bind.push(variable_id);
             }
         }
 
@@ -608,8 +601,7 @@ impl DecisionTreeResult {
     }
 
     fn fail() -> DecisionTreeResult {
-        let mut context = DecisionTreeContext::default();
-        context.missed_case_count = 1;
+        let context = DecisionTreeContext { missed_case_count: 1, ..Default::default() };
         DecisionTreeResult::new(DecisionTree::Fail, context)
     }
 
@@ -660,8 +652,8 @@ impl DecisionTreeResult {
         }
     }
 
-    fn issue_inexhaustive_error<'c>(starting_id: Option<DefinitionInfoId>,
-        bindings: &DebugMatchBindings, location: Location<'c>)
+    fn issue_inexhaustive_error(starting_id: Option<DefinitionInfoId>,
+        bindings: &DebugMatchBindings, location: Location)
     {
         let case = starting_id.map_or("_".to_string(), |id|
             DecisionTreeResult::construct_missing_case_string(id, bindings));
@@ -681,7 +673,7 @@ impl DecisionTreeResult {
 
                 // Parenthesizes an argument string if it contains spaces and it's not a tuple field
                 let parenthesize = |field_string: String| {
-                    if field_string.contains(" ") && !case_is_tuple {
+                    if field_string.contains(' ') && !case_is_tuple {
                         format!("({})", field_string)
                     } else {
                         field_string
@@ -694,17 +686,16 @@ impl DecisionTreeResult {
                     let fields: Vec<String> = case.fields.iter().map(|field| {
                         field.iter()
                             .map(|id| DecisionTreeResult::construct_missing_case_string(*id, bindings))
-                            .filter(|field_string| field_string != "_")
-                            .nth(0)
+                            .find(|field_string| field_string != "_")
                             .map(parenthesize)
-                            .unwrap_or("_".to_string())
+                            .unwrap_or_else(|| "_".to_string())
                     }).collect();
 
                     if !case_is_tuple {
                         if !fields.is_empty() {
                             case_string = format!("{} {}", case_string, join_with(&fields, " "));
                         } else {
-                            case_string = format!("{}", case_string);
+                            case_string = case_string.to_string();
                         }
                     } else {
                         case_string = format!("({})", join_with(&fields, ", "));
@@ -871,13 +862,10 @@ fn set_type<'c>(id: DefinitionInfoId, expected: &Type, location: Location<'c>, c
 /// not a function type like (Some : a -> Maybe a) (and thus has no arguments like None : Maybe a)
 /// then we can skip this step completely.
 fn unify_constructor_type<'c, 'a>(constructor: &'a Type, expected: &Type, location: Location<'c>, cache: &mut ModuleCache<'c>) {
-    match constructor {
-        Type::Function(function) => {
-            typechecker::unify(&function.return_type, expected, location, cache);
-        },
-        // There are no arguments, so there's no need to unify the type with the expected type.
-        // We could unify to assert they're equal but this would incur a runtime cost.
-        _ => (),
+    // If it is not a function, there are no arguments, so there's no need to unify the type with 
+    // the expected type. We could unify to assert they're equal but this would incur a runtime cost.
+    if let Type::Function(function) = constructor {
+        typechecker::unify(&function.return_type, expected, location, cache);
     }
 }
 
@@ -900,7 +888,7 @@ impl Case {
             },
             Some(Literal(LiteralKind::Integer(_, kind))) => Type::Primitive(PrimitiveType::IntegerType(*kind)),
             Some(Literal(LiteralKind::Float(_))) => Type::Primitive(PrimitiveType::FloatType),
-            Some(Literal(LiteralKind::String(_))) => Type::UserDefinedType(STRING_TYPE),
+            Some(Literal(LiteralKind::String(_))) => Type::UserDefined(STRING_TYPE),
             Some(Literal(LiteralKind::Char(_))) => Type::Primitive(PrimitiveType::CharType),
             Some(Literal(LiteralKind::Bool(_))) => unreachable!(),
             Some(Literal(LiteralKind::Unit)) => unreachable!(),

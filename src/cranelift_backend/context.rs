@@ -73,7 +73,7 @@ pub enum FunctionValue {
 
 impl Value {
     /// Convert the value into a CraneliftValue
-    pub fn eval<'local, 'c>(self, builder: &mut FunctionBuilder) -> CraneliftValue {
+    pub fn eval(self, builder: &mut FunctionBuilder) -> CraneliftValue {
         match self {
             Value::Normal(value) => value,
             Value::Variable(variable) => builder.use_var(variable),
@@ -84,7 +84,7 @@ impl Value {
         }
     }
 
-    pub fn eval_function<'local, 'ast, 'c>(self) -> FunctionValue {
+    pub fn eval_function(self) -> FunctionValue {
         match self {
             Value::Function(data) => FunctionValue::Direct(data),
             Value::Normal(value) => FunctionValue::Indirect(value),
@@ -233,7 +233,7 @@ impl<'local, 'c> Context<'local, 'c> {
 
         let flags = settings::Flags::new(settings::builder());
         let func = &module_context.func;
-        let res = verify_function(&func, &flags);
+        let res = verify_function(func, &flags);
 
         if args.show_ir {
             println!("{}", func.display());
@@ -294,7 +294,7 @@ impl<'local, 'c> Context<'local, 'c> {
                 self.codegen_type_constructor(tag, typ, name, builder)
             },
             Type::ForAll(_, typ) => self.codegen_type_constructor(tag, typ, name, builder),
-            Type::UserDefinedType(_) => {
+            Type::UserDefined(_) => {
                 // This type constructor is not a function type, it is just a single tag value then
                 // TODO: What do we do for nullary struct values?
                 Value::Normal(builder.ins().iconst(BOXED_TYPE, tag.unwrap_or(0) as i64))
@@ -347,7 +347,7 @@ impl<'local, 'c> Context<'local, 'c> {
                 // Default to unit
                 TypeBinding::Unbound(_, _) => Type::Primitive(PrimitiveType::UnitType),
             },
-            Type::UserDefinedType(id) => Type::UserDefinedType(*id),
+            Type::UserDefined(id) => Type::UserDefined(*id),
             Type::TypeApplication(c, args) => Type::TypeApplication(
                 Box::new(self.resolve_type(c)),
                 fmap(args, |arg| self.resolve_type(arg)),
@@ -399,6 +399,10 @@ impl<'local, 'c> Context<'local, 'c> {
     pub fn codegen_definition(
         &mut self, id: DefinitionInfoId, builder: &mut FunctionBuilder,
     ) -> Value {
+        if let Some(value) = self.definitions.get(&id) {
+            return value.clone();
+        }
+
         let definition = &mut self.cache.definition_infos[id.0];
         let definition = trustme::extend_lifetime(definition);
 
@@ -491,7 +495,7 @@ impl<'local, 'c> Context<'local, 'c> {
         assert_eq!(results.len(), 1);
         let allocated = results[0];
 
-        for (i, value) in values.into_iter().enumerate() {
+        for (i, value) in values.iter().enumerate() {
             let offset = Self::pointer_size() * i as i32;
             builder
                 .ins()
@@ -551,7 +555,7 @@ impl<'local, 'c> Context<'local, 'c> {
             },
             Type::Ref(_) => unreachable!(),
             Type::ForAll(_, _) => unreachable!(),
-            Type::UserDefinedType(id) => {
+            Type::UserDefined(id) => {
                 let type_info = &self.cache.type_infos[id.0];
                 match &type_info.body {
                     TypeInfoBody::Union(_) => unreachable!(),
@@ -591,7 +595,7 @@ impl<'local, 'c> Context<'local, 'c> {
                     TypeBinding::Unbound(..) => std::mem::size_of::<i32>() as i32,
                 }
             },
-            Type::UserDefinedType(id) => {
+            Type::UserDefined(id) => {
                 let type_info = &self.cache.type_infos[id.0];
                 match &type_info.body {
                     TypeInfoBody::Unknown => unreachable!(),
@@ -719,7 +723,7 @@ impl<'local, 'c> Context<'local, 'c> {
                 TypeBinding::Bound(t) => self.convert_extern_type(t),
                 TypeBinding::Unbound(_, _) => BOXED_TYPE,
             },
-            Type::UserDefinedType(_id) => {
+            Type::UserDefined(_id) => {
                 unimplemented!()
             },
             Type::TypeApplication(c, _args) => {
@@ -763,7 +767,7 @@ impl<'local, 'c> Context<'local, 'c> {
 
     pub fn get_field_index(&self, field_name: &str, typ: &Type) -> u32 {
         match typ {
-            Type::UserDefinedType(id) => self.cache.type_infos[id.0]
+            Type::UserDefined(id) => self.cache.type_infos[id.0]
                 .find_field(field_name)
                 .map(|(i, _)| i)
                 .unwrap(),

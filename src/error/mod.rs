@@ -182,7 +182,7 @@ fn os_agnostic_display_path(path: &Path) -> ColoredString {
 
 impl<'a> Display for Location<'a> {
     fn fmt(&self, f: &mut Formatter) -> Result<(), std::fmt::Error> {
-        let filename = os_agnostic_display_path(&self.filename);
+        let filename = os_agnostic_display_path(self.filename);
         write!(f, "{}: {},{}", filename, self.start.line, self.start.column)
     }
 }

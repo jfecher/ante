@@ -30,10 +30,9 @@ use crate::error::location::{ Location, Locatable };
 use crate::cache::{ DefinitionInfoId, TraitInfoId, ModuleId, ImplScopeId, TraitBindingId, VariableId };
 use crate::types::{ self, TypeInfoId, LetBindingLevel };
 use crate::types::pattern::DecisionTree;
-use crate::util::reinterpret_as_bits;
 use std::collections::BTreeMap;
 
-#[derive(Clone, Debug, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Debug, Eq, PartialOrd, Ord)]
 pub enum LiteralKind {
     Integer(u64, IntegerKind),
     Float(u64),
@@ -166,20 +165,21 @@ pub struct Match<'a> {
 /// Type nodes in the AST, different from the representation of types during type checking.
 /// PointerType and potentially UserDefinedType are actually type constructors
 #[derive(Debug)]
+#[allow(clippy::enum_variant_names)]
 pub enum Type<'a> {
-    IntegerType(IntegerKind, Location<'a>),
-    FloatType(Location<'a>),
-    CharType(Location<'a>),
-    StringType(Location<'a>),
-    PointerType(Location<'a>),
-    BooleanType(Location<'a>),
-    UnitType(Location<'a>),
-    ReferenceType(Location<'a>),
-    FunctionType(Vec<Type<'a>>, Box<Type<'a>>, /*varargs:*/bool, Location<'a>),
+    Integer(IntegerKind, Location<'a>),
+    Float(Location<'a>),
+    Char(Location<'a>),
+    String(Location<'a>),
+    Pointer(Location<'a>),
+    Boolean(Location<'a>),
+    Unit(Location<'a>),
+    Reference(Location<'a>),
+    Function(Vec<Type<'a>>, Box<Type<'a>>, /*varargs:*/bool, Location<'a>),
     TypeVariable(String, Location<'a>),
-    UserDefinedType(String, Location<'a>),
+    UserDefined(String, Location<'a>),
     TypeApplication(Box<Type<'a>>, Vec<Type<'a>>, Location<'a>),
-    PairType(Box<Type<'a>>, Box<Type<'a>>, Location<'a>),
+    Pair(Box<Type<'a>>, Box<Type<'a>>, Location<'a>),
 }
 
 /// The AST representation of a trait usage.
@@ -194,9 +194,9 @@ pub struct Trait<'a> {
 
 #[derive(Debug)]
 pub enum TypeDefinitionBody<'a> {
-    UnionOf(Vec<(String, Vec<Type<'a>>, Location<'a>)>),
-    StructOf(Vec<(String, Type<'a>, Location<'a>)>),
-    AliasOf(Type<'a>),
+    Union(Vec<(String, Vec<Type<'a>>, Location<'a>)>),
+    Struct(Vec<(String, Type<'a>, Location<'a>)>),
+    Alias(Type<'a>),
 }
 
 /// type Name arg1 arg2 ... argN = definition
@@ -358,6 +358,20 @@ impl PartialEq for LiteralKind {
     }
 }
 
+impl std::hash::Hash for LiteralKind {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        core::mem::discriminant(self).hash(state);
+        match self {
+            LiteralKind::Integer(x, _) => x.hash(state),
+            LiteralKind::Float(x) => x.hash(state),
+            LiteralKind::String(x) => x.hash(state),
+            LiteralKind::Char(x) => x.hash(state),
+            LiteralKind::Bool(x) => x.hash(state),
+            LiteralKind::Unit => (),
+        }
+    }
+}
+
 /// These are all convenience functions for creating various Ast nodes from the parser
 impl<'a> Ast<'a> {
     pub fn get_operator(self) -> Option<Token> {
@@ -376,12 +390,7 @@ impl<'a> Ast<'a> {
     /// is both a Variable node and is not a VariableKind::TypeConstructor
     fn is_matchable_variable(&self) -> bool {
         match self {
-            Ast::Variable(variable) => {
-                match variable.kind {
-                    VariableKind::TypeConstructor(..) => false,
-                    _ => true,
-                }
-            },
+            Ast::Variable(variable) => matches!(variable.kind, VariableKind::TypeConstructor(..)),
             _ => false,
         }
     }
@@ -391,7 +400,7 @@ impl<'a> Ast<'a> {
     }
 
     pub fn float(x: f64, location: Location<'a>) -> Ast<'a> {
-        Ast::Literal(Literal { kind: LiteralKind::Float(reinterpret_as_bits(x)), location, typ: None })
+        Ast::Literal(Literal { kind: LiteralKind::Float(x.to_bits()), location, typ: None })
     }
 
     pub fn string(x: String, location: Location<'a>) -> Ast<'a> {

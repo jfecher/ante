@@ -166,20 +166,19 @@ impl<'cache, 'contents> Lexer<'cache, 'contents> {
     }
 
     fn should_expect_indent_after_token(token: &Token) -> bool {
-        match token {
-            Token::Block => true,
-            Token::Do => true,
-            Token::Else => true,
-            Token::Extern => true,
-            Token::If => true,
-            Token::Match => true,
-            Token::Then => true,
-            Token::While => true,
-            Token::With => true,
-            Token::Equal => true,
-            Token::RightArrow => true,
-            _ => false,
-        }
+        matches!(token,
+            Token::Block
+            | Token::Do
+            | Token::Else
+            | Token::Extern
+            | Token::If
+            | Token::Match
+            | Token::Then
+            | Token::While
+            | Token::With
+            | Token::Equal
+            | Token::RightArrow
+        )
     }
 
     fn at_end_of_input(&self) -> bool {
@@ -225,7 +224,7 @@ impl<'cache, 'contents> Lexer<'cache, 'contents> {
         self.get_slice_containing_current_token()
     }
 
-    fn lex_integer<'a>(&'a mut self) -> String {
+    fn lex_integer(&mut self) -> String {
         let start = self.current_position.index;
 
         while !self.at_end_of_input() && (self.current.is_digit(10) || self.current == '_') {

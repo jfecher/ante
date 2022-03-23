@@ -360,7 +360,7 @@ impl NameResolver {
     /// Otherwise, the name is removed from the list of required_definitions for the impl.
     fn check_required_definitions<'c>(&mut self, name: &str, cache: &mut ModuleCache<'c>, location: Location<'c>) {
         let required_definitions = self.required_definitions.as_mut().unwrap();
-        if let Some(index) = required_definitions.iter().position(|id| &cache.definition_infos[id.0].name == name) {
+        if let Some(index) = required_definitions.iter().position(|id| cache.definition_infos[id.0].name == name) {
             required_definitions.swap_remove(index);
         } else {
             let trait_info = &cache.trait_infos[self.current_trait.unwrap().0];
@@ -453,6 +453,7 @@ impl NameResolver {
         id
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn push_trait_impl<'c>(&mut self, trait_id: TraitInfoId, args: Vec<Type>,
                 definitions: Vec<DefinitionInfoId>, trait_impl: &'c mut ast::TraitImpl<'c>,
                 given: Vec<RequiredTrait>, cache: &mut ModuleCache<'c>,
@@ -496,7 +497,7 @@ impl<'c> NameResolver {
     pub fn declare(ast: Ast<'c>, cache: &mut ModuleCache<'c>) -> &'c mut NameResolver {
         let filepath = ast.locate().filename;
 
-        let existing = cache.get_name_resolver_by_path(&filepath);
+        let existing = cache.get_name_resolver_by_path(filepath);
         assert!(existing.is_none());
 
         let module_id = cache.push_ast(ast);
@@ -520,7 +521,7 @@ impl<'c> NameResolver {
 
         resolver.push_scope(cache);
 
-        let existing = cache.get_name_resolver_by_path(&filepath);
+        let existing = cache.get_name_resolver_by_path(filepath);
         let existing_state = existing.map_or(NameResolutionState::NotStarted, |x| x.state);
         assert!(existing_state == NameResolutionState::NotStarted);
 
@@ -551,14 +552,14 @@ impl<'c> NameResolver {
     /// Converts an ast::Type to a types::Type, expects all typevars to be in scope
     pub fn convert_type(&mut self, cache: &mut ModuleCache<'c>, ast_type: &ast::Type<'c>) -> Type {
         match ast_type {
-            ast::Type::IntegerType(kind, _) => Type::Primitive(PrimitiveType::IntegerType(*kind)),
-            ast::Type::FloatType(_) => Type::Primitive(PrimitiveType::FloatType),
-            ast::Type::CharType(_) => Type::Primitive(PrimitiveType::CharType),
-            ast::Type::StringType(_) => Type::UserDefinedType(STRING_TYPE),
-            ast::Type::PointerType(_) => Type::Primitive(PrimitiveType::Ptr),
-            ast::Type::BooleanType(_) => Type::Primitive(PrimitiveType::BooleanType),
-            ast::Type::UnitType(_) => Type::Primitive(PrimitiveType::UnitType),
-            ast::Type::FunctionType(args, ret, is_varargs, _) => {
+            ast::Type::Integer(kind, _) => Type::Primitive(PrimitiveType::IntegerType(*kind)),
+            ast::Type::Float(_) => Type::Primitive(PrimitiveType::FloatType),
+            ast::Type::Char(_) => Type::Primitive(PrimitiveType::CharType),
+            ast::Type::String(_) => Type::UserDefined(STRING_TYPE),
+            ast::Type::Pointer(_) => Type::Primitive(PrimitiveType::Ptr),
+            ast::Type::Boolean(_) => Type::Primitive(PrimitiveType::BooleanType),
+            ast::Type::Unit(_) => Type::Primitive(PrimitiveType::UnitType),
+            ast::Type::Function(args, ret, is_varargs, _) => {
                 let parameters = fmap(args, |arg| self.convert_type(cache, arg));
                 let return_type = Box::new(self.convert_type(cache, ret));
                 let environment = Box::new(Type::Primitive(PrimitiveType::UnitType));
@@ -579,9 +580,9 @@ impl<'c> NameResolver {
                     },
                 }
             },
-            ast::Type::UserDefinedType(name, location) => {
+            ast::Type::UserDefined(name, location) => {
                 match self.lookup_type(name, cache) {
-                    Some(id) => Type::UserDefinedType(id),
+                    Some(id) => Type::UserDefined(id),
                     None => {
                         error!(*location, "Type {} was not found in scope", name);
                         Type::Primitive(PrimitiveType::UnitType)
@@ -593,11 +594,11 @@ impl<'c> NameResolver {
                 let args = fmap(args, |arg| self.convert_type(cache, arg));
                 Type::TypeApplication(constructor, args)
             },
-            ast::Type::PairType(first, rest, location) => {
+            ast::Type::Pair(first, rest, location) => {
                 let args = vec![self.convert_type(cache, first), self.convert_type(cache, rest)];
 
                 let pair = match self.lookup_type(&Token::Comma.to_string(), cache) {
-                    Some(id) => Type::UserDefinedType(id),
+                    Some(id) => Type::UserDefined(id),
                     None => {
                         error!(*location, "The pair type (`,`) was not found in scope, there may have been a problem while importing the prelude");
                         Type::Primitive(PrimitiveType::UnitType)
@@ -606,7 +607,7 @@ impl<'c> NameResolver {
 
                 Type::TypeApplication(Box::new(pair), args)
             },
-            ast::Type::ReferenceType(_) => {
+            ast::Type::Reference(_) => {
                 // When translating ref types, all have a hidden lifetime variable that is unified
                 // under the hood by the compiler to determine the reference's stack lifetime.
                 // This is never able to be manually specified by the programmer, so we use
@@ -736,7 +737,7 @@ impl<'c> Resolvable<'c> for ast::Variable<'c> {
             };
 
             if should_declare {
-                let id = resolver.push_definition(&name, resolver.in_mutable_context, cache, self.location);
+                let id = resolver.push_definition(name, resolver.in_mutable_context, cache, self.location);
                 resolver.definitions_collected.push(id);
                 self.definition = Some(id);
             } else {
@@ -879,9 +880,9 @@ impl<'c> Resolvable<'c> for ast::Match<'c> {
 
 /// Given "type T a b c = ..." return
 /// forall a b c. args -> T a b c
-fn create_variant_constructor_type<'c>(parent_type_id: TypeInfoId, args: Vec<Type>, cache: &ModuleCache<'c>) -> Type {
+fn create_variant_constructor_type(parent_type_id: TypeInfoId, args: Vec<Type>, cache: &ModuleCache) -> Type {
     let info = &cache.type_infos[parent_type_id.0];
-    let mut result = Type::UserDefinedType(parent_type_id);
+    let mut result = Type::UserDefined(parent_type_id);
 
     // Apply T to [a, b, c] if [a, b, c] is non-empty
     if !info.args.is_empty() {
@@ -919,7 +920,7 @@ fn create_variants<'c>(vec: &Variants<'c>, parent_type_id: TypeInfoId,
     fmap(vec, |(name, types, location)| {
         let args = fmap(types, |t| resolver.convert_type(cache, t));
 
-        let id = resolver.push_definition(&name, false, cache, *location);
+        let id = resolver.push_definition(name, false, cache, *location);
         cache.definition_infos[id.0].typ = Some(create_variant_constructor_type(parent_type_id, args.clone(), cache));
         cache.definition_infos[id.0].definition = Some(DefinitionKind::TypeConstructor { name: name.clone(), tag: Some(index) });
         index += 1;
@@ -965,12 +966,12 @@ impl<'c> Resolvable<'c> for ast::TypeDefinition<'c> {
 
         let type_id = self.type_info.unwrap();
         match &self.definition {
-            ast::TypeDefinitionBody::UnionOf(vec) => {
+            ast::TypeDefinitionBody::Union(vec) => {
                 let variants = create_variants(vec, type_id, resolver, cache);
                 let type_info = &mut cache.type_infos[type_id.0];
                 type_info.body = TypeInfoBody::Union(variants);
             },
-            ast::TypeDefinitionBody::StructOf(vec) => {
+            ast::TypeDefinitionBody::Struct(vec) => {
                 let fields = create_fields(vec, resolver, cache);
                 let field_types = fmap(&fields, |field| field.field_type.clone());
 
@@ -983,7 +984,7 @@ impl<'c> Resolvable<'c> for ast::TypeDefinition<'c> {
                 cache.definition_infos[id.0].typ = Some(create_variant_constructor_type(type_id, field_types, cache));
                 cache.definition_infos[id.0].definition = Some(DefinitionKind::TypeConstructor { name: self.name.clone(), tag: None });
             },
-            ast::TypeDefinitionBody::AliasOf(typ) => {
+            ast::TypeDefinitionBody::Alias(typ) => {
                 let typ = resolver.convert_type(cache, typ);
                 let type_info = &mut cache.type_infos[self.type_info.unwrap().0];
                 type_info.body = TypeInfoBody::Alias(typ);
@@ -1008,7 +1009,7 @@ impl<'c> Resolvable<'c> for ast::TypeAnnotation<'c> {
     }
 }
 
-fn find_file<'a>(relative_path: &Path, cache: &mut ModuleCache) -> Option<(File, PathBuf)> {
+fn find_file(relative_path: &Path, cache: &mut ModuleCache) -> Option<(File, PathBuf)> {
     let relative_path = PathBuf::from(relative_path);
 
     for root in cache.relative_roots.iter() {
@@ -1050,7 +1051,7 @@ pub fn declare_module<'a>(path: &Path, cache: &mut ModuleCache<'a>, error_locati
     reader.read_to_string(&mut contents).unwrap();
 
     timing::start_time("Lexing");
-    let tokens = Lexer::new(&path, &contents).collect::<Vec<_>>();
+    let tokens = Lexer::new(path, &contents).collect::<Vec<_>>();
 
     timing::start_time("Parsing");
     let result = parser::parse(&tokens);
@@ -1092,9 +1093,9 @@ impl<'c> Resolvable<'c> for ast::Import<'c> {
 
     fn define(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'c>) {
         if let Some(module_id) = self.module_id {
-            define_module(module_id, cache, self.location).map(|exports| {
-                resolver.current_scope().import(&exports, cache, self.location);
-            });
+            if let Some(exports) = define_module(module_id, cache, self.location) {
+                resolver.current_scope().import(exports, cache, self.location);
+            }
         }
     }
 }

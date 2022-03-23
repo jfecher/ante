@@ -136,7 +136,7 @@ pub fn replace_all_typevars_with_bindings<'c>(
         ForAll(_typevars, _typ) => {
             unreachable!("Ante does not support higher rank polymorphism");
         },
-        UserDefinedType(id) => UserDefinedType(*id),
+        UserDefined(id) => UserDefined(*id),
 
         // We must recurse on the lifetime variable since they are unified as normal type variables
         Ref(lifetime) => match replace_typevar_with_binding(*lifetime, new_bindings, Ref, cache) {
@@ -205,7 +205,7 @@ pub fn bind_typevars<'c>(
         ForAll(_typevars, _typ) => {
             unreachable!("Ante does not support higher rank polymorphism");
         },
-        UserDefinedType(id) => UserDefinedType(*id),
+        UserDefined(id) => UserDefined(*id),
 
         Ref(lifetime) => match bind_typevar(*lifetime, type_bindings, Ref, cache) {
             TypeVariable(new_lifetime) => Ref(new_lifetime),
@@ -245,7 +245,7 @@ pub fn contains_any_typevars_from_list<'c>(
 ) -> bool {
     match typ {
         Primitive(_) => false,
-        UserDefinedType(_) => false,
+        UserDefined(_) => false,
 
         TypeVariable(id) => type_variable_contains_any_typevars_from_list(*id, list, cache),
 
@@ -285,12 +285,12 @@ fn type_variable_contains_any_typevars_from_list<'c>(
 }
 
 /// Helper function for getting the next type variable at the current level
-fn next_type_variable_id<'a>(cache: &mut ModuleCache<'a>) -> TypeVariableId {
+fn next_type_variable_id(cache: &mut ModuleCache) -> TypeVariableId {
     let level = LetBindingLevel(CURRENT_LEVEL.load(Ordering::SeqCst));
     cache.next_type_variable_id(level)
 }
 
-fn next_type_variable<'a>(cache: &mut ModuleCache<'a>) -> Type {
+fn next_type_variable(cache: &mut ModuleCache) -> Type {
     let level = LetBindingLevel(CURRENT_LEVEL.load(Ordering::SeqCst));
     cache.next_type_variable(level)
 }
@@ -329,15 +329,14 @@ pub fn instantiate<'b>(
             for var in typevars.iter().copied() {
                 typevars_to_replace.insert(var, next_type_variable_id(cache));
             }
-            let typ = replace_typevars(&typ, &typevars_to_replace, cache);
+            let typ = replace_typevars(typ, &typevars_to_replace, cache);
 
             for var in find_all_typevars_in_traits(&constraints, cache)
                 .iter()
                 .copied()
             {
-                if !typevars_to_replace.contains_key(&var) {
-                    typevars_to_replace.insert(var, next_type_variable_id(cache));
-                }
+                typevars_to_replace.entry(var)
+                    .or_insert_with(|| next_type_variable_id(cache));
             }
 
             for constraint in constraints.iter_mut() {
@@ -370,7 +369,7 @@ fn instantiate_from_map<'b>(
                 TypeVariable(*id)
             }
         },
-        ForAll(_, typ) => replace_typevars(&typ, typevars_to_replace, cache),
+        ForAll(_, typ) => replace_typevars(typ, typevars_to_replace, cache),
         other => other.clone(),
     }
 }
@@ -398,7 +397,7 @@ fn occurs<'b>(
 ) -> bool {
     match typ {
         Primitive(_) => false,
-        UserDefinedType(_) => false,
+        UserDefined(_) => false,
 
         TypeVariable(var_id) => typevars_match(id, level, *var_id, bindings, cache),
         Function(function) => {
@@ -463,6 +462,7 @@ pub fn follow_bindings_in_cache_and_map<'b>(
 /// and the given bindings set may still be modified with prior type bindings.
 ///
 /// This function performs the bulk of the work for the various unification functions.
+#[allow(clippy::nonminimal_bool)]
 pub fn try_unify_with_bindings<'b>(
     t1: &Type, t2: &Type, bindings: &mut TypeBindings, location: Location<'b>,
     cache: &mut ModuleCache<'b>,
@@ -470,7 +470,7 @@ pub fn try_unify_with_bindings<'b>(
     match (t1, t2) {
         (Primitive(p1), Primitive(p2)) if p1 == p2 => Ok(()),
 
-        (UserDefinedType(id1), UserDefinedType(id2)) if id1 == id2 => Ok(()),
+        (UserDefined(id1), UserDefined(id2)) if id1 == id2 => Ok(()),
 
         // Any type variable can be bound or unbound.
         // - If bound: unify the bound type with the other type.
@@ -490,10 +490,8 @@ pub fn try_unify_with_bindings<'b>(
             if function1.parameters.len() != function2.parameters.len() {
                 // Whether a function is varargs or not is never unified,
                 // so if one function is varargs, assume they both should be.
-                if !(function1.is_varargs
-                    && function2.parameters.len() >= function1.parameters.len())
-                    && !(function2.is_varargs
-                        && function1.parameters.len() >= function2.parameters.len())
+                if !(function1.is_varargs && function2.parameters.len() >= function1.parameters.len())
+                    && !(function2.is_varargs && function1.parameters.len() >= function2.parameters.len())
                 {
                     return Err(make_error!(location, "Function types differ in argument count: {} ({} arg(s)) and {} ({} arg(s))",
                         t1.display(cache), function1.parameters.len(), t2.display(cache), function2.parameters.len()));
@@ -572,7 +570,7 @@ fn try_unify_type_variable_with_bindings<'c>(
     id: TypeVariableId, a: &Type, b: &Type, bindings: &mut TypeBindings, location: Location<'c>,
     cache: &mut ModuleCache<'c>,
 ) -> Result<(), ErrorMessage<'c>> {
-    match find_binding(id, bindings, &cache) {
+    match find_binding(id, bindings, cache) {
         Bound(a) => try_unify_with_bindings(&a, b, bindings, location, cache),
         Unbound(a_level, _a_kind) => {
             // Create binding for boundTy that is currently empty.
@@ -661,7 +659,7 @@ pub fn perform_bindings_or_print_error<'c>(
 
 /// Remember all the given type bindings in the cache,
 /// permanently binding the given type variables to the given bindings.
-pub fn perform_type_bindings<'c>(bindings: TypeBindings, cache: &mut ModuleCache<'c>) {
+pub fn perform_type_bindings(bindings: TypeBindings, cache: &mut ModuleCache) {
     for (id, binding) in bindings.into_iter() {
         cache.type_bindings[id.0] = Bound(binding);
     }
@@ -682,12 +680,12 @@ pub fn find_all_typevars<'a>(
 ) -> Vec<TypeVariableId> {
     match typ {
         Primitive(_) => vec![],
-        UserDefinedType(_) => vec![],
+        UserDefined(_) => vec![],
         TypeVariable(id) => find_typevars_in_typevar_binding(*id, polymorphic_only, cache),
         Function(function) => {
             let mut type_variables = vec![];
             for parameter in &function.parameters {
-                type_variables.append(&mut find_all_typevars(&parameter, polymorphic_only, cache));
+                type_variables.append(&mut find_all_typevars(parameter, polymorphic_only, cache));
             }
             type_variables.append(&mut find_all_typevars(
                 &function.environment,
@@ -704,7 +702,7 @@ pub fn find_all_typevars<'a>(
         TypeApplication(constructor, args) => {
             let mut type_variables = find_all_typevars(constructor, polymorphic_only, cache);
             for arg in args {
-                type_variables.append(&mut find_all_typevars(&arg, polymorphic_only, cache));
+                type_variables.append(&mut find_all_typevars(arg, polymorphic_only, cache));
             }
             type_variables
         },
@@ -723,8 +721,8 @@ pub fn find_all_typevars<'a>(
 
 /// Helper for find_all_typevars which gets the TypeBinding for a given
 /// TypeVariableId and either recurses on it if it is bound or returns it.
-fn find_typevars_in_typevar_binding<'c>(
-    id: TypeVariableId, polymorphic_only: bool, cache: &ModuleCache<'c>,
+fn find_typevars_in_typevar_binding(
+    id: TypeVariableId, polymorphic_only: bool, cache: &ModuleCache,
 ) -> Vec<TypeVariableId> {
     match &cache.type_bindings[id.0] {
         Bound(t) => find_all_typevars(t, polymorphic_only, cache),
@@ -764,16 +762,16 @@ fn generalize<'a>(typ: &Type, cache: &ModuleCache<'a>) -> Type {
     }
 }
 
-fn infer_nested_definition<'a>(
+fn infer_nested_definition(
     definition_id: DefinitionInfoId, impl_scope: ImplScopeId, callsite_id: VariableId,
-    callsite: Option<TraitBindingId>, cache: &mut ModuleCache<'a>,
+    callsite: Option<TraitBindingId>, cache: &mut ModuleCache,
 ) -> (Type, TraitConstraints) {
     let level = LetBindingLevel(CURRENT_LEVEL.load(Ordering::SeqCst));
     let typevar = cache.next_type_variable(level);
     let info = &mut cache.definition_infos[definition_id.0];
     let definition = info.definition.as_mut().unwrap();
     // Mark the definition with a fresh typevar for recursive references
-    info.typ = Some(typevar.clone());
+    info.typ = Some(typevar);
 
     match definition {
         DefinitionKind::Definition(definition) => {
@@ -840,7 +838,7 @@ fn make_tuple_type(mut types: Vec<Type>) -> Type {
 
     while !types.is_empty() {
         let typ = types.pop().unwrap();
-        let pair = Box::new(Type::UserDefinedType(PAIR_TYPE));
+        let pair = Box::new(Type::UserDefined(PAIR_TYPE));
         ret = Type::TypeApplication(pair, vec![typ, ret]);
     }
 
@@ -852,7 +850,7 @@ fn make_tuple_type(mut types: Vec<Type>) -> Type {
 /// to any variable encountered. Appends the given required_traits list in the DefinitionInfo's
 /// required_traits field.
 fn bind_irrefutable_pattern<'c>(
-    ast: &mut ast::Ast<'c>, typ: &Type, required_traits: &Vec<RequiredTrait>,
+    ast: &mut ast::Ast<'c>, typ: &Type, required_traits: &[RequiredTrait],
     should_generalize: bool, cache: &mut ModuleCache<'c>,
 ) {
     use ast::Ast::*;
@@ -875,7 +873,7 @@ fn bind_irrefutable_pattern<'c>(
             // The type may already be set (e.g. from a trait impl this definition belongs to).
             // If it is, unify the existing type and new type before generalizing them.
             if let Some(existing_type) = &info.typ {
-                unify(&existing_type.clone(), &typ, variable.location, cache);
+                unify(&existing_type.clone(), typ, variable.location, cache);
             }
 
             let typ = if should_generalize {
@@ -885,7 +883,7 @@ fn bind_irrefutable_pattern<'c>(
             };
 
             let info = &mut cache.definition_infos[definition_id.0];
-            info.required_traits.append(&mut required_traits.clone());
+            info.required_traits.extend_from_slice(required_traits);
 
             variable.typ = Some(typ.clone());
             info.typ = Some(typ);
@@ -907,10 +905,10 @@ fn bind_irrefutable_pattern<'c>(
         },
         FunctionCall(call) if call.is_pair_constructor() => {
             let args = fmap(&call.args, |_| next_type_variable(cache));
-            let pair_type = Box::new(Type::UserDefinedType(PAIR_TYPE));
+            let pair_type = Box::new(Type::UserDefined(PAIR_TYPE));
 
             let pair_type = Type::TypeApplication(pair_type, args);
-            unify(&typ, &pair_type, call.location, cache);
+            unify(typ, &pair_type, call.location, cache);
 
             match pair_type {
                 Type::TypeApplication(_, args) => {
@@ -958,7 +956,7 @@ fn infer_trait_definition<'c>(
     match &mut trait_info.trait_node {
         Some(node) => {
             infer(trustme::extend_lifetime(*node), cache);
-            return lookup_definition_type_in_trait(name, trait_id, cache);
+            lookup_definition_type_in_trait(name, trait_id, cache)
         },
         None => unreachable!("Type for {} has not been filled in yet", name),
     }
@@ -1053,7 +1051,7 @@ impl<'a> Inferable<'a> for ast::Literal<'a> {
                     let int_type = next_type_variable_id(cache);
                     let callsite = cache.push_trait_binding(self.location);
                     let trait_impl =
-                        TraitConstraint::int_constraint(int_type.clone(), callsite, cache);
+                        TraitConstraint::int_constraint(int_type, callsite, cache);
                     self.kind = Integer(x, IntegerKind::Inferred(int_type));
                     (Type::TypeVariable(int_type), vec![trait_impl])
                 } else {
@@ -1061,7 +1059,7 @@ impl<'a> Inferable<'a> for ast::Literal<'a> {
                 }
             },
             Float(_) => (Type::Primitive(PrimitiveType::FloatType), vec![]),
-            String(_) => (Type::UserDefinedType(STRING_TYPE), vec![]),
+            String(_) => (Type::UserDefined(STRING_TYPE), vec![]),
             Char(_) => (Type::Primitive(PrimitiveType::CharType), vec![]),
             Bool(_) => (Type::Primitive(PrimitiveType::BooleanType), vec![]),
             Unit => (Type::Primitive(PrimitiveType::UnitType), vec![]),
@@ -1131,7 +1129,7 @@ impl<'a> Inferable<'a> for ast::Lambda<'a> {
         let parameter_types = fmap(&self.args, |_| next_type_variable(cache));
 
         for (parameter, parameter_type) in self.args.iter_mut().zip(parameter_types.iter()) {
-            bind_irrefutable_pattern(parameter, parameter_type, &vec![], false, cache);
+            bind_irrefutable_pattern(parameter, parameter_type, &[], false, cache);
         }
 
         bind_closure_environment(&self.closure_environment, cache);
@@ -1215,7 +1213,7 @@ impl<'a> Inferable<'a> for ast::Definition<'a> {
         // resolve_traits is called. For now it is sufficient to call bind_irrefutable_pattern
         // twice - the first time with no traits, however in the future bind_irrefutable_pattern
         // should be split up into two parts.
-        bind_irrefutable_pattern(self.pattern.as_mut(), &t, &vec![], false, cache);
+        bind_irrefutable_pattern(self.pattern.as_mut(), &t, &[], false, cache);
 
         // Now infer the traits + type of the lhs
         let typevars_in_fn = find_all_typevars(self.pattern.get_type().unwrap(), false, cache);
@@ -1257,7 +1255,7 @@ impl<'a> Inferable<'a> for ast::Match<'a> {
         let (expression, mut traits) = infer(self.expression.as_mut(), cache);
         let mut return_type = Type::Primitive(PrimitiveType::UnitType);
 
-        if self.branches.len() >= 1 {
+        if !self.branches.is_empty() {
             // Unroll the first iteration of inferring (pattern, branch) types so each
             // subsequent (pattern, branch) types can be unified against the first.
             let (pattern_type, mut pattern_traits) = infer(&mut self.branches[0].0, cache);
@@ -1326,7 +1324,7 @@ impl<'a> Inferable<'a> for ast::TraitDefinition<'a> {
         for declaration in self.declarations.iter_mut() {
             let rhs = declaration.typ.as_ref().unwrap();
 
-            bind_irrefutable_pattern(declaration.lhs.as_mut(), rhs, &vec![], true, cache);
+            bind_irrefutable_pattern(declaration.lhs.as_mut(), rhs, &[], true, cache);
         }
 
         CURRENT_LEVEL.store(previous_level, Ordering::SeqCst);
@@ -1414,7 +1412,7 @@ impl<'a> Inferable<'a> for ast::Extern<'a> {
             bind_irrefutable_pattern(
                 declaration.lhs.as_mut(),
                 declaration.typ.as_ref().unwrap(),
-                &vec![],
+                &[],
                 true,
                 cache,
             );

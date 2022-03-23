@@ -32,7 +32,7 @@ pub const PAIR_ID: DefinitionInfoId = DefinitionInfoId(2);
 /// This function needs to be called before any other DefinitionInfoId is
 /// created, otherwise the `builtin` symbol will have the wrong id. If this
 /// happens, this function will assert at runtime.
-pub fn define_builtins<'a>(cache: &mut ModuleCache<'a>) {
+pub fn define_builtins(cache: &mut ModuleCache) {
     // Define builtin : forall a. string -> a imported only into the prelude to define
     // builtin operations by name. The specific string arguments are matched on in src/llvm/builtin.rs
     let id = cache.push_definition("builtin", false, Location::builtin());
@@ -89,7 +89,7 @@ pub fn import_prelude<'a>(resolver: &mut NameResolver, cache: &mut ModuleCache<'
 /// The builtin string type is defined here as:
 ///
 /// type string = c_string: Ptr char, length: usz
-fn define_string<'a>(cache: &mut ModuleCache<'a>) -> Type {
+fn define_string(cache: &mut ModuleCache) -> Type {
     let location = Location::builtin();
 
     let ptr_type = Type::Primitive(PrimitiveType::Ptr);
@@ -101,7 +101,7 @@ fn define_string<'a>(cache: &mut ModuleCache<'a>) -> Type {
     let name = "string".to_string();
     let string_id = cache.push_type_info(name.clone(), vec![], location);
     assert_eq!(string_id, STRING_TYPE);
-    let string = Type::UserDefinedType(STRING_TYPE);
+    let string = Type::UserDefined(STRING_TYPE);
 
     let fields = TypeInfoBody::Struct(vec![
         Field { name: "c_string".into(), field_type: c_string_type.clone(), location },
@@ -127,7 +127,7 @@ fn define_string<'a>(cache: &mut ModuleCache<'a>) -> Type {
 /// The builtin pair type is defined here as:
 ///
 /// type (,) a b = first: a, second: b
-fn define_pair<'a>(cache: &mut ModuleCache<'a>) {
+fn define_pair(cache: &mut ModuleCache) {
     let location = Location::builtin();
 
     let level = LetBindingLevel(0);
@@ -147,7 +147,7 @@ fn define_pair<'a>(cache: &mut ModuleCache<'a>) {
 
     // The type is defined, now we define the constructor
     let parameters = vec![Type::TypeVariable(a), Type::TypeVariable(b)];
-    let pair = Box::new(Type::UserDefinedType(pair));
+    let pair = Box::new(Type::UserDefined(pair));
     let pair_a_b = Box::new(Type::TypeApplication(pair, parameters.clone()));
 
     let constructor_type = Box::new(Type::Function(FunctionType {

@@ -125,9 +125,7 @@ impl RequiredTrait {
             args: self.args.clone(),
             scope,
             callsite,
-            origin: self.origin.unwrap_or_else(|| {
-                callsite_id
-            }),
+            origin: self.origin.unwrap_or(callsite_id),
         }
     }
 
@@ -222,7 +220,7 @@ impl TraitConstraint {
     /// "a given Int a". This function returns a TraitConstraint for this
     /// builtin Int trait to be resolved later in typechecking to a specific
     /// integer type or propagataed to the function signature to take any Int.
-    pub fn int_constraint<'c>(arg: TypeVariableId, callsite: TraitBindingId, cache: &ModuleCache<'c>) -> TraitConstraint {
+    pub fn int_constraint(arg: TypeVariableId, callsite: TraitBindingId, cache: &ModuleCache) -> TraitConstraint {
         TraitConstraint {
             trait_id: cache.int_trait,
             args: vec![Type::TypeVariable(arg)],
@@ -236,7 +234,7 @@ impl TraitConstraint {
         self.trait_id == cache.int_trait
     }
 
-    pub fn as_required_trait(self) -> RequiredTrait {
+    pub fn into_required_trait(self) -> RequiredTrait {
         RequiredTrait {
             trait_id: self.trait_id,
             args: self.args,
@@ -244,9 +242,9 @@ impl TraitConstraint {
         }
     }
 
-    pub fn as_required_impl(&self, binding: DefinitionInfoId) -> RequiredImpl {
+    pub fn into_required_impl(self, binding: DefinitionInfoId) -> RequiredImpl {
         RequiredImpl {
-            args: self.args.clone(),
+            args: self.args,
             origin: self.origin,
             binding,
         }
@@ -258,12 +256,12 @@ impl TraitConstraint {
     }
 
     pub fn display<'a, 'c>(&self, cache: &'a ModuleCache<'c>) -> RequiredTraitPrinter<'a, 'c> {
-        self.clone().as_required_trait().display(cache)
+        self.clone().into_required_trait().display(cache)
     }
 
     #[allow(dead_code)]
     pub fn debug<'a, 'c>(&self, cache: &'a ModuleCache<'c>) -> RequiredTraitPrinter<'a, 'c> {
-        self.clone().as_required_trait().debug(cache)
+        self.clone().into_required_trait().debug(cache)
     }
 }
 

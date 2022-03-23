@@ -244,7 +244,7 @@ impl<'a> TraitInfo<'a> {
     /// Member access traits are special in that they're automatically
     /// defined and implemented by the compiler.
     pub fn is_member_access(&self) -> bool {
-        self.name.starts_with(".")
+        self.name.starts_with('.')
     }
 
     /// The `name` of a member access trait is `.field`

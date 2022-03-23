@@ -66,6 +66,7 @@ pub struct FunctionType {
 /// Thus, PartialEq/Hash may think two types aren't equal when they otherwise
 /// would be. For this reason, these impls are currently only used after
 /// following all type bindings via `follow_bindings` or a similar function.
+#[allow(clippy::enum_variant_names)]
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum Type {
     /// int, char, bool, etc
@@ -88,7 +89,7 @@ pub enum Type {
     /// These have a unique UserDefinedTypeId which points to
     /// additional information about the contents of the type
     /// not needed for most type checking.
-    UserDefinedType(TypeInfoId),
+    UserDefined(TypeInfoId),
 
     /// Any type in the form `constructor arg1 arg2 ... argN`
     TypeApplication(Box<Type>, Vec<Type>),
@@ -109,7 +110,7 @@ pub enum Type {
 
 impl Type {
     pub fn is_pair_type(&self) -> bool {
-        self == &Type::UserDefinedType(PAIR_TYPE)
+        self == &Type::UserDefined(PAIR_TYPE)
     }
 
     pub fn is_unit<'c>(&self, cache: &ModuleCache<'c>) -> bool {
@@ -138,7 +139,7 @@ impl Type {
             Function(function) => function.return_type.union_constructor_variants(cache),
             TypeApplication(typ, _) => typ.union_constructor_variants(cache),
             ForAll(_, typ) => typ.union_constructor_variants(cache),
-            UserDefinedType(id) => cache.type_infos[id.0].union_variants(),
+            UserDefined(id) => cache.type_infos[id.0].union_variants(),
             TypeVariable(_) => unreachable!("Constructors should always have concrete types"),
         }
     }

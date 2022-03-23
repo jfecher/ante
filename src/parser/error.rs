@@ -52,7 +52,7 @@ impl<'a> Display for ParseError<'a> {
                     let msg = format!("parser expected {} here", tokens[0]);
                     write!(fmt, "{}", ErrorMessage::error(&msg[..], *location))
                 } else {
-                    let expected = join_with(&tokens, ", ");
+                    let expected = join_with(tokens, ", ");
                     let msg = format!("parser expected one of {}", expected);
                     write!(fmt, "{}", ErrorMessage::error(&msg[..], *location))
                 }

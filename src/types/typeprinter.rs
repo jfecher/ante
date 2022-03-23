@@ -11,6 +11,7 @@ use crate::cache::ModuleCache;
 use crate::util::join_with;
 
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 use std::fmt::{ Display, Debug, Formatter };
 
 use colored::*;
@@ -30,13 +31,13 @@ pub struct TypePrinter<'a, 'b> {
 
 impl<'a, 'b> Display for TypePrinter<'a, 'b> {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        self.fmt_type(&self.typ, f)
+        self.fmt_type(self.typ, f)
     }
 }
 
 impl<'a, 'b> Debug for TypePrinter<'a, 'b> {
     fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
-        self.fmt_type(&self.typ, f)
+        self.fmt_type(self.typ, f)
     }
 }
 
@@ -45,8 +46,8 @@ impl<'a, 'b> Debug for TypePrinter<'a, 'b> {
 /// respectively.
 fn fill_typevar_map(map: &mut HashMap<TypeVariableId, String>, typevars: Vec<TypeVariableId>, current: &mut char) {
     for typevar in typevars {
-        if !map.contains_key(&typevar) {
-            map.insert(typevar, current.to_string());
+        if let Entry::Vacant(entry) = map.entry(typevar) {
+            entry.insert(current.to_string());
             *current = (*current as u8 + 1) as char;
             assert!(*current != 'z'); // TODO: wrap to aa, ab, ac...
         }
@@ -84,7 +85,7 @@ pub fn show_type_and_traits<'b>(typ: &Type, traits: &[RequiredTrait], cache: &Mo
         print!("\n  given {}", join_with(&traits, ", "));
     }
 
-    println!("");
+    println!();
 }
 
 impl<'a, 'b> TypePrinter<'a, 'b> {
@@ -97,7 +98,7 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
             Type::Primitive(primitive) => self.fmt_primitive(primitive, f),
             Type::Function(function) => self.fmt_function(function, f),
             Type::TypeVariable(id) => self.fmt_type_variable(*id, f),
-            Type::UserDefinedType(id) => self.fmt_user_defined_type(*id, f),
+            Type::UserDefined(id) => self.fmt_user_defined_type(*id, f),
             Type::TypeApplication(constructor, args) => self.fmt_type_application(constructor, args, f),
             Type::Ref(lifetime) => self.fmt_ref(*lifetime, f),
             Type::ForAll(typevars, typ) => self.fmt_forall(typevars, typ, f),
@@ -130,7 +131,7 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
             write!(f, "{}", "... ".blue())?;
         }
 
-        if function.environment.is_unit(&self.cache) {
+        if function.environment.is_unit(self.cache) {
             write!(f, "{}", "-> ".blue())?;
         } else {
             write!(f, "{}", "=> ".blue())?;
@@ -156,13 +157,13 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
         write!(f, "{}", name)
     }
 
-    fn fmt_type_application(&self, constructor: &Box<Type>, args: &Vec<Type>, f: &mut Formatter) -> std::fmt::Result {
+    fn fmt_type_application(&self, constructor: &Type, args: &[Type], f: &mut Formatter) -> std::fmt::Result {
         write!(f, "{}", "(".blue())?;
 
         if constructor.is_pair_type() {
             self.fmt_pair(args, f)?;
         } else {
-            self.fmt_type(constructor.as_ref(), f)?;
+            self.fmt_type(constructor, f)?;
             for arg in args.iter() {
                 write!(f, " ")?;
                 self.fmt_type(arg, f)?;
@@ -172,7 +173,7 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
         write!(f, "{}", ")".blue())
     }
 
-    fn fmt_pair(&self, args: &Vec<Type>, f: &mut Formatter) -> std::fmt::Result {
+    fn fmt_pair(&self, args: &[Type], f: &mut Formatter) -> std::fmt::Result {
         assert_eq!(args.len(), 2);
 
         self.fmt_type(&args[0], f)?;
@@ -204,14 +205,14 @@ impl<'a, 'b> TypePrinter<'a, 'b> {
         }
     }
 
-    fn fmt_forall(&self, typevars: &Vec<TypeVariableId>, typ: &Box<Type>, f: &mut Formatter) -> std::fmt::Result {
+    fn fmt_forall(&self, typevars: &[TypeVariableId], typ: &Type, f: &mut Formatter) -> std::fmt::Result {
         write!(f, "{}", "(forall".blue())?;
         for typevar in typevars.iter() {
             write!(f, " ")?;
             self.fmt_type_variable(*typevar, f)?;
         }
         write!(f, "{}", ". ".blue())?;
-        self.fmt_type(typ.as_ref(), f)?;
+        self.fmt_type(typ, f)?;
         write!(f, "{}", ")".blue())
     }
 }

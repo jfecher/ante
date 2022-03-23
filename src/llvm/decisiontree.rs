@@ -63,11 +63,9 @@ impl<'g> Generator<'g> {
         match tree {
             DecisionTree::Leaf(n) => {
                 // If this leaf has been codegen'd already, branches[n] was already set to Some in codegen_case
-                match branches[*n] {
-                    Some(_block) => (),
-                    _ => {
-                        self.codegen_branch(&match_expr.branches[*n].1, match_end, cache)
-                            .map(|(branch, value)| phi.add_incoming(&[(&value, branch)]));
+                if branches[*n].is_none() {
+                    if let Some((branch, value)) = self.codegen_branch(&match_expr.branches[*n].1, match_end, cache) {
+                        phi.add_incoming(&[(&value, branch)]);
                     }
                 }
             },
@@ -96,6 +94,7 @@ impl<'g> Generator<'g> {
 
                     self.builder.position_at_end(starting_block);
 
+                    #[allow(clippy::comparison_chain)]
                     if cases.len() > 1 {
                         self.build_switch(value_to_switch_on, else_block, switch_cases);
                     } else if cases.len() == 1 {
@@ -109,7 +108,7 @@ impl<'g> Generator<'g> {
         }
     }
 
-    fn build_switch<'c>(&self,
+    fn build_switch(&self,
         value_to_switch_on: BasicValueEnum<'g>,
         else_block: BasicBlock<'g>,
         switch_cases: SwitchCases<'g>)
@@ -122,6 +121,7 @@ impl<'g> Generator<'g> {
         self.builder.build_switch(tag, else_block, &switch_cases);
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn codegen_case<'c>(&mut self,
         case: &Case,
         matched_value: BasicValueEnum<'g>,
@@ -166,6 +166,7 @@ impl<'g> Generator<'g> {
 
     /// Creates a new llvm::BasicBlock to insert into, then binds the union downcast
     /// from the current case, then compiles the rest of the subtree.
+    #[allow(clippy::too_many_arguments)]
     fn codegen_case_in_new_block<'c>(&mut self,
         case: &Case,
         matched_value: BasicValueEnum<'g>,
@@ -249,6 +250,7 @@ impl<'g> Generator<'g> {
     /// codegen an else/match-all case of a particular constructor in a DecisionTree.
     /// If there is no MatchAll case (represented by a None value for case.tag) then
     /// a block is created with an llvm unreachable assertion.
+    #[allow(clippy::too_many_arguments)]
     fn codegen_match_else_block<'c>(&mut self,
         value_to_switch_on: BasicValueEnum<'g>,
         cases: &[Case],
@@ -289,7 +291,7 @@ impl<'g> Generator<'g> {
     /// Performs the union downcast, binding each field of the downcasted variant
     /// the the appropriate DefinitionInfoIds held within the given Case.
     fn bind_pattern_fields<'c>(&mut self, case: &Case, matched_value: BasicValueEnum<'g>, cache: &mut ModuleCache<'c>) {
-        let variant = self.cast_to_variant_type(matched_value, &case, cache);
+        let variant = self.cast_to_variant_type(matched_value, case, cache);
 
         // There are three cases here:
         // 1. The tag is a tagged union tag. In this case, the value is a tuple of (tag, fields...)
