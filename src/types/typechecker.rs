@@ -335,7 +335,8 @@ pub fn instantiate<'b>(
                 .iter()
                 .copied()
             {
-                typevars_to_replace.entry(var)
+                typevars_to_replace
+                    .entry(var)
                     .or_insert_with(|| next_type_variable_id(cache));
             }
 
@@ -490,8 +491,10 @@ pub fn try_unify_with_bindings<'b>(
             if function1.parameters.len() != function2.parameters.len() {
                 // Whether a function is varargs or not is never unified,
                 // so if one function is varargs, assume they both should be.
-                if !(function1.is_varargs && function2.parameters.len() >= function1.parameters.len())
-                    && !(function2.is_varargs && function1.parameters.len() >= function2.parameters.len())
+                if !(function1.is_varargs
+                    && function2.parameters.len() >= function1.parameters.len())
+                    && !(function2.is_varargs
+                        && function1.parameters.len() >= function2.parameters.len())
                 {
                     return Err(make_error!(location, "Function types differ in argument count: {} ({} arg(s)) and {} ({} arg(s))",
                         t1.display(cache), function1.parameters.len(), t2.display(cache), function2.parameters.len()));
@@ -850,8 +853,8 @@ fn make_tuple_type(mut types: Vec<Type>) -> Type {
 /// to any variable encountered. Appends the given required_traits list in the DefinitionInfo's
 /// required_traits field.
 fn bind_irrefutable_pattern<'c>(
-    ast: &mut ast::Ast<'c>, typ: &Type, required_traits: &[RequiredTrait],
-    should_generalize: bool, cache: &mut ModuleCache<'c>,
+    ast: &mut ast::Ast<'c>, typ: &Type, required_traits: &[RequiredTrait], should_generalize: bool,
+    cache: &mut ModuleCache<'c>,
 ) {
     use ast::Ast::*;
     use ast::LiteralKind;
@@ -1050,8 +1053,7 @@ impl<'a> Inferable<'a> for ast::Literal<'a> {
                     // of the native integer types.
                     let int_type = next_type_variable_id(cache);
                     let callsite = cache.push_trait_binding(self.location);
-                    let trait_impl =
-                        TraitConstraint::int_constraint(int_type, callsite, cache);
+                    let trait_impl = TraitConstraint::int_constraint(int_type, callsite, cache);
                     self.kind = Integer(x, IntegerKind::Inferred(int_type));
                     (Type::TypeVariable(int_type), vec![trait_impl])
                 } else {

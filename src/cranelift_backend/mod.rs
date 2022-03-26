@@ -160,9 +160,11 @@ impl<'c> Codegen<'c> for ast::Definition<'c> {
             (self.pattern.as_ref(), self.expr.as_ref())
         {
             context.current_function_name = Some(variable.to_string());
+            println!("Binding id {}", variable.definition.unwrap().0);
         }
 
         let value = self.expr.codegen(context, builder);
+        println!("Bound {} = {:?}", self.pattern, value);
         context.bind_pattern(self.pattern.as_ref(), value, builder);
         context.unit_value(builder)
     }
