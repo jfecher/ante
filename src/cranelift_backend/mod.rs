@@ -85,17 +85,20 @@ impl<'c> Codegen<'c> for ast::LiteralKind {
 
 impl<'c> Codegen<'c> for ast::Variable<'c> {
     fn codegen<'a>(&self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder) -> Value {
+        let id = self.definition.unwrap();
+        let value = context.codegen_definition(id, builder);
+
         let trait_id = self.trait_binding.unwrap();
         let required_impls = &context.cache.trait_bindings[trait_id.0].required_impls;
-        let required_bindings = fmap(required_impls, |impl_| impl_.binding);
-        println!("{} has {} required_bindings", self, required_bindings.len());
 
-        for binding in required_bindings {
-             context.codegen_definition(binding, builder);
+        if required_impls.is_empty() {
+            value
+        } else {
+            // We need to create a closure with the trait dictionary as its environment
+            let required_bindings = fmap(required_impls, |impl_| impl_.binding);
+            let typ = self.typ.as_ref().unwrap();
+            context.add_closure_arguments(value, required_bindings, typ, builder)
         }
-
-        let id = self.definition.unwrap();
-        context.codegen_definition(id, builder)
     }
 }
 
@@ -120,9 +123,13 @@ impl<'c> Codegen<'c> for ast::FunctionCall<'c> {
             return builtin::call_builtin(&self.args, context, builder);
         }
 
-        let f = self.function.codegen(context, builder).eval_function();
+        let (f, env) = context.codegen_function_use(self.function.as_ref(), builder);
 
-        let args = fmap(&self.args, |arg| context.codegen_eval(arg, builder));
+        let mut args = fmap(&self.args, |arg| context.codegen_eval(arg, builder));
+        
+        if let Some(env) = env {
+            args.push(env);
+        }
 
         let call = match f {
             FunctionValue::Direct(function_data) => {
@@ -155,7 +162,7 @@ impl<'c> Codegen<'c> for ast::Definition<'c> {
             context.current_function_name = Some(variable.to_string());
         }
 
-        let value = context.codegen_eval(&self.expr, builder);
+        let value = self.expr.codegen(context, builder);
         context.bind_pattern(self.pattern.as_ref(), value, builder);
         context.unit_value(builder)
     }

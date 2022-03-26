@@ -64,8 +64,14 @@ pub enum Value {
     Normal(CraneliftValue),
     Function(ExtFuncData),
     Variable(Variable),
+
+    /// The Closure variant covers any function which also has 'implicit'
+    /// parameters to be inserted at the callsite. This includes both closures
+    /// and functions taking trait dictionary arguments.
+    Closure(ExtFuncData, Vec<CraneliftValue>),
 }
 
+#[derive(Debug)]
 pub enum FunctionValue {
     Direct(ExtFuncData),
     Indirect(CraneliftValue), // function pointer
@@ -73,22 +79,25 @@ pub enum FunctionValue {
 
 impl Value {
     /// Convert the value into a CraneliftValue
-    pub fn eval(self, builder: &mut FunctionBuilder) -> CraneliftValue {
+    pub fn eval(self, context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
         match self {
             Value::Normal(value) => value,
             Value::Variable(variable) => builder.use_var(variable),
-            Value::Function(data) => {
-                let function_ref = builder.import_function(data);
+            Value::Function(function) => {
+                let function_ref = builder.import_function(function);
                 builder.ins().func_addr(BOXED_TYPE, function_ref)
             },
-        }
-    }
+            Value::Closure(function, mut env) => {
+                // To convert a closure into a regular value we must box it to pack along
+                // all the extra data it holds
+                let function_ref = builder.import_function(function);
+                let addr = builder.ins().func_addr(BOXED_TYPE, function_ref);
 
-    pub fn eval_function(self) -> FunctionValue {
-        match self {
-            Value::Function(data) => FunctionValue::Direct(data),
-            Value::Normal(value) => FunctionValue::Indirect(value),
-            other => unreachable!("Expected a function value, got: {:?}", other),
+                // A closure's fields are as follows: [fn_ptr, env_count, env1, env2, ..., envN]
+                let mut boxed_fields = vec![addr];
+                boxed_fields.append(&mut env);
+                context.alloc(&boxed_fields, builder)
+            }
         }
     }
 }
@@ -147,7 +156,7 @@ impl<'local, 'c> Context<'local, 'c> {
 
         // Then codegen any functions used by main and so forth
         while let Some((function, signature, id)) = context.function_queue.pop() {
-            context.codegen_function(
+            context.codegen_function_body(
                 function,
                 &mut builder_context,
                 &mut module_context,
@@ -163,10 +172,16 @@ impl<'local, 'c> Context<'local, 'c> {
     pub fn codegen_eval<T: Codegen<'c>>(
         &mut self, ast: &'local T, builder: &mut FunctionBuilder,
     ) -> CraneliftValue {
-        ast.codegen(self, builder).eval(builder)
+        ast.codegen(self, builder).eval(self, builder)
     }
 
-    fn codegen_function(
+    /// Codegens an entire function. Cranelift enforces we must finish compiling the
+    /// current function before we move onto the next so we can assume there are no
+    /// other partially compiled functions.
+    ///
+    /// Should this be renamed since it delegates to codegen_function_inner to
+    /// compile the actual body of the function?
+    fn codegen_function_body(
         &mut self, function: FunctionRef<'local, 'c>, context: &mut FunctionBuilderContext,
         module_context: &mut cranelift::codegen::Context, signature: Signature,
         function_id: FuncId, args: &Args,
@@ -264,10 +279,24 @@ impl<'local, 'c> Context<'local, 'c> {
     fn codegen_lambda(
         &mut self, lambda: &'local ast::Lambda<'c>, builder: &mut FunctionBuilder,
     ) -> Value {
+        let block = builder.current_block().unwrap();
         for (i, parameter) in lambda.args.iter().enumerate() {
-            let block = builder.current_block().unwrap();
             let arg = builder.block_params(block)[i];
-            self.bind_pattern(parameter, arg, builder);
+            self.bind_pattern(parameter, Value::Normal(arg), builder);
+        }
+
+        if !lambda.closure_environment.is_empty() {
+            let env_index = lambda.args.len();
+            let env = builder.block_params(block)[env_index];
+            let flags = MemFlags::new();
+
+            for (i, (_, id)) in lambda.closure_environment.iter().enumerate() {
+                let value = builder.ins().load(BOXED_TYPE, flags, env, i as i32 * Self::pointer_size());
+
+                if let Some(old_value) = self.definitions.insert(*id, Value::Normal(value)) {
+                    unreachable!("closure tried to bind value {}, but it was already bound to {:?}", value, old_value);
+                }
+            }
         }
 
         lambda.body.codegen(self, builder)
@@ -327,6 +356,41 @@ impl<'local, 'c> Context<'local, 'c> {
         Value::Normal(self.alloc(&params, builder))
     }
 
+    /// Where `codegen_function_body` creates a new function in the IR and codegens
+    /// its body, this function essentially codegens the reference to a function at
+    /// the callsite. Importantly, this handles the case where the funciton in question
+    /// is a closure and takes implicit trait or environment arguments.
+    pub fn codegen_function_use(&mut self, ast: &'local ast::Ast<'c>, builder: &mut FunctionBuilder) -> (FunctionValue, Option<CraneliftValue>) {
+        let value = ast.codegen(self, builder);
+
+        // If we have a direct call we can return early. Otherwise we need to check the expected
+        // type to see if we expect a function pointer or a boxed closure value.
+        let value = match value {
+            Value::Function(data) => return (FunctionValue::Direct(data), None),
+            Value::Closure(data, env) => {
+                let env = self.alloc(&env, builder);
+                return (FunctionValue::Direct(data), Some(env));
+            }
+            Value::Normal(value) => value,
+            Value::Variable(var) => builder.use_var(var),
+        };
+
+        match ast.get_type().unwrap() {
+            // Normal function pointer
+            Type::Function(function) if function.environment.is_unit(self.cache) => (FunctionValue::Indirect(value), None),
+            // Closure
+            Type::Function(_) => {
+                let flags = MemFlags::new();
+                let function_pointer = builder.ins().load(BOXED_TYPE, flags, value, 0);
+                let offset = builder.ins().iconst(BOXED_TYPE, Self::pointer_size() as i64);
+                let env = builder.ins().iadd(value, offset);
+                (FunctionValue::Indirect(function_pointer), Some(env))
+            }
+            other => unreachable!("cranelift backend: trying to call a non-function value: {}, of type {}",
+                                  value, other.display(self.cache)),
+        }
+    }
+
     fn resolve_type(&mut self, typ: &Type) -> Type {
         match typ {
             Type::Primitive(p) => Type::Primitive(*p),
@@ -369,6 +433,11 @@ impl<'local, 'c> Context<'local, 'c> {
             Type::Function(f) => {
                 for parameter in &f.parameters {
                     let cranelift_type = self.convert_type(parameter);
+                    sig.params.push(AbiParam::new(cranelift_type));
+                }
+
+                if !f.environment.is_unit(self.cache) {
+                    let cranelift_type = self.convert_type(&f.environment);
                     sig.params.push(AbiParam::new(cranelift_type));
                 }
 
@@ -432,7 +501,7 @@ impl<'local, 'c> Context<'local, 'c> {
 
     pub fn create_return(&mut self, value: Value, builder: &mut FunctionBuilder) {
         // TODO: Check for pre-existing branch instruction
-        let value = value.eval(builder);
+        let value = value.eval(self, builder);
         builder.ins().return_(&[value]);
     }
 
@@ -444,8 +513,8 @@ impl<'local, 'c> Context<'local, 'c> {
             .module
             .declare_function(name, Linkage::Export, &signature)
             .unwrap();
-        self.function_queue
-            .push((function, signature.clone(), function_id));
+
+        self.function_queue.push((function, signature.clone(), function_id));
 
         let signature = builder.import_signature(signature);
 
@@ -460,7 +529,18 @@ impl<'local, 'c> Context<'local, 'c> {
     pub fn add_lambda_to_queue(
         &mut self, lambda: &'local ast::Lambda<'c>, name: &str, builder: &mut FunctionBuilder,
     ) -> Value {
-        self.add_function_to_queue(FunctionRef::Lambda(lambda), name, builder)
+        let function = self.add_function_to_queue(FunctionRef::Lambda(lambda), name, builder);
+
+        match function {
+            function if lambda.closure_environment.is_empty() => function,
+            Value::Function(data) => {
+                let environment = fmap(&lambda.closure_environment, |(id, _)| {
+                    self.definitions[id].clone().eval(self, builder)
+                });
+                Value::Closure(data, environment)
+            },
+            _ => unreachable!(),
+        }
     }
 
     pub fn add_type_constructor_to_queue(
@@ -505,13 +585,37 @@ impl<'local, 'c> Context<'local, 'c> {
         allocated
     }
 
+    pub fn add_closure_arguments(&mut self, value: Value, required_bindings: Vec<DefinitionInfoId>,
+        typ: &Type, builder: &mut FunctionBuilder) -> Value
+    {
+        // We need to pack the required_impls into a closure.
+        // TODO: this doesn't handle non-function variables which require impls. In that
+        // case the value in the required DefinitionInfoId should be replaced with our actual value
+        let mut closure_env = fmap(required_bindings, |binding| {
+             self.codegen_definition(binding, builder).eval(self, builder)
+        });
+
+        match value {
+            Value::Function(function) => Value::Closure(function, closure_env),
+            Value::Normal(function_pointer) => {
+                let typ = self.resolve_type(typ);
+                assert!(matches!(typ, Type::Function(_)), "unimplemented: non-function trait closures");
+                let mut env = vec![function_pointer];
+                env.append(&mut closure_env);
+                Value::Normal(self.alloc(&env, builder))
+            },
+            Value::Closure(..) => unreachable!("Cannot add more env arguments to closure"),
+            Value::Variable(_) => unreachable!(),
+        }
+    }
+
     /// Binds the given pattern to the given value, recursively filling in
     /// any definitions in the pattern to the corresponding value.
     ///
     /// Like all values in this IR, `value` is expected to be boxed, so
     /// we must unbox the value and cast it at each step as we unwrap it.
     pub fn bind_pattern(
-        &mut self, pattern: &Ast, value: CraneliftValue, builder: &mut FunctionBuilder,
+        &mut self, pattern: &Ast, value: Value, builder: &mut FunctionBuilder,
     ) {
         match pattern {
             Ast::Literal(_) => (), // Nothing to do
@@ -520,7 +624,7 @@ impl<'local, 'c> Context<'local, 'c> {
 
                 // Unlike monomorphisation in the llvm pass, we should never expect to
                 // invalidate previous work by binding the same definition to a new value.
-                if let Some(old_value) = self.definitions.insert(id, Value::Normal(value)) {
+                if let Some(old_value) = self.definitions.insert(id, value) {
                     unreachable!(
                         "bind_pattern tried to bind to {}, but it was already bound to {:?}",
                         pattern, old_value
@@ -532,11 +636,12 @@ impl<'local, 'c> Context<'local, 'c> {
             Ast::FunctionCall(call) => {
                 let offsets = self.field_offsets(call.typ.as_ref().unwrap());
                 assert_eq!(offsets.len(), call.args.len());
+                let value = value.eval(self, builder);
 
+                let flags = MemFlags::new();
                 for (arg_pattern, arg_offset) in call.args.iter().zip(offsets) {
-                    let flags = MemFlags::new();
                     let arg_value = builder.ins().load(BOXED_TYPE, flags, value, arg_offset);
-                    self.bind_pattern(arg_pattern, arg_value, builder);
+                    self.bind_pattern(arg_pattern, Value::Normal(arg_value), builder);
                 }
             },
             Ast::TypeAnnotation(annotation) => self.bind_pattern(&annotation.lhs, value, builder),

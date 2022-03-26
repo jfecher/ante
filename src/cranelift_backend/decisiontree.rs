@@ -55,7 +55,7 @@ fn codegen_tree<'ast, 'c>(tree: &'ast DecisionTree, context: &mut Context<'ast, 
             builder.ins().jump(target, &[]);
         },
         DecisionTree::Switch(id_to_match_on, cases) => {
-            let value = context.definitions[id_to_match_on].clone().eval(builder);
+            let value = context.definitions[id_to_match_on].clone().eval(context, builder);
             codegen_cases(value, cases, context, builder, branches);
         },
         DecisionTree::Fail => unreachable!("Patterns should be verified to be complete before codegen"),
