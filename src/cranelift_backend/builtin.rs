@@ -1,10 +1,8 @@
 use cranelift::frontend::FunctionBuilder;
 use cranelift::prelude::{Value as CraneliftValue, InstBuilder, IntCC, FloatCC, MemFlags};
-use cranelift::codegen::ir::types as cranelift_types;
 
 use crate::parser::ast::Ast;
 
-use super::context::BOXED_TYPE;
 use super::{Context, Value};
 
 pub fn call_builtin<'c>(args: &[Ast<'c>], context: &mut Context, builder: &mut FunctionBuilder) -> Value {
@@ -51,6 +49,7 @@ pub fn call_builtin<'c>(args: &[Ast<'c>], context: &mut Context, builder: &mut F
         "truncate" => truncate(context, builder),
 
         "deref" => deref(context, builder),
+        "offset" => offset(context, builder),
         "transmute" => transmute(context, builder),
 
         _ => unreachable!("Unknown builtin '{}'", arg),
@@ -118,85 +117,92 @@ fn mod_float(_context: &mut Context, _builder: &mut FunctionBuilder) -> Cranelif
     unimplemented!("cranelift defines no float remainder function")
 }
 
-fn less_int(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
+fn boolean_function<F>(context: &mut Context, builder: &mut FunctionBuilder, f: F) -> CraneliftValue 
+    where F: FnOnce(CraneliftValue, CraneliftValue, &mut FunctionBuilder) -> CraneliftValue
+{
     let param1 = context.current_function_parameters[0];
     let param2 = context.current_function_parameters[1];
-    let boolean = builder.ins().icmp(IntCC::SignedLessThan, param1, param2);
-    builder.ins().sextend(BOXED_TYPE, boolean)
+    let target_type = builder.func.signature.returns[0].value_type;
+    let boolean = f(param1, param2, builder);
+    builder.ins().bint(target_type, boolean)
+}
+
+fn less_int(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
+    boolean_function(context, builder, |param1, param2, builder| {
+        builder.ins().icmp(IntCC::SignedLessThan, param1, param2)
+    })
 }
 
 fn less_float(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
-    let param1 = context.current_function_parameters[0];
-    let param2 = context.current_function_parameters[1];
-    let boolean = builder.ins().fcmp(FloatCC::LessThan, param1, param2);
-    builder.ins().sextend(BOXED_TYPE, boolean)
+    boolean_function(context, builder, |param1, param2, builder| {
+        builder.ins().fcmp(FloatCC::LessThan, param1, param2)
+    })
 }
 
 fn greater_int(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
-    let param1 = context.current_function_parameters[0];
-    let param2 = context.current_function_parameters[1];
-    let boolean = builder.ins().icmp(IntCC::SignedGreaterThan, param1, param2);
-    builder.ins().sextend(BOXED_TYPE, boolean)
+    boolean_function(context, builder, |param1, param2, builder| {
+        builder.ins().icmp(IntCC::SignedGreaterThan, param1, param2)
+    })
 }
 
 fn greater_float(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
-    let param1 = context.current_function_parameters[0];
-    let param2 = context.current_function_parameters[1];
-    let boolean = builder.ins().fcmp(FloatCC::GreaterThan, param1, param2);
-    builder.ins().sextend(BOXED_TYPE, boolean)
+    boolean_function(context, builder, |param1, param2, builder| {
+        builder.ins().fcmp(FloatCC::GreaterThan, param1, param2)
+    })
 }
 
 fn eq_int(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
-    let param1 = context.current_function_parameters[0];
-    let param2 = context.current_function_parameters[1];
-    let boolean = builder.ins().icmp(IntCC::Equal, param1, param2);
-    builder.ins().sextend(BOXED_TYPE, boolean)
+    boolean_function(context, builder, |param1, param2, builder| {
+        builder.ins().icmp(IntCC::Equal, param1, param2)
+    })
 }
 
 fn eq_float(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
-    let param1 = context.current_function_parameters[0];
-    let param2 = context.current_function_parameters[1];
-    let boolean = builder.ins().fcmp(FloatCC::Equal, param1, param2);
-    builder.ins().sextend(BOXED_TYPE, boolean)
+    boolean_function(context, builder, |param1, param2, builder| {
+        builder.ins().fcmp(FloatCC::Equal, param1, param2)
+    })
 }
 
 fn eq_char(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
-    let param1 = context.current_function_parameters[0];
-    let param2 = context.current_function_parameters[1];
-    let boolean = builder.ins().icmp(IntCC::Equal, param1, param2);
-    builder.ins().sextend(BOXED_TYPE, boolean)
+    boolean_function(context, builder, |param1, param2, builder| {
+        builder.ins().icmp(IntCC::Equal, param1, param2)
+    })
 }
 
 fn eq_bool(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
-    let param1 = context.current_function_parameters[0];
-    let param2 = context.current_function_parameters[1];
-    let boolean = builder.ins().icmp(IntCC::Equal, param1, param2);
-    builder.ins().sextend(BOXED_TYPE, boolean)
+    boolean_function(context, builder, |param1, param2, builder| {
+        builder.ins().icmp(IntCC::Equal, param1, param2)
+    })
 }
 
 fn deref(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
     let param1 = context.current_function_parameters[0];
-    dbg!("todo: elem type");
-    let element_type = cranelift_types::I64;
-    builder.ins().load(element_type, MemFlags::new(), param1, 0)
+    let target_type = builder.func.signature.returns[0].value_type;
+    builder.ins().load(target_type, MemFlags::new(), param1, 0)
 }
 
-fn transmute(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
-    let param1 = context.current_function_parameters[0];
-    let target_type = builder.func.signature.returns[0].value_type;
-    builder.ins().bitcast(target_type, param1)
+// Everything is already an i64, so this is a no-op in this backend
+fn transmute(context: &mut Context, _builder: &mut FunctionBuilder) -> CraneliftValue {
+    context.current_function_parameters[0]
+    // let param1 = context.current_function_parameters[0];
+    // let target_type = builder.func.signature.returns[0].value_type;
+    // builder.ins().bitcast(target_type, param1)
 }
 
-fn sign_extend(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
+fn offset(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
     let param1 = context.current_function_parameters[0];
-    let target_type = builder.func.signature.returns[0].value_type;
-    builder.ins().sextend(target_type, param1)
+    let param2 = context.current_function_parameters[1];
+    builder.ins().iadd(param1, param2)
 }
 
-fn zero_extend(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
-    let param1 = context.current_function_parameters[0];
-    let target_type = builder.func.signature.returns[0].value_type;
-    builder.ins().uextend(target_type, param1)
+// All integers are boxed as an i64, so this is a no-op in this backend
+fn sign_extend(context: &mut Context, _builder: &mut FunctionBuilder) -> CraneliftValue {
+    context.current_function_parameters[0]
+}
+
+// All integers are boxed as an i64, so this is a no-op in this backend
+fn zero_extend(context: &mut Context, _builder: &mut FunctionBuilder) -> CraneliftValue {
+    context.current_function_parameters[0]
 }
 
 fn truncate(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {

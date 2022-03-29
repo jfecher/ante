@@ -112,9 +112,6 @@ impl<'c> Codegen<'c> for ast::Variable<'c> {
         } else {
             // We need to create a closure with the trait dictionary as its environment
             let typ = self.typ.as_ref().unwrap();
-
-            println!("Adding closure arguments to {}", self);
-
             context.add_closure_arguments(value, required_impls, typ, builder)
         }
     }
@@ -129,13 +126,6 @@ impl<'c> Codegen<'c> for ast::Lambda<'c> {
             .take()
             .unwrap_or_else(|| format!("lambda{}", context.next_unique_id()));
 
-        if !self.required_traits.is_empty() {
-            println!("Added lambda to the queue. It requires:");
-            for i in &self.required_traits {
-                println!("  {}", i.origin.unwrap_or(crate::cache::VariableId(999)).0);
-            }
-        }
-
         context.add_lambda_to_queue(self, &name, builder)
     }
 }
@@ -147,8 +137,6 @@ impl<'c> Codegen<'c> for ast::FunctionCall<'c> {
         if let Ast::Variable(Variable { definition: Some(BUILTIN_ID), .. }) = self.function.as_ref() {
             return builtin::call_builtin(&self.args, context, builder);
         }
-
-        println!("Calling {}", self);
 
         let (f, env) = context.codegen_function_use(self.function.as_ref(), builder);
 

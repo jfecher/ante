@@ -580,7 +580,7 @@ impl<'local, 'c> Context<'local, 'c> {
             .declare_function(&name, Linkage::Export, &signature)
             .unwrap();
 
-        println!("{} = id {}", name, function_id);
+        println!("{} = {}", name, function_id);
 
         self.function_queue
             .push((function, signature.clone(), function_id));
