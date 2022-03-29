@@ -1138,15 +1138,19 @@ impl<'a> Inferable<'a> for ast::Lambda<'a> {
 
         let (return_type, traits) = infer(self.body.as_mut(), cache);
 
-        (
-            Function(FunctionType {
-                parameters: parameter_types,
-                return_type: Box::new(return_type),
-                environment: Box::new(infer_closure_environment(&self.closure_environment, cache)),
-                is_varargs: false,
-            }),
-            traits,
-        )
+        let typ = Function(FunctionType {
+            parameters: parameter_types,
+            return_type: Box::new(return_type),
+            environment: Box::new(infer_closure_environment(&self.closure_environment, cache)),
+            is_varargs: false,
+        });
+
+        let typevars_in_fn = find_all_typevars(&typ, false, cache);
+        let exposed_traits = traitchecker::resolve_traits(traits.clone(), &typevars_in_fn, cache);
+        self.required_traits = exposed_traits;
+
+        // TODO: should we return exposed traits instead?
+        (typ, traits)
     }
 }
 
@@ -1216,6 +1220,12 @@ impl<'a> Inferable<'a> for ast::Definition<'a> {
         // twice - the first time with no traits, however in the future bind_irrefutable_pattern
         // should be split up into two parts.
         bind_irrefutable_pattern(self.pattern.as_mut(), &t, &[], false, cache);
+
+        // TODO investigate this check, should be unneeded. It is breaking on the `input` function
+        // in the stdlib.
+        if self.pattern.get_type().is_none() {
+            self.pattern.set_type(t.clone());
+        }
 
         // Now infer the traits + type of the lhs
         let typevars_in_fn = find_all_typevars(self.pattern.get_type().unwrap(), false, cache);

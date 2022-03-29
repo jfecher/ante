@@ -28,6 +28,7 @@
 use crate::lexer::token::{ Token, IntegerKind };
 use crate::error::location::{ Location, Locatable };
 use crate::cache::{ DefinitionInfoId, TraitInfoId, ModuleId, ImplScopeId, TraitBindingId, VariableId };
+use crate::types::traits::RequiredTrait;
 use crate::types::{ self, TypeInfoId, LetBindingLevel };
 use crate::types::pattern::DecisionTree;
 use std::collections::BTreeMap;
@@ -97,6 +98,8 @@ pub struct Lambda<'a> {
     /// Needed because closure environment variables are converted to
     /// parameters of the function which need separate IDs.
     pub closure_environment: BTreeMap<DefinitionInfoId, DefinitionInfoId>,
+
+    pub required_traits: Vec<RequiredTrait>,
 
     pub location: Location<'a>,
     pub typ: Option<types::Type>,
@@ -433,7 +436,7 @@ impl<'a> Ast<'a> {
 
     pub fn lambda(args: Vec<Ast<'a>>, return_type: Option<Type<'a>>, body: Ast<'a>, location: Location<'a>) -> Ast<'a> {
         assert!(!args.is_empty());
-        Ast::Lambda(Lambda { args, body: Box::new(body), closure_environment: BTreeMap::new(), return_type, location, typ: None })
+        Ast::Lambda(Lambda { args, body: Box::new(body), closure_environment: BTreeMap::new(), return_type, location, required_traits: vec![], typ: None })
     }
 
     pub fn function_call(function: Ast<'a>, args: Vec<Ast<'a>>, location: Location<'a>) -> Ast<'a> {

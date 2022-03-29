@@ -4,6 +4,7 @@ use cranelift::codegen::ir::types as cranelift_types;
 
 use crate::parser::ast::Ast;
 
+use super::context::BOXED_TYPE;
 use super::{Context, Value};
 
 pub fn call_builtin<'c>(args: &[Ast<'c>], context: &mut Context, builder: &mut FunctionBuilder) -> Value {
@@ -120,49 +121,57 @@ fn mod_float(_context: &mut Context, _builder: &mut FunctionBuilder) -> Cranelif
 fn less_int(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
     let param1 = context.current_function_parameters[0];
     let param2 = context.current_function_parameters[1];
-    builder.ins().icmp(IntCC::SignedLessThan, param1, param2)
+    let boolean = builder.ins().icmp(IntCC::SignedLessThan, param1, param2);
+    builder.ins().sextend(BOXED_TYPE, boolean)
 }
 
 fn less_float(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
     let param1 = context.current_function_parameters[0];
     let param2 = context.current_function_parameters[1];
-    builder.ins().fcmp(FloatCC::LessThan, param1, param2)
+    let boolean = builder.ins().fcmp(FloatCC::LessThan, param1, param2);
+    builder.ins().sextend(BOXED_TYPE, boolean)
 }
 
 fn greater_int(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
     let param1 = context.current_function_parameters[0];
     let param2 = context.current_function_parameters[1];
-    builder.ins().icmp(IntCC::SignedGreaterThan, param1, param2)
+    let boolean = builder.ins().icmp(IntCC::SignedGreaterThan, param1, param2);
+    builder.ins().sextend(BOXED_TYPE, boolean)
 }
 
 fn greater_float(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
     let param1 = context.current_function_parameters[0];
     let param2 = context.current_function_parameters[1];
-    builder.ins().fcmp(FloatCC::GreaterThan, param1, param2)
+    let boolean = builder.ins().fcmp(FloatCC::GreaterThan, param1, param2);
+    builder.ins().sextend(BOXED_TYPE, boolean)
 }
 
 fn eq_int(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
     let param1 = context.current_function_parameters[0];
     let param2 = context.current_function_parameters[1];
-    builder.ins().icmp(IntCC::Equal, param1, param2)
+    let boolean = builder.ins().icmp(IntCC::Equal, param1, param2);
+    builder.ins().sextend(BOXED_TYPE, boolean)
 }
 
 fn eq_float(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
     let param1 = context.current_function_parameters[0];
     let param2 = context.current_function_parameters[1];
-    builder.ins().fcmp(FloatCC::Equal, param1, param2)
+    let boolean = builder.ins().fcmp(FloatCC::Equal, param1, param2);
+    builder.ins().sextend(BOXED_TYPE, boolean)
 }
 
 fn eq_char(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
     let param1 = context.current_function_parameters[0];
     let param2 = context.current_function_parameters[1];
-    builder.ins().icmp(IntCC::Equal, param1, param2)
+    let boolean = builder.ins().icmp(IntCC::Equal, param1, param2);
+    builder.ins().sextend(BOXED_TYPE, boolean)
 }
 
 fn eq_bool(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
     let param1 = context.current_function_parameters[0];
     let param2 = context.current_function_parameters[1];
-    builder.ins().icmp(IntCC::Equal, param1, param2)
+    let boolean = builder.ins().icmp(IntCC::Equal, param1, param2);
+    builder.ins().sextend(BOXED_TYPE, boolean)
 }
 
 fn deref(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {

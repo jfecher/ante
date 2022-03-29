@@ -275,7 +275,7 @@ print_signed (x: i64) (min: i64) (min_string: string) : unit =
 
 print_c_string (s: Ptr char) : unit =
     go s i =
-        c = s#i
+        c = deref_ptr (offset s i)
         if c != '\0' then
             putchar c
             go s (i + 1)
@@ -461,23 +461,25 @@ impl Cast string OutFile with
 //         string cstr len
 // 
 // 
-// //print a message then return user input
-// input msg -> string =
-//     len = mut 0int
-//     cstr = mut cast 0
-// 
-//     printne msg
-// 
-//     while
-//         c = getchar ()
-//         if len % 32int == 0int then
-//             cstr := realloc cstr (len+32int)
-// 
-//         cstr#len := c
-//         len += 1int
-//         c != '\n'
-//     do ()
-// 
-//     len -= 1int
-//     cstr#len := '\0'
-//     string cstr len
+
+/// Print a message then return user input
+input msg : string =
+    printne msg
+
+    go buffer len =
+        c = getchar ()
+        buffer2 = if len % 32 == 0
+            then realloc buffer (len + 32)
+            else buffer
+
+        buffer2#len := c
+
+        if c != '\n'
+        then go buffer2 (len + 1) 
+        else buffer2, len
+
+    buffer, len = go null 0
+
+    buffer#len := '\0'
+    ""
+    // string buffer len

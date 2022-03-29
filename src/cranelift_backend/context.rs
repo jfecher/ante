@@ -2,14 +2,14 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use crate::args::Args;
-use crate::cache::{DefinitionInfoId, DefinitionKind, ModuleCache};
+use crate::cache::{DefinitionInfoId, DefinitionKind, ModuleCache, VariableId};
 use crate::lexer::token::IntegerKind;
 use crate::parser::ast::{self, Ast};
 use crate::types::typed::Typed;
 use crate::types::{FunctionType, PrimitiveType, Type, TypeBinding, TypeConstructor, TypeInfoBody};
 use crate::util::{fmap, trustme};
 use cranelift::codegen::ir::immediates::Offset32;
-use cranelift::codegen::ir::{types as cranelift_types, Function};
+use cranelift::codegen::ir::{types as cranelift_types, Function, FuncRef};
 use cranelift::codegen::verify_function;
 use cranelift::frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use cranelift::prelude::isa::{CallConv, TargetFrontendConfig};
@@ -52,6 +52,8 @@ pub struct Context<'ast, 'c> {
     pub current_function_name: Option<String>,
     pub current_function_parameters: Vec<CraneliftValue>,
 
+    pub trait_mappings: HashMap<VariableId, CraneliftValue>,
+
     alloc_fn: FuncId,
     pub frontend_config: TargetFrontendConfig,
 
@@ -62,19 +64,39 @@ pub struct Context<'ast, 'c> {
 #[derive(Debug, Clone)]
 pub enum Value {
     Normal(CraneliftValue),
-    Function(ExtFuncData),
+    Function(FuncData),
     Variable(Variable),
 
     /// The Closure variant covers any function which also has 'implicit'
     /// parameters to be inserted at the callsite. This includes both closures
     /// and functions taking trait dictionary arguments.
-    Closure(ExtFuncData, Vec<CraneliftValue>),
+    Closure(FuncData, Vec<CraneliftValue>),
 }
 
 #[derive(Debug)]
 pub enum FunctionValue {
-    Direct(ExtFuncData),
+    Direct(FuncData),
     Indirect(CraneliftValue), // function pointer
+}
+
+/// An almost clone of ExtFuncData which caches the actual function Signature instead
+/// of the SigRef value which will be different for each function this is used in.
+#[derive(Debug, Clone)]
+pub struct FuncData {
+    name: ExternalName,
+    signature: Signature,
+    colocated: bool,
+}
+
+impl FuncData {
+    pub fn import(self, builder: &mut FunctionBuilder) -> FuncRef {
+        let data = ExtFuncData {
+            name: self.name,
+            colocated: self.colocated,
+            signature: builder.import_signature(self.signature),
+        };
+        builder.import_function(data)
+    }
 }
 
 impl Value {
@@ -84,13 +106,13 @@ impl Value {
             Value::Normal(value) => value,
             Value::Variable(variable) => builder.use_var(variable),
             Value::Function(function) => {
-                let function_ref = builder.import_function(function);
-                builder.ins().func_addr(BOXED_TYPE, function_ref)
+                let function = function.import(builder);
+                builder.ins().func_addr(BOXED_TYPE, function)
             },
             Value::Closure(function, mut env) => {
                 // To convert a closure into a regular value we must box it to pack along
                 // all the extra data it holds
-                let function_ref = builder.import_function(function);
+                let function_ref = function.import(builder);
                 let addr = builder.ins().func_addr(BOXED_TYPE, function_ref);
 
                 // A closure's fields are as follows: [fn_ptr, env_count, env1, env2, ..., envN]
@@ -109,9 +131,11 @@ fn declare_malloc_function(module: &mut dyn Module) -> FuncId {
     // if we compile on 32-bit platforms.
     signature.params.push(AbiParam::new(BOXED_TYPE));
     signature.returns.push(AbiParam::new(BOXED_TYPE));
-    module
+    let id = module
         .declare_function("malloc", Linkage::Import, &signature)
-        .unwrap()
+        .unwrap();
+        println!("malloc = id {}", id);
+        id
 }
 
 enum FunctionOrGlobal {
@@ -140,6 +164,7 @@ impl<'local, 'c> Context<'local, 'c> {
                 function_queue: vec![],
                 current_function_name: None,
                 current_function_parameters: vec![],
+                trait_mappings: HashMap::new(),
             },
             builder_context,
         )
@@ -195,6 +220,8 @@ impl<'local, 'c> Context<'local, 'c> {
         builder.seal_block(entry);
         builder.append_block_params_for_function_params(entry);
 
+        self.current_function_parameters = builder.block_params(entry).to_vec();
+
         let body = self.codegen_function_inner(function, &mut builder);
         self.create_return(body, &mut builder);
 
@@ -233,6 +260,7 @@ impl<'local, 'c> Context<'local, 'c> {
             .module
             .declare_function("main", Linkage::Export, &func.signature)
             .unwrap();
+        println!("main = id {}", main_id);
         let mut builder = FunctionBuilder::new(func, builder_context);
         let entry = builder.create_block();
 
@@ -285,22 +313,28 @@ impl<'local, 'c> Context<'local, 'c> {
             self.bind_pattern(parameter, Value::Normal(arg), builder);
         }
 
-        if !lambda.closure_environment.is_empty() {
+        if !lambda.closure_environment.is_empty() || !lambda.required_traits.is_empty() {
             let env_index = lambda.args.len();
             let env = builder.block_params(block)[env_index];
             let flags = MemFlags::new();
 
             for (i, (_, id)) in lambda.closure_environment.iter().enumerate() {
-                let value =
-                    builder
-                        .ins()
-                        .load(BOXED_TYPE, flags, env, i as i32 * Self::pointer_size());
+                let value = builder.ins().load(BOXED_TYPE, flags, env, i as i32 * Self::pointer_size());
 
                 if let Some(old_value) = self.definitions.insert(*id, Value::Normal(value)) {
                     unreachable!(
                         "closure tried to bind value {}, but it was already bound to {:?}",
                         value, old_value
                     );
+                }
+            }
+
+            let start = lambda.closure_environment.len() as i32;
+            for (i, required_trait) in lambda.required_traits.iter().enumerate() {
+                if let Some(variable_id) = required_trait.origin {
+                    let env_index = (start + i as i32) * Self::pointer_size();
+                    let value = builder.ins().load(BOXED_TYPE, flags, env, env_index);
+                    self.trait_mappings.insert(variable_id, value);
                 }
             }
         }
@@ -313,7 +347,7 @@ impl<'local, 'c> Context<'local, 'c> {
     ) -> Value {
         match typ {
             Type::Function(_) => {
-                self.add_type_constructor_to_queue(tag, typ.clone(), name, builder)
+                self.add_type_constructor_to_queue(tag, typ.clone(), name)
             },
             Type::TypeVariable(id) => {
                 match &self.cache.type_bindings[id.0] {
@@ -440,7 +474,7 @@ impl<'local, 'c> Context<'local, 'c> {
         BOXED_TYPE
     }
 
-    pub fn convert_signature(&mut self, typ: &Type) -> Signature {
+    pub fn convert_signature(&mut self, typ: &Type, has_required_traits: bool) -> Signature {
         let typ = self.resolve_type(typ);
         let mut sig = Signature::new(CallConv::Fast);
 
@@ -451,7 +485,7 @@ impl<'local, 'c> Context<'local, 'c> {
                     sig.params.push(AbiParam::new(cranelift_type));
                 }
 
-                if !f.environment.is_unit(self.cache) {
+                if has_required_traits || !f.environment.is_unit(self.cache) {
                     let cranelift_type = self.convert_type(&f.environment);
                     sig.params.push(AbiParam::new(cranelift_type));
                 }
@@ -492,7 +526,7 @@ impl<'local, 'c> Context<'local, 'c> {
 
         let value = match &definition.definition {
             Some(DefinitionKind::Definition(definition)) => definition.codegen(self, builder),
-            Some(DefinitionKind::Extern(annotation)) => self.codegen_extern(*annotation, builder),
+            Some(DefinitionKind::Extern(annotation)) => self.codegen_extern(*annotation),
             Some(DefinitionKind::TypeConstructor { name, tag }) => {
                 self.codegen_type_constructor(tag, definition.typ.as_ref().unwrap(), name, builder)
             },
@@ -524,10 +558,8 @@ impl<'local, 'c> Context<'local, 'c> {
         format!("{}${}", name, self.next_unique_id())
     }
 
-    fn add_function_to_queue(
-        &mut self, function: FunctionRef<'local, 'c>, name: &str, builder: &mut FunctionBuilder,
-    ) -> Value {
-        let signature = self.convert_signature(function.get_type());
+    fn add_function_to_queue(&mut self, function: FunctionRef<'local, 'c>, name: &str, has_required_traits: bool) -> Value {
+        let signature = self.convert_signature(function.get_type(), has_required_traits);
 
         let name = self.mangle(name);
         let function_id = self
@@ -535,12 +567,12 @@ impl<'local, 'c> Context<'local, 'c> {
             .declare_function(&name, Linkage::Export, &signature)
             .unwrap();
 
+        println!("{} = id {}", name, function_id);
+
         self.function_queue
             .push((function, signature.clone(), function_id));
 
-        let signature = builder.import_signature(signature);
-
-        Value::Function(ExtFuncData {
+        Value::Function(FuncData {
             name: ExternalName::user(0, function_id.as_u32()),
             signature,
             // Using 'true' here gives an unimplemented error on aarch64
@@ -548,27 +580,33 @@ impl<'local, 'c> Context<'local, 'c> {
         })
     }
 
+    fn has_required_traits(lambda: &'local ast::Lambda<'c>) -> bool {
+        lambda.required_traits.get(0)
+            .map_or(false, |required| required.origin.is_some())
+    }
+
     pub fn add_lambda_to_queue(
         &mut self, lambda: &'local ast::Lambda<'c>, name: &str, builder: &mut FunctionBuilder,
     ) -> Value {
-        let function = self.add_function_to_queue(FunctionRef::Lambda(lambda), name, builder);
+        let function = self.add_function_to_queue(FunctionRef::Lambda(lambda), name, Self::has_required_traits(lambda));
 
         match function {
-            function if lambda.closure_environment.is_empty() => function,
+            function if lambda.closure_environment.is_empty() && lambda.required_traits.is_empty() => function,
             Value::Function(data) => {
+                // Compile the closure environment as well, and return it along with the function
                 let environment = fmap(&lambda.closure_environment, |(id, _)| {
                     self.codegen_definition(*id, builder).eval(self, builder)
                 });
+                // TODO: We need some way of threading traits through multiple lambdas.
+                // let mut traits = fmap(&lambda.required_traits, |required_trait| {
                 Value::Closure(data, environment)
             },
             _ => unreachable!(),
         }
     }
 
-    pub fn add_type_constructor_to_queue(
-        &mut self, tag: &'local Option<u8>, typ: Type, name: &str, builder: &mut FunctionBuilder,
-    ) -> Value {
-        self.add_function_to_queue(FunctionRef::TypeConstructor { tag, typ }, name, builder)
+    pub fn add_type_constructor_to_queue(&mut self, tag: &'local Option<u8>, typ: Type, name: &str) -> Value {
+        self.add_function_to_queue(FunctionRef::TypeConstructor { tag, typ }, name, false)
     }
 
     pub fn unit_value(&mut self, builder: &mut FunctionBuilder) -> Value {
@@ -608,17 +646,12 @@ impl<'local, 'c> Context<'local, 'c> {
     }
 
     pub fn add_closure_arguments(
-        &mut self, value: Value, required_bindings: Vec<DefinitionInfoId>, typ: &Type,
+        &mut self, value: Value, mut closure_env: Vec<CraneliftValue>, typ: &Type,
         builder: &mut FunctionBuilder,
     ) -> Value {
         // We need to pack the required_impls into a closure.
         // TODO: this doesn't handle non-function variables which require impls. In that
         // case the value in the required DefinitionInfoId should be replaced with our actual value
-        let mut closure_env = fmap(required_bindings, |binding| {
-            self.codegen_definition(binding, builder)
-                .eval(self, builder)
-        });
-
         match value {
             Value::Function(function) => Value::Closure(function, closure_env),
             Value::Normal(function_pointer) => {
@@ -631,7 +664,10 @@ impl<'local, 'c> Context<'local, 'c> {
                 env.append(&mut closure_env);
                 Value::Normal(self.alloc(&env, builder))
             },
-            Value::Closure(..) => unreachable!("Cannot add more env arguments to closure"),
+            Value::Closure(function, mut env) => {
+                env.append(&mut closure_env);
+                Value::Closure(function, env)
+            },
             Value::Variable(_) => unreachable!(),
         }
     }
@@ -784,9 +820,7 @@ impl<'local, 'c> Context<'local, 'c> {
         std::mem::size_of::<*const u8>() as i32
     }
 
-    fn codegen_extern(
-        &mut self, annotation: &ast::TypeAnnotation, builder: &mut FunctionBuilder,
-    ) -> Value {
+    fn codegen_extern(&mut self, annotation: &ast::TypeAnnotation) -> Value {
         let name = match annotation.lhs.as_ref() {
             Ast::Variable(variable) => variable.to_string(),
             other => unimplemented!(
@@ -805,9 +839,10 @@ impl<'local, 'c> Context<'local, 'c> {
                     .module
                     .declare_function(&name, Linkage::Import, &signature)
                     .unwrap();
-                let signature = builder.import_signature(signature);
 
-                Value::Function(ExtFuncData {
+                println!("extern {} = {}, signature is {}", name, id, signature);
+
+                Value::Function(FuncData {
                     name: ExternalName::user(0, id.as_u32()),
                     signature,
                     colocated: false,

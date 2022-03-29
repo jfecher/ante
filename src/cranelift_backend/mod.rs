@@ -85,19 +85,34 @@ impl<'c> Codegen<'c> for ast::LiteralKind {
 
 impl<'c> Codegen<'c> for ast::Variable<'c> {
     fn codegen<'a>(&self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder) -> Value {
+        let trait_id = self.trait_binding.unwrap();
+        let required_impls = fmap(&context.cache.trait_bindings[trait_id.0].required_impls, |impl_| {
+            (impl_.origin, impl_.binding)
+        });
+
+        let required_impls = fmap(required_impls, |(origin, binding)| {
+            let value = context.codegen_definition(binding, builder)
+                .eval(context, builder);
+
+            context.trait_mappings.insert(origin, value);
+            value
+        });
+
+        // First check if this variable is a trait function since we'd need to grab its value from
+        // our context.
+        if let Some(value) = context.trait_mappings.get(&self.id.unwrap()) {
+            return Value::Normal(*value);
+        }
+
         let id = self.definition.unwrap();
         let value = context.codegen_definition(id, builder);
-
-        let trait_id = self.trait_binding.unwrap();
-        let required_impls = &context.cache.trait_bindings[trait_id.0].required_impls;
 
         if required_impls.is_empty() {
             value
         } else {
             // We need to create a closure with the trait dictionary as its environment
-            let required_bindings = fmap(required_impls, |impl_| impl_.binding);
             let typ = self.typ.as_ref().unwrap();
-            context.add_closure_arguments(value, required_bindings, typ, builder)
+            context.add_closure_arguments(value, required_impls, typ, builder)
         }
     }
 }
@@ -110,6 +125,13 @@ impl<'c> Codegen<'c> for ast::Lambda<'c> {
             .current_function_name
             .take()
             .unwrap_or_else(|| format!("lambda{}", context.next_unique_id()));
+
+        if !self.required_traits.is_empty() {
+            println!("Added lambda to the queue. It requires:");
+            for i in &self.required_traits {
+                println!("  {}", i.origin.unwrap_or(crate::cache::VariableId(999)).0);
+            }
+        }
 
         context.add_lambda_to_queue(self, &name, builder)
     }
@@ -133,12 +155,11 @@ impl<'c> Codegen<'c> for ast::FunctionCall<'c> {
 
         let call = match f {
             FunctionValue::Direct(function_data) => {
-                let function_ref = builder.import_function(function_data);
+                let function_ref = function_data.import(builder);
                 builder.ins().call(function_ref, &args)
             },
             FunctionValue::Indirect(function_pointer) => {
-                let signature =
-                    context.convert_signature(self.function.get_type().unwrap());
+                let signature = context.convert_signature(self.function.get_type().unwrap(), false);
                 let signature = builder.import_signature(signature);
                 builder
                     .ins()
@@ -160,11 +181,9 @@ impl<'c> Codegen<'c> for ast::Definition<'c> {
             (self.pattern.as_ref(), self.expr.as_ref())
         {
             context.current_function_name = Some(variable.to_string());
-            println!("Binding id {}", variable.definition.unwrap().0);
         }
 
         let value = self.expr.codegen(context, builder);
-        println!("Bound {} = {:?}", self.pattern, value);
         context.bind_pattern(self.pattern.as_ref(), value, builder);
         context.unit_value(builder)
     }
