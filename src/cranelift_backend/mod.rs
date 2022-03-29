@@ -78,7 +78,7 @@ impl<'c> Codegen<'c> for ast::LiteralKind {
                 builder.ins().iconst(cranelift_types::I64, *char as i64)
             },
             ast::LiteralKind::Bool(b) => builder.ins().iconst(BOXED_TYPE, *b as i64),
-            ast::LiteralKind::Unit => return context.unit_value(builder),
+            ast::LiteralKind::Unit => return Value::Unit,
         })
     }
 }
@@ -112,6 +112,9 @@ impl<'c> Codegen<'c> for ast::Variable<'c> {
         } else {
             // We need to create a closure with the trait dictionary as its environment
             let typ = self.typ.as_ref().unwrap();
+
+            println!("Adding closure arguments to {}", self);
+
             context.add_closure_arguments(value, required_impls, typ, builder)
         }
     }
@@ -144,6 +147,8 @@ impl<'c> Codegen<'c> for ast::FunctionCall<'c> {
         if let Ast::Variable(Variable { definition: Some(BUILTIN_ID), .. }) = self.function.as_ref() {
             return builtin::call_builtin(&self.args, context, builder);
         }
+
+        println!("Calling {}", self);
 
         let (f, env) = context.codegen_function_use(self.function.as_ref(), builder);
 
@@ -185,7 +190,7 @@ impl<'c> Codegen<'c> for ast::Definition<'c> {
 
         let value = self.expr.codegen(context, builder);
         context.bind_pattern(self.pattern.as_ref(), value, builder);
-        context.unit_value(builder)
+        Value::Unit
     }
 }
 
@@ -222,7 +227,7 @@ impl<'c> Codegen<'c> for ast::If<'c> {
             // If there is no 'else', then our if_false branch is the block after the if
             builder.ins().jump(if_false, &[]);
             builder.switch_to_block(if_false);
-            context.unit_value(builder)
+            Value::Unit
         };
 
         builder.seal_block(then);
@@ -241,9 +246,9 @@ impl<'c> Codegen<'c> for ast::Match<'c> {
 
 impl<'c> Codegen<'c> for ast::TypeDefinition<'c> {
     fn codegen<'a>(
-        &'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder,
+        &'a self, _context: &mut Context<'a, 'c>, _builder: &mut FunctionBuilder,
     ) -> Value {
-        context.unit_value(builder)
+        Value::Unit
     }
 }
 
@@ -257,25 +262,25 @@ impl<'c> Codegen<'c> for ast::TypeAnnotation<'c> {
 
 impl<'c> Codegen<'c> for ast::Import<'c> {
     fn codegen<'a>(
-        &'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder,
+        &'a self, _context: &mut Context<'a, 'c>, _builder: &mut FunctionBuilder,
     ) -> Value {
-        context.unit_value(builder)
+        Value::Unit
     }
 }
 
 impl<'c> Codegen<'c> for ast::TraitDefinition<'c> {
     fn codegen<'a>(
-        &'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder,
+        &'a self, _context: &mut Context<'a, 'c>, _builder: &mut FunctionBuilder,
     ) -> Value {
-        context.unit_value(builder)
+        Value::Unit
     }
 }
 
 impl<'c> Codegen<'c> for ast::TraitImpl<'c> {
     fn codegen<'a>(
-        &'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder,
+        &'a self, _context: &mut Context<'a, 'c>, _builder: &mut FunctionBuilder,
     ) -> Value {
-        context.unit_value(builder)
+        Value::Unit
     }
 }
 
@@ -303,9 +308,9 @@ impl<'c> Codegen<'c> for ast::Sequence<'c> {
 
 impl<'c> Codegen<'c> for ast::Extern<'c> {
     fn codegen<'a>(
-        &'a self, context: &mut Context<'a, 'c>, builder: &mut FunctionBuilder,
+        &'a self, _context: &mut Context<'a, 'c>, _builder: &mut FunctionBuilder,
     ) -> Value {
-        context.unit_value(builder)
+        Value::Unit
     }
 }
 
@@ -336,6 +341,6 @@ impl<'c> Codegen<'c> for ast::Assignment<'c> {
         let size = builder.ins().iconst(cranelift_types::I64, size as i64);
         builder.call_memcpy(context.frontend_config, lhs, rhs, size);
 
-        context.unit_value(builder)
+        Value::Unit
     }
 }

@@ -71,6 +71,10 @@ pub enum Value {
     /// parameters to be inserted at the callsite. This includes both closures
     /// and functions taking trait dictionary arguments.
     Closure(FuncData, Vec<CraneliftValue>),
+
+    /// This variant isn't necessary but helps avoid cluttering the IR with too
+    /// many unit literals
+    Unit,
 }
 
 #[derive(Debug)]
@@ -105,6 +109,7 @@ impl Value {
         match self {
             Value::Normal(value) => value,
             Value::Variable(variable) => builder.use_var(variable),
+            Value::Unit => builder.ins().iconst(BOXED_TYPE, 0),
             Value::Function(function) => {
                 let function = function.import(builder);
                 builder.ins().func_addr(BOXED_TYPE, function)
@@ -415,6 +420,7 @@ impl<'local, 'c> Context<'local, 'c> {
             },
             Value::Normal(value) => value,
             Value::Variable(var) => builder.use_var(var),
+            Value::Unit => unreachable!(),
         };
 
         match ast.get_type().unwrap() {
@@ -525,7 +531,14 @@ impl<'local, 'c> Context<'local, 'c> {
         let definition = trustme::extend_lifetime(definition);
 
         let value = match &definition.definition {
-            Some(DefinitionKind::Definition(definition)) => definition.codegen(self, builder),
+            Some(DefinitionKind::Definition(definition)) => {
+                // - Can't call Definition::codegen here, that'd return Value::Unit.
+                // - Can't just compile its rhs either in case the id was defined within
+                //   a pattern of the definition e.g. (target_id, unrelated) = (foo, bar)
+                // - Instead we rely on Definition::codegen filling self.definitions itself.
+                definition.codegen(self, builder);
+                return self.definitions[&id].clone();
+            }
             Some(DefinitionKind::Extern(annotation)) => self.codegen_extern(*annotation),
             Some(DefinitionKind::TypeConstructor { name, tag }) => {
                 self.codegen_type_constructor(tag, definition.typ.as_ref().unwrap(), name, builder)
@@ -609,10 +622,6 @@ impl<'local, 'c> Context<'local, 'c> {
         self.add_function_to_queue(FunctionRef::TypeConstructor { tag, typ }, name, false)
     }
 
-    pub fn unit_value(&mut self, builder: &mut FunctionBuilder) -> Value {
-        Value::Normal(builder.ins().iconst(BOXED_TYPE, 0))
-    }
-
     /// Boxes a value at runtime.
     ///
     /// This expects all `values` to be boxed types and thus
@@ -669,6 +678,7 @@ impl<'local, 'c> Context<'local, 'c> {
                 Value::Closure(function, env)
             },
             Value::Variable(_) => unreachable!(),
+            Value::Unit => unreachable!(),
         }
     }
 
