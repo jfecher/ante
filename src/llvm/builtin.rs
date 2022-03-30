@@ -66,6 +66,7 @@ pub fn call_builtin<'g, 'c>(args: &[Ast<'c>], generator: &mut Generator<'g>) -> 
         "truncate" => truncate(generator),
 
         "deref" => deref_ptr(generator),
+        "offset" => offset(generator),
         "transmute" => transmute_value(generator),
 
         _ => unreachable!("Unknown builtin '{}'", arg),
@@ -187,11 +188,22 @@ fn deref_ptr<'g>(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
     generator.builder.build_load(ptr, "deref").as_basic_value_enum()
 }
 
+/// offset (p: Ptr t) (offset: usz) = (p as usize + offset * size_of t) as Ptr t
+///
+// This builtin is unnecessary once we replace it with size_of
+fn offset<'g>(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
+    let current_function = generator.current_function();
+    let ptr = current_function.get_nth_param(0).unwrap().into_pointer_value();
+    let offset = current_function.get_nth_param(1).unwrap().into_int_value();
+
+    unsafe { generator.builder.build_gep(ptr, &[offset], "offset").as_basic_value_enum() }
+}
+
 fn transmute_value<'g>(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
     let current_function = generator.current_function();
     let x = current_function.get_nth_param(0).unwrap();
     let ret = current_function.get_type().get_return_type().unwrap();
-    generator.builder.build_bitcast(x, ret, "transmute").as_basic_value_enum()
+    generator.builder.build_bitcast(x, ret, "transmute")
 }
 
 fn sign_extend<'g>(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {

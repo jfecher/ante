@@ -60,23 +60,6 @@ pub struct Context<'ast, 'c> {
     function_queue: FunctionQueue<'ast, 'c>,
 }
 
-#[allow(unused)]
-#[derive(Debug, Clone)]
-pub enum Value {
-    Normal(CraneliftValue),
-    Function(FuncData),
-    Variable(Variable),
-
-    /// The Closure variant covers any function which also has 'implicit'
-    /// parameters to be inserted at the callsite. This includes both closures
-    /// and functions taking trait dictionary arguments.
-    Closure(FuncData, Vec<CraneliftValue>),
-
-    /// This variant isn't necessary but helps avoid cluttering the IR with too
-    /// many unit literals
-    Unit,
-}
-
 #[derive(Debug)]
 pub enum FunctionValue {
     Direct(FuncData),
@@ -103,13 +86,35 @@ impl FuncData {
     }
 }
 
+#[allow(unused)]
+#[derive(Debug, Clone)]
+pub enum Value {
+    Normal(CraneliftValue),
+    Function(FuncData),
+    Variable(Variable),
+
+    /// The Closure variant covers any function which also has 'implicit'
+    /// parameters to be inserted at the callsite. This includes both closures
+    /// and functions taking trait dictionary arguments.
+    Closure(FuncData, Vec<CraneliftValue>),
+
+    /// Lazily inserting consts helps prevent cluttering the IR with too many
+    /// unit literals and allows us to cache "global" consts like enum values.
+    /// Like every other value, all consts have the type BOXED_TYPE
+    Const(/*value:*/i64),
+}
+
 impl Value {
+    pub fn unit() -> Value {
+        Value::Const(0)
+    }
+
     /// Convert the value into a CraneliftValue
     pub fn eval(self, context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
         match self {
             Value::Normal(value) => value,
             Value::Variable(variable) => builder.use_var(variable),
-            Value::Unit => builder.ins().iconst(BOXED_TYPE, 0),
+            Value::Const(value) => builder.ins().iconst(BOXED_TYPE, value),
             Value::Function(function) => {
                 let function = function.import(builder);
                 builder.ins().func_addr(BOXED_TYPE, function)
@@ -136,11 +141,9 @@ fn declare_malloc_function(module: &mut dyn Module) -> FuncId {
     // if we compile on 32-bit platforms.
     signature.params.push(AbiParam::new(BOXED_TYPE));
     signature.returns.push(AbiParam::new(BOXED_TYPE));
-    let id = module
+    module
         .declare_function("malloc", Linkage::Import, &signature)
-        .unwrap();
-        println!("malloc = id {}", id);
-        id
+        .unwrap()
 }
 
 enum FunctionOrGlobal {
@@ -265,7 +268,7 @@ impl<'local, 'c> Context<'local, 'c> {
             .module
             .declare_function("main", Linkage::Export, &func.signature)
             .unwrap();
-        println!("main = id {}", main_id);
+
         let mut builder = FunctionBuilder::new(func, builder_context);
         let entry = builder.create_block();
 
@@ -371,7 +374,7 @@ impl<'local, 'c> Context<'local, 'c> {
             Type::UserDefined(_) => {
                 // This type constructor is not a function type, it is just a single tag value then
                 // TODO: What do we do for nullary struct values?
-                Value::Normal(builder.ins().iconst(BOXED_TYPE, tag.unwrap_or(0) as i64))
+                Value::Const(tag.unwrap_or(0) as i64)
             },
             Type::Primitive(_) => unreachable!(),
             Type::Ref(_) => unreachable!(),
@@ -420,7 +423,7 @@ impl<'local, 'c> Context<'local, 'c> {
             },
             Value::Normal(value) => value,
             Value::Variable(var) => builder.use_var(var),
-            Value::Unit => unreachable!(),
+            Value::Const(_) => unreachable!(),
         };
 
         match ast.get_type().unwrap() {
@@ -580,8 +583,6 @@ impl<'local, 'c> Context<'local, 'c> {
             .declare_function(&name, Linkage::Export, &signature)
             .unwrap();
 
-        println!("{} = {}", name, function_id);
-
         self.function_queue
             .push((function, signature.clone(), function_id));
 
@@ -655,13 +656,13 @@ impl<'local, 'c> Context<'local, 'c> {
     }
 
     pub fn add_closure_arguments(
-        &mut self, value: Value, mut closure_env: Vec<CraneliftValue>, typ: &Type,
+        &mut self, function: Value, mut closure_env: Vec<CraneliftValue>, typ: &Type,
         builder: &mut FunctionBuilder,
     ) -> Value {
         // We need to pack the required_impls into a closure.
         // TODO: this doesn't handle non-function variables which require impls. In that
         // case the value in the required DefinitionInfoId should be replaced with our actual value
-        match value {
+        match function {
             Value::Function(function) => Value::Closure(function, closure_env),
             Value::Normal(function_pointer) => {
                 let typ = self.resolve_type(typ);
@@ -678,7 +679,7 @@ impl<'local, 'c> Context<'local, 'c> {
                 Value::Closure(function, env)
             },
             Value::Variable(_) => unreachable!(),
-            Value::Unit => unreachable!(),
+            Value::Const(_) => unreachable!(),
         }
     }
 
@@ -849,8 +850,6 @@ impl<'local, 'c> Context<'local, 'c> {
                     .module
                     .declare_function(&name, Linkage::Import, &signature)
                     .unwrap();
-
-                println!("extern {} = {}, signature is {}", name, id, signature);
 
                 Value::Function(FuncData {
                     name: ExternalName::user(0, id.as_u32()),

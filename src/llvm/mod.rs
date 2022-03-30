@@ -175,8 +175,8 @@ fn remove_forall(typ: &types::Type) -> &types::Type {
 }
 
 /// The type to bind most typevars to if they are still unbound when we codegen them.
-const UNBOUND_TYPE: types::Type = DEFAULT_INTEGER_TYPE;
-// types::Type::Primitive(types::PrimitiveType::UnitType);
+// const UNBOUND_TYPE: types::Type = DEFAULT_INTEGER_TYPE;
+const UNBOUND_TYPE: types::Type = types::Type::Primitive(types::PrimitiveType::UnitType);
 
 fn to_optimization_level(opt_level: char) -> OptimizationLevel {
     match opt_level {

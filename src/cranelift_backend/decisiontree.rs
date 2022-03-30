@@ -69,14 +69,21 @@ fn codegen_cases<'ast, 'c>(value_to_match_on: CraneliftValue, cases: &'ast [Case
         tag_cases.pop().unwrap()
     });
 
+    let current_block = builder.current_block().unwrap();
+
     let cases = if should_use_jump_table(&tag_cases, context) {
         codegen_jump_table(value_to_match_on, tag_cases, match_all_case, context, builder)
+    } else if tag_cases.len() == 1 {
+        // Nothing to do
+        vec![(tag_cases[0], current_block)]
     } else {
         todo!()
     };
 
     for (case, block) in cases {
-        builder.switch_to_block(block);
+        if block != current_block {
+            builder.switch_to_block(block);
+        }
         bind_patterns(value_to_match_on, case, context, builder);
         codegen_tree(&case.branch, context, builder, branches);
     }
@@ -84,7 +91,7 @@ fn codegen_cases<'ast, 'c>(value_to_match_on: CraneliftValue, cases: &'ast [Case
 
 /// True if we should compile this DecisionTree::Switch into a jump table on the current tag value.
 fn should_use_jump_table(cases: &[&Case], context: &mut Context) -> bool {
-    match cases.get(0) {
+    cases.len() != 1 && match cases.get(0) {
         None => false,
         Some(Case { tag: None, .. }) => unreachable!("The match all case should already be filtered out"),
         Some(Case { tag: Some(VariantTag::True | VariantTag::False | VariantTag::Unit), .. }) => true,

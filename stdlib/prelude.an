@@ -95,6 +95,8 @@ impl Cast u64 char with cast _ = builtin "truncate"
 
 impl Cast i32 i64 with cast _ = builtin "sign_extend"
 
+impl Cast usz u64 with cast (_: usz) : u64 = builtin "zero_extend"
+
 /// Represents a failable type cast from a to b
 trait TryCast a b with
     try_cast: a -> Maybe b
@@ -260,7 +262,7 @@ unwrap (m: Maybe t) : t =
 // Naive replacement for printf which isn't supported by the cranelift backend
 print_unsigned (x: u64) : unit =
     if x >= 10 then print_unsigned (x / 10)
-    digit = cast (x % 10)
+    digit: char = cast (x % 10)
     putchar (digit + '0')
 
 print_signed (x: i64) (min: i64) (min_string: string) : unit =

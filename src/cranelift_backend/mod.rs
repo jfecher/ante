@@ -78,7 +78,7 @@ impl<'c> Codegen<'c> for ast::LiteralKind {
                 builder.ins().iconst(cranelift_types::I64, *char as i64)
             },
             ast::LiteralKind::Bool(b) => builder.ins().iconst(BOXED_TYPE, *b as i64),
-            ast::LiteralKind::Unit => return Value::Unit,
+            ast::LiteralKind::Unit => return Value::unit(),
         })
     }
 }
@@ -105,6 +105,7 @@ impl<'c> Codegen<'c> for ast::Variable<'c> {
         }
 
         let id = self.definition.unwrap();
+
         let value = context.codegen_definition(id, builder);
 
         if required_impls.is_empty() {
@@ -178,7 +179,7 @@ impl<'c> Codegen<'c> for ast::Definition<'c> {
 
         let value = self.expr.codegen(context, builder);
         context.bind_pattern(self.pattern.as_ref(), value, builder);
-        Value::Unit
+        Value::unit()
     }
 }
 
@@ -194,6 +195,7 @@ impl<'c> Codegen<'c> for ast::If<'c> {
         builder.ins().jump(if_false, &[]);
 
         builder.switch_to_block(then);
+
         let then_value = context.codegen_eval(&self.then, builder);
 
         let ret = if let Some(otherwise) = self.otherwise.as_ref() {
@@ -215,7 +217,7 @@ impl<'c> Codegen<'c> for ast::If<'c> {
             // If there is no 'else', then our if_false branch is the block after the if
             builder.ins().jump(if_false, &[]);
             builder.switch_to_block(if_false);
-            Value::Unit
+            Value::unit()
         };
 
         builder.seal_block(then);
@@ -236,7 +238,7 @@ impl<'c> Codegen<'c> for ast::TypeDefinition<'c> {
     fn codegen<'a>(
         &'a self, _context: &mut Context<'a, 'c>, _builder: &mut FunctionBuilder,
     ) -> Value {
-        Value::Unit
+        Value::unit()
     }
 }
 
@@ -252,7 +254,7 @@ impl<'c> Codegen<'c> for ast::Import<'c> {
     fn codegen<'a>(
         &'a self, _context: &mut Context<'a, 'c>, _builder: &mut FunctionBuilder,
     ) -> Value {
-        Value::Unit
+        Value::unit()
     }
 }
 
@@ -260,7 +262,7 @@ impl<'c> Codegen<'c> for ast::TraitDefinition<'c> {
     fn codegen<'a>(
         &'a self, _context: &mut Context<'a, 'c>, _builder: &mut FunctionBuilder,
     ) -> Value {
-        Value::Unit
+        Value::unit()
     }
 }
 
@@ -268,7 +270,7 @@ impl<'c> Codegen<'c> for ast::TraitImpl<'c> {
     fn codegen<'a>(
         &'a self, _context: &mut Context<'a, 'c>, _builder: &mut FunctionBuilder,
     ) -> Value {
-        Value::Unit
+        Value::unit()
     }
 }
 
@@ -298,7 +300,7 @@ impl<'c> Codegen<'c> for ast::Extern<'c> {
     fn codegen<'a>(
         &'a self, _context: &mut Context<'a, 'c>, _builder: &mut FunctionBuilder,
     ) -> Value {
-        Value::Unit
+        Value::unit()
     }
 }
 
@@ -329,6 +331,6 @@ impl<'c> Codegen<'c> for ast::Assignment<'c> {
         let size = builder.ins().iconst(cranelift_types::I64, size as i64);
         builder.call_memcpy(context.frontend_config, lhs, rhs, size);
 
-        Value::Unit
+        Value::unit()
     }
 }

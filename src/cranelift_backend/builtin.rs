@@ -205,8 +205,10 @@ fn zero_extend(context: &mut Context, _builder: &mut FunctionBuilder) -> Craneli
     context.current_function_parameters[0]
 }
 
-fn truncate(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
-    let param1 = context.current_function_parameters[0];
-    let target_type = builder.func.signature.returns[0].value_type;
-    builder.ins().ireduce(target_type, param1)
+// Also a no-op. TODO: This being a no-op changes the observable result, where should
+// we get the actual target type from?
+fn truncate(context: &mut Context, _builder: &mut FunctionBuilder) -> CraneliftValue {
+    context.current_function_parameters[0]
+    // let target_type = builder.func.signature.returns[0].value_type;
+    // builder.ins().ireduce(target_type, param1)
 }
