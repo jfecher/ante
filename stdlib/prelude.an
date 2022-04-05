@@ -187,6 +187,11 @@ trait Extract collection index -> elem with
 impl Extract (Ptr t) usz t with
     (#) ptr index = deref_ptr <| offset ptr index
 
+offset_c_string (ptr: Ptr char) (index: usz) : Ptr char =
+    addr: usz = transmute ptr
+    new_addr = addr + index
+    transmute new_addr
+
 offset (_ptr: Ptr t) (_index: usz) : Ptr t =
     builtin "offset"
 
@@ -251,7 +256,7 @@ impl Print char with printne x = putchar x
 
 impl Print float with printne _ = panic "float printing is currently disabled"
 
-impl Print string with printne s = print_c_string (s.c_string)
+impl Print string with printne s = print_string s
 impl Print (Ptr char) with printne s = print_c_string s
 
 unwrap (m: Maybe t) : t =
@@ -275,9 +280,18 @@ print_signed (x: i64) (min: i64) (min_string: string) : unit =
     else
         print_unsigned <| unwrap <| try_cast x
 
+print_string (s: string) : unit =
+    go (s2: string) i =
+        if i < s2.length then
+            c = deref (offset_c_string s2.c_string i)
+            putchar c
+            go s2 (i + 1)
+
+    go s 0
+
 print_c_string (s: Ptr char) : unit =
-    go s i =
-        c = deref_ptr (offset s i)
+    go (s: Ptr char) i =
+        c = deref (offset_c_string s i)
         if c != '\0' then
             putchar c
             go s (i + 1)

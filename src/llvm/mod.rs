@@ -27,7 +27,7 @@ use crate::types::traits::RequiredImpl;
 use crate::types::typechecker::{self, TypeBindings};
 use crate::types::typed::Typed;
 use crate::types::{self, TypeBinding, TypeInfoId, TypeVariableId, DEFAULT_INTEGER_TYPE};
-use crate::util::{fmap, timing, trustme};
+use crate::util::{fmap, timing, trustme, self};
 
 use inkwell::basic_block::BasicBlock;
 use inkwell::builder::Builder;
@@ -127,7 +127,7 @@ pub fn run<'c>(path: &Path, ast: &Ast<'c>, cache: &mut ModuleCache<'c>, args: &A
         codegen.module.print_to_stderr();
     }
 
-    let binary_name = module_name_to_program_name(&module_name);
+    let binary_name = util::binary_name(&module_name);
 
     timing::start_time("Linking");
     codegen.output(module_name, &binary_name, &target_triple, &codegen.module);
@@ -151,20 +151,6 @@ pub fn run<'c>(path: &Path, ast: &Ast<'c>, cache: &mut ModuleCache<'c>, args: &A
 
 fn path_to_module_name(path: &Path) -> String {
     path.with_extension("").to_string_lossy().into()
-}
-
-fn module_name_to_program_name(module: &str) -> String {
-    if cfg!(target_os = "windows") {
-        PathBuf::from(module)
-            .with_extension("exe")
-            .to_string_lossy()
-            .into()
-    } else {
-        PathBuf::from(module)
-            .with_extension("")
-            .to_string_lossy()
-            .into()
-    }
 }
 
 fn remove_forall(typ: &types::Type) -> &types::Type {
@@ -258,19 +244,7 @@ impl<'g> Generator<'g> {
             .unwrap();
 
         // call gcc to compile the bitcode to a binary
-        let output = "-o".to_string() + binary_name;
-        let mut child = Command::new("gcc")
-            .arg(path.to_string_lossy().as_ref())
-            .arg("-Wno-everything")
-            .arg("-O0")
-            .arg("-lm")
-            .arg(output)
-            .spawn()
-            .unwrap();
-
-        // remove the temporary bitcode file
-        child.wait().unwrap();
-        std::fs::remove_file(path).unwrap();
+        util::link(path.to_string_lossy().as_ref(), binary_name);
     }
 
     /// Returns the BasicValueEnum found for a given id, type pair.

@@ -91,17 +91,15 @@ impl<'c> Codegen<'c> for ast::Variable<'c> {
         });
 
         let required_impls = fmap(required_impls, |(origin, binding)| {
-            let value = context.codegen_definition(binding, builder)
-                .eval(context, builder);
-
-            context.trait_mappings.insert(origin, value);
-            value
+            let value = context.codegen_definition(binding, builder);
+            context.trait_mappings.insert(origin, value.clone());
+            value.eval(context, builder)
         });
 
         // First check if this variable is a trait function since we'd need to grab its value from
         // our context.
         if let Some(value) = context.trait_mappings.get(&self.id.unwrap()) {
-            return Value::Normal(*value);
+            return value.clone();
         }
 
         let id = self.definition.unwrap();

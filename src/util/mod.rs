@@ -1,6 +1,6 @@
 //! util/mod.rs - Various utility functions used throughout the compiler.
 //! Mostly consists of convenience functions for iterators such as `fmap`.
-use std::fmt::Display;
+use std::{fmt::Display, process::Command, path::PathBuf};
 
 #[macro_use]
 pub mod logging;
@@ -40,4 +40,37 @@ pub fn unwrap_clone<T: Clone>(option: &Option<T>) -> T {
 /// Convert each element to a String and join them with the given delimiter
 pub fn join_with<T: Display>(vec: &[T], delimiter: &str) -> String {
     fmap(vec, |t| format!("{}", t)).join(delimiter)
+}
+
+pub fn link(object_filename: &str, binary_filename: &str) {
+    // call gcc to compile the bitcode to a binary
+    let output = format!("-o{}", binary_filename);
+    let mut child = Command::new("gcc")
+        .arg(object_filename)
+        .arg("-Wno-everything")
+        .arg("-O0")
+        .arg("-lm")
+        .arg(output)
+        .spawn()
+        .unwrap();
+
+    // remove the temporary bitcode file
+    child.wait().unwrap();
+    std::fs::remove_file(object_filename).unwrap();
+}
+
+/// Returns the default name of the outputted binary file
+/// as a result of compiling the program with the given entry module.
+pub fn binary_name(module_name: &str) -> String {
+    if cfg!(target_os = "windows") {
+        PathBuf::from(module_name)
+            .with_extension("exe")
+            .to_string_lossy()
+            .into()
+    } else {
+        PathBuf::from(module_name)
+            .with_extension("")
+            .to_string_lossy()
+            .into()
+    }
 }

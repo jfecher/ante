@@ -8,6 +8,8 @@ use cranelift_jit::JITBuilder;
 use cranelift_module::{DataContext, FuncId, Linkage, Module};
 use cranelift_object::ObjectBuilder;
 
+use crate::util;
+
 #[allow(clippy::large_enum_variant)]
 pub enum DynModule {
     Jit(cranelift_jit::JITModule),
@@ -60,6 +62,9 @@ impl DynModule {
                 let product = module.finish();
                 let text = product.object.write().unwrap();
                 std::fs::write(output_file, text).unwrap();
+
+                let executable = util::binary_name(output_file.to_string_lossy().as_ref());
+                util::link(output_file.to_string_lossy().as_ref(), &executable);
             },
         }
     }

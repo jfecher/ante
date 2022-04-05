@@ -192,7 +192,12 @@ fn transmute(context: &mut Context, _builder: &mut FunctionBuilder) -> Cranelift
 fn offset(context: &mut Context, builder: &mut FunctionBuilder) -> CraneliftValue {
     let param1 = context.current_function_parameters[0];
     let param2 = context.current_function_parameters[1];
-    builder.ins().iadd(param1, param2)
+    let target_type = builder.func.signature.returns[0].value_type;
+
+    let size = Context::pointer_size();
+    let boxed_type_size = builder.ins().iconst(target_type, size as i64);
+    let adjustment = builder.ins().imul(param2, boxed_type_size);
+    builder.ins().iadd(param1, adjustment)
 }
 
 // All integers are boxed as an i64, so this is a no-op in this backend

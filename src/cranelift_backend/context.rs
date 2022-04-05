@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use crate::args::Args;
-use crate::cache::{DefinitionInfoId, DefinitionKind, ModuleCache, VariableId};
+use crate::cache::{DefinitionInfoId, DefinitionKind, ModuleCache, VariableId, TraitInfoId};
 use crate::lexer::token::IntegerKind;
 use crate::parser::ast::{self, Ast};
 use crate::types::typed::Typed;
@@ -17,7 +17,7 @@ use cranelift::prelude::{
     settings, AbiParam, ExtFuncData, ExternalName, InstBuilder, MemFlags, Signature,
     Value as CraneliftValue,
 };
-use cranelift_module::{DataContext, FuncId, Linkage, Module};
+use cranelift_module::{DataContext, FuncId, Linkage, Module, DataId};
 
 use super::module::DynModule;
 use super::Codegen;
@@ -52,7 +52,7 @@ pub struct Context<'ast, 'c> {
     pub current_function_name: Option<String>,
     pub current_function_parameters: Vec<CraneliftValue>,
 
-    pub trait_mappings: HashMap<VariableId, CraneliftValue>,
+    pub trait_mappings: HashMap<VariableId, Value>,
 
     alloc_fn: FuncId,
     pub frontend_config: TargetFrontendConfig,
@@ -92,11 +92,18 @@ pub enum Value {
     Normal(CraneliftValue),
     Function(FuncData),
     Variable(Variable),
+    Global(DataId),
 
     /// The Closure variant covers any function which also has 'implicit'
-    /// parameters to be inserted at the callsite. This includes both closures
-    /// and functions taking trait dictionary arguments.
-    Closure(FuncData, Vec<CraneliftValue>),
+    /// parameters to be inserted at the callsite.
+    Closure(FuncData, Vec<CraneliftValue>, /*required_impls:*/ Vec<VariableId>),
+
+    // A Trait Function is any function that needs to take a trait dictionary
+    // as an argument. When the specific impl to be passed becomes known, this
+    // variant is converted into a Value::Closure with the last environment
+    // parameter being the trait dictionary which is a pointer to an array
+    // of function pointers.
+    // TraitFunction(FuncData, Vec<VariableId>),
 
     /// Lazily inserting consts helps prevent cluttering the IR with too many
     /// unit literals and allows us to cache "global" consts like enum values.
@@ -115,19 +122,29 @@ impl Value {
             Value::Normal(value) => value,
             Value::Variable(variable) => builder.use_var(variable),
             Value::Const(value) => builder.ins().iconst(BOXED_TYPE, value),
+            Value::Global(data_id) => {
+                let global = context.module.declare_data_in_func(data_id, builder.func);
+                builder.ins().symbol_value(BOXED_TYPE, global)
+            }
             Value::Function(function) => {
                 let function = function.import(builder);
                 builder.ins().func_addr(BOXED_TYPE, function)
             },
-            Value::Closure(function, mut env) => {
+            Value::Closure(function, mut env, impls) => {
                 // To convert a closure into a regular value we must box it to pack along
                 // all the extra data it holds
                 let function_ref = function.import(builder);
                 let addr = builder.ins().func_addr(BOXED_TYPE, function_ref);
 
-                // A closure's fields are as follows: [fn_ptr, env_count, env1, env2, ..., envN]
+                let impls = impls.into_iter().map(|impl_origin| {
+                    context.trait_mappings[&impl_origin].clone().eval(context, builder)
+                });
+
+                // A closure's fields are as follows:
+                // [fn_ptr, env1, env2, ..., envN, impl1, impl2, ..., implN]
                 let mut boxed_fields = vec![addr];
                 boxed_fields.append(&mut env);
+                boxed_fields.extend(impls);
                 context.alloc(&boxed_fields, builder)
             },
         }
@@ -135,15 +152,15 @@ impl Value {
 }
 
 fn declare_malloc_function(module: &mut dyn Module) -> FuncId {
-    let mut signature = Signature::new(CallConv::SystemV);
+    // TODO: Change based on compile target rather than just host OS
+    let mut signature = Signature::new(Context::extern_call_conv());
     // malloc doesn't really take a reference but we give it one anyway
     // to avoid having to convert between our boxed values. This is incorrect
     // if we compile on 32-bit platforms.
     signature.params.push(AbiParam::new(BOXED_TYPE));
     signature.returns.push(AbiParam::new(BOXED_TYPE));
-    module
-        .declare_function("malloc", Linkage::Import, &signature)
-        .unwrap()
+    let id = module.declare_function("malloc", Linkage::Import, &signature).unwrap();
+    id
 }
 
 enum FunctionOrGlobal {
@@ -236,7 +253,14 @@ impl<'local, 'c> Context<'local, 'c> {
         builder.finalize();
 
         if args.show_ir {
-            println!("{}", module_context.func.display());
+            let name = match module_context.func.name {
+                ExternalName::User { index, .. } => index,
+                ExternalName::TestCase { .. } => unreachable!(),
+                ExternalName::LibCall(_) => unreachable!(),
+            };
+
+            let func = &self.module.declarations().get_function_decl(FuncId::from_u32(name));
+            println!("{} =\n{}", func.name, module_context.func.display());
         }
 
         let flags = settings::Flags::new(settings::builder());
@@ -287,7 +311,7 @@ impl<'local, 'c> Context<'local, 'c> {
         let res = verify_function(func, &flags);
 
         if args.show_ir {
-            println!("{}", func.display());
+            println!("main =\n{}", func.display());
         }
 
         if let Err(errors) = res {
@@ -297,6 +321,7 @@ impl<'local, 'c> Context<'local, 'c> {
         self.module
             .define_function(main_id, module_context)
             .unwrap();
+
         module_context.clear();
         main_id
     }
@@ -321,9 +346,10 @@ impl<'local, 'c> Context<'local, 'c> {
             self.bind_pattern(parameter, Value::Normal(arg), builder);
         }
 
-        if !lambda.closure_environment.is_empty() || !lambda.required_traits.is_empty() {
+        let params = builder.block_params(block);
+        if (!lambda.closure_environment.is_empty() || !lambda.required_traits.is_empty()) && lambda.args.len() + 1 == params.len() {
             let env_index = lambda.args.len();
-            let env = builder.block_params(block)[env_index];
+            let env = params[env_index];
             let flags = MemFlags::new();
 
             for (i, (_, id)) in lambda.closure_environment.iter().enumerate() {
@@ -342,7 +368,7 @@ impl<'local, 'c> Context<'local, 'c> {
                 if let Some(variable_id) = required_trait.origin {
                     let env_index = (start + i as i32) * Self::pointer_size();
                     let value = builder.ins().load(BOXED_TYPE, flags, env, env_index);
-                    self.trait_mappings.insert(variable_id, value);
+                    self.trait_mappings.insert(variable_id, Value::Normal(value));
                 }
             }
         }
@@ -417,13 +443,19 @@ impl<'local, 'c> Context<'local, 'c> {
         // type to see if we expect a function pointer or a boxed closure value.
         let value = match value {
             Value::Function(data) => return (FunctionValue::Direct(data), None),
-            Value::Closure(data, env) => {
+            Value::Closure(data, mut env, impls) => {
+                let impls = impls.into_iter().map(|impl_origin| {
+                    self.trait_mappings[&impl_origin].clone().eval(self, builder)
+                });
+                env.extend(impls);
+
                 let env = self.alloc(&env, builder);
                 return (FunctionValue::Direct(data), Some(env));
             },
             Value::Normal(value) => value,
             Value::Variable(var) => builder.use_var(var),
             Value::Const(_) => unreachable!(),
+            Value::Global(_) => todo!("Is this case reachable? Can we have function-value Value::Globals that are not Value::Function or Value::Closure?"),
         };
 
         match ast.get_type().unwrap() {
@@ -594,15 +626,21 @@ impl<'local, 'c> Context<'local, 'c> {
         })
     }
 
-    fn has_required_traits(lambda: &'local ast::Lambda<'c>) -> bool {
-        lambda.required_traits.get(0)
-            .map_or(false, |required| required.origin.is_some())
+    fn has_required_traits(&self, lambda: &'local ast::Lambda<'c>) -> bool {
+        lambda.required_traits.get(0).map_or(false, |required| {
+            required.origin.is_some() && self.should_codegen_trait(required.trait_id)
+        })
+    }
+
+    fn should_codegen_trait(&self, id: TraitInfoId) -> bool {
+        let info = &self.cache.trait_infos[id.0];
+        !info.is_member_access() && self.cache.int_trait != id
     }
 
     pub fn add_lambda_to_queue(
         &mut self, lambda: &'local ast::Lambda<'c>, name: &str, builder: &mut FunctionBuilder,
     ) -> Value {
-        let function = self.add_function_to_queue(FunctionRef::Lambda(lambda), name, Self::has_required_traits(lambda));
+        let function = self.add_function_to_queue(FunctionRef::Lambda(lambda), name, self.has_required_traits(lambda));
 
         match function {
             function if lambda.closure_environment.is_empty() && lambda.required_traits.is_empty() => function,
@@ -611,9 +649,17 @@ impl<'local, 'c> Context<'local, 'c> {
                 let environment = fmap(&lambda.closure_environment, |(id, _)| {
                     self.codegen_definition(*id, builder).eval(self, builder)
                 });
-                // TODO: We need some way of threading traits through multiple lambdas.
-                // let mut traits = fmap(&lambda.required_traits, |required_trait| {
-                Value::Closure(data, environment)
+
+                let impls = lambda.required_traits.iter().filter_map(|required_trait| {
+                    self.should_codegen_trait(required_trait.trait_id)
+                        .then(|| required_trait.origin.unwrap())
+                }).collect::<Vec<_>>();
+
+                if !environment.is_empty() || !impls.is_empty() {
+                    Value::Closure(data, environment, impls)
+                } else {
+                    Value::Function(data)
+                }
             },
             _ => unreachable!(),
         }
@@ -663,7 +709,7 @@ impl<'local, 'c> Context<'local, 'c> {
         // TODO: this doesn't handle non-function variables which require impls. In that
         // case the value in the required DefinitionInfoId should be replaced with our actual value
         match function {
-            Value::Function(function) => Value::Closure(function, closure_env),
+            Value::Function(function) => Value::Closure(function, closure_env, vec![]),
             Value::Normal(function_pointer) => {
                 let typ = self.resolve_type(typ);
                 assert!(
@@ -674,10 +720,11 @@ impl<'local, 'c> Context<'local, 'c> {
                 env.append(&mut closure_env);
                 Value::Normal(self.alloc(&env, builder))
             },
-            Value::Closure(function, mut env) => {
+            Value::Closure(function, mut env, impls) => {
                 env.append(&mut closure_env);
-                Value::Closure(function, env)
+                Value::Closure(function, env, impls)
             },
+            Value::Global(_) => unreachable!(),
             Value::Variable(_) => unreachable!(),
             Value::Const(_) => unreachable!(),
         }
@@ -842,7 +889,13 @@ impl<'local, 'c> Context<'local, 'c> {
 
         match self.convert_extern_signature(annotation.typ.as_ref().unwrap()) {
             FunctionOrGlobal::Global(_typ) => {
-                todo!("Extern globals")
+                let data_id = self
+                    .module
+                    .declare_data(&name, Linkage::Import, true, false)
+                    .unwrap();
+
+                self.data_context.clear();
+                Value::Global(data_id)
             },
             FunctionOrGlobal::Function(signature) => {
                 // Don't mangle extern names
@@ -860,6 +913,15 @@ impl<'local, 'c> Context<'local, 'c> {
         }
     }
 
+    fn extern_call_conv() -> CallConv {
+        // TODO: Change based on target os rather than just host os
+        if cfg!(windows) {
+            CallConv::WindowsFastcall
+        } else {
+            CallConv::SystemV
+        }
+    }
+
     fn convert_extern_signature(&self, typ: &Type) -> FunctionOrGlobal {
         match typ {
             Type::TypeVariable(id) => match &self.cache.type_bindings[id.0] {
@@ -871,7 +933,7 @@ impl<'local, 'c> Context<'local, 'c> {
                 },
             },
             Type::Function(f) => {
-                let mut signature = Signature::new(CallConv::SystemV);
+                let mut signature = Signature::new(Self::extern_call_conv());
                 for parameter in &f.parameters {
                     let t = self.convert_extern_type(parameter);
                     signature.params.push(AbiParam::new(t));
@@ -898,8 +960,16 @@ impl<'local, 'c> Context<'local, 'c> {
                 TypeBinding::Bound(t) => self.convert_extern_type(t),
                 TypeBinding::Unbound(_, _) => BOXED_TYPE,
             },
-            Type::UserDefined(_id) => {
-                unimplemented!()
+            Type::UserDefined(id) => {
+                match &self.cache.type_infos[id.0].body {
+                    TypeInfoBody::Union(_variants) => unimplemented!(),
+                    TypeInfoBody::Struct(fields) => {
+                        assert_eq!(fields.len(), 1, "unimplemented extern structs with > 1 field in cranelift backend");
+                        self.convert_extern_type(&fields[0].field_type)
+                    },
+                    TypeInfoBody::Alias(typ) => self.convert_extern_type(typ),
+                    TypeInfoBody::Unknown => todo!(),
+                }
             },
             Type::TypeApplication(c, _args) => {
                 // TODO: check if args cause c to be larger than BOXED_TYPE
@@ -929,6 +999,7 @@ impl<'local, 'c> Context<'local, 'c> {
             .define_data(data_id, &self.data_context)
             .unwrap();
         self.data_context.clear();
+
         let global = self.module.declare_data_in_func(data_id, builder.func);
 
         builder.ins().symbol_value(BOXED_TYPE, global)
