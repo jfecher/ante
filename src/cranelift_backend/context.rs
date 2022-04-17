@@ -109,6 +109,8 @@ pub enum Value {
     /// unit literals and allows us to cache "global" consts like enum values.
     /// Like every other value, all consts have the type BOXED_TYPE
     Const(/*value:*/i64),
+
+    EnumTag(i64),
 }
 
 impl Value {
@@ -124,7 +126,8 @@ impl Value {
             Value::Const(value) => builder.ins().iconst(BOXED_TYPE, value),
             Value::Global(data_id) => {
                 let global = context.module.declare_data_in_func(data_id, builder.func);
-                builder.ins().symbol_value(BOXED_TYPE, global)
+                builder.ins().global_value(BOXED_TYPE, global)
+                // builder.ins().symbol_value(BOXED_TYPE, global)
             }
             Value::Function(function) => {
                 let function = function.import(builder);
@@ -146,6 +149,10 @@ impl Value {
                 boxed_fields.append(&mut env);
                 boxed_fields.extend(impls);
                 context.alloc(&boxed_fields, builder)
+            },
+            Value::EnumTag(tag) => {
+                let value = builder.ins().iconst(BOXED_TYPE, tag);
+                context.alloc(&[value], builder)
             },
         }
     }
@@ -400,7 +407,8 @@ impl<'local, 'c> Context<'local, 'c> {
             Type::UserDefined(_) => {
                 // This type constructor is not a function type, it is just a single tag value then
                 // TODO: What do we do for nullary struct values?
-                Value::Const(tag.unwrap_or(0) as i64)
+                let value = tag.unwrap_or(0) as i64;
+                Value::EnumTag(value)
             },
             Type::Primitive(_) => unreachable!(),
             Type::Ref(_) => unreachable!(),
@@ -456,6 +464,7 @@ impl<'local, 'c> Context<'local, 'c> {
             Value::Variable(var) => builder.use_var(var),
             Value::Const(_) => unreachable!(),
             Value::Global(_) => todo!("Is this case reachable? Can we have function-value Value::Globals that are not Value::Function or Value::Closure?"),
+            Value::EnumTag(_) => unreachable!(),
         };
 
         match ast.get_type().unwrap() {
@@ -727,6 +736,7 @@ impl<'local, 'c> Context<'local, 'c> {
             Value::Global(_) => unreachable!(),
             Value::Variable(_) => unreachable!(),
             Value::Const(_) => unreachable!(),
+            Value::EnumTag(_) => unreachable!(),
         }
     }
 
@@ -1001,7 +1011,6 @@ impl<'local, 'c> Context<'local, 'c> {
         self.data_context.clear();
 
         let global = self.module.declare_data_in_func(data_id, builder.func);
-
         builder.ins().symbol_value(BOXED_TYPE, global)
     }
 

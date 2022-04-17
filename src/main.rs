@@ -23,6 +23,7 @@ mod util;
 mod error;
 mod args;
 mod cache;
+mod hir;
 mod cranelift_backend;
 mod lifetimes;
 mod nameresolution;

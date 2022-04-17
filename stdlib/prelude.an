@@ -90,12 +90,60 @@ impl Cast (Maybe m) string given Cast m string with
         | Some val -> "Some (" ++ cast val ++ ")"
         | None -> "None"
 
-// Incomplete list of int -> int casts. TODO: Add more as appropriate
-impl Cast u64 char with cast _ = builtin "truncate"
+// Begin wall of casts
+impl Cast u8 u16 with cast _ = builtin "zero_extend"
+impl Cast u8 u32 with cast _ = builtin "zero_extend"
+impl Cast u8 u64 with cast _ = builtin "zero_extend"
+impl Cast u8 usz with cast _ = builtin "zero_extend"
 
+impl Cast u16 u8  with cast _ = builtin "truncate"
+impl Cast u16 u32 with cast _ = builtin "zero_extend"
+impl Cast u16 u64 with cast _ = builtin "zero_extend"
+impl Cast u16 usz with cast _ = builtin "zero_extend"
+
+impl Cast u32 u8  with cast _ = builtin "truncate"
+impl Cast u32 u16 with cast _ = builtin "truncate"
+impl Cast u32 u64 with cast _ = builtin "zero_extend"
+impl Cast u32 usz with cast _ = builtin "zero_extend"
+
+impl Cast u64 u8  with cast _ = builtin "truncate"
+impl Cast u64 u16 with cast _ = builtin "truncate"
+impl Cast u64 u32 with cast _ = builtin "truncate"
+impl Cast u64 usz with cast _ = builtin "truncate"
+
+impl Cast usz u8  with cast _ = builtin "truncate"
+impl Cast usz u16 with cast _ = builtin "truncate"
+impl Cast usz u64 with cast _ = builtin "truncate"
+impl Cast usz usz with cast _ = builtin "zero_extend"
+
+// Signed types
+impl Cast i8 i16 with cast _ = builtin "sign_extend"
+impl Cast i8 i32 with cast _ = builtin "sign_extend"
+impl Cast i8 i64 with cast _ = builtin "sign_extend"
+impl Cast i8 isz with cast _ = builtin "sign_extend"
+
+impl Cast i16 i8  with cast _ = builtin "truncate"
+impl Cast i16 i32 with cast _ = builtin "sign_extend"
+impl Cast i16 i64 with cast _ = builtin "sign_extend"
+impl Cast i16 isz with cast _ = builtin "sign_extend"
+
+impl Cast i32 i8  with cast _ = builtin "truncate"
+impl Cast i32 i16 with cast _ = builtin "truncate"
 impl Cast i32 i64 with cast _ = builtin "sign_extend"
+impl Cast i32 isz with cast _ = builtin "sign_extend"
 
-impl Cast usz u64 with cast (_: usz) : u64 = builtin "zero_extend"
+impl Cast i64 i8  with cast _ = builtin "truncate"
+impl Cast i64 i16 with cast _ = builtin "truncate"
+impl Cast i64 i32 with cast _ = builtin "truncate"
+impl Cast i64 isz with cast _ = builtin "truncate"
+
+impl Cast isz i8  with cast _ = builtin "truncate"
+impl Cast isz i16 with cast _ = builtin "truncate"
+impl Cast isz i64 with cast _ = builtin "truncate"
+impl Cast isz isz with cast _ = builtin "sign_extend"
+
+// Other casts: TODO fill in
+impl Cast u64 char with cast _ = builtin "truncate"
 
 /// Represents a failable type cast from a to b
 trait TryCast a b with
@@ -256,7 +304,9 @@ impl Print char with printne x = putchar x
 
 impl Print float with printne _ = panic "float printing is currently disabled"
 
-impl Print string with printne s = print_string s
+impl Print string with printne s =
+    print_string s
+
 impl Print (Ptr char) with printne s = print_c_string s
 
 unwrap (m: Maybe t) : t =
@@ -283,7 +333,8 @@ print_signed (x: i64) (min: i64) (min_string: string) : unit =
 print_string (s: string) : unit =
     go (s2: string) i =
         if i < s2.length then
-            c = deref (offset_c_string s2.c_string i)
+            off = offset_c_string (s2.c_string) i
+            c = deref off
             putchar c
             go s2 (i + 1)
 
