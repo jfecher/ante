@@ -15,3 +15,8 @@ pub fn make_mut<'a, T>(x: *const T) -> &'a mut T {
     #[allow(clippy::transmute_ptr_to_ref)]
     unsafe { std::mem::transmute(x) }
 }
+
+pub fn make_mut_ref<'a, 'b, T>(x: &'a T) -> &'b mut T {
+    #[allow(mutable_transmutes)]
+    unsafe { std::mem::transmute(x) }
+}

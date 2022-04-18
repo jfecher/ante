@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use crate::nameresolution::builtin::BUILTIN_ID;
 use crate::parser::ast;
 use crate::cache::{ModuleCache, VariableId, DefinitionInfoId};
 use crate::hir as hir;
@@ -166,10 +167,12 @@ impl<'c> Context<'c> {
             "Kind error during llvm code generation"
         );
 
+        use crate::util::trustme;
         use types::TypeInfoBody::*;
         match &info.body {
-            Union(variants) => self.size_of_union_type(info, variants, args),
-            Struct(fields) => self.size_of_struct_type(info, fields, args),
+            // TODO: Need to split out self.types and self.cache parameters to be able to remove this
+            Union(variants) => trustme::make_mut_ref(self).size_of_union_type(info, variants, args),
+            Struct(fields) => trustme::make_mut_ref(self).size_of_struct_type(info, fields, args),
 
             // Aliases should be desugared prior to codegen
             Alias(_) => unreachable!(),
@@ -246,7 +249,7 @@ impl<'c> Context<'c> {
     fn convert_struct_type(&mut self, id: TypeInfoId, info: &types::TypeInfo, fields: &[types::Field<'c>], args: Vec<types::Type>) -> Type {
         let bindings = types::typechecker::type_application_bindings(info, &args);
 
-        let tuple_id = TupleId(self.types.len());
+        let tuple_id = Some(TupleId(self.types.len()));
         let t = Type::Tuple(tuple_id, vec![]);
         self.types.insert((id, args.clone()), t);
 
@@ -289,20 +292,21 @@ impl<'c> Context<'c> {
     ) -> Type {
         let bindings = types::typechecker::type_application_bindings(info, &args);
 
-        let tuple_id = TupleId(self.types.len());
-        let t = Type::Tuple(tuple_id, vec![]);
-        self.types.insert((id, args), t);
+        let tuple_id = Some(TupleId(self.types.len()));
+        let mut t = Type::Tuple(tuple_id, vec![]);
 
         if let Some(variant) = self.find_largest_union_variant(variants, &bindings) {
+            self.types.insert((id, args.clone()), t);
+
             let mut fields = vec![self.tag_type()];
             for typ in variant {
                 fields.push(self.convert_type(&typ));
             }
 
-            let t = Type::Tuple(tuple_id, fields);
-            self.types.insert((id, args), t);
+            t = Type::Tuple(tuple_id, fields);
         }
 
+        self.types.insert((id, args), t.clone());
         t
     }
 
@@ -311,13 +315,15 @@ impl<'c> Context<'c> {
         assert!(info.args.len() == args.len(), "Kind error during monomorphisation");
 
         if let Some(typ) = self.types.get(&(id, args.clone())) {
-            return *typ;
+            return typ.clone();
         }
 
+        use crate::util::trustme;
         use types::TypeInfoBody::*;
         let typ = match &info.body {
-            Union(variants) => self.convert_union_type(id, info, variants, args),
-            Struct(fields) => self.convert_struct_type(id, info, fields, args),
+            // TODO: Need to split out self.types and self.cache parameters to be able to remove this
+            Union(variants) => trustme::make_mut_ref(self).convert_union_type(id, info, variants, args),
+            Struct(fields) => trustme::make_mut_ref(self).convert_struct_type(id, info, fields, args),
 
             // Aliases should be desugared prior to codegen
             Alias(_) => unreachable!(),
@@ -325,6 +331,17 @@ impl<'c> Context<'c> {
         };
 
         typ
+    }
+
+    fn empty_closure_environment(&self, environment: &types::Type) -> bool {
+        self.follow_bindings_shallow(environment).is_unit(&self.cache)
+    }
+
+    fn is_closure_type(&self, typ: &types::Type) -> bool {
+        match typ {
+            types::Type::Function(function) => !self.empty_closure_environment(&function.environment),
+            _ => false,
+        }
     }
 
     /// Monomorphise a types::Type into a hir::Type with no generics.
@@ -340,26 +357,23 @@ impl<'c> Context<'c> {
                     self.convert_type(typ).into()
                 });
 
-                let return_type = self.convert_type(&function.return_type);
-                let mut environment = None;
+                let return_type = Box::new(self.convert_type(&function.return_type));
 
-                if !self.empty_closure_environment(&function.environment) {
+                let environment = (!self.empty_closure_environment(&function.environment)).then(|| {
                     let environment_parameter = self.convert_type(&function.environment);
-                    parameters.push(environment_parameter.into());
-                    environment = Some(environment_parameter);
-                }
+                    parameters.push(environment_parameter.clone());
+                    environment_parameter
+                });
 
-                let function_pointer = return_type
-                    .fn_type(&parameters, function.is_varargs)
-                    .ptr_type(AddressSpace::Generic)
-                    .into();
+                let function = Type::Function(hir::types::FunctionType {
+                    parameters,
+                    return_type,
+                    is_varargs: function.is_varargs,
+                });
 
                 match environment {
-                    None => function_pointer,
-                    Some(environment) => self
-                        .context
-                        .struct_type(&[function_pointer, environment], false)
-                        .into(),
+                    None => function,
+                    Some(environment) => Type::Tuple(None, vec![function, environment]),
                 }
             },
 
@@ -457,8 +471,85 @@ impl<'c> Context<'c> {
         todo!()
     }
 
+    fn convert_builtin(&mut self, args: Vec<ast::Ast<'c>>) -> hir::Ast {
+        assert!(args.len() == 1);
+    
+        let arg = match args[0] {
+            ast::Ast::Literal(ast::Literal { kind: ast::LiteralKind::String(string), .. }) => string,
+            _ => unreachable!(),
+        };
+
+        use hir::Builtin::*;
+        hir::Ast::Builtin(match arg.as_ref() {
+            "AddInt" => AddInt,
+            "AddFloat" => AddFloat,
+    
+            "SubInt" => SubInt,
+            "SubFloat" => SubFloat,
+    
+            "MulInt" => MulInt,
+            "MulFloat" => MulFloat,
+    
+            "DivInt" => DivInt,
+            "DivFloat" => DivFloat,
+    
+            "ModInt" => ModInt,
+            "ModFloat" => ModFloat,
+    
+            "LessInt" => LessInt,
+            "LessFloat" => LessFloat,
+    
+            "GreaterInt" => GreaterInt,
+            "GreaterFloat" => GreaterFloat,
+    
+            "EqInt" => EqInt,
+            "EqFloat" => EqFloat,
+            "EqChar" => EqChar,
+            "EqBool" => EqBool,
+    
+            "sign_extend" => SignExtend,
+            "zero_extend" => ZeroExtend,
+    
+            "truncate" => Truncate,
+    
+            "deref" => Deref,
+            "offset" => Offset,
+            "transmute" => Transmute,
+    
+            _ => unreachable!("Unknown builtin '{}'", arg),
+        })
+    }
+
     fn monomorphise_call(&mut self, call: ast::FunctionCall<'c>) -> hir::Ast {
-        todo!()
+        match call.function.as_ref() {
+            ast::Ast::Variable(variable) if variable.definition == Some(BUILTIN_ID) => {
+                self.convert_builtin(call.args)
+            },
+            _ => {
+                // TODO: Code smell: args currently must be monomorphised before the function in case
+                // they contain polymorphic integer literals which still need to be defaulted
+                // to i32. This can happen if a top-level definition like `a = Some 2` is
+                // generalized.
+                let mut args = fmap(call.args, |arg| self.monomorphise(arg));
+                let function = self.monomorphise(*call.function);
+
+                let function_pointer = if function.is_struct_value() {
+                    args.push(generator.extract_field(function, 1, "environment").into());
+                    generator.extract_field(function, 0, "closure")
+                } else {
+                    function
+                }
+                .into_pointer_value();
+
+                let function = CallableValue::try_from(function_pointer).unwrap();
+                generator
+                    .builder
+                    .build_call(function, &args, "")
+                    .try_as_basic_value()
+                    .left()
+                    .unwrap()
+            },
+        }
     }
 
     fn monomorphise_definition(&mut self, definition: ast::Definition) -> hir::Ast {
@@ -492,10 +583,10 @@ impl<'c> Context<'c> {
         hir::Ast::Sequence(hir::Sequence { statements })
     }
 
-    fn monomorphise_extern(&mut self, extern_: ast::Extern) -> hir::Ast {
+    fn monomorphise_extern(&mut self, extern_: ast::Extern<'c>) -> hir::Ast {
         let declarations = fmap(extern_.declarations, |decl| {
             let pattern = self.monomorphise(*decl.lhs);
-            let typ = self.convert_type(decl.rhs);
+            let typ = self.convert_type(&decl.typ.unwrap());
             (pattern, typ)
         });
 

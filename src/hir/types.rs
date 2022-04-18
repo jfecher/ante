@@ -20,7 +20,7 @@ pub struct FunctionType {
     pub is_varargs: bool,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct TupleId(pub usize);
 
 /// A HIR type representation.
@@ -34,7 +34,7 @@ pub enum Type {
     Pointer(Box<Type>),
 
     /// Tuples have a TypeId to allow for struct recursion
-    Tuple(TupleId, Vec<Type>),
+    Tuple(Option<TupleId>, Vec<Type>),
 }
 
 impl PartialEq for Type {
