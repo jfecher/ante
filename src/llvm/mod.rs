@@ -26,7 +26,7 @@ use crate::parser::{ast, ast::Ast};
 use crate::types::traits::RequiredImpl;
 use crate::types::typechecker::{self, TypeBindings};
 use crate::types::typed::Typed;
-use crate::types::{self, TypeBinding, TypeInfoId, TypeVariableId, DEFAULT_INTEGER_TYPE};
+use crate::types::{self, TypeBinding, TypeVariableId, DEFAULT_INTEGER_TYPE};
 use crate::util::{fmap, timing, trustme, self};
 
 use inkwell::basic_block::BasicBlock;
@@ -436,7 +436,7 @@ impl<'g> Generator<'g> {
     ) -> BasicValueEnum<'g> {
         let mut value = match self.lookup(id, typ, cache) {
             Some(value) => value,
-            None => self.monomorphise(id, typ, cache).unwrap(),
+            None => self.monomorphise(id, typ, cache),
         };
 
         if self.auto_derefs.contains(&id) {
@@ -464,7 +464,7 @@ impl<'g> Generator<'g> {
     /// recurses into the definition node, popping the bindings when finished.
     fn monomorphise<'c>(
         &mut self, id: DefinitionInfoId, typ: &types::Type, cache: &mut ModuleCache<'c>,
-    ) -> Option<BasicValueEnum<'g>> {
+    ) -> BasicValueEnum<'g> {
         let definition = &mut cache.definition_infos[id.0];
         let definition = trustme::extend_lifetime(definition);
         let definition_type = remove_forall(definition.typ.as_ref().unwrap());
@@ -482,11 +482,11 @@ impl<'g> Generator<'g> {
         let value = match &definition.definition {
             Some(DefinitionKind::Definition(definition)) => {
                 self.codegen_monomorphise(*definition, cache);
-                self.lookup(id, &typ, cache)
+                self.lookup(id, &typ, cache).unwrap()
             },
-            Some(DefinitionKind::Extern(_)) => Some(self.codegen_extern(id, &typ, cache)),
+            Some(DefinitionKind::Extern(_)) => self.codegen_extern(id, &typ, cache),
             Some(DefinitionKind::TypeConstructor { name, tag }) => {
-                Some(self.codegen_type_constructor(name, tag, &typ, cache))
+                self.codegen_type_constructor(name, tag, &typ, cache)
             },
             Some(DefinitionKind::TraitDefinition(_)) => {
                 unreachable!(
@@ -767,7 +767,7 @@ impl<'g> Generator<'g> {
         use {ast::LiteralKind, Ast::*};
         match ast {
             Literal(literal) => {
-                assert!(literal.kind == LiteralKind::Unit)
+                assert_eq!(literal.kind, LiteralKind::Unit)
                 // pass, we don't need to actually do any assignment when ignoring unit values
             },
             Variable(variable) => {

@@ -910,8 +910,18 @@ fn bind_irrefutable_pattern<'c>(
             let args = fmap(&call.args, |_| next_type_variable(cache));
             let pair_type = Box::new(Type::UserDefined(PAIR_TYPE));
 
-            let pair_type = Type::TypeApplication(pair_type, args);
+            let pair_type = Type::TypeApplication(pair_type, args.clone());
             unify(typ, &pair_type, call.location, cache);
+
+            let function_type = Type::Function(FunctionType {
+                parameters: args,
+                return_type: Box::new(pair_type.clone()),
+                environment: Box::new(Type::Primitive(PrimitiveType::UnitType)),
+                is_varargs: false,
+            });
+
+            call.function.set_type(function_type);
+            call.set_type(pair_type.clone());
 
             match pair_type {
                 Type::TypeApplication(_, args) => {
@@ -1145,9 +1155,9 @@ impl<'a> Inferable<'a> for ast::Lambda<'a> {
             is_varargs: false,
         });
 
-        let typevars_in_fn = find_all_typevars(&typ, false, cache);
-        let exposed_traits = traitchecker::resolve_traits(traits.clone(), &typevars_in_fn, cache);
-        self.required_traits = exposed_traits;
+        // let typevars_in_fn = find_all_typevars(&typ, false, cache);
+        // let exposed_traits = traitchecker::resolve_traits(traits.clone(), &typevars_in_fn, cache);
+        // self.required_traits = exposed_traits;
 
         // TODO: should we return exposed traits instead?
         (typ, traits)
@@ -1230,7 +1240,15 @@ impl<'a> Inferable<'a> for ast::Definition<'a> {
         // Now infer the traits + type of the lhs
         let typevars_in_fn = find_all_typevars(self.pattern.get_type().unwrap(), false, cache);
         let exposed_traits = traitchecker::resolve_traits(traits, &typevars_in_fn, cache);
-        bind_irrefutable_pattern(self.pattern.as_mut(), &t, &exposed_traits, true, cache);
+
+        let should_generalize = matches!(self.expr.as_ref(), ast::Ast::Lambda(_));
+        bind_irrefutable_pattern(
+            self.pattern.as_mut(),
+            &t,
+            &exposed_traits,
+            should_generalize,
+            cache,
+        );
 
         // TODO: Can these operations on the LetBindingLevel be simplified?
         CURRENT_LEVEL.store(previous_level, Ordering::SeqCst);

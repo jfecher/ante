@@ -51,8 +51,8 @@ extern
 // feofb f = feof f as bool
 
 type Maybe t =
-   | Some t
    | None
+   | Some t
 
 type Result t e =
    | Ok t

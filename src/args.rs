@@ -45,6 +45,9 @@ pub struct Args {
     #[clap(long, help = "Print out the LLVM-IR or Cranelift IR of the compiled program")]
     pub show_ir: bool,
 
+    #[clap(long, help = "Print out the HIR, Ante's post-monomorphisation IR")]
+    pub show_hir: bool,
+
     #[clap(long, help = "Delete the resulting binary after compiling")]
     pub delete_binary: bool,
 

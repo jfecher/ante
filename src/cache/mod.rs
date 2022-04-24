@@ -442,3 +442,23 @@ impl<'a> ModuleCache<'a> {
         id
     }
 }
+
+macro_rules! impl_index_for {( $index_type:ty, $elem_type:tt, $field_name:tt ) => {
+    impl<'c> std::ops::Index<$index_type> for ModuleCache<'c> {
+        type Output = $elem_type<'c>;
+
+        fn index(&self, index: $index_type) -> &Self::Output {
+            &self.$field_name[index.0]
+        }
+    }
+
+    impl<'c> std::ops::IndexMut<$index_type> for ModuleCache<'c> {
+        fn index_mut(&mut self, index: $index_type) -> &mut Self::Output {
+            &mut self.$field_name[index.0]
+        }
+    }
+};}
+
+impl_index_for!(DefinitionInfoId, DefinitionInfo, definition_infos);
+impl_index_for!(TypeInfoId, TypeInfo, type_infos);
+impl_index_for!(TraitBindingId, TraitBinding, trait_bindings);
