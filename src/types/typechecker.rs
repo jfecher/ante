@@ -861,12 +861,10 @@ fn bind_irrefutable_pattern<'c>(
 
     match ast {
         Literal(literal) => match literal.kind {
-            LiteralKind::Unit => unify(
-                typ,
-                &Type::Primitive(PrimitiveType::UnitType),
-                ast.locate(),
-                cache,
-            ),
+            LiteralKind::Unit => {
+                literal.set_type(Type::Primitive(PrimitiveType::UnitType));
+                unify(typ, &Type::Primitive(PrimitiveType::UnitType), ast.locate(), cache);
+            }
             _ => error!(ast.locate(), "Pattern is not irrefutable"),
         },
         Variable(variable) => {

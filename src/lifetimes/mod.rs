@@ -16,6 +16,7 @@ pub type LifetimeVariableId = TypeVariableId;
 // 
 // struct StackFrameIndex(usize);
 
+#[allow(unused)]
 pub fn infer<'c>(_ast: &mut Ast<'c>, _cache: &mut ModuleCache<'c>) {
 
 }

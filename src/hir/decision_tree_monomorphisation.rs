@@ -73,24 +73,28 @@ impl<'c> Context<'c> {
     }
 
     fn monomorphise_case(&mut self, case: &Case, match_value: hir::DefinitionInfo) -> (u32, hir::DecisionTree) {
-        // fresh_id = reinterpret match_value as variant_type
-        let value = self.cast_to_variant_type(match_value, case);
-        let fresh_id = self.next_unique_id();
+        let tree = if case.fields.is_empty() {
+            self.monomorphise_tree(&case.branch)
+        } else {
+            // fresh_id = value = reinterpret match_value as variant_type
+            let value = self.cast_to_variant_type(match_value, case);
+            let fresh_id = self.next_unique_id();
+            let field_bindings = self.bind_patterns(fresh_id, case);
 
-        let field_bindings = self.bind_patterns(fresh_id, case);
+            let mut tree = self.monomorphise_tree(&case.branch);
 
-        let mut tree = self.monomorphise_tree(&case.branch);
+            for definition in field_bindings.into_iter().rev() {
+                tree = hir::DecisionTree::Definition(definition, Box::new(tree));
+            }
 
-        for definition in field_bindings {
-            tree = hir::DecisionTree::Definition(definition, Box::new(tree));
-        }
+            let cast_definition = hir::Definition {
+                variable: fresh_id,
+                expr: Box::new(value),
+                mutable: false,
+            };
 
-        let cast_definition = hir::Definition {
-            variable: fresh_id,
-            expr: Box::new(value),
-            mutable: false,
+            hir::DecisionTree::Definition(cast_definition, Box::new(tree))
         };
-        tree = hir::DecisionTree::Definition(cast_definition, Box::new(tree));
 
         let expected_tag_value = self.get_tag_value(case);
         (expected_tag_value as u32, tree)
@@ -101,7 +105,7 @@ impl<'c> Context<'c> {
 
         let mut tree = self.monomorphise_tree(&case.branch);
 
-        for definition in field_bindings {
+        for definition in field_bindings.into_iter().rev() {
             tree = hir::DecisionTree::Definition(definition, Box::new(tree));
         }
 
@@ -147,7 +151,7 @@ impl<'c> Context<'c> {
             VariantTag::UserDefined(id) => {
                 match &self.cache[*id].definition {
                     Some(DefinitionKind::TypeConstructor { tag: Some(tag), .. }) => *tag,
-                    _ => unreachable!(),
+                    _ => dbg!(0), //unreachable!(),
                 }
             },
         }
@@ -166,17 +170,17 @@ impl<'c> Context<'c> {
                 if function_type.is_some() {
                     fmap(case.fields.iter().enumerate(), |(i, field_aliases)| {
                         let field_index = start_index + i as u32;
-                        let variable: hir::Variable = variant.into();
+                        let variant_variable: hir::Variable = variant.into();
+                        let field_variable = self.next_unique_id();
 
                         for field_alias in field_aliases {
                             let field_type = self.follow_all_bindings(self.cache[*field_alias].typ.as_ref().unwrap());
-                            self.definitions.insert((*field_alias, field_type), variable.clone());
+                            self.definitions.insert((*field_alias, field_type), field_variable.into());
                         }
 
-                        let value = extract(variable.into(), field_index);
                         hir::Definition {
-                            variable: self.next_unique_id(),
-                            expr: Box::new(value),
+                            variable: field_variable,
+                            expr: Box::new(extract(variant_variable.into(), field_index)),
                             mutable: false,
                         }
                     })
@@ -185,6 +189,7 @@ impl<'c> Context<'c> {
                 }
             },
             None => {
+                assert!(case.fields.len() <= 1);
                 for field_aliases in &case.fields {
                     for field_alias in field_aliases {
                         let field_type = self.follow_all_bindings(self.cache[*field_alias].typ.as_ref().unwrap());
@@ -208,20 +213,22 @@ impl<'c> Context<'c> {
         match &case.tag {
             Some(VariantTag::UserDefined(id)) => {
                 let constructor = self.follow_all_bindings(self.cache[*id].typ.as_ref().unwrap());
-                if constructor.is_union_constructor(&self.cache) {
-                    let target_type = match self.convert_type(&constructor) {
-                        hir::types::Type::Function(f) => *f.return_type,
-                        other => other,
-                    };
+                let mut elems = Vec::with_capacity(case.fields.len() + 1);
 
-                    // TODO: Add padding to cast to smaller type in case some backends need it
-                    hir::Ast::ReinterpretCast(hir::ReinterpretCast {
-                        lhs: Box::new(value),
-                        target_type,
-                    })
-                } else {
-                    value
+                if constructor.is_union_constructor(&self.cache) {
+                    elems.push(Self::tag_type());
                 }
+
+                for field_aliases in &case.fields {
+                    let typ = self.cache[field_aliases[0]].typ.as_ref().unwrap().clone();
+                    elems.push(self.convert_type(&typ));
+                }
+
+                // TODO: Add padding to cast to smaller type in case some backends need it
+                hir::Ast::ReinterpretCast(hir::ReinterpretCast {
+                    lhs: Box::new(value),
+                    target_type: hir::Type::Tuple(None, elems),
+                })
             },
             _ => value,
         }

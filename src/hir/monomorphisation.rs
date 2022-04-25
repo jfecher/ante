@@ -295,7 +295,7 @@ impl<'c> Context<'c> {
     }
 
     /// Returns the type of a tag in an unoptimized tagged union
-    fn tag_type(&self) -> Type {
+    pub fn tag_type() -> Type {
         Type::Primitive(hir::types::PrimitiveType::IntegerType(IntegerKind::U8))
     }
 
@@ -311,7 +311,7 @@ impl<'c> Context<'c> {
         if let Some(variant) = self.find_largest_union_variant(variants, &bindings) {
             self.types.insert((id, args.clone()), t);
 
-            let mut fields = vec![self.tag_type()];
+            let mut fields = vec![Self::tag_type()];
             for typ in variant {
                 fields.push(self.convert_type(&typ));
             }
@@ -710,9 +710,7 @@ impl<'c> Context<'c> {
 
     fn monomorphise_type_constructor(&mut self, tag: &Option<u8>, typ: &types::Type) -> hir::Ast {
         use hir::types::Type::*;
-        print!("Converted {}", typ.display(&self.cache));
         let typ = self.convert_type(typ);
-        println!(" to {}", typ);
         match typ {
             Function(function_type) => {
                 let args = fmap(&function_type.parameters, |_| self.fresh_variable().into());
@@ -724,7 +722,7 @@ impl<'c> Context<'c> {
 
                 if let Some(tag) = tag {
                     tuple_args.push(tag_value(*tag));
-                    tuple_size += self.size_of_monomorphised_type(&self.tag_type());
+                    tuple_size += self.size_of_monomorphised_type(&Self::tag_type());
                 }
 
                 tuple_args.extend_from_slice(&args);
@@ -753,7 +751,7 @@ impl<'c> Context<'c> {
                     None => unit_literal(),
                     Some(tag) => {
                         let value = tag_value(*tag);
-                        let size = self.size_of_monomorphised_type(&self.tag_type());
+                        let size = self.size_of_monomorphised_type(&Self::tag_type());
                         self.make_reinterpret_cast(value, size, typ)
                     }
                 }

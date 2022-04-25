@@ -1,10 +1,10 @@
 use core::fmt;
 use std::collections::VecDeque;
-use std::{fmt::Formatter, collections::HashSet};
 use std::rc::Rc;
+use std::{collections::HashSet, fmt::Formatter};
 
-use crate::hir::Ast;
 use super::*;
+use crate::hir::Ast;
 
 #[derive(Default)]
 pub struct AstPrinter {
@@ -23,7 +23,7 @@ impl AstPrinter {
 
     fn newline(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "\n")?;
-        for _ in 0 .. self.indent_level {
+        for _ in 0..self.indent_level {
             write!(f, "    ")?;
         }
         Ok(())
@@ -70,7 +70,7 @@ impl FmtAst for Literal {
             },
             Literal::Float(x) => write!(f, "{}", f64::from_bits(*x)),
             Literal::CString(cstr) => write!(f, "\"{}\"", cstr),
-            Literal::Char(c) => write!(f, "{}", c),
+            Literal::Char(c) => write!(f, "'{}'", c),
             Literal::Bool(b) => write!(f, "{}", if *b { "true" } else { "false" }),
             Literal::Unit => write!(f, "()"),
         }
@@ -127,7 +127,7 @@ impl FmtAst for Definition {
         if self.mutable {
             write!(f, "mut ")?;
         }
-        self.expr.fmt_ast(printer, f)
+        printer.block(self.expr.as_ref(), f)
     }
 }
 
@@ -143,7 +143,7 @@ impl FmtAst for If {
             printer.block(otherwise.as_ref(), f)?;
         }
 
-        write!(f, "endif")
+        write!(f, " endif")
     }
 }
 
@@ -215,6 +215,7 @@ impl FmtAst for ReinterpretCast {
 
 impl FmtAst for Builtin {
     fn fmt_ast(&self, _printer: &mut AstPrinter, f: &mut Formatter) -> fmt::Result {
+        write!(f, "#")?;
         match self {
             Builtin::AddInt => write!(f, "AddInt"),
             Builtin::AddFloat => write!(f, "AddFloat"),
@@ -250,7 +251,7 @@ impl FmtAst for Match {
         for (i, branch) in self.branches.iter().enumerate() {
             printer.newline(f)?;
             write!(f, "branch {} -> ", i)?;
-            branch.fmt_ast(printer, f)?;
+            printer.block(branch, f)?;
         }
         Ok(())
     }
@@ -261,18 +262,24 @@ impl FmtAst for DecisionTree {
         match self {
             DecisionTree::Leaf(i) => write!(f, "goto branch {}", i),
             DecisionTree::Definition(def, tree) => {
-                printer.newline(f)?;
                 def.fmt_ast(printer, f)?;
                 printer.newline(f)?;
                 tree.fmt_ast(printer, f)
             },
-            DecisionTree::Switch { int_to_switch_on, cases, else_case } => {
+            DecisionTree::Switch {
+                int_to_switch_on,
+                cases,
+                else_case,
+            } => {
                 write!(f, "switch ")?;
                 int_to_switch_on.fmt_ast(printer, f)?;
                 for (tag, case) in cases {
                     printer.newline(f)?;
-                    write!(f, "tag {} -> ", tag)?;
-                    printer.block(case, f)?;
+                    write!(f, "case {}:", tag)?;
+                    printer.indent_level += 1;
+                    printer.newline(f)?;
+                    case.fmt_ast(printer, f)?;
+                    printer.indent_level -= 1;
                 }
                 if let Some(case) = else_case {
                     printer.newline(f)?;

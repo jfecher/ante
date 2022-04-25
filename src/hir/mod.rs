@@ -88,14 +88,6 @@ pub struct Definition {
     pub mutable: bool,
 }
 
-impl Definition {
-    fn immutable(variable: DefinitionId, expr: Ast) -> Definition {
-        Definition {
-            variable, expr: Box::new(expr), mutable: false,
-        }
-    }
-}
-
 impl From<Definition> for DefinitionInfo {
     fn from(def: Definition) -> Self {
         DefinitionInfo {
