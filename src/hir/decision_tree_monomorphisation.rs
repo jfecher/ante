@@ -2,7 +2,7 @@ use std::convert::TryInto;
 
 use crate::{types::pattern::{DecisionTree, Case, VariantTag}, parser::ast, cache::{DefinitionKind, DefinitionInfoId}, util::fmap};
 
-use super::monomorphisation::{Context, extract};
+use super::monomorphisation::{Context, extract, Definition};
 use crate::hir;
 
 impl<'c> Context<'c> {
@@ -47,7 +47,11 @@ impl<'c> Context<'c> {
 
     fn monomorphise_switch(&mut self, id_to_match_on: DefinitionInfoId, cases: &[Case]) -> hir::DecisionTree {
         let typ = self.cache[id_to_match_on].typ.as_ref().unwrap();
-        let value = self.lookup_definition(id_to_match_on, typ).unwrap();
+
+        let value = match self.lookup_definition(id_to_match_on, typ) {
+            Some(Definition::Normal(variable)) => variable,
+            _ => unreachable!(),
+        };
 
         if cases.len() == 1 {
             // If there's only 1 case we must be destructuring a struct, no need to check a tag

@@ -31,7 +31,7 @@ pub struct Context<'c> {
 
     /// Monomorphisation can result in what was 1 DefinitionInfoId being split into
     /// many different monomorphised variants, each represented by a unique hir::DefinitionId.
-    pub definitions: HashMap<(DefinitionInfoId, types::Type), hir::DefinitionInfo>,
+    pub definitions: HashMap<(DefinitionInfoId, types::Type), Definition>,
 
     types: HashMap<(types::TypeInfoId, Vec<types::Type>), Type>,
 
@@ -41,6 +41,32 @@ pub struct Context<'c> {
     impl_mappings: HashMap<VariableId, DefinitionInfoId>,
 
     next_id: usize,
+}
+
+#[derive(Debug, Clone)]
+pub enum Definition {
+    /// A Macro definition is one that should be substituted for its rhs
+    /// each time it is used. An example is non-function type constructors
+    /// like 'None'. If 'None' were a Normal definition it would be forced
+    /// to be a global variable to be shared across all funcitons, which 
+    /// would be less efficient than recreating the value 0 on each use.
+    Macro(hir::Ast),
+    Normal(hir::DefinitionInfo),
+}
+
+impl From<Definition> for hir::Ast {
+    fn from(def: Definition) -> Self {
+        match def {
+            Definition::Macro(ast) => ast,
+            Definition::Normal(def) => hir::Ast::Variable(def),
+        }
+    }
+}
+
+impl From<hir::DefinitionId> for Definition {
+    fn from(id: hir::DefinitionId) -> Self {
+        Definition::Normal(id.into())
+    }
 }
 
 impl<'c> Context<'c> {
@@ -511,18 +537,18 @@ impl<'c> Context<'c> {
         // variable refers to a trait function, or otherwise it is the regular definition of this variable.
         let id = self.get_definition_id(&variable);
 
-        let value = self.monomorphise_definition_id(id, variable.typ.as_ref().unwrap());
+        let definition = self.monomorphise_definition_id(id, variable.typ.as_ref().unwrap());
 
         self.remove_required_impls(&required_impls);
-        hir::Ast::Variable(value)
+        definition.into()
     }
 
-    pub fn lookup_definition(&self, id: DefinitionInfoId, typ: &types::Type) -> Option<hir::DefinitionInfo> {
+    pub fn lookup_definition(&self, id: DefinitionInfoId, typ: &types::Type) -> Option<Definition> {
         let typ = self.follow_all_bindings(typ);
         self.definitions.get(&(id, typ)).cloned()
     }
 
-    fn monomorphise_definition_id(&mut self, id: DefinitionInfoId, typ: &types::Type) -> hir::DefinitionInfo {
+    fn monomorphise_definition_id(&mut self, id: DefinitionInfoId, typ: &types::Type) -> Definition {
         if let Some(value) = self.lookup_definition(id, &typ) {
             return value;
         }
@@ -545,14 +571,14 @@ impl<'c> Context<'c> {
                 // Any recursive calls to this variable will refer to this binding
                 let definition_id = self.next_unique_id();
                 let info = hir::DefinitionInfo { definition: None, definition_id };
-                self.definitions.insert((id, typ), info);
+                self.definitions.insert((id, typ), Definition::Normal(info));
 
                 self.monomorphise_nonlocal_definition(definition, definition_id)
             },
             Some(DefinitionKind::Extern(_)) => self.make_extern(id, &typ),
             Some(DefinitionKind::TypeConstructor { tag, name: _ }) => {
                 let definition = self.monomorphise_type_constructor(tag, &typ);
-                self.define(definition, id, typ)
+                self.define_type_constructor(definition, id, typ)
             },
             Some(DefinitionKind::TraitDefinition(_)) => {
                 unreachable!("Cannot monomorphise from a TraitDefinition.\nNo cached impl for {} {}: {}", definition.name, id.0, typ.display(&self.cache))
@@ -572,7 +598,7 @@ impl<'c> Context<'c> {
 
     /// This function is 'make_extern' rathern than 'monomorphise_extern' since extern declarations
     /// shouldn't be monomorphised across multiple types.
-    fn make_extern(&mut self, id: DefinitionInfoId, typ: &types::Type) -> hir::DefinitionInfo {
+    fn make_extern(&mut self, id: DefinitionInfoId, typ: &types::Type) -> Definition {
         // extern definitions should only be declared once - never duplicated & monomorphised.
         // For this reason their value is always stored with the Unit type in the definitions map.
         if let Some(value) = self.lookup_definition(id, &UNBOUND_TYPE).clone() {
@@ -589,22 +615,28 @@ impl<'c> Context<'c> {
         let definition = self.make_definition(extern_, mutable);
 
         // Insert the global for both the current type and the unit type
+        let definition = Definition::Normal(definition);
         self.definitions.insert((id, typ.clone()), definition.clone());
         self.definitions.insert((id, UNBOUND_TYPE.clone()), definition.clone());
         definition
     }
 
     /// Wrap the given Ast in a new DefinitionInfo and store it
-    fn define(&mut self, definition_rhs: hir::Ast, original_id: DefinitionInfoId, typ: types::Type) -> hir::DefinitionInfo {
-        let definition = hir::Definition {
-            variable: self.next_unique_id(),
-            expr: Box::new(definition_rhs),
-            mutable: false,
+    fn define_type_constructor(&mut self, definition_rhs: hir::Ast, original_id: DefinitionInfoId, typ: types::Type) -> Definition {
+        let def = if matches!(&definition_rhs, hir::Ast::Lambda(_)) {
+            let definition = hir::Definition {
+                variable: self.next_unique_id(),
+                expr: Box::new(definition_rhs),
+                mutable: false,
+            };
+
+            Definition::Normal(hir::DefinitionInfo::from(definition))
+        } else {
+            Definition::Macro(definition_rhs)
         };
 
-        let info = hir::DefinitionInfo::from(definition);
-        self.definitions.insert((original_id, typ), info.clone());
-        info
+        self.definitions.insert((original_id, typ), def.clone());
+        def
     }
 
     fn fresh_variable(&mut self) -> hir::Variable {
@@ -636,7 +668,7 @@ impl<'c> Context<'c> {
     ///
     /// TODO: This may be a clone of monomorphise_definition now
     fn monomorphise_nonlocal_definition(&mut self, definition: &ast::Definition<'c>,
-        definition_id: hir::DefinitionId) -> hir::DefinitionInfo
+        definition_id: hir::DefinitionId) -> Definition
     {
         let value = self.monomorphise(&*definition.expr);
         let new_definition = hir::Ast::Definition(hir::Definition {
@@ -655,7 +687,8 @@ impl<'c> Context<'c> {
             hir::Ast::Sequence(hir::Sequence { statements: nested_definitions })
         };
 
-        hir::Variable { definition_id, definition: Some(Rc::new(definition)) }
+        let var = hir::Variable { definition_id, definition: Some(Rc::new(definition)) };
+        Definition::Normal(var)
     }
 
     /// Simplifies a pattern and expression like `(a, b) = foo ()`
@@ -670,7 +703,7 @@ impl<'c> Context<'c> {
     fn desugar_pattern(&mut self, pattern: &ast::Ast<'c>, definition_id: hir::DefinitionId,
         typ: types::Type, definitions: &mut Vec<hir::Ast>)
     {
-        use {ast::LiteralKind, ast::Ast::*};
+        use {ast::LiteralKind, ast::Ast::{ Literal, Variable, TypeAnnotation, FunctionCall }};
 
         // Sanity check the expected type exactly matches that of the actual pattern
         let pattern_type = pattern.get_type().unwrap();
@@ -683,7 +716,7 @@ impl<'c> Context<'c> {
                 let id = variable_pattern.definition.unwrap();
 
                 let variable = hir::Variable { definition_id, definition: None };
-                self.definitions.insert((id, typ), variable);
+                self.definitions.insert((id, typ), Definition::Normal(variable));
             },
             TypeAnnotation(annotation) => {
                 self.desugar_pattern(annotation.lhs.as_ref(), definition_id, typ, definitions)
@@ -844,7 +877,7 @@ impl<'c> Context<'c> {
             let param = self.fresh_variable();
             let typ = self.cache[*value].typ.as_ref().unwrap();
             let typ = self.follow_all_bindings(typ);
-            self.definitions.insert((*value, typ), param.clone());
+            self.definitions.insert((*value, typ), Definition::Normal(param.clone()));
 
             param.into()
         }));
@@ -867,7 +900,7 @@ impl<'c> Context<'c> {
             for key in lambda.closure_environment.keys() {
                 let typ = self.cache[*key].typ.as_ref().unwrap().clone();
                 let definition = self.monomorphise_definition_id(*key, &typ);
-                values.push(hir::Ast::Variable(definition));
+                values.push(definition.into());
             }
 
             self.tuple(values)

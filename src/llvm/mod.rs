@@ -432,7 +432,7 @@ impl<'g> Generator<'g> {
     fn tuple(
         &mut self, elements: Vec<BasicValueEnum<'g>>, element_types: Vec<BasicTypeEnum<'g>>,
     ) -> BasicValueEnum<'g> {
-        let tuple_type = self.context.struct_type(&element_types, false);
+        let tuple_type = self.context.struct_type(&element_types, true);
 
         // LLVM wants the const elements to be included in the struct literal itself.
         // Attempting to do build_insert_value would a const value will return the struct as-is
