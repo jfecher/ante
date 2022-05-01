@@ -84,9 +84,9 @@ pub struct ModuleCache<'a> {
     /// definitions within impls aren't publically exposed.
     pub impl_infos: Vec<ImplInfo<'a>>,
 
-    /// Maps ImplScopeId -> Vec<ImplInfo>
+    /// Maps ModuleId -> Vec<ImplInfo>
     /// Name resolution needs to store the impls visible to
-    /// each variable so when any UnknownTraitImpls are resolved
+    /// each variable so when impls are resolved
     /// during type inference the inferencer can quickly get the
     /// impls that should be in scope and select an instance.
     pub impl_scopes: Vec<Vec<ImplInfoId>>,
@@ -373,10 +373,9 @@ impl<'a> ModuleCache<'a> {
     }
 
     pub fn push_trait_definition(&mut self, name: String, typeargs: Vec<TypeVariableId>,
-                fundeps: Vec<TypeVariableId>, trait_node: Option<&'a mut TraitDefinition<'a>>,
-                location: Location<'a>) -> TraitInfoId
+        fundeps: Vec<TypeVariableId>, trait_node: Option<&'a mut TraitDefinition<'a>>,
+        location: Location<'a>) -> TraitInfoId
     {
-
         let id = self.trait_infos.len();
         self.trait_infos.push(TraitInfo {
             name,

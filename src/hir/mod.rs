@@ -12,13 +12,11 @@ mod monomorphisation;
 mod decision_tree_monomorphisation;
 mod printer;
 
-use std::rc::Rc;
-
 pub use monomorphisation::monomorphise;
-
-use types::{ Type, IntegerKind, FunctionType };
+pub use types::{ Type, TupleId, IntegerKind, FunctionType, PrimitiveType };
 
 use self::printer::FmtAst;
+use std::rc::Rc;
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct DefinitionId(usize);
@@ -66,7 +64,7 @@ impl From<DefinitionId> for Variable {
 /// Function definitions are also desugared to a ast::Definition with a ast::Lambda as its body
 #[derive(Debug, Clone)]
 pub struct Lambda {
-    pub args: Vec<Ast>,
+    pub args: Vec<Variable>,
     pub body: Box<Ast>,
     pub typ: FunctionType,
 }
@@ -270,3 +268,27 @@ impl std::fmt::Display for Ast {
         Ok(())
     }
 }
+
+macro_rules! dispatch_on_hir {
+    ( $expr_name:expr, $function:expr $(, $($args:expr),* )? ) => ({
+        match $expr_name {
+            $crate::hir::Ast::Literal(inner) =>         $function(inner $(, $($args),* )? ),
+            $crate::hir::Ast::Variable(inner) =>        $function(inner $(, $($args),* )? ),
+            $crate::hir::Ast::Lambda(inner) =>          $function(inner $(, $($args),* )? ),
+            $crate::hir::Ast::FunctionCall(inner) =>    $function(inner $(, $($args),* )? ),
+            $crate::hir::Ast::Definition(inner) =>      $function(inner $(, $($args),* )? ),
+            $crate::hir::Ast::If(inner) =>              $function(inner $(, $($args),* )? ),
+            $crate::hir::Ast::Match(inner) =>           $function(inner $(, $($args),* )? ),
+            $crate::hir::Ast::Return(inner) =>          $function(inner $(, $($args),* )? ),
+            $crate::hir::Ast::Sequence(inner) =>        $function(inner $(, $($args),* )? ),
+            $crate::hir::Ast::Extern(inner) =>          $function(inner $(, $($args),* )? ),
+            $crate::hir::Ast::Assignment(inner) =>      $function(inner $(, $($args),* )? ),
+            $crate::hir::Ast::MemberAccess(inner) =>    $function(inner $(, $($args),* )? ),
+            $crate::hir::Ast::Tuple(inner) =>           $function(inner $(, $($args),* )? ),
+            $crate::hir::Ast::ReinterpretCast(inner) => $function(inner $(, $($args),* )? ),
+            $crate::hir::Ast::Builtin(inner) =>         $function(inner $(, $($args),* )? ),
+        }
+    });
+}
+
+pub(crate) use dispatch_on_hir;

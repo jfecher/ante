@@ -27,7 +27,7 @@
 //!   `decision_tree: Option<DecisionTree>` for `ast::Match`s
 use crate::lexer::token::{ Token, IntegerKind };
 use crate::error::location::{ Location, Locatable };
-use crate::cache::{ DefinitionInfoId, TraitInfoId, ModuleId, ImplScopeId, TraitBindingId, VariableId };
+use crate::cache::{ DefinitionInfoId, TraitInfoId, ModuleId, TraitBindingId, VariableId, ImplScopeId };
 use crate::types::traits::RequiredTrait;
 use crate::types::{ self, TypeInfoId, LetBindingLevel };
 use crate::types::pattern::DecisionTree;
@@ -76,7 +76,8 @@ pub struct Variable<'a> {
     /// a given impl definition for static dispatch of traits.
     pub trait_binding: Option<TraitBindingId>,
 
-    /// The trait impls in scope. Used during trait resolution.
+    /// The module this Variable is contained in. Determines which
+    /// impls are visible to it during type inference.
     pub impl_scope: Option<ImplScopeId>,
 
     /// A unique ID that can be used to identify this variable node

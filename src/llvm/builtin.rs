@@ -7,69 +7,55 @@
 //! to get the corresponding builtin operation. Since these operations
 //! expect the llvm::Function to have a certain signature, the `builtin`
 //! function is prevented from being used outside the prelude.
+use crate::hir::Builtin;
 use crate::llvm::Generator;
-use crate::parser::ast::{ Ast, LiteralKind };
 
 use inkwell::values::{ BasicValue, BasicValueEnum, IntValue, FloatValue };
 use inkwell::{ IntPredicate, FloatPredicate };
 use inkwell::attributes::{ Attribute, AttributeLoc };
 
-pub fn call_builtin<'g, 'c>(args: &[Ast<'c>], generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
-    assert!(args.len() == 1);
-    
-    let arg = match &args[0] {
-        Ast::Literal(literal) => {
-            match &literal.kind {
-                LiteralKind::String(string) => string,
-                _ => unreachable!(),
-            }
-        },
-        _ => unreachable!(),
-    };
-
+pub fn call_builtin<'g, 'c>(builtin: &Builtin, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
     let current_function = generator.current_function();
     let always_inline = Attribute::get_named_enum_kind_id("alwaysinline");
     assert_ne!(always_inline, 0);
     let attribute = generator.context.create_enum_attribute(always_inline, 1);
     current_function.add_attribute(AttributeLoc::Function, attribute);
 
-    match arg.as_ref() {
-        "AddInt" => add_int(generator),
-        "AddFloat" => add_float(generator),
+    match builtin {
+        Builtin::AddInt => add_int(generator),
+        Builtin::AddFloat => add_float(generator),
 
-        "SubInt" => sub_int(generator),
-        "SubFloat" => sub_float(generator),
+        Builtin::SubInt => sub_int(generator),
+        Builtin::SubFloat => sub_float(generator),
 
-        "MulInt" => mul_int(generator),
-        "MulFloat" => mul_float(generator),
+        Builtin::MulInt => mul_int(generator),
+        Builtin::MulFloat => mul_float(generator),
 
-        "DivInt" => div_int(generator),
-        "DivFloat" => div_float(generator),
+        Builtin::DivInt => div_int(generator),
+        Builtin::DivFloat => div_float(generator),
 
-        "ModInt" => mod_int(generator),
-        "ModFloat" => mod_float(generator),
+        Builtin::ModInt => mod_int(generator),
+        Builtin::ModFloat => mod_float(generator),
 
-        "LessInt" => less_int(generator),
-        "LessFloat" => less_float(generator),
+        Builtin::LessInt => less_int(generator),
+        Builtin::LessFloat => less_float(generator),
 
-        "GreaterInt" => greater_int(generator),
-        "GreaterFloat" => greater_float(generator),
+        Builtin::GreaterInt => greater_int(generator),
+        Builtin::GreaterFloat => greater_float(generator),
 
-        "EqInt" => eq_int(generator),
-        "EqFloat" => eq_float(generator),
-        "EqChar" => eq_char(generator),
-        "EqBool" => eq_bool(generator),
+        Builtin::EqInt => eq_int(generator),
+        Builtin::EqFloat => eq_float(generator),
+        Builtin::EqChar => eq_char(generator),
+        Builtin::EqBool => eq_bool(generator),
 
-        "sign_extend" => sign_extend(generator),
-        "zero_extend" => zero_extend(generator),
+        Builtin::SignExtend => sign_extend(generator),
+        Builtin::ZeroExtend => zero_extend(generator),
 
-        "truncate" => truncate(generator),
+        Builtin::Truncate => truncate(generator),
 
-        "deref" => deref_ptr(generator),
-        "offset" => offset(generator),
-        "transmute" => transmute_value(generator),
-
-        _ => unreachable!("Unknown builtin '{}'", arg),
+        Builtin::Deref => deref_ptr(generator),
+        Builtin::Offset => offset(generator),
+        Builtin::Transmute => transmute_value(generator),
     }
 }
 

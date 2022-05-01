@@ -713,7 +713,7 @@ impl<'c> Context<'c> {
         let typ = self.convert_type(typ);
         match typ {
             Function(function_type) => {
-                let args = fmap(&function_type.parameters, |_| self.fresh_variable().into());
+                let args = fmap(&function_type.parameters, |_| self.fresh_variable());
 
                 let mut tuple_args = Vec::with_capacity(args.len() + 1);
                 let mut tuple_size = function_type.parameters.iter()
@@ -725,7 +725,7 @@ impl<'c> Context<'c> {
                     tuple_size += self.size_of_monomorphised_type(&Self::tag_type());
                 }
 
-                tuple_args.extend_from_slice(&args);
+                tuple_args.extend(args.iter().map(|arg| arg.clone().into()));
 
                 let tuple = hir::Ast::Tuple(hir::Tuple { fields: tuple_args });
 
@@ -837,8 +837,7 @@ impl<'c> Context<'c> {
             let typ = self.follow_all_bindings(arg.get_type().unwrap());
             let param = self.fresh_variable();
             self.desugar_pattern(arg, param.definition_id, typ, &mut body_prelude);
-
-            param.into()
+            param
         });
 
         args.extend(lambda.closure_environment.values().map(|value| {
