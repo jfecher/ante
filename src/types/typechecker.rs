@@ -356,21 +356,18 @@ pub fn instantiate<'b>(
 /// type inference to ensure all definitions in the trait impl are
 /// mapped to the same typevars, rather than each definition instantiated
 /// separately as is normal.
-fn instantiate_from_map<'b>(
-    s: &Type, typevars_to_replace: &HashMap<TypeVariableId, TypeVariableId>,
-    cache: &mut ModuleCache<'b>,
-) -> Type {
+fn instantiate_from_map<'b>(s: &Type, bindings: &mut TypeBindings, cache: &mut ModuleCache<'b>) -> Type {
     // Note that the returned type is no longer a PolyType,
     // this means it is now monomorphic and not forall-quantified
     match s {
         TypeVariable(id) => {
             if let Bound(typ) = &cache.type_bindings[id.0] {
-                instantiate_from_map(&typ.clone(), typevars_to_replace, cache)
+                instantiate_from_map(&typ.clone(), bindings, cache)
             } else {
                 TypeVariable(*id)
             }
         },
-        ForAll(_, typ) => replace_typevars(typ, typevars_to_replace, cache),
+        ForAll(_, typ) => replace_all_typevars_with_bindings(typ, bindings, cache),
         other => other.clone(),
     }
 }
@@ -991,14 +988,14 @@ fn infer_trait_definition<'c>(
 ///        type or parameter type that was incorrect.
 fn bind_irrefutable_pattern_in_impl<'a>(
     ast: &ast::Ast<'a>, trait_id: TraitInfoId,
-    typevars_to_replace: &HashMap<TypeVariableId, TypeVariableId>, cache: &mut ModuleCache<'a>,
+    bindings: &mut TypeBindings, cache: &mut ModuleCache<'a>,
 ) {
     use ast::Ast::*;
     match ast {
         Variable(variable) => {
             let name = variable.to_string();
             let trait_type = lookup_definition_type_in_trait(&name, trait_id, cache);
-            let trait_type = instantiate_from_map(&trait_type, typevars_to_replace, cache);
+            let trait_type = instantiate_from_map(&trait_type, bindings, cache);
 
             let definition_id = variable.definition.unwrap();
             let info = &mut cache.definition_infos[definition_id.0];
@@ -1008,7 +1005,7 @@ fn bind_irrefutable_pattern_in_impl<'a>(
             bind_irrefutable_pattern_in_impl(
                 annotation.lhs.as_ref(),
                 trait_id,
-                typevars_to_replace,
+                bindings,
                 cache,
             );
         },
@@ -1367,17 +1364,9 @@ impl<'a> Inferable<'a> for ast::TraitImpl<'a> {
         let mut typevars_to_replace = trait_info.typeargs.clone();
         typevars_to_replace.append(&mut trait_info.fundeps.clone());
 
-        let typevar_bindings = fmap(&typevars_to_replace, |_| next_type_variable_id(cache));
-
-        // Bind each impl type argument to the corresponding trait type variable
-        for (type_variable, binding) in typevar_bindings
-            .iter()
-            .copied()
-            .zip(self.trait_arg_types.iter())
-        {
-            // These bindings are all new type variables so this unification should never fail
-            unify(&TypeVariable(type_variable), binding, self.location, cache);
-        }
+        // Need to replace all typevars here so we do not rebind over them.
+        // E.g. an impl for `Cmp a given Int a` could be accidentally bound to `Cmp usz`
+        let (trait_arg_types, _) = replace_all_typevars(&self.trait_arg_types, cache);
 
         // Instantiate the typevars in the parent trait to bind their definition
         // types against the types in this trait impl. This needs to be done once
@@ -1386,18 +1375,15 @@ impl<'a> Inferable<'a> for ast::TraitImpl<'a> {
         //
         // This is because only these bindings in trait_to_impl are unified against
         // the types declared in self.typeargs
-        let mut trait_to_impl = HashMap::new();
-        for (trait_type_variable, impl_type_variable) in
-            typevars_to_replace.into_iter().zip(typevar_bindings)
-        {
-            trait_to_impl.insert(trait_type_variable, impl_type_variable);
-        }
+        let mut impl_bindings = typevars_to_replace.into_iter()
+            .zip(trait_arg_types)
+            .collect();
 
         for definition in self.definitions.iter_mut() {
             bind_irrefutable_pattern_in_impl(
                 definition.pattern.as_ref(),
                 self.trait_info.unwrap(),
-                &trait_to_impl,
+                &mut impl_bindings,
                 cache,
             );
 

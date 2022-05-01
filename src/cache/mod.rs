@@ -460,4 +460,20 @@ macro_rules! impl_index_for {( $index_type:ty, $elem_type:tt, $field_name:tt ) =
 
 impl_index_for!(DefinitionInfoId, DefinitionInfo, definition_infos);
 impl_index_for!(TypeInfoId, TypeInfo, type_infos);
+impl_index_for!(TraitInfoId, TraitInfo, trait_infos);
+impl_index_for!(ImplInfoId, ImplInfo, impl_infos);
 impl_index_for!(TraitBindingId, TraitBinding, trait_bindings);
+
+impl<'c> std::ops::Index<ImplScopeId> for ModuleCache<'c> {
+    type Output = Vec<ImplInfoId>;
+
+    fn index(&self, index: ImplScopeId) -> &Self::Output {
+        &self.impl_scopes[index.0]
+    }
+}
+
+impl<'c> std::ops::IndexMut<ImplScopeId> for ModuleCache<'c> {
+    fn index_mut(&mut self, index: ImplScopeId) -> &mut Self::Output {
+        &mut self.impl_scopes[index.0]
+    }
+}

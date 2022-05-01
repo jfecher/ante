@@ -1323,10 +1323,7 @@ impl<'c> Resolvable<'c> for ast::TraitImpl<'c> {
         let trait_id = match &self.trait_info {
             Some(id) => *id,
             None => {
-                error!(
-                    self.location,
-                    "Trait {} was not found in scope", self.trait_name
-                );
+                error!(self.location, "Trait {} was not found in scope", self.trait_name);
                 return;
             },
         };
