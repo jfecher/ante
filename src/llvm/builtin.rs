@@ -10,8 +10,9 @@
 use crate::hir::Builtin;
 use crate::llvm::Generator;
 
+use inkwell::types::BasicType;
 use inkwell::values::{ BasicValue, BasicValueEnum, IntValue, FloatValue };
-use inkwell::{ IntPredicate, FloatPredicate };
+use inkwell::{ IntPredicate, FloatPredicate, AddressSpace };
 use inkwell::attributes::{ Attribute, AttributeLoc };
 
 pub fn call_builtin<'g, 'c>(builtin: &Builtin, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
@@ -170,7 +171,9 @@ fn eq_bool<'g>(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
 
 fn deref_ptr<'g>(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
     let current_function = generator.current_function();
+    let ret = current_function.get_type().get_return_type().unwrap().ptr_type(AddressSpace::Generic);
     let ptr = current_function.get_nth_param(0).unwrap().into_pointer_value();
+    let ptr = generator.builder.build_pointer_cast(ptr, ret, "bitcast");
     generator.builder.build_load(ptr, "deref").as_basic_value_enum()
 }
 
@@ -189,7 +192,10 @@ fn transmute_value<'g>(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
     let current_function = generator.current_function();
     let x = current_function.get_nth_param(0).unwrap();
     let ret = current_function.get_type().get_return_type().unwrap();
-    generator.builder.build_bitcast(x, ret, "transmute")
+    let alloca = generator.builder.build_alloca(x.get_type(), "transmute");
+    generator.builder.build_store(alloca, x);
+    let casted = generator.builder.build_pointer_cast(alloca, ret.ptr_type(AddressSpace::Generic), "bitcast");
+    generator.builder.build_load(casted, "transmute_load")
 }
 
 fn sign_extend<'g>(generator: &mut Generator<'g>) -> BasicValueEnum<'g> {

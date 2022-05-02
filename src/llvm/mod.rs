@@ -19,7 +19,7 @@
 //! function which is called directly from `main`. This function sets up the
 //! Generator, walks the Ast, then optimizes and links the resulting Module.
 use crate::args::Args;
-use crate::hir::{ self, DefinitionId, TupleId };
+use crate::hir::{ self, DefinitionId };
 use crate::util::{fmap, timing, self};
 
 use inkwell::basic_block::BasicBlock;
@@ -55,9 +55,6 @@ pub struct Generator<'context> {
     /// Cache of already compiled definitions
     definitions: HashMap<DefinitionId, BasicValueEnum<'context>>,
 
-    /// Cache of mappings from types::Type to LLVM types
-    types: HashMap<TupleId, BasicTypeEnum<'context>>,
-
     /// Contains all the definition ids that should be automatically dereferenced because they're
     /// either stored locally in an alloca or in a global.
     auto_derefs: HashSet<DefinitionId>,
@@ -81,7 +78,6 @@ pub fn run(path: &Path, ast: hir::Ast, args: &Args) {
         module,
         builder: context.create_builder(),
         definitions: HashMap::new(),
-        types: HashMap::new(),
         auto_derefs: HashSet::new(),
         current_function_info: None,
     };
@@ -279,32 +275,20 @@ impl<'g> Generator<'g> {
             hir::Type::Primitive(p) => {
                 use hir::PrimitiveType;
                 match p {
-                    PrimitiveType::IntegerType(kind) => {
+                    PrimitiveType::Integer(kind) => {
                         self.context.custom_width_int_type(self.integer_bit_count(*kind)).into()
                     }
-                    PrimitiveType::FloatType => self.context.f64_type().into(),
-                    PrimitiveType::CharType => self.context.i8_type().into(),
-                    PrimitiveType::BooleanType => self.context.bool_type().into(),
-                    PrimitiveType::UnitType => self.context.bool_type().into(),
+                    PrimitiveType::Float => self.context.f64_type().into(),
+                    PrimitiveType::Char => self.context.i8_type().into(),
+                    PrimitiveType::Boolean => self.context.bool_type().into(),
+                    PrimitiveType::Unit => self.context.bool_type().into(),
+                    PrimitiveType::Pointer => self.context.i8_type().ptr_type(AddressSpace::Generic).into(),
                 }
             },
             hir::Type::Function(f) => self.convert_function_type(f).into(),
-            hir::Type::Pointer(elem) => {
-                self.convert_type(elem).ptr_type(AddressSpace::Generic).into()
-            },
-            hir::Type::Tuple(id, tuple) => {
-                if let Some(typ) = id.and_then(|id| self.types.get(&id)) {
-                    return *typ;
-                }
-
-                let typ = self.context.opaque_struct_type("");
-                if let Some(id) = id {
-                    self.types.insert(*id, typ.into());
-                }
-
+            hir::Type::Tuple(tuple) => {
                 let fields = fmap(tuple, |typ| self.convert_type(typ));
-                typ.set_body(&fields, true);
-                typ.into()
+                self.context.struct_type(&fields, true).into()
             },
         }
     }
@@ -537,11 +521,14 @@ impl<'g> CodeGen<'g> for hir::Literal {
 impl<'g> CodeGen<'g> for hir::Variable {
     fn codegen(
         &self, generator: &mut Generator<'g>,
-    ) -> BasicValueEnum<'g> {
+        ) -> BasicValueEnum<'g> {
         let mut value = match generator.definitions.get(&self.definition_id) {
             Some(definition) => *definition,
             None => {
-                self.definition.as_ref().unwrap().codegen(generator);
+                match self.definition.as_ref() {
+                    Some(ast) => ast.codegen(generator),
+                    None => unreachable!("Definition for {} not yet compiled", self.definition_id),
+                };
                 generator.definitions[&self.definition_id]
             }
         };

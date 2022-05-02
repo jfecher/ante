@@ -13,7 +13,7 @@ mod decision_tree_monomorphisation;
 mod printer;
 
 pub use monomorphisation::monomorphise;
-pub use types::{ Type, TupleId, IntegerKind, FunctionType, PrimitiveType };
+pub use types::{ Type, IntegerKind, FunctionType, PrimitiveType };
 
 use self::printer::FmtAst;
 use std::rc::Rc;
@@ -266,6 +266,12 @@ impl std::fmt::Display for Ast {
         }
 
         Ok(())
+    }
+}
+
+impl std::fmt::Display for DefinitionId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "v{}", self.0)
     }
 }
 

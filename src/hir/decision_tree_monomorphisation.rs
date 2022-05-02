@@ -120,11 +120,11 @@ impl<'c> Context<'c> {
         match typ {
             hir::types::Type::Primitive(p) => {
                 match p {
-                    hir::types::PrimitiveType::IntegerType(_) => value.into(),
+                    hir::types::PrimitiveType::Integer(_) => value.into(),
                     _ => unreachable!(),
                 }
             },
-            hir::types::Type::Tuple(_, _) => extract(value.into(), 0),
+            hir::types::Type::Tuple(_) => extract(value.into(), 0),
             _ => unreachable!(),
         }
     }
@@ -231,7 +231,7 @@ impl<'c> Context<'c> {
                 // TODO: Add padding to cast to smaller type in case some backends need it
                 hir::Ast::ReinterpretCast(hir::ReinterpretCast {
                     lhs: Box::new(value),
-                    target_type: hir::Type::Tuple(None, elems),
+                    target_type: hir::Type::Tuple(elems),
                 })
             },
             _ => value,

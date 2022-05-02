@@ -4,5 +4,5 @@
 match 3
 | x -> x
 
-// args: --run --delete-binary
+// args: --delete-binary
 // expected stdout:

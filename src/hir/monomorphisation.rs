@@ -11,7 +11,7 @@ use crate::types::typed::Typed;
 use crate::types::{ self, TypeVariableId, TypeInfoId };
 use crate::util::{fmap, trustme};
 
-use super::types::{IntegerKind, Type, TupleId};
+use super::types::{IntegerKind, Type};
 
 const DEFAULT_INTEGER_KIND: IntegerKind = IntegerKind::I32;
 
@@ -275,21 +275,20 @@ impl<'c> Context<'c> {
         Type::Primitive(match typ {
             IntegerType(kind) => {
                 let kind = self.convert_integer_kind(*kind);
-                hir::types::PrimitiveType::IntegerType(kind)
+                hir::types::PrimitiveType::Integer(kind)
             },
-            FloatType => hir::types::PrimitiveType::FloatType,
-            CharType => hir::types::PrimitiveType::CharType,
-            BooleanType => hir::types::PrimitiveType::BooleanType,
-            UnitType => hir::types::PrimitiveType::UnitType,
-            Ptr => unreachable!("Kind error during monomorphisation"),
+            FloatType => hir::types::PrimitiveType::Float,
+            CharType => hir::types::PrimitiveType::Char,
+            BooleanType => hir::types::PrimitiveType::Boolean,
+            UnitType => hir::types::PrimitiveType::Unit,
+            Ptr => hir::types::PrimitiveType::Pointer,
         })
     }
 
     fn convert_struct_type(&mut self, id: TypeInfoId, info: &types::TypeInfo, fields: &[types::Field<'c>], args: Vec<types::Type>) -> Type {
         let bindings = typechecker::type_application_bindings(info, &args);
 
-        let tuple_id = Some(TupleId(self.types.len()));
-        let t = Type::Tuple(tuple_id, vec![]);
+        let t = Type::Tuple(vec![]);
         self.types.insert((id, args.clone()), t);
 
         let fields = fmap(fields, |field| {
@@ -297,7 +296,7 @@ impl<'c> Context<'c> {
             self.convert_type(&field_type)
         });
 
-        let t = Type::Tuple(tuple_id, fields);
+        let t = Type::Tuple(fields);
         self.types.insert((id, args), t.clone());
         t
     }
@@ -322,7 +321,7 @@ impl<'c> Context<'c> {
 
     /// Returns the type of a tag in an unoptimized tagged union
     pub fn tag_type() -> Type {
-        Type::Primitive(hir::types::PrimitiveType::IntegerType(IntegerKind::U8))
+        Type::Primitive(hir::types::PrimitiveType::Integer(IntegerKind::U8))
     }
 
     fn convert_union_type(
@@ -331,8 +330,7 @@ impl<'c> Context<'c> {
     ) -> Type {
         let bindings = typechecker::type_application_bindings(info, &args);
 
-        let tuple_id = Some(TupleId(self.types.len()));
-        let mut t = Type::Tuple(tuple_id, vec![]);
+        let mut t = Type::Tuple(vec![]);
 
         if let Some(variant) = self.find_largest_union_variant(variants, &bindings) {
             self.types.insert((id, args.clone()), t);
@@ -342,7 +340,7 @@ impl<'c> Context<'c> {
                 fields.push(self.convert_type(&typ));
             }
 
-            t = Type::Tuple(tuple_id, fields);
+            t = Type::Tuple(fields);
         }
 
         self.types.insert((id, args), t.clone());
@@ -404,7 +402,7 @@ impl<'c> Context<'c> {
 
                 match environment {
                     None => function,
-                    Some(environment) => Type::Tuple(None, vec![function, environment]),
+                    Some(environment) => Type::Tuple(vec![function, environment]),
                 }
             },
 
@@ -419,11 +417,7 @@ impl<'c> Context<'c> {
                 let typ = self.follow_bindings_shallow(typ);
 
                 match typ {
-                    Primitive(Ptr) | Ref(_) => {
-                        assert_eq!(args.len(), 1);
-                        let elem = self.convert_type(&args[0]);
-                        Type::Pointer(Box::new(elem))
-                    },
+                    Primitive(Ptr) | Ref(_) => Type::Primitive(hir::PrimitiveType::Pointer),
                     UserDefined(id) => {
                         let id = *id;
                         self.convert_user_defined_type(id, args)
@@ -558,7 +552,7 @@ impl<'c> Context<'c> {
 
         let typ = self.follow_all_bindings(typ);
 
-        let bindings = typechecker::try_unify(&typ, definition_type, definition.location, &mut self.cache)
+        let bindings = typechecker::try_unify(&typ, &definition_type, definition.location, &mut self.cache)
             .map_err(|error| eprintln!("{}", error))
             .expect("Unification error during monomorphisation");
 
@@ -571,9 +565,11 @@ impl<'c> Context<'c> {
                 // Any recursive calls to this variable will refer to this binding
                 let definition_id = self.next_unique_id();
                 let info = hir::DefinitionInfo { definition: None, definition_id };
-                self.definitions.insert((id, typ), Definition::Normal(info));
+                self.definitions.insert((id, typ.clone()), Definition::Normal(info));
 
-                self.monomorphise_nonlocal_definition(definition, definition_id)
+                let def = self.monomorphise_nonlocal_definition(definition, definition_id);
+                self.definitions.insert((id, typ), def.clone());
+                def
             },
             Some(DefinitionKind::Extern(_)) => self.make_extern(id, &typ),
             Some(DefinitionKind::TypeConstructor { tag, name: _ }) => {
@@ -789,7 +785,7 @@ impl<'c> Context<'c> {
                     }
                 }
             },
-            Primitive(_) | Pointer(_) => unreachable!("Type constructor must be a Function or Tuple type: {}", typ),
+            Primitive(_) => unreachable!("Type constructor must be a Function or Tuple type: {}", typ),
         }
     }
 
@@ -831,7 +827,7 @@ impl<'c> Context<'c> {
         match typ {
             Type::Primitive(p) => {
                 match p {
-                    hir::types::PrimitiveType::IntegerType(kind) => {
+                    hir::types::PrimitiveType::Integer(kind) => {
                         use IntegerKind::*;
                         match kind {
                             I8 | U8 => 1,
@@ -841,26 +837,38 @@ impl<'c> Context<'c> {
                             Isz | Usz => Self::ptr_size() as u32,
                         }
                     },
-                    hir::types::PrimitiveType::FloatType => 8,
-                    hir::types::PrimitiveType::CharType => 1,
-                    hir::types::PrimitiveType::BooleanType => 1,
-                    hir::types::PrimitiveType::UnitType => 1, // TODO: this can depend on the backend
+                    hir::types::PrimitiveType::Float => 8,
+                    hir::types::PrimitiveType::Char => 1,
+                    hir::types::PrimitiveType::Boolean => 1,
+                    hir::types::PrimitiveType::Unit => 1, // TODO: this can depend on the backend
+                    hir::types::PrimitiveType::Pointer => Self::ptr_size() as u32,
                 }
             },
             Type::Function(_) => Self::ptr_size() as u32, // Closures would be represented as tuples
-            Type::Pointer(_) => Self::ptr_size() as u32,
-            Type::Tuple(_, fields) => {
+            Type::Tuple(fields) => {
                 fields.iter().map(|f| self.size_of_monomorphised_type(f)).sum()
             },
         }
     }
 
-    fn monomorphise_lambda(&mut self, lambda: &ast::Lambda<'c>) -> hir::Ast {
-        let typ = match self.convert_type(lambda.typ.as_ref().unwrap()) {
+    fn get_function_type(&mut self, typ: &types::Type) -> hir::FunctionType {
+        match self.convert_type(typ) {
             Type::Function(f) => f,
+            Type::Tuple(mut values) => { // Closure
+                assert!(values.len() >= 1);
+                match values.swap_remove(0) {
+                    Type::Function(f) => f,
+                    other => unreachable!("Lambda has a non-function type: {}", other),
+                }
+            },
             other => unreachable!("Lambda has a non-function type: {}", other),
-        };
+        }
+    }
 
+    fn monomorphise_lambda(&mut self, lambda: &ast::Lambda<'c>) -> hir::Ast {
+        let t = lambda.typ.as_ref().unwrap();
+        let t = self.follow_all_bindings(t);
+        let typ = self.get_function_type(&t);
         let mut body_prelude = vec![];
 
         // Bind each parameter node to the nth parameter of `function`

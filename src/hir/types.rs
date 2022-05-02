@@ -8,11 +8,12 @@ pub enum IntegerKind {
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum PrimitiveType {
-    IntegerType(IntegerKind), // : *
-    FloatType,                // : *
-    CharType,                 // : *
-    BooleanType,              // : *
-    UnitType,                 // : *
+    Integer(IntegerKind),
+    Float,
+    Char,
+    Boolean,
+    Unit,
+    Pointer, // An opaque pointer type
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -22,21 +23,17 @@ pub struct FunctionType {
     pub is_varargs: bool,
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct TupleId(pub usize);
-
 /// A HIR type representation.
 /// Removes all references to generics and user-defined types.
 /// Union variants are also absent, being represented by a struct
 /// value and a cast to a different struct type of the largest variant.
-#[derive(Debug, Clone, Eq, Ord, PartialOrd, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Ord, PartialOrd, Hash)]
 pub enum Type {
     Primitive(PrimitiveType),
     Function(FunctionType),
-    Pointer(Box<Type>),
 
     /// Tuples have a TypeId to allow for struct recursion
-    Tuple(Option<TupleId>, Vec<Type>),
+    Tuple(Vec<Type>),
 }
 
 impl Type {
@@ -48,35 +45,23 @@ impl Type {
     }
 }
 
-impl PartialEq for Type {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Primitive(l), Self::Primitive(r)) => l == r,
-            (Self::Function(l), Self::Function(r)) => l == r,
-            (Self::Pointer(l), Self::Pointer(r)) => l == r,
-            (Self::Tuple(l_id, _), Self::Tuple(r_id, _)) => l_id == r_id,
-            _ => false,
-        }
-    }
-}
-
 impl std::fmt::Display for Type {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Type::Primitive(p) => {
                 match p {
-                    PrimitiveType::IntegerType(kind) => kind.fmt(f),
-                    PrimitiveType::FloatType => write!(f, "float"),
-                    PrimitiveType::CharType => write!(f, "char"),
-                    PrimitiveType::BooleanType => write!(f, "bool"),
-                    PrimitiveType::UnitType => write!(f, "unit"),
+                    PrimitiveType::Integer(kind) => kind.fmt(f),
+                    PrimitiveType::Float => write!(f, "float"),
+                    PrimitiveType::Char => write!(f, "char"),
+                    PrimitiveType::Boolean => write!(f, "bool"),
+                    PrimitiveType::Unit => write!(f, "unit"),
+                    PrimitiveType::Pointer => write!(f, "ptr"),
                 }
             },
-            Type::Function(function) => function.fmt(f),
-            Type::Pointer(_elem) => write!(f, "(Ptr _)"),
-            Type::Tuple(_, elems) => {
+            Type::Function(function) => write!(f, "({})", function),
+            Type::Tuple(elems) => {
                 let elems = fmap(elems, ToString::to_string);
-                write!(f, "{{ {} }}", elems.join(", "))
+                write!(f, "{{{}}}", elems.join(", "))
             },
         }
     }

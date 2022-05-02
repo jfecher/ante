@@ -173,17 +173,6 @@ fn os_agnostic_display_path(path: &Path) -> ColoredString {
         }
     }
 
-    // An arbitrary length to start truncating filenames at.
-    // Chosen to match a good length for the default prelude path.
-    let arbitrary_big_len = 26;
-
-    if ret.len() > arbitrary_big_len {
-        let cutoff = ret.len() - arbitrary_big_len + 3;
-        let mut shortened = "...".to_owned();
-        shortened += &ret[cutoff ..];
-        ret = shortened;
-    }
-
     if COLORED_OUTPUT.load(SeqCst) {
         ret.italic()
     } else {

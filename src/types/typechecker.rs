@@ -1359,6 +1359,10 @@ impl<'a> Inferable<'a> for ast::TraitDefinition<'a> {
 
 impl<'a> Inferable<'a> for ast::TraitImpl<'a> {
     fn infer_impl(&mut self, cache: &mut ModuleCache<'a>) -> (Type, TraitConstraints) {
+        if self.typ.is_some() {
+            return (Type::Primitive(PrimitiveType::UnitType), vec![]);
+        }
+
         let trait_info = &cache.trait_infos[self.trait_info.unwrap().0];
 
         let mut typevars_to_replace = trait_info.typeargs.clone();
