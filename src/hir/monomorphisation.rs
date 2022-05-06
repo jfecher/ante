@@ -947,22 +947,31 @@ impl<'c> Context<'c> {
                 // they contain polymorphic integer literals which still need to be defaulted
                 // to i32. This can happen if a top-level definition like `a = Some 2` is
                 // generalized.
-                let args = fmap(&call.args, |arg| self.monomorphise(arg));
+                let mut args = fmap(&call.args, |arg| self.monomorphise(arg));
                 let function = self.monomorphise(&call.function);
 
                 // We could use a new convert_type_shallow here in the future since all we need
                 // is to check if it is a tuple type or not
                 let function_type = self.convert_type(call.function.get_type().unwrap());
 
-                let function = if matches!(function_type, Type::Tuple(..)) {
+                if matches!(function_type, Type::Tuple(..)) {
                     // Extract the function from the closure
-                    hir::Ast::MemberAccess(hir::MemberAccess { lhs: Box::new(function), member_index: 0 })
-                } else {
-                    function
-                };
+                    let (function_definition, id) = self.fresh_definition(function, false);
+                    let function_variable = id.to_variable();
+                    let function = Box::new(extract(function_variable.clone(), 0));
+                    let environment = extract(function_variable, 1);
+                    args.push(environment);
 
-                let function = Box::new(function);
-                hir::Ast::FunctionCall(hir::FunctionCall { function, args })
+                    hir::Ast::Sequence(hir::Sequence {
+                        statements: vec![
+                            function_definition,
+                            hir::Ast::FunctionCall(hir::FunctionCall { function, args }),
+                        ],
+                    })
+                } else {
+                    let function = Box::new(function);
+                    hir::Ast::FunctionCall(hir::FunctionCall { function, args })
+                }
             },
         }
     }

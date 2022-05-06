@@ -60,6 +60,12 @@ impl From<DefinitionId> for Variable {
     }
 }
 
+impl DefinitionId {
+    fn to_variable(self) -> Ast {
+        Ast::Variable(self.into())
+    }
+}
+
 /// \a b. expr
 /// Function definitions are also desugared to a ast::Definition with a ast::Lambda as its body
 #[derive(Debug, Clone)]
