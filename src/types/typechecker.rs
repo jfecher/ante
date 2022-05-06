@@ -1099,7 +1099,7 @@ impl<'a> Inferable<'a> for ast::Definition<'a> {
         let typevars_in_fn = find_all_typevars(self.pattern.get_type().unwrap(), false, cache);
         let exposed_traits = traitchecker::resolve_traits(traits, &typevars_in_fn, cache);
 
-        let should_generalize = matches!(self.expr.as_ref(), ast::Ast::Lambda(_));
+        let should_generalize = matches!(self.expr.as_ref(), ast::Ast::Lambda(_) | ast::Ast::Variable(_));
         bind_irrefutable_pattern(self.pattern.as_mut(), &t, &exposed_traits, should_generalize, cache);
 
         // TODO: Can these operations on the LetBindingLevel be simplified?

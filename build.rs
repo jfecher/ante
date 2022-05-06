@@ -9,7 +9,7 @@ fn rerun_if_stdlib_changes(directory: &Path) {
             rerun_if_stdlib_changes(&path);
         } else {
             // Tell Cargo that if the given file changes, to rerun this build script.
-            println!("cargo:rerun-if-changed='{}'", path.to_string_lossy());
+            println!("cargo:rerun-if-changed={}", path.to_string_lossy());
         }
     }
 }
