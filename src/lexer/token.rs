@@ -7,8 +7,8 @@
 //! the lexing phase of the compiler. The resulting tokens are then
 //! fed into the parser to verify the program's grammar and create
 //! an abstract syntax tree.
-use std::fmt::{ self, Display };
 use crate::types::TypeVariableId;
+use std::fmt::{self, Display};
 
 /// Lexing can fail with these errors, though the Lexer just
 /// returns the LexerError inside of an Invalid token which
@@ -22,7 +22,7 @@ pub enum LexerError {
     InvalidEscapeSequence(char),
     InvalidIntegerSuffx,
     IndentChangeTooSmall, // All indentation changes must be >= 2 spaces in size difference relative to the previous level
-    UnindentToNewLevel, // Unindented to a new indent level rather than returning to a previous one
+    UnindentToNewLevel,   // Unindented to a new indent level rather than returning to a previous one
     Expected(char),
     UnknownChar(char),
 }
@@ -45,8 +45,16 @@ pub enum IntegerKind {
     /// to be generic over any of the below integer types
     Inferred(TypeVariableId),
 
-    I8, I16, I32, I64, Isz,
-    U8, U16, U32, U64, Usz,
+    I8,
+    I16,
+    I32,
+    I64,
+    Isz,
+    U8,
+    U16,
+    U32,
+    U64,
+    Usz,
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -145,14 +153,32 @@ pub enum Token {
 impl Token {
     pub fn is_overloadable_operator(&self) -> bool {
         use Token::*;
-        matches!(self,
-            And | As | At | In | Is | Isnt |
-            Not | Or | EqualEqual | NotEqual |
-            ApplyLeft | ApplyRight | Append |
-            Index | Modulus | Multiply | Comma |
-            Subtract | Add | LessThan | GreaterThan |
-            LessThanOrEqual | GreaterThanOrEqual |
-            Divide | Ampersand
+        matches!(
+            self,
+            And | As
+                | At
+                | In
+                | Is
+                | Isnt
+                | Not
+                | Or
+                | EqualEqual
+                | NotEqual
+                | ApplyLeft
+                | ApplyRight
+                | Append
+                | Index
+                | Modulus
+                | Multiply
+                | Comma
+                | Subtract
+                | Add
+                | LessThan
+                | GreaterThan
+                | LessThanOrEqual
+                | GreaterThanOrEqual
+                | Divide
+                | Ampersand
         )
     }
 }

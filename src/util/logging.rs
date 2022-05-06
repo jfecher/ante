@@ -24,7 +24,8 @@ impl Logger {
     /// indented more than the logs outside of it. Useful for tracing control
     /// flow for recursive functions.
     pub fn block<F, T>(self, f: F) -> T
-        where F: FnOnce() -> T
+    where
+        F: FnOnce() -> T,
     {
         LOG_LEVEL.fetch_add(2, SeqCst);
         let result = f();

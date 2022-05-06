@@ -3,20 +3,13 @@ use clap::Parser;
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 pub struct Args {
-    #[clap(
-        long,
-        default_value = "args:",
-        help = "The program to run for each test file"
-    )]
+    #[clap(long, default_value = "args:", help = "The program to run for each test file")]
     pub args_prefix: String,
 
     #[clap(help = "The file to compile")]
     pub file: String,
 
-    #[clap(
-        long,
-        help = "Print out the input file annotated with inferred lifetimes of heap allocations"
-    )]
+    #[clap(long, help = "Print out the input file annotated with inferred lifetimes of heap allocations")]
     pub show_lifetimes: bool,
 
     #[clap(long, help = "Lex the file and output the resulting list of tokens")]

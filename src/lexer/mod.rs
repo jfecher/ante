@@ -5,7 +5,7 @@
 //! a stream of characters into a Vec<Token> that can then be fed
 //! into the parser. Ante's lexer is somewhat more complex than other
 //! language's lexers since it must also handle whitespace sensitivity.
-//! 
+//!
 //! Aside from whitespace sensitivity, ante's lexer is fairly standard.
 //! It implements `Iterator<Item = (Token, Location)>` and on each step
 //! continues in the input until it can return the next full word, number,
@@ -38,11 +38,11 @@
 //!       is how expressions can be continued in ante despite most ending on a Newline.
 pub mod token;
 
-use std::str::Chars;
-use std::path::Path;
+use crate::error::location::{EndPosition, Locatable, Location, Position};
 use std::collections::HashMap;
-use token::{ Token, LexerError, IntegerKind };
-use crate::error::location::{ Position, EndPosition, Location, Locatable };
+use std::path::Path;
+use std::str::Chars;
+use token::{IntegerKind, LexerError, Token};
 
 #[derive(Clone)]
 pub struct Lexer<'cache, 'contents> {
@@ -111,10 +111,8 @@ impl<'cache, 'contents> Lexer<'cache, 'contents> {
             ("unit", Token::UnitType),
             ("ref", Token::Ref),
             ("mut", Token::Mut),
-
             ("true", Token::BooleanLiteral(true)),
             ("false", Token::BooleanLiteral(false)),
-
             ("and", Token::And),
             ("as", Token::As),
             ("block", Token::Block),
@@ -142,7 +140,9 @@ impl<'cache, 'contents> Lexer<'cache, 'contents> {
             ("type", Token::Type),
             ("while", Token::While),
             ("with", Token::With),
-        ].into_iter().collect()
+        ]
+        .into_iter()
+        .collect()
     }
 
     pub fn new(filename: &'cache Path, file_contents: &'contents str) -> Lexer<'cache, 'contents> {
@@ -166,18 +166,19 @@ impl<'cache, 'contents> Lexer<'cache, 'contents> {
     }
 
     fn should_expect_indent_after_token(token: &Token) -> bool {
-        matches!(token,
+        matches!(
+            token,
             Token::Block
-            | Token::Do
-            | Token::Else
-            | Token::Extern
-            | Token::If
-            | Token::Match
-            | Token::Then
-            | Token::While
-            | Token::With
-            | Token::Equal
-            | Token::RightArrow
+                | Token::Do
+                | Token::Else
+                | Token::Extern
+                | Token::If
+                | Token::Match
+                | Token::Then
+                | Token::While
+                | Token::With
+                | Token::Equal
+                | Token::RightArrow
         )
     }
 
@@ -204,7 +205,7 @@ impl<'cache, 'contents> Lexer<'cache, 'contents> {
     }
 
     fn get_slice_containing_current_token(&self) -> &'contents str {
-        &self.file_contents[self.token_start_position.index .. self.current_position.index]
+        &self.file_contents[self.token_start_position.index..self.current_position.index]
     }
 
     fn expect(&mut self, expected: char, token: Token) -> IterElem<'cache> {
@@ -216,7 +217,8 @@ impl<'cache, 'contents> Lexer<'cache, 'contents> {
     }
 
     fn advance_while<F>(&mut self, mut f: F) -> &'contents str
-        where F: FnMut(char, char) -> bool
+    where
+        F: FnMut(char, char) -> bool,
     {
         while f(self.current, self.next) && !self.at_end_of_input() {
             self.advance();
@@ -232,7 +234,7 @@ impl<'cache, 'contents> Lexer<'cache, 'contents> {
         }
 
         let end = self.current_position.index;
-        self.file_contents[start .. end].replace('_', "")
+        self.file_contents[start..end].replace('_', "")
     }
 
     fn lex_integer_suffix(&mut self) -> Result<IntegerKind, Token> {
@@ -241,10 +243,10 @@ impl<'cache, 'contents> Lexer<'cache, 'contents> {
             self.advance();
         }
 
-        let word = &self.file_contents[start .. self.current_position.index];
+        let word = &self.file_contents[start..self.current_position.index];
         match word {
-            "i8" =>  Ok(IntegerKind::I8),
-            "u8" =>  Ok(IntegerKind::U8),
+            "i8" => Ok(IntegerKind::I8),
+            "u8" => Ok(IntegerKind::U8),
             "i16" => Ok(IntegerKind::I16),
             "u16" => Ok(IntegerKind::U16),
             "i32" => Ok(IntegerKind::I32),
@@ -282,14 +284,17 @@ impl<'cache, 'contents> Lexer<'cache, 'contents> {
 
         if self.current.is_numeric() {
             self.lex_number().map(|(token, location)| {
-                (match token {
-                    Token::IntegerLiteral(x, kind) => {
-                        let x = format!("-{}", x).parse::<i64>().unwrap();
-                        Token::IntegerLiteral(x as u64, kind)
-                    }
-                    Token::FloatLiteral(x) => Token::FloatLiteral(-x),
-                    _ => unreachable!(),
-                }, location)
+                (
+                    match token {
+                        Token::IntegerLiteral(x, kind) => {
+                            let x = format!("-{}", x).parse::<i64>().unwrap();
+                            Token::IntegerLiteral(x as u64, kind)
+                        },
+                        Token::FloatLiteral(x) => Token::FloatLiteral(-x),
+                        _ => unreachable!(),
+                    },
+                    location,
+                )
             })
         } else {
             Some((Token::Subtract, self.locate()))
@@ -305,7 +310,7 @@ impl<'cache, 'contents> Lexer<'cache, 'contents> {
             Some(keyword) => {
                 self.previous_token_expects_indent = Lexer::should_expect_indent_after_token(keyword);
                 Some((keyword.clone(), location))
-            }
+            },
             None if is_type => Some((Token::TypeName(word.to_owned()), location)),
             None => Some((Token::Identifier(word.to_owned()), location)),
         }
@@ -350,7 +355,7 @@ impl<'cache, 'contents> Lexer<'cache, 'contents> {
                 _ => {
                     let error = LexerError::InvalidEscapeSequence(self.current);
                     return self.advance2_with(Token::Invalid(error));
-                }
+                },
             }
         } else {
             self.current
@@ -493,10 +498,22 @@ impl<'cache, 'contents> Iterator for Lexer<'cache, 'contents> {
             ('/', '*') => self.lex_multiline_comment(),
             ('=', '=') => self.advance2_with(Token::EqualEqual),
             ('.', '.') => self.advance2_with(Token::Range),
-            (':', '=') => { self.previous_token_expects_indent = true; self.advance2_with(Token::Assignment) },
-            ('=', _) => {   self.previous_token_expects_indent = true; self.advance_with(Token::Equal) },
-            ('-', '>') => { self.previous_token_expects_indent = true; self.advance2_with(Token::RightArrow) },
-            ('.', _) => {   self.previous_token_expects_indent = true; self.advance_with(Token::MemberAccess) },
+            (':', '=') => {
+                self.previous_token_expects_indent = true;
+                self.advance2_with(Token::Assignment)
+            },
+            ('=', _) => {
+                self.previous_token_expects_indent = true;
+                self.advance_with(Token::Equal)
+            },
+            ('-', '>') => {
+                self.previous_token_expects_indent = true;
+                self.advance2_with(Token::RightArrow)
+            },
+            ('.', _) => {
+                self.previous_token_expects_indent = true;
+                self.advance_with(Token::MemberAccess)
+            },
             ('-', _) => self.lex_negative(),
             ('!', '=') => self.advance2_with(Token::NotEqual),
             ('<', '|') => self.advance2_with(Token::ApplyLeft),

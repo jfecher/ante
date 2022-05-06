@@ -1,8 +1,13 @@
 use std::convert::TryInto;
 
-use crate::{types::pattern::{DecisionTree, Case, VariantTag}, parser::ast, cache::{DefinitionKind, DefinitionInfoId}, util::fmap};
+use crate::{
+    cache::{DefinitionInfoId, DefinitionKind},
+    parser::ast,
+    types::pattern::{Case, DecisionTree, VariantTag},
+    util::fmap,
+};
 
-use super::monomorphisation::{Context, extract, Definition};
+use super::monomorphisation::{extract, Context, Definition};
 use crate::hir;
 
 impl<'c> Context<'c> {
@@ -12,13 +17,7 @@ impl<'c> Context<'c> {
         let branches = fmap(&match_.branches, |branch| self.monomorphise(&branch.1));
 
         hir::Ast::Sequence(hir::Sequence {
-            statements: vec![
-                match_prelude,
-                hir::Ast::Match(hir::Match {
-                    branches,
-                    decision_tree,
-                }),
-            ],
+            statements: vec![match_prelude, hir::Ast::Match(hir::Match { branches, decision_tree })],
         })
     }
 
@@ -41,7 +40,9 @@ impl<'c> Context<'c> {
         match tree {
             DecisionTree::Leaf(index) => hir::DecisionTree::Leaf(*index),
             DecisionTree::Switch(id_to_match_on, cases) => self.monomorphise_switch(*id_to_match_on, cases),
-            DecisionTree::Fail => unreachable!("Patterns should be verified to be complete before monomorphisation"),
+            DecisionTree::Fail => {
+                unreachable!("Patterns should be verified to be complete before monomorphisation")
+            },
         }
     }
 
@@ -63,16 +64,11 @@ impl<'c> Context<'c> {
             let monomorphised_type = self.convert_type(&typ);
 
             let cases = fmap(cases, |case| self.monomorphise_case(case, value.clone()));
-            let else_case = match_all_case.map(|case| {
-                Box::new(self.monomorphise_case_no_tag_value(case, value.definition_id))
-            });
+            let else_case =
+                match_all_case.map(|case| Box::new(self.monomorphise_case_no_tag_value(case, value.definition_id)));
 
             let tag = self.extract_tag(value, &monomorphised_type);
-            hir::DecisionTree::Switch {
-                int_to_switch_on: Box::new(tag),
-                cases,
-                else_case,
-            }
+            hir::DecisionTree::Switch { int_to_switch_on: Box::new(tag), cases, else_case }
         }
     }
 
@@ -91,11 +87,7 @@ impl<'c> Context<'c> {
                 tree = hir::DecisionTree::Definition(definition, Box::new(tree));
             }
 
-            let cast_definition = hir::Definition {
-                variable: fresh_id,
-                expr: Box::new(value),
-                mutable: false,
-            };
+            let cast_definition = hir::Definition { variable: fresh_id, expr: Box::new(value), mutable: false };
 
             hir::DecisionTree::Definition(cast_definition, Box::new(tree))
         };
@@ -118,11 +110,9 @@ impl<'c> Context<'c> {
 
     fn extract_tag(&mut self, value: hir::DefinitionInfo, typ: &hir::Type) -> hir::Ast {
         match typ {
-            hir::types::Type::Primitive(p) => {
-                match p {
-                    hir::types::PrimitiveType::Integer(_) => value.into(),
-                    _ => unreachable!(),
-                }
+            hir::types::Type::Primitive(p) => match p {
+                hir::types::PrimitiveType::Integer(_) => value.into(),
+                _ => unreachable!(),
             },
             hir::types::Type::Tuple(_) => extract(value.into(), 0),
             _ => unreachable!(),
@@ -133,7 +123,7 @@ impl<'c> Context<'c> {
     fn split_cases<'a>(&self, cases: &'a [Case]) -> (&'a [Case], Option<&'a Case>) {
         let last = cases.last().unwrap();
         if last.tag == None {
-            (&cases[0 .. cases.len() - 1], Some(last))
+            (&cases[0..cases.len() - 1], Some(last))
         } else {
             (cases, None)
         }
@@ -204,11 +194,8 @@ impl<'c> Context<'c> {
                 // need to create any new Extract instructions to do so, so there is
                 // no need to return any new definitions to insert.
                 vec![]
-            }
-            Some(VariantTag::True
-            | VariantTag::False
-            | VariantTag::Unit
-            | VariantTag::Literal(_)) => vec![], // No fields to bind
+            },
+            Some(VariantTag::True | VariantTag::False | VariantTag::Unit | VariantTag::Literal(_)) => vec![], // No fields to bind
         }
     }
 

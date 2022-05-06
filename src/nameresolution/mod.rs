@@ -47,8 +47,8 @@ use crate::nameresolution::scope::{FunctionScopes, Scope};
 use crate::parser::{self, ast, ast::Ast};
 use crate::types::traits::RequiredTrait;
 use crate::types::{
-    Field, FunctionType, LetBindingLevel, PrimitiveType, Type, TypeConstructor, TypeInfoBody,
-    TypeInfoId, TypeVariableId, INITIAL_LEVEL, STRING_TYPE,
+    Field, FunctionType, LetBindingLevel, PrimitiveType, Type, TypeConstructor, TypeInfoBody, TypeInfoId,
+    TypeVariableId, INITIAL_LEVEL, STRING_TYPE,
 };
 use crate::util::{fmap, timing, trustme};
 
@@ -211,13 +211,7 @@ impl NameResolver {
 
             for stack in function_scope.iter().rev() {
                 if let Some(&from) = stack.definitions.get(name) {
-                    return Some(self.create_closure(
-                        from,
-                        name,
-                        function_scope_index,
-                        location,
-                        cache,
-                    ));
+                    return Some(self.create_closure(from, name, function_scope_index, location, cache));
                 }
             }
         }
@@ -241,8 +235,8 @@ impl NameResolver {
     /// a closure, we may also need to create more closures along the way to be able to thread
     /// through our environment variables to reach any closures within other closures.
     fn create_closure<'c>(
-        &mut self, mut environment: DefinitionInfoId, environment_name: &str,
-        environment_function_index: usize, location: Location<'c>, cache: &mut ModuleCache<'c>,
+        &mut self, mut environment: DefinitionInfoId, environment_name: &str, environment_function_index: usize,
+        location: Location<'c>, cache: &mut ModuleCache<'c>,
     ) -> DefinitionInfoId {
         let mut ret = None;
         cache.definition_infos[environment.0].uses += 1;
@@ -260,13 +254,7 @@ impl NameResolver {
         for origin_fn in environment_function_index..self.scopes.len() - 1 {
             let next_fn = origin_fn + 1;
 
-            let to = self.add_closure_parameter_definition(
-                environment_name,
-                mutable,
-                next_fn,
-                location,
-                cache,
-            );
+            let to = self.add_closure_parameter_definition(environment_name, mutable, next_fn, location, cache);
             self.scopes[next_fn].add_closure_environment_variable_mapping(environment, to);
             environment = to;
             ret = Some(to);
@@ -276,8 +264,8 @@ impl NameResolver {
     }
 
     fn add_closure_parameter_definition<'c>(
-        &mut self, parameter: &str, mutable: bool, function_scope_index: usize,
-        location: Location<'c>, cache: &mut ModuleCache<'c>,
+        &mut self, parameter: &str, mutable: bool, function_scope_index: usize, location: Location<'c>,
+        cache: &mut ModuleCache<'c>,
     ) -> DefinitionInfoId {
         let function_scope = &mut self.scopes[function_scope_index];
         let scope = function_scope.first_mut();
@@ -319,14 +307,12 @@ impl NameResolver {
 
     fn push_lambda<'c>(&mut self, lambda: &mut ast::Lambda<'c>, cache: &mut ModuleCache<'c>) {
         let function_id = self.current_function.as_ref().map(|(_, id)| *id);
-        self.scopes
-            .push(FunctionScopes::from_lambda(lambda, function_id));
+        self.scopes.push(FunctionScopes::from_lambda(lambda, function_id));
         self.push_scope(cache);
     }
 
     fn push_type_variable_scope(&mut self) {
-        self.type_variable_scopes
-            .push(scope::TypeVariableScope::default());
+        self.type_variable_scopes.push(scope::TypeVariableScope::default());
     }
 
     fn push_existing_type_variable(&mut self, key: String, id: TypeVariableId) -> TypeVariableId {
@@ -334,20 +320,16 @@ impl NameResolver {
         self.type_variable_scopes[top].push_existing_type_variable(key, id)
     }
 
-    fn push_new_type_variable<'c>(
-        &mut self, key: String, cache: &mut ModuleCache<'c>,
-    ) -> TypeVariableId {
+    fn push_new_type_variable<'c>(&mut self, key: String, cache: &mut ModuleCache<'c>) -> TypeVariableId {
         let id = cache.next_type_variable_id(self.let_binding_level);
         self.push_existing_type_variable(key, id)
     }
 
     fn pop_scope<'c>(
-        &mut self, cache: &mut ModuleCache<'c>, warn_unused: bool,
-        id_to_ignore: Option<DefinitionInfoId>,
+        &mut self, cache: &mut ModuleCache<'c>, warn_unused: bool, id_to_ignore: Option<DefinitionInfoId>,
     ) {
         if warn_unused {
-            self.current_scope()
-                .check_for_unused_definitions(cache, id_to_ignore);
+            self.current_scope().check_for_unused_definitions(cache, id_to_ignore);
         }
         self.function_scopes().pop();
     }
@@ -392,14 +374,9 @@ impl NameResolver {
     /// Checks that the given variable name is required by the trait for the impl we're currently resolving.
     /// If it is not, an error is issued that the impl does not need to implement this function.
     /// Otherwise, the name is removed from the list of required_definitions for the impl.
-    fn check_required_definitions<'c>(
-        &mut self, name: &str, cache: &mut ModuleCache<'c>, location: Location<'c>,
-    ) {
+    fn check_required_definitions<'c>(&mut self, name: &str, cache: &mut ModuleCache<'c>, location: Location<'c>) {
         let required_definitions = self.required_definitions.as_mut().unwrap();
-        if let Some(index) = required_definitions
-            .iter()
-            .position(|id| cache.definition_infos[id.0].name == name)
-        {
+        if let Some(index) = required_definitions.iter().position(|id| cache.definition_infos[id.0].name == name) {
             required_definitions.swap_remove(index);
         } else {
             let trait_info = &cache.trait_infos[self.current_trait.unwrap().0];
@@ -409,27 +386,17 @@ impl NameResolver {
 
     /// Add a DefinitionInfoId to a trait's list of required definitions and add
     /// the trait to the DefinitionInfo's list of required traits.
-    fn attach_to_trait<'c>(
-        &mut self, id: DefinitionInfoId, trait_id: TraitInfoId, cache: &mut ModuleCache<'c>,
-    ) {
+    fn attach_to_trait<'c>(&mut self, id: DefinitionInfoId, trait_id: TraitInfoId, cache: &mut ModuleCache<'c>) {
         let trait_info = &mut cache.trait_infos[trait_id.0];
         trait_info.definitions.push(id);
 
         let info = &mut cache.definition_infos[id.0];
         info.trait_info = Some(trait_id);
 
-        let args = trait_info
-            .typeargs
-            .iter()
-            .chain(trait_info.fundeps.iter())
-            .map(|id| Type::TypeVariable(*id))
-            .collect();
+        let args =
+            trait_info.typeargs.iter().chain(trait_info.fundeps.iter()).map(|id| Type::TypeVariable(*id)).collect();
 
-        info.required_traits.push(RequiredTrait {
-            trait_id,
-            args,
-            origin: None,
-        });
+        info.required_traits.push(RequiredTrait { trait_id, args, origin: None });
     }
 
     /// Push a new Definition onto the current scope.
@@ -468,8 +435,7 @@ impl NameResolver {
     }
 
     pub fn push_type_info<'c>(
-        &mut self, name: String, args: Vec<TypeVariableId>, cache: &mut ModuleCache<'c>,
-        location: Location<'c>,
+        &mut self, name: String, args: Vec<TypeVariableId>, cache: &mut ModuleCache<'c>, location: Location<'c>,
     ) -> TypeInfoId {
         if let Some(existing_definition) = self.current_scope().types.get(&name) {
             error!(location, "{} is already in scope", name);
@@ -487,8 +453,7 @@ impl NameResolver {
 
     fn push_trait<'c>(
         &mut self, name: String, args: Vec<TypeVariableId>, fundeps: Vec<TypeVariableId>,
-        node: &'c mut ast::TraitDefinition<'c>, cache: &mut ModuleCache<'c>,
-        location: Location<'c>,
+        node: &'c mut ast::TraitDefinition<'c>, cache: &mut ModuleCache<'c>, location: Location<'c>,
     ) -> TraitInfoId {
         if let Some(existing_definition) = self.current_scope().traits.get(&name) {
             error!(location, "{} is already in scope", name);
@@ -507,8 +472,8 @@ impl NameResolver {
     #[allow(clippy::too_many_arguments)]
     fn push_trait_impl<'c>(
         &mut self, trait_id: TraitInfoId, args: Vec<Type>, definitions: Vec<DefinitionInfoId>,
-        trait_impl: &'c mut ast::TraitImpl<'c>, given: Vec<RequiredTrait>,
-        cache: &mut ModuleCache<'c>, location: Location<'c>,
+        trait_impl: &'c mut ast::TraitImpl<'c>, given: Vec<RequiredTrait>, cache: &mut ModuleCache<'c>,
+        location: Location<'c>,
     ) -> ImplInfoId {
         // Any overlapping impls are only reported when they're used during typechecking
         let id = cache.push_trait_impl(trait_id, args, definitions, trait_impl, given, location);
@@ -517,11 +482,7 @@ impl NameResolver {
             cache.impl_scopes[self.exports.impl_scope.0].push(id);
         }
 
-        self.current_scope()
-            .impls
-            .entry(trait_id)
-            .or_default()
-            .push(id);
+        self.current_scope().impls.entry(trait_id).or_default().push(id);
         cache.impl_scopes[self.current_scope().impl_scope.0].push(id);
         id
     }
@@ -620,12 +581,7 @@ impl<'c> NameResolver {
                 let return_type = Box::new(self.convert_type(cache, ret));
                 let environment = Box::new(Type::Primitive(PrimitiveType::UnitType));
                 let is_varargs = *is_varargs;
-                Type::Function(FunctionType {
-                    parameters,
-                    return_type,
-                    environment,
-                    is_varargs,
-                })
+                Type::Function(FunctionType { parameters, return_type, environment, is_varargs })
             },
             ast::Type::TypeVariable(name, location) => match self.lookup_type_variable(name) {
                 Some(id) => Type::TypeVariable(id),
@@ -652,10 +608,7 @@ impl<'c> NameResolver {
                 Type::TypeApplication(constructor, args)
             },
             ast::Type::Pair(first, rest, location) => {
-                let args = vec![
-                    self.convert_type(cache, first),
-                    self.convert_type(cache, rest),
-                ];
+                let args = vec![self.convert_type(cache, first), self.convert_type(cache, rest)];
 
                 let pair = match self.lookup_type(&Token::Comma.to_string(), cache) {
                     Some(id) => Type::UserDefined(id),
@@ -681,9 +634,8 @@ impl<'c> NameResolver {
 
     /// The collect* family of functions recurses over an irrefutable pattern, either declaring or
     /// defining each node and tagging the declaration with the given DefinitionNode.
-    fn resolve_declarations<F>(
-        &mut self, ast: &mut Ast<'c>, cache: &mut ModuleCache<'c>, mut definition: F,
-    ) where
+    fn resolve_declarations<F>(&mut self, ast: &mut Ast<'c>, cache: &mut ModuleCache<'c>, mut definition: F)
+    where
         F: FnMut() -> DefinitionKind<'c>,
     {
         self.definitions_collected.clear();
@@ -704,9 +656,7 @@ impl<'c> NameResolver {
         self.resolve_all_definitions(vec![ast].into_iter(), cache, definition);
     }
 
-    fn resolve_extern_definitions(
-        &mut self, declaration: &mut ast::TypeAnnotation<'c>, cache: &mut ModuleCache<'c>,
-    ) {
+    fn resolve_extern_definitions(&mut self, declaration: &mut ast::TypeAnnotation<'c>, cache: &mut ModuleCache<'c>) {
         self.definitions_collected.clear();
         self.auto_declare = true;
         declaration.define(self, cache);
@@ -751,33 +701,21 @@ impl<'c> NameResolver {
         }
     }
 
-    fn resolve_required_traits(
-        &mut self, given: &[ast::Trait<'c>], cache: &mut ModuleCache<'c>,
-    ) -> Vec<RequiredTrait> {
+    fn resolve_required_traits(&mut self, given: &[ast::Trait<'c>], cache: &mut ModuleCache<'c>) -> Vec<RequiredTrait> {
         let mut required_traits = vec![];
         for trait_ in given {
             if let Some(trait_id) = self.lookup_trait(&trait_.name, cache) {
                 let args = fmap(&trait_.args, |arg| self.convert_type(cache, arg));
-                required_traits.push(RequiredTrait {
-                    trait_id,
-                    args,
-                    origin: None,
-                });
+                required_traits.push(RequiredTrait { trait_id, args, origin: None });
             } else {
-                error!(
-                    trait_.location,
-                    "Could not find trait {} in scope",
-                    trait_.name.blue()
-                );
+                error!(trait_.location, "Could not find trait {} in scope", trait_.name.blue());
             }
         }
         required_traits
     }
 
     fn try_set_current_function(&mut self, definition: &ast::Definition<'c>) {
-        if let (Ast::Variable(variable), Ast::Lambda(_)) =
-            (definition.pattern.as_ref(), definition.expr.as_ref())
-        {
+        if let (Ast::Variable(variable), Ast::Lambda(_)) = (definition.pattern.as_ref(), definition.expr.as_ref()) {
             let function = (variable.to_string(), variable.definition.unwrap());
             self.current_function = Some(function);
         }
@@ -833,12 +771,7 @@ impl<'c> Resolvable<'c> for ast::Variable<'c> {
             };
 
             if should_declare {
-                let id = resolver.push_definition(
-                    name,
-                    resolver.in_mutable_context,
-                    cache,
-                    self.location,
-                );
+                let id = resolver.push_definition(name, resolver.in_mutable_context, cache, self.location);
                 resolver.definitions_collected.push(id);
                 self.definition = Some(id);
             } else {
@@ -881,17 +814,9 @@ impl<'c> Resolvable<'c> for ast::Variable<'c> {
 
             // If it is still not declared, print an error
             if self.definition.is_none() {
-                error!(
-                    self.location,
-                    "No declaration for {} was found in scope", self
-                );
-            } else if resolver.in_assignment_context
-                && !cache.definition_infos[self.definition.unwrap().0].mutable
-            {
-                error!(
-                    self.location,
-                    "Variable {} must be mutable to be assigned to", self
-                );
+                error!(self.location, "No declaration for {} was found in scope", self);
+            } else if resolver.in_assignment_context && !cache.definition_infos[self.definition.unwrap().0].mutable {
+                error!(self.location, "Variable {} must be mutable to be assigned to", self);
             }
         }
     }
@@ -999,9 +924,7 @@ impl<'c> Resolvable<'c> for ast::Match<'c> {
 
 /// Given "type T a b c = ..." return
 /// forall a b c. args -> T a b c
-fn create_variant_constructor_type(
-    parent_type_id: TypeInfoId, args: Vec<Type>, cache: &ModuleCache,
-) -> Type {
+fn create_variant_constructor_type(parent_type_id: TypeInfoId, args: Vec<Type>, cache: &ModuleCache) -> Type {
     let info = &cache.type_infos[parent_type_id.0];
     let mut result = Type::UserDefined(parent_type_id);
 
@@ -1035,54 +958,34 @@ type Variants<'c> = Vec<(String, Vec<ast::Type<'c>>, Location<'c>)>;
 /// vec: A vector of each variant. Has a tuple of the variant's name arguments, and location for each.
 /// parent_type_id: The TypeInfoId of the parent type.
 fn create_variants<'c>(
-    vec: &Variants<'c>, parent_type_id: TypeInfoId, resolver: &mut NameResolver,
-    cache: &mut ModuleCache<'c>,
+    vec: &Variants<'c>, parent_type_id: TypeInfoId, resolver: &mut NameResolver, cache: &mut ModuleCache<'c>,
 ) -> Vec<TypeConstructor<'c>> {
     let mut index = 0;
     fmap(vec, |(name, types, location)| {
         let args = fmap(types, |t| resolver.convert_type(cache, t));
 
         let id = resolver.push_definition(name, false, cache, *location);
-        cache.definition_infos[id.0].typ = Some(create_variant_constructor_type(
-            parent_type_id,
-            args.clone(),
-            cache,
-        ));
-        cache.definition_infos[id.0].definition = Some(DefinitionKind::TypeConstructor {
-            name: name.clone(),
-            tag: Some(index),
-        });
+        cache.definition_infos[id.0].typ = Some(create_variant_constructor_type(parent_type_id, args.clone(), cache));
+        cache.definition_infos[id.0].definition =
+            Some(DefinitionKind::TypeConstructor { name: name.clone(), tag: Some(index) });
         index += 1;
-        TypeConstructor {
-            name: name.clone(),
-            args,
-            id,
-            location: *location,
-        }
+        TypeConstructor { name: name.clone(), args, id, location: *location }
     })
 }
 
 type Fields<'c> = Vec<(String, ast::Type<'c>, Location<'c>)>;
 
-fn create_fields<'c>(
-    vec: &Fields<'c>, resolver: &mut NameResolver, cache: &mut ModuleCache<'c>,
-) -> Vec<Field<'c>> {
+fn create_fields<'c>(vec: &Fields<'c>, resolver: &mut NameResolver, cache: &mut ModuleCache<'c>) -> Vec<Field<'c>> {
     fmap(vec, |(name, field_type, location)| {
         let field_type = resolver.convert_type(cache, field_type);
 
-        Field {
-            name: name.clone(),
-            field_type,
-            location: *location,
-        }
+        Field { name: name.clone(), field_type, location: *location }
     })
 }
 
 impl<'c> Resolvable<'c> for ast::TypeDefinition<'c> {
     fn declare(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'c>) {
-        let args = fmap(&self.args, |_| {
-            cache.next_type_variable_id(resolver.let_binding_level)
-        });
+        let args = fmap(&self.args, |_| cache.next_type_variable_id(resolver.let_binding_level));
         let id = resolver.push_type_info(self.name.clone(), args, cache, self.location);
         self.type_info = Some(id);
     }
@@ -1122,12 +1025,9 @@ impl<'c> Resolvable<'c> for ast::TypeDefinition<'c> {
                 // Create the constructor for this type.
                 // This is done inside create_variants for tagged union types
                 let id = resolver.push_definition(&self.name, false, cache, self.location);
-                cache.definition_infos[id.0].typ =
-                    Some(create_variant_constructor_type(type_id, field_types, cache));
-                cache.definition_infos[id.0].definition = Some(DefinitionKind::TypeConstructor {
-                    name: self.name.clone(),
-                    tag: None,
-                });
+                cache.definition_infos[id.0].typ = Some(create_variant_constructor_type(type_id, field_types, cache));
+                cache.definition_infos[id.0].definition =
+                    Some(DefinitionKind::TypeConstructor { name: self.name.clone(), tag: None });
             },
             ast::TypeDefinitionBody::Alias(typ) => {
                 let typ = resolver.convert_type(cache, typ);
@@ -1170,17 +1070,11 @@ fn find_file(relative_path: &Path, cache: &mut ModuleCache) -> Option<(File, Pat
     None
 }
 
-pub fn declare_module<'a>(
-    path: &Path, cache: &mut ModuleCache<'a>, error_location: Location<'a>,
-) -> Option<ModuleId> {
+pub fn declare_module<'a>(path: &Path, cache: &mut ModuleCache<'a>, error_location: Location<'a>) -> Option<ModuleId> {
     let (file, path) = match find_file(path, cache) {
         Some((f, p)) => (f, p),
         _ => {
-            error!(
-                error_location,
-                "Couldn't open file for import: {}.an",
-                path.display()
-            );
+            error!(error_location, "Couldn't open file for import: {}.an", path.display());
             return None;
         },
     };
@@ -1223,10 +1117,7 @@ pub fn define_module<'a>(
     let import = cache.name_resolvers.get_mut(module_id.0).unwrap();
     match import.state {
         NameResolutionState::NotStarted | NameResolutionState::DeclareInProgress => {
-            error!(
-                error_location,
-                "Internal compiler error: imported module has been defined but not declared"
-            );
+            error!(error_location, "Internal compiler error: imported module has been defined but not declared");
             return None;
         },
         NameResolutionState::Declared => {
@@ -1248,9 +1139,7 @@ impl<'c> Resolvable<'c> for ast::Import<'c> {
     fn define(&mut self, resolver: &mut NameResolver, cache: &mut ModuleCache<'c>) {
         if let Some(module_id) = self.module_id {
             if let Some(exports) = define_module(module_id, cache, self.location) {
-                resolver
-                    .current_scope()
-                    .import(exports, cache, self.location);
+                resolver.current_scope().import(exports, cache, self.location);
             }
         }
     }
@@ -1267,24 +1156,14 @@ impl<'c> Resolvable<'c> for ast::TraitDefinition<'c> {
         self.level = Some(resolver.let_binding_level);
         resolver.push_let_binding_level();
 
-        let args = fmap(&self.args, |arg| {
-            resolver.push_new_type_variable(arg.clone(), cache)
-        });
+        let args = fmap(&self.args, |arg| resolver.push_new_type_variable(arg.clone(), cache));
 
-        let fundeps = fmap(&self.fundeps, |arg| {
-            resolver.push_new_type_variable(arg.clone(), cache)
-        });
+        let fundeps = fmap(&self.fundeps, |arg| resolver.push_new_type_variable(arg.clone(), cache));
 
         assert!(resolver.current_trait.is_none());
 
-        let trait_id = resolver.push_trait(
-            self.name.clone(),
-            args,
-            fundeps,
-            trustme::extend_lifetime(self),
-            cache,
-            self.location,
-        );
+        let trait_id =
+            resolver.push_trait(self.name.clone(), args, fundeps, trustme::extend_lifetime(self), cache, self.location);
 
         resolver.current_trait = Some(trait_id);
 
@@ -1352,8 +1231,7 @@ impl<'c> Resolvable<'c> for ast::TraitImpl<'c> {
         resolver.push_let_binding_level();
 
         // Declare the names first so we can check them all against the required_definitions
-        let definitions =
-            resolver.resolve_trait_impl_declarations(self.definitions.iter_mut(), cache);
+        let definitions = resolver.resolve_trait_impl_declarations(self.definitions.iter_mut(), cache);
 
         // TODO cleanup: is required_definitions still required since we can
         // resolve_all_definitions now? The checks in push_definition can probably
@@ -1361,8 +1239,7 @@ impl<'c> Resolvable<'c> for ast::TraitImpl<'c> {
         for required_definition in resolver.required_definitions.as_ref().unwrap() {
             error!(
                 self.location,
-                "impl is missing a definition for {}",
-                cache.definition_infos[required_definition.0].name
+                "impl is missing a definition for {}", cache.definition_infos[required_definition.0].name
             );
         }
 

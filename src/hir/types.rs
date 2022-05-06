@@ -2,8 +2,16 @@ use crate::util::fmap;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum IntegerKind {
-    I8, I16, I32, I64, Isz,
-    U8, U16, U32, U64, Usz,
+    I8,
+    I16,
+    I32,
+    I64,
+    Isz,
+    U8,
+    U16,
+    U32,
+    U64,
+    Usz,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -48,15 +56,13 @@ impl Type {
 impl std::fmt::Display for Type {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Type::Primitive(p) => {
-                match p {
-                    PrimitiveType::Integer(kind) => kind.fmt(f),
-                    PrimitiveType::Float => write!(f, "float"),
-                    PrimitiveType::Char => write!(f, "char"),
-                    PrimitiveType::Boolean => write!(f, "bool"),
-                    PrimitiveType::Unit => write!(f, "unit"),
-                    PrimitiveType::Pointer => write!(f, "ptr"),
-                }
+            Type::Primitive(p) => match p {
+                PrimitiveType::Integer(kind) => kind.fmt(f),
+                PrimitiveType::Float => write!(f, "float"),
+                PrimitiveType::Char => write!(f, "char"),
+                PrimitiveType::Boolean => write!(f, "bool"),
+                PrimitiveType::Unit => write!(f, "unit"),
+                PrimitiveType::Pointer => write!(f, "ptr"),
             },
             Type::Function(function) => write!(f, "({})", function),
             Type::Tuple(elems) => {
@@ -82,12 +88,12 @@ impl std::fmt::Display for FunctionType {
 impl std::fmt::Display for IntegerKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            IntegerKind::I8  => write!(f, "i8"),
+            IntegerKind::I8 => write!(f, "i8"),
             IntegerKind::I16 => write!(f, "i16"),
             IntegerKind::I32 => write!(f, "i32"),
             IntegerKind::I64 => write!(f, "i64"),
             IntegerKind::Isz => write!(f, "isz"),
-            IntegerKind::U8  => write!(f, "u8"),
+            IntegerKind::U8 => write!(f, "u8"),
             IntegerKind::U16 => write!(f, "u16"),
             IntegerKind::U32 => write!(f, "u32"),
             IntegerKind::U64 => write!(f, "u64"),

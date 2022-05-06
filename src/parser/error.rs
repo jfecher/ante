@@ -1,10 +1,10 @@
 //! parser/error.rs - Defines the ParseError type and the formatting shown
 //! when printing this error to stderr.
-use crate::lexer::token::{ Token, LexerError };
-use crate::error::location::{ Location, Locatable };
-use crate::error::ErrorMessage;
-use crate::util::join_with;
 use super::combinators::Input;
+use crate::error::location::{Locatable, Location};
+use crate::error::ErrorMessage;
+use crate::lexer::token::{LexerError, Token};
+use crate::util::join_with;
 use std::fmt::Display;
 
 #[derive(Debug)]

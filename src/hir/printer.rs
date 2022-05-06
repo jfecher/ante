@@ -244,11 +244,7 @@ impl FmtAst for DecisionTree {
                 printer.newline(f)?;
                 tree.fmt_ast(printer, f)
             },
-            DecisionTree::Switch {
-                int_to_switch_on,
-                cases,
-                else_case,
-            } => {
+            DecisionTree::Switch { int_to_switch_on, cases, else_case } => {
                 write!(f, "switch ")?;
                 int_to_switch_on.fmt_ast(printer, f)?;
                 for (tag, case) in cases {

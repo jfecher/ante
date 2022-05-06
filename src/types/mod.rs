@@ -4,25 +4,23 @@
 //! the representation of `Type`s - which represent any Type in ante's
 //! type system - and `TypeInfo`s - which hold more information about the
 //! definition of a user-defined type.
-use crate::cache::{ ModuleCache, DefinitionInfoId };
-use crate::error::location::{ Locatable, Location };
+use crate::cache::{DefinitionInfoId, ModuleCache};
+use crate::error::location::{Locatable, Location};
 use crate::lexer::token::IntegerKind;
 use crate::lifetimes;
 
 use std::collections::HashMap;
 
 pub mod pattern;
-pub mod typed;
-pub mod typechecker;
 pub mod traitchecker;
-pub mod typeprinter;
 pub mod traits;
+pub mod typechecker;
+pub mod typed;
+pub mod typeprinter;
 
 /// The type to default any Inferred integer types to that were
 /// not bound to any other concrete integer type (e.g. via `1 + 2u8`).
-pub const DEFAULT_INTEGER_TYPE: Type =
-    Type::Primitive(PrimitiveType::IntegerType(IntegerKind::I32));
-
+pub const DEFAULT_INTEGER_TYPE: Type = Type::Primitive(PrimitiveType::IntegerType(IntegerKind::I32));
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct TypeVariableId(pub usize);
@@ -116,11 +114,9 @@ impl Type {
     pub fn is_unit<'c>(&self, cache: &ModuleCache<'c>) -> bool {
         match self {
             Type::Primitive(PrimitiveType::UnitType) => true,
-            Type::TypeVariable(id) => {
-                match &cache.type_bindings[id.0] {
-                    TypeBinding::Bound(typ) => typ.is_unit(cache),
-                    TypeBinding::Unbound(..) => false,
-                }
+            Type::TypeVariable(id) => match &cache.type_bindings[id.0] {
+                TypeBinding::Bound(typ) => typ.is_unit(cache),
+                TypeBinding::Unbound(..) => false,
             },
             _ => false,
         }
@@ -131,7 +127,9 @@ impl Type {
     }
 
     /// Returns Some(variants) if this is a union type constructor or union type itself.
-    pub fn union_constructor_variants<'a, 'c>(&'a self, cache: &'a ModuleCache<'c>) -> Option<&'a Vec<TypeConstructor>> {
+    pub fn union_constructor_variants<'a, 'c>(
+        &'a self, cache: &'a ModuleCache<'c>,
+    ) -> Option<&'a Vec<TypeConstructor>> {
         use Type::*;
         match self {
             Primitive(_) => None,
@@ -270,11 +268,11 @@ impl<'a> TypeInfo<'a> {
 
     pub fn find_field<'b>(&'b self, field_name: &str) -> Option<(u32, &'b Field)> {
         match &self.body {
-            TypeInfoBody::Struct(fields) => {
-                fields.iter().enumerate()
-                    .find(|(_, field)| field.name == field_name)
-                    .map(|(i, field)| (i as u32, field))
-            },
+            TypeInfoBody::Struct(fields) => fields
+                .iter()
+                .enumerate()
+                .find(|(_, field)| field.name == field_name)
+                .map(|(i, field)| (i as u32, field)),
             _ => None,
         }
     }

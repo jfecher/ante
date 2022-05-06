@@ -1,8 +1,8 @@
 //! typed.rs - Defines a simple trait for getting and setting
 //! the type of something. Currently this is only implemented for
 //! AST nodes.
-use crate::types::Type;
 use crate::parser::ast::*;
+use crate::types::Type;
 
 pub trait Typed {
     fn get_type(&self) -> Option<&Type>;
@@ -19,17 +19,19 @@ impl<'a> Typed for Ast<'a> {
     }
 }
 
-macro_rules! impl_typed_for {( $name:tt ) => {
-    impl<'a> Typed for $name<'a> {
-        fn get_type(&self) -> Option<&Type> {
-            self.typ.as_ref()
-        }
+macro_rules! impl_typed_for {
+    ( $name:tt ) => {
+        impl<'a> Typed for $name<'a> {
+            fn get_type(&self) -> Option<&Type> {
+                self.typ.as_ref()
+            }
 
-        fn set_type(&mut self, typ: Type) {
-            self.typ = Some(typ);
+            fn set_type(&mut self, typ: Type) {
+                self.typ = Some(typ);
+            }
         }
-    }
-};}
+    };
+}
 
 impl_typed_for!(Literal);
 impl_typed_for!(Variable);

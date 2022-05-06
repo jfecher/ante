@@ -9,16 +9,16 @@
 //!   automatically created and union'd, yielding the source Location that
 //!   encompasses the whole rule. Most usages of parser! in the parser module
 //!   store this Location in the Ast node they create.
-use crate::lexer::token::{ Token, IntegerKind };
 use crate::error::location::Location;
-use crate::parser::error::{ ParseError, ParseResult };
+use crate::lexer::token::{IntegerKind, Token};
+use crate::parser::error::{ParseError, ParseResult};
 
-pub type Input<'local, 'cache> = &'local[(Token, Location<'cache>)];
+pub type Input<'local, 'cache> = &'local [(Token, Location<'cache>)];
 
 /// Helper macro for parser!
 macro_rules! seq {
     // monadic bind:
-    // 
+    //
     // name <- parser;
     // rest
     //
@@ -35,7 +35,7 @@ macro_rules! seq {
         seq!($input $start _end $location => $($rest)*)
     });
     // trace point for debugging:
-    // 
+    //
     // trace arg;
     // rest
     ( $input:ident $start:ident $end:ident $location:tt => trace $arg:expr ; $($rest:tt)* ) => ({
@@ -43,7 +43,7 @@ macro_rules! seq {
         seq!($input $start $end $location => $($rest)*)
     });
     // Mark the expression as no backtracking for better errors:
-    // 
+    //
     // name !<- parser;
     // rest
     ( $input:ident $start:ident $e:ident $location:tt => $name:tt !<- $y:expr ; $($rest:tt)* ) => ({
@@ -89,9 +89,12 @@ macro_rules! parser {
 /// should be used in each contained parser once it is sure that parser's rule
 /// should be matched. For example, in an if expression, everything after the initial `if`
 /// should be marked as no_backtracking.
-pub fn or<'local, 'cache: 'local, It, T, F>(functions: It, rule: &'static str) -> impl FnOnce(Input<'local, 'cache>) -> ParseResult<'local, 'cache, T> where
+pub fn or<'local, 'cache: 'local, It, T, F>(
+    functions: It, rule: &'static str,
+) -> impl FnOnce(Input<'local, 'cache>) -> ParseResult<'local, 'cache, T>
+where
     It: IntoIterator<Item = F>,
-    F: Fn(Input<'local, 'cache>) -> ParseResult<'local, 'cache, T>
+    F: Fn(Input<'local, 'cache>) -> ParseResult<'local, 'cache, T>,
 {
     move |input| {
         for f in functions.into_iter() {
@@ -106,7 +109,7 @@ pub fn or<'local, 'cache: 'local, It, T, F>(functions: It, rule: &'static str) -
 
         match input[0] {
             (Token::Invalid(err), location) => Err(ParseError::Fatal(Box::new(ParseError::LexerError(err, location)))),
-            (_, location) => Err(ParseError::InRule(rule, location))
+            (_, location) => Err(ParseError::InRule(rule, location)),
         }
     }
 }
@@ -127,7 +130,8 @@ pub fn expect<'a, 'b: 'a>(expected: Token) -> impl Fn(Input<'a, 'b>) -> ParseRes
 
 /// Fail if the next token in the stream is not the given expected token
 pub fn expect_if<'a, 'b: 'a, F>(rule: &'static str, f: F) -> impl Fn(Input<'a, 'b>) -> ParseResult<'a, 'b, Token>
-    where F: Fn(&Token) -> bool
+where
+    F: Fn(&Token) -> bool,
 {
     move |input| {
         if f(&input[0].0) {
@@ -142,21 +146,23 @@ pub fn expect_if<'a, 'b: 'a, F>(rule: &'static str, f: F) -> impl Fn(Input<'a, '
 
 /// Matches the input 0 or 1 times. Only fails if a ParseError::Fatal is found
 pub fn maybe<'a, 'b: 'a, F, T>(f: F) -> impl Fn(Input<'a, 'b>) -> ParseResult<'a, 'b, Option<T>>
-    where F: Fn(Input<'a, 'b>) -> ParseResult<'a, 'b, T>
+where
+    F: Fn(Input<'a, 'b>) -> ParseResult<'a, 'b, T>,
 {
-    move |input| {
-        match f(input) {
-            Ok((input, result, loc)) => Ok((input, Some(result), loc)),
-            Err(ParseError::Fatal(err)) => Err(ParseError::Fatal(err)),
-            Err(_) => Ok((input, None, input[0].1)),
-        }
+    move |input| match f(input) {
+        Ok((input, result, loc)) => Ok((input, Some(result), loc)),
+        Err(ParseError::Fatal(err)) => Err(ParseError::Fatal(err)),
+        Err(_) => Ok((input, None, input[0].1)),
     }
 }
 
 /// Parse the two functions in a sequence, returning a pair of their results
-pub fn pair<'a, 'b: 'a, F, G, FResult, GResult>(f: F, g: G) -> impl Fn(Input<'a, 'b>) -> ParseResult<'a, 'b, (FResult, GResult)> where
+pub fn pair<'a, 'b: 'a, F, G, FResult, GResult>(
+    f: F, g: G,
+) -> impl Fn(Input<'a, 'b>) -> ParseResult<'a, 'b, (FResult, GResult)>
+where
     F: Fn(Input<'a, 'b>) -> ParseResult<'a, 'b, FResult>,
-    G: Fn(Input<'a, 'b>) -> ParseResult<'a, 'b, GResult>
+    G: Fn(Input<'a, 'b>) -> ParseResult<'a, 'b, GResult>,
 {
     move |input| {
         let (input, fresult, loc1) = f(input)?;
@@ -165,9 +171,12 @@ pub fn pair<'a, 'b: 'a, F, G, FResult, GResult>(f: F, g: G) -> impl Fn(Input<'a,
     }
 }
 /// Match f at least once, then match many0(g, f)
-pub fn delimited<'a, 'b: 'a, F, G, FResult, GResult>(f: F, g: G) -> impl Fn(Input<'a, 'b>) -> ParseResult<'a, 'b, Vec<FResult>> where
+pub fn delimited<'a, 'b: 'a, F, G, FResult, GResult>(
+    f: F, g: G,
+) -> impl Fn(Input<'a, 'b>) -> ParseResult<'a, 'b, Vec<FResult>>
+where
     F: Fn(Input<'a, 'b>) -> ParseResult<'a, 'b, FResult>,
-    G: Fn(Input<'a, 'b>) -> ParseResult<'a, 'b, GResult>
+    G: Fn(Input<'a, 'b>) -> ParseResult<'a, 'b, GResult>,
 {
     move |mut input| {
         let mut results = Vec::new();
@@ -206,9 +215,12 @@ pub fn delimited<'a, 'b: 'a, F, G, FResult, GResult>(f: F, g: G) -> impl Fn(Inpu
 }
 
 /// Match delimited(f, g) followed by an optional trailing g
-pub fn delimited_trailing<'a, 'b: 'a, F, G, FResult, GResult>(f: F, g: G) -> impl Fn(Input<'a, 'b>) -> ParseResult<'a, 'b, Vec<FResult>> where
+pub fn delimited_trailing<'a, 'b: 'a, F, G, FResult, GResult>(
+    f: F, g: G,
+) -> impl Fn(Input<'a, 'b>) -> ParseResult<'a, 'b, Vec<FResult>>
+where
     F: Fn(Input<'a, 'b>) -> ParseResult<'a, 'b, FResult>,
-    G: Fn(Input<'a, 'b>) -> ParseResult<'a, 'b, GResult>
+    G: Fn(Input<'a, 'b>) -> ParseResult<'a, 'b, GResult>,
 {
     move |mut input| {
         let mut results = Vec::new();
@@ -247,7 +259,10 @@ pub fn delimited_trailing<'a, 'b: 'a, F, G, FResult, GResult>(f: F, g: G) -> imp
 }
 
 /// Match begin, middle, then end in a sequence.
-pub fn bounded<'a, 'b: 'a, F, FResult>(begin: Token, f: F, end: Token) -> impl FnOnce(Input<'a, 'b>) -> ParseResult<'a, 'b, FResult> where
+pub fn bounded<'a, 'b: 'a, F, FResult>(
+    begin: Token, f: F, end: Token,
+) -> impl FnOnce(Input<'a, 'b>) -> ParseResult<'a, 'b, FResult>
+where
     F: FnOnce(Input<'a, 'b>) -> ParseResult<'a, 'b, FResult>,
 {
     move |input| {
@@ -259,7 +274,8 @@ pub fn bounded<'a, 'b: 'a, F, FResult>(begin: Token, f: F, end: Token) -> impl F
 }
 
 /// parenthesized f = bounded '(' f ')'
-pub fn parenthesized<'a, 'b: 'a, F, FResult>(f: F) -> impl FnOnce(Input<'a, 'b>) -> ParseResult<'a, 'b, FResult> where
+pub fn parenthesized<'a, 'b: 'a, F, FResult>(f: F) -> impl FnOnce(Input<'a, 'b>) -> ParseResult<'a, 'b, FResult>
+where
     F: FnOnce(Input<'a, 'b>) -> ParseResult<'a, 'b, FResult>,
 {
     bounded(Token::ParenthesisLeft, f, Token::ParenthesisRight)
@@ -268,7 +284,8 @@ pub fn parenthesized<'a, 'b: 'a, F, FResult>(f: F) -> impl FnOnce(Input<'a, 'b>)
 /// Runs the parser 0 or more times until it errors, then returns a Vec of the successes.
 /// Will only return Err when a ParseError::Fatal is found
 pub fn many0<'a, 'b: 'a, T, F>(f: F) -> impl Fn(Input<'a, 'b>) -> ParseResult<'a, 'b, Vec<T>>
-    where F: Fn(Input<'a, 'b>) -> ParseResult<'a, 'b, T>
+where
+    F: Fn(Input<'a, 'b>) -> ParseResult<'a, 'b, T>,
 {
     move |mut input| {
         let mut results = Vec::new();
@@ -281,7 +298,7 @@ pub fn many0<'a, 'b: 'a, T, F>(f: F) -> impl Fn(Input<'a, 'b>) -> ParseResult<'a
                     input = new_input;
                     end = location;
                     results.push(t);
-                }
+                },
                 Err(ParseError::Fatal(c)) => return Err(ParseError::Fatal(c)),
                 _ => break,
             }
@@ -293,7 +310,8 @@ pub fn many0<'a, 'b: 'a, T, F>(f: F) -> impl Fn(Input<'a, 'b>) -> ParseResult<'a
 /// Runs the parser 1 or more times until it errors, then returns a Vec of the successes.
 /// Will return Err if the parser fails the first time or a ParseError::Fatal is found
 pub fn many1<'a, 'b: 'a, T, F>(f: F) -> impl Fn(Input<'a, 'b>) -> ParseResult<'a, 'b, Vec<T>>
-    where F: Fn(Input<'a, 'b>) -> ParseResult<'a, 'b, T>
+where
+    F: Fn(Input<'a, 'b>) -> ParseResult<'a, 'b, T>,
 {
     move |mut input| {
         let mut results = Vec::new();
@@ -327,7 +345,8 @@ pub fn many1<'a, 'b: 'a, T, F>(f: F) -> impl Fn(Input<'a, 'b>) -> ParseResult<'a
 /// Wraps the parser in a ParseError::Fatal if it fails. Used for better error reporting
 /// around `or` and similar combinators to prevent backtracking away from an error.
 pub fn no_backtracking<'a, 'b: 'a, T, F>(f: F) -> impl Fn(Input<'a, 'b>) -> ParseResult<'a, 'b, T>
-    where F: Fn(Input<'a, 'b>) -> ParseResult<'a, 'b, T>
+where
+    F: Fn(Input<'a, 'b>) -> ParseResult<'a, 'b, T>,
 {
     move |input| {
         f(input).map_err(|e| match e {
@@ -341,95 +360,63 @@ pub fn no_backtracking<'a, 'b: 'a, T, F>(f: F) -> impl Fn(Input<'a, 'b>) -> Pars
 pub fn identifier<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, String> {
     match &input[0] {
         (Token::Identifier(name), location) => Ok((&input[1..], name.clone(), *location)),
-        (Token::Invalid(c), location) => {
-            Err(ParseError::Fatal(Box::new(ParseError::LexerError(*c, *location))))
-        },
-        (_, location) => {
-            Err(ParseError::Expected(vec![Token::Identifier("identifier".to_owned())], *location))
-        },
+        (Token::Invalid(c), location) => Err(ParseError::Fatal(Box::new(ParseError::LexerError(*c, *location)))),
+        (_, location) => Err(ParseError::Expected(vec![Token::Identifier("identifier".to_owned())], *location)),
     }
 }
 
 pub fn typename<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, String> {
     match &input[0] {
         (Token::TypeName(name), location) => Ok((&input[1..], name.clone(), *location)),
-        (Token::Invalid(c), location) => {
-            Err(ParseError::Fatal(Box::new(ParseError::LexerError(*c, *location))))
-        },
-        (_, location) => {
-            Err(ParseError::Expected(vec![Token::TypeName("type name".to_owned())], *location))
-        },
+        (Token::Invalid(c), location) => Err(ParseError::Fatal(Box::new(ParseError::LexerError(*c, *location)))),
+        (_, location) => Err(ParseError::Expected(vec![Token::TypeName("type name".to_owned())], *location)),
     }
 }
 
 pub fn string_literal_token<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, String> {
     match &input[0] {
         (Token::StringLiteral(contents), location) => Ok((&input[1..], contents.clone(), *location)),
-        (Token::Invalid(c), location) => {
-            Err(ParseError::Fatal(Box::new(ParseError::LexerError(*c, *location))))
-        },
-        (_, location) => {
-            Err(ParseError::Expected(vec![Token::StringLiteral("".to_owned())], *location))
-        },
+        (Token::Invalid(c), location) => Err(ParseError::Fatal(Box::new(ParseError::LexerError(*c, *location)))),
+        (_, location) => Err(ParseError::Expected(vec![Token::StringLiteral("".to_owned())], *location)),
     }
 }
 
 pub fn integer_literal_token<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, (u64, IntegerKind)> {
     match input[0] {
         (Token::IntegerLiteral(int, kind), location) => Ok((&input[1..], (int, kind), location)),
-        (Token::Invalid(c), location) => {
-            Err(ParseError::Fatal(Box::new(ParseError::LexerError(c, location))))
-        },
-        (_, location) => {
-            Err(ParseError::Expected(vec![Token::IntegerLiteral(0, IntegerKind::Unknown)], location))
-        },
+        (Token::Invalid(c), location) => Err(ParseError::Fatal(Box::new(ParseError::LexerError(c, location)))),
+        (_, location) => Err(ParseError::Expected(vec![Token::IntegerLiteral(0, IntegerKind::Unknown)], location)),
     }
 }
 
 pub fn float_literal_token<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, f64> {
     match input[0] {
         (Token::FloatLiteral(float), location) => Ok((&input[1..], float, location)),
-        (Token::Invalid(c), location) => {
-            Err(ParseError::Fatal(Box::new(ParseError::LexerError(c, location))))
-        },
-        (_, location) => {
-            Err(ParseError::Expected(vec![Token::FloatLiteral(0.0)], location))
-        },
+        (Token::Invalid(c), location) => Err(ParseError::Fatal(Box::new(ParseError::LexerError(c, location)))),
+        (_, location) => Err(ParseError::Expected(vec![Token::FloatLiteral(0.0)], location)),
     }
 }
 
 pub fn char_literal_token<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, char> {
     match input[0] {
         (Token::CharLiteral(contents), location) => Ok((&input[1..], contents, location)),
-        (Token::Invalid(c), location) => {
-            Err(ParseError::Fatal(Box::new(ParseError::LexerError(c, location))))
-        },
-        (_, location) => {
-            Err(ParseError::Expected(vec![Token::CharLiteral(' ')], location))
-        },
+        (Token::Invalid(c), location) => Err(ParseError::Fatal(Box::new(ParseError::LexerError(c, location)))),
+        (_, location) => Err(ParseError::Expected(vec![Token::CharLiteral(' ')], location)),
     }
 }
 
 pub fn bool_literal_token<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, bool> {
     match input[0] {
         (Token::BooleanLiteral(boolean), location) => Ok((&input[1..], boolean, location)),
-        (Token::Invalid(c), location) => {
-            Err(ParseError::Fatal(Box::new(ParseError::LexerError(c, location))))
-        },
-        (_, location) => {
-            Err(ParseError::Expected(vec![Token::BooleanLiteral(true)], location))
-        },
+        (Token::Invalid(c), location) => Err(ParseError::Fatal(Box::new(ParseError::LexerError(c, location)))),
+        (_, location) => Err(ParseError::Expected(vec![Token::BooleanLiteral(true)], location)),
     }
 }
 
 pub fn int_type_token<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, IntegerKind> {
     match input[0] {
         (Token::IntegerType(kind), location) => Ok((&input[1..], kind, location)),
-        (Token::Invalid(c), location) => {
-            Err(ParseError::Fatal(Box::new(ParseError::LexerError(c, location))))
-        },
-        (_, location) => {
-            Err(ParseError::Expected(vec![Token::BooleanLiteral(true)], location))
-        },
+        (Token::Invalid(c), location) => Err(ParseError::Fatal(Box::new(ParseError::LexerError(c, location)))),
+        (_, location) => Err(ParseError::Expected(vec![Token::BooleanLiteral(true)], location)),
     }
 }

@@ -21,11 +21,7 @@ pub struct Position {
 impl Position {
     /// The first position in a file
     pub fn begin() -> Position {
-        Position {
-            index: 0,
-            line: 1,
-            column: 1,
-        }
+        Position { index: 0, line: 1, column: 1 }
     }
 
     /// Increment the position 1 character forward
@@ -110,11 +106,7 @@ impl<'c> Location<'c> {
         let start = if self.start.index < other.start.index { self.start } else { other.start };
         let end = if self.end.index < other.end.index { other.end } else { self.end };
 
-        Location {
-            filename: self.filename,
-            start,
-            end
-        }
+        Location { filename: self.filename, start, end }
     }
 }
 

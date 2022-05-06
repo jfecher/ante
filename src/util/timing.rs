@@ -1,6 +1,6 @@
 use std::cell::RefCell;
-use std::sync::atomic::{ AtomicBool, Ordering };
-use std::time::{ Duration, Instant };
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
 
 struct PassTimings {
     current_pass_name: String,
@@ -61,18 +61,11 @@ pub fn show_timings() {
 
 impl PassTimings {
     fn new() -> PassTimings {
-        PassTimings {
-            current_pass_name: String::new(),
-            current_pass_start_time: Instant::now(),
-            all_passes: vec![],
-        }
+        PassTimings { current_pass_name: String::new(), current_pass_start_time: Instant::now(), all_passes: vec![] }
     }
 
     fn current_pass_duration(&self) -> PassDuration {
-        PassDuration {
-            pass_name: self.current_pass_name.to_string(),
-            duration: self.current_pass_start_time.elapsed(),
-        }
+        PassDuration { pass_name: self.current_pass_name.to_string(), duration: self.current_pass_start_time.elapsed() }
     }
 
     /// Combine the Durations of all passes with the same name
@@ -94,11 +87,8 @@ impl PassDuration {
     fn show(&self) {
         let millis = self.duration.as_millis();
 
-        let time_string = if millis != 0 {
-            format!("{}ms", millis)
-        } else {
-            format!("{}μs", self.duration.as_micros())
-        };
+        let time_string =
+            if millis != 0 { format!("{}ms", millis) } else { format!("{}μs", self.duration.as_micros()) };
 
         println!("{: <25} - {}", self.pass_name, time_string);
     }

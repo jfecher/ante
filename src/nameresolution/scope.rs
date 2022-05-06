@@ -69,16 +69,13 @@ impl Scope {
     }
 
     /// Helper for `import` which imports all non-impl symbols.
-    fn import_definitions_types_and_traits(
-        &mut self, other: &Scope, cache: &mut ModuleCache, location: Location,
-    ) {
+    fn import_definitions_types_and_traits(&mut self, other: &Scope, cache: &mut ModuleCache, location: Location) {
         macro_rules! merge_table {
             ( $field:tt , $cache_field:tt , $errors:tt ) => {{
                 for (k, v) in other.$field.iter() {
                     if let Some(existing) = self.$field.get(k) {
                         let prev_loc = cache.$cache_field[existing.0].locate();
-                        let error =
-                            make_error!(location, "import shadows previous definition of {}", k);
+                        let error = make_error!(location, "import shadows previous definition of {}", k);
                         let note = make_note!(prev_loc, "{} was previously defined here", k);
                         $errors.push((error, note));
                     } else {
@@ -96,9 +93,7 @@ impl Scope {
         if !errors.is_empty() {
             // Using sort_by instead of sort_by_key here avoids cloning the ErrorMessage
             errors.sort_by(|x, y| x.0.cmp(&y.0));
-            errors
-                .into_iter()
-                .for_each(|(error, note)| eprintln!("{}\n{}", error, note));
+            errors.into_iter().for_each(|(error, note)| eprintln!("{}\n{}", error, note));
         }
     }
 
@@ -106,9 +101,7 @@ impl Scope {
     /// This is meant to be done at the end of a scope since if we're still in the middle
     /// of name resolution for a particular scope, any currently unused symbol may become
     /// used later on.
-    pub fn check_for_unused_definitions(
-        &self, cache: &ModuleCache, id_to_ignore: Option<DefinitionInfoId>,
-    ) {
+    pub fn check_for_unused_definitions(&self, cache: &ModuleCache, id_to_ignore: Option<DefinitionInfoId>) {
         let mut warnings = vec![];
 
         for (name, id) in &self.definitions {
@@ -137,9 +130,7 @@ impl Scope {
 
         if !warnings.is_empty() {
             warnings.sort();
-            warnings
-                .into_iter()
-                .for_each(|warning| eprintln!("{}", warning));
+            warnings.into_iter().for_each(|warning| eprintln!("{}", warning));
         }
     }
 }
@@ -161,9 +152,7 @@ pub struct TypeVariableScope {
 }
 
 impl TypeVariableScope {
-    pub fn push_existing_type_variable(
-        &mut self, key: String, id: TypeVariableId,
-    ) -> TypeVariableId {
+    pub fn push_existing_type_variable(&mut self, key: String, id: TypeVariableId) -> TypeVariableId {
         let prev = self.type_variables.insert(key, id);
         assert!(prev.is_none());
         id
@@ -183,20 +172,12 @@ pub struct FunctionScopes {
 
 impl FunctionScopes {
     pub fn new() -> FunctionScopes {
-        FunctionScopes {
-            function: None,
-            function_id: None,
-            scopes: vec![],
-        }
+        FunctionScopes { function: None, function_id: None, scopes: vec![] }
     }
 
     pub fn from_lambda(lambda: &mut ast::Lambda, id: Option<DefinitionInfoId>) -> FunctionScopes {
         let function = Some(unsafe { std::mem::transmute(lambda) });
-        FunctionScopes {
-            function,
-            function_id: id,
-            scopes: vec![],
-        }
+        FunctionScopes { function, function_id: id, scopes: vec![] }
     }
 
     pub fn iter(&self) -> std::slice::Iter<Scope> {
@@ -229,9 +210,8 @@ impl FunctionScopes {
     pub fn add_closure_environment_variable_mapping(
         &mut self, existing: DefinitionInfoId, parameter: DefinitionInfoId,
     ) {
-        let function = self.function.expect(
-            "Internal compiler error: attempted to create a closure without a current function",
-        );
+        let function =
+            self.function.expect("Internal compiler error: attempted to create a closure without a current function");
         let function = unsafe { function.as_mut().unwrap() };
         function.closure_environment.insert(existing, parameter);
     }

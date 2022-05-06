@@ -1,21 +1,19 @@
 //! llvm/decisiontree.rs - Defines how to codegen a decision tree
 //! via `codegen_tree`. This decisiontree is the result of compiling
 //! a match expression into a decisiontree during type inference.
-use crate::llvm::{ Generator, CodeGen };
 use crate::hir;
+use crate::llvm::{CodeGen, Generator};
 use crate::util::fmap;
 
-use inkwell::values::BasicValueEnum;
 use inkwell::basic_block::BasicBlock;
+use inkwell::values::BasicValueEnum;
 
 impl<'g> Generator<'g> {
     pub fn codegen_tree(&mut self, match_expr: &hir::Match) -> BasicValueEnum<'g> {
         let current_function = self.current_function();
         let ending_block = self.context.append_basic_block(current_function, "match_end");
 
-        let branch_blocks = fmap(&match_expr.branches, |_| {
-            self.context.append_basic_block(current_function, "")
-        });
+        let branch_blocks = fmap(&match_expr.branches, |_| self.context.append_basic_block(current_function, ""));
 
         self.codegen_subtree(&match_expr.decision_tree, &branch_blocks);
 
@@ -61,12 +59,10 @@ impl<'g> Generator<'g> {
         }
     }
 
-    fn build_switch(&mut self,
-        int_to_switch_on: BasicValueEnum<'g>,
-        cases: &[(u32, hir::DecisionTree)],
-        else_case: &Option<Box<hir::DecisionTree>>,
-        branches: &[BasicBlock<'g>])
-    {
+    fn build_switch(
+        &mut self, int_to_switch_on: BasicValueEnum<'g>, cases: &[(u32, hir::DecisionTree)],
+        else_case: &Option<Box<hir::DecisionTree>>, branches: &[BasicBlock<'g>],
+    ) {
         let starting_block = self.current_block();
         let cases = fmap(cases, |(tag, subtree)| {
             let tag = self.context.i8_type().const_int(*tag as u64, true);

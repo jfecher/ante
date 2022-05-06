@@ -1,4 +1,4 @@
-use goldentests::{ TestConfig, TestResult };
+use goldentests::{TestConfig, TestResult};
 
 #[test]
 fn goldentests() -> TestResult<()> {

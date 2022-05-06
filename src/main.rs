@@ -58,8 +58,7 @@ fn print_definition_types(cache: &ModuleCache) {
 
     for (name, definition_id) in definitions {
         let info = &cache[*definition_id];
-        let typ = info.typ.clone()
-            .unwrap_or(types::Type::Primitive(types::PrimitiveType::UnitType));
+        let typ = info.typ.clone().unwrap_or(types::Type::Primitive(types::PrimitiveType::UnitType));
 
         print!("{} : ", name);
         types::typeprinter::show_type_and_traits(&typ, &info.required_traits, cache);
@@ -89,11 +88,7 @@ pub fn main() {
 
     let mut reader = BufReader::new(file);
     let mut contents = String::new();
-    expect!(
-        reader.read_to_string(&mut contents),
-        "Failed to read {} into a string\n",
-        filename.display()
-    );
+    expect!(reader.read_to_string(&mut contents), "Failed to read {} into a string\n", filename.display());
 
     error::color_output(!args.no_color);
     util::timing::time_passes(args.show_time);

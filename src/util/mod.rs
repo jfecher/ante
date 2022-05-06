@@ -1,6 +1,6 @@
 //! util/mod.rs - Various utility functions used throughout the compiler.
 //! Mostly consists of convenience functions for iterators such as `fmap`.
-use std::{fmt::Display, process::Command, path::PathBuf};
+use std::{fmt::Display, path::PathBuf, process::Command};
 
 #[macro_use]
 pub mod logging;
@@ -9,9 +9,9 @@ pub mod trustme;
 
 /// Equivalent to .iter().map(f).collect()
 pub fn fmap<T, U, F>(iterable: T, f: F) -> Vec<U>
-    where 
+where
     T: IntoIterator,
-    F: FnMut(T::Item) -> U
+    F: FnMut(T::Item) -> U,
 {
     iterable.into_iter().map(f).collect()
 }
@@ -20,7 +20,8 @@ pub fn fmap<T, U, F>(iterable: T, f: F) -> Vec<U>
 /// of a value and a vector. Accumulate the results in two separate vectors, the second of
 /// which is flattened from all the second-element vectors found so far.
 pub fn fmap_mut_pair_flatten_second<T, Ret1, Ret2, F>(array: &mut [T], mut f: F) -> (Vec<Ret1>, Vec<Ret2>)
-    where F: FnMut(&mut T) -> (Ret1, Vec<Ret2>)
+where
+    F: FnMut(&mut T) -> (Ret1, Vec<Ret2>),
 {
     let mut ret1 = Vec::with_capacity(array.len());
     let mut ret2 = Vec::with_capacity(array.len());
@@ -63,14 +64,8 @@ pub fn link(object_filename: &str, binary_filename: &str) {
 /// as a result of compiling the program with the given entry module.
 pub fn binary_name(module_name: &str) -> String {
     if cfg!(target_os = "windows") {
-        PathBuf::from(module_name)
-            .with_extension("exe")
-            .to_string_lossy()
-            .into()
+        PathBuf::from(module_name).with_extension("exe").to_string_lossy().into()
     } else {
-        PathBuf::from(module_name)
-            .with_extension("")
-            .to_string_lossy()
-            .into()
+        PathBuf::from(module_name).with_extension("").to_string_lossy().into()
     }
 }

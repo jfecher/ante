@@ -10,10 +10,10 @@
 use crate::hir::Builtin;
 use crate::llvm::Generator;
 
+use inkwell::attributes::{Attribute, AttributeLoc};
 use inkwell::types::BasicType;
-use inkwell::values::{ BasicValue, BasicValueEnum, IntValue, FloatValue };
-use inkwell::{ IntPredicate, FloatPredicate, AddressSpace };
-use inkwell::attributes::{ Attribute, AttributeLoc };
+use inkwell::values::{BasicValue, BasicValueEnum, FloatValue, IntValue};
+use inkwell::{AddressSpace, FloatPredicate, IntPredicate};
 
 pub fn call_builtin<'g, 'c>(builtin: &Builtin, generator: &mut Generator<'g>) -> BasicValueEnum<'g> {
     let current_function = generator.current_function();

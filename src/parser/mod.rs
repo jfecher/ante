@@ -71,9 +71,7 @@ parser!(statement_list loc =
 
 fn statement<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
     match input[0].0 {
-        Token::ParenthesisLeft | Token::Identifier(_) => {
-            or(&[definition, assignment, expression], "statement")(input)
-        },
+        Token::ParenthesisLeft | Token::Identifier(_) => or(&[definition, assignment, expression], "statement")(input),
         Token::Type => or(&[type_definition, type_alias], "statement")(input),
         Token::Import => import(input),
         Token::Trait => trait_definition(input),
@@ -85,8 +83,7 @@ fn statement<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
 }
 
 fn definition<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
-    raw_definition(input)
-        .map(|(input, definition, location)| (input, Ast::Definition(definition), location))
+    raw_definition(input).map(|(input, definition, location)| (input, Ast::Definition(definition), location))
 }
 
 fn raw_definition<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, ast::Definition<'b>> {
@@ -146,15 +143,7 @@ parser!(assignment location =
 );
 
 fn pattern<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
-    or(
-        &[
-            pattern_pair,
-            type_annotation_pattern,
-            pattern_function_call,
-            pattern_argument,
-        ],
-        "pattern",
-    )(input)
+    or(&[pattern_pair, type_annotation_pattern, pattern_function_call, pattern_argument], "pattern")(input)
 }
 
 // TODO: There's a lot of repeated parsing done in patterns due to or combinators
@@ -196,14 +185,9 @@ parser!(type_alias loc =
     Ast::type_definition(name, args, TypeDefinitionBody::Alias(body), loc)
 );
 
-fn type_definition_body<'a, 'b>(
-    input: Input<'a, 'b>,
-) -> ParseResult<'a, 'b, ast::TypeDefinitionBody<'b>> {
+fn type_definition_body<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, ast::TypeDefinitionBody<'b>> {
     match input[0].0 {
-        Token::Indent => or(
-            &[union_block_body, struct_block_body],
-            "type_definition_body",
-        )(input),
+        Token::Indent => or(&[union_block_body, struct_block_body], "type_definition_body")(input),
         Token::Pipe => union_inline_body(input),
         _ => struct_inline_body(input),
     }
@@ -423,11 +407,7 @@ fn expression<'a, 'b>(input: Input<'a, 'b>) -> AstResult<'a, 'b> {
     // loop while the next token is an operator
     while let Some((prec, right_associative)) = precedence(&input[0].0) {
         while !operator_stack.is_empty()
-            && should_continue(
-                operator_stack[operator_stack.len() - 1],
-                prec,
-                right_associative,
-            )
+            && should_continue(operator_stack[operator_stack.len() - 1], prec, right_associative)
         {
             pop_operator(&mut operator_stack, &mut results);
         }
@@ -515,10 +495,7 @@ parser!(type_annotation loc =
 );
 
 fn parse_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {
-    or(
-        &[function_type, type_application, pair_type, basic_type],
-        "type",
-    )(input)
+    or(&[function_type, type_application, pair_type, basic_type], "type")(input)
 }
 
 fn function_arg_type<'a, 'b>(input: Input<'a, 'b>) -> ParseResult<'a, 'b, Type<'b>> {

@@ -1,9 +1,9 @@
 //! Defines a simple pretty printer to print the Ast to stdout.
 //! Used for the golden tests testing parsing to ensure there
 //! are no parsing regressions.
-use crate::parser::ast::{ self, Ast };
-use crate::util::{ fmap, join_with };
-use std::fmt::{ self, Display, Formatter };
+use crate::parser::ast::{self, Ast};
+use crate::util::{fmap, join_with};
+use std::fmt::{self, Display, Formatter};
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
@@ -100,15 +100,14 @@ impl<'a> Display for ast::Type<'a> {
             TypeVariable(name, _) => write!(f, "{}", name),
             UserDefined(name, _) => write!(f, "{}", name),
             Function(params, return_type, varargs, _) => {
-                write!(f, "({} {}-> {})", join_with(params, " "),
-                    if *varargs { "... " } else { "" }, return_type)
+                write!(f, "({} {}-> {})", join_with(params, " "), if *varargs { "... " } else { "" }, return_type)
             },
             TypeApplication(constructor, args, _) => {
                 write!(f, "({} {})", constructor, join_with(args, " "))
             },
             Pair(first, rest, _) => {
                 write!(f, "({}, {})", first, rest)
-            }
+            },
         }
     }
 }
@@ -167,8 +166,15 @@ impl<'a> Display for ast::TraitImpl<'a> {
         let args = join_with(&self.trait_args, " ");
         let definitions = join_with(&self.definitions, "\n    ");
         let given = join_with(&self.given, " ");
-        write!(f, "(impl {} {}{}{} with\n    {}\n)", self.trait_name, args,
-            if !given.is_empty() { " given " } else { "" }, given, definitions)
+        write!(
+            f,
+            "(impl {} {}{}{} with\n    {}\n)",
+            self.trait_name,
+            args,
+            if !given.is_empty() { " given " } else { "" },
+            given,
+            definitions
+        )
     }
 }
 
@@ -207,7 +213,7 @@ impl<'a> Display for ast::Sequence<'a> {
                 }
                 statements += line;
             }
-            
+
             if i != self.statements.len() - 1 {
                 statements += ";"
             }

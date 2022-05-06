@@ -7,13 +7,13 @@
 //! - All trait function calls are replaced with references to the exact
 //!   function to call statically (monomorphisation) or are passed in as
 //!   arguments to calling functions (boxing).
-mod types;
-mod monomorphisation;
 mod decision_tree_monomorphisation;
+mod monomorphisation;
 mod printer;
+mod types;
 
 pub use monomorphisation::monomorphise;
-pub use types::{ Type, IntegerKind, FunctionType, PrimitiveType };
+pub use types::{FunctionType, IntegerKind, PrimitiveType, Type};
 
 use self::printer::FmtAst;
 use std::rc::Rc;
@@ -88,10 +88,7 @@ pub struct Definition {
 
 impl From<Definition> for DefinitionInfo {
     fn from(def: Definition) -> Self {
-        DefinitionInfo {
-            definition_id: def.variable,
-            definition: Some(Rc::new(Ast::Definition(def))),
-        }
+        DefinitionInfo { definition_id: def.variable, definition: Some(Rc::new(Ast::Definition(def))) }
     }
 }
 
@@ -136,11 +133,7 @@ pub struct Match {
 pub enum DecisionTree {
     Leaf(usize),
     Definition(Definition, Box<DecisionTree>),
-    Switch {
-        int_to_switch_on: Box<Ast>,
-        cases: Vec<(u32, DecisionTree)>,
-        else_case: Option<Box<DecisionTree>>,
-    },
+    Switch { int_to_switch_on: Box<Ast>, cases: Vec<(u32, DecisionTree)>, else_case: Option<Box<DecisionTree>> },
 }
 
 /// return expression
@@ -179,7 +172,7 @@ pub struct Assignment {
 }
 
 #[derive(Debug, Clone)]
-pub struct MemberAccess{
+pub struct MemberAccess {
     pub lhs: Box<Ast>,
     pub member_index: u32,
 }
